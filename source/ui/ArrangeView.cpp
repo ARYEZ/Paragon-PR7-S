@@ -578,8 +578,9 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
             dragNewStart = acrossOnly ? dragOriginalStart : juce::jmax (0.0, pr7s::snap (dragOriginalStart + beat - dragStartBeat, grid));
             // To another track of the same kind (a clip onto an audio track, a MIDI part onto an instrument's).
             dragTargetTrack = dragTrack;
-            if (const auto over = trackAtY (event.position.y); ! alongOnly && over != 0 && isAudioTrack (over) == isAudioTrack (dragTrack))
-                dragTargetTrack = over;
+            const auto* overTrack = studio.getProject().findTrack (trackAtY (event.position.y));
+            if (overTrack != nullptr && ! alongOnly && ! overTrack->isChannel() && overTrack->isAudio() == isAudioTrack (dragTrack))
+                dragTargetTrack = overTrack->id;   // (not an FX or group channel: no parts there)
             repaint();
             break;
         }
@@ -692,8 +693,9 @@ void ArrangeView::mouseDoubleClick (const juce::MouseEvent& event)
             onEditNotes();
         return;
     }
-    if (isAudioTrack (trackAtY (event.position.y)))
-        return;   // an empty clip would play nothing
+    const auto* clicked = studio.getProject().findTrack (trackAtY (event.position.y));
+    if (clicked == nullptr || clicked->isAudio() || clicked->isChannel())
+        return;   // an empty clip would play nothing; an FX or group channel has no parts
     // A new empty part: between the locators, from the left one to the
     // right; elsewhere, a bar long, from the bar clicked in.
     if (const auto trackId = trackAtY (event.position.y))

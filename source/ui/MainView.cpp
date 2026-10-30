@@ -97,6 +97,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
 
     trackList.onOpenInstrument = [this] (int trackId) { openInstrumentWindow (trackId); };
     trackList.onFindPlugins = [this] { openPlugins(); };
+    trackList.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
     timeline.onScrollOrZoom = [this]
     {
         trackList.resized();

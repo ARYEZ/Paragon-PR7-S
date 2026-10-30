@@ -31,6 +31,18 @@ MixerView::Strip::Strip (MixerView& ownerView, int id) : owner (ownerView), busI
         addAndMakeVisible (slot);
     }
 
+    for (int i = 0; i < pr7s::Project::maxSends; ++i)
+    {
+        sendSlots[(size_t) i] = std::make_unique<SendSlot> (owner, busId, i);
+        addChildComponent (*sendSlots[(size_t) i]);
+    }
+    output.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff0b090c));
+    output.setColour (juce::TextButton::textColourOffId, ParagonColours::textDim);
+    output.setTooltip ("Where its sound goes: the master, or a group channel (FX and group channels go to the master)");
+    output.onClick = [this] { owner.showOutputMenu (busId); };
+    if (! isMaster())
+        addAndMakeVisible (output);
+
     volume.setSliderStyle (juce::Slider::LinearVertical);
     volume.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     volume.getProperties().set (ParagonLookAndFeel::eqFaderProperty, true);
@@ -115,10 +127,22 @@ void MixerView::Strip::refresh()
         resized();
     }
     const auto preFader = owner.studio.getPreFaderSlots (busId);
+    const auto sendsShown = owner.isShowingSends();
+    for (int i = 0; i < (int) sendSlots.size(); ++i)
+    {
+        sendSlots[(size_t) i]->setVisible (sendsShown && track != nullptr && ! track->isFx());
+        sendSlots[(size_t) i]->refresh();
+    }
+    if (track != nullptr)
+    {
+        const auto* to = project.findTrack (track->output);
+        output.setButtonText ("OUT: " + (to != nullptr ? to->name : juce::String ("MASTER")));
+        output.setEnabled (! track->isChannel());
+    }
     for (int i = 0; i < (int) slots.size(); ++i)
     {
         auto& slot = slots[(size_t) i];
-        slot.setVisible (i < shownSlots);
+        slot.setVisible (! sendsShown && i < shownSlots);
         slot.setColour (juce::TextButton::buttonColourId, i < preFader ? juce::Colour (0xff0b090c) : juce::Colour (0xff1c1108));   // after the fader: tinted
         if (inserts != nullptr && i < (int) inserts->size() && ! (*inserts)[(size_t) i].isEmpty())
         {
@@ -208,9 +232,12 @@ void MixerView::Strip::paint (juce::Graphics& g)
                       nameArea.toNearestInt(), juce::Justification::centred, 1, 0.8f);
     g.setColour (ParagonColours::textDim);
     g.setFont (font (8.5f));
-    g.drawText ("INSERTS", nameArea.translated (0.0f, nameArea.getHeight()).withHeight (12.0f), juce::Justification::centred, false);
+    if (isMaster())
+        g.drawText (owner.isShowingSends() ? "NO SENDS" : "INSERTS", nameArea.translated (0.0f, nameArea.getHeight()).withHeight (12.0f), juce::Justification::centred, false);
+    else if (owner.isShowingSends() && track != nullptr && track->isFx())
+        g.drawText ("NO SENDS (AN FX CHANNEL)", rackArea, juce::Justification::centredTop, true);
     // The line between the inserts before the fader and those after it.
-    if (const auto preFader = owner.studio.getPreFaderSlots (busId); preFader < shownSlots)
+    if (const auto preFader = owner.studio.getPreFaderSlots (busId); preFader < shownSlots && ! owner.isShowingSends())
     {
         const auto& first = slots[(size_t) preFader];
         const auto y = preFader == 0 ? (float) first.getY() - 2.0f : (float) first.getY() - (float) slotGap * 0.5f - 0.5f;
@@ -240,16 +267,25 @@ void MixerView::Strip::resized()
 {
     auto area = getLocalBounds().reduced (6, 0).withTrimmedTop (8).withTrimmedBottom (6);
     nameArea = area.removeFromTop (18).toFloat();
-    area.removeFromTop (14);   // "INSERTS"
+    output.setBounds (area.removeFromTop (14).reduced (2, 0));   // OUT (the master's: "INSERTS")
+    rackArea = area.withHeight (40).toFloat().withTrimmedTop (4.0f);
     // The slots shown, smaller when there are many, so the fader keeps room.
     const auto below = (isMaster() ? 0 : 50) + 28 + 16 + 6 + 110;   // pan, the keys, the readout, a gap, the shortest fader
     const auto rowHeight = juce::jlimit (11, slotHeight, (area.getHeight() - below) / shownSlots - slotGap);
+    // The rack: the inserts shown, or the eight sends (in the same room).
+    auto rack = area;
     for (int i = 0; i < (int) slots.size(); ++i)
     {
         if (i >= shownSlots)
             continue;
         slots[(size_t) i].setBounds (area.removeFromTop (rowHeight));
         area.removeFromTop (slotGap);
+    }
+    const auto sendRow = juce::jmax (11, (shownSlots * (rowHeight + slotGap)) / pr7s::Project::maxSends - slotGap);
+    for (auto& send : sendSlots)
+    {
+        send->setBounds (rack.removeFromTop (sendRow));
+        rack.removeFromTop (slotGap);
     }
     area.removeFromTop (6);
     if (! isMaster())
@@ -301,6 +337,19 @@ MixerView::MixerView (pr7s::Studio& studioToUse) : studio (studioToUse)
     }
     windowButton.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
     closeButton.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
+    for (auto* button : { &insertsButton, &sendsButton })
+    {
+        button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
+        button->setColour (juce::TextButton::textColourOffId, ParagonColours::textDim);
+        button->setColour (juce::TextButton::textColourOnId, ParagonColours::accent);
+        button->setWantsKeyboardFocus (false);
+        addAndMakeVisible (*button);
+    }
+    insertsButton.setTooltip ("Show each channel's inserts (its effects, top to bottom)");
+    sendsButton.setTooltip ("Show each channel's sends (to the FX channels)");
+    insertsButton.onClick = [this] { setShowSends (false); };
+    sendsButton.onClick = [this] { setShowSends (true); };
+    insertsButton.setToggleState (true, juce::dontSendNotification);
     closeButton.setTooltip ("Close the mixer (F3 in its own window, Alt+F3 docked)");
     closeButton.onClick = [this] { if (onClose) onClose(); };
     windowButton.onClick = [this] { if (onWindowToggle) onWindowToggle(); };
@@ -364,6 +413,9 @@ void MixerView::timerCallback()
         const auto peak = engine.takeTrackPeak (strip->getBusId(), 1);
         strip->setLevels (peak, peak);
         strip->followMix();
+        if (showSends)
+            for (int i = 0; i < pr7s::Project::maxSends; ++i)
+                strip->getSendSlot (i).repaint();
     }
     master->followMix();
     master->setLevels (engine.getOutputMeter (0, 1).takePeak(), engine.getOutputMeter (1, 1).takePeak());
@@ -449,8 +501,9 @@ void MixerView::paint (juce::Graphics& g)
     g.drawText ("MIXER", bar.withTrimmedLeft (14.0f), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (font (11.0f, juce::Font::plain));
-    g.drawText ("Each track: its instrument, its inserts (top to bottom; those below an orange line after the fader), its fader, into the master",
-                bar.withTrimmedLeft (70.0f).withTrimmedRight (170.0f), juce::Justification::centredLeft, true);
+    g.drawText (showSends ? "Each track's sends: some of its sound to an FX channel (before or after its fader), back into the master"
+                          : "Each track: its instrument, its inserts (top to bottom; those below an orange line after the fader), its fader, its output",
+                bar.withTrimmedLeft (70.0f).withTrimmedRight (330.0f), juce::Justification::centredLeft, true);
     if (strips.empty())
     {
         g.setFont (font (13.0f, juce::Font::plain));
@@ -466,6 +519,10 @@ void MixerView::resized()
     closeButton.setBounds (bar.removeFromRight (64));
     bar.removeFromRight (6);
     windowButton.setBounds (bar.removeFromRight (74));
+    bar.removeFromRight (16);
+    sendsButton.setBounds (bar.removeFromRight (62));
+    bar.removeFromRight (4);
+    insertsButton.setBounds (bar.removeFromRight (72));
 
     master->setBounds (area.removeFromRight (masterWidth));
     area.removeFromRight (3);
@@ -474,4 +531,207 @@ void MixerView::resized()
     holder.setSize (juce::jmax (area.getWidth(), (int) strips.size() * stripWidth), juce::jmax (0, height));
     for (size_t i = 0; i < strips.size(); ++i)
         strips[i]->setBounds ((int) i * stripWidth, 0, stripWidth, holder.getHeight());
+}
+
+//==============================================================================
+void MixerView::setShowSends (bool shouldShow)
+{
+    showSends = shouldShow;
+    insertsButton.setToggleState (! showSends, juce::dontSendNotification);
+    sendsButton.setToggleState (showSends, juce::dontSendNotification);
+    for (auto& strip : strips)
+        strip->refresh();
+    master->refresh();
+    repaint();
+}
+
+void MixerView::showOutputMenu (int busId)
+{
+    const auto* track = studio.getProject().findTrack (busId);
+    if (track == nullptr || track->isChannel())
+        return;
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("OUTPUT");
+    menu.addItem (1, "Master", true, track->output == 0);
+    for (const auto& other : studio.getProject().tracks)
+        if (other.isGroup())
+            menu.addItem (1000 + other.id, other.name, true, track->output == other.id);
+    menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<MixerView> (this), busId] (int chosen)
+    {
+        if (safe != nullptr && chosen > 0)
+            safe->studio.setOutput (busId, chosen == 1 ? 0 : chosen - 1000);
+    });
+}
+
+void MixerView::showSendMenu (int busId, int slot)
+{
+    const auto* track = studio.getProject().findTrack (busId);
+    if (track == nullptr || track->isFx())
+        return;
+    const auto current = juce::isPositiveAndBelow (slot, (int) track->sends.size()) ? track->sends[(size_t) slot] : pr7s::Send {};
+    const auto effects = studio.getPluginHost().getEffects();
+    juce::PopupMenu menu, add;
+    menu.addSectionHeader ("SEND " + juce::String (slot + 1));
+    auto anyFx = false;
+    for (const auto& other : studio.getProject().tracks)
+        if (other.isFx())
+        {
+            menu.addItem (10000 + other.id, other.name, true, current.target == other.id);
+            anyFx = true;
+        }
+    if (! anyFx)
+        menu.addItem (-1, "No FX channels yet: add one below", false);
+    menu.addSeparator();
+    if (current.target != 0)
+    {
+        menu.addItem (1, "On", true, current.on);
+        menu.addItem (2, current.preFader ? "Move to Post-Fader" : "Move to Pre-Fader");
+        menu.addItem (3, "Remove");
+        menu.addItem (4, "Bypass All Sends of This Channel", true, track->sendsBypass);
+        menu.addSeparator();
+    }
+    // (As the manual's "Add Effect Track to Send": a new FX channel, and this send to it.)
+    add.addItem (5, "Empty");
+    for (int i = 0; i < effects.size(); ++i)
+        add.addItem (20000 + i, effects[i].manufacturerName + ": " + effects[i].name);
+    menu.addSubMenu ("Add FX Channel to Send", add);
+    menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<MixerView> (this), busId, slot, current, effects] (int chosen)
+    {
+        if (safe == nullptr || chosen == 0)
+            return;
+        auto& s = safe->studio;
+        auto changed = current;
+        if (chosen >= 20000 || chosen == 5)
+        {
+            juce::String error;
+            const auto fx = chosen == 5 ? s.addFxChannel (nullptr) : s.addFxChannel (&effects.getReference (chosen - 20000), &error);
+            if (fx == 0)
+            {
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't load the effect", error);
+                return;
+            }
+            s.selectTrack (busId);
+            changed = { fx, current.target != 0 ? current.levelDb : 0.0f, true, current.preFader };
+        }
+        else if (chosen >= 10000)
+        {
+            changed.target = chosen - 10000;
+            if (current.target == 0)
+                changed = { chosen - 10000, 0.0f, true, false };   // a new send: on, 0 dB, after the fader (our choice)
+        }
+        else if (chosen == 1) changed.on = ! current.on;
+        else if (chosen == 2) changed.preFader = ! current.preFader;
+        else if (chosen == 3) changed = {};
+        else if (chosen == 4)
+        {
+            if (const auto* t = s.getProject().findTrack (busId))
+                s.setSendsBypass (busId, ! t->sendsBypass);
+            return;
+        }
+        s.setSend (busId, slot, changed);
+    });
+}
+
+//==============================================================================
+MixerView::SendSlot::SendSlot (MixerView& ownerView, int bus, int index) : owner (ownerView), busId (bus), slot (index) {}
+
+const pr7s::Send* MixerView::SendSlot::send() const
+{
+    const auto* track = owner.studio.getProject().findTrack (busId);
+    return track != nullptr && juce::isPositiveAndBelow (slot, (int) track->sends.size()) && track->sends[(size_t) slot].target != 0
+             ? &track->sends[(size_t) slot] : nullptr;
+}
+
+void MixerView::SendSlot::refresh()
+{
+    const auto* s = send();
+    const auto* fx = s != nullptr ? owner.studio.getProject().findTrack (s->target) : nullptr;
+    setTooltip (fx == nullptr ? "Send " + juce::String (slot + 1) + ": click to send to an FX channel"
+                              : "Send " + juce::String (slot + 1) + " to " + fx->name
+                                  + ": drag for its level (Shift: fine, Ctrl-click: 0 dB); the dot turns it on or off; right-click for more");
+    repaint();
+}
+
+void MixerView::SendSlot::paint (juce::Graphics& g)
+{
+    const auto bounds = getLocalBounds().toFloat().reduced (0.5f);
+    g.setColour (juce::Colour (0xff0b090c));
+    g.fillRoundedRectangle (bounds, 3.0f);
+    g.setColour (ParagonColours::panelEdge);
+    g.drawRoundedRectangle (bounds, 3.0f, 1.0f);
+    const auto* s = send();
+    const auto* track = owner.studio.getProject().findTrack (busId);
+    if (s == nullptr || track == nullptr)
+    {
+        g.setColour (ParagonColours::textDim.withAlpha (0.6f));
+        g.setFont (font (11.0f, juce::Font::plain));
+        g.drawText ("+", bounds, juce::Justification::centred, false);
+        return;
+    }
+    const auto* fx = owner.studio.getProject().findTrack (s->target);
+    const auto active = s->on && ! track->sendsBypass;
+    // Its level: a bar from the left (the fader's travel), in the FX channel's colour.
+    const auto db = track->automationRead ? owner.studio.getEngine().getSendNowDb (busId, slot) : s->levelDb;
+    auto bar = bounds.reduced (1.5f).withTrimmedLeft (12.0f);
+    const auto colour = fx != nullptr ? fx->colour : ParagonColours::accent;
+    g.setColour (colour.withAlpha (active ? 0.45f : 0.15f));
+    g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * pr7s::volumeToTravel (db)), 2.0f);
+    // The on/off dot.
+    const auto dot = juce::Rectangle<float> (6.0f, 6.0f).withCentre ({ bounds.getX() + 7.0f, bounds.getCentreY() });
+    g.setColour (active ? ParagonColours::accent : ParagonColours::accentDim.darker (0.6f));
+    g.fillEllipse (dot);
+    g.setColour (active ? ParagonColours::text : ParagonColours::textDim);
+    g.setFont (font (juce::jmin (11.0f, bounds.getHeight() * 0.8f)));
+    g.drawFittedText (fx != nullptr ? fx->name : juce::String ("?"), bar.toNearestInt().withTrimmedLeft (2).withTrimmedRight (s->preFader ? 22 : 2),
+                      juce::Justification::centredLeft, 1, 0.7f);
+    if (s->preFader)
+    {
+        g.setColour (ParagonColours::accent);
+        g.drawText ("PRE", bar.removeFromRight (22.0f), juce::Justification::centred, false);
+    }
+}
+
+void MixerView::SendSlot::mouseDown (const juce::MouseEvent& event)
+{
+    dragging = false;
+    const auto* s = send();
+    if (event.mods.isPopupMenu() || s == nullptr)
+    {
+        owner.showSendMenu (busId, slot);
+        return;
+    }
+    if (event.position.x < 14.0f)   // the dot: on or off
+    {
+        auto changed = *s;
+        changed.on = ! s->on;
+        owner.studio.setSend (busId, slot, changed);
+        return;
+    }
+    if (event.mods.isCommandDown())   // Ctrl-click: 0 dB (the manual's default send level; ours is 0 dB)
+    {
+        owner.studio.setSendLevel (busId, slot, 0.0f);
+        return;
+    }
+    startTravel = pr7s::volumeToTravel (s->levelDb);
+    dragging = true;
+    owner.studio.grabControl (busId, pr7s::Studio::control (pr7s::AutomationLane::Target::send, slot));
+}
+
+void MixerView::SendSlot::mouseDrag (const juce::MouseEvent& event)
+{
+    if (! dragging)
+        return;
+    const auto width = juce::jmax (20.0f, (float) getWidth() - 14.0f);
+    const auto travel = startTravel + (float) event.getDistanceFromDragStartX() / width * (event.mods.isShiftDown() ? 0.2f : 1.0f);
+    owner.studio.setSendLevel (busId, slot, pr7s::travelToVolume (juce::jlimit (0.0f, 1.0f, travel)), false);
+}
+
+void MixerView::SendSlot::mouseUp (const juce::MouseEvent&)
+{
+    if (! dragging)
+        return;
+    dragging = false;
+    if (const auto* s = send())
+        owner.studio.setSendLevel (busId, slot, s->levelDb, true);   // the drag: one undo step
+    owner.studio.releaseControl (busId, pr7s::Studio::control (pr7s::AutomationLane::Target::send, slot));
 }

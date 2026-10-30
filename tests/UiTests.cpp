@@ -927,3 +927,84 @@ TEST_CASE ("Automation on screen: lanes under their track, lined up; click adds 
         CHECK (view.createComponentSnapshot (view.getLocalBounds()).isValid());
     }
 }
+
+TEST_CASE ("Sends and FX channels on screen: the SENDS rack, a send's dot, level and Ctrl-click; OUT; FX and group rows; no parts on them", "[ui][sends]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto track = studio.getProject().tracks[0].id;
+    Insert reverb;
+    reverb.plugin.name = "Reverb";
+    const auto fx = studio.addFxChannel (reverb, timesEffect (1.0f, "Reverb"));
+    const auto group = studio.addGroupChannel();
+    studio.setSend (track, 0, { fx, -10.0f, true, false });
+    studio.setOutput (track, group);
+    studio.selectTrack (track);
+    view.openMixer();
+    studio.dispatchPendingMessages();
+
+    // The FX and group rows: no REC (they record nothing), and say what they are.
+    std::vector<juce::TextButton*> buttons;
+    findAll (view.getTrackList(), buttons);
+    const auto visibleCount = [&] (const juce::String& text)
+    {
+        return std::count_if (buttons.begin(), buttons.end(), [&] (auto* b) { return b->getButtonText() == text && b->isVisible(); });
+    };
+    CHECK (visibleCount ("REC") == 1);
+    CHECK (visibleCount ("FX: Reverb") == 1);
+    CHECK (visibleCount ("GROUP CHANNEL") == 1);
+
+    // The mixer: OUT shows where the track goes; SENDS swaps the racks.
+    auto& mixer = view.getMixer();
+    auto& strip = mixer.getStrip (0);
+    CHECK (strip.getOutput().getButtonText() == "OUT: Group 1");
+    CHECK (strip.getInsertSlot (0).isVisible());
+    CHECK_FALSE (strip.getSendSlot (0).isVisible());
+    mixer.setShowSends (true);
+    CHECK_FALSE (strip.getInsertSlot (0).isVisible());
+    CHECK (strip.getSendSlot (0).isVisible());
+    CHECK_FALSE (mixer.getStrip (1).getSendSlot (0).isVisible());   // the FX channel: no sends
+
+    // The dot turns the send off and on.
+    auto& send = strip.getSendSlot (0);
+    const juce::Point<float> dot (6.0f, (float) send.getHeight() * 0.5f);
+    send.mouseDown (mouseAt (send, dot, dot));
+    CHECK_FALSE (studio.getProject().findTrack (track)->sends[0].on);
+    send.mouseDown (mouseAt (send, dot, dot));
+    CHECK (studio.getProject().findTrack (track)->sends[0].on);
+
+    // Dragging right turns it up; one undo step; Ctrl-click: 0 dB.
+    const juce::Point<float> from ((float) send.getWidth() * 0.5f, (float) send.getHeight() * 0.5f);
+    send.mouseDown (mouseAt (send, from, from));
+    send.mouseDrag (mouseAt (send, from + juce::Point<float> (20.0f, 0.0f), from));
+    send.mouseUp (mouseAt (send, from + juce::Point<float> (20.0f, 0.0f), from));
+    const auto raised = studio.getProject().findTrack (track)->sends[0].levelDb;
+    CHECK (raised > -10.0f);
+    studio.undo();
+    CHECK (studio.getProject().findTrack (track)->sends[0].levelDb == -10.0f);
+    const auto ctrl = juce::ModifierKeys (juce::ModifierKeys::commandModifier);
+    send.mouseDown (mouseAt (send, from, from, ctrl));
+    CHECK (studio.getProject().findTrack (track)->sends[0].levelDb == 0.0f);
+
+    // A part can't be dragged onto an FX or group channel's row; a double-click there makes none.
+    studio.addPart (track, { 0.0, 4.0, "Riff", {} });
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    const auto part = arrange.getPartBounds (track, 0).getCentre();
+    const juce::Point<float> onFx (part.x, arrange.trackTop (fx) + 20.0f);
+    arrange.mouseDown (mouseAt (arrange, part, part));
+    arrange.mouseDrag (mouseAt (arrange, onFx, part));
+    arrange.mouseUp (mouseAt (arrange, onFx, part));
+    CHECK (studio.getProject().findTrack (fx)->parts.empty());
+    CHECK (studio.getProject().findTrack (track)->parts.size() == 1);
+    arrange.mouseDoubleClick (mouseAt (arrange, onFx + juce::Point<float> (200.0f, 0.0f), onFx));
+    CHECK (studio.getProject().findTrack (fx)->parts.empty());
+
+    for (const auto type : { Finish::Type::pearlBlack, Finish::Type::pearlWhiteNeon, Finish::Type::pearlWhite })
+    {
+        Finish::set (type, false);
+        CHECK (view.createComponentSnapshot (view.getLocalBounds()).isValid());
+    }
+}

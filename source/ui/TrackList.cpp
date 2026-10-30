@@ -118,9 +118,22 @@ public:
         mute.setToggleState (t->mute, juce::dontSendNotification);
         solo.setToggleState (t->solo, juce::dontSendNotification);
         arm.setToggleState (t->armed, juce::dontSendNotification);
-        instrument.setButtonText (t->isAudio() ? inputName (*t) : t->instrument.getName());
-        instrument.setTooltip (t->isAudio() ? "The input it records from: click to choose, or to delete the track"
-                                            : "The instrument: click to open its window, change it, or delete the track");
+        if (t->isChannel())
+        {
+            // An FX or group channel: what it is (an FX channel: its first effect).
+            const auto& inserts = t->inserts;
+            instrument.setButtonText (t->isGroup() ? juce::String ("GROUP CHANNEL")
+                                      : ! inserts.empty() && ! inserts.front().isEmpty() ? "FX: " + inserts.front().plugin.name : juce::String ("FX CHANNEL"));
+            instrument.setTooltip (t->isGroup() ? "A group channel: the tracks routed to it (their Output), through its effects and fader. Click to delete it"
+                                                : "An FX channel: what the tracks' sends give it, through its effects. Click to open its effect's window, or to delete it");
+        }
+        else
+        {
+            instrument.setButtonText (t->isAudio() ? inputName (*t) : t->instrument.getName());
+            instrument.setTooltip (t->isAudio() ? "The input it records from and where it goes (Output): click to choose, or to delete the track"
+                                                : "The instrument and where it goes (Output): click to open its window, change it, or delete the track");
+        }
+        arm.setVisible (! t->isChannel());   // an FX or group channel records nothing
         monitor.setVisible (t->isAudio());
         monitor.setToggleState (t->monitor, juce::dontSendNotification);
         AutomationKeys::refresh (read, write, owner.studio, trackId);
@@ -175,8 +188,11 @@ public:
     {
         auto area = getLocalBounds().withTrimmedLeft (12).reduced (6, 7);
         auto top = area.removeFromTop (24);
-        arm.setBounds (top.removeFromRight (36));
-        top.removeFromRight (3);
+        if (arm.isVisible())
+        {
+            arm.setBounds (top.removeFromRight (36));
+            top.removeFromRight (3);
+        }
         solo.setBounds (top.removeFromRight (30));
         top.removeFromRight (3);
         mute.setBounds (top.removeFromRight (30));
@@ -522,12 +538,36 @@ void TrackList::showAddTrackMenu()
         for (int i = 0; i < instruments.size(); ++i)
             menu.addItem (100 + i, instruments[i].manufacturerName + ": " + instruments[i].name);
     }
+    // FX and group channels (as the manual's Add Track dialog has them).
+    const auto effects = studio.getPluginHost().getEffects();
+    juce::PopupMenu withEffect;
+    for (int i = 0; i < effects.size(); ++i)
+        withEffect.addItem (1000 + i, effects[i].manufacturerName + ": " + effects[i].name);
+    menu.addSectionHeader ("ADD AN FX CHANNEL OR A GROUP");
+    menu.addItem (5, "FX channel (empty: add its effects in the mixer)");
+    if (! effects.isEmpty())
+        menu.addSubMenu ("FX channel with", withEffect);
+    menu.addItem (6, "Group channel (a submix: route tracks to it)");
     menu.addSeparator();
     menu.addItem (2, instruments.isEmpty() ? "Find my VST3 instruments..." : "Find more VST3 instruments...");
 
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addTrack), [this, instruments] (int chosen)
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addTrack), [this, instruments, effects] (int chosen)
     {
-        if (chosen == 1)
+        if (chosen == 5)
+        {
+            studio.addFxChannel (nullptr);
+        }
+        else if (chosen == 6)
+        {
+            studio.addGroupChannel();
+        }
+        else if (chosen >= 1000 && chosen - 1000 < effects.size())
+        {
+            juce::String error;
+            if (studio.addFxChannel (&effects.getReference (chosen - 1000), &error) == 0)
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't load the effect", error);
+        }
+        else if (chosen == 1)
         {
             studio.addTrack ({});
         }
@@ -616,6 +656,27 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
         menu.addItem (21, "Show All Used Automation");
         menu.addSeparator();
     }
+    if (track->isChannel())
+    {
+        if (track->isFx())
+        {
+            const auto hasEffect = ! track->inserts.empty() && ! track->inserts.front().isEmpty() && studio.getEngine().getEffect (trackId, 0) != nullptr;
+            menu.addItem (40, hasEffect ? "Open " + track->inserts.front().plugin.name + "'s window" : juce::String ("No effect yet (add one in the mixer)"), hasEffect);
+            menu.addSeparator();
+        }
+        menu.addItem (2, "Delete track");
+    }
+    else
+    {
+        // Output: where its sound goes (the master, or a group channel).
+        juce::PopupMenu output;
+        output.addItem (30, "Master", true, track->output == 0);
+        for (const auto& other : studio.getProject().tracks)
+            if (other.isGroup())
+                output.addItem (30000 + other.id, other.name, true, track->output == other.id);
+        menu.addSubMenu ("Output", output);
+        menu.addSeparator();
+    }
     if (track->isAudio())
     {
         // The inputs switched on in SETTINGS (two, with none to ask).
@@ -630,7 +691,7 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
         menu.addSeparator();
         menu.addItem (2, "Delete track");
     }
-    else
+    else if (! track->isChannel())
     {
         menu.addItem (1, "Open " + track->instrument.getName() + "'s window", instance != nullptr && instance->hasEditor());
         change.addItem (10, "Paragon Synth (built in)");
@@ -647,6 +708,12 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
             studio.setAutomationOpen (trackId, ! studio.isAutomationOpen (trackId));
         else if (chosen == 21)
             studio.showAllUsedAutomation();
+        else if (chosen == 30)
+            studio.setOutput (trackId, 0);
+        else if (chosen > 30000)
+            studio.setOutput (trackId, chosen - 30000);
+        else if (chosen == 40 && onOpenEffect)
+            onOpenEffect (trackId, 0);
         else if (chosen == 1 && onOpenInstrument)
         {
             onOpenInstrument (trackId);

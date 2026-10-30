@@ -19,6 +19,13 @@
 //   an insert      empty: click to add an effect (one of your VST3 effects);
 //                  an effect: click to open its window, bypass it, replace
 //                  it or remove it, or make it the last before the fader
+//   a send         (SENDS) some of the channel's sound to an FX channel:
+//                  its name and level (a bar); click the dot to turn it on
+//                  or off, drag across it for the level (Shift: fine),
+//                  Ctrl-click for 0 dB; right-click (or click an empty one)
+//                  for its FX channel, Move to Pre-/Post-Fader, Remove, Add
+//                  FX Channel to Send. PRE marks one before the fader
+//   OUT            where the track's sound goes: the master, or a group channel
 //   MASTER         every track goes through it: its inserts, then its fader
 //
 // It sits under the arrangement (MIXER, Alt+F3) or in a window of its own
@@ -36,8 +43,16 @@ public:
     void setInWindow (bool);   // the WINDOW / DOCK button's name follows
     bool isInWindow() const noexcept { return inWindow; }
 
-    // An insert's menu (what a click on it shows).
+    // An insert's menu (what a click on it shows); a send's; a track's output.
     void showInsertMenu (int busId, int slot);
+    void showSendMenu (int busId, int slot);
+    void showOutputMenu (int busId);
+
+    // The strips' racks: their inserts, or their sends (INSERTS / SENDS in the
+    // mixer's bar: our design, so the strips keep their faders' room).
+    void setShowSends (bool);
+    bool isShowingSends() const noexcept { return showSends; }
+    class SendSlot;
 
     // For tests: the strips, in order (the master's last).
     class Strip;
@@ -59,8 +74,28 @@ private:
     std::unique_ptr<Strip> master;
     juce::Viewport viewport;
     juce::Component holder;   // the track strips, side by side, in the viewport
-    juce::TextButton windowButton { "WINDOW" }, closeButton { "CLOSE" };
-    bool inWindow = false;
+    juce::TextButton windowButton { "WINDOW" }, closeButton { "CLOSE" }, insertsButton { "INSERTS" }, sendsButton { "SENDS" };
+    bool inWindow = false, showSends = false;
+};
+
+// A send's slot on a strip (the SENDS rack).
+class MixerView::SendSlot final : public juce::Component,
+                                  public juce::SettableTooltipClient
+{
+public:
+    SendSlot (MixerView&, int busId, int slot);
+    void refresh();
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+
+private:
+    const pr7s::Send* send() const;
+    MixerView& owner;
+    const int busId, slot;
+    float startTravel = 0.0f;
+    bool dragging = false;
 };
 
 // One channel strip (a track's, or the master's with busId Engine::masterBus).
@@ -81,6 +116,8 @@ public:
     void followMix();   // the fader and pan as the automation has them now (while it's read)
     juce::TextButton& getSolo() noexcept { return solo; }
     juce::TextButton& getInsertSlot (int slot) { return slots[(size_t) slot]; }
+    SendSlot& getSendSlot (int slot) { return *sendSlots[(size_t) slot]; }
+    juce::TextButton& getOutput() noexcept { return output; }
     int getShownSlots() const noexcept { return shownSlots; }
 
     void paint (juce::Graphics&) override;
@@ -93,9 +130,11 @@ private:
     MixerView& owner;
     const int busId;
     std::array<juce::TextButton, pr7s::Project::maxInserts> slots;
+    std::array<std::unique_ptr<SendSlot>, pr7s::Project::maxSends> sendSlots;
+    juce::TextButton output;   // OUT: where its sound goes
     int shownSlots = 8;   // at least 8, and one more than the last used (up to 16)
     juce::Slider volume, pan;
     juce::TextButton mute { "M" }, solo { "S" }, read { "R" }, write { "W" };
-    juce::Rectangle<float> meterArea, nameArea, readoutArea, panReadoutArea;
+    juce::Rectangle<float> meterArea, nameArea, readoutArea, panReadoutArea, rackArea;
     LevelMeter::Ballistics left, right;
 };
