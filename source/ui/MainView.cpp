@@ -49,6 +49,14 @@ MainView::MainView (pr7s::Studio& studioToUse)
     addAndMakeVisible (arrange);
     addChildComponent (keyEditor);
     keyEditor.onClose = [this] { closeKeyEditor(); };
+    // Not straight away: the click that asked is still going on in the window.
+    keyEditor.onWindowToggle = [safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->setKeyEditorInWindow (! safe->keyEditorInWindow); });
+    };
+    if (auto* settings = studio.getSettings())
+        keyEditorInWindow = settings->getBoolValue ("keyEditorInWindow", false);
+    keyEditor.setInWindow (keyEditorInWindow);
     arrange.onEditNotes = [this] { openKeyEditor(); };
     // Told of clicks in the work areas, to know where the keys go.
     arrange.addMouseListener (this, true);
@@ -92,6 +100,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
 
 MainView::~MainView()
 {
+    keyEditorWindow.reset();
     arrange.removeMouseListener (this);
     trackList.removeMouseListener (this);
     keyEditor.removeMouseListener (this);
@@ -114,6 +123,11 @@ void MainView::changeListenerCallback (juce::ChangeBroadcaster* source)
 
 void MainView::refreshHeader()
 {
+    if (keyEditorWindow != nullptr)
+    {
+        const auto* part = keyEditor.getPart();
+        keyEditorWindow->setName ("Key Editor: " + (part != nullptr && part->name.isNotEmpty() ? part->name : juce::String ("no part")));
+    }
     undoButton.setEnabled (studio.canUndo());
     redoButton.setEnabled (studio.canRedo());
     const auto file = studio.getFile();
@@ -193,7 +207,7 @@ void MainView::resized()
     keyboard.setLowestVisibleKey (24);
 
     auto middle = area.reduced (7, 3);
-    if (keyEditorOpen)
+    if (keyEditorOpen && ! keyEditorInWindow)
     {
         // The editor takes the lower part (a little over half), the arrangement keeps the rest.
         const auto height = juce::jlimit (juce::jmin (240, middle.getHeight()), juce::jmax (240, middle.getHeight() - 170),
@@ -250,17 +264,54 @@ void MainView::mouseDown (const juce::MouseEvent& event)
 void MainView::openKeyEditor()
 {
     keyEditorOpen = keysToEditor = true;
-    editorButton.setToggleState (true, juce::dontSendNotification);
-    keyEditor.setVisible (true);
-    resized();
-    repaint();
+    placeKeyEditor();
 }
 
 void MainView::closeKeyEditor()
 {
     keyEditorOpen = keysToEditor = false;
-    editorButton.setToggleState (false, juce::dontSendNotification);
-    keyEditor.setVisible (false);
+    placeKeyEditor();
+}
+
+void MainView::setKeyEditorInWindow (bool inWindow)
+{
+    keyEditorInWindow = inWindow;
+    keyEditor.setInWindow (inWindow);
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("keyEditorInWindow", inWindow);
+    placeKeyEditor();
+    keyEditor.fitToPart();   // its size changed a lot: the whole part again
+}
+
+void MainView::placeKeyEditor()
+{
+    editorButton.setToggleState (keyEditorOpen, juce::dontSendNotification);
+    if (keyEditorOpen && keyEditorInWindow)
+    {
+        if (keyEditorWindow == nullptr)
+        {
+            keyEditorWindow = std::make_unique<Windows::KeyEditorWindow> (keyEditor, studio.getSettings(), getScreenBounds());
+            keyEditorWindow->onKey = [this] (const juce::KeyPress& key)
+            {
+                keysToEditor = true;
+                return keyPressed (key);
+            };
+            keyEditorWindow->onClose = [safe = juce::Component::SafePointer<MainView> (this)]
+            {
+                juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->closeKeyEditor(); });
+            };
+            refreshHeader();
+        }
+        keyEditorWindow->toFront (true);
+    }
+    else
+    {
+        // Back here (hidden if closed). The window gives it up as it goes.
+        keyEditorWindow.reset();
+        if (keyEditor.getParentComponent() != this)
+            addChildComponent (keyEditor);
+        keyEditor.setVisible (keyEditorOpen);
+    }
     resized();
     repaint();
 }

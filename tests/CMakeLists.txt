@@ -16,3 +16,9 @@ target_link_libraries(ParagonPR7STests PRIVATE PR7SCore Catch2::Catch2)
 
 include(${catch2_SOURCE_DIR}/extras/Catch.cmake)
 catch_discover_tests(ParagonPR7STests)
+
+# Linux: the tests talk to the X display directly once (see TestMain.cpp).
+if(UNIX AND NOT APPLE)
+    find_package(X11 REQUIRED)
+    target_link_libraries(ParagonPR7STests PRIVATE X11::X11)
+endif()

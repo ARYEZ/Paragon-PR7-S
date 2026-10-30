@@ -272,3 +272,72 @@ TEST_CASE ("The key editor: draw, move, copy, lengthen, velocity, erase, keys, q
     CHECK_FALSE (view.isKeyEditorOpen());
     CHECK_FALSE (editor.isVisible());
 }
+
+TEST_CASE ("The key editor in a window of its own, and back", "[ui][editor]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto trackId = studio.getProject().tracks[0].id;
+    studio.addPart (trackId, { 0.0, 16.0, "Riff", { { 0.0, 1.0, 60, 0.8f }, { 15.0, 1.0, 64, 0.8f } } });
+    auto& arrange = view.getArrangeView();
+    auto& editor = view.getKeyEditor();
+    arrange.select (trackId, 0);
+    view.openKeyEditor();
+    studio.dispatchPendingMessages();
+    REQUIRE (editor.getPart() != nullptr);
+    const auto dockedArrangeHeight = arrange.getHeight();
+    CHECK (editor.getParentComponent() == &view);
+
+    // WINDOW: the editor moves into its own window; the arrangement takes the room back.
+    view.setKeyEditorInWindow (true);
+    auto* window = view.getKeyEditorWindow();
+    REQUIRE (window != nullptr);
+    CHECK (editor.getTopLevelComponent() == window);
+    CHECK (editor.isVisible());
+    CHECK (editor.isInWindow());
+    CHECK (arrange.getHeight() > dockedArrangeHeight + 200);
+    CHECK (view.isKeyEditorOpen());
+    studio.renameTrack (trackId, "Guitar");   // any change: the title follows the part
+    studio.dispatchPendingMessages();
+    CHECK (window->getName() == "Key Editor: Riff");
+
+    // Stretched wide (as across three screens): the editor fills it, and fits the whole part.
+    window->setSize (5760, 1000);
+    CHECK (editor.getWidth() >= 5700);
+    CHECK (editor.getHeight() > 900);
+    editor.fitToPart();
+    CHECK (editor.getNotesArea().contains (editor.getNoteBounds (1).getCentre()));   // the last note, 15 beats in
+    CHECK (editor.getNotesArea().getHeight() > 700);                                // and many more rows
+
+    // Keys in the window: the editor's first, then the studio's.
+    editor.selectNotes ({ 0 });
+    CHECK (window->keyPressed (juce::KeyPress (juce::KeyPress::deleteKey)));
+    CHECK (editor.getPart()->notes.size() == 1);
+    CHECK (studio.getProject().tracks[0].parts.size() == 1);   // the part stays
+    CHECK (window->keyPressed (juce::KeyPress (juce::KeyPress::spaceKey)));
+    CHECK (studio.getEngine().isPlaying());
+    CHECK (window->keyPressed (juce::KeyPress (juce::KeyPress::spaceKey)));
+    CHECK_FALSE (studio.getEngine().isPlaying());
+
+    // DOCK: back under the arrangement.
+    view.setKeyEditorInWindow (false);
+    CHECK (view.getKeyEditorWindow() == nullptr);
+    CHECK (editor.getParentComponent() == &view);
+    CHECK (editor.isVisible());
+    CHECK_FALSE (editor.isInWindow());
+    CHECK (arrange.getHeight() == dockedArrangeHeight);
+
+    // Closed while in its window, it opens in its window again next time.
+    view.setKeyEditorInWindow (true);
+    view.closeKeyEditor();
+    CHECK (view.getKeyEditorWindow() == nullptr);
+    CHECK (editor.getParentComponent() == &view);
+    CHECK_FALSE (editor.isVisible());
+    view.openKeyEditor();
+    REQUIRE (view.getKeyEditorWindow() != nullptr);
+    CHECK (editor.getTopLevelComponent() == view.getKeyEditorWindow());
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::escapeKey)));   // Escape closes it from the main window too
+    CHECK (view.getKeyEditorWindow() == nullptr);
+}

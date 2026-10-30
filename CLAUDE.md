@@ -34,6 +34,8 @@ Be honest about scale: Cubase took a large team decades. Say where it stands.
   - `Project` also has `quantize` (note starts to the *song's* grid; same-pitch twins merge) and `noteName` (middle C = C3, as in Cubase).
   - `Studio`: message-thread controller; owns project, engine, host, `AudioDeviceManager`, settings; every action; turns recordings into parts; gives every part an `id` (not saved; `findPart`) so the key editor keeps its part when indices change; `setNotes` replaces a part's notes (one undo step per editor gesture); undo (parts, song settings, track names and mix; not adding/removing tracks); `onInstrumentGoing` lets the UI close an instrument's window **before** the instance is deleted (a plugin editor must never outlive its processor).
 - `source/ui/`: `MainView` (header, `TransportBar`, `TrackList` | `ArrangeView`, `KeyEditor` below them when open, on-screen keyboard; keys go to the editor after a click in it), `Windows` (instrument editor, settings, plugins), `Pearl.h` (the pearl unit surface). From PR7-C: `ParagonLookAndFeel`, `Finish` (settings file "Paragon PR7-S"), `LedDisplay`, `Logo` (the mark with "-S"), `LevelMeter`.
+  - `Windows::KeyEditorWindow`: the key editor in its own window (WINDOW / DOCK). Shows the editor without owning it; MainView moves it in and out (`setKeyEditorInWindow`), remembers the choice and the window's state in the settings file. The window is never deleted inside its own click (callAsync).
+  - Tests on Linux register the window manager's atoms first (`tests/TestMain.cpp`): with no window manager on the virtual display, JUCE fails creating a real window.
   - `KeyEditor`: the piano roll. Works on its own copy of the notes during a drag and calls `Studio::setNotes` once on release. Tests drive it with real `MouseEvent`s (`tests/UiTests.cpp`).
 - `PR7SCore` (CMake) is a static library with everything but `Main.cpp`, so the app and the tests run the same code.
 
@@ -41,7 +43,7 @@ Be honest about scale: Cubase took a large team decades. Say where it stands.
 
 - **Build:** `cmake -B build && cmake --build build -j8`. JUCE 9.0.4 and Catch2 are fetched by CMake (locally you can point `FETCHCONTENT_SOURCE_DIR_JUCE` at another checkout).
 - **Tests:** `xvfb-run -a build/tests/ParagonPR7STests`. All must pass. Engine tests use `Probe` (tests/TestHelpers.h), an instrument that logs every MIDI event with its sample: check timing to the sample, not just "it played".
-- **Render:** `PARAGON_SNAPSHOT=studio.png xvfb-run -a build/tests/ParagonPR7STests "[snapshot]"` (a demo song, with the key editor open on the lead part). `PARAGON_SNAPSHOT_WIDTH=3000` for 2x, `PARAGON_SNAPSHOT_FINISH=black|neon`. Look, crop and zoom before claiming a visual change is right.
+- **Render:** `PARAGON_SNAPSHOT=studio.png xvfb-run -a build/tests/ParagonPR7STests "[snapshot]"` (a demo song, with the key editor open on the lead part). `PARAGON_SNAPSHOT_WIDTH=3000` for 2x, `PARAGON_SNAPSHOT_FINISH=black|neon`. `"[snapshot-window]"` renders the key editor's own window (`PARAGON_SNAPSHOT_SIZE`, default 5760x1000: three screens). Look, crop and zoom before claiming a visual change is right.
 - No pluginval: it's an app. Windows is built with the static C++ runtime.
 
 ## Releases

@@ -70,6 +70,15 @@ public:
 
     std::function<void()> onClose;
 
+    // WINDOW: into a window of its own (to maximize, or stretch across
+    // screens); DOCK: back under the arrangement. The main window moves it.
+    std::function<void()> onWindowToggle;
+    void setInWindow (bool);   // the button's name follows
+    bool isInWindow() const noexcept { return inWindow; }
+
+    // Zooms and scrolls so the whole part fits (after it moves to or from its window).
+    void fitToPart();
+
     // Where things are drawn, in the editor's coordinates (for tests).
     juce::Rectangle<float> getNoteBounds (int index) const;
     juce::Rectangle<float> getNotesArea() const;
@@ -97,7 +106,6 @@ private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
     void refresh();
-    void fitToPart();
     void clampScroll();
     void refreshPanel();
     const std::vector<pr7s::Note>& notes() const;   // the working copy while a gesture edits them
@@ -145,6 +153,7 @@ private:
     int auditioning = -1;
 
     juce::TextButton selectTool { "SELECT" }, drawTool { "DRAW" }, eraseTool { "ERASE" }, quantizeButton { "QUANTIZE" },
-                     closeButton { "CLOSE" };
+                     windowButton { "WINDOW" }, closeButton { "CLOSE" };
+    bool inWindow = false;
     juce::ComboBox gridBox;
 };

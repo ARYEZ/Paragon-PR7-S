@@ -57,6 +57,13 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     closeButton.onClick = [this] { if (onClose) onClose(); };
     addAndMakeVisible (closeButton);
 
+    windowButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
+    windowButton.setColour (juce::TextButton::textColourOffId, ParagonColours::accent);
+    windowButton.setWantsKeyboardFocus (false);
+    windowButton.onClick = [this] { if (onWindowToggle) onWindowToggle(); };
+    addAndMakeVisible (windowButton);
+    setInWindow (false);
+
     for (int i = 0; i < (int) std::size (grids); ++i)
         gridBox.addItem (grids[i].name, i + 1);
     gridBox.setTooltip ("The grid: where notes snap to, a new note's length, and what QUANTIZE moves notes to");
@@ -90,6 +97,14 @@ void KeyEditor::setTool (Tool newTool)
     eraseTool.setToggleState (tool == Tool::erase, juce::dontSendNotification);
     setMouseCursor (tool == Tool::draw ? juce::MouseCursor::CrosshairCursor : juce::MouseCursor::NormalCursor);
     repaint();
+}
+
+void KeyEditor::setInWindow (bool shouldBeInWindow)
+{
+    inWindow = shouldBeInWindow;
+    windowButton.setButtonText (inWindow ? "DOCK" : "WINDOW");
+    windowButton.setTooltip (inWindow ? "Back under the arrangement"
+                                      : "Into a window of its own: maximize it, or stretch it across your screens (it remembers where it was)");
 }
 
 void KeyEditor::setGrid (double beats)
@@ -786,6 +801,8 @@ void KeyEditor::resized()
     auto panel = juce::Rectangle<int> (0, 0, sideWidth - 2, getHeight()).withTrimmedLeft (12).reduced (6, 8);
     auto top = panel.removeFromTop (40);
     closeButton.setBounds (top.removeFromRight (64).withSizeKeepingCentre (64, 24).withY (top.getY()));
+    top.removeFromRight (6);
+    windowButton.setBounds (top.removeFromRight (74).withSizeKeepingCentre (74, 24).withY (top.getY()));
     panel.removeFromTop (8);
     auto tools = panel.removeFromTop (28);
     const auto toolWidth = (tools.getWidth() - 8) / 3;
@@ -851,7 +868,7 @@ void KeyEditor::paintPanel (juce::Graphics& g)
     g.setColour (colour);
     g.fillRect (panel.withWidth (6.0f).reduced (0.0f, 1.0f));
 
-    auto area = panel.withTrimmedLeft (18.0f).reduced (0.0f, 8.0f).withTrimmedRight (80.0f);
+    auto area = panel.withTrimmedLeft (18.0f).reduced (0.0f, 8.0f).withTrimmedRight (156.0f);
     g.setColour (ParagonColours::accent);
     g.setFont (font (9.5f));
     g.drawText ("KEY EDITOR", area.removeFromTop (12.0f), juce::Justification::centredLeft, false);

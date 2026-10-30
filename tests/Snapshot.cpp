@@ -80,3 +80,46 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     REQUIRE (stream.openedOk());
     REQUIRE (juce::PNGImageFormat().writeImageToStream (image, stream));
 }
+
+// Hidden test: the key editor in its own window, stretched wide as across
+// three screens (PARAGON_SNAPSHOT_SIZE, default 5760x1000), to a PNG.
+TEST_CASE ("Render the key editor's own window to a PNG", "[.][snapshot-window]")
+{
+    using namespace pr7s;
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "key-editor.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    struct Reset { ~Reset() { juce::LookAndFeel::setDefaultLookAndFeel (nullptr); } } reset;
+
+    Studio studio (false);
+    const auto track = studio.getProject().tracks[0].id;
+    studio.renameTrack (track, "Clean Guitar");
+    Part riff { 0.0, 64.0, "Clean Guitar", {} };
+    for (int i = 0; i < 200; ++i)
+        riff.notes.push_back ({ i * 0.3125, i % 5 == 0 ? 1.0 : 0.25, 52 + (i * 7) % 19, 0.4f + 0.6f * (float) ((i * 3) % 10) / 9.0f });
+    studio.addPart (track, riff);
+    studio.setPosition (21.0);
+
+    MainView view (studio);
+    view.setSize (1500, 900);
+    view.getArrangeView().select (track, 0);
+    view.openKeyEditor();
+    view.setKeyEditorInWindow (true);
+    studio.dispatchPendingMessages();
+    const auto size = juce::StringArray::fromTokens (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SIZE", "5760x1000"), "x", {});
+    auto* window = view.getKeyEditorWindow();
+    REQUIRE (window != nullptr);
+    window->setSize (size[0].getIntValue(), size[1].getIntValue());
+    auto& editor = view.getKeyEditor();
+    editor.fitToPart();
+    editor.selectNotes ({ 10, 11, 12 });
+
+    const auto image = editor.createComponentSnapshot (editor.getLocalBounds(), true, 1.0f);
+    const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (path);
+    file.deleteFile();
+    juce::FileOutputStream stream (file);
+    REQUIRE (stream.openedOk());
+    REQUIRE (juce::PNGImageFormat().writeImageToStream (image, stream));
+}
