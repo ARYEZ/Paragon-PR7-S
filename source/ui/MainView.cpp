@@ -229,6 +229,13 @@ bool MainView::keyPressed (const juce::KeyPress& key)
 
     if (keyEditorOpen && keysToEditor && keyEditor.keyPressed (key))
         return true;
+    // Copy, cut, paste and select all are the editor's wherever the last click
+    // was (the arrangement has none of its own yet), so notes copied in one
+    // part paste into another just selected in the arrangement.
+    const auto editorsAnyway = (mods.isCommandDown() && (letter == 'C' || letter == 'X' || letter == 'V'))
+                            || (! mods.isCommandDown() && mods.isShiftDown() && letter == 'A');
+    if (keyEditorOpen && editorsAnyway && keyEditor.keyPressed (key))
+        return true;
 
     if (mods.isCommandDown())
     {

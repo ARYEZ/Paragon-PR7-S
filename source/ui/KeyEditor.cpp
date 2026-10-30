@@ -2,6 +2,7 @@
 
 #include "ui/ParagonLookAndFeel.h"
 
+#include <limits>
 #include <numeric>
 
 namespace
@@ -393,6 +394,72 @@ void KeyEditor::quantizeSelected()
     commit (std::move (edited.notes));
 }
 
+void KeyEditor::copySelected()
+{
+    const auto* part = getPart();
+    if (selected.empty() || part == nullptr)
+        return;
+    auto first = std::numeric_limits<double>::max(), last = 0.0;
+    for (const auto i : selected)
+    {
+        const auto& note = part->notes[(size_t) i];
+        first = juce::jmin (first, note.start);
+        last = juce::jmax (last, note.start + note.length);
+    }
+    clipboard.clear();
+    for (const auto i : selected)
+    {
+        auto note = part->notes[(size_t) i];
+        note.start -= first;
+        clipboard.push_back (note);
+    }
+    copiedFrom = part->start + first;
+    copiedLength = last - first;
+    copiedPart = part->id;
+}
+
+void KeyEditor::cutSelected()
+{
+    copySelected();
+    deleteSelected();
+}
+
+void KeyEditor::paste()
+{
+    const auto* part = getPart();
+    if (clipboard.empty() || part == nullptr)
+        return;
+    // At the playhead, if it's in the part (as in Cubase); otherwise, in the
+    // part they came from, straight after the notes copied, on the next beat
+    // (or grid step, if that's coarser), so pasting again and again repeats
+    // the phrase in time; and in another part, at its start.
+    const auto playhead = studio.getEngine().getPosition();
+    const auto atPlayhead = playhead >= part->start && playhead < part->end();
+    const auto step = juce::jmax (grid, 4.0 / studio.getProject().denominator);
+    const auto at = atPlayhead ? playhead
+                  : part->id == copiedPart ? copiedFrom + juce::jmax (step, std::ceil (copiedLength / step - 1.0e-9) * step)
+                                           : part->start;
+    auto edited = part->notes;
+    std::vector<int> pasted;
+    for (auto note : clipboard)
+    {
+        note.start += at - part->start;
+        if (note.start < 0.0 || note.start >= part->length)
+            continue;   // outside the part: it wouldn't be heard
+        edited.push_back (note);
+        pasted.push_back ((int) edited.size() - 1);
+    }
+    if (pasted.empty())
+        return;
+    commit (std::move (edited));
+    selectNotes (pasted);
+    if (! atPlayhead)
+    {
+        copiedFrom = at;   // the next paste goes after these
+        copiedPart = part->id;
+    }
+}
+
 void KeyEditor::eraseAt (juce::Point<float> point)
 {
     const auto hit = noteAt (point);
@@ -458,8 +525,12 @@ bool KeyEditor::keyPressed (const juce::KeyPress& key)
     const auto mods = key.getModifiers();
     const auto letter = juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) key.getKeyCode());
     if (mods.isCommandDown() && letter == 'A')                                   { selectAll(); return true; }
+    if (mods.isCommandDown() && letter == 'C')                                   { copySelected(); return true; }
+    if (mods.isCommandDown() && letter == 'X')                                   { cutSelected(); return true; }
+    if (mods.isCommandDown() && letter == 'V')                                   { paste(); return true; }
     if (mods.isCommandDown())
         return false;
+    if (mods.isShiftDown() && letter == 'A')                                     { selectAll(); return true; }
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey) { deleteSelected(); return true; }
     if (key.getKeyCode() == juce::KeyPress::upKey)                               { transposeSelected (mods.isShiftDown() ? 12 : 1); return true; }
     if (key.getKeyCode() == juce::KeyPress::downKey)                             { transposeSelected (mods.isShiftDown() ? -12 : -1); return true; }

@@ -2,6 +2,17 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.2.2
+
+Copy and paste in the key editor.
+
+- **Ctrl+C** copies the selected notes, **Ctrl+X** cuts them (copies, then removes), **Ctrl+V** pastes. The pasted notes keep their pitches, lengths, velocities and their timing against one another, and are selected afterwards, so you can move them straight away.
+- **Where they go:** at the playhead, if it's inside the part (as in Cubase; click the editor's ruler to put it there). If it isn't, they go on the beat after the notes you copied, so pressing Ctrl+V again and again repeats a phrase in time. Notes that would land past the part's end aren't pasted (they wouldn't be heard).
+- **Into another part:** copy, select another part in the arrangement (on any track), Ctrl+V: the notes go in at the playhead, or at that part's start.
+- **Shift+A** selects all the notes (as Ctrl+A does).
+- While the key editor is open, these four keys always go to it, even after a click in the arrangement (which has no copy and paste of its own yet).
+- Each paste or cut is one undo step.
+
 ## 0.2.1
 
 The key editor in a window of its own, to make it as big as you like (inspired by how Cubase opens its lower-zone editor in a separate window).

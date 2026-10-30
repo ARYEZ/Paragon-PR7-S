@@ -341,3 +341,78 @@ TEST_CASE ("The key editor in a window of its own, and back", "[ui][editor]")
     CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::escapeKey)));   // Escape closes it from the main window too
     CHECK (view.getKeyEditorWindow() == nullptr);
 }
+
+TEST_CASE ("The key editor: copy, cut and paste notes; Shift+A selects them all", "[ui][editor]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto trackId = studio.getProject().tracks[0].id;
+    // An 8-beat part from beat 4: a two-note phrase (C3 then E3, a beat apart), and a G3 later.
+    studio.addPart (trackId, { 4.0, 8.0, "Riff", { { 0.0, 0.5, 60, 0.9f }, { 1.0, 0.75, 64, 0.4f }, { 6.0, 0.5, 67, 0.7f } } });
+    auto& arrange = view.getArrangeView();
+    auto& editor = view.getKeyEditor();
+    arrange.select (trackId, 0);
+    view.openKeyEditor();
+    studio.dispatchPendingMessages();
+    REQUIRE (editor.getPart() != nullptr);
+    const auto notes = [&] { return editor.getPart()->notes; };
+    const auto ctrl = [] (char c) { return juce::KeyPress (c, juce::ModifierKeys::commandModifier, 0); };
+
+    // Shift+A selects them all.
+    CHECK (view.keyPressed (juce::KeyPress ('A', juce::ModifierKeys::shiftModifier, 'A')));
+    CHECK (editor.getSelectedNotes() == std::vector<int> { 0, 1, 2 });
+
+    // Copy the phrase; paste at the playhead (song beat 7 = the part's beat 3), in the same timing.
+    editor.selectNotes ({ 0, 1 });
+    CHECK (view.keyPressed (ctrl ('c')));
+    CHECK (notes().size() == 3);   // copying changes nothing
+    studio.setPosition (7.0);
+    CHECK (view.keyPressed (ctrl ('v')));
+    REQUIRE (notes().size() == 5);
+    CHECK (notes()[3] == Note { 3.0, 0.5, 60, 0.9f });
+    CHECK (notes()[4] == Note { 4.0, 0.75, 64, 0.4f });
+    CHECK (editor.getSelectedNotes() == std::vector<int> { 3, 4 });   // what was pasted
+
+    // One undo takes the paste away.
+    studio.undo();
+    studio.dispatchPendingMessages();
+    CHECK (notes().size() == 3);
+
+    // The playhead outside the part: on the beat after the notes copied (they
+    // last 1.75 beats, so 2 beats on), and again after those.
+    studio.setPosition (0.0);
+    CHECK (view.keyPressed (ctrl ('v')));
+    REQUIRE (notes().size() == 5);
+    CHECK_THAT (notes()[3].start, WithinAbs (2.0, 1.0e-9));
+    CHECK_THAT (notes()[4].start, WithinAbs (3.0, 1.0e-9));
+    CHECK (view.keyPressed (ctrl ('v')));
+    REQUIRE (notes().size() == 7);
+    CHECK_THAT (notes()[5].start, WithinAbs (4.0, 1.0e-9));
+    // Notes that would land past the part's end aren't pasted (they wouldn't be heard).
+    CHECK (view.keyPressed (ctrl ('v')));
+    CHECK (view.keyPressed (ctrl ('v')));   // the phrase from beat 8 would start past the end (8)
+    CHECK (notes().size() == 9);
+
+    // Cut: copied, and gone.
+    editor.selectNotes ({ 2 });   // the G3
+    CHECK (view.keyPressed (ctrl ('x')));
+    CHECK (notes().size() == 8);
+    for (const auto& n : notes())
+        CHECK (n.pitch != 67);
+
+    // Into another part on another track, just selected in the arrangement
+    // (the last click there): it goes to that part's start.
+    const auto other = studio.addTrack ({});
+    studio.addPart (other, { 16.0, 4.0, "Bass", {} });
+    view.mouseDown (mouseAt (arrange, { 10.0f, 10.0f }, { 10.0f, 10.0f }));
+    arrange.select (other, 0);
+    studio.dispatchPendingMessages();
+    REQUIRE (editor.getPart() != nullptr);
+    REQUIRE (editor.getPart()->name == "Bass");
+    CHECK (view.keyPressed (ctrl ('v')));
+    REQUIRE (notes().size() == 1);
+    CHECK (notes()[0] == Note { 0.0, 0.5, 67, 0.7f });
+    CHECK (studio.getProject().tracks[0].parts[0].notes.size() == 8);   // the first part as it was
+}

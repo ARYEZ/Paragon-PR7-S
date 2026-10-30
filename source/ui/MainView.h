@@ -24,7 +24,8 @@
 // duplicate it, Ctrl+Z / Ctrl+Shift+Z undo / redo, Ctrl+N / O / S new, open
 // and save (Ctrl+Shift+S save as), Ctrl+E the key editor (Escape closes it).
 // After a click in the key editor its keys go to it (Delete removes notes,
-// not the part); after a click elsewhere, to the arrangement.
+// not the part); after a click elsewhere, to the arrangement. Ctrl+C / X / V
+// and Shift+A go to the editor whenever it's open.
 class MainView final : public juce::Component,
                        private juce::ChangeListener
 {

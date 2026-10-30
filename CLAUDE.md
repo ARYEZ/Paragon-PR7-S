@@ -36,7 +36,7 @@ Be honest about scale: Cubase took a large team decades. Say where it stands.
 - `source/ui/`: `MainView` (header, `TransportBar`, `TrackList` | `ArrangeView`, `KeyEditor` below them when open, on-screen keyboard; keys go to the editor after a click in it), `Windows` (instrument editor, settings, plugins), `Pearl.h` (the pearl unit surface). From PR7-C: `ParagonLookAndFeel`, `Finish` (settings file "Paragon PR7-S"), `LedDisplay`, `Logo` (the mark with "-S"), `LevelMeter`.
   - `Windows::KeyEditorWindow`: the key editor in its own window (WINDOW / DOCK). Shows the editor without owning it; MainView moves it in and out (`setKeyEditorInWindow`), remembers the choice and the window's state in the settings file. The window is never deleted inside its own click (callAsync).
   - Tests on Linux register the window manager's atoms first (`tests/TestMain.cpp`): with no window manager on the virtual display, JUCE fails creating a real window.
-  - `KeyEditor`: the piano roll. Works on its own copy of the notes during a drag and calls `Studio::setNotes` once on release. Tests drive it with real `MouseEvent`s (`tests/UiTests.cpp`).
+  - `KeyEditor`: the piano roll. Works on its own copy of the notes during a drag and calls `Studio::setNotes` once on release. Its own clipboard (Ctrl+C/X/V; paste at the playhead if in the part, else the beat after the copied notes, or another part's start); MainView sends Ctrl+C/X/V and Shift+A to it whenever it's open. Tests drive it with real `MouseEvent`s (`tests/UiTests.cpp`).
 - `PR7SCore` (CMake) is a static library with everything but `Main.cpp`, so the app and the tests run the same code.
 
 ## Build, test, check
