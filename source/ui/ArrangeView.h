@@ -37,7 +37,8 @@ struct Timeline
 //                   strip to set the cycle (and turn CYCLE on)
 //   a part          click to select; drag to move (to another track too);
 //                   Alt-drag to copy; drag its right edge to lengthen or
-//                   shorten it; right-click for Duplicate and Delete
+//                   shorten it; double-click to edit its notes (the key
+//                   editor); right-click for Edit notes, Duplicate and Delete
 //   an empty lane   click to select the track; double-click for a new
 //                   empty bar-long part
 //   wheel           scrolls the tracks; Shift+wheel scrolls along the song;
@@ -59,6 +60,9 @@ public:
     void select (int trackId, int index);
     void deleteSelected();
     void duplicateSelected();
+
+    // Asked to edit the selected part's notes (double-click, or its menu): the key editor opens.
+    std::function<void()> onEditNotes;
 
     // Where a part is drawn (for tests).
     juce::Rectangle<float> getPartBounds (int trackId, int index) const;

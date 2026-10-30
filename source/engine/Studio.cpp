@@ -69,12 +69,30 @@ namespace pr7s
     //==========================================================================
     void Studio::changed (bool undoable)
     {
+        numberParts();
         engine.update (project);
         modified = true;
         if (undoable)
             recordUndoState();
         updateLiveTrack();
         sendChangeMessage();
+    }
+
+    void Studio::numberParts()
+    {
+        for (auto& track : project.tracks)
+            for (auto& part : track.parts)
+                if (part.id == 0)
+                    part.id = nextPartId++;
+    }
+
+    std::optional<std::pair<int, int>> Studio::findPart (int partId) const
+    {
+        for (const auto& track : project.tracks)
+            for (size_t i = 0; i < track.parts.size(); ++i)
+                if (partId != 0 && track.parts[i].id == partId)
+                    return std::pair<int, int> { track.id, (int) i };
+        return std::nullopt;
     }
 
     void Studio::updateLiveTrack()
@@ -268,6 +286,7 @@ namespace pr7s
         if (auto* track = project.findTrack (trackId))
         {
             track->parts.push_back (part);
+            track->parts.back().id = 0;
             changed();
         }
     }
@@ -293,6 +312,7 @@ namespace pr7s
             return;
         auto part = from->parts[(size_t) index];
         part.start = juce::jmax (0.0, newStart);
+        part.id = 0;   // a new part: numbered in changed()
         to->parts.push_back (std::move (part));
         changed();
     }
@@ -313,6 +333,25 @@ namespace pr7s
             track->parts[(size_t) index].length = juce::jmax (0.25, newLength);
             changed();
         }
+    }
+
+    void Studio::setNotes (int trackId, int index, std::vector<Note> notes)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! juce::isPositiveAndBelow (index, (int) track->parts.size()))
+            return;
+        for (auto& note : notes)
+        {
+            note.start = juce::jmax (0.0, note.start);
+            note.length = juce::jmax (0.001, note.length);
+            note.pitch = juce::jlimit (0, 127, note.pitch);
+            note.velocity = juce::jlimit (1.0f / 127.0f, 1.0f, note.velocity);
+        }
+        auto& part = track->parts[(size_t) index];
+        if (part.notes == notes)
+            return;   // nothing changed: no undo step
+        part.notes = std::move (notes);
+        changed();
     }
 
     //==========================================================================
@@ -581,6 +620,7 @@ namespace pr7s
                 missing.add (track.name + " (" + track.instrument.getName() + "): " + error);   // the track stays (its parts too), silent
         }
         problems = missing.joinIntoString ("\n");
+        numberParts();
 
         file = source;
         selectedTrack = project.tracks.empty() ? 0 : project.tracks.front().id;

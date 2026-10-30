@@ -4,6 +4,7 @@
 
 #include "engine/Studio.h"
 #include "ui/ArrangeView.h"
+#include "ui/KeyEditor.h"
 #include "ui/TrackList.h"
 #include "ui/TransportBar.h"
 #include "ui/Windows.h"
@@ -13,14 +14,17 @@
 //   header       the PR7-S mark; NEW, OPEN, SAVE, SAVE AS; UNDO, REDO;
 //                PLUGINS and SETTINGS
 //   transport    the pearl unit: keys, position, tempo, signature, meters
-//   middle       the track list | the arrangement
+//   middle       the track list | the arrangement, and below them (when
+//                open) the key editor for the selected part
 //   keyboard     an on-screen keyboard (click or play your computer keys),
 //                into the armed track
 //
 // Keys (inspired by Cubase's workflow): Space play / stop, R (or * on the number pad) record,
 // Home to the start, / cycle, C click, Delete the selected part, Ctrl+D
 // duplicate it, Ctrl+Z / Ctrl+Shift+Z undo / redo, Ctrl+N / O / S new, open
-// and save (Ctrl+Shift+S save as).
+// and save (Ctrl+Shift+S save as), Ctrl+E the key editor (Escape closes it).
+// After a click in the key editor its keys go to it (Delete removes notes,
+// not the part); after a click elsewhere, to the arrangement.
 class MainView final : public juce::Component,
                        private juce::ChangeListener
 {
@@ -31,6 +35,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     bool keyPressed (const juce::KeyPress&) override;
+    void mouseDown (const juce::MouseEvent&) override;   // also hears clicks in the arrangement, track list and editor
 
     // File actions (the window's close asks about unsaved changes through these).
     void newProject();
@@ -42,12 +47,18 @@ public:
     void openSettings();
     void openPlugins();
 
+    // The key editor, for the arrangement's selected part.
+    void openKeyEditor();
+    void closeKeyEditor();
+    bool isKeyEditorOpen() const noexcept { return keyEditorOpen; }
+
     // The window's title: the project's name, * when changed.
     std::function<void (const juce::String&)> onTitleChange;
 
     ArrangeView& getArrangeView() noexcept { return arrange; }
     TrackList& getTrackList() noexcept { return trackList; }
     TransportBar& getTransport() noexcept { return transport; }
+    KeyEditor& getKeyEditor() noexcept { return keyEditor; }
 
     static constexpr int headerHeight = 52, transportHeight = 112, keyboardHeight = 84, trackListWidth = 300;
 
@@ -60,10 +71,12 @@ private:
     TransportBar transport;
     TrackList trackList;
     ArrangeView arrange;
+    KeyEditor keyEditor;
+    bool keyEditorOpen = false, keysToEditor = false;
     juce::MidiKeyboardComponent keyboard;
 
     juce::TextButton newButton { "NEW" }, openButton { "OPEN" }, saveButton { "SAVE" }, saveAsButton { "SAVE AS" },
-                     undoButton { "UNDO" }, redoButton { "REDO" }, pluginsButton { "PLUGINS" }, settingsButton { "SETTINGS" };
+                     undoButton { "UNDO" }, redoButton { "REDO" }, editorButton { "KEY EDITOR" }, pluginsButton { "PLUGINS" }, settingsButton { "SETTINGS" };
     juce::Image keyboardSatin;
     std::map<int, std::unique_ptr<Windows::Instrument>> instrumentWindows;
     std::unique_ptr<Windows::Settings> settingsWindow;
