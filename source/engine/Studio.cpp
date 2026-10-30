@@ -1205,11 +1205,34 @@ namespace pr7s
         // At the sample recording began, and its first stretch (the
         // interface's delay) skipped: what was played lands where it was played.
         const auto latency = juce::jmin (recordingLatency(), data->seconds() * 0.5);
+        const auto rate = engine.getSampleRate();
+        const auto spb = project.secondsPerBeat();
         Part part;
-        part.start = (double) startSample * project.bpm / 60.0 / engine.getSampleRate();
+        part.start = (double) startSample * project.bpm / 60.0 / rate;
         part.audioFile = name;
         part.audioOffset = latency;
-        part.length = (data->seconds() - latency) / project.secondsPerBeat();
+        part.length = (data->seconds() - latency) / spb;
+        // In a cycle, the file holds every pass one after another: the clip
+        // plays the last complete one (as the manual's Replace mode keeps the
+        // last take), or what there is of the first if it wasn't finished.
+        const auto toSamples = [rate, &project = project] (double beats) { return (juce::int64) std::llround (beats * 60.0 / project.bpm * rate); };
+        const auto loopStart = toSamples (project.loopStart), loopEnd = toSamples (project.loopEnd);
+        if (project.loopOn && startSample < loopEnd && loopEnd > loopStart)
+        {
+            const auto played = (juce::int64) data->sound.getNumSamples() - (juce::int64) std::llround (latency * rate);
+            const auto firstPass = loopEnd - startSample, pass = loopEnd - loopStart;
+            const auto laps = played > firstPass ? (played - firstPass) / pass : 0;   // complete passes after the first
+            if (laps >= 1)
+            {
+                part.start = project.loopStart;
+                part.audioOffset = latency + (double) (firstPass + (laps - 1) * pass) / rate;
+                part.length = project.loopEnd - project.loopStart;
+            }
+            else
+            {
+                part.length = juce::jmin (part.length, (double) firstPass / rate / spb);
+            }
+        }
         if (auto* track = project.findTrack (recordTrack))
         {
             part.name = track->name;

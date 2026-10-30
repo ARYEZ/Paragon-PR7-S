@@ -173,7 +173,6 @@ namespace pr7s
             int input = 0;
             bool stereoInput = false, monitor = false;
             juce::AudioFormatWriter::ThreadedWriter* recorder = nullptr;
-            bool recorderDone = false;   // the cycle came round: the first pass is kept
             std::unique_ptr<juce::AudioPluginInstance> instrument;
             int instrumentChannels = 2;  // what the instrument is given (its buffer may have more, for the inserts)
             std::vector<Slot> inserts;

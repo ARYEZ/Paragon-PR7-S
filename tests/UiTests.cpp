@@ -480,6 +480,19 @@ TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inse
     CHECK_THAT (two.getVolume().getValue(), WithinAbs (0.0, 1.0e-6));   // the fader follows (to within rounding: macOS gives 3e-15)
     two.getPan().setValue (-0.5, juce::sendNotificationSync);
     CHECK (studio.getProject().findTrack (second)->pan == -0.5f);
+    // Ctrl-click resets the fader and the pan (as the manual has it).
+    two.getVolume().setValue (-6.0, juce::sendNotificationSync);
+    const auto ctrlClick = [] (juce::Slider& slider)
+    {
+        const auto at = slider.getLocalBounds().getCentre().toFloat() + juce::Point<float> (0.0f, 10.0f);
+        slider.mouseDown (mouseAt (slider, at, at, juce::ModifierKeys (juce::ModifierKeys::commandModifier)));
+        slider.mouseUp (mouseAt (slider, at, at, juce::ModifierKeys (juce::ModifierKeys::commandModifier)));
+    };
+    ctrlClick (two.getVolume());
+    ctrlClick (two.getPan());
+    CHECK (studio.getProject().findTrack (second)->volumeDb == 0.0f);
+    CHECK (studio.getProject().findTrack (second)->pan == 0.0f);
+    two.getPan().setValue (-0.5, juce::sendNotificationSync);
     two.getMute().onClick();
     CHECK (studio.getProject().findTrack (second)->mute);
     master.getVolume().setValue (-3.0, juce::sendNotificationSync);

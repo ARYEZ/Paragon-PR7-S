@@ -37,10 +37,13 @@ MixerView::Strip::Strip (MixerView& ownerView, int id) : owner (ownerView), busI
     volume.setColour (juce::Slider::trackColourId, ParagonColours::accent);
     volume.setRange (-60.0, 6.0, 0.1);
     volume.setSkewFactorFromMidPoint (-12.0);
-    volume.setDoubleClickReturnValue (true, 0.0);
+    // Ctrl-click (or double-click) resets it; Shift-drag moves it finely (as the manual has it).
+    volume.setDoubleClickReturnValue (true, 0.0, juce::ModifierKeys::commandModifier);
+    volume.setVelocityModeParameters (0.2, 1, 0.0, true, juce::ModifierKeys::shiftModifier);
     volume.setPopupDisplayEnabled (true, true, nullptr);
     volume.textFromValueFunction = [] (double db) { return dbText (db) + " dB"; };
-    volume.setTooltip (isMaster() ? "The master's volume: the whole mix (double-click for 0 dB)" : "The track's volume (double-click for 0 dB)");
+    volume.setTooltip ((isMaster() ? juce::String ("The master's volume: the whole mix") : juce::String ("The track's volume"))
+                       + " (Ctrl-click or double-click for 0 dB; Shift-drag for fine moves)");
     // While dragging, it's heard as it moves; the drag is one undo step when let go.
     const auto setVolume = [this] (bool undoable)
     {
@@ -58,10 +61,11 @@ MixerView::Strip::Strip (MixerView& ownerView, int id) : owner (ownerView), busI
         pan.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
         pan.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
         pan.setRange (-1.0, 1.0, 0.01);
-        pan.setDoubleClickReturnValue (true, 0.0);
+        pan.setDoubleClickReturnValue (true, 0.0, juce::ModifierKeys::commandModifier);
+        pan.setVelocityModeParameters (0.2, 1, 0.0, true, juce::ModifierKeys::shiftModifier);
         pan.setPopupDisplayEnabled (true, true, nullptr);
         pan.textFromValueFunction = [] (double value) { return panText (value); };
-        pan.setTooltip ("Pan: left and right (double-click for the centre)");
+        pan.setTooltip ("Pan: left and right (Ctrl-click or double-click for the centre; Shift-drag for fine moves)");
         pan.onValueChange = [this] { owner.studio.setPan (busId, (float) pan.getValue(), ! pan.isMouseButtonDown()); };
         pan.onDragEnd = [this] { owner.studio.setPan (busId, (float) pan.getValue(), true); };
         addAndMakeVisible (pan);

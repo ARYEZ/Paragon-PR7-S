@@ -235,7 +235,6 @@ namespace pr7s
         if (auto* track = findTrack (trackId))
         {
             track->recorder = writer;
-            track->recorderDone = false;
         }
         if (writer != nullptr)
             audioRecordStart = -1;
@@ -631,18 +630,16 @@ namespace pr7s
                     schedule (*track, clock, end, done, beatsPerSample);
 
                 // Recording audio: the armed audio track's input, to its file
-                // (the first pass of a cycle only).
+                // (every pass of a cycle, one after another; the studio keeps the last).
                 if (isRecording)
                     for (auto& track : tracks)
-                        if (track->recorder != nullptr && ! track->recorderDone)
+                        if (track->recorder != nullptr)
                         {
                             const float* channels[2] = { inputChannel (track->input, done),
                                                          inputChannel (track->stereoInput ? track->input + 1 : track->input, done) };
                             if (audioRecordStart.load() < 0)
                                 audioRecordStart = clock;
                             track->recorder->write (channels, length);
-                            if (wraps)
-                                track->recorderDone = true;
                         }
 
                 if (settings.click)
