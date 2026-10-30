@@ -412,7 +412,13 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
         dragStartBeat = juce::jmax (0.0, pr7s::snap (timeline.beatForX (event.position.x), grid));
         if (event.position.y < (float) Timeline::cycleStripHeight)
         {
-            drag = Drag::cycle;
+            // Inside the locator range: a click turns the cycle on or off, a
+            // drag moves the range; outside it, a drag sets a new one.
+            const auto at = timeline.beatForX (event.position.x);
+            drag = at >= project.loopStart && at <= project.loopEnd ? Drag::cycleMove : Drag::cycle;
+            dragStartBeat = drag == Drag::cycleMove ? at : dragStartBeat;
+            dragOriginalStart = project.loopStart;
+            dragOriginalLength = project.loopEnd - project.loopStart;
         }
         else
         {
@@ -453,7 +459,7 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
             drag = Drag::trimStart;
     }
     dragPart = part;
-    dragCopies = drag == Drag::move && (event.mods.isAltDown() || event.mods.isCommandDown());
+    dragCopies = drag == Drag::move && event.mods.isAltDown();   // Alt copies (Ctrl locks the direction)
     dragTrack = dragTargetTrack = hit->first;
     dragStartBeat = timeline.beatForX (event.position.x);
     dragOriginalStart = dragNewStart = part.start;
@@ -463,7 +469,9 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
 void ArrangeView::mouseDrag (const juce::MouseEvent& event)
 {
     const auto& project = studio.getProject();
-    const auto grid = event.mods.isShiftDown() ? 0.25 : timeline.grid (project);   // Shift: finer, to the sixteenth
+    // Ctrl: no snapping (while moving a part, Ctrl+Shift: Ctrl alone keeps it to one direction).
+    const auto noSnap = event.mods.isCommandDown() && (drag != Drag::move || event.mods.isShiftDown());
+    const auto grid = noSnap ? 0.0 : timeline.grid (project);
     const auto beat = timeline.beatForX (event.position.x);
     switch (drag)
     {
@@ -473,25 +481,41 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
         case Drag::cycle:
         {
             const auto now = juce::jmax (0.0, pr7s::snap (beat, grid));
-            if (std::abs (now - dragStartBeat) >= grid * 0.5)
+            if (std::abs (now - dragStartBeat) >= juce::jmax (grid, 1.0 / 16.0) * 0.5)
             {
                 dragMoved = true;
                 studio.setCycle (juce::jmin (dragStartBeat, now), juce::jmax (dragStartBeat, now));
             }
             break;
         }
+        case Drag::cycleMove:
+            if (event.getDistanceFromDragStart() > 3)
+            {
+                dragMoved = true;
+                const auto start = juce::jmax (0.0, pr7s::snap (dragOriginalStart + beat - dragStartBeat, grid));
+                studio.setCycle (start, start + dragOriginalLength);
+            }
+            break;
         case Drag::move:
+        {
             if (event.getDistanceFromDragStart() > 3)
                 dragMoved = true;
-            dragNewStart = juce::jmax (0.0, pr7s::snap (dragOriginalStart + beat - dragStartBeat, grid));
+            // Ctrl: only along the song, or only to another track, whichever the mouse has gone further.
+            const auto offset = event.getOffsetFromDragStart();
+            const auto locked = event.mods.isCommandDown();
+            const auto alongOnly = locked && std::abs (offset.x) >= std::abs (offset.y);
+            const auto acrossOnly = locked && ! alongOnly;
+            dragNewStart = acrossOnly ? dragOriginalStart : juce::jmax (0.0, pr7s::snap (dragOriginalStart + beat - dragStartBeat, grid));
             // To another track of the same kind (a clip onto an audio track, a MIDI part onto an instrument's).
-            if (const auto over = trackAtY (event.position.y); over != 0 && isAudioTrack (over) == isAudioTrack (dragTrack))
+            dragTargetTrack = dragTrack;
+            if (const auto over = trackAtY (event.position.y); ! alongOnly && over != 0 && isAudioTrack (over) == isAudioTrack (dragTrack))
                 dragTargetTrack = over;
             repaint();
             break;
+        }
         case Drag::resize:
             dragMoved = true;
-            dragNewLength = juce::jmax (grid, pr7s::snap (dragOriginalStart + dragOriginalLength + beat - dragStartBeat, grid) - dragOriginalStart);
+            dragNewLength = juce::jmax (grid > 0.0 ? grid : 1.0 / 16.0, pr7s::snap (dragOriginalStart + dragOriginalLength + beat - dragStartBeat, grid) - dragOriginalStart);
             if (dragPart.isAudio())
                 if (const auto data = studio.getAudio (dragPart.audioFile))   // no further than the recording goes
                     dragNewLength = juce::jmin (dragNewLength, (data->seconds() - dragPart.audioOffset) / project.secondsPerBeat());
@@ -537,6 +561,8 @@ void ArrangeView::mouseUp (const juce::MouseEvent&)
     drag = Drag::none;
     if (! dragMoved)
     {
+        if (finished == Drag::cycleMove)   // a click in the range: cycle on or off
+            studio.setCycleOn (! studio.getProject().loopOn);
         repaint();
         return;
     }
@@ -544,6 +570,8 @@ void ArrangeView::mouseUp (const juce::MouseEvent&)
     {
         case Drag::cycle:
             studio.setCycleOn (true);
+            break;
+        case Drag::cycleMove:
             break;
         case Drag::move:
             if (dragCopies)
@@ -585,14 +613,24 @@ void ArrangeView::mouseDoubleClick (const juce::MouseEvent& event)
     }
     if (isAudioTrack (trackAtY (event.position.y)))
         return;   // an empty clip would play nothing
-    // A new empty part, a bar long, from the bar clicked in.
+    // A new empty part: between the locators, from the left one to the
+    // right; elsewhere, a bar long, from the bar clicked in.
     if (const auto trackId = trackAtY (event.position.y))
     {
         const auto& project = studio.getProject();
         const auto bar = project.beatsPerBar();
+        const auto at = timeline.beatForX (event.position.x);
         pr7s::Part part;
-        part.start = juce::jmax (0.0, std::floor (timeline.beatForX (event.position.x) / bar) * bar);
-        part.length = bar;
+        if (at >= project.loopStart && at < project.loopEnd)
+        {
+            part.start = project.loopStart;
+            part.length = project.loopEnd - project.loopStart;
+        }
+        else
+        {
+            part.start = juce::jmax (0.0, std::floor (at / bar) * bar);
+            part.length = bar;
+        }
         part.name = project.findTrack (trackId)->name;
         studio.addPart (trackId, part);
         select (trackId, (int) studio.getProject().findTrack (trackId)->parts.size() - 1);

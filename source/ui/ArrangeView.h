@@ -34,17 +34,22 @@ struct Timeline
 // as coloured blocks showing their notes, and the playhead.
 //
 //   ruler           click to put the position there; drag across its top
-//                   strip to set the cycle (and turn CYCLE on)
+//                   strip to set the cycle (the locators; CYCLE turns on);
+//                   in the top strip, click inside the range to turn CYCLE
+//                   on or off, drag inside it to move it
 //   a part          click to select; drag to move (to another track of its
-//                   kind too); Alt-drag to copy; drag its right edge to
-//                   lengthen or shorten it; double-click to edit its notes
-//                   (the key editor); right-click for Edit notes, Duplicate
-//                   and Delete
+//                   kind too); Ctrl-drag keeps to one direction; Alt-drag to
+//                   copy; drag its right edge to lengthen or shorten it;
+//                   double-click to edit its notes (the key editor);
+//                   right-click for Edit notes, Duplicate and Delete.
+//                   Ctrl turns snapping off while resizing, trimming and
+//                   fading (Ctrl+Shift while moving)
 //   an audio clip   its waveform; drag its left edge to trim its start (the
 //                   audio stays where it is), its right edge to trim its end;
 //                   drag the handles at its top corners to fade in and out
 //   an empty lane   click to select the track; double-click for a new
-//                   empty bar-long part
+//                   empty part: from the left locator to the right if it's
+//                   between them, else a bar long
 //   wheel           scrolls the tracks; Shift+wheel scrolls along the song;
 //                   Ctrl+wheel zooms
 class ArrangeView final : public juce::Component,
@@ -92,7 +97,7 @@ private:
     Timeline& timeline;
     Selection selection;
 
-    enum class Drag { none, position, cycle, move, resize, trimStart, fadeIn, fadeOut };
+    enum class Drag { none, position, cycle, cycleMove, move, resize, trimStart, fadeIn, fadeOut };
     pr7s::Part dragPart;   // an audio clip as it's being trimmed or faded
     bool isAudioTrack (int trackId) const;
     juce::Rectangle<float> fadeHandle (juce::Rectangle<float> bounds, const pr7s::Part&, bool fadeIn) const;

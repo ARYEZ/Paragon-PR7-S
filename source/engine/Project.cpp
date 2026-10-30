@@ -365,10 +365,10 @@ namespace pr7s
         return grid > 0.0 ? std::round (beats / grid) * grid : beats;
     }
 
-    bool quantize (Part& part, double grid, const std::vector<int>& which)
+    void quantize (Part& part, double grid, const std::vector<int>& which)
     {
         if (grid <= 0.0)
-            return true;
+            return;
         std::vector<bool> chosen (part.notes.size(), which.empty());
         for (const auto index : which)
             if (juce::isPositiveAndBelow (index, (int) part.notes.size()))
@@ -380,23 +380,6 @@ namespace pr7s
                 auto& note = part.notes[i];
                 note.start = juce::jmax (0.0, snap (part.start + note.start, grid) - part.start);
             }
-
-        // Same pitch, same start: keep the longer one.
-        std::vector<Note> kept;
-        for (const auto& note : part.notes)
-        {
-            const auto twin = std::find_if (kept.begin(), kept.end(), [&note] (const Note& other)
-            {
-                return other.pitch == note.pitch && std::abs (other.start - note.start) < 1.0e-9;
-            });
-            if (twin == kept.end())
-                kept.push_back (note);
-            else if (note.length > twin->length)
-                *twin = note;
-        }
-        const auto merged = kept.size() != part.notes.size();
-        part.notes = std::move (kept);
-        return ! merged;
     }
 
     juce::String noteName (int pitch)

@@ -17,12 +17,14 @@
 //                  removes), drag to move it (in time and pitch), Alt-drag
 //                  to copy, drag its right end to lengthen or shorten it,
 //                  drag across empty space to select a group, double-click
-//                  empty space for a new note
+//                  empty space for a new note, double-click a note to
+//                  delete it
 //                  DRAW: click for a new note a grid step long (drag right
 //                  to make it longer); click a note to remove it
 //                  ERASE: click or drag across notes to remove them
-//                  Everything snaps to the GRID; hold Shift while dragging
-//                  for no snapping
+//                  Everything snaps to the GRID; hold Ctrl while dragging
+//                  for no snapping (Ctrl+Shift while moving notes: Ctrl
+//                  alone keeps them to one direction, in time or in pitch)
 //   velocity       a bar per note, as tall as it's played: click or drag
 //                  across the bars to set them (only the selected ones, if
 //                  any of those are under the mouse)
@@ -30,9 +32,9 @@
 //   keys (focus)   Delete removes the selected notes, Up / Down move them a
 //                  semitone (Shift: an octave), Ctrl+A or Shift+A selects all,
 //                  Q quantizes, Ctrl+C / Ctrl+X copy / cut the selected notes,
-//                  Ctrl+V pastes them (at the playhead if it's in the part,
-//                  else on the beat after the notes copied, or at the start
-//                  of another part)
+//                  Ctrl+V pastes them at the playhead (the part grows to
+//                  hold them if they go past it), Ctrl+D duplicates the
+//                  selected notes straight after themselves
 //   wheel          scrolls the notes up and down; Shift+wheel along the song;
 //                  Ctrl+wheel zooms
 //
@@ -75,6 +77,7 @@ public:
     void cutSelected();
     void paste();   // the pasted notes are selected afterwards
     bool canPaste() const noexcept { return ! clipboard.empty(); }
+    void duplicateSelected();   // the copies are selected afterwards
 
     // The editor's keys (the main window passes them on while the editor was last clicked).
     bool keyPressed (const juce::KeyPress&) override;
@@ -144,8 +147,7 @@ private:
     std::vector<pr7s::Note> knownNotes;      // its notes as last seen, to notice changes from elsewhere (undo)
     std::vector<int> selected;
     std::vector<pr7s::Note> clipboard;        // starts from the first note copied (0)
-    double copiedFrom = 0.0, copiedLength = 0.0;
-    int copiedPart = 0;   // where they were in the song, and how long they last (beats)
+    void insertNotes (const std::vector<pr7s::Note>&, double atSongBeat);   // the part grows to hold them
 
     Tool tool = Tool::select;
     double grid = 0.25;

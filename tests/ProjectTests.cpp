@@ -165,7 +165,7 @@ TEST_CASE ("Quantize moves note starts to the song's grid, keeping their lengths
 {
     // A part starting half a beat into the song: the grid is the song's, not the part's.
     Part part { 0.5, 8.0, "Riff", { { 0.1, 0.3, 60, 0.8f }, { 1.4, 1.0, 62, 0.8f }, { 2.2, 0.5, 64, 0.8f } } };
-    CHECK (quantize (part, 1.0));
+    quantize (part, 1.0);
     REQUIRE (part.notes.size() == 3);
     CHECK_THAT (part.notes[0].start, WithinAbs (0.5, 1.0e-9));   // song beat 0.6 -> 1.0
     CHECK_THAT (part.notes[1].start, WithinAbs (1.5, 1.0e-9));   // 1.9 -> 2.0
@@ -175,7 +175,7 @@ TEST_CASE ("Quantize moves note starts to the song's grid, keeping their lengths
 
     // Only the chosen notes; a note never goes before the part's start.
     Part some { 0.0, 4.0, {}, { { 0.1, 0.25, 60, 0.8f }, { 1.1, 0.25, 62, 0.8f } } };
-    CHECK (quantize (some, 0.25, { 1 }));
+    quantize (some, 0.25, { 1 });
     CHECK (some.notes[0].start == 0.1);
     CHECK_THAT (some.notes[1].start, WithinAbs (1.0, 1.0e-9));
     Part early { 1.0, 4.0, {}, { { 0.05, 0.25, 60, 0.8f } } };
@@ -188,13 +188,13 @@ TEST_CASE ("Quantize moves note starts to the song's grid, keeping their lengths
     CHECK_THAT (triplets.notes[0].start, WithinAbs (1.0 / 3.0, 1.0e-9));
     CHECK_THAT (triplets.notes[1].start, WithinAbs (2.0 / 3.0, 1.0e-9));
 
-    // Two of the same pitch landing together become one: the longer.
+    // Two of the same pitch landing together both stay (nothing is merged away).
     Part twins { 0.0, 4.0, {}, { { 0.9, 0.25, 60, 0.8f }, { 1.1, 0.75, 60, 0.6f }, { 1.05, 0.5, 64, 0.8f } } };
-    CHECK_FALSE (quantize (twins, 1.0));
-    REQUIRE (twins.notes.size() == 2);
-    CHECK (twins.notes[0].pitch == 60);
-    CHECK (twins.notes[0].length == 0.75);
-    CHECK (twins.notes[1].pitch == 64);
+    quantize (twins, 1.0);
+    REQUIRE (twins.notes.size() == 3);
+    CHECK (twins.notes[0].start == 1.0);
+    CHECK (twins.notes[1].start == 1.0);
+    CHECK (twins.notes[1].length == 0.75);
 }
 
 TEST_CASE ("Note names count middle C as C3", "[project][editor]")

@@ -390,8 +390,7 @@ void KeyEditor::quantizeSelected()
     if (part == nullptr)
         return;
     auto edited = *part;
-    if (! pr7s::quantize (edited, grid, selected))
-        selected.clear();   // notes merged: the indices no longer mean the same notes
+    pr7s::quantize (edited, grid, selected);
     commit (std::move (edited.notes));
 }
 
@@ -400,13 +399,9 @@ void KeyEditor::copySelected()
     const auto* part = getPart();
     if (selected.empty() || part == nullptr)
         return;
-    auto first = std::numeric_limits<double>::max(), last = 0.0;
+    auto first = std::numeric_limits<double>::max();
     for (const auto i : selected)
-    {
-        const auto& note = part->notes[(size_t) i];
-        first = juce::jmin (first, note.start);
-        last = juce::jmax (last, note.start + note.length);
-    }
+        first = juce::jmin (first, part->notes[(size_t) i].start);
     clipboard.clear();
     for (const auto i : selected)
     {
@@ -414,9 +409,6 @@ void KeyEditor::copySelected()
         note.start -= first;
         clipboard.push_back (note);
     }
-    copiedFrom = part->start + first;
-    copiedLength = last - first;
-    copiedPart = part->id;
 }
 
 void KeyEditor::cutSelected()
@@ -427,38 +419,81 @@ void KeyEditor::cutSelected()
 
 void KeyEditor::paste()
 {
+    // At the playhead (as in Cubase). If that's outside the part, the part
+    // grows (to whole bars) to hold them.
+    if (clipboard.empty() || getPart() == nullptr)
+        return;
+    insertNotes (clipboard, studio.getEngine().getPosition());
+}
+
+void KeyEditor::duplicateSelected()
+{
+    // Ctrl+D: a copy of the selected notes straight after them, on the next
+    // beat (or grid step, if that's coarser), so doing it again and again
+    // repeats the phrase in time.
     const auto* part = getPart();
-    if (clipboard.empty() || part == nullptr)
+    if (selected.empty() || part == nullptr)
         return;
-    // At the playhead, if it's in the part (as in Cubase); otherwise, in the
-    // part they came from, straight after the notes copied, on the next beat
-    // (or grid step, if that's coarser), so pasting again and again repeats
-    // the phrase in time; and in another part, at its start.
-    const auto playhead = studio.getEngine().getPosition();
-    const auto atPlayhead = playhead >= part->start && playhead < part->end();
+    auto first = std::numeric_limits<double>::max(), last = 0.0;
+    std::vector<pr7s::Note> copies;
+    for (const auto i : selected)
+    {
+        const auto& note = part->notes[(size_t) i];
+        first = juce::jmin (first, note.start);
+        last = juce::jmax (last, note.start + note.length);
+    }
+    for (const auto i : selected)
+    {
+        auto note = part->notes[(size_t) i];
+        note.start -= first;
+        copies.push_back (note);
+    }
     const auto step = juce::jmax (grid, 4.0 / studio.getProject().denominator);
-    const auto at = atPlayhead ? playhead
-                  : part->id == copiedPart ? copiedFrom + juce::jmax (step, std::ceil (copiedLength / step - 1.0e-9) * step)
-                                           : part->start;
-    auto edited = part->notes;
-    std::vector<int> pasted;
-    for (auto note : clipboard)
-    {
-        note.start += at - part->start;
-        if (note.start < 0.0 || note.start >= part->length)
-            continue;   // outside the part: it wouldn't be heard
-        edited.push_back (note);
-        pasted.push_back ((int) edited.size() - 1);
-    }
-    if (pasted.empty())
+    insertNotes (copies, part->start + first + juce::jmax (step, std::ceil ((last - first) / step - 1.0e-9) * step));
+}
+
+void KeyEditor::insertNotes (const std::vector<pr7s::Note>& notesToAdd, double at)
+{
+    const auto* part = getPart();
+    const auto where = studio.findPart (partId);
+    if (part == nullptr || ! where || notesToAdd.empty())
         return;
-    commit (std::move (edited));
-    selectNotes (pasted);
-    if (! atPlayhead)
+    // Where they go in the song; the part grown to whole bars to hold them.
+    auto first = std::numeric_limits<double>::max(), last = 0.0;
+    for (const auto& note : notesToAdd)
     {
-        copiedFrom = at;   // the next paste goes after these
-        copiedPart = part->id;
+        first = juce::jmin (first, at + note.start);
+        last = juce::jmax (last, at + note.start + note.length);
     }
+    const auto bar = studio.getProject().beatsPerBar();
+    auto grown = *part;
+    if (first < part->start)
+        grown.start = juce::jmax (0.0, std::floor (first / bar) * bar);
+    if (last > part->end())
+        grown.length = std::ceil (last / bar - 1.0e-9) * bar - grown.start;
+    grown.length += part->start - grown.start;
+    for (auto& note : grown.notes)
+        note.start += part->start - grown.start;
+    std::vector<int> added;
+    for (auto note : notesToAdd)
+    {
+        note.start += at - grown.start;
+        if (note.start < 0.0)
+            continue;   // before the song's start
+        grown.notes.push_back (note);
+        added.push_back ((int) grown.notes.size() - 1);
+    }
+    if (added.empty())
+        return;
+    if (! juce::approximatelyEqual (grown.start, part->start) || ! juce::approximatelyEqual (grown.length, part->length))
+        studio.updatePart (where->first, where->second, grown);   // the part and its notes: one undo step
+    else
+        studio.setNotes (where->first, where->second, grown.notes);
+    if (const auto* now = getPart())
+        knownNotes = now->notes;
+    selectNotes (added);
+    refreshPanel();
+    repaint();
 }
 
 void KeyEditor::eraseAt (juce::Point<float> point)
@@ -529,6 +564,7 @@ bool KeyEditor::keyPressed (const juce::KeyPress& key)
     if (mods.isCommandDown() && letter == 'C')                                   { copySelected(); return true; }
     if (mods.isCommandDown() && letter == 'X')                                   { cutSelected(); return true; }
     if (mods.isCommandDown() && letter == 'V')                                   { paste(); return true; }
+    if (mods.isCommandDown() && letter == 'D')                                   { duplicateSelected(); return true; }
     if (mods.isCommandDown())
         return false;
     if (mods.isShiftDown() && letter == 'A')                                     { selectAll(); return true; }
@@ -587,7 +623,7 @@ void KeyEditor::mouseDown (const juce::MouseEvent& event)
         return;
 
     const auto hit = noteAt (point);
-    const auto free = event.mods.isShiftDown();
+    const auto free = event.mods.isCommandDown();   // Ctrl: no snapping
     switch (tool)
     {
         case Tool::erase:
@@ -680,7 +716,8 @@ void KeyEditor::mouseDown (const juce::MouseEvent& event)
 void KeyEditor::mouseDrag (const juce::MouseEvent& event)
 {
     const auto point = event.position;
-    const auto free = event.mods.isShiftDown();
+    // Ctrl: no snapping (while moving notes, Ctrl+Shift: Ctrl alone keeps them to one direction).
+    const auto free = event.mods.isCommandDown() && (gesture != Gesture::move || event.mods.isShiftDown());
     const auto* part = getPart();
     switch (gesture)
     {
@@ -713,6 +750,15 @@ void KeyEditor::mouseDrag (const juce::MouseEvent& event)
             const auto from = part->start + a.start;
             auto shift = snapped (from + beatForX (point.x) - beatForX (downAt.x), free) - from;
             auto semitones = pitchForY (point.y) - pitchForY (downAt.y);
+            if (event.mods.isCommandDown() && ! event.mods.isShiftDown())
+            {
+                // Ctrl: only along the song, or only up or down, whichever the mouse has gone further.
+                const auto offset = point - downAt;
+                if (std::abs (offset.x) >= std::abs (offset.y))
+                    semitones = 0;
+                else
+                    shift = 0.0;
+            }
             // Kept inside the part and on the keyboard, all together.
             auto earliest = part->length, latest = 0.0;
             auto lowest = 127, highest = 0;
@@ -822,10 +868,18 @@ void KeyEditor::mouseUp (const juce::MouseEvent&)
 
 void KeyEditor::mouseDoubleClick (const juce::MouseEvent& event)
 {
-    // SELECT: a double-click on empty space draws a note there.
+    // SELECT: a double-click on a note deletes it; on empty space, draws a note there.
     const auto* part = getPart();
-    if (tool != Tool::select || part == nullptr || ! getNotesArea().contains (event.position) || noteAt (event.position) >= 0)
+    if (tool != Tool::select || part == nullptr || ! getNotesArea().contains (event.position))
         return;
+    if (const auto hit = noteAt (event.position); hit >= 0)
+    {
+        auto edited = part->notes;
+        edited.erase (edited.begin() + hit);
+        selected.clear();
+        commit (std::move (edited));
+        return;
+    }
     const auto at = std::floor (beatForX (event.position.x) / grid + 1.0e-9) * grid;
     if (at < part->start - 1.0e-9 || at >= part->end())
         return;

@@ -244,6 +244,9 @@ bool MainView::keyPressed (const juce::KeyPress& key)
                             || (! mods.isCommandDown() && mods.isShiftDown() && letter == 'A');
     if (isKeyEditorOpen() && editorsAnyway && keyEditor.keyPressed (key))
         return true;
+    // Ctrl+D duplicates the notes after a click in the editor, the part otherwise.
+    if (isKeyEditorOpen() && keysToEditor && mods.isCommandDown() && letter == 'D' && keyEditor.keyPressed (key))
+        return true;
 
     if (mods.isCommandDown())
     {

@@ -186,10 +186,8 @@ namespace pr7s
     // Moves the starts of the part's notes (those listed, or all with none
     // listed) to the nearest `grid` line of the song (not of the part, so a
     // part that doesn't start on a bar still lines up with the bars).
-    // Lengths stay. Two notes of the same pitch that land on the same start
-    // become one (the longer), since they'd only cut each other off.
-    // Returns false if any notes were merged (their order and number changed).
-    bool quantize (Part&, double grid, const std::vector<int>& which = {});
+    // Lengths stay, and every note stays (as in Cubase: none are merged).
+    void quantize (Part&, double grid, const std::vector<int>& which = {});
 
     // A note's name, with middle C (60) as C3, as Cubase and Yamaha count: "C3", "F#4", "C-2".
     juce::String noteName (int pitch);

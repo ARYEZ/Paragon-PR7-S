@@ -383,30 +383,43 @@ TEST_CASE ("The key editor: copy, cut and paste notes; Shift+A selects them all"
     studio.dispatchPendingMessages();
     CHECK (notes().size() == 3);
 
-    // The playhead outside the part: on the beat after the notes copied (they
-    // last 1.75 beats, so 2 beats on), and again after those.
+    // The playhead before the part (at 0): the part grows back to the bar
+    // there to hold them; its notes stay where they are in the song.
     studio.setPosition (0.0);
     CHECK (view.keyPressed (ctrl ('v')));
     REQUIRE (notes().size() == 5);
+    CHECK (editor.getPart()->start == 0.0);
+    CHECK (editor.getPart()->length == 12.0);
+    CHECK (notes()[0].start == 4.0);   // the C3 still at song beat 4
+    CHECK (notes()[3] == Note { 0.0, 0.5, 60, 0.9f });
+    CHECK (notes()[4] == Note { 1.0, 0.75, 64, 0.4f });
+    studio.undo();   // the part and its notes back in one step
+    studio.dispatchPendingMessages();
+    CHECK (editor.getPart()->start == 4.0);
+    CHECK (notes().size() == 3);
+
+    // Ctrl+D (after a click in the editor): the selected notes again, on the
+    // beat after them (they last 1.75 beats, so 2 beats on), and again.
+    editor.selectNotes ({ 0, 1 });
+    CHECK (view.keyPressed (ctrl ('d')));
+    REQUIRE (notes().size() == 5);
     CHECK_THAT (notes()[3].start, WithinAbs (2.0, 1.0e-9));
     CHECK_THAT (notes()[4].start, WithinAbs (3.0, 1.0e-9));
-    CHECK (view.keyPressed (ctrl ('v')));
+    CHECK (editor.getSelectedNotes() == std::vector<int> { 3, 4 });
+    CHECK (view.keyPressed (ctrl ('d')));
     REQUIRE (notes().size() == 7);
     CHECK_THAT (notes()[5].start, WithinAbs (4.0, 1.0e-9));
-    // Notes that would land past the part's end aren't pasted (they wouldn't be heard).
-    CHECK (view.keyPressed (ctrl ('v')));
-    CHECK (view.keyPressed (ctrl ('v')));   // the phrase from beat 8 would start past the end (8)
-    CHECK (notes().size() == 9);
+    CHECK (studio.getProject().tracks[0].parts.size() == 1);   // the notes, not the part
 
     // Cut: copied, and gone.
     editor.selectNotes ({ 2 });   // the G3
     CHECK (view.keyPressed (ctrl ('x')));
-    CHECK (notes().size() == 8);
+    CHECK (notes().size() == 6);
     for (const auto& n : notes())
         CHECK (n.pitch != 67);
 
     // Into another part on another track, just selected in the arrangement
-    // (the last click there): it goes to that part's start.
+    // (the last click there): at the playhead, in it.
     const auto other = studio.addTrack ({});
     studio.addPart (other, { 16.0, 4.0, "Bass", {} });
     view.mouseDown (mouseAt (arrange, { 10.0f, 10.0f }, { 10.0f, 10.0f }));
@@ -414,10 +427,11 @@ TEST_CASE ("The key editor: copy, cut and paste notes; Shift+A selects them all"
     studio.dispatchPendingMessages();
     REQUIRE (editor.getPart() != nullptr);
     REQUIRE (editor.getPart()->name == "Bass");
+    studio.setPosition (17.0);
     CHECK (view.keyPressed (ctrl ('v')));
     REQUIRE (notes().size() == 1);
-    CHECK (notes()[0] == Note { 0.0, 0.5, 67, 0.7f });
-    CHECK (studio.getProject().tracks[0].parts[0].notes.size() == 8);   // the first part as it was
+    CHECK (notes()[0] == Note { 1.0, 0.5, 67, 0.7f });
+    CHECK (studio.getProject().tracks[0].parts[0].notes.size() == 6);   // the first part as it was
 }
 
 TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inserts; it shares the lower zone; no on-screen keyboard", "[ui][mixer]")
@@ -686,4 +700,72 @@ TEST_CASE ("EXPORT: the button in the header; the page offers the song or the cy
     REQUIRE (asked.has_value());
     CHECK (asked->end == 16.0);
     CHECK (asked->bitsPerSample == 16);
+}
+
+TEST_CASE ("Dragging as the manual has it: Ctrl keeps a part to one direction, Alt copies; the cycle's range clicked and moved; a double-click between the locators; a double-click deletes a note", "[ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& arrange = view.getArrangeView();
+    const auto first = studio.getProject().tracks[0].id;
+    const auto second = studio.addTrack ({});
+    studio.addPart (first, { 4.0, 4.0, "Riff", { { 0.0, 1.0, 60, 0.8f } } });
+    studio.setCycle (16.0, 24.0);
+    studio.dispatchPendingMessages();
+    const auto ctrl = juce::ModifierKeys (juce::ModifierKeys::commandModifier);
+    const auto dragPart = [&] (juce::Point<float> from, juce::Point<float> to, juce::ModifierKeys mods)
+    {
+        arrange.mouseDown (mouseAt (arrange, from, from, mods));
+        arrange.mouseDrag (mouseAt (arrange, to, from, mods));
+        arrange.mouseUp (mouseAt (arrange, to, from, mods));
+    };
+    const auto partCentre = [&] (int track, int index) { return arrange.getPartBounds (track, index).getCentre(); };
+    const auto beatPixels = (float) Timeline().pixelsPerBeat;
+
+    // Ctrl, mostly sideways: along the song only (it stays on its track).
+    auto from = partCentre (first, 0);
+    dragPart (from, from + juce::Point<float> (2.0f * beatPixels, 20.0f), ctrl);
+    REQUIRE (studio.getProject().findTrack (first)->parts.size() == 1);
+    CHECK (studio.getProject().findTrack (first)->parts[0].start == 6.0);
+    // Ctrl, mostly down: to the next track only (it keeps its beat). No copy.
+    from = partCentre (first, 0);
+    dragPart (from, from + juce::Point<float> (20.0f, (float) Timeline::trackHeight), ctrl);
+    CHECK (studio.getProject().findTrack (first)->parts.empty());
+    REQUIRE (studio.getProject().findTrack (second)->parts.size() == 1);
+    CHECK (studio.getProject().findTrack (second)->parts[0].start == 6.0);
+    // Alt: a copy.
+    from = partCentre (second, 0);
+    dragPart (from, from + juce::Point<float> (4.0f * beatPixels, 0.0f), juce::ModifierKeys (juce::ModifierKeys::altModifier));
+    CHECK (studio.getProject().findTrack (second)->parts.size() == 2);
+
+    // The ruler's top strip: a click inside the cycle's range turns CYCLE on, again off; a drag inside moves it.
+    const juce::Point<float> inRange (20.0f * beatPixels, 5.0f);
+    CHECK_FALSE (studio.getProject().loopOn);
+    dragPart (inRange, inRange, {});
+    CHECK (studio.getProject().loopOn);
+    dragPart (inRange, inRange, {});
+    CHECK_FALSE (studio.getProject().loopOn);
+    dragPart (inRange, inRange + juce::Point<float> (4.0f * beatPixels, 0.0f), {});
+    CHECK (studio.getProject().loopStart == 20.0);
+    CHECK (studio.getProject().loopEnd == 28.0);
+
+    // A double-click on an empty lane between the locators: a part from the left one to the right.
+    const juce::Point<float> between (22.0f * beatPixels, (float) Timeline::rulerHeight + 0.5f * (float) Timeline::trackHeight);
+    arrange.mouseDoubleClick (mouseAt (arrange, between, between));
+    REQUIRE (studio.getProject().findTrack (first)->parts.size() == 1);
+    CHECK (studio.getProject().findTrack (first)->parts[0].start == 20.0);
+    CHECK (studio.getProject().findTrack (first)->parts[0].length == 8.0);
+
+    // In the key editor, a double-click on a note deletes it.
+    arrange.select (second, 0);
+    view.openKeyEditor();
+    studio.dispatchPendingMessages();
+    auto& editor = view.getKeyEditor();
+    REQUIRE (editor.getPart() != nullptr);
+    REQUIRE (editor.getPart()->notes.size() == 1);
+    const auto note = editor.getNoteBounds (0).getCentre();
+    editor.mouseDoubleClick (mouseAt (editor, note, note));
+    CHECK (editor.getPart()->notes.empty());
 }
