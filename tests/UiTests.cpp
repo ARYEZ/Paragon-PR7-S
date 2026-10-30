@@ -288,6 +288,7 @@ TEST_CASE ("The key editor in a window of its own, and back", "[ui][editor]")
     studio.dispatchPendingMessages();
     REQUIRE (editor.getPart() != nullptr);
     const auto dockedArrangeHeight = arrange.getHeight();
+    const auto dockedRows = editor.getNotesArea().getHeight();
     CHECK (editor.getParentComponent() == &view);
 
     // WINDOW: the editor moves into its own window; the arrangement takes the room back.
@@ -304,12 +305,14 @@ TEST_CASE ("The key editor in a window of its own, and back", "[ui][editor]")
     CHECK (window->getName() == "Key Editor: Riff");
 
     // Stretched wide (as across three screens): the editor fills it, and fits the whole part.
+    // (How tall it can be is up to the system: macOS keeps a window within
+    // the screen's height, and the test machines' screens are small.)
     window->setSize (5760, 1000);
     CHECK (editor.getWidth() >= 5700);
-    CHECK (editor.getHeight() > 900);
+    CHECK (editor.getHeight() == window->getHeight());
     editor.fitToPart();
     CHECK (editor.getNotesArea().contains (editor.getNoteBounds (1).getCentre()));   // the last note, 15 beats in
-    CHECK (editor.getNotesArea().getHeight() > 700);                                // and many more rows
+    CHECK (editor.getNotesArea().getHeight() > dockedRows);                         // and more rows than docked
 
     // Keys in the window: the editor's first, then the studio's.
     editor.selectNotes ({ 0 });
