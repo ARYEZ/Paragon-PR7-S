@@ -47,6 +47,8 @@ public:
     // buttons with an LED stripe (SAVE, BYPASS...). The stripe lights when
     // the button's toggle state is on.
     static constexpr const char* pedalButtonProperty = "pedalButton";
+    // On a pedal key: the colour its lettering lights in (an ARGB int), instead of the orange.
+    static constexpr const char* litColourProperty = "litColour";
 
     // Set this on a TextButton to draw it as the mockup's light outlined
     // buttons printed on the metal (VOLUME, WAH / FILTER, MORPH / FX). Its

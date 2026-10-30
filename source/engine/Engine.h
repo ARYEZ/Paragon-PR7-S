@@ -88,6 +88,9 @@ namespace pr7s
         bool isRecording() const noexcept { return recording.load(); }
         void setPosition (double beats);
         double getPosition() const noexcept { return position.load(); }
+        // How many times the cycle has come round (any thread): a pass of
+        // writing automation ends when it does.
+        int getCycleCount() const noexcept { return cycleCount.load(); }
 
         //======================================================================
         // Playing live: MIDI from devices (the collector is their callback)
@@ -248,7 +251,8 @@ namespace pr7s
 
         std::atomic<bool> playing { false }, recording { false };
         std::atomic<double> position { 0.0 }, jumpTo { -1.0 };
-        std::atomic<bool> rebase { false };   // the position was moved while stopped: the clock starts from it
+        std::atomic<bool> rebase { false };
+        std::atomic<int> cycleCount { 0 };   // the position was moved while stopped: the clock starts from it
         bool wasPlaying = false;
         // The song position in whole samples while playing (audio thread), so
         // notes land on exactly their sample however long the song plays.

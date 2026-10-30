@@ -1,5 +1,6 @@
 #include "TrackList.h"
 
+#include "ui/AutomationKeys.h"
 #include "ui/LevelMeter.h"
 #include "ui/ParagonLookAndFeel.h"
 
@@ -15,11 +16,47 @@ namespace
 }
 
 //==============================================================================
+// Show/Hide Automation: a small arrow at a row's lower left (pointing right
+// while the lanes are hidden, down while they're shown).
+class TrackList::Arrow final : public juce::Component,
+                               public juce::SettableTooltipClient
+{
+public:
+    std::function<void()> onClick;
+    bool open = false;
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto area = getLocalBounds().toFloat().reduced (3.0f);
+        juce::Path p;
+        if (open)
+            p.addTriangle (area.getX(), area.getY() + 2.0f, area.getRight(), area.getY() + 2.0f, area.getCentreX(), area.getBottom() - 1.0f);
+        else
+            p.addTriangle (area.getX() + 2.0f, area.getY(), area.getX() + 2.0f, area.getBottom(), area.getRight() - 1.0f, area.getCentreY());
+        g.setColour (isMouseOver() || open ? ParagonColours::accent : ParagonColours::textDim);
+        g.fillPath (p);
+    }
+    void mouseEnter (const juce::MouseEvent&) override { repaint(); }
+    void mouseExit (const juce::MouseEvent&) override { repaint(); }
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        if (getLocalBounds().contains (e.getPosition()) && onClick)
+            onClick();
+    }
+};
+
+//==============================================================================
 class TrackList::Row final : public juce::Component
 {
 public:
     Row (TrackList& ownerList, int id) : owner (ownerList), trackId (id)
     {
+        AutomationKeys::setUp (read, write, owner.studio, trackId);
+        addAndMakeVisible (read);
+        addAndMakeVisible (write);
+        arrow.setTooltip ("Show/Hide Automation: this track's automation lanes");
+        arrow.onClick = [this] { owner.studio.setAutomationOpen (trackId, ! owner.studio.isAutomationOpen (trackId)); };
+        addAndMakeVisible (arrow);
         name.setFont (ParagonLookAndFeel::titleFont (13.0f));
         name.setColour (juce::Label::textColourId, ParagonColours::text);
         name.setEditable (false, true, false);   // double-click to rename
@@ -39,7 +76,7 @@ public:
         addChildComponent (monitor);
         mute.setTooltip ("Mute this track");
         solo.setTooltip ("Solo: hear only the soloed tracks");
-        arm.setTooltip ("Record-arm: recording and live playing go to this track");
+        arm.setTooltip ("REC: record-arm: recording and live playing go to this track");
         mute.onClick = [this] { if (auto* t = track()) owner.studio.setMute (trackId, ! t->mute); };
         solo.onClick = [this] { if (auto* t = track()) owner.studio.setSolo (trackId, ! t->solo); };
         arm.onClick = [this] { if (auto* t = track()) owner.studio.setArmed (t->armed ? 0 : trackId); };
@@ -58,8 +95,14 @@ public:
         volume.setPopupDisplayEnabled (true, true, nullptr);
         volume.textFromValueFunction = [] (double db) { return db <= -59.9 ? juce::String ("-inf dB") : juce::String (db, 1) + " dB"; };
         volume.setTooltip ("The track's volume (double-click for 0 dB)");
-        volume.onDragEnd = [this] { owner.studio.setVolume (trackId, (float) volume.getValue()); };
-        volume.onValueChange = [this] { if (! volume.isMouseButtonDown()) owner.studio.setVolume (trackId, (float) volume.getValue()); };
+        // Grabbed and let go, for writing automation (W on, while playing).
+        volume.onDragStart = [this] { owner.studio.grabControl (trackId, pr7s::Studio::control (pr7s::AutomationLane::Target::volume)); };
+        volume.onDragEnd = [this]
+        {
+            owner.studio.setVolume (trackId, (float) volume.getValue());
+            owner.studio.releaseControl (trackId, pr7s::Studio::control (pr7s::AutomationLane::Target::volume));
+        };
+        volume.onValueChange = [this] { owner.studio.setVolume (trackId, (float) volume.getValue(), ! volume.isMouseButtonDown()); };
         addAndMakeVisible (volume);
     }
 
@@ -80,9 +123,22 @@ public:
                                             : "The instrument: click to open its window, change it, or delete the track");
         monitor.setVisible (t->isAudio());
         monitor.setToggleState (t->monitor, juce::dontSendNotification);
-        if (! volume.isMouseButtonDown())
-            volume.setValue (t->volumeDb, juce::dontSendNotification);
+        AutomationKeys::refresh (read, write, owner.studio, trackId);
+        arrow.open = t->automationOpen;
+        arrow.repaint();
+        followMix();
         repaint();
+    }
+
+    // The volume knob as it is now: the automation's, while it's read.
+    void followMix()
+    {
+        const auto* t = track();
+        if (t == nullptr || volume.isMouseButtonDown())
+            return;
+        const auto db = t->automationRead ? owner.studio.getEngine().getMixNow (trackId).volumeDb : t->volumeDb;
+        if (std::abs (volume.getValue() - db) > 0.01)
+            volume.setValue (db, juce::dontSendNotification);
     }
 
     void setLevel (float peak)
@@ -119,7 +175,7 @@ public:
     {
         auto area = getLocalBounds().withTrimmedLeft (12).reduced (6, 7);
         auto top = area.removeFromTop (24);
-        arm.setBounds (top.removeFromRight (30));
+        arm.setBounds (top.removeFromRight (36));
         top.removeFromRight (3);
         solo.setBounds (top.removeFromRight (30));
         top.removeFromRight (3);
@@ -133,17 +189,23 @@ public:
         area.removeFromTop (6);
         auto bottom = area.removeFromTop (24);
         volume.setBounds (bottom.removeFromRight (28));
+        bottom.removeFromRight (4);
+        levelArea = bottom.removeFromRight (44).toFloat().withSizeKeepingCentre (44.0f, 8.0f);
         bottom.removeFromRight (6);
-        levelArea = bottom.removeFromRight (64).toFloat().withSizeKeepingCentre (64.0f, 8.0f);
-        bottom.removeFromRight (8);
+        write.setBounds (bottom.removeFromRight (26));
+        bottom.removeFromRight (2);
+        read.setBounds (bottom.removeFromRight (26));
+        bottom.removeFromRight (6);
         instrument.setBounds (bottom);
+        // Show/Hide Automation at the lower left corner (as the manual has it).
+        arrow.setBounds (0, getHeight() - 18, 16, 16);
     }
 
     void mouseDown (const juce::MouseEvent& event) override
     {
         owner.studio.selectTrack (trackId);
         if (event.mods.isPopupMenu())
-            owner.showInstrumentMenu (trackId);
+            owner.showInstrumentMenu (trackId, true);
     }
 
     void mouseDoubleClick (const juce::MouseEvent& event) override
@@ -155,10 +217,159 @@ public:
     TrackList& owner;
     const int trackId;
     juce::Label name;
-    juce::TextButton mute { "M" }, solo { "S" }, arm { "R" }, monitor { "MON" }, instrument;
+    juce::TextButton mute { "M" }, solo { "S" }, arm { "REC" }, monitor { "MON" }, instrument, read { "R" }, write { "W" };
     juce::Slider volume;
+    Arrow arrow;
     juce::Rectangle<float> levelArea;
     LevelMeter::Ballistics reading;
+};
+
+//==============================================================================
+// An automation lane's header: its control (click for the others, or to
+// remove it), M (Mute Automation), its value at the playhead, and + (Append
+// Automation Track) at its lower left.
+class TrackList::LaneRow final : public juce::Component
+{
+public:
+    LaneRow (TrackList& ownerList, int bus, int index) : owner (ownerList), busId (bus), laneIndex (index)
+    {
+        control.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
+        control.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
+        control.setTooltip ("The control this lane automates: click to choose another, or to remove it");
+        control.onClick = [this] { owner.showLaneMenu (busId, laneIndex, control); };
+        addAndMakeVisible (control);
+        mute.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        mute.setTooltip ("Mute Automation: this lane isn't played back");
+        mute.onClick = [this] { if (const auto* l = lane()) owner.studio.setLaneMuted (busId, laneIndex, ! l->muted); };
+        addAndMakeVisible (mute);
+        append.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
+        append.setColour (juce::TextButton::textColourOffId, ParagonColours::textDim);
+        append.setTooltip ("Append Automation Track: a lane for the next control");
+        append.onClick = [this] { owner.studio.appendAutomationLane (busId, laneIndex); };
+        addAndMakeVisible (append);
+        refresh();
+    }
+
+    const pr7s::AutomationLane* lane() const
+    {
+        const auto* lanes = owner.studio.getAutomation (busId);
+        return lanes != nullptr && juce::isPositiveAndBelow (laneIndex, (int) lanes->size()) ? &(*lanes)[(size_t) laneIndex] : nullptr;
+    }
+
+    void refresh()
+    {
+        if (const auto* l = lane())
+        {
+            control.setButtonText (owner.studio.getLaneName (busId, *l));
+            mute.setToggleState (l->muted, juce::dontSendNotification);
+        }
+        repaint();
+    }
+
+    // Its value now (at the playhead, as the lane has it; else the control's own).
+    juce::String valueText() const
+    {
+        const auto* l = lane();
+        if (l == nullptr)
+            return {};
+        const auto& studio = owner.studio;
+        const auto value = l->points.empty() || ! studio.getAutomationRead (busId) || l->muted
+                             ? studio.getControlValue (busId, *l)
+                             : *l->valueAt (const_cast<pr7s::Studio&> (studio).getEngine().getPosition());
+        using T = pr7s::AutomationLane::Target;
+        switch (l->target)
+        {
+            case T::volume: { const auto db = pr7s::travelToVolume (value); return db <= -59.9f ? juce::String ("-inf") : juce::String (db, 1) + " dB"; }
+            case T::pan:    { const auto p = juce::roundToInt (pr7s::travelToPan (value) * 100.0f); return p == 0 ? juce::String ("C") : (p < 0 ? "L " : "R ") + juce::String (std::abs (p)); }
+            case T::mute:   return value >= 0.5f ? "ON" : "OFF";
+            case T::instrument:
+            case T::insert: break;
+        }
+        return juce::String (juce::roundToInt (value * 100.0f)) + "%";
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto bounds = getLocalBounds().toFloat();
+        g.setColour (juce::Colour (0xff0b090c));
+        g.fillRect (bounds);
+        g.setColour (juce::Colour (0xff050405));
+        g.fillRect (bounds.withY (bounds.getBottom() - 1.0f).withHeight (1.0f));
+        const auto* track = owner.studio.getProject().findTrack (busId);
+        g.setColour ((track != nullptr ? track->colour : ParagonColours::accent).withAlpha (0.45f));
+        g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
+        g.setColour (ParagonColours::textDim);
+        g.setFont (ParagonLookAndFeel::textFont (12.0f));
+        g.drawText (valueText(), valueArea, juce::Justification::centredRight, false);
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().withTrimmedLeft (22).reduced (6, 6);
+        auto top = area.removeFromTop (22);
+        mute.setBounds (top.removeFromRight (30));
+        top.removeFromRight (6);
+        valueArea = top.removeFromRight (60).toFloat();
+        top.removeFromRight (6);
+        control.setBounds (top);
+        append.setBounds (2, getHeight() - 20, 18, 18);
+    }
+
+    TrackList& owner;
+    const int busId, laneIndex;
+    juce::TextButton control, mute { "M" }, append { "+" };
+    juce::Rectangle<float> valueArea;
+};
+
+//==============================================================================
+// The master's row: its R and W, and its automation lanes' arrow.
+class TrackList::MasterRow final : public juce::Component
+{
+public:
+    explicit MasterRow (TrackList& ownerList) : owner (ownerList)
+    {
+        AutomationKeys::setUp (read, write, owner.studio, pr7s::Engine::masterBus);
+        addAndMakeVisible (read);
+        addAndMakeVisible (write);
+        arrow.setTooltip ("Show/Hide Automation: the master's automation lanes (its volume, its effects)");
+        arrow.onClick = [this] { owner.studio.setAutomationOpen (pr7s::Engine::masterBus, ! owner.studio.isAutomationOpen (pr7s::Engine::masterBus)); };
+        addAndMakeVisible (arrow);
+        refresh();
+    }
+
+    void refresh()
+    {
+        AutomationKeys::refresh (read, write, owner.studio, pr7s::Engine::masterBus);
+        arrow.open = owner.studio.isAutomationOpen (pr7s::Engine::masterBus);
+        arrow.repaint();
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto bounds = getLocalBounds().toFloat();
+        g.setColour (juce::Colour (0xff140f14));
+        g.fillRect (bounds);
+        g.setColour (juce::Colour (0xff050405));
+        g.fillRect (bounds.withY (bounds.getBottom() - 1.0f).withHeight (1.0f));
+        g.setColour (ParagonColours::accent);
+        g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
+        g.setColour (ParagonColours::text);
+        g.setFont (ParagonLookAndFeel::titleFont (13.0f));
+        g.drawText ("MASTER", bounds.withTrimmedLeft (24.0f).withTrimmedRight (80.0f), juce::Justification::centredLeft, false);
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().reduced (6, 8);
+        write.setBounds (area.removeFromRight (26));
+        area.removeFromRight (2);
+        read.setBounds (area.removeFromRight (26));
+        arrow.setBounds (2, getHeight() - 18, 16, 16);
+    }
+
+    TrackList& owner;
+    juce::TextButton read { "R" }, write { "W" };
+    Arrow arrow;
 };
 
 //==============================================================================
@@ -187,7 +398,12 @@ void TrackList::changeListenerCallback (juce::ChangeBroadcaster*)
 void TrackList::timerCallback()
 {
     for (auto& row : rows)
+    {
         row->setLevel (studio.getEngine().takeTrackPeak (row->trackId));
+        row->followMix();
+    }
+    for (auto& lane : laneRows)
+        lane->repaint (lane->valueArea.toNearestInt());
 }
 
 void TrackList::rebuild()
@@ -208,16 +424,62 @@ void TrackList::rebuild()
     }
     for (auto& row : rows)
         row->refresh();
+
+    // The automation lanes' rows (made again when they change), and the master's.
+    const auto layout = Timeline::layout (studio);
+    if (layout != lastLayout)
+    {
+        laneRows.clear();
+        for (const auto& row : layout)
+            if (row.kind == Timeline::Row::Kind::lane)
+            {
+                laneRows.push_back (std::make_unique<LaneRow> (*this, row.busId, row.laneIndex));
+                addAndMakeVisible (*laneRows.back());
+            }
+        lastLayout = layout;
+    }
+    for (auto& lane : laneRows)
+        lane->refresh();
+    if (masterRow == nullptr)
+    {
+        masterRow = std::make_unique<MasterRow> (*this);
+        addAndMakeVisible (*masterRow);
+    }
+    masterRow->refresh();
     resized();
     repaint();
 }
 
 void TrackList::resized()
 {
-    for (size_t i = 0; i < rows.size(); ++i)
-        rows[i]->setBounds (0, Timeline::rulerHeight + (int) i * Timeline::trackHeight - timeline.scrollY, getWidth(), Timeline::trackHeight);
+    placeRows();
     addTrack.setBounds (getLocalBounds().removeFromBottom (addButtonHeight).reduced (10, 5));
     addTrack.toFront (false);
+}
+
+void TrackList::placeRows()
+{
+    // Each where the layout has it (so they line up with the arrangement's rows).
+    auto laneRow = laneRows.begin();
+    for (const auto& row : Timeline::layout (studio))
+    {
+        const juce::Rectangle<int> bounds (0, Timeline::rulerHeight + row.top - timeline.scrollY, getWidth(), row.height);
+        if (row.kind == Timeline::Row::Kind::track)
+        {
+            for (auto& r : rows)
+                if (r->trackId == row.busId)
+                    r->setBounds (bounds);
+        }
+        else if (row.kind == Timeline::Row::Kind::lane)
+        {
+            if (laneRow != laneRows.end())
+                (*laneRow++)->setBounds (bounds);
+        }
+        else if (masterRow != nullptr)
+        {
+            masterRow->setBounds (bounds);
+        }
+    }
 }
 
 void TrackList::paint (juce::Graphics& g)
@@ -238,8 +500,7 @@ void TrackList::paint (juce::Graphics& g)
 
 void TrackList::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& wheel)
 {
-    const auto content = (int) studio.getProject().tracks.size() * Timeline::trackHeight;
-    const auto room = juce::jmax (0, content - (getHeight() - Timeline::rulerHeight - addButtonHeight));
+    const auto room = juce::jmax (0, Timeline::contentHeight (studio) - (getHeight() - Timeline::rulerHeight - addButtonHeight));
     timeline.scrollY = juce::jlimit (0, room, timeline.scrollY - juce::roundToInt (wheel.deltaY * 300.0f));
     if (timeline.onScrollOrZoom)
         timeline.onScrollOrZoom();
@@ -290,7 +551,57 @@ void TrackList::showAddTrackMenu()
     });
 }
 
-void TrackList::showInstrumentMenu (int trackId)
+void TrackList::showLaneMenu (int busId, int laneIndex, juce::Component& target)
+{
+    const auto* lanes = studio.getAutomation (busId);
+    if (lanes == nullptr || ! juce::isPositiveAndBelow (laneIndex, (int) lanes->size()))
+        return;
+    const auto& current = (*lanes)[(size_t) laneIndex];
+    const auto controls = studio.getAutomationControls (busId);
+    // Each control; an asterisk where a hidden lane holds points (as the manual has it).
+    juce::PopupMenu menu;
+    juce::String group;
+    juce::PopupMenu sub;
+    const auto flush = [&]
+    {
+        if (group.isNotEmpty() && sub.getNumItems() > 0)
+            menu.addSubMenu (group, sub);
+        sub = {};
+    };
+    for (int i = 0; i < (int) controls.size(); ++i)
+    {
+        const auto& c = controls[(size_t) i];
+        const auto lane = c.asLane();
+        const auto existing = std::find_if (lanes->begin(), lanes->end(), [&] (const pr7s::AutomationLane& l) { return l.sameControl (lane); });
+        const auto hiddenData = existing != lanes->end() && ! existing->shown && ! existing->points.empty();
+        const auto name = c.name + (hiddenData ? " *" : "");
+        if (c.group != group)
+        {
+            flush();
+            group = c.group;
+        }
+        (group.isEmpty() ? menu : sub).addItem (100 + i, name, true, current.sameControl (lane));
+    }
+    flush();
+    menu.addSeparator();
+    menu.addItem (1, "Remove Parameter");
+    menu.addItem (2, "Remove Unused Parameters");
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&target),
+                        [safe = juce::Component::SafePointer<TrackList> (this), busId, laneIndex, controls] (int chosen)
+    {
+        if (safe == nullptr || chosen == 0)
+            return;
+        auto& s = safe->studio;
+        if (chosen == 1)
+            s.removeAutomationParameter (busId, laneIndex);
+        else if (chosen == 2)
+            s.removeUnusedAutomation (busId);
+        else if (chosen >= 100 && chosen - 100 < (int) controls.size())
+            s.setLaneControl (busId, laneIndex, controls[(size_t) (chosen - 100)]);
+    });
+}
+
+void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
 {
     const auto* track = studio.getProject().findTrack (trackId);
     if (track == nullptr)
@@ -298,6 +609,12 @@ void TrackList::showInstrumentMenu (int trackId)
     auto* instance = studio.getEngine().getInstrument (trackId);
     const auto instruments = studio.getPluginHost().getInstruments();
     juce::PopupMenu menu, change;
+    if (withAutomation)   // right-click on the track (as the manual has it)
+    {
+        menu.addItem (20, track->automationOpen ? "Hide Automation" : "Show Automation");
+        menu.addItem (21, "Show All Used Automation");
+        menu.addSeparator();
+    }
     if (track->isAudio())
     {
         // The inputs switched on in SETTINGS (two, with none to ask).
@@ -325,7 +642,11 @@ void TrackList::showInstrumentMenu (int trackId)
 
     menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, instruments] (int chosen)
     {
-        if (chosen == 1 && onOpenInstrument)
+        if (chosen == 20)
+            studio.setAutomationOpen (trackId, ! studio.isAutomationOpen (trackId));
+        else if (chosen == 21)
+            studio.showAllUsedAutomation();
+        else if (chosen == 1 && onOpenInstrument)
         {
             onOpenInstrument (trackId);
         }

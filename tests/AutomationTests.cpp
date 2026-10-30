@@ -421,20 +421,16 @@ TEST_CASE ("Writing automation: mute latches until stop; a jump (the cycle going
     const auto pan = Studio::control (T::pan);
     studio.grabControl (track, pan);
     studio.setPan (track, 1.0f, false);
-    // The studio's timer (30 times a second in the app) sees it get to 5.9, then come round to 4.25.
-    const auto tick = [] { juce::Thread::sleep (40); juce::Timer::callPendingTimersSynchronously(); };
-    renderSamples (studio.getEngine(), beat * 7 / 5);
-    tick();
-    CHECK (studio.isWritingAutomation (track));
-    renderSamples (studio.getEngine(), beat * 7 / 20);
-    tick();
-    studio.setPan (track, -1.0f, false);   // after the jump: not written
+    // Round the cycle (to 4.25): the pass ends at the cycle's end (6).
+    renderSamples (studio.getEngine(), beat * 7 / 4);
+    studio.setPan (track, -1.0f, false);   // after it came round: not written
     CHECK_FALSE (studio.isWritingAutomation (track));
     studio.stop();
     const auto* lanes = studio.getAutomation (track);
     const auto panLane = std::find_if (lanes->begin(), lanes->end(), [] (const AutomationLane& l) { return l.target == AutomationLane::Target::pan; });
     REQUIRE (panLane != lanes->end());
     CHECK (*panLane->valueAt (5.0) == 1.0f);   // hard right, written
+    CHECK (*panLane->valueAt (5.95) == 1.0f);  // to the cycle's end
     CHECK_THAT (*panLane->valueAt (4.2), WithinAbs (0.5, 1.0e-6));   // the centre before
 }
 

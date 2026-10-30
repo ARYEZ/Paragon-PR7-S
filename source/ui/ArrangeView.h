@@ -28,6 +28,22 @@ struct Timeline
     }
 
     std::function<void()> onScrollOrZoom;   // the track list follows
+
+    // The rows, top to bottom, shared by the track list and the arrangement:
+    // each track, its open automation lanes under it, then the master's row
+    // and its lanes. `top` is from the first row's top, before scrolling.
+    static constexpr int laneHeight = 48, masterHeight = 40;
+    struct Row
+    {
+        enum class Kind { track, lane, master };
+        Kind kind = Kind::track;
+        int busId = 0;          // a track's id, or the master's (0)
+        int laneIndex = -1;     // a lane: its index in the bus's automation
+        int top = 0, height = 0;
+        bool operator== (const Row&) const = default;
+    };
+    static std::vector<Row> layout (const pr7s::Studio&);
+    static int contentHeight (const pr7s::Studio&);
 };
 
 // The arrangement (inspired by Cubase's project window, in our look): the ruler with
@@ -76,7 +92,10 @@ public:
 
     // Where a part is drawn (for tests).
     juce::Rectangle<float> getPartBounds (int trackId, int index) const;
-    int trackAtY (float y) const;   // 0 if none
+    int trackAtY (float y) const;   // 0 if none (a lane or the master isn't a track)
+    std::optional<Timeline::Row> rowAt (float y) const;
+    float rowTop (const Timeline::Row&) const;   // where a row is drawn now
+    float trackTop (int trackId) const;
 
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
@@ -89,7 +108,6 @@ public:
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
-    float laneTop (int trackIndex) const;
     void paintPart (juce::Graphics&, juce::Rectangle<float>, const pr7s::Part&, juce::Colour, bool selected, bool recording) const;
     std::optional<std::pair<int, int>> partAt (juce::Point<float>) const;   // track id and index
     void showPartMenu (int trackId, int index);

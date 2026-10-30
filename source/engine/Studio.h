@@ -254,6 +254,7 @@ namespace pr7s
             int busId = 0;
             AutomationLane control;
             double start = 0.0, lastBeat = 0.0;
+            int cycleCount = 0;      // the engine's when it began: the cycle coming round ends it
             float before = 0.0f;
             std::vector<AutomationPoint> points;
             bool released = false;   // let go (an on/off switch latches on until stop)

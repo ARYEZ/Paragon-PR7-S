@@ -158,7 +158,9 @@ void ParagonLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& bu
     // Light lettering on a black key; white on a neon one (lit: a pale
     // gold, as the accent orange would vanish into the key).
     const auto neonKey = Finish::neonKeys();
-    g.setColour (button.isEnabled() ? (on ? (neonKey ? juce::Colour (0xffffe9a8) : ParagonColours::accent) : (neonKey ? juce::Colours::white : ParagonColours::text))
+    const auto* lit = button.getProperties().getVarPointer (litColourProperty);
+    const auto litColour = lit != nullptr ? juce::Colour ((juce::uint32) (juce::int64) *lit) : ParagonColours::accent;
+    g.setColour (button.isEnabled() ? (on ? (neonKey ? juce::Colour (0xffffe9a8) : litColour) : (neonKey ? juce::Colours::white : ParagonColours::text))
                                     : (neonKey ? juce::Colours::white.withAlpha (0.5f) : ParagonColours::textDim));
     g.drawFittedText (button.getButtonText(), area.toNearestInt(), juce::Justification::centred, 1);
 }

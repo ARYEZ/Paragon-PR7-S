@@ -690,6 +690,7 @@ namespace pr7s
                 done += length;
                 if (wraps)
                 {
+                    ++cycleCount;
                     for (auto& track : tracks)
                         stopHeldNotes (*track, juce::jmin (done, numSamples - 1));
                     clock = loopStart;

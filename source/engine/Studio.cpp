@@ -1175,6 +1175,7 @@ namespace pr7s
         pass.busId = busId;
         pass.control = which;
         pass.start = pass.lastBeat = engine.getPosition();
+        pass.cycleCount = engine.getCycleCount();
         pass.before = getControlValue (busId, which);
         passes.push_back (pass);
         engine.setHeld (busId, which, true);   // the hand is heard, not the lane
@@ -1190,10 +1191,15 @@ namespace pr7s
             if (pass.busId != busId || ! pass.control.sameControl (which))
                 continue;
             const auto beat = engine.getPosition();
+            if (pass.cycleCount != engine.getCycleCount())
+            {
+                // The cycle came round: the pass ends at the cycle's end (as the manual has it).
+                punchOut (i, juce::jmax (pass.lastBeat, project.loopEnd));
+                return false;
+            }
             if (beat + 1.0e-6 < pass.lastBeat)
             {
-                // It jumped back (the cycle went round, or the position was moved): the pass ends where it got to.
-                punchOut (i, pass.lastBeat);
+                punchOut (i, pass.lastBeat);   // it jumped back
                 return false;
             }
             pass.lastBeat = beat;
@@ -1612,7 +1618,9 @@ namespace pr7s
         for (size_t i = passes.size(); i-- > 0;)
         {
             const auto now = engine.getPosition();
-            if (now + 1.0e-6 < passes[i].lastBeat)
+            if (passes[i].cycleCount != engine.getCycleCount())
+                punchOut (i, juce::jmax (passes[i].lastBeat, project.loopEnd));
+            else if (now + 1.0e-6 < passes[i].lastBeat)
                 punchOut (i, passes[i].lastBeat);
             else
                 passes[i].lastBeat = now;

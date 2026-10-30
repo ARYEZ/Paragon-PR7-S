@@ -52,28 +52,76 @@ void ArrangeView::timerCallback()
     repaint();
 }
 
-float ArrangeView::laneTop (int trackIndex) const
+std::vector<Timeline::Row> Timeline::layout (const pr7s::Studio& studio)
 {
-    return (float) (Timeline::rulerHeight + trackIndex * Timeline::trackHeight - timeline.scrollY);
+    std::vector<Row> rows;
+    auto top = 0;
+    const auto add = [&] (Row::Kind kind, int busId, int laneIndex, int height)
+    {
+        rows.push_back ({ kind, busId, laneIndex, top, height });
+        top += height;
+    };
+    const auto addLanes = [&] (int busId)
+    {
+        if (! studio.isAutomationOpen (busId))
+            return;
+        if (const auto* lanes = studio.getAutomation (busId))
+            for (int i = 0; i < (int) lanes->size(); ++i)
+                if ((*lanes)[(size_t) i].shown)
+                    add (Row::Kind::lane, busId, i, laneHeight);
+    };
+    for (const auto& track : studio.getProject().tracks)
+    {
+        add (Row::Kind::track, track.id, -1, trackHeight);
+        addLanes (track.id);
+    }
+    add (Row::Kind::master, pr7s::Engine::masterBus, -1, masterHeight);
+    addLanes (pr7s::Engine::masterBus);
+    return rows;
+}
+
+int Timeline::contentHeight (const pr7s::Studio& studio)
+{
+    const auto rows = layout (studio);
+    return rows.empty() ? 0 : rows.back().top + rows.back().height;
+}
+
+float ArrangeView::rowTop (const Timeline::Row& row) const
+{
+    return (float) (Timeline::rulerHeight + row.top - timeline.scrollY);
+}
+
+float ArrangeView::trackTop (int trackId) const
+{
+    for (const auto& row : Timeline::layout (studio))
+        if (row.kind == Timeline::Row::Kind::track && row.busId == trackId)
+            return rowTop (row);
+    return 0.0f;
+}
+
+std::optional<Timeline::Row> ArrangeView::rowAt (float y) const
+{
+    if (y < (float) Timeline::rulerHeight)
+        return std::nullopt;
+    for (const auto& row : Timeline::layout (studio))
+        if (y >= rowTop (row) && y < rowTop (row) + (float) row.height)
+            return row;
+    return std::nullopt;
 }
 
 int ArrangeView::trackAtY (float y) const
 {
-    const auto& tracks = studio.getProject().tracks;
-    const auto index = (int) std::floor ((y - (float) Timeline::rulerHeight + (float) timeline.scrollY) / (float) Timeline::trackHeight);
-    return y >= (float) Timeline::rulerHeight && juce::isPositiveAndBelow (index, (int) tracks.size()) ? tracks[(size_t) index].id : 0;
+    const auto row = rowAt (y);
+    return row && row->kind == Timeline::Row::Kind::track ? row->busId : 0;
 }
 
 juce::Rectangle<float> ArrangeView::getPartBounds (int trackId, int index) const
 {
-    const auto& tracks = studio.getProject().tracks;
-    for (size_t t = 0; t < tracks.size(); ++t)
-        if (tracks[t].id == trackId && juce::isPositiveAndBelow (index, (int) tracks[t].parts.size()))
-        {
-            const auto& part = tracks[t].parts[(size_t) index];
-            const auto x = timeline.xForBeat (part.start);
-            return { x, laneTop ((int) t) + 3.0f, (float) (part.length * timeline.pixelsPerBeat), (float) Timeline::trackHeight - 6.0f };
-        }
+    if (const auto* track = studio.getProject().findTrack (trackId); track != nullptr && juce::isPositiveAndBelow (index, (int) track->parts.size()))
+    {
+        const auto& part = track->parts[(size_t) index];
+        return { timeline.xForBeat (part.start), trackTop (trackId) + 3.0f, (float) (part.length * timeline.pixelsPerBeat), (float) Timeline::trackHeight - 6.0f };
+    }
     return {};
 }
 
@@ -125,12 +173,17 @@ void ArrangeView::paint (juce::Graphics& g)
     g.setColour (laneDark);
     g.fillRect (bounds);
 
-    // The lanes, the selected track's a little lighter.
-    for (size_t t = 0; t < project.tracks.size(); ++t)
+    // The rows: each track's lane (the selected track's a little lighter),
+    // its automation lanes, the master's row.
+    const auto rows = Timeline::layout (studio);
+    auto trackNumber = 0;
+    for (const auto& row : rows)
     {
-        const auto top = laneTop ((int) t);
-        const auto lane = juce::Rectangle<float> (0.0f, top, bounds.getWidth(), (float) Timeline::trackHeight);
-        g.setColour (project.tracks[t].id == studio.getSelectedTrack() ? juce::Colour (0xff1c151b) : (t % 2 == 0 ? laneDark : laneLight));
+        const auto lane = juce::Rectangle<float> (0.0f, rowTop (row), bounds.getWidth(), (float) row.height);
+        if (row.kind == Timeline::Row::Kind::track)
+            g.setColour (row.busId == studio.getSelectedTrack() ? juce::Colour (0xff1c151b) : (trackNumber++ % 2 == 0 ? laneDark : laneLight));
+        else
+            g.setColour (juce::Colour (0xff09070a));
         g.fillRect (lane);
         g.setColour (juce::Colour (0xff050405));
         g.fillRect (lane.withHeight (1.0f).withY (lane.getBottom() - 1.0f));
@@ -168,7 +221,7 @@ void ArrangeView::paint (juce::Graphics& g)
             const auto isDragged = (drag == Drag::move || drag == Drag::resize || isClipDrag) && dragMoved && track.id == dragTrack && i == selection.index;
             if (isDragged && isClipDrag)
             {
-                const juce::Rectangle<float> area (timeline.xForBeat (dragPart.start), laneTop ((int) t) + 3.0f,
+                const juce::Rectangle<float> area (timeline.xForBeat (dragPart.start), trackTop (track.id) + 3.0f,
                                                    (float) (dragPart.length * timeline.pixelsPerBeat), (float) Timeline::trackHeight - 6.0f);
                 paintPart (g, area, dragPart, track.colour, true, false);
                 continue;
@@ -186,11 +239,7 @@ void ArrangeView::paint (juce::Graphics& g)
                 auto part = from->parts[(size_t) selection.index];
                 part.start = dragNewStart;
                 part.length = dragNewLength;
-                int targetIndex = 0;
-                for (size_t t = 0; t < project.tracks.size(); ++t)
-                    if (project.tracks[t].id == dragTargetTrack)
-                        targetIndex = (int) t;
-                const juce::Rectangle<float> area (timeline.xForBeat (part.start), laneTop (targetIndex) + 3.0f,
+                const juce::Rectangle<float> area (timeline.xForBeat (part.start), trackTop (dragTargetTrack) + 3.0f,
                                                    (float) (part.length * timeline.pixelsPerBeat), (float) Timeline::trackHeight - 6.0f);
                 paintPart (g, area, part, from->colour, true, false);
             }
@@ -199,7 +248,7 @@ void ArrangeView::paint (juce::Graphics& g)
             if (project.tracks[t].id == recording->first)
             {
                 const auto& part = recording->second;
-                paintPart (g, { timeline.xForBeat (part.start), laneTop ((int) t) + 3.0f, (float) (part.length * timeline.pixelsPerBeat),
+                paintPart (g, { timeline.xForBeat (part.start), trackTop (recording->first) + 3.0f, (float) (part.length * timeline.pixelsPerBeat),
                                 (float) Timeline::trackHeight - 6.0f },
                            part, project.tracks[t].colour, false, true);
             }
@@ -653,8 +702,7 @@ void ArrangeView::mouseWheelMove (const juce::MouseEvent& event, const juce::Mou
     }
     else
     {
-        const auto content = (int) studio.getProject().tracks.size() * Timeline::trackHeight;
-        const auto room = juce::jmax (0, content - (getHeight() - Timeline::rulerHeight - Timeline::bottomRoom));
+        const auto room = juce::jmax (0, Timeline::contentHeight (studio) - (getHeight() - Timeline::rulerHeight - Timeline::bottomRoom));
         timeline.scrollY = juce::jlimit (0, room, timeline.scrollY - juce::roundToInt (wheel.deltaY * 300.0f));
     }
     if (timeline.onScrollOrZoom)
