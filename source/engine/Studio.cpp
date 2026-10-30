@@ -149,6 +149,18 @@ namespace pr7s
         undoIndex = (int) undoStates.size() - 1;
     }
 
+    // The lanes and their points as they were; which are shown, and the R and
+    // W, stay as they are now (how the screen is, not the song).
+    void Studio::restoreLanes (std::vector<AutomationLane>& lanes, const std::vector<AutomationLane>& then)
+    {
+        auto restored = then;
+        for (auto& lane : restored)
+            for (const auto& now : lanes)
+                if (now.sameControl (lane))
+                    lane.shown = now.shown;
+        lanes = std::move (restored);
+    }
+
     void Studio::restore (const Project& state)
     {
         project.bpm = state.bpm;
@@ -169,7 +181,9 @@ namespace pr7s
                 track.mute = then->mute;
                 track.solo = then->solo;
                 track.parts = then->parts;
+                restoreLanes (track.automation, then->automation);
             }
+        restoreLanes (project.masterAutomation, state.masterAutomation);
         changed (false);
     }
 
@@ -599,6 +613,7 @@ namespace pr7s
         engine.removeEffect (busId, slot);
         engine.insertEffect (busId, slot, std::move (instance));
         (*inserts)[(size_t) slot] = insert;
+        insertGone (busId, slot, false);   // another plugin: the old one's automation means nothing to it
         changed (false);
         return true;
     }
@@ -611,6 +626,7 @@ namespace pr7s
         effectGoing (busId, slot);
         engine.removeEffect (busId, slot);
         inserts->erase (inserts->begin() + slot);
+        insertGone (busId, slot, true);
         changed (false);
     }
 
@@ -621,6 +637,369 @@ namespace pr7s
             return;
         (*inserts)[(size_t) slot].bypass = bypass;
         changed (false);
+    }
+
+    //==========================================================================
+    std::vector<AutomationLane>* Studio::lanesOf (int busId)
+    {
+        if (busId == Engine::masterBus)
+            return &project.masterAutomation;
+        auto* track = project.findTrack (busId);
+        return track != nullptr ? &track->automation : nullptr;
+    }
+
+    const std::vector<AutomationLane>* Studio::getAutomation (int busId) const
+    {
+        return const_cast<Studio*> (this)->lanesOf (busId);
+    }
+
+    bool Studio::isAutomationOpen (int busId) const
+    {
+        if (busId == Engine::masterBus)
+            return project.masterAutomationOpen;
+        const auto* track = project.findTrack (busId);
+        return track != nullptr && track->automationOpen;
+    }
+
+    bool Studio::getAutomationRead (int busId) const
+    {
+        if (busId == Engine::masterBus)
+            return project.masterRead;
+        const auto* track = project.findTrack (busId);
+        return track != nullptr && track->automationRead;
+    }
+
+    bool Studio::getAutomationWrite (int busId) const
+    {
+        if (busId == Engine::masterBus)
+            return project.masterWrite;
+        const auto* track = project.findTrack (busId);
+        return track != nullptr && track->automationWrite;
+    }
+
+    void Studio::setAutomationRead (int busId, bool on)
+    {
+        if (busId == Engine::masterBus)
+            project.masterRead = on;
+        else if (auto* track = project.findTrack (busId))
+            track->automationRead = on;
+        else
+            return;
+        changed (false);
+    }
+
+    void Studio::setAutomationWrite (int busId, bool on)
+    {
+        if (busId == Engine::masterBus)
+        {
+            project.masterWrite = on;
+            project.masterRead = project.masterRead || on;
+        }
+        else if (auto* track = project.findTrack (busId))
+        {
+            track->automationWrite = on;
+            track->automationRead = track->automationRead || on;   // R comes on with W (and stays when W goes off)
+        }
+        else
+        {
+            return;
+        }
+        changed (false);
+    }
+
+    bool Studio::anyAutomationRead() const
+    {
+        return project.masterRead || std::any_of (project.tracks.begin(), project.tracks.end(), [] (const Track& t) { return t.automationRead; });
+    }
+
+    bool Studio::anyAutomationWrite() const
+    {
+        return project.masterWrite || std::any_of (project.tracks.begin(), project.tracks.end(), [] (const Track& t) { return t.automationWrite; });
+    }
+
+    void Studio::setAutomationReadAll (bool on)
+    {
+        project.masterRead = on;
+        for (auto& track : project.tracks)
+            track.automationRead = on;
+        changed (false);
+    }
+
+    void Studio::setAutomationWriteAll (bool on)
+    {
+        project.masterWrite = on;
+        project.masterRead = project.masterRead || on;
+        for (auto& track : project.tracks)
+        {
+            track.automationWrite = on;
+            track.automationRead = track.automationRead || on;
+        }
+        changed (false);
+    }
+
+    AutomationLane Studio::AutomationControl::asLane() const
+    {
+        AutomationLane lane;
+        lane.target = target;
+        lane.slot = slot;
+        lane.parameter = parameter;
+        lane.parameterName = name;
+        return lane;
+    }
+
+    std::vector<Studio::AutomationControl> Studio::getAutomationControls (int busId) const
+    {
+        using T = AutomationLane::Target;
+        std::vector<AutomationControl> controls;
+        const auto addKnobs = [&controls] (juce::AudioPluginInstance* plugin, T target, int slot, const juce::String& group)
+        {
+            if (plugin == nullptr)
+                return;
+            const auto& parameters = plugin->getParameters();
+            for (int i = 0; i < parameters.size(); ++i)
+                if (parameters[i]->isAutomatable())
+                    controls.push_back ({ target, slot, i, parameters[i]->getName (64), group });
+        };
+        if (busId == Engine::masterBus)
+        {
+            controls.push_back ({ T::volume, 0, 0, "Volume", {} });
+        }
+        else
+        {
+            if (project.findTrack (busId) == nullptr)
+                return controls;
+            controls.push_back ({ T::volume, 0, 0, "Volume", {} });
+            controls.push_back ({ T::pan, 0, 0, "Pan", {} });
+            controls.push_back ({ T::mute, 0, 0, "Mute", {} });
+            if (auto* instrument = engine.getInstrument (busId))
+                addKnobs (instrument, T::instrument, 0, "Instrument: " + instrument->getName());
+        }
+        for (int slot = 0; slot < engine.getNumEffects (busId); ++slot)
+            if (auto* effect = engine.getEffect (busId, slot))
+                addKnobs (effect, T::insert, slot, "Insert " + juce::String (slot + 1) + ": " + effect->getName());
+        return controls;
+    }
+
+    juce::AudioPluginInstance* Studio::pluginFor (int busId, const AutomationLane& lane) const
+    {
+        if (lane.target == AutomationLane::Target::instrument)
+            return busId == Engine::masterBus ? nullptr : engine.getInstrument (busId);
+        if (lane.target == AutomationLane::Target::insert)
+            return engine.getEffect (busId, lane.slot);
+        return nullptr;
+    }
+
+    juce::String Studio::getLaneName (int busId, const AutomationLane& lane) const
+    {
+        switch (lane.target)
+        {
+            case AutomationLane::Target::volume: return "Volume";
+            case AutomationLane::Target::pan:    return "Pan";
+            case AutomationLane::Target::mute:   return "Mute";
+            case AutomationLane::Target::instrument:
+            case AutomationLane::Target::insert: break;
+        }
+        const auto prefix = lane.target == AutomationLane::Target::insert ? "Ins. " + juce::String (lane.slot + 1) + ": " : juce::String();
+        if (auto* plugin = pluginFor (busId, lane))
+            if (lane.parameter < plugin->getParameters().size())
+                return prefix + plugin->getParameters()[lane.parameter]->getName (64);
+        return prefix + lane.parameterName;
+    }
+
+    float Studio::getControlValue (int busId, const AutomationLane& lane) const
+    {
+        const auto* track = project.findTrack (busId);
+        switch (lane.target)
+        {
+            case AutomationLane::Target::volume: return volumeToTravel (busId == Engine::masterBus ? project.masterVolumeDb : track != nullptr ? track->volumeDb : 0.0f);
+            case AutomationLane::Target::pan:    return panToTravel (track != nullptr ? track->pan : 0.0f);
+            case AutomationLane::Target::mute:   return track != nullptr && track->mute ? 1.0f : 0.0f;
+            case AutomationLane::Target::instrument:
+            case AutomationLane::Target::insert: break;
+        }
+        if (auto* plugin = pluginFor (busId, lane))
+            if (lane.parameter < plugin->getParameters().size())
+                return plugin->getParameters()[lane.parameter]->getValue();
+        return 0.0f;
+    }
+
+    void Studio::setAutomationOpen (int busId, bool open)
+    {
+        auto* lanes = lanesOf (busId);
+        if (lanes == nullptr)
+            return;
+        if (open && std::none_of (lanes->begin(), lanes->end(), [] (const AutomationLane& l) { return l.shown; }))
+        {
+            // Nothing was open: the lanes with points, or else the first control.
+            for (auto& lane : *lanes)
+                lane.shown = ! lane.points.empty();
+            if (std::none_of (lanes->begin(), lanes->end(), [] (const AutomationLane& l) { return l.shown; }))
+            {
+                const auto controls = getAutomationControls (busId);
+                if (! controls.empty())
+                    lanes->insert (lanes->begin(), controls.front().asLane());
+            }
+        }
+        if (busId == Engine::masterBus)
+            project.masterAutomationOpen = open;
+        else
+            project.findTrack (busId)->automationOpen = open;
+        changed();   // (a new lane is an edit; undo leaves what's shown as it is)
+    }
+
+    void Studio::showAllUsedAutomation()
+    {
+        const auto showUsed = [] (std::vector<AutomationLane>& lanes, bool& open)
+        {
+            for (auto& lane : lanes)
+                if (! lane.points.empty())
+                    lane.shown = open = true;
+        };
+        showUsed (project.masterAutomation, project.masterAutomationOpen);
+        for (auto& track : project.tracks)
+            showUsed (track.automation, track.automationOpen);
+        changed (false);
+    }
+
+    void Studio::appendAutomationLane (int busId, int laneIndex)
+    {
+        auto* lanes = lanesOf (busId);
+        if (lanes == nullptr)
+            return;
+        for (const auto& control : getAutomationControls (busId))
+        {
+            const auto lane = control.asLane();
+            const auto existing = std::find_if (lanes->begin(), lanes->end(), [&] (const AutomationLane& l) { return l.sameControl (lane); });
+            if (existing != lanes->end() && existing->shown)
+                continue;
+            // The next control not shown: its lane (kept points and all) after this one.
+            auto moved = existing != lanes->end() ? *existing : lane;
+            moved.shown = true;
+            if (existing != lanes->end())
+            {
+                const auto from = (int) std::distance (lanes->begin(), existing);
+                lanes->erase (existing);
+                if (from <= laneIndex)
+                    --laneIndex;
+            }
+            lanes->insert (lanes->begin() + juce::jlimit (0, (int) lanes->size(), laneIndex + 1), moved);
+            changed();
+            return;
+        }
+    }
+
+    void Studio::setLaneControl (int busId, int laneIndex, const AutomationControl& control)
+    {
+        auto* lanes = lanesOf (busId);
+        if (lanes == nullptr || ! juce::isPositiveAndBelow (laneIndex, (int) lanes->size()))
+            return;
+        const auto lane = control.asLane();
+        if ((*lanes)[(size_t) laneIndex].sameControl (lane))
+            return;
+        // The control it showed: kept, hidden, if it has points.
+        auto previous = (*lanes)[(size_t) laneIndex];
+        previous.shown = false;
+        auto chosen = lane;
+        if (const auto existing = std::find_if (lanes->begin(), lanes->end(), [&] (const AutomationLane& l) { return l.sameControl (lane); });
+            existing != lanes->end())
+        {
+            chosen = *existing;
+            const auto from = (int) std::distance (lanes->begin(), existing);
+            lanes->erase (existing);
+            if (from < laneIndex)
+                --laneIndex;
+        }
+        chosen.shown = true;
+        (*lanes)[(size_t) laneIndex] = chosen;
+        if (! previous.points.empty())
+            lanes->push_back (previous);
+        changed();
+    }
+
+    void Studio::removeAutomationParameter (int busId, int laneIndex)
+    {
+        auto* lanes = lanesOf (busId);
+        if (lanes == nullptr || ! juce::isPositiveAndBelow (laneIndex, (int) lanes->size()))
+            return;
+        lanes->erase (lanes->begin() + laneIndex);
+        if (std::none_of (lanes->begin(), lanes->end(), [] (const AutomationLane& l) { return l.shown; }))
+        {
+            if (busId == Engine::masterBus)
+                project.masterAutomationOpen = false;
+            else
+                project.findTrack (busId)->automationOpen = false;
+        }
+        changed();
+    }
+
+    void Studio::removeUnusedAutomation (int busId)
+    {
+        auto* lanes = lanesOf (busId);
+        if (lanes == nullptr)
+            return;
+        lanes->erase (std::remove_if (lanes->begin(), lanes->end(), [] (const AutomationLane& l) { return l.points.empty(); }), lanes->end());
+        if (lanes->empty())
+        {
+            if (busId == Engine::masterBus)
+                project.masterAutomationOpen = false;
+            else
+                project.findTrack (busId)->automationOpen = false;
+        }
+        changed();
+    }
+
+    void Studio::setLaneMuted (int busId, int laneIndex, bool muted)
+    {
+        auto* lanes = lanesOf (busId);
+        if (lanes == nullptr || ! juce::isPositiveAndBelow (laneIndex, (int) lanes->size()))
+            return;
+        (*lanes)[(size_t) laneIndex].muted = muted;
+        changed();
+    }
+
+    void Studio::setAutomationPoints (int busId, int laneIndex, std::vector<AutomationPoint> points)
+    {
+        auto* lanes = lanesOf (busId);
+        if (lanes == nullptr || ! juce::isPositiveAndBelow (laneIndex, (int) lanes->size()))
+            return;
+        for (auto& point : points)
+        {
+            point.beat = juce::jmax (0.0, point.beat);
+            point.value = juce::jlimit (0.0f, 1.0f, point.value);
+        }
+        std::stable_sort (points.begin(), points.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
+        (*lanes)[(size_t) laneIndex].points = std::move (points);
+        // Editing a lane turns R on (as clicking in an automation track does).
+        if (busId == Engine::masterBus)
+            project.masterRead = true;
+        else
+            project.findTrack (busId)->automationRead = true;
+        changed();
+    }
+
+    void Studio::insertGone (int busId, int slot, bool shiftUp)
+    {
+        const auto fix = [slot, shiftUp] (std::vector<AutomationLane>& lanes)
+        {
+            lanes.erase (std::remove_if (lanes.begin(), lanes.end(), [slot] (const AutomationLane& l)
+            {
+                return l.target == AutomationLane::Target::insert && l.slot == slot;
+            }), lanes.end());
+            if (shiftUp)
+                for (auto& lane : lanes)
+                    if (lane.target == AutomationLane::Target::insert && lane.slot > slot)
+                        --lane.slot;
+        };
+        const auto fixIn = [&] (Project& p)
+        {
+            if (busId == Engine::masterBus)
+                fix (p.masterAutomation);
+            else if (auto* track = p.findTrack (busId))
+                fix (track->automation);
+        };
+        fixIn (project);
+        for (auto& state : undoStates)
+            fixIn (state);
     }
 
     void Studio::setMasterVolume (float db, bool undoable)

@@ -30,13 +30,13 @@ namespace pr7s
 
         constexpr int automationStep = 32;   // samples between volume, pan and mute automation values
 
-        // The lanes that are played back: R on, with points.
+        // The lanes that are played back: R on, the lane not muted, with points.
         template <typename LaneStates>
-        void readLanes (const std::vector<AutomationLane>& lanes, LaneStates& into, bool& mixAutomated)
+        void readLanes (const std::vector<AutomationLane>& lanes, bool read, LaneStates& into, bool& mixAutomated)
         {
             mixAutomated = false;
             for (const auto& lane : lanes)
-                if (lane.read && ! lane.points.empty())
+                if (read && ! lane.muted && ! lane.points.empty())
                 {
                     into.push_back ({ lane, -1.0f });
                     using T = AutomationLane::Target;
@@ -360,7 +360,7 @@ namespace pr7s
             Prepared p { track.id, {}, sideGains (track, ! track.mute && (! anySolo || track.solo)), {}, {}, {}, false };
             for (const auto& insert : track.inserts)
                 p.bypass.push_back (insert.bypass);
-            readLanes (track.automation, p.automation, p.mixAutomated);
+            readLanes (track.automation, track.automationRead, p.automation, p.mixAutomated);
             if (track.isAudio())
             {
                 for (const auto& part : track.parts)
@@ -395,7 +395,7 @@ namespace pr7s
         const auto masterLevel = levelOf (project.masterVolumeDb);
         std::vector<LaneState> masterLanes;
         bool masterLanesMix = false;
-        readLanes (project.masterAutomation, masterLanes, masterLanesMix);
+        readLanes (project.masterAutomation, project.masterRead, masterLanes, masterLanesMix);
 
         const juce::ScopedLock sl (lock);
         settings = { project.bpm, project.numerator, project.denominator, project.loopOn,

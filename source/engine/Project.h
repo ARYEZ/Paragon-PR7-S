@@ -61,9 +61,12 @@ namespace pr7s
         bool bypass = false;         // off: the sound goes past it
     };
 
-    // Automation: a lane of points that moves one control as the song
-    // plays (a track's volume, pan or mute, or a knob of its instrument or
-    // of an effect in its inserts; the master's volume or its effects').
+    // Automation (inspired by Cubase's workflow): an automation lane (an
+    // "automation track" under its track) of points that moves one control
+    // as the song plays: a track's volume, pan or mute, or a knob of its
+    // instrument or of an effect in its inserts; the master's volume or its
+    // effects'. The track's R (read) plays them back, its W (write) records
+    // what's done to its controls while playing.
     // Values are the control's travel, 0 to 1, as plugins keep theirs: for
     // the volume, the fader's travel (so a straight line between two points
     // moves as the fader would); for pan, left (0) to right (1); for mute,
@@ -83,8 +86,8 @@ namespace pr7s
         int parameter = 0;            // Target::instrument and insert: the plugin's parameter, by index
         juce::String parameterName;   // as the plugin named it (shown if the plugin is missing)
         std::vector<AutomationPoint> points;   // in order of beat
-        bool read = true, write = false;       // R: played back; W: written by moving the control while playing
-        bool shown = true;                     // its lane open under the track
+        bool shown = true;     // its lane open under the track (a lane switched to another control keeps its points, hidden)
+        bool muted = false;    // Mute Automation: not played back
 
         bool isStep() const noexcept { return target == Target::mute; }
         bool sameControl (const AutomationLane& other) const noexcept
@@ -128,8 +131,9 @@ namespace pr7s
         bool isAudio() const noexcept { return kind == Kind::audio; }
         std::vector<Part> parts;
         std::vector<Insert> inserts;     // its effects, before its volume and pan
-        std::vector<AutomationLane> automation;
+        std::vector<AutomationLane> automation;   // in the order shown
         bool automationOpen = false;     // its lanes shown under it
+        bool automationRead = false, automationWrite = false;   // R and W (W turns R on)
     };
 
     struct Project
@@ -143,6 +147,7 @@ namespace pr7s
         float masterVolumeDb = 0.0f;          // the master bus: every track, then these effects, then this volume
         std::vector<Insert> masterInserts;
         std::vector<AutomationLane> masterAutomation;   // volume and the master's effects
+        bool masterAutomationOpen = false, masterRead = false, masterWrite = false;
         int nextTrackId = 1;
 
         static constexpr double minBpm = 20.0, maxBpm = 300.0;

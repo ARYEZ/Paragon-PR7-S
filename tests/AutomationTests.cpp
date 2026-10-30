@@ -63,7 +63,9 @@ namespace
             engine.prepare (48000.0, 512);
             Track track;
             track.id = 1;
+            track.automationRead = true;
             project.tracks.push_back (track);
+            project.masterRead = true;
             engine.setInstrument (1, std::make_unique<SteadyTone> (1.0f, 1.0f));
             engine.update (project);
         }
@@ -107,13 +109,13 @@ TEST_CASE ("Automation is saved and opened with the song: each track's lanes and
     Track track;
     track.id = 1;
     track.automationOpen = true;
+    track.automationWrite = true;
     track.automation.push_back (lane (AutomationLane::Target::volume, { { 0.0, 0.7f }, { 4.0, 0.2f } }));
     auto knob = lane (AutomationLane::Target::insert, { { 2.0, 0.25f } });
     knob.slot = 3;
     knob.parameter = 7;
     knob.parameterName = "Drive";
-    knob.read = false;
-    knob.write = true;
+    knob.muted = true;
     knob.shown = false;
     track.automation.push_back (knob);
     project.tracks.push_back (track);
@@ -122,11 +124,14 @@ TEST_CASE ("Automation is saved and opened with the song: each track's lanes and
     const auto opened = Project::fromXml (*project.toXml());
     REQUIRE (opened.has_value());
     CHECK (opened->tracks[0].automationOpen);
+    CHECK (opened->tracks[0].automationWrite);
+    CHECK_FALSE (opened->tracks[0].automationRead);
+    CHECK (opened->masterRead == project.masterRead);
     CHECK (opened->tracks[0].automation == project.tracks[0].automation);
     CHECK (opened->masterAutomation == project.masterAutomation);
 }
 
-TEST_CASE ("Volume, pan and mute automation play as the song goes, to within 32 samples; R off: not heard", "[automation][engine]")
+TEST_CASE ("Volume, pan and mute automation play as the song goes, to within 32 samples; R off or the lane muted: not heard", "[automation][engine]")
 {
     Desk desk;
     // The volume down from 0 dB at beat 0 to silent at beat 2 (the fader's travel in a straight line).
@@ -138,8 +143,12 @@ TEST_CASE ("Volume, pan and mute automation play as the song goes, to within 32 
     CHECK (heard[(size_t) beat * 2 + 32] == 0.0f);
     CHECK (desk.engine.getMixNow (1).volumeDb == -60.0f);   // what the fader shows
 
-    // R off: the fader's own level (0 dB) all through.
-    desk.track().automation[0].read = false;
+    // R off, or the lane muted: the fader's own level (0 dB) all through.
+    desk.track().automationRead = false;
+    heard = desk.play (beat * 3);
+    CHECK_THAT (heard[(size_t) beat * 2 + 100], WithinAbs (1.0, 1.0e-4));
+    desk.track().automationRead = true;
+    desk.track().automation[0].muted = true;
     heard = desk.play (beat * 3);
     CHECK_THAT (heard[(size_t) beat * 2 + 100], WithinAbs (1.0, 1.0e-4));
 
@@ -200,4 +209,121 @@ TEST_CASE ("Plugin knobs and the master's volume are automated too", "[automatio
     CHECK_THAT (heard[0], WithinAbs (1.0, 1.0e-4));
     CHECK (heard[(size_t) beat + 32] == 0.0f);
     CHECK (desk.engine.getMixNow (Engine::masterBus).volumeDb == -60.0f);
+}
+
+TEST_CASE ("The studio's automation: show/hide, append, a lane switched to another control keeps its points, remove, mute, R and W", "[automation][studio]")
+{
+    using T = AutomationLane::Target;
+    Studio studio (false);
+    const auto track = studio.getProject().tracks[0].id;
+    CHECK (studio.getAutomation (track)->empty());
+
+    // Show Automation the first time: a lane for the first control (volume).
+    studio.setAutomationOpen (track, true);
+    REQUIRE (studio.getAutomation (track)->size() == 1);
+    CHECK (studio.getAutomation (track)->at (0).target == T::volume);
+    CHECK (studio.isAutomationOpen (track));
+    CHECK_THAT (studio.getControlValue (track, studio.getAutomation (track)->at (0)), WithinAbs (volumeToTravel (0.0f), 1.0e-6));
+
+    // + : the next control (pan), then mute.
+    studio.appendAutomationLane (track, 0);
+    studio.appendAutomationLane (track, 1);
+    REQUIRE (studio.getAutomation (track)->size() == 3);
+    CHECK (studio.getAutomation (track)->at (1).target == T::pan);
+    CHECK (studio.getAutomation (track)->at (2).target == T::mute);
+
+    // Points: R comes on; undoable.
+    CHECK_FALSE (studio.getAutomationRead (track));
+    studio.setAutomationPoints (track, 0, { { 4.0, 0.2f }, { 0.0, 0.8f } });
+    CHECK (studio.getAutomationRead (track));
+    CHECK (studio.getAutomation (track)->at (0).points.front().beat == 0.0);   // in order
+    studio.undo();
+    CHECK (studio.getAutomation (track)->at (0).points.empty());
+    studio.redo();
+    CHECK (studio.getAutomation (track)->at (0).points.size() == 2);
+
+    // The volume lane switched to mute: mute's lane comes here, volume's points are kept, hidden.
+    const auto controls = studio.getAutomationControls (track);
+    REQUIRE (controls.size() >= 3);
+    studio.setLaneControl (track, 0, controls[2]);
+    const auto* lanes = studio.getAutomation (track);
+    REQUIRE (lanes->size() == 3);
+    CHECK (lanes->at (0).target == T::mute);
+    CHECK (lanes->at (1).target == T::pan);
+    CHECK (lanes->at (2).target == T::volume);
+    CHECK_FALSE (lanes->at (2).shown);
+    CHECK (lanes->at (2).points.size() == 2);
+    // And back: volume's lane, with its points, shown again in place.
+    studio.setLaneControl (track, 0, controls[0]);
+    lanes = studio.getAutomation (track);
+    CHECK (lanes->at (0).target == T::volume);
+    CHECK (lanes->at (0).shown);
+    CHECK (lanes->at (0).points.size() == 2);
+
+    // Mute Automation; Remove Unused Parameters; Remove Parameter.
+    studio.setLaneMuted (track, 0, true);
+    CHECK (studio.getAutomation (track)->at (0).muted);
+    studio.removeUnusedAutomation (track);
+    CHECK (studio.getAutomation (track)->size() == 1);
+    studio.removeAutomationParameter (track, 0);
+    CHECK (studio.getAutomation (track)->empty());
+    CHECK_FALSE (studio.isAutomationOpen (track));
+
+    // W turns R on; R and W for all (the master too).
+    studio.setAutomationRead (track, false);
+    studio.setAutomationWrite (track, true);
+    CHECK (studio.getAutomationRead (track));
+    CHECK (studio.anyAutomationWrite());
+    studio.setAutomationWriteAll (false);
+    CHECK_FALSE (studio.anyAutomationWrite());
+    CHECK (studio.anyAutomationRead());
+    studio.setAutomationReadAll (false);
+    CHECK_FALSE (studio.anyAutomationRead());
+    studio.setAutomationWriteAll (true);
+    CHECK (studio.getAutomationRead (Engine::masterBus));
+
+    // Show All Used Automation opens every track's lanes with points.
+    studio.setAutomationPoints (Engine::masterBus, 0, {});   // no lane yet: nothing happens
+    studio.setAutomationOpen (Engine::masterBus, true);
+    studio.setAutomationPoints (Engine::masterBus, 0, { { 8.0, 0.5f } });
+    studio.setAutomationOpen (Engine::masterBus, false);
+    studio.showAllUsedAutomation();
+    CHECK (studio.isAutomationOpen (Engine::masterBus));
+    CHECK (studio.getAutomationControls (Engine::masterBus).size() == 1);   // the master: volume (no effects)
+}
+
+TEST_CASE ("An insert's automation goes with it; the ones after it move up a slot", "[automation][studio]")
+{
+    Studio studio (false);
+    const auto track = studio.getProject().tracks[0].id;
+    for (const auto* name : { "One", "Two" })
+    {
+        Insert insert;
+        insert.plugin.name = name;
+        studio.addInsert (track, insert, timesEffect (1.0f, name));
+    }
+    studio.setAutomationOpen (track, true);
+    auto lane = [&] (int slot)
+    {
+        Studio::AutomationControl control;
+        control.target = AutomationLane::Target::insert;
+        control.slot = slot;
+        return control;
+    };
+    studio.appendAutomationLane (track, 0);   // pan
+    studio.setLaneControl (track, 1, lane (0));
+    studio.appendAutomationLane (track, 1);   // mute
+    studio.setLaneControl (track, 2, lane (1));
+    studio.setAutomationPoints (track, 1, { { 0.0, 0.5f } });
+    studio.setAutomationPoints (track, 2, { { 0.0, 0.25f } });
+    REQUIRE (studio.getAutomation (track)->size() == 3);
+
+    studio.removeInsert (track, 0);
+    const auto* lanes = studio.getAutomation (track);
+    REQUIRE (lanes->size() == 2);
+    CHECK (lanes->at (1).target == AutomationLane::Target::insert);
+    CHECK (lanes->at (1).slot == 0);   // "Two", now in the first slot
+    CHECK (lanes->at (1).points.front().value == 0.25f);
+    studio.undo();   // the points' undo doesn't bring the removed effect's lane back
+    CHECK (studio.getAutomation (track)->size() == 2);
 }
