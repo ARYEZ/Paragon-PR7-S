@@ -186,6 +186,9 @@ namespace pr7s
                 track.solo = then->solo;
                 track.parts = then->parts;
                 restoreLanes (track.automation, then->automation);
+                track.output = then->output;
+                track.sends = then->sends;
+                track.sendsBypass = then->sendsBypass;
             }
         restoreLanes (project.masterAutomation, state.masterAutomation);
         changed (false);
@@ -257,6 +260,118 @@ namespace pr7s
         return track.id;
     }
 
+    int Studio::addFxChannel (const juce::PluginDescription* effect, juce::String* error)
+    {
+        Insert insert;
+        std::unique_ptr<juce::AudioPluginInstance> instance;
+        if (effect != nullptr)
+        {
+            insert.plugin = *effect;
+            juce::String problem;
+            instance = host->createEffect (insert, engine.getSampleRate(), engine.getBlockSize(), problem);
+            if (instance == nullptr)
+            {
+                if (error != nullptr)
+                    *error = problem;
+                return 0;
+            }
+        }
+        return addFxChannel (insert, std::move (instance));
+    }
+
+    int Studio::addFxChannel (const Insert& insert, std::unique_ptr<juce::AudioPluginInstance> instance)
+    {
+        // Named as the manual's are: "FX 1-<effect>".
+        int number = 1;
+        for (const auto& other : project.tracks)
+            if (other.isFx())
+                ++number;
+        Track track;
+        track.id = project.nextTrackId++;
+        track.kind = Track::Kind::fx;
+        track.colour = trackColour ((int) project.tracks.size());
+        track.name = "FX " + juce::String (number) + (insert.isEmpty() ? juce::String() : "-" + insert.plugin.name);
+        project.tracks.push_back (track);
+        engine.addChannel (track.id, false);
+        if (! insert.isEmpty())
+        {
+            project.tracks.back().inserts.push_back (insert);
+            engine.insertEffect (track.id, 0, std::move (instance));
+        }
+        selectTrack (track.id);
+        recordUndoState();
+        return track.id;
+    }
+
+    int Studio::addGroupChannel()
+    {
+        int number = 1;
+        for (const auto& other : project.tracks)
+            if (other.isGroup())
+                ++number;
+        Track track;
+        track.id = project.nextTrackId++;
+        track.kind = Track::Kind::group;
+        track.colour = trackColour ((int) project.tracks.size());
+        track.name = "Group " + juce::String (number);
+        project.tracks.push_back (track);
+        engine.addChannel (track.id, true);
+        selectTrack (track.id);
+        recordUndoState();
+        return track.id;
+    }
+
+    void Studio::setOutput (int trackId, int groupId)
+    {
+        auto* track = project.findTrack (trackId);
+        const auto* group = project.findTrack (groupId);
+        if (track == nullptr || track->isChannel() || (groupId != 0 && (group == nullptr || ! group->isGroup())))
+            return;   // (FX and group channels go to the master)
+        track->output = groupId;
+        changed();
+    }
+
+    void Studio::setSend (int trackId, int slot, const Send& send)
+    {
+        auto* track = project.findTrack (trackId);
+        const auto* fx = project.findTrack (send.target);
+        if (track == nullptr || track->isFx() || ! juce::isPositiveAndBelow (slot, Project::maxSends)
+            || (send.target != 0 && (fx == nullptr || ! fx->isFx())))
+            return;
+        if ((int) track->sends.size() <= slot)
+            track->sends.resize ((size_t) slot + 1);
+        auto& kept = track->sends[(size_t) slot];
+        kept = send;
+        kept.levelDb = juce::jlimit (-60.0f, 6.0f, send.levelDb);
+        while (! track->sends.empty() && track->sends.back().target == 0)
+            track->sends.pop_back();
+        changed();
+    }
+
+    void Studio::setSendLevel (int trackId, int slot, float db, bool undoable)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! juce::isPositiveAndBelow (slot, (int) track->sends.size()))
+            return;
+        track->sends[(size_t) slot].levelDb = juce::jlimit (-60.0f, 6.0f, db);
+        const auto written = writeValue (trackId, control (AutomationLane::Target::send, slot), volumeToTravel (track->sends[(size_t) slot].levelDb));
+        changed (undoable && ! written);
+    }
+
+    void Studio::removeSend (int trackId, int slot)
+    {
+        setSend (trackId, slot, {});
+    }
+
+    void Studio::setSendsBypass (int trackId, bool bypass)
+    {
+        if (auto* track = project.findTrack (trackId))
+        {
+            track->sendsBypass = bypass;
+            changed();
+        }
+    }
+
     void Studio::setTrackInput (int trackId, int input, bool stereo)
     {
         if (auto* track = project.findTrack (trackId); track != nullptr && track->isAudio())
@@ -287,8 +402,20 @@ namespace pr7s
         unwatch (engine.getInstrument (trackId));
         for (int slot = 0; slot < (int) it->inserts.size(); ++slot)
             effectGoing (trackId, slot);
+        const auto wasChannel = it->isChannel();
         project.tracks.erase (it);
         engine.removeTrack (trackId);
+        if (wasChannel)   // what was sent or routed to it: back to the master, no send
+            for (auto& track : project.tracks)
+            {
+                if (track.output == trackId)
+                    track.output = 0;
+                for (auto& send : track.sends)
+                    if (send.target == trackId)
+                        send = {};
+                while (! track.sends.empty() && track.sends.back().target == 0)
+                    track.sends.pop_back();
+            }
         if (selectedTrack == trackId)
             selectedTrack = project.tracks.empty() ? 0 : project.tracks[(size_t) juce::jmin (index, (int) project.tracks.size() - 1)].id;
         changed();
@@ -375,6 +502,8 @@ namespace pr7s
 
     void Studio::setArmed (int trackId)
     {
+        if (const auto* t = project.findTrack (trackId); t != nullptr && t->isChannel())
+            return;   // an FX or group channel records nothing
         for (auto& track : project.tracks)
             track.armed = track.id == trackId;
         changed (false);
@@ -384,7 +513,8 @@ namespace pr7s
     {
         selectedTrack = trackId;
         // Selecting arms it (when not recording), so you play and record the track you're on.
-        if (! engine.isRecording())
+        const auto* selected = project.findTrack (trackId);
+        if (! engine.isRecording() && (selected == nullptr || ! selected->isChannel()))
             for (auto& track : project.tracks)
                 track.armed = track.id == trackId;
         changed (false);
@@ -838,6 +968,11 @@ namespace pr7s
             controls.push_back ({ T::mute, 0, 0, "Mute", {} });
             if (auto* instrument = engine.getInstrument (busId))
                 addKnobs (instrument, T::instrument, 0, "Instrument: " + instrument->getName());
+            // Each send's level (to the FX channel it's on).
+            const auto* track = project.findTrack (busId);
+            for (int s = 0; s < (int) track->sends.size(); ++s)
+                if (const auto* fx = project.findTrack (track->sends[(size_t) s].target))
+                    controls.push_back ({ T::send, s, 0, "Send " + juce::String (s + 1) + ": " + fx->name, {} });
         }
         for (int slot = 0; slot < engine.getNumEffects (busId); ++slot)
             if (auto* effect = engine.getEffect (busId, slot))
@@ -861,6 +996,13 @@ namespace pr7s
             case AutomationLane::Target::volume: return "Volume";
             case AutomationLane::Target::pan:    return "Pan";
             case AutomationLane::Target::mute:   return "Mute";
+            case AutomationLane::Target::send:
+            {
+                const auto* track = project.findTrack (busId);
+                const auto* fx = track != nullptr && juce::isPositiveAndBelow (lane.slot, (int) track->sends.size())
+                                   ? project.findTrack (track->sends[(size_t) lane.slot].target) : nullptr;
+                return "Send " + juce::String (lane.slot + 1) + (fx != nullptr ? ": " + fx->name : juce::String());
+            }
             case AutomationLane::Target::instrument:
             case AutomationLane::Target::insert: break;
         }
@@ -879,6 +1021,9 @@ namespace pr7s
             case AutomationLane::Target::volume: return volumeToTravel (busId == Engine::masterBus ? project.masterVolumeDb : track != nullptr ? track->volumeDb : 0.0f);
             case AutomationLane::Target::pan:    return panToTravel (track != nullptr ? track->pan : 0.0f);
             case AutomationLane::Target::mute:   return track != nullptr && track->mute ? 1.0f : 0.0f;
+            case AutomationLane::Target::send:
+                return track != nullptr && juce::isPositiveAndBelow (lane.slot, (int) track->sends.size())
+                         ? volumeToTravel (track->sends[(size_t) lane.slot].levelDb) : 0.0f;
             case AutomationLane::Target::instrument:
             case AutomationLane::Target::insert: break;
         }
@@ -1247,6 +1392,10 @@ namespace pr7s
                 break;
             case AutomationLane::Target::pan:  if (track != nullptr) track->pan = travelToPan (value); break;
             case AutomationLane::Target::mute: if (track != nullptr) track->mute = value >= 0.5f; break;
+            case AutomationLane::Target::send:
+                if (track != nullptr && juce::isPositiveAndBelow (which.slot, (int) track->sends.size()))
+                    track->sends[(size_t) which.slot].levelDb = travelToVolume (value);
+                break;
             case AutomationLane::Target::instrument:
             case AutomationLane::Target::insert:
                 if (auto* plugin = pluginFor (busId, which))
@@ -1897,6 +2046,11 @@ namespace pr7s
         juce::StringArray missing;
         for (auto& track : project.tracks)
         {
+            if (track.isChannel())
+            {
+                engine.addChannel (track.id, track.isGroup());
+                continue;
+            }
             if (track.isAudio())
             {
                 engine.addAudioTrack (track.id);

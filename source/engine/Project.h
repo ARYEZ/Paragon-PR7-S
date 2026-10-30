@@ -82,9 +82,9 @@ namespace pr7s
 
     struct AutomationLane
     {
-        enum class Target { volume, pan, mute, instrument, insert };   // saved by name
+        enum class Target { volume, pan, mute, instrument, insert, send };   // saved by name
         Target target = Target::volume;
-        int slot = 0;                 // Target::insert: which insert (0 to 7)
+        int slot = 0;                 // Target::insert: which insert (0 to 15); Target::send: which send (0 to 7)
         int parameter = 0;            // Target::instrument and insert: the plugin's parameter, by index
         juce::String parameterName;   // as the plugin named it (shown if the plugin is missing)
         std::vector<AutomationPoint> points;   // in order of beat
@@ -109,11 +109,27 @@ namespace pr7s
     inline float panToTravel (float pan) noexcept    { return (pan + 1.0f) * 0.5f; }
     inline float travelToPan (float travel) noexcept { return travel * 2.0f - 1.0f; }
 
+    // A send (inspired by Cubase's workflow): some of a channel's sound to an
+    // FX channel, before or after its fader. Its slot is its place in the
+    // channel's list (8 of them).
+    struct Send
+    {
+        int target = 0;           // the FX channel's track id (0: none)
+        float levelDb = 0.0f;     // -60 (silent) to +6, as a fader
+        bool on = true;
+        bool preFader = false;    // before the fader (and pan); after it otherwise
+        bool operator== (const Send&) const = default;
+    };
+
     struct Track
     {
         // An instrument track plays MIDI parts through its instrument; an
         // audio track plays clips (recordings) and records from the interface.
-        enum class Kind { instrument, audio };   // saved by name
+        // An FX channel takes what the sends give it, through its inserts (a
+        // reverb, a delay); a group channel takes the tracks routed to it (a
+        // submix: one fader and the same effects for all of them). Neither
+        // has parts.
+        enum class Kind { instrument, audio, fx, group };   // saved by name
 
         int id = 0;                      // stays the same for the track's life (undo and the engine use it)
         Kind kind = Kind::instrument;
@@ -131,6 +147,12 @@ namespace pr7s
         bool stereoInput = false;
         bool monitor = false;
         bool isAudio() const noexcept { return kind == Kind::audio; }
+        bool isFx() const noexcept { return kind == Kind::fx; }
+        bool isGroup() const noexcept { return kind == Kind::group; }
+        bool isChannel() const noexcept { return kind == Kind::fx || kind == Kind::group; }   // no parts, no instrument
+        int output = 0;                  // a group channel's id, or 0: the master (FX and group channels: the master)
+        std::vector<Send> sends;         // by slot (none after the last used); FX channels have none
+        bool sendsBypass = false;        // all of its sends off at once
         std::vector<Part> parts;
         std::vector<Insert> inserts;     // its effects, by slot (none after the last one used)
         int preFaderSlots = 16;          // slots before the fader and pan (the rest after them)
@@ -156,6 +178,7 @@ namespace pr7s
 
         static constexpr double minBpm = 20.0, maxBpm = 300.0;
         static constexpr int maxInserts = 16;  // insert slots on a channel (and on the master), as the manual has
+        static constexpr int maxSends = 8;     // send slots on a channel (our choice: the manual gives no number)
 
         double beatsPerBar() const noexcept { return numerator * 4.0 / denominator; }
         double secondsPerBeat() const noexcept { return 60.0 / bpm; }

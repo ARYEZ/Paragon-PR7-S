@@ -279,6 +279,7 @@ public:
         using T = pr7s::AutomationLane::Target;
         switch (l->target)
         {
+            case T::send:
             case T::volume: { const auto db = pr7s::travelToVolume (value); return db <= -59.9f ? juce::String ("-inf") : juce::String (db, 1) + " dB"; }
             case T::pan:    { const auto p = juce::roundToInt (pr7s::travelToPan (value) * 100.0f); return p == 0 ? juce::String ("C") : (p < 0 ? "L " : "R ") + juce::String (std::abs (p)); }
             case T::mute:   return value >= 0.5f ? "ON" : "OFF";
