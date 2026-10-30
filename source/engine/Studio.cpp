@@ -63,6 +63,7 @@ namespace pr7s
     Studio::~Studio()
     {
         stopTimer();
+        endExport();
         if (audioWriter != nullptr)
         {
             engine.setRecorder (recordTrack, nullptr);
@@ -967,6 +968,126 @@ namespace pr7s
         modified = false;
         sendChangeMessage();
         return true;
+    }
+
+    bool Studio::beginExport (const juce::File& destination, const ExportOptions& options, juce::String& error)
+    {
+        if (exportJob != nullptr || engine.isRecording())
+        {
+            error = "Not while recording or exporting.";
+            return false;
+        }
+        if (options.end <= options.start)
+        {
+            error = "There's nothing to export: the range is empty.";
+            return false;
+        }
+        auto job = std::make_unique<ExportJob>();
+        job->file = destination;
+        job->previousRate = engine.getSampleRate();
+        job->previousBlockSize = engine.getBlockSize();
+        job->previousPosition = engine.getPosition();
+
+        destination.deleteFile();
+        std::unique_ptr<juce::OutputStream> stream (destination.createOutputStream());
+        const auto rate = options.sampleRate > 0.0 ? options.sampleRate : job->previousRate;
+        if (stream != nullptr)
+            job->writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (rate)
+                                                                                                        .withNumChannels (2)
+                                                                                                        .withBitsPerSample (options.bitsPerSample == 16 ? 16 : 24));
+        if (job->writer == nullptr)
+        {
+            error = "Couldn't write " + destination.getFullPathName();
+            return false;
+        }
+
+        // The interface let go; the engine at the export's rate (the
+        // recordings are loaded again at it), stopped.
+        engine.stop();
+        if (withDevices)
+            devices.removeAudioCallback (&engine);
+        if (! juce::approximatelyEqual (rate, job->previousRate))
+            engine.prepare (rate, job->previousBlockSize);
+
+        // What's played: the song with the click as asked, no cycle, and
+        // nothing starting at or after the end (so the ring-out is only
+        // what's already sounding).
+        auto playing = project;
+        playing.loopOn = false;
+        playing.click = options.click;
+        for (auto& track : playing.tracks)
+        {
+            track.parts.erase (std::remove_if (track.parts.begin(), track.parts.end(),
+                                               [&options] (const Part& p) { return p.start >= options.end; }),
+                               track.parts.end());
+            for (auto& part : track.parts)
+                part.length = juce::jmin (part.length, options.end - part.start);
+        }
+        engine.update (playing);
+
+        job->total = (juce::int64) std::llround (((options.end - options.start) * 60.0 / project.bpm + juce::jmax (0.0, options.tailSeconds)) * rate);
+        engine.setPosition (options.start);
+        engine.play();
+        exportJob = std::move (job);
+        return true;
+    }
+
+    bool Studio::renderExport (std::function<bool (double)> keepGoing)
+    {
+        if (exportJob == nullptr)
+            return false;
+        auto& job = *exportJob;
+        const auto blockSize = juce::jmax (64, engine.getBlockSize());
+        juce::AudioBuffer<float> block (2, blockSize);
+        const auto reportEvery = (juce::int64) (engine.getSampleRate() * 0.5);
+        juce::int64 sinceReport = 0;
+        for (juce::int64 done = 0; done < job.total;)
+        {
+            const auto length = (int) juce::jmin ((juce::int64) blockSize, job.total - done);
+            engine.render (block, length);
+            if (! job.writer->writeFromAudioSampleBuffer (block, 0, length))
+                return false;
+            done += length;
+            sinceReport += length;
+            if (keepGoing && sinceReport >= reportEvery)
+            {
+                sinceReport = 0;
+                if (! keepGoing ((double) done / (double) job.total))
+                    return false;
+            }
+        }
+        job.finished = true;
+        return true;
+    }
+
+    void Studio::endExport()
+    {
+        if (exportJob == nullptr)
+            return;
+        auto job = std::move (exportJob);
+        engine.stop();
+        job->writer.reset();   // the file finished
+        if (! job->finished)
+            job->file.deleteFile();
+        // Everything as it was.
+        if (! juce::approximatelyEqual (engine.getSampleRate(), job->previousRate))
+            engine.prepare (job->previousRate, job->previousBlockSize);
+        engine.update (project);
+        engine.setPosition (job->previousPosition);
+        if (withDevices)
+            devices.addAudioCallback (&engine);
+        sendChangeMessage();
+    }
+
+    bool Studio::exportMix (const juce::File& destination, const ExportOptions& options, juce::String& error)
+    {
+        if (! beginExport (destination, options, error))
+            return false;
+        const auto rendered = renderExport();
+        endExport();
+        if (! rendered)
+            error = "Couldn't write " + destination.getFullPathName();
+        return rendered;
     }
 
     bool Studio::open (const juce::File& source, juce::String& problems)

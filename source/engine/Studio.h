@@ -146,6 +146,30 @@ namespace pr7s
         juce::File getFile() const noexcept { return file; }
         bool isModified() const noexcept { return modified; }
 
+        //======================================================================
+        // Export: the song (or part of it) to a stereo WAV, through everything
+        // that's heard (instruments, clips, effects, the master), faster than
+        // real time. The interface is let go meanwhile, and everything is as
+        // it was afterwards.
+        struct ExportOptions
+        {
+            double start = 0.0, end = 0.0;   // beats
+            double sampleRate = 0.0;         // 0: the interface's
+            int bitsPerSample = 24;          // 16 or 24
+            bool click = false;
+            double tailSeconds = 2.0;        // after the end, for reverbs and delays to ring out (nothing new starts)
+        };
+        // In three steps, so the middle one can run on another thread behind a
+        // progress bar: begin (message thread), render (any thread; false:
+        // cancelled, or the disk failed), end (message thread; a file not
+        // finished is deleted).
+        bool beginExport (const juce::File&, const ExportOptions&, juce::String& error);
+        bool renderExport (std::function<bool (double progress)> keepGoing = {});
+        void endExport();
+        bool isExporting() const noexcept { return exportJob != nullptr; }
+        // All three, here and now (tests; and short songs).
+        bool exportMix (const juce::File&, const ExportOptions&, juce::String& error);
+
     private:
         void changed (bool undoable = true);
         void numberParts();   // an id for every part that hasn't one
@@ -189,6 +213,17 @@ namespace pr7s
         double audioCacheRate = 0.0;
         juce::File unsavedAudioFolder;
         std::optional<double> latencyOverride;
+
+        struct ExportJob
+        {
+            juce::File file;
+            std::unique_ptr<juce::AudioFormatWriter> writer;
+            juce::int64 total = 0;
+            double previousRate = 0.0, previousPosition = 0.0;
+            int previousBlockSize = 512;
+            bool finished = false;
+        };
+        std::unique_ptr<ExportJob> exportJob;
 
         std::vector<Project> undoStates;
         int undoIndex = -1;
