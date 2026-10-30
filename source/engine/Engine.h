@@ -72,6 +72,11 @@ namespace pr7s
         // Message thread; takes effect on the next update().
         void setHeld (int busId, const AutomationLane& control, bool held);
 
+        // Told just before a plugin (an instrument or an effect) is deleted,
+        // however it goes (replaced, removed, its track removed, the engine
+        // closing): whatever listens to it lets go first. Message thread.
+        std::function<void (juce::AudioProcessor*)> onPluginGoing;
+
         // Takes what it plays from the project: the tempo, signature, cycle
         // and click, each track's notes, volume, pan, mute and solo, which
         // inserts are bypassed, and the master's volume.

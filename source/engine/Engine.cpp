@@ -60,6 +60,17 @@ namespace pr7s
 
     Engine::~Engine()
     {
+        if (onPluginGoing)
+        {
+            for (auto& track : tracks)
+            {
+                onPluginGoing (track->instrument.get());
+                for (auto& slot : track->inserts)
+                    onPluginGoing (slot.plugin.get());
+            }
+            for (auto& slot : masterInserts)
+                onPluginGoing (slot.plugin.get());
+        }
         const juce::ScopedLock sl (lock);
         tracks.clear();
         masterInserts.clear();
@@ -198,6 +209,8 @@ namespace pr7s
                 tracks.push_back (std::move (incoming));
             }
         }
+        if (old != nullptr && onPluginGoing)
+            onPluginGoing (old.get());
         // `old` (and `incoming` if it was emptied) are freed here, outside the lock.
     }
 
@@ -213,6 +226,12 @@ namespace pr7s
                     tracks.erase (it);
                     break;
                 }
+        }
+        if (removed != nullptr && onPluginGoing)
+        {
+            onPluginGoing (removed->instrument.get());
+            for (auto& slot : removed->inserts)
+                onPluginGoing (slot.plugin.get());
         }
     }
 
@@ -331,6 +350,8 @@ namespace pr7s
             removed = std::move ((*inserts)[(size_t) slot].plugin);
             inserts->erase (inserts->begin() + slot);
         }
+        if (removed != nullptr && onPluginGoing)
+            onPluginGoing (removed.get());
         // `removed` is deleted here, outside the lock.
     }
 

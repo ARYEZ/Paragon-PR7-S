@@ -373,7 +373,7 @@ TEST_CASE ("Writing automation: with W on while playing, moving the fader writes
     CHECK_THAT (valueAt (1.01), WithinAbs (-12.0, 0.6));     // the hand's -12, from where it was grabbed
     CHECK_THAT (valueAt (2.5), WithinAbs (-6.0, 1.0e-3));
     CHECK_THAT (valueAt (3.5), WithinAbs (0.0, 1.0e-3));     // let go: back to what it was (after the return time)
-    CHECK (studio.getProject().tracks[0].volumeDb == 0.0f);  // the fader's own setting, back
+    CHECK_THAT (studio.getProject().tracks[0].volumeDb, WithinAbs (0.0, 1.0e-4));  // the fader's own setting, back (within rounding: macOS)
     CHECK (studio.getAutomationRead (track));
 
     // Played back: the fader follows the curve.

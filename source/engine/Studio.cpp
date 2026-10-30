@@ -20,6 +20,7 @@ namespace pr7s
 
     Studio::Studio (bool useDevices) : withDevices (useDevices)
     {
+        engine.onPluginGoing = [this] (juce::AudioProcessor* plugin) { unwatch (plugin); };
         formats.registerBasicFormats();
         writerThread.startThread();
         // Recordings before a song is saved: a folder of their own in Documents (tests: a temporary one).
@@ -64,6 +65,7 @@ namespace pr7s
     {
         stopTimer();
         unwatchAll();
+        engine.onPluginGoing = nullptr;   // (the watchers are gone first)
         endExport();
         if (audioWriter != nullptr)
         {
@@ -1144,7 +1146,7 @@ namespace pr7s
     void Studio::unwatch (juce::AudioProcessor* plugin)
     {
         if (plugin != nullptr)
-            watchers.erase (plugin);
+            watchers.erase (plugin);   // (before it's deleted: the engine says so, however it goes)
     }
 
     void Studio::unwatchAll()
