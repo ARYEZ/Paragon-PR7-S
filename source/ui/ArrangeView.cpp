@@ -443,8 +443,15 @@ void ArrangeView::mouseUp (const juce::MouseEvent&)
 
 void ArrangeView::mouseDoubleClick (const juce::MouseEvent& event)
 {
-    if (event.position.y < (float) Timeline::rulerHeight || partAt (event.position))
+    if (event.position.y < (float) Timeline::rulerHeight)
         return;
+    if (const auto hit = partAt (event.position))
+    {
+        select (hit->first, hit->second);
+        if (onEditNotes)
+            onEditNotes();
+        return;
+    }
     // A new empty part, a bar long, from the bar clicked in.
     if (const auto trackId = trackAtY (event.position.y))
     {
@@ -487,12 +494,15 @@ void ArrangeView::mouseWheelMove (const juce::MouseEvent& event, const juce::Mou
 void ArrangeView::showPartMenu (int trackId, int index)
 {
     juce::PopupMenu menu;
+    menu.addItem (3, "Edit notes (key editor)");
     menu.addItem (1, "Duplicate (after it)");
     menu.addItem (2, "Delete");
     menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, index] (int chosen)
     {
         selection = { trackId, index };
-        if (chosen == 1)
+        if (chosen == 3 && onEditNotes)
+            onEditNotes();
+        else if (chosen == 1)
             duplicateSelected();
         else if (chosen == 2)
             deleteSelected();

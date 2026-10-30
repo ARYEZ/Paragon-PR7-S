@@ -7,7 +7,7 @@
 #include "ui/ParagonLookAndFeel.h"
 
 // Hidden test (the "[.]" tag): renders the studio's window to a PNG, with a
-// short demo song in it, for reviewing the UI. Run with:
+// short demo song in it and the key editor open, for reviewing the UI. Run with:
 //   PARAGON_SNAPSHOT=studio.png ./ParagonPR7STests "[snapshot]"
 // PARAGON_SNAPSHOT_WIDTH sets the width (default 1500; 3000 for 2x).
 // PARAGON_SNAPSHOT_FINISH=black or =neon picks the finish.
@@ -45,7 +45,7 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     }
     Part solo { 16.0, 16.0, "Lead", {} };
     for (int i = 0; i < 24; ++i)
-        solo.notes.push_back ({ i * 0.6, 0.5, 72 + (i * 5) % 12, 0.8f });
+        solo.notes.push_back ({ i * 0.6, 0.5, 72 + (i * 5) % 12, 0.45f + 0.5f * (float) ((i * 7) % 10) / 9.0f });
     studio.addPart (lead, solo);
     studio.setCycle (16.0, 32.0);
     studio.setCycleOn (true);
@@ -67,7 +67,11 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     }
     studio.stop();
     studio.getEngine().setPosition (21.0);
-    view.getArrangeView().select (bass, 1);
+    // The key editor open on the lead part, a few of its notes selected.
+    view.getArrangeView().select (lead, 0);
+    view.openKeyEditor();
+    studio.dispatchPendingMessages();
+    view.getKeyEditor().selectNotes ({ 3, 4, 5 });
 
     const auto image = view.createComponentSnapshot (view.getLocalBounds(), true, scale);
     const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (path);

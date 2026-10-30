@@ -59,6 +59,11 @@ namespace pr7s
         void copyPart (int trackId, int index, int toTrackId, double newStart);
         void deletePart (int trackId, int index);
         void resizePart (int trackId, int index, double newLength);
+        // Where the part with this id is now: its track and index (none if it's gone).
+        std::optional<std::pair<int, int>> findPart (int partId) const;
+        // A part's notes, replaced (the key editor's every edit: one undo step each).
+        // Kept in the order given, so the editor's selection still points at the same notes.
+        void setNotes (int trackId, int index, std::vector<Note>);
 
         //======================================================================
         // The song.
@@ -99,6 +104,7 @@ namespace pr7s
 
     private:
         void changed (bool undoable = true);
+        void numberParts();   // an id for every part that hasn't one
         void recordUndoState();
         void restore (const Project&);
         void updateLiveTrack();
@@ -117,6 +123,7 @@ namespace pr7s
         juce::File file;
         bool modified = false;
         int selectedTrack = 0;
+        int nextPartId = 1;
 
         // Recording: where it started, into which track, and what's come in so far.
         bool wasRecording = false;

@@ -14,9 +14,10 @@ MainView::MainView (pr7s::Studio& studioToUse)
       transport (studioToUse),
       trackList (studioToUse, timeline),
       arrange (studioToUse, timeline),
+      keyEditor (studioToUse, arrange),
       keyboard (studioToUse.getEngine().getKeyboardState(), juce::MidiKeyboardComponent::horizontalKeyboard)
 {
-    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &undoButton, &redoButton, &pluginsButton, &settingsButton })
+    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &undoButton, &redoButton, &editorButton, &pluginsButton, &settingsButton })
     {
         button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
         button->setColour (juce::TextButton::textColourOffId, ParagonColours::text);
@@ -29,6 +30,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
     saveAsButton.setTooltip ("Save the song under a new name (Ctrl+Shift+S)");
     undoButton.setTooltip ("Undo (Ctrl+Z)");
     redoButton.setTooltip ("Redo (Ctrl+Shift+Z)");
+    editorButton.setTooltip ("The key editor: the selected part's notes (Ctrl+E; or double-click a part)");
+    editorButton.setColour (juce::TextButton::textColourOnId, ParagonColours::accent);
     pluginsButton.setTooltip ("Find your VST3 instruments");
     settingsButton.setTooltip ("Audio interface, MIDI inputs and the finish");
     newButton.onClick = [this] { newProject(); };
@@ -37,12 +40,20 @@ MainView::MainView (pr7s::Studio& studioToUse)
     saveAsButton.onClick = [this] { saveProjectAs(); };
     undoButton.onClick = [this] { studio.undo(); };
     redoButton.onClick = [this] { studio.redo(); };
+    editorButton.onClick = [this] { keyEditorOpen ? closeKeyEditor() : openKeyEditor(); };
     pluginsButton.onClick = [this] { openPlugins(); };
     settingsButton.onClick = [this] { openSettings(); };
 
     addAndMakeVisible (transport);
     addAndMakeVisible (trackList);
     addAndMakeVisible (arrange);
+    addChildComponent (keyEditor);
+    keyEditor.onClose = [this] { closeKeyEditor(); };
+    arrange.onEditNotes = [this] { openKeyEditor(); };
+    // Told of clicks in the work areas, to know where the keys go.
+    arrange.addMouseListener (this, true);
+    trackList.addMouseListener (this, true);
+    keyEditor.addMouseListener (this, true);
 
     // The on-screen keyboard: keys in the PR7's colours, middle C marked.
     keyboard.setAvailableRange (24, 108);
@@ -81,6 +92,9 @@ MainView::MainView (pr7s::Studio& studioToUse)
 
 MainView::~MainView()
 {
+    arrange.removeMouseListener (this);
+    trackList.removeMouseListener (this);
+    keyEditor.removeMouseListener (this);
     studio.onInstrumentGoing = nullptr;
     instrumentWindows.clear();
     Finish::changes().removeChangeListener (this);
@@ -163,6 +177,8 @@ void MainView::resized()
         button->setBounds (header.removeFromLeft (66));
         header.removeFromLeft (6);
     }
+    header.removeFromLeft (18);
+    editorButton.setBounds (header.removeFromLeft (100));
     settingsButton.setBounds (header.removeFromRight (92));
     header.removeFromRight (6);
     pluginsButton.setBounds (header.removeFromRight (86));
@@ -177,6 +193,14 @@ void MainView::resized()
     keyboard.setLowestVisibleKey (24);
 
     auto middle = area.reduced (7, 3);
+    if (keyEditorOpen)
+    {
+        // The editor takes the lower part (a little over half), the arrangement keeps the rest.
+        const auto height = juce::jlimit (juce::jmin (240, middle.getHeight()), juce::jmax (240, middle.getHeight() - 170),
+                                          juce::roundToInt ((float) middle.getHeight() * 0.56f));
+        keyEditor.setBounds (middle.removeFromBottom (height));
+        middle.removeFromBottom (3);
+    }
     trackList.setBounds (middle.removeFromLeft (trackListWidth));
     middle.removeFromLeft (2);
     arrange.setBounds (middle);
@@ -189,6 +213,9 @@ bool MainView::keyPressed (const juce::KeyPress& key)
     const auto code = key.getKeyCode();
     const auto letter = juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) code);
 
+    if (keyEditorOpen && keysToEditor && keyEditor.keyPressed (key))
+        return true;
+
     if (mods.isCommandDown())
     {
         switch (letter)
@@ -199,10 +226,12 @@ bool MainView::keyPressed (const juce::KeyPress& key)
             case 'O': openProject(); return true;
             case 'N': newProject(); return true;
             case 'D': arrange.duplicateSelected(); return true;
+            case 'E': keyEditorOpen ? closeKeyEditor() : openKeyEditor(); return true;
             default: return false;
         }
     }
 
+    if (keyEditorOpen && key == juce::KeyPress::escapeKey) { closeKeyEditor(); return true; }
     if (key == juce::KeyPress::spaceKey)                { studio.togglePlay(); return true; }
     if (key == juce::KeyPress::homeKey)                 { studio.goToStart(); return true; }
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey) { arrange.deleteSelected(); return true; }
@@ -210,6 +239,30 @@ bool MainView::keyPressed (const juce::KeyPress& key)
     if (key.getTextCharacter() == '/')                  { studio.setCycleOn (! studio.getProject().loopOn); return true; }
     if (letter == 'C')                                  { studio.setClick (! studio.getProject().click); return true; }
     return false;
+}
+
+void MainView::mouseDown (const juce::MouseEvent& event)
+{
+    keysToEditor = event.eventComponent == &keyEditor || keyEditor.isParentOf (event.eventComponent);
+}
+
+//==============================================================================
+void MainView::openKeyEditor()
+{
+    keyEditorOpen = keysToEditor = true;
+    editorButton.setToggleState (true, juce::dontSendNotification);
+    keyEditor.setVisible (true);
+    resized();
+    repaint();
+}
+
+void MainView::closeKeyEditor()
+{
+    keyEditorOpen = keysToEditor = false;
+    editorButton.setToggleState (false, juce::dontSendNotification);
+    keyEditor.setVisible (false);
+    resized();
+    repaint();
 }
 
 //==============================================================================

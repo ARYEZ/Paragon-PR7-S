@@ -433,3 +433,65 @@ TEST_CASE ("Editing parts, undo and redo, and a song saved and opened", "[studio
     file.deleteFile();
 }
 
+
+TEST_CASE ("Edited notes play where they are now; each edit is one undo step; parts keep their ids", "[studio][editor]")
+{
+    Studio studio (false);
+    const auto trackId = studio.getProject().tracks[0].id;
+    auto instrument = std::make_unique<Probe>();
+    auto* probe = instrument.get();
+    studio.getEngine().setInstrument (trackId, std::move (instrument));
+
+    studio.addPart (trackId, { 4.0, 4.0, "A", { { 0.0, 1.0, 60, 0.8f } } });
+    const auto before = studio.getProject().tracks[0].parts[0].notes;
+    // Moved to the part's third beat, up to E, played softer.
+    studio.setNotes (trackId, 0, { { 2.0, 0.5, 64, 0.5f } });
+
+    studio.play();
+    const auto beat = (juce::int64) (60.0 / 120.0 * 48000.0);   // 24000 samples at 120 BPM
+    renderSamples (studio.getEngine(), (int) (beat * 8));
+    studio.stop();
+    const auto on = probe->notesOn();
+    REQUIRE (on.size() == 1);
+    CHECK (on[0].sample == beat * 6);   // the part's start (4) + 2
+    CHECK (on[0].message.getNoteNumber() == 64);
+    CHECK (on[0].message.getVelocity() == juce::roundToInt (0.5f * 127.0f));
+    REQUIRE (probe->notesOff().size() == 1);
+    CHECK (probe->notesOff()[0].sample == beat * 6 + beat / 2);
+
+    // One undo puts the old notes back; redo the new ones.
+    studio.undo();
+    CHECK (studio.getProject().tracks[0].parts[0].notes == before);
+    studio.redo();
+    CHECK (studio.getProject().tracks[0].parts[0].notes[0].pitch == 64);
+    // The same notes again isn't an edit: undo goes back past it to the old notes.
+    studio.setNotes (trackId, 0, studio.getProject().tracks[0].parts[0].notes);
+    studio.undo();
+    CHECK (studio.getProject().tracks[0].parts[0].notes == before);
+    studio.redo();
+
+    // Out-of-range values are kept in range.
+    studio.setNotes (trackId, 0, { { -1.0, 0.0, 200, 3.0f } });
+    const auto& kept = studio.getProject().tracks[0].parts[0].notes[0];
+    CHECK (kept.start == 0.0);
+    CHECK (kept.length > 0.0);
+    CHECK (kept.pitch == 127);
+    CHECK (kept.velocity == 1.0f);
+
+    // A part keeps its id when moved (to another track too); a copy gets its own.
+    const auto id = studio.getProject().tracks[0].parts[0].id;
+    CHECK (id != 0);
+    const auto other = studio.addTrack ({});
+    studio.movePart (trackId, 0, other, 12.0);
+    REQUIRE (studio.findPart (id).has_value());
+    CHECK (studio.findPart (id)->first == other);
+    studio.copyPart (other, 0, other, 20.0);
+    const auto& parts = studio.getProject().findTrack (other)->parts;
+    REQUIRE (parts.size() == 2);
+    CHECK (parts[1].id != 0);
+    CHECK (parts[1].id != id);
+    studio.deletePart (other, 0);
+    CHECK_FALSE (studio.findPart (id).has_value());
+    studio.undo();   // back again, with the same id
+    CHECK (studio.findPart (id).has_value());
+}

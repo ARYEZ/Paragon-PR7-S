@@ -109,3 +109,49 @@ TEST_CASE ("Snapping and the song's length", "[project]")
     project.tracks.push_back (track);
     CHECK (project.lastBeat() == 12.0);
 }
+
+TEST_CASE ("Quantize moves note starts to the song's grid, keeping their lengths", "[project][editor]")
+{
+    // A part starting half a beat into the song: the grid is the song's, not the part's.
+    Part part { 0.5, 8.0, "Riff", { { 0.1, 0.3, 60, 0.8f }, { 1.4, 1.0, 62, 0.8f }, { 2.2, 0.5, 64, 0.8f } } };
+    CHECK (quantize (part, 1.0));
+    REQUIRE (part.notes.size() == 3);
+    CHECK_THAT (part.notes[0].start, WithinAbs (0.5, 1.0e-9));   // song beat 0.6 -> 1.0
+    CHECK_THAT (part.notes[1].start, WithinAbs (1.5, 1.0e-9));   // 1.9 -> 2.0
+    CHECK_THAT (part.notes[2].start, WithinAbs (2.5, 1.0e-9));   // 2.7 -> 3.0
+    CHECK (part.notes[0].length == 0.3);                          // lengths stay
+    CHECK (part.notes[1].length == 1.0);
+
+    // Only the chosen notes; a note never goes before the part's start.
+    Part some { 0.0, 4.0, {}, { { 0.1, 0.25, 60, 0.8f }, { 1.1, 0.25, 62, 0.8f } } };
+    CHECK (quantize (some, 0.25, { 1 }));
+    CHECK (some.notes[0].start == 0.1);
+    CHECK_THAT (some.notes[1].start, WithinAbs (1.0, 1.0e-9));
+    Part early { 1.0, 4.0, {}, { { 0.05, 0.25, 60, 0.8f } } };
+    quantize (early, 4.0);   // the nearest bar line is 0, before the part
+    CHECK (early.notes[0].start == 0.0);
+
+    // Triplets: thirds of a beat.
+    Part triplets { 0.0, 4.0, {}, { { 0.30, 0.1, 60, 0.8f }, { 0.70, 0.1, 62, 0.8f } } };
+    quantize (triplets, 1.0 / 3.0);
+    CHECK_THAT (triplets.notes[0].start, WithinAbs (1.0 / 3.0, 1.0e-9));
+    CHECK_THAT (triplets.notes[1].start, WithinAbs (2.0 / 3.0, 1.0e-9));
+
+    // Two of the same pitch landing together become one: the longer.
+    Part twins { 0.0, 4.0, {}, { { 0.9, 0.25, 60, 0.8f }, { 1.1, 0.75, 60, 0.6f }, { 1.05, 0.5, 64, 0.8f } } };
+    CHECK_FALSE (quantize (twins, 1.0));
+    REQUIRE (twins.notes.size() == 2);
+    CHECK (twins.notes[0].pitch == 60);
+    CHECK (twins.notes[0].length == 0.75);
+    CHECK (twins.notes[1].pitch == 64);
+}
+
+TEST_CASE ("Note names count middle C as C3", "[project][editor]")
+{
+    CHECK (noteName (60) == "C3");
+    CHECK (noteName (61) == "C#3");
+    CHECK (noteName (69) == "A3");
+    CHECK (noteName (72) == "C4");
+    CHECK (noteName (0) == "C-2");
+    CHECK (noteName (127) == "G8");
+}
