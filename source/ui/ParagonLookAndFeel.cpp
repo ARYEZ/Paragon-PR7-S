@@ -51,7 +51,7 @@ void ParagonLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton
         // panels (light text) and printed on the silver pedal (dark text).
         const auto textColour = button.findColour (juce::ToggleButton::textColourId);
         g.setColour (on ? textColour : textColour.withMultipliedAlpha (0.6f));
-        g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+        g.setFont (textFont (13.0f));
         g.drawText (button.getButtonText(), bounds.withTrimmedLeft (2.0f), juce::Justification::centredLeft, true);
     }
 }

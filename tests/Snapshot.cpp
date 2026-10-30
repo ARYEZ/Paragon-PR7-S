@@ -12,6 +12,7 @@
 // PARAGON_SNAPSHOT_WIDTH sets the width (default 1500; 3000 for 2x).
 // PARAGON_SNAPSHOT_FINISH=black or =neon picks the finish.
 // PARAGON_SNAPSHOT_ZONE=mixer shows the mixer in the lower zone, =none nothing there (the key editor otherwise).
+// PARAGON_SNAPSHOT_EXPORT=1 draws the export page over it.
 TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
 {
     using namespace pr7s;
@@ -126,7 +127,19 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     }
     studio.dispatchPendingMessages();
 
-    const auto image = view.createComponentSnapshot (view.getLocalBounds(), true, scale);
+    auto image = view.createComponentSnapshot (view.getLocalBounds(), true, scale);
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_EXPORT", {}).isNotEmpty())
+    {
+        // The export page over the studio, as its dialog shows it (the title bar is the system's).
+        Windows::ExportPage page (studio);
+        const auto pageImage = page.createComponentSnapshot (page.getLocalBounds(), true, scale);
+        juce::Graphics g (image);
+        g.fillAll (juce::Colours::black.withAlpha (0.45f));
+        const auto at = image.getBounds().withSizeKeepingCentre (pageImage.getWidth(), pageImage.getHeight());
+        g.drawImageAt (pageImage, at.getX(), at.getY());
+        g.setColour (juce::Colour (0xff3a3540));
+        g.drawRect (at.expanded (1), 1);
+    }
     const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (path);
     file.deleteFile();
     juce::FileOutputStream stream (file);

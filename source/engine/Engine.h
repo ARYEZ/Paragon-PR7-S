@@ -59,6 +59,10 @@ namespace pr7s
         // couldn't be loaded (the sound goes past it).
         static constexpr int masterBus = 0;   // track ids start at 1
         void insertEffect (int busId, int slot, std::unique_ptr<juce::AudioPluginInstance>);
+        // Every instrument and effect told it's rendering offline (an export:
+        // a sampler can then wait for its samples instead of dropping notes),
+        // or back to real time. Message thread, not while the interface plays.
+        void setNonRealtime (bool);
         void removeEffect (int busId, int slot);   // deleted after it's out of the audio's way
         juce::AudioPluginInstance* getEffect (int busId, int slot) const;
         int getNumEffects (int busId) const;

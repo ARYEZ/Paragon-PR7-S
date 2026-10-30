@@ -56,6 +56,160 @@ namespace Windows
     }
 
     //==========================================================================
+    namespace
+    {
+        juce::FontOptions font (float height, int style = juce::Font::bold) { return ParagonLookAndFeel::textFont (height, style); }
+
+        // The bars a stretch covers, as a musician says it: 0 to 16 beats in 4/4 is "bars 1 to 4".
+        juce::String bars (double start, double end, const pr7s::Project& project)
+        {
+            const auto first = (int) std::floor (start / project.beatsPerBar() + 1.0e-9) + 1;
+            const auto last = juce::jmax (first, (int) std::ceil (end / project.beatsPerBar() - 1.0e-9));
+            return first == last ? "bar " + juce::String (first) : "bars " + juce::String (first) + " to " + juce::String (last);
+        }
+
+        juce::String kHz (double rate)
+        {
+            return juce::String (rate / 1000.0, juce::approximatelyEqual (std::round (rate / 1000.0), rate / 1000.0) ? 0 : 1) + " kHz";
+        }
+    }
+
+    ExportPage::ExportPage (pr7s::Studio& studioToUse) : studio (studioToUse)
+    {
+        const auto& project = studio.getProject();
+        if (studio.getEngine().getSampleRate() > 0.0)
+            interfaceRate = studio.getEngine().getSampleRate();
+
+        for (auto* label : { &rangeLabel, &rateLabel, &bitsLabel })
+        {
+            label->setFont (font (13.0f));
+            label->setColour (juce::Label::textColourId, ParagonColours::textDim);
+            addAndMakeVisible (*label);
+        }
+        rangeLabel.setText ("WHAT", juce::dontSendNotification);
+        rateLabel.setText ("SAMPLE RATE", juce::dontSendNotification);
+        bitsLabel.setText ("BITS", juce::dontSendNotification);
+
+        const auto end = project.lastBeat();
+        range.addItem ("The whole song, to the end of its last part" + (end > 0.0 ? " (" + bars (0.0, end, project) + ")" : juce::String (" (it's empty)")), 1);
+        range.addItem ("The cycle (" + bars (project.loopStart, project.loopEnd, project) + ")", 2);
+        range.setSelectedId (project.loopOn || end <= 0.0 ? 2 : 1, juce::dontSendNotification);
+        range.onChange = [this] { exportButton.setEnabled (canExport()); };
+
+        rate.addItem ("As the interface (" + kHz (interfaceRate) + ")", 1);
+        for (int i = 0; i < (int) std::size (rates); ++i)
+            rate.addItem (kHz (rates[i]), i + 2);
+        bits.addItem ("24-bit (for mastering, or more work)", 24);
+        bits.addItem ("16-bit (CD quality, smaller)", 16);
+
+        auto* settings = studio.getSettings();
+        rate.setSelectedId (settings != nullptr ? juce::jlimit (1, 5, settings->getIntValue ("exportRate", 1)) : 1, juce::dontSendNotification);
+        bits.setSelectedId (settings != nullptr && settings->getIntValue ("exportBits", 24) == 16 ? 16 : 24, juce::dontSendNotification);
+        ringOut.setToggleState (settings == nullptr || settings->getBoolValue ("exportRingOut", true), juce::dontSendNotification);
+
+        for (auto* toggle : { &click, &ringOut })
+        {
+            toggle->setColour (juce::ToggleButton::textColourId, ParagonColours::text);
+            toggle->setColour (juce::ToggleButton::tickColourId, ParagonColours::accent);
+            addAndMakeVisible (*toggle);
+        }
+        for (auto* box : { &range, &rate, &bits })
+            addAndMakeVisible (*box);
+
+        note.setText ("Everything you hear (every track through its effects, then the master) as a stereo WAV, written faster "
+                      "than it plays. The interface is quiet meanwhile.", juce::dontSendNotification);
+        note.setFont (font (13.0f, juce::Font::plain));
+        note.setColour (juce::Label::textColourId, ParagonColours::textDim);
+        addAndMakeVisible (note);
+
+        for (auto* button : { &exportButton, &cancelButton })
+        {
+            button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
+            button->setColour (juce::TextButton::textColourOffId, ParagonColours::text);
+            addAndMakeVisible (*button);
+        }
+        exportButton.setColour (juce::TextButton::textColourOffId, ParagonColours::accent);
+        exportButton.setEnabled (canExport());
+        exportButton.onClick = [this]
+        {
+            keep();
+            if (onExport)
+                onExport (getOptions());
+        };
+        cancelButton.onClick = [this] { if (onCancel) onCancel(); };
+        setSize (560, 300);
+    }
+
+    void ExportPage::setRange (Range r)
+    {
+        range.setSelectedId (r == Range::song ? 1 : 2, juce::dontSendNotification);
+        exportButton.setEnabled (canExport());
+    }
+
+    pr7s::Studio::ExportOptions ExportPage::getOptions() const
+    {
+        const auto& project = studio.getProject();
+        pr7s::Studio::ExportOptions options;
+        if (range.getSelectedId() == 2)
+        {
+            options.start = project.loopStart;
+            options.end = project.loopEnd;
+        }
+        else
+        {
+            options.end = project.lastBeat();
+        }
+        options.sampleRate = rate.getSelectedId() >= 2 ? rates[rate.getSelectedId() - 2] : 0.0;
+        options.bitsPerSample = bits.getSelectedId() == 16 ? 16 : 24;
+        options.click = click.getToggleState();
+        options.tailSeconds = ringOut.getToggleState() ? 2.0 : 0.0;
+        return options;
+    }
+
+    bool ExportPage::canExport() const
+    {
+        const auto options = getOptions();
+        return options.end > options.start;
+    }
+
+    void ExportPage::keep()
+    {
+        if (auto* settings = studio.getSettings())
+        {
+            settings->setValue ("exportRate", rate.getSelectedId());
+            settings->setValue ("exportBits", bits.getSelectedId());
+            settings->setValue ("exportRingOut", ringOut.getToggleState());
+            settings->saveIfNeeded();
+        }
+    }
+
+    void ExportPage::resized()
+    {
+        auto area = getLocalBounds().reduced (16);
+        auto row = [&area] (int height) { auto r = area.removeFromTop (height); area.removeFromTop (10); return r; };
+        auto labelled = [] (juce::Rectangle<int> r, juce::Label& label, juce::Component& field)
+        {
+            label.setBounds (r.removeFromLeft (110));
+            field.setBounds (r);
+        };
+        labelled (row (28), rangeLabel, range);
+        labelled (row (28), rateLabel, rate);
+        labelled (row (28), bitsLabel, bits);
+        click.setBounds (row (24).withTrimmedLeft (106));
+        ringOut.setBounds (row (24).withTrimmedLeft (106));
+        note.setBounds (row (36));
+        auto buttons = area.removeFromBottom (32);
+        cancelButton.setBounds (buttons.removeFromRight (96));
+        buttons.removeFromRight (8);
+        exportButton.setBounds (buttons.removeFromRight (110));
+    }
+
+    void ExportPage::paint (juce::Graphics& g)
+    {
+        g.fillAll (windowColour);
+    }
+
+    //==========================================================================
     Instrument::Instrument (const juce::String& trackName, juce::AudioPluginInstance& instance)
         : DocumentWindow (trackName + ": " + instance.getName(), windowColour, DocumentWindow::closeButton)
     {

@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.5.0
+
+Export: your mix as a WAV file, to send, upload or master.
+
+- **EXPORT** (in the header, after SAVE AS) asks what to export, then where to save it, then writes it behind a progress bar (**CANCEL** stops it and leaves no half-written file).
+- **What:** the whole song (from bar 1 to the end of its last part), or the cycle. It opens on the cycle when CYCLE is on.
+- **Everything you hear goes in:** every track through its effects, fader and pan, then the master's effects and fader. Mute and solo count, as they do when playing. The cycle doesn't repeat in the export: it's played once, straight through.
+- **Sample rate:** your interface's, or 44.1, 48, 88.2 or 96 kHz. Recordings are converted to the rate you pick.
+- **16 or 24 bit.** 24-bit is best for mastering or more work; 16-bit is CD quality.
+- **The click** is left out unless you tick it.
+- **Let effects ring out:** two more seconds after the end, so reverb and delay tails aren't cut off. Nothing new starts in them: notes and clips stop at the end, and only what's already sounding carries on.
+- **Faster than real time:** a song is written in a fraction of its length. The interface is quiet while it writes, and everything (where you were, the sample rate) is as it was afterwards. Instruments and effects are told it's an offline render, as other DAWs do, so samplers wait for their samples instead of dropping notes.
+- **Not there yet:** dithering for 16-bit (it's rounded, which is fine for most mixes but not quite mastering-grade), exporting each track to its own file (stems), MP3 or FLAC, and a note held from before the start of the cycle isn't heard in a cycle export (only notes that start inside it). Ask for any of these when you want them.
+
 ## 0.4.0
 
 Audio tracks: record your guitar (or anything) through your interface, and ASIO on Windows.

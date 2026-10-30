@@ -17,7 +17,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
       keyEditor (studioToUse, arrange),
       mixer (studioToUse)
 {
-    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &undoButton, &redoButton, &editorButton, &mixerButton,
+    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &exportButton, &undoButton, &redoButton, &editorButton, &mixerButton,
                           &pluginsButton, &settingsButton })
     {
         button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
@@ -29,6 +29,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     openButton.setTooltip ("Open a song (Ctrl+O)");
     saveButton.setTooltip ("Save the song (Ctrl+S)");
     saveAsButton.setTooltip ("Save the song under a new name (Ctrl+Shift+S)");
+    exportButton.setTooltip ("Export the mix to a WAV file: the whole song or the cycle");
     undoButton.setTooltip ("Undo (Ctrl+Z)");
     redoButton.setTooltip ("Redo (Ctrl+Shift+Z)");
     editorButton.setTooltip ("The key editor: the selected part's notes (Ctrl+E; or double-click a part)");
@@ -41,6 +42,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     openButton.onClick = [this] { openProject(); };
     saveButton.onClick = [this] { saveProject(); };
     saveAsButton.onClick = [this] { saveProjectAs(); };
+    exportButton.onClick = [this] { exportMix(); };
     undoButton.onClick = [this] { studio.undo(); };
     redoButton.onClick = [this] { studio.redo(); };
     editorButton.onClick = [this] { isKeyEditorOpen() ? closeKeyEditor() : openKeyEditor(); };
@@ -189,9 +191,9 @@ void MainView::resized()
     auto area = getLocalBounds();
     auto header = area.removeFromTop (headerHeight).reduced (8, 10);
     header.removeFromLeft (280);
-    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton })
+    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &exportButton })
     {
-        button->setBounds (header.removeFromLeft (button == &saveAsButton ? 84 : 66));
+        button->setBounds (header.removeFromLeft (button == &saveAsButton ? 84 : button == &exportButton ? 76 : 66));
         header.removeFromLeft (6);
     }
     header.removeFromLeft (18);
@@ -472,6 +474,99 @@ void MainView::saveProjectAs (std::function<void (bool)> then)
                               if (then)
                                   then (saved);
                           });
+}
+
+//==============================================================================
+namespace
+{
+    // The export, written on a thread of its own behind a progress bar.
+    class ExportProgress final : public juce::ThreadWithProgressWindow
+    {
+    public:
+        ExportProgress (pr7s::Studio& s, std::function<void (bool written, bool cancelled)> done)
+            : ThreadWithProgressWindow ("Exporting the mix...", true, true, 10000, "CANCEL"), studio (s), onDone (std::move (done)) {}
+
+        void run() override
+        {
+            written = studio.renderExport ([this] (double done)
+            {
+                setProgress (done);
+                return ! threadShouldExit();
+            });
+        }
+
+        void threadComplete (bool userPressedCancel) override
+        {
+            studio.endExport();   // here, on the message thread
+            if (onDone)
+                onDone (written, userPressedCancel);
+        }
+
+    private:
+        pr7s::Studio& studio;
+        std::function<void (bool, bool)> onDone;
+        bool written = false;
+    };
+}
+
+void MainView::exportMix()
+{
+    if (studio.isExporting() || studio.getEngine().isRecording() || exportPage != nullptr)
+        return;
+    auto* page = new Windows::ExportPage (studio);
+    exportPage = page;
+    juce::DialogWindow::LaunchOptions options;
+    options.content.setOwned (page);
+    options.dialogTitle = "Paragon PR7-S: Export the mix";
+    options.dialogBackgroundColour = juce::Colour (0xff0c0a0d);
+    options.useNativeTitleBar = true;
+    options.resizable = false;
+    options.componentToCentreAround = this;
+    options.launchAsync();
+
+    auto close = [page]
+    {
+        if (auto* dialog = page->findParentComponentOfClass<juce::DialogWindow>())
+            dialog->exitModalState (0);   // deleted once its click is over
+    };
+    page->onCancel = close;
+    page->onExport = [this, close] (const pr7s::Studio::ExportOptions& chosen)
+    {
+        close();
+        // Where: beside the song, named after it.
+        const auto song = studio.getFile();
+        const auto start = song != juce::File() ? song.withFileExtension (".wav")
+                         : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Mix.wav");
+        chooser = std::make_unique<juce::FileChooser> ("Export the mix", start, "*.wav");
+        chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
+                              [this, chosen] (const juce::FileChooser& fc)
+                              {
+                                  const auto file = fc.getResult();
+                                  if (file != juce::File())
+                                      writeExport (file.withFileExtension (".wav"), chosen);
+                              });
+    };
+}
+
+void MainView::writeExport (const juce::File& file, const pr7s::Studio::ExportOptions& options)
+{
+    juce::String error;
+    if (! studio.beginExport (file, options, error))
+    {
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't export", error);
+        return;
+    }
+    exportProgress = std::make_unique<ExportProgress> (studio, [safe = juce::Component::SafePointer<MainView> (this), file] (bool written, bool cancelled)
+    {
+        if (safe == nullptr)
+            return;
+        if (! written && ! cancelled)
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't export",
+                                                    "Couldn't write " + file.getFullPathName() + " (is the disk full?)");
+        // Not inside its own callback.
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->exportProgress.reset(); });
+    });
+    exportProgress->launchThread();
 }
 
 //==============================================================================

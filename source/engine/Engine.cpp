@@ -62,6 +62,20 @@ namespace pr7s
         }
     }
 
+    void Engine::setNonRealtime (bool offline)
+    {
+        const juce::ScopedLock sl (lock);
+        auto set = [offline] (juce::AudioPluginInstance* plugin) { if (plugin != nullptr) plugin->setNonRealtime (offline); };
+        for (auto& slot : masterInserts)
+            set (slot.plugin.get());
+        for (auto& track : tracks)
+        {
+            set (track->instrument.get());
+            for (auto& slot : track->inserts)
+                set (slot.plugin.get());
+        }
+    }
+
     int Engine::channelsFor (const juce::AudioPluginInstance& plugin)
     {
         return juce::jmax (1, plugin.getTotalNumInputChannels(), plugin.getTotalNumOutputChannels());

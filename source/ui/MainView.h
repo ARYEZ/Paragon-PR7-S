@@ -12,7 +12,7 @@
 
 // The studio's window, top to bottom:
 //
-//   header       the PR7-S mark; NEW, OPEN, SAVE, SAVE AS; UNDO, REDO;
+//   header       the PR7-S mark; NEW, OPEN, SAVE, SAVE AS, EXPORT; UNDO, REDO;
 //                KEY EDITOR, MIXER; PLUGINS and SETTINGS
 //   transport    the pearl unit: keys, position, tempo, signature, meters
 //   middle       the track list | the arrangement, and below them, in the
@@ -45,6 +45,10 @@ public:
     void openProject();
     void saveProject (std::function<void (bool saved)> then = {});
     void saveProjectAs (std::function<void (bool saved)> then = {});
+    // EXPORT: the mix to a WAV. Asks what (the export page), then where,
+    // then writes it behind a progress bar (CANCEL stops it, leaving no file).
+    void exportMix();
+    Windows::ExportPage* getExportPage() noexcept { return exportPage.getComponent(); }
 
     void openInstrumentWindow (int trackId);
     void openSettings();
@@ -111,7 +115,7 @@ private:
     MixerView mixer;
     bool keysToEditor = false;
 
-    juce::TextButton newButton { "NEW" }, openButton { "OPEN" }, saveButton { "SAVE" }, saveAsButton { "SAVE AS" },
+    juce::TextButton newButton { "NEW" }, openButton { "OPEN" }, saveButton { "SAVE" }, saveAsButton { "SAVE AS" }, exportButton { "EXPORT" },
                      undoButton { "UNDO" }, redoButton { "REDO" }, editorButton { "KEY EDITOR" }, mixerButton { "MIXER" },
                      pluginsButton { "PLUGINS" }, settingsButton { "SETTINGS" };
     // After the editor and the mixer: their windows go first.
@@ -122,5 +126,8 @@ private:
     std::unique_ptr<Windows::Settings> settingsWindow;
     std::unique_ptr<Windows::Plugins> pluginsWindow;
     std::unique_ptr<juce::FileChooser> chooser;
+    juce::Component::SafePointer<Windows::ExportPage> exportPage;
+    void writeExport (const juce::File&, const pr7s::Studio::ExportOptions&);
+    std::unique_ptr<juce::ThreadWithProgressWindow> exportProgress;
     juce::String lastTitle;
 };

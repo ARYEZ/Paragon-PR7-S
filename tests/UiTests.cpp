@@ -633,3 +633,57 @@ TEST_CASE ("Audio tracks on screen: MON and the input in the track list; clips t
     }
     studio.getAudioFolder().deleteRecursively();
 }
+
+TEST_CASE ("EXPORT: the button in the header; the page offers the song or the cycle, the rate, the bits, the click and the ring-out", "[ui][export]")
+{
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    std::vector<juce::TextButton*> buttons;
+    findAll (view, buttons);
+    CHECK (std::any_of (buttons.begin(), buttons.end(), [] (auto* b) { return b->getButtonText() == "EXPORT" && b->isVisible() && ! b->getBounds().isEmpty(); }));
+
+    {
+        // An empty song: only the cycle can be exported.
+        Windows::ExportPage page (studio);
+        CHECK (page.range.getSelectedId() == 2);
+        CHECK (page.canExport());
+        page.setRange (Windows::ExportPage::Range::song);
+        CHECK_FALSE (page.canExport());
+        CHECK_FALSE (page.exportButton.isEnabled());
+    }
+
+    const auto keys = studio.getProject().tracks[0].id;
+    studio.addPart (keys, { 4.0, 8.0, "Keys", { { 0.0, 1.0, 60, 0.8f } } });
+    studio.setCycle (8.0, 16.0);
+    Windows::ExportPage page (studio);
+    CHECK (page.range.getSelectedId() == 1);   // cycle off: the whole song
+    auto options = page.getOptions();
+    CHECK (options.start == 0.0);
+    CHECK (options.end == 12.0);
+    CHECK (options.sampleRate == 0.0);   // as the interface
+    CHECK (options.bitsPerSample == 24);
+    CHECK_FALSE (options.click);
+    CHECK (options.tailSeconds == 2.0);
+
+    page.setRange (Windows::ExportPage::Range::cycle);
+    page.rate.setSelectedId (2);    // 44.1 kHz
+    page.bits.setSelectedId (16);
+    page.click.setToggleState (true, juce::dontSendNotification);
+    page.ringOut.setToggleState (false, juce::dontSendNotification);
+    options = page.getOptions();
+    CHECK (options.start == 8.0);
+    CHECK (options.end == 16.0);
+    CHECK (options.sampleRate == 44100.0);
+    CHECK (options.bitsPerSample == 16);
+    CHECK (options.click);
+    CHECK (options.tailSeconds == 0.0);
+
+    // EXPORT... hands the choices on.
+    std::optional<Studio::ExportOptions> asked;
+    page.onExport = [&asked] (const Studio::ExportOptions& o) { asked = o; };
+    page.exportButton.onClick();
+    REQUIRE (asked.has_value());
+    CHECK (asked->end == 16.0);
+    CHECK (asked->bitsPerSample == 16);
+}

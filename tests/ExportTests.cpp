@@ -119,7 +119,13 @@ TEST_CASE ("Export: the ring-out lets what's sounding finish, and nothing new st
     const auto keys = synth.getProject().tracks[0].id;
     synth.addPart (keys, { 0.0, 4.0, "Keys", { { 1.5, 2.0, 60, 0.9f } } });
     synth.addPart (keys, { 3.0, 4.0, "Later", { { 0.0, 1.0, 72, 0.9f } } });
-    REQUIRE (synth.exportMix (file, options, error));
+    // The instruments are told it's offline while it's written, and back to real time after.
+    REQUIRE (synth.beginExport (file, options, error));
+    bool offline = false;
+    REQUIRE (synth.renderExport ([&] (double) { offline = synth.getEngine().getInstrument (keys)->isNonRealtime(); return true; }));
+    synth.endExport();
+    CHECK (offline);
+    CHECK_FALSE (synth.getEngine().getInstrument (keys)->isNonRealtime());
     result = readBack (file);
     CHECK (rmsOf (std::vector<float> (result.sound.getReadPointer (0), result.sound.getReadPointer (0) + result.sound.getNumSamples()),
                   (size_t) beat * 2, (size_t) beat * 2 + 2000) > 0.001f);

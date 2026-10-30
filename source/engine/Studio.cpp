@@ -1024,6 +1024,7 @@ namespace pr7s
                 part.length = juce::jmin (part.length, options.end - part.start);
         }
         engine.update (playing);
+        engine.setNonRealtime (true);
 
         job->total = (juce::int64) std::llround (((options.end - options.start) * 60.0 / project.bpm + juce::jmax (0.0, options.tailSeconds)) * rate);
         engine.setPosition (options.start);
@@ -1067,6 +1068,7 @@ namespace pr7s
         auto job = std::move (exportJob);
         engine.stop();
         job->writer.reset();   // the file finished
+        engine.setNonRealtime (false);
         if (! job->finished)
             job->file.deleteFile();
         // Everything as it was.
