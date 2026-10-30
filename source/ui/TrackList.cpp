@@ -1,5 +1,6 @@
 #include "TrackList.h"
 
+#include "ui/LevelMeter.h"
 #include "ui/ParagonLookAndFeel.h"
 
 namespace
@@ -72,12 +73,8 @@ public:
 
     void setLevel (float peak)
     {
-        const auto shown = juce::jmax (peak, level * 0.85f);
-        if (std::abs (shown - level) > 0.001f)
-        {
-            level = shown;
+        if (reading.push (peak))
             repaint (levelArea.toNearestInt().expanded (2));
-        }
     }
 
     void paint (juce::Graphics& g) override
@@ -99,18 +96,9 @@ public:
             g.drawRect (bounds.withTrimmedLeft (6.0f), 1.0f);
         }
 
-        // Its level, as a row of LEDs.
-        constexpr int count = 12;
-        const auto db = juce::Decibels::gainToDecibels (level, -60.0f);
-        const auto lit = juce::roundToInt (juce::jlimit (0.0f, 1.0f, (db + 48.0f) / 54.0f) * (float) count);
-        const auto width = levelArea.getWidth() / (float) count;
-        for (int i = 0; i < count; ++i)
-        {
-            const auto led = juce::Rectangle<float> (levelArea.getX() + width * (float) i, levelArea.getY(), width - 1.5f, levelArea.getHeight());
-            const auto colour = i >= count - 1 ? ParagonColours::meterRed : ParagonColours::accent;
-            g.setColour (i < lit ? colour : colour.withAlpha (0.12f));
-            g.fillRoundedRectangle (led, 1.0f);
-        }
+        // Its level: PR7-C's meter, lying down (orange at the left to pink-red at the right).
+        LevelMeter::paintSegments (g, levelArea, LevelMeter::proportionForDb (reading.db),
+                                   reading.heldDb > LevelMeter::minDb ? LevelMeter::proportionForDb (reading.heldDb) : -1.0f, false);
     }
 
     void resized() override
@@ -128,7 +116,7 @@ public:
         auto bottom = area.removeFromTop (24);
         volume.setBounds (bottom.removeFromRight (28));
         bottom.removeFromRight (6);
-        levelArea = bottom.removeFromRight (64).toFloat().withSizeKeepingCentre (64.0f, 6.0f);
+        levelArea = bottom.removeFromRight (64).toFloat().withSizeKeepingCentre (64.0f, 8.0f);
         bottom.removeFromRight (8);
         instrument.setBounds (bottom);
     }
@@ -152,7 +140,7 @@ public:
     juce::TextButton mute { "M" }, solo { "S" }, arm { "R" }, instrument;
     juce::Slider volume;
     juce::Rectangle<float> levelArea;
-    float level = 0.0f;
+    LevelMeter::Ballistics reading;
 };
 
 //==============================================================================

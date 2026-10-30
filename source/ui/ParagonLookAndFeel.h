@@ -12,6 +12,12 @@ namespace ParagonColours
     inline const juce::Colour accent     { 0xffff7a1a };
     inline const juce::Colour accentDim  { 0xff5a2a0a };
     inline const juce::Colour meterRed   { 0xffff3b2f };
+    // The meters' colour from the bottom (0) to the top (1): orange to
+    // pink-red, as on PR7-C's meters.
+    inline juce::Colour meterColour (float t)
+    {
+        return juce::Colour (0xffff7a1a).interpolatedWith (juce::Colour (0xffff1f5a), juce::jlimit (0.0f, 1.0f, t));
+    }
     inline const juce::Colour text       { 0xffe8e8ea };
     inline const juce::Colour textDim    { 0xff8a8a92 };
 

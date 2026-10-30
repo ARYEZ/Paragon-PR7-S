@@ -3,6 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "engine/Studio.h"
+#include "ui/LevelMeter.h"
 
 // The mixer, inspired by Cubase's MixConsole, in our look: a channel strip
 // for each track, then the master's, on the right.
@@ -87,5 +88,5 @@ private:
     juce::Slider volume, pan;
     juce::TextButton mute { "M" }, solo { "S" };
     juce::Rectangle<float> meterArea, nameArea, readoutArea, panReadoutArea;
-    float levelLeft = 0.0f, levelRight = 0.0f;
+    LevelMeter::Ballistics left, right;
 };
