@@ -29,7 +29,7 @@ struct Timeline
     std::function<void()> onScrollOrZoom;   // the track list follows
 };
 
-// The arrangement (Cubase's project window, in our look): the ruler with
+// The arrangement (inspired by Cubase's project window, in our look): the ruler with
 // bar numbers and the cycle range on top, a lane for each track, its parts
 // as coloured blocks showing their notes, and the playhead.
 //

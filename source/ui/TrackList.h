@@ -6,7 +6,7 @@
 #include "ui/ArrangeView.h"
 
 // The track list, left of the arrangement and lined up with its lanes
-// (Cubase's track list, in our look). Each track: its colour, its name
+// (inspired by Cubase's track list, in our look). Each track: its colour, its name
 // (double-click to rename), M (mute), S (solo) and R (record-arm) keys, its
 // level, and its instrument (click for the instrument's own window, a
 // different instrument, or to delete the track). + ADD TRACK at the bottom

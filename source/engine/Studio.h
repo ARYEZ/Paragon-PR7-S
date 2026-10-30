@@ -46,8 +46,8 @@ namespace pr7s
         void setSolo (int trackId, bool);
         void setVolume (int trackId, float db);
         void setPan (int trackId, float pan);
-        // Record-arms one track (or none, with 0): recording goes there. As in
-        // Cubase with "record enable selected track", selecting arms too.
+        // Record-arms one track (or none, with 0): recording goes there.
+        // Inspired by Cubase's workflow (record follows the selected track), selecting arms too.
         void setArmed (int trackId);
         void selectTrack (int trackId);
         int getSelectedTrack() const noexcept { return selectedTrack; }
@@ -71,7 +71,7 @@ namespace pr7s
         //======================================================================
         // The transport.
         void play();
-        void stop();      // a second stop goes back to where playing started, as in Cubase
+        void stop();      // a second stop goes back to where playing started, inspired by Cubase's workflow
         void record();    // records into the armed track (arming the selected one if none is)
         void togglePlay() { engine.isPlaying() ? stop() : play(); }
         void goToStart();

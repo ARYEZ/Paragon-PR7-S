@@ -363,7 +363,7 @@ namespace pr7s
     {
         if (! engine.isPlaying())
         {
-            // Stopped already: back to where playing started (as in Cubase).
+            // Stopped already: back to where playing started (inspired by Cubase's workflow).
             engine.setPosition (playStart);
             sendChangeMessage();
             return;

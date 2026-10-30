@@ -17,7 +17,7 @@
 //   keyboard     an on-screen keyboard (click or play your computer keys),
 //                into the armed track
 //
-// Keys as in Cubase: Space play / stop, R (or * on the number pad) record,
+// Keys (inspired by Cubase's workflow): Space play / stop, R (or * on the number pad) record,
 // Home to the start, / cycle, C click, Delete the selected part, Ctrl+D
 // duplicate it, Ctrl+Z / Ctrl+Shift+Z undo / redo, Ctrl+N / O / S new, open
 // and save (Ctrl+Shift+S save as).
