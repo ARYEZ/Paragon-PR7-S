@@ -34,7 +34,7 @@ public:
         arm.onClick = [this] { if (auto* t = track()) owner.studio.setArmed (t->armed ? 0 : trackId); };
 
         instrument.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
-        instrument.setColour (juce::TextButton::textColourOffId, ParagonColours::accent);
+        instrument.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
         instrument.setTooltip ("The instrument: click to open its window, change it, or delete the track");
         instrument.onClick = [this] { owner.showInstrumentMenu (trackId); };
         addAndMakeVisible (instrument);

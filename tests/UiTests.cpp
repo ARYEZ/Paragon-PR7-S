@@ -462,7 +462,7 @@ TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inse
     studio.undo();
     CHECK (studio.getProject().findTrack (second)->volumeDb == 0.0f);
     studio.dispatchPendingMessages();
-    CHECK (two.getVolume().getValue() == 0.0);   // the fader follows
+    CHECK_THAT (two.getVolume().getValue(), WithinAbs (0.0, 1.0e-6));   // the fader follows (to within rounding: macOS gives 3e-15)
     two.getPan().setValue (-0.5, juce::sendNotificationSync);
     CHECK (studio.getProject().findTrack (second)->pan == -0.5f);
     two.getMute().onClick();

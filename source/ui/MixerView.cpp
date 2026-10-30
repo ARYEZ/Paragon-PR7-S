@@ -24,7 +24,7 @@ MixerView::Strip::Strip (MixerView& ownerView, int id) : owner (ownerView), busI
     {
         auto& slot = slots[(size_t) i];
         slot.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff0b090c));
-        slot.setColour (juce::TextButton::textColourOffId, ParagonColours::accent);
+        slot.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
         slot.setWantsKeyboardFocus (false);
         slot.onClick = [this, i] { owner.showInsertMenu (busId, i); };
         addAndMakeVisible (slot);
@@ -95,7 +95,7 @@ void MixerView::Strip::refresh()
             const auto& insert = (*inserts)[(size_t) i];
             const auto loaded = owner.studio.getEngine().getEffect (busId, i) != nullptr;
             slot.setButtonText (insert.plugin.name);
-            slot.setColour (juce::TextButton::textColourOffId, insert.bypass || ! loaded ? ParagonColours::textDim : ParagonColours::accent);
+            slot.setColour (juce::TextButton::textColourOffId, insert.bypass || ! loaded ? ParagonColours::textDim : ParagonColours::text);
             slot.setTooltip (insert.plugin.name + (! loaded ? ": not on this computer (the sound goes past it)"
                                                             : insert.bypass ? ": bypassed (the sound goes past it). Click for its menu"
                                                                             : ". Click to open its window, bypass, replace or remove it"));
@@ -236,7 +236,7 @@ MixerView::MixerView (pr7s::Studio& studioToUse) : studio (studioToUse)
         button->setWantsKeyboardFocus (false);
         addAndMakeVisible (*button);
     }
-    windowButton.setColour (juce::TextButton::textColourOffId, ParagonColours::accent);
+    windowButton.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
     closeButton.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
     closeButton.setTooltip ("Close the mixer (F3)");
     closeButton.onClick = [this] { if (onClose) onClose(); };
@@ -374,7 +374,7 @@ void MixerView::paint (juce::Graphics& g)
     g.setColour (ParagonColours::panelEdge);
     g.fillRect (bar.withY (bar.getBottom() - 1.0f).withHeight (1.0f));
     g.fillRect (bar.withHeight (1.0f));
-    g.setColour (ParagonColours::accent);
+    g.setColour (ParagonColours::text);
     g.setFont (font (9.5f));
     g.drawText ("MIXER", bar.withTrimmedLeft (14.0f), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
