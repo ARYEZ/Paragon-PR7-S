@@ -490,8 +490,8 @@ TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inse
     };
     ctrlClick (two.getVolume());
     ctrlClick (two.getPan());
-    CHECK (studio.getProject().findTrack (second)->volumeDb == 0.0f);
-    CHECK (studio.getProject().findTrack (second)->pan == 0.0f);
+    CHECK_THAT (studio.getProject().findTrack (second)->volumeDb, WithinAbs (0.0, 1.0e-6));   // (within rounding: macOS)
+    CHECK_THAT (studio.getProject().findTrack (second)->pan, WithinAbs (0.0, 1.0e-6));
     two.getPan().setValue (-0.5, juce::sendNotificationSync);
     two.getMute().onClick();
     CHECK (studio.getProject().findTrack (second)->mute);
