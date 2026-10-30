@@ -50,6 +50,39 @@ namespace Windows
         std::function<void()> onClose;
     };
 
+    // EXPORT: what to write the mix as (which stretch of the song, the
+    // sample rate, 16, 24 or 32-bit float, the click). The whole song rings
+    // out after its end until the sound has died away (up to 30 s); the
+    // cycle stops at its end, as the manual's exports do. It only asks:
+    // onExport gets the choices, and MainView asks where and writes it. Its
+    // choices but the range are kept in the settings file for next time.
+    class ExportPage final : public juce::Component
+    {
+    public:
+        ExportPage (pr7s::Studio&);
+        void resized() override;
+        void paint (juce::Graphics&) override;
+
+        enum class Range { song, cycle };
+        void setRange (Range);
+        pr7s::Studio::ExportOptions getOptions() const;   // as chosen now
+        bool canExport() const;                           // the chosen range isn't empty
+
+        std::function<void (const pr7s::Studio::ExportOptions&)> onExport;
+        std::function<void()> onCancel;
+
+        juce::ComboBox range, rate, bits;
+        juce::ToggleButton click { "Include the click" };
+        juce::TextButton exportButton { "EXPORT..." }, cancelButton { "CANCEL" };
+
+    private:
+        void keep();
+        pr7s::Studio& studio;
+        juce::Label rangeLabel, rateLabel, bitsLabel, note;
+        double interfaceRate = 48000.0;
+        static constexpr double rates[] = { 44100.0, 48000.0, 88200.0, 96000.0 };
+    };
+
     // PLUGINS: finds the VST3 instruments and effects on this computer
     // (OPTIONS > Scan for new or updated VST3 plug-ins) and lists them.
     class Plugins final : public juce::DocumentWindow

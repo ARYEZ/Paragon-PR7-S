@@ -53,13 +53,61 @@ namespace pr7s
     };
 
     // An effect in a channel's inserts (a VST3 effect, such as our PR7
-    // plugins). The sound goes through a channel's inserts in order.
+    // plugins). The sound goes through a channel's inserts in order. Each
+    // is in a slot of its own (1 to 16); a slot can be empty.
     struct Insert
     {
         juce::PluginDescription plugin;
         juce::MemoryBlock state;     // its settings, as it last saved them
         bool bypass = false;         // off: the sound goes past it
+        bool isEmpty() const noexcept { return plugin.name.isEmpty() && plugin.fileOrIdentifier.isEmpty(); }
     };
+
+    // Automation (inspired by Cubase's workflow): an automation lane (an
+    // "automation track" under its track) of points that moves one control
+    // as the song plays: a track's volume, pan or mute, or a knob of its
+    // instrument or of an effect in its inserts; the master's volume or its
+    // effects'. The track's R (read) plays them back, its W (write) records
+    // what's done to its controls while playing.
+    // Values are the control's travel, 0 to 1, as plugins keep theirs: for
+    // the volume, the fader's travel (so a straight line between two points
+    // moves as the fader would); for pan, left (0) to right (1); for mute,
+    // off below a half, on from it (a jump, not a ramp).
+    struct AutomationPoint
+    {
+        double beat = 0.0;    // from the song's start
+        float value = 0.0f;   // 0 to 1
+        bool operator== (const AutomationPoint&) const = default;
+    };
+
+    struct AutomationLane
+    {
+        enum class Target { volume, pan, mute, instrument, insert };   // saved by name
+        Target target = Target::volume;
+        int slot = 0;                 // Target::insert: which insert (0 to 7)
+        int parameter = 0;            // Target::instrument and insert: the plugin's parameter, by index
+        juce::String parameterName;   // as the plugin named it (shown if the plugin is missing)
+        std::vector<AutomationPoint> points;   // in order of beat
+        bool shown = true;     // its lane open under the track (a lane switched to another control keeps its points, hidden)
+        bool muted = false;    // Mute Automation: not played back
+
+        bool isStep() const noexcept { return target == Target::mute; }
+        bool sameControl (const AutomationLane& other) const noexcept
+        {
+            return target == other.target && slot == other.slot && parameter == other.parameter;
+        }
+        // The value at a beat: the first point's before it, the last's after,
+        // a straight line between (a jump at the next point, for a step lane).
+        // None if there are no points.
+        std::optional<float> valueAt (double beat) const noexcept;
+        bool operator== (const AutomationLane&) const = default;
+    };
+
+    // The controls' travel and their values.
+    float volumeToTravel (float db) noexcept;      // -60 dB (silent) at 0, +6 at 1, as the mixer's fader moves
+    float travelToVolume (float travel) noexcept;
+    inline float panToTravel (float pan) noexcept    { return (pan + 1.0f) * 0.5f; }
+    inline float travelToPan (float travel) noexcept { return travel * 2.0f - 1.0f; }
 
     struct Track
     {
@@ -84,7 +132,11 @@ namespace pr7s
         bool monitor = false;
         bool isAudio() const noexcept { return kind == Kind::audio; }
         std::vector<Part> parts;
-        std::vector<Insert> inserts;     // its effects, before its volume and pan
+        std::vector<Insert> inserts;     // its effects, by slot (none after the last one used)
+        int preFaderSlots = 16;          // slots before the fader and pan (the rest after them)
+        std::vector<AutomationLane> automation;   // in the order shown
+        bool automationOpen = false;     // its lanes shown under it
+        bool automationRead = false, automationWrite = false;   // R and W (W turns R on)
     };
 
     struct Project
@@ -97,10 +149,13 @@ namespace pr7s
         std::vector<Track> tracks;
         float masterVolumeDb = 0.0f;          // the master bus: every track, then these effects, then this volume
         std::vector<Insert> masterInserts;
+        int masterPreFaderSlots = 16;
+        std::vector<AutomationLane> masterAutomation;   // volume and the master's effects
+        bool masterAutomationOpen = false, masterRead = false, masterWrite = false;
         int nextTrackId = 1;
 
         static constexpr double minBpm = 20.0, maxBpm = 300.0;
-        static constexpr int maxInserts = 8;   // effects on a channel (and on the master)
+        static constexpr int maxInserts = 16;  // insert slots on a channel (and on the master), as the manual has
 
         double beatsPerBar() const noexcept { return numerator * 4.0 / denominator; }
         double secondsPerBeat() const noexcept { return 60.0 / bpm; }
@@ -125,8 +180,9 @@ namespace pr7s
     juce::String formatBarsBeats (double beats, const Project&);
     juce::String formatTime (double seconds);
 
-    // The family's track colours: the chain's red, pink and orange, then
-    // other neon colours, taken in turn.
+    // The family's track colours, taken in turn: shades along its red, pink
+    // and orange only (the chain's red, hot pink, orange, then lighter and
+    // deeper ones).
     juce::Colour trackColour (int index);
 
     // Rounds to the nearest multiple of `grid` beats (0: no rounding).
@@ -135,10 +191,8 @@ namespace pr7s
     // Moves the starts of the part's notes (those listed, or all with none
     // listed) to the nearest `grid` line of the song (not of the part, so a
     // part that doesn't start on a bar still lines up with the bars).
-    // Lengths stay. Two notes of the same pitch that land on the same start
-    // become one (the longer), since they'd only cut each other off.
-    // Returns false if any notes were merged (their order and number changed).
-    bool quantize (Part&, double grid, const std::vector<int>& which = {});
+    // Lengths stay, and every note stays (as in Cubase: none are merged).
+    void quantize (Part&, double grid, const std::vector<int>& which = {});
 
     // A note's name, with middle C (60) as C3, as Cubase and Yamaha count: "C3", "F#4", "C-2".
     juce::String noteName (int pitch);

@@ -2,6 +2,78 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.6.0
+
+Automation: volume, pan, mute and any plugin knob moving on their own as the song plays, written by hand or drawn, as the Cubase 15 manual's automation chapter describes.
+
+- **R and W** on every track (in the track list and the mixer) and on the master:
+  - **R (read)** plays its automation back. The fader, pan and mute move with it.
+  - **W (write)** records what you do to its controls while playing. W turns R on too.
+  - **R and W in the header** turn them on or off for every track (**Alt+R**, **Alt+W**). They're lit while any track's are on.
+  - Lit colours: R pink, W red, W orange while it's writing.
+  - Record-arm on the track list is now **REC** (R is automation's, as in the manual).
+- **Writing (Touch):** with W on, play and move a fader, a pan knob, or a knob in a plugin's own window (the PR7 plugins too). It's written while you hold it. Let go and the control returns to what it was (over 0.1 s: our choice, the manual gives no default).
+  - **Mute** is an on/off switch: a click on M is written from there until you stop (as the manual's Auto-Latch).
+  - Writing also stops when you stop, turn W off, the cycle comes round, or you click in the ruler.
+  - Each pass is one undo step.
+- **Automation lanes** open under their track:
+  - The small arrow at a track's lower left shows and hides them; right-click a track for **Show/Hide Automation** and **Show All Used Automation**.
+  - Each lane shows one control: click its name for any other (volume, pan, mute, the instrument's knobs, each insert's knobs). The control it showed keeps its points, hidden (marked * in the list). **Remove Parameter** and **Remove Unused Parameters** are there too.
+  - **M** mutes a lane (Mute Automation). **+** at a lane's lower left adds a lane for the next control.
+  - The lane shows its value at the playhead.
+- **Drawing and editing**, in the arrangement:
+  - **Click** a lane to add a point (R comes on). A click on the line between two points adds nothing.
+  - **Alt-drag** draws several points.
+  - **Drag from an empty spot** to select points in a rectangle; **Shift-click** adds or removes one.
+  - **Drag** selected points to move them (snapped to the grid). **Ctrl:** one direction only. **Ctrl and another key:** no snapping. **Alt-drag** copies them.
+  - **Delete** removes the selected points. **Esc** while dragging puts them back. Right-click: **Select All Events**.
+  - A lane with no points shows a dotted line at the control's setting. With R off, or the lane muted, its curve is grey.
+  - Volume, pan and plugin knobs ramp in straight lines between points; mute jumps.
+- **The master** has a row at the bottom of the track list: its R, W and lanes (its volume, its effects' knobs), for a fade-out at the end of the song, for example.
+- **Export** includes the automation.
+- **Not there yet:** curved (Bézier) lines between points, the Line tool's shapes (parabola, sine...), Trim, Fill, Suspend, copying automation between tracks, Auto-Latch and Cross-Over for faders (Touch only for now), and the Automation Panel (F6). Ask for any of these when you want them.
+
+## 0.5.1
+
+Checked against the Cubase Pro 15 manual (the owner's request), and the family's colours only.
+
+- **Colours:** tracks now take only the Paragon family's colours: shades of red, pink and orange (red, hot pink, orange, rose, red-orange, deep pink, peach, crimson). No more blue, lime, violet or aqua. Songs saved with those colours open with their new ones.
+- **Mixer: 16 insert slots** (was 8), each effect in a slot of its own: removing one leaves its slot empty, and the others stay where they are. At least 8 are shown, more as you fill them.
+- **Inserts after the fader:** click an effect > **Set as Last Pre-Fader Slot**, and the slots below it come after the fader and pan (below an orange line, tinted). Use it for a limiter on the master, for example. **All Slots Before the Fader** puts it back. By default, every slot is before the fader.
+- **Faders and pan:** **Ctrl-click** resets them (0 dB, centre); **Shift-drag** moves them finely. Double-click still resets.
+- **Arrangement:**
+  - **Ctrl-drag** keeps a part to one direction (along the song, or to another track). Only **Alt-drag** copies now.
+  - **Ctrl** turns snapping off while resizing, trimming or fading (**Ctrl+Shift** while moving). Shift no longer picks a finer grid.
+  - In the ruler's top strip, **click inside the cycle's range** to turn CYCLE on or off, and **drag inside it** to move it.
+  - **Double-click between the locators** for an empty part from the left locator to the right.
+  - The last track can no longer hide under + ADD TRACK: scrolling goes far enough.
+- **Key editor:**
+  - **Ctrl** (not Shift) turns snapping off. Ctrl while moving notes keeps them to one direction (in time, or in pitch).
+  - **Double-click a note** to delete it.
+  - **Ctrl+V** always pastes at the playhead; if that's outside the part, the part grows to hold the notes.
+  - **Ctrl+D** duplicates the selected notes straight after themselves (what pasting again and again used to do).
+  - **Quantize** keeps every note: two of the same pitch that land together both stay.
+- **Recording audio in a cycle** keeps the **last** complete pass (we kept the first). Stop during the first pass and you get what there is of it. The earlier passes stay in the file for takes and comping later.
+- **Export:**
+  - **32-bit float** WAV is offered (best for more work in a DAW).
+  - The whole song now rings out after its end **until the sound has died away** (reverb and delay tails, a held note's release), up to 30 seconds, then stops. The 2-second box is gone.
+  - Exporting the cycle stops at its end, as the manual's locator export does.
+- **Not changed (your choice):** the keys stay as they are (R records, / cycles, Home goes to the start).
+
+## 0.5.0
+
+Export: your mix as a WAV file, to send, upload or master.
+
+- **EXPORT** (in the header, after SAVE AS) asks what to export, then where to save it, then writes it behind a progress bar (**CANCEL** stops it and leaves no half-written file).
+- **What:** the whole song (from bar 1 to the end of its last part), or the cycle. It opens on the cycle when CYCLE is on.
+- **Everything you hear goes in:** every track through its effects, fader and pan, then the master's effects and fader. Mute and solo count, as they do when playing. The cycle doesn't repeat in the export: it's played once, straight through.
+- **Sample rate:** your interface's, or 44.1, 48, 88.2 or 96 kHz. Recordings are converted to the rate you pick.
+- **16 or 24 bit.** 24-bit is best for mastering or more work; 16-bit is CD quality.
+- **The click** is left out unless you tick it.
+- **Let effects ring out:** two more seconds after the end, so reverb and delay tails aren't cut off. Nothing new starts in them: notes and clips stop at the end, and only what's already sounding carries on.
+- **Faster than real time:** a song is written in a fraction of its length. The interface is quiet while it writes, and everything (where you were, the sample rate) is as it was afterwards. Instruments and effects are told it's an offline render, as other DAWs do, so samplers wait for their samples instead of dropping notes.
+- **Not there yet:** dithering for 16-bit (it's rounded, which is fine for most mixes but not quite mastering-grade), exporting each track to its own file (stems), MP3 or FLAC, and a note held from before the start of the cycle isn't heard in a cycle export (only notes that start inside it). Ask for any of these when you want them.
+
 ## 0.4.0
 
 Audio tracks: record your guitar (or anything) through your interface, and ASIO on Windows.

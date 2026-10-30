@@ -177,14 +177,30 @@ TEST_CASE ("The studio's mixer: effects added, bypassed and removed (windows tol
     CHECK (studio.getInserts (trackId)->at (0).bypass);
     studio.setInsertBypass (trackId, 0, false);
 
-    // There's room for 8.
+    // There's room for 16.
+    CHECK (Project::maxInserts == 16);
     for (int i = 1; i < Project::maxInserts; ++i)
         REQUIRE (studio.addInsert (trackId, insert, timesEffect (1.0f)));
     CHECK_FALSE (studio.addInsert (trackId, insert, timesEffect (1.0f)));
     for (int i = Project::maxInserts - 1; i >= 1; --i)
         studio.removeInsert (trackId, i);
-    CHECK (going.size() == 7);
+    CHECK (going.size() == 15);
     CHECK (effectAliveWhenTold);
+    CHECK (studio.getInserts (trackId)->size() == 1);   // no empty slots left after the last effect
+    going.clear();
+
+    // Each in a slot of its own: removing one leaves its slot empty, the others where they are.
+    REQUIRE (studio.addInsert (trackId, insert, timesEffect (1.0f, "Second")));
+    REQUIRE (studio.addInsert (trackId, insert, timesEffect (1.0f, "Fifth"), 4));
+    REQUIRE (studio.getInserts (trackId)->size() == 5);
+    CHECK (studio.getInserts (trackId)->at (2).isEmpty());
+    CHECK (studio.getEngine().getEffect (trackId, 4)->getName() == "Fifth");
+    CHECK_FALSE (studio.addInsert (trackId, insert, timesEffect (1.0f), 1));   // taken
+    studio.removeInsert (trackId, 1);
+    CHECK (studio.getInserts (trackId)->at (1).isEmpty());
+    CHECK (studio.getEngine().getEffect (trackId, 4)->getName() == "Fifth");
+    studio.removeInsert (trackId, 4);
+    CHECK (studio.getInserts (trackId)->size() == 1);
     going.clear();
 
     // The master's volume is undoable.
@@ -225,4 +241,30 @@ TEST_CASE ("The studio's mixer: effects added, bypassed and removed (windows tol
     CHECK (going.back() == nullptr);
     CHECK (studio.getEngine().getNumEffects (Engine::masterBus) == 0);
     CHECK (studio.getProject().masterInserts.empty());
+}
+
+TEST_CASE ("Inserts after the fader: the sound gets there after its volume and pan, on a track and on the master", "[engine][mixer]")
+{
+    Desk desk;
+    desk.addTrack (1, 0.5f, 0.5f);
+    desk.engine.insertEffect (1, 0, plusEffect (0.1f));
+    desk.project.tracks[0].inserts.resize (1);
+    desk.project.tracks[0].volumeDb = -60.0f;   // silent
+    desk.engine.update (desk.project);
+    CHECK_THAT (desk.output().first, WithinAbs (0.0, 1.0e-6));   // before the fader: silenced with the rest
+    desk.project.tracks[0].preFaderSlots = 0;                    // after it: heard
+    desk.engine.update (desk.project);
+    CHECK_THAT (desk.output().first, WithinAbs (0.1, 1.0e-5));
+
+    // The master: times 2 after its fader at -6 dB (half): 0.5 * 0.5 * 2.
+    desk.project.tracks[0].volumeDb = 0.0f;
+    desk.project.tracks[0].preFaderSlots = 16;
+    desk.project.tracks[0].inserts.clear();
+    desk.engine.removeEffect (1, 0);
+    desk.engine.insertEffect (Engine::masterBus, 0, timesEffect (2.0f));
+    desk.project.masterInserts.resize (1);
+    desk.project.masterVolumeDb = juce::Decibels::gainToDecibels (0.5f);
+    desk.project.masterPreFaderSlots = 0;
+    desk.engine.update (desk.project);
+    CHECK_THAT (desk.output().first, WithinAbs (0.5, 1.0e-4));
 }

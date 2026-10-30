@@ -1,5 +1,6 @@
 #include "MixerView.h"
 
+#include "ui/AutomationKeys.h"
 #include "ui/ParagonLookAndFeel.h"
 
 namespace
@@ -37,10 +38,13 @@ MixerView::Strip::Strip (MixerView& ownerView, int id) : owner (ownerView), busI
     volume.setColour (juce::Slider::trackColourId, ParagonColours::accent);
     volume.setRange (-60.0, 6.0, 0.1);
     volume.setSkewFactorFromMidPoint (-12.0);
-    volume.setDoubleClickReturnValue (true, 0.0);
+    // Ctrl-click (or double-click) resets it; Shift-drag moves it finely (as the manual has it).
+    volume.setDoubleClickReturnValue (true, 0.0, juce::ModifierKeys::commandModifier);
+    volume.setVelocityModeParameters (0.2, 1, 0.0, true, juce::ModifierKeys::shiftModifier);
     volume.setPopupDisplayEnabled (true, true, nullptr);
     volume.textFromValueFunction = [] (double db) { return dbText (db) + " dB"; };
-    volume.setTooltip (isMaster() ? "The master's volume: the whole mix (double-click for 0 dB)" : "The track's volume (double-click for 0 dB)");
+    volume.setTooltip ((isMaster() ? juce::String ("The master's volume: the whole mix") : juce::String ("The track's volume"))
+                       + " (Ctrl-click or double-click for 0 dB; Shift-drag for fine moves)");
     // While dragging, it's heard as it moves; the drag is one undo step when let go.
     const auto setVolume = [this] (bool undoable)
     {
@@ -50,20 +54,36 @@ MixerView::Strip::Strip (MixerView& ownerView, int id) : owner (ownerView), busI
             owner.studio.setVolume (busId, (float) volume.getValue(), undoable);
     };
     volume.onValueChange = [this, setVolume] { setVolume (! volume.isMouseButtonDown()); };
-    volume.onDragEnd = [setVolume] { setVolume (true); };
+    // Grabbed and let go: writing automation (W on, while playing) follows the hand.
+    const auto volumeControl = pr7s::Studio::control (pr7s::AutomationLane::Target::volume);
+    volume.onDragStart = [this, volumeControl] { owner.studio.grabControl (busId, volumeControl); };
+    volume.onDragEnd = [this, setVolume, volumeControl]
+    {
+        setVolume (true);
+        owner.studio.releaseControl (busId, volumeControl);
+    };
     addAndMakeVisible (volume);
+    AutomationKeys::setUp (read, write, owner.studio, busId);
+    addAndMakeVisible (read);
+    addAndMakeVisible (write);
 
     if (! isMaster())
     {
         pan.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
         pan.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
         pan.setRange (-1.0, 1.0, 0.01);
-        pan.setDoubleClickReturnValue (true, 0.0);
+        pan.setDoubleClickReturnValue (true, 0.0, juce::ModifierKeys::commandModifier);
+        pan.setVelocityModeParameters (0.2, 1, 0.0, true, juce::ModifierKeys::shiftModifier);
         pan.setPopupDisplayEnabled (true, true, nullptr);
         pan.textFromValueFunction = [] (double value) { return panText (value); };
-        pan.setTooltip ("Pan: left and right (double-click for the centre)");
+        pan.setTooltip ("Pan: left and right (Ctrl-click or double-click for the centre; Shift-drag for fine moves)");
         pan.onValueChange = [this] { owner.studio.setPan (busId, (float) pan.getValue(), ! pan.isMouseButtonDown()); };
-        pan.onDragEnd = [this] { owner.studio.setPan (busId, (float) pan.getValue(), true); };
+        pan.onDragStart = [this] { owner.studio.grabControl (busId, pr7s::Studio::control (pr7s::AutomationLane::Target::pan)); };
+        pan.onDragEnd = [this]
+        {
+            owner.studio.setPan (busId, (float) pan.getValue(), true);
+            owner.studio.releaseControl (busId, pr7s::Studio::control (pr7s::AutomationLane::Target::pan));
+        };
         addAndMakeVisible (pan);
 
         for (auto* key : { &mute, &solo })
@@ -87,10 +107,20 @@ void MixerView::Strip::refresh()
     if (! isMaster() && track == nullptr)
         return;
     const auto* inserts = owner.studio.getInserts (busId);
+    const auto used = inserts != nullptr ? (int) inserts->size() : 0;   // up to the last effect
+    const auto shown = juce::jlimit (8, pr7s::Project::maxInserts, used + 1);
+    if (shown != shownSlots)
+    {
+        shownSlots = shown;
+        resized();
+    }
+    const auto preFader = owner.studio.getPreFaderSlots (busId);
     for (int i = 0; i < (int) slots.size(); ++i)
     {
         auto& slot = slots[(size_t) i];
-        if (inserts != nullptr && i < (int) inserts->size())
+        slot.setVisible (i < shownSlots);
+        slot.setColour (juce::TextButton::buttonColourId, i < preFader ? juce::Colour (0xff0b090c) : juce::Colour (0xff1c1108));   // after the fader: tinted
+        if (inserts != nullptr && i < (int) inserts->size() && ! (*inserts)[(size_t) i].isEmpty())
         {
             const auto& insert = (*inserts)[(size_t) i];
             const auto loaded = owner.studio.getEngine().getEffect (busId, i) != nullptr;
@@ -102,23 +132,49 @@ void MixerView::Strip::refresh()
         }
         else
         {
-            const auto isNext = inserts != nullptr && i == (int) inserts->size();
-            slot.setButtonText (isNext ? "+" : "");
-            slot.setColour (juce::TextButton::textColourOffId, ParagonColours::textDim);
-            slot.setTooltip ("Add an effect (one of your VST3 effects)");
+            slot.setButtonText ("+");
+            slot.setColour (juce::TextButton::textColourOffId, ParagonColours::textDim.withAlpha (0.6f));
+            slot.setTooltip ("Insert " + juce::String (i + 1) + (i < preFader ? " (before the fader)" : " (after the fader)")
+                             + ": add an effect (one of your VST3 effects)");
         }
     }
-    const auto db = isMaster() ? project.masterVolumeDb : track->volumeDb;
-    if (! volume.isMouseButtonDown())
-        volume.setValue (db, juce::dontSendNotification);
     if (track != nullptr)
     {
-        if (! pan.isMouseButtonDown())
-            pan.setValue (track->pan, juce::dontSendNotification);
         mute.setToggleState (track->mute, juce::dontSendNotification);
         solo.setToggleState (track->solo, juce::dontSendNotification);
     }
+    AutomationKeys::refresh (read, write, owner.studio, busId);
+    followMix();
     repaint();
+}
+
+void MixerView::Strip::followMix()
+{
+    const auto& project = owner.studio.getProject();
+    const auto* track = project.findTrack (busId);
+    if (! isMaster() && track == nullptr)
+        return;
+    // As set, or, while R is on, as the automation has it now (the engine's).
+    auto db = isMaster() ? project.masterVolumeDb : track->volumeDb;
+    auto panNow = track != nullptr ? track->pan : 0.0f;
+    if (owner.studio.getAutomationRead (busId))
+    {
+        const auto now = owner.studio.getEngine().getMixNow (busId);
+        db = now.volumeDb;
+        panNow = now.pan;
+        if (track != nullptr)
+            mute.setToggleState (now.mute, juce::dontSendNotification);
+    }
+    if (! volume.isMouseButtonDown() && std::abs (volume.getValue() - db) > 0.01)
+    {
+        volume.setValue (db, juce::dontSendNotification);
+        repaint (readoutArea.toNearestInt());
+    }
+    if (track != nullptr && ! pan.isMouseButtonDown() && std::abs (pan.getValue() - panNow) > 0.001)
+    {
+        pan.setValue (panNow, juce::dontSendNotification);
+        repaint (panReadoutArea.toNearestInt());
+    }
 }
 
 void MixerView::Strip::setLevels (float leftPeak, float rightPeak)
@@ -153,6 +209,14 @@ void MixerView::Strip::paint (juce::Graphics& g)
     g.setColour (ParagonColours::textDim);
     g.setFont (font (8.5f));
     g.drawText ("INSERTS", nameArea.translated (0.0f, nameArea.getHeight()).withHeight (12.0f), juce::Justification::centred, false);
+    // The line between the inserts before the fader and those after it.
+    if (const auto preFader = owner.studio.getPreFaderSlots (busId); preFader < shownSlots)
+    {
+        const auto& first = slots[(size_t) preFader];
+        const auto y = preFader == 0 ? (float) first.getY() - 2.0f : (float) first.getY() - (float) slotGap * 0.5f - 0.5f;
+        g.setColour (ParagonColours::accent);
+        g.fillRect ((float) first.getX(), y, (float) first.getWidth(), 1.5f);
+    }
     if (track != nullptr)
         g.drawText (panText (track->pan), panReadoutArea, juce::Justification::centred, false);
 
@@ -177,9 +241,14 @@ void MixerView::Strip::resized()
     auto area = getLocalBounds().reduced (6, 0).withTrimmedTop (8).withTrimmedBottom (6);
     nameArea = area.removeFromTop (18).toFloat();
     area.removeFromTop (14);   // "INSERTS"
-    for (auto& slot : slots)
+    // The slots shown, smaller when there are many, so the fader keeps room.
+    const auto below = (isMaster() ? 0 : 50) + 28 + 16 + 6 + 110;   // pan, the keys, the readout, a gap, the shortest fader
+    const auto rowHeight = juce::jlimit (11, slotHeight, (area.getHeight() - below) / shownSlots - slotGap);
+    for (int i = 0; i < (int) slots.size(); ++i)
     {
-        slot.setBounds (area.removeFromTop (slotHeight));
+        if (i >= shownSlots)
+            continue;
+        slots[(size_t) i].setBounds (area.removeFromTop (rowHeight));
         area.removeFromTop (slotGap);
     }
     area.removeFromTop (6);
@@ -188,13 +257,19 @@ void MixerView::Strip::resized()
         pan.setBounds (area.removeFromTop (34).withSizeKeepingCentre (34, 34));
         panReadoutArea = area.removeFromTop (12).toFloat();
         area.removeFromTop (4);
-        auto keys = area.removeFromTop (22);
-        const auto keyWidth = (keys.getWidth() - 4) / 2;
-        mute.setBounds (keys.removeFromLeft (keyWidth));
-        keys.removeFromLeft (4);
-        solo.setBounds (keys);
-        area.removeFromTop (6);
     }
+    // M, S, R and W in a row (the master: R and W).
+    auto keys = area.removeFromTop (22);
+    const auto count = isMaster() ? 2 : 4;
+    const auto keyWidth = (keys.getWidth() - 3 * (count - 1)) / count;
+    for (auto* key : { &mute, &solo, &read, &write })
+    {
+        if (isMaster() && (key == &mute || key == &solo))
+            continue;
+        key->setBounds (keys.removeFromLeft (keyWidth));
+        keys.removeFromLeft (3);
+    }
+    area.removeFromTop (6);
     readoutArea = area.removeFromBottom (16).toFloat();
     auto faderArea = area;
     const auto meterWidth = isMaster() ? 14 : 8;
@@ -288,7 +363,9 @@ void MixerView::timerCallback()
     {
         const auto peak = engine.takeTrackPeak (strip->getBusId(), 1);
         strip->setLevels (peak, peak);
+        strip->followMix();
     }
+    master->followMix();
     master->setLevels (engine.getOutputMeter (0, 1).takePeak(), engine.getOutputMeter (1, 1).takePeak());
 }
 
@@ -305,27 +382,28 @@ void MixerView::showInsertMenu (int busId, int slot)
         choose.addItem (-1, "No VST3 effects found yet", false);
 
     juce::PopupMenu menu;
-    const auto filled = slot < (int) inserts->size();
+    const auto filled = slot < (int) inserts->size() && ! (*inserts)[(size_t) slot].isEmpty();
+    const auto preFader = studio.getPreFaderSlots (busId);
     if (filled)
     {
         const auto& insert = (*inserts)[(size_t) slot];
         const auto* instance = studio.getEngine().getEffect (busId, slot);
-        menu.addSectionHeader (insert.plugin.name);
+        menu.addSectionHeader (insert.plugin.name + (slot < preFader ? " (before the fader)" : " (after the fader)"));
         menu.addItem (1, "Open its window", instance != nullptr && instance->hasEditor());
         menu.addItem (2, "Bypass", true, insert.bypass);
         menu.addSubMenu ("Replace with", choose);
         menu.addItem (3, "Remove");
+        menu.addSeparator();
+        menu.addItem (5, "Set as Last Pre-Fader Slot", slot + 1 != preFader);
+        menu.addItem (6, "All Slots Before the Fader", preFader < pr7s::Project::maxInserts);
     }
     else
     {
-        menu.addSectionHeader ((int) inserts->size() >= pr7s::Project::maxInserts ? "No room for another effect" : "Add an effect");
-        if ((int) inserts->size() < pr7s::Project::maxInserts)
-        {
-            for (int i = 0; i < effects.size(); ++i)
-                menu.addItem (100 + i, effects[i].manufacturerName + ": " + effects[i].name);
-            if (effects.isEmpty())
-                menu.addItem (-1, "No VST3 effects found yet", false);
-        }
+        menu.addSectionHeader ("Insert " + juce::String (slot + 1) + ": add an effect" + (slot < preFader ? " (before the fader)" : " (after the fader)"));
+        for (int i = 0; i < effects.size(); ++i)
+            menu.addItem (100 + i, effects[i].manufacturerName + ": " + effects[i].name);
+        if (effects.isEmpty())
+            menu.addItem (-1, "No VST3 effects found yet", false);
     }
     menu.addSeparator();
     menu.addItem (4, effects.isEmpty() ? "Find my VST3 effects..." : "Find more VST3 effects...");
@@ -339,7 +417,7 @@ void MixerView::showInsertMenu (int busId, int slot)
         auto ok = true;
         if (chosen >= 100 && chosen - 100 < effects.size())
             ok = filled ? s.replaceInsert (busId, slot, effects[chosen - 100], &error)
-                        : s.addInsert (busId, effects[chosen - 100], &error);
+                        : s.addInsert (busId, effects[chosen - 100], &error, slot);
         else if (chosen == 1 && safe->onOpenEffect)
             safe->onOpenEffect (busId, slot);
         else if (chosen == 2)
@@ -348,6 +426,10 @@ void MixerView::showInsertMenu (int busId, int slot)
             s.removeInsert (busId, slot);
         else if (chosen == 4 && safe->onFindPlugins)
             safe->onFindPlugins();
+        else if (chosen == 5)
+            s.setLastPreFaderSlot (busId, slot);
+        else if (chosen == 6)
+            s.setLastPreFaderSlot (busId, pr7s::Project::maxInserts - 1);
         if (! ok)
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't load the effect", error);
     });
@@ -367,7 +449,7 @@ void MixerView::paint (juce::Graphics& g)
     g.drawText ("MIXER", bar.withTrimmedLeft (14.0f), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (font (11.0f, juce::Font::plain));
-    g.drawText ("Each track: its instrument, then its inserts (top to bottom), then its fader, into the master",
+    g.drawText ("Each track: its instrument, its inserts (top to bottom; those below an orange line after the fader), its fader, into the master",
                 bar.withTrimmedLeft (70.0f).withTrimmedRight (170.0f), juce::Justification::centredLeft, true);
     if (strips.empty())
     {

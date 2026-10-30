@@ -206,33 +206,49 @@ TEST_CASE ("Recording audio: what comes in becomes a clip where it was played, i
     studio.getAudioFolder().deleteRecursively();
 }
 
-TEST_CASE ("Recording audio in a cycle keeps the first pass; recording nothing leaves no clip", "[studio][audio]")
+TEST_CASE ("Recording audio in a cycle keeps the last complete pass; recording nothing leaves no clip", "[studio][audio]")
 {
     Studio studio (false);
     const auto trackId = studio.addAudioTrack (true);
     studio.setCycle (0.0, 2.0);
     studio.setCycleOn (true);
-    const auto played = ramp ((int) beat * 4);
+    // Five beats: two whole passes and half of a third. The second is kept.
+    const auto played = ramp ((int) beat * 5);
     studio.record();
-    juce::AudioBuffer<float> output (2, (int) beat * 4);
-    studio.getEngine().render (output, (int) beat * 4, played.get());
+    juce::AudioBuffer<float> output (2, (int) beat * 5);
+    studio.getEngine().render (output, (int) beat * 5, played.get());
     studio.stop();
     REQUIRE (studio.getProject().findTrack (trackId)->parts.size() == 1);
     const auto clip = studio.getProject().findTrack (trackId)->parts[0];
     CHECK_THAT (clip.start, WithinAbs (0.0, 1.0e-9));
-    CHECK_THAT (clip.length, WithinAbs (2.0, 1.0e-6));   // the cycle's two beats, not four
+    CHECK_THAT (clip.length, WithinAbs (2.0, 1.0e-6));   // the cycle's two beats
+    CHECK_THAT (clip.audioOffset, WithinAbs (1.0, 1.0e-9));   // from the second pass (two beats in: a second)
     const auto data = studio.getAudio (clip.audioFile);
     REQUIRE (data != nullptr);
-    CHECK (data->sound.getNumSamples() == (int) beat * 2);
+    CHECK (data->sound.getNumSamples() == (int) beat * 5);   // every pass kept in the file
     CHECK (data->sound.getNumChannels() == 2);
     CHECK_THAT (data->sound.getSample (1, 100), WithinAbs (played->getSample (1, 100), 1.0e-6));   // stereo: the second input on the right
+    // Played: the second pass, from the cycle's start.
+    studio.setPosition (0.0);
+    studio.play();
+    const auto heard = renderSamples (studio.getEngine(), 512);
+    studio.stop();
+    CHECK_THAT (heard[10], WithinAbs (played->getSample (0, (int) beat * 2 + 10), 1.0e-6));
+
+    // Stopped in the first pass: what there is of it.
+    studio.record();
+    studio.getEngine().render (output, (int) beat + (int) beat / 2, played.get());
+    studio.stop();
+    REQUIRE (studio.getProject().findTrack (trackId)->parts.size() == 2);
+    CHECK_THAT (studio.getProject().findTrack (trackId)->parts[1].length, WithinAbs (1.5, 1.0e-6));
+    CHECK (studio.getProject().findTrack (trackId)->parts[1].audioOffset == 0.0);
 
     // Record pressed and stopped at once (no audio went by): no clip, no file.
     studio.setCycleOn (false);
     const auto before = studio.getAudioFolder().getNumberOfChildFiles (juce::File::findFiles);
     studio.record();
     studio.stop();
-    CHECK (studio.getProject().findTrack (trackId)->parts.size() == 1);
+    CHECK (studio.getProject().findTrack (trackId)->parts.size() == 2);
     CHECK (studio.getAudioFolder().getNumberOfChildFiles (juce::File::findFiles) == before);
     studio.getAudioFolder().deleteRecursively();
 }

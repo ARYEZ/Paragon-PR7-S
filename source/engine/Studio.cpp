@@ -20,6 +20,7 @@ namespace pr7s
 
     Studio::Studio (bool useDevices) : withDevices (useDevices)
     {
+        engine.onPluginGoing = [this] (juce::AudioProcessor* plugin) { unwatch (plugin); };
         formats.registerBasicFormats();
         writerThread.startThread();
         // Recordings before a song is saved: a folder of their own in Documents (tests: a temporary one).
@@ -63,6 +64,9 @@ namespace pr7s
     Studio::~Studio()
     {
         stopTimer();
+        unwatchAll();
+        engine.onPluginGoing = nullptr;   // (the watchers are gone first)
+        endExport();
         if (audioWriter != nullptr)
         {
             engine.setRecorder (recordTrack, nullptr);
@@ -97,6 +101,7 @@ namespace pr7s
     void Studio::changed (bool undoable)
     {
         numberParts();
+        watchPlugins();
         engine.update (project);
         modified = true;
         if (undoable)
@@ -148,6 +153,18 @@ namespace pr7s
         undoIndex = (int) undoStates.size() - 1;
     }
 
+    // The lanes and their points as they were; which are shown, and the R and
+    // W, stay as they are now (how the screen is, not the song).
+    void Studio::restoreLanes (std::vector<AutomationLane>& lanes, const std::vector<AutomationLane>& then)
+    {
+        auto restored = then;
+        for (auto& lane : restored)
+            for (const auto& now : lanes)
+                if (now.sameControl (lane))
+                    lane.shown = now.shown;
+        lanes = std::move (restored);
+    }
+
     void Studio::restore (const Project& state)
     {
         project.bpm = state.bpm;
@@ -168,7 +185,9 @@ namespace pr7s
                 track.mute = then->mute;
                 track.solo = then->solo;
                 track.parts = then->parts;
+                restoreLanes (track.automation, then->automation);
             }
+        restoreLanes (project.masterAutomation, state.masterAutomation);
         changed (false);
     }
 
@@ -265,6 +284,7 @@ namespace pr7s
         const auto index = (int) std::distance (project.tracks.begin(), it);
         if (onInstrumentGoing)
             onInstrumentGoing (trackId);
+        unwatch (engine.getInstrument (trackId));
         for (int slot = 0; slot < (int) it->inserts.size(); ++slot)
             effectGoing (trackId, slot);
         project.tracks.erase (it);
@@ -290,6 +310,7 @@ namespace pr7s
         track->instrument = instrument;
         if (onInstrumentGoing)
             onInstrumentGoing (trackId);
+        unwatch (engine.getInstrument (trackId));
         engine.setInstrument (trackId, std::move (instance));
         changed (false);
         return true;
@@ -308,7 +329,16 @@ namespace pr7s
     {
         if (auto* track = project.findTrack (trackId))
         {
+            // A click on M is a touch: with W on while playing, it writes (and latches).
+            const auto muteControl = control (AutomationLane::Target::mute);
+            grabControl (trackId, muteControl);
             track->mute = on;
+            if (writeValue (trackId, muteControl, on ? 1.0f : 0.0f))
+            {
+                releaseControl (trackId, muteControl);
+                changed (false);
+                return;
+            }
             changed();
         }
     }
@@ -327,7 +357,9 @@ namespace pr7s
         if (auto* track = project.findTrack (trackId))
         {
             track->volumeDb = juce::jlimit (-60.0f, 6.0f, db);
-            changed (undoable);
+            // Being written: the pass is the undo step.
+            const auto written = writeValue (trackId, control (AutomationLane::Target::volume), volumeToTravel (track->volumeDb));
+            changed (undoable && ! written);
         }
     }
 
@@ -336,7 +368,8 @@ namespace pr7s
         if (auto* track = project.findTrack (trackId))
         {
             track->pan = juce::jlimit (-1.0f, 1.0f, pan);
-            changed (undoable);
+            const auto written = writeValue (trackId, control (AutomationLane::Target::pan), panToTravel (track->pan));
+            changed (undoable && ! written);
         }
     }
 
@@ -533,6 +566,7 @@ namespace pr7s
 
     void Studio::effectGoing (int busId, int slot)
     {
+        unwatch (engine.getEffect (busId, slot));
         if (onEffectGoing)
             if (auto* effect = engine.getEffect (busId, slot))
                 onEffectGoing (effect);
@@ -540,16 +574,18 @@ namespace pr7s
 
     void Studio::removeAllEffects()
     {
+        unwatchAll();   // (a new or opened song: every plugin goes)
         if (onEffectGoing)
             onEffectGoing (nullptr);
         while (engine.getNumEffects (Engine::masterBus) > 0)
             engine.removeEffect (Engine::masterBus, 0);
     }
 
-    bool Studio::addInsert (int busId, const juce::PluginDescription& description, juce::String* error)
+    bool Studio::addInsert (int busId, const juce::PluginDescription& description, juce::String* error, int slot)
     {
         const auto* inserts = insertsOf (busId);
-        if (inserts == nullptr || (int) inserts->size() >= Project::maxInserts)
+        if (inserts == nullptr || (slot < 0 ? (int) inserts->size() >= Project::maxInserts
+                                            : slot >= Project::maxInserts || (slot < (int) inserts->size() && ! (*inserts)[(size_t) slot].isEmpty())))
         {
             if (error != nullptr)
                 *error = "There's no room for another effect here (" + juce::String (Project::maxInserts) + " at most).";
@@ -565,18 +601,49 @@ namespace pr7s
                 *error = problem;
             return false;
         }
-        return addInsert (busId, insert, std::move (instance));
+        return addInsert (busId, insert, std::move (instance), slot);
     }
 
-    bool Studio::addInsert (int busId, const Insert& insert, std::unique_ptr<juce::AudioPluginInstance> instance)
+    bool Studio::addInsert (int busId, const Insert& insert, std::unique_ptr<juce::AudioPluginInstance> instance, int slot)
     {
         auto* inserts = insertsOf (busId);
-        if (inserts == nullptr || (int) inserts->size() >= Project::maxInserts)
+        if (inserts == nullptr)
             return false;
-        inserts->push_back (insert);
-        engine.insertEffect (busId, (int) inserts->size() - 1, std::move (instance));
+        if (slot < 0)
+            slot = (int) inserts->size();
+        if (slot >= Project::maxInserts || (slot < (int) inserts->size() && ! (*inserts)[(size_t) slot].isEmpty()))
+            return false;
+        // Empty slots up to it, if it's past the last one used.
+        while ((int) inserts->size() <= slot)
+        {
+            inserts->push_back ({});
+            engine.insertEffect (busId, (int) inserts->size() - 1, nullptr);
+        }
+        (*inserts)[(size_t) slot] = insert;
+        engine.removeEffect (busId, slot);
+        engine.insertEffect (busId, slot, std::move (instance));
         changed (false);
         return true;
+    }
+
+    void Studio::setLastPreFaderSlot (int busId, int slot)
+    {
+        const auto count = juce::jlimit (0, Project::maxInserts, slot + 1);
+        if (busId == Engine::masterBus)
+            project.masterPreFaderSlots = count;
+        else if (auto* track = project.findTrack (busId))
+            track->preFaderSlots = count;
+        else
+            return;
+        changed (false);
+    }
+
+    int Studio::getPreFaderSlots (int busId) const
+    {
+        if (busId == Engine::masterBus)
+            return project.masterPreFaderSlots;
+        const auto* track = project.findTrack (busId);
+        return track != nullptr ? track->preFaderSlots : Project::maxInserts;
     }
 
     bool Studio::replaceInsert (int busId, int slot, const juce::PluginDescription& description, juce::String* error)
@@ -598,6 +665,7 @@ namespace pr7s
         engine.removeEffect (busId, slot);
         engine.insertEffect (busId, slot, std::move (instance));
         (*inserts)[(size_t) slot] = insert;
+        insertGone (busId, slot, false);   // another plugin: the old one's automation means nothing to it
         changed (false);
         return true;
     }
@@ -609,7 +677,15 @@ namespace pr7s
             return;
         effectGoing (busId, slot);
         engine.removeEffect (busId, slot);
-        inserts->erase (inserts->begin() + slot);
+        engine.insertEffect (busId, slot, nullptr);   // the slot stays, empty
+        (*inserts)[(size_t) slot] = {};
+        insertGone (busId, slot, false);
+        // No empty slots after the last effect.
+        while (! inserts->empty() && inserts->back().isEmpty())
+        {
+            engine.removeEffect (busId, (int) inserts->size() - 1);
+            inserts->pop_back();
+        }
         changed (false);
     }
 
@@ -622,10 +698,641 @@ namespace pr7s
         changed (false);
     }
 
+    //==========================================================================
+    std::vector<AutomationLane>* Studio::lanesOf (int busId)
+    {
+        if (busId == Engine::masterBus)
+            return &project.masterAutomation;
+        auto* track = project.findTrack (busId);
+        return track != nullptr ? &track->automation : nullptr;
+    }
+
+    const std::vector<AutomationLane>* Studio::getAutomation (int busId) const
+    {
+        return const_cast<Studio*> (this)->lanesOf (busId);
+    }
+
+    bool Studio::isAutomationOpen (int busId) const
+    {
+        if (busId == Engine::masterBus)
+            return project.masterAutomationOpen;
+        const auto* track = project.findTrack (busId);
+        return track != nullptr && track->automationOpen;
+    }
+
+    bool Studio::getAutomationRead (int busId) const
+    {
+        if (busId == Engine::masterBus)
+            return project.masterRead;
+        const auto* track = project.findTrack (busId);
+        return track != nullptr && track->automationRead;
+    }
+
+    bool Studio::getAutomationWrite (int busId) const
+    {
+        if (busId == Engine::masterBus)
+            return project.masterWrite;
+        const auto* track = project.findTrack (busId);
+        return track != nullptr && track->automationWrite;
+    }
+
+    void Studio::setAutomationRead (int busId, bool on)
+    {
+        if (busId == Engine::masterBus)
+            project.masterRead = on;
+        else if (auto* track = project.findTrack (busId))
+            track->automationRead = on;
+        else
+            return;
+        changed (false);
+    }
+
+    void Studio::setAutomationWrite (int busId, bool on)
+    {
+        if (! on)   // W off ends its passes (as the manual has it)
+            for (size_t i = passes.size(); i-- > 0;)
+                if (passes[i].busId == busId)
+                    punchOut (i, engine.getPosition());
+        if (busId == Engine::masterBus)
+        {
+            project.masterWrite = on;
+            project.masterRead = project.masterRead || on;
+        }
+        else if (auto* track = project.findTrack (busId))
+        {
+            track->automationWrite = on;
+            track->automationRead = track->automationRead || on;   // R comes on with W (and stays when W goes off)
+        }
+        else
+        {
+            return;
+        }
+        changed (false);
+    }
+
+    bool Studio::anyAutomationRead() const
+    {
+        return project.masterRead || std::any_of (project.tracks.begin(), project.tracks.end(), [] (const Track& t) { return t.automationRead; });
+    }
+
+    bool Studio::anyAutomationWrite() const
+    {
+        return project.masterWrite || std::any_of (project.tracks.begin(), project.tracks.end(), [] (const Track& t) { return t.automationWrite; });
+    }
+
+    void Studio::setAutomationReadAll (bool on)
+    {
+        project.masterRead = on;
+        for (auto& track : project.tracks)
+            track.automationRead = on;
+        changed (false);
+    }
+
+    void Studio::setAutomationWriteAll (bool on)
+    {
+        if (! on)
+            punchOutAll();
+        project.masterWrite = on;
+        project.masterRead = project.masterRead || on;
+        for (auto& track : project.tracks)
+        {
+            track.automationWrite = on;
+            track.automationRead = track.automationRead || on;
+        }
+        changed (false);
+    }
+
+    AutomationLane Studio::AutomationControl::asLane() const
+    {
+        AutomationLane lane;
+        lane.target = target;
+        lane.slot = slot;
+        lane.parameter = parameter;
+        lane.parameterName = name;
+        return lane;
+    }
+
+    std::vector<Studio::AutomationControl> Studio::getAutomationControls (int busId) const
+    {
+        using T = AutomationLane::Target;
+        std::vector<AutomationControl> controls;
+        const auto addKnobs = [&controls] (juce::AudioPluginInstance* plugin, T target, int slot, const juce::String& group)
+        {
+            if (plugin == nullptr)
+                return;
+            const auto& parameters = plugin->getParameters();
+            for (int i = 0; i < parameters.size(); ++i)
+                if (parameters[i]->isAutomatable())
+                    controls.push_back ({ target, slot, i, parameters[i]->getName (64), group });
+        };
+        if (busId == Engine::masterBus)
+        {
+            controls.push_back ({ T::volume, 0, 0, "Volume", {} });
+        }
+        else
+        {
+            if (project.findTrack (busId) == nullptr)
+                return controls;
+            controls.push_back ({ T::volume, 0, 0, "Volume", {} });
+            controls.push_back ({ T::pan, 0, 0, "Pan", {} });
+            controls.push_back ({ T::mute, 0, 0, "Mute", {} });
+            if (auto* instrument = engine.getInstrument (busId))
+                addKnobs (instrument, T::instrument, 0, "Instrument: " + instrument->getName());
+        }
+        for (int slot = 0; slot < engine.getNumEffects (busId); ++slot)
+            if (auto* effect = engine.getEffect (busId, slot))
+                addKnobs (effect, T::insert, slot, "Insert " + juce::String (slot + 1) + ": " + effect->getName());
+        return controls;
+    }
+
+    juce::AudioPluginInstance* Studio::pluginFor (int busId, const AutomationLane& lane) const
+    {
+        if (lane.target == AutomationLane::Target::instrument)
+            return busId == Engine::masterBus ? nullptr : engine.getInstrument (busId);
+        if (lane.target == AutomationLane::Target::insert)
+            return engine.getEffect (busId, lane.slot);
+        return nullptr;
+    }
+
+    juce::String Studio::getLaneName (int busId, const AutomationLane& lane) const
+    {
+        switch (lane.target)
+        {
+            case AutomationLane::Target::volume: return "Volume";
+            case AutomationLane::Target::pan:    return "Pan";
+            case AutomationLane::Target::mute:   return "Mute";
+            case AutomationLane::Target::instrument:
+            case AutomationLane::Target::insert: break;
+        }
+        const auto prefix = lane.target == AutomationLane::Target::insert ? "Ins. " + juce::String (lane.slot + 1) + ": " : juce::String();
+        if (auto* plugin = pluginFor (busId, lane))
+            if (lane.parameter < plugin->getParameters().size())
+                return prefix + plugin->getParameters()[lane.parameter]->getName (64);
+        return prefix + lane.parameterName;
+    }
+
+    float Studio::getControlValue (int busId, const AutomationLane& lane) const
+    {
+        const auto* track = project.findTrack (busId);
+        switch (lane.target)
+        {
+            case AutomationLane::Target::volume: return volumeToTravel (busId == Engine::masterBus ? project.masterVolumeDb : track != nullptr ? track->volumeDb : 0.0f);
+            case AutomationLane::Target::pan:    return panToTravel (track != nullptr ? track->pan : 0.0f);
+            case AutomationLane::Target::mute:   return track != nullptr && track->mute ? 1.0f : 0.0f;
+            case AutomationLane::Target::instrument:
+            case AutomationLane::Target::insert: break;
+        }
+        if (auto* plugin = pluginFor (busId, lane))
+            if (lane.parameter < plugin->getParameters().size())
+                return plugin->getParameters()[lane.parameter]->getValue();
+        return 0.0f;
+    }
+
+    void Studio::setAutomationOpen (int busId, bool open)
+    {
+        auto* lanes = lanesOf (busId);
+        if (lanes == nullptr)
+            return;
+        if (open && std::none_of (lanes->begin(), lanes->end(), [] (const AutomationLane& l) { return l.shown; }))
+        {
+            // Nothing was open: the lanes with points, or else the first control.
+            for (auto& lane : *lanes)
+                lane.shown = ! lane.points.empty();
+            if (std::none_of (lanes->begin(), lanes->end(), [] (const AutomationLane& l) { return l.shown; }))
+            {
+                const auto controls = getAutomationControls (busId);
+                if (! controls.empty())
+                    lanes->insert (lanes->begin(), controls.front().asLane());
+            }
+        }
+        if (busId == Engine::masterBus)
+            project.masterAutomationOpen = open;
+        else
+            project.findTrack (busId)->automationOpen = open;
+        changed();   // (a new lane is an edit; undo leaves what's shown as it is)
+    }
+
+    void Studio::showAllUsedAutomation()
+    {
+        const auto showUsed = [] (std::vector<AutomationLane>& lanes, bool& open)
+        {
+            for (auto& lane : lanes)
+                if (! lane.points.empty())
+                    lane.shown = open = true;
+        };
+        showUsed (project.masterAutomation, project.masterAutomationOpen);
+        for (auto& track : project.tracks)
+            showUsed (track.automation, track.automationOpen);
+        changed (false);
+    }
+
+    void Studio::appendAutomationLane (int busId, int laneIndex)
+    {
+        auto* lanes = lanesOf (busId);
+        if (lanes == nullptr)
+            return;
+        for (const auto& control : getAutomationControls (busId))
+        {
+            const auto lane = control.asLane();
+            const auto existing = std::find_if (lanes->begin(), lanes->end(), [&] (const AutomationLane& l) { return l.sameControl (lane); });
+            if (existing != lanes->end() && existing->shown)
+                continue;
+            // The next control not shown: its lane (kept points and all) after this one.
+            auto moved = existing != lanes->end() ? *existing : lane;
+            moved.shown = true;
+            if (existing != lanes->end())
+            {
+                const auto from = (int) std::distance (lanes->begin(), existing);
+                lanes->erase (existing);
+                if (from <= laneIndex)
+                    --laneIndex;
+            }
+            lanes->insert (lanes->begin() + juce::jlimit (0, (int) lanes->size(), laneIndex + 1), moved);
+            changed();
+            return;
+        }
+    }
+
+    void Studio::setLaneControl (int busId, int laneIndex, const AutomationControl& control)
+    {
+        auto* lanes = lanesOf (busId);
+        if (lanes == nullptr || ! juce::isPositiveAndBelow (laneIndex, (int) lanes->size()))
+            return;
+        const auto lane = control.asLane();
+        if ((*lanes)[(size_t) laneIndex].sameControl (lane))
+            return;
+        // The control it showed: kept, hidden, if it has points.
+        auto previous = (*lanes)[(size_t) laneIndex];
+        previous.shown = false;
+        auto chosen = lane;
+        if (const auto existing = std::find_if (lanes->begin(), lanes->end(), [&] (const AutomationLane& l) { return l.sameControl (lane); });
+            existing != lanes->end())
+        {
+            chosen = *existing;
+            const auto from = (int) std::distance (lanes->begin(), existing);
+            lanes->erase (existing);
+            if (from < laneIndex)
+                --laneIndex;
+        }
+        chosen.shown = true;
+        (*lanes)[(size_t) laneIndex] = chosen;
+        if (! previous.points.empty())
+            lanes->push_back (previous);
+        changed();
+    }
+
+    void Studio::removeAutomationParameter (int busId, int laneIndex)
+    {
+        auto* lanes = lanesOf (busId);
+        if (lanes == nullptr || ! juce::isPositiveAndBelow (laneIndex, (int) lanes->size()))
+            return;
+        lanes->erase (lanes->begin() + laneIndex);
+        if (std::none_of (lanes->begin(), lanes->end(), [] (const AutomationLane& l) { return l.shown; }))
+        {
+            if (busId == Engine::masterBus)
+                project.masterAutomationOpen = false;
+            else
+                project.findTrack (busId)->automationOpen = false;
+        }
+        changed();
+    }
+
+    void Studio::removeUnusedAutomation (int busId)
+    {
+        auto* lanes = lanesOf (busId);
+        if (lanes == nullptr)
+            return;
+        lanes->erase (std::remove_if (lanes->begin(), lanes->end(), [] (const AutomationLane& l) { return l.points.empty(); }), lanes->end());
+        if (lanes->empty())
+        {
+            if (busId == Engine::masterBus)
+                project.masterAutomationOpen = false;
+            else
+                project.findTrack (busId)->automationOpen = false;
+        }
+        changed();
+    }
+
+    void Studio::setLaneMuted (int busId, int laneIndex, bool muted)
+    {
+        auto* lanes = lanesOf (busId);
+        if (lanes == nullptr || ! juce::isPositiveAndBelow (laneIndex, (int) lanes->size()))
+            return;
+        (*lanes)[(size_t) laneIndex].muted = muted;
+        changed();
+    }
+
+    void Studio::setAutomationPoints (int busId, int laneIndex, std::vector<AutomationPoint> points)
+    {
+        auto* lanes = lanesOf (busId);
+        if (lanes == nullptr || ! juce::isPositiveAndBelow (laneIndex, (int) lanes->size()))
+            return;
+        for (auto& point : points)
+        {
+            point.beat = juce::jmax (0.0, point.beat);
+            point.value = juce::jlimit (0.0f, 1.0f, point.value);
+        }
+        std::stable_sort (points.begin(), points.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
+        (*lanes)[(size_t) laneIndex].points = std::move (points);
+        // Editing a lane turns R on (as clicking in an automation track does).
+        if (busId == Engine::masterBus)
+            project.masterRead = true;
+        else
+            project.findTrack (busId)->automationRead = true;
+        changed();
+    }
+
+    void Studio::insertGone (int busId, int slot, bool shiftUp)
+    {
+        const auto fix = [slot, shiftUp] (std::vector<AutomationLane>& lanes)
+        {
+            lanes.erase (std::remove_if (lanes.begin(), lanes.end(), [slot] (const AutomationLane& l)
+            {
+                return l.target == AutomationLane::Target::insert && l.slot == slot;
+            }), lanes.end());
+            if (shiftUp)
+                for (auto& lane : lanes)
+                    if (lane.target == AutomationLane::Target::insert && lane.slot > slot)
+                        --lane.slot;
+        };
+        const auto fixIn = [&] (Project& p)
+        {
+            if (busId == Engine::masterBus)
+                fix (p.masterAutomation);
+            else if (auto* track = p.findTrack (busId))
+                fix (track->automation);
+        };
+        fixIn (project);
+        for (auto& state : undoStates)
+            fixIn (state);
+    }
+
     void Studio::setMasterVolume (float db, bool undoable)
     {
         project.masterVolumeDb = juce::jlimit (-60.0f, 6.0f, db);
-        changed (undoable);
+        const auto written = writeValue (Engine::masterBus, control (AutomationLane::Target::volume), volumeToTravel (project.masterVolumeDb));
+        changed (undoable && ! written);
+    }
+
+    //==========================================================================
+    // Hears a plugin's knobs turned by hand (in its window) and passes them to
+    // the studio's thread, where they're written (if a pass is going).
+    class Studio::KnobWatcher final : public juce::AudioProcessorListener
+    {
+    public:
+        KnobWatcher (Studio& s, juce::AudioProcessor& p, int bus, AutomationLane::Target target, int slot)
+            : studio (s), alive (s.alive), plugin (p), busId (bus), kind (target), slotIndex (slot)
+        {
+            plugin.addListener (this);
+        }
+        ~KnobWatcher() override { plugin.removeListener (this); }
+
+        void audioProcessorParameterChanged (juce::AudioProcessor*, int index, float value) override
+        {
+            post ([value] (Studio& s, int bus, const AutomationLane& knob) { s.setKnob (bus, knob, value); }, index);
+        }
+        void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int index) override
+        {
+            post ([] (Studio& s, int bus, const AutomationLane& knob) { s.grabControl (bus, knob); }, index);
+        }
+        void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int index) override
+        {
+            post ([] (Studio& s, int bus, const AutomationLane& knob) { s.releaseControl (bus, knob); }, index);
+        }
+        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+
+    private:
+        template <typename Action>
+        void post (Action action, int index)
+        {
+            if (juce::MessageManager::existsAndIsCurrentThread())   // (a plugin's window: here and now)
+            {
+                action (studio, busId, Studio::control (kind, slotIndex, index));
+                return;
+            }
+            juce::MessageManager::callAsync ([weak = std::weak_ptr<bool> (alive), studioPtr = &studio, bus = busId,
+                                              knob = Studio::control (kind, slotIndex, index), action]
+            {
+                if (weak.lock() != nullptr)
+                    action (*studioPtr, bus, knob);
+            });
+        }
+
+        Studio& studio;
+        std::shared_ptr<bool> alive;
+        juce::AudioProcessor& plugin;
+        const int busId;
+        const AutomationLane::Target kind;
+        const int slotIndex;
+    };
+
+    void Studio::watchPlugins()
+    {
+        const auto watch = [this] (juce::AudioProcessor* plugin, int busId, AutomationLane::Target target, int slot)
+        {
+            if (plugin != nullptr && watchers.find (plugin) == watchers.end())
+                watchers[plugin] = std::make_unique<KnobWatcher> (*this, *plugin, busId, target, slot);
+        };
+        for (const auto& track : project.tracks)
+        {
+            watch (engine.getInstrument (track.id), track.id, AutomationLane::Target::instrument, 0);
+            for (int slot = 0; slot < engine.getNumEffects (track.id); ++slot)
+                watch (engine.getEffect (track.id, slot), track.id, AutomationLane::Target::insert, slot);
+        }
+        for (int slot = 0; slot < engine.getNumEffects (Engine::masterBus); ++slot)
+            watch (engine.getEffect (Engine::masterBus, slot), Engine::masterBus, AutomationLane::Target::insert, slot);
+    }
+
+    void Studio::unwatch (juce::AudioProcessor* plugin)
+    {
+        if (plugin != nullptr)
+            watchers.erase (plugin);   // (before it's deleted: the engine says so, however it goes)
+    }
+
+    void Studio::unwatchAll()
+    {
+        watchers.clear();
+    }
+
+    AutomationLane Studio::control (AutomationLane::Target target, int slot, int parameter)
+    {
+        AutomationLane lane;
+        lane.target = target;
+        lane.slot = slot;
+        lane.parameter = parameter;
+        return lane;
+    }
+
+    void Studio::grabControl (int busId, const AutomationLane& which)
+    {
+        if (! engine.isPlaying() || ! getAutomationWrite (busId))
+            return;
+        for (auto& pass : passes)
+            if (pass.busId == busId && pass.control.sameControl (which))
+            {
+                pass.released = false;   // touched again (an on/off switch still latched)
+                return;
+            }
+        WritePass pass;
+        pass.busId = busId;
+        pass.control = which;
+        pass.start = pass.lastBeat = engine.getPosition();
+        pass.cycleCount = engine.getCycleCount();
+        pass.before = getControlValue (busId, which);
+        passes.push_back (pass);
+        engine.setHeld (busId, which, true);   // the hand is heard, not the lane
+        engine.update (project);
+        sendChangeMessage();                   // (W shows it's writing)
+    }
+
+    bool Studio::writeValue (int busId, const AutomationLane& which, float value)
+    {
+        for (size_t i = 0; i < passes.size(); ++i)
+        {
+            auto& pass = passes[i];
+            if (pass.busId != busId || ! pass.control.sameControl (which))
+                continue;
+            const auto beat = engine.getPosition();
+            if (pass.cycleCount != engine.getCycleCount())
+            {
+                // The cycle came round: the pass ends at the cycle's end (as the manual has it).
+                punchOut (i, juce::jmax (pass.lastBeat, project.loopEnd));
+                return false;
+            }
+            if (beat + 1.0e-6 < pass.lastBeat)
+            {
+                punchOut (i, pass.lastBeat);   // it jumped back
+                return false;
+            }
+            pass.lastBeat = beat;
+            pass.points.push_back ({ beat, juce::jlimit (0.0f, 1.0f, value) });
+            return true;
+        }
+        return false;
+    }
+
+    void Studio::releaseControl (int busId, const AutomationLane& which)
+    {
+        for (size_t i = 0; i < passes.size(); ++i)
+            if (passes[i].busId == busId && passes[i].control.sameControl (which))
+            {
+                if (which.isStep())
+                    passes[i].released = true;   // Auto-Latch: it keeps its last value until playing stops
+                else
+                    punchOut (i, engine.getPosition());   // Touch
+                return;
+            }
+    }
+
+    void Studio::setKnob (int busId, const AutomationLane& which, float value)
+    {
+        writeValue (busId, which, value);
+    }
+
+    bool Studio::isWritingAutomation (int busId) const
+    {
+        return std::any_of (passes.begin(), passes.end(), [busId] (const WritePass& p) { return p.busId == busId; });
+    }
+
+    void Studio::setControlValue (int busId, const AutomationLane& which, float value)
+    {
+        auto* track = project.findTrack (busId);
+        switch (which.target)
+        {
+            case AutomationLane::Target::volume:
+                if (busId == Engine::masterBus)
+                    project.masterVolumeDb = travelToVolume (value);
+                else if (track != nullptr)
+                    track->volumeDb = travelToVolume (value);
+                break;
+            case AutomationLane::Target::pan:  if (track != nullptr) track->pan = travelToPan (value); break;
+            case AutomationLane::Target::mute: if (track != nullptr) track->mute = value >= 0.5f; break;
+            case AutomationLane::Target::instrument:
+            case AutomationLane::Target::insert:
+                if (auto* plugin = pluginFor (busId, which))
+                    if (which.parameter < plugin->getParameters().size())
+                        plugin->getParameters()[which.parameter]->setValueNotifyingHost (value);
+                break;
+        }
+    }
+
+    void Studio::punchOut (size_t index, double endBeat)
+    {
+        auto pass = passes[index];
+        passes.erase (passes.begin() + (std::ptrdiff_t) index);
+        engine.setHeld (pass.busId, pass.control, false);
+        auto* lanes = lanesOf (pass.busId);
+        if (lanes == nullptr)
+            return;
+        endBeat = juce::jmax (endBeat, pass.start);
+
+        // Its lane (a new one if the control had none: every pass is kept, to open later).
+        auto lane = std::find_if (lanes->begin(), lanes->end(), [&] (const AutomationLane& l) { return l.sameControl (pass.control); });
+        if (lane == lanes->end())
+        {
+            auto added = pass.control;
+            added.shown = true;
+            if (auto* plugin = pluginFor (pass.busId, pass.control); plugin != nullptr && pass.control.parameter < plugin->getParameters().size())
+                added.parameterName = plugin->getParameters()[pass.control.parameter]->getName (64);
+            lanes->push_back (added);
+            lane = lanes->end() - 1;
+        }
+        const auto old = *lane;
+        const auto oldAt = [&] (double beat) { return old.points.empty() ? pass.before : *old.valueAt (beat); };
+
+        // The written values, thinned: a point that's on the line between its
+        // neighbours (to within a hair) adds nothing.
+        auto written = pass.points;
+        if (written.empty() || written.front().beat > pass.start)
+            written.insert (written.begin(), { pass.start, written.empty() ? pass.before : written.front().value });
+        if (pass.control.isStep() || written.back().beat < endBeat)
+            written.push_back ({ endBeat, written.back().value });   // held to the end (a latched switch, or a still hand)
+        std::vector<AutomationPoint> thin;
+        for (size_t i = 0; i < written.size(); ++i)
+        {
+            if (i > 0 && i + 1 < written.size())
+            {
+                const auto& a = thin.back();
+                const auto& b = written[i + 1];
+                const auto along = b.beat > a.beat ? (written[i].beat - a.beat) / (b.beat - a.beat) : 0.0;
+                const auto line = a.value + (b.value - a.value) * (float) along;
+                if (std::abs (written[i].value - line) < 0.002f && ! pass.control.isStep())
+                    continue;
+                if (pass.control.isStep() && std::abs (written[i].value - a.value) < 1.0e-6f)
+                    continue;
+            }
+            thin.push_back (written[i]);
+        }
+
+        // In place of what was there from the start to the end (and the return).
+        const auto returnBeats = pass.control.isStep() ? 0.0 : returnSeconds / project.secondsPerBeat();
+        const auto backAt = endBeat + returnBeats;
+        std::vector<AutomationPoint> points;
+        for (const auto& p : old.points)
+            if (p.beat < pass.start)
+                points.push_back (p);
+        points.push_back ({ pass.start, oldAt (pass.start) });   // up to the start as it was, then a jump to the hand's value
+        for (const auto& p : thin)
+            points.push_back (p);
+        points.push_back ({ backAt, oldAt (backAt) });            // and back to what was there (Touch's return)
+        for (const auto& p : old.points)
+            if (p.beat > backAt)
+                points.push_back (p);
+        lane->points = std::move (points);
+
+        // The control as it was set before (the lane carries the pass now).
+        setControlValue (pass.busId, pass.control, pass.before);
+        if (pass.busId == Engine::masterBus)
+            project.masterRead = true;
+        else if (auto* track = project.findTrack (pass.busId))
+            track->automationRead = true;
+        changed();   // one undo step
+    }
+
+    void Studio::punchOutAll()
+    {
+        while (! passes.empty())
+            punchOut (passes.size() - 1, juce::jmax (passes.back().lastBeat, engine.isPlaying() ? engine.getPosition() : passes.back().lastBeat));
     }
 
     //==========================================================================
@@ -683,6 +1390,7 @@ namespace pr7s
         }
         if (engine.isRecording())
             finishRecording();
+        punchOutAll();   // writing automation stops with playing
         engine.stop();
         sendChangeMessage();
     }
@@ -747,6 +1455,7 @@ namespace pr7s
 
     void Studio::setPosition (double beats)
     {
+        punchOutAll();   // a jump ends a pass of writing automation
         engine.setPosition (beats);
         if (! engine.isPlaying())
             playStart = juce::jmax (0.0, beats);
@@ -825,11 +1534,34 @@ namespace pr7s
         // At the sample recording began, and its first stretch (the
         // interface's delay) skipped: what was played lands where it was played.
         const auto latency = juce::jmin (recordingLatency(), data->seconds() * 0.5);
+        const auto rate = engine.getSampleRate();
+        const auto spb = project.secondsPerBeat();
         Part part;
-        part.start = (double) startSample * project.bpm / 60.0 / engine.getSampleRate();
+        part.start = (double) startSample * project.bpm / 60.0 / rate;
         part.audioFile = name;
         part.audioOffset = latency;
-        part.length = (data->seconds() - latency) / project.secondsPerBeat();
+        part.length = (data->seconds() - latency) / spb;
+        // In a cycle, the file holds every pass one after another: the clip
+        // plays the last complete one (as the manual's Replace mode keeps the
+        // last take), or what there is of the first if it wasn't finished.
+        const auto toSamples = [rate, &project = project] (double beats) { return (juce::int64) std::llround (beats * 60.0 / project.bpm * rate); };
+        const auto loopStart = toSamples (project.loopStart), loopEnd = toSamples (project.loopEnd);
+        if (project.loopOn && startSample < loopEnd && loopEnd > loopStart)
+        {
+            const auto played = (juce::int64) data->sound.getNumSamples() - (juce::int64) std::llround (latency * rate);
+            const auto firstPass = loopEnd - startSample, pass = loopEnd - loopStart;
+            const auto laps = played > firstPass ? (played - firstPass) / pass : 0;   // complete passes after the first
+            if (laps >= 1)
+            {
+                part.start = project.loopStart;
+                part.audioOffset = latency + (double) (firstPass + (laps - 1) * pass) / rate;
+                part.length = project.loopEnd - project.loopStart;
+            }
+            else
+            {
+                part.length = juce::jmin (part.length, (double) firstPass / rate / spb);
+            }
+        }
         if (auto* track = project.findTrack (recordTrack))
         {
             part.name = track->name;
@@ -882,6 +1614,20 @@ namespace pr7s
 
     void Studio::timerCallback()
     {
+        // Writing automation: the position going back (the cycle came round)
+        // ends a pass where it got to; a latched switch's pass moves on with
+        // the song (it has no new values to say so).
+        for (size_t i = passes.size(); i-- > 0;)
+        {
+            const auto now = engine.getPosition();
+            if (passes[i].cycleCount != engine.getCycleCount())
+                punchOut (i, juce::jmax (passes[i].lastBeat, project.loopEnd));
+            else if (now + 1.0e-6 < passes[i].lastBeat)
+                punchOut (i, passes[i].lastBeat);
+            else
+                passes[i].lastBeat = now;
+        }
+
         // Notes come in while recording: collect them (the engine's list is
         // only so long) and redraw the part taking shape.
         if (engine.isRecording())
@@ -899,6 +1645,7 @@ namespace pr7s
     //==========================================================================
     void Studio::newProject()
     {
+        punchOutAll();   // (writing automation ends with the song)
         if (onInstrumentGoing)
             onInstrumentGoing (0);
         removeAllEffects();
@@ -969,6 +1716,164 @@ namespace pr7s
         return true;
     }
 
+    bool Studio::beginExport (const juce::File& destination, const ExportOptions& options, juce::String& error)
+    {
+        if (exportJob != nullptr || engine.isRecording())
+        {
+            error = "Not while recording or exporting.";
+            return false;
+        }
+        if (options.end <= options.start)
+        {
+            error = "There's nothing to export: the range is empty.";
+            return false;
+        }
+        auto job = std::make_unique<ExportJob>();
+        job->file = destination;
+        job->previousRate = engine.getSampleRate();
+        job->previousBlockSize = engine.getBlockSize();
+        job->previousPosition = engine.getPosition();
+
+        destination.deleteFile();
+        std::unique_ptr<juce::OutputStream> stream (destination.createOutputStream());
+        const auto rate = options.sampleRate > 0.0 ? options.sampleRate : job->previousRate;
+        if (stream != nullptr)
+        {
+            const auto bits = options.bitsPerSample == 16 ? 16 : options.bitsPerSample == 32 ? 32 : 24;
+            job->writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (rate)
+                                                                                                        .withNumChannels (2)
+                                                                                                        .withBitsPerSample (bits)
+                                                                                                        .withSampleFormat (bits == 32 ? juce::AudioFormatWriterOptions::SampleFormat::floatingPoint
+                                                                                                                                      : juce::AudioFormatWriterOptions::SampleFormat::integral));
+        }
+        if (job->writer == nullptr)
+        {
+            error = "Couldn't write " + destination.getFullPathName();
+            return false;
+        }
+
+        // The interface let go; the engine at the export's rate (the
+        // recordings are loaded again at it), stopped.
+        engine.stop();
+        if (withDevices)
+            devices.removeAudioCallback (&engine);
+        if (! juce::approximatelyEqual (rate, job->previousRate))
+            engine.prepare (rate, job->previousBlockSize);
+
+        // What's played: the song with the click as asked, no cycle, and
+        // nothing starting at or after the end (so the ring-out is only
+        // what's already sounding).
+        auto playing = project;
+        playing.loopOn = false;
+        playing.click = options.click;
+        for (auto& track : playing.tracks)
+        {
+            track.parts.erase (std::remove_if (track.parts.begin(), track.parts.end(),
+                                               [&options] (const Part& p) { return p.start >= options.end; }),
+                               track.parts.end());
+            for (auto& part : track.parts)
+                part.length = juce::jmin (part.length, options.end - part.start);
+        }
+        engine.update (playing);
+        engine.setNonRealtime (true);
+
+        job->total = (juce::int64) std::llround ((options.end - options.start) * 60.0 / project.bpm * rate);
+        job->maxTail = (juce::int64) std::llround (juce::jmax (0.0, options.tailSeconds) * rate);
+        engine.setPosition (options.start);
+        engine.play();
+        exportJob = std::move (job);
+        return true;
+    }
+
+    bool Studio::renderExport (std::function<bool (double)> keepGoing)
+    {
+        if (exportJob == nullptr)
+            return false;
+        auto& job = *exportJob;
+        const auto blockSize = juce::jmax (64, engine.getBlockSize());
+        juce::AudioBuffer<float> block (2, blockSize);
+        const auto rate = engine.getSampleRate();
+        const auto reportEvery = (juce::int64) (rate * 0.5);
+        juce::int64 sinceReport = 0;
+        const auto report = [&] (int length, double progress)
+        {
+            sinceReport += length;
+            if (! keepGoing || sinceReport < reportEvery)
+                return true;
+            sinceReport = 0;
+            return keepGoing (progress);
+        };
+        for (juce::int64 done = 0; done < job.total;)
+        {
+            const auto length = (int) juce::jmin ((juce::int64) blockSize, job.total - done);
+            engine.render (block, length);
+            if (! job.writer->writeFromAudioSampleBuffer (block, 0, length))
+                return false;
+            done += length;
+            if (! report (length, 0.95 * (double) done / (double) job.total))
+                return false;
+        }
+
+        // The ring-out: on until it's been silent (below -100 dB) for a
+        // quarter of a second, at most maxTail; written up to its last sound.
+        if (job.maxTail > 0)
+        {
+            juce::AudioBuffer<float> tail (2, (int) job.maxTail);
+            const auto quietFor = (juce::int64) (rate * 0.25);
+            juce::int64 done = 0, lastSound = -1;
+            while (done < job.maxTail && done - lastSound <= quietFor)
+            {
+                const auto length = (int) juce::jmin ((juce::int64) blockSize, job.maxTail - done);
+                juce::AudioBuffer<float> into (tail.getArrayOfWritePointers(), 2, (int) done, length);
+                engine.render (into, length);
+                for (int i = length - 1; i >= 0; --i)
+                    if (std::abs (into.getSample (0, i)) > 1.0e-5f || std::abs (into.getSample (1, i)) > 1.0e-5f)
+                    {
+                        lastSound = done + i;
+                        break;
+                    }
+                done += length;
+                if (! report (length, 0.95 + 0.05 * (double) done / (double) job.maxTail))
+                    return false;
+            }
+            if (lastSound >= 0 && ! job.writer->writeFromAudioSampleBuffer (tail, 0, (int) lastSound + 1))
+                return false;
+        }
+        job.finished = true;
+        return true;
+    }
+
+    void Studio::endExport()
+    {
+        if (exportJob == nullptr)
+            return;
+        auto job = std::move (exportJob);
+        engine.stop();
+        job->writer.reset();   // the file finished
+        engine.setNonRealtime (false);
+        if (! job->finished)
+            job->file.deleteFile();
+        // Everything as it was.
+        if (! juce::approximatelyEqual (engine.getSampleRate(), job->previousRate))
+            engine.prepare (job->previousRate, job->previousBlockSize);
+        engine.update (project);
+        engine.setPosition (job->previousPosition);
+        if (withDevices)
+            devices.addAudioCallback (&engine);
+        sendChangeMessage();
+    }
+
+    bool Studio::exportMix (const juce::File& destination, const ExportOptions& options, juce::String& error)
+    {
+        if (! beginExport (destination, options, error))
+            return false;
+        const auto rendered = renderExport();
+        endExport();
+        if (! rendered)
+            error = "Couldn't write " + destination.getFullPathName();
+        return rendered;
+    }
+
     bool Studio::open (const juce::File& source, juce::String& problems)
     {
         const auto xml = juce::XmlDocument::parse (source);
@@ -977,6 +1882,7 @@ namespace pr7s
         auto loaded = Project::fromXml (*xml);
         if (! loaded)
             return false;
+        punchOutAll();
 
         if (onInstrumentGoing)
             onInstrumentGoing (0);
@@ -1011,6 +1917,11 @@ namespace pr7s
         {
             for (int slot = 0; slot < (int) inserts.size(); ++slot)
             {
+                if (inserts[(size_t) slot].isEmpty())
+                {
+                    engine.insertEffect (busId, slot, nullptr);   // an empty slot
+                    continue;
+                }
                 juce::String error;
                 auto instance = host->createEffect (inserts[(size_t) slot], engine.getSampleRate(), engine.getBlockSize(), error);
                 if (instance == nullptr)

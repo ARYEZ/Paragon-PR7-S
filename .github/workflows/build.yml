@@ -96,6 +96,11 @@ jobs:
     if: github.event_name == 'push'
     needs: build
     runs-on: ubuntu-24.04
+    # One release job at a time: a second push while one is publishing waits,
+    # then finds the version released and does nothing (no race to publish).
+    concurrency:
+      group: release
+      cancel-in-progress: false
     permissions:
       contents: write   # needed to create the tag and release
     env:

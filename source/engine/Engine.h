@@ -59,9 +59,23 @@ namespace pr7s
         // couldn't be loaded (the sound goes past it).
         static constexpr int masterBus = 0;   // track ids start at 1
         void insertEffect (int busId, int slot, std::unique_ptr<juce::AudioPluginInstance>);
+        // Every instrument and effect told it's rendering offline (an export:
+        // a sampler can then wait for its samples instead of dropping notes),
+        // or back to real time. Message thread, not while the interface plays.
+        void setNonRealtime (bool);
         void removeEffect (int busId, int slot);   // deleted after it's out of the audio's way
         juce::AudioPluginInstance* getEffect (int busId, int slot) const;
         int getNumEffects (int busId) const;
+
+        // A control being written (held by the hand, while W is on): its lane
+        // isn't played back until it's let go, so what's heard is the hand.
+        // Message thread; takes effect on the next update().
+        void setHeld (int busId, const AutomationLane& control, bool held);
+
+        // Told just before a plugin (an instrument or an effect) is deleted,
+        // however it goes (replaced, removed, its track removed, the engine
+        // closing): whatever listens to it lets go first. Message thread.
+        std::function<void (juce::AudioProcessor*)> onPluginGoing;
 
         // Takes what it plays from the project: the tempo, signature, cycle
         // and click, each track's notes, volume, pan, mute and solo, which
@@ -79,6 +93,9 @@ namespace pr7s
         bool isRecording() const noexcept { return recording.load(); }
         void setPosition (double beats);
         double getPosition() const noexcept { return position.load(); }
+        // How many times the cycle has come round (any thread): a pass of
+        // writing automation ends when it does.
+        int getCycleCount() const noexcept { return cycleCount.load(); }
 
         //======================================================================
         // Playing live: MIDI from devices (the collector is their callback)
@@ -118,6 +135,11 @@ namespace pr7s
         }
         float takeTrackPeak (int trackId, int reader = 0);
 
+        // What a track's (or the master's: masterBus) mix is at now, its
+        // automation included, for the screen's faders to follow (any thread).
+        struct MixNow { float volumeDb = 0.0f, pan = 0.0f; bool mute = false; };
+        MixNow getMixNow (int busId) const;
+
         // AudioIODeviceCallback
         void audioDeviceIOCallbackWithContext (const float* const* inputChannelData, int numInputChannels,
                                                float* const* outputChannelData, int numOutputChannels, int numSamples,
@@ -148,6 +170,14 @@ namespace pr7s
             double fadeIn = 0.0, fadeOut = 0.0;
         };
 
+        // An automation lane being played back. Plugin knobs are set once a
+        // block (only when they change); volume, pan and mute every 32 samples.
+        struct LaneState
+        {
+            AutomationLane lane;
+            float applied = -1.0f;   // the knob's value as last set
+        };
+
         struct TrackState
         {
             int id = 0;
@@ -156,7 +186,6 @@ namespace pr7s
             int input = 0;
             bool stereoInput = false, monitor = false;
             juce::AudioFormatWriter::ThreadedWriter* recorder = nullptr;
-            bool recorderDone = false;   // the cycle came round: the first pass is kept
             std::unique_ptr<juce::AudioPluginInstance> instrument;
             int instrumentChannels = 2;  // what the instrument is given (its buffer may have more, for the inserts)
             std::vector<Slot> inserts;
@@ -167,6 +196,14 @@ namespace pr7s
             juce::MidiBuffer midi;
             juce::AudioBuffer<float> buffer;
             std::array<LevelMeterSource, 2> meters;   // one per reader
+            // The mix as set, and the lanes read (those with points and R on).
+            float volumeDb = 0.0f, pan = 0.0f;
+            bool mute = false, soloedOut = false;   // soloedOut: another track is soloed
+            int preFader = Project::maxInserts;     // the inserts before the fader (the rest after)
+            std::vector<LaneState> automation;
+            bool mixAutomated = false;              // a volume, pan or mute lane among them
+            std::atomic<float> nowVolumeDb { 0.0f }, nowPan { 0.0f };
+            std::atomic<bool> nowMute { false };
         };
 
         struct Settings
@@ -177,6 +214,7 @@ namespace pr7s
             double loopStart = 0.0, loopEnd = 16.0;
             bool click = false;
             float masterGain = 1.0f;
+            float masterVolumeDb = 0.0f;
         };
 
         // Gives instruments the tempo and position, as a DAW does.
@@ -191,7 +229,7 @@ namespace pr7s
         void prepareEffect (juce::AudioPluginInstance&);
         static int channelsFor (const juce::AudioPluginInstance&);
         int channelsNeeded (const TrackState&) const;
-        void runInserts (std::vector<Slot>&, juce::AudioBuffer<float>&, int numSamples);
+        void runInserts (std::vector<Slot>&, juce::AudioBuffer<float>&, int numSamples, int fromSlot = 0, int toSlot = Project::maxInserts);
         void schedule (TrackState&, juce::int64 fromSample, juce::int64 toSample, int sampleOffset, double beatsPerSample);
         void stopHeldNotes (TrackState&, int sampleOffset);
         void renderBlock (juce::AudioBuffer<float>& output, int numSamples);
@@ -218,7 +256,8 @@ namespace pr7s
 
         std::atomic<bool> playing { false }, recording { false };
         std::atomic<double> position { 0.0 }, jumpTo { -1.0 };
-        std::atomic<bool> rebase { false };   // the position was moved while stopped: the clock starts from it
+        std::atomic<bool> rebase { false };
+        std::atomic<int> cycleCount { 0 };   // the position was moved while stopped: the clock starts from it
         bool wasPlaying = false;
         // The song position in whole samples while playing (audio thread), so
         // notes land on exactly their sample however long the song plays.
@@ -246,6 +285,14 @@ namespace pr7s
         std::vector<Slot> masterInserts;
         juce::AudioBuffer<float> masterBuffer;
         juce::SmoothedValue<float> masterGain;
+        std::vector<LaneState> masterAutomation;
+        int masterPreFader = Project::maxInserts;
+        std::vector<std::pair<int, AutomationLane>> held;   // message thread: the controls being written
+        bool masterAutomated = false;   // a volume lane among them
+        std::atomic<float> nowMasterVolumeDb { 0.0f };
+
+        void applyKnobs (std::vector<LaneState>&, juce::AudioPluginInstance* instrument, std::vector<Slot>& inserts, double beat);
+        static MixNow mixAt (const std::vector<LaneState>&, MixNow set, double beat);
         juce::MidiBuffer effectMidi;   // effects get no MIDI
 
         Head head;

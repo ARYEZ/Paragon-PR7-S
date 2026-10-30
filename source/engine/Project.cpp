@@ -8,13 +8,79 @@ namespace pr7s
         constexpr int fileVersion = 1;
         const juce::Identifier projectTag { "PR7SProject" }, trackTag { "Track" }, partTag { "Part" }, noteTag { "Note" },
                                stateTag { "InstrumentState" }, insertTag { "Insert" }, insertStateTag { "InsertState" },
-                               masterTag { "Master" };
+                               masterTag { "Master" }, laneTag { "Automation" }, pointTag { "Point" };
+
+        // The fader's law, as the mixer's slider has it (-60 to +6 dB, -12 dB half way).
+        const juce::NormalisableRange<float> faderRange = []
+        {
+            juce::NormalisableRange<float> range (-60.0f, 6.0f);
+            range.setSkewForCentre (-12.0f);
+            return range;
+        }();
+
+        const char* targetNames[] = { "volume", "pan", "mute", "instrument", "insert" };
+
+        void lanesToXml (const std::vector<AutomationLane>& lanes, juce::XmlElement& parent)
+        {
+            for (const auto& lane : lanes)
+            {
+                auto* e = parent.createNewChildElement (laneTag);
+                e->setAttribute ("target", targetNames[(int) lane.target]);
+                if (lane.target == AutomationLane::Target::insert)
+                    e->setAttribute ("slot", lane.slot);
+                if (lane.target == AutomationLane::Target::instrument || lane.target == AutomationLane::Target::insert)
+                {
+                    e->setAttribute ("parameter", lane.parameter);
+                    e->setAttribute ("parameterName", lane.parameterName);
+                }
+                e->setAttribute ("shown", lane.shown);
+                e->setAttribute ("muted", lane.muted);
+                for (const auto& point : lane.points)
+                {
+                    auto* p = e->createNewChildElement (pointTag);
+                    p->setAttribute ("beat", point.beat);
+                    p->setAttribute ("value", point.value);
+                }
+            }
+        }
+
+        std::vector<AutomationLane> lanesFromXml (const juce::XmlElement& parent)
+        {
+            std::vector<AutomationLane> lanes;
+            for (const auto* e : parent.getChildWithTagNameIterator (laneTag))
+            {
+                AutomationLane lane;
+                const auto target = e->getStringAttribute ("target");
+                const auto known = std::find_if (std::begin (targetNames), std::end (targetNames), [&] (const char* n) { return target == n; });
+                if (known == std::end (targetNames))
+                    continue;   // from a newer version: left out
+                lane.target = (AutomationLane::Target) std::distance (std::begin (targetNames), known);
+                lane.slot = juce::jlimit (0, Project::maxInserts - 1, e->getIntAttribute ("slot"));
+                lane.parameter = juce::jmax (0, e->getIntAttribute ("parameter"));
+                lane.parameterName = e->getStringAttribute ("parameterName");
+                lane.shown = e->getBoolAttribute ("shown", true);
+                lane.muted = e->getBoolAttribute ("muted");
+                for (const auto* p : e->getChildWithTagNameIterator (pointTag))
+                    lane.points.push_back ({ juce::jmax (0.0, p->getDoubleAttribute ("beat")),
+                                             (float) juce::jlimit (0.0, 1.0, p->getDoubleAttribute ("value")) });
+                std::stable_sort (lane.points.begin(), lane.points.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
+                lanes.push_back (std::move (lane));
+            }
+            return lanes;
+        }
 
         void insertsToXml (const std::vector<Insert>& inserts, juce::XmlElement& parent)
         {
-            for (const auto& insert : inserts)
+            // By slot (an empty one without a plugin); none after the last used.
+            auto used = (int) inserts.size();
+            while (used > 0 && inserts[(size_t) used - 1].isEmpty())
+                --used;
+            for (int slot = 0; slot < used; ++slot)
             {
+                const auto& insert = inserts[(size_t) slot];
                 auto* e = parent.createNewChildElement (insertTag);
+                if (insert.isEmpty())
+                    continue;
                 e->setAttribute ("bypass", insert.bypass);
                 e->addChildElement (insert.plugin.createXml().release());
                 if (insert.state.getSize() > 0)
@@ -39,6 +105,32 @@ namespace pr7s
             }
             return inserts;
         }
+    }
+
+    std::optional<float> AutomationLane::valueAt (double beat) const noexcept
+    {
+        if (points.empty())
+            return std::nullopt;
+        // The first point after the beat (the last of several at one beat wins before it).
+        const auto next = std::upper_bound (points.begin(), points.end(), beat, [] (double b, const AutomationPoint& p) { return b < p.beat; });
+        if (next == points.begin())
+            return points.front().value;
+        const auto& before = *std::prev (next);
+        if (next == points.end() || isStep())
+            return before.value;
+        const auto span = next->beat - before.beat;
+        const auto along = span > 0.0 ? (float) ((beat - before.beat) / span) : 1.0f;
+        return before.value + (next->value - before.value) * along;
+    }
+
+    float volumeToTravel (float db) noexcept
+    {
+        return faderRange.convertTo0to1 (juce::jlimit (-60.0f, 6.0f, db));
+    }
+
+    float travelToVolume (float travel) noexcept
+    {
+        return faderRange.convertFrom0to1 (juce::jlimit (0.0f, 1.0f, travel));
     }
 
     juce::String Instrument::getName() const
@@ -118,6 +210,11 @@ namespace pr7s
             if (track.instrument.state.getSize() > 0)
                 t->createNewChildElement (stateTag)->addTextElement (track.instrument.state.toBase64Encoding());
             insertsToXml (track.inserts, *t);
+            t->setAttribute ("preFaderSlots", track.preFaderSlots);
+            t->setAttribute ("automationOpen", track.automationOpen);
+            t->setAttribute ("automationRead", track.automationRead);
+            t->setAttribute ("automationWrite", track.automationWrite);
+            lanesToXml (track.automation, *t);
 
             for (const auto& part : track.parts)
             {
@@ -145,6 +242,11 @@ namespace pr7s
         auto* master = xml->createNewChildElement (masterTag);
         master->setAttribute ("volumeDb", masterVolumeDb);
         insertsToXml (masterInserts, *master);
+        master->setAttribute ("preFaderSlots", masterPreFaderSlots);
+        lanesToXml (masterAutomation, *master);
+        master->setAttribute ("automationOpen", masterAutomationOpen);
+        master->setAttribute ("automationRead", masterRead);
+        master->setAttribute ("automationWrite", masterWrite);
         return xml;
     }
 
@@ -169,6 +271,12 @@ namespace pr7s
             track.id = t->getIntAttribute ("id");
             track.name = t->getStringAttribute ("name", "Track");
             track.colour = juce::Colour::fromString (t->getStringAttribute ("colour", trackColour (0).toString()));
+            // Songs from before 0.5.1 could have colours outside the family's
+            // (blue, lime, violet, aqua, amber): each becomes its new one.
+            const juce::uint32 retired[] = { 0xff45b4ff, 0xffb8f040, 0xffb86dff, 0xff4fe3dd, 0xffffb22e };
+            for (size_t i = 0; i < std::size (retired); ++i)
+                if (track.colour.getARGB() == retired[i])
+                    track.colour = trackColour (3 + (int) i);
             track.volumeDb = (float) juce::jlimit (-60.0, 6.0, t->getDoubleAttribute ("volumeDb", 0.0));
             track.pan = (float) juce::jlimit (-1.0, 1.0, t->getDoubleAttribute ("pan", 0.0));
             track.mute = t->getBoolAttribute ("mute");
@@ -190,6 +298,11 @@ namespace pr7s
             if (const auto* state = t->getChildByName (stateTag))
                 track.instrument.state.fromBase64Encoding (state->getAllSubText());
             track.inserts = insertsFromXml (*t);
+            track.preFaderSlots = juce::jlimit (0, maxInserts, t->getIntAttribute ("preFaderSlots", maxInserts));
+            track.automation = lanesFromXml (*t);
+            track.automationOpen = t->getBoolAttribute ("automationOpen");
+            track.automationRead = t->getBoolAttribute ("automationRead");
+            track.automationWrite = t->getBoolAttribute ("automationWrite");
 
             for (const auto* p : t->getChildWithTagNameIterator (partTag))
             {
@@ -215,6 +328,11 @@ namespace pr7s
         {
             project.masterVolumeDb = (float) juce::jlimit (-60.0, 6.0, master->getDoubleAttribute ("volumeDb", 0.0));
             project.masterInserts = insertsFromXml (*master);
+            project.masterPreFaderSlots = juce::jlimit (0, maxInserts, master->getIntAttribute ("preFaderSlots", maxInserts));
+            project.masterAutomation = lanesFromXml (*master);
+            project.masterAutomationOpen = master->getBoolAttribute ("automationOpen");
+            project.masterRead = master->getBoolAttribute ("automationRead");
+            project.masterWrite = master->getBoolAttribute ("automationWrite");
         }
         return project;
     }
@@ -246,15 +364,17 @@ namespace pr7s
 
     juce::Colour trackColour (int index)
     {
+        // Only the family's colours: shades along its red, pink and orange
+        // (the owner's rule), each unlike the one before it.
         static const juce::Colour colours[] = {
             juce::Colour (0xffe0103c),   // the chain's red
             juce::Colour (0xffff2f7a),   // hot pink
             juce::Colour (0xffff7a1a),   // orange
-            juce::Colour (0xff45b4ff),   // blue
-            juce::Colour (0xffb8f040),   // lime
-            juce::Colour (0xffb86dff),   // violet
-            juce::Colour (0xff4fe3dd),   // aqua
-            juce::Colour (0xffffb22e),   // amber
+            juce::Colour (0xffff7aa8),   // rose (a light pink)
+            juce::Colour (0xffff4a2a),   // red-orange
+            juce::Colour (0xffc2185b),   // deep pink
+            juce::Colour (0xffffa04a),   // peach (a light orange)
+            juce::Colour (0xffa3122f),   // crimson
         };
         return colours[(size_t) (index % (int) std::size (colours) + (int) std::size (colours)) % std::size (colours)];
     }
@@ -264,10 +384,10 @@ namespace pr7s
         return grid > 0.0 ? std::round (beats / grid) * grid : beats;
     }
 
-    bool quantize (Part& part, double grid, const std::vector<int>& which)
+    void quantize (Part& part, double grid, const std::vector<int>& which)
     {
         if (grid <= 0.0)
-            return true;
+            return;
         std::vector<bool> chosen (part.notes.size(), which.empty());
         for (const auto index : which)
             if (juce::isPositiveAndBelow (index, (int) part.notes.size()))
@@ -279,23 +399,6 @@ namespace pr7s
                 auto& note = part.notes[i];
                 note.start = juce::jmax (0.0, snap (part.start + note.start, grid) - part.start);
             }
-
-        // Same pitch, same start: keep the longer one.
-        std::vector<Note> kept;
-        for (const auto& note : part.notes)
-        {
-            const auto twin = std::find_if (kept.begin(), kept.end(), [&note] (const Note& other)
-            {
-                return other.pitch == note.pitch && std::abs (other.start - note.start) < 1.0e-9;
-            });
-            if (twin == kept.end())
-                kept.push_back (note);
-            else if (note.length > twin->length)
-                *twin = note;
-        }
-        const auto merged = kept.size() != part.notes.size();
-        part.notes = std::move (kept);
-        return ! merged;
     }
 
     juce::String noteName (int pitch)

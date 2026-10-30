@@ -95,19 +95,86 @@ namespace pr7s
 
         //======================================================================
         // The mixer: each track's inserts and the master's (`busId`: a
-        // track's id, or Engine::masterBus). Adding, replacing and removing
-        // effects isn't undoable (as with instruments); bypass isn't either;
-        // the master's volume is.
+        // track's id, or Engine::masterBus), 16 slots each, an effect in a
+        // slot of its own (a slot can be empty). Adding, replacing and
+        // removing effects isn't undoable (as with instruments); bypass isn't
+        // either; the master's volume is.
         const std::vector<Insert>* getInserts (int busId) const;   // none if there's no such track
-        bool addInsert (int busId, const juce::PluginDescription&, juce::String* error = nullptr);   // at the end
-        bool addInsert (int busId, const Insert&, std::unique_ptr<juce::AudioPluginInstance>);     // one made elsewhere (tests)
+        // Into an empty slot (-1: the one after the last effect).
+        bool addInsert (int busId, const juce::PluginDescription&, juce::String* error = nullptr, int slot = -1);
+        bool addInsert (int busId, const Insert&, std::unique_ptr<juce::AudioPluginInstance>, int slot = -1);   // one made elsewhere (tests)
+        // The slots up to this one (from 0) are before the fader, the rest after
+        // it (as the manual's "Set as last Pre-Fader Slot"); -1: none before it.
+        void setLastPreFaderSlot (int busId, int slot);
+        int getPreFaderSlots (int busId) const;
         bool replaceInsert (int busId, int slot, const juce::PluginDescription&, juce::String* error = nullptr);
-        void removeInsert (int busId, int slot);
+        void removeInsert (int busId, int slot);   // its slot left empty (the others stay where they are)
         void setInsertBypass (int busId, int slot, bool);
         void setMasterVolume (float db, bool undoable = true);
         // Told just before an effect is deleted (nullptr: every effect, for a
         // new or opened song), so its window closes while it still exists.
         std::function<void (juce::AudioProcessor*)> onEffectGoing;
+
+        //======================================================================
+        // Automation (inspired by Cubase's workflow). `busId`: a track's id, or
+        // Engine::masterBus. A track's lanes ("automation tracks") are shown
+        // under it while its automation is open; each lane shows one control.
+        const std::vector<AutomationLane>* getAutomation (int busId) const;
+        bool isAutomationOpen (int busId) const;
+        bool getAutomationRead (int busId) const;
+        bool getAutomationWrite (int busId) const;
+        void setAutomationRead (int busId, bool);
+        void setAutomationWrite (int busId, bool);   // turns R on too
+        // The header's R and W: lit when any track's (or the master's) is; set them all.
+        bool anyAutomationRead() const;
+        bool anyAutomationWrite() const;
+        void setAutomationReadAll (bool);
+        void setAutomationWriteAll (bool);
+
+        // A control that can be automated, as the lanes' menus list it.
+        struct AutomationControl
+        {
+            AutomationLane::Target target = AutomationLane::Target::volume;
+            int slot = 0, parameter = 0;
+            juce::String name, group;   // group: "" for the mix, "Instrument: <name>", "Insert 2: <name>"
+            AutomationLane asLane() const;
+        };
+        // Volume, pan and mute (the master: volume), then the instrument's knobs, then each insert's.
+        std::vector<AutomationControl> getAutomationControls (int busId) const;
+        juce::String getLaneName (int busId, const AutomationLane&) const;
+        // The control's setting now (0 to 1), as the static value line shows it.
+        float getControlValue (int busId, const AutomationLane&) const;
+
+        // Show/Hide Automation. Opening shows the lanes that were open, or
+        // those with points, or else a lane for the first control (volume).
+        void setAutomationOpen (int busId, bool);
+        void showAllUsedAutomation();          // every track's (and the master's) lanes with points
+        // + (Append Automation Track): a lane for the next control not shown, after `laneIndex`.
+        void appendAutomationLane (int busId, int laneIndex);
+        // The lane at `laneIndex` shows another control instead. Non-destructive:
+        // the control it showed keeps its points, hidden (shown again by choosing it).
+        void setLaneControl (int busId, int laneIndex, const AutomationControl&);
+        void removeAutomationParameter (int busId, int laneIndex);   // the lane and its points
+        void removeUnusedAutomation (int busId);                      // lanes without points
+        void setLaneMuted (int busId, int laneIndex, bool);           // Mute Automation
+        // A lane's points replaced (an edit with the mouse: one undo step). Turns R on.
+        void setAutomationPoints (int busId, int laneIndex, std::vector<AutomationPoint>);
+
+        // Writing automation (as the manual has it): with W on, while playing,
+        // touching a control writes it. The screen says when a control is
+        // grabbed and let go; its values come through setVolume, setPan,
+        // setMute, setMasterVolume (and a plugin's knobs through setKnob).
+        // Touch: writing stops when it's let go, and the control returns to
+        // what it was (over `returnSeconds`). On/off switches (mute) are always
+        // Auto-Latch: they write until playing stops. Every pass also stops on
+        // stop, W off, a jump (the cycle going round, a click in the ruler).
+        // Each pass is one undo step; its points are thinned out.
+        static AutomationLane control (AutomationLane::Target, int slot = 0, int parameter = 0);
+        void grabControl (int busId, const AutomationLane& control);
+        void releaseControl (int busId, const AutomationLane& control);
+        void setKnob (int busId, const AutomationLane& control, float value);   // a plugin's knob moved by hand
+        bool isWritingAutomation (int busId) const;   // a pass going on it (its W shows it)
+        static constexpr double returnSeconds = 0.1;  // our choice: the manual gives Return Time no default
 
         //======================================================================
         // The song.
@@ -146,14 +213,71 @@ namespace pr7s
         juce::File getFile() const noexcept { return file; }
         bool isModified() const noexcept { return modified; }
 
+        //======================================================================
+        // Export: the song (or part of it) to a stereo WAV, through everything
+        // that's heard (instruments, clips, effects, the master), faster than
+        // real time. The interface is let go meanwhile, and everything is as
+        // it was afterwards.
+        struct ExportOptions
+        {
+            double start = 0.0, end = 0.0;   // beats
+            double sampleRate = 0.0;         // 0: the interface's
+            int bitsPerSample = 24;          // 16, 24, or 32 (32-bit float)
+            bool click = false;
+            // After the end, until what's sounding (reverbs, delays, a held
+            // note's release) has died away, at most this long; nothing new starts.
+            double tailSeconds = 30.0;
+        };
+        // In three steps, so the middle one can run on another thread behind a
+        // progress bar: begin (message thread), render (any thread; false:
+        // cancelled, or the disk failed), end (message thread; a file not
+        // finished is deleted).
+        bool beginExport (const juce::File&, const ExportOptions&, juce::String& error);
+        bool renderExport (std::function<bool (double progress)> keepGoing = {});
+        void endExport();
+        bool isExporting() const noexcept { return exportJob != nullptr; }
+        // All three, here and now (tests; and short songs).
+        bool exportMix (const juce::File&, const ExportOptions&, juce::String& error);
+
     private:
         void changed (bool undoable = true);
         void numberParts();   // an id for every part that hasn't one
         std::vector<Insert>* insertsOf (int busId);
+        std::vector<AutomationLane>* lanesOf (int busId);
+        juce::AudioPluginInstance* pluginFor (int busId, const AutomationLane&) const;
+        void insertGone (int busId, int slot, bool shiftUp);   // its lanes go, here and in the undo states
+
+        // A pass of writing automation: the control, where it began, what was
+        // set before, and the values written (song beats).
+        struct WritePass
+        {
+            int busId = 0;
+            AutomationLane control;
+            double start = 0.0, lastBeat = 0.0;
+            int cycleCount = 0;      // the engine's when it began: the cycle coming round ends it
+            float before = 0.0f;
+            std::vector<AutomationPoint> points;
+            bool released = false;   // let go (an on/off switch latches on until stop)
+        };
+        std::vector<WritePass> passes;
+
+        // Every plugin's knobs are listened to, so turning one in its window
+        // (W on, playing) writes it. Stopped before a plugin is deleted.
+        class KnobWatcher;
+        std::map<juce::AudioProcessor*, std::unique_ptr<KnobWatcher>> watchers;
+        std::shared_ptr<bool> alive = std::make_shared<bool> (true);   // for messages from plugins' threads
+        void watchPlugins();
+        void unwatch (juce::AudioProcessor*);
+        void unwatchAll();
+        bool writeValue (int busId, const AutomationLane& control, float value);   // false: no pass on it
+        void punchOut (size_t pass, double endBeat);
+        void punchOutAll();
+        void setControlValue (int busId, const AutomationLane& control, float value);   // the static setting, without writing
         void effectGoing (int busId, int slot);
         void removeAllEffects();
         void recordUndoState();
         void restore (const Project&);
+        static void restoreLanes (std::vector<AutomationLane>& lanes, const std::vector<AutomationLane>& then);
         void updateLiveTrack();
         void finishRecording();
         void finishAudioRecording();
@@ -189,6 +313,17 @@ namespace pr7s
         double audioCacheRate = 0.0;
         juce::File unsavedAudioFolder;
         std::optional<double> latencyOverride;
+
+        struct ExportJob
+        {
+            juce::File file;
+            std::unique_ptr<juce::AudioFormatWriter> writer;
+            juce::int64 total = 0, maxTail = 0;   // samples: the range, and the most ring-out after it
+            double previousRate = 0.0, previousPosition = 0.0;
+            int previousBlockSize = 512;
+            bool finished = false;
+        };
+        std::unique_ptr<ExportJob> exportJob;
 
         std::vector<Project> undoStates;
         int undoIndex = -1;

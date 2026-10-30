@@ -1,5 +1,6 @@
 #include "MainView.h"
 
+#include "ui/AutomationKeys.h"
 #include "ui/Logo.h"
 #include "ui/ParagonLookAndFeel.h"
 #include "ui/Pearl.h"
@@ -17,7 +18,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
       keyEditor (studioToUse, arrange),
       mixer (studioToUse)
 {
-    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &undoButton, &redoButton, &editorButton, &mixerButton,
+    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &exportButton, &undoButton, &redoButton, &editorButton, &mixerButton,
                           &pluginsButton, &settingsButton })
     {
         button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
@@ -29,6 +30,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     openButton.setTooltip ("Open a song (Ctrl+O)");
     saveButton.setTooltip ("Save the song (Ctrl+S)");
     saveAsButton.setTooltip ("Save the song under a new name (Ctrl+Shift+S)");
+    exportButton.setTooltip ("Export the mix to a WAV file: the whole song or the cycle");
     undoButton.setTooltip ("Undo (Ctrl+Z)");
     redoButton.setTooltip ("Redo (Ctrl+Shift+Z)");
     editorButton.setTooltip ("The key editor: the selected part's notes (Ctrl+E; or double-click a part)");
@@ -41,12 +43,26 @@ MainView::MainView (pr7s::Studio& studioToUse)
     openButton.onClick = [this] { openProject(); };
     saveButton.onClick = [this] { saveProject(); };
     saveAsButton.onClick = [this] { saveProjectAs(); };
+    exportButton.onClick = [this] { exportMix(); };
     undoButton.onClick = [this] { studio.undo(); };
     redoButton.onClick = [this] { studio.redo(); };
     editorButton.onClick = [this] { isKeyEditorOpen() ? closeKeyEditor() : openKeyEditor(); };
     mixerButton.onClick = [this] { toggleMixerDocked(); };
     pluginsButton.onClick = [this] { openPlugins(); };
     settingsButton.onClick = [this] { openSettings(); };
+    // Read and write automation for all tracks (the manual's toolbar buttons).
+    for (auto* key : { &readAllButton, &writeAllButton })
+    {
+        key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        key->setWantsKeyboardFocus (false);
+        addAndMakeVisible (*key);
+    }
+    readAllButton.getProperties().set (ParagonLookAndFeel::litColourProperty, (juce::int64) AutomationKeys::readColour.getARGB());
+    writeAllButton.getProperties().set (ParagonLookAndFeel::litColourProperty, (juce::int64) AutomationKeys::writeColour.getARGB());
+    readAllButton.setTooltip ("Read automation for all tracks on or off (Alt+R): lit while any track's R is on");
+    writeAllButton.setTooltip ("Write automation for all tracks on or off (Alt+W): lit while any track's W is on");
+    readAllButton.onClick = [this] { studio.setAutomationReadAll (! studio.anyAutomationRead()); };
+    writeAllButton.onClick = [this] { studio.setAutomationWriteAll (! studio.anyAutomationWrite()); };
 
     addAndMakeVisible (transport);
     addAndMakeVisible (trackList);
@@ -146,6 +162,8 @@ void MainView::refreshHeader()
     }
     undoButton.setEnabled (studio.canUndo());
     redoButton.setEnabled (studio.canRedo());
+    readAllButton.setToggleState (studio.anyAutomationRead(), juce::dontSendNotification);
+    writeAllButton.setToggleState (studio.anyAutomationWrite(), juce::dontSendNotification);
     const auto file = studio.getFile();
     const auto title = "Paragon PR7-S - " + (file == juce::File() ? juce::String ("Untitled") : file.getFileNameWithoutExtension())
                      + (studio.isModified() ? " *" : "");
@@ -189,9 +207,9 @@ void MainView::resized()
     auto area = getLocalBounds();
     auto header = area.removeFromTop (headerHeight).reduced (8, 10);
     header.removeFromLeft (280);
-    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton })
+    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &exportButton })
     {
-        button->setBounds (header.removeFromLeft (button == &saveAsButton ? 84 : 66));
+        button->setBounds (header.removeFromLeft (button == &saveAsButton ? 84 : button == &exportButton ? 76 : 66));
         header.removeFromLeft (6);
     }
     header.removeFromLeft (18);
@@ -204,6 +222,10 @@ void MainView::resized()
     editorButton.setBounds (header.removeFromLeft (100));
     header.removeFromLeft (6);
     mixerButton.setBounds (header.removeFromLeft (76));
+    header.removeFromLeft (18);
+    readAllButton.setBounds (header.removeFromLeft (34));
+    header.removeFromLeft (4);
+    writeAllButton.setBounds (header.removeFromLeft (34));
     settingsButton.setBounds (header.removeFromRight (92));
     header.removeFromRight (6);
     pluginsButton.setBounds (header.removeFromRight (86));
@@ -231,9 +253,23 @@ bool MainView::keyPressed (const juce::KeyPress& key)
 {
     const auto mods = key.getModifiers();
     const auto code = key.getKeyCode();
-    const auto letter = juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) code);
+    // A letter only if the key is one (on Windows an F-key's or the number
+    // pad's code, upper-cased, would come out as a letter: F3 as R).
+    const auto letter = (code >= 'a' && code <= 'z') || (code >= 'A' && code <= 'Z')
+                          ? juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) code) : (juce::juce_wchar) 0;
 
     if (isKeyEditorOpen() && keysToEditor && keyEditor.keyPressed (key))
+        return true;
+    // Automation: Alt+R / Alt+W for all tracks (before R, which records); Esc puts dragged points back.
+    if (mods.isAltDown() && ! mods.isCommandDown() && (letter == 'R' || letter == 'W'))
+    {
+        if (letter == 'R')
+            studio.setAutomationReadAll (! studio.anyAutomationRead());
+        else
+            studio.setAutomationWriteAll (! studio.anyAutomationWrite());
+        return true;
+    }
+    if (key == juce::KeyPress::escapeKey && arrange.cancelDrag())
         return true;
     // Copy, cut, paste and select all are the editor's wherever the last click
     // was (the arrangement has none of its own yet), so notes copied in one
@@ -241,6 +277,9 @@ bool MainView::keyPressed (const juce::KeyPress& key)
     const auto editorsAnyway = (mods.isCommandDown() && (letter == 'C' || letter == 'X' || letter == 'V'))
                             || (! mods.isCommandDown() && mods.isShiftDown() && letter == 'A');
     if (isKeyEditorOpen() && editorsAnyway && keyEditor.keyPressed (key))
+        return true;
+    // Ctrl+D duplicates the notes after a click in the editor, the part otherwise.
+    if (isKeyEditorOpen() && keysToEditor && mods.isCommandDown() && letter == 'D' && keyEditor.keyPressed (key))
         return true;
 
     if (mods.isCommandDown())
@@ -263,7 +302,11 @@ bool MainView::keyPressed (const juce::KeyPress& key)
     if (isMixerOpen() && key == juce::KeyPress::escapeKey)     { closeMixer(); return true; }
     if (key == juce::KeyPress::spaceKey)                { studio.togglePlay(); return true; }
     if (key == juce::KeyPress::homeKey)                 { studio.goToStart(); return true; }
-    if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey) { arrange.deleteSelected(); return true; }
+    if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
+    {
+        arrange.hasSelectedPoints() ? arrange.deleteSelectedPoints() : arrange.deleteSelected();
+        return true;
+    }
     if (letter == 'R' || key.getTextCharacter() == '*') { studio.record(); return true; }
     if (key.getTextCharacter() == '/')                  { studio.setCycleOn (! studio.getProject().loopOn); return true; }
     if (letter == 'C')                                  { studio.setClick (! studio.getProject().click); return true; }
@@ -472,6 +515,99 @@ void MainView::saveProjectAs (std::function<void (bool)> then)
                               if (then)
                                   then (saved);
                           });
+}
+
+//==============================================================================
+namespace
+{
+    // The export, written on a thread of its own behind a progress bar.
+    class ExportProgress final : public juce::ThreadWithProgressWindow
+    {
+    public:
+        ExportProgress (pr7s::Studio& s, std::function<void (bool written, bool cancelled)> done)
+            : ThreadWithProgressWindow ("Exporting the mix...", true, true, 10000, "CANCEL"), studio (s), onDone (std::move (done)) {}
+
+        void run() override
+        {
+            written = studio.renderExport ([this] (double done)
+            {
+                setProgress (done);
+                return ! threadShouldExit();
+            });
+        }
+
+        void threadComplete (bool userPressedCancel) override
+        {
+            studio.endExport();   // here, on the message thread
+            if (onDone)
+                onDone (written, userPressedCancel);
+        }
+
+    private:
+        pr7s::Studio& studio;
+        std::function<void (bool, bool)> onDone;
+        bool written = false;
+    };
+}
+
+void MainView::exportMix()
+{
+    if (studio.isExporting() || studio.getEngine().isRecording() || exportPage != nullptr)
+        return;
+    auto* page = new Windows::ExportPage (studio);
+    exportPage = page;
+    juce::DialogWindow::LaunchOptions options;
+    options.content.setOwned (page);
+    options.dialogTitle = "Paragon PR7-S: Export the mix";
+    options.dialogBackgroundColour = juce::Colour (0xff0c0a0d);
+    options.useNativeTitleBar = true;
+    options.resizable = false;
+    options.componentToCentreAround = this;
+    options.launchAsync();
+
+    auto close = [page]
+    {
+        if (auto* dialog = page->findParentComponentOfClass<juce::DialogWindow>())
+            dialog->exitModalState (0);   // deleted once its click is over
+    };
+    page->onCancel = close;
+    page->onExport = [this, close] (const pr7s::Studio::ExportOptions& chosen)
+    {
+        close();
+        // Where: beside the song, named after it.
+        const auto song = studio.getFile();
+        const auto start = song != juce::File() ? song.withFileExtension (".wav")
+                         : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Mix.wav");
+        chooser = std::make_unique<juce::FileChooser> ("Export the mix", start, "*.wav");
+        chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
+                              [this, chosen] (const juce::FileChooser& fc)
+                              {
+                                  const auto file = fc.getResult();
+                                  if (file != juce::File())
+                                      writeExport (file.withFileExtension (".wav"), chosen);
+                              });
+    };
+}
+
+void MainView::writeExport (const juce::File& file, const pr7s::Studio::ExportOptions& options)
+{
+    juce::String error;
+    if (! studio.beginExport (file, options, error))
+    {
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't export", error);
+        return;
+    }
+    exportProgress = std::make_unique<ExportProgress> (studio, [safe = juce::Component::SafePointer<MainView> (this), file] (bool written, bool cancelled)
+    {
+        if (safe == nullptr)
+            return;
+        if (! written && ! cancelled)
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't export",
+                                                    "Couldn't write " + file.getFullPathName() + " (is the disk full?)");
+        // Not inside its own callback.
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->exportProgress.reset(); });
+    });
+    exportProgress->launchThread();
 }
 
 //==============================================================================
