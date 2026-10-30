@@ -8,7 +8,68 @@ namespace pr7s
         constexpr int fileVersion = 1;
         const juce::Identifier projectTag { "PR7SProject" }, trackTag { "Track" }, partTag { "Part" }, noteTag { "Note" },
                                stateTag { "InstrumentState" }, insertTag { "Insert" }, insertStateTag { "InsertState" },
-                               masterTag { "Master" };
+                               masterTag { "Master" }, laneTag { "Automation" }, pointTag { "Point" };
+
+        // The fader's law, as the mixer's slider has it (-60 to +6 dB, -12 dB half way).
+        const juce::NormalisableRange<float> faderRange = []
+        {
+            juce::NormalisableRange<float> range (-60.0f, 6.0f);
+            range.setSkewForCentre (-12.0f);
+            return range;
+        }();
+
+        const char* targetNames[] = { "volume", "pan", "mute", "instrument", "insert" };
+
+        void lanesToXml (const std::vector<AutomationLane>& lanes, juce::XmlElement& parent)
+        {
+            for (const auto& lane : lanes)
+            {
+                auto* e = parent.createNewChildElement (laneTag);
+                e->setAttribute ("target", targetNames[(int) lane.target]);
+                if (lane.target == AutomationLane::Target::insert)
+                    e->setAttribute ("slot", lane.slot);
+                if (lane.target == AutomationLane::Target::instrument || lane.target == AutomationLane::Target::insert)
+                {
+                    e->setAttribute ("parameter", lane.parameter);
+                    e->setAttribute ("parameterName", lane.parameterName);
+                }
+                e->setAttribute ("read", lane.read);
+                e->setAttribute ("write", lane.write);
+                e->setAttribute ("shown", lane.shown);
+                for (const auto& point : lane.points)
+                {
+                    auto* p = e->createNewChildElement (pointTag);
+                    p->setAttribute ("beat", point.beat);
+                    p->setAttribute ("value", point.value);
+                }
+            }
+        }
+
+        std::vector<AutomationLane> lanesFromXml (const juce::XmlElement& parent)
+        {
+            std::vector<AutomationLane> lanes;
+            for (const auto* e : parent.getChildWithTagNameIterator (laneTag))
+            {
+                AutomationLane lane;
+                const auto target = e->getStringAttribute ("target");
+                const auto known = std::find_if (std::begin (targetNames), std::end (targetNames), [&] (const char* n) { return target == n; });
+                if (known == std::end (targetNames))
+                    continue;   // from a newer version: left out
+                lane.target = (AutomationLane::Target) std::distance (std::begin (targetNames), known);
+                lane.slot = juce::jlimit (0, Project::maxInserts - 1, e->getIntAttribute ("slot"));
+                lane.parameter = juce::jmax (0, e->getIntAttribute ("parameter"));
+                lane.parameterName = e->getStringAttribute ("parameterName");
+                lane.read = e->getBoolAttribute ("read", true);
+                lane.write = e->getBoolAttribute ("write");
+                lane.shown = e->getBoolAttribute ("shown", true);
+                for (const auto* p : e->getChildWithTagNameIterator (pointTag))
+                    lane.points.push_back ({ juce::jmax (0.0, p->getDoubleAttribute ("beat")),
+                                             (float) juce::jlimit (0.0, 1.0, p->getDoubleAttribute ("value")) });
+                std::stable_sort (lane.points.begin(), lane.points.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
+                lanes.push_back (std::move (lane));
+            }
+            return lanes;
+        }
 
         void insertsToXml (const std::vector<Insert>& inserts, juce::XmlElement& parent)
         {
@@ -39,6 +100,32 @@ namespace pr7s
             }
             return inserts;
         }
+    }
+
+    std::optional<float> AutomationLane::valueAt (double beat) const noexcept
+    {
+        if (points.empty())
+            return std::nullopt;
+        // The first point after the beat (the last of several at one beat wins before it).
+        const auto next = std::upper_bound (points.begin(), points.end(), beat, [] (double b, const AutomationPoint& p) { return b < p.beat; });
+        if (next == points.begin())
+            return points.front().value;
+        const auto& before = *std::prev (next);
+        if (next == points.end() || isStep())
+            return before.value;
+        const auto span = next->beat - before.beat;
+        const auto along = span > 0.0 ? (float) ((beat - before.beat) / span) : 1.0f;
+        return before.value + (next->value - before.value) * along;
+    }
+
+    float volumeToTravel (float db) noexcept
+    {
+        return faderRange.convertTo0to1 (juce::jlimit (-60.0f, 6.0f, db));
+    }
+
+    float travelToVolume (float travel) noexcept
+    {
+        return faderRange.convertFrom0to1 (juce::jlimit (0.0f, 1.0f, travel));
     }
 
     juce::String Instrument::getName() const
@@ -118,6 +205,9 @@ namespace pr7s
             if (track.instrument.state.getSize() > 0)
                 t->createNewChildElement (stateTag)->addTextElement (track.instrument.state.toBase64Encoding());
             insertsToXml (track.inserts, *t);
+            if (track.automationOpen)
+                t->setAttribute ("automationOpen", true);
+            lanesToXml (track.automation, *t);
 
             for (const auto& part : track.parts)
             {
@@ -145,6 +235,7 @@ namespace pr7s
         auto* master = xml->createNewChildElement (masterTag);
         master->setAttribute ("volumeDb", masterVolumeDb);
         insertsToXml (masterInserts, *master);
+        lanesToXml (masterAutomation, *master);
         return xml;
     }
 
@@ -190,6 +281,8 @@ namespace pr7s
             if (const auto* state = t->getChildByName (stateTag))
                 track.instrument.state.fromBase64Encoding (state->getAllSubText());
             track.inserts = insertsFromXml (*t);
+            track.automation = lanesFromXml (*t);
+            track.automationOpen = t->getBoolAttribute ("automationOpen");
 
             for (const auto* p : t->getChildWithTagNameIterator (partTag))
             {
@@ -215,6 +308,7 @@ namespace pr7s
         {
             project.masterVolumeDb = (float) juce::jlimit (-60.0, 6.0, master->getDoubleAttribute ("volumeDb", 0.0));
             project.masterInserts = insertsFromXml (*master);
+            project.masterAutomation = lanesFromXml (*master);
         }
         return project;
     }

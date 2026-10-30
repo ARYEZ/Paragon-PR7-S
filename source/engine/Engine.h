@@ -122,6 +122,11 @@ namespace pr7s
         }
         float takeTrackPeak (int trackId, int reader = 0);
 
+        // What a track's (or the master's: masterBus) mix is at now, its
+        // automation included, for the screen's faders to follow (any thread).
+        struct MixNow { float volumeDb = 0.0f, pan = 0.0f; bool mute = false; };
+        MixNow getMixNow (int busId) const;
+
         // AudioIODeviceCallback
         void audioDeviceIOCallbackWithContext (const float* const* inputChannelData, int numInputChannels,
                                                float* const* outputChannelData, int numOutputChannels, int numSamples,
@@ -152,6 +157,14 @@ namespace pr7s
             double fadeIn = 0.0, fadeOut = 0.0;
         };
 
+        // An automation lane being played back. Plugin knobs are set once a
+        // block (only when they change); volume, pan and mute every 32 samples.
+        struct LaneState
+        {
+            AutomationLane lane;
+            float applied = -1.0f;   // the knob's value as last set
+        };
+
         struct TrackState
         {
             int id = 0;
@@ -171,6 +184,13 @@ namespace pr7s
             juce::MidiBuffer midi;
             juce::AudioBuffer<float> buffer;
             std::array<LevelMeterSource, 2> meters;   // one per reader
+            // The mix as set, and the lanes read (those with points and R on).
+            float volumeDb = 0.0f, pan = 0.0f;
+            bool mute = false, soloedOut = false;   // soloedOut: another track is soloed
+            std::vector<LaneState> automation;
+            bool mixAutomated = false;              // a volume, pan or mute lane among them
+            std::atomic<float> nowVolumeDb { 0.0f }, nowPan { 0.0f };
+            std::atomic<bool> nowMute { false };
         };
 
         struct Settings
@@ -181,6 +201,7 @@ namespace pr7s
             double loopStart = 0.0, loopEnd = 16.0;
             bool click = false;
             float masterGain = 1.0f;
+            float masterVolumeDb = 0.0f;
         };
 
         // Gives instruments the tempo and position, as a DAW does.
@@ -250,6 +271,12 @@ namespace pr7s
         std::vector<Slot> masterInserts;
         juce::AudioBuffer<float> masterBuffer;
         juce::SmoothedValue<float> masterGain;
+        std::vector<LaneState> masterAutomation;
+        bool masterAutomated = false;   // a volume lane among them
+        std::atomic<float> nowMasterVolumeDb { 0.0f };
+
+        void applyKnobs (std::vector<LaneState>&, juce::AudioPluginInstance* instrument, std::vector<Slot>& inserts, double beat);
+        static MixNow mixAt (const std::vector<LaneState>&, MixNow set, double beat);
         juce::MidiBuffer effectMidi;   // effects get no MIDI
 
         Head head;
