@@ -2,6 +2,7 @@
 
 #include "ui/ParagonLookAndFeel.h"
 
+#include <limits>
 #include <numeric>
 
 namespace
@@ -57,6 +58,13 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     closeButton.onClick = [this] { if (onClose) onClose(); };
     addAndMakeVisible (closeButton);
 
+    windowButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
+    windowButton.setColour (juce::TextButton::textColourOffId, ParagonColours::accent);
+    windowButton.setWantsKeyboardFocus (false);
+    windowButton.onClick = [this] { if (onWindowToggle) onWindowToggle(); };
+    addAndMakeVisible (windowButton);
+    setInWindow (false);
+
     for (int i = 0; i < (int) std::size (grids); ++i)
         gridBox.addItem (grids[i].name, i + 1);
     gridBox.setTooltip ("The grid: where notes snap to, a new note's length, and what QUANTIZE moves notes to");
@@ -90,6 +98,14 @@ void KeyEditor::setTool (Tool newTool)
     eraseTool.setToggleState (tool == Tool::erase, juce::dontSendNotification);
     setMouseCursor (tool == Tool::draw ? juce::MouseCursor::CrosshairCursor : juce::MouseCursor::NormalCursor);
     repaint();
+}
+
+void KeyEditor::setInWindow (bool shouldBeInWindow)
+{
+    inWindow = shouldBeInWindow;
+    windowButton.setButtonText (inWindow ? "DOCK" : "WINDOW");
+    windowButton.setTooltip (inWindow ? "Back under the arrangement"
+                                      : "Into a window of its own: maximize it, or stretch it across your screens (it remembers where it was)");
 }
 
 void KeyEditor::setGrid (double beats)
@@ -378,6 +394,72 @@ void KeyEditor::quantizeSelected()
     commit (std::move (edited.notes));
 }
 
+void KeyEditor::copySelected()
+{
+    const auto* part = getPart();
+    if (selected.empty() || part == nullptr)
+        return;
+    auto first = std::numeric_limits<double>::max(), last = 0.0;
+    for (const auto i : selected)
+    {
+        const auto& note = part->notes[(size_t) i];
+        first = juce::jmin (first, note.start);
+        last = juce::jmax (last, note.start + note.length);
+    }
+    clipboard.clear();
+    for (const auto i : selected)
+    {
+        auto note = part->notes[(size_t) i];
+        note.start -= first;
+        clipboard.push_back (note);
+    }
+    copiedFrom = part->start + first;
+    copiedLength = last - first;
+    copiedPart = part->id;
+}
+
+void KeyEditor::cutSelected()
+{
+    copySelected();
+    deleteSelected();
+}
+
+void KeyEditor::paste()
+{
+    const auto* part = getPart();
+    if (clipboard.empty() || part == nullptr)
+        return;
+    // At the playhead, if it's in the part (as in Cubase); otherwise, in the
+    // part they came from, straight after the notes copied, on the next beat
+    // (or grid step, if that's coarser), so pasting again and again repeats
+    // the phrase in time; and in another part, at its start.
+    const auto playhead = studio.getEngine().getPosition();
+    const auto atPlayhead = playhead >= part->start && playhead < part->end();
+    const auto step = juce::jmax (grid, 4.0 / studio.getProject().denominator);
+    const auto at = atPlayhead ? playhead
+                  : part->id == copiedPart ? copiedFrom + juce::jmax (step, std::ceil (copiedLength / step - 1.0e-9) * step)
+                                           : part->start;
+    auto edited = part->notes;
+    std::vector<int> pasted;
+    for (auto note : clipboard)
+    {
+        note.start += at - part->start;
+        if (note.start < 0.0 || note.start >= part->length)
+            continue;   // outside the part: it wouldn't be heard
+        edited.push_back (note);
+        pasted.push_back ((int) edited.size() - 1);
+    }
+    if (pasted.empty())
+        return;
+    commit (std::move (edited));
+    selectNotes (pasted);
+    if (! atPlayhead)
+    {
+        copiedFrom = at;   // the next paste goes after these
+        copiedPart = part->id;
+    }
+}
+
 void KeyEditor::eraseAt (juce::Point<float> point)
 {
     const auto hit = noteAt (point);
@@ -443,8 +525,12 @@ bool KeyEditor::keyPressed (const juce::KeyPress& key)
     const auto mods = key.getModifiers();
     const auto letter = juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) key.getKeyCode());
     if (mods.isCommandDown() && letter == 'A')                                   { selectAll(); return true; }
+    if (mods.isCommandDown() && letter == 'C')                                   { copySelected(); return true; }
+    if (mods.isCommandDown() && letter == 'X')                                   { cutSelected(); return true; }
+    if (mods.isCommandDown() && letter == 'V')                                   { paste(); return true; }
     if (mods.isCommandDown())
         return false;
+    if (mods.isShiftDown() && letter == 'A')                                     { selectAll(); return true; }
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey) { deleteSelected(); return true; }
     if (key.getKeyCode() == juce::KeyPress::upKey)                               { transposeSelected (mods.isShiftDown() ? 12 : 1); return true; }
     if (key.getKeyCode() == juce::KeyPress::downKey)                             { transposeSelected (mods.isShiftDown() ? -12 : -1); return true; }
@@ -786,6 +872,8 @@ void KeyEditor::resized()
     auto panel = juce::Rectangle<int> (0, 0, sideWidth - 2, getHeight()).withTrimmedLeft (12).reduced (6, 8);
     auto top = panel.removeFromTop (40);
     closeButton.setBounds (top.removeFromRight (64).withSizeKeepingCentre (64, 24).withY (top.getY()));
+    top.removeFromRight (6);
+    windowButton.setBounds (top.removeFromRight (74).withSizeKeepingCentre (74, 24).withY (top.getY()));
     panel.removeFromTop (8);
     auto tools = panel.removeFromTop (28);
     const auto toolWidth = (tools.getWidth() - 8) / 3;
@@ -851,7 +939,7 @@ void KeyEditor::paintPanel (juce::Graphics& g)
     g.setColour (colour);
     g.fillRect (panel.withWidth (6.0f).reduced (0.0f, 1.0f));
 
-    auto area = panel.withTrimmedLeft (18.0f).reduced (0.0f, 8.0f).withTrimmedRight (80.0f);
+    auto area = panel.withTrimmedLeft (18.0f).reduced (0.0f, 8.0f).withTrimmedRight (156.0f);
     g.setColour (ParagonColours::accent);
     g.setFont (font (9.5f));
     g.drawText ("KEY EDITOR", area.removeFromTop (12.0f), juce::Justification::centredLeft, false);

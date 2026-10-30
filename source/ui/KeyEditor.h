@@ -28,7 +28,11 @@
 //                  any of those are under the mouse)
 //   ruler          click to put the position there
 //   keys (focus)   Delete removes the selected notes, Up / Down move them a
-//                  semitone (Shift: an octave), Ctrl+A selects all, Q quantizes
+//                  semitone (Shift: an octave), Ctrl+A or Shift+A selects all,
+//                  Q quantizes, Ctrl+C / Ctrl+X copy / cut the selected notes,
+//                  Ctrl+V pastes them (at the playhead if it's in the part,
+//                  else on the beat after the notes copied, or at the start
+//                  of another part)
 //   wheel          scrolls the notes up and down; Shift+wheel along the song;
 //                  Ctrl+wheel zooms
 //
@@ -65,10 +69,26 @@ public:
     void transposeSelected (int semitones);
     void quantizeSelected();   // all the notes, with none selected
 
+    // The editor's clipboard: notes kept with their timing relative to one
+    // another, so they paste into this part or any other.
+    void copySelected();
+    void cutSelected();
+    void paste();   // the pasted notes are selected afterwards
+    bool canPaste() const noexcept { return ! clipboard.empty(); }
+
     // The editor's keys (the main window passes them on while the editor was last clicked).
     bool keyPressed (const juce::KeyPress&) override;
 
     std::function<void()> onClose;
+
+    // WINDOW: into a window of its own (to maximize, or stretch across
+    // screens); DOCK: back under the arrangement. The main window moves it.
+    std::function<void()> onWindowToggle;
+    void setInWindow (bool);   // the button's name follows
+    bool isInWindow() const noexcept { return inWindow; }
+
+    // Zooms and scrolls so the whole part fits (after it moves to or from its window).
+    void fitToPart();
 
     // Where things are drawn, in the editor's coordinates (for tests).
     juce::Rectangle<float> getNoteBounds (int index) const;
@@ -97,7 +117,6 @@ private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
     void refresh();
-    void fitToPart();
     void clampScroll();
     void refreshPanel();
     const std::vector<pr7s::Note>& notes() const;   // the working copy while a gesture edits them
@@ -124,6 +143,9 @@ private:
     int lastArrangeTrack = 0, lastArrangeIndex = -1;
     std::vector<pr7s::Note> knownNotes;      // its notes as last seen, to notice changes from elsewhere (undo)
     std::vector<int> selected;
+    std::vector<pr7s::Note> clipboard;        // starts from the first note copied (0)
+    double copiedFrom = 0.0, copiedLength = 0.0;
+    int copiedPart = 0;   // where they were in the song, and how long they last (beats)
 
     Tool tool = Tool::select;
     double grid = 0.25;
@@ -145,6 +167,7 @@ private:
     int auditioning = -1;
 
     juce::TextButton selectTool { "SELECT" }, drawTool { "DRAW" }, eraseTool { "ERASE" }, quantizeButton { "QUANTIZE" },
-                     closeButton { "CLOSE" };
+                     windowButton { "WINDOW" }, closeButton { "CLOSE" };
+    bool inWindow = false;
     juce::ComboBox gridBox;
 };

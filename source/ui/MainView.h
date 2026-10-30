@@ -24,7 +24,8 @@
 // duplicate it, Ctrl+Z / Ctrl+Shift+Z undo / redo, Ctrl+N / O / S new, open
 // and save (Ctrl+Shift+S save as), Ctrl+E the key editor (Escape closes it).
 // After a click in the key editor its keys go to it (Delete removes notes,
-// not the part); after a click elsewhere, to the arrangement.
+// not the part); after a click elsewhere, to the arrangement. Ctrl+C / X / V
+// and Shift+A go to the editor whenever it's open.
 class MainView final : public juce::Component,
                        private juce::ChangeListener
 {
@@ -51,6 +52,11 @@ public:
     void openKeyEditor();
     void closeKeyEditor();
     bool isKeyEditorOpen() const noexcept { return keyEditorOpen; }
+    // In a window of its own (WINDOW), or under the arrangement (DOCK).
+    // Remembered for next time, as is where the window was.
+    void setKeyEditorInWindow (bool);
+    bool isKeyEditorInWindow() const noexcept { return keyEditorInWindow; }
+    Windows::KeyEditorWindow* getKeyEditorWindow() noexcept { return keyEditorWindow.get(); }
 
     // The window's title: the project's name, * when changed.
     std::function<void (const juce::String&)> onTitleChange;
@@ -65,6 +71,7 @@ public:
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void refreshHeader();
+    void placeKeyEditor();
 
     pr7s::Studio& studio;
     Timeline timeline;
@@ -72,7 +79,8 @@ private:
     TrackList trackList;
     ArrangeView arrange;
     KeyEditor keyEditor;
-    bool keyEditorOpen = false, keysToEditor = false;
+    bool keyEditorOpen = false, keysToEditor = false, keyEditorInWindow = false;
+    std::unique_ptr<Windows::KeyEditorWindow> keyEditorWindow;   // after the editor: goes first
     juce::MidiKeyboardComponent keyboard;
 
     juce::TextButton newButton { "NEW" }, openButton { "OPEN" }, saveButton { "SAVE" }, saveAsButton { "SAVE AS" },

@@ -17,6 +17,26 @@ namespace Windows
         std::function<void()> onClose;
     };
 
+    // The key editor in a window of its own (its WINDOW button): resizable,
+    // with a maximize button, so it can fill a screen or be stretched across
+    // several. It shows the editor but doesn't own it (MainView does, and
+    // takes it back when this closes). Its keys go to the studio's (onKey).
+    // Where it was (and whether maximized) is kept in the settings file, so
+    // it opens there again; the first time, it fills the screen the studio is on.
+    class KeyEditorWindow final : public juce::DocumentWindow
+    {
+    public:
+        KeyEditorWindow (juce::Component& editor, juce::PropertiesFile* settings, juce::Rectangle<int> studioOnScreen);
+        ~KeyEditorWindow() override;
+        void closeButtonPressed() override;
+        bool keyPressed (const juce::KeyPress&) override;
+        std::function<void()> onClose;
+        std::function<bool (const juce::KeyPress&)> onKey;
+
+    private:
+        juce::PropertiesFile* settings;
+    };
+
     // SETTINGS: the audio interface (which, its sample rate and buffer
     // size), the MIDI inputs, and the unit's finish.
     class Settings final : public juce::DocumentWindow

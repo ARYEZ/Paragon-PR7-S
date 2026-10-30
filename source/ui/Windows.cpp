@@ -68,6 +68,45 @@ namespace Windows
         setVisible (true);
     }
 
+    KeyEditorWindow::KeyEditorWindow (juce::Component& editor, juce::PropertiesFile* settingsToUse, juce::Rectangle<int> studioOnScreen)
+        : DocumentWindow ("Key Editor", windowColour, DocumentWindow::allButtons), settings (settingsToUse)
+    {
+        setUsingNativeTitleBar (true);
+        setContentNonOwned (&editor, false);
+        setResizable (true, false);
+        setResizeLimits (720, 360, 32768, 16384);
+        const auto saved = settings != nullptr ? settings->getValue ("keyEditorWindow") : juce::String();
+        if (saved.isEmpty() || ! restoreWindowStateFromString (saved))
+        {
+            const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect (studioOnScreen);
+            setBounds (display != nullptr ? display->userBounds.toNearestInt().reduced (24) : juce::Rectangle<int> (60, 60, 1400, 800));
+        }
+        setWantsKeyboardFocus (true);
+        setVisible (true);
+        toFront (true);
+    }
+
+    KeyEditorWindow::~KeyEditorWindow()
+    {
+        if (settings != nullptr)
+        {
+            settings->setValue ("keyEditorWindow", getWindowStateAsString());
+            settings->saveIfNeeded();
+        }
+        clearContentComponent();   // the editor goes back to its owner, not deleted
+    }
+
+    bool KeyEditorWindow::keyPressed (const juce::KeyPress& key)
+    {
+        return onKey != nullptr && onKey (key);
+    }
+
+    void KeyEditorWindow::closeButtonPressed()
+    {
+        if (onClose)
+            onClose();
+    }
+
     void Instrument::closeButtonPressed()
     {
         if (onClose)
