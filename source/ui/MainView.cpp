@@ -6,7 +6,7 @@
 
 namespace
 {
-    juce::FontOptions font (float height, int style = juce::Font::bold) { return juce::FontOptions (height, style); }
+    juce::FontOptions font (float height, int style = juce::Font::bold) { return ParagonLookAndFeel::textFont (height, style); }
 }
 
 MainView::MainView (pr7s::Studio& studioToUse)

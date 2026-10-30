@@ -73,6 +73,21 @@ public:
     // and the heavy display italic for bold italic (the PARAGON badge).
     juce::Typeface::Ptr getTypefaceForFont (const juce::Font&) override;
 
+    // Which text is in Bebas Neue (capitals only, tall and narrow): none
+    // (all Inter, as the other PR7s), the titles and buttons, or everything
+    // the studio draws (not the LED screens, menus or tooltips). Being
+    // compared by the owner: only the renders change it so far.
+    enum class DisplayFont { inter, bebasTitles, bebasEverywhere };
+    static void setDisplayFont (DisplayFont);
+    static DisplayFont getDisplayFont();
+    // The fonts to draw with: `textFont` for ordinary text, `titleFont` for
+    // titles and buttons. Bebas is drawn larger (bebasScale) so its narrow
+    // capitals look the size Inter's text does.
+    static juce::FontOptions textFont (float height, int style = juce::Font::bold);
+    static juce::FontOptions titleFont (float height);
+    static constexpr float bebasScale = 1.3f;
+    juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override;
+
     void drawRotarySlider (juce::Graphics&, int x, int y, int width, int height,
                            float sliderPosProportional, float rotaryStartAngle,
                            float rotaryEndAngle, juce::Slider&) override;
@@ -98,7 +113,7 @@ public:
     void drawButtonText (juce::Graphics&, juce::TextButton&, bool highlighted, bool down) override;
 
 private:
-    juce::Typeface::Ptr regular, semiBold, blackItalic;
+    juce::Typeface::Ptr regular, semiBold, blackItalic, bebas;
 
     static void drawPedalKnob (juce::Graphics&, juce::Rectangle<float> bounds, float angle);
 

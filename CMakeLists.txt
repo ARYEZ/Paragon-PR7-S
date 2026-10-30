@@ -23,7 +23,8 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 include(cmake/Dependencies.cmake)
 
-# Inter (SIL Open Font License, see resources/fonts/OFL-LICENSE.txt), built
+# Inter and Bebas Neue (SIL Open Font License, see resources/fonts/OFL-LICENSE.txt
+# and BebasNeue-OFL-LICENSE.txt), built
 # in so the studio looks the same on every computer.
 juce_add_binary_data(ParagonPR7SFonts
     HEADER_NAME ParagonFonts.h
@@ -31,7 +32,8 @@ juce_add_binary_data(ParagonPR7SFonts
     SOURCES
         resources/fonts/Inter-Regular.ttf
         resources/fonts/Inter-SemiBold.ttf
-        resources/fonts/InterDisplay-BlackItalic.ttf)
+        resources/fonts/InterDisplay-BlackItalic.ttf
+        resources/fonts/BebasNeue-Regular.ttf)
 
 # Everything but main(): the engine, the project, the UI. A static library,
 # so the app and the tests run exactly the same code. (JUCE's pattern for

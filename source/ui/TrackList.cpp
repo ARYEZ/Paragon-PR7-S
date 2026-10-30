@@ -4,7 +4,7 @@
 
 namespace
 {
-    juce::FontOptions font (float height, int style = juce::Font::bold) { return juce::FontOptions (height, style); }
+    juce::FontOptions font (float height, int style = juce::Font::bold) { return ParagonLookAndFeel::textFont (height, style); }
 }
 
 //==============================================================================
@@ -13,7 +13,7 @@ class TrackList::Row final : public juce::Component
 public:
     Row (TrackList& ownerList, int id) : owner (ownerList), trackId (id)
     {
-        name.setFont (font (13.0f));
+        name.setFont (ParagonLookAndFeel::titleFont (13.0f));
         name.setColour (juce::Label::textColourId, ParagonColours::text);
         name.setEditable (false, true, false);   // double-click to rename
         name.setTooltip ("The track's name: double-click to rename");

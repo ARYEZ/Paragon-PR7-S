@@ -8,7 +8,8 @@ ParagonLookAndFeel::ParagonLookAndFeel()
     : regular (juce::Typeface::createSystemTypefaceFor (ParagonFonts::InterRegular_ttf, ParagonFonts::InterRegular_ttfSize)),
       semiBold (juce::Typeface::createSystemTypefaceFor (ParagonFonts::InterSemiBold_ttf, ParagonFonts::InterSemiBold_ttfSize)),
       blackItalic (juce::Typeface::createSystemTypefaceFor (ParagonFonts::InterDisplayBlackItalic_ttf,
-                                                           ParagonFonts::InterDisplayBlackItalic_ttfSize))
+                                                           ParagonFonts::InterDisplayBlackItalic_ttfSize)),
+      bebas (juce::Typeface::createSystemTypefaceFor (ParagonFonts::BebasNeueRegular_ttf, ParagonFonts::BebasNeueRegular_ttfSize))
 {
     setColour (juce::ResizableWindow::backgroundColourId, ParagonColours::background);
     setColour (juce::Label::textColourId, ParagonColours::text);
@@ -153,7 +154,7 @@ void ParagonLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& bu
         return;
     }
 
-    g.setFont (juce::FontOptions (juce::jmin (12.0f, area.getHeight() * 0.7f), juce::Font::bold));
+    g.setFont (titleFont (juce::jmin (12.0f, area.getHeight() * 0.7f)));
     // Light lettering on a black key; white on a neon one (lit: a pale
     // gold, as the accent orange would vanish into the key).
     const auto neonKey = Finish::neonKeys();
@@ -489,14 +490,59 @@ void ParagonLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int 
     }
 }
 
+namespace
+{
+    const juce::String bebasName { "Paragon Bebas" };
+}
+
 juce::Typeface::Ptr ParagonLookAndFeel::getTypefaceForFont (const juce::Font& font)
 {
+    if (font.getTypefaceName() == bebasName)
+        return bebas;
     if (font.getTypefaceName() != juce::Font::getDefaultSansSerifFontName())
         return LookAndFeel_V4::getTypefaceForFont (font);
 
     if (font.isBold() && font.isItalic())
         return blackItalic;
     return font.isBold() ? semiBold : regular;
+}
+
+namespace
+{
+    std::atomic<ParagonLookAndFeel::DisplayFont> displayFont { ParagonLookAndFeel::DisplayFont::inter };
+}
+
+void ParagonLookAndFeel::setDisplayFont (DisplayFont font)
+{
+    displayFont = font;
+    juce::Typeface::clearTypefaceCache();
+}
+
+ParagonLookAndFeel::DisplayFont ParagonLookAndFeel::getDisplayFont()
+{
+    return displayFont.load();
+}
+
+juce::FontOptions ParagonLookAndFeel::textFont (float height, int style)
+{
+    if (getDisplayFont() == DisplayFont::bebasEverywhere)
+        return juce::FontOptions (bebasName, height * bebasScale, juce::Font::plain);
+    return juce::FontOptions (height, style);
+}
+
+juce::FontOptions ParagonLookAndFeel::titleFont (float height)
+{
+    if (getDisplayFont() != DisplayFont::inter)
+        return juce::FontOptions (bebasName, height * bebasScale, juce::Font::plain);
+    return juce::FontOptions (height, juce::Font::bold);
+}
+
+juce::Font ParagonLookAndFeel::getTextButtonFont (juce::TextButton& button, int buttonHeight)
+{
+    // Buttons are titles: in Bebas when it's chosen.
+    if (getDisplayFont() == DisplayFont::inter)
+        return LookAndFeel_V4::getTextButtonFont (button, buttonHeight);
+    return juce::Font (titleFont (juce::jmin (16.0f, (float) buttonHeight * 0.6f)));
 }
 
 SharedParagonLookAndFeel::SharedParagonLookAndFeel()

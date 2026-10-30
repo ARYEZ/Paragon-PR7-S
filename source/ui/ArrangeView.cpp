@@ -7,7 +7,7 @@ namespace
     constexpr float edgeGrab = 6.0f;   // the right edge of a part, for resizing
     const juce::Colour laneDark { 0xff0d0a0e }, laneLight { 0xff120e13 }, gridBar { 0xff2a2229 }, gridBeat { 0xff1a1519 };
 
-    juce::FontOptions font (float height, int style = juce::Font::bold) { return juce::FontOptions (height, style); }
+    juce::FontOptions font (float height, int style = juce::Font::bold) { return ParagonLookAndFeel::textFont (height, style); }
 }
 
 ArrangeView::ArrangeView (pr7s::Studio& studioToUse, Timeline& timelineToUse)

@@ -4,7 +4,7 @@
 
 namespace
 {
-    juce::FontOptions font (float height, int style = juce::Font::bold) { return juce::FontOptions (height, style); }
+    juce::FontOptions font (float height, int style = juce::Font::bold) { return ParagonLookAndFeel::textFont (height, style); }
 
     juce::String dbText (double db) { return db <= -59.9 ? juce::String ("-inf") : (db > 0.04 ? "+" : "") + juce::String (db, 1); }
 
@@ -150,7 +150,7 @@ void MixerView::Strip::paint (juce::Graphics& g)
     }
 
     g.setColour (ParagonColours::text);
-    g.setFont (font (12.5f));
+    g.setFont (ParagonLookAndFeel::titleFont (12.5f));
     g.drawFittedText (isMaster() ? juce::String ("MASTER") : track != nullptr ? track->name : juce::String(),
                       nameArea.toNearestInt(), juce::Justification::centred, 1, 0.8f);
     g.setColour (ParagonColours::textDim);
@@ -375,7 +375,7 @@ void MixerView::paint (juce::Graphics& g)
     g.fillRect (bar.withY (bar.getBottom() - 1.0f).withHeight (1.0f));
     g.fillRect (bar.withHeight (1.0f));
     g.setColour (ParagonColours::text);
-    g.setFont (font (9.5f));
+    g.setFont (ParagonLookAndFeel::titleFont (9.5f));
     g.drawText ("MIXER", bar.withTrimmedLeft (14.0f), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (font (11.0f, juce::Font::plain));
