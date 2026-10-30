@@ -18,7 +18,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
       keyEditor (studioToUse, arrange),
       mixer (studioToUse)
 {
-    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &exportButton, &undoButton, &redoButton, &editorButton, &mixerButton,
+    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &importButton, &exportButton, &undoButton, &redoButton, &editorButton, &mixerButton,
                           &pluginsButton, &settingsButton })
     {
         button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
@@ -31,6 +31,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
     saveButton.setTooltip ("Save the song (Ctrl+S)");
     saveAsButton.setTooltip ("Save the song under a new name (Ctrl+Shift+S)");
     exportButton.setTooltip ("Export the mix to a WAV file: the whole song or the cycle");
+    importButton.setTooltip ("Import a MIDI file (.mid): a track for each of its tracks. Or drop one on the arrangement, at a bar");
+    importButton.onClick = [this] { importMidiFile(); };
     undoButton.setTooltip ("Undo (Ctrl+Z)");
     redoButton.setTooltip ("Redo (Ctrl+Shift+Z)");
     editorButton.setTooltip ("The key editor: the selected part's notes (Ctrl+E; or double-click a part)");
@@ -208,9 +210,9 @@ void MainView::resized()
     auto area = getLocalBounds();
     auto header = area.removeFromTop (headerHeight).reduced (8, 10);
     header.removeFromLeft (280);
-    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &exportButton })
+    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &importButton, &exportButton })
     {
-        button->setBounds (header.removeFromLeft (button == &saveAsButton ? 84 : button == &exportButton ? 76 : 66));
+        button->setBounds (header.removeFromLeft (button == &saveAsButton ? 84 : button == &exportButton || button == &importButton ? 76 : 66));
         header.removeFromLeft (6);
     }
     header.removeFromLeft (18);
@@ -516,6 +518,71 @@ void MainView::saveProjectAs (std::function<void (bool)> then)
                               if (then)
                                   then (saved);
                           });
+}
+
+//==============================================================================
+void MainView::importMidiFile()
+{
+    const auto chooseFile = [this] (bool newSong)
+    {
+        chooser = std::make_unique<juce::FileChooser> ("Import a MIDI file", studio.getFile().getParentDirectory(), "*.mid;*.midi");
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                              [this, newSong] (const juce::FileChooser& fc)
+                              {
+                                  const auto file = fc.getResult();
+                                  if (file == juce::File())
+                                      return;
+                                  juce::String error;
+                                  if (studio.importMidi (file, newSong, 0.0, error) == 0)
+                                      juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't import the MIDI file",
+                                                                              file.getFileName() + ": " + error);
+                              });
+    };
+    // As the manual has it: into a new song, or this one? (Only asked if this one has anything in it.)
+    const auto& tracks = studio.getProject().tracks;
+    const auto empty = std::all_of (tracks.begin(), tracks.end(), [] (const pr7s::Track& t) { return t.parts.empty(); });
+    if (empty)
+    {
+        chooseFile (true);
+        return;
+    }
+    juce::AlertWindow::showYesNoCancelBox (juce::MessageBoxIconType::QuestionIcon, "Import a MIDI file",
+                                           juce::String ("Into a new song (with the file's tempo and time signature), or into this one (at bar 1, keeping its tempo)?")
+                                               + (studio.isModified() ? "\n\nA new song: changes to this one that aren't saved will be lost." : ""),
+                                           "New song", "This song", "Cancel", nullptr,
+                                           juce::ModalCallbackFunction::create ([chooseFile] (int result)
+                                           {
+                                               if (result == 1)
+                                                   chooseFile (true);
+                                               else if (result == 2)
+                                                   chooseFile (false);
+                                           }));
+}
+
+bool MainView::isInterestedInFileDrag (const juce::StringArray& files)
+{
+    return std::any_of (files.begin(), files.end(), [] (const juce::String& f) { return f.endsWithIgnoreCase (".mid") || f.endsWithIgnoreCase (".midi"); });
+}
+
+void MainView::filesDropped (const juce::StringArray& files, int x, int y)
+{
+    // Into this song, at the bar it's dropped on (over the arrangement), else bar 1.
+    auto atBeat = 0.0;
+    const auto inArrange = arrange.getLocalPoint (this, juce::Point<int> (x, y));
+    if (arrange.getLocalBounds().contains (inArrange))
+    {
+        const auto bar = studio.getProject().beatsPerBar();
+        atBeat = juce::jmax (0.0, std::floor (timeline.beatForX ((float) inArrange.x) / bar) * bar);
+    }
+    for (const auto& path : files)
+    {
+        if (! (path.endsWithIgnoreCase (".mid") || path.endsWithIgnoreCase (".midi")))
+            continue;
+        juce::String error;
+        if (studio.importMidi (juce::File (path), false, atBeat, error) == 0)
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't import the MIDI file",
+                                                    juce::File (path).getFileName() + ": " + error);
+    }
 }
 
 //==============================================================================

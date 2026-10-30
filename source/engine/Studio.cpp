@@ -1,5 +1,7 @@
 #include "Studio.h"
 
+#include "MidiImport.h"
+
 namespace pr7s
 {
     namespace
@@ -1815,6 +1817,61 @@ namespace pr7s
         recordUndoState();
         modified = false;
         sendChangeMessage();
+    }
+
+    int Studio::importMidi (const juce::File& source, bool newSong, double atBeat, juce::String& error)
+    {
+        const auto read = readMidiFile (source, error);
+        return read ? importMidi (*read, newSong, atBeat) : 0;
+    }
+
+    int Studio::importMidi (const MidiImport& midi, bool newSong, double atBeat)
+    {
+        if (newSong)
+        {
+            newProject();
+            // The new song's one empty track makes way for the file's.
+            if (project.tracks.size() == 1 && project.tracks.front().parts.empty())
+                removeTrack (project.tracks.front().id);
+            setTempo (midi.bpm);
+            setSignature (midi.numerator, midi.denominator);
+            atBeat = 0.0;
+        }
+        const auto bar = project.beatsPerBar();
+        auto added = 0;
+        for (const auto& imported : midi.tracks)
+        {
+            const auto id = addTrack ({});
+            if (id == 0)
+                continue;
+            renameTrack (id, imported.name);
+            // One part over the bars its notes are in.
+            auto first = std::numeric_limits<double>::max(), last = 0.0;
+            for (const auto& note : imported.notes)
+            {
+                first = juce::jmin (first, atBeat + note.start);
+                last = juce::jmax (last, atBeat + note.start + note.length);
+            }
+            Part part;
+            part.start = juce::jmax (0.0, std::floor (first / bar + 1.0e-9) * bar);
+            part.length = juce::jmax (bar, std::ceil (last / bar - 1.0e-9) * bar - part.start);
+            part.name = imported.name;
+            for (auto note : imported.notes)
+            {
+                note.start += atBeat - part.start;
+                part.notes.push_back (note);
+            }
+            addPart (id, part);
+            ++added;
+        }
+        if (newSong)
+        {
+            // The import is where the new song starts: nothing to undo before it.
+            undoStates.clear();
+            undoIndex = -1;
+            recordUndoState();
+        }
+        return added;
     }
 
     bool Studio::save (const juce::File& destination)

@@ -10,6 +10,8 @@
 
 namespace pr7s
 {
+    struct MidiImport;   // (MidiImport.h)
+
     // The studio: the project, the engine that plays it, the instruments
     // and the audio and MIDI devices, and every action the screen offers
     // (tracks, parts, the transport, recording, undo, files). Message thread.
@@ -228,6 +230,14 @@ namespace pr7s
         bool save (const juce::File&);
         // `problems`: instruments that couldn't be loaded (the project opens anyway).
         bool open (const juce::File&, juce::String& problems);
+        // A standard MIDI file: a Paragon Synth track for each of its tracks
+        // (a type-0 file: each channel), its notes in a part (whole bars).
+        // `newSong`: a new song first, with the file's tempo and time
+        // signature; else into this one at `atBeat` (its tempo kept, the
+        // notes on its beats: the manual's "Ignore Master Track Events on
+        // Merge"). Returns how many tracks it added (0, with `error` set, if none).
+        int importMidi (const juce::File&, bool newSong, double atBeat, juce::String& error);
+        int importMidi (const MidiImport&, bool newSong, double atBeat);
         juce::File getFile() const noexcept { return file; }
         bool isModified() const noexcept { return modified; }
 

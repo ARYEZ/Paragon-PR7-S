@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.7.1
+
+MIDI file import: bring in a song, a drum groove or a bass line from a .mid file, as the Cubase 15 manual's File > Import > MIDI File does.
+
+- **IMPORT** (in the header, after SAVE AS): choose a .mid file. If your song already has something in it, it asks first: **New song** (with the file's tempo and time signature) or **This song** (at bar 1, keeping your tempo).
+- **Or drag a .mid file** from Explorer onto the arrangement: it goes into this song at the bar you drop it on.
+- **Each track in the file becomes an instrument track** on the Paragon Synth (switch it to any of your VST3 instruments from its button), named as in the file, its notes in one part over the bars they're in. Timing, pitch and velocity come across as they are.
+- **A file with everything on one track** (a type-0 file) is split into a track per MIDI channel (as the manual's "Auto Dissolve Format 0"), so the drums (channel 10) get a track of their own.
+- **Our choices** (the manual leaves these to preferences):
+  - Into this song, your tempo is kept and the notes land on its beats (the manual's "Ignore Master Track Events on Merge").
+  - Into a new song, it takes the file's first tempo and time signature.
+  - A dropped file makes a track for each of its tracks, at the bar it's dropped on.
+- **Not there yet:** controllers (mod wheel, sustain, volume: PR7-S has no MIDI controller lanes yet), tempo changes partway through (a song has one tempo), program changes, markers and lyrics. MIDI export is not there either. Ask when you want any of these.
+
 ## 0.7.0
 
 Sends, FX channels and group channels: one reverb (or delay) that every track can send some of its sound to, and submixes with one fader, as the Cubase 15 manual describes.

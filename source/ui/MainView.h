@@ -12,7 +12,7 @@
 
 // The studio's window, top to bottom:
 //
-//   header       the PR7-S mark; NEW, OPEN, SAVE, SAVE AS, EXPORT; UNDO, REDO;
+//   header       the PR7-S mark; NEW, OPEN, SAVE, SAVE AS, IMPORT, EXPORT; UNDO, REDO;
 //                KEY EDITOR, MIXER; R and W (read and write automation for
 //                all tracks, lit while any track's are on); PLUGINS and SETTINGS
 //   transport    the pearl unit: keys, position, tempo, signature, meters
@@ -33,6 +33,7 @@
 // not the part); after a click elsewhere, to the arrangement. Ctrl+C / X / V
 // and Shift+A go to the editor whenever it's open.
 class MainView final : public juce::Component,
+                       public juce::FileDragAndDropTarget,
                        private juce::ChangeListener
 {
 public:
@@ -53,6 +54,14 @@ public:
     // then writes it behind a progress bar (CANCEL stops it, leaving no file).
     void exportMix();
     Windows::ExportPage* getExportPage() noexcept { return exportPage.getComponent(); }
+
+    // IMPORT: a standard MIDI file (as the manual's File > Import > MIDI
+    // File): asks whether into a new song (if this one has anything in it),
+    // then which file. A .mid file dropped on the window goes into this song
+    // at the bar it's dropped on (bar 1 if not over the arrangement).
+    void importMidiFile();
+    bool isInterestedInFileDrag (const juce::StringArray&) override;
+    void filesDropped (const juce::StringArray&, int x, int y) override;
 
     void openInstrumentWindow (int trackId);
     void openSettings();
@@ -119,7 +128,7 @@ private:
     MixerView mixer;
     bool keysToEditor = false;
 
-    juce::TextButton newButton { "NEW" }, openButton { "OPEN" }, saveButton { "SAVE" }, saveAsButton { "SAVE AS" }, exportButton { "EXPORT" },
+    juce::TextButton newButton { "NEW" }, openButton { "OPEN" }, saveButton { "SAVE" }, saveAsButton { "SAVE AS" }, importButton { "IMPORT" }, exportButton { "EXPORT" },
                      undoButton { "UNDO" }, redoButton { "REDO" }, editorButton { "KEY EDITOR" }, mixerButton { "MIXER" },
                      pluginsButton { "PLUGINS" }, settingsButton { "SETTINGS" }, readAllButton { "R" }, writeAllButton { "W" };
     // After the editor and the mixer: their windows go first.
