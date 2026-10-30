@@ -30,13 +30,19 @@ namespace pr7s
 
         constexpr int automationStep = 32;   // samples between volume, pan and mute automation values
 
-        // The lanes that are played back: R on, the lane not muted, with points.
+        // The lanes that are played back: R on, the lane not muted, with
+        // points, and its control not being held (written).
         template <typename LaneStates>
-        void readLanes (const std::vector<AutomationLane>& lanes, bool read, LaneStates& into, bool& mixAutomated)
+        void readLanes (const std::vector<AutomationLane>& lanes, bool read, LaneStates& into, bool& mixAutomated,
+                        int busId, const std::vector<std::pair<int, AutomationLane>>& held)
         {
             mixAutomated = false;
+            const auto isHeld = [&] (const AutomationLane& lane)
+            {
+                return std::any_of (held.begin(), held.end(), [&] (const auto& h) { return h.first == busId && h.second.sameControl (lane); });
+            };
             for (const auto& lane : lanes)
-                if (read && ! lane.muted && ! lane.points.empty())
+                if (read && ! lane.muted && ! lane.points.empty() && ! isHeld (lane))
                 {
                     into.push_back ({ lane, -1.0f });
                     using T = AutomationLane::Target;
@@ -359,7 +365,7 @@ namespace pr7s
             Prepared p { track.id, {}, sideGains (track, ! track.mute && (! anySolo || track.solo)), {}, {}, {}, false };
             for (const auto& insert : track.inserts)
                 p.bypass.push_back (insert.bypass);
-            readLanes (track.automation, track.automationRead, p.automation, p.mixAutomated);
+            readLanes (track.automation, track.automationRead, p.automation, p.mixAutomated, track.id, held);
             if (track.isAudio())
             {
                 for (const auto& part : track.parts)
@@ -394,7 +400,7 @@ namespace pr7s
         const auto masterLevel = levelOf (project.masterVolumeDb);
         std::vector<LaneState> masterLanes;
         bool masterLanesMix = false;
-        readLanes (project.masterAutomation, project.masterRead, masterLanes, masterLanesMix);
+        readLanes (project.masterAutomation, project.masterRead, masterLanes, masterLanesMix, masterBus, held);
 
         const juce::ScopedLock sl (lock);
         settings = { project.bpm, project.numerator, project.denominator, project.loopOn,
@@ -428,6 +434,14 @@ namespace pr7s
             }
         for (size_t i = 0; i < juce::jmin (project.masterInserts.size(), masterInserts.size()); ++i)
             masterInserts[i].bypass = project.masterInserts[i].bypass;
+    }
+
+    void Engine::setHeld (int busId, const AutomationLane& control, bool isHeld)
+    {
+        held.erase (std::remove_if (held.begin(), held.end(), [&] (const auto& h) { return h.first == busId && h.second.sameControl (control); }),
+                    held.end());
+        if (isHeld)
+            held.push_back ({ busId, control });
     }
 
     //==========================================================================

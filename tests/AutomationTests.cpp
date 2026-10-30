@@ -25,7 +25,6 @@ namespace
         float get() const { return value.load(); }
         float getValue() const override { return value.load(); }
         void setValue (float v) override { value = v; }
-        void setValueNotifyingHost (float v) { setValue (v); }
         float getDefaultValue() const override { return 1.0f; }
         juce::String getName (int) const override { return "Level"; }
         juce::String getLabel() const override { return {}; }
@@ -326,4 +325,150 @@ TEST_CASE ("An insert's automation goes with it; the others stay in their slots,
     CHECK (lanes->at (1).points.front().value == 0.25f);
     studio.undo();   // the points' undo doesn't bring the removed effect's lane back
     CHECK (studio.getAutomation (track)->size() == 2);
+}
+
+TEST_CASE ("Writing automation: with W on while playing, moving the fader writes it (Touch); let go, it returns; one undo step", "[automation][studio]")
+{
+    using T = AutomationLane::Target;
+    Studio studio (false);
+    const auto track = studio.getProject().tracks[0].id;
+    const auto volume = Studio::control (T::volume);
+    const auto playTo = [&] (double beatNow)
+    {
+        while (studio.getEngine().getPosition() < beatNow - 1.0e-9)
+            renderSamples (studio.getEngine(), juce::jmin (512, (int) std::ceil ((beatNow - studio.getEngine().getPosition()) * beat)));
+    };
+
+    // W off, or stopped: the fader just moves.
+    studio.grabControl (track, volume);
+    studio.setVolume (track, -6.0f);
+    studio.releaseControl (track, volume);
+    CHECK (studio.getAutomation (track)->empty());
+    studio.setVolume (track, 0.0f);
+
+    studio.setAutomationWrite (track, true);
+    CHECK (studio.getAutomationRead (track));
+    studio.play();
+    playTo (1.0);
+    studio.grabControl (track, volume);
+    CHECK (studio.isWritingAutomation (track));
+    studio.setVolume (track, -12.0f, false);
+    playTo (2.0);
+    studio.setVolume (track, -6.0f, false);
+    playTo (3.0);
+    // While held, the hand is heard (not a lane): the fader's level.
+    CHECK_THAT (studio.getEngine().getMixNow (track).volumeDb, WithinAbs (-6.0, 1.0e-4));
+    studio.setVolume (track, -6.0f, true);   // the drag's end, as the fader sends it
+    studio.releaseControl (track, volume);
+    CHECK_FALSE (studio.isWritingAutomation (track));
+    studio.stop();
+
+    const auto* lanes = studio.getAutomation (track);
+    REQUIRE (lanes->size() == 1);
+    const auto& lane = lanes->front();
+    CHECK (lane.target == T::volume);
+    REQUIRE (lane.points.size() >= 4);
+    const auto valueAt = [&] (double b) { return travelToVolume (*lane.valueAt (b)); };
+    CHECK_THAT (valueAt (0.5), WithinAbs (0.0, 1.0e-3));     // before the pass: as it was
+    CHECK_THAT (valueAt (1.01), WithinAbs (-12.0, 0.6));     // the hand's -12, from where it was grabbed
+    CHECK_THAT (valueAt (2.5), WithinAbs (-6.0, 1.0e-3));
+    CHECK_THAT (valueAt (3.5), WithinAbs (0.0, 1.0e-3));     // let go: back to what it was (after the return time)
+    CHECK (studio.getProject().tracks[0].volumeDb == 0.0f);  // the fader's own setting, back
+    CHECK (studio.getAutomationRead (track));
+
+    // Played back: the fader follows the curve.
+    studio.setPosition (2.5);
+    renderSamples (studio.getEngine(), 512);
+    CHECK_THAT (studio.getEngine().getMixNow (track).volumeDb, WithinAbs (-6.0, 1.0e-3));
+
+    // The pass is one undo step.
+    studio.undo();
+    CHECK ((studio.getAutomation (track)->empty() || studio.getAutomation (track)->front().points.empty()));
+}
+
+TEST_CASE ("Writing automation: mute latches until stop; a jump (the cycle going round) ends a pass", "[automation][studio]")
+{
+    using T = AutomationLane::Target;
+    Studio studio (false);
+    const auto track = studio.getProject().tracks[0].id;
+    const auto playTo = [&] (double beatNow)
+    {
+        while (studio.getEngine().getPosition() < beatNow - 1.0e-9)
+            renderSamples (studio.getEngine(), juce::jmin (512, (int) std::ceil ((beatNow - studio.getEngine().getPosition()) * beat)));
+    };
+    studio.setAutomationWrite (track, true);
+    studio.play();
+    playTo (1.0);
+    studio.setMute (track, true);   // a click on M: written, and latched
+    playTo (3.0);
+    CHECK (studio.isWritingAutomation (track));
+    studio.stop();
+    CHECK_FALSE (studio.isWritingAutomation (track));
+    const auto& lane = studio.getAutomation (track)->front();
+    CHECK (lane.target == T::mute);
+    CHECK (*lane.valueAt (0.5) == 0.0f);
+    CHECK (*lane.valueAt (1.5) == 1.0f);
+    CHECK (*lane.valueAt (2.9) == 1.0f);
+    CHECK (*lane.valueAt (3.5) == 0.0f);   // back after the stop
+    CHECK_FALSE (studio.getProject().tracks[0].mute);
+
+    // A cycle over beats 4 to 6: grabbed at 4.5, the cycle comes round, the pass ends at its end.
+    studio.setCycle (4.0, 6.0);
+    studio.setCycleOn (true);
+    studio.setPosition (4.0);
+    studio.play();
+    playTo (4.5);
+    const auto pan = Studio::control (T::pan);
+    studio.grabControl (track, pan);
+    studio.setPan (track, 1.0f, false);
+    // The studio's timer (30 times a second in the app) sees it get to 5.9, then come round to 4.25.
+    const auto tick = [] { juce::Thread::sleep (40); juce::Timer::callPendingTimersSynchronously(); };
+    renderSamples (studio.getEngine(), beat * 7 / 5);
+    tick();
+    CHECK (studio.isWritingAutomation (track));
+    renderSamples (studio.getEngine(), beat * 7 / 20);
+    tick();
+    studio.setPan (track, -1.0f, false);   // after the jump: not written
+    CHECK_FALSE (studio.isWritingAutomation (track));
+    studio.stop();
+    const auto* lanes = studio.getAutomation (track);
+    const auto panLane = std::find_if (lanes->begin(), lanes->end(), [] (const AutomationLane& l) { return l.target == AutomationLane::Target::pan; });
+    REQUIRE (panLane != lanes->end());
+    CHECK (*panLane->valueAt (5.0) == 1.0f);   // hard right, written
+    CHECK_THAT (*panLane->valueAt (4.2), WithinAbs (0.5, 1.0e-6));   // the centre before
+}
+
+TEST_CASE ("Writing automation: a plugin's knob turned by hand (W on, playing) is written to its lane", "[automation][studio]")
+{
+    Studio studio (false);
+    const auto track = studio.getProject().tracks[0].id;
+    auto effect = std::make_unique<KnobEffect>();
+    auto* knob = effect->knob;
+    Insert insert;
+    insert.plugin.name = "Knob";
+    REQUIRE (studio.addInsert (track, insert, std::move (effect), 2));
+    studio.setAutomationWrite (track, true);
+    studio.play();
+    renderSamples (studio.getEngine(), beat);
+    // As a plugin's window does: a gesture, the value, the end of the gesture.
+    knob->beginChangeGesture();
+    knob->setValueNotifyingHost (0.25f);
+    CHECK (studio.isWritingAutomation (track));
+    renderSamples (studio.getEngine(), beat);
+    knob->setValueNotifyingHost (0.5f);
+    knob->endChangeGesture();
+    CHECK_FALSE (studio.isWritingAutomation (track));
+    studio.stop();
+    const auto* lanes = studio.getAutomation (track);
+    REQUIRE (lanes->size() == 1);
+    CHECK (lanes->front().target == AutomationLane::Target::insert);
+    CHECK (lanes->front().slot == 2);
+    CHECK (lanes->front().parameter == 0);
+    CHECK (lanes->front().parameterName == "Level");
+    CHECK_THAT (*lanes->front().valueAt (1.5), WithinAbs (0.375, 0.02));   // between the two values written
+    CHECK_THAT (*lanes->front().valueAt (0.5), WithinAbs (1.0, 1.0e-6));   // before: as it was
+    CHECK_THAT (knob->get(), WithinAbs (1.0, 1.0e-6));                     // the knob back where it was set
+    // Removing the effect stops listening to it (and its lane goes).
+    studio.removeInsert (track, 2);
+    CHECK (studio.getAutomation (track)->empty());
 }

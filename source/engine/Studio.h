@@ -160,6 +160,22 @@ namespace pr7s
         // A lane's points replaced (an edit with the mouse: one undo step). Turns R on.
         void setAutomationPoints (int busId, int laneIndex, std::vector<AutomationPoint>);
 
+        // Writing automation (as the manual has it): with W on, while playing,
+        // touching a control writes it. The screen says when a control is
+        // grabbed and let go; its values come through setVolume, setPan,
+        // setMute, setMasterVolume (and a plugin's knobs through setKnob).
+        // Touch: writing stops when it's let go, and the control returns to
+        // what it was (over `returnSeconds`). On/off switches (mute) are always
+        // Auto-Latch: they write until playing stops. Every pass also stops on
+        // stop, W off, a jump (the cycle going round, a click in the ruler).
+        // Each pass is one undo step; its points are thinned out.
+        static AutomationLane control (AutomationLane::Target, int slot = 0, int parameter = 0);
+        void grabControl (int busId, const AutomationLane& control);
+        void releaseControl (int busId, const AutomationLane& control);
+        void setKnob (int busId, const AutomationLane& control, float value);   // a plugin's knob moved by hand
+        bool isWritingAutomation (int busId) const;   // a pass going on it (its W shows it)
+        static constexpr double returnSeconds = 0.1;  // our choice: the manual gives Return Time no default
+
         //======================================================================
         // The song.
         void setTempo (double bpm);
@@ -230,6 +246,32 @@ namespace pr7s
         std::vector<AutomationLane>* lanesOf (int busId);
         juce::AudioPluginInstance* pluginFor (int busId, const AutomationLane&) const;
         void insertGone (int busId, int slot, bool shiftUp);   // its lanes go, here and in the undo states
+
+        // A pass of writing automation: the control, where it began, what was
+        // set before, and the values written (song beats).
+        struct WritePass
+        {
+            int busId = 0;
+            AutomationLane control;
+            double start = 0.0, lastBeat = 0.0;
+            float before = 0.0f;
+            std::vector<AutomationPoint> points;
+            bool released = false;   // let go (an on/off switch latches on until stop)
+        };
+        std::vector<WritePass> passes;
+
+        // Every plugin's knobs are listened to, so turning one in its window
+        // (W on, playing) writes it. Stopped before a plugin is deleted.
+        class KnobWatcher;
+        std::map<juce::AudioProcessor*, std::unique_ptr<KnobWatcher>> watchers;
+        std::shared_ptr<bool> alive = std::make_shared<bool> (true);   // for messages from plugins' threads
+        void watchPlugins();
+        void unwatch (juce::AudioProcessor*);
+        void unwatchAll();
+        bool writeValue (int busId, const AutomationLane& control, float value);   // false: no pass on it
+        void punchOut (size_t pass, double endBeat);
+        void punchOutAll();
+        void setControlValue (int busId, const AutomationLane& control, float value);   // the static setting, without writing
         void effectGoing (int busId, int slot);
         void removeAllEffects();
         void recordUndoState();

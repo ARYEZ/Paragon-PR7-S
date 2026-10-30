@@ -67,6 +67,11 @@ namespace pr7s
         juce::AudioPluginInstance* getEffect (int busId, int slot) const;
         int getNumEffects (int busId) const;
 
+        // A control being written (held by the hand, while W is on): its lane
+        // isn't played back until it's let go, so what's heard is the hand.
+        // Message thread; takes effect on the next update().
+        void setHeld (int busId, const AutomationLane& control, bool held);
+
         // Takes what it plays from the project: the tempo, signature, cycle
         // and click, each track's notes, volume, pan, mute and solo, which
         // inserts are bypassed, and the master's volume.
@@ -273,6 +278,7 @@ namespace pr7s
         juce::SmoothedValue<float> masterGain;
         std::vector<LaneState> masterAutomation;
         int masterPreFader = Project::maxInserts;
+        std::vector<std::pair<int, AutomationLane>> held;   // message thread: the controls being written
         bool masterAutomated = false;   // a volume lane among them
         std::atomic<float> nowMasterVolumeDb { 0.0f };
 
