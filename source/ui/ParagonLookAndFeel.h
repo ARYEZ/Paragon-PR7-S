@@ -75,8 +75,8 @@ public:
 
     // Which text is in Bebas Neue (capitals only, tall and narrow): none
     // (all Inter, as the other PR7s), the titles and buttons, or everything
-    // the studio draws (not the LED screens, menus or tooltips). Being
-    // compared by the owner: only the renders change it so far.
+    // the studio draws (not the LED screens or tooltips). The owner chose
+    // everything (0.3.1); the others stay for comparing renders.
     enum class DisplayFont { inter, bebasTitles, bebasEverywhere };
     static void setDisplayFont (DisplayFont);
     static DisplayFont getDisplayFont();
@@ -87,6 +87,8 @@ public:
     static juce::FontOptions titleFont (float height);
     static constexpr float bebasScale = 1.3f;
     juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override;
+    juce::Font getPopupMenuFont() override;
+    juce::Font getComboBoxFont (juce::ComboBox&) override;
 
     void drawRotarySlider (juce::Graphics&, int x, int y, int width, int height,
                            float sliderPosProportional, float rotaryStartAngle,

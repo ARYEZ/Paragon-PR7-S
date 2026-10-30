@@ -2,6 +2,15 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.3.1
+
+A new look for the lettering.
+
+- **Bebas Neue everywhere:** the studio's text is now in Bebas Neue (tall, narrow capitals), from the buttons and track names to the note names, the menus and the GRID list. It's drawn a little larger than the old font so it reads at the same size. It's built into the app (free, under the SIL Open Font License), so it looks the same on every computer.
+- Because Bebas has only capitals, names show in capitals: a track called "Synth 1" reads SYNTH 1. They're saved as you typed them.
+- What stays as it was: the LED screens (position, tempo, signature), so they match their digits; and the tooltips.
+- **White text** in the track list and the mixer, where it was orange: the instrument names, the effects in the inserts, the mixer's title and WINDOW button. Bypassed effects stay grey.
+
 ## 0.3.0
 
 The mixer, and more room: the on-screen keyboard at the bottom of the window has gone, so the lower zone (the key editor, and now the mixer) reaches the bottom.

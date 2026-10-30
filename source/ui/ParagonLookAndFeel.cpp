@@ -509,7 +509,7 @@ juce::Typeface::Ptr ParagonLookAndFeel::getTypefaceForFont (const juce::Font& fo
 
 namespace
 {
-    std::atomic<ParagonLookAndFeel::DisplayFont> displayFont { ParagonLookAndFeel::DisplayFont::inter };
+    std::atomic<ParagonLookAndFeel::DisplayFont> displayFont { ParagonLookAndFeel::DisplayFont::bebasEverywhere };
 }
 
 void ParagonLookAndFeel::setDisplayFont (DisplayFont font)
@@ -535,6 +535,20 @@ juce::FontOptions ParagonLookAndFeel::titleFont (float height)
     if (getDisplayFont() != DisplayFont::inter)
         return juce::FontOptions (bebasName, height * bebasScale, juce::Font::plain);
     return juce::FontOptions (height, juce::Font::bold);
+}
+
+juce::Font ParagonLookAndFeel::getPopupMenuFont()
+{
+    if (getDisplayFont() != DisplayFont::bebasEverywhere)
+        return LookAndFeel_V4::getPopupMenuFont();
+    return juce::Font (textFont (15.0f, juce::Font::plain));
+}
+
+juce::Font ParagonLookAndFeel::getComboBoxFont (juce::ComboBox& box)
+{
+    if (getDisplayFont() != DisplayFont::bebasEverywhere)
+        return LookAndFeel_V4::getComboBoxFont (box);
+    return juce::Font (textFont (juce::jmin (13.0f, (float) box.getHeight() * 0.6f), juce::Font::plain));
 }
 
 juce::Font ParagonLookAndFeel::getTextButtonFont (juce::TextButton& button, int buttonHeight)

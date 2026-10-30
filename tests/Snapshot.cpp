@@ -19,12 +19,12 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
     Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
 
-    // The app's look, as Main.cpp sets it (PARAGON_SNAPSHOT_FONT=titles or
-    // =everywhere: Bebas Neue for the titles and buttons, or everything).
+    // The app's look, as Main.cpp sets it (PARAGON_SNAPSHOT_FONT=inter or
+    // =titles to compare the other font choices; Bebas Neue everywhere otherwise).
     const auto fontChoice = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FONT", {});
     ParagonLookAndFeel::setDisplayFont (fontChoice == "titles" ? ParagonLookAndFeel::DisplayFont::bebasTitles
-                                        : fontChoice == "everywhere" ? ParagonLookAndFeel::DisplayFont::bebasEverywhere
-                                                                     : ParagonLookAndFeel::DisplayFont::inter);
+                                        : fontChoice == "inter" ? ParagonLookAndFeel::DisplayFont::inter
+                                                                : ParagonLookAndFeel::DisplayFont::bebasEverywhere);
     ParagonLookAndFeel lookAndFeel;
     juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
     struct Reset { ~Reset() { juce::LookAndFeel::setDefaultLookAndFeel (nullptr); } } reset;

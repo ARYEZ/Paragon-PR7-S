@@ -39,13 +39,14 @@ Be honest about scale: Cubase took a large team decades. Say where it stands.
   - Tests with a real window: don't expect sizes bigger than the screen (macOS keeps a window within the screen's height; CI's screens are small). 0.2.1 failed on macOS CI for that and was never released.
   - Tests on Linux register the window manager's atoms first (`tests/TestMain.cpp`): with no window manager on the virtual display, JUCE fails creating a real window.
   - `KeyEditor`: the piano roll. Works on its own copy of the notes during a drag and calls `Studio::setNotes` once on release. Its own clipboard (Ctrl+C/X/V; paste at the playhead if in the part, else the beat after the copied notes, or another part's start); MainView sends Ctrl+C/X/V and Shift+A to it whenever it's open. Tests drive it with real `MouseEvent`s (`tests/UiTests.cpp`).
+  - **Fonts:** Bebas Neue everywhere (the owner's choice, 0.3.1) through `ParagonLookAndFeel::textFont` / `titleFont` (every view's `font()` helper calls them); Bebas is drawn `bebasScale` (1.3x) larger to match Inter's size. `DisplayFont` also has `inter` and `bebasTitles` for comparing renders (`PARAGON_SNAPSHOT_FONT=inter|titles`). Not the LED screens (Inter, to match their digits) or tooltips. The other PR7s still use Inter.
 - `PR7SCore` (CMake) is a static library with everything but `Main.cpp`, so the app and the tests run the same code.
 
 ## Build, test, check
 
 - **Build:** `cmake -B build && cmake --build build -j8`. JUCE 9.0.4 and Catch2 are fetched by CMake (locally you can point `FETCHCONTENT_SOURCE_DIR_JUCE` at another checkout).
 - **Tests:** `xvfb-run -a build/tests/ParagonPR7STests`. All must pass. Engine tests use `Probe` (tests/TestHelpers.h), an instrument that logs every MIDI event with its sample: check timing to the sample, not just "it played". Mixer tests (`tests/MixerTests.cpp`) use `SteadyTone` (a DC level per side) and `TestEffect` (`timesEffect`, `plusEffect`, mono ones) and read levels off the output.
-- **Render:** `PARAGON_SNAPSHOT=studio.png xvfb-run -a build/tests/ParagonPR7STests "[snapshot]"` (a demo song, with the key editor open on the lead part). `PARAGON_SNAPSHOT_WIDTH=3000` for 2x, `PARAGON_SNAPSHOT_FINISH=black|neon`, `PARAGON_SNAPSHOT_ZONE=mixer` for the mixer (stand-in effects named after the family's plugins). `"[snapshot-window]"` renders the key editor's own window (`PARAGON_SNAPSHOT_SIZE`, default 5760x1000: three screens). Look, crop and zoom before claiming a visual change is right.
+- **Render:** `PARAGON_SNAPSHOT=studio.png xvfb-run -a build/tests/ParagonPR7STests "[snapshot]"` (a demo song, with the key editor open on the lead part). `PARAGON_SNAPSHOT_WIDTH=3000` for 2x, `PARAGON_SNAPSHOT_FINISH=black|neon`, `PARAGON_SNAPSHOT_ZONE=mixer` for the mixer, `PARAGON_SNAPSHOT_FONT=inter|titles` for the other font choices (stand-in effects named after the family's plugins). `"[snapshot-window]"` renders the key editor's own window (`PARAGON_SNAPSHOT_SIZE`, default 5760x1000: three screens). Look, crop and zoom before claiming a visual change is right.
 - No pluginval: it's an app. Windows is built with the static C++ runtime.
 
 ## Releases
