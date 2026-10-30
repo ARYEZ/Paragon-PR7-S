@@ -14,7 +14,7 @@ namespace Windows
         {
         public:
             explicit SettingsContent (pr7s::Studio& studio)
-                : devices (studio.getDeviceManager(), 0, 0, 0, 2, true, false, true, false)
+                : devices (studio.getDeviceManager(), 0, 8, 0, 2, true, false, true, false)
             {
                 addAndMakeVisible (devices);
                 finishLabel.setText ("FINISH", juce::dontSendNotification);
@@ -25,8 +25,9 @@ namespace Windows
                 finish.setSelectedItemIndex ((int) Finish::get(), juce::dontSendNotification);
                 finish.onChange = [this] { Finish::set ((Finish::Type) finish.getSelectedItemIndex()); };
                 addAndMakeVisible (finish);
-                note.setText ("On Windows, pick your interface's driver above (Windows Audio, or Windows Audio (Exclusive Mode) "
-                              "for the lowest delay). ASIO comes in a later version.",
+                note.setText ("Inputs: switch on the ones you record from (audio tracks count them IN 1, IN 2... in the order "
+                              "they're switched on). On Windows, pick your interface's driver above: ASIO for the lowest delay, "
+                              "when your interface has an ASIO driver; else Windows Audio (Exclusive Mode).",
                               juce::dontSendNotification);
                 note.setFont (juce::FontOptions (12.0f));
                 note.setColour (juce::Label::textColourId, ParagonColours::textDim);

@@ -31,6 +31,13 @@ namespace pr7s
         std::vector<Note> notes;
         int id = 0;             // given by the studio, so the key editor keeps the same part however the list changes (not saved)
 
+        // An audio track's part (a clip): the recording it plays, from
+        // `audioOffset` seconds into it (the trimmed start), faded in and out.
+        juce::String audioFile;      // its file's name, in the song's audio folder
+        double audioOffset = 0.0;    // seconds
+        double fadeIn = 0.0, fadeOut = 0.0;   // seconds
+
+        bool isAudio() const noexcept { return audioFile.isNotEmpty(); }
         double end() const noexcept { return start + length; }
         bool operator== (const Part&) const = default;
     };
@@ -56,7 +63,12 @@ namespace pr7s
 
     struct Track
     {
+        // An instrument track plays MIDI parts through its instrument; an
+        // audio track plays clips (recordings) and records from the interface.
+        enum class Kind { instrument, audio };   // saved by name
+
         int id = 0;                      // stays the same for the track's life (undo and the engine use it)
+        Kind kind = Kind::instrument;
         juce::String name;
         juce::Colour colour;
         Instrument instrument;
@@ -64,6 +76,13 @@ namespace pr7s
         float pan = 0.0f;                // -1 left to +1 right
         bool mute = false, solo = false;
         bool armed = false;              // record-enabled: recording goes here
+        // Audio tracks: which of the interface's inputs it records (the first
+        // of the pair, for stereo; counted from 0 among the inputs switched on
+        // in SETTINGS), and whether what comes in is heard (monitored).
+        int input = 0;
+        bool stereoInput = false;
+        bool monitor = false;
+        bool isAudio() const noexcept { return kind == Kind::audio; }
         std::vector<Part> parts;
         std::vector<Insert> inserts;     // its effects, before its volume and pan
     };
@@ -89,6 +108,7 @@ namespace pr7s
         Track* findTrack (int id);
         const Track* findTrack (int id) const;
         Track* armedTrack();
+        const Track* armedTrack() const;
 
         // The song's length: up to the end of its last part (0 if empty).
         double lastBeat() const;

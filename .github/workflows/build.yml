@@ -34,11 +34,37 @@ jobs:
             libxrandr-dev libxrender-dev libxi-dev \
             libegl-dev libglu1-mesa-dev mesa-common-dev
 
+      # ASIO on Windows: Steinberg's ASIO SDK, used under its GPLv3 option.
+      # Downloaded from Steinberg, and only used if its licence text offers
+      # the GPL; if anything here fails, Windows builds without ASIO (a
+      # warning says so) rather than failing the release.
+      - name: ASIO SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set +e
+          mkdir -p "$RUNNER_TEMP/asio" && cd "$RUNNER_TEMP/asio"
+          if curl -fsSL -o asiosdk.zip https://www.steinberg.net/asiosdk && 7z x -y asiosdk.zip > /dev/null; then
+            header=$(find . -path '*common/iasiodrv.h' | head -1)
+            if [ -n "$header" ] && grep -rliq "GNU General Public License" --include='*.txt' --include='*.md' . ; then
+              sdk=$(cd "$(dirname "$header")/.." && pwd -W 2>/dev/null || pwd)
+              echo "ASIO_SDK=$sdk" >> "$GITHUB_ENV"
+              echo "ASIO SDK (GPLv3) at $sdk"
+            else
+              echo "::warning::The ASIO SDK downloaded, but no GPL licence text (or no headers) was found in it: building without ASIO"
+            fi
+          else
+            echo "::warning::Couldn't download the ASIO SDK from steinberg.net: building without ASIO"
+          fi
+          exit 0
+
       - name: Configure
         shell: bash
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then GENERATOR="-G Ninja"; fi
-          cmake -B build $GENERATOR -DCMAKE_BUILD_TYPE=Release
+          ASIO=""
+          if [ -n "$ASIO_SDK" ]; then ASIO="-DPARAGON_ASIO_SDK=$ASIO_SDK"; fi
+          cmake -B build $GENERATOR -DCMAKE_BUILD_TYPE=Release $ASIO
 
       - name: Build
         run: cmake --build build --config Release --parallel 4

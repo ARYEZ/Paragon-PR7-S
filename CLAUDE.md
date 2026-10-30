@@ -14,7 +14,7 @@
 1. **0.1.0, done: MIDI and instruments** (the owner's choice to start). Instrument tracks (the built-in Paragon Synth or VST3 instruments), MIDI recording from a keyboard or the on-screen one, the arrangement, transport, click, cycle, songs saved as `.pr7s`, undo.
 2. **0.2.0, done: the piano roll (key editor):** draw, move, copy, resize, delete notes; velocity lane; quantize; in the lower zone, following the selected part.
 3. **0.3.0, done: the mixer:** channel strips, 8 inserts each (VST3 effects, including our PR7 plugins), master bus with its own inserts; the on-screen keyboard removed (the owner asked: the lower zone needs the room).
-4. **0.4.0: audio tracks:** record guitar through the interface, clips, trimming, fades.
+4. **0.4.0, done: audio tracks:** record through the interface (mono or stereo input, latency-compensated), clips with waveform, trim start/end, fades, monitoring through inserts; ASIO on Windows.
 5. **0.5.0: automation and export** (a mixdown to WAV).
 6. Later: takes and comping, MIDI controller lanes, drum editor, markers... as the owner asks.
 
@@ -24,11 +24,14 @@ Be honest about scale: Cubase took a large team decades. Say where it stands.
 
 **Never** "Cubase", "Steinberg" or their graphics in the app, repo or release notes. "Inspired by Cubase's workflow" is fine. The look is the PR7 family's own.
 
+**One exception (the owner agreed, 0.4.0):** ASIO's trademark credit, "ASIO is a trademark and software of Steinberg Media Technologies GmbH", in the release notes' install text, the README, and where ASIO is mentioned. Nothing more.
+
 ## Code layout
 
 - `source/engine/`: no screen needed, fully testable.
   - `Project`: the song as plain data (tempo, signature, cycle, click, tracks, parts, notes in **beats** = quarter notes, each track's `inserts`, the master's volume and `masterInserts`), XML save/open, bar/beat formatting.
   - `Engine`: the audio device callback. Plays each track's events through its instrument (`AudioPluginInstance`), the cycle, the click, mix (volume, balance pan, mute, solo), live MIDI (devices via `MidiMessageCollector`, the on-screen `MidiKeyboardState`) into the live track, and records note on/off with their beats into a lock-free FIFO. **Threads:** the audio thread only `ScopedTryLock`s (a missed lock = one silent block); the message thread prepares everything outside the lock and swaps under it (`update`, `setInstrument`, `removeTrack`). No allocation on the audio thread. Signal path: instrument, its inserts in order, fader and pan, into the master buffer; master inserts, master fader, output; the click after the master. Effects are prepared stereo if they allow it, else as they are (mono in: L+R mixed; mono out: to both). Inserts by `insertEffect` / `removeEffect` (bus id 0 = master). Do sample work on raw pointers (FloatVectorOperations), not `AudioBuffer` methods: a buffer remembers being cleared and its own methods then skip work, even after something wrote to it through another view (it silenced mono effects once). Meters have two readers (0: transport and track list, 1: the mixer) so they don't take each other's peaks.
+  - **Audio tracks:** `Track::Kind::audio` (input, stereoInput, monitor); their parts are clips (`Part::audioFile`, `audioOffset` seconds, `fadeIn`/`fadeOut` seconds; start/length in beats). `Engine::addAudioTrack`, clips played sample-accurately per segment of the block (`playClips`), input monitoring through the track's inserts, recording through a `ThreadedWriter` set with `setRecorder` (written on the audio thread, the first sample's song position in `getAudioRecordStart`; a cycle keeps the first pass). `Studio`: recordings in `getAudioFolder()` ("<song> Audio" beside the song, else Documents/Paragon PR7-S/Unsaved Recordings/<time>; save copies them over), loaded whole and resampled to the engine's rate (`getAudio`, with peaks for drawing), latency compensation from the device (`setLatencyForTests`). `Engine::render` takes an input buffer for tests. Moving the position while stopped sets `rebase` (the clock restarts there even if play comes before a block).
   - `ParagonSynth`: the built-in instrument (an `AudioPluginInstance`, so it's played like a VST3).
   - `PluginHost`: VST3 format manager and the known-plugin list (kept in the settings file); `getInstruments` / `getEffects`, `create` / `createEffect`.
   - `Project` also has `quantize` (note starts to the *song's* grid; same-pitch twins merge) and `noteName` (middle C = C3, as in Cubase).
@@ -46,8 +49,8 @@ Be honest about scale: Cubase took a large team decades. Say where it stands.
 ## Build, test, check
 
 - **Build:** `cmake -B build && cmake --build build -j8`. JUCE 9.0.4 and Catch2 are fetched by CMake (locally you can point `FETCHCONTENT_SOURCE_DIR_JUCE` at another checkout).
-- **Tests:** `xvfb-run -a build/tests/ParagonPR7STests`. All must pass. Engine tests use `Probe` (tests/TestHelpers.h), an instrument that logs every MIDI event with its sample: check timing to the sample, not just "it played". Mixer tests (`tests/MixerTests.cpp`) use `SteadyTone` (a DC level per side) and `TestEffect` (`timesEffect`, `plusEffect`, mono ones) and read levels off the output.
-- **Render:** `PARAGON_SNAPSHOT=studio.png xvfb-run -a build/tests/ParagonPR7STests "[snapshot]"` (a demo song, with the key editor open on the lead part). `PARAGON_SNAPSHOT_WIDTH=3000` for 2x, `PARAGON_SNAPSHOT_FINISH=black|neon`, `PARAGON_SNAPSHOT_ZONE=mixer` for the mixer, `PARAGON_SNAPSHOT_FONT=inter|titles` for the other font choices (stand-in effects named after the family's plugins). `"[snapshot-window]"` renders the key editor's own window (`PARAGON_SNAPSHOT_SIZE`, default 5760x1000: three screens; with `PARAGON_SNAPSHOT_ZONE=mixer`, the mixer's window with an eight-track song, default 1920x1000). Look, crop and zoom before claiming a visual change is right.
+- **Tests:** `xvfb-run -a build/tests/ParagonPR7STests`. All must pass. Engine tests use `Probe` (tests/TestHelpers.h), an instrument that logs every MIDI event with its sample: check timing to the sample, not just "it played". Audio tests (`tests/AudioTests.cpp`) use `ramp` recordings (every sample told apart) and render with an input buffer. Mixer tests (`tests/MixerTests.cpp`) use `SteadyTone` (a DC level per side) and `TestEffect` (`timesEffect`, `plusEffect`, mono ones) and read levels off the output.
+- **Render:** `PARAGON_SNAPSHOT=studio.png xvfb-run -a build/tests/ParagonPR7STests "[snapshot]"` (a demo song, with the key editor open on the lead part). `PARAGON_SNAPSHOT_WIDTH=3000` for 2x, `PARAGON_SNAPSHOT_FINISH=black|neon`, `PARAGON_SNAPSHOT_ZONE=mixer` for the mixer (=none for no lower zone; the demo has a guitar audio track), `PARAGON_SNAPSHOT_FONT=inter|titles` for the other font choices (stand-in effects named after the family's plugins). `"[snapshot-window]"` renders the key editor's own window (`PARAGON_SNAPSHOT_SIZE`, default 5760x1000: three screens; with `PARAGON_SNAPSHOT_ZONE=mixer`, the mixer's window with an eight-track song, default 1920x1000). Look, crop and zoom before claiming a visual change is right.
 - No pluginval: it's an app. Windows is built with the static C++ runtime.
 
 ## Releases
@@ -58,7 +61,7 @@ Be honest about scale: Cubase took a large team decades. Say where it stands.
 
 ## Open questions (ask, don't guess)
 
-- **ASIO on Windows** needs Steinberg's ASIO SDK (check its current licence and whether it can be fetched in CI) before turning on `JUCE_ASIO`. Until then: WASAPI.
+- **ASIO on Windows (settled, 0.4.0):** the ASIO SDK is dual-licensed, proprietary or GPLv3 (since October 2025); PR7-S uses the GPLv3 option. It isn't on GitHub: Windows CI downloads it from steinberg.net/asiosdk, checks a GPL licence text is in it, and passes `PARAGON_ASIO_SDK` (CMake turns on `JUCE_ASIO`). If that fails, the build goes on without ASIO and warns: check the Windows job's log for "ASIO SDK (GPLv3) at" after each release. steinberg.net isn't reachable from the cloud sessions, so this can only be checked in CI.
 - A **Cubase Operation Manual** from the owner helps for behaviour and shortcuts (never for names or graphics).
 
 ## How the owner likes to work

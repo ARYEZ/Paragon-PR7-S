@@ -20,6 +20,20 @@ namespace pr7s
 
     Studio::Studio (bool useDevices) : withDevices (useDevices)
     {
+        formats.registerBasicFormats();
+        writerThread.startThread();
+        // Recordings before a song is saved: a folder of their own in Documents (tests: a temporary one).
+        const auto stamp = juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H-%M-%S");
+        unsavedAudioFolder = withDevices ? juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+                                               .getChildFile ("Paragon PR7-S").getChildFile ("Unsaved Recordings").getChildFile (stamp)
+                                         : juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                               .getChildFile ("PR7S-test-" + juce::String (juce::Random::getSystemRandom().nextInt64()));
+        engine.setAudioSource ([this] (const juce::String& name) -> std::shared_ptr<const juce::AudioBuffer<float>>
+        {
+            if (auto data = getAudio (name))
+                return { data, &data->sound };
+            return nullptr;
+        });
         if (withDevices)
         {
             settings = std::make_unique<juce::PropertiesFile> (settingsOptions());
@@ -27,8 +41,9 @@ namespace pr7s
 
             // Output only for now (audio recording is a later stage); every
             // MIDI input on, so a keyboard plugged in just plays.
+            // Two inputs and two outputs to start with (SETTINGS turns on more).
             const auto saved = settings->getXmlValue (audioSetupKey);
-            devices.initialise (0, 2, saved.get(), true);
+            devices.initialise (2, 2, saved.get(), true);
             for (const auto& input : juce::MidiInput::getAvailableDevices())
                 devices.setMidiInputDeviceEnabled (input.identifier, true);
             devices.addMidiInputDeviceCallback ({}, &engine.getMidiInput());
@@ -48,6 +63,12 @@ namespace pr7s
     Studio::~Studio()
     {
         stopTimer();
+        if (audioWriter != nullptr)
+        {
+            engine.setRecorder (recordTrack, nullptr);
+            audioWriter.reset();
+        }
+        writerThread.stopThread (2000);
         if (withDevices)
         {
             devices.removeChangeListener (this);
@@ -59,6 +80,12 @@ namespace pr7s
 
     void Studio::changeListenerCallback (juce::ChangeBroadcaster*)
     {
+        // A new sample rate: the recordings are loaded again at it.
+        if (! juce::approximatelyEqual (audioCacheRate, engine.getSampleRate()))
+        {
+            audioCache.clear();
+            engine.update (project);
+        }
         if (settings == nullptr)
             return;
         if (auto xml = devices.createStateXml())
@@ -190,6 +217,44 @@ namespace pr7s
         // needs a step that has the track in it to go back to.
         recordUndoState();
         return track.id;
+    }
+
+    int Studio::addAudioTrack (bool stereo)
+    {
+        Track track;
+        track.id = project.nextTrackId++;
+        track.kind = Track::Kind::audio;
+        track.stereoInput = stereo;
+        track.colour = trackColour ((int) project.tracks.size());
+        int number = 1;
+        for (const auto& other : project.tracks)
+            if (other.name.startsWith ("Audio "))
+                number = juce::jmax (number, other.name.fromLastOccurrenceOf (" ", false, false).getIntValue() + 1);
+        track.name = "Audio " + juce::String (number);
+        project.tracks.push_back (track);
+        engine.addAudioTrack (track.id);
+        selectTrack (track.id);
+        recordUndoState();
+        return track.id;
+    }
+
+    void Studio::setTrackInput (int trackId, int input, bool stereo)
+    {
+        if (auto* track = project.findTrack (trackId); track != nullptr && track->isAudio())
+        {
+            track->input = juce::jmax (0, input);
+            track->stereoInput = stereo;
+            changed (false);
+        }
+    }
+
+    void Studio::setMonitor (int trackId, bool on)
+    {
+        if (auto* track = project.findTrack (trackId); track != nullptr && track->isAudio())
+        {
+            track->monitor = on;
+            changed (false);
+        }
     }
 
     void Studio::removeTrack (int trackId)
@@ -367,6 +432,92 @@ namespace pr7s
     }
 
     //==========================================================================
+    void Studio::updatePart (int trackId, int index, const Part& part)
+    {
+        if (auto* track = project.findTrack (trackId); track != nullptr && juce::isPositiveAndBelow (index, (int) track->parts.size()))
+        {
+            auto& existing = track->parts[(size_t) index];
+            const auto id = existing.id;
+            existing = part;
+            existing.id = id;
+            existing.start = juce::jmax (0.0, existing.start);
+            existing.length = juce::jmax (1.0 / 64.0, existing.length);
+            existing.audioOffset = juce::jmax (0.0, existing.audioOffset);
+            existing.fadeIn = juce::jmax (0.0, existing.fadeIn);
+            existing.fadeOut = juce::jmax (0.0, existing.fadeOut);
+            changed();
+        }
+    }
+
+    //==========================================================================
+    double Studio::AudioData::seconds() const noexcept
+    {
+        return (double) sound.getNumSamples() / sampleRate;
+    }
+
+    juce::File Studio::getAudioFolder() const
+    {
+        return file != juce::File() ? file.getSiblingFile (file.getFileNameWithoutExtension() + " Audio") : unsavedAudioFolder;
+    }
+
+    std::shared_ptr<const Studio::AudioData> Studio::getAudio (const juce::String& name)
+    {
+        const auto rate = engine.getSampleRate();
+        if (! juce::approximatelyEqual (audioCacheRate, rate))
+        {
+            audioCache.clear();
+            audioCacheRate = rate;
+        }
+        if (auto found = audioCache.find (name); found != audioCache.end())
+            return found->second;
+
+        // Read whole, both sides (a mono file on both), at the engine's sample rate.
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (getAudioFolder().getChildFile (name)));
+        if (reader == nullptr || reader->lengthInSamples <= 0)
+            return nullptr;
+        const auto length = (int) juce::jmin ((juce::int64) std::numeric_limits<int>::max() / 2, reader->lengthInSamples);
+        juce::AudioBuffer<float> read (2, length);
+        reader->read (&read, 0, length, 0, true, true);
+        if (reader->numChannels == 1)
+            read.copyFrom (1, 0, read, 0, 0, length);
+
+        auto data = std::make_shared<AudioData>();
+        data->sampleRate = rate;
+        if (juce::approximatelyEqual (reader->sampleRate, rate))
+        {
+            data->sound = std::move (read);
+        }
+        else
+        {
+            const auto ratio = reader->sampleRate / rate;
+            const auto converted = (int) std::floor ((double) length / ratio);
+            data->sound.setSize (2, converted);
+            for (int channel = 0; channel < 2; ++channel)
+            {
+                juce::LagrangeInterpolator interpolator;
+                interpolator.process (ratio, read.getReadPointer (channel), data->sound.getWritePointer (channel), converted);
+            }
+        }
+        const auto samples = data->sound.getNumSamples();
+        for (int from = 0; from < samples; from += AudioData::peakStep)
+        {
+            const auto count = juce::jmin (AudioData::peakStep, samples - from);
+            const auto left = data->sound.getMagnitude (0, from, count), right = data->sound.getMagnitude (1, from, count);
+            data->peaks.push_back (juce::jmax (left, right));
+        }
+        audioCache[name] = data;
+        return data;
+    }
+
+    double Studio::recordingLatency() const
+    {
+        if (latencyOverride)
+            return *latencyOverride;
+        if (auto* device = devices.getCurrentAudioDevice())
+            return (double) (device->getInputLatencyInSamples() + device->getOutputLatencyInSamples()) / juce::jmax (1.0, device->getCurrentSampleRate());
+        return 0.0;
+    }
+
     std::vector<Insert>* Studio::insertsOf (int busId)
     {
         if (busId == Engine::masterBus)
@@ -558,6 +709,30 @@ namespace pr7s
         if (! engine.isPlaying())
             playStart = recordStart;
         recorded.clear();
+
+        if (armed->isAudio())
+        {
+            // A new file: "<track> 01.wav", 24-bit, at the engine's rate, its
+            // writer fed from the audio thread and putting it on disk on its own.
+            auto folder = getAudioFolder();
+            folder.createDirectory();
+            int take = 1;
+            do
+                audioRecording = folder.getChildFile (juce::File::createLegalFileName (armed->name) + " " + juce::String (take++).paddedLeft ('0', 2) + ".wav");
+            while (audioRecording.exists());
+            std::unique_ptr<juce::OutputStream> stream (audioRecording.createOutputStream());
+            juce::WavAudioFormat wav;
+            std::unique_ptr<juce::AudioFormatWriter> writer;
+            if (stream != nullptr)
+                writer = wav.createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (engine.getSampleRate())
+                                                                                     .withNumChannels (armed->stereoInput ? 2 : 1)
+                                                                                     .withBitsPerSample (24));
+            if (writer == nullptr)
+                return;   // couldn't write there
+            audioWriter = std::make_unique<juce::AudioFormatWriter::ThreadedWriter> (writer.release(), writerThread,
+                                                                                     (int) (engine.getSampleRate() * 8.0));
+            engine.setRecorder (recordTrack, audioWriter.get());
+        }
         std::vector<RecordedEvent> stale;
         engine.takeRecorded (stale);   // anything left from before
         wasRecording = true;
@@ -611,6 +786,17 @@ namespace pr7s
 
     std::optional<std::pair<int, Part>> Studio::getRecordingPreview() const
     {
+        if (engine.isRecording() && audioWriter != nullptr)
+        {
+            // Audio: a block from where recording began to now.
+            Part part;
+            const auto first = engine.getAudioRecordStart();
+            part.start = first >= 0 ? (double) first * project.bpm / 60.0 / engine.getSampleRate() : recordStart;
+            part.length = juce::jmax (0.0, engine.getPosition() - part.start);
+            if (project.loopOn && engine.getPosition() < part.start)
+                part.length = project.loopEnd - part.start;   // round the cycle: the first pass is kept
+            return std::pair<int, Part> { recordTrack, part };
+        }
         if (! engine.isRecording() || recorded.empty())
             return std::nullopt;
         Part part;
@@ -622,10 +808,46 @@ namespace pr7s
         return std::pair<int, Part> { recordTrack, part };
     }
 
+    void Studio::finishAudioRecording()
+    {
+        // Its writer out of the audio's way, then finished (the rest goes to disk).
+        engine.setRecorder (recordTrack, nullptr);
+        audioWriter.reset();
+        const auto startSample = engine.getAudioRecordStart();
+        const auto name = audioRecording.getFileName();
+        audioCache.erase (name);
+        auto data = startSample >= 0 ? getAudio (name) : nullptr;
+        if (data == nullptr || data->sound.getNumSamples() == 0)
+        {
+            audioRecording.deleteFile();   // nothing recorded
+            return;
+        }
+        // At the sample recording began, and its first stretch (the
+        // interface's delay) skipped: what was played lands where it was played.
+        const auto latency = juce::jmin (recordingLatency(), data->seconds() * 0.5);
+        Part part;
+        part.start = (double) startSample * project.bpm / 60.0 / engine.getSampleRate();
+        part.audioFile = name;
+        part.audioOffset = latency;
+        part.length = (data->seconds() - latency) / project.secondsPerBeat();
+        if (auto* track = project.findTrack (recordTrack))
+        {
+            part.name = track->name;
+            track->parts.push_back (std::move (part));
+            changed();
+        }
+    }
+
     void Studio::finishRecording()
     {
         const auto endBeat = engine.getPosition();
         engine.stopRecording();
+        wasRecording = false;
+        if (audioWriter != nullptr)
+        {
+            finishAudioRecording();
+            return;
+        }
         engine.takeRecorded (recorded);
         wasRecording = false;
 
@@ -680,6 +902,7 @@ namespace pr7s
         if (onInstrumentGoing)
             onInstrumentGoing (0);
         removeAllEffects();
+        audioCache.clear();
         engine.stop();
         for (const auto& track : project.tracks)
             engine.removeTrack (track.id);
@@ -723,6 +946,20 @@ namespace pr7s
             keepEffectStates (track.id, track.inserts);
         keepEffectStates (Engine::masterBus, project.masterInserts);
 
+        // The recordings go with the song: into "<song> Audio" beside it
+        // (copied from where they were: the unsaved folder, or the song's old place).
+        const auto from = getAudioFolder();
+        const auto to = destination.getSiblingFile (destination.getFileNameWithoutExtension() + " Audio");
+        if (from != to)
+            for (const auto& track : project.tracks)
+                for (const auto& part : track.parts)
+                    if (part.isAudio() && from.getChildFile (part.audioFile).existsAsFile() && ! to.getChildFile (part.audioFile).exists())
+                    {
+                        to.createDirectory();
+                        if (! from.getChildFile (part.audioFile).copyFileTo (to.getChildFile (part.audioFile)))
+                            return false;
+                    }
+
         const auto xml = project.toXml();
         if (! xml->writeTo (destination))
             return false;
@@ -749,9 +986,19 @@ namespace pr7s
             engine.removeTrack (track.id);
         project = std::move (*loaded);
 
+        file = source;
+        audioCache.clear();
         juce::StringArray missing;
         for (auto& track : project.tracks)
         {
+            if (track.isAudio())
+            {
+                engine.addAudioTrack (track.id);
+                for (const auto& part : track.parts)
+                    if (part.isAudio() && getAudio (part.audioFile) == nullptr)
+                        missing.add (track.name + ": the recording " + part.audioFile + " isn't in " + getAudioFolder().getFullPathName());
+                continue;
+            }
             juce::String error;
             if (auto instance = host->create (track.instrument, engine.getSampleRate(), engine.getBlockSize(), error))
                 engine.setInstrument (track.id, std::move (instance));
@@ -777,7 +1024,6 @@ namespace pr7s
         problems = missing.joinIntoString ("\n");
         numberParts();
 
-        file = source;
         selectedTrack = project.tracks.empty() ? 0 : project.tracks.front().id;
         if (auto* armed = project.armedTrack())
             selectedTrack = armed->id;

@@ -164,7 +164,15 @@ void ArrangeView::paint (juce::Graphics& g)
         const auto& track = project.tracks[t];
         for (int i = 0; i < (int) track.parts.size(); ++i)
         {
-            const auto isDragged = (drag == Drag::move || drag == Drag::resize) && dragMoved && track.id == dragTrack && i == selection.index;
+            const auto isClipDrag = drag == Drag::trimStart || drag == Drag::fadeIn || drag == Drag::fadeOut;
+            const auto isDragged = (drag == Drag::move || drag == Drag::resize || isClipDrag) && dragMoved && track.id == dragTrack && i == selection.index;
+            if (isDragged && isClipDrag)
+            {
+                const juce::Rectangle<float> area (timeline.xForBeat (dragPart.start), laneTop ((int) t) + 3.0f,
+                                                   (float) (dragPart.length * timeline.pixelsPerBeat), (float) Timeline::trackHeight - 6.0f);
+                paintPart (g, area, dragPart, track.colour, true, false);
+                continue;
+            }
             if (isDragged && ! dragCopies)
                 continue;
             paintPart (g, getPartBounds (track.id, i), track.parts[(size_t) i], track.colour,
@@ -271,6 +279,61 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
     g.setFont (font (10.5f));
     g.drawText (recording ? juce::String ("RECORDING") : part.name, band.reduced (5.0f, 0.0f), juce::Justification::centredLeft, true);
 
+    // An audio clip: its waveform (the loudest moment under each pixel, up
+    // and down from the middle), and its fades with their handles.
+    if (part.isAudio())
+    {
+        const auto wave = area.withTrimmedTop (16.0f).reduced (1.0f, 3.0f);
+        if (const auto data = studio.getAudio (part.audioFile))
+        {
+            const auto secondsPerPixel = studio.getProject().secondsPerBeat() / timeline.pixelsPerBeat;
+            const auto peaksPerSecond = data->sampleRate / pr7s::Studio::AudioData::peakStep;
+            const auto clip = wave.getIntersection (getLocalBounds().toFloat());
+            g.setColour (colour.brighter (0.7f).withAlpha (0.9f));
+            for (auto x = std::floor (clip.getX()); x < clip.getRight(); x += 1.0f)
+            {
+                const auto from = part.audioOffset + (x - area.getX()) * secondsPerPixel;
+                const auto first = (int) (from * peaksPerSecond), last = juce::jmax (first + 1, (int) ((from + secondsPerPixel) * peaksPerSecond));
+                auto peak = 0.0f;
+                for (int i = juce::jmax (0, first); i < juce::jmin (last, (int) data->peaks.size()); ++i)
+                    peak = juce::jmax (peak, data->peaks[(size_t) i]);
+                const auto height = juce::jmin (1.0f, peak) * wave.getHeight() * 0.5f;
+                g.fillRect (juce::Rectangle<float> (x, wave.getCentreY() - height, 1.0f, juce::jmax (0.5f, height * 2.0f)));
+            }
+        }
+        else
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.6f));
+            g.setFont (font (10.0f, juce::Font::plain));
+            g.drawText ("Recording missing: " + part.audioFile, wave, juce::Justification::centred, true);
+        }
+
+        // The fades: the faded corners darkened, a line along each, and its handle.
+        const auto pixelsPerSecond = (float) (timeline.pixelsPerBeat / studio.getProject().secondsPerBeat());
+        const auto inX = area.getX() + (float) part.fadeIn * pixelsPerSecond, outX = area.getRight() - (float) part.fadeOut * pixelsPerSecond;
+        if (part.fadeIn > 0.0)
+        {
+            juce::Path faded;
+            faded.addTriangle (area.getX(), wave.getY(), inX, wave.getY(), area.getX(), area.getBottom());
+            g.setColour (juce::Colours::black.withAlpha (0.35f));
+            g.fillPath (faded);
+            g.setColour (juce::Colours::white.withAlpha (0.8f));
+            g.drawLine (area.getX(), area.getBottom() - 2.0f, inX, wave.getY(), 1.2f);
+        }
+        if (part.fadeOut > 0.0)
+        {
+            juce::Path faded;
+            faded.addTriangle (outX, wave.getY(), area.getRight(), wave.getY(), area.getRight(), area.getBottom());
+            g.setColour (juce::Colours::black.withAlpha (0.35f));
+            g.fillPath (faded);
+            g.setColour (juce::Colours::white.withAlpha (0.8f));
+            g.drawLine (outX, wave.getY(), area.getRight(), area.getBottom() - 2.0f, 1.2f);
+        }
+        g.setColour (juce::Colours::white);
+        for (const auto in : { true, false })
+            g.fillRect (fadeHandle (area, part, in));
+    }
+
     // Its notes, scaled to the part's range of pitches.
     if (! part.notes.empty())
     {
@@ -306,14 +369,34 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
     }
 }
 
+bool ArrangeView::isAudioTrack (int trackId) const
+{
+    const auto* track = studio.getProject().findTrack (trackId);
+    return track != nullptr && track->isAudio();
+}
+
+juce::Rectangle<float> ArrangeView::fadeHandle (juce::Rectangle<float> bounds, const pr7s::Part& part, bool fadeIn) const
+{
+    // A small square just under the name band, at the fade's inner end.
+    const auto pixelsPerSecond = (float) (timeline.pixelsPerBeat / studio.getProject().secondsPerBeat());
+    const auto x = fadeIn ? bounds.getX() + (float) part.fadeIn * pixelsPerSecond + 4.0f
+                          : bounds.getRight() - (float) part.fadeOut * pixelsPerSecond - 4.0f;
+    return juce::Rectangle<float> (7.0f, 7.0f).withCentre ({ x, bounds.getY() + 20.0f });
+}
+
 //==============================================================================
 void ArrangeView::mouseMove (const juce::MouseEvent& event)
 {
     if (const auto hit = partAt (event.position))
     {
         const auto bounds = getPartBounds (hit->first, hit->second);
-        setMouseCursor (event.position.x > bounds.getRight() - edgeGrab ? juce::MouseCursor::LeftRightResizeCursor
-                                                                          : juce::MouseCursor::NormalCursor);
+        const auto& part = studio.getProject().findTrack (hit->first)->parts[(size_t) hit->second];
+        const auto onHandle = part.isAudio() && (fadeHandle (bounds, part, true).expanded (3.0f).contains (event.position)
+                                                 || fadeHandle (bounds, part, false).expanded (3.0f).contains (event.position));
+        const auto onEdge = event.position.x > bounds.getRight() - edgeGrab || (part.isAudio() && event.position.x < bounds.getX() + edgeGrab);
+        setMouseCursor (onHandle ? juce::MouseCursor::PointingHandCursor
+                        : onEdge ? juce::MouseCursor::LeftRightResizeCursor
+                                 : juce::MouseCursor::NormalCursor);
         return;
     }
     setMouseCursor (juce::MouseCursor::NormalCursor);
@@ -360,6 +443,16 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
     const auto& part = project.findTrack (hit->first)->parts[(size_t) hit->second];
     const auto bounds = getPartBounds (hit->first, hit->second);
     drag = event.position.x > bounds.getRight() - edgeGrab ? Drag::resize : Drag::move;
+    if (part.isAudio())
+    {
+        if (fadeHandle (bounds, part, true).expanded (3.0f).contains (event.position))
+            drag = Drag::fadeIn;
+        else if (fadeHandle (bounds, part, false).expanded (3.0f).contains (event.position))
+            drag = Drag::fadeOut;
+        else if (event.position.x < bounds.getX() + edgeGrab)
+            drag = Drag::trimStart;
+    }
+    dragPart = part;
     dragCopies = drag == Drag::move && (event.mods.isAltDown() || event.mods.isCommandDown());
     dragTrack = dragTargetTrack = hit->first;
     dragStartBeat = timeline.beatForX (event.position.x);
@@ -391,15 +484,48 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
             if (event.getDistanceFromDragStart() > 3)
                 dragMoved = true;
             dragNewStart = juce::jmax (0.0, pr7s::snap (dragOriginalStart + beat - dragStartBeat, grid));
-            if (const auto over = trackAtY (event.position.y))
+            // To another track of the same kind (a clip onto an audio track, a MIDI part onto an instrument's).
+            if (const auto over = trackAtY (event.position.y); over != 0 && isAudioTrack (over) == isAudioTrack (dragTrack))
                 dragTargetTrack = over;
             repaint();
             break;
         case Drag::resize:
             dragMoved = true;
             dragNewLength = juce::jmax (grid, pr7s::snap (dragOriginalStart + dragOriginalLength + beat - dragStartBeat, grid) - dragOriginalStart);
+            if (dragPart.isAudio())
+                if (const auto data = studio.getAudio (dragPart.audioFile))   // no further than the recording goes
+                    dragNewLength = juce::jmin (dragNewLength, (data->seconds() - dragPart.audioOffset) / project.secondsPerBeat());
             repaint();
             break;
+        case Drag::trimStart:
+        {
+            // The start moves; the audio stays where it is in the song (so the offset into it moves too).
+            dragMoved = true;
+            const auto spb = project.secondsPerBeat();
+            const auto end = dragOriginalStart + dragOriginalLength;
+            const auto earliest = juce::jmax (0.0, dragOriginalStart - studio.getProject().findTrack (dragTrack)->parts[(size_t) selection.index].audioOffset / spb);
+            const auto start = juce::jlimit (earliest, end - 1.0 / 16.0, pr7s::snap (dragOriginalStart + beat - dragStartBeat, grid));
+            const auto& original = studio.getProject().findTrack (dragTrack)->parts[(size_t) selection.index];
+            dragPart.start = start;
+            dragPart.length = end - start;
+            dragPart.audioOffset = juce::jmax (0.0, original.audioOffset + (start - dragOriginalStart) * spb);
+            dragPart.fadeIn = juce::jmin (dragPart.fadeIn, dragPart.length * spb);
+            repaint();
+            break;
+        }
+        case Drag::fadeIn:
+        case Drag::fadeOut:
+        {
+            dragMoved = true;
+            const auto spb = project.secondsPerBeat();
+            const auto clipSeconds = dragPart.length * spb;
+            if (drag == Drag::fadeIn)
+                dragPart.fadeIn = juce::jlimit (0.0, clipSeconds - dragPart.fadeOut, (beat - dragPart.start) * spb);
+            else
+                dragPart.fadeOut = juce::jlimit (0.0, clipSeconds - dragPart.fadeIn, (dragPart.end() - beat) * spb);
+            repaint();
+            break;
+        }
         case Drag::none:
             break;
     }
@@ -434,6 +560,11 @@ void ArrangeView::mouseUp (const juce::MouseEvent&)
         case Drag::resize:
             studio.resizePart (dragTrack, selection.index, dragNewLength);
             break;
+        case Drag::trimStart:
+        case Drag::fadeIn:
+        case Drag::fadeOut:
+            studio.updatePart (dragTrack, selection.index, dragPart);
+            break;
         case Drag::position:
         case Drag::none:
             break;
@@ -448,10 +579,12 @@ void ArrangeView::mouseDoubleClick (const juce::MouseEvent& event)
     if (const auto hit = partAt (event.position))
     {
         select (hit->first, hit->second);
-        if (onEditNotes)
+        if (onEditNotes && ! isAudioTrack (hit->first))   // a clip has no notes
             onEditNotes();
         return;
     }
+    if (isAudioTrack (trackAtY (event.position.y)))
+        return;   // an empty clip would play nothing
     // A new empty part, a bar long, from the bar clicked in.
     if (const auto trackId = trackAtY (event.position.y))
     {
@@ -494,7 +627,7 @@ void ArrangeView::mouseWheelMove (const juce::MouseEvent& event, const juce::Mou
 void ArrangeView::showPartMenu (int trackId, int index)
 {
     juce::PopupMenu menu;
-    menu.addItem (3, "Edit notes (key editor)");
+    menu.addItem (3, "Edit notes (key editor)", ! isAudioTrack (trackId));
     menu.addItem (1, "Duplicate (after it)");
     menu.addItem (2, "Delete");
     menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, index] (int chosen)

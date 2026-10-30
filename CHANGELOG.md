@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.4.0
+
+Audio tracks: record your guitar (or anything) through your interface, and ASIO on Windows.
+
+- **Audio tracks:** + ADD TRACK > **Audio track (mono)** for a guitar or a voice, or **(stereo)** for a pair of inputs. Where an instrument track shows its instrument, an audio track shows its **input** (IN 1, or IN 1+2): click it to choose another (or to delete the track).
+- **MON** (on audio tracks): hear what comes in, through the track's effects and fader. Put PR7-G in its inserts and play through it.
+- **Recording:** arm the audio track (R, or just select it) and press RECORD. What comes in becomes a **clip** on the track, shown as it records. It lands **exactly where you played it**: the studio places it at the sample recording started, and moves it earlier by your interface's own delay (in and out, as the driver reports it), so it lines up with what you were hearing. In a cycle, the first pass is kept (takes and comping come later).
+- **The recordings** are WAV files (24-bit, at your interface's sample rate). Until a song is saved they go in Documents > Paragon PR7-S > Unsaved Recordings; **saving** puts them in a folder beside the song, "<song name> Audio" (Save As copies them to the new place). A song whose recordings are missing still opens and says which; their clips stay, silent, until the files are back.
+- **Clips** show their waveform. Move them (onto another audio track too), Alt-drag to copy, Ctrl+D to duplicate, Delete. Drag a clip's **left edge** to trim its start (the audio stays where it is in the song), its **right edge** to trim its end (no further than the recording goes). Drag the small **handles** at its top corners to **fade** it in and out. Each edit is one undo step.
+- **ASIO on Windows:** SETTINGS > **ASIO**, then your interface's ASIO driver (for the AXE I/O: IK Multimedia's, installed from IK's site), for the lowest delay between playing and hearing. Windows Audio is still there.
+- **SETTINGS:** switch on the inputs you record from (up to 8). Audio tracks count them IN 1, IN 2... in the order they're on.
+- **Fixed:** stopping, moving the position and pressing play straight away could carry on from where it stopped instead.
+- **Not there yet:** takes and comping (a cycle keeps the first pass), splitting clips, clip volume, time-stretching (a clip plays at its own speed if you change the tempo), and very long recordings are held in memory whole (fine for songs; an hour of stereo takes about 1 GB). Ask for any of these when you want them.
+
 ## 0.3.2
 
 The mixer in its own window with F3, as in Cubase; and PR7-C's meters.

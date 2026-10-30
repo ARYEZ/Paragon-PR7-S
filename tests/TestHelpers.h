@@ -193,3 +193,38 @@ inline std::unique_ptr<TestEffect> plusEffect (float amount, const juce::String&
                 b.addSample (c, i, amount);
     }, 2, name);
 }
+
+// Writes `sound` to a WAV file (24-bit), as a recording would be.
+inline bool writeWav (const juce::File& file, const juce::AudioBuffer<float>& sound, double sampleRate)
+{
+    file.getParentDirectory().createDirectory();
+    file.deleteFile();
+    std::unique_ptr<juce::OutputStream> stream (file.createOutputStream());
+    if (stream == nullptr)
+        return false;
+    auto writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (sampleRate)
+                                                                                                 .withNumChannels (sound.getNumChannels())
+                                                                                                 .withBitsPerSample (24));
+    return writer != nullptr && writer->writeFromAudioSampleBuffer (sound, 0, sound.getNumSamples());
+}
+
+// A plucked-string-like take for tests and renders: notes that strike and die away.
+inline juce::AudioBuffer<float> pluckedTake (double seconds, double sampleRate, int seed = 1)
+{
+    juce::AudioBuffer<float> sound (1, (int) (seconds * sampleRate));
+    juce::Random random (seed);
+    double phase = 0.0, frequency = 110.0, level = 0.0;
+    for (int i = 0; i < sound.getNumSamples(); ++i)
+    {
+        if (i % (int) (sampleRate * 0.5) == 0)   // a new note every half second
+        {
+            frequency = 82.4 * std::pow (2.0, random.nextInt (12) / 12.0);
+            level = 0.4 + 0.5 * random.nextDouble();
+        }
+        level *= 0.99985;
+        phase += frequency / sampleRate;
+        sound.setSample (0, i, (float) (level * (std::sin (juce::MathConstants<double>::twoPi * phase) * 0.7
+                                                 + std::sin (juce::MathConstants<double>::twoPi * phase * 2.0) * 0.3)));
+    }
+    return sound;
+}

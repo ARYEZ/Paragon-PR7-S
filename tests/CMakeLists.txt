@@ -9,6 +9,7 @@ add_executable(ParagonPR7STests
     ProjectTests.cpp
     EngineTests.cpp
     MixerTests.cpp
+    AudioTests.cpp
     UiTests.cpp
     Snapshot.cpp)
 
