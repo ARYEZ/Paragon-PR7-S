@@ -2,6 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.3.2
+
+The mixer in its own window with F3, as in Cubase; and PR7-C's meters.
+
+- **F3** opens the mixer in a **window of its own**, full height, so the faders are long. Press F3 again to close it. The first time, it fills the screen the studio is on; after that it opens where you left it (another monitor, maximized, stretched).
+- **Alt+F3**, or **MIXER** in the header, opens it **docked** under the arrangement, as before. Pressed again, it closes.
+- Either key moves it if it's open the other way: F3 on the docked mixer moves it into its window, and Alt+F3 on the window brings it back under the arrangement. The WINDOW / DOCK button still works too.
+- **PR7-C's meters**, everywhere in the studio: the mixer's channels and master, the track list and the transport's OUT. Fine LED segments on black glass, orange at the bottom shading to pink-red at the top (left to right in the track list), and the highest recent peak held lit for a moment. They read from -60 to +6 dB (digital full scale is 0), the same range as the faders. PR7-C's own meter reads like a console (0 there is 20 dB below full scale); the studio's is plain digital, so a meter near the top means near clipping.
+- They keep their fine segments however tall the mixer is.
+
 ## 0.3.1
 
 A new look for the lettering.

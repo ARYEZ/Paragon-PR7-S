@@ -8,7 +8,7 @@ namespace
 {
     constexpr int refreshHz = 30;
     constexpr float fallDbPerSecond = 24.0f;   // how fast the meter drops after a peak
-    constexpr float scaleMarksDb[] = { 12.0f, 6.0f, 0.0f, -6.0f, -12.0f, -18.0f, -24.0f, -36.0f, -48.0f, -60.0f };
+    constexpr int holdFrames = refreshHz * 3 / 2;   // a peak stays lit for 1.5 s
 }
 
 LevelMeter::LevelMeter (LevelMeterSource& sourceToUse) : source (sourceToUse)
@@ -16,63 +16,68 @@ LevelMeter::LevelMeter (LevelMeterSource& sourceToUse) : source (sourceToUse)
     startTimerHz (refreshHz);
 }
 
-float LevelMeter::dbToProportion (float db) const noexcept
+float LevelMeter::proportionForDb (float db) noexcept
 {
     return juce::jlimit (0.0f, 1.0f, (db - minDb) / (maxDb - minDb));
 }
 
+bool LevelMeter::Ballistics::push (float peakGain)
+{
+    const auto peakDb = juce::Decibels::gainToDecibels (peakGain, minDb);
+    const auto newDb = juce::jmax (peakDb, db - fallDbPerSecond / (float) refreshHz, minDb);
+    auto newHeld = heldDb;
+    if (peakDb >= heldDb)
+    {
+        newHeld = peakDb;
+        heldFor = holdFrames;
+    }
+    else if (heldFor > 0)
+    {
+        --heldFor;
+    }
+    else
+    {
+        newHeld = newDb;   // the hold's over: it falls with the meter
+    }
+    const auto changed = ! juce::approximatelyEqual (newDb, db) || ! juce::approximatelyEqual (newHeld, heldDb);
+    db = newDb;
+    heldDb = newHeld;
+    return changed;
+}
+
 void LevelMeter::timerCallback()
 {
-    const auto peakDb = juce::Decibels::gainToDecibels (source.takePeak(), minDb);
-    const auto fallenDb = displayedDb - fallDbPerSecond / (float) refreshHz;
-    const auto newDb = juce::jmax (peakDb, fallenDb, minDb);
-
-    if (! juce::approximatelyEqual (newDb, displayedDb))
-    {
-        displayedDb = newDb;
+    if (reading.push (source.takePeak()))
         repaint();
+}
+
+void LevelMeter::paintSegments (juce::Graphics& g, juce::Rectangle<float> area, float lit, float held, bool vertical, float pitch)
+{
+    g.setColour (juce::Colour (0xff050405));   // the glass
+    g.fillRect (area);
+    const auto length = vertical ? area.getHeight() : area.getWidth();
+    const auto count = juce::jmax (1, (int) (length / pitch));
+    const auto step = length / (float) count;
+    const auto heldSegment = held > 0.0f ? juce::jlimit (0, count - 1, (int) (held * (float) count)) : -1;
+    for (int i = 0; i < count; ++i)
+    {
+        const auto proportion = ((float) i + 0.5f) / (float) count;
+        const auto colour = ParagonColours::meterColour (proportion);
+        const auto on = proportion <= lit || i == heldSegment;
+        const auto segment = vertical ? juce::Rectangle<float> (area.getX(), area.getBottom() - (float) (i + 1) * step + 0.6f, area.getWidth(), step - 1.2f)
+                                      : juce::Rectangle<float> (area.getX() + (float) i * step + 0.6f, area.getY(), step - 1.2f, area.getHeight());
+        if (on)
+        {
+            g.setColour (colour.withAlpha (0.25f));
+            g.fillRect (vertical ? segment.expanded (1.0f, 0.6f) : segment.expanded (0.6f, 1.0f));
+        }
+        g.setColour (on ? colour : colour.withAlpha (0.1f));
+        g.fillRect (segment);
     }
 }
 
 void LevelMeter::paint (juce::Graphics& g)
 {
-    // As in the mockup: the dB scale on the left and a slim column of small
-    // red LED dots beside it, unlit dots just visible.
-    auto bounds = getLocalBounds().toFloat().reduced (0.0f, 6.0f);
-    const auto column = showScale ? bounds.removeFromRight (6.0f) : bounds;
-    bounds.removeFromRight (8.0f);
-    const auto scaleArea = bounds;
-
-    g.setFont (juce::FontOptions (10.5f));
-    for (auto markDb : scaleMarksDb)
-    {
-        if (! showScale)
-            break;
-        const auto y = column.getBottom() - dbToProportion (markDb) * column.getHeight();
-        g.setColour (ParagonColours::textDim);
-        g.drawText (juce::String ((int) markDb), scaleArea.withHeight (12.0f).withCentre ({ scaleArea.getCentreX(), y }),
-                    juce::Justification::centredRight, false);
-    }
-
-    const auto pitch = 6.0f;   // one dot every 6 px
-    const auto numDots = (int) (column.getHeight() / pitch);
-    const auto litProportion = dbToProportion (displayedDb);
-    const auto zeroProportion = dbToProportion (0.0f);
-
-    for (int i = 0; i < numDots; ++i)
-    {
-        const auto proportion = (float) (i + 1) / (float) numDots;
-        const auto y = column.getBottom() - (float) (i + 1) * pitch;
-        const auto dot = juce::Rectangle<float> (column.getX(), y + 1.5f, column.getWidth(), pitch - 2.5f);
-        const auto colour = proportion > zeroProportion ? juce::Colour (0xffffd04a) : ParagonColours::meterRed;   // over 0 dB: amber warning
-        const auto lit = proportion <= litProportion + 1.0e-4f;
-
-        if (lit)
-        {
-            g.setColour (colour.withAlpha (0.3f));
-            g.fillRoundedRectangle (dot.expanded (2.0f, 1.0f), 2.0f);
-        }
-        g.setColour (lit ? colour : colour.withAlpha (0.2f));
-        g.fillRoundedRectangle (dot, 1.0f);
-    }
+    const auto held = reading.heldDb > minDb ? proportionForDb (reading.heldDb) : -1.0f;
+    paintSegments (g, getLocalBounds().toFloat().reduced (0.0f, 2.0f), proportionForDb (reading.db), held);
 }

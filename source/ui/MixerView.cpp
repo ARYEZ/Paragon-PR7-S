@@ -121,15 +121,12 @@ void MixerView::Strip::refresh()
     repaint();
 }
 
-void MixerView::Strip::setLevels (float left, float right)
+void MixerView::Strip::setLevels (float leftPeak, float rightPeak)
 {
-    const auto newLeft = juce::jmax (left, levelLeft * 0.85f), newRight = juce::jmax (right, levelRight * 0.85f);
-    if (std::abs (newLeft - levelLeft) > 0.001f || std::abs (newRight - levelRight) > 0.001f)
-    {
-        levelLeft = newLeft;
-        levelRight = newRight;
+    const auto changedLeft = left.push (leftPeak);
+    const auto changedRight = right.push (rightPeak);
+    if (changedLeft || changedRight)
         repaint (meterArea.toNearestInt().expanded (2));
-    }
 }
 
 void MixerView::Strip::paint (juce::Graphics& g)
@@ -159,24 +156,15 @@ void MixerView::Strip::paint (juce::Graphics& g)
     if (track != nullptr)
         g.drawText (panText (track->pan), panReadoutArea, juce::Justification::centred, false);
 
-    // The level: a column of LEDs for each side (the master's), or one for the track.
+    // The level: PR7-C's meter, a column for each side (the master's) or one for the track.
     const auto columns = isMaster() ? 2 : 1;
     const auto columnWidth = (meterArea.getWidth() - (float) (columns - 1) * 2.0f) / (float) columns;
-    constexpr int count = 24;
     for (int c = 0; c < columns; ++c)
     {
-        const auto level = c == 0 ? levelLeft : levelRight;
-        const auto db = juce::Decibels::gainToDecibels (level, -60.0f);
-        const auto lit = juce::roundToInt (juce::jlimit (0.0f, 1.0f, (db + 48.0f) / 54.0f) * (float) count);
-        const auto ledHeight = meterArea.getHeight() / (float) count;
-        for (int i = 0; i < count; ++i)
-        {
-            const auto led = juce::Rectangle<float> (meterArea.getX() + (float) c * (columnWidth + 2.0f),
-                                                     meterArea.getBottom() - ledHeight * (float) (i + 1), columnWidth, ledHeight - 1.5f);
-            const auto colour = i >= count - 2 ? ParagonColours::meterRed : ParagonColours::accent;
-            g.setColour (i < lit ? colour : colour.withAlpha (0.1f));
-            g.fillRoundedRectangle (led, 1.0f);
-        }
+        const auto& reading = c == 0 ? left : right;
+        const auto column = meterArea.withX (meterArea.getX() + (float) c * (columnWidth + 2.0f)).withWidth (columnWidth);
+        LevelMeter::paintSegments (g, column, LevelMeter::proportionForDb (reading.db),
+                                   reading.heldDb > LevelMeter::minDb ? LevelMeter::proportionForDb (reading.heldDb) : -1.0f);
     }
 
     g.setColour (ParagonColours::text);
@@ -238,7 +226,7 @@ MixerView::MixerView (pr7s::Studio& studioToUse) : studio (studioToUse)
     }
     windowButton.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
     closeButton.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
-    closeButton.setTooltip ("Close the mixer (F3)");
+    closeButton.setTooltip ("Close the mixer (F3 in its own window, Alt+F3 docked)");
     closeButton.onClick = [this] { if (onClose) onClose(); };
     windowButton.onClick = [this] { if (onWindowToggle) onWindowToggle(); };
     setInWindow (false);

@@ -4,8 +4,12 @@
 
 #include "engine/LevelMeterSource.h"
 
-// Vertical LED-style meter with a dB scale, matching the input/output meters
-// in the mockup (+12 dB at the top, -60 dB at the bottom).
+// The PR7 family's level meter, as on PR7-C: fine LED segments on black
+// glass, orange at the bottom shading to pink-red at the top, unlit ones
+// faintly there, and the highest recent peak held lit as one segment for a
+// moment. The scale is digital (dBFS): -60 at the bottom, +6 at the top (the
+// faders' range). The studio's meters all draw with paintSegments: this
+// component (the transport's OUT), the mixer's and the track list's.
 class LevelMeter final : public juce::Component,
                          private juce::Timer
 {
@@ -14,18 +18,30 @@ public:
 
     void paint (juce::Graphics&) override;
 
-    // Without the scale the LED column fills the meter (for short meters,
-    // where ten marks would overlap).
-    void setShowScale (bool show) { showScale = show; repaint(); }
+    // Kept for the callers from before; the meter has no printed scale now.
+    void setShowScale (bool) {}
 
     static constexpr float minDb = -60.0f;
-    static constexpr float maxDb = 12.0f;
+    static constexpr float maxDb = 6.0f;
+    static float proportionForDb (float db) noexcept;   // 0 at the bottom, 1 at the top
+
+    // The segments in `area`, lit up to `lit` (0 to 1), the one at `held`
+    // lit too (below 0: none). Vertical: from the bottom up; else from the
+    // left. `pitch`: a segment every so many pixels.
+    static void paintSegments (juce::Graphics&, juce::Rectangle<float> area, float lit, float held, bool vertical = true, float pitch = 3.0f);
+
+    // A meter's reading as it's shown: falling back after a peak, and the
+    // peak held for a moment. Fed 30 times a second.
+    struct Ballistics
+    {
+        float db = minDb, heldDb = minDb;
+        int heldFor = 0;
+        bool push (float peakGain);   // true if what's shown changed
+    };
 
 private:
     void timerCallback() override;
-    float dbToProportion (float db) const noexcept;
 
     LevelMeterSource& source;
-    float displayedDb = minDb;
-    bool showScale = true;
+    Ballistics reading;
 };

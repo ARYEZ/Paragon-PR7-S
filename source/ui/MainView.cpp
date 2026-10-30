@@ -33,7 +33,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     redoButton.setTooltip ("Redo (Ctrl+Shift+Z)");
     editorButton.setTooltip ("The key editor: the selected part's notes (Ctrl+E; or double-click a part)");
     editorButton.setColour (juce::TextButton::textColourOnId, ParagonColours::accent);
-    mixerButton.setTooltip ("The mixer: each track's channel, its effects and the master (F3)");
+    mixerButton.setTooltip ("The mixer under the arrangement (Alt+F3). F3: the mixer in a window of its own");
     mixerButton.setColour (juce::TextButton::textColourOnId, ParagonColours::accent);
     pluginsButton.setTooltip ("Find your VST3 instruments and effects");
     settingsButton.setTooltip ("Audio interface, MIDI inputs and the finish");
@@ -44,7 +44,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     undoButton.onClick = [this] { studio.undo(); };
     redoButton.onClick = [this] { studio.redo(); };
     editorButton.onClick = [this] { isKeyEditorOpen() ? closeKeyEditor() : openKeyEditor(); };
-    mixerButton.onClick = [this] { isMixerOpen() ? closeMixer() : openMixer(); };
+    mixerButton.onClick = [this] { toggleMixerDocked(); };
     pluginsButton.onClick = [this] { openPlugins(); };
     settingsButton.onClick = [this] { openSettings(); };
 
@@ -258,7 +258,7 @@ bool MainView::keyPressed (const juce::KeyPress& key)
         }
     }
 
-    if (key.getKeyCode() == juce::KeyPress::F3Key)      { isMixerOpen() ? closeMixer() : openMixer(); return true; }
+    if (key.getKeyCode() == juce::KeyPress::F3Key)      { mods.isAltDown() ? toggleMixerDocked() : toggleMixerWindow(); return true; }
     if (isKeyEditorOpen() && key == juce::KeyPress::escapeKey) { closeKeyEditor(); return true; }
     if (isMixerOpen() && key == juce::KeyPress::escapeKey)     { closeMixer(); return true; }
     if (key == juce::KeyPress::spaceKey)                { studio.togglePlay(); return true; }
@@ -353,6 +353,30 @@ void MainView::placeZone (Zone& zone)
     }
     resized();
     repaint();
+}
+
+void MainView::toggleMixerWindow()
+{
+    if (isMixerOpen() && isMixerInWindow())
+    {
+        closeMixer();
+        return;
+    }
+    if (! isMixerInWindow())
+        setMixerInWindow (true);   // docked and open: it moves into its window
+    openMixer();
+}
+
+void MainView::toggleMixerDocked()
+{
+    if (isMixerOpen() && ! isMixerInWindow())
+    {
+        closeMixer();
+        return;
+    }
+    if (isMixerInWindow())
+        setMixerInWindow (false);   // in its window: it comes back under the arrangement
+    openMixer();
 }
 
 void MainView::openEffectWindow (int busId, int slot)

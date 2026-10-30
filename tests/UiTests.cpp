@@ -435,11 +435,12 @@ TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inse
     findAll (view, keyboards);
     CHECK (keyboards.empty());
 
-    // F3 opens the mixer, under the arrangement, down to the window's bottom.
+    // Alt+F3 opens the mixer under the arrangement, down to the window's bottom.
     auto& mixer = view.getMixer();
     auto& arrange = view.getArrangeView();
-    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key)));
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key, juce::ModifierKeys::altModifier, 0)));
     REQUIRE (view.isMixerOpen());
+    CHECK_FALSE (view.isMixerInWindow());
     CHECK (mixer.isVisible());
     CHECK (mixer.getY() > arrange.getBottom());
     CHECK (mixer.getBottom() >= view.getHeight() - 10);
@@ -508,10 +509,25 @@ TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inse
     CHECK_FALSE (view.isMixerOpen());
     CHECK (view.getMixerWindow() == nullptr);
     CHECK (mixer.getParentComponent() == &view);
-    // Docked again: the key editor makes way.
-    view.setMixerInWindow (false);
-    view.openMixer();
+    // F3 again: the mixer in its own window (as Cubase's F3).
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key)));
+    REQUIRE (view.getMixerWindow() != nullptr);
+    CHECK (view.isMixerOpen());
+    // Alt+F3 from there brings it back under the arrangement (the key editor makes way).
+    CHECK (view.getMixerWindow()->keyPressed (juce::KeyPress (juce::KeyPress::F3Key, juce::ModifierKeys::altModifier, 0)));
+    CHECK (view.isMixerOpen());
+    CHECK_FALSE (view.isMixerInWindow());
+    CHECK (view.getMixerWindow() == nullptr);
+    CHECK (mixer.isVisible());
     CHECK_FALSE (view.isKeyEditorOpen());
+    // Docked and open, F3 moves it into its window; Alt+F3 again closes it from docked.
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key)));
+    CHECK (view.getMixerWindow() != nullptr);
+    view.toggleMixerDocked();
+    CHECK (view.isMixerOpen());
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key, juce::ModifierKeys::altModifier, 0)));
+    CHECK_FALSE (view.isMixerOpen());
+    view.openMixer();
 
     // It draws in every finish.
     for (const auto type : { Finish::Type::pearlBlack, Finish::Type::pearlWhiteNeon, Finish::Type::pearlWhite })
