@@ -1643,6 +1643,7 @@ namespace pr7s
     //==========================================================================
     void Studio::newProject()
     {
+        punchOutAll();   // (writing automation ends with the song)
         if (onInstrumentGoing)
             onInstrumentGoing (0);
         removeAllEffects();
@@ -1879,6 +1880,7 @@ namespace pr7s
         auto loaded = Project::fromXml (*xml);
         if (! loaded)
             return false;
+        punchOutAll();
 
         if (onInstrumentGoing)
             onInstrumentGoing (0);

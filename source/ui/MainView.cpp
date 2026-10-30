@@ -1,5 +1,6 @@
 #include "MainView.h"
 
+#include "ui/AutomationKeys.h"
 #include "ui/Logo.h"
 #include "ui/ParagonLookAndFeel.h"
 #include "ui/Pearl.h"
@@ -49,6 +50,19 @@ MainView::MainView (pr7s::Studio& studioToUse)
     mixerButton.onClick = [this] { toggleMixerDocked(); };
     pluginsButton.onClick = [this] { openPlugins(); };
     settingsButton.onClick = [this] { openSettings(); };
+    // Read and write automation for all tracks (the manual's toolbar buttons).
+    for (auto* key : { &readAllButton, &writeAllButton })
+    {
+        key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        key->setWantsKeyboardFocus (false);
+        addAndMakeVisible (*key);
+    }
+    readAllButton.getProperties().set (ParagonLookAndFeel::litColourProperty, (juce::int64) AutomationKeys::readColour.getARGB());
+    writeAllButton.getProperties().set (ParagonLookAndFeel::litColourProperty, (juce::int64) AutomationKeys::writeColour.getARGB());
+    readAllButton.setTooltip ("Read automation for all tracks on or off (Alt+R): lit while any track's R is on");
+    writeAllButton.setTooltip ("Write automation for all tracks on or off (Alt+W): lit while any track's W is on");
+    readAllButton.onClick = [this] { studio.setAutomationReadAll (! studio.anyAutomationRead()); };
+    writeAllButton.onClick = [this] { studio.setAutomationWriteAll (! studio.anyAutomationWrite()); };
 
     addAndMakeVisible (transport);
     addAndMakeVisible (trackList);
@@ -148,6 +162,8 @@ void MainView::refreshHeader()
     }
     undoButton.setEnabled (studio.canUndo());
     redoButton.setEnabled (studio.canRedo());
+    readAllButton.setToggleState (studio.anyAutomationRead(), juce::dontSendNotification);
+    writeAllButton.setToggleState (studio.anyAutomationWrite(), juce::dontSendNotification);
     const auto file = studio.getFile();
     const auto title = "Paragon PR7-S - " + (file == juce::File() ? juce::String ("Untitled") : file.getFileNameWithoutExtension())
                      + (studio.isModified() ? " *" : "");
@@ -206,6 +222,10 @@ void MainView::resized()
     editorButton.setBounds (header.removeFromLeft (100));
     header.removeFromLeft (6);
     mixerButton.setBounds (header.removeFromLeft (76));
+    header.removeFromLeft (18);
+    readAllButton.setBounds (header.removeFromLeft (34));
+    header.removeFromLeft (4);
+    writeAllButton.setBounds (header.removeFromLeft (34));
     settingsButton.setBounds (header.removeFromRight (92));
     header.removeFromRight (6);
     pluginsButton.setBounds (header.removeFromRight (86));
@@ -236,6 +256,17 @@ bool MainView::keyPressed (const juce::KeyPress& key)
     const auto letter = juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) code);
 
     if (isKeyEditorOpen() && keysToEditor && keyEditor.keyPressed (key))
+        return true;
+    // Automation: Alt+R / Alt+W for all tracks (before R, which records); Esc puts dragged points back.
+    if (mods.isAltDown() && ! mods.isCommandDown() && (letter == 'R' || letter == 'W'))
+    {
+        if (letter == 'R')
+            studio.setAutomationReadAll (! studio.anyAutomationRead());
+        else
+            studio.setAutomationWriteAll (! studio.anyAutomationWrite());
+        return true;
+    }
+    if (key == juce::KeyPress::escapeKey && arrange.cancelDrag())
         return true;
     // Copy, cut, paste and select all are the editor's wherever the last click
     // was (the arrangement has none of its own yet), so notes copied in one
@@ -268,7 +299,11 @@ bool MainView::keyPressed (const juce::KeyPress& key)
     if (isMixerOpen() && key == juce::KeyPress::escapeKey)     { closeMixer(); return true; }
     if (key == juce::KeyPress::spaceKey)                { studio.togglePlay(); return true; }
     if (key == juce::KeyPress::homeKey)                 { studio.goToStart(); return true; }
-    if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey) { arrange.deleteSelected(); return true; }
+    if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
+    {
+        arrange.hasSelectedPoints() ? arrange.deleteSelectedPoints() : arrange.deleteSelected();
+        return true;
+    }
     if (letter == 'R' || key.getTextCharacter() == '*') { studio.record(); return true; }
     if (key.getTextCharacter() == '/')                  { studio.setCycleOn (! studio.getProject().loopOn); return true; }
     if (letter == 'C')                                  { studio.setClick (! studio.getProject().click); return true; }

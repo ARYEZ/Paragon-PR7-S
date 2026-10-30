@@ -4,7 +4,7 @@
 
 The other members of the family are PR7-G (guitar), PR7-B (bass), PR7-V (vocals) and PR7-C (channel strip).
 
-It's built in stages, a release at a time. The first stage was MIDI recording with VST3 instruments; the second, the piano roll (key editor); the third, the mixer with VST3 effects; the fourth, audio tracks; the fifth, exporting the mix to WAV. Automation comes next.
+It's built in stages, a release at a time. The first stage was MIDI recording with VST3 instruments; the second, the piano roll (key editor); the third, the mixer with VST3 effects; the fourth, audio tracks; the fifth, exporting the mix to WAV; the sixth, automation.
 
 ## License
 

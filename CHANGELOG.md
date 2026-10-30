@@ -2,6 +2,37 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.6.0
+
+Automation: volume, pan, mute and any plugin knob moving on their own as the song plays, written by hand or drawn, as the Cubase 15 manual's automation chapter describes.
+
+- **R and W** on every track (in the track list and the mixer) and on the master:
+  - **R (read)** plays its automation back. The fader, pan and mute move with it.
+  - **W (write)** records what you do to its controls while playing. W turns R on too.
+  - **R and W in the header** turn them on or off for every track (**Alt+R**, **Alt+W**). They're lit while any track's are on.
+  - Lit colours: R pink, W red, W orange while it's writing.
+  - Record-arm on the track list is now **REC** (R is automation's, as in the manual).
+- **Writing (Touch):** with W on, play and move a fader, a pan knob, or a knob in a plugin's own window (the PR7 plugins too). It's written while you hold it. Let go and the control returns to what it was (over 0.1 s: our choice, the manual gives no default).
+  - **Mute** is an on/off switch: a click on M is written from there until you stop (as the manual's Auto-Latch).
+  - Writing also stops when you stop, turn W off, the cycle comes round, or you click in the ruler.
+  - Each pass is one undo step.
+- **Automation lanes** open under their track:
+  - The small arrow at a track's lower left shows and hides them; right-click a track for **Show/Hide Automation** and **Show All Used Automation**.
+  - Each lane shows one control: click its name for any other (volume, pan, mute, the instrument's knobs, each insert's knobs). The control it showed keeps its points, hidden (marked * in the list). **Remove Parameter** and **Remove Unused Parameters** are there too.
+  - **M** mutes a lane (Mute Automation). **+** at a lane's lower left adds a lane for the next control.
+  - The lane shows its value at the playhead.
+- **Drawing and editing**, in the arrangement:
+  - **Click** a lane to add a point (R comes on). A click on the line between two points adds nothing.
+  - **Alt-drag** draws several points.
+  - **Drag from an empty spot** to select points in a rectangle; **Shift-click** adds or removes one.
+  - **Drag** selected points to move them (snapped to the grid). **Ctrl:** one direction only. **Ctrl and another key:** no snapping. **Alt-drag** copies them.
+  - **Delete** removes the selected points. **Esc** while dragging puts them back. Right-click: **Select All Events**.
+  - A lane with no points shows a dotted line at the control's setting. With R off, or the lane muted, its curve is grey.
+  - Volume, pan and plugin knobs ramp in straight lines between points; mute jumps.
+- **The master** has a row at the bottom of the track list: its R, W and lanes (its volume, its effects' knobs), for a fade-out at the end of the song, for example.
+- **Export** includes the automation.
+- **Not there yet:** curved (Bézier) lines between points, the Line tool's shapes (parabola, sine...), Trim, Fill, Suspend, copying automation between tracks, Auto-Latch and Cross-Over for faders (Touch only for now), and the Automation Panel (F6). Ask for any of these when you want them.
+
 ## 0.5.1
 
 Checked against the Cubase Pro 15 manual (the owner's request), and the family's colours only.

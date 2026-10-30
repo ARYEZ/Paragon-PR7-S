@@ -13,6 +13,7 @@
 // PARAGON_SNAPSHOT_FINISH=black or =neon picks the finish.
 // PARAGON_SNAPSHOT_ZONE=mixer shows the mixer in the lower zone, =none nothing there (the key editor otherwise).
 // PARAGON_SNAPSHOT_EXPORT=1 draws the export page over it.
+// PARAGON_SNAPSHOT_AUTOMATION=1 opens automation lanes (the lead's volume, the bass's pan, the master's fade).
 TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
 {
     using namespace pr7s;
@@ -70,6 +71,20 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     studio.setClick (true);
     studio.selectTrack (bass);
     studio.setPosition (21.0);
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_AUTOMATION", {}).isNotEmpty())
+    {
+        // Automation: the lead's volume swelling in and dipping, the bass's pan
+        // lane open with no points yet (the dotted line; W on), the master
+        // fading out at the end.
+        studio.setAutomationOpen (lead, true);
+        studio.setAutomationPoints (lead, 0, { { 16.0, volumeToTravel (-30.0f) }, { 20.0, volumeToTravel (0.0f) }, { 24.0, volumeToTravel (-2.0f) },
+                                               { 26.0, volumeToTravel (-12.0f) }, { 28.0, volumeToTravel (0.0f) } });
+        studio.setAutomationOpen (bass, true);
+        studio.setLaneControl (bass, 0, studio.getAutomationControls (bass)[1]);
+        studio.setAutomationWrite (bass, true);
+        studio.setAutomationOpen (Engine::masterBus, true);
+        studio.setAutomationPoints (Engine::masterBus, 0, { { 28.0, volumeToTravel (0.0f) }, { 32.0, 0.0f } });
+    }
 
     MainView view (studio);
     const auto width = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_WIDTH", "1500").getIntValue();

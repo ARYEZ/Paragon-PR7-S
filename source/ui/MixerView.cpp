@@ -1,5 +1,6 @@
 #include "MixerView.h"
 
+#include "ui/AutomationKeys.h"
 #include "ui/ParagonLookAndFeel.h"
 
 namespace
@@ -53,8 +54,18 @@ MixerView::Strip::Strip (MixerView& ownerView, int id) : owner (ownerView), busI
             owner.studio.setVolume (busId, (float) volume.getValue(), undoable);
     };
     volume.onValueChange = [this, setVolume] { setVolume (! volume.isMouseButtonDown()); };
-    volume.onDragEnd = [setVolume] { setVolume (true); };
+    // Grabbed and let go: writing automation (W on, while playing) follows the hand.
+    const auto volumeControl = pr7s::Studio::control (pr7s::AutomationLane::Target::volume);
+    volume.onDragStart = [this, volumeControl] { owner.studio.grabControl (busId, volumeControl); };
+    volume.onDragEnd = [this, setVolume, volumeControl]
+    {
+        setVolume (true);
+        owner.studio.releaseControl (busId, volumeControl);
+    };
     addAndMakeVisible (volume);
+    AutomationKeys::setUp (read, write, owner.studio, busId);
+    addAndMakeVisible (read);
+    addAndMakeVisible (write);
 
     if (! isMaster())
     {
@@ -67,7 +78,12 @@ MixerView::Strip::Strip (MixerView& ownerView, int id) : owner (ownerView), busI
         pan.textFromValueFunction = [] (double value) { return panText (value); };
         pan.setTooltip ("Pan: left and right (Ctrl-click or double-click for the centre; Shift-drag for fine moves)");
         pan.onValueChange = [this] { owner.studio.setPan (busId, (float) pan.getValue(), ! pan.isMouseButtonDown()); };
-        pan.onDragEnd = [this] { owner.studio.setPan (busId, (float) pan.getValue(), true); };
+        pan.onDragStart = [this] { owner.studio.grabControl (busId, pr7s::Studio::control (pr7s::AutomationLane::Target::pan)); };
+        pan.onDragEnd = [this]
+        {
+            owner.studio.setPan (busId, (float) pan.getValue(), true);
+            owner.studio.releaseControl (busId, pr7s::Studio::control (pr7s::AutomationLane::Target::pan));
+        };
         addAndMakeVisible (pan);
 
         for (auto* key : { &mute, &solo })
@@ -122,17 +138,43 @@ void MixerView::Strip::refresh()
                              + ": add an effect (one of your VST3 effects)");
         }
     }
-    const auto db = isMaster() ? project.masterVolumeDb : track->volumeDb;
-    if (! volume.isMouseButtonDown())
-        volume.setValue (db, juce::dontSendNotification);
     if (track != nullptr)
     {
-        if (! pan.isMouseButtonDown())
-            pan.setValue (track->pan, juce::dontSendNotification);
         mute.setToggleState (track->mute, juce::dontSendNotification);
         solo.setToggleState (track->solo, juce::dontSendNotification);
     }
+    AutomationKeys::refresh (read, write, owner.studio, busId);
+    followMix();
     repaint();
+}
+
+void MixerView::Strip::followMix()
+{
+    const auto& project = owner.studio.getProject();
+    const auto* track = project.findTrack (busId);
+    if (! isMaster() && track == nullptr)
+        return;
+    // As set, or, while R is on, as the automation has it now (the engine's).
+    auto db = isMaster() ? project.masterVolumeDb : track->volumeDb;
+    auto panNow = track != nullptr ? track->pan : 0.0f;
+    if (owner.studio.getAutomationRead (busId))
+    {
+        const auto now = owner.studio.getEngine().getMixNow (busId);
+        db = now.volumeDb;
+        panNow = now.pan;
+        if (track != nullptr)
+            mute.setToggleState (now.mute, juce::dontSendNotification);
+    }
+    if (! volume.isMouseButtonDown() && std::abs (volume.getValue() - db) > 0.01)
+    {
+        volume.setValue (db, juce::dontSendNotification);
+        repaint (readoutArea.toNearestInt());
+    }
+    if (track != nullptr && ! pan.isMouseButtonDown() && std::abs (pan.getValue() - panNow) > 0.001)
+    {
+        pan.setValue (panNow, juce::dontSendNotification);
+        repaint (panReadoutArea.toNearestInt());
+    }
 }
 
 void MixerView::Strip::setLevels (float leftPeak, float rightPeak)
@@ -200,7 +242,7 @@ void MixerView::Strip::resized()
     nameArea = area.removeFromTop (18).toFloat();
     area.removeFromTop (14);   // "INSERTS"
     // The slots shown, smaller when there are many, so the fader keeps room.
-    const auto below = (isMaster() ? 0 : 78) + 16 + 6 + 110;   // pan and keys, the readout, a gap, the shortest fader
+    const auto below = (isMaster() ? 0 : 50) + 28 + 16 + 6 + 110;   // pan, the keys, the readout, a gap, the shortest fader
     const auto rowHeight = juce::jlimit (11, slotHeight, (area.getHeight() - below) / shownSlots - slotGap);
     for (int i = 0; i < (int) slots.size(); ++i)
     {
@@ -215,13 +257,19 @@ void MixerView::Strip::resized()
         pan.setBounds (area.removeFromTop (34).withSizeKeepingCentre (34, 34));
         panReadoutArea = area.removeFromTop (12).toFloat();
         area.removeFromTop (4);
-        auto keys = area.removeFromTop (22);
-        const auto keyWidth = (keys.getWidth() - 4) / 2;
-        mute.setBounds (keys.removeFromLeft (keyWidth));
-        keys.removeFromLeft (4);
-        solo.setBounds (keys);
-        area.removeFromTop (6);
     }
+    // M, S, R and W in a row (the master: R and W).
+    auto keys = area.removeFromTop (22);
+    const auto count = isMaster() ? 2 : 4;
+    const auto keyWidth = (keys.getWidth() - 3 * (count - 1)) / count;
+    for (auto* key : { &mute, &solo, &read, &write })
+    {
+        if (isMaster() && (key == &mute || key == &solo))
+            continue;
+        key->setBounds (keys.removeFromLeft (keyWidth));
+        keys.removeFromLeft (3);
+    }
+    area.removeFromTop (6);
     readoutArea = area.removeFromBottom (16).toFloat();
     auto faderArea = area;
     const auto meterWidth = isMaster() ? 14 : 8;
@@ -315,7 +363,9 @@ void MixerView::timerCallback()
     {
         const auto peak = engine.takeTrackPeak (strip->getBusId(), 1);
         strip->setLevels (peak, peak);
+        strip->followMix();
     }
+    master->followMix();
     master->setLevels (engine.getOutputMeter (0, 1).takePeak(), engine.getOutputMeter (1, 1).takePeak());
 }
 

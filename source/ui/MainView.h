@@ -13,7 +13,8 @@
 // The studio's window, top to bottom:
 //
 //   header       the PR7-S mark; NEW, OPEN, SAVE, SAVE AS, EXPORT; UNDO, REDO;
-//                KEY EDITOR, MIXER; PLUGINS and SETTINGS
+//                KEY EDITOR, MIXER; R and W (read and write automation for
+//                all tracks, lit while any track's are on); PLUGINS and SETTINGS
 //   transport    the pearl unit: keys, position, tempo, signature, meters
 //   middle       the track list | the arrangement, and below them, in the
 //                lower zone, the key editor or the mixer (one at a time;
@@ -24,7 +25,10 @@
 // duplicate it, Ctrl+Z / Ctrl+Shift+Z undo / redo, Ctrl+N / O / S new, open
 // and save (Ctrl+Shift+S save as), Ctrl+E the key editor (Escape closes it),
 // F3 the mixer in a window of its own, Alt+F3 (or MIXER) the mixer docked
-// (as Cubase's F3 and Alt+F3 do).
+// (as Cubase's F3 and Alt+F3 do), Alt+R / Alt+W read / write automation for
+// all tracks (the manual's keys). Delete removes the selected automation
+// points if there are any (else the selected part); Esc while dragging
+// points puts them back.
 // After a click in the key editor its keys go to it (Delete removes notes,
 // not the part); after a click elsewhere, to the arrangement. Ctrl+C / X / V
 // and Shift+A go to the editor whenever it's open.
@@ -117,7 +121,7 @@ private:
 
     juce::TextButton newButton { "NEW" }, openButton { "OPEN" }, saveButton { "SAVE" }, saveAsButton { "SAVE AS" }, exportButton { "EXPORT" },
                      undoButton { "UNDO" }, redoButton { "REDO" }, editorButton { "KEY EDITOR" }, mixerButton { "MIXER" },
-                     pluginsButton { "PLUGINS" }, settingsButton { "SETTINGS" };
+                     pluginsButton { "PLUGINS" }, settingsButton { "SETTINGS" }, readAllButton { "R" }, writeAllButton { "W" };
     // After the editor and the mixer: their windows go first.
     Zone editorZone { keyEditor, editorButton, "Key Editor", "keyEditor", false, false, {} },
          mixerZone { mixer, mixerButton, "Mixer", "mixer", false, false, {} };

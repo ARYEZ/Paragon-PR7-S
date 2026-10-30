@@ -13,7 +13,9 @@
 //                  the order the sound goes through them; those below the
 //                  line are after the fader); pan; M (mute) and S (solo);
 //                  the volume fader (Ctrl-click or double-click: 0 dB;
-//                  Shift-drag: fine) and the level; click it to select the track
+//                  Shift-drag: fine) and the level; R and W (read and write
+//                  automation: grabbing the fader, pan or M while W is on and
+//                  playing writes them); click it to select the track
 //   an insert      empty: click to add an effect (one of your VST3 effects);
 //                  an effect: click to open its window, bypass it, replace
 //                  it or remove it, or make it the last before the fader
@@ -74,6 +76,9 @@ public:
     juce::Slider& getVolume() noexcept { return volume; }
     juce::Slider& getPan() noexcept { return pan; }
     juce::TextButton& getMute() noexcept { return mute; }
+    juce::TextButton& getRead() noexcept { return read; }
+    juce::TextButton& getWrite() noexcept { return write; }
+    void followMix();   // the fader and pan as the automation has them now (while it's read)
     juce::TextButton& getSolo() noexcept { return solo; }
     juce::TextButton& getInsertSlot (int slot) { return slots[(size_t) slot]; }
     int getShownSlots() const noexcept { return shownSlots; }
@@ -90,7 +95,7 @@ private:
     std::array<juce::TextButton, pr7s::Project::maxInserts> slots;
     int shownSlots = 8;   // at least 8, and one more than the last used (up to 16)
     juce::Slider volume, pan;
-    juce::TextButton mute { "M" }, solo { "S" };
+    juce::TextButton mute { "M" }, solo { "S" }, read { "R" }, write { "W" };
     juce::Rectangle<float> meterArea, nameArea, readoutArea, panReadoutArea;
     LevelMeter::Ballistics left, right;
 };

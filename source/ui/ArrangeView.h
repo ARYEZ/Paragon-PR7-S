@@ -67,6 +67,16 @@ struct Timeline
 //   an empty lane   click to select the track; double-click for a new
 //                   empty part: from the left locator to the right if it's
 //                   between them, else a bar long
+//   an automation   (as the manual has it) a click adds a point there (and
+//   lane            turns R on; one on the line between two points adds
+//                   nothing); Alt-drag draws several; drag from an empty
+//                   spot to select points in a rectangle, Shift-click to add
+//                   or remove one; drag selected points to move them (Ctrl:
+//                   one direction only; Ctrl and another key: no snapping),
+//                   Alt-drag to copy them; Delete removes them; Esc while
+//                   dragging puts them back; right-click: Select All Events.
+//                   With no points, a dotted line shows the control's
+//                   setting; R off or the lane muted, the curve is greyed
 //   wheel           scrolls the tracks; Shift+wheel scrolls along the song;
 //                   Ctrl+wheel zooms
 class ArrangeView final : public juce::Component,
@@ -86,6 +96,21 @@ public:
     void select (int trackId, int index);
     void deleteSelected();
     void duplicateSelected();
+
+    // Automation points selected (in one lane at a time).
+    struct PointSelection
+    {
+        int busId = 0, laneIndex = -1;
+        std::vector<int> points;   // indices into the lane's points, sorted
+    };
+    const PointSelection& getPointSelection() const noexcept { return pointSelection; }
+    bool hasSelectedPoints() const noexcept { return ! pointSelection.points.empty(); }
+    void deleteSelectedPoints();
+    void selectAllPoints (int busId, int laneIndex);
+    bool cancelDrag();   // Esc while dragging points: back where they were
+    // Where a lane, and a point on it, are drawn (for tests).
+    juce::Rectangle<float> getLaneArea (int busId, int laneIndex) const;
+    juce::Point<float> getPointPosition (int busId, int laneIndex, int point) const;
 
     // Asked to edit the selected part's notes (double-click, or its menu): the key editor opens.
     std::function<void()> onEditNotes;
@@ -116,7 +141,25 @@ private:
     Timeline& timeline;
     Selection selection;
 
-    enum class Drag { none, position, cycle, cycleMove, move, resize, trimStart, fadeIn, fadeOut };
+    enum class Drag { none, position, cycle, cycleMove, move, resize, trimStart, fadeIn, fadeOut, points, band, draw };
+
+    // Automation editing.
+    PointSelection pointSelection;
+    std::vector<pr7s::AutomationPoint> workingPoints, originalPoints;   // the lane's points during a gesture
+    juce::Rectangle<float> pointBand;
+    juce::Point<float> pointDownAt;
+    int anchor = -1;               // the point grabbed
+    bool copyingPoints = false;
+    std::vector<pr7s::AutomationPoint> drawn;   // the points a drawing stroke has put down
+    void paintAutomation (juce::Graphics&, const Timeline::Row&) const;
+    const pr7s::AutomationLane* laneFor (int busId, int laneIndex) const;
+    float yForValue (juce::Rectangle<float> area, float value) const;
+    float valueForY (juce::Rectangle<float> area, float y) const;
+    bool automationDown (const juce::MouseEvent&, const Timeline::Row&);
+    void automationDrag (const juce::MouseEvent&);
+    void automationUp();
+    void commitPoints (std::vector<pr7s::AutomationPoint> points, const std::vector<pr7s::AutomationPoint>& selected);
+    void showLaneMenu (int busId, int laneIndex);
     pr7s::Part dragPart;   // an audio clip as it's being trimmed or faded
     bool isAudioTrack (int trackId) const;
     juce::Rectangle<float> fadeHandle (juce::Rectangle<float> bounds, const pr7s::Part&, bool fadeIn) const;

@@ -795,3 +795,132 @@ TEST_CASE ("Dragging as the manual has it: Ctrl keeps a part to one direction, A
     editor.mouseDoubleClick (mouseAt (editor, note, note));
     CHECK (editor.getPart()->notes.empty());
 }
+
+TEST_CASE ("Automation on screen: lanes under their track, lined up; click adds a point (R on), on the line adds none; drag, select, delete, draw, Esc; R/W keys; the mixer follows", "[ui][automation]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& arrange = view.getArrangeView();
+    const auto first = studio.getProject().tracks[0].id;
+    const auto second = studio.addTrack ({});
+    studio.dispatchPendingMessages();
+    const auto secondTop = arrange.trackTop (second);
+
+    // The keys: REC arms; R and W are automation's (and the header's R and W).
+    std::vector<juce::TextButton*> buttons;
+    findAll (view.getTrackList(), buttons);
+    const auto count = [&] (const juce::String& text) { return std::count_if (buttons.begin(), buttons.end(), [&] (auto* b) { return b->getButtonText() == text; }); };
+    CHECK (count ("REC") == 2);
+    CHECK (count ("R") == 3);   // two tracks and the master
+    CHECK (count ("W") == 3);
+
+    // Show Automation: the volume lane under the first track; the second moves down by a lane.
+    studio.setAutomationOpen (first, true);
+    studio.dispatchPendingMessages();
+    const auto lane = arrange.getLaneArea (first, 0);
+    REQUIRE_FALSE (lane.isEmpty());
+    CHECK (arrange.trackTop (second) == secondTop + (float) Timeline::laneHeight);
+    CHECK (lane.getY() >= arrange.trackTop (first) + (float) Timeline::trackHeight);
+    // The track list's rows line up with the arrangement's.
+    std::vector<juce::Label*> labels;
+    findAll (view.getTrackList(), labels);
+    for (auto* label : labels)
+        if (label->getText() == "Synth 2")
+            CHECK ((float) label->getParentComponent()->getY() == arrange.trackTop (second));
+
+    // A click on the lane: a point there (snapped to the beat), and R comes on.
+    const auto click = [&] (juce::Point<float> at, juce::ModifierKeys mods = {})
+    {
+        arrange.mouseDown (mouseAt (arrange, at, at, mods));
+        arrange.mouseUp (mouseAt (arrange, at, at, mods));
+    };
+    const auto beatPixels = (float) Timeline().pixelsPerBeat;
+    const auto yFor = [&] (float value) { return lane.getBottom() - value * lane.getHeight(); };
+    CHECK_FALSE (studio.getAutomationRead (first));
+    click ({ 4.1f * beatPixels, yFor (0.75f) });
+    REQUIRE (studio.getAutomation (first)->at (0).points.size() == 1);
+    CHECK (studio.getAutomation (first)->at (0).points[0].beat == 4.0);
+    CHECK_THAT (studio.getAutomation (first)->at (0).points[0].value, WithinAbs (0.75, 0.01));
+    CHECK (studio.getAutomationRead (first));
+    click ({ 8.0f * beatPixels, yFor (0.25f) });
+    REQUIRE (studio.getAutomation (first)->at (0).points.size() == 2);
+    // On the line between them: nothing added (as the manual has it).
+    click ({ 6.0f * beatPixels, yFor (0.5f) });
+    CHECK (studio.getAutomation (first)->at (0).points.size() == 2);
+
+    // Drag the second point up (Ctrl: up and down only, so it stays on its beat).
+    const auto point = arrange.getPointPosition (first, 0, 1);
+    const auto ctrl = juce::ModifierKeys (juce::ModifierKeys::commandModifier);
+    arrange.mouseDown (mouseAt (arrange, point, point, ctrl));
+    arrange.mouseDrag (mouseAt (arrange, point + juce::Point<float> (6.0f, -lane.getHeight() * 0.5f), point, ctrl));
+    arrange.mouseUp (mouseAt (arrange, point + juce::Point<float> (6.0f, -lane.getHeight() * 0.5f), point, ctrl));
+    REQUIRE (studio.getAutomation (first)->at (0).points.size() == 2);
+    CHECK (studio.getAutomation (first)->at (0).points[1].beat == 8.0);
+    CHECK_THAT (studio.getAutomation (first)->at (0).points[1].value, WithinAbs (0.75, 0.02));
+    // Undo: back.
+    studio.undo();
+    studio.dispatchPendingMessages();
+    CHECK_THAT (studio.getAutomation (first)->at (0).points[1].value, WithinAbs (0.25, 0.01));
+
+    // Esc while dragging: back where it was, nothing changed.
+    const auto p0 = arrange.getPointPosition (first, 0, 0);
+    arrange.mouseDown (mouseAt (arrange, p0, p0));
+    arrange.mouseDrag (mouseAt (arrange, p0 + juce::Point<float> (60.0f, 0.0f), p0));
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::escapeKey)));
+    arrange.mouseUp (mouseAt (arrange, p0 + juce::Point<float> (60.0f, 0.0f), p0));
+    CHECK (studio.getAutomation (first)->at (0).points[0].beat == 4.0);
+
+    // A rectangle round both: selected; Delete removes them (not the part).
+    const juce::Point<float> from (2.0f * beatPixels, lane.getY() + 1.0f), to (10.0f * beatPixels, lane.getBottom() - 1.0f);
+    arrange.mouseDown (mouseAt (arrange, from, from));
+    arrange.mouseDrag (mouseAt (arrange, to, from));
+    arrange.mouseUp (mouseAt (arrange, to, from));
+    CHECK (arrange.getPointSelection().points.size() == 2);
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::deleteKey)));
+    CHECK (studio.getAutomation (first)->at (0).points.empty());
+
+    // Alt-drag draws several.
+    const auto alt = juce::ModifierKeys (juce::ModifierKeys::altModifier);
+    const juce::Point<float> start (2.0f * beatPixels, yFor (0.2f));
+    arrange.mouseDown (mouseAt (arrange, start, start, alt));
+    for (int i = 1; i <= 6; ++i)
+        arrange.mouseDrag (mouseAt (arrange, start + juce::Point<float> ((float) i * beatPixels, (float) (i % 2) * -20.0f), start, alt));
+    arrange.mouseUp (mouseAt (arrange, start + juce::Point<float> (6.0f * beatPixels, 0.0f), start, alt));
+    CHECK (studio.getAutomation (first)->at (0).points.size() >= 4);
+
+    // Alt+R / Alt+W: read / write for all tracks; the header's keys light.
+    CHECK (view.keyPressed (juce::KeyPress ('w', juce::ModifierKeys::altModifier, 'w')));
+    CHECK (studio.getAutomationWrite (first));
+    CHECK (studio.getAutomationWrite (second));
+    CHECK (studio.getAutomationWrite (Engine::masterBus));
+    CHECK (view.keyPressed (juce::KeyPress ('w', juce::ModifierKeys::altModifier, 'w')));
+    CHECK_FALSE (studio.anyAutomationWrite());
+    CHECK (view.keyPressed (juce::KeyPress ('r', juce::ModifierKeys::altModifier, 'r')));
+    CHECK_FALSE (studio.anyAutomationRead());
+    CHECK_FALSE (studio.getEngine().isRecording());   // (not R, which records)
+    CHECK (view.keyPressed (juce::KeyPress ('r', juce::ModifierKeys::altModifier, 'r')));
+
+    // The mixer's fader follows the automation while it's read.
+    studio.setAutomationPoints (first, 0, { { 0.0, volumeToTravel (-20.0f) } });
+    view.openMixer();
+    studio.dispatchPendingMessages();
+    renderSamples (studio.getEngine(), 512);
+    auto& strip = view.getMixer().getStrip (0);
+    strip.followMix();
+    CHECK_THAT (strip.getVolume().getValue(), WithinAbs (-20.0, 0.05));
+    CHECK (strip.getRead().getToggleState());
+
+    // The master's lanes: its row, R and W, and the volume lane under it.
+    studio.setAutomationOpen (Engine::masterBus, true);
+    studio.dispatchPendingMessages();
+    CHECK_FALSE (arrange.getLaneArea (Engine::masterBus, 0).isEmpty());
+    CHECK (studio.getAutomation (Engine::masterBus)->at (0).target == AutomationLane::Target::volume);
+
+    for (const auto type : { Finish::Type::pearlBlack, Finish::Type::pearlWhiteNeon, Finish::Type::pearlWhite })
+    {
+        Finish::set (type, false);
+        CHECK (view.createComponentSnapshot (view.getLocalBounds()).isValid());
+    }
+}
