@@ -559,7 +559,9 @@ void KeyEditor::stopAudition()
 bool KeyEditor::keyPressed (const juce::KeyPress& key)
 {
     const auto mods = key.getModifiers();
-    const auto letter = juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) key.getKeyCode());
+    const auto code = key.getKeyCode();   // a letter only if it is one (see MainView::keyPressed)
+    const auto letter = (code >= 'a' && code <= 'z') || (code >= 'A' && code <= 'Z')
+                          ? juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) code) : (juce::juce_wchar) 0;
     if (mods.isCommandDown() && letter == 'A')                                   { selectAll(); return true; }
     if (mods.isCommandDown() && letter == 'C')                                   { copySelected(); return true; }
     if (mods.isCommandDown() && letter == 'X')                                   { cutSelected(); return true; }

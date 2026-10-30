@@ -899,6 +899,9 @@ TEST_CASE ("Automation on screen: lanes under their track, lined up; click adds 
     CHECK_FALSE (studio.anyAutomationWrite());
     CHECK (view.keyPressed (juce::KeyPress ('r', juce::ModifierKeys::altModifier, 'r')));
     CHECK_FALSE (studio.anyAutomationRead());
+    // A function key is never taken for a letter: Windows gives F3 the code 0x10072 ('r' with a flag), which upper-cased reads as R.
+    view.keyPressed (juce::KeyPress (0x10000 | 'r', juce::ModifierKeys::altModifier, 0));
+    CHECK_FALSE (studio.anyAutomationRead());
     CHECK_FALSE (studio.getEngine().isRecording());   // (not R, which records)
     CHECK (view.keyPressed (juce::KeyPress ('r', juce::ModifierKeys::altModifier, 'r')));
 

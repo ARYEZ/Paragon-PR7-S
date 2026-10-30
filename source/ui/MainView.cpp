@@ -253,7 +253,10 @@ bool MainView::keyPressed (const juce::KeyPress& key)
 {
     const auto mods = key.getModifiers();
     const auto code = key.getKeyCode();
-    const auto letter = juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) code);
+    // A letter only if the key is one (on Windows an F-key's or the number
+    // pad's code, upper-cased, would come out as a letter: F3 as R).
+    const auto letter = (code >= 'a' && code <= 'z') || (code >= 'A' && code <= 'Z')
+                          ? juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) code) : (juce::juce_wchar) 0;
 
     if (isKeyEditorOpen() && keysToEditor && keyEditor.keyPressed (key))
         return true;
