@@ -23,6 +23,11 @@ namespace pr7s
     // solo) and records what's played live. It's the audio device's
     // callback; tests drive render() directly.
     //
+    // Each track: its instrument, then its inserts (effects) in order, then
+    // its volume and pan, into the master bus; the master's inserts, then
+    // its volume, to the output. The click joins after the master (so the
+    // master's effects never colour it).
+    //
     // Threads: the audio thread only ever tries the lock (if the screen is
     // swapping something in at that moment, that one block is silent rather
     // than the audio waiting). The message thread prepares everything
@@ -48,8 +53,19 @@ namespace pr7s
         // The track's instrument, for its editor window and saving its settings (or none).
         juce::AudioPluginInstance* getInstrument (int trackId) const;
 
+        // Inserts (message thread). `busId`: a track's id, or masterBus.
+        // An effect is put in at `slot` (the ones after it move down one),
+        // prepared first; none (nullptr) keeps the slot for an effect that
+        // couldn't be loaded (the sound goes past it).
+        static constexpr int masterBus = 0;   // track ids start at 1
+        void insertEffect (int busId, int slot, std::unique_ptr<juce::AudioPluginInstance>);
+        void removeEffect (int busId, int slot);   // deleted after it's out of the audio's way
+        juce::AudioPluginInstance* getEffect (int busId, int slot) const;
+        int getNumEffects (int busId) const;
+
         // Takes what it plays from the project: the tempo, signature, cycle
-        // and click, and each track's notes, volume, pan, mute and solo.
+        // and click, each track's notes, volume, pan, mute and solo, which
+        // inserts are bypassed, and the master's volume.
         // Call after every change.
         void update (const Project&);
 
@@ -80,8 +96,13 @@ namespace pr7s
         void render (juce::AudioBuffer<float>& output, int numSamples);
 
         // The output's level, and each track's (the highest since last asked).
-        LevelMeterSource& getOutputMeter (int channel) noexcept { return outputMeters[(size_t) juce::jlimit (0, 1, channel)]; }
-        float takeTrackPeak (int trackId);
+        // Each has two readers, so the transport and the track list (0) and
+        // the mixer (1) don't take each other's peaks.
+        LevelMeterSource& getOutputMeter (int channel, int reader = 0) noexcept
+        {
+            return outputMeters[(size_t) juce::jlimit (0, 1, reader)][(size_t) juce::jlimit (0, 1, channel)];
+        }
+        float takeTrackPeak (int trackId, int reader = 0);
 
         // AudioIODeviceCallback
         void audioDeviceIOCallbackWithContext (const float* const* inputChannelData, int numInputChannels,
@@ -97,17 +118,25 @@ namespace pr7s
             juce::uint8 status = 0, data1 = 0, data2 = 0;
         };
 
+        struct Slot
+        {
+            std::unique_ptr<juce::AudioPluginInstance> plugin;   // none: couldn't be loaded
+            bool bypass = false;
+        };
+
         struct TrackState
         {
             int id = 0;
             std::unique_ptr<juce::AudioPluginInstance> instrument;
+            int instrumentChannels = 2;  // what the instrument is given (its buffer may have more, for the inserts)
+            std::vector<Slot> inserts;
             std::vector<Event> events;   // every note on and off, by beat
             float gainLeft = 1.0f, gainRight = 1.0f;
             juce::SmoothedValue<float> left, right;
             std::bitset<128> held;       // notes sounding, to stop them on a jump or stop
             juce::MidiBuffer midi;
             juce::AudioBuffer<float> buffer;
-            LevelMeterSource meter;
+            std::array<LevelMeterSource, 2> meters;   // one per reader
         };
 
         struct Settings
@@ -117,6 +146,7 @@ namespace pr7s
             bool loopOn = false;
             double loopStart = 0.0, loopEnd = 16.0;
             bool click = false;
+            float masterGain = 1.0f;
         };
 
         // Gives instruments the tempo and position, as a DAW does.
@@ -128,6 +158,10 @@ namespace pr7s
 
         TrackState* findTrack (int id) const;
         void prepareTrack (TrackState&);
+        void prepareEffect (juce::AudioPluginInstance&);
+        static int channelsFor (const juce::AudioPluginInstance&);
+        int channelsNeeded (const TrackState&) const;
+        void runInserts (std::vector<Slot>&, juce::AudioBuffer<float>&, int numSamples);
         void schedule (TrackState&, juce::int64 fromSample, juce::int64 toSample, int sampleOffset, double beatsPerSample);
         void stopHeldNotes (TrackState&, int sampleOffset);
         void renderBlock (juce::AudioBuffer<float>& output, int numSamples);
@@ -163,8 +197,14 @@ namespace pr7s
         double clickPhase = 0.0, clickIncrement = 0.0;
         float clickLevel = 0.0f;
 
+        // The master bus.
+        std::vector<Slot> masterInserts;
+        juce::AudioBuffer<float> masterBuffer;
+        juce::SmoothedValue<float> masterGain;
+        juce::MidiBuffer effectMidi;   // effects get no MIDI
+
         Head head;
         juce::AudioBuffer<float> deviceBuffer;
-        std::array<LevelMeterSource, 2> outputMeters;
+        std::array<std::array<LevelMeterSource, 2>, 2> outputMeters;   // [reader][channel]
     };
 }

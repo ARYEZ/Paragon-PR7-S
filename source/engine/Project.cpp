@@ -7,7 +7,38 @@ namespace pr7s
         // Bump when the file layout changes in a way older versions can't read.
         constexpr int fileVersion = 1;
         const juce::Identifier projectTag { "PR7SProject" }, trackTag { "Track" }, partTag { "Part" }, noteTag { "Note" },
-                               stateTag { "InstrumentState" };
+                               stateTag { "InstrumentState" }, insertTag { "Insert" }, insertStateTag { "InsertState" },
+                               masterTag { "Master" };
+
+        void insertsToXml (const std::vector<Insert>& inserts, juce::XmlElement& parent)
+        {
+            for (const auto& insert : inserts)
+            {
+                auto* e = parent.createNewChildElement (insertTag);
+                e->setAttribute ("bypass", insert.bypass);
+                e->addChildElement (insert.plugin.createXml().release());
+                if (insert.state.getSize() > 0)
+                    e->createNewChildElement (insertStateTag)->addTextElement (insert.state.toBase64Encoding());
+            }
+        }
+
+        std::vector<Insert> insertsFromXml (const juce::XmlElement& parent)
+        {
+            std::vector<Insert> inserts;
+            for (const auto* e : parent.getChildWithTagNameIterator (insertTag))
+            {
+                if ((int) inserts.size() >= Project::maxInserts)
+                    break;
+                Insert insert;
+                insert.bypass = e->getBoolAttribute ("bypass");
+                if (const auto* description = e->getChildByName ("PLUGIN"))
+                    insert.plugin.loadFromXml (*description);
+                if (const auto* state = e->getChildByName (insertStateTag))
+                    insert.state.fromBase64Encoding (state->getAllSubText());
+                inserts.push_back (std::move (insert));
+            }
+            return inserts;
+        }
     }
 
     juce::String Instrument::getName() const
@@ -74,6 +105,7 @@ namespace pr7s
                 t->addChildElement (track.instrument.plugin.createXml().release());
             if (track.instrument.state.getSize() > 0)
                 t->createNewChildElement (stateTag)->addTextElement (track.instrument.state.toBase64Encoding());
+            insertsToXml (track.inserts, *t);
 
             for (const auto& part : track.parts)
             {
@@ -91,6 +123,9 @@ namespace pr7s
                 }
             }
         }
+        auto* master = xml->createNewChildElement (masterTag);
+        master->setAttribute ("volumeDb", masterVolumeDb);
+        insertsToXml (masterInserts, *master);
         return xml;
     }
 
@@ -128,6 +163,7 @@ namespace pr7s
             }
             if (const auto* state = t->getChildByName (stateTag))
                 track.instrument.state.fromBase64Encoding (state->getAllSubText());
+            track.inserts = insertsFromXml (*t);
 
             for (const auto* p : t->getChildWithTagNameIterator (partTag))
             {
@@ -145,6 +181,11 @@ namespace pr7s
             project.tracks.push_back (std::move (track));
         }
         project.nextTrackId = juce::jmax (highestId + 1, xml.getIntAttribute ("nextTrackId", 1));
+        if (const auto* master = xml.getChildByName (masterTag))   // songs from before 0.3.0 have none: 0 dB, no effects
+        {
+            project.masterVolumeDb = (float) juce::jlimit (-60.0, 6.0, master->getDoubleAttribute ("volumeDb", 0.0));
+            project.masterInserts = insertsFromXml (*master);
+        }
         return project;
     }
 

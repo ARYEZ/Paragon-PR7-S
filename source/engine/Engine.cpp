@@ -19,12 +19,18 @@ namespace pr7s
         }
     }
 
-    Engine::Engine() = default;
+    Engine::Engine()
+    {
+        masterInserts.reserve ((size_t) Project::maxInserts);
+        masterBuffer.setSize (2, maxBlockSize);
+        masterGain.setCurrentAndTargetValue (1.0f);
+    }
 
     Engine::~Engine()
     {
         const juce::ScopedLock sl (lock);
         tracks.clear();
+        masterInserts.clear();
     }
 
     void Engine::prepare (double newSampleRate, int newMaxBlockSize)
@@ -35,8 +41,52 @@ namespace pr7s
         midiInput.reset (sampleRate);
         live.ensureSize (2048);
         deviceBuffer.setSize (2, maxBlockSize);
+        effectMidi.ensureSize (16);
+        auto masterChannels = 2;
+        for (auto& slot : masterInserts)
+            if (slot.plugin != nullptr)
+            {
+                prepareEffect (*slot.plugin);
+                masterChannels = juce::jmax (masterChannels, channelsFor (*slot.plugin));
+            }
+        masterBuffer.setSize (masterChannels, maxBlockSize);
+        masterGain.reset (sampleRate, gainRampSeconds);
+        masterGain.setCurrentAndTargetValue (settings.masterGain);
         for (auto& track : tracks)
+        {
+            for (auto& slot : track->inserts)
+                if (slot.plugin != nullptr)
+                    prepareEffect (*slot.plugin);
             prepareTrack (*track);
+        }
+    }
+
+    int Engine::channelsFor (const juce::AudioPluginInstance& plugin)
+    {
+        return juce::jmax (1, plugin.getTotalNumInputChannels(), plugin.getTotalNumOutputChannels());
+    }
+
+    int Engine::channelsNeeded (const TrackState& track) const
+    {
+        auto channels = track.instrumentChannels;
+        for (const auto& slot : track.inserts)
+            if (slot.plugin != nullptr)
+                channels = juce::jmax (channels, channelsFor (*slot.plugin));
+        return channels;
+    }
+
+    void Engine::prepareEffect (juce::AudioPluginInstance& effect)
+    {
+        // Stereo in and out if it can; otherwise as it comes (a mono effect
+        // gets the two sides mixed, and its one output goes to both).
+        juce::AudioProcessor::BusesLayout stereo;
+        stereo.inputBuses.add (juce::AudioChannelSet::stereo());
+        stereo.outputBuses.add (juce::AudioChannelSet::stereo());
+        if (effect.getBusCount (true) > 0 && effect.getBusCount (false) > 0 && effect.checkBusesLayoutSupported (stereo))
+            effect.setBusesLayout (stereo);
+        effect.setPlayHead (&head);
+        effect.setRateAndBufferSizeDetails (sampleRate, maxBlockSize);
+        effect.prepareToPlay (sampleRate, maxBlockSize);
     }
 
     void Engine::prepareTrack (TrackState& track)
@@ -46,9 +96,9 @@ namespace pr7s
             track.instrument->setPlayHead (&head);
             track.instrument->setRateAndBufferSizeDetails (sampleRate, maxBlockSize);
             track.instrument->prepareToPlay (sampleRate, maxBlockSize);
-            const auto channels = juce::jmax (2, track.instrument->getTotalNumInputChannels(), track.instrument->getTotalNumOutputChannels());
-            track.buffer.setSize (channels, maxBlockSize);
+            track.instrumentChannels = juce::jmax (2, track.instrument->getTotalNumInputChannels(), track.instrument->getTotalNumOutputChannels());
         }
+        track.buffer.setSize (channelsNeeded (track), maxBlockSize);
         track.midi.ensureSize (4096);
         track.left.reset (sampleRate, gainRampSeconds);
         track.right.reset (sampleRate, gainRampSeconds);
@@ -71,7 +121,18 @@ namespace pr7s
         auto incoming = std::make_unique<TrackState>();
         incoming->id = trackId;
         incoming->instrument = std::move (instrument);
+        incoming->inserts.reserve ((size_t) Project::maxInserts);
         prepareTrack (*incoming);
+        // A track that has inserts already: room for them in the new buffer too.
+        if (const auto* existing = findTrack (trackId))
+        {
+            auto channels = incoming->instrumentChannels;
+            for (const auto& slot : existing->inserts)
+                if (slot.plugin != nullptr)
+                    channels = juce::jmax (channels, channelsFor (*slot.plugin));
+            if (channels > incoming->buffer.getNumChannels())
+                incoming->buffer.setSize (channels, maxBlockSize);
+        }
 
         std::unique_ptr<juce::AudioPluginInstance> old;
         {
@@ -81,7 +142,8 @@ namespace pr7s
                 // Keep the notes and mix; send the old instrument away.
                 old = std::move (existing->instrument);
                 existing->instrument = std::move (incoming->instrument);
-                existing->buffer = std::move (incoming->buffer);
+                existing->instrumentChannels = incoming->instrumentChannels;
+                std::swap (existing->buffer, incoming->buffer);
                 existing->held.reset();
             }
             else
@@ -114,6 +176,67 @@ namespace pr7s
         return track != nullptr ? track->instrument.get() : nullptr;
     }
 
+    void Engine::insertEffect (int busId, int slot, std::unique_ptr<juce::AudioPluginInstance> effect)
+    {
+        if (effect != nullptr)
+            prepareEffect (*effect);
+
+        // A track not here yet (its instrument couldn't be loaded): kept anyway, silent.
+        if (busId != masterBus && findTrack (busId) == nullptr)
+        {
+            auto silent = std::make_unique<TrackState>();
+            silent->id = busId;
+            silent->inserts.reserve ((size_t) Project::maxInserts);
+            prepareTrack (*silent);
+            const juce::ScopedLock sl (lock);
+            tracks.push_back (std::move (silent));
+        }
+
+        // A bigger buffer, if this effect has more channels, made here; swapped in below.
+        auto& inserts = busId == masterBus ? masterInserts : findTrack (busId)->inserts;
+        auto& buffer = busId == masterBus ? masterBuffer : findTrack (busId)->buffer;
+        juce::AudioBuffer<float> bigger;
+        if (effect != nullptr && channelsFor (*effect) > buffer.getNumChannels())
+            bigger.setSize (channelsFor (*effect), maxBlockSize);
+
+        const juce::ScopedLock sl (lock);
+        Slot added;
+        added.plugin = std::move (effect);
+        inserts.insert (inserts.begin() + juce::jlimit (0, (int) inserts.size(), slot), std::move (added));
+        if (bigger.getNumChannels() > 0)
+            std::swap (buffer, bigger);
+    }
+
+    void Engine::removeEffect (int busId, int slot)
+    {
+        std::unique_ptr<juce::AudioPluginInstance> removed;
+        {
+            const juce::ScopedLock sl (lock);
+            auto* track = busId == masterBus ? nullptr : findTrack (busId);
+            auto* inserts = busId == masterBus ? &masterInserts : track != nullptr ? &track->inserts : nullptr;
+            if (inserts == nullptr || ! juce::isPositiveAndBelow (slot, (int) inserts->size()))
+                return;
+            removed = std::move ((*inserts)[(size_t) slot].plugin);
+            inserts->erase (inserts->begin() + slot);
+        }
+        // `removed` is deleted here, outside the lock.
+    }
+
+    juce::AudioPluginInstance* Engine::getEffect (int busId, int slot) const
+    {
+        const juce::ScopedLock sl (lock);
+        const auto* track = busId == masterBus ? nullptr : findTrack (busId);
+        const auto* inserts = busId == masterBus ? &masterInserts : track != nullptr ? &track->inserts : nullptr;
+        return inserts != nullptr && juce::isPositiveAndBelow (slot, (int) inserts->size()) ? (*inserts)[(size_t) slot].plugin.get() : nullptr;
+    }
+
+    int Engine::getNumEffects (int busId) const
+    {
+        const juce::ScopedLock sl (lock);
+        const auto* track = busId == masterBus ? nullptr : findTrack (busId);
+        return busId == masterBus ? (int) masterInserts.size() : track != nullptr ? (int) track->inserts.size() : 0;
+    }
+
     void Engine::update (const Project& project)
     {
         // Each track's notes as note on/off events by beat, built here
@@ -122,11 +245,13 @@ namespace pr7s
         for (const auto& track : project.tracks)
             anySolo = anySolo || track.solo;
 
-        struct Prepared { int id; std::vector<Event> events; std::pair<float, float> gains; };
+        struct Prepared { int id; std::vector<Event> events; std::pair<float, float> gains; std::vector<bool> bypass; };
         std::vector<Prepared> prepared;
         for (const auto& track : project.tracks)
         {
-            Prepared p { track.id, {}, sideGains (track, ! track.mute && (! anySolo || track.solo)) };
+            Prepared p { track.id, {}, sideGains (track, ! track.mute && (! anySolo || track.solo)), {} };
+            for (const auto& insert : track.inserts)
+                p.bypass.push_back (insert.bypass);
             for (const auto& part : track.parts)
                 for (const auto& note : part.notes)
                 {
@@ -148,16 +273,22 @@ namespace pr7s
             prepared.push_back (std::move (p));
         }
 
+        const auto masterLevel = project.masterVolumeDb <= -59.9f ? 0.0f : juce::Decibels::decibelsToGain (project.masterVolumeDb);
+
         const juce::ScopedLock sl (lock);
         settings = { project.bpm, project.numerator, project.denominator, project.loopOn,
-                     project.loopStart, juce::jmax (project.loopStart + 0.0625, project.loopEnd), project.click };
+                     project.loopStart, juce::jmax (project.loopStart + 0.0625, project.loopEnd), project.click, masterLevel };
         for (auto& p : prepared)
             if (auto* track = findTrack (p.id))
             {
                 std::swap (track->events, p.events);   // the old list goes out with `prepared`
                 track->gainLeft = p.gains.first;
                 track->gainRight = p.gains.second;
+                for (size_t i = 0; i < juce::jmin (p.bypass.size(), track->inserts.size()); ++i)
+                    track->inserts[i].bypass = p.bypass[i];
             }
+        for (size_t i = 0; i < juce::jmin (project.masterInserts.size(), masterInserts.size()); ++i)
+            masterInserts[i].bypass = project.masterInserts[i].bypass;
     }
 
     //==========================================================================
@@ -196,11 +327,40 @@ namespace pr7s
             into.push_back (recordedEvents[(size_t) (scope.startIndex2 + i)]);
     }
 
-    float Engine::takeTrackPeak (int trackId)
+    float Engine::takeTrackPeak (int trackId, int reader)
     {
         const juce::ScopedLock sl (lock);
         auto* track = findTrack (trackId);
-        return track != nullptr ? track->meter.takePeak() : 0.0f;
+        return track != nullptr ? track->meters[(size_t) juce::jlimit (0, 1, reader)].takePeak() : 0.0f;
+    }
+
+    void Engine::runInserts (std::vector<Slot>& slots, juce::AudioBuffer<float>& buffer, int numSamples)
+    {
+        // In order, each on the sound in place. (Audio thread: no allocation.)
+        for (auto& slot : slots)
+        {
+            if (slot.plugin == nullptr || slot.bypass)
+                continue;
+            auto& effect = *slot.plugin;
+            const auto ins = effect.getTotalNumInputChannels(), outs = effect.getTotalNumOutputChannels();
+            const auto channels = juce::jmin (buffer.getNumChannels(), channelsFor (effect));
+            // (On the samples themselves, not through the buffer's own
+            // methods, which skip work on a buffer they think is silent.)
+            if (ins == 1 && buffer.getNumChannels() > 1)
+            {
+                // Mono in: both sides, mixed.
+                auto* left = buffer.getWritePointer (0);
+                juce::FloatVectorOperations::multiply (left, 0.5f, numSamples);
+                juce::FloatVectorOperations::addWithMultiply (left, buffer.getReadPointer (1), 0.5f, numSamples);
+            }
+            for (int channel = ins; channel < channels; ++channel)
+                juce::FloatVectorOperations::clear (buffer.getWritePointer (channel), numSamples);
+            juce::AudioBuffer<float> view (buffer.getArrayOfWritePointers(), channels, numSamples);
+            effectMidi.clear();
+            effect.processBlock (view, effectMidi);
+            if (outs == 1 && buffer.getNumChannels() > 1)   // mono out: to both sides
+                juce::FloatVectorOperations::copy (buffer.getWritePointer (1), buffer.getReadPointer (0), numSamples);
+        }
     }
 
     //==========================================================================
@@ -363,7 +523,11 @@ namespace pr7s
             position = (double) clock * beatsPerSample;
         }
 
-        // Each instrument plays its notes and what's played live into it.
+        // Each instrument plays its notes and what's played live into it;
+        // then its inserts; then its volume and pan, into the master bus.
+        for (int channel = 0; channel < masterBuffer.getNumChannels(); ++channel)
+            juce::FloatVectorOperations::clear (masterBuffer.getWritePointer (channel), numSamples);
+        juce::AudioBuffer<float> master (masterBuffer.getArrayOfWritePointers(), masterBuffer.getNumChannels(), numSamples);
         const auto liveId = liveTrack.load();
         for (auto& track : tracks)
         {
@@ -372,27 +536,45 @@ namespace pr7s
             if (track->instrument == nullptr)
                 continue;
 
+            // (Cleared and copied sample by sample: JUCE buffers remember being
+            // cleared, and a view cleared here wouldn't see the instrument's
+            // sound written through another view, then skip mixing it.)
+            for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
+                juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
+            juce::AudioBuffer<float> played (track->buffer.getArrayOfWritePointers(), track->instrumentChannels, numSamples);
+            track->instrument->processBlock (played, track->midi);
+            if (track->instrument->getTotalNumOutputChannels() == 1)   // a mono instrument: on both sides
+                juce::FloatVectorOperations::copy (track->buffer.getWritePointer (1), track->buffer.getReadPointer (0), numSamples);
             juce::AudioBuffer<float> sound (track->buffer.getArrayOfWritePointers(), track->buffer.getNumChannels(), numSamples);
-            sound.clear();
-            track->instrument->processBlock (sound, track->midi);
+            runInserts (track->inserts, sound, numSamples);
 
             track->left.setTargetValue (track->gainLeft);
             track->right.setTargetValue (track->gainRight);
             const auto* left = sound.getReadPointer (0);
-            const auto* right = track->instrument->getTotalNumOutputChannels() > 1 ? sound.getReadPointer (1) : left;
-            auto* outLeft = output.getWritePointer (0);
-            auto* outRight = output.getNumChannels() > 1 ? output.getWritePointer (1) : nullptr;
+            const auto* right = sound.getReadPointer (1);
+            auto* outLeft = master.getWritePointer (0);
+            auto* outRight = master.getWritePointer (1);
             float peak = 0.0f;
             for (int i = 0; i < numSamples; ++i)
             {
                 const auto l = left[i] * track->left.getNextValue();
                 const auto r = right[i] * track->right.getNextValue();
                 outLeft[i] += l;
-                if (outRight != nullptr)
-                    outRight[i] += r;
+                outRight[i] += r;
                 peak = juce::jmax (peak, std::abs (l), std::abs (r));
             }
-            track->meter.pushSamples (&peak, 1);
+            for (auto& meter : track->meters)
+                meter.pushSamples (&peak, 1);
+        }
+
+        // The master: its inserts, then its volume, to the output.
+        runInserts (masterInserts, master, numSamples);
+        masterGain.setTargetValue (settings.masterGain);
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const auto gain = masterGain.getNextValue();
+            for (int channel = 0; channel < juce::jmin (2, output.getNumChannels()); ++channel)
+                output.setSample (channel, i, master.getSample (channel, i) * gain);
         }
 
         // The click: a short tone at each beat, higher on the bar's first.
@@ -418,7 +600,8 @@ namespace pr7s
         }
 
         for (int channel = 0; channel < juce::jmin (2, output.getNumChannels()); ++channel)
-            outputMeters[(size_t) channel].pushSamples (output.getReadPointer (channel), numSamples);
+            for (auto& reader : outputMeters)
+                reader[(size_t) channel].pushSamples (output.getReadPointer (channel), numSamples);
     }
 
     //==========================================================================
@@ -452,7 +635,15 @@ namespace pr7s
     {
         const juce::ScopedLock sl (lock);
         for (auto& track : tracks)
+        {
             if (track->instrument != nullptr)
                 track->instrument->releaseResources();
+            for (auto& slot : track->inserts)
+                if (slot.plugin != nullptr)
+                    slot.plugin->releaseResources();
+        }
+        for (auto& slot : masterInserts)
+            if (slot.plugin != nullptr)
+                slot.plugin->releaseResources();
     }
 }

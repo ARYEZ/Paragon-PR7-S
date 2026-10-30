@@ -97,3 +97,99 @@ inline float levelAt (const std::vector<float>& signal, double hz, double sample
     const auto n = (double) (to - from);
     return (float) (2.0 * std::sqrt (juce::jmax (0.0, s1 * s1 + s2 * s2 - coefficient * s1 * s2)) / n);
 }
+
+// A plugin for tests that makes no noise of its own: subclasses fill in the sound.
+struct TestPlugin : juce::AudioPluginInstance
+{
+    using AudioPluginInstance::AudioPluginInstance;
+    const juce::String getName() const override { return name; }
+    void fillInPluginDescription (juce::PluginDescription& d) const override { d.name = name; d.pluginFormatName = "Test"; d.isInstrument = instrument; }
+    void prepareToPlay (double, int) override {}
+    void releaseResources() override {}
+    using AudioPluginInstance::processBlock;
+    double getTailLengthSeconds() const override { return 0.0; }
+    bool acceptsMidi() const override { return instrument; }
+    bool producesMidi() const override { return false; }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    bool hasEditor() const override { return false; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram (int) override {}
+    const juce::String getProgramName (int) override { return {}; }
+    void changeProgramName (int, const juce::String&) override {}
+    void getStateInformation (juce::MemoryBlock& block) override { block.replaceAll (state.toRawUTF8(), state.getNumBytesAsUTF8()); }
+    void setStateInformation (const void* data, int size) override { state = juce::String::fromUTF8 ((const char*) data, size); }
+
+    juce::String name { "Test" }, state;
+    bool instrument = false;
+};
+
+// An instrument that plays a steady level on each side (a DC "tone"), so levels can be read off exactly.
+struct SteadyTone final : TestPlugin
+{
+    SteadyTone (float leftLevel, float rightLevel)
+        : TestPlugin (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)), left (leftLevel), right (rightLevel)
+    {
+        instrument = true;
+        name = "Steady Tone";
+    }
+    void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
+    {
+        buffer.clear();
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+        {
+            buffer.setSample (0, i, left);
+            buffer.setSample (1, i, right);
+        }
+    }
+    float left, right;
+};
+
+// An effect that does what it's given to each block, with `channels` in and
+// out only (1: a mono effect; it refuses stereo, as a real mono plugin would).
+struct TestEffect final : TestPlugin
+{
+    TestEffect (std::function<void (juce::AudioBuffer<float>&)> processToUse, int channelsToUse = 2, const juce::String& nameToUse = "Test Effect",
+                bool* aliveFlag = nullptr)
+        : TestPlugin (BusesProperties().withInput ("Input", juce::AudioChannelSet::canonicalChannelSet (channelsToUse), true)
+                                       .withOutput ("Output", juce::AudioChannelSet::canonicalChannelSet (channelsToUse), true)),
+          process (std::move (processToUse)), channels (channelsToUse), alive (aliveFlag)
+    {
+        name = nameToUse;
+        if (alive != nullptr)
+            *alive = true;
+    }
+    ~TestEffect() override
+    {
+        if (alive != nullptr)
+            *alive = false;
+    }
+    bool isBusesLayoutSupported (const BusesLayout& layout) const override
+    {
+        return layout.getMainInputChannels() == channels && layout.getMainOutputChannels() == channels;
+    }
+    void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
+    {
+        channelsSeen = buffer.getNumChannels();
+        process (buffer);
+    }
+    std::function<void (juce::AudioBuffer<float>&)> process;
+    int channels, channelsSeen = 0;
+    bool* alive;
+};
+
+// Effects for the tests: times a number, plus a number.
+inline std::unique_ptr<TestEffect> timesEffect (float gain, const juce::String& name = "Times", bool* alive = nullptr)
+{
+    return std::make_unique<TestEffect> ([gain] (juce::AudioBuffer<float>& b) { b.applyGain (gain); }, 2, name, alive);
+}
+
+inline std::unique_ptr<TestEffect> plusEffect (float amount, const juce::String& name = "Plus")
+{
+    return std::make_unique<TestEffect> ([amount] (juce::AudioBuffer<float>& b)
+    {
+        for (int c = 0; c < b.getNumChannels(); ++c)
+            for (int i = 0; i < b.getNumSamples(); ++i)
+                b.addSample (c, i, amount);
+    }, 2, name);
+}

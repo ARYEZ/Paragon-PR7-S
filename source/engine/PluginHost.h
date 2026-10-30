@@ -19,8 +19,9 @@ namespace pr7s
         juce::AudioPluginFormatManager& getFormats() noexcept { return formats; }
         juce::KnownPluginList& getKnownPlugins() noexcept { return known; }
 
-        // The VST3 instruments found so far, sorted by maker then name.
+        // The VST3 instruments found so far, sorted by maker then name; and the effects.
         juce::Array<juce::PluginDescription> getInstruments() const;
+        juce::Array<juce::PluginDescription> getEffects() const;
 
         // Makes a track's instrument, with its saved settings put back (the
         // Paragon Synth, or the VST3 plugin; none, with `error` set, if it
@@ -28,6 +29,10 @@ namespace pr7s
         // Message thread only.
         std::unique_ptr<juce::AudioPluginInstance> create (const Instrument&, double sampleRate, int blockSize,
                                                            juce::String& error);
+
+        // Makes an insert's effect, with its saved settings put back (none,
+        // with `error` set, if it can't be loaded). Message thread only.
+        std::unique_ptr<juce::AudioPluginInstance> createEffect (const Insert&, double sampleRate, int blockSize, juce::String& error);
 
         // Where a crashing plugin is noted during a scan, so it's skipped next time.
         static juce::File deadMansPedalFile();

@@ -44,8 +44,10 @@ namespace pr7s
         void renameTrack (int trackId, const juce::String&);
         void setMute (int trackId, bool);
         void setSolo (int trackId, bool);
-        void setVolume (int trackId, float db);
-        void setPan (int trackId, float pan);
+        // `undoable` off: heard straight away but not an undo step yet (a
+        // fader being dragged); the drag's last value, undoable, makes it one.
+        void setVolume (int trackId, float db, bool undoable = true);
+        void setPan (int trackId, float pan, bool undoable = true);
         // Record-arms one track (or none, with 0): recording goes there.
         // Inspired by Cubase's workflow (record follows the selected track), selecting arms too.
         void setArmed (int trackId);
@@ -64,6 +66,22 @@ namespace pr7s
         // A part's notes, replaced (the key editor's every edit: one undo step each).
         // Kept in the order given, so the editor's selection still points at the same notes.
         void setNotes (int trackId, int index, std::vector<Note>);
+
+        //======================================================================
+        // The mixer: each track's inserts and the master's (`busId`: a
+        // track's id, or Engine::masterBus). Adding, replacing and removing
+        // effects isn't undoable (as with instruments); bypass isn't either;
+        // the master's volume is.
+        const std::vector<Insert>* getInserts (int busId) const;   // none if there's no such track
+        bool addInsert (int busId, const juce::PluginDescription&, juce::String* error = nullptr);   // at the end
+        bool addInsert (int busId, const Insert&, std::unique_ptr<juce::AudioPluginInstance>);     // one made elsewhere (tests)
+        bool replaceInsert (int busId, int slot, const juce::PluginDescription&, juce::String* error = nullptr);
+        void removeInsert (int busId, int slot);
+        void setInsertBypass (int busId, int slot, bool);
+        void setMasterVolume (float db, bool undoable = true);
+        // Told just before an effect is deleted (nullptr: every effect, for a
+        // new or opened song), so its window closes while it still exists.
+        std::function<void (juce::AudioProcessor*)> onEffectGoing;
 
         //======================================================================
         // The song.
@@ -105,6 +123,9 @@ namespace pr7s
     private:
         void changed (bool undoable = true);
         void numberParts();   // an id for every part that hasn't one
+        std::vector<Insert>* insertsOf (int busId);
+        void effectGoing (int busId, int slot);
+        void removeAllEffects();
         void recordUndoState();
         void restore (const Project&);
         void updateLiveTrack();

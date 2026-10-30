@@ -9,7 +9,7 @@ namespace
     const auto orange = LedDisplay::ledOrange;
     constexpr float screenSize = 0.55f;
 
-    juce::FontOptions font (float height, int style = juce::Font::bold) { return juce::FontOptions (height, style); }
+    juce::FontOptions font (float height, int style = juce::Font::bold) { return ParagonLookAndFeel::textFont (height, style); }
 
     void stamped (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> area, float height,
                   juce::Justification justification = juce::Justification::centred)

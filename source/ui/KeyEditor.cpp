@@ -12,7 +12,7 @@ namespace
     const juce::Colour whiteRow { 0xff120e13 }, blackRow { 0xff0b090c }, gridBar { 0xff2e252c }, gridBeat { 0xff1d171c },
                        gridStep { 0xff161216 }, octaveLine { 0xff2a2229 };
 
-    juce::FontOptions font (float height, int style = juce::Font::bold) { return juce::FontOptions (height, style); }
+    juce::FontOptions font (float height, int style = juce::Font::bold) { return ParagonLookAndFeel::textFont (height, style); }
 
     bool isBlackKey (int pitch) noexcept
     {
@@ -941,10 +941,10 @@ void KeyEditor::paintPanel (juce::Graphics& g)
 
     auto area = panel.withTrimmedLeft (18.0f).reduced (0.0f, 8.0f).withTrimmedRight (156.0f);
     g.setColour (ParagonColours::accent);
-    g.setFont (font (9.5f));
+    g.setFont (ParagonLookAndFeel::titleFont (9.5f));
     g.drawText ("KEY EDITOR", area.removeFromTop (12.0f), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::text);
-    g.setFont (font (15.0f));
+    g.setFont (ParagonLookAndFeel::titleFont (15.0f));
     g.drawText (part != nullptr ? (part->name.isNotEmpty() ? part->name : juce::String ("Part")) : juce::String ("No part"),
                 area.removeFromTop (20.0f), juce::Justification::centredLeft, true);
     g.setColour (ParagonColours::textDim);

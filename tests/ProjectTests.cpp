@@ -48,7 +48,16 @@ TEST_CASE ("A project saves and opens with everything in it", "[project]")
     synth.armed = true;
     Part part { 4.0, 8.0, "Riff", { { 0.0, 0.5, 64, 0.9f }, { 1.5, 0.25, 67, 0.5f } } };
     synth.parts.push_back (part);
+    Insert delay;
+    delay.plugin.name = "PR7-C";
+    delay.plugin.pluginFormatName = "VST3";
+    delay.plugin.fileOrIdentifier = "C:/VST3/Paragon PR7-C.vst3";
+    delay.state.append ("strip!", 6);
+    delay.bypass = true;
+    synth.inserts.push_back (delay);
     project.tracks.push_back (synth);
+    project.masterVolumeDb = -3.5f;
+    project.masterInserts.push_back (delay);
 
     Track plugin;
     plugin.id = 7;
@@ -89,6 +98,21 @@ TEST_CASE ("A project saves and opens with everything in it", "[project]")
     CHECK (keys.instrument.plugin.fileOrIdentifier == "C:/VST3/Some Piano.vst3");
     CHECK (keys.instrument.state.toString() == "settings!");
     CHECK (loaded->nextTrackId == 8);
+    // The mixer: the track's inserts and the master's.
+    REQUIRE (lead.inserts.size() == 1);
+    CHECK (lead.inserts[0].plugin.name == "PR7-C");
+    CHECK (lead.inserts[0].plugin.fileOrIdentifier == "C:/VST3/Paragon PR7-C.vst3");
+    CHECK (lead.inserts[0].state.toString() == "strip!");
+    CHECK (lead.inserts[0].bypass);
+    CHECK (keys.inserts.empty());
+    CHECK (loaded->masterVolumeDb == -3.5f);
+    REQUIRE (loaded->masterInserts.size() == 1);
+    CHECK (loaded->masterInserts[0].plugin.name == "PR7-C");
+
+    // A song from before the mixer: master at 0 dB, no effects.
+    auto old = project.toXml();
+    old->removeChildElement (old->getChildByName ("Master"), true);
+    CHECK (Project::fromXml (*old)->masterVolumeDb == 0.0f);
 
     // Not a project: nothing.
     CHECK_FALSE (Project::fromXml (juce::XmlElement ("Something")).has_value());

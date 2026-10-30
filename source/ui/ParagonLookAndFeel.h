@@ -65,11 +65,30 @@ public:
     // Set this on a vertical slider to draw it as a graphic-EQ fader: a thin
     // groove lit from its centre (0 dB) to the cap, and a small black cap.
     static constexpr const char* eqFaderProperty = "eqFader";
+    // With eqFader: lit from the bottom to the cap (a volume fader), not from the centre.
+    static constexpr const char* faderFromBottomProperty = "faderFromBottom";
     static constexpr int eqFaderThumbRadius = 7;
 
     // Every font in the plugin is Inter, built in: semibold for bold text,
     // and the heavy display italic for bold italic (the PARAGON badge).
     juce::Typeface::Ptr getTypefaceForFont (const juce::Font&) override;
+
+    // Which text is in Bebas Neue (capitals only, tall and narrow): none
+    // (all Inter, as the other PR7s), the titles and buttons, or everything
+    // the studio draws (not the LED screens or tooltips). The owner chose
+    // everything (0.3.1); the others stay for comparing renders.
+    enum class DisplayFont { inter, bebasTitles, bebasEverywhere };
+    static void setDisplayFont (DisplayFont);
+    static DisplayFont getDisplayFont();
+    // The fonts to draw with: `textFont` for ordinary text, `titleFont` for
+    // titles and buttons. Bebas is drawn larger (bebasScale) so its narrow
+    // capitals look the size Inter's text does.
+    static juce::FontOptions textFont (float height, int style = juce::Font::bold);
+    static juce::FontOptions titleFont (float height);
+    static constexpr float bebasScale = 1.3f;
+    juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override;
+    juce::Font getPopupMenuFont() override;
+    juce::Font getComboBoxFont (juce::ComboBox&) override;
 
     void drawRotarySlider (juce::Graphics&, int x, int y, int width, int height,
                            float sliderPosProportional, float rotaryStartAngle,
@@ -96,7 +115,7 @@ public:
     void drawButtonText (juce::Graphics&, juce::TextButton&, bool highlighted, bool down) override;
 
 private:
-    juce::Typeface::Ptr regular, semiBold, blackItalic;
+    juce::Typeface::Ptr regular, semiBold, blackItalic, bebas;
 
     static void drawPedalKnob (juce::Graphics&, juce::Rectangle<float> bounds, float angle);
 

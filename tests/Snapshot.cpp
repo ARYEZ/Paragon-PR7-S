@@ -11,6 +11,7 @@
 //   PARAGON_SNAPSHOT=studio.png ./ParagonPR7STests "[snapshot]"
 // PARAGON_SNAPSHOT_WIDTH sets the width (default 1500; 3000 for 2x).
 // PARAGON_SNAPSHOT_FINISH=black or =neon picks the finish.
+// PARAGON_SNAPSHOT_ZONE=mixer shows the mixer in the lower zone (the key editor otherwise).
 TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
 {
     using namespace pr7s;
@@ -18,7 +19,12 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
     Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
 
-    // The app's look, as Main.cpp sets it.
+    // The app's look, as Main.cpp sets it (PARAGON_SNAPSHOT_FONT=inter or
+    // =titles to compare the other font choices; Bebas Neue everywhere otherwise).
+    const auto fontChoice = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FONT", {});
+    ParagonLookAndFeel::setDisplayFont (fontChoice == "titles" ? ParagonLookAndFeel::DisplayFont::bebasTitles
+                                        : fontChoice == "inter" ? ParagonLookAndFeel::DisplayFont::inter
+                                                                : ParagonLookAndFeel::DisplayFont::bebasEverywhere);
     ParagonLookAndFeel lookAndFeel;
     juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
     struct Reset { ~Reset() { juce::LookAndFeel::setDefaultLookAndFeel (nullptr); } } reset;
@@ -67,11 +73,47 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     }
     studio.stop();
     studio.getEngine().setPosition (21.0);
-    // The key editor open on the lead part, a few of its notes selected.
+    // The key editor open on the lead part, a few of its notes selected;
+    // or the mixer, with some effects in (stand-ins named after the family's
+    // plugins: the tests can't load real VST3s).
     view.getArrangeView().select (lead, 0);
-    view.openKeyEditor();
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_ZONE", {}) == "mixer")
+    {
+        const auto add = [&studio] (int busId, const juce::String& name, bool bypass = false)
+        {
+            Insert insert;
+            insert.plugin.name = name;
+            studio.addInsert (busId, insert, timesEffect (1.0f, name));
+            if (bypass)
+                studio.setInsertBypass (busId, (int) studio.getInserts (busId)->size() - 1, true);
+        };
+        add (keys, "Paragon PR7-C");
+        add (bass, "Paragon PR7-B");
+        add (bass, "Paragon PR7-C", true);
+        add (lead, "Paragon PR7-G");
+        add (Engine::masterBus, "Paragon PR7-C");
+        studio.setVolume (keys, -4.5f);
+        studio.setPan (keys, -0.3f);
+        studio.setVolume (lead, -8.0f);
+        studio.setPan (lead, 0.25f);
+        studio.setMasterVolume (-1.5f);
+        view.openMixer();
+        studio.play();
+        for (int round = 0; round < 4; ++round)
+        {
+            renderSamples (studio.getEngine(), 4096);
+            juce::Timer::callPendingTimersSynchronously();
+            juce::Thread::sleep (30);
+        }
+        studio.stop();
+    }
+    else
+    {
+        view.openKeyEditor();
+        studio.dispatchPendingMessages();
+        view.getKeyEditor().selectNotes ({ 3, 4, 5 });
+    }
     studio.dispatchPendingMessages();
-    view.getKeyEditor().selectNotes ({ 3, 4, 5 });
 
     const auto image = view.createComponentSnapshot (view.getLocalBounds(), true, scale);
     const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (path);

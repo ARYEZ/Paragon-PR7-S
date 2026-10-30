@@ -6,7 +6,7 @@
 
 namespace
 {
-    juce::FontOptions font (float height, int style = juce::Font::bold) { return juce::FontOptions (height, style); }
+    juce::FontOptions font (float height, int style = juce::Font::bold) { return ParagonLookAndFeel::textFont (height, style); }
 }
 
 MainView::MainView (pr7s::Studio& studioToUse)
@@ -15,9 +15,10 @@ MainView::MainView (pr7s::Studio& studioToUse)
       trackList (studioToUse, timeline),
       arrange (studioToUse, timeline),
       keyEditor (studioToUse, arrange),
-      keyboard (studioToUse.getEngine().getKeyboardState(), juce::MidiKeyboardComponent::horizontalKeyboard)
+      mixer (studioToUse)
 {
-    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &undoButton, &redoButton, &editorButton, &pluginsButton, &settingsButton })
+    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &undoButton, &redoButton, &editorButton, &mixerButton,
+                          &pluginsButton, &settingsButton })
     {
         button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
         button->setColour (juce::TextButton::textColourOffId, ParagonColours::text);
@@ -32,7 +33,9 @@ MainView::MainView (pr7s::Studio& studioToUse)
     redoButton.setTooltip ("Redo (Ctrl+Shift+Z)");
     editorButton.setTooltip ("The key editor: the selected part's notes (Ctrl+E; or double-click a part)");
     editorButton.setColour (juce::TextButton::textColourOnId, ParagonColours::accent);
-    pluginsButton.setTooltip ("Find your VST3 instruments");
+    mixerButton.setTooltip ("The mixer: each track's channel, its effects and the master (F3)");
+    mixerButton.setColour (juce::TextButton::textColourOnId, ParagonColours::accent);
+    pluginsButton.setTooltip ("Find your VST3 instruments and effects");
     settingsButton.setTooltip ("Audio interface, MIDI inputs and the finish");
     newButton.onClick = [this] { newProject(); };
     openButton.onClick = [this] { openProject(); };
@@ -40,7 +43,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
     saveAsButton.onClick = [this] { saveProjectAs(); };
     undoButton.onClick = [this] { studio.undo(); };
     redoButton.onClick = [this] { studio.redo(); };
-    editorButton.onClick = [this] { keyEditorOpen ? closeKeyEditor() : openKeyEditor(); };
+    editorButton.onClick = [this] { isKeyEditorOpen() ? closeKeyEditor() : openKeyEditor(); };
+    mixerButton.onClick = [this] { isMixerOpen() ? closeMixer() : openMixer(); };
     pluginsButton.onClick = [this] { openPlugins(); };
     settingsButton.onClick = [this] { openSettings(); };
 
@@ -48,31 +52,32 @@ MainView::MainView (pr7s::Studio& studioToUse)
     addAndMakeVisible (trackList);
     addAndMakeVisible (arrange);
     addChildComponent (keyEditor);
+    addChildComponent (mixer);
     keyEditor.onClose = [this] { closeKeyEditor(); };
+    mixer.onClose = [this] { closeMixer(); };
     // Not straight away: the click that asked is still going on in the window.
     keyEditor.onWindowToggle = [safe = juce::Component::SafePointer<MainView> (this)]
     {
-        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->setKeyEditorInWindow (! safe->keyEditorInWindow); });
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->setKeyEditorInWindow (! safe->isKeyEditorInWindow()); });
     };
+    mixer.onWindowToggle = [safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->setMixerInWindow (! safe->isMixerInWindow()); });
+    };
+    mixer.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
+    mixer.onFindPlugins = [this] { openPlugins(); };
     if (auto* settings = studio.getSettings())
-        keyEditorInWindow = settings->getBoolValue ("keyEditorInWindow", false);
-    keyEditor.setInWindow (keyEditorInWindow);
+    {
+        editorZone.inWindow = settings->getBoolValue ("keyEditorInWindow", false);
+        mixerZone.inWindow = settings->getBoolValue ("mixerInWindow", false);
+    }
+    keyEditor.setInWindow (editorZone.inWindow);
+    mixer.setInWindow (mixerZone.inWindow);
     arrange.onEditNotes = [this] { openKeyEditor(); };
     // Told of clicks in the work areas, to know where the keys go.
     arrange.addMouseListener (this, true);
     trackList.addMouseListener (this, true);
     keyEditor.addMouseListener (this, true);
-
-    // The on-screen keyboard: keys in the PR7's colours, middle C marked.
-    keyboard.setAvailableRange (24, 108);
-    keyboard.setKeyWidth (18.0f);
-    keyboard.setLowestVisibleKey (36);
-    keyboard.setWantsKeyboardFocus (false);   // the computer's keys stay the studio's shortcuts
-    keyboard.setColour (juce::MidiKeyboardComponent::keyDownOverlayColourId, ParagonColours::accent.withAlpha (0.8f));
-    keyboard.setColour (juce::MidiKeyboardComponent::mouseOverKeyOverlayColourId, ParagonColours::accent.withAlpha (0.25f));
-    keyboard.setColour (juce::MidiKeyboardComponent::keySeparatorLineColourId, juce::Colour (0xff3a3236));
-    keyboard.setColour (juce::MidiKeyboardComponent::shadowColourId, juce::Colours::black.withAlpha (0.3f));
-    addAndMakeVisible (keyboard);
 
     trackList.onOpenInstrument = [this] (int trackId) { openInstrumentWindow (trackId); };
     trackList.onFindPlugins = [this] { openPlugins(); };
@@ -91,6 +96,14 @@ MainView::MainView (pr7s::Studio& studioToUse)
         else
             instrumentWindows.erase (trackId);
     };
+    // And an effect's before the effect (nullptr: all of them).
+    studio.onEffectGoing = [this] (juce::AudioProcessor* effect)
+    {
+        if (effect == nullptr)
+            effectWindows.clear();
+        else
+            effectWindows.erase (effect);
+    };
 
     studio.addChangeListener (this);
     Finish::changes().addChangeListener (this);
@@ -100,7 +113,10 @@ MainView::MainView (pr7s::Studio& studioToUse)
 
 MainView::~MainView()
 {
-    keyEditorWindow.reset();
+    editorZone.window.reset();
+    mixerZone.window.reset();
+    studio.onEffectGoing = nullptr;
+    effectWindows.clear();
     arrange.removeMouseListener (this);
     trackList.removeMouseListener (this);
     keyEditor.removeMouseListener (this);
@@ -123,10 +139,10 @@ void MainView::changeListenerCallback (juce::ChangeBroadcaster* source)
 
 void MainView::refreshHeader()
 {
-    if (keyEditorWindow != nullptr)
+    if (editorZone.window != nullptr)
     {
         const auto* part = keyEditor.getPart();
-        keyEditorWindow->setName ("Key Editor: " + (part != nullptr && part->name.isNotEmpty() ? part->name : juce::String ("no part")));
+        editorZone.window->setName ("Key Editor: " + (part != nullptr && part->name.isNotEmpty() ? part->name : juce::String ("no part")));
     }
     undoButton.setEnabled (studio.canUndo());
     redoButton.setEnabled (studio.canRedo());
@@ -162,15 +178,8 @@ void MainView::paint (juce::Graphics& g)
     g.setColour (ParagonColours::panelEdge);
     g.fillRect (header.withY (header.getBottom() - 1.0f).withHeight (1.0f));
 
-    // The keyboard on its own pearl strip.
-    const auto strip = getLocalBounds().removeFromBottom (keyboardHeight).toFloat().reduced (6.0f, 4.0f);
-    Pearl::paintUnit (g, strip, keyboardSatin, 8.0f);
-    g.setColour (Finish::printedRed());
-    g.setFont (font (9.0f));
-    g.drawText ("KEYBOARD", strip.withWidth (90.0f).reduced (12.0f, 8.0f), juce::Justification::topLeft, false);
-
     // The work area's frame.
-    const auto middle = getLocalBounds().withTrimmedTop (headerHeight + transportHeight).withTrimmedBottom (keyboardHeight).toFloat().reduced (6.0f, 2.0f);
+    const auto middle = getLocalBounds().withTrimmedTop (headerHeight + transportHeight).toFloat().reduced (6.0f, 2.0f);
     g.setColour (ParagonColours::panelEdge);
     g.drawRect (middle, 1.0f);
 }
@@ -193,28 +202,25 @@ void MainView::resized()
     }
     header.removeFromLeft (18);
     editorButton.setBounds (header.removeFromLeft (100));
+    header.removeFromLeft (6);
+    mixerButton.setBounds (header.removeFromLeft (76));
     settingsButton.setBounds (header.removeFromRight (92));
     header.removeFromRight (6);
     pluginsButton.setBounds (header.removeFromRight (86));
 
     transport.setBounds (area.removeFromTop (transportHeight).reduced (2, 0));
 
-    auto bottom = area.removeFromBottom (keyboardHeight);
-    keyboardSatin = Finish::makeSatinGrain (juce::jmax (1, bottom.getWidth() * 2), juce::jmax (1, bottom.getHeight() * 2), 4242);
-    keyboard.setBounds (bottom.reduced (6, 4).withTrimmedLeft (90).reduced (6, 10));
-    // The whole range (C1 to C8: 50 white keys) fills the strip.
-    keyboard.setKeyWidth ((float) keyboard.getWidth() / 50.0f);
-    keyboard.setLowestVisibleKey (24);
-
     auto middle = area.reduced (7, 3);
-    if (keyEditorOpen && ! keyEditorInWindow)
-    {
-        // The editor takes the lower part (a little over half), the arrangement keeps the rest.
-        const auto height = juce::jlimit (juce::jmin (240, middle.getHeight()), juce::jmax (240, middle.getHeight() - 170),
-                                          juce::roundToInt ((float) middle.getHeight() * 0.56f));
-        keyEditor.setBounds (middle.removeFromBottom (height));
-        middle.removeFromBottom (3);
-    }
+    for (auto* zone : { &editorZone, &mixerZone })
+        if (zone->open && ! zone->inWindow)
+        {
+            // The lower zone takes a little over half; the arrangement keeps the rest.
+            const auto height = juce::jlimit (juce::jmin (240, middle.getHeight()), juce::jmax (240, middle.getHeight() - 170),
+                                              juce::roundToInt ((float) middle.getHeight() * 0.6f));
+            zone->content.setBounds (middle.removeFromBottom (height));
+            middle.removeFromBottom (3);
+            break;
+        }
     trackList.setBounds (middle.removeFromLeft (trackListWidth));
     middle.removeFromLeft (2);
     arrange.setBounds (middle);
@@ -227,14 +233,14 @@ bool MainView::keyPressed (const juce::KeyPress& key)
     const auto code = key.getKeyCode();
     const auto letter = juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) code);
 
-    if (keyEditorOpen && keysToEditor && keyEditor.keyPressed (key))
+    if (isKeyEditorOpen() && keysToEditor && keyEditor.keyPressed (key))
         return true;
     // Copy, cut, paste and select all are the editor's wherever the last click
     // was (the arrangement has none of its own yet), so notes copied in one
     // part paste into another just selected in the arrangement.
     const auto editorsAnyway = (mods.isCommandDown() && (letter == 'C' || letter == 'X' || letter == 'V'))
                             || (! mods.isCommandDown() && mods.isShiftDown() && letter == 'A');
-    if (keyEditorOpen && editorsAnyway && keyEditor.keyPressed (key))
+    if (isKeyEditorOpen() && editorsAnyway && keyEditor.keyPressed (key))
         return true;
 
     if (mods.isCommandDown())
@@ -247,12 +253,14 @@ bool MainView::keyPressed (const juce::KeyPress& key)
             case 'O': openProject(); return true;
             case 'N': newProject(); return true;
             case 'D': arrange.duplicateSelected(); return true;
-            case 'E': keyEditorOpen ? closeKeyEditor() : openKeyEditor(); return true;
+            case 'E': isKeyEditorOpen() ? closeKeyEditor() : openKeyEditor(); return true;
             default: return false;
         }
     }
 
-    if (keyEditorOpen && key == juce::KeyPress::escapeKey) { closeKeyEditor(); return true; }
+    if (key.getKeyCode() == juce::KeyPress::F3Key)      { isMixerOpen() ? closeMixer() : openMixer(); return true; }
+    if (isKeyEditorOpen() && key == juce::KeyPress::escapeKey) { closeKeyEditor(); return true; }
+    if (isMixerOpen() && key == juce::KeyPress::escapeKey)     { closeMixer(); return true; }
     if (key == juce::KeyPress::spaceKey)                { studio.togglePlay(); return true; }
     if (key == juce::KeyPress::homeKey)                 { studio.goToStart(); return true; }
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey) { arrange.deleteSelected(); return true; }
@@ -268,59 +276,102 @@ void MainView::mouseDown (const juce::MouseEvent& event)
 }
 
 //==============================================================================
-void MainView::openKeyEditor()
+void MainView::openZone (Zone& zone)
 {
-    keyEditorOpen = keysToEditor = true;
-    placeKeyEditor();
+    zone.open = true;
+    if (&zone == &editorZone)
+        keysToEditor = true;
+    placeZone (zone);
 }
 
-void MainView::closeKeyEditor()
+void MainView::closeZone (Zone& zone)
 {
-    keyEditorOpen = keysToEditor = false;
-    placeKeyEditor();
+    zone.open = false;
+    if (&zone == &editorZone)
+        keysToEditor = false;
+    placeZone (zone);
 }
 
-void MainView::setKeyEditorInWindow (bool inWindow)
+void MainView::setZoneInWindow (Zone& zone, bool inWindow)
 {
-    keyEditorInWindow = inWindow;
-    keyEditor.setInWindow (inWindow);
+    zone.inWindow = inWindow;
+    if (&zone == &editorZone)
+        keyEditor.setInWindow (inWindow);
+    else
+        mixer.setInWindow (inWindow);
     if (auto* settings = studio.getSettings())
-        settings->setValue ("keyEditorInWindow", inWindow);
-    placeKeyEditor();
-    keyEditor.fitToPart();   // its size changed a lot: the whole part again
+        settings->setValue (zone.settingsKey + "InWindow", inWindow);
+    placeZone (zone);
+    if (&zone == &editorZone)
+        keyEditor.fitToPart();   // its size changed a lot: the whole part again
 }
 
-void MainView::placeKeyEditor()
+void MainView::placeZone (Zone& zone)
 {
-    editorButton.setToggleState (keyEditorOpen, juce::dontSendNotification);
-    if (keyEditorOpen && keyEditorInWindow)
+    zone.button.setToggleState (zone.open, juce::dontSendNotification);
+    if (zone.open && zone.inWindow)
     {
-        if (keyEditorWindow == nullptr)
+        if (zone.window == nullptr)
         {
-            keyEditorWindow = std::make_unique<Windows::KeyEditorWindow> (keyEditor, studio.getSettings(), getScreenBounds());
-            keyEditorWindow->onKey = [this] (const juce::KeyPress& key)
+            zone.window = std::make_unique<Windows::ZoneWindow> (zone.title, zone.content, studio.getSettings(),
+                                                                 zone.settingsKey + "Window", getScreenBounds());
+            const auto isEditor = &zone == &editorZone;
+            zone.window->onKey = [this, isEditor] (const juce::KeyPress& key)
             {
-                keysToEditor = true;
+                keysToEditor = isEditor;
                 return keyPressed (key);
             };
-            keyEditorWindow->onClose = [safe = juce::Component::SafePointer<MainView> (this)]
+            zone.window->onClose = [safe = juce::Component::SafePointer<MainView> (this), isEditor]
             {
-                juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->closeKeyEditor(); });
+                juce::MessageManager::callAsync ([safe, isEditor]
+                {
+                    if (safe != nullptr)
+                        isEditor ? safe->closeKeyEditor() : safe->closeMixer();
+                });
             };
             refreshHeader();
         }
-        keyEditorWindow->toFront (true);
+        zone.window->toFront (true);
     }
     else
     {
         // Back here (hidden if closed). The window gives it up as it goes.
-        keyEditorWindow.reset();
-        if (keyEditor.getParentComponent() != this)
-            addChildComponent (keyEditor);
-        keyEditor.setVisible (keyEditorOpen);
+        zone.window.reset();
+        if (zone.content.getParentComponent() != this)
+            addChildComponent (zone.content);
+        zone.content.setVisible (zone.open);
+        // One docked at a time: the other one, if it's docked, is put away.
+        auto& other = &zone == &editorZone ? mixerZone : editorZone;
+        if (zone.open && other.open && ! other.inWindow)
+        {
+            other.open = false;
+            if (&other == &editorZone)
+                keysToEditor = false;
+            other.button.setToggleState (false, juce::dontSendNotification);
+            other.content.setVisible (false);
+        }
     }
     resized();
     repaint();
+}
+
+void MainView::openEffectWindow (int busId, int slot)
+{
+    auto* instance = studio.getEngine().getEffect (busId, slot);
+    if (instance == nullptr || ! instance->hasEditor())
+        return;
+    if (auto existing = effectWindows.find (instance); existing != effectWindows.end())
+    {
+        existing->second->toFront (true);
+        return;
+    }
+    const auto* track = studio.getProject().findTrack (busId);
+    auto window = std::make_unique<Windows::Instrument> (track != nullptr ? track->name : juce::String ("Master"), *instance);
+    window->onClose = [safe = juce::Component::SafePointer<MainView> (this), instance]
+    {
+        juce::MessageManager::callAsync ([safe, instance] { if (safe != nullptr) safe->effectWindows.erase (instance); });
+    };
+    effectWindows[instance] = std::move (window);
 }
 
 //==============================================================================
@@ -356,7 +407,8 @@ void MainView::openProject()
                                                     file.getFullPathName() + " isn't a Paragon PR7-S song (or is from a newer version).");
         else if (problems.isNotEmpty())
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Some instruments are missing",
-                                                    "These tracks are silent until their instrument is found (Find my VST3 instruments...):\n\n" + problems);
+                                                    "These instruments and effects aren't on this computer. Their tracks are silent, and the "
+                                                    "sound goes past the effects, until they're found (PLUGINS):\n\n" + problems);
     });
 }
 

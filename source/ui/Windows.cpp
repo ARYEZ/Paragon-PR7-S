@@ -68,14 +68,15 @@ namespace Windows
         setVisible (true);
     }
 
-    KeyEditorWindow::KeyEditorWindow (juce::Component& editor, juce::PropertiesFile* settingsToUse, juce::Rectangle<int> studioOnScreen)
-        : DocumentWindow ("Key Editor", windowColour, DocumentWindow::allButtons), settings (settingsToUse)
+    ZoneWindow::ZoneWindow (const juce::String& title, juce::Component& content, juce::PropertiesFile* settingsToUse,
+                            const juce::String& stateKeyToUse, juce::Rectangle<int> studioOnScreen)
+        : DocumentWindow (title, windowColour, DocumentWindow::allButtons), settings (settingsToUse), stateKey (stateKeyToUse)
     {
         setUsingNativeTitleBar (true);
-        setContentNonOwned (&editor, false);
+        setContentNonOwned (&content, false);
         setResizable (true, false);
         setResizeLimits (720, 360, 32768, 16384);
-        const auto saved = settings != nullptr ? settings->getValue ("keyEditorWindow") : juce::String();
+        const auto saved = settings != nullptr ? settings->getValue (stateKey) : juce::String();
         if (saved.isEmpty() || ! restoreWindowStateFromString (saved))
         {
             const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect (studioOnScreen);
@@ -86,22 +87,22 @@ namespace Windows
         toFront (true);
     }
 
-    KeyEditorWindow::~KeyEditorWindow()
+    ZoneWindow::~ZoneWindow()
     {
         if (settings != nullptr)
         {
-            settings->setValue ("keyEditorWindow", getWindowStateAsString());
+            settings->setValue (stateKey, getWindowStateAsString());
             settings->saveIfNeeded();
         }
-        clearContentComponent();   // the editor goes back to its owner, not deleted
+        clearContentComponent();   // the content goes back to its owner, not deleted
     }
 
-    bool KeyEditorWindow::keyPressed (const juce::KeyPress& key)
+    bool ZoneWindow::keyPressed (const juce::KeyPress& key)
     {
         return onKey != nullptr && onKey (key);
     }
 
-    void KeyEditorWindow::closeButtonPressed()
+    void ZoneWindow::closeButtonPressed()
     {
         if (onClose)
             onClose();
@@ -129,7 +130,7 @@ namespace Windows
     }
 
     Plugins::Plugins (pr7s::Studio& studio)
-        : DocumentWindow ("Paragon PR7-S: VST3 instruments", windowColour, DocumentWindow::closeButton)
+        : DocumentWindow ("Paragon PR7-S: VST3 instruments and effects", windowColour, DocumentWindow::closeButton)
     {
         setUsingNativeTitleBar (true);
         auto& host = studio.getPluginHost();
