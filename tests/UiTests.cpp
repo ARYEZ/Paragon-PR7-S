@@ -147,7 +147,7 @@ TEST_CASE ("The key editor: draw, move, copy, lengthen, velocity, erase, keys, q
     REQUIRE (view.isKeyEditorOpen());
     auto& editor = view.getKeyEditor();
     CHECK (editor.isVisible());
-    CHECK (editor.getBottom() <= view.getHeight() - MainView::keyboardHeight);
+    CHECK (editor.getBottom() <= view.getHeight());
     CHECK (arrange.getBottom() <= editor.getY());
     REQUIRE (editor.getPart() != nullptr);
     CHECK (editor.getPart()->name == "Riff");
@@ -418,4 +418,105 @@ TEST_CASE ("The key editor: copy, cut and paste notes; Shift+A selects them all"
     REQUIRE (notes().size() == 1);
     CHECK (notes()[0] == Note { 0.0, 0.5, 67, 0.7f });
     CHECK (studio.getProject().tracks[0].parts[0].notes.size() == 8);   // the first part as it was
+}
+
+TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inserts; it shares the lower zone; no on-screen keyboard", "[ui][mixer]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto first = studio.getProject().tracks[0].id;
+    const auto second = studio.addTrack ({});
+    studio.dispatchPendingMessages();
+
+    // The on-screen keyboard has gone (the lower zone has its room).
+    std::vector<juce::MidiKeyboardComponent*> keyboards;
+    findAll (view, keyboards);
+    CHECK (keyboards.empty());
+
+    // F3 opens the mixer, under the arrangement, down to the window's bottom.
+    auto& mixer = view.getMixer();
+    auto& arrange = view.getArrangeView();
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key)));
+    REQUIRE (view.isMixerOpen());
+    CHECK (mixer.isVisible());
+    CHECK (mixer.getY() > arrange.getBottom());
+    CHECK (mixer.getBottom() >= view.getHeight() - 10);
+    CHECK (mixer.getHeight() > 400);
+
+    // A strip for each track, in order, and the master's last.
+    REQUIRE (mixer.getNumStrips() == 3);
+    auto& one = mixer.getStrip (0);
+    auto& two = mixer.getStrip (1);
+    auto& master = mixer.getStrip (2);
+    CHECK (one.getBusId() == first);
+    CHECK (two.getBusId() == second);
+    CHECK (master.getBusId() == Engine::masterBus);
+    CHECK (two.getX() > one.getX());
+    CHECK (master.getVolume().getHeight() > 100);   // room for a real fader
+
+    // Its fader, pan and mute change the track; the fader is undoable.
+    two.getVolume().setValue (-6.0, juce::sendNotificationSync);
+    CHECK (studio.getProject().findTrack (second)->volumeDb == -6.0f);
+    studio.undo();
+    CHECK (studio.getProject().findTrack (second)->volumeDb == 0.0f);
+    studio.dispatchPendingMessages();
+    CHECK (two.getVolume().getValue() == 0.0);   // the fader follows
+    two.getPan().setValue (-0.5, juce::sendNotificationSync);
+    CHECK (studio.getProject().findTrack (second)->pan == -0.5f);
+    two.getMute().onClick();
+    CHECK (studio.getProject().findTrack (second)->mute);
+    master.getVolume().setValue (-3.0, juce::sendNotificationSync);
+    CHECK (studio.getProject().masterVolumeDb == -3.0f);
+
+    // Inserts show their effects; the next empty one offers to add.
+    Insert insert;
+    insert.plugin.name = "PR7-C";
+    REQUIRE (studio.addInsert (first, insert, timesEffect (1.0f, "PR7-C")));
+    studio.dispatchPendingMessages();
+    CHECK (one.getInsertSlot (0).getButtonText() == "PR7-C");
+    CHECK (one.getInsertSlot (1).getButtonText() == "+");
+    CHECK (one.getInsertSlot (2).getButtonText().isEmpty());
+    CHECK (two.getInsertSlot (0).getButtonText() == "+");
+
+    // A new track gets a strip.
+    studio.addTrack ({});
+    studio.dispatchPendingMessages();
+    CHECK (mixer.getNumStrips() == 4);
+
+    // One docked at a time: the key editor docked puts the mixer away, and back.
+    view.openKeyEditor();
+    CHECK_FALSE (view.isMixerOpen());
+    CHECK_FALSE (mixer.isVisible());
+    CHECK (view.getKeyEditor().isVisible());
+    view.openMixer();
+    CHECK_FALSE (view.isKeyEditorOpen());
+    CHECK (mixer.isVisible());
+
+    // The mixer in a window of its own: the key editor can be docked meanwhile.
+    view.setMixerInWindow (true);
+    auto* window = view.getMixerWindow();
+    REQUIRE (window != nullptr);
+    CHECK (mixer.getTopLevelComponent() == window);
+    CHECK (window->getName() == "Mixer");
+    view.openKeyEditor();
+    CHECK (view.isMixerOpen());
+    CHECK (view.isKeyEditorOpen());
+    // Its keys work there too: F3 closes it.
+    CHECK (window->keyPressed (juce::KeyPress (juce::KeyPress::F3Key)));
+    CHECK_FALSE (view.isMixerOpen());
+    CHECK (view.getMixerWindow() == nullptr);
+    CHECK (mixer.getParentComponent() == &view);
+    // Docked again: the key editor makes way.
+    view.setMixerInWindow (false);
+    view.openMixer();
+    CHECK_FALSE (view.isKeyEditorOpen());
+
+    // It draws in every finish.
+    for (const auto type : { Finish::Type::pearlBlack, Finish::Type::pearlWhiteNeon, Finish::Type::pearlWhite })
+    {
+        Finish::set (type, false);
+        CHECK (view.createComponentSnapshot (view.getLocalBounds()).isValid());
+    }
 }

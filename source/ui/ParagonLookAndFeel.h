@@ -65,6 +65,8 @@ public:
     // Set this on a vertical slider to draw it as a graphic-EQ fader: a thin
     // groove lit from its centre (0 dB) to the cap, and a small black cap.
     static constexpr const char* eqFaderProperty = "eqFader";
+    // With eqFader: lit from the bottom to the cap (a volume fader), not from the centre.
+    static constexpr const char* faderFromBottomProperty = "faderFromBottom";
     static constexpr int eqFaderThumbRadius = 7;
 
     // Every font in the plugin is Inter, built in: semibold for bold text,

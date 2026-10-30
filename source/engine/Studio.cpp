@@ -107,7 +107,13 @@ namespace pr7s
         // A copy without the instruments' settings (they aren't undone, and can be large).
         auto state = project;
         for (auto& track : state.tracks)
+        {
             track.instrument.state.reset();
+            for (auto& insert : track.inserts)
+                insert.state.reset();
+        }
+        for (auto& insert : state.masterInserts)
+            insert.state.reset();
         undoStates.resize ((size_t) (undoIndex + 1));
         undoStates.push_back (std::move (state));
         if ((int) undoStates.size() > maxUndoSteps)
@@ -124,6 +130,7 @@ namespace pr7s
         project.loopStart = state.loopStart;
         project.loopEnd = state.loopEnd;
         project.click = state.click;
+        project.masterVolumeDb = state.masterVolumeDb;
         for (auto& track : project.tracks)
             if (const auto* then = state.findTrack (track.id))
             {
@@ -179,6 +186,9 @@ namespace pr7s
 
         engine.setInstrument (track.id, std::move (instance));
         selectTrack (track.id);   // and arms it (changed() is called there)
+        // Adding a track isn't undone, but what's done to it next is: undo
+        // needs a step that has the track in it to go back to.
+        recordUndoState();
         return track.id;
     }
 
@@ -190,6 +200,8 @@ namespace pr7s
         const auto index = (int) std::distance (project.tracks.begin(), it);
         if (onInstrumentGoing)
             onInstrumentGoing (trackId);
+        for (int slot = 0; slot < (int) it->inserts.size(); ++slot)
+            effectGoing (trackId, slot);
         project.tracks.erase (it);
         engine.removeTrack (trackId);
         if (selectedTrack == trackId)
@@ -245,21 +257,21 @@ namespace pr7s
         }
     }
 
-    void Studio::setVolume (int trackId, float db)
+    void Studio::setVolume (int trackId, float db, bool undoable)
     {
         if (auto* track = project.findTrack (trackId))
         {
             track->volumeDb = juce::jlimit (-60.0f, 6.0f, db);
-            changed();
+            changed (undoable);
         }
     }
 
-    void Studio::setPan (int trackId, float pan)
+    void Studio::setPan (int trackId, float pan, bool undoable)
     {
         if (auto* track = project.findTrack (trackId))
         {
             track->pan = juce::jlimit (-1.0f, 1.0f, pan);
-            changed();
+            changed (undoable);
         }
     }
 
@@ -352,6 +364,117 @@ namespace pr7s
             return;   // nothing changed: no undo step
         part.notes = std::move (notes);
         changed();
+    }
+
+    //==========================================================================
+    std::vector<Insert>* Studio::insertsOf (int busId)
+    {
+        if (busId == Engine::masterBus)
+            return &project.masterInserts;
+        auto* track = project.findTrack (busId);
+        return track != nullptr ? &track->inserts : nullptr;
+    }
+
+    const std::vector<Insert>* Studio::getInserts (int busId) const
+    {
+        return const_cast<Studio*> (this)->insertsOf (busId);
+    }
+
+    void Studio::effectGoing (int busId, int slot)
+    {
+        if (onEffectGoing)
+            if (auto* effect = engine.getEffect (busId, slot))
+                onEffectGoing (effect);
+    }
+
+    void Studio::removeAllEffects()
+    {
+        if (onEffectGoing)
+            onEffectGoing (nullptr);
+        while (engine.getNumEffects (Engine::masterBus) > 0)
+            engine.removeEffect (Engine::masterBus, 0);
+    }
+
+    bool Studio::addInsert (int busId, const juce::PluginDescription& description, juce::String* error)
+    {
+        const auto* inserts = insertsOf (busId);
+        if (inserts == nullptr || (int) inserts->size() >= Project::maxInserts)
+        {
+            if (error != nullptr)
+                *error = "There's no room for another effect here (" + juce::String (Project::maxInserts) + " at most).";
+            return false;
+        }
+        Insert insert;
+        insert.plugin = description;
+        juce::String problem;
+        auto instance = host->createEffect (insert, engine.getSampleRate(), engine.getBlockSize(), problem);
+        if (instance == nullptr)
+        {
+            if (error != nullptr)
+                *error = problem;
+            return false;
+        }
+        return addInsert (busId, insert, std::move (instance));
+    }
+
+    bool Studio::addInsert (int busId, const Insert& insert, std::unique_ptr<juce::AudioPluginInstance> instance)
+    {
+        auto* inserts = insertsOf (busId);
+        if (inserts == nullptr || (int) inserts->size() >= Project::maxInserts)
+            return false;
+        inserts->push_back (insert);
+        engine.insertEffect (busId, (int) inserts->size() - 1, std::move (instance));
+        changed (false);
+        return true;
+    }
+
+    bool Studio::replaceInsert (int busId, int slot, const juce::PluginDescription& description, juce::String* error)
+    {
+        auto* inserts = insertsOf (busId);
+        if (inserts == nullptr || ! juce::isPositiveAndBelow (slot, (int) inserts->size()))
+            return false;
+        Insert insert;
+        insert.plugin = description;
+        juce::String problem;
+        auto instance = host->createEffect (insert, engine.getSampleRate(), engine.getBlockSize(), problem);
+        if (instance == nullptr)
+        {
+            if (error != nullptr)
+                *error = problem;
+            return false;
+        }
+        effectGoing (busId, slot);
+        engine.removeEffect (busId, slot);
+        engine.insertEffect (busId, slot, std::move (instance));
+        (*inserts)[(size_t) slot] = insert;
+        changed (false);
+        return true;
+    }
+
+    void Studio::removeInsert (int busId, int slot)
+    {
+        auto* inserts = insertsOf (busId);
+        if (inserts == nullptr || ! juce::isPositiveAndBelow (slot, (int) inserts->size()))
+            return;
+        effectGoing (busId, slot);
+        engine.removeEffect (busId, slot);
+        inserts->erase (inserts->begin() + slot);
+        changed (false);
+    }
+
+    void Studio::setInsertBypass (int busId, int slot, bool bypass)
+    {
+        auto* inserts = insertsOf (busId);
+        if (inserts == nullptr || ! juce::isPositiveAndBelow (slot, (int) inserts->size()))
+            return;
+        (*inserts)[(size_t) slot].bypass = bypass;
+        changed (false);
+    }
+
+    void Studio::setMasterVolume (float db, bool undoable)
+    {
+        project.masterVolumeDb = juce::jlimit (-60.0f, 6.0f, db);
+        changed (undoable);
     }
 
     //==========================================================================
@@ -556,6 +679,7 @@ namespace pr7s
     {
         if (onInstrumentGoing)
             onInstrumentGoing (0);
+        removeAllEffects();
         engine.stop();
         for (const auto& track : project.tracks)
             engine.removeTrack (track.id);
@@ -584,6 +708,20 @@ namespace pr7s
                 instrument->getStateInformation (state);
                 track.instrument.state = std::move (state);
             }
+        // And each effect's.
+        const auto keepEffectStates = [this] (int busId, std::vector<Insert>& inserts)
+        {
+            for (int slot = 0; slot < (int) inserts.size(); ++slot)
+                if (auto* effect = engine.getEffect (busId, slot))
+                {
+                    juce::MemoryBlock state;
+                    effect->getStateInformation (state);
+                    inserts[(size_t) slot].state = std::move (state);
+                }
+        };
+        for (auto& track : project.tracks)
+            keepEffectStates (track.id, track.inserts);
+        keepEffectStates (Engine::masterBus, project.masterInserts);
 
         const auto xml = project.toXml();
         if (! xml->writeTo (destination))
@@ -605,6 +743,7 @@ namespace pr7s
 
         if (onInstrumentGoing)
             onInstrumentGoing (0);
+        removeAllEffects();
         engine.stop();
         for (const auto& track : project.tracks)
             engine.removeTrack (track.id);
@@ -619,6 +758,22 @@ namespace pr7s
             else
                 missing.add (track.name + " (" + track.instrument.getName() + "): " + error);   // the track stays (its parts too), silent
         }
+        // The effects: one that can't be loaded keeps its place (and its
+        // settings, for when it's back), and the sound goes past it.
+        const auto loadEffects = [&] (int busId, const juce::String& where, const std::vector<Insert>& inserts)
+        {
+            for (int slot = 0; slot < (int) inserts.size(); ++slot)
+            {
+                juce::String error;
+                auto instance = host->createEffect (inserts[(size_t) slot], engine.getSampleRate(), engine.getBlockSize(), error);
+                if (instance == nullptr)
+                    missing.add (where + ", insert " + juce::String (slot + 1) + " (" + inserts[(size_t) slot].plugin.name + "): " + error);
+                engine.insertEffect (busId, slot, std::move (instance));
+            }
+        };
+        for (const auto& track : project.tracks)
+            loadEffects (track.id, track.name, track.inserts);
+        loadEffects (Engine::masterBus, "Master", project.masterInserts);
         problems = missing.joinIntoString ("\n");
         numberParts();
 

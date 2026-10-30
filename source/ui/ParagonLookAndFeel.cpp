@@ -448,7 +448,8 @@ void ParagonLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int 
         g.fillRoundedRectangle (juce::Rectangle<float> (4.0f, bottom - top).withCentre ({ centreX, middle }), 2.0f);
         g.setColour (ParagonColours::panelEdge.brighter (0.2f));
         g.drawRoundedRectangle (juce::Rectangle<float> (4.0f, bottom - top).withCentre ({ centreX, middle }), 2.0f, 0.8f);
-        const auto lit = juce::Rectangle<float>::leftTopRightBottom (centreX - 1.5f, juce::jmin (sliderPos, middle), centreX + 1.5f, juce::jmax (sliderPos, middle));
+        const auto from = slider.getProperties()[faderFromBottomProperty] ? bottom : middle;
+        const auto lit = juce::Rectangle<float>::leftTopRightBottom (centreX - 1.5f, juce::jmin (sliderPos, from), centreX + 1.5f, juce::jmax (sliderPos, from));
         g.setColour (colour.withAlpha (0.3f));
         g.fillRoundedRectangle (lit.expanded (2.5f, 0.0f), 2.0f);
         g.setColour (colour);

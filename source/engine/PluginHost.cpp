@@ -36,18 +36,50 @@ namespace pr7s
         }
     }
 
+    namespace
+    {
+        juce::Array<juce::PluginDescription> sortedByMaker (juce::Array<juce::PluginDescription> list)
+        {
+            std::sort (list.begin(), list.end(), [] (const auto& a, const auto& b)
+            {
+                return a.manufacturerName == b.manufacturerName ? a.name.compareNatural (b.name) < 0
+                                                                : a.manufacturerName.compareNatural (b.manufacturerName) < 0;
+            });
+            return list;
+        }
+    }
+
     juce::Array<juce::PluginDescription> PluginHost::getInstruments() const
     {
         juce::Array<juce::PluginDescription> instruments;
         for (const auto& type : known.getTypes())
             if (type.isInstrument)
                 instruments.add (type);
-        std::sort (instruments.begin(), instruments.end(), [] (const auto& a, const auto& b)
+        return sortedByMaker (instruments);
+    }
+
+    juce::Array<juce::PluginDescription> PluginHost::getEffects() const
+    {
+        juce::Array<juce::PluginDescription> effects;
+        for (const auto& type : known.getTypes())
+            if (! type.isInstrument)
+                effects.add (type);
+        return sortedByMaker (effects);
+    }
+
+    std::unique_ptr<juce::AudioPluginInstance> PluginHost::createEffect (const Insert& insert, double sampleRate, int blockSize,
+                                                                          juce::String& error)
+    {
+        auto instance = formats.createPluginInstance (insert.plugin, sampleRate, blockSize, error);
+        if (instance == nullptr)
         {
-            return a.manufacturerName == b.manufacturerName ? a.name.compareNatural (b.name) < 0
-                                                            : a.manufacturerName.compareNatural (b.manufacturerName) < 0;
-        });
-        return instruments;
+            if (error.isEmpty())
+                error = "Couldn't load " + insert.plugin.name;
+            return nullptr;
+        }
+        if (insert.state.getSize() > 0)
+            instance->setStateInformation (insert.state.getData(), (int) insert.state.getSize());
+        return instance;
     }
 
     std::unique_ptr<juce::AudioPluginInstance> PluginHost::create (const Instrument& instrument, double sampleRate, int blockSize,

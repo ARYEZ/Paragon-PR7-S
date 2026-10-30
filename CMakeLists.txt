@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonPR7S VERSION 0.2.2 LANGUAGES C CXX)
+project(ParagonPR7S VERSION 0.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -52,6 +52,7 @@ add_library(PR7SCore STATIC
     source/ui/TrackList.cpp
     source/ui/ArrangeView.cpp
     source/ui/KeyEditor.cpp
+    source/ui/MixerView.cpp
     source/ui/MainView.cpp
     source/ui/Windows.cpp)
 
@@ -61,7 +62,7 @@ target_compile_definitions(PR7SCore
     PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_PLUGINHOST_VST3=1      # it loads VST3 instruments (and later effects)
+        JUCE_PLUGINHOST_VST3=1      # it loads VST3 instruments and effects
         JUCE_PLUGINHOST_AU=0
         PR7S_VERSION="${PROJECT_VERSION}")   # the studio's version, for the About text and the synth
 

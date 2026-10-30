@@ -45,6 +45,15 @@ namespace pr7s
         juce::String getName() const;
     };
 
+    // An effect in a channel's inserts (a VST3 effect, such as our PR7
+    // plugins). The sound goes through a channel's inserts in order.
+    struct Insert
+    {
+        juce::PluginDescription plugin;
+        juce::MemoryBlock state;     // its settings, as it last saved them
+        bool bypass = false;         // off: the sound goes past it
+    };
+
     struct Track
     {
         int id = 0;                      // stays the same for the track's life (undo and the engine use it)
@@ -56,6 +65,7 @@ namespace pr7s
         bool mute = false, solo = false;
         bool armed = false;              // record-enabled: recording goes here
         std::vector<Part> parts;
+        std::vector<Insert> inserts;     // its effects, before its volume and pan
     };
 
     struct Project
@@ -66,9 +76,12 @@ namespace pr7s
         double loopStart = 0.0, loopEnd = 16.0;
         bool click = false;                   // the metronome
         std::vector<Track> tracks;
+        float masterVolumeDb = 0.0f;          // the master bus: every track, then these effects, then this volume
+        std::vector<Insert> masterInserts;
         int nextTrackId = 1;
 
         static constexpr double minBpm = 20.0, maxBpm = 300.0;
+        static constexpr int maxInserts = 8;   // effects on a channel (and on the master)
 
         double beatsPerBar() const noexcept { return numerator * 4.0 / denominator; }
         double secondsPerBeat() const noexcept { return 60.0 / bpm; }

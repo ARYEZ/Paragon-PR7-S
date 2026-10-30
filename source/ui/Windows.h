@@ -17,17 +17,19 @@ namespace Windows
         std::function<void()> onClose;
     };
 
-    // The key editor in a window of its own (its WINDOW button): resizable,
-    // with a maximize button, so it can fill a screen or be stretched across
-    // several. It shows the editor but doesn't own it (MainView does, and
-    // takes it back when this closes). Its keys go to the studio's (onKey).
-    // Where it was (and whether maximized) is kept in the settings file, so
-    // it opens there again; the first time, it fills the screen the studio is on.
-    class KeyEditorWindow final : public juce::DocumentWindow
+    // The key editor or the mixer in a window of its own (their WINDOW
+    // button): resizable, with a maximize button, so it can fill a screen or
+    // be stretched across several. It shows its content but doesn't own it
+    // (MainView does, and takes it back when this closes). Its keys go to the
+    // studio's (onKey). Where it was (and whether maximized) is kept in the
+    // settings file under `stateKey`, so it opens there again; the first time,
+    // it fills the screen the studio is on.
+    class ZoneWindow final : public juce::DocumentWindow
     {
     public:
-        KeyEditorWindow (juce::Component& editor, juce::PropertiesFile* settings, juce::Rectangle<int> studioOnScreen);
-        ~KeyEditorWindow() override;
+        ZoneWindow (const juce::String& title, juce::Component& content, juce::PropertiesFile* settings, const juce::String& stateKey,
+                    juce::Rectangle<int> studioOnScreen);
+        ~ZoneWindow() override;
         void closeButtonPressed() override;
         bool keyPressed (const juce::KeyPress&) override;
         std::function<void()> onClose;
@@ -35,6 +37,7 @@ namespace Windows
 
     private:
         juce::PropertiesFile* settings;
+        juce::String stateKey;
     };
 
     // SETTINGS: the audio interface (which, its sample rate and buffer
@@ -47,8 +50,8 @@ namespace Windows
         std::function<void()> onClose;
     };
 
-    // PLUGINS: finds the VST3 instruments on this computer (OPTIONS > Scan
-    // for new or updated VST3 plug-ins) and lists them.
+    // PLUGINS: finds the VST3 instruments and effects on this computer
+    // (OPTIONS > Scan for new or updated VST3 plug-ins) and lists them.
     class Plugins final : public juce::DocumentWindow
     {
     public:

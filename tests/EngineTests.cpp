@@ -390,6 +390,14 @@ TEST_CASE ("Editing parts, undo and redo, and a song saved and opened", "[studio
     studio.redo();
     CHECK (studio.getProject().findTrack (second)->parts.size() == 1);
 
+    // A track just added: the first change to it can be undone.
+    const auto added = studio.addTrack ({});
+    studio.setVolume (added, -12.0f);
+    studio.undo();
+    CHECK (studio.getProject().findTrack (added)->volumeDb == 0.0f);
+    studio.redo();
+    CHECK (studio.getProject().findTrack (added)->volumeDb == -12.0f);
+
     studio.setTempo (140.0);
     studio.setSignature (6, 8);
     studio.renameTrack (second, "Bass");
@@ -407,7 +415,7 @@ TEST_CASE ("Editing parts, undo and redo, and a song saved and opened", "[studio
     CHECK (project.bpm == 140.0);
     CHECK (project.numerator == 6);
     CHECK (project.denominator == 8);
-    REQUIRE (project.tracks.size() == 2);
+    REQUIRE (project.tracks.size() == 3);
     CHECK (project.tracks[0].mute);
     CHECK (project.tracks[1].name == "Bass");
     CHECK (project.tracks[1].parts.size() == 1);
@@ -429,7 +437,7 @@ TEST_CASE ("Editing parts, undo and redo, and a song saved and opened", "[studio
     Studio third (false);
     REQUIRE (third.open (file, problems));
     CHECK (problems.contains ("Not Installed"));
-    CHECK (third.getProject().tracks.size() == 2);
+    CHECK (third.getProject().tracks.size() == 3);
     file.deleteFile();
 }
 
