@@ -41,6 +41,7 @@ namespace pr7s
         midiInput.reset (sampleRate);
         live.ensureSize (2048);
         deviceBuffer.setSize (2, maxBlockSize);
+        silence.assign ((size_t) maxBlockSize, 0.0f);
         effectMidi.ensureSize (16);
         auto masterChannels = 2;
         for (auto& slot : masterInserts)
@@ -176,6 +177,72 @@ namespace pr7s
         return track != nullptr ? track->instrument.get() : nullptr;
     }
 
+    void Engine::addAudioTrack (int trackId)
+    {
+        auto incoming = std::make_unique<TrackState>();
+        incoming->id = trackId;
+        incoming->audio = true;
+        incoming->inserts.reserve ((size_t) Project::maxInserts);
+        prepareTrack (*incoming);
+        const juce::ScopedLock sl (lock);
+        if (findTrack (trackId) == nullptr)
+            tracks.push_back (std::move (incoming));
+    }
+
+    void Engine::setRecorder (int trackId, juce::AudioFormatWriter::ThreadedWriter* writer)
+    {
+        const juce::ScopedLock sl (lock);
+        if (auto* track = findTrack (trackId))
+        {
+            track->recorder = writer;
+            track->recorderDone = false;
+        }
+        if (writer != nullptr)
+            audioRecordStart = -1;
+    }
+
+    const float* Engine::inputChannel (int channel, int offset) const noexcept
+    {
+        if (blockInputs != nullptr && juce::isPositiveAndBelow (channel, blockNumInputs) && blockInputs[channel] != nullptr)
+            return blockInputs[channel] + blockInputOffset + offset;
+        return silence.data();
+    }
+
+    void Engine::playClips (TrackState& track, juce::int64 clock, int offset, int length, double beatsPerSample)
+    {
+        // Each clip's samples in this stretch of the song, faded at its ends,
+        // added to the track's sound.
+        auto* left = track.buffer.getWritePointer (0);
+        auto* right = track.buffer.getWritePointer (1);
+        for (const auto& clip : track.clips)
+        {
+            const auto startSample = (juce::int64) std::llround (clip.start / beatsPerSample);
+            const auto endSample = (juce::int64) std::llround (clip.end / beatsPerSample);
+            const auto from = juce::jmax (clock, startSample), to = juce::jmin (clock + length, endSample);
+            if (from >= to || clip.sound == nullptr)
+                continue;
+            const auto& sound = *clip.sound;
+            const auto* sourceLeft = sound.getReadPointer (0);
+            const auto* sourceRight = sound.getNumChannels() > 1 ? sound.getReadPointer (1) : sourceLeft;
+            const auto clipLength = (double) (endSample - startSample);
+            for (auto s = from; s < to; ++s)
+            {
+                const auto into = (double) (s - startSample);
+                const auto at = clip.offset + (s - startSample);
+                if (at < 0 || at >= sound.getNumSamples())
+                    continue;
+                auto gain = 1.0;
+                if (clip.fadeIn > 0.0 && into < clip.fadeIn)
+                    gain *= into / clip.fadeIn;
+                if (clip.fadeOut > 0.0 && clipLength - into < clip.fadeOut)
+                    gain *= (clipLength - into) / clip.fadeOut;
+                const auto i = offset + (int) (s - clock);
+                left[i] += (float) (sourceLeft[at] * gain);
+                right[i] += (float) (sourceRight[at] * gain);
+            }
+        }
+    }
+
     void Engine::insertEffect (int busId, int slot, std::unique_ptr<juce::AudioPluginInstance> effect)
     {
         if (effect != nullptr)
@@ -245,13 +312,23 @@ namespace pr7s
         for (const auto& track : project.tracks)
             anySolo = anySolo || track.solo;
 
-        struct Prepared { int id; std::vector<Event> events; std::pair<float, float> gains; std::vector<bool> bypass; };
+        struct Prepared { int id; std::vector<Event> events; std::pair<float, float> gains; std::vector<bool> bypass; std::vector<Clip> clips; };
         std::vector<Prepared> prepared;
         for (const auto& track : project.tracks)
         {
-            Prepared p { track.id, {}, sideGains (track, ! track.mute && (! anySolo || track.solo)), {} };
+            Prepared p { track.id, {}, sideGains (track, ! track.mute && (! anySolo || track.solo)), {}, {} };
             for (const auto& insert : track.inserts)
                 p.bypass.push_back (insert.bypass);
+            if (track.isAudio())
+            {
+                for (const auto& part : track.parts)
+                    if (part.isAudio() && audioSource)
+                        p.clips.push_back ({ part.start, part.end(), audioSource (part.audioFile),
+                                             (juce::int64) std::llround (part.audioOffset * sampleRate),
+                                             part.fadeIn * sampleRate, part.fadeOut * sampleRate });
+                prepared.push_back (std::move (p));
+                continue;
+            }
             for (const auto& part : track.parts)
                 for (const auto& note : part.notes)
                 {
@@ -282,6 +359,13 @@ namespace pr7s
             if (auto* track = findTrack (p.id))
             {
                 std::swap (track->events, p.events);   // the old list goes out with `prepared`
+                std::swap (track->clips, p.clips);      // likewise the old clips
+                if (const auto* t = project.findTrack (p.id))
+                {
+                    track->input = t->input;
+                    track->stereoInput = t->stereoInput;
+                    track->monitor = t->monitor;
+                }
                 track->gainLeft = p.gains.first;
                 track->gainRight = p.gains.second;
                 for (size_t i = 0; i < juce::jmin (p.bypass.size(), track->inserts.size()); ++i)
@@ -313,9 +397,14 @@ namespace pr7s
     {
         beats = juce::jmax (0.0, beats);
         if (playing.load())
+        {
             jumpTo = beats;   // the audio thread jumps, stopping the notes sounding
+        }
         else
+        {
             position = beats;
+            rebase = true;    // from here, even if play is pressed before the audio thread has seen the stop
+        }
     }
 
     void Engine::takeRecorded (std::vector<RecordedEvent>& into)
@@ -394,16 +483,21 @@ namespace pr7s
         track.held.reset();
     }
 
-    void Engine::render (juce::AudioBuffer<float>& output, int numSamples)
+    void Engine::render (juce::AudioBuffer<float>& output, int numSamples, const juce::AudioBuffer<float>* input)
     {
         // Larger than the device promised: in pieces.
+        blockInputs = input != nullptr ? input->getArrayOfReadPointers() : nullptr;
+        blockNumInputs = input != nullptr ? input->getNumChannels() : 0;
         for (int done = 0; done < numSamples;)
         {
             const auto length = juce::jmin (maxBlockSize, numSamples - done);
             juce::AudioBuffer<float> piece (output.getArrayOfWritePointers(), output.getNumChannels(), done, length);
+            blockInputOffset = done;
             renderBlock (piece, length);
             done += length;
         }
+        blockInputs = nullptr;
+        blockNumInputs = 0;
     }
 
     void Engine::renderBlock (juce::AudioBuffer<float>& output, int numSamples)
@@ -428,7 +522,7 @@ namespace pr7s
         // The clock: re-based from the beat position when stopped, on
         // starting, and when the tempo changes; on a jump, from the new place
         // (the notes sounding stop). Stopping stops them too.
-        if (! nowPlaying || ! wasPlaying || std::abs (clockBeatsPerSample - beatsPerSample) > 1.0e-15)
+        if (! nowPlaying || ! wasPlaying || rebase.exchange (false) || std::abs (clockBeatsPerSample - beatsPerSample) > 1.0e-15)
             sampleClock = toSamples (position.load());
         clockBeatsPerSample = beatsPerSample;
         if (const auto jump = jumpTo.exchange (-1.0); jump >= 0.0 && nowPlaying)
@@ -455,6 +549,7 @@ namespace pr7s
         head.info.setTimeInSeconds ((double) clock / sampleRate);
 
         numTicks = 0;
+        numSegments = 0;
         if (nowPlaying)
         {
             // The block in segments: up to the cycle's end, then back to its start.
@@ -475,9 +570,26 @@ namespace pr7s
                     wraps = true;
                 }
                 const auto end = clock + length;
+                if (numSegments < (int) segments.size())
+                    segments[(size_t) numSegments++] = { clock, done, length };
 
                 for (auto& track : tracks)
                     schedule (*track, clock, end, done, beatsPerSample);
+
+                // Recording audio: the armed audio track's input, to its file
+                // (the first pass of a cycle only).
+                if (isRecording)
+                    for (auto& track : tracks)
+                        if (track->recorder != nullptr && ! track->recorderDone)
+                        {
+                            const float* channels[2] = { inputChannel (track->input, done),
+                                                         inputChannel (track->stereoInput ? track->input + 1 : track->input, done) };
+                            if (audioRecordStart.load() < 0)
+                                audioRecordStart = clock;
+                            track->recorder->write (channels, length);
+                            if (wraps)
+                                track->recorderDone = true;
+                        }
 
                 if (settings.click)
                     for (auto unit = (juce::int64) std::floor ((double) clock * beatsPerSample / beatUnit); numTicks < (int) ticks.size(); ++unit)
@@ -533,18 +645,36 @@ namespace pr7s
         {
             if (track->id == liveId)
                 track->midi.addEvents (live, 0, numSamples, 0);
-            if (track->instrument == nullptr)
+            if (track->audio)
+            {
+                // An audio track: its clips, and what comes in if it's monitored.
+                for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
+                    juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
+                for (int i = 0; i < numSegments; ++i)
+                    playClips (*track, segments[(size_t) i].clock, segments[(size_t) i].offset, segments[(size_t) i].length, beatsPerSample);
+                if (track->monitor)
+                {
+                    juce::FloatVectorOperations::add (track->buffer.getWritePointer (0), inputChannel (track->input, 0), numSamples);
+                    juce::FloatVectorOperations::add (track->buffer.getWritePointer (1),
+                                                      inputChannel (track->stereoInput ? track->input + 1 : track->input, 0), numSamples);
+                }
+            }
+            else if (track->instrument == nullptr)
+            {
                 continue;
-
-            // (Cleared and copied sample by sample: JUCE buffers remember being
-            // cleared, and a view cleared here wouldn't see the instrument's
-            // sound written through another view, then skip mixing it.)
-            for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
-                juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
-            juce::AudioBuffer<float> played (track->buffer.getArrayOfWritePointers(), track->instrumentChannels, numSamples);
-            track->instrument->processBlock (played, track->midi);
-            if (track->instrument->getTotalNumOutputChannels() == 1)   // a mono instrument: on both sides
-                juce::FloatVectorOperations::copy (track->buffer.getWritePointer (1), track->buffer.getReadPointer (0), numSamples);
+            }
+            else
+            {
+                // (Cleared and copied sample by sample: JUCE buffers remember being
+                // cleared, and a view cleared here wouldn't see the instrument's
+                // sound written through another view, then skip mixing it.)
+                for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
+                    juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
+                juce::AudioBuffer<float> played (track->buffer.getArrayOfWritePointers(), track->instrumentChannels, numSamples);
+                track->instrument->processBlock (played, track->midi);
+                if (track->instrument->getTotalNumOutputChannels() == 1)   // a mono instrument: on both sides
+                    juce::FloatVectorOperations::copy (track->buffer.getWritePointer (1), track->buffer.getReadPointer (0), numSamples);
+            }
             juce::AudioBuffer<float> sound (track->buffer.getArrayOfWritePointers(), track->buffer.getNumChannels(), numSamples);
             runInserts (track->inserts, sound, numSamples);
 
@@ -605,14 +735,17 @@ namespace pr7s
     }
 
     //==========================================================================
-    void Engine::audioDeviceIOCallbackWithContext (const float* const*, int, float* const* outputChannelData, int numOutputChannels,
-                                                   int numSamples, const juce::AudioIODeviceCallbackContext&)
+    void Engine::audioDeviceIOCallbackWithContext (const float* const* inputChannelData, int numInputChannels, float* const* outputChannelData,
+                                                   int numOutputChannels, int numSamples, const juce::AudioIODeviceCallbackContext&)
     {
         // The studio renders stereo; the device's first two outputs get it.
+        blockInputs = inputChannelData;
+        blockNumInputs = numInputChannels;
         for (int done = 0; done < numSamples;)
         {
             const auto length = juce::jmin (deviceBuffer.getNumSamples(), numSamples - done);
             juce::AudioBuffer<float> stereo (deviceBuffer.getArrayOfWritePointers(), 2, length);
+            blockInputOffset = done;
             renderBlock (stereo, length);
             for (int channel = 0; channel < numOutputChannels; ++channel)
                 if (outputChannelData[channel] != nullptr)

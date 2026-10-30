@@ -67,6 +67,11 @@ namespace pr7s
         return nullptr;
     }
 
+    const Track* Project::armedTrack() const
+    {
+        return const_cast<Project*> (this)->armedTrack();
+    }
+
     double Project::lastBeat() const
     {
         double last = 0.0;
@@ -100,6 +105,13 @@ namespace pr7s
             t->setAttribute ("mute", track.mute);
             t->setAttribute ("solo", track.solo);
             t->setAttribute ("armed", track.armed);
+            if (track.isAudio())
+            {
+                t->setAttribute ("kind", "audio");
+                t->setAttribute ("input", track.input);
+                t->setAttribute ("stereoInput", track.stereoInput);
+                t->setAttribute ("monitor", track.monitor);
+            }
             t->setAttribute ("instrument", track.instrument.kind == Instrument::Kind::plugin ? "plugin" : "paragonSynth");
             if (track.instrument.kind == Instrument::Kind::plugin)
                 t->addChildElement (track.instrument.plugin.createXml().release());
@@ -113,6 +125,13 @@ namespace pr7s
                 p->setAttribute ("start", part.start);
                 p->setAttribute ("length", part.length);
                 p->setAttribute ("name", part.name);
+                if (part.isAudio())
+                {
+                    p->setAttribute ("audioFile", part.audioFile);
+                    p->setAttribute ("audioOffset", part.audioOffset);
+                    p->setAttribute ("fadeIn", part.fadeIn);
+                    p->setAttribute ("fadeOut", part.fadeOut);
+                }
                 for (const auto& note : part.notes)
                 {
                     auto* n = p->createNewChildElement (noteTag);
@@ -155,6 +174,13 @@ namespace pr7s
             track.mute = t->getBoolAttribute ("mute");
             track.solo = t->getBoolAttribute ("solo");
             track.armed = t->getBoolAttribute ("armed");
+            if (t->getStringAttribute ("kind") == "audio")
+            {
+                track.kind = Track::Kind::audio;
+                track.input = juce::jlimit (0, 63, t->getIntAttribute ("input"));
+                track.stereoInput = t->getBoolAttribute ("stereoInput");
+                track.monitor = t->getBoolAttribute ("monitor");
+            }
             if (t->getStringAttribute ("instrument") == "plugin")
             {
                 track.instrument.kind = Instrument::Kind::plugin;
@@ -171,6 +197,10 @@ namespace pr7s
                 part.start = juce::jmax (0.0, p->getDoubleAttribute ("start"));
                 part.length = juce::jmax (0.0625, p->getDoubleAttribute ("length", 4.0));
                 part.name = p->getStringAttribute ("name");
+                part.audioFile = p->getStringAttribute ("audioFile");
+                part.audioOffset = juce::jmax (0.0, p->getDoubleAttribute ("audioOffset"));
+                part.fadeIn = juce::jmax (0.0, p->getDoubleAttribute ("fadeIn"));
+                part.fadeOut = juce::jmax (0.0, p->getDoubleAttribute ("fadeOut"));
                 for (const auto* n : p->getChildWithTagNameIterator (noteTag))
                     part.notes.push_back ({ n->getDoubleAttribute ("start"), juce::jmax (0.001, n->getDoubleAttribute ("length", 0.25)),
                                             juce::jlimit (0, 127, n->getIntAttribute ("pitch", 60)),

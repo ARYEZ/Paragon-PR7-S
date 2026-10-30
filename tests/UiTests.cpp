@@ -536,3 +536,100 @@ TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inse
         CHECK (view.createComponentSnapshot (view.getLocalBounds()).isValid());
     }
 }
+
+TEST_CASE ("Audio tracks on screen: MON and the input in the track list; clips trimmed and faded in the arrangement", "[ui][audio]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto synth = studio.getProject().tracks[0].id;
+    const auto guitar = studio.addAudioTrack (false);
+    // A two-second recording, as a clip from beat 4 to 8 (four beats at 120 BPM).
+    REQUIRE (writeWav (studio.getAudioFolder().getChildFile ("Gtr 01.wav"), pluckedTake (2.0, 48000.0), 48000.0));
+    Part clip { 4.0, 4.0, "Gtr", {} };
+    clip.audioFile = "Gtr 01.wav";
+    studio.addPart (guitar, clip);
+    studio.dispatchPendingMessages();
+
+    // The track list: MON and the input where an instrument track has its instrument.
+    std::vector<juce::TextButton*> buttons;
+    findAll (view.getTrackList(), buttons);
+    juce::TextButton* monitor = nullptr;
+    juce::TextButton* input = nullptr;
+    auto monitors = 0;
+    for (auto* b : buttons)
+    {
+        if (b->getButtonText() == "MON" && b->isVisible())
+        {
+            monitor = b;
+            ++monitors;
+        }
+        if (b->getButtonText() == "IN 1")
+            input = b;
+    }
+    REQUIRE (monitor != nullptr);
+    CHECK (monitors == 1);   // only the audio track has one
+    CHECK (input != nullptr);
+    monitor->onClick();
+    CHECK (studio.getProject().findTrack (guitar)->monitor);
+    studio.setTrackInput (guitar, 0, true);
+    studio.dispatchPendingMessages();
+    CHECK (input->getButtonText() == "IN 1+2");
+
+    // The arrangement: drag the clip's left edge a beat later. The start
+    // moves and the audio stays put (half a second further into the recording).
+    auto& arrange = view.getArrangeView();
+    const auto pixelsPerBeat = (float) (arrange.getPartBounds (guitar, 0).getWidth() / 4.0f);
+    const auto drag = [&] (juce::Point<float> from, juce::Point<float> to)
+    {
+        arrange.mouseDown (mouseAt (arrange, from, from));
+        for (int step = 1; step <= 4; ++step)
+            arrange.mouseDrag (mouseAt (arrange, from + (to - from) * ((float) step / 4.0f), from));
+        arrange.mouseUp (mouseAt (arrange, to, from));
+    };
+    auto bounds = arrange.getPartBounds (guitar, 0);
+    drag ({ bounds.getX() + 2.0f, bounds.getCentreY() }, { bounds.getX() + 2.0f + pixelsPerBeat, bounds.getCentreY() });
+    auto now = studio.getProject().findTrack (guitar)->parts[0];
+    CHECK_THAT (now.start, WithinAbs (5.0, 1.0e-9));
+    CHECK_THAT (now.length, WithinAbs (3.0, 1.0e-9));
+    CHECK_THAT (now.audioOffset, WithinAbs (0.5, 1.0e-9));
+
+    // Its right edge, dragged far on: no further than the recording goes (2 s = 4 beats from its start).
+    bounds = arrange.getPartBounds (guitar, 0);
+    drag ({ bounds.getRight() - 2.0f, bounds.getCentreY() }, { bounds.getRight() + pixelsPerBeat * 6.0f, bounds.getCentreY() });
+    now = studio.getProject().findTrack (guitar)->parts[0];
+    CHECK_THAT (now.length, WithinAbs ((2.0 - 0.5) / 0.5, 1.0e-6));   // 3 beats: from 0.5 s to the recording's end
+
+    // The fade-in handle, dragged a beat in: a fade of about half a second.
+    bounds = arrange.getPartBounds (guitar, 0);
+    const juce::Point<float> handle (bounds.getX() + 4.0f, bounds.getY() + 20.0f);
+    drag (handle, handle.translated (pixelsPerBeat, 0.0f));
+    now = studio.getProject().findTrack (guitar)->parts[0];
+    CHECK_THAT (now.fadeIn, WithinAbs ((4.0 + pixelsPerBeat) / pixelsPerBeat * 0.5, 0.02));
+    CHECK (now.fadeOut == 0.0);
+    studio.undo();   // each of those one step
+    CHECK (studio.getProject().findTrack (guitar)->parts[0].fadeIn == 0.0);
+    studio.redo();
+
+    // A clip can't be dragged onto an instrument track.
+    bounds = arrange.getPartBounds (guitar, 0);
+    const auto synthLane = arrange.getPartBounds (guitar, 0).getCentreY() - (float) Timeline::trackHeight;
+    REQUIRE (arrange.trackAtY (synthLane) == synth);
+    drag (bounds.getCentre(), { bounds.getCentreX(), synthLane });
+    CHECK (studio.getProject().findTrack (synth)->parts.empty());
+    CHECK (studio.getProject().findTrack (guitar)->parts.size() == 1);
+
+    // Double-clicking a clip doesn't open the key editor (it has no notes).
+    bounds = arrange.getPartBounds (guitar, 0);
+    arrange.mouseDoubleClick (mouseAt (arrange, bounds.getCentre(), bounds.getCentre(), {}, 2));
+    CHECK_FALSE (view.isKeyEditorOpen());
+
+    // It draws, with the waveform, in every finish.
+    for (const auto type : { Finish::Type::pearlBlack, Finish::Type::pearlWhiteNeon, Finish::Type::pearlWhite })
+    {
+        Finish::set (type, false);
+        CHECK (view.createComponentSnapshot (view.getLocalBounds()).isValid());
+    }
+    studio.getAudioFolder().deleteRecursively();
+}

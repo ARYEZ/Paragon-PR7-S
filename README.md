@@ -9,3 +9,5 @@ It's built in stages, a release at a time. The first stage was MIDI recording wi
 ## License
 
 GNU AGPLv3 (see [LICENSE.md](LICENSE.md)), as required by JUCE's open-source license.
+
+On Windows the studio supports ASIO, built with Steinberg's ASIO SDK under its GPLv3 licence (the build downloads the SDK; it isn't in this repository). ASIO is a trademark and software of Steinberg Media Technologies GmbH.

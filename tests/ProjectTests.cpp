@@ -109,6 +109,33 @@ TEST_CASE ("A project saves and opens with everything in it", "[project]")
     REQUIRE (loaded->masterInserts.size() == 1);
     CHECK (loaded->masterInserts[0].plugin.name == "PR7-C");
 
+    // An audio track and its clip.
+    {
+        Project withAudio;
+        Track guitar;
+        guitar.id = 2;
+        guitar.kind = Track::Kind::audio;
+        guitar.input = 1;
+        guitar.stereoInput = true;
+        guitar.monitor = true;
+        Part take { 8.0, 3.5, "Gtr", {} };
+        take.audioFile = "Gtr 01.wav";
+        take.audioOffset = 0.25;
+        take.fadeIn = 0.05;
+        take.fadeOut = 0.5;
+        guitar.parts.push_back (take);
+        withAudio.tracks.push_back (guitar);
+        const auto back = Project::fromXml (*withAudio.toXml());
+        REQUIRE (back.has_value());
+        const auto& g = back->tracks[0];
+        CHECK (g.isAudio());
+        CHECK (g.input == 1);
+        CHECK (g.stereoInput);
+        CHECK (g.monitor);
+        CHECK (g.parts[0] == take);
+        CHECK (lead.kind == Track::Kind::instrument);
+    }
+
     // A song from before the mixer: master at 0 dB, no effects.
     auto old = project.toXml();
     old->removeChildElement (old->getChildByName ("Master"), true);

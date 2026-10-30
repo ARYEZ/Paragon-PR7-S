@@ -430,9 +430,9 @@ void MainView::openProject()
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't open the song",
                                                     file.getFullPathName() + " isn't a Paragon PR7-S song (or is from a newer version).");
         else if (problems.isNotEmpty())
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Some instruments are missing",
-                                                    "These instruments and effects aren't on this computer. Their tracks are silent, and the "
-                                                    "sound goes past the effects, until they're found (PLUGINS):\n\n" + problems);
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Some instruments, effects or recordings are missing",
+                                                    "These aren't on this computer. Tracks without their instrument and clips without their "
+                                                    "recording are silent, and the sound goes past missing effects, until they're found:\n\n" + problems);
     });
 }
 

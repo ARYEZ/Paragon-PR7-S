@@ -92,8 +92,22 @@ namespace pr7s
         void takeRecorded (std::vector<RecordedEvent>& into);
 
         //======================================================================
-        // One block of the studio's output: every track and the click, stereo.
-        void render (juce::AudioBuffer<float>& output, int numSamples);
+        //======================================================================
+        // Audio tracks (message thread). A clip's sound comes from `source`
+        // (the studio's loaded recordings, at the engine's sample rate).
+        using AudioSource = std::function<std::shared_ptr<const juce::AudioBuffer<float>> (const juce::String& file)>;
+        void setAudioSource (AudioSource source) { audioSource = std::move (source); }
+        void addAudioTrack (int trackId);
+        // Where a recording into this track goes while recording (its input,
+        // one or two channels), written from the audio thread (the writer's
+        // own thread puts it on disk). nullptr: none (before deleting it).
+        void setRecorder (int trackId, juce::AudioFormatWriter::ThreadedWriter*);
+        // The song position (in samples) of the first sample recorded, or -1.
+        juce::int64 getAudioRecordStart() const noexcept { return audioRecordStart.load(); }
+
+        // One block of the studio's output: every track and the click,
+        // stereo. `input`: the interface's inputs for the block (tests).
+        void render (juce::AudioBuffer<float>& output, int numSamples, const juce::AudioBuffer<float>* input = nullptr);
 
         // The output's level, and each track's (the highest since last asked).
         // Each has two readers, so the transport and the track list (0) and
@@ -124,9 +138,25 @@ namespace pr7s
             bool bypass = false;
         };
 
+        // An audio clip as it plays: from `start` to `end` (beats), its sound
+        // from `offset` samples in, faded over so many samples.
+        struct Clip
+        {
+            double start = 0.0, end = 0.0;
+            std::shared_ptr<const juce::AudioBuffer<float>> sound;
+            juce::int64 offset = 0;
+            double fadeIn = 0.0, fadeOut = 0.0;
+        };
+
         struct TrackState
         {
             int id = 0;
+            bool audio = false;          // an audio track: clips and input, no instrument
+            std::vector<Clip> clips;
+            int input = 0;
+            bool stereoInput = false, monitor = false;
+            juce::AudioFormatWriter::ThreadedWriter* recorder = nullptr;
+            bool recorderDone = false;   // the cycle came round: the first pass is kept
             std::unique_ptr<juce::AudioPluginInstance> instrument;
             int instrumentChannels = 2;  // what the instrument is given (its buffer may have more, for the inserts)
             std::vector<Slot> inserts;
@@ -165,6 +195,20 @@ namespace pr7s
         void schedule (TrackState&, juce::int64 fromSample, juce::int64 toSample, int sampleOffset, double beatsPerSample);
         void stopHeldNotes (TrackState&, int sampleOffset);
         void renderBlock (juce::AudioBuffer<float>& output, int numSamples);
+        const float* inputChannel (int channel, int offset) const noexcept;
+        void playClips (TrackState&, juce::int64 clock, int offset, int length, double beatsPerSample);
+
+        // The block's segments (up to the cycle's end, then from its start): their song position, place in the block and length.
+        struct Segment { juce::int64 clock; int offset, length; };
+        std::array<Segment, 16> segments;
+        int numSegments = 0;
+
+        // The interface's inputs this block.
+        const float* const* blockInputs = nullptr;
+        int blockNumInputs = 0, blockInputOffset = 0;
+        std::vector<float> silence;   // for an input that isn't there
+        AudioSource audioSource;
+        std::atomic<juce::int64> audioRecordStart { -1 };
 
         juce::CriticalSection lock;
         std::vector<std::unique_ptr<TrackState>> tracks;
@@ -174,6 +218,7 @@ namespace pr7s
 
         std::atomic<bool> playing { false }, recording { false };
         std::atomic<double> position { 0.0 }, jumpTo { -1.0 };
+        std::atomic<bool> rebase { false };   // the position was moved while stopped: the clock starts from it
         bool wasPlaying = false;
         // The song position in whole samples while playing (audio thread), so
         // notes land on exactly their sample however long the song plays.

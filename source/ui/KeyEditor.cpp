@@ -162,7 +162,8 @@ void KeyEditor::refresh()
         lastArrangeIndex = selection.index;
         if (const auto* track = studio.getProject().findTrack (selection.trackId);
             track != nullptr && juce::isPositiveAndBelow (selection.index, (int) track->parts.size())
-            && track->parts[(size_t) selection.index].id != partId)
+            && track->parts[(size_t) selection.index].id != partId
+            && ! track->parts[(size_t) selection.index].isAudio())   // an audio clip has no notes: the editor stays on its part
         {
             partId = track->parts[(size_t) selection.index].id;
             selected.clear();

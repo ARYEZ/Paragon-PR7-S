@@ -34,11 +34,37 @@ jobs:
             libxrandr-dev libxrender-dev libxi-dev \
             libegl-dev libglu1-mesa-dev mesa-common-dev
 
+      # ASIO on Windows: Steinberg's ASIO SDK, used under its GPLv3 option.
+      # Downloaded from Steinberg, and only used if its licence text offers
+      # the GPL; if anything here fails, Windows builds without ASIO (a
+      # warning says so) rather than failing the release.
+      - name: ASIO SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set +e
+          mkdir -p "$RUNNER_TEMP/asio" && cd "$RUNNER_TEMP/asio"
+          if curl -fsSL -o asiosdk.zip https://www.steinberg.net/asiosdk && 7z x -y asiosdk.zip > /dev/null; then
+            header=$(find . -path '*common/iasiodrv.h' | head -1)
+            if [ -n "$header" ] && grep -rliq "GNU General Public License" --include='*.txt' --include='*.md' . ; then
+              sdk=$(cd "$(dirname "$header")/.." && pwd -W 2>/dev/null || pwd)
+              echo "ASIO_SDK=$sdk" >> "$GITHUB_ENV"
+              echo "ASIO SDK (GPLv3) at $sdk"
+            else
+              echo "::warning::The ASIO SDK downloaded, but no GPL licence text (or no headers) was found in it: building without ASIO"
+            fi
+          else
+            echo "::warning::Couldn't download the ASIO SDK from steinberg.net: building without ASIO"
+          fi
+          exit 0
+
       - name: Configure
         shell: bash
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then GENERATOR="-G Ninja"; fi
-          cmake -B build $GENERATOR -DCMAKE_BUILD_TYPE=Release
+          ASIO=""
+          if [ -n "$ASIO_SDK" ]; then ASIO="-DPARAGON_ASIO_SDK=$ASIO_SDK"; fi
+          cmake -B build $GENERATOR -DCMAKE_BUILD_TYPE=Release $ASIO
 
       - name: Build
         run: cmake --build build --config Release --parallel 4
@@ -123,11 +149,22 @@ jobs:
           fi
           cat .github/release-install.md >> notes.md
 
+      # Retried: GitHub's upload can drop mid-way ("stream error ... CANCEL",
+      # which kept 0.4.0 from being published the first time). A half-made
+      # release from a failed try is removed before the next.
       - name: Publish the release
         if: steps.version.outputs.publish == 'true'
         run: |
           TAG="${{ steps.version.outputs.tag }}"
-          gh release create "$TAG" release/*.zip \
-            --target "$GITHUB_SHA" \
-            --title "Paragon PR7-S ${TAG}" \
-            --notes-file notes.md
+          for attempt in 1 2 3; do
+            if gh release create "$TAG" release/*.zip \
+                 --target "$GITHUB_SHA" \
+                 --title "Paragon PR7-S ${TAG}" \
+                 --notes-file notes.md; then
+              exit 0
+            fi
+            echo "::warning::Publishing ${TAG} failed (attempt ${attempt}); trying again"
+            gh release delete "$TAG" --yes --cleanup-tag > /dev/null 2>&1 || true
+            sleep 20
+          done
+          exit 1

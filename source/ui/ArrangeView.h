@@ -35,10 +35,14 @@ struct Timeline
 //
 //   ruler           click to put the position there; drag across its top
 //                   strip to set the cycle (and turn CYCLE on)
-//   a part          click to select; drag to move (to another track too);
-//                   Alt-drag to copy; drag its right edge to lengthen or
-//                   shorten it; double-click to edit its notes (the key
-//                   editor); right-click for Edit notes, Duplicate and Delete
+//   a part          click to select; drag to move (to another track of its
+//                   kind too); Alt-drag to copy; drag its right edge to
+//                   lengthen or shorten it; double-click to edit its notes
+//                   (the key editor); right-click for Edit notes, Duplicate
+//                   and Delete
+//   an audio clip   its waveform; drag its left edge to trim its start (the
+//                   audio stays where it is), its right edge to trim its end;
+//                   drag the handles at its top corners to fade in and out
 //   an empty lane   click to select the track; double-click for a new
 //                   empty bar-long part
 //   wheel           scrolls the tracks; Shift+wheel scrolls along the song;
@@ -88,7 +92,10 @@ private:
     Timeline& timeline;
     Selection selection;
 
-    enum class Drag { none, position, cycle, move, resize };
+    enum class Drag { none, position, cycle, move, resize, trimStart, fadeIn, fadeOut };
+    pr7s::Part dragPart;   // an audio clip as it's being trimmed or faded
+    bool isAudioTrack (int trackId) const;
+    juce::Rectangle<float> fadeHandle (juce::Rectangle<float> bounds, const pr7s::Part&, bool fadeIn) const;
     Drag drag = Drag::none;
     double dragStartBeat = 0.0, dragOriginalStart = 0.0, dragOriginalLength = 0.0;
     int dragTrack = 0, dragTargetTrack = 0;

@@ -153,6 +153,22 @@ TEST_CASE ("Stopping or jumping stops the notes sounding", "[engine]")
     CHECK (jump.probe->notesOn().size() == 2);
 }
 
+TEST_CASE ("Stop, move and play again before the audio has seen the stop: it plays from where it was moved to", "[engine]")
+{
+    Rig rig;
+    rig.setNotes ({ 0.0, 8.0, "Riff", { { 4.0, 1.0, 60, 0.8f } } });
+    rig.engine.play();
+    renderSamples (rig.engine, (int) rig.beats (2.0));
+    rig.engine.stop();
+    rig.engine.setPosition (4.0);   // no block rendered between the stop and this
+    rig.engine.play();
+    rig.probe->received.clear();
+    rig.probe->samplesSoFar = 0;
+    renderSamples (rig.engine, 4096);
+    REQUIRE (rig.probe->notesOn().size() == 1);
+    CHECK (rig.probe->notesOn()[0].sample == 0);   // the note at beat 4, at once
+}
+
 TEST_CASE ("What's played live goes to the live track's instrument", "[engine]")
 {
     Rig rig;

@@ -39,6 +39,11 @@ namespace pr7s
         // Tracks. A new track takes the next colour and is selected.
         // Returns its id (0, with `error` set, if the instrument didn't load).
         int addTrack (const Instrument&, juce::String* error = nullptr);
+        // An audio track (mono: one input; stereo: a pair), recording from
+        // the interface's first input(s). Returns its id.
+        int addAudioTrack (bool stereo);
+        void setTrackInput (int trackId, int input, bool stereo);
+        void setMonitor (int trackId, bool);   // hear what comes in, through the track's effects
         void removeTrack (int trackId);
         bool changeInstrument (int trackId, const Instrument&, juce::String* error = nullptr);
         void renameTrack (int trackId, const juce::String&);
@@ -61,11 +66,32 @@ namespace pr7s
         void copyPart (int trackId, int index, int toTrackId, double newStart);
         void deletePart (int trackId, int index);
         void resizePart (int trackId, int index, double newLength);
+        // A part replaced as a whole (an audio clip trimmed or faded: start,
+        // length, offset and fades together). One undo step.
+        void updatePart (int trackId, int index, const Part&);
         // Where the part with this id is now: its track and index (none if it's gone).
         std::optional<std::pair<int, int>> findPart (int partId) const;
         // A part's notes, replaced (the key editor's every edit: one undo step each).
         // Kept in the order given, so the editor's selection still points at the same notes.
         void setNotes (int trackId, int index, std::vector<Note>);
+
+        //======================================================================
+        // Recordings. They're files in the song's audio folder ("<song> Audio"
+        // beside the song; before it's saved, a folder in Documents), loaded
+        // whole, at the engine's sample rate.
+        struct AudioData
+        {
+            juce::AudioBuffer<float> sound;
+            std::vector<float> peaks;   // the loudest sample (either side) in each stretch of peakStep samples, for drawing
+            static constexpr int peakStep = 256;
+            double seconds() const noexcept;
+            double sampleRate = 48000.0;
+        };
+        std::shared_ptr<const AudioData> getAudio (const juce::String& file);   // none if it can't be read
+        juce::File getAudioFolder() const;
+        // The interface's delay, in and out: recordings are moved earlier by it,
+        // so they land where they were played. Tests set it; else the device's.
+        void setLatencyForTests (double seconds) { latencyOverride = seconds; }
 
         //======================================================================
         // The mixer: each track's inserts and the master's (`busId`: a
@@ -130,6 +156,8 @@ namespace pr7s
         void restore (const Project&);
         void updateLiveTrack();
         void finishRecording();
+        void finishAudioRecording();
+        double recordingLatency() const;
         void buildRecordingNotes (std::vector<Note>& notes, double partStart, double endBeat) const;
         void timerCallback() override;
         void changeListenerCallback (juce::ChangeBroadcaster*) override;   // the device settings changed: keep them
@@ -151,6 +179,16 @@ namespace pr7s
         double recordStart = 0.0, playStart = 0.0;
         int recordTrack = 0;
         std::vector<RecordedEvent> recorded;
+
+        // Recording audio: the file being written, and its writer.
+        juce::AudioFormatManager formats;
+        juce::TimeSliceThread writerThread { "Paragon PR7-S recorder" };
+        std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter> audioWriter;
+        juce::File audioRecording;
+        std::map<juce::String, std::shared_ptr<const AudioData>> audioCache;
+        double audioCacheRate = 0.0;
+        juce::File unsavedAudioFolder;
+        std::optional<double> latencyOverride;
 
         std::vector<Project> undoStates;
         int undoIndex = -1;

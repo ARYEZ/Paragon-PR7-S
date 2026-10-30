@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonPR7S VERSION 0.3.2 LANGUAGES C CXX)
+project(ParagonPR7S VERSION 0.4.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -78,6 +78,20 @@ target_link_libraries(PR7SCore
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags)
+
+# ASIO on Windows (the lowest delay, through the interface's own ASIO driver):
+# needs Steinberg's ASIO SDK, used under its GPLv3 option (PR7-S is AGPLv3).
+# CI downloads it and passes its folder here; without it, Windows uses its own
+# audio (WASAPI). ASIO is a trademark and software of Steinberg Media
+# Technologies GmbH.
+set(PARAGON_ASIO_SDK "" CACHE PATH "The ASIO SDK's folder (the one with common/iasiodrv.h), for ASIO on Windows")
+if(WIN32 AND PARAGON_ASIO_SDK AND EXISTS "${PARAGON_ASIO_SDK}/common/iasiodrv.h")
+    message(STATUS "ASIO: on, with the SDK in ${PARAGON_ASIO_SDK}")
+    target_compile_definitions(PR7SCore PUBLIC JUCE_ASIO=1)
+    target_include_directories(PR7SCore PUBLIC "${PARAGON_ASIO_SDK}/common")
+elseif(WIN32)
+    message(STATUS "ASIO: off (no ASIO SDK given: PARAGON_ASIO_SDK)")
+endif()
 
 # Whoever links PR7SCore sees the JUCE modules' headers and settings too.
 target_include_directories(PR7SCore INTERFACE $<TARGET_PROPERTY:PR7SCore,INCLUDE_DIRECTORIES>)

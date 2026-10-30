@@ -5,6 +5,12 @@
 
 namespace
 {
+    // An audio track's input as it's shown: "IN 1", or "IN 1+2" for a pair.
+    juce::String inputName (const pr7s::Track& track)
+    {
+        return "IN " + juce::String (track.input + 1) + (track.stereoInput ? "+" + juce::String (track.input + 2) : juce::String());
+    }
+
     juce::FontOptions font (float height, int style = juce::Font::bold) { return ParagonLookAndFeel::textFont (height, style); }
 }
 
@@ -27,6 +33,10 @@ public:
             key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
             addAndMakeVisible (*key);
         }
+        monitor.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        monitor.setTooltip ("MON: hear what comes in from the interface (your guitar), through the track's effects");
+        monitor.onClick = [this] { if (auto* t = track()) owner.studio.setMonitor (trackId, ! t->monitor); };
+        addChildComponent (monitor);
         mute.setTooltip ("Mute this track");
         solo.setTooltip ("Solo: hear only the soloed tracks");
         arm.setTooltip ("Record-arm: recording and live playing go to this track");
@@ -65,7 +75,11 @@ public:
         mute.setToggleState (t->mute, juce::dontSendNotification);
         solo.setToggleState (t->solo, juce::dontSendNotification);
         arm.setToggleState (t->armed, juce::dontSendNotification);
-        instrument.setButtonText (t->instrument.getName());
+        instrument.setButtonText (t->isAudio() ? inputName (*t) : t->instrument.getName());
+        instrument.setTooltip (t->isAudio() ? "The input it records from: click to choose, or to delete the track"
+                                            : "The instrument: click to open its window, change it, or delete the track");
+        monitor.setVisible (t->isAudio());
+        monitor.setToggleState (t->monitor, juce::dontSendNotification);
         if (! volume.isMouseButtonDown())
             volume.setValue (t->volumeDb, juce::dontSendNotification);
         repaint();
@@ -110,6 +124,10 @@ public:
         solo.setBounds (top.removeFromRight (30));
         top.removeFromRight (3);
         mute.setBounds (top.removeFromRight (30));
+        top.removeFromRight (3);
+        monitor.setBounds (top.removeFromRight (40));   // audio tracks only (hidden otherwise)
+        if (! monitor.isVisible())
+            top.setRight (mute.getX() - 3);
         top.removeFromRight (6);
         name.setBounds (top);
         area.removeFromTop (6);
@@ -137,7 +155,7 @@ public:
     TrackList& owner;
     const int trackId;
     juce::Label name;
-    juce::TextButton mute { "M" }, solo { "S" }, arm { "R" }, instrument;
+    juce::TextButton mute { "M" }, solo { "S" }, arm { "R" }, monitor { "MON" }, instrument;
     juce::Slider volume;
     juce::Rectangle<float> levelArea;
     LevelMeter::Ballistics reading;
@@ -230,6 +248,9 @@ void TrackList::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelD
 void TrackList::showAddTrackMenu()
 {
     juce::PopupMenu menu;
+    menu.addSectionHeader ("ADD AN AUDIO TRACK");
+    menu.addItem (3, "Audio track (mono: a guitar, a voice)");
+    menu.addItem (4, "Audio track (stereo: a pair of inputs)");
     menu.addSectionHeader ("ADD AN INSTRUMENT TRACK");
     menu.addItem (1, "Paragon Synth (built in)");
     const auto instruments = studio.getPluginHost().getInstruments();
@@ -247,6 +268,10 @@ void TrackList::showAddTrackMenu()
         if (chosen == 1)
         {
             studio.addTrack ({});
+        }
+        else if (chosen == 3 || chosen == 4)
+        {
+            studio.addAudioTrack (chosen == 4);
         }
         else if (chosen == 2)
         {
@@ -271,15 +296,32 @@ void TrackList::showInstrumentMenu (int trackId)
     if (track == nullptr)
         return;
     auto* instance = studio.getEngine().getInstrument (trackId);
-    juce::PopupMenu menu, change;
-    menu.addItem (1, "Open " + track->instrument.getName() + "'s window", instance != nullptr && instance->hasEditor());
-    change.addItem (10, "Paragon Synth (built in)");
     const auto instruments = studio.getPluginHost().getInstruments();
-    for (int i = 0; i < instruments.size(); ++i)
-        change.addItem (100 + i, instruments[i].manufacturerName + ": " + instruments[i].name);
-    menu.addSubMenu ("Change instrument", change);
-    menu.addSeparator();
-    menu.addItem (2, "Delete track");
+    juce::PopupMenu menu, change;
+    if (track->isAudio())
+    {
+        // The inputs switched on in SETTINGS (two, with none to ask).
+        auto inputs = 2;
+        if (auto* device = studio.getDeviceManager().getCurrentAudioDevice())
+            inputs = juce::jmax (1, device->getActiveInputChannels().countNumberOfSetBits());
+        menu.addSectionHeader ("RECORD FROM");
+        for (int i = 0; i < inputs; ++i)
+            menu.addItem (200 + i, "IN " + juce::String (i + 1) + " (mono)", true, ! track->stereoInput && track->input == i);
+        for (int i = 0; i + 1 < inputs; i += 2)
+            menu.addItem (300 + i, "IN " + juce::String (i + 1) + "+" + juce::String (i + 2) + " (stereo)", true, track->stereoInput && track->input == i);
+        menu.addSeparator();
+        menu.addItem (2, "Delete track");
+    }
+    else
+    {
+        menu.addItem (1, "Open " + track->instrument.getName() + "'s window", instance != nullptr && instance->hasEditor());
+        change.addItem (10, "Paragon Synth (built in)");
+        for (int i = 0; i < instruments.size(); ++i)
+            change.addItem (100 + i, instruments[i].manufacturerName + ": " + instruments[i].name);
+        menu.addSubMenu ("Change instrument", change);
+        menu.addSeparator();
+        menu.addItem (2, "Delete track");
+    }
 
     menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, instruments] (int chosen)
     {
@@ -301,6 +343,14 @@ void TrackList::showInstrumentMenu (int trackId)
                                                     if (result == 1)
                                                         studio.removeTrack (trackId);
                                                 }));
+        }
+        else if (chosen >= 300)
+        {
+            studio.setTrackInput (trackId, chosen - 300, true);
+        }
+        else if (chosen >= 200)
+        {
+            studio.setTrackInput (trackId, chosen - 200, false);
         }
         else if (chosen == 10 || chosen >= 100)
         {

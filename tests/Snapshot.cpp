@@ -11,7 +11,7 @@
 //   PARAGON_SNAPSHOT=studio.png ./ParagonPR7STests "[snapshot]"
 // PARAGON_SNAPSHOT_WIDTH sets the width (default 1500; 3000 for 2x).
 // PARAGON_SNAPSHOT_FINISH=black or =neon picks the finish.
-// PARAGON_SNAPSHOT_ZONE=mixer shows the mixer in the lower zone (the key editor otherwise).
+// PARAGON_SNAPSHOT_ZONE=mixer shows the mixer in the lower zone, =none nothing there (the key editor otherwise).
 TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
 {
     using namespace pr7s;
@@ -53,6 +53,17 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     for (int i = 0; i < 24; ++i)
         solo.notes.push_back ({ i * 0.6, 0.5, 72 + (i * 5) % 12, 0.45f + 0.5f * (float) ((i * 7) % 10) / 9.0f });
     studio.addPart (lead, solo);
+    // A guitar: an audio track with a recorded take (a plucked-string stand-in), faded in and out.
+    const auto guitar = studio.addAudioTrack (false);
+    studio.renameTrack (guitar, "Guitar");
+    writeWav (studio.getAudioFolder().getChildFile ("Guitar 01.wav"), pluckedTake (12.0, 48000.0, 7), 48000.0);
+    Part take { 4.0, 20.0, "Guitar", {} };
+    take.audioFile = "Guitar 01.wav";
+    take.audioOffset = 1.0;
+    take.fadeIn = 0.4;
+    take.fadeOut = 1.5;
+    studio.addPart (guitar, take);
+    studio.setMonitor (guitar, true);
     studio.setCycle (16.0, 32.0);
     studio.setCycleOn (true);
     studio.setClick (true);
@@ -107,7 +118,7 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         }
         studio.stop();
     }
-    else
+    else if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_ZONE", {}) != "none")   // none: the lower zone closed
     {
         view.openKeyEditor();
         studio.dispatchPendingMessages();
