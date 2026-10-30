@@ -16,8 +16,8 @@
 //                  it or remove it
 //   MASTER         every track goes through it: its inserts, then its fader
 //
-// It sits under the arrangement (MIXER, F3) or in a window of its own
-// (WINDOW / DOCK), as the key editor does.
+// It sits under the arrangement (MIXER, Alt+F3) or in a window of its own
+// (F3; or WINDOW / DOCK), as the key editor does.
 class MixerView final : public juce::Component,
                         private juce::ChangeListener,
                         private juce::Timer

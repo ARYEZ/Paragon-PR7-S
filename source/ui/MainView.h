@@ -23,7 +23,8 @@
 // Home to the start, / cycle, C click, Delete the selected part, Ctrl+D
 // duplicate it, Ctrl+Z / Ctrl+Shift+Z undo / redo, Ctrl+N / O / S new, open
 // and save (Ctrl+Shift+S save as), Ctrl+E the key editor (Escape closes it),
-// F3 the mixer.
+// F3 the mixer in a window of its own, Alt+F3 (or MIXER) the mixer docked
+// (as Cubase's F3 and Alt+F3 do).
 // After a click in the key editor its keys go to it (Delete removes notes,
 // not the part); after a click elsewhere, to the arrangement. Ctrl+C / X / V
 // and Shift+A go to the editor whenever it's open.
@@ -68,6 +69,10 @@ public:
     void setMixerInWindow (bool inWindow)      { setZoneInWindow (mixerZone, inWindow); }
     bool isMixerInWindow() const noexcept      { return mixerZone.inWindow; }
     Windows::ZoneWindow* getMixerWindow() noexcept { return mixerZone.window.get(); }
+    // F3: the mixer in its own window (closed if it's there already);
+    // Alt+F3 and MIXER: docked under the arrangement (likewise).
+    void toggleMixerWindow();
+    void toggleMixerDocked();
 
     // The window's title: the project's name, * when changed.
     std::function<void (const juce::String&)> onTitleChange;

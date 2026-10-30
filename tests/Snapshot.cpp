@@ -125,6 +125,8 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
 
 // Hidden test: the key editor in its own window, stretched wide as across
 // three screens (PARAGON_SNAPSHOT_SIZE, default 5760x1000), to a PNG.
+// PARAGON_SNAPSHOT_ZONE=mixer: the mixer's own window (F3) instead, with a
+// song of eight tracks (default size 1920x1000: one screen).
 TEST_CASE ("Render the key editor's own window to a PNG", "[.][snapshot-window]")
 {
     using namespace pr7s;
@@ -144,21 +146,77 @@ TEST_CASE ("Render the key editor's own window to a PNG", "[.][snapshot-window]"
     studio.addPart (track, riff);
     studio.setPosition (21.0);
 
+    const auto mixerWindow = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_ZONE", {}) == "mixer";
+    if (mixerWindow)
+    {
+        // A song's worth of channels, with effects in some (stand-ins named after the family's plugins).
+        const char* names[] = { "Drums", "Bass", "Rhythm L", "Rhythm R", "Lead Gtr", "Keys", "Pad", "Vocal" };
+        const auto add = [&studio] (int busId, const juce::String& name)
+        {
+            Insert insert;
+            insert.plugin.name = name;
+            studio.addInsert (busId, insert, timesEffect (1.0f, name));
+        };
+        for (int i = 1; i < 8; ++i)
+            studio.addTrack ({});
+        for (int i = 0; i < 8; ++i)
+        {
+            const auto id = studio.getProject().tracks[(size_t) i].id;
+            studio.renameTrack (id, names[i]);
+            studio.setVolume (id, -3.0f - (float) ((i * 5) % 9));
+            studio.setPan (id, i == 2 ? -0.8f : i == 3 ? 0.8f : (float) ((i % 3) - 1) * 0.2f);
+            if (i >= 2 && i <= 4)
+                add (id, "Paragon PR7-G");
+            if (i == 1)
+                add (id, "Paragon PR7-B");
+            if (i == 7)
+                add (id, "Paragon PR7-V");
+            if (i % 2 == 0)
+                add (id, "Paragon PR7-C");
+        }
+        add (Engine::masterBus, "Paragon PR7-C");
+        studio.setMasterVolume (-1.0f);
+    }
+
     MainView view (studio);
     view.setSize (1500, 900);
-    view.getArrangeView().select (track, 0);
-    view.openKeyEditor();
-    view.setKeyEditorInWindow (true);
-    studio.dispatchPendingMessages();
-    const auto size = juce::StringArray::fromTokens (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SIZE", "5760x1000"), "x", {});
-    auto* window = view.getKeyEditorWindow();
-    REQUIRE (window != nullptr);
-    window->setSize (size[0].getIntValue(), size[1].getIntValue());
-    auto& editor = view.getKeyEditor();
-    editor.fitToPart();
-    editor.selectNotes ({ 10, 11, 12 });
+    juce::Component* shown = nullptr;
+    const auto size = juce::StringArray::fromTokens (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SIZE", mixerWindow ? "1920x1000" : "5760x1000"), "x", {});
+    if (mixerWindow)
+    {
+        view.toggleMixerWindow();   // F3
+        studio.selectTrack (studio.getProject().tracks[4].id);
+        studio.dispatchPendingMessages();
+        auto* window = view.getMixerWindow();
+        REQUIRE (window != nullptr);
+        window->setSize (size[0].getIntValue(), size[1].getIntValue());
+        // Some level on the meters.
+        studio.play();
+        for (int round = 0; round < 4; ++round)
+        {
+            renderSamples (studio.getEngine(), 4096);
+            juce::Timer::callPendingTimersSynchronously();
+            juce::Thread::sleep (30);
+        }
+        studio.stop();
+        shown = &view.getMixer();
+    }
+    else
+    {
+        view.getArrangeView().select (track, 0);
+        view.openKeyEditor();
+        view.setKeyEditorInWindow (true);
+        studio.dispatchPendingMessages();
+        auto* window = view.getKeyEditorWindow();
+        REQUIRE (window != nullptr);
+        window->setSize (size[0].getIntValue(), size[1].getIntValue());
+        auto& editor = view.getKeyEditor();
+        editor.fitToPart();
+        editor.selectNotes ({ 10, 11, 12 });
+        shown = &editor;
+    }
 
-    const auto image = editor.createComponentSnapshot (editor.getLocalBounds(), true, 1.0f);
+    const auto image = shown->createComponentSnapshot (shown->getLocalBounds(), true, 1.0f);
     const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (path);
     file.deleteFile();
     juce::FileOutputStream stream (file);

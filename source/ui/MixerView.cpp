@@ -162,7 +162,7 @@ void MixerView::Strip::paint (juce::Graphics& g)
     // The level: a column of LEDs for each side (the master's), or one for the track.
     const auto columns = isMaster() ? 2 : 1;
     const auto columnWidth = (meterArea.getWidth() - (float) (columns - 1) * 2.0f) / (float) columns;
-    constexpr int count = 24;
+    const auto count = juce::jlimit (16, 80, (int) (meterArea.getHeight() / 6.0f));   // fine LEDs however tall the meter
     for (int c = 0; c < columns; ++c)
     {
         const auto level = c == 0 ? levelLeft : levelRight;
@@ -238,7 +238,7 @@ MixerView::MixerView (pr7s::Studio& studioToUse) : studio (studioToUse)
     }
     windowButton.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
     closeButton.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
-    closeButton.setTooltip ("Close the mixer (F3)");
+    closeButton.setTooltip ("Close the mixer (F3 in its own window, Alt+F3 docked)");
     closeButton.onClick = [this] { if (onClose) onClose(); };
     windowButton.onClick = [this] { if (onWindowToggle) onWindowToggle(); };
     setInWindow (false);
