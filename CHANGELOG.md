@@ -2,6 +2,24 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.7.0
+
+Sends, FX channels and group channels: one reverb (or delay) that every track can send some of its sound to, and submixes with one fader, as the Cubase 15 manual describes.
+
+- **FX channels:** **+ ADD TRACK** > **FX channel** (empty, or **FX channel with** one of your effects, which goes in its first insert). It's named as the manual's are: "FX 1-<effect>". It takes what the tracks' sends give it, through its inserts, then its own fader (the effect's return) into the master.
+- **Sends:** in the mixer, **SENDS** (next to **INSERTS** in its bar) shows each channel's 8 sends instead of its inserts.
+  - Click an empty send to choose an FX channel, or **Add FX Channel to Send** to make a new one and send to it in one go.
+  - The **dot** turns a send on or off. **Drag** across it for its level (**Shift** for fine moves). **Ctrl-click** sets 0 dB.
+  - Right-click for its FX channel, **Move to Pre-Fader** or **Move to Post-Fader**, **Remove**, and **Bypass All Sends of This Channel**. **PRE** marks one before the fader.
+  - After the fader (the default), turning the track down turns its send down too. Before the fader, the send stays as it is, which is handy for a reverb you want to keep while the dry track fades.
+  - A new send starts on, after the fader, at 0 dB. The manual leaves these to a preference, so they're our choice.
+  - Send levels can be automated and written like faders: each one has a lane ("Send 1: FX 1-...").
+- **Group channels:** **+ ADD TRACK** > **Group channel**. Route tracks to it with **OUT** under their name in the mixer, or **Output** in their menu in the track list. They go through the group's effects and fader together (a drum bus, the backing vocals). A group can send to FX channels too.
+- **Solo:** soloing a track doesn't silence the FX and group channels it goes through, so you still hear its reverb.
+- FX and group channels have no parts and record nothing (no REC). Their rows show what they are. An FX channel's button opens its effect's window.
+- **Export** includes everything.
+- **Not there yet:** sends' own pan, FX channels feeding a group (they go to the master), groups feeding other groups, and side-chains. The number of sends (8) is our choice: the manual doesn't give one.
+
 ## 0.6.0
 
 Automation: volume, pan, mute and any plugin knob moving on their own as the song plays, written by hand or drawn, as the Cubase 15 manual's automation chapter describes.
