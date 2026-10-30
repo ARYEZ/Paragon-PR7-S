@@ -561,10 +561,11 @@ namespace pr7s
             engine.removeEffect (Engine::masterBus, 0);
     }
 
-    bool Studio::addInsert (int busId, const juce::PluginDescription& description, juce::String* error)
+    bool Studio::addInsert (int busId, const juce::PluginDescription& description, juce::String* error, int slot)
     {
         const auto* inserts = insertsOf (busId);
-        if (inserts == nullptr || (int) inserts->size() >= Project::maxInserts)
+        if (inserts == nullptr || (slot < 0 ? (int) inserts->size() >= Project::maxInserts
+                                            : slot >= Project::maxInserts || (slot < (int) inserts->size() && ! (*inserts)[(size_t) slot].isEmpty())))
         {
             if (error != nullptr)
                 *error = "There's no room for another effect here (" + juce::String (Project::maxInserts) + " at most).";
@@ -580,18 +581,49 @@ namespace pr7s
                 *error = problem;
             return false;
         }
-        return addInsert (busId, insert, std::move (instance));
+        return addInsert (busId, insert, std::move (instance), slot);
     }
 
-    bool Studio::addInsert (int busId, const Insert& insert, std::unique_ptr<juce::AudioPluginInstance> instance)
+    bool Studio::addInsert (int busId, const Insert& insert, std::unique_ptr<juce::AudioPluginInstance> instance, int slot)
     {
         auto* inserts = insertsOf (busId);
-        if (inserts == nullptr || (int) inserts->size() >= Project::maxInserts)
+        if (inserts == nullptr)
             return false;
-        inserts->push_back (insert);
-        engine.insertEffect (busId, (int) inserts->size() - 1, std::move (instance));
+        if (slot < 0)
+            slot = (int) inserts->size();
+        if (slot >= Project::maxInserts || (slot < (int) inserts->size() && ! (*inserts)[(size_t) slot].isEmpty()))
+            return false;
+        // Empty slots up to it, if it's past the last one used.
+        while ((int) inserts->size() <= slot)
+        {
+            inserts->push_back ({});
+            engine.insertEffect (busId, (int) inserts->size() - 1, nullptr);
+        }
+        (*inserts)[(size_t) slot] = insert;
+        engine.removeEffect (busId, slot);
+        engine.insertEffect (busId, slot, std::move (instance));
         changed (false);
         return true;
+    }
+
+    void Studio::setLastPreFaderSlot (int busId, int slot)
+    {
+        const auto count = juce::jlimit (0, Project::maxInserts, slot + 1);
+        if (busId == Engine::masterBus)
+            project.masterPreFaderSlots = count;
+        else if (auto* track = project.findTrack (busId))
+            track->preFaderSlots = count;
+        else
+            return;
+        changed (false);
+    }
+
+    int Studio::getPreFaderSlots (int busId) const
+    {
+        if (busId == Engine::masterBus)
+            return project.masterPreFaderSlots;
+        const auto* track = project.findTrack (busId);
+        return track != nullptr ? track->preFaderSlots : Project::maxInserts;
     }
 
     bool Studio::replaceInsert (int busId, int slot, const juce::PluginDescription& description, juce::String* error)
@@ -625,8 +657,15 @@ namespace pr7s
             return;
         effectGoing (busId, slot);
         engine.removeEffect (busId, slot);
-        inserts->erase (inserts->begin() + slot);
-        insertGone (busId, slot, true);
+        engine.insertEffect (busId, slot, nullptr);   // the slot stays, empty
+        (*inserts)[(size_t) slot] = {};
+        insertGone (busId, slot, false);
+        // No empty slots after the last effect.
+        while (! inserts->empty() && inserts->back().isEmpty())
+        {
+            engine.removeEffect (busId, (int) inserts->size() - 1);
+            inserts->pop_back();
+        }
         changed (false);
     }
 
@@ -1394,9 +1433,14 @@ namespace pr7s
         std::unique_ptr<juce::OutputStream> stream (destination.createOutputStream());
         const auto rate = options.sampleRate > 0.0 ? options.sampleRate : job->previousRate;
         if (stream != nullptr)
+        {
+            const auto bits = options.bitsPerSample == 16 ? 16 : options.bitsPerSample == 32 ? 32 : 24;
             job->writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (rate)
                                                                                                         .withNumChannels (2)
-                                                                                                        .withBitsPerSample (options.bitsPerSample == 16 ? 16 : 24));
+                                                                                                        .withBitsPerSample (bits)
+                                                                                                        .withSampleFormat (bits == 32 ? juce::AudioFormatWriterOptions::SampleFormat::floatingPoint
+                                                                                                                                      : juce::AudioFormatWriterOptions::SampleFormat::integral));
+        }
         if (job->writer == nullptr)
         {
             error = "Couldn't write " + destination.getFullPathName();
@@ -1428,7 +1472,8 @@ namespace pr7s
         engine.update (playing);
         engine.setNonRealtime (true);
 
-        job->total = (juce::int64) std::llround (((options.end - options.start) * 60.0 / project.bpm + juce::jmax (0.0, options.tailSeconds)) * rate);
+        job->total = (juce::int64) std::llround ((options.end - options.start) * 60.0 / project.bpm * rate);
+        job->maxTail = (juce::int64) std::llround (juce::jmax (0.0, options.tailSeconds) * rate);
         engine.setPosition (options.start);
         engine.play();
         exportJob = std::move (job);
@@ -1442,8 +1487,17 @@ namespace pr7s
         auto& job = *exportJob;
         const auto blockSize = juce::jmax (64, engine.getBlockSize());
         juce::AudioBuffer<float> block (2, blockSize);
-        const auto reportEvery = (juce::int64) (engine.getSampleRate() * 0.5);
+        const auto rate = engine.getSampleRate();
+        const auto reportEvery = (juce::int64) (rate * 0.5);
         juce::int64 sinceReport = 0;
+        const auto report = [&] (int length, double progress)
+        {
+            sinceReport += length;
+            if (! keepGoing || sinceReport < reportEvery)
+                return true;
+            sinceReport = 0;
+            return keepGoing (progress);
+        };
         for (juce::int64 done = 0; done < job.total;)
         {
             const auto length = (int) juce::jmin ((juce::int64) blockSize, job.total - done);
@@ -1451,13 +1505,34 @@ namespace pr7s
             if (! job.writer->writeFromAudioSampleBuffer (block, 0, length))
                 return false;
             done += length;
-            sinceReport += length;
-            if (keepGoing && sinceReport >= reportEvery)
+            if (! report (length, 0.95 * (double) done / (double) job.total))
+                return false;
+        }
+
+        // The ring-out: on until it's been silent (below -100 dB) for a
+        // quarter of a second, at most maxTail; written up to its last sound.
+        if (job.maxTail > 0)
+        {
+            juce::AudioBuffer<float> tail (2, (int) job.maxTail);
+            const auto quietFor = (juce::int64) (rate * 0.25);
+            juce::int64 done = 0, lastSound = -1;
+            while (done < job.maxTail && done - lastSound <= quietFor)
             {
-                sinceReport = 0;
-                if (! keepGoing ((double) done / (double) job.total))
+                const auto length = (int) juce::jmin ((juce::int64) blockSize, job.maxTail - done);
+                juce::AudioBuffer<float> into (tail.getArrayOfWritePointers(), 2, (int) done, length);
+                engine.render (into, length);
+                for (int i = length - 1; i >= 0; --i)
+                    if (std::abs (into.getSample (0, i)) > 1.0e-5f || std::abs (into.getSample (1, i)) > 1.0e-5f)
+                    {
+                        lastSound = done + i;
+                        break;
+                    }
+                done += length;
+                if (! report (length, 0.95 + 0.05 * (double) done / (double) job.maxTail))
                     return false;
             }
+            if (lastSound >= 0 && ! job.writer->writeFromAudioSampleBuffer (tail, 0, (int) lastSound + 1))
+                return false;
         }
         job.finished = true;
         return true;
@@ -1536,6 +1611,11 @@ namespace pr7s
         {
             for (int slot = 0; slot < (int) inserts.size(); ++slot)
             {
+                if (inserts[(size_t) slot].isEmpty())
+                {
+                    engine.insertEffect (busId, slot, nullptr);   // an empty slot
+                    continue;
+                }
                 juce::String error;
                 auto instance = host->createEffect (inserts[(size_t) slot], engine.getSampleRate(), engine.getBlockSize(), error);
                 if (instance == nullptr)

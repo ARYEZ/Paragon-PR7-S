@@ -29,19 +29,8 @@ namespace ParagonColours
     inline const juce::Colour inkDim     { 0xff6b6569 };
     inline const juce::Colour glow       { 0xffff4a3a };   // the red-orange edge light
 
-    // Each block's colour in the signal chain, as in the mockup.
-    inline const juce::Colour comp       { 0xff35d6a8 };
-    inline const juce::Colour drive      { 0xffffb22e };
-    inline const juce::Colour amp        { 0xffff4b3e };
-    inline const juce::Colour cab        { 0xffff5d6c };
-    inline const juce::Colour modulation { 0xffb86dff };
-    inline const juce::Colour delay      { 0xff45b4ff };
-    inline const juce::Colour reverb     { 0xff4fe3dd };
-    inline const juce::Colour eq         { 0xffff5a2c };
-    inline const juce::Colour filterPitch { 0xffb8f040 };   // lime
-    inline const juce::Colour glitch     { 0xffff4fd8 };   // hot magenta
-    inline const juce::Colour pitch      { 0xffbfe6ff };   // ice blue
-    inline const juce::Colour loFi       { 0xffe8d29a };   // old-radio cream   // the plugin's neon orange-red
+    // (PR7-G's signal-chain block colours aren't here: PR7-S keeps to the
+    // family's red, pink and orange, pearl white and pearl onyx.)
 }
 
 class ParagonLookAndFeel final : public juce::LookAndFeel_V4

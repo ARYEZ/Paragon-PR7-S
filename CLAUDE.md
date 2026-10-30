@@ -13,13 +13,30 @@
 
 1. **0.1.0, done: MIDI and instruments** (the owner's choice to start). Instrument tracks (the built-in Paragon Synth or VST3 instruments), MIDI recording from a keyboard or the on-screen one, the arrangement, transport, click, cycle, songs saved as `.pr7s`, undo.
 2. **0.2.0, done: the piano roll (key editor):** draw, move, copy, resize, delete notes; velocity lane; quantize; in the lower zone, following the selected part.
-3. **0.3.0, done: the mixer:** channel strips, 8 inserts each (VST3 effects, including our PR7 plugins), master bus with its own inserts; the on-screen keyboard removed (the owner asked: the lower zone needs the room).
+3. **0.3.0, done: the mixer:** channel strips, inserts (VST3 effects, including our PR7 plugins; 16 slots since 0.5.1), master bus with its own inserts; the on-screen keyboard removed (the owner asked: the lower zone needs the room).
 4. **0.4.0, done: audio tracks:** record through the interface (mono or stereo input, latency-compensated), clips with waveform, trim start/end, fades, monitoring through inserts; ASIO on Windows.
-5. **0.5.0, done: export** (a mixdown to WAV; the owner agreed to split automation off).
+5. **0.5.0, done: export** (a mixdown to WAV; the owner agreed to split automation off). **0.5.1:** fixes from checking 0.1–0.5 against the Cubase 15 manual, and family colours only.
 6. **0.6.0: automation.**
 7. Later: takes and comping, MIDI controller lanes, drum editor, markers... as the owner asks.
 
 Be honest about scale: Cubase took a large team decades. Say where it stands.
+
+## Colours (the owner's rule, 0.5.1)
+
+Only the family's colours: anything along the **red / pink / orange** gradient, **pearl white** and **pearl onyx** (the dark panels and greys). No blue, green, violet, aqua or yellow anywhere (track colours included: `trackColour`, tested). PR7-G's signal-chain colours were removed from `ParagonColours`. The shared `LedDisplay` still has the plugins' green "in tune" for a tuner, which PR7-S never shows.
+
+## The Cubase manual (0.5.1)
+
+The owner wants Cubase **15**'s behaviour. Its manual is the **Cubase Pro 15 Help** on www.steinberg.help (allowed in this environment's network; archive.steinberg.help isn't). It's a Fluid Topics site with a JSON API:
+- `curl https://www.steinberg.help/api/khub/maps` lists the manuals (Cubase Pro Help 15.0.30, English: map id `NlutMEjaYjAqk1bhdcAc5g`).
+- `.../api/khub/maps/<map id>/toc` is the table of contents (nodes with `title`, `contentId`, `children`).
+- `.../api/khub/maps/<map id>/topics/<contentId>/content` is a page's HTML.
+
+Read the chapter before building a feature "as Cubase does", and quote it. 0.5.1 checked 0.1–0.5 against it. Still different, and left so on purpose:
+- **Keys (the owner's choice: they stay):** R records (Cubase: R arms, Num * records), / cycles (Cubase: Num /), Home goes to the start (Cubase: Num . or ,), Escape closes the key editor (Cubase: Return opens/closes the editor).
+- Only one track armed at a time; the export's "include the click" (our addition); the "<song> Audio" folder.
+
+Cubase defaults it confirmed: Space, C, Delete, Ctrl+D, Ctrl+Z/Shift+Z, Ctrl+N/O/S/Shift+S, Ctrl+E, F3 (MixConsole), Alt+F3 (in the lower zone), Q, the key editor's tool keys 1/5/8, 120 ticks per sixteenth, middle C = C3, +6 dB fader top, the balance pan.
 
 ## Names
 
@@ -31,7 +48,7 @@ Be honest about scale: Cubase took a large team decades. Say where it stands.
 
 - `source/engine/`: no screen needed, fully testable.
   - `Project`: the song as plain data (tempo, signature, cycle, click, tracks, parts, notes in **beats** = quarter notes, each track's `inserts`, the master's volume and `masterInserts`), XML save/open, bar/beat formatting.
-  - `Engine`: the audio device callback. Plays each track's events through its instrument (`AudioPluginInstance`), the cycle, the click, mix (volume, balance pan, mute, solo), live MIDI (devices via `MidiMessageCollector`, the on-screen `MidiKeyboardState`) into the live track, and records note on/off with their beats into a lock-free FIFO. **Threads:** the audio thread only `ScopedTryLock`s (a missed lock = one silent block); the message thread prepares everything outside the lock and swaps under it (`update`, `setInstrument`, `removeTrack`). No allocation on the audio thread. Signal path: instrument, its inserts in order, fader and pan, into the master buffer; master inserts, master fader, output; the click after the master. Effects are prepared stereo if they allow it, else as they are (mono in: L+R mixed; mono out: to both). Inserts by `insertEffect` / `removeEffect` (bus id 0 = master). Do sample work on raw pointers (FloatVectorOperations), not `AudioBuffer` methods: a buffer remembers being cleared and its own methods then skip work, even after something wrote to it through another view (it silenced mono effects once). Meters have two readers (0: transport and track list, 1: the mixer) so they don't take each other's peaks.
+  - `Engine`: the audio device callback. Plays each track's events through its instrument (`AudioPluginInstance`), the cycle, the click, mix (volume, balance pan, mute, solo), live MIDI (devices via `MidiMessageCollector`, the on-screen `MidiKeyboardState`) into the live track, and records note on/off with their beats into a lock-free FIFO. **Threads:** the audio thread only `ScopedTryLock`s (a missed lock = one silent block); the message thread prepares everything outside the lock and swaps under it (`update`, `setInstrument`, `removeTrack`). No allocation on the audio thread. Signal path: instrument, its inserts in order, fader and pan, into the master buffer; master inserts, master fader, output; the click after the master. Effects are prepared stereo if they allow it, else as they are (mono in: L+R mixed; mono out: to both). Inserts by `insertEffect` / `removeEffect` (bus id 0 = master): 16 slots in fixed places (an `Insert` can be empty: `isEmpty()`; none after the last used), the first `preFaderSlots` before the fader and pan, the rest after (per track, and `masterPreFaderSlots`); the fader is applied to the track's own buffer, then the post-fader inserts, then the sum. Do sample work on raw pointers (FloatVectorOperations), not `AudioBuffer` methods: a buffer remembers being cleared and its own methods then skip work, even after something wrote to it through another view (it silenced mono effects once). Meters have two readers (0: transport and track list, 1: the mixer) so they don't take each other's peaks.
   - **Audio tracks:** `Track::Kind::audio` (input, stereoInput, monitor); their parts are clips (`Part::audioFile`, `audioOffset` seconds, `fadeIn`/`fadeOut` seconds; start/length in beats). `Engine::addAudioTrack`, clips played sample-accurately per segment of the block (`playClips`), input monitoring through the track's inserts, recording through a `ThreadedWriter` set with `setRecorder` (written on the audio thread, the first sample's song position in `getAudioRecordStart`; a cycle keeps the first pass). `Studio`: recordings in `getAudioFolder()` ("<song> Audio" beside the song, else Documents/Paragon PR7-S/Unsaved Recordings/<time>; save copies them over), loaded whole and resampled to the engine's rate (`getAudio`, with peaks for drawing), latency compensation from the device (`setLatencyForTests`). `Engine::render` takes an input buffer for tests. Moving the position while stopped sets `rebase` (the clock restarts there even if play comes before a block).
   - **Export:** `Studio::beginExport` / `renderExport` / `endExport` (`exportMix` does all three). Begin takes the engine off the interface, re-prepares it at the export's rate, plays a copy of the song (no cycle, the click as asked, parts cut at the end so the ring-out holds only what's sounding) and sets every plugin non-realtime (`Engine::setNonRealtime`); render runs on any thread (MainView's `ThreadWithProgressWindow`); end puts everything back and deletes an unfinished file. `Windows::ExportPage` asks what (tests drive it directly; it's shown as a modal `DialogWindow`). `PARAGON_SNAPSHOT_EXPORT=1` draws it over the snapshot.
   - `ParagonSynth`: the built-in instrument (an `AudioPluginInstance`, so it's played like a VST3).

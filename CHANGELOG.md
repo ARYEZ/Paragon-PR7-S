@@ -2,6 +2,33 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.5.1
+
+Checked against the Cubase Pro 15 manual (the owner's request), and the family's colours only.
+
+- **Colours:** tracks now take only the Paragon family's colours: shades of red, pink and orange (red, hot pink, orange, rose, red-orange, deep pink, peach, crimson). No more blue, lime, violet or aqua. Songs saved with those colours open with their new ones.
+- **Mixer: 16 insert slots** (was 8), each effect in a slot of its own: removing one leaves its slot empty, and the others stay where they are. At least 8 are shown, more as you fill them.
+- **Inserts after the fader:** click an effect > **Set as Last Pre-Fader Slot**, and the slots below it come after the fader and pan (below an orange line, tinted). Use it for a limiter on the master, for example. **All Slots Before the Fader** puts it back. By default, every slot is before the fader.
+- **Faders and pan:** **Ctrl-click** resets them (0 dB, centre); **Shift-drag** moves them finely. Double-click still resets.
+- **Arrangement:**
+  - **Ctrl-drag** keeps a part to one direction (along the song, or to another track). Only **Alt-drag** copies now.
+  - **Ctrl** turns snapping off while resizing, trimming or fading (**Ctrl+Shift** while moving). Shift no longer picks a finer grid.
+  - In the ruler's top strip, **click inside the cycle's range** to turn CYCLE on or off, and **drag inside it** to move it.
+  - **Double-click between the locators** for an empty part from the left locator to the right.
+  - The last track can no longer hide under + ADD TRACK: scrolling goes far enough.
+- **Key editor:**
+  - **Ctrl** (not Shift) turns snapping off. Ctrl while moving notes keeps them to one direction (in time, or in pitch).
+  - **Double-click a note** to delete it.
+  - **Ctrl+V** always pastes at the playhead; if that's outside the part, the part grows to hold the notes.
+  - **Ctrl+D** duplicates the selected notes straight after themselves (what pasting again and again used to do).
+  - **Quantize** keeps every note: two of the same pitch that land together both stay.
+- **Recording audio in a cycle** keeps the **last** complete pass (we kept the first). Stop during the first pass and you get what there is of it. The earlier passes stay in the file for takes and comping later.
+- **Export:**
+  - **32-bit float** WAV is offered (best for more work in a DAW).
+  - The whole song now rings out after its end **until the sound has died away** (reverb and delay tails, a held note's release), up to 30 seconds, then stops. The 2-second box is gone.
+  - Exporting the cycle stops at its end, as the manual's locator export does.
+- **Not changed (your choice):** the keys stay as they are (R records, / cycles, Home goes to the start).
+
 ## 0.5.0
 
 Export: your mix as a WAV file, to send, upload or master.

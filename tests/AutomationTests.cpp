@@ -292,7 +292,7 @@ TEST_CASE ("The studio's automation: show/hide, append, a lane switched to anoth
     CHECK (studio.getAutomationControls (Engine::masterBus).size() == 1);   // the master: volume (no effects)
 }
 
-TEST_CASE ("An insert's automation goes with it; the ones after it move up a slot", "[automation][studio]")
+TEST_CASE ("An insert's automation goes with it; the others stay in their slots, with theirs", "[automation][studio]")
 {
     Studio studio (false);
     const auto track = studio.getProject().tracks[0].id;
@@ -322,7 +322,7 @@ TEST_CASE ("An insert's automation goes with it; the ones after it move up a slo
     const auto* lanes = studio.getAutomation (track);
     REQUIRE (lanes->size() == 2);
     CHECK (lanes->at (1).target == AutomationLane::Target::insert);
-    CHECK (lanes->at (1).slot == 0);   // "Two", now in the first slot
+    CHECK (lanes->at (1).slot == 1);   // "Two", still in the second slot
     CHECK (lanes->at (1).points.front().value == 0.25f);
     studio.undo();   // the points' undo doesn't bring the removed effect's lane back
     CHECK (studio.getAutomation (track)->size() == 2);

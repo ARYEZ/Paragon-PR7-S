@@ -51,7 +51,9 @@ namespace Windows
     };
 
     // EXPORT: what to write the mix as (which stretch of the song, the
-    // sample rate, 16 or 24 bit, the click, the ring-out). It only asks:
+    // sample rate, 16, 24 or 32-bit float, the click). The whole song rings
+    // out after its end until the sound has died away (up to 30 s); the
+    // cycle stops at its end, as the manual's exports do. It only asks:
     // onExport gets the choices, and MainView asks where and writes it. Its
     // choices but the range are kept in the settings file for next time.
     class ExportPage final : public juce::Component
@@ -70,7 +72,7 @@ namespace Windows
         std::function<void()> onCancel;
 
         juce::ComboBox range, rate, bits;
-        juce::ToggleButton click { "Include the click" }, ringOut { "Let effects ring out (2 seconds after the end)" };
+        juce::ToggleButton click { "Include the click" };
         juce::TextButton exportButton { "EXPORT..." }, cancelButton { "CANCEL" };
 
     private:

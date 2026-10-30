@@ -186,6 +186,7 @@ namespace pr7s
             // The mix as set, and the lanes read (those with points and R on).
             float volumeDb = 0.0f, pan = 0.0f;
             bool mute = false, soloedOut = false;   // soloedOut: another track is soloed
+            int preFader = Project::maxInserts;     // the inserts before the fader (the rest after)
             std::vector<LaneState> automation;
             bool mixAutomated = false;              // a volume, pan or mute lane among them
             std::atomic<float> nowVolumeDb { 0.0f }, nowPan { 0.0f };
@@ -215,7 +216,7 @@ namespace pr7s
         void prepareEffect (juce::AudioPluginInstance&);
         static int channelsFor (const juce::AudioPluginInstance&);
         int channelsNeeded (const TrackState&) const;
-        void runInserts (std::vector<Slot>&, juce::AudioBuffer<float>&, int numSamples);
+        void runInserts (std::vector<Slot>&, juce::AudioBuffer<float>&, int numSamples, int fromSlot = 0, int toSlot = Project::maxInserts);
         void schedule (TrackState&, juce::int64 fromSample, juce::int64 toSample, int sampleOffset, double beatsPerSample);
         void stopHeldNotes (TrackState&, int sampleOffset);
         void renderBlock (juce::AudioBuffer<float>& output, int numSamples);
@@ -271,6 +272,7 @@ namespace pr7s
         juce::AudioBuffer<float> masterBuffer;
         juce::SmoothedValue<float> masterGain;
         std::vector<LaneState> masterAutomation;
+        int masterPreFader = Project::maxInserts;
         bool masterAutomated = false;   // a volume lane among them
         std::atomic<float> nowMasterVolumeDb { 0.0f };
 

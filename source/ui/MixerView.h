@@ -8,13 +8,15 @@
 // The mixer, inspired by Cubase's MixConsole, in our look: a channel strip
 // for each track, then the master's, on the right.
 //
-//   a strip        the track's colour and name; its 8 inserts (effects, top
-//                  to bottom, the order the sound goes through them); pan;
-//                  M (mute) and S (solo); the volume fader (double-click: 0
-//                  dB) and the level; click it to select the track
+//   a strip        the track's colour and name; its inserts (16 slots, at
+//                  least 8 shown, more as they fill: effects, top to bottom,
+//                  the order the sound goes through them; those below the
+//                  line are after the fader); pan; M (mute) and S (solo);
+//                  the volume fader (Ctrl-click or double-click: 0 dB;
+//                  Shift-drag: fine) and the level; click it to select the track
 //   an insert      empty: click to add an effect (one of your VST3 effects);
 //                  an effect: click to open its window, bypass it, replace
-//                  it or remove it
+//                  it or remove it, or make it the last before the fader
 //   MASTER         every track goes through it: its inserts, then its fader
 //
 // It sits under the arrangement (MIXER, Alt+F3) or in a window of its own
@@ -74,6 +76,7 @@ public:
     juce::TextButton& getMute() noexcept { return mute; }
     juce::TextButton& getSolo() noexcept { return solo; }
     juce::TextButton& getInsertSlot (int slot) { return slots[(size_t) slot]; }
+    int getShownSlots() const noexcept { return shownSlots; }
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -85,6 +88,7 @@ private:
     MixerView& owner;
     const int busId;
     std::array<juce::TextButton, pr7s::Project::maxInserts> slots;
+    int shownSlots = 8;   // at least 8, and one more than the last used (up to 16)
     juce::Slider volume, pan;
     juce::TextButton mute { "M" }, solo { "S" };
     juce::Rectangle<float> meterArea, nameArea, readoutArea, panReadoutArea;

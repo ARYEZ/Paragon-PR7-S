@@ -53,12 +53,14 @@ namespace pr7s
     };
 
     // An effect in a channel's inserts (a VST3 effect, such as our PR7
-    // plugins). The sound goes through a channel's inserts in order.
+    // plugins). The sound goes through a channel's inserts in order. Each
+    // is in a slot of its own (1 to 16); a slot can be empty.
     struct Insert
     {
         juce::PluginDescription plugin;
         juce::MemoryBlock state;     // its settings, as it last saved them
         bool bypass = false;         // off: the sound goes past it
+        bool isEmpty() const noexcept { return plugin.name.isEmpty() && plugin.fileOrIdentifier.isEmpty(); }
     };
 
     // Automation (inspired by Cubase's workflow): an automation lane (an
@@ -130,7 +132,8 @@ namespace pr7s
         bool monitor = false;
         bool isAudio() const noexcept { return kind == Kind::audio; }
         std::vector<Part> parts;
-        std::vector<Insert> inserts;     // its effects, before its volume and pan
+        std::vector<Insert> inserts;     // its effects, by slot (none after the last one used)
+        int preFaderSlots = 16;          // slots before the fader and pan (the rest after them)
         std::vector<AutomationLane> automation;   // in the order shown
         bool automationOpen = false;     // its lanes shown under it
         bool automationRead = false, automationWrite = false;   // R and W (W turns R on)
@@ -146,12 +149,13 @@ namespace pr7s
         std::vector<Track> tracks;
         float masterVolumeDb = 0.0f;          // the master bus: every track, then these effects, then this volume
         std::vector<Insert> masterInserts;
+        int masterPreFaderSlots = 16;
         std::vector<AutomationLane> masterAutomation;   // volume and the master's effects
         bool masterAutomationOpen = false, masterRead = false, masterWrite = false;
         int nextTrackId = 1;
 
         static constexpr double minBpm = 20.0, maxBpm = 300.0;
-        static constexpr int maxInserts = 8;   // effects on a channel (and on the master)
+        static constexpr int maxInserts = 16;  // insert slots on a channel (and on the master), as the manual has
 
         double beatsPerBar() const noexcept { return numerator * 4.0 / denominator; }
         double secondsPerBeat() const noexcept { return 60.0 / bpm; }
@@ -176,8 +180,9 @@ namespace pr7s
     juce::String formatBarsBeats (double beats, const Project&);
     juce::String formatTime (double seconds);
 
-    // The family's track colours: the chain's red, pink and orange, then
-    // other neon colours, taken in turn.
+    // The family's track colours, taken in turn: shades along its red, pink
+    // and orange only (the chain's red, hot pink, orange, then lighter and
+    // deeper ones).
     juce::Colour trackColour (int index);
 
     // Rounds to the nearest multiple of `grid` beats (0: no rounding).

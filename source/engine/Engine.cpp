@@ -401,6 +401,7 @@ namespace pr7s
                      project.loopStart, juce::jmax (project.loopStart + 0.0625, project.loopEnd), project.click, masterLevel,
                      project.masterVolumeDb };
         std::swap (masterAutomation, masterLanes);
+        masterPreFader = project.masterPreFaderSlots;
         masterAutomated = masterLanesMix;
         for (auto& p : prepared)
             if (auto* track = findTrack (p.id))
@@ -416,6 +417,7 @@ namespace pr7s
                     track->pan = t->pan;
                     track->mute = t->mute;
                     track->soloedOut = anySolo && ! t->solo;
+                    track->preFader = t->preFaderSlots;
                 }
                 std::swap (track->automation, p.automation);
                 track->mixAutomated = p.mixAutomated;
@@ -476,11 +478,12 @@ namespace pr7s
         return track != nullptr ? track->meters[(size_t) juce::jlimit (0, 1, reader)].takePeak() : 0.0f;
     }
 
-    void Engine::runInserts (std::vector<Slot>& slots, juce::AudioBuffer<float>& buffer, int numSamples)
+    void Engine::runInserts (std::vector<Slot>& slots, juce::AudioBuffer<float>& buffer, int numSamples, int fromSlot, int toSlot)
     {
         // In order, each on the sound in place. (Audio thread: no allocation.)
-        for (auto& slot : slots)
+        for (int i = juce::jmax (0, fromSlot); i < juce::jmin (toSlot, (int) slots.size()); ++i)
         {
+            auto& slot = slots[(size_t) i];
             if (slot.plugin == nullptr || slot.bypass)
                 continue;
             auto& effect = *slot.plugin;
@@ -746,13 +749,12 @@ namespace pr7s
                     juce::FloatVectorOperations::copy (track->buffer.getWritePointer (1), track->buffer.getReadPointer (0), numSamples);
             }
             juce::AudioBuffer<float> sound (track->buffer.getArrayOfWritePointers(), track->buffer.getNumChannels(), numSamples);
-            runInserts (track->inserts, sound, numSamples);
+            runInserts (track->inserts, sound, numSamples, 0, track->preFader);
 
-            const auto* left = sound.getReadPointer (0);
-            const auto* right = sound.getReadPointer (1);
-            auto* outLeft = master.getWritePointer (0);
-            auto* outRight = master.getWritePointer (1);
-            float peak = 0.0f;
+            // Its fader and pan, on its own sound; then the inserts after the
+            // fader; then into the master.
+            auto* left = sound.getWritePointer (0);
+            auto* right = sound.getWritePointer (1);
             const MixNow set { track->volumeDb, track->pan, track->mute };
             if (track->mixAutomated)
             {
@@ -775,11 +777,8 @@ namespace pr7s
                         for (int i = 0; i < n; ++i)
                         {
                             const auto along = (float) i / (float) n;
-                            const auto l = left[from + i] * (gains.first + (next.first - gains.first) * along);
-                            const auto r = right[from + i] * (gains.second + (next.second - gains.second) * along);
-                            outLeft[from + i] += l;
-                            outRight[from + i] += r;
-                            peak = juce::jmax (peak, std::abs (l), std::abs (r));
+                            left[from + i] *= gains.first + (next.first - gains.first) * along;
+                            right[from + i] *= gains.second + (next.second - gains.second) * along;
                         }
                         gains = next;
                     }
@@ -794,19 +793,25 @@ namespace pr7s
                 track->right.setTargetValue (track->gainRight);
                 for (int i = 0; i < numSamples; ++i)
                 {
-                    const auto l = left[i] * track->left.getNextValue();
-                    const auto r = right[i] * track->right.getNextValue();
-                    outLeft[i] += l;
-                    outRight[i] += r;
-                    peak = juce::jmax (peak, std::abs (l), std::abs (r));
+                    left[i] *= track->left.getNextValue();
+                    right[i] *= track->right.getNextValue();
                 }
             }
+            runInserts (track->inserts, sound, numSamples, track->preFader, Project::maxInserts);
+
+            auto* outLeft = master.getWritePointer (0);
+            auto* outRight = master.getWritePointer (1);
+            juce::FloatVectorOperations::add (outLeft, left, numSamples);
+            juce::FloatVectorOperations::add (outRight, right, numSamples);
+            float peak = 0.0f;
+            for (int i = 0; i < numSamples; ++i)
+                peak = juce::jmax (peak, std::abs (left[i]), std::abs (right[i]));
             for (auto& meter : track->meters)
                 meter.pushSamples (&peak, 1);
         }
 
-        // The master: its inserts, then its volume, to the output.
-        runInserts (masterInserts, master, numSamples);
+        // The master: its inserts before the fader, its volume, the inserts after it, to the output.
+        runInserts (masterInserts, master, numSamples, 0, masterPreFader);
         const auto outputs = juce::jmin (2, output.getNumChannels());
         if (masterAutomated)
         {
@@ -821,12 +826,11 @@ namespace pr7s
                 {
                     const auto n = juce::jmin (automationStep, span.offset + span.length - from);
                     const auto next = gainAt (spanBeat (span, from + n));
-                    for (int channel = 0; channel < outputs; ++channel)
+                    for (int channel = 0; channel < 2; ++channel)
                     {
-                        const auto* in = master.getReadPointer (channel);
-                        auto* out = output.getWritePointer (channel);
+                        auto* sound = master.getWritePointer (channel);
                         for (int i = 0; i < n; ++i)
-                            out[from + i] = in[from + i] * (gain + (next - gain) * (float) i / (float) n);
+                            sound[from + i] *= gain + (next - gain) * (float) i / (float) n;
                     }
                     gain = next;
                 }
@@ -836,13 +840,18 @@ namespace pr7s
         else
         {
             masterGain.setTargetValue (settings.masterGain);
+            auto* masterLeft = master.getWritePointer (0);
+            auto* masterRight = master.getWritePointer (1);
             for (int i = 0; i < numSamples; ++i)
             {
                 const auto gain = masterGain.getNextValue();
-                for (int channel = 0; channel < outputs; ++channel)
-                    output.setSample (channel, i, master.getSample (channel, i) * gain);
+                masterLeft[i] *= gain;
+                masterRight[i] *= gain;
             }
         }
+        runInserts (masterInserts, master, numSamples, masterPreFader, Project::maxInserts);
+        for (int channel = 0; channel < outputs; ++channel)
+            juce::FloatVectorOperations::copy (output.getWritePointer (channel), master.getReadPointer (channel), numSamples);
 
         // For the screen: each mix as it is at the block's end.
         const auto endBeat = numSegments > 0 ? position.load() : blockBeat;

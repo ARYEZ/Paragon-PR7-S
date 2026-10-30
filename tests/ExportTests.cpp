@@ -99,20 +99,18 @@ TEST_CASE ("Export: the range to a WAV, to the sample, through what's heard; no 
     file.deleteFile();
 }
 
-TEST_CASE ("Export: the ring-out lets what's sounding finish, and nothing new starts in it", "[export]")
+TEST_CASE ("Export: the ring-out lets what's sounding finish, as long as it lasts, and nothing new starts in it", "[export]")
 {
-    // A clip running on past the end: cut at the end (nothing in the ring-out).
+    // A clip running on past the end: cut at the end, so nothing rings out (no tail at all).
     Song song (4.0);
     Studio::ExportOptions options;
     options.end = 2.0;
-    options.tailSeconds = 0.5;
     const auto file = exportFile ("tail");
     juce::String error;
     REQUIRE (song.studio.exportMix (file, options, error));
     auto result = readBack (file);
-    REQUIRE (result.sound.getNumSamples() == beat * 2 + 24000);   // two beats and half a second
+    CHECK (result.sound.getNumSamples() == beat * 2);
     CHECK (result.sound.getMagnitude (0, beat + 100, 1000) > 0.0f);
-    CHECK (result.sound.getMagnitude (0, beat * 2, 24000) == 0.0f);
 
     // A synth note held across the end rings on into the ring-out; a part after the end isn't heard.
     Studio synth (false);
@@ -129,6 +127,15 @@ TEST_CASE ("Export: the ring-out lets what's sounding finish, and nothing new st
     result = readBack (file);
     CHECK (rmsOf (std::vector<float> (result.sound.getReadPointer (0), result.sound.getReadPointer (0) + result.sound.getNumSamples()),
                   (size_t) beat * 2, (size_t) beat * 2 + 2000) > 0.001f);
+    // It ends when the note's release has died away (the synth's: a quarter of a second), not 30 s on.
+    CHECK (result.sound.getNumSamples() > beat * 2 + 2000);
+    CHECK (result.sound.getNumSamples() < beat * 2 + 48000);
+    CHECK (result.sound.getMagnitude (0, result.sound.getNumSamples() - 1, 1) > 0.0f);   // up to its last sound
+
+    // 32-bit float.
+    options.bitsPerSample = 32;
+    REQUIRE (synth.exportMix (file, options, error));
+    CHECK (readBack (file).bits == 32);
     file.deleteFile();
 }
 

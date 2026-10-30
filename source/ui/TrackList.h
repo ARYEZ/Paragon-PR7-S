@@ -28,7 +28,7 @@ public:
     void resized() override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
-    static constexpr int addButtonHeight = 40;
+    static constexpr int addButtonHeight = Timeline::bottomRoom;
 
 private:
     class Row;

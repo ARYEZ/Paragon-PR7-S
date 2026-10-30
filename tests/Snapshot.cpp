@@ -103,6 +103,7 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         add (bass, "Paragon PR7-B");
         add (bass, "Paragon PR7-C", true);
         add (lead, "Paragon PR7-G");
+        studio.setLastPreFaderSlot (bass, 0);   // the bass's second effect after its fader
         add (Engine::masterBus, "Paragon PR7-C");
         studio.setVolume (keys, -4.5f);
         studio.setPan (keys, -0.3f);

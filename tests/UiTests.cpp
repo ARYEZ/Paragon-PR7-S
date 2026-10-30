@@ -498,15 +498,26 @@ TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inse
     master.getVolume().setValue (-3.0, juce::sendNotificationSync);
     CHECK (studio.getProject().masterVolumeDb == -3.0f);
 
-    // Inserts show their effects; the next empty one offers to add.
+    // Inserts show their effects; every empty slot offers to add. Eight
+    // shown, more as they fill (up to 16); those after the fader below a line.
     Insert insert;
     insert.plugin.name = "PR7-C";
     REQUIRE (studio.addInsert (first, insert, timesEffect (1.0f, "PR7-C")));
     studio.dispatchPendingMessages();
     CHECK (one.getInsertSlot (0).getButtonText() == "PR7-C");
     CHECK (one.getInsertSlot (1).getButtonText() == "+");
-    CHECK (one.getInsertSlot (2).getButtonText().isEmpty());
+    CHECK (one.getInsertSlot (2).getButtonText() == "+");
     CHECK (two.getInsertSlot (0).getButtonText() == "+");
+    CHECK (one.getShownSlots() == 8);
+    REQUIRE (studio.addInsert (first, insert, timesEffect (1.0f, "PR7-C"), 9));
+    studio.dispatchPendingMessages();
+    CHECK (one.getShownSlots() == 11);
+    CHECK (one.getInsertSlot (10).isVisible());
+    CHECK (one.getInsertSlot (11).isVisible() == false);
+    CHECK (one.getVolume().getHeight() >= 100);   // the fader keeps its room
+    studio.removeInsert (first, 9);
+    studio.dispatchPendingMessages();
+    CHECK (one.getShownSlots() == 8);
 
     // A new track gets a strip.
     studio.addTrack ({});
@@ -661,7 +672,7 @@ TEST_CASE ("Audio tracks on screen: MON and the input in the track list; clips t
     studio.getAudioFolder().deleteRecursively();
 }
 
-TEST_CASE ("EXPORT: the button in the header; the page offers the song or the cycle, the rate, the bits, the click and the ring-out", "[ui][export]")
+TEST_CASE ("EXPORT: the button in the header; the page offers the song or the cycle, the rate, the bits and the click", "[ui][export]")
 {
     Studio studio (false);
     MainView view (studio);
@@ -691,20 +702,22 @@ TEST_CASE ("EXPORT: the button in the header; the page offers the song or the cy
     CHECK (options.sampleRate == 0.0);   // as the interface
     CHECK (options.bitsPerSample == 24);
     CHECK_FALSE (options.click);
-    CHECK (options.tailSeconds == 2.0);
+    CHECK (options.tailSeconds == 30.0);   // the whole song rings out
 
     page.setRange (Windows::ExportPage::Range::cycle);
     page.rate.setSelectedId (2);    // 44.1 kHz
     page.bits.setSelectedId (16);
     page.click.setToggleState (true, juce::dontSendNotification);
-    page.ringOut.setToggleState (false, juce::dontSendNotification);
     options = page.getOptions();
     CHECK (options.start == 8.0);
     CHECK (options.end == 16.0);
     CHECK (options.sampleRate == 44100.0);
     CHECK (options.bitsPerSample == 16);
     CHECK (options.click);
-    CHECK (options.tailSeconds == 0.0);
+    CHECK (options.tailSeconds == 0.0);   // the cycle stops at its end
+    page.bits.setSelectedId (32);
+    CHECK (page.getOptions().bitsPerSample == 32);
+    page.bits.setSelectedId (16);
 
     // EXPORT... hands the choices on.
     std::optional<Studio::ExportOptions> asked;

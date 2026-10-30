@@ -654,7 +654,7 @@ void ArrangeView::mouseWheelMove (const juce::MouseEvent& event, const juce::Mou
     else
     {
         const auto content = (int) studio.getProject().tracks.size() * Timeline::trackHeight;
-        const auto room = juce::jmax (0, content - (getHeight() - Timeline::rulerHeight));
+        const auto room = juce::jmax (0, content - (getHeight() - Timeline::rulerHeight - Timeline::bottomRoom));
         timeline.scrollY = juce::jlimit (0, room, timeline.scrollY - juce::roundToInt (wheel.deltaY * 300.0f));
     }
     if (timeline.onScrollOrZoom)

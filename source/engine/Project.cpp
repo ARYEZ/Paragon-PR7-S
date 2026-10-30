@@ -71,9 +71,16 @@ namespace pr7s
 
         void insertsToXml (const std::vector<Insert>& inserts, juce::XmlElement& parent)
         {
-            for (const auto& insert : inserts)
+            // By slot (an empty one without a plugin); none after the last used.
+            auto used = (int) inserts.size();
+            while (used > 0 && inserts[(size_t) used - 1].isEmpty())
+                --used;
+            for (int slot = 0; slot < used; ++slot)
             {
+                const auto& insert = inserts[(size_t) slot];
                 auto* e = parent.createNewChildElement (insertTag);
+                if (insert.isEmpty())
+                    continue;
                 e->setAttribute ("bypass", insert.bypass);
                 e->addChildElement (insert.plugin.createXml().release());
                 if (insert.state.getSize() > 0)
@@ -203,6 +210,7 @@ namespace pr7s
             if (track.instrument.state.getSize() > 0)
                 t->createNewChildElement (stateTag)->addTextElement (track.instrument.state.toBase64Encoding());
             insertsToXml (track.inserts, *t);
+            t->setAttribute ("preFaderSlots", track.preFaderSlots);
             t->setAttribute ("automationOpen", track.automationOpen);
             t->setAttribute ("automationRead", track.automationRead);
             t->setAttribute ("automationWrite", track.automationWrite);
@@ -234,6 +242,7 @@ namespace pr7s
         auto* master = xml->createNewChildElement (masterTag);
         master->setAttribute ("volumeDb", masterVolumeDb);
         insertsToXml (masterInserts, *master);
+        master->setAttribute ("preFaderSlots", masterPreFaderSlots);
         lanesToXml (masterAutomation, *master);
         master->setAttribute ("automationOpen", masterAutomationOpen);
         master->setAttribute ("automationRead", masterRead);
@@ -262,6 +271,12 @@ namespace pr7s
             track.id = t->getIntAttribute ("id");
             track.name = t->getStringAttribute ("name", "Track");
             track.colour = juce::Colour::fromString (t->getStringAttribute ("colour", trackColour (0).toString()));
+            // Songs from before 0.5.1 could have colours outside the family's
+            // (blue, lime, violet, aqua, amber): each becomes its new one.
+            const juce::uint32 retired[] = { 0xff45b4ff, 0xffb8f040, 0xffb86dff, 0xff4fe3dd, 0xffffb22e };
+            for (size_t i = 0; i < std::size (retired); ++i)
+                if (track.colour.getARGB() == retired[i])
+                    track.colour = trackColour (3 + (int) i);
             track.volumeDb = (float) juce::jlimit (-60.0, 6.0, t->getDoubleAttribute ("volumeDb", 0.0));
             track.pan = (float) juce::jlimit (-1.0, 1.0, t->getDoubleAttribute ("pan", 0.0));
             track.mute = t->getBoolAttribute ("mute");
@@ -283,6 +298,7 @@ namespace pr7s
             if (const auto* state = t->getChildByName (stateTag))
                 track.instrument.state.fromBase64Encoding (state->getAllSubText());
             track.inserts = insertsFromXml (*t);
+            track.preFaderSlots = juce::jlimit (0, maxInserts, t->getIntAttribute ("preFaderSlots", maxInserts));
             track.automation = lanesFromXml (*t);
             track.automationOpen = t->getBoolAttribute ("automationOpen");
             track.automationRead = t->getBoolAttribute ("automationRead");
@@ -312,6 +328,7 @@ namespace pr7s
         {
             project.masterVolumeDb = (float) juce::jlimit (-60.0, 6.0, master->getDoubleAttribute ("volumeDb", 0.0));
             project.masterInserts = insertsFromXml (*master);
+            project.masterPreFaderSlots = juce::jlimit (0, maxInserts, master->getIntAttribute ("preFaderSlots", maxInserts));
             project.masterAutomation = lanesFromXml (*master);
             project.masterAutomationOpen = master->getBoolAttribute ("automationOpen");
             project.masterRead = master->getBoolAttribute ("automationRead");
@@ -347,15 +364,17 @@ namespace pr7s
 
     juce::Colour trackColour (int index)
     {
+        // Only the family's colours: shades along its red, pink and orange
+        // (the owner's rule), each unlike the one before it.
         static const juce::Colour colours[] = {
             juce::Colour (0xffe0103c),   // the chain's red
             juce::Colour (0xffff2f7a),   // hot pink
             juce::Colour (0xffff7a1a),   // orange
-            juce::Colour (0xff45b4ff),   // blue
-            juce::Colour (0xffb8f040),   // lime
-            juce::Colour (0xffb86dff),   // violet
-            juce::Colour (0xff4fe3dd),   // aqua
-            juce::Colour (0xffffb22e),   // amber
+            juce::Colour (0xffff7aa8),   // rose (a light pink)
+            juce::Colour (0xffff4a2a),   // red-orange
+            juce::Colour (0xffc2185b),   // deep pink
+            juce::Colour (0xffffa04a),   // peach (a light orange)
+            juce::Colour (0xffa3122f),   // crimson
         };
         return colours[(size_t) (index % (int) std::size (colours) + (int) std::size (colours)) % std::size (colours)];
     }

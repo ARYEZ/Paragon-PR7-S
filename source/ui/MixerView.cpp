@@ -91,10 +91,20 @@ void MixerView::Strip::refresh()
     if (! isMaster() && track == nullptr)
         return;
     const auto* inserts = owner.studio.getInserts (busId);
+    const auto used = inserts != nullptr ? (int) inserts->size() : 0;   // up to the last effect
+    const auto shown = juce::jlimit (8, pr7s::Project::maxInserts, used + 1);
+    if (shown != shownSlots)
+    {
+        shownSlots = shown;
+        resized();
+    }
+    const auto preFader = owner.studio.getPreFaderSlots (busId);
     for (int i = 0; i < (int) slots.size(); ++i)
     {
         auto& slot = slots[(size_t) i];
-        if (inserts != nullptr && i < (int) inserts->size())
+        slot.setVisible (i < shownSlots);
+        slot.setColour (juce::TextButton::buttonColourId, i < preFader ? juce::Colour (0xff0b090c) : juce::Colour (0xff1c1108));   // after the fader: tinted
+        if (inserts != nullptr && i < (int) inserts->size() && ! (*inserts)[(size_t) i].isEmpty())
         {
             const auto& insert = (*inserts)[(size_t) i];
             const auto loaded = owner.studio.getEngine().getEffect (busId, i) != nullptr;
@@ -106,10 +116,10 @@ void MixerView::Strip::refresh()
         }
         else
         {
-            const auto isNext = inserts != nullptr && i == (int) inserts->size();
-            slot.setButtonText (isNext ? "+" : "");
-            slot.setColour (juce::TextButton::textColourOffId, ParagonColours::textDim);
-            slot.setTooltip ("Add an effect (one of your VST3 effects)");
+            slot.setButtonText ("+");
+            slot.setColour (juce::TextButton::textColourOffId, ParagonColours::textDim.withAlpha (0.6f));
+            slot.setTooltip ("Insert " + juce::String (i + 1) + (i < preFader ? " (before the fader)" : " (after the fader)")
+                             + ": add an effect (one of your VST3 effects)");
         }
     }
     const auto db = isMaster() ? project.masterVolumeDb : track->volumeDb;
@@ -157,6 +167,14 @@ void MixerView::Strip::paint (juce::Graphics& g)
     g.setColour (ParagonColours::textDim);
     g.setFont (font (8.5f));
     g.drawText ("INSERTS", nameArea.translated (0.0f, nameArea.getHeight()).withHeight (12.0f), juce::Justification::centred, false);
+    // The line between the inserts before the fader and those after it.
+    if (const auto preFader = owner.studio.getPreFaderSlots (busId); preFader < shownSlots)
+    {
+        const auto& first = slots[(size_t) preFader];
+        const auto y = preFader == 0 ? (float) first.getY() - 2.0f : (float) first.getY() - (float) slotGap * 0.5f - 0.5f;
+        g.setColour (ParagonColours::accent);
+        g.fillRect ((float) first.getX(), y, (float) first.getWidth(), 1.5f);
+    }
     if (track != nullptr)
         g.drawText (panText (track->pan), panReadoutArea, juce::Justification::centred, false);
 
@@ -181,9 +199,14 @@ void MixerView::Strip::resized()
     auto area = getLocalBounds().reduced (6, 0).withTrimmedTop (8).withTrimmedBottom (6);
     nameArea = area.removeFromTop (18).toFloat();
     area.removeFromTop (14);   // "INSERTS"
-    for (auto& slot : slots)
+    // The slots shown, smaller when there are many, so the fader keeps room.
+    const auto below = (isMaster() ? 0 : 78) + 16 + 6 + 110;   // pan and keys, the readout, a gap, the shortest fader
+    const auto rowHeight = juce::jlimit (11, slotHeight, (area.getHeight() - below) / shownSlots - slotGap);
+    for (int i = 0; i < (int) slots.size(); ++i)
     {
-        slot.setBounds (area.removeFromTop (slotHeight));
+        if (i >= shownSlots)
+            continue;
+        slots[(size_t) i].setBounds (area.removeFromTop (rowHeight));
         area.removeFromTop (slotGap);
     }
     area.removeFromTop (6);
@@ -309,27 +332,28 @@ void MixerView::showInsertMenu (int busId, int slot)
         choose.addItem (-1, "No VST3 effects found yet", false);
 
     juce::PopupMenu menu;
-    const auto filled = slot < (int) inserts->size();
+    const auto filled = slot < (int) inserts->size() && ! (*inserts)[(size_t) slot].isEmpty();
+    const auto preFader = studio.getPreFaderSlots (busId);
     if (filled)
     {
         const auto& insert = (*inserts)[(size_t) slot];
         const auto* instance = studio.getEngine().getEffect (busId, slot);
-        menu.addSectionHeader (insert.plugin.name);
+        menu.addSectionHeader (insert.plugin.name + (slot < preFader ? " (before the fader)" : " (after the fader)"));
         menu.addItem (1, "Open its window", instance != nullptr && instance->hasEditor());
         menu.addItem (2, "Bypass", true, insert.bypass);
         menu.addSubMenu ("Replace with", choose);
         menu.addItem (3, "Remove");
+        menu.addSeparator();
+        menu.addItem (5, "Set as Last Pre-Fader Slot", slot + 1 != preFader);
+        menu.addItem (6, "All Slots Before the Fader", preFader < pr7s::Project::maxInserts);
     }
     else
     {
-        menu.addSectionHeader ((int) inserts->size() >= pr7s::Project::maxInserts ? "No room for another effect" : "Add an effect");
-        if ((int) inserts->size() < pr7s::Project::maxInserts)
-        {
-            for (int i = 0; i < effects.size(); ++i)
-                menu.addItem (100 + i, effects[i].manufacturerName + ": " + effects[i].name);
-            if (effects.isEmpty())
-                menu.addItem (-1, "No VST3 effects found yet", false);
-        }
+        menu.addSectionHeader ("Insert " + juce::String (slot + 1) + ": add an effect" + (slot < preFader ? " (before the fader)" : " (after the fader)"));
+        for (int i = 0; i < effects.size(); ++i)
+            menu.addItem (100 + i, effects[i].manufacturerName + ": " + effects[i].name);
+        if (effects.isEmpty())
+            menu.addItem (-1, "No VST3 effects found yet", false);
     }
     menu.addSeparator();
     menu.addItem (4, effects.isEmpty() ? "Find my VST3 effects..." : "Find more VST3 effects...");
@@ -343,7 +367,7 @@ void MixerView::showInsertMenu (int busId, int slot)
         auto ok = true;
         if (chosen >= 100 && chosen - 100 < effects.size())
             ok = filled ? s.replaceInsert (busId, slot, effects[chosen - 100], &error)
-                        : s.addInsert (busId, effects[chosen - 100], &error);
+                        : s.addInsert (busId, effects[chosen - 100], &error, slot);
         else if (chosen == 1 && safe->onOpenEffect)
             safe->onOpenEffect (busId, slot);
         else if (chosen == 2)
@@ -352,6 +376,10 @@ void MixerView::showInsertMenu (int busId, int slot)
             s.removeInsert (busId, slot);
         else if (chosen == 4 && safe->onFindPlugins)
             safe->onFindPlugins();
+        else if (chosen == 5)
+            s.setLastPreFaderSlot (busId, slot);
+        else if (chosen == 6)
+            s.setLastPreFaderSlot (busId, pr7s::Project::maxInserts - 1);
         if (! ok)
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't load the effect", error);
     });
@@ -371,7 +399,7 @@ void MixerView::paint (juce::Graphics& g)
     g.drawText ("MIXER", bar.withTrimmedLeft (14.0f), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (font (11.0f, juce::Font::plain));
-    g.drawText ("Each track: its instrument, then its inserts (top to bottom), then its fader, into the master",
+    g.drawText ("Each track: its instrument, its inserts (top to bottom; those below an orange line after the fader), its fader, into the master",
                 bar.withTrimmedLeft (70.0f).withTrimmedRight (170.0f), juce::Justification::centredLeft, true);
     if (strips.empty())
     {

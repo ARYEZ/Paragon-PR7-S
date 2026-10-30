@@ -95,14 +95,20 @@ namespace pr7s
 
         //======================================================================
         // The mixer: each track's inserts and the master's (`busId`: a
-        // track's id, or Engine::masterBus). Adding, replacing and removing
-        // effects isn't undoable (as with instruments); bypass isn't either;
-        // the master's volume is.
+        // track's id, or Engine::masterBus), 16 slots each, an effect in a
+        // slot of its own (a slot can be empty). Adding, replacing and
+        // removing effects isn't undoable (as with instruments); bypass isn't
+        // either; the master's volume is.
         const std::vector<Insert>* getInserts (int busId) const;   // none if there's no such track
-        bool addInsert (int busId, const juce::PluginDescription&, juce::String* error = nullptr);   // at the end
-        bool addInsert (int busId, const Insert&, std::unique_ptr<juce::AudioPluginInstance>);     // one made elsewhere (tests)
+        // Into an empty slot (-1: the one after the last effect).
+        bool addInsert (int busId, const juce::PluginDescription&, juce::String* error = nullptr, int slot = -1);
+        bool addInsert (int busId, const Insert&, std::unique_ptr<juce::AudioPluginInstance>, int slot = -1);   // one made elsewhere (tests)
+        // The slots up to this one (from 0) are before the fader, the rest after
+        // it (as the manual's "Set as last Pre-Fader Slot"); -1: none before it.
+        void setLastPreFaderSlot (int busId, int slot);
+        int getPreFaderSlots (int busId) const;
         bool replaceInsert (int busId, int slot, const juce::PluginDescription&, juce::String* error = nullptr);
-        void removeInsert (int busId, int slot);
+        void removeInsert (int busId, int slot);   // its slot left empty (the others stay where they are)
         void setInsertBypass (int busId, int slot, bool);
         void setMasterVolume (float db, bool undoable = true);
         // Told just before an effect is deleted (nullptr: every effect, for a
@@ -200,9 +206,11 @@ namespace pr7s
         {
             double start = 0.0, end = 0.0;   // beats
             double sampleRate = 0.0;         // 0: the interface's
-            int bitsPerSample = 24;          // 16 or 24
+            int bitsPerSample = 24;          // 16, 24, or 32 (32-bit float)
             bool click = false;
-            double tailSeconds = 2.0;        // after the end, for reverbs and delays to ring out (nothing new starts)
+            // After the end, until what's sounding (reverbs, delays, a held
+            // note's release) has died away, at most this long; nothing new starts.
+            double tailSeconds = 30.0;
         };
         // In three steps, so the middle one can run on another thread behind a
         // progress bar: begin (message thread), render (any thread; false:
@@ -267,7 +275,7 @@ namespace pr7s
         {
             juce::File file;
             std::unique_ptr<juce::AudioFormatWriter> writer;
-            juce::int64 total = 0;
+            juce::int64 total = 0, maxTail = 0;   // samples: the range, and the most ring-out after it
             double previousRate = 0.0, previousPosition = 0.0;
             int previousBlockSize = 512;
             bool finished = false;

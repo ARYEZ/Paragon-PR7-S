@@ -15,6 +15,7 @@ struct Timeline
     static constexpr int trackHeight = 72;
     static constexpr int rulerHeight = 36;
     static constexpr int cycleStripHeight = 14;   // the ruler's top strip, where the cycle is dragged
+    static constexpr int bottomRoom = 40;         // under the last track: the track list's + ADD TRACK, so it never hides a track
 
     float xForBeat (double beat) const noexcept { return (float) ((beat - firstBeat) * pixelsPerBeat); }
     double beatForX (float x) const noexcept { return firstBeat + x / pixelsPerBeat; }

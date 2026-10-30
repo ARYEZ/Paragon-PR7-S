@@ -206,3 +206,23 @@ TEST_CASE ("Note names count middle C as C3", "[project][editor]")
     CHECK (noteName (0) == "C-2");
     CHECK (noteName (127) == "G8");
 }
+
+TEST_CASE ("Track colours keep to the family's red, pink and orange; older songs' other colours are replaced", "[project]")
+{
+    for (int i = 0; i < 16; ++i)
+    {
+        const auto colour = trackColour (i);
+        INFO ("track " << i << ": " << colour.toString());
+        CHECK (colour.getRed() >= colour.getGreen());   // nothing green, blue or violet: red leads
+        CHECK (colour.getRed() >= colour.getBlue());
+        CHECK (colour != trackColour (i + 1));
+    }
+    Project project;
+    Track track;
+    track.id = 1;
+    track.colour = juce::Colour (0xff45b4ff);   // 0.5.0's blue
+    project.tracks.push_back (track);
+    const auto opened = Project::fromXml (*project.toXml());
+    REQUIRE (opened.has_value());
+    CHECK (opened->tracks[0].colour == trackColour (3));
+}

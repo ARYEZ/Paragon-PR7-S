@@ -99,25 +99,24 @@ namespace Windows
         rate.addItem ("As the interface (" + kHz (interfaceRate) + ")", 1);
         for (int i = 0; i < (int) std::size (rates); ++i)
             rate.addItem (kHz (rates[i]), i + 2);
-        bits.addItem ("24-bit (for mastering, or more work)", 24);
+        bits.addItem ("24-bit (for mastering)", 24);
         bits.addItem ("16-bit (CD quality, smaller)", 16);
+        bits.addItem ("32-bit float (for more work in a DAW)", 32);
 
         auto* settings = studio.getSettings();
         rate.setSelectedId (settings != nullptr ? juce::jlimit (1, 5, settings->getIntValue ("exportRate", 1)) : 1, juce::dontSendNotification);
-        bits.setSelectedId (settings != nullptr && settings->getIntValue ("exportBits", 24) == 16 ? 16 : 24, juce::dontSendNotification);
-        ringOut.setToggleState (settings == nullptr || settings->getBoolValue ("exportRingOut", true), juce::dontSendNotification);
+        const auto keptBits = settings != nullptr ? settings->getIntValue ("exportBits", 24) : 24;
+        bits.setSelectedId (keptBits == 16 || keptBits == 32 ? keptBits : 24, juce::dontSendNotification);
 
-        for (auto* toggle : { &click, &ringOut })
-        {
-            toggle->setColour (juce::ToggleButton::textColourId, ParagonColours::text);
-            toggle->setColour (juce::ToggleButton::tickColourId, ParagonColours::accent);
-            addAndMakeVisible (*toggle);
-        }
+        click.setColour (juce::ToggleButton::textColourId, ParagonColours::text);
+        click.setColour (juce::ToggleButton::tickColourId, ParagonColours::accent);
+        addAndMakeVisible (click);
         for (auto* box : { &range, &rate, &bits })
             addAndMakeVisible (*box);
 
         note.setText ("Everything you hear (every track through its effects, then the master) as a stereo WAV, written faster "
-                      "than it plays. The interface is quiet meanwhile.", juce::dontSendNotification);
+                      "than it plays. The whole song rings out after its end until reverbs and delays die away; the cycle "
+                      "stops at its end. The interface is quiet meanwhile.", juce::dontSendNotification);
         note.setFont (font (13.0f, juce::Font::plain));
         note.setColour (juce::Label::textColourId, ParagonColours::textDim);
         addAndMakeVisible (note);
@@ -137,7 +136,7 @@ namespace Windows
                 onExport (getOptions());
         };
         cancelButton.onClick = [this] { if (onCancel) onCancel(); };
-        setSize (560, 300);
+        setSize (560, 290);
     }
 
     void ExportPage::setRange (Range r)
@@ -160,9 +159,9 @@ namespace Windows
             options.end = project.lastBeat();
         }
         options.sampleRate = rate.getSelectedId() >= 2 ? rates[rate.getSelectedId() - 2] : 0.0;
-        options.bitsPerSample = bits.getSelectedId() == 16 ? 16 : 24;
+        options.bitsPerSample = bits.getSelectedId();
         options.click = click.getToggleState();
-        options.tailSeconds = ringOut.getToggleState() ? 2.0 : 0.0;
+        options.tailSeconds = range.getSelectedId() == 2 ? 0.0 : 30.0;   // the cycle: none (as the manual's locator export)
         return options;
     }
 
@@ -178,7 +177,6 @@ namespace Windows
         {
             settings->setValue ("exportRate", rate.getSelectedId());
             settings->setValue ("exportBits", bits.getSelectedId());
-            settings->setValue ("exportRingOut", ringOut.getToggleState());
             settings->saveIfNeeded();
         }
     }
@@ -196,8 +194,7 @@ namespace Windows
         labelled (row (28), rateLabel, rate);
         labelled (row (28), bitsLabel, bits);
         click.setBounds (row (24).withTrimmedLeft (106));
-        ringOut.setBounds (row (24).withTrimmedLeft (106));
-        note.setBounds (row (36));
+        note.setBounds (row (52));
         auto buttons = area.removeFromBottom (32);
         cancelButton.setBounds (buttons.removeFromRight (96));
         buttons.removeFromRight (8);
