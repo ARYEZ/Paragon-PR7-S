@@ -1,0 +1,133 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-24.04
+          - name: macOS
+            os: macos-15
+          - name: Windows
+            os: windows-2022
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build xvfb \
+            libasound2-dev libjack-jackd2-dev ladspa-sdk \
+            libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev \
+            libxrandr-dev libxrender-dev libxi-dev \
+            libegl-dev libglu1-mesa-dev mesa-common-dev
+
+      - name: Configure
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then GENERATOR="-G Ninja"; fi
+          cmake -B build $GENERATOR -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Unit tests
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a ctest --test-dir build -C Release --output-on-failure
+          else
+            ctest --test-dir build -C Release --output-on-failure
+          fi
+
+      - name: Upload the app
+        uses: actions/upload-artifact@v7
+        with:
+          name: ParagonPR7S-${{ matrix.name }}
+          path: |
+            build/ParagonPR7S_artefacts/Release/Paragon PR7-S.exe
+            build/ParagonPR7S_artefacts/Release/Paragon PR7-S.app
+            build/ParagonPR7S_artefacts/Release/Paragon PR7-S
+
+  # Publishes a GitHub Release whenever a push carries a version number
+  # (in CMakeLists.txt) that hasn't been released yet: bump the version and
+  # add a CHANGELOG.md section, push, and the release appears, with the
+  # three builds above, zipped, and notes from CHANGELOG.md.
+  release:
+    name: Release
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write   # needed to create the tag and release
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Is this version already released?
+        id: version
+        run: |
+          VERSION=$(sed -n 's/^project(ParagonPR7S VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          TAG="v${VERSION}"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "${TAG} is already released; nothing to do."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v8
+        if: steps.version.outputs.publish == 'true'
+        with:
+          path: artifacts
+
+      - name: Zip each platform's app
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          mkdir release
+          # Artifact storage drops file permissions; put the executable flag
+          # back on the macOS and Linux apps.
+          chmod -R a+x "artifacts/ParagonPR7S-macOS/Paragon PR7-S.app/Contents/MacOS" "artifacts/ParagonPR7S-Linux/Paragon PR7-S"
+          (cd artifacts/ParagonPR7S-Windows && zip -q "../../release/ParagonPR7-S-${TAG}-Windows.zip" "Paragon PR7-S.exe")
+          (cd artifacts/ParagonPR7S-macOS && zip -qry "../../release/ParagonPR7-S-${TAG}-macOS.zip" "Paragon PR7-S.app")
+          (cd artifacts/ParagonPR7S-Linux && zip -q "../../release/ParagonPR7-S-${TAG}-Linux.zip" "Paragon PR7-S")
+          ls -l release
+
+      - name: Write the release notes
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          awk -v version="${{ steps.version.outputs.version }}" '
+            /^## / { printing = ($2 == version) ; next }
+            printing { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "CHANGELOG.md has no section for ${{ steps.version.outputs.version }}" >&2
+            exit 1
+          fi
+          cat .github/release-install.md >> notes.md
+
+      - name: Publish the release
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          gh release create "$TAG" release/*.zip \
+            --target "$GITHUB_SHA" \
+            --title "Paragon PR7-S ${TAG}" \
+            --notes-file notes.md
