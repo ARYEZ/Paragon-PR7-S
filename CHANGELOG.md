@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.9.4
+
+Random velocities in the key editor (your idea): three ranges, three keys.
+
+- **Select some notes, then press:**
+  - **Alt+B (LOW)**, **Alt+N (MID)** or **Alt+M (HIGH)**.
+  - Or click LOW, MID or HIGH in the key editor's panel.
+- Each selected note gets its own velocity, picked at random within that range.
+- **The ranges start at** 40-70, 70-100 and 100-127. Each key shows its range.
+- **Changing a range:** click the arrow beside HIGH. Each range has a slider with two handles (low and high, 1 to 127). PR7-S remembers your ranges for every song.
+- **With no notes selected, nothing changes** (as you chose).
+- The notes stay selected, so pressing the key again gives a new roll. Each roll is one undo step.
+- Not in the manual: this is our design, from your description.
+
 ## 0.9.3
 
 The key editor: twice the size, a pencil, a split tool, and whole and half note grids (as you asked).

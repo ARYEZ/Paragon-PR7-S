@@ -82,6 +82,16 @@ public:
     // there; if it's one of several selected, all of those it crosses.
     // One edit. False if nothing was cut.
     bool splitAt (int noteIndex, double beat);
+    // Random velocities (0.9.4, the owner's idea): the selected notes' velocities
+    // set at random within a range: LOW (Alt+B), MID (Alt+N) or HIGH (Alt+M).
+    // The ranges are set with the arrow beside the keys (kept for next time;
+    // at first 40-70, 70-100, 100-127). Nothing selected: nothing changes.
+    // One edit. False if nothing was selected.
+    static constexpr int numVelocityRanges = 3;
+    bool randomizeVelocities (int range);
+    void setVelocityRange (int range, int low, int high);   // 1 to 127 (swapped if the wrong way round)
+    std::pair<int, int> getVelocityRange (int range) const;
+    juce::TextButton& getVelocityKey (int range) { return velocityKeys[(size_t) range]; }
 
     // The editor's clipboard: notes kept with their timing relative to one
     // another, so they paste into this part or any other.
@@ -214,6 +224,12 @@ private:
     int auditioning = -1;
 
     juce::ComboBox sizeBox;
+    std::array<juce::TextButton, 3> velocityKeys;
+    juce::TextButton velocityRangesKey;
+    std::array<std::pair<int, int>, 3> velocityRanges { { { 40, 70 }, { 70, 100 }, { 100, 127 } } };
+    juce::Random random;
+    void refreshVelocityKeys();
+    void showVelocityRanges();
     juce::TextButton selectTool { "SELECT" }, drawTool { "DRAW" }, eraseTool { "ERASE" }, splitTool { "SPLIT" }, quantizeButton { "QUANTIZE" },
                      windowButton { "WINDOW" }, closeButton { "CLOSE" }, autoScrollButton { "AUTO-SCROLL" }, autoScrollMenu;
     bool inWindow = false;

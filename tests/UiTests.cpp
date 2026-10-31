@@ -1,3 +1,4 @@
+#include <set>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -2293,4 +2294,71 @@ TEST_CASE ("The key editor at 200% (the default), SPLIT, the pencil, whole and h
     CHECK_FALSE (editor.splitAt (2, 4.5 + 0.5));   // 67 ends at 5: a cut at its end does nothing
     editor.setTool (KeyEditor::Tool::draw);
     CHECK (editor.getMouseCursor() != juce::MouseCursor (juce::MouseCursor::CrosshairCursor));
+}
+
+TEST_CASE ("Random velocities: Alt+B / N / M give the selected notes velocities within LOW / MID / HIGH", "[ui][editor][velocity]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto trackId = studio.getProject().tracks[0].id;
+    Part riff { 0.0, 8.0, "Riff", {} };
+    for (int i = 0; i < 32; ++i)
+        riff.notes.push_back ({ i * 0.25, 0.25, 60 + i % 12, 0.5f });
+    studio.addPart (trackId, riff);
+    view.getArrangeView().select (trackId, 0);
+    view.openKeyEditor();
+    studio.dispatchPendingMessages();
+    auto& editor = view.getKeyEditor();
+    REQUIRE (editor.getPart() != nullptr);
+
+    // The ranges at first, on the keys.
+    CHECK (editor.getVelocityRange (0) == std::pair<int, int> { 40, 70 });
+    CHECK (editor.getVelocityRange (1) == std::pair<int, int> { 70, 100 });
+    CHECK (editor.getVelocityRange (2) == std::pair<int, int> { 100, 127 });
+    CHECK (editor.getVelocityKey (0).getButtonText() == "LOW 40-70");
+
+    // Nothing selected: nothing changes.
+    CHECK_FALSE (editor.randomizeVelocities (0));
+    for (const auto& n : editor.getPart()->notes)
+        CHECK (n.velocity == 0.5f);
+
+    // The first 16 selected, HIGH: within 100-127, and not all the same; the others untouched.
+    std::vector<int> first16;
+    for (int i = 0; i < 16; ++i)
+        first16.push_back (i);
+    editor.selectNotes (first16);
+    CHECK (editor.keyPressed (juce::KeyPress ('m', juce::ModifierKeys::altModifier, 0)));
+    std::set<int> seen;
+    for (int i = 0; i < 32; ++i)
+    {
+        const auto v = juce::roundToInt (editor.getPart()->notes[(size_t) i].velocity * 127.0f);
+        if (i < 16)
+        {
+            CHECK (v >= 100);
+            CHECK (v <= 127);
+            seen.insert (v);
+        }
+        else
+            CHECK (editor.getPart()->notes[(size_t) i].velocity == 0.5f);
+    }
+    CHECK (seen.size() > 1);
+    CHECK (editor.getSelectedNotes().size() == 16);   // still selected: again for another roll
+    studio.undo();   // one undo step
+    CHECK (editor.getPart()->notes[0].velocity == 0.5f);
+
+    // A range set (the wrong way round, and past the ends): put right, kept on the key; Alt+B from the main window.
+    editor.setVelocityRange (0, 200, 5);
+    CHECK (editor.getVelocityRange (0) == std::pair<int, int> { 5, 127 });
+    editor.setVelocityRange (0, 20, 30);
+    CHECK (editor.getVelocityKey (0).getButtonText() == "LOW 20-30");
+    editor.selectNotes ({ 3, 4, 5 });
+    CHECK (view.keyPressed (juce::KeyPress ('b', juce::ModifierKeys::altModifier, 0)));
+    for (const auto i : { 3, 4, 5 })
+    {
+        const auto v = juce::roundToInt (editor.getPart()->notes[(size_t) i].velocity * 127.0f);
+        CHECK (v >= 20);
+        CHECK (v <= 30);
+    }
 }

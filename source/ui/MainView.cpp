@@ -623,7 +623,8 @@ bool MainView::keyPressed (const juce::KeyPress& key)
     // last click was, so notes copied in one part paste into another just
     // selected in the arrangement.
     const auto editorsAnyway = (mods.isCommandDown() && (letter == 'C' || letter == 'X' || letter == 'V'))
-                            || (! mods.isCommandDown() && mods.isShiftDown() && letter == 'A');
+                            || (! mods.isCommandDown() && mods.isShiftDown() && letter == 'A')
+                            || (! mods.isCommandDown() && mods.isAltDown() && (letter == 'B' || letter == 'N' || letter == 'M'));   // random velocities
     if (isKeyEditorOpen() && editorsAnyway && keyEditor.keyPressed (key))
     {
         if (letter == 'C' || letter == 'X')
