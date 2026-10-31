@@ -36,6 +36,7 @@ namespace pr7s
         juce::String audioFile;      // its file's name, in the song's audio folder
         double audioOffset = 0.0;    // seconds
         double fadeIn = 0.0, fadeOut = 0.0;   // seconds
+        bool muted = false;          // the Mute tool: kept and edited as usual, but not played
 
         bool isAudio() const noexcept { return audioFile.isNotEmpty(); }
         double end() const noexcept { return start + length; }

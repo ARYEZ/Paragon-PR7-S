@@ -60,6 +60,8 @@ public:
     bool isRackShown() const noexcept { return rackShown; }
     // The least height it can be docked at (more with the rack shown: room for its slots).
     int getMinimumHeight() const;
+    // What it would like at first (before its divider is dragged): its rack at full size and a full fader.
+    int getPreferredHeight() const;
     std::function<void()> onMinimumHeightChange;   // the main window lays the lower zone out again
     class SendSlot;
 

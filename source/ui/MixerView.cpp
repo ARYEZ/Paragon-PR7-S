@@ -578,6 +578,14 @@ void MixerView::rackChanged()
     repaint();
 }
 
+int MixerView::getPreferredHeight() const
+{
+    auto most = master->getShownSlots();
+    for (const auto& strip : strips)
+        most = juce::jmax (most, strip->getShownSlots());
+    return barHeight + Strip::fixedHeight + 110 + (rackShown ? most * (slotHeight + slotGap) : 0) + viewport.getScrollBarThickness();
+}
+
 int MixerView::getMinimumHeight() const
 {
     // The rack's room: the most slots any strip shows, at their smallest.

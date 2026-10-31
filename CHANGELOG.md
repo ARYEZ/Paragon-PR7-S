@@ -2,6 +2,26 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.8.0
+
+Editing tools for the arrangement, with the Cubase 15 manual's keys: cut, join, mute, erase and draw parts.
+
+- **A TOOLS row over the arrangement:** click a tool, or press its number key (as the manual has them). **F9 / F10** go to the previous / next tool. What a click on a track does depends on the tool chosen; the ruler, automation lanes and right-click menus work as before.
+  - **SELECT (1):** as before (select, move, Alt-drag to copy, resize). New: **Alt-click** a part to split it there; **Alt-drag** on an empty stretch of an instrument track to draw a new part.
+  - **SPLIT (3):** click a part to cut it in two there (on the grid; hold **Ctrl** for anywhere). A line shows where it will cut. **Alt-click:** into equal pieces that long, all the way along.
+  - **GLUE (4):** click a part to join it to the next one on its track. **Alt-click:** to all the parts after it. The gaps between them stay silent.
+  - **ERASE (5):** click a part to delete it. **Alt-click:** it and every part after it on its track.
+  - **ZOOM (6):** click to zoom in there (Alt-click to zoom out), or drag across a stretch to fill the view with it.
+  - **MUTE (7):** click a part to mute it (click again to unmute), or drag a rectangle over several. Muted parts stay in the song, greyed out and marked MUTED, but aren't played (or exported). They're saved with the song.
+  - **DRAW (8):** drag on an instrument track to draw a new empty part (whole grid steps).
+  - **PLAY (9):** hold the mouse down on the tracks to play from there; let go to stop, and the playhead goes back where it was.
+- **Alt+X (Split at Cursor):** splits every part the playhead is in, on all tracks, or only the selected part if one is selected.
+- **The part's right-click menu** has Mute / Unmute, Split at the playhead and Glue to the next part.
+- **Splitting through a note** cuts the note in two, so nothing is lost or left hanging past the end of its part (the manual's "Split MIDI Events" option, which we've chosen to always use). **Audio clips** split cleanly: the second half carries on exactly where the first stops, and the fade-in stays with the first half and the fade-out with the second.
+- **Gluing audio:** a clip glues to the one cut from the same recording right after it (a split glued back together). Gluing different recordings would need an audio part that holds several clips, which PR7-S doesn't have yet, so it says so instead.
+- **The docked mixer** opens tall enough for its inserts and a full fader at first (the new tools row took some height); drag the line above it as before.
+- **Not there yet:** the **Range Selection** tool (2), with Split Range and cutting or deleting a stretch across tracks; selecting several parts at once (Shift-click, a rectangle) for the other tools and Edit menu commands; the right-click toolbox. Ask when you want them: Range Selection would be the natural next step.
+
 ## 0.7.3
 
 The rest of the Cubase 15 manual's zoom and Auto-Scroll options.

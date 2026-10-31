@@ -14,7 +14,7 @@
 // PARAGON_SNAPSHOT_ZONE=mixer shows the mixer in the lower zone (with an FX channel the tracks send to;
 // PARAGON_SNAPSHOT_SENDS=1 shows the sends rack; PARAGON_SNAPSHOT_RACK=none hides the rack, the mixer as short
 // as it goes), =none nothing there (the key editor otherwise).
-// PARAGON_SNAPSHOT_EXPORT=1 draws the export page over it.
+// PARAGON_SNAPSHOT_EXPORT=1 draws the export page over it. PARAGON_SNAPSHOT_EDIT=1: the SPLIT tool, a muted part.
 // PARAGON_SNAPSHOT_ROWS=0.5 (to 3) the arrangement's rows shorter or taller; PARAGON_SNAPSHOT_SUSPENDED=1 its
 // Auto-Scroll suspended.
 // PARAGON_SNAPSHOT_AUTOMATION=1 opens automation lanes (the lead's volume, the bass's pan, the master's fade).
@@ -161,6 +161,14 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         view.openKeyEditor();
         studio.dispatchPendingMessages();
         view.getKeyEditor().selectNotes ({ 3, 4, 5 });
+    }
+    // PARAGON_SNAPSHOT_EDIT=1: the SPLIT tool chosen, and the bass's second part muted.
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_EDIT", {}).isNotEmpty())
+    {
+        view.getArrangeView().setTool (ArrangeView::Tool::split);
+        for (const auto& track : studio.getProject().tracks)
+            if (track.name.equalsIgnoreCase ("Bass") && track.parts.size() > 1)
+                studio.setPartMuted (track.id, 1, true);
     }
     // PARAGON_SNAPSHOT_ROWS=<zoom>: the arrangement's rows that much taller (or shorter, below 1).
     if (const auto rows = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_ROWS", {}); rows.isNotEmpty())

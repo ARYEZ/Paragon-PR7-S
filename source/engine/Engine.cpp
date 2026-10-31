@@ -414,7 +414,7 @@ namespace pr7s
             if (track.isAudio())
             {
                 for (const auto& part : track.parts)
-                    if (part.isAudio() && audioSource)
+                    if (part.isAudio() && ! part.muted && audioSource)
                         p.clips.push_back ({ part.start, part.end(), audioSource (part.audioFile),
                                              (juce::int64) std::llround (part.audioOffset * sampleRate),
                                              part.fadeIn * sampleRate, part.fadeOut * sampleRate });
@@ -424,6 +424,8 @@ namespace pr7s
             for (const auto& part : track.parts)
                 for (const auto& note : part.notes)
                 {
+                    if (part.muted)
+                        break;   // a muted part isn't played
                     const auto on = part.start + note.start;
                     if (note.start < 0.0 || note.start >= part.length)
                         continue;   // outside the part: not heard (as in a DAW)

@@ -69,6 +69,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
     addAndMakeVisible (transport);
     addAndMakeVisible (trackList);
     addAndMakeVisible (arrange);
+    addAndMakeVisible (tools);
+    arrange.onToolChange = [this] { tools.refresh(); };
     addChildComponent (keyEditor);
     addChildComponent (mixer);
     keyEditor.onClose = [this] { closeKeyEditor(); };
@@ -263,7 +265,7 @@ void MainView::paint (juce::Graphics& g)
     g.fillRect (header.withY (header.getBottom() - 1.0f).withHeight (1.0f));
 
     // The work area's frame.
-    const auto middle = getLocalBounds().withTrimmedTop (headerHeight + transportHeight).toFloat().reduced (6.0f, 2.0f);
+    const auto middle = getLocalBounds().withTrimmedTop (headerHeight + transportHeight + toolbarHeight).toFloat().reduced (6.0f, 2.0f);
     g.setColour (ParagonColours::panelEdge);
     g.drawRect (middle, 1.0f);
 }
@@ -297,6 +299,7 @@ void MainView::resized()
     pluginsButton.setBounds (header.removeFromRight (86));
 
     transport.setBounds (area.removeFromTop (transportHeight).reduced (2, 0));
+    tools.setBounds (area.removeFromTop (toolbarHeight).reduced (7, 3).withTrimmedTop (2));
 
     auto middle = area.reduced (7, 3);
     zoneDivider->setVisible (false);
@@ -336,7 +339,10 @@ int MainView::heightFor (Zone& zone, int middleHeight) const
     // leaves the arrangement its room (its least wins if there isn't enough).
     const auto least = juce::jmin (minimumHeight (zone), middleHeight);
     const auto most = juce::jlimit (least, middleHeight, middleHeight - minimumArrangeHeight - dividerHeight);
-    const auto wanted = zone.dockedHeight > 0 ? zone.dockedHeight : juce::roundToInt ((float) middleHeight * 0.6f);
+    // (Not dragged yet: a little over half, or the mixer's whole rack and a full fader if that's more.)
+    auto wanted = zone.dockedHeight > 0 ? zone.dockedHeight : juce::roundToInt ((float) middleHeight * 0.6f);
+    if (zone.dockedHeight <= 0 && &zone == &mixerZone)
+        wanted = juce::jmax (wanted, mixer.getPreferredHeight());
     return juce::jlimit (least, most, wanted);
 }
 
@@ -345,7 +351,7 @@ void MainView::setDockedHeight (int height)
     auto* zone = dockedZone();
     if (zone == nullptr)
         return;
-    const auto middleHeight = getHeight() - headerHeight - transportHeight - 6;
+    const auto middleHeight = getHeight() - headerHeight - transportHeight - toolbarHeight - 6;
     zone->dockedHeight = juce::jmax (1, height);   // (0 would mean the default)
     zone->dockedHeight = heightFor (*zone, middleHeight);   // kept to what it can be
     if (auto* settings = studio.getSettings())
@@ -448,6 +454,24 @@ bool MainView::keyPressed (const juce::KeyPress& key)
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
     {
         arrange.hasSelectedPoints() ? arrange.deleteSelectedPoints() : arrange.deleteSelected();
+        return true;
+    }
+    // The arrangement's tools: 1 and 3 to 9 (not after a click in the key editor: it has its own), F9 / F10, Alt+X.
+    if (! mods.isAnyModifierKeyDown() && ! (isKeyEditorOpen() && keysToEditor))
+        for (const auto t : ArrangeView::tools)
+            if (key.getTextCharacter() == (juce::juce_wchar) ('0' + ArrangeView::toolKey (t)))
+            {
+                arrange.setTool (t);
+                return true;
+            }
+    if (key.getKeyCode() == juce::KeyPress::F9Key || key.getKeyCode() == juce::KeyPress::F10Key)
+    {
+        arrange.nextTool (key.getKeyCode() == juce::KeyPress::F10Key);
+        return true;
+    }
+    if (mods.isAltDown() && ! mods.isCommandDown() && letter == 'X')
+    {
+        arrange.splitAtCursor();
         return true;
     }
     // Zoom and Auto-Scroll (the manual's keys: H in, G out, Shift+F the whole song, F Auto-Scroll).

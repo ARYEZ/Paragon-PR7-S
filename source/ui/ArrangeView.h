@@ -124,6 +124,22 @@ struct Timeline
 //                   dragging puts them back; right-click: Select All Events.
 //                   With no points, a dotted line shows the control's
 //                   setting; R off or the lane muted, the curve is greyed
+//   tools           (the manual's, keys 1 and 3 to 9; F9 / F10 the previous
+//                   / next) what a click on a track does: SELECT (1, all of
+//                   the above; Alt-click a part splits it there; Alt-drag
+//                   on an empty instrument track draws a new part), SPLIT (3:
+//                   click a part to cut it there, snapped; Alt: into equal
+//                   pieces that long), GLUE (4: click a part to join it to
+//                   the next; Alt: to all after it), ERASE (5: click a part
+//                   to delete it; Alt: it and all after it), ZOOM (6: click
+//                   to zoom in there, Alt-click out, drag across a stretch to
+//                   fill the view with it), MUTE (7: click a part to mute or
+//                   unmute it, or drag a rectangle over several), DRAW (8:
+//                   drag on an instrument track for a new empty part), PLAY
+//                   (9: hold the mouse down to play from there; let go to
+//                   stop, back where it was). Alt+X splits the parts the
+//                   playhead is in (the selected one only, if there is one).
+//                   Right-click a part for its menu, whatever the tool.
 //   wheel           scrolls the tracks; Shift+wheel scrolls along the song;
 //                   Ctrl+wheel zooms (and the scroll bars, under and beside it)
 //   keys            (as the manual has them) H zooms in, G out, a step
@@ -147,6 +163,17 @@ public:
     void select (int trackId, int index);
     void deleteSelected();
     void duplicateSelected();
+
+    // The editing tools (see above). Range Selection (2) isn't there yet.
+    enum class Tool { select, split, glue, erase, zoom, mute, draw, play };
+    static constexpr Tool tools[] = { Tool::select, Tool::split, Tool::glue, Tool::erase, Tool::zoom, Tool::mute, Tool::draw, Tool::play };
+    static const char* toolName (Tool);
+    static int toolKey (Tool);   // its number key
+    void setTool (Tool);
+    Tool getTool() const noexcept { return tool; }
+    void nextTool (bool forward);   // F10 / F9
+    std::function<void()> onToolChange;
+    void splitAtCursor();           // Alt+X
 
     // H / G: one zoom step in or out, centred on the playhead; Shift+F: the
     // whole song (as far as the scroll bar goes) across the view.
@@ -203,7 +230,18 @@ private:
     Timeline& timeline;
     Selection selection;
 
-    enum class Drag { none, position, cycle, cycleMove, move, resize, trimStart, fadeIn, fadeOut, points, band, draw };
+    enum class Drag { none, position, cycle, cycleMove, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
+                      newPart, muteBand, zoomBand, play };
+    Tool tool = Tool::select;
+    bool toolDown (const juce::MouseEvent&);   // the tools other than SELECT (and SELECT's Alt gestures); true if it took the click
+    void toolUp (const juce::MouseEvent&);
+    juce::Rectangle<float> toolBand;           // MUTE's rectangle, ZOOM's stretch, DRAW's new part, as dragged
+    int newPartTrack = 0;
+    double playReturn = 0.0;                   // PLAY: where the playhead goes back to
+    juce::Point<float> hover { -1.0f, -1.0f }; // SPLIT: where the cut would go
+    double splitBeat (const juce::MouseEvent&, const pr7s::Part&) const;
+    void cannotGlue();
+    void updateCursor (const juce::MouseEvent&);
 
     // Automation editing.
     PointSelection pointSelection;
@@ -232,4 +270,20 @@ private:
     bool dragCopies = false, dragMoved = false;
     double lastPosition = 0.0;   // the playhead as last seen (Auto-Scroll follows a jump while stopped)
     void scrolled();             // the track list and the scroll bars follow
+};
+
+// The arrangement's tools in a row over it (as the manual's toolbar): a key
+// each (its number key in the tooltip), lit while it's the one chosen.
+class ArrangeTools final : public juce::Component
+{
+public:
+    explicit ArrangeTools (ArrangeView&);
+    void refresh();   // the chosen tool lit
+    juce::TextButton& getButton (ArrangeView::Tool);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+
+private:
+    ArrangeView& arrange;
+    std::array<juce::TextButton, std::size (ArrangeView::tools)> buttons;
 };

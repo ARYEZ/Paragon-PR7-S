@@ -395,6 +395,39 @@ void ArrangeView::paint (juce::Graphics& g)
                            part, project.tracks[t].colour, false, true);
             }
 
+    // The tools: the part being drawn, MUTE's rectangle, ZOOM's stretch; SPLIT's cut under the mouse.
+    if (! toolBand.isEmpty())
+    {
+        if (drag == Drag::newPart)
+        {
+            const auto* track = project.findTrack (newPartTrack);
+            const auto colour = track != nullptr ? track->colour : ParagonColours::accent;
+            g.setColour (colour.withAlpha (0.35f));
+            g.fillRoundedRectangle (toolBand, 4.0f);
+            g.setColour (colour);
+            g.drawRoundedRectangle (toolBand, 4.0f, 1.5f);
+        }
+        else
+        {
+            g.setColour (ParagonColours::accent.withAlpha (0.12f));
+            g.fillRect (toolBand);
+            g.setColour (ParagonColours::accent.withAlpha (0.8f));
+            g.drawRect (toolBand, 1.0f);
+        }
+    }
+    if (tool == Tool::split && drag == Drag::none && hover.x >= 0.0f)
+        if (const auto hit = partAt (hover))
+        {
+            const auto bounds = getPartBounds (hit->first, hit->second);
+            const auto beat = pr7s::snap (timeline.beatForX (hover.x), timeline.grid (project));
+            const auto x = timeline.xForBeat (beat);
+            if (x > bounds.getX() && x < bounds.getRight())
+            {
+                g.setColour (juce::Colours::white.withAlpha (0.9f));
+                g.fillRect (juce::Rectangle<float> (x - 0.5f, bounds.getY(), 1.5f, bounds.getHeight()));
+            }
+        }
+
     // The ruler: bar numbers, beat ticks, the cycle strip.
     const auto ruler = bounds.withHeight ((float) Timeline::rulerHeight);
     g.setColour (juce::Colour (0xff151116));
@@ -460,6 +493,8 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
 {
     if (area.getRight() < 0.0f || area.getX() > (float) getWidth())
         return;
+    if (part.muted)
+        colour = juce::Colour (0xff6a646c);   // muted: greyed out (pearl onyx), as the manual has it
     g.setColour (colour.withAlpha (0.32f));
     g.fillRoundedRectangle (area, 4.0f);
     auto band = area.withHeight (15.0f);
@@ -468,7 +503,8 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
     g.fillRect (band.withTrimmedTop (8.0f));
     g.setColour (juce::Colours::black.withAlpha (0.8f));
     g.setFont (font (10.5f));
-    g.drawText (recording ? juce::String ("RECORDING") : part.name, band.reduced (5.0f, 0.0f), juce::Justification::centredLeft, true);
+    g.drawText (recording ? juce::String ("RECORDING") : part.muted ? part.name + "  (MUTED)" : part.name,
+                band.reduced (5.0f, 0.0f), juce::Justification::centredLeft, true);
 
     // An audio clip: its waveform (the loudest moment under each pixel, up
     // and down from the middle), and its fades with their handles.
@@ -578,6 +614,25 @@ juce::Rectangle<float> ArrangeView::fadeHandle (juce::Rectangle<float> bounds, c
 //==============================================================================
 void ArrangeView::mouseMove (const juce::MouseEvent& event)
 {
+    updateCursor (event);
+}
+
+void ArrangeView::updateCursor (const juce::MouseEvent& event)
+{
+    if (tool == Tool::split)
+    {
+        hover = partAt (event.position) ? event.position : juce::Point<float> { -1.0f, -1.0f };
+        repaint();
+    }
+    if (tool != Tool::select)
+    {
+        const auto overParts = event.position.y >= (float) Timeline::rulerHeight;
+        setMouseCursor (! overParts ? juce::MouseCursor::NormalCursor
+                        : tool == Tool::split ? juce::MouseCursor::IBeamCursor
+                        : tool == Tool::draw || tool == Tool::zoom ? juce::MouseCursor::CrosshairCursor
+                                                                   : juce::MouseCursor::PointingHandCursor);
+        return;
+    }
     if (const auto hit = partAt (event.position))
     {
         const auto bounds = getPartBounds (hit->first, hit->second);
@@ -631,6 +686,8 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
         return;
     }
 
+    if (toolDown (event))
+        return;
     const auto hit = partAt (event.position);
     if (! hit)
     {
@@ -674,6 +731,32 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
     if (drag == Drag::points || drag == Drag::band || drag == Drag::draw)
     {
         automationDrag (event);
+        return;
+    }
+    if (drag == Drag::newPart || drag == Drag::muteBand || drag == Drag::zoomBand)
+    {
+        if (event.getDistanceFromDragStart() > 3)
+            dragMoved = true;
+        const auto from = event.mouseDownPosition;
+        if (drag == Drag::muteBand)
+            toolBand = juce::Rectangle<float> (from, event.position);
+        else
+        {
+            // Across the song: DRAW's on its track (snapped), ZOOM's down the view.
+            auto start = timeline.beatForX (juce::jmin (from.x, event.position.x));
+            auto end = timeline.beatForX (juce::jmax (from.x, event.position.x));
+            if (drag == Drag::newPart && ! event.mods.isCommandDown())
+            {
+                const auto grid = timeline.grid (studio.getProject());
+                start = std::floor (start / grid + 1.0e-9) * grid;
+                end = juce::jmax (start + grid, std::ceil (end / grid - 1.0e-9) * grid);
+            }
+            start = juce::jmax (0.0, start);
+            const auto x1 = timeline.xForBeat (start), x2 = timeline.xForBeat (end);
+            toolBand = drag == Drag::newPart ? juce::Rectangle<float> (x1, trackTop (newPartTrack) + 3.0f, x2 - x1, (float) timeline.trackRowHeight() - 6.0f)
+                                             : juce::Rectangle<float> (x1, (float) Timeline::rulerHeight, x2 - x1, (float) getHeight());
+        }
+        repaint();
         return;
     }
     const auto& project = studio.getProject();
@@ -762,20 +845,37 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
         case Drag::points:
         case Drag::band:
         case Drag::draw:
+        case Drag::newPart:
+        case Drag::muteBand:
+        case Drag::zoomBand:
+        case Drag::play:
         case Drag::none:
             break;
     }
 }
 
-void ArrangeView::mouseUp (const juce::MouseEvent&)
+void ArrangeView::mouseUp (const juce::MouseEvent& event)
 {
     if (drag == Drag::points || drag == Drag::band || drag == Drag::draw)
     {
         automationUp();
         return;
     }
+    if (drag == Drag::newPart || drag == Drag::muteBand || drag == Drag::zoomBand || drag == Drag::play)
+    {
+        toolUp (event);
+        return;
+    }
     const auto finished = drag;
     drag = Drag::none;
+    // SELECT, Alt-click (no drag) on a part: split it there (as the manual has it).
+    if (! dragMoved && finished == Drag::move && dragCopies && selection.isValid())
+    {
+        if (const auto* track = studio.getProject().findTrack (dragTrack); track != nullptr && juce::isPositiveAndBelow (selection.index, (int) track->parts.size()))
+            studio.splitPart (dragTrack, selection.index, splitBeat (event, track->parts[(size_t) selection.index]));
+        repaint();
+        return;
+    }
     if (! dragMoved)
     {
         if (finished == Drag::cycleMove)   // a click in the range: cycle on or off
@@ -814,9 +914,236 @@ void ArrangeView::mouseUp (const juce::MouseEvent&)
         case Drag::points:
         case Drag::band:
         case Drag::draw:
+        case Drag::newPart:
+        case Drag::muteBand:
+        case Drag::zoomBand:
+        case Drag::play:
         case Drag::none:
             break;
     }
+    repaint();
+}
+
+//==============================================================================
+const char* ArrangeView::toolName (Tool t)
+{
+    switch (t)
+    {
+        case Tool::select: return "SELECT";
+        case Tool::split:  return "SPLIT";
+        case Tool::glue:   return "GLUE";
+        case Tool::erase:  return "ERASE";
+        case Tool::zoom:   return "ZOOM";
+        case Tool::mute:   return "MUTE";
+        case Tool::draw:   return "DRAW";
+        case Tool::play:   return "PLAY";
+    }
+    return "";
+}
+
+int ArrangeView::toolKey (Tool t)
+{
+    switch (t)
+    {
+        case Tool::select: return 1;
+        case Tool::split:  return 3;
+        case Tool::glue:   return 4;
+        case Tool::erase:  return 5;
+        case Tool::zoom:   return 6;
+        case Tool::mute:   return 7;
+        case Tool::draw:   return 8;
+        case Tool::play:   return 9;
+    }
+    return 0;
+}
+
+void ArrangeView::setTool (Tool newTool)
+{
+    tool = newTool;
+    hover = { -1.0f, -1.0f };
+    setMouseCursor (juce::MouseCursor::NormalCursor);
+    repaint();
+    if (onToolChange)
+        onToolChange();
+}
+
+void ArrangeView::nextTool (bool forward)
+{
+    const auto count = (int) std::size (tools);
+    auto at = 0;
+    for (int i = 0; i < count; ++i)
+        if (tools[i] == tool)
+            at = i;
+    setTool (tools[(at + (forward ? 1 : count - 1)) % count]);
+}
+
+void ArrangeView::splitAtCursor()
+{
+    // Only the selected part, if there is one (as the manual has it).
+    auto only = 0;
+    if (const auto* track = studio.getProject().findTrack (selection.trackId); track != nullptr && juce::isPositiveAndBelow (selection.index, (int) track->parts.size()))
+        only = track->parts[(size_t) selection.index].id;
+    studio.splitAtCursor (only);
+}
+
+double ArrangeView::splitBeat (const juce::MouseEvent& event, const pr7s::Part&) const
+{
+    // Snapped to the grid (Ctrl: not).
+    const auto beat = timeline.beatForX (event.position.x);
+    return event.mods.isCommandDown() ? beat : pr7s::snap (beat, timeline.grid (studio.getProject()));
+}
+
+void ArrangeView::cannotGlue()
+{
+    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Not glued",
+        "Only a MIDI part and the ones after it, or an audio clip and the one cut from the same recording "
+        "right after it (a split glued back) can be glued. A clip of another recording would need an audio part "
+        "holding several clips, which PR7-S doesn't have yet.");
+}
+
+bool ArrangeView::toolDown (const juce::MouseEvent& event)
+{
+    const auto hit = partAt (event.position);
+    const auto* track = studio.getProject().findTrack (trackAtY (event.position.y));
+    const auto canHoldNotes = track != nullptr && ! track->isAudio() && ! track->isChannel();
+    dragMoved = false;
+    toolBand = {};
+    switch (tool)
+    {
+        case Tool::select:
+            // Alt-drag on an empty instrument track draws a new part (the manual's).
+            if (! hit && event.mods.isAltDown() && canHoldNotes)
+            {
+                drag = Drag::newPart;
+                newPartTrack = track->id;
+                return true;
+            }
+            return false;
+        case Tool::split:
+            if (hit)
+            {
+                const auto& part = studio.getProject().findTrack (hit->first)->parts[(size_t) hit->second];
+                const auto at = splitBeat (event, part);
+                if (event.mods.isAltDown())
+                    studio.splitPartRepeatedly (hit->first, hit->second, at);
+                else
+                    studio.splitPart (hit->first, hit->second, at);
+                selection = { hit->first, hit->second };   // the first half
+            }
+            break;
+        case Tool::glue:
+            if (hit)
+            {
+                const auto audio = isAudioTrack (hit->first);
+                if (studio.glueParts (hit->first, hit->second, event.mods.isAltDown()))
+                    selection = { hit->first, hit->second };
+                else if (audio)
+                    cannotGlue();
+            }
+            break;
+        case Tool::erase:
+            if (hit)
+            {
+                selection = {};
+                if (event.mods.isAltDown())
+                    studio.deletePartsFrom (hit->first, hit->second);
+                else
+                    studio.deletePart (hit->first, hit->second);
+            }
+            break;
+        case Tool::mute:
+            drag = Drag::muteBand;
+            return true;
+        case Tool::zoom:
+            drag = Drag::zoomBand;
+            return true;
+        case Tool::draw:
+            if (! hit && canHoldNotes)
+            {
+                drag = Drag::newPart;
+                newPartTrack = track->id;
+                return true;
+            }
+            if (hit)
+                select (hit->first, hit->second);
+            break;
+        case Tool::play:
+            // Held: plays from here; let go: stops, back where it was.
+            playReturn = studio.getEngine().getPosition();
+            if (studio.getEngine().isPlaying())
+                studio.stop();
+            studio.setPosition (juce::jmax (0.0, timeline.beatForX (event.position.x)));
+            studio.play();
+            drag = Drag::play;
+            return true;
+    }
+    drag = Drag::none;
+    repaint();
+    return true;
+}
+
+void ArrangeView::toolUp (const juce::MouseEvent& event)
+{
+    const auto finished = drag;
+    drag = Drag::none;
+    switch (finished)
+    {
+        case Drag::play:
+            studio.stop();
+            studio.setPosition (playReturn);
+            break;
+        case Drag::newPart:
+            if (dragMoved && ! toolBand.isEmpty())
+            {
+                pr7s::Part part;
+                part.start = juce::jmax (0.0, timeline.beatForX (toolBand.getX()));
+                part.length = juce::jmax (1.0 / 16.0, timeline.beatForX (toolBand.getRight()) - part.start);
+                part.name = studio.getProject().findTrack (newPartTrack)->name;
+                studio.addPart (newPartTrack, part);
+                select (newPartTrack, (int) studio.getProject().findTrack (newPartTrack)->parts.size() - 1);
+            }
+            break;
+        case Drag::muteBand:
+        {
+            // A click: that part muted or not; a rectangle: every part it touches
+            // muted (or, if they all are already, unmuted).
+            std::vector<int> ids;
+            auto allMuted = true;
+            const auto band = dragMoved ? toolBand : juce::Rectangle<float> (event.position, event.position).expanded (0.5f);
+            for (const auto& track : studio.getProject().tracks)
+                for (int i = 0; i < (int) track.parts.size(); ++i)
+                    if (getPartBounds (track.id, i).intersects (band))
+                    {
+                        ids.push_back (track.parts[(size_t) i].id);
+                        allMuted = allMuted && track.parts[(size_t) i].muted;
+                    }
+            if (! ids.empty())
+                studio.setPartsMuted (ids, ! allMuted);
+            break;
+        }
+        case Drag::zoomBand:
+            if (dragMoved && toolBand.getWidth() > 4.0f)
+            {
+                // The stretch dragged across fills the view.
+                const auto start = timeline.beatForX (toolBand.getX());
+                const auto length = timeline.beatForX (toolBand.getRight()) - start;
+                timeline.pixelsPerBeat = juce::jlimit (2.0, 400.0, (double) getWidth() / juce::jmax (1.0e-3, length));
+                timeline.firstBeat = juce::jmax (0.0, start);
+            }
+            else
+            {
+                // A click: a step in (Alt: out), the beat clicked staying under the mouse.
+                const auto beat = timeline.beatForX (event.position.x);
+                timeline.pixelsPerBeat = juce::jlimit (2.0, 400.0, event.mods.isAltDown() ? timeline.pixelsPerBeat / Timeline::zoomStep
+                                                                                         : timeline.pixelsPerBeat * Timeline::zoomStep);
+                timeline.firstBeat = juce::jmax (0.0, beat - event.position.x / timeline.pixelsPerBeat);
+            }
+            scrolled();
+            break;
+        default:
+            break;
+    }
+    toolBand = {};
     repaint();
 }
 
@@ -892,7 +1219,13 @@ void ArrangeView::showPartMenu (int trackId, int index)
     menu.addItem (3, "Edit notes (key editor)", ! isAudioTrack (trackId));
     menu.addItem (1, "Duplicate (after it)");
     menu.addItem (2, "Delete");
-    menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, index] (int chosen)
+    menu.addSeparator();
+    const auto& part = studio.getProject().findTrack (trackId)->parts[(size_t) index];
+    const auto at = studio.getEngine().getPosition();
+    menu.addItem (4, part.muted ? "Unmute" : "Mute");
+    menu.addItem (5, "Split at the playhead (Alt+X)", at > part.start && at < part.end());
+    menu.addItem (6, "Glue to the next part");
+    menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, index, muted = part.muted] (int chosen)
     {
         selection = { trackId, index };
         if (chosen == 3 && onEditNotes)
@@ -901,6 +1234,12 @@ void ArrangeView::showPartMenu (int trackId, int index)
             duplicateSelected();
         else if (chosen == 2)
             deleteSelected();
+        else if (chosen == 4)
+            studio.setPartMuted (trackId, index, ! muted);
+        else if (chosen == 5)
+            splitAtCursor();
+        else if (chosen == 6 && ! studio.glueParts (trackId, index, false) && isAudioTrack (trackId))
+            cannotGlue();
     });
 }
 
@@ -1292,4 +1631,61 @@ void ArrangeView::showLaneMenu (int busId, int laneIndex)
             safe->studio.removeAutomationParameter (busId, laneIndex);
         }
     });
+}
+
+//==============================================================================
+ArrangeTools::ArrangeTools (ArrangeView& arrangeToUse) : arrange (arrangeToUse)
+{
+    static const char* const tips[] = {
+        "SELECT (1): select, move (Alt: copy) and resize parts; Alt-click splits a part there; Alt-drag on an empty instrument track draws a part",
+        "SPLIT (3): click a part to cut it there (on the grid; Ctrl: anywhere); Alt-click: into equal pieces that long",
+        "GLUE (4): click a part to join it to the next one on its track; Alt-click: to all after it",
+        "ERASE (5): click a part to delete it; Alt-click: it and all after it on its track",
+        "ZOOM (6): click to zoom in there, Alt-click to zoom out; drag across a stretch to fill the view with it",
+        "MUTE (7): click a part to mute or unmute it (muted parts aren't played); drag a rectangle over several",
+        "DRAW (8): drag on an instrument track to draw a new, empty part",
+        "PLAY (9): hold the mouse down on the tracks to play from there; let go to stop" };
+    for (size_t i = 0; i < buttons.size(); ++i)
+    {
+        auto& button = buttons[i];
+        const auto t = ArrangeView::tools[i];
+        button.setButtonText (ArrangeView::toolName (t));
+        button.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        button.setWantsKeyboardFocus (false);
+        button.setTooltip (tips[i]);
+        button.onClick = [this, t] { arrange.setTool (t); };
+        addAndMakeVisible (button);
+    }
+    refresh();
+}
+
+void ArrangeTools::refresh()
+{
+    for (size_t i = 0; i < buttons.size(); ++i)
+        buttons[i].setToggleState (ArrangeView::tools[i] == arrange.getTool(), juce::dontSendNotification);
+}
+
+juce::TextButton& ArrangeTools::getButton (ArrangeView::Tool t)
+{
+    for (size_t i = 0; i < buttons.size(); ++i)
+        if (ArrangeView::tools[i] == t)
+            return buttons[i];
+    return buttons[0];
+}
+
+void ArrangeTools::paint (juce::Graphics& g)
+{
+    g.setColour (ParagonColours::textDim);
+    g.setFont (ParagonLookAndFeel::textFont (11.0f));
+    g.drawText ("TOOLS", getLocalBounds().withWidth (60).withTrimmedLeft (14), juce::Justification::centredLeft, false);
+}
+
+void ArrangeTools::resized()
+{
+    auto area = getLocalBounds().withTrimmedLeft (64);
+    for (auto& button : buttons)
+    {
+        button.setBounds (area.removeFromLeft (70));
+        area.removeFromLeft (4);
+    }
 }

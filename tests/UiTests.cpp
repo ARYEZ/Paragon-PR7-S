@@ -1295,3 +1295,156 @@ TEST_CASE ("Taller and shorter rows (Shift+H / Shift+G); Auto-Scroll's settings:
         CHECK_FALSE (editor.getAutoScrollSettings().suspended);
     }
 }
+
+TEST_CASE ("The editing tools: keys and the toolbar; SPLIT, GLUE, ERASE, MUTE, DRAW, ZOOM, PLAY on the tracks; SELECT's Alt-click and Alt-drag; Alt+X", "[ui][tools]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto track = studio.getProject().tracks[0].id;
+    studio.addPart (track, { 4.0, 8.0, "Riff", { { 0.0, 1.0, 60, 0.8f }, { 6.0, 1.0, 64, 0.8f } } });
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    auto& tools = view.getTools();
+    const auto key = [&] (juce::juce_wchar c, juce::ModifierKeys mods = {}) { return view.keyPressed (juce::KeyPress ((int) c, mods, c)); };
+    const auto parts = [&] { return studio.getProject().findTrack (track)->parts; };
+    const auto click = [&] (juce::Point<float> at, juce::ModifierKeys mods = {})
+    {
+        arrange.mouseDown (mouseAt (arrange, at, at, mods));
+        arrange.mouseUp (mouseAt (arrange, at, at, mods));
+    };
+    const auto dragAcross = [&] (juce::Point<float> from, juce::Point<float> to, juce::ModifierKeys mods = {})
+    {
+        arrange.mouseDown (mouseAt (arrange, from, from, mods));
+        for (int step = 1; step <= 4; ++step)
+            arrange.mouseDrag (mouseAt (arrange, from + (to - from) * ((float) step / 4.0f), from, mods));
+        arrange.mouseUp (mouseAt (arrange, to, from, mods));
+    };
+    const auto xFor = [&] (double beat) { return arrange.getPartBounds (track, 0).getX() + (float) ((beat - parts()[0].start) * arrange.getPartBounds (track, 0).getWidth() / parts()[0].length); };
+    const auto y = arrange.getPartBounds (track, 0).getCentreY();
+
+    SECTION ("The tool keys (1, 3 to 9) and F9 / F10 choose the tool; its key in the toolbar lights")
+    {
+        CHECK (arrange.getTool() == ArrangeView::Tool::select);
+        CHECK (tools.getButton (ArrangeView::Tool::select).getToggleState());
+        CHECK (key ('3'));
+        CHECK (arrange.getTool() == ArrangeView::Tool::split);
+        CHECK (tools.getButton (ArrangeView::Tool::split).getToggleState());
+        CHECK_FALSE (tools.getButton (ArrangeView::Tool::select).getToggleState());
+        CHECK (key ('9'));
+        CHECK (arrange.getTool() == ArrangeView::Tool::play);
+        CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F10Key)));
+        CHECK (arrange.getTool() == ArrangeView::Tool::select);   // round again
+        CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F9Key)));
+        CHECK (arrange.getTool() == ArrangeView::Tool::play);
+        tools.getButton (ArrangeView::Tool::glue).onClick();
+        CHECK (arrange.getTool() == ArrangeView::Tool::glue);
+    }
+
+    SECTION ("SPLIT: a click cuts the part there, on the grid (Ctrl: anywhere); Alt: equal pieces; then GLUE joins them back")
+    {
+        key ('3');
+        click ({ xFor (6.1), y });   // snaps to beat 6 (the grid at this zoom: a beat)
+        REQUIRE (parts().size() == 2);
+        CHECK (parts()[0].length == 2.0);
+        CHECK (parts()[1].start == 6.0);
+        studio.undo();
+        click ({ xFor (6.1), y }, juce::ModifierKeys::ctrlModifier);
+        REQUIRE (parts().size() == 2);
+        CHECK (std::abs (parts()[1].start - 6.1) < 0.05);
+        studio.undo();
+        click ({ xFor (6.0), y }, juce::ModifierKeys::altModifier);
+        CHECK (parts().size() == 4);   // 8 beats in pieces of 2
+
+        key ('4');
+        click ({ xFor (5.0), y }, juce::ModifierKeys::altModifier);   // the first, glued to all after it
+        REQUIRE (parts().size() == 1);
+        CHECK (parts()[0].length == 8.0);
+        CHECK (parts()[0].notes.size() == 2);
+    }
+
+    SECTION ("ERASE removes the part clicked; MUTE mutes it (a click again unmutes), or every part in a rectangle")
+    {
+        studio.addPart (track, { 16.0, 4.0, "Later", {} });
+        studio.dispatchPendingMessages();
+        key ('7');
+        click ({ xFor (5.0), y });
+        CHECK (parts()[0].muted);
+        click ({ xFor (5.0), y });
+        CHECK_FALSE (parts()[0].muted);
+        dragAcross ({ xFor (3.0), y - 10.0f }, { xFor (18.0), y + 10.0f });
+        CHECK (parts()[0].muted);
+        CHECK (parts()[1].muted);
+
+        key ('5');
+        click ({ xFor (5.0), y });
+        REQUIRE (parts().size() == 1);
+        CHECK (parts()[0].name == "Later");
+    }
+
+    SECTION ("DRAW: a drag on an empty stretch of an instrument track makes a new empty part over it (whole grid steps)")
+    {
+        key ('8');
+        dragAcross ({ xFor (14.2), y }, { xFor (17.6), y });
+        REQUIRE (parts().size() == 2);
+        CHECK (parts()[1].start == 14.0);
+        CHECK (parts()[1].length == 4.0);   // 14 to 18
+        CHECK (parts()[1].notes.empty());
+    }
+
+    SECTION ("SELECT: Alt-click a part splits it there; Alt-drag on an empty stretch draws a part; Alt-drag a part still copies it")
+    {
+        click ({ xFor (8.0), y }, juce::ModifierKeys::altModifier);
+        REQUIRE (parts().size() == 2);
+        CHECK (parts()[1].start == 8.0);
+        studio.undo();
+        dragAcross ({ xFor (20.0), y }, { xFor (23.5), y }, juce::ModifierKeys::altModifier);
+        REQUIRE (parts().size() == 2);
+        CHECK (parts()[1].start == 20.0);
+        studio.undo();
+        dragAcross ({ xFor (5.0), y }, { xFor (17.0), y }, juce::ModifierKeys::altModifier);
+        CHECK (parts().size() == 2);   // the copy
+        CHECK (parts()[0].start == 4.0);
+    }
+
+    SECTION ("Alt+X splits the parts the playhead is in (only the selected one, if any); the part's menu can too")
+    {
+        const auto second = studio.addTrack ({});
+        studio.addPart (second, { 0.0, 16.0, "Pad", {} });
+        studio.setPosition (6.0);
+        CHECK (key ('x', juce::ModifierKeys::altModifier));
+        CHECK (parts().size() == 2);
+        CHECK (studio.getProject().findTrack (second)->parts.size() == 2);
+        studio.undo();
+        arrange.select (track, 0);
+        CHECK (key ('x', juce::ModifierKeys::altModifier));
+        CHECK (parts().size() == 2);
+        CHECK (studio.getProject().findTrack (second)->parts.size() == 1);
+    }
+
+    SECTION ("ZOOM: a click zooms in there, Alt-click out, a drag fills the view with the stretch; PLAY: held, it plays from there")
+    {
+        key ('6');
+        const auto width = arrange.getPartBounds (track, 0).getWidth();
+        const auto clickedAt = xFor (8.0);
+        click ({ clickedAt, y });
+        CHECK_THAT (arrange.getPartBounds (track, 0).getWidth(), WithinAbs (width * (float) Timeline::zoomStep, 0.1));
+        CHECK_THAT (xFor (8.0), WithinAbs (clickedAt, 0.1));   // the beat clicked stays under the mouse
+        click ({ 300.0f, y }, juce::ModifierKeys::altModifier);
+        CHECK_THAT (arrange.getPartBounds (track, 0).getWidth(), WithinAbs (width, 0.1));
+        dragAcross ({ xFor (4.0), y }, { xFor (12.0), y });
+        CHECK_THAT (arrange.getPartBounds (track, 0).getX(), WithinAbs (0.0, 1.0));
+        CHECK_THAT (arrange.getPartBounds (track, 0).getWidth(), WithinAbs ((float) arrange.getWidth(), 1.0));
+
+        key ('9');
+        studio.setPosition (1.0);
+        const juce::Point<float> at (xFor (6.0), y);
+        arrange.mouseDown (mouseAt (arrange, at, at));
+        CHECK (studio.getEngine().isPlaying());
+        CHECK_THAT (studio.getEngine().getPosition(), WithinAbs (6.0, 0.05));
+        arrange.mouseUp (mouseAt (arrange, at, at));
+        CHECK_FALSE (studio.getEngine().isPlaying());
+        CHECK (studio.getEngine().getPosition() == 1.0);   // back where it was
+    }
+}

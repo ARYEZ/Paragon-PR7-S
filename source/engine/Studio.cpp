@@ -577,6 +577,214 @@ namespace pr7s
         }
     }
 
+    namespace
+    {
+        // A part cut at `rel` beats from its start: it keeps what's before, and the rest is returned.
+        Part cutPart (Part& part, double rel, double bpm)
+        {
+            auto second = part;
+            second.id = 0;
+            second.start = part.start + rel;
+            second.length = part.length - rel;
+            second.notes.clear();
+            std::vector<Note> first;
+            for (const auto& note : part.notes)
+            {
+                if (note.start < rel)
+                {
+                    auto kept = note;
+                    if (note.start + note.length > rel && note.start >= 0.0)
+                    {
+                        kept.length = rel - note.start;   // cut in two: the rest starts the second part
+                        auto rest = note;
+                        rest.start = 0.0;
+                        rest.length = note.start + note.length - rel;
+                        second.notes.push_back (rest);
+                    }
+                    first.push_back (kept);
+                }
+                else
+                {
+                    auto moved = note;
+                    moved.start -= rel;
+                    second.notes.push_back (moved);
+                }
+            }
+            std::stable_sort (second.notes.begin(), second.notes.end(), [] (const Note& a, const Note& b) { return a.start < b.start; });
+            part.notes = std::move (first);
+            part.length = rel;
+            if (part.isAudio())
+            {
+                const auto seconds = rel * 60.0 / bpm;
+                second.audioOffset = part.audioOffset + seconds;
+                second.fadeIn = 0.0;
+                part.fadeOut = 0.0;
+                part.fadeIn = juce::jmin (part.fadeIn, seconds);
+                second.fadeOut = juce::jmin (second.fadeOut, second.length * 60.0 / bpm);
+            }
+            return second;
+        }
+
+        // The parts on a track after `index`'s (by start), in order.
+        std::vector<int> partsAfter (const Track& track, int index)
+        {
+            const auto& from = track.parts[(size_t) index];
+            std::vector<int> after;
+            for (int i = 0; i < (int) track.parts.size(); ++i)
+                if (i != index && (track.parts[(size_t) i].start > from.start
+                                   || (juce::exactlyEqual (track.parts[(size_t) i].start, from.start) && i > index)))
+                    after.push_back (i);
+            std::stable_sort (after.begin(), after.end(), [&] (int a, int b) { return track.parts[(size_t) a].start < track.parts[(size_t) b].start; });
+            return after;
+        }
+
+        constexpr double shortestPiece = 1.0 / 64.0;   // beats: no split closer to a part's edge than this
+    }
+
+    int Studio::splitPart (int trackId, int index, double atBeat)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! juce::isPositiveAndBelow (index, (int) track->parts.size()))
+            return -1;
+        auto& part = track->parts[(size_t) index];
+        const auto rel = atBeat - part.start;
+        if (rel < shortestPiece || rel > part.length - shortestPiece)
+            return -1;
+        track->parts.push_back (cutPart (part, rel, project.bpm));
+        changed();
+        return (int) track->parts.size() - 1;
+    }
+
+    void Studio::splitPartRepeatedly (int trackId, int index, double atBeat)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! juce::isPositiveAndBelow (index, (int) track->parts.size()))
+            return;
+        const auto piece = atBeat - track->parts[(size_t) index].start;
+        if (piece < shortestPiece || piece > track->parts[(size_t) index].length - shortestPiece)
+            return;
+        auto current = index;
+        while (track->parts[(size_t) current].length - piece >= shortestPiece)
+        {
+            track->parts.push_back (cutPart (track->parts[(size_t) current], piece, project.bpm));
+            current = (int) track->parts.size() - 1;
+        }
+        changed();
+    }
+
+    void Studio::splitAtCursor (int onlyPartId)
+    {
+        const auto at = engine.getPosition();
+        auto any = false;
+        for (auto& track : project.tracks)
+        {
+            const auto count = (int) track.parts.size();   // (not the new halves)
+            for (int i = 0; i < count; ++i)
+            {
+                auto& part = track.parts[(size_t) i];
+                if (onlyPartId != 0 && part.id != onlyPartId)
+                    continue;
+                const auto rel = at - part.start;
+                if (rel < shortestPiece || rel > part.length - shortestPiece)
+                    continue;
+                track.parts.push_back (cutPart (part, rel, project.bpm));
+                any = true;
+            }
+        }
+        if (any)
+            changed();
+    }
+
+    bool Studio::glueParts (int trackId, int index, bool toAllFollowing)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! juce::isPositiveAndBelow (index, (int) track->parts.size()))
+            return false;
+        auto after = partsAfter (*track, index);
+        if (after.empty())
+            return false;
+        if (! toAllFollowing)
+            after.resize (1);
+        auto glued = track->parts[(size_t) index];
+        if (glued.isAudio())
+        {
+            // Only clips cut from one recording, end to end (a split glued back).
+            for (const auto i : after)
+            {
+                const auto& next = track->parts[(size_t) i];
+                const auto secondsIn = glued.audioOffset + glued.length * 60.0 / project.bpm;
+                if (next.audioFile != glued.audioFile || std::abs (next.start - glued.end()) > 1.0e-6
+                    || std::abs (next.audioOffset - secondsIn) > 1.0e-4)
+                    return false;
+                glued.length = next.end() - glued.start;
+                glued.fadeOut = next.fadeOut;
+            }
+        }
+        else
+        {
+            // What was heard of each, in its place.
+            std::vector<Note> notes;
+            for (const auto& note : glued.notes)
+                if (note.start >= 0.0 && note.start < glued.length)
+                    notes.push_back ({ note.start, juce::jmin (note.length, glued.length - note.start), note.pitch, note.velocity });
+            auto end = glued.end();
+            for (const auto i : after)
+            {
+                const auto& next = track->parts[(size_t) i];
+                for (const auto& note : next.notes)
+                    if (note.start >= 0.0 && note.start < next.length)
+                        notes.push_back ({ next.start - glued.start + note.start, juce::jmin (note.length, next.length - note.start), note.pitch, note.velocity });
+                end = juce::jmax (end, next.end());
+            }
+            std::stable_sort (notes.begin(), notes.end(), [] (const Note& a, const Note& b) { return a.start < b.start; });
+            glued.notes = std::move (notes);
+            glued.length = end - glued.start;
+        }
+        track->parts[(size_t) index] = glued;
+        std::sort (after.begin(), after.end(), std::greater<>());
+        for (const auto i : after)
+            track->parts.erase (track->parts.begin() + i);
+        changed();
+        return true;
+    }
+
+    void Studio::setPartMuted (int trackId, int index, bool muted)
+    {
+        if (auto* track = project.findTrack (trackId); track != nullptr && juce::isPositiveAndBelow (index, (int) track->parts.size())
+                                                        && track->parts[(size_t) index].muted != muted)
+        {
+            track->parts[(size_t) index].muted = muted;
+            changed();
+        }
+    }
+
+    void Studio::setPartsMuted (const std::vector<int>& partIds, bool muted)
+    {
+        auto any = false;
+        for (auto& track : project.tracks)
+            for (auto& part : track.parts)
+                if (std::find (partIds.begin(), partIds.end(), part.id) != partIds.end() && part.muted != muted)
+                {
+                    part.muted = muted;
+                    any = true;
+                }
+        if (any)
+            changed();
+    }
+
+    void Studio::deletePartsFrom (int trackId, int index)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! juce::isPositiveAndBelow (index, (int) track->parts.size()))
+            return;
+        auto doomed = partsAfter (*track, index);
+        doomed.push_back (index);
+        std::sort (doomed.begin(), doomed.end(), std::greater<>());
+        for (const auto i : doomed)
+            track->parts.erase (track->parts.begin() + i);
+        changed();
+    }
+
     void Studio::setNotes (int trackId, int index, std::vector<Note> notes)
     {
         auto* track = project.findTrack (trackId);

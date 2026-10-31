@@ -16,6 +16,7 @@
 //                KEY EDITOR, MIXER; R and W (read and write automation for
 //                all tracks, lit while any track's are on); PLUGINS and SETTINGS
 //   transport    the pearl unit: keys, position, tempo, signature, meters
+//   tools        the arrangement's editing tools (see ArrangeView)
 //   middle       the track list | the arrangement, and below them, in the
 //                lower zone, the key editor or the mixer (one at a time;
 //                either can go into a window of its own instead)
@@ -32,7 +33,9 @@
 // playhead), Shift+H / Shift+G taller or shorter rows, Shift+F the whole
 // song, F Auto-Scroll on or off (or carry on, if suspended): in the
 // arrangement, or in the key editor after a click in it (the manual's keys;
-// each has its own Auto-Scroll, as in the manual).
+// each has its own Auto-Scroll, as in the manual). The arrangement's tools:
+// 1 and 3 to 9 (the key editor's own 1, 5 and 8 after a click in it), F9 /
+// F10 the previous / next; Alt+X splits at the playhead.
 // Scroll bars across and down the arrangement. Drag the line above the
 // lower zone to make it taller or shorter (remembered for each of the two).
 // After a click in the key editor its keys go to it (Delete removes notes,
@@ -121,7 +124,8 @@ public:
     KeyEditor& getKeyEditor() noexcept { return keyEditor; }
     MixerView& getMixer() noexcept { return mixer; }
 
-    static constexpr int headerHeight = 52, transportHeight = 112, trackListWidth = 300;
+    static constexpr int headerHeight = 52, transportHeight = 112, toolbarHeight = 32, trackListWidth = 300;
+    ArrangeTools& getTools() noexcept { return tools; }
 
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
@@ -151,6 +155,7 @@ private:
     TransportBar transport;
     TrackList trackList;
     ArrangeView arrange;
+    ArrangeTools tools { arrange };
     KeyEditor keyEditor;
     MixerView mixer;
     bool keysToEditor = false;

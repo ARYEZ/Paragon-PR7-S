@@ -91,6 +91,33 @@ namespace pr7s
         void updatePart (int trackId, int index, const Part&);
         // Where the part with this id is now: its track and index (none if it's gone).
         std::optional<std::pair<int, int>> findPart (int partId) const;
+
+        // The editing tools (as the manual's), each one undo step:
+        // Split a part at a song beat inside it. MIDI notes across the split
+        // are cut in two (the manual's Split MIDI Events: our choice, so no
+        // note is lost or left hanging past its part's end); an audio clip's
+        // second half carries on from where the first stops (its fade-in goes
+        // with the first, its fade-out with the second). The first half keeps
+        // the part's place in the list; returns the second's index (or -1).
+        int splitPart (int trackId, int index, double atBeat);
+        // The Split tool with Alt: into equal pieces, as long as from its
+        // start to `atBeat`, as many as fit (the last one what's left).
+        void splitPartRepeatedly (int trackId, int index, double atBeat);
+        // Split at Cursor (Alt+X): every part the playhead is inside, on every
+        // track (or only `onlyPartId`'s, if given: the selected part).
+        void splitAtCursor (int onlyPartId = 0);
+        // Glue a part to the next one on its track (by start), or to all after
+        // it: one part from its start to the last one's end, with their notes
+        // (what was heard: the gaps between stay silent), named and muted as
+        // the first. Audio: only a clip and the next one cut from the same
+        // recording straight after it (a split glued back); anything else
+        // returns false (an audio part holding several clips isn't there yet).
+        bool glueParts (int trackId, int index, bool toAllFollowing);
+        // The Mute tool (and the part's menu): muted parts stay, greyed, but aren't played.
+        void setPartMuted (int trackId, int index, bool muted);
+        void setPartsMuted (const std::vector<int>& partIds, bool muted);   // several at once (one step)
+        // The Erase tool with Alt: the part and all after it on its track.
+        void deletePartsFrom (int trackId, int index);
         // A part's notes, replaced (the key editor's every edit: one undo step each).
         // Kept in the order given, so the editor's selection still points at the same notes.
         void setNotes (int trackId, int index, std::vector<Note>);

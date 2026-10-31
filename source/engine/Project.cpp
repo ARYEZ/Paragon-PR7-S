@@ -236,6 +236,8 @@ namespace pr7s
                 p->setAttribute ("start", part.start);
                 p->setAttribute ("length", part.length);
                 p->setAttribute ("name", part.name);
+                if (part.muted)
+                    p->setAttribute ("muted", true);
                 if (part.isAudio())
                 {
                     p->setAttribute ("audioFile", part.audioFile);
@@ -338,6 +340,7 @@ namespace pr7s
                 part.start = juce::jmax (0.0, p->getDoubleAttribute ("start"));
                 part.length = juce::jmax (0.0625, p->getDoubleAttribute ("length", 4.0));
                 part.name = p->getStringAttribute ("name");
+                part.muted = p->getBoolAttribute ("muted");
                 part.audioFile = p->getStringAttribute ("audioFile");
                 part.audioOffset = juce::jmax (0.0, p->getDoubleAttribute ("audioOffset"));
                 part.fadeIn = juce::jmax (0.0, p->getDoubleAttribute ("fadeIn"));
