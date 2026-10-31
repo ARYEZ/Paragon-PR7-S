@@ -90,15 +90,22 @@ MainView::MainView (pr7s::Studio& studioToUse)
         mixerZone.inWindow = settings->getBoolValue ("mixerInWindow", false);
         editorZone.dockedHeight = settings->getIntValue ("keyEditorHeight", 0);
         mixerZone.dockedHeight = settings->getIntValue ("mixerHeight", 0);
-        timeline.autoScroll = settings->getBoolValue ("arrangeAutoScroll", true);
-        keyEditor.setAutoScroll (settings->getBoolValue ("keyEditorAutoScroll", true));
     }
-    keyEditor.onAutoScrollChange = [this] (bool on)
+    // Each view's Auto-Scroll and its settings, kept for next time.
+    timeline.autoScroll.load (studio.getSettings(), "arrange");
+    keyEditor.getAutoScrollSettings().load (studio.getSettings(), "keyEditor");
+    keyEditor.autoScrollChanged();
+    keyEditor.onAutoScrollChange = [this] { keyEditor.getAutoScrollSettings().save (studio.getSettings(), "keyEditor"); };
+    timeline.onAutoScrollChange = [this]
     {
-        if (auto* settings = studio.getSettings())
-            settings->setValue ("keyEditorAutoScroll", on);
+        trackList.refreshAutoScroll();
+        timeline.autoScroll.save (studio.getSettings(), "arrange");
     };
-    trackList.onAutoScrollToggle = [this] { setArrangeAutoScroll (! timeline.autoScroll); };
+    trackList.onAutoScrollToggle = [this]
+    {
+        timeline.autoScroll.toggle();
+        timeline.onAutoScrollChange();
+    };
     trackList.refreshAutoScroll();
     zoneDivider = std::make_unique<ZoneDivider> (*this);
     addChildComponent (*zoneDivider);
@@ -157,6 +164,8 @@ MainView::~MainView()
     arrangeAcross.removeListener (this);
     arrangeDown.removeListener (this);
     mixer.onMinimumHeightChange = nullptr;
+    timeline.onAutoScrollChange = nullptr;
+    keyEditor.onAutoScrollChange = nullptr;
     editorZone.window.reset();
     mixerZone.window.reset();
     studio.onEffectGoing = nullptr;
@@ -189,7 +198,7 @@ void MainView::refreshScrollBars()
     arrangeAcross.setRangeLimits (0.0, juce::jmax (Timeline::scrollLength (studio), timeline.firstBeat + visibleBeats), juce::dontSendNotification);
     arrangeAcross.setCurrentRange (timeline.firstBeat, visibleBeats, juce::dontSendNotification);
     const auto lanes = (double) juce::jmax (0, arrange.getHeight() - Timeline::rulerHeight);
-    arrangeDown.setRangeLimits (0.0, juce::jmax (lanes, (double) (Timeline::contentHeight (studio) + Timeline::bottomRoom)), juce::dontSendNotification);
+    arrangeDown.setRangeLimits (0.0, juce::jmax (lanes, (double) (timeline.contentHeight (studio) + Timeline::bottomRoom)), juce::dontSendNotification);
     arrangeDown.setCurrentRange (timeline.scrollY, lanes, juce::dontSendNotification);
 }
 
@@ -205,10 +214,9 @@ void MainView::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
 
 void MainView::setArrangeAutoScroll (bool on)
 {
-    timeline.autoScroll = on;
-    trackList.refreshAutoScroll();
-    if (auto* settings = studio.getSettings())
-        settings->setValue ("arrangeAutoScroll", on);
+    timeline.autoScroll.on = on;
+    timeline.autoScroll.suspended = false;
+    timeline.onAutoScrollChange();
 }
 
 void MainView::refreshHeader()
@@ -443,10 +451,17 @@ bool MainView::keyPressed (const juce::KeyPress& key)
         return true;
     }
     // Zoom and Auto-Scroll (the manual's keys: H in, G out, Shift+F the whole song, F Auto-Scroll).
-    if (! mods.isAltDown() && ! mods.isShiftDown() && (letter == 'H' || letter == 'G')) { arrange.zoom (letter == 'H'); return true; }
+    if (! mods.isAltDown() && (letter == 'H' || letter == 'G'))
+    {
+        mods.isShiftDown() ? arrange.zoomRows (letter == 'H') : arrange.zoom (letter == 'H');   // Shift: taller or shorter rows
+        return true;
+    }
     if (! mods.isAltDown() && letter == 'F')
     {
-        mods.isShiftDown() ? arrange.zoomFull() : setArrangeAutoScroll (! timeline.autoScroll);
+        if (mods.isShiftDown())
+            arrange.zoomFull();
+        else
+            trackList.onAutoScrollToggle();   // (a suspended one carries on)
         return true;
     }
     if (letter == 'R' || key.getTextCharacter() == '*') { studio.record(); return true; }

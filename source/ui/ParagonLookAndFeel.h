@@ -49,6 +49,8 @@ public:
     static constexpr const char* pedalButtonProperty = "pedalButton";
     // On a pedal key: the colour its lettering lights in (an ARGB int), instead of the orange.
     static constexpr const char* litColourProperty = "litColour";
+    // A key that opens a menu: a small down arrow drawn instead of its text (the fonts have none).
+    static constexpr const char* menuArrowProperty = "menuArrow";
 
     // Set this on a TextButton to draw it as the mockup's light outlined
     // buttons printed on the metal (VOLUME, WAH / FILTER, MORPH / FX). Its

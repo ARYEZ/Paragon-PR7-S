@@ -29,7 +29,8 @@
 // all tracks (the manual's keys). Delete removes the selected automation
 // points if there are any (else the selected part); Esc while dragging
 // points puts them back. H / G zoom in / out (a step, centred on the
-// playhead), Shift+F the whole song, F Auto-Scroll on or off: in the
+// playhead), Shift+H / Shift+G taller or shorter rows, Shift+F the whole
+// song, F Auto-Scroll on or off (or carry on, if suspended): in the
 // arrangement, or in the key editor after a click in it (the manual's keys;
 // each has its own Auto-Scroll, as in the manual).
 // Scroll bars across and down the arrangement. Drag the line above the
@@ -114,6 +115,7 @@ public:
     std::function<void (const juce::String&)> onTitleChange;
 
     ArrangeView& getArrangeView() noexcept { return arrange; }
+    Timeline& getTimeline() noexcept { return timeline; }
     TrackList& getTrackList() noexcept { return trackList; }
     TransportBar& getTransport() noexcept { return transport; }
     KeyEditor& getKeyEditor() noexcept { return keyEditor; }

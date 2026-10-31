@@ -153,7 +153,7 @@ TEST_CASE ("The key editor: draw, move, copy, lengthen, velocity, erase, keys, q
     CHECK (editor.getPart()->name == "Riff");
     const auto notes = [&] { return editor.getPart()->notes; };
     // The middle of a grid cell: a beat into the song, and a pitch's row.
-    const auto at = [&] (double songBeat, int pitch) { return juce::Point<float> (editor.xForBeat (songBeat) + 2.0f, editor.yForPitch (pitch) + editor.rowHeight * 0.5f); };
+    const auto at = [&] (double songBeat, int pitch) { return juce::Point<float> (editor.xForBeat (songBeat) + 2.0f, editor.yForPitch (pitch) + editor.getRowHeight() * 0.5f); };
     REQUIRE (editor.getNotesArea().contains (at (4.0, 60)));
     REQUIRE (editor.getNotesArea().contains (at (7.9, 67)));
 
@@ -1160,5 +1160,138 @@ TEST_CASE ("Zoom, Auto-Scroll and scrolling (H in, G out, Shift+F, F; the scroll
         view.openKeyEditor();
         CHECK (view.getKeyEditor().getHeight() != withRack);
         CHECK (divider.getBottom() <= view.getKeyEditor().getY());
+    }
+}
+
+TEST_CASE ("Taller and shorter rows (Shift+H / Shift+G); Auto-Scroll's settings: Stationary Cursor, Suspend Auto-Scroll when Editing", "[ui][view]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto first = studio.getProject().tracks[0].id;
+    const auto second = studio.addTrack ({});
+    studio.addPart (first, { 4.0, 4.0, "Riff", { { 0.0, 1.0, 60, 0.8f } } });
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    auto& timeline = view.getTimeline();
+    const auto key = [&] (juce::juce_wchar c, juce::ModifierKeys mods = {}) { return view.keyPressed (juce::KeyPress ((int) c, mods, c)); };
+    const auto shift = juce::ModifierKeys::shiftModifier;
+
+    SECTION ("Shift+H taller rows, Shift+G shorter, the track list with them; short ones show one line")
+    {
+        const auto gap = [&] { return arrange.trackTop (second) - arrange.trackTop (first); };
+        CHECK (gap() == (float) Timeline::trackHeight);
+        CHECK (key ('H', shift));
+        CHECK (gap() == (float) juce::roundToInt (Timeline::trackHeight * Timeline::rowZoomStep));
+        CHECK_THAT (arrange.getPartBounds (first, 0).getHeight(), WithinAbs (gap() - 6.0f, 0.01));
+        // The track list's rows line up with them.
+        std::vector<juce::TextButton*> buttons;
+        findAll (view.getTrackList(), buttons);
+        const auto visibleNamed = [&] (const juce::String& text)
+        {
+            auto count = 0;
+            for (auto* b : buttons)
+                count += b->getButtonText() == text && b->isVisible() ? 1 : 0;
+            return count;
+        };
+        CHECK (visibleNamed ("R") == 3);   // two tracks and the master
+        for (int i = 0; i < 12; ++i)
+            key ('G', shift);
+        CHECK (timeline.rowZoom == Timeline::minRowZoom);
+        CHECK (gap() == (float) Timeline::trackHeight * (float) Timeline::minRowZoom);
+        CHECK (visibleNamed ("R") == 1);   // the tracks' second line put away: only the master's
+        CHECK (visibleNamed ("M") >= 2);   // the first line (name, M, S, REC) still there
+        for (int i = 0; i < 12; ++i)
+            key ('H', shift);
+        CHECK (timeline.rowZoom == Timeline::maxRowZoom);
+        CHECK (visibleNamed ("R") == 3);
+    }
+
+    SECTION ("Stationary Cursor: while playing, the playhead in the middle; Page Scroll: only when it reaches the edge")
+    {
+        AutoScroll scroll;
+        // Page Scroll: in sight, nothing; past the edge, the page turns.
+        CHECK_FALSE (scroll.follow (10.0, 0.0, 20.0, 1000.0f, true, true).has_value());
+        CHECK (scroll.follow (60.0, 0.0, 20.0, 1000.0f, true, true) == 59.0);
+        scroll.stationary = true;
+        CHECK (scroll.follow (40.0, 0.0, 20.0, 1000.0f, true, true) == 15.0);   // 25 beats across: 12.5 before it
+        CHECK_FALSE (scroll.follow (5.0, 0.0, 20.0, 1000.0f, true, true).has_value());   // near the start: it can't be in the middle
+        CHECK_FALSE (scroll.follow (10.0, 0.0, 20.0, 1000.0f, false, true).has_value());   // stopped, in sight: stays
+        scroll.on = false;
+        CHECK_FALSE (scroll.follow (40.0, 0.0, 20.0, 1000.0f, true, true).has_value());
+
+        // In the arrangement: playing with Stationary Cursor, the view keeps the playhead in the middle.
+        timeline.autoScroll.stationary = true;
+        studio.setPosition (100.0);
+        studio.play();
+        arrange.followPlayhead();
+        CHECK_THAT (timeline.xForBeat (studio.getEngine().getPosition()), WithinAbs ((float) arrange.getWidth() * 0.5f, 1.0));
+        studio.stop();
+    }
+
+    SECTION ("Suspend Auto-Scroll when Editing: a click in the tracks while playing stops it following until playback stops; F carries on")
+    {
+        auto& autoScrollKey = view.getTrackList().getAutoScrollButton();
+        timeline.autoScroll.suspendWhenEditing = true;
+        studio.play();
+        const juce::Point<float> inLanes (40.0f, (float) Timeline::rulerHeight + 200.0f);
+        arrange.mouseDown (mouseAt (arrange, inLanes, inLanes));
+        arrange.mouseUp (mouseAt (arrange, inLanes, inLanes));
+        CHECK (timeline.autoScroll.suspended);
+        CHECK (autoScrollKey.getButtonText() == "SUSPENDED");
+        CHECK (autoScrollKey.getToggleState());
+        studio.setPosition (400.0);
+        arrange.followPlayhead();
+        CHECK (timeline.firstBeat == 0.0);   // not following
+        CHECK (key ('f'));                   // carries on (still on)
+        CHECK_FALSE (timeline.autoScroll.suspended);
+        CHECK (timeline.autoScroll.on);
+        CHECK (autoScrollKey.getButtonText() == "AUTO-SCROLL");
+        // Suspended again, then playback stops: back to following.
+        arrange.mouseDown (mouseAt (arrange, inLanes, inLanes));
+        arrange.mouseUp (mouseAt (arrange, inLanes, inLanes));
+        CHECK (timeline.autoScroll.suspended);
+        studio.stop();
+        arrange.followPlayhead();
+        CHECK_FALSE (timeline.autoScroll.suspended);
+        // Off, the click does nothing to it.
+        timeline.autoScroll.suspendWhenEditing = false;
+        studio.play();
+        arrange.mouseDown (mouseAt (arrange, inLanes, inLanes));
+        arrange.mouseUp (mouseAt (arrange, inLanes, inLanes));
+        CHECK_FALSE (timeline.autoScroll.suspended);
+        studio.stop();
+    }
+
+    SECTION ("In the key editor: its own taller and shorter rows (the pitch in the middle stays), and its own suspend")
+    {
+        const auto partArea = arrange.getPartBounds (first, 0);
+        arrange.mouseDoubleClick (mouseAt (arrange, partArea.getCentre(), partArea.getCentre(), {}, 2));
+        studio.dispatchPendingMessages();
+        auto& editor = view.getKeyEditor();
+        REQUIRE (editor.getPart() != nullptr);
+        const auto middle = editor.getNotesArea().getCentreY();
+        view.mouseDown (mouseAt (editor, editor.getNotesArea().getCentre(), editor.getNotesArea().getCentre()));
+        const auto pitch = editor.pitchForY (middle);
+        const auto rows = editor.getRowHeight();
+        CHECK (key ('H', shift));
+        CHECK_THAT (editor.getRowHeight(), WithinAbs (rows * (float) Timeline::rowZoomStep, 0.01));
+        CHECK (std::abs (editor.pitchForY (middle) - pitch) <= 1);
+        CHECK (timeline.rowZoom == 1.0);   // the arrangement's rows as they were
+        for (int i = 0; i < 20; ++i)
+            key ('G', shift);
+        CHECK (editor.getRowHeight() == KeyEditor::minRowHeight);
+
+        editor.getAutoScrollSettings().suspendWhenEditing = true;
+        studio.play();
+        const auto inNotes = editor.getNotesArea().getCentre();
+        editor.mouseDown (mouseAt (editor, inNotes, inNotes));
+        editor.mouseUp (mouseAt (editor, inNotes, inNotes));
+        CHECK (editor.getAutoScrollSettings().suspended);
+        CHECK_FALSE (timeline.autoScroll.suspended);   // the arrangement's own carries on
+        studio.stop();
+        editor.followPlayhead();
+        CHECK_FALSE (editor.getAutoScrollSettings().suspended);
     }
 }

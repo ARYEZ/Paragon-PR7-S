@@ -36,8 +36,8 @@
 //                  hold them if they go past it), Ctrl+D duplicates the
 //                  selected notes straight after themselves
 //                  H / G zoom in / out a step, centred on the playhead;
-//                  Shift+F the whole part; F turns Auto-Scroll on or off
-//                  (AUTO-SCROLL: the page turns to keep the playhead in sight)
+//                  Shift+H / Shift+G taller or shorter rows; Shift+F the
+//                  whole part; F turns Auto-Scroll on or off (AutoScroll)
 //   wheel          scrolls the notes up and down; Shift+wheel along the song;
 //                  Ctrl+wheel zooms (and the scroll bars, under and beside the notes)
 //
@@ -98,10 +98,17 @@ public:
     void fitToPart();
     // H / G: one zoom step in or out, centred on the playhead.
     void zoom (bool in);
-    // Auto-Scroll, the editor's own (F, or AUTO-SCROLL); on at first.
-    void setAutoScroll (bool);
-    bool getAutoScroll() const noexcept { return autoScroll; }
-    std::function<void (bool)> onAutoScrollChange;   // the main window keeps it for next time
+    // Auto-Scroll, the editor's own (F, or AUTO-SCROLL; its settings: the
+    // arrow beside the key); on at first.
+    void setAutoScroll (bool);   // (and no longer suspended)
+    bool getAutoScroll() const noexcept { return autoScroll.on; }
+    AutoScroll& getAutoScrollSettings() noexcept { return autoScroll; }
+    void autoScrollChanged();   // the key follows; the main window keeps the settings
+    std::function<void()> onAutoScrollChange;
+    // Shift+H / Shift+G (Ctrl+Shift+wheel): the note rows a step taller or
+    // shorter (from 6 to 36 pixels, our choice), the pitch in the middle staying put.
+    void zoomRows (bool in);
+    float getRowHeight() const noexcept { return rowHeight; }
     // Turns the page if the playhead is out of sight (playing, or moved while stopped). The timer calls it.
     void followPlayhead();
     double getPixelsPerBeat() const noexcept { return pixelsPerBeat; }
@@ -120,7 +127,7 @@ public:
 
     static constexpr int sideWidth = 302, keysWidth = 54, rulerHeight = 26, velocityHeight = 86, scrollBarSize = 12;
     static constexpr int minimumHeight = 230;   // docked: the panel's keys and a few octaves
-    static constexpr float rowHeight = 12.0f;
+    static constexpr float minRowHeight = 6.0f, maxRowHeight = 36.0f;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -175,7 +182,8 @@ private:
     // The view: zoom and scroll, of its own (independent of the arrangement's).
     double pixelsPerBeat = 80.0, firstBeat = 0.0;
     float scrollY = 0.0f;
-    bool autoScroll = true;
+    float rowHeight = 12.0f;   // a note row (the vertical zoom)
+    AutoScroll autoScroll;
     double lastPosition = 0.0;   // the playhead as last seen (a jump while stopped is followed)
     juce::ScrollBar across { false }, down { true };
 
@@ -191,7 +199,7 @@ private:
     int auditioning = -1;
 
     juce::TextButton selectTool { "SELECT" }, drawTool { "DRAW" }, eraseTool { "ERASE" }, quantizeButton { "QUANTIZE" },
-                     windowButton { "WINDOW" }, closeButton { "CLOSE" }, autoScrollButton { "AUTO-SCROLL" };
+                     windowButton { "WINDOW" }, closeButton { "CLOSE" }, autoScrollButton { "AUTO-SCROLL" }, autoScrollMenu;
     bool inWindow = false;
     juce::ComboBox gridBox;
 };

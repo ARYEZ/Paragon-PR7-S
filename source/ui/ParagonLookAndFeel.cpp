@@ -138,6 +138,17 @@ void ParagonLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& bu
     auto area = button.getLocalBounds().toFloat().reduced (4.0f, 2.0f);
     const auto on = button.getToggleState();
 
+    if (button.getProperties().contains (menuArrowProperty))
+    {
+        // A small down arrow, in the lettering's colour.
+        g.setColour (! button.isEnabled() ? ParagonColours::textDim : Finish::neonKeys() ? juce::Colours::white : ParagonColours::text);
+        const auto c = area.getCentre().translated (0.0f, down ? 0.5f : 0.0f);
+        juce::Path arrow;
+        arrow.addTriangle (c.x - 4.5f, c.y - 2.5f, c.x + 4.5f, c.y - 2.5f, c.x, c.y + 3.0f);
+        g.fillPath (arrow);
+        return;
+    }
+
     if (button.getButtonText().isEmpty())
     {
         // Just the LED stripe, like the mockup's EXIT / MODE / BYPASS caps.

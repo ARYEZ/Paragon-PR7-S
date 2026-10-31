@@ -180,14 +180,20 @@ public:
         }
 
         // Its level: PR7-C's meter, lying down (orange at the left to pink-red at the right).
-        LevelMeter::paintSegments (g, levelArea, LevelMeter::proportionForDb (reading.db),
+        if (! levelArea.isEmpty())   // (none in a short row)
+            LevelMeter::paintSegments (g, levelArea, LevelMeter::proportionForDb (reading.db),
                                    reading.heldDb > LevelMeter::minDb ? LevelMeter::proportionForDb (reading.heldDb) : -1.0f, false);
     }
 
     void resized() override
     {
-        auto area = getLocalBounds().withTrimmedLeft (12).reduced (6, 7);
-        auto top = area.removeFromTop (24);
+        // Shorter than its two lines (the rows zoomed out): only the first, in the middle.
+        const auto compact = getHeight() < 66;
+        for (auto* control : std::initializer_list<juce::Component*> { &instrument, &read, &write, &volume })
+            control->setVisible (! compact);
+        levelArea = {};
+        auto area = getLocalBounds().withTrimmedLeft (12).reduced (6, compact ? juce::jmax (2, (getHeight() - 24) / 2) : 7);
+        auto top = area.removeFromTop (juce::jmin (24, area.getHeight()));
         if (arm.isVisible())
         {
             arm.setBounds (top.removeFromRight (36));
@@ -202,6 +208,9 @@ public:
             top.setRight (mute.getX() - 3);
         top.removeFromRight (6);
         name.setBounds (top);
+        arrow.setBounds (0, getHeight() - 18, 16, 16);
+        if (compact)
+            return;
         area.removeFromTop (6);
         auto bottom = area.removeFromTop (24);
         volume.setBounds (bottom.removeFromRight (28));
@@ -213,8 +222,7 @@ public:
         read.setBounds (bottom.removeFromRight (26));
         bottom.removeFromRight (6);
         instrument.setBounds (bottom);
-        // Show/Hide Automation at the lower left corner (as the manual has it).
-        arrow.setBounds (0, getHeight() - 18, 16, 16);
+        // (Show/Hide Automation: the arrow at the lower left corner, as the manual has it.)
     }
 
     void mouseDown (const juce::MouseEvent& event) override
@@ -377,7 +385,7 @@ public:
 
     void resized() override
     {
-        auto area = getLocalBounds().reduced (6, 8);
+        auto area = getLocalBounds().reduced (6, 0).withSizeKeepingCentre (getWidth() - 12, juce::jmin (24, getHeight() - 10));
         write.setBounds (area.removeFromRight (26));
         area.removeFromRight (2);
         read.setBounds (area.removeFromRight (26));
@@ -398,9 +406,17 @@ TrackList::TrackList (pr7s::Studio& studioToUse, Timeline& timelineToUse)
     addTrack.onClick = [this] { showAddTrackMenu(); };
     autoScrollButton.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     autoScrollButton.setWantsKeyboardFocus (false);
-    autoScrollButton.setTooltip ("AUTO-SCROLL (F): while it's lit, the arrangement turns the page to keep the playhead in sight");
     autoScrollButton.onClick = [this] { if (onAutoScrollToggle) onAutoScrollToggle(); };
     addAndMakeVisible (autoScrollButton);
+    autoScrollMenu.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    autoScrollMenu.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    autoScrollMenu.setWantsKeyboardFocus (false);
+    autoScrollMenu.setTooltip ("Auto-Scroll's settings: Page Scroll or Stationary Cursor; Suspend Auto-Scroll when Editing");
+    autoScrollMenu.onClick = [this]
+    {
+        timeline.autoScroll.showMenu (autoScrollMenu, [this] { if (timeline.onAutoScrollChange) timeline.onAutoScrollChange(); });
+    };
+    addAndMakeVisible (autoScrollMenu);
     refreshAutoScroll();
     addAndMakeVisible (addTrack);
     studio.addChangeListener (this);
@@ -449,7 +465,7 @@ void TrackList::rebuild()
         row->refresh();
 
     // The automation lanes' rows (made again when they change), and the master's.
-    const auto layout = Timeline::layout (studio);
+    const auto layout = timeline.layout (studio);
     if (layout != lastLayout)
     {
         laneRows.clear();
@@ -478,20 +494,24 @@ void TrackList::resized()
     placeRows();
     addTrack.setBounds (getLocalBounds().removeFromBottom (addButtonHeight).reduced (10, 5));
     addTrack.toFront (false);
-    autoScrollButton.setBounds (getLocalBounds().removeFromTop (Timeline::rulerHeight).removeFromRight (112).reduced (8, 6));
+    auto header = getLocalBounds().removeFromTop (Timeline::rulerHeight).reduced (8, 6);
+    autoScrollMenu.setBounds (header.removeFromRight (22));
+    header.removeFromRight (3);
+    autoScrollButton.setBounds (header.removeFromRight (96));
     autoScrollButton.toFront (false);
+    autoScrollMenu.toFront (false);
 }
 
 void TrackList::refreshAutoScroll()
 {
-    autoScrollButton.setToggleState (timeline.autoScroll, juce::dontSendNotification);
+    timeline.autoScroll.refreshKey (autoScrollButton);
 }
 
 void TrackList::placeRows()
 {
     // Each where the layout has it (so they line up with the arrangement's rows).
     auto laneRow = laneRows.begin();
-    for (const auto& row : Timeline::layout (studio))
+    for (const auto& row : timeline.layout (studio))
     {
         const juce::Rectangle<int> bounds (0, Timeline::rulerHeight + row.top - timeline.scrollY, getWidth(), row.height);
         if (row.kind == Timeline::Row::Kind::track)
@@ -530,7 +550,7 @@ void TrackList::paint (juce::Graphics& g)
 
 void TrackList::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& wheel)
 {
-    const auto room = juce::jmax (0, Timeline::contentHeight (studio) - (getHeight() - Timeline::rulerHeight - addButtonHeight));
+    const auto room = juce::jmax (0, timeline.contentHeight (studio) - (getHeight() - Timeline::rulerHeight - addButtonHeight));
     timeline.scrollY = juce::jlimit (0, room, timeline.scrollY - juce::roundToInt (wheel.deltaY * 300.0f));
     if (timeline.onScrollOrZoom)
         timeline.onScrollOrZoom();

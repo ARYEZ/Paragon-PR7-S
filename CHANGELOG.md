@@ -2,6 +2,19 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.7.3
+
+The rest of the Cubase 15 manual's zoom and Auto-Scroll options.
+
+- **Taller or shorter rows: Shift+H and Shift+G** (or **Ctrl+Shift+mouse wheel**), as the manual has them. In the arrangement, every row grows or shrinks together, so tracks with automation lanes open keep their proportions. They go from half height to three times. In the key editor (after a click in it), the note rows get taller or shorter, the note in the middle staying put.
+- **Short tracks show one line:** below full height, a track's row in the track list keeps its name, M, S and REC, and puts away its instrument, R/W and level until you zoom back in.
+- **Auto-Scroll's settings:** the small **arrow** beside each **AUTO-SCROLL** key (over the track list, and in the key editor) opens the manual's menu:
+  - **Page Scroll** (as before): the page turns when the playhead reaches the right edge.
+  - **Stationary Cursor:** while playing, the playhead stays in the middle and the song moves under it.
+  - **Suspend Auto-Scroll when Editing:** a click in the tracks (or the notes) while playing stops the view following, so it doesn't move while you edit. It carries on when playback stops, or when you click AUTO-SCROLL (or press F). Meanwhile the key reads **SUSPENDED** (and lights pink on the white finish).
+  - The arrangement and the key editor each have their own settings, and both are remembered.
+- **Our choices:** the row heights' range, and the zoom steps (a quarter taller each Shift+H). The zooms aren't saved with the song yet.
+
 ## 0.7.2
 
 Getting around the song: zooming and following the playhead with the Cubase 15 manual's keys, scroll bars, and a lower zone you can resize.

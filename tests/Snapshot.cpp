@@ -15,6 +15,8 @@
 // PARAGON_SNAPSHOT_SENDS=1 shows the sends rack; PARAGON_SNAPSHOT_RACK=none hides the rack, the mixer as short
 // as it goes), =none nothing there (the key editor otherwise).
 // PARAGON_SNAPSHOT_EXPORT=1 draws the export page over it.
+// PARAGON_SNAPSHOT_ROWS=0.5 (to 3) the arrangement's rows shorter or taller; PARAGON_SNAPSHOT_SUSPENDED=1 its
+// Auto-Scroll suspended.
 // PARAGON_SNAPSHOT_AUTOMATION=1 opens automation lanes (the lead's volume, the bass's pan, the master's fade).
 TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
 {
@@ -159,6 +161,18 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         view.openKeyEditor();
         studio.dispatchPendingMessages();
         view.getKeyEditor().selectNotes ({ 3, 4, 5 });
+    }
+    // PARAGON_SNAPSHOT_ROWS=<zoom>: the arrangement's rows that much taller (or shorter, below 1).
+    if (const auto rows = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_ROWS", {}); rows.isNotEmpty())
+    {
+        view.getTimeline().rowZoom = juce::jlimit (Timeline::minRowZoom, Timeline::maxRowZoom, rows.getDoubleValue());
+        view.getTimeline().onScrollOrZoom();
+    }
+    // PARAGON_SNAPSHOT_SUSPENDED=1: the arrangement's Auto-Scroll suspended (its key pink, SUSPENDED).
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SUSPENDED", {}).isNotEmpty())
+    {
+        view.getTimeline().autoScroll.suspended = true;
+        view.getTimeline().onAutoScrollChange();
     }
     studio.dispatchPendingMessages();
 

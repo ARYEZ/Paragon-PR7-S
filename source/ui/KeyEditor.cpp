@@ -78,10 +78,15 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
 
     autoScrollButton.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     autoScrollButton.setWantsKeyboardFocus (false);
-    autoScrollButton.setTooltip ("AUTO-SCROLL (F): while it's lit, the page turns to keep the playhead in sight");
-    autoScrollButton.onClick = [this] { setAutoScroll (! autoScroll); };
-    autoScrollButton.setToggleState (autoScroll, juce::dontSendNotification);
+    autoScrollButton.onClick = [this] { autoScroll.toggle(); autoScrollChanged(); };
+    autoScroll.refreshKey (autoScrollButton);
     addAndMakeVisible (autoScrollButton);
+    autoScrollMenu.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    autoScrollMenu.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    autoScrollMenu.setWantsKeyboardFocus (false);
+    autoScrollMenu.setTooltip ("Auto-Scroll's settings: Page Scroll or Stationary Cursor; Suspend Auto-Scroll when Editing");
+    autoScrollMenu.onClick = [this] { autoScroll.showMenu (autoScrollMenu, [this] { autoScrollChanged(); }); };
+    addAndMakeVisible (autoScrollMenu);
 
     for (auto* bar : { &across, &down })
     {
@@ -251,18 +256,31 @@ void KeyEditor::timerCallback()
 
 void KeyEditor::followPlayhead()
 {
-    // Auto-Scroll (Page Scroll): playing, or moved while stopped, and out of
-    // sight: the page turns so the playhead is at the left.
+    // Auto-Scroll (see AutoScroll): playing, or moved while stopped.
     auto& engine = studio.getEngine();
     const auto position = engine.getPosition();
     const auto jumped = position != lastPosition;
     lastPosition = position;
-    if (! autoScroll || gesture != Gesture::none || ! (engine.isPlaying() || jumped))
+    if (autoScroll.suspended && ! engine.isPlaying())   // suspended until playback stops
+    {
+        autoScroll.suspended = false;
+        autoScrollChanged();
+    }
+    if (gesture != Gesture::none)
         return;
+    if (const auto first = autoScroll.follow (position, firstBeat, pixelsPerBeat, getNotesArea().getWidth(), engine.isPlaying(), jumped))
+        firstBeat = *first;
+}
+
+void KeyEditor::zoomRows (bool in)
+{
     const auto area = getNotesArea();
-    const auto x = xForBeat (position);
-    if (x > area.getRight() - 30.0f || x < area.getX())
-        firstBeat = juce::jmax (0.0, position - 1.0);
+    const auto middle = (scrollY + area.getHeight() * 0.5f) / rowHeight;   // in rows from the top (pitch 127)
+    rowHeight = juce::jlimit (minRowHeight, maxRowHeight, in ? rowHeight * (float) Timeline::rowZoomStep : rowHeight / (float) Timeline::rowZoomStep);
+    scrollY = middle * rowHeight - area.getHeight() * 0.5f;
+    clampScroll();
+    refreshScrollBars();
+    repaint();
 }
 
 void KeyEditor::zoom (bool in)
@@ -276,10 +294,16 @@ void KeyEditor::zoom (bool in)
 
 void KeyEditor::setAutoScroll (bool shouldScroll)
 {
-    autoScroll = shouldScroll;
-    autoScrollButton.setToggleState (autoScroll, juce::dontSendNotification);
+    autoScroll.on = shouldScroll;
+    autoScroll.suspended = false;
+    autoScrollChanged();
+}
+
+void KeyEditor::autoScrollChanged()
+{
+    autoScroll.refreshKey (autoScrollButton);
     if (onAutoScrollChange)
-        onAutoScrollChange (autoScroll);
+        onAutoScrollChange();
 }
 
 void KeyEditor::refreshScrollBars()
@@ -640,10 +664,20 @@ bool KeyEditor::keyPressed (const juce::KeyPress& key)
     if (key.getKeyCode() == juce::KeyPress::downKey)                             { transposeSelected (mods.isShiftDown() ? -12 : -1); return true; }
     if (letter == 'Q')                                                           { quantizeSelected(); return true; }
     // Zoom and Auto-Scroll (the manual's keys).
-    if (! mods.isAltDown() && ! mods.isShiftDown() && (letter == 'H' || letter == 'G')) { zoom (letter == 'H'); return true; }
+    if (! mods.isAltDown() && (letter == 'H' || letter == 'G'))
+    {
+        mods.isShiftDown() ? zoomRows (letter == 'H') : zoom (letter == 'H');
+        return true;
+    }
     if (! mods.isAltDown() && letter == 'F')
     {
-        mods.isShiftDown() ? fitToPart() : setAutoScroll (! autoScroll);
+        if (mods.isShiftDown())
+            fitToPart();
+        else
+        {
+            autoScroll.toggle();
+            autoScrollChanged();
+        }
         repaint();
         return true;
     }
@@ -670,6 +704,13 @@ void KeyEditor::mouseDown (const juce::MouseEvent& event)
     downAt = point;
     moved = false;
     gesture = Gesture::none;
+    // Suspend Auto-Scroll when Editing: a click in the notes or the velocities while playing.
+    if (autoScroll.on && autoScroll.suspendWhenEditing && ! autoScroll.suspended && studio.getEngine().isPlaying()
+        && (getNotesArea().contains (point) || getVelocityArea().contains (point)))
+    {
+        autoScroll.suspended = true;
+        autoScrollChanged();
+    }
 
     if (rulerArea().contains (point))
     {
@@ -966,6 +1007,11 @@ void KeyEditor::mouseDoubleClick (const juce::MouseEvent& event)
 
 void KeyEditor::mouseWheelMove (const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel)
 {
+    if ((event.mods.isCommandDown() || event.mods.isCtrlDown()) && event.mods.isShiftDown())
+    {
+        zoomRows (wheel.deltaY > 0.0f);   // Ctrl+Shift+wheel: taller or shorter rows (the manual's)
+        return;
+    }
     if (event.mods.isCommandDown() || event.mods.isCtrlDown())
     {
         // Zoom round the mouse: the beat under it stays put.
@@ -1020,7 +1066,10 @@ void KeyEditor::resized()
     gridRow.removeFromLeft (6);
     quantizeButton.setBounds (gridRow);
     panel.removeFromTop (8);
-    autoScrollButton.setBounds (panel.removeFromTop (24).removeFromLeft (122).withTrimmedLeft (42));
+    auto autoScrollRow = panel.removeFromTop (24).withTrimmedLeft (42);
+    autoScrollButton.setBounds (autoScrollRow.removeFromLeft (96));
+    autoScrollRow.removeFromLeft (3);
+    autoScrollMenu.setBounds (autoScrollRow.removeFromLeft (22));
 
     const auto notesArea = getNotesArea().toNearestInt();
     down.setBounds (notesArea.getRight(), notesArea.getY(), scrollBarSize, notesArea.getHeight());
