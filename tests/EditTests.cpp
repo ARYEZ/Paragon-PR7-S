@@ -564,3 +564,121 @@ TEST_CASE ("Render in Place: a part to an audio clip on a new track under its ow
 
     studio.getAudioFolder().deleteRecursively();
 }
+
+TEST_CASE ("Disable a track: silent, its plugins unloaded with their settings kept; Enable loads them again", "[edit][disable]")
+{
+    Studio studio (false);
+    const auto synth = studio.getProject().tracks[0].id;   // the Paragon Synth
+    studio.addPart (synth, { 0.0, 4.0, "Riff", { { 0.0, 2.0, 60, 1.0f } } });
+    bool effectAlive = false;
+    Insert insert;
+    insert.plugin.name = "Test Effect";
+    insert.plugin.fileOrIdentifier = "test-effect";
+    auto effect = std::make_unique<TestEffect> ([] (juce::AudioBuffer<float>&) {}, 2, "Test Effect", &effectAlive);
+    effect->state = "drive=7";
+    REQUIRE (studio.addInsert (synth, insert, std::move (effect)));
+    REQUIRE (studio.getEngine().getInstrument (synth) != nullptr);
+    REQUIRE (effectAlive);
+    const auto loudness = [&studio]
+    {
+        studio.getEngine().setPosition (0.0);
+        studio.getEngine().play();
+        juce::AudioBuffer<float> out (2, 4800);
+        studio.getEngine().render (out, 4800);
+        studio.getEngine().stop();
+        return out.getMagnitude (0, 4800);
+    };
+    CHECK (loudness() > 0.01f);
+
+    studio.setArmed (synth);
+    studio.setTracksDisabled ({ synth }, true);
+    const auto* track = studio.getProject().findTrack (synth);
+    CHECK (track->disabled);
+    CHECK_FALSE (track->armed);
+    CHECK (studio.getEngine().getInstrument (synth) == nullptr);   // unloaded: no CPU, no RAM
+    CHECK_FALSE (effectAlive);
+    CHECK (track->inserts.size() == 1);   // still listed (with its settings)
+    CHECK (track->inserts[0].state.toString() == "drive=7");   // its settings, kept from the running effect
+    CHECK (loudness() == 0.0f);
+    studio.setArmed (synth);
+    CHECK_FALSE (studio.getProject().findTrack (synth)->armed);   // a disabled track can't be armed
+
+    // Saved as disabled; opened, its plugins stay unloaded.
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("pr7s-disabled.pr7s");
+    REQUIRE (studio.save (file));
+    Studio other (false);
+    juce::String problems;
+    REQUIRE (other.open (file, problems));
+    CHECK (other.getProject().tracks[0].disabled);
+    CHECK (other.getEngine().getInstrument (other.getProject().tracks[0].id) == nullptr);
+    file.deleteFile();
+
+    // Enabled: the instrument back (the test effect isn't a real plugin: its slot stays, the sound goes past it).
+    studio.setTracksDisabled ({ synth }, false);
+    CHECK_FALSE (studio.getProject().findTrack (synth)->disabled);
+    CHECK (studio.getEngine().getInstrument (synth) != nullptr);
+    CHECK (studio.getProject().findTrack (synth)->inserts.size() == 1);
+    CHECK (loudness() > 0.01f);
+
+    // FX and group channels can't be disabled (as the manual has it).
+    const auto group = studio.addGroupChannel();
+    studio.setTracksDisabled ({ group }, true);
+    CHECK_FALSE (studio.getProject().findTrack (group)->disabled);
+}
+
+TEST_CASE ("Hide a track: out of the shown tracks and the selection, still heard; pastes skip it", "[edit][hide]")
+{
+    Studio studio (false);
+    const auto a = studio.getProject().tracks[0].id;
+    const auto b = studio.addTrack ({});
+    const auto c = studio.addTrack ({});
+    studio.selectTrack (b);
+    studio.setTracksHidden ({ b }, true);
+    CHECK (studio.getProject().findTrack (b)->hidden);
+    CHECK (studio.getShownTracks() == std::vector<int> { a, c });
+    CHECK_FALSE (studio.isTrackShown (b));
+    CHECK (studio.getSelectedTrack() != b);
+
+    // A two-track paste from A lands on A and C (B is skipped).
+    Studio::RangeClip clip;
+    clip.length = 4.0;
+    clip.tracks = { { Part { 0.0, 4.0, "One", { { 0.0, 1.0, 60, 1.0f } } } }, { Part { 0.0, 4.0, "Two", { { 0.0, 1.0, 62, 1.0f } } } } };
+    studio.pasteRange (clip, 8.0, a, false);
+    CHECK (studio.getProject().findTrack (a)->parts.size() == 1);
+    CHECK (studio.getProject().findTrack (b)->parts.empty());
+    CHECK (studio.getProject().findTrack (c)->parts.size() == 1);
+
+    // Saved; shown again.
+    const auto copy = Project::fromXml (*studio.getProject().toXml());
+    REQUIRE (copy.has_value());
+    CHECK (copy->tracks[1].hidden);
+    CHECK_FALSE (copy->tracks[0].hidden);
+    studio.setTracksHidden ({ b }, false);
+    CHECK (studio.getShownTracks().size() == 3);
+}
+
+TEST_CASE ("Render in Place: the source disabled and hidden (the manual's Disable / Hide Source Tracks)", "[edit][render][disable]")
+{
+    Studio studio (false);
+    const auto synth = studio.getProject().tracks[0].id;
+    studio.addPart (synth, { 0.0, 4.0, "Riff", { { 0.0, 1.0, 60, 1.0f } } });
+    Studio::RenderOptions options;
+    options.tail = Studio::RenderOptions::Tail::off;
+    options.source = Studio::RenderOptions::Source::disable;
+    options.hideSource = true;
+    juce::String error;
+    const auto made = studio.renderInPlace ({ { synth, 0.0, 4.0, true } }, options, error);
+    REQUIRE (made.size() == 1);
+    const auto* source = studio.getProject().findTrack (synth);
+    CHECK (source->disabled);
+    CHECK (source->hidden);
+    CHECK (studio.getEngine().getInstrument (synth) == nullptr);
+    CHECK (studio.getShownTracks() == std::vector<int> { made[0] });
+    // The render itself has sound.
+    const auto* rendered = studio.getProject().findTrack (made[0]);
+    REQUIRE (rendered->parts.size() == 1);
+    const auto data = studio.getAudio (rendered->parts[0].audioFile);
+    REQUIRE (data != nullptr);
+    CHECK (data->sound.getMagnitude (0, data->sound.getNumSamples()) > 0.01f);
+    studio.getAudioFolder().deleteRecursively();
+}

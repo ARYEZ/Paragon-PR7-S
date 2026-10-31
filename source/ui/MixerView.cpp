@@ -414,7 +414,7 @@ void MixerView::rebuild()
     // A strip for each track, in the track list's order (kept if the tracks are the same).
     std::vector<int> ids;
     for (const auto& track : studio.getProject().tracks)
-        if (! single || track.id == singleTrack)
+        if (single ? track.id == singleTrack : ! track.hidden && ! track.disabled)   // (hidden and disabled tracks: no strip, as the manual has it)
             ids.push_back (track.id);
     auto same = strips.size() == ids.size();
     for (size_t i = 0; same && i < ids.size(); ++i)

@@ -608,15 +608,15 @@ bool MainView::keyPressed (const juce::KeyPress& key)
     }
     if ((code == juce::KeyPress::upKey || code == juce::KeyPress::downKey) && ! mods.isAnyModifierKeyDown())
     {
-        const auto& tracks = studio.getProject().tracks;
+        const auto shown = studio.getShownTracks();   // (the tracks shown: hidden ones are skipped)
         int at = -1;
-        for (int i = 0; i < (int) tracks.size(); ++i)
-            if (tracks[(size_t) i].id == studio.getSelectedTrack())
+        for (int i = 0; i < (int) shown.size(); ++i)
+            if (shown[(size_t) i] == studio.getSelectedTrack())
                 at = i;
-        const auto next = juce::jlimit (0, (int) tracks.size() - 1, at + (code == juce::KeyPress::upKey ? -1 : 1));
-        if (tracks.empty() || next == at)
+        const auto next = juce::jlimit (0, (int) shown.size() - 1, at + (code == juce::KeyPress::upKey ? -1 : 1));
+        if (shown.empty() || next == at)
             return true;
-        const auto& track = tracks[(size_t) next];
+        const auto& track = *studio.getProject().findTrack (shown[(size_t) next]);
         const auto partWasSelected = arrange.getSelection().isValid();
         studio.selectTrack (track.id);
         if (partWasSelected)

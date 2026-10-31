@@ -2032,3 +2032,66 @@ TEST_CASE ("The Inspector: the selected track's settings, by kind, in sections t
         CHECK (view.getArrangeView().getX() == arrangeX);
     }
 }
+
+TEST_CASE ("VISIBILITY: every track with a box to show or hide it; hidden and disabled tracks leave the track list and the mixer", "[ui][visibility]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& inspector = view.getInspector();
+    const auto keys = studio.getProject().tracks[0].id;
+    const auto bass = studio.addTrack ({});
+    const auto lead = studio.addTrack ({});
+    studio.dispatchPendingMessages();
+    const auto& timeline = view.getTimeline();
+    const auto trackRows = [&]
+    {
+        int n = 0;
+        for (const auto& row : timeline.layout (studio))
+            n += row.kind == Timeline::Row::Kind::track ? 1 : 0;
+        return n;
+    };
+    REQUIRE (trackRows() == 3);
+    CHECK (view.getMixer().getNumStrips() == 4);   // three tracks and the master
+
+    // The tabs.
+    inspector.getTabKey (Inspector::Tab::visibility).onClick();
+    CHECK (inspector.getTab() == Inspector::Tab::visibility);
+    CHECK_FALSE (inspector.getVolume().isShowing());
+    REQUIRE (inspector.getVisibilityBox (bass) != nullptr);
+    CHECK (inspector.getVisibilityBox (bass)->getToggleState());
+
+    // Untick: hidden (the arrangement, the track list and the mixer leave it out).
+    auto* box = inspector.getVisibilityBox (bass);
+    box->setToggleState (false, juce::dontSendNotification);
+    box->onClick();
+    studio.dispatchPendingMessages();
+    CHECK (studio.getProject().findTrack (bass)->hidden);
+    CHECK (trackRows() == 2);
+    CHECK (view.getMixer().getNumStrips() == 3);
+    CHECK (inspector.getShowAll().isEnabled());
+
+    // Disabled: greyed in the track list, out of the mixer, listed as DISABLED; ENABLE TRACK in its Inspector.
+    studio.setTracksDisabled ({ lead }, true);
+    studio.dispatchPendingMessages();
+    CHECK (trackRows() == 2);   // still shown
+    CHECK (view.getMixer().getNumStrips() == 2);
+    inspector.setTab (Inspector::Tab::inspector);
+    studio.selectTrack (lead);
+    studio.dispatchPendingMessages();
+    CHECK (inspector.getEnableKey().isVisible());
+    inspector.getEnableKey().onClick();
+    studio.dispatchPendingMessages();
+    CHECK_FALSE (studio.getProject().findTrack (lead)->disabled);
+    CHECK_FALSE (inspector.getEnableKey().isVisible());
+
+    // SHOW ALL.
+    inspector.setTab (Inspector::Tab::visibility);
+    inspector.getShowAll().onClick();
+    studio.dispatchPendingMessages();
+    CHECK (trackRows() == 3);
+    CHECK (view.getMixer().getNumStrips() == 4);
+    CHECK_FALSE (inspector.getShowAll().isEnabled());
+    juce::ignoreUnused (keys);
+}

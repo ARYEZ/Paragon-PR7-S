@@ -22,6 +22,7 @@
 // PARAGON_SNAPSHOT_VIEW=5760x1000: the window that size, 1:1 (the wide layout, spanning three screens).
 // PARAGON_SNAPSHOT_ROWS=0.5 (to 3) the arrangement's rows shorter or taller; PARAGON_SNAPSHOT_SUSPENDED=1 its
 // Auto-Scroll suspended.
+// PARAGON_SNAPSHOT_VISIBILITY=1: the VISIBILITY tab, the bass hidden, the keys disabled.
 // PARAGON_SNAPSHOT_INSPECTOR=fader folds the Inspector's inserts and sends (=none hides it).
 // PARAGON_SNAPSHOT_AUTOMATION=1 opens automation lanes (the lead's volume, the bass's pan, the master's fade).
 TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
@@ -115,6 +116,13 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     }
     else if (inspector == "none")
         view.toggleInspector();
+    // PARAGON_SNAPSHOT_VISIBILITY=1: the left zone's VISIBILITY, the bass hidden and the keys disabled.
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_VISIBILITY", {}).isNotEmpty())
+    {
+        studio.setTracksHidden ({ bass }, true);
+        studio.setTracksDisabled ({ keys }, true);
+        view.getInspector().setTab (Inspector::Tab::visibility);
+    }
     // Play a little so the meters show.
     studio.play();
     for (int round = 0; round < 6; ++round)

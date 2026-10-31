@@ -108,6 +108,16 @@ namespace pr7s
         void duplicateTracks (const std::vector<int>& trackIds);
         void removeTracks (const std::vector<int>& trackIds);
         bool isTrackEmpty (int trackId) const;   // no parts and no automation points
+        // Disable / enable tracks (the manual's Disable Selected Tracks): a
+        // disabled one is silent and its instrument and effects are unloaded
+        // (their settings kept, loaded again on Enable). Audio and instrument
+        // tracks only (as the manual has it). Not an undo step.
+        void setTracksDisabled (const std::vector<int>& trackIds, bool disabled);
+        // Hide / show tracks (the left zone's VISIBILITY): out of the track
+        // list, the arrangement and the mixer; still heard unless disabled.
+        void setTracksHidden (const std::vector<int>& trackIds, bool hidden);
+        bool isTrackShown (int trackId) const;   // (not hidden)
+        std::vector<int> getShownTracks() const;   // in order
         std::vector<int> getEmptyTracks() const;
 
         //======================================================================
@@ -398,8 +408,10 @@ namespace pr7s
             double tailSize = 1.0;
             int bitsPerSample = 24;   // 16, 24 or 32 (float)
             // The source: kept as it was, muted (the parts rendered; whole tracks: the track), or removed (whole tracks).
-            enum class Source { keep, mute, remove };
+            // Or (whole tracks) disabled: its plugins unloaded, as Freeze (0.9.1).
+            enum class Source { keep, mute, remove, disable };
             Source source = Source::keep;
+            bool hideSource = false;   // whole tracks: hidden after (the manual's Hide Source Tracks)
         };
         struct RenderSource
         {

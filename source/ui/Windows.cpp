@@ -305,7 +305,8 @@ namespace Windows
         options.tailSize = tails[tail].second;
         const auto kept = settings->getIntValue ("renderBits", 24);
         options.bitsPerSample = kept == 16 || kept == 32 ? kept : 24;
-        options.source = (RO::Source) juce::jlimit (0, 2, settings->getIntValue ("renderSource", (int) options.source));
+        options.source = (RO::Source) juce::jlimit (0, 3, settings->getIntValue ("renderSource", (int) options.source));
+        options.hideSource = settings->getBoolValue ("renderHide", false);
         return options;
     }
 
@@ -343,8 +344,10 @@ namespace Windows
         bits.addItem ("32-bit float", 32);
         source.addItem ("Keep it as it is", 1);
         source.addItem (wholeTracks ? "Mute the track" : "Mute the parts rendered", 2);
+        source.addItem ("Disable the track (no CPU; enable it again to change it)", 4);
         source.addItem ("Remove the track", 3);
         source.setItemEnabled (3, wholeTracks);   // (only for tracks rendered whole)
+        source.setItemEnabled (4, wholeTracks);
 
         const auto kept = keptOptions (studio.getSettings());
         mode.setSelectedId ((int) kept.mode + 1, juce::dontSendNotification);
@@ -355,7 +358,12 @@ namespace Windows
                 tailIndex = i;
         tail.setSelectedId (tailIndex + 1, juce::dontSendNotification);
         bits.setSelectedId (kept.bitsPerSample, juce::dontSendNotification);
-        source.setSelectedId (kept.source == RO::Source::remove && ! wholeTracks ? 1 : (int) kept.source + 1, juce::dontSendNotification);
+        source.setSelectedId ((kept.source == RO::Source::remove || kept.source == RO::Source::disable) && ! wholeTracks ? 1 : (int) kept.source + 1,
+                              juce::dontSendNotification);
+        hideSource.setToggleState (kept.hideSource && wholeTracks, juce::dontSendNotification);
+        hideSource.setEnabled (wholeTracks);
+        hideSource.setTooltip ("As the manual's Hide Source Tracks: the track rendered goes out of the track list, the arrangement and the mixer");
+        addAndMakeVisible (hideSource);
         for (auto* box : { &mode, &processing, &tail, &bits, &source })
             addAndMakeVisible (*box);
 
@@ -383,12 +391,13 @@ namespace Windows
                 settings->setValue ("renderTail", tail.getSelectedId() - 1);
                 settings->setValue ("renderBits", bits.getSelectedId());
                 settings->setValue ("renderSource", source.getSelectedId() - 1);
+                settings->setValue ("renderHide", hideSource.getToggleState());
             }
             if (onRender)
                 onRender (getOptions());
         };
         cancelButton.onClick = [this] { if (onCancel) onCancel(); };
-        setSize (640, 330);
+        setSize (640, 364);
     }
 
     RO RenderPage::getOptions() const
@@ -400,7 +409,8 @@ namespace Windows
         options.tail = kind;
         options.tailSize = size;
         options.bitsPerSample = bits.getSelectedId();
-        options.source = (RO::Source) juce::jlimit (0, 2, source.getSelectedId() - 1);
+        options.source = (RO::Source) juce::jlimit (0, 3, source.getSelectedId() - 1);
+        options.hideSource = hideSource.getToggleState() && hideSource.isEnabled();
         return options;
     }
 
@@ -418,6 +428,7 @@ namespace Windows
         labelled (row (28), tailLabel, tail);
         labelled (row (28), bitsLabel, bits);
         labelled (row (28), sourceLabel, source);
+        hideSource.setBounds (row (24).withTrimmedLeft (120));
         note.setBounds (row (40));
         auto buttons = area.removeFromBottom (32);
         cancelButton.setBounds (buttons.removeFromRight (96));

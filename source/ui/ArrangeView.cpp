@@ -219,6 +219,8 @@ std::vector<Timeline::Row> Timeline::layout (const pr7s::Studio& studio) const
     };
     for (const auto& track : studio.getProject().tracks)
     {
+        if (track.hidden)
+            continue;   // (VISIBILITY shows it again)
         add (Row::Kind::track, track.id, -1, trackRowHeight());
         addLanes (track.id);
     }
@@ -264,7 +266,7 @@ int ArrangeView::trackAtY (float y) const
 
 juce::Rectangle<float> ArrangeView::getPartBounds (int trackId, int index) const
 {
-    if (const auto* track = studio.getProject().findTrack (trackId); track != nullptr && juce::isPositiveAndBelow (index, (int) track->parts.size()))
+    if (const auto* track = studio.getProject().findTrack (trackId); track != nullptr && ! track->hidden && juce::isPositiveAndBelow (index, (int) track->parts.size()))
     {
         const auto& part = track->parts[(size_t) index];
         return { timeline.xForBeat (part.start), trackTop (trackId) + 3.0f, (float) (part.length * timeline.pixelsPerBeat), (float) timeline.trackRowHeight() - 6.0f };
@@ -367,6 +369,10 @@ void ArrangeView::paint (juce::Graphics& g)
     for (size_t t = 0; t < project.tracks.size(); ++t)
     {
         const auto& track = project.tracks[t];
+        if (track.hidden)
+            continue;
+        // A disabled track's parts: greyed out (its colour changes, as the manual has it).
+        const auto colour = track.disabled ? juce::Colour (0xff4a454c) : track.colour;
         for (int i = 0; i < (int) track.parts.size(); ++i)
         {
             const auto isClipDrag = drag == Drag::trimStart || drag == Drag::fadeIn || drag == Drag::fadeOut;
@@ -375,12 +381,12 @@ void ArrangeView::paint (juce::Graphics& g)
             {
                 const juce::Rectangle<float> area (timeline.xForBeat (dragPart.start), trackTop (track.id) + 3.0f,
                                                    (float) (dragPart.length * timeline.pixelsPerBeat), (float) timeline.trackRowHeight() - 6.0f);
-                paintPart (g, area, dragPart, track.colour, true, false);
+                paintPart (g, area, dragPart, colour, true, false);
                 continue;
             }
             if (isDragged && ! dragCopies)
                 continue;
-            paintPart (g, getPartBounds (track.id, i), track.parts[(size_t) i], track.colour,
+            paintPart (g, getPartBounds (track.id, i), track.parts[(size_t) i], colour,
                        selection.trackId == track.id && selection.index == i, false);
         }
     }
@@ -1837,22 +1843,23 @@ void ArrangeTools::resized()
 }
 
 //==============================================================================
+// (Among the tracks shown: a range never takes in a hidden one.)
 int ArrangeView::trackIndex (int trackId) const
 {
-    const auto& tracks = studio.getProject().tracks;
-    for (int i = 0; i < (int) tracks.size(); ++i)
-        if (tracks[(size_t) i].id == trackId)
+    const auto shown = studio.getShownTracks();
+    for (int i = 0; i < (int) shown.size(); ++i)
+        if (shown[(size_t) i] == trackId)
             return i;
     return -1;
 }
 
 std::vector<int> ArrangeView::tracksBetween (int fromIndex, int toIndex) const
 {
-    const auto& tracks = studio.getProject().tracks;
+    const auto shown = studio.getShownTracks();
     std::vector<int> ids;
     for (int i = juce::jmin (fromIndex, toIndex); i <= juce::jmax (fromIndex, toIndex); ++i)
-        if (juce::isPositiveAndBelow (i, (int) tracks.size()))
-            ids.push_back (tracks[(size_t) i].id);
+        if (juce::isPositiveAndBelow (i, (int) shown.size()))
+            ids.push_back (shown[(size_t) i]);
     return ids;
 }
 
@@ -1967,7 +1974,7 @@ void ArrangeView::rangeDrag (const juce::MouseEvent& event)
         {
             const auto grid = event.mods.isCommandDown() ? 0.0 : timeline.grid (studio.getProject());
             rangeMoveStart = juce::jmax (0.0, pr7s::snap (rangeBefore.start + timeline.beatForX (event.position.x) - rangeAnchor, grid));
-            const auto count = (int) studio.getProject().tracks.size();
+            const auto count = (int) studio.getShownTracks().size();
             const auto span = (int) rangeBefore.trackIds.size();
             const auto first = trackIndex (rangeBefore.trackIds.front());
             rangeMoveTrack = overIndex >= 0 ? juce::jlimit (0, juce::jmax (0, count - span), first + overIndex - rangeAnchorTrack) : first;
@@ -1995,8 +2002,8 @@ void ArrangeView::rangeUp (const juce::MouseEvent& event)
         const auto first = trackIndex (rangeBefore.trackIds.front());
         if (dragMoved && (std::abs (rangeMoveStart - rangeBefore.start) > 1.0e-9 || rangeMoveTrack != first))
         {
-            const auto& tracks = studio.getProject().tracks;
-            const auto newFirst = tracks[(size_t) juce::jlimit (0, (int) tracks.size() - 1, rangeMoveTrack)].id;
+            const auto tracks = studio.getShownTracks();
+            const auto newFirst = tracks[(size_t) juce::jlimit (0, (int) tracks.size() - 1, rangeMoveTrack)];
             studio.moveRange (rangeBefore, rangeMoveStart, newFirst, event.mods.isAltDown());
             // The range goes with what it held.
             range = pr7s::Studio::Range { rangeMoveStart, rangeMoveStart + rangeBefore.length(),
@@ -2043,7 +2050,7 @@ void ArrangeView::rangeCommand (RangeCommand command)
             return;
         auto first = studio.getSelectedTrack();
         if (studio.getProject().findTrack (first) == nullptr)
-            first = range ? range->trackIds.front() : (studio.getProject().tracks.empty() ? 0 : studio.getProject().tracks.front().id);
+            first = range ? range->trackIds.front() : (studio.getShownTracks().empty() ? 0 : studio.getShownTracks().front());
         studio.pasteRange (rangeClip, studio.getEngine().getPosition(), first, command == C::pasteTime);
         return;
     }

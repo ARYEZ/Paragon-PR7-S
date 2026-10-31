@@ -115,6 +115,7 @@ public:
             return;
         if (! name.isBeingEdited())
             name.setText (t->name, juce::dontSendNotification);
+        name.setColour (juce::Label::textColourId, t->disabled ? ParagonColours::textDim : ParagonColours::text);
         mute.setToggleState (t->mute, juce::dontSendNotification);
         solo.setToggleState (t->solo, juce::dontSendNotification);
         arm.setToggleState (t->armed, juce::dontSendNotification);
@@ -129,11 +130,13 @@ public:
         }
         else
         {
-            instrument.setButtonText (t->isAudio() ? inputName (*t) : t->instrument.getName());
+            instrument.setButtonText (t->disabled ? juce::String ("DISABLED") : t->isAudio() ? inputName (*t) : t->instrument.getName());
             instrument.setTooltip (t->isAudio() ? "The input it records from and where it goes (Output): click to choose, or to delete the track"
                                                 : "The instrument and where it goes (Output): click to open its window, change it, or delete the track");
+            if (t->disabled)
+                instrument.setTooltip ("Disabled: silent, its instrument and effects unloaded (their settings kept). Click for Enable Track");
         }
-        arm.setVisible (! t->isChannel());   // an FX or group channel records nothing
+        arm.setVisible (! t->isChannel() && ! t->disabled);   // an FX or group channel records nothing; nor a disabled track
         monitor.setVisible (t->isAudio());
         monitor.setToggleState (t->monitor, juce::dontSendNotification);
         AutomationKeys::refresh (read, write, owner.studio, trackId);
@@ -171,7 +174,7 @@ public:
         g.fillRect (bounds);
         g.setColour (juce::Colour (0xff050405));
         g.fillRect (bounds.withY (bounds.getBottom() - 1.0f).withHeight (1.0f));
-        g.setColour (t->colour);
+        g.setColour (t->disabled ? juce::Colour (0xff4a454c) : t->colour);   // disabled: its colour greyed (as the manual has it)
         g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
         if (selected)
         {
@@ -468,16 +471,17 @@ void TrackList::timerCallback()
 void TrackList::rebuild()
 {
     // The rows follow the project's tracks (kept where they are, so a name being edited isn't lost).
-    const auto& tracks = studio.getProject().tracks;
-    auto same = rows.size() == tracks.size();
-    for (size_t i = 0; same && i < tracks.size(); ++i)
-        same = rows[i]->trackId == tracks[i].id;
+    // (A row for each track shown: hidden ones are in the left zone's VISIBILITY.)
+    const auto shown = studio.getShownTracks();
+    auto same = rows.size() == shown.size();
+    for (size_t i = 0; same && i < shown.size(); ++i)
+        same = rows[i]->trackId == shown[i];
     if (! same)
     {
         rows.clear();
-        for (const auto& track : tracks)
+        for (const auto id : shown)
         {
-            rows.push_back (std::make_unique<Row> (*this, track.id));
+            rows.push_back (std::make_unique<Row> (*this, id));
             addAndMakeVisible (*rows.back());
         }
     }
@@ -759,9 +763,15 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
     if (! track->isChannel())
     {
         menu.addSeparator();
-        menu.addItem (57, several ? "Render the selected tracks in Place..." : "Render in Place...");
-        menu.addItem (58, "Render in Place (as last time)");
+        menu.addItem (57, several ? "Render the selected tracks in Place..." : "Render in Place...", ! track->disabled);
+        menu.addItem (58, "Render in Place (as last time)", ! track->disabled);
     }
+    // Disable (as the manual has it: silent, its plugins unloaded) and hide.
+    menu.addSeparator();
+    if (! track->isChannel())
+        menu.addItem (59, track->disabled ? (several ? "Enable Selected Tracks" : "Enable Track")
+                                          : (several ? "Disable Selected Tracks" : "Disable Track"));
+    menu.addItem (60, several ? "Hide Selected Tracks" : "Hide Track");
     menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, instruments] (int chosen)
     {
         if ((chosen == 57 || chosen == 58) && onRenderInPlace)
@@ -780,7 +790,14 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
                 onRenderInPlace (sources, chosen == 57);
             return;
         }
-        if (chosen == 50)
+        if (chosen == 59)
+        {
+            const auto* t = studio.getProject().findTrack (trackId);
+            studio.setTracksDisabled (studio.getSelectedTracks(), t != nullptr && ! t->disabled);
+        }
+        else if (chosen == 60)
+            studio.setTracksHidden (studio.getSelectedTracks(), true);
+        else if (chosen == 50)
             studio.duplicateTracks (studio.getSelectedTracks());
         else if (chosen >= 51 && chosen <= 54)
             moveSelectedTracks ((MoveTo) (chosen - 51));

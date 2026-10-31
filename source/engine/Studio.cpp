@@ -569,6 +569,8 @@ namespace pr7s
         copy.id = project.nextTrackId++;
         copy.name = original->name + " copy";
         copy.armed = false;
+        copy.disabled = false;   // (a copy of a disabled track is loaded and heard: our choice)
+        copy.hidden = false;
         for (auto& part : copy.parts)
             part.id = 0;
         // The instrument and the effects as they are now (their settings from the running ones).
@@ -629,6 +631,104 @@ namespace pr7s
     {
         for (const auto id : trackIds)
             removeTrack (id);
+    }
+
+    void Studio::setTracksDisabled (const std::vector<int>& trackIds, bool disabled)
+    {
+        auto any = false;
+        for (const auto id : trackIds)
+        {
+            auto* track = project.findTrack (id);
+            if (track == nullptr || track->isChannel() || track->disabled == disabled)
+                continue;
+            any = true;
+            if (disabled)
+            {
+                // Its settings kept (as saving does), then its plugins unloaded.
+                if (auto* instrument = engine.getInstrument (id))
+                {
+                    juce::MemoryBlock state;
+                    instrument->getStateInformation (state);
+                    track->instrument.state = std::move (state);
+                }
+                for (int slot = 0; slot < (int) track->inserts.size(); ++slot)
+                    if (auto* effect = engine.getEffect (id, slot))
+                    {
+                        juce::MemoryBlock state;
+                        effect->getStateInformation (state);
+                        track->inserts[(size_t) slot].state = std::move (state);
+                    }
+                for (int slot = engine.getNumEffects (id) - 1; slot >= 0; --slot)
+                {
+                    effectGoing (id, slot);   // (its window closes first)
+                    engine.removeEffect (id, slot);
+                }
+                if (! track->isAudio())
+                {
+                    if (onInstrumentGoing)
+                        onInstrumentGoing (id);
+                    engine.setInstrument (id, nullptr);
+                }
+                track->disabled = true;
+                track->armed = false;
+            }
+            else
+            {
+                // Loaded again with the settings kept (one that can't be loaded: the slot stays, the sound goes past it).
+                track->disabled = false;
+                juce::String error;
+                if (! track->isAudio())
+                    if (auto instance = host->create (track->instrument, engine.getSampleRate(), engine.getBlockSize(), error))
+                        engine.setInstrument (id, std::move (instance));
+                for (int slot = 0; slot < (int) track->inserts.size(); ++slot)
+                {
+                    const auto& insert = track->inserts[(size_t) slot];
+                    engine.insertEffect (id, slot, insert.isEmpty() ? nullptr
+                                                                     : host->createEffect (insert, engine.getSampleRate(), engine.getBlockSize(), error));
+                }
+            }
+        }
+        if (any)
+            changed (false);
+    }
+
+    void Studio::setTracksHidden (const std::vector<int>& trackIds, bool hidden)
+    {
+        auto any = false;
+        for (const auto id : trackIds)
+            if (auto* track = project.findTrack (id); track != nullptr && track->hidden != hidden)
+            {
+                track->hidden = hidden;
+                any = true;
+            }
+        if (! any)
+            return;
+        // A hidden track isn't selected (the selection moves to the first shown one).
+        selectedTracks.erase (std::remove_if (selectedTracks.begin(), selectedTracks.end(), [this] (int id) { return ! isTrackShown (id); }),
+                              selectedTracks.end());
+        if (! isTrackShown (selectedTrack))
+        {
+            const auto shown = getShownTracks();
+            selectedTrack = shown.empty() ? 0 : shown.front();
+            if (selectedTrack != 0 && selectedTracks.empty())
+                selectedTracks.push_back (selectedTrack);
+        }
+        changed (false);
+    }
+
+    bool Studio::isTrackShown (int trackId) const
+    {
+        const auto* track = project.findTrack (trackId);
+        return track != nullptr && ! track->hidden;
+    }
+
+    std::vector<int> Studio::getShownTracks() const
+    {
+        std::vector<int> ids;
+        for (const auto& track : project.tracks)
+            if (! track.hidden)
+                ids.push_back (track.id);
+        return ids;
     }
 
     bool Studio::isTrackEmpty (int trackId) const
@@ -732,8 +832,8 @@ namespace pr7s
 
     void Studio::setArmed (int trackId)
     {
-        if (const auto* t = project.findTrack (trackId); t != nullptr && t->isChannel())
-            return;   // an FX or group channel records nothing
+        if (const auto* t = project.findTrack (trackId); t != nullptr && (t->isChannel() || t->disabled))
+            return;   // an FX or group channel records nothing; nor a disabled track
         for (auto& track : project.tracks)
             track.armed = track.id == trackId;
         changed (false);
@@ -747,7 +847,7 @@ namespace pr7s
             selectedTracks.push_back (trackId);
         // Selecting arms it (when not recording), so you play and record the track you're on.
         const auto* selected = project.findTrack (trackId);
-        if (! engine.isRecording() && (selected == nullptr || ! selected->isChannel()))
+        if (! engine.isRecording() && (selected == nullptr || (! selected->isChannel() && ! selected->disabled)))
             for (auto& track : project.tracks)
                 track.armed = track.id == trackId;
         changed (false);
@@ -1066,7 +1166,7 @@ namespace pr7s
             for (auto& track : project.tracks)
             {
                 started = started || track.id == firstTrackId;
-                if (started && found.size() < count)
+                if (started && found.size() < count && (! track.hidden || track.id == firstTrackId))   // (the tracks shown, as the arrangement has them)
                     found.push_back (&track);
             }
             found.resize (count, nullptr);
@@ -2989,6 +3089,10 @@ namespace pr7s
                 }
             }
             changed();
+            if (source.wholeTrack && options.source == RenderOptions::Source::disable)
+                setTracksDisabled ({ sourceId }, true);
+            if (source.wholeTrack && options.hideSource && options.source != RenderOptions::Source::remove)
+                setTracksHidden ({ sourceId }, true);
             if (options.source == RenderOptions::Source::remove && source.wholeTrack)
                 removeTrack (sourceId);
         }
@@ -3038,6 +3142,11 @@ namespace pr7s
                 continue;
             }
             juce::String error;
+            if (track.disabled)
+            {
+                engine.setInstrument (track.id, nullptr);   // disabled: its plugins aren't loaded (their settings kept)
+                continue;
+            }
             if (auto instance = host->create (track.instrument, engine.getSampleRate(), engine.getBlockSize(), error))
                 engine.setInstrument (track.id, std::move (instance));
             else
@@ -3062,7 +3171,8 @@ namespace pr7s
             }
         };
         for (const auto& track : project.tracks)
-            loadEffects (track.id, track.name, track.inserts);
+            if (! track.disabled)
+                loadEffects (track.id, track.name, track.inserts);
         loadEffects (Engine::masterBus, "Master", project.masterInserts);
         problems = missing.joinIntoString ("\n");
         numberParts();

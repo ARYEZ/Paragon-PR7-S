@@ -85,8 +85,91 @@ private:
 };
 
 //==============================================================================
+// VISIBILITY: a track, its box (ticked: shown), its colour; DISABLED if it is.
+class Inspector::VisibilityRow final : public juce::Component
+{
+public:
+    VisibilityRow (Inspector& ownerToUse, int id) : owner (ownerToUse), trackId (id)
+    {
+        box.setWantsKeyboardFocus (false);
+        box.setTooltip ("Ticked: shown in the track list, the arrangement and the mixer. Unticked: hidden (still heard, unless it's disabled)");
+        box.onClick = [this] { owner.studio.setTracksHidden ({ trackId }, ! box.getToggleState()); };
+        addAndMakeVisible (box);
+    }
+
+    void refresh()
+    {
+        if (const auto* t = owner.studio.getProject().findTrack (trackId))
+        {
+            box.setButtonText (t->name);
+            box.setToggleState (! t->hidden, juce::dontSendNotification);
+            disabled = t->disabled;
+            colour = t->colour;
+        }
+        resized();
+        repaint();
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        g.setColour (disabled ? juce::Colour (0xff4a454c) : colour);
+        g.fillRect (0, 3, 4, getHeight() - 6);
+        g.setColour (juce::Colour (0xff050405));
+        g.fillRect (0, getHeight() - 1, getWidth(), 1);
+        if (disabled)
+        {
+            g.setColour (ParagonColours::textDim);
+            g.setFont (font (9.5f));
+            g.drawText ("DISABLED", getLocalBounds().withTrimmedRight (4), juce::Justification::centredRight, false);
+        }
+    }
+
+    void resized() override { box.setBounds (getLocalBounds().withTrimmedLeft (8).withTrimmedRight (disabled ? 58 : 4)); }
+
+    const int trackId;
+    juce::ToggleButton box;
+
+private:
+    Inspector& owner;
+    juce::Colour colour;
+    bool disabled = false;
+};
+
+//==============================================================================
 Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
 {
+    // The left zone's tabs: INSPECTOR and VISIBILITY (as the manual's).
+    for (auto* key : { &inspectorTab, &visibilityTab })
+    {
+        key->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
+        key->setColour (juce::TextButton::textColourOffId, ParagonColours::textDim);
+        key->setColour (juce::TextButton::textColourOnId, ParagonColours::accent);
+        key->setWantsKeyboardFocus (false);
+        addAndMakeVisible (*key);
+    }
+    inspectorTab.setTooltip ("The selected track's settings");
+    visibilityTab.setTooltip ("Every track, to show or hide it (hidden: out of the track list, the arrangement and the mixer)");
+    inspectorTab.onClick = [this] { setTab (Tab::inspector); };
+    visibilityTab.onClick = [this] { setTab (Tab::visibility); };
+    showAll.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
+    showAll.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
+    showAll.setWantsKeyboardFocus (false);
+    showAll.setTooltip ("Show every hidden track again");
+    showAll.onClick = [this]
+    {
+        std::vector<int> all;
+        for (const auto& t : studio.getProject().tracks)
+            all.push_back (t.id);
+        studio.setTracksHidden (all, false);
+    };
+    addChildComponent (showAll);
+    visibilityView.setViewedComponent (&visibilityList, false);
+    visibilityView.setScrollBarsShown (true, false);
+    visibilityView.setScrollBarThickness (8);
+    addChildComponent (visibilityView);
+    if (auto* settings = studio.getSettings())
+        tab = settings->getValue ("leftZoneTab") == "visibility" ? Tab::visibility : Tab::inspector;
+
     if (auto* settings = studio.getSettings())
     {
         const auto kept = juce::StringArray::fromTokens (settings->getValue ("inspectorFolded"), ",", "");
@@ -239,6 +322,13 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     noSends.setJustificationType (juce::Justification::centred);
     content.addChildComponent (noSends);
 
+    enable.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff3a0f18));
+    enable.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
+    enable.setWantsKeyboardFocus (false);
+    enable.setTooltip ("This track is disabled: silent, its instrument and effects unloaded (their settings kept). Click to load them and hear it again");
+    enable.onClick = [this] { studio.setTracksDisabled ({ trackId }, false); };
+    content.addChildComponent (enable);
+
     // FADER
     fader.onOpenEffect = [this] (int bus, int slot) { if (onOpenEffect) onOpenEffect (bus, slot); };
     fader.onFindPlugins = [this] { if (onFindPlugins) onFindPlugins(); };
@@ -253,6 +343,7 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     };
     studio.addChangeListener (this);
     showTrack (studio.getSelectedTrack());
+    setTab (tab);
     startTimerHz (20);
 }
 
@@ -300,8 +391,63 @@ juce::TextButton& Inspector::getKey (const juce::String& name)
     return mute;
 }
 
+void Inspector::setTab (Tab newTab)
+{
+    tab = newTab;
+    inspectorTab.setToggleState (tab == Tab::inspector, juce::dontSendNotification);
+    visibilityTab.setToggleState (tab == Tab::visibility, juce::dontSendNotification);
+    viewport.setVisible (tab == Tab::inspector);
+    visibilityView.setVisible (tab == Tab::visibility);
+    showAll.setVisible (tab == Tab::visibility);
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("leftZoneTab", tab == Tab::visibility ? "visibility" : "inspector");
+    refreshVisibility();
+    resized();
+    repaint();
+}
+
+juce::ToggleButton* Inspector::getVisibilityBox (int id)
+{
+    for (auto& row : visibilityRows)
+        if (row->trackId == id)
+            return &row->box;
+    return nullptr;
+}
+
+void Inspector::refreshVisibility()
+{
+    // A row for every track, in order (made again when the tracks change).
+    const auto& tracks = studio.getProject().tracks;
+    auto same = visibilityRows.size() == tracks.size();
+    for (size_t i = 0; same && i < tracks.size(); ++i)
+        same = visibilityRows[i]->trackId == tracks[i].id;
+    if (! same)
+    {
+        visibilityRows.clear();
+        for (const auto& t : tracks)
+        {
+            visibilityRows.push_back (std::make_unique<VisibilityRow> (*this, t.id));
+            visibilityList.addAndMakeVisible (*visibilityRows.back());
+        }
+    }
+    auto anyHidden = false;
+    for (const auto& t : tracks)
+        anyHidden = anyHidden || t.hidden;
+    showAll.setEnabled (anyHidden);
+    const auto w = juce::jmax (100, visibilityView.getWidth() - visibilityView.getScrollBarThickness());
+    auto y = 0;
+    for (auto& row : visibilityRows)
+    {
+        row->refresh();
+        row->setBounds (0, y, w, 26);
+        y += 26;
+    }
+    visibilityList.setSize (w, y + margin);
+}
+
 void Inspector::changeListenerCallback (juce::ChangeBroadcaster*)
 {
+    refreshVisibility();
     if (studio.getSelectedTrack() != trackId || track() == nullptr)
         showTrack (studio.getSelectedTrack());
     else
@@ -489,6 +635,8 @@ void Inspector::layout()
         {
             case Section::basics:
             {
+                if (t->disabled)
+                    place (enable, row (rowHeight + 2));
                 // M S R W (and REC, MON).
                 std::vector<juce::TextButton*> keys { &mute, &solo, &read, &write };
                 if (! t->isChannel())
@@ -571,17 +719,37 @@ void Inspector::paint (juce::Graphics& g)
     g.fillAll (panelColour);
     g.setColour (ParagonColours::panelEdge);
     g.fillRect (getWidth() - 1, 0, 1, getHeight());
+    g.setColour (ParagonColours::panelEdge);
+    g.fillRect (0, tabHeight - 1, getWidth(), 1);
+    if (tab == Tab::visibility)
+    {
+        g.setColour (ParagonColours::textDim);
+        g.setFont (font (10.5f, juce::Font::plain));
+        g.drawFittedText ("Ticked: shown. Unticked: hidden (still heard unless disabled)", getLocalBounds().withTop (tabHeight + 4).withHeight (30).reduced (8, 0),
+                          juce::Justification::centredLeft, 2);
+        return;
+    }
     if (track() == nullptr)
     {
         g.setColour (ParagonColours::textDim);
         g.setFont (font (12.0f, juce::Font::plain));
-        g.drawFittedText ("Select a track to see its settings here", getLocalBounds().reduced (16).withTrimmedTop (headerHeight + 8),
+        g.drawFittedText ("Select a track to see its settings here", getLocalBounds().reduced (16).withTrimmedTop (tabHeight + headerHeight + 8),
                           juce::Justification::centredTop, 3);
     }
 }
 
 void Inspector::resized()
 {
-    viewport.setBounds (getLocalBounds().withTrimmedRight (1));
+    auto area = getLocalBounds().withTrimmedRight (1);
+    auto tabs = area.removeFromTop (tabHeight).reduced (4, 3);
+    inspectorTab.setBounds (tabs.removeFromLeft (tabs.getWidth() / 2 - 2));
+    tabs.removeFromLeft (4);
+    visibilityTab.setBounds (tabs);
+    viewport.setBounds (area);
+    auto visibility = area;
+    visibility.removeFromTop (34);   // (the note)
+    showAll.setBounds (visibility.removeFromBottom (30).reduced (6, 3));
+    visibilityView.setBounds (visibility);
     layout();
+    refreshVisibility();
 }

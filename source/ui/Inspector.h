@@ -24,6 +24,11 @@
 //                  are after the fader)
 //   SENDS          its 8 sends, as the mixer's (not on an FX channel)
 //   FADER          its mixer strip: fader, pan, M S R W, the level
+//
+// Its two tabs at the top (0.9.1, as the manual's left zone): INSPECTOR, the
+// above; VISIBILITY, every track with a box to show or hide it (hidden: out
+// of the track list, the arrangement and the mixer), SHOW ALL, and which are
+// disabled. A disabled track's Inspector offers ENABLE TRACK.
 class Inspector final : public juce::Component,
                         private juce::ChangeListener,
                         private juce::Timer
@@ -45,6 +50,11 @@ public:
 
     int getTrack() const noexcept { return trackId; }   // the one shown: the selected track (0: none)
 
+    enum class Tab { inspector, visibility };
+    void setTab (Tab);   // (kept in the settings file)
+    Tab getTab() const noexcept { return tab; }
+    static constexpr int tabHeight = 28;
+
     // For tests.
     juce::ComboBox& getMidiInput() noexcept { return midiInput; }
     juce::ComboBox& getChannel() noexcept { return channel; }
@@ -57,6 +67,11 @@ public:
     MixerView& getFader() noexcept { return fader; }
     juce::Component& getHeader (Section);
     juce::Component& getContent() noexcept { return content; }
+    juce::TextButton& getEnableKey() noexcept { return enable; }
+    juce::TextButton& getTabKey (Tab t) noexcept { return t == Tab::inspector ? inspectorTab : visibilityTab; }
+    // VISIBILITY's box for a track (nullptr if it isn't listed), and SHOW ALL.
+    juce::ToggleButton* getVisibilityBox (int trackId);
+    juce::TextButton& getShowAll() noexcept { return showAll; }
     int getContentHeight() const noexcept { return content.getHeight(); }
 
     void paint (juce::Graphics&) override;
@@ -64,6 +79,8 @@ public:
 
 private:
     class Header;
+    class VisibilityRow;
+    void refreshVisibility();
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
     void showTrack (int);
@@ -95,4 +112,11 @@ private:
     int shownSlots = 8, preFader = pr7s::Project::maxInserts, insertLineY = -1;
     std::array<std::unique_ptr<MixerView::SendSlot>, pr7s::Project::maxSends> sendSlots;
     MixerView fader { studio, true };   // (also the insert, send and output menus' owner)
+    juce::TextButton enable { "ENABLE TRACK" };   // a disabled track's
+
+    Tab tab = Tab::inspector;
+    juce::TextButton inspectorTab { "INSPECTOR" }, visibilityTab { "VISIBILITY" }, showAll { "SHOW ALL" };
+    juce::Viewport visibilityView;
+    juce::Component visibilityList;
+    std::vector<std::unique_ptr<VisibilityRow>> visibilityRows;
 };

@@ -2,6 +2,33 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.9.1
+
+Disable and hide tracks, the Visibility tab, and Render in Place that disables and hides the original (as you asked, from the Cubase 15 manual).
+
+- **Disable a track** (right-click it, or its instrument key: **Disable Track**, or **Disable Selected Tracks** for several):
+  - It goes silent, and its instrument and effects are unloaded, so it uses no CPU and no memory.
+  - Their settings are kept.
+  - In the track list and arrangement it turns grey and its key says **DISABLED**. Its mixer strip goes away (as the manual has it), and it can't be armed.
+- **Enable it again** with **Enable Track** in the same menu, or the **ENABLE TRACK** key in its Inspector. Its instrument and effects load again with their settings.
+- Audio and instrument tracks can be disabled. FX and group channels can't, as in the manual.
+- **Hide a track** (right-click: **Hide Track** / **Hide Selected Tracks**, or the Visibility tab):
+  - It leaves the track list, the arrangement and the mixer, but it's still heard unless it's disabled.
+  - Up and Down skip it, and pastes and ranges go past it.
+- **The left zone's tabs: INSPECTOR | VISIBILITY.**
+  - VISIBILITY lists every track with a box: ticked means shown, unticked means hidden.
+  - Disabled tracks are marked DISABLED. **SHOW ALL** brings every hidden track back.
+  - PR7-S remembers which tab was open.
+- **Render in Place**, as the manual's Render dialog has it, for whole tracks:
+  - **The original:** a new choice, **Disable the track**.
+  - A new option, **Hide the track afterwards**.
+  - So: render, then the original is disabled and hidden, and only the render shows. To change it: VISIBILITY, tick it, Enable Track, edit it, render again.
+- Disabled and hidden are saved with the song, but they aren't undo steps.
+- **Our choices:**
+  - Hidden tracks also leave the mixer. The manual makes that a setting (Sync Visibility of Project and MixConsole); here it's always on.
+  - A copy of a disabled track is enabled and shown.
+- **Quick Controls:** 0.9.2 (after these).
+
 ## 0.9.0
 
 The Inspector: the selected track's settings, left of the track list (as you asked, after the left zone in Cubase 15).

@@ -152,6 +152,11 @@ namespace pr7s
         // go to the instrument on (1 to 16; the Inspector's Routing, 0.9.0).
         juce::String midiInput;
         int midiChannel = 1;
+        // Disabled (0.9.1, as the manual's Disable Track): silent, its instrument
+        // and effects unloaded (their settings kept) so it costs no CPU or RAM.
+        // Hidden: not in the track list, the arrangement or the mixer (the left
+        // zone's VISIBILITY shows it again). Both saved; neither an undo step.
+        bool disabled = false, hidden = false;
         bool isAudio() const noexcept { return kind == Kind::audio; }
         bool isFx() const noexcept { return kind == Kind::fx; }
         bool isGroup() const noexcept { return kind == Kind::group; }

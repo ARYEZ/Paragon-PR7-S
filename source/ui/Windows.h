@@ -55,6 +55,7 @@ namespace Windows
         std::function<void (const pr7s::Studio::RenderOptions&)> onRender;
         std::function<void()> onCancel;
         juce::ComboBox mode, processing, tail, bits, source;
+        juce::ToggleButton hideSource { "Hide the track afterwards (VISIBILITY shows it again)" };   // whole tracks
         juce::TextButton renderButton { "RENDER" }, cancelButton { "CANCEL" };
 
     private:

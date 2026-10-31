@@ -436,10 +436,18 @@ namespace pr7s
         std::vector<Prepared> prepared;
         for (const auto& track : project.tracks)
         {
-            Prepared p { track.id, {}, sideGains (track, ! track.mute && ! soloedOut (track)), {}, {}, {}, false };
+            Prepared p { track.id, {}, sideGains (track, ! track.mute && ! track.disabled && ! soloedOut (track)), {}, {}, {}, false };
             for (const auto& insert : track.inserts)
                 p.bypass.push_back (insert.bypass);
             readLanes (track.automation, track.automationRead, p.automation, p.mixAutomated, track.id, held);
+            if (track.disabled)
+            {
+                // Disabled: nothing played, nothing read from disk (its plugins are unloaded too).
+                p.automation.clear();
+                p.mixAutomated = false;
+                prepared.push_back (std::move (p));
+                continue;
+            }
             if (track.isAudio())
             {
                 for (const auto& part : track.parts)
@@ -497,10 +505,10 @@ namespace pr7s
                     track->input = t->input;
                     track->midiChannel = juce::jlimit (1, 16, t->midiChannel);
                     track->stereoInput = t->stereoInput;
-                    track->monitor = t->monitor;
+                    track->monitor = t->monitor && ! t->disabled;
                     track->volumeDb = t->volumeDb;
                     track->pan = t->pan;
-                    track->mute = t->mute;
+                    track->mute = t->mute || t->disabled;
                     track->soloedOut = soloedOut (*t);
                     track->preFader = t->preFaderSlots;
                     track->output = t->output;

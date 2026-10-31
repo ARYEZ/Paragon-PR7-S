@@ -222,6 +222,10 @@ namespace pr7s
                 t->setAttribute ("midiInput", track.midiInput);
             if (track.midiChannel != 1)
                 t->setAttribute ("midiChannel", track.midiChannel);
+            if (track.disabled)
+                t->setAttribute ("disabled", true);
+            if (track.hidden)
+                t->setAttribute ("hidden", true);
             t->setAttribute ("instrument", track.instrument.kind == Instrument::Kind::plugin ? "plugin" : "paragonSynth");
             if (track.instrument.kind == Instrument::Kind::plugin)
                 t->addChildElement (track.instrument.plugin.createXml().release());
@@ -304,6 +308,8 @@ namespace pr7s
             track.armed = t->getBoolAttribute ("armed");
             track.midiInput = t->getStringAttribute ("midiInput");
             track.midiChannel = juce::jlimit (1, 16, t->getIntAttribute ("midiChannel", 1));
+            track.disabled = t->getBoolAttribute ("disabled");
+            track.hidden = t->getBoolAttribute ("hidden");
             if (t->getStringAttribute ("kind") == "audio")
             {
                 track.kind = Track::Kind::audio;
