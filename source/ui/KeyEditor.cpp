@@ -251,7 +251,14 @@ void KeyEditor::timerCallback()
 
     followPlayhead();
     refreshScrollBars();
-    repaint (getLocalBounds().withTrimmedLeft (sideWidth));
+    // The playhead's old and new strips (not the whole editor, 30 times a second: 0.9.2).
+    if (const auto x = xForBeat (studio.getEngine().getPosition()); std::abs (x - playheadX) >= 0.05f)
+    {
+        const auto strip = [this] (float at) { return juce::Rectangle<float> (at - 7.0f, 0.0f, 15.0f, (float) getHeight()).toNearestIntEdges(); };
+        repaint (strip (playheadX));
+        repaint (strip (x));
+        playheadX = x;
+    }
 }
 
 void KeyEditor::followPlayhead()
@@ -269,7 +276,10 @@ void KeyEditor::followPlayhead()
     if (gesture != Gesture::none)
         return;
     if (const auto first = autoScroll.follow (position, firstBeat, pixelsPerBeat, getNotesArea().getWidth(), engine.isPlaying(), jumped))
+    {
         firstBeat = *first;
+        repaint();   // (the page turned: the timer no longer redraws everything)
+    }
 }
 
 void KeyEditor::zoomRows (bool in)

@@ -177,6 +177,22 @@ public:
     void deleteSelected();
     void duplicateSelected();
 
+    // Several parts selected (0.9.2, the manual's Object Selection tool):
+    // Shift-click adds or takes one away, a drag on empty space draws a
+    // rectangle that selects every part it touches (Shift: added to them),
+    // Ctrl+A all of them. Dragging one moves them all (Alt: copies);
+    // Delete, Ctrl+D, Ctrl+X / C / V, Alt+V (Paste at Origin) and the
+    // part's menu act on them all. The part clicked last is the one the
+    // key editor shows (getSelection).
+    std::vector<int> getSelectedParts() const;   // part ids, in no order
+    bool isPartSelected (int partId) const;
+    void selectParts (const std::vector<int>& partIds);
+    void selectAllParts();
+    void copySelected (bool cut);   // into the parts clipboard
+    void pasteParts (bool atOrigin);   // at the playhead on the selected track (or where they came from)
+    bool hasPartsClip() const noexcept { return ! partsClip.isEmpty(); }
+    std::function<void()> onPartsCopied;   // (Ctrl+V then pastes parts: MainView)
+
     // The editing tools (see above).
     enum class Tool { select, range, split, glue, erase, zoom, mute, draw, play };
     static constexpr Tool tools[] = { Tool::select, Tool::range, Tool::split, Tool::glue, Tool::erase, Tool::zoom, Tool::mute, Tool::draw, Tool::play };
@@ -251,6 +267,12 @@ private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
     void paintPart (juce::Graphics&, juce::Rectangle<float>, const pr7s::Part&, juce::Colour, bool selected, bool recording) const;
+public:
+    // The timer's work (for tests): the playhead's old and new strips redrawn
+    // when it moved, nothing when nothing did (0.9.2: it was the whole view, 30
+    // times a second, which on a big window kept the computer busy: the lag).
+    void refreshPlayhead();
+private:
     std::optional<std::pair<int, int>> partAt (juce::Point<float>) const;   // track id and index
     void showPartMenu (int trackId, int index);
 
@@ -259,7 +281,11 @@ private:
     Selection selection;
 
     enum class Drag { none, position, cycle, cycleMove, cycleLeft, cycleRight, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
-                      newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove };
+                      newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove, marquee };
+    std::vector<int> alsoSelected;              // the parts selected besides `selection` (by id)
+    pr7s::Studio::RangeClip partsClip;          // parts copied (Ctrl+C / X)
+    int partIdAt (const Selection&) const;
+    bool isSelected (int trackId, int index) const;
     std::optional<pr7s::Studio::Range> range;
     pr7s::Studio::RangeClip rangeClip;
     pr7s::Studio::Range rangeBefore;            // as it was when the drag began
@@ -314,6 +340,8 @@ private:
     double dragNewStart = 0.0, dragNewLength = 0.0;
     bool dragCopies = false, dragMoved = false;
     double lastPosition = 0.0;   // the playhead as last seen (Auto-Scroll follows a jump while stopped)
+    float playheadX = -1.0e6f;   // where the playhead was last drawn (0.9.2: only its strip is redrawn as it moves)
+    bool playheadRed = false;
     void scrolled();             // the track list and the scroll bars follow
 };
 

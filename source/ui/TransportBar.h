@@ -72,6 +72,9 @@ private:
     int toolsWidth = 0;
     float shownAverage = 0.0f, shownPeak = 0.0f;
     bool overloadLit = false;
+    // What the screens showed when last drawn (0.9.2: redrawn only when it changes, not 30 times a second).
+    double shownPosition = -1.0;
+    int shownCpu = -1;
     void followPerformance();
     mutable std::vector<juce::Rectangle<float>> glasses;
     juce::Image satin;

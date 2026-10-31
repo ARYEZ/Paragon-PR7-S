@@ -35,6 +35,9 @@ void ArrangeView::changeListenerCallback (juce::ChangeBroadcaster*)
         if (ids.empty())
             range.reset();
     }
+    // Parts selected that have gone (undo, delete) leave the selection.
+    alsoSelected.erase (std::remove_if (alsoSelected.begin(), alsoSelected.end(), [this] (int id) { return ! studio.findPart (id).has_value(); }),
+                        alsoSelected.end());
     // A part may have gone (undo, delete): drop a selection that no longer exists.
     if (selection.isValid())
     {
@@ -55,7 +58,20 @@ void ArrangeView::changeListenerCallback (juce::ChangeBroadcaster*)
 void ArrangeView::timerCallback()
 {
     followPlayhead();
-    repaint();
+    refreshPlayhead();
+}
+
+void ArrangeView::refreshPlayhead()
+{
+    const auto x = timeline.xForBeat (studio.getEngine().getPosition());
+    const auto red = studio.getEngine().isRecording();
+    if (std::abs (x - playheadX) < 0.05f && red == playheadRed)
+        return;
+    const auto strip = [this] (float at) { return juce::Rectangle<float> (at - 8.0f, 0.0f, 17.0f, (float) getHeight()).toNearestIntEdges(); };
+    repaint (strip (playheadX));
+    repaint (strip (x));
+    playheadX = x;
+    playheadRed = red;
 }
 
 void ArrangeView::followPlayhead()
@@ -284,8 +300,88 @@ std::optional<std::pair<int, int>> ArrangeView::partAt (juce::Point<float> point
     return std::nullopt;
 }
 
+int ArrangeView::partIdAt (const Selection& s) const
+{
+    const auto* track = studio.getProject().findTrack (s.trackId);
+    return track != nullptr && juce::isPositiveAndBelow (s.index, (int) track->parts.size()) ? track->parts[(size_t) s.index].id : 0;
+}
+
+bool ArrangeView::isSelected (int trackId, int index) const
+{
+    if (selection.trackId == trackId && selection.index == index)
+        return true;
+    const auto id = partIdAt ({ trackId, index });
+    return id != 0 && std::find (alsoSelected.begin(), alsoSelected.end(), id) != alsoSelected.end();
+}
+
+std::vector<int> ArrangeView::getSelectedParts() const
+{
+    auto ids = alsoSelected;
+    if (const auto id = partIdAt (selection); id != 0 && std::find (ids.begin(), ids.end(), id) == ids.end())
+        ids.push_back (id);
+    return ids;
+}
+
+bool ArrangeView::isPartSelected (int partId) const
+{
+    const auto ids = getSelectedParts();
+    return std::find (ids.begin(), ids.end(), partId) != ids.end();
+}
+
+void ArrangeView::selectParts (const std::vector<int>& partIds)
+{
+    selection = {};
+    alsoSelected.clear();
+    for (const auto id : partIds)
+        if (const auto at = studio.findPart (id))
+        {
+            if (! selection.isValid())
+                selection = { at->first, at->second };
+            else
+                alsoSelected.push_back (id);
+        }
+    if (selection.isValid())
+        studio.selectTrack (selection.trackId);
+    repaint();
+}
+
+void ArrangeView::selectAllParts()
+{
+    std::vector<int> ids;
+    for (const auto trackId : studio.getShownTracks())
+        for (const auto& part : studio.getProject().findTrack (trackId)->parts)
+            ids.push_back (part.id);
+    selectParts (ids);
+}
+
+void ArrangeView::copySelected (bool cut)
+{
+    const auto ids = getSelectedParts();
+    if (ids.empty())
+        return;
+    partsClip = studio.copyParts (ids);
+    if (cut)
+    {
+        selection = {};
+        alsoSelected.clear();
+        studio.deleteParts (ids);
+    }
+}
+
+void ArrangeView::pasteParts (bool atOrigin)
+{
+    if (partsClip.isEmpty())
+        return;
+    // At the playhead, from the selected track down (as the manual's Paste); or where they were (Paste at Origin).
+    auto first = atOrigin ? partsClip.originTrack : studio.getSelectedTrack();
+    if (! studio.isTrackShown (first))
+        first = partsClip.originTrack;
+    studio.pasteRange (partsClip, atOrigin ? partsClip.origin : studio.getEngine().getPosition(), first, false);
+}
+
 void ArrangeView::select (int trackId, int index)
 {
+    alsoSelected.clear();
     selection = { trackId, index };
     if (trackId != 0)
         studio.selectTrack (trackId);
@@ -294,6 +390,13 @@ void ArrangeView::select (int trackId, int index)
 
 void ArrangeView::deleteSelected()
 {
+    if (const auto ids = getSelectedParts(); ids.size() > 1)
+    {
+        selection = {};
+        alsoSelected.clear();
+        studio.deleteParts (ids);
+        return;
+    }
     if (! selection.isValid())
         return;
     const auto doomed = selection;
@@ -303,6 +406,13 @@ void ArrangeView::deleteSelected()
 
 void ArrangeView::duplicateSelected()
 {
+    // Several: copied as one unit straight after them, keeping where they are to each other (the manual's Duplicate).
+    if (const auto ids = getSelectedParts(); ids.size() > 1)
+    {
+        const auto clip = studio.copyParts (ids);
+        studio.pasteRange (clip, clip.origin + clip.length, clip.originTrack, false);
+        return;
+    }
     if (! selection.isValid())
         return;
     if (const auto* track = studio.getProject().findTrack (selection.trackId))
@@ -364,8 +474,9 @@ void ArrangeView::paint (juce::Graphics& g)
         g.fillRect (juce::Rectangle<float> (x1, (float) Timeline::rulerHeight, x2 - x1, bounds.getHeight()));
     }
 
-    // The parts (the one being dragged drawn where it's going).
+    // The parts (the one being dragged drawn where it's going; several selected: all of them).
     const auto recording = studio.getRecordingPreview();
+    const auto multiDrag = drag == Drag::move && dragMoved && getSelectedParts().size() > 1;
     for (size_t t = 0; t < project.tracks.size(); ++t)
     {
         const auto& track = project.tracks[t];
@@ -373,6 +484,11 @@ void ArrangeView::paint (juce::Graphics& g)
             continue;
         // A disabled track's parts: greyed out (its colour changes, as the manual has it).
         const auto colour = track.disabled ? juce::Colour (0xff4a454c) : track.colour;
+        // Its row, once (not for every part: that worked the layout out again each time).
+        const auto top = trackTop (track.id) + 3.0f, height = (float) timeline.trackRowHeight() - 6.0f;
+        const auto clip = g.getClipBounds().toFloat();
+        if (top + height < clip.getY() || top > clip.getBottom())
+            continue;   // the row isn't in what's being redrawn
         for (int i = 0; i < (int) track.parts.size(); ++i)
         {
             const auto isClipDrag = drag == Drag::trimStart || drag == Drag::fadeIn || drag == Drag::fadeOut;
@@ -386,11 +502,41 @@ void ArrangeView::paint (juce::Graphics& g)
             }
             if (isDragged && ! dragCopies)
                 continue;
-            paintPart (g, getPartBounds (track.id, i), track.parts[(size_t) i], colour,
-                       selection.trackId == track.id && selection.index == i, false);
+            if (multiDrag && ! dragCopies && isSelected (track.id, i))
+                continue;   // (drawn where they're going, below)
+            const auto& part = track.parts[(size_t) i];
+            const juce::Rectangle<float> area (timeline.xForBeat (part.start), top, (float) (part.length * timeline.pixelsPerBeat), height);
+            if (area.getRight() < clip.getX() || area.getX() > clip.getRight())
+                continue;
+            paintPart (g, area, part, colour, isSelected (track.id, i), false);
         }
     }
-    if ((drag == Drag::move || drag == Drag::resize) && dragMoved && selection.isValid())
+    if (multiDrag)
+    {
+        const auto shown = studio.getShownTracks();
+        const auto delta = dragNewStart - dragOriginalStart;
+        const auto trackDelta = trackIndex (dragTargetTrack) - trackIndex (dragTrack);
+        for (int s = 0; s < (int) shown.size(); ++s)
+        {
+            const auto& track = *project.findTrack (shown[(size_t) s]);
+            for (int i = 0; i < (int) track.parts.size(); ++i)
+                if (isSelected (track.id, i))
+                {
+                    // To the track as many below (of the same kind), else its own (as moveParts does).
+                    auto to = track.id;
+                    if (juce::isPositiveAndBelow (s + trackDelta, (int) shown.size()))
+                        if (const auto* target = project.findTrack (shown[(size_t) (s + trackDelta)]);
+                            target != nullptr && ! target->isChannel() && target->isAudio() == track.isAudio())
+                            to = target->id;
+                    auto part = track.parts[(size_t) i];
+                    part.start = juce::jmax (0.0, part.start + delta);
+                    const juce::Rectangle<float> area (timeline.xForBeat (part.start), trackTop (to) + 3.0f,
+                                                       (float) (part.length * timeline.pixelsPerBeat), (float) timeline.trackRowHeight() - 6.0f);
+                    paintPart (g, area, part, track.colour, true, false);
+                }
+        }
+    }
+    else if ((drag == Drag::move || drag == Drag::resize) && dragMoved && selection.isValid())
         if (const auto* from = project.findTrack (dragTrack))
             if (juce::isPositiveAndBelow (selection.index, (int) from->parts.size()))
             {
@@ -518,8 +664,8 @@ void ArrangeView::paint (juce::Graphics& g)
 void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, const pr7s::Part& part, juce::Colour colour,
                              bool selected, bool recording) const
 {
-    if (area.getRight() < 0.0f || area.getX() > (float) getWidth())
-        return;
+    if (area.getRight() < 0.0f || area.getX() > (float) getWidth() || ! g.clipRegionIntersects (area.toNearestIntEdges().expanded (2)))
+        return;   // (off screen, or outside what's being redrawn: the playhead's strip)
     if (part.muted)
         colour = juce::Colour (0xff6a646c);   // muted: greyed out (pearl onyx), as the manual has it
     g.setColour (colour.withAlpha (0.32f));
@@ -542,7 +688,7 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
         {
             const auto secondsPerPixel = studio.getProject().secondsPerBeat() / timeline.pixelsPerBeat;
             const auto peaksPerSecond = data->sampleRate / pr7s::Studio::AudioData::peakStep;
-            const auto clip = wave.getIntersection (getLocalBounds().toFloat());
+            const auto clip = wave.getIntersection (getLocalBounds().toFloat()).getIntersection (g.getClipBounds().toFloat().expanded (1.0f));
             g.setColour (colour.brighter (0.7f).withAlpha (0.9f));
             for (auto x = std::floor (clip.getX()); x < clip.getRight(); x += 1.0f)
             {
@@ -601,10 +747,13 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
         const auto notesArea = area.withTrimmedTop (17.0f).reduced (2.0f, 3.0f);
         const auto rowHeight = notesArea.getHeight() / (float) span;
         g.setColour (colour.brighter (0.6f));
+        const auto clipX = g.getClipBounds().toFloat().expanded (2.0f, 0.0f);   // only the notes in what's being redrawn
         for (const auto& note : part.notes)
         {
             const auto nx = area.getX() + (float) (note.start * timeline.pixelsPerBeat);
             const auto nw = juce::jmax (1.5f, (float) (juce::jmin (note.length, part.length - note.start) * timeline.pixelsPerBeat));
+            if (nx > clipX.getRight() || nx + nw < clipX.getX())
+                continue;
             const auto ny = notesArea.getBottom() - (float) (note.pitch - lowest + 1) * rowHeight
                           - (float) (span - (highest - lowest + 1)) * rowHeight * 0.5f;
             g.fillRect (juce::Rectangle<float> (nx, ny, nw, juce::jmax (1.5f, rowHeight - 0.5f)).getIntersection (notesArea));
@@ -659,8 +808,13 @@ void ArrangeView::updateCursor (const juce::MouseEvent& event)
     }
     if (tool == Tool::split)
     {
+        // The cut line's old and new strips only.
+        const auto strip = [this] (float x) { return juce::Rectangle<float> (x - 3.0f, 0.0f, 7.0f, (float) getHeight()).toNearestIntEdges(); };
+        if (hover.x >= 0.0f)
+            repaint (strip (hover.x));
         hover = partAt (event.position) ? event.position : juce::Point<float> { -1.0f, -1.0f };
-        repaint();
+        if (hover.x >= 0.0f)
+            repaint (strip (hover.x));
     }
     if (tool != Tool::select)
     {
@@ -762,14 +916,63 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
     if (! hit)
     {
         drag = Drag::none;
-        selection = {};
+        if (! event.mods.isShiftDown())
+        {
+            selection = {};
+            alsoSelected.clear();
+        }
         if (const auto trackId = trackAtY (event.position.y))
             studio.selectTrack (trackId);
+        // SELECT: a drag from here draws a rectangle; the parts it touches are selected.
+        if (tool == Tool::select && ! event.mods.isPopupMenu())
+        {
+            drag = Drag::marquee;
+            toolBand = {};
+        }
         repaint();
         return;
     }
 
-    select (hit->first, hit->second);
+    // Shift-click: that part added to the selection, or taken out of it.
+    if (event.mods.isShiftDown() && ! event.mods.isPopupMenu())
+    {
+        drag = Drag::none;
+        const auto id = partIdAt ({ hit->first, hit->second });
+        if (selection.trackId == hit->first && selection.index == hit->second)
+        {
+            selection = {};
+            if (! alsoSelected.empty())
+            {
+                if (const auto at = studio.findPart (alsoSelected.back()))
+                    selection = { at->first, at->second };
+                alsoSelected.pop_back();
+            }
+        }
+        else if (const auto it = std::find (alsoSelected.begin(), alsoSelected.end(), id); it != alsoSelected.end())
+            alsoSelected.erase (it);
+        else
+        {
+            if (const auto primary = partIdAt (selection))
+                alsoSelected.push_back (primary);
+            selection = { hit->first, hit->second };
+            studio.selectTrack (hit->first);
+        }
+        repaint();
+        return;
+    }
+
+    // A part among several selected: they stay selected (it's the one shown in the key editor now).
+    if (isSelected (hit->first, hit->second) && getSelectedParts().size() > 1)
+    {
+        const auto id = partIdAt ({ hit->first, hit->second });
+        if (const auto primary = partIdAt (selection); primary != 0 && primary != id)
+            alsoSelected.push_back (primary);
+        alsoSelected.erase (std::remove (alsoSelected.begin(), alsoSelected.end(), id), alsoSelected.end());
+        selection = { hit->first, hit->second };
+        studio.selectTrack (hit->first);
+    }
+    else
+        select (hit->first, hit->second);
     if (event.mods.isPopupMenu())
     {
         drag = Drag::none;
@@ -806,6 +1009,14 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
     if (drag == Drag::rangeNew || drag == Drag::rangeStart || drag == Drag::rangeEnd || drag == Drag::rangeMove)
     {
         rangeDrag (event);
+        return;
+    }
+    if (drag == Drag::marquee)
+    {
+        if (event.getDistanceFromDragStart() > 3)
+            dragMoved = true;
+        toolBand = juce::Rectangle<float> (event.mouseDownPosition, event.position);
+        repaint();
         return;
     }
     if (drag == Drag::newPart || drag == Drag::muteBand || drag == Drag::zoomBand)
@@ -961,6 +1172,26 @@ void ArrangeView::mouseUp (const juce::MouseEvent& event)
         rangeUp (event);
         return;
     }
+    if (drag == Drag::marquee)
+    {
+        drag = Drag::none;
+        if (dragMoved)
+        {
+            // Every part the rectangle touches (Shift: added to those already selected).
+            auto ids = event.mods.isShiftDown() ? getSelectedParts() : std::vector<int> {};
+            for (const auto trackId : studio.getShownTracks())
+            {
+                const auto& parts = studio.getProject().findTrack (trackId)->parts;
+                for (int i = 0; i < (int) parts.size(); ++i)
+                    if (getPartBounds (trackId, i).intersects (toolBand) && std::find (ids.begin(), ids.end(), parts[(size_t) i].id) == ids.end())
+                        ids.push_back (parts[(size_t) i].id);
+            }
+            selectParts (ids);
+        }
+        toolBand = {};
+        repaint();
+        return;
+    }
     const auto finished = drag;
     drag = Drag::none;
     // SELECT, Alt-click (no drag) on a part: split it there (as the manual has it).
@@ -988,7 +1219,16 @@ void ArrangeView::mouseUp (const juce::MouseEvent& event)
         case Drag::cycleRight:
             break;
         case Drag::move:
-            if (dragCopies)
+            if (const auto ids = getSelectedParts(); ids.size() > 1)
+            {
+                // All of them, by as much as the one dragged (and as many tracks).
+                const auto primary = partIdAt (selection);
+                studio.moveParts (ids, dragNewStart - dragOriginalStart, trackIndex (dragTargetTrack) - trackIndex (dragTrack), dragCopies);
+                if (! dragCopies)
+                    if (const auto at = studio.findPart (primary))
+                        selection = { at->first, at->second };
+            }
+            else if (dragCopies)
             {
                 studio.copyPart (dragTrack, selection.index, dragTargetTrack, dragNewStart);
                 select (dragTargetTrack, (int) studio.getProject().findTrack (dragTargetTrack)->parts.size() - 1);
@@ -1325,9 +1565,16 @@ void ArrangeView::mouseWheelMove (const juce::MouseEvent& event, const juce::Mou
 void ArrangeView::showPartMenu (int trackId, int index)
 {
     juce::PopupMenu menu;
+    const auto ids = getSelectedParts();
+    const auto several = ids.size() > 1;
+    if (several)
+        menu.addSectionHeader (juce::String ((int) ids.size()) + " PARTS SELECTED");
     menu.addItem (3, "Edit notes (key editor)", ! isAudioTrack (trackId));
-    menu.addItem (1, "Duplicate (after it)");
-    menu.addItem (2, "Delete");
+    menu.addItem (1, several ? "Duplicate them (after them, Ctrl+D)" : "Duplicate (after it)");
+    menu.addItem (9, several ? "Cut them (Ctrl+X)" : "Cut (Ctrl+X)");
+    menu.addItem (10, several ? "Copy them (Ctrl+C)" : "Copy (Ctrl+C)");
+    menu.addItem (11, "Paste at the playhead (Ctrl+V)", hasPartsClip());
+    menu.addItem (2, several ? "Delete them" : "Delete");
     menu.addSeparator();
     const auto& part = studio.getProject().findTrack (trackId)->parts[(size_t) index];
     const auto at = studio.getEngine().getPosition();
@@ -1337,14 +1584,41 @@ void ArrangeView::showPartMenu (int trackId, int index)
     menu.addSeparator();
     menu.addItem (7, "Render in Place...");
     menu.addItem (8, "Render in Place (as last time)");
-    menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, index, muted = part.muted, start = part.start, end = part.end()] (int chosen)
+    menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, index, ids, muted = part.muted, start = part.start, end = part.end()] (int chosen)
     {
         if ((chosen == 7 || chosen == 8) && onRenderInPlace)
         {
-            onRenderInPlace ({ { trackId, start, end, false } }, chosen == 7);
+            // Each part selected (several: each its own stretch).
+            std::vector<pr7s::Studio::RenderSource> sources;
+            for (const auto id : ids)
+                if (const auto at = studio.findPart (id))
+                {
+                    const auto& p = studio.getProject().findTrack (at->first)->parts[(size_t) at->second];
+                    sources.push_back ({ at->first, p.start, p.end(), false });
+                }
+            if (sources.empty())
+                sources.push_back ({ trackId, start, end, false });
+            onRenderInPlace (sources, chosen == 7);
             return;
         }
         selection = { trackId, index };
+        if (chosen == 9 || chosen == 10)
+        {
+            copySelected (chosen == 9);
+            if (onPartsCopied)
+                onPartsCopied();
+            return;
+        }
+        if (chosen == 11)
+        {
+            pasteParts (false);
+            return;
+        }
+        if (chosen == 4 && ids.size() > 1)
+        {
+            studio.setPartsMuted (ids, ! muted);
+            return;
+        }
         if (chosen == 3 && onEditNotes)
             onEditNotes();
         else if (chosen == 1)

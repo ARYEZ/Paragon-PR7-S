@@ -18,6 +18,7 @@ add_executable(ParagonPR7STests
     ImportAudioTests.cpp
     DeviceTests.cpp
     UiTests.cpp
+    PerfTests.cpp
     Snapshot.cpp)
 
 # The studio's own code (PR7SCore), so the tests exercise exactly what ships.

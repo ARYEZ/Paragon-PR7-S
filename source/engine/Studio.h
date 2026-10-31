@@ -126,6 +126,13 @@ namespace pr7s
         void movePart (int trackId, int index, int toTrackId, double newStart);
         void copyPart (int trackId, int index, int toTrackId, double newStart);
         void deletePart (int trackId, int index);
+        // Several parts at once (0.9.2, the Object Selection tool's selection),
+        // by part id; each one undo step. Moved (or, `copy`, copied) by beats
+        // and by tracks among those shown, keeping where they are to each
+        // other; one whose target track is of another kind (or a channel)
+        // stays on its own track, as the manual has it.
+        void deleteParts (const std::vector<int>& partIds);
+        void moveParts (const std::vector<int>& partIds, double beatDelta, int trackDelta, bool copy);
         void resizePart (int trackId, int index, double newLength);
         // A part replaced as a whole (an audio clip trimmed or faded: start,
         // length, offset and fades together). One undo step.
@@ -180,6 +187,10 @@ namespace pr7s
             std::vector<std::vector<Part>> tracks;   // per track of the range, top to bottom
             bool isEmpty() const noexcept { return tracks.empty(); }
         };
+        // Parts copied as a clip (rows: the shown tracks from the first part's
+        // to the last's; origin: where the earliest starts), for pasteRange
+        // (Ctrl+V at the playhead on the selected track; Paste at Origin).
+        RangeClip copyParts (const std::vector<int>& partIds) const;
         void splitRange (const Range&);                        // Shift+X: parts split at its edges
         void cropRange (const Range&);                         // parts across its edges cut down to it
         void deleteRange (const Range&, bool closeGap);        // Delete; Delete Time (Shift+Backspace): what's after moves back

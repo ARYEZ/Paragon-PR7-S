@@ -899,6 +899,95 @@ namespace pr7s
         }
     }
 
+    void Studio::deleteParts (const std::vector<int>& partIds)
+    {
+        auto any = false;
+        for (auto& track : project.tracks)
+        {
+            const auto before = track.parts.size();
+            track.parts.erase (std::remove_if (track.parts.begin(), track.parts.end(), [&] (const Part& p)
+                                               { return std::find (partIds.begin(), partIds.end(), p.id) != partIds.end(); }),
+                               track.parts.end());
+            any = any || track.parts.size() != before;
+        }
+        if (any)
+            changed();
+    }
+
+    void Studio::moveParts (const std::vector<int>& partIds, double beatDelta, int trackDelta, bool copy)
+    {
+        const auto shown = getShownTracks();
+        const auto shownIndex = [&shown] (int id) { return (int) (std::find (shown.begin(), shown.end(), id) - shown.begin()); };
+        // Where each goes (worked out before anything moves).
+        struct Going { int from; int partId; int to; };
+        std::vector<Going> going;
+        for (const auto& track : project.tracks)
+            for (const auto& part : track.parts)
+                if (std::find (partIds.begin(), partIds.end(), part.id) != partIds.end())
+                {
+                    auto to = track.id;
+                    const auto at = shownIndex (track.id) + trackDelta;
+                    if (trackDelta != 0 && juce::isPositiveAndBelow (at, (int) shown.size()))
+                        if (const auto* target = project.findTrack (shown[(size_t) at]); target != nullptr && ! target->isChannel()
+                                                                                         && target->isAudio() == track.isAudio())
+                            to = target->id;
+                    going.push_back ({ track.id, part.id, to });
+                }
+        if (going.empty())
+            return;
+        for (const auto& g : going)
+        {
+            auto* from = project.findTrack (g.from);
+            const auto it = std::find_if (from->parts.begin(), from->parts.end(), [&g] (const Part& p) { return p.id == g.partId; });
+            if (it == from->parts.end())
+                continue;
+            auto part = *it;
+            part.start = juce::jmax (0.0, part.start + beatDelta);
+            if (copy)
+                part.id = 0;   // a new part (numbered in changed())
+            else
+                from->parts.erase (it);
+            project.findTrack (g.to)->parts.push_back (std::move (part));
+        }
+        changed();
+    }
+
+    Studio::RangeClip Studio::copyParts (const std::vector<int>& partIds) const
+    {
+        RangeClip clip;
+        const auto shown = getShownTracks();
+        auto first = (int) shown.size(), last = -1;
+        auto start = std::numeric_limits<double>::max(), end = 0.0;
+        for (int i = 0; i < (int) shown.size(); ++i)
+            for (const auto& part : project.findTrack (shown[(size_t) i])->parts)
+                if (std::find (partIds.begin(), partIds.end(), part.id) != partIds.end())
+                {
+                    first = juce::jmin (first, i);
+                    last = juce::jmax (last, i);
+                    start = juce::jmin (start, part.start);
+                    end = juce::jmax (end, part.end());
+                }
+        if (last < 0)
+            return clip;
+        clip.origin = start;
+        clip.length = end - start;
+        clip.originTrack = shown[(size_t) first];
+        for (int i = first; i <= last; ++i)
+        {
+            std::vector<Part> row;
+            for (const auto& part : project.findTrack (shown[(size_t) i])->parts)
+                if (std::find (partIds.begin(), partIds.end(), part.id) != partIds.end())
+                {
+                    auto copy = part;
+                    copy.start -= start;
+                    copy.id = 0;
+                    row.push_back (std::move (copy));
+                }
+            clip.tracks.push_back (std::move (row));
+        }
+        return clip;
+    }
+
     void Studio::resizePart (int trackId, int index, double newLength)
     {
         if (auto* track = project.findTrack (trackId); track != nullptr && juce::isPositiveAndBelow (index, (int) track->parts.size()))

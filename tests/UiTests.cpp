@@ -953,8 +953,16 @@ TEST_CASE ("Sends and FX channels on screen: the SENDS rack, a send's dot, level
         return std::count_if (buttons.begin(), buttons.end(), [&] (auto* b) { return b->getButtonText() == text && b->isVisible(); });
     };
     CHECK (visibleCount ("REC") == 1);
-    CHECK (visibleCount ("FX: Reverb") == 1);
-    CHECK (visibleCount ("GROUP CHANNEL") == 1);
+    // (0.9.2: the rows have no instrument key, as the owner asked: the Inspector says what a channel is.)
+    CHECK (visibleCount ("FX: Reverb") == 0);
+    CHECK (visibleCount ("GROUP CHANNEL") == 0);
+    studio.selectTrack (fx);
+    studio.dispatchPendingMessages();
+    std::vector<juce::TextButton*> inInspector;
+    findAll (view.getInspector(), inInspector);
+    CHECK (std::any_of (inInspector.begin(), inInspector.end(), [] (auto* b) { return b->getButtonText() == "FX: Reverb" && b->isVisible(); }));
+    studio.selectTrack (track);
+    studio.dispatchPendingMessages();
 
     // The mixer: OUT shows where the track goes; SENDS swaps the racks.
     auto& mixer = view.getMixer();
@@ -2094,4 +2102,140 @@ TEST_CASE ("VISIBILITY: every track with a box to show or hide it; hidden and di
     CHECK (view.getMixer().getNumStrips() == 4);
     CHECK_FALSE (inspector.getShowAll().isEnabled());
     juce::ignoreUnused (keys);
+}
+
+TEST_CASE ("SELECT: a rectangle, Shift-click and Ctrl+A select several parts; they move, copy, cut, paste, duplicate and delete together", "[ui][multiselect]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& arrange = view.getArrangeView();
+    const auto a = studio.getProject().tracks[0].id;
+    const auto b = studio.addTrack ({});
+    const auto c = studio.addTrack ({});
+    studio.addPart (a, { 0.0, 4.0, "A1", { { 0.0, 1.0, 60, 1.0f } } });
+    studio.addPart (a, { 8.0, 4.0, "A2", { { 0.0, 1.0, 62, 1.0f } } });
+    studio.addPart (b, { 0.0, 4.0, "B1", { { 0.0, 1.0, 64, 1.0f } } });
+    studio.addPart (c, { 16.0, 4.0, "C1", { { 0.0, 1.0, 67, 1.0f } } });
+    studio.dispatchPendingMessages();
+    const auto idOf = [&] (int track, int index) { return studio.getProject().findTrack (track)->parts[(size_t) index].id; };
+    const auto mouse = [&] (juce::Point<float> at, juce::ModifierKeys mods = {})
+    {
+        return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 &arrange, &arrange, juce::Time::getCurrentTime(), at, juce::Time::getCurrentTime(), 1, false);
+    };
+    const auto drag = [&] (juce::Point<float> from, juce::Point<float> to, juce::ModifierKeys mods = {})
+    {
+        arrange.mouseDown (mouse (from, mods));
+        auto moved = juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), to, mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                       &arrange, &arrange, juce::Time::getCurrentTime(), from, juce::Time::getCurrentTime(), 1, false);
+        arrange.mouseDrag (moved);
+        arrange.mouseUp (moved);
+    };
+
+    SECTION ("A rectangle over empty space and parts selects all it touches")
+    {
+        const auto a1 = arrange.getPartBounds (a, 0), b1 = arrange.getPartBounds (b, 0);
+        // From empty space right of A1 (beat 5) down and left over B1.
+        drag ({ arrange.getPartBounds (a, 0).getRight() + 20.0f, a1.getY() + 2.0f }, { 2.0f, b1.getBottom() - 2.0f });
+        const auto selected = arrange.getSelectedParts();
+        CHECK (selected.size() == 2);
+        CHECK (arrange.isPartSelected (idOf (a, 0)));
+        CHECK (arrange.isPartSelected (idOf (b, 0)));
+        CHECK_FALSE (arrange.isPartSelected (idOf (a, 1)));
+
+        // Shift-click adds one; again, takes it out.
+        const auto a2 = arrange.getPartBounds (a, 1).getCentre();
+        arrange.mouseDown (mouse (a2, juce::ModifierKeys::shiftModifier));
+        arrange.mouseUp (mouse (a2, juce::ModifierKeys::shiftModifier));
+        CHECK (arrange.getSelectedParts().size() == 3);
+        arrange.mouseDown (mouse (a2, juce::ModifierKeys::shiftModifier));
+        arrange.mouseUp (mouse (a2, juce::ModifierKeys::shiftModifier));
+        CHECK (arrange.getSelectedParts().size() == 2);
+
+        // Dragging one moves both: 4 beats later, the same tracks.
+        const auto beat = (float) view.getTimeline().pixelsPerBeat;
+        const auto from = arrange.getPartBounds (a, 0).getCentre();
+        drag (from, from.translated (4.0f * beat, 0.0f));
+        studio.dispatchPendingMessages();
+        CHECK (studio.getProject().findTrack (a)->parts.size() == 2);
+        double aStart = -1.0, bStart = -1.0;
+        for (const auto& p : studio.getProject().findTrack (a)->parts)
+            if (p.name == "A1") aStart = p.start;
+        bStart = studio.getProject().findTrack (b)->parts[0].start;
+        CHECK (aStart == 4.0);
+        CHECK (bStart == 4.0);
+        CHECK (arrange.getSelectedParts().size() == 2);   // still selected
+        studio.undo();   // one undo step
+        CHECK (studio.getProject().findTrack (b)->parts[0].start == 0.0);
+    }
+    SECTION ("Ctrl+A, then Delete: all gone in one undo step")
+    {
+        CHECK (view.keyPressed (juce::KeyPress ('a', juce::ModifierKeys::commandModifier, 0)));
+        CHECK (arrange.getSelectedParts().size() == 4);
+        CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::deleteKey)));
+        for (const auto id : { a, b, c })
+            CHECK (studio.getProject().findTrack (id)->parts.empty());
+        studio.undo();
+        CHECK (studio.getProject().findTrack (a)->parts.size() == 2);
+        CHECK (studio.getProject().findTrack (c)->parts.size() == 1);
+    }
+    SECTION ("Ctrl+C, Ctrl+V at the playhead on the selected track; Alt+V at the origin; Ctrl+X; Ctrl+D")
+    {
+        arrange.selectParts ({ idOf (a, 0), idOf (b, 0) });
+        CHECK (view.keyPressed (juce::KeyPress ('c', juce::ModifierKeys::commandModifier, 0)));
+        studio.selectTrack (b);
+        studio.setPosition (32.0);
+        CHECK (view.keyPressed (juce::KeyPress ('v', juce::ModifierKeys::commandModifier, 0)));
+        // A's part onto B, B's onto C (the selected track down), at bar 9.
+        CHECK (studio.getProject().findTrack (b)->parts.size() == 2);
+        CHECK (studio.getProject().findTrack (b)->parts.back().start == 32.0);
+        CHECK (studio.getProject().findTrack (b)->parts.back().notes[0].pitch == 60);
+        CHECK (studio.getProject().findTrack (c)->parts.back().start == 32.0);
+        CHECK (studio.getProject().findTrack (c)->parts.back().notes[0].pitch == 64);
+        // Paste at Origin: where they came from.
+        CHECK (view.keyPressed (juce::KeyPress ('v', juce::ModifierKeys::altModifier, 0)));
+        CHECK (studio.getProject().findTrack (a)->parts.size() == 3);
+
+        // Ctrl+X: they go; Ctrl+D on two: copied after them as one unit.
+        arrange.selectParts ({ idOf (c, 0) });
+        CHECK (view.keyPressed (juce::KeyPress ('x', juce::ModifierKeys::commandModifier, 0)));
+        CHECK (studio.getProject().findTrack (c)->parts.size() == 1);
+        arrange.selectParts ({ idOf (a, 0), idOf (a, 1) });
+        CHECK (view.keyPressed (juce::KeyPress ('d', juce::ModifierKeys::commandModifier, 0)));
+        auto latest = 0.0;
+        for (const auto& p : studio.getProject().findTrack (a)->parts)
+            latest = juce::jmax (latest, p.start);
+        CHECK (latest == 20.0);   // the pair spans 0 to 12: the copy starts at 12 (A2's copy at 20)
+    }
+}
+
+TEST_CASE ("The Inspector: five insert slots in view (the rest scroll), its width dragged; track rows: the name large, no instrument key", "[ui][inspector]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& inspector = view.getInspector();
+    studio.selectTrack (studio.getProject().tracks[0].id);
+    studio.dispatchPendingMessages();
+    auto& inserts = inspector.getInsertsView();
+    CHECK (inserts.isVisible());
+    const auto slot = inspector.getInsertSlot (0).getHeight();
+    CHECK (inserts.getHeight() < 6 * slot + 12);
+    CHECK (inserts.getHeight() >= 5 * slot);
+    CHECK (inspector.getInsertSlot (15).getBottom() > inserts.getHeight());   // the 16th: scrolled to
+    CHECK (inserts.canScrollVertically());
+
+    const auto arrangeX = view.getArrangeView().getX();
+    view.setInspectorWidth (320);
+    CHECK (inspector.getWidth() == 320);
+    CHECK (view.getArrangeView().getX() == arrangeX + 320 - Inspector::width);
+    view.setInspectorWidth (20);
+    CHECK (inspector.getWidth() == MainView::minimumInspectorWidth);
+
+    std::vector<juce::TextButton*> buttons;
+    findAll (view.getTrackList(), buttons);
+    CHECK (std::none_of (buttons.begin(), buttons.end(), [] (auto* b) { return b->getButtonText() == "PARAGON SYNTH" && b->isVisible(); }));
 }

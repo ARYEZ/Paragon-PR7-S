@@ -22,6 +22,7 @@
 // PARAGON_SNAPSHOT_VIEW=5760x1000: the window that size, 1:1 (the wide layout, spanning three screens).
 // PARAGON_SNAPSHOT_ROWS=0.5 (to 3) the arrangement's rows shorter or taller; PARAGON_SNAPSHOT_SUSPENDED=1 its
 // Auto-Scroll suspended.
+// PARAGON_SNAPSHOT_MULTI=1: parts selected on two tracks.
 // PARAGON_SNAPSHOT_VISIBILITY=1: the VISIBILITY tab, the bass hidden, the keys disabled.
 // PARAGON_SNAPSHOT_INSPECTOR=fader folds the Inspector's inserts and sends (=none hides it).
 // PARAGON_SNAPSHOT_AUTOMATION=1 opens automation lanes (the lead's volume, the bass's pan, the master's fade).
@@ -116,6 +117,16 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     }
     else if (inspector == "none")
         view.toggleInspector();
+    // PARAGON_SNAPSHOT_MULTI=1: the keys' and the bass's parts in bars 5 to 8 selected together.
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_MULTI", {}).isNotEmpty())
+    {
+        std::vector<int> ids;
+        for (const auto id : { keys, bass })
+            for (const auto& part : studio.getProject().findTrack (id)->parts)
+                if (part.start >= 16.0 && part.start < 32.0)
+                    ids.push_back (part.id);
+        view.getArrangeView().selectParts (ids);
+    }
     // PARAGON_SNAPSHOT_VISIBILITY=1: the left zone's VISIBILITY, the bass hidden and the keys disabled.
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_VISIBILITY", {}).isNotEmpty())
     {
@@ -142,6 +153,15 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     // or the mixer, with some effects in (stand-ins named after the family's
     // plugins: the tests can't load real VST3s).
     view.getArrangeView().select (lead, 0);
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_MULTI", {}).isNotEmpty())
+    {
+        std::vector<int> ids;
+        for (const auto id : { keys, bass })
+            for (const auto& part : studio.getProject().findTrack (id)->parts)
+                if (part.start >= 16.0 && part.start < 32.0)
+                    ids.push_back (part.id);
+        view.getArrangeView().selectParts (ids);
+    }
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_ZONE", {}) == "mixer")
     {
         const auto add = [&studio] (int busId, const juce::String& name, bool bypass = false)

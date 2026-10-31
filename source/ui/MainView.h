@@ -127,6 +127,11 @@ public:
     // up or down. Each of the two remembers its height (in the settings file).
     class ZoneDivider;
     ZoneDivider& getZoneDivider() noexcept { return *zoneDivider; }
+    // The Inspector's width (0.9.2): drag its right edge; kept for next time.
+    class InspectorEdge;
+    void setInspectorWidth (int);
+    int getInspectorWidth() const noexcept { return inspectorWidth; }
+    static constexpr int minimumInspectorWidth = 180, maximumInspectorWidth = 560;
     void setDockedHeight (int);   // the docked one's (kept between its least and what leaves the arrangement room)
     static constexpr int dividerHeight = 7, minimumArrangeHeight = 170;
 
@@ -191,9 +196,13 @@ private:
     bool inspectorShown = true;
     bool keysToEditor = false;
     bool rangeCopiedLast = false;
+    enum class Copied { none, range, notes, parts };
+    Copied copiedLast = Copied::none;   // what Ctrl+V pastes in the arrangement
     bool wasWide = false;            // the last layout's: turning wide opens the mixer, short, racks hidden   // Ctrl+V: a range's contents (in the arrangement), else notes (the key editor)
     juce::ScrollBar arrangeAcross { false }, arrangeDown { true };
     std::unique_ptr<ZoneDivider> zoneDivider;
+    std::unique_ptr<InspectorEdge> inspectorEdge;
+    int inspectorWidth = Inspector::width;
 
     juce::TextButton newButton { "NEW" }, openButton { "OPEN" }, saveButton { "SAVE" }, saveAsButton { "SAVE AS" }, importButton { "IMPORT" }, exportButton { "EXPORT" },
                      undoButton { "UNDO" }, redoButton { "REDO" }, editorButton { "KEY EDITOR" }, mixerButton { "MIXER" }, inspectorButton { "INSPECTOR" },
@@ -212,6 +221,21 @@ private:
     void writeExport (const juce::File&, const pr7s::Studio::ExportOptions&);
     std::unique_ptr<juce::ThreadWithProgressWindow> exportProgress;
     juce::String lastTitle;
+};
+
+// The Inspector's right edge: drag it to make the Inspector wider or narrower.
+class MainView::InspectorEdge final : public juce::Component,
+                                     public juce::SettableTooltipClient
+{
+public:
+    explicit InspectorEdge (MainView&);
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+
+private:
+    MainView& owner;
+    int widthAtDown = 0;
 };
 
 // The line above the docked lower zone (a grip in the middle): drag it.

@@ -2,6 +2,30 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.9.2
+
+The lag fixed, several parts selected at once, and your Inspector and track list tweaks.
+
+- **Fixed: everything lagged by seconds** (editing notes, moving the playhead, clicking anything).
+  - **Why:** the arrangement redrew itself whole 30 times a second, all the time, even with nothing moving. So did the key editor. On a window across three screens, with a song full of parts, that kept the main thread (the part of the program that answers your mouse and keys) busy almost all the time, so every click waited in a queue.
+  - **Now:** only the thin strip where the playhead was and where it is goes, when it moves; nothing when it doesn't. Redrawing also skips the parts and notes outside that strip.
+  - **Measured here** on a 12-track song (40 parts a track) at three screens' width: 18.5 ms per frame before, 0.18 ms after, 30 times a second.
+  - **Also:** the transport's position and CPU screens redraw only when what they show changes. The Inspector no longer asks Windows for the MIDI devices on every change (it was doing so on every playhead move); it asks when you open MIDI IN.
+  - Not measured here: your computer (Windows, your song). Tell me if anything still lags, and what you were doing.
+- **Select several parts** (as the manual's Object Selection tool):
+  - Drag over empty space to draw a rectangle: every part it touches is selected. With Shift, they're added to the selection.
+  - **Shift-click** adds a part or takes it away. **Ctrl+A** selects all.
+  - **Drag one and they all move together**, keeping their places relative to each other, across tracks too. Alt-drag copies them; a part can only go to a track of the same kind, as the manual has it.
+  - **Delete** deletes them all. **Ctrl+D** duplicates them as one block straight after.
+  - **Ctrl+X / Ctrl+C** cut or copy them. **Ctrl+V** pastes at the playhead, from the selected track down. **Alt+V** pastes where they came from (the manual's Paste at Origin).
+  - The right-click menu (Duplicate, Cut, Copy, Paste, Delete, Mute, Render in Place) works on all of them too.
+  - Each of these is one undo step.
+- **The Inspector:**
+  - Drag its right edge to make it wider or narrower; PR7-S remembers the width.
+  - **INSERTS shows 5 slots**; scroll for the other 11.
+- **The track list:** the track's name is 1.7 times bigger, and the instrument's name is gone (it's in the Inspector). Double-click the name to rename it, as before. Right-click a track for its menu (instrument, Output, disable, hide...).
+- **Not yet:** Quick Controls (next).
+
 ## 0.9.1
 
 Disable and hide tracks, the Visibility tab, and Render in Place that disables and hides the original (as you asked, from the Cubase 15 manual).

@@ -76,7 +76,11 @@ void TransportBar::timerCallback()
 {
     // The keys follow the engine (playing can stop by itself, e.g. on a new project).
     refreshKeys();
-    repaint (positionScreen.expanded (4.0f).getSmallestIntegerContainer());
+    if (const auto position = studio.getEngine().getPosition(); position != shownPosition)
+    {
+        shownPosition = position;
+        repaint (positionScreen.expanded (4.0f).getSmallestIntegerContainer());
+    }
     followPerformance();
 }
 
@@ -87,7 +91,12 @@ void TransportBar::followPerformance()
     shownAverage = now.average;
     shownPeak = juce::jmax (now.peak, shownPeak * 0.92f);
     overloadLit = now.overloads > 0;
-    repaint (cpuScreen.expanded (4.0f).getSmallestIntegerContainer());
+    const auto shown = juce::roundToInt (shownAverage * 100.0f) * 1000 + juce::roundToInt (shownPeak * 100.0f) * 2 + (overloadLit ? 1 : 0);
+    if (shown != shownCpu)
+    {
+        shownCpu = shown;
+        repaint (cpuScreen.expanded (4.0f).getSmallestIntegerContainer());
+    }
 }
 
 juce::String TransportBar::getTooltip()

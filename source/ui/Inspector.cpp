@@ -281,11 +281,17 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     output.onClick = [this] { fader.showOutputMenu (trackId); };
 
     // ROUTING
-    for (auto* box : { &midiInput, &channel, &audioInput })
+    for (auto* box : std::initializer_list<juce::ComboBox*> { &midiInput, &channel, &audioInput })
     {
         box->setWantsKeyboardFocus (false);
         content.addAndMakeVisible (*box);
     }
+    midiDevices = juce::MidiInput::getAvailableDevices();
+    midiInput.beforePopup = [this]
+    {
+        midiDevices = juce::MidiInput::getAvailableDevices();
+        fillMidiInputs();
+    };
     midiInput.setTooltip ("The MIDI input this track listens to when it's armed or selected: all of them, or one keyboard");
     midiInput.onChange = [this]
     {
@@ -314,8 +320,13 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
         slot.setColour (juce::TextButton::buttonColourId, slotColour);
         slot.setWantsKeyboardFocus (false);
         slot.onClick = [this, i] { fader.showInsertMenu (trackId, i); };
-        content.addAndMakeVisible (slot);
+        insertsHolder.addAndMakeVisible (slot);
     }
+    insertsView.setViewedComponent (&insertsHolder, false);
+    insertsView.setScrollBarsShown (true, false);
+    insertsView.setScrollBarThickness (7);
+    insertsView.setSingleStepSizes (slotHeight + slotGap, slotHeight + slotGap);
+    content.addAndMakeVisible (insertsView);
     noSends.setText ("NO SENDS (AN FX CHANNEL)", juce::dontSendNotification);
     noSends.setFont (font (10.0f));
     noSends.setColour (juce::Label::textColourId, ParagonColours::textDim);
@@ -334,12 +345,12 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     fader.onFindPlugins = [this] { if (onFindPlugins) onFindPlugins(); };
     content.addAndMakeVisible (fader);
 
-    content.over = [this] (juce::Graphics& g)
+    insertsHolder.over = [this] (juce::Graphics& g)
     {
         if (insertLineY < 0)
             return;
         g.setColour (ParagonColours::accent);
-        g.fillRect ((float) margin, (float) insertLineY, (float) (content.getWidth() - 2 * margin), 1.5f);
+        g.fillRect (0.0f, (float) insertLineY, (float) insertsHolder.getWidth(), 1.5f);
     };
     studio.addChangeListener (this);
     showTrack (studio.getSelectedTrack());
@@ -478,7 +489,7 @@ void Inspector::fillMidiInputs()
     auto id = 2;
     auto chosen = 1;
     auto found = false;
-    for (const auto& device : juce::MidiInput::getAvailableDevices())
+    for (const auto& device : midiDevices)
     {
         midiInput.addItem (device.name, id);
         midiInput.getProperties().set ("device" + juce::String (id), device.name);
@@ -681,17 +692,25 @@ void Inspector::layout()
                 labelled (outputLabel, output);
                 break;
             case Section::inserts:
-                for (int s = 0; s < shownSlots; ++s)
+            {
+                // All 16 in a holder; five in view, the rest scrolled to.
+                const auto step = slotHeight + slotGap;
+                const auto viewHeight = insertsInView * step;
+                place (insertsView, juce::Rectangle<int> (margin, y, w - 2 * margin, viewHeight));
+                const auto holderWidth = insertsView.getWidth() - insertsView.getScrollBarThickness() - 2;
+                auto top = 0;
+                for (int s = 0; s < (int) slots.size(); ++s)
                 {
-                    if (s == preFader && s > 0 && ! folded[(size_t) Section::inserts])
-                        insertLineY = y - slotGap / 2 - 1;
-                    else if (s == preFader)
-                        insertLineY = y - 2;
-                    place (slots[(size_t) s], juce::Rectangle<int> (margin, y, w - 2 * margin, slotHeight));
-                    y += slotHeight + slotGap;
+                    if (s == preFader)
+                        insertLineY = s == 0 ? 0 : top - slotGap / 2 - 1;
+                    slots[(size_t) s].setBounds (0, top + (s == 0 && preFader == 0 ? 2 : 0), holderWidth, slotHeight);
+                    top += step;
                 }
-                y += gap;
+                insertsHolder.setSize (holderWidth, top);
+                insertsHolder.repaint();
+                y += viewHeight + gap;
                 break;
+            }
             case Section::sends:
                 for (auto& send : sendSlots)
                 {

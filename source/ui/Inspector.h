@@ -61,6 +61,8 @@ public:
     juce::ComboBox& getAudioInput() noexcept { return audioInput; }
     juce::TextButton& getOutput() noexcept { return output; }
     juce::TextButton& getInsertSlot (int slot) { return slots[(size_t) slot]; }
+    juce::Viewport& getInsertsView() noexcept { return insertsView; }
+    static constexpr int insertsInView = 5;
     juce::TextButton& getKey (const juce::String& name);   // "M", "S", "R", "W", "REC", "MON"
     juce::Slider& getVolume() noexcept { return volume; }
     juce::Slider& getPan() noexcept { return pan; }
@@ -106,9 +108,21 @@ private:
     juce::Label volumeLabel, panLabel, volumeReadout, panReadout;
     juce::TextButton instrument, edit { "EDIT" };
     juce::Label midiInputLabel, channelLabel, audioInputLabel, outputLabel, noSends;
-    juce::ComboBox midiInput, channel, audioInput;
+    // MIDI IN: the devices asked of the system only when its list opens (0.9.2:
+    // asking on every change, every playhead move, was slow on Windows).
+    struct DeviceBox final : juce::ComboBox
+    {
+        std::function<void()> beforePopup;
+        void showPopup() override { if (beforePopup) beforePopup(); juce::ComboBox::showPopup(); }
+    };
+    DeviceBox midiInput;
+    juce::ComboBox channel, audioInput;
+    juce::Array<juce::MidiDeviceInfo> midiDevices;   // as last asked
     juce::TextButton output;
     std::array<juce::TextButton, pr7s::Project::maxInserts> slots;
+    // INSERTS: five slots in view, the rest scrolled to (0.9.2, the owner asked).
+    juce::Viewport insertsView;
+    Content insertsHolder;
     int shownSlots = 8, preFader = pr7s::Project::maxInserts, insertLineY = -1;
     std::array<std::unique_ptr<MixerView::SendSlot>, pr7s::Project::maxSends> sendSlots;
     MixerView fader { studio, true };   // (also the insert, send and output menus' owner)

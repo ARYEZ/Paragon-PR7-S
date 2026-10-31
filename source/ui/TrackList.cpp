@@ -57,7 +57,8 @@ public:
         arrow.setTooltip ("Show/Hide Automation: this track's automation lanes");
         arrow.onClick = [this] { owner.studio.setAutomationOpen (trackId, ! owner.studio.isAutomationOpen (trackId)); };
         addAndMakeVisible (arrow);
-        name.setFont (ParagonLookAndFeel::titleFont (13.0f));
+        name.setFont (ParagonLookAndFeel::titleFont (22.0f));   // (0.9.2: 1.7 times the old 13, the owner asked for 1.5 to 2)
+        name.setMinimumHorizontalScale (0.6f);
         name.setColour (juce::Label::textColourId, ParagonColours::text);
         name.setEditable (false, true, false);   // double-click to rename
         name.setTooltip ("The track's name: double-click to rename");
@@ -190,13 +191,19 @@ public:
 
     void resized() override
     {
-        // Shorter than its two lines (the rows zoomed out): only the first, in the middle.
+        // The name large on the left (0.9.2: the owner's choice; the
+        // instrument is in the Inspector and the right-click menu), the keys
+        // on the right: M S REC (MON) above R W, the level and the volume.
+        // Shorter than two lines (the rows zoomed out): only the first.
         const auto compact = getHeight() < 66;
-        for (auto* control : std::initializer_list<juce::Component*> { &instrument, &read, &write, &volume })
+        instrument.setVisible (false);
+        for (auto* control : std::initializer_list<juce::Component*> { &read, &write, &volume })
             control->setVisible (! compact);
         levelArea = {};
         auto area = getLocalBounds().withTrimmedLeft (12).reduced (6, compact ? juce::jmax (2, (getHeight() - 24) / 2) : 7);
-        auto top = area.removeFromTop (juce::jmin (24, area.getHeight()));
+        auto keys = area.removeFromRight (152);
+        area.removeFromRight (6);
+        auto top = keys.removeFromTop (juce::jmin (24, keys.getHeight()));
         if (arm.isVisible())
         {
             arm.setBounds (top.removeFromRight (36));
@@ -207,15 +214,12 @@ public:
         mute.setBounds (top.removeFromRight (30));
         top.removeFromRight (3);
         monitor.setBounds (top.removeFromRight (40));   // audio tracks only (hidden otherwise)
-        if (! monitor.isVisible())
-            top.setRight (mute.getX() - 3);
-        top.removeFromRight (6);
-        name.setBounds (top);
+        name.setBounds (area);
         arrow.setBounds (0, getHeight() - 18, 16, 16);
         if (compact)
             return;
-        area.removeFromTop (6);
-        auto bottom = area.removeFromTop (24);
+        keys.removeFromTop (6);
+        auto bottom = keys.removeFromTop (24);
         volume.setBounds (bottom.removeFromRight (28));
         bottom.removeFromRight (4);
         levelArea = bottom.removeFromRight (44).toFloat().withSizeKeepingCentre (44.0f, 8.0f);
@@ -223,8 +227,6 @@ public:
         write.setBounds (bottom.removeFromRight (26));
         bottom.removeFromRight (2);
         read.setBounds (bottom.removeFromRight (26));
-        bottom.removeFromRight (6);
-        instrument.setBounds (bottom);
         // (Show/Hide Automation: the arrow at the lower left corner, as the manual has it.)
     }
 

@@ -74,6 +74,10 @@ MainView::MainView (pr7s::Studio& studioToUse)
     inspectorButton.setToggleState (inspectorShown, juce::dontSendNotification);
     addAndMakeVisible (inspector);
     inspector.setVisible (inspectorShown);
+    if (auto* settings = studio.getSettings())
+        inspectorWidth = juce::jlimit (minimumInspectorWidth, maximumInspectorWidth, settings->getIntValue ("inspectorWidth", Inspector::width));
+    inspectorEdge = std::make_unique<InspectorEdge> (*this);
+    addAndMakeVisible (*inspectorEdge);
     inspector.onTrackMenu = [this] (int trackId) { trackList.showInstrumentMenu (trackId); };
     inspector.onOpenInstrument = [this] (int trackId) { openInstrumentWindow (trackId); };
     inspector.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
@@ -156,6 +160,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     keyEditor.setInWindow (editorZone.inWindow);
     mixer.setInWindow (mixerZone.inWindow);
     arrange.onEditNotes = [this] { openKeyEditor(); };
+    arrange.onPartsCopied = [this] { copiedLast = Copied::parts; rangeCopiedLast = false; };
     arrange.onRenderInPlace = [this] (std::vector<pr7s::Studio::RenderSource> sources, bool ask) { renderInPlace (std::move (sources), ask); };
     trackList.onRenderInPlace = [this] (std::vector<pr7s::Studio::RenderSource> sources, bool ask) { renderInPlace (std::move (sources), ask); };
     // Told of clicks in the work areas, to know where the keys go.
@@ -384,10 +389,11 @@ void MainView::resized()
     auto middle = area.reduced (7, 3);
     // The Inspector: the whole height on the left, beside the lower zone too (as the manual's left zone).
     inspector.setVisible (inspectorShown);
+    inspectorEdge->setVisible (inspectorShown);
     if (inspectorShown)
     {
-        inspector.setBounds (middle.removeFromLeft (Inspector::width));
-        middle.removeFromLeft (3);
+        inspector.setBounds (middle.removeFromLeft (inspectorWidth));
+        inspectorEdge->setBounds (middle.removeFromLeft (5));
     }
     zoneDivider->setVisible (false);
     if (auto* zone = dockedZone())
@@ -447,6 +453,39 @@ void MainView::setDockedHeight (int height)
 }
 
 //==============================================================================
+MainView::InspectorEdge::InspectorEdge (MainView& ownerToUse) : owner (ownerToUse)
+{
+    setMouseCursor (juce::MouseCursor::LeftRightResizeCursor);
+    setRepaintsOnMouseActivity (true);
+    setTooltip ("Drag to make the Inspector wider or narrower");
+}
+
+void MainView::InspectorEdge::paint (juce::Graphics& g)
+{
+    const auto bounds = getLocalBounds().toFloat();
+    const auto lit = isMouseOverOrDragging();
+    g.setColour (lit ? ParagonColours::accent : ParagonColours::panelEdge);
+    g.fillRect (bounds.withSizeKeepingCentre (lit ? 2.0f : 1.0f, bounds.getHeight()));
+}
+
+void MainView::InspectorEdge::mouseDown (const juce::MouseEvent&)
+{
+    widthAtDown = owner.getInspectorWidth();
+}
+
+void MainView::InspectorEdge::mouseDrag (const juce::MouseEvent& event)
+{
+    owner.setInspectorWidth (widthAtDown + event.getDistanceFromDragStartX());
+}
+
+void MainView::setInspectorWidth (int newWidth)
+{
+    inspectorWidth = juce::jlimit (minimumInspectorWidth, maximumInspectorWidth, newWidth);
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("inspectorWidth", inspectorWidth);
+    resized();
+}
+
 MainView::ZoneDivider::ZoneDivider (MainView& ownerToUse) : owner (ownerToUse)
 {
     setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
@@ -540,20 +579,50 @@ bool MainView::keyPressed (const juce::KeyPress& key)
         if (command)
         {
             if (*command == C::cut || *command == C::cutTime || *command == C::copy)
+            {
                 rangeCopiedLast = true;
+                copiedLast = Copied::range;
+            }
             arrange.rangeCommand (*command);
             return true;
         }
     }
-    // Copy, cut, paste and select all are the editor's wherever the last click
-    // was (the arrangement has none of its own yet), so notes copied in one
-    // part paste into another just selected in the arrangement.
+    // Parts (0.9.2): Ctrl+C / X with parts selected (unless the last click was
+    // in the key editor) copies or cuts them; Ctrl+V pastes what was copied
+    // last (parts at the playhead on the selected track), Alt+V at its origin.
+    if (! (isKeyEditorOpen() && keysToEditor))
+    {
+        const auto cmd = mods.isCommandDown();
+        if (cmd && ! mods.isShiftDown() && (letter == 'C' || letter == 'X') && ! arrange.getSelectedParts().empty())
+        {
+            arrange.copySelected (letter == 'X');
+            copiedLast = Copied::parts;
+            rangeCopiedLast = false;
+            return true;
+        }
+        if (cmd && ! mods.isShiftDown() && letter == 'V' && copiedLast == Copied::parts && arrange.hasPartsClip())
+        {
+            arrange.pasteParts (false);
+            return true;
+        }
+        if (! cmd && mods.isAltDown() && letter == 'V' && arrange.hasPartsClip())
+        {
+            arrange.pasteParts (true);   // Paste at Origin
+            return true;
+        }
+    }
+    // Otherwise copy, cut, paste and select all are the editor's wherever the
+    // last click was, so notes copied in one part paste into another just
+    // selected in the arrangement.
     const auto editorsAnyway = (mods.isCommandDown() && (letter == 'C' || letter == 'X' || letter == 'V'))
                             || (! mods.isCommandDown() && mods.isShiftDown() && letter == 'A');
     if (isKeyEditorOpen() && editorsAnyway && keyEditor.keyPressed (key))
     {
         if (letter == 'C' || letter == 'X')
+        {
             rangeCopiedLast = false;   // notes copied: Ctrl+V pastes them
+            copiedLast = Copied::notes;
+        }
         return true;
     }
     // Ctrl+D duplicates the notes after a click in the editor, the part otherwise.
@@ -584,6 +653,7 @@ bool MainView::keyPressed (const juce::KeyPress& key)
             case 'O': openProject(); return true;
             case 'N': newProject(); return true;
             case 'D': arrange.duplicateSelected(); return true;
+            case 'A': arrange.selectAllParts(); return true;   // (in the key editor after a click there: its notes, above)
             case 'E': isKeyEditorOpen() ? closeKeyEditor() : openKeyEditor(); return true;
             default: return false;
         }

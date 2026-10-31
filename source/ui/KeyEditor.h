@@ -185,6 +185,7 @@ private:
     float rowHeight = 12.0f;   // a note row (the vertical zoom)
     AutoScroll autoScroll;
     double lastPosition = 0.0;   // the playhead as last seen (a jump while stopped is followed)
+    float playheadX = -1.0e6f;   // where it was last drawn (0.9.2: only its strip is redrawn as it moves)
     juce::ScrollBar across { false }, down { true };
 
     // The gesture under way.
