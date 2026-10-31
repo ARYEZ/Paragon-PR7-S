@@ -988,17 +988,13 @@ void MainView::importMidiFile()
 {
     const auto chooseFile = [this] (bool newSong)
     {
-        chooser = std::make_unique<juce::FileChooser> ("Import a MIDI file", studio.getFile().getParentDirectory(), "*.mid;*.midi");
-        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+        // Several at once (0.9.5: one at a time before): each file's tracks become new tracks.
+        chooser = std::make_unique<juce::FileChooser> ("Import MIDI files", studio.getFile().getParentDirectory(), "*.mid;*.midi");
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
+                                  | juce::FileBrowserComponent::canSelectMultipleItems,
                               [this, newSong] (const juce::FileChooser& fc)
                               {
-                                  const auto file = fc.getResult();
-                                  if (file == juce::File())
-                                      return;
-                                  juce::String error;
-                                  if (studio.importMidi (file, newSong, 0.0, error) == 0)
-                                      juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't import the MIDI file",
-                                                                              file.getFileName() + ": " + error);
+                                  importMidiFiles (fc.getResults(), newSong, 0.0);
                               });
     };
     // As the manual has it: into a new song, or this one? (Only asked if this one has anything in it.)
@@ -1043,12 +1039,50 @@ void MainView::importAudioFiles()
                           });
 }
 
+void MainView::importMidiFiles (const juce::Array<juce::File>& files, bool newSong, double atBeat)
+{
+    // The first into a new song if asked (its tempo and signature); the others into the song, every track of each a new track.
+    juce::StringArray problems;
+    auto first = true;
+    for (const auto& file : files)
+    {
+        juce::String error;
+        if (studio.importMidi (file, newSong && first, atBeat, error) == 0)
+            problems.add (file.getFileName() + ": " + error);
+        else
+            first = false;
+    }
+    if (! problems.isEmpty())
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                                                problems.size() == 1 ? "Couldn't import the MIDI file" : "Couldn't import every MIDI file",
+                                                problems.joinIntoString ("\n"));
+}
+
 void MainView::importAudio (const juce::Array<juce::File>& files, int trackId, double atBeat)
 {
-    juce::String error;
-    studio.importAudio (files, trackId, atBeat, error);
-    if (error.isNotEmpty())
-        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't import every file", error);
+    const auto run = [this, files, trackId, atBeat] (bool oneTrack)
+    {
+        juce::String error;
+        studio.importAudio (files, trackId, atBeat, error, oneTrack);
+        if (error.isNotEmpty())
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't import every file", error);
+    };
+    if (files.size() < 2)
+    {
+        run (true);
+        return;
+    }
+    // Several (as the manual's import options for several files ask): on one track, one after another, or a track each.
+    juce::AlertWindow::showYesNoCancelBox (juce::MessageBoxIconType::QuestionIcon, "Import " + juce::String (files.size()) + " audio files",
+                                           "Each on a track of its own (all starting at the same place), or all on one track, one after another?",
+                                           "A track each", "One track", "Cancel", nullptr,
+                                           juce::ModalCallbackFunction::create ([run] (int result)
+                                           {
+                                               if (result == 1)
+                                                   run (false);
+                                               else if (result == 2)
+                                                   run (true);
+                                           }));
 }
 
 void MainView::filesDropped (const juce::StringArray& files, int x, int y)
@@ -1080,15 +1114,11 @@ void MainView::filesDropped (const juce::StringArray& files, int x, int y)
         const auto bar = studio.getProject().beatsPerBar();
         atBeat = juce::jmax (0.0, std::floor (timeline.beatForX ((float) inArrange.x) / bar) * bar);
     }
+    juce::Array<juce::File> midi;
     for (const auto& path : files)
-    {
-        if (! (path.endsWithIgnoreCase (".mid") || path.endsWithIgnoreCase (".midi")))
-            continue;
-        juce::String error;
-        if (studio.importMidi (juce::File (path), false, atBeat, error) == 0)
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't import the MIDI file",
-                                                    juce::File (path).getFileName() + ": " + error);
-    }
+        if (path.endsWithIgnoreCase (".mid") || path.endsWithIgnoreCase (".midi"))
+            midi.add (juce::File (path));
+    importMidiFiles (midi, false, atBeat);
 }
 
 //==============================================================================

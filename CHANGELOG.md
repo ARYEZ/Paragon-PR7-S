@@ -2,6 +2,21 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.9.5
+
+Importing several files (you could only import one MIDI file at a time).
+
+- **Why:** IMPORT > MIDI file's file chooser only let you pick **one** file. And several audio files always went onto one track, one after another, never onto separate tracks.
+- **MIDI files:** IMPORT > MIDI file now lets you pick as many as you like (Ctrl-click or Shift-click in the file chooser). Each track in each file becomes a new track, as before.
+  - Into a new song or this one: asked once, as before. For a new song, the first file sets its tempo and signature, and the rest go into it.
+  - Dropping several .mid files on the arrangement imports them all, at the bar they're dropped on.
+- **Audio files:** with several picked (or dropped), PR7-S asks, as the manual's import options do (Import Files on One Track):
+  - **A track each:** every file on a track of its own, named after the file, all starting at the playhead (or the bar dropped on).
+  - **One track:** one after another, as before.
+  - One file goes on the selected audio track at the playhead (else a new track), as the manual has it.
+- The manual's File > Import > MIDI File takes one file per import. Picking several at once is our addition, because you asked for it.
+- Not checked here: Windows' own file chooser. The tests import five MIDI files in a row and three audio files a track each.
+
 ## 0.9.4
 
 Random velocities in the key editor (your idea): three ranges, three keys.

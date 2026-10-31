@@ -167,3 +167,30 @@ TEST_CASE ("Importing a MIDI file on screen: IMPORT in the header; a .mid droppe
     CHECK (studio.getProject().bpm == 120.0);  // this song's tempo kept
     file.deleteFile();
 }
+
+TEST_CASE ("Several MIDI files imported one after another: each file's tracks added as new tracks (one at a time never stops the next)", "[midi][studio]")
+{
+    Studio studio (false);
+    const auto folder = juce::File::createTempFile ("pr7s-midi-several");
+    folder.createDirectory();
+    juce::Array<juce::File> files;
+    for (int i = 0; i < 5; ++i)
+    {
+        auto file = folder.getChildFile ("Song " + juce::String (i + 1) + ".mid");
+        juce::FileOutputStream out (file);
+        REQUIRE (out.openedOk());
+        REQUIRE (song().writeTo (out, 1));
+        files.add (file);
+    }
+    const auto before = studio.getProject().tracks.size();
+    for (const auto& file : files)
+    {
+        juce::String error;
+        CHECK (studio.importMidi (file, false, 0.0, error) == 2);   // its piano and bass
+        CHECK (error.isEmpty());
+    }
+    CHECK (studio.getProject().tracks.size() == before + 10);
+    for (size_t i = before; i < studio.getProject().tracks.size(); ++i)
+        CHECK (studio.getProject().tracks[i].parts.size() == 1);
+    folder.deleteRecursively();
+}

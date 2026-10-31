@@ -133,3 +133,33 @@ TEST_CASE ("Audio file import: WAV, AIFF, FLAC, Ogg and MP3 copied into the song
     from.deleteRecursively();
     studio.getAudioFolder().deleteRecursively();
 }
+
+TEST_CASE ("Several audio files, a track each (the manual's Import Files on One Track off): all at the same place, each track named after its file", "[import][audio]")
+{
+    Studio studio (false);
+    const auto from = juce::File::createTempFile ("pr7s-import-each");
+    from.createDirectory();
+    juce::WavAudioFormat wav;
+    const juce::Array<juce::File> files { writeFile (wav, from.getChildFile ("Kick.wav"), 48000.0, 1, 1.0),
+                                          writeFile (wav, from.getChildFile ("Snare.wav"), 48000.0, 2, 2.0),
+                                          writeFile (wav, from.getChildFile ("Hats.wav"), 48000.0, 2, 0.5) };
+    const auto before = studio.getProject().tracks.size();
+    juce::String error;
+    const auto first = studio.importAudio (files, 0, 8.0, error, false);
+    CHECK (error.isEmpty());
+    REQUIRE (first != 0);
+    const auto& tracks = studio.getProject().tracks;
+    REQUIRE (tracks.size() == before + 3);
+    for (size_t i = before; i < tracks.size(); ++i)
+    {
+        CHECK (tracks[i].isAudio());
+        REQUIRE (tracks[i].parts.size() == 1);
+        CHECK (tracks[i].parts[0].start == 8.0);
+    }
+    CHECK (tracks[before + 1].name == "Snare");
+    CHECK (tracks[before + 1].stereoInput);
+    CHECK (tracks[before + 2].name == "Hats");
+    CHECK_FALSE (tracks[before].stereoInput);   // the first: mono, as Kick is
+    from.deleteRecursively();
+    studio.getAudioFolder().deleteRecursively();
+}

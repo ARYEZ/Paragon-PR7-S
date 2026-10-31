@@ -1451,12 +1451,13 @@ namespace pr7s
         return file.hasFileExtension ("wav;wave;aif;aiff;flac;ogg;mp3");
     }
 
-    int Studio::importAudio (const juce::Array<juce::File>& files, int trackId, double atBeat, juce::String& error)
+    int Studio::importAudio (const juce::Array<juce::File>& files, int trackId, double atBeat, juce::String& error, bool oneTrack)
     {
         auto folder = getAudioFolder();
         folder.createDirectory();
         juce::StringArray problems;
         std::vector<Part> clips;
+        std::vector<bool> stereoClips;
         auto stereo = false;
         auto at = juce::jmax (0.0, atBeat);
         for (const auto& file : files)
@@ -1494,12 +1495,14 @@ namespace pr7s
             }
             if (clips.empty())
                 stereo = reader->numChannels > 1;
+            stereoClips.push_back (reader->numChannels > 1);
             Part clip;
             clip.name = file.getFileNameWithoutExtension();
             clip.audioFile = copy.getFileName();
             clip.start = at;
             clip.length = ((double) reader->lengthInSamples / reader->sampleRate) / project.secondsPerBeat();
-            at += clip.length;
+            if (oneTrack)
+                at += clip.length;   // (else they all start at atBeat, each on its own track)
             clips.push_back (clip);
         }
         error = problems.joinIntoString ("\n");
@@ -1508,9 +1511,24 @@ namespace pr7s
         const auto* target = project.findTrack (trackId);
         if (target == nullptr || ! target->isAudio())
             trackId = addAudioTrack (stereo);
-        if (auto* track = project.findTrack (trackId))
-            for (auto& clip : clips)
-                track->parts.push_back (clip);
+        if (oneTrack)
+        {
+            if (auto* track = project.findTrack (trackId))
+                for (auto& clip : clips)
+                    track->parts.push_back (clip);
+        }
+        else
+        {
+            // A track each, named after its file.
+            for (size_t i = 0; i < clips.size(); ++i)
+            {
+                const auto id = i == 0 ? trackId : addAudioTrack (stereoClips[i]);
+                if (i > 0)
+                    renameTrack (id, clips[i].name);
+                if (auto* track = project.findTrack (id))
+                    track->parts.push_back (clips[i]);
+            }
+        }
         changed();
         return trackId;
     }

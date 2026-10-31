@@ -361,7 +361,10 @@ namespace pr7s
         // if none could be read; files that couldn't are listed in `error`).
         // The clips are one undo step.
         static bool isAudioFile (const juce::File&);
-        int importAudio (const juce::Array<juce::File>&, int trackId, double atBeat, juce::String& error);
+        // `oneTrack` (the manual's Import Files on One Track): one after another on
+        // the track; else each file on a track of its own, all at `atBeat` (the
+        // first on `trackId` if that's an audio track). Returns the (first) track.
+        int importAudio (const juce::Array<juce::File>&, int trackId, double atBeat, juce::String& error, bool oneTrack = true);
         int importMidi (const MidiImport&, bool newSong, double atBeat);
         juce::File getFile() const noexcept { return file; }
         bool isModified() const noexcept { return modified; }

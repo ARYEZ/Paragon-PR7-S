@@ -83,7 +83,8 @@ public:
     // playhead on the selected audio track (else a new one); dropped on the
     // arrangement, on the audio track under them (else a new one) at the bar.
     void importAudioFiles();
-    void importAudio (const juce::Array<juce::File>&, int trackId, double atBeat);
+    void importAudio (const juce::Array<juce::File>&, int trackId, double atBeat);   // several: asks one track or a track each
+    void importMidiFiles (const juce::Array<juce::File>&, bool newSong, double atBeat);
     bool isInterestedInFileDrag (const juce::StringArray&) override;
     void filesDropped (const juce::StringArray&, int x, int y) override;
 
