@@ -5,6 +5,9 @@
 #include "engine/Studio.h"
 #include "ui/ArrangeView.h"
 
+// (0.9.3: SPLIT (3) cuts notes; DRAW and SPLIT show a pencil and scissors as
+// the pointer; the grid goes to 1/1 and 1/2.)
+//
 // The key editor (piano roll), below the arrangement, inspired by Cubase's
 // key editor in its lower zone, in our look. It shows the part last
 // selected in the arrangement (double-click a part to open it).
@@ -52,13 +55,14 @@ public:
     KeyEditor (pr7s::Studio&, ArrangeView&);
     ~KeyEditor() override;
 
-    enum class Tool { select, draw, erase };
+    enum class Tool { select, draw, erase, split };
     void setTool (Tool);
     Tool getTool() const noexcept { return tool; }
 
     // The grids offered, in beats (a beat is a quarter note).
     struct GridChoice { const char* name; double beats; };
-    static constexpr GridChoice grids[] = { { "1/4", 1.0 }, { "1/8", 0.5 }, { "1/16", 0.25 }, { "1/32", 0.125 },
+    static constexpr GridChoice grids[] = { { "1/1", 4.0 }, { "1/2", 2.0 },   // (0.9.3: whole and half notes, the owner asked)
+                                            { "1/4", 1.0 }, { "1/8", 0.5 }, { "1/16", 0.25 }, { "1/32", 0.125 },
                                             { "1/8 triplet", 1.0 / 3.0 }, { "1/16 triplet", 1.0 / 6.0 } };
     void setGrid (double beats);
     double getGrid() const noexcept { return grid; }
@@ -74,6 +78,10 @@ public:
     void deleteSelected();
     void transposeSelected (int semitones);
     void quantizeSelected();   // all the notes, with none selected
+    // SPLIT (3, as the manual's): the note at `beat` (song beats) cut in two
+    // there; if it's one of several selected, all of those it crosses.
+    // One edit. False if nothing was cut.
+    bool splitAt (int noteIndex, double beat);
 
     // The editor's clipboard: notes kept with their timing relative to one
     // another, so they paste into this part or any other.
@@ -87,6 +95,11 @@ public:
     bool keyPressed (const juce::KeyPress&) override;
 
     std::function<void()> onClose;
+
+    // SIZE (0.9.3): the whole editor drawn at 100, 150 or 200% (the main
+    // window scales it; the owner found it hard to read at 100).
+    std::function<void (int percent)> onSizeChange;
+    void setSizeShown (int percent);
 
     // WINDOW: into a window of its own (to maximize, or stretch across
     // screens); DOCK: back under the arrangement. The main window moves it.
@@ -185,7 +198,8 @@ private:
     float rowHeight = 12.0f;   // a note row (the vertical zoom)
     AutoScroll autoScroll;
     double lastPosition = 0.0;   // the playhead as last seen (a jump while stopped is followed)
-    float playheadX = -1.0e6f;   // where it was last drawn (0.9.2: only its strip is redrawn as it moves)
+    float playheadX = -1.0e6f;
+    juce::MouseCursor penCursor, scissorsCursor;   // DRAW's and SPLIT's pointers (made once: not statics, they mustn't outlive JUCE)   // where it was last drawn (0.9.2: only its strip is redrawn as it moves)
     juce::ScrollBar across { false }, down { true };
 
     // The gesture under way.
@@ -199,7 +213,8 @@ private:
     float lastVelocityX = 0.0f, shownVelocity = -1.0f;
     int auditioning = -1;
 
-    juce::TextButton selectTool { "SELECT" }, drawTool { "DRAW" }, eraseTool { "ERASE" }, quantizeButton { "QUANTIZE" },
+    juce::ComboBox sizeBox;
+    juce::TextButton selectTool { "SELECT" }, drawTool { "DRAW" }, eraseTool { "ERASE" }, splitTool { "SPLIT" }, quantizeButton { "QUANTIZE" },
                      windowButton { "WINDOW" }, closeButton { "CLOSE" }, autoScrollButton { "AUTO-SCROLL" }, autoScrollMenu;
     bool inWindow = false;
     juce::ComboBox gridBox;

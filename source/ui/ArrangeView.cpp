@@ -1150,6 +1150,7 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
         case Drag::rangeStart:
         case Drag::rangeEnd:
         case Drag::rangeMove:
+        case Drag::marquee:
         case Drag::none:
             break;
     }
@@ -1259,6 +1260,7 @@ void ArrangeView::mouseUp (const juce::MouseEvent& event)
         case Drag::rangeStart:
         case Drag::rangeEnd:
         case Drag::rangeMove:
+        case Drag::marquee:
         case Drag::none:
             break;
     }

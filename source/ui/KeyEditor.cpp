@@ -1,6 +1,7 @@
 #include "KeyEditor.h"
 
 #include "ui/ParagonLookAndFeel.h"
+#include "ui/ToolIcons.h"
 
 #include <limits>
 #include <numeric>
@@ -36,7 +37,7 @@ namespace
 KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     : studio (studioToUse), arrange (arrangeToUse)
 {
-    for (auto* button : { &selectTool, &drawTool, &eraseTool, &quantizeButton })
+    for (auto* button : { &selectTool, &drawTool, &splitTool, &eraseTool, &quantizeButton })
     {
         button->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         button->setWantsKeyboardFocus (false);
@@ -45,6 +46,10 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     selectTool.setTooltip ("SELECT (1): select, move, copy (Alt) and lengthen notes; double-click for a new one");
     drawTool.setTooltip ("DRAW (8): click for a new note (drag right to make it longer); click a note to remove it");
     eraseTool.setTooltip ("ERASE (5): click or drag across notes to remove them");
+    splitTool.setTooltip ("SPLIT (3): click a note to cut it in two there (on the grid; Ctrl: anywhere); several selected: all of them that cross it");
+    splitTool.onClick = [this] { setTool (Tool::split); };
+    penCursor = ToolIcons::cursor (ArrangeView::Tool::draw);
+    scissorsCursor = ToolIcons::cursor (ArrangeView::Tool::split);
     quantizeButton.setTooltip ("QUANTIZE (Q): moves the selected notes' starts (all the notes, with none selected) to the grid");
     selectTool.onClick = [this] { setTool (Tool::select); };
     drawTool.onClick = [this] { setTool (Tool::draw); };
@@ -75,6 +80,17 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     gridBox.setColour (juce::ComboBox::arrowColourId, ParagonColours::accent);
     gridBox.onChange = [this] { setGrid (grids[(size_t) juce::jlimit (0, (int) std::size (grids) - 1, gridBox.getSelectedId() - 1)].beats); };
     addAndMakeVisible (gridBox);
+
+    for (const auto percent : { 100, 150, 200 })
+        sizeBox.addItem (juce::String (percent) + "%", percent);
+    sizeBox.setTooltip ("The editor's size: everything in it (text, keys, notes, buttons) drawn bigger");
+    sizeBox.setWantsKeyboardFocus (false);
+    sizeBox.setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff151217));
+    sizeBox.setColour (juce::ComboBox::outlineColourId, ParagonColours::panelEdge);
+    sizeBox.setColour (juce::ComboBox::textColourId, ParagonColours::text);
+    sizeBox.setColour (juce::ComboBox::arrowColourId, ParagonColours::accent);
+    sizeBox.onChange = [this] { if (onSizeChange) onSizeChange (sizeBox.getSelectedId()); };
+    addAndMakeVisible (sizeBox);
 
     autoScrollButton.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     autoScrollButton.setWantsKeyboardFocus (false);
@@ -110,13 +126,20 @@ KeyEditor::~KeyEditor()
 }
 
 //==============================================================================
+void KeyEditor::setSizeShown (int percent)
+{
+    sizeBox.setSelectedId (percent, juce::dontSendNotification);
+}
+
 void KeyEditor::setTool (Tool newTool)
 {
     tool = newTool;
     selectTool.setToggleState (tool == Tool::select, juce::dontSendNotification);
     drawTool.setToggleState (tool == Tool::draw, juce::dontSendNotification);
     eraseTool.setToggleState (tool == Tool::erase, juce::dontSendNotification);
-    setMouseCursor (tool == Tool::draw ? juce::MouseCursor::CrosshairCursor : juce::MouseCursor::NormalCursor);
+    splitTool.setToggleState (tool == Tool::split, juce::dontSendNotification);
+    // The tool as the pointer (0.9.3: the pencil, not crosshairs; the scissors).
+    setMouseCursor (tool == Tool::draw ? penCursor : tool == Tool::split ? scissorsCursor : juce::MouseCursor::NormalCursor);
     repaint();
 }
 
@@ -483,6 +506,37 @@ void KeyEditor::transposeSelected (int semitones)
     }
 }
 
+bool KeyEditor::splitAt (int noteIndex, double beat)
+{
+    const auto* part = getPart();
+    if (part == nullptr || ! juce::isPositiveAndBelow (noteIndex, (int) part->notes.size()))
+        return false;
+    // The clicked note; or, if it's selected with others, all the selected ones.
+    std::vector<int> which { noteIndex };
+    if (std::find (selected.begin(), selected.end(), noteIndex) != selected.end() && selected.size() > 1)
+        which = selected;
+    const auto at = beat - part->start;   // in the part
+    auto edited = part->notes;
+    std::vector<pr7s::Note> added;
+    for (const auto i : which)
+    {
+        auto& note = edited[(size_t) i];
+        if (at <= note.start + 1.0e-9 || at >= note.start + note.length - 1.0e-9)
+            continue;   // the cut isn't inside this one
+        auto second = note;
+        second.start = at;
+        second.length = note.start + note.length - at;
+        note.length = at - note.start;
+        added.push_back (second);
+    }
+    if (added.empty())
+        return false;
+    edited.insert (edited.end(), added.begin(), added.end());
+    selected.clear();
+    commit (std::move (edited));
+    return true;
+}
+
 void KeyEditor::quantizeSelected()
 {
     const auto* part = getPart();
@@ -694,6 +748,7 @@ bool KeyEditor::keyPressed (const juce::KeyPress& key)
     if (key.getTextCharacter() == '1')                                           { setTool (Tool::select); return true; }
     if (key.getTextCharacter() == '8')                                           { setTool (Tool::draw); return true; }
     if (key.getTextCharacter() == '5')                                           { setTool (Tool::erase); return true; }
+    if (key.getTextCharacter() == '3')                                           { setTool (Tool::split); return true; }
     return false;
 }
 
@@ -757,6 +812,11 @@ void KeyEditor::mouseDown (const juce::MouseEvent& event)
             selected.clear();
             gesture = Gesture::erase;
             eraseAt (point);
+            return;
+
+        case Tool::split:
+            if (hit >= 0)
+                splitAt (hit, free ? beatForX (point.x) : pr7s::snap (beatForX (point.x), grid));
             return;
 
         case Tool::draw:
@@ -1063,10 +1123,12 @@ void KeyEditor::resized()
     windowButton.setBounds (top.removeFromRight (74).withSizeKeepingCentre (74, 24).withY (top.getY()));
     panel.removeFromTop (8);
     auto tools = panel.removeFromTop (28);
-    const auto toolWidth = (tools.getWidth() - 8) / 3;
+    const auto toolWidth = (tools.getWidth() - 12) / 4;
     selectTool.setBounds (tools.removeFromLeft (toolWidth));
     tools.removeFromLeft (4);
     drawTool.setBounds (tools.removeFromLeft (toolWidth));
+    tools.removeFromLeft (4);
+    splitTool.setBounds (tools.removeFromLeft (toolWidth));
     tools.removeFromLeft (4);
     eraseTool.setBounds (tools);
     panel.removeFromTop (10);
@@ -1080,6 +1142,8 @@ void KeyEditor::resized()
     autoScrollButton.setBounds (autoScrollRow.removeFromLeft (96));
     autoScrollRow.removeFromLeft (3);
     autoScrollMenu.setBounds (autoScrollRow.removeFromLeft (22));
+    autoScrollRow.removeFromLeft (10);
+    sizeBox.setBounds (autoScrollRow.removeFromRight (juce::jmin (72, autoScrollRow.getWidth())));
 
     const auto notesArea = getNotesArea().toNearestInt();
     down.setBounds (notesArea.getRight(), notesArea.getY(), scrollBarSize, notesArea.getHeight());

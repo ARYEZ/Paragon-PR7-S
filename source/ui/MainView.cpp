@@ -103,8 +103,16 @@ MainView::MainView (pr7s::Studio& studioToUse)
     addAndMakeVisible (arrange);
     addAndMakeVisible (tools);
     arrange.onToolChange = [this] { tools.refresh(); };
-    addChildComponent (keyEditor);
+    addChildComponent (keyEditorHolder);
     addChildComponent (mixer);
+    keyEditor.onSizeChange = [this] (int percent) { setKeyEditorSize (percent); };
+    {
+        // (Only the frame here: the window isn't laid out yet.)
+        const auto size = studio.getSettings() != nullptr ? studio.getSettings()->getIntValue ("keyEditorSize", 200) : 200;
+        const auto percent = size <= 100 ? 100 : size <= 150 ? 150 : 200;
+        keyEditorHolder.setScale ((float) percent / 100.0f);
+        keyEditor.setSizeShown (percent);
+    }
     keyEditor.onClose = [this] { closeKeyEditor(); };
     mixer.onClose = [this] { closeMixer(); };
     // Not straight away: the click that asked is still going on in the window.
@@ -423,7 +431,7 @@ MainView::Zone* MainView::dockedZone() noexcept
 
 int MainView::minimumHeight (Zone& zone) const
 {
-    return &zone == &mixerZone ? mixer.getMinimumHeight() : KeyEditor::minimumHeight;
+    return &zone == &mixerZone ? mixer.getMinimumHeight() : juce::roundToInt ((float) KeyEditor::minimumHeight * keyEditorHolder.getScale());
 }
 
 int MainView::heightFor (Zone& zone, int middleHeight) const
@@ -845,6 +853,17 @@ void MainView::toggleMixerWindow()
     if (! isMixerInWindow())
         setMixerInWindow (true);   // docked and open: it moves into its window
     openMixer();
+}
+
+void MainView::setKeyEditorSize (int percent)
+{
+    percent = percent <= 100 ? 100 : percent <= 150 ? 150 : 200;
+    keyEditorHolder.setScale ((float) percent / 100.0f);
+    keyEditor.setSizeShown (percent);
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("keyEditorSize", percent);
+    resized();
+    keyEditor.fitToPart();
 }
 
 void MainView::toggleInspector()

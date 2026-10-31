@@ -6,6 +6,7 @@
 #include "ui/ArrangeView.h"
 #include "ui/KeyEditor.h"
 #include "ui/Inspector.h"
+#include "ui/ScaledHolder.h"
 #include "ui/MixerView.h"
 #include "ui/TrackList.h"
 #include "ui/TransportBar.h"
@@ -122,6 +123,10 @@ public:
     void toggleInspector();
     bool isInspectorShown() const noexcept { return inspectorShown; }
     Inspector& getInspector() noexcept { return inspector; }
+    // The key editor's SIZE (100, 150 or 200%; kept for next time).
+    void setKeyEditorSize (int percent);
+    int getKeyEditorSize() const noexcept { return juce::roundToInt (keyEditorHolder.getScale() * 100.0f); }
+    juce::Component& getKeyEditorFrame() noexcept { return keyEditorHolder; }   // what's docked or in the window (the editor scaled in it)
 
     // The line between the arrangement and the docked lower zone: drag it
     // up or down. Each of the two remembers its height (in the settings file).
@@ -191,6 +196,7 @@ private:
     juce::TextButton autoScrollKey { "AUTO-SCROLL" }, autoScrollMenu;   // the arrangement's Auto-Scroll, on the transport
     void toggleArrangeAutoScroll();
     KeyEditor keyEditor;
+    ScaledHolder keyEditorHolder { keyEditor };   // the editor at its SIZE (0.9.3: 200% unless changed)
     MixerView mixer;
     Inspector inspector;             // left of the track list (0.9.0)
     bool inspectorShown = true;
@@ -208,7 +214,7 @@ private:
                      undoButton { "UNDO" }, redoButton { "REDO" }, editorButton { "KEY EDITOR" }, mixerButton { "MIXER" }, inspectorButton { "INSPECTOR" },
                      pluginsButton { "PLUGINS" }, settingsButton { "SETTINGS" }, readAllButton { "R" }, writeAllButton { "W" };
     // After the editor and the mixer: their windows go first.
-    Zone editorZone { keyEditor, editorButton, "Key Editor", "keyEditor", false, false, {} },
+    Zone editorZone { keyEditorHolder, editorButton, "Key Editor", "keyEditor", false, false, {} },
          mixerZone { mixer, mixerButton, "Mixer", "mixer", false, false, {} };
     std::map<int, std::unique_ptr<Windows::Instrument>> instrumentWindows;
     std::map<juce::AudioProcessor*, std::unique_ptr<Windows::Instrument>> effectWindows;

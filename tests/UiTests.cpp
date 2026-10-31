@@ -145,10 +145,12 @@ TEST_CASE ("The key editor: draw, move, copy, lengthen, velocity, erase, keys, q
     arrange.mouseDoubleClick (mouseAt (arrange, partArea.getCentre(), partArea.getCentre(), {}, 2));
     studio.dispatchPendingMessages();
     REQUIRE (view.isKeyEditorOpen());
+    view.setKeyEditorSize (100);   // (these tests place the mouse at 100%; 200% has its own test)
     auto& editor = view.getKeyEditor();
-    CHECK (editor.isVisible());
-    CHECK (editor.getBottom() <= view.getHeight());
-    CHECK (arrange.getBottom() <= editor.getY());
+    auto& frame = view.getKeyEditorFrame();
+    CHECK (frame.isVisible());
+    CHECK (frame.getBottom() <= view.getHeight());
+    CHECK (arrange.getBottom() <= frame.getY());
     REQUIRE (editor.getPart() != nullptr);
     CHECK (editor.getPart()->name == "Riff");
     const auto notes = [&] { return editor.getPart()->notes; };
@@ -270,7 +272,7 @@ TEST_CASE ("The key editor: draw, move, copy, lengthen, velocity, erase, keys, q
     }
     CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::escapeKey)));
     CHECK_FALSE (view.isKeyEditorOpen());
-    CHECK_FALSE (editor.isVisible());
+    CHECK_FALSE (frame.isVisible());
 }
 
 TEST_CASE ("The key editor in a window of its own, and back", "[ui][editor]")
@@ -283,13 +285,15 @@ TEST_CASE ("The key editor in a window of its own, and back", "[ui][editor]")
     studio.addPart (trackId, { 0.0, 16.0, "Riff", { { 0.0, 1.0, 60, 0.8f }, { 15.0, 1.0, 64, 0.8f } } });
     auto& arrange = view.getArrangeView();
     auto& editor = view.getKeyEditor();
+    auto& frame = view.getKeyEditorFrame();
+    view.setKeyEditorSize (100);
     arrange.select (trackId, 0);
     view.openKeyEditor();
     studio.dispatchPendingMessages();
     REQUIRE (editor.getPart() != nullptr);
     const auto dockedArrangeHeight = arrange.getHeight();
     const auto dockedRows = editor.getNotesArea().getHeight();
-    CHECK (editor.getParentComponent() == &view);
+    CHECK (frame.getParentComponent() == &view);
 
     // WINDOW: the editor moves into its own window; the arrangement takes the room back.
     view.setKeyEditorInWindow (true);
@@ -327,7 +331,7 @@ TEST_CASE ("The key editor in a window of its own, and back", "[ui][editor]")
     // DOCK: back under the arrangement.
     view.setKeyEditorInWindow (false);
     CHECK (view.getKeyEditorWindow() == nullptr);
-    CHECK (editor.getParentComponent() == &view);
+    CHECK (frame.getParentComponent() == &view);
     CHECK (editor.isVisible());
     CHECK_FALSE (editor.isInWindow());
     CHECK (arrange.getHeight() == dockedArrangeHeight);
@@ -336,8 +340,8 @@ TEST_CASE ("The key editor in a window of its own, and back", "[ui][editor]")
     view.setKeyEditorInWindow (true);
     view.closeKeyEditor();
     CHECK (view.getKeyEditorWindow() == nullptr);
-    CHECK (editor.getParentComponent() == &view);
-    CHECK_FALSE (editor.isVisible());
+    CHECK (frame.getParentComponent() == &view);
+    CHECK_FALSE (frame.isVisible());
     view.openKeyEditor();
     REQUIRE (view.getKeyEditorWindow() != nullptr);
     CHECK (editor.getTopLevelComponent() == view.getKeyEditorWindow());
@@ -1166,8 +1170,8 @@ TEST_CASE ("Zoom, Auto-Scroll and scrolling (H in, G out, Shift+F, F; the scroll
 
         // The key editor docked has its own height (the default: a little over half).
         view.openKeyEditor();
-        CHECK (view.getKeyEditor().getHeight() != withRack);
-        CHECK (divider.getBottom() <= view.getKeyEditor().getY());
+        CHECK (view.getKeyEditorFrame().getHeight() != withRack);
+        CHECK (divider.getBottom() <= view.getKeyEditorFrame().getY());
     }
 }
 
@@ -2238,4 +2242,55 @@ TEST_CASE ("The Inspector: five insert slots in view (the rest scroll), its widt
     std::vector<juce::TextButton*> buttons;
     findAll (view.getTrackList(), buttons);
     CHECK (std::none_of (buttons.begin(), buttons.end(), [] (auto* b) { return b->getButtonText() == "PARAGON SYNTH" && b->isVisible(); }));
+}
+
+TEST_CASE ("The key editor at 200% (the default), SPLIT, the pencil, whole and half note grids", "[ui][editor]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto trackId = studio.getProject().tracks[0].id;
+    studio.addPart (trackId, { 0.0, 8.0, "Riff", { { 0.0, 4.0, 60, 0.8f }, { 0.0, 4.0, 64, 0.8f }, { 4.0, 1.0, 67, 0.8f } } });
+    view.getArrangeView().select (trackId, 0);
+    view.openKeyEditor();
+    studio.dispatchPendingMessages();
+    auto& editor = view.getKeyEditor();
+    auto& frame = view.getKeyEditorFrame();
+
+    // Twice the size: laid out at half the frame and drawn doubled.
+    CHECK (view.getKeyEditorSize() == 200);
+    CHECK (std::abs (editor.getWidth() * 2 - frame.getWidth()) <= 1);
+    CHECK (editor.getTransform().getScaleFactor() == 2.0f);
+    CHECK (std::abs (editor.getScreenBounds().getWidth() - frame.getScreenBounds().getWidth()) <= 2);   // it fills its frame on screen
+    view.setKeyEditorSize (150);
+    CHECK (view.getKeyEditorSize() == 150);
+    view.setKeyEditorSize (200);
+
+    // The grids reach whole and half notes; QUANTIZE to a half note.
+    editor.setGrid (4.0);
+    CHECK (editor.getGrid() == 4.0);
+    editor.setGrid (2.0);
+
+    // SPLIT (3): the pencil and scissors as pointers; a click cuts a note on the grid.
+    CHECK (editor.keyPressed (juce::KeyPress ('3', {}, '3')));
+    CHECK (editor.getTool() == KeyEditor::Tool::split);
+    CHECK (editor.getMouseCursor() != juce::MouseCursor (juce::MouseCursor::NormalCursor));
+    REQUIRE (editor.splitAt (0, 2.0));
+    auto notes = editor.getPart()->notes;
+    CHECK (notes.size() == 4);
+    auto halves = 0;
+    for (const auto& n : notes)
+        if (n.pitch == 60)
+            halves += (n.length == 2.0) ? 1 : 0;
+    CHECK (halves == 2);
+    // Several selected: all of those the cut crosses (the manual's).
+    editor.selectNotes ({ 0, 1 });   // 60's first half and 64
+    studio.undo();
+    editor.selectNotes ({ 0, 1 });
+    REQUIRE (editor.splitAt (1, 1.0));
+    CHECK (editor.getPart()->notes.size() == 5);
+    CHECK_FALSE (editor.splitAt (2, 4.5 + 0.5));   // 67 ends at 5: a cut at its end does nothing
+    editor.setTool (KeyEditor::Tool::draw);
+    CHECK (editor.getMouseCursor() != juce::MouseCursor (juce::MouseCursor::CrosshairCursor));
 }

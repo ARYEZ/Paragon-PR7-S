@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.9.3
+
+The key editor: twice the size, a pencil, a split tool, and whole and half note grids (as you asked).
+
+- **Everything in the key editor is twice the size:** the text, the piano keys, the notes, the velocities, the ruler and the buttons.
+  - A new **SIZE** box in the editor (100%, 150%, 200%) changes it; it starts at 200% and PR7-S remembers your choice.
+  - **The trade-off:** docked, it shows fewer notes at once. Zoom out with G (Shift+G for shorter rows), give it more room by dragging the line above it, use its own WINDOW, or choose 150%.
+- **DRAW shows a pencil** as the pointer instead of crosshairs. SPLIT shows scissors, as the arrangement's tools do.
+- **SPLIT (3)** in the key editor, as the manual has it:
+  - Click a note to cut it in two there, on the grid (hold Ctrl to cut anywhere).
+  - If it's one of several selected notes, all the selected ones that cross that point are cut.
+  - Each cut is one undo step.
+- **GRID** now has **1/1** (whole note) and **1/2** (half note) as well as 1/4 down to 1/32. QUANTIZE uses whatever grid is chosen.
+
 ## 0.9.2
 
 The lag fixed, several parts selected at once, and your Inspector and track list tweaks.
