@@ -11,8 +11,12 @@
 //   PARAGON_SNAPSHOT=studio.png ./ParagonPR7STests "[snapshot]"
 // PARAGON_SNAPSHOT_WIDTH sets the width (default 1500; 3000 for 2x).
 // PARAGON_SNAPSHOT_FINISH=black or =neon picks the finish.
-// PARAGON_SNAPSHOT_ZONE=mixer shows the mixer in the lower zone, =none nothing there (the key editor otherwise).
+// PARAGON_SNAPSHOT_ZONE=mixer shows the mixer in the lower zone (with an FX channel the tracks send to;
+// PARAGON_SNAPSHOT_SENDS=1 shows the sends rack; PARAGON_SNAPSHOT_RACK=none hides the rack, the mixer as short
+// as it goes), =none nothing there (the key editor otherwise).
 // PARAGON_SNAPSHOT_EXPORT=1 draws the export page over it.
+// PARAGON_SNAPSHOT_ROWS=0.5 (to 3) the arrangement's rows shorter or taller; PARAGON_SNAPSHOT_SUSPENDED=1 its
+// Auto-Scroll suspended.
 // PARAGON_SNAPSHOT_AUTOMATION=1 opens automation lanes (the lead's volume, the bass's pan, the master's fade).
 TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
 {
@@ -96,7 +100,7 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     {
         renderSamples (studio.getEngine(), 4096);
         juce::Timer::callPendingTimersSynchronously();
-        juce::Thread::sleep (30);
+        juce::Thread::sleep (40);   // (the meters refresh every 33 ms: give them a turn)
     }
     studio.stop();
     studio.getEngine().setPosition (21.0);
@@ -125,13 +129,30 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.setVolume (lead, -8.0f);
         studio.setPan (lead, 0.25f);
         studio.setMasterVolume (-1.5f);
+        // An FX channel (a reverb: a stand-in named after the family's plugin) that keys, lead and guitar send to.
+        Insert reverb;
+        reverb.plugin.name = "Paragon PR7-V";
+        const auto fx = studio.addFxChannel (reverb, timesEffect (0.5f, "Paragon PR7-V"));
+        studio.setSend (keys, 0, { fx, -14.0f, true, false });
+        studio.setSend (lead, 0, { fx, -6.0f, true, true });
+        studio.setSend (guitar, 0, { fx, -10.0f, true, false });
+        studio.setVolume (fx, -3.0f);
+        studio.selectTrack (bass);
         view.openMixer();
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SENDS", {}).isNotEmpty())
+            view.getMixer().setShowSends (true);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_RACK", {}) == "none")
+        {
+            view.getMixer().setRackShown (false);   // and the mixer dragged as short as it goes
+            view.setDockedHeight (1);
+        }
+        studio.dispatchPendingMessages();   // (the new FX channel's strip made now, so its meters see the playing)
         studio.play();
         for (int round = 0; round < 4; ++round)
         {
             renderSamples (studio.getEngine(), 4096);
             juce::Timer::callPendingTimersSynchronously();
-            juce::Thread::sleep (30);
+            juce::Thread::sleep (40);   // (the meters refresh every 33 ms: give them a turn)
         }
         studio.stop();
     }
@@ -140,6 +161,18 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         view.openKeyEditor();
         studio.dispatchPendingMessages();
         view.getKeyEditor().selectNotes ({ 3, 4, 5 });
+    }
+    // PARAGON_SNAPSHOT_ROWS=<zoom>: the arrangement's rows that much taller (or shorter, below 1).
+    if (const auto rows = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_ROWS", {}); rows.isNotEmpty())
+    {
+        view.getTimeline().rowZoom = juce::jlimit (Timeline::minRowZoom, Timeline::maxRowZoom, rows.getDoubleValue());
+        view.getTimeline().onScrollOrZoom();
+    }
+    // PARAGON_SNAPSHOT_SUSPENDED=1: the arrangement's Auto-Scroll suspended (its key pink, SUSPENDED).
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SUSPENDED", {}).isNotEmpty())
+    {
+        view.getTimeline().autoScroll.suspended = true;
+        view.getTimeline().onAutoScrollChange();
     }
     studio.dispatchPendingMessages();
 
@@ -236,7 +269,7 @@ TEST_CASE ("Render the key editor's own window to a PNG", "[.][snapshot-window]"
         {
             renderSamples (studio.getEngine(), 4096);
             juce::Timer::callPendingTimersSynchronously();
-            juce::Thread::sleep (30);
+            juce::Thread::sleep (40);   // (the meters refresh every 33 ms: give them a turn)
         }
         studio.stop();
         shown = &view.getMixer();

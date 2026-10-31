@@ -18,7 +18,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
       keyEditor (studioToUse, arrange),
       mixer (studioToUse)
 {
-    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &exportButton, &undoButton, &redoButton, &editorButton, &mixerButton,
+    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &importButton, &exportButton, &undoButton, &redoButton, &editorButton, &mixerButton,
                           &pluginsButton, &settingsButton })
     {
         button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
@@ -31,6 +31,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
     saveButton.setTooltip ("Save the song (Ctrl+S)");
     saveAsButton.setTooltip ("Save the song under a new name (Ctrl+Shift+S)");
     exportButton.setTooltip ("Export the mix to a WAV file: the whole song or the cycle");
+    importButton.setTooltip ("Import a MIDI file (.mid): a track for each of its tracks. Or drop one on the arrangement, at a bar");
+    importButton.onClick = [this] { importMidiFile(); };
     undoButton.setTooltip ("Undo (Ctrl+Z)");
     redoButton.setTooltip ("Redo (Ctrl+Shift+Z)");
     editorButton.setTooltip ("The key editor: the selected part's notes (Ctrl+E; or double-click a part)");
@@ -86,6 +88,34 @@ MainView::MainView (pr7s::Studio& studioToUse)
     {
         editorZone.inWindow = settings->getBoolValue ("keyEditorInWindow", false);
         mixerZone.inWindow = settings->getBoolValue ("mixerInWindow", false);
+        editorZone.dockedHeight = settings->getIntValue ("keyEditorHeight", 0);
+        mixerZone.dockedHeight = settings->getIntValue ("mixerHeight", 0);
+    }
+    // Each view's Auto-Scroll and its settings, kept for next time.
+    timeline.autoScroll.load (studio.getSettings(), "arrange");
+    keyEditor.getAutoScrollSettings().load (studio.getSettings(), "keyEditor");
+    keyEditor.autoScrollChanged();
+    keyEditor.onAutoScrollChange = [this] { keyEditor.getAutoScrollSettings().save (studio.getSettings(), "keyEditor"); };
+    timeline.onAutoScrollChange = [this]
+    {
+        trackList.refreshAutoScroll();
+        timeline.autoScroll.save (studio.getSettings(), "arrange");
+    };
+    trackList.onAutoScrollToggle = [this]
+    {
+        timeline.autoScroll.toggle();
+        timeline.onAutoScrollChange();
+    };
+    trackList.refreshAutoScroll();
+    zoneDivider = std::make_unique<ZoneDivider> (*this);
+    addChildComponent (*zoneDivider);
+    mixer.onMinimumHeightChange = [this] { resized(); };   // (after the divider: resized() places it)
+    for (auto* bar : { &arrangeAcross, &arrangeDown })
+    {
+        bar->setAutoHide (false);
+        bar->setWantsKeyboardFocus (false);
+        bar->addListener (this);
+        addAndMakeVisible (*bar);
     }
     keyEditor.setInWindow (editorZone.inWindow);
     mixer.setInWindow (mixerZone.inWindow);
@@ -97,11 +127,13 @@ MainView::MainView (pr7s::Studio& studioToUse)
 
     trackList.onOpenInstrument = [this] (int trackId) { openInstrumentWindow (trackId); };
     trackList.onFindPlugins = [this] { openPlugins(); };
+    trackList.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
     timeline.onScrollOrZoom = [this]
     {
         trackList.resized();
         trackList.repaint();
         arrange.repaint();
+        refreshScrollBars();
     };
 
     // An instrument's window closes before the instrument goes.
@@ -129,6 +161,11 @@ MainView::MainView (pr7s::Studio& studioToUse)
 
 MainView::~MainView()
 {
+    arrangeAcross.removeListener (this);
+    arrangeDown.removeListener (this);
+    mixer.onMinimumHeightChange = nullptr;
+    timeline.onAutoScrollChange = nullptr;
+    keyEditor.onAutoScrollChange = nullptr;
     editorZone.window.reset();
     mixerZone.window.reset();
     studio.onEffectGoing = nullptr;
@@ -151,6 +188,35 @@ void MainView::changeListenerCallback (juce::ChangeBroadcaster* source)
         return;
     }
     refreshHeader();
+    refreshScrollBars();
+}
+
+void MainView::refreshScrollBars()
+{
+    // Across: from the song's start to past its end (or to what's in view); down: the rows and the room under them.
+    const auto visibleBeats = (double) arrange.getWidth() / timeline.pixelsPerBeat;
+    arrangeAcross.setRangeLimits (0.0, juce::jmax (Timeline::scrollLength (studio), timeline.firstBeat + visibleBeats), juce::dontSendNotification);
+    arrangeAcross.setCurrentRange (timeline.firstBeat, visibleBeats, juce::dontSendNotification);
+    const auto lanes = (double) juce::jmax (0, arrange.getHeight() - Timeline::rulerHeight);
+    arrangeDown.setRangeLimits (0.0, juce::jmax (lanes, (double) (timeline.contentHeight (studio) + Timeline::bottomRoom)), juce::dontSendNotification);
+    arrangeDown.setCurrentRange (timeline.scrollY, lanes, juce::dontSendNotification);
+}
+
+void MainView::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
+{
+    if (bar == &arrangeAcross)
+        timeline.firstBeat = juce::jmax (0.0, newRangeStart);
+    else
+        timeline.scrollY = juce::jmax (0, juce::roundToInt (newRangeStart));
+    if (timeline.onScrollOrZoom)
+        timeline.onScrollOrZoom();
+}
+
+void MainView::setArrangeAutoScroll (bool on)
+{
+    timeline.autoScroll.on = on;
+    timeline.autoScroll.suspended = false;
+    timeline.onAutoScrollChange();
 }
 
 void MainView::refreshHeader()
@@ -207,9 +273,9 @@ void MainView::resized()
     auto area = getLocalBounds();
     auto header = area.removeFromTop (headerHeight).reduced (8, 10);
     header.removeFromLeft (280);
-    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &exportButton })
+    for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &importButton, &exportButton })
     {
-        button->setBounds (header.removeFromLeft (button == &saveAsButton ? 84 : button == &exportButton ? 76 : 66));
+        button->setBounds (header.removeFromLeft (button == &saveAsButton ? 84 : button == &exportButton || button == &importButton ? 76 : 66));
         header.removeFromLeft (6);
     }
     header.removeFromLeft (18);
@@ -233,19 +299,96 @@ void MainView::resized()
     transport.setBounds (area.removeFromTop (transportHeight).reduced (2, 0));
 
     auto middle = area.reduced (7, 3);
-    for (auto* zone : { &editorZone, &mixerZone })
-        if (zone->open && ! zone->inWindow)
-        {
-            // The lower zone takes a little over half; the arrangement keeps the rest.
-            const auto height = juce::jlimit (juce::jmin (240, middle.getHeight()), juce::jmax (240, middle.getHeight() - 170),
-                                              juce::roundToInt ((float) middle.getHeight() * 0.6f));
-            zone->content.setBounds (middle.removeFromBottom (height));
-            middle.removeFromBottom (3);
-            break;
-        }
+    zoneDivider->setVisible (false);
+    if (auto* zone = dockedZone())
+    {
+        zone->content.setBounds (middle.removeFromBottom (heightFor (*zone, middle.getHeight())));
+        zoneDivider->setBounds (middle.removeFromBottom (dividerHeight));
+        zoneDivider->setVisible (true);
+    }
+    // The scroll bars: across under the arrangement, down beside its rows.
+    auto acrossRow = middle.removeFromBottom (scrollBarSize);
     trackList.setBounds (middle.removeFromLeft (trackListWidth));
     middle.removeFromLeft (2);
+    acrossRow.removeFromLeft (trackListWidth + 2);
+    arrangeDown.setBounds (middle.removeFromRight (scrollBarSize).withTrimmedTop (Timeline::rulerHeight));
     arrange.setBounds (middle);
+    arrangeAcross.setBounds (acrossRow.withTrimmedRight (scrollBarSize));
+    refreshScrollBars();
+}
+
+MainView::Zone* MainView::dockedZone() noexcept
+{
+    for (auto* zone : { &editorZone, &mixerZone })
+        if (zone->open && ! zone->inWindow)
+            return zone;
+    return nullptr;
+}
+
+int MainView::minimumHeight (Zone& zone) const
+{
+    return &zone == &mixerZone ? mixer.getMinimumHeight() : KeyEditor::minimumHeight;
+}
+
+int MainView::heightFor (Zone& zone, int middleHeight) const
+{
+    // As dragged (at first a little over half), between its least and what
+    // leaves the arrangement its room (its least wins if there isn't enough).
+    const auto least = juce::jmin (minimumHeight (zone), middleHeight);
+    const auto most = juce::jlimit (least, middleHeight, middleHeight - minimumArrangeHeight - dividerHeight);
+    const auto wanted = zone.dockedHeight > 0 ? zone.dockedHeight : juce::roundToInt ((float) middleHeight * 0.6f);
+    return juce::jlimit (least, most, wanted);
+}
+
+void MainView::setDockedHeight (int height)
+{
+    auto* zone = dockedZone();
+    if (zone == nullptr)
+        return;
+    const auto middleHeight = getHeight() - headerHeight - transportHeight - 6;
+    zone->dockedHeight = juce::jmax (1, height);   // (0 would mean the default)
+    zone->dockedHeight = heightFor (*zone, middleHeight);   // kept to what it can be
+    if (auto* settings = studio.getSettings())
+        settings->setValue (zone->settingsKey + "Height", zone->dockedHeight);
+    resized();
+}
+
+//==============================================================================
+MainView::ZoneDivider::ZoneDivider (MainView& ownerToUse) : owner (ownerToUse)
+{
+    setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+    setRepaintsOnMouseActivity (true);
+    setTooltip ("Drag to make the lower zone taller or shorter");
+}
+
+void MainView::ZoneDivider::paint (juce::Graphics& g)
+{
+    const auto bounds = getLocalBounds().toFloat();
+    g.setColour (juce::Colour (0xff0b090c));
+    g.fillRect (bounds);
+    const auto lit = isMouseOverOrDragging();
+    g.setColour (lit ? ParagonColours::accent : ParagonColours::panelEdge);
+    g.fillRect (bounds.withSizeKeepingCentre (bounds.getWidth(), 1.0f));
+    // The grip: three short lines in the middle.
+    g.setColour (lit ? ParagonColours::accent : ParagonColours::textDim);
+    for (int i = -1; i <= 1; ++i)
+        g.fillRoundedRectangle (bounds.withSizeKeepingCentre (36.0f, 1.5f).translated (0.0f, (float) i * 2.5f), 0.75f);
+}
+
+void MainView::ZoneDivider::mouseDown (const juce::MouseEvent&)
+{
+    auto* zone = owner.dockedZone();
+    heightAtDown = zone != nullptr ? zone->content.getHeight() : 0;
+}
+
+void MainView::ZoneDivider::mouseDrag (const juce::MouseEvent& event)
+{
+    owner.setDockedHeight (heightAtDown - event.getDistanceFromDragStartY());
+}
+
+void MainView::ZoneDivider::mouseUp (const juce::MouseEvent&)
+{
+    repaint();
 }
 
 //==============================================================================
@@ -305,6 +448,20 @@ bool MainView::keyPressed (const juce::KeyPress& key)
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
     {
         arrange.hasSelectedPoints() ? arrange.deleteSelectedPoints() : arrange.deleteSelected();
+        return true;
+    }
+    // Zoom and Auto-Scroll (the manual's keys: H in, G out, Shift+F the whole song, F Auto-Scroll).
+    if (! mods.isAltDown() && (letter == 'H' || letter == 'G'))
+    {
+        mods.isShiftDown() ? arrange.zoomRows (letter == 'H') : arrange.zoom (letter == 'H');   // Shift: taller or shorter rows
+        return true;
+    }
+    if (! mods.isAltDown() && letter == 'F')
+    {
+        if (mods.isShiftDown())
+            arrange.zoomFull();
+        else
+            trackList.onAutoScrollToggle();   // (a suspended one carries on)
         return true;
     }
     if (letter == 'R' || key.getTextCharacter() == '*') { studio.record(); return true; }
@@ -515,6 +672,71 @@ void MainView::saveProjectAs (std::function<void (bool)> then)
                               if (then)
                                   then (saved);
                           });
+}
+
+//==============================================================================
+void MainView::importMidiFile()
+{
+    const auto chooseFile = [this] (bool newSong)
+    {
+        chooser = std::make_unique<juce::FileChooser> ("Import a MIDI file", studio.getFile().getParentDirectory(), "*.mid;*.midi");
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                              [this, newSong] (const juce::FileChooser& fc)
+                              {
+                                  const auto file = fc.getResult();
+                                  if (file == juce::File())
+                                      return;
+                                  juce::String error;
+                                  if (studio.importMidi (file, newSong, 0.0, error) == 0)
+                                      juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't import the MIDI file",
+                                                                              file.getFileName() + ": " + error);
+                              });
+    };
+    // As the manual has it: into a new song, or this one? (Only asked if this one has anything in it.)
+    const auto& tracks = studio.getProject().tracks;
+    const auto empty = std::all_of (tracks.begin(), tracks.end(), [] (const pr7s::Track& t) { return t.parts.empty(); });
+    if (empty)
+    {
+        chooseFile (true);
+        return;
+    }
+    juce::AlertWindow::showYesNoCancelBox (juce::MessageBoxIconType::QuestionIcon, "Import a MIDI file",
+                                           juce::String ("Into a new song (with the file's tempo and time signature), or into this one (at bar 1, keeping its tempo)?")
+                                               + (studio.isModified() ? "\n\nA new song: changes to this one that aren't saved will be lost." : ""),
+                                           "New song", "This song", "Cancel", nullptr,
+                                           juce::ModalCallbackFunction::create ([chooseFile] (int result)
+                                           {
+                                               if (result == 1)
+                                                   chooseFile (true);
+                                               else if (result == 2)
+                                                   chooseFile (false);
+                                           }));
+}
+
+bool MainView::isInterestedInFileDrag (const juce::StringArray& files)
+{
+    return std::any_of (files.begin(), files.end(), [] (const juce::String& f) { return f.endsWithIgnoreCase (".mid") || f.endsWithIgnoreCase (".midi"); });
+}
+
+void MainView::filesDropped (const juce::StringArray& files, int x, int y)
+{
+    // Into this song, at the bar it's dropped on (over the arrangement), else bar 1.
+    auto atBeat = 0.0;
+    const auto inArrange = arrange.getLocalPoint (this, juce::Point<int> (x, y));
+    if (arrange.getLocalBounds().contains (inArrange))
+    {
+        const auto bar = studio.getProject().beatsPerBar();
+        atBeat = juce::jmax (0.0, std::floor (timeline.beatForX ((float) inArrange.x) / bar) * bar);
+    }
+    for (const auto& path : files)
+    {
+        if (! (path.endsWithIgnoreCase (".mid") || path.endsWithIgnoreCase (".midi")))
+            continue;
+        juce::String error;
+        if (studio.importMidi (juce::File (path), false, atBeat, error) == 0)
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't import the MIDI file",
+                                                    juce::File (path).getFileName() + ": " + error);
+    }
 }
 
 //==============================================================================

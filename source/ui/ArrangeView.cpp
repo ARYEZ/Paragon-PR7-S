@@ -44,22 +44,152 @@ void ArrangeView::changeListenerCallback (juce::ChangeBroadcaster*)
 
 void ArrangeView::timerCallback()
 {
-    // While playing, the view turns the page when the playhead reaches the right edge.
-    auto& engine = studio.getEngine();
-    if (engine.isPlaying() && drag == Drag::none)
-    {
-        const auto x = timeline.xForBeat (engine.getPosition());
-        if (x > (float) getWidth() - 30.0f || x < 0.0f)
-        {
-            timeline.firstBeat = juce::jmax (0.0, engine.getPosition() - 1.0);
-            if (timeline.onScrollOrZoom)
-                timeline.onScrollOrZoom();
-        }
-    }
+    followPlayhead();
     repaint();
 }
 
-std::vector<Timeline::Row> Timeline::layout (const pr7s::Studio& studio)
+void ArrangeView::followPlayhead()
+{
+    auto& engine = studio.getEngine();
+    const auto position = engine.getPosition();
+    const auto jumped = position != lastPosition;
+    lastPosition = position;
+    // Suspended by a click while playing: until playback stops.
+    if (timeline.autoScroll.suspended && ! engine.isPlaying())
+    {
+        timeline.autoScroll.suspended = false;
+        if (timeline.onAutoScrollChange)
+            timeline.onAutoScrollChange();
+    }
+    if (drag != Drag::none)
+        return;
+    if (const auto first = timeline.autoScroll.follow (position, timeline.firstBeat, timeline.pixelsPerBeat, (float) getWidth(),
+                                                       engine.isPlaying(), jumped))
+    {
+        timeline.firstBeat = *first;
+        scrolled();
+    }
+}
+
+std::optional<double> AutoScroll::follow (double position, double firstBeat, double pixelsPerBeat, float width,
+                                          bool playing, bool jumped) const
+{
+    if (! on || suspended || ! (playing || jumped))
+        return std::nullopt;
+    const auto x = (float) ((position - firstBeat) * pixelsPerBeat);
+    const auto outOfSight = x > width - 30.0f || x < 0.0f;
+    if (stationary && (playing || outOfSight))
+    {
+        // The playhead in the middle (near the song's start, where it can't be, left of it).
+        const auto first = juce::jmax (0.0, position - (double) width * 0.5 / pixelsPerBeat);
+        return std::abs (first - firstBeat) > 1.0e-9 ? std::optional<double> (first) : std::nullopt;
+    }
+    if (outOfSight)
+        return juce::jmax (0.0, position - 1.0);   // the page turns: the playhead near the left
+    return std::nullopt;
+}
+
+void AutoScroll::refreshKey (juce::TextButton& key) const
+{
+    key.setToggleState (on, juce::dontSendNotification);
+    key.setButtonText (on && suspended ? "SUSPENDED" : "AUTO-SCROLL");
+    if (on && suspended)
+        key.getProperties().set (ParagonLookAndFeel::litColourProperty, (juce::int64) 0xffff2f7a);
+    else
+        key.getProperties().remove (ParagonLookAndFeel::litColourProperty);
+    key.setTooltip (on && suspended ? "Auto-Scroll suspended by a click while playing (until playback stops): click (or F) to carry on following"
+                                    : "AUTO-SCROLL (F): while it's lit, the view keeps the playhead in sight (the arrow beside it: how)");
+    key.repaint();
+}
+
+void AutoScroll::showMenu (juce::Component& target, std::function<void()> changed)
+{
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("AUTO-SCROLL");
+    menu.addItem (1, "Page Scroll (the page turns at the right edge)", true, ! stationary);
+    menu.addItem (2, "Stationary Cursor (the playhead stays in the middle)", true, stationary);
+    menu.addSeparator();
+    menu.addItem (3, "Suspend Auto-Scroll when Editing", true, suspendWhenEditing);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&target),
+                        [this, changed = std::move (changed)] (int chosen)
+    {
+        if (chosen == 1 || chosen == 2)
+            stationary = chosen == 2;
+        else if (chosen == 3)
+            suspendWhenEditing = ! suspendWhenEditing;
+        else
+            return;
+        if (changed)
+            changed();
+    });
+}
+
+void AutoScroll::load (juce::PropertiesFile* settings, const juce::String& prefix)
+{
+    if (settings == nullptr)
+        return;
+    on = settings->getBoolValue (prefix + "AutoScroll", true);
+    stationary = settings->getBoolValue (prefix + "Stationary", false);
+    suspendWhenEditing = settings->getBoolValue (prefix + "SuspendWhenEditing", false);
+}
+
+void AutoScroll::save (juce::PropertiesFile* settings, const juce::String& prefix) const
+{
+    if (settings == nullptr)
+        return;
+    settings->setValue (prefix + "AutoScroll", on);
+    settings->setValue (prefix + "Stationary", stationary);
+    settings->setValue (prefix + "SuspendWhenEditing", suspendWhenEditing);
+}
+
+void ArrangeView::zoom (bool in)
+{
+    const auto cursor = studio.getEngine().getPosition();
+    timeline.pixelsPerBeat = juce::jlimit (2.0, 400.0, in ? timeline.pixelsPerBeat * Timeline::zoomStep : timeline.pixelsPerBeat / Timeline::zoomStep);
+    timeline.firstBeat = juce::jmax (0.0, cursor - (double) getWidth() * 0.5 / timeline.pixelsPerBeat);
+    scrolled();
+    repaint();
+}
+
+void ArrangeView::zoomRows (bool in)
+{
+    // The rows' content under the top edge stays there (scaled with them).
+    const auto before = timeline.rowZoom;
+    timeline.rowZoom = juce::jlimit (Timeline::minRowZoom, Timeline::maxRowZoom,
+                                     in ? before * Timeline::rowZoomStep : before / Timeline::rowZoomStep);
+    const auto room = juce::jmax (0, timeline.contentHeight (studio) - (getHeight() - Timeline::rulerHeight - Timeline::bottomRoom));
+    timeline.scrollY = juce::jlimit (0, room, juce::roundToInt ((double) timeline.scrollY * timeline.rowZoom / before));
+    scrolled();
+    repaint();
+}
+
+void ArrangeView::zoomFull()
+{
+    timeline.pixelsPerBeat = juce::jlimit (2.0, 400.0, (double) juce::jmax (100, getWidth()) / Timeline::scrollLength (studio));
+    timeline.firstBeat = 0.0;
+    scrolled();
+    repaint();
+}
+
+void ArrangeView::scrolled()
+{
+    if (timeline.onScrollOrZoom)
+        timeline.onScrollOrZoom();
+}
+
+double Timeline::scrollLength (pr7s::Studio& studio)
+{
+    const auto& project = studio.getProject();
+    auto end = project.loopOn ? project.loopEnd : 0.0;
+    end = juce::jmax (end, studio.getEngine().getPosition());
+    for (const auto& track : project.tracks)
+        for (const auto& part : track.parts)
+            end = juce::jmax (end, part.start + part.length);
+    const auto bar = project.beatsPerBar();
+    return juce::jmax (32.0 * bar, std::ceil (end / bar) * bar + 8.0 * bar);
+}
+
+std::vector<Timeline::Row> Timeline::layout (const pr7s::Studio& studio) const
 {
     std::vector<Row> rows;
     auto top = 0;
@@ -75,19 +205,19 @@ std::vector<Timeline::Row> Timeline::layout (const pr7s::Studio& studio)
         if (const auto* lanes = studio.getAutomation (busId))
             for (int i = 0; i < (int) lanes->size(); ++i)
                 if ((*lanes)[(size_t) i].shown)
-                    add (Row::Kind::lane, busId, i, laneHeight);
+                    add (Row::Kind::lane, busId, i, laneRowHeight());
     };
     for (const auto& track : studio.getProject().tracks)
     {
-        add (Row::Kind::track, track.id, -1, trackHeight);
+        add (Row::Kind::track, track.id, -1, trackRowHeight());
         addLanes (track.id);
     }
-    add (Row::Kind::master, pr7s::Engine::masterBus, -1, masterHeight);
+    add (Row::Kind::master, pr7s::Engine::masterBus, -1, masterRowHeight());
     addLanes (pr7s::Engine::masterBus);
     return rows;
 }
 
-int Timeline::contentHeight (const pr7s::Studio& studio)
+int Timeline::contentHeight (const pr7s::Studio& studio) const
 {
     const auto rows = layout (studio);
     return rows.empty() ? 0 : rows.back().top + rows.back().height;
@@ -100,7 +230,7 @@ float ArrangeView::rowTop (const Timeline::Row& row) const
 
 float ArrangeView::trackTop (int trackId) const
 {
-    for (const auto& row : Timeline::layout (studio))
+    for (const auto& row : timeline.layout (studio))
         if (row.kind == Timeline::Row::Kind::track && row.busId == trackId)
             return rowTop (row);
     return 0.0f;
@@ -110,7 +240,7 @@ std::optional<Timeline::Row> ArrangeView::rowAt (float y) const
 {
     if (y < (float) Timeline::rulerHeight)
         return std::nullopt;
-    for (const auto& row : Timeline::layout (studio))
+    for (const auto& row : timeline.layout (studio))
         if (y >= rowTop (row) && y < rowTop (row) + (float) row.height)
             return row;
     return std::nullopt;
@@ -127,7 +257,7 @@ juce::Rectangle<float> ArrangeView::getPartBounds (int trackId, int index) const
     if (const auto* track = studio.getProject().findTrack (trackId); track != nullptr && juce::isPositiveAndBelow (index, (int) track->parts.size()))
     {
         const auto& part = track->parts[(size_t) index];
-        return { timeline.xForBeat (part.start), trackTop (trackId) + 3.0f, (float) (part.length * timeline.pixelsPerBeat), (float) Timeline::trackHeight - 6.0f };
+        return { timeline.xForBeat (part.start), trackTop (trackId) + 3.0f, (float) (part.length * timeline.pixelsPerBeat), (float) timeline.trackRowHeight() - 6.0f };
     }
     return {};
 }
@@ -182,7 +312,7 @@ void ArrangeView::paint (juce::Graphics& g)
 
     // The rows: each track's lane (the selected track's a little lighter),
     // its automation lanes, the master's row.
-    const auto rows = Timeline::layout (studio);
+    const auto rows = timeline.layout (studio);
     auto trackNumber = 0;
     for (const auto& row : rows)
     {
@@ -234,7 +364,7 @@ void ArrangeView::paint (juce::Graphics& g)
             if (isDragged && isClipDrag)
             {
                 const juce::Rectangle<float> area (timeline.xForBeat (dragPart.start), trackTop (track.id) + 3.0f,
-                                                   (float) (dragPart.length * timeline.pixelsPerBeat), (float) Timeline::trackHeight - 6.0f);
+                                                   (float) (dragPart.length * timeline.pixelsPerBeat), (float) timeline.trackRowHeight() - 6.0f);
                 paintPart (g, area, dragPart, track.colour, true, false);
                 continue;
             }
@@ -252,7 +382,7 @@ void ArrangeView::paint (juce::Graphics& g)
                 part.start = dragNewStart;
                 part.length = dragNewLength;
                 const juce::Rectangle<float> area (timeline.xForBeat (part.start), trackTop (dragTargetTrack) + 3.0f,
-                                                   (float) (part.length * timeline.pixelsPerBeat), (float) Timeline::trackHeight - 6.0f);
+                                                   (float) (part.length * timeline.pixelsPerBeat), (float) timeline.trackRowHeight() - 6.0f);
                 paintPart (g, area, part, from->colour, true, false);
             }
     if (recording)
@@ -261,7 +391,7 @@ void ArrangeView::paint (juce::Graphics& g)
             {
                 const auto& part = recording->second;
                 paintPart (g, { timeline.xForBeat (part.start), trackTop (recording->first) + 3.0f, (float) (part.length * timeline.pixelsPerBeat),
-                                (float) Timeline::trackHeight - 6.0f },
+                                (float) timeline.trackRowHeight() - 6.0f },
                            part, project.tracks[t].colour, false, true);
             }
 
@@ -468,6 +598,14 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
     const auto& project = studio.getProject();
     const auto grid = timeline.grid (project);
     dragMoved = false;
+    // Suspend Auto-Scroll when Editing: a click in the tracks while playing.
+    if (timeline.autoScroll.on && timeline.autoScroll.suspendWhenEditing && ! timeline.autoScroll.suspended
+        && studio.getEngine().isPlaying() && event.position.y >= (float) Timeline::rulerHeight)
+    {
+        timeline.autoScroll.suspended = true;
+        if (timeline.onAutoScrollChange)
+            timeline.onAutoScrollChange();
+    }
     if (const auto row = rowAt (event.position.y); row && row->kind == Timeline::Row::Kind::lane && automationDown (event, *row))
         return;
     if (! event.mods.isShiftDown())
@@ -578,8 +716,9 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
             dragNewStart = acrossOnly ? dragOriginalStart : juce::jmax (0.0, pr7s::snap (dragOriginalStart + beat - dragStartBeat, grid));
             // To another track of the same kind (a clip onto an audio track, a MIDI part onto an instrument's).
             dragTargetTrack = dragTrack;
-            if (const auto over = trackAtY (event.position.y); ! alongOnly && over != 0 && isAudioTrack (over) == isAudioTrack (dragTrack))
-                dragTargetTrack = over;
+            const auto* overTrack = studio.getProject().findTrack (trackAtY (event.position.y));
+            if (overTrack != nullptr && ! alongOnly && ! overTrack->isChannel() && overTrack->isAudio() == isAudioTrack (dragTrack))
+                dragTargetTrack = overTrack->id;   // (not an FX or group channel: no parts there)
             repaint();
             break;
         }
@@ -692,8 +831,9 @@ void ArrangeView::mouseDoubleClick (const juce::MouseEvent& event)
             onEditNotes();
         return;
     }
-    if (isAudioTrack (trackAtY (event.position.y)))
-        return;   // an empty clip would play nothing
+    const auto* clicked = studio.getProject().findTrack (trackAtY (event.position.y));
+    if (clicked == nullptr || clicked->isAudio() || clicked->isChannel())
+        return;   // an empty clip would play nothing; an FX or group channel has no parts
     // A new empty part: between the locators, from the left one to the
     // right; elsewhere, a bar long, from the bar clicked in.
     if (const auto trackId = trackAtY (event.position.y))
@@ -720,6 +860,11 @@ void ArrangeView::mouseDoubleClick (const juce::MouseEvent& event)
 
 void ArrangeView::mouseWheelMove (const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel)
 {
+    if ((event.mods.isCommandDown() || event.mods.isCtrlDown()) && event.mods.isShiftDown())
+    {
+        zoomRows (wheel.deltaY > 0.0f);   // Ctrl+Shift+wheel: taller or shorter rows (the manual's)
+        return;
+    }
     if (event.mods.isCommandDown() || event.mods.isCtrlDown())
     {
         // Zoom round the mouse: the beat under it stays put.
@@ -734,11 +879,10 @@ void ArrangeView::mouseWheelMove (const juce::MouseEvent& event, const juce::Mou
     }
     else
     {
-        const auto room = juce::jmax (0, Timeline::contentHeight (studio) - (getHeight() - Timeline::rulerHeight - Timeline::bottomRoom));
+        const auto room = juce::jmax (0, timeline.contentHeight (studio) - (getHeight() - Timeline::rulerHeight - Timeline::bottomRoom));
         timeline.scrollY = juce::jlimit (0, room, timeline.scrollY - juce::roundToInt (wheel.deltaY * 300.0f));
     }
-    if (timeline.onScrollOrZoom)
-        timeline.onScrollOrZoom();
+    scrolled();
     repaint();
 }
 
@@ -775,7 +919,7 @@ const pr7s::AutomationLane* ArrangeView::laneFor (int busId, int laneIndex) cons
 
 juce::Rectangle<float> ArrangeView::getLaneArea (int busId, int laneIndex) const
 {
-    for (const auto& row : Timeline::layout (studio))
+    for (const auto& row : timeline.layout (studio))
         if (row.kind == Timeline::Row::Kind::lane && row.busId == busId && row.laneIndex == laneIndex)
             return juce::Rectangle<float> (0.0f, rowTop (row), (float) getWidth(), (float) row.height).reduced (0.0f, laneInset);
     return {};

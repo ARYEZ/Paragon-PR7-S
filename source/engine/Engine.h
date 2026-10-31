@@ -115,6 +115,11 @@ namespace pr7s
         using AudioSource = std::function<std::shared_ptr<const juce::AudioBuffer<float>> (const juce::String& file)>;
         void setAudioSource (AudioSource source) { audioSource = std::move (source); }
         void addAudioTrack (int trackId);
+        // An FX channel (what sends give it, through its inserts) or a group
+        // channel (the tracks routed to it): no instrument, no parts.
+        void addChannel (int trackId, bool group);
+        // A send's level now, its automation included (for the screen).
+        float getSendNowDb (int trackId, int slot) const;
         // Where a recording into this track goes while recording (its input,
         // one or two channels), written from the audio thread (the writer's
         // own thread puts it on disk). nullptr: none (before deleting it).
@@ -200,6 +205,19 @@ namespace pr7s
             float volumeDb = 0.0f, pan = 0.0f;
             bool mute = false, soloedOut = false;   // soloedOut: another track is soloed
             int preFader = Project::maxInserts;     // the inserts before the fader (the rest after)
+            // What it is, where its sound goes, and its sends.
+            enum class Role { source, group, fx };  // processed in this order: tracks, groups, FX
+            Role role = Role::source;
+            int output = 0;                         // a group channel's id, or 0: the master
+            struct SendState
+            {
+                int target = 0;                     // an FX channel's id (0: none)
+                float levelDb = 0.0f, lastGain = 0.0f;
+                bool on = false, preFader = false;
+            };
+            std::array<SendState, Project::maxSends> sends;
+            std::array<std::atomic<float>, Project::maxSends> nowSendDb {};
+            juce::AudioBuffer<float> bus;           // groups and FX: what comes in, this block
             std::vector<LaneState> automation;
             bool mixAutomated = false;              // a volume, pan or mute lane among them
             std::atomic<float> nowVolumeDb { 0.0f }, nowPan { 0.0f };
@@ -235,6 +253,7 @@ namespace pr7s
         void renderBlock (juce::AudioBuffer<float>& output, int numSamples);
         const float* inputChannel (int channel, int offset) const noexcept;
         void playClips (TrackState&, juce::int64 clock, int offset, int length, double beatsPerSample);
+        void runSends (TrackState&, bool preFader, int numSamples, double beat);
 
         // The block's segments (up to the cycle's end, then from its start): their song position, place in the block and length.
         struct Segment { juce::int64 clock; int offset, length; };

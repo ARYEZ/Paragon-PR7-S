@@ -118,9 +118,22 @@ public:
         mute.setToggleState (t->mute, juce::dontSendNotification);
         solo.setToggleState (t->solo, juce::dontSendNotification);
         arm.setToggleState (t->armed, juce::dontSendNotification);
-        instrument.setButtonText (t->isAudio() ? inputName (*t) : t->instrument.getName());
-        instrument.setTooltip (t->isAudio() ? "The input it records from: click to choose, or to delete the track"
-                                            : "The instrument: click to open its window, change it, or delete the track");
+        if (t->isChannel())
+        {
+            // An FX or group channel: what it is (an FX channel: its first effect).
+            const auto& inserts = t->inserts;
+            instrument.setButtonText (t->isGroup() ? juce::String ("GROUP CHANNEL")
+                                      : ! inserts.empty() && ! inserts.front().isEmpty() ? "FX: " + inserts.front().plugin.name : juce::String ("FX CHANNEL"));
+            instrument.setTooltip (t->isGroup() ? "A group channel: the tracks routed to it (their Output), through its effects and fader. Click to delete it"
+                                                : "An FX channel: what the tracks' sends give it, through its effects. Click to open its effect's window, or to delete it");
+        }
+        else
+        {
+            instrument.setButtonText (t->isAudio() ? inputName (*t) : t->instrument.getName());
+            instrument.setTooltip (t->isAudio() ? "The input it records from and where it goes (Output): click to choose, or to delete the track"
+                                                : "The instrument and where it goes (Output): click to open its window, change it, or delete the track");
+        }
+        arm.setVisible (! t->isChannel());   // an FX or group channel records nothing
         monitor.setVisible (t->isAudio());
         monitor.setToggleState (t->monitor, juce::dontSendNotification);
         AutomationKeys::refresh (read, write, owner.studio, trackId);
@@ -167,16 +180,25 @@ public:
         }
 
         // Its level: PR7-C's meter, lying down (orange at the left to pink-red at the right).
-        LevelMeter::paintSegments (g, levelArea, LevelMeter::proportionForDb (reading.db),
+        if (! levelArea.isEmpty())   // (none in a short row)
+            LevelMeter::paintSegments (g, levelArea, LevelMeter::proportionForDb (reading.db),
                                    reading.heldDb > LevelMeter::minDb ? LevelMeter::proportionForDb (reading.heldDb) : -1.0f, false);
     }
 
     void resized() override
     {
-        auto area = getLocalBounds().withTrimmedLeft (12).reduced (6, 7);
-        auto top = area.removeFromTop (24);
-        arm.setBounds (top.removeFromRight (36));
-        top.removeFromRight (3);
+        // Shorter than its two lines (the rows zoomed out): only the first, in the middle.
+        const auto compact = getHeight() < 66;
+        for (auto* control : std::initializer_list<juce::Component*> { &instrument, &read, &write, &volume })
+            control->setVisible (! compact);
+        levelArea = {};
+        auto area = getLocalBounds().withTrimmedLeft (12).reduced (6, compact ? juce::jmax (2, (getHeight() - 24) / 2) : 7);
+        auto top = area.removeFromTop (juce::jmin (24, area.getHeight()));
+        if (arm.isVisible())
+        {
+            arm.setBounds (top.removeFromRight (36));
+            top.removeFromRight (3);
+        }
         solo.setBounds (top.removeFromRight (30));
         top.removeFromRight (3);
         mute.setBounds (top.removeFromRight (30));
@@ -186,6 +208,9 @@ public:
             top.setRight (mute.getX() - 3);
         top.removeFromRight (6);
         name.setBounds (top);
+        arrow.setBounds (0, getHeight() - 18, 16, 16);
+        if (compact)
+            return;
         area.removeFromTop (6);
         auto bottom = area.removeFromTop (24);
         volume.setBounds (bottom.removeFromRight (28));
@@ -197,8 +222,7 @@ public:
         read.setBounds (bottom.removeFromRight (26));
         bottom.removeFromRight (6);
         instrument.setBounds (bottom);
-        // Show/Hide Automation at the lower left corner (as the manual has it).
-        arrow.setBounds (0, getHeight() - 18, 16, 16);
+        // (Show/Hide Automation: the arrow at the lower left corner, as the manual has it.)
     }
 
     void mouseDown (const juce::MouseEvent& event) override
@@ -279,6 +303,7 @@ public:
         using T = pr7s::AutomationLane::Target;
         switch (l->target)
         {
+            case T::send:
             case T::volume: { const auto db = pr7s::travelToVolume (value); return db <= -59.9f ? juce::String ("-inf") : juce::String (db, 1) + " dB"; }
             case T::pan:    { const auto p = juce::roundToInt (pr7s::travelToPan (value) * 100.0f); return p == 0 ? juce::String ("C") : (p < 0 ? "L " : "R ") + juce::String (std::abs (p)); }
             case T::mute:   return value >= 0.5f ? "ON" : "OFF";
@@ -360,7 +385,7 @@ public:
 
     void resized() override
     {
-        auto area = getLocalBounds().reduced (6, 8);
+        auto area = getLocalBounds().reduced (6, 0).withSizeKeepingCentre (getWidth() - 12, juce::jmin (24, getHeight() - 10));
         write.setBounds (area.removeFromRight (26));
         area.removeFromRight (2);
         read.setBounds (area.removeFromRight (26));
@@ -379,6 +404,20 @@ TrackList::TrackList (pr7s::Studio& studioToUse, Timeline& timelineToUse)
     addTrack.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     addTrack.setTooltip ("Add a track, with the Paragon Synth or one of your VST3 instruments");
     addTrack.onClick = [this] { showAddTrackMenu(); };
+    autoScrollButton.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    autoScrollButton.setWantsKeyboardFocus (false);
+    autoScrollButton.onClick = [this] { if (onAutoScrollToggle) onAutoScrollToggle(); };
+    addAndMakeVisible (autoScrollButton);
+    autoScrollMenu.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    autoScrollMenu.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    autoScrollMenu.setWantsKeyboardFocus (false);
+    autoScrollMenu.setTooltip ("Auto-Scroll's settings: Page Scroll or Stationary Cursor; Suspend Auto-Scroll when Editing");
+    autoScrollMenu.onClick = [this]
+    {
+        timeline.autoScroll.showMenu (autoScrollMenu, [this] { if (timeline.onAutoScrollChange) timeline.onAutoScrollChange(); });
+    };
+    addAndMakeVisible (autoScrollMenu);
+    refreshAutoScroll();
     addAndMakeVisible (addTrack);
     studio.addChangeListener (this);
     rebuild();
@@ -426,7 +465,7 @@ void TrackList::rebuild()
         row->refresh();
 
     // The automation lanes' rows (made again when they change), and the master's.
-    const auto layout = Timeline::layout (studio);
+    const auto layout = timeline.layout (studio);
     if (layout != lastLayout)
     {
         laneRows.clear();
@@ -455,13 +494,24 @@ void TrackList::resized()
     placeRows();
     addTrack.setBounds (getLocalBounds().removeFromBottom (addButtonHeight).reduced (10, 5));
     addTrack.toFront (false);
+    auto header = getLocalBounds().removeFromTop (Timeline::rulerHeight).reduced (8, 6);
+    autoScrollMenu.setBounds (header.removeFromRight (22));
+    header.removeFromRight (3);
+    autoScrollButton.setBounds (header.removeFromRight (96));
+    autoScrollButton.toFront (false);
+    autoScrollMenu.toFront (false);
+}
+
+void TrackList::refreshAutoScroll()
+{
+    timeline.autoScroll.refreshKey (autoScrollButton);
 }
 
 void TrackList::placeRows()
 {
     // Each where the layout has it (so they line up with the arrangement's rows).
     auto laneRow = laneRows.begin();
-    for (const auto& row : Timeline::layout (studio))
+    for (const auto& row : timeline.layout (studio))
     {
         const juce::Rectangle<int> bounds (0, Timeline::rulerHeight + row.top - timeline.scrollY, getWidth(), row.height);
         if (row.kind == Timeline::Row::Kind::track)
@@ -500,7 +550,7 @@ void TrackList::paint (juce::Graphics& g)
 
 void TrackList::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& wheel)
 {
-    const auto room = juce::jmax (0, Timeline::contentHeight (studio) - (getHeight() - Timeline::rulerHeight - addButtonHeight));
+    const auto room = juce::jmax (0, timeline.contentHeight (studio) - (getHeight() - Timeline::rulerHeight - addButtonHeight));
     timeline.scrollY = juce::jlimit (0, room, timeline.scrollY - juce::roundToInt (wheel.deltaY * 300.0f));
     if (timeline.onScrollOrZoom)
         timeline.onScrollOrZoom();
@@ -521,12 +571,36 @@ void TrackList::showAddTrackMenu()
         for (int i = 0; i < instruments.size(); ++i)
             menu.addItem (100 + i, instruments[i].manufacturerName + ": " + instruments[i].name);
     }
+    // FX and group channels (as the manual's Add Track dialog has them).
+    const auto effects = studio.getPluginHost().getEffects();
+    juce::PopupMenu withEffect;
+    for (int i = 0; i < effects.size(); ++i)
+        withEffect.addItem (1000 + i, effects[i].manufacturerName + ": " + effects[i].name);
+    menu.addSectionHeader ("ADD AN FX CHANNEL OR A GROUP");
+    menu.addItem (5, "FX channel (empty: add its effects in the mixer)");
+    if (! effects.isEmpty())
+        menu.addSubMenu ("FX channel with", withEffect);
+    menu.addItem (6, "Group channel (a submix: route tracks to it)");
     menu.addSeparator();
     menu.addItem (2, instruments.isEmpty() ? "Find my VST3 instruments..." : "Find more VST3 instruments...");
 
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addTrack), [this, instruments] (int chosen)
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addTrack), [this, instruments, effects] (int chosen)
     {
-        if (chosen == 1)
+        if (chosen == 5)
+        {
+            studio.addFxChannel (nullptr);
+        }
+        else if (chosen == 6)
+        {
+            studio.addGroupChannel();
+        }
+        else if (chosen >= 1000 && chosen - 1000 < effects.size())
+        {
+            juce::String error;
+            if (studio.addFxChannel (&effects.getReference (chosen - 1000), &error) == 0)
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't load the effect", error);
+        }
+        else if (chosen == 1)
         {
             studio.addTrack ({});
         }
@@ -615,6 +689,27 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
         menu.addItem (21, "Show All Used Automation");
         menu.addSeparator();
     }
+    if (track->isChannel())
+    {
+        if (track->isFx())
+        {
+            const auto hasEffect = ! track->inserts.empty() && ! track->inserts.front().isEmpty() && studio.getEngine().getEffect (trackId, 0) != nullptr;
+            menu.addItem (40, hasEffect ? "Open " + track->inserts.front().plugin.name + "'s window" : juce::String ("No effect yet (add one in the mixer)"), hasEffect);
+            menu.addSeparator();
+        }
+        menu.addItem (2, "Delete track");
+    }
+    else
+    {
+        // Output: where its sound goes (the master, or a group channel).
+        juce::PopupMenu output;
+        output.addItem (30, "Master", true, track->output == 0);
+        for (const auto& other : studio.getProject().tracks)
+            if (other.isGroup())
+                output.addItem (30000 + other.id, other.name, true, track->output == other.id);
+        menu.addSubMenu ("Output", output);
+        menu.addSeparator();
+    }
     if (track->isAudio())
     {
         // The inputs switched on in SETTINGS (two, with none to ask).
@@ -629,7 +724,7 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
         menu.addSeparator();
         menu.addItem (2, "Delete track");
     }
-    else
+    else if (! track->isChannel())
     {
         menu.addItem (1, "Open " + track->instrument.getName() + "'s window", instance != nullptr && instance->hasEditor());
         change.addItem (10, "Paragon Synth (built in)");
@@ -646,6 +741,12 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
             studio.setAutomationOpen (trackId, ! studio.isAutomationOpen (trackId));
         else if (chosen == 21)
             studio.showAllUsedAutomation();
+        else if (chosen == 30)
+            studio.setOutput (trackId, 0);
+        else if (chosen > 30000)
+            studio.setOutput (trackId, chosen - 30000);
+        else if (chosen == 40 && onOpenEffect)
+            onOpenEffect (trackId, 0);
         else if (chosen == 1 && onOpenInstrument)
         {
             onOpenInstrument (trackId);

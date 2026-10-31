@@ -10,6 +10,8 @@
 
 namespace pr7s
 {
+    struct MidiImport;   // (MidiImport.h)
+
     // The studio: the project, the engine that plays it, the instruments
     // and the audio and MIDI devices, and every action the screen offers
     // (tracks, parts, the transport, recording, undo, files). Message thread.
@@ -44,7 +46,25 @@ namespace pr7s
         int addAudioTrack (bool stereo);
         void setTrackInput (int trackId, int input, bool stereo);
         void setMonitor (int trackId, bool);   // hear what comes in, through the track's effects
-        void removeTrack (int trackId);
+        void removeTrack (int trackId);   // (an FX or group channel: what was sent or routed to it goes back to the master)
+
+        // FX and group channels (inspired by Cubase's workflow). An FX channel
+        // takes what the tracks' sends give it, through its inserts (`effect`
+        // goes in the first; none: empty); a group channel, the tracks whose
+        // output is routed to it. Both go to the master. Returns its id (0, with
+        // `error` set, if the effect didn't load).
+        int addFxChannel (const juce::PluginDescription* effect, juce::String* error = nullptr);
+        int addFxChannel (const Insert&, std::unique_ptr<juce::AudioPluginInstance>);   // one made elsewhere (tests)
+        int addGroupChannel();
+        // Where a track's sound goes: a group channel's id, or 0 for the master.
+        void setOutput (int trackId, int groupId);
+        // A track's (or group's) sends, by slot (0 to 7). The level can be
+        // dragged (`undoable` off while dragging) and is written as automation
+        // like a fader (grab and release Target::send with its slot).
+        void setSend (int trackId, int slot, const Send&);
+        void setSendLevel (int trackId, int slot, float db, bool undoable = true);
+        void removeSend (int trackId, int slot);
+        void setSendsBypass (int trackId, bool);
         bool changeInstrument (int trackId, const Instrument&, juce::String* error = nullptr);
         void renameTrack (int trackId, const juce::String&);
         void setMute (int trackId, bool);
@@ -210,6 +230,14 @@ namespace pr7s
         bool save (const juce::File&);
         // `problems`: instruments that couldn't be loaded (the project opens anyway).
         bool open (const juce::File&, juce::String& problems);
+        // A standard MIDI file: a Paragon Synth track for each of its tracks
+        // (a type-0 file: each channel), its notes in a part (whole bars).
+        // `newSong`: a new song first, with the file's tempo and time
+        // signature; else into this one at `atBeat` (its tempo kept, the
+        // notes on its beats: the manual's "Ignore Master Track Events on
+        // Merge"). Returns how many tracks it added (0, with `error` set, if none).
+        int importMidi (const juce::File&, bool newSong, double atBeat, juce::String& error);
+        int importMidi (const MidiImport&, bool newSong, double atBeat);
         juce::File getFile() const noexcept { return file; }
         bool isModified() const noexcept { return modified; }
 

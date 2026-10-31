@@ -12,7 +12,7 @@
 
 // The studio's window, top to bottom:
 //
-//   header       the PR7-S mark; NEW, OPEN, SAVE, SAVE AS, EXPORT; UNDO, REDO;
+//   header       the PR7-S mark; NEW, OPEN, SAVE, SAVE AS, IMPORT, EXPORT; UNDO, REDO;
 //                KEY EDITOR, MIXER; R and W (read and write automation for
 //                all tracks, lit while any track's are on); PLUGINS and SETTINGS
 //   transport    the pearl unit: keys, position, tempo, signature, meters
@@ -28,12 +28,20 @@
 // (as Cubase's F3 and Alt+F3 do), Alt+R / Alt+W read / write automation for
 // all tracks (the manual's keys). Delete removes the selected automation
 // points if there are any (else the selected part); Esc while dragging
-// points puts them back.
+// points puts them back. H / G zoom in / out (a step, centred on the
+// playhead), Shift+H / Shift+G taller or shorter rows, Shift+F the whole
+// song, F Auto-Scroll on or off (or carry on, if suspended): in the
+// arrangement, or in the key editor after a click in it (the manual's keys;
+// each has its own Auto-Scroll, as in the manual).
+// Scroll bars across and down the arrangement. Drag the line above the
+// lower zone to make it taller or shorter (remembered for each of the two).
 // After a click in the key editor its keys go to it (Delete removes notes,
 // not the part); after a click elsewhere, to the arrangement. Ctrl+C / X / V
 // and Shift+A go to the editor whenever it's open.
 class MainView final : public juce::Component,
-                       private juce::ChangeListener
+                       public juce::FileDragAndDropTarget,
+                       private juce::ChangeListener,
+                       private juce::ScrollBar::Listener
 {
 public:
     explicit MainView (pr7s::Studio&);
@@ -53,6 +61,14 @@ public:
     // then writes it behind a progress bar (CANCEL stops it, leaving no file).
     void exportMix();
     Windows::ExportPage* getExportPage() noexcept { return exportPage.getComponent(); }
+
+    // IMPORT: a standard MIDI file (as the manual's File > Import > MIDI
+    // File): asks whether into a new song (if this one has anything in it),
+    // then which file. A .mid file dropped on the window goes into this song
+    // at the bar it's dropped on (bar 1 if not over the arrangement).
+    void importMidiFile();
+    bool isInterestedInFileDrag (const juce::StringArray&) override;
+    void filesDropped (const juce::StringArray&, int x, int y) override;
 
     void openInstrumentWindow (int trackId);
     void openSettings();
@@ -82,10 +98,24 @@ public:
     void toggleMixerWindow();
     void toggleMixerDocked();
 
+    // The line between the arrangement and the docked lower zone: drag it
+    // up or down. Each of the two remembers its height (in the settings file).
+    class ZoneDivider;
+    ZoneDivider& getZoneDivider() noexcept { return *zoneDivider; }
+    void setDockedHeight (int);   // the docked one's (kept between its least and what leaves the arrangement room)
+    static constexpr int dividerHeight = 7, minimumArrangeHeight = 170;
+
+    // The arrangement's Auto-Scroll (F, or AUTO-SCROLL over the track list), remembered for next time.
+    void setArrangeAutoScroll (bool);
+    juce::ScrollBar& getArrangeScrollBarAcross() noexcept { return arrangeAcross; }
+    juce::ScrollBar& getArrangeScrollBarDown() noexcept { return arrangeDown; }
+    static constexpr int scrollBarSize = 12;
+
     // The window's title: the project's name, * when changed.
     std::function<void (const juce::String&)> onTitleChange;
 
     ArrangeView& getArrangeView() noexcept { return arrange; }
+    Timeline& getTimeline() noexcept { return timeline; }
     TrackList& getTrackList() noexcept { return trackList; }
     TransportBar& getTransport() noexcept { return transport; }
     KeyEditor& getKeyEditor() noexcept { return keyEditor; }
@@ -95,7 +125,9 @@ public:
 
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
+    void scrollBarMoved (juce::ScrollBar*, double newRangeStart) override;
     void refreshHeader();
+    void refreshScrollBars();
 
     struct Zone
     {
@@ -104,7 +136,11 @@ private:
         juce::String title, settingsKey;    // the window's title; settingsKey + "InWindow" and + "Window" in the settings file
         bool open = false, inWindow = false;
         std::unique_ptr<Windows::ZoneWindow> window;
+        int dockedHeight = 0;   // dragged to (0: the default, a little over half); settingsKey + "Height"
     };
+    Zone* dockedZone() noexcept;   // the one open under the arrangement, if any
+    int heightFor (Zone&, int middleHeight) const;
+    int minimumHeight (Zone&) const;
     void openZone (Zone&);
     void closeZone (Zone&);
     void setZoneInWindow (Zone&, bool);
@@ -118,8 +154,10 @@ private:
     KeyEditor keyEditor;
     MixerView mixer;
     bool keysToEditor = false;
+    juce::ScrollBar arrangeAcross { false }, arrangeDown { true };
+    std::unique_ptr<ZoneDivider> zoneDivider;
 
-    juce::TextButton newButton { "NEW" }, openButton { "OPEN" }, saveButton { "SAVE" }, saveAsButton { "SAVE AS" }, exportButton { "EXPORT" },
+    juce::TextButton newButton { "NEW" }, openButton { "OPEN" }, saveButton { "SAVE" }, saveAsButton { "SAVE AS" }, importButton { "IMPORT" }, exportButton { "EXPORT" },
                      undoButton { "UNDO" }, redoButton { "REDO" }, editorButton { "KEY EDITOR" }, mixerButton { "MIXER" },
                      pluginsButton { "PLUGINS" }, settingsButton { "SETTINGS" }, readAllButton { "R" }, writeAllButton { "W" };
     // After the editor and the mixer: their windows go first.
@@ -134,4 +172,20 @@ private:
     void writeExport (const juce::File&, const pr7s::Studio::ExportOptions&);
     std::unique_ptr<juce::ThreadWithProgressWindow> exportProgress;
     juce::String lastTitle;
+};
+
+// The line above the docked lower zone (a grip in the middle): drag it.
+class MainView::ZoneDivider final : public juce::Component,
+                                   public juce::SettableTooltipClient
+{
+public:
+    explicit ZoneDivider (MainView&);
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+
+private:
+    MainView& owner;
+    int heightAtDown = 0;
 };

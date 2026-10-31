@@ -4,6 +4,34 @@
 
 #include "engine/Studio.h"
 
+// Auto-Scroll, as the manual has it (the arrangement and the key editor
+// each have their own): on or off (F, or AUTO-SCROLL), and its settings menu
+// (the arrow beside the key): Page Scroll (the page turns when the playhead
+// reaches the right edge) or Stationary Cursor (the playhead stays in the
+// middle while playing, the song moving under it); Suspend Auto-Scroll when
+// Editing (a click in the view while playing stops it following until
+// playback stops or Auto-Scroll is clicked again; the key lights pink and
+// reads SUSPENDED meanwhile).
+struct AutoScroll
+{
+    bool on = true, stationary = false, suspendWhenEditing = false;
+    bool suspended = false;   // (not kept: only until playback stops)
+
+    // Where the view should start now (its first beat), if it should move:
+    // playing, or the playhead moved while stopped (`jumped`) out of sight.
+    std::optional<double> follow (double position, double firstBeat, double pixelsPerBeat, float width,
+                                  bool playing, bool jumped) const;
+    // F or a click on the key: a suspended one carries on; else on or off.
+    void toggle() noexcept { suspended ? suspended = false : (on = ! on); }
+    // The key: lit while on, pink and SUSPENDED while suspended.
+    void refreshKey (juce::TextButton&) const;
+    // The settings menu, under `target`; `changed` after a choice.
+    void showMenu (juce::Component& target, std::function<void()> changed);
+    // Kept in the settings file under `prefix` + "AutoScroll", "Stationary", "SuspendWhenEditing".
+    void load (juce::PropertiesFile*, const juce::String& prefix);
+    void save (juce::PropertiesFile*, const juce::String& prefix) const;
+};
+
 // Where the arrangement is scrolled and zoomed, shared by the track list
 // (which must line up with the lanes) and the arrangement.
 struct Timeline
@@ -11,8 +39,27 @@ struct Timeline
     double pixelsPerBeat = 28.0;   // zoom
     double firstBeat = 0.0;        // the beat at the arrangement's left edge
     int scrollY = 0;               // pixels the tracks are scrolled up by
+    AutoScroll autoScroll;         // the arrangement's (F)
+    std::function<void()> onAutoScrollChange;   // suspended by a click, or back when playback stops: the key follows
 
-    static constexpr int trackHeight = 72;
+    // The vertical zoom (Shift+H in, Shift+G out, Ctrl+Shift+wheel): every
+    // row's height scaled together, so their differences stay (as the manual
+    // has it), from half to three times (our choice). Lanes and the master's
+    // row stay tall enough for their controls.
+    double rowZoom = 1.0;
+    static constexpr double minRowZoom = 0.5, maxRowZoom = 3.0, rowZoomStep = 1.25;
+    int trackRowHeight() const noexcept { return juce::roundToInt (trackHeight * rowZoom); }
+    int laneRowHeight() const noexcept { return juce::jmax (34, juce::roundToInt (laneHeight * rowZoom)); }
+    int masterRowHeight() const noexcept { return juce::jmax (34, juce::roundToInt (masterHeight * rowZoom)); }
+
+    // How far along the scroll bar goes: 8 bars past the last part (or the
+    // cycle's end, or the playhead), and at least 32 bars (our choice: there
+    // is no project length to set yet).
+    static double scrollLength (pr7s::Studio&);
+    // One step of G (out) or H (in), as the manual's Zoom Out / Zoom In.
+    static constexpr double zoomStep = 1.5;
+
+    static constexpr int trackHeight = 72;   // a track's row at the vertical zoom's 1 (trackRowHeight: as it is now)
     static constexpr int rulerHeight = 36;
     static constexpr int cycleStripHeight = 14;   // the ruler's top strip, where the cycle is dragged
     static constexpr int bottomRoom = 40;         // under the last track: the track list's + ADD TRACK, so it never hides a track
@@ -32,7 +79,7 @@ struct Timeline
     // The rows, top to bottom, shared by the track list and the arrangement:
     // each track, its open automation lanes under it, then the master's row
     // and its lanes. `top` is from the first row's top, before scrolling.
-    static constexpr int laneHeight = 48, masterHeight = 40;
+    static constexpr int laneHeight = 48, masterHeight = 40;   // at the vertical zoom's 1
     struct Row
     {
         enum class Kind { track, lane, master };
@@ -42,8 +89,8 @@ struct Timeline
         int top = 0, height = 0;
         bool operator== (const Row&) const = default;
     };
-    static std::vector<Row> layout (const pr7s::Studio&);
-    static int contentHeight (const pr7s::Studio&);
+    std::vector<Row> layout (const pr7s::Studio&) const;
+    int contentHeight (const pr7s::Studio&) const;
 };
 
 // The arrangement (inspired by Cubase's project window, in our look): the ruler with
@@ -78,7 +125,11 @@ struct Timeline
 //                   With no points, a dotted line shows the control's
 //                   setting; R off or the lane muted, the curve is greyed
 //   wheel           scrolls the tracks; Shift+wheel scrolls along the song;
-//                   Ctrl+wheel zooms
+//                   Ctrl+wheel zooms (and the scroll bars, under and beside it)
+//   keys            (as the manual has them) H zooms in, G out, a step
+//                   centred on the playhead; Shift+H / Shift+G taller or
+//                   shorter rows (Ctrl+Shift+wheel too); Shift+F shows the
+//                   whole song; F turns Auto-Scroll on or off (AutoScroll)
 class ArrangeView final : public juce::Component,
                           private juce::ChangeListener,
                           private juce::Timer
@@ -96,6 +147,17 @@ public:
     void select (int trackId, int index);
     void deleteSelected();
     void duplicateSelected();
+
+    // H / G: one zoom step in or out, centred on the playhead; Shift+F: the
+    // whole song (as far as the scroll bar goes) across the view.
+    void zoom (bool in);
+    void zoomFull();
+    // Shift+H / Shift+G: the rows a step taller or shorter (the top row in view stays at the top).
+    void zoomRows (bool in);
+    // Auto-Scroll (Timeline::autoScroll): playing, or the playhead moved
+    // while stopped (Home, the end of a recording), and it's out of sight:
+    // the page turns so it's at the left. Called by the view's timer.
+    void followPlayhead();
 
     // Automation points selected (in one lane at a time).
     struct PointSelection
@@ -168,4 +230,6 @@ private:
     int dragTrack = 0, dragTargetTrack = 0;
     double dragNewStart = 0.0, dragNewLength = 0.0;
     bool dragCopies = false, dragMoved = false;
+    double lastPosition = 0.0;   // the playhead as last seen (Auto-Scroll follows a jump while stopped)
+    void scrolled();             // the track list and the scroll bars follow
 };

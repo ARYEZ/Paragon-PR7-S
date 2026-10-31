@@ -157,6 +157,7 @@ namespace pr7s
             track.instrumentChannels = juce::jmax (2, track.instrument->getTotalNumInputChannels(), track.instrument->getTotalNumOutputChannels());
         }
         track.buffer.setSize (channelsNeeded (track), maxBlockSize);
+        track.bus.setSize (2, maxBlockSize);
         track.midi.ensureSize (4096);
         track.left.reset (sampleRate, gainRampSeconds);
         track.right.reset (sampleRate, gainRampSeconds);
@@ -252,6 +253,26 @@ namespace pr7s
         const juce::ScopedLock sl (lock);
         if (findTrack (trackId) == nullptr)
             tracks.push_back (std::move (incoming));
+    }
+
+    void Engine::addChannel (int trackId, bool group)
+    {
+        auto incoming = std::make_unique<TrackState>();
+        incoming->id = trackId;
+        incoming->role = group ? TrackState::Role::group : TrackState::Role::fx;
+        incoming->inserts.reserve ((size_t) Project::maxInserts);
+        prepareTrack (*incoming);
+        const juce::ScopedLock sl (lock);
+        if (findTrack (trackId) == nullptr)
+            tracks.push_back (std::move (incoming));
+    }
+
+    float Engine::getSendNowDb (int trackId, int slot) const
+    {
+        const juce::ScopedLock sl (lock);
+        if (const auto* track = findTrack (trackId); track != nullptr && juce::isPositiveAndBelow (slot, Project::maxSends))
+            return track->nowSendDb[(size_t) slot].load();
+        return -60.0f;
     }
 
     void Engine::setRecorder (int trackId, juce::AudioFormatWriter::ThreadedWriter* writer)
@@ -374,16 +395,19 @@ namespace pr7s
     {
         // Each track's notes as note on/off events by beat, built here
         // (allocating) and swapped in under the lock.
-        auto anySolo = false;
+        // Solo: a soloed track silences the other tracks (not the groups and FX
+        // channels they go through); a soloed group or FX channel, the other ones.
+        auto anySolo = false, anyChannelSolo = false;
         for (const auto& track : project.tracks)
-            anySolo = anySolo || track.solo;
+            (track.isChannel() ? anyChannelSolo : anySolo) |= track.solo;
+        const auto soloedOut = [&] (const Track& t) { return t.isChannel() ? anyChannelSolo && ! t.solo : anySolo && ! t.solo; };
 
         struct Prepared { int id; std::vector<Event> events; std::pair<float, float> gains; std::vector<bool> bypass; std::vector<Clip> clips;
                           std::vector<LaneState> automation; bool mixAutomated = false; };
         std::vector<Prepared> prepared;
         for (const auto& track : project.tracks)
         {
-            Prepared p { track.id, {}, sideGains (track, ! track.mute && (! anySolo || track.solo)), {}, {}, {}, false };
+            Prepared p { track.id, {}, sideGains (track, ! track.mute && ! soloedOut (track)), {}, {}, {}, false };
             for (const auto& insert : track.inserts)
                 p.bypass.push_back (insert.bypass);
             readLanes (track.automation, track.automationRead, p.automation, p.mixAutomated, track.id, held);
@@ -443,8 +467,18 @@ namespace pr7s
                     track->volumeDb = t->volumeDb;
                     track->pan = t->pan;
                     track->mute = t->mute;
-                    track->soloedOut = anySolo && ! t->solo;
+                    track->soloedOut = soloedOut (*t);
                     track->preFader = t->preFaderSlots;
+                    track->output = t->output;
+                    for (int s = 0; s < Project::maxSends; ++s)
+                    {
+                        auto& send = track->sends[(size_t) s];
+                        const auto* from = juce::isPositiveAndBelow (s, (int) t->sends.size()) ? &t->sends[(size_t) s] : nullptr;
+                        send.target = from != nullptr ? from->target : 0;
+                        send.levelDb = from != nullptr ? from->levelDb : -60.0f;
+                        send.on = from != nullptr && from->on && from->target != 0 && ! t->sendsBypass;
+                        send.preFader = from != nullptr && from->preFader;
+                    }
                 }
                 std::swap (track->automation, p.automation);
                 track->mixAutomated = p.mixAutomated;
@@ -750,11 +784,32 @@ namespace pr7s
             juce::FloatVectorOperations::clear (masterBuffer.getWritePointer (channel), numSamples);
         juce::AudioBuffer<float> master (masterBuffer.getArrayOfWritePointers(), masterBuffer.getNumChannels(), numSamples);
         const auto liveId = liveTrack.load();
+        // What groups and FX channels take in, this block: nothing yet.
         for (auto& track : tracks)
+            if (track->role != TrackState::Role::source)
+                for (int channel = 0; channel < 2; ++channel)
+                    juce::FloatVectorOperations::clear (track->bus.getWritePointer (channel), numSamples);
+        // Tracks, then groups (the tracks routed to them are in), then FX channels (every send is in).
+        for (const auto role : { TrackState::Role::source, TrackState::Role::group, TrackState::Role::fx })
+        for (auto& trackHolder : tracks)
         {
+            auto* track = trackHolder.get();
+            if (track->role != role)
+                continue;
             if (track->id == liveId)
                 track->midi.addEvents (live, 0, numSamples, 0);
-            if (track->audio)
+            if (track->role != TrackState::Role::source)
+            {
+                // A group or FX channel: what was routed or sent to it.
+                for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
+                {
+                    if (channel < 2)
+                        juce::FloatVectorOperations::copy (track->buffer.getWritePointer (channel), track->bus.getReadPointer (channel), numSamples);
+                    else
+                        juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
+                }
+            }
+            else if (track->audio)
             {
                 // An audio track: its clips, and what comes in if it's monitored.
                 for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
@@ -786,6 +841,7 @@ namespace pr7s
             }
             juce::AudioBuffer<float> sound (track->buffer.getArrayOfWritePointers(), track->buffer.getNumChannels(), numSamples);
             runInserts (track->inserts, sound, numSamples, 0, track->preFader);
+            runSends (*track, true, numSamples, blockBeat);   // the sends before the fader
 
             // Its fader and pan, on its own sound; then the inserts after the
             // fader; then into the master.
@@ -834,11 +890,19 @@ namespace pr7s
                 }
             }
             runInserts (track->inserts, sound, numSamples, track->preFader, Project::maxInserts);
+            runSends (*track, false, numSamples, blockBeat);  // the sends after it
 
-            auto* outLeft = master.getWritePointer (0);
-            auto* outRight = master.getWritePointer (1);
-            juce::FloatVectorOperations::add (outLeft, left, numSamples);
-            juce::FloatVectorOperations::add (outRight, right, numSamples);
+            // To its group (a track routed to one), else the master.
+            auto* out = &master;
+            juce::AudioBuffer<float> toGroup;
+            if (track->role == TrackState::Role::source && track->output != 0)
+                if (auto* group = findTrack (track->output); group != nullptr && group->role == TrackState::Role::group)
+                {
+                    toGroup.setDataToReferTo (group->bus.getArrayOfWritePointers(), 2, numSamples);
+                    out = &toGroup;
+                }
+            juce::FloatVectorOperations::add (out->getWritePointer (0), left, numSamples);
+            juce::FloatVectorOperations::add (out->getWritePointer (1), right, numSamples);
             float peak = 0.0f;
             for (int i = 0; i < numSamples; ++i)
                 peak = juce::jmax (peak, std::abs (left[i]), std::abs (right[i]));
@@ -939,10 +1003,43 @@ namespace pr7s
                 case AutomationLane::Target::pan:    mix.pan = travelToPan (*value); break;
                 case AutomationLane::Target::mute:   mix.mute = *value >= 0.5f; break;
                 case AutomationLane::Target::instrument:
-                case AutomationLane::Target::insert: break;
+                case AutomationLane::Target::insert:
+                case AutomationLane::Target::send: break;
             }
         }
         return mix;
+    }
+
+    void Engine::runSends (TrackState& track, bool preFader, int numSamples, double beat)
+    {
+        // Each send that's on, to its FX channel: its level (or its lane's, while
+        // R is on) ramped across the block from where it was, so moves don't click.
+        for (int s = 0; s < Project::maxSends; ++s)
+        {
+            auto& send = track.sends[(size_t) s];
+            if (send.preFader != preFader)
+                continue;
+            auto db = send.levelDb;
+            for (const auto& state : track.automation)
+                if (state.lane.target == AutomationLane::Target::send && state.lane.slot == s)
+                    db = travelToVolume (*state.lane.valueAt (beat));
+            track.nowSendDb[(size_t) s] = db;
+            const auto gain = send.on ? levelOf (db) : 0.0f;
+            auto* fx = send.target != 0 ? findTrack (send.target) : nullptr;
+            if (fx == nullptr || fx->role != TrackState::Role::fx || (gain <= 0.0f && send.lastGain <= 0.0f))
+            {
+                send.lastGain = gain;
+                continue;
+            }
+            for (int channel = 0; channel < 2; ++channel)
+            {
+                const auto* from = track.buffer.getReadPointer (channel);
+                auto* to = fx->bus.getWritePointer (channel);
+                for (int i = 0; i < numSamples; ++i)
+                    to[i] += from[i] * (send.lastGain + (gain - send.lastGain) * (float) i / (float) numSamples);
+            }
+            send.lastGain = gain;
+        }
     }
 
     void Engine::applyKnobs (std::vector<LaneState>& lanes, juce::AudioPluginInstance* instrument, std::vector<Slot>& inserts, double beat)

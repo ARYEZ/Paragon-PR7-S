@@ -8,7 +8,7 @@ namespace pr7s
         constexpr int fileVersion = 1;
         const juce::Identifier projectTag { "PR7SProject" }, trackTag { "Track" }, partTag { "Part" }, noteTag { "Note" },
                                stateTag { "InstrumentState" }, insertTag { "Insert" }, insertStateTag { "InsertState" },
-                               masterTag { "Master" }, laneTag { "Automation" }, pointTag { "Point" };
+                               masterTag { "Master" }, laneTag { "Automation" }, pointTag { "Point" }, sendTag { "Send" };
 
         // The fader's law, as the mixer's slider has it (-60 to +6 dB, -12 dB half way).
         const juce::NormalisableRange<float> faderRange = []
@@ -18,7 +18,7 @@ namespace pr7s
             return range;
         }();
 
-        const char* targetNames[] = { "volume", "pan", "mute", "instrument", "insert" };
+        const char* targetNames[] = { "volume", "pan", "mute", "instrument", "insert", "send" };
 
         void lanesToXml (const std::vector<AutomationLane>& lanes, juce::XmlElement& parent)
         {
@@ -26,7 +26,7 @@ namespace pr7s
             {
                 auto* e = parent.createNewChildElement (laneTag);
                 e->setAttribute ("target", targetNames[(int) lane.target]);
-                if (lane.target == AutomationLane::Target::insert)
+                if (lane.target == AutomationLane::Target::insert || lane.target == AutomationLane::Target::send)
                     e->setAttribute ("slot", lane.slot);
                 if (lane.target == AutomationLane::Target::instrument || lane.target == AutomationLane::Target::insert)
                 {
@@ -197,6 +197,20 @@ namespace pr7s
             t->setAttribute ("mute", track.mute);
             t->setAttribute ("solo", track.solo);
             t->setAttribute ("armed", track.armed);
+            if (track.isChannel())
+                t->setAttribute ("kind", track.isFx() ? "fx" : "group");
+            if (track.output != 0)
+                t->setAttribute ("output", track.output);
+            if (track.sendsBypass)
+                t->setAttribute ("sendsBypass", true);
+            for (const auto& send : track.sends)
+            {
+                auto* e = t->createNewChildElement (sendTag);
+                e->setAttribute ("target", send.target);
+                e->setAttribute ("levelDb", send.levelDb);
+                e->setAttribute ("on", send.on);
+                e->setAttribute ("preFader", send.preFader);
+            }
             if (track.isAudio())
             {
                 t->setAttribute ("kind", "audio");
@@ -289,6 +303,20 @@ namespace pr7s
                 track.stereoInput = t->getBoolAttribute ("stereoInput");
                 track.monitor = t->getBoolAttribute ("monitor");
             }
+            if (t->getStringAttribute ("kind") == "fx")
+                track.kind = Track::Kind::fx;
+            if (t->getStringAttribute ("kind") == "group")
+                track.kind = Track::Kind::group;
+            track.output = juce::jmax (0, t->getIntAttribute ("output"));
+            track.sendsBypass = t->getBoolAttribute ("sendsBypass");
+            for (const auto* e : t->getChildWithTagNameIterator (sendTag))
+            {
+                if ((int) track.sends.size() >= maxSends)
+                    break;
+                track.sends.push_back ({ juce::jmax (0, e->getIntAttribute ("target")),
+                                         (float) juce::jlimit (-60.0, 6.0, e->getDoubleAttribute ("levelDb")),
+                                         e->getBoolAttribute ("on", true), e->getBoolAttribute ("preFader") });
+            }
             if (t->getStringAttribute ("instrument") == "plugin")
             {
                 track.instrument.kind = Instrument::Kind::plugin;
@@ -324,6 +352,18 @@ namespace pr7s
             project.tracks.push_back (std::move (track));
         }
         project.nextTrackId = juce::jmax (highestId + 1, xml.getIntAttribute ("nextTrackId", 1));
+        // Routing that leads nowhere it can go: back to the master, or no send.
+        for (auto& track : project.tracks)
+        {
+            const auto* out = project.findTrack (track.output);
+            if (track.isChannel() || out == nullptr || ! out->isGroup())
+                track.output = 0;
+            if (track.isFx())
+                track.sends.clear();
+            for (auto& send : track.sends)
+                if (const auto* to = project.findTrack (send.target); to == nullptr || ! to->isFx())
+                    send.target = 0;
+        }
         if (const auto* master = xml.getChildByName (masterTag))   // songs from before 0.3.0 have none: 0 dB, no effects
         {
             project.masterVolumeDb = (float) juce::jlimit (-60.0, 6.0, master->getDoubleAttribute ("volumeDb", 0.0));

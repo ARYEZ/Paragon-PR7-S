@@ -138,6 +138,17 @@ void ParagonLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& bu
     auto area = button.getLocalBounds().toFloat().reduced (4.0f, 2.0f);
     const auto on = button.getToggleState();
 
+    if (button.getProperties().contains (menuArrowProperty))
+    {
+        // A small down arrow, in the lettering's colour.
+        g.setColour (! button.isEnabled() ? ParagonColours::textDim : Finish::neonKeys() ? juce::Colours::white : ParagonColours::text);
+        const auto c = area.getCentre().translated (0.0f, down ? 0.5f : 0.0f);
+        juce::Path arrow;
+        arrow.addTriangle (c.x - 4.5f, c.y - 2.5f, c.x + 4.5f, c.y - 2.5f, c.x, c.y + 3.0f);
+        g.fillPath (arrow);
+        return;
+    }
+
     if (button.getButtonText().isEmpty())
     {
         // Just the LED stripe, like the mockup's EXIT / MODE / BYPASS caps.
@@ -741,4 +752,21 @@ int ParagonLookAndFeel::getSliderThumbRadius (juce::Slider& slider)
     if (slider.getProperties()[eqFaderProperty])
         return eqFaderThumbRadius;
     return LookAndFeel_V4::getSliderThumbRadius (slider);
+}
+
+void ParagonLookAndFeel::drawScrollbar (juce::Graphics& g, juce::ScrollBar&, int x, int y, int width, int height, bool isScrollbarVertical,
+                                        int thumbStartPosition, int thumbSize, bool isMouseOver, bool isMouseDown)
+{
+    const auto track = juce::Rectangle<int> (x, y, width, height).toFloat();
+    g.setColour (juce::Colour (0xff0b090c));
+    g.fillRect (track);
+    g.setColour (ParagonColours::panelEdge);
+    g.drawRect (track, 1.0f);
+    if (thumbSize <= 0)
+        return;
+    const auto thumb = (isScrollbarVertical ? juce::Rectangle<float> ((float) x, (float) thumbStartPosition, (float) width, (float) thumbSize)
+                                            : juce::Rectangle<float> ((float) thumbStartPosition, (float) y, (float) thumbSize, (float) height))
+                         .reduced (3.0f);
+    g.setColour (ParagonColours::accent.withAlpha (isMouseDown ? 0.95f : isMouseOver ? 0.8f : 0.55f));
+    g.fillRoundedRectangle (thumb, juce::jmin (thumb.getWidth(), thumb.getHeight()) * 0.5f);
 }
