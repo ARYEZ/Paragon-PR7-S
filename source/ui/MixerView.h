@@ -2,6 +2,8 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "ui/ValueSlider.h"
+
 #include "engine/Studio.h"
 #include "ui/LevelMeter.h"
 
@@ -126,8 +128,8 @@ public:
     void setLevels (float left, float right);
     int getBusId() const noexcept { return busId; }
 
-    juce::Slider& getVolume() noexcept { return volume; }
-    juce::Slider& getPan() noexcept { return pan; }
+    ValueSlider& getVolume() noexcept { return volume; }
+    ValueSlider& getPan() noexcept { return pan; }
     juce::TextButton& getMute() noexcept { return mute; }
     juce::TextButton& getRead() noexcept { return read; }
     juce::TextButton& getWrite() noexcept { return write; }
@@ -143,6 +145,9 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;   // the number under the fader or pan: type a value (0.9.9)
+    juce::Rectangle<float> getReadoutArea() const noexcept { return readoutArea; }
+    juce::Rectangle<float> getPanReadoutArea() const noexcept { return panReadoutArea; }
 
 private:
     bool isMaster() const noexcept { return busId == pr7s::Engine::masterBus; }
@@ -153,7 +158,7 @@ private:
     std::array<std::unique_ptr<SendSlot>, pr7s::Project::maxSends> sendSlots;
     juce::TextButton output;   // OUT: where its sound goes
     int shownSlots = 8;   // at least 8, and one more than the last used (up to 16)
-    juce::Slider volume, pan;
+    ValueSlider volume, pan;   // (double-click: type a value, 0.9.9)
     juce::TextButton mute { "M" }, solo { "S" }, read { "R" }, write { "W" };
     juce::Rectangle<float> meterArea, nameArea, readoutArea, panReadoutArea, rackArea;
     LevelMeter::Ballistics left, right;

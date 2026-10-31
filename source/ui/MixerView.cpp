@@ -55,8 +55,9 @@ MixerView::Strip::Strip (MixerView& ownerView, int id) : owner (ownerView), busI
     volume.setVelocityModeParameters (0.2, 1, 0.0, true, juce::ModifierKeys::shiftModifier);
     volume.setPopupDisplayEnabled (true, true, nullptr);
     volume.textFromValueFunction = [] (double db) { return dbText (db) + " dB"; };
+    volume.parse = [] (const juce::String& text) { return ValueEntry::parseDb (text); };
     volume.setTooltip ((isMaster() ? juce::String ("The master's volume: the whole mix") : juce::String ("The track's volume"))
-                       + " (Ctrl-click or double-click for 0 dB; Shift-drag for fine moves)");
+                       + " (double-click to type a value; Ctrl-click for 0 dB; Shift-drag for fine moves)");
     // While dragging, it's heard as it moves; the drag is one undo step when let go.
     const auto setVolume = [this] (bool undoable)
     {
@@ -88,7 +89,8 @@ MixerView::Strip::Strip (MixerView& ownerView, int id) : owner (ownerView), busI
         pan.setVelocityModeParameters (0.2, 1, 0.0, true, juce::ModifierKeys::shiftModifier);
         pan.setPopupDisplayEnabled (true, true, nullptr);
         pan.textFromValueFunction = [] (double value) { return panText (value); };
-        pan.setTooltip ("Pan: left and right (Ctrl-click or double-click for the centre; Shift-drag for fine moves)");
+        pan.parse = [] (const juce::String& text) { return ValueEntry::parsePan (text); };
+        pan.setTooltip ("Pan: left and right (double-click to type a value: L30, R15, C; Ctrl-click for the centre; Shift-drag for fine moves)");
         pan.onValueChange = [this] { owner.studio.setPan (busId, (float) pan.getValue(), ! pan.isMouseButtonDown()); };
         pan.onDragStart = [this] { owner.studio.grabControl (busId, pr7s::Studio::control (pr7s::AutomationLane::Target::pan)); };
         pan.onDragEnd = [this]
@@ -105,9 +107,9 @@ MixerView::Strip::Strip (MixerView& ownerView, int id) : owner (ownerView), busI
             addAndMakeVisible (*key);
         }
         mute.setTooltip ("Mute this track");
-        solo.setTooltip ("Solo: hear only the soloed tracks");
+        solo.setTooltip ("Solo: hear only the soloed tracks (Ctrl-click: this one alone, every other solo off)");
         mute.onClick = [this] { if (const auto* t = owner.studio.getProject().findTrack (busId)) owner.studio.setMute (busId, ! t->mute); };
-        solo.onClick = [this] { if (const auto* t = owner.studio.getProject().findTrack (busId)) owner.studio.setSolo (busId, ! t->solo); };
+        solo.onClick = [this] { if (const auto* t = owner.studio.getProject().findTrack (busId)) owner.studio.setSolo (busId, ! t->solo || juce::ModifierKeys::currentModifiers.isCommandDown(), juce::ModifierKeys::currentModifiers.isCommandDown()); };
     }
     refresh();
 }
@@ -319,6 +321,14 @@ void MixerView::Strip::resized()
     volume.setBounds (faderArea.withSizeKeepingCentre (juce::jmin (36, faderArea.getWidth()), faderArea.getHeight()));
 }
 
+void MixerView::Strip::mouseDoubleClick (const juce::MouseEvent& e)
+{
+    if (readoutArea.contains (e.position))
+        volume.showEntry();
+    else if (! isMaster() && panReadoutArea.contains (e.position))
+        pan.showEntry();
+}
+
 void MixerView::Strip::mouseDown (const juce::MouseEvent&)
 {
     if (! isMaster())
@@ -473,7 +483,7 @@ void MixerView::showInsertMenu (int busId, int slot)
         const auto& insert = (*inserts)[(size_t) slot];
         const auto* instance = studio.getEngine().getEffect (busId, slot);
         menu.addSectionHeader (insert.plugin.name + (slot < preFader ? " (before the fader)" : " (after the fader)"));
-        menu.addItem (1, "Open its window", instance != nullptr && instance->hasEditor());
+        menu.addItem (1, "Open its window", studio.hasEditor (instance));
         menu.addItem (2, "Bypass", true, insert.bypass);
         menu.addSubMenu ("Replace with", choose);
         menu.addItem (3, "Remove");

@@ -4,6 +4,7 @@
 #include "ui/LevelMeter.h"
 #include "ui/ParagonLookAndFeel.h"
 #include "ui/TrackActions.h"
+#include "ui/ValueSlider.h"
 
 namespace
 {
@@ -52,9 +53,9 @@ class TrackList::Row final : public juce::Component
 public:
     Row (TrackList& ownerList, int id) : owner (ownerList), trackId (id)
     {
+        // (0.9.9: M, S, REC, R and W aren't on the row, as the owner asked: they're in the Inspector and the mixer.
+        // The row says which are on, under the name.)
         AutomationKeys::setUp (read, write, owner.studio, trackId);
-        addAndMakeVisible (read);
-        addAndMakeVisible (write);
         arrow.setTooltip ("Show/Hide Automation: this track's automation lanes");
         arrow.onClick = [this] { owner.studio.setAutomationOpen (trackId, ! owner.studio.isAutomationOpen (trackId)); };
         addAndMakeVisible (arrow);
@@ -68,10 +69,7 @@ public:
         addAndMakeVisible (name);
 
         for (auto* key : { &mute, &solo, &arm })
-        {
             key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
-            addAndMakeVisible (*key);
-        }
         monitor.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         monitor.setTooltip ("MON: hear what comes in from the interface (your guitar), through the track's effects");
         monitor.onClick = [this] { if (auto* t = track()) owner.studio.setMonitor (trackId, ! t->monitor); };
@@ -93,10 +91,11 @@ public:
         volume.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
         volume.setRange (-60.0, 6.0, 0.1);
         volume.setSkewFactorFromMidPoint (-12.0);
-        volume.setDoubleClickReturnValue (true, 0.0);
+        volume.setDoubleClickReturnValue (true, 0.0, juce::ModifierKeys::commandModifier);
+        volume.parse = [] (const juce::String& text) { return ValueEntry::parseDb (text); };
         volume.setPopupDisplayEnabled (true, true, nullptr);
         volume.textFromValueFunction = [] (double db) { return db <= -59.9 ? juce::String ("-inf dB") : juce::String (db, 1) + " dB"; };
-        volume.setTooltip ("The track's volume (double-click for 0 dB)");
+        volume.setTooltip ("The track's volume (double-click to type a value; Ctrl-click for 0 dB)");
         // Grabbed and let go, for writing automation (W on, while playing).
         volume.onDragStart = [this] { owner.studio.grabControl (trackId, pr7s::Studio::control (pr7s::AutomationLane::Target::volume)); };
         volume.onDragEnd = [this]
@@ -140,7 +139,6 @@ public:
             if (t->disabled)
                 instrument.setTooltip ("Disabled: silent, its instrument and effects unloaded (their settings kept). Click for Enable Track");
         }
-        arm.setVisible (! t->isChannel() && ! t->disabled && ! t->frozen);   // an FX or group channel records nothing; nor a disabled track
         monitor.setVisible (t->isAudio());
         monitor.setToggleState (t->monitor, juce::dontSendNotification);
         AutomationKeys::refresh (read, write, owner.studio, trackId);
@@ -186,12 +184,22 @@ public:
             g.drawRect (bounds.withTrimmedLeft (6.0f), 1.0f);
         }
 
-        // Frozen (0.9.8): stamped under its name.
-        if (t->frozen && getHeight() >= 66)
+        // What's on, under its name (0.9.9: the keys are in the Inspector and the mixer): SOLO, MUTED, REC, READ, WRITE, FROZEN.
+        if (getHeight() >= 66)
         {
-            g.setColour (juce::Colour (0xfff4eeea).withAlpha (0.75f));
-            g.setFont (font (13.0f));
-            g.drawText ("FROZEN", name.getBounds().withTrimmedLeft (4).removeFromBottom (16), juce::Justification::bottomLeft, false);
+            juce::StringArray states;
+            if (t->solo) states.add ("SOLO");
+            if (t->mute) states.add ("MUTED");
+            if (t->armed) states.add ("REC");
+            if (t->automationWrite) states.add ("WRITE");
+            else if (t->automationRead) states.add ("READ");
+            if (t->frozen) states.add ("FROZEN");
+            if (! states.isEmpty())
+            {
+                g.setColour (t->solo || t->armed ? ParagonColours::accent : juce::Colour (0xfff4eeea).withAlpha (0.75f));
+                g.setFont (font (13.0f));
+                g.drawText (states.joinIntoString ("  "), name.getBounds().withTrimmedLeft (4).removeFromBottom (16), juce::Justification::bottomLeft, false);
+            }
         }
 
         // Its level: PR7-C's meter, lying down (orange at the left to pink-red at the right).
@@ -203,41 +211,29 @@ public:
     void resized() override
     {
         // The name large on the left (0.9.2: the owner's choice; the
-        // instrument is in the Inspector and the right-click menu), the keys
-        // on the right: M S REC (MON) above R W, the level and the volume.
-        // Shorter than two lines (the rows zoomed out): only the first.
+        // instrument is in the Inspector and the right-click menu), what's on
+        // under it; on the right MON (audio), the level and the volume (0.9.9:
+        // no M S REC R W, the owner asked). Shorter than two lines (zoomed out): the volume only.
         const auto compact = getHeight() < 66;
         instrument.setVisible (false);
-        for (auto* control : std::initializer_list<juce::Component*> { &read, &write, &volume })
-            control->setVisible (! compact);
         levelArea = {};
         auto area = getLocalBounds().withTrimmedLeft (12).reduced (6, compact ? juce::jmax (2, (getHeight() - 24) / 2) : 7);
-        auto keys = area.removeFromRight (152);
+        // On the right, level with the name: MON (an audio track's), the level, the volume.
+        auto right = area.removeFromRight (compact ? 32 : 130).withSizeKeepingCentre (compact ? 32 : 130, 24);
         area.removeFromRight (6);
-        auto top = keys.removeFromTop (juce::jmin (24, keys.getHeight()));
-        if (arm.isVisible())
+        volume.setVisible (true);
+        volume.setBounds (right.removeFromRight (28));
+        right.removeFromRight (4);
+        if (! compact)
         {
-            arm.setBounds (top.removeFromRight (36));
-            top.removeFromRight (3);
+            levelArea = right.removeFromRight (44).toFloat().withSizeKeepingCentre (44.0f, 8.0f);
+            right.removeFromRight (6);
+            monitor.setBounds (right.removeFromRight (40));   // audio tracks only (hidden otherwise)
         }
-        solo.setBounds (top.removeFromRight (30));
-        top.removeFromRight (3);
-        mute.setBounds (top.removeFromRight (30));
-        top.removeFromRight (3);
-        monitor.setBounds (top.removeFromRight (40));   // audio tracks only (hidden otherwise)
+        else
+            monitor.setBounds ({});
         name.setBounds (area);
         arrow.setBounds (0, getHeight() - 18, 16, 16);
-        if (compact)
-            return;
-        keys.removeFromTop (6);
-        auto bottom = keys.removeFromTop (24);
-        volume.setBounds (bottom.removeFromRight (28));
-        bottom.removeFromRight (4);
-        levelArea = bottom.removeFromRight (44).toFloat().withSizeKeepingCentre (44.0f, 8.0f);
-        bottom.removeFromRight (6);
-        write.setBounds (bottom.removeFromRight (26));
-        bottom.removeFromRight (2);
-        read.setBounds (bottom.removeFromRight (26));
         // (Show/Hide Automation: the arrow at the lower left corner, as the manual has it.)
     }
 
@@ -291,7 +287,7 @@ public:
     bool dragged = false, plainClickOnSelected = false;
     juce::Label name;
     juce::TextButton mute { "M" }, solo { "S" }, arm { "REC" }, monitor { "MON" }, instrument, read { "R" }, write { "W" };
-    juce::Slider volume;
+    ValueSlider volume;   // (double-click: type a value, 0.9.9)
     Arrow arrow;
     juce::Rectangle<float> levelArea;
     LevelMeter::Ballistics reading;
@@ -455,6 +451,18 @@ TrackList::TrackList (pr7s::Studio& studioToUse, Timeline& timelineToUse)
     addTrack.onClick = [this] { showAddTrackMenu(); };
     addTrack.setWantsKeyboardFocus (false);
     addAndMakeVisible (addTrack);
+    // The manual's Deactivate All Mute States / Solo States (0.9.9): lit while
+    // any track is muted / soloed (hidden ones too); click to turn them all off.
+    for (auto* key : { &muteAll, &soloAll })
+    {
+        key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        key->setWantsKeyboardFocus (false);
+        addAndMakeVisible (*key);
+    }
+    muteAll.setTooltip ("Deactivate All Mute States: lit while any track is muted; click to unmute them all");
+    soloAll.setTooltip ("Deactivate All Solo States: lit while any track is soloed (a soloed track silences the others); click to turn every solo off");
+    muteAll.onClick = [this] { studio.deactivateAllMute(); };
+    soloAll.onClick = [this] { studio.deactivateAllSolo(); };
     studio.addChangeListener (this);
     rebuild();
     startTimerHz (30);
@@ -467,6 +475,8 @@ TrackList::~TrackList()
 
 void TrackList::changeListenerCallback (juce::ChangeBroadcaster*)
 {
+    muteAll.setToggleState (studio.anyMute(), juce::dontSendNotification);
+    soloAll.setToggleState (studio.anySolo(), juce::dontSendNotification);
     rebuild();
 }
 
@@ -530,8 +540,13 @@ void TrackList::resized()
 {
     placeRows();
     // + ADD TRACK at the top, in the header (level with the ruler).
-    addTrack.setBounds (getLocalBounds().removeFromTop (Timeline::rulerHeight).reduced (8, 6).removeFromRight (150));
+    auto header = getLocalBounds().removeFromTop (Timeline::rulerHeight).reduced (8, 6);
+    addTrack.setBounds (header.removeFromRight (150));
     addTrack.toFront (false);
+    header.removeFromRight (10);
+    soloAll.setBounds (header.removeFromRight (30));
+    header.removeFromRight (3);
+    muteAll.setBounds (header.removeFromRight (30));
 }
 
 void TrackList::placeRows()
@@ -757,7 +772,7 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
     }
     else if (! track->isChannel())
     {
-        menu.addItem (1, "Open " + track->instrument.getName() + "'s window", instance != nullptr && instance->hasEditor());
+        menu.addItem (1, "Open " + track->instrument.getName() + "'s window", studio.hasEditor (instance));
         change.addItem (10, "Paragon Synth (built in)");
         for (int i = 0; i < instruments.size(); ++i)
             change.addItem (100 + i, instruments[i].manufacturerName + ": " + instruments[i].name);

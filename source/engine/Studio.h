@@ -77,7 +77,12 @@ namespace pr7s
         bool changeInstrument (int trackId, const Instrument&, juce::String* error = nullptr);
         void renameTrack (int trackId, const juce::String&);
         void setMute (int trackId, bool);
-        void setSolo (int trackId, bool);
+        void setSolo (int trackId, bool, bool exclusive = false);   // exclusive: every other solo off (Ctrl-click, the manual's)
+        // The manual's Deactivate All Solo States / Mute States (0.9.9).
+        bool anySolo() const;
+        bool anyMute() const;
+        void deactivateAllSolo();
+        void deactivateAllMute();
         // `undoable` off: heard straight away but not an undo step yet (a
         // fader being dragged); the drag's last value, undoable, makes it one.
         void setVolume (int trackId, float db, bool undoable = true);
@@ -126,6 +131,13 @@ namespace pr7s
         // Unfreeze: the plugins loaded again; the freeze file kept or deleted.
         void unfreezeTrack (int trackId, bool deleteFile);
         bool isFrozen (int trackId) const;
+        // Several renders in a row (Render in Place's stretches, freezing the
+        // selected tracks): between beginBatch and endBatch the plugins stay
+        // offline and the interface off, switched back once at the end (0.9.9).
+        void beginBatch();
+        void endBatch();
+        // Whether a plugin has a window of its own: asked of it once, then remembered (0.9.9).
+        bool hasEditor (const juce::AudioProcessor*);
         bool isTrackShown (int trackId) const;   // (not hidden)
         std::vector<int> getShownTracks() const;   // in order
         std::vector<int> getEmptyTracks() const;
@@ -504,6 +516,7 @@ namespace pr7s
         void unwatch (juce::AudioProcessor*);
         void unwatchAll();
         bool writeValue (int busId, const AutomationLane& control, float value);   // false: no pass on it
+        std::map<const juce::AudioProcessor*, bool> editorAnswers;   // hasEditor's
         void unloadPlugins (Track&);   // their settings kept first (disable, freeze)
         void loadPlugins (Track&);     // from the kept settings (enable, unfreeze)
         std::map<int, std::vector<Part>> frozenParts;   // the parts as they were frozen (locked)
@@ -562,6 +575,10 @@ namespace pr7s
             bool finished = false;
         };
         std::unique_ptr<ExportJob> exportJob;
+        // Several renders in a row (Render in Place's stretches, Freeze's
+        // tracks): the plugins stay offline and the interface off between
+        // them, switched back once at the end (0.9.9).
+        bool inBatch = false;
 
         std::vector<Project> undoStates;
         int undoIndex = -1;

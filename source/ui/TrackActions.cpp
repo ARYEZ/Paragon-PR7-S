@@ -67,6 +67,7 @@ namespace TrackActions
     bool freezeSelected (pr7s::Studio& studio, double tailSeconds, juce::String& error)
     {
         juce::MouseCursor::showWaitCursor();
+        studio.beginBatch();   // (the plugins offline once for all of them)
         auto all = true;
         for (const auto id : studio.getSelectedTracks())
         {
@@ -80,6 +81,7 @@ namespace TrackActions
                 error << (error.isEmpty() ? "" : "\n") << t->name << ": " << why;
             }
         }
+        studio.endBatch();
         juce::MouseCursor::hideWaitCursor();
         return all;
     }

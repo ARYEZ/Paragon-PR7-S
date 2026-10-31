@@ -2,6 +2,39 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.9.9
+
+Fixes for the sticking, slow renders and silent tracks you reported, plus two changes you asked for.
+
+**Clicks in the ruler and the cycle key stuck for about a second.** Two causes, both fixed:
+- **The main one:** after every change (moving the playhead, the cycle, any edit), the Inspector asked the selected instrument whether it has a window of its own, to light its EDIT key. For a VST3, the only way to answer is for the plugin to build its editor's view, and Kontakt is slow at that. Now each plugin is asked once and the answer is remembered. My tests use the built-in synth, which answers at once, so they never showed this.
+- **The second:** the screen read every track's level and every effect slot through the same lock the audio thread holds while it plays a block. With your 2048-sample buffer and heavy plugins, each read could wait for the block to finish. The screen now reads them without the lock. That's safe because those values are made to be read while the audio plays. A test with a heavy plugin playing on its own thread: a click took 10.6 ms before, 0.2 ms now.
+
+**A render hung before it started.** Before rendering, plugins are switched to offline mode, which needs each one set up again (0.8.6's fix for Kontakt rendering silence). It was doing that to **every** plugin in the song, then setting up **everything** again, twice per render and for every stretch of a Render in Place. Now:
+- Only the plugins that will be heard in the render are switched: the tracks being rendered, the FX and group channels they reach, and the master's.
+- Only the plugins that switched are set up again.
+- Render in Place and freezing several tracks switch the plugins once for the whole batch, not once per stretch.
+
+**A track not soloed acted as if muted.** A soloed track silences every track that isn't soloed, which is what solo does. The bug was solos you couldn't see:
+- When you rendered a soloed track in place and the original was hidden or disabled, it stayed soloed, out of sight, and silenced everything, including the new rendered track.
+- **Now:** hiding or disabling a track clears its solo, and a disabled track's solo doesn't count (for songs saved before this). When Render in Place mutes, hides, disables or removes a soloed source, the solo moves to the rendered track.
+- **New, from the manual:** **M** and **S** keys in the track list's header (Deactivate All Mute States / Deactivate All Solo States). They light while any track is muted or soloed, hidden ones included. Click to turn them all off.
+- **Ctrl-click S** in the Inspector or the mixer: exclusive solo, which solos that track and turns every other solo off (the manual's).
+
+**The track rows: no M, S, REC, R, W** (you asked; they're in the Inspector and the mixer).
+- The row keeps its name, level, volume knob and automation arrow, plus MON on audio tracks (it wasn't on your list).
+- Under the name, the row says what's on: SOLO, MUTED, REC, READ or WRITE, FROZEN.
+- The MASTER row keeps its R and W, since the master has no Inspector.
+
+**Typing a value:** double-click a fader or a pan knob, type, and press Enter.
+- **Where:** in the mixer (the master's fader too), in the Inspector, and the track's volume knob. Also on the numbers: the one under each mixer fader and pan, and the Inspector's VOL and PAN readouts.
+- **Volume:** -6, +3 dB, -12.5, or -inf.
+- **Pan:** L30, R15 or C, or a number (-30 is left, 30 is right).
+- A value it can't read shows "?" so you can try again. Esc or a click elsewhere leaves it as it was. Each typed value is one undo step.
+- **Changed:** double-click no longer resets to 0 dB or the centre. **Ctrl-click** does, as before.
+
+Not checked here: your machine. I found the slow plugin question by reading JUCE's code, not by running Kontakt (there are no real plugins in the cloud). So please check that clicks in the ruler and the cycle key no longer stick, and how long a Render in Place takes to start.
+
 ## 0.9.8
 
 Freeze and track presets (the two extras you chose for the Inspector).

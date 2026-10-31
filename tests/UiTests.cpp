@@ -814,13 +814,13 @@ TEST_CASE ("Automation on screen: lanes under their track, lined up; click adds 
     studio.dispatchPendingMessages();
     const auto secondTop = arrange.trackTop (second);
 
-    // The keys: REC arms; R and W are automation's (and the header's R and W).
+    // The keys (0.9.9: the tracks' REC, R and W are in the Inspector and the mixer, not on the rows; the master's row has R and W).
     std::vector<juce::TextButton*> buttons;
     findAll (view.getTrackList(), buttons);
-    const auto count = [&] (const juce::String& text) { return std::count_if (buttons.begin(), buttons.end(), [&] (auto* b) { return b->getButtonText() == text; }); };
-    CHECK (count ("REC") == 2);
-    CHECK (count ("R") == 3);   // two tracks and the master
-    CHECK (count ("W") == 3);
+    const auto count = [&] (const juce::String& text) { return std::count_if (buttons.begin(), buttons.end(), [&] (auto* b) { return b->getButtonText() == text && b->isVisible(); }); };
+    CHECK (count ("REC") == 0);
+    CHECK (count ("R") == 1);
+    CHECK (count ("W") == 1);
 
     // Show Automation: the volume lane under the first track; the second moves down by a lane.
     studio.setAutomationOpen (first, true);
@@ -958,7 +958,7 @@ TEST_CASE ("Sends and FX channels on screen: the SENDS rack, a send's dot, level
     {
         return std::count_if (buttons.begin(), buttons.end(), [&] (auto* b) { return b->getButtonText() == text && b->isVisible(); });
     };
-    CHECK (visibleCount ("REC") == 1);
+    CHECK (visibleCount ("REC") == 0);   // (0.9.9: no REC on any row; the Inspector has it)
     // (0.9.2: the rows have no instrument key, as the owner asked: the Inspector says what a channel is.)
     CHECK (visibleCount ("FX: Reverb") == 0);
     CHECK (visibleCount ("GROUP CHANNEL") == 0);
@@ -1209,17 +1209,16 @@ TEST_CASE ("Taller and shorter rows (Shift+H / Shift+G); Auto-Scroll's settings:
                 count += b->getButtonText() == text && b->isVisible() ? 1 : 0;
             return count;
         };
-        CHECK (visibleNamed ("R") == 3);   // two tracks and the master
+        CHECK (visibleNamed ("R") == 1);   // (0.9.9: the tracks' rows have no M S REC R W; the master's R)
         for (int i = 0; i < 12; ++i)
             key ('G', shift);
         CHECK (timeline.rowZoom == Timeline::minRowZoom);
         CHECK (gap() == (float) Timeline::trackHeight * (float) Timeline::minRowZoom);
-        CHECK (visibleNamed ("R") == 1);   // the tracks' second line put away: only the master's
-        CHECK (visibleNamed ("M") >= 2);   // the first line (name, M, S, REC) still there
+        CHECK (visibleNamed ("R") == 1);
         for (int i = 0; i < 12; ++i)
             key ('H', shift);
         CHECK (timeline.rowZoom == Timeline::maxRowZoom);
-        CHECK (visibleNamed ("R") == 3);
+        CHECK (visibleNamed ("R") == 1);
     }
 
     SECTION ("Stationary Cursor: while playing, the playhead in the middle; Page Scroll: only when it reaches the edge")
@@ -2436,4 +2435,166 @@ TEST_CASE ("Freeze and track presets on screen: FREEZE lit when frozen, PRESET; 
     CHECK (TrackActions::addTrackFrom (studio, juce::File ("/nowhere/none.pr7track"), error) == 0);
     file.deleteFile();
     studio.getAudioFolder().deleteRecursively();
+}
+
+TEST_CASE ("Typing a value (0.9.9): dB and pan read from text; the mixer's fader and pan, the Inspector's numbers, the track's knob", "[ui][entry]")
+{
+    using ValueEntry::parseDb, ValueEntry::parsePan;
+    CHECK (parseDb ("-6").value() == -6.0);
+    CHECK (parseDb ("+3 dB").value() == 3.0);
+    CHECK (parseDb (" -12,5db ").value() == -12.5);
+    CHECK (parseDb ("-inf").value() == -60.0);
+    CHECK (parseDb ("20").value() == 6.0);      // to the fader's top
+    CHECK_FALSE (parseDb ("loud").has_value());
+    CHECK_FALSE (parseDb ("").has_value());
+    CHECK (parsePan ("C").value() == 0.0);
+    CHECK (parsePan ("L30").value() == -0.3);
+    CHECK (parsePan ("30 L").value() == -0.3);
+    CHECK (parsePan ("R 15").value() == 0.15);
+    CHECK (parsePan ("-50").value() == -0.5);
+    CHECK (parsePan ("100").value() == 1.0);
+    CHECK_FALSE (parsePan ("left").has_value());
+
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto track = studio.getProject().tracks[0].id;
+    view.openMixer();
+    studio.selectTrack (track);
+    studio.dispatchPendingMessages();
+
+    // The mixer: typed, set (one undo step); nonsense refused, nothing changed.
+    auto& strip = view.getMixer().getStrip (0);
+    CHECK (strip.getVolume().enter ("-7.5"));
+    CHECK (studio.getProject().findTrack (track)->volumeDb == -7.5f);
+    CHECK_FALSE (strip.getVolume().enter ("loud"));
+    CHECK (studio.getProject().findTrack (track)->volumeDb == -7.5f);
+    studio.undo();
+    CHECK (studio.getProject().findTrack (track)->volumeDb == 0.0f);
+    CHECK (strip.getPan().enter ("L25"));
+    CHECK_THAT (studio.getProject().findTrack (track)->pan, WithinAbs (-0.25, 0.001));
+    // The master's fader too.
+    auto& master = view.getMixer().getStrip (view.getMixer().getNumStrips() - 1);
+    CHECK (master.getVolume().enter ("-3"));
+    CHECK (studio.getProject().masterVolumeDb == -3.0f);
+
+    // The Inspector's numbers: double-click and type (the label's editor).
+    auto& inspector = view.getInspector();
+    auto& readout = inspector.getVolumeReadout();
+    CHECK (readout.isEditableOnDoubleClick());
+    readout.setText ("+2", juce::sendNotificationSync);
+    CHECK (studio.getProject().findTrack (track)->volumeDb == 2.0f);
+    CHECK (readout.getText().startsWith ("+2.0"));
+    readout.setText ("nonsense", juce::sendNotificationSync);
+    CHECK (studio.getProject().findTrack (track)->volumeDb == 2.0f);
+    CHECK (readout.getText().startsWith ("+2.0"));   // put back as it is
+    inspector.getPanReadout().setText ("R40", juce::sendNotificationSync);
+    CHECK_THAT (studio.getProject().findTrack (track)->pan, WithinAbs (0.4, 0.001));
+}
+
+TEST_CASE ("Track rows without M S REC R W (0.9.9): the state written under the name; the header's Deactivate All Mute / Solo keys", "[ui][solo]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto a = studio.getProject().tracks[0].id;
+    const auto b = studio.addTrack ({});
+    studio.dispatchPendingMessages();
+    auto& list = view.getTrackList();
+    auto& muteAll = list.getMuteAllKey();
+    auto& soloAll = list.getSoloAllKey();
+    CHECK (muteAll.isVisible());
+    CHECK (soloAll.isVisible());
+    CHECK_FALSE (soloAll.getToggleState());
+    studio.setSolo (a, true);
+    studio.setMute (b, true);
+    studio.dispatchPendingMessages();
+    CHECK (soloAll.getToggleState());
+    CHECK (muteAll.getToggleState());
+    soloAll.onClick();
+    muteAll.onClick();
+    studio.dispatchPendingMessages();
+    CHECK_FALSE (studio.anySolo());
+    CHECK_FALSE (studio.anyMute());
+    CHECK_FALSE (soloAll.getToggleState());
+}
+
+namespace
+{
+    // An instrument that counts how often it's asked whether it has a window (a VST3 builds its view to answer).
+    struct AskedForEditor final : TestPlugin
+    {
+        AskedForEditor() : TestPlugin (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)) { instrument = true; }
+        bool hasEditor() const override { ++asked; return true; }
+        void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override { buffer.clear(); }
+        mutable int asked = 0;
+    };
+}
+
+TEST_CASE ("A plugin is asked once whether it has a window (0.9.9: asked after every change, Kontakt made each click stick)", "[ui][perf-fix]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto track = studio.getProject().tracks[0].id;
+    auto plugin = std::make_unique<AskedForEditor>();
+    auto* asked = plugin.get();
+    studio.getEngine().setInstrument (track, std::move (plugin));
+    studio.selectTrack (track);
+    studio.dispatchPendingMessages();
+    for (int i = 0; i < 10; ++i)
+    {
+        studio.setPosition (i * 2.0);
+        studio.setCycleOn (i % 2 == 0);
+        studio.dispatchPendingMessages();
+    }
+    CHECK (asked->asked == 1);
+    CHECK (view.getInspector().getKey ("M").isVisible());
+}
+
+TEST_CASE ("Typing a value: the box opens on the fader with its value, Enter sets it, Esc leaves it", "[ui][entry]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    view.setVisible (true);
+    view.addToDesktop (0);
+    const auto track = studio.getProject().tracks[0].id;
+    view.openMixer();
+    studio.dispatchPendingMessages();
+    auto& fader = view.getMixer().getStrip (0).getVolume();
+    const auto findBox = []
+    {
+        juce::TextEditor* editor = nullptr;
+        for (int i = 0; i < juce::Desktop::getInstance().getNumComponents(); ++i)
+            if (auto* box = dynamic_cast<juce::CallOutBox*> (juce::Desktop::getInstance().getComponent (i)); box != nullptr && box->isVisible())
+            {
+                std::vector<juce::Component*> todo { box };
+                while (! todo.empty() && editor == nullptr)
+                {
+                    auto* c = todo.back();
+                    todo.pop_back();
+                    editor = dynamic_cast<juce::TextEditor*> (c);
+                    for (auto* child : c->getChildren())
+                        todo.push_back (child);
+                }
+            }
+        return editor;
+    };
+    fader.mouseDoubleClick (mouseAt (fader, { 4.0f, 4.0f }, { 4.0f, 4.0f }));
+    studio.dispatchPendingMessages();
+    auto* editor = findBox();
+    REQUIRE (editor != nullptr);
+    CHECK (editor->getText() == "0.0 dB");
+    CHECK (studio.getProject().findTrack (track)->volumeDb == 0.0f);   // a double-click no longer jumps the fader
+    editor->setText ("-9");
+    editor->onReturnKey();
+    studio.dispatchPendingMessages();
+    CHECK (studio.getProject().findTrack (track)->volumeDb == -9.0f);
+    CHECK (findBox() == nullptr);   // closed
+    view.removeFromDesktop();
 }

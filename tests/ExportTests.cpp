@@ -247,3 +247,41 @@ TEST_CASE ("Export: plugins are set up again for offline rendering, and back aft
     CHECK (minded->released >= 2);
     file.deleteFile();
 }
+
+TEST_CASE ("Export: only the plugins that will sound are set up again (a render hung before starting, 0.9.9); a batch switches them once", "[export]")
+{
+    Studio studio (false);
+    const auto playing = studio.getProject().tracks[0].id;
+    const auto idle = studio.addTrack ({});
+    studio.addPart (playing, { 0.0, 2.0, "Riff", { { 0.0, 2.0, 60, 0.8f } } });   // the idle track has no parts
+    auto first = std::make_unique<ModeMinded>();
+    auto second = std::make_unique<ModeMinded>();
+    auto* sounding = first.get();
+    auto* silent = second.get();
+    studio.getEngine().setInstrument (playing, std::move (first));
+    studio.getEngine().setInstrument (idle, std::move (second));
+    const auto preparedBefore = silent->prepared;
+
+    Studio::ExportOptions options;
+    options.start = 0.0;
+    options.end = 2.0;
+    options.tailSeconds = 0.0;
+    const auto file = exportFile ("only-sounding");
+    juce::String error;
+    REQUIRE (studio.exportMix (file, options, error));
+    CHECK (sounding->released >= 2);            // switched and back
+    CHECK (silent->released == 0);              // left alone: not in the render
+    CHECK (silent->prepared == preparedBefore);
+    CHECK_FALSE (silent->isNonRealtime());
+
+    // A batch (Render in Place's stretches): offline once, back once.
+    const auto released = sounding->released;
+    studio.beginBatch();
+    REQUIRE (studio.exportMix (file, options, error));
+    CHECK (sounding->isNonRealtime());          // still offline between renders
+    REQUIRE (studio.exportMix (file, options, error));
+    studio.endBatch();
+    CHECK_FALSE (sounding->isNonRealtime());
+    CHECK (sounding->released == released + 2);   // one switch there, one back: not two each
+    file.deleteFile();
+}

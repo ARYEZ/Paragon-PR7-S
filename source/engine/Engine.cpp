@@ -117,35 +117,42 @@ namespace pr7s
         return liveFilter.isEmpty() || liveFilter == deviceName;
     }
 
-    void Engine::setNonRealtime (bool offline)
+    void Engine::setNonRealtime (bool offline, const std::function<bool (int trackId)>& sounding)
     {
         // A plugin reads realtime or offline when it's set up (VST3's
         // setupProcessing, in prepareToPlay), and JUCE skips that set-up if the
         // rate and block size haven't changed. So each one switching is
         // released first and prepared again: Kontakt and Superior Drummer,
         // marked offline without it, rendered silence (0.8.6).
-        bool changed = false;
+        // Only the plugins that will sound (`sounding`: the tracks in the
+        // render, the master's), and only those prepared again: switching and
+        // preparing every plugin in the song made a render hang before it
+        // started (0.9.9). Back to realtime: all that are offline.
+        const juce::ScopedLock sl (lock);
+        const auto set = [this, offline] (juce::AudioPluginInstance* plugin, bool instrument)
         {
-            const juce::ScopedLock sl (lock);
-            auto set = [offline, &changed] (juce::AudioPluginInstance* plugin)
+            if (plugin == nullptr || plugin->isNonRealtime() == offline)
+                return;
+            plugin->releaseResources();
+            plugin->setNonRealtime (offline);
+            if (instrument)
             {
-                if (plugin == nullptr || plugin->isNonRealtime() == offline)
-                    return;
-                plugin->releaseResources();
-                plugin->setNonRealtime (offline);
-                changed = true;
-            };
-            for (auto& slot : masterInserts)
-                set (slot.plugin.get());
-            for (auto& track : tracks)
-            {
-                set (track->instrument.get());
-                for (auto& slot : track->inserts)
-                    set (slot.plugin.get());
+                plugin->setRateAndBufferSizeDetails (sampleRate, maxBlockSize);
+                plugin->prepareToPlay (sampleRate, maxBlockSize);
             }
+            else
+                prepareEffect (*plugin);
+        };
+        for (auto& slot : masterInserts)
+            set (slot.plugin.get(), false);
+        for (auto& track : tracks)
+        {
+            if (offline && sounding && ! sounding (track->id))
+                continue;
+            set (track->instrument.get(), true);
+            for (auto& slot : track->inserts)
+                set (slot.plugin.get(), false);
         }
-        if (changed)
-            prepare (sampleRate, maxBlockSize);
     }
 
     int Engine::channelsFor (const juce::AudioPluginInstance& plugin)
@@ -267,7 +274,7 @@ namespace pr7s
 
     juce::AudioPluginInstance* Engine::getInstrument (int trackId) const
     {
-        const juce::ScopedLock sl (lock);
+        // (no lock: see getMixNow)
         auto* track = findTrack (trackId);
         return track != nullptr ? track->instrument.get() : nullptr;
     }
@@ -298,7 +305,7 @@ namespace pr7s
 
     float Engine::getSendNowDb (int trackId, int slot) const
     {
-        const juce::ScopedLock sl (lock);
+        // (no lock: see getMixNow)
         if (const auto* track = findTrack (trackId); track != nullptr && juce::isPositiveAndBelow (slot, Project::maxSends))
             return track->nowSendDb[(size_t) slot].load();
         return -60.0f;
@@ -407,7 +414,7 @@ namespace pr7s
 
     juce::AudioPluginInstance* Engine::getEffect (int busId, int slot) const
     {
-        const juce::ScopedLock sl (lock);
+        // (no lock: see getMixNow)
         const auto* track = busId == masterBus ? nullptr : findTrack (busId);
         const auto* inserts = busId == masterBus ? &masterInserts : track != nullptr ? &track->inserts : nullptr;
         return inserts != nullptr && juce::isPositiveAndBelow (slot, (int) inserts->size()) ? (*inserts)[(size_t) slot].plugin.get() : nullptr;
@@ -415,7 +422,7 @@ namespace pr7s
 
     int Engine::getNumEffects (int busId) const
     {
-        const juce::ScopedLock sl (lock);
+        // (no lock: see getMixNow)
         const auto* track = busId == masterBus ? nullptr : findTrack (busId);
         return busId == masterBus ? (int) masterInserts.size() : track != nullptr ? (int) track->inserts.size() : 0;
     }
@@ -428,7 +435,7 @@ namespace pr7s
         // channels they go through); a soloed group or FX channel, the other ones.
         auto anySolo = false, anyChannelSolo = false;
         for (const auto& track : project.tracks)
-            (track.isChannel() ? anyChannelSolo : anySolo) |= track.solo;
+            (track.isChannel() ? anyChannelSolo : anySolo) |= track.solo && ! track.disabled;   // (a disabled track is silent: its solo doesn't count)
         const auto soloedOut = [&] (const Track& t) { return t.isChannel() ? anyChannelSolo && ! t.solo : anySolo && ! t.solo; };
 
         struct Prepared { int id; std::vector<Event> events; std::pair<float, float> gains; std::vector<bool> bypass; std::vector<Clip> clips;
@@ -594,7 +601,7 @@ namespace pr7s
 
     float Engine::takeTrackPeak (int trackId, int reader)
     {
-        const juce::ScopedLock sl (lock);
+        // (no lock: see getMixNow)
         auto* track = findTrack (trackId);
         return track != nullptr ? track->meters[(size_t) juce::jlimit (0, 2, reader)].takePeak() : 0.0f;
     }
@@ -1128,7 +1135,12 @@ namespace pr7s
     {
         if (busId == masterBus)
             return { nowMasterVolumeDb.load(), 0.0f, false };
-        const juce::ScopedLock sl (lock);
+        // No lock (0.9.9): the screen's questions (this, the meters, which
+        // plugin is where) read atomics, and the lists of tracks and slots that
+        // only the message thread changes. Taking the lock here waited for the
+        // audio thread's whole block each time: with a 2048-sample buffer and
+        // heavy plugins, the mixer's and Inspector's hundreds of questions
+        // after a click froze the screen for about a second. Message thread only.
         if (const auto* track = findTrack (busId))
             return { track->nowVolumeDb.load(), track->nowPan.load(), track->nowMute.load() };
         return {};

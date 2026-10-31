@@ -1,3 +1,4 @@
+#include <thread>
 #include <catch2/catch_test_macros.hpp>
 
 #include "TestHelpers.h"
@@ -65,5 +66,61 @@ TEST_CASE ("Performance: the screen following changes on a big song", "[.][perf]
         g.reduceClipRegion (juce::Rectangle<int> (1000, 0, 17, arrange.getHeight()));
         arrange.paintEntireComponent (g, false);
     });
+    // The owner's case (0.9.9): three screens wide, the mixer docked; a click in the ruler, the cycle key.
+    view.toggleMixerDocked();
+    studio.dispatchPendingMessages();
+    std::printf ("(mixer docked: %d)\n", (int) view.getMixer().isShowing());
+    auto& self = studio;
+    const auto mixer = &view.getMixer();
+    time ("5760 wide: setPosition + messages", [&] { self.setPosition (std::fmod (self.getEngine().getPosition() + 3.0, 300.0)); self.dispatchPendingMessages(); });
+    time ("5760 wide: setCycleOn + messages", [&] { self.setCycleOn (! self.getProject().loopOn); self.dispatchPendingMessages(); });
+    time ("5760 wide: paint the whole window", [&] { juce::Graphics g (wide); view.paintEntireComponent (g, false); });
+    time ("5760 wide: paint the mixer", [&] { juce::Graphics g (wide); mixer->paintEntireComponent (g, false); });
     time ("MIDI devices listed", [&] { juce::MidiInput::getAvailableDevices(); });
+}
+
+// Hidden: the owner's "sticks for a second" (0.9.9). A heavy plugin (20 ms a
+// block) on an audio thread of its own, while the screen follows a click in
+// the ruler and the cycle key, with the mixer docked.
+TEST_CASE ("Performance: the screen with heavy plugins playing on the audio thread", "[.][perf]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1920, 1000);
+    for (int t = 1; t < 6; ++t)
+        studio.addTrack ({});
+    for (const auto& track : studio.getProject().tracks)
+        for (int slot = 0; slot < 3; ++slot)
+        {
+            Insert insert;
+            insert.plugin.name = "Heavy";
+            studio.addInsert (track.id, insert, std::make_unique<TestEffect> ([] (juce::AudioBuffer<float>&) { juce::Thread::sleep (1); }, 2, "Heavy"));
+        }
+    view.toggleMixerDocked();
+    studio.dispatchPendingMessages();
+
+    std::atomic<bool> running { true };
+    std::thread audio ([&]
+    {
+        juce::AudioBuffer<float> out (2, 512);
+        while (running)
+        {
+            studio.getEngine().render (out, 512);   // 18 effects x 1 ms: about 20 ms a block, under the lock
+            juce::Thread::sleep (2);                // the gap before the next block
+        }
+    });
+    juce::Thread::sleep (100);
+    const auto time = [&] (const char* what, std::function<void()> action)
+    {
+        const auto start = juce::Time::getMillisecondCounterHiRes();
+        for (int i = 0; i < 10; ++i)
+            action();
+        std::printf ("%-55s %8.2f ms\n", what, (juce::Time::getMillisecondCounterHiRes() - start) / 10.0);
+    };
+    time ("heavy: setPosition + messages", [&] { studio.setPosition (std::fmod (studio.getEngine().getPosition() + 3.0, 300.0)); studio.dispatchPendingMessages(); });
+    time ("heavy: setCycleOn + messages", [&] { studio.setCycleOn (! studio.getProject().loopOn); studio.dispatchPendingMessages(); });
+    time ("heavy: timers once (meters)", [&] { juce::Timer::callPendingTimersSynchronously(); });
+    running = false;
+    audio.join();
 }

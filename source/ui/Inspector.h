@@ -4,6 +4,7 @@
 
 #include "engine/Studio.h"
 #include "ui/MixerView.h"
+#include "ui/ValueSlider.h"
 
 // The Inspector (0.9.0), inspired by Cubase's: left of the track list, the
 // selected track's settings in sections (click a title to fold it; which are
@@ -71,8 +72,10 @@ public:
     juce::Viewport& getInsertsView() noexcept { return insertsView; }
     static constexpr int insertsInView = 5;
     juce::TextButton& getKey (const juce::String& name);   // "M", "S", "R", "W", "REC", "MON", "FREEZE", "PRESET"
-    juce::Slider& getVolume() noexcept { return volume; }
-    juce::Slider& getPan() noexcept { return pan; }
+    ValueSlider& getVolume() noexcept { return volume; }
+    ValueSlider& getPan() noexcept { return pan; }
+    juce::Label& getVolumeReadout() noexcept { return volumeReadout; }
+    juce::Label& getPanReadout() noexcept { return panReadout; }
     MixerView& getFader() noexcept { return fader; }
     juce::Component& getHeader (Section);
     juce::Component& getContent() noexcept { return content; }
@@ -117,7 +120,7 @@ private:
     std::array<std::unique_ptr<Header>, numSections> headers;
 
     juce::TextButton mute { "M" }, solo { "S" }, read { "R" }, write { "W" }, arm { "REC" }, monitor { "MON" };
-    juce::Slider volume, pan;
+    ValueSlider volume, pan;   // (double-click: type a value, 0.9.9)
     juce::Label volumeLabel, panLabel, volumeReadout, panReadout;
     juce::TextButton instrument, edit { "EDIT" };
     juce::Label midiInputLabel, channelLabel, audioInputLabel, outputLabel, noSends;

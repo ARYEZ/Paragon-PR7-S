@@ -35,7 +35,9 @@ public:
     std::function<void()> onFindPlugins;
     // Render in Place (the track's menu): the selected tracks whole; ask how (else as last time).
     std::function<void (std::vector<pr7s::Studio::RenderSource>, bool ask)> onRenderInPlace;
-    juce::TextButton& getAddTrackButton() noexcept { return addTrack; }   // (in the header, at the top)
+    juce::TextButton& getAddTrackButton() noexcept { return addTrack; }
+    juce::TextButton& getMuteAllKey() noexcept { return muteAll; }
+    juce::TextButton& getSoloAllKey() noexcept { return soloAll; }   // (in the header, at the top)
 
     void showAddTrackMenu();
     // A track's menu (its instrument key's): its window, change it, Output, delete... (also the Inspector's)
@@ -83,5 +85,6 @@ private:
     int dropIndex = -1, dropY = -1;   // a drag of tracks: where they'd go
     std::vector<int> tracksToMove (int trackId) const;
     juce::TextButton addTrack { "+ ADD TRACK" };
+    juce::TextButton muteAll { "M" }, soloAll { "S" };   // Deactivate All Mute / Solo States (0.9.9)
     std::unique_ptr<juce::FileChooser> chooser;   // a preset's (0.9.8)
 };

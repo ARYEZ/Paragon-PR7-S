@@ -197,11 +197,11 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
         content.addAndMakeVisible (*key);
     }
     mute.setTooltip ("Mute this track");
-    solo.setTooltip ("Solo: hear only the soloed tracks");
+    solo.setTooltip ("Solo: hear only the soloed tracks (Ctrl-click: this one alone, every other solo off)");
     arm.setTooltip ("REC: record-arm: recording and live playing go to this track");
     monitor.setTooltip ("MON: hear what comes in from the interface (your guitar), through the track's effects");
     mute.onClick = [this] { if (const auto* t = track()) studio.setMute (trackId, ! t->mute); };
-    solo.onClick = [this] { if (const auto* t = track()) studio.setSolo (trackId, ! t->solo); };
+    solo.onClick = [this] { if (const auto* t = track()) studio.setSolo (trackId, ! t->solo || juce::ModifierKeys::currentModifiers.isCommandDown(), juce::ModifierKeys::currentModifiers.isCommandDown()); };
     arm.onClick = [this] { if (const auto* t = track()) studio.setArmed (t->armed ? 0 : trackId); };
     monitor.onClick = [this] { if (const auto* t = track()) studio.setMonitor (trackId, ! t->monitor); };
 
@@ -241,7 +241,9 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     volume.setRange (-60.0, 6.0, 0.1);
     volume.setSkewFactorFromMidPoint (-12.0);
     volume.setDoubleClickReturnValue (true, 0.0, juce::ModifierKeys::commandModifier);
-    volume.setTooltip ("The track's volume (Ctrl-click or double-click for 0 dB; Shift-drag for fine moves)");
+    volume.textFromValueFunction = [] (double db) { return dbText (db); };
+    volume.parse = [] (const juce::String& text) { return ValueEntry::parseDb (text); };
+    volume.setTooltip ("The track's volume (double-click it or its number to type a value; Ctrl-click for 0 dB; Shift-drag for fine moves)");
     volume.onValueChange = [this]
     {
         volumeReadout.setText (dbText (volume.getValue()), juce::dontSendNotification);
@@ -256,7 +258,20 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     pan.setRange (-1.0, 1.0, 0.01);
     pan.getProperties().set (ParagonLookAndFeel::barFromCentreProperty, true);
     pan.setDoubleClickReturnValue (true, 0.0, juce::ModifierKeys::commandModifier);
-    pan.setTooltip ("Pan: left and right (Ctrl-click or double-click for the centre; Shift-drag for fine moves)");
+    pan.textFromValueFunction = [] (double value) { return panText (value); };
+    pan.parse = [] (const juce::String& text) { return ValueEntry::parsePan (text); };
+    pan.setTooltip ("Pan: left and right (double-click it or its number to type a value: L30, R15, C; Ctrl-click for the centre; Shift-drag for fine moves)");
+    // The numbers beside them: double-click to type (0.9.9).
+    for (auto [readout, slider] : { std::pair<juce::Label*, ValueSlider*> { &volumeReadout, &volume }, std::pair<juce::Label*, ValueSlider*> { &panReadout, &pan } })
+    {
+        readout->setEditable (false, true, false);
+        readout->setTooltip ("Double-click to type a value");
+        readout->onTextChange = [readout, slider]
+        {
+            slider->enter (readout->getText());
+            readout->setText (slider->getTextFromValue (slider->getValue()), juce::dontSendNotification);   // (as it is, if refused)
+        };
+    }
     pan.onValueChange = [this]
     {
         panReadout.setText (panText (pan.getValue()), juce::dontSendNotification);
@@ -610,7 +625,7 @@ void Inspector::refresh()
     instrument.setTooltip (t->isChannel() ? "Click for its menu (its effect's window, Output, delete it)"
                                           : "The instrument: click to open its window, change it, choose its Output, or delete the track");
     const auto* instance = studio.getEngine().getInstrument (trackId);
-    edit.setEnabled (instance != nullptr && instance->hasEditor());
+    edit.setEnabled (studio.hasEditor (instance));
 
     fillMidiInputs();
     channel.setSelectedId (t->midiChannel, juce::dontSendNotification);

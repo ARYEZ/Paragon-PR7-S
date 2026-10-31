@@ -902,7 +902,7 @@ void MainView::toggleMixerDocked()
 void MainView::openEffectWindow (int busId, int slot)
 {
     auto* instance = studio.getEngine().getEffect (busId, slot);
-    if (instance == nullptr || ! instance->hasEditor())
+    if (instance == nullptr || ! studio.hasEditor (instance))
         return;
     if (auto existing = effectWindows.find (instance); existing != effectWindows.end())
     {
@@ -1258,7 +1258,7 @@ void MainView::openInstrumentWindow (int trackId)
     }
     auto* instance = studio.getEngine().getInstrument (trackId);
     const auto* track = studio.getProject().findTrack (trackId);
-    if (instance == nullptr || track == nullptr || ! instance->hasEditor())
+    if (instance == nullptr || track == nullptr || ! studio.hasEditor (instance))
         return;
     auto window = std::make_unique<Windows::Instrument> (track->name, *instance);
     // Closed after its own click has finished (a window can't delete itself mid-click).

@@ -1,5 +1,7 @@
 #include "Studio.h"
 
+#include <set>
+
 #include "AudioAdvice.h"
 #include "MidiImport.h"
 
@@ -23,7 +25,7 @@ namespace pr7s
 
     Studio::Studio (bool useDevices) : withDevices (useDevices)
     {
-        engine.onPluginGoing = [this] (juce::AudioProcessor* plugin) { unwatch (plugin); };
+        engine.onPluginGoing = [this] (juce::AudioProcessor* plugin) { unwatch (plugin); editorAnswers.erase (plugin); };
         formats.registerBasicFormats();
         writerThread.startThread();
         // Recordings before a song is saved: a folder of their own in Documents (tests: a temporary one).
@@ -131,6 +133,18 @@ namespace pr7s
             recordUndoState();
         updateLiveTrack();
         sendChangeMessage();
+    }
+
+    bool Studio::hasEditor (const juce::AudioProcessor* plugin)
+    {
+        if (plugin == nullptr)
+            return false;
+        // Asked once per plugin: a VST3 answers by building its editor's view
+        // (JUCE's hasEditor), slow for Kontakt; the Inspector asked after every
+        // change, and each click stuck for about a second (0.9.9).
+        if (const auto known = editorAnswers.find (plugin); known != editorAnswers.end())
+            return known->second;
+        return editorAnswers[plugin] = plugin->hasEditor();
     }
 
     void Studio::numberParts()
@@ -653,6 +667,7 @@ namespace pr7s
                 unloadPlugins (*track);
                 track->disabled = true;
                 track->armed = false;
+                track->solo = false;   // (0.9.9: a soloed track out of sight silenced all the others)
             }
             else
             {
@@ -808,6 +823,8 @@ namespace pr7s
             if (auto* track = project.findTrack (id); track != nullptr && track->hidden != hidden)
             {
                 track->hidden = hidden;
+                if (hidden)
+                    track->solo = false;   // (0.9.9: hidden and soloed, it silenced every track you could see)
                 any = true;
             }
         if (! any)
@@ -915,13 +932,44 @@ namespace pr7s
         }
     }
 
-    void Studio::setSolo (int trackId, bool on)
+    void Studio::setSolo (int trackId, bool on, bool exclusive)
     {
         if (auto* track = project.findTrack (trackId))
         {
-            track->solo = on;
+            if (exclusive)   // Ctrl-click (the manual's exclusive solo): the others' solos off
+                for (auto& other : project.tracks)
+                    other.solo = false;
+            project.findTrack (trackId)->solo = on;
             changed();
         }
+    }
+
+    bool Studio::anySolo() const
+    {
+        return std::any_of (project.tracks.begin(), project.tracks.end(), [] (const Track& t) { return t.solo; });
+    }
+
+    bool Studio::anyMute() const
+    {
+        return std::any_of (project.tracks.begin(), project.tracks.end(), [] (const Track& t) { return t.mute; });
+    }
+
+    void Studio::deactivateAllSolo()
+    {
+        if (! anySolo())
+            return;
+        for (auto& track : project.tracks)
+            track.solo = false;
+        changed();
+    }
+
+    void Studio::deactivateAllMute()
+    {
+        if (! anyMute())
+            return;
+        for (auto& track : project.tracks)
+            track.mute = false;
+        changed();
     }
 
     void Studio::setVolume (int trackId, float db, bool undoable)
@@ -3296,7 +3344,29 @@ namespace pr7s
                 part.length = juce::jmin (part.length, options.end - part.start);
         }
         engine.update (playing);
-        engine.setNonRealtime (true);   // (the plugins set up again for it)
+        // Offline: only the plugins that will sound (0.9.9): the tracks with
+        // parts in what's played, the channels they reach, the master's.
+        std::set<int> sounding;
+        for (const auto& track : playing.tracks)
+            if (! track.isChannel() && ! track.disabled
+                && std::any_of (track.parts.begin(), track.parts.end(), [] (const Part& p) { return ! p.muted; }))
+                sounding.insert (track.id);
+        for (auto grew = true; grew;)
+        {
+            grew = false;
+            for (const auto& track : playing.tracks)
+                if (sounding.count (track.id) > 0)
+                {
+                    std::vector<int> reaches { track.output };
+                    for (const auto& send : track.sends)
+                        if (send.on)
+                            reaches.push_back (send.target);
+                    for (const auto id : reaches)
+                        if (id > 0 && sounding.insert (id).second)
+                            grew = true;
+                }
+        }
+        engine.setNonRealtime (true, [&sounding] (int id) { return sounding.count (id) > 0; });   // (set up again for it)
         engine.settleMix();   // the levels set from the first sample (no glide from what was playing before)
 
         job->total = (juce::int64) std::llround ((options.end - options.start) * 60.0 / project.bpm * rate);
@@ -3372,7 +3442,8 @@ namespace pr7s
         auto job = std::move (exportJob);
         engine.stop();
         job->writer.reset();   // the file finished
-        engine.setNonRealtime (false);
+        if (! inBatch)   // (several renders in a row: back to realtime once, after the last)
+            engine.setNonRealtime (false);
         if (! job->finished)
             job->file.deleteFile();
         // Everything as it was.
@@ -3381,9 +3452,25 @@ namespace pr7s
         engine.update (project);
         engine.settleMix();   // (0.9.8: the song's own levels from the first sample, no glide from the export's copy)
         engine.setPosition (job->previousPosition);
-        if (withDevices)
+        if (withDevices && ! inBatch)
             devices.addAudioCallback (&engine);
         sendChangeMessage();
+    }
+
+    void Studio::beginBatch()
+    {
+        inBatch = true;
+    }
+
+    void Studio::endBatch()
+    {
+        if (! inBatch)
+            return;
+        inBatch = false;
+        engine.setNonRealtime (false);
+        engine.settleMix();
+        if (withDevices)
+            devices.addAudioCallback (&engine);
     }
 
     bool Studio::exportMix (const juce::File& destination, const ExportOptions& options, juce::String& error)
@@ -3400,6 +3487,8 @@ namespace pr7s
     std::vector<int> Studio::renderInPlace (const std::vector<RenderSource>& sources, const RenderOptions& options, juce::String& error)
     {
         using P = RenderOptions::Processing;
+        beginBatch();   // (the plugins offline once for all the stretches)
+        const juce::ScopeGuard batch { [this] { endBatch(); } };
         std::vector<int> made;
         juce::StringArray problems;
         const auto folder = getAudioFolder();
@@ -3575,6 +3664,14 @@ namespace pr7s
             project.tracks = std::move (reordered);
             made.push_back (newId);
 
+            // A soloed source going out of earshot (muted, disabled, hidden, removed): its solo
+            // goes to the rendered track, else that one, and every other, stays silent (0.9.9).
+            if (auto* from = project.findTrack (sourceId); from != nullptr && from->solo
+                && (options.source != RenderOptions::Source::keep || (source.wholeTrack && options.hideSource)))
+            {
+                project.findTrack (newId)->solo = true;
+                from->solo = false;
+            }
             // The source: kept, muted (the parts rendered, or the whole track), or removed (a whole track).
             if (options.source == RenderOptions::Source::mute)
             {

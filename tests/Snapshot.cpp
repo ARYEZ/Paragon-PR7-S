@@ -24,6 +24,7 @@
 // Auto-Scroll suspended.
 // PARAGON_SNAPSHOT_QC=1: the Inspector's Quick Controls, three assigned.
 // PARAGON_SNAPSHOT_MULTI=1: parts selected on two tracks.
+// PARAGON_SNAPSHOT_STATES=1: the lead soloed, the bass muted, the keys armed (written under their names; the header's M and S lit).
 // PARAGON_SNAPSHOT_FREEZE=1: the lead frozen (FREEZE lit in its Inspector, its parts stamped).
 // PARAGON_SNAPSHOT_VISIBILITY=1: the VISIBILITY tab, the bass hidden, the keys disabled.
 // PARAGON_SNAPSHOT_INSPECTOR=fader folds the Inspector's inserts and sends (=none hides it).
@@ -128,6 +129,13 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
             studio.setQuickControl (lead, i, controls[(size_t) i]);
         for (const auto section : { Inspector::Section::routing, Inspector::Section::inserts, Inspector::Section::sends, Inspector::Section::fader })
             view.getInspector().setFolded (section, true);
+        studio.dispatchPendingMessages();
+    }
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_STATES", {}).isNotEmpty())
+    {
+        studio.setSolo (lead, true);
+        studio.setMute (studio.getProject().tracks[1].id, true);
+        studio.setArmed (studio.getProject().tracks[0].id);
         studio.dispatchPendingMessages();
     }
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FREEZE", {}).isNotEmpty())

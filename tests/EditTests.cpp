@@ -853,3 +853,66 @@ TEST_CASE ("Track presets: a track's sound and mix saved; applied to a track of 
     CHECK (tracks[1].parts.empty());
     CHECK (studio.getSelectedTrack() == made);
 }
+
+TEST_CASE ("Solo out of sight (0.9.9): hiding or disabling clears a track's solo; a disabled solo doesn't count; Render in Place moves it to the new track; exclusive solo; deactivate all", "[edit][solo]")
+{
+    Studio studio (false);
+    const auto a = studio.getProject().tracks[0].id;
+    const auto b = studio.addTrack ({});
+    const auto c = studio.addTrack ({});
+    studio.addPart (b, { 0.0, 4.0, "B", { { 0.0, 2.0, 60, 1.0f } } });
+    const auto loudness = [&studio]
+    {
+        studio.getEngine().setPosition (0.0);
+        studio.getEngine().play();
+        juce::AudioBuffer<float> out (2, 4800);
+        studio.getEngine().render (out, 4800);   // (a solo fades the others out: once through first)
+        studio.getEngine().setPosition (0.0);
+        studio.getEngine().render (out, 4800);
+        studio.getEngine().stop();
+        return out.getMagnitude (0, 4800);
+    };
+    REQUIRE (loudness() > 0.01f);
+
+    // Soloed, then hidden: its solo goes (it silenced every track you could see).
+    studio.setSolo (a, true);
+    CHECK (loudness() == 0.0f);   // b silenced by a's solo (as solo does)
+    CHECK (studio.anySolo());
+    studio.setTracksHidden ({ a }, true);
+    CHECK_FALSE (studio.getProject().findTrack (a)->solo);
+    CHECK_FALSE (studio.anySolo());
+    CHECK (loudness() > 0.01f);
+
+    // Disabled: likewise; and a disabled track's solo (an old song) doesn't count.
+    studio.setSolo (c, true);
+    studio.setTracksDisabled ({ c }, true);
+    CHECK_FALSE (studio.getProject().findTrack (c)->solo);
+    CHECK (loudness() > 0.01f);
+
+    // Exclusive (Ctrl-click): only it; Deactivate All Solo / Mute States.
+    studio.setSolo (a, true);
+    studio.setSolo (b, true, true);
+    CHECK_FALSE (studio.getProject().findTrack (a)->solo);
+    CHECK (studio.getProject().findTrack (b)->solo);
+    studio.deactivateAllSolo();
+    CHECK_FALSE (studio.anySolo());
+    studio.setMute (a, true);
+    studio.setMute (b, true);
+    CHECK (studio.anyMute());
+    studio.deactivateAllMute();
+    CHECK_FALSE (studio.anyMute());
+
+    // Render in Place of a soloed track, the source hidden: the solo goes to the rendered track (else it's silent).
+    studio.setSolo (b, true);
+    Studio::RenderOptions options;
+    options.tail = Studio::RenderOptions::Tail::off;
+    options.source = Studio::RenderOptions::Source::mute;
+    options.hideSource = true;
+    juce::String error;
+    const auto made = studio.renderInPlace ({ { b, 0.0, 4.0, true } }, options, error);
+    REQUIRE (made.size() == 1);
+    CHECK (studio.getProject().findTrack (made[0])->solo);
+    CHECK_FALSE (studio.getProject().findTrack (b)->solo);
+    CHECK (loudness() > 0.01f);   // the rendered track heard
+    studio.getAudioFolder().deleteRecursively();
+}
