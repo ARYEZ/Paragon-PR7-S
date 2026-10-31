@@ -78,12 +78,12 @@ public:
     // File): asks whether into a new song (if this one has anything in it),
     // then which file. A .mid file dropped on the window goes into this song
     // at the bar it's dropped on (bar 1 if not over the arrangement).
-    void importMidiFile();
+    void importMidiFile (bool newSong);   // IMPORT's MIDI items: the file chooser (several files)
     // IMPORT > Audio files: WAV, AIFF, FLAC, Ogg or MP3, as clips at the
     // playhead on the selected audio track (else a new one); dropped on the
     // arrangement, on the audio track under them (else a new one) at the bar.
-    void importAudioFiles();
-    void importAudio (const juce::Array<juce::File>&, int trackId, double atBeat);   // several: asks one track or a track each
+    void importAudioFiles (bool oneTrack);
+    void importAudio (const juce::Array<juce::File>&, int trackId, double atBeat, bool oneTrack);
     void importMidiFiles (const juce::Array<juce::File>&, bool newSong, double atBeat);
     bool isInterestedInFileDrag (const juce::StringArray&) override;
     void filesDropped (const juce::StringArray&, int x, int y) override;

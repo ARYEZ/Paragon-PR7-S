@@ -2,6 +2,19 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.9.7
+
+Importing into a song that already has something in it: "This song" did nothing.
+
+- **Why:** IMPORT asked a question ("New song" or "This song"), and the file chooser opened from inside that question's answer. On Windows the chooser opened as the question box closed and went with it, so nothing happened.
+- **Now:** there's no question box. The IMPORT menu has every choice in it, and the file chooser opens after the menu has gone:
+  - **MIDI files into this song...**: each track of each file becomes a new track, starting at bar 1.
+  - **MIDI files as a new song...**: the first file's tempo and time signature.
+  - **Audio files, a track each...**: each file on its own track, all starting at the playhead.
+  - **Audio files, one after another on one track...**: on the selected audio track (else a new one), from the playhead.
+- Several audio files dropped on the arrangement give a small menu where they're dropped: **A track each** or **One after another on one track**.
+- Not checked here: Windows' own file chooser (there's no Windows in the cloud), so please try IMPORT > MIDI files into this song twice in a row.
+
 ## 0.9.6
 
 Quick Controls: 8 per track, in the Inspector (as the manual's Track Quick Controls).

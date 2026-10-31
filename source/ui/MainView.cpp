@@ -36,17 +36,28 @@ MainView::MainView (pr7s::Studio& studioToUse)
                              "Or drop them on the arrangement, at a bar");
     importButton.onClick = [this]
     {
+        // Every choice here (0.9.7): no question box afterwards. (A file chooser opened from
+        // inside a question box's answer closed with it on Windows: "This song" did nothing.)
         juce::PopupMenu menu;
-        menu.addItem (1, "MIDI file...");
-        menu.addItem (2, "Audio files... (WAV, AIFF, FLAC, Ogg, MP3)");
+        menu.addItem (1, "MIDI files into this song...");
+        menu.addItem (2, "MIDI files as a new song...");
+        menu.addSeparator();
+        menu.addItem (3, "Audio files, a track each... (WAV, AIFF, FLAC, Ogg, MP3)");
+        menu.addItem (4, "Audio files, one after another on one track...");
         menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&importButton), [safe = juce::Component::SafePointer<MainView> (this)] (int chosen)
         {
-            if (safe == nullptr)
+            if (safe == nullptr || chosen == 0)
                 return;
-            if (chosen == 1)
-                safe->importMidiFile();
-            else if (chosen == 2)
-                safe->importAudioFiles();
+            // After the menu has gone.
+            juce::MessageManager::callAsync ([safe, chosen]
+            {
+                if (safe == nullptr)
+                    return;
+                if (chosen == 1 || chosen == 2)
+                    safe->importMidiFile (chosen == 2);
+                else
+                    safe->importAudioFiles (chosen == 4);
+            });
         });
     };
     undoButton.setTooltip ("Undo (Ctrl+Z)");
@@ -984,38 +995,17 @@ void MainView::saveProjectAs (std::function<void (bool)> then)
 }
 
 //==============================================================================
-void MainView::importMidiFile()
+void MainView::importMidiFile (bool newSong)
 {
-    const auto chooseFile = [this] (bool newSong)
-    {
-        // Several at once (0.9.5: one at a time before): each file's tracks become new tracks.
-        chooser = std::make_unique<juce::FileChooser> ("Import MIDI files", studio.getFile().getParentDirectory(), "*.mid;*.midi");
-        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
-                                  | juce::FileBrowserComponent::canSelectMultipleItems,
-                              [this, newSong] (const juce::FileChooser& fc)
-                              {
-                                  importMidiFiles (fc.getResults(), newSong, 0.0);
-                              });
-    };
-    // As the manual has it: into a new song, or this one? (Only asked if this one has anything in it.)
-    const auto& tracks = studio.getProject().tracks;
-    const auto empty = std::all_of (tracks.begin(), tracks.end(), [] (const pr7s::Track& t) { return t.parts.empty(); });
-    if (empty)
-    {
-        chooseFile (true);
-        return;
-    }
-    juce::AlertWindow::showYesNoCancelBox (juce::MessageBoxIconType::QuestionIcon, "Import a MIDI file",
-                                           juce::String ("Into a new song (with the file's tempo and time signature), or into this one (at bar 1, keeping its tempo)?")
-                                               + (studio.isModified() ? "\n\nA new song: changes to this one that aren't saved will be lost." : ""),
-                                           "New song", "This song", "Cancel", nullptr,
-                                           juce::ModalCallbackFunction::create ([chooseFile] (int result)
-                                           {
-                                               if (result == 1)
-                                                   chooseFile (true);
-                                               else if (result == 2)
-                                                   chooseFile (false);
-                                           }));
+    // Several at once: each file's tracks become new tracks (into this song at bar 1, or the first file as a new song).
+    chooser = std::make_unique<juce::FileChooser> (newSong ? "Import MIDI files as a new song" : "Import MIDI files into this song",
+                                                   studio.getFile().getParentDirectory(), "*.mid;*.midi");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
+                              | juce::FileBrowserComponent::canSelectMultipleItems,
+                          [this, newSong] (const juce::FileChooser& fc)
+                          {
+                              importMidiFiles (fc.getResults(), newSong, 0.0);
+                          });
 }
 
 bool MainView::isInterestedInFileDrag (const juce::StringArray& files)
@@ -1026,16 +1016,16 @@ bool MainView::isInterestedInFileDrag (const juce::StringArray& files)
     });
 }
 
-void MainView::importAudioFiles()
+void MainView::importAudioFiles (bool oneTrack)
 {
     chooser = std::make_unique<juce::FileChooser> ("Import audio files", studio.getFile().getParentDirectory(), "*.wav;*.wave;*.aif;*.aiff;*.flac;*.ogg;*.mp3");
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
                               | juce::FileBrowserComponent::canSelectMultipleItems,
-                          [this] (const juce::FileChooser& fc)
+                          [this, oneTrack] (const juce::FileChooser& fc)
                           {
                               const auto files = fc.getResults();
                               if (! files.isEmpty())
-                                  importAudio (files, studio.getSelectedTrack(), studio.getEngine().getPosition());
+                                  importAudio (files, studio.getSelectedTrack(), studio.getEngine().getPosition(), oneTrack);
                           });
 }
 
@@ -1058,31 +1048,12 @@ void MainView::importMidiFiles (const juce::Array<juce::File>& files, bool newSo
                                                 problems.joinIntoString ("\n"));
 }
 
-void MainView::importAudio (const juce::Array<juce::File>& files, int trackId, double atBeat)
+void MainView::importAudio (const juce::Array<juce::File>& files, int trackId, double atBeat, bool oneTrack)
 {
-    const auto run = [this, files, trackId, atBeat] (bool oneTrack)
-    {
-        juce::String error;
-        studio.importAudio (files, trackId, atBeat, error, oneTrack);
-        if (error.isNotEmpty())
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't import every file", error);
-    };
-    if (files.size() < 2)
-    {
-        run (true);
-        return;
-    }
-    // Several (as the manual's import options for several files ask): on one track, one after another, or a track each.
-    juce::AlertWindow::showYesNoCancelBox (juce::MessageBoxIconType::QuestionIcon, "Import " + juce::String (files.size()) + " audio files",
-                                           "Each on a track of its own (all starting at the same place), or all on one track, one after another?",
-                                           "A track each", "One track", "Cancel", nullptr,
-                                           juce::ModalCallbackFunction::create ([run] (int result)
-                                           {
-                                               if (result == 1)
-                                                   run (false);
-                                               else if (result == 2)
-                                                   run (true);
-                                           }));
+    juce::String error;
+    studio.importAudio (files, trackId, atBeat, error, oneTrack);
+    if (error.isNotEmpty())
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't import every file", error);
 }
 
 void MainView::filesDropped (const juce::StringArray& files, int x, int y)
@@ -1103,7 +1074,22 @@ void MainView::filesDropped (const juce::StringArray& files, int x, int y)
             at = juce::jmax (0.0, std::floor (timeline.beatForX ((float) inArrange.x) / bar) * bar);
             trackId = arrange.trackAtY ((float) inArrange.y);
         }
-        importAudio (audio, trackId, at);
+        if (audio.size() == 1)
+            importAudio (audio, trackId, at, true);
+        else
+        {
+            // Several: a track each, or one after another (a menu where they were dropped, not a question box).
+            juce::PopupMenu menu;
+            menu.addSectionHeader ("IMPORT " + juce::String (audio.size()) + " AUDIO FILES");
+            menu.addItem (1, "A track each");
+            menu.addItem (2, "One after another on one track");
+            menu.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (juce::Rectangle<int> (x, y, 1, 1) + getScreenPosition()),
+                                [safe = juce::Component::SafePointer<MainView> (this), audio, trackId, at] (int chosen)
+                                {
+                                    if (safe != nullptr && chosen != 0)
+                                        safe->importAudio (audio, trackId, at, chosen == 2);
+                                });
+        }
     }
 
     // Into this song, at the bar it's dropped on (over the arrangement), else bar 1.
