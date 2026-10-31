@@ -326,19 +326,21 @@ void MixerView::Strip::mouseDown (const juce::MouseEvent&)
 }
 
 //==============================================================================
-MixerView::MixerView (pr7s::Studio& studioToUse) : studio (studioToUse)
+MixerView::MixerView (pr7s::Studio& studioToUse, bool singleStrip) : studio (studioToUse), single (singleStrip)
 {
     viewport.setViewedComponent (&holder, false);
-    viewport.setScrollBarsShown (false, true);
+    viewport.setScrollBarsShown (false, ! single);
     addAndMakeVisible (viewport);
     master = std::make_unique<Strip> (*this, pr7s::Engine::masterBus);
-    addAndMakeVisible (*master);
+    if (! single)
+        addAndMakeVisible (*master);
 
     for (auto* button : { &windowButton, &closeButton })
     {
         button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
         button->setWantsKeyboardFocus (false);
-        addAndMakeVisible (*button);
+        if (! single)
+            addAndMakeVisible (*button);
     }
     windowButton.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
     closeButton.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
@@ -348,14 +350,17 @@ MixerView::MixerView (pr7s::Studio& studioToUse) : studio (studioToUse)
         button->setColour (juce::TextButton::textColourOffId, ParagonColours::textDim);
         button->setColour (juce::TextButton::textColourOnId, ParagonColours::accent);
         button->setWantsKeyboardFocus (false);
-        addAndMakeVisible (*button);
+        if (! single)
+            addAndMakeVisible (*button);
     }
     insertsButton.setTooltip ("Show each channel's inserts (its effects, top to bottom); click again to hide them (only the faders)");
     sendsButton.setTooltip ("Show each channel's sends (to the FX channels); click again to hide them (only the faders)");
     // The lit one again hides the rack; the other shows its own.
     insertsButton.onClick = [this] { rackShown && ! showSends ? setRackShown (false) : (setShowSends (false), setRackShown (true)); };
     sendsButton.onClick = [this] { rackShown && showSends ? setRackShown (false) : (setShowSends (true), setRackShown (true)); };
-    if (auto* settings = studio.getSettings())
+    if (single)
+        rackShown = false;   // (the Inspector shows the inserts and sends itself)
+    else if (auto* settings = studio.getSettings())
     {
         const auto rack = settings->getValue ("mixerRack", "inserts");
         showSends = rack == "sends";
@@ -396,22 +401,34 @@ void MixerView::changeListenerCallback (juce::ChangeBroadcaster*)
     rebuild();
 }
 
+void MixerView::setSingleTrack (int trackId)
+{
+    if (singleTrack == trackId)
+        return;
+    singleTrack = trackId;
+    rebuild();
+}
+
 void MixerView::rebuild()
 {
     // A strip for each track, in the track list's order (kept if the tracks are the same).
-    const auto& tracks = studio.getProject().tracks;
-    auto same = strips.size() == tracks.size();
-    for (size_t i = 0; same && i < tracks.size(); ++i)
-        same = strips[i]->getBusId() == tracks[i].id;
+    std::vector<int> ids;
+    for (const auto& track : studio.getProject().tracks)
+        if (! single || track.id == singleTrack)
+            ids.push_back (track.id);
+    auto same = strips.size() == ids.size();
+    for (size_t i = 0; same && i < ids.size(); ++i)
+        same = strips[i]->getBusId() == ids[i];
     if (! same)
     {
         strips.clear();
-        for (const auto& track : tracks)
+        for (const auto id : ids)
         {
-            strips.push_back (std::make_unique<Strip> (*this, track.id));
+            strips.push_back (std::make_unique<Strip> (*this, id));
             holder.addAndMakeVisible (*strips.back());
         }
         resized();
+        repaint();
     }
     for (auto& strip : strips)
         strip->refresh();
@@ -423,13 +440,15 @@ void MixerView::timerCallback()
     auto& engine = studio.getEngine();
     for (auto& strip : strips)
     {
-        const auto peak = engine.takeTrackPeak (strip->getBusId(), 1);
+        const auto peak = engine.takeTrackPeak (strip->getBusId(), single ? 2 : 1);
         strip->setLevels (peak, peak);
         strip->followMix();
         if (showSends)
             for (int i = 0; i < pr7s::Project::maxSends; ++i)
                 strip->getSendSlot (i).repaint();
     }
+    if (single)
+        return;
     master->followMix();
     master->setLevels (engine.getOutputMeter (0, 1).takePeak(), engine.getOutputMeter (1, 1).takePeak());
 }
@@ -503,6 +522,8 @@ void MixerView::showInsertMenu (int busId, int slot)
 void MixerView::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff0d0a0e));
+    if (single)
+        return;
     auto bar = getLocalBounds().removeFromTop (barHeight).toFloat();
     g.setColour (juce::Colour (0xff100c11));
     g.fillRect (bar);
@@ -529,6 +550,14 @@ void MixerView::paint (juce::Graphics& g)
 void MixerView::resized()
 {
     auto area = getLocalBounds();
+    if (single)
+    {
+        viewport.setBounds (area);
+        holder.setSize (area.getWidth(), area.getHeight());
+        for (auto& strip : strips)
+            strip->setBounds (holder.getLocalBounds());
+        return;
+    }
     auto bar = area.removeFromTop (barHeight).reduced (8, 4);
     closeButton.setBounds (bar.removeFromRight (64));
     bar.removeFromRight (6);

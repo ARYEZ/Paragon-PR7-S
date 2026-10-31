@@ -2,6 +2,29 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.9.0
+
+The Inspector: the selected track's settings, left of the track list (as you asked, after the left zone in Cubase 15).
+
+- **Where:** a panel on the left, the whole height of the window (beside the mixer too, when it's docked). It shows the track you last clicked.
+- **Show or hide it:** the header's new **INSPECTOR** key, or **Ctrl+Alt+L** (the manual's Show/Hide Left Zone). PR7-S remembers whether it was open.
+- **Sections:** click a section's title to fold it; folded sections stay folded next time.
+  - **The track** (its name, in its colour): M, S, R, W and REC; MON on an audio track. Volume and pan (Ctrl-click or double-click resets them; Shift-drag for fine moves). The instrument: click it for the same menu as in the track list (open its window, change it, Output, delete); **EDIT** opens its window straight away.
+  - **ROUTING:** for an instrument track, **MIDI IN** and **CHANNEL** (new, below); for an audio track, its **INPUT** (IN 1, IN 1+2...). **OUT:** the master or a group channel.
+  - **INSERTS:** the track's 16 effect slots, the same as the mixer's; those below the orange line come after the fader.
+  - **SENDS:** its 8 sends, the same as the mixer's (FX channels have none).
+  - **FADER:** its mixer strip, with fader, pan, M S R W and its level meter.
+- **New: MIDI IN.** Choose **ALL MIDI INPUTS** (as before) or one keyboard. Only that keyboard then plays, and records, when the track is armed or selected. A keyboard the song asks for but that isn't plugged in stays listed, marked NOT CONNECTED.
+- **New: CHANNEL.** This is the MIDI channel (1 to 16) the track's notes go to its instrument on, for an instrument that listens on one channel only, such as each part of a Kontakt multi. What you play live goes out on that channel too. It's 1 unless you change it, as before.
+  - In my question I described it as a filter on what comes in. Cubase's Routing channel is what the instrument receives, so I built it that way.
+- Both are saved with the song, and Undo covers them.
+- **Not in this version:**
+  - Quick Controls (0.9.1).
+  - Track presets and Freeze (0.9.2).
+  - The Equalizer (later, as you said).
+  - Track Versions and MIDI Inserts (you crossed them out).
+- Not checked here: real MIDI keyboards (there are none in the cloud). The tests drive the filter with device names.
+
 ## 0.8.6
 
 Render in Place (and EXPORT) with Kontakt, Superior Drummer and other plug-ins.

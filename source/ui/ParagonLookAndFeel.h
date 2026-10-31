@@ -51,6 +51,7 @@ public:
     static constexpr const char* litColourProperty = "litColour";
     // A key that opens a menu: a small down arrow drawn instead of its text (the fonts have none).
     static constexpr const char* menuArrowProperty = "menuArrow";
+    static constexpr const char* barFromCentreProperty = "barFromCentre";   // a LinearBar lit from its centre (pan)
 
     // Set this on a TextButton to draw it as the mockup's light outlined
     // buttons printed on the metal (VOLUME, WAH / FILTER, MORPH / FX). Its

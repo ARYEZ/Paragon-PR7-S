@@ -147,6 +147,11 @@ namespace pr7s
         int input = 0;
         bool stereoInput = false;
         bool monitor = false;
+        // Instrument tracks: the MIDI input it listens to when it's the live
+        // track (a device's name; empty: all inputs), and the channel its notes
+        // go to the instrument on (1 to 16; the Inspector's Routing, 0.9.0).
+        juce::String midiInput;
+        int midiChannel = 1;
         bool isAudio() const noexcept { return kind == Kind::audio; }
         bool isFx() const noexcept { return kind == Kind::fx; }
         bool isGroup() const noexcept { return kind == Kind::group; }

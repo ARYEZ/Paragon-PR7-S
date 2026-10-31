@@ -105,6 +105,18 @@ namespace pr7s
         }
     }
 
+    void Engine::setLiveInputFilter (const juce::String& deviceName)
+    {
+        const juce::SpinLock::ScopedLockType sl (liveFilterLock);
+        liveFilter = deviceName;
+    }
+
+    bool Engine::acceptsLiveFrom (const juce::String& deviceName) const
+    {
+        const juce::SpinLock::ScopedLockType sl (liveFilterLock);
+        return liveFilter.isEmpty() || liveFilter == deviceName;
+    }
+
     void Engine::setNonRealtime (bool offline)
     {
         // A plugin reads realtime or offline when it's set up (VST3's
@@ -438,6 +450,8 @@ namespace pr7s
                 prepared.push_back (std::move (p));
                 continue;
             }
+            // On the track's MIDI channel (the instrument may listen to one: a Kontakt multi).
+            const auto channelBits = juce::jlimit (1, 16, track.midiChannel) - 1;
             for (const auto& part : track.parts)
                 for (const auto& note : part.notes)
                 {
@@ -448,15 +462,15 @@ namespace pr7s
                         continue;   // outside the part: not heard (as in a DAW)
                     const auto off = part.start + juce::jmin (note.start + note.length, part.length);
                     const auto velocity = (juce::uint8) juce::jlimit (1, 127, juce::roundToInt (note.velocity * 127.0f));
-                    p.events.push_back ({ on, 0x90, (juce::uint8) note.pitch, velocity });
-                    p.events.push_back ({ off, 0x80, (juce::uint8) note.pitch, 0 });
+                    p.events.push_back ({ on, (juce::uint8) (0x90 | channelBits), (juce::uint8) note.pitch, velocity });
+                    p.events.push_back ({ off, (juce::uint8) (0x80 | channelBits), (juce::uint8) note.pitch, 0 });
                 }
             // By beat; at the same beat a note off comes first, so a repeated note restarts.
             std::sort (p.events.begin(), p.events.end(), [] (const Event& a, const Event& b)
             {
                 if (a.beat < b.beat || b.beat < a.beat)
                     return a.beat < b.beat;
-                return (a.status == 0x80) > (b.status == 0x80);
+                return ((a.status & 0xf0) == 0x80) > ((b.status & 0xf0) == 0x80);
             });
             prepared.push_back (std::move (p));
         }
@@ -481,6 +495,7 @@ namespace pr7s
                 if (const auto* t = project.findTrack (p.id))
                 {
                     track->input = t->input;
+                    track->midiChannel = juce::jlimit (1, 16, t->midiChannel);
                     track->stereoInput = t->stereoInput;
                     track->monitor = t->monitor;
                     track->volumeDb = t->volumeDb;
@@ -563,7 +578,7 @@ namespace pr7s
     {
         const juce::ScopedLock sl (lock);
         auto* track = findTrack (trackId);
-        return track != nullptr ? track->meters[(size_t) juce::jlimit (0, 1, reader)].takePeak() : 0.0f;
+        return track != nullptr ? track->meters[(size_t) juce::jlimit (0, 2, reader)].takePeak() : 0.0f;
     }
 
     void Engine::runInserts (std::vector<Slot>& slots, juce::AudioBuffer<float>& buffer, int numSamples, int fromSlot, int toSlot)
@@ -610,7 +625,7 @@ namespace pr7s
                 continue;
             if (at >= toSample)
                 break;
-            if (it->status == 0x90)
+            if ((it->status & 0xf0) == 0x90)
                 track.held.set (it->data1);
             else
                 track.held.reset (it->data1);
@@ -623,7 +638,7 @@ namespace pr7s
     {
         for (int note = 0; note < 128; ++note)
             if (track.held.test ((size_t) note))
-                track.midi.addEvent (juce::MidiMessage::noteOff (1, note), sampleOffset);
+                track.midi.addEvent (juce::MidiMessage::noteOff (track.midiChannel, note), sampleOffset);
         track.held.reset();
     }
 
@@ -816,7 +831,13 @@ namespace pr7s
             if (track->role != role)
                 continue;
             if (track->id == liveId)
-                track->midi.addEvents (live, 0, numSamples, 0);
+                for (const auto metadata : live)   // played live: on the track's channel, as its notes
+                {
+                    auto message = metadata.getMessage();
+                    if (message.getChannel() > 0)
+                        message.setChannel (track->midiChannel);
+                    track->midi.addEvent (message, metadata.samplePosition);
+                }
             if (track->role != TrackState::Role::source)
             {
                 // A group or FX channel: what was routed or sent to it.

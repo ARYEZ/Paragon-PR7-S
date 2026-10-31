@@ -22,6 +22,7 @@
 // PARAGON_SNAPSHOT_VIEW=5760x1000: the window that size, 1:1 (the wide layout, spanning three screens).
 // PARAGON_SNAPSHOT_ROWS=0.5 (to 3) the arrangement's rows shorter or taller; PARAGON_SNAPSHOT_SUSPENDED=1 its
 // Auto-Scroll suspended.
+// PARAGON_SNAPSHOT_INSPECTOR=fader folds the Inspector's inserts and sends (=none hides it).
 // PARAGON_SNAPSHOT_AUTOMATION=1 opens automation lanes (the lead's volume, the bass's pan, the master's fade).
 TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
 {
@@ -106,6 +107,14 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         view.setSize (size[0].getIntValue(), size[1].getIntValue());
         scale = 1.0f;
     }
+    // PARAGON_SNAPSHOT_INSPECTOR=fader: the Inspector's inserts and sends folded (its fader shows); =none: hidden.
+    if (const auto inspector = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_INSPECTOR", {}); inspector == "fader")
+    {
+        view.getInspector().setFolded (Inspector::Section::inserts, true);
+        view.getInspector().setFolded (Inspector::Section::sends, true);
+    }
+    else if (inspector == "none")
+        view.toggleInspector();
     // Play a little so the meters show.
     studio.play();
     for (int round = 0; round < 6; ++round)

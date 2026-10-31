@@ -50,6 +50,11 @@ namespace pr7s
         int addAudioTrack (bool stereo);
         void setTrackInput (int trackId, int input, bool stereo);
         void setMonitor (int trackId, bool);   // hear what comes in, through the track's effects
+        // An instrument track's MIDI routing (the Inspector, 0.9.0): the input it
+        // listens to when it's the live track (a device's name; empty: all
+        // MIDI inputs), and the channel its notes go to its instrument on (1-16).
+        void setMidiInput (int trackId, const juce::String& deviceName);
+        void setMidiChannel (int trackId, int channel);
         void removeTrack (int trackId);   // (an FX or group channel: what was sent or routed to it goes back to the master)
 
         // FX and group channels (inspired by Cubase's workflow). An FX channel

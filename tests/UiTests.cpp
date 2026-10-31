@@ -1943,3 +1943,92 @@ TEST_CASE ("RENDER IN PLACE: the page's choices; rendering as last time from the
     CHECK (studio.getProject().tracks[1].parts.size() == 1);
     studio.getAudioFolder().deleteRecursively();
 }
+
+TEST_CASE ("The Inspector: the selected track's settings, by kind, in sections that fold", "[ui][inspector]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& inspector = view.getInspector();
+    REQUIRE (view.isInspectorShown());
+    CHECK (inspector.isVisible());
+    CHECK (inspector.getWidth() == Inspector::width);
+    CHECK (inspector.getRight() < view.getArrangeView().getX());
+
+    const auto keys = studio.getProject().tracks[0].id;
+    studio.selectTrack (keys);
+    studio.dispatchPendingMessages();   // the screen hears about changes by message
+    CHECK (inspector.getTrack() == keys);
+    using S = Inspector::Section;
+
+    SECTION ("An instrument track: MIDI IN and CHANNEL, its inserts and sends, its fader")
+    {
+        CHECK (inspector.getMidiInput().isVisible());
+        CHECK (inspector.getChannel().isVisible());
+        CHECK_FALSE (inspector.getAudioInput().isVisible());
+        CHECK (inspector.getKey ("REC").isVisible());
+        CHECK_FALSE (inspector.getKey ("MON").isVisible());
+        CHECK (inspector.getInsertSlot (0).isVisible());
+        CHECK (inspector.getHeader (S::sends).isVisible());
+        CHECK (inspector.getFader().getSingleTrack() == keys);
+        CHECK (inspector.getFader().getNumStrips() == 2);   // its strip (and the master's, not shown)
+
+        // Its controls change the track.
+        inspector.getChannel().setSelectedId (7, juce::sendNotificationSync);
+        CHECK (studio.getProject().findTrack (keys)->midiChannel == 7);
+        inspector.getVolume().setValue (-6.0, juce::sendNotificationSync);
+        CHECK (studio.getProject().findTrack (keys)->volumeDb == -6.0f);
+        inspector.getKey ("M").onClick();
+        CHECK (studio.getProject().findTrack (keys)->mute);
+        // And follow it.
+        studio.setPan (keys, -0.5f);
+        studio.dispatchPendingMessages();
+        CHECK (inspector.getPan().getValue() == -0.5);
+        studio.setMidiChannel (keys, 3);
+        studio.dispatchPendingMessages();
+        CHECK (inspector.getChannel().getSelectedId() == 3);
+    }
+    SECTION ("An audio track: its input and MON, no MIDI; an FX channel: no sends, no REC")
+    {
+        const auto guitar = studio.addAudioTrack (true);
+        studio.selectTrack (guitar);
+        studio.dispatchPendingMessages();
+        CHECK (inspector.getTrack() == guitar);
+        CHECK (inspector.getAudioInput().isVisible());
+        CHECK (inspector.getAudioInput().getText().contains ("IN 1+2"));
+        CHECK_FALSE (inspector.getMidiInput().isVisible());
+        CHECK (inspector.getKey ("MON").isVisible());
+
+        const auto fx = studio.addFxChannel (nullptr);
+        studio.selectTrack (fx);
+        studio.dispatchPendingMessages();
+        CHECK_FALSE (inspector.getHeader (S::sends).isVisible());
+        CHECK_FALSE (inspector.getKey ("REC").isVisible());
+        CHECK_FALSE (inspector.getOutput().isEnabled());   // FX channels go to the master
+    }
+    SECTION ("A section's title folds it; the others move up")
+    {
+        const auto routingY = inspector.getHeader (S::routing).getY();
+        const auto height = inspector.getContentHeight();
+        inspector.setFolded (S::basics, true);
+        CHECK_FALSE (inspector.getVolume().isVisible());
+        CHECK (inspector.getHeader (S::routing).getY() < routingY);
+        CHECK (inspector.getContentHeight() < height);
+        inspector.setFolded (S::basics, false);
+        CHECK (inspector.getVolume().isVisible());
+        inspector.setFolded (S::fader, true);
+        CHECK_FALSE (inspector.getFader().isVisible());
+    }
+    SECTION ("Ctrl+Alt+L (or INSPECTOR) hides it, and the track list takes its place")
+    {
+        const auto arrangeX = view.getArrangeView().getX();
+        CHECK (view.keyPressed (juce::KeyPress ('l', juce::ModifierKeys::commandModifier | juce::ModifierKeys::altModifier, 0)));
+        CHECK_FALSE (view.isInspectorShown());
+        CHECK_FALSE (inspector.isVisible());
+        CHECK (view.getArrangeView().getX() < arrangeX);
+        view.toggleInspector();
+        CHECK (inspector.isVisible());
+        CHECK (view.getArrangeView().getX() == arrangeX);
+    }
+}

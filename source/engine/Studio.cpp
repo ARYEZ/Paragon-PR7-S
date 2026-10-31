@@ -55,7 +55,7 @@ namespace pr7s
                     devices.setCurrentAudioDeviceType (type, true);
             for (const auto& input : juce::MidiInput::getAvailableDevices())
                 devices.setMidiInputDeviceEnabled (input.identifier, true);
-            devices.addMidiInputDeviceCallback ({}, &engine.getMidiInput());
+            devices.addMidiInputDeviceCallback ({}, &engine.getLiveInput());
             devices.addAudioCallback (&engine);
             devices.addChangeListener (this);
         }
@@ -85,7 +85,7 @@ namespace pr7s
         {
             devices.removeChangeListener (this);
             devices.removeAudioCallback (&engine);
-            devices.removeMidiInputDeviceCallback ({}, &engine.getMidiInput());
+            devices.removeMidiInputDeviceCallback ({}, &engine.getLiveInput());
             devices.closeAudioDevice();
         }
     }
@@ -150,6 +150,8 @@ namespace pr7s
         // You hear what you play through the armed track's instrument (or the selected one's).
         auto* armed = project.armedTrack();
         engine.setLiveTrack (armed != nullptr ? armed->id : selectedTrack);
+        const auto* live = project.findTrack (engine.getLiveTrack());
+        engine.setLiveInputFilter (live != nullptr ? live->midiInput : juce::String());
     }
 
     void Studio::recordUndoState()
@@ -207,6 +209,8 @@ namespace pr7s
                 track.output = then->output;
                 track.sends = then->sends;
                 track.sendsBypass = then->sendsBypass;
+                track.midiInput = then->midiInput;
+                track.midiChannel = then->midiChannel;
             }
         restoreLanes (project.masterAutomation, state.masterAutomation);
         // The tracks' order as it was (tracks added since keep their places after them).
@@ -347,6 +351,26 @@ namespace pr7s
         selectTrack (track.id);
         recordUndoState();
         return track.id;
+    }
+
+    void Studio::setMidiInput (int trackId, const juce::String& deviceName)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || track->kind != Track::Kind::instrument || track->midiInput == deviceName)
+            return;
+        track->midiInput = deviceName;
+        changed();
+        updateLiveTrack();
+    }
+
+    void Studio::setMidiChannel (int trackId, int channel)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || track->kind != Track::Kind::instrument || ! juce::isPositiveAndNotGreaterThan (channel, 16) || channel == 0
+            || track->midiChannel == channel)
+            return;
+        track->midiChannel = channel;
+        changed();
     }
 
     void Studio::setOutput (int trackId, int groupId)

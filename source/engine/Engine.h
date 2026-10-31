@@ -105,6 +105,13 @@ namespace pr7s
         void setLiveTrack (int trackId) noexcept { liveTrack = trackId; }
         int getLiveTrack() const noexcept { return liveTrack.load(); }
 
+        // MIDI devices' callback (0.9.0): what each device plays goes to the
+        // collector unless the live track listens to one input only (its
+        // Routing: a device's name; empty: all).
+        juce::MidiInputCallback& getLiveInput() noexcept { return liveInput; }
+        void setLiveInputFilter (const juce::String& deviceName);
+        bool acceptsLiveFrom (const juce::String& deviceName) const;
+
         // The notes played while recording since the last call (message thread).
         void takeRecorded (std::vector<RecordedEvent>& into);
 
@@ -133,7 +140,8 @@ namespace pr7s
 
         // The output's level, and each track's (the highest since last asked).
         // Each has two readers, so the transport and the track list (0) and
-        // the mixer (1) don't take each other's peaks.
+        // the mixer (1) don't take each other's peaks; a track's, a third (2:
+        // the Inspector's fader).
         LevelMeterSource& getOutputMeter (int channel, int reader = 0) noexcept
         {
             return outputMeters[(size_t) juce::jlimit (0, 1, reader)][(size_t) juce::jlimit (0, 1, channel)];
@@ -206,6 +214,7 @@ namespace pr7s
             bool audio = false;          // an audio track: clips and input, no instrument
             std::vector<Clip> clips;
             int input = 0;
+            int midiChannel = 1;         // the channel its notes (and what's played live into it) go to the instrument on
             bool stereoInput = false, monitor = false;
             juce::AudioFormatWriter::ThreadedWriter* recorder = nullptr;
             std::unique_ptr<juce::AudioPluginInstance> instrument;
@@ -217,7 +226,7 @@ namespace pr7s
             std::bitset<128> held;       // notes sounding, to stop them on a jump or stop
             juce::MidiBuffer midi;
             juce::AudioBuffer<float> buffer;
-            std::array<LevelMeterSource, 2> meters;   // one per reader
+            std::array<LevelMeterSource, 3> meters;   // one per reader (2: the Inspector's fader)
             // The mix as set, and the lanes read (those with points and R on).
             float volumeDb = 0.0f, pan = 0.0f;
             bool mute = false, soloedOut = false;   // soloedOut: another track is soloed
@@ -304,6 +313,19 @@ namespace pr7s
         std::atomic<int> overloads { 0 };
 
         juce::MidiMessageCollector midiInput;
+        struct LiveInput final : juce::MidiInputCallback
+        {
+            explicit LiveInput (Engine& e) : engine (e) {}
+            void handleIncomingMidiMessage (juce::MidiInput* source, const juce::MidiMessage& message) override
+            {
+                if (source == nullptr || engine.acceptsLiveFrom (source->getName()))
+                    engine.midiInput.handleIncomingMidiMessage (source, message);
+            }
+            Engine& engine;
+        };
+        LiveInput liveInput { *this };
+        mutable juce::SpinLock liveFilterLock;
+        juce::String liveFilter;
         juce::MidiKeyboardState keyboardState;
         juce::MidiBuffer live;
 

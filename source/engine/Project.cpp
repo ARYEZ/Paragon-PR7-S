@@ -218,6 +218,10 @@ namespace pr7s
                 t->setAttribute ("stereoInput", track.stereoInput);
                 t->setAttribute ("monitor", track.monitor);
             }
+            if (track.midiInput.isNotEmpty())
+                t->setAttribute ("midiInput", track.midiInput);
+            if (track.midiChannel != 1)
+                t->setAttribute ("midiChannel", track.midiChannel);
             t->setAttribute ("instrument", track.instrument.kind == Instrument::Kind::plugin ? "plugin" : "paragonSynth");
             if (track.instrument.kind == Instrument::Kind::plugin)
                 t->addChildElement (track.instrument.plugin.createXml().release());
@@ -298,6 +302,8 @@ namespace pr7s
             track.mute = t->getBoolAttribute ("mute");
             track.solo = t->getBoolAttribute ("solo");
             track.armed = t->getBoolAttribute ("armed");
+            track.midiInput = t->getStringAttribute ("midiInput");
+            track.midiChannel = juce::jlimit (1, 16, t->getIntAttribute ("midiChannel", 1));
             if (t->getStringAttribute ("kind") == "audio")
             {
                 track.kind = Track::Kind::audio;

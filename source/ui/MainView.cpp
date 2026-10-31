@@ -16,10 +16,11 @@ MainView::MainView (pr7s::Studio& studioToUse)
       trackList (studioToUse, timeline),
       arrange (studioToUse, timeline),
       keyEditor (studioToUse, arrange),
-      mixer (studioToUse)
+      mixer (studioToUse),
+      inspector (studioToUse)
 {
     for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &importButton, &exportButton, &undoButton, &redoButton, &editorButton, &mixerButton,
-                          &pluginsButton, &settingsButton })
+                          &inspectorButton, &pluginsButton, &settingsButton })
     {
         button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
         button->setColour (juce::TextButton::textColourOffId, ParagonColours::text);
@@ -65,6 +66,18 @@ MainView::MainView (pr7s::Studio& studioToUse)
     redoButton.onClick = [this] { studio.redo(); };
     editorButton.onClick = [this] { isKeyEditorOpen() ? closeKeyEditor() : openKeyEditor(); };
     mixerButton.onClick = [this] { toggleMixerDocked(); };
+    inspectorButton.setTooltip ("The Inspector: the selected track's settings, left of the track list (Ctrl+Alt+L)");
+    inspectorButton.setColour (juce::TextButton::textColourOnId, ParagonColours::accent);
+    inspectorButton.onClick = [this] { toggleInspector(); };
+    if (auto* settings = studio.getSettings())
+        inspectorShown = settings->getBoolValue ("inspectorShown", true);
+    inspectorButton.setToggleState (inspectorShown, juce::dontSendNotification);
+    addAndMakeVisible (inspector);
+    inspector.setVisible (inspectorShown);
+    inspector.onTrackMenu = [this] (int trackId) { trackList.showInstrumentMenu (trackId); };
+    inspector.onOpenInstrument = [this] (int trackId) { openInstrumentWindow (trackId); };
+    inspector.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
+    inspector.onFindPlugins = [this] { openPlugins(); };
     pluginsButton.onClick = [this] { openPlugins(); };
     settingsButton.onClick = [this] { openSettings(); };
     // Read and write automation for all tracks (the manual's toolbar buttons).
@@ -332,6 +345,8 @@ void MainView::resized()
         header.removeFromLeft (6);
     }
     header.removeFromLeft (18);
+    inspectorButton.setBounds (header.removeFromLeft (96));
+    header.removeFromLeft (6);
     editorButton.setBounds (header.removeFromLeft (100));
     header.removeFromLeft (6);
     mixerButton.setBounds (header.removeFromLeft (76));
@@ -348,7 +363,7 @@ void MainView::resized()
         const auto first = newButton.getX(), last = writeAllButton.getRight();
         const auto shift = juce::jmax (0, (getWidth() - (last - first)) / 2 - first);
         for (auto* key : { &newButton, &openButton, &saveButton, &saveAsButton, &importButton, &exportButton, &undoButton, &redoButton,
-                           &editorButton, &mixerButton, &readAllButton, &writeAllButton })
+                           &inspectorButton, &editorButton, &mixerButton, &readAllButton, &writeAllButton })
             key->setTopLeftPosition (key->getX() + shift, key->getY());
     }
 
@@ -367,6 +382,13 @@ void MainView::resized()
         tools.setBounds (area.removeFromTop (toolbarHeight).reduced (7, 3).withTrimmedTop (2));
 
     auto middle = area.reduced (7, 3);
+    // The Inspector: the whole height on the left, beside the lower zone too (as the manual's left zone).
+    inspector.setVisible (inspectorShown);
+    if (inspectorShown)
+    {
+        inspector.setBounds (middle.removeFromLeft (Inspector::width));
+        middle.removeFromLeft (3);
+    }
     zoneDivider->setVisible (false);
     if (auto* zone = dockedZone())
     {
@@ -472,6 +494,12 @@ bool MainView::keyPressed (const juce::KeyPress& key)
     const auto letter = (code >= 'a' && code <= 'z') || (code >= 'A' && code <= 'Z')
                           ? juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) code) : (juce::juce_wchar) 0;
 
+    // Ctrl+Alt+L: the Inspector (the manual's Show/Hide Left Zone).
+    if (mods.isCommandDown() && mods.isAltDown() && letter == 'L')
+    {
+        toggleInspector();
+        return true;
+    }
     if (isKeyEditorOpen() && keysToEditor && keyEditor.keyPressed (key))
         return true;
     // Automation: Alt+R / Alt+W for all tracks (before R, which records); Esc puts dragged points back.
@@ -747,6 +775,15 @@ void MainView::toggleMixerWindow()
     if (! isMixerInWindow())
         setMixerInWindow (true);   // docked and open: it moves into its window
     openMixer();
+}
+
+void MainView::toggleInspector()
+{
+    inspectorShown = ! inspectorShown;
+    inspectorButton.setToggleState (inspectorShown, juce::dontSendNotification);
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("inspectorShown", inspectorShown);
+    resized();
 }
 
 void MainView::toggleMixerDocked()

@@ -38,6 +38,8 @@ public:
     juce::TextButton& getAddTrackButton() noexcept { return addTrack; }   // (in the header, at the top)
 
     void showAddTrackMenu();
+    // A track's menu (its instrument key's): its window, change it, Output, delete... (also the Inspector's)
+    void showInstrumentMenu (int trackId, bool withAutomation = false);
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
@@ -70,7 +72,6 @@ private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
     void rebuild();
-    void showInstrumentMenu (int trackId, bool withAutomation = false);
     void placeRows();
 
     pr7s::Studio& studio;

@@ -5,6 +5,7 @@
 #include "engine/Studio.h"
 #include "ui/ArrangeView.h"
 #include "ui/KeyEditor.h"
+#include "ui/Inspector.h"
 #include "ui/MixerView.h"
 #include "ui/TrackList.h"
 #include "ui/TransportBar.h"
@@ -117,6 +118,10 @@ public:
     // Alt+F3 and MIXER: docked under the arrangement (likewise).
     void toggleMixerWindow();
     void toggleMixerDocked();
+    // The Inspector (the header's INSPECTOR, Ctrl+Alt+L: the manual's Show/Hide Left Zone). Kept for next time.
+    void toggleInspector();
+    bool isInspectorShown() const noexcept { return inspectorShown; }
+    Inspector& getInspector() noexcept { return inspector; }
 
     // The line between the arrangement and the docked lower zone: drag it
     // up or down. Each of the two remembers its height (in the settings file).
@@ -182,6 +187,8 @@ private:
     void toggleArrangeAutoScroll();
     KeyEditor keyEditor;
     MixerView mixer;
+    Inspector inspector;             // left of the track list (0.9.0)
+    bool inspectorShown = true;
     bool keysToEditor = false;
     bool rangeCopiedLast = false;
     bool wasWide = false;            // the last layout's: turning wide opens the mixer, short, racks hidden   // Ctrl+V: a range's contents (in the arrangement), else notes (the key editor)
@@ -189,7 +196,7 @@ private:
     std::unique_ptr<ZoneDivider> zoneDivider;
 
     juce::TextButton newButton { "NEW" }, openButton { "OPEN" }, saveButton { "SAVE" }, saveAsButton { "SAVE AS" }, importButton { "IMPORT" }, exportButton { "EXPORT" },
-                     undoButton { "UNDO" }, redoButton { "REDO" }, editorButton { "KEY EDITOR" }, mixerButton { "MIXER" },
+                     undoButton { "UNDO" }, redoButton { "REDO" }, editorButton { "KEY EDITOR" }, mixerButton { "MIXER" }, inspectorButton { "INSPECTOR" },
                      pluginsButton { "PLUGINS" }, settingsButton { "SETTINGS" }, readAllButton { "R" }, writeAllButton { "W" };
     // After the editor and the mixer: their windows go first.
     Zone editorZone { keyEditor, editorButton, "Key Editor", "keyEditor", false, false, {} },

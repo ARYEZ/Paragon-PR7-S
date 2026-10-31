@@ -476,6 +476,19 @@ void ParagonLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int 
                                           float sliderPos, float minSliderPos, float maxSliderPos,
                                           juce::Slider::SliderStyle style, juce::Slider& slider)
 {
+    // A bar lit from its centre (the Inspector's pan): a mark at the centre, lit to the value.
+    if (style == juce::Slider::LinearBar && slider.getProperties()[barFromCentreProperty])
+    {
+        const auto area = juce::Rectangle<float> ((float) x, (float) y, (float) width, (float) height);
+        g.setColour (slider.findColour (juce::Slider::backgroundColourId));
+        g.fillRect (area);
+        const auto centre = area.getCentreX();
+        g.setColour (slider.findColour (juce::Slider::trackColourId));
+        g.fillRect (juce::Rectangle<float>::leftTopRightBottom (juce::jmin (centre, sliderPos), area.getY(), juce::jmax (centre, sliderPos), area.getBottom()));
+        g.setColour (ParagonColours::text.withAlpha (0.6f));
+        g.fillRect (juce::Rectangle<float> (1.0f, area.getHeight()).withCentre (area.getCentre()));
+        return;
+    }
     if (style == juce::Slider::LinearVertical && slider.getProperties()[eqFaderProperty])
     {
         const auto centreX = (float) x + (float) width * 0.5f;
