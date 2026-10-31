@@ -448,6 +448,15 @@ namespace pr7s
                 prepared.push_back (std::move (p));
                 continue;
             }
+            if (track.frozen)
+            {
+                // Frozen: the freeze file from the song's start (its fader, pan and sends still act on it).
+                if (audioSource)
+                    if (auto sound = audioSource (track.freezeFile))
+                        p.clips.push_back ({ 0.0, (double) sound->getNumSamples() / sampleRate / project.secondsPerBeat(), sound, 0, 0.0, 0.0 });
+                prepared.push_back (std::move (p));
+                continue;
+            }
             if (track.isAudio())
             {
                 for (const auto& part : track.parts)
@@ -503,6 +512,7 @@ namespace pr7s
                 if (const auto* t = project.findTrack (p.id))
                 {
                     track->input = t->input;
+                    track->frozen = t->frozen;
                     track->midiChannel = juce::jlimit (1, 16, t->midiChannel);
                     track->stereoInput = t->stereoInput;
                     track->monitor = t->monitor && ! t->disabled;
@@ -857,14 +867,14 @@ namespace pr7s
                         juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
                 }
             }
-            else if (track->audio)
+            else if (track->audio || track->frozen)
             {
-                // An audio track: its clips, and what comes in if it's monitored.
+                // An audio track: its clips, and what comes in if it's monitored (a frozen track: its freeze file).
                 for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
                     juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
                 for (int i = 0; i < numSegments; ++i)
                     playClips (*track, segments[(size_t) i].clock, segments[(size_t) i].offset, segments[(size_t) i].length, beatsPerSample);
-                if (track->monitor)
+                if (track->monitor && track->audio && ! track->frozen)
                 {
                     juce::FloatVectorOperations::add (track->buffer.getWritePointer (0), inputChannel (track->input, 0), numSamples);
                     juce::FloatVectorOperations::add (track->buffer.getWritePointer (1),

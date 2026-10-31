@@ -1,4 +1,5 @@
 #include "Inspector.h"
+#include "ui/TrackActions.h"
 
 #include "ui/AutomationKeys.h"
 #include "ui/ParagonLookAndFeel.h"
@@ -203,6 +204,29 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     solo.onClick = [this] { if (const auto* t = track()) studio.setSolo (trackId, ! t->solo); };
     arm.onClick = [this] { if (const auto* t = track()) studio.setArmed (t->armed ? 0 : trackId); };
     monitor.onClick = [this] { if (const auto* t = track()) studio.setMonitor (trackId, ! t->monitor); };
+
+    // FREEZE (0.9.8, the manual's Freeze Channel in the top section) and PRESET (Load/Save Track Preset).
+    for (auto* key : { &freeze, &preset })
+    {
+        key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        key->setWantsKeyboardFocus (false);
+        content.addAndMakeVisible (*key);
+    }
+    freeze.setTooltip ("FREEZE: render the instrument and its effects to a file and unload them (saves the computer's power). "
+                       "Lit: frozen. Click for the tail size, or to unfreeze");
+    preset.setTooltip ("Save this track's sound (instrument, effects and their settings, fader, pan, colour, Quick Controls) "
+                       "as a track preset, or load one onto it");
+    freeze.onClick = [this] { showFreezeMenu(); };
+    preset.onClick = [this]
+    {
+        juce::PopupMenu menu;
+        TrackActions::addPresetItems (menu, studio, trackId);
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&preset), [safe = juce::Component::SafePointer<Inspector> (this), id = trackId] (int chosen)
+        {
+            if (safe != nullptr)
+                TrackActions::handle (chosen, safe->studio, id, safe->chooser);
+        });
+    };
 
     for (auto* slider : { &volume, &pan })
     {
@@ -426,9 +450,27 @@ juce::Component& Inspector::getHeader (Section section)
     return *headers[(size_t) section];
 }
 
+void Inspector::showFreezeMenu()
+{
+    juce::PopupMenu menu;
+    TrackActions::addFreezeItems (menu, studio, trackId);
+    // The submenu's items, straight in this key's menu.
+    juce::PopupMenu items;
+    for (juce::PopupMenu::MenuItemIterator it (menu); it.next();)
+        if (auto* sub = it.getItem().subMenu.get())
+            items = *sub;
+    if (! studio.isTrackSelected (trackId))
+        studio.selectTrack (trackId);
+    items.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&freeze), [safe = juce::Component::SafePointer<Inspector> (this), id = trackId] (int chosen)
+    {
+        if (safe != nullptr)
+            TrackActions::handle (chosen, safe->studio, id, safe->chooser);
+    });
+}
+
 juce::TextButton& Inspector::getKey (const juce::String& name)
 {
-    for (auto* key : { &mute, &solo, &read, &write, &arm, &monitor })
+    for (auto* key : { &mute, &solo, &read, &write, &arm, &monitor, &freeze, &preset })
         if (key->getButtonText() == name)
             return *key;
     return mute;
@@ -553,6 +595,10 @@ void Inspector::refresh()
     arm.setToggleState (t->armed, juce::dontSendNotification);
     monitor.setToggleState (t->monitor, juce::dontSendNotification);
     AutomationKeys::refresh (read, write, studio, trackId);
+    freeze.setToggleState (t->frozen, juce::dontSendNotification);
+    freeze.setEnabled (! t->disabled);
+    arm.setEnabled (! t->frozen);   // (a frozen track can't record)
+    preset.setEnabled (! t->disabled);
 
     // The instrument key: its name (a menu); an FX channel's effect; a group.
     if (t->isGroup())
@@ -773,6 +819,16 @@ void Inspector::layout()
                 {
                     place (*key, r.removeFromLeft (keyWidth));
                     r.removeFromLeft (3);
+                }
+                if (! t->isGroup())
+                {
+                    auto line = row (rowHeight);
+                    if (! t->isChannel())
+                    {
+                        place (freeze, line.removeFromLeft ((line.getWidth() - 3) / 2));
+                        line.removeFromLeft (3);
+                    }
+                    place (preset, line);
                 }
                 for (auto [label, slider, readout] : { std::tuple { &volumeLabel, &volume, &volumeReadout }, std::tuple { &panLabel, &pan, &panReadout } })
                 {

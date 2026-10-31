@@ -6,6 +6,7 @@
 #include "engine/Studio.h"
 #include "ui/Finish.h"
 #include "ui/MainView.h"
+#include "ui/TrackActions.h"
 
 using namespace pr7s;
 using Catch::Matchers::WithinAbs;
@@ -2385,4 +2386,54 @@ TEST_CASE ("The Inspector's QUICK CONTROLS: 8 slots; an assigned one has a bar t
     CHECK (inspector.getQuickControlKey (0).getButtonText() != "QC 1");
     inspector.getQuickControlBar (0).setValue (pr7s::volumeToTravel (-3.0f), juce::sendNotificationSync);
     CHECK (std::abs (studio.getProject().findTrack (track)->volumeDb + 3.0f) < 0.05f);
+}
+
+TEST_CASE ("Freeze and track presets on screen: FREEZE lit when frozen, PRESET; the track stamped; a preset file round trip", "[ui][freeze][preset]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& inspector = view.getInspector();
+    const auto synth = studio.getProject().tracks[0].id;
+    studio.addPart (synth, { 0.0, 4.0, "Riff", { { 0.0, 1.0, 60, 1.0f } } });
+    studio.selectTrack (synth);
+    studio.dispatchPendingMessages();
+    auto& freeze = inspector.getKey ("FREEZE");
+    auto& preset = inspector.getKey ("PRESET");
+    CHECK (freeze.isVisible());
+    CHECK (preset.isVisible());
+    CHECK_FALSE (freeze.getToggleState());
+    CHECK (inspector.getKey ("REC").isVisible());
+
+    // Frozen (the selected tracks, as the menu does it): FREEZE lit.
+    juce::String error;
+    REQUIRE (TrackActions::freezeSelected (studio, 0.0, error));
+    studio.dispatchPendingMessages();
+    CHECK (studio.isFrozen (synth));
+    CHECK (freeze.getToggleState());
+    TrackActions::unfreezeSelected (studio, true);
+    studio.dispatchPendingMessages();
+    CHECK_FALSE (freeze.getToggleState());
+
+    // A group channel has neither; an FX channel only PRESET.
+    studio.selectTrack (studio.addGroupChannel());
+    studio.dispatchPendingMessages();
+    CHECK_FALSE (freeze.isVisible());
+    CHECK_FALSE (preset.isVisible());
+    studio.selectTrack (studio.addFxChannel (nullptr));
+    studio.dispatchPendingMessages();
+    CHECK_FALSE (freeze.isVisible());
+    CHECK (preset.isVisible());
+
+    // The preset file: saved, then a new track from it.
+    studio.setVolume (synth, -3.0f);
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("pr7s-test.pr7track");
+    REQUIRE (TrackActions::savePresetTo (studio, synth, file));
+    const auto made = TrackActions::addTrackFrom (studio, file, error);
+    REQUIRE (made != 0);
+    CHECK (studio.getProject().findTrack (made)->volumeDb == -3.0f);
+    CHECK (TrackActions::addTrackFrom (studio, juce::File ("/nowhere/none.pr7track"), error) == 0);
+    file.deleteFile();
+    studio.getAudioFolder().deleteRecursively();
 }

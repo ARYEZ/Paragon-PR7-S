@@ -118,6 +118,11 @@ namespace pr7s
     //==========================================================================
     void Studio::changed (bool undoable)
     {
+        // A frozen track's parts are locked: whatever changed them is put back.
+        for (auto& track : project.tracks)
+            if (track.frozen)
+                if (const auto kept = frozenParts.find (track.id); kept != frozenParts.end() && track.parts != kept->second)
+                    track.parts = kept->second;
         numberParts();
         watchPlugins();
         engine.update (project);
@@ -640,57 +645,160 @@ namespace pr7s
         for (const auto id : trackIds)
         {
             auto* track = project.findTrack (id);
-            if (track == nullptr || track->isChannel() || track->disabled == disabled)
-                continue;
+            if (track == nullptr || track->isChannel() || track->disabled == disabled || track->frozen)
+                continue;   // (a frozen track's plugins are already unloaded)
             any = true;
             if (disabled)
             {
-                // Its settings kept (as saving does), then its plugins unloaded.
-                if (auto* instrument = engine.getInstrument (id))
-                {
-                    juce::MemoryBlock state;
-                    instrument->getStateInformation (state);
-                    track->instrument.state = std::move (state);
-                }
-                for (int slot = 0; slot < (int) track->inserts.size(); ++slot)
-                    if (auto* effect = engine.getEffect (id, slot))
-                    {
-                        juce::MemoryBlock state;
-                        effect->getStateInformation (state);
-                        track->inserts[(size_t) slot].state = std::move (state);
-                    }
-                for (int slot = engine.getNumEffects (id) - 1; slot >= 0; --slot)
-                {
-                    effectGoing (id, slot);   // (its window closes first)
-                    engine.removeEffect (id, slot);
-                }
-                if (! track->isAudio())
-                {
-                    if (onInstrumentGoing)
-                        onInstrumentGoing (id);
-                    engine.setInstrument (id, nullptr);
-                }
+                unloadPlugins (*track);
                 track->disabled = true;
                 track->armed = false;
             }
             else
             {
-                // Loaded again with the settings kept (one that can't be loaded: the slot stays, the sound goes past it).
                 track->disabled = false;
-                juce::String error;
-                if (! track->isAudio())
-                    if (auto instance = host->create (track->instrument, engine.getSampleRate(), engine.getBlockSize(), error))
-                        engine.setInstrument (id, std::move (instance));
-                for (int slot = 0; slot < (int) track->inserts.size(); ++slot)
-                {
-                    const auto& insert = track->inserts[(size_t) slot];
-                    engine.insertEffect (id, slot, insert.isEmpty() ? nullptr
-                                                                     : host->createEffect (insert, engine.getSampleRate(), engine.getBlockSize(), error));
-                }
+                loadPlugins (*track);
             }
         }
         if (any)
             changed (false);
+    }
+
+    void Studio::unloadPlugins (Track& track)
+    {
+        const auto id = track.id;
+        // Its settings kept (as saving does), then its plugins unloaded.
+        if (auto* instrument = engine.getInstrument (id))
+        {
+            juce::MemoryBlock state;
+            instrument->getStateInformation (state);
+            track.instrument.state = std::move (state);
+        }
+        for (int slot = 0; slot < (int) track.inserts.size(); ++slot)
+            if (auto* effect = engine.getEffect (id, slot))
+            {
+                juce::MemoryBlock state;
+                effect->getStateInformation (state);
+                track.inserts[(size_t) slot].state = std::move (state);
+            }
+        for (int slot = engine.getNumEffects (id) - 1; slot >= 0; --slot)
+        {
+            effectGoing (id, slot);   // (its window closes first)
+            engine.removeEffect (id, slot);
+        }
+        if (! track.isAudio())
+        {
+            if (onInstrumentGoing)
+                onInstrumentGoing (id);
+            engine.setInstrument (id, nullptr);
+        }
+    }
+
+    void Studio::loadPlugins (Track& track)
+    {
+        // Loaded again with the settings kept (one that can't be loaded: the slot stays, the sound goes past it).
+        const auto id = track.id;
+        juce::String error;
+        if (! track.isAudio())
+            if (auto instance = host->create (track.instrument, engine.getSampleRate(), engine.getBlockSize(), error))
+                engine.setInstrument (id, std::move (instance));
+        for (int slot = 0; slot < (int) track.inserts.size(); ++slot)
+        {
+            const auto& insert = track.inserts[(size_t) slot];
+            engine.insertEffect (id, slot, insert.isEmpty() ? nullptr
+                                                             : host->createEffect (insert, engine.getSampleRate(), engine.getBlockSize(), error));
+        }
+    }
+
+    bool Studio::isFrozen (int trackId) const
+    {
+        const auto* track = project.findTrack (trackId);
+        return track != nullptr && track->frozen;
+    }
+
+    bool Studio::freezeTrack (int trackId, double tailSeconds, juce::String& error)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || track->isChannel() || track->frozen || track->disabled)
+        {
+            error = "Only an enabled instrument or audio track can be frozen.";
+            return false;
+        }
+        auto end = 0.0;
+        for (const auto& part : track->parts)
+            if (! part.muted)
+                end = juce::jmax (end, part.end());
+        if (end <= 0.0)
+        {
+            error = track->name + " has nothing to freeze.";
+            return false;
+        }
+        const auto folder = getAudioFolder().getChildFile ("Freeze");
+        folder.createDirectory();
+        const auto file = folder.getChildFile (juce::File::createLegalFileName (track->name) + " " + juce::String (track->id) + ".wav");
+        ExportOptions options;
+        options.start = 0.0;
+        options.end = end;
+        options.tailSeconds = juce::jmax (0.0, tailSeconds);
+        options.bitsPerSample = 32;
+        // Its instrument and inserts only: the fader, pan and sends act on the frozen sound live.
+        options.prepareSong = [trackId] (Project& song)
+        {
+            for (auto& t : song.tracks)
+            {
+                t.solo = false;
+                if (t.id != trackId)
+                {
+                    if (! t.isChannel())
+                        t.parts.clear();
+                    continue;
+                }
+                t.mute = false;
+                t.volumeDb = 0.0f;
+                t.pan = 0.0f;
+                t.sends.clear();
+                t.output = 0;
+                t.automation.erase (std::remove_if (t.automation.begin(), t.automation.end(), [] (const AutomationLane& lane)
+                {
+                    using Target = AutomationLane::Target;
+                    return lane.target == Target::volume || lane.target == Target::pan || lane.target == Target::mute || lane.target == Target::send;
+                }), t.automation.end());
+            }
+            for (auto& insert : song.masterInserts)
+                insert.bypass = true;
+            song.masterVolumeDb = 0.0f;
+            song.masterRead = false;
+        };
+        if (! exportMix (file, options, error))
+            return false;
+        track = project.findTrack (trackId);
+        const auto name = "Freeze/" + file.getFileName();
+        audioCache.erase (name);
+        unloadPlugins (*track);
+        track->frozen = true;
+        track->freezeFile = name;
+        track->armed = false;
+        track->monitor = false;
+        frozenParts[trackId] = track->parts;
+        changed (false);
+        return true;
+    }
+
+    void Studio::unfreezeTrack (int trackId, bool deleteFile)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! track->frozen)
+            return;
+        track->frozen = false;
+        frozenParts.erase (trackId);
+        loadPlugins (*track);
+        if (deleteFile)
+        {
+            audioCache.erase (track->freezeFile);
+            getAudioFolder().getChildFile (track->freezeFile).deleteFile();
+        }
+        track->freezeFile = {};
+        changed (false);
     }
 
     void Studio::setTracksHidden (const std::vector<int>& trackIds, bool hidden)
@@ -757,6 +865,12 @@ namespace pr7s
         auto* track = project.findTrack (trackId);
         if (track == nullptr)
             return false;
+        if (track->frozen || track->disabled)
+        {
+            if (error != nullptr)
+                *error = "It's frozen: unfreeze it first (its instrument and effects are unloaded).";
+            return false;
+        }
         juce::String problem;
         auto instance = host->create (instrument, engine.getSampleRate(), engine.getBlockSize(), problem);
         if (instance == nullptr)
@@ -833,7 +947,7 @@ namespace pr7s
 
     void Studio::setArmed (int trackId)
     {
-        if (const auto* t = project.findTrack (trackId); t != nullptr && (t->isChannel() || t->disabled))
+        if (const auto* t = project.findTrack (trackId); t != nullptr && (t->isChannel() || t->disabled || t->frozen))
             return;   // an FX or group channel records nothing; nor a disabled track
         for (auto& track : project.tracks)
             track.armed = track.id == trackId;
@@ -848,7 +962,7 @@ namespace pr7s
             selectedTracks.push_back (trackId);
         // Selecting arms it (when not recording), so you play and record the track you're on.
         const auto* selected = project.findTrack (trackId);
-        if (! engine.isRecording() && (selected == nullptr || (! selected->isChannel() && ! selected->disabled)))
+        if (! engine.isRecording() && (selected == nullptr || (! selected->isChannel() && ! selected->disabled && ! selected->frozen)))
             for (auto& track : project.tracks)
                 track.armed = track.id == trackId;
         changed (false);
@@ -1634,6 +1748,12 @@ namespace pr7s
 
     bool Studio::addInsert (int busId, const juce::PluginDescription& description, juce::String* error, int slot)
     {
+        if (isFrozen (busId))
+        {
+            if (error != nullptr)
+                *error = "It's frozen: unfreeze it first (its instrument and effects are unloaded).";
+            return false;
+        }
         const auto* inserts = insertsOf (busId);
         if (inserts == nullptr || (slot < 0 ? (int) inserts->size() >= Project::maxInserts
                                             : slot >= Project::maxInserts || (slot < (int) inserts->size() && ! (*inserts)[(size_t) slot].isEmpty())))
@@ -1657,6 +1777,8 @@ namespace pr7s
 
     bool Studio::addInsert (int busId, const Insert& insert, std::unique_ptr<juce::AudioPluginInstance> instance, int slot)
     {
+        if (isFrozen (busId))
+            return false;
         auto* inserts = insertsOf (busId);
         if (inserts == nullptr)
             return false;
@@ -1699,6 +1821,12 @@ namespace pr7s
 
     bool Studio::replaceInsert (int busId, int slot, const juce::PluginDescription& description, juce::String* error)
     {
+        if (isFrozen (busId))
+        {
+            if (error != nullptr)
+                *error = "It's frozen: unfreeze it first (its instrument and effects are unloaded).";
+            return false;
+        }
         auto* inserts = insertsOf (busId);
         if (inserts == nullptr || ! juce::isPositiveAndBelow (slot, (int) inserts->size()))
             return false;
@@ -1723,6 +1851,8 @@ namespace pr7s
 
     void Studio::removeInsert (int busId, int slot)
     {
+        if (isFrozen (busId))
+            return;   // (a frozen track's effects are locked)
         auto* inserts = insertsOf (busId);
         if (inserts == nullptr || ! juce::isPositiveAndBelow (slot, (int) inserts->size()))
             return;
@@ -2337,6 +2467,163 @@ namespace pr7s
         }
     }
 
+    juce::File Studio::trackPresetFolder()
+    {
+        return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Paragon PR7-S").getChildFile ("Track Presets");
+    }
+
+    std::unique_ptr<juce::XmlElement> Studio::makeTrackPreset (int trackId) const
+    {
+        const auto* original = project.findTrack (trackId);
+        if (original == nullptr)
+            return nullptr;
+        // The sound and channel settings, with the running plugins' settings now; not its parts, automation, sends or output.
+        auto preset = *original;
+        if (auto* instrument = engine.getInstrument (trackId))
+            instrument->getStateInformation (preset.instrument.state);
+        for (int slot = 0; slot < (int) preset.inserts.size(); ++slot)
+            if (auto* effect = engine.getEffect (trackId, slot))
+                effect->getStateInformation (preset.inserts[(size_t) slot].state);
+        preset.parts.clear();
+        preset.automation.clear();
+        preset.sends.clear();
+        preset.output = 0;
+        preset.armed = preset.mute = preset.solo = false;
+        preset.hidden = preset.disabled = preset.frozen = false;
+        preset.freezeFile = {};
+        preset.automationOpen = preset.automationRead = preset.automationWrite = false;
+        Project holder;
+        holder.tracks = { preset };
+        auto xml = holder.toXml();
+        xml->setAttribute ("trackPreset", true);
+        return xml;
+    }
+
+    namespace
+    {
+        bool sameKind (const Track& a, const Track& b) { return a.kind == b.kind; }
+    }
+
+    bool Studio::applyTrackPreset (int trackId, const juce::XmlElement& xml, juce::String& error)
+    {
+        auto* track = project.findTrack (trackId);
+        const auto loaded = Project::fromXml (xml);
+        if (track == nullptr || ! loaded || loaded->tracks.empty())
+        {
+            error = "That isn't a Paragon PR7-S track preset.";
+            return false;
+        }
+        const auto& preset = loaded->tracks.front();
+        if (! sameKind (*track, preset))
+        {
+            error = "A track preset only goes on a track of its own kind (as the manual has it).";
+            return false;
+        }
+        if (track->frozen || track->disabled)
+        {
+            error = track->name + " is frozen or disabled: unfreeze or enable it first.";
+            return false;
+        }
+        // Its effects and their lanes and Quick Controls go (also from the undo history); the instrument's lanes too.
+        for (int slot = engine.getNumEffects (trackId) - 1; slot >= 0; --slot)
+        {
+            effectGoing (trackId, slot);
+            engine.removeEffect (trackId, slot);
+        }
+        for (int slot = (int) track->inserts.size() - 1; slot >= 0; --slot)
+            insertGone (trackId, slot, false);
+        const auto dropInstrumentLanes = [trackId] (Project& p)
+        {
+            if (auto* t = p.findTrack (trackId))
+                t->automation.erase (std::remove_if (t->automation.begin(), t->automation.end(), [] (const AutomationLane& l)
+                                     { return l.target == AutomationLane::Target::instrument; }), t->automation.end());
+        };
+        track = project.findTrack (trackId);
+        if (! track->isAudio() && ! track->isChannel())
+            dropInstrumentLanes (project);
+        for (auto& state : undoStates)
+            if (! track->isAudio() && ! track->isChannel())
+                dropInstrumentLanes (state);
+
+        // The preset's settings.
+        const auto apply = [&preset] (Track& t)
+        {
+            t.volumeDb = preset.volumeDb;
+            t.pan = preset.pan;
+            t.colour = preset.colour;
+            t.quickControls = preset.quickControls;
+            t.midiChannel = preset.midiChannel;
+            t.preFaderSlots = preset.preFaderSlots;
+            if (t.isAudio())
+            {
+                t.input = preset.input;
+                t.stereoInput = preset.stereoInput;
+            }
+        };
+        apply (*track);
+        for (auto& state : undoStates)   // (not undone: as the manual has it)
+            if (auto* t = state.findTrack (trackId))
+                apply (*t);
+        track->inserts = preset.inserts;
+        if (! track->isAudio() && ! track->isChannel())
+        {
+            if (onInstrumentGoing)
+                onInstrumentGoing (trackId);
+            track->instrument = preset.instrument;
+            juce::String problem;
+            auto instance = host->create (preset.instrument, engine.getSampleRate(), engine.getBlockSize(), problem);
+            if (instance == nullptr)
+                error = preset.instrument.getName() + ": " + problem;
+            engine.setInstrument (trackId, std::move (instance));
+        }
+        for (int slot = 0; slot < (int) track->inserts.size(); ++slot)
+        {
+            const auto& insert = track->inserts[(size_t) slot];
+            juce::String problem;
+            auto instance = insert.isEmpty() ? nullptr : host->createEffect (insert, engine.getSampleRate(), engine.getBlockSize(), problem);
+            if (! insert.isEmpty() && instance == nullptr)
+                error += (error.isEmpty() ? "" : "\n") + insert.plugin.name + ": " + problem;
+            engine.insertEffect (trackId, slot, std::move (instance));
+        }
+        changed (false);
+        return true;
+    }
+
+    int Studio::addTrackFromPreset (const juce::XmlElement& xml, juce::String& error)
+    {
+        const auto loaded = Project::fromXml (xml);
+        if (! loaded || loaded->tracks.empty())
+        {
+            error = "That isn't a Paragon PR7-S track preset.";
+            return 0;
+        }
+        const auto& preset = loaded->tracks.front();
+        const auto below = selectedTrack;
+        int id = 0;
+        switch (preset.kind)
+        {
+            case Track::Kind::instrument: id = addTrack ({}, &error); break;
+            case Track::Kind::audio:      id = addAudioTrack (preset.stereoInput); break;
+            case Track::Kind::fx:         id = addFxChannel (nullptr, &error); break;
+            case Track::Kind::group:      id = addGroupChannel(); break;
+        }
+        if (id == 0)
+            return 0;
+        renameTrack (id, preset.name);
+        juce::String problems;
+        applyTrackPreset (id, xml, problems);
+        error = problems;
+        // Under the selected track (the manual's).
+        for (int i = 0; i < (int) project.tracks.size(); ++i)
+            if (project.tracks[(size_t) i].id == below)
+            {
+                moveTracks ({ id }, i + 1);
+                break;
+            }
+        selectTrack (id);
+        return id;
+    }
+
     void Studio::setQuickControl (int trackId, int index, std::optional<AutomationControl> control)
     {
         auto* track = project.findTrack (trackId);
@@ -2812,6 +3099,7 @@ namespace pr7s
     //==========================================================================
     void Studio::newProject()
     {
+        frozenParts.clear();
         punchOutAll();   // (writing automation ends with the song)
         if (onInstrumentGoing)
             onInstrumentGoing (0);
@@ -2920,6 +3208,14 @@ namespace pr7s
         // (copied from where they were: the unsaved folder, or the song's old place).
         const auto from = getAudioFolder();
         const auto to = destination.getSiblingFile (destination.getFileNameWithoutExtension() + " Audio");
+        if (from != to)
+            for (const auto& track : project.tracks)
+                if (track.frozen && from.getChildFile (track.freezeFile).existsAsFile() && ! to.getChildFile (track.freezeFile).exists())
+                {
+                    to.getChildFile (track.freezeFile).getParentDirectory().createDirectory();
+                    if (! from.getChildFile (track.freezeFile).copyFileTo (to.getChildFile (track.freezeFile)))
+                        return false;
+                }
         if (from != to)
             for (const auto& track : project.tracks)
                 for (const auto& part : track.parts)
@@ -3083,6 +3379,7 @@ namespace pr7s
         if (! juce::approximatelyEqual (engine.getSampleRate(), job->previousRate))
             engine.prepare (job->previousRate, job->previousBlockSize);
         engine.update (project);
+        engine.settleMix();   // (0.9.8: the song's own levels from the first sample, no glide from the export's copy)
         engine.setPosition (job->previousPosition);
         if (withDevices)
             devices.addAudioCallback (&engine);
@@ -3347,9 +3644,9 @@ namespace pr7s
                 continue;
             }
             juce::String error;
-            if (track.disabled)
+            if (track.disabled || track.frozen)
             {
-                engine.setInstrument (track.id, nullptr);   // disabled: its plugins aren't loaded (their settings kept)
+                engine.setInstrument (track.id, nullptr);   // disabled or frozen: its plugins aren't loaded (their settings kept)
                 continue;
             }
             if (auto instance = host->create (track.instrument, engine.getSampleRate(), engine.getBlockSize(), error))
@@ -3376,11 +3673,16 @@ namespace pr7s
             }
         };
         for (const auto& track : project.tracks)
-            if (! track.disabled)
+            if (! track.disabled && ! track.frozen)
                 loadEffects (track.id, track.name, track.inserts);
         loadEffects (Engine::masterBus, "Master", project.masterInserts);
         problems = missing.joinIntoString ("\n");
         numberParts();
+        // Frozen tracks' parts locked as they were saved.
+        frozenParts.clear();
+        for (const auto& track : project.tracks)
+            if (track.frozen)
+                frozenParts[track.id] = track.parts;
 
         selectedTrack = project.tracks.empty() ? 0 : project.tracks.front().id;
         if (auto* armed = project.armedTrack())

@@ -2,6 +2,46 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.9.8
+
+Freeze and track presets (the two extras you chose for the Inspector).
+
+**Freeze** (as the manual's Freeze Channel): it turns a heavy instrument track into a plain audio file, so the computer doesn't have to run the instrument and its effects any more.
+- **How:** the Inspector's new **FREEZE** key, or right-click the track > **Freeze Track** (with several tracks selected: **Freeze Selected Tracks**). You choose the **tail**: none, 2, 5, 10 or 30 seconds of sound left ringing after the last part (a reverb's or a long release's).
+- **What happens:**
+  - The instrument and its insert effects are rendered from the song's start to the last part's end (plus the tail), into a **Freeze** folder beside the song's recordings.
+  - Then the instrument and the effects are unloaded, freeing their memory and CPU. Their settings are kept.
+  - The track plays the file instead. The fader, pan, mute, solo and sends still work live, and so does their automation.
+- **While frozen:**
+  - FREEZE is lit, and the track says FROZEN.
+  - Its parts are veiled and stamped FROZEN. They can't be edited: any change to them is put back.
+  - The instrument and the effects can't be changed, and the track can't be armed.
+- **Unfreeze:** click FREEZE again (or right-click > **Unfreeze Track**). You choose to **keep** or **delete** the freeze file, as the manual has it. The instrument and effects load again with their settings.
+- Saved with the song: a frozen track opens frozen, without loading its plugins. Save As copies the freeze files to the new place.
+- Audio tracks can be frozen too (their effects rendered in).
+
+**Track presets** (as the manual's Track Presets): a track's sound saved to a file and used again.
+- **What's in one:**
+  - The instrument and every insert effect, with their settings as they are now (a Kontakt patch, an amp's knobs).
+  - The fader and pan, the colour and the Quick Controls.
+  - The MIDI channel, or an audio track's input.
+- **What isn't in one:** the parts, the automation, the sends and the output. Those belong to the song.
+- **Save:** right-click a track > **Save Track Preset...**, or the Inspector's **PRESET** key. Presets go in Documents/Paragon PR7-S/Track Presets (`.pr7track` files).
+- **Load:** right-click > **Load Track Preset...** (or PRESET). It replaces the track's instrument, effects and mix, and keeps its parts and name (as the manual has it).
+  - It only goes onto a track of the same kind: an instrument preset onto an instrument track, an audio one onto an audio track.
+  - It isn't an undo step, as in the manual.
+- **New track:** + ADD TRACK > **Track from a preset...**. The new track goes under the selected one, with the preset's name.
+
+**Also fixed:** after a render (Export, Render in Place, Freeze), the first playback no longer glides from the render's fader levels to the song's.
+
+**Our choices, where the manual differs or says nothing:**
+- Freeze always takes the inserts in and always unloads the instrument. The manual makes both of these options.
+- Freeze renders all the effects before the live fader, including those after the fader.
+- Change the tempo after freezing and the frozen file won't follow it: unfreeze and freeze again.
+- No multi-track presets and no MediaBay browser: a file chooser instead.
+
+Not checked here: how much CPU freezing saves with your own plugins (Kontakt, SD3), so please freeze one of them and watch the CPU screen.
+
 ## 0.9.7
 
 Importing into a song that already has something in it: "This song" did nothing.

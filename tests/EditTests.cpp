@@ -5,6 +5,7 @@
 #include "engine/Studio.h"
 
 using Catch::Matchers::WithinAbs;
+using Catch::Matchers::WithinRel;
 using namespace pr7s;
 
 namespace
@@ -681,4 +682,174 @@ TEST_CASE ("Render in Place: the source disabled and hidden (the manual's Disabl
     REQUIRE (data != nullptr);
     CHECK (data->sound.getMagnitude (0, data->sound.getNumSamples()) > 0.01f);
     studio.getAudioFolder().deleteRecursively();
+}
+
+TEST_CASE ("Freeze: the instrument and its inserts rendered to a file and unloaded; the file played through the live fader; parts and inserts locked; Unfreeze loads them again", "[edit][freeze]")
+{
+    Studio studio (false);
+    const auto synth = studio.getProject().tracks[0].id;   // the Paragon Synth
+    studio.addPart (synth, { 0.0, 4.0, "Riff", { { 0.0, 2.0, 60, 1.0f } } });
+    Insert half;
+    half.plugin.name = "Half";
+    bool effectAlive = false;
+    REQUIRE (studio.addInsert (synth, half, timesEffect (0.5f, "Half", &effectAlive)));
+    studio.setVolume (synth, -6.0f);
+    const auto loudness = [&studio]
+    {
+        studio.getEngine().setPosition (0.0);
+        studio.getEngine().play();
+        juce::AudioBuffer<float> out (2, 9600);
+        studio.getEngine().render (out, 9600);
+        studio.getEngine().stop();
+        return out.getMagnitude (0, 9600);
+    };
+    loudness();   // (the fader glides to a new level: once through first)
+    const auto before = loudness();
+    REQUIRE (before > 0.01f);
+
+    studio.setArmed (synth);
+    juce::String error;
+    REQUIRE (studio.freezeTrack (synth, 0.0, error));
+    CHECK (error.isEmpty());
+    const auto* track = studio.getProject().findTrack (synth);
+    CHECK (track->frozen);
+    CHECK (studio.isFrozen (synth));
+    CHECK_FALSE (track->armed);
+    const auto file = studio.getAudioFolder().getChildFile (track->freezeFile);
+    CHECK (file.existsAsFile());
+    CHECK (file.getParentDirectory().getFileName() == "Freeze");
+    CHECK (studio.getEngine().getInstrument (synth) == nullptr);   // unloaded
+    CHECK_FALSE (effectAlive);
+    CHECK (track->inserts.size() == 1);   // still listed
+    // The file played: the insert's half in it, the live fader's -6 dB on it (not twice, not missing).
+    CHECK_THAT (loudness(), WithinRel (before, 0.05f));
+    studio.setVolume (synth, 0.0f);
+    loudness();   // (the fader glides to its new level: once through)
+    CHECK_THAT (loudness(), WithinRel (before * std::pow (10.0f, 6.0f / 20.0f), 0.05f));   // the fader still works
+
+    // Locked: parts can't be changed, inserts can't be added; can't be armed.
+    studio.addPart (synth, { 8.0, 4.0, "More", {} });
+    CHECK (studio.getProject().findTrack (synth)->parts.size() == 1);
+    studio.setNotes (synth, 0, {});
+    CHECK (studio.getProject().findTrack (synth)->parts[0].notes.size() == 1);
+    CHECK_FALSE (studio.addInsert (synth, half, timesEffect (1.0f)));
+    studio.setArmed (synth);
+    CHECK_FALSE (studio.getProject().findTrack (synth)->armed);
+
+    // Saved and opened: still frozen, its plugins not loaded, the file still there (copied beside the song).
+    const auto song = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("pr7s-frozen").getChildFile ("frozen.pr7s");
+    song.getParentDirectory().deleteRecursively();
+    song.getParentDirectory().createDirectory();
+    REQUIRE (studio.save (song));
+    {
+        Studio other (false);
+        juce::String problems;
+        REQUIRE (other.open (song, problems));
+        const auto& t = other.getProject().tracks[0];
+        CHECK (t.frozen);
+        CHECK (other.getEngine().getInstrument (t.id) == nullptr);
+        CHECK (other.getAudioFolder().getChildFile (t.freezeFile).existsAsFile());
+        other.getEngine().setPosition (0.0);
+        other.getEngine().play();
+        juce::AudioBuffer<float> out (2, 9600);
+        other.getEngine().render (out, 9600);
+        CHECK (out.getMagnitude (0, 9600) > 0.01f);   // played from the file
+    }
+
+    // Unfreeze, deleting the file: the instrument back (the test effect isn't a real plugin: its slot stays).
+    const auto frozenFile = studio.getAudioFolder().getChildFile (studio.getProject().findTrack (synth)->freezeFile);
+    studio.unfreezeTrack (synth, true);
+    track = studio.getProject().findTrack (synth);
+    CHECK_FALSE (track->frozen);
+    CHECK (track->freezeFile.isEmpty());
+    CHECK_FALSE (frozenFile.existsAsFile());
+    CHECK (studio.getEngine().getInstrument (synth) != nullptr);
+    studio.addPart (synth, { 8.0, 4.0, "More", {} });
+    CHECK (studio.getProject().findTrack (synth)->parts.size() == 2);   // editable again
+
+    // Not an FX or group channel, nor a track without parts.
+    CHECK_FALSE (studio.freezeTrack (studio.addGroupChannel(), 0.0, error));
+    CHECK_FALSE (studio.freezeTrack (studio.addTrack ({}), 0.0, error));
+    song.getParentDirectory().deleteRecursively();
+    studio.getAudioFolder().deleteRecursively();
+}
+
+TEST_CASE ("Freeze: a tail lets the sound ring on past the last part", "[edit][freeze]")
+{
+    Studio studio (false);
+    const auto synth = studio.getProject().tracks[0].id;
+    studio.addPart (synth, { 0.0, 2.0, "Riff", { { 0.0, 2.0, 60, 1.0f } } });
+    juce::String error;
+    REQUIRE (studio.freezeTrack (synth, 2.0, error));
+    const auto data = studio.getAudio (studio.getProject().findTrack (synth)->freezeFile);
+    REQUIRE (data != nullptr);
+    const auto seconds = data->sound.getNumSamples() / studio.getEngine().getSampleRate();
+    const auto partSeconds = 2.0 * studio.getProject().secondsPerBeat();
+    CHECK (seconds > partSeconds);              // some tail (it stops early once silent)
+    CHECK (seconds <= partSeconds + 2.0 + 0.3);
+    studio.getAudioFolder().deleteRecursively();
+}
+
+TEST_CASE ("Track presets: a track's sound and mix saved; applied to a track of its kind (not its parts, not undone); a new track from one", "[edit][preset]")
+{
+    Studio studio (false);
+    const auto synth = studio.getProject().tracks[0].id;
+    studio.addPart (synth, { 0.0, 4.0, "Riff", { { 0.0, 1.0, 60, 1.0f } } });
+    Insert drive;
+    drive.plugin.name = "Test Effect";
+    drive.plugin.fileOrIdentifier = "test-effect";
+    auto effect = std::make_unique<TestEffect> ([] (juce::AudioBuffer<float>&) {}, 2, "Test Effect");
+    effect->state = "drive=7";
+    REQUIRE (studio.addInsert (synth, drive, std::move (effect)));
+    studio.setVolume (synth, -4.5f);
+    studio.setPan (synth, 0.3f);
+    studio.renameTrack (synth, "Lead");
+    studio.setQuickControl (synth, 0, Studio::AutomationControl { AutomationLane::Target::volume });
+
+    const auto preset = studio.makeTrackPreset (synth);
+    REQUIRE (preset != nullptr);
+    CHECK (preset->getBoolAttribute ("trackPreset"));
+    {
+        const auto loaded = Project::fromXml (*preset);
+        REQUIRE (loaded);
+        const auto& t = loaded->tracks.at (0);
+        CHECK (t.parts.empty());   // no parts
+        CHECK (t.inserts.at (0).state.toString() == "drive=7");   // the running effect's settings
+    }
+
+    // Applied to another instrument track: its sound and mix, its own parts and name kept; undo doesn't take it back.
+    const auto other = studio.addTrack ({});
+    studio.addPart (other, { 8.0, 4.0, "Bass", { { 0.0, 1.0, 36, 1.0f } } });
+    juce::String error;
+    CHECK (studio.applyTrackPreset (other, *preset, error));   // (the test effect isn't a real plugin: an error about it, the slot kept)
+    auto* t = studio.getProject().findTrack (other);
+    CHECK (t->volumeDb == -4.5f);
+    CHECK (t->pan == 0.3f);
+    CHECK (t->name != "Lead");
+    REQUIRE (t->parts.size() == 1);
+    CHECK (t->parts[0].name == "Bass");
+    REQUIRE (t->inserts.size() == 1);
+    CHECK (t->inserts[0].plugin.name == "Test Effect");
+    CHECK (t->quickControls[0].has_value());
+    studio.undo();
+    CHECK (studio.getProject().findTrack (other)->volumeDb == -4.5f);
+
+    // Not onto another kind.
+    const auto audio = studio.addAudioTrack (false);
+    error = {};
+    CHECK_FALSE (studio.applyTrackPreset (audio, *preset, error));
+    CHECK (error.isNotEmpty());
+
+    // A new track from it: under the selected track, named as the preset's.
+    studio.selectTrack (synth);
+    error = {};
+    const auto made = studio.addTrackFromPreset (*preset, error);
+    REQUIRE (made != 0);
+    const auto& tracks = studio.getProject().tracks;
+    REQUIRE (tracks.size() == 4);
+    CHECK (tracks[1].id == made);
+    CHECK (tracks[1].name == "Lead");
+    CHECK (tracks[1].volumeDb == -4.5f);
+    CHECK (tracks[1].parts.empty());
+    CHECK (studio.getSelectedTrack() == made);
 }

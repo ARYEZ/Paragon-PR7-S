@@ -224,6 +224,11 @@ namespace pr7s
                 t->setAttribute ("midiChannel", track.midiChannel);
             if (track.disabled)
                 t->setAttribute ("disabled", true);
+            if (track.frozen)
+            {
+                t->setAttribute ("frozen", true);
+                t->setAttribute ("freezeFile", track.freezeFile);
+            }
             for (int q = 0; q < Track::numQuickControls; ++q)
                 if (const auto& qc = track.quickControls[(size_t) q])
                 {
@@ -319,6 +324,8 @@ namespace pr7s
             track.midiInput = t->getStringAttribute ("midiInput");
             track.midiChannel = juce::jlimit (1, 16, t->getIntAttribute ("midiChannel", 1));
             track.disabled = t->getBoolAttribute ("disabled");
+            track.freezeFile = t->getStringAttribute ("freezeFile");
+            track.frozen = t->getBoolAttribute ("frozen") && track.freezeFile.isNotEmpty();
             for (const auto* e : t->getChildWithTagNameIterator ("QuickControl"))
             {
                 const auto q = e->getIntAttribute ("index", -1);

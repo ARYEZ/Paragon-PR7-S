@@ -3,6 +3,7 @@
 #include "ui/AutomationKeys.h"
 #include "ui/LevelMeter.h"
 #include "ui/ParagonLookAndFeel.h"
+#include "ui/TrackActions.h"
 
 namespace
 {
@@ -134,10 +135,12 @@ public:
             instrument.setButtonText (t->disabled ? juce::String ("DISABLED") : t->isAudio() ? inputName (*t) : t->instrument.getName());
             instrument.setTooltip (t->isAudio() ? "The input it records from and where it goes (Output): click to choose, or to delete the track"
                                                 : "The instrument and where it goes (Output): click to open its window, change it, or delete the track");
+            if (t->frozen)
+                instrument.setTooltip ("Frozen: played from its freeze file, its instrument and effects unloaded. Right-click for Unfreeze Track");
             if (t->disabled)
                 instrument.setTooltip ("Disabled: silent, its instrument and effects unloaded (their settings kept). Click for Enable Track");
         }
-        arm.setVisible (! t->isChannel() && ! t->disabled);   // an FX or group channel records nothing; nor a disabled track
+        arm.setVisible (! t->isChannel() && ! t->disabled && ! t->frozen);   // an FX or group channel records nothing; nor a disabled track
         monitor.setVisible (t->isAudio());
         monitor.setToggleState (t->monitor, juce::dontSendNotification);
         AutomationKeys::refresh (read, write, owner.studio, trackId);
@@ -181,6 +184,14 @@ public:
         {
             g.setColour (ParagonColours::accent.withAlpha (0.6f));
             g.drawRect (bounds.withTrimmedLeft (6.0f), 1.0f);
+        }
+
+        // Frozen (0.9.8): stamped under its name.
+        if (t->frozen && getHeight() >= 66)
+        {
+            g.setColour (juce::Colour (0xfff4eeea).withAlpha (0.75f));
+            g.setFont (font (13.0f));
+            g.drawText ("FROZEN", name.getBounds().withTrimmedLeft (4).removeFromBottom (16), juce::Justification::bottomLeft, false);
         }
 
         // Its level: PR7-C's meter, lying down (orange at the left to pink-red at the right).
@@ -596,11 +607,17 @@ void TrackList::showAddTrackMenu()
         menu.addSubMenu ("FX channel with", withEffect);
     menu.addItem (6, "Group channel (a submix: route tracks to it)");
     menu.addSeparator();
+    menu.addItem (7, "Track from a preset...");
+    menu.addSeparator();
     menu.addItem (2, instruments.isEmpty() ? "Find my VST3 instruments..." : "Find more VST3 instruments...");
 
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addTrack), [this, instruments, effects] (int chosen)
     {
-        if (chosen == 5)
+        if (chosen == 7)
+        {
+            TrackActions::addTrackFromPreset (studio, chooser);
+        }
+        else if (chosen == 5)
         {
             studio.addFxChannel (nullptr);
         }
@@ -744,7 +761,7 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
         change.addItem (10, "Paragon Synth (built in)");
         for (int i = 0; i < instruments.size(); ++i)
             change.addItem (100 + i, instruments[i].manufacturerName + ": " + instruments[i].name);
-        menu.addSubMenu ("Change instrument", change);
+        menu.addSubMenu (track->frozen ? "Change instrument (unfreeze first)" : "Change instrument", change, ! track->frozen && ! track->disabled);
         menu.addSeparator();
         menu.addItem (2, "Delete track");
     }
@@ -765,9 +782,12 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
     if (! track->isChannel())
     {
         menu.addSeparator();
-        menu.addItem (57, several ? "Render the selected tracks in Place..." : "Render in Place...", ! track->disabled);
-        menu.addItem (58, "Render in Place (as last time)", ! track->disabled);
+        menu.addItem (57, several ? "Render the selected tracks in Place..." : "Render in Place...", ! track->disabled && ! track->frozen);
+        menu.addItem (58, "Render in Place (as last time)", ! track->disabled && ! track->frozen);
+        TrackActions::addFreezeItems (menu, studio, trackId);
     }
+    menu.addSeparator();
+    TrackActions::addPresetItems (menu, studio, trackId);
     // Disable (as the manual has it: silent, its plugins unloaded) and hide.
     menu.addSeparator();
     if (! track->isChannel())
@@ -776,6 +796,8 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
     menu.addItem (60, several ? "Hide Selected Tracks" : "Hide Track");
     menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, instruments] (int chosen)
     {
+        if (TrackActions::handle (chosen, studio, trackId, chooser))
+            return;
         if ((chosen == 57 || chosen == 58) && onRenderInPlace)
         {
             // The selected tracks, whole (from the song's start to their last part's end).

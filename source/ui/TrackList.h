@@ -83,4 +83,5 @@ private:
     int dropIndex = -1, dropY = -1;   // a drag of tracks: where they'd go
     std::vector<int> tracksToMove (int trackId) const;
     juce::TextButton addTrack { "+ ADD TRACK" };
+    std::unique_ptr<juce::FileChooser> chooser;   // a preset's (0.9.8)
 };

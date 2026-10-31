@@ -116,6 +116,16 @@ namespace pr7s
         // Hide / show tracks (the left zone's VISIBILITY): out of the track
         // list, the arrangement and the mixer; still heard unless disabled.
         void setTracksHidden (const std::vector<int>& trackIds, bool hidden);
+        // Freeze (0.9.8, the manual's Freeze Channel): the track's instrument and
+        // inserts (not its fader, pan or sends) rendered from the song's start to
+        // its last part's end plus `tailSeconds`, into "<audio folder>/Freeze";
+        // then its plugins unloaded and the file played instead; its parts
+        // locked (any edit to them is put back), its inserts and instrument
+        // can't be changed. Instrument and audio tracks. Not an undo step.
+        bool freezeTrack (int trackId, double tailSeconds, juce::String& error);
+        // Unfreeze: the plugins loaded again; the freeze file kept or deleted.
+        void unfreezeTrack (int trackId, bool deleteFile);
+        bool isFrozen (int trackId) const;
         bool isTrackShown (int trackId) const;   // (not hidden)
         std::vector<int> getShownTracks() const;   // in order
         std::vector<int> getEmptyTracks() const;
@@ -315,6 +325,17 @@ namespace pr7s
         // one moves the control itself, so R/W automation writes it as usual
         // (grabControl / releaseControl around a drag).
         void setQuickControl (int trackId, int index, std::optional<AutomationControl>);
+        // Track presets (0.9.8, the manual's Track Presets): a track's sound and
+        // channel settings (its kind, instrument and inserts with their
+        // settings, volume, pan, colour, Quick Controls, MIDI channel, input) as
+        // XML, without its parts, automation, sends or output. Applied only to a
+        // track of the same kind (not an undo step, as the manual has it); or a
+        // new track from one, under the selected track.
+        std::unique_ptr<juce::XmlElement> makeTrackPreset (int trackId) const;
+        bool applyTrackPreset (int trackId, const juce::XmlElement& preset, juce::String& error);
+        int addTrackFromPreset (const juce::XmlElement& preset, juce::String& error);
+        static juce::File trackPresetFolder();   // Documents/Paragon PR7-S/Track Presets
+        static constexpr const char* trackPresetExtension = ".pr7track";
         std::optional<AutomationLane> getQuickControl (int trackId, int index) const;
         void setQuickControlValue (int trackId, int index, float travel, bool undoable = true);
         float getQuickControlValue (int trackId, int index) const;
@@ -483,6 +504,9 @@ namespace pr7s
         void unwatch (juce::AudioProcessor*);
         void unwatchAll();
         bool writeValue (int busId, const AutomationLane& control, float value);   // false: no pass on it
+        void unloadPlugins (Track&);   // their settings kept first (disable, freeze)
+        void loadPlugins (Track&);     // from the kept settings (enable, unfreeze)
+        std::map<int, std::vector<Part>> frozenParts;   // the parts as they were frozen (locked)
         void punchOut (size_t pass, double endBeat);
         void punchOutAll();
         void setControlValue (int busId, const AutomationLane& control, float value);   // the static setting, without writing

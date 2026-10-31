@@ -212,6 +212,7 @@ namespace pr7s
         {
             int id = 0;
             bool audio = false;          // an audio track: clips and input, no instrument
+            bool frozen = false;         // its freeze file plays as a clip (no instrument, no inserts)
             std::vector<Clip> clips;
             int input = 0;
             int midiChannel = 1;         // the channel its notes (and what's played live into it) go to the instrument on

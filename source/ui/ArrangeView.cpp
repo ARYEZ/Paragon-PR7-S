@@ -509,6 +509,18 @@ void ArrangeView::paint (juce::Graphics& g)
             if (area.getRight() < clip.getX() || area.getX() > clip.getRight())
                 continue;
             paintPart (g, area, part, colour, isSelected (track.id, i), false);
+            if (track.frozen)
+            {
+                // Frozen (0.9.8): veiled in pearl white and stamped; its parts can't be edited.
+                g.setColour (juce::Colour (0xfff4eeea).withAlpha (0.16f));
+                g.fillRoundedRectangle (area, 4.0f);
+                if (area.getWidth() > 60.0f && area.getHeight() > 34.0f)
+                {
+                    g.setColour (juce::Colour (0xfff4eeea).withAlpha (0.8f));
+                    g.setFont (font (13.0f));
+                    g.drawText ("FROZEN", area.reduced (6.0f, 3.0f), juce::Justification::bottomRight, false);
+                }
+            }
         }
     }
     if (multiDrag)

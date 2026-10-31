@@ -157,6 +157,12 @@ namespace pr7s
         // Hidden: not in the track list, the arrangement or the mixer (the left
         // zone's VISIBILITY shows it again). Both saved; neither an undo step.
         bool disabled = false, hidden = false;
+        // Frozen (0.9.8, the manual's Freeze Channel): its instrument and inserts
+        // rendered to `freezeFile` (in the song's audio folder, "Freeze/..."),
+        // which plays instead; the plugins unloaded (their settings kept), the
+        // parts locked; fader, pan and sends still live. Saved.
+        bool frozen = false;
+        juce::String freezeFile;
         // Quick Controls (0.9.6, as the manual's Track Quick Controls): 8 slots,
         // each any of the track's controls (as an automation lane names it:
         // volume, pan, mute, a send, an instrument's or an effect's knob), or none.
