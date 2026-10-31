@@ -1,10 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "DeviceTests.h"
 #include "TestHelpers.h"
 #include "engine/Studio.h"
 #include "ui/Finish.h"
 #include "ui/MainView.h"
 #include "ui/ToolIcons.h"
+#include "ui/Windows.h"
 #include "ui/ParagonLookAndFeel.h"
 
 // Hidden test (the "[.]" tag): renders the studio's window to a PNG, with a
@@ -380,4 +382,32 @@ TEST_CASE ("Snapshot: the tools' mouse pointers", "[.][snapshot-cursors]")
     juce::FileOutputStream out { juce::File (path) };
     REQUIRE (out.openedOk());
     REQUIRE (juce::PNGImageFormat().writeImageToStream (image, out));
+}
+
+// The settings page with a stand-in ASIO driver (as the AXE I/O's: one buffer
+// size, the one its panel sets): PARAGON_SNAPSHOT=settings.png ./ParagonPR7STests "[snapshot-settings]"
+// (PARAGON_SNAPSHOT_FINISH as above; PARAGON_SNAPSHOT_DRIVER="Windows Audio" for that type).
+TEST_CASE ("Snapshot: the settings page", "[.][snapshot-settings]")
+{
+    using namespace pr7s;
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "settings.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    struct Reset { ~Reset() { juce::LookAndFeel::setDefaultLookAndFeel (nullptr); } } reset;
+
+    Studio studio (false);
+    const auto type = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_DRIVER", "ASIO");
+    studio.getDeviceManager().addAudioDeviceType (std::make_unique<FakeDriver> (type, type == "ASIO" ? juce::Array<int> { 64 } : juce::Array<int> { 480 },
+                                                                                 type == "ASIO"));
+    studio.getDeviceManager().setCurrentAudioDeviceType (type, true);
+    Windows::Settings settings (studio, {}, {});
+    auto* page = settings.getContentComponent();
+    const auto image = page->createComponentSnapshot (page->getLocalBounds(), true, 1.5f);
+    const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (path);
+    file.deleteFile();
+    juce::FileOutputStream stream (file);
+    REQUIRE (stream.openedOk());
+    REQUIRE (juce::PNGImageFormat().writeImageToStream (image, stream));
 }

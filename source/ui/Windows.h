@@ -78,6 +78,11 @@ namespace Windows
         Settings (pr7s::Studio&, std::function<void()> toggleSpan, std::function<bool()> isSpanning);
         void closeButtonPressed() override;
         std::function<void()> onClose;
+
+        // For tests: the buffer's line, whether RELOAD DRIVER is shown, a click on it.
+        juce::String getBufferText();
+        bool isReloadShown();
+        void clickReload();
     };
 
     // EXPORT: what to write the mix as (which stretch of the song, the

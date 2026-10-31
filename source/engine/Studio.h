@@ -31,6 +31,10 @@ namespace pr7s
         PluginHost& getPluginHost() noexcept { return *host; }
         juce::AudioDeviceManager& getDeviceManager() noexcept { return devices; }
         juce::PropertiesFile* getSettings() noexcept { return settings.get(); }
+        // SETTINGS' RELOAD DRIVER: the audio device closed and opened again, so
+        // a buffer size set in the driver's own panel is read (for drivers that
+        // don't say they changed).
+        void reloadAudioDevice();
 
         // Told just before a track's instrument is replaced or removed (0:
         // every track's, for a new or opened song), so its window can close

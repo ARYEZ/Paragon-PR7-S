@@ -1,5 +1,6 @@
 #include "Windows.h"
 
+#include "engine/AudioAdvice.h"
 #include "ui/Finish.h"
 #include "ui/ParagonLookAndFeel.h"
 
@@ -9,12 +10,17 @@ namespace Windows
     {
         const auto windowColour = juce::Colour (0xff0c0a0d);
 
-        // The settings page: the device selector, and the finish under it.
-        class SettingsContent final : public juce::Component
+        // The settings page: the device selector (in a viewport: with many
+        // inputs it's taller than the page, and its CONTROL PANEL key, at its
+        // foot, was hidden under the finish row before 0.8.5), what the buffer
+        // is and how to raise it, RELOAD DRIVER, and the finish.
+        class SettingsContent final : public juce::Component,
+                                      private juce::ChangeListener
         {
         public:
-            SettingsContent (pr7s::Studio& studio, std::function<void()> toggleSpanToUse, std::function<bool()> isSpanningToUse)
-                : devices (studio.getDeviceManager(), 0, 8, 0, 2, true, false, true, false),
+            SettingsContent (pr7s::Studio& studioToUse, std::function<void()> toggleSpanToUse, std::function<bool()> isSpanningToUse)
+                : studio (studioToUse),
+                  devices (studio.getDeviceManager(), 0, 8, 0, 2, true, false, true, false),
                   toggleSpan (std::move (toggleSpanToUse)), isSpanning (std::move (isSpanningToUse))
             {
                 span.setTooltip ("The studio's window across all your screens (again: back on one). It opens where you left it next time.");
@@ -26,7 +32,17 @@ namespace Windows
                 };
                 refreshSpan();
                 addAndMakeVisible (span);
-                addAndMakeVisible (devices);
+                viewport.setViewedComponent (&devices, false);
+                viewport.setScrollBarsShown (true, false);
+                addAndMakeVisible (viewport);
+                bufferText.setFont (juce::FontOptions (13.0f));
+                bufferText.setColour (juce::Label::textColourId, ParagonColours::text);
+                bufferText.setJustificationType (juce::Justification::topLeft);
+                addAndMakeVisible (bufferText);
+                reload.setButtonText ("RELOAD DRIVER");
+                reload.setTooltip ("Closes the audio device and opens it again, so a buffer size set in the driver's own panel is read.");
+                reload.onClick = [this] { studio.reloadAudioDevice(); refreshBuffer(); };
+                addChildComponent (reload);
                 finishLabel.setText ("FINISH", juce::dontSendNotification);
                 finishLabel.setFont (juce::FontOptions (12.0f, juce::Font::bold));
                 finishLabel.setColour (juce::Label::textColourId, ParagonColours::textDim);
@@ -36,38 +52,80 @@ namespace Windows
                 finish.onChange = [this] { Finish::set ((Finish::Type) finish.getSelectedItemIndex()); };
                 addAndMakeVisible (finish);
                 note.setText ("Inputs: switch on the ones you record from (audio tracks count them IN 1, IN 2... in the order "
-                              "they're switched on). On Windows, pick your interface's driver above: ASIO for the lowest delay, "
-                              "when your interface has an ASIO driver; else Windows Audio (Exclusive Mode).",
+                              "they're switched on). On Windows, pick your interface's driver above: ASIO for the lowest delay "
+                              "and the buffer sizes its driver offers; else Windows Audio (Exclusive Mode).",
                               juce::dontSendNotification);
                 note.setFont (juce::FontOptions (12.0f));
                 note.setColour (juce::Label::textColourId, ParagonColours::textDim);
+                note.setJustificationType (juce::Justification::topLeft);
                 addAndMakeVisible (note);
-                setSize (560, 520);
+                studio.getDeviceManager().addChangeListener (this);
+                refreshBuffer();
+                setSize (600, 640);
             }
+
+            ~SettingsContent() override { studio.getDeviceManager().removeChangeListener (this); }
 
             void resized() override
             {
                 auto area = getLocalBounds().reduced (12);
-                auto bottom = area.removeFromBottom (80);
+                auto bottom = area.removeFromBottom (190);
+                auto bufferRow = bottom.removeFromTop (88);
+                reload.setBounds (bufferRow.removeFromRight (130).removeFromTop (28));
+                bufferRow.removeFromRight (8);
+                bufferText.setBounds (bufferRow);
+                bottom.removeFromTop (8);
                 auto finishRow = bottom.removeFromTop (28);
                 finishLabel.setBounds (finishRow.removeFromLeft (120));
                 finish.setBounds (finishRow.removeFromLeft (220));
                 finishRow.removeFromLeft (16);
                 span.setBounds (finishRow.removeFromLeft (180));
                 note.setBounds (bottom.withTrimmedTop (8));
-                devices.setBounds (area);
+                viewport.setBounds (area.withTrimmedBottom (8));
+                // The selector sets its own height; its width is the viewport's.
+                devices.setSize (viewport.getWidth() - viewport.getScrollBarThickness(), juce::jmax (devices.getHeight(), 10));
             }
 
-            void paint (juce::Graphics& g) override { g.fillAll (windowColour); }
+            void paint (juce::Graphics& g) override
+            {
+                g.fillAll (windowColour);
+                g.setColour (ParagonColours::textDim.withAlpha (0.3f));
+                g.drawHorizontalLine (bufferText.getY() - 6, 12.0f, (float) getWidth() - 12.0f);
+            }
 
             void refreshSpan()
             {
                 span.setButtonText (isSpanning && isSpanning() ? "BACK TO ONE SCREEN" : "SPAN ALL SCREENS");
             }
 
+            juce::String getBufferText() const { return bufferText.getText(); }
+            bool isReloadShown() const { return reload.isVisible(); }
+            void clickReload() { if (reload.onClick) reload.onClick(); }   // (triggerClick waits for the message loop)
+
         private:
+            void changeListenerCallback (juce::ChangeBroadcaster*) override { refreshBuffer(); }
+
+            void refreshBuffer()
+            {
+                auto* device = studio.getDeviceManager().getCurrentAudioDevice();
+                if (device == nullptr)
+                {
+                    bufferText.setText (pr7s::AudioAdvice::bufferText ({}, 0, 0.0, {}, false), juce::dontSendNotification);
+                    reload.setVisible (false);
+                    return;
+                }
+                bufferText.setText (pr7s::AudioAdvice::bufferText (device->getTypeName(), device->getCurrentBufferSizeSamples(),
+                                                                   device->getCurrentSampleRate(), device->getAvailableBufferSizes(),
+                                                                   device->hasControlPanel()),
+                                    juce::dontSendNotification);
+                reload.setVisible (device->hasControlPanel());
+            }
+
+            pr7s::Studio& studio;
             juce::AudioDeviceSelectorComponent devices;
-            juce::Label finishLabel, note;
+            juce::Viewport viewport;
+            juce::Label bufferText, finishLabel, note;
+            juce::TextButton reload;
             juce::ComboBox finish;
             juce::TextButton span;
             std::function<void()> toggleSpan;
@@ -468,6 +526,15 @@ namespace Windows
         centreWithSize (getWidth(), getHeight());
         setVisible (true);
     }
+
+    namespace
+    {
+        SettingsContent* page (juce::DocumentWindow& window) { return dynamic_cast<SettingsContent*> (window.getContentComponent()); }
+    }
+
+    juce::String Settings::getBufferText() { return page (*this)->getBufferText(); }
+    bool Settings::isReloadShown() { return page (*this)->isReloadShown(); }
+    void Settings::clickReload() { page (*this)->clickReload(); }
 
     void Settings::closeButtonPressed()
     {

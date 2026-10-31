@@ -16,6 +16,7 @@ add_executable(ParagonPR7STests
     MidiImportTests.cpp
     EditTests.cpp
     ImportAudioTests.cpp
+    DeviceTests.cpp
     UiTests.cpp
     Snapshot.cpp)
 

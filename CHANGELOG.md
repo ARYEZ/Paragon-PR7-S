@@ -2,6 +2,24 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.8.5
+
+The buffer size: how to get 2048 samples with your interface.
+
+- **Why the buffer was stuck small:** a program can only offer the buffer sizes the driver gives it.
+  - **Windows Audio** (what PR7-S chose the first time) runs at the one size Windows sets, about 10 ms (480 samples), and it can't be changed.
+  - An **ASIO** driver gives its own list. Many, the AXE I/O's among them, give only the size set in their own control panel.
+- **ASIO the first time:** on a first start, PR7-S now picks **ASIO** when an ASIO driver is installed. If you already chose a driver, it stays: pick ASIO in SETTINGS > Audio device type.
+- **SETTINGS says what the buffer is and how to raise it:**
+  - The size now, in samples and milliseconds, and what your driver type allows.
+  - For ASIO: **CONTROL PANEL** opens the driver's own panel. Choose 2048 there and close it.
+  - **RELOAD DRIVER** (new) opens the device again, so the new size is read even if the driver doesn't say it changed.
+  - Changing the size in the interface's own app while PR7-S is open may not work, because the driver is in use.
+- **SETTINGS' device choices scroll** inside the page, so the CONTROL PANEL key at their foot can't end up under the FINISH row with many inputs on.
+- Not checked here: a real AXE I/O on Windows (there's no Windows or audio interface in the cloud). The tests use a stand-in ASIO driver that reports only its panel's size, as the AXE I/O's is said to.
+
+ASIO is a trademark and software of Steinberg Media Technologies GmbH.
+
 ## 0.8.4
 
 Render in Place, tool icons, and the transport rearranged as you asked.

@@ -1,5 +1,6 @@
 #include "Studio.h"
 
+#include "AudioAdvice.h"
 #include "MidiImport.h"
 
 namespace pr7s
@@ -47,6 +48,11 @@ namespace pr7s
             // Two inputs and two outputs to start with (SETTINGS turns on more).
             const auto saved = settings->getXmlValue (audioSetupKey);
             devices.initialise (2, 2, saved.get(), true);
+            // The first time: ASIO when there's an ASIO driver (JUCE starts on
+            // Windows Audio, which runs at the one buffer size Windows sets).
+            if (saved == nullptr)
+                if (const auto type = AudioAdvice::firstDeviceType (AudioAdvice::typesWithDevices (devices)); type.isNotEmpty())
+                    devices.setCurrentAudioDeviceType (type, true);
             for (const auto& input : juce::MidiInput::getAvailableDevices())
                 devices.setMidiInputDeviceEnabled (input.identifier, true);
             devices.addMidiInputDeviceCallback ({}, &engine.getMidiInput());
@@ -82,6 +88,16 @@ namespace pr7s
             devices.removeMidiInputDeviceCallback ({}, &engine.getMidiInput());
             devices.closeAudioDevice();
         }
+    }
+
+    void Studio::reloadAudioDevice()
+    {
+        // Closed and opened again: the driver is asked afresh for its sizes
+        // (a size set in its own panel replaces one it no longer offers).
+        if (devices.getCurrentAudioDevice() == nullptr)
+            return;
+        devices.closeAudioDevice();
+        devices.restartLastAudioDevice();
     }
 
     void Studio::changeListenerCallback (juce::ChangeBroadcaster*)
