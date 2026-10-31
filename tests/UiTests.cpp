@@ -1350,7 +1350,7 @@ TEST_CASE ("The editing tools: keys and the toolbar; SPLIT, GLUE, ERASE, MUTE, D
         CHECK (parts()[0].length == 2.0);
         CHECK (parts()[1].start == 6.0);
         studio.undo();
-        click ({ xFor (6.1), y }, juce::ModifierKeys::ctrlModifier);
+        click ({ xFor (6.1), y }, juce::ModifierKeys::commandModifier);   // (Ctrl; Cmd on a Mac, as the app's every Ctrl)
         REQUIRE (parts().size() == 2);
         CHECK (std::abs (parts()[1].start - 6.1) < 0.05);
         studio.undo();
@@ -1378,6 +1378,10 @@ TEST_CASE ("The editing tools: keys and the toolbar; SPLIT, GLUE, ERASE, MUTE, D
         CHECK (parts()[1].muted);
 
         key ('5');
+        // A right-click is the part's menu, whatever the tool: nothing erased.
+        click ({ xFor (5.0), y }, juce::ModifierKeys::rightButtonModifier);
+        juce::PopupMenu::dismissAllActiveMenus();
+        CHECK (parts().size() == 2);
         click ({ xFor (5.0), y });
         REQUIRE (parts().size() == 1);
         CHECK (parts()[0].name == "Later");

@@ -1003,6 +1003,8 @@ void ArrangeView::cannotGlue()
 
 bool ArrangeView::toolDown (const juce::MouseEvent& event)
 {
+    if (event.mods.isPopupMenu())
+        return false;   // a right-click: the part's menu, whatever the tool
     const auto hit = partAt (event.position);
     const auto* track = studio.getProject().findTrack (trackAtY (event.position.y));
     const auto canHoldNotes = track != nullptr && ! track->isAudio() && ! track->isChannel();
