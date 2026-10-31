@@ -10,8 +10,18 @@
 // floor units, and its LED screens show where the song is (bars and beats,
 // and minutes and seconds), the tempo (drag it up or down, or double-click
 // to type one) and the time signature (click for the list). The output's
-// level on the right.
+// level on the right, and CPU beside it: the audio processing load (the
+// manual's Audio Performance meter: the average and the peak, how much of
+// each block's time the processing takes; the light on top lights for an
+// overload, a dropout, and stays lit until clicked).
+//
+// On a wide window (spanning screens: `setToolsWidth`) the position screen
+// stops growing; the keys on its left, the tempo, the signature and room for
+// the arrangement's tools (`getToolsArea`, which the main window puts there)
+// on its right, all of them together in the middle (on three screens, all
+// on the middle one).
 class TransportBar final : public juce::Component,
+                           public juce::TooltipClient,
                            private juce::ChangeListener,
                            private juce::Timer
 {
@@ -31,6 +41,19 @@ public:
     juce::String getPositionText() const;
     juce::String getTempoText() const;
 
+    // The wide layout (0: the usual one). The tools' place, in this bar's coordinates.
+    void setToolsWidth (int);
+    juce::Rectangle<int> getToolsArea() const noexcept { return toolsArea; }
+    juce::Rectangle<float> getPositionScreen() const noexcept { return positionScreen; }
+    static constexpr int widePositionWidth = 540;
+
+    // CPU: what the meter shows (the load, 0 to 1 and over), and whether its overload light is lit.
+    float getShownAverage() const noexcept { return shownAverage; }
+    float getShownPeak() const noexcept { return shownPeak; }
+    bool isOverloadLit() const noexcept { return overloadLit; }
+    juce::Rectangle<float> getCpuArea() const noexcept { return cpuArea; }
+    juce::String getTooltip() override;
+
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
@@ -40,7 +63,12 @@ private:
     juce::TextButton toStart { "|<" }, stopKey { "STOP" }, playKey { "PLAY" }, recordKey { "REC" },
                      cycleKey { "CYCLE" }, clickKey { "CLICK" };
     LevelMeter leftMeter, rightMeter;
-    juce::Rectangle<float> badge, positionScreen, tempoScreen, signatureScreen, keysArea, meterArea;
+    juce::Rectangle<float> badge, positionScreen, tempoScreen, signatureScreen, keysArea, meterArea, cpuArea;
+    juce::Rectangle<int> toolsArea;
+    int toolsWidth = 0;
+    float shownAverage = 0.0f, shownPeak = 0.0f;
+    bool overloadLit = false;
+    void followPerformance();
     mutable std::vector<juce::Rectangle<float>> glasses;
     juce::Image satin;
     double dragStartBpm = 120.0;

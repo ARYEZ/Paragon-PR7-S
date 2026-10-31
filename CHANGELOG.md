@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.8.3
+
+Audio file import, a CPU meter, and a layout made for a window spanning three screens.
+
+- **Import audio files:** **IMPORT** now asks **MIDI file** or **Audio files**. Choose one or more **WAV, AIFF, FLAC, Ogg or MP3** files: they go in at the playhead on the selected audio track (or a new one, stereo if the file is), one after another. Or **drag them from Explorer** onto the arrangement: onto an audio track, at the bar you drop them on (anywhere else: a new audio track).
+  - Each file is **copied into the song's audio folder** ("<song> Audio", as your recordings are), so the song keeps working if the original moves. FLAC, Ogg and MP3 are written there as WAV files.
+  - A file at another sample rate than your interface's plays at the right speed (converted as it plays, as recordings are).
+  - **Not there yet:** imported audio doesn't follow tempo changes (no time-stretching), and a stereo file isn't split into two mono tracks. WMA isn't read.
+- **CPU meter** (in the transport, beside OUT, as the manual's Audio Performance meter): how much of each audio block's time the processing takes. The left column is the **average**, the right one the **peak**; at the top, all the time there is. The light above them turns **red for an overload** (a block that took longer than it lasts: a dropout, a click or gap in the sound) and stays lit until you click the meter. Hover over it for the numbers. If it goes red: a bigger buffer in SETTINGS, or fewer effects and instruments playing at once.
+- **Spanning three screens:** from 2400 pixels wide (SPAN ALL SCREENS), the window lays itself out for it:
+  - The **position screen** stops stretching (540 pixels), with the **transport keys** on its left and the **tempo, signature and the TOOLS** on its right (the tools row under the transport goes, giving the tracks its room). They sit together in the middle, so on three 1920-pixel screens they're all on the middle one, none cut by a screen's edge.
+  - The **header's keys** (NEW to R/W) are in the middle too. The PR7-S mark stays on the left, PLUGINS and SETTINGS on the right, OUT and CPU at the right end of the transport.
+  - On one screen it's as before.
+
 ## 0.8.2
 
 Moving tracks around, setting the cycle with the Cubase 15 manual's clicks and keys, and the studio's window across all your screens.

@@ -156,7 +156,7 @@ TEST_CASE ("Importing a MIDI file on screen: IMPORT in the header; a .mid droppe
         REQUIRE (song().writeTo (out, 1));
     }
     CHECK (view.isInterestedInFileDrag ({ file.getFullPathName() }));
-    CHECK_FALSE (view.isInterestedInFileDrag ({ "song.wav" }));
+    CHECK_FALSE (view.isInterestedInFileDrag ({ "notes.txt" }));   // (audio files are taken too since 0.8.3)
     auto& arrange = view.getArrangeView();
     const auto dropAt = view.getLocalPoint (&arrange, juce::Point<int> ((int) (9.0 * Timeline().pixelsPerBeat), 60));
     view.filesDropped ({ file.getFullPathName() }, dropAt.x, dropAt.y);

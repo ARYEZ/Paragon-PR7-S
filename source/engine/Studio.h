@@ -321,6 +321,17 @@ namespace pr7s
         // notes on its beats: the manual's "Ignore Master Track Events on
         // Merge"). Returns how many tracks it added (0, with `error` set, if none).
         int importMidi (const juce::File&, bool newSong, double atBeat, juce::String& error);
+        // Audio file import (the manual's File > Import > Audio File): WAV,
+        // AIFF, FLAC, Ogg Vorbis or MP3. Each file is copied into the song's
+        // audio folder (the manual's Copy File to Project Folder: a WAV or AIFF
+        // as it is, a compressed one written as a 24-bit WAV) and becomes a
+        // clip at `atBeat`, on `trackId` if it's an audio track, else on a new
+        // audio track (stereo if the first file is); several files one after
+        // another on that track. Returns the track's id (0, with `error` set,
+        // if none could be read; files that couldn't are listed in `error`).
+        // The clips are one undo step.
+        static bool isAudioFile (const juce::File&);
+        int importAudio (const juce::Array<juce::File>&, int trackId, double atBeat, juce::String& error);
         int importMidi (const MidiImport&, bool newSong, double atBeat);
         juce::File getFile() const noexcept { return file; }
         bool isModified() const noexcept { return modified; }

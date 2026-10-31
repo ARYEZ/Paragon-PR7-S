@@ -16,6 +16,7 @@
 // as it goes), =none nothing there (the key editor otherwise).
 // PARAGON_SNAPSHOT_EXPORT=1 draws the export page over it. PARAGON_SNAPSHOT_EDIT=1: the SPLIT tool, a muted part.
 // PARAGON_SNAPSHOT_RANGE=1: the RANGE tool and a range over two tracks.
+// PARAGON_SNAPSHOT_VIEW=5760x1000: the window that size, 1:1 (the wide layout, spanning three screens).
 // PARAGON_SNAPSHOT_ROWS=0.5 (to 3) the arrangement's rows shorter or taller; PARAGON_SNAPSHOT_SUSPENDED=1 its
 // Auto-Scroll suspended.
 // PARAGON_SNAPSHOT_AUTOMATION=1 opens automation lanes (the lead's volume, the bass's pan, the master's fade).
@@ -93,8 +94,15 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
 
     MainView view (studio);
     const auto width = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_WIDTH", "1500").getIntValue();
-    const auto scale = (float) width / 1500.0f;
+    auto scale = (float) width / 1500.0f;
     view.setSize (1500, 900);
+    // PARAGON_SNAPSHOT_VIEW=5760x1000: the window that size (three screens: the wide layout), drawn 1:1.
+    if (const auto size = juce::StringArray::fromTokens (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_VIEW", {}), "x", {});
+        size.size() == 2)
+    {
+        view.setSize (size[0].getIntValue(), size[1].getIntValue());
+        scale = 1.0f;
+    }
     // Play a little so the meters show.
     studio.play();
     for (int round = 0; round < 6; ++round)
@@ -104,6 +112,11 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         juce::Thread::sleep (40);   // (the meters refresh every 33 ms: give them a turn)
     }
     studio.stop();
+    // CPU: a load to show (a third on average, peaks to 60%: made up for the picture).
+    for (int i = 0; i < 60; ++i)
+        studio.getEngine().notePerformance ((i % 10 == 0 ? 0.6 : 0.33) * 512.0 / studio.getEngine().getSampleRate(), 512);
+    juce::Thread::sleep (40);
+    juce::Timer::callPendingTimersSynchronously();
     studio.getEngine().setPosition (21.0);
     // The key editor open on the lead part, a few of its notes selected;
     // or the mixer, with some effects in (stand-ins named after the family's

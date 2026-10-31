@@ -320,6 +320,10 @@ class ArrangeTools final : public juce::Component
 public:
     explicit ArrangeTools (ArrangeView&);
     void refresh();   // the chosen tool lit
+    // On the transport unit (a wide window): TOOLS stamped in the unit's ink, as the keys' names are.
+    void setOnUnit (bool);
+    int getPreferredWidth() const noexcept { return onUnit ? unitWidth() : 64 + (int) std::size (ArrangeView::tools) * 74; }
+    static int unitWidth() noexcept { return 50 + (int) std::size (ArrangeView::tools) * 66; }   // on the unit: keys as wide as the transport's
     juce::TextButton& getButton (ArrangeView::Tool);
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -327,4 +331,5 @@ public:
 private:
     ArrangeView& arrange;
     std::array<juce::TextButton, std::size (ArrangeView::tools)> buttons;
+    bool onUnit = false;
 };

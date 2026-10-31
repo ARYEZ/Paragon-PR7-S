@@ -73,6 +73,11 @@ public:
     // then which file. A .mid file dropped on the window goes into this song
     // at the bar it's dropped on (bar 1 if not over the arrangement).
     void importMidiFile();
+    // IMPORT > Audio files: WAV, AIFF, FLAC, Ogg or MP3, as clips at the
+    // playhead on the selected audio track (else a new one); dropped on the
+    // arrangement, on the audio track under them (else a new one) at the bar.
+    void importAudioFiles();
+    void importAudio (const juce::Array<juce::File>&, int trackId, double atBeat);
     bool isInterestedInFileDrag (const juce::StringArray&) override;
     void filesDropped (const juce::StringArray&, int x, int y) override;
 
@@ -133,6 +138,10 @@ public:
     MixerView& getMixer() noexcept { return mixer; }
 
     static constexpr int headerHeight = 52, transportHeight = 112, toolbarHeight = 32, trackListWidth = 300;
+    // From this wide (spanning screens), the wide layout: the header's keys and the transport's position
+    // screen in the middle, the tools on the transport (no row of their own).
+    static constexpr int wideWidth = 2400;
+    bool isWide() const noexcept { return getWidth() >= wideWidth; }
     ArrangeTools& getTools() noexcept { return tools; }
 
 private:

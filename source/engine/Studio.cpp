@@ -1217,6 +1217,75 @@ namespace pr7s
     }
 
     //==========================================================================
+    bool Studio::isAudioFile (const juce::File& file)
+    {
+        return file.hasFileExtension ("wav;wave;aif;aiff;flac;ogg;mp3");
+    }
+
+    int Studio::importAudio (const juce::Array<juce::File>& files, int trackId, double atBeat, juce::String& error)
+    {
+        auto folder = getAudioFolder();
+        folder.createDirectory();
+        juce::StringArray problems;
+        std::vector<Part> clips;
+        auto stereo = false;
+        auto at = juce::jmax (0.0, atBeat);
+        for (const auto& file : files)
+        {
+            std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+            if (reader == nullptr || reader->lengthInSamples <= 0 || reader->sampleRate <= 0.0)
+            {
+                problems.add (file.getFileName() + ": not an audio file PR7-S can read (WAV, AIFF, FLAC, Ogg or MP3)");
+                continue;
+            }
+            // A name of its own in the folder ("Riff.wav", "Riff 2.wav"...).
+            const auto plain = file.hasFileExtension ("wav;wave;aif;aiff");
+            const auto base = juce::File::createLegalFileName (file.getFileNameWithoutExtension());
+            const auto extension = plain ? file.getFileExtension() : juce::String (".wav");
+            auto copy = folder.getChildFile (base + extension);
+            for (int n = 2; copy.exists(); ++n)
+                copy = folder.getChildFile (base + " " + juce::String (n) + extension);
+            auto ok = false;
+            if (plain)
+                ok = file.copyFileTo (copy);
+            else if (auto stream = std::unique_ptr<juce::OutputStream> (copy.createOutputStream()))
+            {
+                juce::WavAudioFormat wav;
+                const auto channels = (int) juce::jlimit (1u, 2u, reader->numChannels);
+                if (auto writer = wav.createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (reader->sampleRate)
+                                                                                               .withNumChannels (channels)
+                                                                                               .withBitsPerSample (24)))
+                    ok = writer->writeFromAudioReader (*reader, 0, reader->lengthInSamples);
+            }
+            if (! ok)
+            {
+                copy.deleteFile();
+                problems.add (file.getFileName() + ": couldn't copy it into " + folder.getFullPathName());
+                continue;
+            }
+            if (clips.empty())
+                stereo = reader->numChannels > 1;
+            Part clip;
+            clip.name = file.getFileNameWithoutExtension();
+            clip.audioFile = copy.getFileName();
+            clip.start = at;
+            clip.length = ((double) reader->lengthInSamples / reader->sampleRate) / project.secondsPerBeat();
+            at += clip.length;
+            clips.push_back (clip);
+        }
+        error = problems.joinIntoString ("\n");
+        if (clips.empty())
+            return 0;
+        const auto* target = project.findTrack (trackId);
+        if (target == nullptr || ! target->isAudio())
+            trackId = addAudioTrack (stereo);
+        if (auto* track = project.findTrack (trackId))
+            for (auto& clip : clips)
+                track->parts.push_back (clip);
+        changed();
+        return trackId;
+    }
+
     double Studio::AudioData::seconds() const noexcept
     {
         return (double) sound.getNumSamples() / sampleRate;

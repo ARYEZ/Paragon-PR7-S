@@ -1761,3 +1761,119 @@ TEST_CASE ("Tracks in the list: Ctrl / Shift-click to select several; drag rows 
     list.moveSelectedTracks (TrackList::MoveTo::last);
     CHECK (order() == Ids { a, b, c });
 }
+
+TEST_CASE ("Audio files dropped on the arrangement: on the audio track under them, at the bar; elsewhere a new audio track", "[ui][import]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto audio = studio.addAudioTrack (false);
+    studio.dispatchPendingMessages();
+    const auto file = juce::File::createTempFile ("dropped.wav");
+    {
+        std::unique_ptr<juce::OutputStream> stream (file.createOutputStream());
+        auto writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (48000.0).withNumChannels (1).withBitsPerSample (24));
+        REQUIRE (writer != nullptr);
+        juce::AudioBuffer<float> buffer (1, 48000);
+        buffer.clear();
+        writer->writeFromAudioSampleBuffer (buffer, 0, 48000);
+    }
+    CHECK (view.isInterestedInFileDrag ({ file.getFullPathName() }));
+    auto& arrange = view.getArrangeView();
+    // Over the audio track's row, in bar 3 (beats 8 to 12 at 4/4).
+    const auto inArrange = juce::Point<float> ((float) (9.5 * Timeline {}.pixelsPerBeat), arrange.trackTop (audio) + 20.0f);
+    const auto inView = view.getLocalPoint (&arrange, inArrange.toInt());
+    view.filesDropped ({ file.getFullPathName() }, inView.x, inView.y);
+    const auto& parts = studio.getProject().findTrack (audio)->parts;
+    REQUIRE (parts.size() == 1);
+    CHECK (parts[0].start == 8.0);
+    // Dropped under the tracks: a new audio track.
+    const auto tracks = studio.getProject().tracks.size();
+    view.filesDropped ({ file.getFullPathName() }, inView.x, view.getHeight() - 60);
+    CHECK (studio.getProject().tracks.size() == tracks + 1);
+    CHECK (studio.getProject().tracks.back().isAudio());
+    file.deleteFile();
+    studio.getAudioFolder().deleteRecursively();
+}
+
+TEST_CASE ("CPU: the engine measures each block's load; the meter shows the average and the peak; an overload lights its light until clicked", "[ui][cpu]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& engine = studio.getEngine();
+    const auto rate = engine.getSampleRate();
+    const auto blockSeconds = 512.0 / rate;
+
+    // A block that took a fifth of its time, many times: the average settles at 0.2.
+    for (int i = 0; i < 100; ++i)
+        engine.notePerformance (blockSeconds * 0.2, 512);
+    auto now = engine.takePerformance();
+    CHECK_THAT (now.average, WithinAbs (0.2, 0.01));
+    CHECK_THAT (now.peak, WithinAbs (0.2, 0.01));
+    CHECK (now.overloads == 0);
+    CHECK (engine.takePerformance().peak == 0.0f);   // the peak is since the last look
+
+    // One that took longer than it lasts: an overload (a dropout).
+    engine.notePerformance (blockSeconds * 1.3, 512);
+    auto& transport = view.getTransport();
+    transport.repaint();
+    juce::Timer::callPendingTimersSynchronously();
+    for (int i = 0; i < 3 && ! transport.isOverloadLit(); ++i)
+    {
+        juce::Thread::sleep (40);
+        juce::Timer::callPendingTimersSynchronously();
+    }
+    CHECK (transport.isOverloadLit());
+    CHECK (transport.getShownPeak() > 1.0f);
+    // A click on the meter resets it (as the manual has it).
+    const auto at = transport.getCpuArea().getCentre();
+    transport.mouseDown (juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys::leftButtonModifier,
+                                           0.0f, 0.0f, 0.0f, 0.0f, 0.0f, &transport, &transport, juce::Time::getCurrentTime(), at,
+                                           juce::Time::getCurrentTime(), 1, false));
+    CHECK_FALSE (transport.isOverloadLit());
+    CHECK (engine.takePerformance().overloads == 0);
+}
+
+TEST_CASE ("A wide window (spanning screens): the position screen centred at its own width, the keys on its left, the tools on its right; the header's keys centred", "[ui][wide]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    auto& transport = view.getTransport();
+    auto& tools = view.getTools();
+
+    // One screen: as before (the tools in their row under the transport, the screen as wide as there's room).
+    view.setSize (1500, 900);
+    CHECK_FALSE (view.isWide());
+    CHECK (tools.getY() >= transport.getBottom());
+    CHECK (transport.getPositionScreen().getWidth() > 300.0f);
+
+    // Three screens.
+    view.setSize (5760, 1000);
+    REQUIRE (view.isWide());
+    const auto screen = transport.getPositionScreen();
+    CHECK (screen.getWidth() == (float) TransportBar::widePositionWidth);
+    CHECK_THAT (transport.getX() + screen.getCentreX(), WithinAbs (view.getWidth() * 0.5f, 300.0f));   // near the middle
+    // The keys on its left, the tools on its right (on the transport, no row of their own).
+    auto* clickKey = buttonNamed (transport, "CLICK");
+    REQUIRE (clickKey != nullptr);
+    CHECK (clickKey->getRight() <= (int) screen.getX());
+    CHECK (clickKey->getRight() > (int) screen.getX() - 40);
+    CHECK (tools.getX() > transport.getX() + (int) screen.getRight());
+    CHECK (tools.getBottom() <= transport.getBottom());
+    // All of it on the middle screen (1920 to 3840): no screen edge through it.
+    CHECK (buttonNamed (transport, "|<")->getX() + transport.getX() >= 1920);
+    CHECK (tools.getRight() <= 3840);
+    CHECK (tools.getY() >= transport.getY());
+    CHECK (view.getArrangeView().getY() < transport.getBottom() + MainView::toolbarHeight);   // the tracks have the row's room
+    // The header's keys: NEW to W in the middle.
+    auto* newKey = buttonNamed (view, "NEW");
+    auto* mixerKey = buttonNamed (view, "MIXER");
+    REQUIRE (newKey != nullptr);
+    REQUIRE (mixerKey != nullptr);
+    CHECK (std::abs ((newKey->getX() + mixerKey->getRight()) / 2 - view.getWidth() / 2) < 60);   // (R and W go a little past MIXER)
+    CHECK (newKey->getX() > 2000);
+}

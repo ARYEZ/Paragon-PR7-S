@@ -77,6 +77,38 @@ void TransportBar::timerCallback()
     // The keys follow the engine (playing can stop by itself, e.g. on a new project).
     refreshKeys();
     repaint (positionScreen.expanded (4.0f).getSmallestIntegerContainer());
+    followPerformance();
+}
+
+void TransportBar::followPerformance()
+{
+    // The average as it is; the peak held a moment, then falling (as the level meters' peaks do).
+    const auto now = studio.getEngine().takePerformance();
+    shownAverage = now.average;
+    shownPeak = juce::jmax (now.peak, shownPeak * 0.92f);
+    overloadLit = now.overloads > 0;
+    repaint (cpuArea.expanded (2.0f).getSmallestIntegerContainer());
+}
+
+juce::String TransportBar::getTooltip()
+{
+    if (! cpuArea.contains (getMouseXYRelative().toFloat()))
+        return {};
+    const auto overloads = studio.getEngine().takePerformance().overloads;
+    return "CPU: the audio processing load. Average " + juce::String (juce::roundToInt (shownAverage * 100.0f)) + "%, peak "
+         + juce::String (juce::roundToInt (shownPeak * 100.0f)) + "% (of the time each block has). "
+         + (overloads > 0 ? juce::String (overloads) + " overload" + (overloads == 1 ? "" : "s") + " (dropouts): click to reset. "
+                                + "A bigger buffer in SETTINGS, or fewer effects and instruments, helps."
+                          : juce::String ("No overloads."));
+}
+
+void TransportBar::setToolsWidth (int width)
+{
+    if (width == toolsWidth)
+        return;
+    toolsWidth = width;
+    resized();
+    repaint();
 }
 
 void TransportBar::refreshKeys()
@@ -120,13 +152,45 @@ void TransportBar::resized()
     const auto columns = meterArea.withTrimmedTop (10.0f).withTrimmedBottom (14.0f);
     leftMeter.setBounds (columns.withWidth (10.0f).translated (6.0f, 0.0f).toNearestInt());
     rightMeter.setBounds (columns.withWidth (10.0f).translated (20.0f, 0.0f).toNearestInt());
+    area.removeFromRight (10.0f);
+    // CPU: its two columns (average, peak) and the overload light, beside OUT.
+    cpuArea = area.removeFromRight (36.0f);
     area.removeFromRight (16.0f);
 
-    signatureScreen = area.removeFromRight (96.0f);
-    area.removeFromRight (12.0f);
-    tempoScreen = area.removeFromRight (150.0f);
-    area.removeFromRight (12.0f);
-    positionScreen = area;
+    if (toolsWidth <= 0)
+    {
+        toolsArea = {};
+        signatureScreen = area.removeFromRight (96.0f);
+        area.removeFromRight (12.0f);
+        tempoScreen = area.removeFromRight (150.0f);
+        area.removeFromRight (12.0f);
+        positionScreen = area;
+        return;
+    }
+
+    // Wide: the keys, the position screen (its own width), the tempo, the
+    // signature and the tools together in the middle of the bar (as near as
+    // the badge and the meters allow), so on three screens they're all on the
+    // middle one (none cut by the screens' edges); the screen near the middle.
+    const auto keysWidth = keysArea.getWidth() + 18.0f;
+    const auto rightWidth = 12.0f + 150.0f + 12.0f + 96.0f + 20.0f + (float) toolsWidth;
+    const auto width = (float) widePositionWidth;
+    const auto groupWidth = keysWidth + width + rightWidth;
+    const auto minX = badge.getRight() + 16.0f;
+    const auto maxX = juce::jmax (minX, area.getRight() - groupWidth);
+    const auto x = juce::jlimit (minX, maxX, ((float) getWidth() - groupWidth) * 0.5f) + keysWidth;
+    positionScreen = { x, area.getY(), width, area.getHeight() };
+    keysArea = keysArea.withX (x - keysWidth);
+    auto wideKeys = keysArea;
+    for (auto* key : { &toStart, &stopKey, &playKey, &recordKey, &cycleKey, &clickKey })
+        key->setBounds (wideKeys.removeFromLeft (70.0f).withSizeKeepingCentre (62.0f, 40.0f).translated (0.0f, -6.0f).toNearestInt());
+    juce::Rectangle<float> right (positionScreen.getRight() + 12.0f, area.getY(), area.getRight() - positionScreen.getRight() - 12.0f, area.getHeight());
+    tempoScreen = right.removeFromLeft (150.0f);
+    right.removeFromLeft (12.0f);
+    signatureScreen = right.removeFromLeft (96.0f);
+    right.removeFromLeft (20.0f);
+    toolsArea = right.removeFromLeft ((float) toolsWidth).withSizeKeepingCentre ((float) toolsWidth, 32.0f)
+                     .withY (toStart.getBounds().getCentreY() - 16.0f).toNearestInt();
 }
 
 void TransportBar::paint (juce::Graphics& g)
@@ -200,6 +264,25 @@ void TransportBar::paint (juce::Graphics& g)
     stamped (g, "L", juce::Rectangle<float> (meterArea.getX() + 4.0f, meterArea.getY(), 14.0f, 10.0f), 8.0f);
     stamped (g, "R", juce::Rectangle<float> (meterArea.getX() + 18.0f, meterArea.getY(), 14.0f, 10.0f), 8.0f);
     stamped (g, "OUT", meterArea.withTrimmedTop (meterArea.getHeight() - 12.0f), 8.0f);
+
+    // CPU: the average and the peak load, PR7-C's segments (orange to pink-red at the top: all the time there is);
+    // over them, the overload light.
+    {
+        const auto columns = cpuArea.withTrimmedTop (10.0f).withTrimmedBottom (14.0f);
+        const auto average = columns.withWidth (10.0f).translated (6.0f, 0.0f);
+        const auto peak = columns.withWidth (10.0f).translated (20.0f, 0.0f);
+        LevelMeter::paintSegments (g, average, juce::jlimit (0.0f, 1.0f, shownAverage), -1.0f);
+        LevelMeter::paintSegments (g, peak, juce::jlimit (0.0f, 1.0f, shownPeak), -1.0f);
+        const auto light = juce::Rectangle<float> (cpuArea.getCentreX() - 9.0f, cpuArea.getY(), 18.0f, 6.0f);
+        g.setColour (overloadLit ? ParagonColours::meterRed : juce::Colours::black.withAlpha (0.35f));
+        g.fillRoundedRectangle (light, 2.0f);
+        if (overloadLit)
+        {
+            g.setColour (ParagonColours::meterRed.withAlpha (0.35f));
+            g.fillRoundedRectangle (light.expanded (2.0f), 3.0f);
+        }
+        stamped (g, "CPU", cpuArea.withTrimmedTop (cpuArea.getHeight() - 12.0f), 8.0f);
+    }
 }
 
 void TransportBar::paintOverChildren (juce::Graphics& g)
@@ -210,6 +293,12 @@ void TransportBar::paintOverChildren (juce::Graphics& g)
 
 void TransportBar::mouseDown (const juce::MouseEvent& event)
 {
+    if (cpuArea.contains (event.position))
+    {
+        studio.getEngine().resetOverloads();   // (as the manual has it: a click resets the overload light)
+        followPerformance();
+        return;
+    }
     if (tempoScreen.contains (event.position))
     {
         draggingTempo = true;

@@ -1,5 +1,6 @@
 #include "ArrangeView.h"
 
+#include "ui/Finish.h"
 #include "ui/ParagonLookAndFeel.h"
 
 namespace
@@ -1769,19 +1770,34 @@ juce::TextButton& ArrangeTools::getButton (ArrangeView::Tool t)
     return buttons[0];
 }
 
+void ArrangeTools::setOnUnit (bool shouldBeOnUnit)
+{
+    if (onUnit == shouldBeOnUnit)
+        return;
+    onUnit = shouldBeOnUnit;
+    resized();
+    repaint();
+}
+
 void ArrangeTools::paint (juce::Graphics& g)
 {
-    g.setColour (ParagonColours::textDim);
+    const auto label = getLocalBounds().withWidth (60).withTrimmedLeft (14).toFloat();
     g.setFont (ParagonLookAndFeel::textFont (11.0f));
-    g.drawText ("TOOLS", getLocalBounds().withWidth (60).withTrimmedLeft (14), juce::Justification::centredLeft, false);
+    if (onUnit)
+    {
+        ParagonLookAndFeel::drawStampedText (g, "TOOLS", label, juce::Justification::centredLeft, Finish::ink());
+        return;
+    }
+    g.setColour (ParagonColours::textDim);
+    g.drawText ("TOOLS", label, juce::Justification::centredLeft, false);
 }
 
 void ArrangeTools::resized()
 {
-    auto area = getLocalBounds().withTrimmedLeft (64);
+    auto area = getLocalBounds().withTrimmedLeft (onUnit ? 50 : 64);
     for (auto& button : buttons)
     {
-        button.setBounds (area.removeFromLeft (70));
+        button.setBounds (area.removeFromLeft (onUnit ? 62 : 70));
         area.removeFromLeft (4);
     }
 }

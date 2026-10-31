@@ -1082,6 +1082,7 @@ namespace pr7s
     void Engine::audioDeviceIOCallbackWithContext (const float* const* inputChannelData, int numInputChannels, float* const* outputChannelData,
                                                    int numOutputChannels, int numSamples, const juce::AudioIODeviceCallbackContext&)
     {
+        const auto started = juce::Time::getHighResolutionTicks();
         // The studio renders stereo; the device's first two outputs get it.
         blockInputs = inputChannelData;
         blockNumInputs = numInputChannels;
@@ -1101,6 +1102,26 @@ namespace pr7s
                 }
             done += length;
         }
+        notePerformance (juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - started), numSamples);
+    }
+
+    void Engine::notePerformance (double secondsTaken, int numSamples) noexcept
+    {
+        const auto rate = getSampleRate();
+        if (rate <= 0.0 || numSamples <= 0)
+            return;
+        const auto load = (float) (secondsTaken / ((double) numSamples / rate));
+        // (Written by the audio thread only, so plain loads and stores are enough.)
+        averageLoad.store (averageLoad.load() * 0.9f + load * 0.1f);
+        if (load > peakLoad.load())
+            peakLoad.store (load);
+        if (load >= 1.0f)
+            ++overloads;
+    }
+
+    Engine::Performance Engine::takePerformance()
+    {
+        return { averageLoad.load(), peakLoad.exchange (0.0f), overloads.load() };
     }
 
     void Engine::audioDeviceAboutToStart (juce::AudioIODevice* device)

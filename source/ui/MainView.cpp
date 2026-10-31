@@ -31,8 +31,23 @@ MainView::MainView (pr7s::Studio& studioToUse)
     saveButton.setTooltip ("Save the song (Ctrl+S)");
     saveAsButton.setTooltip ("Save the song under a new name (Ctrl+Shift+S)");
     exportButton.setTooltip ("Export the mix to a WAV file: the whole song or the cycle");
-    importButton.setTooltip ("Import a MIDI file (.mid): a track for each of its tracks. Or drop one on the arrangement, at a bar");
-    importButton.onClick = [this] { importMidiFile(); };
+    importButton.setTooltip ("Import a MIDI file (a track for each of its tracks) or audio files (WAV, AIFF, FLAC, Ogg, MP3: clips at the playhead). "
+                             "Or drop them on the arrangement, at a bar");
+    importButton.onClick = [this]
+    {
+        juce::PopupMenu menu;
+        menu.addItem (1, "MIDI file...");
+        menu.addItem (2, "Audio files... (WAV, AIFF, FLAC, Ogg, MP3)");
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&importButton), [safe = juce::Component::SafePointer<MainView> (this)] (int chosen)
+        {
+            if (safe == nullptr)
+                return;
+            if (chosen == 1)
+                safe->importMidiFile();
+            else if (chosen == 2)
+                safe->importAudioFiles();
+        });
+    };
     undoButton.setTooltip ("Undo (Ctrl+Z)");
     redoButton.setTooltip ("Redo (Ctrl+Shift+Z)");
     editorButton.setTooltip ("The key editor: the selected part's notes (Ctrl+E; or double-click a part)");
@@ -265,7 +280,7 @@ void MainView::paint (juce::Graphics& g)
     g.fillRect (header.withY (header.getBottom() - 1.0f).withHeight (1.0f));
 
     // The work area's frame.
-    const auto middle = getLocalBounds().withTrimmedTop (headerHeight + transportHeight + toolbarHeight).toFloat().reduced (6.0f, 2.0f);
+    const auto middle = getLocalBounds().withTrimmedTop (headerHeight + transportHeight + (isWide() ? 0 : toolbarHeight)).toFloat().reduced (6.0f, 2.0f);
     g.setColour (ParagonColours::panelEdge);
     g.drawRect (middle, 1.0f);
 }
@@ -297,9 +312,23 @@ void MainView::resized()
     settingsButton.setBounds (header.removeFromRight (92));
     header.removeFromRight (6);
     pluginsButton.setBounds (header.removeFromRight (86));
+    // Wide: the header's keys (NEW to W) in the middle of the window.
+    if (isWide())
+    {
+        const auto first = newButton.getX(), last = writeAllButton.getRight();
+        const auto shift = juce::jmax (0, (getWidth() - (last - first)) / 2 - first);
+        for (auto* key : { &newButton, &openButton, &saveButton, &saveAsButton, &importButton, &exportButton, &undoButton, &redoButton,
+                           &editorButton, &mixerButton, &readAllButton, &writeAllButton })
+            key->setTopLeftPosition (key->getX() + shift, key->getY());
+    }
 
+    transport.setToolsWidth (isWide() ? ArrangeTools::unitWidth() : 0);
     transport.setBounds (area.removeFromTop (transportHeight).reduced (2, 0));
-    tools.setBounds (area.removeFromTop (toolbarHeight).reduced (7, 3).withTrimmedTop (2));
+    tools.setOnUnit (isWide());
+    if (isWide())
+        tools.setBounds (transport.getToolsArea() + transport.getPosition());   // on the transport, right of its screens
+    else
+        tools.setBounds (area.removeFromTop (toolbarHeight).reduced (7, 3).withTrimmedTop (2));
 
     auto middle = area.reduced (7, 3);
     zoneDivider->setVisible (false);
@@ -351,7 +380,7 @@ void MainView::setDockedHeight (int height)
     auto* zone = dockedZone();
     if (zone == nullptr)
         return;
-    const auto middleHeight = getHeight() - headerHeight - transportHeight - toolbarHeight - 6;
+    const auto middleHeight = getHeight() - headerHeight - transportHeight - (isWide() ? 0 : toolbarHeight) - 6;
     zone->dockedHeight = juce::jmax (1, height);   // (0 would mean the default)
     zone->dockedHeight = heightFor (*zone, middleHeight);   // kept to what it can be
     if (auto* settings = studio.getSettings())
@@ -832,11 +861,54 @@ void MainView::importMidiFile()
 
 bool MainView::isInterestedInFileDrag (const juce::StringArray& files)
 {
-    return std::any_of (files.begin(), files.end(), [] (const juce::String& f) { return f.endsWithIgnoreCase (".mid") || f.endsWithIgnoreCase (".midi"); });
+    return std::any_of (files.begin(), files.end(), [] (const juce::String& f)
+    {
+        return f.endsWithIgnoreCase (".mid") || f.endsWithIgnoreCase (".midi") || pr7s::Studio::isAudioFile (juce::File (f));
+    });
+}
+
+void MainView::importAudioFiles()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Import audio files", studio.getFile().getParentDirectory(), "*.wav;*.wave;*.aif;*.aiff;*.flac;*.ogg;*.mp3");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
+                              | juce::FileBrowserComponent::canSelectMultipleItems,
+                          [this] (const juce::FileChooser& fc)
+                          {
+                              const auto files = fc.getResults();
+                              if (! files.isEmpty())
+                                  importAudio (files, studio.getSelectedTrack(), studio.getEngine().getPosition());
+                          });
+}
+
+void MainView::importAudio (const juce::Array<juce::File>& files, int trackId, double atBeat)
+{
+    juce::String error;
+    studio.importAudio (files, trackId, atBeat, error);
+    if (error.isNotEmpty())
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't import every file", error);
 }
 
 void MainView::filesDropped (const juce::StringArray& files, int x, int y)
 {
+    // Audio files: on the audio track dropped on (else a new one), at the bar dropped on (else at the playhead).
+    juce::Array<juce::File> audio;
+    for (const auto& path : files)
+        if (pr7s::Studio::isAudioFile (juce::File (path)))
+            audio.add (juce::File (path));
+    if (! audio.isEmpty())
+    {
+        const auto inArrange = arrange.getLocalPoint (this, juce::Point<int> (x, y));
+        auto at = studio.getEngine().getPosition();
+        auto trackId = 0;
+        if (arrange.getLocalBounds().contains (inArrange))
+        {
+            const auto bar = studio.getProject().beatsPerBar();
+            at = juce::jmax (0.0, std::floor (timeline.beatForX ((float) inArrange.x) / bar) * bar);
+            trackId = arrange.trackAtY ((float) inArrange.y);
+        }
+        importAudio (audio, trackId, at);
+    }
+
     // Into this song, at the bar it's dropped on (over the arrangement), else bar 1.
     auto atBeat = 0.0;
     const auto inArrange = arrange.getLocalPoint (this, juce::Point<int> (x, y));

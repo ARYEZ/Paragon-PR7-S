@@ -140,6 +140,18 @@ namespace pr7s
         }
         float takeTrackPeak (int trackId, int reader = 0);
 
+        // Audio performance (the manual's Audio Performance Monitor, as its
+        // transport meter shows it): how long the interface's blocks take to
+        // process, against how long they last (1 = all the time there is).
+        // The average (smoothed over a tenth of a second or so), the peak since
+        // the last look, and the overloads (blocks that took longer than they
+        // last: a dropout) since the last reset.
+        struct Performance { float average = 0.0f, peak = 0.0f; int overloads = 0; };
+        Performance takePerformance();
+        void resetOverloads() noexcept { overloads = 0; }
+        // One block measured (the audio callback calls it; tests too).
+        void notePerformance (double secondsTaken, int numSamples) noexcept;
+
         // What a track's (or the master's: masterBus) mix is at now, its
         // automation included, for the screen's faders to follow (any thread).
         struct MixNow { float volumeDb = 0.0f, pan = 0.0f; bool mute = false; };
@@ -283,6 +295,8 @@ namespace pr7s
         juce::int64 sampleClock = 0;
         double clockBeatsPerSample = 0.0;
         std::atomic<int> liveTrack { 0 };
+        std::atomic<float> averageLoad { 0.0f }, peakLoad { 0.0f };
+        std::atomic<int> overloads { 0 };
 
         juce::MidiMessageCollector midiInput;
         juce::MidiKeyboardState keyboardState;
