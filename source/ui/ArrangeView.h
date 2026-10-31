@@ -124,7 +124,17 @@ struct Timeline
 //                   dragging puts them back; right-click: Select All Events.
 //                   With no points, a dotted line shows the control's
 //                   setting; R off or the lane muted, the curve is greyed
-//   tools           (the manual's, keys 1 and 3 to 9; F9 / F10 the previous
+//   RANGE (2)       drag across the tracks for a range (a stretch of time on
+//                   the tracks dragged over), shaded; double-click a part for
+//                   one over it, or between parts for the gap; drag its edges
+//                   (Shift-drag outside it extends it); drag inside it to
+//                   move what's in it (Alt: a copy); right-click it for its
+//                   menu. Keys: Shift+X split at its edges, Delete (Shift+
+//                   Backspace: Delete Time, closing the gap), Ctrl+X / C / V
+//                   (Ctrl+Shift+X Cut Time, Ctrl+Shift+V Paste Time; paste at
+//                   the playhead on the selected track down), Ctrl+D
+//                   duplicate, Ctrl+Shift+E Insert Silence, Esc clears it
+//   tools           (the manual's, keys 1 to 9; F9 / F10 the previous
 //                   / next) what a click on a track does: SELECT (1, all of
 //                   the above; Alt-click a part splits it there; Alt-drag
 //                   on an empty instrument track draws a new part), SPLIT (3:
@@ -164,9 +174,9 @@ public:
     void deleteSelected();
     void duplicateSelected();
 
-    // The editing tools (see above). Range Selection (2) isn't there yet.
-    enum class Tool { select, split, glue, erase, zoom, mute, draw, play };
-    static constexpr Tool tools[] = { Tool::select, Tool::split, Tool::glue, Tool::erase, Tool::zoom, Tool::mute, Tool::draw, Tool::play };
+    // The editing tools (see above).
+    enum class Tool { select, range, split, glue, erase, zoom, mute, draw, play };
+    static constexpr Tool tools[] = { Tool::select, Tool::range, Tool::split, Tool::glue, Tool::erase, Tool::zoom, Tool::mute, Tool::draw, Tool::play };
     static const char* toolName (Tool);
     static int toolKey (Tool);   // its number key
     void setTool (Tool);
@@ -174,6 +184,16 @@ public:
     void nextTool (bool forward);   // F10 / F9
     std::function<void()> onToolChange;
     void splitAtCursor();           // Alt+X
+
+    // Range Selection (RANGE, 2; the manual's Range Editing): one range at a
+    // time, a stretch of time across tracks. It stays when another tool is
+    // chosen; Esc (or a click with RANGE) clears it.
+    const std::optional<pr7s::Studio::Range>& getRange() const noexcept { return range; }
+    void setRange (std::optional<pr7s::Studio::Range>);
+    bool hasRange() const noexcept { return range.has_value(); }
+    enum class RangeCommand { split, crop, deleteContents, deleteTime, cut, cutTime, copy, paste, pasteTime, insertSilence, duplicate };
+    void rangeCommand (RangeCommand);   // (the keys MainView sends, and the range's menu)
+    bool hasRangeClip() const noexcept { return ! rangeClip.isEmpty(); }
 
     // H / G: one zoom step in or out, centred on the playhead; Shift+F: the
     // whole song (as far as the scroll bar goes) across the view.
@@ -231,7 +251,23 @@ private:
     Selection selection;
 
     enum class Drag { none, position, cycle, cycleMove, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
-                      newPart, muteBand, zoomBand, play };
+                      newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove };
+    std::optional<pr7s::Studio::Range> range;
+    pr7s::Studio::RangeClip rangeClip;
+    pr7s::Studio::Range rangeBefore;            // as it was when the drag began
+    double rangeAnchor = 0.0;                   // the beat the drag began at
+    int rangeAnchorTrack = 0;                   // the track index it began on
+    double rangeMoveStart = 0.0;                // dragging its contents: where they'd go
+    int rangeMoveTrack = 0;                     // ... and the first track
+    bool rangeDown (const juce::MouseEvent&);
+    void rangeDrag (const juce::MouseEvent&);
+    void rangeUp (const juce::MouseEvent&);
+    bool rangeDoubleClick (const juce::MouseEvent&);
+    void showRangeMenu();
+    void paintRange (juce::Graphics&) const;
+    int trackIndex (int trackId) const;         // in the song's order (-1 if none)
+    std::vector<int> tracksBetween (int fromIndex, int toIndex) const;
+    double rangeBeat (const juce::MouseEvent&) const;   // snapped (Ctrl: not)
     Tool tool = Tool::select;
     bool toolDown (const juce::MouseEvent&);   // the tools other than SELECT (and SELECT's Alt gestures); true if it took the click
     void toolUp (const juce::MouseEvent&);

@@ -244,3 +244,112 @@ TEST_CASE ("Mute: a muted part isn't played (MIDI or audio), stays in the song, 
     studio.undo();
     CHECK (studio.getProject().findTrack (id)->parts.size() == 3);
 }
+
+TEST_CASE ("Range editing: split at its edges, crop, delete (and Delete Time), cut and paste, insert silence, move, copy, duplicate", "[edit][range]")
+{
+    Studio studio (false);
+    const auto a = studio.getProject().tracks[0].id;
+    const auto b = studio.addTrack ({});
+    const auto reset = [&]
+    {
+        // a: one 8-beat part (a note across beat 4 and one at 6); b: 0-4 and 6-10.
+        for (const auto id : { a, b })
+            while (! studio.getProject().findTrack (id)->parts.empty())
+                studio.deletePart (id, 0);
+        studio.addPart (a, { 0.0, 8.0, "A", { { 3.0, 2.0, 60, 0.8f }, { 6.0, 1.0, 62, 0.8f } } });
+        studio.addPart (b, { 0.0, 4.0, "B1", {} });
+        studio.addPart (b, { 6.0, 4.0, "B2", {} });
+    };
+    const auto starts = [&] (int id)
+    {
+        std::vector<std::pair<double, double>> out;
+        for (const auto& part : studio.getProject().findTrack (id)->parts)
+            out.push_back ({ part.start, part.length });
+        std::sort (out.begin(), out.end());
+        return out;
+    };
+    using Spans = std::vector<std::pair<double, double>>;
+    const Studio::Range range { 2.0, 7.0, { a, b } };
+
+    SECTION ("Split at the range's edges (Shift+X), on its tracks only")
+    {
+        reset();
+        studio.splitRange (range);
+        CHECK (starts (a) == Spans { { 0.0, 2.0 }, { 2.0, 5.0 }, { 7.0, 1.0 } });
+        CHECK (starts (b) == Spans { { 0.0, 2.0 }, { 2.0, 2.0 }, { 6.0, 1.0 }, { 7.0, 3.0 } });
+        studio.undo();
+        CHECK (starts (a) == Spans { { 0.0, 8.0 } });   // one step
+        studio.splitRange ({ 2.0, 7.0, { b } });
+        CHECK (starts (a) == Spans { { 0.0, 8.0 } });
+    }
+
+    SECTION ("Crop: parts across the edges cut down to the range; parts wholly inside or out untouched")
+    {
+        reset();
+        studio.addPart (a, { 20.0, 2.0, "Far", {} });
+        studio.cropRange (range);
+        CHECK (starts (a) == Spans { { 2.0, 5.0 }, { 20.0, 2.0 } });
+        CHECK (starts (b) == Spans { { 2.0, 2.0 }, { 6.0, 1.0 } });
+        // The note across beat 4 is now 1 beat into the cropped part, still 2 long.
+        const auto& cropped = studio.getProject().findTrack (a)->parts[0];
+        REQUIRE (cropped.notes.size() == 2);
+        CHECK (cropped.notes[0].start == 1.0);
+        CHECK (cropped.notes[0].length == 2.0);
+    }
+
+    SECTION ("Delete leaves the gap; Delete Time closes it (what's after moves back)")
+    {
+        reset();
+        studio.deleteRange (range, false);
+        CHECK (starts (a) == Spans { { 0.0, 2.0 }, { 7.0, 1.0 } });
+        CHECK (starts (b) == Spans { { 0.0, 2.0 }, { 7.0, 3.0 } });
+        studio.undo();
+        studio.deleteRange (range, true);
+        CHECK (starts (a) == Spans { { 0.0, 2.0 }, { 2.0, 1.0 } });
+        CHECK (starts (b) == Spans { { 0.0, 2.0 }, { 2.0, 3.0 } });
+    }
+
+    SECTION ("Cut, then Paste at the playhead's beat onto the selected track down; Paste Time makes room; Insert Silence")
+    {
+        reset();
+        const auto clip = studio.cutRange (range, false);
+        CHECK (clip.length == 5.0);
+        REQUIRE (clip.tracks.size() == 2);
+        REQUIRE (clip.tracks[0].size() == 1);
+        CHECK (clip.tracks[0][0].start == 0.0);
+        CHECK (clip.tracks[0][0].length == 5.0);
+        CHECK (clip.tracks[0][0].notes[0].start == 1.0);   // the note at beat 3: a beat into the range
+        CHECK (starts (a) == Spans { { 0.0, 2.0 }, { 7.0, 1.0 } });
+        studio.pasteRange (clip, 20.0, a, false);
+        CHECK (starts (a) == Spans { { 0.0, 2.0 }, { 7.0, 1.0 }, { 20.0, 5.0 } });
+        CHECK (starts (b) == Spans { { 0.0, 2.0 }, { 7.0, 3.0 }, { 20.0, 2.0 }, { 24.0, 1.0 } });
+        studio.undo();
+
+        studio.pasteRange (clip, 0.0, a, true);   // Paste Time: everything from 0 moves on by 5 first
+        CHECK (starts (a) == Spans { { 0.0, 5.0 }, { 5.0, 2.0 }, { 12.0, 1.0 } });
+
+        reset();
+        studio.insertSilence ({ 4.0, 6.0, { a } });
+        CHECK (starts (a) == Spans { { 0.0, 4.0 }, { 6.0, 4.0 } });   // split at 4, the rest 2 later
+        CHECK (starts (b) == Spans { { 0.0, 4.0 }, { 6.0, 4.0 } });   // not in the range: as it was
+    }
+
+    SECTION ("Move (drag) and copy (Alt-drag) the contents; Duplicate right after; onto tracks of the wrong kind, not")
+    {
+        reset();
+        studio.moveRange ({ 2.0, 4.0, { a } }, 10.0, a, false);
+        CHECK (starts (a) == Spans { { 0.0, 2.0 }, { 4.0, 4.0 }, { 10.0, 2.0 } });
+        studio.undo();
+        CHECK (starts (a) == Spans { { 0.0, 8.0 } });   // one step
+        studio.moveRange ({ 2.0, 4.0, { a } }, 10.0, b, true);   // copied onto the track below
+        CHECK (starts (a) == Spans { { 0.0, 8.0 } });
+        CHECK (starts (b) == Spans { { 0.0, 4.0 }, { 6.0, 4.0 }, { 10.0, 2.0 } });
+        studio.undo();
+        studio.duplicateRange ({ 6.0, 10.0, { b } });
+        CHECK (starts (b) == Spans { { 0.0, 4.0 }, { 6.0, 4.0 }, { 10.0, 4.0 } });
+
+        const auto audio = studio.addAudioTrack (false);
+        studio.moveRange ({ 0.0, 2.0, { a } }, 0.0, audio, true);   // MIDI onto an audio track: left out
+        CHECK (studio.getProject().findTrack (audio)->parts.empty());
+    }
+}

@@ -1452,3 +1452,121 @@ TEST_CASE ("The editing tools: keys and the toolbar; SPLIT, GLUE, ERASE, MUTE, D
         CHECK (studio.getEngine().getPosition() == 1.0);   // back where it was
     }
 }
+
+TEST_CASE ("RANGE (2): drag a range across tracks; its edges; double-click; drag its contents (Alt: copy); the keys", "[ui][tools][range]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto a = studio.getProject().tracks[0].id;
+    const auto b = studio.addTrack ({});
+    studio.addPart (a, { 0.0, 8.0, "A", { { 3.0, 2.0, 60, 0.8f } } });
+    studio.addPart (b, { 0.0, 4.0, "B1", {} });
+    studio.addPart (b, { 6.0, 4.0, "B2", {} });
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    const auto key = [&] (int code, juce::ModifierKeys mods = {}, juce::juce_wchar c = 0) { return view.keyPressed (juce::KeyPress (code, mods, c)); };
+    const auto press = [&] (juce::juce_wchar c, juce::ModifierKeys mods = {}) { return key ((int) c, mods, c); };
+    const auto cmd = juce::ModifierKeys (juce::ModifierKeys::commandModifier);
+    const auto shift = juce::ModifierKeys (juce::ModifierKeys::shiftModifier);
+    const auto ppb = arrange.getPartBounds (a, 0).getWidth() / 8.0f;   // pixels per beat
+    const auto x = [&] (double beat) { return arrange.getPartBounds (a, 0).getX() + (float) beat * ppb; };
+    const auto yA = arrange.getPartBounds (a, 0).getCentreY(), yB = arrange.getPartBounds (b, 0).getCentreY();
+    const auto dragAcross = [&] (juce::Point<float> from, juce::Point<float> to, juce::ModifierKeys mods = {})
+    {
+        arrange.mouseDown (mouseAt (arrange, from, from, mods));
+        for (int step = 1; step <= 4; ++step)
+            arrange.mouseDrag (mouseAt (arrange, from + (to - from) * ((float) step / 4.0f), from, mods));
+        arrange.mouseUp (mouseAt (arrange, to, from, mods));
+    };
+    const auto spans = [&] (int id)
+    {
+        std::vector<std::pair<double, double>> out;
+        for (const auto& part : studio.getProject().findTrack (id)->parts)
+            out.push_back ({ part.start, part.length });
+        std::sort (out.begin(), out.end());
+        return out;
+    };
+    using Spans = std::vector<std::pair<double, double>>;
+
+    CHECK (press ('2'));
+    REQUIRE (arrange.getTool() == ArrangeView::Tool::range);
+    dragAcross ({ x (2.1), yA }, { x (6.9), yB });   // snapped: 2 to 7, both tracks
+    REQUIRE (arrange.hasRange());
+    CHECK (arrange.getRange()->start == 2.0);
+    CHECK (arrange.getRange()->end == 7.0);
+    CHECK (arrange.getRange()->trackIds == std::vector<int> { a, b });
+
+    SECTION ("Shift+X splits at its edges; Delete removes what's in it; Shift+Backspace closes the gap; Esc clears it")
+    {
+        CHECK (press ('X', shift));
+        CHECK (spans (a) == Spans { { 0.0, 2.0 }, { 2.0, 5.0 }, { 7.0, 1.0 } });
+        studio.undo();
+        CHECK (key (juce::KeyPress::deleteKey));
+        CHECK (spans (a) == Spans { { 0.0, 2.0 }, { 7.0, 1.0 } });
+        CHECK (arrange.hasRange());   // it stays
+        studio.undo();
+        CHECK (key (juce::KeyPress::backspaceKey, shift));
+        CHECK (spans (b) == Spans { { 0.0, 2.0 }, { 2.0, 3.0 } });
+        CHECK (key (juce::KeyPress::escapeKey));
+        CHECK_FALSE (arrange.hasRange());
+    }
+
+    SECTION ("Ctrl+X cuts it to the clipboard; Ctrl+V pastes at the playhead on the selected track down; Ctrl+D duplicates")
+    {
+        CHECK (press ('X', cmd));
+        CHECK (spans (a) == Spans { { 0.0, 2.0 }, { 7.0, 1.0 } });
+        studio.selectTrack (a);
+        studio.setPosition (16.0);
+        CHECK (press ('V', cmd));
+        CHECK (spans (a) == Spans { { 0.0, 2.0 }, { 7.0, 1.0 }, { 16.0, 5.0 } });
+        CHECK (spans (b) == Spans { { 0.0, 2.0 }, { 7.0, 3.0 }, { 16.0, 2.0 }, { 20.0, 1.0 } });
+        studio.undo();
+        studio.undo();
+        CHECK (press ('D', cmd));   // a copy straight after it: 7 to 12
+        CHECK (spans (a) == Spans { { 0.0, 8.0 }, { 7.0, 5.0 } });
+    }
+
+    SECTION ("Its edges dragged; Shift-drag outside it extends it")
+    {
+        dragAcross ({ x (7.0), yA }, { x (9.0), yA });
+        CHECK (arrange.getRange()->end == 9.0);
+        dragAcross ({ x (2.0), yA }, { x (1.0), yA });
+        CHECK (arrange.getRange()->start == 1.0);
+        arrange.setRange (Studio::Range { 2.0, 4.0, { a } });
+        dragAcross ({ x (6.0), yB }, { x (6.0), yB }, shift);   // to beat 6 and down to track b
+        CHECK (arrange.getRange()->end == 6.0);
+        CHECK (arrange.getRange()->trackIds == std::vector<int> { a, b });
+    }
+
+    SECTION ("Dragging inside it moves what's in it (the range goes too); Alt copies")
+    {
+        arrange.setRange (Studio::Range { 2.0, 4.0, { a } });
+        dragAcross ({ x (3.0), yA }, { x (13.0), yA });
+        CHECK (spans (a) == Spans { { 0.0, 2.0 }, { 4.0, 4.0 }, { 12.0, 2.0 } });
+        CHECK (arrange.getRange()->start == 12.0);
+        studio.undo();
+        arrange.setRange (Studio::Range { 2.0, 4.0, { a } });
+        dragAcross ({ x (3.0), yA }, { x (13.0), yB }, juce::ModifierKeys::altModifier);   // copied, onto b
+        CHECK (spans (a) == Spans { { 0.0, 8.0 } });
+        CHECK (spans (b) == Spans { { 0.0, 4.0 }, { 6.0, 4.0 }, { 12.0, 2.0 } });
+    }
+
+    SECTION ("Double-click a part: a range over it; between parts: over the gap; a click alone clears it; another tool keeps it")
+    {
+        arrange.mouseDoubleClick (mouseAt (arrange, { x (7.0), yB }, { x (7.0), yB }, {}, 2));
+        CHECK (arrange.getRange()->start == 6.0);
+        CHECK (arrange.getRange()->end == 10.0);
+        arrange.mouseDoubleClick (mouseAt (arrange, { x (5.0), yB }, { x (5.0), yB }, {}, 2));
+        CHECK (arrange.getRange()->start == 4.0);
+        CHECK (arrange.getRange()->end == 6.0);
+        CHECK (arrange.getRange()->trackIds == std::vector<int> { b });
+        press ('1');
+        CHECK (arrange.hasRange());
+        press ('2');
+        arrange.mouseDown (mouseAt (arrange, { x (12.0), yA }, { x (12.0), yA }));
+        arrange.mouseUp (mouseAt (arrange, { x (12.0), yA }, { x (12.0), yA }));
+        CHECK_FALSE (arrange.hasRange());
+    }
+}

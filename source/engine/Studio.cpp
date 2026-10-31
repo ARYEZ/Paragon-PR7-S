@@ -785,6 +785,209 @@ namespace pr7s
         changed();
     }
 
+    namespace
+    {
+        constexpr double edge = 1.0e-9;
+
+        // Every part on a track that `beat` is inside is cut there.
+        void splitTrackAt (Track& track, double beat, double bpm)
+        {
+            const auto count = (int) track.parts.size();
+            for (int i = 0; i < count; ++i)
+            {
+                auto& part = track.parts[(size_t) i];
+                if (beat > part.start + edge && beat < part.end() - edge)
+                    track.parts.push_back (cutPart (part, beat - part.start, bpm));
+            }
+        }
+
+        bool inside (const Part& part, double start, double end)
+        {
+            return part.start >= start - edge && part.end() <= end + edge;
+        }
+
+        // What of a part lies between two beats (none if nothing).
+        std::optional<Part> slice (Part part, double start, double end, double bpm)
+        {
+            if (part.end() <= start + edge || part.start >= end - edge)
+                return std::nullopt;
+            if (start > part.start + edge)
+                part = cutPart (part, start - part.start, bpm);
+            if (end < part.end() - edge)
+                cutPart (part, end - part.start, bpm);   // (keeps the first half)
+            part.id = 0;
+            return part;
+        }
+
+        // The parts that start at or after a beat move by `delta`.
+        void shiftFrom (Track& track, double beat, double delta)
+        {
+            for (auto& part : track.parts)
+                if (part.start >= beat - edge)
+                    part.start = juce::jmax (0.0, part.start + delta);
+        }
+
+        // The tracks below `firstTrackId`, in the song's order, `count` of them (missing ones as nullptr).
+        std::vector<Track*> tracksFrom (Project& project, int firstTrackId, size_t count)
+        {
+            std::vector<Track*> found;
+            auto started = false;
+            for (auto& track : project.tracks)
+            {
+                started = started || track.id == firstTrackId;
+                if (started && found.size() < count)
+                    found.push_back (&track);
+            }
+            found.resize (count, nullptr);
+            return found;
+        }
+    }
+
+    void Studio::splitRange (const Range& range)
+    {
+        if (range.isEmpty())
+            return;
+        for (const auto id : range.trackIds)
+            if (auto* track = project.findTrack (id))
+            {
+                splitTrackAt (*track, range.start, project.bpm);
+                splitTrackAt (*track, range.end, project.bpm);
+            }
+        changed();
+    }
+
+    void Studio::cropRange (const Range& range)
+    {
+        if (range.isEmpty())
+            return;
+        for (const auto id : range.trackIds)
+            if (auto* track = project.findTrack (id))
+                for (auto& part : track->parts)
+                {
+                    const auto crosses = (range.start > part.start + edge && range.start < part.end() - edge)
+                                      || (range.end > part.start + edge && range.end < part.end() - edge);
+                    if (crosses)
+                        if (auto cropped = slice (part, range.start, range.end, project.bpm))
+                        {
+                            const auto id = part.id;
+                            part = *cropped;
+                            part.id = id;
+                        }
+                }
+        changed();
+    }
+
+    void Studio::deleteRange (const Range& range, bool closeGap)
+    {
+        if (range.isEmpty())
+            return;
+        for (const auto id : range.trackIds)
+            if (auto* track = project.findTrack (id))
+            {
+                splitTrackAt (*track, range.start, project.bpm);
+                splitTrackAt (*track, range.end, project.bpm);
+                track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(),
+                                                    [&] (const Part& part) { return inside (part, range.start, range.end); }),
+                                    track->parts.end());
+                if (closeGap)
+                    shiftFrom (*track, range.end, -range.length());
+            }
+        changed();
+    }
+
+    Studio::RangeClip Studio::copyRange (const Range& range) const
+    {
+        RangeClip clip;
+        if (range.isEmpty())
+            return clip;
+        clip.length = range.length();
+        clip.origin = range.start;
+        clip.originTrack = range.trackIds.front();
+        for (const auto id : range.trackIds)
+        {
+            auto& slices = clip.tracks.emplace_back();
+            if (const auto* track = project.findTrack (id))
+                for (const auto& part : track->parts)
+                    if (auto piece = slice (part, range.start, range.end, project.bpm))
+                    {
+                        piece->start -= range.start;
+                        slices.push_back (*piece);
+                    }
+        }
+        return clip;
+    }
+
+    Studio::RangeClip Studio::cutRange (const Range& range, bool closeGap)
+    {
+        auto clip = copyRange (range);
+        deleteRange (range, closeGap);
+        return clip;
+    }
+
+    void Studio::insertSilence (const Range& range)
+    {
+        if (range.isEmpty())
+            return;
+        for (const auto id : range.trackIds)
+            if (auto* track = project.findTrack (id))
+            {
+                splitTrackAt (*track, range.start, project.bpm);
+                shiftFrom (*track, range.start, range.length());
+            }
+        changed();
+    }
+
+    void Studio::pasteRange (const RangeClip& clip, double atBeat, int firstTrackId, bool insertTime)
+    {
+        if (clip.isEmpty())
+            return;
+        atBeat = juce::jmax (0.0, atBeat);
+        const auto targets = tracksFrom (project, firstTrackId, clip.tracks.size());
+        for (size_t t = 0; t < clip.tracks.size(); ++t)
+        {
+            auto* track = targets[t];
+            if (track == nullptr || track->isChannel())
+                continue;
+            if (insertTime)
+            {
+                splitTrackAt (*track, atBeat, project.bpm);
+                shiftFrom (*track, atBeat, clip.length);
+            }
+            for (auto part : clip.tracks[t])
+                if (part.isAudio() == track->isAudio())
+                {
+                    part.start += atBeat;
+                    part.id = 0;
+                    track->parts.push_back (part);
+                }
+        }
+        changed();
+    }
+
+    void Studio::moveRange (const Range& range, double newStart, int newFirstTrackId, bool copy)
+    {
+        if (range.isEmpty())
+            return;
+        const auto clip = copyRange (range);
+        if (! copy)
+            for (const auto id : range.trackIds)
+                if (auto* track = project.findTrack (id))
+                {
+                    splitTrackAt (*track, range.start, project.bpm);
+                    splitTrackAt (*track, range.end, project.bpm);
+                    track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(),
+                                                        [&] (const Part& part) { return inside (part, range.start, range.end); }),
+                                        track->parts.end());
+                }
+        pasteRange (clip, newStart, newFirstTrackId, false);   // (one undo step: pasteRange's)
+    }
+
+    void Studio::duplicateRange (const Range& range)
+    {
+        if (! range.isEmpty())
+            pasteRange (copyRange (range), range.end, range.trackIds.front(), false);
+    }
+
     void Studio::setNotes (int trackId, int index, std::vector<Note> notes)
     {
         auto* track = project.findTrack (trackId);

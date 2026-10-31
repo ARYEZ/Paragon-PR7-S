@@ -35,7 +35,10 @@
 // arrangement, or in the key editor after a click in it (the manual's keys;
 // each has its own Auto-Scroll, as in the manual). The arrangement's tools:
 // 1 and 3 to 9 (the key editor's own 1, 5 and 8 after a click in it), F9 /
-// F10 the previous / next; Alt+X splits at the playhead.
+// F10 the previous / next; Alt+X splits at the playhead. With a range (RANGE,
+// 2): Shift+X, Delete, Shift+Backspace, Ctrl+X / C, Ctrl+Shift+X, Ctrl+D,
+// Ctrl+Shift+E, Esc; Ctrl+V / Ctrl+Shift+V paste a range's contents if that
+// was copied last (else the key editor's notes).
 // Scroll bars across and down the arrangement. Drag the line above the
 // lower zone to make it taller or shorter (remembered for each of the two).
 // After a click in the key editor its keys go to it (Delete removes notes,
@@ -159,6 +162,7 @@ private:
     KeyEditor keyEditor;
     MixerView mixer;
     bool keysToEditor = false;
+    bool rangeCopiedLast = false;   // Ctrl+V: a range's contents (in the arrangement), else notes (the key editor)
     juce::ScrollBar arrangeAcross { false }, arrangeDown { true };
     std::unique_ptr<ZoneDivider> zoneDivider;
 

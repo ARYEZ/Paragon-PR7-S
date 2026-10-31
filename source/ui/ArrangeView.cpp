@@ -25,6 +25,14 @@ ArrangeView::~ArrangeView()
 
 void ArrangeView::changeListenerCallback (juce::ChangeBroadcaster*)
 {
+    // A range keeps only the tracks still there.
+    if (range)
+    {
+        auto& ids = range->trackIds;
+        ids.erase (std::remove_if (ids.begin(), ids.end(), [this] (int id) { return studio.getProject().findTrack (id) == nullptr; }), ids.end());
+        if (ids.empty())
+            range.reset();
+    }
     // A part may have gone (undo, delete): drop a selection that no longer exists.
     if (selection.isValid())
     {
@@ -395,6 +403,8 @@ void ArrangeView::paint (juce::Graphics& g)
                            part, project.tracks[t].colour, false, true);
             }
 
+    paintRange (g);
+
     // The tools: the part being drawn, MUTE's rectangle, ZOOM's stretch; SPLIT's cut under the mouse.
     if (! toolBand.isEmpty())
     {
@@ -629,7 +639,7 @@ void ArrangeView::updateCursor (const juce::MouseEvent& event)
         const auto overParts = event.position.y >= (float) Timeline::rulerHeight;
         setMouseCursor (! overParts ? juce::MouseCursor::NormalCursor
                         : tool == Tool::split ? juce::MouseCursor::IBeamCursor
-                        : tool == Tool::draw || tool == Tool::zoom ? juce::MouseCursor::CrosshairCursor
+                        : tool == Tool::draw || tool == Tool::zoom || tool == Tool::range ? juce::MouseCursor::CrosshairCursor
                                                                    : juce::MouseCursor::PointingHandCursor);
         return;
     }
@@ -731,6 +741,11 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
     if (drag == Drag::points || drag == Drag::band || drag == Drag::draw)
     {
         automationDrag (event);
+        return;
+    }
+    if (drag == Drag::rangeNew || drag == Drag::rangeStart || drag == Drag::rangeEnd || drag == Drag::rangeMove)
+    {
+        rangeDrag (event);
         return;
     }
     if (drag == Drag::newPart || drag == Drag::muteBand || drag == Drag::zoomBand)
@@ -849,6 +864,10 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
         case Drag::muteBand:
         case Drag::zoomBand:
         case Drag::play:
+        case Drag::rangeNew:
+        case Drag::rangeStart:
+        case Drag::rangeEnd:
+        case Drag::rangeMove:
         case Drag::none:
             break;
     }
@@ -864,6 +883,11 @@ void ArrangeView::mouseUp (const juce::MouseEvent& event)
     if (drag == Drag::newPart || drag == Drag::muteBand || drag == Drag::zoomBand || drag == Drag::play)
     {
         toolUp (event);
+        return;
+    }
+    if (drag == Drag::rangeNew || drag == Drag::rangeStart || drag == Drag::rangeEnd || drag == Drag::rangeMove)
+    {
+        rangeUp (event);
         return;
     }
     const auto finished = drag;
@@ -918,6 +942,10 @@ void ArrangeView::mouseUp (const juce::MouseEvent& event)
         case Drag::muteBand:
         case Drag::zoomBand:
         case Drag::play:
+        case Drag::rangeNew:
+        case Drag::rangeStart:
+        case Drag::rangeEnd:
+        case Drag::rangeMove:
         case Drag::none:
             break;
     }
@@ -930,6 +958,7 @@ const char* ArrangeView::toolName (Tool t)
     switch (t)
     {
         case Tool::select: return "SELECT";
+        case Tool::range:  return "RANGE";
         case Tool::split:  return "SPLIT";
         case Tool::glue:   return "GLUE";
         case Tool::erase:  return "ERASE";
@@ -946,6 +975,7 @@ int ArrangeView::toolKey (Tool t)
     switch (t)
     {
         case Tool::select: return 1;
+        case Tool::range:  return 2;
         case Tool::split:  return 3;
         case Tool::glue:   return 4;
         case Tool::erase:  return 5;
@@ -1021,6 +1051,8 @@ bool ArrangeView::toolDown (const juce::MouseEvent& event)
                 return true;
             }
             return false;
+        case Tool::range:
+            return rangeDown (event);
         case Tool::split:
             if (hit)
             {
@@ -1151,6 +1183,8 @@ void ArrangeView::toolUp (const juce::MouseEvent& event)
 
 void ArrangeView::mouseDoubleClick (const juce::MouseEvent& event)
 {
+    if (tool == Tool::range && rangeDoubleClick (event))
+        return;
     if (event.position.y < (float) Timeline::rulerHeight || trackAtY (event.position.y) == 0)
         return;   // (the ruler, an automation lane, the master's row)
     if (const auto hit = partAt (event.position))
@@ -1640,6 +1674,7 @@ ArrangeTools::ArrangeTools (ArrangeView& arrangeToUse) : arrange (arrangeToUse)
 {
     static const char* const tips[] = {
         "SELECT (1): select, move (Alt: copy) and resize parts; Alt-click splits a part there; Alt-drag on an empty instrument track draws a part",
+        "RANGE (2): drag across the tracks to select a stretch of time; then Delete, Ctrl+X / C / V, Shift+X (split at its edges), drag to move what's in it (Alt: copy), right-click for more",
         "SPLIT (3): click a part to cut it there (on the grid; Ctrl: anywhere); Alt-click: into equal pieces that long",
         "GLUE (4): click a part to join it to the next one on its track; Alt-click: to all after it",
         "ERASE (5): click a part to delete it; Alt-click: it and all after it on its track",
@@ -1690,4 +1725,286 @@ void ArrangeTools::resized()
         button.setBounds (area.removeFromLeft (70));
         area.removeFromLeft (4);
     }
+}
+
+//==============================================================================
+int ArrangeView::trackIndex (int trackId) const
+{
+    const auto& tracks = studio.getProject().tracks;
+    for (int i = 0; i < (int) tracks.size(); ++i)
+        if (tracks[(size_t) i].id == trackId)
+            return i;
+    return -1;
+}
+
+std::vector<int> ArrangeView::tracksBetween (int fromIndex, int toIndex) const
+{
+    const auto& tracks = studio.getProject().tracks;
+    std::vector<int> ids;
+    for (int i = juce::jmin (fromIndex, toIndex); i <= juce::jmax (fromIndex, toIndex); ++i)
+        if (juce::isPositiveAndBelow (i, (int) tracks.size()))
+            ids.push_back (tracks[(size_t) i].id);
+    return ids;
+}
+
+double ArrangeView::rangeBeat (const juce::MouseEvent& event) const
+{
+    const auto beat = juce::jmax (0.0, timeline.beatForX (event.position.x));
+    return event.mods.isCommandDown() ? beat : pr7s::snap (beat, timeline.grid (studio.getProject()));
+}
+
+void ArrangeView::setRange (std::optional<pr7s::Studio::Range> newRange)
+{
+    if (newRange && newRange->isEmpty())
+        newRange.reset();
+    range = std::move (newRange);
+    repaint();
+}
+
+bool ArrangeView::rangeDown (const juce::MouseEvent& event)
+{
+    const auto trackId = trackAtY (event.position.y);
+    if (event.mods.isPopupMenu())
+    {
+        const auto beat = timeline.beatForX (event.position.x);
+        if (range && beat >= range->start && beat <= range->end
+            && std::find (range->trackIds.begin(), range->trackIds.end(), trackId) != range->trackIds.end())
+        {
+            showRangeMenu();
+            return true;
+        }
+        return false;   // the part's menu
+    }
+    if (trackId == 0)
+    {
+        setRange (std::nullopt);   // (the master's row)
+        return true;
+    }
+    const auto beat = rangeBeat (event);
+    const auto index = trackIndex (trackId);
+    rangeAnchor = beat;
+    rangeAnchorTrack = index;
+    dragMoved = false;
+    if (range)
+    {
+        rangeBefore = *range;
+        const auto x = event.position.x;
+        const auto onTrack = std::find (range->trackIds.begin(), range->trackIds.end(), trackId) != range->trackIds.end();
+        const auto startX = timeline.xForBeat (range->start), endX = timeline.xForBeat (range->end);
+        if (onTrack && std::abs (x - startX) <= 5.0f)   { drag = Drag::rangeStart; return true; }
+        if (onTrack && std::abs (x - endX) <= 5.0f)     { drag = Drag::rangeEnd; return true; }
+        const auto within = onTrack && x > startX && x < endX;
+        if (within && ! event.mods.isShiftDown())
+        {
+            // Its contents, dragged (Alt: copied).
+            drag = Drag::rangeMove;
+            rangeAnchor = timeline.beatForX (event.position.x);
+            rangeMoveStart = range->start;
+            rangeMoveTrack = trackIndex (range->trackIds.front());
+            return true;
+        }
+        if (! within && event.mods.isShiftDown())
+        {
+            // Shift outside it: it grows (or shrinks) to here, tracks and all.
+            const auto top = juce::jmin (index, trackIndex (range->trackIds.front()));
+            const auto bottom = juce::jmax (index, trackIndex (range->trackIds.back()));
+            range->trackIds = tracksBetween (top, bottom);
+            const auto toStart = std::abs (beat - range->start) < std::abs (beat - range->end);
+            (toStart ? range->start : range->end) = beat;
+            if (range->end < range->start)
+                std::swap (range->start, range->end);
+            rangeBefore = *range;
+            drag = toStart ? Drag::rangeStart : Drag::rangeEnd;
+            repaint();
+            return true;
+        }
+    }
+    // A new one from here (a click alone clears it).
+    range = pr7s::Studio::Range { beat, beat, { trackId } };
+    rangeBefore = *range;
+    drag = Drag::rangeNew;
+    studio.selectTrack (trackId);
+    repaint();
+    return true;
+}
+
+void ArrangeView::rangeDrag (const juce::MouseEvent& event)
+{
+    if (event.getDistanceFromDragStart() > 3)
+        dragMoved = true;
+    if (! range)
+        return;
+    const auto beat = rangeBeat (event);
+    const auto overTrack = trackAtY (event.position.y);
+    const auto overIndex = overTrack != 0 ? trackIndex (overTrack) : -1;
+    switch (drag)
+    {
+        case Drag::rangeNew:
+            range->start = juce::jmin (rangeAnchor, beat);
+            range->end = juce::jmax (rangeAnchor, beat);
+            if (overIndex >= 0)
+                range->trackIds = tracksBetween (rangeAnchorTrack, overIndex);
+            break;
+        case Drag::rangeStart:
+        case Drag::rangeEnd:
+        {
+            // An edge (past the other one, they swap).
+            const auto other = drag == Drag::rangeStart ? rangeBefore.end : rangeBefore.start;
+            range->start = juce::jmin (other, beat);
+            range->end = juce::jmax (other, beat);
+            break;
+        }
+        case Drag::rangeMove:
+        {
+            const auto grid = event.mods.isCommandDown() ? 0.0 : timeline.grid (studio.getProject());
+            rangeMoveStart = juce::jmax (0.0, pr7s::snap (rangeBefore.start + timeline.beatForX (event.position.x) - rangeAnchor, grid));
+            const auto count = (int) studio.getProject().tracks.size();
+            const auto span = (int) rangeBefore.trackIds.size();
+            const auto first = trackIndex (rangeBefore.trackIds.front());
+            rangeMoveTrack = overIndex >= 0 ? juce::jlimit (0, juce::jmax (0, count - span), first + overIndex - rangeAnchorTrack) : first;
+            break;
+        }
+        default:
+            break;
+    }
+    repaint();
+}
+
+void ArrangeView::rangeUp (const juce::MouseEvent& event)
+{
+    const auto finished = drag;
+    drag = Drag::none;
+    if (! range)
+        return;
+    if (finished == Drag::rangeNew && (! dragMoved || range->end - range->start < 1.0e-9))
+    {
+        setRange (std::nullopt);   // a click: no range
+        return;
+    }
+    if (finished == Drag::rangeMove)
+    {
+        const auto first = trackIndex (rangeBefore.trackIds.front());
+        if (dragMoved && (std::abs (rangeMoveStart - rangeBefore.start) > 1.0e-9 || rangeMoveTrack != first))
+        {
+            const auto& tracks = studio.getProject().tracks;
+            const auto newFirst = tracks[(size_t) juce::jlimit (0, (int) tracks.size() - 1, rangeMoveTrack)].id;
+            studio.moveRange (rangeBefore, rangeMoveStart, newFirst, event.mods.isAltDown());
+            // The range goes with what it held.
+            range = pr7s::Studio::Range { rangeMoveStart, rangeMoveStart + rangeBefore.length(),
+                                          tracksBetween (rangeMoveTrack, rangeMoveTrack + (int) rangeBefore.trackIds.size() - 1) };
+        }
+    }
+    setRange (range);
+}
+
+bool ArrangeView::rangeDoubleClick (const juce::MouseEvent& event)
+{
+    const auto trackId = trackAtY (event.position.y);
+    const auto* track = studio.getProject().findTrack (trackId);
+    if (track == nullptr)
+        return false;
+    // On a part: a range over it; between parts: over the gap.
+    if (const auto hit = partAt (event.position))
+    {
+        const auto& part = track->parts[(size_t) hit->second];
+        setRange (pr7s::Studio::Range { part.start, part.end(), { trackId } });
+        return true;
+    }
+    const auto at = timeline.beatForX (event.position.x);
+    auto before = 0.0, after = -1.0;
+    for (const auto& part : track->parts)
+    {
+        if (part.end() <= at)
+            before = juce::jmax (before, part.end());
+        if (part.start >= at && (after < 0.0 || part.start < after))
+            after = part.start;
+    }
+    if (after > before)
+        setRange (pr7s::Studio::Range { before, after, { trackId } });
+    return true;
+}
+
+void ArrangeView::rangeCommand (RangeCommand command)
+{
+    using C = RangeCommand;
+    if (command == C::paste || command == C::pasteTime)
+    {
+        // At the playhead, on the selected track down (or the range's first track).
+        if (rangeClip.isEmpty())
+            return;
+        auto first = studio.getSelectedTrack();
+        if (studio.getProject().findTrack (first) == nullptr)
+            first = range ? range->trackIds.front() : (studio.getProject().tracks.empty() ? 0 : studio.getProject().tracks.front().id);
+        studio.pasteRange (rangeClip, studio.getEngine().getPosition(), first, command == C::pasteTime);
+        return;
+    }
+    if (! range)
+        return;
+    const auto r = *range;
+    switch (command)
+    {
+        case C::split:          studio.splitRange (r); break;
+        case C::crop:           studio.cropRange (r); break;
+        case C::deleteContents: studio.deleteRange (r, false); break;
+        case C::deleteTime:     studio.deleteRange (r, true); break;
+        case C::cut:            rangeClip = studio.cutRange (r, false); break;
+        case C::cutTime:        rangeClip = studio.cutRange (r, true); break;
+        case C::copy:           rangeClip = studio.copyRange (r); break;
+        case C::insertSilence:  studio.insertSilence (r); break;
+        case C::duplicate:      studio.duplicateRange (r); break;
+        case C::paste:
+        case C::pasteTime:      break;
+    }
+    repaint();
+}
+
+void ArrangeView::showRangeMenu()
+{
+    using C = RangeCommand;
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("RANGE");
+    menu.addItem (1, "Split at its edges (Shift+X)");
+    menu.addItem (2, "Crop to it");
+    menu.addSeparator();
+    menu.addItem (3, "Cut (Ctrl+X)");
+    menu.addItem (4, "Copy (Ctrl+C)");
+    menu.addItem (5, "Paste at the playhead (Ctrl+V)", hasRangeClip());
+    menu.addItem (6, "Delete (Delete)");
+    menu.addItem (7, "Duplicate (Ctrl+D)");
+    menu.addSeparator();
+    menu.addItem (8, "Cut Time (Ctrl+Shift+X)");
+    menu.addItem (9, "Delete Time (Shift+Backspace)");
+    menu.addItem (10, "Paste Time (Ctrl+Shift+V)", hasRangeClip());
+    menu.addItem (11, "Insert Silence (Ctrl+Shift+E)");
+    menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ArrangeView> (this)] (int chosen)
+    {
+        static const C commands[] = { C::split, C::crop, C::cut, C::copy, C::paste, C::deleteContents, C::duplicate,
+                                      C::cutTime, C::deleteTime, C::pasteTime, C::insertSilence };
+        if (safe != nullptr && chosen >= 1 && chosen <= (int) std::size (commands))
+            safe->rangeCommand (commands[chosen - 1]);
+    });
+}
+
+void ArrangeView::paintRange (juce::Graphics& g) const
+{
+    if (! range)
+        return;
+    const auto paintSpan = [&] (double start, double end, const std::vector<int>& ids, bool ghost)
+    {
+        const auto x1 = timeline.xForBeat (start), x2 = timeline.xForBeat (end);
+        for (const auto id : ids)
+        {
+            const auto top = trackTop (id);
+            const juce::Rectangle<float> area (x1, top, x2 - x1, (float) timeline.trackRowHeight());
+            g.setColour (juce::Colours::white.withAlpha (ghost ? 0.08f : 0.16f));
+            g.fillRect (area);
+            g.setColour (ParagonColours::accent.withAlpha (ghost ? 0.5f : 0.9f));
+            g.fillRect (area.withWidth (1.5f));
+            g.fillRect (area.withX (area.getRight() - 1.5f).withWidth (1.5f));
+        }
+    };
+    paintSpan (range->start, range->end, range->trackIds, false);
+    if (drag == Drag::rangeMove && dragMoved)
+        paintSpan (rangeMoveStart, rangeMoveStart + rangeBefore.length(),
+                   tracksBetween (rangeMoveTrack, rangeMoveTrack + (int) rangeBefore.trackIds.size() - 1), true);
 }

@@ -118,6 +118,41 @@ namespace pr7s
         void setPartsMuted (const std::vector<int>& partIds, bool muted);   // several at once (one step)
         // The Erase tool with Alt: the part and all after it on its track.
         void deletePartsFrom (int trackId, int index);
+
+        // Range Selection (the manual's Range Editing): a stretch of time
+        // across some tracks, independent of the parts. Whatever a range
+        // edit touches is cut at its edges first (a note across an edge is
+        // split, as Split does), so only what's inside is affected. Each one
+        // undo step. FX and group channels (no parts) are passed over.
+        struct Range
+        {
+            double start = 0.0, end = 0.0;   // beats
+            std::vector<int> trackIds;       // top to bottom
+            double length() const noexcept { return end - start; }
+            bool isEmpty() const noexcept { return end <= start || trackIds.empty(); }
+        };
+        // What Copy or Cut keep: each track's slices, from the range's start.
+        struct RangeClip
+        {
+            double length = 0.0, origin = 0.0;    // its length; where it came from (Paste at Origin)
+            int originTrack = 0;                  // the first track it came from
+            std::vector<std::vector<Part>> tracks;   // per track of the range, top to bottom
+            bool isEmpty() const noexcept { return tracks.empty(); }
+        };
+        void splitRange (const Range&);                        // Shift+X: parts split at its edges
+        void cropRange (const Range&);                         // parts across its edges cut down to it
+        void deleteRange (const Range&, bool closeGap);        // Delete; Delete Time (Shift+Backspace): what's after moves back
+        RangeClip copyRange (const Range&) const;              // Ctrl+C
+        RangeClip cutRange (const Range&, bool closeGap);      // Ctrl+X; Cut Time (Ctrl+Shift+X)
+        void insertSilence (const Range&);                     // Ctrl+Shift+E: what's at or after its start moves on by its length
+        // Paste (Ctrl+V): at a beat, from a track down (a clip's tracks onto
+        // the tracks below it in order; audio only onto audio tracks, MIDI
+        // onto instrument tracks, else that track's slices are left out).
+        // `insertTime` (Paste Time, Ctrl+Shift+V) makes room first.
+        void pasteRange (const RangeClip&, double atBeat, int firstTrackId, bool insertTime);
+        // Its contents dragged to a new start and first track (Alt: copied); Duplicate (Ctrl+D): copied straight after it.
+        void moveRange (const Range&, double newStart, int newFirstTrackId, bool copy);
+        void duplicateRange (const Range&);
         // A part's notes, replaced (the key editor's every edit: one undo step each).
         // Kept in the order given, so the editor's selection still points at the same notes.
         void setNotes (int trackId, int index, std::vector<Note>);

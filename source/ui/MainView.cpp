@@ -420,13 +420,49 @@ bool MainView::keyPressed (const juce::KeyPress& key)
     }
     if (key == juce::KeyPress::escapeKey && arrange.cancelDrag())
         return true;
+    // Range Selection's keys (the manual's), unless the last click was in the key editor.
+    if (! (isKeyEditorOpen() && keysToEditor))
+    {
+        using C = ArrangeView::RangeCommand;
+        const auto cmd = mods.isCommandDown(), shift = mods.isShiftDown();
+        const auto code = key.getKeyCode();
+        std::optional<C> command;
+        if (arrange.hasRange())
+        {
+            if (code == juce::KeyPress::escapeKey && ! mods.isAnyModifierKeyDown())
+            {
+                arrange.setRange (std::nullopt);
+                return true;
+            }
+            if (! cmd && shift && ! mods.isAltDown() && letter == 'X')                    command = C::split;
+            else if (cmd && letter == 'X')                                                command = shift ? C::cutTime : C::cut;
+            else if (cmd && ! shift && letter == 'C')                                     command = C::copy;
+            else if (cmd && letter == 'D')                                                command = C::duplicate;
+            else if (cmd && shift && letter == 'E')                                       command = C::insertSilence;
+            else if (! cmd && (code == juce::KeyPress::deleteKey || code == juce::KeyPress::backspaceKey))
+                command = shift ? C::deleteTime : C::deleteContents;
+        }
+        if (cmd && letter == 'V' && rangeCopiedLast && arrange.hasRangeClip())
+            command = shift ? C::pasteTime : C::paste;
+        if (command)
+        {
+            if (*command == C::cut || *command == C::cutTime || *command == C::copy)
+                rangeCopiedLast = true;
+            arrange.rangeCommand (*command);
+            return true;
+        }
+    }
     // Copy, cut, paste and select all are the editor's wherever the last click
     // was (the arrangement has none of its own yet), so notes copied in one
     // part paste into another just selected in the arrangement.
     const auto editorsAnyway = (mods.isCommandDown() && (letter == 'C' || letter == 'X' || letter == 'V'))
                             || (! mods.isCommandDown() && mods.isShiftDown() && letter == 'A');
     if (isKeyEditorOpen() && editorsAnyway && keyEditor.keyPressed (key))
+    {
+        if (letter == 'C' || letter == 'X')
+            rangeCopiedLast = false;   // notes copied: Ctrl+V pastes them
         return true;
+    }
     // Ctrl+D duplicates the notes after a click in the editor, the part otherwise.
     if (isKeyEditorOpen() && keysToEditor && mods.isCommandDown() && letter == 'D' && keyEditor.keyPressed (key))
         return true;

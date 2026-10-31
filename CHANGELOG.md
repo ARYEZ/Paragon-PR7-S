@@ -2,6 +2,26 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.8.1
+
+The Range Selection tool: select a stretch of time across tracks, whatever the parts, and cut, copy, move or delete what's in it, as the Cubase 15 manual's Range Editing chapter describes.
+
+- **RANGE (2)** in the TOOLS row. **Drag** across the tracks to select a range: a stretch of time on the tracks you drag over (snapped to the grid; Ctrl for anywhere). It's shaded, with orange edges.
+  - **Double-click a part** for a range over it, or **between parts** for the gap.
+  - **Drag its edges** to change it; **Shift-drag** outside it to stretch it there (and to that track).
+  - **Drag inside it** to move what's in it somewhere else, on these tracks or others (**Alt-drag** copies it). The range goes with it.
+  - **Right-click it** for its menu. **Esc**, or a click elsewhere with RANGE, clears it. Choosing another tool keeps it.
+- **What you can do with it** (the manual's keys):
+  - **Shift+X:** split the parts at its edges.
+  - **Delete:** remove what's in it, leaving the gap. **Shift+Backspace (Delete Time):** remove it and close the gap (everything after moves back).
+  - **Ctrl+X / Ctrl+C:** cut / copy what's in it. **Ctrl+V:** paste at the playhead, on the selected track and the ones below it. **Ctrl+Shift+X (Cut Time)** closes the gap; **Ctrl+Shift+V (Paste Time)** makes room first.
+  - **Ctrl+D:** duplicate it straight after itself. **Ctrl+Shift+E (Insert Silence):** everything from its start moves on by its length.
+  - **Crop** (in its menu): parts crossing its edges are cut down to it.
+- **Parts crossing its edges** are cut there first, so only what's inside is touched (a note across an edge is split in two, as SPLIT does).
+- **Ctrl+C / X / V** go to the range, or to the key editor's notes after a click in the editor; Ctrl+V pastes whichever you copied last.
+- **Each edit is one undo step.**
+- **Not there yet:** automation points in a range (Delete Time and Insert Silence move the parts, not the automation under them); adding or leaving out single tracks with Ctrl-click; the Range Start / End boxes of the manual's info line; snapping to zero crossings. Ask when you want them.
+
 ## 0.8.0
 
 Editing tools for the arrangement, with the Cubase 15 manual's keys: cut, join, mute, erase and draw parts.
