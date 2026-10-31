@@ -13,9 +13,19 @@ namespace Windows
         class SettingsContent final : public juce::Component
         {
         public:
-            explicit SettingsContent (pr7s::Studio& studio)
-                : devices (studio.getDeviceManager(), 0, 8, 0, 2, true, false, true, false)
+            SettingsContent (pr7s::Studio& studio, std::function<void()> toggleSpanToUse, std::function<bool()> isSpanningToUse)
+                : devices (studio.getDeviceManager(), 0, 8, 0, 2, true, false, true, false),
+                  toggleSpan (std::move (toggleSpanToUse)), isSpanning (std::move (isSpanningToUse))
             {
+                span.setTooltip ("The studio's window across all your screens (again: back on one). It opens where you left it next time.");
+                span.onClick = [this]
+                {
+                    if (toggleSpan)
+                        toggleSpan();
+                    refreshSpan();
+                };
+                refreshSpan();
+                addAndMakeVisible (span);
                 addAndMakeVisible (devices);
                 finishLabel.setText ("FINISH", juce::dontSendNotification);
                 finishLabel.setFont (juce::FontOptions (12.0f, juce::Font::bold));
@@ -42,16 +52,26 @@ namespace Windows
                 auto finishRow = bottom.removeFromTop (28);
                 finishLabel.setBounds (finishRow.removeFromLeft (120));
                 finish.setBounds (finishRow.removeFromLeft (220));
+                finishRow.removeFromLeft (16);
+                span.setBounds (finishRow.removeFromLeft (180));
                 note.setBounds (bottom.withTrimmedTop (8));
                 devices.setBounds (area);
             }
 
             void paint (juce::Graphics& g) override { g.fillAll (windowColour); }
 
+            void refreshSpan()
+            {
+                span.setButtonText (isSpanning && isSpanning() ? "BACK TO ONE SCREEN" : "SPAN ALL SCREENS");
+            }
+
         private:
             juce::AudioDeviceSelectorComponent devices;
             juce::Label finishLabel, note;
             juce::ComboBox finish;
+            juce::TextButton span;
+            std::function<void()> toggleSpan;
+            std::function<bool()> isSpanning;
         };
     }
 
@@ -266,11 +286,39 @@ namespace Windows
             onClose();
     }
 
-    Settings::Settings (pr7s::Studio& studio)
+    juce::Rectangle<int> spanOf (const juce::Array<juce::Rectangle<int>>& screens)
+    {
+        if (screens.isEmpty())
+            return {};
+        auto all = screens.getFirst();
+        auto left = all.getX(), right = all.getRight(), top = all.getY(), bottom = all.getBottom();
+        for (const auto& screen : screens)
+        {
+            all = all.getUnion (screen);
+            left = juce::jmin (left, screen.getX());
+            right = juce::jmax (right, screen.getRight());
+            top = juce::jmax (top, screen.getY());
+            bottom = juce::jmin (bottom, screen.getBottom());
+        }
+        // Side by side: the strip they share. Stacked (no height in common): the box round them.
+        if (bottom - top < 300)
+            return all;
+        return { left, top, right - left, bottom - top };
+    }
+
+    juce::Rectangle<int> allScreensArea()
+    {
+        juce::Array<juce::Rectangle<int>> screens;
+        for (const auto& display : juce::Desktop::getInstance().getDisplays().displays)
+            screens.add (display.userBounds.toNearestInt());
+        return spanOf (screens);
+    }
+
+    Settings::Settings (pr7s::Studio& studio, std::function<void()> toggleSpan, std::function<bool()> isSpanning)
         : DocumentWindow ("Paragon PR7-S: Settings", windowColour, DocumentWindow::closeButton)
     {
         setUsingNativeTitleBar (true);
-        setContentOwned (new SettingsContent (studio), true);
+        setContentOwned (new SettingsContent (studio, std::move (toggleSpan), std::move (isSpanning)), true);
         centreWithSize (getWidth(), getHeight());
         setVisible (true);
     }

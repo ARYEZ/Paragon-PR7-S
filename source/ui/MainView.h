@@ -78,6 +78,11 @@ public:
 
     void openInstrumentWindow (int trackId);
     void openSettings();
+    // SPAN ALL SCREENS (in SETTINGS): the window across every screen (Windows'
+    // maximize fills only one); again, back where it was. The window opens
+    // where it was left next time (Main.cpp keeps its place).
+    void toggleSpanAllScreens();
+    bool isSpanningAllScreens() const;
     void openPlugins();
 
     void openEffectWindow (int busId, int slot);

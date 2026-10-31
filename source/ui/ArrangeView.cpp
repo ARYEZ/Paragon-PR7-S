@@ -454,6 +454,15 @@ void ArrangeView::paint (juce::Graphics& g)
             g.setColour (ParagonColours::accent.withAlpha (0.3f));
             g.fillRoundedRectangle (strip.expanded (2.0f), 3.0f);
         }
+        // The locators' handles: a flag at each end, pointing in.
+        g.setColour (ParagonColours::metalLight);
+        for (const auto [x, inward] : { std::pair<float, float> { x1, 1.0f }, std::pair<float, float> { x2, -1.0f } })
+        {
+            g.fillRect (juce::Rectangle<float> (x - 1.0f, 1.0f, 2.0f, (float) Timeline::cycleStripHeight - 1.0f));
+            juce::Path flag;
+            flag.addTriangle (x, 1.0f, x + inward * 7.0f, 1.0f + 4.5f, x, 10.0f);
+            g.fillPath (flag);
+        }
     }
     // Bar numbers every bar if there's room, else every 2, 4, 8...
     auto every = 1;
@@ -629,6 +638,17 @@ void ArrangeView::mouseMove (const juce::MouseEvent& event)
 
 void ArrangeView::updateCursor (const juce::MouseEvent& event)
 {
+    // The ruler's top strip: a locator's handle, or the range (a hand: drag to move it).
+    if (event.position.y < (float) Timeline::cycleStripHeight)
+    {
+        const auto& project = studio.getProject();
+        const auto x1 = timeline.xForBeat (project.loopStart), x2 = timeline.xForBeat (project.loopEnd);
+        const auto x = event.position.x;
+        setMouseCursor (std::abs (x - x1) <= 6.0f || std::abs (x - x2) <= 6.0f ? juce::MouseCursor::LeftRightResizeCursor
+                        : x > x1 && x < x2 ? juce::MouseCursor::DraggingHandCursor
+                                           : juce::MouseCursor::NormalCursor);
+        return;
+    }
     if (tool == Tool::split)
     {
         hover = partAt (event.position) ? event.position : juce::Point<float> { -1.0f, -1.0f };
@@ -680,6 +700,32 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
         dragStartBeat = juce::jmax (0.0, pr7s::snap (timeline.beatForX (event.position.x), grid));
         if (event.position.y < (float) Timeline::cycleStripHeight)
         {
+            // Ctrl-click: the left locator here; Alt-click: the right one;
+            // both: round the grid step clicked in (the manual's).
+            const auto ctrl = event.mods.isCommandDown(), alt = event.mods.isAltDown();
+            if (ctrl || alt)
+            {
+                drag = Drag::none;
+                if (ctrl && alt)
+                {
+                    const auto from = std::floor (timeline.beatForX (event.position.x) / grid + 1.0e-9) * grid;
+                    studio.setCycle (juce::jmax (0.0, from), juce::jmax (0.0, from) + grid);
+                }
+                else if (ctrl)
+                    studio.setCycle (juce::jmin (dragStartBeat, project.loopEnd), juce::jmax (dragStartBeat, project.loopEnd));
+                else
+                    studio.setCycle (juce::jmin (project.loopStart, dragStartBeat), juce::jmax (project.loopStart, dragStartBeat));
+                return;
+            }
+            // A locator's handle (either end): just that one moves.
+            const auto x1 = timeline.xForBeat (project.loopStart), x2 = timeline.xForBeat (project.loopEnd);
+            if (std::abs (event.position.x - x1) <= 6.0f || std::abs (event.position.x - x2) <= 6.0f)
+            {
+                drag = std::abs (event.position.x - x1) <= std::abs (event.position.x - x2) ? Drag::cycleLeft : Drag::cycleRight;
+                dragOriginalStart = project.loopStart;
+                dragOriginalLength = project.loopEnd - project.loopStart;
+                return;
+            }
             // Inside the locator range: a click turns the cycle on or off, a
             // drag moves the range; outside it, a drag sets a new one.
             const auto at = timeline.beatForX (event.position.x);
@@ -792,6 +838,17 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
                 dragMoved = true;
                 studio.setCycle (juce::jmin (dragStartBeat, now), juce::jmax (dragStartBeat, now));
             }
+            break;
+        }
+        case Drag::cycleLeft:
+        case Drag::cycleRight:
+        {
+            // One locator; past the other, they swap.
+            dragMoved = true;
+            const auto now = juce::jmax (0.0, pr7s::snap (beat, grid));
+            const auto other = drag == Drag::cycleLeft ? dragOriginalStart + dragOriginalLength : dragOriginalStart;
+            if (std::abs (now - other) > 1.0e-9)
+                studio.setCycle (juce::jmin (now, other), juce::jmax (now, other));
             break;
         }
         case Drag::cycleMove:
@@ -913,6 +970,8 @@ void ArrangeView::mouseUp (const juce::MouseEvent& event)
             studio.setCycleOn (true);
             break;
         case Drag::cycleMove:
+        case Drag::cycleLeft:
+        case Drag::cycleRight:
             break;
         case Drag::move:
             if (dragCopies)
@@ -2007,4 +2066,20 @@ void ArrangeView::paintRange (juce::Graphics& g) const
     if (drag == Drag::rangeMove && dragMoved)
         paintSpan (rangeMoveStart, rangeMoveStart + rangeBefore.length(),
                    tracksBetween (rangeMoveTrack, rangeMoveTrack + (int) rangeBefore.trackIds.size() - 1), true);
+}
+
+bool ArrangeView::locatorsToSelection()
+{
+    if (range)
+    {
+        studio.setCycle (range->start, range->end);
+        return true;
+    }
+    if (const auto* track = studio.getProject().findTrack (selection.trackId); track != nullptr && juce::isPositiveAndBelow (selection.index, (int) track->parts.size()))
+    {
+        const auto& part = track->parts[(size_t) selection.index];
+        studio.setCycle (part.start, part.end());
+        return true;
+    }
+    return false;
 }

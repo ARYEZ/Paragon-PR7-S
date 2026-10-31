@@ -1570,3 +1570,194 @@ TEST_CASE ("RANGE (2): drag a range across tracks; its edges; double-click; drag
         CHECK_FALSE (arrange.hasRange());
     }
 }
+
+TEST_CASE ("SPAN ALL SCREENS: across the screens side by side, as tall as they all are; stacked screens, the box round them", "[ui][window]")
+{
+    // Three 1920 x 1080 screens, the middle one's taskbar 40 high at the bottom, the right one a 1200-high screen.
+    using R = juce::Rectangle<int>;
+    const juce::Array<R> three { R (-1920, 0, 1920, 1080), R (0, 0, 1920, 1040), R (1920, -60, 1920, 1200) };
+    CHECK (Windows::spanOf (three) == juce::Rectangle<int> (-1920, 0, 5760, 1040));
+    const juce::Array<R> one { R (0, 0, 2560, 1400) };
+    CHECK (Windows::spanOf (one) == juce::Rectangle<int> (0, 0, 2560, 1400));
+    const juce::Array<R> stacked { R (0, 0, 1920, 1080), R (0, 1080, 1920, 1080) };
+    CHECK (Windows::spanOf (stacked) == juce::Rectangle<int> (0, 0, 1920, 2160));
+    CHECK (Windows::spanOf ({}).isEmpty());
+}
+
+TEST_CASE ("The locators: Ctrl-click the left, Alt-click the right, Ctrl+Alt-click both; drag one's handle; P, Alt+P; the number pad's 1 and 2", "[ui][locators]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto track = studio.getProject().tracks[0].id;
+    studio.addPart (track, { 8.0, 4.0, "Riff", {} });
+    studio.setCycle (4.0, 16.0);
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    const auto ppb = arrange.getPartBounds (track, 0).getWidth() / 4.0f;
+    const auto x = [&] (double beat) { return arrange.getPartBounds (track, 0).getX() + (float) (beat - 8.0) * ppb; };
+    const auto y = 6.0f;   // the ruler's top strip
+    const auto& project = studio.getProject();
+    const auto click = [&] (float atX, juce::ModifierKeys mods = {})
+    {
+        arrange.mouseDown (mouseAt (arrange, { atX, y }, { atX, y }, mods));
+        arrange.mouseUp (mouseAt (arrange, { atX, y }, { atX, y }, mods));
+    };
+    const auto cmd = juce::ModifierKeys (juce::ModifierKeys::commandModifier);
+    const auto alt = juce::ModifierKeys (juce::ModifierKeys::altModifier);
+
+    click (x (2.1), cmd);   // the left locator (snapped to the beat)
+    CHECK (project.loopStart == 2.0);
+    CHECK (project.loopEnd == 16.0);
+    click (x (20.0), alt);  // the right one
+    CHECK (project.loopEnd == 20.0);
+    click (x (24.0), cmd);  // the left past the right: they swap
+    CHECK (project.loopStart == 20.0);
+    CHECK (project.loopEnd == 24.0);
+    click (x (9.5), juce::ModifierKeys (juce::ModifierKeys::commandModifier | juce::ModifierKeys::altModifier));   // both: round the grid step clicked in (a beat at this zoom)
+    CHECK (project.loopStart == 9.0);
+    CHECK (project.loopEnd == 10.0);
+
+    // A locator's handle dragged: just that one.
+    studio.setCycle (4.0, 16.0);
+    const auto dragFrom = [&] (float fromX, float toX)
+    {
+        arrange.mouseDown (mouseAt (arrange, { fromX, y }, { fromX, y }));
+        for (int step = 1; step <= 4; ++step)
+            arrange.mouseDrag (mouseAt (arrange, { fromX + (toX - fromX) * (float) step / 4.0f, y }, { fromX, y }));
+        arrange.mouseUp (mouseAt (arrange, { toX, y }, { fromX, y }));
+    };
+    dragFrom (x (16.0), x (12.0));
+    CHECK (project.loopStart == 4.0);
+    CHECK (project.loopEnd == 12.0);
+    dragFrom (x (4.0), x (6.0));
+    CHECK (project.loopStart == 6.0);
+    CHECK (project.loopEnd == 12.0);
+
+    // P: the locators round the selected part; Alt+P: and round it it plays.
+    arrange.select (track, 0);
+    CHECK (view.keyPressed (juce::KeyPress ('p', {}, 'p')));
+    CHECK (project.loopStart == 8.0);
+    CHECK (project.loopEnd == 12.0);
+    studio.setCycleOn (false);
+    CHECK (view.keyPressed (juce::KeyPress ('p', alt, 'p')));
+    CHECK (project.loopOn);
+    CHECK (studio.getEngine().isPlaying());
+    studio.stop();
+
+    // The number pad: 1 / 2 to the locators; Ctrl: a locator to the playhead. (Not the tools, though the pad types 1 and 2 too.)
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::numberPad2, {}, '2')));
+    CHECK (studio.getEngine().getPosition() == 12.0);
+    CHECK (arrange.getTool() == ArrangeView::Tool::select);
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::numberPad1, {}, '1')));
+    CHECK (studio.getEngine().getPosition() == 8.0);
+    studio.setPosition (5.0);
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::numberPad1, cmd, 0)));
+    CHECK (project.loopStart == 5.0);
+    studio.setPosition (14.0);
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::numberPad2, cmd, 0)));
+    CHECK (project.loopEnd == 14.0);
+}
+
+TEST_CASE ("Tracks in the list: Ctrl / Shift-click to select several; drag rows to reorder (the mixer follows); Up / Down; double-click to add; Shift+Delete", "[ui][tracks]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto a = studio.getProject().tracks[0].id;
+    const auto b = studio.addTrack ({});
+    const auto c = studio.addTrack ({});
+    studio.addPart (b, { 0.0, 4.0, "B", {} });
+    studio.dispatchPendingMessages();
+    auto& list = view.getTrackList();
+    auto& arrange = view.getArrangeView();
+    const auto order = [&]
+    {
+        std::vector<int> ids;
+        for (const auto& track : studio.getProject().tracks)
+            ids.push_back (track.id);
+        return ids;
+    };
+    using Ids = std::vector<int>;
+    // A row: where it is in the list (its middle), from the arrangement's matching row.
+    const auto rowY = [&] (int id) { return arrange.trackTop (id) + (float) Timeline::trackHeight * 0.5f; };
+    const auto rowAt = [&] (int id) -> juce::Component*
+    {
+        for (auto* child : list.getChildren())
+            if (child->getBounds().toFloat().contains (20.0f, rowY (id)) && child->getHeight() == Timeline::trackHeight)
+                return child;
+        return nullptr;
+    };
+    const auto clickRow = [&] (int id, juce::ModifierKeys mods = {})
+    {
+        auto* row = rowAt (id);
+        REQUIRE (row != nullptr);
+        const juce::Point<float> at (20.0f, 8.0f);
+        row->mouseDown (mouseAt (*row, at, at, mods));
+        row->mouseUp (mouseAt (*row, at, at, mods));
+    };
+
+    clickRow (a);
+    clickRow (c, juce::ModifierKeys::commandModifier);
+    CHECK (studio.getSelectedTracks() == Ids { a, c });
+    clickRow (b, juce::ModifierKeys::shiftModifier);   // the run from c (clicked last) to b
+    CHECK (studio.getSelectedTracks() == Ids { a, b, c });
+    clickRow (b);   // a plain click on one of several: it alone
+    CHECK (studio.getSelectedTracks() == Ids { b });
+
+    // Dragged below c: the drop line, then the order (the mixer's strips too).
+    {
+        auto* row = rowAt (b);
+        REQUIRE (row != nullptr);
+        const juce::Point<float> from (20.0f, 8.0f);
+        const auto to = juce::Point<float> (20.0f, rowY (c) - (float) row->getY() + 30.0f);   // past c's middle
+        row->mouseDown (mouseAt (*row, from, from));
+        row->mouseDrag (mouseAt (*row, from + (to - from) * 0.5f, from));
+        row->mouseDrag (mouseAt (*row, to, from));
+        CHECK (list.getDropIndex() == 3);
+        row->mouseUp (mouseAt (*row, to, from));
+    }
+    CHECK (order() == Ids { a, c, b });
+    studio.dispatchPendingMessages();
+    CHECK (view.getMixer().getStrip (1).getBusId() == c);
+    CHECK (view.getMixer().getStrip (2).getBusId() == b);
+    studio.undo();
+    CHECK (order() == Ids { a, b, c });
+
+    // Up / Down: the track above / below (and its first part, if a part was selected).
+    studio.selectTrack (a);
+    arrange.select (a, -1);
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::downKey)));
+    CHECK (studio.getSelectedTrack() == b);
+    studio.addPart (c, { 12.0, 4.0, "C later", {} });
+    studio.addPart (c, { 8.0, 4.0, "C first", {} });
+    arrange.select (b, 0);
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::downKey)));
+    CHECK (studio.getSelectedTrack() == c);
+    CHECK (arrange.getSelection().trackId == c);   // its first part (by where it starts)
+    CHECK (arrange.getSelection().index == 1);
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::upKey)));
+    CHECK (studio.getSelectedTrack() == b);
+    CHECK (arrange.getSelection().index == 0);
+
+    // A double-click under the tracks: a new one like the selected (an instrument track here).
+    const auto before = studio.getProject().tracks.size();
+    list.mouseDoubleClick (mouseAt (list, { 100.0f, (float) list.getHeight() - 100.0f }, { 100.0f, (float) list.getHeight() - 100.0f }, {}, 2));
+    CHECK (studio.getProject().tracks.size() == before + 1);
+    const auto added = studio.getSelectedTrack();
+
+    // Shift+Delete: the selected tracks (empty ones straight away).
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::deleteKey, juce::ModifierKeys::shiftModifier, 0)));
+    CHECK (studio.getProject().findTrack (added) == nullptr);
+
+    // Moving by the menu's actions: to the top, down one.
+    studio.selectTrack (c);
+    list.moveSelectedTracks (TrackList::MoveTo::first);
+    CHECK (order() == Ids { c, a, b });
+    list.moveSelectedTracks (TrackList::MoveTo::next);
+    CHECK (order() == Ids { a, c, b });
+    list.moveSelectedTracks (TrackList::MoveTo::last);
+    CHECK (order() == Ids { a, b, c });
+}

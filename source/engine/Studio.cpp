@@ -193,6 +193,16 @@ namespace pr7s
                 track.sendsBypass = then->sendsBypass;
             }
         restoreLanes (project.masterAutomation, state.masterAutomation);
+        // The tracks' order as it was (tracks added since keep their places after them).
+        const auto placeIn = [&state] (int id)
+        {
+            for (int i = 0; i < (int) state.tracks.size(); ++i)
+                if (state.tracks[(size_t) i].id == id)
+                    return i;
+            return (int) state.tracks.size();
+        };
+        std::stable_sort (project.tracks.begin(), project.tracks.end(),
+                          [&] (const Track& a, const Track& b) { return placeIn (a.id) < placeIn (b.id); });
         changed (false);
     }
 
@@ -418,9 +428,187 @@ namespace pr7s
                 while (! track.sends.empty() && track.sends.back().target == 0)
                     track.sends.pop_back();
             }
+        selectedTracks.erase (std::remove (selectedTracks.begin(), selectedTracks.end(), trackId), selectedTracks.end());
         if (selectedTrack == trackId)
+        {
             selectedTrack = project.tracks.empty() ? 0 : project.tracks[(size_t) juce::jmin (index, (int) project.tracks.size() - 1)].id;
+            if (selectedTrack != 0 && selectedTracks.empty())
+                selectedTracks = { selectedTrack };
+        }
         changed();
+    }
+
+    //==========================================================================
+    void Studio::toggleTrackSelected (int trackId)
+    {
+        if (project.findTrack (trackId) == nullptr)
+            return;
+        if (isTrackSelected (trackId) && selectedTracks.size() > 1)
+        {
+            selectedTracks.erase (std::remove (selectedTracks.begin(), selectedTracks.end(), trackId), selectedTracks.end());
+            if (selectedTrack == trackId)
+                selectedTrack = selectedTracks.back();
+            changed (false);
+            return;
+        }
+        if (! isTrackSelected (trackId))
+            selectedTracks.push_back (trackId);
+        selectedTrack = trackId;
+        changed (false);
+    }
+
+    void Studio::selectTrackRun (int trackId)
+    {
+        if (project.findTrack (trackId) == nullptr)
+            return;
+        // Shift-click on a selected one (not the only one): deselected.
+        if (isTrackSelected (trackId) && selectedTracks.size() > 1)
+        {
+            toggleTrackSelected (trackId);
+            return;
+        }
+        int from = -1, to = -1;
+        for (int i = 0; i < (int) project.tracks.size(); ++i)
+        {
+            if (project.tracks[(size_t) i].id == selectedTrack) from = i;
+            if (project.tracks[(size_t) i].id == trackId)       to = i;
+        }
+        if (from < 0)
+            from = to;
+        for (int i = juce::jmin (from, to); i <= juce::jmax (from, to); ++i)
+            if (! isTrackSelected (project.tracks[(size_t) i].id))
+                selectedTracks.push_back (project.tracks[(size_t) i].id);
+        selectedTrack = trackId;
+        changed (false);
+    }
+
+    bool Studio::isTrackSelected (int trackId) const noexcept
+    {
+        return trackId != 0 && (trackId == selectedTrack || std::find (selectedTracks.begin(), selectedTracks.end(), trackId) != selectedTracks.end());
+    }
+
+    std::vector<int> Studio::getSelectedTracks() const
+    {
+        std::vector<int> ids;
+        for (const auto& track : project.tracks)
+            if (isTrackSelected (track.id))
+                ids.push_back (track.id);
+        return ids;
+    }
+
+    void Studio::moveTracks (const std::vector<int>& trackIds, int beforeIndex)
+    {
+        auto& tracks = project.tracks;
+        beforeIndex = juce::jlimit (0, (int) tracks.size(), beforeIndex);
+        // The one they go before (if it isn't one of them), else the end.
+        int anchor = 0;
+        for (int i = beforeIndex; i < (int) tracks.size() && anchor == 0; ++i)
+            if (std::find (trackIds.begin(), trackIds.end(), tracks[(size_t) i].id) == trackIds.end())
+                anchor = tracks[(size_t) i].id;
+        std::vector<Track> moving, staying;
+        for (auto& track : tracks)
+            (std::find (trackIds.begin(), trackIds.end(), track.id) != trackIds.end() ? moving : staying).push_back (std::move (track));
+        if (moving.empty())
+        {
+            tracks = std::move (staying);
+            return;
+        }
+        const auto at = std::find_if (staying.begin(), staying.end(), [anchor] (const Track& t) { return t.id == anchor; });
+        const auto offset = std::distance (staying.begin(), anchor == 0 ? staying.end() : at);
+        staying.insert (staying.begin() + offset, std::make_move_iterator (moving.begin()), std::make_move_iterator (moving.end()));
+        tracks = std::move (staying);
+        changed();
+    }
+
+    int Studio::duplicateTrack (int trackId)
+    {
+        const auto* original = project.findTrack (trackId);
+        if (original == nullptr)
+            return 0;
+        auto copy = *original;
+        copy.id = project.nextTrackId++;
+        copy.name = original->name + " copy";
+        copy.armed = false;
+        for (auto& part : copy.parts)
+            part.id = 0;
+        // The instrument and the effects as they are now (their settings from the running ones).
+        if (auto* instrument = engine.getInstrument (trackId))
+            instrument->getStateInformation (copy.instrument.state);
+        for (int slot = 0; slot < (int) copy.inserts.size(); ++slot)
+            if (auto* effect = engine.getEffect (trackId, slot))
+                effect->getStateInformation (copy.inserts[(size_t) slot].state);
+
+        if (copy.isChannel())
+            engine.addChannel (copy.id, copy.isGroup());
+        else if (copy.isAudio())
+            engine.addAudioTrack (copy.id);
+        else
+        {
+            juce::String problem;
+            auto instance = host->create (copy.instrument, engine.getSampleRate(), engine.getBlockSize(), problem);
+            if (instance == nullptr)
+            {
+                --project.nextTrackId;
+                return 0;
+            }
+            engine.setInstrument (copy.id, std::move (instance));
+        }
+        for (int slot = 0; slot < (int) copy.inserts.size(); ++slot)
+        {
+            if (copy.inserts[(size_t) slot].isEmpty())
+            {
+                engine.insertEffect (copy.id, slot, nullptr);
+                continue;
+            }
+            juce::String problem;
+            engine.insertEffect (copy.id, slot, host->createEffect (copy.inserts[(size_t) slot], engine.getSampleRate(), engine.getBlockSize(), problem));
+        }
+        // Straight under the original.
+        const auto it = std::find_if (project.tracks.begin(), project.tracks.end(), [trackId] (const Track& t) { return t.id == trackId; });
+        const auto id = copy.id;
+        project.tracks.insert (it + 1, std::move (copy));
+        selectTrack (id);   // (changed() there)
+        recordUndoState();   // (as adding a track: what's done to it next can be undone)
+        return id;
+    }
+
+    void Studio::duplicateTracks (const std::vector<int>& trackIds)
+    {
+        std::vector<int> copies;
+        for (const auto id : trackIds)
+            if (const auto copy = duplicateTrack (id))
+                copies.push_back (copy);
+        if (copies.empty())
+            return;
+        selectedTracks = copies;
+        selectedTrack = copies.back();
+        changed (false);
+    }
+
+    void Studio::removeTracks (const std::vector<int>& trackIds)
+    {
+        for (const auto id : trackIds)
+            removeTrack (id);
+    }
+
+    bool Studio::isTrackEmpty (int trackId) const
+    {
+        const auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! track->parts.empty())
+            return false;
+        for (const auto& lane : track->automation)
+            if (! lane.points.empty())
+                return false;
+        return true;
+    }
+
+    std::vector<int> Studio::getEmptyTracks() const
+    {
+        std::vector<int> ids;
+        for (const auto& track : project.tracks)
+            if (! track.isChannel() && isTrackEmpty (track.id))
+                ids.push_back (track.id);
+        return ids;
     }
 
     bool Studio::changeInstrument (int trackId, const Instrument& instrument, juce::String* error)
@@ -514,6 +702,9 @@ namespace pr7s
     void Studio::selectTrack (int trackId)
     {
         selectedTrack = trackId;
+        selectedTracks.clear();
+        if (trackId != 0)
+            selectedTracks.push_back (trackId);
         // Selecting arms it (when not recording), so you play and record the track you're on.
         const auto* selected = project.findTrack (trackId);
         if (! engine.isRecording() && (selected == nullptr || ! selected->isChannel()))
@@ -2218,6 +2409,7 @@ namespace pr7s
         project = {};
         file = juce::File();
         selectedTrack = 0;
+        selectedTracks.clear();
         engine.setPosition (0.0);
         playStart = 0.0;
         // A new song starts with one track on the Paragon Synth, ready to play.
@@ -2560,6 +2752,9 @@ namespace pr7s
         selectedTrack = project.tracks.empty() ? 0 : project.tracks.front().id;
         if (auto* armed = project.armedTrack())
             selectedTrack = armed->id;
+        selectedTracks.clear();
+        if (selectedTrack != 0)
+            selectedTracks.push_back (selectedTrack);
         engine.setPosition (0.0);
         playStart = 0.0;
         engine.update (project);

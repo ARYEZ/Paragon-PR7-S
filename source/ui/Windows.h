@@ -40,12 +40,20 @@ namespace Windows
         juce::String stateKey;
     };
 
+    // Where a window spanning all the screens goes: across them all, side by
+    // side, as tall as the height they all share (so none of it is off a
+    // shorter screen or under a taskbar). Screens stacked rather than side by
+    // side: the box round them all. Given each screen's usable area.
+    juce::Rectangle<int> spanOf (const juce::Array<juce::Rectangle<int>>& screens);
+    juce::Rectangle<int> allScreensArea();   // the computer's screens, now
+
     // SETTINGS: the audio interface (which, its sample rate and buffer
-    // size), the MIDI inputs, and the unit's finish.
+    // size), the MIDI inputs, the unit's finish, and SPAN ALL SCREENS (the
+    // studio's window across every screen; again: back on one).
     class Settings final : public juce::DocumentWindow
     {
     public:
-        explicit Settings (pr7s::Studio&);
+        Settings (pr7s::Studio&, std::function<void()> toggleSpan, std::function<bool()> isSpanning);
         void closeButtonPressed() override;
         std::function<void()> onClose;
     };

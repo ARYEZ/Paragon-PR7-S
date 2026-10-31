@@ -49,6 +49,22 @@ public:
 
     void showLaneMenu (int busId, int laneIndex, juce::Component& target);
 
+    // Moving tracks (as the manual has it): drag a track's row (by its name
+    // or an empty spot; the selected ones together) up or down, a line
+    // showing where they'll go; or its menu's Move. Ctrl-click / Shift-click
+    // select several; Up / Down step through them (MainView).
+    enum class MoveTo { first, previous, next, last };
+    void moveSelectedTracks (MoveTo);
+    void dragTrack (int trackId, juce::Point<int> at);   // (a row, being dragged: where the mouse is, in the list)
+    void dropTracks (int trackId);
+    int getDropIndex() const noexcept { return dropIndex; }
+    // Shift+Delete or the menu: the selected tracks (asked first if any has something on it).
+    void removeSelectedTracks();
+    // A double-click under the tracks: a new track like the selected one.
+    void addTrackLikeSelected();
+    void mouseDoubleClick (const juce::MouseEvent&) override;
+    void paintOverChildren (juce::Graphics&) override;
+
 private:
     class Row;
     class LaneRow;
@@ -66,5 +82,7 @@ private:
     std::vector<std::unique_ptr<LaneRow>> laneRows;
     std::unique_ptr<MasterRow> masterRow;
     std::vector<Timeline::Row> lastLayout;
+    int dropIndex = -1, dropY = -1;   // a drag of tracks: where they'd go
+    std::vector<int> tracksToMove (int trackId) const;
     juce::TextButton addTrack { "+ ADD TRACK" }, autoScrollButton { "AUTO-SCROLL" }, autoScrollMenu;
 };

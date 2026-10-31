@@ -56,8 +56,11 @@ private:
             view->onTitleChange = [this] (const juce::String& title) { setName (title); };
             setContentOwned (view, false);
             setResizable (true, true);
-            setResizeLimits (1100, 680, 10000, 10000);
-            centreWithSize (1500, 900);
+            setResizeLimits (1100, 680, 32768, 16384);   // (wide enough for three 4K screens side by side)
+            // Where it was left last time (across several screens too), else the middle of the main one.
+            const auto saved = studio.getSettings() != nullptr ? studio.getSettings()->getValue ("mainWindow") : juce::String();
+            if (saved.isEmpty() || ! restoreWindowStateFromString (saved))
+                centreWithSize (1500, 900);
             setVisible (true);
             view->grabKeyboardFocus();
         }
@@ -81,6 +84,15 @@ private:
                                                        else if (result == 2)
                                                            app.quit();
                                                    }));
+        }
+
+        ~MainWindow() override
+        {
+            if (auto* settings = app.studio != nullptr ? app.studio->getSettings() : nullptr)
+            {
+                settings->setValue ("mainWindow", getWindowStateAsString());
+                settings->saveIfNeeded();
+            }
         }
 
     private:

@@ -100,7 +100,10 @@ struct Timeline
 //   ruler           click to put the position there; drag across its top
 //                   strip to set the cycle (the locators; CYCLE turns on);
 //                   in the top strip, click inside the range to turn CYCLE
-//                   on or off, drag inside it to move it
+//                   on or off, drag inside it to move it, drag a locator's
+//                   handle (either end) to move just that one; Ctrl-click
+//                   sets the left locator there, Alt-click the right, Ctrl+
+//                   Alt-click both round the grid step clicked in (the manual's)
 //   a part          click to select; drag to move (to another track of its
 //                   kind too); Ctrl-drag keeps to one direction; Alt-drag to
 //                   copy; drag its right edge to lengthen or shorten it;
@@ -184,6 +187,8 @@ public:
     void nextTool (bool forward);   // F10 / F9
     std::function<void()> onToolChange;
     void splitAtCursor();           // Alt+X
+    // P (Locators to Selection): the range, else the selected part (none: false).
+    bool locatorsToSelection();
 
     // Range Selection (RANGE, 2; the manual's Range Editing): one range at a
     // time, a stretch of time across tracks. It stays when another tool is
@@ -250,7 +255,7 @@ private:
     Timeline& timeline;
     Selection selection;
 
-    enum class Drag { none, position, cycle, cycleMove, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
+    enum class Drag { none, position, cycle, cycleMove, cycleLeft, cycleRight, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
                       newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove };
     std::optional<pr7s::Studio::Range> range;
     pr7s::Studio::RangeClip rangeClip;

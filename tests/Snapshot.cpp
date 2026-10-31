@@ -180,6 +180,18 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         if (tracks.size() >= 2)
             arrange.setRange (pr7s::Studio::Range { 8.0, 18.0, { tracks[0].id, tracks[1].id } });
     }
+    // PARAGON_SNAPSHOT_TRACKS=1: two tracks selected (the keys and the lead), the lead being dragged up (the drop line).
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_TRACKS", {}).isNotEmpty())
+    {
+        const auto& tracks = studio.getProject().tracks;
+        if (tracks.size() >= 3)
+        {
+            studio.selectTrack (tracks[0].id);
+            studio.toggleTrackSelected (tracks[2].id);
+            studio.dispatchPendingMessages();
+            view.getTrackList().dragTrack (tracks[2].id, { 100, Timeline::rulerHeight + Timeline::trackHeight + 10 });
+        }
+    }
     // PARAGON_SNAPSHOT_ROWS=<zoom>: the arrangement's rows that much taller (or shorter, below 1).
     if (const auto rows = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_ROWS", {}); rows.isNotEmpty())
     {

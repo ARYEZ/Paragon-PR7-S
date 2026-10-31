@@ -2,6 +2,26 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.8.2
+
+Moving tracks around, setting the cycle with the Cubase 15 manual's clicks and keys, and the studio's window across all your screens.
+
+- **The cycle (the left and right locators):**
+  - **Ctrl-click** in the top strip of the ruler sets the left locator there; **Alt-click** sets the right one; **Ctrl+Alt-click** sets both round the grid step you click in. (Past each other, they swap.)
+  - **Each locator has a handle** (a small white flag at each end of the cycle): drag one to move just that end. Dragging inside the cycle still moves the whole thing.
+  - **P** sets the locators round the selected part or range; **Alt+P** does that and plays it round and round.
+  - **Number pad 1 / 2** go to the left / right locator; **Ctrl + number pad 1 / 2** set it to the playhead.
+- **Tracks:**
+  - **Drag a track up or down** in the track list (by its name or an empty spot): an orange line shows where it will go. The mixer's strips follow. **Ctrl+Z** puts the order back.
+  - **Select several:** Ctrl-click adds or removes one, Shift-click selects a run (Shift-click a selected one to drop it). Dragging one of them moves them all, keeping their order.
+  - **Up / Down arrows** step through the tracks (and, if a part was selected, select the first part on the track).
+  - **The track's right-click menu:** Duplicate track (straight under it, with its parts, instrument, effects and their settings, sends, automation and mix), Move track (to the top, up one, down one, to the bottom), Delete the selected tracks, Remove empty tracks.
+  - **Shift+Delete** deletes the selected tracks (it asks first if any has something on it: deleting tracks can't be undone yet).
+  - **Double-click the empty space under the tracks** for a new track like the selected one (an audio track mono or stereo as it is, a group or FX channel), else one on the Paragon Synth.
+- **Your window across all your screens:** SETTINGS > **SPAN ALL SCREENS** stretches the studio across every monitor (Windows' maximize only fills one), as tall as they all are; click it again (it then reads **BACK TO ONE SCREEN**) to put it back. And the window now opens where you left it, on one screen or across three.
+- **Our choices:** a duplicated track is named "<name> copy"; Ctrl+Alt-click's range is one grid step.
+- **Not there yet** (from the same chapters): typing the locator positions (Shift+L / Shift+R / Shift+D), Fill Loop, cycle markers, folder tracks, a track's own height (dragging its bottom edge), disabling tracks, Find Track. Ask when you want any of them.
+
 ## 0.8.1
 
 The Range Selection tool: select a stretch of time across tracks, whatever the parts, and cut, copy, move or delete what's in it, as the Cubase 15 manual's Range Editing chapter describes.

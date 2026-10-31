@@ -76,8 +76,30 @@ namespace pr7s
         // Record-arms one track (or none, with 0): recording goes there.
         // Inspired by Cubase's workflow (record follows the selected track), selecting arms too.
         void setArmed (int trackId);
-        void selectTrack (int trackId);
-        int getSelectedTrack() const noexcept { return selectedTrack; }
+        void selectTrack (int trackId);   // (it alone: the others are deselected)
+        int getSelectedTrack() const noexcept { return selectedTrack; }   // the one clicked last (recording goes there)
+        // Several selected (the manual's track selection): Ctrl-click adds or
+        // removes one, Shift-click a run from the one clicked last (Shift-click
+        // on a selected one deselects it). In the song's order.
+        void toggleTrackSelected (int trackId);
+        void selectTrackRun (int trackId);
+        bool isTrackSelected (int trackId) const noexcept;
+        std::vector<int> getSelectedTracks() const;
+
+        // The tracks' order (the track list's, the mixer's): the tracks given
+        // (kept in their order) move to before the track now at `beforeIndex`
+        // in the list (the list's size: the end). One undo step; undo puts the
+        // order back too.
+        void moveTracks (const std::vector<int>& trackIds, int beforeIndex);
+        // A copy of a track, straight under it: its parts, instrument and
+        // effects (with their settings as they are now), sends, automation and
+        // mix (the manual's Duplicate Tracks). Returns its id (0 if the
+        // instrument didn't load). Several: each under its own; all selected.
+        int duplicateTrack (int trackId);
+        void duplicateTracks (const std::vector<int>& trackIds);
+        void removeTracks (const std::vector<int>& trackIds);
+        bool isTrackEmpty (int trackId) const;   // no parts and no automation points
+        std::vector<int> getEmptyTracks() const;
 
         //======================================================================
         // Parts (by track and index in its list).
@@ -386,6 +408,7 @@ namespace pr7s
         juce::File file;
         bool modified = false;
         int selectedTrack = 0;
+        std::vector<int> selectedTracks;   // with selectedTrack in it (when there is one)
         int nextPartId = 1;
 
         // Recording: where it started, into which track, and what's come in so far.

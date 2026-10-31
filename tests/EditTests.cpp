@@ -353,3 +353,97 @@ TEST_CASE ("Range editing: split at its edges, crop, delete (and Delete Time), c
         CHECK (studio.getProject().findTrack (audio)->parts.empty());
     }
 }
+
+TEST_CASE ("Tracks: several selected (Ctrl, Shift); moved in the list (undo puts the order back); duplicated with everything; removed; empty ones found", "[edit][tracks]")
+{
+    Studio studio (false);
+    const auto a = studio.getProject().tracks[0].id;
+    const auto b = studio.addTrack ({});
+    const auto c = studio.addTrack ({});
+    const auto d = studio.addAudioTrack (true);
+    const auto order = [&]
+    {
+        std::vector<int> ids;
+        for (const auto& track : studio.getProject().tracks)
+            ids.push_back (track.id);
+        return ids;
+    };
+    using Ids = std::vector<int>;
+
+    SECTION ("Selecting: one; Ctrl adds and removes; Shift a run from the one clicked last, or drops a selected one")
+    {
+        studio.selectTrack (a);
+        CHECK (studio.getSelectedTracks() == Ids { a });
+        studio.toggleTrackSelected (c);
+        CHECK (studio.getSelectedTracks() == Ids { a, c });
+        CHECK (studio.getSelectedTrack() == c);
+        studio.toggleTrackSelected (a);
+        CHECK (studio.getSelectedTracks() == Ids { c });
+        studio.selectTrack (a);
+        studio.selectTrackRun (c);
+        CHECK (studio.getSelectedTracks() == Ids { a, b, c });
+        studio.selectTrackRun (b);   // a selected one: dropped
+        CHECK (studio.getSelectedTracks() == Ids { a, c });
+        studio.selectTrack (d);
+        CHECK (studio.getSelectedTracks() == Ids { d });
+    }
+
+    SECTION ("Moving tracks: before a place in the list, several keeping their order; undo puts the order back")
+    {
+        studio.addPart (b, { 0.0, 4.0, "B", {} });
+        studio.moveTracks ({ c }, 0);
+        CHECK (order() == Ids { c, a, b, d });
+        studio.moveTracks ({ b, c }, 4);   // to the end, in the order they're in the list (c, then b)
+        CHECK (order() == Ids { a, d, c, b });
+        studio.undo();
+        CHECK (order() == Ids { c, a, b, d });
+        studio.undo();
+        CHECK (order() == Ids { a, b, c, d });
+        CHECK (studio.getProject().findTrack (b)->parts.size() == 1);   // (the parts as they were)
+        studio.moveTracks ({ a }, 3);   // before d
+        CHECK (order() == Ids { b, c, a, d });
+    }
+
+    SECTION ("Duplicating: straight under it, with its parts, effects, sends, automation and mix; selected")
+    {
+        studio.addPart (b, { 2.0, 4.0, "Riff", { { 0.0, 1.0, 60, 0.8f } } });
+        studio.setVolume (b, -6.0f);
+        studio.setPan (b, 0.25f);
+        studio.setAutomationOpen (b, true);   // a volume lane
+        studio.setAutomationPoints (b, 0, { { 0.0, 0.5f }, { 4.0, 0.8f } });
+        REQUIRE (studio.getProject().findTrack (b)->automation.size() == 1);
+        const auto copy = studio.duplicateTrack (b);
+        REQUIRE (copy != 0);
+        CHECK (order() == Ids { a, b, copy, c, d });
+        const auto* t = studio.getProject().findTrack (copy);
+        REQUIRE (t != nullptr);
+        CHECK (t->name == studio.getProject().findTrack (b)->name + " copy");
+        REQUIRE (t->parts.size() == 1);
+        CHECK (t->parts[0].name == "Riff");
+        CHECK (t->parts[0].id != studio.getProject().findTrack (b)->parts[0].id);
+        CHECK (t->volumeDb == -6.0f);
+        CHECK (t->pan == 0.25f);
+        REQUIRE (t->automation.size() == 1);
+        CHECK (t->automation[0].points.size() == 2);
+        CHECK (studio.getEngine().getInstrument (copy) != nullptr);   // its own instrument
+        CHECK (studio.getEngine().getInstrument (copy) != studio.getEngine().getInstrument (b));
+        CHECK (studio.getSelectedTracks() == Ids { copy });
+        // An audio track: an audio track again, its clips the same recordings.
+        const auto audioCopy = studio.duplicateTrack (d);
+        CHECK (studio.getProject().findTrack (audioCopy)->isAudio());
+        CHECK (studio.getProject().findTrack (audioCopy)->stereoInput);
+        // Several: each under its own, all selected.
+        studio.duplicateTracks ({ a, c });
+        CHECK (studio.getSelectedTracks().size() == 2);
+        CHECK (studio.getProject().tracks.size() == 8);
+    }
+
+    SECTION ("Removing several; the empty ones (no parts, no automation points)")
+    {
+        studio.addPart (b, { 0.0, 4.0, "B", {} });
+        CHECK (studio.getEmptyTracks() == Ids { a, c, d });
+        studio.removeTracks (studio.getEmptyTracks());
+        CHECK (order() == Ids { b });
+        CHECK (studio.getSelectedTrack() == b);
+    }
+}

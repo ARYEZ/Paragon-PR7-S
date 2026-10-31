@@ -166,7 +166,7 @@ public:
         if (t == nullptr)
             return;
         const auto bounds = getLocalBounds().toFloat();
-        const auto selected = owner.studio.getSelectedTrack() == trackId;
+        const auto selected = owner.studio.isTrackSelected (trackId);
         g.setColour (selected ? juce::Colour (0xff1f1720) : juce::Colour (0xff100c11));
         g.fillRect (bounds);
         g.setColour (juce::Colour (0xff050405));
@@ -227,9 +227,41 @@ public:
 
     void mouseDown (const juce::MouseEvent& event) override
     {
-        owner.studio.selectTrack (trackId);
+        auto& studio = owner.studio;
+        dragged = false;
         if (event.mods.isPopupMenu())
+        {
+            if (! studio.isTrackSelected (trackId))
+                studio.selectTrack (trackId);
             owner.showInstrumentMenu (trackId, true);
+            return;
+        }
+        // Ctrl-click adds (or removes) it, Shift-click a run (the manual's);
+        // a click on one of several selected keeps them, to drag them together.
+        if (event.mods.isCommandDown())
+            studio.toggleTrackSelected (trackId);
+        else if (event.mods.isShiftDown())
+            studio.selectTrackRun (trackId);
+        else if (! studio.isTrackSelected (trackId))
+            studio.selectTrack (trackId);
+        plainClickOnSelected = ! event.mods.isCommandDown() && ! event.mods.isShiftDown() && studio.getSelectedTracks().size() > 1;
+    }
+
+    void mouseDrag (const juce::MouseEvent& event) override
+    {
+        if (event.mods.isPopupMenu() || event.getDistanceFromDragStart() < 5)
+            return;
+        dragged = true;
+        owner.dragTrack (trackId, event.getEventRelativeTo (&owner).getPosition());
+    }
+
+    void mouseUp (const juce::MouseEvent&) override
+    {
+        if (dragged)
+            owner.dropTracks (trackId);
+        else if (plainClickOnSelected)
+            owner.studio.selectTrack (trackId);   // a click (no drag) on one of several: it alone
+        plainClickOnSelected = false;
     }
 
     void mouseDoubleClick (const juce::MouseEvent& event) override
@@ -240,6 +272,7 @@ public:
 
     TrackList& owner;
     const int trackId;
+    bool dragged = false, plainClickOnSelected = false;
     juce::Label name;
     juce::TextButton mute { "M" }, solo { "S" }, arm { "REC" }, monitor { "MON" }, instrument, read { "R" }, write { "W" };
     juce::Slider volume;
@@ -735,9 +768,30 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
         menu.addItem (2, "Delete track");
     }
 
+    // The selected tracks (this one among them): duplicate, move, delete; the empty ones.
+    const auto several = studio.getSelectedTracks().size() > 1;
+    menu.addSeparator();
+    menu.addItem (50, several ? "Duplicate the selected tracks" : "Duplicate track");
+    juce::PopupMenu moveTo;
+    moveTo.addItem (51, "To the top");
+    moveTo.addItem (52, "Up one");
+    moveTo.addItem (53, "Down one");
+    moveTo.addItem (54, "To the bottom");
+    menu.addSubMenu (several ? "Move the selected tracks" : "Move track", moveTo);
+    if (several)
+        menu.addItem (56, "Delete the selected tracks (Shift+Delete)");
+    menu.addItem (55, "Remove empty tracks", ! studio.getEmptyTracks().empty());
     menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, instruments] (int chosen)
     {
-        if (chosen == 20)
+        if (chosen == 50)
+            studio.duplicateTracks (studio.getSelectedTracks());
+        else if (chosen >= 51 && chosen <= 54)
+            moveSelectedTracks ((MoveTo) (chosen - 51));
+        else if (chosen == 55)
+            studio.removeTracks (studio.getEmptyTracks());
+        else if (chosen == 56)
+            removeSelectedTracks();
+        else if (chosen == 20)
             studio.setAutomationOpen (trackId, ! studio.isAutomationOpen (trackId));
         else if (chosen == 21)
             studio.showAllUsedAutomation();
@@ -787,4 +841,118 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't change the instrument", error);
         }
     });
+}
+
+//==============================================================================
+std::vector<int> TrackList::tracksToMove (int trackId) const
+{
+    return studio.isTrackSelected (trackId) ? studio.getSelectedTracks() : std::vector<int> { trackId };
+}
+
+void TrackList::dragTrack (int, juce::Point<int> at)
+{
+    // The drop place: before the first track whose middle is below the mouse (else the end).
+    const auto& tracks = studio.getProject().tracks;
+    dropIndex = (int) tracks.size();
+    dropY = -1;
+    for (int i = 0; i < (int) tracks.size(); ++i)
+        for (const auto& row : rows)
+            if (row->trackId == tracks[(size_t) i].id && dropY < 0 && at.y < row->getBounds().getCentreY())
+            {
+                dropIndex = i;
+                dropY = row->getY();
+            }
+    if (dropY < 0)
+        for (const auto& row : rows)
+            if (row->trackId == tracks.back().id)
+                dropY = row->getBottom();
+    repaint();
+}
+
+void TrackList::dropTracks (int trackId)
+{
+    if (dropIndex >= 0)
+        studio.moveTracks (tracksToMove (trackId), dropIndex);
+    dropIndex = -1;
+    dropY = -1;
+    repaint();
+}
+
+void TrackList::paintOverChildren (juce::Graphics& g)
+{
+    // Where the dragged tracks would go: a line between the rows.
+    if (dropIndex >= 0 && dropY >= 0)
+    {
+        g.setColour (ParagonColours::accent);
+        g.fillRect (juce::Rectangle<float> (0.0f, (float) dropY - 1.5f, (float) getWidth(), 3.0f));
+    }
+}
+
+void TrackList::moveSelectedTracks (MoveTo where)
+{
+    const auto ids = studio.getSelectedTracks();
+    if (ids.empty())
+        return;
+    const auto& tracks = studio.getProject().tracks;
+    int first = (int) tracks.size(), last = -1;
+    for (int i = 0; i < (int) tracks.size(); ++i)
+        if (std::find (ids.begin(), ids.end(), tracks[(size_t) i].id) != ids.end())
+        {
+            first = juce::jmin (first, i);
+            last = juce::jmax (last, i);
+        }
+    switch (where)
+    {
+        case MoveTo::first:    studio.moveTracks (ids, 0); break;
+        case MoveTo::previous: studio.moveTracks (ids, juce::jmax (0, first - 1)); break;
+        case MoveTo::next:     studio.moveTracks (ids, juce::jmin ((int) tracks.size(), last + 2)); break;
+        case MoveTo::last:     studio.moveTracks (ids, (int) tracks.size()); break;
+    }
+}
+
+void TrackList::removeSelectedTracks()
+{
+    const auto ids = studio.getSelectedTracks();
+    if (ids.empty())
+        return;
+    // Empty ones go straight away; any with something on: asked first (as the manual has it; it can't be undone yet).
+    auto withSomething = 0;
+    for (const auto id : ids)
+        withSomething += studio.isTrackEmpty (id) ? 0 : 1;
+    if (withSomething == 0)
+    {
+        studio.removeTracks (ids);
+        return;
+    }
+    const auto* first = studio.getProject().findTrack (ids.front());
+    const auto what = ids.size() == 1 ? "\"" + first->name + "\" and its parts" : juce::String ((int) ids.size()) + " tracks and their parts";
+    juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon, ids.size() == 1 ? "Delete track" : "Delete tracks",
+                                        "Delete " + what + "? This can't be undone.", "Delete", "Cancel", nullptr,
+                                        juce::ModalCallbackFunction::create ([this, ids] (int result)
+                                        {
+                                            if (result == 1)
+                                                studio.removeTracks (ids);
+                                        }));
+}
+
+void TrackList::addTrackLikeSelected()
+{
+    // Double-click under the tracks: a track like the selected one (an audio
+    // track mono or stereo as it is, a group or an FX channel), else one on the Paragon Synth.
+    const auto* selected = studio.getProject().findTrack (studio.getSelectedTrack());
+    if (selected != nullptr && selected->isAudio())
+        studio.addAudioTrack (selected->stereoInput);
+    else if (selected != nullptr && selected->isGroup())
+        studio.addGroupChannel();
+    else if (selected != nullptr && selected->isFx())
+        studio.addFxChannel (nullptr);
+    else
+        studio.addTrack ({});
+}
+
+void TrackList::mouseDoubleClick (const juce::MouseEvent& event)
+{
+    // The empty space under the tracks (not the header, not + ADD TRACK).
+    if (event.y > Timeline::rulerHeight && event.y < getHeight() - addButtonHeight)
+        addTrackLikeSelected();
 }

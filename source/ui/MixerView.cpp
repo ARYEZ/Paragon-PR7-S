@@ -215,7 +215,7 @@ void MixerView::Strip::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
     const auto* track = owner.studio.getProject().findTrack (busId);
-    const auto selected = ! isMaster() && owner.studio.getSelectedTrack() == busId;
+    const auto selected = ! isMaster() && owner.studio.isTrackSelected (busId);
     g.setColour (isMaster() ? juce::Colour (0xff140f14) : selected ? juce::Colour (0xff1f1720) : juce::Colour (0xff100c11));
     g.fillRect (bounds.reduced (1.0f, 0.0f));
     g.setColour (juce::Colour (0xff050405));

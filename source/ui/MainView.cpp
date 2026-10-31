@@ -467,6 +467,20 @@ bool MainView::keyPressed (const juce::KeyPress& key)
     if (isKeyEditorOpen() && keysToEditor && mods.isCommandDown() && letter == 'D' && keyEditor.keyPressed (key))
         return true;
 
+    // The locators (the manual's keys): number pad 1 / 2 to the left / right locator (Ctrl: set it to the
+    // playhead); P to the selection (below). Before the Ctrl keys and the tool keys (the pad types 1 and 2 too).
+    if (code == juce::KeyPress::numberPad1 || code == juce::KeyPress::numberPad2)
+    {
+        const auto& project = studio.getProject();
+        const auto left = code == juce::KeyPress::numberPad1;
+        const auto at = studio.getEngine().getPosition();
+        if (mods.isCommandDown())
+            left ? studio.setCycle (juce::jmin (at, project.loopEnd), juce::jmax (at, project.loopEnd))
+                 : studio.setCycle (juce::jmin (project.loopStart, at), juce::jmax (project.loopStart, at));
+        else
+            studio.setPosition (left ? project.loopStart : project.loopEnd);
+        return true;
+    }
     if (mods.isCommandDown())
     {
         switch (letter)
@@ -490,6 +504,49 @@ bool MainView::keyPressed (const juce::KeyPress& key)
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
     {
         arrange.hasSelectedPoints() ? arrange.deleteSelectedPoints() : arrange.deleteSelected();
+        return true;
+    }
+    // Shift+Delete: the selected tracks (Remove Selected Tracks); Up / Down: the track above / below
+    // (and, if a part was selected, the first part on it), as the manual has them.
+    if (code == juce::KeyPress::deleteKey && mods.isShiftDown() && ! mods.isCommandDown())
+    {
+        trackList.removeSelectedTracks();
+        return true;
+    }
+    if ((code == juce::KeyPress::upKey || code == juce::KeyPress::downKey) && ! mods.isAnyModifierKeyDown())
+    {
+        const auto& tracks = studio.getProject().tracks;
+        int at = -1;
+        for (int i = 0; i < (int) tracks.size(); ++i)
+            if (tracks[(size_t) i].id == studio.getSelectedTrack())
+                at = i;
+        const auto next = juce::jlimit (0, (int) tracks.size() - 1, at + (code == juce::KeyPress::upKey ? -1 : 1));
+        if (tracks.empty() || next == at)
+            return true;
+        const auto& track = tracks[(size_t) next];
+        const auto partWasSelected = arrange.getSelection().isValid();
+        studio.selectTrack (track.id);
+        if (partWasSelected)
+        {
+            int first = -1;
+            for (int i = 0; i < (int) track.parts.size(); ++i)
+                if (first < 0 || track.parts[(size_t) i].start < track.parts[(size_t) first].start)
+                    first = i;
+            first >= 0 ? arrange.select (track.id, first) : arrange.select (track.id, -1);
+        }
+        return true;
+    }
+    // P: the locators to the selection (Alt+P: and play it round).
+    if (letter == 'P' && ! mods.isCommandDown() && ! mods.isShiftDown())
+    {
+        if (arrange.locatorsToSelection() && mods.isAltDown())
+        {
+            // Loop Selection: round and round it.
+            studio.setCycleOn (true);
+            studio.setPosition (studio.getProject().loopStart);
+            if (! studio.getEngine().isPlaying())
+                studio.play();
+        }
         return true;
     }
     // The arrangement's tools: 1 and 3 to 9 (not after a click in the key editor: it has its own), F9 / F10, Alt+X.
@@ -920,7 +977,8 @@ void MainView::openSettings()
         settingsWindow->toFront (true);
         return;
     }
-    settingsWindow = std::make_unique<Windows::Settings> (studio);
+    settingsWindow = std::make_unique<Windows::Settings> (studio, [this] { toggleSpanAllScreens(); },
+                                                          [this] { return isSpanningAllScreens(); });
     settingsWindow->onClose = [safe = juce::Component::SafePointer<MainView> (this)]
     {
         juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->settingsWindow.reset(); });
@@ -939,4 +997,39 @@ void MainView::openPlugins()
     {
         juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->pluginsWindow.reset(); });
     };
+}
+
+//==============================================================================
+bool MainView::isSpanningAllScreens() const
+{
+    // Wider than the widest screen: across more than one.
+    auto widest = 0;
+    for (const auto& display : juce::Desktop::getInstance().getDisplays().displays)
+        widest = juce::jmax (widest, juce::roundToInt (display.userBounds.getWidth()));
+    const auto* window = getTopLevelComponent();
+    return window != nullptr && juce::Desktop::getInstance().getDisplays().displays.size() > 1 && window->getWidth() > widest + 50;
+}
+
+void MainView::toggleSpanAllScreens()
+{
+    auto* window = dynamic_cast<juce::ResizableWindow*> (getTopLevelComponent());
+    if (window == nullptr)
+        return;
+    auto* settings = studio.getSettings();
+    if (isSpanningAllScreens())
+    {
+        // Back where it was before (else the middle of the main screen).
+        const auto before = settings != nullptr ? settings->getValue ("mainWindowOneScreen") : juce::String();
+        if (before.isEmpty() || ! window->restoreWindowStateFromString (before))
+            window->centreWithSize (1500, 900);
+        return;
+    }
+    if (settings != nullptr)
+        settings->setValue ("mainWindowOneScreen", window->getWindowStateAsString());
+    window->setFullScreen (false);   // (maximized fills one screen only)
+    auto area = Windows::allScreensArea();
+    if (auto* peer = window->getPeer())
+        if (const auto frame = peer->getFrameSizeIfPresent())
+            area = frame->subtractedFrom (area);   // the title bar and edges inside it too
+    window->setBounds (area);
 }
