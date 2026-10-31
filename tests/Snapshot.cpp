@@ -12,7 +12,8 @@
 // PARAGON_SNAPSHOT_WIDTH sets the width (default 1500; 3000 for 2x).
 // PARAGON_SNAPSHOT_FINISH=black or =neon picks the finish.
 // PARAGON_SNAPSHOT_ZONE=mixer shows the mixer in the lower zone (with an FX channel the tracks send to;
-// PARAGON_SNAPSHOT_SENDS=1 shows the sends rack), =none nothing there (the key editor otherwise).
+// PARAGON_SNAPSHOT_SENDS=1 shows the sends rack; PARAGON_SNAPSHOT_RACK=none hides the rack, the mixer as short
+// as it goes), =none nothing there (the key editor otherwise).
 // PARAGON_SNAPSHOT_EXPORT=1 draws the export page over it.
 // PARAGON_SNAPSHOT_AUTOMATION=1 opens automation lanes (the lead's volume, the bass's pan, the master's fade).
 TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
@@ -138,6 +139,11 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         view.openMixer();
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SENDS", {}).isNotEmpty())
             view.getMixer().setShowSends (true);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_RACK", {}) == "none")
+        {
+            view.getMixer().setRackShown (false);   // and the mixer dragged as short as it goes
+            view.setDockedHeight (1);
+        }
         studio.dispatchPendingMessages();   // (the new FX channel's strip made now, so its meters see the playing)
         studio.play();
         for (int round = 0; round < 4; ++round)

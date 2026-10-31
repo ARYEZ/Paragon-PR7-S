@@ -33,6 +33,11 @@ public:
     std::function<void (int)> onOpenInstrument;
     std::function<void (int busId, int slot)> onOpenEffect;   // an effect's window (an FX channel's)
     std::function<void()> onFindPlugins;
+    // AUTO-SCROLL (in the header, level with the ruler): the arrangement's
+    // Auto-Scroll (Timeline::autoScroll), lit while it's on.
+    std::function<void()> onAutoScrollToggle;
+    void refreshAutoScroll();
+    juce::TextButton& getAutoScrollButton() noexcept { return autoScrollButton; }
 
     void showAddTrackMenu();
     void paint (juce::Graphics&) override;
@@ -60,5 +65,5 @@ private:
     std::vector<std::unique_ptr<LaneRow>> laneRows;
     std::unique_ptr<MasterRow> masterRow;
     std::vector<Timeline::Row> lastLayout;
-    juce::TextButton addTrack { "+ ADD TRACK" };
+    juce::TextButton addTrack { "+ ADD TRACK" }, autoScrollButton { "AUTO-SCROLL" };
 };

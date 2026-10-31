@@ -11,6 +11,14 @@ struct Timeline
     double pixelsPerBeat = 28.0;   // zoom
     double firstBeat = 0.0;        // the beat at the arrangement's left edge
     int scrollY = 0;               // pixels the tracks are scrolled up by
+    bool autoScroll = true;        // F (Auto-Scroll): the view turns the page to keep the playhead in sight
+
+    // How far along the scroll bar goes: 8 bars past the last part (or the
+    // cycle's end, or the playhead), and at least 32 bars (our choice: there
+    // is no project length to set yet).
+    static double scrollLength (pr7s::Studio&);
+    // One step of G (out) or H (in), as the manual's Zoom Out / Zoom In.
+    static constexpr double zoomStep = 1.5;
 
     static constexpr int trackHeight = 72;
     static constexpr int rulerHeight = 36;
@@ -78,7 +86,11 @@ struct Timeline
 //                   With no points, a dotted line shows the control's
 //                   setting; R off or the lane muted, the curve is greyed
 //   wheel           scrolls the tracks; Shift+wheel scrolls along the song;
-//                   Ctrl+wheel zooms
+//                   Ctrl+wheel zooms (and the scroll bars, under and beside it)
+//   keys            (as the manual has them) H zooms in, G out, a step
+//                   centred on the playhead; Shift+F shows the whole song;
+//                   F turns Auto-Scroll on or off (while it's on, the page
+//                   turns when the playhead reaches the edge: Page Scroll)
 class ArrangeView final : public juce::Component,
                           private juce::ChangeListener,
                           private juce::Timer
@@ -96,6 +108,15 @@ public:
     void select (int trackId, int index);
     void deleteSelected();
     void duplicateSelected();
+
+    // H / G: one zoom step in or out, centred on the playhead; Shift+F: the
+    // whole song (as far as the scroll bar goes) across the view.
+    void zoom (bool in);
+    void zoomFull();
+    // Auto-Scroll (Timeline::autoScroll): playing, or the playhead moved
+    // while stopped (Home, the end of a recording), and it's out of sight:
+    // the page turns so it's at the left. Called by the view's timer.
+    void followPlayhead();
 
     // Automation points selected (in one lane at a time).
     struct PointSelection
@@ -168,4 +189,6 @@ private:
     int dragTrack = 0, dragTargetTrack = 0;
     double dragNewStart = 0.0, dragNewLength = 0.0;
     bool dragCopies = false, dragMoved = false;
+    double lastPosition = 0.0;   // the playhead as last seen (Auto-Scroll follows a jump while stopped)
+    void scrolled();             // the track list and the scroll bars follow
 };

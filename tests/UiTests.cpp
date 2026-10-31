@@ -1008,3 +1008,157 @@ TEST_CASE ("Sends and FX channels on screen: the SENDS rack, a send's dot, level
         CHECK (view.createComponentSnapshot (view.getLocalBounds()).isValid());
     }
 }
+
+TEST_CASE ("Zoom, Auto-Scroll and scrolling (H in, G out, Shift+F, F; the scroll bars); the lower zone's line dragged; the mixer's rack hidden", "[ui][view]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto trackId = studio.getProject().tracks[0].id;
+    studio.addPart (trackId, { 4.0, 4.0, "Riff", { { 0.0, 1.0, 60, 0.8f } } });
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    auto& across = view.getArrangeScrollBarAcross();
+    const auto partX = [&] { return arrange.getPartBounds (trackId, 0).getX(); };
+    const auto partWidth = [&] { return arrange.getPartBounds (trackId, 0).getWidth(); };
+    const auto key = [&] (juce::juce_wchar c, juce::ModifierKeys mods = {}) { return view.keyPressed (juce::KeyPress ((int) c, mods, c)); };
+
+    SECTION ("H zooms in a step and G out, centred on the playhead; Shift+F shows the whole song")
+    {
+        studio.setPosition (32.0);
+        const auto width = partWidth();
+        CHECK (key ('h'));
+        CHECK_THAT (partWidth(), WithinAbs (width * Timeline::zoomStep, 0.01));
+        // The playhead in the middle: half the view's beats before it.
+        CHECK_THAT (across.getCurrentRangeStart() + across.getCurrentRangeSize() * 0.5, WithinAbs (32.0, 0.01));
+        CHECK (key ('g'));
+        CHECK (key ('G'));
+        CHECK_THAT (partWidth(), WithinAbs (width / Timeline::zoomStep, 0.01));
+        CHECK (key ('F', juce::ModifierKeys::shiftModifier));
+        CHECK (across.getCurrentRangeStart() == 0.0);
+        CHECK_THAT (across.getCurrentRangeSize(), WithinAbs (Timeline::scrollLength (studio), 0.01));
+    }
+
+    SECTION ("F turns Auto-Scroll off and on (AUTO-SCROLL lit); while on, a jump out of sight turns the page")
+    {
+        auto& button = view.getTrackList().getAutoScrollButton();
+        CHECK (button.getToggleState());   // on at first
+        CHECK (key ('f'));
+        CHECK_FALSE (button.getToggleState());
+        studio.setPosition (200.0);
+        arrange.followPlayhead();
+        CHECK (across.getCurrentRangeStart() == 0.0);   // off: the view stays
+        CHECK (key ('f'));
+        CHECK (button.getToggleState());
+        studio.setPosition (300.0);
+        arrange.followPlayhead();
+        CHECK_THAT (across.getCurrentRangeStart(), WithinAbs (299.0, 0.01));   // the page turned: the playhead near the left
+        button.onClick();   // the key does the same
+        studio.dispatchPendingMessages();
+        CHECK_FALSE (button.getToggleState());
+        // The bar goes far enough to hold the view.
+        CHECK (across.getMaximumRangeLimit() >= across.getCurrentRange().getEnd());
+    }
+
+    SECTION ("The scroll bars move the arrangement (and the track list with it)")
+    {
+        const auto x = partX();
+        across.setCurrentRangeStart (4.0, juce::sendNotificationSync);
+        CHECK_THAT (partX(), WithinAbs (x - 4.0f * (partWidth() / 4.0f), 0.01));
+        CHECK (across.getMaximumRangeLimit() >= Timeline::scrollLength (studio));
+        CHECK (Timeline::scrollLength (studio) == 32.0 * 4.0);   // 8 bars past the part, at least 32 bars
+
+        for (int i = 0; i < 12; ++i)
+            studio.addTrack ({});
+        studio.dispatchPendingMessages();
+        auto& down = view.getArrangeScrollBarDown();
+        const auto top = arrange.trackTop (trackId);
+        down.setCurrentRangeStart (100.0, juce::sendNotificationSync);
+        CHECK_THAT (arrange.trackTop (trackId), WithinAbs (top - 100.0f, 0.01));
+        down.setCurrentRangeStart (1.0e6, juce::sendNotificationSync);   // no further than the last row
+        CHECK (down.getCurrentRange().getEnd() <= down.getMaximumRangeLimit());
+    }
+
+    SECTION ("In the key editor (after a click in it), its own zoom and Auto-Scroll")
+    {
+        const auto partArea = arrange.getPartBounds (trackId, 0);
+        arrange.mouseDoubleClick (mouseAt (arrange, partArea.getCentre(), partArea.getCentre(), {}, 2));
+        studio.dispatchPendingMessages();
+        REQUIRE (view.isKeyEditorOpen());
+        auto& editor = view.getKeyEditor();
+        REQUIRE (editor.getPart() != nullptr);
+        view.mouseDown (mouseAt (editor, editor.getNotesArea().getCentre(), editor.getNotesArea().getCentre()));
+        const auto editorZoom = editor.getPixelsPerBeat();
+        const auto arrangeBeats = across.getCurrentRangeSize();
+        CHECK (key ('h'));
+        CHECK_THAT (editor.getPixelsPerBeat(), WithinAbs (editorZoom * Timeline::zoomStep, 0.01));
+        CHECK_THAT (across.getCurrentRangeSize(), WithinAbs (arrangeBeats, 0.01));   // the arrangement's own is as it was
+        CHECK (editor.getAutoScroll());
+        CHECK (key ('f'));
+        CHECK_FALSE (editor.getAutoScroll());
+        CHECK (view.getTrackList().getAutoScrollButton().getToggleState());   // the arrangement's still on
+        // Its scroll bars: across moves the notes, down the pitches.
+        const auto noteX = editor.getNoteBounds (0).getX();
+        editor.getScrollBarAcross().setCurrentRangeStart (editor.getFirstBeat() + 1.0, juce::sendNotificationSync);
+        CHECK_THAT (editor.getNoteBounds (0).getX(), WithinAbs (noteX - (float) editor.getPixelsPerBeat(), 0.01));
+        const auto noteY = editor.getNoteBounds (0).getY();
+        editor.getScrollBarDown().setCurrentRangeStart (editor.getScrollBarDown().getCurrentRangeStart() - 24.0, juce::sendNotificationSync);
+        CHECK_THAT (editor.getNoteBounds (0).getY(), WithinAbs (noteY + 24.0f, 0.01));
+    }
+
+    SECTION ("The line above the docked mixer: dragged up and down, kept between the mixer's least and the arrangement's room; its rack hidden")
+    {
+        view.openMixer();
+        auto& mixer = view.getMixer();
+        auto& divider = view.getZoneDivider();
+        REQUIRE (divider.isVisible());
+        CHECK (divider.getBottom() <= mixer.getY());
+        CHECK (arrange.getBottom() <= divider.getY());
+        const auto dragDivider = [&] (float dy)
+        {
+            const juce::Point<float> from (100.0f, 3.0f);
+            divider.mouseDown (mouseAt (divider, from, from));
+            divider.mouseDrag (mouseAt (divider, from.translated (0.0f, dy), from));
+            divider.mouseUp (mouseAt (divider, from.translated (0.0f, dy), from));
+        };
+        const auto height = mixer.getHeight();
+        dragDivider (-60.0f);
+        CHECK (mixer.getHeight() == height + 60);
+        dragDivider (-2000.0f);   // the arrangement keeps its room
+        CHECK (arrange.getHeight() + view.getArrangeScrollBarAcross().getHeight() >= MainView::minimumArrangeHeight - 1);
+        dragDivider (2000.0f);    // no shorter than the mixer can be
+        const auto withRack = mixer.getHeight();
+        CHECK (withRack == mixer.getMinimumHeight());
+
+        // INSERTS lit; clicking it hides the rack: the mixer can go shorter.
+        auto* inserts = buttonNamed (mixer, "INSERTS");
+        REQUIRE (inserts != nullptr);
+        CHECK (inserts->getToggleState());
+        CHECK (mixer.getStrip (0).getInsertSlot (0).isVisible());
+        inserts->onClick();
+        studio.dispatchPendingMessages();
+        CHECK_FALSE (mixer.isRackShown());
+        CHECK_FALSE (inserts->getToggleState());
+        CHECK_FALSE (mixer.getStrip (0).getInsertSlot (0).isVisible());
+        CHECK (mixer.getMinimumHeight() < withRack - 100);
+        dragDivider (2000.0f);
+        CHECK (mixer.getHeight() == mixer.getMinimumHeight());
+        CHECK (mixer.getStrip (0).getVolume().getHeight() > 40);   // the fader keeps its room
+        // SENDS shows the sends' rack (the mixer grows to hold it); INSERTS again, the inserts.
+        buttonNamed (mixer, "SENDS")->onClick();
+        studio.dispatchPendingMessages();
+        CHECK (mixer.isRackShown());
+        CHECK (mixer.isShowingSends());
+        CHECK (mixer.getHeight() >= mixer.getMinimumHeight());
+        inserts->onClick();
+        studio.dispatchPendingMessages();
+        CHECK (mixer.getStrip (0).getInsertSlot (0).isVisible());
+        CHECK (mixer.getHeight() == withRack);
+
+        // The key editor docked has its own height (the default: a little over half).
+        view.openKeyEditor();
+        CHECK (view.getKeyEditor().getHeight() != withRack);
+        CHECK (divider.getBottom() <= view.getKeyEditor().getY());
+    }
+}

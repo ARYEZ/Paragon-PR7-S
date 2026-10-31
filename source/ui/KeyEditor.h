@@ -35,13 +35,17 @@
 //                  Ctrl+V pastes them at the playhead (the part grows to
 //                  hold them if they go past it), Ctrl+D duplicates the
 //                  selected notes straight after themselves
+//                  H / G zoom in / out a step, centred on the playhead;
+//                  Shift+F the whole part; F turns Auto-Scroll on or off
+//                  (AUTO-SCROLL: the page turns to keep the playhead in sight)
 //   wheel          scrolls the notes up and down; Shift+wheel along the song;
-//                  Ctrl+wheel zooms
+//                  Ctrl+wheel zooms (and the scroll bars, under and beside the notes)
 //
 // Each gesture is one edit (one undo step): while dragging the editor works
 // on its own copy of the notes, and gives the studio the result on release.
 class KeyEditor final : public juce::Component,
                         private juce::ChangeListener,
+                        private juce::ScrollBar::Listener,
                         private juce::Timer
 {
 public:
@@ -90,8 +94,20 @@ public:
     void setInWindow (bool);   // the button's name follows
     bool isInWindow() const noexcept { return inWindow; }
 
-    // Zooms and scrolls so the whole part fits (after it moves to or from its window).
+    // Zooms and scrolls so the whole part fits (after it moves to or from its window; Shift+F).
     void fitToPart();
+    // H / G: one zoom step in or out, centred on the playhead.
+    void zoom (bool in);
+    // Auto-Scroll, the editor's own (F, or AUTO-SCROLL); on at first.
+    void setAutoScroll (bool);
+    bool getAutoScroll() const noexcept { return autoScroll; }
+    std::function<void (bool)> onAutoScrollChange;   // the main window keeps it for next time
+    // Turns the page if the playhead is out of sight (playing, or moved while stopped). The timer calls it.
+    void followPlayhead();
+    double getPixelsPerBeat() const noexcept { return pixelsPerBeat; }
+    double getFirstBeat() const noexcept { return firstBeat; }
+    juce::ScrollBar& getScrollBarAcross() noexcept { return across; }
+    juce::ScrollBar& getScrollBarDown() noexcept { return down; }
 
     // Where things are drawn, in the editor's coordinates (for tests).
     juce::Rectangle<float> getNoteBounds (int index) const;
@@ -102,7 +118,8 @@ public:
     float yForPitch (int pitch) const noexcept;   // the top of its row
     int pitchForY (float y) const noexcept;
 
-    static constexpr int sideWidth = 302, keysWidth = 54, rulerHeight = 26, velocityHeight = 86;
+    static constexpr int sideWidth = 302, keysWidth = 54, rulerHeight = 26, velocityHeight = 86, scrollBarSize = 12;
+    static constexpr int minimumHeight = 230;   // docked: the panel's keys and a few octaves
     static constexpr float rowHeight = 12.0f;
 
     void paint (juce::Graphics&) override;
@@ -119,8 +136,10 @@ private:
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
+    void scrollBarMoved (juce::ScrollBar*, double newRangeStart) override;
     void refresh();
     void clampScroll();
+    void refreshScrollBars();
     void refreshPanel();
     const std::vector<pr7s::Note>& notes() const;   // the working copy while a gesture edits them
     bool editing() const noexcept;
@@ -156,6 +175,9 @@ private:
     // The view: zoom and scroll, of its own (independent of the arrangement's).
     double pixelsPerBeat = 80.0, firstBeat = 0.0;
     float scrollY = 0.0f;
+    bool autoScroll = true;
+    double lastPosition = 0.0;   // the playhead as last seen (a jump while stopped is followed)
+    juce::ScrollBar across { false }, down { true };
 
     // The gesture under way.
     Gesture gesture = Gesture::none;
@@ -169,7 +191,7 @@ private:
     int auditioning = -1;
 
     juce::TextButton selectTool { "SELECT" }, drawTool { "DRAW" }, eraseTool { "ERASE" }, quantizeButton { "QUANTIZE" },
-                     windowButton { "WINDOW" }, closeButton { "CLOSE" };
+                     windowButton { "WINDOW" }, closeButton { "CLOSE" }, autoScrollButton { "AUTO-SCROLL" };
     bool inWindow = false;
     juce::ComboBox gridBox;
 };

@@ -742,3 +742,20 @@ int ParagonLookAndFeel::getSliderThumbRadius (juce::Slider& slider)
         return eqFaderThumbRadius;
     return LookAndFeel_V4::getSliderThumbRadius (slider);
 }
+
+void ParagonLookAndFeel::drawScrollbar (juce::Graphics& g, juce::ScrollBar&, int x, int y, int width, int height, bool isScrollbarVertical,
+                                        int thumbStartPosition, int thumbSize, bool isMouseOver, bool isMouseDown)
+{
+    const auto track = juce::Rectangle<int> (x, y, width, height).toFloat();
+    g.setColour (juce::Colour (0xff0b090c));
+    g.fillRect (track);
+    g.setColour (ParagonColours::panelEdge);
+    g.drawRect (track, 1.0f);
+    if (thumbSize <= 0)
+        return;
+    const auto thumb = (isScrollbarVertical ? juce::Rectangle<float> ((float) x, (float) thumbStartPosition, (float) width, (float) thumbSize)
+                                            : juce::Rectangle<float> ((float) thumbStartPosition, (float) y, (float) thumbSize, (float) height))
+                         .reduced (3.0f);
+    g.setColour (ParagonColours::accent.withAlpha (isMouseDown ? 0.95f : isMouseOver ? 0.8f : 0.55f));
+    g.fillRoundedRectangle (thumb, juce::jmin (thumb.getWidth(), thumb.getHeight()) * 0.5f);
+}

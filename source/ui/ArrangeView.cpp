@@ -44,19 +44,59 @@ void ArrangeView::changeListenerCallback (juce::ChangeBroadcaster*)
 
 void ArrangeView::timerCallback()
 {
-    // While playing, the view turns the page when the playhead reaches the right edge.
-    auto& engine = studio.getEngine();
-    if (engine.isPlaying() && drag == Drag::none)
-    {
-        const auto x = timeline.xForBeat (engine.getPosition());
-        if (x > (float) getWidth() - 30.0f || x < 0.0f)
-        {
-            timeline.firstBeat = juce::jmax (0.0, engine.getPosition() - 1.0);
-            if (timeline.onScrollOrZoom)
-                timeline.onScrollOrZoom();
-        }
-    }
+    followPlayhead();
     repaint();
+}
+
+void ArrangeView::followPlayhead()
+{
+    auto& engine = studio.getEngine();
+    const auto position = engine.getPosition();
+    const auto jumped = position != lastPosition;
+    lastPosition = position;
+    if (! timeline.autoScroll || drag != Drag::none || ! (engine.isPlaying() || jumped))
+        return;
+    const auto x = timeline.xForBeat (position);
+    if (x > (float) getWidth() - 30.0f || x < 0.0f)
+    {
+        timeline.firstBeat = juce::jmax (0.0, position - 1.0);
+        scrolled();
+    }
+}
+
+void ArrangeView::zoom (bool in)
+{
+    const auto cursor = studio.getEngine().getPosition();
+    timeline.pixelsPerBeat = juce::jlimit (2.0, 400.0, in ? timeline.pixelsPerBeat * Timeline::zoomStep : timeline.pixelsPerBeat / Timeline::zoomStep);
+    timeline.firstBeat = juce::jmax (0.0, cursor - (double) getWidth() * 0.5 / timeline.pixelsPerBeat);
+    scrolled();
+    repaint();
+}
+
+void ArrangeView::zoomFull()
+{
+    timeline.pixelsPerBeat = juce::jlimit (2.0, 400.0, (double) juce::jmax (100, getWidth()) / Timeline::scrollLength (studio));
+    timeline.firstBeat = 0.0;
+    scrolled();
+    repaint();
+}
+
+void ArrangeView::scrolled()
+{
+    if (timeline.onScrollOrZoom)
+        timeline.onScrollOrZoom();
+}
+
+double Timeline::scrollLength (pr7s::Studio& studio)
+{
+    const auto& project = studio.getProject();
+    auto end = project.loopOn ? project.loopEnd : 0.0;
+    end = juce::jmax (end, studio.getEngine().getPosition());
+    for (const auto& track : project.tracks)
+        for (const auto& part : track.parts)
+            end = juce::jmax (end, part.start + part.length);
+    const auto bar = project.beatsPerBar();
+    return juce::jmax (32.0 * bar, std::ceil (end / bar) * bar + 8.0 * bar);
 }
 
 std::vector<Timeline::Row> Timeline::layout (const pr7s::Studio& studio)
@@ -739,8 +779,7 @@ void ArrangeView::mouseWheelMove (const juce::MouseEvent& event, const juce::Mou
         const auto room = juce::jmax (0, Timeline::contentHeight (studio) - (getHeight() - Timeline::rulerHeight - Timeline::bottomRoom));
         timeline.scrollY = juce::jlimit (0, room, timeline.scrollY - juce::roundToInt (wheel.deltaY * 300.0f));
     }
-    if (timeline.onScrollOrZoom)
-        timeline.onScrollOrZoom();
+    scrolled();
     repaint();
 }
 

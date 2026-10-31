@@ -76,6 +76,21 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     gridBox.onChange = [this] { setGrid (grids[(size_t) juce::jlimit (0, (int) std::size (grids) - 1, gridBox.getSelectedId() - 1)].beats); };
     addAndMakeVisible (gridBox);
 
+    autoScrollButton.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    autoScrollButton.setWantsKeyboardFocus (false);
+    autoScrollButton.setTooltip ("AUTO-SCROLL (F): while it's lit, the page turns to keep the playhead in sight");
+    autoScrollButton.onClick = [this] { setAutoScroll (! autoScroll); };
+    autoScrollButton.setToggleState (autoScroll, juce::dontSendNotification);
+    addAndMakeVisible (autoScrollButton);
+
+    for (auto* bar : { &across, &down })
+    {
+        bar->setAutoHide (false);
+        bar->setWantsKeyboardFocus (false);
+        bar->addListener (this);
+        addAndMakeVisible (*bar);
+    }
+
     setWantsKeyboardFocus (false);
     setGrid (0.25);
     setTool (Tool::select);
@@ -229,16 +244,65 @@ void KeyEditor::timerCallback()
     if (selection.trackId != lastArrangeTrack || selection.index != lastArrangeIndex)
         refresh();
 
-    // While playing, the page turns when the playhead reaches the right edge.
-    auto& engine = studio.getEngine();
-    if (engine.isPlaying() && gesture == Gesture::none)
-    {
-        const auto area = getNotesArea();
-        const auto x = xForBeat (engine.getPosition());
-        if (x > area.getRight() - 30.0f || x < area.getX())
-            firstBeat = juce::jmax (0.0, engine.getPosition() - 1.0);
-    }
+    followPlayhead();
+    refreshScrollBars();
     repaint (getLocalBounds().withTrimmedLeft (sideWidth));
+}
+
+void KeyEditor::followPlayhead()
+{
+    // Auto-Scroll (Page Scroll): playing, or moved while stopped, and out of
+    // sight: the page turns so the playhead is at the left.
+    auto& engine = studio.getEngine();
+    const auto position = engine.getPosition();
+    const auto jumped = position != lastPosition;
+    lastPosition = position;
+    if (! autoScroll || gesture != Gesture::none || ! (engine.isPlaying() || jumped))
+        return;
+    const auto area = getNotesArea();
+    const auto x = xForBeat (position);
+    if (x > area.getRight() - 30.0f || x < area.getX())
+        firstBeat = juce::jmax (0.0, position - 1.0);
+}
+
+void KeyEditor::zoom (bool in)
+{
+    const auto cursor = studio.getEngine().getPosition();
+    pixelsPerBeat = juce::jlimit (12.0, 600.0, in ? pixelsPerBeat * Timeline::zoomStep : pixelsPerBeat / Timeline::zoomStep);
+    firstBeat = juce::jmax (0.0, cursor - (double) getNotesArea().getWidth() * 0.5 / pixelsPerBeat);
+    refreshScrollBars();
+    repaint();
+}
+
+void KeyEditor::setAutoScroll (bool shouldScroll)
+{
+    autoScroll = shouldScroll;
+    autoScrollButton.setToggleState (autoScroll, juce::dontSendNotification);
+    if (onAutoScrollChange)
+        onAutoScrollChange (autoScroll);
+}
+
+void KeyEditor::refreshScrollBars()
+{
+    // Across: the song from its start (as far as the arrangement's goes); down: the 128 notes.
+    const auto area = getNotesArea();
+    const auto visibleBeats = (double) area.getWidth() / pixelsPerBeat;
+    across.setRangeLimits (0.0, juce::jmax (Timeline::scrollLength (studio), firstBeat + visibleBeats), juce::dontSendNotification);
+    across.setCurrentRange (firstBeat, visibleBeats, juce::dontSendNotification);
+    down.setRangeLimits (0.0, juce::jmax ((double) area.getHeight(), 128.0 * rowHeight), juce::dontSendNotification);
+    down.setCurrentRange (scrollY, area.getHeight(), juce::dontSendNotification);
+}
+
+void KeyEditor::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
+{
+    if (bar == &across)
+        firstBeat = juce::jmax (0.0, newRangeStart);
+    else
+    {
+        scrollY = (float) newRangeStart;
+        clampScroll();
+    }
+    repaint();
 }
 
 //==============================================================================
@@ -249,18 +313,19 @@ juce::Rectangle<float> KeyEditor::rulerArea() const
 
 juce::Rectangle<float> KeyEditor::keysArea() const
 {
-    return { (float) sideWidth, (float) rulerHeight, (float) keysWidth, (float) (getHeight() - rulerHeight - velocityHeight) };
+    return { (float) sideWidth, (float) rulerHeight, (float) keysWidth, (float) juce::jmax (0, getHeight() - rulerHeight - velocityHeight - scrollBarSize) };
 }
 
 juce::Rectangle<float> KeyEditor::getNotesArea() const
 {
-    return { (float) (sideWidth + keysWidth), (float) rulerHeight, (float) (getWidth() - sideWidth - keysWidth),
-             (float) juce::jmax (0, getHeight() - rulerHeight - velocityHeight) };
+    // Room on the right for the scroll bar down, and at the bottom (under the velocities) for the one across.
+    return { (float) (sideWidth + keysWidth), (float) rulerHeight, (float) (getWidth() - sideWidth - keysWidth - scrollBarSize),
+             (float) juce::jmax (0, getHeight() - rulerHeight - velocityHeight - scrollBarSize) };
 }
 
 juce::Rectangle<float> KeyEditor::getVelocityArea() const
 {
-    return { (float) (sideWidth + keysWidth), (float) (getHeight() - velocityHeight), (float) (getWidth() - sideWidth - keysWidth),
+    return { (float) (sideWidth + keysWidth), (float) (getHeight() - velocityHeight - scrollBarSize), (float) (getWidth() - sideWidth - keysWidth),
              (float) velocityHeight };
 }
 
@@ -574,6 +639,14 @@ bool KeyEditor::keyPressed (const juce::KeyPress& key)
     if (key.getKeyCode() == juce::KeyPress::upKey)                               { transposeSelected (mods.isShiftDown() ? 12 : 1); return true; }
     if (key.getKeyCode() == juce::KeyPress::downKey)                             { transposeSelected (mods.isShiftDown() ? -12 : -1); return true; }
     if (letter == 'Q')                                                           { quantizeSelected(); return true; }
+    // Zoom and Auto-Scroll (the manual's keys).
+    if (! mods.isAltDown() && ! mods.isShiftDown() && (letter == 'H' || letter == 'G')) { zoom (letter == 'H'); return true; }
+    if (! mods.isAltDown() && letter == 'F')
+    {
+        mods.isShiftDown() ? fitToPart() : setAutoScroll (! autoScroll);
+        repaint();
+        return true;
+    }
     if (key.getTextCharacter() == '1')                                           { setTool (Tool::select); return true; }
     if (key.getTextCharacter() == '8')                                           { setTool (Tool::draw); return true; }
     if (key.getTextCharacter() == '5')                                           { setTool (Tool::erase); return true; }
@@ -911,6 +984,7 @@ void KeyEditor::mouseWheelMove (const juce::MouseEvent& event, const juce::Mouse
         scrollY -= wheel.deltaY * 300.0f;
         clampScroll();
     }
+    refreshScrollBars();
     repaint();
 }
 
@@ -945,7 +1019,14 @@ void KeyEditor::resized()
     gridBox.setBounds (gridRow.removeFromLeft (122));
     gridRow.removeFromLeft (6);
     quantizeButton.setBounds (gridRow);
+    panel.removeFromTop (8);
+    autoScrollButton.setBounds (panel.removeFromTop (24).removeFromLeft (122).withTrimmedLeft (42));
+
+    const auto notesArea = getNotesArea().toNearestInt();
+    down.setBounds (notesArea.getRight(), notesArea.getY(), scrollBarSize, notesArea.getHeight());
+    across.setBounds (notesArea.getX() - keysWidth, getHeight() - scrollBarSize, getWidth() - sideWidth, scrollBarSize);
     clampScroll();
+    refreshScrollBars();
 }
 
 void KeyEditor::paint (juce::Graphics& g)
@@ -1016,7 +1097,7 @@ void KeyEditor::paintPanel (juce::Graphics& g)
                 juce::Justification::centredLeft, false);
 
     // What's selected.
-    auto info = panel.withTrimmedLeft (18.0f).withTrimmedRight (12.0f).withTrimmedTop ((float) gridBox.getBottom() + 14.0f);
+    auto info = panel.withTrimmedLeft (18.0f).withTrimmedRight (12.0f).withTrimmedTop ((float) autoScrollButton.getBottom() + 14.0f);
     g.setColour (ParagonColours::panelEdge);
     g.fillRect (info.withHeight (1.0f));
     info.removeFromTop (10.0f);

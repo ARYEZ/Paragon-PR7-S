@@ -125,12 +125,14 @@ void MixerView::Strip::refresh()
     {
         shownSlots = shown;
         resized();
+        if (owner.onMinimumHeightChange)   // the rack's room changed
+            owner.onMinimumHeightChange();
     }
     const auto preFader = owner.studio.getPreFaderSlots (busId);
     const auto sendsShown = owner.isShowingSends();
     for (int i = 0; i < (int) sendSlots.size(); ++i)
     {
-        sendSlots[(size_t) i]->setVisible (sendsShown && track != nullptr && ! track->isFx());
+        sendSlots[(size_t) i]->setVisible (owner.isRackShown() && sendsShown && track != nullptr && ! track->isFx());
         sendSlots[(size_t) i]->refresh();
     }
     if (track != nullptr)
@@ -142,7 +144,7 @@ void MixerView::Strip::refresh()
     for (int i = 0; i < (int) slots.size(); ++i)
     {
         auto& slot = slots[(size_t) i];
-        slot.setVisible (! sendsShown && i < shownSlots);
+        slot.setVisible (owner.isRackShown() && ! sendsShown && i < shownSlots);
         slot.setColour (juce::TextButton::buttonColourId, i < preFader ? juce::Colour (0xff0b090c) : juce::Colour (0xff1c1108));   // after the fader: tinted
         if (inserts != nullptr && i < (int) inserts->size() && ! (*inserts)[(size_t) i].isEmpty())
         {
@@ -232,12 +234,12 @@ void MixerView::Strip::paint (juce::Graphics& g)
                       nameArea.toNearestInt(), juce::Justification::centred, 1, 0.8f);
     g.setColour (ParagonColours::textDim);
     g.setFont (font (8.5f));
-    if (isMaster())
+    if (isMaster() && owner.isRackShown())
         g.drawText (owner.isShowingSends() ? "NO SENDS" : "INSERTS", nameArea.translated (0.0f, nameArea.getHeight()).withHeight (12.0f), juce::Justification::centred, false);
-    else if (owner.isShowingSends() && track != nullptr && track->isFx())
+    else if (owner.isRackShown() && owner.isShowingSends() && track != nullptr && track->isFx())
         g.drawText ("NO SENDS (AN FX CHANNEL)", rackArea, juce::Justification::centredTop, true);
     // The line between the inserts before the fader and those after it.
-    if (const auto preFader = owner.studio.getPreFaderSlots (busId); preFader < shownSlots && ! owner.isShowingSends())
+    if (const auto preFader = owner.studio.getPreFaderSlots (busId); preFader < shownSlots && owner.isRackShown() && ! owner.isShowingSends())
     {
         const auto& first = slots[(size_t) preFader];
         const auto y = preFader == 0 ? (float) first.getY() - 2.0f : (float) first.getY() - (float) slotGap * 0.5f - 0.5f;
@@ -269,23 +271,26 @@ void MixerView::Strip::resized()
     nameArea = area.removeFromTop (18).toFloat();
     output.setBounds (area.removeFromTop (14).reduced (2, 0));   // OUT (the master's: "INSERTS")
     rackArea = area.withHeight (40).toFloat().withTrimmedTop (4.0f);
-    // The slots shown, smaller when there are many, so the fader keeps room.
-    const auto below = (isMaster() ? 0 : 50) + 28 + 16 + 6 + 110;   // pan, the keys, the readout, a gap, the shortest fader
-    const auto rowHeight = juce::jlimit (11, slotHeight, (area.getHeight() - below) / shownSlots - slotGap);
-    // The rack: the inserts shown, or the eight sends (in the same room).
-    auto rack = area;
-    for (int i = 0; i < (int) slots.size(); ++i)
+    if (owner.isRackShown())
     {
-        if (i >= shownSlots)
-            continue;
-        slots[(size_t) i].setBounds (area.removeFromTop (rowHeight));
-        area.removeFromTop (slotGap);
-    }
-    const auto sendRow = juce::jmax (11, (shownSlots * (rowHeight + slotGap)) / pr7s::Project::maxSends - slotGap);
-    for (auto& send : sendSlots)
-    {
-        send->setBounds (rack.removeFromTop (sendRow));
-        rack.removeFromTop (slotGap);
+        // The slots shown, smaller when there are many, so the fader keeps room.
+        const auto below = (isMaster() ? 0 : 50) + 28 + 16 + 6 + 110;   // pan, the keys, the readout, a gap, the shortest fader
+        const auto rowHeight = juce::jlimit (shortestSlot, slotHeight, (area.getHeight() - below) / shownSlots - slotGap);
+        // The rack: the inserts shown, or the eight sends (in the same room).
+        auto rack = area;
+        for (int i = 0; i < (int) slots.size(); ++i)
+        {
+            if (i >= shownSlots)
+                continue;
+            slots[(size_t) i].setBounds (area.removeFromTop (rowHeight));
+            area.removeFromTop (slotGap);
+        }
+        const auto sendRow = juce::jmax (shortestSlot, (shownSlots * (rowHeight + slotGap)) / pr7s::Project::maxSends - slotGap);
+        for (auto& send : sendSlots)
+        {
+            send->setBounds (rack.removeFromTop (sendRow));
+            rack.removeFromTop (slotGap);
+        }
     }
     area.removeFromTop (6);
     if (! isMaster())
@@ -345,11 +350,19 @@ MixerView::MixerView (pr7s::Studio& studioToUse) : studio (studioToUse)
         button->setWantsKeyboardFocus (false);
         addAndMakeVisible (*button);
     }
-    insertsButton.setTooltip ("Show each channel's inserts (its effects, top to bottom)");
-    sendsButton.setTooltip ("Show each channel's sends (to the FX channels)");
-    insertsButton.onClick = [this] { setShowSends (false); };
-    sendsButton.onClick = [this] { setShowSends (true); };
-    insertsButton.setToggleState (true, juce::dontSendNotification);
+    insertsButton.setTooltip ("Show each channel's inserts (its effects, top to bottom); click again to hide them (only the faders)");
+    sendsButton.setTooltip ("Show each channel's sends (to the FX channels); click again to hide them (only the faders)");
+    // The lit one again hides the rack; the other shows its own.
+    insertsButton.onClick = [this] { rackShown && ! showSends ? setRackShown (false) : (setShowSends (false), setRackShown (true)); };
+    sendsButton.onClick = [this] { rackShown && showSends ? setRackShown (false) : (setShowSends (true), setRackShown (true)); };
+    if (auto* settings = studio.getSettings())
+    {
+        const auto rack = settings->getValue ("mixerRack", "inserts");
+        showSends = rack == "sends";
+        rackShown = rack != "none";
+    }
+    insertsButton.setToggleState (rackShown && ! showSends, juce::dontSendNotification);
+    sendsButton.setToggleState (rackShown && showSends, juce::dontSendNotification);
     closeButton.setTooltip ("Close the mixer (F3 in its own window, Alt+F3 docked)");
     closeButton.onClick = [this] { if (onClose) onClose(); };
     windowButton.onClick = [this] { if (onWindowToggle) onWindowToggle(); };
@@ -501,7 +514,8 @@ void MixerView::paint (juce::Graphics& g)
     g.drawText ("MIXER", bar.withTrimmedLeft (14.0f), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (font (11.0f, juce::Font::plain));
-    g.drawText (showSends ? "Each track's sends: some of its sound to an FX channel (before or after its fader), back into the master"
+    g.drawText (! rackShown ? "Each track's fader, pan and keys (INSERTS or SENDS shows their racks again)"
+              : showSends ? "Each track's sends: some of its sound to an FX channel (before or after its fader), back into the master"
                           : "Each track: its instrument, its inserts (top to bottom; those below an orange line after the fader), its fader, its output",
                 bar.withTrimmedLeft (70.0f).withTrimmedRight (330.0f), juce::Justification::centredLeft, true);
     if (strips.empty())
@@ -537,12 +551,45 @@ void MixerView::resized()
 void MixerView::setShowSends (bool shouldShow)
 {
     showSends = shouldShow;
-    insertsButton.setToggleState (! showSends, juce::dontSendNotification);
-    sendsButton.setToggleState (showSends, juce::dontSendNotification);
+    rackChanged();
+}
+
+void MixerView::setRackShown (bool shouldShow)
+{
+    rackShown = shouldShow;
+    rackChanged();
+    if (onMinimumHeightChange)
+        onMinimumHeightChange();
+}
+
+void MixerView::rackChanged()
+{
+    insertsButton.setToggleState (rackShown && ! showSends, juce::dontSendNotification);
+    sendsButton.setToggleState (rackShown && showSends, juce::dontSendNotification);
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("mixerRack", ! rackShown ? "none" : showSends ? "sends" : "inserts");
     for (auto& strip : strips)
+    {
         strip->refresh();
+        strip->resized();
+    }
     master->refresh();
+    master->resized();
     repaint();
+}
+
+int MixerView::getMinimumHeight() const
+{
+    // The rack's room: the most slots any strip shows, at their smallest.
+    auto rack = 0;
+    if (rackShown)
+    {
+        auto most = master->getShownSlots();
+        for (const auto& strip : strips)
+            most = juce::jmax (most, strip->getShownSlots());
+        rack = most * (Strip::shortestSlot + slotGap);
+    }
+    return barHeight + Strip::fixedHeight + Strip::shortestFader + rack + viewport.getScrollBarThickness();
 }
 
 void MixerView::showOutputMenu (int busId)

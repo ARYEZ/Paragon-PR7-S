@@ -110,6 +110,10 @@ public:
                                bool highlighted, bool down) override;
 
     void drawButtonText (juce::Graphics&, juce::TextButton&, bool highlighted, bool down) override;
+    // Scroll bars: a dark track and an orange thumb (JUCE's own is blue: not the family's).
+    void drawScrollbar (juce::Graphics&, juce::ScrollBar&, int x, int y, int width, int height, bool isScrollbarVertical,
+                        int thumbStartPosition, int thumbSize, bool isMouseOver, bool isMouseDown) override;
+    int getDefaultScrollbarWidth() override { return 12; }
 
 private:
     juce::Typeface::Ptr regular, semiBold, blackItalic, bebas;

@@ -88,6 +88,27 @@ MainView::MainView (pr7s::Studio& studioToUse)
     {
         editorZone.inWindow = settings->getBoolValue ("keyEditorInWindow", false);
         mixerZone.inWindow = settings->getBoolValue ("mixerInWindow", false);
+        editorZone.dockedHeight = settings->getIntValue ("keyEditorHeight", 0);
+        mixerZone.dockedHeight = settings->getIntValue ("mixerHeight", 0);
+        timeline.autoScroll = settings->getBoolValue ("arrangeAutoScroll", true);
+        keyEditor.setAutoScroll (settings->getBoolValue ("keyEditorAutoScroll", true));
+    }
+    keyEditor.onAutoScrollChange = [this] (bool on)
+    {
+        if (auto* settings = studio.getSettings())
+            settings->setValue ("keyEditorAutoScroll", on);
+    };
+    trackList.onAutoScrollToggle = [this] { setArrangeAutoScroll (! timeline.autoScroll); };
+    trackList.refreshAutoScroll();
+    zoneDivider = std::make_unique<ZoneDivider> (*this);
+    addChildComponent (*zoneDivider);
+    mixer.onMinimumHeightChange = [this] { resized(); };   // (after the divider: resized() places it)
+    for (auto* bar : { &arrangeAcross, &arrangeDown })
+    {
+        bar->setAutoHide (false);
+        bar->setWantsKeyboardFocus (false);
+        bar->addListener (this);
+        addAndMakeVisible (*bar);
     }
     keyEditor.setInWindow (editorZone.inWindow);
     mixer.setInWindow (mixerZone.inWindow);
@@ -105,6 +126,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
         trackList.resized();
         trackList.repaint();
         arrange.repaint();
+        refreshScrollBars();
     };
 
     // An instrument's window closes before the instrument goes.
@@ -132,6 +154,9 @@ MainView::MainView (pr7s::Studio& studioToUse)
 
 MainView::~MainView()
 {
+    arrangeAcross.removeListener (this);
+    arrangeDown.removeListener (this);
+    mixer.onMinimumHeightChange = nullptr;
     editorZone.window.reset();
     mixerZone.window.reset();
     studio.onEffectGoing = nullptr;
@@ -154,6 +179,36 @@ void MainView::changeListenerCallback (juce::ChangeBroadcaster* source)
         return;
     }
     refreshHeader();
+    refreshScrollBars();
+}
+
+void MainView::refreshScrollBars()
+{
+    // Across: from the song's start to past its end (or to what's in view); down: the rows and the room under them.
+    const auto visibleBeats = (double) arrange.getWidth() / timeline.pixelsPerBeat;
+    arrangeAcross.setRangeLimits (0.0, juce::jmax (Timeline::scrollLength (studio), timeline.firstBeat + visibleBeats), juce::dontSendNotification);
+    arrangeAcross.setCurrentRange (timeline.firstBeat, visibleBeats, juce::dontSendNotification);
+    const auto lanes = (double) juce::jmax (0, arrange.getHeight() - Timeline::rulerHeight);
+    arrangeDown.setRangeLimits (0.0, juce::jmax (lanes, (double) (Timeline::contentHeight (studio) + Timeline::bottomRoom)), juce::dontSendNotification);
+    arrangeDown.setCurrentRange (timeline.scrollY, lanes, juce::dontSendNotification);
+}
+
+void MainView::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
+{
+    if (bar == &arrangeAcross)
+        timeline.firstBeat = juce::jmax (0.0, newRangeStart);
+    else
+        timeline.scrollY = juce::jmax (0, juce::roundToInt (newRangeStart));
+    if (timeline.onScrollOrZoom)
+        timeline.onScrollOrZoom();
+}
+
+void MainView::setArrangeAutoScroll (bool on)
+{
+    timeline.autoScroll = on;
+    trackList.refreshAutoScroll();
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("arrangeAutoScroll", on);
 }
 
 void MainView::refreshHeader()
@@ -236,19 +291,96 @@ void MainView::resized()
     transport.setBounds (area.removeFromTop (transportHeight).reduced (2, 0));
 
     auto middle = area.reduced (7, 3);
-    for (auto* zone : { &editorZone, &mixerZone })
-        if (zone->open && ! zone->inWindow)
-        {
-            // The lower zone takes a little over half; the arrangement keeps the rest.
-            const auto height = juce::jlimit (juce::jmin (240, middle.getHeight()), juce::jmax (240, middle.getHeight() - 170),
-                                              juce::roundToInt ((float) middle.getHeight() * 0.6f));
-            zone->content.setBounds (middle.removeFromBottom (height));
-            middle.removeFromBottom (3);
-            break;
-        }
+    zoneDivider->setVisible (false);
+    if (auto* zone = dockedZone())
+    {
+        zone->content.setBounds (middle.removeFromBottom (heightFor (*zone, middle.getHeight())));
+        zoneDivider->setBounds (middle.removeFromBottom (dividerHeight));
+        zoneDivider->setVisible (true);
+    }
+    // The scroll bars: across under the arrangement, down beside its rows.
+    auto acrossRow = middle.removeFromBottom (scrollBarSize);
     trackList.setBounds (middle.removeFromLeft (trackListWidth));
     middle.removeFromLeft (2);
+    acrossRow.removeFromLeft (trackListWidth + 2);
+    arrangeDown.setBounds (middle.removeFromRight (scrollBarSize).withTrimmedTop (Timeline::rulerHeight));
     arrange.setBounds (middle);
+    arrangeAcross.setBounds (acrossRow.withTrimmedRight (scrollBarSize));
+    refreshScrollBars();
+}
+
+MainView::Zone* MainView::dockedZone() noexcept
+{
+    for (auto* zone : { &editorZone, &mixerZone })
+        if (zone->open && ! zone->inWindow)
+            return zone;
+    return nullptr;
+}
+
+int MainView::minimumHeight (Zone& zone) const
+{
+    return &zone == &mixerZone ? mixer.getMinimumHeight() : KeyEditor::minimumHeight;
+}
+
+int MainView::heightFor (Zone& zone, int middleHeight) const
+{
+    // As dragged (at first a little over half), between its least and what
+    // leaves the arrangement its room (its least wins if there isn't enough).
+    const auto least = juce::jmin (minimumHeight (zone), middleHeight);
+    const auto most = juce::jlimit (least, middleHeight, middleHeight - minimumArrangeHeight - dividerHeight);
+    const auto wanted = zone.dockedHeight > 0 ? zone.dockedHeight : juce::roundToInt ((float) middleHeight * 0.6f);
+    return juce::jlimit (least, most, wanted);
+}
+
+void MainView::setDockedHeight (int height)
+{
+    auto* zone = dockedZone();
+    if (zone == nullptr)
+        return;
+    const auto middleHeight = getHeight() - headerHeight - transportHeight - 6;
+    zone->dockedHeight = juce::jmax (1, height);   // (0 would mean the default)
+    zone->dockedHeight = heightFor (*zone, middleHeight);   // kept to what it can be
+    if (auto* settings = studio.getSettings())
+        settings->setValue (zone->settingsKey + "Height", zone->dockedHeight);
+    resized();
+}
+
+//==============================================================================
+MainView::ZoneDivider::ZoneDivider (MainView& ownerToUse) : owner (ownerToUse)
+{
+    setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+    setRepaintsOnMouseActivity (true);
+    setTooltip ("Drag to make the lower zone taller or shorter");
+}
+
+void MainView::ZoneDivider::paint (juce::Graphics& g)
+{
+    const auto bounds = getLocalBounds().toFloat();
+    g.setColour (juce::Colour (0xff0b090c));
+    g.fillRect (bounds);
+    const auto lit = isMouseOverOrDragging();
+    g.setColour (lit ? ParagonColours::accent : ParagonColours::panelEdge);
+    g.fillRect (bounds.withSizeKeepingCentre (bounds.getWidth(), 1.0f));
+    // The grip: three short lines in the middle.
+    g.setColour (lit ? ParagonColours::accent : ParagonColours::textDim);
+    for (int i = -1; i <= 1; ++i)
+        g.fillRoundedRectangle (bounds.withSizeKeepingCentre (36.0f, 1.5f).translated (0.0f, (float) i * 2.5f), 0.75f);
+}
+
+void MainView::ZoneDivider::mouseDown (const juce::MouseEvent&)
+{
+    auto* zone = owner.dockedZone();
+    heightAtDown = zone != nullptr ? zone->content.getHeight() : 0;
+}
+
+void MainView::ZoneDivider::mouseDrag (const juce::MouseEvent& event)
+{
+    owner.setDockedHeight (heightAtDown - event.getDistanceFromDragStartY());
+}
+
+void MainView::ZoneDivider::mouseUp (const juce::MouseEvent&)
+{
+    repaint();
 }
 
 //==============================================================================
@@ -308,6 +440,13 @@ bool MainView::keyPressed (const juce::KeyPress& key)
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
     {
         arrange.hasSelectedPoints() ? arrange.deleteSelectedPoints() : arrange.deleteSelected();
+        return true;
+    }
+    // Zoom and Auto-Scroll (the manual's keys: H in, G out, Shift+F the whole song, F Auto-Scroll).
+    if (! mods.isAltDown() && ! mods.isShiftDown() && (letter == 'H' || letter == 'G')) { arrange.zoom (letter == 'H'); return true; }
+    if (! mods.isAltDown() && letter == 'F')
+    {
+        mods.isShiftDown() ? arrange.zoomFull() : setArrangeAutoScroll (! timeline.autoScroll);
         return true;
     }
     if (letter == 'R' || key.getTextCharacter() == '*') { studio.record(); return true; }

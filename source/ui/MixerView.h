@@ -25,6 +25,8 @@
 //                  Ctrl-click for 0 dB; right-click (or click an empty one)
 //                  for its FX channel, Move to Pre-/Post-Fader, Remove, Add
 //                  FX Channel to Send. PRE marks one before the fader
+//   INSERTS, SENDS which rack the strips show; click the lit one to hide it
+//                  (only the faders: the docked mixer then takes less room)
 //   OUT            where the track's sound goes: the master, or a group channel
 //   MASTER         every track goes through it: its inserts, then its fader
 //
@@ -49,9 +51,16 @@ public:
     void showOutputMenu (int busId);
 
     // The strips' racks: their inserts, or their sends (INSERTS / SENDS in the
-    // mixer's bar: our design, so the strips keep their faders' room).
+    // mixer's bar: our design, so the strips keep their faders' room), or
+    // neither (click the lit one again): then only the faders, pan and keys
+    // show, and the mixer can be docked much shorter. Remembered for next time.
     void setShowSends (bool);
     bool isShowingSends() const noexcept { return showSends; }
+    void setRackShown (bool);
+    bool isRackShown() const noexcept { return rackShown; }
+    // The least height it can be docked at (more with the rack shown: room for its slots).
+    int getMinimumHeight() const;
+    std::function<void()> onMinimumHeightChange;   // the main window lays the lower zone out again
     class SendSlot;
 
     // For tests: the strips, in order (the master's last).
@@ -75,7 +84,8 @@ private:
     juce::Viewport viewport;
     juce::Component holder;   // the track strips, side by side, in the viewport
     juce::TextButton windowButton { "WINDOW" }, closeButton { "CLOSE" }, insertsButton { "INSERTS" }, sendsButton { "SENDS" };
-    bool inWindow = false, showSends = false;
+    bool inWindow = false, showSends = false, rackShown = true;
+    void rackChanged();
 };
 
 // A send's slot on a strip (the SENDS rack).
@@ -119,6 +129,8 @@ public:
     SendSlot& getSendSlot (int slot) { return *sendSlots[(size_t) slot]; }
     juce::TextButton& getOutput() noexcept { return output; }
     int getShownSlots() const noexcept { return shownSlots; }
+    // Its height without the rack, and with the shortest fader (the rack adds its slots).
+    static constexpr int fixedHeight = 8 + 18 + 14 + 6 + 50 + 22 + 6 + 16 + 6, shortestFader = 70, shortestSlot = 11;
 
     void paint (juce::Graphics&) override;
     void resized() override;

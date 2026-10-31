@@ -2,6 +2,18 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.7.2
+
+Getting around the song: zooming and following the playhead with the Cubase 15 manual's keys, scroll bars, and a lower zone you can resize.
+
+- **Zoom with H and G** (the manual's keys: **H zooms in, G zooms out**), a step at a time, centred on the playhead. **Shift+F** zooms out to show the whole song. They work in the arrangement, or in the key editor after you've clicked in it (each has its own zoom). Ctrl+mouse wheel still zooms round the mouse.
+- **F turns Auto-Scroll on and off:** while it's on, the view turns the page when the playhead reaches the right edge (the manual's Page Scroll), and follows the playhead when it jumps somewhere out of sight (Home, for example). The arrangement and the key editor each have their own, as in the manual, with an **AUTO-SCROLL** key that's lit while it's on (over the track list, and in the key editor's panel). Both start on, as before, and are remembered.
+- **Scroll bars** under and beside the arrangement and the key editor: drag them to go left and right along the song, and up and down the tracks (or the notes). The mouse wheel still scrolls too (Shift+wheel across). The bar goes 8 bars past the last part (at least 32 bars; our choice, as there's no project length to set yet).
+- **Resize the lower zone:** drag the line above the docked mixer or key editor up or down. Each remembers its own height. The arrangement always keeps some room.
+- **Hide the mixer's racks:** click the lit **INSERTS** (or **SENDS**) key in the mixer's bar to hide them. Then only the faders, pan and M/S/R/W show, and you can drag the docked mixer much shorter. Click **INSERTS** or **SENDS** to show them again (remembered). This is our design: the manual sets this up in a Window Layout pane.
+- **Fixed:** the mixer's scroll bar was JUCE's default blue. Scroll bars are now in the family's orange.
+- **Not there yet** (from the same chapters): vertical zoom (Shift+H / Shift+G: taller or shorter tracks), the Stationary Cursor mode (the playhead stays in the middle and the song scrolls under it), and Suspend Auto-Scroll When Editing. Ask when you want any of these.
+
 ## 0.7.1
 
 MIDI file import: bring in a song, a drum groove or a bass line from a .mid file, as the Cubase 15 manual's File > Import > MIDI File does.

@@ -396,6 +396,12 @@ TrackList::TrackList (pr7s::Studio& studioToUse, Timeline& timelineToUse)
     addTrack.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     addTrack.setTooltip ("Add a track, with the Paragon Synth or one of your VST3 instruments");
     addTrack.onClick = [this] { showAddTrackMenu(); };
+    autoScrollButton.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    autoScrollButton.setWantsKeyboardFocus (false);
+    autoScrollButton.setTooltip ("AUTO-SCROLL (F): while it's lit, the arrangement turns the page to keep the playhead in sight");
+    autoScrollButton.onClick = [this] { if (onAutoScrollToggle) onAutoScrollToggle(); };
+    addAndMakeVisible (autoScrollButton);
+    refreshAutoScroll();
     addAndMakeVisible (addTrack);
     studio.addChangeListener (this);
     rebuild();
@@ -472,6 +478,13 @@ void TrackList::resized()
     placeRows();
     addTrack.setBounds (getLocalBounds().removeFromBottom (addButtonHeight).reduced (10, 5));
     addTrack.toFront (false);
+    autoScrollButton.setBounds (getLocalBounds().removeFromTop (Timeline::rulerHeight).removeFromRight (112).reduced (8, 6));
+    autoScrollButton.toFront (false);
+}
+
+void TrackList::refreshAutoScroll()
+{
+    autoScrollButton.setToggleState (timeline.autoScroll, juce::dontSendNotification);
 }
 
 void TrackList::placeRows()
