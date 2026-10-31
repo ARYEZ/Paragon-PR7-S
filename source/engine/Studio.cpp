@@ -2671,8 +2671,8 @@ namespace pr7s
                 part.length = juce::jmin (part.length, options.end - part.start);
         }
         engine.update (playing);
+        engine.setNonRealtime (true);   // (the plugins set up again for it)
         engine.settleMix();   // the levels set from the first sample (no glide from what was playing before)
-        engine.setNonRealtime (true);
 
         job->total = (juce::int64) std::llround ((options.end - options.start) * 60.0 / project.bpm * rate);
         job->maxTail = (juce::int64) std::llround (juce::jmax (0.0, options.tailSeconds) * rate);

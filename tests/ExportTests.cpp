@@ -198,3 +198,52 @@ TEST_CASE ("Export: the levels as set from the first sample (a fader just moved 
         CHECK_THAT (exported.sound.getSample (0, i), WithinAbs (song.take.getSample (0, i) * gain, 1.0e-6));
     file.deleteFile();
 }
+
+namespace
+{
+    // As Kontakt or Superior Drummer: it reads realtime or offline when it's set
+    // up (prepareToPlay), and plays nothing if it's marked otherwise later
+    // without being set up again.
+    struct ModeMinded final : TestPlugin
+    {
+        ModeMinded() : TestPlugin (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)) { instrument = true; }
+        void prepareToPlay (double, int) override { preparedOffline = isNonRealtime(); ++prepared; }
+        void releaseResources() override { ++released; }
+        void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
+        {
+            buffer.clear();
+            if (isNonRealtime() == preparedOffline)
+                for (int i = 0; i < buffer.getNumSamples(); ++i)
+                    buffer.setSample (0, i, 0.5f), buffer.setSample (1, i, 0.5f);
+        }
+        bool preparedOffline = false;
+        int prepared = 0, released = 0;
+    };
+}
+
+TEST_CASE ("Export: plugins are set up again for offline rendering, and back after (Kontakt rendered silence)", "[export]")
+{
+    Studio studio (false);
+    const auto track = studio.getProject().tracks[0].id;
+    studio.addPart (track, { 1.0, 2.0, "Riff", { { 0.0, 2.0, 60, 0.8f } } });
+    auto plugin = std::make_unique<ModeMinded>();
+    auto* minded = plugin.get();
+    studio.getEngine().setInstrument (track, std::move (plugin));
+    REQUIRE_FALSE (minded->preparedOffline);
+
+    Studio::ExportOptions options;
+    options.start = 1.0;
+    options.end = 2.0;
+    options.tailSeconds = 0.0;   // the same rate as the engine's: no re-prepare for that
+    const auto file = exportFile ("offline");
+    juce::String error;
+    REQUIRE (studio.exportMix (file, options, error));
+    const auto exported = readBack (file);
+    REQUIRE (exported.sound.getNumSamples() >= 100);
+    CHECK (exported.sound.getMagnitude (0, 0, exported.sound.getNumSamples()) > 0.1f);
+    // Back to realtime, set up for it.
+    CHECK_FALSE (minded->isNonRealtime());
+    CHECK_FALSE (minded->preparedOffline);
+    CHECK (minded->released >= 2);
+    file.deleteFile();
+}

@@ -107,16 +107,33 @@ namespace pr7s
 
     void Engine::setNonRealtime (bool offline)
     {
-        const juce::ScopedLock sl (lock);
-        auto set = [offline] (juce::AudioPluginInstance* plugin) { if (plugin != nullptr) plugin->setNonRealtime (offline); };
-        for (auto& slot : masterInserts)
-            set (slot.plugin.get());
-        for (auto& track : tracks)
+        // A plugin reads realtime or offline when it's set up (VST3's
+        // setupProcessing, in prepareToPlay), and JUCE skips that set-up if the
+        // rate and block size haven't changed. So each one switching is
+        // released first and prepared again: Kontakt and Superior Drummer,
+        // marked offline without it, rendered silence (0.8.6).
+        bool changed = false;
         {
-            set (track->instrument.get());
-            for (auto& slot : track->inserts)
+            const juce::ScopedLock sl (lock);
+            auto set = [offline, &changed] (juce::AudioPluginInstance* plugin)
+            {
+                if (plugin == nullptr || plugin->isNonRealtime() == offline)
+                    return;
+                plugin->releaseResources();
+                plugin->setNonRealtime (offline);
+                changed = true;
+            };
+            for (auto& slot : masterInserts)
                 set (slot.plugin.get());
+            for (auto& track : tracks)
+            {
+                set (track->instrument.get());
+                for (auto& slot : track->inserts)
+                    set (slot.plugin.get());
+            }
         }
+        if (changed)
+            prepare (sampleRate, maxBlockSize);
     }
 
     int Engine::channelsFor (const juce::AudioPluginInstance& plugin)

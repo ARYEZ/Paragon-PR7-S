@@ -2,6 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.8.6
+
+Render in Place (and EXPORT) with Kontakt, Superior Drummer and other plug-ins.
+
+- **Fixed: plug-in instruments rendered silence.** A render runs faster than real time. PR7-S tells every plug-in so ("offline"), so it can take its time, for example to load samples from disk.
+  - A plug-in reads that only when it's set up, and PR7-S didn't set them up again. So Kontakt and Superior Drummer were told "offline" while still set up for real time, and they played nothing.
+  - Paragon Synth doesn't care about the difference, which is why its tracks rendered fine.
+  - Now each plug-in is set up again for the render, and again for playing afterwards.
+- Not checked here: Kontakt and Superior Drummer themselves (they aren't in the cloud). A test instrument that behaves the way they did (silent unless set up for the mode it's told) renders silence without the fix and sound with it.
+
 ## 0.8.5
 
 The buffer size: how to get 2048 samples with your interface.
