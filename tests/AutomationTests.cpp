@@ -468,3 +468,82 @@ TEST_CASE ("Writing automation: a plugin's knob turned by hand (W on, playing) i
     studio.removeInsert (track, 2);
     CHECK (studio.getAutomation (track)->empty());
 }
+
+TEST_CASE ("Quick Controls: 8 slots per track, each any control; moving one moves the control; saved, undone, gone with its effect; written as automation", "[automation][quick]")
+{
+    using T = AutomationLane::Target;
+    Studio studio (false);
+    const auto track = studio.getProject().tracks[0].id;
+    // An effect with a knob in insert 1.
+    Insert insert;
+    insert.plugin.name = "Knob";
+    insert.plugin.fileOrIdentifier = "knob";
+    auto effect = std::make_unique<KnobEffect>();
+    auto* knob = effect->knob;
+    REQUIRE (studio.addInsert (track, insert, std::move (effect)));
+
+    // The slots offer every control the lanes do; none assigned at first.
+    for (int i = 0; i < Track::numQuickControls; ++i)
+        CHECK_FALSE (studio.getQuickControl (track, i).has_value());
+    const auto controls = studio.getAutomationControls (track);
+    const auto find = [&] (T target) { return *std::find_if (controls.begin(), controls.end(), [target] (const auto& c) { return c.target == target; }); };
+    studio.setQuickControl (track, 0, find (T::volume));
+    studio.setQuickControl (track, 1, find (T::pan));
+    studio.setQuickControl (track, 2, find (T::insert));
+    CHECK (studio.getQuickControlName (track, 0) == studio.getLaneName (track, Studio::control (T::volume)));
+    CHECK (studio.getQuickControlName (track, 3).isEmpty());
+
+    // Moving them moves the controls.
+    studio.setQuickControlValue (track, 0, volumeToTravel (-6.0f));
+    CHECK_THAT (studio.getProject().findTrack (track)->volumeDb, WithinAbs (-6.0, 0.01));
+    studio.setQuickControlValue (track, 1, panToTravel (-0.5f));
+    CHECK_THAT (studio.getProject().findTrack (track)->pan, WithinAbs (-0.5, 0.01));
+    studio.setQuickControlValue (track, 2, 0.3f);
+    CHECK_THAT (knob->get(), WithinAbs (0.3, 1.0e-4));
+    CHECK_THAT (studio.getQuickControlValue (track, 2), WithinAbs (0.3, 1.0e-4));
+    CHECK_THAT (studio.getQuickControlValue (track, 0), WithinAbs (volumeToTravel (-6.0f), 1.0e-3));
+
+    // Saved with the song.
+    const auto copy = Project::fromXml (*studio.getProject().toXml());
+    REQUIRE (copy.has_value());
+    REQUIRE (copy->tracks[0].quickControls[2].has_value());
+    CHECK (copy->tracks[0].quickControls[2]->target == T::insert);
+    CHECK (copy->tracks[0].quickControls[1]->target == T::pan);
+    CHECK_FALSE (copy->tracks[0].quickControls[5].has_value());
+
+    // An assignment is an undo step.
+    studio.setQuickControl (track, 1, std::nullopt);
+    CHECK_FALSE (studio.getQuickControl (track, 1).has_value());
+    studio.undo();
+    CHECK (studio.getQuickControl (track, 1).has_value());
+
+    // Written as automation: W on, playing, the volume slot moved and let go.
+    const auto playTo = [&] (double beatNow)
+    {
+        while (studio.getEngine().getPosition() < beatNow - 1.0e-9)
+            renderSamples (studio.getEngine(), juce::jmin (512, (int) std::ceil ((beatNow - studio.getEngine().getPosition()) * beat)));
+    };
+    studio.setAutomationWrite (track, true);
+    studio.play();
+    playTo (1.0);
+    const auto qc = *studio.getQuickControl (track, 0);
+    studio.grabControl (track, qc);
+    studio.setQuickControlValue (track, 0, volumeToTravel (-12.0f), false);
+    playTo (2.0);
+    studio.setQuickControlValue (track, 0, volumeToTravel (-12.0f), true);
+    studio.releaseControl (track, qc);
+    studio.stop();
+    const auto* lanes = studio.getAutomation (track);
+    const auto written = std::find_if (lanes->begin(), lanes->end(), [] (const AutomationLane& l) { return l.target == T::volume; });
+    REQUIRE (written != lanes->end());
+    CHECK_THAT (travelToVolume (*written->valueAt (1.5)), WithinAbs (-12.0, 0.6));
+    // Show Automated QC Assignments opens that lane.
+    studio.setAutomationOpen (track, false);
+    studio.showAutomatedQuickControls (track);
+    CHECK (studio.isAutomationOpen (track));
+
+    // The effect removed: its slot goes empty.
+    studio.removeInsert (track, 0);
+    CHECK_FALSE (studio.getQuickControl (track, 2).has_value());
+    CHECK (studio.getQuickControl (track, 0).has_value());
+}

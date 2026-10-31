@@ -15,8 +15,8 @@ namespace
         return percent == 0 ? juce::String ("C") : (pan < 0.0 ? "L " : "R ") + juce::String (percent);
     }
 
-    constexpr const char* sectionNames[] = { "basics", "routing", "inserts", "sends", "fader" };
-    constexpr const char* sectionTitles[] = { "", "ROUTING", "INSERTS", "SENDS", "FADER" };
+    constexpr const char* sectionNames[] = { "basics", "routing", "inserts", "sends", "fader", "quick" };
+    constexpr const char* sectionTitles[] = { "", "ROUTING", "INSERTS", "SENDS", "FADER", "QUICK CONTROLS" };
     constexpr int headerHeight = 22, rowHeight = 22, gap = 4, slotHeight = 17, slotGap = 2, faderHeight = 300, margin = 6;
     const juce::Colour panelColour { 0xff0d0a0e }, slotColour { 0xff0b090c }, postFaderColour { 0xff1c1108 };
 }
@@ -72,7 +72,9 @@ public:
 
     void mouseUp (const juce::MouseEvent& e) override
     {
-        if (getLocalBounds().contains (e.getPosition()) && ! e.mods.isPopupMenu())
+        if (e.mods.isPopupMenu() && section == Section::quick)
+            owner.showQuickControlsMenu();
+        else if (getLocalBounds().contains (e.getPosition()) && ! e.mods.isPopupMenu())
             owner.setFolded (section, ! owner.isFolded (section));
     }
 
@@ -333,6 +335,36 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     noSends.setJustificationType (juce::Justification::centred);
     content.addChildComponent (noSends);
 
+    // QUICK CONTROLS: each slot's name key and its bar.
+    for (int i = 0; i < pr7s::Track::numQuickControls; ++i)
+    {
+        auto& key = qcKeys[(size_t) i];
+        key.setColour (juce::TextButton::buttonColourId, slotColour);
+        key.setWantsKeyboardFocus (false);
+        key.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+        key.onClick = [this, i] { showQuickControlMenu (i); };
+        content.addAndMakeVisible (key);
+        auto& bar = qcBars[(size_t) i];
+        bar.setSliderStyle (juce::Slider::LinearBar);
+        bar.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+        bar.setRange (0.0, 1.0, 0.0);
+        bar.setColour (juce::Slider::trackColourId, ParagonColours::accent.withAlpha (0.75f));
+        bar.setColour (juce::Slider::backgroundColourId, slotColour);
+        bar.setVelocityModeParameters (0.2, 1, 0.0, true, juce::ModifierKeys::shiftModifier);
+        bar.setWantsKeyboardFocus (false);
+        bar.setPopupDisplayEnabled (true, true, nullptr);
+        bar.textFromValueFunction = [this, i] (double) { return studio.getQuickControlName (trackId, i); };
+        bar.onDragStart = [this, i] { if (const auto qc = studio.getQuickControl (trackId, i)) studio.grabControl (trackId, *qc); };
+        bar.onValueChange = [this, i] { studio.setQuickControlValue (trackId, i, (float) qcBars[(size_t) i].getValue(), ! qcBars[(size_t) i].isMouseButtonDown()); };
+        bar.onDragEnd = [this, i]
+        {
+            studio.setQuickControlValue (trackId, i, (float) qcBars[(size_t) i].getValue(), true);
+            if (const auto qc = studio.getQuickControl (trackId, i))
+                studio.releaseControl (trackId, *qc);
+        };
+        content.addAndMakeVisible (bar);
+    }
+
     enable.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff3a0f18));
     enable.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
     enable.setWantsKeyboardFocus (false);
@@ -579,8 +611,85 @@ void Inspector::refresh()
     }
     for (auto& send : sendSlots)
         send->refresh();
+    refreshQuickControls();
     followMix();
     layout();
+}
+
+void Inspector::refreshQuickControls()
+{
+    for (int i = 0; i < pr7s::Track::numQuickControls; ++i)
+    {
+        const auto name = studio.getQuickControlName (trackId, i);
+        auto& key = qcKeys[(size_t) i];
+        key.setButtonText (name.isNotEmpty() ? name : "QC " + juce::String (i + 1));
+        key.setColour (juce::TextButton::textColourOffId, name.isNotEmpty() ? ParagonColours::text : ParagonColours::textDim.withAlpha (0.7f));
+        key.setTooltip (name.isNotEmpty() ? "Quick Control " + juce::String (i + 1) + ": " + name + ". Click to choose another control, or none"
+                                          : "Quick Control " + juce::String (i + 1) + ": click to choose one of the track's controls");
+        const auto qc = studio.getQuickControl (trackId, i);
+        qcBars[(size_t) i].getProperties().set (ParagonLookAndFeel::barFromCentreProperty, qc && qc->target == pr7s::AutomationLane::Target::pan);
+        qcBars[(size_t) i].setValue (studio.getQuickControlValue (trackId, i), juce::dontSendNotification);
+        qcBars[(size_t) i].repaint();
+    }
+}
+
+void Inspector::showQuickControlMenu (int index)
+{
+    // Every control of the track, grouped as the automation lanes' menus have them.
+    const auto controls = studio.getAutomationControls (trackId);
+    const auto current = studio.getQuickControl (trackId, index);
+    juce::PopupMenu menu, sub;
+    juce::String group;
+    const auto flush = [&]
+    {
+        if (group.isNotEmpty() && sub.getNumItems() > 0)
+            menu.addSubMenu (group, sub);
+        sub = {};
+    };
+    menu.addSectionHeader ("QUICK CONTROL " + juce::String (index + 1));
+    for (int i = 0; i < (int) controls.size(); ++i)
+    {
+        const auto& c = controls[(size_t) i];
+        if (c.group != group)
+        {
+            flush();
+            group = c.group;
+        }
+        (group.isEmpty() ? menu : sub).addItem (100 + i, c.name, true, current && current->sameControl (c.asLane()));
+    }
+    flush();
+    menu.addSeparator();
+    menu.addItem (1, "None", current.has_value());
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&qcKeys[(size_t) index]),
+                        [safe = juce::Component::SafePointer<Inspector> (this), index, controls, id = trackId] (int chosen)
+    {
+        if (safe == nullptr || chosen == 0)
+            return;
+        if (chosen == 1)
+            safe->studio.setQuickControl (id, index, std::nullopt);
+        else if (chosen >= 100 && chosen - 100 < (int) controls.size())
+            safe->studio.setQuickControl (id, index, controls[(size_t) (chosen - 100)]);
+    });
+}
+
+void Inspector::showQuickControlsMenu()
+{
+    juce::PopupMenu menu;
+    menu.addItem (1, "Show Automated QC Assignments");
+    menu.addItem (2, "The instrument's first 8 knobs", studio.getEngine().getInstrument (trackId) != nullptr);
+    menu.addItem (3, "Clear all");
+    menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<Inspector> (this), id = trackId] (int chosen)
+    {
+        if (safe == nullptr)
+            return;
+        if (chosen == 1)
+            safe->studio.showAutomatedQuickControls (id);
+        else if (chosen == 2)
+            safe->studio.assignInstrumentQuickControls (id);
+        else if (chosen == 3)
+            for (int i = 0; i < pr7s::Track::numQuickControls; ++i)
+                safe->studio.setQuickControl (id, i, std::nullopt);
+    });
 }
 
 void Inspector::followMix()
@@ -607,6 +716,10 @@ void Inspector::followMix()
 void Inspector::timerCallback()
 {
     followMix();
+    // The Quick Controls' bars as their controls are now (automation playing, the plugin's own window).
+    for (int i = 0; i < pr7s::Track::numQuickControls; ++i)
+        if (auto& bar = qcBars[(size_t) i]; bar.isVisible() && ! bar.isMouseButtonDown())
+            bar.setValue (studio.getQuickControlValue (trackId, i), juce::dontSendNotification);
     AutomationKeys::refresh (read, write, studio, trackId);
     for (auto& send : sendSlots)
         send->repaint();
@@ -722,6 +835,21 @@ void Inspector::layout()
             case Section::fader:
                 place (fader, juce::Rectangle<int> (0, y, w, faderHeight));
                 y += faderHeight + gap;
+                break;
+            case Section::quick:
+                for (int q = 0; q < pr7s::Track::numQuickControls; ++q)
+                {
+                    auto line = juce::Rectangle<int> (margin, y, w - 2 * margin, slotHeight + 1);
+                    const auto assigned = studio.getQuickControl (trackId, q).has_value();
+                    place (qcKeys[(size_t) q], assigned ? line.removeFromLeft (line.getWidth() * 11 / 20) : line);
+                    if (assigned)
+                    {
+                        line.removeFromLeft (4);
+                        place (qcBars[(size_t) q], line);
+                    }
+                    y += slotHeight + 1 + slotGap;
+                }
+                y += gap;
                 break;
         }
     }

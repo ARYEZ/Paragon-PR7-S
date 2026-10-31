@@ -2362,3 +2362,27 @@ TEST_CASE ("Random velocities: Alt+B / N / M give the selected notes velocities 
         CHECK (v <= 30);
     }
 }
+
+TEST_CASE ("The Inspector's QUICK CONTROLS: 8 slots; an assigned one has a bar that moves its control", "[ui][inspector][quick]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto track = studio.getProject().tracks[0].id;
+    studio.selectTrack (track);
+    studio.dispatchPendingMessages();
+    auto& inspector = view.getInspector();
+    CHECK (inspector.getHeader (Inspector::Section::quick).isVisible());
+    CHECK (inspector.getQuickControlKey (0).isVisible());
+    CHECK (inspector.getQuickControlKey (0).getButtonText() == "QC 1");
+    CHECK_FALSE (inspector.getQuickControlBar (0).isVisible());
+
+    const auto controls = studio.getAutomationControls (track);
+    studio.setQuickControl (track, 0, controls.front());   // volume
+    studio.dispatchPendingMessages();
+    CHECK (inspector.getQuickControlBar (0).isVisible());
+    CHECK (inspector.getQuickControlKey (0).getButtonText() != "QC 1");
+    inspector.getQuickControlBar (0).setValue (pr7s::volumeToTravel (-3.0f), juce::sendNotificationSync);
+    CHECK (std::abs (studio.getProject().findTrack (track)->volumeDb + 3.0f) < 0.05f);
+}

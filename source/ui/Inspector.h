@@ -24,6 +24,12 @@
 //                  are after the fader)
 //   SENDS          its 8 sends, as the mixer's (not on an FX channel)
 //   FADER          its mixer strip: fader, pan, M S R W, the level
+//   QUICK CONTROLS 8 slots (0.9.6, the manual's): click a slot's name for any
+//                  of the track's controls (volume, pan, mute, a send, its
+//                  instrument's or an effect's knobs), drag its bar to move
+//                  it (written as automation with W, as the control itself);
+//                  right-click the title: Show Automated QC Assignments, the
+//                  instrument's first 8, clear them
 //
 // Its two tabs at the top (0.9.1, as the manual's left zone): INSPECTOR, the
 // above; VISIBILITY, every track with a box to show or hide it (hidden: out
@@ -43,8 +49,8 @@ public:
     std::function<void()> onFindPlugins;
 
     static constexpr int width = 210;
-    enum class Section { basics, routing, inserts, sends, fader };
-    static constexpr int numSections = 5;
+    enum class Section { basics, routing, inserts, sends, fader, quick };
+    static constexpr int numSections = 6;
     bool isFolded (Section) const;
     void setFolded (Section, bool);   // (kept in the settings file)
 
@@ -70,6 +76,11 @@ public:
     juce::Component& getHeader (Section);
     juce::Component& getContent() noexcept { return content; }
     juce::TextButton& getEnableKey() noexcept { return enable; }
+    // QUICK CONTROLS (0.9.6): a slot's name key (click: choose its control) and its bar.
+    juce::TextButton& getQuickControlKey (int index) { return qcKeys[(size_t) index]; }
+    juce::Slider& getQuickControlBar (int index) { return qcBars[(size_t) index]; }
+    void showQuickControlMenu (int index);
+    void showQuickControlsMenu();   // the section title's right-click
     juce::TextButton& getTabKey (Tab t) noexcept { return t == Tab::inspector ? inspectorTab : visibilityTab; }
     // VISIBILITY's box for a track (nullptr if it isn't listed), and SHOW ALL.
     juce::ToggleButton* getVisibilityBox (int trackId);
@@ -127,6 +138,9 @@ private:
     std::array<std::unique_ptr<MixerView::SendSlot>, pr7s::Project::maxSends> sendSlots;
     MixerView fader { studio, true };   // (also the insert, send and output menus' owner)
     juce::TextButton enable { "ENABLE TRACK" };   // a disabled track's
+    std::array<juce::TextButton, pr7s::Track::numQuickControls> qcKeys;
+    std::array<juce::Slider, pr7s::Track::numQuickControls> qcBars;
+    void refreshQuickControls();
 
     Tab tab = Tab::inspector;
     juce::TextButton inspectorTab { "INSPECTOR" }, visibilityTab { "VISIBILITY" }, showAll { "SHOW ALL" };

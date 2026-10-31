@@ -308,6 +308,22 @@ namespace pr7s
         void releaseControl (int busId, const AutomationLane& control);
         void setKnob (int busId, const AutomationLane& control, float value);   // a plugin's knob moved by hand
         bool isWritingAutomation (int busId) const;   // a pass going on it (its W shows it)
+
+        // Quick Controls (0.9.6, the manual's Track Quick Controls): a track's
+        // 8 slots, each one of its controls (getAutomationControls) or none
+        // (an undo step). Their values are the controls' travel (0 to 1); moving
+        // one moves the control itself, so R/W automation writes it as usual
+        // (grabControl / releaseControl around a drag).
+        void setQuickControl (int trackId, int index, std::optional<AutomationControl>);
+        std::optional<AutomationLane> getQuickControl (int trackId, int index) const;
+        void setQuickControlValue (int trackId, int index, float travel, bool undoable = true);
+        float getQuickControlValue (int trackId, int index) const;
+        juce::String getQuickControlName (int trackId, int index) const;   // empty: none
+        // The instrument's first 8 knobs into the slots (as the manual has an
+        // instrument track's main parameters assigned; our way: a menu item).
+        void assignInstrumentQuickControls (int trackId);
+        // Show Automated QC Assignments: the lanes of the slots' controls that have points, opened.
+        void showAutomatedQuickControls (int trackId);
         static constexpr double returnSeconds = 0.1;  // our choice: the manual gives Return Time no default
 
         //======================================================================

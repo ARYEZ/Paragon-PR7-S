@@ -2,6 +2,28 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.9.6
+
+Quick Controls: 8 per track, in the Inspector (as the manual's Track Quick Controls).
+
+- **A new Inspector section, QUICK CONTROLS**, at the bottom: 8 slots per track, QC 1 to QC 8.
+- **Click a slot's name** to choose what it controls: any of the track's controls, the same list the automation lanes offer.
+  - The track's volume, pan and mute, and its sends.
+  - Every knob of its instrument (Kontakt's, for example).
+  - Every knob of each of its effects.
+  - **None** empties the slot.
+- **Drag its bar** to move that control, the same as moving it in the mixer or in the plugin's own window. Shift-drag moves it finely. The bar follows the control when the automation or the plugin's window moves it.
+- **Automation:** with the track's **W** on while playing, moving a Quick Control writes automation, as moving the control itself does. R plays it back.
+- **Right-click the QUICK CONTROLS title** for:
+  - **Show Automated QC Assignments** (the manual's): opens the automation lanes of the slots' controls that have automation.
+  - **The instrument's first 8 knobs**: fills the slots with them.
+  - **Clear all**.
+- Saved with the song. Choosing a slot's control is an undo step. Removing an effect empties the slots that controlled it.
+- **Different from the manual:**
+  - It fills an instrument track's slots with the instrument's main parameters automatically. Here that's a menu item, because many instruments' first knobs aren't their main ones.
+  - Assigning from a plugin's own window (right-click a knob) isn't possible here: that menu is the plugin's.
+  - Remote controllers and QC presets aren't here yet.
+
 ## 0.9.5
 
 Importing several files (you could only import one MIDI file at a time).

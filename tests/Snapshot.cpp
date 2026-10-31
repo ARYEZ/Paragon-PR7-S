@@ -22,6 +22,7 @@
 // PARAGON_SNAPSHOT_VIEW=5760x1000: the window that size, 1:1 (the wide layout, spanning three screens).
 // PARAGON_SNAPSHOT_ROWS=0.5 (to 3) the arrangement's rows shorter or taller; PARAGON_SNAPSHOT_SUSPENDED=1 its
 // Auto-Scroll suspended.
+// PARAGON_SNAPSHOT_QC=1: the Inspector's Quick Controls, three assigned.
 // PARAGON_SNAPSHOT_MULTI=1: parts selected on two tracks.
 // PARAGON_SNAPSHOT_VISIBILITY=1: the VISIBILITY tab, the bass hidden, the keys disabled.
 // PARAGON_SNAPSHOT_INSPECTOR=fader folds the Inspector's inserts and sends (=none hides it).
@@ -118,6 +119,16 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     else if (inspector == "none")
         view.toggleInspector();
     // PARAGON_SNAPSHOT_MULTI=1: the keys' and the bass's parts in bars 5 to 8 selected together.
+    // PARAGON_SNAPSHOT_QC=1: the lead's Quick Controls (volume, pan, a send-less mix: mute), the other sections folded.
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_QC", {}).isNotEmpty())
+    {
+        const auto controls = studio.getAutomationControls (lead);
+        for (int i = 0; i < juce::jmin (3, (int) controls.size()); ++i)
+            studio.setQuickControl (lead, i, controls[(size_t) i]);
+        for (const auto section : { Inspector::Section::routing, Inspector::Section::inserts, Inspector::Section::sends, Inspector::Section::fader })
+            view.getInspector().setFolded (section, true);
+        studio.dispatchPendingMessages();
+    }
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_MULTI", {}).isNotEmpty())
     {
         std::vector<int> ids;

@@ -224,6 +224,16 @@ namespace pr7s
                 t->setAttribute ("midiChannel", track.midiChannel);
             if (track.disabled)
                 t->setAttribute ("disabled", true);
+            for (int q = 0; q < Track::numQuickControls; ++q)
+                if (const auto& qc = track.quickControls[(size_t) q])
+                {
+                    auto* e = t->createNewChildElement ("QuickControl");
+                    e->setAttribute ("index", q);
+                    e->setAttribute ("target", targetNames[(int) qc->target]);
+                    e->setAttribute ("slot", qc->slot);
+                    e->setAttribute ("parameter", qc->parameter);
+                    e->setAttribute ("parameterName", qc->parameterName);
+                }
             if (track.hidden)
                 t->setAttribute ("hidden", true);
             t->setAttribute ("instrument", track.instrument.kind == Instrument::Kind::plugin ? "plugin" : "paragonSynth");
@@ -309,6 +319,20 @@ namespace pr7s
             track.midiInput = t->getStringAttribute ("midiInput");
             track.midiChannel = juce::jlimit (1, 16, t->getIntAttribute ("midiChannel", 1));
             track.disabled = t->getBoolAttribute ("disabled");
+            for (const auto* e : t->getChildWithTagNameIterator ("QuickControl"))
+            {
+                const auto q = e->getIntAttribute ("index", -1);
+                const auto target = e->getStringAttribute ("target");
+                const auto known = std::find_if (std::begin (targetNames), std::end (targetNames), [&] (const char* n) { return target == n; });
+                if (! juce::isPositiveAndBelow (q, Track::numQuickControls) || known == std::end (targetNames))
+                    continue;
+                AutomationLane qc;
+                qc.target = (AutomationLane::Target) std::distance (std::begin (targetNames), known);
+                qc.slot = juce::jlimit (0, Project::maxInserts - 1, e->getIntAttribute ("slot"));
+                qc.parameter = juce::jmax (0, e->getIntAttribute ("parameter"));
+                qc.parameterName = e->getStringAttribute ("parameterName");
+                track.quickControls[(size_t) q] = qc;
+            }
             track.hidden = t->getBoolAttribute ("hidden");
             if (t->getStringAttribute ("kind") == "audio")
             {

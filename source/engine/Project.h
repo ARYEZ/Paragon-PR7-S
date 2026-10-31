@@ -157,6 +157,11 @@ namespace pr7s
         // Hidden: not in the track list, the arrangement or the mixer (the left
         // zone's VISIBILITY shows it again). Both saved; neither an undo step.
         bool disabled = false, hidden = false;
+        // Quick Controls (0.9.6, as the manual's Track Quick Controls): 8 slots,
+        // each any of the track's controls (as an automation lane names it:
+        // volume, pan, mute, a send, an instrument's or an effect's knob), or none.
+        static constexpr int numQuickControls = 8;
+        std::array<std::optional<AutomationLane>, numQuickControls> quickControls;
         bool isAudio() const noexcept { return kind == Kind::audio; }
         bool isFx() const noexcept { return kind == Kind::fx; }
         bool isGroup() const noexcept { return kind == Kind::group; }

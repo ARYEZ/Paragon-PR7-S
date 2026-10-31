@@ -210,6 +210,7 @@ namespace pr7s
                 track.sends = then->sends;
                 track.sendsBypass = then->sendsBypass;
                 track.midiInput = then->midiInput;
+                track.quickControls = then->quickControls;
                 track.midiChannel = then->midiChannel;
             }
         restoreLanes (project.masterAutomation, state.masterAutomation);
@@ -2125,7 +2126,18 @@ namespace pr7s
             if (busId == Engine::masterBus)
                 fix (p.masterAutomation);
             else if (auto* track = p.findTrack (busId))
+            {
                 fix (track->automation);
+                // Its Quick Controls go too (and those after it move up with it).
+                for (auto& qc : track->quickControls)
+                    if (qc && qc->target == AutomationLane::Target::insert)
+                    {
+                        if (qc->slot == slot)
+                            qc.reset();
+                        else if (shiftUp && qc->slot > slot)
+                            --qc->slot;
+                    }
+            }
         };
         fixIn (project);
         for (auto& state : undoStates)
@@ -2322,6 +2334,92 @@ namespace pr7s
                     if (which.parameter < plugin->getParameters().size())
                         plugin->getParameters()[which.parameter]->setValueNotifyingHost (value);
                 break;
+        }
+    }
+
+    void Studio::setQuickControl (int trackId, int index, std::optional<AutomationControl> control)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! juce::isPositiveAndBelow (index, Track::numQuickControls))
+            return;
+        track->quickControls[(size_t) index] = control ? std::optional<AutomationLane> (control->asLane()) : std::nullopt;
+        changed();
+    }
+
+    std::optional<AutomationLane> Studio::getQuickControl (int trackId, int index) const
+    {
+        const auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! juce::isPositiveAndBelow (index, Track::numQuickControls))
+            return std::nullopt;
+        return track->quickControls[(size_t) index];
+    }
+
+    void Studio::setQuickControlValue (int trackId, int index, float travel, bool undoable)
+    {
+        const auto qc = getQuickControl (trackId, index);
+        if (! qc)
+            return;
+        travel = juce::jlimit (0.0f, 1.0f, travel);
+        // The control itself, through its own action (so automation writing and undo follow it).
+        switch (qc->target)
+        {
+            case AutomationLane::Target::volume: setVolume (trackId, travelToVolume (travel), undoable); break;
+            case AutomationLane::Target::pan:    setPan (trackId, travelToPan (travel), undoable); break;
+            case AutomationLane::Target::mute:
+                if (const auto* t = project.findTrack (trackId); t != nullptr && t->mute != (travel >= 0.5f))
+                    setMute (trackId, travel >= 0.5f);
+                break;
+            case AutomationLane::Target::send:   setSendLevel (trackId, qc->slot, travelToVolume (travel), undoable); break;
+            case AutomationLane::Target::instrument:
+            case AutomationLane::Target::insert:
+                // The plugin's knob (its watcher then writes automation, as when it's turned in the plugin's window).
+                if (auto* plugin = pluginFor (trackId, *qc))
+                    if (qc->parameter < plugin->getParameters().size())
+                        plugin->getParameters()[qc->parameter]->setValueNotifyingHost (travel);
+                break;
+        }
+    }
+
+    float Studio::getQuickControlValue (int trackId, int index) const
+    {
+        const auto qc = getQuickControl (trackId, index);
+        return qc ? getControlValue (trackId, *qc) : 0.0f;
+    }
+
+    juce::String Studio::getQuickControlName (int trackId, int index) const
+    {
+        const auto qc = getQuickControl (trackId, index);
+        return qc ? getLaneName (trackId, *qc) : juce::String();
+    }
+
+    void Studio::assignInstrumentQuickControls (int trackId)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr)
+            return;
+        auto q = 0;
+        for (const auto& c : getAutomationControls (trackId))
+            if (c.target == AutomationLane::Target::instrument && q < Track::numQuickControls)
+                track->quickControls[(size_t) q++] = c.asLane();
+        if (q > 0)
+            changed();
+    }
+
+    void Studio::showAutomatedQuickControls (int trackId)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr)
+            return;
+        auto any = false;
+        for (const auto& qc : track->quickControls)
+            if (qc)
+                for (auto& lane : track->automation)
+                    if (lane.sameControl (*qc) && ! lane.points.empty())
+                        lane.shown = any = true;
+        if (any)
+        {
+            track->automationOpen = true;
+            changed (false);
         }
     }
 
