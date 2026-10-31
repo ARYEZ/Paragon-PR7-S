@@ -179,3 +179,22 @@ TEST_CASE ("Export: another sample rate, 16-bit, and a cancelled export leaves n
     CHECK_FALSE (song.studio.exportMix (file, options, error));
     CHECK (error.isNotEmpty());
 }
+
+TEST_CASE ("Export: the levels as set from the first sample (a fader just moved doesn't glide in the file)", "[export]")
+{
+    Song song;
+    song.studio.setVolume (song.track, -12.0f);   // straight before exporting: the engine was still at 0 dB
+    Studio::ExportOptions options;
+    options.start = 1.0;
+    options.end = 2.0;
+    options.tailSeconds = 0.0;
+    const auto file = exportFile ("settled");
+    juce::String error;
+    REQUIRE (song.studio.exportMix (file, options, error));
+    const auto exported = readBack (file);
+    REQUIRE (exported.sound.getNumSamples() >= 100);
+    const auto gain = std::pow (10.0f, -12.0f / 20.0f);
+    for (const auto i : { 10, 50, 99 })
+        CHECK_THAT (exported.sound.getSample (0, i), WithinAbs (song.take.getSample (0, i) * gain, 1.0e-6));
+    file.deleteFile();
+}

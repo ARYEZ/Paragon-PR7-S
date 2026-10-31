@@ -15,7 +15,7 @@
 // Automation). Each automation lane: its control (click to choose another,
 // or Remove Parameter), M (Mute Automation), its value now, and + (Append
 // Automation Track) at its lower left. MASTER at the end: the master's R, W
-// and lanes. + ADD TRACK at the bottom offers the Paragon Synth and every
+// and lanes. + ADD TRACK at the top offers the Paragon Synth and every
 // VST3 instrument found, an FX channel (empty, or with one of your
 // effects) and a group channel. An FX or group channel's row has no REC or
 // instrument: its button says what it is (click for its effect's window, or
@@ -33,12 +33,9 @@ public:
     std::function<void (int)> onOpenInstrument;
     std::function<void (int busId, int slot)> onOpenEffect;   // an effect's window (an FX channel's)
     std::function<void()> onFindPlugins;
-    // AUTO-SCROLL (in the header, level with the ruler): the arrangement's
-    // Auto-Scroll (Timeline::autoScroll), lit while it's on; the arrow
-    // beside it, its settings menu.
-    std::function<void()> onAutoScrollToggle;
-    void refreshAutoScroll();
-    juce::TextButton& getAutoScrollButton() noexcept { return autoScrollButton; }
+    // Render in Place (the track's menu): the selected tracks whole; ask how (else as last time).
+    std::function<void (std::vector<pr7s::Studio::RenderSource>, bool ask)> onRenderInPlace;
+    juce::TextButton& getAddTrackButton() noexcept { return addTrack; }   // (in the header, at the top)
 
     void showAddTrackMenu();
     void paint (juce::Graphics&) override;
@@ -84,5 +81,5 @@ private:
     std::vector<Timeline::Row> lastLayout;
     int dropIndex = -1, dropY = -1;   // a drag of tracks: where they'd go
     std::vector<int> tracksToMove (int trackId) const;
-    juce::TextButton addTrack { "+ ADD TRACK" }, autoScrollButton { "AUTO-SCROLL" }, autoScrollMenu;
+    juce::TextButton addTrack { "+ ADD TRACK" };
 };

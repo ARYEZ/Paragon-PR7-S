@@ -40,6 +40,28 @@ namespace Windows
         juce::String stateKey;
     };
 
+    // RENDER IN PLACE (the manual's Render Selection / Render Tracks
+    // dialog): how to render what's chosen. Its choices are kept for next time
+    // (so Render with the last settings needs no page). It only asks: onRender
+    // gets the choices, and MainView renders.
+    class RenderPage final : public juce::Component
+    {
+    public:
+        RenderPage (pr7s::Studio&, bool wholeTracks);
+        void resized() override;
+        void paint (juce::Graphics&) override;
+        pr7s::Studio::RenderOptions getOptions() const;   // as chosen now
+        static pr7s::Studio::RenderOptions keptOptions (juce::PropertiesFile*);   // the last ones chosen
+        std::function<void (const pr7s::Studio::RenderOptions&)> onRender;
+        std::function<void()> onCancel;
+        juce::ComboBox mode, processing, tail, bits, source;
+        juce::TextButton renderButton { "RENDER" }, cancelButton { "CANCEL" };
+
+    private:
+        pr7s::Studio& studio;
+        juce::Label modeLabel, processingLabel, tailLabel, bitsLabel, sourceLabel, note;
+    };
+
     // Where a window spanning all the screens goes: across them all, side by
     // side, as tall as the height they all share (so none of it is off a
     // shorter screen or under a taskbar). Screens stacked rather than side by

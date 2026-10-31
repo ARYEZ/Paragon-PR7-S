@@ -437,20 +437,7 @@ TrackList::TrackList (pr7s::Studio& studioToUse, Timeline& timelineToUse)
     addTrack.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     addTrack.setTooltip ("Add a track, with the Paragon Synth or one of your VST3 instruments");
     addTrack.onClick = [this] { showAddTrackMenu(); };
-    autoScrollButton.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
-    autoScrollButton.setWantsKeyboardFocus (false);
-    autoScrollButton.onClick = [this] { if (onAutoScrollToggle) onAutoScrollToggle(); };
-    addAndMakeVisible (autoScrollButton);
-    autoScrollMenu.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
-    autoScrollMenu.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
-    autoScrollMenu.setWantsKeyboardFocus (false);
-    autoScrollMenu.setTooltip ("Auto-Scroll's settings: Page Scroll or Stationary Cursor; Suspend Auto-Scroll when Editing");
-    autoScrollMenu.onClick = [this]
-    {
-        timeline.autoScroll.showMenu (autoScrollMenu, [this] { if (timeline.onAutoScrollChange) timeline.onAutoScrollChange(); });
-    };
-    addAndMakeVisible (autoScrollMenu);
-    refreshAutoScroll();
+    addTrack.setWantsKeyboardFocus (false);
     addAndMakeVisible (addTrack);
     studio.addChangeListener (this);
     rebuild();
@@ -525,19 +512,9 @@ void TrackList::rebuild()
 void TrackList::resized()
 {
     placeRows();
-    addTrack.setBounds (getLocalBounds().removeFromBottom (addButtonHeight).reduced (10, 5));
+    // + ADD TRACK at the top, in the header (level with the ruler).
+    addTrack.setBounds (getLocalBounds().removeFromTop (Timeline::rulerHeight).reduced (8, 6).removeFromRight (150));
     addTrack.toFront (false);
-    auto header = getLocalBounds().removeFromTop (Timeline::rulerHeight).reduced (8, 6);
-    autoScrollMenu.setBounds (header.removeFromRight (22));
-    header.removeFromRight (3);
-    autoScrollButton.setBounds (header.removeFromRight (96));
-    autoScrollButton.toFront (false);
-    autoScrollMenu.toFront (false);
-}
-
-void TrackList::refreshAutoScroll()
-{
-    timeline.autoScroll.refreshKey (autoScrollButton);
 }
 
 void TrackList::placeRows()
@@ -577,8 +554,6 @@ void TrackList::paint (juce::Graphics& g)
     g.drawText ("TRACKS", header.reduced (14.0f, 0.0f), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::panelEdge);
     g.fillRect (header.withY (header.getBottom() - 1.0f).withHeight (1.0f));
-    g.setColour (juce::Colour (0xff0b090c));
-    g.fillRect (getLocalBounds().removeFromBottom (addButtonHeight));
 }
 
 void TrackList::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& wheel)
@@ -781,8 +756,30 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
     if (several)
         menu.addItem (56, "Delete the selected tracks (Shift+Delete)");
     menu.addItem (55, "Remove empty tracks", ! studio.getEmptyTracks().empty());
+    if (! track->isChannel())
+    {
+        menu.addSeparator();
+        menu.addItem (57, several ? "Render the selected tracks in Place..." : "Render in Place...");
+        menu.addItem (58, "Render in Place (as last time)");
+    }
     menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, instruments] (int chosen)
     {
+        if ((chosen == 57 || chosen == 58) && onRenderInPlace)
+        {
+            // The selected tracks, whole (from the song's start to their last part's end).
+            std::vector<pr7s::Studio::RenderSource> sources;
+            for (const auto id : studio.getSelectedTracks())
+                if (const auto* t = studio.getProject().findTrack (id); t != nullptr && ! t->isChannel() && ! t->parts.empty())
+                {
+                    auto end = 0.0;
+                    for (const auto& part : t->parts)
+                        end = juce::jmax (end, part.end());
+                    sources.push_back ({ id, 0.0, end, true });
+                }
+            if (! sources.empty())
+                onRenderInPlace (sources, chosen == 57);
+            return;
+        }
         if (chosen == 50)
             studio.duplicateTracks (studio.getSelectedTracks());
         else if (chosen >= 51 && chosen <= 54)
@@ -952,7 +949,7 @@ void TrackList::addTrackLikeSelected()
 
 void TrackList::mouseDoubleClick (const juce::MouseEvent& event)
 {
-    // The empty space under the tracks (not the header, not + ADD TRACK).
-    if (event.y > Timeline::rulerHeight && event.y < getHeight() - addButtonHeight)
+    // The empty space under the tracks (not the header, where + ADD TRACK is).
+    if (event.y > Timeline::rulerHeight)
         addTrackLikeSelected();
 }

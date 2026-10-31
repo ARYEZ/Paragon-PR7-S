@@ -1,6 +1,7 @@
 #include "ArrangeView.h"
 
 #include "ui/Finish.h"
+#include "ui/ToolIcons.h"
 #include "ui/ParagonLookAndFeel.h"
 
 namespace
@@ -657,11 +658,16 @@ void ArrangeView::updateCursor (const juce::MouseEvent& event)
     }
     if (tool != Tool::select)
     {
-        const auto overParts = event.position.y >= (float) Timeline::rulerHeight;
-        setMouseCursor (! overParts ? juce::MouseCursor::NormalCursor
-                        : tool == Tool::split ? juce::MouseCursor::IBeamCursor
-                        : tool == Tool::draw || tool == Tool::zoom || tool == Tool::range ? juce::MouseCursor::CrosshairCursor
-                                                                   : juce::MouseCursor::PointingHandCursor);
+        // Over the tracks: the tool's icon as the pointer (so the tool in use shows).
+        if (event.position.y < (float) Timeline::rulerHeight)
+        {
+            setMouseCursor (juce::MouseCursor::NormalCursor);
+            return;
+        }
+        auto found = toolCursors.find ((int) tool);
+        if (found == toolCursors.end())
+            found = toolCursors.emplace ((int) tool, ToolIcons::cursor (tool)).first;
+        setMouseCursor (found->second);
         return;
     }
     if (const auto hit = partAt (event.position))
@@ -699,25 +705,26 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
     if (event.position.y < (float) Timeline::rulerHeight)
     {
         dragStartBeat = juce::jmax (0.0, pr7s::snap (timeline.beatForX (event.position.x), grid));
+        // Ctrl-click: the left locator here; Alt-click: the right one; both:
+        // round the grid step clicked in (the manual's). Anywhere in the ruler:
+        // with Ctrl or Alt held, a click never moves the playhead.
+        const auto ctrl = event.mods.isCommandDown(), alt = event.mods.isAltDown();
+        if (ctrl || alt)
+        {
+            drag = Drag::none;
+            if (ctrl && alt)
+            {
+                const auto from = std::floor (timeline.beatForX (event.position.x) / grid + 1.0e-9) * grid;
+                studio.setCycle (juce::jmax (0.0, from), juce::jmax (0.0, from) + grid);
+            }
+            else if (ctrl)
+                studio.setCycle (juce::jmin (dragStartBeat, project.loopEnd), juce::jmax (dragStartBeat, project.loopEnd));
+            else
+                studio.setCycle (juce::jmin (project.loopStart, dragStartBeat), juce::jmax (project.loopStart, dragStartBeat));
+            return;
+        }
         if (event.position.y < (float) Timeline::cycleStripHeight)
         {
-            // Ctrl-click: the left locator here; Alt-click: the right one;
-            // both: round the grid step clicked in (the manual's).
-            const auto ctrl = event.mods.isCommandDown(), alt = event.mods.isAltDown();
-            if (ctrl || alt)
-            {
-                drag = Drag::none;
-                if (ctrl && alt)
-                {
-                    const auto from = std::floor (timeline.beatForX (event.position.x) / grid + 1.0e-9) * grid;
-                    studio.setCycle (juce::jmax (0.0, from), juce::jmax (0.0, from) + grid);
-                }
-                else if (ctrl)
-                    studio.setCycle (juce::jmin (dragStartBeat, project.loopEnd), juce::jmax (dragStartBeat, project.loopEnd));
-                else
-                    studio.setCycle (juce::jmin (project.loopStart, dragStartBeat), juce::jmax (project.loopStart, dragStartBeat));
-                return;
-            }
             // A locator's handle (either end): just that one moves.
             const auto x1 = timeline.xForBeat (project.loopStart), x2 = timeline.xForBeat (project.loopEnd);
             if (std::abs (event.position.x - x1) <= 6.0f || std::abs (event.position.x - x2) <= 6.0f)
@@ -1321,8 +1328,16 @@ void ArrangeView::showPartMenu (int trackId, int index)
     menu.addItem (4, part.muted ? "Unmute" : "Mute");
     menu.addItem (5, "Split at the playhead (Alt+X)", at > part.start && at < part.end());
     menu.addItem (6, "Glue to the next part");
-    menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, index, muted = part.muted] (int chosen)
+    menu.addSeparator();
+    menu.addItem (7, "Render in Place...");
+    menu.addItem (8, "Render in Place (as last time)");
+    menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, index, muted = part.muted, start = part.start, end = part.end()] (int chosen)
     {
+        if ((chosen == 7 || chosen == 8) && onRenderInPlace)
+        {
+            onRenderInPlace ({ { trackId, start, end, false } }, chosen == 7);
+            return;
+        }
         selection = { trackId, index };
         if (chosen == 3 && onEditNotes)
             onEditNotes();
@@ -1747,6 +1762,7 @@ ArrangeTools::ArrangeTools (ArrangeView& arrangeToUse) : arrange (arrangeToUse)
         auto& button = buttons[i];
         const auto t = ArrangeView::tools[i];
         button.setButtonText (ArrangeView::toolName (t));
+        button.tool = t;
         button.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         button.setWantsKeyboardFocus (false);
         button.setTooltip (tips[i]);
@@ -1770,34 +1786,52 @@ juce::TextButton& ArrangeTools::getButton (ArrangeView::Tool t)
     return buttons[0];
 }
 
+void ToolKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
+{
+    getLookAndFeel().drawButtonBackground (g, *this, findColour (buttonColourId), highlighted, down);
+    // Lettering as the other keys': lit orange on a black key, white on a red one, else light.
+    const auto on = getToggleState();
+    const auto colour = on ? ParagonColours::accent : Finish::neonKeys() ? juce::Colours::white : ParagonColours::text;
+    auto area = getLocalBounds().toFloat().reduced (5.0f, 3.0f).translated (0.0f, down ? 0.5f : -0.5f);
+    if (iconOnly)
+    {
+        ToolIcons::draw (g, tool, area.reduced (3.0f, 4.0f), colour);
+        return;
+    }
+    ToolIcons::draw (g, tool, area.removeFromLeft (area.getHeight()).reduced (3.0f), colour);
+    area.removeFromLeft (2.0f);
+    g.setColour (colour);
+    g.setFont (ParagonLookAndFeel::titleFont (juce::jmin (12.0f, area.getHeight() * 0.7f)));
+    g.drawFittedText (getButtonText(), area.toNearestInt(), juce::Justification::centred, 1, 0.7f);
+}
+
 void ArrangeTools::setOnUnit (bool shouldBeOnUnit)
 {
     if (onUnit == shouldBeOnUnit)
         return;
     onUnit = shouldBeOnUnit;
+    for (auto& button : buttons)
+        button.iconOnly = onUnit;
     resized();
     repaint();
 }
 
 void ArrangeTools::paint (juce::Graphics& g)
 {
+    if (onUnit)
+        return;   // (on the unit: no label; the icons say what they are)
     const auto label = getLocalBounds().withWidth (60).withTrimmedLeft (14).toFloat();
     g.setFont (ParagonLookAndFeel::textFont (11.0f));
-    if (onUnit)
-    {
-        ParagonLookAndFeel::drawStampedText (g, "TOOLS", label, juce::Justification::centredLeft, Finish::ink());
-        return;
-    }
     g.setColour (ParagonColours::textDim);
     g.drawText ("TOOLS", label, juce::Justification::centredLeft, false);
 }
 
 void ArrangeTools::resized()
 {
-    auto area = getLocalBounds().withTrimmedLeft (onUnit ? 50 : 64);
+    auto area = getLocalBounds().withTrimmedLeft (onUnit ? 0 : 64);
     for (auto& button : buttons)
     {
-        button.setBounds (area.removeFromLeft (onUnit ? 62 : 70));
+        button.setBounds (area.removeFromLeft (onUnit ? 60 : 70));
         area.removeFromLeft (4);
     }
 }
@@ -2051,8 +2085,19 @@ void ArrangeView::showRangeMenu()
     menu.addItem (9, "Delete Time (Shift+Backspace)");
     menu.addItem (10, "Paste Time (Ctrl+Shift+V)", hasRangeClip());
     menu.addItem (11, "Insert Silence (Ctrl+Shift+E)");
+    menu.addSeparator();
+    menu.addItem (20, "Render in Place...");
+    menu.addItem (21, "Render in Place (as last time)");
     menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ArrangeView> (this)] (int chosen)
     {
+        if (safe != nullptr && (chosen == 20 || chosen == 21) && safe->range && safe->onRenderInPlace)
+        {
+            std::vector<pr7s::Studio::RenderSource> sources;
+            for (const auto id : safe->range->trackIds)
+                sources.push_back ({ id, safe->range->start, safe->range->end, false });
+            safe->onRenderInPlace (sources, chosen == 20);
+            return;
+        }
         static const C commands[] = { C::split, C::crop, C::cut, C::copy, C::paste, C::deleteContents, C::duplicate,
                                       C::cutTime, C::deleteTime, C::pasteTime, C::insertSilence };
         if (safe != nullptr && chosen >= 1 && chosen <= (int) std::size (commands))

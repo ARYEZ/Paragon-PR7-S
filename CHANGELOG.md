@@ -2,6 +2,25 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.8.4
+
+Render in Place, tool icons, and the transport rearranged as you asked.
+
+- **Render in Place** (as the Cubase 15 manual's Rendering Audio and MIDI): right-click a part, a range or a track for **Render in Place...** (or **as last time**, without the page). What's chosen becomes audio on a **new audio track straight under its track**, the clips where the parts were (the files in the song's audio folder).
+  - **Clips:** a clip for each part, parts end to end joined into blocks, or one clip over them all.
+  - **What's in it:** **Dry** (the instrument alone; the new track gets its effects, fader, pan and sends), **Channel settings** (through its effects and sends; the new track gets the fader and pan), **Complete signal path** (fader and pan too), or that **plus the master's** effects and fader.
+  - **Tail:** none, 1 to 4 bars or 1 to 10 seconds, so reverbs and delays ring out (it stops early once silent). **Bits:** 16, 24 or 32-bit float.
+  - **The original:** kept, muted (the parts rendered, or the track), or removed (a track rendered whole). Your choices are kept for next time.
+- **Fixed: an export started at the levels as set.** If a fader (or a send, or the master) had just moved, the first moments of an exported file still glided from where it was. Now everything is at its setting from the first sample.
+- **Tool icons:** each tool's key has its picture (an arrow, a range, scissors, glue, an eraser, a magnifier, an X, a pencil, a speaker), and over the tracks the **mouse pointer becomes the tool's icon**, so you always see which tool you're using.
+- **Keys that are on turn black** on the black and neon finishes (they used to keep their red and light pale gold, which was hard to see). On the white finish the keys are black already: a lit one has orange lettering.
+- **The transport:** **AUTO-SCROLL** (and its arrow) moved onto it, next to HOME, with F stamped under it. The **CPU meter** is now a small screen like TEMPO, between CLICK and the position screen: the average load in big figures, the peak under it, **OVER** lit red after a dropout (click to reset).
+- **+ ADD TRACK** moved to the top of the track list.
+- **Ctrl-click / Alt-click anywhere in the ruler** set the left / right locator (before, only the ruler's top strip did; lower down, the playhead moved).
+- **Spanning your screens** now opens the **mixer docked, as short as it goes, its inserts and sends hidden**. Change it as you like; it's only set as the window goes wide.
+- **Drop-down lists, menus and text boxes** (the export page, right-click menus) are in the family's colours now (they were a blue-grey).
+- **Not there yet** (from Render in Place): disabling or hiding the source tracks, a folder of your choice for the files, and mixing several tracks down to one file.
+
 ## 0.8.3
 
 Audio file import, a CPU meter, and a layout made for a window spanning three screens.

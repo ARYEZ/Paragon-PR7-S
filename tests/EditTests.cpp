@@ -447,3 +447,120 @@ TEST_CASE ("Tracks: several selected (Ctrl, Shift); moved in the list (undo puts
         CHECK (studio.getSelectedTrack() == b);
     }
 }
+
+TEST_CASE ("Render in Place: a part to an audio clip on a new track under its own; through the effects or not (Dry); modes; the source kept, muted or removed", "[edit][render]")
+{
+    Studio studio (false);
+    const auto synth = studio.getProject().tracks[0].id;   // the Paragon Synth: real sound
+    studio.addPart (synth, { 4.0, 4.0, "Riff", { { 0.0, 1.0, 60, 1.0f }, { 2.0, 1.0, 64, 1.0f } } });
+    studio.addPart (synth, { 8.0, 4.0, "Riff 2", { { 0.0, 1.0, 67, 1.0f } } });
+    studio.addPart (synth, { 16.0, 2.0, "Later", { { 0.0, 1.0, 72, 1.0f } } });
+    const auto peakOf = [&] (const Part& clip)
+    {
+        const auto data = studio.getAudio (clip.audioFile);
+        REQUIRE (data != nullptr);
+        return data->sound.getMagnitude (0, data->sound.getNumSamples());
+    };
+    const auto spb = studio.getProject().secondsPerBeat();
+    Studio::RenderOptions options;
+    options.tail = Studio::RenderOptions::Tail::off;
+
+    SECTION ("As separate events: a clip for each part, where it was; a new audio track straight under the source")
+    {
+        juce::String error;
+        const auto made = studio.renderInPlace ({ { synth, 0.0, 32.0, true } }, options, error);
+        CHECK (error.isEmpty());
+        REQUIRE (made.size() == 1);
+        const auto& tracks = studio.getProject().tracks;
+        REQUIRE (tracks.size() == 2);
+        CHECK (tracks[1].id == made[0]);
+        CHECK (tracks[1].isAudio());
+        CHECK (tracks[1].name.endsWith ("render"));
+        const auto& clips = tracks[1].parts;
+        REQUIRE (clips.size() == 3);
+        CHECK (clips[0].start == 4.0);
+        CHECK_THAT (clips[0].length, WithinAbs (4.0, 0.01));   // no tail: as long as the part
+        CHECK (clips[1].start == 8.0);
+        CHECK (clips[2].start == 16.0);
+        CHECK (peakOf (clips[0]) > 0.01f);   // the synth's sound, not silence
+        CHECK (studio.getAudioFolder().getChildFile (clips[0].audioFile).existsAsFile());
+        CHECK_FALSE (studio.getProject().findTrack (synth)->mute);   // kept as it was
+    }
+
+    SECTION ("As block events: parts end to end are one clip; as one event: one clip over them all")
+    {
+        options.mode = Studio::RenderOptions::Mode::blocks;
+        juce::String error;
+        auto made = studio.renderInPlace ({ { synth, 0.0, 32.0, true } }, options, error);
+        REQUIRE (made.size() == 1);
+        const auto* blocks = studio.getProject().findTrack (made[0]);
+        REQUIRE (blocks->parts.size() == 2);   // 4 to 12 (two parts end to end), then 16 to 18
+        CHECK (blocks->parts[0].start == 4.0);
+        CHECK_THAT (blocks->parts[0].length, WithinAbs (8.0, 0.01));
+        options.mode = Studio::RenderOptions::Mode::one;
+        made = studio.renderInPlace ({ { synth, 0.0, 32.0, true } }, options, error);
+        const auto* one = studio.getProject().findTrack (made[0]);
+        REQUIRE (one->parts.size() == 1);
+        CHECK (one->parts[0].start == 4.0);
+        CHECK_THAT (one->parts[0].length, WithinAbs (14.0, 0.01));
+    }
+
+    SECTION ("A range: only what's in it (the parts cut at its edges); its source parts muted, the rest not")
+    {
+        options.source = Studio::RenderOptions::Source::mute;
+        juce::String error;
+        const auto made = studio.renderInPlace ({ { synth, 6.0, 10.0, false } }, options, error);
+        REQUIRE (made.size() == 1);
+        const auto& clips = studio.getProject().findTrack (made[0])->parts;
+        REQUIRE (clips.size() == 2);   // 6 to 8 of Riff, 8 to 10 of Riff 2
+        CHECK (clips[0].start == 6.0);
+        CHECK_THAT (clips[0].length, WithinAbs (2.0, 0.01));
+        // The source: cut at 6 and 10, what's between muted.
+        for (const auto& part : studio.getProject().findTrack (synth)->parts)
+            CHECK (part.muted == (part.start >= 6.0 - 1.0e-9 && part.end() <= 10.0 + 1.0e-9));
+    }
+
+    SECTION ("Channel Settings goes through the inserts; Dry doesn't, and the new track gets them; the fader goes to the new track")
+    {
+        Insert half;
+        half.plugin.name = "Half";
+        REQUIRE (studio.addInsert (synth, half, timesEffect (0.5f, "Half")));
+        studio.setVolume (synth, -6.0f);
+        juce::String error;
+        options.processing = Studio::RenderOptions::Processing::channelSettings;
+        const auto through = studio.renderInPlace ({ { synth, 4.0, 8.0, false } }, options, error);
+        options.processing = Studio::RenderOptions::Processing::dry;
+        const auto dry = studio.renderInPlace ({ { synth, 4.0, 8.0, false } }, options, error);
+        REQUIRE (through.size() == 1);
+        REQUIRE (dry.size() == 1);
+        const auto wet = peakOf (studio.getProject().findTrack (through[0])->parts.at (0));
+        const auto plain = peakOf (studio.getProject().findTrack (dry[0])->parts.at (0));
+        CHECK_THAT (wet / plain, WithinAbs (0.5, 0.02));   // the insert's half, and not the fader's -6 dB on top
+        CHECK (studio.getProject().findTrack (through[0])->volumeDb == -6.0f);   // the fader: on the new track
+        CHECK (studio.getProject().findTrack (through[0])->inserts.empty());
+        CHECK (studio.getProject().findTrack (dry[0])->inserts.size() == 1);    // Dry: the effects go with it
+        // Complete Signal Path: the fader rendered in too, the new track at 0 dB.
+        options.processing = Studio::RenderOptions::Processing::completeSignalPath;
+        const auto complete = studio.renderInPlace ({ { synth, 4.0, 8.0, false } }, options, error);
+        const auto all = peakOf (studio.getProject().findTrack (complete[0])->parts.at (0));
+        CHECK_THAT (all / wet, WithinAbs (std::pow (10.0, -6.0 / 20.0), 0.02));
+        CHECK (studio.getProject().findTrack (complete[0])->volumeDb == 0.0f);
+    }
+
+    SECTION ("A tail (in bars): the clip runs on after the part; a whole track removed after rendering")
+    {
+        options.tail = Studio::RenderOptions::Tail::bars;
+        options.tailSize = 1.0;
+        options.source = Studio::RenderOptions::Source::remove;
+        juce::String error;
+        const auto made = studio.renderInPlace ({ { synth, 16.0, 18.0, true } }, options, error);
+        REQUIRE (made.size() == 1);
+        const auto& clip = studio.getProject().findTrack (made[0])->parts.at (0);
+        CHECK (clip.length >= 2.0);                 // the part, and what rang on (up to a bar: it stops early once silent)
+        CHECK (clip.length <= 2.0 + 4.0 + 0.01);
+        CHECK (studio.getProject().findTrack (synth) == nullptr);   // removed
+        juce::ignoreUnused (spb);
+    }
+
+    studio.getAudioFolder().deleteRecursively();
+}

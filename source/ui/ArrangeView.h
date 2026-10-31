@@ -228,6 +228,9 @@ public:
 
     // Asked to edit the selected part's notes (double-click, or its menu): the key editor opens.
     std::function<void()> onEditNotes;
+    // Render in Place (a part's menu, the range's): what to render, and
+    // whether to ask how (else as last time).
+    std::function<void (std::vector<pr7s::Studio::RenderSource>, bool ask)> onRenderInPlace;
 
     // Where a part is drawn (for tests).
     juce::Rectangle<float> getPartBounds (int trackId, int index) const;
@@ -280,6 +283,7 @@ private:
     int newPartTrack = 0;
     double playReturn = 0.0;                   // PLAY: where the playhead goes back to
     juce::Point<float> hover { -1.0f, -1.0f }; // SPLIT: where the cut would go
+    std::map<int, juce::MouseCursor> toolCursors;   // each tool's icon as the pointer, made once
     double splitBeat (const juce::MouseEvent&, const pr7s::Part&) const;
     void cannotGlue();
     void updateCursor (const juce::MouseEvent&);
@@ -313,6 +317,16 @@ private:
     void scrolled();             // the track list and the scroll bars follow
 };
 
+// A tool's key: its icon (ToolIcons), and its name unless `iconOnly` (on the
+// transport, where the keys are narrower; the name's in the tooltip).
+class ToolKey final : public juce::TextButton
+{
+public:
+    ArrangeView::Tool tool = ArrangeView::Tool::select;
+    bool iconOnly = false;
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+};
+
 // The arrangement's tools in a row over it (as the manual's toolbar): a key
 // each (its number key in the tooltip), lit while it's the one chosen.
 class ArrangeTools final : public juce::Component
@@ -323,13 +337,13 @@ public:
     // On the transport unit (a wide window): TOOLS stamped in the unit's ink, as the keys' names are.
     void setOnUnit (bool);
     int getPreferredWidth() const noexcept { return onUnit ? unitWidth() : 64 + (int) std::size (ArrangeView::tools) * 74; }
-    static int unitWidth() noexcept { return 50 + (int) std::size (ArrangeView::tools) * 66; }   // on the unit: keys as wide as the transport's
+    static int unitWidth() noexcept { return (int) std::size (ArrangeView::tools) * 64; }   // on the unit: no label (the icons tell them apart)
     juce::TextButton& getButton (ArrangeView::Tool);
     void paint (juce::Graphics&) override;
     void resized() override;
 
 private:
     ArrangeView& arrange;
-    std::array<juce::TextButton, std::size (ArrangeView::tools)> buttons;
+    std::array<ToolKey, std::size (ArrangeView::tools)> buttons;
     bool onUnit = false;
 };

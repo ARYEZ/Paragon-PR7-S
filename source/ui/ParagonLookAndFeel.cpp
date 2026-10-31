@@ -24,6 +24,30 @@ ParagonLookAndFeel::ParagonLookAndFeel()
     setColour (juce::TooltipWindow::backgroundColourId, ParagonColours::panel);
     setColour (juce::TooltipWindow::textColourId, ParagonColours::text);
     setColour (juce::TooltipWindow::outlineColourId, ParagonColours::panelEdge);
+    // Drop-down lists, menus, text boxes and message windows in the family's
+    // colours (JUCE's own are a blue-grey).
+    const juce::Colour onyx { 0xff151217 };
+    setColour (juce::ComboBox::backgroundColourId, onyx);
+    setColour (juce::ComboBox::outlineColourId, ParagonColours::panelEdge);
+    setColour (juce::ComboBox::textColourId, ParagonColours::text);
+    setColour (juce::ComboBox::arrowColourId, ParagonColours::accent);
+    setColour (juce::ComboBox::buttonColourId, onyx);
+    setColour (juce::ComboBox::focusedOutlineColourId, ParagonColours::accent);
+    setColour (juce::PopupMenu::backgroundColourId, onyx);
+    setColour (juce::PopupMenu::textColourId, ParagonColours::text);
+    setColour (juce::PopupMenu::headerTextColourId, ParagonColours::accent);
+    setColour (juce::PopupMenu::highlightedBackgroundColourId, ParagonColours::accentDim);
+    setColour (juce::PopupMenu::highlightedTextColourId, juce::Colours::white);
+    setColour (juce::TextEditor::backgroundColourId, onyx);
+    setColour (juce::TextEditor::outlineColourId, ParagonColours::panelEdge);
+    setColour (juce::TextEditor::focusedOutlineColourId, ParagonColours::accent);
+    setColour (juce::TextEditor::highlightColourId, ParagonColours::accentDim);
+    setColour (juce::AlertWindow::backgroundColourId, ParagonColours::panel);
+    setColour (juce::AlertWindow::textColourId, ParagonColours::text);
+    setColour (juce::AlertWindow::outlineColourId, ParagonColours::panelEdge);
+    setColour (juce::ListBox::backgroundColourId, onyx);
+    setColour (juce::ListBox::outlineColourId, ParagonColours::panelEdge);
+    setColour (juce::ListBox::textColourId, ParagonColours::text);
 }
 
 void ParagonLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& button, bool highlighted, bool)
@@ -94,7 +118,9 @@ void ParagonLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& 
         g.fillRoundedRectangle (surround.reduced (1.5f), 4.0f);
         g.setColour (juce::Colours::black.withAlpha (0.55f));
         g.drawRoundedRectangle (surround, 5.0f, 0.8f);
-        drawPianoKey (g, surround.reduced (2.2f, 2.0f).withTrimmedBottom (0.6f), 3.0f, 2.2f, down, highlighted, Finish::neonKeys());
+        // A key that's on is black in every finish (on the red neon keys, so it's told apart at a glance).
+        drawPianoKey (g, surround.reduced (2.2f, 2.0f).withTrimmedBottom (0.6f), 3.0f, 2.2f, down, highlighted,
+                      Finish::neonKeys() && ! button.getToggleState());
         return;
     }
 
@@ -166,9 +192,9 @@ void ParagonLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& bu
     }
 
     g.setFont (titleFont (juce::jmin (12.0f, area.getHeight() * 0.7f)));
-    // Light lettering on a black key; white on a neon one (lit: a pale
-    // gold, as the accent orange would vanish into the key).
-    const auto neonKey = Finish::neonKeys();
+    // Light lettering on a black key, lit in the accent orange (or its own
+    // colour); white on a neon one (a neon key that's on is drawn black).
+    const auto neonKey = Finish::neonKeys() && ! on;
     const auto* lit = button.getProperties().getVarPointer (litColourProperty);
     const auto litColour = lit != nullptr ? juce::Colour ((juce::uint32) (juce::int64) *lit) : ParagonColours::accent;
     g.setColour (button.isEnabled() ? (on ? (neonKey ? juce::Colour (0xffffe9a8) : litColour) : (neonKey ? juce::Colours::white : ParagonColours::text))

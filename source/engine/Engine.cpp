@@ -1105,6 +1105,19 @@ namespace pr7s
         notePerformance (juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - started), numSamples);
     }
 
+    void Engine::settleMix()
+    {
+        const juce::ScopedLock sl (lock);
+        for (auto& track : tracks)
+        {
+            track->left.setCurrentAndTargetValue (track->gainLeft);
+            track->right.setCurrentAndTargetValue (track->gainRight);
+            for (auto& send : track->sends)
+                send.lastGain = send.on ? levelOf (send.levelDb) : 0.0f;
+        }
+        masterGain.setCurrentAndTargetValue (settings.masterGain);
+    }
+
     void Engine::notePerformance (double secondsTaken, int numSamples) noexcept
     {
         const auto rate = getSampleRate();

@@ -87,12 +87,12 @@ void TransportBar::followPerformance()
     shownAverage = now.average;
     shownPeak = juce::jmax (now.peak, shownPeak * 0.92f);
     overloadLit = now.overloads > 0;
-    repaint (cpuArea.expanded (2.0f).getSmallestIntegerContainer());
+    repaint (cpuScreen.expanded (4.0f).getSmallestIntegerContainer());
 }
 
 juce::String TransportBar::getTooltip()
 {
-    if (! cpuArea.contains (getMouseXYRelative().toFloat()))
+    if (! cpuScreen.contains (getMouseXYRelative().toFloat()))
         return {};
     const auto overloads = studio.getEngine().takePerformance().overloads;
     return "CPU: the audio processing load. Average " + juce::String (juce::roundToInt (shownAverage * 100.0f)) + "%, peak "
@@ -136,61 +136,67 @@ void TransportBar::resized()
 {
     satin = Finish::makeSatinGrain (juce::jmax (1, getWidth() * 2), juce::jmax (1, getHeight() * 2), 7071);
 
+    // Left to right: the badge; AUTO-SCROLL (its key and menu arrow: the
+    // main window puts them in `autoScrollArea`); the keys; the CPU screen;
+    // the position screen; the tempo and the signature; on a wide window the
+    // tools (`toolsArea`); the output meters at the right end.
+    const auto wide = toolsWidth > 0;
+    const auto keyPitch = wide ? 66.0f : 70.0f;
+    const auto autoWidth = keyPitch + 3.0f + 20.0f;
+    const auto cpuWidth = wide ? 92.0f : 96.0f;
+    const auto tempoWidth = wide ? 136.0f : 150.0f;
+    const auto signatureWidth = wide ? 88.0f : 96.0f;
+
     auto area = getLocalBounds().toFloat().reduced (14.0f, 12.0f);
-    badge = area.removeFromLeft (190.0f);
+    badge = area.removeFromLeft (! wide && getWidth() < 1700 ? 150.0f : 190.0f);
     area.removeFromLeft (16.0f);
-
-    // The keys, each with its name stamped under it.
-    keysArea = area.removeFromLeft (6.0f * 70.0f);
-    auto keys = keysArea;
-    for (auto* key : { &toStart, &stopKey, &playKey, &recordKey, &cycleKey, &clickKey })
-        key->setBounds (keys.removeFromLeft (70.0f).withSizeKeepingCentre (62.0f, 40.0f).translated (0.0f, -6.0f).toNearestInt());
-    area.removeFromLeft (18.0f);
-
     // The output meters: two LED columns, L and R, with OUT stamped under them.
     meterArea = area.removeFromRight (36.0f);
     const auto columns = meterArea.withTrimmedTop (10.0f).withTrimmedBottom (14.0f);
     leftMeter.setBounds (columns.withWidth (10.0f).translated (6.0f, 0.0f).toNearestInt());
     rightMeter.setBounds (columns.withWidth (10.0f).translated (20.0f, 0.0f).toNearestInt());
-    area.removeFromRight (10.0f);
-    // CPU: its two columns (average, peak) and the overload light, beside OUT.
-    cpuArea = area.removeFromRight (36.0f);
     area.removeFromRight (16.0f);
 
-    if (toolsWidth <= 0)
+    // The group from AUTO-SCROLL to the signature (and the tools): on one
+    // screen it starts after the badge and the position screen takes what's
+    // left; wide, the position screen has its own width and the group sits
+    // in the middle (as near as the badge and the meters allow), so on three
+    // screens it's all on the middle one.
+    const auto leftWidth = autoWidth + 12.0f + 6.0f * keyPitch + 12.0f + cpuWidth + 12.0f;
+    const auto rightWidth = 12.0f + tempoWidth + 12.0f + signatureWidth + (wide ? 20.0f + (float) toolsWidth : 0.0f);
+    auto x = area.getX();
+    auto positionWidth = area.getWidth() - leftWidth - rightWidth;
+    if (wide)
     {
-        toolsArea = {};
-        signatureScreen = area.removeFromRight (96.0f);
-        area.removeFromRight (12.0f);
-        tempoScreen = area.removeFromRight (150.0f);
-        area.removeFromRight (12.0f);
-        positionScreen = area;
-        return;
+        positionWidth = (float) widePositionWidth;
+        const auto groupWidth = leftWidth + positionWidth + rightWidth;
+        x = juce::jlimit (area.getX(), juce::jmax (area.getX(), area.getRight() - groupWidth), ((float) getWidth() - groupWidth) * 0.5f);
     }
+    juce::Rectangle<float> row (x, area.getY(), leftWidth + positionWidth + rightWidth, area.getHeight());
 
-    // Wide: the keys, the position screen (its own width), the tempo, the
-    // signature and the tools together in the middle of the bar (as near as
-    // the badge and the meters allow), so on three screens they're all on the
-    // middle one (none cut by the screens' edges); the screen near the middle.
-    const auto keysWidth = keysArea.getWidth() + 18.0f;
-    const auto rightWidth = 12.0f + 150.0f + 12.0f + 96.0f + 20.0f + (float) toolsWidth;
-    const auto width = (float) widePositionWidth;
-    const auto groupWidth = keysWidth + width + rightWidth;
-    const auto minX = badge.getRight() + 16.0f;
-    const auto maxX = juce::jmax (minX, area.getRight() - groupWidth);
-    const auto x = juce::jlimit (minX, maxX, ((float) getWidth() - groupWidth) * 0.5f) + keysWidth;
-    positionScreen = { x, area.getY(), width, area.getHeight() };
-    keysArea = keysArea.withX (x - keysWidth);
-    auto wideKeys = keysArea;
+    autoScrollArea = row.removeFromLeft (autoWidth).withSizeKeepingCentre (autoWidth, 40.0f).translated (0.0f, -6.0f).toNearestInt();
+    autoScrollStamp = juce::Rectangle<float> ((float) autoScrollArea.getX(), area.getBottom() - 14.0f, keyPitch - 8.0f, 14.0f);
+    row.removeFromLeft (12.0f);
+    keysArea = row.removeFromLeft (6.0f * keyPitch);
+    auto keys = keysArea;
     for (auto* key : { &toStart, &stopKey, &playKey, &recordKey, &cycleKey, &clickKey })
-        key->setBounds (wideKeys.removeFromLeft (70.0f).withSizeKeepingCentre (62.0f, 40.0f).translated (0.0f, -6.0f).toNearestInt());
-    juce::Rectangle<float> right (positionScreen.getRight() + 12.0f, area.getY(), area.getRight() - positionScreen.getRight() - 12.0f, area.getHeight());
-    tempoScreen = right.removeFromLeft (150.0f);
-    right.removeFromLeft (12.0f);
-    signatureScreen = right.removeFromLeft (96.0f);
-    right.removeFromLeft (20.0f);
-    toolsArea = right.removeFromLeft ((float) toolsWidth).withSizeKeepingCentre ((float) toolsWidth, 32.0f)
-                     .withY (toStart.getBounds().getCentreY() - 16.0f).toNearestInt();
+        key->setBounds (keys.removeFromLeft (keyPitch).withSizeKeepingCentre (keyPitch - 8.0f, 40.0f).translated (0.0f, -6.0f).toNearestInt());
+    row.removeFromLeft (12.0f);
+    cpuScreen = row.removeFromLeft (cpuWidth);
+    row.removeFromLeft (12.0f);
+    positionScreen = row.removeFromLeft (positionWidth);
+    row.removeFromLeft (12.0f);
+    tempoScreen = row.removeFromLeft (tempoWidth);
+    row.removeFromLeft (12.0f);
+    signatureScreen = row.removeFromLeft (signatureWidth);
+    toolsArea = {};
+    if (wide)
+    {
+        row.removeFromLeft (20.0f);
+        toolsArea = row.removeFromLeft ((float) toolsWidth).withSizeKeepingCentre ((float) toolsWidth, 40.0f)
+                       .withY ((float) toStart.getBounds().getY()).toNearestInt();
+    }
+    keyPitchNow = keyPitch;
 }
 
 void TransportBar::paint (juce::Graphics& g)
@@ -211,9 +217,10 @@ void TransportBar::paint (juce::Graphics& g)
     // The keys' shortcuts.
     {
         auto keys = keysArea;
-        // Under each key, its shortcut on the computer's keyboard.
+        // Under each key, its shortcut on the computer's keyboard (AUTO-SCROLL's: F).
         for (const auto* name : { "HOME", "SPACE", "SPACE", "R", "/", "C" })
-            stamped (g, name, keys.removeFromLeft (70.0f).removeFromBottom (14.0f), 9.0f);
+            stamped (g, name, keys.removeFromLeft (keyPitchNow).removeFromBottom (14.0f), 9.0f);
+        stamped (g, "F", autoScrollStamp, 9.0f);
     }
 
     // POSITION: bars, beats, sixteenths and ticks, then minutes and seconds.
@@ -232,6 +239,27 @@ void TransportBar::paint (juce::Graphics& g)
         g.setColour (orange.withAlpha (0.75f));
         g.setFont (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), juce::jmin (18.0f, row.getHeight() * 0.42f), juce::Font::plain));
         g.drawFittedText (pr7s::formatTime (beats * studio.getProject().secondsPerBeat()), row.toNearestInt(), juce::Justification::centredRight, 1, 0.7f);
+    }
+
+    // CPU: the audio processing load, as much of each block's time as it
+    // takes (the average, big; the peak, small); OVER lit after an overload.
+    {
+        const auto glass = LedDisplay::paintScreen (g, cpuScreen, screenSize);
+        glasses.push_back (glass);
+        auto inside = glass.reduced (9.0f, 6.0f);
+        auto top = inside.removeFromTop (12.0f);
+        g.setFont (font (9.0f));
+        g.setColour (orange.withAlpha (0.6f));
+        g.drawText ("CPU", top, juce::Justification::topLeft, false);
+        g.setColour (overloadLit ? ParagonColours::meterRed : orange.withAlpha (0.18f));
+        g.drawText ("OVER", top, juce::Justification::topRight, false);
+        const auto percent = [] (float load) { return juce::String (juce::roundToInt (juce::jlimit (0.0f, 9.99f, load) * 100.0f)); };
+        auto bottom = inside.removeFromBottom (12.0f);
+        g.setColour (orange.withAlpha (0.75f));
+        g.drawText ("PEAK " + percent (shownPeak) + "%", bottom, juce::Justification::bottomRight, false);
+        g.setColour (shownAverage >= 1.0f ? ParagonColours::meterRed : orange);
+        g.setFont (font (juce::jmin (26.0f, inside.getHeight() * 0.95f)));
+        g.drawFittedText (percent (shownAverage) + "%", inside.toNearestInt(), juce::Justification::centredRight, 1, 0.7f);
     }
 
     // TEMPO and SIGNATURE.
@@ -265,24 +293,6 @@ void TransportBar::paint (juce::Graphics& g)
     stamped (g, "R", juce::Rectangle<float> (meterArea.getX() + 18.0f, meterArea.getY(), 14.0f, 10.0f), 8.0f);
     stamped (g, "OUT", meterArea.withTrimmedTop (meterArea.getHeight() - 12.0f), 8.0f);
 
-    // CPU: the average and the peak load, PR7-C's segments (orange to pink-red at the top: all the time there is);
-    // over them, the overload light.
-    {
-        const auto columns = cpuArea.withTrimmedTop (10.0f).withTrimmedBottom (14.0f);
-        const auto average = columns.withWidth (10.0f).translated (6.0f, 0.0f);
-        const auto peak = columns.withWidth (10.0f).translated (20.0f, 0.0f);
-        LevelMeter::paintSegments (g, average, juce::jlimit (0.0f, 1.0f, shownAverage), -1.0f);
-        LevelMeter::paintSegments (g, peak, juce::jlimit (0.0f, 1.0f, shownPeak), -1.0f);
-        const auto light = juce::Rectangle<float> (cpuArea.getCentreX() - 9.0f, cpuArea.getY(), 18.0f, 6.0f);
-        g.setColour (overloadLit ? ParagonColours::meterRed : juce::Colours::black.withAlpha (0.35f));
-        g.fillRoundedRectangle (light, 2.0f);
-        if (overloadLit)
-        {
-            g.setColour (ParagonColours::meterRed.withAlpha (0.35f));
-            g.fillRoundedRectangle (light.expanded (2.0f), 3.0f);
-        }
-        stamped (g, "CPU", cpuArea.withTrimmedTop (cpuArea.getHeight() - 12.0f), 8.0f);
-    }
 }
 
 void TransportBar::paintOverChildren (juce::Graphics& g)
@@ -293,7 +303,7 @@ void TransportBar::paintOverChildren (juce::Graphics& g)
 
 void TransportBar::mouseDown (const juce::MouseEvent& event)
 {
-    if (cpuArea.contains (event.position))
+    if (cpuScreen.contains (event.position))
     {
         studio.getEngine().resetOverloads();   // (as the manual has it: a click resets the overload light)
         followPerformance();

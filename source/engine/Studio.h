@@ -350,6 +350,8 @@ namespace pr7s
             // After the end, until what's sounding (reverbs, delays, a held
             // note's release) has died away, at most this long; nothing new starts.
             double tailSeconds = 30.0;
+            // What's played can be changed first (Render in Place: only what's rendered, as it asks).
+            std::function<void (Project&)> prepareSong;
         };
         // In three steps, so the middle one can run on another thread behind a
         // progress bar: begin (message thread), render (any thread; false:
@@ -361,6 +363,43 @@ namespace pr7s
         bool isExporting() const noexcept { return exportJob != nullptr; }
         // All three, here and now (tests; and short songs).
         bool exportMix (const juce::File&, const ExportOptions&, juce::String& error);
+
+        // Render in Place (the manual's Rendering Audio and MIDI): stretches
+        // of instrument or audio tracks rendered to audio files (in the song's
+        // audio folder) as clips on a new audio track under each source track.
+        struct RenderOptions
+        {
+            // As Separate Events (a clip for each part), As Block Events (parts
+            // end to end joined), As One Event (one clip from the first part's
+            // start to the last one's end).
+            enum class Mode { separate, blocks, one };
+            Mode mode = Mode::separate;
+            // Dry: the instrument (or the clips) alone; the new track gets the
+            // source's effects (with their settings), fader, pan, sends and
+            // output. Channel Settings: through the inserts, sends (their FX
+            // channels) and groups; the new track gets the fader and pan.
+            // Complete Signal Path: all of it, fader and pan too; the new track
+            // at 0 dB, in the middle, no effects. + Master FX: the master's
+            // effects and fader too.
+            enum class Processing { dry, channelSettings, completeSignalPath, completeWithMaster };
+            Processing processing = Processing::channelSettings;
+            // The tail after each stretch (for reverbs and delays to die away): off, in bars, or in seconds.
+            enum class Tail { off, bars, seconds };
+            Tail tail = Tail::bars;
+            double tailSize = 1.0;
+            int bitsPerSample = 24;   // 16, 24 or 32 (float)
+            // The source: kept as it was, muted (the parts rendered; whole tracks: the track), or removed (whole tracks).
+            enum class Source { keep, mute, remove };
+            Source source = Source::keep;
+        };
+        struct RenderSource
+        {
+            int trackId = 0;
+            double start = 0.0, end = 0.0;   // beats: the stretch (its parts are cut at its edges)
+            bool wholeTrack = false;         // a track chosen as a whole (Source: the track muted or removed)
+        };
+        // Returns the new audio tracks' ids (none, and `error` set, if nothing could be rendered).
+        std::vector<int> renderInPlace (const std::vector<RenderSource>&, const RenderOptions&, juce::String& error);
 
     private:
         void changed (bool undoable = true);

@@ -1042,7 +1042,7 @@ TEST_CASE ("Zoom, Auto-Scroll and scrolling (H in, G out, Shift+F, F; the scroll
 
     SECTION ("F turns Auto-Scroll off and on (AUTO-SCROLL lit); while on, a jump out of sight turns the page")
     {
-        auto& button = view.getTrackList().getAutoScrollButton();
+        auto& button = view.getAutoScrollButton();
         CHECK (button.getToggleState());   // on at first
         CHECK (key ('f'));
         CHECK_FALSE (button.getToggleState());
@@ -1097,7 +1097,7 @@ TEST_CASE ("Zoom, Auto-Scroll and scrolling (H in, G out, Shift+F, F; the scroll
         CHECK (editor.getAutoScroll());
         CHECK (key ('f'));
         CHECK_FALSE (editor.getAutoScroll());
-        CHECK (view.getTrackList().getAutoScrollButton().getToggleState());   // the arrangement's still on
+        CHECK (view.getAutoScrollButton().getToggleState());   // the arrangement's still on
         // Its scroll bars: across moves the notes, down the pitches.
         const auto noteX = editor.getNoteBounds (0).getX();
         editor.getScrollBarAcross().setCurrentRangeStart (editor.getFirstBeat() + 1.0, juce::sendNotificationSync);
@@ -1232,7 +1232,7 @@ TEST_CASE ("Taller and shorter rows (Shift+H / Shift+G); Auto-Scroll's settings:
 
     SECTION ("Suspend Auto-Scroll when Editing: a click in the tracks while playing stops it following until playback stops; F carries on")
     {
-        auto& autoScrollKey = view.getTrackList().getAutoScrollButton();
+        auto& autoScrollKey = view.getAutoScrollButton();
         timeline.autoScroll.suspendWhenEditing = true;
         studio.play();
         const juce::Point<float> inLanes (40.0f, (float) Timeline::rulerHeight + 200.0f);
@@ -1619,6 +1619,20 @@ TEST_CASE ("The locators: Ctrl-click the left, Alt-click the right, Ctrl+Alt-cli
     CHECK (project.loopStart == 9.0);
     CHECK (project.loopEnd == 10.0);
 
+    // In the lower part of the ruler too (where a plain click moves the playhead): Ctrl / Alt set the locators, the playhead stays.
+    studio.setPosition (1.0);
+    const auto lower = (float) Timeline::rulerHeight - 6.0f;
+    const auto clickLower = [&] (float atX, juce::ModifierKeys mods)
+    {
+        arrange.mouseDown (mouseAt (arrange, { atX, lower }, { atX, lower }, mods));
+        arrange.mouseUp (mouseAt (arrange, { atX, lower }, { atX, lower }, mods));
+    };
+    clickLower (x (3.0), cmd);
+    CHECK (project.loopStart == 3.0);
+    clickLower (x (14.0), alt);
+    CHECK (project.loopEnd == 14.0);
+    CHECK (studio.getEngine().getPosition() == 1.0);
+
     // A locator's handle dragged: just that one.
     studio.setCycle (4.0, 16.0);
     const auto dragFrom = [&] (float fromX, float toX)
@@ -1852,16 +1866,33 @@ TEST_CASE ("A wide window (spanning screens): the position screen centred at its
     CHECK (transport.getPositionScreen().getWidth() > 300.0f);
 
     // Three screens.
+    CHECK_FALSE (view.isMixerOpen());
     view.setSize (5760, 1000);
     REQUIRE (view.isWide());
+    // Turning wide: the mixer docked, its racks hidden, as short as it goes (the owner's choice).
+    CHECK (view.isMixerOpen());
+    CHECK_FALSE (view.isMixerInWindow());
+    CHECK_FALSE (view.getMixer().isRackShown());
+    CHECK (view.getMixer().getHeight() == view.getMixer().getMinimumHeight());
+    // What's changed after it turned wide stays (it isn't done again on every resize).
+    view.getMixer().setRackShown (true);
+    view.setSize (5700, 1000);
+    CHECK (view.getMixer().isRackShown());
     const auto screen = transport.getPositionScreen();
     CHECK (screen.getWidth() == (float) TransportBar::widePositionWidth);
     CHECK_THAT (transport.getX() + screen.getCentreX(), WithinAbs (view.getWidth() * 0.5f, 300.0f));   // near the middle
     // The keys on its left, the tools on its right (on the transport, no row of their own).
     auto* clickKey = buttonNamed (transport, "CLICK");
     REQUIRE (clickKey != nullptr);
-    CHECK (clickKey->getRight() <= (int) screen.getX());
-    CHECK (clickKey->getRight() > (int) screen.getX() - 40);
+    // CLICK, then the CPU screen, then the position screen (the owner's order).
+    const auto cpu = transport.getCpuArea();
+    CHECK (clickKey->getRight() <= (int) cpu.getX());
+    CHECK (clickKey->getRight() > (int) cpu.getX() - 30);
+    CHECK (cpu.getRight() <= screen.getX());
+    CHECK (cpu.getRight() > screen.getX() - 30);
+    // AUTO-SCROLL just before HOME.
+    CHECK (view.getAutoScrollButton().getRight() < buttonNamed (transport, "|<")->getX() + transport.getX());
+    CHECK (view.getAutoScrollButton().getRight() > buttonNamed (transport, "|<")->getX() + transport.getX() - 50);
     CHECK (tools.getX() > transport.getX() + (int) screen.getRight());
     CHECK (tools.getBottom() <= transport.getBottom());
     // All of it on the middle screen (1920 to 3840): no screen edge through it.
@@ -1876,4 +1907,39 @@ TEST_CASE ("A wide window (spanning screens): the position screen centred at its
     REQUIRE (mixerKey != nullptr);
     CHECK (std::abs ((newKey->getX() + mixerKey->getRight()) / 2 - view.getWidth() / 2) < 60);   // (R and W go a little past MIXER)
     CHECK (newKey->getX() > 2000);
+}
+
+TEST_CASE ("RENDER IN PLACE: the page's choices; rendering as last time from the main window", "[ui][render]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto synth = studio.getProject().tracks[0].id;
+    studio.addPart (synth, { 4.0, 4.0, "Riff", { { 0.0, 1.0, 60, 1.0f } } });
+
+    // The page: what's chosen comes back as the options (Remove only for whole tracks).
+    Windows::RenderPage parts (studio, false);
+    CHECK_FALSE (parts.source.isItemEnabled (3));
+    Windows::RenderPage tracks (studio, true);
+    CHECK (tracks.source.isItemEnabled (3));
+    parts.mode.setSelectedId (2, juce::dontSendNotification);
+    parts.processing.setSelectedId (1, juce::dontSendNotification);
+    parts.tail.setSelectedId (6, juce::dontSendNotification);   // 2 seconds
+    parts.bits.setSelectedId (32, juce::dontSendNotification);
+    parts.source.setSelectedId (2, juce::dontSendNotification);
+    const auto chosen = parts.getOptions();
+    CHECK (chosen.mode == Studio::RenderOptions::Mode::blocks);
+    CHECK (chosen.processing == Studio::RenderOptions::Processing::dry);
+    CHECK (chosen.tail == Studio::RenderOptions::Tail::seconds);
+    CHECK (chosen.tailSize == 2.0);
+    CHECK (chosen.bitsPerSample == 32);
+    CHECK (chosen.source == Studio::RenderOptions::Source::mute);
+
+    // As last time (no settings file in tests: the defaults): a new audio track under the synth.
+    view.renderInPlace ({ { synth, 4.0, 8.0, false } }, false);
+    REQUIRE (studio.getProject().tracks.size() == 2);
+    CHECK (studio.getProject().tracks[1].isAudio());
+    CHECK (studio.getProject().tracks[1].parts.size() == 1);
+    studio.getAudioFolder().deleteRecursively();
 }

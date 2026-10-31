@@ -149,6 +149,11 @@ namespace pr7s
         struct Performance { float average = 0.0f, peak = 0.0f; int overloads = 0; };
         Performance takePerformance();
         void resetOverloads() noexcept { overloads = 0; }
+        // Every fader, pan and send straight at its setting, with no glide from
+        // where it was (an export or a render starts here: its first moments
+        // at the levels set, not still moving from the last playback's).
+        void settleMix();
+
         // One block measured (the audio callback calls it; tests too).
         void notePerformance (double secondsTaken, int numSamples) noexcept;
 

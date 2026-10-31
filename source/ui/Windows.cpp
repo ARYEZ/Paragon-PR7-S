@@ -227,6 +227,152 @@ namespace Windows
     }
 
     //==========================================================================
+    namespace
+    {
+        using RO = pr7s::Studio::RenderOptions;
+        // The tails offered: none, bars, seconds.
+        const std::pair<RO::Tail, double> tails[] = { { RO::Tail::off, 0.0 }, { RO::Tail::bars, 1.0 }, { RO::Tail::bars, 2.0 }, { RO::Tail::bars, 4.0 },
+                                                      { RO::Tail::seconds, 1.0 }, { RO::Tail::seconds, 2.0 }, { RO::Tail::seconds, 5.0 }, { RO::Tail::seconds, 10.0 } };
+    }
+
+    RO RenderPage::keptOptions (juce::PropertiesFile* settings)
+    {
+        RO options;
+        if (settings == nullptr)
+            return options;
+        options.mode = (RO::Mode) juce::jlimit (0, 2, settings->getIntValue ("renderMode", (int) options.mode));
+        options.processing = (RO::Processing) juce::jlimit (0, 3, settings->getIntValue ("renderProcessing", (int) options.processing));
+        const auto tail = juce::jlimit (0, (int) std::size (tails) - 1, settings->getIntValue ("renderTail", 1));
+        options.tail = tails[tail].first;
+        options.tailSize = tails[tail].second;
+        const auto kept = settings->getIntValue ("renderBits", 24);
+        options.bitsPerSample = kept == 16 || kept == 32 ? kept : 24;
+        options.source = (RO::Source) juce::jlimit (0, 2, settings->getIntValue ("renderSource", (int) options.source));
+        return options;
+    }
+
+    RenderPage::RenderPage (pr7s::Studio& studioToUse, bool wholeTracks) : studio (studioToUse)
+    {
+        for (auto* label : { &modeLabel, &processingLabel, &tailLabel, &bitsLabel, &sourceLabel })
+        {
+            label->setFont (font (13.0f));
+            label->setColour (juce::Label::textColourId, ParagonColours::textDim);
+            addAndMakeVisible (*label);
+        }
+        modeLabel.setText ("CLIPS", juce::dontSendNotification);
+        processingLabel.setText ("WHAT'S IN IT", juce::dontSendNotification);
+        tailLabel.setText ("TAIL", juce::dontSendNotification);
+        bitsLabel.setText ("BITS", juce::dontSendNotification);
+        sourceLabel.setText ("THE ORIGINAL", juce::dontSendNotification);
+
+        mode.addItem ("As separate events: a clip for each part", 1);
+        mode.addItem ("As block events: parts end to end joined", 2);
+        mode.addItem ("As one event: one clip over them all", 3);
+        processing.addItem ("Dry: the instrument alone (the new track gets its effects, fader and pan)", 1);
+        processing.addItem ("Channel settings: through its effects and sends (the new track gets the fader and pan)", 2);
+        processing.addItem ("Complete signal path: effects, sends, fader and pan", 3);
+        processing.addItem ("Complete signal path + the master's effects and fader", 4);
+        tail.addItem ("No tail", 1);
+        tail.addItem ("1 bar (reverbs and delays ring on: it stops early once silent)", 2);
+        tail.addItem ("2 bars", 3);
+        tail.addItem ("4 bars", 4);
+        tail.addItem ("1 second", 5);
+        tail.addItem ("2 seconds", 6);
+        tail.addItem ("5 seconds", 7);
+        tail.addItem ("10 seconds", 8);
+        bits.addItem ("24-bit", 24);
+        bits.addItem ("16-bit", 16);
+        bits.addItem ("32-bit float", 32);
+        source.addItem ("Keep it as it is", 1);
+        source.addItem (wholeTracks ? "Mute the track" : "Mute the parts rendered", 2);
+        source.addItem ("Remove the track", 3);
+        source.setItemEnabled (3, wholeTracks);   // (only for tracks rendered whole)
+
+        const auto kept = keptOptions (studio.getSettings());
+        mode.setSelectedId ((int) kept.mode + 1, juce::dontSendNotification);
+        processing.setSelectedId ((int) kept.processing + 1, juce::dontSendNotification);
+        auto tailIndex = 0;
+        for (int i = 0; i < (int) std::size (tails); ++i)
+            if (tails[i].first == kept.tail && juce::approximatelyEqual (tails[i].second, kept.tailSize))
+                tailIndex = i;
+        tail.setSelectedId (tailIndex + 1, juce::dontSendNotification);
+        bits.setSelectedId (kept.bitsPerSample, juce::dontSendNotification);
+        source.setSelectedId (kept.source == RO::Source::remove && ! wholeTracks ? 1 : (int) kept.source + 1, juce::dontSendNotification);
+        for (auto* box : { &mode, &processing, &tail, &bits, &source })
+            addAndMakeVisible (*box);
+
+        note.setText ("What's chosen becomes audio files (in the song's audio folder) on a new audio track under each track, "
+                      "the clips where the parts were. Faster than it plays; the interface is quiet meanwhile.",
+                      juce::dontSendNotification);
+        note.setFont (font (13.0f, juce::Font::plain));
+        note.setColour (juce::Label::textColourId, ParagonColours::textDim);
+        addAndMakeVisible (note);
+
+        for (auto* button : { &renderButton, &cancelButton })
+        {
+            button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
+            button->setColour (juce::TextButton::textColourOffId, ParagonColours::text);
+            addAndMakeVisible (*button);
+        }
+        renderButton.setColour (juce::TextButton::textColourOffId, ParagonColours::accent);
+        renderButton.onClick = [this]
+        {
+            // Kept for next time (Render with the last settings).
+            if (auto* settings = studio.getSettings())
+            {
+                settings->setValue ("renderMode", mode.getSelectedId() - 1);
+                settings->setValue ("renderProcessing", processing.getSelectedId() - 1);
+                settings->setValue ("renderTail", tail.getSelectedId() - 1);
+                settings->setValue ("renderBits", bits.getSelectedId());
+                settings->setValue ("renderSource", source.getSelectedId() - 1);
+            }
+            if (onRender)
+                onRender (getOptions());
+        };
+        cancelButton.onClick = [this] { if (onCancel) onCancel(); };
+        setSize (640, 330);
+    }
+
+    RO RenderPage::getOptions() const
+    {
+        RO options;
+        options.mode = (RO::Mode) juce::jlimit (0, 2, mode.getSelectedId() - 1);
+        options.processing = (RO::Processing) juce::jlimit (0, 3, processing.getSelectedId() - 1);
+        const auto& [kind, size] = tails[(size_t) juce::jlimit (0, (int) std::size (tails) - 1, tail.getSelectedId() - 1)];
+        options.tail = kind;
+        options.tailSize = size;
+        options.bitsPerSample = bits.getSelectedId();
+        options.source = (RO::Source) juce::jlimit (0, 2, source.getSelectedId() - 1);
+        return options;
+    }
+
+    void RenderPage::resized()
+    {
+        auto area = getLocalBounds().reduced (16);
+        auto row = [&area] (int height) { auto r = area.removeFromTop (height); area.removeFromTop (10); return r; };
+        auto labelled = [] (juce::Rectangle<int> r, juce::Label& label, juce::Component& field)
+        {
+            label.setBounds (r.removeFromLeft (120));
+            field.setBounds (r);
+        };
+        labelled (row (28), modeLabel, mode);
+        labelled (row (28), processingLabel, processing);
+        labelled (row (28), tailLabel, tail);
+        labelled (row (28), bitsLabel, bits);
+        labelled (row (28), sourceLabel, source);
+        note.setBounds (row (40));
+        auto buttons = area.removeFromBottom (32);
+        cancelButton.setBounds (buttons.removeFromRight (96));
+        buttons.removeFromRight (8);
+        renderButton.setBounds (buttons.removeFromRight (110));
+    }
+
+    void RenderPage::paint (juce::Graphics& g)
+    {
+        g.fillAll (windowColour);
+    }
+
+    //==========================================================================
     Instrument::Instrument (const juce::String& trackName, juce::AudioPluginInstance& instance)
         : DocumentWindow (trackName + ": " + instance.getName(), windowColour, DocumentWindow::closeButton)
     {

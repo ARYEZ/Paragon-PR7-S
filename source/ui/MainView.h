@@ -66,6 +66,10 @@ public:
     // EXPORT: the mix to a WAV. Asks what (the export page), then where,
     // then writes it behind a progress bar (CANCEL stops it, leaving no file).
     void exportMix();
+    // RENDER IN PLACE: the sources (a part, a range, selected tracks) rendered
+    // to audio; `ask`: the render page first (else as last time).
+    void renderInPlace (std::vector<pr7s::Studio::RenderSource>, bool ask);
+    Windows::RenderPage* getRenderPage() noexcept { return renderPage.getComponent(); }
     Windows::ExportPage* getExportPage() noexcept { return exportPage.getComponent(); }
 
     // IMPORT: a standard MIDI file (as the manual's File > Import > MIDI
@@ -123,6 +127,7 @@ public:
 
     // The arrangement's Auto-Scroll (F, or AUTO-SCROLL over the track list), remembered for next time.
     void setArrangeAutoScroll (bool);
+    juce::TextButton& getAutoScrollButton() noexcept { return autoScrollKey; }   // (on the transport, by HOME)
     juce::ScrollBar& getArrangeScrollBarAcross() noexcept { return arrangeAcross; }
     juce::ScrollBar& getArrangeScrollBarDown() noexcept { return arrangeDown; }
     static constexpr int scrollBarSize = 12;
@@ -173,10 +178,13 @@ private:
     TrackList trackList;
     ArrangeView arrange;
     ArrangeTools tools { arrange };
+    juce::TextButton autoScrollKey { "AUTO-SCROLL" }, autoScrollMenu;   // the arrangement's Auto-Scroll, on the transport
+    void toggleArrangeAutoScroll();
     KeyEditor keyEditor;
     MixerView mixer;
     bool keysToEditor = false;
-    bool rangeCopiedLast = false;   // Ctrl+V: a range's contents (in the arrangement), else notes (the key editor)
+    bool rangeCopiedLast = false;
+    bool wasWide = false;            // the last layout's: turning wide opens the mixer, short, racks hidden   // Ctrl+V: a range's contents (in the arrangement), else notes (the key editor)
     juce::ScrollBar arrangeAcross { false }, arrangeDown { true };
     std::unique_ptr<ZoneDivider> zoneDivider;
 
@@ -192,6 +200,8 @@ private:
     std::unique_ptr<Windows::Plugins> pluginsWindow;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::Component::SafePointer<Windows::ExportPage> exportPage;
+    juce::Component::SafePointer<Windows::RenderPage> renderPage;
+    void render (const std::vector<pr7s::Studio::RenderSource>&, const pr7s::Studio::RenderOptions&);
     void writeExport (const juce::File&, const pr7s::Studio::ExportOptions&);
     std::unique_ptr<juce::ThreadWithProgressWindow> exportProgress;
     juce::String lastTitle;

@@ -4,6 +4,7 @@
 #include "engine/Studio.h"
 #include "ui/Finish.h"
 #include "ui/MainView.h"
+#include "ui/ToolIcons.h"
 #include "ui/ParagonLookAndFeel.h"
 
 // Hidden test (the "[.]" tag): renders the studio's window to a PNG, with a
@@ -15,7 +16,7 @@
 // PARAGON_SNAPSHOT_SENDS=1 shows the sends rack; PARAGON_SNAPSHOT_RACK=none hides the rack, the mixer as short
 // as it goes), =none nothing there (the key editor otherwise).
 // PARAGON_SNAPSHOT_EXPORT=1 draws the export page over it. PARAGON_SNAPSHOT_EDIT=1: the SPLIT tool, a muted part.
-// PARAGON_SNAPSHOT_RANGE=1: the RANGE tool and a range over two tracks.
+// PARAGON_SNAPSHOT_RANGE=1: the RANGE tool and a range over two tracks. PARAGON_SNAPSHOT_RENDER=1: the RENDER IN PLACE page.
 // PARAGON_SNAPSHOT_VIEW=5760x1000: the window that size, 1:1 (the wide layout, spanning three screens).
 // PARAGON_SNAPSHOT_ROWS=0.5 (to 3) the arrangement's rows shorter or taller; PARAGON_SNAPSHOT_SUSPENDED=1 its
 // Auto-Scroll suspended.
@@ -220,6 +221,18 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     studio.dispatchPendingMessages();
 
     auto image = view.createComponentSnapshot (view.getLocalBounds(), true, scale);
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_RENDER", {}).isNotEmpty())
+    {
+        // The RENDER IN PLACE page over the studio, as its dialog shows it.
+        Windows::RenderPage page (studio, false);
+        const auto pageImage = page.createComponentSnapshot (page.getLocalBounds(), true, scale);
+        juce::Graphics g (image);
+        g.fillAll (juce::Colours::black.withAlpha (0.45f));
+        const auto at = image.getBounds().withSizeKeepingCentre (pageImage.getWidth(), pageImage.getHeight());
+        g.drawImageAt (pageImage, at.getX(), at.getY());
+        g.setColour (juce::Colour (0xff3a3540));
+        g.drawRect (at.expanded (1), 1);
+    }
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_EXPORT", {}).isNotEmpty())
     {
         // The export page over the studio, as its dialog shows it (the title bar is the system's).
@@ -338,4 +351,33 @@ TEST_CASE ("Render the key editor's own window to a PNG", "[.][snapshot-window]"
     juce::FileOutputStream stream (file);
     REQUIRE (stream.openedOk());
     REQUIRE (juce::PNGImageFormat().writeImageToStream (image, stream));
+}
+
+// The tools' pointers, as they look over the tracks (on a part and on an empty
+// lane), enlarged 3x: PARAGON_SNAPSHOT=cursors.png ./ParagonPR7STests "[snapshot-cursors]"
+TEST_CASE ("Snapshot: the tools' mouse pointers", "[.][snapshot-cursors]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "cursors.png");
+    const auto count = (int) std::size (ArrangeView::tools);
+    juce::Image image (juce::Image::RGB, count * 36 * 3, 2 * 36 * 3, true);
+    {
+        juce::Graphics g (image);
+        g.addTransform (juce::AffineTransform::scale (3.0f));
+        g.fillAll (juce::Colour (0xff0d0a0e));
+        g.setColour (juce::Colour (0xffe0103c).withAlpha (0.6f));
+        g.fillRect (0, 36, count * 36, 36);
+        for (int i = 0; i < count; ++i)
+            for (int row = 0; row < 2; ++row)
+            {
+                // Drawn as the pointer is: dark edge, white over it.
+                const juce::Rectangle<float> box ((float) i * 36.0f + 6.0f, (float) row * 36.0f + 6.0f, 24.0f, 24.0f);
+                for (const auto& offset : { juce::Point<float> (-1.0f, 0.0f), { 1.0f, 0.0f }, { 0.0f, -1.0f }, { 0.0f, 1.0f } })
+                    ToolIcons::draw (g, ArrangeView::tools[i], box.translated (offset.x, offset.y), juce::Colour (0xff120c10));
+                ToolIcons::draw (g, ArrangeView::tools[i], box, juce::Colours::white);
+            }
+    }
+    juce::File (path).deleteFile();
+    juce::FileOutputStream out { juce::File (path) };
+    REQUIRE (out.openedOk());
+    REQUIRE (juce::PNGImageFormat().writeImageToStream (image, out));
 }

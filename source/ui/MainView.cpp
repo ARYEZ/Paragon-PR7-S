@@ -115,15 +115,21 @@ MainView::MainView (pr7s::Studio& studioToUse)
     keyEditor.onAutoScrollChange = [this] { keyEditor.getAutoScrollSettings().save (studio.getSettings(), "keyEditor"); };
     timeline.onAutoScrollChange = [this]
     {
-        trackList.refreshAutoScroll();
+        timeline.autoScroll.refreshKey (autoScrollKey);
         timeline.autoScroll.save (studio.getSettings(), "arrange");
     };
-    trackList.onAutoScrollToggle = [this]
-    {
-        timeline.autoScroll.toggle();
-        timeline.onAutoScrollChange();
-    };
-    trackList.refreshAutoScroll();
+    // AUTO-SCROLL and its settings arrow: on the transport, by HOME (the owner's choice).
+    autoScrollKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    autoScrollKey.setWantsKeyboardFocus (false);
+    autoScrollKey.onClick = [this] { toggleArrangeAutoScroll(); };
+    autoScrollMenu.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    autoScrollMenu.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    autoScrollMenu.setWantsKeyboardFocus (false);
+    autoScrollMenu.setTooltip ("Auto-Scroll's settings: Page Scroll or Stationary Cursor; Suspend Auto-Scroll when Editing");
+    autoScrollMenu.onClick = [this] { timeline.autoScroll.showMenu (autoScrollMenu, [this] { timeline.onAutoScrollChange(); }); };
+    addAndMakeVisible (autoScrollKey);
+    addAndMakeVisible (autoScrollMenu);
+    timeline.autoScroll.refreshKey (autoScrollKey);
     zoneDivider = std::make_unique<ZoneDivider> (*this);
     addChildComponent (*zoneDivider);
     mixer.onMinimumHeightChange = [this] { resized(); };   // (after the divider: resized() places it)
@@ -137,6 +143,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
     keyEditor.setInWindow (editorZone.inWindow);
     mixer.setInWindow (mixerZone.inWindow);
     arrange.onEditNotes = [this] { openKeyEditor(); };
+    arrange.onRenderInPlace = [this] (std::vector<pr7s::Studio::RenderSource> sources, bool ask) { renderInPlace (std::move (sources), ask); };
+    trackList.onRenderInPlace = [this] (std::vector<pr7s::Studio::RenderSource> sources, bool ask) { renderInPlace (std::move (sources), ask); };
     // Told of clicks in the work areas, to know where the keys go.
     arrange.addMouseListener (this, true);
     trackList.addMouseListener (this, true);
@@ -229,6 +237,12 @@ void MainView::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
         timeline.onScrollOrZoom();
 }
 
+void MainView::toggleArrangeAutoScroll()
+{
+    timeline.autoScroll.toggle();
+    timeline.onAutoScrollChange();
+}
+
 void MainView::setArrangeAutoScroll (bool on)
 {
     timeline.autoScroll.on = on;
@@ -287,6 +301,22 @@ void MainView::paint (juce::Graphics& g)
 
 void MainView::resized()
 {
+    // Turning wide (spanning screens, at start-up or by SPAN ALL SCREENS): the
+    // mixer docked under the arrangement, its racks hidden, as short as it
+    // goes (the owner's choice). Only as it turns wide: what's changed after stays.
+    if (isWide() && ! wasWide)
+    {
+        wasWide = true;
+        mixer.setRackShown (false);
+        mixerZone.dockedHeight = 1;   // (kept to its least)
+        if (mixerZone.inWindow)
+            setMixerInWindow (false);
+        if (! isMixerOpen())
+            openMixer();   // (lays out again)
+        return resized();
+    }
+    wasWide = isWide();
+
     auto area = getLocalBounds();
     auto header = area.removeFromTop (headerHeight).reduced (8, 10);
     header.removeFromLeft (280);
@@ -325,6 +355,12 @@ void MainView::resized()
     transport.setToolsWidth (isWide() ? ArrangeTools::unitWidth() : 0);
     transport.setBounds (area.removeFromTop (transportHeight).reduced (2, 0));
     tools.setOnUnit (isWide());
+    {
+        auto autoArea = transport.getAutoScrollArea() + transport.getPosition();
+        autoScrollMenu.setBounds (autoArea.removeFromRight (20));
+        autoArea.removeFromRight (3);
+        autoScrollKey.setBounds (autoArea);
+    }
     if (isWide())
         tools.setBounds (transport.getToolsArea() + transport.getPosition());   // on the transport, right of its screens
     else
@@ -607,7 +643,7 @@ bool MainView::keyPressed (const juce::KeyPress& key)
         if (mods.isShiftDown())
             arrange.zoomFull();
         else
-            trackList.onAutoScrollToggle();   // (a suspended one carries on)
+            toggleArrangeAutoScroll();   // (a suspended one carries on)
         return true;
     }
     if (letter == 'R' || key.getTextCharacter() == '*') { studio.record(); return true; }
@@ -998,6 +1034,54 @@ void MainView::exportMix()
                                       writeExport (file.withFileExtension (".wav"), chosen);
                               });
     };
+}
+
+void MainView::renderInPlace (std::vector<pr7s::Studio::RenderSource> sources, bool ask)
+{
+    if (sources.empty() || studio.isExporting() || studio.getEngine().isRecording() || renderPage != nullptr)
+        return;
+    if (! ask)
+    {
+        render (sources, Windows::RenderPage::keptOptions (studio.getSettings()));
+        return;
+    }
+    auto* page = new Windows::RenderPage (studio, sources.front().wholeTrack);
+    renderPage = page;
+    juce::DialogWindow::LaunchOptions options;
+    options.content.setOwned (page);
+    options.dialogTitle = "Paragon PR7-S: Render in Place";
+    options.dialogBackgroundColour = juce::Colour (0xff0c0a0d);
+    options.useNativeTitleBar = true;
+    options.resizable = false;
+    options.componentToCentreAround = this;
+    options.launchAsync();
+    auto close = [page]
+    {
+        if (auto* dialog = page->findParentComponentOfClass<juce::DialogWindow>())
+            dialog->exitModalState (0);   // deleted once its click is over
+    };
+    page->onCancel = close;
+    page->onRender = [this, close, sources] (const pr7s::Studio::RenderOptions& chosen)
+    {
+        close();
+        // After the page has gone (its click is over).
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this), sources, chosen]
+        {
+            if (safe != nullptr)
+                safe->render (sources, chosen);
+        });
+    };
+}
+
+void MainView::render (const std::vector<pr7s::Studio::RenderSource>& sources, const pr7s::Studio::RenderOptions& options)
+{
+    juce::MouseCursor::showWaitCursor();
+    juce::String error;
+    const auto made = studio.renderInPlace (sources, options, error);
+    juce::MouseCursor::hideWaitCursor();
+    if (error.isNotEmpty())
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                                                made.empty() ? "Nothing rendered" : "Not everything was rendered", error);
 }
 
 void MainView::writeExport (const juce::File& file, const pr7s::Studio::ExportOptions& options)

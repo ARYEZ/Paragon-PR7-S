@@ -2642,6 +2642,8 @@ namespace pr7s
         // nothing starting at or after the end (so the ring-out is only
         // what's already sounding).
         auto playing = project;
+        if (options.prepareSong)
+            options.prepareSong (playing);
         playing.loopOn = false;
         playing.click = options.click;
         for (auto& track : playing.tracks)
@@ -2653,6 +2655,7 @@ namespace pr7s
                 part.length = juce::jmin (part.length, options.end - part.start);
         }
         engine.update (playing);
+        engine.settleMix();   // the levels set from the first sample (no glide from what was playing before)
         engine.setNonRealtime (true);
 
         job->total = (juce::int64) std::llround ((options.end - options.start) * 60.0 / project.bpm * rate);
@@ -2750,6 +2753,212 @@ namespace pr7s
         if (! rendered)
             error = "Couldn't write " + destination.getFullPathName();
         return rendered;
+    }
+
+    std::vector<int> Studio::renderInPlace (const std::vector<RenderSource>& sources, const RenderOptions& options, juce::String& error)
+    {
+        using P = RenderOptions::Processing;
+        std::vector<int> made;
+        juce::StringArray problems;
+        const auto folder = getAudioFolder();
+        folder.createDirectory();
+        const auto tailSeconds = options.tail == RenderOptions::Tail::off ? 0.0
+                               : options.tail == RenderOptions::Tail::bars ? options.tailSize * project.beatsPerBar() * project.secondsPerBeat()
+                                                                           : options.tailSize;
+        for (const auto& source : sources)
+        {
+            const auto* track = project.findTrack (source.trackId);
+            if (track == nullptr || track->isChannel() || source.end <= source.start)
+                continue;
+            // The stretches to render, from the parts in it (cut at its edges).
+            std::vector<std::pair<double, double>> spans;
+            for (const auto& part : track->parts)
+                if (! part.muted)
+                    if (const auto piece = slice (part, source.start, source.end, project.bpm))
+                        spans.push_back ({ piece->start, piece->end() });
+            std::sort (spans.begin(), spans.end());
+            if (spans.empty())
+            {
+                problems.add (track->name + ": nothing to render there");
+                continue;
+            }
+            if (options.mode == RenderOptions::Mode::one)
+            {
+                auto end = spans.front().second;
+                for (const auto& span : spans)
+                    end = juce::jmax (end, span.second);
+                spans = { { spans.front().first, end } };
+            }
+            else if (options.mode == RenderOptions::Mode::blocks)
+            {
+                std::vector<std::pair<double, double>> blocks;
+                for (const auto& span : spans)
+                    if (! blocks.empty() && span.first <= blocks.back().second + 1.0e-9)
+                        blocks.back().second = juce::jmax (blocks.back().second, span.second);
+                    else
+                        blocks.push_back (span);
+                spans = std::move (blocks);
+            }
+
+            // Each stretch through the export, the song made to play only what's asked.
+            const auto sourceId = track->id;
+            const auto name = track->name;
+            const auto processing = options.processing;
+            std::vector<Part> clips;
+            for (const auto& [from, to] : spans)
+            {
+                const auto base = juce::File::createLegalFileName (name) + " Render ";
+                auto file = folder.getChildFile (base + "01.wav");
+                for (int n = 2; file.exists(); ++n)
+                    file = folder.getChildFile (base + juce::String (n).paddedLeft ('0', 2) + ".wav");
+                ExportOptions render;
+                render.start = from;
+                render.end = to;
+                render.bitsPerSample = options.bitsPerSample;
+                render.tailSeconds = tailSeconds;
+                render.prepareSong = [sourceId, from = from, to = to, processing, bpm = project.bpm] (Project& song)
+                {
+                    for (auto& t : song.tracks)
+                    {
+                        t.solo = false;
+                        if (t.id != sourceId)
+                        {
+                            if (! t.isChannel())
+                                t.parts.clear();   // the other tracks: silent (FX and group channels still take what's sent or routed)
+                            continue;
+                        }
+                        std::vector<Part> kept;
+                        for (const auto& part : t.parts)
+                            if (auto piece = slice (part, from, to, bpm))
+                                kept.push_back (*piece);
+                        t.parts = std::move (kept);
+                        t.mute = false;
+                        if (processing == P::dry)
+                        {
+                            for (auto& insert : t.inserts)
+                                insert.bypass = true;
+                            t.sends.clear();
+                            t.output = 0;
+                            t.automationRead = false;
+                        }
+                        if (processing == P::dry || processing == P::channelSettings)
+                        {
+                            // The fader and pan aren't rendered (the new track gets them), nor their automation.
+                            t.volumeDb = 0.0f;
+                            t.pan = 0.0f;
+                            t.automation.erase (std::remove_if (t.automation.begin(), t.automation.end(), [] (const AutomationLane& lane)
+                            {
+                                using Target = AutomationLane::Target;
+                                return lane.target == Target::volume || lane.target == Target::pan || lane.target == Target::mute;
+                            }), t.automation.end());
+                        }
+                    }
+                    if (processing != P::completeWithMaster)
+                    {
+                        for (auto& insert : song.masterInserts)
+                            insert.bypass = true;
+                        song.masterVolumeDb = 0.0f;
+                        song.masterRead = false;
+                    }
+                };
+                juce::String problem;
+                if (! exportMix (file, render, problem))
+                {
+                    problems.add (name + ": " + problem);
+                    continue;
+                }
+                audioCache.erase (file.getFileName());
+                const auto data = getAudio (file.getFileName());
+                if (data == nullptr)
+                {
+                    problems.add (name + ": couldn't read back " + file.getFileName());
+                    continue;
+                }
+                Part clip;
+                clip.name = name + " (rendered)";
+                clip.audioFile = file.getFileName();
+                clip.start = from;
+                clip.length = data->seconds() / project.secondsPerBeat();
+                clips.push_back (clip);
+            }
+            if (clips.empty())
+                continue;
+
+            // A new audio track, straight under the source, with the clips.
+            const auto newId = addAudioTrack (true);
+            auto* added = project.findTrack (newId);
+            const auto* from = project.findTrack (sourceId);
+            added->name = from->name + " render";
+            added->colour = from->colour;
+            added->parts = clips;
+            if (processing == P::dry || processing == P::channelSettings)
+            {
+                added->volumeDb = from->volumeDb;
+                added->pan = from->pan;
+            }
+            if (processing == P::dry)
+            {
+                // The source's effects (as they are now), sends and output go with it.
+                added->sends = from->sends;
+                added->sendsBypass = from->sendsBypass;
+                added->output = from->output;
+                added->inserts = from->inserts;
+                added->preFaderSlots = from->preFaderSlots;
+                for (int slot = 0; slot < (int) added->inserts.size(); ++slot)
+                {
+                    auto& insert = added->inserts[(size_t) slot];
+                    if (auto* effect = engine.getEffect (sourceId, slot))
+                        effect->getStateInformation (insert.state);
+                    if (insert.isEmpty())
+                    {
+                        engine.insertEffect (newId, slot, nullptr);
+                        continue;
+                    }
+                    juce::String problem;
+                    engine.insertEffect (newId, slot, host->createEffect (insert, engine.getSampleRate(), engine.getBlockSize(), problem));
+                }
+            }
+            // Under the source.
+            int sourceIndex = 0;
+            for (int i = 0; i < (int) project.tracks.size(); ++i)
+                if (project.tracks[(size_t) i].id == sourceId)
+                    sourceIndex = i;
+            std::vector<Track> reordered;
+            for (auto& t : project.tracks)
+                if (t.id != newId)
+                    reordered.push_back (std::move (t));
+            auto it = project.tracks.begin();
+            for (; it != project.tracks.end() && it->id != newId; ++it) {}
+            reordered.insert (reordered.begin() + sourceIndex + 1, std::move (*it));
+            project.tracks = std::move (reordered);
+            made.push_back (newId);
+
+            // The source: kept, muted (the parts rendered, or the whole track), or removed (a whole track).
+            if (options.source == RenderOptions::Source::mute)
+            {
+                if (source.wholeTrack)
+                    project.findTrack (sourceId)->mute = true;
+                else
+                {
+                    auto* t = project.findTrack (sourceId);
+                    splitTrackAt (*t, source.start, project.bpm);
+                    splitTrackAt (*t, source.end, project.bpm);
+                    for (auto& part : t->parts)
+                        if (inside (part, source.start, source.end))
+                            part.muted = true;
+                }
+            }
+            changed();
+            if (options.source == RenderOptions::Source::remove && source.wholeTrack)
+                removeTrack (sourceId);
+        }
+        error = problems.joinIntoString ("\n");
+        if (! made.empty())
+        {
+            selectTrack (made.back());
+            selectedTracks = made;
+        }
+        return made;
     }
 
     bool Studio::open (const juce::File& source, juce::String& problems)
