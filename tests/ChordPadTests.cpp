@@ -96,12 +96,16 @@ TEST_CASE ("Voicings: close inversions in range; adaptive voicing moves the voic
     const Chord c { 0, Chord::Type::major, Chord::Tension::none, -1 };
     const auto voicings = voicingsFor (c, 48);
     REQUIRE (voicings.size() >= 3);
-    for (const auto& v : voicings)
+    for (const auto& named : namedVoicings (c, 48))
     {
+        const auto& v = named.notes;
         CHECK (classesOf (v) == std::set<int> { 0, 4, 7 });
-        CHECK (v.front() >= 48);
-        CHECK (v.front() < 66);
         CHECK (std::is_sorted (v.begin(), v.end()));
+        if (named.close)   // (open and spread voicings reach lower)
+        {
+            CHECK (v.front() >= 48);
+            CHECK (v.front() < 66);
+        }
     }
     // A slash chord's bass under the voicing.
     const auto slash = voicingsFor (Chord { 0, Chord::Type::major, Chord::Tension::none, 4 }, 48);
@@ -428,4 +432,251 @@ TEST_CASE ("The chord pads zone: F4 opens it (the trigger keys live), one zone d
     CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F4Key)));
     CHECK_FALSE (view.isChordPadsOpen());
     CHECK_FALSE (studio.arePadsActive());
+}
+
+namespace
+{
+    juce::String chordsOf (const Key& key)
+    {
+        juce::StringArray names;
+        const auto chords = keyChords (key);
+        for (size_t i = 0; i < (key.minor ? 9u : 7u); ++i)
+            names.add (chords[i].name (key));
+        return names.joinIntoString (" ");
+    }
+    juce::String numeralsOf (const Key& key)
+    {
+        juce::StringArray names;
+        const auto chords = keyChords (key);
+        for (size_t i = 0; i < (key.minor ? 9u : 7u); ++i)
+            names.add (chords[i].romanName (key));
+        return names.joinIntoString (" ");
+    }
+    Key keyNamed (const juce::String& name)
+    {
+        for (const auto& k : Key::all())
+            if (k.name() == name)
+                return k;
+        FAIL ("no key " << name);
+        return {};
+    }
+}
+
+TEST_CASE ("Keys: all 30, spelled as their key signatures spell them; every chord of every key as a textbook writes it (0.15.0)", "[chords][keys30]")
+{
+    REQUIRE (Key::all().size() == 30);
+    // The key signatures.
+    CHECK (keyNamed ("C major").signature() == 0);
+    CHECK (keyNamed ("F# major").signature() == 6);
+    CHECK (keyNamed ("Cb major").signature() == -7);
+    CHECK (keyNamed ("Eb minor").signature() == -6);
+    CHECK (keyNamed ("G# minor").signature() == 5);
+
+    // Every major key's seven chords (I ii iii IV V vi vii°).
+    const std::pair<const char*, const char*> majors[] = {
+        { "C major",  "C Dm Em F G Am Bdim" },
+        { "G major",  "G Am Bm C D Em F#dim" },
+        { "D major",  "D Em F#m G A Bm C#dim" },
+        { "A major",  "A Bm C#m D E F#m G#dim" },
+        { "E major",  "E F#m G#m A B C#m D#dim" },
+        { "B major",  "B C#m D#m E F# G#m A#dim" },
+        { "F# major", "F# G#m A#m B C# D#m E#dim" },
+        { "C# major", "C# D#m E#m F# G# A#m B#dim" },
+        { "F major",  "F Gm Am Bb C Dm Edim" },
+        { "Bb major", "Bb Cm Dm Eb F Gm Adim" },
+        { "Eb major", "Eb Fm Gm Ab Bb Cm Ddim" },
+        { "Ab major", "Ab Bbm Cm Db Eb Fm Gdim" },
+        { "Db major", "Db Ebm Fm Gb Ab Bbm Cdim" },
+        { "Gb major", "Gb Abm Bbm Cb Db Ebm Fdim" },
+        { "Cb major", "Cb Dbm Ebm Fb Gb Abm Bbdim" } };
+    for (const auto& [key, chords] : majors)
+    {
+        INFO (key);
+        CHECK (chordsOf (keyNamed (key)) == chords);
+        CHECK (numeralsOf (keyNamed (key)) == juce::String (juce::CharPointer_UTF8 ("I ii iii IV V vi vii\xc2\xb0")));
+    }
+    // Every minor key's: i ii° III iv v VI VII, then the harmonic minor's V and vii°.
+    const std::pair<const char*, const char*> minors[] = {
+        { "A minor",  "Am Bdim C Dm Em F G E G#dim" },
+        { "E minor",  "Em F#dim G Am Bm C D B D#dim" },
+        { "B minor",  "Bm C#dim D Em F#m G A F# A#dim" },
+        { "F# minor", "F#m G#dim A Bm C#m D E C# E#dim" },
+        { "C# minor", "C#m D#dim E F#m G#m A B G# B#dim" },
+        { "G# minor", "G#m A#dim B C#m D#m E F# D# F##dim" },
+        { "D# minor", "D#m E#dim F# G#m A#m B C# A# C##dim" },
+        { "A# minor", "A#m B#dim C# D#m E#m F# G# E# G##dim" },
+        { "D minor",  "Dm Edim F Gm Am Bb C A C#dim" },
+        { "G minor",  "Gm Adim Bb Cm Dm Eb F D F#dim" },
+        { "C minor",  "Cm Ddim Eb Fm Gm Ab Bb G Bdim" },
+        { "F minor",  "Fm Gdim Ab Bbm Cm Db Eb C Edim" },
+        { "Bb minor", "Bbm Cdim Db Ebm Fm Gb Ab F Adim" },
+        { "Eb minor", "Ebm Fdim Gb Abm Bbm Cb Db Bb Ddim" },
+        { "Ab minor", "Abm Bbdim Cb Dbm Ebm Fb Gb Eb Gdim" } };
+    for (const auto& [key, chords] : minors)
+    {
+        INFO (key);
+        CHECK (chordsOf (keyNamed (key)) == chords);
+        CHECK (numeralsOf (keyNamed (key)) == juce::String (juce::CharPointer_UTF8 ("i ii\xc2\xb0 III iv v VI VII V vii\xc2\xb0")));
+    }
+    // The notes inside: spelled from the chord's root, letter by letter.
+    const auto ebm = keyNamed ("Eb minor");
+    CHECK (Chord { 11, Chord::Type::major, Chord::Tension::none, -1 }.noteNames (ebm).joinIntoString (" ") == "Cb Eb Gb");   // VI
+    CHECK (Chord { 10, Chord::Type::major, Chord::Tension::seven, -1 }.noteNames (ebm).joinIntoString (" ") == "Bb D F Ab"); // V7
+    CHECK (Chord { 2, Chord::Type::diminished, Chord::Tension::dim7, -1 }.noteNames (ebm).joinIntoString (" ") == "D F Ab Cb"); // vii°7
+    CHECK (Chord { 6, Chord::Type::major, Chord::Tension::none, -1 }.noteNames (keyNamed ("F# major")).joinIntoString (" ") == "F# A# C#");
+    CHECK (Chord { 5, Chord::Type::diminished, Chord::Tension::none, -1 }.noteNames (keyNamed ("F# major")).joinIntoString (" ") == "E# G# B");
+    CHECK (Chord { 3, Chord::Type::minor, Chord::Tension::none, 6 }.name (ebm) == "Ebm/Gb");
+    // Outside the key: flats in flat keys, raised degrees where a key raises them.
+    const auto c = keyNamed ("C major");
+    CHECK (Chord { 10, Chord::Type::major, Chord::Tension::none, -1 }.romanName (c) == "bVII");
+    CHECK (Chord { 8, Chord::Type::major, Chord::Tension::none, -1 }.name (c) == "Ab");
+    CHECK (Chord { 6, Chord::Type::diminished, Chord::Tension::none, -1 }.romanName (c) == juce::String (juce::CharPointer_UTF8 ("#iv\xc2\xb0")));
+    CHECK (Chord { 2, Chord::Type::major, Chord::Tension::none, -1 }.romanName (c) == "II");
+    // Nashville: from the tonic's major scale.
+    CHECK (Chord { 6, Chord::Type::major, Chord::Tension::none, -1 }.nashvilleName (ebm) == "b3");
+    CHECK (Chord { 3, Chord::Type::minor, Chord::Tension::none, -1 }.nashvilleName (ebm) == "1m");
+}
+
+TEST_CASE ("A key on the pads: its chords, spelled; a minor key's v and major V side by side; saved (0.15.0)", "[chords]")
+{
+    ChordPads pads;
+    pads.fillFromKey (Key { 2, -1, true });   // Eb minor
+    juce::StringArray names;
+    for (const auto& p : pads.pads)
+        names.add (p.chord ? pads.displayName (*p.chord, ChordPads::Display::noteName) : "-");
+    // White keys: i ii° III iv v VI VII; black: i7, IIImaj7, iv7, the major V (beside v), V7.
+    CHECK (names.joinIntoString (" ") == "Ebm Ebm7 Fdim Gbmaj7 Gb Abm Abm7 Bbm Bb Cb Bb7 Db");
+    CHECK (pads.displayName (*pads.pads[7].chord, ChordPads::Display::roman) == "v");
+    CHECK (pads.displayName (*pads.pads[8].chord, ChordPads::Display::roman) == "V");
+    // Saved and read back: the key as spelled (Eb, not D#).
+    const auto back = ChordPads::fromXml (*pads.toXml());
+    CHECK (back.key().name() == "Eb minor");
+    CHECK (back == pads);
+    // A song from 0.14 (no key letter): its root and flats give the key.
+    ChordPads old;
+    old.rootKey = 3;
+    old.flats = true;
+    CHECK (old.key().name() == "Eb major");
+}
+
+TEST_CASE ("Voicings by name: inversions, open, spread; each exactly the chord's notes (0.15.0)", "[chords]")
+{
+    for (const auto& key : Key::all())
+        for (const auto& chord : keyChords (key))
+        {
+            const auto want = chord.pitchClasses();
+            const auto voicings = namedVoicings (chord, 48);
+            REQUIRE (voicings.size() >= 3);
+            for (const auto& v : voicings)
+            {
+                std::set<int> classes;
+                for (const auto n : v.notes)
+                    classes.insert (((n % 12) + 12) % 12);
+                INFO (chord.name (key) << " " << v.kind);
+                CHECK (classes == std::set<int> (want.begin(), want.end()));   // nothing added, nothing missing
+                CHECK (std::is_sorted (v.notes.begin(), v.notes.end()));
+            }
+        }
+    const auto c = namedVoicings ({ 0, Chord::Type::major, Chord::Tension::none, -1 }, 48);
+    juce::StringArray kinds;
+    for (const auto& v : c)
+        kinds.addIfNotAlreadyThere (v.kind);
+    CHECK (kinds.contains ("Root position"));
+    CHECK (kinds.contains ("1st inversion"));
+    CHECK (kinds.contains ("2nd inversion"));
+    CHECK (kinds.contains ("Open (drop 2)"));
+    CHECK (kinds.contains ("Spread (root, then a tenth)"));
+    // Root position: C E G, the root lowest.
+    for (const auto& v : c)
+        if (v.kind == "Root position")
+            CHECK (v.notes.front() % 12 == 0);
+}
+
+TEST_CASE ("Suggestions: scored by function, the circle and common notes; V to I strongest (0.15.0)", "[chords]")
+{
+    const auto c = Key { 0, 0, false };
+    const auto g = Chord { 7, Chord::Type::major, Chord::Tension::none, -1 };
+    const auto next = suggestNext (g, c);
+    REQUIRE (! next.empty());
+    CHECK (next.front().chord.name (c) == "C");
+    CHECK (next.front().score >= 90);
+    CHECK (next.front().reason.contains ("dominant to tonic"));
+    // Deceptive V-vi next best among the key's; borrowed chords lower, marked.
+    const auto find = [&next, &c] (const juce::String& name) { for (const auto& s : next) if (s.chord.name (c) == name) return s; return Suggestion {}; };
+    CHECK (find ("Am").score > find ("Dm").score);
+    CHECK (find ("Bb").inKey == false);
+    CHECK (find ("Bb").score < find ("C").score);
+    // ii goes to V; in a minor key the major V beats the minor v.
+    const auto fromII = suggestNext ({ 2, Chord::Type::minor, Chord::Tension::none, -1 }, c);
+    CHECK (fromII.front().chord.root == 7);
+    const auto am = Key { 5, 0, true };
+    const auto fromIv = suggestNext ({ 2, Chord::Type::minor, Chord::Tension::none, -1 }, am);
+    int majorV = 0, minorV = 0;
+    for (const auto& s : fromIv)
+    {
+        if (s.chord.root == 4 && s.chord.type == Chord::Type::major && s.chord.tension == Chord::Tension::none) majorV = s.score;
+        if (s.chord.root == 4 && s.chord.type == Chord::Type::minor) minorV = s.score;
+    }
+    CHECK (majorV > minorV);
+    CHECK (std::is_sorted (next.begin(), next.end(), [] (const Suggestion& a, const Suggestion& b) { return a.score > b.score; }));
+}
+
+TEST_CASE ("The KEY menu's choice fills the pads; the circle suggests what comes next; chords from it onto pads; the pads on one screen (0.15.0)", "[chords][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    view.openChordPads();
+    auto& pads = view.getChordPads();
+
+    // Eb minor: its chords, spelled, on the pads.
+    pads.chooseKey (Key { 2, -1, true });
+    CHECK (studio.getChordPads().key().name() == "Eb minor");
+    CHECK (studio.getChordPads().displayName (*studio.getChordPads().pads[9].chord, ChordPads::Display::noteName) == "Cb");
+    // Transposing or renaming instead (the menu's choice): A major then takes the pads up, or only names them.
+    studio.setPadsKey (Key { 5, 0, false }, Studio::PadsKeyChange::renameOnly);
+    CHECK (studio.getChordPads().pads[0].chord->root == 3);   // (Ebm still there)
+    CHECK (studio.getChordPads().key().name() == "A major");
+
+    // The circle: a chord clicked plays and leads the suggestions.
+    pads.chooseKey (Key { 0, 0, false });
+    pads.setCircleShown (true);
+    CHECK (pads.isCircleShown());
+    CHECK_FALSE (pads.isEditorShown());
+    pads.circleChordClicked ({ 7, Chord::Type::major, Chord::Tension::none, -1 });
+    REQUIRE (pads.getSuggestionsFrom().has_value());
+    CHECK (pads.getSuggestionsFrom()->root == 7);
+    REQUIRE (! pads.getSuggestions().empty());
+    CHECK (pads.getSuggestions().front().chord.root == 0);   // G: then C
+
+    // Double-click a suggestion: onto the selected pad (else the first one without a chord).
+    pads.selectPads ({ 3 });
+    CHECK (pads.assignToNextPad ({ 9, Chord::Type::minor, Chord::Tension::seven, -1 }) == 3);
+    CHECK (studio.getChordPads().pads[3].chord->name() == "Am7");
+    studio.removeChords ({ 1 });
+    pads.selectPads ({});
+    CHECK (pads.assignToNextPad ({ 2, Chord::Type::minor, Chord::Tension::none, -1 }) == 1);
+    // Dragged from the circle onto a pad.
+    juce::DragAndDropTarget::SourceDetails drop { juce::var (juce::String ("chord:") + Chord { 5, Chord::Type::major, Chord::Tension::maj7, -1 }.toText()),
+                                                  &pads, pads.getPadBounds (6).getCentre().toInt() };
+    CHECK (pads.isInterestedInDragSource (drop));
+    pads.itemDropped (drop);
+    CHECK (studio.getChordPads().pads[6].chord->name() == "Fmaj7");
+
+    // A voicing chosen by name: that one, adaptive off.
+    const auto named = namedVoicings (*studio.getChordPads().pads[0].chord, 48);
+    for (int i = 0; i < (int) named.size(); ++i)
+        if (named[(size_t) i].kind == "Spread (root, then a tenth)")
+        {
+            studio.setPadVoicing (0, i);
+            CHECK (studio.getPadNotes (0) == named[(size_t) i].notes);
+            CHECK_FALSE (studio.getChordPads().pads[0].adaptive);
+        }
+
+    // Wider than a screen (spanning three): the pads' controls on one screen's width, centred.
+    pads.setSize (5760, 320);
+    CHECK (pads.getContentArea().getWidth() <= 1920);
+    CHECK (std::abs (pads.getContentArea().getCentreX() - 2880) <= 1);
+    CHECK (pads.getPadBounds (0).getX() >= (float) pads.getContentArea().getX());
 }

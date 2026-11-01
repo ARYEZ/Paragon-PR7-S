@@ -155,6 +155,12 @@ namespace pr7s
         void swapPads (int a, int b);                  // the reference stays where it was (the manual)
         void copyPad (int from, int to);
         void setPadsRootKey (int key, bool transposePads);
+        // A key for the pads (0.15.0): its chords onto them (locked pads keep theirs), or
+        // the pads transposed to it, or just the names and numerals in it.
+        enum class PadsKeyChange { fillWithChords, transposePads, renameOnly };
+        void setPadsKey (const Key&, PadsKeyChange);
+        void auditionChord (const Chord&);                 // played for a moment (the circle, the suggestions)
+        void setPadVoicing (int pad, int voicing);        // an index into namedVoicings (adaptive off)
         bool assignFromNotes (int pad, const std::vector<int>& notes);   // recognised; false if no chord
         // Assign from MIDI Input: the keys played (outside the trigger range) go to these pads, one chord each.
         void setAssignFromInput (std::vector<int> pads);

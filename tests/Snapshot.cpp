@@ -675,7 +675,8 @@ TEST_CASE ("Snapshot: the chord pads zone", "[.][snapshot-pads]")
         const auto track = studio.getProject().tracks[0].id;
         studio.addPart (track, { 0.0, 16.0, "Chords", { { 0.0, 4.0, 60, 0.8f }, { 0.0, 4.0, 64, 0.8f }, { 0.0, 4.0, 67, 0.8f } } });
         MainView view (studio);
-        view.setSize (1500, 900);
+        const auto mode = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_PADS", {});
+        view.setSize (mode == "wide" ? 5760 : 1500, 900);
         view.openChordPads();
         auto& pads = view.getChordPads();
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_PADS", {}) == "grid")
@@ -692,6 +693,15 @@ TEST_CASE ("Snapshot: the chord pads zone", "[.][snapshot-pads]")
         studio.changePadTensions ({ 9 }, 1);   // Am7
         pads.selectPads ({ 9 });
         pads.setEditorShown (true);
+        if (mode == "circle" || mode == "wide")
+        {
+            // Eb minor, the circle, and what could follow Abm (iv).
+            pads.chooseKey (pr7s::Key { 2, -1, true });
+            pads.setCircleShown (true);
+            pads.selectPads ({ 5 });
+            pads.circleChordClicked ({ 8, pr7s::Chord::Type::minor, pr7s::Chord::Tension::none, -1 });
+            studio.setAdaptiveReference (-1);
+        }
         studio.getPadPlayer().press (9, 100);
         studio.dispatchPendingMessages();
         view.resized();

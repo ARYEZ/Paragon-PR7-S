@@ -4729,7 +4729,7 @@ namespace pr7s
             transposePads (all, by);
         }
         auto pads = project.chordPads;
-        pads.rootKey = key;
+        pads.setKey (Key::fromPitchClass (key, pads.minor, pads.flats));   // (spelled as that key usually is)
         setChordPads (pads);
     }
 
@@ -4858,5 +4858,65 @@ namespace pr7s
         }
         setChordPads (pads);
         return true;
+    }
+
+    void Studio::setPadsKey (const Key& key, PadsKeyChange change)
+    {
+        auto pads = project.chordPads;
+        if (change == PadsKeyChange::fillWithChords)
+            pads.fillFromKey (key);
+        else
+        {
+            if (change == PadsKeyChange::transposePads)
+            {
+                auto by = ((key.pitchClass() - pads.rootKey) % 12 + 12) % 12;
+                if (by > 6)
+                    by -= 12;
+                for (auto& pad : pads.pads)
+                    if (! pad.locked && pad.chord)
+                    {
+                        pad.chord = pad.chord->transposed (by);
+                        for (auto& n : pad.notes)
+                            n = juce::jlimit (0, 127, n + by);
+                    }
+            }
+            pads.setKey (key);
+        }
+        setChordPads (pads);
+    }
+
+    void Studio::auditionChord (const Chord& chord)
+    {
+        const auto voicings = namedVoicings (chord, 48 + 12 * project.chordPads.octaveOffset);
+        if (voicings.empty())
+            return;
+        std::vector<int> notes = voicings.front().notes;
+        for (const auto& v : voicings)
+            if (v.close && v.notes.front() >= 53)   // (root position near the middle of the keyboard)
+            {
+                notes = v.notes;
+                break;
+            }
+        for (const auto n : notes)
+            padPlayer.send (juce::MidiMessage::noteOn (1, n, (juce::uint8) 100));
+        padPlayer.setLastChord (notes);
+        juce::Timer::callAfterDelay (450, [weak = std::weak_ptr<bool> (alive), this, notes]
+        {
+            if (weak.lock() != nullptr)
+                for (const auto n : notes)
+                    padPlayer.send (juce::MidiMessage::noteOff (1, n));
+        });
+    }
+
+    void Studio::setPadVoicing (int pad, int voicing)
+    {
+        if (unlocked ({ pad }).empty() || getPadVoicingCount (pad) == 0)
+            return;
+        auto pads = project.chordPads;
+        auto& p = pads.pads[(size_t) pad];
+        p.voicing = juce::jlimit (0, getPadVoicingCount (pad) - 1, voicing);
+        p.adaptive = false;
+        p.notes.clear();
+        setChordPads (pads);
     }
 }

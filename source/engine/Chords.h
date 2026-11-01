@@ -14,6 +14,40 @@
 // and the player that turns a pad pressed into notes.
 namespace pr7s
 {
+    // A key (0.15.0, the owner: "the chords must be accurate"): its tonic spelled
+    // (a letter and an accidental) and major or minor. Notes are spelled from
+    // it: in Eb minor the sixth is Cb, not B; in F# major the seventh is E#.
+    struct Key
+    {
+        int letter = 0;       // 0 C, 1 D, 2 E, 3 F, 4 G, 5 A, 6 B
+        int accidental = 0;   // -1 flat, 0, 1 sharp
+        bool minor = false;
+
+        bool operator== (const Key& o) const noexcept { return letter == o.letter && accidental == o.accidental && minor == o.minor; }
+        bool operator!= (const Key& o) const noexcept { return ! (*this == o); }
+
+        int pitchClass() const noexcept;
+        juce::String tonicName() const;            // "Eb"
+        juce::String name() const;                 // "Eb minor"
+        int signature() const noexcept;            // sharps (+) or flats (-) in its key signature
+        std::vector<int> scale() const;            // its seven pitch classes (natural minor for minor keys)
+        // The 30 keys a key signature can have: 15 major, 15 minor, round the circle of fifths.
+        static const std::vector<Key>& all();
+        // A pitch class's usual key (the spelling with fewer accidentals; ties: flats if asked).
+        static Key fromPitchClass (int pitchClass, bool minor, bool flats = false);
+
+        struct Spelled
+        {
+            int letter = 0, accidental = 0;
+            juce::String text() const;             // "Cb", "F#", "Bbb"
+        };
+        static int naturalOf (int letter) noexcept;
+        static Spelled spellAs (int pitchClass, int letter);   // the pitch class written on that letter
+        // A pitch class in this key: its scale degree's letter if it's in the
+        // scale; else flat in flat keys (and C major / A minor), sharp in sharp keys.
+        Spelled spell (int pitchClass) const;
+    };
+
     struct Chord
     {
         enum class Type { major, minor, diminished, augmented, sus2, sus4 };
@@ -45,6 +79,16 @@ namespace pr7s
         juce::String romanName (int rootKey) const;
         juce::String nashvilleName (int rootKey) const;
 
+        // In a key (0.15.0): spelled as the key spells it ("Cb", "Bb7", "Ebm/Gb"), its notes
+        // spelled from its root's letter (Bb D F, never A# D F), its numeral by the key's own
+        // scale (minor: i ii° III iv v VI VII; a chord outside it: bVII, #iv°...).
+        juce::String name (const Key&) const;
+        juce::StringArray noteNames (const Key&) const;
+        juce::String romanName (const Key&) const;
+        juce::String nashvilleName (const Key&) const;
+        // Is it one of the key's own chords (or the minor key's major V, or its vii° on the raised seventh)?
+        bool isInKey (const Key&) const;
+
         // More or fewer tensions: the next step along this type's ladder.
         Chord withTensionStep (int direction) const;
 
@@ -64,6 +108,38 @@ namespace pr7s
     // way), staying near `reference` if there is one (the manual's Adaptive
     // Voicing and Adaptive Voicing Reference); an index into voicingsFor.
     int closestVoicing (const std::vector<std::vector<int>>& voicings, const std::vector<int>& previous, const std::vector<int>& reference);
+
+    // The voicings by name (0.15.0): close position (root position, 1st, 2nd,
+    // 3rd inversion, in two octaves), then open (drop 2: the second voice from
+    // the top an octave down) and spread (root, fifth, tenth: a pianist's left and
+    // right hand). Every one holds exactly the chord's notes. voicingsFor gives
+    // the same notes in the same order.
+    struct Voicing
+    {
+        std::vector<int> notes;
+        juce::String kind;   // "Root position", "1st inversion", "Open (drop 2)", "Spread"...
+        bool close = true;   // (adaptive voicing chooses among the close ones)
+    };
+    std::vector<Voicing> namedVoicings (const Chord&, int low = 48);
+    juce::String notesText (const std::vector<int>& notes, const Chord&, const Key&);   // "Eb3 Gb3 Bb3" (middle C = C3)
+
+    // Every chord a key offers (0.15.0): its seven chords, their sevenths, and in a
+    // minor key the major V, V7 and the vii° of the raised seventh (harmonic minor).
+    std::vector<Chord> keyChords (const Key&);
+
+    // What could come next (0.15.0, the owner's scoring): each candidate scored 1-99 from
+    // its harmonic function in the key (V to I strongest, then IV-V, ii-V, vi-IV...),
+    // root movement round the circle of fifths (down a fifth best), notes in common, and
+    // staying in the key (borrowed chords and secondary dominants score lower: adventurous).
+    // Our weighting of standard rules, best first.
+    struct Suggestion
+    {
+        Chord chord;
+        int score = 0;
+        juce::String reason;
+        bool inKey = true;
+    };
+    std::vector<Suggestion> suggestNext (const Chord& from, const Key&);
 
     struct ChordPad
     {
@@ -102,6 +178,16 @@ namespace pr7s
         bool latch = false;
 
         bool operator== (const ChordPads& o) const noexcept;
+        // The key (0.15.0): rootKey is its tonic's pitch class; keyLetter its spelling
+        // (-1: worked out from rootKey and flats, as songs from 0.14 have it).
+        bool minor = false;
+        int keyLetter = -1;
+        Key key() const;
+        void setKey (const Key&);
+        // The key's chords on the pads (keyboard layout: its seven on the white keys;
+        // on the black keys, major: I7 ii7 IV7 V7 vi7; minor: i7 III7 iv7, the major V
+        // next to v, V7). Locked pads keep theirs.
+        void fillFromKey (const Key&);
         // A new song's: the major scale's chords in C (as a preset would fill them; our choice).
         static ChordPads defaults();
 

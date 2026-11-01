@@ -42,6 +42,21 @@ public:
     void selectAll();
     void setEditorShown (bool);
     bool isEditorShown() const noexcept { return editorShown; }
+    // The circle of fifths and its suggestions (0.15.0), in the editor's place.
+    void setCircleShown (bool);
+    bool isCircleShown() const noexcept { return circleShown; }
+    // What choosing a key does (fill the pads with its chords, at first).
+    void chooseKey (const pr7s::Key&);
+    pr7s::Studio::PadsKeyChange getKeyChange() const noexcept { return keyChange; }
+    // A chord given to the selected pad, or the first one without a chord (the circle, the suggestions).
+    int assignToNextPad (const pr7s::Chord&);
+    // The circle (tests): the chord it suggests after, and the suggestions shown.
+    std::optional<pr7s::Chord> getSuggestionsFrom() const;
+    std::vector<pr7s::Suggestion> getSuggestions() const;
+    void circleChordClicked (const pr7s::Chord&);
+    // The part of this view on one screen (0.15.0, the owner: the pads on the middle screen when
+    // the studio spans three): the screen under its centre; never wider than one screen.
+    juce::Rectangle<int> getContentArea() const noexcept { return content; }
     // Where a pad is drawn (tests).
     juce::Rectangle<float> getPadBounds (int pad) const;
     int padAt (juce::Point<float>) const;
@@ -69,14 +84,19 @@ public:
     void itemDragExit (const SourceDetails&) override;
     void itemDropped (const SourceDetails&) override;
 
-    static constexpr int toolbarHeight = 32, keyboardHeight = 42, editorWidth = 380;
+    static constexpr int toolbarHeight = 32, keyboardHeight = 42, editorWidth = 380, circleWidth = 660;
+    static constexpr const char* chordDragPrefix = "chord:";   // a chord from the circle or the suggestions
     static constexpr const char* dragPrefix = "chordpad:";
 
 private:
     class ChordEditor;
+    class CircleAssistant;
     pr7s::Studio& studio;
     std::vector<int> selected;
-    bool editorShown = false, inWindow = false, transposeOnRoot = false;
+    bool editorShown = false, circleShown = false, inWindow = false, transposeOnRoot = false;
+    pr7s::Studio::PadsKeyChange keyChange = pr7s::Studio::PadsKeyChange::fillWithChords;
+    std::optional<pr7s::Chord> circleFrom;   // the chord clicked on the circle last (else the selected pad's)
+    juce::Rectangle<int> content;
     int pressedPad = -1, hoverPad = -1, dropPad = -1, presetIndex = -1;
     bool dragStarted = false;
     pr7s::Studio::PadsPresetLoad loadWhat = pr7s::Studio::PadsPresetLoad::chordsAndPlayers;
@@ -84,11 +104,12 @@ private:
     std::vector<bool> shownPressed;
     juce::Rectangle<int> padsArea, keysArea, bar, extendedBar;
     std::unique_ptr<ChordEditor> editor;
+    std::unique_ptr<CircleAssistant> circle;
     std::unique_ptr<juce::FileChooser> chooser;
 
     juce::TextButton rootKey, presetsKey { "PRESETS" }, previousPreset { "<" }, nextPreset { ">" }, saveKey { "SAVE" },
                      playerKey { "PLAYER: BASIC" }, modeKey { "PLAIN CHORDS" }, displayKey { "DISPLAY" }, remoteKey { "REMOTE" },
-                     editorKey { "EDITOR" }, windowKey { "WINDOW" }, closeKey { "CLOSE" };
+                     editorKey { "EDITOR" }, circleKey { "CIRCLE OF 5THS" }, windowKey { "WINDOW" }, closeKey { "CLOSE" };
     juce::TextButton selectAllKey { "SELECT ALL" }, editKey { "EDIT CHORD" }, fromMidiKey { "FROM MIDI" }, removeKey { "REMOVE" },
                      transposeDown { "TRANSPOSE -" }, transposeUp { "+" }, tensionsDown { "TENSIONS -" }, tensionsUp { "+" },
                      voicingPrevious { "VOICING <" }, voicingNext { ">" }, lockKey { "LOCK" }, adaptiveKey { "ADAPTIVE" }, referenceKey { "REFERENCE" };
@@ -98,7 +119,8 @@ private:
     void refresh();
     void audition (int pad);
     void applyToSelection (std::function<void (const std::vector<int>&)>, bool listen = true);
-    void showRootMenu();
+    void showRootMenu();   // the KEY menu (0.15.0)
+    void layoutRightPanel (juce::Rectangle<int>&);
     void showPresetsMenu();
     void stepPreset (int direction);
     void savePreset();

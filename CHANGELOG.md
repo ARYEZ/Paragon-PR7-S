@@ -2,6 +2,43 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.15.0
+
+**Chords you can trust, in a real key** (you asked: the chords must be accurate, mostly plain major and minor; pick a key like E-flat minor or A major and get all its chords and voicings; the circle of fifths suggesting what comes next, scored).
+
+**KEY** (it was ROOT) offers every key there is: 15 major and 15 minor, round the circle of fifths, each with its signature ("E-flat minor (6 flats)").
+- **Choosing a key fills the pads with its chords.** On the keyboard layout:
+  - **White keys**, the key's seven chords: I ii iii IV V vi vii° in major; i ii° III iv v VI VII in minor.
+  - **Black keys:** in major, I7 ii7 IV7 V7 vi7. In minor, i7, IIImaj7, iv7, **the major V** (on the black key right beside the minor v, as you asked: both), and V7.
+  - Locked pads keep their chords.
+- The menu can make a key **transpose your pads** to it, or **only name them** in it, instead of filling them.
+- **Spelled as the key spells them.** In E-flat minor the sixth chord is **C♭**, not B; in F-sharp major the seventh's chord is **E♯dim**, not F; B♭7 is **B♭ D F A♭**, never A♯.
+  - Every chord of all 30 keys is checked by a test against the textbook spelling.
+  - Roman numerals follow the key's own scale: minor keys read i ii° III iv v VI VII, and the harmonic minor's V and vii° (the raised seventh) carry no sign.
+  - A chord from outside the key gets its flat or sharp (bVII, #iv°), and the plain name rather than F♭ or C♭.
+- **Note names in Inter** wherever they appear (the chord editor's keys, the circle, the pads), because Bebas has no small letters and "Eb" would read "EB". The key's name on the toolbar is written out ("E-FLAT MINOR").
+
+**Voicings by name**, on each pad's right-click menu under **Voicing**, with their notes spelled ("1st inversion: Gb3 Bb3 Eb4"):
+- **Close position:** root position, then 1st, 2nd and (for sevenths) 3rd inversion, in two octaves.
+- **Open (drop 2):** the second voice from the top an octave lower.
+- **Spread:** the root low, then the fifth (or seventh), the third an octave up: a tenth, a pianist's two hands.
+- Each one holds exactly the chord's notes, nothing added and nothing missing; a test checks that for every chord of every key.
+- Adaptive voicing still picks among the close ones, so the voices move least.
+
+**CIRCLE OF 5THS** (in the editor's place, at the right of the pads):
+- **The circle:** the twelve major chords round the outside in fifths, their relative minors inside, the key's tonic at the top. The key's own chords are lit with their numerals, the tonic in orange.
+- **Click a chord** to hear it and see what could come next. Double-click it, or drag it onto a pad, to use it.
+- **What could come next:** after the chord clicked (or the selected pad's), up to a dozen chords, best first, each with a **score from 1 to 99**, a bar along the family's gradient, and why. Hover a row for the whole reason; double-click or drag it onto a pad.
+- **The scoring is our own weighting of standard harmony:**
+  - **Function:** V to I is the strongest, then IV or ii to V, vi to ii or IV, the deceptive V to vi, and the plagal IV to I.
+  - **The circle:** down a fifth adds to the score.
+  - **Shared notes:** each note in common adds to it.
+  - **Outside the key:** borrowed chords (iv, bVII, bVI, bIII in major; IV and bII in minor) and secondary dominants score lower and are named as such.
+  - **In a minor key the major V outscores the minor v.**
+  - Scores of 80 and up are "strong", 60 to 79 "good", below 60 "adventurous". These are the rules a theory book gives, not the other DAW's formula (it isn't published), so we can tune them by ear.
+
+**The pads on the middle screen.** When the studio spans your three screens, the chord pads' controls stay on the screen under the middle of the window, as the docked mixer leaves its empty width dark. On a screen we can't read, they're kept to one screen's width, centred.
+
 ## 0.14.0
 
 **Chord pads** (you asked for them as the other DAW has them). They're laid out as the manual's "Using Chord Pads" chapter describes. **F4** opens them in the lower zone, beside the MIDI editor and the mixer (one docked at a time); WINDOW puts them in a window of their own. F4 is our choice: the manual gives the pads no key. "Show/Hide Chord Pads" and "Chord Pads Docked / Full Screen" are also in KEYS, for your Stream Deck.

@@ -309,17 +309,29 @@ namespace pr7s
         return best;
     }
 
-    std::vector<std::vector<int>> voicingsFor (const Chord& chord, int low)
+    std::vector<Voicing> namedVoicings (const Chord& chord, int low)
     {
         const auto classes = chord.pitchClasses();
         const auto n = (int) classes.size();
-        std::vector<std::vector<int>> all;
+        static const char* const inversionNames[] = { "Root position", "1st inversion", "2nd inversion", "3rd inversion" };
+        const auto withBass = [&chord] (std::vector<int> v)
+        {
+            if (chord.bass >= 0 && chord.bass != chord.root && ! v.empty())
+            {
+                auto bassNote = v.front() - pc (v.front() - chord.bass);
+                if (bassNote == v.front())
+                    bassNote -= 12;
+                v.insert (v.begin(), bassNote);
+            }
+            return v;
+        };
+        // Close position: each inversion (which of its notes is lowest), in two octaves.
+        std::vector<std::pair<std::vector<int>, int>> close;   // notes, inversion
         for (int k = 0; k < n; ++k)
             for (int octave = 0; octave < 2; ++octave)
             {
                 std::vector<int> notes;
-                auto first = low + pc (classes[(size_t) k] - low) + octave * 12;
-                notes.push_back (first);
+                notes.push_back (low + pc (classes[(size_t) k] - low) + octave * 12);
                 for (int i = 1; i < n; ++i)
                 {
                     const auto want = classes[(size_t) ((k + i) % n)];
@@ -329,19 +341,51 @@ namespace pr7s
                     notes.push_back (note);
                 }
                 if (notes.front() >= low && notes.front() < low + 18)
-                    all.push_back (notes);
+                    close.push_back ({ notes, k });
             }
-        std::sort (all.begin(), all.end(), [] (const auto& a, const auto& b) { return a.front() < b.front(); });
-        all.erase (std::unique (all.begin(), all.end()), all.end());
-        if (chord.bass >= 0)
-            for (auto& v : all)
+        std::sort (close.begin(), close.end(), [] (const auto& a, const auto& b) { return a.first.front() < b.first.front(); });
+        std::vector<Voicing> all;
+        const auto add = [&all] (std::vector<int> notes, const juce::String& kind, bool isClose)
+        {
+            for (const auto& v : all)
+                if (v.notes == notes)
+                    return;
+            all.push_back ({ std::move (notes), kind, isClose });
+        };
+        for (const auto& [notes, k] : close)
+            add (withBass (notes), k < 4 ? juce::String (inversionNames[k]) : "Inversion " + juce::String (k), true);
+        // Open (drop 2): the second voice from the top an octave lower, in each close voicing.
+        if (n >= 3)
+            for (const auto& [notes, k] : close)
             {
-                auto bassNote = v.front() - pc (v.front() - chord.bass);
-                if (bassNote == v.front())
-                    bassNote -= 12;
-                v.insert (v.begin(), bassNote);
+                auto open = notes;
+                open[(size_t) (n - 2)] -= 12;
+                std::sort (open.begin(), open.end());
+                if (open.front() >= low - 12)
+                    add (withBass (open), "Open (drop 2)", false);
             }
+        // Spread: the root low, then the fifth (or seventh), the third an octave up (a tenth).
+        const auto iv = chord.intervals();
+        if (n == 3 || (n == 4 && iv[3] < 12))
+        {
+            const auto r = (low - 12) + pc (chord.root - (low - 12));
+            std::vector<int> spread;
+            if (n == 3)
+                spread = { r, r + iv[2], r + 12 + iv[1] };
+            else
+                spread = { r, r + iv[3], r + 12 + iv[1], r + 12 + iv[2] };
+            std::sort (spread.begin(), spread.end());
+            add (withBass (spread), "Spread (root, then a tenth)", false);
+        }
         return all;
+    }
+
+    std::vector<std::vector<int>> voicingsFor (const Chord& chord, int low)
+    {
+        std::vector<std::vector<int>> notes;
+        for (auto& v : namedVoicings (chord, low))
+            notes.push_back (std::move (v.notes));
+        return notes;
     }
 
     int closestVoicing (const std::vector<std::vector<int>>& voicings, const std::vector<int>& previous, const std::vector<int>& reference)
@@ -365,21 +409,555 @@ namespace pr7s
     }
 
     //==========================================================================
+    // Keys and spelling (0.15.0).
+    namespace
+    {
+        const int naturals[] = { 0, 2, 4, 5, 7, 9, 11 };
+        const int majorSteps[] = { 0, 2, 4, 5, 7, 9, 11 };
+        const int minorSteps[] = { 0, 2, 3, 5, 7, 8, 10 };
+        int wrapAccidental (int semitones) { auto d = ((semitones % 12) + 12) % 12; return d > 6 ? d - 12 : d; }
+        // The major key with `fifths` sharps (+) or flats (-): its tonic's letter and accidental.
+        Key majorAt (int fifths)
+        {
+            static const int lettersByFifth[] = { 3, 0, 4, 1, 5, 2, 6 };   // F C G D A E B
+            const auto i = fifths + 1;
+            const auto letter = lettersByFifth[((i % 7) + 7) % 7];
+            const auto accidental = (int) std::floor ((double) i / 7.0);
+            return { letter, accidental, false };
+        }
+        const char* const numerals[] = { "I", "II", "III", "IV", "V", "VI", "VII" };
+    }
+
+    int Key::naturalOf (int letter) noexcept { return naturals[((letter % 7) + 7) % 7]; }
+    int Key::pitchClass() const noexcept { return pc (naturalOf (letter) + accidental); }
+
+    juce::String Key::Spelled::text() const
+    {
+        juce::String t = juce::String::charToString ((juce::juce_wchar) "CDEFGAB"[((letter % 7) + 7) % 7]);
+        for (int i = 0; i < accidental; ++i)  t << "#";
+        for (int i = 0; i > accidental; --i)  t << "b";
+        return t;
+    }
+
+    juce::String Key::tonicName() const { return Spelled { letter, accidental }.text(); }
+    juce::String Key::name() const { return tonicName() + (minor ? " minor" : " major"); }
+
+    int Key::signature() const noexcept
+    {
+        // A minor key's signature is its relative major's (a minor third up, two letters up).
+        auto majorLetter = letter, majorAccidental = accidental;
+        if (minor)
+        {
+            majorLetter = (letter + 2) % 7;
+            majorAccidental = wrapAccidental (pitchClass() + 3 - naturalOf (majorLetter));
+        }
+        static const int fifthOf[] = { 0, 2, 4, -1, 1, 3, 5 };   // C D E F G A B
+        return fifthOf[majorLetter] + 7 * majorAccidental;
+    }
+
+    std::vector<int> Key::scale() const
+    {
+        std::vector<int> s;
+        for (int d = 0; d < 7; ++d)
+            s.push_back (pc (pitchClass() + (minor ? minorSteps : majorSteps)[d]));
+        return s;
+    }
+
+    const std::vector<Key>& Key::all()
+    {
+        static const std::vector<Key> keys = []
+        {
+            std::vector<Key> k;
+            for (const auto minor : { false, true })
+                for (const auto fifths : { 0, 1, 2, 3, 4, 5, 6, 7, -1, -2, -3, -4, -5, -6, -7 })
+                {
+                    auto major = majorAt (fifths);
+                    if (! minor)
+                    {
+                        k.push_back (major);
+                        continue;
+                    }
+                    // Its relative minor: a minor third down, two letters down.
+                    Key m { (major.letter + 5) % 7, 0, true };
+                    m.accidental = wrapAccidental (major.pitchClass() - 3 - naturalOf (m.letter));
+                    k.push_back (m);
+                }
+            return k;
+        }();
+        return keys;
+    }
+
+    Key Key::fromPitchClass (int pitchClass, bool minor, bool flats)
+    {
+        std::optional<Key> best;
+        for (const auto& k : all())
+            if (k.minor == minor && k.pitchClass() == pc (pitchClass))
+            {
+                const auto better = ! best || std::abs (k.signature()) < std::abs (best->signature())
+                                 || (std::abs (k.signature()) == std::abs (best->signature()) && (k.signature() < 0) == flats);
+                if (better)
+                    best = k;
+            }
+        return best.value_or (Key {});
+    }
+
+    Key::Spelled Key::spellAs (int pitchClass, int onLetter)
+    {
+        onLetter = ((onLetter % 7) + 7) % 7;
+        return { onLetter, wrapAccidental (pitchClass - naturalOf (onLetter)) };
+    }
+
+    Key::Spelled Key::spell (int pitchClass) const
+    {
+        pitchClass = pc (pitchClass);
+        const auto s = scale();
+        for (int d = 0; d < 7; ++d)
+            if (s[(size_t) d] == pitchClass)
+                return spellAs (pitchClass, letter + d);
+        const auto tonic = this->pitchClass();
+        // The raised sixth and seventh of a minor key, and the raised fourth: sharpened degrees.
+        if (pitchClass == pc (tonic + 6))
+            return spellAs (pitchClass, letter + 3);
+        if (minor && (pitchClass == pc (tonic + 11) || pitchClass == pc (tonic + 9)))
+            return spellAs (pitchClass, letter + (pitchClass == pc (tonic + 11) ? 6 : 5));
+        // Else as the key leans: flats in flat keys (and C major / A minor), sharps in sharp keys.
+        const auto above = [&] { for (int d = 0; d < 7; ++d) if (s[(size_t) d] == pc (pitchClass + 1)) return spellAs (pitchClass, letter + d); return Spelled { -1, 0 }; };
+        const auto below = [&] { for (int d = 0; d < 7; ++d) if (s[(size_t) d] == pc (pitchClass - 1)) return spellAs (pitchClass, letter + d); return Spelled { -1, 0 }; };
+        auto first = signature() > 0 ? below() : above(), second = signature() > 0 ? above() : below();
+        // (Outside the key, Fb, Cb, E# and B# are written as the plain note: E, B, F, C.)
+        const auto plain = [] (Spelled s)
+        {
+            const auto naturalPc = pc (naturalOf (s.letter) + s.accidental);
+            for (int l = 0; l < 7; ++l)
+                if (std::abs (s.accidental) == 1 && naturalOf (l) == naturalPc)
+                    return Spelled { l, 0 };
+            return s;
+        };
+        if (first.letter >= 0 && std::abs (first.accidental) <= 1)
+            return plain (first);
+        if (second.letter >= 0 && std::abs (second.accidental) <= 1)
+            return plain (second);
+        return first.letter >= 0 ? first : spellAs (pitchClass, letter);
+    }
+
+    namespace
+    {
+        // Which letter above the root a chord tone is written on, from its interval.
+        int letterStep (int interval, const Chord& c)
+        {
+            if (interval == 9 && c.tension == Chord::Tension::dim7 && c.type == Chord::Type::diminished)
+                return 6;   // (the diminished seventh: Bbb, not Ab)
+            switch (interval)
+            {
+                case 0: return 0;
+                case 1: case 2: case 13: case 14: case 15: return 1;   // (b9, 9, #9; sus2)
+                case 3: case 4: return 2;
+                case 5: case 17: case 18: return 3;                    // (sus4, 11, #11)
+                case 6: case 7: case 8: return 4;                      // (b5, 5, #5)
+                case 9: case 21: return 5;                             // (6, 13)
+                case 10: case 11: return 6;
+                default: return 0;
+            }
+        }
+
+        int degreeOf (const Chord& chord, const Key& key, int& accidental)
+        {
+            const auto root = key.spell (chord.root);
+            const auto degree = ((root.letter - key.letter) % 7 + 7) % 7;
+            accidental = wrapAccidental (chord.root - key.scale()[(size_t) degree]);
+            return degree;
+        }
+    }
+
+    juce::StringArray Chord::noteNames (const Key& key) const
+    {
+        const auto rootLetter = key.spell (root).letter;
+        juce::StringArray names;
+        for (const auto i : intervals())
+            names.add (Key::spellAs (root + i, rootLetter + letterStep (i, *this)).text());
+        return names;
+    }
+
+    juce::String notesText (const std::vector<int>& notes, const Chord& chord, const Key& key)
+    {
+        // Each note as the chord spells it (its letters from the root's), with its octave
+        // counted from its letter (middle C = C3; Cb3 sounds as B2, B#2 as C3).
+        const auto rootLetter = key.spell (chord.root).letter;
+        juce::StringArray texts;
+        for (const auto n : notes)
+        {
+            auto sp = key.spell (n);
+            for (const auto i : chord.intervals())
+                if (pc (chord.root + i) == pc (n))
+                    sp = Key::spellAs (n, rootLetter + letterStep (i, chord));
+            const auto octave = (int) std::floor ((double) (n - sp.accidental) / 12.0) - 2;
+            texts.add (sp.text() + juce::String (octave));
+        }
+        return texts.joinIntoString (" ");
+    }
+
+    juce::String Chord::name (const Key& key) const
+    {
+        auto text = key.spell (root).text() + suffix (type, tension);
+        if (bass >= 0 && bass != root)
+        {
+            // The bass as the chord spells it if it's one of its notes (Ebm/Gb), else as the key does.
+            juce::String b = key.spell (bass).text();
+            const auto rootLetter = key.spell (root).letter;
+            for (const auto i : intervals())
+                if (pc (root + i) == bass)
+                    b = Key::spellAs (bass, rootLetter + letterStep (i, *this)).text();
+            text << "/" << b;
+        }
+        return text;
+    }
+
+    juce::String Chord::romanName (const Key& key) const
+    {
+        int accidental = 0;
+        const auto degree = degreeOf (*this, key, accidental);
+        // A minor key's raised sixth and seventh (its major V's and vii°'s notes) are its own: no sign.
+        if (key.minor && accidental == 1 && (degree == 5 || degree == 6))
+            accidental = 0;
+        juce::String numeral;
+        for (int i = 0; i < accidental; ++i)  numeral << "#";
+        for (int i = 0; i > accidental; --i)  numeral << "b";
+        const auto lower = type == Type::minor || type == Type::diminished;
+        numeral << (lower ? juce::String (numerals[degree]).toLowerCase() : juce::String (numerals[degree]));
+        auto rest = suffix (type, tension);
+        if (type == Type::minor && rest.startsWith ("m"))
+            rest = rest.substring (1);
+        if (type == Type::diminished)
+            rest = rest == "m7b5" ? juce::String (juce::CharPointer_UTF8 ("\xc3\xb8" "7"))
+                 : rest.replace ("dim", juce::String (juce::CharPointer_UTF8 ("\xc2\xb0")));
+        if (type == Type::augmented)
+            rest = rest.replace ("aug", "+");
+        auto text = numeral + rest;
+        if (bass >= 0 && bass != root)
+        {
+            Chord b { bass, Type::major, Tension::none, -1 };
+            int bassAccidental = 0;
+            const auto bassDegree = degreeOf (b, key, bassAccidental);
+            text << "/";
+            for (int i = 0; i < bassAccidental; ++i)  text << "#";
+            for (int i = 0; i > bassAccidental; --i)  text << "b";
+            text << numerals[bassDegree];
+        }
+        return text;
+    }
+
+    juce::String Chord::nashvilleName (const Key& key) const
+    {
+        // Numbers from the tonic's major scale (a minor key's third is b3, as Nashville charts write it).
+        const auto number = [&key] (int pitchClass)
+        {
+            const auto sp = key.spell (pitchClass);
+            const auto degree = ((sp.letter - key.letter) % 7 + 7) % 7;
+            const auto diff = wrapAccidental (pitchClass - (key.pitchClass() + majorSteps[degree]));
+            juce::String t;
+            for (int i = 0; i < diff; ++i)  t << "#";
+            for (int i = 0; i > diff; --i)  t << "b";
+            return t + juce::String (degree + 1);
+        };
+        auto text = number (root) + suffix (type, tension);
+        if (bass >= 0 && bass != root)
+            text << "/" << number (bass);
+        return text;
+    }
+
+    bool Chord::isInKey (const Key& key) const
+    {
+        // All its notes in the key's scale; in a minor key, or in its harmonic minor (the raised seventh).
+        auto scale = key.scale();
+        const auto inScale = [this] (const std::vector<int>& s)
+        {
+            for (const auto p : pitchClasses())
+                if (std::find (s.begin(), s.end(), p) == s.end())
+                    return false;
+            return bass < 0 || std::find (s.begin(), s.end(), bass) != s.end();
+        };
+        if (inScale (scale))
+            return true;
+        if (key.minor)
+        {
+            scale[6] = pc (key.pitchClass() + 11);
+            return inScale (scale);
+        }
+        return false;
+    }
+
+    namespace
+    {
+        Chord chordFromNotes (int root, int third, int fifth, int seventh = -1)
+        {
+            Chord c;
+            c.root = pc (root);
+            const auto t = pc (third - root), f = pc (fifth - root);
+            c.type = t == 4 ? (f == 8 ? Chord::Type::augmented : Chord::Type::major) : (f == 6 ? Chord::Type::diminished : Chord::Type::minor);
+            if (seventh >= 0)
+            {
+                const auto sv = pc (seventh - root);
+                if (c.type == Chord::Type::diminished)
+                    c.tension = sv == 9 ? Chord::Tension::dim7 : Chord::Tension::seven;
+                else
+                    c.tension = sv == 11 ? Chord::Tension::maj7 : Chord::Tension::seven;
+            }
+            return c;
+        }
+
+        Chord degreeChord (const std::vector<int>& s, int degree, bool seventh)
+        {
+            const auto at = [&s, degree] (int up) { return s[(size_t) ((degree + up) % 7)]; };
+            return chordFromNotes (at (0), at (2), at (4), seventh ? at (6) : -1);
+        }
+    }
+
+    std::vector<Chord> keyChords (const Key& key)
+    {
+        const auto s = key.scale();
+        std::vector<Chord> chords;
+        for (int d = 0; d < 7; ++d)
+            chords.push_back (degreeChord (s, d, false));
+        if (key.minor)
+        {
+            // Harmonic minor: the raised seventh gives a major V and a vii°.
+            auto h = s;
+            h[6] = pc (key.pitchClass() + 11);
+            chords.push_back (degreeChord (h, 4, false));                       // V
+            chords.push_back (degreeChord (h, 6, false));                       // vii°
+        }
+        for (int d = 0; d < 7; ++d)
+            chords.push_back (degreeChord (s, d, true));
+        if (key.minor)
+        {
+            auto h = s;
+            h[6] = pc (key.pitchClass() + 11);
+            chords.push_back (degreeChord (h, 4, true));                        // V7
+        }
+        return chords;
+    }
+
+    std::vector<Suggestion> suggestNext (const Chord& from, const Key& key)
+    {
+        // How well each scale degree leads to each other one (rows: from; columns: to;
+        // I ii iii IV V vi vii in major, i ii° III iv V VI VII in minor). Our weighting of
+        // the common-practice and pop tendencies: V-I strongest, then the pre-dominants
+        // (IV, ii) to V, vi-IV, the deceptive V-vi; I goes almost anywhere.
+        static const int majorTable[7][7] = {
+            {  0, 70, 50, 88, 85, 80, 45 },
+            { 45,  0, 35, 55, 95, 45, 70 },
+            { 45, 60,  0, 80, 50, 90, 30 },
+            { 85, 68, 40,  0, 93, 55, 65 },
+            { 98, 35, 45, 50,  0, 85, 40 },
+            { 50, 88, 55, 86, 75,  0, 40 },
+            { 95, 30, 60, 35, 50, 50,  0 } };
+        static const int minorTable[7][7] = {
+            {  0, 65, 70, 88, 90, 80, 75 },
+            { 40,  0, 35, 55, 95, 40, 45 },
+            { 50, 45,  0, 75, 55, 85, 70 },
+            { 80, 60, 45,  0, 93, 60, 70 },
+            { 98, 30, 45, 50,  0, 85, 40 },
+            { 55, 75, 60, 80, 75,  0, 80 },
+            { 70, 30, 90, 50, 50, 55,  0 } };
+        static const char* const majorFunctions[] = { "tonic", "pre-dominant", "tonic", "pre-dominant", "dominant", "tonic", "dominant" };
+
+        // The candidates: the key's chords, its V7, and some favourite colours from outside it.
+        std::vector<Chord> candidates;
+        const auto addCandidate = [&candidates] (Chord c)
+        {
+            for (const auto& o : candidates)
+                if (o.root == c.root && o.type == c.type && o.tension == c.tension)
+                    return;
+            candidates.push_back (c);
+        };
+        const auto chords = keyChords (key);
+        for (int d = 0; d < 7; ++d)
+            addCandidate (chords[(size_t) d]);
+        const auto tonic = key.pitchClass();
+        using T = Chord::Type;
+        using X = Chord::Tension;
+        if (key.minor)
+        {
+            addCandidate (chords[7]);                                          // V (major)
+            addCandidate ({ pc (tonic + 7), T::major, X::seven, -1 });         // V7
+            addCandidate (chords[8]);                                          // vii°
+            addCandidate ({ pc (tonic + 5), T::major, X::none, -1 });          // IV (borrowed, Dorian)
+            addCandidate ({ pc (tonic + 1), T::major, X::none, -1 });          // bII (Neapolitan)
+        }
+        else
+        {
+            addCandidate ({ pc (tonic + 7), T::major, X::seven, -1 });         // V7
+            addCandidate ({ pc (tonic + 5), T::minor, X::none, -1 });          // iv (from the minor)
+            addCandidate ({ pc (tonic + 10), T::major, X::none, -1 });         // bVII
+            addCandidate ({ pc (tonic + 8), T::major, X::none, -1 });          // bVI
+            addCandidate ({ pc (tonic + 3), T::major, X::none, -1 });          // bIII
+            addCandidate ({ pc (tonic + 2), T::major, X::none, -1 });          // II (V of V)
+            addCandidate ({ pc (tonic + 4), T::major, X::none, -1 });          // III (V of vi)
+            addCandidate ({ pc (tonic + 9), T::major, X::none, -1 });          // VI (V of ii)
+        }
+
+        const auto diatonicDegree = [&key] (const Chord& c) -> int
+        {
+            if (! c.isInKey (key))
+                return -1;
+            int accidental = 0;
+            return degreeOf (c, key, accidental);
+        };
+        const auto fromDegree = diatonicDegree (from);
+        const auto fromClasses = from.pitchClasses();
+        std::vector<Suggestion> result;
+        for (const auto& c : candidates)
+        {
+            if (c.root == from.root && c.type == from.type)
+                continue;
+            juce::StringArray why;
+            const auto toDegree = diatonicDegree (c);
+            const auto motion = pc (c.root - from.root);
+            int score;
+            if (fromDegree >= 0 && toDegree >= 0)
+            {
+                score = (key.minor ? minorTable : majorTable)[fromDegree][toDegree];
+                if (key.minor && toDegree == 4 && c.type == T::minor)
+                {
+                    score -= 22;
+                    why.add ("the natural minor's v: a softer pull than V");
+                }
+                else if (toDegree == 0 && (fromDegree == 4 || fromDegree == 6))
+                    why.add ("dominant to tonic: the strongest pull home");
+                else if (toDegree == 0 && fromDegree == 3)
+                    why.add ("plagal: subdominant to tonic (\"amen\")");
+                else if (fromDegree == 4 && toDegree == 5)
+                    why.add ("deceptive: V to vi instead of I");
+                else if (toDegree == 4)
+                    why.add (juce::String (majorFunctions[fromDegree]) + " to dominant: it wants to go home next");
+                else
+                    why.add (juce::String (majorFunctions[fromDegree]) + " to " + majorFunctions[toDegree]);
+            }
+            else
+            {
+                // Outside the key (or from outside it): by how the root moves.
+                score = motion == 5 ? 72 : motion == 7 ? 58 : (motion == 2 || motion == 10) ? 52
+                      : (motion == 1 || motion == 11) ? 46 : motion == 6 ? 28 : 50;
+                if (toDegree < 0)
+                {
+                    score -= 14;
+                    const auto rootDegreeIsTonic = pc (c.root - tonic);
+                    const auto secondaryTarget = pc (c.root + 5);   // a major chord pulls a fifth down
+                    const auto targetInKey = std::find (key.scale().begin(), key.scale().end(), secondaryTarget) != key.scale().end();
+                    if (c.type == T::major && targetInKey && secondaryTarget != tonic && ! key.minor
+                        && (rootDegreeIsTonic == 2 || rootDegreeIsTonic == 4 || rootDegreeIsTonic == 9))
+                        why.add ("secondary dominant: pulls to " + Chord { secondaryTarget, T::major, X::none, -1 }.romanName (key).replace ("I", "I"));
+                    else
+                        why.add (key.minor ? "borrowed colour (outside the minor key)" : "borrowed from the parallel minor");
+                }
+                else
+                    why.add ("back into the key");
+            }
+            if (motion == 5)
+            {
+                score += 5;
+                why.add ("down a fifth round the circle");
+            }
+            auto common = 0;
+            for (const auto p : c.pitchClasses())
+                common += std::find (fromClasses.begin(), fromClasses.end(), p) != fromClasses.end() ? 1 : 0;
+            if (common > 0)
+            {
+                score += juce::jmin (9, common * 3);
+                why.add (juce::String (common) + (common == 1 ? " note in common" : " notes in common"));
+            }
+            result.push_back ({ c, juce::jlimit (1, 99, score), why.joinIntoString ("; "), toDegree >= 0 });
+        }
+        std::stable_sort (result.begin(), result.end(), [] (const Suggestion& a, const Suggestion& b) { return a.score > b.score; });
+        return result;
+    }
+
+    //==========================================================================
+    Key ChordPads::key() const
+    {
+        if (keyLetter >= 0)
+        {
+            const auto sp = Key::spellAs (rootKey, keyLetter);
+            if (std::abs (sp.accidental) <= 1)
+                return { keyLetter, sp.accidental, minor };
+        }
+        return Key::fromPitchClass (rootKey, minor, flats);
+    }
+
+    void ChordPads::setKey (const Key& k)
+    {
+        rootKey = k.pitchClass();
+        keyLetter = k.letter;
+        minor = k.minor;
+        flats = k.signature() < 0;
+    }
+
+    void ChordPads::fillFromKey (const Key& k)
+    {
+        setKey (k);
+        const auto s = k.scale();
+        auto h = s;
+        h[6] = pc (k.pitchClass() + 11);
+        std::vector<Chord> whites, blacks;
+        for (int d = 0; d < 7; ++d)
+            whites.push_back (degreeChord (s, d, false));
+        if (k.minor)
+            blacks = { degreeChord (s, 0, true), degreeChord (s, 2, true), degreeChord (s, 3, true), degreeChord (h, 4, false), degreeChord (h, 4, true) };
+        else
+            blacks = { degreeChord (s, 0, true), degreeChord (s, 1, true), degreeChord (s, 3, true), degreeChord (s, 4, true), degreeChord (s, 5, true) };
+        const auto put = [this] (size_t i, const Chord& c)
+        {
+            if (i >= pads.size() || pads[i].locked)
+                return;
+            pads[i] = {};
+            pads[i].chord = c;
+        };
+        for (size_t i = 0; i < pads.size(); ++i)
+            if (! pads[i].locked)
+                pads[i] = {};
+        if (layout == Layout::keyboard)
+        {
+            const int whiteKeys[] = { 0, 2, 4, 5, 7, 9, 11 }, blackKeys[] = { 1, 3, 6, 8, 10 };
+            for (int i = 0; i < (int) pads.size() && i < 12; ++i)
+            {
+                const auto keyPc = pc (startNote + i);
+                for (int d = 0; d < 7; ++d)
+                    if (whiteKeys[d] == keyPc)
+                        put ((size_t) i, whites[(size_t) d]);
+                for (int b = 0; b < 5; ++b)
+                    if (blackKeys[b] == keyPc)
+                        put ((size_t) i, blacks[(size_t) b]);
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < 7; ++i)
+                put (i, whites[i]);
+            // (A grid: the minor key's major V first after its seven, then the rest.)
+            const std::vector<Chord> rest = k.minor ? std::vector<Chord> { blacks[3], blacks[4], blacks[0], blacks[2], blacks[1] } : blacks;
+            for (size_t i = 0; i < rest.size(); ++i)
+                put (7 + i, rest[i]);
+        }
+        if (adaptiveReference >= 0 && (adaptiveReference >= (int) pads.size() || ! pads[(size_t) adaptiveReference].chord))
+            adaptiveReference = -1;
+    }
+
     bool ChordPads::operator== (const ChordPads& o) const noexcept
     {
         return pads == o.pads && rootKey == o.rootKey && flats == o.flats && adaptiveReference == o.adaptiveReference
             && octaveOffset == o.octaveOffset && overlap == o.overlap && layout == o.layout && startNote == o.startNote
             && rows == o.rows && columns == o.columns && primary == o.primary && secondary == o.secondary
-            && showVoicing == o.showVoicing && triggerStart == o.triggerStart && triggerEnd == o.triggerEnd && latch == o.latch;
+            && showVoicing == o.showVoicing && triggerStart == o.triggerStart && triggerEnd == o.triggerEnd && latch == o.latch
+            && minor == o.minor && key() == o.key();
     }
 
     juce::String ChordPads::displayName (const Chord& chord, Display display) const
     {
         switch (display)
         {
-            case Display::noteName:  return chord.name (flats);
-            case Display::roman:     return chord.romanName (rootKey);
-            case Display::nashville: return chord.nashvilleName (rootKey);
+            case Display::noteName:  return chord.name (key());
+            case Display::roman:     return chord.romanName (key());
+            case Display::nashville: return chord.nashvilleName (key());
             case Display::none:      return {};
         }
         return {};
@@ -392,11 +970,16 @@ namespace pr7s
         const auto& pad = pads[(size_t) index];
         if (! pad.adaptive && ! pad.notes.empty())
             return pad.notes;
-        const auto voicings = voicingsFor (*pad.chord, 48 + 12 * octaveOffset);
-        if (voicings.empty())
+        const auto named = namedVoicings (*pad.chord, 48 + 12 * octaveOffset);
+        if (named.empty())
             return {};
+        std::vector<std::vector<int>> close;
+        for (const auto& v : named)
+            if (v.close)
+                close.push_back (v.notes);
         if (pad.adaptive)
         {
+            // (Adaptive voicing chooses among the close voicings: the voices move the least.)
             std::vector<int> reference;
             if (juce::isPositiveAndBelow (adaptiveReference, (int) pads.size()) && adaptiveReference != index
                 && pads[(size_t) adaptiveReference].chord)
@@ -405,10 +988,11 @@ namespace pr7s
                 fixed.pads[(size_t) adaptiveReference].adaptive = false;   // (its own voicing, not chosen again)
                 reference = fixed.notesFor (adaptiveReference, {});
             }
-            return voicings[(size_t) closestVoicing (voicings, previous, reference)];
+            return close[(size_t) closestVoicing (close, previous, reference)];
         }
-        const auto at = pad.voicing < 0 ? (int) voicings.size() / 2 : juce::jlimit (0, (int) voicings.size() - 1, pad.voicing);
-        return voicings[(size_t) at];
+        if (pad.voicing < 0)
+            return close[close.size() / 2];
+        return named[(size_t) juce::jlimit (0, (int) named.size() - 1, pad.voicing)].notes;
     }
 
     int ChordPads::padForKey (int midiNote) const noexcept
@@ -424,6 +1008,8 @@ namespace pr7s
         auto xml = std::make_unique<juce::XmlElement> ("ChordPads");
         xml->setAttribute ("rootKey", rootKey);
         xml->setAttribute ("flats", flats);
+        xml->setAttribute ("minor", minor);
+        xml->setAttribute ("keyLetter", key().letter);
         xml->setAttribute ("adaptiveReference", adaptiveReference);
         xml->setAttribute ("octaveOffset", octaveOffset);
         xml->setAttribute ("overlap", (int) overlap);
@@ -470,6 +1056,8 @@ namespace pr7s
         };
         p.rootKey = clampInt ("rootKey", 0, 0, 11);
         p.flats = xml.getBoolAttribute ("flats", false);
+        p.minor = xml.getBoolAttribute ("minor", false);
+        p.keyLetter = juce::jlimit (-1, 6, xml.getIntAttribute ("keyLetter", -1));
         p.octaveOffset = clampInt ("octaveOffset", 0, -3, 3);
         p.overlap = (Overlap) clampInt ("overlap", (int) Overlap::legato, 0, 2);
         p.layout = (Layout) clampInt ("layout", 0, 0, 1);
@@ -516,6 +1104,12 @@ namespace pr7s
 
     void ChordPads::fillFromScale (Scale scale, int key)
     {
+        // Major and minor (0.15.0): through the key, spelled, with the minor key's major V too.
+        if (scale == Scale::major || scale == Scale::naturalMinor)
+        {
+            fillFromKey (Key::fromPitchClass (key, scale == Scale::naturalMinor, flats));
+            return;
+        }
         static const int steps[7][7] = {
             { 0, 2, 4, 5, 7, 9, 11 },   // major
             { 0, 2, 3, 5, 7, 8, 10 },   // natural minor
@@ -571,7 +1165,8 @@ namespace pr7s
             for (int i = 0; i < 5 && 7 + i < (int) pads.size(); ++i)
                 pads[(size_t) (7 + i)].chord = chordOn (sevenths[i], true);
         }
-        rootKey = pc (key);
+        // (The modes named in the major or minor key on their tonic, as their third is.)
+        setKey (Key::fromPitchClass (key, scale == Scale::dorian || scale == Scale::phrygian || scale == Scale::locrian, flats));
         adaptiveReference = -1;
     }
 

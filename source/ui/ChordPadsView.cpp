@@ -29,6 +29,37 @@ namespace
     // A MIDI note's name as the studio writes them (middle C = C3).
     juce::String keyName (int note, bool flats) { return Chord::noteName (note, flats) + juce::String (note / 12 - 2); }
 
+    // A key whose label is a note or chord name: drawn in Inter (Bebas has no small
+    // letters, and "Eb" would read "EB").
+    class InterKey final : public juce::TextButton
+    {
+    public:
+        using juce::TextButton::TextButton;
+        void paintButton (juce::Graphics& g, bool over, bool down) override
+        {
+            getLookAndFeel().drawButtonBackground (g, *this, findColour (getToggleState() ? buttonOnColourId : buttonColourId), over, down);
+            g.setColour (findColour (getToggleState() ? textColourOnId : textColourOffId).withMultipliedAlpha (isEnabled() ? 1.0f : 0.4f));
+            g.setFont (chordFont (juce::jmin (14.0f, (float) getHeight() * 0.6f)));
+            g.drawFittedText (getButtonText(), getLocalBounds().reduced (2), juce::Justification::centred, 1, 0.7f);
+        }
+    };
+
+    // A key in words, for the toolbar and its menus (Bebas has no small letters): "E-flat minor".
+    juce::String spokenKey (const pr7s::Key& key)
+    {
+        juce::String t = juce::String::charToString ((juce::juce_wchar) "CDEFGAB"[key.letter]);
+        if (key.accidental == -1) t << "-flat";
+        if (key.accidental == 1)  t << "-sharp";
+        return t + (key.minor ? " minor" : " major");
+    }
+    juce::String signatureText (const pr7s::Key& key)
+    {
+        const auto n = key.signature();
+        if (n == 0)
+            return "no sharps or flats";
+        return juce::String (std::abs (n)) + (n > 0 ? (std::abs (n) == 1 ? " sharp" : " sharps") : (std::abs (n) == 1 ? " flat" : " flats"));
+    }
+
     // A small padlock, for a locked pad.
     void drawLock (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour colour)
     {
@@ -51,9 +82,9 @@ public:
     {
         for (int i = 0; i < 12; ++i)
         {
-            auto* r = roots.add (new juce::TextButton (Chord::noteName (i, false)));
+            auto* r = roots.add (new InterKey (Chord::noteName (i, false)));
             r->onClick = [this, i] { view.editRoot (i); };
-            auto* b = basses.add (new juce::TextButton (Chord::noteName (i, false)));
+            auto* b = basses.add (new InterKey (Chord::noteName (i, false)));
             b->onClick = [this, i] { view.editBass (i); };
         }
         auto* none = basses.add (new juce::TextButton ("-"));
@@ -65,7 +96,7 @@ public:
         }
         for (const auto tension : Chord::allTensions())
         {
-            auto* t = tensions.add (new juce::TextButton (Chord::tensionName (tension, Chord::Type::major)));
+            auto* t = tensions.add (new InterKey (Chord::tensionName (tension, Chord::Type::major)));
             t->onClick = [this, tension] { view.editTension (tension); };
         }
         for (auto* list : { &roots, &types, &tensions, &basses })
@@ -76,12 +107,13 @@ public:
             }
     }
 
-    void refresh (const std::optional<Chord>& chord, bool flats, bool enabled)
+    void refresh (const std::optional<Chord>& chord, const pr7s::Key& key, bool enabled)
     {
         for (int i = 0; i < 12; ++i)
         {
-            roots[i]->setButtonText (Chord::noteName (i, flats));
-            basses[i]->setButtonText (Chord::noteName (i, flats));
+            // (Each note as the key spells it: Gb in Eb minor, F# in D major.)
+            roots[i]->setButtonText (key.spell (i).text());
+            basses[i]->setButtonText (key.spell (i).text());
             roots[i]->setToggleState (chord && chord->root == i, juce::dontSendNotification);
             basses[i]->setToggleState (chord && chord->bass == i, juce::dontSendNotification);
         }
@@ -93,7 +125,8 @@ public:
         for (auto* list : { &roots, &types, &tensions, &basses })
             for (auto* key : *list)
                 key->setEnabled (enabled);
-        title = ! enabled ? "Select a pad" : chord ? chord->name (flats) : "A new chord: its root";
+        title = ! enabled ? "Select a pad"
+              : chord ? chord->name (key) + "   (" + chord->noteNames (key).joinIntoString (" ") + ")" : "A new chord: its root";
         repaint();
     }
 
@@ -161,23 +194,261 @@ private:
 };
 
 //==============================================================================
+// The circle of fifths (0.15.0, the owner asked; the manual's Circle of Fifths
+// assistant): the twelve major chords round the outside in fifths, their relative
+// minors inside, the key's tonic at the top; the key's own chords marked with their
+// numerals. Beside it, what could come next after the chord clicked (or the
+// selected pad's), each scored (suggestNext): best first, strong to adventurous.
+class ChordPadsView::CircleAssistant final : public juce::Component,
+                                              public juce::SettableTooltipClient
+{
+public:
+    explicit CircleAssistant (ChordPadsView& v) : view (v) {}
+
+    struct Spot { Chord chord; juce::Point<float> centre; float radius; };
+
+    std::vector<Spot> spots() const
+    {
+        std::vector<Spot> list;
+        const auto key = view.studio.getChordPads().key();
+        // The major chord at the top: the key's tonic (a minor key: its relative major, its i inside).
+        const auto topMajor = key.minor ? (key.pitchClass() + 3) % 12 : key.pitchClass();
+        const auto c = circleArea().getCentre();
+        const auto r = circleArea().getWidth() * 0.5f;
+        for (int i = 0; i < 12; ++i)
+        {
+            const auto angle = juce::MathConstants<float>::twoPi * (float) i / 12.0f;
+            const auto at = [&c, angle] (float radius) { return c + juce::Point<float> (std::sin (angle), -std::cos (angle)) * radius; };
+            const auto major = (topMajor + 7 * i) % 12;
+            list.push_back ({ { major, Chord::Type::major, Chord::Tension::none, -1 }, at (r * 0.80f), r * 0.17f });
+            list.push_back ({ { (major + 9) % 12, Chord::Type::minor, Chord::Tension::none, -1 }, at (r * 0.48f), r * 0.14f });
+        }
+        return list;
+    }
+
+    juce::Rectangle<float> circleArea() const
+    {
+        auto area = getLocalBounds().toFloat().reduced (6.0f);
+        const auto side = juce::jmin (area.getHeight(), area.getWidth() * 0.36f);
+        return area.removeFromLeft (side).withSizeKeepingCentre (side, side);
+    }
+
+    juce::Rectangle<float> listArea() const
+    {
+        auto area = getLocalBounds().toFloat().reduced (6.0f);
+        area.removeFromLeft (circleArea().getWidth() + 14.0f);
+        return area;
+    }
+
+    static constexpr float rowHeight = 22.0f, headerHeight = 20.0f;
+
+    int rowAt (juce::Point<float> p) const
+    {
+        const auto list = listArea();
+        if (! list.contains (p) || p.y < list.getY() + headerHeight)
+            return -1;
+        const auto row = (int) ((p.y - list.getY() - headerHeight) / rowHeight);
+        return row < (int) shown.size() ? row : -1;
+    }
+
+    std::optional<Chord> chordAt (juce::Point<float> p) const
+    {
+        for (const auto& spot : spots())
+            if (spot.centre.getDistanceFrom (p) <= spot.radius)
+                return spot.chord;
+        if (const auto row = rowAt (p); row >= 0)
+            return shown[(size_t) row].chord;
+        return std::nullopt;
+    }
+
+    void refresh()
+    {
+        const auto from = view.getSuggestionsFrom();
+        shown = from ? view.getSuggestions() : std::vector<pr7s::Suggestion> {};
+        repaint();
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (juce::Colour (0xff100c11));
+        g.setColour (ParagonColours::panelEdge);
+        g.fillRect (0, 0, 1, getHeight());
+        const auto key = view.studio.getChordPads().key();
+        const auto from = view.getSuggestionsFrom();
+
+        // The circle: the rings, then each chord; the key's own lit, with its numeral.
+        const auto area = circleArea();
+        g.setColour (juce::Colour (0xff1b171c));
+        g.fillEllipse (area);
+        g.setColour (ParagonColours::panelEdge);
+        g.drawEllipse (area, 1.0f);
+        g.drawEllipse (area.reduced (area.getWidth() * 0.18f), 1.0f);
+        for (const auto& spot : spots())
+        {
+            const auto inKey = spot.chord.isInKey (key);
+            const auto isTonic = inKey && spot.chord.root == key.pitchClass() && (spot.chord.type == Chord::Type::minor) == key.minor;
+            const auto isFrom = from && from->root == spot.chord.root && from->type == spot.chord.type;
+            const auto dot = juce::Rectangle<float> (spot.radius * 2.0f, spot.radius * 2.0f).withCentre (spot.centre);
+            g.setColour (isTonic ? ParagonColours::accent : inKey ? juce::Colour (0xff4a1a24) : juce::Colour (0xff141015));
+            g.fillEllipse (dot);
+            if (isFrom)
+            {
+                g.setColour (juce::Colour (0xfff4eeea));
+                g.drawEllipse (dot.reduced (1.0f), 2.0f);
+            }
+            g.setColour (isTonic ? juce::Colour (0xff120d10) : inKey ? ParagonColours::text : ParagonColours::textDim);
+            g.setFont (chordFont (juce::jlimit (9.0f, 15.0f, spot.radius * 0.62f)));
+            auto label = dot;
+            g.drawText (spot.chord.name (key), inKey ? label.removeFromTop (label.getHeight() * 0.62f) : label, juce::Justification::centredBottom, false);
+            if (inKey)
+            {
+                g.setFont (chordFont (juce::jlimit (7.0f, 10.0f, spot.radius * 0.42f)));
+                g.drawText (spot.chord.romanName (key), label, juce::Justification::centredTop, false);
+            }
+        }
+        g.setColour (ParagonColours::textDim);
+        g.setFont (chordFont (10.0f));
+        g.drawText (spokenKey (key), area.withSizeKeepingCentre (area.getWidth() * 0.5f, 14.0f), juce::Justification::centred, false);
+
+        // The suggestions.
+        auto list = listArea();
+        auto head = list.removeFromTop (headerHeight);
+        g.setColour (ParagonColours::textDim);
+        g.setFont (ParagonLookAndFeel::titleFont (12.0f));
+        g.drawText ("WHAT COULD COME NEXT", head.removeFromLeft (150.0f), juce::Justification::centredLeft, false);
+        g.setColour (ParagonColours::text);
+        g.setFont (chordFont (13.0f));
+        g.drawText (from ? "after " + from->name (key) + "  (" + from->romanName (key) + ")" : juce::String ("click a chord on the circle, or select a pad"),
+                    head, juce::Justification::centredLeft, true);
+        for (size_t i = 0; i < shown.size(); ++i)
+        {
+            if (list.getHeight() < rowHeight)
+                break;   // (as many as fit; the best first)
+            const auto row = list.removeFromTop (rowHeight);
+            const auto& s = shown[i];
+            auto r = row.reduced (0.0f, 2.0f);
+            if ((int) i == hoverRow)
+            {
+                g.setColour (juce::Colour (0xff1e181f));
+                g.fillRect (row);
+            }
+            g.setColour (s.inKey ? ParagonColours::text : ParagonColours::textDim);
+            g.setFont (chordFont (13.0f));
+            g.drawText (s.chord.name (key), r.removeFromLeft (64.0f), juce::Justification::centredLeft, false);
+            g.setFont (chordFont (11.0f));
+            g.drawText (s.chord.romanName (key), r.removeFromLeft (52.0f), juce::Justification::centredLeft, false);
+            // The score: a bar lit along the family's gradient, and its number.
+            auto bar = r.removeFromLeft (90.0f).reduced (0.0f, 4.0f);
+            g.setColour (juce::Colour (0xff1b171c));
+            g.fillRoundedRectangle (bar, 2.0f);
+            g.setColour (ParagonColours::meterColour ((float) s.score / 100.0f).withAlpha (s.score >= 80 ? 1.0f : s.score >= 60 ? 0.75f : 0.45f));
+            g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * (float) s.score / 100.0f), 2.0f);
+            g.setColour (ParagonColours::text);
+            g.setFont (chordFont (11.0f));
+            g.drawText (juce::String (s.score), r.removeFromLeft (30.0f), juce::Justification::centred, false);
+            g.setColour (ParagonColours::textDim);
+            g.setFont (chordFont (10.5f));
+            g.drawText (s.reason, r, juce::Justification::centredLeft, true);
+        }
+    }
+
+    void mouseMove (const juce::MouseEvent& e) override
+    {
+        const auto row = rowAt (e.position);
+        if (row != hoverRow)
+        {
+            hoverRow = row;
+            repaint();
+        }
+        if (row >= 0)
+        {
+            const auto& s = shown[(size_t) row];
+            setTooltip (juce::String (s.score >= 80 ? "Strong" : s.score >= 60 ? "Good" : "Adventurous") + " (" + juce::String (s.score) + "): "
+                        + s.reason + ". Double-click: onto the selected pad (or the first without a chord); or drag it onto a pad.");
+        }
+        else
+            setTooltip ("A chord on the circle: click to hear it and see what could come next; double-click or drag it onto a pad");
+    }
+
+    void mouseExit (const juce::MouseEvent&) override
+    {
+        hoverRow = -1;
+        repaint();
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        dragged = false;
+        downChord = chordAt (e.position);
+        if (! downChord)
+            return;
+        if (e.mods.isPopupMenu())
+        {
+            juce::PopupMenu menu;
+            menu.addItem (1, "Assign to the Selected Pad (or the First Unassigned)");
+            menu.addItem (2, "Suggest What Comes After It");
+            menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<CircleAssistant> (this), chord = *downChord] (int chosen)
+            {
+                if (safe == nullptr)
+                    return;
+                if (chosen == 1)
+                    safe->view.assignToNextPad (chord);
+                if (chosen == 2)
+                    safe->view.circleChordClicked (chord);
+            });
+            return;
+        }
+        // A chord on the circle: played, and the suggestions follow it; a suggestion: played.
+        const auto onCircle = rowAt (e.position) < 0;
+        if (onCircle)
+            view.circleChordClicked (*downChord);
+        else
+            view.studio.auditionChord (*downChord);
+    }
+
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        if (! downChord || dragged || e.getDistanceFromDragStart() < 6)
+            return;
+        dragged = true;
+        view.startDragging (juce::String (ChordPadsView::chordDragPrefix) + downChord->toText(), this, juce::ScaledImage(), true);
+    }
+
+    void mouseDoubleClick (const juce::MouseEvent& e) override
+    {
+        if (const auto chord = chordAt (e.position))
+            view.assignToNextPad (*chord);
+    }
+
+private:
+    ChordPadsView& view;
+    std::vector<pr7s::Suggestion> shown;
+    std::optional<Chord> downChord;
+    bool dragged = false;
+    int hoverRow = -1;
+};
+
+//==============================================================================
 ChordPadsView::ChordPadsView (pr7s::Studio& s) : studio (s)
 {
     setWantsKeyboardFocus (true);
     editor = std::make_unique<ChordEditor> (*this);
     addChildComponent (*editor);
+    circle = std::make_unique<CircleAssistant> (*this);
+    addChildComponent (*circle);
     for (auto* key : { &rootKey, &presetsKey, &playerKey, &modeKey, &displayKey, &remoteKey })
         styleKey (*key, true);
-    for (auto* key : { &previousPreset, &nextPreset, &saveKey, &editorKey, &windowKey, &closeKey, &selectAllKey, &editKey, &fromMidiKey,
+    for (auto* key : { &previousPreset, &nextPreset, &saveKey, &editorKey, &circleKey, &windowKey, &closeKey, &selectAllKey, &editKey, &fromMidiKey,
                        &removeKey, &transposeDown, &transposeUp, &tensionsDown, &tensionsUp, &voicingPrevious, &voicingNext, &lockKey,
                        &adaptiveKey, &referenceKey })
         styleKey (*key);
-    for (auto* key : { &rootKey, &presetsKey, &previousPreset, &nextPreset, &saveKey, &playerKey, &modeKey, &displayKey, &remoteKey, &editorKey,
+    for (auto* key : { &rootKey, &presetsKey, &previousPreset, &nextPreset, &saveKey, &playerKey, &modeKey, &displayKey, &remoteKey, &editorKey, &circleKey,
                        &windowKey, &closeKey, &selectAllKey, &editKey, &fromMidiKey, &removeKey, &transposeDown, &transposeUp, &tensionsDown,
                        &tensionsUp, &voicingPrevious, &voicingNext, &lockKey, &adaptiveKey, &referenceKey })
         addAndMakeVisible (*key);
 
-    rootKey.setTooltip ("The root key: the key the chords' functions are named in. Transpose Pads moves the chords to it; Flats spells them with flats");
+    rootKey.setTooltip ("The key: every major and minor key. Choosing one fills the pads with its chords, spelled as the key spells them "
+                        "(or transposes your pads to it, or only names them in it)");
     rootKey.onClick = [this] { showRootMenu(); };
     presetsKey.setTooltip ("Chord pads presets: the scales (in the root key) and your own; what to load (chords, the player, or both)");
     presetsKey.onClick = [this] { showPresetsMenu(); };
@@ -197,6 +468,9 @@ ChordPadsView::ChordPadsView (pr7s::Studio& s) : studio (s)
     remoteKey.onClick = [this] { showRemoteMenu(); };
     editorKey.setTooltip ("The chord editor beside the pads: the selected pad's root, type, tension and bass");
     editorKey.onClick = [this] { setEditorShown (! editorShown); };
+    circleKey.setTooltip ("The circle of fifths: the key's chords marked; click one to hear it and see what could come next, scored "
+                          "(double-click or drag a chord onto a pad)");
+    circleKey.onClick = [this] { setCircleShown (! circleShown); };
     windowKey.onClick = [this] { if (onWindowToggle) onWindowToggle(); };
     closeKey.onClick = [this] { if (onClose) onClose(); };
 
@@ -283,8 +557,69 @@ void ChordPadsView::selectAll()
 void ChordPadsView::setEditorShown (bool shown)
 {
     editorShown = shown;
+    if (shown)
+        circleShown = false;   // (one panel at the right at a time)
+    circle->setVisible (circleShown);
     editor->setVisible (shown);
     resized();
+    refresh();
+}
+
+void ChordPadsView::setCircleShown (bool shown)
+{
+    circleShown = shown;
+    if (shown)
+        editorShown = false;
+    editor->setVisible (editorShown);
+    circle->setVisible (shown);
+    resized();
+    refresh();
+}
+
+void ChordPadsView::chooseKey (const pr7s::Key& key)
+{
+    studio.setPadsKey (key, keyChange);
+    circleFrom.reset();   // (the suggestions start again from the pads)
+    refresh();
+}
+
+int ChordPadsView::assignToNextPad (const Chord& chord)
+{
+    // The selected pad, else the first without a chord (the manual's Assign to First Unassigned Pad).
+    const auto& pads = studio.getChordPads().pads;
+    auto target = -1;
+    if (! selected.empty() && ! pads[(size_t) selected.front()].locked)
+        target = selected.front();
+    for (int i = 0; target < 0 && i < (int) pads.size(); ++i)
+        if (! pads[(size_t) i].chord && ! pads[(size_t) i].locked)
+            target = i;
+    if (target < 0)
+        return -1;
+    studio.assignChord (target, chord);
+    audition (target);
+    return target;
+}
+
+std::optional<Chord> ChordPadsView::getSuggestionsFrom() const
+{
+    if (circleFrom)
+        return circleFrom;
+    if (! selected.empty())
+        if (const auto& chord = studio.getChordPads().pads[(size_t) selected.front()].chord)
+            return chord;
+    return std::nullopt;
+}
+
+std::vector<pr7s::Suggestion> ChordPadsView::getSuggestions() const
+{
+    const auto from = getSuggestionsFrom();
+    return from ? pr7s::suggestNext (*from, studio.getChordPads().key()) : std::vector<pr7s::Suggestion> {};
+}
+
+void ChordPadsView::circleChordClicked (const Chord& chord)
+{
+    circleFrom = chord;
+    studio.auditionChord (chord);
     refresh();
 }
 
@@ -296,12 +631,15 @@ void ChordPadsView::changeListenerCallback (juce::ChangeBroadcaster*)
 void ChordPadsView::refresh()
 {
     const auto& pads = studio.getChordPads();
-    rootKey.setButtonText ("ROOT: " + Chord::noteName (pads.rootKey, pads.flats));
+    rootKey.setButtonText ("KEY: " + spokenKey (pads.key()));
     playerKey.setButtonText (pads.octaveOffset == 0 ? juce::String ("PLAYER: BASIC")
                                                     : "PLAYER: BASIC " + juce::String (pads.octaveOffset > 0 ? "+" : "") + juce::String (pads.octaveOffset));
     modeKey.setButtonText (pads.overlap == ChordPads::Overlap::holdFirst ? "PLAIN: HOLD FIRST"
                          : pads.overlap == ChordPads::Overlap::stopFirst ? "PLAIN: STOP FIRST" : "PLAIN: LEGATO");
     editorKey.setToggleState (editorShown, juce::dontSendNotification);
+    circleKey.setToggleState (circleShown, juce::dontSendNotification);
+    if (circle != nullptr)
+        circle->refresh();
     fromMidiKey.setToggleState (! studio.getAssignFromInput().empty(), juce::dontSendNotification);
     const auto* first = selected.empty() ? nullptr : &pads.pads[(size_t) selected.front()];
     lockKey.setToggleState (first != nullptr && first->locked, juce::dontSendNotification);
@@ -311,7 +649,7 @@ void ChordPadsView::refresh()
                        &voicingNext, &lockKey, &adaptiveKey, &referenceKey })
         key->setEnabled (! selected.empty() || key == &fromMidiKey);
     if (editor != nullptr)
-        editor->refresh (first != nullptr ? first->chord : std::nullopt, pads.flats, first != nullptr && ! first->locked);
+        editor->refresh (first != nullptr ? first->chord : std::nullopt, pads.key(), first != nullptr && ! first->locked);
     repaint();
 }
 
@@ -394,29 +732,37 @@ void ChordPadsView::removeSelected (bool ask)
 //==============================================================================
 void ChordPadsView::showRootMenu()
 {
-    const auto& pads = studio.getChordPads();
-    juce::PopupMenu menu;
-    menu.addSectionHeader ("ROOT KEY");
-    for (int i = 0; i < 12; ++i)
-        menu.addItem (1 + i, Chord::noteName (i, pads.flats), true, pads.rootKey == i);
+    // The KEY menu (0.15.0): every major and minor key, round the circle of fifths;
+    // then what choosing one does; and the enharmonic spelling.
+    const auto now = studio.getChordPads().key();
+    juce::PopupMenu menu, majors, minors;
+    const auto& keys = pr7s::Key::all();
+    for (int i = 0; i < (int) keys.size(); ++i)
+        (keys[(size_t) i].minor ? minors : majors).addItem (1 + i, spokenKey (keys[(size_t) i]) + "  (" + signatureText (keys[(size_t) i]) + ")",
+                                                          true, keys[(size_t) i] == now);
+    menu.addSectionHeader ("KEY: " + spokenKey (now).toUpperCase());
+    menu.addSubMenu ("Major Keys", majors);
+    menu.addSubMenu ("Minor Keys", minors);
     menu.addSeparator();
-    menu.addItem (20, "Transpose Pads (the chords move to the key)", true, transposeOnRoot);
-    menu.addItem (21, "Flats (Enh. Shift: Bb, not A#)", true, pads.flats);
+    menu.addSectionHeader ("CHOOSING A KEY");
+    using C = pr7s::Studio::PadsKeyChange;
+    menu.addItem (100, "Fills the pads with its chords", true, keyChange == C::fillWithChords);
+    menu.addItem (101, "Transposes my pads to it", true, keyChange == C::transposePads);
+    menu.addItem (102, "Only names my chords in it (numerals, spelling)", true, keyChange == C::renameOnly);
+    menu.addSeparator();
+    menu.addItem (110, "Fill the Pads with This Key's Chords Now");
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&rootKey),
                         [safe = juce::Component::SafePointer<ChordPadsView> (this)] (int chosen)
     {
         if (safe == nullptr || chosen == 0)
             return;
-        if (chosen == 20)
-            safe->transposeOnRoot = ! safe->transposeOnRoot;
-        else if (chosen == 21)
-        {
-            auto p = safe->studio.getChordPads();
-            p.flats = ! p.flats;
-            safe->studio.setChordPads (p);
-        }
-        else
-            safe->studio.setPadsRootKey (chosen - 1, safe->transposeOnRoot);
+        using C = pr7s::Studio::PadsKeyChange;
+        if (chosen >= 100 && chosen <= 102)
+            safe->keyChange = chosen == 100 ? C::fillWithChords : chosen == 101 ? C::transposePads : C::renameOnly;
+        else if (chosen == 110)
+            safe->studio.setPadsKey (safe->studio.getChordPads().key(), C::fillWithChords);
+        else if (chosen >= 1 && chosen <= (int) pr7s::Key::all().size())
+            safe->chooseKey (pr7s::Key::all()[(size_t) (chosen - 1)]);
         safe->refresh();
     });
 }
@@ -664,11 +1010,37 @@ void ChordPadsView::showPadMenu (int pad)
     menu.addSeparator();
     menu.addItem (7, "Transpose Up", p.chord.has_value() && ! p.locked);
     menu.addItem (8, "Transpose Down", p.chord.has_value() && ! p.locked);
+    // Its voicings by name, with their notes as the key spells them (0.15.0).
+    if (p.chord)
+    {
+        juce::PopupMenu voicings;
+        const auto key = studio.getChordPads().key();
+        const auto named = pr7s::namedVoicings (*p.chord, 48 + 12 * studio.getChordPads().octaveOffset);
+        const auto now = studio.getPadVoicing (pad);
+        for (int i = 0; i < (int) named.size(); ++i)
+            voicings.addItem (1000 + i, named[(size_t) i].kind + ":  " + pr7s::notesText (named[(size_t) i].notes, *p.chord, key),
+                              ! p.locked, ! p.adaptive && now == i);
+        voicings.addSeparator();
+        voicings.addItem (999, "Adaptive (chosen as it's played)", ! p.locked, p.adaptive);
+        menu.addSeparator();
+        menu.addSubMenu ("Voicing", voicings, ! p.locked);
+    }
     menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ChordPadsView> (this), pad] (int chosen)
     {
         if (safe == nullptr)
             return;
         auto& s = safe->studio;
+        if (chosen >= 1000)
+        {
+            s.setPadVoicing (pad, chosen - 1000);
+            safe->audition (pad);
+            return;
+        }
+        if (chosen == 999)
+        {
+            s.setPadsAdaptive ({ pad }, true);
+            return;
+        }
         switch (chosen)
         {
             case 1: safe->setEditorShown (true); break;
@@ -724,6 +1096,13 @@ int ChordPadsView::padAt (juce::Point<float> at) const
 void ChordPadsView::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff0d0a0e));
+    if (content != getLocalBounds())
+    {
+        // (Beyond the middle screen: the zone's dark floor, its edges marked.)
+        g.setColour (ParagonColours::panelEdge);
+        g.fillRect (content.getX() - 1, content.getY(), 1, content.getHeight());
+        g.fillRect (content.getRight(), content.getY(), 1, content.getHeight());
+    }
     for (const auto& strip : { bar, extendedBar })
     {
         g.setColour (juce::Colour (0xff100c11));
@@ -870,16 +1249,35 @@ void ChordPadsView::paintKeyboard (juce::Graphics& g, juce::Rectangle<float> are
 
 void ChordPadsView::resized()
 {
-    auto area = getLocalBounds();
+    // On one screen (0.15.0, the owner: across three screens the pads were stretched):
+    // the part of this view on the screen under its centre, and never wider than a
+    // screen's worth (1920) when we can't tell (the tests, one wide display).
+    content = getLocalBounds();
+    if (isShowing())
+    {
+        const auto onScreen = getScreenBounds();
+        if (const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForPoint (onScreen.getCentre()))
+        {
+            const auto here = display->totalArea.getIntersection (onScreen) - onScreen.getPosition();
+            if (! here.isEmpty())
+                content = here;
+        }
+    }
+    if (content.getWidth() > 2400)
+        content = content.withSizeKeepingCentre (1920, content.getHeight());
+
+    auto area = content;
     bar = area.removeFromTop (toolbarHeight);
     extendedBar = area.removeFromTop (toolbarHeight);
     keysArea = area.removeFromBottom (keyboardHeight);
     if (editorShown)
         editor->setBounds (area.removeFromRight (juce::jmin (editorWidth, area.getWidth() / 2)));
+    if (circleShown)
+        circle->setBounds (area.removeFromRight (juce::jmin (circleWidth, area.getWidth() * 3 / 5)));
     padsArea = area.reduced (6, 4);
 
     auto b = bar.reduced (6, 4);
-    b.removeFromLeft (90);
+    b.removeFromLeft (70);
     closeKey.setBounds (b.removeFromRight (64));
     b.removeFromRight (6);
     windowKey.setBounds (b.removeFromRight (74));
@@ -889,16 +1287,17 @@ void ChordPadsView::resized()
         key.setBounds (b.removeFromLeft (width));
         b.removeFromLeft (gap);
     };
-    place (rootKey, 90, 10);
-    place (presetsKey, 170);
+    place (rootKey, 150, 10);
+    place (presetsKey, 120, 2);
     place (previousPreset, 26, 2);
     place (nextPreset, 26);
     place (saveKey, 56, 10);
-    place (playerKey, 140);
-    place (modeKey, 150, 10);
-    place (displayKey, 90);
-    place (remoteKey, 86, 10);
-    place (editorKey, 74);
+    place (playerKey, 120);
+    place (modeKey, 140, 10);
+    place (displayKey, 84);
+    place (remoteKey, 80, 10);
+    place (editorKey, 70);
+    place (circleKey, 116);
 
     auto e = extendedBar.reduced (6, 4);
     const auto placeE = [&e] (juce::TextButton& key, int width, int gap = 4)
@@ -960,7 +1359,8 @@ void ChordPadsView::mouseDown (const juce::MouseEvent& event)
     }
     else
         selectPads ({ pad });
-    // Clicked: played, as long as it's held.
+    // Clicked: played, as long as it's held (and the suggestions follow it).
+    circleFrom.reset();
     pressedPad = pad;
     studio.getPadPlayer().press (pad, 100);
 }
@@ -1063,7 +1463,7 @@ bool ChordPadsView::keyPressed (const juce::KeyPress& key)
 //==============================================================================
 bool ChordPadsView::isInterestedInDragSource (const SourceDetails& details)
 {
-    return details.description.toString().startsWith (dragPrefix);
+    return details.description.toString().startsWith (dragPrefix) || details.description.toString().startsWith (chordDragPrefix);
 }
 
 void ChordPadsView::itemDragEnter (const SourceDetails& details) { itemDragMove (details); }
@@ -1086,6 +1486,21 @@ void ChordPadsView::itemDragExit (const SourceDetails&)
 
 void ChordPadsView::itemDropped (const SourceDetails& details)
 {
+    // A chord from the circle or the suggestions: onto the pad dropped on.
+    if (details.description.toString().startsWith (chordDragPrefix))
+    {
+        const auto to = padAt (details.localPosition.toFloat());
+        dropPad = -1;
+        if (const auto chord = Chord::fromText (details.description.toString().fromFirstOccurrenceOf (chordDragPrefix, false, false));
+            chord && to >= 0 && ! studio.getChordPads().pads[(size_t) to].locked)
+        {
+            studio.assignChord (to, *chord);
+            selectPads ({ to });
+            audition (to);
+        }
+        repaint();
+        return;
+    }
     const auto text = details.description.toString().fromFirstOccurrenceOf (dragPrefix, false, false);
     const auto from = text.getIntValue();
     const auto copy = text.endsWith (":copy");
