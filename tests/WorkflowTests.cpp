@@ -121,3 +121,52 @@ TEST_CASE ("The mixer's own window: the strips wider, the insert and send slots 
     view.setMixerInWindow (false);
     CHECK (mixer.getStrip (0).getWidth() == MixerView::stripWidth);
 }
+
+TEST_CASE ("Render in Place and Freeze render on a thread of their own when the app says so; the same sound as rendered in place (0.12.1)", "[progress][render]")
+{
+    // The app's runner: the work on another thread, this one waiting (the app keeps its screen going meanwhile).
+    const auto render = [] (bool threaded, std::vector<double>& seen, int& threadsUsed)
+    {
+        Studio studio (false);
+        const auto synth = studio.getProject().tracks[0].id;
+        studio.addPart (synth, { 0.0, 4.0, "Riff", { { 0.0, 1.0, 60, 1.0f }, { 2.0, 1.0, 64, 0.7f } } });
+        if (threaded)
+            studio.renderRunner = [&] (std::function<bool()> work)
+            {
+                std::atomic<bool> done { false };
+                auto result = false;
+                std::thread worker ([&] { result = work(); done = true; ++threadsUsed; });
+                while (! done.load())
+                {
+                    CHECK (studio.isRendering());
+                    juce::Thread::sleep (2);
+                    studio.reportRenderProgress();
+                }
+                worker.join();
+                return result;
+            };
+        studio.onProgress = [&] (double p, const juce::String&) { seen.push_back (p); };
+        Studio::RenderOptions options;
+        options.tail = Studio::RenderOptions::Tail::off;
+        juce::String error;
+        const auto made = studio.renderInPlace ({ { synth, 0.0, 4.0, true } }, options, error);
+        REQUIRE (made.size() == 1);
+        CHECK_FALSE (studio.isRendering());
+        const auto& clip = studio.getProject().findTrack (made[0])->parts.front();
+        const auto data = studio.getAudio (clip.audioFile);
+        REQUIRE (data != nullptr);
+        return std::vector<float> (data->sound.getReadPointer (0), data->sound.getReadPointer (0) + data->sound.getNumSamples());
+    };
+    std::vector<double> inPlace, onThread;
+    int threads = 0;
+    const auto a = render (false, inPlace, threads);
+    CHECK (threads == 0);
+    const auto b = render (true, onThread, threads);
+    CHECK (threads == 1);
+    REQUIRE (a.size() == b.size());
+    auto same = true;
+    for (size_t i = 0; i < a.size(); ++i)
+        same = same && std::abs (a[i] - b[i]) < 1.0e-6f;
+    CHECK (same);
+    CHECK (onThread.back() < 0.0);   // the box goes at the end
+}

@@ -3,6 +3,8 @@
 #include "ui/KeyCommandsPage.h"
 #include "ui/Hub.h"
 
+#include <thread>
+
 #include "ui/AutomationKeys.h"
 #include "ui/Logo.h"
 #include "ui/ParagonLookAndFeel.h"
@@ -142,6 +144,28 @@ MainView::MainView (pr7s::Studio& studioToUse)
             progressBox = std::make_unique<ProgressBox>();
         progressBox->set (progress, what, this);
     };
+    // Renders (Render in Place, Freeze) on a thread of their own while this
+    // one carries on (0.12.1: an instrument rendering offline can wait for
+    // its loading threads, which can wait for this thread; rendered here, the
+    // studio never came back). The progress box takes the clicks and keys
+    // meanwhile, so nothing changes the song mid-render. (Only in the app:
+    // the tests render where they are.)
+    if (juce::JUCEApplicationBase::getInstance() != nullptr)
+        studio.renderRunner = [this] (std::function<bool()> work)
+        {
+            std::atomic<bool> done { false };
+            auto result = false;
+            std::thread worker ([&] { result = work(); done = true; });
+            if (progressBox != nullptr && ! progressBox->isCurrentlyModal())
+                progressBox->enterModalState (false);
+            while (! done.load())
+            {
+                juce::MessageManager::getInstance()->runDispatchLoopUntil (30);
+                studio.reportRenderProgress();
+            }
+            worker.join();
+            return result;
+        };
     settingsButton.onClick = [this] { openSettings(); };
     // Read and write automation for all tracks (the manual's toolbar buttons).
     for (auto* key : { &readAllButton, &writeAllButton })
@@ -284,6 +308,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
 
 MainView::~MainView()
 {
+    studio.renderRunner = nullptr;
     studio.onProgress = nullptr;
     arrangeAcross.removeListener (this);
     arrangeDown.removeListener (this);

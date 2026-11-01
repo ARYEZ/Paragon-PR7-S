@@ -40,6 +40,7 @@ void ProgressBox::set (double newProgress, const juce::String& newWhat, juce::Co
     progress = juce::jlimit (0.0, 1.0, newProgress);
     what = newWhat;
     pr7s::SessionLog::beat();   // (busy, not frozen)
+    setWantsKeyboardFocus (true);   // (modal while a render runs: the keys come here, and go nowhere)
     if (! isOnDesktop())
     {
         addToDesktop (juce::ComponentPeer::windowIsTemporary | juce::ComponentPeer::windowHasDropShadow);

@@ -21,6 +21,8 @@ public:
     juce::String getWhat() const { return what; }
 
     void paint (juce::Graphics&) override;
+    bool keyPressed (const juce::KeyPress&) override { return true; }   // (nothing happens while it works)
+    void inputAttemptWhenModal() override {}
 
     // The bar on its own (the export window's bar is drawn the same way).
     static void paintBar (juce::Graphics&, juce::Rectangle<float>, double progress);

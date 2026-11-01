@@ -76,6 +76,8 @@ public:
 
     void systemRequestedQuit() override
     {
+        if (studio != nullptr && studio->isRendering())
+            return;   // (a render runs: quitting waits until it's done)
         if (window != nullptr)
             window->closeButtonPressed();
         else
@@ -109,6 +111,8 @@ private:
 
         void closeButtonPressed() override
         {
+            if (app.studio != nullptr && app.studio->isRendering())
+                return;   // (a render runs: closing waits until it's done)
             auto* view = dynamic_cast<MainView*> (getContentComponent());
             auto& studio = *app.studio;
             if (view == nullptr || ! studio.isModified())

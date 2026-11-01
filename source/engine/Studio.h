@@ -506,6 +506,16 @@ namespace pr7s
         // Render in Place, Freeze, a song's plug-ins loading): `progress` 0 to 1
         // and what it is; -1 when it's over (the progress box goes).
         std::function<void (double progress, const juce::String& what)> onProgress;
+        // Who runs a render's work (0.12.1, the owner's renders and freezes
+        // never came back): nobody set, here on this thread (the tests); the
+        // app sets one that runs it on a thread of its own while the screen's
+        // thread carries on (an instrument rendering offline may wait for its
+        // own loading threads, and they for the screen's thread: on the
+        // screen's thread itself, that wait never ended). It returns `work`'s answer.
+        std::function<bool (std::function<bool()> work)> renderRunner;
+        bool isRendering() const noexcept { return rendering; }
+        // How far the render running has got (the runner's loop shows it).
+        void reportRenderProgress();
         // The stage a job is at: its share of the whole, from `base`, `span` long.
         void setProgressStage (double base, double span, const juce::String& what);
         void endProgress();
@@ -640,6 +650,8 @@ namespace pr7s
         juce::File unsavedAudioFolder;
         juce::String loggedDevice;   // the audio device's last line in the session log
         double progressBase = 0.0, progressSpan = 1.0;
+        bool rendering = false;
+        std::atomic<double> renderDone { 0.0 };   // written by the render's thread
         juce::String progressWhat;
         std::optional<double> latencyOverride;
 

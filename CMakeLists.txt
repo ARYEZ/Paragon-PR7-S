@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonPR7S VERSION 0.12.0 LANGUAGES C CXX)
+project(ParagonPR7S VERSION 0.12.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -79,6 +79,7 @@ target_compile_definitions(PR7SCore
         JUCE_USE_CURL=0
         JUCE_PLUGINHOST_VST3=1      # it loads VST3 instruments and effects
         JUCE_PLUGINHOST_AU=0
+        JUCE_MODAL_LOOPS_PERMITTED=1   # (0.12.1: the screen's thread carries on while Render in Place / Freeze render on a thread of their own)
         PR7S_VERSION="${PROJECT_VERSION}")   # the studio's version, for the About text and the synth
 
 target_link_libraries(PR7SCore

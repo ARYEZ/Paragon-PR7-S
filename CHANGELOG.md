@@ -2,6 +2,22 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.12.1
+
+**Render in Place and Freeze no longer leave the studio stuck.** You found that Render in Place and Freeze could make PR7-S stop answering until you forced it to quit, while the log showed everything going normally.
+
+**What was wrong:** the export always rendered on a thread of its own. Render in Place and Freeze rendered on the studio's screen thread, the one that runs the windows, so nothing else could happen while they ran. That isn't safe with big instruments like Kontakt. Rendering offline, they wait for their own background threads to load samples, and those threads can wait for the screen thread to answer. On the screen thread itself, that wait never ends.
+
+**What changed:**
+- Render in Place and Freeze now render on a thread of their own, as the export always did. The screen thread carries on meanwhile.
+- The progress box takes the clicks and keys while they work, so nothing can change the song mid-render.
+- Closing the studio waits until the render is done.
+- The sound is the same: a test renders the same part both ways and checks every sample matches.
+
+**Honest notes:**
+- **A strong lead, not proof:** Kontakt's inner workings can't be seen from here. If it ever sticks again, send me the newest log in `%APPDATA%\Paragon PR7-S\Logs`. A **FROZEN** entry in it shows exactly what the screen thread was waiting for.
+- **No cancel yet:** you can't cancel a Render in Place or Freeze partway. The export still has CANCEL.
+
 ## 0.12.0
 
 **The Hub: a start window.** It works like the Hub you know, in the PR7 family's look: the pearl unit across the top with the PR7-S mark, and your songs below. It opens when the studio starts, and any time from the new **HUB** key in the header (or a key you give it in KEYS).

@@ -3333,6 +3333,8 @@ namespace pr7s
 
     void Studio::timerCallback()
     {
+        if (rendering)
+            return;   // (a render runs: the screen's thread carries on meanwhile, nothing to do here)
         // Writing automation: the position going back (the cycle came round)
         // ends a pass where it got to; a latched switch's pass moves on with
         // the song (it has no new values to say so).
@@ -3827,6 +3829,12 @@ namespace pr7s
             onProgress (base, what);
     }
 
+    void Studio::reportRenderProgress()
+    {
+        if (onProgress)
+            onProgress (progressBase + progressSpan * renderDone.load(), progressWhat);
+    }
+
     void Studio::endProgress()
     {
         progressBase = 0.0;
@@ -3840,13 +3848,24 @@ namespace pr7s
     {
         if (! beginExport (destination, options, error))
             return false;
-        // (On the screen's thread: Render in Place, Freeze. Its progress goes to the box.)
-        const auto rendered = renderExport ([this] (double done)
+        // Render in Place, Freeze: run by the renderRunner (the app: on a
+        // thread of its own); its progress noted for the screen to show.
+        rendering = true;
+        renderDone = 0.0;
+        const auto threaded = renderRunner != nullptr;
+        const auto work = [this, threaded]
         {
-            if (onProgress)
-                onProgress (progressBase + progressSpan * done, progressWhat);
-            return true;
-        });
+            return renderExport ([this, threaded] (double done)
+            {
+                renderDone = done;
+                if (! threaded && onProgress)
+                    onProgress (progressBase + progressSpan * done, progressWhat);
+                return true;
+            });
+        };
+        SessionLog::note (threaded ? "  Rendering on a thread of its own" : "  Rendering");
+        const auto rendered = threaded ? renderRunner (work) : work();
+        rendering = false;
         endExport();
         if (! rendered)
             error = "Couldn't write " + destination.getFullPathName();
