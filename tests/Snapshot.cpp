@@ -509,3 +509,38 @@ TEST_CASE ("Snapshot: a question box", "[.][snapshot-alert]")
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
+
+#include "ui/KeyCommandsPage.h"
+
+TEST_CASE ("Snapshot: the Key Commands window", "[.][snapshot-keys]")
+{
+    // PARAGON_SNAPSHOT_FINISH as the studio's: a Stream Deck key on Click, H moved, a macro.
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "keys.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        MainView view (studio);
+        view.setSize (1500, 900);
+        auto& map = view.getKeyMap();
+        map.assign ("Transport.Click", KeyCommands::parse ("Ctrl+Alt+F13"));
+        const auto m = map.addMacro ("Practice loop");
+        map.addToMacro (m, "Transport.LocatorsToSelection");
+        map.addToMacro (m, "Transport.Cycle");
+        map.addToMacro (m, "Transport.Click");
+        map.addToMacro (m, "Transport.Start");
+        map.assign (KeyCommands::Map::macroId ("Practice loop"), KeyCommands::parse ("Ctrl+Alt+F14"));
+        KeyCommandsPage page (map);
+        page.setSize (KeyCommandsPage::preferredWidth, KeyCommandsPage::preferredHeight);
+        page.selectMacro (0);
+        page.selectCommand ("Transport.Click");
+        page.assignKey (KeyCommands::parse ("Ctrl+Alt+F13"));
+        const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}

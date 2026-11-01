@@ -2,6 +2,42 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.11.0
+
+**Key commands and macros: your own shortcuts, and your Stream Deck.** The last of the five requests: any action in the studio can now have a key, or several, and you can chain actions into macros. Everything is set in a new **KEYS** window (the key is in the header, beside PLUGINS), laid out as Cubase's Key Commands dialog.
+
+**Using it with an Elgato Stream Deck**, as you do with Cubase:
+1. In KEYS, choose a command (or a macro).
+2. Click **CLICK HERE, THEN PRESS A KEY**, and press a combination nothing else uses, such as Ctrl+Alt+F13.
+3. In the Stream Deck app, add a **Hotkey** action to a button, set to the same combination.
+
+That button then runs the command. It works while a plug-in window is in front too, because those windows pass their keys to the studio.
+
+**The KEYS window:**
+- **The commands, by category:** Transport, File, Edit, Range, MIDI, Tool, Zoom, Project, Window, and your macros last. Each shows its keys, and a pink dot marks the ones you've changed. Actions that had no key before have a command now too: Play, Stop, Export, the imports, adding each kind of track, Add Tempo Track, Activate Tempo Track, Insert Tempo Event at Cursor, Plug-ins, Settings and KEYS itself.
+- **Search** by name, or **PRESS KEY** and press a key to see what it does.
+- **Filters:** All, Assigned, Customized or Unassigned.
+- **For the chosen command:**
+  - Its keys, each with **REMOVE**.
+  - **CLICK HERE, THEN PRESS A KEY** adds another key, and the other keys stay. If another command had that key, it moves to this one and the window says which command lost it.
+  - **RESET** puts its keys back to the defaults.
+- **DEFAULTS** sets every command back to its defaults (your macros stay). **CLEAR ALL** takes every key away. Both ask first.
+- **PRESETS:** save your set of keys and macros under a name, load one, or open the presets folder. Presets are XML files in Documents\Paragon PR7-S\Key Commands.
+- **EXPORT LIST** writes a page listing every command and its keys, to print or keep next to your Stream Deck's layout.
+
+**Macros:**
+- **NEW**, **DUPLICATE**, **DELETE** and **RENAME** (a double-click renames too).
+- **ADD COMMAND** puts the command chosen on the left into the macro, after the step chosen in the macro.
+- **REMOVE**, **UP** and **DOWN** edit the steps.
+- Choose a macro, then give it a key just like a command. Pressing that key runs its commands one after another. For example: Locators to Selection, Cycle, Click, Start.
+
+**What stays the same:** every key you already use works exactly as before, including the keys that depend on where you last clicked (the MIDI editor, ranges, parts). A key you give to a command runs it first. A default key you take away does nothing until you give it to something else. Your keys and macros are kept between sessions.
+
+**Honest notes:**
+- **Not tried with a real Stream Deck.** It's built on the Stream Deck's Hotkey action pressing keys, which works with any program. I couldn't try it with a real one here, and which keys your Stream Deck app can send (F13 and above, for example) depends on its version. If a combination doesn't arrive, pick another.
+- **Commands only:** macros run commands; they can't pause or wait between steps (Cubase's can't either).
+- **Not in KEYS:** keys inside the MIDI editor (its tools and Q, for example) are still its own.
+
 ## 0.10.0
 
 **The tempo track.** Songs can now change tempo as they go: a jump at a bar, or a gradual speed-up or slow-down, as Cubase's tempo track does it.

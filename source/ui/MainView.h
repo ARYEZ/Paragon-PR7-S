@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/KeyCommands.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include "engine/Studio.h"
@@ -57,7 +58,13 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    // Keys (0.11.0): one given to a command in KEYS runs it; a default key
+    // taken away does nothing; the rest are the studio's built-in keys (handleKey).
     bool keyPressed (const juce::KeyPress&) override;
+    bool handleKey (const juce::KeyPress&);
+    KeyCommands::Map& getKeyMap() noexcept { return keyMap; }
+    void openKeyCommands();   // the Key Commands window (KEYS)
+    juce::DocumentWindow* getKeyCommandsWindow() noexcept { return keysWindow.get(); }
     void mouseDown (const juce::MouseEvent&) override;   // also hears clicks in the arrangement, track list and editor
 
     // File actions (the window's close asks about unsaved changes through these).
@@ -175,6 +182,11 @@ public:
     ArrangeTools& getTools() noexcept { return tools; }
 
 private:
+    KeyCommands::Map keyMap;
+    juce::TextButton keysButton { "KEYS" };
+    std::unique_ptr<juce::DocumentWindow> keysWindow;
+    void registerCommands();
+    void saveKeyCommands();
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void scrollBarMoved (juce::ScrollBar*, double newRangeStart) override;
     void refreshHeader();

@@ -1,5 +1,6 @@
 #include "MainView.h"
 #include "engine/MidiImport.h"
+#include "ui/KeyCommandsPage.h"
 
 #include "ui/AutomationKeys.h"
 #include "ui/Logo.h"
@@ -116,6 +117,16 @@ MainView::MainView (pr7s::Studio& studioToUse)
     inspector.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
     inspector.onFindPlugins = [this] { openPlugins(); };
     pluginsButton.onClick = [this] { openPlugins(); };
+    keysButton.onClick = [this] { openKeyCommands(); };
+    keysButton.setTooltip ("Key Commands: give any action or macro a key (a Stream Deck's Hotkey buttons press them)");
+    for (auto* key : { &keysButton })
+    {
+        key->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
+        key->setColour (juce::TextButton::textColourOffId, ParagonColours::text);
+        key->setWantsKeyboardFocus (false);
+        addAndMakeVisible (*key);
+    }
+    registerCommands();
     settingsButton.onClick = [this] { openSettings(); };
     // Read and write automation for all tracks (the manual's toolbar buttons).
     for (auto* key : { &readAllButton, &writeAllButton })
@@ -417,6 +428,8 @@ void MainView::resized()
     settingsButton.setBounds (header.removeFromRight (92));
     header.removeFromRight (6);
     pluginsButton.setBounds (header.removeFromRight (86));
+    header.removeFromRight (6);
+    keysButton.setBounds (header.removeFromRight (66));
     // Wide: the header's keys (NEW to W) in the middle of the window.
     if (isWide())
     {
@@ -580,6 +593,17 @@ void MainView::ZoneDivider::mouseUp (const juce::MouseEvent&)
 
 //==============================================================================
 bool MainView::keyPressed (const juce::KeyPress& key)
+{
+    // The owner's key commands and macros first (KEYS), then the built-in keys.
+    auto swallowed = false;
+    if (keyMap.handle (key, swallowed))
+        return true;
+    if (swallowed)
+        return true;   // a default key the owner took away from its command
+    return handleKey (key);
+}
+
+bool MainView::handleKey (const juce::KeyPress& key)
 {
     const auto mods = key.getModifiers();
     const auto code = key.getKeyCode();
@@ -1460,6 +1484,21 @@ void MainView::openSettings()
     {
         juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->settingsWindow.reset(); });
     };
+}
+
+void MainView::openKeyCommands()
+{
+    if (keysWindow != nullptr)
+    {
+        keysWindow->toFront (true);
+        return;
+    }
+    auto window = std::make_unique<KeyCommandsWindow> (keyMap);
+    window->onClose = [safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->keysWindow.reset(); });
+    };
+    keysWindow = std::move (window);
 }
 
 void MainView::openPlugins()
