@@ -67,11 +67,17 @@ struct Timeline
     float xForBeat (double beat) const noexcept { return (float) ((beat - firstBeat) * pixelsPerBeat); }
     double beatForX (float x) const noexcept { return firstBeat + x / pixelsPerBeat; }
 
-    // The grid parts and the position snap to: the beat when zoomed in far
-    // enough to see it, else the bar.
+    // The grid (0.9.10, the manual's Snap with Grid Type "Use Quantize"): the
+    // song's quantize value (1/1 to 1/64, the toolbar's), a step for the
+    // locators; `snapGrid` what parts, ranges, points and the position snap
+    // to: the grid with Snap on (J), else nothing.
     double grid (const pr7s::Project& project) const noexcept
     {
-        return pixelsPerBeat >= 14.0 ? 4.0 / project.denominator : project.beatsPerBar();
+        return project.quantizeBeats > 0.0 ? project.quantizeBeats : 0.25;
+    }
+    double snapGrid (const pr7s::Project& project) const noexcept
+    {
+        return project.snapOn ? grid (project) : 0.0;
     }
 
     std::function<void()> onScrollOrZoom;   // the track list follows

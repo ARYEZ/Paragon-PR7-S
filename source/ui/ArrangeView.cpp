@@ -595,7 +595,7 @@ void ArrangeView::paint (juce::Graphics& g)
         if (const auto hit = partAt (hover))
         {
             const auto bounds = getPartBounds (hit->first, hit->second);
-            const auto beat = pr7s::snap (timeline.beatForX (hover.x), timeline.grid (project));
+            const auto beat = pr7s::snap (timeline.beatForX (hover.x), timeline.snapGrid (project));
             const auto x = timeline.xForBeat (beat);
             if (x > bounds.getX() && x < bounds.getRight())
             {
@@ -876,7 +876,7 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
         pointSelection = {};
     if (event.position.y < (float) Timeline::rulerHeight)
     {
-        dragStartBeat = juce::jmax (0.0, pr7s::snap (timeline.beatForX (event.position.x), grid));
+        dragStartBeat = juce::jmax (0.0, pr7s::snap (timeline.beatForX (event.position.x), timeline.snapGrid (project)));
         // Ctrl-click: the left locator here; Alt-click: the right one; both:
         // round the grid step clicked in (the manual's). Anywhere in the ruler:
         // with Ctrl or Alt held, a click never moves the playhead.
@@ -1045,9 +1045,11 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
             auto end = timeline.beatForX (juce::jmax (from.x, event.position.x));
             if (drag == Drag::newPart && ! event.mods.isCommandDown())
             {
-                const auto grid = timeline.grid (studio.getProject());
-                start = std::floor (start / grid + 1.0e-9) * grid;
-                end = juce::jmax (start + grid, std::ceil (end / grid - 1.0e-9) * grid);
+                if (const auto grid = timeline.snapGrid (studio.getProject()); grid > 0.0)
+                {
+                    start = std::floor (start / grid + 1.0e-9) * grid;
+                    end = juce::jmax (start + grid, std::ceil (end / grid - 1.0e-9) * grid);
+                }
             }
             start = juce::jmax (0.0, start);
             const auto x1 = timeline.xForBeat (start), x2 = timeline.xForBeat (end);
@@ -1060,7 +1062,7 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
     const auto& project = studio.getProject();
     // Ctrl: no snapping (while moving a part, Ctrl+Shift: Ctrl alone keeps it to one direction).
     const auto noSnap = event.mods.isCommandDown() && (drag != Drag::move || event.mods.isShiftDown());
-    const auto grid = noSnap ? 0.0 : timeline.grid (project);
+    const auto grid = noSnap ? 0.0 : timeline.snapGrid (project);
     const auto beat = timeline.beatForX (event.position.x);
     switch (drag)
     {
@@ -1347,7 +1349,7 @@ double ArrangeView::splitBeat (const juce::MouseEvent& event, const pr7s::Part&)
 {
     // Snapped to the grid (Ctrl: not).
     const auto beat = timeline.beatForX (event.position.x);
-    return event.mods.isCommandDown() ? beat : pr7s::snap (beat, timeline.grid (studio.getProject()));
+    return event.mods.isCommandDown() ? beat : pr7s::snap (beat, timeline.snapGrid (studio.getProject()));
 }
 
 void ArrangeView::cannotGlue()
@@ -1583,7 +1585,7 @@ void ArrangeView::showPartMenu (int trackId, int index)
     const auto several = ids.size() > 1;
     if (several)
         menu.addSectionHeader (juce::String ((int) ids.size()) + " PARTS SELECTED");
-    menu.addItem (3, "Edit notes (key editor)", ! isAudioTrack (trackId));
+    menu.addItem (3, "Edit notes (MIDI editor)", ! isAudioTrack (trackId));
     menu.addItem (1, several ? "Duplicate them (after them, Ctrl+D)" : "Duplicate (after it)");
     menu.addItem (9, several ? "Cut them (Ctrl+X)" : "Cut (Ctrl+X)");
     menu.addItem (10, several ? "Copy them (Ctrl+C)" : "Copy (Ctrl+C)");
@@ -1857,7 +1859,7 @@ void ArrangeView::automationDrag (const juce::MouseEvent& event)
             const auto upDownOnly = ctrl && ! alongOnly;
             auto beat = grabbed.beat + offset.x / timeline.pixelsPerBeat;
             if (! noSnap)
-                beat = pr7s::snap (beat, timeline.grid (studio.getProject()));
+                beat = pr7s::snap (beat, timeline.snapGrid (studio.getProject()));
             const auto beatShift = upDownOnly ? 0.0 : beat - grabbed.beat;
             const auto valueShift = alongOnly ? 0.0f : valueForY (area, yForValue (area, grabbed.value) + offset.y) - grabbed.value;
             // The moved points replace what's in the stretch they land on (as the manual has it).
@@ -1921,7 +1923,7 @@ void ArrangeView::automationUp()
         // A click: a point there (snapped along the song), unless it's on the
         // line between two points already (as the manual has it).
         const auto area = getLaneArea (pointSelection.busId, pointSelection.laneIndex);
-        const pr7s::AutomationPoint p { juce::jmax (0.0, pr7s::snap (timeline.beatForX (pointDownAt.x), timeline.grid (studio.getProject()))),
+        const pr7s::AutomationPoint p { juce::jmax (0.0, pr7s::snap (timeline.beatForX (pointDownAt.x), timeline.snapGrid (studio.getProject()))),
                                         valueForY (area, pointDownAt.y) };
         auto points = lane->points;
         const auto between = ! points.empty() && p.beat > points.front().beat && p.beat < points.back().beat;
@@ -2154,7 +2156,7 @@ std::vector<int> ArrangeView::tracksBetween (int fromIndex, int toIndex) const
 double ArrangeView::rangeBeat (const juce::MouseEvent& event) const
 {
     const auto beat = juce::jmax (0.0, timeline.beatForX (event.position.x));
-    return event.mods.isCommandDown() ? beat : pr7s::snap (beat, timeline.grid (studio.getProject()));
+    return event.mods.isCommandDown() ? beat : pr7s::snap (beat, timeline.snapGrid (studio.getProject()));
 }
 
 void ArrangeView::setRange (std::optional<pr7s::Studio::Range> newRange)
@@ -2260,7 +2262,7 @@ void ArrangeView::rangeDrag (const juce::MouseEvent& event)
         }
         case Drag::rangeMove:
         {
-            const auto grid = event.mods.isCommandDown() ? 0.0 : timeline.grid (studio.getProject());
+            const auto grid = event.mods.isCommandDown() ? 0.0 : timeline.snapGrid (studio.getProject());
             rangeMoveStart = juce::jmax (0.0, pr7s::snap (rangeBefore.start + timeline.beatForX (event.position.x) - rangeAnchor, grid));
             const auto count = (int) studio.getShownTracks().size();
             const auto span = (int) rangeBefore.trackIds.size();

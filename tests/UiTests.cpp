@@ -308,7 +308,7 @@ TEST_CASE ("The key editor in a window of its own, and back", "[ui][editor]")
     CHECK (view.isKeyEditorOpen());
     studio.renameTrack (trackId, "Guitar");   // any change: the title follows the part
     studio.dispatchPendingMessages();
-    CHECK (window->getName() == "Key Editor: Riff");
+    CHECK (window->getName() == "MIDI Editor: Riff");
 
     // Stretched wide (as across three screens): the editor fills it, and fits the whole part.
     // (How tall it can be is up to the system: macOS keeps a window within
@@ -455,10 +455,10 @@ TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inse
     findAll (view, keyboards);
     CHECK (keyboards.empty());
 
-    // Alt+F3 opens the mixer under the arrangement, down to the window's bottom.
+    // F3 opens the mixer where it was: under the arrangement at first, down to the window's bottom (0.9.10).
     auto& mixer = view.getMixer();
     auto& arrange = view.getArrangeView();
-    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key, juce::ModifierKeys::altModifier, 0)));
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key)));
     REQUIRE (view.isMixerOpen());
     CHECK_FALSE (view.isMixerInWindow());
     CHECK (mixer.isVisible());
@@ -553,7 +553,7 @@ TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inse
     CHECK_FALSE (view.isMixerOpen());
     CHECK (view.getMixerWindow() == nullptr);
     CHECK (mixer.getParentComponent() == &view);
-    // F3 again: the mixer in its own window (as Cubase's F3).
+    // F3 again: open where it was, in its own window.
     CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key)));
     REQUIRE (view.getMixerWindow() != nullptr);
     CHECK (view.isMixerOpen());
@@ -564,13 +564,33 @@ TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inse
     CHECK (view.getMixerWindow() == nullptr);
     CHECK (mixer.isVisible());
     CHECK_FALSE (view.isKeyEditorOpen());
-    // Docked and open, F3 moves it into its window; Alt+F3 again closes it from docked.
+    // Docked: F3 closes it, F3 opens it docked again; Alt+F3 takes it full screen.
     CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key)));
-    CHECK (view.getMixerWindow() != nullptr);
-    view.toggleMixerDocked();
-    CHECK (view.isMixerOpen());
-    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key, juce::ModifierKeys::altModifier, 0)));
     CHECK_FALSE (view.isMixerOpen());
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key)));
+    CHECK (view.isMixerOpen());
+    CHECK_FALSE (view.isMixerInWindow());
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key, juce::ModifierKeys::altModifier, 0)));
+    CHECK (view.isMixerInWindow());
+    REQUIRE (view.getMixerWindow() != nullptr);
+    view.setMixerInWindow (false);
+    view.openMixer();
+
+    // F2 the MIDI editor (Alt+F2: its own window), F1 the Inspector.
+    view.closeMixer();
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F2Key)));
+    CHECK (view.isKeyEditorOpen());
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F2Key, juce::ModifierKeys::altModifier, 0)));
+    CHECK (view.isKeyEditorInWindow());
+    CHECK (view.isKeyEditorOpen());
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F2Key, juce::ModifierKeys::altModifier, 0)));
+    CHECK_FALSE (view.isKeyEditorInWindow());
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F2Key)));
+    CHECK_FALSE (view.isKeyEditorOpen());
+    const auto inspectorShown = view.isInspectorShown();
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F1Key)));
+    CHECK (view.isInspectorShown() != inspectorShown);
+    view.keyPressed (juce::KeyPress (juce::KeyPress::F1Key));
     view.openMixer();
 
     // It draws in every finish.
@@ -1317,6 +1337,7 @@ TEST_CASE ("The editing tools: keys and the toolbar; SPLIT, GLUE, ERASE, MUTE, D
     view.setSize (1500, 900);
     const auto track = studio.getProject().tracks[0].id;
     studio.addPart (track, { 4.0, 8.0, "Riff", { { 0.0, 1.0, 60, 0.8f }, { 6.0, 1.0, 64, 0.8f } } });
+    studio.setQuantizeBeats (1.0);   // (0.9.10: snap to the quantize value; a beat, as this test was written for)
     studio.dispatchPendingMessages();
     auto& arrange = view.getArrangeView();
     auto& tools = view.getTools();
@@ -1605,6 +1626,7 @@ TEST_CASE ("The locators: Ctrl-click the left, Alt-click the right, Ctrl+Alt-cli
     view.setSize (1500, 900);
     const auto track = studio.getProject().tracks[0].id;
     studio.addPart (track, { 8.0, 4.0, "Riff", {} });
+    studio.setQuantizeBeats (1.0);   // (0.9.10: the grid step is the quantize value: a beat here)
     studio.setCycle (4.0, 16.0);
     studio.dispatchPendingMessages();
     auto& arrange = view.getArrangeView();
@@ -1628,7 +1650,7 @@ TEST_CASE ("The locators: Ctrl-click the left, Alt-click the right, Ctrl+Alt-cli
     click (x (24.0), cmd);  // the left past the right: they swap
     CHECK (project.loopStart == 20.0);
     CHECK (project.loopEnd == 24.0);
-    click (x (9.5), juce::ModifierKeys (juce::ModifierKeys::commandModifier | juce::ModifierKeys::altModifier));   // both: round the grid step clicked in (a beat at this zoom)
+    click (x (9.5), juce::ModifierKeys (juce::ModifierKeys::commandModifier | juce::ModifierKeys::altModifier));   // both: round the grid step clicked in (the quantize value, 1/4)
     CHECK (project.loopStart == 9.0);
     CHECK (project.loopEnd == 10.0);
 
@@ -1876,7 +1898,9 @@ TEST_CASE ("A wide window (spanning screens): the position screen centred at its
     view.setSize (1500, 900);
     CHECK_FALSE (view.isWide());
     CHECK (tools.getY() >= transport.getBottom());
-    CHECK (transport.getPositionScreen().getWidth() > 300.0f);
+    CHECK (transport.getPositionScreen().getWidth() > 140.0f);   // (0.9.10: POSITION and TIME, two screens alike)
+    CHECK (transport.getTimeScreen().getWidth() == transport.getPositionScreen().getWidth());
+    CHECK (transport.getTimeScreen().getX() > transport.getPositionScreen().getRight());
 
     // Three screens.
     CHECK_FALSE (view.isMixerOpen());
@@ -1892,8 +1916,8 @@ TEST_CASE ("A wide window (spanning screens): the position screen centred at its
     view.setSize (5700, 1000);
     CHECK (view.getMixer().isRackShown());
     const auto screen = transport.getPositionScreen();
-    CHECK (screen.getWidth() == (float) TransportBar::widePositionWidth);
-    CHECK_THAT (transport.getX() + screen.getCentreX(), WithinAbs (view.getWidth() * 0.5f, 300.0f));   // near the middle
+    CHECK (screen.getWidth() + transport.getTimeScreen().getWidth() + 12.0f == (float) TransportBar::widePositionWidth);
+    CHECK_THAT (transport.getX() + screen.getRight(), WithinAbs (view.getWidth() * 0.5f, 300.0f));   // near the middle
     // The keys on its left, the tools on its right (on the transport, no row of their own).
     auto* clickKey = buttonNamed (transport, "CLICK");
     REQUIRE (clickKey != nullptr);
@@ -1906,19 +1930,18 @@ TEST_CASE ("A wide window (spanning screens): the position screen centred at its
     // AUTO-SCROLL just before HOME.
     CHECK (view.getAutoScrollButton().getRight() < buttonNamed (transport, "|<")->getX() + transport.getX());
     CHECK (view.getAutoScrollButton().getRight() > buttonNamed (transport, "|<")->getX() + transport.getX() - 50);
-    CHECK (tools.getX() > transport.getX() + (int) screen.getRight());
+    CHECK (tools.getX() > transport.getX() + (int) transport.getTimeScreen().getRight());
     CHECK (tools.getBottom() <= transport.getBottom());
     // All of it on the middle screen (1920 to 3840): no screen edge through it.
     CHECK (buttonNamed (transport, "|<")->getX() + transport.getX() >= 1920);
     CHECK (tools.getRight() <= 3840);
     CHECK (tools.getY() >= transport.getY());
     CHECK (view.getArrangeView().getY() < transport.getBottom() + MainView::toolbarHeight);   // the tracks have the row's room
-    // The header's keys: NEW to W in the middle.
+    // The header's keys: NEW to the quantize value in the middle.
     auto* newKey = buttonNamed (view, "NEW");
-    auto* mixerKey = buttonNamed (view, "MIXER");
+    auto& lastKey = view.getQuantizeButton();
     REQUIRE (newKey != nullptr);
-    REQUIRE (mixerKey != nullptr);
-    CHECK (std::abs ((newKey->getX() + mixerKey->getRight()) / 2 - view.getWidth() / 2) < 60);   // (R and W go a little past MIXER)
+    CHECK (std::abs ((newKey->getX() + lastKey.getRight()) / 2 - view.getWidth() / 2) < 4);
     CHECK (newKey->getX() > 2000);
 }
 
@@ -2597,4 +2620,158 @@ TEST_CASE ("Typing a value: the box opens on the fader with its value, Enter set
     CHECK (studio.getProject().findTrack (track)->volumeDb == -9.0f);
     CHECK (findBox() == nullptr);   // closed
     view.removeFromDesktop();
+}
+
+TEST_CASE ("Snap and the quantize value (0.9.10): the header's SNAP (J) and 1/1 to 1/64; parts and the position snap to it, or not; saved with the song", "[ui][snap]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& snap = view.getSnapButton();
+    auto& quantize = view.getQuantizeButton();
+    studio.dispatchPendingMessages();
+    CHECK (snap.isVisible());
+    CHECK (quantize.isVisible());
+    CHECK (snap.getToggleState());              // on by default
+    CHECK (quantize.getButtonText() == "1/16");
+    // The INSPECTOR, KEY EDITOR and MIXER keys are gone (F1, F2, F3).
+    for (const auto* name : { "MIXER", "INSPECTOR", "KEY EDITOR" })
+    {
+        const auto* gone = buttonNamed (view, name);
+        CHECK ((gone == nullptr || ! gone->isVisible()));
+    }
+
+    auto& arrange = view.getArrangeView();
+    auto& timeline = view.getTimeline();
+    const auto& project = studio.getProject();
+    CHECK (timeline.snapGrid (project) == 0.25);
+    studio.setQuantizeBeats (1.0);              // 1/4
+    studio.dispatchPendingMessages();
+    CHECK (quantize.getButtonText() == "1/4");
+    CHECK (timeline.snapGrid (project) == 1.0);
+    // J: off; nothing snaps; the step (Ctrl+Alt in the ruler) is still the quantize value.
+    CHECK (view.keyPressed (juce::KeyPress ('j')));
+    studio.dispatchPendingMessages();
+    CHECK_FALSE (project.snapOn);
+    CHECK_FALSE (snap.getToggleState());
+    CHECK (timeline.snapGrid (project) == 0.0);
+    CHECK (timeline.grid (project) == 1.0);
+    snap.onClick();
+    CHECK (project.snapOn);
+    studio.setQuantizeBeats (4.0 / 64.0);
+    studio.dispatchPendingMessages();
+    CHECK (quantize.getButtonText() == "1/64");
+    juce::ignoreUnused (arrange);
+
+    // Saved and opened again.
+    studio.setSnap (false);
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("pr7s-snap.pr7s");
+    REQUIRE (studio.save (file));
+    Studio other (false);
+    juce::String problems;
+    REQUIRE (other.open (file, problems));
+    CHECK_FALSE (other.getProject().snapOn);
+    CHECK (other.getProject().quantizeBeats == 4.0 / 64.0);
+    file.deleteFile();
+}
+
+TEST_CASE ("Velocity handles (0.9.10, the manual's Controller Event Editor): a box round the selected notes' bars; move, scale, tilt, squash; one undo step", "[ui][editor][velocity]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    view.setKeyEditorSize (100);
+    const auto trackId = studio.getProject().tracks[0].id;
+    Part riff { 0.0, 8.0, "Riff", {} };
+    for (int i = 0; i < 4; ++i)
+        riff.notes.push_back ({ i * 1.0, 0.5, 60, 0.3f + 0.1f * (float) i });   // 0.3, 0.4, 0.5, 0.6
+    studio.addPart (trackId, riff);
+    view.getArrangeView().select (trackId, 0);
+    view.openKeyEditor();
+    studio.dispatchPendingMessages();
+    auto& editor = view.getKeyEditor();
+    REQUIRE (editor.getPart() != nullptr);
+    const auto velocities = [&]
+    {
+        std::vector<float> v;
+        for (const auto& n : editor.getPart()->notes)
+            v.push_back (n.velocity);
+        return v;
+    };
+    const auto lane = editor.getVelocityArea().reduced (0.0f, 6.0f);
+    const auto unit = lane.getHeight();   // pixels for the whole of 0 to 1
+
+    // One note selected: no box.
+    editor.selectNotes ({ 0 });
+    CHECK (editor.getVelocityBox().isEmpty());
+    // All four: a box from the first bar to the last, up to the loudest.
+    editor.selectNotes ({ 0, 1, 2, 3 });
+    const auto box = editor.getVelocityBox();
+    REQUIRE_FALSE (box.isEmpty());
+    CHECK_THAT (box.getY(), WithinAbs (lane.getBottom() - unit * 0.6f, 0.5));
+    CHECK (box.getBottom() == lane.getBottom());
+    using H = KeyEditor::VelocityHandle;
+    CHECK (editor.velocityHandleAt ({ box.getX() + box.getWidth() * 0.3f, box.getY() }) == H::move);
+    CHECK (editor.velocityHandleAt ({ box.getCentreX(), box.getY() }) == H::scale);
+    CHECK (editor.velocityHandleAt (box.getTopLeft()) == H::tiltLeft);
+    CHECK (editor.velocityHandleAt (box.getTopRight()) == H::tiltRight);
+    CHECK (editor.velocityHandleAt ({ box.getRight(), box.getCentreY() }) == H::scaleCentre);
+    CHECK (editor.velocityHandleAt (box.getCentre().translated (0.0f, 10.0f)) == H::none);
+
+    const auto dragBy = [&] (juce::Point<float> from, float dy)
+    {
+        const auto to = from.translated (0.0f, dy);
+        editor.mouseDown (mouseAt (editor, from, from));
+        for (int step = 1; step <= 4; ++step)
+            editor.mouseDrag (mouseAt (editor, from + (to - from) * ((float) step / 4.0f), from));
+        editor.mouseUp (mouseAt (editor, to, from));
+        studio.dispatchPendingMessages();
+    };
+    const auto close = [] (std::vector<float> got, std::vector<float> want)
+    {
+        REQUIRE (got.size() == want.size());
+        for (size_t i = 0; i < got.size(); ++i)
+            CHECK_THAT (got[i], WithinAbs (want[i], 0.012));
+    };
+
+    // Move: all up by a tenth.
+    dragBy ({ box.getX() + box.getWidth() * 0.3f, box.getY() }, -unit * 0.1f);
+    close (velocities(), { 0.4f, 0.5f, 0.6f, 0.7f });
+    // One undo step puts them back.
+    studio.undo();
+    studio.dispatchPendingMessages();
+    close (velocities(), { 0.3f, 0.4f, 0.5f, 0.6f });
+
+    // Scale (from 0): the loudest 0.6 to 0.3 halves them all.
+    editor.selectNotes ({ 0, 1, 2, 3 });
+    dragBy ({ editor.getVelocityBox().getCentreX(), editor.getVelocityBox().getY() }, unit * 0.3f);
+    close (velocities(), { 0.15f, 0.2f, 0.25f, 0.3f });
+    studio.undo();
+    studio.dispatchPendingMessages();
+
+    // Tilt right: the right end up by 0.2, the left end stays.
+    editor.selectNotes ({ 0, 1, 2, 3 });
+    const auto b = editor.getVelocityBox();
+    dragBy (b.getTopRight(), -unit * 0.2f);
+    const auto tilted = velocities();
+    CHECK_THAT (tilted[0], WithinAbs (0.3f + 0.2f * (2.0f + 6.0f) / b.getWidth() * 0.0f + 0.2f * ((editor.xForBeat (0.0) + 2.0f - b.getX()) / b.getWidth()), 0.012));
+    CHECK (tilted[3] > 0.6f + 0.15f);
+    CHECK (tilted[1] - 0.4f < tilted[3] - 0.6f);   // more on the right
+    studio.undo();
+    studio.dispatchPendingMessages();
+
+    // Squash towards the middle (0.45): dragging the right edge's handle down by a quarter halves the spread.
+    editor.selectNotes ({ 0, 1, 2, 3 });
+    const auto c = editor.getVelocityBox();
+    dragBy ({ c.getRight(), c.getCentreY() }, unit * 0.25f);
+    close (velocities(), { 0.375f, 0.425f, 0.475f, 0.525f });
+
+    // Never past 1 or below 1/127.
+    editor.selectNotes ({ 0, 1, 2, 3 });
+    const auto d = editor.getVelocityBox();
+    dragBy ({ d.getX() + d.getWidth() * 0.3f, d.getY() }, -unit * 2.0f);
+    for (const auto v : velocities())
+        CHECK (v == 1.0f);
 }

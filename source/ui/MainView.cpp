@@ -25,7 +25,11 @@ MainView::MainView (pr7s::Studio& studioToUse)
         button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
         button->setColour (juce::TextButton::textColourOffId, ParagonColours::text);
         button->setWantsKeyboardFocus (false);
-        addAndMakeVisible (*button);
+        // (0.9.10: the editor's, mixer's and Inspector's keys are kept for their lit state but not shown: F1, F2, F3.)
+        if (button == &editorButton || button == &mixerButton || button == &inspectorButton)
+            addChildComponent (*button);
+        else
+            addAndMakeVisible (*button);
     }
     newButton.setTooltip ("A new song (Ctrl+N)");
     openButton.setTooltip ("Open a song (Ctrl+O)");
@@ -62,9 +66,9 @@ MainView::MainView (pr7s::Studio& studioToUse)
     };
     undoButton.setTooltip ("Undo (Ctrl+Z)");
     redoButton.setTooltip ("Redo (Ctrl+Shift+Z)");
-    editorButton.setTooltip ("The key editor: the selected part's notes (Ctrl+E; or double-click a part)");
+    editorButton.setTooltip ("The MIDI editor: the selected part's notes (F2 or Ctrl+E; or double-click a part)");
     editorButton.setColour (juce::TextButton::textColourOnId, ParagonColours::accent);
-    mixerButton.setTooltip ("The mixer under the arrangement (Alt+F3). F3: the mixer in a window of its own");
+    mixerButton.setTooltip ("The mixer (F3; Alt+F3: docked or full screen)");
     mixerButton.setColour (juce::TextButton::textColourOnId, ParagonColours::accent);
     pluginsButton.setTooltip ("Find your VST3 instruments and effects");
     settingsButton.setTooltip ("Audio interface, MIDI inputs and the finish");
@@ -106,6 +110,18 @@ MainView::MainView (pr7s::Studio& studioToUse)
     writeAllButton.getProperties().set (ParagonLookAndFeel::litColourProperty, (juce::int64) AutomationKeys::writeColour.getARGB());
     readAllButton.setTooltip ("Read automation for all tracks on or off (Alt+R): lit while any track's R is on");
     writeAllButton.setTooltip ("Write automation for all tracks on or off (Alt+W): lit while any track's W is on");
+    // Snap on/off and the quantize value (0.9.10: the manual's Snap and Quantize Presets on the toolbar).
+    for (auto* key : { &snapButton, &quantizeButton })
+    {
+        key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        key->setWantsKeyboardFocus (false);
+        addAndMakeVisible (*key);
+    }
+    quantizeButton.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    snapButton.setTooltip ("Snap (J): parts, ranges, notes' positions and the playhead snap to the quantize value (lit: on)");
+    quantizeButton.setTooltip ("The quantize value: what Snap snaps to (1/1 to 1/64)");
+    snapButton.onClick = [this] { studio.setSnap (! studio.getProject().snapOn); };
+    quantizeButton.onClick = [this] { showQuantizeMenu(); };
     readAllButton.onClick = [this] { studio.setAutomationReadAll (! studio.anyAutomationRead()); };
     writeAllButton.onClick = [this] { studio.setAutomationWriteAll (! studio.anyAutomationWrite()); };
 
@@ -292,12 +308,14 @@ void MainView::refreshHeader()
     if (editorZone.window != nullptr)
     {
         const auto* part = keyEditor.getPart();
-        editorZone.window->setName ("Key Editor: " + (part != nullptr && part->name.isNotEmpty() ? part->name : juce::String ("no part")));
+        editorZone.window->setName ("MIDI Editor: " + (part != nullptr && part->name.isNotEmpty() ? part->name : juce::String ("no part")));
     }
     undoButton.setEnabled (studio.canUndo());
     redoButton.setEnabled (studio.canRedo());
     readAllButton.setToggleState (studio.anyAutomationRead(), juce::dontSendNotification);
     writeAllButton.setToggleState (studio.anyAutomationWrite(), juce::dontSendNotification);
+    snapButton.setToggleState (studio.getProject().snapOn, juce::dontSendNotification);
+    quantizeButton.setButtonText (quantizeName (studio.getProject().quantizeBeats));
     const auto file = studio.getFile();
     const auto title = "Paragon PR7-S - " + (file == juce::File() ? juce::String ("Untitled") : file.getFileNameWithoutExtension())
                      + (studio.isModified() ? " *" : "");
@@ -369,25 +387,24 @@ void MainView::resized()
         header.removeFromLeft (6);
     }
     header.removeFromLeft (18);
-    inspectorButton.setBounds (header.removeFromLeft (96));
-    header.removeFromLeft (6);
-    editorButton.setBounds (header.removeFromLeft (100));
-    header.removeFromLeft (6);
-    mixerButton.setBounds (header.removeFromLeft (76));
-    header.removeFromLeft (18);
+    // (0.9.10: no INSPECTOR, KEY EDITOR or MIXER keys, the owner asked: F1, F2, F3.)
     readAllButton.setBounds (header.removeFromLeft (34));
     header.removeFromLeft (4);
     writeAllButton.setBounds (header.removeFromLeft (34));
+    header.removeFromLeft (18);
+    snapButton.setBounds (header.removeFromLeft (56));
+    header.removeFromLeft (4);
+    quantizeButton.setBounds (header.removeFromLeft (66));
     settingsButton.setBounds (header.removeFromRight (92));
     header.removeFromRight (6);
     pluginsButton.setBounds (header.removeFromRight (86));
     // Wide: the header's keys (NEW to W) in the middle of the window.
     if (isWide())
     {
-        const auto first = newButton.getX(), last = writeAllButton.getRight();
+        const auto first = newButton.getX(), last = quantizeButton.getRight();
         const auto shift = juce::jmax (0, (getWidth() - (last - first)) / 2 - first);
         for (auto* key : { &newButton, &openButton, &saveButton, &saveAsButton, &importButton, &exportButton, &undoButton, &redoButton,
-                           &inspectorButton, &editorButton, &mixerButton, &readAllButton, &writeAllButton })
+                           &readAllButton, &writeAllButton, &snapButton, &quantizeButton })
             key->setTopLeftPosition (key->getX() + shift, key->getY());
     }
 
@@ -679,7 +696,11 @@ bool MainView::keyPressed (const juce::KeyPress& key)
         }
     }
 
-    if (key.getKeyCode() == juce::KeyPress::F3Key)      { mods.isAltDown() ? toggleMixerDocked() : toggleMixerWindow(); return true; }
+    // F1 the Inspector, F2 the MIDI editor, F3 the mixer (0.9.10, the owner's
+    // keys); Alt+F2 / Alt+F3 move the editor / mixer between docked and full screen.
+    if (key.getKeyCode() == juce::KeyPress::F1Key)      { toggleInspector(); return true; }
+    if (key.getKeyCode() == juce::KeyPress::F2Key)      { mods.isAltDown() ? toggleZonePlace (editorZone) : toggleZone (editorZone); return true; }
+    if (key.getKeyCode() == juce::KeyPress::F3Key)      { mods.isAltDown() ? toggleZonePlace (mixerZone) : toggleZone (mixerZone); return true; }
     if (isKeyEditorOpen() && key == juce::KeyPress::escapeKey) { closeKeyEditor(); return true; }
     if (isMixerOpen() && key == juce::KeyPress::escapeKey)     { closeMixer(); return true; }
     if (key == juce::KeyPress::spaceKey)                { studio.togglePlay(); return true; }
@@ -767,6 +788,7 @@ bool MainView::keyPressed (const juce::KeyPress& key)
     if (letter == 'R' || key.getTextCharacter() == '*') { studio.record(); return true; }
     if (key.getTextCharacter() == '/')                  { studio.setCycleOn (! studio.getProject().loopOn); return true; }
     if (letter == 'C')                                  { studio.setClick (! studio.getProject().click); return true; }
+    if (letter == 'J')                                  { studio.setSnap (! studio.getProject().snapOn); return true; }   // the manual's Snap On/Off
     return false;
 }
 
@@ -853,6 +875,53 @@ void MainView::placeZone (Zone& zone)
     }
     resized();
     repaint();
+}
+
+juce::String MainView::quantizeName (double beats)
+{
+    // In notes: 4 beats is 1/1, a beat 1/4, a quarter beat 1/16.
+    const auto denominator = juce::roundToInt (4.0 / beats);
+    return "1/" + juce::String (denominator);
+}
+
+void MainView::showQuantizeMenu()
+{
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("QUANTIZE (WHAT SNAP SNAPS TO)");
+    for (const auto denominator : { 1, 2, 4, 8, 16, 32, 64 })
+    {
+        const auto beats = 4.0 / denominator;
+        menu.addItem (denominator, "1/" + juce::String (denominator), true, std::abs (studio.getProject().quantizeBeats - beats) < 1.0e-9);
+    }
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&quantizeButton),
+                        [safe = juce::Component::SafePointer<MainView> (this)] (int chosen)
+                        {
+                            if (safe != nullptr && chosen > 0)
+                                safe->studio.setQuantizeBeats (4.0 / chosen);
+                        });
+}
+
+void MainView::toggleZone (Zone& zone)
+{
+    zone.open ? closeZone (zone) : openZone (zone);
+}
+
+void MainView::toggleZonePlace (Zone& zone)
+{
+    // Docked <-> its own window, full screen; open either way.
+    const auto toWindow = ! zone.inWindow;
+    if (! zone.open)
+        zone.open = true;
+    setZoneInWindow (zone, toWindow);
+    if (&zone == &editorZone)
+        keysToEditor = true;
+    if (toWindow && zone.window != nullptr)
+    {
+        // Full screen on the screen the studio's middle is on (the middle one of three).
+        const auto& displays = juce::Desktop::getInstance().getDisplays();
+        if (const auto* display = displays.getDisplayForPoint (getScreenBounds().getCentre()))
+            zone.window->setBounds (display->userArea);
+    }
 }
 
 void MainView::toggleMixerWindow()

@@ -477,3 +477,21 @@ TEST_CASE ("Snapshot: the settings page", "[.][snapshot-settings]")
     REQUIRE (stream.openedOk());
     REQUIRE (juce::PNGImageFormat().writeImageToStream (image, stream));
 }
+
+// A question box, as the app shows them (0.9.10: pearl black, white text, the PR7-S mark).
+TEST_CASE ("Snapshot: a question box", "[.][snapshot-alert]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "alert.png");
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        juce::AlertWindow box ("Delete track", "Delete \"lead guitars\" and its parts? This can't be undone.", juce::MessageBoxIconType::QuestionIcon);
+        box.addButton ("Delete", 1);
+        box.addButton ("Cancel", 0);
+        const auto image = box.createComponentSnapshot (box.getLocalBounds(), true, 2.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}

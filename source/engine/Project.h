@@ -190,6 +190,9 @@ namespace pr7s
         bool loopOn = false;                  // CYCLE
         double loopStart = 0.0, loopEnd = 16.0;
         bool click = false;                   // the metronome
+        // Snap (J) and the quantize value, in beats (0.25: 1/16), the toolbar's (0.9.10, the manual's Snap and Quantize Presets).
+        bool snapOn = true;
+        double quantizeBeats = 0.25;
         std::vector<Track> tracks;
         float masterVolumeDb = 0.0f;          // the master bus: every track, then these effects, then this volume
         std::vector<Insert> masterInserts;

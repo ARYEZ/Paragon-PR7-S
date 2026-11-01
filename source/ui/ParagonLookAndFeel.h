@@ -113,6 +113,11 @@ public:
                                bool highlighted, bool down) override;
 
     void drawButtonText (juce::Graphics&, juce::TextButton&, bool highlighted, bool down) override;
+    // Question and message boxes (0.9.10, the owner asked): pearl black, white text, the PR7-S mark for the icon.
+    void drawAlertBox (juce::Graphics&, juce::AlertWindow&, const juce::Rectangle<int>& textArea, juce::TextLayout&) override;
+    juce::Font getAlertWindowTitleFont() override;
+    juce::Font getAlertWindowMessageFont() override;
+    juce::Font getAlertWindowFont() override;
     // Scroll bars: a dark track and an orange thumb (JUCE's own is blue: not the family's).
     void drawScrollbar (juce::Graphics&, juce::ScrollBar&, int x, int y, int width, int height, bool isScrollbarVertical,
                         int thumbStartPosition, int thumbSize, bool isMouseOver, bool isMouseDown) override;

@@ -157,6 +157,8 @@ public:
     TransportBar& getTransport() noexcept { return transport; }
     KeyEditor& getKeyEditor() noexcept { return keyEditor; }
     MixerView& getMixer() noexcept { return mixer; }
+    juce::TextButton& getSnapButton() noexcept { return snapButton; }
+    juce::TextButton& getQuantizeButton() noexcept { return quantizeButton; }
 
     static constexpr int headerHeight = 52, transportHeight = 112, toolbarHeight = 32, trackListWidth = 300;
     // From this wide (spanning screens), the wide layout: the header's keys and the transport's position
@@ -187,6 +189,10 @@ private:
     void closeZone (Zone&);
     void setZoneInWindow (Zone&, bool);
     void placeZone (Zone&);
+    void showQuantizeMenu();
+    static juce::String quantizeName (double beats);
+    void toggleZone (Zone&);        // F2 / F3: open or closed, where it was
+    void toggleZonePlace (Zone&);   // Alt+F2 / Alt+F3: docked or full screen
 
     pr7s::Studio& studio;
     Timeline timeline;
@@ -213,9 +219,10 @@ private:
 
     juce::TextButton newButton { "NEW" }, openButton { "OPEN" }, saveButton { "SAVE" }, saveAsButton { "SAVE AS" }, importButton { "IMPORT" }, exportButton { "EXPORT" },
                      undoButton { "UNDO" }, redoButton { "REDO" }, editorButton { "KEY EDITOR" }, mixerButton { "MIXER" }, inspectorButton { "INSPECTOR" },
-                     pluginsButton { "PLUGINS" }, settingsButton { "SETTINGS" }, readAllButton { "R" }, writeAllButton { "W" };
+                     pluginsButton { "PLUGINS" }, settingsButton { "SETTINGS" }, readAllButton { "R" }, writeAllButton { "W" },
+                     snapButton { "SNAP" }, quantizeButton { "1/16" };   // (0.9.10)
     // After the editor and the mixer: their windows go first.
-    Zone editorZone { keyEditorHolder, editorButton, "Key Editor", "keyEditor", false, false, {} },
+    Zone editorZone { keyEditorHolder, editorButton, "MIDI Editor", "keyEditor", false, false, {} },
          mixerZone { mixer, mixerButton, "Mixer", "mixer", false, false, {} };
     std::map<int, std::unique_ptr<Windows::Instrument>> instrumentWindows;
     std::map<juce::AudioProcessor*, std::unique_ptr<Windows::Instrument>> effectWindows;

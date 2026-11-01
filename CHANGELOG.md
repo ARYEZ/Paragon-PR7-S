@@ -2,6 +2,40 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.9.10
+
+Your six tweaks.
+
+**Question boxes in the family's look.** The boxes that ask before something happens (Delete track, New song, and so on) are black pearl with the family's red glow round the edge. The text is white Bebas, and the PR7-S mark takes the place of the round question mark.
+
+**Two main screens: POSITION and TIME.** The middle screen is split into two identical screens: bars and beats on the left, minutes and seconds on the right. Both are in Bebas, larger than the other screens since they're the main values. Each figure has a cell of its own width, so the numbers don't jiggle as they count.
+
+**F1, F2, F3.** The INSPECTOR, KEY EDITOR and MIXER keys are gone from the header.
+- **F1:** the Inspector.
+- **F2:** the MIDI editor (the key editor's new name), opened or closed where it was last.
+- **F3:** the mixer, the same way.
+- **Alt+F2 / Alt+F3:** move the MIDI editor or the mixer between docked and its own window. The window fills the screen the studio is on (the middle one of your three).
+- **Ctrl+E:** still opens the MIDI editor.
+- **Changed:** F3 used to open the mixer's window and Alt+F3 the docked mixer (the manual's keys). They now follow your scheme.
+
+**SNAP and the quantize value, on the header** (as the manual's Snap and Quantize Presets on its toolbar).
+- **SNAP (J):** when lit, parts, ranges, the playhead and automation points snap to the quantize value. Off, nothing snaps.
+- **The value key (1/16 ▾):** 1/1, 1/2, 1/4, 1/8, 1/16, 1/32 or 1/64. Both are saved with the song.
+- **Changed:** the arrangement's grid used to follow the zoom (beats when zoomed in, bars when out). It's now the quantize value, like the manual's "Use Quantize" grid type. Ctrl while dragging still turns snapping off for that drag.
+- The MIDI editor keeps its own grid, as the manual's editor has its own.
+
+**The MIDI editor's panel: half as wide, one column.**
+- Every key is the same size, in one line: WINDOW, CLOSE, SELECT, DRAW, SPLIT, ERASE, the grid, QUANTIZE, AUTO-SCROLL, SCROLL MODE, the size, LOW, MID, HIGH, RANGES. The selected notes' details are at the foot.
+- When the editor is shorter than the column (docked at 200%), the column scrolls with the mouse wheel.
+
+**Velocity handles** (the manual's Controller Event Editor). Select two or more notes and a box appears round their velocity bars, with five handles:
+- **The top edge:** drag up or down to move them all together.
+- **The middle of the top edge:** scale them, so the loud ones change more than the quiet ones.
+- **A top corner:** tilt that end, for a crescendo or a fade. The other end stays.
+- **The middle of the right edge:** squash them towards their middle, or spread them out.
+- Each drag is one undo step. Velocities stop at 127 and at 1.
+- **Not done:** the manual's Alt variants (compress left/right, scale around the relative centre) and Stretch (that one moves notes in time).
+
 ## 0.9.9
 
 Fixes for the sticking, slow renders and silent tracks you reported, plus two changes you asked for.

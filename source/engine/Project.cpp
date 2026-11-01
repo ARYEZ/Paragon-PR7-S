@@ -184,6 +184,8 @@ namespace pr7s
         xml->setAttribute ("loopStart", loopStart);
         xml->setAttribute ("loopEnd", loopEnd);
         xml->setAttribute ("click", click);
+        xml->setAttribute ("snap", snapOn);
+        xml->setAttribute ("quantize", quantizeBeats);
         xml->setAttribute ("nextTrackId", nextTrackId);
 
         for (const auto& track : tracks)
@@ -302,6 +304,8 @@ namespace pr7s
         project.loopStart = juce::jmax (0.0, xml.getDoubleAttribute ("loopStart", 0.0));
         project.loopEnd = juce::jmax (project.loopStart + 0.25, xml.getDoubleAttribute ("loopEnd", 16.0));
         project.click = xml.getBoolAttribute ("click");
+        project.snapOn = xml.getBoolAttribute ("snap", true);
+        project.quantizeBeats = juce::jlimit (1.0 / 16.0, 4.0, xml.getDoubleAttribute ("quantize", 0.25));
 
         int highestId = 0;
         for (const auto* t : xml.getChildWithTagNameIterator (trackTag))

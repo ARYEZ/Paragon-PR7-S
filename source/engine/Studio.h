@@ -365,6 +365,9 @@ namespace pr7s
         void setSignature (int numerator, int denominator);
         void setCycle (double start, double end);
         void setCycleOn (bool);
+        // Snap on/off (J) and the quantize value in beats (4: 1/1 ... 1/16: 1/64), the toolbar's (0.9.10).
+        void setSnap (bool);
+        void setQuantizeBeats (double);
         void setClick (bool);
 
         //======================================================================

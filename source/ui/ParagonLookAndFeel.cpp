@@ -1,6 +1,7 @@
 #include "ParagonLookAndFeel.h"
 
 #include "Finish.h"
+#include "Logo.h"
 
 #include <ParagonFonts.h>
 
@@ -42,8 +43,8 @@ ParagonLookAndFeel::ParagonLookAndFeel()
     setColour (juce::TextEditor::outlineColourId, ParagonColours::panelEdge);
     setColour (juce::TextEditor::focusedOutlineColourId, ParagonColours::accent);
     setColour (juce::TextEditor::highlightColourId, ParagonColours::accentDim);
-    setColour (juce::AlertWindow::backgroundColourId, ParagonColours::panel);
-    setColour (juce::AlertWindow::textColourId, ParagonColours::text);
+    setColour (juce::AlertWindow::backgroundColourId, juce::Colour (0xff1c181b));   // pearl black (drawn as the black pearl in drawAlertBox)
+    setColour (juce::AlertWindow::textColourId, juce::Colours::white);
     setColour (juce::AlertWindow::outlineColourId, ParagonColours::panelEdge);
     setColour (juce::ListBox::backgroundColourId, onyx);
     setColour (juce::ListBox::outlineColourId, ParagonColours::panelEdge);
@@ -166,13 +167,17 @@ void ParagonLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& bu
 
     if (button.getProperties().contains (menuArrowProperty))
     {
-        // A small down arrow, in the lettering's colour.
+        // A small down arrow, in the lettering's colour: alone, or at the
+        // right of the key's name (0.9.10: "1/16", "RANGES").
         g.setColour (! button.isEnabled() ? ParagonColours::textDim : Finish::neonKeys() ? juce::Colours::white : ParagonColours::text);
-        const auto c = area.getCentre().translated (0.0f, down ? 0.5f : 0.0f);
+        const auto withText = button.getButtonText().isNotEmpty();
+        const auto c = (withText ? area.withLeft (area.getRight() - 14.0f) : area).getCentre().translated (0.0f, down ? 0.5f : 0.0f);
         juce::Path arrow;
         arrow.addTriangle (c.x - 4.5f, c.y - 2.5f, c.x + 4.5f, c.y - 2.5f, c.x, c.y + 3.0f);
         g.fillPath (arrow);
-        return;
+        if (! withText)
+            return;
+        area.removeFromRight (16.0f);
     }
 
     if (button.getButtonText().isEmpty())
@@ -809,3 +814,32 @@ void ParagonLookAndFeel::drawScrollbar (juce::Graphics& g, juce::ScrollBar&, int
     g.setColour (ParagonColours::accent.withAlpha (isMouseDown ? 0.95f : isMouseOver ? 0.8f : 0.55f));
     g.fillRoundedRectangle (thumb, juce::jmin (thumb.getWidth(), thumb.getHeight()) * 0.5f);
 }
+
+//==============================================================================
+void ParagonLookAndFeel::drawAlertBox (juce::Graphics& g, juce::AlertWindow& alert, const juce::Rectangle<int>& textArea, juce::TextLayout& textLayout)
+{
+    // The black pearl (as the units' black finish): a soft gradient, the family's red glow round it.
+    const auto bounds = alert.getLocalBounds().toFloat();
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2d282c), 0.0f, 0.0f, juce::Colour (0xff131114), 0.0f, bounds.getBottom(), false));
+    g.fillRoundedRectangle (bounds, 6.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.12f));
+    g.drawLine (bounds.getX() + 6.0f, 1.0f, bounds.getRight() - 6.0f, 1.0f, 1.0f);
+    g.setColour (ParagonColours::glow.withAlpha (0.55f));
+    g.drawRoundedRectangle (bounds.reduced (0.75f), 6.0f, 1.5f);
+
+    // Where the question mark was: the PR7-S mark.
+    auto textLeft = textArea.getX();
+    if (alert.getAlertType() != juce::MessageBoxIconType::NoIcon)
+    {
+        const juce::Rectangle<float> markArea (14.0f, 30.0f, 62.0f, 22.0f);
+        Logo::drawMark (g, markArea, juce::Justification::centredLeft, { juce::Colours::white, ParagonColours::glow, {}, {}, 1.0f, true });
+        textLeft = juce::jmax (textLeft, 84);
+    }
+    g.setColour (juce::Colours::white);
+    const juce::Rectangle<int> textBounds (textLeft, 30, alert.getWidth() - textLeft - 12, alert.getHeight() - getAlertWindowButtonHeight() - 50);
+    textLayout.draw (g, textBounds.toFloat());
+}
+
+juce::Font ParagonLookAndFeel::getAlertWindowTitleFont()   { return juce::Font (titleFont (20.0f)); }
+juce::Font ParagonLookAndFeel::getAlertWindowMessageFont() { return juce::Font (textFont (15.0f, juce::Font::plain)); }
+juce::Font ParagonLookAndFeel::getAlertWindowFont()        { return juce::Font (textFont (14.0f, juce::Font::plain)); }

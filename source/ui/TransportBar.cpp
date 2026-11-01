@@ -79,7 +79,7 @@ void TransportBar::timerCallback()
     if (const auto position = studio.getEngine().getPosition(); position != shownPosition)
     {
         shownPosition = position;
-        repaint (positionScreen.expanded (4.0f).getSmallestIntegerContainer());
+        repaint (positionScreen.getUnion (timeScreen).expanded (4.0f).getSmallestIntegerContainer());
     }
     followPerformance();
 }
@@ -129,6 +129,33 @@ void TransportBar::refreshKeys()
     recordKey.setToggleState (engine.isRecording(), juce::dontSendNotification);
     cycleKey.setToggleState (project.loopOn, juce::dontSendNotification);
     clickKey.setToggleState (project.click, juce::dontSendNotification);
+}
+
+void TransportBar::drawFixedPitch (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> area, float height)
+{
+    // Bebas's figures differ in width: each in a cell as wide as the widest,
+    // the separators and spaces in narrower ones, the whole fitted and centred.
+    juce::Font f (font (height));
+    const auto digit = juce::jmax (juce::GlyphArrangement::getStringWidth (f, "0"), juce::GlyphArrangement::getStringWidth (f, "8"),
+                                   juce::GlyphArrangement::getStringWidth (f, "4")) * 1.05f;
+    const auto cellFor = [digit] (juce::juce_wchar c) { return juce::CharacterFunctions::isDigit (c) ? digit : digit * 0.5f; };
+    auto total = 0.0f;
+    for (auto c : text)
+        total += cellFor (c);
+    if (total > area.getWidth() && total > 0.0f)
+    {
+        const auto scale = area.getWidth() / total;
+        f = juce::Font (font (height * scale));
+        return drawFixedPitch (g, text, area, height * scale);
+    }
+    g.setFont (f);
+    auto x = area.getCentreX() - total * 0.5f;
+    for (auto c : text)
+    {
+        const auto w = cellFor (c);
+        g.drawText (juce::String::charToString (c), juce::Rectangle<float> (x, area.getY(), w, area.getHeight()), juce::Justification::centred, false);
+        x += w;
+    }
 }
 
 juce::String TransportBar::getPositionText() const
@@ -193,7 +220,10 @@ void TransportBar::resized()
     row.removeFromLeft (12.0f);
     cpuScreen = row.removeFromLeft (cpuWidth);
     row.removeFromLeft (12.0f);
-    positionScreen = row.removeFromLeft (positionWidth);
+    // Two screens alike, POSITION and TIME, in the position's room.
+    timeScreen = row.removeFromLeft (positionWidth);
+    positionScreen = timeScreen.removeFromLeft ((positionWidth - 12.0f) * 0.5f);
+    timeScreen.removeFromLeft (12.0f);
     row.removeFromLeft (12.0f);
     tempoScreen = row.removeFromLeft (tempoWidth);
     row.removeFromLeft (12.0f);
@@ -232,22 +262,25 @@ void TransportBar::paint (juce::Graphics& g)
         stamped (g, "F", autoScrollStamp, 9.0f);
     }
 
-    // POSITION: bars, beats, sixteenths and ticks, then minutes and seconds.
+    // POSITION (bars, beats, sixteenths and ticks) and TIME (minutes and
+    // seconds): two screens alike (0.9.10, the owner asked), the main values,
+    // large, in Bebas; each character in a cell of its own width so the
+    // figures stay still as they change.
     {
-        const auto glass = LedDisplay::paintScreen (g, positionScreen, screenSize);
-        glasses.push_back (glass);
-        auto inside = glass.reduced (12.0f, 6.0f);
-        g.setColour (orange.withAlpha (0.6f));
-        g.setFont (font (9.0f));
-        g.drawText ("POSITION", inside.removeFromTop (12.0f), juce::Justification::topLeft, false);
         const auto beats = studio.getEngine().getPosition();
-        auto row = inside;
-        g.setColour (orange);
-        g.setFont (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), juce::jmin (30.0f, row.getHeight() * 0.62f), juce::Font::bold));
-        g.drawFittedText (getPositionText(), row.removeFromLeft (row.getWidth() * 0.62f).toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
-        g.setColour (orange.withAlpha (0.75f));
-        g.setFont (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), juce::jmin (18.0f, row.getHeight() * 0.42f), juce::Font::plain));
-        g.drawFittedText (pr7s::formatTime (beats * studio.getProject().secondsPerBeat()), row.toNearestInt(), juce::Justification::centredRight, 1, 0.7f);
+        const auto drawScreen = [&] (juce::Rectangle<float> screen, const char* label, const juce::String& value)
+        {
+            const auto glass = LedDisplay::paintScreen (g, screen, screenSize);
+            glasses.push_back (glass);
+            auto inside = glass.reduced (12.0f, 6.0f);
+            g.setColour (orange.withAlpha (0.6f));
+            g.setFont (font (9.0f));
+            g.drawText (label, inside.removeFromTop (12.0f), juce::Justification::topLeft, false);
+            g.setColour (orange);
+            drawFixedPitch (g, value, inside, juce::jmin (44.0f, inside.getHeight() * 0.95f));
+        };
+        drawScreen (positionScreen, "POSITION", getPositionText());
+        drawScreen (timeScreen, "TIME", pr7s::formatTime (beats * studio.getProject().secondsPerBeat()));
     }
 
     // CPU: the audio processing load, as much of each block's time as it

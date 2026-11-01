@@ -148,7 +148,17 @@ public:
     float yForPitch (int pitch) const noexcept;   // the top of its row
     int pitchForY (float y) const noexcept;
 
-    static constexpr int sideWidth = 302, keysWidth = 54, rulerHeight = 26, velocityHeight = 86, scrollBarSize = 12;
+    // The velocity handles (0.9.10, the manual's Controller Event Editor):
+    // with two or more notes selected, a box round their velocity bars.
+    // Drag its top edge to move them all up or down, the middle of the top to
+    // scale them (from 0), a top corner to tilt that end, the middle of the
+    // right edge to squash them towards their middle or spread them. One undo
+    // step per drag.
+    enum class VelocityHandle { none, move, scale, tiltLeft, tiltRight, scaleCentre };
+    juce::Rectangle<float> getVelocityBox() const;   // empty: fewer than two notes selected
+    VelocityHandle velocityHandleAt (juce::Point<float>) const;
+
+    static constexpr int sideWidth = 150, keysWidth = 54, rulerHeight = 26, velocityHeight = 86, scrollBarSize = 12;
     static constexpr int minimumHeight = 230;   // docked: the panel's keys and a few octaves
     static constexpr float minRowHeight = 6.0f, maxRowHeight = 36.0f;
 
@@ -162,7 +172,7 @@ public:
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
 private:
-    enum class Gesture { none, position, audition, band, move, resize, draw, erase, velocity };
+    enum class Gesture { none, position, audition, band, move, resize, draw, erase, velocity, velocityHandle };
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
@@ -171,6 +181,20 @@ private:
     void clampScroll();
     void refreshScrollBars();
     void refreshPanel();
+    void paintInfo (juce::Graphics&, juce::Rectangle<float>);   // the selected notes, at the column's foot
+    void layoutColumn();
+    // The panel's keys in one column, all one size (0.9.10, the owner asked),
+    // in a strip that scrolls when the editor is shorter than they are.
+    struct InfoView final : juce::Component
+    {
+        explicit InfoView (KeyEditor& e) : owner (e) { setInterceptsMouseClicks (false, false); }
+        void paint (juce::Graphics& g) override { owner.paintInfo (g, getLocalBounds().toFloat()); }
+        KeyEditor& owner;
+    };
+    juce::Viewport panelView;
+    juce::Component panelColumn;
+    InfoView infoView { *this };
+    static constexpr int columnKeyHeight = 24, columnGap = 4, panelHeaderHeight = 54;
     const std::vector<pr7s::Note>& notes() const;   // the working copy while a gesture edits them
     bool editing() const noexcept;
     void begin();
@@ -214,6 +238,9 @@ private:
 
     // The gesture under way.
     Gesture gesture = Gesture::none;
+    VelocityHandle handle = VelocityHandle::none;
+    juce::Rectangle<float> boxAtDown;
+    void dragVelocityHandle (float dy);
     std::vector<pr7s::Note> working, original;
     std::vector<int> dragging, selectionBefore;
     int anchor = -1, clicked = -1;

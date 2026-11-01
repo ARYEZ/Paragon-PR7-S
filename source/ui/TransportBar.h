@@ -7,8 +7,8 @@
 
 // The transport: a pearl PR7 unit across the top of the studio. Its keys
 // (back to the start, STOP, PLAY, RECORD, CYCLE, CLICK) light as on the
-// floor units, and its LED screens show where the song is (bars and beats,
-// and minutes and seconds), the tempo (drag it up or down, or double-click
+// floor units, and its LED screens show where the song is (POSITION: bars
+// and beats; TIME: minutes and seconds; two screens alike since 0.9.10), the tempo (drag it up or down, or double-click
 // to type one) and the time signature (click for the list). The output's
 // level on the right. CPU, a small screen between the keys and the position:
 // the audio processing load (the manual's Audio Performance meter: the
@@ -46,6 +46,7 @@ public:
     void setToolsWidth (int);
     juce::Rectangle<int> getToolsArea() const noexcept { return toolsArea; }
     juce::Rectangle<float> getPositionScreen() const noexcept { return positionScreen; }
+    juce::Rectangle<float> getTimeScreen() const noexcept { return timeScreen; }
     static constexpr int widePositionWidth = 440;
 
     // CPU: what the meter shows (the load, 0 to 1 and over), and whether its overload light is lit.
@@ -58,6 +59,7 @@ public:
     juce::String getTooltip() override;
 
 private:
+    void drawFixedPitch (juce::Graphics&, const juce::String&, juce::Rectangle<float>, float height);
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
     void refreshKeys();
@@ -66,7 +68,7 @@ private:
     juce::TextButton toStart { "|<" }, stopKey { "STOP" }, playKey { "PLAY" }, recordKey { "REC" },
                      cycleKey { "CYCLE" }, clickKey { "CLICK" };
     LevelMeter leftMeter, rightMeter;
-    juce::Rectangle<float> badge, positionScreen, tempoScreen, signatureScreen, keysArea, meterArea, cpuScreen, autoScrollStamp;
+    juce::Rectangle<float> badge, positionScreen, timeScreen, tempoScreen, signatureScreen, keysArea, meterArea, cpuScreen, autoScrollStamp;
     juce::Rectangle<int> toolsArea, autoScrollArea;
     float keyPitchNow = 70.0f;
     int toolsWidth = 0;

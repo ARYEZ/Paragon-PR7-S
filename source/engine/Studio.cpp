@@ -2865,6 +2865,18 @@ namespace pr7s
         changed();
     }
 
+    void Studio::setSnap (bool on)
+    {
+        project.snapOn = on;
+        changed (false);
+    }
+
+    void Studio::setQuantizeBeats (double beats)
+    {
+        project.quantizeBeats = juce::jlimit (1.0 / 16.0, 4.0, beats);
+        changed (false);
+    }
+
     void Studio::setClick (bool on)
     {
         project.click = on;
