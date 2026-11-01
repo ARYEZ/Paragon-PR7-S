@@ -115,6 +115,8 @@ public:
     void drawButtonText (juce::Graphics&, juce::TextButton&, bool highlighted, bool down) override;
     // Question and message boxes (0.9.10, the owner asked): pearl black, white text, the PR7-S mark for the icon.
     void drawAlertBox (juce::Graphics&, juce::AlertWindow&, const juce::Rectangle<int>& textArea, juce::TextLayout&) override;
+    // Progress bars (the export's, scanning plug-ins): one of the studio's horizontal meters (0.11.1).
+    void drawProgressBar (juce::Graphics&, juce::ProgressBar&, int width, int height, double progress, const juce::String& textToShow) override;
     juce::Font getAlertWindowTitleFont() override;
     juce::Font getAlertWindowMessageFont() override;
     juce::Font getAlertWindowFont() override;

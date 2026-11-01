@@ -492,6 +492,13 @@ namespace pr7s
         // finished is deleted).
         bool beginExport (const juce::File&, const ExportOptions&, juce::String& error);
         bool renderExport (std::function<bool (double progress)> keepGoing = {});
+        // How far a long job done on the screen's own thread has got (0.11.1:
+        // Render in Place, Freeze, a song's plug-ins loading): `progress` 0 to 1
+        // and what it is; -1 when it's over (the progress box goes).
+        std::function<void (double progress, const juce::String& what)> onProgress;
+        // The stage a job is at: its share of the whole, from `base`, `span` long.
+        void setProgressStage (double base, double span, const juce::String& what);
+        void endProgress();
         void endExport();
         bool isExporting() const noexcept { return exportJob != nullptr; }
         // All three, here and now (tests; and short songs).
@@ -621,6 +628,8 @@ namespace pr7s
         double audioCacheRate = 0.0;
         juce::File unsavedAudioFolder;
         juce::String loggedDevice;   // the audio device's last line in the session log
+        double progressBase = 0.0, progressSpan = 1.0;
+        juce::String progressWhat;
         std::optional<double> latencyOverride;
 
         struct ExportJob

@@ -1,4 +1,5 @@
 #include "ParagonLookAndFeel.h"
+#include "LevelMeter.h"
 
 #include "Finish.h"
 #include "Logo.h"
@@ -132,6 +133,8 @@ void ParagonLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& 
     else if (highlighted)
         fill = fill.brighter (0.1f);
 
+    if (button.getProperties()["lit"])
+        fill = ParagonColours::accent;   // lit for a moment (SAVE once the song is saved, 0.11.1)
     g.setColour (button.isEnabled() ? fill : fill.withAlpha (0.4f));
     g.fillRoundedRectangle (bounds, 4.0f);
     g.setColour (ParagonColours::panelEdge);
@@ -843,3 +846,26 @@ void ParagonLookAndFeel::drawAlertBox (juce::Graphics& g, juce::AlertWindow& ale
 juce::Font ParagonLookAndFeel::getAlertWindowTitleFont()   { return juce::Font (titleFont (20.0f)); }
 juce::Font ParagonLookAndFeel::getAlertWindowMessageFont() { return juce::Font (textFont (15.0f, juce::Font::plain)); }
 juce::Font ParagonLookAndFeel::getAlertWindowFont()        { return juce::Font (textFont (14.0f, juce::Font::plain)); }
+
+void ParagonLookAndFeel::drawProgressBar (juce::Graphics& g, juce::ProgressBar&, int width, int height, double progress, const juce::String& textToShow)
+{
+    // The bar as a horizontal meter, lit from the left as it goes (an unknown
+    // amount: a lit stretch running along); the text over it at the right.
+    const auto area = juce::Rectangle<float> (0.0f, 0.0f, (float) width, (float) height);
+    const auto bar = area.withTrimmedRight (textToShow.isNotEmpty() ? 58.0f : 0.0f);
+    if (progress >= 0.0 && progress <= 1.0)
+        LevelMeter::paintSegments (g, bar, (float) progress, -1.0f, false, 4.0f);
+    else
+    {
+        LevelMeter::paintSegments (g, bar, 0.0f, -1.0f, false, 4.0f);
+        const auto phase = (float) std::fmod (juce::Time::getMillisecondCounterHiRes() / 1500.0, 1.0);
+        g.setColour (ParagonColours::meterColour (phase).withAlpha (0.8f));
+        g.fillRect (bar.withWidth (bar.getWidth() * 0.2f).withX (bar.getX() + bar.getWidth() * 0.8f * phase));
+    }
+    if (textToShow.isNotEmpty())
+    {
+        g.setColour (ParagonColours::text);
+        g.setFont (titleFont (juce::jmin (18.0f, (float) height * 0.8f)));
+        g.drawText (textToShow, area.withTrimmedLeft (bar.getWidth() + 6.0f), juce::Justification::centredRight, false);
+    }
+}

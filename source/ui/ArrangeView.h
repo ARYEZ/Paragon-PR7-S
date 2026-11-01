@@ -338,6 +338,11 @@ private:
     PointSelection pointSelection;
     std::vector<pr7s::AutomationPoint> workingPoints, originalPoints;   // the lane's points during a gesture
     juce::Rectangle<float> pointBand;
+    // The select box's corner where it began, in the song (beat, pixels down
+    // the rows), so it stays put while the view scrolls under it (0.11.1).
+    double marqueeBeat = 0.0;
+    float marqueeRowY = 0.0f;
+    bool scrollTowards (juce::Point<float>);   // past an edge: the view moves that way (true if it did)
     juce::Point<float> pointDownAt;
     int anchor = -1;               // the point grabbed
     bool copyingPoints = false;

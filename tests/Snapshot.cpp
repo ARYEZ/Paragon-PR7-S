@@ -544,3 +544,35 @@ TEST_CASE ("Snapshot: the Key Commands window", "[.][snapshot-keys]")
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
+
+#include "ui/ProgressBox.h"
+
+TEST_CASE ("Snapshot: the progress box, and SAVE lit", "[.][snapshot-progress]")
+{
+    // PARAGON_SNAPSHOT: the box; with "-save" before .png, the header with SAVE lit.
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "progress.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        ProgressBox box;
+        box.set (0.62, "Rendering KEYS (2 of 3)", nullptr);
+        const auto image = box.createComponentSnapshot (box.getLocalBounds(), true, 2.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    {
+        pr7s::Studio studio (false);
+        MainView view (studio);
+        view.setSize (1500, 900);
+        view.flashSaved();
+        const auto image = view.createComponentSnapshot ({ 0, 0, 1500, 56 }, true, 2.0f);
+        const juce::File save (path.replace (".png", "-save.png"));
+        save.deleteFile();
+        juce::FileOutputStream out { save };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}

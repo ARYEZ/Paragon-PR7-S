@@ -127,6 +127,18 @@ MainView::MainView (pr7s::Studio& studioToUse)
         addAndMakeVisible (*key);
     }
     registerCommands();
+    // A long job's progress (Render in Place, Freeze): the box over the studio while it lasts.
+    studio.onProgress = [this] (double progress, const juce::String& what)
+    {
+        if (progress < 0.0)
+        {
+            progressBox = nullptr;
+            return;
+        }
+        if (progressBox == nullptr)
+            progressBox = std::make_unique<ProgressBox>();
+        progressBox->set (progress, what, this);
+    };
     settingsButton.onClick = [this] { openSettings(); };
     // Read and write automation for all tracks (the manual's toolbar buttons).
     for (auto* key : { &readAllButton, &writeAllButton })
@@ -269,6 +281,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
 
 MainView::~MainView()
 {
+    studio.onProgress = nullptr;
     arrangeAcross.removeListener (this);
     arrangeDown.removeListener (this);
     mixer.onMinimumHeightChange = nullptr;
@@ -1079,12 +1092,32 @@ void MainView::saveProject (std::function<void (bool)> then)
     }
     // Written on a thread of its own (0.9.11): the screen carries on.
     const auto where = studio.getFile();
-    studio.saveInBackground (where, [then, where] (bool saved)
+    studio.saveInBackground (where, [then, where, safe = juce::Component::SafePointer<MainView> (this)] (bool saved)
     {
+        if (saved && safe != nullptr)
+            safe->flashSaved();
         if (! saved)
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't save", where.getFullPathName());
         if (then)
             then (saved);
+    });
+}
+
+void MainView::flashSaved()
+{
+    // SAVE lights up and says SAVED for a moment once the song is on the disk
+    // (0.11.1, the owner asked: Ctrl+S had nothing to show for it).
+    saveButton.getProperties().set ("lit", true);
+    saveButton.setColour (juce::TextButton::textColourOffId, juce::Colours::black);
+    saveButton.setButtonText ("SAVED");
+    ++saveFlashes;
+    juce::Timer::callAfterDelay (1200, [safe = juce::Component::SafePointer<MainView> (this), flash = saveFlashes]
+    {
+        if (safe == nullptr || safe->saveFlashes != flash)
+            return;   // (saved again meanwhile: that one puts it back)
+        safe->saveButton.getProperties().remove ("lit");
+        safe->saveButton.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
+        safe->saveButton.setButtonText ("SAVE");
     });
 }
 
@@ -1104,8 +1137,10 @@ void MainView::saveProjectAs (std::function<void (bool)> then)
                                   return;
                               }
                               file = file.withFileExtension (pr7s::Project::fileExtension);
-                              studio.saveInBackground (file, [then, file] (bool saved)
+                              studio.saveInBackground (file, [then, file, safe = juce::Component::SafePointer<MainView> (this)] (bool saved)
                               {
+                                  if (saved && safe != nullptr)
+                                      safe->flashSaved();
                                   if (! saved)
                                       juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't save", file.getFullPathName());
                                   if (then)

@@ -3760,11 +3760,35 @@ namespace pr7s
             devices.addAudioCallback (&engine);
     }
 
+    void Studio::setProgressStage (double base, double span, const juce::String& what)
+    {
+        progressBase = base;
+        progressSpan = span;
+        progressWhat = what;
+        if (onProgress)
+            onProgress (base, what);
+    }
+
+    void Studio::endProgress()
+    {
+        progressBase = 0.0;
+        progressSpan = 1.0;
+        progressWhat = {};
+        if (onProgress)
+            onProgress (-1.0, {});
+    }
+
     bool Studio::exportMix (const juce::File& destination, const ExportOptions& options, juce::String& error)
     {
         if (! beginExport (destination, options, error))
             return false;
-        const auto rendered = renderExport();
+        // (On the screen's thread: Render in Place, Freeze. Its progress goes to the box.)
+        const auto rendered = renderExport ([this] (double done)
+        {
+            if (onProgress)
+                onProgress (progressBase + progressSpan * done, progressWhat);
+            return true;
+        });
         endExport();
         if (! rendered)
             error = "Couldn't write " + destination.getFullPathName();
@@ -3783,11 +3807,15 @@ namespace pr7s
         const auto tailSeconds = options.tail == RenderOptions::Tail::off ? 0.0
                                : options.tail == RenderOptions::Tail::bars ? options.tailSize * project.beatsPerBar() * 60.0 / project.bpmAt (project.lastBeat())
                                                                            : options.tailSize;
-        for (const auto& source : sources)
+        const juce::ScopeGuard progressDone { [this] { endProgress(); } };
+        for (size_t index = 0; index < sources.size(); ++index)
         {
+            const auto& source = sources[index];
             const auto* track = project.findTrack (source.trackId);
             if (track == nullptr || track->isChannel() || source.end <= source.start)
                 continue;
+            setProgressStage ((double) index / (double) sources.size(), 1.0 / (double) sources.size(),
+                              "Rendering " + track->name + (sources.size() > 1 ? " (" + juce::String ((int) index + 1) + " of " + juce::String ((int) sources.size()) + ")" : juce::String()));
             // The stretches to render, from the parts in it (cut at its edges).
             std::vector<std::pair<double, double>> spans;
             for (const auto& part : track->parts)
@@ -4083,6 +4111,24 @@ namespace pr7s
         file = source;
         audioCache.clear();
         juce::StringArray missing;
+        // Each plug-in loaded is a step of the progress box (0.11.1: Kontakt and its kind take a while).
+        auto toLoad = 0, nowLoading = 0;
+        for (const auto& track : project.tracks)
+            if (! track.disabled && ! track.frozen)
+            {
+                toLoad += track.isAudio() || track.isChannel() ? 0 : 1;
+                for (const auto& insert : track.inserts)
+                    toLoad += insert.isEmpty() ? 0 : 1;
+            }
+        for (const auto& insert : project.masterInserts)
+            toLoad += insert.isEmpty() ? 0 : 1;
+        const auto loading = [&] (const juce::String& what)
+        {
+            if (toLoad > 0)
+                setProgressStage ((double) nowLoading / (double) toLoad, 1.0 / (double) toLoad, what);
+            ++nowLoading;
+        };
+        const juce::ScopeGuard progressDone { [&] { if (toLoad > 0) endProgress(); } };
         for (auto& track : project.tracks)
         {
             if (track.isChannel())
@@ -4104,6 +4150,7 @@ namespace pr7s
                 engine.setInstrument (track.id, nullptr);   // disabled or frozen: its plugins aren't loaded (their settings kept)
                 continue;
             }
+            loading ("Loading " + track.instrument.getName() + " (" + track.name + ")");
             if (auto instance = host->create (track.instrument, engine.getSampleRate(), engine.getBlockSize(), error))
                 engine.setInstrument (track.id, std::move (instance));
             else
@@ -4121,6 +4168,7 @@ namespace pr7s
                     continue;
                 }
                 juce::String error;
+                loading ("Loading " + inserts[(size_t) slot].plugin.name + " (" + where + ")");
                 auto instance = host->createEffect (inserts[(size_t) slot], engine.getSampleRate(), engine.getBlockSize(), error);
                 if (instance == nullptr)
                     missing.add (where + ", insert " + juce::String (slot + 1) + " (" + inserts[(size_t) slot].plugin.name + "): " + error);

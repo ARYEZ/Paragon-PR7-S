@@ -85,6 +85,7 @@ public:
     void resized() override;
 
     static constexpr int barHeight = 32, stripWidth = 100, masterWidth = 124;
+    static constexpr int windowStripWidth = 140, windowMasterWidth = 160;   // in its own window: wider, for the bigger racks (0.11.1)
 
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;

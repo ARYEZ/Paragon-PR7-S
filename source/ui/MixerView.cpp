@@ -230,7 +230,7 @@ void MixerView::Strip::paint (juce::Graphics& g)
     }
 
     g.setColour (ParagonColours::text);
-    g.setFont (ParagonLookAndFeel::titleFont (12.5f));
+    g.setFont (ParagonLookAndFeel::titleFont (owner.isInWindow() ? 16.0f : 12.5f));
     g.drawFittedText (isMaster() ? juce::String ("MASTER") : track != nullptr ? track->name : juce::String(),
                       nameArea.toNearestInt(), juce::Justification::centred, 1, 0.8f);
     g.setColour (ParagonColours::textDim);
@@ -280,7 +280,7 @@ void MixerView::Strip::paint (juce::Graphics& g)
 void MixerView::Strip::resized()
 {
     auto area = getLocalBounds().reduced (6, 0).withTrimmedTop (8).withTrimmedBottom (6);
-    nameArea = area.removeFromTop (18).toFloat();
+    nameArea = area.removeFromTop (owner.isInWindow() ? 24 : 18).toFloat();
     output.setBounds (area.removeFromTop (14).reduced (2, 0));   // OUT (the master's: "INSERTS")
     rackArea = area.withHeight (40).toFloat().withTrimmedTop (4.0f);
     sendsDivider = {};
@@ -293,7 +293,8 @@ void MixerView::Strip::resized()
         {
             // The mixer's window: the inserts, then (under a line and SENDS) the eight sends.
             const auto rows = shownSlots + (isMaster() ? 0 : pr7s::Project::maxSends);
-            const auto rowHeight = juce::jlimit (shortestSlot, slotHeight, (area.getHeight() - below - dividerHeight) / rows - slotGap);
+            // (In the mixer's window there's room: twice the size, the names twice as big; 0.11.1, the owner asked.)
+            const auto rowHeight = juce::jlimit (shortestSlot, slotHeight * 2, (area.getHeight() - below - dividerHeight) / rows - slotGap);
             for (int i = 0; i < (int) slots.size(); ++i)
                 if (i < shownSlots)
                 {
@@ -441,6 +442,7 @@ void MixerView::setInWindow (bool shouldBeInWindow)
     sendsButton.setVisible (! single && ! inWindow);
     if (master != nullptr)
     {
+        resized();   // (the strips' widths)
         rackChanged();
         if (onMinimumHeightChange)
             onMinimumHeightChange();
@@ -630,13 +632,14 @@ void MixerView::resized()
     bar.removeFromRight (4);
     insertsButton.setBounds (bar.removeFromRight (72));
 
-    master->setBounds (area.removeFromRight (masterWidth));
+    const auto stripW = inWindow ? windowStripWidth : stripWidth, masterW = inWindow ? windowMasterWidth : masterWidth;
+    master->setBounds (area.removeFromRight (masterW));
     area.removeFromRight (3);
     viewport.setBounds (area);
     const auto height = area.getHeight() - (viewport.canScrollHorizontally() ? viewport.getScrollBarThickness() : 0);
-    holder.setSize (juce::jmax (area.getWidth(), (int) strips.size() * stripWidth), juce::jmax (0, height));
+    holder.setSize (juce::jmax (area.getWidth(), (int) strips.size() * stripW), juce::jmax (0, height));
     for (size_t i = 0; i < strips.size(); ++i)
-        strips[i]->setBounds ((int) i * stripWidth, 0, stripWidth, holder.getHeight());
+        strips[i]->setBounds ((int) i * stripW, 0, stripW, holder.getHeight());
 }
 
 //==============================================================================
@@ -831,7 +834,7 @@ void MixerView::SendSlot::paint (juce::Graphics& g)
     g.setColour (active ? ParagonColours::accent : ParagonColours::accentDim.darker (0.6f));
     g.fillEllipse (dot);
     g.setColour (active ? ParagonColours::text : ParagonColours::textDim);
-    g.setFont (font (juce::jmin (11.0f, bounds.getHeight() * 0.8f)));
+    g.setFont (font (juce::jmin (18.0f, juce::jmax (juce::jmin (11.0f, bounds.getHeight() * 0.8f), bounds.getHeight() * 0.55f))));
     g.drawFittedText (fx != nullptr ? fx->name : juce::String ("?"), bar.toNearestInt().withTrimmedLeft (2).withTrimmedRight (s->preFader ? 22 : 2),
                       juce::Justification::centredLeft, 1, 0.7f);
     if (s->preFader)

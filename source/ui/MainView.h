@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/KeyCommands.h"
+#include "ui/ProgressBox.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include "engine/Studio.h"
@@ -72,6 +73,9 @@ public:
     void openProject();
     void saveProject (std::function<void (bool saved)> then = {});
     void saveProjectAs (std::function<void (bool saved)> then = {});
+    void flashSaved();          // SAVE lit, reading SAVED, for a moment
+    bool isSaveLit() const { return saveButton.getButtonText() == "SAVED"; }
+    ProgressBox* getProgressBox() noexcept { return progressBox.get(); }
     // EXPORT: the mix to a WAV. Asks what (the export page), then where,
     // then writes it behind a progress bar (CANCEL stops it, leaving no file).
     void exportMix();
@@ -184,6 +188,8 @@ public:
 private:
     KeyCommands::Map keyMap;
     juce::TextButton keysButton { "KEYS" };
+    int saveFlashes = 0;
+    std::unique_ptr<ProgressBox> progressBox;   // a long job's progress (0.11.1)
     std::unique_ptr<juce::DocumentWindow> keysWindow;
     void registerCommands();
     void saveKeyCommands();

@@ -2,6 +2,29 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.11.1
+
+Four of your requests. The start window (like the Hub) comes next, in a release of its own.
+
+**A progress window for long jobs.** Render in Place and Freeze used to show nothing until they were finished. Now a box over the studio shows:
+- what's being done, for example "Rendering KEYS (2 of 3)";
+- a bar drawn as one of the studio's horizontal meters, lit orange to pink-red as it goes;
+- the percentage.
+
+Opening a song shows it too while its plug-ins load ("Loading Kontakt 8 (Keys)"), since big instruments take a while. The export window's bar is drawn as a meter now too, and so is any other progress bar in the studio (scanning plug-ins, for example).
+
+While a render runs, Windows no longer greys the studio out as "Not Responding". The crash log doesn't mistake a long render for a freeze, either.
+
+**The select box scrolls.** Drag the select box past the edge of the arrangement (left, right, above the tracks or below them) and the view keeps scrolling that way. The further past the edge, the faster it goes, and it carries on while you hold the mouse still. The box stays anchored where you started, so it can take in parts that were off the screen.
+
+**SAVE lights up.** When the song has been saved (Ctrl+S, SAVE or SAVE AS), the SAVE key turns orange and reads SAVED for a moment. It lights once the song is actually on the disk, not when you press the key.
+
+**Bigger inserts and sends in the mixer's own window.** In its window (Alt+F3) the insert and send slots are twice as tall, with names twice as big, and the channels are wider (140 instead of 100) so the names fit. Docked, the mixer is as before.
+
+**Honest notes:**
+- **Cancelling:** you can't cancel a Render in Place or Freeze partway yet. The export still has its CANCEL.
+- **Part look:** parts keep today's look, as you chose.
+
 ## 0.11.0
 
 **Key commands and macros: your own shortcuts, and your Stream Deck.** The last of the five requests: any action in the studio can now have a key, or several, and you can chain actions into macros. Everything is set in a new **KEYS** window (the key is in the header, beside PLUGINS), laid out as Cubase's Key Commands dialog.

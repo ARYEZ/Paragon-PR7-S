@@ -197,6 +197,37 @@ void ArrangeView::zoomFull()
     repaint();
 }
 
+bool ArrangeView::scrollTowards (juce::Point<float> at)
+{
+    // As far past the edge as the mouse is, a little each time (faster further out).
+    const auto speed = [] (float past) { return juce::jlimit (4.0f, 60.0f, past * 0.5f + 4.0f); };
+    auto moved = false;
+    if (at.x < 0.0f && timeline.firstBeat > 0.0)
+    {
+        timeline.firstBeat = juce::jmax (0.0, timeline.firstBeat - speed (-at.x) / timeline.pixelsPerBeat);
+        moved = true;
+    }
+    else if (at.x > (float) getWidth())
+    {
+        timeline.firstBeat += speed (at.x - (float) getWidth()) / timeline.pixelsPerBeat;
+        moved = true;
+    }
+    const auto room = juce::jmax (0, timeline.contentHeight (studio) - (getHeight() - Timeline::rulerHeight - Timeline::bottomRoom));
+    if (at.y < (float) Timeline::rulerHeight && timeline.scrollY > 0)
+    {
+        timeline.scrollY = juce::jmax (0, timeline.scrollY - juce::roundToInt (speed ((float) Timeline::rulerHeight - at.y)));
+        moved = true;
+    }
+    else if (at.y > (float) getHeight() && timeline.scrollY < room)
+    {
+        timeline.scrollY = juce::jmin (room, timeline.scrollY + juce::roundToInt (speed (at.y - (float) getHeight())));
+        moved = true;
+    }
+    if (moved)
+        scrolled();
+    return moved;
+}
+
 void ArrangeView::scrolled()
 {
     if (timeline.onScrollOrZoom)
@@ -983,6 +1014,9 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
         {
             drag = Drag::marquee;
             toolBand = {};
+            marqueeBeat = timeline.beatForX (event.position.x);
+            marqueeRowY = event.position.y - (float) Timeline::rulerHeight + (float) timeline.scrollY;
+            beginDragAutoRepeat (30);   // (drag events keep coming while the mouse is held past an edge)
         }
         repaint();
         return;
@@ -1075,7 +1109,12 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
     {
         if (event.getDistanceFromDragStart() > 3)
             dragMoved = true;
-        toolBand = juce::Rectangle<float> (event.mouseDownPosition, event.position);
+        // Past an edge the view scrolls (along the song and down the tracks),
+        // so parts off the screen can be taken in; the box's start stays in the song.
+        if (dragMoved)
+            scrollTowards (event.position);
+        const juce::Point<float> anchor (timeline.xForBeat (marqueeBeat), marqueeRowY + (float) Timeline::rulerHeight - (float) timeline.scrollY);
+        toolBand = juce::Rectangle<float> (anchor, event.position);
         repaint();
         return;
     }
@@ -1242,6 +1281,7 @@ void ArrangeView::mouseUp (const juce::MouseEvent& event)
     }
     if (drag == Drag::marquee)
     {
+        beginDragAutoRepeat (0);
         drag = Drag::none;
         if (dragMoved)
         {

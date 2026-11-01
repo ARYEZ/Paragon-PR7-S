@@ -69,11 +69,16 @@ namespace TrackActions
         juce::MouseCursor::showWaitCursor();
         studio.beginBatch();   // (the plugins offline once for all of them)
         auto all = true;
-        for (const auto id : studio.getSelectedTracks())
+        const auto ids = studio.getSelectedTracks();
+        auto index = 0;
+        for (const auto id : ids)
         {
             const auto* t = studio.getProject().findTrack (id);
+            const auto stage = index++;
             if (t == nullptr || t->frozen || ! canFreeze (*t))
                 continue;
+            studio.setProgressStage ((double) stage / (double) ids.size(), 1.0 / (double) ids.size(),
+                                     "Freezing " + t->name + (ids.size() > 1 ? " (" + juce::String (stage + 1) + " of " + juce::String ((int) ids.size()) + ")" : juce::String()));
             juce::String why;
             if (! studio.freezeTrack (id, tailSeconds, why))
             {
@@ -82,6 +87,7 @@ namespace TrackActions
             }
         }
         studio.endBatch();
+        studio.endProgress();
         juce::MouseCursor::hideWaitCursor();
         return all;
     }
