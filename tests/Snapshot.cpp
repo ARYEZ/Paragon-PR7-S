@@ -576,3 +576,42 @@ TEST_CASE ("Snapshot: the progress box, and SAVE lit", "[.][snapshot-progress]")
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
+
+#include "ui/Hub.h"
+
+TEST_CASE ("Snapshot: the Hub", "[.][snapshot-hub]")
+{
+    // PARAGON_SNAPSHOT_FINISH as the studio's; PARAGON_SNAPSHOT_HUB=settings: its settings page.
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "hub.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    const auto root = juce::File::createTempFile ("pr7s-hub-snapshot").getChildFile ("Projects");
+    {
+        pr7s::Studio studio (false);
+        auto& library = studio.getLibrary();
+        library.setDefaultLocation (root);
+        const char* names[] = { "Black", "Forever Found a Way", "When Doves Cry", "Signs of Life - Final Mix", "Before the Dawn v2", "To the Moon and Back" };
+        auto minutes = 0;
+        for (const auto* name : names)
+        {
+            const auto file = root.getChildFile (name).getChildFile (juce::String (name) + pr7s::Project::fileExtension);
+            file.getParentDirectory().createDirectory();
+            file.replaceWithText (pr7s::Project().toXml()->toString());
+            file.setLastModificationTime (juce::Time::getCurrentTime() - juce::RelativeTime::minutes (minutes += 600));
+        }
+        for (int i = 5; i >= 0; --i)
+            library.addRecent (root.getChildFile (names[i]).getChildFile (juce::String (names[i]) + pr7s::Project::fileExtension));
+        Hub hub (studio);
+        hub.setSize (Hub::preferredWidth, Hub::preferredHeight);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "settings")
+            hub.showSettingsPage (true);
+        const auto image = hub.createComponentSnapshot (hub.getLocalBounds(), true, 1.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    root.getParentDirectory().deleteRecursively();
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}

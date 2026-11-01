@@ -2,6 +2,7 @@
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include "ProjectLibrary.h"
 #include "Engine.h"
 #include "PluginHost.h"
 #include "Project.h"
@@ -31,6 +32,15 @@ namespace pr7s
         PluginHost& getPluginHost() noexcept { return *host; }
         juce::AudioDeviceManager& getDeviceManager() noexcept { return devices; }
         juce::PropertiesFile* getSettings() noexcept { return settings.get(); }
+        // The Hub's songs (0.12.0): recent ones, the project location, templates.
+        ProjectLibrary& getLibrary() noexcept { return *library; }
+        // Create Empty (the Hub): a new song, saved at once in a folder of its
+        // own at the project location (so its recordings go beside it).
+        bool createSong (const juce::String& name, juce::String& error);
+        // A new song from a template: the template's tracks, plug-ins and mix, not saved yet.
+        bool newFromTemplate (const juce::File& templateFile, juce::String& problems);
+        // This song as a template (Templates folder); the song itself stays as it is.
+        bool saveAsTemplate (const juce::String& name, juce::String& error);
         // SETTINGS' RELOAD DRIVER: the audio device closed and opened again, so
         // a buffer size set in the driver's own panel is read (for drivers that
         // don't say they changed).
@@ -595,6 +605,7 @@ namespace pr7s
         void changeListenerCallback (juce::ChangeBroadcaster*) override;   // the device settings changed: keep them
 
         std::unique_ptr<juce::PropertiesFile> settings;
+        std::unique_ptr<ProjectLibrary> library;
         std::unique_ptr<PluginHost> host;
         juce::AudioDeviceManager devices;
         bool withDevices = false;

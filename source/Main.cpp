@@ -27,12 +27,17 @@ public:
         window = std::make_unique<MainWindow> (*this, *studio);
 
         // A song given on the command line (double-clicked in Explorer) opens.
+        auto opened = false;
         if (const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (commandLine.unquoted().trim());
             commandLine.isNotEmpty() && file.existsAsFile())
         {
             juce::String problems;
-            studio->open (file, problems);
+            opened = studio->open (file, problems);
         }
+        // The Hub at start (0.12.0), unless a song was opened by double-clicking it.
+        if (! opened && studio->getLibrary().opensAtStart())
+            if (auto* view = dynamic_cast<MainView*> (window->getContentComponent()))
+                juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (view)] { if (safe != nullptr) safe->openHub(); });
         pr7s::SessionLog::note ("Ready.");
 
         // Last time it didn't close as it should: offer its log.

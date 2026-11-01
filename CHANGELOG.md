@@ -2,6 +2,33 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.12.0
+
+**The Hub: a start window.** It works like the Hub you know, in the PR7 family's look: the pearl unit across the top with the PR7-S mark, and your songs below. It opens when the studio starts, and any time from the new **HUB** key in the header (or a key you give it in KEYS).
+
+**Audio, at the top:** the audio driver (your AXE I/O's ASIO driver, for example), the stereo output pair, **DRIVER PANEL** (the driver's own panel) and **SETTINGS** for the rest.
+
+**PROJECTS:**
+- **+ CREATE EMPTY:** asks for a name, then makes a new song in a folder of its own at your project location, and saves it straight away. Its recordings go into that folder from the very first take.
+- **The project location**, on the page:
+  - **Use Default Location:** off, Create Empty just starts a new song, and saving asks where.
+  - **The folder:** Documents\Paragon PR7-S\Projects at first; CHOOSE... picks another.
+  - **Folder Name:** what a new song is called at first ("Untitled").
+- **Your songs**, in sections (click a title to fold it):
+  - **RECENT:** the songs you've opened or saved lately, newest first.
+  - **TEMPLATES:** songs saved as starting points. Use **Save as Template...**, a command in KEYS under File.
+  - **IN PROJECTS** (and each other folder you add): every song in that folder, including those in their own folders, newest first.
+
+  Each song shows its name and when it was last changed.
+- **Search** narrows every section as you type.
+- **Opening:** double-click a song (or choose it and press **OPEN**) to open it. Double-click a template to start a new song from it. **CHOOSE FILE...** opens any song.
+- **Right-click a song:** Open, Remove from the List, Show in Explorer, Rename... (its recordings folder is renamed with it), Delete... (to the Recycle Bin) and Clear the List.
+- If the song you have open has unsaved changes, you're asked first (Save, Don't save or Cancel). Once a song is open, the Hub closes.
+
+**HUB SETTINGS:** the project location and folder name, **user locations** (more folders whose songs the Hub lists: ADD A FOLDER..., REMOVE THE FOLDER), show the songs' file paths, show the project location on the projects page, and open the Hub when the studio starts.
+
+**Not included:** the parts of the other Hub that link to its maker's website (deals, tutorials, account), the project previews, and the test tone.
+
 ## 0.11.1
 
 Four of your requests. The start window (like the Hub) comes next, in a release of its own.

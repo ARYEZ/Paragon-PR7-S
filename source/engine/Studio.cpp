@@ -68,6 +68,7 @@ namespace pr7s
             host = std::make_unique<PluginHost> (nullptr, false);   // (tests: the old synth, the same everywhere)
             engine.prepare (48000.0, 512);
         }
+        library = std::make_unique<ProjectLibrary> (settings.get());
 
         newProject();
         startTimerHz (30);
@@ -3479,8 +3480,64 @@ namespace pr7s
             return false;
         file = destination;
         modified = false;
+        library->addRecent (destination);
         sendChangeMessage();
         return true;
+    }
+
+    bool Studio::createSong (const juce::String& name, juce::String& error)
+    {
+        const auto destination = library->newSongFile (name);
+        if (! destination.getParentDirectory().createDirectory())
+        {
+            error = "Couldn't make the folder " + destination.getParentDirectory().getFullPathName();
+            return false;
+        }
+        newProject();
+        if (! save (destination))
+        {
+            error = "Couldn't save " + destination.getFullPathName();
+            return false;
+        }
+        return true;
+    }
+
+    bool Studio::newFromTemplate (const juce::File& templateFile, juce::String& problems)
+    {
+        if (! open (templateFile, problems))
+            return false;
+        // Not the template itself: a new song (saving asks where), its recordings in a new unsaved folder.
+        library->removeRecent (templateFile);
+        file = juce::File();
+        const auto stamp = juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H-%M-%S");
+        unsavedAudioFolder = unsavedAudioFolder.getParentDirectory().getChildFile (stamp);
+        modified = false;
+        sendChangeMessage();
+        return true;
+    }
+
+    bool Studio::saveAsTemplate (const juce::String& name, juce::String& error)
+    {
+        const auto legal = juce::File::createLegalFileName (name.trim());
+        if (legal.isEmpty())
+        {
+            error = "A template needs a name.";
+            return false;
+        }
+        const auto folder = ProjectLibrary::templateFolder();
+        folder.createDirectory();
+        const auto destination = folder.getChildFile (legal + Project::fileExtension);
+        // Saved as a song would be, then the song is put back as it was (its file, saved or not).
+        const auto keptFile = file;
+        const auto keptModified = modified;
+        const auto written = save (destination);
+        library->removeRecent (destination);
+        file = keptFile;
+        modified = keptModified;
+        sendChangeMessage();
+        if (! written)
+            error = "Couldn't write " + destination.getFullPathName();
+        return written;
     }
 
     void Studio::saveInBackground (const juce::File& destination, std::function<void (bool)> done)
@@ -3499,6 +3556,7 @@ namespace pr7s
         auto copy = std::make_shared<Project> (project);
         file = destination;
         modified = false;
+        library->addRecent (destination);
         ++savesRunning;
         sendChangeMessage();
         saver.addJob ([copy, destination, done, life = saveAlive, this]
@@ -4029,6 +4087,7 @@ namespace pr7s
         if (! loaded)
             return false;
         openProject (std::move (*loaded), source, problems);
+        library->addRecent (source);
         return true;
     }
 

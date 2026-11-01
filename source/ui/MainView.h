@@ -65,6 +65,14 @@ public:
     bool handleKey (const juce::KeyPress&);
     KeyCommands::Map& getKeyMap() noexcept { return keyMap; }
     void openKeyCommands();   // the Key Commands window (KEYS)
+    // The Hub (0.12.0): the start window, HUB in the header. What it asks for
+    // is done here, after the unsaved-changes question; it closes once a song is open.
+    void openHub();
+    juce::DocumentWindow* getHubWindow() noexcept { return hubWindow.get(); }
+    void openSong (const juce::File&);
+    void saveAsTemplate();
+    // Changes not saved: asks first (Save / Don't save / Cancel), then `then`.
+    void whenSongCanGo (std::function<void()> then);
     juce::DocumentWindow* getKeyCommandsWindow() noexcept { return keysWindow.get(); }
     void mouseDown (const juce::MouseEvent&) override;   // also hears clicks in the arrangement, track list and editor
 
@@ -190,7 +198,8 @@ private:
     juce::TextButton keysButton { "KEYS" };
     int saveFlashes = 0;
     std::unique_ptr<ProgressBox> progressBox;   // a long job's progress (0.11.1)
-    std::unique_ptr<juce::DocumentWindow> keysWindow;
+    std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow;
+    juce::TextButton hubButton { "HUB" };
     void registerCommands();
     void saveKeyCommands();
     void changeListenerCallback (juce::ChangeBroadcaster*) override;

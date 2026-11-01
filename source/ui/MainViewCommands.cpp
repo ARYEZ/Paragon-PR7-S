@@ -45,6 +45,8 @@ void MainView::registerCommands()
     add ("File.Save", "File", "Save", { key ('S', ctrl) });
     add ("File.SaveAs", "File", "Save As...", { key ('S', ctrl | shift) });
     add ("File.Export", "File", "Export Audio Mixdown...", {}, [this] { exportMix(); });
+    add ("File.Hub", "File", "Open the Hub", {}, [this] { openHub(); });
+    add ("File.SaveTemplate", "File", "Save as Template...", {}, [this] { saveAsTemplate(); });
     add ("File.ImportMidi", "File", "Import MIDI File into This Song...", {}, [this] { importMidiFile (false); });
     add ("File.ImportMidiNew", "File", "Import MIDI File as a New Song...", {}, [this] { importMidiFile (true); });
     add ("File.ImportAudio", "File", "Import Audio Files (a Track Each)...", {}, [this] { importAudioFiles (false); });

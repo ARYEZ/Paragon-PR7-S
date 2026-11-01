@@ -19,6 +19,7 @@ add_executable(ParagonPR7STests
     TempoTests.cpp
     KeyCommandTests.cpp
     WorkflowTests.cpp
+    HubTests.cpp
     EditTests.cpp
     ImportAudioTests.cpp
     DeviceTests.cpp

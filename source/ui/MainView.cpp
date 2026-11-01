@@ -1,6 +1,7 @@
 #include "MainView.h"
 #include "engine/MidiImport.h"
 #include "ui/KeyCommandsPage.h"
+#include "ui/Hub.h"
 
 #include "ui/AutomationKeys.h"
 #include "ui/Logo.h"
@@ -119,7 +120,9 @@ MainView::MainView (pr7s::Studio& studioToUse)
     pluginsButton.onClick = [this] { openPlugins(); };
     keysButton.onClick = [this] { openKeyCommands(); };
     keysButton.setTooltip ("Key Commands: give any action or macro a key (a Stream Deck's Hotkey buttons press them)");
-    for (auto* key : { &keysButton })
+    hubButton.onClick = [this] { openHub(); };
+    hubButton.setTooltip ("The Hub: your songs (recent, templates, the projects folder), a new one, the audio driver");
+    for (auto* key : { &keysButton, &hubButton })
     {
         key->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
         key->setColour (juce::TextButton::textColourOffId, ParagonColours::text);
@@ -443,6 +446,8 @@ void MainView::resized()
     pluginsButton.setBounds (header.removeFromRight (86));
     header.removeFromRight (6);
     keysButton.setBounds (header.removeFromRight (66));
+    header.removeFromRight (6);
+    hubButton.setBounds (header.removeFromRight (60));
     // Wide: the header's keys (NEW to W) in the middle of the window.
     if (isWide())
     {
@@ -1519,6 +1524,110 @@ void MainView::openSettings()
     {
         juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->settingsWindow.reset(); });
     };
+}
+
+void MainView::whenSongCanGo (std::function<void()> then)
+{
+    if (! studio.isModified())
+    {
+        then();
+        return;
+    }
+    juce::AlertWindow::showYesNoCancelBox (juce::MessageBoxIconType::QuestionIcon, "Save the song?",
+                                           "This song has changes that aren't saved.", "Save", "Don't save", "Cancel", nullptr,
+                                           juce::ModalCallbackFunction::create ([safe = juce::Component::SafePointer<MainView> (this), then] (int result)
+    {
+        if (safe == nullptr || result == 0)
+            return;
+        if (result == 2)
+        {
+            then();
+            return;
+        }
+        safe->saveProject ([then] (bool saved) { if (saved) then(); });
+    }));
+}
+
+void MainView::openSong (const juce::File& file)
+{
+    juce::String problems;
+    if (! studio.open (file, problems))
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't open the song",
+                                                file.getFullPathName() + " isn't a Paragon PR7-S song (or is from a newer version).");
+    else if (problems.isNotEmpty())
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Some instruments, effects or recordings are missing",
+                                                "These aren't on this computer. Tracks without their instrument and clips without their "
+                                                "recording are silent, and the sound goes past missing effects, until they're found:\n\n" + problems);
+}
+
+void MainView::openHub()
+{
+    if (hubWindow != nullptr)
+    {
+        hubWindow->toFront (true);
+        return;
+    }
+    auto window = std::make_unique<HubWindow> (studio);
+    auto& hub = window->getHub();
+    const auto closeHub = [safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->hubWindow.reset(); });
+    };
+    window->onClose = closeHub;
+    hub.onOpen = [this, closeHub] (const juce::File& file)
+    {
+        whenSongCanGo ([this, file, closeHub] { openSong (file); closeHub(); });
+    };
+    hub.onTemplate = [this, closeHub] (const juce::File& file)
+    {
+        whenSongCanGo ([this, file, closeHub]
+        {
+            juce::String problems;
+            if (! studio.newFromTemplate (file, problems))
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't open the template", file.getFullPathName());
+            closeHub();
+        });
+    };
+    hub.onCreate = [this, closeHub] (const juce::String& name)
+    {
+        whenSongCanGo ([this, name, closeHub]
+        {
+            juce::String error;
+            if (! studio.getLibrary().usesDefaultLocation())
+                studio.newProject();
+            else if (! studio.createSong (name, error))
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't create the song", error);
+            closeHub();
+        });
+    };
+    hub.onChooseFile = [this, closeHub]
+    {
+        chooser = std::make_unique<juce::FileChooser> ("Open a song", studio.getLibrary().getDefaultLocation(),
+                                                       juce::String ("*") + pr7s::Project::fileExtension);
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [this, closeHub] (const juce::FileChooser& fc)
+        {
+            if (fc.getResult().existsAsFile())
+                whenSongCanGo ([this, file = fc.getResult(), closeHub] { openSong (file); closeHub(); });
+        });
+    };
+    hub.onSettings = [this] { openSettings(); };
+    hubWindow = std::move (window);
+}
+
+void MainView::saveAsTemplate()
+{
+    auto* box = new juce::AlertWindow ("Save as Template", "A name for the template (the Hub lists it under TEMPLATES):", juce::MessageBoxIconType::NoIcon);
+    box->addTextEditor ("name", studio.getFile() != juce::File() ? studio.getFile().getFileNameWithoutExtension() : juce::String ("My template"));
+    box->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    box->enterModalState (true, juce::ModalCallbackFunction::create ([box, safe = juce::Component::SafePointer<MainView> (this)] (int result)
+    {
+        if (safe == nullptr || result != 1)
+            return;
+        juce::String error;
+        if (! safe->studio.saveAsTemplate (box->getTextEditorContents ("name"), error))
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't save the template", error);
+    }), true);
 }
 
 void MainView::openKeyCommands()
