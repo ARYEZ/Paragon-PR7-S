@@ -33,6 +33,35 @@ ProgressBox::ProgressBox()
 {
     setSize (460, 150);
     setOpaque (false);
+    cancelKey.setWantsKeyboardFocus (false);
+    cancelKey.onClick = [this]
+    {
+        cancelKey.setEnabled (false);
+        cancelKey.setButtonText ("CANCELLING");
+        if (onCancel)
+            onCancel();
+    };
+    addChildComponent (cancelKey);
+}
+
+void ProgressBox::setOnCancel (std::function<void()> cancel)
+{
+    onCancel = std::move (cancel);
+    cancelKey.setVisible (onCancel != nullptr);
+    cancelKey.setEnabled (true);
+    cancelKey.setButtonText ("CANCEL");
+}
+
+void ProgressBox::resized()
+{
+    cancelKey.setBounds (getWidth() - 22 - 110, getHeight() - 18 - 26, 110, 26);
+}
+
+bool ProgressBox::keyPressed (const juce::KeyPress& key)
+{
+    if (key == juce::KeyPress::escapeKey && cancelKey.isVisible() && cancelKey.isEnabled())
+        cancelKey.onClick();
+    return true;
 }
 
 void ProgressBox::set (double newProgress, const juce::String& newWhat, juce::Component* over)
@@ -99,5 +128,7 @@ void ProgressBox::paint (juce::Graphics& g)
     area.removeFromTop (10.0f);
     g.setColour (ParagonColours::textDim);
     g.setFont (ParagonLookAndFeel::textFont (12.0f));
+    if (cancelKey.isVisible())
+        area.removeFromRight (130.0f);
     g.drawText ("The studio carries on when it's done.", area, juce::Justification::centredLeft, true);
 }

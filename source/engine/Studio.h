@@ -524,6 +524,9 @@ namespace pr7s
         // screen's thread itself, that wait never ended). It returns `work`'s answer.
         std::function<bool (std::function<bool()> work)> renderRunner;
         bool isRendering() const noexcept { return rendering; }
+        // CANCEL (any thread): the render running stops at its next block; its file is deleted.
+        void cancelRender() noexcept { renderCancelled = true; }
+        bool wasRenderCancelled() const noexcept { return renderCancelled; }
         // How far the render running has got (the runner's loop shows it).
         void reportRenderProgress();
         // The stage a job is at: its share of the whole, from `base`, `span` long.
@@ -636,6 +639,9 @@ namespace pr7s
         bool modified = false;
         bool masterSelected = false;
         bool prepareSave (const juce::File&);
+        // The song's recordings and freeze files (and its undo history's) copied from one folder to another.
+        bool copyAudioFiles (const juce::File& from, const juce::File& to);
+        void sendGone (Track&, int slot);
         void openProject (Project&&, const juce::File& source, juce::String& problems);   // open's and importDawProject's   // the plugins' settings into the song; the recordings beside it
         juce::ThreadPool saver { juce::ThreadPoolOptions{}.withThreadName ("Paragon PR7-S save").withNumberOfThreads (1) };
         std::shared_ptr<std::atomic<bool>> saveAlive = std::make_shared<std::atomic<bool>> (true);   // (false once the studio goes)
@@ -662,6 +668,7 @@ namespace pr7s
         double progressBase = 0.0, progressSpan = 1.0;
         bool rendering = false;
         std::atomic<double> renderDone { 0.0 };   // written by the render's thread
+        std::atomic<bool> renderCancelled { false };
         juce::String progressWhat;
         std::optional<double> latencyOverride;
 

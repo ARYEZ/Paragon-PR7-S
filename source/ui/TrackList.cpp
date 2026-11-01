@@ -963,7 +963,7 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
         change.addItem (10, studio.getPluginHost().isStudioSynthFound() ? juce::String ("PR7-K (the studio's synth)")
                                                                          : juce::String ("PR7-K not found: the old Paragon Synth"));
         for (int i = 0; i < instruments.size(); ++i)
-            change.addItem (100 + i, instruments[i].manufacturerName + ": " + instruments[i].name);
+            change.addItem (instrumentItems + i, instruments[i].manufacturerName + ": " + instruments[i].name);
         menu.addSubMenu (track->frozen ? "Change instrument (unfreeze first)" : "Change instrument", change, ! track->frozen && ! track->disabled);
         menu.addSeparator();
         menu.addItem (2, "Delete track");
@@ -1070,25 +1070,25 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
                                                         studio.removeTrack (trackId);
                                                 }));
         }
-        else if (chosen >= 300)
-        {
-            studio.setTrackInput (trackId, chosen - 300, true);
-        }
-        else if (chosen >= 200)
-        {
-            studio.setTrackInput (trackId, chosen - 200, false);
-        }
-        else if (chosen == 10 || chosen >= 100)
+        else if (chosen == 10 || (chosen >= instrumentItems && chosen - instrumentItems < instruments.size()))
         {
             pr7s::Instrument instrument;
-            if (chosen >= 100)
+            if (chosen >= instrumentItems)
             {
                 instrument.kind = pr7s::Instrument::Kind::plugin;
-                instrument.plugin = instruments[chosen - 100];
+                instrument.plugin = instruments[chosen - instrumentItems];
             }
             juce::String error;
             if (! studio.changeInstrument (trackId, instrument, &error))
                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't change the instrument", error);
+        }
+        else if (chosen >= 300 && chosen < 400)
+        {
+            studio.setTrackInput (trackId, chosen - 300, true);
+        }
+        else if (chosen >= 200 && chosen < 300)
+        {
+            studio.setTrackInput (trackId, chosen - 200, false);
         }
     });
 }

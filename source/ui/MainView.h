@@ -269,8 +269,8 @@ private:
     juce::Component::SafePointer<Windows::ExportPage> exportPage;
     juce::Component::SafePointer<Windows::RenderPage> renderPage;
     void render (const std::vector<pr7s::Studio::RenderSource>&, const pr7s::Studio::RenderOptions&);
+    void chooseExportFile (const pr7s::Studio::ExportOptions&);
     void writeExport (const juce::File&, const pr7s::Studio::ExportOptions&);
-    std::unique_ptr<juce::ThreadWithProgressWindow> exportProgress;
     juce::String lastTitle;
 };
 

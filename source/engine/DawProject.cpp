@@ -1,6 +1,7 @@
 #include "DawProject.h"
 
 #include <map>
+#include <set>
 
 namespace pr7s::DawProject
 {
@@ -32,7 +33,7 @@ namespace pr7s::DawProject
                     break;
                 const auto offset = (juce::int64) juce::ByteOrder::littleEndianInt64 (bytes + entry + 4);
                 const auto length = (juce::int64) juce::ByteOrder::littleEndianInt64 (bytes + entry + 12);
-                if (offset < 0 || length < 0 || offset + length > size)
+                if (offset < 0 || length < 0 || offset > size || length > size - offset)   // (no sum that can overflow)
                     continue;
                 if (std::memcmp (bytes + entry, "Comp", 4) == 0)
                     chunks.component = juce::MemoryBlock (bytes + offset, (size_t) length);
@@ -112,6 +113,13 @@ namespace pr7s::DawProject
             std::map<juce::String, juce::XmlElement*> byId;
             std::map<juce::String, int> trackIdOf;    // Track or Channel element id -> our bus id (0: the master)
             std::map<juce::String, ParameterInfo> parameters;
+            // Guards for the clip walk: content already being walked (a clip referring to
+            // its own container would recurse for ever) and a budget of walks in all
+            // (references and loops nested in each other multiply).
+            std::set<const juce::XmlElement*> walking;
+            long long walksLeft = 2000000;
+            bool budgetNoted = false;
+            std::set<juce::String> missingNames;
             std::map<juce::String, juce::String> extracted;   // path in the zip (or outside) -> file in the audio folder
             struct Pending { int trackId; juce::String destination; std::vector<juce::XmlElement*> sends; };
             std::vector<Pending> pending;
@@ -140,7 +148,10 @@ namespace pr7s::DawProject
                 if (fileRef->getBoolAttribute ("external", false))
                 {
                     const auto file = juce::File::isAbsolutePath (path) ? juce::File (path) : source.getParentDirectory().getChildFile (path);
-                    if (! file.loadFileAsData (data))
+                    // Only an ordinary file of a sane size (never a device, which could read for ever).
+                    const auto bytes = file.getSize();
+                    if (! file.existsAsFile() || bytes <= 0 || bytes > ((juce::int64) 4 << 30) || ! file.loadFileAsData (data)
+                        || (juce::int64) data.getSize() != bytes)
                         return std::nullopt;
                     return data;
                 }
@@ -162,22 +173,36 @@ namespace pr7s::DawProject
             double secondsPerBeatAt (double beat) const { return 60.0 / tempo.bpmAt (beat); }
 
             // ---- plug-ins --------------------------------------------------
-            std::optional<juce::PluginDescription> findPlugin (const juce::String& name, const juce::String& vendor) const
+            // The known VST3 of that name: the same vendor first (one name may hold the
+            // other: "Native Instruments" / "Native Instruments GmbH"), then the right
+            // kind (instrument or effect); the first of the best.
+            std::optional<juce::PluginDescription> findPlugin (const juce::String& name, const juce::String& vendor, bool instrument) const
             {
-                for (const auto& d : known)
-                    if (d.pluginFormatName == "VST3" && d.name.equalsIgnoreCase (name) && (vendor.isEmpty() || d.manufacturerName.equalsIgnoreCase (vendor)))
-                        return d;
+                const auto sameVendor = [&] (const juce::PluginDescription& d)
+                {
+                    const auto a = d.manufacturerName.trim().toLowerCase(), b = vendor.trim().toLowerCase();
+                    return b.isEmpty() || a == b || (a.isNotEmpty() && (a.contains (b) || b.contains (a)));
+                };
+                std::optional<juce::PluginDescription> best;
+                auto bestScore = -1;
                 for (const auto& d : known)
                     if (d.pluginFormatName == "VST3" && d.name.equalsIgnoreCase (name))
-                        return d;
-                return std::nullopt;
+                    {
+                        const auto score = (sameVendor (d) ? 2 : 0) + (d.isInstrument == instrument ? 1 : 0);
+                        if (score > bestScore)
+                        {
+                            best = d;
+                            bestScore = score;
+                        }
+                    }
+                return best;
             }
 
             juce::PluginDescription describe (const juce::XmlElement* device, const juce::String& where, bool instrument)
             {
                 const auto name = device->getStringAttribute ("deviceName", device->getStringAttribute ("name"));
                 const auto vendor = device->getStringAttribute ("deviceVendor");
-                if (auto found = findPlugin (name, vendor))
+                if (auto found = findPlugin (name, vendor, instrument))
                     return *found;
                 note (where + ": " + name + " isn't among the plug-ins found on this computer (PLUGINS > SCAN). Its settings are kept for when it is.");
                 juce::PluginDescription d;
@@ -442,11 +467,15 @@ namespace pr7s::DawProject
                 if (! data)
                 {
                     note ("The audio file " + fileRef->getStringAttribute ("path") + " isn't in the DAWproject; its clips stay, silent.");
-                    return extracted[key] = juce::File (fileRef->getStringAttribute ("path")).getFileName();
+                    const auto missing = juce::File (fileRef->getStringAttribute ("path").replaceCharacter ('\\', '/')).getFileName();
+                    missingNames.insert (missing.toLowerCase());   // (so a real file never takes its name)
+                    return extracted[key] = missing;
                 }
                 audioFolder.createDirectory();
-                auto target = audioFolder.getNonexistentChildFile (juce::File (fileRef->getStringAttribute ("path").replaceCharacter ('\\', '/')).getFileNameWithoutExtension(),
-                                                                    juce::File (fileRef->getStringAttribute ("path")).getFileExtension(), false);
+                const juce::File named (fileRef->getStringAttribute ("path").replaceCharacter ('\\', '/'));
+                auto target = audioFolder.getNonexistentChildFile (named.getFileNameWithoutExtension(), named.getFileExtension(), false);
+                for (int n = 2; missingNames.count (target.getFileName().toLowerCase()) > 0; ++n)
+                    target = audioFolder.getNonexistentChildFile (named.getFileNameWithoutExtension() + " " + juce::String (n), named.getFileExtension(), false);
                 target.replaceWithData (data->getData(), data->getSize());
                 return extracted[key] = target.getFileName();
             }
@@ -480,6 +509,19 @@ namespace pr7s::DawProject
 
             void walk (const juce::XmlElement* e, const juce::String& unitIn, const Window& w, Sink& outerSink)
             {
+                if (--walksLeft < 0)
+                {
+                    if (! budgetNoted)
+                        note ("The arrangement repeats itself too deeply to bring across; what's left of it is left out.");
+                    budgetNoted = true;
+                    return;
+                }
+                if (! walking.insert (e).second)
+                {
+                    note ("A clip that contains itself is left out.");
+                    return;
+                }
+                const struct Leave { std::set<const juce::XmlElement*>& set; const juce::XmlElement* e; ~Leave() { set.erase (e); } } leave { walking, e };
                 const auto unit = e->getStringAttribute ("timeUnit", unitIn);
                 // Any timeline can say whose track it's on (Lanes, Clips, Points...): from here down, that track.
                 Sink scoped;

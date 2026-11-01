@@ -299,6 +299,8 @@ private:
     pr7s::Studio& studio;
     Timeline& timeline;
     Selection selection;
+    int selectedPartId = 0;                     // its part's id (found again after the song changes)
+    Selection selectionOf (int trackId, int index);
 
     enum class Drag { none, position, cycle, cycleMove, cycleLeft, cycleRight, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
                       newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove, marquee,

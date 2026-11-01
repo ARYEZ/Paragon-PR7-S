@@ -123,7 +123,7 @@ namespace pr7s
         else if (loggedDevice.isNotEmpty())
             SessionLog::note ((loggedDevice = {}) + "Audio: no device open");
         // A new sample rate: the recordings are loaded again at it.
-        if (! juce::approximatelyEqual (audioCacheRate, engine.getSampleRate()))
+        if (! juce::approximatelyEqual (audioCacheRate, engine.getSampleRate()) && exportJob == nullptr)
         {
             audioCache.clear();
             engine.update (project);
@@ -145,7 +145,8 @@ namespace pr7s
                     track.parts = kept->second;
         numberParts();
         watchPlugins();
-        engine.update (project);
+        if (exportJob == nullptr)   // (mid-render the engine plays the render's copy: endExport brings the song back)
+            engine.update (project);
         modified = true;
         if (undoable)
             recordUndoState();
@@ -243,7 +244,7 @@ namespace pr7s
                 track.volumeDb = then->volumeDb;
                 track.pan = then->pan;
                 track.mute = then->mute;
-                track.solo = then->solo;
+                track.solo = then->solo && ! track.hidden && ! track.disabled;   // (hiding or disabling a track ended its solo: undo doesn't bring it back)
                 track.parts = then->parts;
                 restoreLanes (track.automation, then->automation);
                 track.output = then->output;
@@ -434,11 +435,26 @@ namespace pr7s
         if ((int) track->sends.size() <= slot)
             track->sends.resize ((size_t) slot + 1);
         auto& kept = track->sends[(size_t) slot];
+        if (send.target == 0 && kept.target != 0)
+            sendGone (*track, slot);
         kept = send;
         kept.levelDb = juce::jlimit (-60.0f, 6.0f, send.levelDb);
         while (! track->sends.empty() && track->sends.back().target == 0)
             track->sends.pop_back();
         changed();
+    }
+
+    void Studio::sendGone (Track& track, int slot)
+    {
+        // Its automation and Quick Controls go with it (a send put in the slot
+        // later never plays the old one's lane). Undo brings them back with it.
+        track.automation.erase (std::remove_if (track.automation.begin(), track.automation.end(), [slot] (const AutomationLane& l)
+        {
+            return l.target == AutomationLane::Target::send && l.slot == slot;
+        }), track.automation.end());
+        for (auto& qc : track.quickControls)
+            if (qc && qc->target == AutomationLane::Target::send && qc->slot == slot)
+                qc.reset();
     }
 
     void Studio::setSendLevel (int trackId, int slot, float db, bool undoable)
@@ -503,9 +519,12 @@ namespace pr7s
             {
                 if (track.output == trackId)
                     track.output = 0;
-                for (auto& send : track.sends)
-                    if (send.target == trackId)
-                        send = {};
+                for (size_t slot = 0; slot < track.sends.size(); ++slot)
+                    if (track.sends[slot].target == trackId)
+                    {
+                        track.sends[slot] = {};
+                        sendGone (track, (int) slot);
+                    }
                 while (! track.sends.empty() && track.sends.back().target == 0)
                     track.sends.pop_back();
             }
@@ -614,6 +633,10 @@ namespace pr7s
         copy.armed = false;
         copy.disabled = false;   // (a copy of a disabled track is loaded and heard: our choice)
         copy.hidden = false;
+        // A copy of a frozen track is a live one (its instrument and effects loaded,
+        // its parts editable): it never shares, or deletes, the original's freeze file.
+        copy.frozen = false;
+        copy.freezeFile = {};
         for (auto& part : copy.parts)
             part.id = 0;
         // The instrument and the effects as they are now (their settings from the running ones).
@@ -1066,6 +1089,8 @@ namespace pr7s
         auto* to = project.findTrack (toTrackId);
         if (from == nullptr || to == nullptr || ! juce::isPositiveAndBelow (index, (int) from->parts.size()))
             return;
+        if (from->frozen || to->frozen)
+            return;   // (a frozen track's parts are locked: nothing leaves or joins them)
         auto part = from->parts[(size_t) index];
         part.start = juce::jmax (0.0, newStart);
         from->parts.erase (from->parts.begin() + index);
@@ -1077,7 +1102,7 @@ namespace pr7s
     {
         const auto* from = project.findTrack (trackId);
         auto* to = project.findTrack (toTrackId);
-        if (from == nullptr || to == nullptr || ! juce::isPositiveAndBelow (index, (int) from->parts.size()))
+        if (from == nullptr || to == nullptr || ! juce::isPositiveAndBelow (index, (int) from->parts.size()) || to->frozen)
             return;
         auto part = from->parts[(size_t) index];
         part.start = juce::jmax (0.0, newStart);
@@ -1121,12 +1146,16 @@ namespace pr7s
             for (const auto& part : track.parts)
                 if (std::find (partIds.begin(), partIds.end(), part.id) != partIds.end())
                 {
+                    if (track.frozen && ! copy)
+                        continue;   // (a frozen track's parts are locked: they stay; a copy may leave)
                     auto to = track.id;
                     const auto at = shownIndex (track.id) + trackDelta;
                     if (trackDelta != 0 && juce::isPositiveAndBelow (at, (int) shown.size()))
                         if (const auto* target = project.findTrack (shown[(size_t) at]); target != nullptr && ! target->isChannel()
-                                                                                         && target->isAudio() == track.isAudio())
+                                                                                         && target->isAudio() == track.isAudio() && ! target->frozen)
                             to = target->id;
+                    if (to == track.id && track.frozen)
+                        continue;   // (nor does one join them)
                     going.push_back ({ track.id, part.id, to });
                 }
         if (going.empty())
@@ -1562,8 +1591,8 @@ namespace pr7s
         for (size_t t = 0; t < clip.tracks.size(); ++t)
         {
             auto* track = targets[t];
-            if (track == nullptr || track->isChannel())
-                continue;
+            if (track == nullptr || track->isChannel() || track->frozen)
+                continue;   // (nothing pasted onto a frozen track: its parts are locked)
             if (insertTime)
             {
                 splitTrackAt (*track, atBeat, project.tempoMap());
@@ -1587,7 +1616,7 @@ namespace pr7s
         const auto clip = copyRange (range);
         if (! copy)
             for (const auto id : range.trackIds)
-                if (auto* track = project.findTrack (id))
+                if (auto* track = project.findTrack (id); track != nullptr && ! track->frozen)
                 {
                     splitTrackAt (*track, range.start, project.tempoMap());
                     splitTrackAt (*track, range.end, project.tempoMap());
@@ -1706,7 +1735,7 @@ namespace pr7s
         if (clips.empty())
             return 0;
         const auto* target = project.findTrack (trackId);
-        if (target == nullptr || ! target->isAudio())
+        if (target == nullptr || ! target->isAudio() || target->frozen)   // (a frozen track takes no new clips: a new track does)
             trackId = addAudioTrack (stereo);
         if (oneTrack)
         {
@@ -2374,7 +2403,17 @@ namespace pr7s
         {
             plugin.addListener (this);
         }
-        ~KnobWatcher() override { plugin.removeListener (this); }
+        ~KnobWatcher() override
+        {
+            if (! detached)
+                plugin.removeListener (this);
+        }
+        // Off the plugin now; deleted later (the audio thread may be calling it this moment).
+        void detach()
+        {
+            plugin.removeListener (this);
+            detached = true;
+        }
 
         void audioProcessorParameterChanged (juce::AudioProcessor*, int index, float value) override
         {
@@ -2394,6 +2433,10 @@ namespace pr7s
         template <typename Action>
         void post (Action action, int index)
         {
+            // From the audio thread or a render's: a plugin's own output (a meter,
+            // gain reduction), not a hand on a knob; nothing posted (it allocates).
+            if (SessionLog::isAudioThread())
+                return;
             if (juce::MessageManager::existsAndIsCurrentThread())   // (a plugin's window: here and now)
             {
                 action (studio, busId, Studio::control (kind, slotIndex, index));
@@ -2413,6 +2456,7 @@ namespace pr7s
         const int busId;
         const AutomationLane::Target kind;
         const int slotIndex;
+        bool detached = false;
     };
 
     void Studio::watchPlugins()
@@ -2434,8 +2478,17 @@ namespace pr7s
 
     void Studio::unwatch (juce::AudioProcessor* plugin)
     {
-        if (plugin != nullptr)
-            watchers.erase (plugin);   // (before it's deleted: the engine says so, however it goes)
+        if (plugin == nullptr)
+            return;
+        // (Before it's deleted: the engine says so, however it goes.) Taken off it
+        // now, deleted once this has finished (and the engine has let the plugin go).
+        if (const auto found = watchers.find (plugin); found != watchers.end())
+        {
+            found->second->detach();
+            std::shared_ptr<KnobWatcher> retired (std::move (found->second));
+            watchers.erase (found);
+            juce::MessageManager::callAsync ([retired] {});
+        }
     }
 
     void Studio::unwatchAll()
@@ -2454,7 +2507,9 @@ namespace pr7s
 
     void Studio::grabControl (int busId, const AutomationLane& which)
     {
-        if (! engine.isPlaying() || ! getAutomationWrite (busId))
+        // (Mid-render the engine is "playing" the render's copy: a knob turned in a
+        // plug-in's window then writes nothing.)
+        if (! engine.isPlaying() || exportJob != nullptr || ! getAutomationWrite (busId))
             return;
         for (auto& pass : passes)
             if (pass.busId == busId && pass.control.sameControl (which))
@@ -3409,7 +3464,7 @@ namespace pr7s
 
     void Studio::timerCallback()
     {
-        if (rendering)
+        if (rendering || exportJob != nullptr)
             return;   // (a render runs: the screen's thread carries on meanwhile, nothing to do here)
         // Writing automation: the position going back (the cycle came round)
         // ends a pass where it got to; a latched switch's pass moves on with
@@ -3478,7 +3533,8 @@ namespace pr7s
     {
         // Its tempo changes on the tempo track (0.10.0): a new song's, or (matching the
         // file) from where it goes in, the song's tempo events before that kept.
-        const auto changes = midi.tempoChanges.size() > 1;
+        // (A song following its tempo track takes even one tempo there: its fixed tempo isn't heard.)
+        const auto changes = midi.tempoChanges.size() > 1 || (! newSong && matchTempo && project.followsTempoTrack());
         if (newSong || matchTempo)
         {
             if (! newSong && std::abs (project.bpm - midi.bpm) > 1.0e-6 && ! changes)
@@ -3502,7 +3558,10 @@ namespace pr7s
                     events.push_back (e);
             if (events.empty() && atBeat > 0.0)
                 events.push_back ({ 0.0, project.bpm, false });   // (the song's tempo up to where the file goes in)
-            for (auto e : midi.tempoChanges)
+            auto fromFile = midi.tempoChanges;
+            if (fromFile.empty())
+                fromFile.push_back ({ 0.0, midi.bpm, false });
+            for (auto e : fromFile)
             {
                 e.beat += atBeat;
                 events.push_back (e);
@@ -3586,9 +3645,16 @@ namespace pr7s
             return false;
         // Not the template itself: a new song (saving asks where), its recordings in a new unsaved folder.
         library->removeRecent (templateFile);
+        const auto templateAudio = getAudioFolder();
         file = juce::File();
         const auto stamp = juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H-%M-%S");
         unsavedAudioFolder = unsavedAudioFolder.getParentDirectory().getChildFile (stamp);
+        // The template's recordings and freeze files: the new song's own copies
+        // (they stayed in the template's folder, and the song never found them again).
+        if (! copyAudioFiles (templateAudio, unsavedAudioFolder))
+            problems << "Some of the template's recordings couldn't be copied.\n";
+        audioCache.clear();
+        engine.update (project);
         modified = false;
         sendChangeMessage();
         return true;
@@ -3682,25 +3748,80 @@ namespace pr7s
 
         // The recordings go with the song: into "<song> Audio" beside it
         // (copied from where they were: the unsaved folder, or the song's old place).
-        const auto from = getAudioFolder();
-        const auto to = destination.getSiblingFile (destination.getFileNameWithoutExtension() + " Audio");
-        if (from != to)
-            for (const auto& track : project.tracks)
-                if (track.frozen && from.getChildFile (track.freezeFile).existsAsFile() && ! to.getChildFile (track.freezeFile).exists())
-                {
-                    to.getChildFile (track.freezeFile).getParentDirectory().createDirectory();
-                    if (! from.getChildFile (track.freezeFile).copyFileTo (to.getChildFile (track.freezeFile)))
-                        return false;
-                }
-        if (from != to)
-            for (const auto& track : project.tracks)
+        return copyAudioFiles (getAudioFolder(), destination.getSiblingFile (destination.getFileNameWithoutExtension() + " Audio"));
+    }
+
+    bool Studio::copyAudioFiles (const juce::File& from, const juce::File& to)
+    {
+        if (from == to)
+            return true;
+        // Every file the song uses: its clips and freeze files, and those in its
+        // undo history too (an undo may bring a deleted clip back after Save As).
+        std::set<juce::String> used;
+        const auto collect = [&used] (const Project& p)
+        {
+            for (const auto& track : p.tracks)
+            {
+                if (track.freezeFile.isNotEmpty())
+                    used.insert (track.freezeFile);
                 for (const auto& part : track.parts)
-                    if (part.isAudio() && from.getChildFile (part.audioFile).existsAsFile() && ! to.getChildFile (part.audioFile).exists())
-                    {
-                        to.createDirectory();
-                        if (! from.getChildFile (part.audioFile).copyFileTo (to.getChildFile (part.audioFile)))
-                            return false;
-                    }
+                    if (part.isAudio() && part.audioFile.isNotEmpty())
+                        used.insert (part.audioFile);
+            }
+        };
+        collect (project);
+        for (const auto& state : undoStates)
+            collect (state);
+        for (const auto& [id, parts] : frozenParts)
+            for (const auto& part : parts)
+                if (part.isAudio() && part.audioFile.isNotEmpty())
+                    used.insert (part.audioFile);
+
+        std::map<juce::String, juce::String> renamed;
+        for (const auto& name : used)
+        {
+            const auto source = from.getChildFile (name);
+            if (! source.existsAsFile())
+                continue;
+            auto target = to.getChildFile (name);
+            if (target.exists())
+            {
+                if (target.hasIdenticalContentTo (source))
+                    continue;   // (already there: saved before)
+                // Another song's file of the same name (saved over a song that had one):
+                // ours goes beside it under a new name, never in its place, never skipped.
+                target = target.getParentDirectory().getNonexistentChildFile (target.getFileNameWithoutExtension(), target.getFileExtension(), false);
+                renamed[name] = (name.containsChar ('/') ? name.upToLastOccurrenceOf ("/", true, false) : juce::String()) + target.getFileName();
+            }
+            target.getParentDirectory().createDirectory();
+            if (! source.copyFileTo (target))
+                return false;
+        }
+        if (! renamed.empty())
+        {
+            const auto rename = [&renamed] (juce::String& name)
+            {
+                if (const auto found = renamed.find (name); found != renamed.end())
+                    name = found->second;
+            };
+            const auto apply = [&rename] (Project& p)
+            {
+                for (auto& track : p.tracks)
+                {
+                    rename (track.freezeFile);
+                    for (auto& part : track.parts)
+                        if (part.isAudio())
+                            rename (part.audioFile);
+                }
+            };
+            apply (project);
+            for (auto& state : undoStates)
+                apply (state);
+            for (auto& [id, parts] : frozenParts)
+                for (auto& part : parts)
+                    if (part.isAudio())
+                        rename (part.audioFile);
+        }
         return true;
     }
 
@@ -3742,7 +3863,9 @@ namespace pr7s
         }
 
         // The interface let go; the engine at the export's rate (the
-        // recordings are loaded again at it), stopped.
+        // recordings are loaded again at it), stopped (writing automation ends
+        // with it, as when the song stops).
+        punchOutAll();
         engine.stop();
         if (withDevices)
             devices.removeAudioCallback (&engine);
@@ -3766,6 +3889,7 @@ namespace pr7s
                 part.length = juce::jmin (part.length, options.end - part.start);
         }
         engine.update (playing);
+        engine.releaseNotes();   // (what the last render or the playback left sounding doesn't carry into this one)
         // Offline: only the plugins that will sound (0.9.9): the tracks with
         // parts in what's played, the channels they reach, the master's.
         std::set<int> sounding;
@@ -3819,6 +3943,8 @@ namespace pr7s
         };
         for (juce::int64 done = 0; done < job.total;)
         {
+            if (renderCancelled)
+                return false;   // (looked at every block: an instrument rendering slowly still stops at once)
             const auto length = (int) juce::jmin ((juce::int64) blockSize, job.total - done);
             engine.render (block, length);
             if (! job.writer->writeFromAudioSampleBuffer (block, 0, length))
@@ -3883,6 +4009,7 @@ namespace pr7s
     void Studio::beginBatch()
     {
         inBatch = true;
+        renderCancelled = false;
     }
 
     void Studio::endBatch()
@@ -3928,9 +4055,16 @@ namespace pr7s
         // thread of its own); its progress noted for the screen to show.
         rendering = true;
         renderDone = 0.0;
+        if (! inBatch)
+            renderCancelled = false;   // (in a batch, one CANCEL stops the rest too)
         const auto threaded = renderRunner != nullptr;
         const auto work = [this, threaded]
         {
+            // (The render's thread is an audio thread too: plugins' own changes aren't
+            // posted. Put back after: a runner may run it where it is.)
+            const auto wasAudio = SessionLog::isAudioThread();
+            SessionLog::markAudioThread (threaded || wasAudio);
+            const juce::ScopeGuard restore { [wasAudio] { SessionLog::markAudioThread (wasAudio); } };
             return renderExport ([this, threaded] (double done)
             {
                 renderDone = done;
@@ -3944,7 +4078,7 @@ namespace pr7s
         rendering = false;
         endExport();
         if (! rendered)
-            error = "Couldn't write " + destination.getFullPathName();
+            error = renderCancelled ? juce::String ("Cancelled.") : "Couldn't write " + destination.getFullPathName();
         return rendered;
     }
 

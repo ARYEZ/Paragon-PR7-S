@@ -125,8 +125,12 @@ private:
                                                    "This song has changes that aren't saved.", "Save", "Don't save", "Cancel", nullptr,
                                                    juce::ModalCallbackFunction::create ([this, view] (int result)
                                                    {
-                                                       if (result == 1)
-                                                           view->saveProject ([this] (bool saved) { if (saved) app.quit(); });
+                                                       if (result == 1)   // (after the box has gone: a chooser inside its answer closes with it on Windows)
+                                                           juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (view), this]
+                                                           {
+                                                               if (safe != nullptr)
+                                                                   safe->saveProject ([this] (bool saved) { if (saved) app.quit(); });
+                                                           });
                                                        else if (result == 2)
                                                            app.quit();
                                                    }));

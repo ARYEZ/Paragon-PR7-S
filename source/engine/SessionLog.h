@@ -54,7 +54,7 @@ namespace pr7s::SessionLog
 
     // The audio device's callback marks its thread (a thread_local flag:
     // no allocation), so a crash can say it happened there.
-    void markAudioThread() noexcept;
+    void markAudioThread (bool on = true) noexcept;
     bool isAudioThread() noexcept;
 
     // What a crash writes (also for tests: `platformInfo` as JUCE's crash handler gets it, or nullptr).

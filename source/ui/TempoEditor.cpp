@@ -761,9 +761,28 @@ bool TempoEditor::keyPressed (const juce::KeyPress& key)
 
 void TempoEditor::changeListenerCallback (juce::ChangeBroadcaster*)
 {
-    // (Events gone: their selection too.)
-    const auto count = (int) studio.getProject().tempoEvents.size();
-    selection.erase (std::remove_if (selection.begin(), selection.end(), [count] (int i) { return i >= count; }), selection.end());
+    // The selection follows its events. The same number of events: an edit of
+    // them (a drag, a typed value): the same indices. Events added or removed
+    // (here, on the tempo track, by undo): found again by where they are and
+    // their tempo; the ones gone leave the selection.
+    const auto& events = studio.getProject().tempoEvents;
+    const auto count = (int) events.size();
+    if (count != (int) knownEvents.size())
+    {
+        std::vector<int> kept;
+        for (const auto i : selection)
+            if (i >= 0 && i < (int) knownEvents.size())
+                for (int j = 0; j < count; ++j)
+                    if (std::abs (events[(size_t) j].beat - knownEvents[(size_t) i].beat) < 1.0e-9
+                        && std::abs (events[(size_t) j].bpm - knownEvents[(size_t) i].bpm) < 1.0e-9)
+                    {
+                        kept.push_back (j);
+                        break;
+                    }
+        selection = kept;
+    }
+    selection.erase (std::remove_if (selection.begin(), selection.end(), [count] (int i) { return i < 0 || i >= count; }), selection.end());
+    knownEvents = events;
     refresh();
 }
 
@@ -825,6 +844,7 @@ void TempoEditor::refresh()
 void TempoEditor::refreshInfo()
 {
     const auto& events = studio.getProject().tempoEvents;
+    knownEvents = events;   // (the selection, as it stands, is of these)
     const auto one = ! selection.empty() && juce::isPositiveAndBelow (selection.front(), (int) events.size());
     for (auto* c : std::initializer_list<juce::Component*> { &positionField, &valueField, &typeBox, &positionLabel, &valueLabel, &typeLabel })
         c->setVisible (infoShown && one);
@@ -930,7 +950,20 @@ ProcessTempoPage::ProcessTempoPage (pr7s::Studio& s) : studio (s)
         styleKey (*b);
         addAndMakeVisible (*b);
     }
-    processKey.onClick = [this] { if (apply() && onDone) onDone(); };
+    processKey.onClick = [this]
+    {
+        // (PROCESS doesn't take the focus from the field: what's typed there and
+        // not yet taken in, taken in now.)
+        if (newLength.getText() != asText (newSeconds))
+        {
+            if (! setNewLength (newLength.getText()))
+                return;
+        }
+        else if (newEnd.getText() != asText (startSeconds + newSeconds) && ! setNewEnd (newEnd.getText()))
+            return;
+        if (apply() && onDone)
+            onDone();
+    };
     cancel.onClick = [this] { if (onDone) onDone(); };
     setSize (520, 380);
     show();

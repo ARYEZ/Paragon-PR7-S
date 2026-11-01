@@ -72,6 +72,7 @@ private:
     Timeline timeline;   // its own zoom and scroll
     Tool tool = Tool::select;
     std::vector<int> selection;
+    std::vector<pr7s::TempoEvent> knownEvents;   // (the events the selection was made in)
     bool infoShown = true;
     std::unique_ptr<Canvas> canvas;
     std::unique_ptr<EventList> list;
@@ -118,6 +119,10 @@ private:
     juce::ComboBox formatBox;
     juce::TextEditor newEnd, newLength;
     juce::TextButton processKey { "PROCESS" }, cancel { "CANCEL" };
+public:
+    juce::TextEditor& getNewLengthField() { return newLength; }   // (tests)
+    juce::Button& getProcessKey() { return processKey; }
+private:
     juce::String asText (double seconds) const;
     std::optional<double> parse (const juce::String&) const;
     void show();

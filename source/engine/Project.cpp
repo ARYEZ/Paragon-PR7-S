@@ -434,7 +434,7 @@ namespace pr7s
             {
                 Part part;
                 part.start = juce::jmax (0.0, p->getDoubleAttribute ("start"));
-                part.length = juce::jmax (0.0625, p->getDoubleAttribute ("length", 4.0));
+                part.length = juce::jmax (1.0e-6, p->getDoubleAttribute ("length", 4.0));
                 part.name = p->getStringAttribute ("name");
                 part.muted = p->getBoolAttribute ("muted");
                 part.audioFile = p->getStringAttribute ("audioFile");

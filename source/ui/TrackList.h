@@ -46,6 +46,7 @@ public:
     juce::PopupMenu makeAddTrackMenu (int offset = 0);
     bool addTrackChosen (int chosen);
     static constexpr int addTrackOffset = 1000000;
+    static constexpr int instrumentItems = 100000;   // (the track menu's instruments: clear of every other item, however many)
     static juce::PopupMenu alphabetical (const juce::PopupMenu&);   // the track menu's order (0.9.12)
     // A track's menu (its instrument key's): its window, change it, Output, delete... (also the Inspector's)
     void showInstrumentMenu (int trackId, bool withAutomation = false);

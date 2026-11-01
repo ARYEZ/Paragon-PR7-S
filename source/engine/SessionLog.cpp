@@ -411,7 +411,7 @@ namespace pr7s::SessionLog
         s.out = nullptr;
     }
 
-    void markAudioThread() noexcept { onAudioThread = true; }
+    void markAudioThread (bool on) noexcept { onAudioThread = on; }
     bool isAudioThread() noexcept { return onAudioThread; }
 
     juce::String describeCrash (const juce::String& what, void* info)

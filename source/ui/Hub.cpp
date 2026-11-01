@@ -427,8 +427,10 @@ void Hub::showMenu (int index)
     if (isRecent)
         menu.addItem (2, "Remove from the List");
     menu.addItem (3, "Show in Explorer");
-    menu.addItem (4, "Rename...");
-    menu.addItem (5, "Delete...");
+    // (Not the song that's open: the studio would go on saving it under its old name.)
+    const auto isOpen = item.file == studio.getFile();
+    menu.addItem (4, isOpen ? "Rename... (it's open)" : "Rename...", ! isOpen);
+    menu.addItem (5, isOpen ? "Delete... (it's open)" : "Delete...", ! isOpen);
     if (isRecent)
     {
         menu.addSeparator();
@@ -477,12 +479,26 @@ void Hub::rename (const juce::File& file)
         if (name.isEmpty())
             return;
         const auto renamed = file.getSiblingFile (name + file.getFileExtension());
-        if (! renamed.exists() && file.moveFileTo (renamed))
+        // Its recordings folder, "<song> Audio", goes with it: never onto another's
+        // (a deleted song's folder stays behind), and the song goes back if it can't.
+        const auto audio = file.getSiblingFile (file.getFileNameWithoutExtension() + " Audio");
+        const auto renamedAudio = renamed.getSiblingFile (name + " Audio");
+        if (renamed.exists() || (audio.isDirectory() && renamedAudio.exists()))
         {
-            // (Its recordings folder, "<song> Audio", goes with it.)
-            const auto audio = file.getSiblingFile (file.getFileNameWithoutExtension() + " Audio");
-            if (audio.isDirectory())
-                audio.moveFileTo (renamed.getSiblingFile (name + " Audio"));
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Rename",
+                                                    "There's already a song or a recordings folder called " + name + " here.");
+            return;
+        }
+        if (file.moveFileTo (renamed))
+        {
+            if (audio.isDirectory() && ! audio.moveFileTo (renamedAudio))
+            {
+                renamed.moveFileTo (file);
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Rename",
+                                                        "Its recordings folder couldn't be renamed (is a file in it open?), so the song keeps its name.");
+                safe->refresh();
+                return;
+            }
             auto& library = safe->studio.getLibrary();
             const auto wasRecent = library.getRecent().contains (file);
             library.removeRecent (file);

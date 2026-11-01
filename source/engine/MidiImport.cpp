@@ -48,6 +48,12 @@ namespace pr7s
                 else if (result.tempoChanges.empty() || std::abs (result.tempoChanges.back().bpm - bpm) > 1.0e-6)
                     result.tempoChanges.push_back ({ beat, bpm, false });
             }
+        // A first tempo after the file's start: until then it plays at MIDI's own 120.
+        if (! result.tempoChanges.empty() && result.tempoChanges.front().beat > 1.0e-9)
+        {
+            result.tempoChanges.insert (result.tempoChanges.begin(), { 0.0, 120.0, false });
+            result.bpm = 120.0;
+        }
         if (timeFormat <= 0)
             midi.convertTimestampTicksToSeconds();
         const auto toBeats = [&] (double time)

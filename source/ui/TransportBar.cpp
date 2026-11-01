@@ -113,7 +113,7 @@ juce::String TransportBar::getTooltip()
                  : "The song's tempo: drag up or down, or double-click to type it. Right-click: Activate Tempo Track, or add the tempo track";
     if (! cpuScreen.contains (getMouseXYRelative().toFloat()))
         return {};
-    const auto overloads = studio.getEngine().takePerformance().overloads;
+    const auto overloads = studio.getEngine().getOverloads();   // (not takePerformance: that takes the peak the meter shows)
     return "CPU: the audio processing load. Average " + juce::String (juce::roundToInt (shownAverage * 100.0f)) + "%, peak "
          + juce::String (juce::roundToInt (shownPeak * 100.0f)) + "% (of the time each block has). "
          + (overloads > 0 ? juce::String (overloads) + " overload" + (overloads == 1 ? "" : "s") + " (dropouts): click to reset. "

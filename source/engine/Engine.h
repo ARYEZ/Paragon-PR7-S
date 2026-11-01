@@ -87,6 +87,9 @@ namespace pr7s
         // Transport (any thread)
         void play();
         void stop();
+        // Every note the song left sounding ended at the next block (a render's start:
+        // no block may have been played since the last render or the playback).
+        void releaseNotes() noexcept { releaseAll = true; }
         void record();   // plays, recording what's played into the armed track
         void stopRecording() noexcept { recording = false; }   // punch out: keeps playing
         bool isPlaying() const noexcept { return playing.load(); }
@@ -157,6 +160,7 @@ namespace pr7s
         struct Performance { float average = 0.0f, peak = 0.0f; int overloads = 0; };
         Performance takePerformance();
         void resetOverloads() noexcept { overloads = 0; }
+        int getOverloads() const noexcept { return overloads.load(); }   // (without taking the peak: a tooltip looks too)
         // Every fader, pan and send straight at its setting, with no glide from
         // where it was (an export or a render starts here: its first moments
         // at the levels set, not still moving from the last playback's).
@@ -225,6 +229,8 @@ namespace pr7s
             float gainLeft = 1.0f, gainRight = 1.0f;
             juce::SmoothedValue<float> left, right;
             std::bitset<128> held;       // notes sounding, to stop them on a jump or stop
+            int heldChannel = 1;         // the channel they were started on (the track's may change meanwhile)
+            bool checkHeld = false;      // the events changed (an edit while playing): the notes they no longer end, ended
             juce::MidiBuffer midi;
             juce::AudioBuffer<float> buffer;
             std::array<LevelMeterSource, 3> meters;   // one per reader (2: the Inspector's fader)
@@ -286,6 +292,7 @@ namespace pr7s
         };
         void schedule (TrackState&, juce::int64 fromSample, juce::int64 toSample, int sampleOffset, const Timing&);
         void stopHeldNotes (TrackState&, int sampleOffset);
+        void endNotesNoLongerEnded (TrackState&, double beatNow, int sampleOffset);
         void renderBlock (juce::AudioBuffer<float>& output, int numSamples);
         const float* inputChannel (int channel, int offset) const noexcept;
         void playClips (TrackState&, juce::int64 clock, int offset, int length, const Timing&);
@@ -312,6 +319,7 @@ namespace pr7s
         std::atomic<bool> playing { false }, recording { false };
         std::atomic<double> position { 0.0 }, jumpTo { -1.0 };
         std::atomic<bool> rebase { false };
+        std::atomic<bool> releaseAll { false };
         std::atomic<int> cycleCount { 0 };   // the position was moved while stopped: the clock starts from it
         bool wasPlaying = false;
         // The song position in whole samples while playing (audio thread), so

@@ -86,7 +86,7 @@ namespace pr7s
         live.ensureSize (2048);
         deviceBuffer.setSize (2, maxBlockSize);
         silence.assign ((size_t) maxBlockSize, 0.0f);
-        effectMidi.ensureSize (16);
+        effectMidi.ensureSize (4096);   // (an effect may send MIDI out: room for it, not grown on the audio thread)
         auto masterChannels = 2;
         for (auto& slot : masterInserts)
             if (slot.plugin != nullptr)
@@ -520,6 +520,7 @@ namespace pr7s
             if (auto* track = findTrack (p.id))
             {
                 std::swap (track->events, p.events);   // the old list goes out with `prepared`
+                track->checkHeld = true;
                 std::swap (track->clips, p.clips);      // likewise the old clips
                 if (const auto* t = project.findTrack (p.id))
                 {
@@ -656,7 +657,13 @@ namespace pr7s
             if (at >= toSample)
                 break;
             if ((it->status & 0xf0) == 0x90)
+            {
+                const auto channel = (it->status & 0x0f) + 1;
+                if (track.held.any() && channel != track.heldChannel)
+                    stopHeldNotes (track, sampleOffset + (int) (at - fromSample));   // (the channel changed: the old notes end on theirs)
+                track.heldChannel = channel;
                 track.held.set (it->data1);
+            }
             else
                 track.held.reset (it->data1);
             const juce::uint8 bytes[] = { it->status, it->data1, it->data2 };
@@ -668,8 +675,35 @@ namespace pr7s
     {
         for (int note = 0; note < 128; ++note)
             if (track.held.test ((size_t) note))
-                track.midi.addEvent (juce::MidiMessage::noteOff (track.midiChannel, note), sampleOffset);
+                track.midi.addEvent (juce::MidiMessage::noteOff (track.heldChannel, note), sampleOffset);
         track.held.reset();
+    }
+
+    void Engine::endNotesNoLongerEnded (TrackState& track, double beatNow, int sampleOffset)
+    {
+        // A note sounding goes on only if the new list still ends it ahead, on
+        // its channel, before the same key starts again (else it would ring
+        // until stop: the part was muted, the note deleted, moved or transposed).
+        const auto channelBits = (juce::uint8) (track.heldChannel - 1);
+        const auto from = std::lower_bound (track.events.begin(), track.events.end(), beatNow - 1.0e-9,
+                                            [] (const Event& e, double beat) { return e.beat < beat; });
+        for (int note = 0; note < 128; ++note)
+        {
+            if (! track.held.test ((size_t) note))
+                continue;
+            auto ended = false;
+            for (auto it = from; it != track.events.end(); ++it)
+                if (it->data1 == note && (it->status & 0x0f) == channelBits)
+                {
+                    ended = (it->status & 0xf0) == 0x80;
+                    break;
+                }
+            if (! ended)
+            {
+                track.midi.addEvent (juce::MidiMessage::noteOff (track.heldChannel, note), sampleOffset);
+                track.held.reset ((size_t) note);
+            }
+        }
     }
 
     void Engine::render (juce::AudioBuffer<float>& output, int numSamples, const juce::AudioBuffer<float>* input)
@@ -721,10 +755,17 @@ namespace pr7s
             for (auto& track : tracks)
                 stopHeldNotes (*track, 0);
         }
-        if (wasPlaying && ! nowPlaying)
+        if ((wasPlaying && ! nowPlaying) || releaseAll.exchange (false))
             for (auto& track : tracks)
                 stopHeldNotes (*track, 0);
         wasPlaying = nowPlaying;
+        if (nowPlaying)
+        {
+            const auto beatNow = timing.beatAt ((double) sampleClock);
+            for (auto& track : tracks)
+                if (std::exchange (track->checkHeld, false) && track->held.any())
+                    endNotesNoLongerEnded (*track, beatNow, 0);
+        }
 
         auto clock = sampleClock;
         const auto beat = timing.beatAt ((double) clock);

@@ -61,8 +61,16 @@ namespace KeyCommands
         const auto key = normalise (press);
         const auto mods = key.getModifiers();
         juce::String text;
+       #if JUCE_MAC
+        // (On a Mac, Cmd and Ctrl are two keys: told apart, so a saved Ctrl+X stays Ctrl+X.)
+        if (mods.isCommandDown())
+            text << "Cmd+";
+        if (mods.isCtrlDown())
+            text << "Ctrl+";
+       #else
         if (mods.isCtrlDown() || mods.isCommandDown())
             text << "Ctrl+";
+       #endif
         if (mods.isAltDown())
             text << "Alt+";
         if (mods.isShiftDown())
@@ -76,7 +84,11 @@ namespace KeyCommands
         int flags = 0;
         for (;;)
         {
+           #if JUCE_MAC
+            if (rest.startsWithIgnoreCase ("Ctrl+"))       { flags |= juce::ModifierKeys::ctrlModifier; rest = rest.substring (5); }
+           #else
             if (rest.startsWithIgnoreCase ("Ctrl+"))       { flags |= juce::ModifierKeys::commandModifier; rest = rest.substring (5); }
+           #endif
             else if (rest.startsWithIgnoreCase ("Cmd+"))   { flags |= juce::ModifierKeys::commandModifier; rest = rest.substring (4); }
             else if (rest.startsWithIgnoreCase ("Alt+"))   { flags |= juce::ModifierKeys::altModifier; rest = rest.substring (4); }
             else if (rest.startsWithIgnoreCase ("Shift+")) { flags |= juce::ModifierKeys::shiftModifier; rest = rest.substring (6); }
@@ -252,7 +264,9 @@ namespace KeyCommands
 
     bool Map::run (const juce::String& id)
     {
-        if (running > 4)
+        if (running == 0)
+            stepsLeft = 1000;   // (macros calling each other branch: 20 steps each, five deep, is millions)
+        if (running > 4 || --stepsLeft < 0)
             return false;   // (a macro running itself)
         if (id.startsWith (macroPrefix))
         {
@@ -393,10 +407,9 @@ namespace KeyCommands
         {
             auto* e = xml->createNewChildElement ("Command");
             e->setAttribute ("id", id);
-            juce::StringArray texts;
+            // One element per key ("Ctrl+," holds the comma a list would be split on).
             for (const auto& key : keys)
-                texts.add (describe (key));
-            e->setAttribute ("keys", texts.joinIntoString (", "));
+                e->createNewChildElement ("Key")->setAttribute ("key", describe (key));
         }
         for (const auto& m : macros)
         {
@@ -430,7 +443,17 @@ namespace KeyCommands
             if (find (id) == nullptr && ! isMacro)
                 continue;   // (a command this version doesn't have)
             juce::Array<juce::KeyPress> keys;
-            for (const auto& text : juce::StringArray::fromTokens (e->getStringAttribute ("keys"), ",", {}))
+            juce::StringArray texts;
+            for (const auto* k : e->getChildWithTagNameIterator ("Key"))
+                texts.add (k->getStringAttribute ("key"));
+            // (0.11.0's files: one attribute, keys joined by ", "; split there only, so "Ctrl+," survives.)
+            for (auto rest = e->getStringAttribute ("keys"); rest.isNotEmpty();)
+            {
+                const auto at = rest.indexOf (1, ", ");
+                texts.add (at < 0 ? rest : rest.substring (0, at));
+                rest = at < 0 ? juce::String() : rest.substring (at + 2);
+            }
+            for (const auto& text : texts)
                 if (const auto key = parse (text); key.isValid())
                     keys.add (key);
             custom[id] = keys;

@@ -558,6 +558,7 @@ TEST_CASE ("Snapshot: the progress box, and SAVE lit", "[.][snapshot-progress]")
     {
         ProgressBox box;
         box.set (0.62, "Rendering KEYS (2 of 3)", nullptr);
+        box.setOnCancel ([] {});   // (a render: its CANCEL key, 0.13.1)
         const auto image = box.createComponentSnapshot (box.getLocalBounds(), true, 2.0f);
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };

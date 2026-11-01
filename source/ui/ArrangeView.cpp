@@ -38,13 +38,16 @@ void ArrangeView::changeListenerCallback (juce::ChangeBroadcaster*)
     // Parts selected that have gone (undo, delete) leave the selection.
     alsoSelected.erase (std::remove_if (alsoSelected.begin(), alsoSelected.end(), [this] (int id) { return ! studio.findPart (id).has_value(); }),
                         alsoSelected.end());
-    // A part may have gone (undo, delete): drop a selection that no longer exists.
+    // The part selected, found again by its id (an undo or a delete before it
+    // moves it in its track's list, or to another track); gone: no selection.
     if (selection.isValid())
     {
-        const auto* track = studio.getProject().findTrack (selection.trackId);
-        if (track == nullptr || selection.index >= (int) track->parts.size())
-            selection = {};
+        selection = {};
+        if (selectedPartId != 0)
+            if (const auto at = studio.findPart (selectedPartId))
+                selection = selectionOf (at->first, at->second);
     }
+    selectedPartId = selection.isValid() ? selectedPartId : 0;
     // Likewise automation points (an undo can change them under the selection).
     if (drag != Drag::points && drag != Drag::draw && drag != Drag::band)
     {
@@ -378,7 +381,7 @@ void ArrangeView::selectParts (const std::vector<int>& partIds)
         if (const auto at = studio.findPart (id))
         {
             if (! selection.isValid())
-                selection = { at->first, at->second };
+                selection = selectionOf (at->first, at->second);
             else
                 alsoSelected.push_back (id);
         }
@@ -421,10 +424,19 @@ void ArrangeView::pasteParts (bool atOrigin)
     studio.pasteRange (partsClip, atOrigin ? partsClip.origin : studio.getEngine().getPosition(), first, false);
 }
 
+ArrangeView::Selection ArrangeView::selectionOf (int trackId, int index)
+{
+    // (The part's id kept beside it: the index alone may point at another part after an edit.)
+    selectedPartId = 0;
+    if (const auto* track = studio.getProject().findTrack (trackId); track != nullptr && juce::isPositiveAndBelow (index, (int) track->parts.size()))
+        selectedPartId = track->parts[(size_t) index].id;
+    return { trackId, index };
+}
+
 void ArrangeView::select (int trackId, int index)
 {
     alsoSelected.clear();
-    selection = { trackId, index };
+    selection = selectionOf (trackId, index);
     if (trackId != 0)
         studio.selectTrack (trackId);
     repaint();
@@ -1033,7 +1045,7 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
             if (! alsoSelected.empty())
             {
                 if (const auto at = studio.findPart (alsoSelected.back()))
-                    selection = { at->first, at->second };
+                    selection = selectionOf (at->first, at->second);
                 alsoSelected.pop_back();
             }
         }
@@ -1043,7 +1055,7 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
         {
             if (const auto primary = partIdAt (selection))
                 alsoSelected.push_back (primary);
-            selection = { hit->first, hit->second };
+            selection = selectionOf (hit->first, hit->second);
             studio.selectTrack (hit->first);
         }
         repaint();
@@ -1057,7 +1069,7 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
         if (const auto primary = partIdAt (selection); primary != 0 && primary != id)
             alsoSelected.push_back (primary);
         alsoSelected.erase (std::remove (alsoSelected.begin(), alsoSelected.end(), id), alsoSelected.end());
-        selection = { hit->first, hit->second };
+        selection = selectionOf (hit->first, hit->second);
         studio.selectTrack (hit->first);
     }
     else
@@ -1217,7 +1229,13 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
             dragMoved = true;
             const auto tempo = project.tempoMap();
             const auto end = dragOriginalStart + dragOriginalLength;
-            const auto& original = studio.getProject().findTrack (dragTrack)->parts[(size_t) selection.index];
+            const auto* dragged = studio.getProject().findTrack (dragTrack);
+            if (dragged == nullptr || ! juce::isPositiveAndBelow (selection.index, (int) dragged->parts.size()))
+            {
+                drag = Drag::none;   // (the part went mid-drag)
+                break;
+            }
+            const auto& original = dragged->parts[(size_t) selection.index];
             const auto earliest = juce::jmax (0.0, tempo.beatAt (tempo.secondsAt (dragOriginalStart) - original.audioOffset));
             const auto start = juce::jlimit (earliest, end - 1.0 / 16.0, pr7s::snap (dragOriginalStart + beat - dragStartBeat, grid));
             dragPart.start = start;
@@ -1334,7 +1352,7 @@ void ArrangeView::mouseUp (const juce::MouseEvent& event)
                 studio.moveParts (ids, dragNewStart - dragOriginalStart, trackIndex (dragTargetTrack) - trackIndex (dragTrack), dragCopies);
                 if (! dragCopies)
                     if (const auto at = studio.findPart (primary))
-                        selection = { at->first, at->second };
+                        selection = selectionOf (at->first, at->second);
             }
             else if (dragCopies)
             {
@@ -1484,7 +1502,7 @@ bool ArrangeView::toolDown (const juce::MouseEvent& event)
                     studio.splitPartRepeatedly (hit->first, hit->second, at);
                 else
                     studio.splitPart (hit->first, hit->second, at);
-                selection = { hit->first, hit->second };   // the first half
+                selection = selectionOf (hit->first, hit->second);   // the first half
             }
             break;
         case Tool::glue:
@@ -1492,7 +1510,7 @@ bool ArrangeView::toolDown (const juce::MouseEvent& event)
             {
                 const auto audio = isAudioTrack (hit->first);
                 if (studio.glueParts (hit->first, hit->second, event.mods.isAltDown()))
-                    selection = { hit->first, hit->second };
+                    selection = selectionOf (hit->first, hit->second);
                 else if (audio)
                     cannotGlue();
             }
@@ -1549,7 +1567,7 @@ void ArrangeView::toolUp (const juce::MouseEvent& event)
             studio.setPosition (playReturn);
             break;
         case Drag::newPart:
-            if (dragMoved && ! toolBand.isEmpty())
+            if (dragMoved && ! toolBand.isEmpty() && studio.getProject().findTrack (newPartTrack) != nullptr)
             {
                 pr7s::Part part;
                 part.start = juce::jmax (0.0, timeline.beatForX (toolBand.getX()));
@@ -1722,7 +1740,7 @@ void ArrangeView::showPartMenu (int trackId, int index)
             onRenderInPlace (sources, chosen == 7);
             return;
         }
-        selection = { trackId, index };
+        selection = selectionOf (trackId, index);
         if (chosen == 9 || chosen == 10)
         {
             copySelected (chosen == 9);

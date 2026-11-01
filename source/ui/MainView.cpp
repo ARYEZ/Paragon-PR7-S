@@ -159,6 +159,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
             std::thread worker ([&] { result = work(); done = true; });
             if (progressBox != nullptr && ! progressBox->isCurrentlyModal())
                 progressBox->enterModalState (false);
+            if (progressBox != nullptr)
+                progressBox->setOnCancel ([this] { studio.cancelRender(); });
             while (! done.load())
             {
                 juce::MessageManager::getInstance()->runDispatchLoopUntil (30);
@@ -640,12 +642,18 @@ void MainView::ZoneDivider::mouseUp (const juce::MouseEvent&)
 //==============================================================================
 bool MainView::keyPressed (const juce::KeyPress& key)
 {
+    // While a mouse button is held (a part, note, fader or point being dragged),
+    // only Space: an edit by key mid-drag pulled the song from under the drag
+    // (a part deleted or undone while its edge moved; a note's change undone by
+    // the drag's release; a fader's drag going on to the next track).
+    if (juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown() && key != juce::KeyPress::spaceKey)
+        return true;
     // The owner's key commands and macros first (KEYS), then the built-in keys.
     auto swallowed = false;
     if (keyMap.handle (key, swallowed))
         return true;
-    if (swallowed)
-        return true;   // a default key the owner took away from its command
+    if (swallowed && ! (isKeyEditorOpen() && keysToEditor))
+        return true;   // a default key the owner took away from its command (the MIDI editor's own keys stay its own)
     return handleKey (key);
 }
 
@@ -1378,38 +1386,6 @@ void MainView::filesDropped (const juce::StringArray& files, int x, int y)
 }
 
 //==============================================================================
-namespace
-{
-    // The export, written on a thread of its own behind a progress bar.
-    class ExportProgress final : public juce::ThreadWithProgressWindow
-    {
-    public:
-        ExportProgress (pr7s::Studio& s, std::function<void (bool written, bool cancelled)> done)
-            : ThreadWithProgressWindow ("Exporting the mix...", true, true, 10000, "CANCEL"), studio (s), onDone (std::move (done)) {}
-
-        void run() override
-        {
-            written = studio.renderExport ([this] (double done)
-            {
-                setProgress (done);
-                return ! threadShouldExit();
-            });
-        }
-
-        void threadComplete (bool userPressedCancel) override
-        {
-            studio.endExport();   // here, on the message thread
-            if (onDone)
-                onDone (written, userPressedCancel);
-        }
-
-    private:
-        pr7s::Studio& studio;
-        std::function<void (bool, bool)> onDone;
-        bool written = false;
-    };
-}
-
 void MainView::exportMix()
 {
     if (studio.isExporting() || studio.getEngine().isRecording() || exportPage != nullptr)
@@ -1434,19 +1410,36 @@ void MainView::exportMix()
     page->onExport = [this, close] (const pr7s::Studio::ExportOptions& chosen)
     {
         close();
+        // The chooser after the page has gone (never opened inside a closing box's click: 0.9.7).
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this), chosen]
+        {
+            if (safe != nullptr)
+                safe->chooseExportFile (chosen);
+        });
+    };
+}
+
+void MainView::chooseExportFile (const pr7s::Studio::ExportOptions& chosen)
+{
+    {
         // Where: beside the song, named after it.
         const auto song = studio.getFile();
         const auto start = song != juce::File() ? song.withFileExtension (".wav")
                          : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Mix.wav");
         chooser = std::make_unique<juce::FileChooser> ("Export the mix", start, "*.wav");
         chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
-                              [this, chosen] (const juce::FileChooser& fc)
+                              [safe = juce::Component::SafePointer<MainView> (this), chosen] (const juce::FileChooser& fc)
                               {
                                   const auto file = fc.getResult();
+                                  // (After the chooser has gone: the render's loop isn't run inside its callback.)
                                   if (file != juce::File())
-                                      writeExport (file.withFileExtension (".wav"), chosen);
+                                      juce::MessageManager::callAsync ([safe, chosen, file]
+                                      {
+                                          if (safe != nullptr)
+                                              safe->writeExport (file.withFileExtension (".wav"), chosen);
+                                      });
                               });
-    };
+    }
 }
 
 void MainView::renderInPlace (std::vector<pr7s::Studio::RenderSource> sources, bool ask)
@@ -1499,23 +1492,19 @@ void MainView::render (const std::vector<pr7s::Studio::RenderSource>& sources, c
 
 void MainView::writeExport (const juce::File& file, const pr7s::Studio::ExportOptions& options)
 {
+    // As Render in Place (0.13.1): on a thread of its own behind the progress
+    // box, the screen carrying on; CANCEL stops it at its next block. (It had
+    // a window of its own whose CANCEL waited for the thread on the screen's
+    // thread: an instrument rendering offline that waited for the screen
+    // never let it stop, and after 10 s the thread was killed mid-block.)
+    studio.setProgressStage (0.0, 1.0, "Exporting the mix");
     juce::String error;
-    if (! studio.beginExport (file, options, error))
-    {
-        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't export", error);
-        return;
-    }
-    exportProgress = std::make_unique<ExportProgress> (studio, [safe = juce::Component::SafePointer<MainView> (this), file] (bool written, bool cancelled)
-    {
-        if (safe == nullptr)
-            return;
-        if (! written && ! cancelled)
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't export",
-                                                    "Couldn't write " + file.getFullPathName() + " (is the disk full?)");
-        // Not inside its own callback.
-        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->exportProgress.reset(); });
-    });
-    exportProgress->launchThread();
+    const auto written = studio.exportMix (file, options, error);
+    const auto cancelled = studio.wasRenderCancelled();
+    studio.endProgress();
+    if (! written && ! cancelled)
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't export",
+                                                error.isNotEmpty() ? error : "Couldn't write " + file.getFullPathName() + " (is the disk full?)");
 }
 
 //==============================================================================
@@ -1573,7 +1562,12 @@ void MainView::whenSongCanGo (std::function<void()> then)
             then();
             return;
         }
-        safe->saveProject ([then] (bool saved) { if (saved) then(); });
+        // (After the box has gone: a chooser opened inside its answer closes with it on Windows, 0.9.7.)
+        juce::MessageManager::callAsync ([safe, then]
+        {
+            if (safe != nullptr)
+                safe->saveProject ([then] (bool saved) { if (saved) then(); });
+        });
     }));
 }
 

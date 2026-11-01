@@ -2,6 +2,47 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.13.1
+
+**Fixes from a review of the whole code, before chord pads.** Four reviewers read the code in four parts (the engine, the song and saving, the screen, the imports and newer windows). Every finding was checked against the code before anything was changed, and each fix has a test that failed before it.
+
+**Sound and renders:**
+- **A note no longer hangs after an edit during playback.** If you deleted, muted, moved or transposed a note (or its part) while it was sounding, its note-off went with it, and the note rang until you stopped. Now the studio ends any sounding note the song no longer ends. A note started on one MIDI channel also ends on that channel if you change the track's channel meanwhile.
+- **Renders start clean.** A note left sounding by the playback, or by the previous stretch of a Render in Place or a Freeze of several tracks, could carry into the next file. Every render now starts with all notes ended.
+- **Export Mixdown's CANCEL is safe.** The export had its own progress window. Its CANCEL waited for the render on the screen's thread, so an instrument loading samples (Kontakt) could hang the studio, and after 10 seconds the render was killed in the middle of its work. The export now runs like Render in Place: on its own thread, in the studio's progress box. CANCEL there (or Escape) stops it at the next block and deletes the unfinished file. **Render in Place and Freeze have the CANCEL key too.**
+- **Nothing changes a render while it runs.** Turning a knob in a plug-in's window during a render, with W on, used to swap the live song back into the engine halfway through the file.
+- **Plug-ins' own meters no longer make the audio thread post messages.** Gain reduction and other output meters are reported from the audio thread, and the studio was posting a message (which takes memory) for each one. It also deletes its listener only after the engine has let go of the plug-in.
+
+**Your work:**
+- **A new song from a template keeps the template's recordings.** They stayed in the template's folder: the song couldn't find them after reopening, and a frozen track went silent.
+- **Save As copies the recordings that undo can bring back.** Delete a clip, Save As somewhere new, undo: the clip now has its file.
+- **Save As over a song whose folder already has a file of the same name** copies ours beside it under a new name (and the song points to it), instead of keeping the other song's file.
+- **Duplicating a frozen track** makes a live copy (instrument and effects loaded, parts editable). The copy used to share the original's freeze file, so unfreezing it with "delete the file" silenced the original.
+- **Parts can't be moved or pasted onto a frozen track** (they used to vanish), **or moved off one** (they used to be copied instead). Its parts are locked until you unfreeze it. Audio imported onto a frozen track goes onto a new track.
+- **Undo no longer brings back the solo of a hidden or disabled track** (it silenced every other track).
+- **Parts shorter than a sixteenth keep their length** when the song is saved and opened (they grew to a sixteenth).
+- **Removing a send removes its automation and Quick Control,** so a send put in that slot later doesn't play the old send's lane.
+- **"Match the file's tempo" works when the song follows its tempo track** (the file's tempo goes onto the tempo track).
+
+**The screen:**
+- **While a mouse button is held, only Space works.** A key pressed during a drag could delete or undo the part being dragged (a crash, or the wrong part changed), a MIDI editor drag undid the key's change on release, and Down during an Inspector fader drag moved the next track's fader.
+- **The selected part is kept by itself, not by its place in the list.** After an undo, the arrangement could show one part selected while Delete acted on another.
+- **Saving from a "Save the song?" box** (closing the studio, or opening a song from the Hub) now opens the file chooser after the box has gone. On Windows it used to close together with the box.
+- **The track menu's instruments:** with more than 100 VST3 instruments, choosing the 101st or later changed the audio input instead.
+- **The CPU meter's tooltip** no longer resets the peak the meter shows.
+- **The Hub:** Rename and Delete are off for the song that's open. Rename refuses a name whose song or recordings folder exists (it could pick up a deleted song's recordings), and puts the song back if its recordings folder can't move.
+- **The Tempo Track Editor:** the selection stays on its events when one before them is deleted or undone (it used to slide onto others). **Process Tempo's PROCESS** takes a value just typed (it used to ignore it unless you pressed Return first).
+
+**Imports and keys:**
+- **DAWproject:** a clip that contains itself used to crash the studio, and references nested in each other could hang it. A damaged .vstpreset could crash it too. Plug-ins are matched by name, then vendor, then kind (instrument or effect), so a same-named plug-in from another maker or of the other kind is no longer taken first. A file referenced outside the DAWproject must be an ordinary file of a sane size. A missing audio file's name is never given to a real one.
+- **MIDI files whose first tempo comes after the start** play at MIDI's own 120 until then (they took the later tempo from the start).
+- **Key commands:** a key on the comma (Ctrl+,) is kept when saved. Macros that call each other stop after 1000 steps. On a Mac, Ctrl and Cmd are told apart. A key you took away from an arrangement command still works in the MIDI editor after a click there.
+
+**Left as they are (honestly):**
+- If the studio crashes from a stack overflow on Windows, the crash log may not be written. The handler itself runs short of room.
+- Moving the playhead in the very instant after Stop can occasionally be undone by the last audio block.
+- An effect that sends MIDI out has room for 4096 bytes of it per block before memory is taken on the audio thread.
+
 ## 0.13.0
 
 **The Tempo Track Editor.** It's laid out as the manual describes Cubase's: a window of its own for the tempo track, opened with **Ctrl+T**. It's also in the tempo track's right-click menu and the transport tempo's, and in KEYS. Ctrl+T again closes it, and it reopens where you left it (the three screens included).

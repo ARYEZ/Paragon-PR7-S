@@ -103,6 +103,7 @@ namespace KeyCommands
         std::map<juce::String, juce::Array<juce::KeyPress>> custom;   // only the commands changed from their defaults
         std::vector<Macro> macros;
         int running = 0;   // (a macro inside a macro: no deeper than a few)
+        int stepsLeft = 0; // (and no more than a thousand steps from one key)
         void changed();
         juce::String uniqueMacroName (juce::String) const;
     };
