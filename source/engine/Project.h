@@ -43,7 +43,8 @@ namespace pr7s
         bool operator== (const Part&) const = default;
     };
 
-    // What plays a track: the built-in Paragon Synth, or a VST3 instrument.
+    // What plays a track: the studio's synth (PR7-K since 0.9.11; the kind
+    // keeps its old name, so songs saved before open on PR7-K), or a VST3 instrument.
     struct Instrument
     {
         enum class Kind { paragonSynth, plugin };   // saved by name, not number

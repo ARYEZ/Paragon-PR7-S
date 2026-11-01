@@ -256,6 +256,7 @@ public:
 
     // Where a part is drawn (for tests).
     juce::Rectangle<float> getPartBounds (int trackId, int index) const;
+    float splitLineX() const;   // SPLIT: where its cut line is drawn now (snapped to the grid), -1: none
     int trackAtY (float y) const;   // 0 if none (a lane or the master isn't a track)
     std::optional<Timeline::Row> rowAt (float y) const;
     float rowTop (const Timeline::Row&) const;   // where a row is drawn now
@@ -314,7 +315,7 @@ private:
     juce::Rectangle<float> toolBand;           // MUTE's rectangle, ZOOM's stretch, DRAW's new part, as dragged
     int newPartTrack = 0;
     double playReturn = 0.0;                   // PLAY: where the playhead goes back to
-    juce::Point<float> hover { -1.0f, -1.0f }; // SPLIT: where the cut would go
+    juce::Point<float> hover { -1.0f, -1.0f }; // SPLIT: where the mouse is over a part
     std::map<int, juce::MouseCursor> toolCursors;   // each tool's icon as the pointer, made once
     double splitBeat (const juce::MouseEvent&, const pr7s::Part&) const;
     void cannotGlue();

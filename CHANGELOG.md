@@ -2,6 +2,31 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.9.11
+
+Your seven tweaks.
+
+**PR7-K is the studio's synth.** The Paragon Synth is gone from the menus; new tracks play PR7-K.
+- **How it gets there:** PR7-K comes in the download: `Paragon PR7-K.vst3`, beside the app. Keep them in the same folder. If you've installed PR7-K in your VST3 folder too, the newer of the two is used, so updating PR7-K updates the studio.
+- **Old songs:** "built-in synth" tracks open on PR7-K. They'll sound different (PR7-K's own patch) until you pick a PR7-K sound.
+- **If PR7-K can't be found,** the old synth stands in, so a track never comes up silent. The add-track menu says so ("PR7-K not found").
+- **Why not built into the program itself:** PR7-K is a whole plugin with its own screens, presets and releases, and it's still changing. Shipping its VST3 keeps the studio on the latest PR7-K without the two drifting apart.
+
+**The cycle bar** has the keys' pink-red-orange gradient instead of a flat orange.
+
+**SPLIT's ghost lines are gone.** The cut line is drawn on the grid, but the screen cleaned up only round the mouse pointer. Since 0.9.10 the grid is the quantize value, so the line was often further from the pointer than that, and the old lines stayed behind. Now the cleaning follows the line.
+
+**Alt+F2 / Alt+F3: across all three screens.** The MIDI editor's and the mixer's own window now spans all the screens, as SPAN ALL SCREENS does the studio.
+
+**SAVE no longer stops the screen.** Saving asks every plugin for its settings, then writes the song.
+- Writing turned out to be the slow part: about 19 ms per megabyte of plugin settings, and Kontakt's can be large. Your second-long hang was that.
+- Now the writing happens on a thread of its own and the studio carries on. The song is written to a temporary file and swapped in at the end, so it's never half-saved.
+- **Still on the screen's time:** each plugin packing up its settings, which VST3 requires. Kontakt takes what it takes there.
+
+**Quieter parts.** A part's body is about 15% as bright as before, with a thin edge in the track's colour. The title strip, the notes and the waveforms are as bright as they were, so they stand out.
+
+**No + ADD TRACK key.** Right-click a track for **Add Track** at the foot of its menu (after Hide Track), or right-click the empty space under the tracks. Double-click there still adds one like the selected track.
+
 ## 0.9.10
 
 Your six tweaks.

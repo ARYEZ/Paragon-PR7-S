@@ -917,10 +917,8 @@ void MainView::toggleZonePlace (Zone& zone)
         keysToEditor = true;
     if (toWindow && zone.window != nullptr)
     {
-        // Full screen on the screen the studio's middle is on (the middle one of three).
-        const auto& displays = juce::Desktop::getInstance().getDisplays();
-        if (const auto* display = displays.getDisplayForPoint (getScreenBounds().getCentre()))
-            zone.window->setBounds (display->userArea);
+        // Across all the screens (0.9.11: the owner's three), as SPAN ALL SCREENS does the studio.
+        zone.window->setBounds (Windows::allScreensArea());
     }
 }
 
@@ -1032,11 +1030,15 @@ void MainView::saveProject (std::function<void (bool)> then)
         saveProjectAs (std::move (then));
         return;
     }
-    const auto saved = studio.save (studio.getFile());
-    if (! saved)
-        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't save", studio.getFile().getFullPathName());
-    if (then)
-        then (saved);
+    // Written on a thread of its own (0.9.11): the screen carries on.
+    const auto where = studio.getFile();
+    studio.saveInBackground (where, [then, where] (bool saved)
+    {
+        if (! saved)
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't save", where.getFullPathName());
+        if (then)
+            then (saved);
+    });
 }
 
 void MainView::saveProjectAs (std::function<void (bool)> then)
@@ -1055,11 +1057,13 @@ void MainView::saveProjectAs (std::function<void (bool)> then)
                                   return;
                               }
                               file = file.withFileExtension (pr7s::Project::fileExtension);
-                              const auto saved = studio.save (file);
-                              if (! saved)
-                                  juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't save", file.getFullPathName());
-                              if (then)
-                                  then (saved);
+                              studio.saveInBackground (file, [then, file] (bool saved)
+                              {
+                                  if (! saved)
+                                      juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't save", file.getFullPathName());
+                                  if (then)
+                                      then (saved);
+                              });
                           });
 }
 

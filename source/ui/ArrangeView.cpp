@@ -591,18 +591,14 @@ void ArrangeView::paint (juce::Graphics& g)
             g.drawRect (toolBand, 1.0f);
         }
     }
-    if (tool == Tool::split && drag == Drag::none && hover.x >= 0.0f)
-        if (const auto hit = partAt (hover))
-        {
-            const auto bounds = getPartBounds (hit->first, hit->second);
-            const auto beat = pr7s::snap (timeline.beatForX (hover.x), timeline.snapGrid (project));
-            const auto x = timeline.xForBeat (beat);
-            if (x > bounds.getX() && x < bounds.getRight())
+    if (tool == Tool::split && drag == Drag::none)
+        if (const auto x = splitLineX(); x >= 0.0f)
+            if (const auto hit = partAt (hover))
             {
+                const auto bounds = getPartBounds (hit->first, hit->second);
                 g.setColour (juce::Colours::white.withAlpha (0.9f));
                 g.fillRect (juce::Rectangle<float> (x - 0.5f, bounds.getY(), 1.5f, bounds.getHeight()));
             }
-        }
 
     // The ruler: bar numbers, beat ticks, the cycle strip.
     const auto ruler = bounds.withHeight ((float) Timeline::rulerHeight);
@@ -613,13 +609,18 @@ void ArrangeView::paint (juce::Graphics& g)
     {
         const auto x1 = timeline.xForBeat (project.loopStart), x2 = timeline.xForBeat (project.loopEnd);
         const auto strip = juce::Rectangle<float> (x1, 2.0f, x2 - x1, (float) Timeline::cycleStripHeight - 3.0f);
-        g.setColour (project.loopOn ? ParagonColours::accent : ParagonColours::textDim.withAlpha (0.45f));
-        g.fillRoundedRectangle (strip, 2.0f);
         if (project.loopOn)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.3f));
+            // On: the keys' pink, red and orange across it (0.9.11, the owner asked: not a flat orange), with a soft glow.
+            auto glow = Finish::neonGradient (x1, x2);
+            glow.multiplyOpacity (0.3f);
+            g.setGradientFill (glow);
             g.fillRoundedRectangle (strip.expanded (2.0f), 3.0f);
+            g.setGradientFill (Finish::neonGradient (x1, x2));
         }
+        else
+            g.setColour (ParagonColours::textDim.withAlpha (0.45f));
+        g.fillRoundedRectangle (strip, 2.0f);
         // The locators' handles: a flag at each end, pointing in.
         g.setColour (ParagonColours::metalLight);
         for (const auto [x, inward] : { std::pair<float, float> { x1, 1.0f }, std::pair<float, float> { x2, -1.0f } })
@@ -680,8 +681,13 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
         return;   // (off screen, or outside what's being redrawn: the playhead's strip)
     if (part.muted)
         colour = juce::Colour (0xff6a646c);   // muted: greyed out (pearl onyx), as the manual has it
-    g.setColour (colour.withAlpha (0.32f));
+    // The body subdued (0.9.11, the owner asked: about 15% as bright as it
+    // was), its edge in the track's colour; the title strip, the notes and
+    // the waveform as bright as before.
+    g.setColour (colour.withAlpha (0.05f));
     g.fillRoundedRectangle (area, 4.0f);
+    g.setColour (colour.withAlpha (0.45f));
+    g.drawRoundedRectangle (area.reduced (0.5f), 4.0f, 1.0f);
     auto band = area.withHeight (15.0f);
     g.setColour (colour.withAlpha (0.85f));
     g.fillRoundedRectangle (band, 4.0f);
@@ -820,13 +826,15 @@ void ArrangeView::updateCursor (const juce::MouseEvent& event)
     }
     if (tool == Tool::split)
     {
-        // The cut line's old and new strips only.
+        // The cut line's old and new strips only: where the line is drawn
+        // (snapped to the grid), not where the mouse is (0.9.11: they
+        // differed, and the old lines stayed on screen).
         const auto strip = [this] (float x) { return juce::Rectangle<float> (x - 3.0f, 0.0f, 7.0f, (float) getHeight()).toNearestIntEdges(); };
-        if (hover.x >= 0.0f)
-            repaint (strip (hover.x));
+        if (const auto was = splitLineX(); was >= 0.0f)
+            repaint (strip (was));
         hover = partAt (event.position) ? event.position : juce::Point<float> { -1.0f, -1.0f };
-        if (hover.x >= 0.0f)
-            repaint (strip (hover.x));
+        if (const auto now = splitLineX(); now >= 0.0f)
+            repaint (strip (now));
     }
     if (tool != Tool::select)
     {
@@ -2130,6 +2138,19 @@ void ArrangeTools::resized()
         button.setBounds (area.removeFromLeft (onUnit ? 60 : 70));
         area.removeFromLeft (4);
     }
+}
+
+float ArrangeView::splitLineX() const
+{
+    // Where SPLIT's cut line is drawn for the mouse at `hover`: on the grid, inside the part (else none: -1).
+    if (hover.x < 0.0f)
+        return -1.0f;
+    const auto hit = partAt (hover);
+    if (! hit)
+        return -1.0f;
+    const auto bounds = getPartBounds (hit->first, hit->second);
+    const auto x = timeline.xForBeat (pr7s::snap (timeline.beatForX (hover.x), timeline.snapGrid (studio.getProject())));
+    return x > bounds.getX() && x < bounds.getRight() ? x : -1.0f;
 }
 
 //==============================================================================

@@ -124,3 +124,43 @@ TEST_CASE ("Performance: the screen with heavy plugins playing on the audio thre
     running = false;
     audio.join();
 }
+
+// Hidden: saving a song whose plugins keep large settings (Kontakt's can be megabytes), 0.9.11.
+TEST_CASE ("Performance: saving with large plugin settings", "[.][perf]")
+{
+    Studio studio (false);
+    for (int t = 1; t < 10; ++t)
+        studio.addTrack ({});
+    const auto megabytes = juce::SystemStats::getEnvironmentVariable ("PERF_MB", "8").getDoubleValue();
+    juce::MemoryOutputStream text;
+    for (int i = 0; i < (int) (megabytes * 52000); ++i)
+        text << "kontakt-patch-data-";
+    const auto big = text.toString();
+    const auto made = juce::Time::getMillisecondCounterHiRes();
+    for (const auto& track : studio.getProject().tracks)
+    {
+        Insert insert;
+        insert.plugin.name = "Heavy";
+        auto effect = std::make_unique<TestEffect> ([] (juce::AudioBuffer<float>&) {}, 2, "Heavy");
+        effect->state = big;
+        studio.addInsert (track.id, insert, std::move (effect));
+    }
+    std::printf ("setting up                                          %8.1f ms\n", juce::Time::getMillisecondCounterHiRes() - made);
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("pr7s-perf-save.pr7s");
+    for (int i = 0; i < 3; ++i)
+    {
+        const auto start = juce::Time::getMillisecondCounterHiRes();
+        studio.save (file);
+        std::printf ("save (10 tracks)                                    %8.1f ms (%lld bytes)\n",
+                     juce::Time::getMillisecondCounterHiRes() - start, (long long) file.getSize());
+    }
+    {
+        auto t0 = juce::Time::getMillisecondCounterHiRes();
+        const auto xml = studio.getProject().toXml();
+        auto t1 = juce::Time::getMillisecondCounterHiRes();
+        xml->writeTo (file);
+        auto t2 = juce::Time::getMillisecondCounterHiRes();
+        std::printf ("  of which toXml %.1f ms, writeTo %.1f ms\n", t1 - t0, t2 - t1);
+    }
+    file.deleteFile();
+}

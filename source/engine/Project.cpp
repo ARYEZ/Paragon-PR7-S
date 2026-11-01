@@ -135,7 +135,7 @@ namespace pr7s
 
     juce::String Instrument::getName() const
     {
-        return kind == Kind::paragonSynth ? juce::String ("Paragon Synth") : plugin.name;
+        return kind == Kind::paragonSynth ? juce::String ("PR7-K") : plugin.name;   // (the studio's synth since 0.9.11)
     }
 
     Track* Project::findTrack (int id)

@@ -15,7 +15,8 @@
 // Automation). Each automation lane: its control (click to choose another,
 // or Remove Parameter), M (Mute Automation), its value now, and + (Append
 // Automation Track) at its lower left. MASTER at the end: the master's R, W
-// and lanes. + ADD TRACK at the top offers the Paragon Synth and every
+// and lanes. Add Track (right-click a track, at the foot of its menu, or
+// right-click under the tracks; 0.9.11, no + ADD TRACK key) offers PR7-K and every
 // VST3 instrument found, an FX channel (empty, or with one of your
 // effects) and a group channel. An FX or group channel's row has no REC or
 // instrument: its button says what it is (click for its effect's window, or
@@ -40,6 +41,10 @@ public:
     juce::TextButton& getSoloAllKey() noexcept { return soloAll; }   // (in the header, at the top)
 
     void showAddTrackMenu();
+    // The Add Track menu (its item ids from `offset`), and doing what was chosen in it (the id less the offset).
+    juce::PopupMenu makeAddTrackMenu (int offset = 0);
+    bool addTrackChosen (int chosen);
+    static constexpr int addTrackOffset = 1000000;
     // A track's menu (its instrument key's): its window, change it, Output, delete... (also the Inspector's)
     void showInstrumentMenu (int trackId, bool withAutomation = false);
     void paint (juce::Graphics&) override;
@@ -63,6 +68,7 @@ public:
     void removeSelectedTracks();
     // A double-click under the tracks: a new track like the selected one.
     void addTrackLikeSelected();
+    void mouseDown (const juce::MouseEvent&) override;   // right-click under the tracks: Add Track
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void paintOverChildren (juce::Graphics&) override;
 

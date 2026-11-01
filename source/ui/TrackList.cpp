@@ -447,10 +447,10 @@ TrackList::TrackList (pr7s::Studio& studioToUse, Timeline& timelineToUse)
     : studio (studioToUse), timeline (timelineToUse)
 {
     addTrack.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
-    addTrack.setTooltip ("Add a track, with the Paragon Synth or one of your VST3 instruments");
-    addTrack.onClick = [this] { showAddTrackMenu(); };
+    addTrack.setTooltip ("Add a track, with PR7-K or one of your VST3 instruments");
+    addTrack.onClick = [this] { showAddTrackMenu(); };   // (0.9.11: not shown; the right-click menus have Add Track)
     addTrack.setWantsKeyboardFocus (false);
-    addAndMakeVisible (addTrack);
+    addChildComponent (addTrack);   // (0.9.11: hidden, the owner asked; right-click for Add Track)
     // The manual's Deactivate All Mute States / Solo States (0.9.9): lit while
     // any track is muted / soloed (hidden ones too); click to turn them all off.
     for (auto* key : { &muteAll, &soloAll })
@@ -541,9 +541,7 @@ void TrackList::resized()
     placeRows();
     // + ADD TRACK at the top, in the header (level with the ruler).
     auto header = getLocalBounds().removeFromTop (Timeline::rulerHeight).reduced (8, 6);
-    addTrack.setBounds (header.removeFromRight (150));
-    addTrack.toFront (false);
-    header.removeFromRight (10);
+    addTrack.setBounds ({});
     soloAll.setBounds (header.removeFromRight (30));
     header.removeFromRight (3);
     muteAll.setBounds (header.removeFromRight (30));
@@ -596,38 +594,48 @@ void TrackList::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelD
         timeline.onScrollOrZoom();
 }
 
-void TrackList::showAddTrackMenu()
+juce::PopupMenu TrackList::makeAddTrackMenu (int offset)
 {
+    // (0.9.11: no + ADD TRACK key; this menu is at the foot of the track
+    // list's right-click menu, and a right-click under the tracks.)
     juce::PopupMenu menu;
     menu.addSectionHeader ("ADD AN AUDIO TRACK");
-    menu.addItem (3, "Audio track (mono: a guitar, a voice)");
-    menu.addItem (4, "Audio track (stereo: a pair of inputs)");
+    menu.addItem (offset + 3, "Audio track (mono: a guitar, a voice)");
+    menu.addItem (offset + 4, "Audio track (stereo: a pair of inputs)");
     menu.addSectionHeader ("ADD AN INSTRUMENT TRACK");
-    menu.addItem (1, "Paragon Synth (built in)");
+    menu.addItem (offset + 1, studio.getPluginHost().isStudioSynthFound() ? juce::String ("PR7-K (the studio's synth)")
+                                                                  : juce::String ("PR7-K not found: the old Paragon Synth"));
     const auto instruments = studio.getPluginHost().getInstruments();
     if (! instruments.isEmpty())
     {
         menu.addSeparator();
         for (int i = 0; i < instruments.size(); ++i)
-            menu.addItem (100 + i, instruments[i].manufacturerName + ": " + instruments[i].name);
+            menu.addItem (offset + 100 + i, instruments[i].manufacturerName + ": " + instruments[i].name);
     }
     // FX and group channels (as the manual's Add Track dialog has them).
     const auto effects = studio.getPluginHost().getEffects();
     juce::PopupMenu withEffect;
     for (int i = 0; i < effects.size(); ++i)
-        withEffect.addItem (1000 + i, effects[i].manufacturerName + ": " + effects[i].name);
+        withEffect.addItem (offset + 1000 + i, effects[i].manufacturerName + ": " + effects[i].name);
     menu.addSectionHeader ("ADD AN FX CHANNEL OR A GROUP");
-    menu.addItem (5, "FX channel (empty: add its effects in the mixer)");
+    menu.addItem (offset + 5, "FX channel (empty: add its effects in the mixer)");
     if (! effects.isEmpty())
         menu.addSubMenu ("FX channel with", withEffect);
-    menu.addItem (6, "Group channel (a submix: route tracks to it)");
+    menu.addItem (offset + 6, "Group channel (a submix: route tracks to it)");
     menu.addSeparator();
-    menu.addItem (7, "Track from a preset...");
+    menu.addItem (offset + 7, "Track from a preset...");
     menu.addSeparator();
-    menu.addItem (2, instruments.isEmpty() ? "Find my VST3 instruments..." : "Find more VST3 instruments...");
+    menu.addItem (offset + 2, instruments.isEmpty() ? "Find my VST3 instruments..." : "Find more VST3 instruments...");
 
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addTrack), [this, instruments, effects] (int chosen)
-    {
+    return menu;
+}
+
+bool TrackList::addTrackChosen (int chosen)
+{
+    const auto instruments = studio.getPluginHost().getInstruments();
+    const auto effects = studio.getPluginHost().getEffects();
+    if (chosen <= 0)
+        return false;
         if (chosen == 7)
         {
             TrackActions::addTrackFromPreset (studio, chooser);
@@ -668,6 +676,15 @@ void TrackList::showAddTrackMenu()
             if (studio.addTrack (instrument, &error) == 0)
                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't add the track", error);
         }
+    return true;
+}
+
+void TrackList::showAddTrackMenu()
+{
+    makeAddTrackMenu().showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<TrackList> (this)] (int chosen)
+    {
+        if (safe != nullptr)
+            safe->addTrackChosen (chosen);
     });
 }
 
@@ -773,7 +790,8 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
     else if (! track->isChannel())
     {
         menu.addItem (1, "Open " + track->instrument.getName() + "'s window", studio.hasEditor (instance));
-        change.addItem (10, "Paragon Synth (built in)");
+        change.addItem (10, studio.getPluginHost().isStudioSynthFound() ? juce::String ("PR7-K (the studio's synth)")
+                                                                         : juce::String ("PR7-K not found: the old Paragon Synth"));
         for (int i = 0; i < instruments.size(); ++i)
             change.addItem (100 + i, instruments[i].manufacturerName + ": " + instruments[i].name);
         menu.addSubMenu (track->frozen ? "Change instrument (unfreeze first)" : "Change instrument", change, ! track->frozen && ! track->disabled);
@@ -809,8 +827,16 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
         menu.addItem (59, track->disabled ? (several ? "Enable Selected Tracks" : "Enable Track")
                                           : (several ? "Disable Selected Tracks" : "Disable Track"));
     menu.addItem (60, several ? "Hide Selected Tracks" : "Hide Track");
+    // Add Track (0.9.11: the + ADD TRACK key's menu, here at the foot).
+    menu.addSeparator();
+    menu.addSubMenu ("Add Track", makeAddTrackMenu (addTrackOffset));
     menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, instruments] (int chosen)
     {
+        if (chosen >= addTrackOffset)
+        {
+            addTrackChosen (chosen - addTrackOffset);
+            return;
+        }
         if (TrackActions::handle (chosen, studio, trackId, chooser))
             return;
         if ((chosen == 57 || chosen == 58) && onRenderInPlace)
@@ -991,7 +1017,7 @@ void TrackList::removeSelectedTracks()
 void TrackList::addTrackLikeSelected()
 {
     // Double-click under the tracks: a track like the selected one (an audio
-    // track mono or stereo as it is, a group or an FX channel), else one on the Paragon Synth.
+    // track mono or stereo as it is, a group or an FX channel), else one on the studio's synth (PR7-K).
     const auto* selected = studio.getProject().findTrack (studio.getSelectedTrack());
     if (selected != nullptr && selected->isAudio())
         studio.addAudioTrack (selected->stereoInput);
@@ -1003,9 +1029,16 @@ void TrackList::addTrackLikeSelected()
         studio.addTrack ({});
 }
 
+void TrackList::mouseDown (const juce::MouseEvent& event)
+{
+    // A right-click under the tracks (or with no tracks at all): the Add Track menu (0.9.11).
+    if (event.mods.isPopupMenu() && event.y > Timeline::rulerHeight)
+        showAddTrackMenu();
+}
+
 void TrackList::mouseDoubleClick (const juce::MouseEvent& event)
 {
-    // The empty space under the tracks (not the header, where + ADD TRACK is).
+    // The empty space under the tracks (not the header).
     if (event.y > Timeline::rulerHeight)
         addTrackLikeSelected();
 }

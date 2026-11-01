@@ -63,7 +63,7 @@ namespace pr7s
         }
         else
         {
-            host = std::make_unique<PluginHost> (nullptr);
+            host = std::make_unique<PluginHost> (nullptr, false);   // (tests: the old synth, the same everywhere)
             engine.prepare (48000.0, 512);
         }
 
@@ -73,6 +73,9 @@ namespace pr7s
 
     Studio::~Studio()
     {
+        // A save still writing finishes first (its call back here is dropped).
+        saveAlive->store (false);
+        saver.removeAllJobs (false, 60000);
         stopTimer();
         unwatchAll();
         engine.onPluginGoing = nullptr;   // (the watchers are gone first)
@@ -3174,7 +3177,7 @@ namespace pr7s
         selectedTracks.clear();
         engine.setPosition (0.0);
         playStart = 0.0;
-        // A new song starts with one track on the Paragon Synth, ready to play.
+        // A new song starts with one track on the studio's synth (PR7-K), ready to play.
         addTrack ({});
         engine.update (project);
         undoStates.clear();
@@ -3241,6 +3244,54 @@ namespace pr7s
 
     bool Studio::save (const juce::File& destination)
     {
+        if (! prepareSave (destination))
+            return false;
+        const auto xml = project.toXml();
+        if (! xml->writeTo (destination))
+            return false;
+        file = destination;
+        modified = false;
+        sendChangeMessage();
+        return true;
+    }
+
+    void Studio::saveInBackground (const juce::File& destination, std::function<void (bool)> done)
+    {
+        // The plugins' settings are asked for here (a VST3 must be, on this
+        // thread); the file is made and written on a thread of its own, so the
+        // screen doesn't stop (0.9.11: a song with large Kontakt settings held
+        // it about a second). Marked saved now; a change meanwhile marks it
+        // unsaved again, and a failed write too.
+        if (! prepareSave (destination))
+        {
+            if (done)
+                done (false);
+            return;
+        }
+        auto copy = std::make_shared<Project> (project);
+        file = destination;
+        modified = false;
+        ++savesRunning;
+        sendChangeMessage();
+        saver.addJob ([copy, destination, done, life = saveAlive, this]
+        {
+            const auto written = copy->toXml()->writeTo (destination);
+            juce::MessageManager::callAsync ([life, this, written, done]
+            {
+                if (! life->load())
+                    return;
+                --savesRunning;
+                if (! written)
+                    modified = true;
+                sendChangeMessage();
+                if (done)
+                    done (written);
+            });
+        });
+    }
+
+    bool Studio::prepareSave (const juce::File& destination)
+    {
         // Each instrument's current settings go into the file with it.
         for (auto& track : project.tracks)
             if (auto* instrument = engine.getInstrument (track.id))
@@ -3285,13 +3336,6 @@ namespace pr7s
                         if (! from.getChildFile (part.audioFile).copyFileTo (to.getChildFile (part.audioFile)))
                             return false;
                     }
-
-        const auto xml = project.toXml();
-        if (! xml->writeTo (destination))
-            return false;
-        file = destination;
-        modified = false;
-        sendChangeMessage();
         return true;
     }
 

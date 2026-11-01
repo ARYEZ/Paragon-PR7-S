@@ -2775,3 +2775,68 @@ TEST_CASE ("Velocity handles (0.9.10, the manual's Controller Event Editor): a b
     for (const auto v : velocities())
         CHECK (v == 1.0f);
 }
+
+TEST_CASE ("0.9.11: SPLIT's cut line leaves nothing behind; Add Track in the track menu; saving in the background; the zone window across the screens", "[ui][v0911]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto track = studio.getProject().tracks[0].id;
+    studio.addPart (track, { 0.0, 16.0, "Riff", { { 0.0, 1.0, 60, 0.8f } } });
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+
+    // The cut line is drawn on the grid; its strip is where it's drawn, not where the mouse is.
+    arrange.setTool (ArrangeView::Tool::split);
+    const auto bounds = arrange.getPartBounds (track, 0);
+    const auto at = juce::Point<float> (bounds.getX() + bounds.getWidth() * 0.37f, bounds.getCentreY());
+    arrange.mouseMove (mouseAt (arrange, at, at));
+    const auto line = arrange.splitLineX();
+    REQUIRE (line >= 0.0f);
+    const auto beat = view.getTimeline().beatForX (line);
+    CHECK_THAT (beat / 0.25, WithinAbs (std::round (beat / 0.25), 1.0e-6));   // on the 1/16 grid
+    const auto away = juce::Point<float> (bounds.getRight() + 50.0f, bounds.getBottom() + 200.0f);
+    arrange.mouseMove (mouseAt (arrange, away, away));
+    CHECK (arrange.splitLineX() < 0.0f);
+
+    // Add Track, from the track menu's ids (offset) or the empty space's menu.
+    auto& list = view.getTrackList();
+    const auto before = studio.getProject().tracks.size();
+    CHECK (list.addTrackChosen (1));                 // the studio's synth
+    CHECK (list.addTrackChosen (3));                 // a mono audio track
+    CHECK (studio.getProject().tracks.size() == before + 2);
+    CHECK (studio.getProject().tracks.back().isAudio());
+    CHECK_FALSE (list.getAddTrackButton().isVisible());
+    // The menu's items carry the offset (they sit in the track's own menu).
+    auto menu = list.makeAddTrackMenu (TrackList::addTrackOffset);
+    auto ids = 0, lowest = std::numeric_limits<int>::max();
+    for (juce::PopupMenu::MenuItemIterator it (menu, true); it.next();)
+        if (it.getItem().itemID != 0)
+        {
+            ++ids;
+            lowest = juce::jmin (lowest, it.getItem().itemID);
+        }
+    CHECK (ids >= 6);
+    CHECK (lowest > TrackList::addTrackOffset);
+    // The studio's synth: not looked for in tests (the old synth plays them, the same everywhere).
+    CHECK_FALSE (studio.getPluginHost().isStudioSynthFound());
+    CHECK (pr7s::Instrument {}.getName() == "PR7-K");
+
+    // Saving in the background: marked saved at once; the file there once the thread has written it.
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("pr7s-background.pr7s");
+    file.deleteFile();
+    std::atomic<bool> done { false };
+    bool written = false;
+    studio.saveInBackground (file, [&] (bool ok) { written = ok; done = true; });
+    CHECK_FALSE (studio.isModified());
+    CHECK (studio.getFile() == file);
+    CHECK (studio.waitForSaves (5000));   // (the thread's done; its call back comes by message, which tests can't run)
+    juce::ignoreUnused (written);
+    CHECK (file.existsAsFile());
+    Studio other (false);
+    juce::String problems;
+    CHECK (other.open (file, problems));
+    CHECK (other.getProject().tracks.size() == studio.getProject().tracks.size());
+    file.deleteFile();
+}

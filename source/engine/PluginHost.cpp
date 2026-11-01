@@ -9,7 +9,7 @@ namespace pr7s
         const juce::String knownPluginsKey { "knownPlugins" };
     }
 
-    PluginHost::PluginHost (juce::PropertiesFile* settingsToUse) : settings (settingsToUse)
+    PluginHost::PluginHost (juce::PropertiesFile* settingsToUse, bool findSynth) : settings (settingsToUse), findStudioSynth (findSynth)
     {
         // VST3 only, for now (AU on macOS and others can come later).
         formats.addFormat (std::make_unique<juce::VST3PluginFormat>());
@@ -82,12 +82,68 @@ namespace pr7s
         return instance;
     }
 
+    juce::String PluginHost::studioSynthName() { return "PR7-K"; }
+
+    namespace
+    {
+        // "0.47.0" against "0.24.0", part by part.
+        bool newer (const juce::String& a, const juce::String& b)
+        {
+            auto pa = juce::StringArray::fromTokens (a, ".", {}), pb = juce::StringArray::fromTokens (b, ".", {});
+            for (int i = 0; i < juce::jmax (pa.size(), pb.size()); ++i)
+            {
+                const auto x = pa[i].getIntValue(), y = pb[i].getIntValue();
+                if (x != y)
+                    return x > y;
+            }
+            return false;
+        }
+    }
+
+    const juce::PluginDescription* PluginHost::getStudioSynth()
+    {
+        if (! findStudioSynth)
+            return nullptr;
+        if (! studioSynthLooked)
+        {
+            studioSynthLooked = true;
+            juce::VST3PluginFormat vst3;
+            // Beside the app (the release ships it there; on macOS beside the .app), then the VST3 folders.
+            juce::Array<juce::File> places;
+            const auto app = juce::File::getSpecialLocation (juce::File::currentApplicationFile);
+            places.add (app.getParentDirectory().getChildFile (studioSynthFile));
+            const auto folders = vst3.getDefaultLocationsToSearch();
+            for (int i = 0; i < folders.getNumPaths(); ++i)
+                places.add (folders.getRawString (i).isNotEmpty() ? juce::File (folders.getRawString (i)).getChildFile (studioSynthFile) : juce::File());
+            for (const auto& place : places)
+            {
+                if (place == juce::File() || ! place.exists())
+                    continue;
+                juce::OwnedArray<juce::PluginDescription> found;
+                vst3.findAllTypesForFile (found, place.getFullPathName());
+                for (auto* description : found)
+                    if (description->isInstrument && (! studioSynth || newer (description->version, studioSynth->version)))
+                        studioSynth = *description;
+            }
+        }
+        return studioSynth ? &*studioSynth : nullptr;
+    }
+
     std::unique_ptr<juce::AudioPluginInstance> PluginHost::create (const Instrument& instrument, double sampleRate, int blockSize,
                                                                     juce::String& error)
     {
         std::unique_ptr<juce::AudioPluginInstance> instance;
         if (instrument.kind == Instrument::Kind::paragonSynth)
-            instance = std::make_unique<ParagonSynth>();
+        {
+            // The studio's synth: PR7-K (0.9.11); the old Paragon Synth if it isn't found or won't load.
+            if (const auto* synth = getStudioSynth())
+            {
+                juce::String problem;
+                instance = formats.createPluginInstance (*synth, sampleRate, blockSize, problem);
+            }
+            if (instance == nullptr)
+                instance = std::make_unique<ParagonSynth>();
+        }
         else
             instance = formats.createPluginInstance (instrument.plugin, sampleRate, blockSize, error);
 

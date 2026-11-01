@@ -394,9 +394,18 @@ namespace pr7s
         // Files.
         void newProject();
         bool save (const juce::File&);
+        // SAVE on screen (0.9.11): the file written on a thread of its own; `done` here after.
+        void saveInBackground (const juce::File&, std::function<void (bool written)> done = {});
+        bool isSaving() const noexcept { return savesRunning > 0; }
+        bool waitForSaves (int milliseconds)   // (tests: the writing thread done)
+        {
+            for (int waited = 0; saver.getNumJobs() > 0 && waited < milliseconds; waited += 5)
+                juce::Thread::sleep (5);
+            return saver.getNumJobs() == 0;
+        }
         // `problems`: instruments that couldn't be loaded (the project opens anyway).
         bool open (const juce::File&, juce::String& problems);
-        // A standard MIDI file: a Paragon Synth track for each of its tracks
+        // A standard MIDI file: a track on the studio's synth (PR7-K) for each of its tracks
         // (a type-0 file: each channel), its notes in a part (whole bars).
         // `newSong`: a new song first, with the file's tempo and time
         // signature; else into this one at `atBeat` (its tempo kept, the
@@ -548,6 +557,10 @@ namespace pr7s
         Project project;
         juce::File file;
         bool modified = false;
+        bool prepareSave (const juce::File&);   // the plugins' settings into the song; the recordings beside it
+        juce::ThreadPool saver { juce::ThreadPoolOptions{}.withThreadName ("Paragon PR7-S save").withNumberOfThreads (1) };
+        std::shared_ptr<std::atomic<bool>> saveAlive = std::make_shared<std::atomic<bool>> (true);   // (false once the studio goes)
+        int savesRunning = 0;
         int selectedTrack = 0;
         std::vector<int> selectedTracks;   // with selectedTrack in it (when there is one)
         int nextPartId = 1;
