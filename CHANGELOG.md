@@ -2,6 +2,36 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.9.13
+
+**Import DAWproject: your Cubase songs in PR7-S.** Cubase can't hand its .cpr files to other programs, but since version 14 it exports **DAWproject**, an open format made for moving songs between studios.
+
+**How:**
+1. In Cubase: **File > Export > DAWproject**, and save the file.
+2. In PR7-S: **IMPORT > DAWproject as a new song...**, or drop the `.dawproject` file on the studio.
+
+It opens as a new song, not saved yet. If the song you have open has unsaved changes, you're asked first. A box then lists anything that didn't come across.
+
+**What comes across:**
+- **Song settings:** the tempo and time signature.
+- **Tracks:** instrument, audio, FX and group tracks, with their names. Colours become the nearest of the family's three.
+- **Mix:** volume, pan, mute and solo. Outputs to groups, and sends to FX channels (pre or post, level, on or off).
+- **Plug-ins:** your VST3 instruments (Kontakt and so on) and insert effects, with their settings, as long as they're installed and found by PLUGINS > SCAN. A plug-in that was switched off comes across bypassed.
+- **Parts:** MIDI parts with their notes (looped parts are written out in full), and audio clips with their start point in the file and their fades. The audio files are copied into the song's audio folder.
+- **The master:** its volume and its effects.
+- **Automation:** volume, pan, mute, sends and plug-in knobs.
+
+**What doesn't come across yet** (the box lists it for each song):
+- **Tempo and time signature changes:** the song keeps the first tempo and signature.
+- **Cubase's built-in channel strip** (its EQ and dynamics): they aren't VST3 plug-ins, so PR7-S has nothing to load for them.
+- **Other plug-in kinds:** VST2, AU and CLAP plug-ins, and MIDI effects.
+- **Folders:** their tracks come across, flattened. A folder that's a group channel becomes a group.
+- **Markers, note expressions, MIDI controller automation, the clip launcher.**
+- **Time-stretched audio** plays at its own speed, so it may not line up.
+- **A missing plug-in:** a plug-in that isn't on this computer keeps its place and its settings, but stays silent until it's installed and scanned.
+
+**Honest note:** this was built from the format's published specification and tested with DAWproject files made to it, including the shapes the format's own examples use. I don't have Cubase here to export a real file, so please try one of your songs. If something comes across wrong, send me the `.dawproject` (or tell me what's off) and I'll fix it.
+
 ## 0.9.12
 
 Your six tweaks.

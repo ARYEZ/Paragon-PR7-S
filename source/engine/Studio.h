@@ -408,6 +408,10 @@ namespace pr7s
         }
         // `problems`: instruments that couldn't be loaded (the project opens anyway).
         bool open (const juce::File&, juce::String& problems);
+        // A DAWproject (0.9.13: songs from Cubase, File > Export > DAWproject;
+        // see DawProject.h) as a new song, not saved yet. `report`: what didn't
+        // come across, or the error if it couldn't be read.
+        bool importDawProject (const juce::File&, juce::String& report);
         // A standard MIDI file: a track on the studio's synth (PR7-K) for each of its tracks
         // (a type-0 file: each channel), its notes in a part (whole bars).
         // `newSong`: a new song first, with the file's tempo and time
@@ -561,7 +565,8 @@ namespace pr7s
         juce::File file;
         bool modified = false;
         bool masterSelected = false;
-        bool prepareSave (const juce::File&);   // the plugins' settings into the song; the recordings beside it
+        bool prepareSave (const juce::File&);
+        void openProject (Project&&, const juce::File& source, juce::String& problems);   // open's and importDawProject's   // the plugins' settings into the song; the recordings beside it
         juce::ThreadPool saver { juce::ThreadPoolOptions{}.withThreadName ("Paragon PR7-S save").withNumberOfThreads (1) };
         std::shared_ptr<std::atomic<bool>> saveAlive = std::make_shared<std::atomic<bool>> (true);   // (false once the studio goes)
         int savesRunning = 0;

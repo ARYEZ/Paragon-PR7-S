@@ -36,8 +36,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
     saveButton.setTooltip ("Save the song (Ctrl+S)");
     saveAsButton.setTooltip ("Save the song under a new name (Ctrl+Shift+S)");
     exportButton.setTooltip ("Export the mix to a WAV file: the whole song or the cycle");
-    importButton.setTooltip ("Import a MIDI file (a track for each of its tracks) or audio files (WAV, AIFF, FLAC, Ogg, MP3: clips at the playhead). "
-                             "Or drop them on the arrangement, at a bar");
+    importButton.setTooltip ("Import a MIDI file (a track for each of its tracks), audio files (WAV, AIFF, FLAC, Ogg, MP3: clips at the playhead), "
+                             "or a DAWproject (a song from Cubase or another studio). Or drop them on the arrangement, at a bar");
     importButton.onClick = [this]
     {
         // Every choice here (0.9.7): no question box afterwards. (A file chooser opened from
@@ -48,6 +48,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
         menu.addSeparator();
         menu.addItem (3, "Audio files, a track each... (WAV, AIFF, FLAC, Ogg, MP3)");
         menu.addItem (4, "Audio files, one after another on one track...");
+        menu.addSeparator();
+        menu.addItem (5, "DAWproject as a new song... (from Cubase: File > Export > DAWproject)");
         menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&importButton), [safe = juce::Component::SafePointer<MainView> (this)] (int chosen)
         {
             if (safe == nullptr || chosen == 0)
@@ -59,6 +61,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
                     return;
                 if (chosen == 1 || chosen == 2)
                     safe->importMidiFile (chosen == 2);
+                else if (chosen == 5)
+                    safe->importDawProjectFile();
                 else
                     safe->importAudioFiles (chosen == 4);
             });
@@ -1082,11 +1086,63 @@ void MainView::importMidiFile (bool newSong)
                           });
 }
 
+void MainView::importDawProjectFile()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Import a DAWproject as a new song", studio.getFile().getParentDirectory(), "*.dawproject");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [this] (const juce::FileChooser& fc)
+                          {
+                              if (fc.getResult() != juce::File())
+                                  importDawProject (fc.getResult());
+                          });
+}
+
+void MainView::importDawProject (const juce::File& file)
+{
+    // A new song: unsaved changes to this one asked about first (after the chooser, never before it: 0.9.7).
+    const auto go = [safe = juce::Component::SafePointer<MainView> (this), file]
+    {
+        if (safe == nullptr)
+            return;
+        juce::MouseCursor::showWaitCursor();
+        juce::String report;
+        const auto done = safe->studio.importDawProject (file, report);
+        juce::MouseCursor::hideWaitCursor();
+        if (! done)
+        {
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't import", report);
+            return;
+        }
+        safe->arrange.zoomFull();
+        auto lines = juce::StringArray::fromLines (report);
+        lines.removeEmptyStrings();
+        if (lines.size() > 24)
+        {
+            const auto more = lines.size() - 24;
+            lines.removeRange (24, lines.size());
+            lines.add ("...and " + juce::String (more) + " more.");
+        }
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Imported " + file.getFileNameWithoutExtension(),
+                                                lines.isEmpty() ? juce::String ("Everything came across.")
+                                                                : "Brought across, except:\n\n- " + lines.joinIntoString ("\n- ")
+                                                                  + "\n\nIt's a new song: SAVE it to keep it.");
+    };
+    if (! studio.isModified())
+    {
+        go();
+        return;
+    }
+    juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon, "Import a DAWproject",
+                                        "Open " + file.getFileName() + " as a new song? Changes to this one that aren't saved will be lost.",
+                                        "Import", "Cancel", nullptr,
+                                        juce::ModalCallbackFunction::create ([go] (int result) { if (result == 1) go(); }));
+}
+
 bool MainView::isInterestedInFileDrag (const juce::StringArray& files)
 {
     return std::any_of (files.begin(), files.end(), [] (const juce::String& f)
     {
-        return f.endsWithIgnoreCase (".mid") || f.endsWithIgnoreCase (".midi") || pr7s::Studio::isAudioFile (juce::File (f));
+        return f.endsWithIgnoreCase (".dawproject") || f.endsWithIgnoreCase (".mid") || f.endsWithIgnoreCase (".midi") || pr7s::Studio::isAudioFile (juce::File (f));
     });
 }
 
@@ -1132,6 +1188,13 @@ void MainView::importAudio (const juce::Array<juce::File>& files, int trackId, d
 
 void MainView::filesDropped (const juce::StringArray& files, int x, int y)
 {
+    // A DAWproject: a new song (0.9.13).
+    for (const auto& path : files)
+        if (path.endsWithIgnoreCase (".dawproject"))
+        {
+            importDawProject (juce::File (path));
+            return;
+        }
     // Audio files: on the audio track dropped on (else a new one), at the bar dropped on (else at the playhead).
     juce::Array<juce::File> audio;
     for (const auto& path : files)

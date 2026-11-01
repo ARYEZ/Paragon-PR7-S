@@ -79,6 +79,8 @@ public:
     // then which file. A .mid file dropped on the window goes into this song
     // at the bar it's dropped on (bar 1 if not over the arrangement).
     void importMidiFile (bool newSong);   // IMPORT's MIDI items: the file chooser (several files)
+    void importDawProjectFile();                  // IMPORT > DAWproject: the chooser (0.9.13)
+    void importDawProject (const juce::File&);    // as a new song (asks about unsaved changes); what didn't come, shown
     // IMPORT > Audio files: WAV, AIFF, FLAC, Ogg or MP3, as clips at the
     // playhead on the selected audio track (else a new one); dropped on the
     // arrangement, on the audio track under them (else a new one) at the bar.

@@ -3,6 +3,7 @@
 #include <set>
 
 #include "AudioAdvice.h"
+#include "DawProject.h"
 #include "MidiImport.h"
 
 namespace pr7s
@@ -3779,6 +3780,75 @@ namespace pr7s
         auto loaded = Project::fromXml (*xml);
         if (! loaded)
             return false;
+        openProject (std::move (*loaded), source, problems);
+        return true;
+    }
+
+    bool Studio::importDawProject (const juce::File& source, juce::String& report)
+    {
+        // A new song (not saved yet), its audio in a folder of its own.
+        const auto folder = unsavedAudioFolder.getParentDirectory().getNonexistentChildFile (source.getFileNameWithoutExtension(), {}, false);
+        juce::String error;
+        auto imported = DawProject::read (source, folder, host->getKnownPlugins().getTypes(), error);
+        if (! imported)
+        {
+            report = error;
+            return false;
+        }
+        unsavedAudioFolder = folder;
+        juce::String problems;
+        openProject (std::move (imported->project), {}, problems);
+
+        // Plug-in knobs' automation: matched to the loaded plug-ins' parameters by their VST3 id.
+        juce::StringArray notes = imported->notes;
+        for (auto& pending : imported->pluginLanes)
+        {
+            auto& lane = pending.lane;
+            auto* instance = lane.target == AutomationLane::Target::instrument ? engine.getInstrument (pending.busId)
+                                                                               : engine.getEffect (pending.busId, lane.slot);
+            auto index = -1;
+            if (instance != nullptr)
+            {
+                const auto& params = instance->getParameters();
+                for (int i = 0; i < params.size(); ++i)
+                    if (auto* hosted = dynamic_cast<juce::HostedAudioProcessorParameter*> (params[i]); hosted != nullptr && hosted->getParameterID() == pending.parameterId)
+                        index = i;
+            }
+            if (index < 0)
+            {
+                notes.addIfNotAlreadyThere ("Automation of a plug-in's knob" + (lane.parameterName.isNotEmpty() ? " (" + lane.parameterName + ")" : juce::String())
+                                            + " is left out: the plug-in isn't loaded, or hasn't that knob.");
+                continue;
+            }
+            lane.parameter = index;
+            if (lane.parameterName.isEmpty())
+                lane.parameterName = instance->getParameters()[index]->getName (64);
+            if (pending.busId == Engine::masterBus)
+            {
+                project.masterAutomation.push_back (lane);
+                project.masterRead = true;
+            }
+            else if (auto* track = project.findTrack (pending.busId))
+            {
+                track->automation.push_back (lane);
+                track->automationRead = true;
+            }
+        }
+        engine.update (project);
+        undoStates.clear();
+        undoIndex = -1;
+        recordUndoState();
+        modified = true;   // (a new song: not saved yet)
+        if (problems.isNotEmpty())
+            notes.add (problems);
+        report = notes.joinIntoString ("\n");
+        sendChangeMessage();
+        return true;
+    }
+
+    void Studio::openProject (Project&& loadedProject, const juce::File& source, juce::String& problems)
+    {
+        std::optional<Project> loaded { std::move (loadedProject) };
         punchOutAll();
 
         if (onInstrumentGoing)
@@ -3863,6 +3933,5 @@ namespace pr7s
         updateLiveTrack();
         modified = false;
         sendChangeMessage();
-        return true;
     }
 }
