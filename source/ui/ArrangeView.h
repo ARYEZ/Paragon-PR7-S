@@ -85,10 +85,11 @@ struct Timeline
     // The rows, top to bottom, shared by the track list and the arrangement:
     // each track, its open automation lanes under it, then the master's row
     // and its lanes. `top` is from the first row's top, before scrolling.
-    static constexpr int laneHeight = 48, masterHeight = 40;   // at the vertical zoom's 1
+    static constexpr int laneHeight = 48, masterHeight = 40, tempoHeight = 72;   // at the vertical zoom's 1
+    int tempoRowHeight() const noexcept { return juce::jmax (48, juce::roundToInt (tempoHeight * rowZoom)); }
     struct Row
     {
-        enum class Kind { track, lane, master };
+        enum class Kind { track, lane, master, tempo };
         Kind kind = Kind::track;
         int busId = 0;          // a track's id, or the master's (0)
         int laneIndex = -1;     // a lane: its index in the bus's automation
@@ -242,6 +243,17 @@ public:
     const PointSelection& getPointSelection() const noexcept { return pointSelection; }
     bool hasSelectedPoints() const noexcept { return ! pointSelection.points.empty(); }
     void deleteSelectedPoints();
+    // The tempo track's events (0.10.0): selected ones (indices), Delete removes them (never the first).
+    const std::vector<int>& getTempoSelection() const noexcept { return tempoSelection; }
+    bool hasSelectedTempoEvents() const noexcept { return ! tempoSelection.empty(); }
+    void deleteSelectedTempoEvents();
+    void selectAllTempoEvents();
+    void showTempoMenu();
+    // Where an event is drawn, and the tempo row's curve area (tests).
+    juce::Point<float> getTempoEventPosition (int index) const;
+    juce::Rectangle<float> getTempoArea() const;
+    float yForBpm (const juce::Rectangle<float>& area, double bpm) const;
+    double bpmForY (const juce::Rectangle<float>& area, float y) const;
     void selectAllPoints (int busId, int laneIndex);
     bool cancelDrag();   // Esc while dragging points: back where they were
     // Where a lane, and a point on it, are drawn (for tests).
@@ -288,7 +300,8 @@ private:
     Selection selection;
 
     enum class Drag { none, position, cycle, cycleMove, cycleLeft, cycleRight, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
-                      newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove, marquee };
+                      newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove, marquee,
+                      tempoPoints, tempoBand, tempoDraw };
     std::vector<int> alsoSelected;              // the parts selected besides `selection` (by id)
     pr7s::Studio::RangeClip partsClip;          // parts copied (Ctrl+C / X)
     int partIdAt (const Selection&) const;
@@ -330,6 +343,14 @@ private:
     bool copyingPoints = false;
     std::vector<pr7s::AutomationPoint> drawn;   // the points a drawing stroke has put down
     void paintAutomation (juce::Graphics&, const Timeline::Row&) const;
+    void paintTempo (juce::Graphics&, const Timeline::Row&) const;
+    bool tempoDown (const juce::MouseEvent&);
+    void tempoDrag (const juce::MouseEvent&);
+    void tempoUp();
+    void editTempoEvent (int index);   // a box to type its tempo (double-click)
+    std::vector<int> tempoSelection;
+    std::vector<pr7s::TempoEvent> tempoWorking, tempoOriginal;   // during a gesture
+    int tempoAnchor = -1;
     const pr7s::AutomationLane* laneFor (int busId, int laneIndex) const;
     float yForValue (juce::Rectangle<float> area, float value) const;
     float valueForY (juce::Rectangle<float> area, float y) const;
@@ -340,6 +361,8 @@ private:
     void showLaneMenu (int busId, int laneIndex);
     pr7s::Part dragPart;   // an audio clip as it's being trimmed or faded
     bool isAudioTrack (int trackId) const;
+    float fadeInWidth (const pr7s::Part&) const;    // a clip's fades in pixels (by the tempo map)
+    float fadeOutWidth (const pr7s::Part&) const;
     juce::Rectangle<float> fadeHandle (juce::Rectangle<float> bounds, const pr7s::Part&, bool fadeIn) const;
     Drag drag = Drag::none;
     double dragStartBeat = 0.0, dragOriginalStart = 0.0, dragOriginalLength = 0.0;

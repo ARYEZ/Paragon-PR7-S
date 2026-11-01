@@ -81,6 +81,12 @@ void TransportBar::timerCallback()
         shownPosition = position;
         repaint (positionScreen.getUnion (timeScreen).expanded (4.0f).getSmallestIntegerContainer());
     }
+    // The tempo track: the tempo where the playhead is (0.10.0).
+    if (const auto text = getTempoText(); text != shownTempo)
+    {
+        shownTempo = text;
+        repaint (tempoScreen.expanded (4.0f).getSmallestIntegerContainer());
+    }
     followPerformance();
 }
 
@@ -101,6 +107,10 @@ void TransportBar::followPerformance()
 
 juce::String TransportBar::getTooltip()
 {
+    if (tempoScreen.contains (getMouseXYRelative().toFloat()))
+        return studio.getProject().followsTempoTrack()
+                 ? "The tempo track's tempo where the playhead is (change it on the tempo track). Right-click: Activate Tempo Track"
+                 : "The song's tempo: drag up or down, or double-click to type it. Right-click: Activate Tempo Track, or add the tempo track";
     if (! cpuScreen.contains (getMouseXYRelative().toFloat()))
         return {};
     const auto overloads = studio.getEngine().takePerformance().overloads;
@@ -165,7 +175,7 @@ juce::String TransportBar::getPositionText() const
 
 juce::String TransportBar::getTempoText() const
 {
-    return juce::String (studio.getProject().bpm, 2);
+    return juce::String (studio.getTempoNow(), 2);   // (the tempo track's where the playhead is, else the fixed tempo)
 }
 
 void TransportBar::resized()
@@ -280,7 +290,7 @@ void TransportBar::paint (juce::Graphics& g)
             drawFixedPitch (g, value, inside, juce::jmin (44.0f, inside.getHeight() * 0.95f));
         };
         drawScreen (positionScreen, "POSITION", getPositionText());
-        drawScreen (timeScreen, "TIME", pr7s::formatTime (beats * studio.getProject().secondsPerBeat()));
+        drawScreen (timeScreen, "TIME", pr7s::formatTime (studio.getProject().tempoMap().secondsAt (beats)));
     }
 
     // CPU: the audio processing load, as much of each block's time as it
@@ -311,7 +321,7 @@ void TransportBar::paint (juce::Graphics& g)
         auto inside = glass.reduced (10.0f, 6.0f);
         g.setColour (orange.withAlpha (0.6f));
         g.setFont (font (9.0f));
-        g.drawText ("TEMPO", inside.removeFromTop (12.0f), juce::Justification::topLeft, false);
+        g.drawText (studio.getProject().followsTempoTrack() ? "TEMPO TRACK" : "TEMPO", inside.removeFromTop (12.0f), juce::Justification::topLeft, false);
         g.setColour (orange);
         g.setFont (font (juce::jmin (28.0f, inside.getHeight() * 0.62f)));
         g.drawFittedText (getTempoText(), inside.withTrimmedRight (30.0f).toNearestInt(), juce::Justification::centredRight, 1, 0.7f);
@@ -351,7 +361,25 @@ void TransportBar::mouseDown (const juce::MouseEvent& event)
         followPerformance();
         return;
     }
-    if (tempoScreen.contains (event.position))
+    if (tempoScreen.contains (event.position) && event.mods.isPopupMenu())
+    {
+        // The manual's Activate Tempo Track (on its transport), and the tempo track itself.
+        const auto& project = studio.getProject();
+        juce::PopupMenu menu;
+        menu.addItem (1, "Activate Tempo Track", true, project.followsTempoTrack());
+        menu.addItem (2, project.tempoTrackShown ? "The tempo track is in the track list" : "Add the Tempo Track", ! project.tempoTrackShown);
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (localAreaToGlobal (tempoScreen.toNearestInt())),
+                            [this] (int chosen)
+                            {
+                                if (chosen == 1)
+                                    studio.setTempoTrackOn (! studio.getProject().followsTempoTrack());
+                                else if (chosen == 2)
+                                    studio.addTempoTrack();
+                            });
+        return;
+    }
+    // (With the tempo track on, the tempo isn't changed here: the manual's. Its row's tempo or its curve.)
+    if (tempoScreen.contains (event.position) && ! studio.getProject().followsTempoTrack())
     {
         draggingTempo = true;
         dragStartBpm = studio.getProject().bpm;
@@ -393,7 +421,7 @@ void TransportBar::mouseUp (const juce::MouseEvent&)
 
 void TransportBar::mouseDoubleClick (const juce::MouseEvent& event)
 {
-    if (! tempoScreen.contains (event.position))
+    if (! tempoScreen.contains (event.position) || studio.getProject().followsTempoTrack())
         return;
     auto* window = new juce::AlertWindow ("Tempo", "The song's tempo, in beats per minute (20 to 300):", juce::MessageBoxIconType::NoIcon);
     window->addTextEditor ("bpm", juce::String (studio.getProject().bpm, 2));

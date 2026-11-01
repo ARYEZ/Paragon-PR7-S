@@ -2,6 +2,45 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.10.0
+
+**The tempo track.** Songs can now change tempo as they go: a jump at a bar, or a gradual speed-up or slow-down, as Cubase's tempo track does it.
+
+**Adding it:** right-click the track list, **Add Track > Tempo track** (there's one per song, as in Cubase), or right-click the transport's tempo, **Add the Tempo Track**. It appears under the master's row with:
+- **ON (Activate Tempo Track):** on, the song follows the tempo track's curve; off, the song plays at its fixed tempo (the transport's), and the curve is greyed out with the fixed tempo as a dotted line. The transport's right-click has the same switch.
+- **LOCK:** the tempo events can't be changed.
+- **RAMP / STEP / AUTO, the Type of New Tempo Points:** **Ramp** changes gradually from the point before; **Step** jumps there; **Auto** takes the type of the point before. Click the key to go round them.
+- **The tempo where the cursor is.** Double-click it to type a tempo: the event in effect at the cursor changes.
+
+**Editing the curve** (in the arrangement, on the tempo track's row):
+- **Select tool:** click the curve to add an event there (it snaps when SNAP is on, at the tempo you clicked). Click an event to select it, Shift-click to select more, or drag a rectangle round several. Drag selected events along the song and up or down; Ctrl keeps to one direction. The first event always stays at the song's start.
+- **Draw tool:** click or drag to draw events.
+- **Erase tool:** click an event to remove it.
+- **Delete** removes the selected events. As in Cubase, the first one can't be removed.
+- **Double-click an event** to type its tempo and choose Step or Ramp.
+- **Right-click the row** for: Activate, Lock, the type of new points, **Insert Tempo Event at Cursor**, Select All Events, Remove Selected Events, the **visible tempo range** (60 to 180 BPM at first) and Remove Tempo Track.
+- Every edit can be undone.
+
+**Everything follows it:** notes, audio clips, the click, the cycle, recording (MIDI and audio), automation, renders, Render in Place and Freeze. Your plug-ins are told the tempo where the song is, so tempo-synced delays follow. The transport shows the tempo at the playhead (labelled TEMPO TRACK), and TIME is worked out through every change. A ramp's timing is exact, not a staircase of small steps. Audio clips keep their place in the bars and play at their own speed (nothing is stretched, as before).
+
+**Imports bring tempo changes in:**
+- **MIDI files:** a file's tempo changes go onto the tempo track. As a new song, always. Into the song you have open, when you choose **Match** (the question now also comes up when the file's tempo changes partway, even if it starts at the song's tempo): its changes go on from where it's dropped, and the song's tempo before that stays.
+- **DAWproject** (songs from Cubase): tempo changes come across as the tempo track, ramps included. Clips timed in seconds land in the right place after a tempo change.
+
+**Not yet** (say which you'd like next):
+- The separate **Tempo Track Editor** window (Ctrl+T) with its info line.
+- The tempo track's Inspector **event list**.
+- **Process Tempo**, tempo recording, tap tempo and tempo detection.
+- The tempo event editor's **smart controls** (tilt, compress, scale).
+- **Time signature changes:** a signature track; songs keep one signature.
+- **Musical-mode audio** that stretches with the tempo.
+
+**Our choices** (the manual doesn't say):
+- The tempo track sits under the master's row.
+- Adding it turns it on, with one event at the song's start at its current tempo.
+- New points are Ramp at first.
+- Removing the track keeps its events, so adding it again brings them back.
+
 ## 0.9.14
 
 Three of your requests. The tempo track and key commands with macros are bigger jobs and come next, each in a release of its own.

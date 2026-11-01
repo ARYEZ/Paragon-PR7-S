@@ -238,3 +238,56 @@ TEST_CASE ("Several MIDI files imported one after another: each file's tracks ad
         CHECK (studio.getProject().tracks[i].parts.size() == 1);
     folder.deleteRecursively();
 }
+
+TEST_CASE ("A MIDI file's tempo changes come in on the tempo track (0.10.0)", "[midi][tempo]")
+{
+    // 100 BPM, 75 from beat 8, 120 from beat 16 (a change at the same tempo is no change).
+    juce::MidiFile file;
+    file.setTicksPerQuarterNote (ppq);
+    juce::MidiMessageSequence conductor, piano;
+    conductor.addEvent (juce::MidiMessage::tempoMetaEvent (600000), 0.0);
+    conductor.addEvent (juce::MidiMessage::tempoMetaEvent (800000), 8.0 * ppq);
+    conductor.addEvent (juce::MidiMessage::tempoMetaEvent (800000), 12.0 * ppq);
+    conductor.addEvent (juce::MidiMessage::tempoMetaEvent (500000), 16.0 * ppq);
+    piano.addEvent (juce::MidiMessage::textMetaEvent (3, "Piano"), 0.0);
+    addNote (piano, 1, 60, 0.0, 1.0, 100);
+    for (auto* seq : { &conductor, &piano })
+    {
+        seq->updateMatchedPairs();
+        file.addTrack (*seq);
+    }
+    juce::MemoryOutputStream out;
+    REQUIRE (file.writeTo (out, 1));
+    juce::MemoryInputStream in (out.getData(), out.getDataSize(), false);
+    juce::String error;
+    const auto midi = readMidiFile (in, error);
+    REQUIRE (midi.has_value());
+    REQUIRE (midi->tempoChanges.size() == 3);
+    CHECK (midi->tempoChanges[1].beat == 8.0);
+    CHECK_THAT (midi->tempoChanges[1].bpm, WithinAbs (75.0, 1.0e-9));
+    CHECK_THAT (midi->tempoChanges[2].bpm, WithinAbs (120.0, 1.0e-9));
+
+    // A new song: the tempo track, on, with them.
+    Studio studio (false);
+    REQUIRE (studio.importMidi (*midi, true, 0.0) == 1);
+    const auto& song = studio.getProject();
+    CHECK (song.tempoTrackShown);
+    CHECK (song.followsTempoTrack());
+    CHECK (song.tempoEvents == midi->tempoChanges);
+    CHECK_THAT (song.bpmAt (10.0), WithinAbs (75.0, 1.0e-9));
+
+    // Into another song at bar 3 (4/4: beat 8), matching: its changes from there; before, the song's tempo.
+    Studio other (false);
+    other.setTempo (90.0);
+    REQUIRE (other.importMidi (*midi, false, 8.0, true) == 1);
+    const auto& events = other.getProject().tempoEvents;
+    REQUIRE (events.size() == 4);
+    CHECK (events[0].bpm == 90.0);
+    CHECK (events[1].beat == 8.0);
+    CHECK_THAT (events[1].bpm, WithinAbs (100.0, 1.0e-9));
+    CHECK (events[2].beat == 16.0);
+    // Keeping the song's tempo: no tempo track.
+    Studio kept (false);
+    REQUIRE (kept.importMidi (*midi, false, 0.0, false) == 1);
+    CHECK_FALSE (kept.getProject().tempoTrackShown);
+}

@@ -173,6 +173,16 @@ namespace pr7s
         return last;
     }
 
+    TempoMap Project::tempoMap() const
+    {
+        return followsTempoTrack() ? TempoMap (tempoEvents) : TempoMap (bpm);
+    }
+
+    double Project::bpmAt (double beat) const
+    {
+        return followsTempoTrack() ? TempoMap (tempoEvents).bpmAt (beat) : bpm;
+    }
+
     std::unique_ptr<juce::XmlElement> Project::toXml() const
     {
         auto xml = std::make_unique<juce::XmlElement> (projectTag);
@@ -187,6 +197,24 @@ namespace pr7s
         xml->setAttribute ("snap", snapOn);
         xml->setAttribute ("quantize", quantizeBeats);
         xml->setAttribute ("nextTrackId", nextTrackId);
+        if (! tempoEvents.empty() || tempoTrackShown)
+        {
+            auto* tempo = xml->createNewChildElement ("Tempo");
+            tempo->setAttribute ("on", tempoTrackOn);
+            tempo->setAttribute ("shown", tempoTrackShown);
+            tempo->setAttribute ("locked", tempoLocked);
+            tempo->setAttribute ("newType", newTempoType == NewTempoType::step ? "step" : newTempoType == NewTempoType::automatic ? "automatic" : "ramp");
+            tempo->setAttribute ("low", tempoViewLow);
+            tempo->setAttribute ("high", tempoViewHigh);
+            for (const auto& e : tempoEvents)
+            {
+                auto* event = tempo->createNewChildElement ("Event");
+                event->setAttribute ("beat", e.beat);
+                event->setAttribute ("bpm", e.bpm);
+                if (e.ramp)
+                    event->setAttribute ("ramp", true);
+            }
+        }
 
         for (const auto& track : tracks)
         {
@@ -306,6 +334,23 @@ namespace pr7s
         project.click = xml.getBoolAttribute ("click");
         project.snapOn = xml.getBoolAttribute ("snap", true);
         project.quantizeBeats = juce::jlimit (1.0 / 16.0, 4.0, xml.getDoubleAttribute ("quantize", 0.25));
+        if (const auto* tempo = xml.getChildByName ("Tempo"))
+        {
+            project.tempoTrackShown = tempo->getBoolAttribute ("shown");
+            project.tempoLocked = tempo->getBoolAttribute ("locked");
+            const auto type = tempo->getStringAttribute ("newType", "ramp");
+            project.newTempoType = type == "step" ? NewTempoType::step : type == "automatic" ? NewTempoType::automatic : NewTempoType::ramp;
+            project.tempoViewLow = juce::jlimit (minBpm, maxBpm - 10.0, tempo->getDoubleAttribute ("low", 60.0));
+            project.tempoViewHigh = juce::jlimit (project.tempoViewLow + 10.0, maxBpm, tempo->getDoubleAttribute ("high", 180.0));
+            for (const auto* e : tempo->getChildWithTagNameIterator ("Event"))
+                project.tempoEvents.push_back ({ juce::jmax (0.0, e->getDoubleAttribute ("beat")),
+                                                 juce::jlimit (minBpm, maxBpm, e->getDoubleAttribute ("bpm", project.bpm)),
+                                                 e->getBoolAttribute ("ramp") });
+            std::stable_sort (project.tempoEvents.begin(), project.tempoEvents.end(), [] (const TempoEvent& a, const TempoEvent& b) { return a.beat < b.beat; });
+            if (! project.tempoEvents.empty())
+                project.tempoEvents.front().beat = 0.0;
+            project.tempoTrackOn = tempo->getBoolAttribute ("on") && ! project.tempoEvents.empty();
+        }
 
         int highestId = 0;
         for (const auto* t : xml.getChildWithTagNameIterator (trackTag))

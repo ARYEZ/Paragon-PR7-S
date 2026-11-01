@@ -26,6 +26,7 @@
 // PARAGON_SNAPSHOT_MULTI=1: parts selected on two tracks.
 // PARAGON_SNAPSHOT_STATES=1: the lead soloed, the bass muted, the keys armed (written under their names; the header's M and S lit).
 // PARAGON_SNAPSHOT_MASTER=1: the master's row chosen (its Inspector).
+// PARAGON_SNAPSHOT_TEMPO=1: the tempo track, with a ramp and a step (0.10.0).
 // PARAGON_SNAPSHOT_FREEZE=1: the lead frozen (FREEZE lit in its Inspector, its parts stamped).
 // PARAGON_SNAPSHOT_VISIBILITY=1: the VISIBILITY tab, the bass hidden, the keys disabled.
 // PARAGON_SNAPSHOT_INSPECTOR=fader folds the Inspector's inserts and sends (=none hides it).
@@ -122,6 +123,13 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     else if (inspector == "none")
         view.toggleInspector();
     // PARAGON_SNAPSHOT_MULTI=1: the keys' and the bass's parts in bars 5 to 8 selected together.
+    // PARAGON_SNAPSHOT_TEMPO=1: the tempo track (0.10.0): a ramp up to bar 3, a step down at bar 5, the playhead in the ramp.
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_TEMPO", {}).isNotEmpty())
+    {
+        studio.addTempoTrack();
+        studio.setTempoEvents ({ { 0.0, 120.0, false }, { 8.0, 140.0, true }, { 16.0, 96.0, false }, { 24.0, 104.0, true } });
+        studio.getEngine().setPosition (5.0);
+    }
     // PARAGON_SNAPSHOT_QC=1: the lead's Quick Controls (volume, pan, a send-less mix: mute), the other sections folded.
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_QC", {}).isNotEmpty())
     {

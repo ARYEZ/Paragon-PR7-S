@@ -299,7 +299,15 @@ TEST_CASE ("DAWproject: a song from Cubase: tempo, tracks, mix, routing, plug-in
 
     // What didn't come across, said.
     const auto notes = imported->notes.joinIntoString ("\n");
-    CHECK (notes.contains ("Tempo and time signature changes"));
+    // Its tempo change (0.10.0): on the tempo track, 100 to 140 at beat 16.
+    CHECK_FALSE (notes.contains ("Tempo"));
+    REQUIRE (p.tempoEvents.size() == 2);
+    CHECK (p.tempoTrackOn);
+    CHECK (p.tempoTrackShown);
+    CHECK (p.tempoEvents[0].bpm == 100.0);
+    CHECK (p.tempoEvents[1].beat == 16.0);
+    CHECK (p.tempoEvents[1].bpm == 140.0);
+    CHECK_FALSE (p.tempoEvents[1].ramp);
     CHECK (notes.contains ("folder \"Strings\""));
     CHECK (notes.contains ("Channel EQ"));
     CHECK (notes.contains ("Test Synth isn't among the plug-ins"));

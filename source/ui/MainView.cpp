@@ -26,6 +26,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
         const auto songBpm = studio.getProject().bpm;
         juce::AlertWindow::showYesNoCancelBox (juce::MessageBoxIconType::QuestionIcon, "The MIDI file's tempo",
             file.getFileName() + " was written at " + bpm (fileBpm) + "; this song is at " + bpm (songBpm) + ".\n\n"
+            "(If the file's tempo changes as it goes, matching puts its changes on the tempo track from where it goes in.)\n\n"
             "Match the song to the file: the song changes to " + bpm (fileBpm) + ", so the notes play at the speed they were written at "
             "(audio already in the song doesn't stretch with it). Keep the song's tempo: the notes go on the same beats, played at "
             + bpm (songBpm) + ".",
@@ -222,6 +223,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
 
     trackList.onOpenInstrument = [this] (int trackId) { openInstrumentWindow (trackId); };
     trackList.onFindPlugins = [this] { openPlugins(); };
+    trackList.onTempoMenu = [this] { arrange.showTempoMenu(); };
     trackList.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
     timeline.onScrollOrZoom = [this]
     {
@@ -724,7 +726,10 @@ bool MainView::keyPressed (const juce::KeyPress& key)
     if (key == juce::KeyPress::homeKey)                 { studio.goToStart(); return true; }
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
     {
-        arrange.hasSelectedPoints() ? arrange.deleteSelectedPoints() : arrange.deleteSelected();
+        if (arrange.hasSelectedTempoEvents())
+            arrange.deleteSelectedTempoEvents();
+        else
+            arrange.hasSelectedPoints() ? arrange.deleteSelectedPoints() : arrange.deleteSelected();
         return true;
     }
     // Shift+Delete: the selected tracks (Remove Selected Tracks); Up / Down: the track above / below
@@ -1180,7 +1185,7 @@ void MainView::importMidiFiles (const juce::Array<juce::File>& files, bool newSo
     {
         juce::String error;
         if (const auto midi = pr7s::readMidiFile (files.getFirst(), error);
-            midi && std::abs (midi->bpm - studio.getProject().bpm) > 0.005)
+            midi && (std::abs (midi->bpm - studio.getProject().bpm) > 0.005 || midi->tempoChanges.size() > 1))
         {
             askMidiTempo (files.getFirst(), midi->bpm, [safe = juce::Component::SafePointer<MainView> (this), files, atBeat] (int result)
             {

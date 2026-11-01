@@ -4,6 +4,8 @@
 
 #include <optional>
 
+#include "TempoMap.h"
+
 // A song: its tempo and time signature, the cycle (loop) range, and its
 // tracks, each with an instrument and the MIDI parts on the timeline.
 //
@@ -186,7 +188,16 @@ namespace pr7s
 
     struct Project
     {
-        double bpm = 120.0;
+        double bpm = 120.0;                   // the fixed tempo (the tempo track off)
+        // The tempo track (0.10.0, the manual's): on (Activate Tempo Track),
+        // the song follows its events (the first at beat 0); off, `bpm`.
+        bool tempoTrackOn = false;
+        std::vector<TempoEvent> tempoEvents;  // sorted by beat; empty until the track is first added
+        bool tempoTrackShown = false;         // the tempo track in the track list (it can be added once)
+        bool tempoLocked = false;             // its Lock: its events can't be edited
+        enum class NewTempoType { ramp, step, automatic };
+        NewTempoType newTempoType = NewTempoType::ramp;   // the Type of New Tempo Points
+        double tempoViewLow = 60.0, tempoViewHigh = 180.0;   // the curve's shown range (Visible Tempo Lower/Upper Limit)
         int numerator = 4, denominator = 4;   // the time signature
         bool loopOn = false;                  // CYCLE
         double loopStart = 0.0, loopEnd = 16.0;
@@ -207,7 +218,11 @@ namespace pr7s
         static constexpr int maxSends = 8;     // send slots on a channel (our choice: the manual gives no number)
 
         double beatsPerBar() const noexcept { return numerator * 4.0 / denominator; }
-        double secondsPerBeat() const noexcept { return 60.0 / bpm; }
+        double secondsPerBeat() const noexcept { return 60.0 / bpm; }   // the fixed tempo's (with the tempo track on: tempoMap)
+        // Beats to seconds and back, by the tempo track when it's on.
+        TempoMap tempoMap() const;
+        double bpmAt (double beat) const;
+        bool followsTempoTrack() const noexcept { return tempoTrackOn && ! tempoEvents.empty(); }
 
         Track* findTrack (int id);
         const Track* findTrack (int id) const;

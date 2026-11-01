@@ -253,7 +253,8 @@ namespace pr7s
 
         struct Settings
         {
-            double bpm = 120.0;
+            TempoMap tempo;            // the fixed tempo, or the tempo track's (0.10.0)
+            int tempoVersion = 0;      // changes when the tempo does (the clock re-bases)
             int numerator = 4, denominator = 4;
             bool loopOn = false;
             double loopStart = 0.0, loopEnd = 16.0;
@@ -275,11 +276,19 @@ namespace pr7s
         static int channelsFor (const juce::AudioPluginInstance&);
         int channelsNeeded (const TrackState&) const;
         void runInserts (std::vector<Slot>&, juce::AudioBuffer<float>&, int numSamples, int fromSlot = 0, int toSlot = Project::maxInserts);
-        void schedule (TrackState&, juce::int64 fromSample, juce::int64 toSample, int sampleOffset, double beatsPerSample);
+        // Beats to the song's samples and back, by the tempo map (0.10.0: it was one beats-per-sample).
+        struct Timing
+        {
+            const TempoMap* map;
+            double rate;
+            juce::int64 sampleAt (double beat) const noexcept { return (juce::int64) std::llround (map->secondsAt (beat) * rate); }
+            double beatAt (double sample) const noexcept { return map->beatAt (sample / rate); }
+        };
+        void schedule (TrackState&, juce::int64 fromSample, juce::int64 toSample, int sampleOffset, const Timing&);
         void stopHeldNotes (TrackState&, int sampleOffset);
         void renderBlock (juce::AudioBuffer<float>& output, int numSamples);
         const float* inputChannel (int channel, int offset) const noexcept;
-        void playClips (TrackState&, juce::int64 clock, int offset, int length, double beatsPerSample);
+        void playClips (TrackState&, juce::int64 clock, int offset, int length, const Timing&);
         void runSends (TrackState&, bool preFader, int numSamples, double beat);
 
         // The block's segments (up to the cycle's end, then from its start): their song position, place in the block and length.
@@ -308,7 +317,7 @@ namespace pr7s
         // The song position in whole samples while playing (audio thread), so
         // notes land on exactly their sample however long the song plays.
         juce::int64 sampleClock = 0;
-        double clockBeatsPerSample = 0.0;
+        int clockTempoVersion = -1;
         std::atomic<int> liveTrack { 0 };
         std::atomic<float> averageLoad { 0.0f }, peakLoad { 0.0f };
         std::atomic<int> overloads { 0 };

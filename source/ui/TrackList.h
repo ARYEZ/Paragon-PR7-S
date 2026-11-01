@@ -34,6 +34,7 @@ public:
     std::function<void (int)> onOpenInstrument;
     std::function<void (int busId, int slot)> onOpenEffect;   // an effect's window (an FX channel's)
     std::function<void()> onFindPlugins;
+    std::function<void()> onTempoMenu;   // the tempo row's right-click (the arrangement's tempo menu)
     // Render in Place (the track's menu): the selected tracks whole; ask how (else as last time).
     std::function<void (std::vector<pr7s::Studio::RenderSource>, bool ask)> onRenderInPlace;
     juce::TextButton& getAddTrackButton() noexcept { return addTrack; }
@@ -77,6 +78,7 @@ private:
     class Row;
     class LaneRow;
     class MasterRow;
+    class TempoRow;
     class Arrow;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
@@ -88,6 +90,7 @@ private:
     std::vector<std::unique_ptr<Row>> rows;
     std::vector<std::unique_ptr<LaneRow>> laneRows;
     std::unique_ptr<MasterRow> masterRow;
+    std::unique_ptr<TempoRow> tempoRow;   // the tempo track's (0.10.0), while it's added
     std::vector<Timeline::Row> lastLayout;
     int dropIndex = -1, dropY = -1;   // a drag of tracks: where they'd go
     std::vector<int> tracksToMove (int trackId) const;

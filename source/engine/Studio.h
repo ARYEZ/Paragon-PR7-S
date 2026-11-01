@@ -364,8 +364,37 @@ namespace pr7s
 
         //======================================================================
         // The song.
-        void setTempo (double bpm);
+        void setTempo (double bpm);   // the fixed tempo (the tempo track off)
         void setSignature (int numerator, int denominator);
+
+        //======================================================================
+        // The tempo track (0.10.0, the manual's Tempo Track): added once
+        // (Add Track > Tempo), on (Activate Tempo Track: the song follows its
+        // events) or off (the fixed tempo). Each edit is an undo step.
+        // Adding it the first time: one event at the start with the fixed
+        // tempo, and it's turned on (our choice: why add it otherwise).
+        void addTempoTrack();
+        void removeTempoTrack();   // hidden and off (its events kept: added again, they're back)
+        void setTempoTrackOn (bool);
+        // A new event (the Type of New Tempo Points decides ramp or step:
+        // Automatic, as the event before it). At an event's beat: that one's tempo
+        // changes. Returns its index. Not while the track is locked.
+        int addTempoEvent (double beat, double bpm);
+        // All of them at once (a drag, the list's edits: one undo step). Sorted,
+        // the first kept at the start. Not while locked.
+        void setTempoEvents (std::vector<TempoEvent>);
+        // These (indices) removed; never the first (the manual's: it can't be).
+        void removeTempoEvents (std::vector<int> indices);
+        // The tempo where the cursor is: the tempo track on, the event in effect
+        // there changes (the manual's Current Tempo); off, the fixed tempo.
+        void setTempoAtCursor (double bpm);
+        // The manual's Insert Tempo Event at Cursor.
+        int insertTempoEventAtCursor (double bpm);
+        void setTempoLocked (bool);
+        void setNewTempoType (Project::NewTempoType);
+        void setTempoView (double low, double high);   // the curve's shown range (not undo steps)
+        // The tempo at the playhead (the transport shows it).
+        double getTempoNow() const;
         void setCycle (double start, double end);
         void setCycleOn (bool);
         // Snap on/off (J) and the quantize value in beats (4: 1/1 ... 1/16: 1/64), the toolbar's (0.9.10).

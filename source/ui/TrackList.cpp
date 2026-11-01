@@ -455,6 +455,122 @@ public:
 };
 
 //==============================================================================
+// The tempo track's row (0.10.0, the manual's Tempo Track Controls): ON
+// (Activate Tempo Track), LOCK, the Type of New Tempo Points, and the tempo
+// at the cursor (double-click to type one: the event in effect there changes).
+class TrackList::TempoRow final : public juce::Component,
+                                  public juce::SettableTooltipClient
+{
+public:
+    explicit TempoRow (TrackList& ownerList) : owner (ownerList)
+    {
+        for (auto* key : { &on, &lock, &type })
+        {
+            key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+            key->setWantsKeyboardFocus (false);
+            addAndMakeVisible (*key);
+        }
+        on.setClickingTogglesState (false);
+        lock.setClickingTogglesState (false);
+        on.setTooltip ("Activate Tempo Track: the song follows the tempo track's curve; off, the fixed tempo (the transport's)");
+        lock.setTooltip ("Lock: the tempo events can't be changed");
+        type.setTooltip ("Type of New Tempo Points: Ramp (gradually from the point before), Step (a jump), Auto (as the point before)");
+        on.onClick = [this] { owner.studio.setTempoTrackOn (! owner.studio.getProject().tempoTrackOn); };
+        lock.onClick = [this] { owner.studio.setTempoLocked (! owner.studio.getProject().tempoLocked); };
+        type.onClick = [this]
+        {
+            using T = pr7s::Project::NewTempoType;
+            const auto now = owner.studio.getProject().newTempoType;
+            owner.studio.setNewTempoType (now == T::ramp ? T::step : now == T::step ? T::automatic : T::ramp);
+        };
+        setTooltip ("The tempo track: right-click for its menu; double-click the tempo to type one");
+        refresh();
+    }
+
+    void refresh()
+    {
+        const auto& project = owner.studio.getProject();
+        on.setToggleState (project.tempoTrackOn, juce::dontSendNotification);
+        lock.setToggleState (project.tempoLocked, juce::dontSendNotification);
+        using T = pr7s::Project::NewTempoType;
+        type.setButtonText (project.newTempoType == T::ramp ? "RAMP" : project.newTempoType == T::step ? "STEP" : "AUTO");
+        followTempo();
+        repaint();
+    }
+
+    void followTempo()
+    {
+        const auto now = owner.studio.getTempoNow();
+        if (std::abs (now - shownTempo) > 0.004)
+        {
+            shownTempo = now;
+            repaint (tempoArea.toNearestInt().expanded (2));
+        }
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto bounds = getLocalBounds().toFloat();
+        g.setColour (juce::Colour (0xff140f14));
+        g.fillRect (bounds);
+        g.setColour (juce::Colour (0xff050405));
+        g.fillRect (bounds.withY (bounds.getBottom() - 1.0f).withHeight (1.0f));
+        g.setColour (pr7s::FamilyColours::orange);
+        g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
+        g.setColour (ParagonColours::text);
+        g.setFont (ParagonLookAndFeel::titleFont (13.0f));
+        g.drawText ("TEMPO", nameArea, juce::Justification::centredLeft, false);
+        g.setColour (owner.studio.getProject().tempoTrackOn ? ParagonColours::text : ParagonColours::textDim);
+        g.setFont (ParagonLookAndFeel::titleFont (15.0f));
+        g.drawText (juce::String (shownTempo, 2) + " BPM", tempoArea, juce::Justification::centredLeft, false);
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().withTrimmedLeft (24).reduced (0, 4);
+        auto top = area.removeFromTop (juce::jmin (24, area.getHeight() / 2));
+        nameArea = top.removeFromLeft (70).toFloat();
+        top.removeFromRight (6);
+        type.setBounds (top.removeFromRight (46));
+        top.removeFromRight (3);
+        lock.setBounds (top.removeFromRight (44));
+        top.removeFromRight (3);
+        on.setBounds (top.removeFromRight (34));
+        tempoArea = area.removeFromTop (juce::jmin (24, area.getHeight())).toFloat();
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (e.mods.isPopupMenu() && owner.onTempoMenu)
+            owner.onTempoMenu();
+    }
+
+    void mouseDoubleClick (const juce::MouseEvent& e) override
+    {
+        if (! tempoArea.contains (e.position))
+            return;
+        auto* box = new juce::AlertWindow ("Tempo", owner.studio.getProject().followsTempoTrack()
+                                                        ? "The tempo where the cursor is (the tempo event in effect there changes)."
+                                                        : "The song's tempo (the tempo track is off).",
+                                           juce::MessageBoxIconType::NoIcon);
+        box->addTextEditor ("bpm", juce::String (owner.studio.getTempoNow(), 2), "BPM");
+        box->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+        box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+        box->enterModalState (true, juce::ModalCallbackFunction::create ([box, safe = juce::Component::SafePointer<TempoRow> (this)] (int result)
+        {
+            if (safe != nullptr && result == 1)
+                if (const auto bpm = box->getTextEditorContents ("bpm").replaceCharacter (',', '.').getDoubleValue(); bpm > 0.0)
+                    safe->owner.studio.setTempoAtCursor (bpm);
+        }), true);
+    }
+
+    TrackList& owner;
+    juce::TextButton on { "ON" }, lock { "LOCK" }, type { "RAMP" };
+    juce::Rectangle<float> nameArea, tempoArea;
+    double shownTempo = -1.0;
+};
+
+//==============================================================================
 TrackList::TrackList (pr7s::Studio& studioToUse, Timeline& timelineToUse)
     : studio (studioToUse), timeline (timelineToUse)
 {
@@ -501,6 +617,8 @@ void TrackList::timerCallback()
     }
     for (auto& lane : laneRows)
         lane->repaint (lane->valueArea.toNearestInt());
+    if (tempoRow != nullptr)
+        tempoRow->followTempo();
 }
 
 void TrackList::rebuild()
@@ -544,6 +662,15 @@ void TrackList::rebuild()
         addAndMakeVisible (*masterRow);
     }
     masterRow->refresh();
+    if (studio.getProject().tempoTrackShown && tempoRow == nullptr)
+    {
+        tempoRow = std::make_unique<TempoRow> (*this);
+        addAndMakeVisible (*tempoRow);
+    }
+    else if (! studio.getProject().tempoTrackShown)
+        tempoRow = nullptr;
+    if (tempoRow != nullptr)
+        tempoRow->refresh();
     resized();
     repaint();
 }
@@ -576,6 +703,11 @@ void TrackList::placeRows()
         {
             if (laneRow != laneRows.end())
                 (*laneRow++)->setBounds (bounds);
+        }
+        else if (row.kind == Timeline::Row::Kind::tempo)
+        {
+            if (tempoRow != nullptr)
+                tempoRow->setBounds (bounds);
         }
         else if (masterRow != nullptr)
         {
@@ -634,6 +766,8 @@ juce::PopupMenu TrackList::makeAddTrackMenu (int offset)
     if (! effects.isEmpty())
         menu.addSubMenu ("FX channel with", withEffect);
     menu.addItem (offset + 6, "Group channel (a submix: route tracks to it)");
+    menu.addSectionHeader ("ADD THE TEMPO TRACK");
+    menu.addItem (offset + 8, "Tempo track (tempo changes: steps and ramps)", ! studio.getProject().tempoTrackShown);
     menu.addSeparator();
     menu.addItem (offset + 7, "Track from a preset...");
     menu.addSeparator();
@@ -648,7 +782,11 @@ bool TrackList::addTrackChosen (int chosen)
     const auto effects = studio.getPluginHost().getEffects();
     if (chosen <= 0)
         return false;
-        if (chosen == 7)
+        if (chosen == 8)
+        {
+            studio.addTempoTrack();
+        }
+        else if (chosen == 7)
         {
             TrackActions::addTrackFromPreset (studio, chooser);
         }

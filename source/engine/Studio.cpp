@@ -224,6 +224,9 @@ namespace pr7s
     void Studio::restore (const Project& state)
     {
         project.bpm = state.bpm;
+        project.tempoTrackOn = state.tempoTrackOn;
+        project.tempoEvents = state.tempoEvents;
+        project.tempoTrackShown = state.tempoTrackShown;
         project.numerator = state.numerator;
         project.denominator = state.denominator;
         project.loopOn = state.loopOn;
@@ -1192,7 +1195,7 @@ namespace pr7s
     namespace
     {
         // A part cut at `rel` beats from its start: it keeps what's before, and the rest is returned.
-        Part cutPart (Part& part, double rel, double bpm)
+        Part cutPart (Part& part, double rel, const TempoMap& tempo)
         {
             auto second = part;
             second.id = 0;
@@ -1227,12 +1230,12 @@ namespace pr7s
             part.length = rel;
             if (part.isAudio())
             {
-                const auto seconds = rel * 60.0 / bpm;
+                const auto seconds = tempo.secondsBetween (part.start, part.start + rel);
                 second.audioOffset = part.audioOffset + seconds;
                 second.fadeIn = 0.0;
                 part.fadeOut = 0.0;
                 part.fadeIn = juce::jmin (part.fadeIn, seconds);
-                second.fadeOut = juce::jmin (second.fadeOut, second.length * 60.0 / bpm);
+                second.fadeOut = juce::jmin (second.fadeOut, tempo.secondsBetween (second.start, second.end()));
             }
             return second;
         }
@@ -1262,7 +1265,7 @@ namespace pr7s
         const auto rel = atBeat - part.start;
         if (rel < shortestPiece || rel > part.length - shortestPiece)
             return -1;
-        track->parts.push_back (cutPart (part, rel, project.bpm));
+        track->parts.push_back (cutPart (part, rel, project.tempoMap()));
         changed();
         return (int) track->parts.size() - 1;
     }
@@ -1278,7 +1281,7 @@ namespace pr7s
         auto current = index;
         while (track->parts[(size_t) current].length - piece >= shortestPiece)
         {
-            track->parts.push_back (cutPart (track->parts[(size_t) current], piece, project.bpm));
+            track->parts.push_back (cutPart (track->parts[(size_t) current], piece, project.tempoMap()));
             current = (int) track->parts.size() - 1;
         }
         changed();
@@ -1299,7 +1302,7 @@ namespace pr7s
                 const auto rel = at - part.start;
                 if (rel < shortestPiece || rel > part.length - shortestPiece)
                     continue;
-                track.parts.push_back (cutPart (part, rel, project.bpm));
+                track.parts.push_back (cutPart (part, rel, project.tempoMap()));
                 any = true;
             }
         }
@@ -1324,7 +1327,7 @@ namespace pr7s
             for (const auto i : after)
             {
                 const auto& next = track->parts[(size_t) i];
-                const auto secondsIn = glued.audioOffset + glued.length * 60.0 / project.bpm;
+                const auto secondsIn = glued.audioOffset + project.tempoMap().secondsBetween (glued.start, glued.end());
                 if (next.audioFile != glued.audioFile || std::abs (next.start - glued.end()) > 1.0e-6
                     || std::abs (next.audioOffset - secondsIn) > 1.0e-4)
                     return false;
@@ -1402,14 +1405,14 @@ namespace pr7s
         constexpr double edge = 1.0e-9;
 
         // Every part on a track that `beat` is inside is cut there.
-        void splitTrackAt (Track& track, double beat, double bpm)
+        void splitTrackAt (Track& track, double beat, const TempoMap& tempo)
         {
             const auto count = (int) track.parts.size();
             for (int i = 0; i < count; ++i)
             {
                 auto& part = track.parts[(size_t) i];
                 if (beat > part.start + edge && beat < part.end() - edge)
-                    track.parts.push_back (cutPart (part, beat - part.start, bpm));
+                    track.parts.push_back (cutPart (part, beat - part.start, tempo));
             }
         }
 
@@ -1419,14 +1422,14 @@ namespace pr7s
         }
 
         // What of a part lies between two beats (none if nothing).
-        std::optional<Part> slice (Part part, double start, double end, double bpm)
+        std::optional<Part> slice (Part part, double start, double end, const TempoMap& tempo)
         {
             if (part.end() <= start + edge || part.start >= end - edge)
                 return std::nullopt;
             if (start > part.start + edge)
-                part = cutPart (part, start - part.start, bpm);
+                part = cutPart (part, start - part.start, tempo);
             if (end < part.end() - edge)
-                cutPart (part, end - part.start, bpm);   // (keeps the first half)
+                cutPart (part, end - part.start, tempo);   // (keeps the first half)
             part.id = 0;
             return part;
         }
@@ -1462,8 +1465,8 @@ namespace pr7s
         for (const auto id : range.trackIds)
             if (auto* track = project.findTrack (id))
             {
-                splitTrackAt (*track, range.start, project.bpm);
-                splitTrackAt (*track, range.end, project.bpm);
+                splitTrackAt (*track, range.start, project.tempoMap());
+                splitTrackAt (*track, range.end, project.tempoMap());
             }
         changed();
     }
@@ -1479,7 +1482,7 @@ namespace pr7s
                     const auto crosses = (range.start > part.start + edge && range.start < part.end() - edge)
                                       || (range.end > part.start + edge && range.end < part.end() - edge);
                     if (crosses)
-                        if (auto cropped = slice (part, range.start, range.end, project.bpm))
+                        if (auto cropped = slice (part, range.start, range.end, project.tempoMap()))
                         {
                             const auto id = part.id;
                             part = *cropped;
@@ -1496,8 +1499,8 @@ namespace pr7s
         for (const auto id : range.trackIds)
             if (auto* track = project.findTrack (id))
             {
-                splitTrackAt (*track, range.start, project.bpm);
-                splitTrackAt (*track, range.end, project.bpm);
+                splitTrackAt (*track, range.start, project.tempoMap());
+                splitTrackAt (*track, range.end, project.tempoMap());
                 track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(),
                                                     [&] (const Part& part) { return inside (part, range.start, range.end); }),
                                     track->parts.end());
@@ -1520,7 +1523,7 @@ namespace pr7s
             auto& slices = clip.tracks.emplace_back();
             if (const auto* track = project.findTrack (id))
                 for (const auto& part : track->parts)
-                    if (auto piece = slice (part, range.start, range.end, project.bpm))
+                    if (auto piece = slice (part, range.start, range.end, project.tempoMap()))
                     {
                         piece->start -= range.start;
                         slices.push_back (*piece);
@@ -1543,7 +1546,7 @@ namespace pr7s
         for (const auto id : range.trackIds)
             if (auto* track = project.findTrack (id))
             {
-                splitTrackAt (*track, range.start, project.bpm);
+                splitTrackAt (*track, range.start, project.tempoMap());
                 shiftFrom (*track, range.start, range.length());
             }
         changed();
@@ -1562,7 +1565,7 @@ namespace pr7s
                 continue;
             if (insertTime)
             {
-                splitTrackAt (*track, atBeat, project.bpm);
+                splitTrackAt (*track, atBeat, project.tempoMap());
                 shiftFrom (*track, atBeat, clip.length);
             }
             for (auto part : clip.tracks[t])
@@ -1585,8 +1588,8 @@ namespace pr7s
             for (const auto id : range.trackIds)
                 if (auto* track = project.findTrack (id))
                 {
-                    splitTrackAt (*track, range.start, project.bpm);
-                    splitTrackAt (*track, range.end, project.bpm);
+                    splitTrackAt (*track, range.start, project.tempoMap());
+                    splitTrackAt (*track, range.end, project.tempoMap());
                     track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(),
                                                         [&] (const Part& part) { return inside (part, range.start, range.end); }),
                                         track->parts.end());
@@ -1693,7 +1696,7 @@ namespace pr7s
             clip.name = file.getFileNameWithoutExtension();
             clip.audioFile = copy.getFileName();
             clip.start = at;
-            clip.length = ((double) reader->lengthInSamples / reader->sampleRate) / project.secondsPerBeat();
+            clip.length = project.tempoMap().beatAfter (at, (double) reader->lengthInSamples / reader->sampleRate) - at;
             if (oneTrack)
                 at += clip.length;   // (else they all start at atBeat, each on its own track)
             clips.push_back (clip);
@@ -2837,7 +2840,7 @@ namespace pr7s
         }
 
         // In place of what was there from the start to the end (and the return).
-        const auto returnBeats = pass.control.isStep() ? 0.0 : returnSeconds / project.secondsPerBeat();
+        const auto returnBeats = pass.control.isStep() ? 0.0 : project.tempoMap().beatAfter (endBeat, returnSeconds) - endBeat;
         const auto backAt = endBeat + returnBeats;
         std::vector<AutomationPoint> points;
         for (const auto& p : old.points)
@@ -2872,6 +2875,177 @@ namespace pr7s
     {
         project.bpm = juce::jlimit (Project::minBpm, Project::maxBpm, bpm);
         changed();
+    }
+
+    //==========================================================================
+    void Studio::addTempoTrack()
+    {
+        if (project.tempoTrackShown)
+            return;
+        project.tempoTrackShown = true;
+        if (project.tempoEvents.empty())
+            project.tempoEvents.push_back ({ 0.0, project.bpm, false });
+        project.tempoTrackOn = true;
+        changed();
+    }
+
+    void Studio::removeTempoTrack()
+    {
+        if (! project.tempoTrackShown)
+            return;
+        project.tempoTrackShown = false;
+        project.tempoTrackOn = false;
+        changed();
+    }
+
+    void Studio::setTempoTrackOn (bool on)
+    {
+        if (on && project.tempoEvents.empty())
+            project.tempoEvents.push_back ({ 0.0, project.bpm, false });
+        if (project.tempoTrackOn == on)
+            return;
+        project.tempoTrackOn = on;
+        changed();
+    }
+
+    namespace
+    {
+        void tidyTempo (std::vector<TempoEvent>& events, double fallback)
+        {
+            for (auto& e : events)
+            {
+                e.beat = juce::jmax (0.0, e.beat);
+                e.bpm = juce::jlimit (Project::minBpm, Project::maxBpm, e.bpm);
+            }
+            std::stable_sort (events.begin(), events.end(), [] (const TempoEvent& a, const TempoEvent& b) { return a.beat < b.beat; });
+            if (events.empty())
+                events.push_back ({ 0.0, fallback, false });
+            events.front().beat = 0.0;
+            events.front().ramp = false;
+            // Two at one beat: the later one (a jump there).
+            for (size_t i = 1; i < events.size();)
+                if (events[i].beat - events[i - 1].beat < 1.0e-6)
+                    events.erase (events.begin() + (std::ptrdiff_t) i - 1);
+                else
+                    ++i;
+        }
+    }
+
+    int Studio::addTempoEvent (double beat, double bpm)
+    {
+        if (project.tempoLocked)
+            return -1;
+        auto events = project.tempoEvents;
+        if (events.empty())
+            events.push_back ({ 0.0, project.bpm, false });
+        beat = juce::jmax (0.0, beat);
+        bpm = juce::jlimit (Project::minBpm, Project::maxBpm, bpm);
+        for (size_t i = 0; i < events.size(); ++i)
+            if (std::abs (events[i].beat - beat) < 1.0e-6)
+            {
+                events[i].bpm = bpm;
+                project.tempoEvents = std::move (events);
+                changed();
+                return (int) i;
+            }
+        // Its type: Ramp, Step, or (Automatic) as the event before it.
+        auto ramp = project.newTempoType == Project::NewTempoType::ramp;
+        if (project.newTempoType == Project::NewTempoType::automatic)
+        {
+            ramp = false;
+            for (const auto& e : events)
+                if (e.beat < beat)
+                    ramp = e.ramp;
+        }
+        events.push_back ({ beat, bpm, ramp });
+        tidyTempo (events, project.bpm);
+        project.tempoEvents = std::move (events);
+        changed();
+        for (size_t i = 0; i < project.tempoEvents.size(); ++i)
+            if (std::abs (project.tempoEvents[i].beat - beat) < 1.0e-6)
+                return (int) i;
+        return -1;
+    }
+
+    void Studio::setTempoEvents (std::vector<TempoEvent> events)
+    {
+        if (project.tempoLocked)
+            return;
+        tidyTempo (events, project.bpm);
+        if (events == project.tempoEvents)
+            return;
+        project.tempoEvents = std::move (events);
+        changed();
+    }
+
+    void Studio::removeTempoEvents (std::vector<int> indices)
+    {
+        if (project.tempoLocked)
+            return;
+        std::sort (indices.begin(), indices.end(), std::greater<>());
+        auto events = project.tempoEvents;
+        auto any = false;
+        for (const auto i : indices)
+            if (i > 0 && i < (int) events.size())
+            {
+                events.erase (events.begin() + i);
+                any = true;
+            }
+        if (! any)
+            return;
+        project.tempoEvents = std::move (events);
+        changed();
+    }
+
+    void Studio::setTempoAtCursor (double bpm)
+    {
+        if (! project.followsTempoTrack())
+        {
+            setTempo (bpm);
+            return;
+        }
+        if (project.tempoLocked)
+            return;
+        const auto at = engine.getPosition();
+        auto events = project.tempoEvents;
+        size_t governing = 0;
+        for (size_t i = 0; i < events.size(); ++i)
+            if (events[i].beat <= at + 1.0e-9)
+                governing = i;
+        events[governing].bpm = juce::jlimit (Project::minBpm, Project::maxBpm, bpm);
+        project.tempoEvents = std::move (events);
+        changed();
+    }
+
+    int Studio::insertTempoEventAtCursor (double bpm)
+    {
+        if (project.tempoEvents.empty())
+            project.tempoEvents.push_back ({ 0.0, project.bpm, false });
+        return addTempoEvent (engine.getPosition(), bpm);
+    }
+
+    void Studio::setTempoLocked (bool locked)
+    {
+        project.tempoLocked = locked;
+        changed (false);
+    }
+
+    void Studio::setNewTempoType (Project::NewTempoType type)
+    {
+        project.newTempoType = type;
+        changed (false);
+    }
+
+    void Studio::setTempoView (double low, double high)
+    {
+        project.tempoViewLow = juce::jlimit (Project::minBpm, Project::maxBpm - 10.0, low);
+        project.tempoViewHigh = juce::jlimit (project.tempoViewLow + 10.0, Project::maxBpm, high);
+        changed (false);
+    }
+
+    double Studio::getTempoNow() const
+    {
+        return project.bpmAt (engine.getPosition());
     }
 
     void Studio::setSignature (int numerator, int denominator)
@@ -3044,7 +3218,7 @@ namespace pr7s
             // Audio: a block from where recording began to now.
             Part part;
             const auto first = engine.getAudioRecordStart();
-            part.start = first >= 0 ? (double) first * project.bpm / 60.0 / engine.getSampleRate() : recordStart;
+            part.start = first >= 0 ? project.tempoMap().beatAt ((double) first / engine.getSampleRate()) : recordStart;
             part.length = juce::jmax (0.0, engine.getPosition() - part.start);
             if (project.loopOn && engine.getPosition() < part.start)
                 part.length = project.loopEnd - part.start;   // round the cycle: the first pass is kept
@@ -3079,16 +3253,16 @@ namespace pr7s
         // interface's delay) skipped: what was played lands where it was played.
         const auto latency = juce::jmin (recordingLatency(), data->seconds() * 0.5);
         const auto rate = engine.getSampleRate();
-        const auto spb = project.secondsPerBeat();
+        const auto tempo = project.tempoMap();
         Part part;
-        part.start = (double) startSample * project.bpm / 60.0 / rate;
+        part.start = tempo.beatAt ((double) startSample / rate);
         part.audioFile = name;
         part.audioOffset = latency;
-        part.length = (data->seconds() - latency) / spb;
+        part.length = tempo.beatAfter (part.start, data->seconds() - latency) - part.start;
         // In a cycle, the file holds every pass one after another: the clip
         // plays the last complete one (as the manual's Replace mode keeps the
         // last take), or what there is of the first if it wasn't finished.
-        const auto toSamples = [rate, &project = project] (double beats) { return (juce::int64) std::llround (beats * 60.0 / project.bpm * rate); };
+        const auto toSamples = [rate, &tempo] (double beats) { return (juce::int64) std::llround (tempo.secondsAt (beats) * rate); };
         const auto loopStart = toSamples (project.loopStart), loopEnd = toSamples (project.loopEnd);
         if (project.loopOn && startSample < loopEnd && loopEnd > loopStart)
         {
@@ -3103,7 +3277,7 @@ namespace pr7s
             }
             else
             {
-                part.length = juce::jmin (part.length, (double) firstPass / rate / spb);
+                part.length = juce::jmin (part.length, tempo.beatAfter (part.start, (double) firstPass / rate) - part.start);
             }
         }
         if (auto* track = project.findTrack (recordTrack))
@@ -3223,8 +3397,14 @@ namespace pr7s
 
     int Studio::importMidi (const MidiImport& midi, bool newSong, double atBeat, bool matchTempo)
     {
-        if (! newSong && matchTempo && std::abs (project.bpm - midi.bpm) > 1.0e-6)
-            setTempo (midi.bpm);
+        // Its tempo changes on the tempo track (0.10.0): a new song's, or (matching the
+        // file) from where it goes in, the song's tempo events before that kept.
+        const auto changes = midi.tempoChanges.size() > 1;
+        if (newSong || matchTempo)
+        {
+            if (! newSong && std::abs (project.bpm - midi.bpm) > 1.0e-6 && ! changes)
+                setTempo (midi.bpm);
+        }
         if (newSong)
         {
             newProject();
@@ -3234,6 +3414,24 @@ namespace pr7s
             setTempo (midi.bpm);
             setSignature (midi.numerator, midi.denominator);
             atBeat = 0.0;
+        }
+        if (changes && (newSong || matchTempo))
+        {
+            std::vector<TempoEvent> events;
+            for (const auto& e : project.tempoEvents)
+                if (e.beat < atBeat - 1.0e-9)
+                    events.push_back (e);
+            if (events.empty() && atBeat > 0.0)
+                events.push_back ({ 0.0, project.bpm, false });   // (the song's tempo up to where the file goes in)
+            for (auto e : midi.tempoChanges)
+            {
+                e.beat += atBeat;
+                events.push_back (e);
+            }
+            project.tempoEvents = std::move (events);
+            project.tempoTrackShown = true;
+            project.tempoTrackOn = true;
+            changed (! newSong);
         }
         const auto bar = project.beatsPerBar();
         auto added = 0;
@@ -3457,7 +3655,7 @@ namespace pr7s
         engine.setNonRealtime (true, [&sounding] (int id) { return sounding.count (id) > 0; });   // (set up again for it)
         engine.settleMix();   // the levels set from the first sample (no glide from what was playing before)
 
-        job->total = (juce::int64) std::llround ((options.end - options.start) * 60.0 / project.bpm * rate);
+        job->total = (juce::int64) std::llround (project.tempoMap().secondsBetween (options.start, options.end) * rate);
         job->maxTail = (juce::int64) std::llround (juce::jmax (0.0, options.tailSeconds) * rate);
         engine.setPosition (options.start);
         engine.play();
@@ -3583,7 +3781,7 @@ namespace pr7s
         const auto folder = getAudioFolder();
         folder.createDirectory();
         const auto tailSeconds = options.tail == RenderOptions::Tail::off ? 0.0
-                               : options.tail == RenderOptions::Tail::bars ? options.tailSize * project.beatsPerBar() * project.secondsPerBeat()
+                               : options.tail == RenderOptions::Tail::bars ? options.tailSize * project.beatsPerBar() * 60.0 / project.bpmAt (project.lastBeat())
                                                                            : options.tailSize;
         for (const auto& source : sources)
         {
@@ -3594,7 +3792,7 @@ namespace pr7s
             std::vector<std::pair<double, double>> spans;
             for (const auto& part : track->parts)
                 if (! part.muted)
-                    if (const auto piece = slice (part, source.start, source.end, project.bpm))
+                    if (const auto piece = slice (part, source.start, source.end, project.tempoMap()))
                         spans.push_back ({ piece->start, piece->end() });
             std::sort (spans.begin(), spans.end());
             if (spans.empty())
@@ -3636,7 +3834,7 @@ namespace pr7s
                 render.end = to;
                 render.bitsPerSample = options.bitsPerSample;
                 render.tailSeconds = tailSeconds;
-                render.prepareSong = [sourceId, from = from, to = to, processing, bpm = project.bpm] (Project& song)
+                render.prepareSong = [sourceId, from = from, to = to, processing, tempo = project.tempoMap()] (Project& song)
                 {
                     for (auto& t : song.tracks)
                     {
@@ -3649,7 +3847,7 @@ namespace pr7s
                         }
                         std::vector<Part> kept;
                         for (const auto& part : t.parts)
-                            if (auto piece = slice (part, from, to, bpm))
+                            if (auto piece = slice (part, from, to, tempo))
                                 kept.push_back (*piece);
                         t.parts = std::move (kept);
                         t.mute = false;
@@ -3698,7 +3896,7 @@ namespace pr7s
                 clip.name = name + " (rendered)";
                 clip.audioFile = file.getFileName();
                 clip.start = from;
-                clip.length = data->seconds() / project.secondsPerBeat();
+                clip.length = project.tempoMap().beatAfter (from, data->seconds()) - from;
                 clips.push_back (clip);
             }
             if (clips.empty())
@@ -3769,8 +3967,8 @@ namespace pr7s
                 else
                 {
                     auto* t = project.findTrack (sourceId);
-                    splitTrackAt (*t, source.start, project.bpm);
-                    splitTrackAt (*t, source.end, project.bpm);
+                    splitTrackAt (*t, source.start, project.tempoMap());
+                    splitTrackAt (*t, source.end, project.tempoMap());
                     for (auto& part : t->parts)
                         if (inside (part, source.start, source.end))
                             part.muted = true;

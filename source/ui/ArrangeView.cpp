@@ -215,6 +215,12 @@ double Timeline::scrollLength (pr7s::Studio& studio)
     return juce::jmax (32.0 * bar, std::ceil (end / bar) * bar + 8.0 * bar);
 }
 
+namespace
+{
+    // Automation points and tempo events: their size, how near a click grabs one, the gap at a lane's top and bottom.
+    constexpr float pointSize = 7.0f, pointGrab = 6.0f, laneInset = 5.0f;
+}
+
 std::vector<Timeline::Row> Timeline::layout (const pr7s::Studio& studio) const
 {
     std::vector<Row> rows;
@@ -233,9 +239,13 @@ std::vector<Timeline::Row> Timeline::layout (const pr7s::Studio& studio) const
                 if ((*lanes)[(size_t) i].shown)
                     add (Row::Kind::lane, busId, i, laneRowHeight());
     };
-    // The master first, always at the very top (0.9.12, the owner asked), then the tracks.
+    // The master first, always at the very top (0.9.12, the owner asked), then
+    // the tempo track if it's been added (0.10.0; our place for it: it's one
+    // of a kind, as the master is), then the tracks.
     add (Row::Kind::master, pr7s::Engine::masterBus, -1, masterRowHeight());
     addLanes (pr7s::Engine::masterBus);
+    if (studio.getProject().tempoTrackShown)
+        add (Row::Kind::tempo, 0, -1, tempoRowHeight());
     for (const auto& track : studio.getProject().tracks)
     {
         if (track.hidden)
@@ -467,6 +477,8 @@ void ArrangeView::paint (juce::Graphics& g)
     for (const auto& row : rows)
         if (row.kind == Timeline::Row::Kind::lane)
             paintAutomation (g, row);
+        else if (row.kind == Timeline::Row::Kind::tempo)
+            paintTempo (g, row);
 
     // The cycle range over the lanes, faintly.
     {
@@ -710,14 +722,17 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
         const auto wave = area.withTrimmedTop (16.0f).reduced (1.0f, 3.0f);
         if (const auto data = studio.getAudio (part.audioFile))
         {
-            const auto secondsPerPixel = studio.getProject().secondsPerBeat() / timeline.pixelsPerBeat;
+            // (Each pixel's seconds by the tempo map: with the tempo track, a pixel isn't always as long.)
+            const auto tempo = studio.getProject().tempoMap();
+            const auto startSeconds = tempo.secondsAt (part.start);
+            const auto secondsAtX = [&] (float x) { return part.audioOffset + tempo.secondsAt (part.start + (x - area.getX()) / timeline.pixelsPerBeat) - startSeconds; };
             const auto peaksPerSecond = data->sampleRate / pr7s::Studio::AudioData::peakStep;
             const auto clip = wave.getIntersection (getLocalBounds().toFloat()).getIntersection (g.getClipBounds().toFloat().expanded (1.0f));
             g.setColour (colour.brighter (0.7f).withAlpha (0.9f));
             for (auto x = std::floor (clip.getX()); x < clip.getRight(); x += 1.0f)
             {
-                const auto from = part.audioOffset + (x - area.getX()) * secondsPerPixel;
-                const auto first = (int) (from * peaksPerSecond), last = juce::jmax (first + 1, (int) ((from + secondsPerPixel) * peaksPerSecond));
+                const auto from = secondsAtX (x), to = secondsAtX (x + 1.0f);
+                const auto first = (int) (from * peaksPerSecond), last = juce::jmax (first + 1, (int) (to * peaksPerSecond));
                 auto peak = 0.0f;
                 for (int i = juce::jmax (0, first); i < juce::jmin (last, (int) data->peaks.size()); ++i)
                     peak = juce::jmax (peak, data->peaks[(size_t) i]);
@@ -733,8 +748,7 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
         }
 
         // The fades: the faded corners darkened, a line along each, and its handle.
-        const auto pixelsPerSecond = (float) (timeline.pixelsPerBeat / studio.getProject().secondsPerBeat());
-        const auto inX = area.getX() + (float) part.fadeIn * pixelsPerSecond, outX = area.getRight() - (float) part.fadeOut * pixelsPerSecond;
+        const auto inX = area.getX() + fadeInWidth (part), outX = area.getRight() - fadeOutWidth (part);
         if (part.fadeIn > 0.0)
         {
             juce::Path faded;
@@ -796,6 +810,18 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
     }
 }
 
+float ArrangeView::fadeInWidth (const pr7s::Part& part) const
+{
+    const auto tempo = studio.getProject().tempoMap();
+    return (float) ((tempo.beatAfter (part.start, part.fadeIn) - part.start) * timeline.pixelsPerBeat);
+}
+
+float ArrangeView::fadeOutWidth (const pr7s::Part& part) const
+{
+    const auto tempo = studio.getProject().tempoMap();
+    return (float) ((part.end() - tempo.beatAt (tempo.secondsAt (part.end()) - part.fadeOut)) * timeline.pixelsPerBeat);
+}
+
 bool ArrangeView::isAudioTrack (int trackId) const
 {
     const auto* track = studio.getProject().findTrack (trackId);
@@ -805,9 +831,8 @@ bool ArrangeView::isAudioTrack (int trackId) const
 juce::Rectangle<float> ArrangeView::fadeHandle (juce::Rectangle<float> bounds, const pr7s::Part& part, bool fadeIn) const
 {
     // A small square just under the name band, at the fade's inner end.
-    const auto pixelsPerSecond = (float) (timeline.pixelsPerBeat / studio.getProject().secondsPerBeat());
-    const auto x = fadeIn ? bounds.getX() + (float) part.fadeIn * pixelsPerSecond + 4.0f
-                          : bounds.getRight() - (float) part.fadeOut * pixelsPerSecond - 4.0f;
+    const auto x = fadeIn ? bounds.getX() + fadeInWidth (part) + 4.0f
+                          : bounds.getRight() - fadeOutWidth (part) - 4.0f;
     return juce::Rectangle<float> (7.0f, 7.0f).withCentre ({ x, bounds.getY() + 20.0f });
 }
 
@@ -886,6 +911,10 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
     }
     if (const auto row = rowAt (event.position.y); row && row->kind == Timeline::Row::Kind::lane && automationDown (event, *row))
         return;
+    if (const auto row = rowAt (event.position.y); row && row->kind == Timeline::Row::Kind::tempo && tempoDown (event))
+        return;
+    if (! event.mods.isShiftDown())
+        tempoSelection.clear();
     if (! event.mods.isShiftDown())
         pointSelection = {};
     if (event.position.y < (float) Timeline::rulerHeight)
@@ -1027,6 +1056,11 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
 
 void ArrangeView::mouseDrag (const juce::MouseEvent& event)
 {
+    if (drag == Drag::tempoPoints || drag == Drag::tempoBand || drag == Drag::tempoDraw)
+    {
+        tempoDrag (event);
+        return;
+    }
     if (drag == Drag::points || drag == Drag::band || drag == Drag::draw)
     {
         automationDrag (event);
@@ -1135,22 +1169,22 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
             dragNewLength = juce::jmax (grid > 0.0 ? grid : 1.0 / 16.0, pr7s::snap (dragOriginalStart + dragOriginalLength + beat - dragStartBeat, grid) - dragOriginalStart);
             if (dragPart.isAudio())
                 if (const auto data = studio.getAudio (dragPart.audioFile))   // no further than the recording goes
-                    dragNewLength = juce::jmin (dragNewLength, (data->seconds() - dragPart.audioOffset) / project.secondsPerBeat());
+                    dragNewLength = juce::jmin (dragNewLength, project.tempoMap().beatAfter (dragPart.start, data->seconds() - dragPart.audioOffset) - dragPart.start);
             repaint();
             break;
         case Drag::trimStart:
         {
             // The start moves; the audio stays where it is in the song (so the offset into it moves too).
             dragMoved = true;
-            const auto spb = project.secondsPerBeat();
+            const auto tempo = project.tempoMap();
             const auto end = dragOriginalStart + dragOriginalLength;
-            const auto earliest = juce::jmax (0.0, dragOriginalStart - studio.getProject().findTrack (dragTrack)->parts[(size_t) selection.index].audioOffset / spb);
-            const auto start = juce::jlimit (earliest, end - 1.0 / 16.0, pr7s::snap (dragOriginalStart + beat - dragStartBeat, grid));
             const auto& original = studio.getProject().findTrack (dragTrack)->parts[(size_t) selection.index];
+            const auto earliest = juce::jmax (0.0, tempo.beatAt (tempo.secondsAt (dragOriginalStart) - original.audioOffset));
+            const auto start = juce::jlimit (earliest, end - 1.0 / 16.0, pr7s::snap (dragOriginalStart + beat - dragStartBeat, grid));
             dragPart.start = start;
             dragPart.length = end - start;
-            dragPart.audioOffset = juce::jmax (0.0, original.audioOffset + (start - dragOriginalStart) * spb);
-            dragPart.fadeIn = juce::jmin (dragPart.fadeIn, dragPart.length * spb);
+            dragPart.audioOffset = juce::jmax (0.0, original.audioOffset + tempo.secondsBetween (dragOriginalStart, start));
+            dragPart.fadeIn = juce::jmin (dragPart.fadeIn, tempo.secondsBetween (start, end));
             repaint();
             break;
         }
@@ -1158,12 +1192,12 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
         case Drag::fadeOut:
         {
             dragMoved = true;
-            const auto spb = project.secondsPerBeat();
-            const auto clipSeconds = dragPart.length * spb;
+            const auto tempo = project.tempoMap();
+            const auto clipSeconds = tempo.secondsBetween (dragPart.start, dragPart.end());
             if (drag == Drag::fadeIn)
-                dragPart.fadeIn = juce::jlimit (0.0, clipSeconds - dragPart.fadeOut, (beat - dragPart.start) * spb);
+                dragPart.fadeIn = juce::jlimit (0.0, clipSeconds - dragPart.fadeOut, tempo.secondsBetween (dragPart.start, beat));
             else
-                dragPart.fadeOut = juce::jlimit (0.0, clipSeconds - dragPart.fadeIn, (dragPart.end() - beat) * spb);
+                dragPart.fadeOut = juce::jlimit (0.0, clipSeconds - dragPart.fadeIn, tempo.secondsBetween (beat, dragPart.end()));
             repaint();
             break;
         }
@@ -1186,6 +1220,11 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
 
 void ArrangeView::mouseUp (const juce::MouseEvent& event)
 {
+    if (drag == Drag::tempoPoints || drag == Drag::tempoBand || drag == Drag::tempoDraw)
+    {
+        tempoUp();
+        return;
+    }
     if (drag == Drag::points || drag == Drag::band || drag == Drag::draw)
     {
         automationUp();
@@ -1526,6 +1565,18 @@ void ArrangeView::toolUp (const juce::MouseEvent& event)
 
 void ArrangeView::mouseDoubleClick (const juce::MouseEvent& event)
 {
+    // A tempo event: type its tempo.
+    if (const auto row = rowAt (event.position.y); row && row->kind == Timeline::Row::Kind::tempo)
+    {
+        const auto& events = studio.getProject().tempoEvents;
+        for (int i = (int) events.size() - 1; i >= 0; --i)
+            if (getTempoEventPosition (i).getDistanceFrom (event.position) <= pointGrab)
+            {
+                editTempoEvent (i);
+                return;
+            }
+        return;
+    }
     if (tool == Tool::range && rangeDoubleClick (event))
         return;
     if (event.position.y < (float) Timeline::rulerHeight || trackAtY (event.position.y) == 0)
@@ -1666,11 +1717,6 @@ void ArrangeView::showPartMenu (int trackId, int index)
 
 //==============================================================================
 // Automation lanes.
-namespace
-{
-    constexpr float pointSize = 7.0f, pointGrab = 6.0f, laneInset = 5.0f;
-}
-
 const pr7s::AutomationLane* ArrangeView::laneFor (int busId, int laneIndex) const
 {
     const auto* lanes = studio.getAutomation (busId);
@@ -2467,4 +2513,388 @@ bool ArrangeView::locatorsToSelection()
         return true;
     }
     return false;
+}
+
+//==============================================================================
+// The tempo track (0.10.0, the manual's): its curve between the shown limits,
+// its events as points (selected ones dark); a click on the curve adds an
+// event (snapped), Draw draws them, Erase removes them, a selected one is
+// dragged along the song and up and down (the first stays at the start).
+juce::Rectangle<float> ArrangeView::getTempoArea() const
+{
+    for (const auto& row : timeline.layout (studio))
+        if (row.kind == Timeline::Row::Kind::tempo)
+            return juce::Rectangle<float> (0.0f, rowTop (row), (float) getWidth(), (float) row.height).reduced (0.0f, laneInset);
+    return {};
+}
+
+float ArrangeView::yForBpm (const juce::Rectangle<float>& area, double bpm) const
+{
+    const auto& project = studio.getProject();
+    const auto proportion = (bpm - project.tempoViewLow) / juce::jmax (1.0, project.tempoViewHigh - project.tempoViewLow);
+    return area.getBottom() - (float) juce::jlimit (0.0, 1.0, proportion) * area.getHeight();
+}
+
+double ArrangeView::bpmForY (const juce::Rectangle<float>& area, float y) const
+{
+    const auto& project = studio.getProject();
+    const auto proportion = juce::jlimit (0.0, 1.0, (double) (area.getBottom() - y) / juce::jmax (1.0f, area.getHeight()));
+    // Whole BPM while dragging (finer: type it in, double-click).
+    return std::round (project.tempoViewLow + proportion * (project.tempoViewHigh - project.tempoViewLow));
+}
+
+juce::Point<float> ArrangeView::getTempoEventPosition (int index) const
+{
+    const auto editing = drag == Drag::tempoPoints || drag == Drag::tempoDraw;
+    const auto& events = editing ? tempoWorking : studio.getProject().tempoEvents;
+    if (! juce::isPositiveAndBelow (index, (int) events.size()))
+        return {};
+    const auto area = getTempoArea();
+    return { timeline.xForBeat (events[(size_t) index].beat), yForBpm (area, events[(size_t) index].bpm) };
+}
+
+void ArrangeView::paintTempo (juce::Graphics& g, const Timeline::Row& row) const
+{
+    const auto& project = studio.getProject();
+    const auto area = juce::Rectangle<float> (0.0f, rowTop (row), (float) getWidth(), (float) row.height).reduced (0.0f, laneInset);
+    const auto on = project.tempoTrackOn;
+    const auto colour = on ? pr7s::FamilyColours::orange : ParagonColours::textDim.withAlpha (0.6f);   // off: greyed out (the manual's)
+    const auto editing = drag == Drag::tempoPoints || drag == Drag::tempoDraw;
+    const auto& events = editing ? tempoWorking : project.tempoEvents;
+
+    // The scale's ends, faintly at the right (the first event's tempo is at the left).
+    g.setColour (ParagonColours::textDim.withAlpha (0.5f));
+    g.setFont (ParagonLookAndFeel::textFont (9.0f));
+    g.drawText (juce::String (juce::roundToInt (project.tempoViewHigh)) + " BPM", area.withHeight (11.0f).withTrimmedRight (8.0f), juce::Justification::topRight, false);
+    g.drawText (juce::String (juce::roundToInt (project.tempoViewLow)) + " BPM", area.withTop (area.getBottom() - 11.0f).withTrimmedRight (8.0f), juce::Justification::bottomRight, false);
+
+    // Off: the fixed tempo as a level line (the manual's), the events greyed out behind it.
+    if (! on)
+    {
+        const auto y = yForBpm (area, project.bpm);
+        g.setColour (ParagonColours::text.withAlpha (0.7f));
+        for (auto x = 0.0f; x < area.getRight(); x += 6.0f)
+            g.fillRect (x, y, 3.0f, 1.0f);
+    }
+    if (events.empty())
+        return;
+
+    // The curve: level after a step's jump, straight along a ramp (the tempo changes evenly beat by beat), level after the last.
+    juce::Path curve;
+    curve.startNewSubPath (0.0f, yForBpm (area, events.front().bpm));
+    for (size_t i = 1; i < events.size(); ++i)
+    {
+        const auto x = timeline.xForBeat (events[i].beat);
+        if (! events[i].ramp)
+            curve.lineTo (x, yForBpm (area, events[i - 1].bpm));
+        curve.lineTo (x, yForBpm (area, events[i].bpm));
+    }
+    curve.lineTo (area.getRight(), yForBpm (area, events.back().bpm));
+    auto fill = curve;
+    fill.lineTo (area.getRight(), area.getBottom());
+    fill.lineTo (0.0f, area.getBottom());
+    fill.closeSubPath();
+    g.setColour (colour.withAlpha (0.10f));
+    g.fillPath (fill);
+    g.setColour (colour);
+    g.strokePath (curve, juce::PathStrokeType (1.6f));
+
+    // The events, their tempo beside them.
+    g.setFont (ParagonLookAndFeel::textFont (9.5f));
+    for (int i = 0; i < (int) events.size(); ++i)
+    {
+        const juce::Point<float> at (timeline.xForBeat (events[(size_t) i].beat), yForBpm (area, events[(size_t) i].bpm));
+        if (at.x < -60.0f || at.x > (float) getWidth() + pointSize)
+            continue;
+        const auto box = juce::Rectangle<float> (pointSize, pointSize).withCentre (at);
+        const auto selected = std::find (tempoSelection.begin(), tempoSelection.end(), i) != tempoSelection.end();
+        g.setColour (selected ? juce::Colour (0xff050405) : colour);
+        g.fillRect (box);
+        g.setColour (selected ? colour : juce::Colour (0xff050405));
+        g.drawRect (box, 1.0f);
+        g.setColour (on ? ParagonColours::text : ParagonColours::textDim);
+        const auto text = juce::String (events[(size_t) i].bpm, std::abs (events[(size_t) i].bpm - std::round (events[(size_t) i].bpm)) < 0.005 ? 0 : 2);
+        const auto above = at.y - area.getY() > 14.0f;
+        g.drawText (text, juce::Rectangle<float> (at.x + 5.0f, above ? at.y - 14.0f : at.y + 3.0f, 60.0f, 11.0f), juce::Justification::centredLeft, false);
+    }
+    if (drag == Drag::tempoBand)
+    {
+        g.setColour (ParagonColours::accent.withAlpha (0.15f));
+        g.fillRect (pointBand);
+        g.setColour (ParagonColours::accent);
+        g.drawRect (pointBand, 1.0f);
+    }
+}
+
+bool ArrangeView::tempoDown (const juce::MouseEvent& event)
+{
+    const auto& project = studio.getProject();
+    selection = {};
+    alsoSelected.clear();
+    pointSelection = {};
+    if (event.mods.isPopupMenu())
+    {
+        drag = Drag::none;
+        showTempoMenu();
+        return true;
+    }
+    const auto area = getTempoArea();
+    tempoOriginal = tempoWorking = project.tempoEvents;
+    pointDownAt = event.position;
+    dragMoved = false;
+    drawn.clear();
+
+    tempoAnchor = -1;
+    for (int i = (int) tempoOriginal.size() - 1; i >= 0; --i)
+        if (getTempoEventPosition (i).getDistanceFrom (event.position) <= pointGrab)
+        {
+            tempoAnchor = i;
+            break;
+        }
+
+    // Erase: the event clicked goes (not the first).
+    if (tool == Tool::erase)
+    {
+        drag = Drag::none;
+        if (tempoAnchor > 0)
+            studio.removeTempoEvents ({ tempoAnchor });
+        tempoSelection.clear();
+        repaint();
+        return true;
+    }
+    // Draw: events where the mouse goes (snapped), replacing what was there.
+    if (tool == Tool::draw && ! project.tempoLocked)
+    {
+        drag = Drag::tempoDraw;
+        tempoSelection.clear();
+        tempoDrag (event);
+        return true;
+    }
+    if (tempoAnchor >= 0)
+    {
+        const auto already = std::find (tempoSelection.begin(), tempoSelection.end(), tempoAnchor) != tempoSelection.end();
+        if (event.mods.isShiftDown())
+        {
+            if (already)
+                tempoSelection.erase (std::find (tempoSelection.begin(), tempoSelection.end(), tempoAnchor));
+            else
+                tempoSelection.push_back (tempoAnchor);
+            std::sort (tempoSelection.begin(), tempoSelection.end());
+            drag = Drag::none;
+            repaint();
+            return true;
+        }
+        if (! already)
+            tempoSelection = { tempoAnchor };
+        drag = project.tempoLocked ? Drag::none : Drag::tempoPoints;
+        repaint();
+        return true;
+    }
+    // Elsewhere: a click adds an event there (on release); a drag selects with a rectangle.
+    if (! event.mods.isShiftDown())
+        tempoSelection.clear();
+    pointBand = { event.position, event.position };
+    drag = Drag::tempoBand;
+    juce::ignoreUnused (area);
+    repaint();
+    return true;
+}
+
+void ArrangeView::tempoDrag (const juce::MouseEvent& event)
+{
+    const auto& project = studio.getProject();
+    const auto area = getTempoArea();
+    if (event.getDistanceFromDragStart() > 2)
+        dragMoved = true;
+    if (drag == Drag::tempoBand)
+    {
+        pointBand = juce::Rectangle<float> (pointDownAt, event.position);
+        tempoSelection.clear();
+        for (int i = 0; i < (int) project.tempoEvents.size(); ++i)
+            if (pointBand.contains (getTempoEventPosition (i)))
+                tempoSelection.push_back (i);
+    }
+    else if (drag == Drag::tempoPoints)
+    {
+        if (! dragMoved || tempoAnchor < 0)
+            return;
+        // The grabbed event to the mouse (snapped along the song), the selected ones with it;
+        // Ctrl keeps to one direction. The first event stays at the start.
+        const auto& grabbed = tempoOriginal[(size_t) tempoAnchor];
+        const auto offset = event.position - pointDownAt;
+        const auto ctrl = event.mods.isCommandDown();
+        const auto alongOnly = ctrl && std::abs (offset.x) >= std::abs (offset.y);
+        const auto upDownOnly = ctrl && ! alongOnly;
+        auto beat = pr7s::snap (grabbed.beat + offset.x / timeline.pixelsPerBeat, timeline.snapGrid (project));
+        const auto beatShift = upDownOnly ? 0.0 : beat - grabbed.beat;
+        const auto bpmShift = alongOnly ? 0.0 : bpmForY (area, yForBpm (area, grabbed.bpm) + offset.y) - grabbed.bpm;
+        tempoWorking = tempoOriginal;
+        for (const auto i : tempoSelection)
+            if (juce::isPositiveAndBelow (i, (int) tempoWorking.size()))
+            {
+                auto& e = tempoWorking[(size_t) i];
+                if (i > 0)
+                    e.beat = juce::jmax (1.0e-3, tempoOriginal[(size_t) i].beat + beatShift);
+                e.bpm = juce::jlimit (pr7s::Project::minBpm, pr7s::Project::maxBpm, tempoOriginal[(size_t) i].bpm + bpmShift);
+            }
+    }
+    else if (drag == Drag::tempoDraw)
+    {
+        // An event where the mouse is (snapped); between where the stroke has been, only what it drew.
+        const auto beat = juce::jmax (0.0, pr7s::snap (timeline.beatForX (event.position.x), timeline.snapGrid (project)));
+        const auto bpm = bpmForY (area, event.position.y);
+        const auto startBeat = juce::jmax (0.0, timeline.beatForX (pointDownAt.x));
+        const auto from = juce::jmin (startBeat, beat), to = juce::jmax (startBeat, beat);
+        std::vector<pr7s::TempoEvent> kept;
+        for (const auto& e : tempoWorking)
+        {
+            const auto wasDrawn = std::any_of (drawn.begin(), drawn.end(), [&e] (const pr7s::AutomationPoint& p) { return std::abs (p.beat - e.beat) < 1.0e-9; });
+            if (e.beat <= 0.0 || e.beat < from - 1.0e-9 || e.beat > to + 1.0e-9 || wasDrawn)
+                if (! (std::abs (e.beat - beat) < 1.0e-9 && e.beat > 0.0))
+                    kept.push_back (e);
+        }
+        auto ramp = project.newTempoType == pr7s::Project::NewTempoType::ramp;
+        if (project.newTempoType == pr7s::Project::NewTempoType::automatic)
+            for (const auto& e : kept)
+                if (e.beat < beat)
+                    ramp = e.ramp;
+        if (beat <= 0.0)
+            kept.front().bpm = bpm;   // (at the start: the first event's tempo)
+        else
+        {
+            kept.push_back ({ beat, bpm, ramp });
+            drawn.push_back ({ beat, 0.0f });
+        }
+        std::stable_sort (kept.begin(), kept.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
+        tempoWorking = std::move (kept);
+    }
+    repaint();
+}
+
+void ArrangeView::tempoUp()
+{
+    const auto finished = drag;
+    drag = Drag::none;
+    const auto& project = studio.getProject();
+    if (finished == Drag::tempoBand && ! dragMoved)
+    {
+        // A click on the curve: an event there (snapped), as the manual has the Object Selection tool do.
+        if (project.tempoLocked)
+            return;
+        const auto area = getTempoArea();
+        const auto beat = juce::jmax (0.0, pr7s::snap (timeline.beatForX (pointDownAt.x), timeline.snapGrid (project)));
+        const auto index = studio.addTempoEvent (beat, bpmForY (area, pointDownAt.y));
+        tempoSelection.clear();
+        if (index >= 0)
+            tempoSelection.push_back (index);
+        repaint();
+        return;
+    }
+    if ((finished == Drag::tempoPoints && dragMoved) || finished == Drag::tempoDraw)
+    {
+        // The moved ones selected again where they went (by beat and tempo).
+        std::vector<pr7s::TempoEvent> moved;
+        for (const auto i : tempoSelection)
+            if (juce::isPositiveAndBelow (i, (int) tempoWorking.size()))
+                moved.push_back (tempoWorking[(size_t) i]);
+        studio.setTempoEvents (tempoWorking);
+        tempoSelection.clear();
+        const auto& events = studio.getProject().tempoEvents;
+        for (int i = 0; i < (int) events.size(); ++i)
+            if (std::find (moved.begin(), moved.end(), events[(size_t) i]) != moved.end())
+                tempoSelection.push_back (i);
+    }
+    repaint();
+}
+
+void ArrangeView::deleteSelectedTempoEvents()
+{
+    studio.removeTempoEvents (tempoSelection);
+    tempoSelection.clear();
+    repaint();
+}
+
+void ArrangeView::selectAllTempoEvents()
+{
+    tempoSelection.clear();
+    for (int i = 0; i < (int) studio.getProject().tempoEvents.size(); ++i)
+        tempoSelection.push_back (i);
+    repaint();
+}
+
+void ArrangeView::editTempoEvent (int index)
+{
+    const auto& events = studio.getProject().tempoEvents;
+    if (! juce::isPositiveAndBelow (index, (int) events.size()) || studio.getProject().tempoLocked)
+        return;
+    auto* box = new juce::AlertWindow ("Tempo event", "At " + pr7s::formatBarsBeats (events[(size_t) index].beat, studio.getProject())
+                                                          + ": its tempo in BPM, and whether it ramps there from the event before.",
+                                       juce::MessageBoxIconType::NoIcon);
+    box->addTextEditor ("bpm", juce::String (events[(size_t) index].bpm, 2), "BPM");
+    if (index > 0)
+        box->addComboBox ("type", { "Step: jumps there", "Ramp: gradually from the event before" }, "Type");
+    if (auto* type = box->getComboBoxComponent ("type"))
+        type->setSelectedItemIndex (events[(size_t) index].ramp ? 1 : 0, juce::dontSendNotification);
+    box->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    box->enterModalState (true, juce::ModalCallbackFunction::create ([this, box, index, safe = juce::Component::SafePointer<ArrangeView> (this)] (int result)
+    {
+        if (safe == nullptr || result != 1)
+            return;
+        auto list = studio.getProject().tempoEvents;
+        if (! juce::isPositiveAndBelow (index, (int) list.size()))
+            return;
+        if (const auto bpm = box->getTextEditorContents ("bpm").replaceCharacter (',', '.').getDoubleValue(); bpm > 0.0)
+            list[(size_t) index].bpm = bpm;
+        if (auto* type = box->getComboBoxComponent ("type"))
+            list[(size_t) index].ramp = type->getSelectedItemIndex() == 1;
+        studio.setTempoEvents (list);
+    }), true);
+}
+
+void ArrangeView::showTempoMenu()
+{
+    const auto& project = studio.getProject();
+    juce::PopupMenu menu, type, view;
+    menu.addSectionHeader ("TEMPO TRACK");
+    menu.addItem (1, "Activate Tempo Track", true, project.tempoTrackOn);
+    menu.addItem (2, "Lock", true, project.tempoLocked);
+    type.addItem (10, "Ramp: gradually from the point before", true, project.newTempoType == pr7s::Project::NewTempoType::ramp);
+    type.addItem (11, "Step: a jump", true, project.newTempoType == pr7s::Project::NewTempoType::step);
+    type.addItem (12, "Automatic: as the point before", true, project.newTempoType == pr7s::Project::NewTempoType::automatic);
+    menu.addSubMenu ("Type of New Tempo Points", type);
+    menu.addSeparator();
+    menu.addItem (3, "Insert Tempo Event at Cursor...", ! project.tempoLocked);
+    menu.addItem (4, "Select All Events");
+    menu.addItem (5, "Remove Selected Events", ! tempoSelection.empty() && ! project.tempoLocked);
+    const std::pair<int, int> ranges[] = { { 60, 180 }, { 40, 240 }, { 20, 300 }, { 80, 160 }, { 100, 140 } };
+    for (int i = 0; i < 5; ++i)
+        view.addItem (20 + i, juce::String (ranges[i].first) + " to " + juce::String (ranges[i].second) + " BPM", true,
+                      juce::roundToInt (project.tempoViewLow) == ranges[i].first && juce::roundToInt (project.tempoViewHigh) == ranges[i].second);
+    menu.addSubMenu ("Visible Tempo Range", view);
+    menu.addSeparator();
+    menu.addItem (6, "Remove Tempo Track");
+    menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ArrangeView> (this), ranges] (int chosen)
+    {
+        if (safe == nullptr || chosen == 0)
+            return;
+        auto& s = safe->studio;
+        const auto& p = s.getProject();
+        switch (chosen)
+        {
+            case 1: s.setTempoTrackOn (! p.tempoTrackOn); break;
+            case 2: s.setTempoLocked (! p.tempoLocked); break;
+            case 3: safe->editTempoEvent (s.insertTempoEventAtCursor (p.bpmAt (s.getEngine().getPosition()))); break;
+            case 4: safe->selectAllTempoEvents(); break;
+            case 5: safe->deleteSelectedTempoEvents(); break;
+            case 6: s.removeTempoTrack(); safe->tempoSelection.clear(); break;
+            case 10: s.setNewTempoType (pr7s::Project::NewTempoType::ramp); break;
+            case 11: s.setNewTempoType (pr7s::Project::NewTempoType::step); break;
+            case 12: s.setNewTempoType (pr7s::Project::NewTempoType::automatic); break;
+            default:
+                if (chosen >= 20 && chosen < 25)
+                    s.setTempoView (ranges[chosen - 20].first, ranges[chosen - 20].second);
+                break;
+        }
+    });
 }

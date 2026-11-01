@@ -108,7 +108,7 @@ namespace pr7s::DawProject
             const juce::File& audioFolder;
             const juce::Array<juce::PluginDescription>& known;
             Imported result;
-            double secondsPerBeat = 0.5;
+            TempoMap tempo { 120.0 };   // the song's (its tempo changes too: 0.10.0), for times in seconds
             std::map<juce::String, juce::XmlElement*> byId;
             std::map<juce::String, int> trackIdOf;    // Track or Channel element id -> our bus id (0: the master)
             std::map<juce::String, ParameterInfo> parameters;
@@ -153,10 +153,13 @@ namespace pr7s::DawProject
                 return std::nullopt;
             }
 
-            double toBeats (double value, const juce::String& unit) const
+            // A time `value` after `originBeat`, in beats: seconds go through the
+            // tempo map from there (so after a tempo change they still land right).
+            double toBeats (double value, const juce::String& unit, double originBeat = 0.0) const
             {
-                return unit == "seconds" ? value / secondsPerBeat : value;
+                return unit == "seconds" ? tempo.beatAfter (originBeat, value) - originBeat : value;
             }
+            double secondsPerBeatAt (double beat) const { return 60.0 / tempo.bpmAt (beat); }
 
             // ---- plug-ins --------------------------------------------------
             std::optional<juce::PluginDescription> findPlugin (const juce::String& name, const juce::String& vendor) const
@@ -460,7 +463,7 @@ namespace pr7s::DawProject
                 if (file.isEmpty())
                     return;
                 const auto fileSeconds = attr (audio, "duration", 1.0e9);
-                const auto end = juce::jmin (w.to, w.from + juce::jmax (0.0, fileSeconds - offsetSeconds) / secondsPerBeat);
+                const auto end = juce::jmin (w.to, tempo.beatAfter (w.from, juce::jmax (0.0, fileSeconds - offsetSeconds)));
                 if (end <= w.from + 1.0e-6 || w.from >= 1.0e11)
                     return;
                 Part part;
@@ -494,8 +497,8 @@ namespace pr7s::DawProject
                     }
                     for (auto* n : children (e, "Note"))
                     {
-                        const auto start = toBeats (attr (n, "time", 0.0), unit) + w.shift;
-                        auto end = start + toBeats (attr (n, "duration", 0.25), unit);
+                        const auto start = toBeats (attr (n, "time", 0.0), unit, w.shift) + w.shift;
+                        auto end = start + toBeats (attr (n, "duration", 0.25), unit, start);
                         if (start < w.from - 1.0e-9 || start >= w.to - 1.0e-9)
                             continue;
                         end = juce::jmin (end, w.to);
@@ -514,7 +517,7 @@ namespace pr7s::DawProject
                 if (e->hasTagName ("Audio"))
                 {
                     // As the content itself: its time is seconds into the file.
-                    addAudio (sink, e, w, (w.from - w.shift) * secondsPerBeat);
+                    addAudio (sink, e, w, tempo.secondsBetween (w.shift, w.from));
                     return;
                 }
                 if (e->hasTagName ("Warps"))
@@ -530,13 +533,14 @@ namespace pr7s::DawProject
                         slope = (attr (warps[1], "contentTime", 0.0) - c0) / (attr (warps[1], "time", 0.0) - t0);
                     const auto contentUnit = e->getStringAttribute ("contentTimeUnit", "seconds");
                     // Seconds per unit of the clip's time, as played without stretching.
-                    const auto natural = unit == "beats" ? secondsPerBeat : 1.0;
-                    const auto slopeSeconds = contentUnit == "beats" ? slope * secondsPerBeat : slope;
+                    const auto spb = secondsPerBeatAt (w.from);
+                    const auto natural = unit == "beats" ? spb : 1.0;
+                    const auto slopeSeconds = contentUnit == "beats" ? slope * spb : slope;
                     if (std::abs (slopeSeconds - natural) > natural * 0.01)
                         note ("Time-stretched audio is played at its own speed (PR7-S doesn't stretch yet), so it may not line up.");
-                    const auto clipTime = (w.from - w.shift) / toBeats (1.0, unit);   // in the warps' unit
+                    const auto clipTime = unit == "seconds" ? tempo.secondsBetween (w.shift, w.from) : w.from - w.shift;   // in the warps' unit
                     const auto contentAt = c0 + (clipTime - t0) * slope;
-                    addAudio (sink, audio, w, contentUnit == "beats" ? contentAt * secondsPerBeat : contentAt);
+                    addAudio (sink, audio, w, contentUnit == "beats" ? contentAt * spb : contentAt);
                     return;
                 }
                 if (e->hasTagName ("Clips"))
@@ -567,11 +571,11 @@ namespace pr7s::DawProject
 
             void walkClip (const juce::XmlElement* clip, const juce::String& unit, const Window& w, Sink& outer)
             {
-                const auto start = toBeats (attr (clip, "time", 0.0), unit) + w.shift;
+                const auto start = toBeats (attr (clip, "time", 0.0), unit, w.shift) + w.shift;
                 const auto contentUnit = clip->getStringAttribute ("contentTimeUnit", unit);
-                const auto playStart = toBeats (attr (clip, "playStart", 0.0), contentUnit);
-                const auto duration = clip->hasAttribute ("duration") ? toBeats (attr (clip, "duration", 0.0), unit)
-                                    : clip->hasAttribute ("playStop") ? toBeats (attr (clip, "playStop", 0.0), contentUnit) - playStart
+                const auto playStart = toBeats (attr (clip, "playStart", 0.0), contentUnit, start);
+                const auto duration = clip->hasAttribute ("duration") ? toBeats (attr (clip, "duration", 0.0), unit, start)
+                                    : clip->hasAttribute ("playStop") ? toBeats (attr (clip, "playStop", 0.0), contentUnit, start) - playStart
                                                                       : 4.0;
                 const auto from = juce::jmax (start, w.from), to = juce::jmin (start + duration, w.to);
                 if (to <= from + 1.0e-9)
@@ -587,7 +591,11 @@ namespace pr7s::DawProject
                 {
                     sink.clipName = clip->getStringAttribute ("name");
                     const auto fadeUnit = clip->getStringAttribute ("fadeTimeUnit", unit);
-                    const auto fadeSeconds = [&] (const char* name) { return juce::jmax (0.0, toBeats (attr (clip, name, 0.0), fadeUnit) * secondsPerBeat); };
+                    const auto fadeSeconds = [&] (const char* name)
+                    {
+                        const auto value = juce::jmax (0.0, attr (clip, name, 0.0));
+                        return fadeUnit == "seconds" ? value : tempo.secondsBetween (start, start + value);
+                    };
                     sink.fadeIn = fadeSeconds ("fadeInTime");
                     sink.fadeOut = fadeSeconds ("fadeOutTime");
                     sink.muted = clip->hasAttribute ("enable") && ! clip->getBoolAttribute ("enable", true);
@@ -609,8 +617,8 @@ namespace pr7s::DawProject
                         content = found->second;
                 if (content != nullptr)
                 {
-                    const auto loopStart = clip->hasAttribute ("loopStart") ? toBeats (attr (clip, "loopStart", 0.0), contentUnit) : 0.0;
-                    const auto loopEnd = clip->hasAttribute ("loopEnd") ? toBeats (attr (clip, "loopEnd", 0.0), contentUnit) : 0.0;
+                    const auto loopStart = clip->hasAttribute ("loopStart") ? toBeats (attr (clip, "loopStart", 0.0), contentUnit, start) : 0.0;
+                    const auto loopEnd = clip->hasAttribute ("loopEnd") ? toBeats (attr (clip, "loopEnd", 0.0), contentUnit, start) : 0.0;
                     const auto loopLength = loopEnd - loopStart;
                     if (loopLength > 1.0e-6 && playStart < loopEnd && start + (loopEnd - playStart) < to - 1.0e-6)
                     {
@@ -647,8 +655,10 @@ namespace pr7s::DawProject
                 if (found == parameters.end())
                 {
                     const auto* p = byId.count (parameterId) > 0 ? byId[parameterId] : nullptr;
-                    if (p != nullptr && (p->hasTagName ("Tempo") || p->hasTagName ("TimeSignature")))
-                        note ("Tempo and time signature changes aren't brought across: the song keeps its first tempo and signature.");
+                    if (p != nullptr && p->hasTagName ("Tempo"))
+                        return;   // (the tempo's changes: read into the tempo track first, readTempo)
+                    if (p != nullptr && p->hasTagName ("TimeSignature"))
+                        note ("Time signature changes aren't brought across yet: the song keeps its first signature.");
                     else
                         note ("Automation of a control PR7-S doesn't have is left out.");
                     return;
@@ -663,7 +673,7 @@ namespace pr7s::DawProject
                 {
                     if (! point->hasAttribute ("time") || ! point->hasAttribute ("value"))
                         continue;
-                    const auto beat = toBeats (attr (point, "time", 0.0), unit) + w.shift;
+                    const auto beat = toBeats (attr (point, "time", 0.0), unit, w.shift) + w.shift;
                     float travel = 0.0f;
                     if (point->hasTagName ("BoolPoint"))
                         travel = point->getBoolAttribute ("value") ? 1.0f : 0.0f;
@@ -771,7 +781,79 @@ namespace pr7s::DawProject
                 project.denominator = juce::jlimit (1, 32, signature->getIntAttribute ("denominator", 4));
             }
         }
-        reader.secondsPerBeat = 60.0 / project.bpm;
+        reader.tempo = TempoMap (project.bpm);
+        // Its tempo changes (0.10.0): onto the tempo track, and the times in seconds by them.
+        // (The tempo's points: the arrangement's TempoAutomation, or any Points
+        // aimed at the transport's Tempo; the official library writes either.)
+        const auto* tempoParameter = xml->getChildByName ("Transport") != nullptr ? xml->getChildByName ("Transport")->getChildByName ("Tempo") : nullptr;
+        const juce::XmlElement* tempoPoints = nullptr;
+        juce::String tempoUnitFromLanes = "beats";
+        if (const auto* arrangement = xml->getChildByName ("Arrangement"))
+        {
+            tempoPoints = arrangement->getChildByName ("TempoAutomation");
+            const auto tempoId = tempoParameter != nullptr ? tempoParameter->getStringAttribute ("id") : juce::String();
+            std::function<void (const juce::XmlElement*, const juce::String&)> find = [&] (const juce::XmlElement* e, const juce::String& unit)
+            {
+                for (auto* child : e->getChildIterator())
+                {
+                    if (tempoPoints != nullptr)
+                        return;
+                    const auto childUnit = child->getStringAttribute ("timeUnit", unit);
+                    if (child->hasTagName ("Points") && tempoId.isNotEmpty())
+                        if (const auto* target = child->getChildByName ("Target"); target != nullptr && target->getStringAttribute ("parameter") == tempoId)
+                        {
+                            tempoPoints = child;
+                            tempoUnitFromLanes = childUnit;
+                            return;
+                        }
+                    find (child, childUnit);
+                }
+            };
+            if (tempoPoints == nullptr)
+                find (arrangement, arrangement->getStringAttribute ("timeUnit", "beats"));
+        }
+        {
+            if (const auto* points = tempoPoints)
+            {
+                const auto low = attr (tempoParameter, "min", 20.0), high = attr (tempoParameter, "max", 999.0);
+                const auto timeUnit = points->getStringAttribute ("timeUnit", tempoUnitFromLanes);
+                const auto normalized = points->getStringAttribute ("unit", "bpm") == "normalized";
+                std::vector<const juce::XmlElement*> list;
+                for (auto* p : points->getChildIterator())
+                    if (p->hasTagName ("RealPoint"))
+                        list.push_back (p);
+                std::stable_sort (list.begin(), list.end(), [] (auto* a, auto* b) { return attr (a, "time", 0.0) < attr (b, "time", 0.0); });
+                std::vector<TempoEvent> events;
+                auto lastTime = 0.0, lastBeat = 0.0, lastBpm = project.bpm;
+                auto lastLinear = false;
+                for (const auto* p : list)
+                {
+                    const auto time = juce::jmax (0.0, attr (p, "time", 0.0));
+                    auto bpm = attr (p, "value", project.bpm);
+                    if (normalized)
+                        bpm = low + bpm * (high - low);
+                    bpm = juce::jlimit (Project::minBpm, Project::maxBpm, bpm);
+                    // Seconds to beats as it goes (a ramp in seconds: the average tempo over it).
+                    const auto beat = timeUnit == "seconds" ? lastBeat + (time - lastTime) * (lastLinear ? (lastBpm + bpm) * 0.5 : lastBpm) / 60.0 : time;
+                    if (events.empty() && beat > 1.0e-9)
+                        events.push_back ({ 0.0, project.bpm, false });
+                    events.push_back ({ beat, bpm, lastLinear && ! events.empty() });
+                    lastLinear = p->getStringAttribute ("interpolation", "hold") == "linear";
+                    lastTime = time;
+                    lastBeat = beat;
+                    lastBpm = bpm;
+                }
+                const auto changes = std::any_of (events.begin(), events.end(), [&] (const TempoEvent& e) { return std::abs (e.bpm - events.front().bpm) > 1.0e-6; });
+                if (changes)
+                {
+                    project.tempoEvents = events;
+                    project.tempoTrackShown = true;
+                    project.tempoTrackOn = true;
+                    project.bpm = events.front().bpm;
+                    reader.tempo = TempoMap (events);
+                }
+            }
+        }
 
         auto index = 0;
         for (auto* track : children (xml->getChildByName ("Structure"), "Track"))
@@ -791,8 +873,8 @@ namespace pr7s::DawProject
             Reader::Sink none;
             for (auto* child : arrangement->getChildIterator())
                 reader.walk (child, "beats", {}, none);
-            if (arrangement->getChildByName ("TempoAutomation") != nullptr || arrangement->getChildByName ("TimeSignatureAutomation") != nullptr)
-                reader.note ("Tempo and time signature changes aren't brought across: the song keeps its first tempo and signature.");
+            if (arrangement->getChildByName ("TimeSignatureAutomation") != nullptr)
+                reader.note ("Time signature changes aren't brought across yet: the song keeps its first signature.");
         }
         if (const auto* scenes = xml->getChildByName ("Scenes"); scenes != nullptr && scenes->getNumChildElements() > 0)
             reader.note ("The clip launcher's scenes aren't brought across.");

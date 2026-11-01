@@ -16,6 +16,9 @@ namespace pr7s
     struct MidiImport
     {
         double bpm = 120.0;
+        // Its tempo changes (0.10.0), from the file's start, as steps: the first is its tempo.
+        // One or none: a steady tempo.
+        std::vector<TempoEvent> tempoChanges;
         int numerator = 4, denominator = 4;
         struct Track
         {
