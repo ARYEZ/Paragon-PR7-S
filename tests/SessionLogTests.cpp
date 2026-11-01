@@ -42,12 +42,9 @@ TEST_CASE ("The session log: a readable file per session, closed normally or not
     CHECK (crash.contains ("CRASH: a test crash"));
     CHECK (crash.contains ("screen's thread"));      // (the test runs on the message thread)
     CHECK (crash.contains ("The calls that led there"));
-    // As a real crash would leave it: written, never closed.
-    {
-        juce::FileOutputStream out (second);
-        out.setPosition (second.getSize());
-        out.writeText (crash, false, false, nullptr);
-    }
+    // As a real crash would leave it: written through the log (the crash handler
+    // writes to its open file; a second writer can't open it on Windows), never closed.
+    SessionLog::note (crash);
     juce::Thread::sleep (1100);
     // (the crashed session's stream is let go without its last line)
     const auto unfinished = SessionLog::start ("Paragon PR7-S test", folder, 3);
