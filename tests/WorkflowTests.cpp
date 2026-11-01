@@ -112,7 +112,8 @@ TEST_CASE ("The mixer's own window: the strips wider, the insert and send slots 
     view.openMixer();
     view.setMixerInWindow (true);
     REQUIRE (view.getMixerWindow() != nullptr);
-    view.getMixerWindow()->setSize (1600, 1000);
+    // (Sized directly: a window can't be taller than the test machine's screen, and macOS keeps it within it.)
+    mixer.setSize (1600, 1000);
     auto& strip = mixer.getStrip (0);
     CHECK (strip.getWidth() == MixerView::windowStripWidth);
     CHECK (strip.getInsertSlot (0).getHeight() > 24);

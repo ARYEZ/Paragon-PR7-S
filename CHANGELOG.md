@@ -29,9 +29,7 @@ Each version's notes appear on its GitHub Release page.
 
 **Not included:** the parts of the other Hub that link to its maker's website (deals, tutorials, account), the project previews, and the test tone.
 
-## 0.11.1
-
-Four of your requests. The start window (like the Hub) comes next, in a release of its own.
+**Also in this release: four more of your requests** (they were to be 0.11.1, which didn't go out: one of its new tests failed on the Mac build, the test's fault, not the studio's).
 
 **A progress window for long jobs.** Render in Place and Freeze used to show nothing until they were finished. Now a box over the studio shows:
 - what's being done, for example "Rendering KEYS (2 of 3)";
