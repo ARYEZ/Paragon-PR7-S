@@ -615,3 +615,38 @@ TEST_CASE ("Snapshot: the Hub", "[.][snapshot-hub]")
     root.getParentDirectory().deleteRecursively();
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
+
+#include "ui/TempoEditor.h"
+
+TEST_CASE ("Snapshot: the Tempo Track Editor and Process Tempo", "[.][snapshot-tempo-editor]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "tempo-editor.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        studio.setTempo (120.0);
+        studio.addTempoTrack();
+        studio.setTempoEvents ({ { 0.0, 120.0, false }, { 16.0, 140.0, true }, { 32.0, 96.0, false }, { 48.0, 104.0, true }, { 64.0, 128.0, false } });
+        studio.setCycle (16.0, 32.0);
+        studio.setPosition (22.0);
+        TempoEditor editor (studio);
+        editor.setSize (1400, 680);
+        editor.selectEvents ({ 2 });
+        const auto image = editor.createComponentSnapshot (editor.getLocalBounds(), true, 1.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+
+        ProcessTempoPage page (studio);
+        page.setNewLength ("7.5");
+        const auto pageImage = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
+        const juce::File pageFile (path.replace (".png", "-process.png"));
+        pageFile.deleteFile();
+        juce::FileOutputStream pageOut { pageFile };
+        juce::PNGImageFormat().writeImageToStream (pageImage, pageOut);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}

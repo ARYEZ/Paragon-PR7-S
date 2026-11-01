@@ -3044,6 +3044,82 @@ namespace pr7s
         changed (false);
     }
 
+    double Studio::tempoScaling (const TempoMap& map, double start, double end, double newSeconds)
+    {
+        const auto seconds = map.secondsBetween (start, end);
+        return newSeconds > 0.0 ? seconds / newSeconds : 0.0;
+    }
+
+    bool Studio::processTempo (double start, double end, double newSeconds, double* factorOut)
+    {
+        start = juce::jmax (0.0, start);
+        if (end <= start + 1.0e-6 || newSeconds <= 0.0)
+            return false;
+        if (project.tempoEvents.empty())
+            project.tempoEvents.push_back ({ 0.0, project.bpm, false });
+        const TempoMap before (project.followsTempoTrack() ? project.tempoEvents : std::vector<TempoEvent> { { 0.0, project.bpm, false } });
+        const auto factor = tempoScaling (before, start, end, newSeconds);
+        if (factorOut != nullptr)
+            *factorOut = factor;
+        auto events = before.getEvents();
+        // The curve's values at the edges, before scaling (what's outside stays).
+        const auto atStart = before.bpmAt (start), atEnd = before.bpmAt (end);
+        // The event in effect at the end, and whether it ramps into the end.
+        auto rampsIntoEnd = false;
+        for (size_t i = 0; i + 1 < events.size(); ++i)
+            if (events[i].beat < end && events[i + 1].beat > end)
+                rampsIntoEnd = events[i + 1].ramp;
+        const auto hasEventAt = [&] (double beat)
+        {
+            return std::any_of (events.begin(), events.end(), [beat] (const TempoEvent& e) { return std::abs (e.beat - beat) < 1.0e-6; });
+        };
+        // Edges: an event at the start (its value as it was, so the curve before it is kept), one at the end.
+        if (! hasEventAt (start))
+        {
+            // (A ramp crossing the start: it now arrives at the start's value.)
+            auto rampsIntoStart = false;
+            for (size_t i = 0; i + 1 < events.size(); ++i)
+                if (events[i].beat < start && events[i + 1].beat > start)
+                    rampsIntoStart = events[i + 1].ramp;
+            events.push_back ({ start, atStart, rampsIntoStart });
+        }
+        if (! hasEventAt (end))
+            events.push_back ({ end, atEnd, rampsIntoEnd });
+        std::stable_sort (events.begin(), events.end(), [] (const TempoEvent& a, const TempoEvent& b) { return a.beat < b.beat; });
+        // Inside (from the start to the end, both): scaled. The event at the
+        // start keeps its arrival (a ramp into it now arrives at the scaled value:
+        // so the curve before it doesn't change, a step there at the old value
+        // first) and the tempo after the end comes back just after it.
+        constexpr double just = 1.0 / 960.0;   // (a 960th of a beat: two events can't share a beat)
+        std::vector<TempoEvent> processed;
+        for (const auto& e : events)
+        {
+            const auto inside = e.beat >= start - 1.0e-6 && e.beat <= end + 1.0e-6;
+            auto scaled = e;
+            if (inside)
+                scaled.bpm = e.bpm * factor;
+            if (inside && std::abs (e.beat - start) < 1.0e-6 && e.ramp && start > 0.0)
+            {
+                // A ramp arriving at the start: it arrives (just before it) where it did, then the scaled tempo from the start.
+                processed.push_back ({ start - just, before.bpmAt (start - just), true });
+                scaled = { start, e.bpm * factor, false };
+            }
+            processed.push_back (scaled);
+            if (inside && std::abs (e.beat - end) < 1.0e-6)
+                processed.push_back ({ end + just, before.bpmAt (end + just), false });   // back on the curve as it was
+        }
+        for (const auto& e : processed)
+            if (e.bpm < Project::minBpm - 1.0e-9 || e.bpm > Project::maxBpm + 1.0e-9)
+                return false;
+        std::stable_sort (processed.begin(), processed.end(), [] (const TempoEvent& a, const TempoEvent& b) { return a.beat < b.beat; });
+        processed.front().beat = 0.0;
+        project.tempoEvents = std::move (processed);
+        project.tempoTrackShown = true;
+        project.tempoTrackOn = true;
+        changed();
+        return true;
+    }
+
     double Studio::getTempoNow() const
     {
         return project.bpmAt (engine.getPosition());

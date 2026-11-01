@@ -343,3 +343,130 @@ TEST_CASE ("The tempo track on screen: its row under the master's, a click on th
     studio.getEngine().setPosition (1.0);
     CHECK (view.getTransport().getTempoText() == "120.00");
 }
+
+TEST_CASE ("Process Tempo: a range made to last a new length by scaling its tempo; before and after unchanged; one undo step (0.13.0)", "[tempo][studio]")
+{
+    // A fixed 120: bars 2 to 4 (beats 4 to 12) last 4 seconds; made to last 5.
+    {
+        Studio studio (false);
+        studio.setTempo (120.0);
+        double factor = 0.0;
+        REQUIRE (studio.processTempo (4.0, 12.0, 5.0, &factor));
+        CHECK_THAT (factor, WithinAbs (0.8, 1.0e-12));
+        const auto map = studio.getProject().tempoMap();
+        CHECK (studio.getProject().followsTempoTrack());
+        CHECK_THAT (map.secondsBetween (4.0, 12.0), WithinAbs (5.0, 1.0e-9));
+        CHECK_THAT (map.secondsAt (4.0), WithinAbs (2.0, 1.0e-12));   // before: as it was
+        CHECK_THAT (map.bpmAt (8.0), WithinAbs (96.0, 1.0e-9));
+        CHECK_THAT (map.bpmAt (12.5), WithinAbs (120.0, 1.0e-9));     // after: as it was
+        studio.undo();
+        CHECK_THAT (studio.getProject().tempoMap().secondsBetween (4.0, 12.0), WithinAbs (4.0, 1.0e-9));
+    }
+    // A ramp from 120 up to 160 at beat 16, across the range's end: the range exact, the curve after it kept.
+    {
+        Studio studio (false);
+        studio.setTempo (120.0);
+        studio.addTempoTrack();
+        studio.setTempoEvents ({ { 0.0, 120.0, false }, { 16.0, 160.0, true } });
+        const auto old = studio.getProject().tempoMap();
+        REQUIRE (studio.processTempo (4.0, 12.0, 3.0));
+        const auto map = studio.getProject().tempoMap();
+        CHECK_THAT (map.secondsBetween (4.0, 12.0), WithinAbs (3.0, 1.0e-9));
+        CHECK_THAT (map.secondsAt (4.0), WithinAbs (old.secondsAt (4.0), 1.0e-6));   // (a 960th of a beat before it holds the arrival)
+        CHECK_THAT (map.bpmAt (14.0), WithinAbs (old.bpmAt (14.0), 1.0e-6));
+        CHECK_THAT (map.bpmAt (8.0), WithinAbs (old.bpmAt (8.0) * Studio::tempoScaling (old, 4.0, 12.0, 3.0), 1.0e-6));
+    }
+    // Too far (past 300 BPM): refused, nothing changed.
+    {
+        Studio studio (false);
+        studio.setTempo (200.0);
+        CHECK_FALSE (studio.processTempo (0.0, 8.0, 0.5));
+        CHECK_FALSE (studio.getProject().followsTempoTrack());
+    }
+}
+
+#include "ui/TempoEditor.h"
+
+TEST_CASE ("The Tempo Track Editor: Ctrl+T opens and closes it; a click on the curve adds an event; drag; the info line; Delete; Erase (0.13.0)", "[tempo][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    studio.setTempo (120.0);
+    studio.addTempoTrack();
+    studio.setNewTempoType (Project::NewTempoType::step);
+
+    CHECK (view.keyPressed (juce::KeyPress ('T', juce::ModifierKeys::commandModifier, 0)));
+    REQUIRE (view.getTempoEditorWindow() != nullptr);
+    auto& editor = dynamic_cast<TempoEditorWindow&> (*view.getTempoEditorWindow()).getEditor();
+    editor.setSize (1200, 640);
+    auto& canvas = editor.getCanvas();
+    const auto& events = studio.getProject().tempoEvents;
+
+    // A click on the curve at bar 3 (beat 8), at the height of 140: an event there, selected; the info line shows it.
+    const auto toCanvas = [&] (juce::Point<float> p) { return p; };
+    const juce::Point<float> at (editor.xForBeat (8.0), editor.yForBpm (140.0));
+    canvas.mouseDown (mouseOn (canvas, toCanvas (at), toCanvas (at)));
+    canvas.mouseUp (mouseOn (canvas, toCanvas (at), toCanvas (at)));
+    REQUIRE (events.size() == 2);
+    CHECK (events[1].beat == 8.0);
+    CHECK_THAT (events[1].bpm, WithinAbs (140.0, 1.0));
+    CHECK (editor.getSelection() == std::vector<int> { 1 });
+
+    // The info line: typed position and value.
+    CHECK (editor.setSelectedPosition ("4.1.1.0"));
+    CHECK (events[1].beat == 12.0);
+    CHECK (editor.setSelectedValue ("100"));
+    CHECK (events[1].bpm == 100.0);
+    editor.setSelectedRamp (true);
+    CHECK (events[1].ramp);
+    CHECK_FALSE (editor.setSelectedPosition ("nonsense"));
+    CHECK (events[1].beat == 12.0);
+
+    // Dragged a bar later: it follows (snapped).
+    const auto from = editor.getEventPosition (1);
+    const juce::Point<float> to (editor.xForBeat (16.0), from.y);
+    canvas.mouseDown (mouseOn (canvas, from, from));
+    for (int step = 1; step <= 4; ++step)
+        canvas.mouseDrag (mouseOn (canvas, from + (to - from) * ((float) step / 4.0f), from));
+    canvas.mouseUp (mouseOn (canvas, to, from));
+    CHECK (events[1].beat == 16.0);
+
+    // Delete (not the first); Erase.
+    editor.selectEvents ({ 0, 1 });
+    CHECK (editor.keyPressed (juce::KeyPress (juce::KeyPress::deleteKey)));
+    CHECK (events.size() == 1);
+    studio.addTempoEvent (4.0, 90.0);
+    editor.setTool (TempoEditor::Tool::erase);
+    const auto e = editor.getEventPosition (1);
+    canvas.mouseDown (mouseOn (canvas, e, e));
+    CHECK (events.size() == 1);
+
+    // Positions as the transport writes them.
+    CHECK (TempoEditor::parsePosition ("3.2.1.0", studio.getProject()) == 9.0);
+    CHECK (TempoEditor::parsePosition ("1.1.3.240", studio.getProject()) == 1.0);
+    CHECK_FALSE (TempoEditor::parsePosition ("0.1.1.0", studio.getProject()).has_value());
+
+    // Ctrl+T again: closed.
+    CHECK (view.keyPressed (juce::KeyPress ('T', juce::ModifierKeys::commandModifier, 0)));
+    CHECK (view.getTempoEditorWindow() == nullptr);
+}
+
+TEST_CASE ("The Process Tempo dialog: the locators' range, a new length or end, the scaling shown, PROCESS (0.13.0)", "[tempo][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    studio.setTempo (120.0);
+    studio.setCycle (4.0, 12.0);   // bars 2 to 4: 4 seconds
+    ProcessTempoPage page (studio);
+    CHECK_THAT (page.getScaling(), WithinAbs (1.0, 1.0e-9));
+    CHECK (page.setNewLength ("5"));
+    CHECK_THAT (page.getScaling(), WithinAbs (0.8, 1.0e-9));
+    page.setFormat (ProcessTempoPage::Format::minutesSeconds);
+    CHECK (page.setNewEnd ("0:10"));   // from 2 s: 8 s long
+    CHECK_THAT (page.getScaling(), WithinAbs (0.5, 1.0e-9));
+    CHECK_FALSE (page.setNewEnd ("0:01"));   // before the start
+    CHECK (page.apply());
+    CHECK_THAT (studio.getProject().tempoMap().secondsBetween (4.0, 12.0), WithinAbs (8.0, 1.0e-9));
+}

@@ -2,6 +2,51 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.13.0
+
+**The Tempo Track Editor.** It's laid out as the manual describes Cubase's: a window of its own for the tempo track, opened with **Ctrl+T**. It's also in the tempo track's right-click menu and the transport tempo's, and in KEYS. Ctrl+T again closes it, and it reopens where you left it (the three screens included).
+
+**The toolbar:**
+- **ACTIVATE:** Activate Tempo Track (the song follows the curve, or its fixed tempo).
+- **AUTO-SCROLL:** the view follows the playhead.
+- **The tools:** SELECT (1), DRAW (8), ERASE (5) and ZOOM (6). A ZOOM click zooms in, an Alt-click zooms out.
+- **RAMP / STEP / AUTO:** the Type of New Tempo Points.
+- **CURRENT TEMPO:** the fixed tempo. As in the manual, you change it here only while the tempo track is off: double-click it and type.
+- **SNAP:** the studio's own snap.
+- **PROCESS TEMPO...**
+- **INFO:** shows or hides the info line.
+
+**The info line:** the selected event's **Position**, **Value** (BPM) and **Type** (Step or Ramp). Double-click Position or Value to type a new one. The first event's position can't move, as in the manual.
+
+**The editor itself, as the manual describes it:**
+- **The ruler:** click or drag to move the playhead.
+- **The time signature display.**
+- **The tempo scale:** BPM down the left.
+- **The curve display:** edited just as on the tempo track in the arrangement.
+  - Click the curve to add an event.
+  - Select events (Shift-click, or drag a box round them) and drag them. Ctrl keeps a drag to one direction.
+  - Draw and erase events with those tools.
+  - **Delete** removes the selected events (never the first).
+  - Double-click an event to type its tempo.
+- **Zoom:** H and G, or Ctrl+wheel. The scroll bar or the wheel moves along the song.
+
+**The tempo events as a list,** beside the curve: each event's position, BPM and type. Click to select (Ctrl/Shift for several). The manual puts this list in the tempo track's Inspector; here it's beside the curve, so everything about the tempo is in one window (our choice).
+
+**Process Tempo** (the manual's dialog): set the left and right locators around a stretch of the song, then fit it to a new length or end time. The dialog shows:
+- the bar range (from the locators);
+- that range in seconds or minutes:seconds;
+- **New End Position** and **New Length** (type either one);
+- the **Equivalent Tempo Scaling**;
+- **PROCESS**.
+
+The tempo inside the range is scaled, ramps included, so it lasts exactly the new length. Before and after the range the tempo stays as it was. It's one undo step.
+
+**Not yet:**
+- **Time signature changes:** the signature display shows the song's one signature.
+- **Tap tempo, tempo recording and tempo detection.**
+- **Process Bars.**
+- **The tempo event editor's smart controls** (tilt, compress, scale).
+
 ## 0.12.1
 
 **Render in Place and Freeze no longer leave the studio stuck.** You found that Render in Place and Freeze could make PR7-S stop answering until you forced it to quit, while the log showed everything going normally.

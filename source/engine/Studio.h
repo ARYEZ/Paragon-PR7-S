@@ -405,6 +405,16 @@ namespace pr7s
         void setTempoView (double low, double high);   // the curve's shown range (not undo steps)
         // The tempo at the playhead (the transport shows it).
         double getTempoNow() const;
+        // The manual's Process Tempo (0.13.0): the stretch from `start` to
+        // `end` (beats; the locators) made to last `newSeconds`, by scaling the
+        // tempo inside it (every event there, and its ramps, by one factor: the
+        // time over a ramp scales exactly with it). Before and after, the tempo
+        // stays as it was: events at the edges hold it (one just past the end
+        // brings it back). The tempo track is turned on (and added if it isn't).
+        // One undo step. False if the range is empty or the tempo would go
+        // outside 20-300 BPM. `factor`: the Equivalent Tempo Scaling.
+        bool processTempo (double start, double end, double newSeconds, double* factor = nullptr);
+        static double tempoScaling (const TempoMap&, double start, double end, double newSeconds);
         void setCycle (double start, double end);
         void setCycleOn (bool);
         // Snap on/off (J) and the quantize value in beats (4: 1/1 ... 1/16: 1/64), the toolbar's (0.9.10).

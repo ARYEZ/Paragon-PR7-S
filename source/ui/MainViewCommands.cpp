@@ -125,6 +125,7 @@ void MainView::registerCommands()
     add ("Window.MixerPlace", "Window", "Mixer Docked / Full Screen", { KP (KP::F3Key, juce::ModifierKeys (alt), 0) });
     add ("Window.Editor", "Window", "Open/Close Editor", { key ('E', ctrl) });
     add ("Window.KeyCommands", "Window", "Key Commands...", {}, [this] { openKeyCommands(); });
+    add ("Window.TempoEditor", "Window", "Open/Close Tempo Track Editor", { key ('T', ctrl) });
     add ("Window.Plugins", "Window", "Plug-ins...", {}, [this] { openPlugins(); });
     add ("Window.Settings", "Window", "Settings...", {}, [this] { openSettings(); });
 

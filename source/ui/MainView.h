@@ -68,6 +68,9 @@ public:
     // The Hub (0.12.0): the start window, HUB in the header. What it asks for
     // is done here, after the unsaved-changes question; it closes once a song is open.
     void openHub();
+    // The Tempo Track Editor (0.13.0, Ctrl+T as the manual has it): opened, or closed if it's open.
+    void toggleTempoEditor();
+    juce::DocumentWindow* getTempoEditorWindow() noexcept { return tempoEditorWindow.get(); }
     juce::DocumentWindow* getHubWindow() noexcept { return hubWindow.get(); }
     void openSong (const juce::File&);
     void saveAsTemplate();
@@ -198,7 +201,7 @@ private:
     juce::TextButton keysButton { "KEYS" };
     int saveFlashes = 0;
     std::unique_ptr<ProgressBox> progressBox;   // a long job's progress (0.11.1)
-    std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow;
+    std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow;
     juce::TextButton hubButton { "HUB" };
     void registerCommands();
     void saveKeyCommands();

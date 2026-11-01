@@ -2897,6 +2897,8 @@ void ArrangeView::showTempoMenu()
     const auto& project = studio.getProject();
     juce::PopupMenu menu, type, view;
     menu.addSectionHeader ("TEMPO TRACK");
+    menu.addItem (7, "Open Tempo Track Editor (Ctrl+T)");
+    menu.addSeparator();
     menu.addItem (1, "Activate Tempo Track", true, project.tempoTrackOn);
     menu.addItem (2, "Lock", true, project.tempoLocked);
     type.addItem (10, "Ramp: gradually from the point before", true, project.newTempoType == pr7s::Project::NewTempoType::ramp);
@@ -2928,6 +2930,7 @@ void ArrangeView::showTempoMenu()
             case 4: safe->selectAllTempoEvents(); break;
             case 5: safe->deleteSelectedTempoEvents(); break;
             case 6: s.removeTempoTrack(); safe->tempoSelection.clear(); break;
+            case 7: if (safe->onOpenTempoEditor) safe->onOpenTempoEditor(); break;
             case 10: s.setNewTempoType (pr7s::Project::NewTempoType::ramp); break;
             case 11: s.setNewTempoType (pr7s::Project::NewTempoType::step); break;
             case 12: s.setNewTempoType (pr7s::Project::NewTempoType::automatic); break;

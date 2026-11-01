@@ -2,6 +2,7 @@
 #include "engine/MidiImport.h"
 #include "ui/KeyCommandsPage.h"
 #include "ui/Hub.h"
+#include "ui/TempoEditor.h"
 
 #include <thread>
 
@@ -274,6 +275,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
     trackList.onOpenInstrument = [this] (int trackId) { openInstrumentWindow (trackId); };
     trackList.onFindPlugins = [this] { openPlugins(); };
     trackList.onTempoMenu = [this] { arrange.showTempoMenu(); };
+    arrange.onOpenTempoEditor = [this] { if (tempoEditorWindow == nullptr) toggleTempoEditor(); else tempoEditorWindow->toFront (true); };
+    transport.onOpenTempoEditor = arrange.onOpenTempoEditor;
     trackList.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
     timeline.onScrollOrZoom = [this]
     {
@@ -778,6 +781,7 @@ bool MainView::handleKey (const juce::KeyPress& key)
             case 'D': arrange.duplicateSelected(); return true;
             case 'A': arrange.selectAllParts(); return true;   // (in the key editor after a click there: its notes, above)
             case 'E': isKeyEditorOpen() ? closeKeyEditor() : openKeyEditor(); return true;
+            case 'T': toggleTempoEditor(); return true;   // (the manual's Open Tempo Track Editor)
             default: return false;
         }
     }
@@ -1583,6 +1587,33 @@ void MainView::openSong (const juce::File& file)
         juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Some instruments, effects or recordings are missing",
                                                 "These aren't on this computer. Tracks without their instrument and clips without their "
                                                 "recording are silent, and the sound goes past missing effects, until they're found:\n\n" + problems);
+}
+
+void MainView::toggleTempoEditor()
+{
+    if (tempoEditorWindow != nullptr)
+    {
+        tempoEditorWindow = nullptr;
+        return;
+    }
+    auto window = std::make_unique<TempoEditorWindow> (studio, studio.getSettings());
+    window->onClose = [safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->tempoEditorWindow = nullptr; });
+    };
+    // Keys it doesn't use are the studio's (Space plays, Ctrl+T closes it...).
+    window->getEditor().onOtherKey = [safe = juce::Component::SafePointer<MainView> (this)] (const juce::KeyPress& key)
+    {
+        if (safe == nullptr)
+            return false;
+        if (key.getModifiers().isCommandDown() && (key.getKeyCode() == 'T' || key.getKeyCode() == 't'))
+        {
+            juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->tempoEditorWindow = nullptr; });
+            return true;
+        }
+        return safe->keyPressed (key);
+    };
+    tempoEditorWindow = std::move (window);
 }
 
 void MainView::openHub()

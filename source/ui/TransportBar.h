@@ -27,6 +27,7 @@ class TransportBar final : public juce::Component,
                            private juce::Timer
 {
 public:
+    std::function<void()> onOpenTempoEditor;   // the tempo screen's menu (0.13.0)
     explicit TransportBar (pr7s::Studio&);
     ~TransportBar() override;
 

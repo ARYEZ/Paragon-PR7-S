@@ -368,6 +368,7 @@ void TransportBar::mouseDown (const juce::MouseEvent& event)
         juce::PopupMenu menu;
         menu.addItem (1, "Activate Tempo Track", true, project.followsTempoTrack());
         menu.addItem (2, project.tempoTrackShown ? "The tempo track is in the track list" : "Add the Tempo Track", ! project.tempoTrackShown);
+        menu.addItem (3, "Open Tempo Track Editor (Ctrl+T)");
         menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (localAreaToGlobal (tempoScreen.toNearestInt())),
                             [this] (int chosen)
                             {
@@ -375,6 +376,8 @@ void TransportBar::mouseDown (const juce::MouseEvent& event)
                                     studio.setTempoTrackOn (! studio.getProject().followsTempoTrack());
                                 else if (chosen == 2)
                                     studio.addTempoTrack();
+                                else if (chosen == 3 && onOpenTempoEditor)
+                                    onOpenTempoEditor();
                             });
         return;
     }

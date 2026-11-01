@@ -249,6 +249,7 @@ public:
     void deleteSelectedTempoEvents();
     void selectAllTempoEvents();
     void showTempoMenu();
+    std::function<void()> onOpenTempoEditor;   // the menu's Open Tempo Track Editor (0.13.0)
     // Where an event is drawn, and the tempo row's curve area (tests).
     juce::Point<float> getTempoEventPosition (int index) const;
     juce::Rectangle<float> getTempoArea() const;
