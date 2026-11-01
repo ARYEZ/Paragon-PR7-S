@@ -1,11 +1,13 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include "engine/SessionLog.h"
 #include "engine/Studio.h"
 #include "ui/MainView.h"
 #include "ui/ParagonLookAndFeel.h"
 
 // The Paragon PR7-S app: one window holding the studio.
-class ParagonStudioApplication final : public juce::JUCEApplication
+class ParagonStudioApplication final : public juce::JUCEApplication,
+                                       private juce::Timer
 {
 public:
     const juce::String getApplicationName() override { return "Paragon PR7-S"; }
@@ -14,6 +16,12 @@ public:
 
     void initialise (const juce::String& commandLine) override
     {
+        // The session log first (0.9.14): a crash from here on is written down.
+        const auto unfinished = pr7s::SessionLog::start ("Paragon PR7-S " + getApplicationVersion());
+        pr7s::SessionLog::installCrashHandler();
+        pr7s::SessionLog::startFreezeWatch (10.0);
+        startTimer (250);   // the screen's heartbeat for the freeze watch
+
         juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
         studio = std::make_unique<pr7s::Studio> (true);
         window = std::make_unique<MainWindow> (*this, *studio);
@@ -25,13 +33,40 @@ public:
             juce::String problems;
             studio->open (file, problems);
         }
+        pr7s::SessionLog::note ("Ready.");
+
+        // Last time it didn't close as it should: offer its log.
+        if (unfinished.existsAsFile())
+            juce::MessageManager::callAsync ([unfinished] { reportUnfinished (unfinished); });
+    }
+
+    static void reportUnfinished (const juce::File& log)
+    {
+        const auto crashed = pr7s::SessionLog::recordsCrash (log);
+        juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::WarningIcon,
+            crashed ? "PR7-S crashed last time" : "PR7-S didn't close normally last time",
+            (crashed ? juce::String ("It wrote down where it crashed and what it was doing before: ")
+                     : juce::String ("It may have frozen and been ended, or the computer went off. What it was doing last is written down: "))
+                + log.getFileName() + ".\n\nIt's plain text (Notepad opens it). Send it over and the cause can be found.",
+            "Show the log", "OK", nullptr,
+            juce::ModalCallbackFunction::create ([log] (int result) { if (result == 1) log.revealToUser(); }));
     }
 
     void shutdown() override
     {
+        pr7s::SessionLog::note ("Closing.");
+        stopTimer();
+        pr7s::SessionLog::stopFreezeWatch();   // (closing can take a while: plug-ins unloading)
         window = nullptr;
         studio = nullptr;
         juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+        pr7s::SessionLog::stop();
+    }
+
+    void unhandledException (const std::exception* e, const juce::String& sourceFile, int lineNumber) override
+    {
+        pr7s::SessionLog::note ("An error nothing handled" + (e != nullptr ? ": " + juce::String (e->what()) : juce::String())
+                                + " (" + sourceFile + ":" + juce::String (lineNumber) + ")");
     }
 
     void systemRequestedQuit() override
@@ -43,6 +78,8 @@ public:
     }
 
     void anotherInstanceStarted (const juce::String&) override {}
+
+    void timerCallback() override { pr7s::SessionLog::beat(); }
 
 private:
     class MainWindow final : public juce::DocumentWindow

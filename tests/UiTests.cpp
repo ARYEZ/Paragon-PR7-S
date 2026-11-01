@@ -546,6 +546,22 @@ TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inse
     REQUIRE (window != nullptr);
     CHECK (mixer.getTopLevelComponent() == window);
     CHECK (window->getName() == "Mixer");
+    // In its window both racks show, the inserts above the sends, whatever was chosen docked (0.9.14).
+    {
+        REQUIRE (mixer.getNumStrips() >= 2);
+        mixer.setRackShown (false);
+        auto& strip = mixer.getStrip (0);
+        CHECK (mixer.showsInserts());
+        CHECK (mixer.showsSends());
+        CHECK (strip.getInsertSlot (0).isVisible());
+        CHECK (strip.getSendSlot (0).isVisible());
+        CHECK (strip.getSendSlot (0).getY() > strip.getInsertSlot (0).getBottom());
+        auto inserts = false;
+        for (auto* child : mixer.getChildren())
+            if (auto* b = dynamic_cast<juce::TextButton*> (child); b != nullptr && b->getButtonText() == "INSERTS")
+                inserts = b->isVisible();
+        CHECK_FALSE (inserts);   // (INSERTS / SENDS are the docked choice)
+    }
     view.openKeyEditor();
     CHECK (view.isMixerOpen());
     CHECK (view.isKeyEditorOpen());
@@ -565,6 +581,11 @@ TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inse
     CHECK (view.getMixerWindow() == nullptr);
     CHECK (mixer.isVisible());
     CHECK_FALSE (view.isKeyEditorOpen());
+    // Docked again: the docked choice (none) holds.
+    CHECK_FALSE (mixer.showsInserts());
+    CHECK_FALSE (mixer.showsSends());
+    CHECK_FALSE (mixer.getStrip (0).getInsertSlot (0).isVisible());
+    mixer.setRackShown (true);
     // Docked: F3 closes it, F3 opens it docked again; Alt+F3 takes it full screen.
     CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key)));
     CHECK_FALSE (view.isMixerOpen());

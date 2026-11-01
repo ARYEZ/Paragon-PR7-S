@@ -2,6 +2,33 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.9.14
+
+Three of your requests. The tempo track and key commands with macros are bigger jobs and come next, each in a release of its own.
+
+**The mixer's own window shows everything.** In its window (WINDOW, or Alt+F3), every channel now shows its inserts and, under a line marked SENDS, its eight sends, all the time. There's room for both, so INSERTS and SENDS leave the bar there. Docked under the arrangement it's still your choice, and it now starts with only the faders.
+
+**MIDI files and the song's tempo.** When you import a MIDI file into the song you have open and its tempo isn't the song's, you're asked:
+- **Match to (the file's tempo):** the song changes to the file's tempo, so the notes play at the speed they were written at. It's an undo step of its own. Audio already in the song doesn't stretch with it.
+- **Keep (the song's tempo):** the notes go on the same beats, played at the song's speed (as before).
+- **Cancel:** nothing is imported.
+
+A file at the song's tempo isn't asked about, and importing as a new song always takes the file's tempo. The time signature stays the song's.
+
+**A log you can read, for when PR7-S shuts down on its own.** PR7-S now writes a plain text file as it runs (Notepad opens it), in `%APPDATA%\Paragon PR7-S\Logs` (the newest 30 are kept). It records:
+- **The set-up:** the version, your computer (Windows version, processor, memory) and your audio device (driver, sample rate, buffer size, latency, and every change).
+- **What it did:** a line for each song opened, saved or imported, each plug-in loaded (name, maker, version, file) and given its settings, each plug-in window opened, PLUGINS, renders, freezes and RELOAD DRIVER. Each line goes onto the disk at once, so a crash right after it can't lose it.
+- **A crash:** what went wrong (for example "access violation: it tried to read address 0x0, a pointer that was empty"), on which thread (the screen's or the audio's), in which file, and the chain of calls that led there. The file is the useful part: if it's a plug-in's `.vst3`, that plug-in crashed. The studio's own code is named down to the source file and line, from `Paragon PR7-S.pdb`, which now comes in the Windows zip: keep it beside the .exe.
+- **A freeze:** if the screen stops answering for 10 seconds, a FROZEN entry records what it was doing, and later how long until it answered again. A freeze that you end in Task Manager still leaves this behind.
+
+The next time PR7-S starts after a crash, a freeze that was ended, or the computer going off, it says so and offers **Show the log**. Send me the file and I can find the cause.
+
+**Honest notes:**
+- **Not tried on Windows yet.** The crash entry's Windows part (the calls and their names) can't be tried here: it's built and checked by the Windows build, but a real crash on your computer is its first real test.
+- **Hidden crashes.** A plug-in that catches crashes itself (a few do) can keep one from reaching the log. The lines before it still show what was going on.
+- **macOS and Linux** write the log too, with fewer names in a crash entry.
+- **Size:** the Windows zip is larger by the .pdb.
+
 ## 0.9.13
 
 **Import DAWproject: your Cubase songs in PR7-S.** Cubase can't hand its .cpr files to other programs, but since version 14 it exports **DAWproject**, an open format made for moving songs between studios.

@@ -1,4 +1,5 @@
 #include "Engine.h"
+#include "SessionLog.h"
 
 namespace pr7s
 {
@@ -1150,6 +1151,7 @@ namespace pr7s
     void Engine::audioDeviceIOCallbackWithContext (const float* const* inputChannelData, int numInputChannels, float* const* outputChannelData,
                                                    int numOutputChannels, int numSamples, const juce::AudioIODeviceCallbackContext&)
     {
+        SessionLog::markAudioThread();   // (a crash here says so in the session log)
         const auto started = juce::Time::getHighResolutionTicks();
         // The studio renders stereo; the device's first two outputs get it.
         blockInputs = inputChannelData;

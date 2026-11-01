@@ -1,4 +1,5 @@
 #include "MainView.h"
+#include "engine/MidiImport.h"
 
 #include "ui/AutomationKeys.h"
 #include "ui/Logo.h"
@@ -19,6 +20,18 @@ MainView::MainView (pr7s::Studio& studioToUse)
       mixer (studioToUse),
       inspector (studioToUse)
 {
+    askMidiTempo = [this] (const juce::File& file, double fileBpm, std::function<void (int)> answer)
+    {
+        const auto bpm = [] (double v) { return juce::String (v, std::abs (v - std::round (v)) < 0.005 ? 0 : 2) + " BPM"; };
+        const auto songBpm = studio.getProject().bpm;
+        juce::AlertWindow::showYesNoCancelBox (juce::MessageBoxIconType::QuestionIcon, "The MIDI file's tempo",
+            file.getFileName() + " was written at " + bpm (fileBpm) + "; this song is at " + bpm (songBpm) + ".\n\n"
+            "Match the song to the file: the song changes to " + bpm (fileBpm) + ", so the notes play at the speed they were written at "
+            "(audio already in the song doesn't stretch with it). Keep the song's tempo: the notes go on the same beats, played at "
+            + bpm (songBpm) + ".",
+            "Match to " + bpm (fileBpm), "Keep " + bpm (songBpm), "Cancel", nullptr,
+            juce::ModalCallbackFunction::create ([answer] (int result) { answer (result); }));
+    };
     for (auto* button : { &newButton, &openButton, &saveButton, &saveAsButton, &importButton, &exportButton, &undoButton, &redoButton, &editorButton, &mixerButton,
                           &inspectorButton, &pluginsButton, &settingsButton })
     {
@@ -1161,13 +1174,35 @@ void MainView::importAudioFiles (bool oneTrack)
 
 void MainView::importMidiFiles (const juce::Array<juce::File>& files, bool newSong, double atBeat)
 {
+    // Into this song: the file's tempo, or the song's? (Only asked when they differ;
+    // a new song always takes the file's.)
+    if (! newSong && ! files.isEmpty())
+    {
+        juce::String error;
+        if (const auto midi = pr7s::readMidiFile (files.getFirst(), error);
+            midi && std::abs (midi->bpm - studio.getProject().bpm) > 0.005)
+        {
+            askMidiTempo (files.getFirst(), midi->bpm, [safe = juce::Component::SafePointer<MainView> (this), files, atBeat] (int result)
+            {
+                // (1: match, 2: keep, 0: cancel)
+                if (safe != nullptr && result != 0)
+                    safe->importMidiFilesNow (files, false, atBeat, result == 1);
+            });
+            return;
+        }
+    }
+    importMidiFilesNow (files, newSong, atBeat, false);
+}
+
+void MainView::importMidiFilesNow (const juce::Array<juce::File>& files, bool newSong, double atBeat, bool matchTempo)
+{
     // The first into a new song if asked (its tempo and signature); the others into the song, every track of each a new track.
     juce::StringArray problems;
     auto first = true;
     for (const auto& file : files)
     {
         juce::String error;
-        if (studio.importMidi (file, newSong && first, atBeat, error) == 0)
+        if (studio.importMidi (file, newSong && first, atBeat, error, matchTempo && first) == 0)
             problems.add (file.getFileName() + ": " + error);
         else
             first = false;

@@ -84,6 +84,7 @@ jobs:
           name: ParagonPR7S-${{ matrix.name }}
           path: |
             build/ParagonPR7S_artefacts/Release/Paragon PR7-S.exe
+            build/ParagonPR7S_artefacts/Release/Paragon PR7-S.pdb
             build/ParagonPR7S_artefacts/Release/Paragon PR7-S.app
             build/ParagonPR7S_artefacts/Release/Paragon PR7-S
 
@@ -158,9 +159,11 @@ jobs:
           # back on the macOS and Linux apps (and PR7-K's binaries).
           chmod -R a+x "artifacts/ParagonPR7S-macOS/Paragon PR7-S.app/Contents/MacOS" "artifacts/ParagonPR7S-Linux/Paragon PR7-S"
           chmod -R a+x artifacts/ParagonPR7S-macOS/*.vst3/Contents/MacOS artifacts/ParagonPR7S-Linux/*.vst3/Contents/x86_64-linux 2>/dev/null || true
-          # Each zip: the app, and PR7-K's VST3 if it was fetched.
+          # Each zip: the app, its .pdb on Windows (names in the session log's
+          # crash entries), and PR7-K's VST3 if it was fetched.
           pack() {   # folder, zip name, app, zip flags
-            (cd "artifacts/$1" && files=("$3") && { [ -e "Paragon PR7-K.vst3" ] && files+=("Paragon PR7-K.vst3"); true; } \
+            (cd "artifacts/$1" && files=("$3") && { [ -e "Paragon PR7-S.pdb" ] && files+=("Paragon PR7-S.pdb"); true; } \
+               && { [ -e "Paragon PR7-K.vst3" ] && files+=("Paragon PR7-K.vst3"); true; } \
                && zip $4 "../../release/$2" "${files[@]}")
           }
           pack ParagonPR7S-Windows "ParagonPR7-S-${TAG}-Windows.zip" "Paragon PR7-S.exe" -qr

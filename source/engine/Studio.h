@@ -417,8 +417,11 @@ namespace pr7s
         // `newSong`: a new song first, with the file's tempo and time
         // signature; else into this one at `atBeat` (its tempo kept, the
         // notes on its beats: the manual's "Ignore Master Track Events on
-        // Merge"). Returns how many tracks it added (0, with `error` set, if none).
-        int importMidi (const juce::File&, bool newSong, double atBeat, juce::String& error);
+        // Merge"), unless `matchTempo` (0.9.14, the owner asked): then the
+        // song takes the file's tempo first (one undo step of its own), so the
+        // notes play at the speed they were written at. Returns how many
+        // tracks it added (0, with `error` set, if none).
+        int importMidi (const juce::File&, bool newSong, double atBeat, juce::String& error, bool matchTempo = false);
         // Audio file import (the manual's File > Import > Audio File): WAV,
         // AIFF, FLAC, Ogg Vorbis or MP3. Each file is copied into the song's
         // audio folder (the manual's Copy File to Project Folder: a WAV or AIFF
@@ -433,7 +436,7 @@ namespace pr7s
         // the track; else each file on a track of its own, all at `atBeat` (the
         // first on `trackId` if that's an audio track). Returns the (first) track.
         int importAudio (const juce::Array<juce::File>&, int trackId, double atBeat, juce::String& error, bool oneTrack = true);
-        int importMidi (const MidiImport&, bool newSong, double atBeat);
+        int importMidi (const MidiImport&, bool newSong, double atBeat, bool matchTempo = false);
         juce::File getFile() const noexcept { return file; }
         bool isModified() const noexcept { return modified; }
 
@@ -588,6 +591,7 @@ namespace pr7s
         std::map<juce::String, std::shared_ptr<const AudioData>> audioCache;
         double audioCacheRate = 0.0;
         juce::File unsavedAudioFolder;
+        juce::String loggedDevice;   // the audio device's last line in the session log
         std::optional<double> latencyOverride;
 
         struct ExportJob

@@ -64,6 +64,11 @@ public:
     bool isShowingSends() const noexcept { return showSends; }
     void setRackShown (bool);
     bool isRackShown() const noexcept { return rackShown; }
+    // What the strips show now (0.9.14, the owner asked): in the mixer's own
+    // window both racks, the inserts above the sends, always (there's room);
+    // docked, the choice above (INSERTS, SENDS or neither; neither at first).
+    bool showsInserts() const noexcept { return inWindow || (rackShown && ! showSends); }
+    bool showsSends() const noexcept { return inWindow || (rackShown && showSends); }
     // The least height it can be docked at (more with the rack shown: room for its slots).
     int getMinimumHeight() const;
     // What it would like at first (before its divider is dragged): its rack at full size and a full fader.
@@ -97,6 +102,7 @@ private:
     juce::TextButton windowButton { "WINDOW" }, closeButton { "CLOSE" }, insertsButton { "INSERTS" }, sendsButton { "SENDS" };
     bool inWindow = false, showSends = false, rackShown = true;
     void rackChanged();
+    int rackRows (int insertRows) const;   // the rack's rows (slots) for the heights
 };
 
 // A send's slot on a strip (the SENDS rack).
@@ -141,7 +147,7 @@ public:
     juce::TextButton& getOutput() noexcept { return output; }
     int getShownSlots() const noexcept { return shownSlots; }
     // Its height without the rack, and with the shortest fader (the rack adds its slots).
-    static constexpr int fixedHeight = 8 + 18 + 14 + 6 + 50 + 22 + 6 + 16 + 6, shortestFader = 70, shortestSlot = 11;
+    static constexpr int fixedHeight = 8 + 18 + 14 + 6 + 50 + 22 + 6 + 16 + 6, shortestFader = 70, shortestSlot = 11, dividerHeight = 14;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -161,6 +167,6 @@ private:
     int shownSlots = 8;   // at least 8, and one more than the last used (up to 16)
     ValueSlider volume, pan;   // (double-click: type a value, 0.9.9)
     juce::TextButton mute { "M" }, solo { "S" }, read { "R" }, write { "W" };
-    juce::Rectangle<float> meterArea, nameArea, readoutArea, panReadoutArea, rackArea;
+    juce::Rectangle<float> meterArea, nameArea, readoutArea, panReadoutArea, rackArea, sendsDivider;
     LevelMeter::Ballistics left, right;
 };

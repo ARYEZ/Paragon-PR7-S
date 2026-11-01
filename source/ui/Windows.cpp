@@ -1,4 +1,5 @@
 #include "Windows.h"
+#include "engine/SessionLog.h"
 
 #include "engine/AudioAdvice.h"
 #include "ui/Finish.h"
@@ -446,6 +447,7 @@ namespace Windows
         : DocumentWindow (trackName + ": " + instance.getName(), windowColour, DocumentWindow::closeButton)
     {
         setUsingNativeTitleBar (true);
+        pr7s::SessionLog::note ("Opening the window of " + instance.getName() + " (" + trackName + ")");
         if (auto* editor = instance.createEditorAndMakeActive())
             setContentOwned (editor, true);
         setResizable (instance.hasEditor() && getContentComponent() != nullptr
@@ -573,6 +575,7 @@ namespace Windows
     {
         setUsingNativeTitleBar (true);
         auto& host = studio.getPluginHost();
+        pr7s::SessionLog::note ("PLUGINS opened (scanning loads each plug-in to ask what it is)");
         auto* list = new juce::PluginListComponent (host.getFormats(), host.getKnownPlugins(), pr7s::PluginHost::deadMansPedalFile(),
                                                     studio.getSettings());
         list->setOptionsButtonText ("SCAN / OPTIONS");

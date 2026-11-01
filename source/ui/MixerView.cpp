@@ -131,10 +131,9 @@ void MixerView::Strip::refresh()
             owner.onMinimumHeightChange();
     }
     const auto preFader = owner.studio.getPreFaderSlots (busId);
-    const auto sendsShown = owner.isShowingSends();
     for (int i = 0; i < (int) sendSlots.size(); ++i)
     {
-        sendSlots[(size_t) i]->setVisible (owner.isRackShown() && sendsShown && track != nullptr && ! track->isFx());
+        sendSlots[(size_t) i]->setVisible (owner.showsSends() && track != nullptr && ! track->isFx());
         sendSlots[(size_t) i]->refresh();
     }
     if (track != nullptr)
@@ -146,7 +145,7 @@ void MixerView::Strip::refresh()
     for (int i = 0; i < (int) slots.size(); ++i)
     {
         auto& slot = slots[(size_t) i];
-        slot.setVisible (owner.isRackShown() && ! sendsShown && i < shownSlots);
+        slot.setVisible (owner.showsInserts() && i < shownSlots);
         slot.setColour (juce::TextButton::buttonColourId, i < preFader ? juce::Colour (0xff0b090c) : juce::Colour (0xff1c1108));   // after the fader: tinted
         if (inserts != nullptr && i < (int) inserts->size() && ! (*inserts)[(size_t) i].isEmpty())
         {
@@ -236,12 +235,23 @@ void MixerView::Strip::paint (juce::Graphics& g)
                       nameArea.toNearestInt(), juce::Justification::centred, 1, 0.8f);
     g.setColour (ParagonColours::textDim);
     g.setFont (font (8.5f));
-    if (isMaster() && owner.isRackShown())
-        g.drawText (owner.isShowingSends() ? "NO SENDS" : "INSERTS", nameArea.translated (0.0f, nameArea.getHeight()).withHeight (12.0f), juce::Justification::centred, false);
-    else if (owner.isRackShown() && owner.isShowingSends() && track != nullptr && track->isFx())
+    if (isMaster() && (owner.showsInserts() || owner.showsSends()))
+        g.drawText (owner.showsInserts() ? "INSERTS" : "NO SENDS", nameArea.translated (0.0f, nameArea.getHeight()).withHeight (12.0f), juce::Justification::centred, false);
+    else if (owner.showsSends() && track != nullptr && track->isFx())
         g.drawText ("NO SENDS (AN FX CHANNEL)", rackArea, juce::Justification::centredTop, true);
+    // Both racks (the mixer's window): a line and SENDS between them.
+    if (owner.showsInserts() && owner.showsSends() && ! sendsDivider.isEmpty())
+    {
+        g.setColour (ParagonColours::panelEdge);
+        g.fillRect (sendsDivider.withHeight (1.0f));
+        if (! isMaster())
+        {
+            g.setColour (ParagonColours::textDim);
+            g.drawText ("SENDS", sendsDivider.withTrimmedTop (1.0f), juce::Justification::centred, false);
+        }
+    }
     // The line between the inserts before the fader and those after it.
-    if (const auto preFader = owner.studio.getPreFaderSlots (busId); preFader < shownSlots && owner.isRackShown() && ! owner.isShowingSends())
+    if (const auto preFader = owner.studio.getPreFaderSlots (busId); preFader < shownSlots && owner.showsInserts())
     {
         const auto& first = slots[(size_t) preFader];
         const auto y = preFader == 0 ? (float) first.getY() - 2.0f : (float) first.getY() - (float) slotGap * 0.5f - 0.5f;
@@ -273,25 +283,50 @@ void MixerView::Strip::resized()
     nameArea = area.removeFromTop (18).toFloat();
     output.setBounds (area.removeFromTop (14).reduced (2, 0));   // OUT (the master's: "INSERTS")
     rackArea = area.withHeight (40).toFloat().withTrimmedTop (4.0f);
-    if (owner.isRackShown())
+    sendsDivider = {};
+    const auto inserts = owner.showsInserts(), sends = owner.showsSends();
+    if (inserts || sends)
     {
         // The slots shown, smaller when there are many, so the fader keeps room.
         const auto below = (isMaster() ? 0 : 50) + 28 + 16 + 6 + 110;   // pan, the keys, the readout, a gap, the shortest fader
-        const auto rowHeight = juce::jlimit (shortestSlot, slotHeight, (area.getHeight() - below) / shownSlots - slotGap);
-        // The rack: the inserts shown, or the eight sends (in the same room).
-        auto rack = area;
-        for (int i = 0; i < (int) slots.size(); ++i)
+        if (inserts && sends)
         {
-            if (i >= shownSlots)
-                continue;
-            slots[(size_t) i].setBounds (area.removeFromTop (rowHeight));
-            area.removeFromTop (slotGap);
+            // The mixer's window: the inserts, then (under a line and SENDS) the eight sends.
+            const auto rows = shownSlots + (isMaster() ? 0 : pr7s::Project::maxSends);
+            const auto rowHeight = juce::jlimit (shortestSlot, slotHeight, (area.getHeight() - below - dividerHeight) / rows - slotGap);
+            for (int i = 0; i < (int) slots.size(); ++i)
+                if (i < shownSlots)
+                {
+                    slots[(size_t) i].setBounds (area.removeFromTop (rowHeight));
+                    area.removeFromTop (slotGap);
+                }
+            sendsDivider = area.removeFromTop (dividerHeight).toFloat().withTrimmedTop (2.0f);
+            rackArea = area.withHeight (40).toFloat();
+            for (auto& send : sendSlots)
+                if (! isMaster())
+                {
+                    send->setBounds (area.removeFromTop (rowHeight));
+                    area.removeFromTop (slotGap);
+                }
         }
-        const auto sendRow = juce::jmax (shortestSlot, (shownSlots * (rowHeight + slotGap)) / pr7s::Project::maxSends - slotGap);
-        for (auto& send : sendSlots)
+        else
         {
-            send->setBounds (rack.removeFromTop (sendRow));
-            rack.removeFromTop (slotGap);
+            const auto rowHeight = juce::jlimit (shortestSlot, slotHeight, (area.getHeight() - below) / shownSlots - slotGap);
+            // The rack: the inserts shown, or the eight sends (in the same room).
+            auto rack = area;
+            for (int i = 0; i < (int) slots.size(); ++i)
+            {
+                if (i >= shownSlots)
+                    continue;
+                slots[(size_t) i].setBounds (area.removeFromTop (rowHeight));
+                area.removeFromTop (slotGap);
+            }
+            const auto sendRow = juce::jmax (shortestSlot, (shownSlots * (rowHeight + slotGap)) / pr7s::Project::maxSends - slotGap);
+            for (auto& send : sendSlots)
+            {
+                send->setBounds (rack.removeFromTop (sendRow));
+                rack.removeFromTop (slotGap);
+            }
         }
     }
     area.removeFromTop (6);
@@ -374,7 +409,7 @@ MixerView::MixerView (pr7s::Studio& studioToUse, bool singleStrip) : studio (stu
         rackShown = false;   // (the Inspector shows the inserts and sends itself)
     else if (auto* settings = studio.getSettings())
     {
-        const auto rack = settings->getValue ("mixerRack", "inserts");
+        const auto rack = settings->getValue ("mixerRack", "none");   // docked: only the faders at first (0.9.14, the owner's choice)
         showSends = rack == "sends";
         rackShown = rack != "none";
     }
@@ -401,6 +436,15 @@ void MixerView::setInWindow (bool shouldBeInWindow)
     windowButton.setButtonText (inWindow ? "DOCK" : "WINDOW");
     windowButton.setTooltip (inWindow ? "Back under the arrangement"
                                       : "Into a window of its own: maximize it, or put it on another screen (it remembers where it was)");
+    // In its window both racks always show, so INSERTS / SENDS (the docked choice) go.
+    insertsButton.setVisible (! single && ! inWindow);
+    sendsButton.setVisible (! single && ! inWindow);
+    if (master != nullptr)
+    {
+        rackChanged();
+        if (onMinimumHeightChange)
+            onMinimumHeightChange();
+    }
 }
 
 MixerView::Strip& MixerView::getStrip (int index)
@@ -459,7 +503,7 @@ void MixerView::timerCallback()
         const auto peak = engine.takeTrackPeak (strip->getBusId(), single ? 2 : 1);
         strip->setLevels (peak, peak);
         strip->followMix();
-        if (showSends)
+        if (showsSends())
             for (int i = 0; i < pr7s::Project::maxSends; ++i)
                 strip->getSendSlot (i).repaint();
     }
@@ -552,7 +596,8 @@ void MixerView::paint (juce::Graphics& g)
     g.drawText ("MIXER", bar.withTrimmedLeft (14.0f), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (font (11.0f, juce::Font::plain));
-    g.drawText (! rackShown ? "Each track's fader, pan and keys (INSERTS or SENDS shows their racks again)"
+    g.drawText (inWindow ? "Each track: its inserts (those below an orange line after the fader), its sends to the FX channels, its fader, its output"
+              : ! rackShown ? "Each track's fader, pan and keys (INSERTS or SENDS shows their racks again)"
               : showSends ? "Each track's sends: some of its sound to an FX channel (before or after its fader), back into the master"
                           : "Each track: its instrument, its inserts (top to bottom; those below an orange line after the fader), its fader, its output",
                 bar.withTrimmedLeft (70.0f).withTrimmedRight (330.0f), juce::Justification::centredLeft, true);
@@ -625,25 +670,28 @@ void MixerView::rackChanged()
     repaint();
 }
 
+int MixerView::rackRows (int insertRows) const
+{
+    if (showsInserts() && showsSends())
+        return insertRows + pr7s::Project::maxSends + 1;   // (and the line between them)
+    return showsInserts() || showsSends() ? insertRows : 0;
+}
+
 int MixerView::getPreferredHeight() const
 {
     auto most = master->getShownSlots();
     for (const auto& strip : strips)
         most = juce::jmax (most, strip->getShownSlots());
-    return barHeight + Strip::fixedHeight + 110 + (rackShown ? most * (slotHeight + slotGap) : 0) + viewport.getScrollBarThickness();
+    return barHeight + Strip::fixedHeight + 110 + rackRows (most) * (slotHeight + slotGap) + viewport.getScrollBarThickness();
 }
 
 int MixerView::getMinimumHeight() const
 {
     // The rack's room: the most slots any strip shows, at their smallest.
-    auto rack = 0;
-    if (rackShown)
-    {
-        auto most = master->getShownSlots();
-        for (const auto& strip : strips)
-            most = juce::jmax (most, strip->getShownSlots());
-        rack = most * (Strip::shortestSlot + slotGap);
-    }
+    auto most = master->getShownSlots();
+    for (const auto& strip : strips)
+        most = juce::jmax (most, strip->getShownSlots());
+    const auto rack = rackRows (most) * (Strip::shortestSlot + slotGap);
     return barHeight + Strip::fixedHeight + Strip::shortestFader + rack + viewport.getScrollBarThickness();
 }
 

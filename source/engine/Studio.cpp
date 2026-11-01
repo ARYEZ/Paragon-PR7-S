@@ -4,6 +4,7 @@
 
 #include "AudioAdvice.h"
 #include "DawProject.h"
+#include "SessionLog.h"
 #include "MidiImport.h"
 
 namespace pr7s
@@ -98,6 +99,7 @@ namespace pr7s
 
     void Studio::reloadAudioDevice()
     {
+        SessionLog::note ("RELOAD DRIVER");
         // Closed and opened again: the driver is asked afresh for its sizes
         // (a size set in its own panel replaces one it no longer offers).
         if (devices.getCurrentAudioDevice() == nullptr)
@@ -108,6 +110,17 @@ namespace pr7s
 
     void Studio::changeListenerCallback (juce::ChangeBroadcaster*)
     {
+        // The device in the session log, when it changes.
+        if (auto* device = devices.getCurrentAudioDevice())
+        {
+            const auto line = "Audio: " + device->getTypeName() + ", " + device->getName() + ", " + juce::String (device->getCurrentSampleRate(), 0)
+                            + " Hz, " + juce::String (device->getCurrentBufferSizeSamples()) + " samples, in "
+                            + juce::String (device->getInputLatencyInSamples()) + " / out " + juce::String (device->getOutputLatencyInSamples()) + " samples' latency";
+            if (line != loggedDevice)
+                SessionLog::note (loggedDevice = line);
+        }
+        else if (loggedDevice.isNotEmpty())
+            SessionLog::note ((loggedDevice = {}) + "Audio: no device open");
         // A new sample rate: the recordings are loaded again at it.
         if (! juce::approximatelyEqual (audioCacheRate, engine.getSampleRate()))
         {
@@ -739,6 +752,7 @@ namespace pr7s
 
     bool Studio::freezeTrack (int trackId, double tailSeconds, juce::String& error)
     {
+        SessionLog::note ("Freezing track " + juce::String (trackId));
         auto* track = project.findTrack (trackId);
         if (track == nullptr || track->isChannel() || track->frozen || track->disabled)
         {
@@ -1631,6 +1645,7 @@ namespace pr7s
 
     int Studio::importAudio (const juce::Array<juce::File>& files, int trackId, double atBeat, juce::String& error, bool oneTrack)
     {
+        SessionLog::note ("Importing " + juce::String (files.size()) + " audio file(s), the first " + files.getFirst().getFullPathName());
         auto folder = getAudioFolder();
         folder.createDirectory();
         juce::StringArray problems;
@@ -3199,14 +3214,17 @@ namespace pr7s
         sendChangeMessage();
     }
 
-    int Studio::importMidi (const juce::File& source, bool newSong, double atBeat, juce::String& error)
+    int Studio::importMidi (const juce::File& source, bool newSong, double atBeat, juce::String& error, bool matchTempo)
     {
+        SessionLog::note ("Importing the MIDI file " + source.getFullPathName());
         const auto read = readMidiFile (source, error);
-        return read ? importMidi (*read, newSong, atBeat) : 0;
+        return read ? importMidi (*read, newSong, atBeat, matchTempo) : 0;
     }
 
-    int Studio::importMidi (const MidiImport& midi, bool newSong, double atBeat)
+    int Studio::importMidi (const MidiImport& midi, bool newSong, double atBeat, bool matchTempo)
     {
+        if (! newSong && matchTempo && std::abs (project.bpm - midi.bpm) > 1.0e-6)
+            setTempo (midi.bpm);
         if (newSong)
         {
             newProject();
@@ -3304,6 +3322,7 @@ namespace pr7s
 
     bool Studio::prepareSave (const juce::File& destination)
     {
+        SessionLog::note ("Saving " + destination.getFullPathName());
         // Each instrument's current settings go into the file with it.
         for (auto& track : project.tracks)
             if (auto* instrument = engine.getInstrument (track.id))
@@ -3353,6 +3372,7 @@ namespace pr7s
 
     bool Studio::beginExport (const juce::File& destination, const ExportOptions& options, juce::String& error)
     {
+        SessionLog::note ("Rendering to " + destination.getFullPathName());
         if (exportJob != nullptr || engine.isRecording())
         {
             error = "Not while recording or exporting.";
@@ -3507,6 +3527,7 @@ namespace pr7s
     {
         if (exportJob == nullptr)
             return;
+        SessionLog::note ("  Render done.");
         auto job = std::move (exportJob);
         engine.stop();
         job->writer.reset();   // the file finished
@@ -3774,6 +3795,7 @@ namespace pr7s
 
     bool Studio::open (const juce::File& source, juce::String& problems)
     {
+        SessionLog::note ("Opening " + source.getFullPathName());
         const auto xml = juce::XmlDocument::parse (source);
         if (xml == nullptr)
             return false;
@@ -3786,6 +3808,7 @@ namespace pr7s
 
     bool Studio::importDawProject (const juce::File& source, juce::String& report)
     {
+        SessionLog::note ("Importing the DAWproject " + source.getFullPathName());
         // A new song (not saved yet), its audio in a folder of its own.
         const auto folder = unsavedAudioFolder.getParentDirectory().getNonexistentChildFile (source.getFileNameWithoutExtension(), {}, false);
         juce::String error;

@@ -48,6 +48,7 @@ namespace pr7s
         const juce::PluginDescription* getStudioSynth();
         bool isStudioSynthFound() { return getStudioSynth() != nullptr; }
         static juce::String studioSynthName();   // what the menus call it
+        static juce::String describe (const juce::PluginDescription&);   // name, maker, version, file (for the session log)
         static constexpr const char* studioSynthFile = "Paragon PR7-K.vst3";
 
     private:

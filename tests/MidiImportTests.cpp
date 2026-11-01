@@ -159,13 +159,57 @@ TEST_CASE ("Importing a MIDI file on screen: IMPORT in the header; a .mid droppe
     CHECK_FALSE (view.isInterestedInFileDrag ({ "notes.txt" }));   // (audio files are taken too since 0.8.3)
     auto& arrange = view.getArrangeView();
     const auto dropAt = view.getLocalPoint (&arrange, juce::Point<int> ((int) (9.0 * Timeline().pixelsPerBeat), 60));
+    // The file is at 100 BPM, the song at 120: asked which (0.9.14). Cancel: nothing comes in.
+    auto asked = 0;
+    auto reply = 0;
+    double askedBpm = 0.0;
+    view.askMidiTempo = [&] (const juce::File&, double bpm, std::function<void (int)> answer) { ++asked; askedBpm = bpm; answer (reply); };
+    view.filesDropped ({ file.getFullPathName() }, dropAt.x, dropAt.y);
+    CHECK (asked == 1);
+    CHECK_THAT (askedBpm, WithinAbs (100.0, 1.0e-6));
+    CHECK (studio.getProject().tracks.size() == 1);
+    // Keep the song's tempo.
+    reply = 2;
     view.filesDropped ({ file.getFullPathName() }, dropAt.x, dropAt.y);
     const auto& tracks = studio.getProject().tracks;
     REQUIRE (tracks.size() == 3);   // the song's own, and the file's two
     CHECK (tracks[1].name == "Piano");
     CHECK (tracks[1].parts[0].start == 8.0);   // the bar it was dropped on
     CHECK (studio.getProject().bpm == 120.0);  // this song's tempo kept
+    // Match the song to the file: 100 BPM, the notes on the same beats; the tempo change is an undo step of its own.
+    reply = 1;
+    view.filesDropped ({ file.getFullPathName() }, dropAt.x, dropAt.y);
+    CHECK (tracks.size() == 5);
+    CHECK (tracks[3].parts[0].start == 8.0);
+    CHECK (studio.getProject().bpm == 100.0);
+    // A file at the song's tempo now: not asked.
+    asked = 0;
+    view.filesDropped ({ file.getFullPathName() }, dropAt.x, dropAt.y);
+    CHECK (asked == 0);
+    CHECK (tracks.size() == 7);
     file.deleteFile();
+}
+
+TEST_CASE ("MIDI import into this song can match the song's tempo to the file's (0.9.14)", "[midi][studio]")
+{
+    Studio studio (false);
+    juce::MemoryOutputStream out;
+    REQUIRE (song().writeTo (out, 1));
+    juce::MemoryInputStream in (out.getData(), out.getDataSize(), false);
+    juce::String error;
+    const auto midi = readMidiFile (in, error);
+    REQUIRE (midi.has_value());
+    studio.setTempo (140.0);
+    studio.setSignature (3, 4);
+    CHECK (studio.importMidi (*midi, false, 0.0, false) == 2);
+    CHECK (studio.getProject().bpm == 140.0);    // kept
+    CHECK (studio.importMidi (*midi, false, 0.0, true) == 2);
+    CHECK (studio.getProject().bpm == 100.0);    // the file's
+    CHECK (studio.getProject().numerator == 3);  // (the signature stays the song's)
+    // A new song always takes the file's tempo (matchTempo or not).
+    studio.setTempo (90.0);
+    CHECK (studio.importMidi (*midi, true, 0.0, false) == 2);
+    CHECK (studio.getProject().bpm == 100.0);
 }
 
 TEST_CASE ("Several MIDI files imported one after another: each file's tracks added as new tracks (one at a time never stops the next)", "[midi][studio]")

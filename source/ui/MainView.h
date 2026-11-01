@@ -86,7 +86,12 @@ public:
     // arrangement, on the audio track under them (else a new one) at the bar.
     void importAudioFiles (bool oneTrack);
     void importAudio (const juce::Array<juce::File>&, int trackId, double atBeat, bool oneTrack);
+    // Into this song: if the (first) file's tempo isn't the song's, asks whether
+    // the song takes the file's tempo (0.9.14), then importMidiFilesNow.
     void importMidiFiles (const juce::Array<juce::File>&, bool newSong, double atBeat);
+    void importMidiFilesNow (const juce::Array<juce::File>&, bool newSong, double atBeat, bool matchTempo);
+    // The question itself (a box; tests answer it): `answer` 1 match, 2 keep, 0 cancel.
+    std::function<void (const juce::File&, double fileBpm, std::function<void (int)> answer)> askMidiTempo;
     bool isInterestedInFileDrag (const juce::StringArray&) override;
     void filesDropped (const juce::StringArray&, int x, int y) override;
 
