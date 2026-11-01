@@ -40,6 +40,7 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override;
 
     // What the screens show now (for tests).
+    static juce::String screenPosition (const juce::String& text, int numerator);   // padded for the screen: always as wide
     juce::String getPositionText() const;
     juce::String getTempoText() const;
 

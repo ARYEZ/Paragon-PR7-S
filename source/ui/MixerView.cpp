@@ -638,8 +638,21 @@ void MixerView::resized()
     viewport.setBounds (area);
     const auto height = area.getHeight() - (viewport.canScrollHorizontally() ? viewport.getScrollBarThickness() : 0);
     holder.setSize (juce::jmax (area.getWidth(), (int) strips.size() * stripW), juce::jmax (0, height));
-    for (size_t i = 0; i < strips.size(); ++i)
-        strips[i]->setBounds ((int) i * stripW, 0, stripW, holder.getHeight());
+    // The tracks from the left; group channels at the right, next to the master
+    // (0.13.1, the owner asked), in the track list's order.
+    const auto isGroup = [this] (const Strip& strip)
+    {
+        const auto* track = studio.getProject().findTrack (strip.getBusId());
+        return track != nullptr && track->isGroup();
+    };
+    const auto groups = (int) std::count_if (strips.begin(), strips.end(), [&] (const auto& strip) { return isGroup (*strip); });
+    auto left = 0, right = holder.getWidth() - groups * stripW;
+    for (auto& strip : strips)
+    {
+        auto& x = isGroup (*strip) ? right : left;
+        strip->setBounds (x, 0, stripW, holder.getHeight());
+        x += stripW;
+    }
 }
 
 //==============================================================================

@@ -148,7 +148,8 @@ void TransportBar::drawFixedPitch (juce::Graphics& g, const juce::String& text, 
     juce::Font f (font (height));
     const auto digit = juce::jmax (juce::GlyphArrangement::getStringWidth (f, "0"), juce::GlyphArrangement::getStringWidth (f, "8"),
                                    juce::GlyphArrangement::getStringWidth (f, "4")) * 1.05f;
-    const auto cellFor = [digit] (juce::juce_wchar c) { return juce::CharacterFunctions::isDigit (c) ? digit : digit * 0.5f; };
+    // (A figure space, U+2007, is a blank as wide as a figure: padding that keeps the value's width.)
+    const auto cellFor = [digit] (juce::juce_wchar c) { return juce::CharacterFunctions::isDigit (c) || c == 0x2007 ? digit : digit * 0.5f; };
     auto total = 0.0f;
     for (auto c : text)
         total += cellFor (c);
@@ -163,9 +164,30 @@ void TransportBar::drawFixedPitch (juce::Graphics& g, const juce::String& text, 
     for (auto c : text)
     {
         const auto w = cellFor (c);
-        g.drawText (juce::String::charToString (c), juce::Rectangle<float> (x, area.getY(), w, area.getHeight()), juce::Justification::centred, false);
+        if (c != 0x2007)
+            g.drawText (juce::String::charToString (c), juce::Rectangle<float> (x, area.getY(), w, area.getHeight()), juce::Justification::centred, false);
         x += w;
     }
+}
+
+juce::String TransportBar::screenPosition (const juce::String& text, int numerator)
+{
+    // Each field padded to a fixed number of figure-wide blanks (bars 2, the
+    // beat as many as the signature's top, the sixteenth 1, ticks 3), so the
+    // value is always as wide and stays still as it counts (0.13.1, the owner
+    // saw it pulse: "1. 1. 1.  0" grew to "1. 1. 2. 34", the whole re-centred).
+    const juce::juce_wchar blank = 0x2007;
+    auto fields = juce::StringArray::fromTokens (text, ".", {});
+    const int widths[] = { 2, juce::String (juce::jmax (1, numerator)).length(), 1, 3 };
+    if (fields.size() != 4)
+        return text;
+    juce::StringArray padded;
+    for (int i = 0; i < 4; ++i)
+    {
+        const auto field = fields[i].trim();
+        padded.add (juce::String::repeatedString (juce::String::charToString (blank), juce::jmax (0, widths[i] - field.length())) + field);
+    }
+    return padded.joinIntoString (". ");
 }
 
 juce::String TransportBar::getPositionText() const
@@ -289,7 +311,7 @@ void TransportBar::paint (juce::Graphics& g)
             g.setColour (orange);
             drawFixedPitch (g, value, inside, juce::jmin (44.0f, inside.getHeight() * 0.95f));
         };
-        drawScreen (positionScreen, "POSITION", getPositionText());
+        drawScreen (positionScreen, "POSITION", screenPosition (getPositionText(), studio.getProject().numerator));
         drawScreen (timeScreen, "TIME", pr7s::formatTime (studio.getProject().tempoMap().secondsAt (beats)));
     }
 

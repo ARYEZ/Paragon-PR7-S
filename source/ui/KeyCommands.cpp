@@ -61,14 +61,15 @@ namespace KeyCommands
         const auto key = normalise (press);
         const auto mods = key.getModifiers();
         juce::String text;
-       #if JUCE_MAC
-        // (On a Mac, Cmd and Ctrl are two keys: told apart, so a saved Ctrl+X stays Ctrl+X.)
+        // "Ctrl+" is the platform's command key (Ctrl on Windows, Cmd on a Mac).
+        // On a Mac the real Ctrl key is another key: "MacCtrl+" (so a saved one stays itself).
         if (mods.isCommandDown())
-            text << "Cmd+";
-        if (mods.isCtrlDown())
             text << "Ctrl+";
+       #if JUCE_MAC
+        if (mods.isCtrlDown())
+            text << "MacCtrl+";
        #else
-        if (mods.isCtrlDown() || mods.isCommandDown())
+        else if (mods.isCtrlDown())
             text << "Ctrl+";
        #endif
         if (mods.isAltDown())
@@ -84,11 +85,8 @@ namespace KeyCommands
         int flags = 0;
         for (;;)
         {
-           #if JUCE_MAC
-            if (rest.startsWithIgnoreCase ("Ctrl+"))       { flags |= juce::ModifierKeys::ctrlModifier; rest = rest.substring (5); }
-           #else
-            if (rest.startsWithIgnoreCase ("Ctrl+"))       { flags |= juce::ModifierKeys::commandModifier; rest = rest.substring (5); }
-           #endif
+            if (rest.startsWithIgnoreCase ("MacCtrl+"))    { flags |= juce::ModifierKeys::ctrlModifier; rest = rest.substring (8); }
+            else if (rest.startsWithIgnoreCase ("Ctrl+"))  { flags |= juce::ModifierKeys::commandModifier; rest = rest.substring (5); }
             else if (rest.startsWithIgnoreCase ("Cmd+"))   { flags |= juce::ModifierKeys::commandModifier; rest = rest.substring (4); }
             else if (rest.startsWithIgnoreCase ("Alt+"))   { flags |= juce::ModifierKeys::altModifier; rest = rest.substring (4); }
             else if (rest.startsWithIgnoreCase ("Shift+")) { flags |= juce::ModifierKeys::shiftModifier; rest = rest.substring (6); }

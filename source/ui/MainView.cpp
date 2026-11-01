@@ -1618,6 +1618,16 @@ void MainView::openHub()
         return;
     }
     auto window = std::make_unique<HubWindow> (studio);
+    // Centred on the middle screen (the owner's three: Windows' own centring
+    // put it on the main display, the left one): the screen under the studio
+    // window's centre (it spans them all), else under the middle of all of them.
+    {
+        const auto* top = getTopLevelComponent();
+        const auto centre = top != nullptr && top->isShowing() ? top->getScreenBounds().getCentre()
+                                                               : Windows::allScreensArea().getCentre();
+        if (const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForPoint (centre))
+            window->setCentrePosition (display->userArea.getCentre());
+    }
     auto& hub = window->getHub();
     const auto closeHub = [safe = juce::Component::SafePointer<MainView> (this)]
     {

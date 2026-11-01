@@ -229,6 +229,14 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.setSend (lead, 0, { fx, -6.0f, true, true });
         studio.setSend (guitar, 0, { fx, -10.0f, true, false });
         studio.setVolume (fx, -3.0f);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_GROUP", {}).isNotEmpty())
+        {
+            // A group channel (0.13.1): its strip at the right, next to the master's.
+            const auto group = studio.addGroupChannel();
+            studio.renameTrack (group, "Rhythm");
+            studio.setOutput (keys, group);
+            studio.setOutput (bass, group);
+        }
         studio.selectTrack (bass);
         view.openMixer();
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SENDS", {}).isNotEmpty())
@@ -496,6 +504,8 @@ TEST_CASE ("Snapshot: the settings page", "[.][snapshot-settings]")
 TEST_CASE ("Snapshot: a question box", "[.][snapshot-alert]")
 {
     const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "alert.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
     ParagonLookAndFeel lookAndFeel;
     juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
     {

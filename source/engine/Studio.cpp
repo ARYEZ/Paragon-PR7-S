@@ -811,8 +811,7 @@ namespace pr7s
                 t.solo = false;
                 if (t.id != trackId)
                 {
-                    if (! t.isChannel())
-                        t.parts.clear();
+                    silenceForRender (t);
                     continue;
                 }
                 t.mute = false;
@@ -3751,6 +3750,24 @@ namespace pr7s
         return copyAudioFiles (getAudioFolder(), destination.getSiblingFile (destination.getFileNameWithoutExtension() + " Audio"));
     }
 
+    void Studio::silenceForRender (Track& t)
+    {
+        // Another track than the one rendered or frozen: nothing of it in the file.
+        // Its parts go; a frozen one's freeze file isn't played either (it was:
+        // freezing tracks one after another put every earlier one in each new
+        // file); and it's muted, so an instrument that plays patterns of its own
+        // while the song runs (a drum machine following the transport) isn't
+        // heard. FX and group channels stay: they carry the rendered track's
+        // sends and output.
+        if (t.isChannel())
+            return;
+        t.parts.clear();
+        t.frozen = false;
+        t.freezeFile = {};
+        t.mute = true;
+        t.monitor = false;
+    }
+
     bool Studio::copyAudioFiles (const juce::File& from, const juce::File& to)
     {
         if (from == to)
@@ -4156,8 +4173,7 @@ namespace pr7s
                         t.solo = false;
                         if (t.id != sourceId)
                         {
-                            if (! t.isChannel())
-                                t.parts.clear();   // the other tracks: silent (FX and group channels still take what's sent or routed)
+                            silenceForRender (t);   // the other tracks: silent (FX and group channels still take what's sent or routed)
                             continue;
                         }
                         std::vector<Part> kept;

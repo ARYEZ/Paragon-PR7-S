@@ -821,26 +821,32 @@ void ParagonLookAndFeel::drawScrollbar (juce::Graphics& g, juce::ScrollBar&, int
 //==============================================================================
 void ParagonLookAndFeel::drawAlertBox (juce::Graphics& g, juce::AlertWindow& alert, const juce::Rectangle<int>& textArea, juce::TextLayout& textLayout)
 {
-    // The black pearl (as the units' black finish): a soft gradient, the family's red glow round it.
-    const auto bounds = alert.getLocalBounds().toFloat();
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2d282c), 0.0f, 0.0f, juce::Colour (0xff131114), 0.0f, bounds.getBottom(), false));
-    g.fillRoundedRectangle (bounds, 6.0f);
-    g.setColour (juce::Colours::white.withAlpha (0.12f));
-    g.drawLine (bounds.getX() + 6.0f, 1.0f, bounds.getRight() - 6.0f, 1.0f, 1.0f);
-    g.setColour (ParagonColours::glow.withAlpha (0.55f));
-    g.drawRoundedRectangle (bounds.reduced (0.75f), 6.0f, 1.5f);
+    // The progress box's look (0.13.1, the owner asked: the question boxes as
+    // the render and freeze box): the deep black body, the family's red glow
+    // along the edge, the PR7-S mark and the title large on the left, the
+    // message under them.
+    const auto bounds = alert.getLocalBounds().toFloat().reduced (1.0f);
+    g.setColour (juce::Colour (0xff0c0a0d));
+    g.fillRoundedRectangle (bounds, 8.0f);
+    g.setColour (ParagonColours::glow.withAlpha (0.35f));
+    g.drawRoundedRectangle (bounds.reduced (1.5f), 7.0f, 3.0f);
+    g.setColour (ParagonColours::glow);
+    g.drawRoundedRectangle (bounds, 8.0f, 1.2f);
 
-    // Where the question mark was: the PR7-S mark.
-    auto textLeft = textArea.getX();
-    if (alert.getAlertType() != juce::MessageBoxIconType::NoIcon)
-    {
-        const juce::Rectangle<float> markArea (14.0f, 30.0f, 62.0f, 22.0f);
-        Logo::drawMark (g, markArea, juce::Justification::centredLeft, { juce::Colours::white, ParagonColours::glow, {}, {}, 1.0f, true });
-        textLeft = juce::jmax (textLeft, 84);
-    }
-    g.setColour (juce::Colours::white);
-    const juce::Rectangle<int> textBounds (textLeft, 30, alert.getWidth() - textLeft - 12, alert.getHeight() - getAlertWindowButtonHeight() - 50);
-    textLayout.draw (g, textBounds.toFloat());
+    // The mark at the top left (as the progress box's), the title and message
+    // beside it: the box's own text (its title large in Bebas, the message under).
+    const juce::Rectangle<float> mark (22.0f, 18.0f, 34.0f, 34.0f);
+    Logo::drawMark (g, mark.reduced (2.0f), juce::Justification::centredLeft,
+                    { juce::Colours::white, ParagonColours::glow, {}, {}, 1.0f, true });
+    const auto left = mark.getRight() + 12.0f;
+    auto lowest = (float) alert.getHeight() - 18.0f;
+    for (auto* child : alert.getChildren())
+        if (child->isVisible())
+            lowest = juce::jmin (lowest, (float) child->getY() - 6.0f);
+    const auto textTop = mark.getCentreY() - 13.0f;   // (the title's line level with the mark)
+    textLayout.draw (g, juce::Rectangle<float> (left, textTop, juce::jmax (40.0f, bounds.getRight() - 22.0f - left),
+                                                juce::jmax (textLayout.getHeight(), lowest - textTop)));
+    juce::ignoreUnused (textArea);
 }
 
 juce::Font ParagonLookAndFeel::getAlertWindowTitleFont()   { return juce::Font (titleFont (20.0f)); }

@@ -4,6 +4,13 @@ Each version's notes appear on its GitHub Release page.
 
 ## 0.13.1
 
+**What you reported:**
+- **Freeze and Render in Place put other tracks into the file.** A track frozen earlier plays its freeze file instead of its parts, and the render only cleared the other tracks' parts. So freezing tracks one after another put every earlier one into each new file, and Render in Place picked them up too. Now every track but the one rendered is fully silenced for the render: no parts, no freeze file, muted (which also silences an instrument that plays patterns of its own while the song runs). FX and group channels still carry the rendered track's sends and output.
+- **The Hub opens centred on your middle screen:** the screen under the middle of the studio's window, which spans all three. Windows used to put it on the main display, your left one.
+- **The POSITION screen no longer pulses or jumps.** Its value changed length as it counted (the ticks went from "0" to "119", and the bar number grew), so it moved sideways, and when it got too wide the font shrank to fit. Each field now has a fixed number of figure-wide cells, so it stays still, as TIME does.
+- **Group channels sit at the right of the mixer, next to the master.** The other tracks still start from the left.
+- **Question boxes (Delete track and the rest) look like the progress box:** the deep black body, the red glow along the edge, the PR7-S mark with a large title, the message under it. The keys are still placed in the middle by the box itself.
+
 **Fixes from a review of the whole code, before chord pads.** Four reviewers read the code in four parts (the engine, the song and saving, the screen, the imports and newer windows). Every finding was checked against the code before anything was changed, and each fix has a test that failed before it.
 
 **Sound and renders:**
@@ -36,7 +43,7 @@ Each version's notes appear on its GitHub Release page.
 **Imports and keys:**
 - **DAWproject:** a clip that contains itself used to crash the studio, and references nested in each other could hang it. A damaged .vstpreset could crash it too. Plug-ins are matched by name, then vendor, then kind (instrument or effect), so a same-named plug-in from another maker or of the other kind is no longer taken first. A file referenced outside the DAWproject must be an ordinary file of a sane size. A missing audio file's name is never given to a real one.
 - **MIDI files whose first tempo comes after the start** play at MIDI's own 120 until then (they took the later tempo from the start).
-- **Key commands:** a key on the comma (Ctrl+,) is kept when saved. Macros that call each other stop after 1000 steps. On a Mac, Ctrl and Cmd are told apart. A key you took away from an arrangement command still works in the MIDI editor after a click there.
+- **Key commands:** a key on the comma (Ctrl+,) is kept when saved. Macros that call each other stop after 1000 steps. On a Mac, the Ctrl key is kept apart from Cmd (shown as MacCtrl). A key you took away from an arrangement command still works in the MIDI editor after a click there.
 
 **Left as they are (honestly):**
 - If the studio crashes from a stack overflow on Windows, the crash log may not be written. The handler itself runs short of room.

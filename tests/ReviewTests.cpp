@@ -404,3 +404,98 @@ TEST_CASE ("The Tempo Track Editor's selection follows its events when one befor
     page.getProcessKey().onClick();
     CHECK_THAT (other.getProject().tempoMap().secondsBetween (4.0, 12.0), WithinAbs (8.0, 1.0e-9));
 }
+
+TEST_CASE ("Freeze and Render in Place hold only their own track: another track's notes aren't in the file", "[render][freeze][review]")
+{
+    const auto check = [] (bool freeze, bool threaded)
+    {
+        Studio studio (false);
+        const auto a = studio.getProject().tracks[0].id;
+        studio.addPart (a, { 0.0, 8.0, "A", { { 0.0, 1.0, 60, 1.0f } } });
+        const auto b = studio.addTrack ({});
+        studio.addPart (b, { 0.0, 8.0, "B", { { 4.0, 3.0, 67, 1.0f } } });
+        studio.selectTrack (a);
+        if (threaded)
+            studio.renderRunner = [] (std::function<bool()> work)
+            {
+                auto result = false;
+                std::thread worker ([&] { result = work(); });
+                worker.join();
+                return result;
+            };
+        juce::String error;
+        juce::String file;
+        if (freeze)
+        {
+            REQUIRE (studio.freezeTrack (a, 0.0, error));
+            file = studio.getProject().findTrack (a)->freezeFile;
+        }
+        else
+        {
+            Studio::RenderOptions options;
+            options.tail = Studio::RenderOptions::Tail::off;
+            const auto made = studio.renderInPlace ({ { a, 0.0, 8.0, true } }, options, error);
+            REQUIRE (made.size() == 1);
+            REQUIRE (studio.getProject().findTrack (made[0])->parts.size() == 1);
+            file = studio.getProject().findTrack (made[0])->parts[0].audioFile;
+        }
+        const auto data = studio.getAudio (file);
+        REQUIRE (data != nullptr);
+        const auto beat = (int) (data->sampleRate * 0.5);   // 120 BPM
+        REQUIRE (data->sound.getNumSamples() >= beat * 7);
+        CHECK (data->sound.getMagnitude (0, 0, beat) > 0.01f);              // A sounds
+        CHECK (data->sound.getMagnitude (0, beat * 4 + 200, beat * 2) < 1.0e-4f);   // B doesn't
+    };
+    check (true, false);
+    check (false, false);
+    check (true, true);
+    check (false, true);
+}
+
+TEST_CASE ("A track frozen earlier isn't heard in the next freeze or render (its freeze file played into them)", "[render][freeze][review]")
+{
+    for (const auto freeze : { true, false })
+    {
+        Studio studio (false);
+        const auto a = studio.getProject().tracks[0].id;
+        studio.addPart (a, { 0.0, 8.0, "A", { { 0.0, 1.0, 60, 1.0f } } });
+        const auto b = studio.addTrack ({});
+        studio.addPart (b, { 0.0, 8.0, "B", { { 4.0, 3.0, 67, 1.0f } } });
+        juce::String error;
+        REQUIRE (studio.freezeTrack (b, 0.0, error));   // B first: a file of its own
+        juce::String file;
+        if (freeze)
+        {
+            REQUIRE (studio.freezeTrack (a, 0.0, error));
+            file = studio.getProject().findTrack (a)->freezeFile;
+        }
+        else
+        {
+            Studio::RenderOptions options;
+            options.tail = Studio::RenderOptions::Tail::off;
+            const auto made = studio.renderInPlace ({ { a, 0.0, 8.0, true } }, options, error);
+            REQUIRE (made.size() == 1);
+            file = studio.getProject().findTrack (made[0])->parts[0].audioFile;
+        }
+        const auto data = studio.getAudio (file);
+        REQUIRE (data != nullptr);
+        const auto beat = (int) (data->sampleRate * 0.5);
+        CHECK (data->sound.getMagnitude (0, 0, beat) > 0.01f);
+        CHECK (data->sound.getMagnitude (0, beat * 4 + 200, beat * 2) < 1.0e-4f);   // B's frozen sound isn't in it
+    }
+}
+
+#include "ui/TransportBar.h"
+
+TEST_CASE ("The POSITION screen's value is always as wide as it counts (it pulsed)", "[ui][review]")
+{
+    const auto cells = [] (const juce::String& text)
+    {
+        auto n = 0.0;
+        for (auto c : text)
+            n += juce::CharacterFunctions::isDigit (c) || c == 0x2007 ? 1.0 : 0.5;
+        return n;
+    };
+    const auto a = TransportBar::screenPosition ("1. 1. 1.   0", 4), b = TransportBar::screenPosition ("12. 4. 3. 119", 4);
+    CHECK (cells (a) == cells (b));
+}

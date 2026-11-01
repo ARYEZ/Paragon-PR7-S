@@ -642,6 +642,7 @@ namespace pr7s
         // The song's recordings and freeze files (and its undo history's) copied from one folder to another.
         bool copyAudioFiles (const juce::File& from, const juce::File& to);
         void sendGone (Track&, int slot);
+        static void silenceForRender (Track&);
         void openProject (Project&&, const juce::File& source, juce::String& problems);   // open's and importDawProject's   // the plugins' settings into the song; the recordings beside it
         juce::ThreadPool saver { juce::ThreadPoolOptions{}.withThreadName ("Paragon PR7-S save").withNumberOfThreads (1) };
         std::shared_ptr<std::atomic<bool>> saveAlive = std::make_shared<std::atomic<bool>> (true);   // (false once the studio goes)
