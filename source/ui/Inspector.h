@@ -56,7 +56,8 @@ public:
     bool isFolded (Section) const;
     void setFolded (Section, bool);   // (kept in the settings file)
 
-    int getTrack() const noexcept { return trackId; }   // the one shown: the selected track (0: none)
+    int getTrack() const noexcept { return trackId; }   // the one shown: the selected track (0: none, or the master)
+    bool isShowingMaster() const noexcept { return master; }   // the master's row chosen (0.9.12)
 
     enum class Tab { inspector, visibility };
     void setTab (Tab);   // (kept in the settings file)
@@ -102,6 +103,8 @@ private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
     void showTrack (int);
+    void showMaster();
+    void refreshInserts();
     void refresh();
     void layout();
     void followMix();
@@ -110,6 +113,7 @@ private:
 
     pr7s::Studio& studio;
     int trackId = 0;
+    bool master = false;
     std::array<bool, numSections> folded {};
     juce::Viewport viewport;
     struct Content final : juce::Component

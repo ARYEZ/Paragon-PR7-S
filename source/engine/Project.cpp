@@ -316,10 +316,14 @@ namespace pr7s
             track.colour = juce::Colour::fromString (t->getStringAttribute ("colour", trackColour (0).toString()));
             // Songs from before 0.5.1 could have colours outside the family's
             // (blue, lime, violet, aqua, amber): each becomes its new one.
+            // Others (0.5.1 to 0.9.11's shades): the nearest of the gradient's three (0.9.12).
             const juce::uint32 retired[] = { 0xff45b4ff, 0xffb8f040, 0xffb86dff, 0xff4fe3dd, 0xffffb22e };
+            auto replaced = false;
             for (size_t i = 0; i < std::size (retired); ++i)
                 if (track.colour.getARGB() == retired[i])
-                    track.colour = trackColour (3 + (int) i);
+                    track.colour = trackColour (3 + (int) i), replaced = true;
+            if (! replaced)
+                track.colour = FamilyColours::nearest (track.colour);
             track.volumeDb = (float) juce::jlimit (-60.0, 6.0, t->getDoubleAttribute ("volumeDb", 0.0));
             track.pan = (float) juce::jlimit (-1.0, 1.0, t->getDoubleAttribute ("pan", 0.0));
             track.mute = t->getBoolAttribute ("mute");
@@ -454,19 +458,25 @@ namespace pr7s
 
     juce::Colour trackColour (int index)
     {
-        // Only the family's colours: shades along its red, pink and orange
-        // (the owner's rule), each unlike the one before it.
-        static const juce::Colour colours[] = {
-            juce::Colour (0xffe0103c),   // the chain's red
-            juce::Colour (0xffff2f7a),   // hot pink
-            juce::Colour (0xffff7a1a),   // orange
-            juce::Colour (0xffff7aa8),   // rose (a light pink)
-            juce::Colour (0xffff4a2a),   // red-orange
-            juce::Colour (0xffc2185b),   // deep pink
-            juce::Colour (0xffffa04a),   // peach (a light orange)
-            juce::Colour (0xffa3122f),   // crimson
+        // Only the gradient's three colours (0.9.12, the owner's rule), in turn.
+        static const juce::Colour colours[] = { FamilyColours::red, FamilyColours::pink, FamilyColours::orange };
+        return colours[(size_t) (index % 3 + 3) % 3];
+    }
+
+    juce::Colour FamilyColours::nearest (juce::Colour colour)
+    {
+        // By hue mostly (a light pink is still pink), then by lightness.
+        const auto distance = [colour] (juce::Colour other)
+        {
+            auto hue = std::abs (colour.getHue() - other.getHue());
+            hue = juce::jmin (hue, 1.0f - hue);
+            return hue * 4.0f + std::abs (colour.getBrightness() - other.getBrightness()) * 0.5f;
         };
-        return colours[(size_t) (index % (int) std::size (colours) + (int) std::size (colours)) % std::size (colours)];
+        auto best = pink;
+        for (const auto candidate : { red, orange })
+            if (distance (candidate) < distance (best))
+                best = candidate;
+        return best;
     }
 
     double snap (double beats, double grid) noexcept

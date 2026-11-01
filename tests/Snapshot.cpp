@@ -25,6 +25,7 @@
 // PARAGON_SNAPSHOT_QC=1: the Inspector's Quick Controls, three assigned.
 // PARAGON_SNAPSHOT_MULTI=1: parts selected on two tracks.
 // PARAGON_SNAPSHOT_STATES=1: the lead soloed, the bass muted, the keys armed (written under their names; the header's M and S lit).
+// PARAGON_SNAPSHOT_MASTER=1: the master's row chosen (its Inspector).
 // PARAGON_SNAPSHOT_FREEZE=1: the lead frozen (FREEZE lit in its Inspector, its parts stamped).
 // PARAGON_SNAPSHOT_VISIBILITY=1: the VISIBILITY tab, the bass hidden, the keys disabled.
 // PARAGON_SNAPSHOT_INSPECTOR=fader folds the Inspector's inserts and sends (=none hides it).
@@ -288,6 +289,11 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     }
     studio.dispatchPendingMessages();
 
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_MASTER", {}).isNotEmpty())
+    {
+        studio.selectMaster();   // (last: the set-up above chooses tracks)
+        studio.dispatchPendingMessages();
+    }
     auto image = view.createComponentSnapshot (view.getLocalBounds(), true, scale);
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_RENDER", {}).isNotEmpty())
     {

@@ -45,11 +45,13 @@ public:
         const auto bounds = getLocalBounds().toFloat();
         const auto* t = owner.track();
         const auto isTrack = section == Section::basics;
-        g.setColour (isTrack && t != nullptr ? t->colour.darker (0.55f) : juce::Colour (0xff17121a));
+        const auto colour = owner.master ? pr7s::FamilyColours::red : t != nullptr ? t->colour : juce::Colour();
+        const auto coloured = isTrack && (t != nullptr || owner.master);
+        g.setColour (coloured ? colour.darker (0.55f) : juce::Colour (0xff17121a));
         g.fillRect (bounds);
-        if (isTrack && t != nullptr)
+        if (coloured)
         {
-            g.setColour (t->colour);
+            g.setColour (colour);
             g.fillRect (bounds.withWidth (4.0f));
         }
         g.setColour (ParagonColours::panelEdge);
@@ -66,7 +68,8 @@ public:
         g.fillPath (arrow);
         g.setColour (ParagonColours::text);
         g.setFont (isTrack ? ParagonLookAndFeel::titleFont (12.5f) : font (12.0f));
-        const auto title = isTrack ? (t != nullptr ? t->name : juce::String ("NO TRACK SELECTED")) : juce::String (sectionTitles[(int) section]);
+        const auto title = isTrack ? (owner.master ? juce::String ("MASTER") : t != nullptr ? t->name : juce::String ("NO TRACK SELECTED"))
+                                   : juce::String (sectionTitles[(int) section]);
         g.drawFittedText (title, getLocalBounds().withTrimmedLeft (headerHeight + (isTrack ? 6 : 2)).withTrimmedRight (4),
                           juce::Justification::centredLeft, 1, 0.8f);
     }
@@ -247,12 +250,18 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     volume.onValueChange = [this]
     {
         volumeReadout.setText (dbText (volume.getValue()), juce::dontSendNotification);
-        studio.setVolume (trackId, (float) volume.getValue(), ! volume.isMouseButtonDown());
+        if (master)   // (0.9.12: the master's, in its Inspector)
+            studio.setMasterVolume ((float) volume.getValue(), ! volume.isMouseButtonDown());
+        else
+            studio.setVolume (trackId, (float) volume.getValue(), ! volume.isMouseButtonDown());
     };
     volume.onDragStart = [this] { studio.grabControl (trackId, pr7s::Studio::control (pr7s::AutomationLane::Target::volume)); };
     volume.onDragEnd = [this]
     {
-        studio.setVolume (trackId, (float) volume.getValue(), true);
+        if (master)
+            studio.setMasterVolume ((float) volume.getValue(), true);
+        else
+            studio.setVolume (trackId, (float) volume.getValue(), true);
         studio.releaseControl (trackId, pr7s::Studio::control (pr7s::AutomationLane::Target::volume));
     };
     pan.setRange (-1.0, 1.0, 0.01);
@@ -548,14 +557,33 @@ void Inspector::refreshVisibility()
 void Inspector::changeListenerCallback (juce::ChangeBroadcaster*)
 {
     refreshVisibility();
-    if (studio.getSelectedTrack() != trackId || track() == nullptr)
+    if (studio.isMasterSelected())   // the master's row (0.9.12)
+    {
+        if (! master)
+            showMaster();
+        else
+            refresh();
+        return;
+    }
+    if (master || studio.getSelectedTrack() != trackId || track() == nullptr)
         showTrack (studio.getSelectedTrack());
     else
         refresh();
 }
 
+void Inspector::showMaster()
+{
+    // The master (0.9.12, the owner asked): its R and W, volume, inserts and fader.
+    master = true;
+    trackId = pr7s::Engine::masterBus;
+    AutomationKeys::setUp (read, write, studio, trackId);
+    fader.setSingleTrack (trackId, true);
+    refresh();
+}
+
 void Inspector::showTrack (int id)
 {
+    master = false;
     trackId = studio.getProject().findTrack (id) != nullptr ? id : 0;
     AutomationKeys::setUp (read, write, studio, trackId);
     for (int i = 0; i < pr7s::Project::maxSends; ++i)
@@ -600,6 +628,14 @@ void Inspector::refresh()
     const auto* t = track();
     for (auto& header : headers)
         header->repaint();
+    if (master)
+    {
+        AutomationKeys::refresh (read, write, studio, trackId);
+        refreshInserts();
+        followMix();
+        layout();
+        return;
+    }
     if (t == nullptr)
     {
         layout();
@@ -643,6 +679,16 @@ void Inspector::refresh()
     output.setButtonText (to != nullptr ? to->name : juce::String ("MASTER"));
     output.setEnabled (! t->isChannel());
 
+    refreshInserts();
+    for (auto& send : sendSlots)
+        send->refresh();
+    refreshQuickControls();
+    followMix();
+    layout();
+}
+
+void Inspector::refreshInserts()
+{
     // The inserts, as the mixer's strip has them.
     const auto* inserts = studio.getInserts (trackId);
     const auto used = inserts != nullptr ? (int) inserts->size() : 0;
@@ -670,11 +716,6 @@ void Inspector::refresh()
                              + ": add an effect (one of your VST3 effects)");
         }
     }
-    for (auto& send : sendSlots)
-        send->refresh();
-    refreshQuickControls();
-    followMix();
-    layout();
 }
 
 void Inspector::refreshQuickControls()
@@ -755,6 +796,14 @@ void Inspector::showQuickControlsMenu()
 
 void Inspector::followMix()
 {
+    if (master)
+    {
+        const auto db = studio.getAutomationRead (trackId) ? studio.getEngine().getMixNow (trackId).volumeDb : studio.getProject().masterVolumeDb;
+        if (! volume.isMouseButtonDown() && std::abs (volume.getValue() - db) > 0.01)
+            volume.setValue (db, juce::dontSendNotification);
+        volumeReadout.setText (dbText (volume.getValue()), juce::dontSendNotification);
+        return;
+    }
     const auto* t = track();
     if (t == nullptr)
         return;
@@ -808,14 +857,30 @@ void Inspector::layout()
     {
         const auto section = (Section) i;
         auto& header = *headers[(size_t) i];
-        const auto applies = t != nullptr && (section != Section::sends || ! t->isFx());
+        // The master (0.9.12): its basics (R W, volume), inserts and fader.
+        const auto applies = master ? section == Section::basics || section == Section::inserts || section == Section::fader
+                                    : t != nullptr && (section != Section::sends || ! t->isFx());
         if (! applies && section != Section::basics)
             continue;
         header.setBounds (0, y, w, headerHeight);
         shown.push_back (&header);
         y += headerHeight + gap;
-        if (t == nullptr || folded[(size_t) i])
+        if ((t == nullptr && ! master) || folded[(size_t) i])
             continue;
+        if (master && section == Section::basics)
+        {
+            auto r = row (rowHeight);
+            const auto keyWidth = (r.getWidth() - 3) / 2;
+            place (read, r.removeFromLeft (keyWidth));
+            r.removeFromLeft (3);
+            place (write, r);
+            auto line = row (rowHeight - 4);
+            place (volumeLabel, line.removeFromLeft (34));
+            place (volumeReadout, line.removeFromRight (56));
+            line.removeFromRight (4);
+            place (volume, line);
+            continue;
+        }
         switch (section)
         {
             case Section::basics:
@@ -947,7 +1012,7 @@ void Inspector::paint (juce::Graphics& g)
                           juce::Justification::centredLeft, 2);
         return;
     }
-    if (track() == nullptr)
+    if (track() == nullptr && ! master)
     {
         g.setColour (ParagonColours::textDim);
         g.setFont (font (12.0f, juce::Font::plain));

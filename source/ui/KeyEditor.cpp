@@ -1441,11 +1441,17 @@ void KeyEditor::paint (juce::Graphics& g)
     const auto x = xForBeat (studio.getEngine().getPosition());
     if (x >= getNotesArea().getX() - 2.0f && x <= (float) getWidth() + 2.0f)
     {
-        const auto colour = studio.getEngine().isRecording() ? juce::Colour (0xffff3b2f) : ParagonColours::accent;
-        g.setColour (colour.withAlpha (0.25f));
-        g.fillRect (juce::Rectangle<float> (x - 2.0f, (float) rulerHeight, 5.0f, (float) (getHeight() - rulerHeight)));
+        const auto red = studio.getEngine().isRecording();
+        // Pearl white with a magenta-pink glow (0.9.12, the owner asked); red while recording.
+        const auto glowColour = red ? juce::Colour (0xffff3b2f) : pr7s::FamilyColours::pink;
+        const auto lineColour = red ? juce::Colour (0xffff3b2f) : juce::Colour (0xfff4eeea);
+        g.setColour (glowColour.withAlpha (0.18f));
+        g.fillRect (juce::Rectangle<float> (x - 4.0f, (float) rulerHeight, 9.2f, (float) (getHeight() - rulerHeight)));
+        g.setColour (glowColour.withAlpha (0.4f));
+        g.fillRect (juce::Rectangle<float> (x - 1.5f, (float) rulerHeight, 4.2f, (float) (getHeight() - rulerHeight)));
+        const auto colour = lineColour;
         g.setColour (colour);
-        g.fillRect (juce::Rectangle<float> (x, (float) rulerHeight - 6.0f, 1.2f, (float) (getHeight() - rulerHeight + 6)));
+        g.fillRect (juce::Rectangle<float> (x, (float) rulerHeight - 6.0f, 1.4f, (float) (getHeight() - rulerHeight + 6)));
         juce::Path marker;
         marker.addTriangle (x - 5.0f, (float) rulerHeight - 11.0f, x + 5.0f, (float) rulerHeight - 11.0f, x, (float) rulerHeight - 2.0f);
         g.fillPath (marker);
@@ -1524,6 +1530,15 @@ void KeyEditor::paintInfo (juce::Graphics& g, juce::Rectangle<float> info)
     g.setColour (ParagonColours::textDim);
     g.setFont (font (11.5f, juce::Font::plain));
     g.drawText (line2, info.removeFromTop (16.0f), juce::Justification::centredLeft, true);
+}
+
+juce::Colour KeyEditor::velocityColour (float velocity) const
+{
+    // Under MID's range: orange; under HIGH's: pink; else red (the family's three).
+    const auto v = juce::roundToInt (velocity * 127.0f);
+    return v < velocityRanges[1].first ? pr7s::FamilyColours::orange
+         : v < velocityRanges[2].first ? pr7s::FamilyColours::pink
+                                       : pr7s::FamilyColours::red;
 }
 
 void KeyEditor::paintKeys (juce::Graphics& g)
@@ -1617,7 +1632,9 @@ void KeyEditor::paintNotes (juce::Graphics& g)
     g.fillRect (juce::Rectangle<float> (partLeft, area.getY(), 1.5f, area.getHeight()));
     g.fillRect (juce::Rectangle<float> (partRight - 1.5f, area.getY(), 1.5f, area.getHeight()));
 
-    // The notes: the track's colour, brighter the harder they're played; selected ones outlined.
+    // The notes: coloured by how hard they're played (0.9.12, the owner's
+    // rule): the LOW range and under orange, MID pink, HIGH red (the ranges
+    // of the random velocity keys); selected ones brighter and outlined.
     const auto& list = notes();
     for (int i = 0; i < (int) list.size(); ++i)
     {
@@ -1626,7 +1643,7 @@ void KeyEditor::paintNotes (juce::Graphics& g)
             continue;
         const auto& note = list[(size_t) i];
         const auto isSelected = std::binary_search (selected.begin(), selected.end(), i);
-        const auto fill = track->colour.interpolatedWith (juce::Colour (0xff2a1f26), (1.0f - note.velocity) * 0.65f);
+        const auto fill = velocityColour (note.velocity);
         g.setColour (isSelected ? fill.brighter (0.35f) : fill);
         g.fillRoundedRectangle (bounds, 2.0f);
         g.setColour (isSelected ? juce::Colours::white : juce::Colours::black.withAlpha (0.55f));
@@ -1687,9 +1704,10 @@ void KeyEditor::paintVelocities (juce::Graphics& g)
         const auto isSelected = std::binary_search (selected.begin(), selected.end(), i);
         const auto height = inner.getHeight() * note.velocity;
         const auto bar = juce::Rectangle<float> (x, inner.getBottom() - height, 4.0f, height);
-        g.setColour ((isSelected ? track->colour.brighter (0.35f) : track->colour).withAlpha (0.9f));
+        const auto barColour = velocityColour (note.velocity);
+        g.setColour ((isSelected ? barColour.brighter (0.35f) : barColour).withAlpha (0.9f));
         g.fillRect (bar);
-        g.setColour (isSelected ? juce::Colours::white : track->colour.brighter (0.6f));
+        g.setColour (isSelected ? juce::Colours::white : barColour.brighter (0.6f));
         g.fillRect (bar.withHeight (2.0f).withWidth (juce::jmax (4.0f, juce::jmin (12.0f, (float) (note.length * pixelsPerBeat) - 2.0f))));
     }
     // The handles' box round the selected notes' bars (two or more).

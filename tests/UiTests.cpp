@@ -7,6 +7,7 @@
 #include "ui/Finish.h"
 #include "ui/MainView.h"
 #include "ui/TrackActions.h"
+#include "ui/Windows.h"
 
 using namespace pr7s;
 using Catch::Matchers::WithinAbs;
@@ -107,7 +108,7 @@ TEST_CASE ("The studio's window: transport, tracks lined up with their lanes, pa
             name = label;
     REQUIRE (name != nullptr);
     const auto rowTop = name->getParentComponent()->getY();
-    CHECK (rowTop == Timeline::rulerHeight + Timeline::trackHeight);
+    CHECK (rowTop == Timeline::rulerHeight + Timeline::masterHeight + Timeline::trackHeight);   // (0.9.12: the master's row first)
 
     // Selecting and deleting the part, through the arrangement.
     arrange.select (second, 0);
@@ -804,7 +805,7 @@ TEST_CASE ("Dragging as the manual has it: Ctrl keeps a part to one direction, A
     CHECK (studio.getProject().loopEnd == 28.0);
 
     // A double-click on an empty lane between the locators: a part from the left one to the right.
-    const juce::Point<float> between (22.0f * beatPixels, (float) Timeline::rulerHeight + 0.5f * (float) Timeline::trackHeight);
+    const juce::Point<float> between (22.0f * beatPixels, (float) (Timeline::rulerHeight + Timeline::masterHeight) + 0.5f * (float) Timeline::trackHeight);
     arrange.mouseDoubleClick (mouseAt (arrange, between, between));
     REQUIRE (studio.getProject().findTrack (first)->parts.size() == 1);
     CHECK (studio.getProject().findTrack (first)->parts[0].start == 20.0);
@@ -2839,4 +2840,72 @@ TEST_CASE ("0.9.11: SPLIT's cut line leaves nothing behind; Add Track in the tra
     CHECK (other.open (file, problems));
     CHECK (other.getProject().tracks.size() == studio.getProject().tracks.size());
     file.deleteFile();
+}
+
+TEST_CASE ("0.9.12: the master's row at the top and its Inspector; the track menu A to Z; notes coloured by velocity; plugin windows pass the studio's keys", "[ui][v0912]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto first = studio.getProject().tracks[0].id;
+    studio.dispatchPendingMessages();
+
+    // The master's row is the very top one.
+    const auto rows = view.getTimeline().layout (studio);
+    REQUIRE_FALSE (rows.empty());
+    CHECK (rows.front().kind == Timeline::Row::Kind::master);
+
+    // Choosing it: the Inspector shows the master (R W, volume, inserts, fader); a track again: the track.
+    auto& inspector = view.getInspector();
+    studio.selectMaster();
+    studio.dispatchPendingMessages();
+    CHECK (studio.isMasterSelected());
+    CHECK (studio.getSelectedTracks().empty());
+    CHECK (inspector.isShowingMaster());
+    CHECK (inspector.getKey ("R").isVisible());
+    CHECK_FALSE (inspector.getKey ("M").isVisible());
+    CHECK_FALSE (inspector.getKey ("REC").isVisible());
+    CHECK (inspector.getVolume().isVisible());
+    CHECK_FALSE (inspector.getPan().isVisible());
+    CHECK (inspector.getInsertsView().isVisible());
+    CHECK (inspector.getVolume().enter ("-4"));
+    CHECK (studio.getProject().masterVolumeDb == -4.0f);
+    CHECK (studio.getProject().tracks[0].volumeDb == 0.0f);   // (not a track's)
+    studio.selectTrack (first);
+    studio.dispatchPendingMessages();
+    CHECK_FALSE (studio.isMasterSelected());
+    CHECK_FALSE (inspector.isShowingMaster());
+    CHECK (inspector.getKey ("M").isVisible());
+
+    // The track menu's order: A to Z, no separators.
+    juce::PopupMenu menu;
+    menu.addItem (1, "Show Automation");
+    menu.addSeparator();
+    menu.addItem (2, "Delete Track");
+    menu.addSectionHeader ("SOMETHING");
+    menu.addItem (3, "add track");
+    menu.addItem (4, "Hide Track");
+    juce::StringArray order;
+    const auto sorted = TrackList::alphabetical (menu);
+    for (juce::PopupMenu::MenuItemIterator it (sorted); it.next();)
+        order.add (it.getItem().text);
+    CHECK (order.joinIntoString ("|") == "add track|Delete Track|Hide Track|Show Automation");
+
+    // The MIDI editor's notes: LOW (and under) orange, MID pink, HIGH red (the random velocity ranges' edges: 70 and 100).
+    auto& editor = view.getKeyEditor();
+    CHECK (editor.velocityColour (20.0f / 127.0f) == pr7s::FamilyColours::orange);
+    CHECK (editor.velocityColour (69.0f / 127.0f) == pr7s::FamilyColours::orange);
+    CHECK (editor.velocityColour (70.0f / 127.0f) == pr7s::FamilyColours::pink);
+    CHECK (editor.velocityColour (99.0f / 127.0f) == pr7s::FamilyColours::pink);
+    CHECK (editor.velocityColour (100.0f / 127.0f) == pr7s::FamilyColours::red);
+    CHECK (editor.velocityColour (1.0f) == pr7s::FamilyColours::red);
+
+    // A plugin's window: the keys it doesn't use go to the studio (Space plays).
+    SteadyTone plugin (0.1f, 0.1f);
+    Windows::Instrument window ("Keys", plugin);
+    auto heard = 0;
+    window.onKey = [&] (const juce::KeyPress&) { ++heard; return true; };
+    CHECK (window.keyPressed (juce::KeyPress (juce::KeyPress::spaceKey)));
+    CHECK (heard == 1);
 }

@@ -412,20 +412,32 @@ public:
         AutomationKeys::refresh (read, write, owner.studio, pr7s::Engine::masterBus);
         arrow.open = owner.studio.isAutomationOpen (pr7s::Engine::masterBus);
         arrow.repaint();
+        repaint();   // (chosen or not)
     }
 
     void paint (juce::Graphics& g) override
     {
         const auto bounds = getLocalBounds().toFloat();
-        g.setColour (juce::Colour (0xff140f14));
+        const auto selected = owner.studio.isMasterSelected();
+        g.setColour (selected ? juce::Colour (0xff1f1720) : juce::Colour (0xff140f14));
         g.fillRect (bounds);
         g.setColour (juce::Colour (0xff050405));
         g.fillRect (bounds.withY (bounds.getBottom() - 1.0f).withHeight (1.0f));
-        g.setColour (ParagonColours::accent);
+        g.setColour (pr7s::FamilyColours::red);
         g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
+        if (selected)
+        {
+            g.setColour (ParagonColours::accent.withAlpha (0.6f));
+            g.drawRect (bounds.withTrimmedLeft (6.0f), 1.0f);
+        }
         g.setColour (ParagonColours::text);
         g.setFont (ParagonLookAndFeel::titleFont (13.0f));
         g.drawText ("MASTER", bounds.withTrimmedLeft (24.0f).withTrimmedRight (80.0f), juce::Justification::centredLeft, false);
+    }
+
+    void mouseDown (const juce::MouseEvent&) override
+    {
+        owner.studio.selectMaster();   // its Inspector (0.9.12)
     }
 
     void resized() override
@@ -738,6 +750,25 @@ void TrackList::showLaneMenu (int busId, int laneIndex, juce::Component& target)
     });
 }
 
+juce::PopupMenu TrackList::alphabetical (const juce::PopupMenu& menu)
+{
+    // Its items (submenus with them) sorted by name, A to Z, without the
+    // separators and section titles that grouped them before.
+    std::vector<juce::PopupMenu::Item> items;
+    for (juce::PopupMenu::MenuItemIterator it (menu); it.next();)
+    {
+        const auto& item = it.getItem();
+        if (item.isSeparator || item.isSectionHeader || item.text.isEmpty())
+            continue;
+        items.push_back (item);
+    }
+    std::stable_sort (items.begin(), items.end(), [] (const auto& a, const auto& b) { return a.text.compareIgnoreCase (b.text) < 0; });
+    juce::PopupMenu sorted;
+    for (auto& item : items)
+        sorted.addItem (std::move (item));
+    return sorted;
+}
+
 void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
 {
     const auto* track = studio.getProject().findTrack (trackId);
@@ -779,11 +810,12 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
         auto inputs = 2;
         if (auto* device = studio.getDeviceManager().getCurrentAudioDevice())
             inputs = juce::jmax (1, device->getActiveInputChannels().countNumberOfSetBits());
-        menu.addSectionHeader ("RECORD FROM");
+        juce::PopupMenu recordFrom;   // (a submenu since 0.9.12: the menu is in alphabetical order)
         for (int i = 0; i < inputs; ++i)
-            menu.addItem (200 + i, "IN " + juce::String (i + 1) + " (mono)", true, ! track->stereoInput && track->input == i);
+            recordFrom.addItem (200 + i, "IN " + juce::String (i + 1) + " (mono)", true, ! track->stereoInput && track->input == i);
         for (int i = 0; i + 1 < inputs; i += 2)
-            menu.addItem (300 + i, "IN " + juce::String (i + 1) + "+" + juce::String (i + 2) + " (stereo)", true, track->stereoInput && track->input == i);
+            recordFrom.addItem (300 + i, "IN " + juce::String (i + 1) + "+" + juce::String (i + 2) + " (stereo)", true, track->stereoInput && track->input == i);
+        menu.addSubMenu ("Record From", recordFrom);
         menu.addSeparator();
         menu.addItem (2, "Delete track");
     }
@@ -830,6 +862,7 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
     // Add Track (0.9.11: the + ADD TRACK key's menu, here at the foot).
     menu.addSeparator();
     menu.addSubMenu ("Add Track", makeAddTrackMenu (addTrackOffset));
+    menu = alphabetical (menu);   // (0.9.12, the owner asked)
     menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, instruments] (int chosen)
     {
         if (chosen >= addTrackOffset)

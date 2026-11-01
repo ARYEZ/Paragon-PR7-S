@@ -344,6 +344,8 @@ MixerView::MixerView (pr7s::Studio& studioToUse, bool singleStrip) : studio (stu
     master = std::make_unique<Strip> (*this, pr7s::Engine::masterBus);
     if (! single)
         addAndMakeVisible (*master);
+    else
+        holder.addChildComponent (*master);   // (the Inspector's, when the master's row is chosen: 0.9.12)
 
     for (auto* button : { &windowButton, &closeButton })
     {
@@ -411,12 +413,16 @@ void MixerView::changeListenerCallback (juce::ChangeBroadcaster*)
     rebuild();
 }
 
-void MixerView::setSingleTrack (int trackId)
+void MixerView::setSingleTrack (int trackId, bool isMaster)
 {
-    if (singleTrack == trackId)
+    if (singleTrack == trackId && singleIsMaster == isMaster)
         return;
     singleTrack = trackId;
+    singleIsMaster = isMaster;
+    if (single)
+        master->setVisible (singleIsMaster);
     rebuild();
+    resized();
 }
 
 void MixerView::rebuild()
@@ -424,7 +430,7 @@ void MixerView::rebuild()
     // A strip for each track, in the track list's order (kept if the tracks are the same).
     std::vector<int> ids;
     for (const auto& track : studio.getProject().tracks)
-        if (single ? track.id == singleTrack : ! track.hidden && ! track.disabled)   // (hidden and disabled tracks: no strip, as the manual has it)
+        if (single ? ! singleIsMaster && track.id == singleTrack : ! track.hidden && ! track.disabled)   // (hidden and disabled tracks: no strip, as the manual has it)
             ids.push_back (track.id);
     auto same = strips.size() == ids.size();
     for (size_t i = 0; same && i < ids.size(); ++i)
@@ -457,10 +463,11 @@ void MixerView::timerCallback()
             for (int i = 0; i < pr7s::Project::maxSends; ++i)
                 strip->getSendSlot (i).repaint();
     }
-    if (single)
+    if (single && ! singleIsMaster)
         return;
+    const auto reader = single ? 2 : 1;
     master->followMix();
-    master->setLevels (engine.getOutputMeter (0, 1).takePeak(), engine.getOutputMeter (1, 1).takePeak());
+    master->setLevels (engine.getOutputMeter (0, reader).takePeak(), engine.getOutputMeter (1, reader).takePeak());
 }
 
 void MixerView::showInsertMenu (int busId, int slot)
@@ -566,6 +573,7 @@ void MixerView::resized()
         holder.setSize (area.getWidth(), area.getHeight());
         for (auto& strip : strips)
             strip->setBounds (holder.getLocalBounds());
+        master->setBounds (holder.getLocalBounds());
         return;
     }
     auto bar = area.removeFromTop (barHeight).reduced (8, 4);

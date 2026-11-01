@@ -181,7 +181,10 @@ private:
     void clampScroll();
     void refreshScrollBars();
     void refreshPanel();
-    void paintInfo (juce::Graphics&, juce::Rectangle<float>);   // the selected notes, at the column's foot
+    void paintInfo (juce::Graphics&, juce::Rectangle<float>);
+public:
+    juce::Colour velocityColour (float velocity) const;   // a note's colour by its velocity (0.9.12)
+private:   // the selected notes, at the column's foot
     void layoutColumn();
     // The panel's keys in one column, all one size (0.9.10, the owner asked),
     // in a strip that scrolls when the editor is shorter than they are.

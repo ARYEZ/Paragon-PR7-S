@@ -453,6 +453,21 @@ namespace Windows
                       false);
         centreWithSize (getWidth(), getHeight());
         setVisible (true);
+        timerCallback();
+        startTimer (300);
+    }
+
+    void Instrument::timerCallback()
+    {
+        // Above the studio while it's in front; an ordinary window when another program is.
+        const auto front = juce::Process::isForegroundProcess();
+        if (isAlwaysOnTop() != front)
+            setAlwaysOnTop (front);
+    }
+
+    bool Instrument::keyPressed (const juce::KeyPress& key)
+    {
+        return onKey != nullptr && onKey (key);
     }
 
     ZoneWindow::ZoneWindow (const juce::String& title, juce::Component& content, juce::PropertiesFile* settingsToUse,

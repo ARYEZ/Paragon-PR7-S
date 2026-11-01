@@ -9,12 +9,23 @@
 namespace Windows
 {
     // An instrument's own window (its editor, as its maker drew it).
-    class Instrument final : public juce::DocumentWindow
+    // A plugin's window (an instrument's or an effect's). It floats above the
+    // studio while the studio is the program in front (0.9.12: it went
+    // behind the studio's window, which spans three screens, and looked
+    // closed), and stays open until closed (as the manual's plug-in windows).
+    // The keys it doesn't use go to the studio (`onKey`: Space, R...).
+    class Instrument final : public juce::DocumentWindow,
+                             private juce::Timer
     {
     public:
         Instrument (const juce::String& trackName, juce::AudioPluginInstance&);
         void closeButtonPressed() override;
+        bool keyPressed (const juce::KeyPress&) override;
         std::function<void()> onClose;
+        std::function<bool (const juce::KeyPress&)> onKey;
+
+    private:
+        void timerCallback() override;
     };
 
     // The key editor or the mixer in a window of its own (their WINDOW

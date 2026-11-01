@@ -2,6 +2,33 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.9.12
+
+Your six tweaks.
+
+**Plug-in windows stay open.** Clicking the studio didn't close an instrument's window: it went behind the studio's window, which spans your three screens, so it looked closed.
+- Plug-in windows now float above the studio while it's the program in front, and stay until you close them, as Cubase's do.
+- When you switch to another program, they stop floating, so they don't sit over your browser.
+- The studio's keys (Space, R, F2...) work while a plug-in window is in front, unless the plug-in uses that key itself.
+
+**The master at the very top.** The MASTER row is the first row, above every track, with its automation lanes under it.
+- **Click it to show the master in the Inspector:** its R and W, its volume (type a value as on a track), its 16 insert slots and its fader with the output level.
+- MIDI, routing, sends and Quick Controls don't apply to the master, so they're not shown.
+- Clicking any track goes back to that track.
+
+**Only the gradient's three colours.** Track colours are exactly the gradient's red `#D42E2A`, pink `#DE0639` and orange `#CD6619`, in turn. Songs saved earlier open with each track's colour moved to the nearest of the three.
+- An honest note: the gradient's pink is a deep crimson-pink, so next to its red the two look close. If you'd like a lighter pink to tell them apart, say so (it would then not be exactly the gradient's).
+
+**MIDI notes coloured by velocity.**
+- **Orange:** velocities below MID's range (below 70 by default), which covers the LOW range and anything under it.
+- **Pink:** MID's range (70 to 99).
+- **Red:** HIGH's range (100 and up).
+- The velocity bars use the same colours. If you change the ranges (RANGES), the colours follow.
+
+**The play bar** is pearl white with a pink glow, in the arrangement and in the MIDI editor. It's still red while recording.
+
+**The track's right-click menu is in alphabetical order** (A to Z, no dividers). An audio track's inputs moved into a **Record From** submenu, so they stay together.
+
 ## 0.9.11
 
 Your seven tweaks.

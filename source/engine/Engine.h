@@ -144,7 +144,7 @@ namespace pr7s
         // the Inspector's fader).
         LevelMeterSource& getOutputMeter (int channel, int reader = 0) noexcept
         {
-            return outputMeters[(size_t) juce::jlimit (0, 1, reader)][(size_t) juce::jlimit (0, 1, channel)];
+            return outputMeters[(size_t) juce::jlimit (0, 2, reader)][(size_t) juce::jlimit (0, 1, channel)];
         }
         float takeTrackPeak (int trackId, int reader = 0);
 
@@ -358,6 +358,6 @@ namespace pr7s
 
         Head head;
         juce::AudioBuffer<float> deviceBuffer;
-        std::array<std::array<LevelMeterSource, 2>, 2> outputMeters;   // [reader][channel]
+        std::array<std::array<LevelMeterSource, 2>, 3> outputMeters;   // [reader][channel] (2: the Inspector's master, 0.9.12)
     };
 }

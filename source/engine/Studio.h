@@ -91,6 +91,9 @@ namespace pr7s
         // Inspired by Cubase's workflow (record follows the selected track), selecting arms too.
         void setArmed (int trackId);
         void selectTrack (int trackId);   // (it alone: the others are deselected)
+        // The master's row clicked (0.9.12): the Inspector shows the master until a track is chosen.
+        void selectMaster();
+        bool isMasterSelected() const noexcept { return masterSelected; }
         int getSelectedTrack() const noexcept { return selectedTrack; }   // the one clicked last (recording goes there)
         // Several selected (the manual's track selection): Ctrl-click adds or
         // removes one, Shift-click a run from the one clicked last (Shift-click
@@ -557,6 +560,7 @@ namespace pr7s
         Project project;
         juce::File file;
         bool modified = false;
+        bool masterSelected = false;
         bool prepareSave (const juce::File&);   // the plugins' settings into the song; the recordings beside it
         juce::ThreadPool saver { juce::ThreadPoolOptions{}.withThreadName ("Paragon PR7-S save").withNumberOfThreads (1) };
         std::shared_ptr<std::atomic<bool>> saveAlive = std::make_shared<std::atomic<bool>> (true);   // (false once the studio goes)

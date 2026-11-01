@@ -504,6 +504,7 @@ namespace pr7s
     //==========================================================================
     void Studio::toggleTrackSelected (int trackId)
     {
+        masterSelected = false;
         if (project.findTrack (trackId) == nullptr)
             return;
         if (isTrackSelected (trackId) && selectedTracks.size() > 1)
@@ -522,6 +523,7 @@ namespace pr7s
 
     void Studio::selectTrackRun (int trackId)
     {
+        masterSelected = false;
         if (project.findTrack (trackId) == nullptr)
             return;
         // Shift-click on a selected one (not the only one): deselected.
@@ -547,7 +549,7 @@ namespace pr7s
 
     bool Studio::isTrackSelected (int trackId) const noexcept
     {
-        return trackId != 0 && (trackId == selectedTrack || std::find (selectedTracks.begin(), selectedTracks.end(), trackId) != selectedTracks.end());
+        return trackId != 0 && ! masterSelected && (trackId == selectedTrack || std::find (selectedTracks.begin(), selectedTracks.end(), trackId) != selectedTracks.end());
     }
 
     std::vector<int> Studio::getSelectedTracks() const
@@ -1005,8 +1007,17 @@ namespace pr7s
         changed (false);
     }
 
+    void Studio::selectMaster()
+    {
+        // The master's row (0.9.12): the Inspector shows the master; no track selected.
+        masterSelected = true;
+        selectedTracks.clear();   // (no track looks chosen; recording still goes to the one last chosen)
+        sendChangeMessage();
+    }
+
     void Studio::selectTrack (int trackId)
     {
+        masterSelected = false;
         selectedTrack = trackId;
         selectedTracks.clear();
         if (trackId != 0)

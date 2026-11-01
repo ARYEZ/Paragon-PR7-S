@@ -42,7 +42,7 @@ public:
     // `singleStrip`: one track's strip only (setSingleTrack), no bar, no master,
     // no rack: the Inspector's Fader section (0.9.0), with its own meter reader.
     explicit MixerView (pr7s::Studio&, bool singleStrip = false);
-    void setSingleTrack (int trackId);
+    void setSingleTrack (int trackId, bool isMaster = false);   // single-strip mode: whose strip (or the master's)
     int getSingleTrack() const noexcept { return singleTrack; }
     ~MixerView() override;
 
@@ -89,6 +89,7 @@ private:
     pr7s::Studio& studio;
     const bool single;
     int singleTrack = 0;
+    bool singleIsMaster = false;
     std::vector<std::unique_ptr<Strip>> strips;
     std::unique_ptr<Strip> master;
     juce::Viewport viewport;

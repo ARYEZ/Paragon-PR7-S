@@ -232,7 +232,18 @@ namespace pr7s
     // The family's track colours, taken in turn: shades along its red, pink
     // and orange only (the chain's red, hot pink, orange, then lighter and
     // deeper ones).
-    juce::Colour trackColour (int index);
+    // The family's colours (0.9.12, the owner's rule: exactly the gradient's,
+    // nothing else): its pink, red and orange, as the keys' gradient defines
+    // them (Finish::neonGradient runs pink, through red, to orange).
+    namespace FamilyColours
+    {
+        inline const juce::Colour pink { 0xffde0639 };
+        inline const juce::Colour red { 0xffd42e2a };
+        inline const juce::Colour orange { 0xffcd6619 };
+        // The nearest of the three (songs from before 0.9.12 had other shades).
+        juce::Colour nearest (juce::Colour);
+    }
+    juce::Colour trackColour (int index);   // red, pink, orange, in turn
 
     // Rounds to the nearest multiple of `grid` beats (0: no rounding).
     double snap (double beats, double grid) noexcept;
