@@ -2959,3 +2959,17 @@ void ArrangeView::showTempoMenu()
         }
     });
 }
+
+//==============================================================================
+bool ArrangeView::isInterestedInDragSource (const SourceDetails& details)
+{
+    return details.description.toString().startsWith ("chordpad:");
+}
+
+void ArrangeView::itemDropped (const SourceDetails& details)
+{
+    const auto pad = details.description.toString().fromFirstOccurrenceOf ("chordpad:", false, false).getIntValue();
+    const auto at = details.localPosition.toFloat();
+    if (const auto track = trackAtY (at.y); track != 0)
+        studio.addPartFromPad (pad, track, juce::jmax (0.0, timeline.beatForX (at.x)));
+}

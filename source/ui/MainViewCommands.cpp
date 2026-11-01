@@ -123,6 +123,8 @@ void MainView::registerCommands()
     add ("Window.Mixer", "Window", "Open/Close Mixer", { KP (KP::F3Key) });
     add ("Window.MidiEditorPlace", "Window", "MIDI Editor Docked / Full Screen", { KP (KP::F2Key, juce::ModifierKeys (alt), 0) });
     add ("Window.MixerPlace", "Window", "Mixer Docked / Full Screen", { KP (KP::F3Key, juce::ModifierKeys (alt), 0) });
+    add ("Window.ChordPads", "Window", "Show/Hide Chord Pads", { KP (KP::F4Key) });
+    add ("Window.ChordPadsPlace", "Window", "Chord Pads Docked / Full Screen", {}, [this] { toggleChordPadsPlace(); });
     add ("Window.Editor", "Window", "Open/Close Editor", { key ('E', ctrl) });
     add ("Window.KeyCommands", "Window", "Key Commands...", {}, [this] { openKeyCommands(); });
     add ("Window.TempoEditor", "Window", "Open/Close Tempo Track Editor", { key ('T', ctrl) });

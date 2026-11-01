@@ -3,9 +3,11 @@
 #include "ui/KeyCommands.h"
 #include "ui/ProgressBox.h"
 #include <juce_audio_utils/juce_audio_utils.h>
+#include <array>
 
 #include "engine/Studio.h"
 #include "ui/ArrangeView.h"
+#include "ui/ChordPadsView.h"
 #include "ui/KeyEditor.h"
 #include "ui/Inspector.h"
 #include "ui/ScaledHolder.h"
@@ -145,6 +147,13 @@ public:
     void setMixerInWindow (bool inWindow)      { setZoneInWindow (mixerZone, inWindow); }
     bool isMixerInWindow() const noexcept      { return mixerZone.inWindow; }
     Windows::ZoneWindow* getMixerWindow() noexcept { return mixerZone.window.get(); }
+    // The chord pads (0.14.0): the PADS key, or a command of your own.
+    void toggleChordPads()                     { toggleZone (padsZone); }
+    void toggleChordPadsPlace()                { toggleZonePlace (padsZone); }
+    void openChordPads()                       { openZone (padsZone); }
+    bool isChordPadsOpen() const noexcept      { return padsZone.open; }
+    bool isChordPadsInWindow() const noexcept  { return padsZone.inWindow; }
+    ChordPadsView& getChordPads() noexcept     { return chordPads; }
     // F3: the mixer in its own window (closed if it's there already);
     // Alt+F3 and MIXER: docked under the arrangement (likewise).
     void toggleMixerWindow();
@@ -203,6 +212,7 @@ private:
     std::unique_ptr<ProgressBox> progressBox;   // a long job's progress (0.11.1)
     std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow;
     juce::TextButton hubButton { "HUB" };
+    juce::TextButton padsButton { "PADS" };   // the chord pads (0.14.0), lit while open
     void registerCommands();
     void saveKeyCommands();
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
@@ -242,6 +252,7 @@ private:
     KeyEditor keyEditor;
     ScaledHolder keyEditorHolder { keyEditor };   // the editor at its SIZE (0.9.3: 200% unless changed)
     MixerView mixer;
+    ChordPadsView chordPads;          // the chord pads zone (0.14.0)
     Inspector inspector;             // left of the track list (0.9.0)
     bool inspectorShown = true;
     bool keysToEditor = false;
@@ -260,7 +271,9 @@ private:
                      snapButton { "SNAP" }, quantizeButton { "1/16" };   // (0.9.10)
     // After the editor and the mixer: their windows go first.
     Zone editorZone { keyEditorHolder, editorButton, "MIDI Editor", "keyEditor", false, false, {} },
-         mixerZone { mixer, mixerButton, "Mixer", "mixer", false, false, {} };
+         mixerZone { mixer, mixerButton, "Mixer", "mixer", false, false, {} },
+         padsZone { chordPads, padsButton, "Chord Pads", "chordPads", false, false, {} };
+    std::array<Zone*, 3> zones() noexcept { return { &editorZone, &mixerZone, &padsZone }; }
     std::map<int, std::unique_ptr<Windows::Instrument>> instrumentWindows;
     std::map<juce::AudioProcessor*, std::unique_ptr<Windows::Instrument>> effectWindows;
     std::unique_ptr<Windows::Settings> settingsWindow;

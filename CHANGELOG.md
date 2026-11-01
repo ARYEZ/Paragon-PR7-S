@@ -2,6 +2,50 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.14.0
+
+**Chord pads** (you asked for them as the other DAW has them). They're laid out as the manual's "Using Chord Pads" chapter describes. **F4** opens them in the lower zone, beside the MIDI editor and the mixer (one docked at a time); WINDOW puts them in a window of their own. F4 is our choice: the manual gives the pads no key. "Show/Hide Chord Pads" and "Chord Pads Docked / Full Screen" are also in KEYS, for your Stream Deck.
+
+**The pads:**
+- **The layout.** Twelve pads laid out like an octave of a keyboard (DISPLAY: 24 pads, or a grid of 2x4 up to 4x4).
+- **Playing them.** Click a pad, or press its key on your MIDI keyboard: **C1 to B1** at first, which REMOTE can move to another octave. The chord plays on the armed track's instrument, and records like anything you play. Each pad shows its key in its corner.
+  - The trigger keys play the pads **only while the pads are open**, so a drum part's C1 is still a kick when they're put away. That's our choice: the manual has them work even with the pads hidden.
+- **What a pad shows:** its chord (Dm7), the chord's function in the key (ii7), its voicing (V 3/5), whether adaptive voicing is on (A), a padlock if locked, and REF on the reference pad.
+- **The keyboard underneath** shows the notes playing, the pads' trigger keys, and the key of the pad under the mouse.
+
+**Changing chords:**
+- **The chord editor** (EDITOR, a double-click, or Return): the selected pad's root, type (maj, min, dim, aug, sus2, sus4), tension (6, 7, maj7, dim7, add9, 9, maj9, 6/9, 11, 13, 7b9, 7#9, 7#11) and bass note. Each choice plays the chord.
+- **FROM MIDI** (Assign from MIDI Input): play a chord on your keyboard, and the selected pad takes it, voicing and all. The next selected pad takes the next chord.
+- **Modifiers**, on the selected pads:
+  - TRANSPOSE - +, TENSIONS - + and VOICING < > (the first selected pad plays).
+  - The mouse wheel over a pad: the voicing; with Shift it transposes; with Alt it changes the tensions.
+  - LOCK (Ctrl+Shift+L) stops a pad being changed. REMOVE (Delete) asks first, because, as in the manual, it can't be undone.
+- **Moving pads:** drag a pad onto another to swap them; Alt-drag copies.
+- **Making parts:** drag a pad onto a track in the arrangement and it becomes a **one-bar MIDI part** at that bar.
+- **Adaptive voicing:** each pad's voicing is chosen as it's played, so the voices move as little as they can from the chord before. Choosing a voicing by hand turns it off for that pad; ADAPTIVE turns it on again. **REFERENCE** keeps the other pads' voicings near one pad's.
+
+**The toolbar:**
+- **ROOT:** the key the chords' functions are named in. With "Transpose Pads", every chord moves to the new key. "Flats" spells Bb rather than A#.
+- **PRESETS:** the seven scale presets in the root key (Major, Natural Minor, Dorian, Phrygian, Lydian, Mixolydian, Locrian), and your own, saved with **SAVE** and stepped through with < >. Choose to load the chords and the player, the chords only, or the player only.
+  - On the keyboard layout we put the scale's chords on the white keys (C to B: I to vii) and its sevenths on the black keys between them. That arrangement is our choice.
+- **PLAYER:** the Basic player (close chords) and its octave.
+- **PLAIN CHORDS:** what happens when you play a chord while holding another: Hold First, Legato or Stop First.
+- **DISPLAY:** chord symbols as note names, roman numerals or Nashville numbers (a first and a second way), the layout, the start note, and the voicing indicators.
+- **REMOTE:** where the trigger keys sit, and Latch Chords (a pad plays until you press it again).
+
+**The chords are kept with the song.** A new song starts with the major scale's chords in C.
+
+**Honest notes:**
+- **Voicings and voice leading are our own rules:** close chords, with the voices moving as little as possible. The other DAW's voicing libraries aren't published, so they won't match note for note.
+- **Fonts:** chord symbols are drawn in Inter, because Bebas has no small letters, and "Dm" would have read as "DM".
+- **Not yet, in later releases:**
+  - the chord track (chord events, step input, Assign from Chord Track);
+  - the Chord Assistant (List, Proximity, Circle of Fifths);
+  - the piano and guitar players;
+  - Pattern and Sections modes;
+  - the remote settings dialog (MIDI Learn, the modifier keys, aftertouch, pitch bend);
+  - recorded chords split across MIDI channels by voice.
+
 ## 0.13.1
 
 **What you reported:**

@@ -134,6 +134,44 @@ namespace pr7s
         // Hide / show tracks (the left zone's VISIBILITY): out of the track
         // list, the arrangement and the mixer; still heard unless disabled.
         void setTracksHidden (const std::vector<int>& trackIds, bool hidden);
+        // Chord pads (0.14.0, the manual's "Using Chord Pads"). Kept with the song;
+        // not undo steps (the manual: removing assignments can't be undone). A
+        // locked pad takes no edits. `pads` are pad indices.
+        const ChordPads& getChordPads() const noexcept { return project.chordPads; }
+        void setChordPads (const ChordPads&);
+        PadPlayer& getPadPlayer() noexcept { return padPlayer; }
+        // The trigger keys (C1-B1) play the pads only while they're shown (our
+        // choice: a drum part's C1 must stay a kick when the pads are put away).
+        void setPadsActive (bool);
+        bool arePadsActive() const noexcept { return padsActive; }
+        void assignChord (int pad, const Chord&);
+        void removeChords (const std::vector<int>& pads);
+        void transposePads (const std::vector<int>& pads, int semitones);
+        void changePadTensions (const std::vector<int>& pads, int direction);
+        void changePadVoicings (const std::vector<int>& pads, int direction);
+        void setPadsLocked (const std::vector<int>& pads, bool);
+        void setPadsAdaptive (const std::vector<int>& pads, bool);
+        void setAdaptiveReference (int pad);           // -1: none
+        void swapPads (int a, int b);                  // the reference stays where it was (the manual)
+        void copyPad (int from, int to);
+        void setPadsRootKey (int key, bool transposePads);
+        bool assignFromNotes (int pad, const std::vector<int>& notes);   // recognised; false if no chord
+        // Assign from MIDI Input: the keys played (outside the trigger range) go to these pads, one chord each.
+        void setAssignFromInput (std::vector<int> pads);
+        const std::vector<int>& getAssignFromInput() const noexcept { return assignTargets; }
+        void padKeyPlayed (int note, bool on);          // (the message thread; from the devices, or tests)
+        int getPadVoicing (int pad) const;              // the voicing it plays now (an index), -1: none
+        int getPadVoicingCount (int pad) const;
+        std::vector<int> getPadNotes (int pad) const;   // what it would play now
+        void auditionPad (int pad);                     // played for a moment (acoustic feedback)
+        // Drag a pad onto a track: a one-bar MIDI part there (the manual's Creating MIDI Parts from Chord Pads).
+        int addPartFromPad (int pad, int trackId, double beat);
+        enum class PadsPresetLoad { chordsAndPlayers, chordsOnly, playersOnly };
+        void loadScalePreset (ChordPads::Scale, int key, PadsPresetLoad = PadsPresetLoad::chordsAndPlayers);
+        bool saveChordPadsPreset (const juce::File&) const;
+        bool loadChordPadsPreset (const juce::File&, PadsPresetLoad = PadsPresetLoad::chordsAndPlayers);
+        static juce::File chordPadsPresetFolder();      // Documents/Paragon PR7-S/Chord Pads
+
         // Freeze (0.9.8, the manual's Freeze Channel): the track's instrument and
         // inserts (not its fader, pan or sends) rendered from the song's start to
         // its last part's end plus `tailSeconds`, into "<audio folder>/Freeze";
@@ -577,6 +615,12 @@ namespace pr7s
         std::vector<int> renderInPlace (const std::vector<RenderSource>&, const RenderOptions&, juce::String& error);
 
     private:
+        PadPlayer padPlayer;
+        bool padsActive = false;
+        std::vector<int> assignTargets;
+        std::vector<int> assignHeld, assignNotes;
+        void padsChanged();
+        std::vector<int> unlocked (const std::vector<int>& pads) const;
         void changed (bool undoable = true);
         void numberParts();   // an id for every part that hasn't one
         std::vector<Insert>* insertsOf (int busId);

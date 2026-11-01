@@ -197,6 +197,7 @@ namespace pr7s
         xml->setAttribute ("snap", snapOn);
         xml->setAttribute ("quantize", quantizeBeats);
         xml->setAttribute ("nextTrackId", nextTrackId);
+        xml->addChildElement (chordPads.toXml().release());
         if (! tempoEvents.empty() || tempoTrackShown)
         {
             auto* tempo = xml->createNewChildElement ("Tempo");
@@ -334,6 +335,8 @@ namespace pr7s
         project.click = xml.getBoolAttribute ("click");
         project.snapOn = xml.getBoolAttribute ("snap", true);
         project.quantizeBeats = juce::jlimit (1.0 / 16.0, 4.0, xml.getDoubleAttribute ("quantize", 0.25));
+        if (const auto* pads = xml.getChildByName ("ChordPads"))
+            project.chordPads = ChordPads::fromXml (*pads);
         if (const auto* tempo = xml.getChildByName ("Tempo"))
         {
             project.tempoTrackShown = tempo->getBoolAttribute ("shown");

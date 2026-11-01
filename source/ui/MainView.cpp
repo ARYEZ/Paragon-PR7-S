@@ -23,6 +23,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
       arrange (studioToUse, timeline),
       keyEditor (studioToUse, arrange),
       mixer (studioToUse),
+      chordPads (studioToUse),
       inspector (studioToUse)
 {
     askMidiTempo = [this] (const juce::File& file, double fileBpm, std::function<void (int)> answer)
@@ -124,7 +125,11 @@ MainView::MainView (pr7s::Studio& studioToUse)
     keysButton.onClick = [this] { openKeyCommands(); };
     keysButton.setTooltip ("Key Commands: give any action or macro a key (a Stream Deck's Hotkey buttons press them)");
     hubButton.onClick = [this] { openHub(); };
+    padsButton.onClick = [this] { toggleChordPads(); };
+    padsButton.setTooltip ("The chord pads: chords to play with, their voicings and tensions; played by clicking or from your MIDI keyboard's C1 to B1");
+    padsButton.setColour (juce::TextButton::textColourOnId, ParagonColours::accent);
     hubButton.setTooltip ("The Hub: your songs (recent, templates, the projects folder), a new one, the audio driver");
+    addChildComponent (padsButton);   // (kept for its lit state, as the editor's and mixer's: F4 opens the pads)
     for (auto* key : { &keysButton, &hubButton })
     {
         key->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
@@ -213,6 +218,11 @@ MainView::MainView (pr7s::Studio& studioToUse)
     }
     keyEditor.onClose = [this] { closeKeyEditor(); };
     mixer.onClose = [this] { closeMixer(); };
+    chordPads.onClose = [this] { closeZone (padsZone); };
+    chordPads.onWindowToggle = [safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->setZoneInWindow (safe->padsZone, ! safe->padsZone.inWindow); });
+    };
     // Not straight away: the click that asked is still going on in the window.
     keyEditor.onWindowToggle = [safe = juce::Component::SafePointer<MainView> (this)]
     {
@@ -230,6 +240,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
         mixerZone.inWindow = settings->getBoolValue ("mixerInWindow", false);
         editorZone.dockedHeight = settings->getIntValue ("keyEditorHeight", 0);
         mixerZone.dockedHeight = settings->getIntValue ("mixerHeight", 0);
+        padsZone.inWindow = settings->getBoolValue ("chordPadsInWindow", false);
+        padsZone.dockedHeight = settings->getIntValue ("chordPadsHeight", 0);
     }
     // Each view's Auto-Scroll and its settings, kept for next time.
     timeline.autoScroll.load (studio.getSettings(), "arrange");
@@ -265,6 +277,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     }
     keyEditor.setInWindow (editorZone.inWindow);
     mixer.setInWindow (mixerZone.inWindow);
+    chordPads.setInWindow (padsZone.inWindow);
     arrange.onEditNotes = [this] { openKeyEditor(); };
     arrange.onPartsCopied = [this] { copiedLast = Copied::parts; rangeCopiedLast = false; };
     arrange.onRenderInPlace = [this] (std::vector<pr7s::Studio::RenderSource> sources, bool ask) { renderInPlace (std::move (sources), ask); };
@@ -322,6 +335,8 @@ MainView::~MainView()
     keyEditor.onAutoScrollChange = nullptr;
     editorZone.window.reset();
     mixerZone.window.reset();
+    padsZone.window.reset();
+    studio.setPadsActive (false);
     studio.onEffectGoing = nullptr;
     effectWindows.clear();
     arrange.removeMouseListener (this);
@@ -531,7 +546,7 @@ void MainView::resized()
 
 MainView::Zone* MainView::dockedZone() noexcept
 {
-    for (auto* zone : { &editorZone, &mixerZone })
+    for (auto* zone : zones())
         if (zone->open && ! zone->inWindow)
             return zone;
     return nullptr;
@@ -539,6 +554,8 @@ MainView::Zone* MainView::dockedZone() noexcept
 
 int MainView::minimumHeight (Zone& zone) const
 {
+    if (&zone == &padsZone)
+        return chordPads.getMinimumHeight();
     return &zone == &mixerZone ? mixer.getMinimumHeight() : juce::roundToInt ((float) KeyEditor::minimumHeight * keyEditorHolder.getScale());
 }
 
@@ -552,6 +569,8 @@ int MainView::heightFor (Zone& zone, int middleHeight) const
     auto wanted = zone.dockedHeight > 0 ? zone.dockedHeight : juce::roundToInt ((float) middleHeight * 0.6f);
     if (zone.dockedHeight <= 0 && &zone == &mixerZone)
         wanted = juce::jmax (wanted, mixer.getPreferredHeight());
+    if (zone.dockedHeight <= 0 && &zone == &padsZone)
+        wanted = 320;   // (the pads at a comfortable size, the arrangement kept large: our choice)
     return juce::jlimit (least, most, wanted);
 }
 
@@ -799,6 +818,8 @@ bool MainView::handleKey (const juce::KeyPress& key)
     if (key.getKeyCode() == juce::KeyPress::F1Key)      { toggleInspector(); return true; }
     if (key.getKeyCode() == juce::KeyPress::F2Key)      { mods.isAltDown() ? toggleZonePlace (editorZone) : toggleZone (editorZone); return true; }
     if (key.getKeyCode() == juce::KeyPress::F3Key)      { mods.isAltDown() ? toggleZonePlace (mixerZone) : toggleZone (mixerZone); return true; }
+    // F4: the chord pads (0.14.0, our choice: the manual gives them no key; never Alt+F4, which closes the window).
+    if (key.getKeyCode() == juce::KeyPress::F4Key && ! mods.isAltDown()) { toggleZone (padsZone); return true; }
     if (isKeyEditorOpen() && key == juce::KeyPress::escapeKey) { closeKeyEditor(); return true; }
     if (isMixerOpen() && key == juce::KeyPress::escapeKey)     { closeMixer(); return true; }
     if (key == juce::KeyPress::spaceKey)                { studio.togglePlay(); return true; }
@@ -920,8 +941,10 @@ void MainView::setZoneInWindow (Zone& zone, bool inWindow)
     zone.inWindow = inWindow;
     if (&zone == &editorZone)
         keyEditor.setInWindow (inWindow);
-    else
+    else if (&zone == &mixerZone)
         mixer.setInWindow (inWindow);
+    else
+        chordPads.setInWindow (inWindow);
     if (auto* settings = studio.getSettings())
         settings->setValue (zone.settingsKey + "InWindow", inWindow);
     placeZone (zone);
@@ -944,12 +967,12 @@ void MainView::placeZone (Zone& zone)
                 keysToEditor = isEditor;
                 return keyPressed (key);
             };
-            zone.window->onClose = [safe = juce::Component::SafePointer<MainView> (this), isEditor]
+            zone.window->onClose = [safe = juce::Component::SafePointer<MainView> (this), which = &zone]
             {
-                juce::MessageManager::callAsync ([safe, isEditor]
+                juce::MessageManager::callAsync ([safe, which]
                 {
                     if (safe != nullptr)
-                        isEditor ? safe->closeKeyEditor() : safe->closeMixer();
+                        safe->closeZone (*which);
                 });
             };
             refreshHeader();
@@ -963,17 +986,19 @@ void MainView::placeZone (Zone& zone)
         if (zone.content.getParentComponent() != this)
             addChildComponent (zone.content);
         zone.content.setVisible (zone.open);
-        // One docked at a time: the other one, if it's docked, is put away.
-        auto& other = &zone == &editorZone ? mixerZone : editorZone;
-        if (zone.open && other.open && ! other.inWindow)
-        {
-            other.open = false;
-            if (&other == &editorZone)
-                keysToEditor = false;
-            other.button.setToggleState (false, juce::dontSendNotification);
-            other.content.setVisible (false);
-        }
+        // One docked at a time: another, if it's docked, is put away.
+        for (auto* other : zones())
+            if (other != &zone && zone.open && other->open && ! other->inWindow)
+            {
+                other->open = false;
+                if (other == &editorZone)
+                    keysToEditor = false;
+                other->button.setToggleState (false, juce::dontSendNotification);
+                other->content.setVisible (false);
+            }
     }
+    // The pads' trigger keys play them only while they're open (docked or in their window).
+    studio.setPadsActive (padsZone.open);
     resized();
     repaint();
 }

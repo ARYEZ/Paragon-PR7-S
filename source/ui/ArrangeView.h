@@ -167,6 +167,7 @@ struct Timeline
 //                   shorter rows (Ctrl+Shift+wheel too); Shift+F shows the
 //                   whole song; F turns Auto-Scroll on or off (AutoScroll)
 class ArrangeView final : public juce::Component,
+                          public juce::DragAndDropTarget,
                           private juce::ChangeListener,
                           private juce::Timer
 {
@@ -271,6 +272,10 @@ public:
     juce::Rectangle<float> getPartBounds (int trackId, int index) const;
     float splitLineX() const;   // SPLIT: where its cut line is drawn now (snapped to the grid), -1: none
     int trackAtY (float y) const;   // 0 if none (a lane or the master isn't a track)
+    // A chord pad dropped on a track: a one-bar MIDI part at the bar (0.14.0, the manual's
+    // Creating MIDI Parts from Chord Pads).
+    bool isInterestedInDragSource (const SourceDetails&) override;
+    void itemDropped (const SourceDetails&) override;
     std::optional<Timeline::Row> rowAt (float y) const;
     float rowTop (const Timeline::Row&) const;   // where a row is drawn now
     float trackTop (int trackId) const;

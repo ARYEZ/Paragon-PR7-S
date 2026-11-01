@@ -28,6 +28,22 @@ namespace pr7s
     Studio::Studio (bool useDevices) : withDevices (useDevices)
     {
         engine.onPluginGoing = [this] (juce::AudioProcessor* plugin) { unwatch (plugin); editorAnswers.erase (plugin); };
+        // The chord pads play into the live track's input, as a keyboard would (0.14.0).
+        padPlayer.send = [this] (const juce::MidiMessage& message)
+        {
+            auto m = message;
+            m.setTimeStamp (juce::Time::getMillisecondCounterHiRes() * 0.001);
+            engine.getMidiInput().addMessageToQueue (m);
+        };
+        padPlayer.onOtherKey = [weak = std::weak_ptr<bool> (alive), this] (int note, bool on)
+        {
+            juce::MessageManager::callAsync ([weak, this, note, on]
+            {
+                if (weak.lock() != nullptr)
+                    padKeyPlayed (note, on);
+            });
+        };
+        padPlayer.setPads (project.chordPads);
         formats.registerBasicFormats();
         writerThread.startThread();
         // Recordings before a song is saved: a folder of their own in Documents (tests: a temporary one).
@@ -76,6 +92,7 @@ namespace pr7s
 
     Studio::~Studio()
     {
+        engine.setPadPlayer (nullptr);
         // A save still writing finishes first (its call back here is dropped).
         saveAlive->store (false);
         saver.removeAllJobs (false, 60000);
@@ -3506,6 +3523,7 @@ namespace pr7s
         for (const auto& track : project.tracks)
             engine.removeTrack (track.id);
         project = {};
+        padsChanged();
         file = juce::File();
         selectedTrack = 0;
         selectedTracks.clear();
@@ -4411,6 +4429,7 @@ namespace pr7s
         for (const auto& track : project.tracks)
             engine.removeTrack (track.id);
         project = std::move (*loaded);
+        padsChanged();
 
         file = source;
         audioCache.clear();
@@ -4506,5 +4525,338 @@ namespace pr7s
         updateLiveTrack();
         modified = false;
         sendChangeMessage();
+    }
+
+    //==========================================================================
+    // Chord pads (0.14.0).
+    void Studio::padsChanged()
+    {
+        padPlayer.setPads (project.chordPads);
+    }
+
+    void Studio::setChordPads (const ChordPads& pads)
+    {
+        if (pads == project.chordPads)
+            return;
+        project.chordPads = pads;
+        padsChanged();
+        modified = true;
+        sendChangeMessage();
+    }
+
+    void Studio::setPadsActive (bool on)
+    {
+        if (on == padsActive)
+            return;
+        padsActive = on;
+        if (! on)
+            padPlayer.releaseAll();
+        engine.setPadPlayer (on ? &padPlayer : nullptr);
+    }
+
+    std::vector<int> Studio::unlocked (const std::vector<int>& pads) const
+    {
+        std::vector<int> result;
+        for (const auto p : pads)
+            if (juce::isPositiveAndBelow (p, (int) project.chordPads.pads.size()) && ! project.chordPads.pads[(size_t) p].locked)
+                result.push_back (p);
+        return result;
+    }
+
+    void Studio::assignChord (int pad, const Chord& chord)
+    {
+        if (unlocked ({ pad }).empty())
+            return;
+        auto pads = project.chordPads;
+        auto& p = pads.pads[(size_t) pad];
+        p.chord = chord;
+        p.notes.clear();
+        p.voicing = -1;
+        p.adaptive = true;
+        setChordPads (pads);
+    }
+
+    void Studio::removeChords (const std::vector<int>& which)
+    {
+        auto pads = project.chordPads;
+        for (const auto p : unlocked (which))
+        {
+            pads.pads[(size_t) p] = {};
+            if (pads.adaptiveReference == p)
+                pads.adaptiveReference = -1;
+        }
+        setChordPads (pads);
+    }
+
+    void Studio::transposePads (const std::vector<int>& which, int semitones)
+    {
+        auto pads = project.chordPads;
+        for (const auto p : unlocked (which))
+        {
+            auto& pad = pads.pads[(size_t) p];
+            if (! pad.chord)
+                continue;
+            pad.chord = pad.chord->transposed (semitones);
+            for (auto& n : pad.notes)
+                n = juce::jlimit (0, 127, n + semitones);
+        }
+        setChordPads (pads);
+    }
+
+    void Studio::changePadTensions (const std::vector<int>& which, int direction)
+    {
+        auto pads = project.chordPads;
+        for (const auto p : unlocked (which))
+        {
+            auto& pad = pads.pads[(size_t) p];
+            if (! pad.chord)
+                continue;
+            pad.chord = pad.chord->withTensionStep (direction);
+            pad.notes.clear();   // (a voicing played in was of the old chord)
+        }
+        setChordPads (pads);
+    }
+
+    int Studio::getPadVoicingCount (int pad) const
+    {
+        if (! juce::isPositiveAndBelow (pad, (int) project.chordPads.pads.size()) || ! project.chordPads.pads[(size_t) pad].chord)
+            return 0;
+        return (int) voicingsFor (*project.chordPads.pads[(size_t) pad].chord, 48 + 12 * project.chordPads.octaveOffset).size();
+    }
+
+    int Studio::getPadVoicing (int pad) const
+    {
+        if (getPadVoicingCount (pad) == 0)
+            return -1;
+        const auto& p = project.chordPads.pads[(size_t) pad];
+        const auto voicings = voicingsFor (*p.chord, 48 + 12 * project.chordPads.octaveOffset);
+        const auto notes = getPadNotes (pad);
+        for (size_t i = 0; i < voicings.size(); ++i)
+            if (voicings[i] == notes)
+                return (int) i;
+        return -1;   // (a voicing played in)
+    }
+
+    std::vector<int> Studio::getPadNotes (int pad) const
+    {
+        return project.chordPads.notesFor (pad, padPlayer.getLastChord());
+    }
+
+    void Studio::changePadVoicings (const std::vector<int>& which, int direction)
+    {
+        // The manual: a voicing set by hand turns the pad's adaptive voicing off.
+        auto pads = project.chordPads;
+        for (const auto p : unlocked (which))
+        {
+            const auto count = getPadVoicingCount (p);
+            if (count == 0)
+                continue;
+            auto now = getPadVoicing (p);
+            if (now < 0)
+                now = count / 2;
+            auto& pad = pads.pads[(size_t) p];
+            pad.voicing = juce::jlimit (0, count - 1, now + (direction > 0 ? 1 : -1));
+            pad.adaptive = false;
+            pad.notes.clear();
+        }
+        setChordPads (pads);
+    }
+
+    void Studio::setPadsLocked (const std::vector<int>& which, bool locked)
+    {
+        auto pads = project.chordPads;
+        for (const auto p : which)
+            if (juce::isPositiveAndBelow (p, (int) pads.pads.size()))
+            {
+                pads.pads[(size_t) p].locked = locked;
+                if (locked)
+                    pads.pads[(size_t) p].adaptive = false;   // (the manual: Lock deactivates Adaptive Voicing)
+            }
+        setChordPads (pads);
+    }
+
+    void Studio::setPadsAdaptive (const std::vector<int>& which, bool on)
+    {
+        auto pads = project.chordPads;
+        for (const auto p : unlocked (which))
+        {
+            pads.pads[(size_t) p].adaptive = on;
+            if (on)
+                pads.pads[(size_t) p].notes.clear();
+        }
+        setChordPads (pads);
+    }
+
+    void Studio::setAdaptiveReference (int pad)
+    {
+        auto pads = project.chordPads;
+        pads.adaptiveReference = juce::isPositiveAndBelow (pad, (int) pads.pads.size()) ? pad : -1;
+        setChordPads (pads);
+    }
+
+    void Studio::swapPads (int a, int b)
+    {
+        auto pads = project.chordPads;
+        if (a == b || ! juce::isPositiveAndBelow (a, (int) pads.pads.size()) || ! juce::isPositiveAndBelow (b, (int) pads.pads.size())
+            || pads.pads[(size_t) a].locked || pads.pads[(size_t) b].locked)
+            return;
+        std::swap (pads.pads[(size_t) a], pads.pads[(size_t) b]);
+        setChordPads (pads);
+    }
+
+    void Studio::copyPad (int from, int to)
+    {
+        auto pads = project.chordPads;
+        if (from == to || ! juce::isPositiveAndBelow (from, (int) pads.pads.size()) || unlocked ({ to }).empty())
+            return;
+        pads.pads[(size_t) to] = pads.pads[(size_t) from];
+        pads.pads[(size_t) to].locked = false;
+        setChordPads (pads);
+    }
+
+    void Studio::setPadsRootKey (int key, bool transpose)
+    {
+        key = ((key % 12) + 12) % 12;
+        if (transpose)
+        {
+            // The shorter way round (up to a fifth either way).
+            auto by = ((key - project.chordPads.rootKey) % 12 + 12) % 12;
+            if (by > 6)
+                by -= 12;
+            std::vector<int> all;
+            for (int i = 0; i < (int) project.chordPads.pads.size(); ++i)
+                all.push_back (i);
+            transposePads (all, by);
+        }
+        auto pads = project.chordPads;
+        pads.rootKey = key;
+        setChordPads (pads);
+    }
+
+    bool Studio::assignFromNotes (int pad, const std::vector<int>& notes)
+    {
+        const auto chord = recogniseChord (notes);
+        if (! chord || unlocked ({ pad }).empty())
+            return false;
+        auto pads = project.chordPads;
+        auto& p = pads.pads[(size_t) pad];
+        p.chord = *chord;
+        p.notes = notes;   // "the chord and the voicing are assigned" (the manual)
+        std::sort (p.notes.begin(), p.notes.end());
+        p.adaptive = false;
+        p.voicing = -1;
+        setChordPads (pads);
+        return true;
+    }
+
+    void Studio::setAssignFromInput (std::vector<int> pads)
+    {
+        assignTargets = std::move (pads);
+        assignHeld.clear();
+        assignNotes.clear();
+        sendChangeMessage();
+    }
+
+    void Studio::padKeyPlayed (int note, bool on)
+    {
+        // A chord played in: the keys down together, assigned when the last is let go.
+        if (assignTargets.empty())
+            return;
+        if (on)
+        {
+            assignHeld.push_back (note);
+            if (std::find (assignNotes.begin(), assignNotes.end(), note) == assignNotes.end())
+                assignNotes.push_back (note);
+            return;
+        }
+        assignHeld.erase (std::remove (assignHeld.begin(), assignHeld.end(), note), assignHeld.end());
+        if (! assignHeld.empty())
+            return;
+        const auto pad = assignTargets.front();
+        if (assignFromNotes (pad, assignNotes))
+        {
+            assignTargets.erase (assignTargets.begin());   // the next selected pad takes the next chord
+            auditionPad (pad);
+        }
+        assignNotes.clear();
+        sendChangeMessage();
+    }
+
+    void Studio::auditionPad (int pad)
+    {
+        padPlayer.press (pad, 100);
+        juce::Timer::callAfterDelay (450, [weak = std::weak_ptr<bool> (alive), this, pad]
+        {
+            if (weak.lock() != nullptr)
+                padPlayer.release (pad);
+        });
+    }
+
+    int Studio::addPartFromPad (int pad, int trackId, double beat)
+    {
+        const auto* track = project.findTrack (trackId);
+        const auto notes = getPadNotes (pad);
+        if (track == nullptr || track->isAudio() || track->isChannel() || track->frozen || notes.empty())
+            return 0;
+        const auto bar = project.beatsPerBar();
+        Part part;
+        part.start = juce::jmax (0.0, std::floor (beat / bar + 1.0e-9) * bar);
+        part.length = bar;
+        part.name = project.chordPads.pads[(size_t) pad].chord->name (project.chordPads.flats);
+        for (const auto n : notes)
+            part.notes.push_back ({ 0.0, bar, n, 100.0f / 127.0f });
+        addPart (trackId, part);
+        const auto* now = project.findTrack (trackId);
+        return now != nullptr && ! now->parts.empty() ? now->parts.back().id : 0;
+    }
+
+    void Studio::loadScalePreset (ChordPads::Scale scale, int key, PadsPresetLoad what)
+    {
+        auto loaded = project.chordPads;
+        loaded.fillFromScale (scale, key);
+        if (what == PadsPresetLoad::playersOnly)
+            return;   // (a scale preset has no player of its own)
+        auto pads = project.chordPads;
+        pads.pads = loaded.pads;
+        pads.rootKey = loaded.rootKey;
+        pads.adaptiveReference = -1;
+        setChordPads (pads);
+    }
+
+    juce::File Studio::chordPadsPresetFolder()
+    {
+        return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Paragon PR7-S").getChildFile ("Chord Pads");
+    }
+
+    bool Studio::saveChordPadsPreset (const juce::File& destination) const
+    {
+        destination.getParentDirectory().createDirectory();
+        auto xml = project.chordPads.toXml();
+        xml->setAttribute ("preset", true);
+        return xml->writeTo (destination);
+    }
+
+    bool Studio::loadChordPadsPreset (const juce::File& source, PadsPresetLoad what)
+    {
+        const auto xml = juce::XmlDocument::parse (source);
+        if (xml == nullptr || ! xml->hasTagName ("ChordPads"))
+            return false;
+        const auto loaded = ChordPads::fromXml (*xml);
+        auto pads = project.chordPads;
+        if (what != PadsPresetLoad::playersOnly)
+        {
+            pads.pads = loaded.pads;
+            pads.rootKey = loaded.rootKey;
+            pads.flats = loaded.flats;
+            pads.adaptiveReference = loaded.adaptiveReference;
+        }
+        if (what != PadsPresetLoad::chordsOnly)
+        {
+            // The player: its octave and how chords overlap (the Basic player's settings).
+            pads.octaveOffset = loaded.octaveOffset;
+            pads.overlap = loaded.overlap;
+        }
+        setChordPads (pads);
+        return true;
     }
 }

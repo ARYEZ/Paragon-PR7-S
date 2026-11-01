@@ -661,3 +661,47 @@ TEST_CASE ("Snapshot: the Tempo Track Editor and Process Tempo", "[.][snapshot-t
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
+
+TEST_CASE ("Snapshot: the chord pads zone", "[.][snapshot-pads]")
+{
+    // PARAGON_SNAPSHOT_PADS=grid for the grid layout; the studio at 1500x900 with the pads docked.
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "pads.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        const auto track = studio.getProject().tracks[0].id;
+        studio.addPart (track, { 0.0, 16.0, "Chords", { { 0.0, 4.0, 60, 0.8f }, { 0.0, 4.0, 64, 0.8f }, { 0.0, 4.0, 67, 0.8f } } });
+        MainView view (studio);
+        view.setSize (1500, 900);
+        view.openChordPads();
+        auto& pads = view.getChordPads();
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_PADS", {}) == "grid")
+        {
+            auto p = studio.getChordPads();
+            p.layout = pr7s::ChordPads::Layout::grid;
+            p.rows = 2;
+            p.columns = 8;
+            p.pads.resize (16);
+            studio.setChordPads (p);
+        }
+        studio.setPadsLocked ({ 6 }, true);
+        studio.setAdaptiveReference (0);
+        studio.changePadTensions ({ 9 }, 1);   // Am7
+        pads.selectPads ({ 9 });
+        pads.setEditorShown (true);
+        studio.getPadPlayer().press (9, 100);
+        studio.dispatchPendingMessages();
+        view.resized();
+        juce::Thread::sleep (80);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
+        const auto image = view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+        studio.getPadPlayer().releaseAll();
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}

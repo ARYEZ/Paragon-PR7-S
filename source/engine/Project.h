@@ -4,6 +4,7 @@
 
 #include <optional>
 
+#include "Chords.h"
 #include "TempoMap.h"
 
 // A song: its tempo and time signature, the cycle (loop) range, and its
@@ -198,6 +199,7 @@ namespace pr7s
         enum class NewTempoType { ramp, step, automatic };
         NewTempoType newTempoType = NewTempoType::ramp;   // the Type of New Tempo Points
         double tempoViewLow = 60.0, tempoViewHigh = 180.0;   // the curve's shown range (Visible Tempo Lower/Upper Limit)
+        ChordPads chordPads = ChordPads::defaults();         // the chord pads (0.14.0): kept with the song, as the manual's
         int numerator = 4, denominator = 4;   // the time signature
         bool loopOn = false;                  // CYCLE
         double loopStart = 0.0, loopEnd = 16.0;

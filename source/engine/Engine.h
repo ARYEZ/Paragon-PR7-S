@@ -112,6 +112,8 @@ namespace pr7s
         // collector unless the live track listens to one input only (its
         // Routing: a device's name; empty: all).
         juce::MidiInputCallback& getLiveInput() noexcept { return liveInput; }
+        // The chord pads (0.14.0): while set, their trigger keys from the devices play them.
+        void setPadPlayer (PadPlayer* player) noexcept { padPlayer = player; }
         void setLiveInputFilter (const juce::String& deviceName);
         bool acceptsLiveFrom (const juce::String& deviceName) const;
 
@@ -337,11 +339,17 @@ namespace pr7s
             void handleIncomingMidiMessage (juce::MidiInput* source, const juce::MidiMessage& message) override
             {
                 if (source == nullptr || engine.acceptsLiveFrom (source->getName()))
+                {
+                    // The chord pads' trigger keys play the pads, not themselves (0.14.0).
+                    if (auto* pads = engine.padPlayer.load(); pads != nullptr && pads->handle (message))
+                        return;
                     engine.midiInput.handleIncomingMidiMessage (source, message);
+                }
             }
             Engine& engine;
         };
         LiveInput liveInput { *this };
+        std::atomic<PadPlayer*> padPlayer { nullptr };
         mutable juce::SpinLock liveFilterLock;
         juce::String liveFilter;
         juce::MidiKeyboardState keyboardState;
