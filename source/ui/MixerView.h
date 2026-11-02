@@ -2,6 +2,8 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "ui/ValueSlider.h"
+
 #include "engine/Studio.h"
 #include "ui/LevelMeter.h"
 
@@ -27,6 +29,14 @@
 //                  FX Channel to Send. PRE marks one before the fader
 //   INSERTS, SENDS which rack the strips show; click the lit one to hide it
 //                  (only the faders: the docked mixer then takes less room)
+//   LINK           (0.17.0, the manual's link groups) the selected channels
+//                  linked: which settings they share (volume, sends, routing
+//                  and selection at first); a linked channel selected: unlinked.
+//                  EDIT LINK its settings; SUS each on its own (or hold Alt);
+//                  ABS levels the same, not moved by the same amount; Q-LINK
+//                  what's touched on a selected channel goes to all the selected
+//                  (or hold Shift+Alt). A linked strip shows its group over its
+//                  name; right-click a strip for the group menu
 //   OUT            where the track's sound goes: the master, or a group channel
 //   MASTER         every track goes through it: its inserts, then its fader
 //
@@ -37,7 +47,11 @@ class MixerView final : public juce::Component,
                         private juce::Timer
 {
 public:
-    explicit MixerView (pr7s::Studio&);
+    // `singleStrip`: one track's strip only (setSingleTrack), no bar, no master,
+    // no rack: the Inspector's Fader section (0.9.0), with its own meter reader.
+    explicit MixerView (pr7s::Studio&, bool singleStrip = false);
+    void setSingleTrack (int trackId, bool isMaster = false);   // single-strip mode: whose strip (or the master's)
+    int getSingleTrack() const noexcept { return singleTrack; }
     ~MixerView() override;
 
     std::function<void (int busId, int slot)> onOpenEffect;   // its window
@@ -49,6 +63,8 @@ public:
     void showInsertMenu (int busId, int slot);
     void showSendMenu (int busId, int slot);
     void showOutputMenu (int busId);
+    void showLinkMenu (int trackId);   // a strip's right-click: link, its group, which group it's in
+    juce::TextButton& getLinkKey() noexcept { return linkButton; }
 
     // The strips' racks: their inserts, or their sends (INSERTS / SENDS in the
     // mixer's bar: our design, so the strips keep their faders' room), or
@@ -58,8 +74,15 @@ public:
     bool isShowingSends() const noexcept { return showSends; }
     void setRackShown (bool);
     bool isRackShown() const noexcept { return rackShown; }
+    // What the strips show now (0.9.14, the owner asked): in the mixer's own
+    // window both racks, the inserts above the sends, always (there's room);
+    // docked, the choice above (INSERTS, SENDS or neither; neither at first).
+    bool showsInserts() const noexcept { return inWindow || (rackShown && ! showSends); }
+    bool showsSends() const noexcept { return inWindow || (rackShown && showSends); }
     // The least height it can be docked at (more with the rack shown: room for its slots).
     int getMinimumHeight() const;
+    // What it would like at first (before its divider is dragged): its rack at full size and a full fader.
+    int getPreferredHeight() const;
     std::function<void()> onMinimumHeightChange;   // the main window lays the lower zone out again
     class SendSlot;
 
@@ -72,6 +95,7 @@ public:
     void resized() override;
 
     static constexpr int barHeight = 32, stripWidth = 100, masterWidth = 124;
+    static constexpr int windowStripWidth = 140, windowMasterWidth = 160;   // in its own window: wider, for the bigger racks (0.11.1)
 
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
@@ -79,13 +103,20 @@ private:
     void rebuild();
 
     pr7s::Studio& studio;
+    const bool single;
+    int singleTrack = 0;
+    bool singleIsMaster = false;
     std::vector<std::unique_ptr<Strip>> strips;
     std::unique_ptr<Strip> master;
     juce::Viewport viewport;
     juce::Component holder;   // the track strips, side by side, in the viewport
     juce::TextButton windowButton { "WINDOW" }, closeButton { "CLOSE" }, insertsButton { "INSERTS" }, sendsButton { "SENDS" };
+    juce::TextButton linkButton { "LINK" }, editLinkButton { "EDIT LINK" }, susButton { "SUS" }, absButton { "ABS" }, qLinkButton { "Q-LINK" };
+    void refreshLinkKeys();
+    int linkKeysLeft = 0;   // (the bar's text stops before them)
     bool inWindow = false, showSends = false, rackShown = true;
     void rackChanged();
+    int rackRows (int insertRows) const;   // the rack's rows (slots) for the heights
 };
 
 // A send's slot on a strip (the SENDS rack).
@@ -118,8 +149,8 @@ public:
     void setLevels (float left, float right);
     int getBusId() const noexcept { return busId; }
 
-    juce::Slider& getVolume() noexcept { return volume; }
-    juce::Slider& getPan() noexcept { return pan; }
+    ValueSlider& getVolume() noexcept { return volume; }
+    ValueSlider& getPan() noexcept { return pan; }
     juce::TextButton& getMute() noexcept { return mute; }
     juce::TextButton& getRead() noexcept { return read; }
     juce::TextButton& getWrite() noexcept { return write; }
@@ -130,11 +161,14 @@ public:
     juce::TextButton& getOutput() noexcept { return output; }
     int getShownSlots() const noexcept { return shownSlots; }
     // Its height without the rack, and with the shortest fader (the rack adds its slots).
-    static constexpr int fixedHeight = 8 + 18 + 14 + 6 + 50 + 22 + 6 + 16 + 6, shortestFader = 70, shortestSlot = 11;
+    static constexpr int fixedHeight = 8 + 12 + 18 + 14 + 6 + 50 + 22 + 6 + 16 + 6, shortestFader = 70, shortestSlot = 11, dividerHeight = 14;
 
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;   // the number under the fader or pan: type a value (0.9.9)
+    juce::Rectangle<float> getReadoutArea() const noexcept { return readoutArea; }
+    juce::Rectangle<float> getPanReadoutArea() const noexcept { return panReadoutArea; }
 
 private:
     bool isMaster() const noexcept { return busId == pr7s::Engine::masterBus; }
@@ -145,8 +179,9 @@ private:
     std::array<std::unique_ptr<SendSlot>, pr7s::Project::maxSends> sendSlots;
     juce::TextButton output;   // OUT: where its sound goes
     int shownSlots = 8;   // at least 8, and one more than the last used (up to 16)
-    juce::Slider volume, pan;
+    ValueSlider volume, pan;   // (double-click: type a value, 0.9.9)
     juce::TextButton mute { "M" }, solo { "S" }, read { "R" }, write { "W" };
-    juce::Rectangle<float> meterArea, nameArea, readoutArea, panReadoutArea, rackArea;
+    juce::Rectangle<float> linkArea;   // its link group, over its name (0.17.0)
+    juce::Rectangle<float> meterArea, nameArea, readoutArea, panReadoutArea, rackArea, sendsDivider;
     LevelMeter::Ballistics left, right;
 };

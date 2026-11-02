@@ -7,6 +7,8 @@ Download the zip for your computer below and unzip it anywhere (your Desktop or 
 - **macOS:** `Paragon PR7-S.app`. It isn't code-signed yet, so run this once in Terminal first: `xattr -dr com.apple.quarantine "Paragon PR7-S.app"` (from the folder it's in).
 - **Linux:** `Paragon PR7-S`.
 
+**PR7-K, the studio's synth, comes in the zip:** keep `Paragon PR7-K.vst3` in the same folder as the app (new tracks play it). If you've installed PR7-K in your VST3 folder, the newer of the two is used. On macOS, run `xattr -dr com.apple.quarantine "Paragon PR7-K.vst3"` too.
+
 First time: **SETTINGS** to pick your audio interface, then **PLUGINS** > **SCAN / OPTIONS** to find your VST3 instruments and effects. Your settings and the plugins found are kept between versions.
 
 On Windows, for the lowest delay pick **ASIO** in SETTINGS, then your interface's ASIO driver (install it from your interface's maker first).

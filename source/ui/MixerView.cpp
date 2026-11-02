@@ -1,6 +1,7 @@
 #include "MixerView.h"
 
 #include "ui/AutomationKeys.h"
+#include "ui/LinkGroupPage.h"
 #include "ui/ParagonLookAndFeel.h"
 
 namespace
@@ -55,8 +56,9 @@ MixerView::Strip::Strip (MixerView& ownerView, int id) : owner (ownerView), busI
     volume.setVelocityModeParameters (0.2, 1, 0.0, true, juce::ModifierKeys::shiftModifier);
     volume.setPopupDisplayEnabled (true, true, nullptr);
     volume.textFromValueFunction = [] (double db) { return dbText (db) + " dB"; };
+    volume.parse = [] (const juce::String& text) { return ValueEntry::parseDb (text); };
     volume.setTooltip ((isMaster() ? juce::String ("The master's volume: the whole mix") : juce::String ("The track's volume"))
-                       + " (Ctrl-click or double-click for 0 dB; Shift-drag for fine moves)");
+                       + " (double-click to type a value; Ctrl-click for 0 dB; Shift-drag for fine moves)");
     // While dragging, it's heard as it moves; the drag is one undo step when let go.
     const auto setVolume = [this] (bool undoable)
     {
@@ -88,7 +90,8 @@ MixerView::Strip::Strip (MixerView& ownerView, int id) : owner (ownerView), busI
         pan.setVelocityModeParameters (0.2, 1, 0.0, true, juce::ModifierKeys::shiftModifier);
         pan.setPopupDisplayEnabled (true, true, nullptr);
         pan.textFromValueFunction = [] (double value) { return panText (value); };
-        pan.setTooltip ("Pan: left and right (Ctrl-click or double-click for the centre; Shift-drag for fine moves)");
+        pan.parse = [] (const juce::String& text) { return ValueEntry::parsePan (text); };
+        pan.setTooltip ("Pan: left and right (double-click to type a value: L30, R15, C; Ctrl-click for the centre; Shift-drag for fine moves)");
         pan.onValueChange = [this] { owner.studio.setPan (busId, (float) pan.getValue(), ! pan.isMouseButtonDown()); };
         pan.onDragStart = [this] { owner.studio.grabControl (busId, pr7s::Studio::control (pr7s::AutomationLane::Target::pan)); };
         pan.onDragEnd = [this]
@@ -105,9 +108,9 @@ MixerView::Strip::Strip (MixerView& ownerView, int id) : owner (ownerView), busI
             addAndMakeVisible (*key);
         }
         mute.setTooltip ("Mute this track");
-        solo.setTooltip ("Solo: hear only the soloed tracks");
+        solo.setTooltip ("Solo: hear only the soloed tracks (Ctrl-click: this one alone, every other solo off)");
         mute.onClick = [this] { if (const auto* t = owner.studio.getProject().findTrack (busId)) owner.studio.setMute (busId, ! t->mute); };
-        solo.onClick = [this] { if (const auto* t = owner.studio.getProject().findTrack (busId)) owner.studio.setSolo (busId, ! t->solo); };
+        solo.onClick = [this] { if (const auto* t = owner.studio.getProject().findTrack (busId)) owner.studio.setSolo (busId, ! t->solo || juce::ModifierKeys::currentModifiers.isCommandDown(), juce::ModifierKeys::currentModifiers.isCommandDown()); };
     }
     refresh();
 }
@@ -129,10 +132,9 @@ void MixerView::Strip::refresh()
             owner.onMinimumHeightChange();
     }
     const auto preFader = owner.studio.getPreFaderSlots (busId);
-    const auto sendsShown = owner.isShowingSends();
     for (int i = 0; i < (int) sendSlots.size(); ++i)
     {
-        sendSlots[(size_t) i]->setVisible (owner.isRackShown() && sendsShown && track != nullptr && ! track->isFx());
+        sendSlots[(size_t) i]->setVisible (owner.showsSends() && track != nullptr && ! track->isFx());
         sendSlots[(size_t) i]->refresh();
     }
     if (track != nullptr)
@@ -144,7 +146,7 @@ void MixerView::Strip::refresh()
     for (int i = 0; i < (int) slots.size(); ++i)
     {
         auto& slot = slots[(size_t) i];
-        slot.setVisible (owner.isRackShown() && ! sendsShown && i < shownSlots);
+        slot.setVisible (owner.showsInserts() && i < shownSlots);
         slot.setColour (juce::TextButton::buttonColourId, i < preFader ? juce::Colour (0xff0b090c) : juce::Colour (0xff1c1108));   // after the fader: tinted
         if (inserts != nullptr && i < (int) inserts->size() && ! (*inserts)[(size_t) i].isEmpty())
         {
@@ -215,7 +217,7 @@ void MixerView::Strip::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
     const auto* track = owner.studio.getProject().findTrack (busId);
-    const auto selected = ! isMaster() && owner.studio.getSelectedTrack() == busId;
+    const auto selected = ! isMaster() && owner.studio.isTrackSelected (busId);
     g.setColour (isMaster() ? juce::Colour (0xff140f14) : selected ? juce::Colour (0xff1f1720) : juce::Colour (0xff100c11));
     g.fillRect (bounds.reduced (1.0f, 0.0f));
     g.setColour (juce::Colour (0xff050405));
@@ -228,18 +230,36 @@ void MixerView::Strip::paint (juce::Graphics& g)
         g.drawRect (bounds.reduced (1.0f, 0.0f).withTrimmedTop (4.0f), 1.0f);
     }
 
+    // Its link group (the manual: "the number and the name ... above the channel name").
+    if (const auto* link = owner.studio.getLinkGroupOf (busId))
+    {
+        g.setColour (ParagonColours::accent);
+        g.setFont (font (9.5f));
+        g.drawFittedText (juce::String (link->id) + "  " + link->name.toUpperCase(), linkArea.toNearestInt(), juce::Justification::centred, 1, 0.7f);
+    }
     g.setColour (ParagonColours::text);
-    g.setFont (ParagonLookAndFeel::titleFont (12.5f));
+    g.setFont (ParagonLookAndFeel::titleFont (owner.isInWindow() ? 16.0f : 12.5f));
     g.drawFittedText (isMaster() ? juce::String ("MASTER") : track != nullptr ? track->name : juce::String(),
                       nameArea.toNearestInt(), juce::Justification::centred, 1, 0.8f);
     g.setColour (ParagonColours::textDim);
     g.setFont (font (8.5f));
-    if (isMaster() && owner.isRackShown())
-        g.drawText (owner.isShowingSends() ? "NO SENDS" : "INSERTS", nameArea.translated (0.0f, nameArea.getHeight()).withHeight (12.0f), juce::Justification::centred, false);
-    else if (owner.isRackShown() && owner.isShowingSends() && track != nullptr && track->isFx())
+    if (isMaster() && (owner.showsInserts() || owner.showsSends()))
+        g.drawText (owner.showsInserts() ? "INSERTS" : "NO SENDS", nameArea.translated (0.0f, nameArea.getHeight()).withHeight (12.0f), juce::Justification::centred, false);
+    else if (owner.showsSends() && track != nullptr && track->isFx())
         g.drawText ("NO SENDS (AN FX CHANNEL)", rackArea, juce::Justification::centredTop, true);
+    // Both racks (the mixer's window): a line and SENDS between them.
+    if (owner.showsInserts() && owner.showsSends() && ! sendsDivider.isEmpty())
+    {
+        g.setColour (ParagonColours::panelEdge);
+        g.fillRect (sendsDivider.withHeight (1.0f));
+        if (! isMaster())
+        {
+            g.setColour (ParagonColours::textDim);
+            g.drawText ("SENDS", sendsDivider.withTrimmedTop (1.0f), juce::Justification::centred, false);
+        }
+    }
     // The line between the inserts before the fader and those after it.
-    if (const auto preFader = owner.studio.getPreFaderSlots (busId); preFader < shownSlots && owner.isRackShown() && ! owner.isShowingSends())
+    if (const auto preFader = owner.studio.getPreFaderSlots (busId); preFader < shownSlots && owner.showsInserts())
     {
         const auto& first = slots[(size_t) preFader];
         const auto y = preFader == 0 ? (float) first.getY() - 2.0f : (float) first.getY() - (float) slotGap * 0.5f - 0.5f;
@@ -268,28 +288,55 @@ void MixerView::Strip::paint (juce::Graphics& g)
 void MixerView::Strip::resized()
 {
     auto area = getLocalBounds().reduced (6, 0).withTrimmedTop (8).withTrimmedBottom (6);
-    nameArea = area.removeFromTop (18).toFloat();
+    linkArea = area.removeFromTop (12).toFloat();
+    nameArea = area.removeFromTop (owner.isInWindow() ? 24 : 18).toFloat();
     output.setBounds (area.removeFromTop (14).reduced (2, 0));   // OUT (the master's: "INSERTS")
     rackArea = area.withHeight (40).toFloat().withTrimmedTop (4.0f);
-    if (owner.isRackShown())
+    sendsDivider = {};
+    const auto inserts = owner.showsInserts(), sends = owner.showsSends();
+    if (inserts || sends)
     {
         // The slots shown, smaller when there are many, so the fader keeps room.
         const auto below = (isMaster() ? 0 : 50) + 28 + 16 + 6 + 110;   // pan, the keys, the readout, a gap, the shortest fader
-        const auto rowHeight = juce::jlimit (shortestSlot, slotHeight, (area.getHeight() - below) / shownSlots - slotGap);
-        // The rack: the inserts shown, or the eight sends (in the same room).
-        auto rack = area;
-        for (int i = 0; i < (int) slots.size(); ++i)
+        if (inserts && sends)
         {
-            if (i >= shownSlots)
-                continue;
-            slots[(size_t) i].setBounds (area.removeFromTop (rowHeight));
-            area.removeFromTop (slotGap);
+            // The mixer's window: the inserts, then (under a line and SENDS) the eight sends.
+            const auto rows = shownSlots + (isMaster() ? 0 : pr7s::Project::maxSends);
+            // (In the mixer's window there's room: twice the size, the names twice as big; 0.11.1, the owner asked.)
+            const auto rowHeight = juce::jlimit (shortestSlot, slotHeight * 2, (area.getHeight() - below - dividerHeight) / rows - slotGap);
+            for (int i = 0; i < (int) slots.size(); ++i)
+                if (i < shownSlots)
+                {
+                    slots[(size_t) i].setBounds (area.removeFromTop (rowHeight));
+                    area.removeFromTop (slotGap);
+                }
+            sendsDivider = area.removeFromTop (dividerHeight).toFloat().withTrimmedTop (2.0f);
+            rackArea = area.withHeight (40).toFloat();
+            for (auto& send : sendSlots)
+                if (! isMaster())
+                {
+                    send->setBounds (area.removeFromTop (rowHeight));
+                    area.removeFromTop (slotGap);
+                }
         }
-        const auto sendRow = juce::jmax (shortestSlot, (shownSlots * (rowHeight + slotGap)) / pr7s::Project::maxSends - slotGap);
-        for (auto& send : sendSlots)
+        else
         {
-            send->setBounds (rack.removeFromTop (sendRow));
-            rack.removeFromTop (slotGap);
+            const auto rowHeight = juce::jlimit (shortestSlot, slotHeight, (area.getHeight() - below) / shownSlots - slotGap);
+            // The rack: the inserts shown, or the eight sends (in the same room).
+            auto rack = area;
+            for (int i = 0; i < (int) slots.size(); ++i)
+            {
+                if (i >= shownSlots)
+                    continue;
+                slots[(size_t) i].setBounds (area.removeFromTop (rowHeight));
+                area.removeFromTop (slotGap);
+            }
+            const auto sendRow = juce::jmax (shortestSlot, (shownSlots * (rowHeight + slotGap)) / pr7s::Project::maxSends - slotGap);
+            for (auto& send : sendSlots)
+            {
+                send->setBounds (rack.removeFromTop (sendRow));
+                rack.removeFromTop (slotGap);
+            }
         }
     }
     area.removeFromTop (6);
@@ -319,26 +366,51 @@ void MixerView::Strip::resized()
     volume.setBounds (faderArea.withSizeKeepingCentre (juce::jmin (36, faderArea.getWidth()), faderArea.getHeight()));
 }
 
-void MixerView::Strip::mouseDown (const juce::MouseEvent&)
+void MixerView::Strip::mouseDoubleClick (const juce::MouseEvent& e)
 {
-    if (! isMaster())
+    if (readoutArea.contains (e.position))
+        volume.showEntry();
+    else if (! isMaster() && panReadoutArea.contains (e.position))
+        pan.showEntry();
+}
+
+void MixerView::Strip::mouseDown (const juce::MouseEvent& e)
+{
+    if (isMaster())
+        return;
+    if (e.mods.isPopupMenu())
+    {
+        if (! owner.studio.isTrackSelected (busId))
+            owner.studio.selectTrack (busId);
+        owner.showLinkMenu (busId);
+        return;
+    }
+    if (e.mods.isCommandDown())
+        owner.studio.toggleTrackSelected (busId);   // (several channels: to link them)
+    else if (e.mods.isShiftDown())
+        owner.studio.selectTrackRun (busId);
+    else
         owner.studio.selectTrack (busId);
 }
 
 //==============================================================================
-MixerView::MixerView (pr7s::Studio& studioToUse) : studio (studioToUse)
+MixerView::MixerView (pr7s::Studio& studioToUse, bool singleStrip) : studio (studioToUse), single (singleStrip)
 {
     viewport.setViewedComponent (&holder, false);
-    viewport.setScrollBarsShown (false, true);
+    viewport.setScrollBarsShown (false, ! single);
     addAndMakeVisible (viewport);
     master = std::make_unique<Strip> (*this, pr7s::Engine::masterBus);
-    addAndMakeVisible (*master);
+    if (! single)
+        addAndMakeVisible (*master);
+    else
+        holder.addChildComponent (*master);   // (the Inspector's, when the master's row is chosen: 0.9.12)
 
     for (auto* button : { &windowButton, &closeButton })
     {
         button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
         button->setWantsKeyboardFocus (false);
-        addAndMakeVisible (*button);
+        if (! single)
+            addAndMakeVisible (*button);
     }
     windowButton.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
     closeButton.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
@@ -348,16 +420,40 @@ MixerView::MixerView (pr7s::Studio& studioToUse) : studio (studioToUse)
         button->setColour (juce::TextButton::textColourOffId, ParagonColours::textDim);
         button->setColour (juce::TextButton::textColourOnId, ParagonColours::accent);
         button->setWantsKeyboardFocus (false);
-        addAndMakeVisible (*button);
+        if (! single)
+            addAndMakeVisible (*button);
     }
+    for (auto* button : { &linkButton, &editLinkButton, &susButton, &absButton, &qLinkButton })
+    {
+        button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
+        button->setColour (juce::TextButton::textColourOffId, ParagonColours::text);
+        button->setColour (juce::TextButton::textColourOnId, ParagonColours::accent);
+        button->setWantsKeyboardFocus (false);
+        if (! single)
+            addAndMakeVisible (*button);
+    }
+    linkButton.onClick = [this] { LinkGroupPage::linkOrUnlinkSelected (*this, studio); };
+    editLinkButton.onClick = [this]
+    {
+        if (const auto* group = studio.getLinkGroupOf (studio.getSelectedTrack()))
+            LinkGroupPage::show (*this, studio, group->id, {});
+    };
+    susButton.setTooltip ("Suspend the links: each channel changed on its own (or hold Alt while you change it)");
+    susButton.onClick = [this] { studio.setLinksSuspended (! studio.areLinksSuspended()); };
+    absButton.setTooltip ("Absolute: a linked channel's level set to the same value (off: moved by the same amount, keeping their differences)");
+    absButton.onClick = [this] { studio.setLinksAbsolute (! studio.areLinksAbsolute()); };
+    qLinkButton.setTooltip ("Q-Link: whatever you change on a selected channel, on every selected channel (or hold Shift+Alt for a moment)");
+    qLinkButton.onClick = [this] { studio.setQLink (! studio.isQLinkOn()); };
     insertsButton.setTooltip ("Show each channel's inserts (its effects, top to bottom); click again to hide them (only the faders)");
     sendsButton.setTooltip ("Show each channel's sends (to the FX channels); click again to hide them (only the faders)");
     // The lit one again hides the rack; the other shows its own.
     insertsButton.onClick = [this] { rackShown && ! showSends ? setRackShown (false) : (setShowSends (false), setRackShown (true)); };
     sendsButton.onClick = [this] { rackShown && showSends ? setRackShown (false) : (setShowSends (true), setRackShown (true)); };
-    if (auto* settings = studio.getSettings())
+    if (single)
+        rackShown = false;   // (the Inspector shows the inserts and sends itself)
+    else if (auto* settings = studio.getSettings())
     {
-        const auto rack = settings->getValue ("mixerRack", "inserts");
+        const auto rack = settings->getValue ("mixerRack", "none");   // docked: only the faders at first (0.9.14, the owner's choice)
         showSends = rack == "sends";
         rackShown = rack != "none";
     }
@@ -384,6 +480,16 @@ void MixerView::setInWindow (bool shouldBeInWindow)
     windowButton.setButtonText (inWindow ? "DOCK" : "WINDOW");
     windowButton.setTooltip (inWindow ? "Back under the arrangement"
                                       : "Into a window of its own: maximize it, or put it on another screen (it remembers where it was)");
+    // In its window both racks always show, so INSERTS / SENDS (the docked choice) go.
+    insertsButton.setVisible (! single && ! inWindow);
+    sendsButton.setVisible (! single && ! inWindow);
+    if (master != nullptr)
+    {
+        resized();   // (the strips' widths)
+        rackChanged();
+        if (onMinimumHeightChange)
+            onMinimumHeightChange();
+    }
 }
 
 MixerView::Strip& MixerView::getStrip (int index)
@@ -396,26 +502,103 @@ void MixerView::changeListenerCallback (juce::ChangeBroadcaster*)
     rebuild();
 }
 
+void MixerView::setSingleTrack (int trackId, bool isMaster)
+{
+    if (singleTrack == trackId && singleIsMaster == isMaster)
+        return;
+    singleTrack = trackId;
+    singleIsMaster = isMaster;
+    if (single)
+        master->setVisible (singleIsMaster);
+    rebuild();
+    resized();
+}
+
 void MixerView::rebuild()
 {
     // A strip for each track, in the track list's order (kept if the tracks are the same).
-    const auto& tracks = studio.getProject().tracks;
-    auto same = strips.size() == tracks.size();
-    for (size_t i = 0; same && i < tracks.size(); ++i)
-        same = strips[i]->getBusId() == tracks[i].id;
+    std::vector<int> ids;
+    for (const auto& track : studio.getProject().tracks)
+        if (single ? ! singleIsMaster && track.id == singleTrack : ! track.hidden && ! track.disabled)   // (hidden and disabled tracks: no strip, as the manual has it)
+            ids.push_back (track.id);
+    auto same = strips.size() == ids.size();
+    for (size_t i = 0; same && i < ids.size(); ++i)
+        same = strips[i]->getBusId() == ids[i];
     if (! same)
     {
         strips.clear();
-        for (const auto& track : tracks)
+        for (const auto id : ids)
         {
-            strips.push_back (std::make_unique<Strip> (*this, track.id));
+            strips.push_back (std::make_unique<Strip> (*this, id));
             holder.addAndMakeVisible (*strips.back());
         }
         resized();
+        repaint();
     }
     for (auto& strip : strips)
         strip->refresh();
     master->refresh();
+    refreshLinkKeys();
+}
+
+void MixerView::refreshLinkKeys()
+{
+    const auto selected = studio.getSelectedTracks();
+    const auto* group = studio.getLinkGroupOf (studio.getSelectedTrack());
+    const auto allInGroup = group != nullptr && ! selected.empty()
+                         && std::all_of (selected.begin(), selected.end(), [&] (int id) { return studio.getProject().findTrack (id)->linkGroup == group->id; });
+    linkButton.setButtonText (allInGroup ? "UNLINK" : "LINK");
+    linkButton.setEnabled (allInGroup || selected.size() >= 2);
+    linkButton.setTooltip (allInGroup ? "Unlink " + group->name + " (its channels each on their own again)"
+                                      : "Link the selected channels (select two or more: click, Ctrl-click, Shift-click): choose what they share");
+    editLinkButton.setEnabled (group != nullptr);
+    editLinkButton.setTooltip (group != nullptr ? "What " + group->name + " shares, and its name" : "Select a linked channel to change what its group shares");
+    susButton.setToggleState (studio.areLinksSuspended(), juce::dontSendNotification);
+    absButton.setToggleState (studio.areLinksAbsolute(), juce::dontSendNotification);
+    qLinkButton.setToggleState (studio.isQLinkOn(), juce::dontSendNotification);
+}
+
+void MixerView::showLinkMenu (int trackId)
+{
+    const auto* track = studio.getProject().findTrack (trackId);
+    if (track == nullptr)
+        return;
+    const auto selected = studio.getSelectedTracks();
+    const auto* group = studio.getLinkGroupOf (trackId);
+    juce::PopupMenu menu, included;
+    menu.addSectionHeader ("LINK");
+    menu.addItem (1, "Link Selected Channels...", selected.size() >= 2);
+    if (group != nullptr)
+    {
+        menu.addItem (2, "Link Group Settings (" + group->name + ")...");
+        menu.addItem (3, "Unlink " + group->name);
+    }
+    included.addItem (100, "None", true, group == nullptr);
+    for (const auto& g : studio.getProject().linkGroups)
+        included.addItem (100 + g.id, juce::String (g.id) + "  " + g.name, true, group != nullptr && group->id == g.id);
+    menu.addSubMenu ("Included in Link Group: " + (group != nullptr ? group->name : juce::String ("None")), included);
+    menu.addSeparator();
+    menu.addItem (4, "Q-Link (what's touched on a selected channel, on all of them)", true, studio.isQLinkOn());
+    menu.addItem (5, "Suspend Links (each on its own)", true, studio.areLinksSuspended());
+    menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<MixerView> (this), trackId] (int chosen)
+    {
+        if (safe == nullptr || chosen == 0)
+            return;
+        auto& studio = safe->studio;
+        if (chosen == 1)
+            LinkGroupPage::show (*safe, studio, 0, studio.getSelectedTracks());
+        else if (chosen == 2 || chosen == 3)
+        {
+            if (const auto* g = studio.getLinkGroupOf (trackId))
+                chosen == 2 ? LinkGroupPage::show (*safe, studio, g->id, {}) : studio.removeLinkGroup (g->id);
+        }
+        else if (chosen == 4)
+            studio.setQLink (! studio.isQLinkOn());
+        else if (chosen == 5)
+            studio.setLinksSuspended (! studio.areLinksSuspended());
+        else if (chosen >= 100)
+            studio.setTrackLinkGroup (trackId, chosen - 100);
+    });
 }
 
 void MixerView::timerCallback()
@@ -423,15 +606,18 @@ void MixerView::timerCallback()
     auto& engine = studio.getEngine();
     for (auto& strip : strips)
     {
-        const auto peak = engine.takeTrackPeak (strip->getBusId(), 1);
+        const auto peak = engine.takeTrackPeak (strip->getBusId(), single ? 2 : 1);
         strip->setLevels (peak, peak);
         strip->followMix();
-        if (showSends)
+        if (showsSends())
             for (int i = 0; i < pr7s::Project::maxSends; ++i)
                 strip->getSendSlot (i).repaint();
     }
+    if (single && ! singleIsMaster)
+        return;
+    const auto reader = single ? 2 : 1;
     master->followMix();
-    master->setLevels (engine.getOutputMeter (0, 1).takePeak(), engine.getOutputMeter (1, 1).takePeak());
+    master->setLevels (engine.getOutputMeter (0, reader).takePeak(), engine.getOutputMeter (1, reader).takePeak());
 }
 
 void MixerView::showInsertMenu (int busId, int slot)
@@ -454,7 +640,7 @@ void MixerView::showInsertMenu (int busId, int slot)
         const auto& insert = (*inserts)[(size_t) slot];
         const auto* instance = studio.getEngine().getEffect (busId, slot);
         menu.addSectionHeader (insert.plugin.name + (slot < preFader ? " (before the fader)" : " (after the fader)"));
-        menu.addItem (1, "Open its window", instance != nullptr && instance->hasEditor());
+        menu.addItem (1, "Open its window", studio.hasEditor (instance));
         menu.addItem (2, "Bypass", true, insert.bypass);
         menu.addSubMenu ("Replace with", choose);
         menu.addItem (3, "Remove");
@@ -503,6 +689,8 @@ void MixerView::showInsertMenu (int busId, int slot)
 void MixerView::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff0d0a0e));
+    if (single)
+        return;
     auto bar = getLocalBounds().removeFromTop (barHeight).toFloat();
     g.setColour (juce::Colour (0xff100c11));
     g.fillRect (bar);
@@ -514,10 +702,11 @@ void MixerView::paint (juce::Graphics& g)
     g.drawText ("MIXER", bar.withTrimmedLeft (14.0f), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (font (11.0f, juce::Font::plain));
-    g.drawText (! rackShown ? "Each track's fader, pan and keys (INSERTS or SENDS shows their racks again)"
+    g.drawText (inWindow ? "Each track: its inserts (those below an orange line after the fader), its sends to the FX channels, its fader, its output"
+              : ! rackShown ? "Each track's fader, pan and keys (INSERTS or SENDS shows their racks again)"
               : showSends ? "Each track's sends: some of its sound to an FX channel (before or after its fader), back into the master"
                           : "Each track: its instrument, its inserts (top to bottom; those below an orange line after the fader), its fader, its output",
-                bar.withTrimmedLeft (70.0f).withTrimmedRight (330.0f), juce::Justification::centredLeft, true);
+                bar.withTrimmedLeft (70.0f).withRight ((float) linkKeysLeft - 12.0f), juce::Justification::centredLeft, true);
     if (strips.empty())
     {
         g.setFont (font (13.0f, juce::Font::plain));
@@ -529,22 +718,60 @@ void MixerView::paint (juce::Graphics& g)
 void MixerView::resized()
 {
     auto area = getLocalBounds();
+    if (single)
+    {
+        viewport.setBounds (area);
+        holder.setSize (area.getWidth(), area.getHeight());
+        for (auto& strip : strips)
+            strip->setBounds (holder.getLocalBounds());
+        master->setBounds (holder.getLocalBounds());
+        return;
+    }
     auto bar = area.removeFromTop (barHeight).reduced (8, 4);
     closeButton.setBounds (bar.removeFromRight (64));
     bar.removeFromRight (6);
     windowButton.setBounds (bar.removeFromRight (74));
     bar.removeFromRight (16);
-    sendsButton.setBounds (bar.removeFromRight (62));
+    if (! inWindow)
+    {
+        sendsButton.setBounds (bar.removeFromRight (62));
+        bar.removeFromRight (4);
+        insertsButton.setBounds (bar.removeFromRight (72));
+        bar.removeFromRight (16);
+    }
+    // The link keys (0.17.0).
+    qLinkButton.setBounds (bar.removeFromRight (64));
     bar.removeFromRight (4);
-    insertsButton.setBounds (bar.removeFromRight (72));
+    absButton.setBounds (bar.removeFromRight (44));
+    bar.removeFromRight (4);
+    susButton.setBounds (bar.removeFromRight (44));
+    bar.removeFromRight (4);
+    editLinkButton.setBounds (bar.removeFromRight (82));
+    bar.removeFromRight (4);
+    linkButton.setBounds (bar.removeFromRight (70));
+    linkKeysLeft = bar.getRight();
 
-    master->setBounds (area.removeFromRight (masterWidth));
+    const auto stripW = inWindow ? windowStripWidth : stripWidth, masterW = inWindow ? windowMasterWidth : masterWidth;
+    master->setBounds (area.removeFromRight (masterW));
     area.removeFromRight (3);
     viewport.setBounds (area);
     const auto height = area.getHeight() - (viewport.canScrollHorizontally() ? viewport.getScrollBarThickness() : 0);
-    holder.setSize (juce::jmax (area.getWidth(), (int) strips.size() * stripWidth), juce::jmax (0, height));
-    for (size_t i = 0; i < strips.size(); ++i)
-        strips[i]->setBounds ((int) i * stripWidth, 0, stripWidth, holder.getHeight());
+    holder.setSize (juce::jmax (area.getWidth(), (int) strips.size() * stripW), juce::jmax (0, height));
+    // The tracks from the left; group channels at the right, next to the master
+    // (0.13.1, the owner asked), in the track list's order.
+    const auto isGroup = [this] (const Strip& strip)
+    {
+        const auto* track = studio.getProject().findTrack (strip.getBusId());
+        return track != nullptr && track->isGroup();
+    };
+    const auto groups = (int) std::count_if (strips.begin(), strips.end(), [&] (const auto& strip) { return isGroup (*strip); });
+    auto left = 0, right = holder.getWidth() - groups * stripW;
+    for (auto& strip : strips)
+    {
+        auto& x = isGroup (*strip) ? right : left;
+        strip->setBounds (x, 0, stripW, holder.getHeight());
+        x += stripW;
+    }
 }
 
 //==============================================================================
@@ -578,17 +805,28 @@ void MixerView::rackChanged()
     repaint();
 }
 
+int MixerView::rackRows (int insertRows) const
+{
+    if (showsInserts() && showsSends())
+        return insertRows + pr7s::Project::maxSends + 1;   // (and the line between them)
+    return showsInserts() || showsSends() ? insertRows : 0;
+}
+
+int MixerView::getPreferredHeight() const
+{
+    auto most = master->getShownSlots();
+    for (const auto& strip : strips)
+        most = juce::jmax (most, strip->getShownSlots());
+    return barHeight + Strip::fixedHeight + 110 + rackRows (most) * (slotHeight + slotGap) + viewport.getScrollBarThickness();
+}
+
 int MixerView::getMinimumHeight() const
 {
     // The rack's room: the most slots any strip shows, at their smallest.
-    auto rack = 0;
-    if (rackShown)
-    {
-        auto most = master->getShownSlots();
-        for (const auto& strip : strips)
-            most = juce::jmax (most, strip->getShownSlots());
-        rack = most * (Strip::shortestSlot + slotGap);
-    }
+    auto most = master->getShownSlots();
+    for (const auto& strip : strips)
+        most = juce::jmax (most, strip->getShownSlots());
+    const auto rack = rackRows (most) * (Strip::shortestSlot + slotGap);
     return barHeight + Strip::fixedHeight + Strip::shortestFader + rack + viewport.getScrollBarThickness();
 }
 
@@ -728,7 +966,7 @@ void MixerView::SendSlot::paint (juce::Graphics& g)
     g.setColour (active ? ParagonColours::accent : ParagonColours::accentDim.darker (0.6f));
     g.fillEllipse (dot);
     g.setColour (active ? ParagonColours::text : ParagonColours::textDim);
-    g.setFont (font (juce::jmin (11.0f, bounds.getHeight() * 0.8f)));
+    g.setFont (font (juce::jmin (18.0f, juce::jmax (juce::jmin (11.0f, bounds.getHeight() * 0.8f), bounds.getHeight() * 0.55f))));
     g.drawFittedText (fx != nullptr ? fx->name : juce::String ("?"), bar.toNearestInt().withTrimmedLeft (2).withTrimmedRight (s->preFader ? 22 : 2),
                       juce::Justification::centredLeft, 1, 0.7f);
     if (s->preFader)

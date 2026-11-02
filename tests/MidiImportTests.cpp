@@ -156,14 +156,139 @@ TEST_CASE ("Importing a MIDI file on screen: IMPORT in the header; a .mid droppe
         REQUIRE (song().writeTo (out, 1));
     }
     CHECK (view.isInterestedInFileDrag ({ file.getFullPathName() }));
-    CHECK_FALSE (view.isInterestedInFileDrag ({ "song.wav" }));
+    CHECK_FALSE (view.isInterestedInFileDrag ({ "notes.txt" }));   // (audio files are taken too since 0.8.3)
     auto& arrange = view.getArrangeView();
     const auto dropAt = view.getLocalPoint (&arrange, juce::Point<int> ((int) (9.0 * Timeline().pixelsPerBeat), 60));
+    studio.setQuantizeBeats (4.0);   // (0.18.1: drops snap as the arrangement does; 1/1 = the bar)
+    // The file is at 100 BPM, the song at 120: asked which (0.9.14). Cancel: nothing comes in.
+    auto asked = 0;
+    auto reply = 0;
+    double askedBpm = 0.0;
+    view.askMidiTempo = [&] (const juce::File&, double bpm, std::function<void (int)> answer) { ++asked; askedBpm = bpm; answer (reply); };
+    view.filesDropped ({ file.getFullPathName() }, dropAt.x, dropAt.y);
+    CHECK (asked == 1);
+    CHECK_THAT (askedBpm, WithinAbs (100.0, 1.0e-6));
+    CHECK (studio.getProject().tracks.size() == 1);
+    // Keep the song's tempo.
+    reply = 2;
     view.filesDropped ({ file.getFullPathName() }, dropAt.x, dropAt.y);
     const auto& tracks = studio.getProject().tracks;
     REQUIRE (tracks.size() == 3);   // the song's own, and the file's two
     CHECK (tracks[1].name == "Piano");
     CHECK (tracks[1].parts[0].start == 8.0);   // the bar it was dropped on
     CHECK (studio.getProject().bpm == 120.0);  // this song's tempo kept
+    // Match the song to the file: 100 BPM, the notes on the same beats; the tempo change is an undo step of its own.
+    reply = 1;
+    view.filesDropped ({ file.getFullPathName() }, dropAt.x, dropAt.y);
+    CHECK (tracks.size() == 5);
+    CHECK (tracks[3].parts[0].start == 8.0);
+    CHECK (studio.getProject().bpm == 100.0);
+    // A file at the song's tempo now: not asked.
+    asked = 0;
+    view.filesDropped ({ file.getFullPathName() }, dropAt.x, dropAt.y);
+    CHECK (asked == 0);
+    CHECK (tracks.size() == 7);
     file.deleteFile();
+}
+
+TEST_CASE ("MIDI import into this song can match the song's tempo to the file's (0.9.14)", "[midi][studio]")
+{
+    Studio studio (false);
+    juce::MemoryOutputStream out;
+    REQUIRE (song().writeTo (out, 1));
+    juce::MemoryInputStream in (out.getData(), out.getDataSize(), false);
+    juce::String error;
+    const auto midi = readMidiFile (in, error);
+    REQUIRE (midi.has_value());
+    studio.setTempo (140.0);
+    studio.setSignature (3, 4);
+    CHECK (studio.importMidi (*midi, false, 0.0, false) == 2);
+    CHECK (studio.getProject().bpm == 140.0);    // kept
+    CHECK (studio.importMidi (*midi, false, 0.0, true) == 2);
+    CHECK (studio.getProject().bpm == 100.0);    // the file's
+    CHECK (studio.getProject().numerator == 3);  // (the signature stays the song's)
+    // A new song always takes the file's tempo (matchTempo or not).
+    studio.setTempo (90.0);
+    CHECK (studio.importMidi (*midi, true, 0.0, false) == 2);
+    CHECK (studio.getProject().bpm == 100.0);
+}
+
+TEST_CASE ("Several MIDI files imported one after another: each file's tracks added as new tracks (one at a time never stops the next)", "[midi][studio]")
+{
+    Studio studio (false);
+    const auto folder = juce::File::createTempFile ("pr7s-midi-several");
+    folder.createDirectory();
+    juce::Array<juce::File> files;
+    for (int i = 0; i < 5; ++i)
+    {
+        auto file = folder.getChildFile ("Song " + juce::String (i + 1) + ".mid");
+        juce::FileOutputStream out (file);
+        REQUIRE (out.openedOk());
+        REQUIRE (song().writeTo (out, 1));
+        files.add (file);
+    }
+    const auto before = studio.getProject().tracks.size();
+    for (const auto& file : files)
+    {
+        juce::String error;
+        CHECK (studio.importMidi (file, false, 0.0, error) == 2);   // its piano and bass
+        CHECK (error.isEmpty());
+    }
+    CHECK (studio.getProject().tracks.size() == before + 10);
+    for (size_t i = before; i < studio.getProject().tracks.size(); ++i)
+        CHECK (studio.getProject().tracks[i].parts.size() == 1);
+    folder.deleteRecursively();
+}
+
+TEST_CASE ("A MIDI file's tempo changes come in on the tempo track (0.10.0)", "[midi][tempo]")
+{
+    // 100 BPM, 75 from beat 8, 120 from beat 16 (a change at the same tempo is no change).
+    juce::MidiFile file;
+    file.setTicksPerQuarterNote (ppq);
+    juce::MidiMessageSequence conductor, piano;
+    conductor.addEvent (juce::MidiMessage::tempoMetaEvent (600000), 0.0);
+    conductor.addEvent (juce::MidiMessage::tempoMetaEvent (800000), 8.0 * ppq);
+    conductor.addEvent (juce::MidiMessage::tempoMetaEvent (800000), 12.0 * ppq);
+    conductor.addEvent (juce::MidiMessage::tempoMetaEvent (500000), 16.0 * ppq);
+    piano.addEvent (juce::MidiMessage::textMetaEvent (3, "Piano"), 0.0);
+    addNote (piano, 1, 60, 0.0, 1.0, 100);
+    for (auto* seq : { &conductor, &piano })
+    {
+        seq->updateMatchedPairs();
+        file.addTrack (*seq);
+    }
+    juce::MemoryOutputStream out;
+    REQUIRE (file.writeTo (out, 1));
+    juce::MemoryInputStream in (out.getData(), out.getDataSize(), false);
+    juce::String error;
+    const auto midi = readMidiFile (in, error);
+    REQUIRE (midi.has_value());
+    REQUIRE (midi->tempoChanges.size() == 3);
+    CHECK (midi->tempoChanges[1].beat == 8.0);
+    CHECK_THAT (midi->tempoChanges[1].bpm, WithinAbs (75.0, 1.0e-9));
+    CHECK_THAT (midi->tempoChanges[2].bpm, WithinAbs (120.0, 1.0e-9));
+
+    // A new song: the tempo track, on, with them.
+    Studio studio (false);
+    REQUIRE (studio.importMidi (*midi, true, 0.0) == 1);
+    const auto& song = studio.getProject();
+    CHECK (song.tempoTrackShown);
+    CHECK (song.followsTempoTrack());
+    CHECK (song.tempoEvents == midi->tempoChanges);
+    CHECK_THAT (song.bpmAt (10.0), WithinAbs (75.0, 1.0e-9));
+
+    // Into another song at bar 3 (4/4: beat 8), matching: its changes from there; before, the song's tempo.
+    Studio other (false);
+    other.setTempo (90.0);
+    REQUIRE (other.importMidi (*midi, false, 8.0, true) == 1);
+    const auto& events = other.getProject().tempoEvents;
+    REQUIRE (events.size() == 4);
+    CHECK (events[0].bpm == 90.0);
+    CHECK (events[1].beat == 8.0);
+    CHECK_THAT (events[1].bpm, WithinAbs (100.0, 1.0e-9));
+    CHECK (events[2].beat == 16.0);
+    // Keeping the song's tempo: no tempo track.
+    Studio kept (false);
+    REQUIRE (kept.importMidi (*midi, false, 0.0, false) == 1);
+    CHECK_FALSE (kept.getProject().tempoTrackShown);
 }

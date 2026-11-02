@@ -84,6 +84,7 @@ jobs:
           name: ParagonPR7S-${{ matrix.name }}
           path: |
             build/ParagonPR7S_artefacts/Release/Paragon PR7-S.exe
+            build/ParagonPR7S_artefacts/Release/Paragon PR7-S.pdb
             build/ParagonPR7S_artefacts/Release/Paragon PR7-S.app
             build/ParagonPR7S_artefacts/Release/Paragon PR7-S
 
@@ -128,17 +129,46 @@ jobs:
         with:
           path: artifacts
 
+      # The studio's synth (0.9.11): PR7-K's latest release, its VST3 beside
+      # the app in each zip (the app looks there first). If it can't be had,
+      # the release goes out without it (the app then uses the old synth).
+      - name: PR7-K, the studio's synth
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          mkdir pr7k
+          if gh release download --repo ARYEZ/Paragon-PR7-K --pattern "*-VST3.zip" --dir pr7k; then
+            for os in Windows macOS Linux; do
+              zip=$(ls pr7k/*-${os}-VST3.zip 2>/dev/null | head -1)
+              if [ -n "$zip" ]; then
+                unzip -q "$zip" -d "artifacts/ParagonPR7S-${os}/"
+                echo "PR7-K for ${os}: $(basename "$zip")"
+              else
+                echo "::warning::No PR7-K VST3 for ${os} in its latest release"
+              fi
+            done
+          else
+            echo "::warning::PR7-K's latest release couldn't be downloaded; the zips go out without it"
+          fi
+
       - name: Zip each platform's app
         if: steps.version.outputs.publish == 'true'
         run: |
           TAG="${{ steps.version.outputs.tag }}"
           mkdir release
           # Artifact storage drops file permissions; put the executable flag
-          # back on the macOS and Linux apps.
+          # back on the macOS and Linux apps (and PR7-K's binaries).
           chmod -R a+x "artifacts/ParagonPR7S-macOS/Paragon PR7-S.app/Contents/MacOS" "artifacts/ParagonPR7S-Linux/Paragon PR7-S"
-          (cd artifacts/ParagonPR7S-Windows && zip -q "../../release/ParagonPR7-S-${TAG}-Windows.zip" "Paragon PR7-S.exe")
-          (cd artifacts/ParagonPR7S-macOS && zip -qry "../../release/ParagonPR7-S-${TAG}-macOS.zip" "Paragon PR7-S.app")
-          (cd artifacts/ParagonPR7S-Linux && zip -q "../../release/ParagonPR7-S-${TAG}-Linux.zip" "Paragon PR7-S")
+          chmod -R a+x artifacts/ParagonPR7S-macOS/*.vst3/Contents/MacOS artifacts/ParagonPR7S-Linux/*.vst3/Contents/x86_64-linux 2>/dev/null || true
+          # Each zip: the app, its .pdb on Windows (names in the session log's
+          # crash entries), and PR7-K's VST3 if it was fetched.
+          pack() {   # folder, zip name, app, zip flags
+            (cd "artifacts/$1" && files=("$3") && { [ -e "Paragon PR7-S.pdb" ] && files+=("Paragon PR7-S.pdb"); true; } \
+               && { [ -e "Paragon PR7-K.vst3" ] && files+=("Paragon PR7-K.vst3"); true; } \
+               && zip $4 "../../release/$2" "${files[@]}")
+          }
+          pack ParagonPR7S-Windows "ParagonPR7-S-${TAG}-Windows.zip" "Paragon PR7-S.exe" -qr
+          pack ParagonPR7S-macOS "ParagonPR7-S-${TAG}-macOS.zip" "Paragon PR7-S.app" -qry
+          pack ParagonPR7S-Linux "ParagonPR7-S-${TAG}-Linux.zip" "Paragon PR7-S" -qr
           ls -l release
 
       - name: Write the release notes

@@ -62,7 +62,7 @@ namespace pr7s
         // Every instrument and effect told it's rendering offline (an export:
         // a sampler can then wait for its samples instead of dropping notes),
         // or back to real time. Message thread, not while the interface plays.
-        void setNonRealtime (bool);
+        void setNonRealtime (bool, const std::function<bool (int trackId)>& sounding = {});
         void removeEffect (int busId, int slot);   // deleted after it's out of the audio's way
         juce::AudioPluginInstance* getEffect (int busId, int slot) const;
         int getNumEffects (int busId) const;
@@ -87,6 +87,9 @@ namespace pr7s
         // Transport (any thread)
         void play();
         void stop();
+        // Every note the song left sounding ended at the next block (a render's start:
+        // no block may have been played since the last render or the playback).
+        void releaseNotes() noexcept { releaseAll = true; }
         void record();   // plays, recording what's played into the armed track
         void stopRecording() noexcept { recording = false; }   // punch out: keeps playing
         bool isPlaying() const noexcept { return playing.load(); }
@@ -104,6 +107,15 @@ namespace pr7s
         juce::MidiKeyboardState& getKeyboardState() noexcept { return keyboardState; }
         void setLiveTrack (int trackId) noexcept { liveTrack = trackId; }
         int getLiveTrack() const noexcept { return liveTrack.load(); }
+
+        // MIDI devices' callback (0.9.0): what each device plays goes to the
+        // collector unless the live track listens to one input only (its
+        // Routing: a device's name; empty: all).
+        juce::MidiInputCallback& getLiveInput() noexcept { return liveInput; }
+        // The chord pads (0.14.0): while set, their trigger keys from the devices play them.
+        void setPadPlayer (PadPlayer* player) noexcept { padPlayer = player; }
+        void setLiveInputFilter (const juce::String& deviceName);
+        bool acceptsLiveFrom (const juce::String& deviceName) const;
 
         // The notes played while recording since the last call (message thread).
         void takeRecorded (std::vector<RecordedEvent>& into);
@@ -133,12 +145,31 @@ namespace pr7s
 
         // The output's level, and each track's (the highest since last asked).
         // Each has two readers, so the transport and the track list (0) and
-        // the mixer (1) don't take each other's peaks.
+        // the mixer (1) don't take each other's peaks; a track's, a third (2:
+        // the Inspector's fader).
         LevelMeterSource& getOutputMeter (int channel, int reader = 0) noexcept
         {
-            return outputMeters[(size_t) juce::jlimit (0, 1, reader)][(size_t) juce::jlimit (0, 1, channel)];
+            return outputMeters[(size_t) juce::jlimit (0, 2, reader)][(size_t) juce::jlimit (0, 1, channel)];
         }
         float takeTrackPeak (int trackId, int reader = 0);
+
+        // Audio performance (the manual's Audio Performance Monitor, as its
+        // transport meter shows it): how long the interface's blocks take to
+        // process, against how long they last (1 = all the time there is).
+        // The average (smoothed over a tenth of a second or so), the peak since
+        // the last look, and the overloads (blocks that took longer than they
+        // last: a dropout) since the last reset.
+        struct Performance { float average = 0.0f, peak = 0.0f; int overloads = 0; };
+        Performance takePerformance();
+        void resetOverloads() noexcept { overloads = 0; }
+        int getOverloads() const noexcept { return overloads.load(); }   // (without taking the peak: a tooltip looks too)
+        // Every fader, pan and send straight at its setting, with no glide from
+        // where it was (an export or a render starts here: its first moments
+        // at the levels set, not still moving from the last playback's).
+        void settleMix();
+
+        // One block measured (the audio callback calls it; tests too).
+        void notePerformance (double secondsTaken, int numSamples) noexcept;
 
         // What a track's (or the master's: masterBus) mix is at now, its
         // automation included, for the screen's faders to follow (any thread).
@@ -187,8 +218,10 @@ namespace pr7s
         {
             int id = 0;
             bool audio = false;          // an audio track: clips and input, no instrument
+            bool frozen = false;         // its freeze file plays as a clip (no instrument, no inserts)
             std::vector<Clip> clips;
             int input = 0;
+            int midiChannel = 1;         // the channel its notes (and what's played live into it) go to the instrument on
             bool stereoInput = false, monitor = false;
             juce::AudioFormatWriter::ThreadedWriter* recorder = nullptr;
             std::unique_ptr<juce::AudioPluginInstance> instrument;
@@ -198,9 +231,11 @@ namespace pr7s
             float gainLeft = 1.0f, gainRight = 1.0f;
             juce::SmoothedValue<float> left, right;
             std::bitset<128> held;       // notes sounding, to stop them on a jump or stop
+            int heldChannel = 1;         // the channel they were started on (the track's may change meanwhile)
+            bool checkHeld = false;      // the events changed (an edit while playing): the notes they no longer end, ended
             juce::MidiBuffer midi;
             juce::AudioBuffer<float> buffer;
-            std::array<LevelMeterSource, 2> meters;   // one per reader
+            std::array<LevelMeterSource, 3> meters;   // one per reader (2: the Inspector's fader)
             // The mix as set, and the lanes read (those with points and R on).
             float volumeDb = 0.0f, pan = 0.0f;
             bool mute = false, soloedOut = false;   // soloedOut: another track is soloed
@@ -226,7 +261,8 @@ namespace pr7s
 
         struct Settings
         {
-            double bpm = 120.0;
+            TempoMap tempo;            // the fixed tempo, or the tempo track's (0.10.0)
+            int tempoVersion = 0;      // changes when the tempo does (the clock re-bases)
             int numerator = 4, denominator = 4;
             bool loopOn = false;
             double loopStart = 0.0, loopEnd = 16.0;
@@ -248,11 +284,20 @@ namespace pr7s
         static int channelsFor (const juce::AudioPluginInstance&);
         int channelsNeeded (const TrackState&) const;
         void runInserts (std::vector<Slot>&, juce::AudioBuffer<float>&, int numSamples, int fromSlot = 0, int toSlot = Project::maxInserts);
-        void schedule (TrackState&, juce::int64 fromSample, juce::int64 toSample, int sampleOffset, double beatsPerSample);
+        // Beats to the song's samples and back, by the tempo map (0.10.0: it was one beats-per-sample).
+        struct Timing
+        {
+            const TempoMap* map;
+            double rate;
+            juce::int64 sampleAt (double beat) const noexcept { return (juce::int64) std::llround (map->secondsAt (beat) * rate); }
+            double beatAt (double sample) const noexcept { return map->beatAt (sample / rate); }
+        };
+        void schedule (TrackState&, juce::int64 fromSample, juce::int64 toSample, int sampleOffset, const Timing&);
         void stopHeldNotes (TrackState&, int sampleOffset);
+        void endNotesNoLongerEnded (TrackState&, double beatNow, int sampleOffset);
         void renderBlock (juce::AudioBuffer<float>& output, int numSamples);
         const float* inputChannel (int channel, int offset) const noexcept;
-        void playClips (TrackState&, juce::int64 clock, int offset, int length, double beatsPerSample);
+        void playClips (TrackState&, juce::int64 clock, int offset, int length, const Timing&);
         void runSends (TrackState&, bool preFader, int numSamples, double beat);
 
         // The block's segments (up to the cycle's end, then from its start): their song position, place in the block and length.
@@ -276,15 +321,37 @@ namespace pr7s
         std::atomic<bool> playing { false }, recording { false };
         std::atomic<double> position { 0.0 }, jumpTo { -1.0 };
         std::atomic<bool> rebase { false };
+        std::atomic<bool> releaseAll { false };
         std::atomic<int> cycleCount { 0 };   // the position was moved while stopped: the clock starts from it
         bool wasPlaying = false;
         // The song position in whole samples while playing (audio thread), so
         // notes land on exactly their sample however long the song plays.
         juce::int64 sampleClock = 0;
-        double clockBeatsPerSample = 0.0;
+        int clockTempoVersion = -1;
         std::atomic<int> liveTrack { 0 };
+        std::atomic<float> averageLoad { 0.0f }, peakLoad { 0.0f };
+        std::atomic<int> overloads { 0 };
 
         juce::MidiMessageCollector midiInput;
+        struct LiveInput final : juce::MidiInputCallback
+        {
+            explicit LiveInput (Engine& e) : engine (e) {}
+            void handleIncomingMidiMessage (juce::MidiInput* source, const juce::MidiMessage& message) override
+            {
+                if (source == nullptr || engine.acceptsLiveFrom (source->getName()))
+                {
+                    // The chord pads' trigger keys play the pads, not themselves (0.14.0).
+                    if (auto* pads = engine.padPlayer.load(); pads != nullptr && pads->handle (message))
+                        return;
+                    engine.midiInput.handleIncomingMidiMessage (source, message);
+                }
+            }
+            Engine& engine;
+        };
+        LiveInput liveInput { *this };
+        std::atomic<PadPlayer*> padPlayer { nullptr };
+        mutable juce::SpinLock liveFilterLock;
+        juce::String liveFilter;
         juce::MidiKeyboardState keyboardState;
         juce::MidiBuffer live;
 
@@ -316,6 +383,6 @@ namespace pr7s
 
         Head head;
         juce::AudioBuffer<float> deviceBuffer;
-        std::array<std::array<LevelMeterSource, 2>, 2> outputMeters;   // [reader][channel]
+        std::array<std::array<LevelMeterSource, 2>, 3> outputMeters;   // [reader][channel] (2: the Inspector's master, 0.9.12)
     };
 }

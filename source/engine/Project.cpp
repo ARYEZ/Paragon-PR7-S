@@ -135,7 +135,7 @@ namespace pr7s
 
     juce::String Instrument::getName() const
     {
-        return kind == Kind::paragonSynth ? juce::String ("Paragon Synth") : plugin.name;
+        return kind == Kind::paragonSynth ? juce::String ("PR7-K") : plugin.name;   // (the studio's synth since 0.9.11)
     }
 
     Track* Project::findTrack (int id)
@@ -173,6 +173,16 @@ namespace pr7s
         return last;
     }
 
+    TempoMap Project::tempoMap() const
+    {
+        return followsTempoTrack() ? TempoMap (tempoEvents) : TempoMap (bpm);
+    }
+
+    double Project::bpmAt (double beat) const
+    {
+        return followsTempoTrack() ? TempoMap (tempoEvents).bpmAt (beat) : bpm;
+    }
+
     std::unique_ptr<juce::XmlElement> Project::toXml() const
     {
         auto xml = std::make_unique<juce::XmlElement> (projectTag);
@@ -184,7 +194,45 @@ namespace pr7s
         xml->setAttribute ("loopStart", loopStart);
         xml->setAttribute ("loopEnd", loopEnd);
         xml->setAttribute ("click", click);
+        xml->setAttribute ("snap", snapOn);
+        xml->setAttribute ("quantize", quantizeBeats);
         xml->setAttribute ("nextTrackId", nextTrackId);
+        xml->addChildElement (chordPads.toXml().release());
+        if (chordTrack.shown || ! chordTrack.events.empty())
+            xml->addChildElement (chordTrack.toXml().release());
+        for (const auto& group : linkGroups)
+        {
+            auto* g = xml->createNewChildElement ("LinkGroup");
+            g->setAttribute ("id", group.id);
+            g->setAttribute ("name", group.name);
+            g->setAttribute ("volume", group.volume);
+            g->setAttribute ("pan", group.pan);
+            g->setAttribute ("sends", group.sends);
+            g->setAttribute ("inserts", group.inserts);
+            g->setAttribute ("muteSolo", group.muteSolo);
+            g->setAttribute ("automation", group.automation);
+            g->setAttribute ("routing", group.routing);
+            g->setAttribute ("selection", group.selection);
+            g->setAttribute ("recordMonitor", group.recordMonitor);
+        }
+        if (! tempoEvents.empty() || tempoTrackShown)
+        {
+            auto* tempo = xml->createNewChildElement ("Tempo");
+            tempo->setAttribute ("on", tempoTrackOn);
+            tempo->setAttribute ("shown", tempoTrackShown);
+            tempo->setAttribute ("locked", tempoLocked);
+            tempo->setAttribute ("newType", newTempoType == NewTempoType::step ? "step" : newTempoType == NewTempoType::automatic ? "automatic" : "ramp");
+            tempo->setAttribute ("low", tempoViewLow);
+            tempo->setAttribute ("high", tempoViewHigh);
+            for (const auto& e : tempoEvents)
+            {
+                auto* event = tempo->createNewChildElement ("Event");
+                event->setAttribute ("beat", e.beat);
+                event->setAttribute ("bpm", e.bpm);
+                if (e.ramp)
+                    event->setAttribute ("ramp", true);
+            }
+        }
 
         for (const auto& track : tracks)
         {
@@ -203,6 +251,8 @@ namespace pr7s
                 t->setAttribute ("output", track.output);
             if (track.sendsBypass)
                 t->setAttribute ("sendsBypass", true);
+            if (track.linkGroup != 0)
+                t->setAttribute ("linkGroup", track.linkGroup);
             for (const auto& send : track.sends)
             {
                 auto* e = t->createNewChildElement (sendTag);
@@ -218,6 +268,29 @@ namespace pr7s
                 t->setAttribute ("stereoInput", track.stereoInput);
                 t->setAttribute ("monitor", track.monitor);
             }
+            if (track.midiInput.isNotEmpty())
+                t->setAttribute ("midiInput", track.midiInput);
+            if (track.midiChannel != 1)
+                t->setAttribute ("midiChannel", track.midiChannel);
+            if (track.disabled)
+                t->setAttribute ("disabled", true);
+            if (track.frozen)
+            {
+                t->setAttribute ("frozen", true);
+                t->setAttribute ("freezeFile", track.freezeFile);
+            }
+            for (int q = 0; q < Track::numQuickControls; ++q)
+                if (const auto& qc = track.quickControls[(size_t) q])
+                {
+                    auto* e = t->createNewChildElement ("QuickControl");
+                    e->setAttribute ("index", q);
+                    e->setAttribute ("target", targetNames[(int) qc->target]);
+                    e->setAttribute ("slot", qc->slot);
+                    e->setAttribute ("parameter", qc->parameter);
+                    e->setAttribute ("parameterName", qc->parameterName);
+                }
+            if (track.hidden)
+                t->setAttribute ("hidden", true);
             t->setAttribute ("instrument", track.instrument.kind == Instrument::Kind::plugin ? "plugin" : "paragonSynth");
             if (track.instrument.kind == Instrument::Kind::plugin)
                 t->addChildElement (track.instrument.plugin.createXml().release());
@@ -236,6 +309,8 @@ namespace pr7s
                 p->setAttribute ("start", part.start);
                 p->setAttribute ("length", part.length);
                 p->setAttribute ("name", part.name);
+                if (part.muted)
+                    p->setAttribute ("muted", true);
                 if (part.isAudio())
                 {
                     p->setAttribute ("audioFile", part.audioFile);
@@ -277,6 +352,29 @@ namespace pr7s
         project.loopStart = juce::jmax (0.0, xml.getDoubleAttribute ("loopStart", 0.0));
         project.loopEnd = juce::jmax (project.loopStart + 0.25, xml.getDoubleAttribute ("loopEnd", 16.0));
         project.click = xml.getBoolAttribute ("click");
+        project.snapOn = xml.getBoolAttribute ("snap", true);
+        project.quantizeBeats = juce::jlimit (1.0 / 16.0, 4.0, xml.getDoubleAttribute ("quantize", 0.25));
+        if (const auto* pads = xml.getChildByName ("ChordPads"))
+            project.chordPads = ChordPads::fromXml (*pads);
+        if (const auto* chords = xml.getChildByName ("ChordTrack"))
+            project.chordTrack = ChordTrack::fromXml (*chords);
+        if (const auto* tempo = xml.getChildByName ("Tempo"))
+        {
+            project.tempoTrackShown = tempo->getBoolAttribute ("shown");
+            project.tempoLocked = tempo->getBoolAttribute ("locked");
+            const auto type = tempo->getStringAttribute ("newType", "ramp");
+            project.newTempoType = type == "step" ? NewTempoType::step : type == "automatic" ? NewTempoType::automatic : NewTempoType::ramp;
+            project.tempoViewLow = juce::jlimit (minBpm, maxBpm - 10.0, tempo->getDoubleAttribute ("low", 60.0));
+            project.tempoViewHigh = juce::jlimit (project.tempoViewLow + 10.0, maxBpm, tempo->getDoubleAttribute ("high", 180.0));
+            for (const auto* e : tempo->getChildWithTagNameIterator ("Event"))
+                project.tempoEvents.push_back ({ juce::jmax (0.0, e->getDoubleAttribute ("beat")),
+                                                 juce::jlimit (minBpm, maxBpm, e->getDoubleAttribute ("bpm", project.bpm)),
+                                                 e->getBoolAttribute ("ramp") });
+            std::stable_sort (project.tempoEvents.begin(), project.tempoEvents.end(), [] (const TempoEvent& a, const TempoEvent& b) { return a.beat < b.beat; });
+            if (! project.tempoEvents.empty())
+                project.tempoEvents.front().beat = 0.0;
+            project.tempoTrackOn = tempo->getBoolAttribute ("on") && ! project.tempoEvents.empty();
+        }
 
         int highestId = 0;
         for (const auto* t : xml.getChildWithTagNameIterator (trackTag))
@@ -287,15 +385,39 @@ namespace pr7s
             track.colour = juce::Colour::fromString (t->getStringAttribute ("colour", trackColour (0).toString()));
             // Songs from before 0.5.1 could have colours outside the family's
             // (blue, lime, violet, aqua, amber): each becomes its new one.
+            // Others (0.5.1 to 0.9.11's shades): the nearest of the gradient's three (0.9.12).
             const juce::uint32 retired[] = { 0xff45b4ff, 0xffb8f040, 0xffb86dff, 0xff4fe3dd, 0xffffb22e };
+            auto replaced = false;
             for (size_t i = 0; i < std::size (retired); ++i)
                 if (track.colour.getARGB() == retired[i])
-                    track.colour = trackColour (3 + (int) i);
+                    track.colour = trackColour (3 + (int) i), replaced = true;
+            if (! replaced && ! FamilyColours::isFamily (track.colour))   // (0.17.3: the colour menu's tints kept)
+                track.colour = FamilyColours::nearest (track.colour);
             track.volumeDb = (float) juce::jlimit (-60.0, 6.0, t->getDoubleAttribute ("volumeDb", 0.0));
             track.pan = (float) juce::jlimit (-1.0, 1.0, t->getDoubleAttribute ("pan", 0.0));
             track.mute = t->getBoolAttribute ("mute");
             track.solo = t->getBoolAttribute ("solo");
             track.armed = t->getBoolAttribute ("armed");
+            track.midiInput = t->getStringAttribute ("midiInput");
+            track.midiChannel = juce::jlimit (1, 16, t->getIntAttribute ("midiChannel", 1));
+            track.disabled = t->getBoolAttribute ("disabled");
+            track.freezeFile = t->getStringAttribute ("freezeFile");
+            track.frozen = t->getBoolAttribute ("frozen") && track.freezeFile.isNotEmpty();
+            for (const auto* e : t->getChildWithTagNameIterator ("QuickControl"))
+            {
+                const auto q = e->getIntAttribute ("index", -1);
+                const auto target = e->getStringAttribute ("target");
+                const auto known = std::find_if (std::begin (targetNames), std::end (targetNames), [&] (const char* n) { return target == n; });
+                if (! juce::isPositiveAndBelow (q, Track::numQuickControls) || known == std::end (targetNames))
+                    continue;
+                AutomationLane qc;
+                qc.target = (AutomationLane::Target) std::distance (std::begin (targetNames), known);
+                qc.slot = juce::jlimit (0, Project::maxInserts - 1, e->getIntAttribute ("slot"));
+                qc.parameter = juce::jmax (0, e->getIntAttribute ("parameter"));
+                qc.parameterName = e->getStringAttribute ("parameterName");
+                track.quickControls[(size_t) q] = qc;
+            }
+            track.hidden = t->getBoolAttribute ("hidden");
             if (t->getStringAttribute ("kind") == "audio")
             {
                 track.kind = Track::Kind::audio;
@@ -309,6 +431,7 @@ namespace pr7s
                 track.kind = Track::Kind::group;
             track.output = juce::jmax (0, t->getIntAttribute ("output"));
             track.sendsBypass = t->getBoolAttribute ("sendsBypass");
+            track.linkGroup = juce::jmax (0, t->getIntAttribute ("linkGroup"));
             for (const auto* e : t->getChildWithTagNameIterator (sendTag))
             {
                 if ((int) track.sends.size() >= maxSends)
@@ -336,8 +459,9 @@ namespace pr7s
             {
                 Part part;
                 part.start = juce::jmax (0.0, p->getDoubleAttribute ("start"));
-                part.length = juce::jmax (0.0625, p->getDoubleAttribute ("length", 4.0));
+                part.length = juce::jmax (1.0e-6, p->getDoubleAttribute ("length", 4.0));
                 part.name = p->getStringAttribute ("name");
+                part.muted = p->getBoolAttribute ("muted");
                 part.audioFile = p->getStringAttribute ("audioFile");
                 part.audioOffset = juce::jmax (0.0, p->getDoubleAttribute ("audioOffset"));
                 part.fadeIn = juce::jmax (0.0, p->getDoubleAttribute ("fadeIn"));
@@ -364,6 +488,33 @@ namespace pr7s
                 if (const auto* to = project.findTrack (send.target); to == nullptr || ! to->isFx())
                     send.target = 0;
         }
+        // Link groups (0.17.0): those with two members or more; a track in one that isn't there, in none.
+        for (const auto* g : xml.getChildWithTagNameIterator ("LinkGroup"))
+        {
+            LinkGroup group;
+            group.id = g->getIntAttribute ("id");
+            group.name = g->getStringAttribute ("name");
+            group.volume = g->getBoolAttribute ("volume", true);
+            group.pan = g->getBoolAttribute ("pan");
+            group.sends = g->getBoolAttribute ("sends", true);
+            group.inserts = g->getBoolAttribute ("inserts");
+            group.muteSolo = g->getBoolAttribute ("muteSolo");
+            group.automation = g->getBoolAttribute ("automation");
+            group.routing = g->getBoolAttribute ("routing", true);
+            group.selection = g->getBoolAttribute ("selection", true);
+            group.recordMonitor = g->getBoolAttribute ("recordMonitor");
+            if (group.id > 0 && project.findLinkGroup (group.id) == nullptr)
+                project.linkGroups.push_back (group);
+        }
+        for (auto& track : project.tracks)
+            if (project.findLinkGroup (track.linkGroup) == nullptr)
+                track.linkGroup = 0;
+        project.linkGroups.erase (std::remove_if (project.linkGroups.begin(), project.linkGroups.end(),
+                                                  [&project] (const LinkGroup& g) { return project.linkGroupMembers (g.id).size() < 2; }),
+                                  project.linkGroups.end());
+        for (auto& track : project.tracks)
+            if (project.findLinkGroup (track.linkGroup) == nullptr)
+                track.linkGroup = 0;
         if (const auto* master = xml.getChildByName (masterTag))   // songs from before 0.3.0 have none: 0 dB, no effects
         {
             project.masterVolumeDb = (float) juce::jlimit (-60.0, 6.0, master->getDoubleAttribute ("volumeDb", 0.0));
@@ -375,6 +526,61 @@ namespace pr7s
             project.masterWrite = master->getBoolAttribute ("automationWrite");
         }
         return project;
+    }
+
+    bool LinkGroup::links (What what) const noexcept
+    {
+        switch (what)
+        {
+            case What::volume:        return volume;
+            case What::pan:           return pan;
+            case What::sends:         return sends;
+            case What::inserts:       return inserts;
+            case What::muteSolo:      return muteSolo;
+            case What::automation:    return automation;
+            case What::routing:       return routing;
+            case What::selection:     return selection;
+            case What::recordMonitor: return recordMonitor;
+        }
+        return false;
+    }
+
+    void LinkGroup::setLinks (What what, bool on) noexcept
+    {
+        switch (what)
+        {
+            case What::volume:        volume = on; break;
+            case What::pan:           pan = on; break;
+            case What::sends:         sends = on; break;
+            case What::inserts:       inserts = on; break;
+            case What::muteSolo:      muteSolo = on; break;
+            case What::automation:    automation = on; break;
+            case What::routing:       routing = on; break;
+            case What::selection:     selection = on; break;
+            case What::recordMonitor: recordMonitor = on; break;
+        }
+    }
+
+    LinkGroup* Project::findLinkGroup (int id)
+    {
+        for (auto& g : linkGroups)
+            if (id != 0 && g.id == id)
+                return &g;
+        return nullptr;
+    }
+
+    const LinkGroup* Project::findLinkGroup (int id) const
+    {
+        return const_cast<Project*> (this)->findLinkGroup (id);
+    }
+
+    std::vector<int> Project::linkGroupMembers (int groupId) const
+    {
+        std::vector<int> ids;
+        for (const auto& t : tracks)
+            if (groupId != 0 && t.linkGroup == groupId)
+                ids.push_back (t.id);
+        return ids;
     }
 
     juce::String formatBarsBeats (double beats, const Project& project)
@@ -404,19 +610,47 @@ namespace pr7s
 
     juce::Colour trackColour (int index)
     {
-        // Only the family's colours: shades along its red, pink and orange
-        // (the owner's rule), each unlike the one before it.
-        static const juce::Colour colours[] = {
-            juce::Colour (0xffe0103c),   // the chain's red
-            juce::Colour (0xffff2f7a),   // hot pink
-            juce::Colour (0xffff7a1a),   // orange
-            juce::Colour (0xffff7aa8),   // rose (a light pink)
-            juce::Colour (0xffff4a2a),   // red-orange
-            juce::Colour (0xffc2185b),   // deep pink
-            juce::Colour (0xffffa04a),   // peach (a light orange)
-            juce::Colour (0xffa3122f),   // crimson
+        // Only the gradient's three colours (0.9.12, the owner's rule), in turn.
+        static const juce::Colour colours[] = { FamilyColours::red, FamilyColours::pink, FamilyColours::orange };
+        return colours[(size_t) (index % 3 + 3) % 3];
+    }
+
+    juce::Colour FamilyColours::nearest (juce::Colour colour)
+    {
+        // By hue mostly (a light pink is still pink), then by lightness.
+        const auto distance = [colour] (juce::Colour other)
+        {
+            auto hue = std::abs (colour.getHue() - other.getHue());
+            hue = juce::jmin (hue, 1.0f - hue);
+            return hue * 4.0f + std::abs (colour.getBrightness() - other.getBrightness()) * 0.5f;
         };
-        return colours[(size_t) (index % (int) std::size (colours) + (int) std::size (colours)) % std::size (colours)];
+        auto best = pink;
+        for (const auto candidate : { red, orange })
+            if (distance (candidate) < distance (best))
+                best = candidate;
+        return best;
+    }
+
+    juce::Colour FamilyColours::paletteColour (int hue, int shade)
+    {
+        // Hues 5 degrees apart: 346 (the pink) to 1 (the red) to 26 (the orange).
+        const auto degrees = std::fmod (346.0f + 5.0f * (float) juce::jlimit (0, paletteHues - 1, hue), 360.0f);
+        // Deep to pale: brightness up, saturation down.
+        static const float saturation[] = { 1.0f, 0.96f, 0.92f, 0.88f, 0.76f, 0.58f, 0.42f, 0.26f };
+        static const float brightness[] = { 0.42f, 0.56f, 0.70f, 0.84f, 0.95f, 1.0f, 1.0f, 1.0f };
+        const auto s = (size_t) juce::jlimit (0, paletteShades - 1, shade);
+        return juce::Colour::fromHSV (degrees / 360.0f, saturation[s], brightness[s], 1.0f);
+    }
+
+    bool FamilyColours::isFamily (juce::Colour colour)
+    {
+        if (colour == red || colour == pink || colour == orange)
+            return true;
+        for (int h = 0; h < paletteHues; ++h)
+            for (int s = 0; s < paletteShades; ++s)
+                if (paletteColour (h, s) == colour)
+                    return true;
+        return false;
     }
 
     double snap (double beats, double grid) noexcept

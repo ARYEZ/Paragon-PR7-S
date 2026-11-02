@@ -36,6 +36,24 @@ namespace pr7s
         // Ticks to beats: ticks per quarter note; or, for a file timed in
         // SMPTE frames, its seconds at its tempo.
         const auto timeFormat = midi.getTimeFormat();
+        // Every tempo change, for the tempo track (0.10.0): steps, as a MIDI file has them.
+        if (timeFormat > 0)
+            for (int i = 0; i < tempos.getNumEvents(); ++i)
+            {
+                const auto& message = tempos.getEventPointer (i)->message;
+                const auto beat = message.getTimeStamp() / (double) timeFormat;
+                const auto bpm = juce::jlimit (Project::minBpm, Project::maxBpm, 60.0 / message.getTempoSecondsPerQuarterNote());
+                if (! result.tempoChanges.empty() && std::abs (result.tempoChanges.back().beat - beat) < 1.0e-9)
+                    result.tempoChanges.back().bpm = bpm;   // (two at one tick: the later)
+                else if (result.tempoChanges.empty() || std::abs (result.tempoChanges.back().bpm - bpm) > 1.0e-6)
+                    result.tempoChanges.push_back ({ beat, bpm, false });
+            }
+        // A first tempo after the file's start: until then it plays at MIDI's own 120.
+        if (! result.tempoChanges.empty() && result.tempoChanges.front().beat > 1.0e-9)
+        {
+            result.tempoChanges.insert (result.tempoChanges.begin(), { 0.0, 120.0, false });
+            result.bpm = 120.0;
+        }
         if (timeFormat <= 0)
             midi.convertTimestampTicksToSeconds();
         const auto toBeats = [&] (double time)

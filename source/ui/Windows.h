@@ -9,12 +9,23 @@
 namespace Windows
 {
     // An instrument's own window (its editor, as its maker drew it).
-    class Instrument final : public juce::DocumentWindow
+    // A plugin's window (an instrument's or an effect's). It floats above the
+    // studio while the studio is the program in front (0.9.12: it went
+    // behind the studio's window, which spans three screens, and looked
+    // closed), and stays open until closed (as the manual's plug-in windows).
+    // The keys it doesn't use go to the studio (`onKey`: Space, R...).
+    class Instrument final : public juce::DocumentWindow,
+                             private juce::Timer
     {
     public:
         Instrument (const juce::String& trackName, juce::AudioPluginInstance&);
         void closeButtonPressed() override;
+        bool keyPressed (const juce::KeyPress&) override;
         std::function<void()> onClose;
+        std::function<bool (const juce::KeyPress&)> onKey;
+
+    private:
+        void timerCallback() override;
     };
 
     // The key editor or the mixer in a window of its own (their WINDOW
@@ -40,14 +51,50 @@ namespace Windows
         juce::String stateKey;
     };
 
+    // RENDER IN PLACE (the manual's Render Selection / Render Tracks
+    // dialog): how to render what's chosen. Its choices are kept for next time
+    // (so Render with the last settings needs no page). It only asks: onRender
+    // gets the choices, and MainView renders.
+    class RenderPage final : public juce::Component
+    {
+    public:
+        RenderPage (pr7s::Studio&, bool wholeTracks);
+        void resized() override;
+        void paint (juce::Graphics&) override;
+        pr7s::Studio::RenderOptions getOptions() const;   // as chosen now
+        static pr7s::Studio::RenderOptions keptOptions (juce::PropertiesFile*);   // the last ones chosen
+        std::function<void (const pr7s::Studio::RenderOptions&)> onRender;
+        std::function<void()> onCancel;
+        juce::ComboBox mode, processing, tail, bits, source;
+        juce::ToggleButton hideSource { "Hide the track afterwards (VISIBILITY shows it again)" };   // whole tracks
+        juce::TextButton renderButton { "RENDER" }, cancelButton { "CANCEL" };
+
+    private:
+        pr7s::Studio& studio;
+        juce::Label modeLabel, processingLabel, tailLabel, bitsLabel, sourceLabel, note;
+    };
+
+    // Where a window spanning all the screens goes: across them all, side by
+    // side, as tall as the height they all share (so none of it is off a
+    // shorter screen or under a taskbar). Screens stacked rather than side by
+    // side: the box round them all. Given each screen's usable area.
+    juce::Rectangle<int> spanOf (const juce::Array<juce::Rectangle<int>>& screens);
+    juce::Rectangle<int> allScreensArea();   // the computer's screens, now
+
     // SETTINGS: the audio interface (which, its sample rate and buffer
-    // size), the MIDI inputs, and the unit's finish.
+    // size), the MIDI inputs, the unit's finish, and SPAN ALL SCREENS (the
+    // studio's window across every screen; again: back on one).
     class Settings final : public juce::DocumentWindow
     {
     public:
-        explicit Settings (pr7s::Studio&);
+        Settings (pr7s::Studio&, std::function<void()> toggleSpan, std::function<bool()> isSpanning);
         void closeButtonPressed() override;
         std::function<void()> onClose;
+
+        // For tests: the buffer's line, whether RELOAD DRIVER is shown, a click on it.
+        juce::String getBufferText();
+        bool isReloadShown();
+        void clickReload();
     };
 
     // EXPORT: what to write the mix as (which stretch of the song, the

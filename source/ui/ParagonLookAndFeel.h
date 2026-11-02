@@ -51,6 +51,7 @@ public:
     static constexpr const char* litColourProperty = "litColour";
     // A key that opens a menu: a small down arrow drawn instead of its text (the fonts have none).
     static constexpr const char* menuArrowProperty = "menuArrow";
+    static constexpr const char* barFromCentreProperty = "barFromCentre";   // a LinearBar lit from its centre (pan)
 
     // Set this on a TextButton to draw it as the mockup's light outlined
     // buttons printed on the metal (VOLUME, WAH / FILTER, MORPH / FX). Its
@@ -112,6 +113,13 @@ public:
                                bool highlighted, bool down) override;
 
     void drawButtonText (juce::Graphics&, juce::TextButton&, bool highlighted, bool down) override;
+    // Question and message boxes (0.9.10, the owner asked): pearl black, white text, the PR7-S mark for the icon.
+    void drawAlertBox (juce::Graphics&, juce::AlertWindow&, const juce::Rectangle<int>& textArea, juce::TextLayout&) override;
+    // Progress bars (the export's, scanning plug-ins): one of the studio's horizontal meters (0.11.1).
+    void drawProgressBar (juce::Graphics&, juce::ProgressBar&, int width, int height, double progress, const juce::String& textToShow) override;
+    juce::Font getAlertWindowTitleFont() override;
+    juce::Font getAlertWindowMessageFont() override;
+    juce::Font getAlertWindowFont() override;
     // Scroll bars: a dark track and an orange thumb (JUCE's own is blue: not the family's).
     void drawScrollbar (juce::Graphics&, juce::ScrollBar&, int x, int y, int width, int height, bool isScrollbarVertical,
                         int thumbStartPosition, int thumbSize, bool isMouseOver, bool isMouseDown) override;

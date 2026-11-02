@@ -1,0 +1,918 @@
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
+
+#include "TestHelpers.h"
+#include "engine/Studio.h"
+
+using Catch::Matchers::WithinAbs;
+using Catch::Matchers::WithinRel;
+using namespace pr7s;
+
+namespace
+{
+    constexpr double rate = 48000.0;
+
+    const Part* partAt (const Studio& studio, int trackId, double start)
+    {
+        for (const auto& part : studio.getProject().findTrack (trackId)->parts)
+            if (std::abs (part.start - start) < 1.0e-9)
+                return &part;
+        return nullptr;
+    }
+
+    int indexAt (const Studio& studio, int trackId, double start)
+    {
+        const auto& parts = studio.getProject().findTrack (trackId)->parts;
+        for (int i = 0; i < (int) parts.size(); ++i)
+            if (std::abs (parts[(size_t) i].start - start) < 1.0e-9)
+                return i;
+        return -1;
+    }
+}
+
+TEST_CASE ("Split: a part cut in two at a beat; a note across the cut becomes two; one undo step", "[edit]")
+{
+    Studio studio (false);
+    const auto track = studio.getProject().tracks[0].id;
+    studio.addPart (track, { 4.0, 8.0, "Riff", { { 0.0, 1.0, 60, 0.8f }, { 2.5, 3.0, 64, 0.5f }, { 6.0, 1.0, 67, 0.8f } } });
+    CHECK (studio.splitPart (track, 0, 8.0) == 1);   // 4 beats in: through the 64 (2.5 to 5.5)
+
+    const auto* first = partAt (studio, track, 4.0);
+    const auto* second = partAt (studio, track, 8.0);
+    REQUIRE (first != nullptr);
+    REQUIRE (second != nullptr);
+    CHECK (first->length == 4.0);
+    CHECK (second->length == 4.0);
+    CHECK (second->name == "Riff");
+    REQUIRE (first->notes.size() == 2);
+    CHECK (first->notes[1].pitch == 64);
+    CHECK (first->notes[1].length == 1.5);      // up to the cut
+    REQUIRE (second->notes.size() == 2);
+    CHECK (second->notes[0].pitch == 64);       // the rest of it, from the second part's start
+    CHECK (second->notes[0].start == 0.0);
+    CHECK (second->notes[0].length == 1.5);
+    CHECK (second->notes[0].velocity == 0.5f);
+    CHECK (second->notes[1].pitch == 67);
+    CHECK (second->notes[1].start == 2.0);
+    CHECK (second->id != first->id);
+
+    // At its edges (or outside it), nothing.
+    CHECK (studio.splitPart (track, 0, 4.0) == -1);
+    CHECK (studio.splitPart (track, 0, 20.0) == -1);
+
+    studio.undo();
+    REQUIRE (studio.getProject().findTrack (track)->parts.size() == 1);
+    CHECK (studio.getProject().findTrack (track)->parts[0].length == 8.0);
+    CHECK (studio.getProject().findTrack (track)->parts[0].notes.size() == 3);
+}
+
+TEST_CASE ("Split repeatedly (Alt): equal pieces as long as the first; Split at Cursor: every part the playhead is in", "[edit]")
+{
+    Studio studio (false);
+    const auto a = studio.getProject().tracks[0].id;
+    const auto b = studio.addTrack ({});
+    studio.addPart (a, { 0.0, 7.0, "Long", {} });
+    studio.splitPartRepeatedly (a, 0, 2.0);
+    const auto& parts = studio.getProject().findTrack (a)->parts;
+    REQUIRE (parts.size() == 4);   // 2, 2, 2 and what's left: 1
+    CHECK (partAt (studio, a, 2.0)->length == 2.0);
+    CHECK (partAt (studio, a, 4.0)->length == 2.0);
+    CHECK (partAt (studio, a, 6.0)->length == 1.0);
+    studio.undo();
+    CHECK (studio.getProject().findTrack (a)->parts.size() == 1);   // one step
+
+    studio.addPart (b, { 2.0, 4.0, "Other", {} });
+    studio.addPart (b, { 10.0, 2.0, "Later", {} });
+    studio.setPosition (3.0);
+    studio.splitAtCursor();
+    CHECK (studio.getProject().findTrack (a)->parts.size() == 2);   // 0-7 at 3
+    CHECK (studio.getProject().findTrack (b)->parts.size() == 3);   // 2-6 at 3; 10-12 untouched
+    CHECK (partAt (studio, b, 3.0)->length == 3.0);
+    studio.undo();
+
+    // With a part selected, only that one.
+    studio.splitAtCursor (studio.getProject().findTrack (b)->parts[0].id);
+    CHECK (studio.getProject().findTrack (a)->parts.size() == 1);
+    CHECK (studio.getProject().findTrack (b)->parts.size() == 3);
+}
+
+TEST_CASE ("Glue: a part to the next (or, with Alt, all after it): one part, their notes in place, the gaps silent", "[edit]")
+{
+    Studio studio (false);
+    const auto track = studio.getProject().tracks[0].id;
+    // Out of order in the list: glue goes by where they start.
+    studio.addPart (track, { 12.0, 2.0, "C", { { 0.0, 1.0, 72, 0.8f } } });
+    studio.addPart (track, { 0.0, 4.0, "A", { { 0.0, 1.0, 60, 0.8f }, { 3.5, 2.0, 62, 0.8f }, { 5.0, 1.0, 50, 0.8f } } });
+    studio.addPart (track, { 6.0, 2.0, "B", { { 1.0, 1.0, 64, 0.8f } } });
+
+    REQUIRE (studio.glueParts (track, indexAt (studio, track, 0.0), false));
+    REQUIRE (studio.getProject().findTrack (track)->parts.size() == 2);
+    const auto* glued = partAt (studio, track, 0.0);
+    REQUIRE (glued != nullptr);
+    CHECK (glued->name == "A");
+    CHECK (glued->length == 8.0);   // to B's end
+    REQUIRE (glued->notes.size() == 3);   // the 50 past A's end wasn't heard: gone
+    CHECK (glued->notes[1].pitch == 62);
+    CHECK (glued->notes[1].length == 0.5);   // as it was heard (A ended at 4)
+    CHECK (glued->notes[2].pitch == 64);
+    CHECK (glued->notes[2].start == 7.0);
+    studio.undo();
+    CHECK (studio.getProject().findTrack (track)->parts.size() == 3);
+
+    REQUIRE (studio.glueParts (track, indexAt (studio, track, 0.0), true));
+    REQUIRE (studio.getProject().findTrack (track)->parts.size() == 1);
+    CHECK (studio.getProject().findTrack (track)->parts[0].length == 14.0);
+    CHECK (studio.getProject().findTrack (track)->parts[0].notes.back().start == 12.0);
+
+    // The last part has nothing after it.
+    CHECK_FALSE (studio.glueParts (track, 0, false));
+}
+
+TEST_CASE ("Audio clips: split, they play exactly as before; glued back, one clip; different recordings don't glue", "[edit][audio]")
+{
+    Studio studio (false);
+    const auto track = studio.addAudioTrack (false);
+    Part clip { 1.0, 4.0, "Take", {} };
+    clip.audioFile = "take.wav";
+    clip.audioOffset = 0.5;
+    clip.fadeIn = 0.1;
+    clip.fadeOut = 0.2;
+    studio.addPart (track, clip);
+    const auto before = studio.getProject().findTrack (track)->parts[0];
+    REQUIRE (studio.splitPart (track, 0, 2.5) >= 0);
+    const auto* first = partAt (studio, track, 1.0);
+    const auto* second = partAt (studio, track, 2.5);
+    REQUIRE (first != nullptr);
+    REQUIRE (second != nullptr);
+    CHECK (first->length == 1.5);
+    CHECK_THAT (second->audioOffset, WithinAbs (0.5 + 1.5 * 0.5, 1.0e-12));   // 1.5 beats at 120 BPM: 0.75 s further in
+    CHECK (second->audioFile == "take.wav");
+    CHECK (first->fadeIn == 0.1);
+    CHECK (first->fadeOut == 0.0);
+    CHECK (second->fadeIn == 0.0);
+    CHECK (second->fadeOut == 0.2);
+
+    // Played: every sample as the whole clip played it (a ramp tells them apart).
+    const auto render = [&] (std::vector<Part> parts)
+    {
+        Engine engine;
+        engine.prepare (rate, 512);
+        auto sound = std::make_shared<juce::AudioBuffer<float>> (2, (int) rate * 4);
+        for (int i = 0; i < sound->getNumSamples(); ++i)
+            for (int c = 0; c < 2; ++c)
+                sound->setSample (c, i, (float) i * 1.0e-5f);
+        engine.setAudioSource ([sound] (const juce::String&) -> std::shared_ptr<const juce::AudioBuffer<float>> { return sound; });
+        Project project;
+        Track t;
+        t.id = 1;
+        t.kind = Track::Kind::audio;
+        t.parts = std::move (parts);
+        project.tracks.push_back (t);
+        engine.addAudioTrack (1);
+        engine.update (project);
+        engine.play();
+        return renderSamples (engine, (int) rate * 3);
+    };
+    const auto whole = render ({ before });
+    const auto halves = render (studio.getProject().findTrack (track)->parts);
+    // (Apart from the fades, which now belong to each half: compare between them.)
+    auto same = true;
+    for (size_t i = (size_t) (rate * 0.5 + rate * 0.1) + 1; i < (size_t) (rate * 2.5 - rate * 0.2) - 1; ++i)
+        same = same && std::abs (whole[i] - halves[i]) < 1.0e-6f;
+    CHECK (same);
+
+    // Glued back: the clip as it was.
+    REQUIRE (studio.glueParts (track, indexAt (studio, track, 1.0), false));
+    REQUIRE (studio.getProject().findTrack (track)->parts.size() == 1);
+    const auto& back = studio.getProject().findTrack (track)->parts[0];
+    CHECK (back.length == 4.0);
+    CHECK_THAT (back.audioOffset, WithinAbs (0.5, 1.0e-12));
+    CHECK (back.fadeIn == 0.1);
+    CHECK (back.fadeOut == 0.2);
+
+    // A clip from another recording after it: not glued (no audio parts of several clips yet).
+    Part other { 5.0, 2.0, "Other", {} };
+    other.audioFile = "other.wav";
+    studio.addPart (track, other);
+    CHECK_FALSE (studio.glueParts (track, indexAt (studio, track, 1.0), false));
+    CHECK (studio.getProject().findTrack (track)->parts.size() == 2);
+}
+
+TEST_CASE ("Mute: a muted part isn't played (MIDI or audio), stays in the song, is saved; Erase with Alt: the part and all after it", "[edit]")
+{
+    Engine engine;
+    engine.prepare (rate, 512);
+    Project project;
+    Track track;
+    track.id = 1;
+    track.parts = { { 0.0, 1.0, "Heard", { { 0.0, 0.5, 60, 0.8f } } }, { 1.0, 1.0, "Muted", { { 0.0, 0.5, 64, 0.8f } } } };
+    track.parts[1].muted = true;
+    project.tracks.push_back (track);
+    auto probe = std::make_unique<Probe>();
+    auto* heard = probe.get();
+    engine.setInstrument (1, std::move (probe));
+    engine.update (project);
+    engine.play();
+    renderSamples (engine, (int) rate * 2);
+    REQUIRE (heard->notesOn().size() == 1);
+    CHECK (heard->notesOn()[0].message.getNoteNumber() == 60);
+
+    // Saved and opened again.
+    const auto again = Project::fromXml (*project.toXml());
+    REQUIRE (again.has_value());
+    CHECK_FALSE (again->tracks[0].parts[0].muted);
+    CHECK (again->tracks[0].parts[1].muted);
+
+    // In the studio: one undo step each; several at once.
+    Studio studio (false);
+    const auto id = studio.getProject().tracks[0].id;
+    studio.addPart (id, { 0.0, 2.0, "A", {} });
+    studio.addPart (id, { 4.0, 2.0, "B", {} });
+    studio.addPart (id, { 8.0, 2.0, "C", {} });
+    studio.setPartMuted (id, 1, true);
+    CHECK (studio.getProject().findTrack (id)->parts[1].muted);
+    studio.undo();
+    CHECK_FALSE (studio.getProject().findTrack (id)->parts[1].muted);
+    const auto& parts = studio.getProject().findTrack (id)->parts;
+    studio.setPartsMuted ({ parts[0].id, parts[2].id }, true);
+    CHECK (studio.getProject().findTrack (id)->parts[0].muted);
+    CHECK_FALSE (studio.getProject().findTrack (id)->parts[1].muted);
+    CHECK (studio.getProject().findTrack (id)->parts[2].muted);
+
+    studio.deletePartsFrom (id, indexAt (studio, id, 4.0));
+    REQUIRE (studio.getProject().findTrack (id)->parts.size() == 1);
+    CHECK (studio.getProject().findTrack (id)->parts[0].name == "A");
+    studio.undo();
+    CHECK (studio.getProject().findTrack (id)->parts.size() == 3);
+}
+
+TEST_CASE ("Range editing: split at its edges, crop, delete (and Delete Time), cut and paste, insert silence, move, copy, duplicate", "[edit][range]")
+{
+    Studio studio (false);
+    const auto a = studio.getProject().tracks[0].id;
+    const auto b = studio.addTrack ({});
+    const auto reset = [&]
+    {
+        // a: one 8-beat part (a note across beat 4 and one at 6); b: 0-4 and 6-10.
+        for (const auto id : { a, b })
+            while (! studio.getProject().findTrack (id)->parts.empty())
+                studio.deletePart (id, 0);
+        studio.addPart (a, { 0.0, 8.0, "A", { { 3.0, 2.0, 60, 0.8f }, { 6.0, 1.0, 62, 0.8f } } });
+        studio.addPart (b, { 0.0, 4.0, "B1", {} });
+        studio.addPart (b, { 6.0, 4.0, "B2", {} });
+    };
+    const auto starts = [&] (int id)
+    {
+        std::vector<std::pair<double, double>> out;
+        for (const auto& part : studio.getProject().findTrack (id)->parts)
+            out.push_back ({ part.start, part.length });
+        std::sort (out.begin(), out.end());
+        return out;
+    };
+    using Spans = std::vector<std::pair<double, double>>;
+    const Studio::Range range { 2.0, 7.0, { a, b } };
+
+    SECTION ("Split at the range's edges (Shift+X), on its tracks only")
+    {
+        reset();
+        studio.splitRange (range);
+        CHECK (starts (a) == Spans { { 0.0, 2.0 }, { 2.0, 5.0 }, { 7.0, 1.0 } });
+        CHECK (starts (b) == Spans { { 0.0, 2.0 }, { 2.0, 2.0 }, { 6.0, 1.0 }, { 7.0, 3.0 } });
+        studio.undo();
+        CHECK (starts (a) == Spans { { 0.0, 8.0 } });   // one step
+        studio.splitRange ({ 2.0, 7.0, { b } });
+        CHECK (starts (a) == Spans { { 0.0, 8.0 } });
+    }
+
+    SECTION ("Crop: parts across the edges cut down to the range; parts wholly inside or out untouched")
+    {
+        reset();
+        studio.addPart (a, { 20.0, 2.0, "Far", {} });
+        studio.cropRange (range);
+        CHECK (starts (a) == Spans { { 2.0, 5.0 }, { 20.0, 2.0 } });
+        CHECK (starts (b) == Spans { { 2.0, 2.0 }, { 6.0, 1.0 } });
+        // The note across beat 4 is now 1 beat into the cropped part, still 2 long.
+        const auto& cropped = studio.getProject().findTrack (a)->parts[0];
+        REQUIRE (cropped.notes.size() == 2);
+        CHECK (cropped.notes[0].start == 1.0);
+        CHECK (cropped.notes[0].length == 2.0);
+    }
+
+    SECTION ("Delete leaves the gap; Delete Time closes it (what's after moves back)")
+    {
+        reset();
+        studio.deleteRange (range, false);
+        CHECK (starts (a) == Spans { { 0.0, 2.0 }, { 7.0, 1.0 } });
+        CHECK (starts (b) == Spans { { 0.0, 2.0 }, { 7.0, 3.0 } });
+        studio.undo();
+        studio.deleteRange (range, true);
+        CHECK (starts (a) == Spans { { 0.0, 2.0 }, { 2.0, 1.0 } });
+        CHECK (starts (b) == Spans { { 0.0, 2.0 }, { 2.0, 3.0 } });
+    }
+
+    SECTION ("Cut, then Paste at the playhead's beat onto the selected track down; Paste Time makes room; Insert Silence")
+    {
+        reset();
+        const auto clip = studio.cutRange (range, false);
+        CHECK (clip.length == 5.0);
+        REQUIRE (clip.tracks.size() == 2);
+        REQUIRE (clip.tracks[0].size() == 1);
+        CHECK (clip.tracks[0][0].start == 0.0);
+        CHECK (clip.tracks[0][0].length == 5.0);
+        CHECK (clip.tracks[0][0].notes[0].start == 1.0);   // the note at beat 3: a beat into the range
+        CHECK (starts (a) == Spans { { 0.0, 2.0 }, { 7.0, 1.0 } });
+        studio.pasteRange (clip, 20.0, a, false);
+        CHECK (starts (a) == Spans { { 0.0, 2.0 }, { 7.0, 1.0 }, { 20.0, 5.0 } });
+        CHECK (starts (b) == Spans { { 0.0, 2.0 }, { 7.0, 3.0 }, { 20.0, 2.0 }, { 24.0, 1.0 } });
+        studio.undo();
+
+        studio.pasteRange (clip, 0.0, a, true);   // Paste Time: everything from 0 moves on by 5 first
+        CHECK (starts (a) == Spans { { 0.0, 5.0 }, { 5.0, 2.0 }, { 12.0, 1.0 } });
+
+        reset();
+        studio.insertSilence ({ 4.0, 6.0, { a } });
+        CHECK (starts (a) == Spans { { 0.0, 4.0 }, { 6.0, 4.0 } });   // split at 4, the rest 2 later
+        CHECK (starts (b) == Spans { { 0.0, 4.0 }, { 6.0, 4.0 } });   // not in the range: as it was
+    }
+
+    SECTION ("Move (drag) and copy (Alt-drag) the contents; Duplicate right after; onto tracks of the wrong kind, not")
+    {
+        reset();
+        studio.moveRange ({ 2.0, 4.0, { a } }, 10.0, a, false);
+        CHECK (starts (a) == Spans { { 0.0, 2.0 }, { 4.0, 4.0 }, { 10.0, 2.0 } });
+        studio.undo();
+        CHECK (starts (a) == Spans { { 0.0, 8.0 } });   // one step
+        studio.moveRange ({ 2.0, 4.0, { a } }, 10.0, b, true);   // copied onto the track below
+        CHECK (starts (a) == Spans { { 0.0, 8.0 } });
+        CHECK (starts (b) == Spans { { 0.0, 4.0 }, { 6.0, 4.0 }, { 10.0, 2.0 } });
+        studio.undo();
+        studio.duplicateRange ({ 6.0, 10.0, { b } });
+        CHECK (starts (b) == Spans { { 0.0, 4.0 }, { 6.0, 4.0 }, { 10.0, 4.0 } });
+
+        const auto audio = studio.addAudioTrack (false);
+        studio.moveRange ({ 0.0, 2.0, { a } }, 0.0, audio, true);   // MIDI onto an audio track: left out
+        CHECK (studio.getProject().findTrack (audio)->parts.empty());
+    }
+}
+
+TEST_CASE ("Tracks: several selected (Ctrl, Shift); moved in the list (undo puts the order back); duplicated with everything; removed; empty ones found", "[edit][tracks]")
+{
+    Studio studio (false);
+    const auto a = studio.getProject().tracks[0].id;
+    const auto b = studio.addTrack ({});
+    const auto c = studio.addTrack ({});
+    const auto d = studio.addAudioTrack (true);
+    const auto order = [&]
+    {
+        std::vector<int> ids;
+        for (const auto& track : studio.getProject().tracks)
+            ids.push_back (track.id);
+        return ids;
+    };
+    using Ids = std::vector<int>;
+
+    SECTION ("Selecting: one; Ctrl adds and removes; Shift a run from the one clicked last, or drops a selected one")
+    {
+        studio.selectTrack (a);
+        CHECK (studio.getSelectedTracks() == Ids { a });
+        studio.toggleTrackSelected (c);
+        CHECK (studio.getSelectedTracks() == Ids { a, c });
+        CHECK (studio.getSelectedTrack() == c);
+        studio.toggleTrackSelected (a);
+        CHECK (studio.getSelectedTracks() == Ids { c });
+        studio.selectTrack (a);
+        studio.selectTrackRun (c);
+        CHECK (studio.getSelectedTracks() == Ids { a, b, c });
+        studio.selectTrackRun (b);   // a selected one: dropped
+        CHECK (studio.getSelectedTracks() == Ids { a, c });
+        studio.selectTrack (d);
+        CHECK (studio.getSelectedTracks() == Ids { d });
+    }
+
+    SECTION ("Moving tracks: before a place in the list, several keeping their order; undo puts the order back")
+    {
+        studio.addPart (b, { 0.0, 4.0, "B", {} });
+        studio.moveTracks ({ c }, 0);
+        CHECK (order() == Ids { c, a, b, d });
+        studio.moveTracks ({ b, c }, 4);   // to the end, in the order they're in the list (c, then b)
+        CHECK (order() == Ids { a, d, c, b });
+        studio.undo();
+        CHECK (order() == Ids { c, a, b, d });
+        studio.undo();
+        CHECK (order() == Ids { a, b, c, d });
+        CHECK (studio.getProject().findTrack (b)->parts.size() == 1);   // (the parts as they were)
+        studio.moveTracks ({ a }, 3);   // before d
+        CHECK (order() == Ids { b, c, a, d });
+    }
+
+    SECTION ("Duplicating: straight under it, with its parts, effects, sends, automation and mix; selected")
+    {
+        studio.addPart (b, { 2.0, 4.0, "Riff", { { 0.0, 1.0, 60, 0.8f } } });
+        studio.setVolume (b, -6.0f);
+        studio.setPan (b, 0.25f);
+        studio.setAutomationOpen (b, true);   // a volume lane
+        studio.setAutomationPoints (b, 0, { { 0.0, 0.5f }, { 4.0, 0.8f } });
+        REQUIRE (studio.getProject().findTrack (b)->automation.size() == 1);
+        const auto copy = studio.duplicateTrack (b);
+        REQUIRE (copy != 0);
+        CHECK (order() == Ids { a, b, copy, c, d });
+        const auto* t = studio.getProject().findTrack (copy);
+        REQUIRE (t != nullptr);
+        CHECK (t->name == studio.getProject().findTrack (b)->name + " copy");
+        REQUIRE (t->parts.size() == 1);
+        CHECK (t->parts[0].name == "Riff");
+        CHECK (t->parts[0].id != studio.getProject().findTrack (b)->parts[0].id);
+        CHECK (t->volumeDb == -6.0f);
+        CHECK (t->pan == 0.25f);
+        REQUIRE (t->automation.size() == 1);
+        CHECK (t->automation[0].points.size() == 2);
+        CHECK (studio.getEngine().getInstrument (copy) != nullptr);   // its own instrument
+        CHECK (studio.getEngine().getInstrument (copy) != studio.getEngine().getInstrument (b));
+        CHECK (studio.getSelectedTracks() == Ids { copy });
+        // An audio track: an audio track again, its clips the same recordings.
+        const auto audioCopy = studio.duplicateTrack (d);
+        CHECK (studio.getProject().findTrack (audioCopy)->isAudio());
+        CHECK (studio.getProject().findTrack (audioCopy)->stereoInput);
+        // Several: each under its own, all selected.
+        studio.duplicateTracks ({ a, c });
+        CHECK (studio.getSelectedTracks().size() == 2);
+        CHECK (studio.getProject().tracks.size() == 8);
+    }
+
+    SECTION ("Removing several; the empty ones (no parts, no automation points)")
+    {
+        studio.addPart (b, { 0.0, 4.0, "B", {} });
+        CHECK (studio.getEmptyTracks() == Ids { a, c, d });
+        studio.removeTracks (studio.getEmptyTracks());
+        CHECK (order() == Ids { b });
+        CHECK (studio.getSelectedTrack() == b);
+    }
+}
+
+TEST_CASE ("Render in Place: a part to an audio clip on a new track under its own; through the effects or not (Dry); modes; the source kept, muted or removed", "[edit][render]")
+{
+    Studio studio (false);
+    const auto synth = studio.getProject().tracks[0].id;   // the Paragon Synth: real sound
+    studio.addPart (synth, { 4.0, 4.0, "Riff", { { 0.0, 1.0, 60, 1.0f }, { 2.0, 1.0, 64, 1.0f } } });
+    studio.addPart (synth, { 8.0, 4.0, "Riff 2", { { 0.0, 1.0, 67, 1.0f } } });
+    studio.addPart (synth, { 16.0, 2.0, "Later", { { 0.0, 1.0, 72, 1.0f } } });
+    const auto peakOf = [&] (const Part& clip)
+    {
+        const auto data = studio.getAudio (clip.audioFile);
+        REQUIRE (data != nullptr);
+        return data->sound.getMagnitude (0, data->sound.getNumSamples());
+    };
+    const auto spb = studio.getProject().secondsPerBeat();
+    Studio::RenderOptions options;
+    options.tail = Studio::RenderOptions::Tail::off;
+
+    SECTION ("As separate events: a clip for each part, where it was; a new audio track straight under the source")
+    {
+        juce::String error;
+        const auto made = studio.renderInPlace ({ { synth, 0.0, 32.0, true } }, options, error);
+        CHECK (error.isEmpty());
+        REQUIRE (made.size() == 1);
+        const auto& tracks = studio.getProject().tracks;
+        REQUIRE (tracks.size() == 2);
+        CHECK (tracks[1].id == made[0]);
+        CHECK (tracks[1].isAudio());
+        CHECK (tracks[1].name.endsWith ("render"));
+        const auto& clips = tracks[1].parts;
+        REQUIRE (clips.size() == 3);
+        CHECK (clips[0].start == 4.0);
+        CHECK_THAT (clips[0].length, WithinAbs (4.0, 0.01));   // no tail: as long as the part
+        CHECK (clips[1].start == 8.0);
+        CHECK (clips[2].start == 16.0);
+        CHECK (peakOf (clips[0]) > 0.01f);   // the synth's sound, not silence
+        CHECK (studio.getAudioFolder().getChildFile (clips[0].audioFile).existsAsFile());
+        CHECK_FALSE (studio.getProject().findTrack (synth)->mute);   // kept as it was
+    }
+
+    SECTION ("As block events: parts end to end are one clip; as one event: one clip over them all")
+    {
+        options.mode = Studio::RenderOptions::Mode::blocks;
+        juce::String error;
+        auto made = studio.renderInPlace ({ { synth, 0.0, 32.0, true } }, options, error);
+        REQUIRE (made.size() == 1);
+        const auto* blocks = studio.getProject().findTrack (made[0]);
+        REQUIRE (blocks->parts.size() == 2);   // 4 to 12 (two parts end to end), then 16 to 18
+        CHECK (blocks->parts[0].start == 4.0);
+        CHECK_THAT (blocks->parts[0].length, WithinAbs (8.0, 0.01));
+        options.mode = Studio::RenderOptions::Mode::one;
+        made = studio.renderInPlace ({ { synth, 0.0, 32.0, true } }, options, error);
+        const auto* one = studio.getProject().findTrack (made[0]);
+        REQUIRE (one->parts.size() == 1);
+        CHECK (one->parts[0].start == 4.0);
+        CHECK_THAT (one->parts[0].length, WithinAbs (14.0, 0.01));
+    }
+
+    SECTION ("A range: only what's in it (the parts cut at its edges); its source parts muted, the rest not")
+    {
+        options.source = Studio::RenderOptions::Source::mute;
+        juce::String error;
+        const auto made = studio.renderInPlace ({ { synth, 6.0, 10.0, false } }, options, error);
+        REQUIRE (made.size() == 1);
+        const auto& clips = studio.getProject().findTrack (made[0])->parts;
+        REQUIRE (clips.size() == 2);   // 6 to 8 of Riff, 8 to 10 of Riff 2
+        CHECK (clips[0].start == 6.0);
+        CHECK_THAT (clips[0].length, WithinAbs (2.0, 0.01));
+        // The source: cut at 6 and 10, what's between muted.
+        for (const auto& part : studio.getProject().findTrack (synth)->parts)
+            CHECK (part.muted == (part.start >= 6.0 - 1.0e-9 && part.end() <= 10.0 + 1.0e-9));
+    }
+
+    SECTION ("Channel Settings goes through the inserts; Dry doesn't, and the new track gets them; the fader goes to the new track")
+    {
+        Insert half;
+        half.plugin.name = "Half";
+        REQUIRE (studio.addInsert (synth, half, timesEffect (0.5f, "Half")));
+        studio.setVolume (synth, -6.0f);
+        juce::String error;
+        options.processing = Studio::RenderOptions::Processing::channelSettings;
+        const auto through = studio.renderInPlace ({ { synth, 4.0, 8.0, false } }, options, error);
+        options.processing = Studio::RenderOptions::Processing::dry;
+        const auto dry = studio.renderInPlace ({ { synth, 4.0, 8.0, false } }, options, error);
+        REQUIRE (through.size() == 1);
+        REQUIRE (dry.size() == 1);
+        const auto wet = peakOf (studio.getProject().findTrack (through[0])->parts.at (0));
+        const auto plain = peakOf (studio.getProject().findTrack (dry[0])->parts.at (0));
+        CHECK_THAT (wet / plain, WithinAbs (0.5, 0.02));   // the insert's half, and not the fader's -6 dB on top
+        CHECK (studio.getProject().findTrack (through[0])->volumeDb == -6.0f);   // the fader: on the new track
+        CHECK (studio.getProject().findTrack (through[0])->inserts.empty());
+        CHECK (studio.getProject().findTrack (dry[0])->inserts.size() == 1);    // Dry: the effects go with it
+        // Complete Signal Path: the fader rendered in too, the new track at 0 dB.
+        options.processing = Studio::RenderOptions::Processing::completeSignalPath;
+        const auto complete = studio.renderInPlace ({ { synth, 4.0, 8.0, false } }, options, error);
+        const auto all = peakOf (studio.getProject().findTrack (complete[0])->parts.at (0));
+        CHECK_THAT (all / wet, WithinAbs (std::pow (10.0, -6.0 / 20.0), 0.02));
+        CHECK (studio.getProject().findTrack (complete[0])->volumeDb == 0.0f);
+    }
+
+    SECTION ("A tail (in bars): the clip runs on after the part; a whole track removed after rendering")
+    {
+        options.tail = Studio::RenderOptions::Tail::bars;
+        options.tailSize = 1.0;
+        options.source = Studio::RenderOptions::Source::remove;
+        juce::String error;
+        const auto made = studio.renderInPlace ({ { synth, 16.0, 18.0, true } }, options, error);
+        REQUIRE (made.size() == 1);
+        const auto& clip = studio.getProject().findTrack (made[0])->parts.at (0);
+        CHECK (clip.length >= 2.0);                 // the part, and what rang on (up to a bar: it stops early once silent)
+        CHECK (clip.length <= 2.0 + 4.0 + 0.01);
+        CHECK (studio.getProject().findTrack (synth) == nullptr);   // removed
+        juce::ignoreUnused (spb);
+    }
+
+    studio.getAudioFolder().deleteRecursively();
+}
+
+TEST_CASE ("Disable a track: silent, its plugins unloaded with their settings kept; Enable loads them again", "[edit][disable]")
+{
+    Studio studio (false);
+    const auto synth = studio.getProject().tracks[0].id;   // the Paragon Synth
+    studio.addPart (synth, { 0.0, 4.0, "Riff", { { 0.0, 2.0, 60, 1.0f } } });
+    bool effectAlive = false;
+    Insert insert;
+    insert.plugin.name = "Test Effect";
+    insert.plugin.fileOrIdentifier = "test-effect";
+    auto effect = std::make_unique<TestEffect> ([] (juce::AudioBuffer<float>&) {}, 2, "Test Effect", &effectAlive);
+    effect->state = "drive=7";
+    REQUIRE (studio.addInsert (synth, insert, std::move (effect)));
+    REQUIRE (studio.getEngine().getInstrument (synth) != nullptr);
+    REQUIRE (effectAlive);
+    const auto loudness = [&studio]
+    {
+        studio.getEngine().setPosition (0.0);
+        studio.getEngine().play();
+        juce::AudioBuffer<float> out (2, 4800);
+        studio.getEngine().render (out, 4800);
+        studio.getEngine().stop();
+        return out.getMagnitude (0, 4800);
+    };
+    CHECK (loudness() > 0.01f);
+
+    studio.setArmed (synth);
+    studio.setTracksDisabled ({ synth }, true);
+    const auto* track = studio.getProject().findTrack (synth);
+    CHECK (track->disabled);
+    CHECK_FALSE (track->armed);
+    CHECK (studio.getEngine().getInstrument (synth) == nullptr);   // unloaded: no CPU, no RAM
+    CHECK_FALSE (effectAlive);
+    CHECK (track->inserts.size() == 1);   // still listed (with its settings)
+    CHECK (track->inserts[0].state.toString() == "drive=7");   // its settings, kept from the running effect
+    CHECK (loudness() == 0.0f);
+    studio.setArmed (synth);
+    CHECK_FALSE (studio.getProject().findTrack (synth)->armed);   // a disabled track can't be armed
+
+    // Saved as disabled; opened, its plugins stay unloaded.
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("pr7s-disabled.pr7s");
+    REQUIRE (studio.save (file));
+    Studio other (false);
+    juce::String problems;
+    REQUIRE (other.open (file, problems));
+    CHECK (other.getProject().tracks[0].disabled);
+    CHECK (other.getEngine().getInstrument (other.getProject().tracks[0].id) == nullptr);
+    file.deleteFile();
+
+    // Enabled: the instrument back (the test effect isn't a real plugin: its slot stays, the sound goes past it).
+    studio.setTracksDisabled ({ synth }, false);
+    CHECK_FALSE (studio.getProject().findTrack (synth)->disabled);
+    CHECK (studio.getEngine().getInstrument (synth) != nullptr);
+    CHECK (studio.getProject().findTrack (synth)->inserts.size() == 1);
+    CHECK (loudness() > 0.01f);
+
+    // FX and group channels can't be disabled (as the manual has it).
+    const auto group = studio.addGroupChannel();
+    studio.setTracksDisabled ({ group }, true);
+    CHECK_FALSE (studio.getProject().findTrack (group)->disabled);
+}
+
+TEST_CASE ("Hide a track: out of the shown tracks and the selection, still heard; pastes skip it", "[edit][hide]")
+{
+    Studio studio (false);
+    const auto a = studio.getProject().tracks[0].id;
+    const auto b = studio.addTrack ({});
+    const auto c = studio.addTrack ({});
+    studio.selectTrack (b);
+    studio.setTracksHidden ({ b }, true);
+    CHECK (studio.getProject().findTrack (b)->hidden);
+    CHECK (studio.getShownTracks() == std::vector<int> { a, c });
+    CHECK_FALSE (studio.isTrackShown (b));
+    CHECK (studio.getSelectedTrack() != b);
+
+    // A two-track paste from A lands on A and C (B is skipped).
+    Studio::RangeClip clip;
+    clip.length = 4.0;
+    clip.tracks = { { Part { 0.0, 4.0, "One", { { 0.0, 1.0, 60, 1.0f } } } }, { Part { 0.0, 4.0, "Two", { { 0.0, 1.0, 62, 1.0f } } } } };
+    studio.pasteRange (clip, 8.0, a, false);
+    CHECK (studio.getProject().findTrack (a)->parts.size() == 1);
+    CHECK (studio.getProject().findTrack (b)->parts.empty());
+    CHECK (studio.getProject().findTrack (c)->parts.size() == 1);
+
+    // Saved; shown again.
+    const auto copy = Project::fromXml (*studio.getProject().toXml());
+    REQUIRE (copy.has_value());
+    CHECK (copy->tracks[1].hidden);
+    CHECK_FALSE (copy->tracks[0].hidden);
+    studio.setTracksHidden ({ b }, false);
+    CHECK (studio.getShownTracks().size() == 3);
+}
+
+TEST_CASE ("Render in Place: the source disabled and hidden (the manual's Disable / Hide Source Tracks)", "[edit][render][disable]")
+{
+    Studio studio (false);
+    const auto synth = studio.getProject().tracks[0].id;
+    studio.addPart (synth, { 0.0, 4.0, "Riff", { { 0.0, 1.0, 60, 1.0f } } });
+    Studio::RenderOptions options;
+    options.tail = Studio::RenderOptions::Tail::off;
+    options.source = Studio::RenderOptions::Source::disable;
+    options.hideSource = true;
+    juce::String error;
+    const auto made = studio.renderInPlace ({ { synth, 0.0, 4.0, true } }, options, error);
+    REQUIRE (made.size() == 1);
+    const auto* source = studio.getProject().findTrack (synth);
+    CHECK (source->disabled);
+    CHECK (source->hidden);
+    CHECK (studio.getEngine().getInstrument (synth) == nullptr);
+    CHECK (studio.getShownTracks() == std::vector<int> { made[0] });
+    // The render itself has sound.
+    const auto* rendered = studio.getProject().findTrack (made[0]);
+    REQUIRE (rendered->parts.size() == 1);
+    const auto data = studio.getAudio (rendered->parts[0].audioFile);
+    REQUIRE (data != nullptr);
+    CHECK (data->sound.getMagnitude (0, data->sound.getNumSamples()) > 0.01f);
+    studio.getAudioFolder().deleteRecursively();
+}
+
+TEST_CASE ("Freeze: the instrument and its inserts rendered to a file and unloaded; the file played through the live fader; parts and inserts locked; Unfreeze loads them again", "[edit][freeze]")
+{
+    Studio studio (false);
+    const auto synth = studio.getProject().tracks[0].id;   // the Paragon Synth
+    studio.addPart (synth, { 0.0, 4.0, "Riff", { { 0.0, 2.0, 60, 1.0f } } });
+    Insert half;
+    half.plugin.name = "Half";
+    bool effectAlive = false;
+    REQUIRE (studio.addInsert (synth, half, timesEffect (0.5f, "Half", &effectAlive)));
+    studio.setVolume (synth, -6.0f);
+    const auto loudness = [&studio]
+    {
+        studio.getEngine().setPosition (0.0);
+        studio.getEngine().play();
+        juce::AudioBuffer<float> out (2, 9600);
+        studio.getEngine().render (out, 9600);
+        studio.getEngine().stop();
+        return out.getMagnitude (0, 9600);
+    };
+    loudness();   // (the fader glides to a new level: once through first)
+    const auto before = loudness();
+    REQUIRE (before > 0.01f);
+
+    studio.setArmed (synth);
+    juce::String error;
+    REQUIRE (studio.freezeTrack (synth, 0.0, error));
+    CHECK (error.isEmpty());
+    const auto* track = studio.getProject().findTrack (synth);
+    CHECK (track->frozen);
+    CHECK (studio.isFrozen (synth));
+    CHECK_FALSE (track->armed);
+    const auto file = studio.getAudioFolder().getChildFile (track->freezeFile);
+    CHECK (file.existsAsFile());
+    CHECK (file.getParentDirectory().getFileName() == "Freeze");
+    CHECK (studio.getEngine().getInstrument (synth) == nullptr);   // unloaded
+    CHECK_FALSE (effectAlive);
+    CHECK (track->inserts.size() == 1);   // still listed
+    // The file played: the insert's half in it, the live fader's -6 dB on it (not twice, not missing).
+    CHECK_THAT (loudness(), WithinRel (before, 0.05f));
+    studio.setVolume (synth, 0.0f);
+    loudness();   // (the fader glides to its new level: once through)
+    CHECK_THAT (loudness(), WithinRel (before * std::pow (10.0f, 6.0f / 20.0f), 0.05f));   // the fader still works
+
+    // Locked: parts can't be changed, inserts can't be added; can't be armed.
+    studio.addPart (synth, { 8.0, 4.0, "More", {} });
+    CHECK (studio.getProject().findTrack (synth)->parts.size() == 1);
+    studio.setNotes (synth, 0, {});
+    CHECK (studio.getProject().findTrack (synth)->parts[0].notes.size() == 1);
+    CHECK_FALSE (studio.addInsert (synth, half, timesEffect (1.0f)));
+    studio.setArmed (synth);
+    CHECK_FALSE (studio.getProject().findTrack (synth)->armed);
+
+    // Saved and opened: still frozen, its plugins not loaded, the file still there (copied beside the song).
+    const auto song = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("pr7s-frozen").getChildFile ("frozen.pr7s");
+    song.getParentDirectory().deleteRecursively();
+    song.getParentDirectory().createDirectory();
+    REQUIRE (studio.save (song));
+    {
+        Studio other (false);
+        juce::String problems;
+        REQUIRE (other.open (song, problems));
+        const auto& t = other.getProject().tracks[0];
+        CHECK (t.frozen);
+        CHECK (other.getEngine().getInstrument (t.id) == nullptr);
+        CHECK (other.getAudioFolder().getChildFile (t.freezeFile).existsAsFile());
+        other.getEngine().setPosition (0.0);
+        other.getEngine().play();
+        juce::AudioBuffer<float> out (2, 9600);
+        other.getEngine().render (out, 9600);
+        CHECK (out.getMagnitude (0, 9600) > 0.01f);   // played from the file
+    }
+
+    // Unfreeze, deleting the file: the instrument back (the test effect isn't a real plugin: its slot stays).
+    const auto frozenFile = studio.getAudioFolder().getChildFile (studio.getProject().findTrack (synth)->freezeFile);
+    studio.unfreezeTrack (synth, true);
+    track = studio.getProject().findTrack (synth);
+    CHECK_FALSE (track->frozen);
+    CHECK (track->freezeFile.isEmpty());
+    CHECK_FALSE (frozenFile.existsAsFile());
+    CHECK (studio.getEngine().getInstrument (synth) != nullptr);
+    studio.addPart (synth, { 8.0, 4.0, "More", {} });
+    CHECK (studio.getProject().findTrack (synth)->parts.size() == 2);   // editable again
+
+    // Not an FX or group channel, nor a track without parts.
+    CHECK_FALSE (studio.freezeTrack (studio.addGroupChannel(), 0.0, error));
+    CHECK_FALSE (studio.freezeTrack (studio.addTrack ({}), 0.0, error));
+    song.getParentDirectory().deleteRecursively();
+    studio.getAudioFolder().deleteRecursively();
+}
+
+TEST_CASE ("Freeze: a tail lets the sound ring on past the last part", "[edit][freeze]")
+{
+    Studio studio (false);
+    const auto synth = studio.getProject().tracks[0].id;
+    studio.addPart (synth, { 0.0, 2.0, "Riff", { { 0.0, 2.0, 60, 1.0f } } });
+    juce::String error;
+    REQUIRE (studio.freezeTrack (synth, 2.0, error));
+    const auto data = studio.getAudio (studio.getProject().findTrack (synth)->freezeFile);
+    REQUIRE (data != nullptr);
+    const auto seconds = data->sound.getNumSamples() / studio.getEngine().getSampleRate();
+    const auto partSeconds = 2.0 * studio.getProject().secondsPerBeat();
+    CHECK (seconds > partSeconds);              // some tail (it stops early once silent)
+    CHECK (seconds <= partSeconds + 2.0 + 0.3);
+    studio.getAudioFolder().deleteRecursively();
+}
+
+TEST_CASE ("Track presets: a track's sound and mix saved; applied to a track of its kind (not its parts, not undone); a new track from one", "[edit][preset]")
+{
+    Studio studio (false);
+    const auto synth = studio.getProject().tracks[0].id;
+    studio.addPart (synth, { 0.0, 4.0, "Riff", { { 0.0, 1.0, 60, 1.0f } } });
+    Insert drive;
+    drive.plugin.name = "Test Effect";
+    drive.plugin.fileOrIdentifier = "test-effect";
+    auto effect = std::make_unique<TestEffect> ([] (juce::AudioBuffer<float>&) {}, 2, "Test Effect");
+    effect->state = "drive=7";
+    REQUIRE (studio.addInsert (synth, drive, std::move (effect)));
+    studio.setVolume (synth, -4.5f);
+    studio.setPan (synth, 0.3f);
+    studio.renameTrack (synth, "Lead");
+    studio.setQuickControl (synth, 0, Studio::AutomationControl { AutomationLane::Target::volume });
+
+    const auto preset = studio.makeTrackPreset (synth);
+    REQUIRE (preset != nullptr);
+    CHECK (preset->getBoolAttribute ("trackPreset"));
+    {
+        const auto loaded = Project::fromXml (*preset);
+        REQUIRE (loaded);
+        const auto& t = loaded->tracks.at (0);
+        CHECK (t.parts.empty());   // no parts
+        CHECK (t.inserts.at (0).state.toString() == "drive=7");   // the running effect's settings
+    }
+
+    // Applied to another instrument track: its sound and mix, its own parts and name kept; undo doesn't take it back.
+    const auto other = studio.addTrack ({});
+    studio.addPart (other, { 8.0, 4.0, "Bass", { { 0.0, 1.0, 36, 1.0f } } });
+    juce::String error;
+    CHECK (studio.applyTrackPreset (other, *preset, error));   // (the test effect isn't a real plugin: an error about it, the slot kept)
+    auto* t = studio.getProject().findTrack (other);
+    CHECK (t->volumeDb == -4.5f);
+    CHECK (t->pan == 0.3f);
+    CHECK (t->name != "Lead");
+    REQUIRE (t->parts.size() == 1);
+    CHECK (t->parts[0].name == "Bass");
+    REQUIRE (t->inserts.size() == 1);
+    CHECK (t->inserts[0].plugin.name == "Test Effect");
+    CHECK (t->quickControls[0].has_value());
+    studio.undo();
+    CHECK (studio.getProject().findTrack (other)->volumeDb == -4.5f);
+
+    // Not onto another kind.
+    const auto audio = studio.addAudioTrack (false);
+    error = {};
+    CHECK_FALSE (studio.applyTrackPreset (audio, *preset, error));
+    CHECK (error.isNotEmpty());
+
+    // A new track from it: under the selected track, named as the preset's.
+    studio.selectTrack (synth);
+    error = {};
+    const auto made = studio.addTrackFromPreset (*preset, error);
+    REQUIRE (made != 0);
+    const auto& tracks = studio.getProject().tracks;
+    REQUIRE (tracks.size() == 4);
+    CHECK (tracks[1].id == made);
+    CHECK (tracks[1].name == "Lead");
+    CHECK (tracks[1].volumeDb == -4.5f);
+    CHECK (tracks[1].parts.empty());
+    CHECK (studio.getSelectedTrack() == made);
+}
+
+TEST_CASE ("Solo out of sight (0.9.9): hiding or disabling clears a track's solo; a disabled solo doesn't count; Render in Place moves it to the new track; exclusive solo; deactivate all", "[edit][solo]")
+{
+    Studio studio (false);
+    const auto a = studio.getProject().tracks[0].id;
+    const auto b = studio.addTrack ({});
+    const auto c = studio.addTrack ({});
+    studio.addPart (b, { 0.0, 4.0, "B", { { 0.0, 2.0, 60, 1.0f } } });
+    const auto loudness = [&studio]
+    {
+        studio.getEngine().setPosition (0.0);
+        studio.getEngine().play();
+        juce::AudioBuffer<float> out (2, 4800);
+        studio.getEngine().render (out, 4800);   // (a solo fades the others out: once through first)
+        studio.getEngine().setPosition (0.0);
+        studio.getEngine().render (out, 4800);
+        studio.getEngine().stop();
+        return out.getMagnitude (0, 4800);
+    };
+    REQUIRE (loudness() > 0.01f);
+
+    // Soloed, then hidden: its solo goes (it silenced every track you could see).
+    studio.setSolo (a, true);
+    CHECK (loudness() == 0.0f);   // b silenced by a's solo (as solo does)
+    CHECK (studio.anySolo());
+    studio.setTracksHidden ({ a }, true);
+    CHECK_FALSE (studio.getProject().findTrack (a)->solo);
+    CHECK_FALSE (studio.anySolo());
+    CHECK (loudness() > 0.01f);
+
+    // Disabled: likewise; and a disabled track's solo (an old song) doesn't count.
+    studio.setSolo (c, true);
+    studio.setTracksDisabled ({ c }, true);
+    CHECK_FALSE (studio.getProject().findTrack (c)->solo);
+    CHECK (loudness() > 0.01f);
+
+    // Exclusive (Ctrl-click): only it; Deactivate All Solo / Mute States.
+    studio.setSolo (a, true);
+    studio.setSolo (b, true, true);
+    CHECK_FALSE (studio.getProject().findTrack (a)->solo);
+    CHECK (studio.getProject().findTrack (b)->solo);
+    studio.deactivateAllSolo();
+    CHECK_FALSE (studio.anySolo());
+    studio.setMute (a, true);
+    studio.setMute (b, true);
+    CHECK (studio.anyMute());
+    studio.deactivateAllMute();
+    CHECK_FALSE (studio.anyMute());
+
+    // Render in Place of a soloed track, the source hidden: the solo goes to the rendered track (else it's silent).
+    studio.setSolo (b, true);
+    Studio::RenderOptions options;
+    options.tail = Studio::RenderOptions::Tail::off;
+    options.source = Studio::RenderOptions::Source::mute;
+    options.hideSource = true;
+    juce::String error;
+    const auto made = studio.renderInPlace ({ { b, 0.0, 4.0, true } }, options, error);
+    REQUIRE (made.size() == 1);
+    CHECK (studio.getProject().findTrack (made[0])->solo);
+    CHECK_FALSE (studio.getProject().findTrack (b)->solo);
+    CHECK (loudness() > 0.01f);   // the rendered track heard
+    studio.getAudioFolder().deleteRecursively();
+}

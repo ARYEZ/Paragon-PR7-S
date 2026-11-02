@@ -1,6 +1,7 @@
 #include "KeyEditor.h"
 
 #include "ui/ParagonLookAndFeel.h"
+#include "ui/ToolIcons.h"
 
 #include <limits>
 #include <numeric>
@@ -36,33 +37,36 @@ namespace
 KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     : studio (studioToUse), arrange (arrangeToUse)
 {
-    for (auto* button : { &selectTool, &drawTool, &eraseTool, &quantizeButton })
+    for (auto* button : { &selectTool, &drawTool, &splitTool, &eraseTool, &quantizeButton })
     {
         button->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         button->setWantsKeyboardFocus (false);
-        addAndMakeVisible (*button);
+        panelColumn.addAndMakeVisible (*button);
     }
     selectTool.setTooltip ("SELECT (1): select, move, copy (Alt) and lengthen notes; double-click for a new one");
     drawTool.setTooltip ("DRAW (8): click for a new note (drag right to make it longer); click a note to remove it");
     eraseTool.setTooltip ("ERASE (5): click or drag across notes to remove them");
+    splitTool.setTooltip ("SPLIT (3): click a note to cut it in two there (on the grid; Ctrl: anywhere); several selected: all of them that cross it");
+    splitTool.onClick = [this] { setTool (Tool::split); };
+    penCursor = ToolIcons::cursor (ArrangeView::Tool::draw);
+    scissorsCursor = ToolIcons::cursor (ArrangeView::Tool::split);
     quantizeButton.setTooltip ("QUANTIZE (Q): moves the selected notes' starts (all the notes, with none selected) to the grid");
     selectTool.onClick = [this] { setTool (Tool::select); };
     drawTool.onClick = [this] { setTool (Tool::draw); };
     eraseTool.onClick = [this] { setTool (Tool::erase); };
     quantizeButton.onClick = [this] { quantizeSelected(); };
 
-    closeButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
-    closeButton.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
+    // (0.9.10: the same keys as the rest of the column.)
+    closeButton.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    windowButton.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     closeButton.setWantsKeyboardFocus (false);
-    closeButton.setTooltip ("Close the key editor (Escape)");
+    closeButton.setTooltip ("Close the MIDI editor (Escape or F2)");
     closeButton.onClick = [this] { if (onClose) onClose(); };
-    addAndMakeVisible (closeButton);
+    panelColumn.addAndMakeVisible (closeButton);
 
-    windowButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
-    windowButton.setColour (juce::TextButton::textColourOffId, ParagonColours::accent);
     windowButton.setWantsKeyboardFocus (false);
     windowButton.onClick = [this] { if (onWindowToggle) onWindowToggle(); };
-    addAndMakeVisible (windowButton);
+    panelColumn.addAndMakeVisible (windowButton);
     setInWindow (false);
 
     for (int i = 0; i < (int) std::size (grids); ++i)
@@ -74,19 +78,62 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     gridBox.setColour (juce::ComboBox::textColourId, ParagonColours::text);
     gridBox.setColour (juce::ComboBox::arrowColourId, ParagonColours::accent);
     gridBox.onChange = [this] { setGrid (grids[(size_t) juce::jlimit (0, (int) std::size (grids) - 1, gridBox.getSelectedId() - 1)].beats); };
-    addAndMakeVisible (gridBox);
+    panelColumn.addAndMakeVisible (gridBox);
+
+    for (const auto percent : { 100, 150, 200 })
+        sizeBox.addItem (juce::String (percent) + "%", percent);
+    sizeBox.setTooltip ("The editor's size: everything in it (text, keys, notes, buttons) drawn bigger");
+    sizeBox.setWantsKeyboardFocus (false);
+    sizeBox.setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff151217));
+    sizeBox.setColour (juce::ComboBox::outlineColourId, ParagonColours::panelEdge);
+    sizeBox.setColour (juce::ComboBox::textColourId, ParagonColours::text);
+    sizeBox.setColour (juce::ComboBox::arrowColourId, ParagonColours::accent);
+    sizeBox.onChange = [this] { if (onSizeChange) onSizeChange (sizeBox.getSelectedId()); };
+    panelColumn.addAndMakeVisible (sizeBox);
+
+    // Random velocities: LOW / MID / HIGH, and the arrow for their ranges.
+    if (auto* settings = studio.getSettings())
+        for (int i = 0; i < numVelocityRanges; ++i)
+            velocityRanges[(size_t) i] = { settings->getIntValue ("velocityRange" + juce::String (i) + "Low", velocityRanges[(size_t) i].first),
+                                           settings->getIntValue ("velocityRange" + juce::String (i) + "High", velocityRanges[(size_t) i].second) };
+    static constexpr const char* rangeKeys[] = { "Alt+B", "Alt+N", "Alt+M" };
+    for (int i = 0; i < numVelocityRanges; ++i)
+    {
+        auto& key = velocityKeys[(size_t) i];
+        key.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        key.setWantsKeyboardFocus (false);
+        key.onClick = [this, i] { randomizeVelocities (i); };
+        key.setTooltip (juce::String ("Random velocities (") + rangeKeys[i] + "): the selected notes get velocities at random within this range (set it with RANGES)");
+        panelColumn.addAndMakeVisible (key);
+    }
+    velocityRangesKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    velocityRangesKey.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    velocityRangesKey.setWantsKeyboardFocus (false);
+    velocityRangesKey.setTooltip ("Set the three random velocity ranges (low and high of each)");
+    velocityRangesKey.onClick = [this] { showVelocityRanges(); };
+    panelColumn.addAndMakeVisible (velocityRangesKey);
+    refreshVelocityKeys();
 
     autoScrollButton.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     autoScrollButton.setWantsKeyboardFocus (false);
     autoScrollButton.onClick = [this] { autoScroll.toggle(); autoScrollChanged(); };
     autoScroll.refreshKey (autoScrollButton);
-    addAndMakeVisible (autoScrollButton);
+    panelColumn.addAndMakeVisible (autoScrollButton);
     autoScrollMenu.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     autoScrollMenu.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
     autoScrollMenu.setWantsKeyboardFocus (false);
     autoScrollMenu.setTooltip ("Auto-Scroll's settings: Page Scroll or Stationary Cursor; Suspend Auto-Scroll when Editing");
     autoScrollMenu.onClick = [this] { autoScroll.showMenu (autoScrollMenu, [this] { autoScrollChanged(); }); };
-    addAndMakeVisible (autoScrollMenu);
+    panelColumn.addAndMakeVisible (autoScrollMenu);
+
+    velocityRangesKey.setButtonText ("RANGES");
+    autoScrollMenu.setButtonText ("SCROLL MODE");
+    panelColumn.addAndMakeVisible (infoView);
+    panelView.setViewedComponent (&panelColumn, false);
+    panelView.setScrollBarsShown (true, false);
+    panelView.setScrollBarThickness (6);
+    panelView.setWantsKeyboardFocus (false);
+    addAndMakeVisible (panelView);
 
     for (auto* bar : { &across, &down })
     {
@@ -110,13 +157,20 @@ KeyEditor::~KeyEditor()
 }
 
 //==============================================================================
+void KeyEditor::setSizeShown (int percent)
+{
+    sizeBox.setSelectedId (percent, juce::dontSendNotification);
+}
+
 void KeyEditor::setTool (Tool newTool)
 {
     tool = newTool;
     selectTool.setToggleState (tool == Tool::select, juce::dontSendNotification);
     drawTool.setToggleState (tool == Tool::draw, juce::dontSendNotification);
     eraseTool.setToggleState (tool == Tool::erase, juce::dontSendNotification);
-    setMouseCursor (tool == Tool::draw ? juce::MouseCursor::CrosshairCursor : juce::MouseCursor::NormalCursor);
+    splitTool.setToggleState (tool == Tool::split, juce::dontSendNotification);
+    // The tool as the pointer (0.9.3: the pencil, not crosshairs; the scissors).
+    setMouseCursor (tool == Tool::draw ? penCursor : tool == Tool::split ? scissorsCursor : juce::MouseCursor::NormalCursor);
     repaint();
 }
 
@@ -162,7 +216,7 @@ const std::vector<pr7s::Note>& KeyEditor::notes() const
 bool KeyEditor::editing() const noexcept
 {
     return gesture == Gesture::move || gesture == Gesture::resize || gesture == Gesture::draw
-        || gesture == Gesture::erase || gesture == Gesture::velocity;
+        || gesture == Gesture::erase || gesture == Gesture::velocity || gesture == Gesture::velocityHandle;
 }
 
 //==============================================================================
@@ -251,7 +305,36 @@ void KeyEditor::timerCallback()
 
     followPlayhead();
     refreshScrollBars();
-    repaint (getLocalBounds().withTrimmedLeft (sideWidth));
+    advancePlayhead();
+    // The playhead's old and new strips (not the whole editor, 30 times a second: 0.9.2).
+    if (const auto x = xForBeat (shownBeat); std::abs (x - playheadX) >= 0.05f)
+    {
+        const auto strip = [this] (float at) { return juce::Rectangle<float> (at - 7.0f, 0.0f, 15.0f, (float) getHeight()).toNearestIntEdges(); };
+        repaint (strip (playheadX));
+        repaint (strip (x));
+        playheadX = x;
+    }
+    // 60 frames a second while it glides, else 30.
+    const auto rate = gliding ? 60 : 30;
+    if (getTimerInterval() != 1000 / rate)
+        startTimerHz (rate);
+}
+
+void KeyEditor::advancePlayhead()
+{
+    // As the arrangement's (ArrangeView::advancePlayhead): exact while playing or recording;
+    // stopped, a new place (a click in the ruler, snapped) glides in; a long jump goes straight there.
+    auto& engine = studio.getEngine();
+    const auto target = engine.getPosition();
+    const auto pixels = std::abs (xForBeat (target) - xForBeat (shownBeat));
+    if (engine.isPlaying() || engine.isRecording() || pixels < 0.5f || pixels > getNotesArea().getWidth() * 0.5f)
+    {
+        shownBeat = target;
+        gliding = false;
+        return;
+    }
+    shownBeat += (target - shownBeat) * ArrangeView::glideStep;
+    gliding = true;
 }
 
 void KeyEditor::followPlayhead()
@@ -269,7 +352,10 @@ void KeyEditor::followPlayhead()
     if (gesture != Gesture::none)
         return;
     if (const auto first = autoScroll.follow (position, firstBeat, pixelsPerBeat, getNotesArea().getWidth(), engine.isPlaying(), jumped))
+    {
         firstBeat = *first;
+        repaint();   // (the page turned: the timer no longer redraws everything)
+    }
 }
 
 void KeyEditor::zoomRows (bool in)
@@ -473,6 +559,147 @@ void KeyEditor::transposeSelected (int semitones)
     }
 }
 
+bool KeyEditor::randomizeVelocities (int range)
+{
+    const auto* part = getPart();
+    if (part == nullptr || selected.empty() || ! juce::isPositiveAndBelow (range, numVelocityRanges))
+        return false;
+    const auto [low, high] = velocityRanges[(size_t) range];
+    auto edited = part->notes;
+    for (const auto i : selected)
+        if (juce::isPositiveAndBelow (i, (int) edited.size()))
+            edited[(size_t) i].velocity = (float) (low + random.nextInt (high - low + 1)) / 127.0f;
+    const auto keep = selected;
+    commit (std::move (edited));
+    selectNotes (keep);   // (still selected: press again for another roll)
+    return true;
+}
+
+void KeyEditor::setVelocityRange (int range, int low, int high)
+{
+    if (! juce::isPositiveAndBelow (range, numVelocityRanges))
+        return;
+    low = juce::jlimit (1, 127, low);
+    high = juce::jlimit (1, 127, high);
+    if (low > high)
+        std::swap (low, high);
+    velocityRanges[(size_t) range] = { low, high };
+    if (auto* settings = studio.getSettings())
+    {
+        settings->setValue ("velocityRange" + juce::String (range) + "Low", low);
+        settings->setValue ("velocityRange" + juce::String (range) + "High", high);
+    }
+    refreshVelocityKeys();
+}
+
+std::pair<int, int> KeyEditor::getVelocityRange (int range) const
+{
+    return velocityRanges[(size_t) juce::jlimit (0, numVelocityRanges - 1, range)];
+}
+
+void KeyEditor::refreshVelocityKeys()
+{
+    static constexpr const char* names[] = { "LOW", "MID", "HIGH" };
+    for (int i = 0; i < numVelocityRanges; ++i)
+        velocityKeys[(size_t) i].setButtonText (juce::String (names[i]) + " " + juce::String (velocityRanges[(size_t) i].first)
+                                                + "-" + juce::String (velocityRanges[(size_t) i].second));
+}
+
+void KeyEditor::showVelocityRanges()
+{
+    // A small panel by the arrow: each range's low and high on one slider with two handles.
+    struct Ranges final : juce::Component
+    {
+        explicit Ranges (KeyEditor& e) : editor (e)
+        {
+            static constexpr const char* names[] = { "LOW (ALT+B)", "MID (ALT+N)", "HIGH (ALT+M)" };
+            for (int i = 0; i < numVelocityRanges; ++i)
+            {
+                auto& label = labels[(size_t) i];
+                label.setText (names[i], juce::dontSendNotification);
+                label.setFont (ParagonLookAndFeel::textFont (12.0f, juce::Font::bold));
+                label.setColour (juce::Label::textColourId, ParagonColours::text);
+                addAndMakeVisible (label);
+                auto& slider = sliders[(size_t) i];
+                slider.setSliderStyle (juce::Slider::TwoValueHorizontal);
+                slider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+                slider.setRange (1.0, 127.0, 1.0);
+                const auto [low, high] = editor.getVelocityRange (i);
+                slider.setMinAndMaxValues (low, high, juce::dontSendNotification);
+                slider.setPopupDisplayEnabled (true, true, nullptr);
+                slider.onValueChange = [this, i]
+                {
+                    auto& s = sliders[(size_t) i];
+                    editor.setVelocityRange (i, juce::roundToInt (s.getMinValue()), juce::roundToInt (s.getMaxValue()));
+                    readouts[(size_t) i].setText (juce::String (juce::roundToInt (s.getMinValue())) + " - " + juce::String (juce::roundToInt (s.getMaxValue())),
+                                                  juce::dontSendNotification);
+                };
+                addAndMakeVisible (slider);
+                auto& readout = readouts[(size_t) i];
+                readout.setText (juce::String (low) + " - " + juce::String (high), juce::dontSendNotification);
+                readout.setFont (ParagonLookAndFeel::textFont (12.0f, juce::Font::bold));
+                readout.setColour (juce::Label::textColourId, ParagonColours::accent);
+                readout.setJustificationType (juce::Justification::centredRight);
+                addAndMakeVisible (readout);
+            }
+            setSize (360, 30 + numVelocityRanges * 34);
+        }
+        void paint (juce::Graphics& g) override
+        {
+            g.setColour (ParagonColours::textDim);
+            g.setFont (ParagonLookAndFeel::textFont (11.0f, juce::Font::plain));
+            g.drawText ("RANDOM VELOCITIES: THE RANGE EACH KEY PICKS FROM (1 TO 127)", getLocalBounds().removeFromTop (24).reduced (8, 0),
+                        juce::Justification::centredLeft, true);
+        }
+        void resized() override
+        {
+            auto area = getLocalBounds().reduced (8, 0).withTrimmedTop (28);
+            for (int i = 0; i < numVelocityRanges; ++i)
+            {
+                auto row = area.removeFromTop (34).reduced (0, 4);
+                labels[(size_t) i].setBounds (row.removeFromLeft (100));
+                readouts[(size_t) i].setBounds (row.removeFromRight (64));
+                sliders[(size_t) i].setBounds (row);
+            }
+        }
+        KeyEditor& editor;
+        std::array<juce::Label, numVelocityRanges> labels, readouts;
+        std::array<juce::Slider, numVelocityRanges> sliders;
+    };
+    juce::CallOutBox::launchAsynchronously (std::make_unique<Ranges> (*this), velocityRangesKey.getScreenBounds(), nullptr);
+}
+
+bool KeyEditor::splitAt (int noteIndex, double beat)
+{
+    const auto* part = getPart();
+    if (part == nullptr || ! juce::isPositiveAndBelow (noteIndex, (int) part->notes.size()))
+        return false;
+    // The clicked note; or, if it's selected with others, all the selected ones.
+    std::vector<int> which { noteIndex };
+    if (std::find (selected.begin(), selected.end(), noteIndex) != selected.end() && selected.size() > 1)
+        which = selected;
+    const auto at = beat - part->start;   // in the part
+    auto edited = part->notes;
+    std::vector<pr7s::Note> added;
+    for (const auto i : which)
+    {
+        auto& note = edited[(size_t) i];
+        if (at <= note.start + 1.0e-9 || at >= note.start + note.length - 1.0e-9)
+            continue;   // the cut isn't inside this one
+        auto second = note;
+        second.start = at;
+        second.length = note.start + note.length - at;
+        note.length = at - note.start;
+        added.push_back (second);
+    }
+    if (added.empty())
+        return false;
+    edited.insert (edited.end(), added.begin(), added.end());
+    selected.clear();
+    commit (std::move (edited));
+    return true;
+}
+
 void KeyEditor::quantizeSelected()
 {
     const auto* part = getPart();
@@ -662,7 +889,13 @@ bool KeyEditor::keyPressed (const juce::KeyPress& key)
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey) { deleteSelected(); return true; }
     if (key.getKeyCode() == juce::KeyPress::upKey)                               { transposeSelected (mods.isShiftDown() ? 12 : 1); return true; }
     if (key.getKeyCode() == juce::KeyPress::downKey)                             { transposeSelected (mods.isShiftDown() ? -12 : -1); return true; }
-    if (letter == 'Q')                                                           { quantizeSelected(); return true; }
+    if (letter == 'Q' && ! mods.isAltDown())                                     { quantizeSelected(); return true; }
+    // Random velocities: Alt+B / N / M (LOW / MID / HIGH).
+    if (mods.isAltDown() && (letter == 'B' || letter == 'N' || letter == 'M'))
+    {
+        randomizeVelocities (letter == 'B' ? 0 : letter == 'N' ? 1 : 2);
+        return true;
+    }
     // Zoom and Auto-Scroll (the manual's keys).
     if (! mods.isAltDown() && (letter == 'H' || letter == 'G'))
     {
@@ -684,12 +917,114 @@ bool KeyEditor::keyPressed (const juce::KeyPress& key)
     if (key.getTextCharacter() == '1')                                           { setTool (Tool::select); return true; }
     if (key.getTextCharacter() == '8')                                           { setTool (Tool::draw); return true; }
     if (key.getTextCharacter() == '5')                                           { setTool (Tool::erase); return true; }
+    if (key.getTextCharacter() == '3')                                           { setTool (Tool::split); return true; }
     return false;
 }
 
 //==============================================================================
+juce::Rectangle<float> KeyEditor::getVelocityBox() const
+{
+    const auto* part = getPart();
+    const auto& list = notes();
+    if (part == nullptr || selected.size() < 2)
+        return {};
+    const auto inner = getVelocityArea().reduced (0.0f, 6.0f);
+    auto left = std::numeric_limits<float>::max(), right = std::numeric_limits<float>::lowest();
+    auto loudest = 0.0f;
+    for (const auto i : selected)
+        if (juce::isPositiveAndBelow (i, (int) list.size()))
+        {
+            const auto x = xForBeat (part->start + list[(size_t) i].start);
+            left = juce::jmin (left, x);
+            right = juce::jmax (right, x + 4.0f);
+            loudest = juce::jmax (loudest, list[(size_t) i].velocity);
+        }
+    if (right < left)
+        return {};
+    const auto top = juce::jmin (inner.getBottom() - 8.0f, inner.getBottom() - inner.getHeight() * loudest);
+    // Within the lane (its handles must be there to be grabbed).
+    const auto x1 = juce::jmax (inner.getX() + 4.0f, left - 6.0f), x2 = juce::jmin (inner.getRight() - 4.0f, right + 6.0f);
+    return x2 > x1 ? juce::Rectangle<float> (x1, top, x2 - x1, inner.getBottom() - top) : juce::Rectangle<float>();
+}
+
+KeyEditor::VelocityHandle KeyEditor::velocityHandleAt (juce::Point<float> p) const
+{
+    const auto box = getVelocityBox();
+    if (box.isEmpty() || ! getVelocityArea().expanded (0.0f, 2.0f).contains (p))
+        return VelocityHandle::none;
+    constexpr auto grab = 6.0f, corner = 10.0f;
+    if (std::abs (p.x - box.getRight()) <= grab && std::abs (p.y - box.getCentreY()) <= corner)
+        return VelocityHandle::scaleCentre;
+    if (std::abs (p.y - box.getY()) > grab || p.x < box.getX() - grab || p.x > box.getRight() + grab)
+        return VelocityHandle::none;
+    if (p.x <= box.getX() + corner)
+        return VelocityHandle::tiltLeft;
+    if (p.x >= box.getRight() - corner)
+        return VelocityHandle::tiltRight;
+    if (std::abs (p.x - box.getCentreX()) <= corner)
+        return VelocityHandle::scale;
+    return VelocityHandle::move;
+}
+
+void KeyEditor::dragVelocityHandle (float dy)
+{
+    // From the velocities as they were when the drag began (`original`), so the drag can go back.
+    const auto* part = getPart();
+    if (part == nullptr)
+        return;
+    const auto inner = getVelocityArea().reduced (0.0f, 6.0f);
+    const auto delta = -dy / inner.getHeight();   // up: louder
+    auto loudest = 0.0f, quietest = 1.0f;
+    for (const auto i : selected)
+        if (juce::isPositiveAndBelow (i, (int) original.size()))
+        {
+            loudest = juce::jmax (loudest, original[(size_t) i].velocity);
+            quietest = juce::jmin (quietest, original[(size_t) i].velocity);
+        }
+    const auto middle = (loudest + quietest) * 0.5f;
+    for (const auto i : selected)
+    {
+        if (! juce::isPositiveAndBelow (i, (int) original.size()))
+            continue;
+        const auto was = original[(size_t) i].velocity;
+        const auto x = xForBeat (part->start + original[(size_t) i].start) + 2.0f;
+        const auto t = juce::jlimit (0.0f, 1.0f, (x - boxAtDown.getX()) / juce::jmax (1.0f, boxAtDown.getWidth()));
+        auto now = was;
+        switch (handle)
+        {
+            case VelocityHandle::move:        now = was + delta; break;
+            case VelocityHandle::scale:       now = loudest > 0.0f ? was * juce::jmax (0.0f, (loudest + delta) / loudest) : was; break;
+            case VelocityHandle::tiltLeft:    now = was + delta * (1.0f - t); break;
+            case VelocityHandle::tiltRight:   now = was + delta * t; break;
+            case VelocityHandle::scaleCentre: now = middle + (was - middle) * juce::jmax (0.0f, 1.0f + delta * 2.0f); break;
+            case VelocityHandle::none:        break;
+        }
+        working[(size_t) i].velocity = juce::jlimit (1.0f / 127.0f, 1.0f, now);
+    }
+    moved = true;
+    // The loudest now, shown by the box.
+    auto shown = 0.0f;
+    for (const auto i : selected)
+        if (juce::isPositiveAndBelow (i, (int) working.size()))
+            shown = juce::jmax (shown, working[(size_t) i].velocity);
+    shownVelocity = shown;
+    lastVelocityX = boxAtDown.getRight();
+    repaint (getVelocityArea().expanded (2.0f).getSmallestIntegerContainer());
+}
+
 void KeyEditor::mouseMove (const juce::MouseEvent& event)
 {
+    switch (velocityHandleAt (event.position))
+    {
+        case VelocityHandle::move:
+        case VelocityHandle::scale:
+        case VelocityHandle::tiltLeft:
+        case VelocityHandle::tiltRight:   setMouseCursor (juce::MouseCursor::UpDownResizeCursor); return;
+        case VelocityHandle::scaleCentre: setMouseCursor (juce::MouseCursor::UpDownLeftRightResizeCursor); return;
+        case VelocityHandle::none:        break;
+    }
+    if (tool != Tool::select && getVelocityArea().contains (event.position))
+        setMouseCursor (juce::MouseCursor::NormalCursor);
     if (tool == Tool::select)
     {
         const auto hit = noteAt (event.position);
@@ -727,6 +1062,14 @@ void KeyEditor::mouseDown (const juce::MouseEvent& event)
         startAudition (pitchForY (point.y), newVelocity);
         return;
     }
+    if (const auto h = velocityHandleAt (point); h != VelocityHandle::none)
+    {
+        begin();
+        gesture = Gesture::velocityHandle;
+        handle = h;
+        boxAtDown = getVelocityBox();
+        return;
+    }
     if (getVelocityArea().contains (point))
     {
         begin();
@@ -747,6 +1090,11 @@ void KeyEditor::mouseDown (const juce::MouseEvent& event)
             selected.clear();
             gesture = Gesture::erase;
             eraseAt (point);
+            return;
+
+        case Tool::split:
+            if (hit >= 0)
+                splitAt (hit, free ? beatForX (point.x) : pr7s::snap (beatForX (point.x), grid));
             return;
 
         case Tool::draw:
@@ -839,6 +1187,10 @@ void KeyEditor::mouseDrag (const juce::MouseEvent& event)
     {
         case Gesture::position:
             studio.setPosition (juce::jmax (0.0, pr7s::snap (beatForX (point.x), grid)));
+            return;
+
+        case Gesture::velocityHandle:
+            dragVelocityHandle (point.y - downAt.y);
             return;
 
         case Gesture::audition:
@@ -968,6 +1320,7 @@ void KeyEditor::mouseUp (const juce::MouseEvent&)
         case Gesture::draw:
         case Gesture::erase:
         case Gesture::velocity:
+        case Gesture::velocityHandle:
             if (moved)
                 commit (working);
             if (finished == Gesture::draw && getPart() != nullptr)
@@ -1046,36 +1399,47 @@ void KeyEditor::refreshPanel()
 
 void KeyEditor::resized()
 {
-    auto panel = juce::Rectangle<int> (0, 0, sideWidth - 2, getHeight()).withTrimmedLeft (12).reduced (6, 8);
-    auto top = panel.removeFromTop (40);
-    closeButton.setBounds (top.removeFromRight (64).withSizeKeepingCentre (64, 24).withY (top.getY()));
-    top.removeFromRight (6);
-    windowButton.setBounds (top.removeFromRight (74).withSizeKeepingCentre (74, 24).withY (top.getY()));
-    panel.removeFromTop (8);
-    auto tools = panel.removeFromTop (28);
-    const auto toolWidth = (tools.getWidth() - 8) / 3;
-    selectTool.setBounds (tools.removeFromLeft (toolWidth));
-    tools.removeFromLeft (4);
-    drawTool.setBounds (tools.removeFromLeft (toolWidth));
-    tools.removeFromLeft (4);
-    eraseTool.setBounds (tools);
-    panel.removeFromTop (10);
-    auto gridRow = panel.removeFromTop (26);
-    gridRow.removeFromLeft (42);   // "GRID"
-    gridBox.setBounds (gridRow.removeFromLeft (122));
-    gridRow.removeFromLeft (6);
-    quantizeButton.setBounds (gridRow);
-    panel.removeFromTop (8);
-    auto autoScrollRow = panel.removeFromTop (24).withTrimmedLeft (42);
-    autoScrollButton.setBounds (autoScrollRow.removeFromLeft (96));
-    autoScrollRow.removeFromLeft (3);
-    autoScrollMenu.setBounds (autoScrollRow.removeFromLeft (22));
+    // The panel: its name at the top, then one column of keys all one size (0.9.10).
+    panelView.setBounds (juce::Rectangle<int> (0, panelHeaderHeight, sideWidth - 2, getHeight() - panelHeaderHeight).withTrimmedLeft (12).withTrimmedRight (4).withTrimmedBottom (6));
+    layoutColumn();
 
     const auto notesArea = getNotesArea().toNearestInt();
     down.setBounds (notesArea.getRight(), notesArea.getY(), scrollBarSize, notesArea.getHeight());
     across.setBounds (notesArea.getX() - keysWidth, getHeight() - scrollBarSize, getWidth() - sideWidth, scrollBarSize);
     clampScroll();
     refreshScrollBars();
+}
+
+void KeyEditor::layoutColumn()
+{
+    const auto width = panelView.getWidth() - (panelView.getHeight() < 15 * (columnKeyHeight + columnGap) + 60 ? panelView.getScrollBarThickness() + 3 : 0);
+    auto y = 0;
+    const auto place = [&] (juce::Component& c)
+    {
+        c.setBounds (0, y, width, columnKeyHeight);
+        y += columnKeyHeight + columnGap;
+    };
+    const auto gap = [&] { y += 6; };
+    place (windowButton);
+    place (closeButton);
+    gap();
+    for (auto* key : std::initializer_list<juce::Component*> { &selectTool, &drawTool, &splitTool, &eraseTool })
+        place (*key);
+    gap();
+    place (gridBox);
+    place (quantizeButton);
+    gap();
+    place (autoScrollButton);
+    place (autoScrollMenu);
+    place (sizeBox);
+    gap();
+    for (auto& key : velocityKeys)
+        place (key);
+    place (velocityRangesKey);
+    gap();
+    infoView.setBounds (0, y, width, 40);
+    y += 40;
+    panelColumn.setSize (width, y);
 }
 
 void KeyEditor::paint (juce::Graphics& g)
@@ -1095,15 +1459,21 @@ void KeyEditor::paint (juce::Graphics& g)
     paintVelocities (g);
     paintRuler (g);
 
-    // The playhead, down the notes and the velocities.
-    const auto x = xForBeat (studio.getEngine().getPosition());
+    // The playhead, down the notes and the velocities (where it's drawn: it glides, 0.17.5).
+    const auto x = xForBeat (shownBeat);
     if (x >= getNotesArea().getX() - 2.0f && x <= (float) getWidth() + 2.0f)
     {
-        const auto colour = studio.getEngine().isRecording() ? juce::Colour (0xffff3b2f) : ParagonColours::accent;
-        g.setColour (colour.withAlpha (0.25f));
-        g.fillRect (juce::Rectangle<float> (x - 2.0f, (float) rulerHeight, 5.0f, (float) (getHeight() - rulerHeight)));
+        const auto red = studio.getEngine().isRecording();
+        // Pearl white with a magenta-pink glow (0.9.12, the owner asked); red while recording.
+        const auto glowColour = red ? juce::Colour (0xffff3b2f) : pr7s::FamilyColours::pink;
+        const auto lineColour = red ? juce::Colour (0xffff3b2f) : juce::Colour (0xfff4eeea);
+        g.setColour (glowColour.withAlpha (0.18f));
+        g.fillRect (juce::Rectangle<float> (x - 4.0f, (float) rulerHeight, 9.2f, (float) (getHeight() - rulerHeight)));
+        g.setColour (glowColour.withAlpha (0.4f));
+        g.fillRect (juce::Rectangle<float> (x - 1.5f, (float) rulerHeight, 4.2f, (float) (getHeight() - rulerHeight)));
+        const auto colour = lineColour;
         g.setColour (colour);
-        g.fillRect (juce::Rectangle<float> (x, (float) rulerHeight - 6.0f, 1.2f, (float) (getHeight() - rulerHeight + 6)));
+        g.fillRect (juce::Rectangle<float> (x, (float) rulerHeight - 6.0f, 1.4f, (float) (getHeight() - rulerHeight + 6)));
         juce::Path marker;
         marker.addTriangle (x - 5.0f, (float) rulerHeight - 11.0f, x + 5.0f, (float) rulerHeight - 11.0f, x, (float) rulerHeight - 2.0f);
         g.fillPath (marker);
@@ -1126,10 +1496,10 @@ void KeyEditor::paintPanel (juce::Graphics& g)
     g.setColour (colour);
     g.fillRect (panel.withWidth (6.0f).reduced (0.0f, 1.0f));
 
-    auto area = panel.withTrimmedLeft (18.0f).reduced (0.0f, 8.0f).withTrimmedRight (156.0f);
+    auto area = panel.withTrimmedLeft (18.0f).reduced (0.0f, 8.0f).withTrimmedRight (6.0f);
     g.setColour (ParagonColours::accent);
     g.setFont (ParagonLookAndFeel::titleFont (9.5f));
-    g.drawText ("KEY EDITOR", area.removeFromTop (12.0f), juce::Justification::centredLeft, false);
+    g.drawText ("MIDI EDITOR", area.removeFromTop (12.0f), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (15.0f));
     g.drawText (part != nullptr ? (part->name.isNotEmpty() ? part->name : juce::String ("Part")) : juce::String ("No part"),
@@ -1140,22 +1510,20 @@ void KeyEditor::paintPanel (juce::Graphics& g)
         g.drawText (track->name + ", from bar " + juce::String ((int) std::floor (part->start / studio.getProject().beatsPerBar()) + 1),
                     area.removeFromTop (14.0f), juce::Justification::centredLeft, true);
 
-    g.setColour (ParagonColours::textDim);
-    g.setFont (font (10.0f));
-    g.drawText ("GRID", juce::Rectangle<float> (18.0f, (float) gridBox.getY(), 40.0f, (float) gridBox.getHeight()),
-                juce::Justification::centredLeft, false);
+}
 
-    // What's selected.
-    auto info = panel.withTrimmedLeft (18.0f).withTrimmedRight (12.0f).withTrimmedTop ((float) autoScrollButton.getBottom() + 14.0f);
+void KeyEditor::paintInfo (juce::Graphics& g, juce::Rectangle<float> info)
+{
+    // What's selected (at the column's foot).
+    const auto* part = getPart();
     g.setColour (ParagonColours::panelEdge);
     g.fillRect (info.withHeight (1.0f));
-    info.removeFromTop (10.0f);
+    info.removeFromTop (6.0f);
     if (part == nullptr)
     {
         g.setColour (ParagonColours::textDim);
         g.setFont (font (12.0f, juce::Font::plain));
-        g.drawFittedText ("Select a part in the arrangement (double-click it) to edit its notes.", info.removeFromTop (40.0f).toNearestInt(),
-                          juce::Justification::topLeft, 3);
+        g.drawFittedText ("Double-click a part to edit its notes.", info.toNearestInt(), juce::Justification::topLeft, 2);
         return;
     }
     const auto& list = notes();
@@ -1184,6 +1552,15 @@ void KeyEditor::paintPanel (juce::Graphics& g)
     g.setColour (ParagonColours::textDim);
     g.setFont (font (11.5f, juce::Font::plain));
     g.drawText (line2, info.removeFromTop (16.0f), juce::Justification::centredLeft, true);
+}
+
+juce::Colour KeyEditor::velocityColour (float velocity) const
+{
+    // Under MID's range: orange; under HIGH's: pink; else red (the family's three).
+    const auto v = juce::roundToInt (velocity * 127.0f);
+    return v < velocityRanges[1].first ? pr7s::FamilyColours::orange
+         : v < velocityRanges[2].first ? pr7s::FamilyColours::pink
+                                       : pr7s::FamilyColours::red;
 }
 
 void KeyEditor::paintKeys (juce::Graphics& g)
@@ -1277,7 +1654,9 @@ void KeyEditor::paintNotes (juce::Graphics& g)
     g.fillRect (juce::Rectangle<float> (partLeft, area.getY(), 1.5f, area.getHeight()));
     g.fillRect (juce::Rectangle<float> (partRight - 1.5f, area.getY(), 1.5f, area.getHeight()));
 
-    // The notes: the track's colour, brighter the harder they're played; selected ones outlined.
+    // The notes: coloured by how hard they're played (0.9.12, the owner's
+    // rule): the LOW range and under orange, MID pink, HIGH red (the ranges
+    // of the random velocity keys); selected ones brighter and outlined.
     const auto& list = notes();
     for (int i = 0; i < (int) list.size(); ++i)
     {
@@ -1286,7 +1665,7 @@ void KeyEditor::paintNotes (juce::Graphics& g)
             continue;
         const auto& note = list[(size_t) i];
         const auto isSelected = std::binary_search (selected.begin(), selected.end(), i);
-        const auto fill = track->colour.interpolatedWith (juce::Colour (0xff2a1f26), (1.0f - note.velocity) * 0.65f);
+        const auto fill = velocityColour (note.velocity);
         g.setColour (isSelected ? fill.brighter (0.35f) : fill);
         g.fillRoundedRectangle (bounds, 2.0f);
         g.setColour (isSelected ? juce::Colours::white : juce::Colours::black.withAlpha (0.55f));
@@ -1347,10 +1726,31 @@ void KeyEditor::paintVelocities (juce::Graphics& g)
         const auto isSelected = std::binary_search (selected.begin(), selected.end(), i);
         const auto height = inner.getHeight() * note.velocity;
         const auto bar = juce::Rectangle<float> (x, inner.getBottom() - height, 4.0f, height);
-        g.setColour ((isSelected ? track->colour.brighter (0.35f) : track->colour).withAlpha (0.9f));
+        const auto barColour = velocityColour (note.velocity);
+        g.setColour ((isSelected ? barColour.brighter (0.35f) : barColour).withAlpha (0.9f));
         g.fillRect (bar);
-        g.setColour (isSelected ? juce::Colours::white : track->colour.brighter (0.6f));
+        g.setColour (isSelected ? juce::Colours::white : barColour.brighter (0.6f));
         g.fillRect (bar.withHeight (2.0f).withWidth (juce::jmax (4.0f, juce::jmin (12.0f, (float) (note.length * pixelsPerBeat) - 2.0f))));
+    }
+    // The handles' box round the selected notes' bars (two or more).
+    if (const auto box = getVelocityBox(); ! box.isEmpty())
+    {
+        g.setColour (ParagonColours::accent.withAlpha (0.08f));
+        g.fillRect (box);
+        g.setColour (ParagonColours::accent.withAlpha (0.8f));
+        g.drawRect (box, 1.0f);
+        const auto square = [&] (juce::Point<float> c)
+        {
+            const auto r = juce::Rectangle<float> (7.0f, 7.0f).withCentre (c);
+            g.setColour (juce::Colour (0xff0b090c));
+            g.fillRect (r);
+            g.setColour (ParagonColours::accent);
+            g.drawRect (r, 1.2f);
+        };
+        square (box.getTopLeft());
+        square ({ box.getCentreX(), box.getY() });
+        square (box.getTopRight());
+        square ({ box.getRight(), box.getCentreY() });
     }
     if (shownVelocity >= 0.0f)
     {

@@ -4,6 +4,8 @@
 
 #include "Project.h"
 
+#include <optional>
+
 namespace pr7s
 {
     // Finding and loading instruments. The VST3 instruments found by a scan
@@ -13,7 +15,8 @@ namespace pr7s
     {
     public:
         // `settings`: where the plugin list is kept (none: not kept, for tests).
-        explicit PluginHost (juce::PropertiesFile* settings);
+        // `findStudioSynth`: look for PR7-K (off for tests, so they hear the same synth everywhere).
+        explicit PluginHost (juce::PropertiesFile* settings, bool findStudioSynth = true);
         ~PluginHost();
 
         juce::AudioPluginFormatManager& getFormats() noexcept { return formats; }
@@ -37,11 +40,24 @@ namespace pr7s
         // Where a crashing plugin is noted during a scan, so it's skipped next time.
         static juce::File deadMansPedalFile();
 
+        // The studio's synth (0.9.11, the owner asked): Paragon PR7-K, the
+        // family's synth, from beside the app (it ships with it) or the VST3
+        // folders, the newest found. A new track plays it; a song's "built
+        // in" tracks open on it. Not found (or not looked for: tests), the
+        // old Paragon Synth stands in so a track never comes up silent.
+        const juce::PluginDescription* getStudioSynth();
+        bool isStudioSynthFound() { return getStudioSynth() != nullptr; }
+        static juce::String studioSynthName();   // what the menus call it
+        static juce::String describe (const juce::PluginDescription&);   // name, maker, version, file (for the session log)
+        static constexpr const char* studioSynthFile = "Paragon PR7-K.vst3";
+
     private:
         void changeListenerCallback (juce::ChangeBroadcaster*) override;   // the list changed: keep it
 
         juce::AudioPluginFormatManager formats;
         juce::KnownPluginList known;
         juce::PropertiesFile* settings = nullptr;
+        bool findStudioSynth = true, studioSynthLooked = false;
+        std::optional<juce::PluginDescription> studioSynth;
     };
 }

@@ -225,4 +225,14 @@ TEST_CASE ("Track colours keep to the family's red, pink and orange; older songs
     const auto opened = Project::fromXml (*project.toXml());
     REQUIRE (opened.has_value());
     CHECK (opened->tracks[0].colour == trackColour (3));
+    // 0.9.12: exactly the gradient's three, in turn; any other shade opens as the nearest of them.
+    CHECK (trackColour (0) == FamilyColours::red);
+    CHECK (trackColour (1) == FamilyColours::pink);
+    CHECK (trackColour (2) == FamilyColours::orange);
+    CHECK (FamilyColours::nearest (juce::Colour (0xffff7aa8)) == FamilyColours::pink);    // 0.5.1's rose
+    CHECK (FamilyColours::nearest (juce::Colour (0xffffa04a)) == FamilyColours::orange);  // 0.5.1's peach
+    CHECK (FamilyColours::nearest (juce::Colour (0xffe0103c)) != FamilyColours::orange);  // 0.5.1's red: red or pink
+    track.colour = juce::Colour (0xffffa04a);
+    project.tracks[0] = track;
+    CHECK (Project::fromXml (*project.toXml())->tracks[0].colour == FamilyColours::orange);
 }

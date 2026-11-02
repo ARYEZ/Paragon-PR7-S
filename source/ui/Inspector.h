@@ -1,0 +1,163 @@
+#pragma once
+
+#include <juce_gui_basics/juce_gui_basics.h>
+
+#include "engine/Studio.h"
+#include "ui/MixerView.h"
+#include "ui/ValueSlider.h"
+#include "ui/TrackColours.h"
+
+// The Inspector (0.9.0), inspired by Cubase's: left of the track list, the
+// selected track's settings in sections (click a title to fold it; which are
+// folded is kept for next time). Shown and hidden with the header's
+// INSPECTOR key or Ctrl+Alt+L (the manual's Show/Hide Left Zone).
+//
+//   the track      its name in its colour (folds Basics)
+//   BASICS         M S R W, REC (and MON on an audio track); FREEZE (lit:
+//                  frozen) and PRESET (save / load a track preset, 0.9.8); volume and pan
+//                  (Ctrl-click or double-click: 0 dB / the centre); the
+//                  instrument (click: its menu, as in the track list; EDIT:
+//                  its window), an FX channel's effect, or what a group is
+//   ROUTING        an instrument track: MIDI IN (all MIDI inputs, or one
+//                  keyboard: only it plays and records here) and CHANNEL (the
+//                  one its notes go to the instrument on: a Kontakt multi's
+//                  channels); an audio track: its input; OUT: the master or a
+//                  group channel
+//   INSERTS        its 16 slots, as the mixer's (those below the orange line
+//                  are after the fader)
+//   SENDS          its 8 sends, as the mixer's (not on an FX channel)
+//   FADER          its mixer strip: fader, pan, M S R W, the level
+//   QUICK CONTROLS 8 slots (0.9.6, the manual's): click a slot's name for any
+//                  of the track's controls (volume, pan, mute, a send, its
+//                  instrument's or an effect's knobs), drag its bar to move
+//                  it (written as automation with W, as the control itself);
+//                  right-click the title: Show Automated QC Assignments, the
+//                  instrument's first 8, clear them
+//
+// Its two tabs at the top (0.9.1, as the manual's left zone): INSPECTOR, the
+// above; VISIBILITY, every track with a box to show or hide it (hidden: out
+// of the track list, the arrangement and the mixer), SHOW ALL, and which are
+// disabled. A disabled track's Inspector offers ENABLE TRACK.
+class Inspector final : public juce::Component,
+                        private juce::ChangeListener,
+                        private juce::Timer
+{
+public:
+    explicit Inspector (pr7s::Studio&);
+    ~Inspector() override;
+
+    std::function<void (int trackId)> onTrackMenu;        // the instrument (or input) key: the track list's menu
+    std::function<void (int trackId)> onOpenInstrument;   // EDIT
+    std::function<void (int busId, int slot)> onOpenEffect;
+    std::function<void()> onFindPlugins;
+    std::function<void (int trackId)> onRender;   // RENDER (0.17.1): Render in Place of the whole track, as last time
+
+    static constexpr int width = 210;
+    enum class Section { basics, routing, inserts, sends, fader, quick };
+    static constexpr int numSections = 6;
+    bool isFolded (Section) const;
+    void setFolded (Section, bool);   // (kept in the settings file)
+
+    int getTrack() const noexcept { return trackId; }   // the one shown: the selected track (0: none, or the master)
+    bool isShowingMaster() const noexcept { return master; }   // the master's row chosen (0.9.12)
+
+    enum class Tab { inspector, visibility };
+    void setTab (Tab);   // (kept in the settings file)
+    Tab getTab() const noexcept { return tab; }
+    static constexpr int tabHeight = 28;
+
+    // For tests.
+    juce::ComboBox& getMidiInput() noexcept { return midiInput; }
+    juce::ComboBox& getChannel() noexcept { return channel; }
+    juce::ComboBox& getAudioInput() noexcept { return audioInput; }
+    juce::TextButton& getOutput() noexcept { return output; }
+    juce::TextButton& getInsertSlot (int slot) { return slots[(size_t) slot]; }
+    juce::Viewport& getInsertsView() noexcept { return insertsView; }
+    static constexpr int insertsInView = 5;
+    juce::TextButton& getKey (const juce::String& name);   // "M", "S", "R", "W", "REC", "MON", "RENDER", "PRESET"
+    ValueSlider& getVolume() noexcept { return volume; }
+    ValueSlider& getPan() noexcept { return pan; }
+    juce::Label& getVolumeReadout() noexcept { return volumeReadout; }
+    juce::Label& getPanReadout() noexcept { return panReadout; }
+    MixerView& getFader() noexcept { return fader; }
+    juce::Component& getHeader (Section);
+    juce::Component& getContent() noexcept { return content; }
+    juce::TextButton& getEnableKey() noexcept { return enable; }
+    // QUICK CONTROLS (0.9.6): a slot's name key (click: choose its control) and its bar.
+    juce::TextButton& getQuickControlKey (int index) { return qcKeys[(size_t) index]; }
+    juce::Slider& getQuickControlBar (int index) { return qcBars[(size_t) index]; }
+    void showQuickControlMenu (int index);
+    void showQuickControlsMenu();   // the section title's right-click
+    juce::TextButton& getTabKey (Tab t) noexcept { return t == Tab::inspector ? inspectorTab : visibilityTab; }
+    // VISIBILITY's box for a track (nullptr if it isn't listed), and SHOW ALL.
+    juce::ToggleButton* getVisibilityBox (int trackId);
+    juce::TextButton& getShowAll() noexcept { return showAll; }
+    int getContentHeight() const noexcept { return content.getHeight(); }
+
+    void paint (juce::Graphics&) override;
+    void resized() override;
+
+private:
+    class Header;
+    class VisibilityRow;
+    void refreshVisibility();
+    void changeListenerCallback (juce::ChangeBroadcaster*) override;
+    void timerCallback() override;
+    void showTrack (int);
+    void showMaster();
+    void refreshInserts();
+    void refresh();
+    void layout();
+    void followMix();
+    void fillMidiInputs();
+    const pr7s::Track* track() const;
+
+    pr7s::Studio& studio;
+    int trackId = 0;
+    bool master = false;
+    std::array<bool, numSections> folded {};
+    juce::Viewport viewport;
+    struct Content final : juce::Component
+    {
+        std::function<void (juce::Graphics&)> over;   // the line between the inserts before and after the fader
+        void paintOverChildren (juce::Graphics& g) override { if (over) over (g); }
+    } content;
+    std::array<std::unique_ptr<Header>, numSections> headers;
+
+    juce::TextButton mute { "M" }, solo { "S" }, read { "R" }, write { "W" }, arm { "REC" }, monitor { "MON" };
+    ValueSlider volume, pan;   // (double-click: type a value, 0.9.9)
+    juce::Label volumeLabel, panLabel, volumeReadout, panReadout;
+    juce::TextButton instrument, edit { "EDIT" };
+    juce::Label midiInputLabel, channelLabel, audioInputLabel, outputLabel, noSends;
+    // MIDI IN: the devices asked of the system only when its list opens (0.9.2:
+    // asking on every change, every playhead move, was slow on Windows).
+    struct DeviceBox final : juce::ComboBox
+    {
+        std::function<void()> beforePopup;
+        void showPopup() override { if (beforePopup) beforePopup(); juce::ComboBox::showPopup(); }
+    };
+    DeviceBox midiInput;
+    juce::ComboBox channel, audioInput;
+    juce::Array<juce::MidiDeviceInfo> midiDevices;   // as last asked
+    juce::TextButton output;
+    std::array<juce::TextButton, pr7s::Project::maxInserts> slots;
+    // INSERTS: five slots in view, the rest scrolled to (0.9.2, the owner asked).
+    juce::Viewport insertsView;
+    Content insertsHolder;
+    int shownSlots = 8, preFader = pr7s::Project::maxInserts, insertLineY = -1;
+    std::array<std::unique_ptr<MixerView::SendSlot>, pr7s::Project::maxSends> sendSlots;
+    MixerView fader { studio, true };   // (also the insert, send and output menus' owner)
+    ColourKey colourKey;   // the colour menu (0.17.3), beside DISABLE TRACK
+    juce::TextButton enable { "DISABLE TRACK" };   // always (0.17.1, the owner asked): DISABLE TRACK, or ENABLE TRACK on a disabled one
+    juce::TextButton render { "RENDER" }, preset { "PRESET" };   // (0.9.8: FREEZE; RENDER since 0.17.1, the owner asked: Freeze is in the track's menu)
+    std::unique_ptr<juce::FileChooser> chooser;   // a preset's
+    std::array<juce::TextButton, pr7s::Track::numQuickControls> qcKeys;
+    std::array<juce::Slider, pr7s::Track::numQuickControls> qcBars;
+    void refreshQuickControls();
+
+    Tab tab = Tab::inspector;
+    juce::TextButton inspectorTab { "INSPECTOR" }, visibilityTab { "VISIBILITY" }, showAll { "SHOW ALL" };
+    juce::Viewport visibilityView;
+    juce::Component visibilityList;
+    std::vector<std::unique_ptr<VisibilityRow>> visibilityRows;
+};

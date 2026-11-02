@@ -1,6 +1,8 @@
 #include "ParagonLookAndFeel.h"
+#include "LevelMeter.h"
 
 #include "Finish.h"
+#include "Logo.h"
 
 #include <ParagonFonts.h>
 
@@ -24,6 +26,30 @@ ParagonLookAndFeel::ParagonLookAndFeel()
     setColour (juce::TooltipWindow::backgroundColourId, ParagonColours::panel);
     setColour (juce::TooltipWindow::textColourId, ParagonColours::text);
     setColour (juce::TooltipWindow::outlineColourId, ParagonColours::panelEdge);
+    // Drop-down lists, menus, text boxes and message windows in the family's
+    // colours (JUCE's own are a blue-grey).
+    const juce::Colour onyx { 0xff151217 };
+    setColour (juce::ComboBox::backgroundColourId, onyx);
+    setColour (juce::ComboBox::outlineColourId, ParagonColours::panelEdge);
+    setColour (juce::ComboBox::textColourId, ParagonColours::text);
+    setColour (juce::ComboBox::arrowColourId, ParagonColours::accent);
+    setColour (juce::ComboBox::buttonColourId, onyx);
+    setColour (juce::ComboBox::focusedOutlineColourId, ParagonColours::accent);
+    setColour (juce::PopupMenu::backgroundColourId, onyx);
+    setColour (juce::PopupMenu::textColourId, ParagonColours::text);
+    setColour (juce::PopupMenu::headerTextColourId, ParagonColours::accent);
+    setColour (juce::PopupMenu::highlightedBackgroundColourId, ParagonColours::accentDim);
+    setColour (juce::PopupMenu::highlightedTextColourId, juce::Colours::white);
+    setColour (juce::TextEditor::backgroundColourId, onyx);
+    setColour (juce::TextEditor::outlineColourId, ParagonColours::panelEdge);
+    setColour (juce::TextEditor::focusedOutlineColourId, ParagonColours::accent);
+    setColour (juce::TextEditor::highlightColourId, ParagonColours::accentDim);
+    setColour (juce::AlertWindow::backgroundColourId, juce::Colour (0xff1c181b));   // pearl black (drawn as the black pearl in drawAlertBox)
+    setColour (juce::AlertWindow::textColourId, juce::Colours::white);
+    setColour (juce::AlertWindow::outlineColourId, ParagonColours::panelEdge);
+    setColour (juce::ListBox::backgroundColourId, onyx);
+    setColour (juce::ListBox::outlineColourId, ParagonColours::panelEdge);
+    setColour (juce::ListBox::textColourId, ParagonColours::text);
 }
 
 void ParagonLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& button, bool highlighted, bool)
@@ -94,7 +120,9 @@ void ParagonLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& 
         g.fillRoundedRectangle (surround.reduced (1.5f), 4.0f);
         g.setColour (juce::Colours::black.withAlpha (0.55f));
         g.drawRoundedRectangle (surround, 5.0f, 0.8f);
-        drawPianoKey (g, surround.reduced (2.2f, 2.0f).withTrimmedBottom (0.6f), 3.0f, 2.2f, down, highlighted, Finish::neonKeys());
+        // A key that's on is black in every finish (on the red neon keys, so it's told apart at a glance).
+        drawPianoKey (g, surround.reduced (2.2f, 2.0f).withTrimmedBottom (0.6f), 3.0f, 2.2f, down, highlighted,
+                      Finish::neonKeys() && ! button.getToggleState());
         return;
     }
 
@@ -105,6 +133,8 @@ void ParagonLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& 
     else if (highlighted)
         fill = fill.brighter (0.1f);
 
+    if (button.getProperties()["lit"])
+        fill = ParagonColours::accent;   // lit for a moment (SAVE once the song is saved, 0.11.1)
     g.setColour (button.isEnabled() ? fill : fill.withAlpha (0.4f));
     g.fillRoundedRectangle (bounds, 4.0f);
     g.setColour (ParagonColours::panelEdge);
@@ -140,13 +170,17 @@ void ParagonLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& bu
 
     if (button.getProperties().contains (menuArrowProperty))
     {
-        // A small down arrow, in the lettering's colour.
+        // A small down arrow, in the lettering's colour: alone, or at the
+        // right of the key's name (0.9.10: "1/16", "RANGES").
         g.setColour (! button.isEnabled() ? ParagonColours::textDim : Finish::neonKeys() ? juce::Colours::white : ParagonColours::text);
-        const auto c = area.getCentre().translated (0.0f, down ? 0.5f : 0.0f);
+        const auto withText = button.getButtonText().isNotEmpty();
+        const auto c = (withText ? area.withLeft (area.getRight() - 14.0f) : area).getCentre().translated (0.0f, down ? 0.5f : 0.0f);
         juce::Path arrow;
         arrow.addTriangle (c.x - 4.5f, c.y - 2.5f, c.x + 4.5f, c.y - 2.5f, c.x, c.y + 3.0f);
         g.fillPath (arrow);
-        return;
+        if (! withText)
+            return;
+        area.removeFromRight (16.0f);
     }
 
     if (button.getButtonText().isEmpty())
@@ -166,9 +200,9 @@ void ParagonLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& bu
     }
 
     g.setFont (titleFont (juce::jmin (12.0f, area.getHeight() * 0.7f)));
-    // Light lettering on a black key; white on a neon one (lit: a pale
-    // gold, as the accent orange would vanish into the key).
-    const auto neonKey = Finish::neonKeys();
+    // Light lettering on a black key, lit in the accent orange (or its own
+    // colour); white on a neon one (a neon key that's on is drawn black).
+    const auto neonKey = Finish::neonKeys() && ! on;
     const auto* lit = button.getProperties().getVarPointer (litColourProperty);
     const auto litColour = lit != nullptr ? juce::Colour ((juce::uint32) (juce::int64) *lit) : ParagonColours::accent;
     g.setColour (button.isEnabled() ? (on ? (neonKey ? juce::Colour (0xffffe9a8) : litColour) : (neonKey ? juce::Colours::white : ParagonColours::text))
@@ -450,6 +484,19 @@ void ParagonLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int 
                                           float sliderPos, float minSliderPos, float maxSliderPos,
                                           juce::Slider::SliderStyle style, juce::Slider& slider)
 {
+    // A bar lit from its centre (the Inspector's pan): a mark at the centre, lit to the value.
+    if (style == juce::Slider::LinearBar && slider.getProperties()[barFromCentreProperty])
+    {
+        const auto area = juce::Rectangle<float> ((float) x, (float) y, (float) width, (float) height);
+        g.setColour (slider.findColour (juce::Slider::backgroundColourId));
+        g.fillRect (area);
+        const auto centre = area.getCentreX();
+        g.setColour (slider.findColour (juce::Slider::trackColourId));
+        g.fillRect (juce::Rectangle<float>::leftTopRightBottom (juce::jmin (centre, sliderPos), area.getY(), juce::jmax (centre, sliderPos), area.getBottom()));
+        g.setColour (ParagonColours::text.withAlpha (0.6f));
+        g.fillRect (juce::Rectangle<float> (1.0f, area.getHeight()).withCentre (area.getCentre()));
+        return;
+    }
     if (style == juce::Slider::LinearVertical && slider.getProperties()[eqFaderProperty])
     {
         const auto centreX = (float) x + (float) width * 0.5f;
@@ -769,4 +816,62 @@ void ParagonLookAndFeel::drawScrollbar (juce::Graphics& g, juce::ScrollBar&, int
                          .reduced (3.0f);
     g.setColour (ParagonColours::accent.withAlpha (isMouseDown ? 0.95f : isMouseOver ? 0.8f : 0.55f));
     g.fillRoundedRectangle (thumb, juce::jmin (thumb.getWidth(), thumb.getHeight()) * 0.5f);
+}
+
+//==============================================================================
+void ParagonLookAndFeel::drawAlertBox (juce::Graphics& g, juce::AlertWindow& alert, const juce::Rectangle<int>& textArea, juce::TextLayout& textLayout)
+{
+    // The progress box's look (0.13.1, the owner asked: the question boxes as
+    // the render and freeze box): the deep black body, the family's red glow
+    // along the edge, the PR7-S mark and the title large on the left, the
+    // message under them.
+    const auto bounds = alert.getLocalBounds().toFloat().reduced (1.0f);
+    g.setColour (juce::Colour (0xff0c0a0d));
+    g.fillRoundedRectangle (bounds, 8.0f);
+    g.setColour (ParagonColours::glow.withAlpha (0.35f));
+    g.drawRoundedRectangle (bounds.reduced (1.5f), 7.0f, 3.0f);
+    g.setColour (ParagonColours::glow);
+    g.drawRoundedRectangle (bounds, 8.0f, 1.2f);
+
+    // The mark at the top left (as the progress box's), the title and message
+    // beside it: the box's own text (its title large in Bebas, the message under).
+    const juce::Rectangle<float> mark (22.0f, 18.0f, 34.0f, 34.0f);
+    Logo::drawMark (g, mark.reduced (2.0f), juce::Justification::centredLeft,
+                    { juce::Colours::white, ParagonColours::glow, {}, {}, 1.0f, true });
+    const auto left = mark.getRight() + 12.0f;
+    auto lowest = (float) alert.getHeight() - 18.0f;
+    for (auto* child : alert.getChildren())
+        if (child->isVisible())
+            lowest = juce::jmin (lowest, (float) child->getY() - 6.0f);
+    const auto textTop = mark.getCentreY() - 13.0f;   // (the title's line level with the mark)
+    textLayout.draw (g, juce::Rectangle<float> (left, textTop, juce::jmax (40.0f, bounds.getRight() - 22.0f - left),
+                                                juce::jmax (textLayout.getHeight(), lowest - textTop)));
+    juce::ignoreUnused (textArea);
+}
+
+juce::Font ParagonLookAndFeel::getAlertWindowTitleFont()   { return juce::Font (titleFont (20.0f)); }
+juce::Font ParagonLookAndFeel::getAlertWindowMessageFont() { return juce::Font (textFont (15.0f, juce::Font::plain)); }
+juce::Font ParagonLookAndFeel::getAlertWindowFont()        { return juce::Font (textFont (14.0f, juce::Font::plain)); }
+
+void ParagonLookAndFeel::drawProgressBar (juce::Graphics& g, juce::ProgressBar&, int width, int height, double progress, const juce::String& textToShow)
+{
+    // The bar as a horizontal meter, lit from the left as it goes (an unknown
+    // amount: a lit stretch running along); the text over it at the right.
+    const auto area = juce::Rectangle<float> (0.0f, 0.0f, (float) width, (float) height);
+    const auto bar = area.withTrimmedRight (textToShow.isNotEmpty() ? 58.0f : 0.0f);
+    if (progress >= 0.0 && progress <= 1.0)
+        LevelMeter::paintSegments (g, bar, (float) progress, -1.0f, false, 4.0f);
+    else
+    {
+        LevelMeter::paintSegments (g, bar, 0.0f, -1.0f, false, 4.0f);
+        const auto phase = (float) std::fmod (juce::Time::getMillisecondCounterHiRes() / 1500.0, 1.0);
+        g.setColour (ParagonColours::meterColour (phase).withAlpha (0.8f));
+        g.fillRect (bar.withWidth (bar.getWidth() * 0.2f).withX (bar.getX() + bar.getWidth() * 0.8f * phase));
+    }
+    if (textToShow.isNotEmpty())
+    {
+        g.setColour (ParagonColours::text);
+        g.setFont (titleFont (juce::jmin (18.0f, (float) height * 0.8f)));
+        g.drawText (textToShow, area.withTrimmedLeft (bar.getWidth() + 6.0f), juce::Justification::centredRight, false);
+    }
 }

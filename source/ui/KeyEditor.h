@@ -5,6 +5,9 @@
 #include "engine/Studio.h"
 #include "ui/ArrangeView.h"
 
+// (0.9.3: SPLIT (3) cuts notes; DRAW and SPLIT show a pencil and scissors as
+// the pointer; the grid goes to 1/1 and 1/2.)
+//
 // The key editor (piano roll), below the arrangement, inspired by Cubase's
 // key editor in its lower zone, in our look. It shows the part last
 // selected in the arrangement (double-click a part to open it).
@@ -52,13 +55,14 @@ public:
     KeyEditor (pr7s::Studio&, ArrangeView&);
     ~KeyEditor() override;
 
-    enum class Tool { select, draw, erase };
+    enum class Tool { select, draw, erase, split };
     void setTool (Tool);
     Tool getTool() const noexcept { return tool; }
 
     // The grids offered, in beats (a beat is a quarter note).
     struct GridChoice { const char* name; double beats; };
-    static constexpr GridChoice grids[] = { { "1/4", 1.0 }, { "1/8", 0.5 }, { "1/16", 0.25 }, { "1/32", 0.125 },
+    static constexpr GridChoice grids[] = { { "1/1", 4.0 }, { "1/2", 2.0 },   // (0.9.3: whole and half notes, the owner asked)
+                                            { "1/4", 1.0 }, { "1/8", 0.5 }, { "1/16", 0.25 }, { "1/32", 0.125 },
                                             { "1/8 triplet", 1.0 / 3.0 }, { "1/16 triplet", 1.0 / 6.0 } };
     void setGrid (double beats);
     double getGrid() const noexcept { return grid; }
@@ -74,6 +78,20 @@ public:
     void deleteSelected();
     void transposeSelected (int semitones);
     void quantizeSelected();   // all the notes, with none selected
+    // SPLIT (3, as the manual's): the note at `beat` (song beats) cut in two
+    // there; if it's one of several selected, all of those it crosses.
+    // One edit. False if nothing was cut.
+    bool splitAt (int noteIndex, double beat);
+    // Random velocities (0.9.4, the owner's idea): the selected notes' velocities
+    // set at random within a range: LOW (Alt+B), MID (Alt+N) or HIGH (Alt+M).
+    // The ranges are set with the arrow beside the keys (kept for next time;
+    // at first 40-70, 70-100, 100-127). Nothing selected: nothing changes.
+    // One edit. False if nothing was selected.
+    static constexpr int numVelocityRanges = 3;
+    bool randomizeVelocities (int range);
+    void setVelocityRange (int range, int low, int high);   // 1 to 127 (swapped if the wrong way round)
+    std::pair<int, int> getVelocityRange (int range) const;
+    juce::TextButton& getVelocityKey (int range) { return velocityKeys[(size_t) range]; }
 
     // The editor's clipboard: notes kept with their timing relative to one
     // another, so they paste into this part or any other.
@@ -87,6 +105,11 @@ public:
     bool keyPressed (const juce::KeyPress&) override;
 
     std::function<void()> onClose;
+
+    // SIZE (0.9.3): the whole editor drawn at 100, 150 or 200% (the main
+    // window scales it; the owner found it hard to read at 100).
+    std::function<void (int percent)> onSizeChange;
+    void setSizeShown (int percent);
 
     // WINDOW: into a window of its own (to maximize, or stretch across
     // screens); DOCK: back under the arrangement. The main window moves it.
@@ -125,7 +148,17 @@ public:
     float yForPitch (int pitch) const noexcept;   // the top of its row
     int pitchForY (float y) const noexcept;
 
-    static constexpr int sideWidth = 302, keysWidth = 54, rulerHeight = 26, velocityHeight = 86, scrollBarSize = 12;
+    // The velocity handles (0.9.10, the manual's Controller Event Editor):
+    // with two or more notes selected, a box round their velocity bars.
+    // Drag its top edge to move them all up or down, the middle of the top to
+    // scale them (from 0), a top corner to tilt that end, the middle of the
+    // right edge to squash them towards their middle or spread them. One undo
+    // step per drag.
+    enum class VelocityHandle { none, move, scale, tiltLeft, tiltRight, scaleCentre };
+    juce::Rectangle<float> getVelocityBox() const;   // empty: fewer than two notes selected
+    VelocityHandle velocityHandleAt (juce::Point<float>) const;
+
+    static constexpr int sideWidth = 150, keysWidth = 54, rulerHeight = 26, velocityHeight = 86, scrollBarSize = 12;
     static constexpr int minimumHeight = 230;   // docked: the panel's keys and a few octaves
     static constexpr float minRowHeight = 6.0f, maxRowHeight = 36.0f;
 
@@ -139,7 +172,7 @@ public:
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
 private:
-    enum class Gesture { none, position, audition, band, move, resize, draw, erase, velocity };
+    enum class Gesture { none, position, audition, band, move, resize, draw, erase, velocity, velocityHandle };
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
@@ -148,6 +181,23 @@ private:
     void clampScroll();
     void refreshScrollBars();
     void refreshPanel();
+    void paintInfo (juce::Graphics&, juce::Rectangle<float>);
+public:
+    juce::Colour velocityColour (float velocity) const;   // a note's colour by its velocity (0.9.12)
+private:   // the selected notes, at the column's foot
+    void layoutColumn();
+    // The panel's keys in one column, all one size (0.9.10, the owner asked),
+    // in a strip that scrolls when the editor is shorter than they are.
+    struct InfoView final : juce::Component
+    {
+        explicit InfoView (KeyEditor& e) : owner (e) { setInterceptsMouseClicks (false, false); }
+        void paint (juce::Graphics& g) override { owner.paintInfo (g, getLocalBounds().toFloat()); }
+        KeyEditor& owner;
+    };
+    juce::Viewport panelView;
+    juce::Component panelColumn;
+    InfoView infoView { *this };
+    static constexpr int columnKeyHeight = 24, columnGap = 4, panelHeaderHeight = 54;
     const std::vector<pr7s::Note>& notes() const;   // the working copy while a gesture edits them
     bool editing() const noexcept;
     void begin();
@@ -185,10 +235,22 @@ private:
     float rowHeight = 12.0f;   // a note row (the vertical zoom)
     AutoScroll autoScroll;
     double lastPosition = 0.0;   // the playhead as last seen (a jump while stopped is followed)
+    float playheadX = -1.0e6f;
+    // The playhead as drawn (0.17.5, the owner asked: the arrangement's glide here too).
+    double shownBeat = 0.0;
+    bool gliding = false;
+public:
+    void advancePlayhead();   // one frame of the glide (the timer's; tests call it)
+    double getShownPlayhead() const noexcept { return shownBeat; }
+private:
+    juce::MouseCursor penCursor, scissorsCursor;   // DRAW's and SPLIT's pointers (made once: not statics, they mustn't outlive JUCE)   // where it was last drawn (0.9.2: only its strip is redrawn as it moves)
     juce::ScrollBar across { false }, down { true };
 
     // The gesture under way.
     Gesture gesture = Gesture::none;
+    VelocityHandle handle = VelocityHandle::none;
+    juce::Rectangle<float> boxAtDown;
+    void dragVelocityHandle (float dy);
     std::vector<pr7s::Note> working, original;
     std::vector<int> dragging, selectionBefore;
     int anchor = -1, clicked = -1;
@@ -198,7 +260,14 @@ private:
     float lastVelocityX = 0.0f, shownVelocity = -1.0f;
     int auditioning = -1;
 
-    juce::TextButton selectTool { "SELECT" }, drawTool { "DRAW" }, eraseTool { "ERASE" }, quantizeButton { "QUANTIZE" },
+    juce::ComboBox sizeBox;
+    std::array<juce::TextButton, 3> velocityKeys;
+    juce::TextButton velocityRangesKey;
+    std::array<std::pair<int, int>, 3> velocityRanges { { { 40, 70 }, { 70, 100 }, { 100, 127 } } };
+    juce::Random random;
+    void refreshVelocityKeys();
+    void showVelocityRanges();
+    juce::TextButton selectTool { "SELECT" }, drawTool { "DRAW" }, eraseTool { "ERASE" }, splitTool { "SPLIT" }, quantizeButton { "QUANTIZE" },
                      windowButton { "WINDOW" }, closeButton { "CLOSE" }, autoScrollButton { "AUTO-SCROLL" }, autoScrollMenu;
     bool inWindow = false;
     juce::ComboBox gridBox;

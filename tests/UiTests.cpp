@@ -1,3 +1,4 @@
+#include <set>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -5,6 +6,8 @@
 #include "engine/Studio.h"
 #include "ui/Finish.h"
 #include "ui/MainView.h"
+#include "ui/TrackActions.h"
+#include "ui/Windows.h"
 
 using namespace pr7s;
 using Catch::Matchers::WithinAbs;
@@ -105,7 +108,7 @@ TEST_CASE ("The studio's window: transport, tracks lined up with their lanes, pa
             name = label;
     REQUIRE (name != nullptr);
     const auto rowTop = name->getParentComponent()->getY();
-    CHECK (rowTop == Timeline::rulerHeight + Timeline::trackHeight);
+    CHECK (rowTop == Timeline::rulerHeight + Timeline::masterHeight + Timeline::trackHeight);   // (0.9.12: the master's row first)
 
     // Selecting and deleting the part, through the arrangement.
     arrange.select (second, 0);
@@ -145,10 +148,12 @@ TEST_CASE ("The key editor: draw, move, copy, lengthen, velocity, erase, keys, q
     arrange.mouseDoubleClick (mouseAt (arrange, partArea.getCentre(), partArea.getCentre(), {}, 2));
     studio.dispatchPendingMessages();
     REQUIRE (view.isKeyEditorOpen());
+    view.setKeyEditorSize (100);   // (these tests place the mouse at 100%; 200% has its own test)
     auto& editor = view.getKeyEditor();
-    CHECK (editor.isVisible());
-    CHECK (editor.getBottom() <= view.getHeight());
-    CHECK (arrange.getBottom() <= editor.getY());
+    auto& frame = view.getKeyEditorFrame();
+    CHECK (frame.isVisible());
+    CHECK (frame.getBottom() <= view.getHeight());
+    CHECK (arrange.getBottom() <= frame.getY());
     REQUIRE (editor.getPart() != nullptr);
     CHECK (editor.getPart()->name == "Riff");
     const auto notes = [&] { return editor.getPart()->notes; };
@@ -270,7 +275,7 @@ TEST_CASE ("The key editor: draw, move, copy, lengthen, velocity, erase, keys, q
     }
     CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::escapeKey)));
     CHECK_FALSE (view.isKeyEditorOpen());
-    CHECK_FALSE (editor.isVisible());
+    CHECK_FALSE (frame.isVisible());
 }
 
 TEST_CASE ("The key editor in a window of its own, and back", "[ui][editor]")
@@ -283,13 +288,15 @@ TEST_CASE ("The key editor in a window of its own, and back", "[ui][editor]")
     studio.addPart (trackId, { 0.0, 16.0, "Riff", { { 0.0, 1.0, 60, 0.8f }, { 15.0, 1.0, 64, 0.8f } } });
     auto& arrange = view.getArrangeView();
     auto& editor = view.getKeyEditor();
+    auto& frame = view.getKeyEditorFrame();
+    view.setKeyEditorSize (100);
     arrange.select (trackId, 0);
     view.openKeyEditor();
     studio.dispatchPendingMessages();
     REQUIRE (editor.getPart() != nullptr);
     const auto dockedArrangeHeight = arrange.getHeight();
     const auto dockedRows = editor.getNotesArea().getHeight();
-    CHECK (editor.getParentComponent() == &view);
+    CHECK (frame.getParentComponent() == &view);
 
     // WINDOW: the editor moves into its own window; the arrangement takes the room back.
     view.setKeyEditorInWindow (true);
@@ -302,7 +309,7 @@ TEST_CASE ("The key editor in a window of its own, and back", "[ui][editor]")
     CHECK (view.isKeyEditorOpen());
     studio.renameTrack (trackId, "Guitar");   // any change: the title follows the part
     studio.dispatchPendingMessages();
-    CHECK (window->getName() == "Key Editor: Riff");
+    CHECK (window->getName() == "MIDI Editor: Riff");
 
     // Stretched wide (as across three screens): the editor fills it, and fits the whole part.
     // (How tall it can be is up to the system: macOS keeps a window within
@@ -327,7 +334,7 @@ TEST_CASE ("The key editor in a window of its own, and back", "[ui][editor]")
     // DOCK: back under the arrangement.
     view.setKeyEditorInWindow (false);
     CHECK (view.getKeyEditorWindow() == nullptr);
-    CHECK (editor.getParentComponent() == &view);
+    CHECK (frame.getParentComponent() == &view);
     CHECK (editor.isVisible());
     CHECK_FALSE (editor.isInWindow());
     CHECK (arrange.getHeight() == dockedArrangeHeight);
@@ -336,8 +343,8 @@ TEST_CASE ("The key editor in a window of its own, and back", "[ui][editor]")
     view.setKeyEditorInWindow (true);
     view.closeKeyEditor();
     CHECK (view.getKeyEditorWindow() == nullptr);
-    CHECK (editor.getParentComponent() == &view);
-    CHECK_FALSE (editor.isVisible());
+    CHECK (frame.getParentComponent() == &view);
+    CHECK_FALSE (frame.isVisible());
     view.openKeyEditor();
     REQUIRE (view.getKeyEditorWindow() != nullptr);
     CHECK (editor.getTopLevelComponent() == view.getKeyEditorWindow());
@@ -449,10 +456,10 @@ TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inse
     findAll (view, keyboards);
     CHECK (keyboards.empty());
 
-    // Alt+F3 opens the mixer under the arrangement, down to the window's bottom.
+    // F3 opens the mixer where it was: under the arrangement at first, down to the window's bottom (0.9.10).
     auto& mixer = view.getMixer();
     auto& arrange = view.getArrangeView();
-    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key, juce::ModifierKeys::altModifier, 0)));
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key)));
     REQUIRE (view.isMixerOpen());
     CHECK_FALSE (view.isMixerInWindow());
     CHECK (mixer.isVisible());
@@ -539,6 +546,22 @@ TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inse
     REQUIRE (window != nullptr);
     CHECK (mixer.getTopLevelComponent() == window);
     CHECK (window->getName() == "Mixer");
+    // In its window both racks show, the inserts above the sends, whatever was chosen docked (0.9.14).
+    {
+        REQUIRE (mixer.getNumStrips() >= 2);
+        mixer.setRackShown (false);
+        auto& strip = mixer.getStrip (0);
+        CHECK (mixer.showsInserts());
+        CHECK (mixer.showsSends());
+        CHECK (strip.getInsertSlot (0).isVisible());
+        CHECK (strip.getSendSlot (0).isVisible());
+        CHECK (strip.getSendSlot (0).getY() > strip.getInsertSlot (0).getBottom());
+        auto inserts = false;
+        for (auto* child : mixer.getChildren())
+            if (auto* b = dynamic_cast<juce::TextButton*> (child); b != nullptr && b->getButtonText() == "INSERTS")
+                inserts = b->isVisible();
+        CHECK_FALSE (inserts);   // (INSERTS / SENDS are the docked choice)
+    }
     view.openKeyEditor();
     CHECK (view.isMixerOpen());
     CHECK (view.isKeyEditorOpen());
@@ -547,7 +570,7 @@ TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inse
     CHECK_FALSE (view.isMixerOpen());
     CHECK (view.getMixerWindow() == nullptr);
     CHECK (mixer.getParentComponent() == &view);
-    // F3 again: the mixer in its own window (as Cubase's F3).
+    // F3 again: open where it was, in its own window.
     CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key)));
     REQUIRE (view.getMixerWindow() != nullptr);
     CHECK (view.isMixerOpen());
@@ -558,13 +581,38 @@ TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inse
     CHECK (view.getMixerWindow() == nullptr);
     CHECK (mixer.isVisible());
     CHECK_FALSE (view.isKeyEditorOpen());
-    // Docked and open, F3 moves it into its window; Alt+F3 again closes it from docked.
+    // Docked again: the docked choice (none) holds.
+    CHECK_FALSE (mixer.showsInserts());
+    CHECK_FALSE (mixer.showsSends());
+    CHECK_FALSE (mixer.getStrip (0).getInsertSlot (0).isVisible());
+    mixer.setRackShown (true);
+    // Docked: F3 closes it, F3 opens it docked again; Alt+F3 takes it full screen.
     CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key)));
-    CHECK (view.getMixerWindow() != nullptr);
-    view.toggleMixerDocked();
-    CHECK (view.isMixerOpen());
-    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key, juce::ModifierKeys::altModifier, 0)));
     CHECK_FALSE (view.isMixerOpen());
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key)));
+    CHECK (view.isMixerOpen());
+    CHECK_FALSE (view.isMixerInWindow());
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F3Key, juce::ModifierKeys::altModifier, 0)));
+    CHECK (view.isMixerInWindow());
+    REQUIRE (view.getMixerWindow() != nullptr);
+    view.setMixerInWindow (false);
+    view.openMixer();
+
+    // F2 the MIDI editor (Alt+F2: its own window), F1 the Inspector.
+    view.closeMixer();
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F2Key)));
+    CHECK (view.isKeyEditorOpen());
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F2Key, juce::ModifierKeys::altModifier, 0)));
+    CHECK (view.isKeyEditorInWindow());
+    CHECK (view.isKeyEditorOpen());
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F2Key, juce::ModifierKeys::altModifier, 0)));
+    CHECK_FALSE (view.isKeyEditorInWindow());
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F2Key)));
+    CHECK_FALSE (view.isKeyEditorOpen());
+    const auto inspectorShown = view.isInspectorShown();
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F1Key)));
+    CHECK (view.isInspectorShown() != inspectorShown);
+    view.keyPressed (juce::KeyPress (juce::KeyPress::F1Key));
     view.openMixer();
 
     // It draws in every finish.
@@ -778,7 +826,7 @@ TEST_CASE ("Dragging as the manual has it: Ctrl keeps a part to one direction, A
     CHECK (studio.getProject().loopEnd == 28.0);
 
     // A double-click on an empty lane between the locators: a part from the left one to the right.
-    const juce::Point<float> between (22.0f * beatPixels, (float) Timeline::rulerHeight + 0.5f * (float) Timeline::trackHeight);
+    const juce::Point<float> between (22.0f * beatPixels, (float) (Timeline::rulerHeight + Timeline::masterHeight) + 0.5f * (float) Timeline::trackHeight);
     arrange.mouseDoubleClick (mouseAt (arrange, between, between));
     REQUIRE (studio.getProject().findTrack (first)->parts.size() == 1);
     CHECK (studio.getProject().findTrack (first)->parts[0].start == 20.0);
@@ -808,13 +856,13 @@ TEST_CASE ("Automation on screen: lanes under their track, lined up; click adds 
     studio.dispatchPendingMessages();
     const auto secondTop = arrange.trackTop (second);
 
-    // The keys: REC arms; R and W are automation's (and the header's R and W).
+    // The keys (0.9.9: the tracks' REC, R and W are in the Inspector and the mixer, not on the rows; the master's row has R and W).
     std::vector<juce::TextButton*> buttons;
     findAll (view.getTrackList(), buttons);
-    const auto count = [&] (const juce::String& text) { return std::count_if (buttons.begin(), buttons.end(), [&] (auto* b) { return b->getButtonText() == text; }); };
-    CHECK (count ("REC") == 2);
-    CHECK (count ("R") == 3);   // two tracks and the master
-    CHECK (count ("W") == 3);
+    const auto count = [&] (const juce::String& text) { return std::count_if (buttons.begin(), buttons.end(), [&] (auto* b) { return b->getButtonText() == text && b->isVisible(); }); };
+    CHECK (count ("REC") == 0);
+    CHECK (count ("R") == 1);
+    CHECK (count ("W") == 1);
 
     // Show Automation: the volume lane under the first track; the second moves down by a lane.
     studio.setAutomationOpen (first, true);
@@ -952,9 +1000,17 @@ TEST_CASE ("Sends and FX channels on screen: the SENDS rack, a send's dot, level
     {
         return std::count_if (buttons.begin(), buttons.end(), [&] (auto* b) { return b->getButtonText() == text && b->isVisible(); });
     };
-    CHECK (visibleCount ("REC") == 1);
-    CHECK (visibleCount ("FX: Reverb") == 1);
-    CHECK (visibleCount ("GROUP CHANNEL") == 1);
+    CHECK (visibleCount ("REC") == 0);   // (0.9.9: no REC on any row; the Inspector has it)
+    // (0.9.2: the rows have no instrument key, as the owner asked: the Inspector says what a channel is.)
+    CHECK (visibleCount ("FX: Reverb") == 0);
+    CHECK (visibleCount ("GROUP CHANNEL") == 0);
+    studio.selectTrack (fx);
+    studio.dispatchPendingMessages();
+    std::vector<juce::TextButton*> inInspector;
+    findAll (view.getInspector(), inInspector);
+    CHECK (std::any_of (inInspector.begin(), inInspector.end(), [] (auto* b) { return b->getButtonText() == "FX: Reverb" && b->isVisible(); }));
+    studio.selectTrack (track);
+    studio.dispatchPendingMessages();
 
     // The mixer: OUT shows where the track goes; SENDS swaps the racks.
     auto& mixer = view.getMixer();
@@ -1042,7 +1098,7 @@ TEST_CASE ("Zoom, Auto-Scroll and scrolling (H in, G out, Shift+F, F; the scroll
 
     SECTION ("F turns Auto-Scroll off and on (AUTO-SCROLL lit); while on, a jump out of sight turns the page")
     {
-        auto& button = view.getTrackList().getAutoScrollButton();
+        auto& button = view.getAutoScrollButton();
         CHECK (button.getToggleState());   // on at first
         CHECK (key ('f'));
         CHECK_FALSE (button.getToggleState());
@@ -1097,7 +1153,7 @@ TEST_CASE ("Zoom, Auto-Scroll and scrolling (H in, G out, Shift+F, F; the scroll
         CHECK (editor.getAutoScroll());
         CHECK (key ('f'));
         CHECK_FALSE (editor.getAutoScroll());
-        CHECK (view.getTrackList().getAutoScrollButton().getToggleState());   // the arrangement's still on
+        CHECK (view.getAutoScrollButton().getToggleState());   // the arrangement's still on
         // Its scroll bars: across moves the notes, down the pitches.
         const auto noteX = editor.getNoteBounds (0).getX();
         editor.getScrollBarAcross().setCurrentRangeStart (editor.getFirstBeat() + 1.0, juce::sendNotificationSync);
@@ -1158,8 +1214,8 @@ TEST_CASE ("Zoom, Auto-Scroll and scrolling (H in, G out, Shift+F, F; the scroll
 
         // The key editor docked has its own height (the default: a little over half).
         view.openKeyEditor();
-        CHECK (view.getKeyEditor().getHeight() != withRack);
-        CHECK (divider.getBottom() <= view.getKeyEditor().getY());
+        CHECK (view.getKeyEditorFrame().getHeight() != withRack);
+        CHECK (divider.getBottom() <= view.getKeyEditorFrame().getY());
     }
 }
 
@@ -1195,17 +1251,16 @@ TEST_CASE ("Taller and shorter rows (Shift+H / Shift+G); Auto-Scroll's settings:
                 count += b->getButtonText() == text && b->isVisible() ? 1 : 0;
             return count;
         };
-        CHECK (visibleNamed ("R") == 3);   // two tracks and the master
+        CHECK (visibleNamed ("R") == 1);   // (0.9.9: the tracks' rows have no M S REC R W; the master's R)
         for (int i = 0; i < 12; ++i)
             key ('G', shift);
         CHECK (timeline.rowZoom == Timeline::minRowZoom);
         CHECK (gap() == (float) Timeline::trackHeight * (float) Timeline::minRowZoom);
-        CHECK (visibleNamed ("R") == 1);   // the tracks' second line put away: only the master's
-        CHECK (visibleNamed ("M") >= 2);   // the first line (name, M, S, REC) still there
+        CHECK (visibleNamed ("R") == 1);
         for (int i = 0; i < 12; ++i)
             key ('H', shift);
         CHECK (timeline.rowZoom == Timeline::maxRowZoom);
-        CHECK (visibleNamed ("R") == 3);
+        CHECK (visibleNamed ("R") == 1);
     }
 
     SECTION ("Stationary Cursor: while playing, the playhead in the middle; Page Scroll: only when it reaches the edge")
@@ -1232,7 +1287,7 @@ TEST_CASE ("Taller and shorter rows (Shift+H / Shift+G); Auto-Scroll's settings:
 
     SECTION ("Suspend Auto-Scroll when Editing: a click in the tracks while playing stops it following until playback stops; F carries on")
     {
-        auto& autoScrollKey = view.getTrackList().getAutoScrollButton();
+        auto& autoScrollKey = view.getAutoScrollButton();
         timeline.autoScroll.suspendWhenEditing = true;
         studio.play();
         const juce::Point<float> inLanes (40.0f, (float) Timeline::rulerHeight + 200.0f);
@@ -1294,4 +1349,1828 @@ TEST_CASE ("Taller and shorter rows (Shift+H / Shift+G); Auto-Scroll's settings:
         editor.followPlayhead();
         CHECK_FALSE (editor.getAutoScrollSettings().suspended);
     }
+}
+
+TEST_CASE ("The editing tools: keys and the toolbar; SPLIT, GLUE, ERASE, MUTE, DRAW, ZOOM, PLAY on the tracks; SELECT's Alt-click and Alt-drag; Alt+X", "[ui][tools]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto track = studio.getProject().tracks[0].id;
+    studio.addPart (track, { 4.0, 8.0, "Riff", { { 0.0, 1.0, 60, 0.8f }, { 6.0, 1.0, 64, 0.8f } } });
+    studio.setQuantizeBeats (1.0);   // (0.9.10: snap to the quantize value; a beat, as this test was written for)
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    auto& tools = view.getTools();
+    const auto key = [&] (juce::juce_wchar c, juce::ModifierKeys mods = {}) { return view.keyPressed (juce::KeyPress ((int) c, mods, c)); };
+    const auto parts = [&] { return studio.getProject().findTrack (track)->parts; };
+    const auto click = [&] (juce::Point<float> at, juce::ModifierKeys mods = {})
+    {
+        arrange.mouseDown (mouseAt (arrange, at, at, mods));
+        arrange.mouseUp (mouseAt (arrange, at, at, mods));
+    };
+    const auto dragAcross = [&] (juce::Point<float> from, juce::Point<float> to, juce::ModifierKeys mods = {})
+    {
+        arrange.mouseDown (mouseAt (arrange, from, from, mods));
+        for (int step = 1; step <= 4; ++step)
+            arrange.mouseDrag (mouseAt (arrange, from + (to - from) * ((float) step / 4.0f), from, mods));
+        arrange.mouseUp (mouseAt (arrange, to, from, mods));
+    };
+    const auto xFor = [&] (double beat) { return arrange.getPartBounds (track, 0).getX() + (float) ((beat - parts()[0].start) * arrange.getPartBounds (track, 0).getWidth() / parts()[0].length); };
+    const auto y = arrange.getPartBounds (track, 0).getCentreY();
+
+    SECTION ("The tool keys (1, 3 to 9) and F9 / F10 choose the tool; its key in the toolbar lights")
+    {
+        CHECK (arrange.getTool() == ArrangeView::Tool::select);
+        CHECK (tools.getButton (ArrangeView::Tool::select).getToggleState());
+        CHECK (key ('3'));
+        CHECK (arrange.getTool() == ArrangeView::Tool::split);
+        CHECK (tools.getButton (ArrangeView::Tool::split).getToggleState());
+        CHECK_FALSE (tools.getButton (ArrangeView::Tool::select).getToggleState());
+        CHECK (key ('9'));
+        CHECK (arrange.getTool() == ArrangeView::Tool::play);
+        CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F10Key)));
+        CHECK (arrange.getTool() == ArrangeView::Tool::select);   // round again
+        CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F9Key)));
+        CHECK (arrange.getTool() == ArrangeView::Tool::play);
+        tools.getButton (ArrangeView::Tool::glue).onClick();
+        CHECK (arrange.getTool() == ArrangeView::Tool::glue);
+    }
+
+    SECTION ("SPLIT: a click cuts the part there, on the grid (Ctrl: anywhere); Alt: equal pieces; then GLUE joins them back")
+    {
+        key ('3');
+        click ({ xFor (6.1), y });   // snaps to beat 6 (the grid at this zoom: a beat)
+        REQUIRE (parts().size() == 2);
+        CHECK (parts()[0].length == 2.0);
+        CHECK (parts()[1].start == 6.0);
+        studio.undo();
+        click ({ xFor (6.1), y }, juce::ModifierKeys::commandModifier);   // (Ctrl; Cmd on a Mac, as the app's every Ctrl)
+        REQUIRE (parts().size() == 2);
+        CHECK (std::abs (parts()[1].start - 6.1) < 0.05);
+        studio.undo();
+        click ({ xFor (6.0), y }, juce::ModifierKeys::altModifier);
+        CHECK (parts().size() == 4);   // 8 beats in pieces of 2
+
+        key ('4');
+        click ({ xFor (5.0), y }, juce::ModifierKeys::altModifier);   // the first, glued to all after it
+        REQUIRE (parts().size() == 1);
+        CHECK (parts()[0].length == 8.0);
+        CHECK (parts()[0].notes.size() == 2);
+    }
+
+    SECTION ("ERASE removes the part clicked; MUTE mutes it (a click again unmutes), or every part in a rectangle")
+    {
+        studio.addPart (track, { 16.0, 4.0, "Later", {} });
+        studio.dispatchPendingMessages();
+        key ('7');
+        click ({ xFor (5.0), y });
+        CHECK (parts()[0].muted);
+        click ({ xFor (5.0), y });
+        CHECK_FALSE (parts()[0].muted);
+        dragAcross ({ xFor (3.0), y - 10.0f }, { xFor (18.0), y + 10.0f });
+        CHECK (parts()[0].muted);
+        CHECK (parts()[1].muted);
+
+        key ('5');
+        // A right-click is the part's menu, whatever the tool: nothing erased.
+        click ({ xFor (5.0), y }, juce::ModifierKeys::rightButtonModifier);
+        juce::PopupMenu::dismissAllActiveMenus();
+        CHECK (parts().size() == 2);
+        click ({ xFor (5.0), y });
+        REQUIRE (parts().size() == 1);
+        CHECK (parts()[0].name == "Later");
+    }
+
+    SECTION ("DRAW: a drag on an empty stretch of an instrument track makes a new empty part over it (whole grid steps)")
+    {
+        key ('8');
+        dragAcross ({ xFor (14.2), y }, { xFor (17.6), y });
+        REQUIRE (parts().size() == 2);
+        CHECK (parts()[1].start == 14.0);
+        CHECK (parts()[1].length == 4.0);   // 14 to 18
+        CHECK (parts()[1].notes.empty());
+    }
+
+    SECTION ("SELECT: Alt-click a part splits it there; Alt-drag on an empty stretch draws a part; Alt-drag a part still copies it")
+    {
+        click ({ xFor (8.0), y }, juce::ModifierKeys::altModifier);
+        REQUIRE (parts().size() == 2);
+        CHECK (parts()[1].start == 8.0);
+        studio.undo();
+        dragAcross ({ xFor (20.0), y }, { xFor (23.5), y }, juce::ModifierKeys::altModifier);
+        REQUIRE (parts().size() == 2);
+        CHECK (parts()[1].start == 20.0);
+        studio.undo();
+        dragAcross ({ xFor (5.0), y }, { xFor (17.0), y }, juce::ModifierKeys::altModifier);
+        CHECK (parts().size() == 2);   // the copy
+        CHECK (parts()[0].start == 4.0);
+    }
+
+    SECTION ("Alt+X splits the parts the playhead is in (only the selected one, if any); the part's menu can too")
+    {
+        const auto second = studio.addTrack ({});
+        studio.addPart (second, { 0.0, 16.0, "Pad", {} });
+        studio.setPosition (6.0);
+        CHECK (key ('x', juce::ModifierKeys::altModifier));
+        CHECK (parts().size() == 2);
+        CHECK (studio.getProject().findTrack (second)->parts.size() == 2);
+        studio.undo();
+        arrange.select (track, 0);
+        CHECK (key ('x', juce::ModifierKeys::altModifier));
+        CHECK (parts().size() == 2);
+        CHECK (studio.getProject().findTrack (second)->parts.size() == 1);
+    }
+
+    SECTION ("ZOOM: a click zooms in there, Alt-click out, a drag fills the view with the stretch; PLAY: held, it plays from there")
+    {
+        key ('6');
+        const auto width = arrange.getPartBounds (track, 0).getWidth();
+        const auto clickedAt = xFor (8.0);
+        click ({ clickedAt, y });
+        CHECK_THAT (arrange.getPartBounds (track, 0).getWidth(), WithinAbs (width * (float) Timeline::zoomStep, 0.1));
+        CHECK_THAT (xFor (8.0), WithinAbs (clickedAt, 0.1));   // the beat clicked stays under the mouse
+        click ({ 300.0f, y }, juce::ModifierKeys::altModifier);
+        CHECK_THAT (arrange.getPartBounds (track, 0).getWidth(), WithinAbs (width, 0.1));
+        dragAcross ({ xFor (4.0), y }, { xFor (12.0), y });
+        CHECK_THAT (arrange.getPartBounds (track, 0).getX(), WithinAbs (0.0, 1.0));
+        CHECK_THAT (arrange.getPartBounds (track, 0).getWidth(), WithinAbs ((float) arrange.getWidth(), 1.0));
+
+        key ('9');
+        studio.setPosition (1.0);
+        const juce::Point<float> at (xFor (6.0), y);
+        arrange.mouseDown (mouseAt (arrange, at, at));
+        CHECK (studio.getEngine().isPlaying());
+        CHECK_THAT (studio.getEngine().getPosition(), WithinAbs (6.0, 0.05));
+        arrange.mouseUp (mouseAt (arrange, at, at));
+        CHECK_FALSE (studio.getEngine().isPlaying());
+        CHECK (studio.getEngine().getPosition() == 1.0);   // back where it was
+    }
+}
+
+TEST_CASE ("RANGE (2): drag a range across tracks; its edges; double-click; drag its contents (Alt: copy); the keys", "[ui][tools][range]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto a = studio.getProject().tracks[0].id;
+    const auto b = studio.addTrack ({});
+    studio.addPart (a, { 0.0, 8.0, "A", { { 3.0, 2.0, 60, 0.8f } } });
+    studio.addPart (b, { 0.0, 4.0, "B1", {} });
+    studio.addPart (b, { 6.0, 4.0, "B2", {} });
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    const auto key = [&] (int code, juce::ModifierKeys mods = {}, juce::juce_wchar c = 0) { return view.keyPressed (juce::KeyPress (code, mods, c)); };
+    const auto press = [&] (juce::juce_wchar c, juce::ModifierKeys mods = {}) { return key ((int) c, mods, c); };
+    const auto cmd = juce::ModifierKeys (juce::ModifierKeys::commandModifier);
+    const auto shift = juce::ModifierKeys (juce::ModifierKeys::shiftModifier);
+    const auto ppb = arrange.getPartBounds (a, 0).getWidth() / 8.0f;   // pixels per beat
+    const auto x = [&] (double beat) { return arrange.getPartBounds (a, 0).getX() + (float) beat * ppb; };
+    const auto yA = arrange.getPartBounds (a, 0).getCentreY(), yB = arrange.getPartBounds (b, 0).getCentreY();
+    const auto dragAcross = [&] (juce::Point<float> from, juce::Point<float> to, juce::ModifierKeys mods = {})
+    {
+        arrange.mouseDown (mouseAt (arrange, from, from, mods));
+        for (int step = 1; step <= 4; ++step)
+            arrange.mouseDrag (mouseAt (arrange, from + (to - from) * ((float) step / 4.0f), from, mods));
+        arrange.mouseUp (mouseAt (arrange, to, from, mods));
+    };
+    const auto spans = [&] (int id)
+    {
+        std::vector<std::pair<double, double>> out;
+        for (const auto& part : studio.getProject().findTrack (id)->parts)
+            out.push_back ({ part.start, part.length });
+        std::sort (out.begin(), out.end());
+        return out;
+    };
+    using Spans = std::vector<std::pair<double, double>>;
+
+    CHECK (press ('2'));
+    REQUIRE (arrange.getTool() == ArrangeView::Tool::range);
+    dragAcross ({ x (2.1), yA }, { x (6.9), yB });   // snapped: 2 to 7, both tracks
+    REQUIRE (arrange.hasRange());
+    CHECK (arrange.getRange()->start == 2.0);
+    CHECK (arrange.getRange()->end == 7.0);
+    CHECK (arrange.getRange()->trackIds == std::vector<int> { a, b });
+
+    SECTION ("Shift+X splits at its edges; Delete removes what's in it; Shift+Backspace closes the gap; Esc clears it")
+    {
+        CHECK (press ('X', shift));
+        CHECK (spans (a) == Spans { { 0.0, 2.0 }, { 2.0, 5.0 }, { 7.0, 1.0 } });
+        studio.undo();
+        CHECK (key (juce::KeyPress::deleteKey));
+        CHECK (spans (a) == Spans { { 0.0, 2.0 }, { 7.0, 1.0 } });
+        CHECK (arrange.hasRange());   // it stays
+        studio.undo();
+        CHECK (key (juce::KeyPress::backspaceKey, shift));
+        CHECK (spans (b) == Spans { { 0.0, 2.0 }, { 2.0, 3.0 } });
+        CHECK (key (juce::KeyPress::escapeKey));
+        CHECK_FALSE (arrange.hasRange());
+    }
+
+    SECTION ("Ctrl+X cuts it to the clipboard; Ctrl+V pastes at the playhead on the selected track down; Ctrl+D duplicates")
+    {
+        CHECK (press ('X', cmd));
+        CHECK (spans (a) == Spans { { 0.0, 2.0 }, { 7.0, 1.0 } });
+        studio.selectTrack (a);
+        studio.setPosition (16.0);
+        CHECK (press ('V', cmd));
+        CHECK (spans (a) == Spans { { 0.0, 2.0 }, { 7.0, 1.0 }, { 16.0, 5.0 } });
+        CHECK (spans (b) == Spans { { 0.0, 2.0 }, { 7.0, 3.0 }, { 16.0, 2.0 }, { 20.0, 1.0 } });
+        studio.undo();
+        studio.undo();
+        CHECK (press ('D', cmd));   // a copy straight after it: 7 to 12
+        CHECK (spans (a) == Spans { { 0.0, 8.0 }, { 7.0, 5.0 } });
+    }
+
+    SECTION ("Its edges dragged; Shift-drag outside it extends it")
+    {
+        dragAcross ({ x (7.0), yA }, { x (9.0), yA });
+        CHECK (arrange.getRange()->end == 9.0);
+        dragAcross ({ x (2.0), yA }, { x (1.0), yA });
+        CHECK (arrange.getRange()->start == 1.0);
+        arrange.setRange (Studio::Range { 2.0, 4.0, { a } });
+        dragAcross ({ x (6.0), yB }, { x (6.0), yB }, shift);   // to beat 6 and down to track b
+        CHECK (arrange.getRange()->end == 6.0);
+        CHECK (arrange.getRange()->trackIds == std::vector<int> { a, b });
+    }
+
+    SECTION ("Dragging inside it moves what's in it (the range goes too); Alt copies")
+    {
+        arrange.setRange (Studio::Range { 2.0, 4.0, { a } });
+        dragAcross ({ x (3.0), yA }, { x (13.0), yA });
+        CHECK (spans (a) == Spans { { 0.0, 2.0 }, { 4.0, 4.0 }, { 12.0, 2.0 } });
+        CHECK (arrange.getRange()->start == 12.0);
+        studio.undo();
+        arrange.setRange (Studio::Range { 2.0, 4.0, { a } });
+        dragAcross ({ x (3.0), yA }, { x (13.0), yB }, juce::ModifierKeys::altModifier);   // copied, onto b
+        CHECK (spans (a) == Spans { { 0.0, 8.0 } });
+        CHECK (spans (b) == Spans { { 0.0, 4.0 }, { 6.0, 4.0 }, { 12.0, 2.0 } });
+    }
+
+    SECTION ("Double-click a part: a range over it; between parts: over the gap; a click alone clears it; another tool keeps it")
+    {
+        arrange.mouseDoubleClick (mouseAt (arrange, { x (7.0), yB }, { x (7.0), yB }, {}, 2));
+        CHECK (arrange.getRange()->start == 6.0);
+        CHECK (arrange.getRange()->end == 10.0);
+        arrange.mouseDoubleClick (mouseAt (arrange, { x (5.0), yB }, { x (5.0), yB }, {}, 2));
+        CHECK (arrange.getRange()->start == 4.0);
+        CHECK (arrange.getRange()->end == 6.0);
+        CHECK (arrange.getRange()->trackIds == std::vector<int> { b });
+        press ('1');
+        CHECK (arrange.hasRange());
+        press ('2');
+        arrange.mouseDown (mouseAt (arrange, { x (12.0), yA }, { x (12.0), yA }));
+        arrange.mouseUp (mouseAt (arrange, { x (12.0), yA }, { x (12.0), yA }));
+        CHECK_FALSE (arrange.hasRange());
+    }
+}
+
+TEST_CASE ("SPAN ALL SCREENS: across the screens side by side, as tall as they all are; stacked screens, the box round them", "[ui][window]")
+{
+    // Three 1920 x 1080 screens, the middle one's taskbar 40 high at the bottom, the right one a 1200-high screen.
+    using R = juce::Rectangle<int>;
+    const juce::Array<R> three { R (-1920, 0, 1920, 1080), R (0, 0, 1920, 1040), R (1920, -60, 1920, 1200) };
+    CHECK (Windows::spanOf (three) == juce::Rectangle<int> (-1920, 0, 5760, 1040));
+    const juce::Array<R> one { R (0, 0, 2560, 1400) };
+    CHECK (Windows::spanOf (one) == juce::Rectangle<int> (0, 0, 2560, 1400));
+    const juce::Array<R> stacked { R (0, 0, 1920, 1080), R (0, 1080, 1920, 1080) };
+    CHECK (Windows::spanOf (stacked) == juce::Rectangle<int> (0, 0, 1920, 2160));
+    CHECK (Windows::spanOf ({}).isEmpty());
+}
+
+TEST_CASE ("The locators: Ctrl-click the left, Alt-click the right, Ctrl+Alt-click both; drag one's handle; P, Alt+P; the number pad's 1 and 2", "[ui][locators]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto track = studio.getProject().tracks[0].id;
+    studio.addPart (track, { 8.0, 4.0, "Riff", {} });
+    studio.setQuantizeBeats (1.0);   // (0.9.10: the grid step is the quantize value: a beat here)
+    studio.setCycle (4.0, 16.0);
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    const auto ppb = arrange.getPartBounds (track, 0).getWidth() / 4.0f;
+    const auto x = [&] (double beat) { return arrange.getPartBounds (track, 0).getX() + (float) (beat - 8.0) * ppb; };
+    const auto y = 6.0f;   // the ruler's top strip
+    const auto& project = studio.getProject();
+    const auto click = [&] (float atX, juce::ModifierKeys mods = {})
+    {
+        arrange.mouseDown (mouseAt (arrange, { atX, y }, { atX, y }, mods));
+        arrange.mouseUp (mouseAt (arrange, { atX, y }, { atX, y }, mods));
+    };
+    const auto cmd = juce::ModifierKeys (juce::ModifierKeys::commandModifier);
+    const auto alt = juce::ModifierKeys (juce::ModifierKeys::altModifier);
+
+    click (x (2.1), cmd);   // the left locator (snapped to the beat)
+    CHECK (project.loopStart == 2.0);
+    CHECK (project.loopEnd == 16.0);
+    click (x (20.0), alt);  // the right one
+    CHECK (project.loopEnd == 20.0);
+    click (x (24.0), cmd);  // the left past the right: they swap
+    CHECK (project.loopStart == 20.0);
+    CHECK (project.loopEnd == 24.0);
+    click (x (9.5), juce::ModifierKeys (juce::ModifierKeys::commandModifier | juce::ModifierKeys::altModifier));   // both: round the grid step clicked in (the quantize value, 1/4)
+    CHECK (project.loopStart == 9.0);
+    CHECK (project.loopEnd == 10.0);
+
+    // In the lower part of the ruler too (where a plain click moves the playhead): Ctrl / Alt set the locators, the playhead stays.
+    studio.setPosition (1.0);
+    const auto lower = (float) Timeline::rulerHeight - 6.0f;
+    const auto clickLower = [&] (float atX, juce::ModifierKeys mods)
+    {
+        arrange.mouseDown (mouseAt (arrange, { atX, lower }, { atX, lower }, mods));
+        arrange.mouseUp (mouseAt (arrange, { atX, lower }, { atX, lower }, mods));
+    };
+    clickLower (x (3.0), cmd);
+    CHECK (project.loopStart == 3.0);
+    clickLower (x (14.0), alt);
+    CHECK (project.loopEnd == 14.0);
+    CHECK (studio.getEngine().getPosition() == 1.0);
+
+    // A locator's handle dragged: just that one.
+    studio.setCycle (4.0, 16.0);
+    const auto dragFrom = [&] (float fromX, float toX)
+    {
+        arrange.mouseDown (mouseAt (arrange, { fromX, y }, { fromX, y }));
+        for (int step = 1; step <= 4; ++step)
+            arrange.mouseDrag (mouseAt (arrange, { fromX + (toX - fromX) * (float) step / 4.0f, y }, { fromX, y }));
+        arrange.mouseUp (mouseAt (arrange, { toX, y }, { fromX, y }));
+    };
+    dragFrom (x (16.0), x (12.0));
+    CHECK (project.loopStart == 4.0);
+    CHECK (project.loopEnd == 12.0);
+    dragFrom (x (4.0), x (6.0));
+    CHECK (project.loopStart == 6.0);
+    CHECK (project.loopEnd == 12.0);
+
+    // P: the locators round the selected part; Alt+P: and round it it plays.
+    arrange.select (track, 0);
+    CHECK (view.keyPressed (juce::KeyPress ('p', {}, 'p')));
+    CHECK (project.loopStart == 8.0);
+    CHECK (project.loopEnd == 12.0);
+    studio.setCycleOn (false);
+    CHECK (view.keyPressed (juce::KeyPress ('p', alt, 'p')));
+    CHECK (project.loopOn);
+    CHECK (studio.getEngine().isPlaying());
+    studio.stop();
+
+    // The number pad: 1 / 2 to the locators; Ctrl: a locator to the playhead. (Not the tools, though the pad types 1 and 2 too.)
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::numberPad2, {}, '2')));
+    CHECK (studio.getEngine().getPosition() == 12.0);
+    CHECK (arrange.getTool() == ArrangeView::Tool::select);
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::numberPad1, {}, '1')));
+    CHECK (studio.getEngine().getPosition() == 8.0);
+    studio.setPosition (5.0);
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::numberPad1, cmd, 0)));
+    CHECK (project.loopStart == 5.0);
+    studio.setPosition (14.0);
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::numberPad2, cmd, 0)));
+    CHECK (project.loopEnd == 14.0);
+}
+
+TEST_CASE ("Tracks in the list: Ctrl / Shift-click to select several; drag rows to reorder (the mixer follows); Up / Down; double-click to add; Shift+Delete", "[ui][tracks]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto a = studio.getProject().tracks[0].id;
+    const auto b = studio.addTrack ({});
+    const auto c = studio.addTrack ({});
+    studio.addPart (b, { 0.0, 4.0, "B", {} });
+    studio.dispatchPendingMessages();
+    auto& list = view.getTrackList();
+    auto& arrange = view.getArrangeView();
+    const auto order = [&]
+    {
+        std::vector<int> ids;
+        for (const auto& track : studio.getProject().tracks)
+            ids.push_back (track.id);
+        return ids;
+    };
+    using Ids = std::vector<int>;
+    // A row: where it is in the list (its middle), from the arrangement's matching row.
+    const auto rowY = [&] (int id) { return arrange.trackTop (id) + (float) Timeline::trackHeight * 0.5f; };
+    const auto rowAt = [&] (int id) -> juce::Component*
+    {
+        for (auto* child : list.getChildren())
+            if (child->getBounds().toFloat().contains (20.0f, rowY (id)) && child->getHeight() == Timeline::trackHeight)
+                return child;
+        return nullptr;
+    };
+    const auto clickRow = [&] (int id, juce::ModifierKeys mods = {})
+    {
+        auto* row = rowAt (id);
+        REQUIRE (row != nullptr);
+        const juce::Point<float> at (20.0f, 8.0f);
+        row->mouseDown (mouseAt (*row, at, at, mods));
+        row->mouseUp (mouseAt (*row, at, at, mods));
+    };
+
+    clickRow (a);
+    clickRow (c, juce::ModifierKeys::commandModifier);
+    CHECK (studio.getSelectedTracks() == Ids { a, c });
+    clickRow (b, juce::ModifierKeys::shiftModifier);   // the run from c (clicked last) to b
+    CHECK (studio.getSelectedTracks() == Ids { a, b, c });
+    clickRow (b);   // a plain click on one of several: it alone
+    CHECK (studio.getSelectedTracks() == Ids { b });
+
+    // Dragged below c: the drop line, then the order (the mixer's strips too).
+    {
+        auto* row = rowAt (b);
+        REQUIRE (row != nullptr);
+        const juce::Point<float> from (20.0f, 8.0f);
+        const auto to = juce::Point<float> (20.0f, rowY (c) - (float) row->getY() + 30.0f);   // past c's middle
+        row->mouseDown (mouseAt (*row, from, from));
+        row->mouseDrag (mouseAt (*row, from + (to - from) * 0.5f, from));
+        row->mouseDrag (mouseAt (*row, to, from));
+        CHECK (list.getDropIndex() == 3);
+        row->mouseUp (mouseAt (*row, to, from));
+    }
+    CHECK (order() == Ids { a, c, b });
+    studio.dispatchPendingMessages();
+    CHECK (view.getMixer().getStrip (1).getBusId() == c);
+    CHECK (view.getMixer().getStrip (2).getBusId() == b);
+    studio.undo();
+    CHECK (order() == Ids { a, b, c });
+
+    // Up / Down: the track above / below (and its first part, if a part was selected).
+    studio.selectTrack (a);
+    arrange.select (a, -1);
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::downKey)));
+    CHECK (studio.getSelectedTrack() == b);
+    studio.addPart (c, { 12.0, 4.0, "C later", {} });
+    studio.addPart (c, { 8.0, 4.0, "C first", {} });
+    arrange.select (b, 0);
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::downKey)));
+    CHECK (studio.getSelectedTrack() == c);
+    CHECK (arrange.getSelection().trackId == c);   // its first part (by where it starts)
+    CHECK (arrange.getSelection().index == 1);
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::upKey)));
+    CHECK (studio.getSelectedTrack() == b);
+    CHECK (arrange.getSelection().index == 0);
+
+    // A double-click under the tracks: a new one like the selected (an instrument track here).
+    const auto before = studio.getProject().tracks.size();
+    list.mouseDoubleClick (mouseAt (list, { 100.0f, (float) list.getHeight() - 100.0f }, { 100.0f, (float) list.getHeight() - 100.0f }, {}, 2));
+    CHECK (studio.getProject().tracks.size() == before + 1);
+    const auto added = studio.getSelectedTrack();
+
+    // Shift+Delete: the selected tracks (empty ones straight away).
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::deleteKey, juce::ModifierKeys::shiftModifier, 0)));
+    CHECK (studio.getProject().findTrack (added) == nullptr);
+
+    // Moving by the menu's actions: to the top, down one.
+    studio.selectTrack (c);
+    list.moveSelectedTracks (TrackList::MoveTo::first);
+    CHECK (order() == Ids { c, a, b });
+    list.moveSelectedTracks (TrackList::MoveTo::next);
+    CHECK (order() == Ids { a, c, b });
+    list.moveSelectedTracks (TrackList::MoveTo::last);
+    CHECK (order() == Ids { a, b, c });
+}
+
+TEST_CASE ("Audio files dropped on the arrangement: on the audio track under them, at the bar; elsewhere a new audio track", "[ui][import]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto audio = studio.addAudioTrack (false);
+    studio.dispatchPendingMessages();
+    const auto file = juce::File::createTempFile ("dropped.wav");
+    {
+        std::unique_ptr<juce::OutputStream> stream (file.createOutputStream());
+        auto writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (48000.0).withNumChannels (1).withBitsPerSample (24));
+        REQUIRE (writer != nullptr);
+        juce::AudioBuffer<float> buffer (1, 48000);
+        buffer.clear();
+        writer->writeFromAudioSampleBuffer (buffer, 0, 48000);
+    }
+    CHECK (view.isInterestedInFileDrag ({ file.getFullPathName() }));
+    auto& arrange = view.getArrangeView();
+    // Over the audio track's row, in bar 3 (beats 8 to 12 at 4/4).
+    const auto inArrange = juce::Point<float> ((float) (9.5 * Timeline {}.pixelsPerBeat), arrange.trackTop (audio) + 20.0f);
+    const auto inView = view.getLocalPoint (&arrange, inArrange.toInt());
+    studio.setQuantizeBeats (4.0);   // (0.18.1: drops snap as the arrangement does; 1/1 = the bar)
+    view.filesDropped ({ file.getFullPathName() }, inView.x, inView.y);
+    const auto& parts = studio.getProject().findTrack (audio)->parts;
+    REQUIRE (parts.size() == 1);
+    CHECK (parts[0].start == 8.0);
+    // Dropped under the tracks: a new audio track.
+    const auto tracks = studio.getProject().tracks.size();
+    view.filesDropped ({ file.getFullPathName() }, inView.x, view.getHeight() - 60);
+    CHECK (studio.getProject().tracks.size() == tracks + 1);
+    CHECK (studio.getProject().tracks.back().isAudio());
+    file.deleteFile();
+    studio.getAudioFolder().deleteRecursively();
+}
+
+TEST_CASE ("CPU: the engine measures each block's load; the meter shows the average and the peak; an overload lights its light until clicked", "[ui][cpu]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& engine = studio.getEngine();
+    const auto rate = engine.getSampleRate();
+    const auto blockSeconds = 512.0 / rate;
+
+    // A block that took a fifth of its time, many times: the average settles at 0.2.
+    for (int i = 0; i < 100; ++i)
+        engine.notePerformance (blockSeconds * 0.2, 512);
+    auto now = engine.takePerformance();
+    CHECK_THAT (now.average, WithinAbs (0.2, 0.01));
+    CHECK_THAT (now.peak, WithinAbs (0.2, 0.01));
+    CHECK (now.overloads == 0);
+    CHECK (engine.takePerformance().peak == 0.0f);   // the peak is since the last look
+
+    // One that took longer than it lasts: an overload (a dropout).
+    engine.notePerformance (blockSeconds * 1.3, 512);
+    auto& transport = view.getTransport();
+    transport.repaint();
+    juce::Timer::callPendingTimersSynchronously();
+    for (int i = 0; i < 3 && ! transport.isOverloadLit(); ++i)
+    {
+        juce::Thread::sleep (40);
+        juce::Timer::callPendingTimersSynchronously();
+    }
+    CHECK (transport.isOverloadLit());
+    CHECK (transport.getShownPeak() > 1.0f);
+    // A click on the meter resets it (as the manual has it).
+    const auto at = transport.getCpuArea().getCentre();
+    transport.mouseDown (juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys::leftButtonModifier,
+                                           0.0f, 0.0f, 0.0f, 0.0f, 0.0f, &transport, &transport, juce::Time::getCurrentTime(), at,
+                                           juce::Time::getCurrentTime(), 1, false));
+    CHECK_FALSE (transport.isOverloadLit());
+    CHECK (engine.takePerformance().overloads == 0);
+}
+
+TEST_CASE ("A wide window (spanning screens): the position screen centred at its own width, the keys on its left, the tools on its right; the header's keys centred", "[ui][wide]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    auto& transport = view.getTransport();
+    auto& tools = view.getTools();
+
+    // One screen: as before (the tools in their row under the transport, the screen as wide as there's room).
+    view.setSize (1500, 900);
+    CHECK_FALSE (view.isWide());
+    CHECK (tools.getY() >= transport.getBottom());
+    CHECK (transport.getPositionScreen().getWidth() > 140.0f);   // (0.9.10: POSITION and TIME, two screens alike)
+    CHECK (transport.getTimeScreen().getWidth() == transport.getPositionScreen().getWidth());
+    CHECK (transport.getTimeScreen().getX() > transport.getPositionScreen().getRight());
+
+    // Three screens.
+    CHECK_FALSE (view.isMixerOpen());
+    view.setSize (5760, 1000);
+    REQUIRE (view.isWide());
+    // Turning wide: the mixer docked, its racks hidden, as short as it goes (the owner's choice).
+    CHECK (view.isMixerOpen());
+    CHECK_FALSE (view.isMixerInWindow());
+    CHECK_FALSE (view.getMixer().isRackShown());
+    CHECK (view.getMixer().getHeight() == view.getMixer().getMinimumHeight());
+    // What's changed after it turned wide stays (it isn't done again on every resize).
+    view.getMixer().setRackShown (true);
+    view.setSize (5700, 1000);
+    CHECK (view.getMixer().isRackShown());
+    const auto screen = transport.getPositionScreen();
+    CHECK (screen.getWidth() + transport.getTimeScreen().getWidth() + 12.0f == (float) TransportBar::widePositionWidth);
+    CHECK_THAT (transport.getX() + screen.getRight(), WithinAbs (view.getWidth() * 0.5f, 300.0f));   // near the middle
+    // The keys on its left, the tools on its right (on the transport, no row of their own).
+    auto* clickKey = buttonNamed (transport, "CLICK");
+    REQUIRE (clickKey != nullptr);
+    // CLICK, then the CPU screen, then the position screen (the owner's order).
+    const auto cpu = transport.getCpuArea();
+    CHECK (clickKey->getRight() <= (int) cpu.getX());
+    CHECK (clickKey->getRight() > (int) cpu.getX() - 30);
+    CHECK (cpu.getRight() <= screen.getX());
+    CHECK (cpu.getRight() > screen.getX() - 30);
+    // AUTO-SCROLL just before HOME.
+    CHECK (view.getAutoScrollButton().getRight() < buttonNamed (transport, "|<")->getX() + transport.getX());
+    CHECK (view.getAutoScrollButton().getRight() > buttonNamed (transport, "|<")->getX() + transport.getX() - 50);
+    CHECK (tools.getX() > transport.getX() + (int) transport.getTimeScreen().getRight());
+    CHECK (tools.getBottom() <= transport.getBottom());
+    // All of it on the middle screen (1920 to 3840): no screen edge through it.
+    CHECK (buttonNamed (transport, "|<")->getX() + transport.getX() >= 1920);
+    CHECK (tools.getRight() <= 3840);
+    CHECK (tools.getY() >= transport.getY());
+    CHECK (view.getArrangeView().getY() < transport.getBottom() + MainView::toolbarHeight);   // the tracks have the row's room
+    // The header's keys: NEW to the quantize value in the middle.
+    auto* newKey = buttonNamed (view, "NEW");
+    auto& lastKey = view.getQuantizeButton();
+    REQUIRE (newKey != nullptr);
+    CHECK (std::abs ((newKey->getX() + lastKey.getRight()) / 2 - view.getWidth() / 2) < 4);
+    CHECK (newKey->getX() > 2000);
+}
+
+TEST_CASE ("RENDER IN PLACE: the page's choices; rendering as last time from the main window", "[ui][render]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto synth = studio.getProject().tracks[0].id;
+    studio.addPart (synth, { 4.0, 4.0, "Riff", { { 0.0, 1.0, 60, 1.0f } } });
+
+    // The page: what's chosen comes back as the options (Remove only for whole tracks).
+    Windows::RenderPage parts (studio, false);
+    CHECK_FALSE (parts.source.isItemEnabled (3));
+    Windows::RenderPage tracks (studio, true);
+    CHECK (tracks.source.isItemEnabled (3));
+    parts.mode.setSelectedId (2, juce::dontSendNotification);
+    parts.processing.setSelectedId (1, juce::dontSendNotification);
+    parts.tail.setSelectedId (6, juce::dontSendNotification);   // 2 seconds
+    parts.bits.setSelectedId (32, juce::dontSendNotification);
+    parts.source.setSelectedId (2, juce::dontSendNotification);
+    const auto chosen = parts.getOptions();
+    CHECK (chosen.mode == Studio::RenderOptions::Mode::blocks);
+    CHECK (chosen.processing == Studio::RenderOptions::Processing::dry);
+    CHECK (chosen.tail == Studio::RenderOptions::Tail::seconds);
+    CHECK (chosen.tailSize == 2.0);
+    CHECK (chosen.bitsPerSample == 32);
+    CHECK (chosen.source == Studio::RenderOptions::Source::mute);
+
+    // As last time (no settings file in tests: the defaults): a new audio track under the synth.
+    view.renderInPlace ({ { synth, 4.0, 8.0, false } }, false);
+    REQUIRE (studio.getProject().tracks.size() == 2);
+    CHECK (studio.getProject().tracks[1].isAudio());
+    CHECK (studio.getProject().tracks[1].parts.size() == 1);
+    studio.getAudioFolder().deleteRecursively();
+}
+
+TEST_CASE ("The Inspector: the selected track's settings, by kind, in sections that fold", "[ui][inspector]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& inspector = view.getInspector();
+    REQUIRE (view.isInspectorShown());
+    CHECK (inspector.isVisible());
+    CHECK (inspector.getWidth() == Inspector::width);
+    CHECK (inspector.getRight() < view.getArrangeView().getX());
+
+    const auto keys = studio.getProject().tracks[0].id;
+    studio.selectTrack (keys);
+    studio.dispatchPendingMessages();   // the screen hears about changes by message
+    CHECK (inspector.getTrack() == keys);
+    using S = Inspector::Section;
+
+    SECTION ("An instrument track: MIDI IN and CHANNEL, its inserts and sends, its fader")
+    {
+        CHECK (inspector.getMidiInput().isVisible());
+        CHECK (inspector.getChannel().isVisible());
+        CHECK_FALSE (inspector.getAudioInput().isVisible());
+        CHECK (inspector.getKey ("REC").isVisible());
+        CHECK_FALSE (inspector.getKey ("MON").isVisible());
+        CHECK (inspector.getInsertSlot (0).isVisible());
+        CHECK (inspector.getHeader (S::sends).isVisible());
+        CHECK (inspector.getFader().getSingleTrack() == keys);
+        CHECK (inspector.getFader().getNumStrips() == 2);   // its strip (and the master's, not shown)
+
+        // Its controls change the track.
+        inspector.getChannel().setSelectedId (7, juce::sendNotificationSync);
+        CHECK (studio.getProject().findTrack (keys)->midiChannel == 7);
+        inspector.getVolume().setValue (-6.0, juce::sendNotificationSync);
+        CHECK (studio.getProject().findTrack (keys)->volumeDb == -6.0f);
+        inspector.getKey ("M").onClick();
+        CHECK (studio.getProject().findTrack (keys)->mute);
+        // And follow it.
+        studio.setPan (keys, -0.5f);
+        studio.dispatchPendingMessages();
+        CHECK (inspector.getPan().getValue() == -0.5);
+        studio.setMidiChannel (keys, 3);
+        studio.dispatchPendingMessages();
+        CHECK (inspector.getChannel().getSelectedId() == 3);
+    }
+    SECTION ("An audio track: its input and MON, no MIDI; an FX channel: no sends, no REC")
+    {
+        const auto guitar = studio.addAudioTrack (true);
+        studio.selectTrack (guitar);
+        studio.dispatchPendingMessages();
+        CHECK (inspector.getTrack() == guitar);
+        CHECK (inspector.getAudioInput().isVisible());
+        CHECK (inspector.getAudioInput().getText().contains ("IN 1+2"));
+        CHECK_FALSE (inspector.getMidiInput().isVisible());
+        CHECK (inspector.getKey ("MON").isVisible());
+
+        const auto fx = studio.addFxChannel (nullptr);
+        studio.selectTrack (fx);
+        studio.dispatchPendingMessages();
+        CHECK_FALSE (inspector.getHeader (S::sends).isVisible());
+        CHECK_FALSE (inspector.getKey ("REC").isVisible());
+        CHECK_FALSE (inspector.getOutput().isEnabled());   // FX channels go to the master
+    }
+    SECTION ("A section's title folds it; the others move up")
+    {
+        const auto routingY = inspector.getHeader (S::routing).getY();
+        const auto height = inspector.getContentHeight();
+        inspector.setFolded (S::basics, true);
+        CHECK_FALSE (inspector.getVolume().isVisible());
+        CHECK (inspector.getHeader (S::routing).getY() < routingY);
+        CHECK (inspector.getContentHeight() < height);
+        inspector.setFolded (S::basics, false);
+        CHECK (inspector.getVolume().isVisible());
+        inspector.setFolded (S::fader, true);
+        CHECK_FALSE (inspector.getFader().isVisible());
+    }
+    SECTION ("Ctrl+Alt+L (or INSPECTOR) hides it, and the track list takes its place")
+    {
+        const auto arrangeX = view.getArrangeView().getX();
+        CHECK (view.keyPressed (juce::KeyPress ('l', juce::ModifierKeys::commandModifier | juce::ModifierKeys::altModifier, 0)));
+        CHECK_FALSE (view.isInspectorShown());
+        CHECK_FALSE (inspector.isVisible());
+        CHECK (view.getArrangeView().getX() < arrangeX);
+        view.toggleInspector();
+        CHECK (inspector.isVisible());
+        CHECK (view.getArrangeView().getX() == arrangeX);
+    }
+}
+
+TEST_CASE ("VISIBILITY: every track with a box to show or hide it; hidden and disabled tracks leave the track list and the mixer", "[ui][visibility]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& inspector = view.getInspector();
+    const auto keys = studio.getProject().tracks[0].id;
+    const auto bass = studio.addTrack ({});
+    const auto lead = studio.addTrack ({});
+    studio.dispatchPendingMessages();
+    const auto& timeline = view.getTimeline();
+    const auto trackRows = [&]
+    {
+        int n = 0;
+        for (const auto& row : timeline.layout (studio))
+            n += row.kind == Timeline::Row::Kind::track ? 1 : 0;
+        return n;
+    };
+    REQUIRE (trackRows() == 3);
+    CHECK (view.getMixer().getNumStrips() == 4);   // three tracks and the master
+
+    // The tabs.
+    inspector.getTabKey (Inspector::Tab::visibility).onClick();
+    CHECK (inspector.getTab() == Inspector::Tab::visibility);
+    CHECK_FALSE (inspector.getVolume().isShowing());
+    REQUIRE (inspector.getVisibilityBox (bass) != nullptr);
+    CHECK (inspector.getVisibilityBox (bass)->getToggleState());
+
+    // Untick: hidden (the arrangement, the track list and the mixer leave it out).
+    auto* box = inspector.getVisibilityBox (bass);
+    box->setToggleState (false, juce::dontSendNotification);
+    box->onClick();
+    studio.dispatchPendingMessages();
+    CHECK (studio.getProject().findTrack (bass)->hidden);
+    CHECK (trackRows() == 2);
+    CHECK (view.getMixer().getNumStrips() == 3);
+    CHECK (inspector.getShowAll().isEnabled());
+
+    // Disabled: greyed in the track list, out of the mixer, listed as DISABLED; ENABLE TRACK in its Inspector.
+    studio.setTracksDisabled ({ lead }, true);
+    studio.dispatchPendingMessages();
+    CHECK (trackRows() == 2);   // still shown
+    CHECK (view.getMixer().getNumStrips() == 2);
+    inspector.setTab (Inspector::Tab::inspector);
+    studio.selectTrack (lead);
+    studio.dispatchPendingMessages();
+    CHECK (inspector.getEnableKey().isVisible());
+    CHECK (inspector.getEnableKey().getButtonText() == "ENABLE TRACK");
+    inspector.getEnableKey().onClick();
+    studio.dispatchPendingMessages();
+    CHECK_FALSE (studio.getProject().findTrack (lead)->disabled);
+    // Enabled: the key stays (0.17.1, the owner asked), now DISABLE TRACK.
+    CHECK (inspector.getEnableKey().isVisible());
+    CHECK (inspector.getEnableKey().getButtonText() == "DISABLE TRACK");
+    inspector.getEnableKey().onClick();
+    studio.dispatchPendingMessages();
+    CHECK (studio.getProject().findTrack (lead)->disabled);
+    inspector.getEnableKey().onClick();
+    studio.dispatchPendingMessages();
+    CHECK_FALSE (studio.getProject().findTrack (lead)->disabled);
+
+    // SHOW ALL.
+    inspector.setTab (Inspector::Tab::visibility);
+    inspector.getShowAll().onClick();
+    studio.dispatchPendingMessages();
+    CHECK (trackRows() == 3);
+    CHECK (view.getMixer().getNumStrips() == 4);
+    CHECK_FALSE (inspector.getShowAll().isEnabled());
+    juce::ignoreUnused (keys);
+}
+
+TEST_CASE ("SELECT: a rectangle, Shift-click and Ctrl+A select several parts; they move, copy, cut, paste, duplicate and delete together", "[ui][multiselect]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& arrange = view.getArrangeView();
+    const auto a = studio.getProject().tracks[0].id;
+    const auto b = studio.addTrack ({});
+    const auto c = studio.addTrack ({});
+    studio.addPart (a, { 0.0, 4.0, "A1", { { 0.0, 1.0, 60, 1.0f } } });
+    studio.addPart (a, { 8.0, 4.0, "A2", { { 0.0, 1.0, 62, 1.0f } } });
+    studio.addPart (b, { 0.0, 4.0, "B1", { { 0.0, 1.0, 64, 1.0f } } });
+    studio.addPart (c, { 16.0, 4.0, "C1", { { 0.0, 1.0, 67, 1.0f } } });
+    studio.dispatchPendingMessages();
+    const auto idOf = [&] (int track, int index) { return studio.getProject().findTrack (track)->parts[(size_t) index].id; };
+    const auto mouse = [&] (juce::Point<float> at, juce::ModifierKeys mods = {})
+    {
+        return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 &arrange, &arrange, juce::Time::getCurrentTime(), at, juce::Time::getCurrentTime(), 1, false);
+    };
+    const auto drag = [&] (juce::Point<float> from, juce::Point<float> to, juce::ModifierKeys mods = {})
+    {
+        arrange.mouseDown (mouse (from, mods));
+        auto moved = juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), to, mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                       &arrange, &arrange, juce::Time::getCurrentTime(), from, juce::Time::getCurrentTime(), 1, false);
+        arrange.mouseDrag (moved);
+        arrange.mouseUp (moved);
+    };
+
+    SECTION ("A rectangle over empty space and parts selects all it touches")
+    {
+        const auto a1 = arrange.getPartBounds (a, 0), b1 = arrange.getPartBounds (b, 0);
+        // From empty space right of A1 (beat 5) down and left over B1.
+        drag ({ arrange.getPartBounds (a, 0).getRight() + 20.0f, a1.getY() + 2.0f }, { 2.0f, b1.getBottom() - 2.0f });
+        const auto selected = arrange.getSelectedParts();
+        CHECK (selected.size() == 2);
+        CHECK (arrange.isPartSelected (idOf (a, 0)));
+        CHECK (arrange.isPartSelected (idOf (b, 0)));
+        CHECK_FALSE (arrange.isPartSelected (idOf (a, 1)));
+
+        // Shift-click adds one; again, takes it out.
+        const auto a2 = arrange.getPartBounds (a, 1).getCentre();
+        arrange.mouseDown (mouse (a2, juce::ModifierKeys::shiftModifier));
+        arrange.mouseUp (mouse (a2, juce::ModifierKeys::shiftModifier));
+        CHECK (arrange.getSelectedParts().size() == 3);
+        arrange.mouseDown (mouse (a2, juce::ModifierKeys::shiftModifier));
+        arrange.mouseUp (mouse (a2, juce::ModifierKeys::shiftModifier));
+        CHECK (arrange.getSelectedParts().size() == 2);
+
+        // Dragging one moves both: 4 beats later, the same tracks.
+        const auto beat = (float) view.getTimeline().pixelsPerBeat;
+        const auto from = arrange.getPartBounds (a, 0).getCentre();
+        drag (from, from.translated (4.0f * beat, 0.0f));
+        studio.dispatchPendingMessages();
+        CHECK (studio.getProject().findTrack (a)->parts.size() == 2);
+        double aStart = -1.0, bStart = -1.0;
+        for (const auto& p : studio.getProject().findTrack (a)->parts)
+            if (p.name == "A1") aStart = p.start;
+        bStart = studio.getProject().findTrack (b)->parts[0].start;
+        CHECK (aStart == 4.0);
+        CHECK (bStart == 4.0);
+        CHECK (arrange.getSelectedParts().size() == 2);   // still selected
+        studio.undo();   // one undo step
+        CHECK (studio.getProject().findTrack (b)->parts[0].start == 0.0);
+    }
+    SECTION ("Ctrl+A, then Delete: all gone in one undo step")
+    {
+        CHECK (view.keyPressed (juce::KeyPress ('a', juce::ModifierKeys::commandModifier, 0)));
+        CHECK (arrange.getSelectedParts().size() == 4);
+        CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::deleteKey)));
+        for (const auto id : { a, b, c })
+            CHECK (studio.getProject().findTrack (id)->parts.empty());
+        studio.undo();
+        CHECK (studio.getProject().findTrack (a)->parts.size() == 2);
+        CHECK (studio.getProject().findTrack (c)->parts.size() == 1);
+    }
+    SECTION ("Ctrl+C, Ctrl+V at the playhead on the selected track; Alt+V at the origin; Ctrl+X; Ctrl+D")
+    {
+        arrange.selectParts ({ idOf (a, 0), idOf (b, 0) });
+        CHECK (view.keyPressed (juce::KeyPress ('c', juce::ModifierKeys::commandModifier, 0)));
+        studio.selectTrack (b);
+        studio.setPosition (32.0);
+        CHECK (view.keyPressed (juce::KeyPress ('v', juce::ModifierKeys::commandModifier, 0)));
+        // A's part onto B, B's onto C (the selected track down), at bar 9.
+        CHECK (studio.getProject().findTrack (b)->parts.size() == 2);
+        CHECK (studio.getProject().findTrack (b)->parts.back().start == 32.0);
+        CHECK (studio.getProject().findTrack (b)->parts.back().notes[0].pitch == 60);
+        CHECK (studio.getProject().findTrack (c)->parts.back().start == 32.0);
+        CHECK (studio.getProject().findTrack (c)->parts.back().notes[0].pitch == 64);
+        // Paste at Origin: where they came from.
+        CHECK (view.keyPressed (juce::KeyPress ('v', juce::ModifierKeys::altModifier, 0)));
+        CHECK (studio.getProject().findTrack (a)->parts.size() == 3);
+
+        // Ctrl+X: they go; Ctrl+D on two: copied after them as one unit.
+        arrange.selectParts ({ idOf (c, 0) });
+        CHECK (view.keyPressed (juce::KeyPress ('x', juce::ModifierKeys::commandModifier, 0)));
+        CHECK (studio.getProject().findTrack (c)->parts.size() == 1);
+        arrange.selectParts ({ idOf (a, 0), idOf (a, 1) });
+        CHECK (view.keyPressed (juce::KeyPress ('d', juce::ModifierKeys::commandModifier, 0)));
+        auto latest = 0.0;
+        for (const auto& p : studio.getProject().findTrack (a)->parts)
+            latest = juce::jmax (latest, p.start);
+        CHECK (latest == 20.0);   // the pair spans 0 to 12: the copy starts at 12 (A2's copy at 20)
+    }
+}
+
+TEST_CASE ("The Inspector: five insert slots in view (the rest scroll), its width dragged; track rows: the name large, no instrument key", "[ui][inspector]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& inspector = view.getInspector();
+    studio.selectTrack (studio.getProject().tracks[0].id);
+    studio.dispatchPendingMessages();
+    auto& inserts = inspector.getInsertsView();
+    CHECK (inserts.isVisible());
+    const auto slot = inspector.getInsertSlot (0).getHeight();
+    CHECK (inserts.getHeight() < 6 * slot + 12);
+    CHECK (inserts.getHeight() >= 5 * slot);
+    CHECK (inspector.getInsertSlot (15).getBottom() > inserts.getHeight());   // the 16th: scrolled to
+    CHECK (inserts.canScrollVertically());
+
+    const auto arrangeX = view.getArrangeView().getX();
+    view.setInspectorWidth (320);
+    CHECK (inspector.getWidth() == 320);
+    CHECK (view.getArrangeView().getX() == arrangeX + 320 - Inspector::width);
+    view.setInspectorWidth (20);
+    CHECK (inspector.getWidth() == MainView::minimumInspectorWidth);
+
+    std::vector<juce::TextButton*> buttons;
+    findAll (view.getTrackList(), buttons);
+    CHECK (std::none_of (buttons.begin(), buttons.end(), [] (auto* b) { return b->getButtonText() == "PARAGON SYNTH" && b->isVisible(); }));
+}
+
+TEST_CASE ("The key editor at 200% (the default), SPLIT, the pencil, whole and half note grids", "[ui][editor]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto trackId = studio.getProject().tracks[0].id;
+    studio.addPart (trackId, { 0.0, 8.0, "Riff", { { 0.0, 4.0, 60, 0.8f }, { 0.0, 4.0, 64, 0.8f }, { 4.0, 1.0, 67, 0.8f } } });
+    view.getArrangeView().select (trackId, 0);
+    view.openKeyEditor();
+    studio.dispatchPendingMessages();
+    auto& editor = view.getKeyEditor();
+    auto& frame = view.getKeyEditorFrame();
+
+    // Twice the size: laid out at half the frame and drawn doubled.
+    CHECK (view.getKeyEditorSize() == 200);
+    CHECK (std::abs (editor.getWidth() * 2 - frame.getWidth()) <= 1);
+    CHECK (editor.getTransform().getScaleFactor() == 2.0f);
+    CHECK (std::abs (editor.getScreenBounds().getWidth() - frame.getScreenBounds().getWidth()) <= 2);   // it fills its frame on screen
+    view.setKeyEditorSize (150);
+    CHECK (view.getKeyEditorSize() == 150);
+    view.setKeyEditorSize (200);
+
+    // The grids reach whole and half notes; QUANTIZE to a half note.
+    editor.setGrid (4.0);
+    CHECK (editor.getGrid() == 4.0);
+    editor.setGrid (2.0);
+
+    // SPLIT (3): the pencil and scissors as pointers; a click cuts a note on the grid.
+    CHECK (editor.keyPressed (juce::KeyPress ('3', {}, '3')));
+    CHECK (editor.getTool() == KeyEditor::Tool::split);
+    CHECK (editor.getMouseCursor() != juce::MouseCursor (juce::MouseCursor::NormalCursor));
+    REQUIRE (editor.splitAt (0, 2.0));
+    auto notes = editor.getPart()->notes;
+    CHECK (notes.size() == 4);
+    auto halves = 0;
+    for (const auto& n : notes)
+        if (n.pitch == 60)
+            halves += (n.length == 2.0) ? 1 : 0;
+    CHECK (halves == 2);
+    // Several selected: all of those the cut crosses (the manual's).
+    editor.selectNotes ({ 0, 1 });   // 60's first half and 64
+    studio.undo();
+    editor.selectNotes ({ 0, 1 });
+    REQUIRE (editor.splitAt (1, 1.0));
+    CHECK (editor.getPart()->notes.size() == 5);
+    CHECK_FALSE (editor.splitAt (2, 4.5 + 0.5));   // 67 ends at 5: a cut at its end does nothing
+    editor.setTool (KeyEditor::Tool::draw);
+    CHECK (editor.getMouseCursor() != juce::MouseCursor (juce::MouseCursor::CrosshairCursor));
+}
+
+TEST_CASE ("Random velocities: Alt+B / N / M give the selected notes velocities within LOW / MID / HIGH", "[ui][editor][velocity]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto trackId = studio.getProject().tracks[0].id;
+    Part riff { 0.0, 8.0, "Riff", {} };
+    for (int i = 0; i < 32; ++i)
+        riff.notes.push_back ({ i * 0.25, 0.25, 60 + i % 12, 0.5f });
+    studio.addPart (trackId, riff);
+    view.getArrangeView().select (trackId, 0);
+    view.openKeyEditor();
+    studio.dispatchPendingMessages();
+    auto& editor = view.getKeyEditor();
+    REQUIRE (editor.getPart() != nullptr);
+
+    // The ranges at first, on the keys.
+    CHECK (editor.getVelocityRange (0) == std::pair<int, int> { 40, 70 });
+    CHECK (editor.getVelocityRange (1) == std::pair<int, int> { 70, 100 });
+    CHECK (editor.getVelocityRange (2) == std::pair<int, int> { 100, 127 });
+    CHECK (editor.getVelocityKey (0).getButtonText() == "LOW 40-70");
+
+    // Nothing selected: nothing changes.
+    CHECK_FALSE (editor.randomizeVelocities (0));
+    for (const auto& n : editor.getPart()->notes)
+        CHECK (n.velocity == 0.5f);
+
+    // The first 16 selected, HIGH: within 100-127, and not all the same; the others untouched.
+    std::vector<int> first16;
+    for (int i = 0; i < 16; ++i)
+        first16.push_back (i);
+    editor.selectNotes (first16);
+    CHECK (editor.keyPressed (juce::KeyPress ('m', juce::ModifierKeys::altModifier, 0)));
+    std::set<int> seen;
+    for (int i = 0; i < 32; ++i)
+    {
+        const auto v = juce::roundToInt (editor.getPart()->notes[(size_t) i].velocity * 127.0f);
+        if (i < 16)
+        {
+            CHECK (v >= 100);
+            CHECK (v <= 127);
+            seen.insert (v);
+        }
+        else
+            CHECK (editor.getPart()->notes[(size_t) i].velocity == 0.5f);
+    }
+    CHECK (seen.size() > 1);
+    CHECK (editor.getSelectedNotes().size() == 16);   // still selected: again for another roll
+    studio.undo();   // one undo step
+    CHECK (editor.getPart()->notes[0].velocity == 0.5f);
+
+    // A range set (the wrong way round, and past the ends): put right, kept on the key; Alt+B from the main window.
+    editor.setVelocityRange (0, 200, 5);
+    CHECK (editor.getVelocityRange (0) == std::pair<int, int> { 5, 127 });
+    editor.setVelocityRange (0, 20, 30);
+    CHECK (editor.getVelocityKey (0).getButtonText() == "LOW 20-30");
+    editor.selectNotes ({ 3, 4, 5 });
+    CHECK (view.keyPressed (juce::KeyPress ('b', juce::ModifierKeys::altModifier, 0)));
+    for (const auto i : { 3, 4, 5 })
+    {
+        const auto v = juce::roundToInt (editor.getPart()->notes[(size_t) i].velocity * 127.0f);
+        CHECK (v >= 20);
+        CHECK (v <= 30);
+    }
+}
+
+TEST_CASE ("The Inspector's QUICK CONTROLS: 8 slots; an assigned one has a bar that moves its control", "[ui][inspector][quick]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto track = studio.getProject().tracks[0].id;
+    studio.selectTrack (track);
+    studio.dispatchPendingMessages();
+    auto& inspector = view.getInspector();
+    CHECK (inspector.getHeader (Inspector::Section::quick).isVisible());
+    CHECK (inspector.getQuickControlKey (0).isVisible());
+    CHECK (inspector.getQuickControlKey (0).getButtonText() == "QC 1");
+    CHECK_FALSE (inspector.getQuickControlBar (0).isVisible());
+
+    const auto controls = studio.getAutomationControls (track);
+    studio.setQuickControl (track, 0, controls.front());   // volume
+    studio.dispatchPendingMessages();
+    CHECK (inspector.getQuickControlBar (0).isVisible());
+    CHECK (inspector.getQuickControlKey (0).getButtonText() != "QC 1");
+    inspector.getQuickControlBar (0).setValue (pr7s::volumeToTravel (-3.0f), juce::sendNotificationSync);
+    CHECK (std::abs (studio.getProject().findTrack (track)->volumeDb + 3.0f) < 0.05f);
+}
+
+TEST_CASE ("Track presets on screen: RENDER (0.17.1, in FREEZE's place) and PRESET; a preset file round trip", "[ui][freeze][preset]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& inspector = view.getInspector();
+    const auto synth = studio.getProject().tracks[0].id;
+    studio.selectTrack (synth);
+    studio.dispatchPendingMessages();
+    auto& render = inspector.getKey ("RENDER");
+    auto& preset = inspector.getKey ("PRESET");
+    CHECK (render.isVisible());
+    CHECK (preset.isVisible());
+    CHECK_FALSE (render.isEnabled());   // (no parts: nothing to render)
+    CHECK (inspector.getKey ("REC").isVisible());
+    studio.addPart (synth, { 0.0, 4.0, "Riff", { { 0.0, 1.0, 60, 1.0f } } });
+    studio.dispatchPendingMessages();
+    CHECK (render.isEnabled());
+    // RENDER asks for Render in Place of this track (the screen runs it as last time).
+    auto onRender = inspector.onRender;
+    int asked = 0;
+    inspector.onRender = [&asked] (int id) { asked = id; };
+    render.onClick();
+    CHECK (asked == synth);
+    inspector.onRender = onRender;
+
+    // Frozen (from the track's menu): RENDER off (it plays its file), and so is DISABLE.
+    juce::String error;
+    REQUIRE (TrackActions::freezeSelected (studio, 0.0, error));
+    studio.dispatchPendingMessages();
+    CHECK (studio.isFrozen (synth));
+    CHECK_FALSE (render.isEnabled());
+    CHECK_FALSE (inspector.getEnableKey().isEnabled());
+    TrackActions::unfreezeSelected (studio, true);
+    studio.dispatchPendingMessages();
+    CHECK (render.isEnabled());
+
+    // A group channel has neither; an FX channel only PRESET; neither can be disabled.
+    studio.selectTrack (studio.addGroupChannel());
+    studio.dispatchPendingMessages();
+    CHECK_FALSE (render.isVisible());
+    CHECK_FALSE (preset.isVisible());
+    CHECK_FALSE (inspector.getEnableKey().isVisible());
+    studio.selectTrack (studio.addFxChannel (nullptr));
+    studio.dispatchPendingMessages();
+    CHECK_FALSE (render.isVisible());
+    CHECK (preset.isVisible());
+
+    // The preset file: saved, then a new track from it.
+    studio.setVolume (synth, -3.0f);
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("pr7s-test.pr7track");
+    REQUIRE (TrackActions::savePresetTo (studio, synth, file));
+    const auto made = TrackActions::addTrackFrom (studio, file, error);
+    REQUIRE (made != 0);
+    CHECK (studio.getProject().findTrack (made)->volumeDb == -3.0f);
+    CHECK (TrackActions::addTrackFrom (studio, juce::File ("/nowhere/none.pr7track"), error) == 0);
+    file.deleteFile();
+    studio.getAudioFolder().deleteRecursively();
+}
+
+TEST_CASE ("Typing a value (0.9.9): dB and pan read from text; the mixer's fader and pan, the Inspector's numbers, the track's knob", "[ui][entry]")
+{
+    using ValueEntry::parseDb, ValueEntry::parsePan;
+    CHECK (parseDb ("-6").value() == -6.0);
+    CHECK (parseDb ("+3 dB").value() == 3.0);
+    CHECK (parseDb (" -12,5db ").value() == -12.5);
+    CHECK (parseDb ("-inf").value() == -60.0);
+    CHECK (parseDb ("20").value() == 6.0);      // to the fader's top
+    CHECK_FALSE (parseDb ("loud").has_value());
+    CHECK_FALSE (parseDb ("").has_value());
+    CHECK (parsePan ("C").value() == 0.0);
+    CHECK (parsePan ("L30").value() == -0.3);
+    CHECK (parsePan ("30 L").value() == -0.3);
+    CHECK (parsePan ("R 15").value() == 0.15);
+    CHECK (parsePan ("-50").value() == -0.5);
+    CHECK (parsePan ("100").value() == 1.0);
+    CHECK_FALSE (parsePan ("left").has_value());
+
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto track = studio.getProject().tracks[0].id;
+    view.openMixer();
+    studio.selectTrack (track);
+    studio.dispatchPendingMessages();
+
+    // The mixer: typed, set (one undo step); nonsense refused, nothing changed.
+    auto& strip = view.getMixer().getStrip (0);
+    CHECK (strip.getVolume().enter ("-7.5"));
+    CHECK (studio.getProject().findTrack (track)->volumeDb == -7.5f);
+    CHECK_FALSE (strip.getVolume().enter ("loud"));
+    CHECK (studio.getProject().findTrack (track)->volumeDb == -7.5f);
+    studio.undo();
+    CHECK (studio.getProject().findTrack (track)->volumeDb == 0.0f);
+    CHECK (strip.getPan().enter ("L25"));
+    CHECK_THAT (studio.getProject().findTrack (track)->pan, WithinAbs (-0.25, 0.001));
+    // The master's fader too.
+    auto& master = view.getMixer().getStrip (view.getMixer().getNumStrips() - 1);
+    CHECK (master.getVolume().enter ("-3"));
+    CHECK (studio.getProject().masterVolumeDb == -3.0f);
+
+    // The Inspector's numbers: double-click and type (the label's editor).
+    auto& inspector = view.getInspector();
+    auto& readout = inspector.getVolumeReadout();
+    CHECK (readout.isEditableOnDoubleClick());
+    readout.setText ("+2", juce::sendNotificationSync);
+    CHECK (studio.getProject().findTrack (track)->volumeDb == 2.0f);
+    CHECK (readout.getText().startsWith ("+2.0"));
+    readout.setText ("nonsense", juce::sendNotificationSync);
+    CHECK (studio.getProject().findTrack (track)->volumeDb == 2.0f);
+    CHECK (readout.getText().startsWith ("+2.0"));   // put back as it is
+    inspector.getPanReadout().setText ("R40", juce::sendNotificationSync);
+    CHECK_THAT (studio.getProject().findTrack (track)->pan, WithinAbs (0.4, 0.001));
+}
+
+TEST_CASE ("Track rows without M S REC R W (0.9.9): the state written under the name; the header's Deactivate All Mute / Solo keys", "[ui][solo]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto a = studio.getProject().tracks[0].id;
+    const auto b = studio.addTrack ({});
+    studio.dispatchPendingMessages();
+    auto& list = view.getTrackList();
+    auto& muteAll = list.getMuteAllKey();
+    auto& soloAll = list.getSoloAllKey();
+    CHECK (muteAll.isVisible());
+    CHECK (soloAll.isVisible());
+    CHECK_FALSE (soloAll.getToggleState());
+    studio.setSolo (a, true);
+    studio.setMute (b, true);
+    studio.dispatchPendingMessages();
+    CHECK (soloAll.getToggleState());
+    CHECK (muteAll.getToggleState());
+    soloAll.onClick();
+    muteAll.onClick();
+    studio.dispatchPendingMessages();
+    CHECK_FALSE (studio.anySolo());
+    CHECK_FALSE (studio.anyMute());
+    CHECK_FALSE (soloAll.getToggleState());
+}
+
+namespace
+{
+    // An instrument that counts how often it's asked whether it has a window (a VST3 builds its view to answer).
+    struct AskedForEditor final : TestPlugin
+    {
+        AskedForEditor() : TestPlugin (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)) { instrument = true; }
+        bool hasEditor() const override { ++asked; return true; }
+        void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override { buffer.clear(); }
+        mutable int asked = 0;
+    };
+}
+
+TEST_CASE ("A plugin is asked once whether it has a window (0.9.9: asked after every change, Kontakt made each click stick)", "[ui][perf-fix]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto track = studio.getProject().tracks[0].id;
+    auto plugin = std::make_unique<AskedForEditor>();
+    auto* asked = plugin.get();
+    studio.getEngine().setInstrument (track, std::move (plugin));
+    studio.selectTrack (track);
+    studio.dispatchPendingMessages();
+    for (int i = 0; i < 10; ++i)
+    {
+        studio.setPosition (i * 2.0);
+        studio.setCycleOn (i % 2 == 0);
+        studio.dispatchPendingMessages();
+    }
+    CHECK (asked->asked == 1);
+    CHECK (view.getInspector().getKey ("M").isVisible());
+}
+
+TEST_CASE ("Typing a value: the box opens on the fader with its value, Enter sets it, Esc leaves it", "[ui][entry]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    view.setVisible (true);
+    view.addToDesktop (0);
+    const auto track = studio.getProject().tracks[0].id;
+    view.openMixer();
+    studio.dispatchPendingMessages();
+    auto& fader = view.getMixer().getStrip (0).getVolume();
+    const auto findBox = []
+    {
+        juce::TextEditor* editor = nullptr;
+        for (int i = 0; i < juce::Desktop::getInstance().getNumComponents(); ++i)
+            if (auto* box = dynamic_cast<juce::CallOutBox*> (juce::Desktop::getInstance().getComponent (i)); box != nullptr && box->isVisible())
+            {
+                std::vector<juce::Component*> todo { box };
+                while (! todo.empty() && editor == nullptr)
+                {
+                    auto* c = todo.back();
+                    todo.pop_back();
+                    editor = dynamic_cast<juce::TextEditor*> (c);
+                    for (auto* child : c->getChildren())
+                        todo.push_back (child);
+                }
+            }
+        return editor;
+    };
+    fader.mouseDoubleClick (mouseAt (fader, { 4.0f, 4.0f }, { 4.0f, 4.0f }));
+    studio.dispatchPendingMessages();
+    auto* editor = findBox();
+    REQUIRE (editor != nullptr);
+    CHECK (editor->getText() == "0.0 dB");
+    CHECK (studio.getProject().findTrack (track)->volumeDb == 0.0f);   // a double-click no longer jumps the fader
+    editor->setText ("-9");
+    editor->onReturnKey();
+    studio.dispatchPendingMessages();
+    CHECK (studio.getProject().findTrack (track)->volumeDb == -9.0f);
+    CHECK (findBox() == nullptr);   // closed
+    view.removeFromDesktop();
+}
+
+TEST_CASE ("Snap and the quantize value (0.9.10): the header's SNAP (J) and 1/1 to 1/64; parts and the position snap to it, or not; saved with the song", "[ui][snap]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& snap = view.getSnapButton();
+    auto& quantize = view.getQuantizeButton();
+    studio.dispatchPendingMessages();
+    CHECK (snap.isVisible());
+    CHECK (quantize.isVisible());
+    CHECK (snap.getToggleState());              // on by default
+    CHECK (quantize.getButtonText() == "1/16");
+    // The INSPECTOR, KEY EDITOR and MIXER keys are gone (F1, F2, F3).
+    for (const auto* name : { "MIXER", "INSPECTOR", "KEY EDITOR" })
+    {
+        const auto* gone = buttonNamed (view, name);
+        CHECK ((gone == nullptr || ! gone->isVisible()));
+    }
+
+    auto& arrange = view.getArrangeView();
+    auto& timeline = view.getTimeline();
+    const auto& project = studio.getProject();
+    CHECK (timeline.snapGrid (project) == 0.25);
+    studio.setQuantizeBeats (1.0);              // 1/4
+    studio.dispatchPendingMessages();
+    CHECK (quantize.getButtonText() == "1/4");
+    CHECK (timeline.snapGrid (project) == 1.0);
+    // J: off; nothing snaps; the step (Ctrl+Alt in the ruler) is still the quantize value.
+    CHECK (view.keyPressed (juce::KeyPress ('j')));
+    studio.dispatchPendingMessages();
+    CHECK_FALSE (project.snapOn);
+    CHECK_FALSE (snap.getToggleState());
+    CHECK (timeline.snapGrid (project) == 0.0);
+    CHECK (timeline.grid (project) == 1.0);
+    snap.onClick();
+    CHECK (project.snapOn);
+    studio.setQuantizeBeats (4.0 / 64.0);
+    studio.dispatchPendingMessages();
+    CHECK (quantize.getButtonText() == "1/64");
+    juce::ignoreUnused (arrange);
+
+    // Saved and opened again.
+    studio.setSnap (false);
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("pr7s-snap.pr7s");
+    REQUIRE (studio.save (file));
+    Studio other (false);
+    juce::String problems;
+    REQUIRE (other.open (file, problems));
+    CHECK_FALSE (other.getProject().snapOn);
+    CHECK (other.getProject().quantizeBeats == 4.0 / 64.0);
+    file.deleteFile();
+}
+
+TEST_CASE ("Velocity handles (0.9.10, the manual's Controller Event Editor): a box round the selected notes' bars; move, scale, tilt, squash; one undo step", "[ui][editor][velocity]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    view.setKeyEditorSize (100);
+    const auto trackId = studio.getProject().tracks[0].id;
+    Part riff { 0.0, 8.0, "Riff", {} };
+    for (int i = 0; i < 4; ++i)
+        riff.notes.push_back ({ i * 1.0, 0.5, 60, 0.3f + 0.1f * (float) i });   // 0.3, 0.4, 0.5, 0.6
+    studio.addPart (trackId, riff);
+    view.getArrangeView().select (trackId, 0);
+    view.openKeyEditor();
+    studio.dispatchPendingMessages();
+    auto& editor = view.getKeyEditor();
+    REQUIRE (editor.getPart() != nullptr);
+    const auto velocities = [&]
+    {
+        std::vector<float> v;
+        for (const auto& n : editor.getPart()->notes)
+            v.push_back (n.velocity);
+        return v;
+    };
+    const auto lane = editor.getVelocityArea().reduced (0.0f, 6.0f);
+    const auto unit = lane.getHeight();   // pixels for the whole of 0 to 1
+
+    // One note selected: no box.
+    editor.selectNotes ({ 0 });
+    CHECK (editor.getVelocityBox().isEmpty());
+    // All four: a box from the first bar to the last, up to the loudest.
+    editor.selectNotes ({ 0, 1, 2, 3 });
+    const auto box = editor.getVelocityBox();
+    REQUIRE_FALSE (box.isEmpty());
+    CHECK_THAT (box.getY(), WithinAbs (lane.getBottom() - unit * 0.6f, 0.5));
+    CHECK (box.getBottom() == lane.getBottom());
+    using H = KeyEditor::VelocityHandle;
+    CHECK (editor.velocityHandleAt ({ box.getX() + box.getWidth() * 0.3f, box.getY() }) == H::move);
+    CHECK (editor.velocityHandleAt ({ box.getCentreX(), box.getY() }) == H::scale);
+    CHECK (editor.velocityHandleAt (box.getTopLeft()) == H::tiltLeft);
+    CHECK (editor.velocityHandleAt (box.getTopRight()) == H::tiltRight);
+    CHECK (editor.velocityHandleAt ({ box.getRight(), box.getCentreY() }) == H::scaleCentre);
+    CHECK (editor.velocityHandleAt (box.getCentre().translated (0.0f, 10.0f)) == H::none);
+
+    const auto dragBy = [&] (juce::Point<float> from, float dy)
+    {
+        const auto to = from.translated (0.0f, dy);
+        editor.mouseDown (mouseAt (editor, from, from));
+        for (int step = 1; step <= 4; ++step)
+            editor.mouseDrag (mouseAt (editor, from + (to - from) * ((float) step / 4.0f), from));
+        editor.mouseUp (mouseAt (editor, to, from));
+        studio.dispatchPendingMessages();
+    };
+    const auto close = [] (std::vector<float> got, std::vector<float> want)
+    {
+        REQUIRE (got.size() == want.size());
+        for (size_t i = 0; i < got.size(); ++i)
+            CHECK_THAT (got[i], WithinAbs (want[i], 0.012));
+    };
+
+    // Move: all up by a tenth.
+    dragBy ({ box.getX() + box.getWidth() * 0.3f, box.getY() }, -unit * 0.1f);
+    close (velocities(), { 0.4f, 0.5f, 0.6f, 0.7f });
+    // One undo step puts them back.
+    studio.undo();
+    studio.dispatchPendingMessages();
+    close (velocities(), { 0.3f, 0.4f, 0.5f, 0.6f });
+
+    // Scale (from 0): the loudest 0.6 to 0.3 halves them all.
+    editor.selectNotes ({ 0, 1, 2, 3 });
+    dragBy ({ editor.getVelocityBox().getCentreX(), editor.getVelocityBox().getY() }, unit * 0.3f);
+    close (velocities(), { 0.15f, 0.2f, 0.25f, 0.3f });
+    studio.undo();
+    studio.dispatchPendingMessages();
+
+    // Tilt right: the right end up by 0.2, the left end stays.
+    editor.selectNotes ({ 0, 1, 2, 3 });
+    const auto b = editor.getVelocityBox();
+    dragBy (b.getTopRight(), -unit * 0.2f);
+    const auto tilted = velocities();
+    CHECK_THAT (tilted[0], WithinAbs (0.3f + 0.2f * (2.0f + 6.0f) / b.getWidth() * 0.0f + 0.2f * ((editor.xForBeat (0.0) + 2.0f - b.getX()) / b.getWidth()), 0.012));
+    CHECK (tilted[3] > 0.6f + 0.15f);
+    CHECK (tilted[1] - 0.4f < tilted[3] - 0.6f);   // more on the right
+    studio.undo();
+    studio.dispatchPendingMessages();
+
+    // Squash towards the middle (0.45): dragging the right edge's handle down by a quarter halves the spread.
+    editor.selectNotes ({ 0, 1, 2, 3 });
+    const auto c = editor.getVelocityBox();
+    dragBy ({ c.getRight(), c.getCentreY() }, unit * 0.25f);
+    close (velocities(), { 0.375f, 0.425f, 0.475f, 0.525f });
+
+    // Never past 1 or below 1/127.
+    editor.selectNotes ({ 0, 1, 2, 3 });
+    const auto d = editor.getVelocityBox();
+    dragBy ({ d.getX() + d.getWidth() * 0.3f, d.getY() }, -unit * 2.0f);
+    for (const auto v : velocities())
+        CHECK (v == 1.0f);
+}
+
+TEST_CASE ("0.9.11: SPLIT's cut line leaves nothing behind; Add Track in the track menu; saving in the background; the zone window across the screens", "[ui][v0911]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto track = studio.getProject().tracks[0].id;
+    studio.addPart (track, { 0.0, 16.0, "Riff", { { 0.0, 1.0, 60, 0.8f } } });
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+
+    // The cut line is drawn on the grid; its strip is where it's drawn, not where the mouse is.
+    arrange.setTool (ArrangeView::Tool::split);
+    const auto bounds = arrange.getPartBounds (track, 0);
+    const auto at = juce::Point<float> (bounds.getX() + bounds.getWidth() * 0.37f, bounds.getCentreY());
+    arrange.mouseMove (mouseAt (arrange, at, at));
+    const auto line = arrange.splitLineX();
+    REQUIRE (line >= 0.0f);
+    const auto beat = view.getTimeline().beatForX (line);
+    CHECK_THAT (beat / 0.25, WithinAbs (std::round (beat / 0.25), 1.0e-6));   // on the 1/16 grid
+    const auto away = juce::Point<float> (bounds.getRight() + 50.0f, bounds.getBottom() + 200.0f);
+    arrange.mouseMove (mouseAt (arrange, away, away));
+    CHECK (arrange.splitLineX() < 0.0f);
+
+    // Add Track, from the track menu's ids (offset) or the empty space's menu.
+    auto& list = view.getTrackList();
+    const auto before = studio.getProject().tracks.size();
+    CHECK (list.addTrackChosen (1));                 // the studio's synth
+    CHECK (list.addTrackChosen (3));                 // a mono audio track
+    CHECK (studio.getProject().tracks.size() == before + 2);
+    CHECK (studio.getProject().tracks.back().isAudio());
+    CHECK_FALSE (list.getAddTrackButton().isVisible());
+    // The menu's items carry the offset (they sit in the track's own menu).
+    auto menu = list.makeAddTrackMenu (TrackList::addTrackOffset);
+    auto ids = 0, lowest = std::numeric_limits<int>::max();
+    for (juce::PopupMenu::MenuItemIterator it (menu, true); it.next();)
+        if (it.getItem().itemID != 0)
+        {
+            ++ids;
+            lowest = juce::jmin (lowest, it.getItem().itemID);
+        }
+    CHECK (ids >= 6);
+    CHECK (lowest > TrackList::addTrackOffset);
+    // The studio's synth: not looked for in tests (the old synth plays them, the same everywhere).
+    CHECK_FALSE (studio.getPluginHost().isStudioSynthFound());
+    CHECK (pr7s::Instrument {}.getName() == "PR7-K");
+
+    // Saving in the background: marked saved at once; the file there once the thread has written it.
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("pr7s-background.pr7s");
+    file.deleteFile();
+    std::atomic<bool> done { false };
+    bool written = false;
+    studio.saveInBackground (file, [&] (bool ok) { written = ok; done = true; });
+    CHECK_FALSE (studio.isModified());
+    CHECK (studio.getFile() == file);
+    CHECK (studio.waitForSaves (5000));   // (the thread's done; its call back comes by message, which tests can't run)
+    juce::ignoreUnused (written);
+    CHECK (file.existsAsFile());
+    Studio other (false);
+    juce::String problems;
+    CHECK (other.open (file, problems));
+    CHECK (other.getProject().tracks.size() == studio.getProject().tracks.size());
+    file.deleteFile();
+}
+
+TEST_CASE ("0.9.12: the master's row at the top and its Inspector; the track menu A to Z; notes coloured by velocity; plugin windows pass the studio's keys", "[ui][v0912]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto first = studio.getProject().tracks[0].id;
+    studio.dispatchPendingMessages();
+
+    // The master's row is the very top one.
+    const auto rows = view.getTimeline().layout (studio);
+    REQUIRE_FALSE (rows.empty());
+    CHECK (rows.front().kind == Timeline::Row::Kind::master);
+
+    // Choosing it: the Inspector shows the master (R W, volume, inserts, fader); a track again: the track.
+    auto& inspector = view.getInspector();
+    studio.selectMaster();
+    studio.dispatchPendingMessages();
+    CHECK (studio.isMasterSelected());
+    CHECK (studio.getSelectedTracks().empty());
+    CHECK (inspector.isShowingMaster());
+    CHECK (inspector.getKey ("R").isVisible());
+    CHECK_FALSE (inspector.getKey ("M").isVisible());
+    CHECK_FALSE (inspector.getKey ("REC").isVisible());
+    CHECK (inspector.getVolume().isVisible());
+    CHECK_FALSE (inspector.getPan().isVisible());
+    CHECK (inspector.getInsertsView().isVisible());
+    CHECK (inspector.getVolume().enter ("-4"));
+    CHECK (studio.getProject().masterVolumeDb == -4.0f);
+    CHECK (studio.getProject().tracks[0].volumeDb == 0.0f);   // (not a track's)
+    studio.selectTrack (first);
+    studio.dispatchPendingMessages();
+    CHECK_FALSE (studio.isMasterSelected());
+    CHECK_FALSE (inspector.isShowingMaster());
+    CHECK (inspector.getKey ("M").isVisible());
+
+    // The track menu's order: A to Z, no separators.
+    juce::PopupMenu menu;
+    menu.addItem (1, "Show Automation");
+    menu.addSeparator();
+    menu.addItem (2, "Delete Track");
+    menu.addSectionHeader ("SOMETHING");
+    menu.addItem (3, "add track");
+    menu.addItem (4, "Hide Track");
+    juce::StringArray order;
+    const auto sorted = TrackList::alphabetical (menu);
+    for (juce::PopupMenu::MenuItemIterator it (sorted); it.next();)
+        order.add (it.getItem().text);
+    CHECK (order.joinIntoString ("|") == "add track|Delete Track|Hide Track|Show Automation");
+
+    // The MIDI editor's notes: LOW (and under) orange, MID pink, HIGH red (the random velocity ranges' edges: 70 and 100).
+    auto& editor = view.getKeyEditor();
+    CHECK (editor.velocityColour (20.0f / 127.0f) == pr7s::FamilyColours::orange);
+    CHECK (editor.velocityColour (69.0f / 127.0f) == pr7s::FamilyColours::orange);
+    CHECK (editor.velocityColour (70.0f / 127.0f) == pr7s::FamilyColours::pink);
+    CHECK (editor.velocityColour (99.0f / 127.0f) == pr7s::FamilyColours::pink);
+    CHECK (editor.velocityColour (100.0f / 127.0f) == pr7s::FamilyColours::red);
+    CHECK (editor.velocityColour (1.0f) == pr7s::FamilyColours::red);
+
+    // A plugin's window: the keys it doesn't use go to the studio (Space plays).
+    SteadyTone plugin (0.1f, 0.1f);
+    Windows::Instrument window ("Keys", plugin);
+    auto heard = 0;
+    window.onKey = [&] (const juce::KeyPress&) { ++heard; return true; };
+    CHECK (window.keyPressed (juce::KeyPress (juce::KeyPress::spaceKey)));
+    CHECK (heard == 1);
+}
+
+TEST_CASE ("The track menu tells its instruments from its outputs (0.17.3: Change instrument did nothing)", "[ui]")
+{
+    // An output: 30000 + a group's id; an instrument: from instrumentItems on.
+    STATIC_CHECK (TrackList::isOutputItem (30000 + 5));
+    STATIC_CHECK_FALSE (TrackList::isOutputItem (TrackList::instrumentItems));
+    STATIC_CHECK_FALSE (TrackList::isOutputItem (TrackList::instrumentItems + 12));
+    STATIC_CHECK_FALSE (TrackList::isOutputItem (30));
+    STATIC_CHECK_FALSE (TrackList::isOutputItem (20000 + 3));   // (link groups)
+}
+
+#include "ui/TrackColours.h"
+
+TEST_CASE ("The colour menu: only the family's colours, every tint; the selected tracks coloured; default back; saved (0.17.3)", "[ui][colour]")
+{
+    using namespace pr7s;
+    // The palette: red leads every swatch (nothing green, blue, violet or yellow), deep to pale.
+    for (int h = 0; h < FamilyColours::paletteHues; ++h)
+        for (int s = 0; s < FamilyColours::paletteShades; ++s)
+        {
+            const auto c = FamilyColours::paletteColour (h, s);
+            INFO ("hue " << h << ", shade " << s << ": " << c.toString());
+            CHECK (c.getRed() >= c.getGreen());
+            CHECK (c.getRed() >= c.getBlue());
+            const auto hue = c.getHue() * 360.0f;
+            CHECK ((hue >= 340.0f || hue <= 30.0f));   // (from the pink to the orange)
+            CHECK (FamilyColours::isFamily (c));
+            if (s > 0)
+                CHECK (c.getPerceivedBrightness() > FamilyColours::paletteColour (h, s - 1).getPerceivedBrightness());
+        }
+    CHECK (FamilyColours::isFamily (FamilyColours::orange));
+    CHECK_FALSE (FamilyColours::isFamily (juce::Colours::blue));
+
+    Studio studio (false);
+    const auto a = studio.getProject().tracks[0].id, b = studio.addTrack ({}), c = studio.addTrack ({});
+    studio.selectTrack (a);
+    studio.toggleTrackSelected (c);
+    TrackColourMenu menu (studio, studio.getSelectedTracks());
+    menu.resized();
+    const auto pale = FamilyColours::paletteColour (7, 6);
+    const auto at = menu.swatchFor (pale).getCentre();
+    REQUIRE (menu.colourAt (at) == pale);
+    menu.mouseDown (juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, {}, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                      &menu, &menu, juce::Time::getCurrentTime(), at, juce::Time::getCurrentTime(), 1, false));
+    CHECK (studio.getProject().findTrack (a)->colour == pale);
+    CHECK (studio.getProject().findTrack (c)->colour == pale);
+    CHECK (studio.getProject().findTrack (b)->colour == trackColour (1));   // (not selected)
+    // Kept when saved and opened (a tint of the family's, not mapped to the three).
+    const auto opened = Project::fromXml (*studio.getProject().toXml());
+    REQUIRE (opened.has_value());
+    CHECK (opened->findTrack (a)->colour == pale);
+    // Undo, then SET TRACK COLOUR TO DEFAULT: the automatic colour by its place.
+    studio.undo();
+    CHECK (studio.getProject().findTrack (a)->colour == trackColour (0));
+    studio.setTracksColour ({ c }, FamilyColours::paletteColour (0, 0));
+    menu.defaultKey.onClick();
+    CHECK (studio.getProject().findTrack (c)->colour == trackColour (2));
+    // Not the family's: the nearest of the three instead.
+    studio.setTracksColour ({ b }, juce::Colour (0xffff7aa8));
+    CHECK (studio.getProject().findTrack (b)->colour == FamilyColours::pink);
+}
+
+TEST_CASE ("The playhead glides into a new place while stopped, exact while playing; the ruler shows where a click lands (0.17.4)", "[ui][playhead]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    pr7s::Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& arrange = view.getArrangeView();
+    for (int i = 0; i < 20; ++i)
+        arrange.advancePlayhead();
+    CHECK (arrange.getShownPlayhead() == 0.0);
+
+    // Stopped: a click a bar on (as the ruler does it, snapped) glides: part of the way each frame, then there.
+    studio.setPosition (4.0);
+    arrange.advancePlayhead();
+    const auto first = arrange.getShownPlayhead();
+    CHECK (first > 0.0);
+    CHECK (first < 4.0);
+    CHECK_THAT (first, Catch::Matchers::WithinAbs (4.0 * ArrangeView::glideStep, 1.0e-9));
+    arrange.advancePlayhead();
+    CHECK (arrange.getShownPlayhead() > first);
+    for (int i = 0; i < 20; ++i)
+        arrange.advancePlayhead();
+    CHECK (arrange.getShownPlayhead() == 4.0);   // (landed exactly)
+
+    // A long jump (more than half the view): straight there.
+    studio.setPosition (400.0);
+    arrange.advancePlayhead();
+    CHECK (arrange.getShownPlayhead() == 400.0);
+
+    // Playing: exactly with the song, no glide.
+    studio.setPosition (8.0);
+    studio.play();
+    arrange.advancePlayhead();
+    CHECK (arrange.getShownPlayhead() == studio.getEngine().getPosition());
+    studio.stop();
+
+    // Hovering the ruler's lower part: the snapped beat a click would set (the grid: the quantize value, 1/16 at first).
+    const auto y = (float) (Timeline::cycleStripHeight + 6);
+    const auto x = view.getTimeline().xForBeat (2.13);
+    arrange.mouseMove (juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), { x, y }, {}, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                         &arrange, &arrange, juce::Time::getCurrentTime(), { x, y }, juce::Time::getCurrentTime(), 0, false));
+    REQUIRE (arrange.getRulerHover().has_value());
+    CHECK_THAT (*arrange.getRulerHover(), Catch::Matchers::WithinAbs (pr7s::snap (2.13, view.getTimeline().snapGrid (studio.getProject())), 1.0e-9));
+    arrange.mouseExit (juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), { x, y }, {}, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                         &arrange, &arrange, juce::Time::getCurrentTime(), { x, y }, juce::Time::getCurrentTime(), 0, false));
+    CHECK_FALSE (arrange.getRulerHover().has_value());
+}
+
+TEST_CASE ("The MIDI editor's playhead glides as the arrangement's (0.17.5)", "[ui][playhead]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    pr7s::Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto track = studio.getProject().tracks[0].id;
+    studio.addPart (track, { 0.0, 16.0, "Riff", { { 0.0, 1.0, 60, 0.8f } } });
+    view.setKeyEditorSize (100);
+    view.getArrangeView().select (track, 0);
+    view.openKeyEditor();
+    studio.dispatchPendingMessages();
+    auto& editor = view.getKeyEditor();
+    editor.advancePlayhead();
+    CHECK (editor.getShownPlayhead() == 0.0);
+    studio.setPosition (2.0);
+    editor.advancePlayhead();
+    CHECK (editor.getShownPlayhead() > 0.0);
+    CHECK (editor.getShownPlayhead() < 2.0);
+    for (int i = 0; i < 30; ++i)
+        editor.advancePlayhead();
+    CHECK (editor.getShownPlayhead() == 2.0);
+    studio.play();
+    editor.advancePlayhead();
+    CHECK (editor.getShownPlayhead() == studio.getEngine().getPosition());
+    studio.stop();
+}
+
+TEST_CASE ("A MIDI file dropped on an instrument track lands on it, snapped, shown while dragged (0.18.1)", "[ui][drop]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    pr7s::Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto synth = studio.getProject().tracks[0].id;
+    const auto audio = studio.addAudioTrack (false);
+    studio.dispatchPendingMessages();
+
+    // A two-bar MIDI file (one track, 120 BPM, as the song).
+    juce::MidiMessageSequence seq;
+    seq.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0.0);
+    seq.addEvent (juce::MidiMessage::noteOff (1, 60), 480.0);
+    seq.addEvent (juce::MidiMessage::noteOn (1, 64, (juce::uint8) 100), 1920.0);
+    seq.addEvent (juce::MidiMessage::noteOff (1, 64), 2400.0);
+    seq.updateMatchedPairs();
+    juce::MidiFile mf;
+    mf.setTicksPerQuarterNote (480);
+    mf.addTrack (seq);
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("pr7s-drop.mid");
+    file.deleteFile();
+    {
+        juce::FileOutputStream out (file);
+        REQUIRE (mf.writeTo (out));
+    }
+    auto& arrange = view.getArrangeView();
+    const auto pointOver = [&] (int trackId, double beat)
+    {
+        const auto at = juce::Point<float> (view.getTimeline().xForBeat (beat), arrange.trackTop (trackId) + 10.0f);
+        return view.getLocalPoint (&arrange, at.toInt());
+    };
+
+    // Snap on, 1/1: whole bars. Dragged over the synth track at beat 5.3: shown at bar 2 (beat 4).
+    studio.setSnap (true);
+    studio.setQuantizeBeats (4.0);
+    const juce::StringArray files { file.getFullPathName() };
+    auto p = pointOver (synth, 5.3);
+    view.fileDragEnter (files, p.x, p.y);
+    REQUIRE (arrange.getDropPreview().has_value());
+    CHECK (arrange.getDropPreview()->trackId == synth);
+    CHECK (arrange.getDropPreview()->start == 4.0);
+    CHECK (arrange.getDropPreview()->length == 8.0);
+    CHECK (arrange.getDropPreview()->notes.size() == 2);   // (0.18.2: its notes drawn inside)
+    // The strength (0.18.2): the Hub's setting, 60% at first, kept between 10% and 100%.
+    CHECK (studio.getDropHighlight() == pr7s::Studio::defaultDropHighlight);
+    studio.setDropHighlight (2.0f);
+    CHECK (studio.getDropHighlight() == 1.0f);
+    studio.setDropHighlight (0.3f);
+    CHECK (std::abs (studio.getDropHighlight() - 0.3f) < 1.0e-6f);
+    // Moved on to 6.4: the next whole note (bar 3, beat 8).
+    p = pointOver (synth, 6.4);
+    view.fileDragMove (files, p.x, p.y);
+    CHECK (arrange.getDropPreview()->start == 8.0);
+    // Over the audio track: nothing shown (it'd go on a new track).
+    p = pointOver (audio, 6.4);
+    view.fileDragMove (files, p.x, p.y);
+    CHECK_FALSE (arrange.getDropPreview().has_value());
+
+    // Dropped on the synth track: there, not a new track (0.18.0 made a new one).
+    const auto tracksBefore = studio.getProject().tracks.size();
+    p = pointOver (synth, 6.4);
+    view.fileDragMove (files, p.x, p.y);
+    view.filesDropped (files, p.x, p.y);
+    CHECK_FALSE (arrange.getDropPreview().has_value());
+    CHECK (studio.getProject().tracks.size() == tracksBefore);
+    const auto* track = studio.getProject().findTrack (synth);
+    REQUIRE (track->parts.size() == 1);
+    CHECK (track->parts[0].start == 8.0);
+    CHECK (track->parts[0].length == 8.0);
+    REQUIRE (track->parts[0].notes.size() == 2);
+    CHECK (track->parts[0].notes[1].start == 4.0);   // (its second bar)
+
+    // Snap off: where it is.
+    studio.setSnap (false);
+    p = pointOver (synth, 13.0);
+    CHECK (std::abs (view.dropPlace (p.x, p.y).second - 13.0) < 0.1);
+
+    // Dropped on the audio track: a new instrument track, as before.
+    studio.setSnap (true);
+    p = pointOver (audio, 2.0);
+    view.filesDropped (files, p.x, p.y);
+    CHECK (studio.getProject().tracks.size() == tracksBefore + 1);
+    file.deleteFile();
 }

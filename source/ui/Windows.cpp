@@ -1,5 +1,7 @@
 #include "Windows.h"
+#include "engine/SessionLog.h"
 
+#include "engine/AudioAdvice.h"
 #include "ui/Finish.h"
 #include "ui/ParagonLookAndFeel.h"
 
@@ -9,14 +11,39 @@ namespace Windows
     {
         const auto windowColour = juce::Colour (0xff0c0a0d);
 
-        // The settings page: the device selector, and the finish under it.
-        class SettingsContent final : public juce::Component
+        // The settings page: the device selector (in a viewport: with many
+        // inputs it's taller than the page, and its CONTROL PANEL key, at its
+        // foot, was hidden under the finish row before 0.8.5), what the buffer
+        // is and how to raise it, RELOAD DRIVER, and the finish.
+        class SettingsContent final : public juce::Component,
+                                      private juce::ChangeListener
         {
         public:
-            explicit SettingsContent (pr7s::Studio& studio)
-                : devices (studio.getDeviceManager(), 0, 8, 0, 2, true, false, true, false)
+            SettingsContent (pr7s::Studio& studioToUse, std::function<void()> toggleSpanToUse, std::function<bool()> isSpanningToUse)
+                : studio (studioToUse),
+                  devices (studio.getDeviceManager(), 0, 8, 0, 2, true, false, true, false),
+                  toggleSpan (std::move (toggleSpanToUse)), isSpanning (std::move (isSpanningToUse))
             {
-                addAndMakeVisible (devices);
+                span.setTooltip ("The studio's window across all your screens (again: back on one). It opens where you left it next time.");
+                span.onClick = [this]
+                {
+                    if (toggleSpan)
+                        toggleSpan();
+                    refreshSpan();
+                };
+                refreshSpan();
+                addAndMakeVisible (span);
+                viewport.setViewedComponent (&devices, false);
+                viewport.setScrollBarsShown (true, false);
+                addAndMakeVisible (viewport);
+                bufferText.setFont (juce::FontOptions (13.0f));
+                bufferText.setColour (juce::Label::textColourId, ParagonColours::text);
+                bufferText.setJustificationType (juce::Justification::topLeft);
+                addAndMakeVisible (bufferText);
+                reload.setButtonText ("RELOAD DRIVER");
+                reload.setTooltip ("Closes the audio device and opens it again, so a buffer size set in the driver's own panel is read.");
+                reload.onClick = [this] { studio.reloadAudioDevice(); refreshBuffer(); };
+                addChildComponent (reload);
                 finishLabel.setText ("FINISH", juce::dontSendNotification);
                 finishLabel.setFont (juce::FontOptions (12.0f, juce::Font::bold));
                 finishLabel.setColour (juce::Label::textColourId, ParagonColours::textDim);
@@ -26,32 +53,84 @@ namespace Windows
                 finish.onChange = [this] { Finish::set ((Finish::Type) finish.getSelectedItemIndex()); };
                 addAndMakeVisible (finish);
                 note.setText ("Inputs: switch on the ones you record from (audio tracks count them IN 1, IN 2... in the order "
-                              "they're switched on). On Windows, pick your interface's driver above: ASIO for the lowest delay, "
-                              "when your interface has an ASIO driver; else Windows Audio (Exclusive Mode).",
+                              "they're switched on). On Windows, pick your interface's driver above: ASIO for the lowest delay "
+                              "and the buffer sizes its driver offers; else Windows Audio (Exclusive Mode).",
                               juce::dontSendNotification);
                 note.setFont (juce::FontOptions (12.0f));
                 note.setColour (juce::Label::textColourId, ParagonColours::textDim);
+                note.setJustificationType (juce::Justification::topLeft);
                 addAndMakeVisible (note);
-                setSize (560, 520);
+                studio.getDeviceManager().addChangeListener (this);
+                refreshBuffer();
+                setSize (600, 640);
             }
+
+            ~SettingsContent() override { studio.getDeviceManager().removeChangeListener (this); }
 
             void resized() override
             {
                 auto area = getLocalBounds().reduced (12);
-                auto bottom = area.removeFromBottom (80);
+                auto bottom = area.removeFromBottom (190);
+                auto bufferRow = bottom.removeFromTop (88);
+                reload.setBounds (bufferRow.removeFromRight (130).removeFromTop (28));
+                bufferRow.removeFromRight (8);
+                bufferText.setBounds (bufferRow);
+                bottom.removeFromTop (8);
                 auto finishRow = bottom.removeFromTop (28);
                 finishLabel.setBounds (finishRow.removeFromLeft (120));
                 finish.setBounds (finishRow.removeFromLeft (220));
+                finishRow.removeFromLeft (16);
+                span.setBounds (finishRow.removeFromLeft (180));
                 note.setBounds (bottom.withTrimmedTop (8));
-                devices.setBounds (area);
+                viewport.setBounds (area.withTrimmedBottom (8));
+                // The selector sets its own height; its width is the viewport's.
+                devices.setSize (viewport.getWidth() - viewport.getScrollBarThickness(), juce::jmax (devices.getHeight(), 10));
             }
 
-            void paint (juce::Graphics& g) override { g.fillAll (windowColour); }
+            void paint (juce::Graphics& g) override
+            {
+                g.fillAll (windowColour);
+                g.setColour (ParagonColours::textDim.withAlpha (0.3f));
+                g.drawHorizontalLine (bufferText.getY() - 6, 12.0f, (float) getWidth() - 12.0f);
+            }
+
+            void refreshSpan()
+            {
+                span.setButtonText (isSpanning && isSpanning() ? "BACK TO ONE SCREEN" : "SPAN ALL SCREENS");
+            }
+
+            juce::String getBufferText() const { return bufferText.getText(); }
+            bool isReloadShown() const { return reload.isVisible(); }
+            void clickReload() { if (reload.onClick) reload.onClick(); }   // (triggerClick waits for the message loop)
 
         private:
+            void changeListenerCallback (juce::ChangeBroadcaster*) override { refreshBuffer(); }
+
+            void refreshBuffer()
+            {
+                auto* device = studio.getDeviceManager().getCurrentAudioDevice();
+                if (device == nullptr)
+                {
+                    bufferText.setText (pr7s::AudioAdvice::bufferText ({}, 0, 0.0, {}, false), juce::dontSendNotification);
+                    reload.setVisible (false);
+                    return;
+                }
+                bufferText.setText (pr7s::AudioAdvice::bufferText (device->getTypeName(), device->getCurrentBufferSizeSamples(),
+                                                                   device->getCurrentSampleRate(), device->getAvailableBufferSizes(),
+                                                                   device->hasControlPanel()),
+                                    juce::dontSendNotification);
+                reload.setVisible (device->hasControlPanel());
+            }
+
+            pr7s::Studio& studio;
             juce::AudioDeviceSelectorComponent devices;
-            juce::Label finishLabel, note;
+            juce::Viewport viewport;
+            juce::Label bufferText, finishLabel, note;
+            juce::TextButton reload;
             juce::ComboBox finish;
+            juce::TextButton span;
+            std::function<void()> toggleSpan;
+            std::function<bool()> isSpanning;
         };
     }
 
@@ -207,10 +286,168 @@ namespace Windows
     }
 
     //==========================================================================
+    namespace
+    {
+        using RO = pr7s::Studio::RenderOptions;
+        // The tails offered: none, bars, seconds.
+        const std::pair<RO::Tail, double> tails[] = { { RO::Tail::off, 0.0 }, { RO::Tail::bars, 1.0 }, { RO::Tail::bars, 2.0 }, { RO::Tail::bars, 4.0 },
+                                                      { RO::Tail::seconds, 1.0 }, { RO::Tail::seconds, 2.0 }, { RO::Tail::seconds, 5.0 }, { RO::Tail::seconds, 10.0 } };
+    }
+
+    RO RenderPage::keptOptions (juce::PropertiesFile* settings)
+    {
+        RO options;
+        if (settings == nullptr)
+            return options;
+        options.mode = (RO::Mode) juce::jlimit (0, 2, settings->getIntValue ("renderMode", (int) options.mode));
+        options.processing = (RO::Processing) juce::jlimit (0, 3, settings->getIntValue ("renderProcessing", (int) options.processing));
+        const auto tail = juce::jlimit (0, (int) std::size (tails) - 1, settings->getIntValue ("renderTail", 1));
+        options.tail = tails[tail].first;
+        options.tailSize = tails[tail].second;
+        const auto kept = settings->getIntValue ("renderBits", 24);
+        options.bitsPerSample = kept == 16 || kept == 32 ? kept : 24;
+        options.source = (RO::Source) juce::jlimit (0, 3, settings->getIntValue ("renderSource", (int) options.source));
+        options.hideSource = settings->getBoolValue ("renderHide", false);
+        return options;
+    }
+
+    RenderPage::RenderPage (pr7s::Studio& studioToUse, bool wholeTracks) : studio (studioToUse)
+    {
+        for (auto* label : { &modeLabel, &processingLabel, &tailLabel, &bitsLabel, &sourceLabel })
+        {
+            label->setFont (font (13.0f));
+            label->setColour (juce::Label::textColourId, ParagonColours::textDim);
+            addAndMakeVisible (*label);
+        }
+        modeLabel.setText ("CLIPS", juce::dontSendNotification);
+        processingLabel.setText ("WHAT'S IN IT", juce::dontSendNotification);
+        tailLabel.setText ("TAIL", juce::dontSendNotification);
+        bitsLabel.setText ("BITS", juce::dontSendNotification);
+        sourceLabel.setText ("THE ORIGINAL", juce::dontSendNotification);
+
+        mode.addItem ("As separate events: a clip for each part", 1);
+        mode.addItem ("As block events: parts end to end joined", 2);
+        mode.addItem ("As one event: one clip over them all", 3);
+        processing.addItem ("Dry: the instrument alone (the new track gets its effects, fader and pan)", 1);
+        processing.addItem ("Channel settings: through its effects and sends (the new track gets the fader and pan)", 2);
+        processing.addItem ("Complete signal path: effects, sends, fader and pan", 3);
+        processing.addItem ("Complete signal path + the master's effects and fader", 4);
+        tail.addItem ("No tail", 1);
+        tail.addItem ("1 bar (reverbs and delays ring on: it stops early once silent)", 2);
+        tail.addItem ("2 bars", 3);
+        tail.addItem ("4 bars", 4);
+        tail.addItem ("1 second", 5);
+        tail.addItem ("2 seconds", 6);
+        tail.addItem ("5 seconds", 7);
+        tail.addItem ("10 seconds", 8);
+        bits.addItem ("24-bit", 24);
+        bits.addItem ("16-bit", 16);
+        bits.addItem ("32-bit float", 32);
+        source.addItem ("Keep it as it is", 1);
+        source.addItem (wholeTracks ? "Mute the track" : "Mute the parts rendered", 2);
+        source.addItem ("Disable the track (no CPU; enable it again to change it)", 4);
+        source.addItem ("Remove the track", 3);
+        source.setItemEnabled (3, wholeTracks);   // (only for tracks rendered whole)
+        source.setItemEnabled (4, wholeTracks);
+
+        const auto kept = keptOptions (studio.getSettings());
+        mode.setSelectedId ((int) kept.mode + 1, juce::dontSendNotification);
+        processing.setSelectedId ((int) kept.processing + 1, juce::dontSendNotification);
+        auto tailIndex = 0;
+        for (int i = 0; i < (int) std::size (tails); ++i)
+            if (tails[i].first == kept.tail && juce::approximatelyEqual (tails[i].second, kept.tailSize))
+                tailIndex = i;
+        tail.setSelectedId (tailIndex + 1, juce::dontSendNotification);
+        bits.setSelectedId (kept.bitsPerSample, juce::dontSendNotification);
+        source.setSelectedId ((kept.source == RO::Source::remove || kept.source == RO::Source::disable) && ! wholeTracks ? 1 : (int) kept.source + 1,
+                              juce::dontSendNotification);
+        hideSource.setToggleState (kept.hideSource && wholeTracks, juce::dontSendNotification);
+        hideSource.setEnabled (wholeTracks);
+        hideSource.setTooltip ("As the manual's Hide Source Tracks: the track rendered goes out of the track list, the arrangement and the mixer");
+        addAndMakeVisible (hideSource);
+        for (auto* box : { &mode, &processing, &tail, &bits, &source })
+            addAndMakeVisible (*box);
+
+        note.setText ("What's chosen becomes audio files (in the song's audio folder) on a new audio track under each track, "
+                      "the clips where the parts were. Faster than it plays; the interface is quiet meanwhile.",
+                      juce::dontSendNotification);
+        note.setFont (font (13.0f, juce::Font::plain));
+        note.setColour (juce::Label::textColourId, ParagonColours::textDim);
+        addAndMakeVisible (note);
+
+        for (auto* button : { &renderButton, &cancelButton })
+        {
+            button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
+            button->setColour (juce::TextButton::textColourOffId, ParagonColours::text);
+            addAndMakeVisible (*button);
+        }
+        renderButton.setColour (juce::TextButton::textColourOffId, ParagonColours::accent);
+        renderButton.onClick = [this]
+        {
+            // Kept for next time (Render with the last settings).
+            if (auto* settings = studio.getSettings())
+            {
+                settings->setValue ("renderMode", mode.getSelectedId() - 1);
+                settings->setValue ("renderProcessing", processing.getSelectedId() - 1);
+                settings->setValue ("renderTail", tail.getSelectedId() - 1);
+                settings->setValue ("renderBits", bits.getSelectedId());
+                settings->setValue ("renderSource", source.getSelectedId() - 1);
+                settings->setValue ("renderHide", hideSource.getToggleState());
+            }
+            if (onRender)
+                onRender (getOptions());
+        };
+        cancelButton.onClick = [this] { if (onCancel) onCancel(); };
+        setSize (640, 364);
+    }
+
+    RO RenderPage::getOptions() const
+    {
+        RO options;
+        options.mode = (RO::Mode) juce::jlimit (0, 2, mode.getSelectedId() - 1);
+        options.processing = (RO::Processing) juce::jlimit (0, 3, processing.getSelectedId() - 1);
+        const auto& [kind, size] = tails[(size_t) juce::jlimit (0, (int) std::size (tails) - 1, tail.getSelectedId() - 1)];
+        options.tail = kind;
+        options.tailSize = size;
+        options.bitsPerSample = bits.getSelectedId();
+        options.source = (RO::Source) juce::jlimit (0, 3, source.getSelectedId() - 1);
+        options.hideSource = hideSource.getToggleState() && hideSource.isEnabled();
+        return options;
+    }
+
+    void RenderPage::resized()
+    {
+        auto area = getLocalBounds().reduced (16);
+        auto row = [&area] (int height) { auto r = area.removeFromTop (height); area.removeFromTop (10); return r; };
+        auto labelled = [] (juce::Rectangle<int> r, juce::Label& label, juce::Component& field)
+        {
+            label.setBounds (r.removeFromLeft (120));
+            field.setBounds (r);
+        };
+        labelled (row (28), modeLabel, mode);
+        labelled (row (28), processingLabel, processing);
+        labelled (row (28), tailLabel, tail);
+        labelled (row (28), bitsLabel, bits);
+        labelled (row (28), sourceLabel, source);
+        hideSource.setBounds (row (24).withTrimmedLeft (120));
+        note.setBounds (row (40));
+        auto buttons = area.removeFromBottom (32);
+        cancelButton.setBounds (buttons.removeFromRight (96));
+        buttons.removeFromRight (8);
+        renderButton.setBounds (buttons.removeFromRight (110));
+    }
+
+    void RenderPage::paint (juce::Graphics& g)
+    {
+        g.fillAll (windowColour);
+    }
+
+    //==========================================================================
     Instrument::Instrument (const juce::String& trackName, juce::AudioPluginInstance& instance)
         : DocumentWindow (trackName + ": " + instance.getName(), windowColour, DocumentWindow::closeButton)
     {
         setUsingNativeTitleBar (true);
+        pr7s::SessionLog::note ("Opening the window of " + instance.getName() + " (" + trackName + ")");
         if (auto* editor = instance.createEditorAndMakeActive())
             setContentOwned (editor, true);
         setResizable (instance.hasEditor() && getContentComponent() != nullptr
@@ -218,6 +455,21 @@ namespace Windows
                       false);
         centreWithSize (getWidth(), getHeight());
         setVisible (true);
+        timerCallback();
+        startTimer (300);
+    }
+
+    void Instrument::timerCallback()
+    {
+        // Above the studio while it's in front; an ordinary window when another program is.
+        const auto front = juce::Process::isForegroundProcess();
+        if (isAlwaysOnTop() != front)
+            setAlwaysOnTop (front);
+    }
+
+    bool Instrument::keyPressed (const juce::KeyPress& key)
+    {
+        return onKey != nullptr && onKey (key);
     }
 
     ZoneWindow::ZoneWindow (const juce::String& title, juce::Component& content, juce::PropertiesFile* settingsToUse,
@@ -266,14 +518,51 @@ namespace Windows
             onClose();
     }
 
-    Settings::Settings (pr7s::Studio& studio)
+    juce::Rectangle<int> spanOf (const juce::Array<juce::Rectangle<int>>& screens)
+    {
+        if (screens.isEmpty())
+            return {};
+        auto all = screens.getFirst();
+        auto left = all.getX(), right = all.getRight(), top = all.getY(), bottom = all.getBottom();
+        for (const auto& screen : screens)
+        {
+            all = all.getUnion (screen);
+            left = juce::jmin (left, screen.getX());
+            right = juce::jmax (right, screen.getRight());
+            top = juce::jmax (top, screen.getY());
+            bottom = juce::jmin (bottom, screen.getBottom());
+        }
+        // Side by side: the strip they share. Stacked (no height in common): the box round them.
+        if (bottom - top < 300)
+            return all;
+        return { left, top, right - left, bottom - top };
+    }
+
+    juce::Rectangle<int> allScreensArea()
+    {
+        juce::Array<juce::Rectangle<int>> screens;
+        for (const auto& display : juce::Desktop::getInstance().getDisplays().displays)
+            screens.add (display.userBounds.toNearestInt());
+        return spanOf (screens);
+    }
+
+    Settings::Settings (pr7s::Studio& studio, std::function<void()> toggleSpan, std::function<bool()> isSpanning)
         : DocumentWindow ("Paragon PR7-S: Settings", windowColour, DocumentWindow::closeButton)
     {
         setUsingNativeTitleBar (true);
-        setContentOwned (new SettingsContent (studio), true);
+        setContentOwned (new SettingsContent (studio, std::move (toggleSpan), std::move (isSpanning)), true);
         centreWithSize (getWidth(), getHeight());
         setVisible (true);
     }
+
+    namespace
+    {
+        SettingsContent* page (juce::DocumentWindow& window) { return dynamic_cast<SettingsContent*> (window.getContentComponent()); }
+    }
+
+    juce::String Settings::getBufferText() { return page (*this)->getBufferText(); }
+    bool Settings::isReloadShown() { return page (*this)->isReloadShown(); }
+    void Settings::clickReload() { page (*this)->clickReload(); }
 
     void Settings::closeButtonPressed()
     {
@@ -286,6 +575,7 @@ namespace Windows
     {
         setUsingNativeTitleBar (true);
         auto& host = studio.getPluginHost();
+        pr7s::SessionLog::note ("PLUGINS opened (scanning loads each plug-in to ask what it is)");
         auto* list = new juce::PluginListComponent (host.getFormats(), host.getKnownPlugins(), pr7s::PluginHost::deadMansPedalFile(),
                                                     studio.getSettings());
         list->setOptionsButtonText ("SCAN / OPTIONS");

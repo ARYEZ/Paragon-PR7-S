@@ -4,6 +4,9 @@
 
 #include <optional>
 
+#include "Chords.h"
+#include "TempoMap.h"
+
 // A song: its tempo and time signature, the cycle (loop) range, and its
 // tracks, each with an instrument and the MIDI parts on the timeline.
 //
@@ -36,13 +39,15 @@ namespace pr7s
         juce::String audioFile;      // its file's name, in the song's audio folder
         double audioOffset = 0.0;    // seconds
         double fadeIn = 0.0, fadeOut = 0.0;   // seconds
+        bool muted = false;          // the Mute tool: kept and edited as usual, but not played
 
         bool isAudio() const noexcept { return audioFile.isNotEmpty(); }
         double end() const noexcept { return start + length; }
         bool operator== (const Part&) const = default;
     };
 
-    // What plays a track: the built-in Paragon Synth, or a VST3 instrument.
+    // What plays a track: the studio's synth (PR7-K since 0.9.11; the kind
+    // keeps its old name, so songs saved before open on PR7-K), or a VST3 instrument.
     struct Instrument
     {
         enum class Kind { paragonSynth, plugin };   // saved by name, not number
@@ -121,6 +126,24 @@ namespace pr7s
         bool operator== (const Send&) const = default;
     };
 
+    // A link group (0.17.0, as the manual's Linking Channels): channels whose
+    // settings follow each other. Which settings are linked is the group's
+    // (the Link Group Settings dialog; the manual's defaults: volume, sends,
+    // routing and selection). Volume (and pan, send levels) follow relatively,
+    // keeping the channels' differences, unless the mixer's ABS is on.
+    // No EQ or Dynamics (the studio has neither as a channel module).
+    struct LinkGroup
+    {
+        enum class What { volume, pan, sends, inserts, muteSolo, automation, routing, selection, recordMonitor };
+        int id = 0;
+        juce::String name;
+        bool volume = true, pan = false, sends = true, inserts = false, muteSolo = false,
+             automation = false, routing = true, selection = true, recordMonitor = false;
+        bool links (What) const noexcept;
+        void setLinks (What, bool) noexcept;
+        bool operator== (const LinkGroup&) const = default;
+    };
+
     struct Track
     {
         // An instrument track plays MIDI parts through its instrument; an
@@ -146,6 +169,27 @@ namespace pr7s
         int input = 0;
         bool stereoInput = false;
         bool monitor = false;
+        // Instrument tracks: the MIDI input it listens to when it's the live
+        // track (a device's name; empty: all inputs), and the channel its notes
+        // go to the instrument on (1 to 16; the Inspector's Routing, 0.9.0).
+        juce::String midiInput;
+        int midiChannel = 1;
+        // Disabled (0.9.1, as the manual's Disable Track): silent, its instrument
+        // and effects unloaded (their settings kept) so it costs no CPU or RAM.
+        // Hidden: not in the track list, the arrangement or the mixer (the left
+        // zone's VISIBILITY shows it again). Both saved; neither an undo step.
+        bool disabled = false, hidden = false;
+        // Frozen (0.9.8, the manual's Freeze Channel): its instrument and inserts
+        // rendered to `freezeFile` (in the song's audio folder, "Freeze/..."),
+        // which plays instead; the plugins unloaded (their settings kept), the
+        // parts locked; fader, pan and sends still live. Saved.
+        bool frozen = false;
+        juce::String freezeFile;
+        // Quick Controls (0.9.6, as the manual's Track Quick Controls): 8 slots,
+        // each any of the track's controls (as an automation lane names it:
+        // volume, pan, mute, a send, an instrument's or an effect's knob), or none.
+        static constexpr int numQuickControls = 8;
+        std::array<std::optional<AutomationLane>, numQuickControls> quickControls;
         bool isAudio() const noexcept { return kind == Kind::audio; }
         bool isFx() const noexcept { return kind == Kind::fx; }
         bool isGroup() const noexcept { return kind == Kind::group; }
@@ -159,15 +203,31 @@ namespace pr7s
         std::vector<AutomationLane> automation;   // in the order shown
         bool automationOpen = false;     // its lanes shown under it
         bool automationRead = false, automationWrite = false;   // R and W (W turns R on)
+        int linkGroup = 0;               // the link group it's in (0.17.0; 0: none)
     };
 
     struct Project
     {
-        double bpm = 120.0;
+        double bpm = 120.0;                   // the fixed tempo (the tempo track off)
+        // The tempo track (0.10.0, the manual's): on (Activate Tempo Track),
+        // the song follows its events (the first at beat 0); off, `bpm`.
+        bool tempoTrackOn = false;
+        std::vector<TempoEvent> tempoEvents;  // sorted by beat; empty until the track is first added
+        bool tempoTrackShown = false;         // the tempo track in the track list (it can be added once)
+        bool tempoLocked = false;             // its Lock: its events can't be edited
+        enum class NewTempoType { ramp, step, automatic };
+        NewTempoType newTempoType = NewTempoType::ramp;   // the Type of New Tempo Points
+        double tempoViewLow = 60.0, tempoViewHigh = 180.0;   // the curve's shown range (Visible Tempo Lower/Upper Limit)
+        ChordPads chordPads = ChordPads::defaults();         // the chord pads (0.14.0): kept with the song, as the manual's
+        ChordTrack chordTrack;                                // the chord track (0.16.0)
+        std::vector<LinkGroup> linkGroups;                    // (0.17.0) by id; each with two channels or more
         int numerator = 4, denominator = 4;   // the time signature
         bool loopOn = false;                  // CYCLE
         double loopStart = 0.0, loopEnd = 16.0;
         bool click = false;                   // the metronome
+        // Snap (J) and the quantize value, in beats (0.25: 1/16), the toolbar's (0.9.10, the manual's Snap and Quantize Presets).
+        bool snapOn = true;
+        double quantizeBeats = 0.25;
         std::vector<Track> tracks;
         float masterVolumeDb = 0.0f;          // the master bus: every track, then these effects, then this volume
         std::vector<Insert> masterInserts;
@@ -181,8 +241,15 @@ namespace pr7s
         static constexpr int maxSends = 8;     // send slots on a channel (our choice: the manual gives no number)
 
         double beatsPerBar() const noexcept { return numerator * 4.0 / denominator; }
-        double secondsPerBeat() const noexcept { return 60.0 / bpm; }
+        double secondsPerBeat() const noexcept { return 60.0 / bpm; }   // the fixed tempo's (with the tempo track on: tempoMap)
+        // Beats to seconds and back, by the tempo track when it's on.
+        TempoMap tempoMap() const;
+        double bpmAt (double beat) const;
+        bool followsTempoTrack() const noexcept { return tempoTrackOn && ! tempoEvents.empty(); }
 
+        LinkGroup* findLinkGroup (int id);
+        const LinkGroup* findLinkGroup (int id) const;
+        std::vector<int> linkGroupMembers (int groupId) const;   // in the tracks' order
         Track* findTrack (int id);
         const Track* findTrack (int id) const;
         Track* armedTrack();
@@ -206,7 +273,25 @@ namespace pr7s
     // The family's track colours, taken in turn: shades along its red, pink
     // and orange only (the chain's red, hot pink, orange, then lighter and
     // deeper ones).
-    juce::Colour trackColour (int index);
+    // The family's colours (0.9.12, the owner's rule: exactly the gradient's,
+    // nothing else): its pink, red and orange, as the keys' gradient defines
+    // them (Finish::neonGradient runs pink, through red, to orange).
+    namespace FamilyColours
+    {
+        inline const juce::Colour pink { 0xffde0639 };
+        inline const juce::Colour red { 0xffd42e2a };
+        inline const juce::Colour orange { 0xffcd6619 };
+        // The nearest of the three (songs from before 0.9.12 had other shades).
+        juce::Colour nearest (juce::Colour);
+        // The colour menu's choices (0.17.3, the owner asked: every tint of the family's
+        // colours, nothing else): `paletteHues` hues from the pink through the red to the
+        // orange, each in `paletteShades` shades from deep to pale, column by column.
+        static constexpr int paletteHues = 9, paletteShades = 8;
+        juce::Colour paletteColour (int hue, int shade);
+        // One of the three, or one of the palette's (what a song keeps as it is).
+        bool isFamily (juce::Colour);
+    }
+    juce::Colour trackColour (int index);   // red, pink, orange, in turn
 
     // Rounds to the nearest multiple of `grid` beats (0: no rounding).
     double snap (double beats, double grid) noexcept;

@@ -76,7 +76,58 @@ void TransportBar::timerCallback()
 {
     // The keys follow the engine (playing can stop by itself, e.g. on a new project).
     refreshKeys();
-    repaint (positionScreen.expanded (4.0f).getSmallestIntegerContainer());
+    if (const auto position = studio.getEngine().getPosition(); position != shownPosition)
+    {
+        shownPosition = position;
+        repaint (positionScreen.getUnion (timeScreen).expanded (4.0f).getSmallestIntegerContainer());
+    }
+    // The tempo track: the tempo where the playhead is (0.10.0).
+    if (const auto text = getTempoText(); text != shownTempo)
+    {
+        shownTempo = text;
+        repaint (tempoScreen.expanded (4.0f).getSmallestIntegerContainer());
+    }
+    followPerformance();
+}
+
+void TransportBar::followPerformance()
+{
+    // The average as it is; the peak held a moment, then falling (as the level meters' peaks do).
+    const auto now = studio.getEngine().takePerformance();
+    shownAverage = now.average;
+    shownPeak = juce::jmax (now.peak, shownPeak * 0.92f);
+    overloadLit = now.overloads > 0;
+    const auto shown = juce::roundToInt (shownAverage * 100.0f) * 1000 + juce::roundToInt (shownPeak * 100.0f) * 2 + (overloadLit ? 1 : 0);
+    if (shown != shownCpu)
+    {
+        shownCpu = shown;
+        repaint (cpuScreen.expanded (4.0f).getSmallestIntegerContainer());
+    }
+}
+
+juce::String TransportBar::getTooltip()
+{
+    if (tempoScreen.contains (getMouseXYRelative().toFloat()))
+        return studio.getProject().followsTempoTrack()
+                 ? "The tempo track's tempo where the playhead is (change it on the tempo track). Right-click: Activate Tempo Track"
+                 : "The song's tempo: drag up or down, or double-click to type it. Right-click: Activate Tempo Track, or add the tempo track";
+    if (! cpuScreen.contains (getMouseXYRelative().toFloat()))
+        return {};
+    const auto overloads = studio.getEngine().getOverloads();   // (not takePerformance: that takes the peak the meter shows)
+    return "CPU: the audio processing load. Average " + juce::String (juce::roundToInt (shownAverage * 100.0f)) + "%, peak "
+         + juce::String (juce::roundToInt (shownPeak * 100.0f)) + "% (of the time each block has). "
+         + (overloads > 0 ? juce::String (overloads) + " overload" + (overloads == 1 ? "" : "s") + " (dropouts): click to reset. "
+                                + "A bigger buffer in SETTINGS, or fewer effects and instruments, helps."
+                          : juce::String ("No overloads."));
+}
+
+void TransportBar::setToolsWidth (int width)
+{
+    if (width == toolsWidth)
+        return;
+    toolsWidth = width;
+    resized();
+    repaint();
 }
 
 void TransportBar::refreshKeys()
@@ -90,6 +141,55 @@ void TransportBar::refreshKeys()
     clickKey.setToggleState (project.click, juce::dontSendNotification);
 }
 
+void TransportBar::drawFixedPitch (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> area, float height)
+{
+    // Bebas's figures differ in width: each in a cell as wide as the widest,
+    // the separators and spaces in narrower ones, the whole fitted and centred.
+    juce::Font f (font (height));
+    const auto digit = juce::jmax (juce::GlyphArrangement::getStringWidth (f, "0"), juce::GlyphArrangement::getStringWidth (f, "8"),
+                                   juce::GlyphArrangement::getStringWidth (f, "4")) * 1.05f;
+    // (A figure space, U+2007, is a blank as wide as a figure: padding that keeps the value's width.)
+    const auto cellFor = [digit] (juce::juce_wchar c) { return juce::CharacterFunctions::isDigit (c) || c == 0x2007 ? digit : digit * 0.5f; };
+    auto total = 0.0f;
+    for (auto c : text)
+        total += cellFor (c);
+    if (total > area.getWidth() && total > 0.0f)
+    {
+        const auto scale = area.getWidth() / total;
+        f = juce::Font (font (height * scale));
+        return drawFixedPitch (g, text, area, height * scale);
+    }
+    g.setFont (f);
+    auto x = area.getCentreX() - total * 0.5f;
+    for (auto c : text)
+    {
+        const auto w = cellFor (c);
+        if (c != 0x2007)
+            g.drawText (juce::String::charToString (c), juce::Rectangle<float> (x, area.getY(), w, area.getHeight()), juce::Justification::centred, false);
+        x += w;
+    }
+}
+
+juce::String TransportBar::screenPosition (const juce::String& text, int numerator)
+{
+    // Each field padded to a fixed number of figure-wide blanks (bars 2, the
+    // beat as many as the signature's top, the sixteenth 1, ticks 3), so the
+    // value is always as wide and stays still as it counts (0.13.1, the owner
+    // saw it pulse: "1. 1. 1.  0" grew to "1. 1. 2. 34", the whole re-centred).
+    const juce::juce_wchar blank = 0x2007;
+    auto fields = juce::StringArray::fromTokens (text, ".", {});
+    const int widths[] = { 2, juce::String (juce::jmax (1, numerator)).length(), 1, 3 };
+    if (fields.size() != 4)
+        return text;
+    juce::StringArray padded;
+    for (int i = 0; i < 4; ++i)
+    {
+        const auto field = fields[i].trim();
+        padded.add (juce::String::repeatedString (juce::String::charToString (blank), juce::jmax (0, widths[i] - field.length())) + field);
+    }
+    return padded.joinIntoString (". ");
+}
+
 juce::String TransportBar::getPositionText() const
 {
     return pr7s::formatBarsBeats (studio.getEngine().getPosition(), studio.getProject());
@@ -97,24 +197,27 @@ juce::String TransportBar::getPositionText() const
 
 juce::String TransportBar::getTempoText() const
 {
-    return juce::String (studio.getProject().bpm, 2);
+    return juce::String (studio.getTempoNow(), 2);   // (the tempo track's where the playhead is, else the fixed tempo)
 }
 
 void TransportBar::resized()
 {
     satin = Finish::makeSatinGrain (juce::jmax (1, getWidth() * 2), juce::jmax (1, getHeight() * 2), 7071);
 
+    // Left to right: the badge; AUTO-SCROLL (its key and menu arrow: the
+    // main window puts them in `autoScrollArea`); the keys; the CPU screen;
+    // the position screen; the tempo and the signature; on a wide window the
+    // tools (`toolsArea`); the output meters at the right end.
+    const auto wide = toolsWidth > 0;
+    const auto keyPitch = wide ? 66.0f : 70.0f;
+    const auto autoWidth = keyPitch + 3.0f + 20.0f;
+    const auto cpuWidth = wide ? 92.0f : 96.0f;
+    const auto tempoWidth = wide ? 136.0f : 150.0f;
+    const auto signatureWidth = wide ? 88.0f : 96.0f;
+
     auto area = getLocalBounds().toFloat().reduced (14.0f, 12.0f);
-    badge = area.removeFromLeft (190.0f);
+    badge = area.removeFromLeft (! wide && getWidth() < 1700 ? 150.0f : 190.0f);
     area.removeFromLeft (16.0f);
-
-    // The keys, each with its name stamped under it.
-    keysArea = area.removeFromLeft (6.0f * 70.0f);
-    auto keys = keysArea;
-    for (auto* key : { &toStart, &stopKey, &playKey, &recordKey, &cycleKey, &clickKey })
-        key->setBounds (keys.removeFromLeft (70.0f).withSizeKeepingCentre (62.0f, 40.0f).translated (0.0f, -6.0f).toNearestInt());
-    area.removeFromLeft (18.0f);
-
     // The output meters: two LED columns, L and R, with OUT stamped under them.
     meterArea = area.removeFromRight (36.0f);
     const auto columns = meterArea.withTrimmedTop (10.0f).withTrimmedBottom (14.0f);
@@ -122,11 +225,49 @@ void TransportBar::resized()
     rightMeter.setBounds (columns.withWidth (10.0f).translated (20.0f, 0.0f).toNearestInt());
     area.removeFromRight (16.0f);
 
-    signatureScreen = area.removeFromRight (96.0f);
-    area.removeFromRight (12.0f);
-    tempoScreen = area.removeFromRight (150.0f);
-    area.removeFromRight (12.0f);
-    positionScreen = area;
+    // The group from AUTO-SCROLL to the signature (and the tools): on one
+    // screen it starts after the badge and the position screen takes what's
+    // left; wide, the position screen has its own width and the group sits
+    // in the middle (as near as the badge and the meters allow), so on three
+    // screens it's all on the middle one.
+    const auto leftWidth = autoWidth + 12.0f + 6.0f * keyPitch + 12.0f + cpuWidth + 12.0f;
+    const auto rightWidth = 12.0f + tempoWidth + 12.0f + signatureWidth + (wide ? 20.0f + (float) toolsWidth : 0.0f);
+    auto x = area.getX();
+    auto positionWidth = area.getWidth() - leftWidth - rightWidth;
+    if (wide)
+    {
+        positionWidth = (float) widePositionWidth;
+        const auto groupWidth = leftWidth + positionWidth + rightWidth;
+        x = juce::jlimit (area.getX(), juce::jmax (area.getX(), area.getRight() - groupWidth), ((float) getWidth() - groupWidth) * 0.5f);
+    }
+    juce::Rectangle<float> row (x, area.getY(), leftWidth + positionWidth + rightWidth, area.getHeight());
+
+    autoScrollArea = row.removeFromLeft (autoWidth).withSizeKeepingCentre (autoWidth, 40.0f).translated (0.0f, -6.0f).toNearestInt();
+    autoScrollStamp = juce::Rectangle<float> ((float) autoScrollArea.getX(), area.getBottom() - 14.0f, keyPitch - 8.0f, 14.0f);
+    row.removeFromLeft (12.0f);
+    keysArea = row.removeFromLeft (6.0f * keyPitch);
+    auto keys = keysArea;
+    for (auto* key : { &toStart, &stopKey, &playKey, &recordKey, &cycleKey, &clickKey })
+        key->setBounds (keys.removeFromLeft (keyPitch).withSizeKeepingCentre (keyPitch - 8.0f, 40.0f).translated (0.0f, -6.0f).toNearestInt());
+    row.removeFromLeft (12.0f);
+    cpuScreen = row.removeFromLeft (cpuWidth);
+    row.removeFromLeft (12.0f);
+    // Two screens alike, POSITION and TIME, in the position's room.
+    timeScreen = row.removeFromLeft (positionWidth);
+    positionScreen = timeScreen.removeFromLeft ((positionWidth - 12.0f) * 0.5f);
+    timeScreen.removeFromLeft (12.0f);
+    row.removeFromLeft (12.0f);
+    tempoScreen = row.removeFromLeft (tempoWidth);
+    row.removeFromLeft (12.0f);
+    signatureScreen = row.removeFromLeft (signatureWidth);
+    toolsArea = {};
+    if (wide)
+    {
+        row.removeFromLeft (20.0f);
+        toolsArea = row.removeFromLeft ((float) toolsWidth).withSizeKeepingCentre ((float) toolsWidth, 40.0f)
+                       .withY ((float) toStart.getBounds().getY()).toNearestInt();
+    }
+    keyPitchNow = keyPitch;
 }
 
 void TransportBar::paint (juce::Graphics& g)
@@ -147,27 +288,52 @@ void TransportBar::paint (juce::Graphics& g)
     // The keys' shortcuts.
     {
         auto keys = keysArea;
-        // Under each key, its shortcut on the computer's keyboard.
+        // Under each key, its shortcut on the computer's keyboard (AUTO-SCROLL's: F).
         for (const auto* name : { "HOME", "SPACE", "SPACE", "R", "/", "C" })
-            stamped (g, name, keys.removeFromLeft (70.0f).removeFromBottom (14.0f), 9.0f);
+            stamped (g, name, keys.removeFromLeft (keyPitchNow).removeFromBottom (14.0f), 9.0f);
+        stamped (g, "F", autoScrollStamp, 9.0f);
     }
 
-    // POSITION: bars, beats, sixteenths and ticks, then minutes and seconds.
+    // POSITION (bars, beats, sixteenths and ticks) and TIME (minutes and
+    // seconds): two screens alike (0.9.10, the owner asked), the main values,
+    // large, in Bebas; each character in a cell of its own width so the
+    // figures stay still as they change.
     {
-        const auto glass = LedDisplay::paintScreen (g, positionScreen, screenSize);
-        glasses.push_back (glass);
-        auto inside = glass.reduced (12.0f, 6.0f);
-        g.setColour (orange.withAlpha (0.6f));
-        g.setFont (font (9.0f));
-        g.drawText ("POSITION", inside.removeFromTop (12.0f), juce::Justification::topLeft, false);
         const auto beats = studio.getEngine().getPosition();
-        auto row = inside;
-        g.setColour (orange);
-        g.setFont (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), juce::jmin (30.0f, row.getHeight() * 0.62f), juce::Font::bold));
-        g.drawFittedText (getPositionText(), row.removeFromLeft (row.getWidth() * 0.62f).toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
+        const auto drawScreen = [&] (juce::Rectangle<float> screen, const char* label, const juce::String& value)
+        {
+            const auto glass = LedDisplay::paintScreen (g, screen, screenSize);
+            glasses.push_back (glass);
+            auto inside = glass.reduced (12.0f, 6.0f);
+            g.setColour (orange.withAlpha (0.6f));
+            g.setFont (font (9.0f));
+            g.drawText (label, inside.removeFromTop (12.0f), juce::Justification::topLeft, false);
+            g.setColour (orange);
+            drawFixedPitch (g, value, inside, juce::jmin (44.0f, inside.getHeight() * 0.95f));
+        };
+        drawScreen (positionScreen, "POSITION", screenPosition (getPositionText(), studio.getProject().numerator));
+        drawScreen (timeScreen, "TIME", pr7s::formatTime (studio.getProject().tempoMap().secondsAt (beats)));
+    }
+
+    // CPU: the audio processing load, as much of each block's time as it
+    // takes (the average, big; the peak, small); OVER lit after an overload.
+    {
+        const auto glass = LedDisplay::paintScreen (g, cpuScreen, screenSize);
+        glasses.push_back (glass);
+        auto inside = glass.reduced (9.0f, 6.0f);
+        auto top = inside.removeFromTop (12.0f);
+        g.setFont (font (9.0f));
+        g.setColour (orange.withAlpha (0.6f));
+        g.drawText ("CPU", top, juce::Justification::topLeft, false);
+        g.setColour (overloadLit ? ParagonColours::meterRed : orange.withAlpha (0.18f));
+        g.drawText ("OVER", top, juce::Justification::topRight, false);
+        const auto percent = [] (float load) { return juce::String (juce::roundToInt (juce::jlimit (0.0f, 9.99f, load) * 100.0f)); };
+        auto bottom = inside.removeFromBottom (12.0f);
         g.setColour (orange.withAlpha (0.75f));
-        g.setFont (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), juce::jmin (18.0f, row.getHeight() * 0.42f), juce::Font::plain));
-        g.drawFittedText (pr7s::formatTime (beats * studio.getProject().secondsPerBeat()), row.toNearestInt(), juce::Justification::centredRight, 1, 0.7f);
+        g.drawText ("PEAK " + percent (shownPeak) + "%", bottom, juce::Justification::bottomRight, false);
+        g.setColour (shownAverage >= 1.0f ? ParagonColours::meterRed : orange);
+        g.setFont (font (juce::jmin (26.0f, inside.getHeight() * 0.95f)));
+        g.drawFittedText (percent (shownAverage) + "%", inside.toNearestInt(), juce::Justification::centredRight, 1, 0.7f);
     }
 
     // TEMPO and SIGNATURE.
@@ -177,7 +343,7 @@ void TransportBar::paint (juce::Graphics& g)
         auto inside = glass.reduced (10.0f, 6.0f);
         g.setColour (orange.withAlpha (0.6f));
         g.setFont (font (9.0f));
-        g.drawText ("TEMPO", inside.removeFromTop (12.0f), juce::Justification::topLeft, false);
+        g.drawText (studio.getProject().followsTempoTrack() ? "TEMPO TRACK" : "TEMPO", inside.removeFromTop (12.0f), juce::Justification::topLeft, false);
         g.setColour (orange);
         g.setFont (font (juce::jmin (28.0f, inside.getHeight() * 0.62f)));
         g.drawFittedText (getTempoText(), inside.withTrimmedRight (30.0f).toNearestInt(), juce::Justification::centredRight, 1, 0.7f);
@@ -200,6 +366,7 @@ void TransportBar::paint (juce::Graphics& g)
     stamped (g, "L", juce::Rectangle<float> (meterArea.getX() + 4.0f, meterArea.getY(), 14.0f, 10.0f), 8.0f);
     stamped (g, "R", juce::Rectangle<float> (meterArea.getX() + 18.0f, meterArea.getY(), 14.0f, 10.0f), 8.0f);
     stamped (g, "OUT", meterArea.withTrimmedTop (meterArea.getHeight() - 12.0f), 8.0f);
+
 }
 
 void TransportBar::paintOverChildren (juce::Graphics& g)
@@ -210,7 +377,34 @@ void TransportBar::paintOverChildren (juce::Graphics& g)
 
 void TransportBar::mouseDown (const juce::MouseEvent& event)
 {
-    if (tempoScreen.contains (event.position))
+    if (cpuScreen.contains (event.position))
+    {
+        studio.getEngine().resetOverloads();   // (as the manual has it: a click resets the overload light)
+        followPerformance();
+        return;
+    }
+    if (tempoScreen.contains (event.position) && event.mods.isPopupMenu())
+    {
+        // The manual's Activate Tempo Track (on its transport), and the tempo track itself.
+        const auto& project = studio.getProject();
+        juce::PopupMenu menu;
+        menu.addItem (1, "Activate Tempo Track", true, project.followsTempoTrack());
+        menu.addItem (2, project.tempoTrackShown ? "The tempo track is in the track list" : "Add the Tempo Track", ! project.tempoTrackShown);
+        menu.addItem (3, "Open Tempo Track Editor (Ctrl+T)");
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (localAreaToGlobal (tempoScreen.toNearestInt())),
+                            [this] (int chosen)
+                            {
+                                if (chosen == 1)
+                                    studio.setTempoTrackOn (! studio.getProject().followsTempoTrack());
+                                else if (chosen == 2)
+                                    studio.addTempoTrack();
+                                else if (chosen == 3 && onOpenTempoEditor)
+                                    onOpenTempoEditor();
+                            });
+        return;
+    }
+    // (With the tempo track on, the tempo isn't changed here: the manual's. Its row's tempo or its curve.)
+    if (tempoScreen.contains (event.position) && ! studio.getProject().followsTempoTrack())
     {
         draggingTempo = true;
         dragStartBpm = studio.getProject().bpm;
@@ -252,7 +446,7 @@ void TransportBar::mouseUp (const juce::MouseEvent&)
 
 void TransportBar::mouseDoubleClick (const juce::MouseEvent& event)
 {
-    if (! tempoScreen.contains (event.position))
+    if (! tempoScreen.contains (event.position) || studio.getProject().followsTempoTrack())
         return;
     auto* window = new juce::AlertWindow ("Tempo", "The song's tempo, in beats per minute (20 to 300):", juce::MessageBoxIconType::NoIcon);
     window->addTextEditor ("bpm", juce::String (studio.getProject().bpm, 2));

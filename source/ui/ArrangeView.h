@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/ChordEventEditor.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "engine/Studio.h"
@@ -47,6 +48,7 @@ struct Timeline
     // has it), from half to three times (our choice). Lanes and the master's
     // row stay tall enough for their controls.
     double rowZoom = 1.0;
+    static constexpr double rulerTickRoom = 5.0;   // (px between note ticks on the ruler for them to show: 0.17.3)
     static constexpr double minRowZoom = 0.5, maxRowZoom = 3.0, rowZoomStep = 1.25;
     int trackRowHeight() const noexcept { return juce::roundToInt (trackHeight * rowZoom); }
     int laneRowHeight() const noexcept { return juce::jmax (34, juce::roundToInt (laneHeight * rowZoom)); }
@@ -67,11 +69,17 @@ struct Timeline
     float xForBeat (double beat) const noexcept { return (float) ((beat - firstBeat) * pixelsPerBeat); }
     double beatForX (float x) const noexcept { return firstBeat + x / pixelsPerBeat; }
 
-    // The grid parts and the position snap to: the beat when zoomed in far
-    // enough to see it, else the bar.
+    // The grid (0.9.10, the manual's Snap with Grid Type "Use Quantize"): the
+    // song's quantize value (1/1 to 1/64, the toolbar's), a step for the
+    // locators; `snapGrid` what parts, ranges, points and the position snap
+    // to: the grid with Snap on (J), else nothing.
     double grid (const pr7s::Project& project) const noexcept
     {
-        return pixelsPerBeat >= 14.0 ? 4.0 / project.denominator : project.beatsPerBar();
+        return project.quantizeBeats > 0.0 ? project.quantizeBeats : 0.25;
+    }
+    double snapGrid (const pr7s::Project& project) const noexcept
+    {
+        return project.snapOn ? grid (project) : 0.0;
     }
 
     std::function<void()> onScrollOrZoom;   // the track list follows
@@ -79,10 +87,13 @@ struct Timeline
     // The rows, top to bottom, shared by the track list and the arrangement:
     // each track, its open automation lanes under it, then the master's row
     // and its lanes. `top` is from the first row's top, before scrolling.
-    static constexpr int laneHeight = 48, masterHeight = 40;   // at the vertical zoom's 1
+    static constexpr int laneHeight = 48, masterHeight = 40, tempoHeight = 72;   // at the vertical zoom's 1
+    int tempoRowHeight() const noexcept { return juce::jmax (48, juce::roundToInt (tempoHeight * rowZoom)); }
+    static constexpr int chordsHeight = 60;   // the chord track (0.16.0): chords above, the scales below
+    int chordRowHeight() const noexcept { return juce::jmax (46, juce::roundToInt (chordsHeight * rowZoom)); }
     struct Row
     {
-        enum class Kind { track, lane, master };
+        enum class Kind { track, lane, master, tempo, chords };
         Kind kind = Kind::track;
         int busId = 0;          // a track's id, or the master's (0)
         int laneIndex = -1;     // a lane: its index in the bus's automation
@@ -100,7 +111,10 @@ struct Timeline
 //   ruler           click to put the position there; drag across its top
 //                   strip to set the cycle (the locators; CYCLE turns on);
 //                   in the top strip, click inside the range to turn CYCLE
-//                   on or off, drag inside it to move it
+//                   on or off, drag inside it to move it, drag a locator's
+//                   handle (either end) to move just that one; Ctrl-click
+//                   sets the left locator there, Alt-click the right, Ctrl+
+//                   Alt-click both round the grid step clicked in (the manual's)
 //   a part          click to select; drag to move (to another track of its
 //                   kind too); Ctrl-drag keeps to one direction; Alt-drag to
 //                   copy; drag its right edge to lengthen or shorten it;
@@ -124,6 +138,32 @@ struct Timeline
 //                   dragging puts them back; right-click: Select All Events.
 //                   With no points, a dotted line shows the control's
 //                   setting; R off or the lane muted, the curve is greyed
+//   RANGE (2)       drag across the tracks for a range (a stretch of time on
+//                   the tracks dragged over), shaded; double-click a part for
+//                   one over it, or between parts for the gap; drag its edges
+//                   (Shift-drag outside it extends it); drag inside it to
+//                   move what's in it (Alt: a copy); right-click it for its
+//                   menu. Keys: Shift+X split at its edges, Delete (Shift+
+//                   Backspace: Delete Time, closing the gap), Ctrl+X / C / V
+//                   (Ctrl+Shift+X Cut Time, Ctrl+Shift+V Paste Time; paste at
+//                   the playhead on the selected track down), Ctrl+D
+//                   duplicate, Ctrl+Shift+E Insert Silence, Esc clears it
+//   tools           (the manual's, keys 1 to 9; F9 / F10 the previous
+//                   / next) what a click on a track does: SELECT (1, all of
+//                   the above; Alt-click a part splits it there; Alt-drag
+//                   on an empty instrument track draws a new part), SPLIT (3:
+//                   click a part to cut it there, snapped; Alt: into equal
+//                   pieces that long), GLUE (4: click a part to join it to
+//                   the next; Alt: to all after it), ERASE (5: click a part
+//                   to delete it; Alt: it and all after it), ZOOM (6: click
+//                   to zoom in there, Alt-click out, drag across a stretch to
+//                   fill the view with it), MUTE (7: click a part to mute or
+//                   unmute it, or drag a rectangle over several), DRAW (8:
+//                   drag on an instrument track for a new empty part), PLAY
+//                   (9: hold the mouse down to play from there; let go to
+//                   stop, back where it was). Alt+X splits the parts the
+//                   playhead is in (the selected one only, if there is one).
+//                   Right-click a part for its menu, whatever the tool.
 //   wheel           scrolls the tracks; Shift+wheel scrolls along the song;
 //                   Ctrl+wheel zooms (and the scroll bars, under and beside it)
 //   keys            (as the manual has them) H zooms in, G out, a step
@@ -131,6 +171,7 @@ struct Timeline
 //                   shorter rows (Ctrl+Shift+wheel too); Shift+F shows the
 //                   whole song; F turns Auto-Scroll on or off (AutoScroll)
 class ArrangeView final : public juce::Component,
+                          public juce::DragAndDropTarget,
                           private juce::ChangeListener,
                           private juce::Timer
 {
@@ -148,8 +189,52 @@ public:
     void deleteSelected();
     void duplicateSelected();
 
+    // Several parts selected (0.9.2, the manual's Object Selection tool):
+    // Shift-click adds or takes one away, a drag on empty space draws a
+    // rectangle that selects every part it touches (Shift: added to them),
+    // Ctrl+A all of them. Dragging one moves them all (Alt: copies);
+    // Delete, Ctrl+D, Ctrl+X / C / V, Alt+V (Paste at Origin) and the
+    // part's menu act on them all. The part clicked last is the one the
+    // key editor shows (getSelection).
+    std::vector<int> getSelectedParts() const;   // part ids, in no order
+    bool isPartSelected (int partId) const;
+    void selectParts (const std::vector<int>& partIds);
+    void selectAllParts();
+    void copySelected (bool cut);   // into the parts clipboard
+    void pasteParts (bool atOrigin);   // at the playhead on the selected track (or where they came from)
+    bool hasPartsClip() const noexcept { return ! partsClip.isEmpty(); }
+    std::function<void()> onPartsCopied;   // (Ctrl+V then pastes parts: MainView)
+
+    // The editing tools (see above).
+    enum class Tool { select, range, split, glue, erase, zoom, mute, draw, play };
+    static constexpr Tool tools[] = { Tool::select, Tool::range, Tool::split, Tool::glue, Tool::erase, Tool::zoom, Tool::mute, Tool::draw, Tool::play };
+    static const char* toolName (Tool);
+    static int toolKey (Tool);   // its number key
+    void setTool (Tool);
+    Tool getTool() const noexcept { return tool; }
+    void nextTool (bool forward);   // F10 / F9
+    std::function<void()> onToolChange;
+    void splitAtCursor();           // Alt+X
+    // P (Locators to Selection): the range, else the selected part (none: false).
+    bool locatorsToSelection();
+
+    // Range Selection (RANGE, 2; the manual's Range Editing): one range at a
+    // time, a stretch of time across tracks. It stays when another tool is
+    // chosen; Esc (or a click with RANGE) clears it.
+    const std::optional<pr7s::Studio::Range>& getRange() const noexcept { return range; }
+    void setRange (std::optional<pr7s::Studio::Range>);
+    bool hasRange() const noexcept { return range.has_value(); }
+    enum class RangeCommand { split, crop, deleteContents, deleteTime, cut, cutTime, copy, paste, pasteTime, insertSilence, duplicate };
+    void rangeCommand (RangeCommand);   // (the keys MainView sends, and the range's menu)
+    bool hasRangeClip() const noexcept { return ! rangeClip.isEmpty(); }
+
     // H / G: one zoom step in or out, centred on the playhead; Shift+F: the
     // whole song (as far as the scroll bar goes) across the view.
+    // The playhead's glide (0.17.4): one frame of it (the timer's; tests call it), and where it's drawn.
+    void advancePlayhead();
+    double getShownPlayhead() const noexcept { return shownBeat; }
+    std::optional<double> getRulerHover() const noexcept { return rulerHover; }
+    static constexpr double glideStep = 0.45;   // the share of the way left covered each frame (60 a second)
     void zoom (bool in);
     void zoomFull();
     // Shift+H / Shift+G: the rows a step taller or shorter (the top row in view stays at the top).
@@ -168,6 +253,18 @@ public:
     const PointSelection& getPointSelection() const noexcept { return pointSelection; }
     bool hasSelectedPoints() const noexcept { return ! pointSelection.points.empty(); }
     void deleteSelectedPoints();
+    // The tempo track's events (0.10.0): selected ones (indices), Delete removes them (never the first).
+    const std::vector<int>& getTempoSelection() const noexcept { return tempoSelection; }
+    bool hasSelectedTempoEvents() const noexcept { return ! tempoSelection.empty(); }
+    void deleteSelectedTempoEvents();
+    void selectAllTempoEvents();
+    void showTempoMenu();
+    std::function<void()> onOpenTempoEditor;   // the menu's Open Tempo Track Editor (0.13.0)
+    // Where an event is drawn, and the tempo row's curve area (tests).
+    juce::Point<float> getTempoEventPosition (int index) const;
+    juce::Rectangle<float> getTempoArea() const;
+    float yForBpm (const juce::Rectangle<float>& area, double bpm) const;
+    double bpmForY (const juce::Rectangle<float>& area, float y) const;
     void selectAllPoints (int busId, int laneIndex);
     bool cancelDrag();   // Esc while dragging points: back where they were
     // Where a lane, and a point on it, are drawn (for tests).
@@ -176,13 +273,37 @@ public:
 
     // Asked to edit the selected part's notes (double-click, or its menu): the key editor opens.
     std::function<void()> onEditNotes;
+    // Render in Place (a part's menu, the range's): what to render, and
+    // whether to ask how (else as last time).
+    std::function<void (std::vector<pr7s::Studio::RenderSource>, bool ask)> onRenderInPlace;
 
     // Where a part is drawn (for tests).
     juce::Rectangle<float> getPartBounds (int trackId, int index) const;
+    float splitLineX() const;   // SPLIT: where its cut line is drawn now (snapped to the grid), -1: none
     int trackAtY (float y) const;   // 0 if none (a lane or the master isn't a track)
+    // A chord pad dropped on a track: a one-bar MIDI part at the bar (0.14.0, the manual's
+    // Creating MIDI Parts from Chord Pads).
+    bool isInterestedInDragSource (const SourceDetails&) override;
+    void itemDropped (const SourceDetails&) override;
+
+    // The chord track (0.16.0): its chords' blocks, selected ones (indices), edited.
+    const std::vector<int>& getChordSelection() const noexcept { return chordSelection; }
+    bool hasSelectedChordEvents() const noexcept { return ! chordSelection.empty(); }
+    void deleteSelectedChordEvents();
+    juce::Rectangle<float> getChordArea() const;           // the chords' strip (the scales' below it)
+    juce::Rectangle<float> getChordEventBounds (int index) const;
+    void editChordEvent (int index);                      // the chord editor box (a double-click)
+    ChordEventEditor* getChordEditor() noexcept { return chordEditor.getComponent(); }
+    std::function<void()> onChordsToPads;                 // (the pads' view takes them)
+    std::function<void (std::vector<int> chordEvents)> onLineIdeas;   // BASS & MELODY (0.18.0): for these chord events (none: the cycle's or all)
     std::optional<Timeline::Row> rowAt (float y) const;
     float rowTop (const Timeline::Row&) const;   // where a row is drawn now
     float trackTop (int trackId) const;
+    // A MIDI file being dragged in (0.18.1): where it will land, lit in the family's gradient.
+    struct DropPreview { int trackId = 0; double start = 0.0, length = 0.0; juce::String name; int moreTracks = 0;
+                         std::vector<pr7s::Note> notes; };   // (the first track's, from the part's start: drawn inside it)
+    void setDropPreview (std::optional<DropPreview>);
+    const std::optional<DropPreview>& getDropPreview() const noexcept { return dropPreview; }
 
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
@@ -190,30 +311,95 @@ public:
     void mouseUp (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
     void paintPart (juce::Graphics&, juce::Rectangle<float>, const pr7s::Part&, juce::Colour, bool selected, bool recording) const;
+public:
+    // The timer's work (for tests): the playhead's old and new strips redrawn
+    // when it moved, nothing when nothing did (0.9.2: it was the whole view, 30
+    // times a second, which on a big window kept the computer busy: the lag).
+    void refreshPlayhead();
+private:
     std::optional<std::pair<int, int>> partAt (juce::Point<float>) const;   // track id and index
     void showPartMenu (int trackId, int index);
 
     pr7s::Studio& studio;
     Timeline& timeline;
     Selection selection;
+    int selectedPartId = 0;                     // its part's id (found again after the song changes)
+    Selection selectionOf (int trackId, int index);
 
-    enum class Drag { none, position, cycle, cycleMove, move, resize, trimStart, fadeIn, fadeOut, points, band, draw };
+    enum class Drag { none, position, cycle, cycleMove, cycleLeft, cycleRight, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
+                      newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove, marquee,
+                      tempoPoints, tempoBand, tempoDraw, chordMove };
+    std::vector<int> alsoSelected;              // the parts selected besides `selection` (by id)
+    pr7s::Studio::RangeClip partsClip;          // parts copied (Ctrl+C / X)
+    int partIdAt (const Selection&) const;
+    bool isSelected (int trackId, int index) const;
+    std::optional<pr7s::Studio::Range> range;
+    pr7s::Studio::RangeClip rangeClip;
+    pr7s::Studio::Range rangeBefore;            // as it was when the drag began
+    double rangeAnchor = 0.0;                   // the beat the drag began at
+    int rangeAnchorTrack = 0;                   // the track index it began on
+    double rangeMoveStart = 0.0;                // dragging its contents: where they'd go
+    int rangeMoveTrack = 0;                     // ... and the first track
+    bool rangeDown (const juce::MouseEvent&);
+    void rangeDrag (const juce::MouseEvent&);
+    void rangeUp (const juce::MouseEvent&);
+    bool rangeDoubleClick (const juce::MouseEvent&);
+    void showRangeMenu();
+    void paintRange (juce::Graphics&) const;
+    int trackIndex (int trackId) const;         // in the song's order (-1 if none)
+    std::vector<int> tracksBetween (int fromIndex, int toIndex) const;
+    double rangeBeat (const juce::MouseEvent&) const;   // snapped (Ctrl: not)
+    Tool tool = Tool::select;
+    bool toolDown (const juce::MouseEvent&);   // the tools other than SELECT (and SELECT's Alt gestures); true if it took the click
+    void toolUp (const juce::MouseEvent&);
+    juce::Rectangle<float> toolBand;           // MUTE's rectangle, ZOOM's stretch, DRAW's new part, as dragged
+    int newPartTrack = 0;
+    double playReturn = 0.0;                   // PLAY: where the playhead goes back to
+    juce::Point<float> hover { -1.0f, -1.0f }; // SPLIT: where the mouse is over a part
+    std::map<int, juce::MouseCursor> toolCursors;   // each tool's icon as the pointer, made once
+    double splitBeat (const juce::MouseEvent&, const pr7s::Part&) const;
+    void cannotGlue();
+    void updateCursor (const juce::MouseEvent&);
 
     // Automation editing.
     PointSelection pointSelection;
     std::vector<pr7s::AutomationPoint> workingPoints, originalPoints;   // the lane's points during a gesture
     juce::Rectangle<float> pointBand;
+    // The select box's corner where it began, in the song (beat, pixels down
+    // the rows), so it stays put while the view scrolls under it (0.11.1).
+    double marqueeBeat = 0.0;
+    float marqueeRowY = 0.0f;
+    bool scrollTowards (juce::Point<float>);   // past an edge: the view moves that way (true if it did)
     juce::Point<float> pointDownAt;
     int anchor = -1;               // the point grabbed
     bool copyingPoints = false;
     std::vector<pr7s::AutomationPoint> drawn;   // the points a drawing stroke has put down
     void paintAutomation (juce::Graphics&, const Timeline::Row&) const;
+    void paintTempo (juce::Graphics&, const Timeline::Row&) const;
+    bool tempoDown (const juce::MouseEvent&);
+    void tempoDrag (const juce::MouseEvent&);
+    void tempoUp();
+    void editTempoEvent (int index);   // a box to type its tempo (double-click)
+    std::vector<int> tempoSelection;
+    std::vector<int> chordSelection;
+    std::vector<pr7s::ChordEvent> chordOriginal;
+    double chordDownBeat = 0.0;
+    juce::Component::SafePointer<ChordEventEditor> chordEditor;
+    bool chordDown (const juce::MouseEvent&);
+    void chordDragTo (const juce::MouseEvent&);
+    void chordUp();
+    void paintChords (juce::Graphics&, const Timeline::Row&);
+    void showChordMenu (double beat, int index);
+    void showScaleMenu (double beat);
+    std::vector<pr7s::TempoEvent> tempoWorking, tempoOriginal;   // during a gesture
+    int tempoAnchor = -1;
     const pr7s::AutomationLane* laneFor (int busId, int laneIndex) const;
     float yForValue (juce::Rectangle<float> area, float value) const;
     float valueForY (juce::Rectangle<float> area, float y) const;
@@ -224,6 +410,8 @@ private:
     void showLaneMenu (int busId, int laneIndex);
     pr7s::Part dragPart;   // an audio clip as it's being trimmed or faded
     bool isAudioTrack (int trackId) const;
+    float fadeInWidth (const pr7s::Part&) const;    // a clip's fades in pixels (by the tempo map)
+    float fadeOutWidth (const pr7s::Part&) const;
     juce::Rectangle<float> fadeHandle (juce::Rectangle<float> bounds, const pr7s::Part&, bool fadeIn) const;
     Drag drag = Drag::none;
     double dragStartBeat = 0.0, dragOriginalStart = 0.0, dragOriginalLength = 0.0;
@@ -231,5 +419,47 @@ private:
     double dragNewStart = 0.0, dragNewLength = 0.0;
     bool dragCopies = false, dragMoved = false;
     double lastPosition = 0.0;   // the playhead as last seen (Auto-Scroll follows a jump while stopped)
+    float playheadX = -1.0e6f;   // where the playhead was last drawn (0.9.2: only its strip is redrawn as it moves)
+    // The playhead as drawn (0.17.4, the owner asked: it glides into a new place while
+    // stopped, as it snaps to the grid, instead of jumping; exact while playing).
+    double shownBeat = 0.0;
+    bool gliding = false;
+    // Where a click in the ruler would put the playhead (snapped), shown while hovering.
+    std::optional<double> rulerHover;
+    std::optional<DropPreview> dropPreview;
+    juce::Rectangle<float> dropPreviewBounds() const;
+    void setRulerHover (std::optional<double>);
+    bool playheadRed = false;
     void scrolled();             // the track list and the scroll bars follow
+};
+
+// A tool's key: its icon (ToolIcons), and its name unless `iconOnly` (on the
+// transport, where the keys are narrower; the name's in the tooltip).
+class ToolKey final : public juce::TextButton
+{
+public:
+    ArrangeView::Tool tool = ArrangeView::Tool::select;
+    bool iconOnly = false;
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+};
+
+// The arrangement's tools in a row over it (as the manual's toolbar): a key
+// each (its number key in the tooltip), lit while it's the one chosen.
+class ArrangeTools final : public juce::Component
+{
+public:
+    explicit ArrangeTools (ArrangeView&);
+    void refresh();   // the chosen tool lit
+    // On the transport unit (a wide window): TOOLS stamped in the unit's ink, as the keys' names are.
+    void setOnUnit (bool);
+    int getPreferredWidth() const noexcept { return onUnit ? unitWidth() : 64 + (int) std::size (ArrangeView::tools) * 74; }
+    static int unitWidth() noexcept { return (int) std::size (ArrangeView::tools) * 64; }   // on the unit: no label (the icons tell them apart)
+    juce::TextButton& getButton (ArrangeView::Tool);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+
+private:
+    ArrangeView& arrange;
+    std::array<ToolKey, std::size (ArrangeView::tools)> buttons;
+    bool onUnit = false;
 };

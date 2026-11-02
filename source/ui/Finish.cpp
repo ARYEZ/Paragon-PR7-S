@@ -1,5 +1,7 @@
 #include "Finish.h"
 
+#include "engine/Project.h"
+
 #include "ParagonLookAndFeel.h"
 
 namespace Finish
@@ -74,9 +76,9 @@ namespace Finish
             const juce::Colour colour (argb);
             return juce::Colour::fromFloatRGBA (colour.getFloatRed() * 0.75f, colour.getFloatGreen() * 0.75f, colour.getFloatBlue() * 0.75f, 1.0f);
         };
-        juce::ColourGradient gradient (shade (0xffde0639), left, 0.0f, shade (0xffcd6619), right, 0.0f, false);
+        juce::ColourGradient gradient (shade (pr7s::FamilyColours::pink.getARGB()), left, 0.0f, shade (pr7s::FamilyColours::orange.getARGB()), right, 0.0f, false);
         gradient.addColour (0.25, shade (0xffd90738));
-        gradient.addColour (0.5, shade (0xffd42e2a));
+        gradient.addColour (0.5, shade (pr7s::FamilyColours::red.getARGB()));
         gradient.addColour (0.75, shade (0xffcf5c1c));
         return gradient;
     }

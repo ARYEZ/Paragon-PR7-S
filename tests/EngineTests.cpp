@@ -519,3 +519,80 @@ TEST_CASE ("Edited notes play where they are now; each edit is one undo step; pa
     studio.undo();   // back again, with the same id
     CHECK (studio.findPart (id).has_value());
 }
+
+TEST_CASE ("A track's MIDI channel: its notes and what's played into it go to the instrument on it", "[engine][routing]")
+{
+    Rig rig;
+    rig.project.tracks[0].midiChannel = 5;
+    rig.setNotes ({ 0.0, 2.0, "Riff", { { 0.0, 0.5, 60, 0.8f } } });
+    rig.engine.play();
+    renderSamples (rig.engine, (int) rig.beats (1.0));
+    REQUIRE (rig.probe->notesOn().size() == 1);
+    CHECK (rig.probe->notesOn()[0].message.getChannel() == 5);
+    REQUIRE (rig.probe->notesOff().size() == 1);
+    CHECK (rig.probe->notesOff()[0].message.getChannel() == 5);
+
+    // Played live on channel 1: it reaches the instrument on channel 5.
+    rig.engine.stop();
+    rig.probe->received.clear();
+    rig.engine.setLiveTrack (1);
+    rig.engine.getKeyboardState().noteOn (1, 62, 0.7f);
+    renderSamples (rig.engine, 512);
+    REQUIRE (rig.probe->notesOn().size() == 1);
+    CHECK (rig.probe->notesOn()[0].message.getChannel() == 5);
+
+    // Stopping a note held when the song stops: on its channel too.
+    rig.engine.getKeyboardState().allNotesOff (1);
+    renderSamples (rig.engine, 512);
+    rig.probe->received.clear();
+    rig.engine.setPosition (0.0);
+    rig.engine.play();
+    renderSamples (rig.engine, (int) rig.beats (0.25));
+    rig.engine.stop();
+    renderSamples (rig.engine, 512);
+    REQUIRE_FALSE (rig.probe->notesOff().empty());
+    CHECK (rig.probe->notesOff().back().message.getChannel() == 5);
+}
+
+TEST_CASE ("A track's MIDI input: one keyboard only, or all", "[engine][routing]")
+{
+    Engine engine;
+    CHECK (engine.acceptsLiveFrom ("Axe I/O MIDI"));
+    engine.setLiveInputFilter ("Keystation 49");
+    CHECK (engine.acceptsLiveFrom ("Keystation 49"));
+    CHECK_FALSE (engine.acceptsLiveFrom ("Axe I/O MIDI"));
+    engine.setLiveInputFilter ({});
+    CHECK (engine.acceptsLiveFrom ("Axe I/O MIDI"));
+
+    // The studio sets it from the live track (the armed one, else the selected one).
+    Studio studio (false);
+    const auto keys = studio.getProject().tracks[0].id;
+    const auto pads = studio.addTrack ({});
+    studio.setMidiInput (keys, "Keystation 49");
+    studio.setMidiChannel (pads, 10);
+    studio.selectTrack (keys);
+    CHECK_FALSE (studio.getEngine().acceptsLiveFrom ("Pad Controller"));
+    studio.selectTrack (pads);
+    CHECK (studio.getEngine().acceptsLiveFrom ("Pad Controller"));
+    studio.setArmed (keys);
+    CHECK_FALSE (studio.getEngine().acceptsLiveFrom ("Pad Controller"));
+
+    // Saved with the song; undone as any change.
+    const auto copy = Project::fromXml (*studio.getProject().toXml());
+    REQUIRE (copy.has_value());
+    CHECK (copy->tracks[0].midiInput == "Keystation 49");
+    CHECK (copy->tracks[1].midiChannel == 10);
+    CHECK (copy->tracks[0].midiChannel == 1);
+    studio.setMidiChannel (pads, 12);
+    studio.undo();
+    CHECK (studio.getProject().findTrack (pads)->midiChannel == 10);
+
+    // Not for audio tracks; channels 1 to 16 only.
+    const auto guitar = studio.addAudioTrack (false);
+    studio.setMidiChannel (guitar, 3);
+    studio.setMidiChannel (keys, 17);
+    studio.setMidiInput (guitar, "Keystation 49");
+    CHECK (studio.getProject().findTrack (guitar)->midiChannel == 1);
+    CHECK (studio.getProject().findTrack (guitar)->midiInput.isEmpty());
+    CHECK (studio.getProject().findTrack (keys)->midiChannel == 1);
+}

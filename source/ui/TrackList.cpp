@@ -1,8 +1,12 @@
 #include "TrackList.h"
+#include "ui/ChordUi.h"
 
 #include "ui/AutomationKeys.h"
+#include "ui/LinkGroupPage.h"
 #include "ui/LevelMeter.h"
 #include "ui/ParagonLookAndFeel.h"
+#include "ui/TrackActions.h"
+#include "ui/ValueSlider.h"
 
 namespace
 {
@@ -51,13 +55,14 @@ class TrackList::Row final : public juce::Component
 public:
     Row (TrackList& ownerList, int id) : owner (ownerList), trackId (id)
     {
+        // (0.9.9: M, S, REC, R and W aren't on the row, as the owner asked: they're in the Inspector and the mixer.
+        // The row says which are on, under the name.)
         AutomationKeys::setUp (read, write, owner.studio, trackId);
-        addAndMakeVisible (read);
-        addAndMakeVisible (write);
         arrow.setTooltip ("Show/Hide Automation: this track's automation lanes");
         arrow.onClick = [this] { owner.studio.setAutomationOpen (trackId, ! owner.studio.isAutomationOpen (trackId)); };
         addAndMakeVisible (arrow);
-        name.setFont (ParagonLookAndFeel::titleFont (13.0f));
+        name.setFont (ParagonLookAndFeel::titleFont (22.0f));   // (0.9.2: 1.7 times the old 13, the owner asked for 1.5 to 2)
+        name.setMinimumHorizontalScale (0.6f);
         name.setColour (juce::Label::textColourId, ParagonColours::text);
         name.setEditable (false, true, false);   // double-click to rename
         name.setTooltip ("The track's name: double-click to rename");
@@ -66,10 +71,7 @@ public:
         addAndMakeVisible (name);
 
         for (auto* key : { &mute, &solo, &arm })
-        {
             key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
-            addAndMakeVisible (*key);
-        }
         monitor.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         monitor.setTooltip ("MON: hear what comes in from the interface (your guitar), through the track's effects");
         monitor.onClick = [this] { if (auto* t = track()) owner.studio.setMonitor (trackId, ! t->monitor); };
@@ -91,10 +93,11 @@ public:
         volume.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
         volume.setRange (-60.0, 6.0, 0.1);
         volume.setSkewFactorFromMidPoint (-12.0);
-        volume.setDoubleClickReturnValue (true, 0.0);
+        volume.setDoubleClickReturnValue (true, 0.0, juce::ModifierKeys::commandModifier);
+        volume.parse = [] (const juce::String& text) { return ValueEntry::parseDb (text); };
         volume.setPopupDisplayEnabled (true, true, nullptr);
         volume.textFromValueFunction = [] (double db) { return db <= -59.9 ? juce::String ("-inf dB") : juce::String (db, 1) + " dB"; };
-        volume.setTooltip ("The track's volume (double-click for 0 dB)");
+        volume.setTooltip ("The track's volume (double-click to type a value; Ctrl-click for 0 dB)");
         // Grabbed and let go, for writing automation (W on, while playing).
         volume.onDragStart = [this] { owner.studio.grabControl (trackId, pr7s::Studio::control (pr7s::AutomationLane::Target::volume)); };
         volume.onDragEnd = [this]
@@ -115,6 +118,7 @@ public:
             return;
         if (! name.isBeingEdited())
             name.setText (t->name, juce::dontSendNotification);
+        name.setColour (juce::Label::textColourId, t->disabled ? ParagonColours::textDim : ParagonColours::text);
         mute.setToggleState (t->mute, juce::dontSendNotification);
         solo.setToggleState (t->solo, juce::dontSendNotification);
         arm.setToggleState (t->armed, juce::dontSendNotification);
@@ -129,11 +133,14 @@ public:
         }
         else
         {
-            instrument.setButtonText (t->isAudio() ? inputName (*t) : t->instrument.getName());
+            instrument.setButtonText (t->disabled ? juce::String ("DISABLED") : t->isAudio() ? inputName (*t) : t->instrument.getName());
             instrument.setTooltip (t->isAudio() ? "The input it records from and where it goes (Output): click to choose, or to delete the track"
                                                 : "The instrument and where it goes (Output): click to open its window, change it, or delete the track");
+            if (t->frozen)
+                instrument.setTooltip ("Frozen: played from its freeze file, its instrument and effects unloaded. Right-click for Unfreeze Track");
+            if (t->disabled)
+                instrument.setTooltip ("Disabled: silent, its instrument and effects unloaded (their settings kept). Click for Enable Track");
         }
-        arm.setVisible (! t->isChannel());   // an FX or group channel records nothing
         monitor.setVisible (t->isAudio());
         monitor.setToggleState (t->monitor, juce::dontSendNotification);
         AutomationKeys::refresh (read, write, owner.studio, trackId);
@@ -166,17 +173,36 @@ public:
         if (t == nullptr)
             return;
         const auto bounds = getLocalBounds().toFloat();
-        const auto selected = owner.studio.getSelectedTrack() == trackId;
+        const auto selected = owner.studio.isTrackSelected (trackId);
         g.setColour (selected ? juce::Colour (0xff1f1720) : juce::Colour (0xff100c11));
         g.fillRect (bounds);
         g.setColour (juce::Colour (0xff050405));
         g.fillRect (bounds.withY (bounds.getBottom() - 1.0f).withHeight (1.0f));
-        g.setColour (t->colour);
+        g.setColour (t->disabled ? juce::Colour (0xff4a454c) : t->colour);   // disabled: its colour greyed (as the manual has it)
         g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
         if (selected)
         {
             g.setColour (ParagonColours::accent.withAlpha (0.6f));
             g.drawRect (bounds.withTrimmedLeft (6.0f), 1.0f);
+        }
+
+        // What's on, under its name (0.9.9: the keys are in the Inspector and the mixer): SOLO, MUTED, REC, READ, WRITE, FROZEN.
+        if (getHeight() >= 66)
+        {
+            juce::StringArray states;
+            if (t->solo) states.add ("SOLO");
+            if (t->mute) states.add ("MUTED");
+            if (t->armed) states.add ("REC");
+            if (t->automationWrite) states.add ("WRITE");
+            else if (t->automationRead) states.add ("READ");
+            if (t->frozen) states.add ("FROZEN");
+            if (const auto* link = owner.studio.getLinkGroupOf (t->id)) states.add ("LINKED: " + link->name.toUpperCase());
+            if (! states.isEmpty())
+            {
+                g.setColour (t->solo || t->armed ? ParagonColours::accent : juce::Colour (0xfff4eeea).withAlpha (0.75f));
+                g.setFont (font (13.0f));
+                g.drawText (states.joinIntoString ("  "), name.getBounds().withTrimmedLeft (4).removeFromBottom (16), juce::Justification::bottomLeft, false);
+            }
         }
 
         // Its level: PR7-C's meter, lying down (orange at the left to pink-red at the right).
@@ -187,49 +213,70 @@ public:
 
     void resized() override
     {
-        // Shorter than its two lines (the rows zoomed out): only the first, in the middle.
+        // The name large on the left (0.9.2: the owner's choice; the
+        // instrument is in the Inspector and the right-click menu), what's on
+        // under it; on the right MON (audio), the level and the volume (0.9.9:
+        // no M S REC R W, the owner asked). Shorter than two lines (zoomed out): the volume only.
         const auto compact = getHeight() < 66;
-        for (auto* control : std::initializer_list<juce::Component*> { &instrument, &read, &write, &volume })
-            control->setVisible (! compact);
+        instrument.setVisible (false);
         levelArea = {};
         auto area = getLocalBounds().withTrimmedLeft (12).reduced (6, compact ? juce::jmax (2, (getHeight() - 24) / 2) : 7);
-        auto top = area.removeFromTop (juce::jmin (24, area.getHeight()));
-        if (arm.isVisible())
+        // On the right, level with the name: MON (an audio track's), the level, the volume.
+        auto right = area.removeFromRight (compact ? 32 : 130).withSizeKeepingCentre (compact ? 32 : 130, 24);
+        area.removeFromRight (6);
+        volume.setVisible (true);
+        volume.setBounds (right.removeFromRight (28));
+        right.removeFromRight (4);
+        if (! compact)
         {
-            arm.setBounds (top.removeFromRight (36));
-            top.removeFromRight (3);
+            levelArea = right.removeFromRight (44).toFloat().withSizeKeepingCentre (44.0f, 8.0f);
+            right.removeFromRight (6);
+            monitor.setBounds (right.removeFromRight (40));   // audio tracks only (hidden otherwise)
         }
-        solo.setBounds (top.removeFromRight (30));
-        top.removeFromRight (3);
-        mute.setBounds (top.removeFromRight (30));
-        top.removeFromRight (3);
-        monitor.setBounds (top.removeFromRight (40));   // audio tracks only (hidden otherwise)
-        if (! monitor.isVisible())
-            top.setRight (mute.getX() - 3);
-        top.removeFromRight (6);
-        name.setBounds (top);
+        else
+            monitor.setBounds ({});
+        name.setBounds (area);
         arrow.setBounds (0, getHeight() - 18, 16, 16);
-        if (compact)
-            return;
-        area.removeFromTop (6);
-        auto bottom = area.removeFromTop (24);
-        volume.setBounds (bottom.removeFromRight (28));
-        bottom.removeFromRight (4);
-        levelArea = bottom.removeFromRight (44).toFloat().withSizeKeepingCentre (44.0f, 8.0f);
-        bottom.removeFromRight (6);
-        write.setBounds (bottom.removeFromRight (26));
-        bottom.removeFromRight (2);
-        read.setBounds (bottom.removeFromRight (26));
-        bottom.removeFromRight (6);
-        instrument.setBounds (bottom);
         // (Show/Hide Automation: the arrow at the lower left corner, as the manual has it.)
     }
 
     void mouseDown (const juce::MouseEvent& event) override
     {
-        owner.studio.selectTrack (trackId);
+        auto& studio = owner.studio;
+        dragged = false;
         if (event.mods.isPopupMenu())
+        {
+            if (! studio.isTrackSelected (trackId))
+                studio.selectTrack (trackId);
             owner.showInstrumentMenu (trackId, true);
+            return;
+        }
+        // Ctrl-click adds (or removes) it, Shift-click a run (the manual's);
+        // a click on one of several selected keeps them, to drag them together.
+        if (event.mods.isCommandDown())
+            studio.toggleTrackSelected (trackId);
+        else if (event.mods.isShiftDown())
+            studio.selectTrackRun (trackId);
+        else if (! studio.isTrackSelected (trackId))
+            studio.selectTrack (trackId);
+        plainClickOnSelected = ! event.mods.isCommandDown() && ! event.mods.isShiftDown() && studio.getSelectedTracks().size() > 1;
+    }
+
+    void mouseDrag (const juce::MouseEvent& event) override
+    {
+        if (event.mods.isPopupMenu() || event.getDistanceFromDragStart() < 5)
+            return;
+        dragged = true;
+        owner.dragTrack (trackId, event.getEventRelativeTo (&owner).getPosition());
+    }
+
+    void mouseUp (const juce::MouseEvent&) override
+    {
+        if (dragged)
+            owner.dropTracks (trackId);
+        else if (plainClickOnSelected)
+            owner.studio.selectTrack (trackId);   // a click (no drag) on one of several: it alone
+        plainClickOnSelected = false;
     }
 
     void mouseDoubleClick (const juce::MouseEvent& event) override
@@ -240,9 +287,10 @@ public:
 
     TrackList& owner;
     const int trackId;
+    bool dragged = false, plainClickOnSelected = false;
     juce::Label name;
     juce::TextButton mute { "M" }, solo { "S" }, arm { "REC" }, monitor { "MON" }, instrument, read { "R" }, write { "W" };
-    juce::Slider volume;
+    ValueSlider volume;   // (double-click: type a value, 0.9.9)
     Arrow arrow;
     juce::Rectangle<float> levelArea;
     LevelMeter::Ballistics reading;
@@ -367,20 +415,32 @@ public:
         AutomationKeys::refresh (read, write, owner.studio, pr7s::Engine::masterBus);
         arrow.open = owner.studio.isAutomationOpen (pr7s::Engine::masterBus);
         arrow.repaint();
+        repaint();   // (chosen or not)
     }
 
     void paint (juce::Graphics& g) override
     {
         const auto bounds = getLocalBounds().toFloat();
-        g.setColour (juce::Colour (0xff140f14));
+        const auto selected = owner.studio.isMasterSelected();
+        g.setColour (selected ? juce::Colour (0xff1f1720) : juce::Colour (0xff140f14));
         g.fillRect (bounds);
         g.setColour (juce::Colour (0xff050405));
         g.fillRect (bounds.withY (bounds.getBottom() - 1.0f).withHeight (1.0f));
-        g.setColour (ParagonColours::accent);
+        g.setColour (pr7s::FamilyColours::red);
         g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
+        if (selected)
+        {
+            g.setColour (ParagonColours::accent.withAlpha (0.6f));
+            g.drawRect (bounds.withTrimmedLeft (6.0f), 1.0f);
+        }
         g.setColour (ParagonColours::text);
         g.setFont (ParagonLookAndFeel::titleFont (13.0f));
         g.drawText ("MASTER", bounds.withTrimmedLeft (24.0f).withTrimmedRight (80.0f), juce::Justification::centredLeft, false);
+    }
+
+    void mouseDown (const juce::MouseEvent&) override
+    {
+        owner.studio.selectMaster();   // its Inspector (0.9.12)
     }
 
     void resized() override
@@ -398,27 +458,276 @@ public:
 };
 
 //==============================================================================
+// The tempo track's row (0.10.0, the manual's Tempo Track Controls): ON
+// (Activate Tempo Track), LOCK, the Type of New Tempo Points, and the tempo
+// at the cursor (double-click to type one: the event in effect there changes).
+class TrackList::TempoRow final : public juce::Component,
+                                  public juce::SettableTooltipClient
+{
+public:
+    explicit TempoRow (TrackList& ownerList) : owner (ownerList)
+    {
+        for (auto* key : { &on, &lock, &type })
+        {
+            key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+            key->setWantsKeyboardFocus (false);
+            addAndMakeVisible (*key);
+        }
+        on.setClickingTogglesState (false);
+        lock.setClickingTogglesState (false);
+        on.setTooltip ("Activate Tempo Track: the song follows the tempo track's curve; off, the fixed tempo (the transport's)");
+        lock.setTooltip ("Lock: the tempo events can't be changed");
+        type.setTooltip ("Type of New Tempo Points: Ramp (gradually from the point before), Step (a jump), Auto (as the point before)");
+        on.onClick = [this] { owner.studio.setTempoTrackOn (! owner.studio.getProject().tempoTrackOn); };
+        lock.onClick = [this] { owner.studio.setTempoLocked (! owner.studio.getProject().tempoLocked); };
+        type.onClick = [this]
+        {
+            using T = pr7s::Project::NewTempoType;
+            const auto now = owner.studio.getProject().newTempoType;
+            owner.studio.setNewTempoType (now == T::ramp ? T::step : now == T::step ? T::automatic : T::ramp);
+        };
+        setTooltip ("The tempo track: right-click for its menu; double-click the tempo to type one");
+        refresh();
+    }
+
+    void refresh()
+    {
+        const auto& project = owner.studio.getProject();
+        on.setToggleState (project.tempoTrackOn, juce::dontSendNotification);
+        lock.setToggleState (project.tempoLocked, juce::dontSendNotification);
+        using T = pr7s::Project::NewTempoType;
+        type.setButtonText (project.newTempoType == T::ramp ? "RAMP" : project.newTempoType == T::step ? "STEP" : "AUTO");
+        followTempo();
+        repaint();
+    }
+
+    void followTempo()
+    {
+        const auto now = owner.studio.getTempoNow();
+        if (std::abs (now - shownTempo) > 0.004)
+        {
+            shownTempo = now;
+            repaint (tempoArea.toNearestInt().expanded (2));
+        }
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto bounds = getLocalBounds().toFloat();
+        g.setColour (juce::Colour (0xff140f14));
+        g.fillRect (bounds);
+        g.setColour (juce::Colour (0xff050405));
+        g.fillRect (bounds.withY (bounds.getBottom() - 1.0f).withHeight (1.0f));
+        g.setColour (pr7s::FamilyColours::orange);
+        g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
+        g.setColour (ParagonColours::text);
+        g.setFont (ParagonLookAndFeel::titleFont (13.0f));
+        g.drawText ("TEMPO", nameArea, juce::Justification::centredLeft, false);
+        g.setColour (owner.studio.getProject().tempoTrackOn ? ParagonColours::text : ParagonColours::textDim);
+        g.setFont (ParagonLookAndFeel::titleFont (15.0f));
+        g.drawText (juce::String (shownTempo, 2) + " BPM", tempoArea, juce::Justification::centredLeft, false);
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().withTrimmedLeft (24).reduced (0, 4);
+        auto top = area.removeFromTop (juce::jmin (24, area.getHeight() / 2));
+        nameArea = top.removeFromLeft (70).toFloat();
+        top.removeFromRight (6);
+        type.setBounds (top.removeFromRight (46));
+        top.removeFromRight (3);
+        lock.setBounds (top.removeFromRight (44));
+        top.removeFromRight (3);
+        on.setBounds (top.removeFromRight (34));
+        tempoArea = area.removeFromTop (juce::jmin (24, area.getHeight())).toFloat();
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (e.mods.isPopupMenu() && owner.onTempoMenu)
+            owner.onTempoMenu();
+    }
+
+    void mouseDoubleClick (const juce::MouseEvent& e) override
+    {
+        if (! tempoArea.contains (e.position))
+            return;
+        auto* box = new juce::AlertWindow ("Tempo", owner.studio.getProject().followsTempoTrack()
+                                                        ? "The tempo where the cursor is (the tempo event in effect there changes)."
+                                                        : "The song's tempo (the tempo track is off).",
+                                           juce::MessageBoxIconType::NoIcon);
+        box->addTextEditor ("bpm", juce::String (owner.studio.getTempoNow(), 2), "BPM");
+        box->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+        box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+        box->enterModalState (true, juce::ModalCallbackFunction::create ([box, safe = juce::Component::SafePointer<TempoRow> (this)] (int result)
+        {
+            if (safe != nullptr && result == 1)
+                if (const auto bpm = box->getTextEditorContents ("bpm").replaceCharacter (',', '.').getDoubleValue(); bpm > 0.0)
+                    safe->owner.studio.setTempoAtCursor (bpm);
+        }), true);
+    }
+
+    TrackList& owner;
+    juce::TextButton on { "ON" }, lock { "LOCK" }, type { "RAMP" };
+    juce::Rectangle<float> nameArea, tempoArea;
+    double shownTempo = -1.0;
+};
+
+//==============================================================================
+// The chord track's row (0.16.0): its name, the key at the playhead, TO PADS
+// (the manual's Assign from Chord Track), TO MIDI (its chords as a part on the
+// selected track), AUTO SCALES (the scales follow the chords).
+class TrackList::ChordRow final : public juce::Component,
+                                  public juce::SettableTooltipClient,
+                                  private juce::Timer
+{
+public:
+    explicit ChordRow (TrackList& ownerList) : owner (ownerList)
+    {
+        for (auto* key : { &toPads, &toMidi, &autoScales, &lines })
+        {
+            key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+            key->setWantsKeyboardFocus (false);
+            addAndMakeVisible (*key);
+        }
+        autoScales.setClickingTogglesState (false);
+        toPads.setTooltip ("Assign from Chord Track: its chords, each once, onto the chord pads in order (they replace the pads' chords)");
+        toMidi.setTooltip ("Chords to MIDI: all its chords as a MIDI part on the selected instrument track (or a new one), voiced to move least");
+        autoScales.setTooltip ("The scales (the strip under the chords) follow the chords; off once one is set by hand (right-click the strip)");
+        toPads.onClick = [this]
+        {
+            juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon, "Assign from Chord Track",
+                                                "The chord track's chords onto the pads, each once, in order. The pads' chords are replaced (locked ones kept).",
+                                                "Assign", "Cancel", nullptr,
+                                                juce::ModalCallbackFunction::create ([safe = juce::Component::SafePointer<ChordRow> (this)] (int result)
+                                                {
+                                                    if (safe != nullptr && result == 1)
+                                                        safe->owner.studio.assignPadsFromChordTrack();
+                                                }));
+        };
+        toMidi.onClick = [this] { owner.studio.chordsToMidi (owner.studio.getSelectedTrack()); };
+        autoScales.onClick = [this] { owner.studio.setAutoScales (! owner.studio.getChordTrack().autoScales); };
+        lines.setTooltip ("Piano, guitar and bass ideas for the chords (those in the cycle when it's on, else all): hear them, put one on a track");
+        lines.onClick = [this] { if (owner.onLineIdeas) owner.onLineIdeas ({}); };
+        setTooltip ("The chord track: double-click its lane to add a chord, right-click for its menu");
+        refresh();
+        startTimerHz (10);
+    }
+
+    void refresh()
+    {
+        autoScales.setToggleState (owner.studio.getChordTrack().autoScales, juce::dontSendNotification);
+        toPads.setEnabled (! owner.studio.getChordTrack().events.empty());
+        toMidi.setEnabled (! owner.studio.getChordTrack().events.empty());
+        lines.setEnabled (! owner.studio.getChordTrack().events.empty());
+        timerCallback();   // (the chord and key at the playhead, at once)
+        repaint();
+    }
+
+    void timerCallback() override
+    {
+        // The chord and key at the playhead, redrawn only when they change.
+        const auto beat = owner.studio.getEngine().getPosition();
+        const auto& track = owner.studio.getChordTrack();
+        const auto index = track.indexAt (beat);
+        const auto key = owner.studio.chordTrackKeyAt (beat);
+        const auto text = (index >= 0 ? track.events[(size_t) index].chord.name (key) + "   " : juce::String()) + ChordUi::spokenKey (key);
+        if (text != shown)
+        {
+            shown = text;
+            repaint (nowArea.toNearestInt().expanded (2));
+        }
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto bounds = getLocalBounds().toFloat();
+        g.setColour (juce::Colour (0xff140f14));
+        g.fillRect (bounds);
+        g.setColour (juce::Colour (0xff050405));
+        g.fillRect (bounds.withY (bounds.getBottom() - 1.0f).withHeight (1.0f));
+        g.setColour (pr7s::FamilyColours::pink);
+        g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
+        g.setColour (ParagonColours::text);
+        g.setFont (ParagonLookAndFeel::titleFont (13.0f));
+        g.drawText ("CHORDS", nameArea, juce::Justification::centredLeft, false);
+        g.setColour (ParagonColours::textDim);
+        g.setFont (ChordUi::chordFont (12.0f));
+        g.drawText (shown, nowArea, juce::Justification::centredLeft, true);
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().withTrimmedLeft (24).reduced (0, 4);
+        auto top = area.removeFromTop (juce::jmin (24, area.getHeight() / 2));
+        nameArea = top.removeFromLeft (70).toFloat();
+        top.removeFromRight (6);
+        autoScales.setBounds (top.removeFromRight (78));
+        top.removeFromRight (3);
+        toMidi.setBounds (top.removeFromRight (60));
+        top.removeFromRight (3);
+        toPads.setBounds (top.removeFromRight (60));
+        auto second = area.removeFromTop (juce::jmin (22, area.getHeight()));
+        second.removeFromRight (6);
+        lines.setBounds (second.removeFromRight (110).reduced (0, 1));
+        nowArea = second.toFloat();
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (! e.mods.isPopupMenu())
+            return;
+        juce::PopupMenu menu;
+        menu.addItem (1, "Chords to MIDI (onto the selected track)", ! owner.studio.getChordTrack().events.empty());
+        menu.addItem (2, "Assign the Chords to the Pads", ! owner.studio.getChordTrack().events.empty());
+        menu.addItem (3, "Scales Follow the Chords", true, owner.studio.getChordTrack().autoScales);
+        menu.addItem (5, "Piano, Guitar and Bass Ideas...", ! owner.studio.getChordTrack().events.empty());
+        menu.addSeparator();
+        menu.addItem (4, "Remove the Chord Track (its chords kept)");
+        menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ChordRow> (this)] (int chosen)
+        {
+            if (safe == nullptr)
+                return;
+            auto& studio = safe->owner.studio;
+            if (chosen == 1) studio.chordsToMidi (studio.getSelectedTrack());
+            if (chosen == 2) studio.assignPadsFromChordTrack();
+            if (chosen == 3) studio.setAutoScales (! studio.getChordTrack().autoScales);
+            if (chosen == 4) studio.removeChordTrack();
+            if (chosen == 5 && safe->owner.onLineIdeas) safe->owner.onLineIdeas ({});
+        });
+    }
+
+    TrackList& owner;
+    juce::TextButton toPads { "TO PADS" }, toMidi { "TO MIDI" }, autoScales { "AUTO SCALES" }, lines { "IDEAS" };
+    juce::Rectangle<float> nameArea, nowArea;
+    juce::String shown;
+};
+
+//==============================================================================
 TrackList::TrackList (pr7s::Studio& studioToUse, Timeline& timelineToUse)
     : studio (studioToUse), timeline (timelineToUse)
 {
     addTrack.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
-    addTrack.setTooltip ("Add a track, with the Paragon Synth or one of your VST3 instruments");
-    addTrack.onClick = [this] { showAddTrackMenu(); };
-    autoScrollButton.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
-    autoScrollButton.setWantsKeyboardFocus (false);
-    autoScrollButton.onClick = [this] { if (onAutoScrollToggle) onAutoScrollToggle(); };
-    addAndMakeVisible (autoScrollButton);
-    autoScrollMenu.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
-    autoScrollMenu.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
-    autoScrollMenu.setWantsKeyboardFocus (false);
-    autoScrollMenu.setTooltip ("Auto-Scroll's settings: Page Scroll or Stationary Cursor; Suspend Auto-Scroll when Editing");
-    autoScrollMenu.onClick = [this]
+    addTrack.setTooltip ("Add a track, with PR7-K or one of your VST3 instruments");
+    addTrack.onClick = [this] { showAddTrackMenu(); };   // (0.9.11: not shown; the right-click menus have Add Track)
+    addTrack.setWantsKeyboardFocus (false);
+    addChildComponent (addTrack);   // (0.9.11: hidden, the owner asked; right-click for Add Track)
+    // The manual's Deactivate All Mute States / Solo States (0.9.9): lit while
+    // any track is muted / soloed (hidden ones too); click to turn them all off.
+    for (auto* key : { &muteAll, &soloAll })
     {
-        timeline.autoScroll.showMenu (autoScrollMenu, [this] { if (timeline.onAutoScrollChange) timeline.onAutoScrollChange(); });
-    };
-    addAndMakeVisible (autoScrollMenu);
-    refreshAutoScroll();
-    addAndMakeVisible (addTrack);
+        key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        key->setWantsKeyboardFocus (false);
+        addAndMakeVisible (*key);
+    }
+    muteAll.setTooltip ("Deactivate All Mute States: lit while any track is muted; click to unmute them all");
+    soloAll.setTooltip ("Deactivate All Solo States: lit while any track is soloed (a soloed track silences the others); click to turn every solo off");
+    muteAll.onClick = [this] { studio.deactivateAllMute(); };
+    soloAll.onClick = [this] { studio.deactivateAllSolo(); };
+    // The colour menu (0.17.3): the selected tracks.
+    colourKey.setWantsKeyboardFocus (false);
+    colourKey.onClick = [this] { TrackColourMenu::show (colourKey, studio, studio.getSelectedTracks()); };
+    addAndMakeVisible (colourKey);
     studio.addChangeListener (this);
     rebuild();
     startTimerHz (30);
@@ -431,6 +740,8 @@ TrackList::~TrackList()
 
 void TrackList::changeListenerCallback (juce::ChangeBroadcaster*)
 {
+    muteAll.setToggleState (studio.anyMute(), juce::dontSendNotification);
+    soloAll.setToggleState (studio.anySolo(), juce::dontSendNotification);
     rebuild();
 }
 
@@ -443,21 +754,24 @@ void TrackList::timerCallback()
     }
     for (auto& lane : laneRows)
         lane->repaint (lane->valueArea.toNearestInt());
+    if (tempoRow != nullptr)
+        tempoRow->followTempo();
 }
 
 void TrackList::rebuild()
 {
     // The rows follow the project's tracks (kept where they are, so a name being edited isn't lost).
-    const auto& tracks = studio.getProject().tracks;
-    auto same = rows.size() == tracks.size();
-    for (size_t i = 0; same && i < tracks.size(); ++i)
-        same = rows[i]->trackId == tracks[i].id;
+    // (A row for each track shown: hidden ones are in the left zone's VISIBILITY.)
+    const auto shown = studio.getShownTracks();
+    auto same = rows.size() == shown.size();
+    for (size_t i = 0; same && i < shown.size(); ++i)
+        same = rows[i]->trackId == shown[i];
     if (! same)
     {
         rows.clear();
-        for (const auto& track : tracks)
+        for (const auto id : shown)
         {
-            rows.push_back (std::make_unique<Row> (*this, track.id));
+            rows.push_back (std::make_unique<Row> (*this, id));
             addAndMakeVisible (*rows.back());
         }
     }
@@ -485,6 +799,24 @@ void TrackList::rebuild()
         addAndMakeVisible (*masterRow);
     }
     masterRow->refresh();
+    if (studio.getProject().tempoTrackShown && tempoRow == nullptr)
+    {
+        tempoRow = std::make_unique<TempoRow> (*this);
+        addAndMakeVisible (*tempoRow);
+    }
+    else if (! studio.getProject().tempoTrackShown)
+        tempoRow = nullptr;
+    if (tempoRow != nullptr)
+        tempoRow->refresh();
+    if (studio.getChordTrack().shown && chordRow == nullptr)
+    {
+        chordRow = std::make_unique<ChordRow> (*this);
+        addAndMakeVisible (*chordRow);
+    }
+    else if (! studio.getChordTrack().shown)
+        chordRow = nullptr;
+    if (chordRow != nullptr)
+        chordRow->refresh();
     resized();
     repaint();
 }
@@ -492,19 +824,14 @@ void TrackList::rebuild()
 void TrackList::resized()
 {
     placeRows();
-    addTrack.setBounds (getLocalBounds().removeFromBottom (addButtonHeight).reduced (10, 5));
-    addTrack.toFront (false);
+    // + ADD TRACK at the top, in the header (level with the ruler).
     auto header = getLocalBounds().removeFromTop (Timeline::rulerHeight).reduced (8, 6);
-    autoScrollMenu.setBounds (header.removeFromRight (22));
+    addTrack.setBounds ({});
+    soloAll.setBounds (header.removeFromRight (30));
     header.removeFromRight (3);
-    autoScrollButton.setBounds (header.removeFromRight (96));
-    autoScrollButton.toFront (false);
-    autoScrollMenu.toFront (false);
-}
-
-void TrackList::refreshAutoScroll()
-{
-    timeline.autoScroll.refreshKey (autoScrollButton);
+    muteAll.setBounds (header.removeFromRight (30));
+    header.removeFromRight (8);
+    colourKey.setBounds (header.removeFromRight (34));
 }
 
 void TrackList::placeRows()
@@ -525,6 +852,16 @@ void TrackList::placeRows()
             if (laneRow != laneRows.end())
                 (*laneRow++)->setBounds (bounds);
         }
+        else if (row.kind == Timeline::Row::Kind::tempo)
+        {
+            if (tempoRow != nullptr)
+                tempoRow->setBounds (bounds);
+        }
+        else if (row.kind == Timeline::Row::Kind::chords)
+        {
+            if (chordRow != nullptr)
+                chordRow->setBounds (bounds);
+        }
         else if (masterRow != nullptr)
         {
             masterRow->setBounds (bounds);
@@ -544,8 +881,6 @@ void TrackList::paint (juce::Graphics& g)
     g.drawText ("TRACKS", header.reduced (14.0f, 0.0f), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::panelEdge);
     g.fillRect (header.withY (header.getBottom() - 1.0f).withHeight (1.0f));
-    g.setColour (juce::Colour (0xff0b090c));
-    g.fillRect (getLocalBounds().removeFromBottom (addButtonHeight));
 }
 
 void TrackList::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& wheel)
@@ -556,37 +891,64 @@ void TrackList::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelD
         timeline.onScrollOrZoom();
 }
 
-void TrackList::showAddTrackMenu()
+juce::PopupMenu TrackList::makeAddTrackMenu (int offset)
 {
+    // (0.9.11: no + ADD TRACK key; this menu is at the foot of the track
+    // list's right-click menu, and a right-click under the tracks.)
     juce::PopupMenu menu;
     menu.addSectionHeader ("ADD AN AUDIO TRACK");
-    menu.addItem (3, "Audio track (mono: a guitar, a voice)");
-    menu.addItem (4, "Audio track (stereo: a pair of inputs)");
+    menu.addItem (offset + 3, "Audio track (mono: a guitar, a voice)");
+    menu.addItem (offset + 4, "Audio track (stereo: a pair of inputs)");
     menu.addSectionHeader ("ADD AN INSTRUMENT TRACK");
-    menu.addItem (1, "Paragon Synth (built in)");
+    menu.addItem (offset + 1, studio.getPluginHost().isStudioSynthFound() ? juce::String ("PR7-K (the studio's synth)")
+                                                                  : juce::String ("PR7-K not found: the old Paragon Synth"));
     const auto instruments = studio.getPluginHost().getInstruments();
     if (! instruments.isEmpty())
     {
         menu.addSeparator();
         for (int i = 0; i < instruments.size(); ++i)
-            menu.addItem (100 + i, instruments[i].manufacturerName + ": " + instruments[i].name);
+            menu.addItem (offset + 100 + i, instruments[i].manufacturerName + ": " + instruments[i].name);
     }
     // FX and group channels (as the manual's Add Track dialog has them).
     const auto effects = studio.getPluginHost().getEffects();
     juce::PopupMenu withEffect;
     for (int i = 0; i < effects.size(); ++i)
-        withEffect.addItem (1000 + i, effects[i].manufacturerName + ": " + effects[i].name);
+        withEffect.addItem (offset + 1000 + i, effects[i].manufacturerName + ": " + effects[i].name);
     menu.addSectionHeader ("ADD AN FX CHANNEL OR A GROUP");
-    menu.addItem (5, "FX channel (empty: add its effects in the mixer)");
+    menu.addItem (offset + 5, "FX channel (empty: add its effects in the mixer)");
     if (! effects.isEmpty())
         menu.addSubMenu ("FX channel with", withEffect);
-    menu.addItem (6, "Group channel (a submix: route tracks to it)");
+    menu.addItem (offset + 6, "Group channel (a submix: route tracks to it)");
+    menu.addSectionHeader ("ADD THE TEMPO TRACK");
+    menu.addItem (offset + 8, "Tempo track (tempo changes: steps and ramps)", ! studio.getProject().tempoTrackShown);
+    menu.addItem (offset + 9, "Chord track (the song's chords and scales)", ! studio.getChordTrack().shown);
     menu.addSeparator();
-    menu.addItem (2, instruments.isEmpty() ? "Find my VST3 instruments..." : "Find more VST3 instruments...");
+    menu.addItem (offset + 7, "Track from a preset...");
+    menu.addSeparator();
+    menu.addItem (offset + 2, instruments.isEmpty() ? "Find my VST3 instruments..." : "Find more VST3 instruments...");
 
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addTrack), [this, instruments, effects] (int chosen)
-    {
-        if (chosen == 5)
+    return menu;
+}
+
+bool TrackList::addTrackChosen (int chosen)
+{
+    const auto instruments = studio.getPluginHost().getInstruments();
+    const auto effects = studio.getPluginHost().getEffects();
+    if (chosen <= 0)
+        return false;
+        if (chosen == 8)
+        {
+            studio.addTempoTrack();
+        }
+        else if (chosen == 9)
+        {
+            studio.addChordTrack();
+        }
+        else if (chosen == 7)
+        {
+            TrackActions::addTrackFromPreset (studio, chooser);
+        }
+        else if (chosen == 5)
         {
             studio.addFxChannel (nullptr);
         }
@@ -622,6 +984,15 @@ void TrackList::showAddTrackMenu()
             if (studio.addTrack (instrument, &error) == 0)
                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't add the track", error);
         }
+    return true;
+}
+
+void TrackList::showAddTrackMenu()
+{
+    makeAddTrackMenu().showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<TrackList> (this)] (int chosen)
+    {
+        if (safe != nullptr)
+            safe->addTrackChosen (chosen);
     });
 }
 
@@ -675,6 +1046,25 @@ void TrackList::showLaneMenu (int busId, int laneIndex, juce::Component& target)
     });
 }
 
+juce::PopupMenu TrackList::alphabetical (const juce::PopupMenu& menu)
+{
+    // Its items (submenus with them) sorted by name, A to Z, without the
+    // separators and section titles that grouped them before.
+    std::vector<juce::PopupMenu::Item> items;
+    for (juce::PopupMenu::MenuItemIterator it (menu); it.next();)
+    {
+        const auto& item = it.getItem();
+        if (item.isSeparator || item.isSectionHeader || item.text.isEmpty())
+            continue;
+        items.push_back (item);
+    }
+    std::stable_sort (items.begin(), items.end(), [] (const auto& a, const auto& b) { return a.text.compareIgnoreCase (b.text) < 0; });
+    juce::PopupMenu sorted;
+    for (auto& item : items)
+        sorted.addItem (std::move (item));
+    return sorted;
+}
+
 void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
 {
     const auto* track = studio.getProject().findTrack (trackId);
@@ -716,34 +1106,144 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
         auto inputs = 2;
         if (auto* device = studio.getDeviceManager().getCurrentAudioDevice())
             inputs = juce::jmax (1, device->getActiveInputChannels().countNumberOfSetBits());
-        menu.addSectionHeader ("RECORD FROM");
+        juce::PopupMenu recordFrom;   // (a submenu since 0.9.12: the menu is in alphabetical order)
         for (int i = 0; i < inputs; ++i)
-            menu.addItem (200 + i, "IN " + juce::String (i + 1) + " (mono)", true, ! track->stereoInput && track->input == i);
+            recordFrom.addItem (200 + i, "IN " + juce::String (i + 1) + " (mono)", true, ! track->stereoInput && track->input == i);
         for (int i = 0; i + 1 < inputs; i += 2)
-            menu.addItem (300 + i, "IN " + juce::String (i + 1) + "+" + juce::String (i + 2) + " (stereo)", true, track->stereoInput && track->input == i);
+            recordFrom.addItem (300 + i, "IN " + juce::String (i + 1) + "+" + juce::String (i + 2) + " (stereo)", true, track->stereoInput && track->input == i);
+        menu.addSubMenu ("Record From", recordFrom);
         menu.addSeparator();
         menu.addItem (2, "Delete track");
     }
     else if (! track->isChannel())
     {
-        menu.addItem (1, "Open " + track->instrument.getName() + "'s window", instance != nullptr && instance->hasEditor());
-        change.addItem (10, "Paragon Synth (built in)");
+        menu.addItem (1, "Open " + track->instrument.getName() + "'s window", studio.hasEditor (instance));
+        change.addItem (10, studio.getPluginHost().isStudioSynthFound() ? juce::String ("PR7-K (the studio's synth)")
+                                                                         : juce::String ("PR7-K not found: the old Paragon Synth"));
         for (int i = 0; i < instruments.size(); ++i)
-            change.addItem (100 + i, instruments[i].manufacturerName + ": " + instruments[i].name);
-        menu.addSubMenu ("Change instrument", change);
+            change.addItem (instrumentItems + i, instruments[i].manufacturerName + ": " + instruments[i].name);
+        menu.addSubMenu (track->frozen ? "Change instrument (unfreeze first)" : "Change instrument", change, ! track->frozen && ! track->disabled);
         menu.addSeparator();
         menu.addItem (2, "Delete track");
     }
 
+    // The selected tracks (this one among them): duplicate, move, delete; the empty ones.
+    const auto several = studio.getSelectedTracks().size() > 1;
+    menu.addSeparator();
+    menu.addItem (50, several ? "Duplicate the selected tracks" : "Duplicate track");
+    juce::PopupMenu moveTo;
+    moveTo.addItem (51, "To the top");
+    moveTo.addItem (52, "Up one");
+    moveTo.addItem (53, "Down one");
+    moveTo.addItem (54, "To the bottom");
+    menu.addSubMenu (several ? "Move the selected tracks" : "Move track", moveTo);
+    if (several)
+        menu.addItem (56, "Delete the selected tracks (Shift+Delete)");
+    menu.addItem (55, "Remove empty tracks", ! studio.getEmptyTracks().empty());
+    if (! track->isChannel())
+    {
+        menu.addSeparator();
+        menu.addItem (57, several ? "Render the selected tracks in Place..." : "Render in Place...", ! track->disabled && ! track->frozen);
+        menu.addItem (58, "Render in Place (as last time)", ! track->disabled && ! track->frozen);
+        TrackActions::addFreezeItems (menu, studio, trackId);
+    }
+    menu.addSeparator();
+    TrackActions::addPresetItems (menu, studio, trackId);
+    // Disable (as the manual has it: silent, its plugins unloaded) and hide.
+    menu.addSeparator();
+    if (! track->isChannel())
+        menu.addItem (59, track->disabled ? (several ? "Enable Selected Tracks" : "Enable Track")
+                                          : (several ? "Disable Selected Tracks" : "Disable Track"));
+    menu.addItem (60, several ? "Hide Selected Tracks" : "Hide Track");
+    menu.addItem (64, several ? "Colour the Selected Tracks..." : "Colour...");   // (0.17.3)
+    // Link groups (0.17.0, the manual's Linking Channels).
+    menu.addSeparator();
+    {
+        const auto* link = studio.getLinkGroupOf (trackId);
+        menu.addItem (61, "Link Selected Channels...", several);
+        if (link != nullptr)
+        {
+            menu.addItem (62, "Link Group Settings (" + link->name + ")...");
+            menu.addItem (63, "Unlink " + link->name);
+        }
+        juce::PopupMenu included;
+        included.addItem (20000, "None", true, link == nullptr);
+        for (const auto& g : studio.getProject().linkGroups)
+            included.addItem (20000 + g.id, juce::String (g.id) + "  " + g.name, true, link != nullptr && link->id == g.id);
+        menu.addSubMenu ("Included in Link Group: " + (link != nullptr ? link->name : juce::String ("None")), included);
+    }
+    // Add Track (0.9.11: the + ADD TRACK key's menu, here at the foot).
+    menu.addSeparator();
+    menu.addSubMenu ("Add Track", makeAddTrackMenu (addTrackOffset));
+    menu = alphabetical (menu);   // (0.9.12, the owner asked)
     menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, instruments] (int chosen)
     {
-        if (chosen == 20)
+        if (chosen >= addTrackOffset)
+        {
+            addTrackChosen (chosen - addTrackOffset);
+            return;
+        }
+        if (TrackActions::handle (chosen, studio, trackId, chooser))
+            return;
+        if (chosen == 64)
+        {
+            TrackColourMenu::show (*this, studio, studio.isTrackSelected (trackId) ? studio.getSelectedTracks() : std::vector<int> { trackId });
+            return;
+        }
+        if (chosen == 61)
+        {
+            LinkGroupPage::show (*this, studio, 0, studio.getSelectedTracks());
+            return;
+        }
+        if (chosen == 62 || chosen == 63)
+        {
+            if (const auto* link = studio.getLinkGroupOf (trackId))
+                chosen == 62 ? LinkGroupPage::show (*this, studio, link->id, {}) : studio.removeLinkGroup (link->id);
+            return;
+        }
+        if (chosen >= 20000 && chosen < 30000)
+        {
+            studio.setTrackLinkGroup (trackId, chosen - 20000);
+            return;
+        }
+        if ((chosen == 57 || chosen == 58) && onRenderInPlace)
+        {
+            // The selected tracks, whole (from the song's start to their last part's end).
+            std::vector<pr7s::Studio::RenderSource> sources;
+            for (const auto id : studio.getSelectedTracks())
+                if (const auto* t = studio.getProject().findTrack (id); t != nullptr && ! t->isChannel() && ! t->parts.empty())
+                {
+                    auto end = 0.0;
+                    for (const auto& part : t->parts)
+                        end = juce::jmax (end, part.end());
+                    sources.push_back ({ id, 0.0, end, true });
+                }
+            if (! sources.empty())
+                onRenderInPlace (sources, chosen == 57);
+            return;
+        }
+        if (chosen == 59)
+        {
+            const auto* t = studio.getProject().findTrack (trackId);
+            studio.setTracksDisabled (studio.getSelectedTracks(), t != nullptr && ! t->disabled);
+        }
+        else if (chosen == 60)
+            studio.setTracksHidden (studio.getSelectedTracks(), true);
+        else if (chosen == 50)
+            studio.duplicateTracks (studio.getSelectedTracks());
+        else if (chosen >= 51 && chosen <= 54)
+            moveSelectedTracks ((MoveTo) (chosen - 51));
+        else if (chosen == 55)
+            studio.removeTracks (studio.getEmptyTracks());
+        else if (chosen == 56)
+            removeSelectedTracks();
+        else if (chosen == 20)
             studio.setAutomationOpen (trackId, ! studio.isAutomationOpen (trackId));
         else if (chosen == 21)
             studio.showAllUsedAutomation();
         else if (chosen == 30)
             studio.setOutput (trackId, 0);
-        else if (chosen > 30000)
+        else if (isOutputItem (chosen))   // (0.17.3: not the instruments, numbered above the outputs)
             studio.setOutput (trackId, chosen - 30000);
         else if (chosen == 40 && onOpenEffect)
             onOpenEffect (trackId, 0);
@@ -766,25 +1266,146 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
                                                         studio.removeTrack (trackId);
                                                 }));
         }
-        else if (chosen >= 300)
-        {
-            studio.setTrackInput (trackId, chosen - 300, true);
-        }
-        else if (chosen >= 200)
-        {
-            studio.setTrackInput (trackId, chosen - 200, false);
-        }
-        else if (chosen == 10 || chosen >= 100)
+        else if (chosen == 10 || (chosen >= instrumentItems && chosen - instrumentItems < instruments.size()))
         {
             pr7s::Instrument instrument;
-            if (chosen >= 100)
+            if (chosen >= instrumentItems)
             {
                 instrument.kind = pr7s::Instrument::Kind::plugin;
-                instrument.plugin = instruments[chosen - 100];
+                instrument.plugin = instruments[chosen - instrumentItems];
             }
             juce::String error;
             if (! studio.changeInstrument (trackId, instrument, &error))
                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't change the instrument", error);
         }
+        else if (chosen >= 300 && chosen < 400)
+        {
+            studio.setTrackInput (trackId, chosen - 300, true);
+        }
+        else if (chosen >= 200 && chosen < 300)
+        {
+            studio.setTrackInput (trackId, chosen - 200, false);
+        }
     });
+}
+
+//==============================================================================
+std::vector<int> TrackList::tracksToMove (int trackId) const
+{
+    return studio.isTrackSelected (trackId) ? studio.getSelectedTracks() : std::vector<int> { trackId };
+}
+
+void TrackList::dragTrack (int, juce::Point<int> at)
+{
+    // The drop place: before the first track whose middle is below the mouse (else the end).
+    const auto& tracks = studio.getProject().tracks;
+    dropIndex = (int) tracks.size();
+    dropY = -1;
+    for (int i = 0; i < (int) tracks.size(); ++i)
+        for (const auto& row : rows)
+            if (row->trackId == tracks[(size_t) i].id && dropY < 0 && at.y < row->getBounds().getCentreY())
+            {
+                dropIndex = i;
+                dropY = row->getY();
+            }
+    if (dropY < 0)
+        for (const auto& row : rows)
+            if (row->trackId == tracks.back().id)
+                dropY = row->getBottom();
+    repaint();
+}
+
+void TrackList::dropTracks (int trackId)
+{
+    if (dropIndex >= 0)
+        studio.moveTracks (tracksToMove (trackId), dropIndex);
+    dropIndex = -1;
+    dropY = -1;
+    repaint();
+}
+
+void TrackList::paintOverChildren (juce::Graphics& g)
+{
+    // Where the dragged tracks would go: a line between the rows.
+    if (dropIndex >= 0 && dropY >= 0)
+    {
+        g.setColour (ParagonColours::accent);
+        g.fillRect (juce::Rectangle<float> (0.0f, (float) dropY - 1.5f, (float) getWidth(), 3.0f));
+    }
+}
+
+void TrackList::moveSelectedTracks (MoveTo where)
+{
+    const auto ids = studio.getSelectedTracks();
+    if (ids.empty())
+        return;
+    const auto& tracks = studio.getProject().tracks;
+    int first = (int) tracks.size(), last = -1;
+    for (int i = 0; i < (int) tracks.size(); ++i)
+        if (std::find (ids.begin(), ids.end(), tracks[(size_t) i].id) != ids.end())
+        {
+            first = juce::jmin (first, i);
+            last = juce::jmax (last, i);
+        }
+    switch (where)
+    {
+        case MoveTo::first:    studio.moveTracks (ids, 0); break;
+        case MoveTo::previous: studio.moveTracks (ids, juce::jmax (0, first - 1)); break;
+        case MoveTo::next:     studio.moveTracks (ids, juce::jmin ((int) tracks.size(), last + 2)); break;
+        case MoveTo::last:     studio.moveTracks (ids, (int) tracks.size()); break;
+    }
+}
+
+void TrackList::removeSelectedTracks()
+{
+    const auto ids = studio.getSelectedTracks();
+    if (ids.empty())
+        return;
+    // Empty ones go straight away; any with something on: asked first (as the manual has it; it can't be undone yet).
+    auto withSomething = 0;
+    for (const auto id : ids)
+        withSomething += studio.isTrackEmpty (id) ? 0 : 1;
+    if (withSomething == 0)
+    {
+        studio.removeTracks (ids);
+        return;
+    }
+    const auto* first = studio.getProject().findTrack (ids.front());
+    const auto what = ids.size() == 1 ? "\"" + first->name + "\" and its parts" : juce::String ((int) ids.size()) + " tracks and their parts";
+    juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon, ids.size() == 1 ? "Delete track" : "Delete tracks",
+                                        "Delete " + what + "? This can't be undone.", "Delete", "Cancel", nullptr,
+                                        juce::ModalCallbackFunction::create ([this, ids] (int result)
+                                        {
+                                            if (result == 1)
+                                                studio.removeTracks (ids);
+                                        }));
+}
+
+void TrackList::addTrackLikeSelected()
+{
+    // Double-click under the tracks: a track like the selected one (an audio
+    // track mono or stereo as it is, a group or an FX channel), else one on the studio's synth (PR7-K).
+    const auto* selected = studio.getProject().findTrack (studio.getSelectedTrack());
+    if (selected != nullptr && selected->isAudio())
+        studio.addAudioTrack (selected->stereoInput);
+    else if (selected != nullptr && selected->isGroup())
+        studio.addGroupChannel();
+    else if (selected != nullptr && selected->isFx())
+        studio.addFxChannel (nullptr);
+    else
+        studio.addTrack ({});
+}
+
+void TrackList::mouseDown (const juce::MouseEvent& event)
+{
+    // A right-click under the tracks (or with no tracks at all): the Add Track menu (0.9.11).
+    if (event.mods.isPopupMenu() && event.y > Timeline::rulerHeight)
+        showAddTrackMenu();
+}
+
+void TrackList::mouseDoubleClick (const juce::MouseEvent& event)
+{
+    // The empty space under the tracks (not the header).
+    if (event.y > Timeline::rulerHeight)
+        addTrackLikeSelected();
 }

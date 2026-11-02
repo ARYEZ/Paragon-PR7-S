@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonPR7S VERSION 0.7.3 LANGUAGES C CXX)
+project(ParagonPR7S VERSION 0.19.3 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -41,11 +41,18 @@ juce_add_binary_data(ParagonPR7SFonts
 # whoever links this gets its include paths and settings.)
 add_library(PR7SCore STATIC
     source/engine/Project.cpp
+    source/engine/TempoMap.cpp
+    source/engine/Chords.cpp
+    source/engine/Lines.cpp
     source/engine/ParagonSynth.cpp
     source/engine/PluginHost.cpp
     source/engine/Engine.cpp
     source/engine/Studio.cpp
     source/engine/MidiImport.cpp
+    source/engine/DawProject.cpp
+    source/engine/AudioAdvice.cpp
+    source/engine/SessionLog.cpp
+    source/engine/ProjectLibrary.cpp
     source/ui/ParagonLookAndFeel.cpp
     source/ui/Finish.cpp
     source/ui/LedDisplay.cpp
@@ -56,7 +63,20 @@ add_library(PR7SCore STATIC
     source/ui/ArrangeView.cpp
     source/ui/KeyEditor.cpp
     source/ui/MixerView.cpp
+    source/ui/Inspector.cpp
+    source/ui/TrackActions.cpp
     source/ui/MainView.cpp
+    source/ui/MainViewCommands.cpp
+    source/ui/KeyCommands.cpp
+    source/ui/KeyCommandsPage.cpp
+    source/ui/ProgressBox.cpp
+    source/ui/Hub.cpp
+    source/ui/ChordPadsView.cpp
+    source/ui/ChordEventEditor.cpp
+    source/ui/LinkGroupPage.cpp
+    source/ui/TrackColours.cpp
+    source/ui/LinesPage.cpp
+    source/ui/TempoEditor.cpp
     source/ui/Windows.cpp)
 
 target_include_directories(PR7SCore PUBLIC source)
@@ -67,6 +87,7 @@ target_compile_definitions(PR7SCore
         JUCE_USE_CURL=0
         JUCE_PLUGINHOST_VST3=1      # it loads VST3 instruments and effects
         JUCE_PLUGINHOST_AU=0
+        JUCE_MODAL_LOOPS_PERMITTED=1   # (0.12.1: the screen's thread carries on while Render in Place / Freeze render on a thread of their own)
         PR7S_VERSION="${PROJECT_VERSION}")   # the studio's version, for the About text and the synth
 
 target_link_libraries(PR7SCore
@@ -94,6 +115,14 @@ elseif(WIN32)
     message(STATUS "ASIO: off (no ASIO SDK given: PARAGON_ASIO_SDK)")
 endif()
 
+# Windows: the app's .pdb (its functions' names and source lines) beside it in
+# the zip, so the session log's crash entries name the studio's own code
+# (0.9.14). /Z7 keeps each object's debug information in itself (no shared
+# .pdb for parallel compiles to fight over); /OPT:REF,ICF keep the .exe as small.
+if(MSVC)
+    target_compile_options(PR7SCore PUBLIC $<$<CONFIG:Release>:/Z7>)
+endif()
+
 # Whoever links PR7SCore sees the JUCE modules' headers and settings too.
 target_include_directories(PR7SCore INTERFACE $<TARGET_PROPERTY:PR7SCore,INCLUDE_DIRECTORIES>)
 target_compile_definitions(PR7SCore INTERFACE $<TARGET_PROPERTY:PR7SCore,COMPILE_DEFINITIONS>)
@@ -112,6 +141,9 @@ juce_add_gui_app(ParagonPR7S
 
 target_sources(ParagonPR7S PRIVATE source/Main.cpp)
 target_link_libraries(ParagonPR7S PRIVATE PR7SCore)
+if(MSVC)
+    target_link_options(ParagonPR7S PRIVATE $<$<CONFIG:Release>:/DEBUG:FULL /OPT:REF /OPT:ICF>)
+endif()
 
 if(PARAGON_BUILD_TESTS)
     enable_testing()
