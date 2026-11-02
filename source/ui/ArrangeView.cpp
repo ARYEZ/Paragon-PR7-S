@@ -692,6 +692,23 @@ void ArrangeView::paint (juce::Graphics& g)
             g.fillPath (flag);
         }
     }
+    // Note ticks along the ruler's foot (0.17.3, the owner asked): quarters tallest, then
+    // eighths, then sixteenths, each only when the zoom leaves room between them.
+    for (const auto [step, height, alpha] : { std::tuple { 0.25, 3.0f, 0.35f }, std::tuple { 0.5, 5.0f, 0.5f }, std::tuple { 1.0, 8.0f, 0.75f } })
+    {
+        if (step * timeline.pixelsPerBeat < Timeline::rulerTickRoom)
+            continue;
+        g.setColour (ParagonColours::textDim.withAlpha (alpha));
+        const auto first = std::floor (timeline.firstBeat / step) * step;
+        for (auto i = 0; first + step * i <= lastVisible; ++i)
+        {
+            const auto beat = first + step * i;
+            const auto coarser = step < 1.0 && std::abs (std::fmod (beat, step * 2.0)) < 1.0e-6;   // (drawn by the longer tick)
+            if (coarser || std::abs (std::fmod (beat, bar)) < 1.0e-6)
+                continue;
+            g.fillRect (juce::Rectangle<float> (timeline.xForBeat (beat), ruler.getBottom() - 1.0f - height, 1.0f, height));
+        }
+    }
     // Bar numbers every bar if there's room, else every 2, 4, 8...
     auto every = 1;
     while (bar * every * timeline.pixelsPerBeat < 36.0)

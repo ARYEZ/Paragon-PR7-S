@@ -1098,6 +1098,24 @@ namespace pr7s
         }
     }
 
+    void Studio::setTracksColour (const std::vector<int>& trackIds, std::optional<juce::Colour> colour)
+    {
+        if (colour && ! FamilyColours::isFamily (*colour))
+            colour = FamilyColours::nearest (*colour);   // (only the family's: the owner's rule)
+        auto any = false;
+        for (int i = 0; i < (int) project.tracks.size(); ++i)
+        {
+            auto& track = project.tracks[(size_t) i];
+            if (std::find (trackIds.begin(), trackIds.end(), track.id) == trackIds.end())
+                continue;
+            const auto now = colour ? *colour : trackColour (i);
+            any = any || track.colour != now;
+            track.colour = now;
+        }
+        if (any)
+            changed();
+    }
+
     void Studio::setMute (int trackId, bool on)
     {
         if (auto* track = project.findTrack (trackId))

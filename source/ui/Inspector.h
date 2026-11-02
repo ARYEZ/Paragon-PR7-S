@@ -5,6 +5,7 @@
 #include "engine/Studio.h"
 #include "ui/MixerView.h"
 #include "ui/ValueSlider.h"
+#include "ui/TrackColours.h"
 
 // The Inspector (0.9.0), inspired by Cubase's: left of the track list, the
 // selected track's settings in sections (click a title to fold it; which are
@@ -146,6 +147,7 @@ private:
     int shownSlots = 8, preFader = pr7s::Project::maxInserts, insertLineY = -1;
     std::array<std::unique_ptr<MixerView::SendSlot>, pr7s::Project::maxSends> sendSlots;
     MixerView fader { studio, true };   // (also the insert, send and output menus' owner)
+    ColourKey colourKey;   // the colour menu (0.17.3), beside DISABLE TRACK
     juce::TextButton enable { "DISABLE TRACK" };   // always (0.17.1, the owner asked): DISABLE TRACK, or ENABLE TRACK on a disabled one
     juce::TextButton render { "RENDER" }, preset { "PRESET" };   // (0.9.8: FREEZE; RENDER since 0.17.1, the owner asked: Freeze is in the track's menu)
     std::unique_ptr<juce::FileChooser> chooser;   // a preset's

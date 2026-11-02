@@ -86,6 +86,10 @@ namespace pr7s
         void setSendsBypass (int trackId, bool);
         bool changeInstrument (int trackId, const Instrument&, juce::String* error = nullptr);
         void renameTrack (int trackId, const juce::String&);
+        // The colour menu (0.17.3): the tracks given in a family colour (one of the
+        // palette's: FamilyColours), or with none, their automatic colour back (red,
+        // pink, orange in turn by their place). One undo step.
+        void setTracksColour (const std::vector<int>& trackIds, std::optional<juce::Colour>);
         void setMute (int trackId, bool);
         void setSolo (int trackId, bool, bool exclusive = false);   // exclusive: every other solo off (Ctrl-click, the manual's)
         // The manual's Deactivate All Solo States / Mute States (0.9.9).

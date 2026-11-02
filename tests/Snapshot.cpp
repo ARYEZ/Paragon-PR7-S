@@ -544,6 +544,28 @@ TEST_CASE ("Snapshot: a question box", "[.][snapshot-alert]")
 }
 
 #include "ui/LinkGroupPage.h"
+#include "ui/TrackColours.h"
+
+TEST_CASE ("Snapshot: the colour menu", "[.][snapshot-colours]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "colours.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        const auto a = studio.getProject().tracks[0].id;
+        studio.setTracksColour ({ a }, pr7s::FamilyColours::paletteColour (2, 4));
+        TrackColourMenu menu (studio, { a });
+        menu.resized();
+        const auto image = menu.createComponentSnapshot (menu.getLocalBounds(), true, 2.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
 
 TEST_CASE ("Snapshot: the Link Group Settings page", "[.][snapshot-link]")
 {

@@ -418,6 +418,12 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     enable.setWantsKeyboardFocus (false);
     enable.onClick = [this] { if (const auto* t = track()) studio.setTracksDisabled ({ trackId }, ! t->disabled); };
     content.addChildComponent (enable);
+    colourKey.setWantsKeyboardFocus (false);
+    colourKey.onClick = [this]
+    {
+        TrackColourMenu::show (colourKey, studio, studio.isTrackSelected (trackId) ? studio.getSelectedTracks() : std::vector<int> { trackId });
+    };
+    content.addChildComponent (colourKey);
 
     // FADER
     fader.onOpenEffect = [this] (int bus, int slot) { if (onOpenEffect) onOpenEffect (bus, slot); };
@@ -873,8 +879,16 @@ void Inspector::layout()
         {
             case Section::basics:
             {
-                if (! t->isChannel())
-                    place (enable, row (rowHeight + 2));   // (0.17.1: always; FX and group channels can't be disabled)
+                {
+                    // DISABLE TRACK (0.17.1: always; FX and group channels can't be disabled) and the colour key.
+                    auto line = row (rowHeight + 2);
+                    place (colourKey, line.removeFromRight (36));
+                    if (! t->isChannel())
+                    {
+                        line.removeFromRight (4);
+                        place (enable, line);
+                    }
+                }
                 // M S R W (and REC, MON).
                 std::vector<juce::TextButton*> keys { &mute, &solo, &read, &write };
                 if (! t->isChannel())

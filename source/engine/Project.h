@@ -283,6 +283,13 @@ namespace pr7s
         inline const juce::Colour orange { 0xffcd6619 };
         // The nearest of the three (songs from before 0.9.12 had other shades).
         juce::Colour nearest (juce::Colour);
+        // The colour menu's choices (0.17.3, the owner asked: every tint of the family's
+        // colours, nothing else): `paletteHues` hues from the pink through the red to the
+        // orange, each in `paletteShades` shades from deep to pale, column by column.
+        static constexpr int paletteHues = 9, paletteShades = 8;
+        juce::Colour paletteColour (int hue, int shade);
+        // One of the three, or one of the palette's (what a song keeps as it is).
+        bool isFamily (juce::Colour);
     }
     juce::Colour trackColour (int index);   // red, pink, orange, in turn
 

@@ -48,6 +48,7 @@ struct Timeline
     // has it), from half to three times (our choice). Lanes and the master's
     // row stay tall enough for their controls.
     double rowZoom = 1.0;
+    static constexpr double rulerTickRoom = 5.0;   // (px between note ticks on the ruler for them to show: 0.17.3)
     static constexpr double minRowZoom = 0.5, maxRowZoom = 3.0, rowZoomStep = 1.25;
     int trackRowHeight() const noexcept { return juce::roundToInt (trackHeight * rowZoom); }
     int laneRowHeight() const noexcept { return juce::jmax (34, juce::roundToInt (laneHeight * rowZoom)); }

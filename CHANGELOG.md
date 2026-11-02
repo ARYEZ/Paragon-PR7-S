@@ -2,6 +2,14 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.17.3
+
+A fix for Change Instrument, a colour menu, and note ticks on the ruler.
+
+- **Change Instrument works again.** Choosing one of your plug-in instruments from a track's menu (the Inspector's instrument key or the track list's right-click) did nothing; only PR7-K worked. The menu numbers its instruments from 100000 up, and the code that runs the choice first asked "is it over 30000?", the numbers it gives the Output choices, so an instrument was taken for an output to a group that doesn't exist and nothing changed. Track presets with another instrument worked because they take another road. The Output check now stops below the instruments; a test pins it down. (We can't load a real VST3 instrument in the cloud tests, so the last step is yours to try on Windows.)
+- **A colour menu, only the family's colours.** A small palette key in the track list's header (beside M and S), beside DISABLE TRACK in the Inspector, and "Colour..." in the track's right-click menu open it. On top, the gradient's three: pink, red and orange. Under them, every tint of them: nine hues from the pink through the red to the orange, each in eight shades from deep to pale, and nothing else (no yellow, green, blue or violet; a test checks every swatch). A click colours the selected tracks (or the one you opened it from) and leaves the menu open to try another; the track's colour is outlined. SET TRACK COLOUR TO DEFAULT gives them their automatic colour back (red, pink, orange in turn by their place). Colouring is an undo step, and the tints are kept when the song is saved and opened (other colours still open as the nearest of the three).
+- **Quarter, eighth and sixteenth note ticks on the ruler.** Along the foot of the ruler, between the bar lines: quarter notes tallest, then eighths, then sixteenths. Each only shows when you're zoomed in enough for them to be at least 5 pixels apart, so zoomed out the ruler stays clean.
+
 ## 0.17.2
 
 Popular progressions beside the suggestions, in place of 0.17.1's single chords (what the owner meant).

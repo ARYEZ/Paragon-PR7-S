@@ -716,6 +716,10 @@ TrackList::TrackList (pr7s::Studio& studioToUse, Timeline& timelineToUse)
     soloAll.setTooltip ("Deactivate All Solo States: lit while any track is soloed (a soloed track silences the others); click to turn every solo off");
     muteAll.onClick = [this] { studio.deactivateAllMute(); };
     soloAll.onClick = [this] { studio.deactivateAllSolo(); };
+    // The colour menu (0.17.3): the selected tracks.
+    colourKey.setWantsKeyboardFocus (false);
+    colourKey.onClick = [this] { TrackColourMenu::show (colourKey, studio, studio.getSelectedTracks()); };
+    addAndMakeVisible (colourKey);
     studio.addChangeListener (this);
     rebuild();
     startTimerHz (30);
@@ -818,6 +822,8 @@ void TrackList::resized()
     soloAll.setBounds (header.removeFromRight (30));
     header.removeFromRight (3);
     muteAll.setBounds (header.removeFromRight (30));
+    header.removeFromRight (8);
+    colourKey.setBounds (header.removeFromRight (34));
 }
 
 void TrackList::placeRows()
@@ -1141,6 +1147,7 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
         menu.addItem (59, track->disabled ? (several ? "Enable Selected Tracks" : "Enable Track")
                                           : (several ? "Disable Selected Tracks" : "Disable Track"));
     menu.addItem (60, several ? "Hide Selected Tracks" : "Hide Track");
+    menu.addItem (64, several ? "Colour the Selected Tracks..." : "Colour...");   // (0.17.3)
     // Link groups (0.17.0, the manual's Linking Channels).
     menu.addSeparator();
     {
@@ -1170,6 +1177,11 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
         }
         if (TrackActions::handle (chosen, studio, trackId, chooser))
             return;
+        if (chosen == 64)
+        {
+            TrackColourMenu::show (*this, studio, studio.isTrackSelected (trackId) ? studio.getSelectedTracks() : std::vector<int> { trackId });
+            return;
+        }
         if (chosen == 61)
         {
             LinkGroupPage::show (*this, studio, 0, studio.getSelectedTracks());
@@ -1223,7 +1235,7 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
             studio.showAllUsedAutomation();
         else if (chosen == 30)
             studio.setOutput (trackId, 0);
-        else if (chosen > 30000)
+        else if (isOutputItem (chosen))   // (0.17.3: not the instruments, numbered above the outputs)
             studio.setOutput (trackId, chosen - 30000);
         else if (chosen == 40 && onOpenEffect)
             onOpenEffect (trackId, 0);

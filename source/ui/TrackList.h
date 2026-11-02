@@ -4,6 +4,7 @@
 
 #include "engine/Studio.h"
 #include "ui/ArrangeView.h"
+#include "ui/TrackColours.h"
 
 // The track list, left of the arrangement and lined up with its lanes
 // (inspired by Cubase's track list, in our look). Each track: its colour, its name
@@ -39,7 +40,8 @@ public:
     std::function<void (std::vector<pr7s::Studio::RenderSource>, bool ask)> onRenderInPlace;
     juce::TextButton& getAddTrackButton() noexcept { return addTrack; }
     juce::TextButton& getMuteAllKey() noexcept { return muteAll; }
-    juce::TextButton& getSoloAllKey() noexcept { return soloAll; }   // (in the header, at the top)
+    juce::TextButton& getSoloAllKey() noexcept { return soloAll; }
+    juce::Button& getColourKey() noexcept { return colourKey; }   // (in the header, at the top)
 
     void showAddTrackMenu();
     // The Add Track menu (its item ids from `offset`), and doing what was chosen in it (the id less the offset).
@@ -47,6 +49,9 @@ public:
     bool addTrackChosen (int chosen);
     static constexpr int addTrackOffset = 1000000;
     static constexpr int instrumentItems = 100000;   // (the track menu's instruments: clear of every other item, however many)
+    // The track menu's Output items (30000 + a group's id), not the instruments above them
+    // (0.17.3: an instrument chosen was taken for an output, and nothing changed).
+    static constexpr bool isOutputItem (int id) noexcept { return id > 30000 && id < instrumentItems; }
     static juce::PopupMenu alphabetical (const juce::PopupMenu&);   // the track menu's order (0.9.12)
     // A track's menu (its instrument key's): its window, change it, Output, delete... (also the Inspector's)
     void showInstrumentMenu (int trackId, bool withAutomation = false);
@@ -99,5 +104,6 @@ private:
     std::vector<int> tracksToMove (int trackId) const;
     juce::TextButton addTrack { "+ ADD TRACK" };
     juce::TextButton muteAll { "M" }, soloAll { "S" };   // Deactivate All Mute / Solo States (0.9.9)
+    ColourKey colourKey;   // the colour menu (0.17.3)
     std::unique_ptr<juce::FileChooser> chooser;   // a preset's (0.9.8)
 };

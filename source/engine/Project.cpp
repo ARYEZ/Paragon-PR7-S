@@ -391,7 +391,7 @@ namespace pr7s
             for (size_t i = 0; i < std::size (retired); ++i)
                 if (track.colour.getARGB() == retired[i])
                     track.colour = trackColour (3 + (int) i), replaced = true;
-            if (! replaced)
+            if (! replaced && ! FamilyColours::isFamily (track.colour))   // (0.17.3: the colour menu's tints kept)
                 track.colour = FamilyColours::nearest (track.colour);
             track.volumeDb = (float) juce::jlimit (-60.0, 6.0, t->getDoubleAttribute ("volumeDb", 0.0));
             track.pan = (float) juce::jlimit (-1.0, 1.0, t->getDoubleAttribute ("pan", 0.0));
@@ -629,6 +629,28 @@ namespace pr7s
             if (distance (candidate) < distance (best))
                 best = candidate;
         return best;
+    }
+
+    juce::Colour FamilyColours::paletteColour (int hue, int shade)
+    {
+        // Hues 5 degrees apart: 346 (the pink) to 1 (the red) to 26 (the orange).
+        const auto degrees = std::fmod (346.0f + 5.0f * (float) juce::jlimit (0, paletteHues - 1, hue), 360.0f);
+        // Deep to pale: brightness up, saturation down.
+        static const float saturation[] = { 1.0f, 0.96f, 0.92f, 0.88f, 0.76f, 0.58f, 0.42f, 0.26f };
+        static const float brightness[] = { 0.42f, 0.56f, 0.70f, 0.84f, 0.95f, 1.0f, 1.0f, 1.0f };
+        const auto s = (size_t) juce::jlimit (0, paletteShades - 1, shade);
+        return juce::Colour::fromHSV (degrees / 360.0f, saturation[s], brightness[s], 1.0f);
+    }
+
+    bool FamilyColours::isFamily (juce::Colour colour)
+    {
+        if (colour == red || colour == pink || colour == orange)
+            return true;
+        for (int h = 0; h < paletteHues; ++h)
+            for (int s = 0; s < paletteShades; ++s)
+                if (paletteColour (h, s) == colour)
+                    return true;
+        return false;
     }
 
     double snap (double beats, double grid) noexcept

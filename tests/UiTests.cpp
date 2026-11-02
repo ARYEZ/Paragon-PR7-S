@@ -2950,3 +2950,64 @@ TEST_CASE ("0.9.12: the master's row at the top and its Inspector; the track men
     CHECK (window.keyPressed (juce::KeyPress (juce::KeyPress::spaceKey)));
     CHECK (heard == 1);
 }
+
+TEST_CASE ("The track menu tells its instruments from its outputs (0.17.3: Change instrument did nothing)", "[ui]")
+{
+    // An output: 30000 + a group's id; an instrument: from instrumentItems on.
+    STATIC_CHECK (TrackList::isOutputItem (30000 + 5));
+    STATIC_CHECK_FALSE (TrackList::isOutputItem (TrackList::instrumentItems));
+    STATIC_CHECK_FALSE (TrackList::isOutputItem (TrackList::instrumentItems + 12));
+    STATIC_CHECK_FALSE (TrackList::isOutputItem (30));
+    STATIC_CHECK_FALSE (TrackList::isOutputItem (20000 + 3));   // (link groups)
+}
+
+#include "ui/TrackColours.h"
+
+TEST_CASE ("The colour menu: only the family's colours, every tint; the selected tracks coloured; default back; saved (0.17.3)", "[ui][colour]")
+{
+    using namespace pr7s;
+    // The palette: red leads every swatch (nothing green, blue, violet or yellow), deep to pale.
+    for (int h = 0; h < FamilyColours::paletteHues; ++h)
+        for (int s = 0; s < FamilyColours::paletteShades; ++s)
+        {
+            const auto c = FamilyColours::paletteColour (h, s);
+            INFO ("hue " << h << ", shade " << s << ": " << c.toString());
+            CHECK (c.getRed() >= c.getGreen());
+            CHECK (c.getRed() >= c.getBlue());
+            const auto hue = c.getHue() * 360.0f;
+            CHECK ((hue >= 340.0f || hue <= 30.0f));   // (from the pink to the orange)
+            CHECK (FamilyColours::isFamily (c));
+            if (s > 0)
+                CHECK (c.getPerceivedBrightness() > FamilyColours::paletteColour (h, s - 1).getPerceivedBrightness());
+        }
+    CHECK (FamilyColours::isFamily (FamilyColours::orange));
+    CHECK_FALSE (FamilyColours::isFamily (juce::Colours::blue));
+
+    Studio studio (false);
+    const auto a = studio.getProject().tracks[0].id, b = studio.addTrack ({}), c = studio.addTrack ({});
+    studio.selectTrack (a);
+    studio.toggleTrackSelected (c);
+    TrackColourMenu menu (studio, studio.getSelectedTracks());
+    menu.resized();
+    const auto pale = FamilyColours::paletteColour (7, 6);
+    const auto at = menu.swatchFor (pale).getCentre();
+    REQUIRE (menu.colourAt (at) == pale);
+    menu.mouseDown (juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, {}, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                      &menu, &menu, juce::Time::getCurrentTime(), at, juce::Time::getCurrentTime(), 1, false));
+    CHECK (studio.getProject().findTrack (a)->colour == pale);
+    CHECK (studio.getProject().findTrack (c)->colour == pale);
+    CHECK (studio.getProject().findTrack (b)->colour == trackColour (1));   // (not selected)
+    // Kept when saved and opened (a tint of the family's, not mapped to the three).
+    const auto opened = Project::fromXml (*studio.getProject().toXml());
+    REQUIRE (opened.has_value());
+    CHECK (opened->findTrack (a)->colour == pale);
+    // Undo, then SET TRACK COLOUR TO DEFAULT: the automatic colour by its place.
+    studio.undo();
+    CHECK (studio.getProject().findTrack (a)->colour == trackColour (0));
+    studio.setTracksColour ({ c }, FamilyColours::paletteColour (0, 0));
+    menu.defaultKey.onClick();
+    CHECK (studio.getProject().findTrack (c)->colour == trackColour (2));
+    // Not the family's: the nearest of the three instead.
+    studio.setTracksColour ({ b }, juce::Colour (0xffff7aa8));
+    CHECK (studio.getProject().findTrack (b)->colour == FamilyColours::pink);
+}
