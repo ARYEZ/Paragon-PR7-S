@@ -1,6 +1,12 @@
 #include "ChordPadsView.h"
 
+#include "ui/ChordUi.h"
 #include "ui/ParagonLookAndFeel.h"
+
+using ChordUi::chordFont;
+using ChordUi::InterKey;
+using ChordUi::spokenKey;
+using ChordUi::signatureText;
 
 using pr7s::Chord;
 using pr7s::ChordPads;
@@ -8,8 +14,6 @@ using pr7s::ChordPads;
 namespace
 {
     juce::Font font (float height, int style = juce::Font::bold) { return juce::Font (ParagonLookAndFeel::textFont (height, style)); }
-    // Chord symbols need small letters (Bebas has none: "Dm" would read "DM"): Inter.
-    juce::Font chordFont (float height) { return juce::Font (juce::FontOptions (height, juce::Font::bold)); }
 
     const juce::Colour pearl { 0xfff4eeea };
     const juce::Colour padBody { 0xff1b171c }, padEmpty { 0xff121013 };
@@ -28,37 +32,6 @@ namespace
 
     // A MIDI note's name as the studio writes them (middle C = C3).
     juce::String keyName (int note, bool flats) { return Chord::noteName (note, flats) + juce::String (note / 12 - 2); }
-
-    // A key whose label is a note or chord name: drawn in Inter (Bebas has no small
-    // letters, and "Eb" would read "EB").
-    class InterKey final : public juce::TextButton
-    {
-    public:
-        using juce::TextButton::TextButton;
-        void paintButton (juce::Graphics& g, bool over, bool down) override
-        {
-            getLookAndFeel().drawButtonBackground (g, *this, findColour (getToggleState() ? buttonOnColourId : buttonColourId), over, down);
-            g.setColour (findColour (getToggleState() ? textColourOnId : textColourOffId).withMultipliedAlpha (isEnabled() ? 1.0f : 0.4f));
-            g.setFont (chordFont (juce::jmin (14.0f, (float) getHeight() * 0.6f)));
-            g.drawFittedText (getButtonText(), getLocalBounds().reduced (2), juce::Justification::centred, 1, 0.7f);
-        }
-    };
-
-    // A key in words, for the toolbar and its menus (Bebas has no small letters): "E-flat minor".
-    juce::String spokenKey (const pr7s::Key& key)
-    {
-        juce::String t = juce::String::charToString ((juce::juce_wchar) "CDEFGAB"[key.letter]);
-        if (key.accidental == -1) t << "-flat";
-        if (key.accidental == 1)  t << "-sharp";
-        return t + (key.minor ? " minor" : " major");
-    }
-    juce::String signatureText (const pr7s::Key& key)
-    {
-        const auto n = key.signature();
-        if (n == 0)
-            return "no sharps or flats";
-        return juce::String (std::abs (n)) + (n > 0 ? (std::abs (n) == 1 ? " sharp" : " sharps") : (std::abs (n) == 1 ? " flat" : " flats"));
-    }
 
     // A small padlock, for a locked pad.
     void drawLock (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour colour)
@@ -440,11 +413,11 @@ ChordPadsView::ChordPadsView (pr7s::Studio& s) : studio (s)
         styleKey (*key, true);
     for (auto* key : { &previousPreset, &nextPreset, &saveKey, &editorKey, &circleKey, &windowKey, &closeKey, &selectAllKey, &editKey, &fromMidiKey,
                        &removeKey, &transposeDown, &transposeUp, &tensionsDown, &tensionsUp, &voicingPrevious, &voicingNext, &lockKey,
-                       &adaptiveKey, &referenceKey })
+                       &adaptiveKey, &referenceKey, &fromChordTrackKey })
         styleKey (*key);
     for (auto* key : { &rootKey, &presetsKey, &previousPreset, &nextPreset, &saveKey, &playerKey, &modeKey, &displayKey, &remoteKey, &editorKey, &circleKey,
                        &windowKey, &closeKey, &selectAllKey, &editKey, &fromMidiKey, &removeKey, &transposeDown, &transposeUp, &tensionsDown,
-                       &tensionsUp, &voicingPrevious, &voicingNext, &lockKey, &adaptiveKey, &referenceKey })
+                       &tensionsUp, &voicingPrevious, &voicingNext, &lockKey, &adaptiveKey, &referenceKey, &fromChordTrackKey })
         addAndMakeVisible (*key);
 
     rootKey.setTooltip ("The key: every major and minor key. Choosing one fills the pads with its chords, spelled as the key spells them "
@@ -510,6 +483,20 @@ ChordPadsView::ChordPadsView (pr7s::Studio& s) : studio (s)
         if (selected.empty())
             return;
         studio.setPadsAdaptive (selected, ! studio.getChordPads().pads[(size_t) selected.front()].adaptive);
+    };
+    fromChordTrackKey.setTooltip ("Assign from Chord Track: the chord track's chords, each once, onto the pads in order (they replace the pads' chords)");
+    fromChordTrackKey.onClick = [this]
+    {
+        if (studio.getChordTrack().events.empty())
+            return;
+        juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon, "Assign from Chord Track",
+                                            "The chord track's chords onto the pads, each once, in order. The pads' chords are replaced (locked ones kept).",
+                                            "Assign", "Cancel", nullptr,
+                                            juce::ModalCallbackFunction::create ([safe = juce::Component::SafePointer<ChordPadsView> (this)] (int result)
+                                            {
+                                                if (safe != nullptr && result == 1)
+                                                    safe->studio.assignPadsFromChordTrack();
+                                            }));
     };
     referenceKey.setTooltip ("Adaptive voicing reference: the other pads' voicings stay near this pad's (one pad at a time)");
     referenceKey.onClick = [this]
@@ -648,6 +635,7 @@ void ChordPadsView::refresh()
     for (auto* key : { &editKey, &fromMidiKey, &removeKey, &transposeDown, &transposeUp, &tensionsDown, &tensionsUp, &voicingPrevious,
                        &voicingNext, &lockKey, &adaptiveKey, &referenceKey })
         key->setEnabled (! selected.empty() || key == &fromMidiKey);
+    fromChordTrackKey.setEnabled (! studio.getChordTrack().events.empty());
     if (editor != nullptr)
         editor->refresh (first != nullptr ? first->chord : std::nullopt, pads.key(), first != nullptr && ! first->locked);
     repaint();
@@ -1317,7 +1305,8 @@ void ChordPadsView::resized()
     placeE (voicingNext, 28, 10);
     placeE (lockKey, 56);
     placeE (adaptiveKey, 84);
-    placeE (referenceKey, 90);
+    placeE (referenceKey, 90, 10);
+    placeE (fromChordTrackKey, 132);
 }
 
 //==============================================================================

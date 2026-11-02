@@ -2,6 +2,45 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.16.0
+
+**The chord track** (your choice after the circle of fifths; the manual's "Chord Functions"). It's a lane under the tempo track (Add Track > Chord track) holding your song's chords as a lead sheet does: each chord until the next one starts.
+
+**On the lane:**
+- **Each chord is a block** with its name and its numeral, both in the scale in force there. A chord from outside the key has its numeral in pink.
+- **The scales sit in a strip underneath:** the key in force from each point on.
+- **Adding a chord:** **double-click** an empty spot (or click with the DRAW tool, or Alt-click). It adds **the chord the one before suggests**, the best of the scored suggestions (the key's I if nothing comes before). Right-click an empty spot for "Add <the suggestion> Here" or any chord of the key.
+- **Editing:**
+  - Click a chord to select it and hear it (Shift adds more).
+  - Drag to move (snapped; the selected ones together).
+  - Delete removes it; the ERASE tool removes one.
+  - Undo works for all of it.
+- **The editor box (double-click a chord):**
+  - its root, type, tension and bass, spelled in the key, each choice heard;
+  - **after the chord before:** its six best suggestions with their scores, one click to take one;
+  - DELETE.
+  - Right-click a chord for **Replace with a Suggestion** and the rest.
+- **Drop a chord pad** (or a chord from the circle of fifths) onto the lane: it lands at the bar.
+
+**The scales follow the chords:**
+- The key changes only when a chord no longer fits the key in force. G7 before E♭ is still C major's V7. Then the new key is the one holding that chord and the most of what follows.
+- Right-click the strip to set the scale from a point on yourself. From then on the scales stay as you set them, until "Scales Follow the Chords" is turned back on (also AUTO SCALES on the chord track's row).
+
+**To and from MIDI, and the pads:**
+- **Chords to MIDI:** TO MIDI on the row, or the menus. All the chords (or the selected ones) become a MIDI part on the selected instrument track (or a new one if that's an audio track). Each chord lasts until the next, voiced so the voices move the least, as the pads do.
+- **MIDI to chords:** right-click a MIDI part, "Create Chord Events". The chords it plays are written onto the chord track, replacing those over its span.
+  - It listens beat by beat, weighing each note by how long and loud it sounds, and prefers plain chords. A passing note doesn't turn C into Cadd9; C with E in the bass reads C/E; a broken-chord (arpeggio) part still reads its chord. The tests check all three.
+- **Assign from Chord Track:** TO PADS on the row, or FROM CHORD TRACK on the pads. The chord track's chords, each once, go onto the pads in order, and the pads take its key. It asks first, because the pads' chords are replaced (locked ones kept), as the manual warns.
+- The chord row shows the chord and key at the playhead.
+
+**Saved with the song.**
+
+**Not yet:**
+- **Follow Chord Track:** tracks whose notes follow the chords (root notes for bass, chords, scales). This is its own release.
+- Recording onto the chord track from the pads; step input.
+- **Chords from audio:** not promised; it's hard to make reliable.
+- The scales are worked out from chords, not from what's played.
+
 ## 0.15.0
 
 **Chords you can trust, in a real key** (you asked: the chords must be accurate, mostly plain major and minor; pick a key like E-flat minor or A major and get all its chords and voicings; the circle of fifths suggesting what comes next, scored).

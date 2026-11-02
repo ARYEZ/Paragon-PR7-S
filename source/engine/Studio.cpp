@@ -246,6 +246,7 @@ namespace pr7s
         project.tempoTrackOn = state.tempoTrackOn;
         project.tempoEvents = state.tempoEvents;
         project.tempoTrackShown = state.tempoTrackShown;
+        project.chordTrack = state.chordTrack;   // (0.16.0: its chords and scales are undo steps)
         project.numerator = state.numerator;
         project.denominator = state.denominator;
         project.loopOn = state.loopOn;
@@ -4917,6 +4918,223 @@ namespace pr7s
         p.voicing = juce::jlimit (0, getPadVoicingCount (pad) - 1, voicing);
         p.adaptive = false;
         p.notes.clear();
+        setChordPads (pads);
+    }
+
+    //==========================================================================
+    // The chord track (0.16.0).
+    void Studio::chordTrackChanged()
+    {
+        project.chordTrack.sort();
+        if (project.chordTrack.autoScales)
+            project.chordTrack.scales = project.chordTrack.events.empty() ? std::vector<ScaleEvent> {}
+                                      : scalesFromChords (project.chordTrack.events, project.chordPads.key());
+        changed();
+    }
+
+    void Studio::addChordTrack()
+    {
+        if (project.chordTrack.shown)
+            return;
+        project.chordTrack.shown = true;
+        changed();
+    }
+
+    void Studio::removeChordTrack()
+    {
+        if (! project.chordTrack.shown)
+            return;
+        project.chordTrack.shown = false;
+        changed();
+    }
+
+    int Studio::addChordEvent (double beat, const Chord& chord)
+    {
+        beat = juce::jmax (0.0, beat);
+        project.chordTrack.shown = true;
+        auto& events = project.chordTrack.events;
+        events.erase (std::remove_if (events.begin(), events.end(), [beat] (const ChordEvent& e) { return std::abs (e.beat - beat) < 1.0e-6; }),
+                      events.end());
+        events.push_back ({ beat, chord });
+        chordTrackChanged();
+        for (int i = 0; i < (int) events.size(); ++i)
+            if (std::abs (events[(size_t) i].beat - beat) < 1.0e-6)
+                return i;
+        return -1;
+    }
+
+    void Studio::setChordEvents (std::vector<ChordEvent> events)
+    {
+        for (auto& e : events)
+            e.beat = juce::jmax (0.0, e.beat);
+        // (Two at one beat: the later in the list wins.)
+        std::vector<ChordEvent> kept;
+        for (auto it = events.rbegin(); it != events.rend(); ++it)
+            if (std::none_of (kept.begin(), kept.end(), [&it] (const ChordEvent& k) { return std::abs (k.beat - it->beat) < 1.0e-6; }))
+                kept.push_back (*it);
+        if (kept == project.chordTrack.events)
+            return;
+        project.chordTrack.events = std::move (kept);
+        chordTrackChanged();
+    }
+
+    void Studio::setChordEventChord (int index, const Chord& chord)
+    {
+        if (! juce::isPositiveAndBelow (index, (int) project.chordTrack.events.size()) || project.chordTrack.events[(size_t) index].chord == chord)
+            return;
+        project.chordTrack.events[(size_t) index].chord = chord;
+        chordTrackChanged();
+    }
+
+    void Studio::removeChordEvents (std::vector<int> indices)
+    {
+        std::sort (indices.rbegin(), indices.rend());
+        indices.erase (std::unique (indices.begin(), indices.end()), indices.end());
+        auto& events = project.chordTrack.events;
+        auto any = false;
+        for (const auto i : indices)
+            if (juce::isPositiveAndBelow (i, (int) events.size()))
+            {
+                events.erase (events.begin() + i);
+                any = true;
+            }
+        if (any)
+            chordTrackChanged();
+    }
+
+    void Studio::setScaleEvents (std::vector<ScaleEvent> scales)
+    {
+        project.chordTrack.scales = std::move (scales);
+        project.chordTrack.autoScales = false;
+        chordTrackChanged();
+    }
+
+    void Studio::setAutoScales (bool on)
+    {
+        if (project.chordTrack.autoScales == on)
+            return;
+        project.chordTrack.autoScales = on;
+        chordTrackChanged();
+    }
+
+    Key Studio::chordTrackKeyAt (double beat) const
+    {
+        return project.chordTrack.keyAt (beat, project.chordPads.key());
+    }
+
+    Chord Studio::suggestChordAt (double beat) const
+    {
+        const auto key = chordTrackKeyAt (beat);
+        const auto before = project.chordTrack.indexAt (beat - 1.0e-6);
+        if (before >= 0)
+        {
+            const auto next = suggestNext (project.chordTrack.events[(size_t) before].chord, key);
+            if (! next.empty())
+                return next.front().chord;
+        }
+        return keyChords (key).front();   // the key's I (or i)
+    }
+
+    int Studio::chordsToMidi (int trackId, std::vector<int> indices)
+    {
+        const auto& track = project.chordTrack;
+        if (track.events.empty())
+            return 0;
+        if (indices.empty())
+            for (int i = 0; i < (int) track.events.size(); ++i)
+                indices.push_back (i);
+        std::sort (indices.begin(), indices.end());
+        indices.erase (std::remove_if (indices.begin(), indices.end(), [&track] (int i) { return ! juce::isPositiveAndBelow (i, (int) track.events.size()); }),
+                       indices.end());
+        if (indices.empty())
+            return 0;
+        // Onto an instrument track (that one, or a new one).
+        const auto* target = project.findTrack (trackId);
+        if (target == nullptr || target->isAudio() || target->isChannel() || target->frozen || target->disabled)
+            trackId = addTrack ({});
+        if (project.findTrack (trackId) == nullptr)
+            return 0;
+        const auto bar = project.beatsPerBar();
+        const auto first = track.events[(size_t) indices.front()].beat;
+        const auto start = std::floor (first / bar + 1.0e-9) * bar;
+        Part part;
+        part.start = start;
+        part.name = "Chords";
+        std::vector<int> previous;
+        auto end = start;
+        for (const auto i : indices)
+        {
+            const auto& e = track.events[(size_t) i];
+            const auto until = track.endOf (i, bar);
+            // Voiced as the pads would: the close voicing that moves least from the chord before.
+            std::vector<std::vector<int>> close;
+            for (const auto& v : namedVoicings (e.chord, 48 + 12 * project.chordPads.octaveOffset))
+                if (v.close)
+                    close.push_back (v.notes);
+            if (close.empty())
+                continue;
+            const auto notes = close[(size_t) closestVoicing (close, previous, {})];
+            for (const auto n : notes)
+                part.notes.push_back ({ e.beat - start, until - e.beat, n, 100.0f / 127.0f });
+            previous = notes;
+            end = juce::jmax (end, until);
+        }
+        part.length = juce::jmax (bar, std::ceil ((end - start) / bar - 1.0e-9) * bar);
+        addPart (trackId, part);
+        const auto* now = project.findTrack (trackId);
+        return now != nullptr && ! now->parts.empty() ? now->parts.back().id : 0;
+    }
+
+    int Studio::chordsFromParts (const std::vector<int>& partIds, double step)
+    {
+        std::vector<HeardNote> notes;
+        auto from = std::numeric_limits<double>::max(), to = 0.0;
+        for (const auto id : partIds)
+            if (const auto at = findPart (id))
+            {
+                const auto& part = project.findTrack (at->first)->parts[(size_t) at->second];
+                if (part.isAudio())
+                    continue;
+                from = juce::jmin (from, part.start);
+                to = juce::jmax (to, part.end());
+                for (const auto& n : part.notes)
+                    if (n.start < part.length)
+                        notes.push_back ({ part.start + n.start, part.start + juce::jmin (n.start + n.length, part.length), n.pitch, n.velocity });
+            }
+        if (notes.empty())
+            return 0;
+        const auto found = chordsFromNotes (notes, from, to, step);
+        // Those over the parts' span replaced; the rest kept.
+        auto events = project.chordTrack.events;
+        events.erase (std::remove_if (events.begin(), events.end(), [from, to] (const ChordEvent& e) { return e.beat >= from - 1.0e-9 && e.beat < to - 1.0e-9; }),
+                      events.end());
+        for (const auto& e : found)
+            events.push_back (e);
+        project.chordTrack.events = std::move (events);
+        project.chordTrack.shown = true;
+        chordTrackChanged();
+        return (int) found.size();
+    }
+
+    void Studio::assignPadsFromChordTrack()
+    {
+        // In the chord track's order, each chord once; pads beyond them left without (locked ones kept).
+        std::vector<Chord> chords;
+        for (const auto& e : project.chordTrack.events)
+            if (std::find (chords.begin(), chords.end(), e.chord) == chords.end())
+                chords.push_back (e.chord);
+        auto pads = project.chordPads;
+        size_t next = 0;
+        for (auto& pad : pads.pads)
+        {
+            if (pad.locked)
+                continue;
+            pad = {};
+            if (next < chords.size())
+                pad.chord = chords[next++];
+        }
+        if (! project.chordTrack.scales.empty())
+            pads.setKey (project.chordTrack.scales.front().key);
         setChordPads (pads);
     }
 }

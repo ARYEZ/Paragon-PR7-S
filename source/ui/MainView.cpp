@@ -828,6 +828,8 @@ bool MainView::handleKey (const juce::KeyPress& key)
     {
         if (arrange.hasSelectedTempoEvents())
             arrange.deleteSelectedTempoEvents();
+        else if (arrange.hasSelectedChordEvents())
+            arrange.deleteSelectedChordEvents();
         else
             arrange.hasSelectedPoints() ? arrange.deleteSelectedPoints() : arrange.deleteSelected();
         return true;

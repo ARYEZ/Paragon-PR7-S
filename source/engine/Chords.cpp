@@ -1,5 +1,6 @@
 #include "Chords.h"
 
+#include <array>
 #include <cmath>
 #include <map>
 #include <set>
@@ -873,6 +874,195 @@ namespace pr7s
     }
 
     //==========================================================================
+    //==========================================================================
+    // The chord track (0.16.0).
+    int ChordTrack::indexAt (double beat) const noexcept
+    {
+        auto found = -1;
+        for (int i = 0; i < (int) events.size(); ++i)
+            if (events[(size_t) i].beat <= beat + 1.0e-9)
+                found = i;
+        return found;
+    }
+
+    double ChordTrack::endOf (int index, double lastLength) const
+    {
+        if (! juce::isPositiveAndBelow (index, (int) events.size()))
+            return 0.0;
+        return index + 1 < (int) events.size() ? events[(size_t) index + 1].beat : events[(size_t) index].beat + lastLength;
+    }
+
+    Key ChordTrack::keyAt (double beat, const Key& fallback) const
+    {
+        auto key = fallback;
+        for (const auto& s : scales)
+            if (s.beat <= beat + 1.0e-9)
+                key = s.key;
+        return key;
+    }
+
+    void ChordTrack::sort()
+    {
+        std::stable_sort (events.begin(), events.end(), [] (const ChordEvent& a, const ChordEvent& b) { return a.beat < b.beat; });
+        std::stable_sort (scales.begin(), scales.end(), [] (const ScaleEvent& a, const ScaleEvent& b) { return a.beat < b.beat; });
+    }
+
+    std::unique_ptr<juce::XmlElement> ChordTrack::toXml() const
+    {
+        auto xml = std::make_unique<juce::XmlElement> ("ChordTrack");
+        xml->setAttribute ("shown", shown);
+        xml->setAttribute ("autoScales", autoScales);
+        for (const auto& e : events)
+        {
+            auto* x = xml->createNewChildElement ("Chord");
+            x->setAttribute ("beat", e.beat);
+            x->setAttribute ("chord", e.chord.toText());
+        }
+        for (const auto& sc : scales)
+        {
+            auto* x = xml->createNewChildElement ("Scale");
+            x->setAttribute ("beat", sc.beat);
+            x->setAttribute ("letter", sc.key.letter);
+            x->setAttribute ("accidental", sc.key.accidental);
+            x->setAttribute ("minor", sc.key.minor);
+        }
+        return xml;
+    }
+
+    ChordTrack ChordTrack::fromXml (const juce::XmlElement& xml)
+    {
+        ChordTrack t;
+        t.shown = xml.getBoolAttribute ("shown", false);
+        t.autoScales = xml.getBoolAttribute ("autoScales", true);
+        for (const auto* x : xml.getChildWithTagNameIterator ("Chord"))
+            if (const auto chord = Chord::fromText (x->getStringAttribute ("chord")))
+                t.events.push_back ({ juce::jmax (0.0, x->getDoubleAttribute ("beat")), *chord });
+        for (const auto* x : xml.getChildWithTagNameIterator ("Scale"))
+            t.scales.push_back ({ juce::jmax (0.0, x->getDoubleAttribute ("beat")),
+                                  Key { juce::jlimit (0, 6, x->getIntAttribute ("letter")), juce::jlimit (-1, 1, x->getIntAttribute ("accidental")),
+                                        x->getBoolAttribute ("minor") } });
+        t.sort();
+        return t;
+    }
+
+    std::vector<ScaleEvent> scalesFromChords (const std::vector<ChordEvent>& events, const Key& start)
+    {
+        // The 24 usual keys (each pitch class's usual spelling, major and minor).
+        std::vector<Key> keys;
+        for (int p = 0; p < 12; ++p)
+            for (const auto minor : { false, true })
+                keys.push_back (Key::fromPitchClass (p, minor, start.signature() < 0));
+        std::vector<ScaleEvent> result;
+        auto current = start;
+        for (size_t i = 0; i < events.size(); ++i)
+        {
+            // How well a key holds this chord and the next three (this one counts double;
+            // its tonic chord a little more), and the key already in force a little more again.
+            const auto fit = [&] (const Key& k)
+            {
+                double score = 0.0;
+                for (size_t j = i; j < events.size() && j < i + 4; ++j)
+                    score += events[j].chord.isInKey (k) ? (j == i ? 2.0 : 1.0) : 0.0;
+                if (events[i].chord.root == k.pitchClass() && (events[i].chord.type == Chord::Type::minor) == k.minor)
+                    score += 0.3;
+                if (k == current)
+                    score += 0.6;
+                return score;
+            };
+            // The key changes only when a chord no longer fits it (G7 before Eb is still
+            // C major's V7); then to the key that holds it and the most of what follows.
+            auto best = current;
+            if (! events[i].chord.isInKey (current) || i == 0)
+            {
+                auto bestScore = i == 0 && events[i].chord.isInKey (current) ? fit (current) : -1.0;
+                for (const auto& k : keys)
+                    if (events[i].chord.isInKey (k))
+                        if (const auto f = fit (k); f > bestScore + 1.0e-9)
+                        {
+                            best = k;
+                            bestScore = f;
+                        }
+            }
+            if (i == 0 || best != current)
+                result.push_back ({ i == 0 ? 0.0 : events[i].beat, best });
+            current = best;
+        }
+        if (result.empty())
+            result.push_back ({ 0.0, start });
+        return result;
+    }
+
+    std::vector<ChordEvent> chordsFromNotes (const std::vector<HeardNote>& notes, double from, double to, double step)
+    {
+        std::vector<ChordEvent> result;
+        step = juce::jmax (0.125, step);
+        // The chords tried: plain ones first (fewer tensions win ties), as heard.
+        using T = Chord::Type;
+        using X = Chord::Tension;
+        const std::vector<std::pair<T, X>> shapes {
+            { T::major, X::none }, { T::minor, X::none }, { T::diminished, X::none }, { T::augmented, X::none },
+            { T::sus4, X::none }, { T::sus2, X::none }, { T::major, X::seven }, { T::major, X::maj7 }, { T::minor, X::seven },
+            { T::minor, X::maj7 }, { T::diminished, X::seven }, { T::diminished, X::dim7 }, { T::major, X::six }, { T::minor, X::six },
+            { T::sus4, X::seven }, { T::major, X::add9 }, { T::major, X::nine }, { T::minor, X::nine } };
+        for (auto t = from; t < to - 1.0e-9; t += step)
+        {
+            const auto end = juce::jmin (to, t + step);
+            std::array<double, 12> weight {};
+            auto lowest = 128;
+            auto total = 0.0;
+            for (const auto& n : notes)
+            {
+                const auto overlap = juce::jmin (end, n.end) - juce::jmax (t, n.start);
+                if (overlap <= 1.0e-9)
+                    continue;
+                const auto w = overlap * (0.4 + 0.6 * n.velocity);
+                weight[(size_t) pc (n.pitch)] += w;
+                total += w;
+                if (overlap >= (end - t) * 0.25)
+                    lowest = juce::jmin (lowest, n.pitch);
+            }
+            if (total <= 1.0e-9)
+                continue;   // (silence: the chord before goes on)
+            const auto heaviest = *std::max_element (weight.begin(), weight.end());
+            std::optional<Chord> best;
+            auto bestScore = 0.0;
+            for (int root = 0; root < 12; ++root)
+                for (size_t sh = 0; sh < shapes.size(); ++sh)
+                {
+                    const Chord c { root, shapes[sh].first, shapes[sh].second, -1 };
+                    const auto classes = c.pitchClasses();
+                    double in = 0.0;
+                    auto missing = 0;
+                    for (const auto p : classes)
+                    {
+                        in += weight[(size_t) p];
+                        missing += weight[(size_t) p] < heaviest * 0.05 ? 1 : 0;
+                    }
+                    if ((int) classes.size() - missing < 2 || weight[(size_t) root] < heaviest * 0.05)
+                        continue;   // (its root heard, and at least two of its notes)
+                    auto score = in - 1.3 * (total - in) - 0.35 * heaviest * missing - 0.04 * heaviest * (double) sh;
+                    if (lowest < 128 && pc (lowest) == root)
+                        score += 0.15 * heaviest;   // (the bass on the root: the likeliest reading)
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        best = c;
+                    }
+                }
+            if (! best)
+                continue;
+            if (lowest < 128 && pc (lowest) != best->root)
+            {
+                const auto classes = best->pitchClasses();
+                if (std::find (classes.begin(), classes.end(), pc (lowest)) != classes.end())
+                    best->bass = pc (lowest);   // an inversion: C/E
+            }
+            if (result.empty() || result.back().chord != *best)
+                result.push_back ({ t, *best });
+        }
+        return result;
+    }
+
     Key ChordPads::key() const
     {
         if (keyLetter >= 0)

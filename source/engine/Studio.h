@@ -178,6 +178,28 @@ namespace pr7s
         bool loadChordPadsPreset (const juce::File&, PadsPresetLoad = PadsPresetLoad::chordsAndPlayers);
         static juce::File chordPadsPresetFolder();      // Documents/Paragon PR7-S/Chord Pads
 
+        // The chord track (0.16.0, the manual's "Chord Functions"). Its chords and
+        // scales are undo steps; its scales follow the chords until one is set by hand.
+        const ChordTrack& getChordTrack() const noexcept { return project.chordTrack; }
+        void addChordTrack();
+        void removeChordTrack();                          // hidden; its chords kept
+        int addChordEvent (double beat, const Chord&);    // its index (one at that beat replaced)
+        void setChordEvents (std::vector<ChordEvent>);    // (a drag: one undo step)
+        void setChordEventChord (int index, const Chord&);
+        void removeChordEvents (std::vector<int> indices);
+        void setScaleEvents (std::vector<ScaleEvent>);    // by hand: the scales stop following the chords
+        void setAutoScales (bool);
+        Key chordTrackKeyAt (double beat) const;          // the scale in force (else the pads' key)
+        // A new chord at `beat`: the best that could follow the chord before (else the key's I).
+        Chord suggestChordAt (double beat) const;
+        // The chords (or those at these indices) as a MIDI part, voiced with the least
+        // movement: onto that track, or a new instrument track (0); the part's id.
+        int chordsToMidi (int trackId, std::vector<int> indices = {});
+        // The chords heard in these parts onto the chord track (replacing those over their span).
+        int chordsFromParts (const std::vector<int>& partIds, double step = 1.0);
+        // The manual's Assign from Chord Track: its chords, each once, onto the pads in order.
+        void assignPadsFromChordTrack();
+
         // Freeze (0.9.8, the manual's Freeze Channel): the track's instrument and
         // inserts (not its fader, pan or sends) rendered from the song's start to
         // its last part's end plus `tailSeconds`, into "<audio folder>/Freeze";
@@ -626,6 +648,7 @@ namespace pr7s
         std::vector<int> assignTargets;
         std::vector<int> assignHeld, assignNotes;
         void padsChanged();
+        void chordTrackChanged();
         std::vector<int> unlocked (const std::vector<int>& pads) const;
         void changed (bool undoable = true);
         void numberParts();   // an id for every part that hasn't one

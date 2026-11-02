@@ -112,7 +112,8 @@ private:
                      editorKey { "EDITOR" }, circleKey { "CIRCLE OF 5THS" }, windowKey { "WINDOW" }, closeKey { "CLOSE" };
     juce::TextButton selectAllKey { "SELECT ALL" }, editKey { "EDIT CHORD" }, fromMidiKey { "FROM MIDI" }, removeKey { "REMOVE" },
                      transposeDown { "TRANSPOSE -" }, transposeUp { "+" }, tensionsDown { "TENSIONS -" }, tensionsUp { "+" },
-                     voicingPrevious { "VOICING <" }, voicingNext { ">" }, lockKey { "LOCK" }, adaptiveKey { "ADAPTIVE" }, referenceKey { "REFERENCE" };
+                     voicingPrevious { "VOICING <" }, voicingNext { ">" }, lockKey { "LOCK" }, adaptiveKey { "ADAPTIVE" }, referenceKey { "REFERENCE" },
+                     fromChordTrackKey { "FROM CHORD TRACK" };
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;

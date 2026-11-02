@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonPR7S VERSION 0.15.0 LANGUAGES C CXX)
+project(ParagonPR7S VERSION 0.16.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -71,6 +71,7 @@ add_library(PR7SCore STATIC
     source/ui/ProgressBox.cpp
     source/ui/Hub.cpp
     source/ui/ChordPadsView.cpp
+    source/ui/ChordEventEditor.cpp
     source/ui/TempoEditor.cpp
     source/ui/Windows.cpp)
 

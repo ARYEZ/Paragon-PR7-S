@@ -80,6 +80,7 @@ private:
     class LaneRow;
     class MasterRow;
     class TempoRow;
+    class ChordRow;
     class Arrow;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
@@ -92,6 +93,7 @@ private:
     std::vector<std::unique_ptr<LaneRow>> laneRows;
     std::unique_ptr<MasterRow> masterRow;
     std::unique_ptr<TempoRow> tempoRow;   // the tempo track's (0.10.0), while it's added
+    std::unique_ptr<ChordRow> chordRow;   // the chord track's (0.16.0), while it's shown
     std::vector<Timeline::Row> lastLayout;
     int dropIndex = -1, dropY = -1;   // a drag of tracks: where they'd go
     std::vector<int> tracksToMove (int trackId) const;

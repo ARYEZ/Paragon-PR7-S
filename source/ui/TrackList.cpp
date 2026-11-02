@@ -1,4 +1,5 @@
 #include "TrackList.h"
+#include "ui/ChordUi.h"
 
 #include "ui/AutomationKeys.h"
 #include "ui/LevelMeter.h"
@@ -571,6 +572,128 @@ public:
 };
 
 //==============================================================================
+// The chord track's row (0.16.0): its name, the key at the playhead, TO PADS
+// (the manual's Assign from Chord Track), TO MIDI (its chords as a part on the
+// selected track), AUTO SCALES (the scales follow the chords).
+class TrackList::ChordRow final : public juce::Component,
+                                  public juce::SettableTooltipClient,
+                                  private juce::Timer
+{
+public:
+    explicit ChordRow (TrackList& ownerList) : owner (ownerList)
+    {
+        for (auto* key : { &toPads, &toMidi, &autoScales })
+        {
+            key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+            key->setWantsKeyboardFocus (false);
+            addAndMakeVisible (*key);
+        }
+        autoScales.setClickingTogglesState (false);
+        toPads.setTooltip ("Assign from Chord Track: its chords, each once, onto the chord pads in order (they replace the pads' chords)");
+        toMidi.setTooltip ("Chords to MIDI: all its chords as a MIDI part on the selected instrument track (or a new one), voiced to move least");
+        autoScales.setTooltip ("The scales (the strip under the chords) follow the chords; off once one is set by hand (right-click the strip)");
+        toPads.onClick = [this]
+        {
+            juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon, "Assign from Chord Track",
+                                                "The chord track's chords onto the pads, each once, in order. The pads' chords are replaced (locked ones kept).",
+                                                "Assign", "Cancel", nullptr,
+                                                juce::ModalCallbackFunction::create ([safe = juce::Component::SafePointer<ChordRow> (this)] (int result)
+                                                {
+                                                    if (safe != nullptr && result == 1)
+                                                        safe->owner.studio.assignPadsFromChordTrack();
+                                                }));
+        };
+        toMidi.onClick = [this] { owner.studio.chordsToMidi (owner.studio.getSelectedTrack()); };
+        autoScales.onClick = [this] { owner.studio.setAutoScales (! owner.studio.getChordTrack().autoScales); };
+        setTooltip ("The chord track: double-click its lane to add a chord, right-click for its menu");
+        refresh();
+        startTimerHz (10);
+    }
+
+    void refresh()
+    {
+        autoScales.setToggleState (owner.studio.getChordTrack().autoScales, juce::dontSendNotification);
+        toPads.setEnabled (! owner.studio.getChordTrack().events.empty());
+        toMidi.setEnabled (! owner.studio.getChordTrack().events.empty());
+        timerCallback();   // (the chord and key at the playhead, at once)
+        repaint();
+    }
+
+    void timerCallback() override
+    {
+        // The chord and key at the playhead, redrawn only when they change.
+        const auto beat = owner.studio.getEngine().getPosition();
+        const auto& track = owner.studio.getChordTrack();
+        const auto index = track.indexAt (beat);
+        const auto key = owner.studio.chordTrackKeyAt (beat);
+        const auto text = (index >= 0 ? track.events[(size_t) index].chord.name (key) + "   " : juce::String()) + ChordUi::spokenKey (key);
+        if (text != shown)
+        {
+            shown = text;
+            repaint (nowArea.toNearestInt().expanded (2));
+        }
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto bounds = getLocalBounds().toFloat();
+        g.setColour (juce::Colour (0xff140f14));
+        g.fillRect (bounds);
+        g.setColour (juce::Colour (0xff050405));
+        g.fillRect (bounds.withY (bounds.getBottom() - 1.0f).withHeight (1.0f));
+        g.setColour (pr7s::FamilyColours::pink);
+        g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
+        g.setColour (ParagonColours::text);
+        g.setFont (ParagonLookAndFeel::titleFont (13.0f));
+        g.drawText ("CHORDS", nameArea, juce::Justification::centredLeft, false);
+        g.setColour (ParagonColours::textDim);
+        g.setFont (ChordUi::chordFont (12.0f));
+        g.drawText (shown, nowArea, juce::Justification::centredLeft, true);
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().withTrimmedLeft (24).reduced (0, 4);
+        auto top = area.removeFromTop (juce::jmin (24, area.getHeight() / 2));
+        nameArea = top.removeFromLeft (70).toFloat();
+        top.removeFromRight (6);
+        autoScales.setBounds (top.removeFromRight (78));
+        top.removeFromRight (3);
+        toMidi.setBounds (top.removeFromRight (60));
+        top.removeFromRight (3);
+        toPads.setBounds (top.removeFromRight (60));
+        nowArea = area.removeFromTop (juce::jmin (22, area.getHeight())).toFloat();
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (! e.mods.isPopupMenu())
+            return;
+        juce::PopupMenu menu;
+        menu.addItem (1, "Chords to MIDI (onto the selected track)", ! owner.studio.getChordTrack().events.empty());
+        menu.addItem (2, "Assign the Chords to the Pads", ! owner.studio.getChordTrack().events.empty());
+        menu.addItem (3, "Scales Follow the Chords", true, owner.studio.getChordTrack().autoScales);
+        menu.addSeparator();
+        menu.addItem (4, "Remove the Chord Track (its chords kept)");
+        menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ChordRow> (this)] (int chosen)
+        {
+            if (safe == nullptr)
+                return;
+            auto& studio = safe->owner.studio;
+            if (chosen == 1) studio.chordsToMidi (studio.getSelectedTrack());
+            if (chosen == 2) studio.assignPadsFromChordTrack();
+            if (chosen == 3) studio.setAutoScales (! studio.getChordTrack().autoScales);
+            if (chosen == 4) studio.removeChordTrack();
+        });
+    }
+
+    TrackList& owner;
+    juce::TextButton toPads { "TO PADS" }, toMidi { "TO MIDI" }, autoScales { "AUTO SCALES" };
+    juce::Rectangle<float> nameArea, nowArea;
+    juce::String shown;
+};
+
+//==============================================================================
 TrackList::TrackList (pr7s::Studio& studioToUse, Timeline& timelineToUse)
     : studio (studioToUse), timeline (timelineToUse)
 {
@@ -671,6 +794,15 @@ void TrackList::rebuild()
         tempoRow = nullptr;
     if (tempoRow != nullptr)
         tempoRow->refresh();
+    if (studio.getChordTrack().shown && chordRow == nullptr)
+    {
+        chordRow = std::make_unique<ChordRow> (*this);
+        addAndMakeVisible (*chordRow);
+    }
+    else if (! studio.getChordTrack().shown)
+        chordRow = nullptr;
+    if (chordRow != nullptr)
+        chordRow->refresh();
     resized();
     repaint();
 }
@@ -708,6 +840,11 @@ void TrackList::placeRows()
         {
             if (tempoRow != nullptr)
                 tempoRow->setBounds (bounds);
+        }
+        else if (row.kind == Timeline::Row::Kind::chords)
+        {
+            if (chordRow != nullptr)
+                chordRow->setBounds (bounds);
         }
         else if (masterRow != nullptr)
         {
@@ -768,6 +905,7 @@ juce::PopupMenu TrackList::makeAddTrackMenu (int offset)
     menu.addItem (offset + 6, "Group channel (a submix: route tracks to it)");
     menu.addSectionHeader ("ADD THE TEMPO TRACK");
     menu.addItem (offset + 8, "Tempo track (tempo changes: steps and ramps)", ! studio.getProject().tempoTrackShown);
+    menu.addItem (offset + 9, "Chord track (the song's chords and scales)", ! studio.getChordTrack().shown);
     menu.addSeparator();
     menu.addItem (offset + 7, "Track from a preset...");
     menu.addSeparator();
@@ -785,6 +923,10 @@ bool TrackList::addTrackChosen (int chosen)
         if (chosen == 8)
         {
             studio.addTempoTrack();
+        }
+        else if (chosen == 9)
+        {
+            studio.addChordTrack();
         }
         else if (chosen == 7)
         {

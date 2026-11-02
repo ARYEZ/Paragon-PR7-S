@@ -200,6 +200,7 @@ namespace pr7s
         NewTempoType newTempoType = NewTempoType::ramp;   // the Type of New Tempo Points
         double tempoViewLow = 60.0, tempoViewHigh = 180.0;   // the curve's shown range (Visible Tempo Lower/Upper Limit)
         ChordPads chordPads = ChordPads::defaults();         // the chord pads (0.14.0): kept with the song, as the manual's
+        ChordTrack chordTrack;                                // the chord track (0.16.0)
         int numerator = 4, denominator = 4;   // the time signature
         bool loopOn = false;                  // CYCLE
         double loopStart = 0.0, loopEnd = 16.0;

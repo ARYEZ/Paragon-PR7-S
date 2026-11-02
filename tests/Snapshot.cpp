@@ -165,6 +165,18 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
                     ids.push_back (part.id);
         view.getArrangeView().selectParts (ids);
     }
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_CHORDS", {}).isNotEmpty())
+    {
+        // The chord track (0.16.0): C Am F G7, then Eb major (its scale event follows).
+        using CT = pr7s::Chord::Type;
+        using CX = pr7s::Chord::Tension;
+        const std::pair<double, pr7s::Chord> chords[] = { { 0.0, { 0, CT::major, CX::none, -1 } }, { 4.0, { 9, CT::minor, CX::none, -1 } },
+                                                         { 8.0, { 5, CT::major, CX::none, -1 } }, { 12.0, { 7, CT::major, CX::seven, -1 } },
+                                                         { 16.0, { 3, CT::major, CX::none, -1 } }, { 20.0, { 8, CT::major, CX::none, 0 } },
+                                                         { 24.0, { 10, CT::major, CX::seven, -1 } }, { 28.0, { 3, CT::major, CX::none, -1 } } };
+        for (const auto& [beat, chord] : chords)
+            studio.addChordEvent (beat, chord);
+    }
     // PARAGON_SNAPSHOT_VISIBILITY=1: the left zone's VISIBILITY, the bass hidden and the keys disabled.
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_VISIBILITY", {}).isNotEmpty())
     {

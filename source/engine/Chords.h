@@ -141,6 +141,53 @@ namespace pr7s
     };
     std::vector<Suggestion> suggestNext (const Chord& from, const Key&);
 
+    // The chord track (0.16.0, the owner's choice; the manual's "Chord Functions"):
+    // chord events (each until the next starts, as on a lead sheet) and scale
+    // events (the key in force from each one on: worked out from the chords
+    // unless set by hand).
+    struct ChordEvent
+    {
+        double beat = 0.0;
+        Chord chord;
+        bool operator== (const ChordEvent& o) const noexcept { return beat == o.beat && chord == o.chord; }
+    };
+    struct ScaleEvent
+    {
+        double beat = 0.0;
+        Key key;
+        bool operator== (const ScaleEvent& o) const noexcept { return beat == o.beat && key == o.key; }
+    };
+    struct ChordTrack
+    {
+        bool shown = false;
+        std::vector<ChordEvent> events;   // by beat
+        std::vector<ScaleEvent> scales;   // by beat
+        bool autoScales = true;           // the scales follow the chords (off once one is set by hand)
+
+        bool operator== (const ChordTrack& o) const noexcept
+        {
+            return shown == o.shown && events == o.events && scales == o.scales && autoScales == o.autoScales;
+        }
+        int indexAt (double beat) const noexcept;               // the event sounding at `beat`, -1 if none yet
+        double endOf (int index, double lastLength) const;       // the next one's start (the last: + lastLength)
+        Key keyAt (double beat, const Key& fallback) const;      // the scale event in force
+        void sort();
+        std::unique_ptr<juce::XmlElement> toXml() const;
+        static ChordTrack fromXml (const juce::XmlElement&);
+    };
+
+    // The keys the chords suggest (0.16.0): from the first chord on, the key holding
+    // most of the next few chords (the one before kept unless another holds more;
+    // `start` first if it holds as many).
+    std::vector<ScaleEvent> scalesFromChords (const std::vector<ChordEvent>&, const Key& start);
+
+    // Chords heard in notes (0.16.0, the manual's Create Chord Events): beat by beat
+    // (`step`), each note weighed by how long and loud it sounds then; the chord that
+    // holds the most of it and least else, plain triads before tensions; the same chord
+    // in a row merged. A bass note of the chord under it makes an inversion (C/E).
+    struct HeardNote { double start, end; int pitch; float velocity; };
+    std::vector<ChordEvent> chordsFromNotes (const std::vector<HeardNote>&, double from, double to, double step = 1.0);
+
     struct ChordPad
     {
         std::optional<Chord> chord;

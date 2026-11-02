@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/ChordEventEditor.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "engine/Studio.h"
@@ -87,9 +88,11 @@ struct Timeline
     // and its lanes. `top` is from the first row's top, before scrolling.
     static constexpr int laneHeight = 48, masterHeight = 40, tempoHeight = 72;   // at the vertical zoom's 1
     int tempoRowHeight() const noexcept { return juce::jmax (48, juce::roundToInt (tempoHeight * rowZoom)); }
+    static constexpr int chordsHeight = 60;   // the chord track (0.16.0): chords above, the scales below
+    int chordRowHeight() const noexcept { return juce::jmax (46, juce::roundToInt (chordsHeight * rowZoom)); }
     struct Row
     {
-        enum class Kind { track, lane, master, tempo };
+        enum class Kind { track, lane, master, tempo, chords };
         Kind kind = Kind::track;
         int busId = 0;          // a track's id, or the master's (0)
         int laneIndex = -1;     // a lane: its index in the bus's automation
@@ -276,6 +279,16 @@ public:
     // Creating MIDI Parts from Chord Pads).
     bool isInterestedInDragSource (const SourceDetails&) override;
     void itemDropped (const SourceDetails&) override;
+
+    // The chord track (0.16.0): its chords' blocks, selected ones (indices), edited.
+    const std::vector<int>& getChordSelection() const noexcept { return chordSelection; }
+    bool hasSelectedChordEvents() const noexcept { return ! chordSelection.empty(); }
+    void deleteSelectedChordEvents();
+    juce::Rectangle<float> getChordArea() const;           // the chords' strip (the scales' below it)
+    juce::Rectangle<float> getChordEventBounds (int index) const;
+    void editChordEvent (int index);                      // the chord editor box (a double-click)
+    ChordEventEditor* getChordEditor() noexcept { return chordEditor.getComponent(); }
+    std::function<void()> onChordsToPads;                 // (the pads' view takes them)
     std::optional<Timeline::Row> rowAt (float y) const;
     float rowTop (const Timeline::Row&) const;   // where a row is drawn now
     float trackTop (int trackId) const;
@@ -309,7 +322,7 @@ private:
 
     enum class Drag { none, position, cycle, cycleMove, cycleLeft, cycleRight, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
                       newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove, marquee,
-                      tempoPoints, tempoBand, tempoDraw };
+                      tempoPoints, tempoBand, tempoDraw, chordMove };
     std::vector<int> alsoSelected;              // the parts selected besides `selection` (by id)
     pr7s::Studio::RangeClip partsClip;          // parts copied (Ctrl+C / X)
     int partIdAt (const Selection&) const;
@@ -362,6 +375,16 @@ private:
     void tempoUp();
     void editTempoEvent (int index);   // a box to type its tempo (double-click)
     std::vector<int> tempoSelection;
+    std::vector<int> chordSelection;
+    std::vector<pr7s::ChordEvent> chordOriginal;
+    double chordDownBeat = 0.0;
+    juce::Component::SafePointer<ChordEventEditor> chordEditor;
+    bool chordDown (const juce::MouseEvent&);
+    void chordDragTo (const juce::MouseEvent&);
+    void chordUp();
+    void paintChords (juce::Graphics&, const Timeline::Row&);
+    void showChordMenu (double beat, int index);
+    void showScaleMenu (double beat);
     std::vector<pr7s::TempoEvent> tempoWorking, tempoOriginal;   // during a gesture
     int tempoAnchor = -1;
     const pr7s::AutomationLane* laneFor (int busId, int laneIndex) const;
