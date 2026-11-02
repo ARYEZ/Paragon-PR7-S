@@ -38,7 +38,8 @@ namespace pr7s
 
     struct LineIdea
     {
-        enum class Part { bass, melody };
+        // (0.19.0: piano chords; guitar rhythm and lead.)
+        enum class Part { bass, melody, chords, rhythm, lead };
         Part part = Part::bass;
         juce::String style, description;
         std::vector<LineNote> notes;   // beats from the first span's start
@@ -47,6 +48,32 @@ namespace pr7s
     // The six bass ideas and the six melody ideas for these chords (in order: the styles below).
     std::vector<LineIdea> bassIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation = 0);
     std::vector<LineIdea> melodyIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation = 0);
+
+    // A guitar's tuning (0.19.0): its open strings, low to high (MIDI notes). The owner plays
+    // 7-string guitars in drop A (Shreddage Jupiter and Rogue): the default. Nothing a guitar
+    // idea plays goes below the lowest string (sample libraries put keyswitches down there)
+    // or above the top string's 24th fret.
+    struct GuitarTuning
+    {
+        juce::String name;
+        std::vector<int> strings;
+        int lowest() const noexcept { return strings.front(); }
+        int highest() const noexcept { return strings.back() + 24; }
+        static const std::vector<GuitarTuning>& all();   // the first: 7-string drop A
+        static const GuitarTuning& named (const juce::String&);   // (else the first)
+    };
+
+    // Piano chords (0.19.0): Block chords, Broken chords, Ballad arpeggio, Stride, Octaves and
+    // chords, Pop pulse. The right hand voiced near the chord before; a left hand where it's a style's.
+    std::vector<LineIdea> pianoChordIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation = 0);
+    // Guitar rhythm (0.19.0): Power chords, Octave chords, Palm-muted chugs, Gallop, Pedal-point
+    // riff, Open strummed shapes. Power chords are root, fifth and octave (no third: they fit
+    // major and minor); the low ones on the lowest strings, as rock and metal riffs are played.
+    std::vector<LineIdea> guitarRhythmIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation, const GuitarTuning&);
+    // Guitar lead (0.19.0): Pentatonic box, Blues scale run, Repeating triplet lick, Descending
+    // fours, Neoclassical run, Tremolo picking. Every bar's first note on a chord tone (the
+    // lick lands on the chord). No bends: parts don't hold pitch bend yet.
+    std::vector<LineIdea> guitarLeadIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation, const GuitarTuning&);
 
     // Ranges (MIDI notes).
     namespace LineRanges

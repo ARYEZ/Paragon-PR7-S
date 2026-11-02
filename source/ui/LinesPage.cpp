@@ -6,6 +6,14 @@
 namespace
 {
     juce::Font interFont (float height, bool bold = false) { return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain)); }
+
+    // Each part's notes in one of the family's three: bass and rhythm orange, melody and lead pink, piano red.
+    juce::Colour colourOf (pr7s::LineIdea::Part part)
+    {
+        using P = pr7s::LineIdea::Part;
+        return part == P::bass || part == P::rhythm ? pr7s::FamilyColours::orange
+             : part == P::chords ? pr7s::FamilyColours::red : pr7s::FamilyColours::pink;
+    }
 }
 
 //==============================================================================
@@ -22,8 +30,8 @@ public:
             addAndMakeVisible (*key);
         }
         hear.onClick = [this] { isPlaying() ? page.stop() : page.play (part, index); };
-        useIt.onClick = [this] { page.use (part, index); added = true; repaint(); };
-        useIt.setTooltip ("Onto a new track: a MIDI part under the chords (one undo step), then edit it in the MIDI editor");
+        useIt.onClick = [this] { page.showUseMenu (part, index, *this); };
+        useIt.setTooltip ("A MIDI part under the chords (one undo step): onto the selected instrument track or a new one; then edit it in the MIDI editor");
         setTooltip ("Click to hear it with the chords");
     }
 
@@ -53,11 +61,11 @@ public:
         g.setColour (ParagonColours::textDim);
         g.setFont (interFont (11.5f));
         g.drawFittedText (idea().description, area.removeFromTop (30.0f).toNearestInt(), juce::Justification::topLeft, 2, 0.9f);
-        if (added)
+        if (added.isNotEmpty())
         {
             g.setColour (ParagonColours::accent);
             g.setFont (ParagonLookAndFeel::titleFont (11.0f));
-            g.drawText ("ADDED ON A NEW TRACK", bounds.reduced (10.0f, 8.0f).removeFromTop (20.0f), juce::Justification::centredRight, false);
+            g.drawText ("ADDED: " + added.toUpperCase(), bounds.reduced (10.0f, 8.0f).removeFromTop (20.0f), juce::Justification::centredRight, true);
         }
         paintRoll (g, roll);
     }
@@ -93,7 +101,7 @@ public:
         high += 2;
         const auto body = r.withTrimmedTop (14.0f).reduced (0.0f, 3.0f);
         const auto row = body.getHeight() / (float) juce::jmax (1, high - low + 1);
-        const auto colour = part == pr7s::LineIdea::Part::bass ? pr7s::FamilyColours::orange : pr7s::FamilyColours::pink;
+        const auto colour = colourOf (part);
         for (const auto& n : notes)
         {
             const auto y = body.getBottom() - (float) (n.pitch - low + 1) * row;
@@ -128,24 +136,47 @@ public:
     const int index;
     juce::TextButton hear { "HEAR" }, useIt { "USE IT" };
     juce::Rectangle<float> roll;
-    bool added = false;
+    juce::String added;   // the track it went onto
 };
 
 //==============================================================================
 LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : studio (s)
 {
-    for (auto* key : { &hearChords, &more, &stopKey })
+    for (auto* key : { &hearChords, &more, &stopKey, &pianoTab, &guitarTab, &bassTab })
     {
         key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         key->setWantsKeyboardFocus (false);
         addAndMakeVisible (*key);
     }
     hearChords.setTooltip ("The chords alone, at the song's tempo");
-    more.setTooltip ("Six new bass ideas and six new melodies (the same styles, other choices)");
+    more.setTooltip ("New ideas in every tab (the same styles, other choices)");
     hearChords.onClick = [this] { playChords(); };
     more.onClick = [this] { moreIdeas(); };
     stopKey.onClick = [this] { stop(); };
-    setSize (1240, 720);
+    pianoTab.setTooltip ("Piano: chord accompaniments and melodies");
+    guitarTab.setTooltip ("Guitar: rock and metal rhythm parts (power chords, chugs, gallops) and leads (pentatonic, blues, shred runs)");
+    bassTab.setTooltip ("Bass lines");
+    pianoTab.onClick = [this] { setTab (Tab::piano); };
+    guitarTab.onClick = [this] { setTab (Tab::guitar); };
+    bassTab.onClick = [this] { setTab (Tab::bass); };
+
+    tuningLabel.setFont (ParagonLookAndFeel::titleFont (13.0f));
+    tuningLabel.setColour (juce::Label::textColourId, ParagonColours::textDim);
+    tuningLabel.setJustificationType (juce::Justification::centredRight);
+    addChildComponent (tuningLabel);
+    int id = 1;
+    for (const auto& t : pr7s::GuitarTuning::all())
+        tuningBox.addItem (t.name, id++);
+    tuningBox.setTooltip ("The guitar's strings: nothing is played below the lowest one (guitar libraries keep their keyswitches down there)");
+    tuningBox.onChange = [this] { setTuning (tuningBox.getText()); };
+    addChildComponent (tuningBox);
+
+    if (auto* settings = studio.getSettings())
+    {
+        const auto saved = settings->getValue ("ideasTab");
+        tab = saved == "guitar" ? Tab::guitar : saved == "bass" ? Tab::bass : Tab::piano;
+    }
+    setSize (1240, 760);
     setChords (std::move (chords));
     startTimerHz (30);
 }
@@ -153,6 +184,37 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
 LinesPage::~LinesPage()
 {
     studio.stopPreview();
+}
+
+std::vector<pr7s::LineIdea::Part> LinesPage::partsOf (Tab t)
+{
+    using P = pr7s::LineIdea::Part;
+    switch (t)
+    {
+        case Tab::piano: return { P::chords, P::melody };
+        case Tab::guitar: return { P::rhythm, P::lead };
+        case Tab::bass: return { P::bass };
+    }
+    return {};
+}
+
+juce::String LinesPage::titleOf (pr7s::LineIdea::Part part)
+{
+    using P = pr7s::LineIdea::Part;
+    switch (part)
+    {
+        case P::bass: return "BASS";
+        case P::melody: return "MELODY";
+        case P::chords: return "CHORDS";
+        case P::rhythm: return "RHYTHM";
+        case P::lead: return "LEAD";
+    }
+    return {};
+}
+
+const pr7s::GuitarTuning& LinesPage::getTuning() const
+{
+    return pr7s::GuitarTuning::named (studio.getGuitarTuning());
 }
 
 void LinesPage::setChords (std::vector<pr7s::ChordSpan> chords)
@@ -163,24 +225,57 @@ void LinesPage::setChords (std::vector<pr7s::ChordSpan> chords)
     rebuild();
 }
 
+void LinesPage::setTab (Tab t)
+{
+    tab = t;
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("ideasTab", t == Tab::guitar ? "guitar" : t == Tab::bass ? "bass" : "piano");
+    makeCards();
+}
+
+void LinesPage::setTuning (const juce::String& name)
+{
+    if (name == getTuning().name)
+        return;
+    stop();
+    studio.setGuitarTuning (name);
+    rebuild();
+}
+
 void LinesPage::rebuild()
 {
-    bass = pr7s::bassIdeas (spans, barBeats, variation);
-    melody = pr7s::melodyIdeas (spans, barBeats, variation);
+    using P = pr7s::LineIdea::Part;
+    const auto& tuning = getTuning();
+    ideas[(size_t) P::bass] = pr7s::bassIdeas (spans, barBeats, variation);
+    ideas[(size_t) P::melody] = pr7s::melodyIdeas (spans, barBeats, variation);
+    ideas[(size_t) P::chords] = pr7s::pianoChordIdeas (spans, barBeats, variation);
+    ideas[(size_t) P::rhythm] = pr7s::guitarRhythmIdeas (spans, barBeats, variation, tuning);
+    ideas[(size_t) P::lead] = pr7s::guitarLeadIdeas (spans, barBeats, variation, tuning);
+    makeCards();
+}
+
+void LinesPage::makeCards()
+{
     cards.clear();
-    for (const auto part : { pr7s::LineIdea::Part::bass, pr7s::LineIdea::Part::melody })
+    for (const auto part : partsOf (tab))
         for (int i = 0; i < (int) getIdeas (part).size(); ++i)
             addAndMakeVisible (cards.add (new Card (*this, part, i)));
+    pianoTab.setToggleState (tab == Tab::piano, juce::dontSendNotification);
+    guitarTab.setToggleState (tab == Tab::guitar, juce::dontSendNotification);
+    bassTab.setToggleState (tab == Tab::bass, juce::dontSendNotification);
+    tuningBox.setText (getTuning().name, juce::dontSendNotification);
+    tuningBox.setVisible (tab == Tab::guitar);
+    tuningLabel.setVisible (tab == Tab::guitar);
     resized();
     repaint();
 }
 
 void LinesPage::play (pr7s::LineIdea::Part part, int index)
 {
-    const auto& ideas = getIdeas (part);
-    if (! juce::isPositiveAndBelow (index, (int) ideas.size()))
+    const auto& list = getIdeas (part);
+    if (! juce::isPositiveAndBelow (index, (int) list.size()))
         return;
-    studio.previewLine (&ideas[(size_t) index], spans, true);
+    studio.previewLine (&list[(size_t) index], spans, true);
     playing = std::pair { part, index };
     playingChords = false;
     for (auto* card : cards)
@@ -205,12 +300,40 @@ void LinesPage::stop()
         card->refresh();
 }
 
-int LinesPage::use (pr7s::LineIdea::Part part, int index)
+int LinesPage::use (pr7s::LineIdea::Part part, int index, int ontoTrackId)
 {
-    const auto& ideas = getIdeas (part);
-    if (! juce::isPositiveAndBelow (index, (int) ideas.size()))
+    const auto& list = getIdeas (part);
+    if (! juce::isPositiveAndBelow (index, (int) list.size()))
         return 0;
-    return studio.addLinePart (ideas[(size_t) index], spans);
+    const auto trackId = studio.addLinePart (list[(size_t) index], spans, ontoTrackId);
+    for (auto* card : cards)
+        if (card->part == part && card->index == index)
+            if (const auto* track = studio.getProject().findTrack (trackId))
+            {
+                card->added = track->name;
+                card->repaint();
+            }
+    return trackId;
+}
+
+// USE IT: onto the selected track when it can take MIDI (the owner's guitar VST is there), else a new one.
+void LinesPage::showUseMenu (pr7s::LineIdea::Part part, int index, Card& card)
+{
+    const auto selected = studio.getSelectedTrack();
+    if (! studio.canTakeMidi (selected))
+    {
+        use (part, index, 0);
+        return;
+    }
+    juce::PopupMenu menu;
+    menu.addItem (1, "Onto " + studio.getProject().findTrack (selected)->name + " (the selected track)");
+    menu.addItem (2, "Onto a new track (" + pr7s::Studio::linePartName (part) + ")");
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (card.useIt),
+                        [safe = juce::Component::SafePointer<LinesPage> (this), part, index, selected] (int chosen)
+                        {
+                            if (safe != nullptr && chosen != 0)
+                                safe->use (part, index, chosen == 1 ? selected : 0);
+                        });
 }
 
 void LinesPage::moreIdeas()
@@ -239,7 +362,7 @@ void LinesPage::paint (juce::Graphics& g)
     auto head = getLocalBounds().removeFromTop (headerHeight).reduced (gap, 8);
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (20.0f));
-    g.drawText ("BASS & MELODY", head.removeFromTop (26), juce::Justification::centredLeft, false);
+    g.drawText ("IDEAS", head.removeFromTop (26), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (interFont (12.5f));
     juce::String what;
@@ -254,13 +377,22 @@ void LinesPage::paint (juce::Graphics& g)
         what = juce::String ((int) spans.size()) + " chords, bars " + bar (spans.front().start) + " to " + bar (spans.back().end - 1.0e-6)
              + ", in " + ChordUi::spokenKey (spans.front().key) + ":  " + names.joinIntoString (" ");
     }
-    g.drawText (what, head, juce::Justification::centredLeft, true);
+    g.drawText (what, head.withTrimmedRight (320), juce::Justification::centredLeft, true);
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (14.0f));
-    g.drawText ("BASS", bassTitle, juce::Justification::centredLeft, false);
-    g.drawText ("MELODY", melodyTitle, juce::Justification::centredLeft, false);
-    g.setColour (ParagonColours::panelEdge);
-    g.fillRect (getWidth() / 2, headerHeight, 1, getHeight() - headerHeight - gap);
+    const auto parts = partsOf (tab);
+    for (size_t i = 0; i < parts.size() && i < columnTitles.size(); ++i)
+    {
+        g.setColour (colourOf (parts[i]));
+        g.fillRoundedRectangle (columnTitles[i].removeFromLeft (4).withSizeKeepingCentre (4, 14).toFloat(), 1.5f);
+        g.setColour (ParagonColours::text);
+        g.drawText (titleOf (parts[i]), columnTitles[i].withTrimmedLeft (10), juce::Justification::centredLeft, false);
+    }
+    if (parts.size() == 2)
+    {
+        g.setColour (ParagonColours::panelEdge);
+        g.fillRect (getWidth() / 2, headerHeight + tabsHeight, 1, getHeight() - headerHeight - tabsHeight - gap);
+    }
 }
 
 void LinesPage::resized()
@@ -272,37 +404,59 @@ void LinesPage::resized()
     more.setBounds (head.removeFromRight (110));
     head.removeFromRight (6);
     hearChords.setBounds (head.removeFromRight (110));
-    area.removeFromBottom (gap);
-    auto left = area.removeFromLeft (area.getWidth() / 2 - gap);
-    area.removeFromLeft (gap * 2);
-    auto right = area;
-    bassTitle = left.removeFromTop (columnTitleHeight);
-    melodyTitle = right.removeFromTop (columnTitleHeight);
-    // Two columns of three cards a side.
-    const auto layout = [this] (juce::Rectangle<int> column, pr7s::LineIdea::Part part)
+
+    auto tabs = area.removeFromTop (tabsHeight).withTrimmedBottom (6);
+    for (auto* key : { &pianoTab, &guitarTab, &bassTab })
     {
-        const auto w = (column.getWidth() - gap) / 2, h = (column.getHeight() - 2 * gap) / 3;
+        key->setBounds (tabs.removeFromLeft (100));
+        tabs.removeFromLeft (6);
+    }
+    tuningBox.setBounds (tabs.removeFromRight (220));
+    tabs.removeFromRight (8);
+    tuningLabel.setBounds (tabs.removeFromRight (70));
+
+    area.removeFromBottom (gap);
+    const auto parts = partsOf (tab);
+    columnTitles.clear();
+    // Two columns of three cards a side; one part alone: three across, two down.
+    const auto layout = [this] (juce::Rectangle<int> column, pr7s::LineIdea::Part part, int across)
+    {
+        const auto down = (6 + across - 1) / across;
+        const auto w = (column.getWidth() - (across - 1) * gap) / across, h = (column.getHeight() - (down - 1) * gap) / down;
         auto i = 0;
         for (auto* card : cards)
             if (card->part == part)
             {
-                card->setBounds (column.getX() + (i % 2) * (w + gap), column.getY() + (i / 2) * (h + gap), w, h);
+                card->setBounds (column.getX() + (i % across) * (w + gap), column.getY() + (i / across) * (h + gap), w, h);
                 ++i;
             }
     };
-    layout (left, pr7s::LineIdea::Part::bass);
-    layout (right, pr7s::LineIdea::Part::melody);
+    if (parts.size() == 2)
+    {
+        auto left = area.removeFromLeft (area.getWidth() / 2 - gap);
+        area.removeFromLeft (gap * 2);
+        auto right = area;
+        columnTitles.push_back (left.removeFromTop (columnTitleHeight));
+        columnTitles.push_back (right.removeFromTop (columnTitleHeight));
+        layout (left, parts[0], 2);
+        layout (right, parts[1], 2);
+    }
+    else if (parts.size() == 1)
+    {
+        columnTitles.push_back (area.removeFromTop (columnTitleHeight));
+        layout (area, parts[0], 3);
+    }
 }
 
 //==============================================================================
 LinesWindow::LinesWindow (pr7s::Studio& studio, std::vector<pr7s::ChordSpan> spans)
-    : juce::DocumentWindow ("Paragon PR7-S: Bass & Melody", juce::Colour (0xff0c0a0d), juce::DocumentWindow::closeButton)
+    : juce::DocumentWindow ("Paragon PR7-S: Ideas", juce::Colour (0xff0c0a0d), juce::DocumentWindow::closeButton)
 {
     page = new LinesPage (studio, std::move (spans));
     setContentOwned (page, true);
     setUsingNativeTitleBar (true);
     setResizable (true, false);
-    setResizeLimits (900, 560, 3840, 2160);
+    setResizeLimits (900, 600, 3840, 2160);
 }
 
 void LinesWindow::closeButtonPressed()

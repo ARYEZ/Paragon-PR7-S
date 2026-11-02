@@ -5241,22 +5241,52 @@ namespace pr7s
         return spans;
     }
 
-    int Studio::addLinePart (const LineIdea& idea, const std::vector<ChordSpan>& spans)
+    juce::String Studio::linePartName (LineIdea::Part part)
+    {
+        switch (part)
+        {
+            case LineIdea::Part::bass: return "Bass";
+            case LineIdea::Part::melody: return "Melody";
+            case LineIdea::Part::chords: return "Piano";
+            case LineIdea::Part::rhythm: return "Guitar";
+            case LineIdea::Part::lead: return "Lead Guitar";
+        }
+        return "Idea";
+    }
+
+    int Studio::addLinePart (const LineIdea& idea, const std::vector<ChordSpan>& spans, int ontoTrackId)
     {
         if (spans.empty() || idea.notes.empty())
             return 0;
-        const auto trackId = addTrack (Instrument {});
+        auto trackId = canTakeMidi (ontoTrackId) ? ontoTrackId : 0;
         if (trackId == 0)
-            return 0;
-        renameTrack (trackId, idea.part == LineIdea::Part::bass ? "Bass" : "Melody");
+        {
+            trackId = addTrack (Instrument {});
+            if (trackId == 0)
+                return 0;
+            renameTrack (trackId, linePartName (idea.part));
+        }
         Part part;
         part.start = spans.front().start;
         part.length = spans.back().end - spans.front().start;
-        part.name = (idea.part == LineIdea::Part::bass ? "Bass: " : "Melody: ") + idea.style;
+        part.name = linePartName (idea.part) + ": " + idea.style;
         for (const auto& n : idea.notes)
             part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
         addPart (trackId, part);
         return trackId;
+    }
+
+    juce::String Studio::getGuitarTuning() const
+    {
+        const auto name = settings != nullptr ? settings->getValue ("guitarTuning") : guitarTuning;
+        return GuitarTuning::named (name).name;   // (unknown or empty: the first, 7-string drop A)
+    }
+
+    void Studio::setGuitarTuning (const juce::String& name)
+    {
+        guitarTuning = GuitarTuning::named (name).name;
+        if (settings != nullptr)
+            settings->setValue ("guitarTuning", guitarTuning);
     }
 
     // The preview: its notes in time on a thread of its own (a millisecond timer), sent

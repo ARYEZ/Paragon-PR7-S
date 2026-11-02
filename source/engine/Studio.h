@@ -232,8 +232,15 @@ namespace pr7s
         // track's events given (the selection), else those in the cycle when it's on and
         // holds some, else all; each until the next (the last a bar), with the key there.
         std::vector<ChordSpan> getLineChords (const std::vector<int>& selectedEvents = {}) const;
-        // An idea onto a new instrument track (the studio's synth), a part under its chords; its id.
-        int addLinePart (const LineIdea&, const std::vector<ChordSpan>&);
+        // An idea as a part under its chords: onto `ontoTrackId` when it can take MIDI (0.19.0:
+        // the selected track, the owner's guitar VST), else onto a new instrument track (the
+        // studio's synth) named for the part (Bass, Melody, Piano, Guitar, Lead Guitar). The
+        // track's id; one undo step.
+        int addLinePart (const LineIdea&, const std::vector<ChordSpan>&, int ontoTrackId = 0);
+        static juce::String linePartName (LineIdea::Part);
+        // The guitar ideas' tuning (0.19.0; settings key "guitarTuning", default 7-string drop A).
+        juce::String getGuitarTuning() const;
+        void setGuitarTuning (const juce::String&);
         // An idea heard with its chords (soft, underneath) through the live track's instrument,
         // at the song's tempo; the chords alone with no idea. Stopped by stopPreview (or the next).
         void previewLine (const LineIdea*, const std::vector<ChordSpan>&, bool withChords = true);
@@ -778,6 +785,7 @@ namespace pr7s
         void sendGone (Track&, int slot);
         bool linksSuspended = false, linksAbsolute = false, qLink = false;
         bool mirroring = false;
+        juce::String guitarTuning;   // (without a settings file: the tests)
         float dropHighlight = defaultDropHighlight;   // (without a settings file: the tests)   // (a linked change being passed on: not passed on again)
         void pruneLinkGroups();
         // `action` for each channel linked to this one for `what` (not itself); the

@@ -1691,7 +1691,7 @@ void MainView::openLineIdeas (std::vector<int> chordEvents)
     auto spans = studio.getLineChords (chordEvents);
     if (spans.empty())
     {
-        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Bass & Melody",
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Ideas",
                                                 "Put some chords on the chord track first: double-click its lane, pick a popular progression, "
                                                 "or play them in from the pads. The ideas follow those chords.");
         return;

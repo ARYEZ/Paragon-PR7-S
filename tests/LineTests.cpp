@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <set>
+
 #include "engine/Studio.h"
 
 using namespace pr7s;
@@ -199,11 +201,246 @@ TEST_CASE ("Bass and melody ideas in the studio: the chord track's chords, a par
     CHECK_FALSE (studio.isPreviewing());
 }
 
+TEST_CASE ("Guitar tunings: the owner's 7-string drop A first, low to high (0.19.0)", "[lines]")
+{
+    const auto& all = GuitarTuning::all();
+    REQUIRE (all.size() >= 6);
+    CHECK (all.front().name == "7-string drop A");
+    CHECK (all.front().strings == std::vector<int> { 33, 40, 45, 50, 55, 59, 64 });   // A0 E1 A1 D2 G2 B2 E3 (middle C = C3)
+    CHECK (all.front().lowest() == 33);
+    CHECK (all.front().highest() == 64 + 24);
+    for (const auto& t : all)
+    {
+        INFO (t.name);
+        CHECK (std::is_sorted (t.strings.begin(), t.strings.end()));
+        CHECK (t.strings.size() >= 6);
+    }
+    CHECK (GuitarTuning::named ("6-string drop D").lowest() == 38);
+    CHECK (GuitarTuning::named ("no such tuning").name == "7-string drop A");
+}
+
+namespace
+{
+    // Notes starting at `beat` (give or take a strum).
+    std::vector<int> notesAt (const LineIdea& idea, double beat, double within = 1.0e-6)
+    {
+        std::vector<int> out;
+        for (const auto& n : idea.notes)
+            if (n.beat >= beat - 1.0e-6 && n.beat < beat + within)
+                out.push_back (n.pitch);
+        return out;
+    }
+
+    const LineIdea& ideaNamed (const std::vector<LineIdea>& ideas, const juce::String& style)
+    {
+        for (const auto& i : ideas)
+            if (i.style == style)
+                return i;
+        FAIL ("no idea named " << style);
+        return ideas.front();
+    }
+}
+
+TEST_CASE ("Guitar rhythm ideas: power chords with no third, nothing under the lowest string, gallops, strums (0.19.0)", "[lines]")
+{
+    const Key am { 5, 0, true };
+    // Am F C G, then B diminished (its power chord takes its own flat fifth) and E major.
+    const auto spans = bars ({ { 9, T::minor, X::none, -1 }, { 5, T::major, X::none, -1 }, { 0, T::major, X::none, -1 }, { 7, T::major, X::none, -1 },
+                               { 11, T::diminished, X::none, -1 }, { 4, T::major, X::none, -1 } }, am);
+    for (const auto& tuning : GuitarTuning::all())
+        for (int variation = 0; variation < 3; ++variation)
+        {
+            const auto ideas = guitarRhythmIdeas (spans, 4.0, variation, tuning);
+            REQUIRE (ideas.size() == 6);
+            for (const auto& idea : ideas)
+            {
+                INFO (tuning.name << ": " << idea.style << " (variation " << variation << ")");
+                CHECK (idea.part == LineIdea::Part::rhythm);
+                REQUIRE_FALSE (idea.notes.empty());
+                CHECK (std::is_sorted (idea.notes.begin(), idea.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; }));
+                for (const auto& n : idea.notes)
+                {
+                    // Never where a guitar library keeps its keyswitches, nor past the 24th fret.
+                    CHECK (n.pitch >= tuning.lowest());
+                    CHECK (n.pitch <= tuning.highest());
+                    CHECK (n.beat + n.length <= 24.0 + 1.0e-6);
+                    // Every note belongs to its chord (the pedal riff's pedal: the key's tonic).
+                    const auto& s = spanAt (spans, n.beat);
+                    if (idea.style != "Pedal-point riff")
+                        CHECK (isChordTone (s.chord, n.pitch));
+                    else
+                        CHECK ((isChordTone (s.chord, n.pitch) || pcOf (n.pitch) == 9));
+                }
+            }
+            // Power chords: only roots and fifths (no third), the root at the bottom on each chord's first beat, low.
+            const auto& power = ideaNamed (ideas, "Power chords");
+            for (const auto& s : spans)
+            {
+                auto at = notesAt (power, s.start);
+                REQUIRE (at.size() == 3);
+                std::sort (at.begin(), at.end());
+                const auto root = s.chord.root;
+                CHECK (pcOf (at[0]) == root);
+                CHECK (at[2] == at[0] + 12);
+                CHECK (at[0] < tuning.lowest() + 12);
+                CHECK (pcOf (at[1] - at[0]) == (s.chord.type == T::diminished ? 6 : 7));
+            }
+            for (const auto& n : power.notes)
+            {
+                const auto& s = spanAt (spans, n.beat);
+                const auto third = pcOf (s.chord.root + (s.chord.type == T::minor || s.chord.type == T::diminished ? 3 : 4));
+                CHECK (pcOf (n.pitch) != third);
+            }
+            // The gallop: on every beat, an eighth and two sixteenths (0, 1/2, 3/4).
+            const auto& gallop = ideaNamed (ideas, "Gallop");
+            std::set<int> places;
+            for (const auto& n : gallop.notes)
+                places.insert ((int) std::round (std::fmod (n.beat, 1.0) * 4.0));
+            CHECK (places == std::set<int> { 0, 2, 3 });
+            // Strummed shapes: each stroke's notes within a tenth of a beat of the stroke, four or more down from the bar.
+            const auto& strum = ideaNamed (ideas, "Open strummed shapes");
+            for (const auto& n : strum.notes)
+                CHECK (std::fmod (n.beat, 0.5) < 0.11);
+            for (const auto& s : spans)
+                CHECK (notesAt (strum, s.start, 0.11).size() >= 4);
+        }
+}
+
+TEST_CASE ("Guitar lead ideas: in the key's scales, a chord tone on every bar, in a lead's range, the last note on the chord (0.19.0)", "[lines]")
+{
+    for (const auto& key : { Key { 5, 0, true }, Key { 2, 0, true }, Key { 0, 0, false }, Key { 4, 0, false } })
+    {
+        const auto t = key.pitchClass();
+        const auto chord = [&] (int offset, T type) { return Chord { pcOf (t + offset), type, X::none, -1 }; };
+        const auto spans = key.minor ? bars ({ chord (0, T::minor), chord (8, T::major), chord (3, T::major), chord (7, T::major) }, key)
+                                     : bars ({ chord (0, T::major), chord (7, T::major), chord (9, T::minor), chord (5, T::major) }, key);
+        const auto scale = key.scale();
+        for (const auto& tuning : { GuitarTuning::all()[0], GuitarTuning::named ("6-string standard (E)") })
+            for (int variation = 0; variation < 3; ++variation)
+            {
+                const auto ideas = guitarLeadIdeas (spans, 4.0, variation, tuning);
+                REQUIRE (ideas.size() == 6);
+                for (const auto& idea : ideas)
+                {
+                    INFO (key.name() << ", " << tuning.name << ": " << idea.style << " (variation " << variation << ")");
+                    CHECK (idea.part == LineIdea::Part::lead);
+                    REQUIRE_FALSE (idea.notes.empty());
+                    for (const auto& n : idea.notes)
+                    {
+                        CHECK (n.pitch >= tuning.strings[1] + 5);
+                        CHECK (n.pitch <= tuning.strings.back() + 22);
+                        // The key's notes, the chord's, or the blues note (the flat fifth; a major key's minor third).
+                        const auto pc = pcOf (n.pitch);
+                        const auto inKey = std::find (scale.begin(), scale.end(), pc) != scale.end();
+                        const auto blue = pc == pcOf (t + 6) || (! key.minor && pc == pcOf (t + 3));
+                        // The neoclassical run's raised seventh (harmonic minor), never over a chord holding the natural one.
+                        const auto& chordThere = spanAt (spans, n.beat).chord;
+                        const auto raised = key.minor && idea.style == "Neoclassical run" && pc == pcOf (t + 11) && ! isChordTone (chordThere, t + 10);
+                        CHECK ((inKey || blue || raised || isChordTone (chordThere, n.pitch)));
+                    }
+                    // Every bar starts on a chord tone.
+                    for (const auto& s : spans)
+                    {
+                        const auto at = notesAt (idea, s.start - spans.front().start);
+                        REQUIRE (at.size() == 1);
+                        CHECK (isChordTone (s.chord, at[0]));
+                    }
+                    CHECK (isChordTone (spans.back().chord, idea.notes.back().pitch));
+                }
+                // The neoclassical run in a minor key goes through the raised seventh (over V).
+                if (key.minor)
+                {
+                    auto raised = false;
+                    for (const auto& n : ideaNamed (ideas, "Neoclassical run").notes)
+                        raised = raised || pcOf (n.pitch) == pcOf (t + 11);
+                    CHECK (raised);
+                }
+            }
+    }
+    // The same chords and variation: the same notes.
+    const Key am { 5, 0, true };
+    const auto spans = bars ({ { 9, T::minor, X::none, -1 }, { 4, T::major, X::none, -1 } }, am);
+    CHECK (guitarLeadIdeas (spans, 4.0, 2, GuitarTuning::all()[0])[5].notes == guitarLeadIdeas (spans, 4.0, 2, GuitarTuning::all()[0])[5].notes);
+}
+
+TEST_CASE ("Piano chord ideas: the chord's notes, the left hand low, the right hand moving little (0.19.0)", "[lines]")
+{
+    const Key c { 0, 0, false };
+    const auto spans = bars ({ { 0, T::major, X::none, -1 }, { 9, T::minor, X::none, -1 }, { 5, T::major, X::none, -1 }, { 7, T::major, X::seven, -1 },
+                               { 11, T::diminished, X::none, -1 } }, c);
+    for (int variation = 0; variation < 3; ++variation)
+    {
+        const auto ideas = pianoChordIdeas (spans, 4.0, variation);
+        REQUIRE (ideas.size() == 6);
+        for (const auto& idea : ideas)
+        {
+            INFO (idea.style << " (variation " << variation << ")");
+            CHECK (idea.part == LineIdea::Part::chords);
+            REQUIRE_FALSE (idea.notes.empty());
+            for (const auto& n : idea.notes)
+            {
+                CHECK (isChordTone (spanAt (spans, n.beat).chord, n.pitch));
+                CHECK (n.pitch >= 33);
+                CHECK (n.pitch <= 84);
+            }
+            // Something on every chord's first beat, its root lowest.
+            for (const auto& s : spans)
+            {
+                auto at = notesAt (idea, s.start);
+                REQUIRE_FALSE (at.empty());
+                CHECK (pcOf (*std::min_element (at.begin(), at.end())) == s.chord.root);
+            }
+        }
+        // Block chords: the right hand's top note moves at most a fourth from chord to chord.
+        const auto& block = ideaNamed (ideas, "Block chords");
+        auto previousTop = -1;
+        for (const auto& s : spans)
+        {
+            const auto at = notesAt (block, s.start);
+            const auto top = *std::max_element (at.begin(), at.end());
+            if (previousTop >= 0)
+                CHECK (std::abs (top - previousTop) <= 5);
+            previousTop = top;
+        }
+    }
+}
+
+TEST_CASE ("Ideas onto the selected track, or a new one named for the part; the tuning remembered (0.19.0)", "[lines]")
+{
+    Studio studio (false);
+    studio.addChordEvent (0.0, { 9, T::minor, X::none, -1 });
+    studio.addChordEvent (4.0, { 7, T::major, X::none, -1 });
+    const auto spans = studio.getLineChords();
+    const auto guitarTrack = studio.getProject().tracks[0].id;   // (the owner's guitar VST on it)
+    const auto tracks = studio.getProject().tracks.size();
+    const auto rhythm = guitarRhythmIdeas (spans, 4.0, 0, GuitarTuning::all()[0])[3];
+    CHECK (studio.addLinePart (rhythm, spans, guitarTrack) == guitarTrack);
+    CHECK (studio.getProject().tracks.size() == tracks);
+    REQUIRE (studio.getProject().findTrack (guitarTrack)->parts.size() == 1);
+    CHECK (studio.getProject().findTrack (guitarTrack)->parts[0].name == "Guitar: Gallop");
+    CHECK (studio.getProject().findTrack (guitarTrack)->parts[0].length == 8.0);
+    // A new track for each part, named for it.
+    const auto lead = studio.addLinePart (guitarLeadIdeas (spans, 4.0, 0, GuitarTuning::all()[0])[0], spans);
+    CHECK (studio.getProject().findTrack (lead)->name == "Lead Guitar");
+    CHECK (studio.getProject().findTrack (studio.addLinePart (pianoChordIdeas (spans, 4.0)[0], spans))->name == "Piano");
+    // Not onto a track that can't take MIDI (frozen, disabled, audio): a new one instead.
+    studio.setTracksDisabled ({ guitarTrack }, true);
+    const auto other = studio.addLinePart (rhythm, spans, guitarTrack);
+    CHECK (other != guitarTrack);
+    CHECK (studio.getProject().findTrack (other)->name == "Guitar");
+
+    CHECK (studio.getGuitarTuning() == "7-string drop A");
+    studio.setGuitarTuning ("6-string drop C");
+    CHECK (studio.getGuitarTuning() == "6-string drop C");
+    studio.setGuitarTuning ("nonsense");
+    CHECK (studio.getGuitarTuning() == "7-string drop A");
+}
+
 #include "ui/MainView.h"
 #include "ui/ParagonLookAndFeel.h"
 #include "ui/Finish.h"
 
-TEST_CASE ("The BASS & MELODY window: twelve ideas, heard, used, more of them (0.18.0)", "[lines][ui]")
+TEST_CASE ("The IDEAS window: ideas heard, used, more of them (0.18.0); piano, guitar and bass tabs, the tuning (0.19.0)", "[lines][ui]")
 {
     Finish::set (Finish::Type::pearlWhite, false);
     Studio studio (false);
@@ -247,4 +484,28 @@ TEST_CASE ("The BASS & MELODY window: twelve ideas, heard, used, more of them (0
     view.openLineIdeas ({ 0, 1 });
     CHECK (&view.getLinesWindow()->getPage() == &page);
     CHECK (page.getIdeas (LineIdea::Part::bass)[0].notes.back().beat < 8.0);
+
+    // 0.19.0: tabs. Piano: chords and melody (twelve cards); guitar: rhythm and lead; bass alone.
+    page.setTab (LinesPage::Tab::piano);
+    CHECK (page.getNumCardsShown() == 12);
+    CHECK (page.getIdeas (LineIdea::Part::chords).size() == 6);
+    page.setTab (LinesPage::Tab::guitar);
+    CHECK (page.getNumCardsShown() == 12);
+    CHECK (page.getIdeas (LineIdea::Part::rhythm).size() == 6);
+    CHECK (page.getIdeas (LineIdea::Part::lead).size() == 6);
+    page.setTab (LinesPage::Tab::bass);
+    CHECK (page.getNumCardsShown() == 6);
+    // The tuning: the guitar ideas dealt again for it, nothing under its lowest string.
+    page.setTuning ("6-string standard (E)");
+    CHECK (studio.getGuitarTuning() == "6-string standard (E)");
+    CHECK (page.getTuning().lowest() == 40);
+    for (const auto& idea : page.getIdeas (LineIdea::Part::rhythm))
+        for (const auto& n : idea.notes)
+            CHECK (n.pitch >= 40);
+    // USE IT onto the selected track (an instrument track).
+    const auto selected = studio.getSelectedTrack();
+    REQUIRE (studio.canTakeMidi (selected));
+    const auto parts = studio.getProject().findTrack (selected)->parts.size();
+    CHECK (page.use (LineIdea::Part::rhythm, 0, selected) == selected);
+    CHECK (studio.getProject().findTrack (selected)->parts.size() == parts + 1);
 }

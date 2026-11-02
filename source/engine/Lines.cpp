@@ -432,3 +432,527 @@ namespace pr7s
         return ideas;
     }
 }
+
+//==============================================================================
+// Piano chords, guitar rhythm and lead (0.19.0, the owner asked: ideas "geared towards
+// guitars in one category and piano in another"; rock and metal guitar).
+namespace pr7s
+{
+    namespace
+    {
+        std::vector<int> tonesOf (const Chord& c)
+        {
+            const auto t = c.pitchClasses();
+            return { t.begin(), t.end() };
+        }
+
+        // The notes of a scale built on `tonic` from these steps (pitch classes).
+        std::vector<int> scaleOn (int tonic, std::initializer_list<int> steps)
+        {
+            std::vector<int> out;
+            for (const auto s : steps)
+                out.push_back (pcOf (tonic + s));
+            return out;
+        }
+
+        // Each span's chord voiced in the right hand (close, the least movement from the one before).
+        std::vector<std::vector<int>> rightHand (const std::vector<ChordSpan>& spans, int low)
+        {
+            std::vector<std::vector<int>> out;
+            std::vector<int> previous;
+            for (const auto& s : spans)
+            {
+                const auto voicings = voicingsFor (s.chord, low);
+                auto notes = voicings.empty() ? std::vector<int> { 60 } : voicings[(size_t) closestVoicing (voicings, previous, {})];
+                out.push_back (notes);
+                previous = notes;
+            }
+            return out;
+        }
+
+        // The chord's own fifth above `root` (a diminished chord's flat fifth, an augmented one's
+        // sharp fifth; a perfect fifth when it has none, as a sus or slash chord may not).
+        int fifthAbove (const Chord& c, int root)
+        {
+            const auto tones = tonesOf (c);
+            for (const auto step : { 7, 6, 8 })
+                if (has (tones, pcOf (root + step)))
+                    return root + step;
+            return root + 7;
+        }
+
+        void addChord (std::vector<LineNote>& notes, double at, double length, const std::vector<int>& pitches, float velocity, double strum = 0.0)
+        {
+            for (size_t i = 0; i < pitches.size(); ++i)
+                add (notes, at + strum * (double) i, juce::jmax (0.05, length - strum * (double) i), pitches[i], velocity);
+        }
+    }
+
+    const std::vector<GuitarTuning>& GuitarTuning::all()
+    {
+        static const std::vector<GuitarTuning> tunings {
+            { "7-string drop A", { 33, 40, 45, 50, 55, 59, 64 } },
+            { "7-string standard (B)", { 35, 40, 45, 50, 55, 59, 64 } },
+            { "6-string standard (E)", { 40, 45, 50, 55, 59, 64 } },
+            { "6-string drop D", { 38, 45, 50, 55, 59, 64 } },
+            { "6-string drop C", { 36, 43, 48, 53, 57, 62 } },
+            { "8-string standard (F#)", { 30, 35, 40, 45, 50, 55, 59, 64 } },
+            { "8-string drop E", { 28, 35, 40, 45, 50, 55, 59, 64 } } };
+        return tunings;
+    }
+
+    const GuitarTuning& GuitarTuning::named (const juce::String& name)
+    {
+        for (const auto& t : all())
+            if (t.name == name)
+                return t;
+        return all().front();
+    }
+
+    //==========================================================================
+    std::vector<LineIdea> pianoChordIdeas (const std::vector<ChordSpan>& spans, double beatsPerBar, int variation)
+    {
+        std::vector<LineIdea> ideas;
+        if (spans.empty())
+            return ideas;
+        const auto origin = spans.front().start;
+        const auto make = [&] (const char* style, const char* description) -> LineIdea&
+        {
+            ideas.push_back ({ LineIdea::Part::chords, style, description, {} });
+            return ideas.back();
+        };
+        const auto right = rightHand (spans, variation % 2 == 0 ? 55 : 60);
+        std::vector<int> lefts;   // each chord's root (or slash bass) for the left hand, near the last
+        {
+            double prev = 41.0;
+            for (const auto& s : spans)
+            {
+                const auto n = nearestPitch (bassOf (s.chord), (prev * 2.0 + 41.0) / 3.0, 33, 52);
+                lefts.push_back (n);
+                prev = n;
+            }
+        }
+        const auto bars = [&] (auto&& each)   // each bar of each chord: (span index, its start in the song, its length)
+        {
+            for (size_t s = 0; s < spans.size(); ++s)
+                for (auto t = spans[s].start; t < spans[s].end - 1.0e-9; t += beatsPerBar)
+                    each (s, t, juce::jmin (beatsPerBar, spans[s].end - t));
+        };
+        {
+            auto& idea = make ("Block chords", "The whole chord held, each voiced to move as little as it can from the last (hymns, ballads, pads)");
+            bars ([&] (size_t s, double t, double len)
+            {
+                if (variation % 2 == 1 && len > beatsPerBar * 0.75)
+                {
+                    addChord (idea.notes, t - origin, len * 0.5, right[s], 0.78f);
+                    addChord (idea.notes, t - origin + len * 0.5, len * 0.5, right[s], 0.7f);
+                }
+                else
+                    addChord (idea.notes, t - origin, len, right[s], 0.78f);
+                add (idea.notes, t - origin, len, lefts[s], 0.8f);
+            });
+        }
+        {
+            auto& idea = make ("Broken chords", "The root held low, the chord's notes low, high, middle, high on eighth notes above it (the classical Alberti pattern)");
+            bars ([&] (size_t s, double t, double len)
+            {
+                add (idea.notes, t - origin, len, lefts[s], 0.76f);
+                const auto& v = right[s];
+                const int order[] = { 0, (int) v.size() - 1, (int) v.size() / 2, (int) v.size() - 1 };
+                auto i = 0;
+                for (auto at = 0.0; at < len - 1.0e-9; at += 0.5, ++i)
+                    add (idea.notes, t - origin + at, 0.5, v[(size_t) order[i % 4]], i % 4 == 0 ? 0.8f : 0.65f);
+            });
+        }
+        {
+            auto& idea = make ("Ballad arpeggio", "The root low and held, then the chord rising on eighth notes above it (piano ballads)");
+            bars ([&] (size_t s, double t, double len)
+            {
+                add (idea.notes, t - origin, len, lefts[s], 0.82f);
+                const auto root = lefts[s];
+                const auto tones = tonesOf (spans[s].chord);
+                const auto fifth = fifthAbove (spans[s].chord, root);
+                std::vector<int> up { fifth, root + 12 };
+                auto third = nearestOf (tones, root + 16, root + 13, root + 24);
+                up.push_back (third);
+                up.push_back (fifth + 12);
+                std::sort (up.begin(), up.end());
+                auto i = 0;
+                for (auto at = 0.5; at < len - 1.0e-9; at += 0.5, ++i)
+                {
+                    const auto step = i % 6;   // up four, down two: a gentle wave
+                    const auto index = step < 4 ? step : 6 - step;
+                    add (idea.notes, t - origin + at, 0.5, up[(size_t) juce::jlimit (0, 3, index)], 0.62f);
+                }
+            });
+        }
+        {
+            auto& idea = make ("Stride", "A low bass note on one and three, the chord on two and four (ragtime, old-school piano)");
+            bars ([&] (size_t s, double t, double len)
+            {
+                for (auto beat = 0.0; beat < len - 1.0e-9; beat += 1.0)
+                {
+                    const auto onBass = std::fmod (beat, 2.0) < 1.0e-9;
+                    if (onBass)
+                        add (idea.notes, t - origin + beat, 0.9, std::fmod (beat, 4.0) < 1.0e-9 ? lefts[s] : fifthAbove (spans[s].chord, lefts[s]), 0.82f);
+                    else
+                        addChord (idea.notes, t - origin + beat, 0.8, right[s], 0.7f);
+                }
+            });
+        }
+        {
+            auto& idea = make ("Octaves and chords", "Left-hand octaves held, the chord pulsing on every beat (rock and pop piano)");
+            bars ([&] (size_t s, double t, double len)
+            {
+                add (idea.notes, t - origin, len, lefts[s], 0.85f);
+                add (idea.notes, t - origin, len, lefts[s] + 12, 0.8f);
+                for (auto beat = 0.0; beat < len - 1.0e-9; beat += 1.0)
+                    addChord (idea.notes, t - origin + beat, 0.9, right[s], std::fmod (beat, 2.0) < 1.0e-9 ? 0.78f : 0.66f);
+            });
+        }
+        {
+            auto& idea = make ("Pop pulse", "Eighth-note chords, the off-beats softer, over the root (modern pop)");
+            bars ([&] (size_t s, double t, double len)
+            {
+                add (idea.notes, t - origin, len, lefts[s], 0.8f);
+                auto i = 0;
+                for (auto at = 0.0; at < len - 1.0e-9; at += 0.5, ++i)
+                    addChord (idea.notes, t - origin + at, 0.45, right[s], i % 2 == 0 ? 0.74f : 0.56f);
+            });
+        }
+        return ideas;
+    }
+
+    //==========================================================================
+    std::vector<LineIdea> guitarRhythmIdeas (const std::vector<ChordSpan>& spans, double beatsPerBar, int variation, const GuitarTuning& tuning)
+    {
+        std::vector<LineIdea> ideas;
+        if (spans.empty())
+            return ideas;
+        const auto origin = spans.front().start;
+        const auto low = tuning.lowest(), high = tuning.highest();
+        const auto make = [&] (const char* style, const char* description) -> LineIdea&
+        {
+            ideas.push_back ({ LineIdea::Part::rhythm, style, description, {} });
+            return ideas.back();
+        };
+        // Each chord's root on the lowest string (its first twelve frets), near the one before.
+        const auto roots = [&] (int from, int span)
+        {
+            std::vector<int> r;
+            double prev = from + 3.0 + (variation % 3);
+            for (const auto& s : spans)
+            {
+                const auto n = nearestPitch (bassOf (s.chord), prev, from, from + span);
+                r.push_back (n);
+                prev = n;
+            }
+            return r;
+        };
+        const auto lowRoots = roots (low, 11);
+        // Root and fifth (and the octave): no third, so one shape fits major and minor.
+        const auto powerOf = [] (const Chord& c, int root, bool octave)
+        {
+            const auto fifth = fifthAbove (c, root);
+            return octave ? std::vector<int> { root, fifth, root + 12 } : std::vector<int> { root, fifth };
+        };
+        const auto each = [&] (const Rhythm& bar, auto&& note)
+        {
+            for (const auto& o : place (spans, scaled (bar, beatsPerBar), beatsPerBar))
+                note (o);
+        };
+        {
+            auto& idea = make ("Power chords", "Root, fifth and octave on the low strings, held or pushed (rock, punk, metal)");
+            each (variation % 2 == 0 ? Rhythm { { 0, 2, true }, { 2, 2, true } } : Rhythm { { 0, 1.5, true }, { 1.5, 1, false }, { 2.5, 1.5, false } },
+                  [&] (const Onset& o) { addChord (idea.notes, o.at, o.length, powerOf (spans[o.span].chord, lowRoots[o.span], true), o.strong ? 0.92f : 0.84f); });
+        }
+        {
+            // An octave shape higher up (root on the third string up from the bottom, give or take).
+            const auto mid = roots (juce::jmin (high - 24, low + 12), 11);
+            auto& idea = make ("Octave chords", "The root and its octave on eighth notes, higher up the neck (indie and alternative rock)");
+            each (variation % 2 == 0 ? Rhythm { { 0, .5, true }, { .5, .5, false }, { 1, .5, false }, { 1.5, .5, false }, { 2, .5, true }, { 2.5, .5, false }, { 3, .5, false }, { 3.5, .5, false } }
+                                     : Rhythm { { 0, .75, true }, { .75, .75, false }, { 1.5, 1, false }, { 2.5, .5, false }, { 3, 1, false } },
+                  [&] (const Onset& o) { addChord (idea.notes, o.at, o.length, { mid[o.span], mid[o.span] + 12 }, o.strong ? 0.86f : 0.74f); });
+        }
+        {
+            auto& idea = make ("Palm-muted chugs", "Short, quiet root-and-fifth chugs with a full chord ringing on the strong beats (metal, hard rock)");
+            const Rhythm eighths { { 0, .5, true }, { .5, .5, false }, { 1, .5, false }, { 1.5, .5, false }, { 2, .5, true }, { 2.5, .5, false }, { 3, .5, false }, { 3.5, .5, false } };
+            Rhythm sixteenths;
+            for (auto i = 0; i < 16; ++i)
+                sixteenths.push_back ({ i * 0.25, 0.25, i % 8 == 0 });
+            each (variation % 2 == 0 ? eighths : sixteenths, [&] (const Onset& o)
+            {
+                if (o.strong)
+                    addChord (idea.notes, o.at, o.length * 1.6, powerOf (spans[o.span].chord, lowRoots[o.span], true), 0.95f);
+                else
+                    addChord (idea.notes, o.at, o.length * 0.55, powerOf (spans[o.span].chord, lowRoots[o.span], false), 0.55f);   // (short and soft: muted)
+            });
+        }
+        {
+            auto& idea = make ("Gallop", "An eighth and two sixteenths on every beat, the galloping rhythm (classic heavy metal)");
+            Rhythm gallop;
+            for (auto beat = 0; beat < 4; ++beat)
+            {
+                gallop.push_back ({ beat + 0.0, 0.5, beat % 2 == 0 });
+                gallop.push_back ({ beat + 0.5, 0.25, false });
+                gallop.push_back ({ beat + 0.75, 0.25, false });
+            }
+            each (gallop, [&] (const Onset& o) { addChord (idea.notes, o.at, o.length * 0.85, powerOf (spans[o.span].chord, lowRoots[o.span], false), o.strong ? 0.94f : 0.7f); });
+        }
+        {
+            // The key's tonic on the lowest string as a pedal, the chord's power chord above it.
+            auto& idea = make ("Pedal-point riff", "The key's low note chugging under the chord's power chord, in and out (thrash, djent, metalcore)");
+            const auto upper = roots (low + 5, 11);
+            const Rhythm riff { { 0, .5, true }, { .5, .5, false }, { 1, .5, false }, { 1.5, .5, false }, { 2, .5, false }, { 2.5, .5, false }, { 3, .5, false }, { 3.5, .5, false } };
+            const bool chordOn[2][8] = { { false, false, true, false, false, true, false, true }, { false, true, false, false, true, false, true, true } };
+            each (riff, [&] (const Onset& o)
+            {
+                const auto& s = spans[o.span];
+                const auto pedal = nearestPitch (s.key.pitchClass(), low, low, low + 11);
+                const auto step = (int) std::round (std::fmod (o.at + origin - s.start, beatsPerBar) / 0.5) % 8;
+                if (chordOn[variation % 2][step] && step != 0)
+                    addChord (idea.notes, o.at, o.length * 0.9, powerOf (s.chord, upper[o.span], false), 0.9f);
+                else
+                    add (idea.notes, o.at, o.length * 0.55, pedal, step == 0 ? 0.92f : 0.6f);
+            });
+        }
+        {
+            // Six strings (the top six) fretted as a barre shape from the root: the chord as a guitar holds it.
+            auto& idea = make ("Open strummed shapes", "Full chord shapes as a guitar holds them, strummed down, down-up, up-down-up");
+            const auto six = std::vector<int> (tuning.strings.end() - 6, tuning.strings.end());
+            const auto shape = [&] (const Chord& chord)
+            {
+                const auto tones = tonesOf (chord);
+                auto first = 0;   // the string the root is on: the lowest of the six, else the next
+                auto fret = pcOf (bassOf (chord) - six[0]);
+                if (fret > 7)
+                {
+                    first = 1;
+                    fret = pcOf (bassOf (chord) - six[1]);
+                }
+                std::vector<int> notes;
+                for (auto s = first; s < 6; ++s)
+                {
+                    if (s == first)
+                    {
+                        notes.push_back (six[(size_t) s] + fret);
+                        continue;
+                    }
+                    // The note under the barre (or up to three frets above it) that's in the chord.
+                    for (auto f = fret; f <= fret + 3; ++f)
+                        if (has (tones, pcOf (six[(size_t) s] + f)))
+                        {
+                            notes.push_back (six[(size_t) s] + f);
+                            break;
+                        }
+                }
+                return notes;
+            };
+            struct Stroke { double at, length; bool down; };
+            const std::vector<Stroke> pattern = variation % 2 == 0
+                ? std::vector<Stroke> { { 0, 1, true }, { 1, .5, true }, { 1.5, .5, false }, { 2.5, .5, false }, { 3, .5, true }, { 3.5, .5, false } }
+                : std::vector<Stroke> { { 0, 1.5, true }, { 1.5, 1, true }, { 2.5, .5, false }, { 3, 1, true } };
+            for (size_t s = 0; s < spans.size(); ++s)
+            {
+                const auto notes = shape (spans[s].chord);
+                for (auto t = spans[s].start; t < spans[s].end - 1.0e-9; t += beatsPerBar)
+                    for (const auto& st : pattern)
+                    {
+                        const auto at = t + st.at * beatsPerBar / 4.0;
+                        if (at >= spans[s].end - 1.0e-9)
+                            continue;
+                        const auto len = juce::jmin (st.length * beatsPerBar / 4.0, spans[s].end - at);
+                        // Down: low to high, every string; up: high to low, the top four.
+                        std::vector<int> strummed = notes;
+                        if (! st.down)
+                        {
+                            strummed.assign (notes.end() - juce::jmin<std::ptrdiff_t> (4, (std::ptrdiff_t) notes.size()), notes.end());
+                            std::reverse (strummed.begin(), strummed.end());
+                        }
+                        addChord (idea.notes, at - origin, len, strummed, st.down ? 0.84f : 0.66f, 0.02);
+                    }
+            }
+        }
+        // Nothing under the lowest string (a library's keyswitches live there) nor past the 24th fret.
+        for (auto& idea : ideas)
+            for (auto& n : idea.notes)
+                while (n.pitch < low)
+                    n.pitch += 12;
+        for (auto& idea : ideas)
+            for (auto& n : idea.notes)
+                while (n.pitch > high)
+                    n.pitch -= 12;
+        for (auto& idea : ideas)
+            std::stable_sort (idea.notes.begin(), idea.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+        return ideas;
+    }
+
+    //==========================================================================
+    std::vector<LineIdea> guitarLeadIdeas (const std::vector<ChordSpan>& spans, double beatsPerBar, int variation, const GuitarTuning& tuning)
+    {
+        std::vector<LineIdea> ideas;
+        if (spans.empty())
+            return ideas;
+        const auto origin = spans.front().start;
+        // A lead's range: from the second string's fifth fret to the top string's 22nd.
+        const auto low = juce::jmax (tuning.strings[1] + 5, 45), high = tuning.strings.back() + 22;
+        const auto centre = (low + high) / 2 - 2;
+        juce::Random random (0x1ead + variation * 104729);
+        const auto make = [&] (const char* style, const char* description) -> LineIdea&
+        {
+            ideas.push_back ({ LineIdea::Part::lead, style, description, {} });
+            return ideas.back();
+        };
+        // The scales a rock or metal lead uses, on the key's tonic (a major key: its relative minor's
+        // notes for the minor pentatonic and blues: the same notes as the major pentatonic plus colour).
+        const auto pentatonicOf = [] (const Key& k) { return k.minor ? scaleOn (k.pitchClass(), { 0, 3, 5, 7, 10 }) : scaleOn (k.pitchClass(), { 0, 2, 4, 7, 9 }); };
+        const auto bluesOf = [] (const Key& k) { return k.minor ? scaleOn (k.pitchClass(), { 0, 3, 5, 6, 7, 10 }) : scaleOn (k.pitchClass(), { 0, 2, 3, 4, 7, 9 }); };
+        const auto neoOf = [] (const Key& k) { return k.minor ? scaleOn (k.pitchClass(), { 0, 2, 3, 5, 7, 8, 11 }) : scaleOn (k.pitchClass(), { 0, 2, 4, 5, 7, 9, 11 }); };
+        // Bar by bar: the bar's first note on a chord tone near `prev`, then `fill` writes the rest.
+        struct Bar { size_t span; double start, length; };
+        std::vector<Bar> barsList;
+        for (size_t s = 0; s < spans.size(); ++s)
+            for (auto t = spans[s].start; t < spans[s].end - 1.0e-9; t += beatsPerBar)
+                barsList.push_back ({ s, t - origin, juce::jmin (beatsPerBar, spans[s].end - t) });
+        const auto target = [&] (const Bar& b, int prev) { return nearestOf (tonesOf (spans[b.span].chord), prev, low, high); };
+        const auto lastOnChord = [&] (LineIdea& idea)
+        {
+            if (idea.notes.empty())
+                return;
+            auto& last = idea.notes.back();
+            last.pitch = nearestOf (tonesOf (spans.back().chord), last.pitch, low, high);
+            last.length = juce::jmax (last.length, spans.back().end - origin - last.beat);
+        };
+        {
+            auto& idea = make ("Pentatonic box", "Up and down one pentatonic box, landing on the chord each bar (the rock solo's home)");
+            auto prev = centre;
+            for (const auto& b : barsList)
+            {
+                const auto scale = pentatonicOf (spans[b.span].key);
+                auto pitch = target (b, prev);
+                auto dir = variation % 2 == 0 ? 1 : -1;
+                auto i = 0;
+                for (auto at = 0.0; at < b.length - 1.0e-9; at += 0.5, ++i)
+                {
+                    const auto len = (at + 0.5 >= b.length - 1.0e-9) ? b.length - at : 0.5;
+                    add (idea.notes, b.start + at, i == 0 ? 0.5 : len, pitch, i == 0 ? 0.9f : 0.72f);
+                    if (i % 3 == 2)
+                        dir = -dir;
+                    pitch = stepFrom (pitch, dir, scale, juce::jmax (low, centre - 9), juce::jmin (high, centre + 12));
+                }
+                prev = pitch;
+            }
+            lastOnChord (idea);
+        }
+        {
+            auto& idea = make ("Blues scale run", "Down the blues scale in triplets, through its \"blue\" note, landing on the chord (blues rock)");
+            auto prev = centre + 7;
+            for (const auto& b : barsList)
+            {
+                const auto scale = bluesOf (spans[b.span].key);
+                auto pitch = target (b, prev);
+                auto i = 0;
+                for (auto at = 0.0; at < b.length - 1.0e-9; at += 1.0 / 3.0, ++i)
+                {
+                    const auto restOfBar = at + 1.0 / 3.0 >= b.length - 1.0e-9;
+                    add (idea.notes, b.start + at, restOfBar ? b.length - at : 1.0 / 3.0, pitch, i % 3 == 0 ? 0.88f : 0.7f);
+                    pitch = stepFrom (pitch, (i / 6) % 2 == 0 ? -1 : 1, scale, low, high);
+                }
+                prev = pitch;
+            }
+            lastOnChord (idea);
+        }
+        {
+            // A three-note cell from the pentatonic, repeated a step lower each beat.
+            auto& idea = make ("Repeating triplet lick", "A three-note pentatonic cell in triplets, repeated a step lower every beat (the classic rock run)");
+            auto prev = centre + 9;
+            for (const auto& b : barsList)
+            {
+                const auto scale = pentatonicOf (spans[b.span].key);
+                auto top = target (b, prev);
+                for (auto beat = 0.0; beat < b.length - 1.0e-9; beat += 1.0)
+                {
+                    const auto second = stepFrom (top, -1, scale, low, high);
+                    const auto third = stepFrom (second, -1, scale, low, high);
+                    const int cell[3] = { top, second, variation % 2 == 0 ? third : top };
+                    for (auto k = 0; k < 3; ++k)
+                        add (idea.notes, b.start + beat + k / 3.0, 1.0 / 3.0, cell[k], k == 0 ? 0.9f : 0.72f);
+                    top = stepFrom (top, -1, scale, low + 4, high);
+                }
+                prev = top;
+            }
+            lastOnChord (idea);
+        }
+        {
+            // Groups of four sixteenths, each group starting a step below the last.
+            auto& idea = make ("Descending fours", "Groups of four sixteenth notes, each group starting a scale step lower (a metal sequence)");
+            auto prev = high - 6;
+            for (const auto& b : barsList)
+            {
+                const auto scale = availableNotes (spans[b.span].chord, spans[b.span].key);
+                auto start = target (b, prev);
+                for (auto beat = 0.0; beat < b.length - 1.0e-9; beat += 1.0)
+                {
+                    auto pitch = start;
+                    for (auto k = 0; k < 4; ++k)
+                    {
+                        add (idea.notes, b.start + beat + k * 0.25, 0.25, pitch, k == 0 ? 0.9f : 0.74f);
+                        pitch = stepFrom (pitch, -1, scale, low, high);
+                    }
+                    start = stepFrom (start, -1, scale, low + 6, high);
+                }
+                prev = start + 7;
+            }
+            lastOnChord (idea);
+        }
+        {
+            // Up the chord's notes, then down the (harmonic) minor scale, in sixteenths.
+            auto& idea = make ("Neoclassical run", "Up the chord in an arpeggio, then down the harmonic minor scale in sixteenths (shred, neoclassical metal)");
+            auto prev = centre - 3;
+            for (const auto& b : barsList)
+            {
+                const auto& s = spans[b.span];
+                auto scale = neoOf (s.key);
+                // The raised seventh (G# in A minor) is the sound of it, but not over a chord holding
+                // the natural one (C major's G): there the natural minor's seventh instead.
+                if (s.key.minor && has (tonesOf (s.chord), pcOf (s.key.pitchClass() + 10)))
+                    for (auto& n : scale)
+                        if (n == pcOf (s.key.pitchClass() + 11))
+                            n = pcOf (s.key.pitchClass() + 10);
+                for (const auto t : tonesOf (s.chord))   // (the chord's notes always in it: V's raised seventh)
+                    if (! has (scale, t))
+                        scale.push_back (t);
+                auto pitch = target (b, prev);
+                const auto tones = tonesOf (s.chord);
+                const auto half = b.length * 0.5;
+                for (auto at = 0.0; at < b.length - 1.0e-9; at += 0.25)
+                {
+                    add (idea.notes, b.start + at, 0.25, pitch, std::fmod (at, 1.0) < 1.0e-9 ? 0.9f : 0.72f);
+                    pitch = at < half - 1.0e-9 ? stepFrom (pitch, 1, tones, low, high) : stepFrom (pitch, -1, scale, low, high);
+                }
+                prev = pitch;
+            }
+            lastOnChord (idea);
+        }
+        {
+            // The same note picked on every sixteenth for a beat; the line moves by chord tones and steps.
+            auto& idea = make ("Tremolo picking", "One note picked on every sixteenth, the line moving through the chords (black metal, post-rock)");
+            auto prev = centre;
+            for (const auto& b : barsList)
+            {
+                const auto& s = spans[b.span];
+                auto pitch = target (b, prev);
+                const auto av = availableNotes (s.chord, s.key);
+                for (auto beat = 0.0; beat < b.length - 1.0e-9; beat += 1.0)
+                {
+                    for (auto k = 0; k < 4 && beat + k * 0.25 < b.length - 1.0e-9; ++k)
+                        add (idea.notes, b.start + beat + k * 0.25, 0.25, pitch, k == 0 ? 0.86f : 0.7f);
+                    pitch = stepFrom (pitch, random.nextBool() ? 1 : -1, av, low, high);
+                }
+                prev = pitch;
+            }
+            lastOnChord (idea);
+        }
+        return ideas;
+    }
+}

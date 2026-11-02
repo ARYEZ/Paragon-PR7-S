@@ -607,7 +607,7 @@ public:
         };
         toMidi.onClick = [this] { owner.studio.chordsToMidi (owner.studio.getSelectedTrack()); };
         autoScales.onClick = [this] { owner.studio.setAutoScales (! owner.studio.getChordTrack().autoScales); };
-        lines.setTooltip ("Bass and melody ideas for the chords (those in the cycle when it's on, else all): hear them, put one on a new track");
+        lines.setTooltip ("Piano, guitar and bass ideas for the chords (those in the cycle when it's on, else all): hear them, put one on a track");
         lines.onClick = [this] { if (owner.onLineIdeas) owner.onLineIdeas ({}); };
         setTooltip ("The chord track: double-click its lane to add a chord, right-click for its menu");
         refresh();
@@ -681,7 +681,7 @@ public:
         menu.addItem (1, "Chords to MIDI (onto the selected track)", ! owner.studio.getChordTrack().events.empty());
         menu.addItem (2, "Assign the Chords to the Pads", ! owner.studio.getChordTrack().events.empty());
         menu.addItem (3, "Scales Follow the Chords", true, owner.studio.getChordTrack().autoScales);
-        menu.addItem (5, "Bass and Melody Ideas...", ! owner.studio.getChordTrack().events.empty());
+        menu.addItem (5, "Piano, Guitar and Bass Ideas...", ! owner.studio.getChordTrack().events.empty());
         menu.addSeparator();
         menu.addItem (4, "Remove the Chord Track (its chords kept)");
         menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ChordRow> (this)] (int chosen)
@@ -698,7 +698,7 @@ public:
     }
 
     TrackList& owner;
-    juce::TextButton toPads { "TO PADS" }, toMidi { "TO MIDI" }, autoScales { "AUTO SCALES" }, lines { "BASS + MELODY" };
+    juce::TextButton toPads { "TO PADS" }, toMidi { "TO MIDI" }, autoScales { "AUTO SCALES" }, lines { "IDEAS" };
     juce::Rectangle<float> nameArea, nowArea;
     juce::String shown;
 };

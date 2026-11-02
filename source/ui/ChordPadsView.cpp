@@ -506,7 +506,7 @@ public:
                 menu.addItem (1, "Play It");
                 menu.addItem (2, "Onto the Chord Track (From the Playhead's Bar, a Chord a Bar)");
                 menu.addItem (3, "Onto the Pads (From the Selected Pad, Else the First)");
-                menu.addItem (4, "Bass and Melody Ideas for It (Onto the Chord Track First)");
+                menu.addItem (4, "Piano, Guitar and Bass Ideas for It (Onto the Chord Track First)");
                 menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<CircleAssistant> (this), row] (int chosen)
                 {
                     if (safe == nullptr)
