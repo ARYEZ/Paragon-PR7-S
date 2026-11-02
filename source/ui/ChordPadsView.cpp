@@ -745,6 +745,13 @@ ChordPadsView::ChordPadsView (pr7s::Studio& s) : studio (s)
     circleKey.setTooltip ("The circle of fifths: the key's chords marked; click one to hear it and see what could come next, scored "
                           "(double-click or drag a chord onto a pad)");
     circleKey.onClick = [this] { setCircleShown (! circleShown); };
+    // IDEAS (0.20.2, the owner looked for the piano and guitar ideas here): the IDEAS window
+    // (piano, guitar and bass parts) for the chord track's chords.
+    styleKey (ideasKey);
+    ideasKey.setTooltip ("Piano, guitar and bass ideas for the chord track's chords (those in the cycle when it's on, else all): "
+                         "power chords, chugs, leads, piano parts, bass lines; hear them and put one on a track");
+    ideasKey.onClick = [this] { if (onLineIdeas) onLineIdeas ({}); };
+    addAndMakeVisible (ideasKey);
     windowKey.onClick = [this] { if (onWindowToggle) onWindowToggle(); };
     closeKey.onClick = [this] { if (onClose) onClose(); };
 
@@ -1163,7 +1170,8 @@ void ChordPadsView::showPlayerMenu()
     const auto& pads = studio.getChordPads();
     juce::PopupMenu menu;
     menu.addSectionHeader ("BASIC PLAYER: CLOSE CHORDS");
-    menu.addItem (99, "(Piano and guitar players: a later release)", false, false);
+    // (0.20.2: the piano and guitar parts are in IDEAS, not a pad player; the menu says where.)
+    menu.addItem (98, "Piano, Guitar and Bass Ideas... (IDEAS)", ! studio.getChordTrack().events.empty());
     menu.addSeparator();
     menu.addSectionHeader ("OCTAVE");
     for (int o = -2; o <= 2; ++o)
@@ -1171,6 +1179,11 @@ void ChordPadsView::showPlayerMenu()
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&playerKey),
                         [safe = juce::Component::SafePointer<ChordPadsView> (this)] (int chosen)
     {
+        if (safe != nullptr && chosen == 98 && safe->onLineIdeas)
+        {
+            safe->onLineIdeas ({});
+            return;
+        }
         if (safe == nullptr || chosen < 8 || chosen > 12)
             return;
         auto p = safe->studio.getChordPads();
@@ -1639,7 +1652,8 @@ void ChordPadsView::resized()
     placeE (lockKey, 56);
     placeE (adaptiveKey, 84);
     placeE (referenceKey, 90, 10);
-    placeE (fromChordTrackKey, 132);
+    placeE (fromChordTrackKey, 132, 10);
+    placeE (ideasKey, 70);   // (0.20.2: beside the other chord track key; the top row is full at 1500 px)
 }
 
 //==============================================================================

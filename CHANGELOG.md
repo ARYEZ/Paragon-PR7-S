@@ -2,6 +2,12 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.20.2
+
+- **IDEAS from the chord pads** (the owner looked for the piano and guitar parts in the pads and couldn't find them). The pads' toolbar has an **IDEAS** key on its second row, after FROM CHORD TRACK: it opens the IDEAS window (piano, guitar and bass parts, VELOCITIES, TUNING, HUMANIZE) for the chord track's chords, those in the cycle when it's on, else all of them. The PLAYER menu's old "(Piano and guitar players: a later release)" line pointed the wrong way: it's now "Piano, Guitar and Bass Ideas..." and opens IDEAS too.
+- **Where IDEAS works from:** the chords on the **chord track**. With chords only on the pads, put them on the chord track first: drag pads onto the chord lane, double-click a popular progression in the circle panel, or right-click a progression > Ideas for It (that does both at once).
+- **Honestly:** the pads' PLAYER menu is still the basic close-chord player (the pads' own sound when you press them); the piano and guitar parts live in IDEAS as parts you add, not as a way the pads play.
+
 ## 0.20.1
 
 A key for Humanize, and its settings in the Hub (the owner asked).

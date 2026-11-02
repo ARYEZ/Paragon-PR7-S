@@ -697,6 +697,21 @@ TEST_CASE ("Humanize's settings are kept (0.20.0)", "[lines][humanize]")
 #include "ui/ParagonLookAndFeel.h"
 #include "ui/Finish.h"
 
+TEST_CASE ("The chord pads open IDEAS: their IDEAS key, for the chord track's chords (0.20.2)", "[lines][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& pads = view.getChordPads();
+    REQUIRE (pads.getIdeasKey().onClick != nullptr);
+    studio.addChordEvent (0.0, { 9, T::minor, X::none, -1 });
+    studio.addChordEvent (4.0, { 5, T::major, X::none, -1 });
+    pads.getIdeasKey().onClick();
+    REQUIRE (view.getLinesWindow() != nullptr);
+    CHECK (view.getLinesWindow()->getPage().getIdeas (LineIdea::Part::rhythm).size() == 6);
+}
+
 TEST_CASE ("The IDEAS window: ideas heard, used, more of them (0.18.0); piano, guitar and bass tabs, the tuning (0.19.0)", "[lines][ui]")
 {
     Finish::set (Finish::Type::pearlWhite, false);
