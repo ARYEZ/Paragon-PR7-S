@@ -236,6 +236,13 @@ private:   // the selected notes, at the column's foot
     AutoScroll autoScroll;
     double lastPosition = 0.0;   // the playhead as last seen (a jump while stopped is followed)
     float playheadX = -1.0e6f;
+    // The playhead as drawn (0.17.5, the owner asked: the arrangement's glide here too).
+    double shownBeat = 0.0;
+    bool gliding = false;
+public:
+    void advancePlayhead();   // one frame of the glide (the timer's; tests call it)
+    double getShownPlayhead() const noexcept { return shownBeat; }
+private:
     juce::MouseCursor penCursor, scissorsCursor;   // DRAW's and SPLIT's pointers (made once: not statics, they mustn't outlive JUCE)   // where it was last drawn (0.9.2: only its strip is redrawn as it moves)
     juce::ScrollBar across { false }, down { true };
 

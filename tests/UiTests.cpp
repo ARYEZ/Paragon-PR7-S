@@ -3059,3 +3059,31 @@ TEST_CASE ("The playhead glides into a new place while stopped, exact while play
                                          &arrange, &arrange, juce::Time::getCurrentTime(), { x, y }, juce::Time::getCurrentTime(), 0, false));
     CHECK_FALSE (arrange.getRulerHover().has_value());
 }
+
+TEST_CASE ("The MIDI editor's playhead glides as the arrangement's (0.17.5)", "[ui][playhead]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    pr7s::Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto track = studio.getProject().tracks[0].id;
+    studio.addPart (track, { 0.0, 16.0, "Riff", { { 0.0, 1.0, 60, 0.8f } } });
+    view.setKeyEditorSize (100);
+    view.getArrangeView().select (track, 0);
+    view.openKeyEditor();
+    studio.dispatchPendingMessages();
+    auto& editor = view.getKeyEditor();
+    editor.advancePlayhead();
+    CHECK (editor.getShownPlayhead() == 0.0);
+    studio.setPosition (2.0);
+    editor.advancePlayhead();
+    CHECK (editor.getShownPlayhead() > 0.0);
+    CHECK (editor.getShownPlayhead() < 2.0);
+    for (int i = 0; i < 30; ++i)
+        editor.advancePlayhead();
+    CHECK (editor.getShownPlayhead() == 2.0);
+    studio.play();
+    editor.advancePlayhead();
+    CHECK (editor.getShownPlayhead() == studio.getEngine().getPosition());
+    studio.stop();
+}

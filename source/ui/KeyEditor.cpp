@@ -305,14 +305,36 @@ void KeyEditor::timerCallback()
 
     followPlayhead();
     refreshScrollBars();
+    advancePlayhead();
     // The playhead's old and new strips (not the whole editor, 30 times a second: 0.9.2).
-    if (const auto x = xForBeat (studio.getEngine().getPosition()); std::abs (x - playheadX) >= 0.05f)
+    if (const auto x = xForBeat (shownBeat); std::abs (x - playheadX) >= 0.05f)
     {
         const auto strip = [this] (float at) { return juce::Rectangle<float> (at - 7.0f, 0.0f, 15.0f, (float) getHeight()).toNearestIntEdges(); };
         repaint (strip (playheadX));
         repaint (strip (x));
         playheadX = x;
     }
+    // 60 frames a second while it glides, else 30.
+    const auto rate = gliding ? 60 : 30;
+    if (getTimerInterval() != 1000 / rate)
+        startTimerHz (rate);
+}
+
+void KeyEditor::advancePlayhead()
+{
+    // As the arrangement's (ArrangeView::advancePlayhead): exact while playing or recording;
+    // stopped, a new place (a click in the ruler, snapped) glides in; a long jump goes straight there.
+    auto& engine = studio.getEngine();
+    const auto target = engine.getPosition();
+    const auto pixels = std::abs (xForBeat (target) - xForBeat (shownBeat));
+    if (engine.isPlaying() || engine.isRecording() || pixels < 0.5f || pixels > getNotesArea().getWidth() * 0.5f)
+    {
+        shownBeat = target;
+        gliding = false;
+        return;
+    }
+    shownBeat += (target - shownBeat) * ArrangeView::glideStep;
+    gliding = true;
 }
 
 void KeyEditor::followPlayhead()
@@ -1437,8 +1459,8 @@ void KeyEditor::paint (juce::Graphics& g)
     paintVelocities (g);
     paintRuler (g);
 
-    // The playhead, down the notes and the velocities.
-    const auto x = xForBeat (studio.getEngine().getPosition());
+    // The playhead, down the notes and the velocities (where it's drawn: it glides, 0.17.5).
+    const auto x = xForBeat (shownBeat);
     if (x >= getNotesArea().getX() - 2.0f && x <= (float) getWidth() + 2.0f)
     {
         const auto red = studio.getEngine().isRecording();

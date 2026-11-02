@@ -2,6 +2,10 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.17.5
+
+- **The MIDI editor's playhead glides too** (the owner asked). As in the arrangement since 0.17.4: while stopped, a click in the editor's ruler puts the playhead on the grid and it slides there in about a tenth of a second instead of jumping; while playing or recording it stays exactly on the music, and a long jump (more than half the editor's width) goes straight there. The same speed as the arrangement's, so the two move together.
+
 ## 0.17.4
 
 The playhead moves with some life (the owner asked: it felt static next to the other DAW's).
