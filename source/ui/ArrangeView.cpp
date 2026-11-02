@@ -798,13 +798,34 @@ void ArrangeView::paint (juce::Graphics& g)
     // A MIDI file being dragged in (0.18.1): where it lands, in the family's gradient.
     if (dropPreview)
     {
+        // As strong as the Hub's setting (0.18.2): the fill's opacity, the edge's width with it.
+        const auto strength = studio.getDropHighlight();
         const auto r = dropPreviewBounds();
         auto fill = Finish::neonGradient (r.getX(), r.getRight());
-        fill.multiplyOpacity (0.35f);
+        fill.multiplyOpacity (strength);
         g.setGradientFill (fill);
         g.fillRoundedRectangle (r, 3.0f);
         g.setGradientFill (Finish::neonGradient (r.getX(), r.getRight()));
-        g.drawRoundedRectangle (r.reduced (1.0f), 3.0f, 2.0f);
+        g.drawRoundedRectangle (r.reduced (1.0f), 3.0f, 1.5f + 2.5f * strength);
+        // The notes coming in, low to high in the row (0.18.2).
+        if (! dropPreview->notes.empty())
+        {
+            auto low = 127, high = 0;
+            for (const auto& n : dropPreview->notes)
+            {
+                low = juce::jmin (low, n.pitch);
+                high = juce::jmax (high, n.pitch);
+            }
+            const auto body = r.reduced (2.0f, 4.0f).withTrimmedTop (14.0f);
+            const auto row = body.getHeight() / (float) juce::jmax (6, high - low + 1);
+            g.setColour (juce::Colour (0xfff4eeea).withAlpha (0.85f));
+            for (const auto& n : dropPreview->notes)
+            {
+                const auto x1 = timeline.xForBeat (dropPreview->start + n.start), x2 = timeline.xForBeat (dropPreview->start + n.start + n.length);
+                g.fillRect (juce::Rectangle<float> (x1, body.getBottom() - (float) (n.pitch - low + 1) * row, juce::jmax (1.5f, x2 - x1 - 1.0f),
+                                                    juce::jmax (1.5f, row - 1.0f)));
+            }
+        }
         g.setColour (juce::Colour (0xfff4eeea));
         g.setFont (font (11.0f));
         g.drawText (dropPreview->name + (dropPreview->moreTracks > 0 ? "  (+" + juce::String (dropPreview->moreTracks) + " more on new tracks)" : juce::String()),

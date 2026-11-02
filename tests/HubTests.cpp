@@ -144,6 +144,11 @@ TEST_CASE ("The Hub: its sections (recent, templates, the projects folder), the 
 
     hub.showSettingsPage (true);
     CHECK (hub.isShowingSettings());
+    // DRAG HIGHLIGHT (0.18.2): on the settings page, the studio's strength, set by it.
+    CHECK (hub.getDropStrength().isVisible());
+    CHECK (hub.getDropStrength().getValue() == 60.0);
+    hub.getDropStrength().setValue (85.0, juce::sendNotificationSync);
+    CHECK (std::abs (studio.getDropHighlight() - 0.85f) < 1.0e-6f);
     root.deleteRecursively();
 }
 

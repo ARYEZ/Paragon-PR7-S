@@ -336,7 +336,10 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_DROP", {}).isNotEmpty())
     {
         // A MIDI file being dragged over the lead's track (0.18.1): where it will land, lit.
-        view.getArrangeView().setDropPreview (ArrangeView::DropPreview { lead, 16.0, 8.0, "Strings Verse", 1 });
+        std::vector<pr7s::Note> notes;
+        for (int i = 0; i < 8; ++i)
+            notes.push_back ({ i * 1.0, 0.9, 64 + (i % 4) * 3, 0.8f });
+        view.getArrangeView().setDropPreview (ArrangeView::DropPreview { lead, 16.0, 8.0, "Strings Verse", 1, notes });
     }
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_RULERHOVER", {}).isNotEmpty())
     {

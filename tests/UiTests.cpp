@@ -3132,6 +3132,13 @@ TEST_CASE ("A MIDI file dropped on an instrument track lands on it, snapped, sho
     CHECK (arrange.getDropPreview()->trackId == synth);
     CHECK (arrange.getDropPreview()->start == 4.0);
     CHECK (arrange.getDropPreview()->length == 8.0);
+    CHECK (arrange.getDropPreview()->notes.size() == 2);   // (0.18.2: its notes drawn inside)
+    // The strength (0.18.2): the Hub's setting, 60% at first, kept between 10% and 100%.
+    CHECK (studio.getDropHighlight() == pr7s::Studio::defaultDropHighlight);
+    studio.setDropHighlight (2.0f);
+    CHECK (studio.getDropHighlight() == 1.0f);
+    studio.setDropHighlight (0.3f);
+    CHECK (std::abs (studio.getDropHighlight() - 0.3f) < 1.0e-6f);
     // Moved on to 6.4: the next whole note (bar 3, beat 8).
     p = pointOver (synth, 6.4);
     view.fileDragMove (files, p.x, p.y);

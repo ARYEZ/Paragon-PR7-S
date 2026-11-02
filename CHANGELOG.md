@@ -2,6 +2,10 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.18.2
+
+- **The drag highlight is stronger, and you set how strong.** The place a dragged-in MIDI file will land now lights at 60% by default (0.18.1's was 35%), with a thicker gradient edge, and the file's notes are drawn inside it in pearl white so you can see what's arriving. The strength is a setting: the Hub's HUB SETTINGS page has DRAG HIGHLIGHT, from 10% (a faint wash) to 100% (solid); the edge thickens with it. It's kept with your settings.
+
 ## 0.18.1
 
 Dragging MIDI files onto tracks (the owner's report and asks).

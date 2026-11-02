@@ -61,7 +61,11 @@ private:
     juce::TextEditor search, folderName;
     juce::ToggleButton useDefault { "Use Default Location" }, showPaths { "Show File Paths" },
                        showLocation { "Show the Project Location on the Projects Page" }, atStart { "Open the Hub When the Studio Starts" };
-    juce::Label locationLabel;
+    juce::Label locationLabel, dropLabel;
+    juce::Slider dropStrength;   // DRAG HIGHLIGHT (0.18.2)
+public:
+    juce::Slider& getDropStrength() noexcept { return dropStrength; }
+private:
     std::unique_ptr<juce::FileChooser> chooser;
     juce::Rectangle<int> header, nav, page, locationRow;
 

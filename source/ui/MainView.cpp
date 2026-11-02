@@ -1352,7 +1352,14 @@ void MainView::fileDragEnter (const juce::StringArray& files, int x, int y)
                     }
                 const auto bar = studio.getProject().beatsPerBar();
                 const auto length = juce::jmax (bar, std::ceil (last / bar - 1.0e-9) * bar - std::floor (first / bar + 1.0e-9) * bar);
-                draggedMidi = DraggedMidi { path, juce::File (path).getFileNameWithoutExtension(), length, (int) midi->tracks.size() };
+                std::vector<pr7s::Note> notes;   // (the first track's, from its first bar: as the part will hold them)
+                if (! midi->tracks.empty())
+                    for (auto n : midi->tracks.front().notes)
+                    {
+                        n.start -= std::floor (first / bar + 1.0e-9) * bar;
+                        notes.push_back (n);
+                    }
+                draggedMidi = DraggedMidi { path, juce::File (path).getFileNameWithoutExtension(), length, (int) midi->tracks.size(), std::move (notes) };
             }
             break;
         }
@@ -1369,7 +1376,7 @@ void MainView::fileDragMove (const juce::StringArray&, int x, int y)
         arrange.setDropPreview (std::nullopt);   // (not over an instrument track: new tracks, as before)
         return;
     }
-    arrange.setDropPreview (ArrangeView::DropPreview { trackId, beat, draggedMidi->length, draggedMidi->name, draggedMidi->tracks - 1 });
+    arrange.setDropPreview (ArrangeView::DropPreview { trackId, beat, draggedMidi->length, draggedMidi->name, draggedMidi->tracks - 1, draggedMidi->notes });
 }
 
 void MainView::fileDragExit (const juce::StringArray&)

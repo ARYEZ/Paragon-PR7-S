@@ -164,6 +164,22 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
         styleToggle (*t);
         addAndMakeVisible (*t);
     }
+    // DRAG HIGHLIGHT (0.18.2, the owner asked): how strongly a file dragged in lights where it lands.
+    dropLabel.setText ("DRAG HIGHLIGHT: how strongly a dragged-in file lights where it will land", juce::dontSendNotification);
+    dropLabel.setColour (juce::Label::textColourId, ParagonColours::text);
+    dropLabel.setFont (ParagonLookAndFeel::textFont (13.0f));
+    addAndMakeVisible (dropLabel);
+    dropStrength.setSliderStyle (juce::Slider::LinearBar);
+    dropStrength.setRange (10.0, 100.0, 1.0);
+    dropStrength.setTextValueSuffix ("%");
+    dropStrength.setColour (juce::Slider::trackColourId, ParagonColours::accent);
+    dropStrength.setColour (juce::Slider::textBoxTextColourId, ParagonColours::text);
+    dropStrength.setColour (juce::Slider::backgroundColourId, juce::Colour (0xff1b171c));   // (the bar's whole length shows)
+    dropStrength.setColour (juce::Slider::textBoxOutlineColourId, ParagonColours::panelEdge);
+    dropStrength.setValue (studio.getDropHighlight() * 100.0, juce::dontSendNotification);
+    dropStrength.onValueChange = [this] { studio.setDropHighlight ((float) dropStrength.getValue() / 100.0f); };
+    dropStrength.setTooltip ("10%: a faint wash; 100%: solid. The edge thickens with it");
+    addAndMakeVisible (dropStrength);
     projectsTab.setClickingTogglesState (false);
     settingsTab.setClickingTogglesState (false);
     projectsTab.onClick = [this] { showSettingsPage (false); };
@@ -590,7 +606,7 @@ void Hub::resized()
     const auto locationOnPage = showProjects && library.showsLocation();
     for (auto* c : std::initializer_list<juce::Component*> { list.get(), &search, &createEmpty, &chooseFile, &open })
         c->setVisible (showProjects);
-    for (auto* c : std::initializer_list<juce::Component*> { &showPaths, &showLocation, &atStart, &addLocation, &removeLocation, &locationsBox })
+    for (auto* c : std::initializer_list<juce::Component*> { &showPaths, &showLocation, &atStart, &addLocation, &removeLocation, &locationsBox, &dropLabel, &dropStrength })
         c->setVisible (settingsPage);
     for (auto* c : std::initializer_list<juce::Component*> { &useDefault, &locationLabel, &chooseLocation, &folderName })
         c->setVisible (settingsPage || locationOnPage);
@@ -644,6 +660,10 @@ void Hub::resized()
             t->setBounds (p.removeFromTop (28).withWidth (520));
             p.removeFromTop (6);
         }
+        p.removeFromTop (18);
+        dropLabel.setBounds (p.removeFromTop (24).withWidth (560));
+        p.removeFromTop (4);
+        dropStrength.setBounds (p.removeFromTop (26).withWidth (360));
     }
 }
 

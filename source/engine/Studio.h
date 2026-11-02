@@ -33,6 +33,11 @@ namespace pr7s
         PluginHost& getPluginHost() noexcept { return *host; }
         juce::AudioDeviceManager& getDeviceManager() noexcept { return devices; }
         juce::PropertiesFile* getSettings() noexcept { return settings.get(); }
+        // How strongly a file dragged in lights where it will land (0.18.2, the owner asked: a
+        // setting in the Hub): 0.1 faint to 1 solid; settings key "dropHighlight", default 0.6.
+        float getDropHighlight() const;
+        void setDropHighlight (float);
+        static constexpr float defaultDropHighlight = 0.6f;
         // The Hub's songs (0.12.0): recent ones, the project location, templates.
         ProjectLibrary& getLibrary() noexcept { return *library; }
         // Create Empty (the Hub): a new song, saved at once in a folder of its
@@ -772,7 +777,8 @@ namespace pr7s
         bool copyAudioFiles (const juce::File& from, const juce::File& to);
         void sendGone (Track&, int slot);
         bool linksSuspended = false, linksAbsolute = false, qLink = false;
-        bool mirroring = false;   // (a linked change being passed on: not passed on again)
+        bool mirroring = false;
+        float dropHighlight = defaultDropHighlight;   // (without a settings file: the tests)   // (a linked change being passed on: not passed on again)
         void pruneLinkGroups();
         // `action` for each channel linked to this one for `what` (not itself); the
         // changes they make are this change's (one undo step, one engine update).

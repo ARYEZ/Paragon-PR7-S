@@ -223,7 +223,7 @@ private:
     std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow;
     std::unique_ptr<LinesWindow> linesWindow;
     // The MIDI file being dragged in: read once when it enters (its length in beats, its tracks).
-    struct DraggedMidi { juce::String path, name; double length = 0.0; int tracks = 0; };
+    struct DraggedMidi { juce::String path, name; double length = 0.0; int tracks = 0; std::vector<pr7s::Note> notes; };
     std::optional<DraggedMidi> draggedMidi;
     juce::TextButton hubButton { "HUB" };
     juce::TextButton padsButton { "PADS" };   // the chord pads (0.14.0), lit while open

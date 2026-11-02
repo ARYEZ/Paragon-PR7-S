@@ -3769,6 +3769,20 @@ namespace pr7s
         return read ? importMidi (*read, newSong, atBeat, matchTempo, ontoTrackId) : 0;
     }
 
+    float Studio::getDropHighlight() const
+    {
+        if (settings != nullptr)
+            return juce::jlimit (0.1f, 1.0f, (float) settings->getDoubleValue ("dropHighlight", defaultDropHighlight));
+        return dropHighlight;
+    }
+
+    void Studio::setDropHighlight (float strength)
+    {
+        dropHighlight = juce::jlimit (0.1f, 1.0f, strength);
+        if (settings != nullptr)
+            settings->setValue ("dropHighlight", (double) dropHighlight);
+    }
+
     bool Studio::canTakeMidi (int trackId) const
     {
         const auto* track = project.findTrack (trackId);

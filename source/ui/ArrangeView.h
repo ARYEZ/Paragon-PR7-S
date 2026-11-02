@@ -300,7 +300,8 @@ public:
     float rowTop (const Timeline::Row&) const;   // where a row is drawn now
     float trackTop (int trackId) const;
     // A MIDI file being dragged in (0.18.1): where it will land, lit in the family's gradient.
-    struct DropPreview { int trackId = 0; double start = 0.0, length = 0.0; juce::String name; int moreTracks = 0; };
+    struct DropPreview { int trackId = 0; double start = 0.0, length = 0.0; juce::String name; int moreTracks = 0;
+                         std::vector<pr7s::Note> notes; };   // (the first track's, from the part's start: drawn inside it)
     void setDropPreview (std::optional<DropPreview>);
     const std::optional<DropPreview>& getDropPreview() const noexcept { return dropPreview; }
 
