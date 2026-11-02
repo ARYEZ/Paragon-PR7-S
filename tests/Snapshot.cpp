@@ -333,6 +333,11 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.selectMaster();   // (last: the set-up above chooses tracks)
         studio.dispatchPendingMessages();
     }
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_DROP", {}).isNotEmpty())
+    {
+        // A MIDI file being dragged over the lead's track (0.18.1): where it will land, lit.
+        view.getArrangeView().setDropPreview (ArrangeView::DropPreview { lead, 16.0, 8.0, "Strings Verse", 1 });
+    }
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_RULERHOVER", {}).isNotEmpty())
     {
         // The ruler's hover marker (0.17.4): where a click would put the playhead.
