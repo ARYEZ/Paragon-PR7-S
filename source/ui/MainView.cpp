@@ -782,6 +782,14 @@ bool MainView::handleKey (const juce::KeyPress& key)
             return true;
         }
     }
+    // Humanize (Alt+H, 0.20.1): the notes selected in the MIDI editor, else every note of the
+    // parts selected in the arrangement. One undo step.
+    if (! mods.isCommandDown() && mods.isAltDown() && ! mods.isShiftDown() && letter == 'H')
+    {
+        if (isKeyEditorOpen() && ! keyEditor.getSelectedNotes().empty())
+            return keyEditor.humanizeSelected();
+        return studio.humanizeParts (arrange.getSelectedParts());
+    }
     // Otherwise copy, cut, paste and select all are the editor's wherever the
     // last click was, so notes copied in one part paste into another just
     // selected in the arrangement.
@@ -1754,6 +1762,7 @@ void MainView::openHub()
             window->setCentrePosition (display->userArea.getCentre());
     }
     auto& hub = window->getHub();
+    hub.setKeyCommands (&keyMap);   // (HUMANIZE's key, 0.20.1)
     const auto closeHub = [safe = juce::Component::SafePointer<MainView> (this)]
     {
         juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->hubWindow.reset(); });

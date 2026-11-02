@@ -85,6 +85,7 @@ void MainView::registerCommands()
     add ("MIDI.VelocityLow", "MIDI", "Random Velocities: Low", { key ('B', alt) });
     add ("MIDI.VelocityMid", "MIDI", "Random Velocities: Mid", { key ('N', alt) });
     add ("MIDI.VelocityHigh", "MIDI", "Random Velocities: High", { key ('M', alt) });
+    add ("MIDI.Humanize", "MIDI", "Humanize", { key ('H', alt) });   // (0.20.1: the editor's selected notes, else the selected parts)
 
     // Tools.
     for (const auto t : ArrangeView::tools)

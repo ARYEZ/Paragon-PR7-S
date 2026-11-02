@@ -115,7 +115,7 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     refreshVelocityKeys();
     humanizeKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     humanizeKey.setWantsKeyboardFocus (false);
-    humanizeKey.setTooltip ("Humanize the selected notes: small differences in timing, velocity and length so they sound played (Ctrl+Z takes it back)");
+    humanizeKey.setTooltip ("Humanize the selected notes (Alt+H; the key can be changed in KEYS or the Hub): small differences in timing, velocity and length so they sound played (Ctrl+Z takes it back)");
     humanizeKey.onClick = [this] { humanizeSelected(); };
     panelColumn.addAndMakeVisible (humanizeKey);
     humanizeMenuKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
@@ -310,6 +310,9 @@ void KeyEditor::clampScroll()
 
 void KeyEditor::timerCallback()
 {
+    // HUMANIZE's amount, set in the Hub as well (0.20.1).
+    if (humanizeKey.getButtonText() != "HUMANIZE " + juce::String (juce::roundToInt (studio.getHumanizeAmount() * 100.0f)) + "%")
+        refreshHumanizeKey();
     // A part selected by the arrangement since the last change message.
     const auto selection = arrange.getSelection();
     if (selection.trackId != lastArrangeTrack || selection.index != lastArrangeIndex)
@@ -963,6 +966,8 @@ bool KeyEditor::keyPressed (const juce::KeyPress& key)
     if (key.getKeyCode() == juce::KeyPress::downKey)                             { transposeSelected (mods.isShiftDown() ? -12 : -1); return true; }
     if (letter == 'Q' && ! mods.isAltDown())                                     { quantizeSelected(); return true; }
     // Random velocities: Alt+B / N / M (LOW / MID / HIGH).
+    if (mods.isAltDown() && ! mods.isCommandDown() && letter == 'H' && ! selected.empty())   // Humanize (0.20.1)
+        return humanizeSelected();
     if (mods.isAltDown() && (letter == 'B' || letter == 'N' || letter == 'M'))
     {
         randomizeVelocities (letter == 'B' ? 0 : letter == 'N' ? 1 : 2);

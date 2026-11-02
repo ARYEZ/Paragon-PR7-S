@@ -2,6 +2,14 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.20.1
+
+A key for Humanize, and its settings in the Hub (the owner asked).
+
+- **Alt+H humanizes.** Humanize is now a key command (KEYS, MIDI > Humanize), on Alt+H to start (H for humanize; plain H is still zoom). With notes selected in the MIDI editor it loosens them; otherwise it loosens **every note of the parts selected in the arrangement** (whole parts, which 0.20.0 couldn't do). One undo step either way. Like any command it can be put on a Stream Deck button or in a macro.
+- **HUMANIZE in the Hub.** HUB SETTINGS has a HUMANIZE section: the key (SET KEY, then press the key you want, with Ctrl, Alt or Shift as you like; Escape cancels; CLEAR for none), AMOUNT (5-100%) and "Keep velocities in their layers". It's the same key as in KEYS (change it in either and the other shows it) and the same amount and layers as the MIDI editor's HUMANIZE SET (its key follows the amount).
+- **Honestly:** a key set in the Hub that another command already had is taken from that command, as KEYS does; check KEYS if a key you used for something else stops working. The IDEAS window keeps its own HUMANIZE amount (it loosens the ideas before you add them), separate from this one.
+
 ## 0.20.0
 
 Humanize, in the IDEAS window and the MIDI editor (the owner asked): small, controlled differences in timing, velocity and length so parts sound played rather than programmed.

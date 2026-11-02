@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/Studio.h"
+#include "ui/KeyCommands.h"
 
 // The Hub (0.12.0, the owner asked: a start window like the other DAW's Hub,
 // opening on the folder where the songs are kept), in the PR7 family's look.
@@ -63,8 +64,28 @@ private:
                        showLocation { "Show the Project Location on the Projects Page" }, atStart { "Open the Hub When the Studio Starts" };
     juce::Label locationLabel, dropLabel;
     juce::Slider dropStrength;   // DRAG HIGHLIGHT (0.18.2)
+    juce::Label humanizeTitle, humanizeKeyLabel, humanizeAmountLabel, humanizeNote;
+    juce::TextButton humanizeSetKey { "SET KEY" }, humanizeClearKey { "CLEAR" };
+    juce::Slider humanizeAmount;
+    juce::ToggleButton humanizeLayers { "Keep velocities in their layers (1-59 / 60-119 / 120-126 / 127)" };
+    KeyCommands::Map* keyMap = nullptr;
+    bool listeningForKey = false;
+    void refreshHumanize();
 public:
     juce::Slider& getDropStrength() noexcept { return dropStrength; }
+
+    // HUMANIZE (0.20.1, the owner asked: the key and the settings in the Hub). The key map the
+    // studio uses (MainView's: the same assignments as KEYS); its command "MIDI.Humanize".
+    void setKeyCommands (KeyCommands::Map*);
+    void listenForHumanizeKey();                    // SET KEY: the next key pressed is the one
+    bool isListeningForHumanizeKey() const noexcept { return listeningForKey; }
+    bool takeHumanizeKey (const juce::KeyPress&);   // (as a key pressed while listening; Escape cancels)
+    void clearHumanizeKey();
+    juce::String getHumanizeKeyText() const;        // "ALT+H", "NONE"
+    juce::Slider& getHumanizeAmount() noexcept { return humanizeAmount; }
+    juce::ToggleButton& getHumanizeLayers() noexcept { return humanizeLayers; }
+    bool keyPressed (const juce::KeyPress&) override;
+    static constexpr const char* humanizeCommand = "MIDI.Humanize";
 private:
     std::unique_ptr<juce::FileChooser> chooser;
     juce::Rectangle<int> header, nav, page, locationRow;
