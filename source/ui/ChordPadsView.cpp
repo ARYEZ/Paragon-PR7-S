@@ -268,6 +268,24 @@ public:
         if (juce::isPositiveAndBelow (index, (int) popular.size()))
             view.studio.addProgressionToChordTrack (popular[(size_t) index].chords, view.studio.getEngine().getPosition());
     }
+    // A progression onto the chord track, then BASS & MELODY for its chords (0.18.0).
+    void linesFor (int index)
+    {
+        if (! juce::isPositiveAndBelow (index, (int) popular.size()))
+            return;
+        auto& studio = view.studio;
+        const auto bar = studio.getProject().beatsPerBar();
+        const auto start = std::floor (studio.getEngine().getPosition() / bar + 1.0e-9) * bar;
+        const auto end = start + bar * (double) popular[(size_t) index].chords.size();
+        studio.addProgressionToChordTrack (popular[(size_t) index].chords, start);
+        std::vector<int> events;
+        const auto& all = studio.getChordTrack().events;
+        for (int i = 0; i < (int) all.size(); ++i)
+            if (all[(size_t) i].beat >= start - 1.0e-6 && all[(size_t) i].beat < end - 1.0e-6)
+                events.push_back (i);
+        if (view.onLineIdeas)
+            view.onLineIdeas (events);
+    }
     void toPads (int index)
     {
         if (! juce::isPositiveAndBelow (index, (int) popular.size()))
@@ -488,6 +506,7 @@ public:
                 menu.addItem (1, "Play It");
                 menu.addItem (2, "Onto the Chord Track (From the Playhead's Bar, a Chord a Bar)");
                 menu.addItem (3, "Onto the Pads (From the Selected Pad, Else the First)");
+                menu.addItem (4, "Bass and Melody Ideas for It (Onto the Chord Track First)");
                 menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<CircleAssistant> (this), row] (int chosen)
                 {
                     if (safe == nullptr)
@@ -495,6 +514,7 @@ public:
                     if (chosen == 1) safe->playProgression (row);
                     if (chosen == 2) safe->toChordTrack (row);
                     if (chosen == 3) safe->toPads (row);
+                    if (chosen == 4) safe->linesFor (row);
                 });
                 return;
             }

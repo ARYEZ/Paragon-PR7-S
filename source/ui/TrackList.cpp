@@ -584,7 +584,7 @@ class TrackList::ChordRow final : public juce::Component,
 public:
     explicit ChordRow (TrackList& ownerList) : owner (ownerList)
     {
-        for (auto* key : { &toPads, &toMidi, &autoScales })
+        for (auto* key : { &toPads, &toMidi, &autoScales, &lines })
         {
             key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
             key->setWantsKeyboardFocus (false);
@@ -607,6 +607,8 @@ public:
         };
         toMidi.onClick = [this] { owner.studio.chordsToMidi (owner.studio.getSelectedTrack()); };
         autoScales.onClick = [this] { owner.studio.setAutoScales (! owner.studio.getChordTrack().autoScales); };
+        lines.setTooltip ("Bass and melody ideas for the chords (those in the cycle when it's on, else all): hear them, put one on a new track");
+        lines.onClick = [this] { if (owner.onLineIdeas) owner.onLineIdeas ({}); };
         setTooltip ("The chord track: double-click its lane to add a chord, right-click for its menu");
         refresh();
         startTimerHz (10);
@@ -617,6 +619,7 @@ public:
         autoScales.setToggleState (owner.studio.getChordTrack().autoScales, juce::dontSendNotification);
         toPads.setEnabled (! owner.studio.getChordTrack().events.empty());
         toMidi.setEnabled (! owner.studio.getChordTrack().events.empty());
+        lines.setEnabled (! owner.studio.getChordTrack().events.empty());
         timerCallback();   // (the chord and key at the playhead, at once)
         repaint();
     }
@@ -664,7 +667,10 @@ public:
         toMidi.setBounds (top.removeFromRight (60));
         top.removeFromRight (3);
         toPads.setBounds (top.removeFromRight (60));
-        nowArea = area.removeFromTop (juce::jmin (22, area.getHeight())).toFloat();
+        auto second = area.removeFromTop (juce::jmin (22, area.getHeight()));
+        second.removeFromRight (6);
+        lines.setBounds (second.removeFromRight (110).reduced (0, 1));
+        nowArea = second.toFloat();
     }
 
     void mouseDown (const juce::MouseEvent& e) override
@@ -675,6 +681,7 @@ public:
         menu.addItem (1, "Chords to MIDI (onto the selected track)", ! owner.studio.getChordTrack().events.empty());
         menu.addItem (2, "Assign the Chords to the Pads", ! owner.studio.getChordTrack().events.empty());
         menu.addItem (3, "Scales Follow the Chords", true, owner.studio.getChordTrack().autoScales);
+        menu.addItem (5, "Bass and Melody Ideas...", ! owner.studio.getChordTrack().events.empty());
         menu.addSeparator();
         menu.addItem (4, "Remove the Chord Track (its chords kept)");
         menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ChordRow> (this)] (int chosen)
@@ -686,11 +693,12 @@ public:
             if (chosen == 2) studio.assignPadsFromChordTrack();
             if (chosen == 3) studio.setAutoScales (! studio.getChordTrack().autoScales);
             if (chosen == 4) studio.removeChordTrack();
+            if (chosen == 5 && safe->owner.onLineIdeas) safe->owner.onLineIdeas ({});
         });
     }
 
     TrackList& owner;
-    juce::TextButton toPads { "TO PADS" }, toMidi { "TO MIDI" }, autoScales { "AUTO SCALES" };
+    juce::TextButton toPads { "TO PADS" }, toMidi { "TO MIDI" }, autoScales { "AUTO SCALES" }, lines { "BASS + MELODY" };
     juce::Rectangle<float> nameArea, nowArea;
     juce::String shown;
 };

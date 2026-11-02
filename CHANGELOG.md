@@ -2,6 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.18.0
+
+Bass and melody ideas for your chords (the owner asked: "I select a chord progression and then I get suggestions for bass lines and also for melodies").
+
+- **BASS & MELODY.** Put chords on the chord track (draw them, take a popular progression, or play them in from the pads), then open BASS & MELODY: the key on the chord track's row, "Bass and Melody Ideas..." in the chord lane's right-click menu, or a popular progression's right-click "Bass and Melody Ideas for It" (which puts it on the chord track first). It follows the chords you've selected on the chord track, else those in the cycle when it's on, else all of them, each in the key the chord track has there.
+- **Six bass ideas.** Roots; Root and fifth; Driving eighths (the last one leading into the next chord); Octaves; Walking (a note on every beat, through the chord and the key, stepping a half step into each next chord's root); Syncopated (R&B and funk). Each chord starts on its root (or a slash chord's bass note), in a bass range, each root in the octave nearest the one before so the line doesn't jump around.
+- **Six melody ideas.** Long tones (one held note a bar, moving as little as it can); Singable (steps through the key, chord notes on the strong beats, rising then falling); Hook (a short motif repeated every bar and bent to fit each chord); Arpeggio; Call and response; Syncopated pop (pushed off the beat, the next chord's note arriving early). Chord notes fall on each bar's first beat, the notes between come from the key, a key note that would rub a half step against the chord is left out (no G over E major in A minor), and the last note lands on the last chord.
+- **Hear them, use them.** Each idea is drawn as a little piano roll over the chord names. Click it (or HEAR) to hear it with the chords played softly underneath, at the song's tempo, through the selected track's instrument; HEAR CHORDS plays the chords alone; STOP stops. USE IT puts the idea on a new track as a MIDI part under the chords (one undo step), ready to edit in the MIDI editor. MORE IDEAS deals six new ones of each (the same styles, other choices: up or down, which chord note, the hook's shape).
+- **Honestly:** the rules are ours (common pop, rock, R&B and jazz practice), not taken from another product, and good-sounding is a matter of taste: these are starting points to pick from and edit, not finished parts. The preview plays everything through one instrument (the selected track's); the part you add plays through the new track's (the studio's synth, PR7-K). The ideas follow the chord track's key per chord; a progression like Am F C G is read as C major unless you set the scale to A minor on the chord track's scale strip. Not yet: drum ideas, counter-melodies, choosing a register, or ideas from audio.
+
 ## 0.17.5
 
 - **The MIDI editor's playhead glides too** (the owner asked). As in the arrangement since 0.17.4: while stopped, a click in the editor's ruler puts the playhead on the grid and it slides there in about a tenth of a second instead of jumping; while playing or recording it stays exactly on the music, and a long jump (more than half the editor's width) goes straight there. The same speed as the arrangement's, so the two move together.

@@ -6,6 +6,7 @@
 #include "Engine.h"
 #include "PluginHost.h"
 #include "Project.h"
+#include "Lines.h"
 
 #include <optional>
 
@@ -221,6 +222,19 @@ namespace pr7s
         // A progression (0.17.2): one chord a bar from `atBeat` (the bar it's in), what was
         // there replaced; the chord track shown. One undo step.
         void addProgressionToChordTrack (const std::vector<Chord>&, double atBeat);
+
+        // Bass and melody ideas (0.18.0, the owner asked). The chords they follow: the chord
+        // track's events given (the selection), else those in the cycle when it's on and
+        // holds some, else all; each until the next (the last a bar), with the key there.
+        std::vector<ChordSpan> getLineChords (const std::vector<int>& selectedEvents = {}) const;
+        // An idea onto a new instrument track (the studio's synth), a part under its chords; its id.
+        int addLinePart (const LineIdea&, const std::vector<ChordSpan>&);
+        // An idea heard with its chords (soft, underneath) through the live track's instrument,
+        // at the song's tempo; the chords alone with no idea. Stopped by stopPreview (or the next).
+        void previewLine (const LineIdea*, const std::vector<ChordSpan>&, bool withChords = true);
+        void stopPreview();
+        bool isPreviewing() const noexcept;
+        double getPreviewBeat() const noexcept;   // beats from the first chord while previewing
         // A progression onto the pads from `firstPad` on (locked pads skipped); how many placed.
         int assignProgressionToPads (const std::vector<Chord>&, int firstPad);
         void setChordEventChord (int index, const Chord&);
@@ -682,6 +696,8 @@ namespace pr7s
 
     private:
         PadPlayer padPlayer;
+        class LinePreview;
+        std::unique_ptr<LinePreview> linePreview;
         bool padsActive = false;
         std::vector<int> assignTargets;
         std::vector<int> assignHeld, assignNotes;

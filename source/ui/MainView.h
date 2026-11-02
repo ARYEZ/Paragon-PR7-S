@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/LinesPage.h"
 #include "ui/KeyCommands.h"
 #include "ui/ProgressBox.h"
 #include <juce_audio_utils/juce_audio_utils.h>
@@ -72,6 +73,9 @@ public:
     void openHub();
     // The Tempo Track Editor (0.13.0, Ctrl+T as the manual has it): opened, or closed if it's open.
     void toggleTempoEditor();
+    // BASS & MELODY (0.18.0): ideas for these chord events (none: the cycle's, else all), in a window of its own.
+    void openLineIdeas (std::vector<int> chordEvents = {});
+    LinesWindow* getLinesWindow() noexcept { return linesWindow.get(); }
     juce::DocumentWindow* getTempoEditorWindow() noexcept { return tempoEditorWindow.get(); }
     juce::DocumentWindow* getHubWindow() noexcept { return hubWindow.get(); }
     void openSong (const juce::File&);
@@ -211,6 +215,7 @@ private:
     int saveFlashes = 0;
     std::unique_ptr<ProgressBox> progressBox;   // a long job's progress (0.11.1)
     std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow;
+    std::unique_ptr<LinesWindow> linesWindow;
     juce::TextButton hubButton { "HUB" };
     juce::TextButton padsButton { "PADS" };   // the chord pads (0.14.0), lit while open
     void registerCommands();

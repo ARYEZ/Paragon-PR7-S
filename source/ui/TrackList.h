@@ -38,6 +38,7 @@ public:
     std::function<void()> onTempoMenu;   // the tempo row's right-click (the arrangement's tempo menu)
     // Render in Place (the track's menu): the selected tracks whole; ask how (else as last time).
     std::function<void (std::vector<pr7s::Studio::RenderSource>, bool ask)> onRenderInPlace;
+    std::function<void (std::vector<int> chordEvents)> onLineIdeas;   // BASS & MELODY (0.18.0): for these chord events (none: the cycle's or all)
     juce::TextButton& getAddTrackButton() noexcept { return addTrack; }
     juce::TextButton& getMuteAllKey() noexcept { return muteAll; }
     juce::TextButton& getSoloAllKey() noexcept { return soloAll; }

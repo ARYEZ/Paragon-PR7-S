@@ -296,6 +296,9 @@ MainView::MainView (pr7s::Studio& studioToUse)
     arrange.onPartsCopied = [this] { copiedLast = Copied::parts; rangeCopiedLast = false; };
     arrange.onRenderInPlace = [this] (std::vector<pr7s::Studio::RenderSource> sources, bool ask) { renderInPlace (std::move (sources), ask); };
     trackList.onRenderInPlace = [this] (std::vector<pr7s::Studio::RenderSource> sources, bool ask) { renderInPlace (std::move (sources), ask); };
+    trackList.onLineIdeas = [this] (std::vector<int> events) { openLineIdeas (std::move (events)); };
+    arrange.onLineIdeas = [this] (std::vector<int> events) { openLineIdeas (std::move (events)); };
+    chordPads.onLineIdeas = [this] (std::vector<int> events) { openLineIdeas (std::move (events)); };
     // Told of clicks in the work areas, to know where the keys go.
     arrange.addMouseListener (this, true);
     trackList.addMouseListener (this, true);
@@ -1624,6 +1627,28 @@ void MainView::openSong (const juce::File& file)
         juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Some instruments, effects or recordings are missing",
                                                 "These aren't on this computer. Tracks without their instrument and clips without their "
                                                 "recording are silent, and the sound goes past missing effects, until they're found:\n\n" + problems);
+}
+
+void MainView::openLineIdeas (std::vector<int> chordEvents)
+{
+    auto spans = studio.getLineChords (chordEvents);
+    if (spans.empty())
+    {
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Bass & Melody",
+                                                "Put some chords on the chord track first: double-click its lane, pick a popular progression, "
+                                                "or play them in from the pads. The ideas follow those chords.");
+        return;
+    }
+    if (linesWindow != nullptr)
+    {
+        linesWindow->getPage().setChords (std::move (spans));
+        linesWindow->toFront (true);
+        return;
+    }
+    linesWindow = std::make_unique<LinesWindow> (studio, std::move (spans));
+    linesWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->linesWindow.reset(); }); };
+    linesWindow->centreAroundComponent (this, linesWindow->getWidth(), linesWindow->getHeight());
+    linesWindow->setVisible (true);
 }
 
 void MainView::toggleTempoEditor()

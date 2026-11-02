@@ -553,6 +553,33 @@ TEST_CASE ("Snapshot: a question box", "[.][snapshot-alert]")
 
 #include "ui/LinkGroupPage.h"
 #include "ui/TrackColours.h"
+#include "ui/LinesPage.h"
+
+TEST_CASE ("Snapshot: the BASS & MELODY window", "[.][snapshot-lines]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "lines.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        using T = pr7s::Chord::Type;
+        using X = pr7s::Chord::Tension;
+        pr7s::Studio studio (false);
+        studio.addChordEvent (0.0, { 9, T::minor, X::none, -1 });
+        studio.addChordEvent (4.0, { 5, T::major, X::none, -1 });
+        studio.addChordEvent (8.0, { 0, T::major, X::none, -1 });
+        studio.addChordEvent (12.0, { 7, T::major, X::none, -1 });
+        LinesPage page (studio, studio.getLineChords());
+        page.play (pr7s::LineIdea::Part::melody, 1);
+        const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
+        page.stop();
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
 
 TEST_CASE ("Snapshot: the colour menu", "[.][snapshot-colours]")
 {

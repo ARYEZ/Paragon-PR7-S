@@ -3398,6 +3398,7 @@ void ArrangeView::showChordMenu (double beat, int index)
     menu.addSeparator();
     menu.addItem (5, "Chords to MIDI (all, onto the selected track)", ! track.events.empty());
     menu.addItem (6, "Assign the Chords to the Pads", ! track.events.empty());
+    menu.addItem (9, chordSelection.size() > 1 ? "Bass and Melody Ideas (for these)..." : "Bass and Melody Ideas...", ! track.events.empty());
     menu.addItem (7, "Scales Follow the Chords", true, track.autoScales);
     menu.addSeparator();
     menu.addItem (8, "Remove the Chord Track (its chords kept)");
@@ -3418,6 +3419,7 @@ void ArrangeView::showChordMenu (double beat, int index)
             case 6: studio.assignPadsFromChordTrack(); if (safe->onChordsToPads) safe->onChordsToPads(); return;
             case 7: studio.setAutoScales (! studio.getChordTrack().autoScales); return;
             case 8: studio.removeChordTrack(); return;
+            case 9: if (safe->onLineIdeas) safe->onLineIdeas (safe->chordSelection.size() > 1 ? safe->chordSelection : std::vector<int> {}); return;
             case 10:
             {
                 const auto at = juce::jmax (0.0, pr7s::snap (beat, grid));

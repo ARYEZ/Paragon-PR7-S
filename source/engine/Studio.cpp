@@ -92,6 +92,8 @@ namespace pr7s
 
     Studio::~Studio()
     {
+        stopPreview();
+        linePreview.reset();
         engine.setPadPlayer (nullptr);
         // A save still writing finishes first (its call back here is dropped).
         saveAlive->store (false);
@@ -5181,6 +5183,160 @@ namespace pr7s
             if (std::abs (events[(size_t) i].beat - beat) < 1.0e-6)
                 return i;
         return -1;
+    }
+
+    //==========================================================================
+    // Bass and melody ideas (0.18.0)
+    std::vector<ChordSpan> Studio::getLineChords (const std::vector<int>& selectedEvents) const
+    {
+        const auto& track = project.chordTrack;
+        std::vector<int> which;
+        for (const auto i : selectedEvents)
+            if (juce::isPositiveAndBelow (i, (int) track.events.size()))
+                which.push_back (i);
+        if (which.empty() && project.loopOn)
+            for (int i = 0; i < (int) track.events.size(); ++i)
+                if (track.events[(size_t) i].beat >= project.loopStart - 1.0e-6 && track.events[(size_t) i].beat < project.loopEnd - 1.0e-6)
+                    which.push_back (i);
+        if (which.empty())
+            for (int i = 0; i < (int) track.events.size(); ++i)
+                which.push_back (i);
+        std::sort (which.begin(), which.end());
+        std::vector<ChordSpan> spans;
+        for (const auto i : which)
+        {
+            const auto& e = track.events[(size_t) i];
+            auto end = track.endOf (i, project.beatsPerBar());
+            if (project.loopOn && e.beat < project.loopEnd && end > project.loopEnd && selectedEvents.empty())
+                end = project.loopEnd;   // (the cycle's chords stop at its end)
+            spans.push_back ({ e.beat, end, e.chord, chordTrackKeyAt (e.beat) });
+        }
+        return spans;
+    }
+
+    int Studio::addLinePart (const LineIdea& idea, const std::vector<ChordSpan>& spans)
+    {
+        if (spans.empty() || idea.notes.empty())
+            return 0;
+        const auto trackId = addTrack (Instrument {});
+        if (trackId == 0)
+            return 0;
+        renameTrack (trackId, idea.part == LineIdea::Part::bass ? "Bass" : "Melody");
+        Part part;
+        part.start = spans.front().start;
+        part.length = spans.back().end - spans.front().start;
+        part.name = (idea.part == LineIdea::Part::bass ? "Bass: " : "Melody: ") + idea.style;
+        for (const auto& n : idea.notes)
+            part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
+        addPart (trackId, part);
+        return trackId;
+    }
+
+    // The preview: its notes in time on a thread of its own (a millisecond timer), sent
+    // as the pads' are into the live track's input.
+    class Studio::LinePreview final : private juce::HighResolutionTimer
+    {
+    public:
+        explicit LinePreview (PadPlayer& p) : player (p) {}
+        ~LinePreview() override { stop(); }
+
+        struct Event { double ms; juce::MidiMessage message; };
+        void start (std::vector<Event> list, double beatsPerMs)
+        {
+            stop();
+            events = std::move (list);
+            std::stable_sort (events.begin(), events.end(), [] (const Event& a, const Event& b) { return a.ms < b.ms; });
+            for (const auto& e : events)
+                if (e.message.isNoteOn())
+                    used.insert (e.message.getNoteNumber());
+            next = 0;
+            rate = beatsPerMs;
+            started = juce::Time::getMillisecondCounterHiRes();
+            running = true;
+            startTimer (2);
+        }
+        void stop()
+        {
+            stopTimer();
+            if (running.exchange (false) || ! used.empty())
+                for (const auto n : used)
+                    player.send (juce::MidiMessage::noteOff (1, n));
+            used.clear();
+        }
+        bool isRunning() const noexcept { return running; }
+        double beat() const noexcept { return running ? (juce::Time::getMillisecondCounterHiRes() - started) * rate : 0.0; }
+
+    private:
+        void hiResTimerCallback() override
+        {
+            const auto now = juce::Time::getMillisecondCounterHiRes() - started;
+            while (next < events.size() && events[next].ms <= now)
+                player.send (events[next++].message);
+            if (next >= events.size())
+            {
+                running = false;
+                stopTimer();
+            }
+        }
+
+        PadPlayer& player;
+        std::vector<Event> events;
+        std::set<int> used;
+        size_t next = 0;
+        double started = 0.0, rate = 0.0;
+        std::atomic<bool> running { false };
+    };
+
+    void Studio::previewLine (const LineIdea* idea, const std::vector<ChordSpan>& spans, bool withChords)
+    {
+        if (linePreview == nullptr)
+            linePreview = std::make_unique<LinePreview> (padPlayer);
+        if (spans.empty())
+            return;
+        const auto map = project.tempoMap();
+        const auto first = spans.front().start;
+        const auto ms = [&map, first] (double relativeBeat) { return map.secondsBetween (first, first + relativeBeat) * 1000.0; };
+        std::vector<LinePreview::Event> events;
+        const auto note = [&] (double at, double length, int pitch, float velocity)
+        {
+            events.push_back ({ ms (at), juce::MidiMessage::noteOn (1, pitch, (juce::uint8) juce::jlimit (1, 127, juce::roundToInt (velocity * 127.0f))) });
+            events.push_back ({ ms (at + length) - 1.0, juce::MidiMessage::noteOff (1, pitch) });
+        };
+        if (withChords)
+        {
+            // The chords underneath, softly, each voiced near the one before.
+            std::vector<int> previous;
+            for (const auto& s : spans)
+            {
+                const auto voicings = voicingsFor (s.chord, 48);
+                if (voicings.empty())
+                    continue;
+                const auto& notes = voicings[(size_t) closestVoicing (voicings, previous, {})];
+                for (const auto n : notes)
+                    note (s.start - first, s.end - s.start, n, 0.45f);
+                previous = notes;
+            }
+        }
+        if (idea != nullptr)
+            for (const auto& n : idea->notes)
+                note (n.beat, n.length, n.pitch, n.velocity);
+        linePreview->start (std::move (events), project.bpmAt (first) / 60000.0);
+    }
+
+    void Studio::stopPreview()
+    {
+        if (linePreview != nullptr)
+            linePreview->stop();
+    }
+
+    bool Studio::isPreviewing() const noexcept
+    {
+        return linePreview != nullptr && linePreview->isRunning();
+    }
+
+    double Studio::getPreviewBeat() const noexcept
+    {
+        return linePreview != nullptr ? linePreview->beat() : 0.0;
     }
 
     void Studio::addProgressionToChordTrack (const std::vector<Chord>& chords, double atBeat)
