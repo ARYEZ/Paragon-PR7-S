@@ -704,8 +704,12 @@ TEST_CASE ("The KEY menu's choice fills the pads; the circle suggests what comes
     // Its relative minor sits on the same row (the same notes).
     CHECK (pads.keyListKeyAt (pads.keyListCell (Key { 3, 0, true }).getCentre())->name() == "F minor");
     CHECK (std::abs (pads.keyListCell (Key { 3, 0, true }).getY() - cell.getY()) < 0.5f);
-    // The key's most used chords beside the suggestions (0.17.1): there's room on the right screen.
+    // The key's popular progressions beside the suggestions (0.17.2): there's room on the right screen.
     CHECK (pads.isPopularShown());
+    REQUIRE (pads.getProgressions().size() == 10);
+    CHECK (pads.getProgressions()[0].chords.front().name (studio.getChordPads().key()) == "Ab");   // (Ab major's I-V-vi-IV)
+    pads.playProgression (0);   // (a chord at once; the timer the rest)
+    CHECK (pads.getPlayingProgression() == 0);
     // One screen only: neither side.
     pads.setSize (1500, 320);
     CHECK_FALSE (pads.isKeyListShown());
@@ -744,24 +748,64 @@ TEST_CASE ("Suggestions after every chord in every key, and from outside it (0.1
     CHECK (found);
 }
 
-TEST_CASE ("The ten most used chords in a key (0.17.1)", "[chords]")
+TEST_CASE ("The ten most popular progressions in a key; onto the chord track and the pads (0.17.2)", "[chords]")
 {
-    const auto names = [] (const Key& key)
+    const auto spelled = [] (const Progression& p, const Key& key)
     {
         juce::StringArray n;
-        for (const auto& p : popularChords (key))
-            n.add (p.chord.name (key));
+        for (const auto& c : p.chords)
+            n.add (c.name (key));
         return n.joinIntoString (" ");
     };
-    CHECK (names (Key { 0, 0, false }) == "C G F Am Dm G7 Em Bb Fm D");
-    CHECK (names (Key { 5, 0, true }) == "Am F G Dm E C Em E7 Bdim D");
-    CHECK (names (Key { 2, -1, true }) == "Ebm Cb Db Abm Bb Gb Bbm Bb7 Fdim Ab");
+    const Key c { 0, 0, false }, am { 5, 0, true }, ebm { 2, -1, true };
+    const auto major = popularProgressions (c);
+    REQUIRE (major.size() == 10);
+    CHECK (spelled (major[0], c) == "C G Am F");          // I-V-vi-IV
+    CHECK (spelled (major[1], c) == "C Am F G");          // I-vi-IV-V
+    CHECK (spelled (major[4], c) == "Dm G7 C");           // ii-V7-I
+    CHECK (spelled (major[6], c) == "C G Am Em F C F G"); // the Canon
+    CHECK (spelled (major[7], c) == "C Bb F C");          // I-bVII-IV-I
+    const auto minor = popularProgressions (am);
+    REQUIRE (minor.size() == 10);
+    CHECK (spelled (minor[0], am) == "Am F C G");         // i-VI-III-VII
+    CHECK (spelled (minor[3], am) == "Am Dm E Am");       // i-iv-V-i
+    CHECK (spelled (minor[4], am) == "Am G F E");         // the Andalusian
+    CHECK (spelled (minor[6], am) == "Bdim E7 Am");       // ii°-V7-i
+    // Spelled in the key: E-flat minor's.
+    CHECK (spelled (popularProgressions (ebm)[0], ebm) == "Ebm Cb Gb Db");
     for (const auto& key : Key::all())
-    {
-        const auto list = popularChords (key);
-        REQUIRE (list.size() == 10);
-        CHECK (list[0].chord.root == key.pitchClass());
-        for (const auto& p : list)
-            CHECK (p.role.isNotEmpty());
-    }
+        for (const auto& p : popularProgressions (key))
+        {
+            REQUIRE (p.chords.size() >= 2);
+            CHECK (p.name.isNotEmpty());
+            // Every one has the key's own tonic chord in it (I in major, i in minor).
+            CHECK (std::any_of (p.chords.begin(), p.chords.end(), [&key] (const Chord& ch)
+                   { return ch.root == key.pitchClass() && (ch.type == Chord::Type::minor) == key.minor; }));
+        }
+
+    // Onto the chord track: a chord a bar from the bar the beat is in, what was there replaced; one undo step.
+    Studio studio (false);
+    studio.addChordEvent (4.0, { 2, Chord::Type::minor, Chord::Tension::none, -1 });
+    studio.addChordEvent (20.0, { 9, Chord::Type::minor, Chord::Tension::none, -1 });
+    studio.removeChordTrack();
+    studio.addProgressionToChordTrack (major[0].chords, 5.5);   // (bar 2)
+    const auto& track = studio.getChordTrack();
+    CHECK (track.shown);
+    REQUIRE (track.events.size() == 5);
+    CHECK (track.events[0].beat == 4.0);
+    CHECK (track.events[0].chord.name (c) == "C");
+    CHECK (track.events[3].beat == 16.0);
+    CHECK (track.events[3].chord.name (c) == "F");
+    CHECK (track.events[4].beat == 20.0);   // (after the four bars: kept)
+    studio.undo();
+    CHECK (studio.getChordTrack().events.size() == 2);
+    CHECK (studio.getChordTrack().events[0].chord.name (c) == "Dm");
+
+    // Onto the pads from a pad on; a locked pad skipped.
+    studio.setPadsLocked ({ 2 }, true);
+    CHECK (studio.assignProgressionToPads (minor[4].chords, 1) == 4);
+    const auto& pads = studio.getChordPads().pads;
+    CHECK (pads[1].chord->name (am) == "Am");
+    CHECK (pads[3].chord->name (am) == "G");
+    CHECK (pads[5].chord->name (am) == "E");
 }

@@ -738,33 +738,41 @@ namespace pr7s
         return chords;
     }
 
-    std::vector<PopularChord> popularChords (const Key& key)
+    std::vector<Progression> popularProgressions (const Key& key)
     {
-        const auto chords = keyChords (key);   // (the seven triads; minor: then V and vii°; then the sevenths)
-        const auto tonic = key.pitchClass();
         using T = Chord::Type;
         using X = Chord::Tension;
+        struct Step { int offset; T type; X tension = X::none; };
+        const auto tonic = key.pitchClass();
+        const auto make = [tonic] (const char* name, const char* style, std::initializer_list<Step> steps)
+        {
+            Progression p { name, style, {} };
+            for (const auto& s : steps)
+                p.chords.push_back ({ pc (tonic + s.offset), s.type, s.tension, -1 });
+            return p;
+        };
+        constexpr auto M = T::major, m = T::minor, d = T::diminished;
         if (! key.minor)
-            return { { chords[0], "home" },
-                     { chords[4], "the pull home" },
-                     { chords[3], "lift away" },
-                     { chords[5], "the relative minor" },
-                     { chords[1], "before V" },
-                     { chords[7 + 4], "V with the 7th: a stronger pull" },
-                     { chords[2], "soft, between I and vi" },
-                     { { pc (tonic + 10), T::major, X::none, -1 }, "borrowed: rock's favourite" },
-                     { { pc (tonic + 5), T::minor, X::none, -1 }, "borrowed minor iv: bittersweet" },
-                     { { pc (tonic + 2), T::major, X::none, -1 }, "V of V: leads to V" } };
-        return { { chords[0], "home" },
-                 { chords[5], "lift, the major side" },
-                 { chords[6], "step up to i or III" },
-                 { chords[3], "the minor pre-dominant" },
-                 { chords[7], "major V: the strong pull home" },
-                 { chords[2], "the relative major" },
-                 { chords[4], "minor v: a softer pull" },
-                 { chords[16], "V with the 7th" },   // (harmonic V7: after the 7 triads, V, vii° and the 7 sevenths)
-                 { chords[1], "before V" },
-                 { { pc (tonic + 5), T::major, X::none, -1 }, "borrowed major IV: Dorian colour" } };
+            return { make ("The pop anthem", "countless hits",          { { 0, M }, { 7, M }, { 9, m }, { 5, M } }),
+                     make ("Fifties",        "doo-wop, ballads",        { { 0, M }, { 9, m }, { 5, M }, { 7, M } }),
+                     make ("Three chords",   "rock, blues, country",    { { 0, M }, { 5, M }, { 7, M }, { 0, M } }),
+                     make ("Sad pop",        "the anthem from vi",      { { 9, m }, { 5, M }, { 0, M }, { 7, M } }),
+                     make ("Jazz cadence",   "jazz, R&B, gospel",       { { 2, m }, { 7, M, X::seven }, { 0, M } }),
+                     make ("Turnaround",     "back to the top",         { { 0, M }, { 9, m }, { 2, m }, { 7, M } }),
+                     make ("The Canon",      "Pachelbel, weddings",     { { 0, M }, { 7, M }, { 9, m }, { 4, m }, { 5, M }, { 0, M }, { 5, M }, { 7, M } }),
+                     make ("Mixolydian rock","classic rock",            { { 0, M }, { 10, M }, { 5, M }, { 0, M } }),
+                     make ("Ballad",         "worship, piano ballads",  { { 0, M }, { 5, M }, { 9, m }, { 7, M } }),
+                     make ("Minor plagal",   "bittersweet ending",      { { 0, M }, { 5, M }, { 5, m }, { 0, M } }) };
+        return { make ("Epic minor",       "film, pop, EDM",            { { 0, m }, { 8, M }, { 3, M }, { 10, M } }),
+                 make ("Minor rock",       "rock, metal",               { { 0, m }, { 10, M }, { 8, M }, { 10, M } }),
+                 make ("Natural cadence",  "folk, modal",               { { 0, m }, { 5, m }, { 7, m }, { 0, m } }),
+                 make ("Minor cadence",    "classical, R&B",            { { 0, m }, { 5, m }, { 7, M }, { 0, m } }),
+                 make ("Andalusian",       "flamenco, surf, rock",      { { 0, m }, { 10, M }, { 8, M }, { 7, M } }),
+                 make ("Minor ballad",     "pop, worship",              { { 0, m }, { 8, M }, { 10, M }, { 0, m } }),
+                 make ("Minor jazz cadence","jazz, neo-soul",           { { 2, d }, { 7, M, X::seven }, { 0, m } }),
+                 make ("Rising minor",     "pop, rock",                 { { 0, m }, { 3, M }, { 10, M }, { 8, M } }),
+                 make ("Dramatic",         "film, ballads",             { { 0, m }, { 8, M }, { 5, m }, { 7, M } }),
+                 make ("Dorian vamp",      "funk, soul, jams",          { { 0, m }, { 5, M }, { 0, m }, { 5, M } }) };
     }
 
     std::vector<Suggestion> suggestNext (const Chord& from, const Key& key)

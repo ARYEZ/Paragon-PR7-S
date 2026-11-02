@@ -5165,6 +5165,45 @@ namespace pr7s
         return -1;
     }
 
+    void Studio::addProgressionToChordTrack (const std::vector<Chord>& chords, double atBeat)
+    {
+        if (chords.empty())
+            return;
+        const auto bar = project.beatsPerBar();
+        const auto start = std::floor (juce::jmax (0.0, atBeat) / bar + 1.0e-9) * bar;
+        const auto end = start + bar * (double) chords.size();
+        // What was over those bars goes; then a chord a bar.
+        std::vector<ChordEvent> events;
+        for (const auto& e : project.chordTrack.events)
+            if (e.beat < start - 1.0e-6 || e.beat >= end - 1.0e-6)
+                events.push_back (e);
+        for (size_t i = 0; i < chords.size(); ++i)
+            events.push_back ({ start + bar * (double) i, chords[i] });
+        std::sort (events.begin(), events.end(), [] (const ChordEvent& a, const ChordEvent& b) { return a.beat < b.beat; });
+        project.chordTrack.shown = true;   // (in the same undo step)
+        project.chordTrack.events = std::move (events);
+        chordTrackChanged();
+    }
+
+    int Studio::assignProgressionToPads (const std::vector<Chord>& chords, int firstPad)
+    {
+        auto pads = project.chordPads;
+        auto placed = 0;
+        for (int pad = juce::jmax (0, firstPad); pad < (int) pads.pads.size() && placed < (int) chords.size(); ++pad)
+        {
+            auto& p = pads.pads[(size_t) pad];
+            if (p.locked)
+                continue;
+            p.chord = chords[(size_t) placed++];
+            p.notes.clear();
+            p.voicing = -1;
+            p.adaptive = true;
+        }
+        if (placed > 0)
+            setChordPads (pads);
+        return placed;
+    }
+
     void Studio::setChordEvents (std::vector<ChordEvent> events)
     {
         for (auto& e : events)

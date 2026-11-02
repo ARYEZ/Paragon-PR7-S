@@ -48,7 +48,12 @@ public:
     // The screens either side of the pads (0.17.0): all the keys on the left, the circle on the right.
     bool isKeyListShown() const;
     bool isCircleOnSide() const noexcept { return circleOnSide; }
-    bool isPopularShown() const;   // the key's most used chords, beside the suggestions (0.17.1: when there's room)
+    bool isPopularShown() const;   // the key's popular progressions, beside the suggestions (0.17.2: when there's room)
+    const std::vector<pr7s::Progression>& getProgressions() const;
+    void playProgression (int index);          // a click on one (a chord every half bar)
+    int getPlayingProgression() const;         // -1: none
+    void progressionToChordTrack (int index);  // a double-click: from the playhead's bar
+    void progressionToPads (int index);        // its menu: from the selected pad
     juce::Component* getKeyList() const noexcept;
     juce::Component* getCircle() const noexcept;
     // The key under a point of the key list (tests).

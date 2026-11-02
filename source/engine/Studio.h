@@ -214,6 +214,11 @@ namespace pr7s
         void removeChordTrack();                          // hidden; its chords kept
         int addChordEvent (double beat, const Chord&);    // its index (one at that beat replaced)
         void setChordEvents (std::vector<ChordEvent>);    // (a drag: one undo step)
+        // A progression (0.17.2): one chord a bar from `atBeat` (the bar it's in), what was
+        // there replaced; the chord track shown. One undo step.
+        void addProgressionToChordTrack (const std::vector<Chord>&, double atBeat);
+        // A progression onto the pads from `firstPad` on (locked pads skipped); how many placed.
+        int assignProgressionToPads (const std::vector<Chord>&, int firstPad);
         void setChordEventChord (int index, const Chord&);
         void removeChordEvents (std::vector<int> indices);
         void setScaleEvents (std::vector<ScaleEvent>);    // by hand: the scales stop following the chords

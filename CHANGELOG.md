@@ -2,6 +2,14 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.17.2
+
+Popular progressions beside the suggestions, in place of 0.17.1's single chords (what the owner meant).
+
+- **The ten most popular progressions in the pads' key.** On the right screen, beside "What could come next", the column now lists ten well-known chord progressions, spelled in the key you've chosen, each chord with its numeral under it. In a major key: the pop anthem (I-V-vi-IV), the fifties (I-vi-IV-V), three chords (I-IV-V-I), sad pop (vi-IV-I-V), the jazz cadence (ii-V7-I), the turnaround (I-vi-ii-V), Pachelbel's Canon, mixolydian rock (I-bVII-IV-I), the ballad (I-IV-vi-V) and the minor plagal (I-IV-iv-I). In a minor key: epic minor (i-VI-III-VII), minor rock (i-VII-VI-VII), the natural and the harmonic minor cadences (i-iv-v-i, i-iv-V-i), the Andalusian (i-VII-VI-V), the minor ballad (i-VI-VII-i), the minor jazz cadence (ii°-V7-i), rising minor (i-III-VII-VI), dramatic (i-VI-iv-V) and the Dorian vamp (i-IV). Chords from outside the key are shown in orange.
+- **Hear it, use it.** Click a progression to hear it, a chord every half bar at the song's tempo, each chord lit as it sounds (click again to stop). Double-click to put it on the chord track from the playhead's bar, one chord a bar, replacing what was there (the chord track appears if it was hidden; one undo step). Right-click for those and "Onto the Pads": the chords on the pads from the selected pad on (locked pads are skipped).
+- Honestly: the list is ours, from common pop, rock, R&B, jazz and worship practice, not counted from a database of songs. It shows when there's room (the right screen).
+
 ## 0.17.1
 
 The Inspector's keys as the owner asked, and the key's most used chords beside the suggestions.
