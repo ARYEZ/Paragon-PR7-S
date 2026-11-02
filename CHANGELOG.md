@@ -2,6 +2,14 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.17.4
+
+The playhead moves with some life (the owner asked: it felt static next to the other DAW's).
+
+- **The playhead glides into place.** While the song is stopped, clicking or dragging in the ruler still puts the playhead on the nearest grid line (the quantize value, as before), but now it slides there quickly, easing in, in about a tenth of a second, instead of jumping. Dragging along the ruler, it steps from grid line to grid line with that same short slide, so you can feel the snapping. While playing or recording it stays exactly on the music (no glide: the timing matters more), and a long jump (Home, or more than half the screen) still goes straight there.
+- **A marker shows where a click will land.** Hovering over the lower part of the ruler shows a small pink marker on the grid line where a click would put the playhead. It steps along the grid as the mouse moves. Hold Ctrl to place it freely (no snap), as before; with Ctrl or Alt held for the locators, the marker steps aside.
+- Honestly: the glide's speed is our choice (a little under half the way each frame, 60 frames a second), and only the arrangement's playhead glides; the MIDI editor's stays as it was. How it feels can only be judged on your screen.
+
 ## 0.17.3
 
 A fix for Change Instrument, a colour menu, and note ticks on the ruler.

@@ -230,6 +230,11 @@ public:
 
     // H / G: one zoom step in or out, centred on the playhead; Shift+F: the
     // whole song (as far as the scroll bar goes) across the view.
+    // The playhead's glide (0.17.4): one frame of it (the timer's; tests call it), and where it's drawn.
+    void advancePlayhead();
+    double getShownPlayhead() const noexcept { return shownBeat; }
+    std::optional<double> getRulerHover() const noexcept { return rulerHover; }
+    static constexpr double glideStep = 0.45;   // the share of the way left covered each frame (60 a second)
     void zoom (bool in);
     void zoomFull();
     // Shift+H / Shift+G: the rows a step taller or shorter (the top row in view stays at the top).
@@ -300,6 +305,7 @@ public:
     void mouseUp (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
 private:
@@ -408,6 +414,13 @@ private:
     bool dragCopies = false, dragMoved = false;
     double lastPosition = 0.0;   // the playhead as last seen (Auto-Scroll follows a jump while stopped)
     float playheadX = -1.0e6f;   // where the playhead was last drawn (0.9.2: only its strip is redrawn as it moves)
+    // The playhead as drawn (0.17.4, the owner asked: it glides into a new place while
+    // stopped, as it snaps to the grid, instead of jumping; exact while playing).
+    double shownBeat = 0.0;
+    bool gliding = false;
+    // Where a click in the ruler would put the playhead (snapped), shown while hovering.
+    std::optional<double> rulerHover;
+    void setRulerHover (std::optional<double>);
     bool playheadRed = false;
     void scrolled();             // the track list and the scroll bars follow
 };

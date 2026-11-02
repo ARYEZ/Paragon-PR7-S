@@ -3011,3 +3011,51 @@ TEST_CASE ("The colour menu: only the family's colours, every tint; the selected
     studio.setTracksColour ({ b }, juce::Colour (0xffff7aa8));
     CHECK (studio.getProject().findTrack (b)->colour == FamilyColours::pink);
 }
+
+TEST_CASE ("The playhead glides into a new place while stopped, exact while playing; the ruler shows where a click lands (0.17.4)", "[ui][playhead]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    pr7s::Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& arrange = view.getArrangeView();
+    for (int i = 0; i < 20; ++i)
+        arrange.advancePlayhead();
+    CHECK (arrange.getShownPlayhead() == 0.0);
+
+    // Stopped: a click a bar on (as the ruler does it, snapped) glides: part of the way each frame, then there.
+    studio.setPosition (4.0);
+    arrange.advancePlayhead();
+    const auto first = arrange.getShownPlayhead();
+    CHECK (first > 0.0);
+    CHECK (first < 4.0);
+    CHECK_THAT (first, Catch::Matchers::WithinAbs (4.0 * ArrangeView::glideStep, 1.0e-9));
+    arrange.advancePlayhead();
+    CHECK (arrange.getShownPlayhead() > first);
+    for (int i = 0; i < 20; ++i)
+        arrange.advancePlayhead();
+    CHECK (arrange.getShownPlayhead() == 4.0);   // (landed exactly)
+
+    // A long jump (more than half the view): straight there.
+    studio.setPosition (400.0);
+    arrange.advancePlayhead();
+    CHECK (arrange.getShownPlayhead() == 400.0);
+
+    // Playing: exactly with the song, no glide.
+    studio.setPosition (8.0);
+    studio.play();
+    arrange.advancePlayhead();
+    CHECK (arrange.getShownPlayhead() == studio.getEngine().getPosition());
+    studio.stop();
+
+    // Hovering the ruler's lower part: the snapped beat a click would set (the grid: the quantize value, 1/16 at first).
+    const auto y = (float) (Timeline::cycleStripHeight + 6);
+    const auto x = view.getTimeline().xForBeat (2.13);
+    arrange.mouseMove (juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), { x, y }, {}, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                         &arrange, &arrange, juce::Time::getCurrentTime(), { x, y }, juce::Time::getCurrentTime(), 0, false));
+    REQUIRE (arrange.getRulerHover().has_value());
+    CHECK_THAT (*arrange.getRulerHover(), Catch::Matchers::WithinAbs (pr7s::snap (2.13, view.getTimeline().snapGrid (studio.getProject())), 1.0e-9));
+    arrange.mouseExit (juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), { x, y }, {}, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                         &arrange, &arrange, juce::Time::getCurrentTime(), { x, y }, juce::Time::getCurrentTime(), 0, false));
+    CHECK_FALSE (arrange.getRulerHover().has_value());
+}

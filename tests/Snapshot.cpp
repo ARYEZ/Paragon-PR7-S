@@ -333,6 +333,14 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.selectMaster();   // (last: the set-up above chooses tracks)
         studio.dispatchPendingMessages();
     }
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_RULERHOVER", {}).isNotEmpty())
+    {
+        // The ruler's hover marker (0.17.4): where a click would put the playhead.
+        auto& arrange = view.getArrangeView();
+        const juce::Point<float> at { view.getTimeline().xForBeat (6.5), (float) (Timeline::cycleStripHeight + 6) };
+        arrange.mouseMove (juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, {}, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                             &arrange, &arrange, juce::Time::getCurrentTime(), at, juce::Time::getCurrentTime(), 0, false));
+    }
     auto image = view.createComponentSnapshot (view.getLocalBounds(), true, scale);
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_RENDER", {}).isNotEmpty())
     {

@@ -62,12 +62,47 @@ void ArrangeView::changeListenerCallback (juce::ChangeBroadcaster*)
 void ArrangeView::timerCallback()
 {
     followPlayhead();
+    advancePlayhead();
     refreshPlayhead();
+    // 60 frames a second while it glides, else 30 (the screens' work, 0.9.2).
+    const auto rate = gliding ? 60 : 30;
+    if (getTimerInterval() != 1000 / rate)
+        startTimerHz (rate);
+}
+
+void ArrangeView::advancePlayhead()
+{
+    auto& engine = studio.getEngine();
+    const auto target = engine.getPosition();
+    const auto pixels = std::abs (target - shownBeat) * timeline.pixelsPerBeat;
+    // Playing (or recording): exactly where it is. Stopped: a click or a drag in the ruler
+    // (each snapped to the grid) glides it there, a little less each frame; a long jump
+    // (Home, half a screen and more) goes straight there.
+    if (engine.isPlaying() || engine.isRecording() || pixels < 0.5 || pixels > (double) getWidth() * 0.5)
+    {
+        shownBeat = target;
+        gliding = false;
+        return;
+    }
+    shownBeat += (target - shownBeat) * glideStep;
+    gliding = true;
+}
+
+void ArrangeView::setRulerHover (std::optional<double> beat)
+{
+    if (beat == rulerHover)
+        return;
+    const auto strip = [this] (double at) { const auto x = timeline.xForBeat (at); return juce::Rectangle<float> (x - 8.0f, 0.0f, 17.0f, (float) Timeline::rulerHeight).toNearestIntEdges(); };
+    if (rulerHover)
+        repaint (strip (*rulerHover));
+    rulerHover = beat;
+    if (rulerHover)
+        repaint (strip (*rulerHover));
 }
 
 void ArrangeView::refreshPlayhead()
 {
-    const auto x = timeline.xForBeat (studio.getEngine().getPosition());
+    const auto x = timeline.xForBeat (shownBeat);
     const auto red = studio.getEngine().isRecording();
     if (std::abs (x - playheadX) < 0.05f && red == playheadRed)
         return;
@@ -727,8 +762,20 @@ void ArrangeView::paint (juce::Graphics& g)
         }
     }
 
-    // The playhead: a line down the lanes and a marker on the ruler.
-    const auto x = timeline.xForBeat (studio.getEngine().getPosition());
+    // Where a click in the ruler would put it (0.17.4): a faint marker on the grid line.
+    if (rulerHover && drag == Drag::none)
+    {
+        const auto hx = timeline.xForBeat (*rulerHover);
+        g.setColour (juce::Colour (0xfff4eeea).withAlpha (0.35f));
+        g.fillRect (juce::Rectangle<float> (hx, (float) Timeline::cycleStripHeight, 1.0f, (float) (Timeline::rulerHeight - Timeline::cycleStripHeight)));
+        juce::Path ghost;
+        ghost.addTriangle (hx - 5.0f, (float) Timeline::rulerHeight - 11.0f, hx + 5.0f, (float) Timeline::rulerHeight - 11.0f, hx, (float) Timeline::rulerHeight - 3.0f);
+        g.setColour (pr7s::FamilyColours::pink.withAlpha (0.55f));
+        g.fillPath (ghost);
+    }
+
+    // The playhead: a line down the lanes and a marker on the ruler (where it's drawn: it glides, 0.17.4).
+    const auto x = timeline.xForBeat (shownBeat);
     if (x >= -2.0f && x <= bounds.getWidth() + 2.0f)
     {
         const auto red = studio.getEngine().isRecording();
@@ -904,7 +951,21 @@ juce::Rectangle<float> ArrangeView::fadeHandle (juce::Rectangle<float> bounds, c
 //==============================================================================
 void ArrangeView::mouseMove (const juce::MouseEvent& event)
 {
+    // The ruler's lower part (under the cycle strip): where a click would put the playhead, snapped (Ctrl: free).
+    if (event.position.y >= (float) Timeline::cycleStripHeight && event.position.y < (float) Timeline::rulerHeight
+        && ! event.mods.isAltDown() && ! event.mods.isCtrlDown())
+    {
+        const auto grid = event.mods.isCommandDown() ? 0.0 : timeline.snapGrid (studio.getProject());
+        setRulerHover (juce::jmax (0.0, pr7s::snap (timeline.beatForX (event.position.x), grid)));
+    }
+    else
+        setRulerHover (std::nullopt);
     updateCursor (event);
+}
+
+void ArrangeView::mouseExit (const juce::MouseEvent&)
+{
+    setRulerHover (std::nullopt);
 }
 
 void ArrangeView::updateCursor (const juce::MouseEvent& event)
