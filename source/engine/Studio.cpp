@@ -5370,7 +5370,7 @@ namespace pr7s
                     continue;
                 const auto& notes = voicings[(size_t) closestVoicing (voicings, previous, {})];
                 for (const auto n : notes)
-                    note (s.start - first, s.end - s.start, n, 0.45f);
+                    note (s.start - first, s.end - s.start, n, 0.5f);   // (64: soft, and above a guitar library's palm-mute layers)
                 previous = notes;
             }
         }

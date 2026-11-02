@@ -306,6 +306,67 @@ TEST_CASE ("Guitar rhythm ideas: power chords with no third, nothing under the l
         }
 }
 
+TEST_CASE ("Guitar velocities in the owner's library's layout: 1-59 palm muted, 60-119 open, 120-127 pinch harmonics (0.19.1)", "[lines]")
+{
+    namespace V = GuitarVelocity;
+    // The engine sends round (velocity * 127): each value comes back exactly.
+    for (const auto v : { V::muteTight, V::muteMid, V::muteLoose, V::sustainSoft, V::sustain, V::sustainHard, V::pinch })
+        CHECK (V::midiOf (V::of (v)) == v);
+    CHECK (V::muteLoose <= V::mutedMost);
+    CHECK (V::sustainHard <= V::sustainMost);
+
+    const Key am { 5, 0, true };
+    const auto spans = bars ({ { 9, T::minor, X::none, -1 }, { 5, T::major, X::none, -1 }, { 0, T::major, X::none, -1 }, { 4, T::major, X::none, -1 } }, am);
+    const auto& tuning = GuitarTuning::all()[0];
+    const auto muted = [] (const LineNote& n) { return V::midiOf (n.velocity) >= 1 && V::midiOf (n.velocity) <= 59; };
+    const auto open = [] (const LineNote& n) { return V::midiOf (n.velocity) >= 60 && V::midiOf (n.velocity) <= 119; };
+    const auto pinch = [] (const LineNote& n) { return V::midiOf (n.velocity) >= 120; };
+    for (int variation = 0; variation < 4; ++variation)
+    {
+        INFO ("variation " << variation);
+        const auto rhythm = guitarRhythmIdeas (spans, 4.0, variation, tuning);
+        const auto count = [] (const LineIdea& idea, auto&& is) { return (int) std::count_if (idea.notes.begin(), idea.notes.end(), is); };
+        // Chugs: muted between open accents, never a pinch or rake.
+        const auto& chugs = ideaNamed (rhythm, "Palm-muted chugs");
+        CHECK (count (chugs, pinch) == 0);
+        CHECK (count (chugs, muted) > count (chugs, open));
+        for (const auto& n : chugs.notes)
+            CHECK ((muted (n) || open (n)));
+        for (const auto& s : spans)   // the bar's first hit open
+            for (const auto& n : chugs.notes)
+                if (std::abs (n.beat - s.start) < 1.0e-6)
+                    CHECK (open (n));
+        // Gallop: muted (the odd variations open each bar's first hit), never a pinch.
+        const auto& gallop = ideaNamed (rhythm, "Gallop");
+        CHECK (count (gallop, pinch) == 0);
+        for (const auto& n : gallop.notes)
+        {
+            const auto barStart = std::fmod (n.beat, 4.0) < 1.0e-6;
+            CHECK ((barStart && variation % 2 == 1 ? open (n) : muted (n)));
+        }
+        // Pedal-point: the pedal muted, stabs open, a pinch harmonic (one note) every second bar.
+        const auto& pedal = ideaNamed (rhythm, "Pedal-point riff");
+        CHECK (count (pedal, pinch) == 2);
+        for (const auto& n : pedal.notes)
+            if (pcOf (n.pitch) == 9 && n.pitch < tuning.lowest() + 12 && n.length < 0.45)
+                CHECK (muted (n));
+        // Open rhythm parts: all open.
+        for (const auto* name : { "Power chords", "Octave chords", "Open strummed shapes" })
+            for (const auto& n : ideaNamed (rhythm, name).notes)
+                CHECK (open (n));
+        // Leads: open, but the pentatonic box's last note, a pinch-harmonic squeal.
+        for (const auto& idea : guitarLeadIdeas (spans, 4.0, variation, tuning))
+        {
+            INFO (idea.style);
+            for (size_t i = 0; i < idea.notes.size(); ++i)
+                if (idea.style == "Pentatonic box" && i + 1 == idea.notes.size())
+                    CHECK (pinch (idea.notes[i]));
+                else
+                    CHECK (open (idea.notes[i]));
+        }
+    }
+}
+
 TEST_CASE ("Guitar lead ideas: in the key's scales, a chord tone on every bar, in a lead's range, the last note on the chord (0.19.0)", "[lines]")
 {
     for (const auto& key : { Key { 5, 0, true }, Key { 2, 0, true }, Key { 0, 0, false }, Key { 4, 0, false } })

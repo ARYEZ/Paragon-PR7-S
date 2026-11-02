@@ -275,7 +275,9 @@ void LinesPage::play (pr7s::LineIdea::Part part, int index)
     const auto& list = getIdeas (part);
     if (! juce::isPositiveAndBelow (index, (int) list.size()))
         return;
-    studio.previewLine (&list[(size_t) index], spans, true);
+    // Guitar ideas alone: chords voiced for a piano, played on a guitar library, would blur them.
+    const auto guitar = part == pr7s::LineIdea::Part::rhythm || part == pr7s::LineIdea::Part::lead;
+    studio.previewLine (&list[(size_t) index], spans, ! guitar);
     playing = std::pair { part, index };
     playingChords = false;
     for (auto* card : cards)

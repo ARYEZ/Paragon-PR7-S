@@ -63,6 +63,20 @@ namespace pr7s
         static const GuitarTuning& named (const juce::String&);   // (else the first)
     };
 
+    // The guitar ideas' velocities (0.19.1, the owner's library, Shreddage: velocity picks the
+    // articulation). 1-59 palm muted, tighter the lower; 60-119 sustained (open); 120-127 pinch
+    // harmonics and rakes. Exact MIDI values: a note's velocity is value / 127 (the engine rounds
+    // velocity * 127 back to the same number). On a library without such layers they're only
+    // dynamics: muted notes quieter, which suits them too.
+    namespace GuitarVelocity
+    {
+        constexpr int muteTight = 34, muteMid = 44, muteLoose = 54, mutedMost = 59;
+        constexpr int sustainSoft = 80, sustain = 96, sustainHard = 110, sustainMost = 119;
+        constexpr int pinch = 124;
+        constexpr float of (int midi) noexcept { return (float) midi / 127.0f; }
+        constexpr int midiOf (float velocity) noexcept { return (int) (velocity * 127.0f + 0.5f); }
+    }
+
     // Piano chords (0.19.0): Block chords, Broken chords, Ballad arpeggio, Stride, Octaves and
     // chords, Pop pulse. The right hand voiced near the chord before; a left hand where it's a style's.
     std::vector<LineIdea> pianoChordIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation = 0);

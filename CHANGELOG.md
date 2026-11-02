@@ -2,6 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.19.1
+
+The guitar ideas' velocities in the layout of the owner's guitars (Shreddage Jupiter and Rogue: velocity chooses the articulation; 1-59 palm muting, tighter the lower; 60-119 sustain; 120-127 pinch harmonics and rakes).
+
+- **Palm muting now mutes.** In 0.19.0 the "palm-muted" notes went out at velocity 70 (sustain on Shreddage), and the chugs' accents at 121, which fired a pinch harmonic or rake on every accent. Now: the Palm-muted chugs' chugs at 44 (eighths) or 34 (sixteenths: tighter, as fast chugging is played), their accents open at 110; the Gallop palm muted throughout (the eighth at 54, the two sixteenths at 44; MORE IDEAS' odd variations open each bar's first hit as a ringing chord); the Pedal-point riff's low pedal muted (54 on the bar's first, 34 after), its stabs open at 110.
+- **Pinch harmonics where metal uses them.** The Pedal-point riff ends every second bar with a pinch harmonic (124) on the chord's root, and the Pentatonic box's last held note is a pinch-harmonic squeal.
+- **Everything else sits in the sustain range:** power chords 96-110, octave chords 84-104, strums 80-96, leads 88-110. Nothing else reaches 120.
+- **The preview.** Guitar ideas now preview alone, without the chords underneath: piano chord shapes played on a guitar library smear the riff (HEAR CHORDS still plays the chords). The chords under bass, piano and melody ideas now go out at 64 instead of 57, which was in the palm-mute layers if your guitar track was the selected one.
+- **Honestly:** the numbers are chosen for the ranges you gave (each a little inside its range, so it lands in the right layer); I can't hear Shreddage here, so how tight 34 and 44 sound is for your ears; say if they should be tighter or looser. On a guitar library without velocity layers these are only louder and softer notes. The keyswitches still aren't written (the velocity layers do the articulations here); rakes aren't written either (a rake is the strings dragged into a note, and 120-127 on its own would only give the pinch or rake the library picks).
+
 ## 0.19.0
 
 Piano and guitar ideas, apart (the owner asked: ideas "geared towards guitars in one category and piano in another", power chords and octave chords as in rock and metal, and leads from the tried and true ways of rock and metal solos; the owner plays Shreddage Jupiter and Rogue, 7-string guitars in drop A).
