@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.21.1
+
+Tags for the MediaBay (the owner asked for 0.21.1 as planned: the manual's Attribute Inspector and Attribute Filter), so you can find a sound by what it is, not only by its name.
+
+- **The attribute inspector** (at the right; INSPECTOR in the title row shows or hides it): the selected files' attributes in groups. MEDIA shows what the files are (name, type, length, format, size, date, folder). MUSICAL holds your tags: **Category** and **Sub Category** (Guitar / Riff, Drums / Kick...), **Style** and **Sub Style** (Metal / Djent...), **Character**, **Tempo** and **Key**. INFO holds the **Rating** and a **Comment**. YOUR ATTRIBUTES holds the ones you add.
+- **Several files at once:** select them in the results (Shift- or Ctrl-click), then click a value: it's set on all of them. Where they differ the inspector says (MIXED). Right-click a value: Remove Attribute.
+- **Clicking a value:** Category and Style open their lists; Sub Category and Sub Style list only the subs of the files' category or style (as the manual's: they're linked; a new category drops a sub that isn't its own). "Add a category..." puts your own value in the list (and a sub under it), then sets it. Character opens pairs of opposites (Clean / Distorted, Dark / Bright, Tight / Loose, Calm / Aggressive...): one side of each, or neither. Key opens the 24 keys; Tempo and Comment ask for text; the stars set the rating.
+- **Your tempo and key** win over what the name says; remove them and the name's are back.
+- **User attributes** (+ USER ATTRIBUTE): an attribute of your own, holding text, a number (with the decimals you choose) or yes/no ("Session", "Strings", "Used in a song"). Right-click its name in the inspector to delete it from every file.
+- **DYNAMIC / DEFINED:** only the attributes the selected files have, or all of them.
+- **The attribute filter** (above the results; FILTERS shows or hides it): four columns, CATEGORY, SUB CATEGORY, STYLE and CHARACTER at first; click a column's title for another attribute (key, tempo, rating, or one of yours). Each lists the values your files have with how many files have each. Click a value to see only those files, click it again for all; **Ctrl-click** another value in the same column for either one. Columns work together, and the sub category column shows only the chosen categories' subs. Character values always all apply (as the manual says). RESET clears them.
+- **The results** have CATEGORY, STYLE and CHARACTER columns (sort by category or style), and the **search** looks in your tags too ("djent", "aggressive", a comment's words).
+- **Honestly:** our design where it differs from the manual. Tags are kept in the MediaBay's own file (MediaBay.xml beside the settings), **not written into your audio files**: your samples stay exactly as they are, but the tags don't travel with a file copied to another computer. The lists of categories, styles and characters are our own words (add yours). Not here: the Defined attributes' configuration mode (which attributes show per media type), editing values directly in the results list, the logical filter, write protection.
+
 ## 0.21.0
 
 The MediaBay (the owner asked: as the other DAW's MediaBay). The first part of three, as agreed: the MediaBay window now; tags and the attribute inspector next (0.21.1); the Media rack docked at the right of the project window after (0.22.0).

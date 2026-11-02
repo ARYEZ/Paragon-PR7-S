@@ -39,11 +39,94 @@ namespace pr7s
         text << name << ' ' << file.getFileName() << ' ' << file.getParentDirectory().getFileName() << ' ' << mediaTypeName (type);
         if (type == MediaType::trackPreset)
             text << " preset";
-        if (bpm > 0.0)
-            text << ' ' << juce::String (bpm, 0) << " bpm";
-        if (key.isNotEmpty())
-            text << ' ' << key;
+        if (tempo() > 0.0)
+            text << ' ' << juce::String (tempo(), 0) << " bpm";
+        if (keyName().isNotEmpty())
+            text << ' ' << keyName();
+        for (const auto* t : { &tags.category, &tags.subCategory, &tags.style, &tags.subStyle, &tags.comment })
+            if (t->isNotEmpty())
+                text << ' ' << *t;
+        for (const auto& c : tags.character)
+            text << ' ' << c;
+        for (const auto& [name, value] : tags.user)
+            if (value.isNotEmpty() && value != "0" && value != "1")
+                text << ' ' << value;
         return text.toLowerCase();
+    }
+
+    //==========================================================================
+    juce::String AttributeId::name() const
+    {
+        switch (kind)
+        {
+            case MediaAttribute::category: return "CATEGORY";
+            case MediaAttribute::subCategory: return "SUB CATEGORY";
+            case MediaAttribute::style: return "STYLE";
+            case MediaAttribute::subStyle: return "SUB STYLE";
+            case MediaAttribute::character: return "CHARACTER";
+            case MediaAttribute::tempo: return "TEMPO";
+            case MediaAttribute::key: return "KEY";
+            case MediaAttribute::rating: return "RATING";
+            case MediaAttribute::comment: return "COMMENT";
+            case MediaAttribute::user: return user.toUpperCase();
+        }
+        return {};
+    }
+
+    bool MediaTags::isEmpty() const
+    {
+        return category.isEmpty() && subCategory.isEmpty() && style.isEmpty() && subStyle.isEmpty() && comment.isEmpty()
+            && key.isEmpty() && bpm <= 0.0 && character.isEmpty() && user.empty();
+    }
+
+    const std::vector<AttributeList>& defaultCategories()
+    {
+        static const std::vector<AttributeList> list {
+            { "Drums", { "Kick", "Snare", "Hi-Hat", "Cymbal", "Tom", "Percussion", "Kit", "Fill" } },
+            { "Guitar", { "Rhythm", "Lead", "Riff", "Chug", "Clean", "Acoustic", "Noise" } },
+            { "Bass", { "Electric", "Synth", "Sub", "Upright" } },
+            { "Keys", { "Piano", "Electric Piano", "Organ", "Clav" } },
+            { "Synth", { "Lead", "Pad", "Arp", "Pluck", "Sequence" } },
+            { "Strings", { "Ensemble", "Solo", "Pizzicato" } },
+            { "Brass and Winds", { "Brass", "Woodwinds", "Ensemble" } },
+            { "Vocals", { "Lead", "Backing", "Choir", "Chop", "Spoken" } },
+            { "Sound FX", { "Riser", "Impact", "Sweep", "Reverse", "Glitch" } },
+            { "Ambience", { "Drone", "Texture", "Field Recording" } },
+        };
+        return list;
+    }
+
+    const std::vector<AttributeList>& defaultStyles()
+    {
+        static const std::vector<AttributeList> list {
+            { "Metal", { "Djent", "Metalcore", "Thrash", "Death", "Progressive", "Nu Metal", "Doom" } },
+            { "Rock", { "Hard Rock", "Alternative", "Punk", "Classic Rock", "Post-Rock" } },
+            { "Pop", { "Dance Pop", "Synth Pop", "Ballad" } },
+            { "Electronic", { "Synthwave", "Dubstep", "House", "Techno", "Drum and Bass", "Ambient" } },
+            { "Hip-Hop", { "Trap", "Boom Bap", "Lo-Fi" } },
+            { "Cinematic", { "Trailer", "Score", "Hybrid" } },
+            { "Blues", { "Delta", "Electric Blues", "Blues Rock" } },
+            { "Jazz", { "Swing", "Fusion", "Bebop" } },
+            { "Funk", { "Classic Funk", "Disco" } },
+        };
+        return list;
+    }
+
+    const std::vector<CharacterPair>& characterPairs()
+    {
+        static const std::vector<CharacterPair> pairs {
+            { "Clean", "Distorted" }, { "Dry", "Processed" }, { "Dark", "Bright" }, { "Soft", "Hard" },
+            { "Acoustic", "Electric" }, { "Short", "Long" }, { "Simple", "Complex" }, { "Tight", "Loose" },
+            { "Calm", "Aggressive" },
+        };
+        return pairs;
+    }
+
+    const juce::StringArray& mediaKeyNames()
+    {
+        static const juce::StringArray names { "C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B",
+                                               "Cm", "C#m", "Dm", "Ebm", "Em", "Fm", "F#m", "Gm", "G#m", "Am", "Bbm", "Bm" };
+        return names;
     }
 
     //==========================================================================
@@ -457,7 +540,10 @@ namespace pr7s
             const juce::ScopedLock sl (pendingLock);   // (a scan in another thread reads `items`)
             items = std::move (*result);
             for (auto& item : items)
+            {
                 item.rating = getRating (item.file);
+                item.tags = getTags (item.file);
+            }
             std::stable_sort (items.begin(), items.end(), [] (const MediaItem& a, const MediaItem& b)
                               { return a.name.compareNatural (b.name) < 0; });
         }
@@ -469,25 +555,68 @@ namespace pr7s
     {
         const TextSearch search (query.text);
         std::vector<int> found;
-        const auto folder = query.folder;
         for (int i = 0; i < (int) items.size(); ++i)
-        {
-            const auto& item = items[(size_t) i];
-            if (! query.types.empty() && query.types.count (item.type) == 0)
-                continue;
-            if (item.rating < query.minimumRating)
-                continue;
-            if (folder != juce::File())
-            {
-                const auto parent = item.file.getParentDirectory();
-                if (query.subfolders ? ! (parent == folder || item.file.isAChildOf (folder)) : parent != folder)
-                    continue;
-            }
-            if (! search.isEmpty() && ! search.matches (item.searchText()))
-                continue;
-            found.push_back (i);
-        }
+            if (passes (items[(size_t) i], query, search))
+                found.push_back (i);
         return found;
+    }
+
+    bool MediaDatabase::passes (const MediaItem& item, const MediaQuery& query, const TextSearch& search) const
+    {
+        if (! query.types.empty() && query.types.count (item.type) == 0)
+            return false;
+        if (item.rating < query.minimumRating)
+            return false;
+        if (const auto& folder = query.folder; folder != juce::File())
+        {
+            const auto parent = item.file.getParentDirectory();
+            if (query.subfolders ? ! (parent == folder || item.file.isAChildOf (folder)) : parent != folder)
+                return false;
+        }
+        for (const auto& filter : query.attributes)
+        {
+            if (filter.values.isEmpty())
+                continue;
+            const auto has = attributeValues (item, filter.attribute);
+            if (filter.attribute.kind == MediaAttribute::character)
+            {
+                for (const auto& v : filter.values)
+                    if (! has.contains (v))
+                        return false;
+            }
+            else
+            {
+                bool any = false;
+                for (const auto& v : filter.values)
+                    any = any || has.contains (v);
+                if (! any)
+                    return false;
+            }
+        }
+        return search.isEmpty() || search.matches (item.searchText());
+    }
+
+    std::vector<std::pair<juce::String, int>> MediaDatabase::valueCounts (const MediaQuery& query, const AttributeId& attribute) const
+    {
+        auto others = query;
+        others.attributes.erase (std::remove_if (others.attributes.begin(), others.attributes.end(),
+                                                 [&] (const AttributeFilter& f) { return f.attribute == attribute; }),
+                                 others.attributes.end());
+        const TextSearch search (others.text);
+        std::map<juce::String, int> counts;
+        for (const auto& item : items)
+            if (passes (item, others, search))
+                for (const auto& v : attributeValues (item, attribute))
+                    ++counts[v];
+        std::vector<std::pair<juce::String, int>> list (counts.begin(), counts.end());
+        const auto numeric = attribute.kind == MediaAttribute::tempo || attribute.kind == MediaAttribute::rating;
+        std::sort (list.begin(), list.end(), [numeric] (const auto& a, const auto& b)
+        {
+            if (numeric)
+                return a.first.getDoubleValue() < b.first.getDoubleValue();
+            return a.first.compareNatural (b.first) < 0;
+        });
+        return list;
     }
 
     void MediaDatabase::sort (std::vector<int>& indices, MediaColumn column, bool ascending) const
@@ -502,8 +631,18 @@ namespace pr7s
                 case MediaColumn::name: return a.name.compareNatural (b.name);
                 case MediaColumn::type: return (int) a.type - (int) b.type;
                 case MediaColumn::length: return a.seconds < b.seconds ? -1 : a.seconds > b.seconds ? 1 : 0;
-                case MediaColumn::tempo: return a.bpm < b.bpm ? -1 : a.bpm > b.bpm ? 1 : 0;
-                case MediaColumn::key: return a.key.compare (b.key);
+                case MediaColumn::tempo: return a.tempo() < b.tempo() ? -1 : a.tempo() > b.tempo() ? 1 : 0;
+                case MediaColumn::key: return a.keyName().compare (b.keyName());
+                case MediaColumn::category:
+                {
+                    const auto c = a.tags.category.compareNatural (b.tags.category);
+                    return c != 0 ? c : a.tags.subCategory.compareNatural (b.tags.subCategory);
+                }
+                case MediaColumn::style:
+                {
+                    const auto c = a.tags.style.compareNatural (b.tags.style);
+                    return c != 0 ? c : a.tags.subStyle.compareNatural (b.tags.subStyle);
+                }
                 case MediaColumn::folder: return a.file.getParentDirectory().getFullPathName().compareNatural (b.file.getParentDirectory().getFullPathName());
                 case MediaColumn::size: return a.size < b.size ? -1 : a.size > b.size ? 1 : 0;
                 case MediaColumn::date: return a.modified < b.modified ? -1 : a.modified > b.modified ? 1 : 0;
@@ -525,16 +664,24 @@ namespace pr7s
 
     void MediaDatabase::setRating (const juce::File& file, int stars)
     {
+        setRatings ({ file }, stars);
+    }
+
+    void MediaDatabase::setRatings (const juce::Array<juce::File>& files, int stars)
+    {
         stars = juce::jlimit (0, 5, stars);
-        if (stars == 0)
-            ratings.erase (file.getFullPathName());
-        else
-            ratings[file.getFullPathName()] = stars;
         {
             const juce::ScopedLock sl (pendingLock);
-            for (auto& item : items)
-                if (item.file == file)
-                    item.rating = stars;
+            for (const auto& file : files)
+            {
+                if (stars == 0)
+                    ratings.erase (file.getFullPathName());
+                else
+                    ratings[file.getFullPathName()] = stars;
+                for (auto& item : items)
+                    if (item.file == file)
+                        item.rating = stars;
+            }
         }
         save();
     }
@@ -543,6 +690,286 @@ namespace pr7s
     {
         const auto found = ratings.find (file.getFullPathName());
         return found != ratings.end() ? found->second : 0;
+    }
+
+    //==========================================================================
+    MediaTags MediaDatabase::getTags (const juce::File& file) const
+    {
+        const auto found = tags.find (file.getFullPathName());
+        return found != tags.end() ? found->second : MediaTags {};
+    }
+
+    void MediaDatabase::editTags (const juce::Array<juce::File>& files, const std::function<void (MediaTags&)>& edit)
+    {
+        if (files.isEmpty())
+            return;
+        {
+            const juce::ScopedLock sl (pendingLock);   // (a scan in another thread reads `items`)
+            for (const auto& file : files)
+            {
+                auto t = getTags (file);
+                edit (t);
+                if (t.isEmpty())
+                    tags.erase (file.getFullPathName());
+                else
+                    tags[file.getFullPathName()] = t;
+                for (auto& item : items)
+                    if (item.file == file)
+                        item.tags = t;
+            }
+        }
+        save();
+    }
+
+    namespace
+    {
+        // The sub categories (or styles) a list gives a name, from ours and yours.
+        juce::StringArray subsIn (const std::vector<AttributeList>& lists, const juce::String& name)
+        {
+            juce::StringArray subs;
+            for (const auto& list : lists)
+                if (list.name.equalsIgnoreCase (name))
+                    subs.addArray (list.subs);
+            subs.removeDuplicates (true);
+            return subs;
+        }
+
+        std::vector<AttributeList> merged (const std::vector<AttributeList>& ours, const std::vector<AttributeList>& yours)
+        {
+            auto all = ours;
+            for (const auto& list : yours)
+            {
+                auto found = std::find_if (all.begin(), all.end(), [&] (const AttributeList& l) { return l.name.equalsIgnoreCase (list.name); });
+                if (found == all.end())
+                    all.push_back (list);
+                else
+                    for (const auto& sub : list.subs)
+                        found->subs.addIfNotAlreadyThere (sub, true);
+            }
+            return all;
+        }
+
+        bool addTo (std::vector<AttributeList>& yours, const std::vector<AttributeList>& all, const juce::String& name, const juce::String& sub)
+        {
+            const auto n = name.trim(), s = sub.trim();
+            if (n.isEmpty())
+                return false;
+            const auto known = std::find_if (all.begin(), all.end(), [&] (const AttributeList& l) { return l.name.equalsIgnoreCase (n); });
+            if (known != all.end() && (s.isEmpty() || known->subs.contains (s, true)))
+                return false;
+            auto mine = std::find_if (yours.begin(), yours.end(), [&] (const AttributeList& l) { return l.name.equalsIgnoreCase (n); });
+            if (mine == yours.end())
+            {
+                yours.push_back ({ known != all.end() ? known->name : n, {} });
+                mine = yours.end() - 1;
+            }
+            if (s.isNotEmpty())
+                mine->subs.addIfNotAlreadyThere (s, true);
+            return true;
+        }
+
+        juce::String tempoText (double bpm)
+        {
+            return bpm > 0.0 ? juce::String (bpm, bpm == std::round (bpm) ? 0 : 1) : juce::String();
+        }
+    }
+
+    std::vector<AttributeList> MediaDatabase::getCategories() const { return merged (defaultCategories(), userCategories); }
+    std::vector<AttributeList> MediaDatabase::getStyles() const { return merged (defaultStyles(), userStyles); }
+
+    juce::StringArray MediaDatabase::subsOf (const AttributeId& list, const juce::String& name) const
+    {
+        return subsIn (list.kind == MediaAttribute::style || list.kind == MediaAttribute::subStyle ? getStyles() : getCategories(), name);
+    }
+
+    bool MediaDatabase::addCategory (const juce::String& name, const juce::String& sub)
+    {
+        if (! addTo (userCategories, getCategories(), name, sub))
+            return false;
+        save();
+        return true;
+    }
+
+    bool MediaDatabase::addStyle (const juce::String& name, const juce::String& sub)
+    {
+        if (! addTo (userStyles, getStyles(), name, sub))
+            return false;
+        save();
+        return true;
+    }
+
+    const UserAttribute* MediaDatabase::findUserAttribute (const juce::String& name) const
+    {
+        for (const auto& a : userAttributes)
+            if (a.name.equalsIgnoreCase (name))
+                return &a;
+        return nullptr;
+    }
+
+    bool MediaDatabase::addUserAttribute (const UserAttribute& attribute)
+    {
+        auto a = attribute;
+        a.name = a.name.trim();
+        a.precision = juce::jlimit (0, 6, a.precision);
+        if (a.name.isEmpty() || findUserAttribute (a.name) != nullptr)
+            return false;
+        // (Not one of ours by another name: the filter's and inspector's titles must tell them apart.)
+        for (const auto kind : { MediaAttribute::category, MediaAttribute::subCategory, MediaAttribute::style, MediaAttribute::subStyle,
+                                 MediaAttribute::character, MediaAttribute::tempo, MediaAttribute::key, MediaAttribute::rating, MediaAttribute::comment })
+            if (AttributeId { kind, {} }.name().equalsIgnoreCase (a.name))
+                return false;
+        userAttributes.push_back (a);
+        save();
+        return true;
+    }
+
+    void MediaDatabase::removeUserAttribute (const juce::String& name)
+    {
+        const auto* found = findUserAttribute (name);
+        if (found == nullptr)
+            return;
+        const auto exact = found->name;
+        userAttributes.erase (std::remove_if (userAttributes.begin(), userAttributes.end(), [&] (const UserAttribute& a) { return a.name == exact; }),
+                              userAttributes.end());
+        juce::Array<juce::File> files;
+        for (const auto& [path, t] : tags)
+            if (t.user.count (exact) > 0)
+                files.add (juce::File (path));
+        editTags (files, [&] (MediaTags& t) { t.user.erase (exact); });
+        save();
+    }
+
+    void MediaDatabase::setAttribute (const juce::Array<juce::File>& files, const AttributeId& attribute, const juce::String& value)
+    {
+        const auto v = value.trim();
+        if (v.isEmpty())
+            return removeAttribute (files, attribute);
+        if (attribute.kind == MediaAttribute::rating)
+            return setRatings (files, v.getIntValue());
+        if (attribute.kind == MediaAttribute::character)
+        {
+            for (int pair = 0; pair < (int) characterPairs().size(); ++pair)
+            {
+                const auto& p = characterPairs()[(size_t) pair];
+                if (v.equalsIgnoreCase (p.left)) return setCharacter (files, pair, -1);
+                if (v.equalsIgnoreCase (p.right)) return setCharacter (files, pair, 1);
+            }
+            return;
+        }
+        if (attribute.kind == MediaAttribute::user)
+        {
+            const auto* user = findUserAttribute (attribute.user);
+            if (user == nullptr)
+                return;
+            auto stored = v;
+            if (user->type == UserAttributeType::number)
+                stored = user->precision > 0 ? juce::String (v.getDoubleValue(), user->precision)   // (0 decimals in JUCE means "all of them")
+                                             : juce::String (juce::roundToInt (v.getDoubleValue()));
+            else if (user->type == UserAttributeType::yesNo)
+                stored = (v == "1" || v.equalsIgnoreCase ("yes") || v.equalsIgnoreCase ("on")) ? "1" : "0";
+            const auto name = user->name;
+            return editTags (files, [&] (MediaTags& t) { t.user[name] = stored; });
+        }
+        const auto categories = getCategories();
+        const auto styles = getStyles();
+        editTags (files, [&] (MediaTags& t)
+        {
+            switch (attribute.kind)
+            {
+                case MediaAttribute::category:
+                    if (! t.category.equalsIgnoreCase (v) && ! subsIn (categories, v).contains (t.subCategory, true))
+                        t.subCategory = {};
+                    t.category = v;
+                    break;
+                case MediaAttribute::subCategory: t.subCategory = v; break;
+                case MediaAttribute::style:
+                    if (! t.style.equalsIgnoreCase (v) && ! subsIn (styles, v).contains (t.subStyle, true))
+                        t.subStyle = {};
+                    t.style = v;
+                    break;
+                case MediaAttribute::subStyle: t.subStyle = v; break;
+                case MediaAttribute::tempo:
+                {
+                    const auto bpm = v.getDoubleValue();
+                    if (bpm >= 20.0 && bpm <= 400.0)
+                        t.bpm = bpm;
+                    break;
+                }
+                case MediaAttribute::key: t.key = v; break;
+                case MediaAttribute::comment: t.comment = v; break;
+                default: break;
+            }
+        });
+    }
+
+    void MediaDatabase::removeAttribute (const juce::Array<juce::File>& files, const AttributeId& attribute)
+    {
+        if (attribute.kind == MediaAttribute::rating)
+            return setRatings (files, 0);
+        editTags (files, [&] (MediaTags& t)
+        {
+            switch (attribute.kind)
+            {
+                case MediaAttribute::category: t.category = {}; t.subCategory = {}; break;
+                case MediaAttribute::subCategory: t.subCategory = {}; break;
+                case MediaAttribute::style: t.style = {}; t.subStyle = {}; break;
+                case MediaAttribute::subStyle: t.subStyle = {}; break;
+                case MediaAttribute::character: t.character.clear(); break;
+                case MediaAttribute::tempo: t.bpm = 0.0; break;
+                case MediaAttribute::key: t.key = {}; break;
+                case MediaAttribute::comment: t.comment = {}; break;
+                case MediaAttribute::user:
+                    for (auto it = t.user.begin(); it != t.user.end();)
+                        it = it->first.equalsIgnoreCase (attribute.user) ? t.user.erase (it) : std::next (it);
+                    break;
+                default: break;
+            }
+        });
+    }
+
+    void MediaDatabase::setCharacter (const juce::Array<juce::File>& files, int pair, int side)
+    {
+        if (! juce::isPositiveAndBelow (pair, (int) characterPairs().size()))
+            return;
+        const auto& p = characterPairs()[(size_t) pair];
+        editTags (files, [&] (MediaTags& t)
+        {
+            t.character.removeString (p.left);
+            t.character.removeString (p.right);
+            if (side != 0)
+                t.character.add (side < 0 ? p.left : p.right);
+            // (In the pairs' order, so every file's reads the same.)
+            juce::StringArray ordered;
+            for (const auto& q : characterPairs())
+                for (const auto& word : { q.left, q.right })
+                    if (t.character.contains (word))
+                        ordered.add (word);
+            t.character = ordered;
+        });
+    }
+
+    juce::StringArray MediaDatabase::attributeValues (const MediaItem& item, const AttributeId& attribute)
+    {
+        const auto one = [] (const juce::String& s) { return s.isEmpty() ? juce::StringArray() : juce::StringArray (s); };
+        const auto& t = item.tags;
+        switch (attribute.kind)
+        {
+            case MediaAttribute::category: return one (t.category);
+            case MediaAttribute::subCategory: return one (t.subCategory);
+            case MediaAttribute::style: return one (t.style);
+            case MediaAttribute::subStyle: return one (t.subStyle);
+            case MediaAttribute::character: return t.character;
+            case MediaAttribute::tempo: return one (tempoText (item.tempo()));
+            case MediaAttribute::key: return one (item.keyName());
+            case MediaAttribute::rating: return item.rating > 0 ? juce::StringArray (juce::String (item.rating)) : juce::StringArray();
+            case MediaAttribute::comment: return one (t.comment);
+            case MediaAttribute::user:
+                for (const auto& [name, value] : t.user)
+                    if (name.equalsIgnoreCase (attribute.user))
+                        return one (value);
+                return {};
+        }
+        return {};
     }
 
     //==========================================================================
@@ -558,6 +985,46 @@ namespace pr7s
             locations.addIfNotAlreadyThere (e->getStringAttribute ("path"));
         for (const auto* e : xml->getChildWithTagNameIterator ("Rating"))
             ratings[e->getStringAttribute ("path")] = juce::jlimit (0, 5, e->getIntAttribute ("stars"));
+        for (const auto* e : xml->getChildWithTagNameIterator ("Tags"))
+        {
+            MediaTags t;
+            t.category = e->getStringAttribute ("category");
+            t.subCategory = e->getStringAttribute ("subCategory");
+            t.style = e->getStringAttribute ("style");
+            t.subStyle = e->getStringAttribute ("subStyle");
+            t.comment = e->getStringAttribute ("comment");
+            t.key = e->getStringAttribute ("key");
+            t.bpm = e->getDoubleAttribute ("bpm");
+            t.character = juce::StringArray::fromTokens (e->getStringAttribute ("character"), ",", "");
+            t.character.removeEmptyStrings();
+            for (const auto* u : e->getChildWithTagNameIterator ("User"))
+                t.user[u->getStringAttribute ("name")] = u->getStringAttribute ("value");
+            if (! t.isEmpty())
+                tags[e->getStringAttribute ("path")] = t;
+        }
+        const auto readLists = [&] (const char* tag, std::vector<AttributeList>& into)
+        {
+            for (const auto* e : xml->getChildWithTagNameIterator (tag))
+            {
+                AttributeList list { e->getStringAttribute ("name"), {} };
+                for (const auto* sub : e->getChildWithTagNameIterator ("Sub"))
+                    list.subs.add (sub->getStringAttribute ("name"));
+                if (list.name.isNotEmpty())
+                    into.push_back (list);
+            }
+        };
+        readLists ("UserCategory", userCategories);
+        readLists ("UserStyle", userStyles);
+        for (const auto* e : xml->getChildWithTagNameIterator ("UserAttribute"))
+        {
+            UserAttribute a;
+            a.name = e->getStringAttribute ("name");
+            const auto type = e->getStringAttribute ("type");
+            a.type = type == "number" ? UserAttributeType::number : type == "yesNo" ? UserAttributeType::yesNo : UserAttributeType::text;
+            a.precision = juce::jlimit (0, 6, e->getIntAttribute ("precision"));
+            if (a.name.isNotEmpty() && findUserAttribute (a.name) == nullptr)
+                userAttributes.push_back (a);
+        }
         for (const auto* e : xml->getChildWithTagNameIterator ("Item"))
         {
             MediaItem item;
@@ -577,6 +1044,7 @@ namespace pr7s
             item.beats = e->getDoubleAttribute ("beats");
             item.notes = e->getIntAttribute ("notes");
             item.rating = getRating (item.file);
+            item.tags = getTags (item.file);
             items.push_back (item);
         }
     }
@@ -593,6 +1061,45 @@ namespace pr7s
             auto* e = xml.createNewChildElement ("Rating");
             e->setAttribute ("path", path);
             e->setAttribute ("stars", stars);
+        }
+        for (const auto& [path, t] : tags)
+        {
+            auto* e = xml.createNewChildElement ("Tags");
+            e->setAttribute ("path", path);
+            const auto put = [e] (const char* name, const juce::String& v) { if (v.isNotEmpty()) e->setAttribute (name, v); };
+            put ("category", t.category);
+            put ("subCategory", t.subCategory);
+            put ("style", t.style);
+            put ("subStyle", t.subStyle);
+            put ("comment", t.comment);
+            put ("key", t.key);
+            if (t.bpm > 0.0) e->setAttribute ("bpm", t.bpm);
+            put ("character", t.character.joinIntoString (","));
+            for (const auto& [name, value] : t.user)
+            {
+                auto* u = e->createNewChildElement ("User");
+                u->setAttribute ("name", name);
+                u->setAttribute ("value", value);
+            }
+        }
+        const auto writeLists = [&] (const char* tag, const std::vector<AttributeList>& lists)
+        {
+            for (const auto& list : lists)
+            {
+                auto* e = xml.createNewChildElement (tag);
+                e->setAttribute ("name", list.name);
+                for (const auto& sub : list.subs)
+                    e->createNewChildElement ("Sub")->setAttribute ("name", sub);
+            }
+        };
+        writeLists ("UserCategory", userCategories);
+        writeLists ("UserStyle", userStyles);
+        for (const auto& a : userAttributes)
+        {
+            auto* e = xml.createNewChildElement ("UserAttribute");
+            e->setAttribute ("name", a.name);
+            e->setAttribute ("type", a.type == UserAttributeType::number ? "number" : a.type == UserAttributeType::yesNo ? "yesNo" : "text");
+            if (a.precision > 0) e->setAttribute ("precision", a.precision);
         }
         for (const auto& item : items)
         {

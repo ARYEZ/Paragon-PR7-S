@@ -680,11 +680,44 @@ TEST_CASE ("Snapshot: the MediaBay window", "[.][snapshot-mediabay]")
         bay.setRating (root.getChildFile ("Drums").getChildFile ("Drop A Chug Loop 140bpm.wav"), 5);
         bay.setRating (root.getChildFile ("Guitars").getChildFile ("Rogue Riff Am 140bpm.wav"), 4);
         bay.setRating (root.getChildFile ("Drums").getChildFile ("Kick 808 Long.wav"), 3);
+        // Tags (0.21.1).
+        using A = pr7s::MediaAttribute;
+        const auto f = [&] (const char* folder, const char* name) { return root.getChildFile (folder).getChildFile (name); };
+        const juce::Array<juce::File> drumLoops { f ("Drums", "Drop A Chug Loop 140bpm.wav"), f ("Drums", "Gallop Kit Loop 160bpm.wav") };
+        bay.setAttribute (drumLoops, { A::category, {} }, "Drums");
+        bay.setAttribute (drumLoops, { A::subCategory, {} }, "Kit");
+        bay.setAttribute ({ f ("Drums", "Kick 808 Long.wav") }, { A::category, {} }, "Drums");
+        bay.setAttribute ({ f ("Drums", "Kick 808 Long.wav") }, { A::subCategory, {} }, "Kick");
+        bay.setAttribute ({ f ("Drums", "Snare Heavy Room.wav") }, { A::category, {} }, "Drums");
+        bay.setAttribute ({ f ("Drums", "Snare Heavy Room.wav") }, { A::subCategory, {} }, "Snare");
+        const juce::Array<juce::File> guitars { f ("Guitars", "Rogue Riff Am 140bpm.wav"), f ("Guitars", "Jupiter Lead F#m 120bpm.wav") };
+        bay.setAttribute ({ guitars[0] }, { A::category, {} }, "Guitar");
+        bay.setAttribute ({ guitars[0] }, { A::subCategory, {} }, "Riff");
+        bay.setAttribute ({ guitars[1] }, { A::category, {} }, "Guitar");
+        bay.setAttribute ({ guitars[1] }, { A::subCategory, {} }, "Lead");
+        bay.setAttribute ({ f ("Bass", "Sub Bass E 128bpm.wav") }, { A::category, {} }, "Bass");
+        bay.setAttribute ({ f ("Bass", "Sub Bass E 128bpm.wav") }, { A::subCategory, {} }, "Sub");
+        const juce::Array<juce::File> metal { drumLoops[0], drumLoops[1], guitars[0], guitars[1], f ("MIDI", "Djent Chug Pattern 140bpm.mid") };
+        bay.setAttribute (metal, { A::style, {} }, "Metal");
+        bay.setAttribute ({ drumLoops[0], guitars[0], f ("MIDI", "Djent Chug Pattern 140bpm.mid") }, { A::subStyle, {} }, "Djent");
+        bay.setAttribute ({ drumLoops[1], guitars[1] }, { A::subStyle, {} }, "Thrash");
+        bay.setCharacter ({ drumLoops[0], guitars[0], guitars[1] }, 0, 1);   // Distorted
+        bay.setCharacter ({ guitars[0], drumLoops[0] }, 7, -1);              // Tight
+        bay.setCharacter ({ guitars[0] }, 8, 1);                             // Aggressive
+        bay.setAttribute ({ guitars[0] }, { A::comment, {} }, "Shreddage Rogue, verse riff");
+        bay.addUserAttribute ({ "Session", pr7s::UserAttributeType::text, 0 });
+        bay.addUserAttribute ({ "Used in a song", pr7s::UserAttributeType::yesNo, 0 });
+        bay.setAttribute ({ guitars[0] }, { A::user, "Session" }, "Album demos");
+        bay.setAttribute ({ guitars[0] }, { A::user, "Used in a song" }, "yes");
         MediaBayPage page (studio);
-        page.setSize (1400, 820);
+        page.setSize (1600, 900);
+        page.setFiltersShown (true);
+        page.setInspectorShown (true);
+        page.setInspectorDynamic (false);
         page.resetFilters();
         page.setAutoPlay (false);
         page.sortBy (pr7s::MediaColumn::rating, false);
+        page.clickFilterValue (2, "Metal", false);
         page.selectRow (1);
         page.play();
         studio.setMediaPreviewLevel (0.0f);   // (silent: only the playhead moves)

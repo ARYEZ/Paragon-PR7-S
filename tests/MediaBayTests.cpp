@@ -384,3 +384,254 @@ TEST_CASE ("The MediaBay window: F5, filters, ratings, the previewer, double-cli
     CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F5Key)));
     CHECK (view.getMediaBayWindow() == nullptr);
 }
+
+TEST_CASE ("MediaBay tags: set on several files, linked subs, characters, tempo and key over the name's, kept by path (0.21.1)", "[mediabay]")
+{
+    using A = MediaAttribute;
+    MediaFolder folder;
+    const auto store = juce::File::createTempFile ("pr7s-mediabay-tags.xml");
+    const auto drums = folder.root.getChildFile ("Drums_120bpm_Am.wav");
+    const auto kick = folder.root.getChildFile ("Kicks").getChildFile ("Kick 808.wav");
+    const auto bass = folder.root.getChildFile ("Bass Line 95bpm.mid");
+    {
+        MediaDatabase database (store);
+        database.addLocation (folder.root);
+        database.scanNow();
+        const auto item = [&] (const juce::File& f) -> const MediaItem&
+        {
+            for (const auto& i : database.getItems())
+                if (i.file == f)
+                    return i;
+            FAIL ("not found");
+            return database.getItems().front();
+        };
+
+        // Two files at once (the manual's Editing Attributes of Multiple Files).
+        database.setAttribute ({ drums, kick }, { A::category, {} }, "Drums");
+        database.setAttribute ({ kick }, { A::subCategory, {} }, "Kick");
+        CHECK (item (drums).tags.category == "Drums");
+        CHECK (item (kick).tags.subCategory == "Kick");
+        // A new category drops a sub category that isn't one of its own.
+        database.setAttribute ({ kick }, { A::category, {} }, "Bass");
+        CHECK (item (kick).tags.subCategory.isEmpty());
+        database.setAttribute ({ kick }, { A::category, {} }, "Drums");
+        database.setAttribute ({ kick }, { A::subCategory, {} }, "Kick");
+        // Removing a category takes its sub with it.
+        database.removeAttribute ({ drums }, { A::category, {} });
+        CHECK (item (drums).tags.isEmpty());
+
+        // Character: one side of a pair; the other side goes; in the pairs' order.
+        database.setCharacter ({ drums }, 2, 1);                              // Bright
+        database.setAttribute ({ drums }, { A::character, {} }, "Distorted");
+        CHECK (item (drums).tags.character.joinIntoString (",") == "Distorted,Bright");
+        database.setCharacter ({ drums }, 2, -1);                             // Dark instead
+        CHECK (item (drums).tags.character.joinIntoString (",") == "Distorted,Dark");
+        database.setCharacter ({ drums }, 0, 0);                              // neither Clean nor Distorted
+        CHECK (item (drums).tags.character.joinIntoString (",") == "Dark");
+
+        // Your tempo and key win over the name's; removed, the name's is back.
+        CHECK (item (drums).tempo() == 120.0);
+        database.setAttribute ({ drums }, { A::tempo, {} }, "140");
+        database.setAttribute ({ drums }, { A::key, {} }, "F#m");
+        CHECK (item (drums).tempo() == 140.0);
+        CHECK (item (drums).keyName() == "F#m");
+        CHECK (MediaDatabase::attributeValues (item (drums), { A::tempo, {} }) == juce::StringArray ("140"));
+        database.setAttribute ({ drums }, { A::tempo, {} }, "5");             // (not a tempo: left)
+        CHECK (item (drums).tempo() == 140.0);
+        database.removeAttribute ({ drums }, { A::key, {} });
+        CHECK (item (drums).keyName() == "Am");
+
+        // Rating and comment through the same calls; the search finds tags too.
+        database.setAttribute ({ drums, bass }, { A::rating, {} }, "4");
+        CHECK (item (bass).rating == 4);
+        database.setAttribute ({ bass }, { A::comment, {} }, "verse groove");
+        database.setAttribute ({ bass }, { A::style, {} }, "Metal");
+        database.setAttribute ({ bass }, { A::subStyle, {} }, "Djent");
+        MediaQuery query;
+        query.text = "djent groove";
+        CHECK (database.find (query).size() == 1);
+        query.text = "kick";
+        CHECK (database.find (query).size() == 1);   // (the name "Kick 808" and its sub category: one file)
+
+        // Your own values (the manual's Adding User Attribute Values).
+        CHECK (database.addCategory ("Guitar", "Seven String"));
+        CHECK_FALSE (database.addCategory ("guitar", "Seven String"));   // (already there)
+        CHECK (database.addStyle ("Gothic", ""));
+        CHECK (database.subsOf ({ A::category, {} }, "Guitar").contains ("Seven String"));
+        CHECK (database.subsOf ({ A::category, {} }, "Guitar").contains ("Riff"));
+
+        // User attributes (the manual's Defining User Attributes).
+        CHECK (database.addUserAttribute ({ "Session", UserAttributeType::text, 0 }));
+        CHECK (database.addUserAttribute ({ "Strings", UserAttributeType::number, 0 }));
+        CHECK (database.addUserAttribute ({ "Used", UserAttributeType::yesNo, 0 }));
+        CHECK_FALSE (database.addUserAttribute ({ "session", UserAttributeType::text, 0 }));
+        CHECK_FALSE (database.addUserAttribute ({ "Category", UserAttributeType::text, 0 }));
+        database.setAttribute ({ kick }, { A::user, "Strings" }, "7.4");
+        database.setAttribute ({ kick }, { A::user, "Used" }, "yes");
+        database.setAttribute ({ kick }, { A::user, "Session" }, "Album demos");
+        CHECK (item (kick).tags.user.at ("Strings") == "7");
+        CHECK (item (kick).tags.user.at ("Used") == "1");
+    }
+
+    // Kept: reopened from the store (and kept for a file the scan no longer sees).
+    {
+        MediaDatabase database (store);
+        const auto tags = database.getTags (kick);
+        CHECK (tags.category == "Drums");
+        CHECK (tags.subCategory == "Kick");
+        CHECK (tags.user.at ("Session") == "Album demos");
+        CHECK (database.getTags (drums).bpm == 140.0);
+        CHECK (database.getTags (drums).character.joinIntoString (",") == "Dark");
+        CHECK (database.getTags (bass).subStyle == "Djent");
+        CHECK (database.getUserAttributes().size() == 3);
+        CHECK (database.findUserAttribute ("used")->type == UserAttributeType::yesNo);
+        CHECK (database.subsOf ({ A::category, {} }, "Guitar").contains ("Seven String"));
+        bool gothic = false;
+        for (const auto& style : database.getStyles())
+            gothic = gothic || style.name == "Gothic";
+        CHECK (gothic);
+        // A user attribute deleted: its values go from every file.
+        database.removeUserAttribute ("Session");
+        CHECK (database.getTags (kick).user.count ("Session") == 0);
+        CHECK (database.getTags (kick).user.count ("Strings") == 1);
+    }
+    store.deleteFile();
+}
+
+TEST_CASE ("MediaBay attribute filter: values with counts, either within a column, Character all, linked subs (0.21.1)", "[mediabay]")
+{
+    using A = MediaAttribute;
+    MediaFolder folder;
+    MediaDatabase database;
+    database.addLocation (folder.root);
+    database.scanNow();
+    const auto drums = folder.root.getChildFile ("Drums_120bpm_Am.wav");
+    const auto kick = folder.root.getChildFile ("Kicks").getChildFile ("Kick 808.wav");
+    const auto bass = folder.root.getChildFile ("Bass Line 95bpm.mid");
+    database.setAttribute ({ drums, kick }, { A::category, {} }, "Drums");
+    database.setAttribute ({ drums }, { A::subCategory, {} }, "Kit");
+    database.setAttribute ({ kick }, { A::subCategory, {} }, "Kick");
+    database.setAttribute ({ bass }, { A::category, {} }, "Bass");
+    database.setAttribute ({ bass }, { A::subCategory, {} }, "Synth");
+    database.setCharacter ({ drums, kick }, 0, 1);    // Distorted
+    database.setCharacter ({ drums }, 2, -1);          // Dark
+
+    MediaQuery query;
+    query.attributes = { { { A::category, {} }, {} }, { { A::subCategory, {} }, {} }, { { A::character, {} }, {} } };
+    using Counts = std::vector<std::pair<juce::String, int>>;
+    CHECK (database.valueCounts (query, { A::category, {} }) == Counts { { "Bass", 1 }, { "Drums", 2 } });
+    CHECK (database.valueCounts (query, { A::subCategory, {} }) == Counts { { "Kick", 1 }, { "Kit", 1 }, { "Synth", 1 } });
+
+    // A category chosen: only its files, and the sub category column shows only its subs
+    // (the manual: "some attributes are linked"); its own column still shows every category.
+    query.attributes[0].values = { "Drums" };
+    CHECK (database.find (query).size() == 2);
+    CHECK (database.valueCounts (query, { A::subCategory, {} }) == Counts { { "Kick", 1 }, { "Kit", 1 } });
+    CHECK (database.valueCounts (query, { A::category, {} }).size() == 2);
+    // Either of two values (Ctrl-click in the manual).
+    query.attributes[0].values = { "Drums", "Bass" };
+    CHECK (database.find (query).size() == 3);
+    // Character values always all (the manual's AND).
+    query.attributes[0].values = {};
+    query.attributes[2].values = { "Distorted" };
+    CHECK (database.find (query).size() == 2);
+    query.attributes[2].values = { "Distorted", "Dark" };
+    CHECK (database.find (query).size() == 1);
+    // Tempo and key: the name's or yours.
+    query.attributes[2].values = {};
+    CHECK (database.valueCounts (query, { A::tempo, {} }) == Counts { { "95", 1 }, { "120", 1 } });
+    CHECK (database.valueCounts (query, { A::key, {} }) == Counts { { "Am", 1 } });
+    // Sorting by category, then sub category.
+    auto all = database.find (MediaQuery {});
+    database.sort (all, MediaColumn::category, true);
+    CHECK (database.getItems()[(size_t) all[all.size() - 1]].file == drums);   // (Drums / Kit after Drums / Kick)
+    CHECK (database.getItems()[(size_t) all[all.size() - 2]].file == kick);
+}
+
+TEST_CASE ("The MediaBay window's attribute inspector and filter: several files at once, the filter's clicks (0.21.1)", "[mediabay][ui]")
+{
+    using A = MediaAttribute;
+    Finish::set (Finish::Type::pearlWhite, false);
+    MediaFolder folder;
+    Studio studio (false);
+    studio.getMediaBay().addLocation (folder.root);
+    studio.getMediaBay().scanNow();
+    MediaBayPage page (studio);
+    page.setAutoPlay (false);
+    page.resetFilters();
+    page.sortBy (MediaColumn::name, true);
+    REQUIRE (page.getNumResults() == 5);
+    REQUIRE (page.getResult (1)->name == "Drums_120bpm_Am");
+    REQUIRE (page.getResult (2)->name == "Kick 808");
+    CHECK (page.isInspectorShown());
+    CHECK (page.areFiltersShown());
+
+    // Two files selected: the inspector sets both; their differing values read (MIXED).
+    page.selectRows ({ 1, 2 });
+    CHECK (page.getSelectedFiles().size() == 2);
+    page.setAttribute ({ A::category, {} }, "Drums");
+    CHECK (page.getAttributeText ({ A::category, {} }) == "Drums");
+    CHECK (page.getAttributeText ({ A::tempo, {} }) == "(MIXED)");   // (120 from a name, none)
+    page.setCharacter (0, 1);
+    CHECK (page.getAttributeText ({ A::character, {} }) == "Distorted");
+    // The selection survives an edit (and AUTO PLAY doesn't start again: it's off here anyway).
+    CHECK (page.getSelectedFiles().size() == 2);
+
+    page.selectRows ({ 2 });
+    page.setAttribute ({ A::subCategory, {} }, "Kick");
+    page.addListValue (true, "metal", "Djent");   // (the list's spelling: Metal)
+    CHECK (page.getAttributeText ({ A::style, {} }) == "Metal");
+    CHECK (page.getAttributeText ({ A::subStyle, {} }) == "Djent");
+    page.removeAttribute ({ A::subStyle, {} });
+    CHECK (page.getAttributeText ({ A::subStyle, {} }).isEmpty());
+
+    // DYNAMIC: only the attributes it has; DEFINED: all of them.
+    page.setInspectorDynamic (true);
+    auto rows = page.getInspectorRows();
+    CHECK (rows.contains ("CATEGORY"));
+    CHECK (rows.contains ("SUB CATEGORY"));
+    CHECK_FALSE (rows.contains ("COMMENT"));
+    page.setInspectorDynamic (false);
+    CHECK (page.getInspectorRows().contains ("COMMENT"));
+    CHECK (page.addUserAttribute ({ "Session", UserAttributeType::text, 0 }));
+    CHECK (page.getInspectorRows().contains ("SESSION"));
+
+    // The filter: CATEGORY, SUB CATEGORY, STYLE, CHARACTER at first; a click chooses one value,
+    // a second click none; Ctrl-click another.
+    CHECK (page.getFilterColumn (0) == AttributeId { A::category, {} });
+    CHECK (page.getFilterColumn (3) == AttributeId { A::character, {} });
+    using Counts = std::vector<std::pair<juce::String, int>>;
+    CHECK (page.getFilterValues (0) == Counts { { "Drums", 2 } });
+    page.clickFilterValue (0, "Drums", false);
+    CHECK (page.getNumResults() == 2);
+    page.clickFilterValue (1, "Kick", false);
+    CHECK (page.getNumResults() == 1);
+    page.clickFilterValue (1, "Kick", false);
+    CHECK (page.getNumResults() == 2);
+    page.clickFilterValue (0, "Drums", false);
+    CHECK (page.getNumResults() == 5);
+    // A column on another attribute (a user attribute too).
+    page.setFilterColumn (2, { A::user, "Session" });
+    page.selectRows ({ 0 });
+    page.setAttribute ({ A::user, "Session" }, "Demos");
+    CHECK (page.getFilterValues (2) == Counts { { "Demos", 1 } });
+    page.clickFilterValue (2, "Demos", false);
+    CHECK (page.getNumResults() == 1);
+    // Deleting the attribute puts the column back on CATEGORY, its filter gone.
+    page.deleteUserAttribute ("Session");
+    CHECK (page.getFilterColumn (2) == AttributeId { A::category, {} });
+    CHECK (page.getNumResults() == 5);
+    // RESET clears the filter's choices.
+    page.clickFilterValue (3, "Distorted", false);
+    CHECK (page.getNumResults() == 2);
+    page.resetFilters();
+    CHECK (page.getNumResults() == 5);
+
+    // FILTERS and INSPECTOR hide them (the results get the room).
+    page.setSize (1600, 900);
+    const auto before = page.getWidth();
+    page.setInspectorShown (false);
+    page.setFiltersShown (false);
+    CHECK_FALSE (page.isInspectorShown());
+    CHECK (page.getWidth() == before);
+}

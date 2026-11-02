@@ -21,6 +21,44 @@ namespace pr7s
     juce::String mediaTypeName (MediaType);                       // "AUDIO", "MIDI", "TRACK PRESET", "SONG"
     std::optional<MediaType> mediaTypeOf (const juce::File&);   // by extension; none: not a media file
 
+    // Tags (0.21.1, the manual's Attribute Inspector): what you say about a file, kept in the
+    // MediaBay's own store by the file's path. Our choice: never written into your files (the
+    // manual writes them unless a file is write-protected; your samples stay as they are).
+    enum class MediaAttribute { category, subCategory, style, subStyle, character, tempo, key, rating, comment, user };
+
+    struct AttributeId
+    {
+        MediaAttribute kind = MediaAttribute::category;
+        juce::String user;            // a user attribute's name
+        juce::String name() const;    // "CATEGORY", "SUB CATEGORY", ..., the user attribute's name
+        bool operator== (const AttributeId& o) const { return kind == o.kind && user == o.user; }
+        bool operator!= (const AttributeId& o) const { return ! (*this == o); }
+    };
+
+    struct MediaTags
+    {
+        juce::String category, subCategory, style, subStyle, comment, key;
+        double bpm = 0.0;                              // 0: none (the name's or the file's then)
+        juce::StringArray character;                   // the sides chosen ("Distorted", "Dark")
+        std::map<juce::String, juce::String> user;     // user attribute: value ("1"/"0" for yes/no)
+        bool isEmpty() const;
+    };
+
+    // The lists offered (our own words; you add your own values to the first two).
+    struct AttributeList { juce::String name; juce::StringArray subs; };
+    const std::vector<AttributeList>& defaultCategories();
+    const std::vector<AttributeList>& defaultStyles();
+    struct CharacterPair { juce::String left, right; };
+    const std::vector<CharacterPair>& characterPairs();   // opposites: one side or neither
+    const juce::StringArray& mediaKeyNames();             // "C" ... "B", "Cm" ... "Bm"
+
+    enum class UserAttributeType { text, number, yesNo };
+    struct UserAttribute { juce::String name; UserAttributeType type = UserAttributeType::text; int precision = 0; };
+
+    // The attribute filter: values of one attribute; a file passes when it has any of them
+    // (Character: all of them, as the manual's). Filters on different attributes all apply.
+    struct AttributeFilter { AttributeId attribute; juce::StringArray values; };
+
     struct MediaItem
     {
         juce::File file;
@@ -36,7 +74,10 @@ namespace pr7s
         double beats = 0.0;           // MIDI files: to the last note's end
         int notes = 0;                // MIDI files
         int rating = 0;               // 0 to 5 stars (yours)
-        juce::String searchText() const;   // what a text search looks in (lower case)
+        MediaTags tags;               // (yours, 0.21.1)
+        double tempo() const noexcept { return tags.bpm > 0.0 ? tags.bpm : bpm; }   // your tempo, else the name's or file's
+        juce::String keyName() const { return tags.key.isNotEmpty() ? tags.key : key; }
+        juce::String searchText() const;   // what a text search looks in (lower case; the tags too)
     };
 
     // Text search (the manual's Boolean Text Search): words must all be found (and, +, or nothing
@@ -63,9 +104,10 @@ namespace pr7s
         int minimumRating = 0;
         juce::File folder;             // none: every location
         bool subfolders = true;        // the folder's subfolders too (the manual's Include Folders and Subfolders)
+        std::vector<AttributeFilter> attributes;   // (empty value lists don't filter)
     };
 
-    enum class MediaColumn { rating, name, type, length, tempo, key, folder, size, date };
+    enum class MediaColumn { rating, name, type, length, tempo, key, folder, size, date, category, style };
 
     class MediaDatabase
     {
@@ -98,6 +140,37 @@ namespace pr7s
 
         void setRating (const juce::File&, int stars);     // 0-5; kept even when the file isn't scanned
         int getRating (const juce::File&) const;
+        void setRatings (const juce::Array<juce::File>&, int stars);   // (saved once)
+
+        // Tags (0.21.1). Each edit applies to all the files given, is kept by path (even when a
+        // file isn't scanned), and is saved at once.
+        MediaTags getTags (const juce::File&) const;
+        void editTags (const juce::Array<juce::File>&, const std::function<void (MediaTags&)>&);
+        // A value as text: a category's or style's name, a tempo ("120"), a key, stars ("3"),
+        // a comment, a user attribute's value. Character: a side (the other side goes). Empty:
+        // as removeAttribute. Category: a sub category not of it goes; Style likewise.
+        void setAttribute (const juce::Array<juce::File>&, const AttributeId&, const juce::String& value);
+        void removeAttribute (const juce::Array<juce::File>&, const AttributeId&);
+        void setCharacter (const juce::Array<juce::File>&, int pair, int side);   // side -1 left, 0 neither, 1 right
+        static juce::StringArray attributeValues (const MediaItem&, const AttributeId&);   // as shown; empty: none
+
+        // The lists: ours with yours added (the manual's Adding User Attribute Values).
+        std::vector<AttributeList> getCategories() const;
+        std::vector<AttributeList> getStyles() const;
+        juce::StringArray subsOf (const AttributeId& listAttribute, const juce::String& name) const;   // a category's or style's
+        bool addCategory (const juce::String& name, const juce::String& sub);   // false: nothing new
+        bool addStyle (const juce::String& name, const juce::String& sub);
+
+        // User attributes (the manual's Defining User Attributes): a name not already used.
+        const std::vector<UserAttribute>& getUserAttributes() const noexcept { return userAttributes; }
+        bool addUserAttribute (const UserAttribute&);
+        void removeUserAttribute (const juce::String& name);   // its values on every file go too
+        const UserAttribute* findUserAttribute (const juce::String& name) const;
+
+        // The attribute filter's column: the values found, with how many files have each, among
+        // the files the query finds without that column's own filter (so a sub category column
+        // shows the chosen categories' subs).
+        std::vector<std::pair<juce::String, int>> valueCounts (const MediaQuery&, const AttributeId&) const;
 
         // A file's attributes, read now (any thread).
         static MediaItem read (const juce::File&, juce::AudioFormatManager&);
@@ -115,6 +188,10 @@ namespace pr7s
         juce::StringArray locations;
         std::vector<MediaItem> items;
         std::map<juce::String, int> ratings;   // full path: stars
+        std::map<juce::String, MediaTags> tags;   // full path: tags
+        std::vector<AttributeList> userCategories, userStyles;
+        std::vector<UserAttribute> userAttributes;
+        bool passes (const MediaItem&, const MediaQuery&, const TextSearch&) const;
         std::unique_ptr<Scanner> scanner;
         std::atomic<bool> scanning { false };
         std::atomic<int> filesSeen { 0 };
