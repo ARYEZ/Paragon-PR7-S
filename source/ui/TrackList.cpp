@@ -2,6 +2,7 @@
 #include "ui/ChordUi.h"
 
 #include "ui/AutomationKeys.h"
+#include "ui/LinkGroupPage.h"
 #include "ui/LevelMeter.h"
 #include "ui/ParagonLookAndFeel.h"
 #include "ui/TrackActions.h"
@@ -195,6 +196,7 @@ public:
             if (t->automationWrite) states.add ("WRITE");
             else if (t->automationRead) states.add ("READ");
             if (t->frozen) states.add ("FROZEN");
+            if (const auto* link = owner.studio.getLinkGroupOf (t->id)) states.add ("LINKED: " + link->name.toUpperCase());
             if (! states.isEmpty())
             {
                 g.setColour (t->solo || t->armed ? ParagonColours::accent : juce::Colour (0xfff4eeea).withAlpha (0.75f));
@@ -1139,6 +1141,22 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
         menu.addItem (59, track->disabled ? (several ? "Enable Selected Tracks" : "Enable Track")
                                           : (several ? "Disable Selected Tracks" : "Disable Track"));
     menu.addItem (60, several ? "Hide Selected Tracks" : "Hide Track");
+    // Link groups (0.17.0, the manual's Linking Channels).
+    menu.addSeparator();
+    {
+        const auto* link = studio.getLinkGroupOf (trackId);
+        menu.addItem (61, "Link Selected Channels...", several);
+        if (link != nullptr)
+        {
+            menu.addItem (62, "Link Group Settings (" + link->name + ")...");
+            menu.addItem (63, "Unlink " + link->name);
+        }
+        juce::PopupMenu included;
+        included.addItem (20000, "None", true, link == nullptr);
+        for (const auto& g : studio.getProject().linkGroups)
+            included.addItem (20000 + g.id, juce::String (g.id) + "  " + g.name, true, link != nullptr && link->id == g.id);
+        menu.addSubMenu ("Included in Link Group: " + (link != nullptr ? link->name : juce::String ("None")), included);
+    }
     // Add Track (0.9.11: the + ADD TRACK key's menu, here at the foot).
     menu.addSeparator();
     menu.addSubMenu ("Add Track", makeAddTrackMenu (addTrackOffset));
@@ -1152,6 +1170,22 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
         }
         if (TrackActions::handle (chosen, studio, trackId, chooser))
             return;
+        if (chosen == 61)
+        {
+            LinkGroupPage::show (*this, studio, 0, studio.getSelectedTracks());
+            return;
+        }
+        if (chosen == 62 || chosen == 63)
+        {
+            if (const auto* link = studio.getLinkGroupOf (trackId))
+                chosen == 62 ? LinkGroupPage::show (*this, studio, link->id, {}) : studio.removeLinkGroup (link->id);
+            return;
+        }
+        if (chosen >= 20000 && chosen < 30000)
+        {
+            studio.setTrackLinkGroup (trackId, chosen - 20000);
+            return;
+        }
         if ((chosen == 57 || chosen == 58) && onRenderInPlace)
         {
             // The selected tracks, whole (from the song's start to their last part's end).

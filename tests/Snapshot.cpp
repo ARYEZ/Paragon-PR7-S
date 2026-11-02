@@ -249,7 +249,18 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
             studio.setOutput (keys, group);
             studio.setOutput (bass, group);
         }
-        studio.selectTrack (bass);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_LINK", {}).isNotEmpty())
+        {
+            // A link group (0.17.0): keys and lead, its name over theirs; Q-Link lit.
+            LinkGroup settings;
+            settings.name = "Leads";
+            settings.pan = true;
+            studio.linkTracks ({ keys, lead }, settings);
+            studio.setQLink (true);
+            studio.selectTrack (keys);
+        }
+        else
+            studio.selectTrack (bass);
         view.openMixer();
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SENDS", {}).isNotEmpty())
             view.getMixer().setShowSends (true);
@@ -532,6 +543,28 @@ TEST_CASE ("Snapshot: a question box", "[.][snapshot-alert]")
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
 
+#include "ui/LinkGroupPage.h"
+
+TEST_CASE ("Snapshot: the Link Group Settings page", "[.][snapshot-link]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "link.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        const auto a = studio.getProject().tracks[0].id, b = studio.addTrack ({});
+        LinkGroupPage page (studio, 0, { a, b });
+        page.setLinks (pr7s::LinkGroup::What::pan, true);
+        const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 2.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
 #include "ui/KeyCommandsPage.h"
 
 TEST_CASE ("Snapshot: the Key Commands window", "[.][snapshot-keys]")
@@ -713,6 +746,8 @@ TEST_CASE ("Snapshot: the chord pads zone", "[.][snapshot-pads]")
             pads.selectPads ({ 5 });
             pads.circleChordClicked ({ 8, pr7s::Chord::Type::minor, pr7s::Chord::Tension::none, -1 });
             studio.setAdaptiveReference (-1);
+            if (mode == "wide")
+                pads.setEditorShown (true);   // (the circle is on the right screen: the editor in the middle)
         }
         studio.getPadPlayer().press (9, 100);
         studio.dispatchPendingMessages();

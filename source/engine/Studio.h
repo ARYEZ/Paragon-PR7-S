@@ -113,6 +113,35 @@ namespace pr7s
         bool isTrackSelected (int trackId) const noexcept;
         std::vector<int> getSelectedTracks() const;
 
+        // Link groups (0.17.0, the manual's Linking Channels). `linkTracks` makes
+        // a group of the tracks given (two or more; FX and group channels too;
+        // any already in a group leave it), with these settings (`name` empty:
+        // "Link <n>"); its id, or 0. Unlinking a group: `removeLinkGroup`; one
+        // channel in or out of a group: `setTrackLinkGroup` (0: none; a group
+        // left with one channel goes). All undo steps; saved with the song.
+        int linkTracks (const std::vector<int>& trackIds, const LinkGroup& settings);
+        void removeLinkGroup (int groupId);
+        void setTrackLinkGroup (int trackId, int groupId);
+        void setLinkGroupSettings (int groupId, const LinkGroup& settings);   // (its id and channels kept)
+        const LinkGroup* getLinkGroupOf (int trackId) const;
+        // The mixer's link keys: SUS (links suspended: each channel on its own;
+        // holding Alt does it for a moment), ABS (linked levels set the same
+        // value, not moved by the same amount), Q-LINK (whatever is touched on a
+        // selected channel goes to every selected channel; holding Shift+Alt does
+        // it for a moment). Not saved (as the mixer's toolbar).
+        void setLinksSuspended (bool on) { linksSuspended = on; sendChangeMessage(); }
+        bool areLinksSuspended() const noexcept { return linksSuspended; }
+        void setLinksAbsolute (bool on) { linksAbsolute = on; sendChangeMessage(); }
+        bool areLinksAbsolute() const noexcept { return linksAbsolute; }
+        void setQLink (bool on) { qLink = on; sendChangeMessage(); }
+        bool isQLinkOn() const noexcept { return qLink; }
+        // The keys held (the screen sets these; tests leave them unset).
+        std::function<bool()> isSuspendHeld, isQLinkHeld;
+        // The tracks a change of `what` on this one goes to as well: itself first,
+        // then its group's (linking `what`, not suspended), then (Q-Link) the other
+        // selected tracks when it's selected.
+        std::vector<int> linkedTracks (int trackId, LinkGroup::What what) const;
+
         // The tracks' order (the track list's, the mixer's): the tracks given
         // (kept in their order) move to before the track now at `beforeIndex`
         // in the list (the list's size: the end). One undo step; undo puts the
@@ -715,6 +744,31 @@ namespace pr7s
         // The song's recordings and freeze files (and its undo history's) copied from one folder to another.
         bool copyAudioFiles (const juce::File& from, const juce::File& to);
         void sendGone (Track&, int slot);
+        bool linksSuspended = false, linksAbsolute = false, qLink = false;
+        bool mirroring = false;   // (a linked change being passed on: not passed on again)
+        void pruneLinkGroups();
+        // `action` for each channel linked to this one for `what` (not itself); the
+        // changes they make are this change's (one undo step, one engine update).
+        template <typename Action>
+        bool passOn (int trackId, LinkGroup::What what, Action&& action)
+        {
+            if (mirroring)
+                return false;
+            const juce::ScopedValueSetter<bool> passing (mirroring, true);
+            auto any = false;
+            for (const auto id : linkedTracks (trackId, what))
+                if (id != trackId)
+                {
+                    action (id);
+                    any = true;
+                }
+            return any;
+        }
+        void grabOne (int busId, const AutomationLane&);
+        void releaseOne (int busId, const AutomationLane&);
+        static std::optional<LinkGroup::What> linkFor (const AutomationLane&);
+        // A level moved on one channel, on a linked one: by the same amount, or the same (ABS).
+        float linkedLevel (float now, float before, float after, float low, float high) const;
         static void silenceForRender (Track&);
         void openProject (Project&&, const juce::File& source, juce::String& problems);   // open's and importDawProject's   // the plugins' settings into the song; the recordings beside it
         juce::ThreadPool saver { juce::ThreadPoolOptions{}.withThreadName ("Paragon PR7-S save").withNumberOfThreads (1) };

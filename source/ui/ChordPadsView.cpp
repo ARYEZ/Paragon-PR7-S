@@ -213,14 +213,17 @@ public:
         return area;
     }
 
-    static constexpr float rowHeight = 22.0f, headerHeight = 20.0f;
+    // Larger with room (0.17.0: the right screen's whole height and width).
+    float k() const { return juce::jlimit (1.0f, 2.2f, juce::jmin ((float) getHeight() / 230.0f, (float) getWidth() / 640.0f)); }
+    float rowHeight() const { return 22.0f * k(); }
+    float headerHeight() const { return 20.0f * k(); }
 
     int rowAt (juce::Point<float> p) const
     {
         const auto list = listArea();
-        if (! list.contains (p) || p.y < list.getY() + headerHeight)
+        if (! list.contains (p) || p.y < list.getY() + headerHeight())
             return -1;
-        const auto row = (int) ((p.y - list.getY() - headerHeight) / rowHeight);
+        const auto row = (int) ((p.y - list.getY() - headerHeight()) / rowHeight());
         return row < (int) shown.size() ? row : -1;
     }
 
@@ -270,34 +273,34 @@ public:
                 g.drawEllipse (dot.reduced (1.0f), 2.0f);
             }
             g.setColour (isTonic ? juce::Colour (0xff120d10) : inKey ? ParagonColours::text : ParagonColours::textDim);
-            g.setFont (chordFont (juce::jlimit (9.0f, 15.0f, spot.radius * 0.62f)));
+            g.setFont (chordFont (juce::jlimit (9.0f, 15.0f * k(), spot.radius * 0.62f)));
             auto label = dot;
             g.drawText (spot.chord.name (key), inKey ? label.removeFromTop (label.getHeight() * 0.62f) : label, juce::Justification::centredBottom, false);
             if (inKey)
             {
-                g.setFont (chordFont (juce::jlimit (7.0f, 10.0f, spot.radius * 0.42f)));
+                g.setFont (chordFont (juce::jlimit (7.0f, 10.0f * k(), spot.radius * 0.42f)));
                 g.drawText (spot.chord.romanName (key), label, juce::Justification::centredTop, false);
             }
         }
         g.setColour (ParagonColours::textDim);
-        g.setFont (chordFont (10.0f));
-        g.drawText (spokenKey (key), area.withSizeKeepingCentre (area.getWidth() * 0.5f, 14.0f), juce::Justification::centred, false);
+        g.setFont (chordFont (10.0f * k()));
+        g.drawText (spokenKey (key), area.withSizeKeepingCentre (area.getWidth() * 0.5f, 14.0f * k()), juce::Justification::centred, false);
 
         // The suggestions.
         auto list = listArea();
-        auto head = list.removeFromTop (headerHeight);
+        auto head = list.removeFromTop (headerHeight());
         g.setColour (ParagonColours::textDim);
-        g.setFont (ParagonLookAndFeel::titleFont (12.0f));
-        g.drawText ("WHAT COULD COME NEXT", head.removeFromLeft (150.0f), juce::Justification::centredLeft, false);
+        g.setFont (ParagonLookAndFeel::titleFont (12.0f * k()));
+        g.drawText ("WHAT COULD COME NEXT", head.removeFromLeft (150.0f * k()), juce::Justification::centredLeft, false);
         g.setColour (ParagonColours::text);
-        g.setFont (chordFont (13.0f));
+        g.setFont (chordFont (13.0f * k()));
         g.drawText (from ? "after " + from->name (key) + "  (" + from->romanName (key) + ")" : juce::String ("click a chord on the circle, or select a pad"),
                     head, juce::Justification::centredLeft, true);
         for (size_t i = 0; i < shown.size(); ++i)
         {
-            if (list.getHeight() < rowHeight)
+            if (list.getHeight() < rowHeight())
                 break;   // (as many as fit; the best first)
-            const auto row = list.removeFromTop (rowHeight);
+            const auto row = list.removeFromTop (rowHeight());
             const auto& s = shown[i];
             auto r = row.reduced (0.0f, 2.0f);
             if ((int) i == hoverRow)
@@ -306,21 +309,21 @@ public:
                 g.fillRect (row);
             }
             g.setColour (s.inKey ? ParagonColours::text : ParagonColours::textDim);
-            g.setFont (chordFont (13.0f));
-            g.drawText (s.chord.name (key), r.removeFromLeft (64.0f), juce::Justification::centredLeft, false);
-            g.setFont (chordFont (11.0f));
-            g.drawText (s.chord.romanName (key), r.removeFromLeft (52.0f), juce::Justification::centredLeft, false);
+            g.setFont (chordFont (13.0f * k()));
+            g.drawText (s.chord.name (key), r.removeFromLeft (64.0f * k()), juce::Justification::centredLeft, false);
+            g.setFont (chordFont (11.0f * k()));
+            g.drawText (s.chord.romanName (key), r.removeFromLeft (52.0f * k()), juce::Justification::centredLeft, false);
             // The score: a bar lit along the family's gradient, and its number.
-            auto bar = r.removeFromLeft (90.0f).reduced (0.0f, 4.0f);
+            auto bar = r.removeFromLeft (90.0f * k()).reduced (0.0f, 4.0f);
             g.setColour (juce::Colour (0xff1b171c));
             g.fillRoundedRectangle (bar, 2.0f);
             g.setColour (ParagonColours::meterColour ((float) s.score / 100.0f).withAlpha (s.score >= 80 ? 1.0f : s.score >= 60 ? 0.75f : 0.45f));
             g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * (float) s.score / 100.0f), 2.0f);
             g.setColour (ParagonColours::text);
-            g.setFont (chordFont (11.0f));
-            g.drawText (juce::String (s.score), r.removeFromLeft (30.0f), juce::Justification::centred, false);
+            g.setFont (chordFont (11.0f * k()));
+            g.drawText (juce::String (s.score), r.removeFromLeft (30.0f * k()), juce::Justification::centred, false);
             g.setColour (ParagonColours::textDim);
-            g.setFont (chordFont (10.5f));
+            g.setFont (chordFont (10.5f * k()));
             g.drawText (s.reason, r, juce::Justification::centredLeft, true);
         }
     }
@@ -402,6 +405,114 @@ private:
 };
 
 //==============================================================================
+// Every key, on the screen left of the pads (0.17.0, the owner: "all major and minor
+// scales displayed for easy selecting", large). A row per key signature: the major,
+// its signature, its relative minor (the same notes); C first, then the sharps, then
+// the flats, as the KEY menu. Click one to choose it (as the KEY menu does).
+class ChordPadsView::KeyList final : public juce::Component,
+                                     public juce::SettableTooltipClient
+{
+public:
+    explicit KeyList (ChordPadsView& v) : view (v)
+    {
+        setTooltip ("Click a key: the pads take it (as the KEY menu's choice says); its chords and numerals follow");
+    }
+
+    // As many columns as the height needs for rows of at least minimumRow.
+    int columns() const
+    {
+        const auto h = (float) getHeight() - headerHeight;
+        for (int c = 1; c < 4; ++c)
+            if (h / (float) ((rows + c - 1) / c) >= minimumRow)
+                return c;
+        return 4;
+    }
+    int rowsPerColumn() const { return (rows + columns() - 1) / columns(); }
+    float rowHeight() const { return juce::jmin (maximumRow, ((float) getHeight() - headerHeight) / (float) rowsPerColumn()); }
+
+    juce::Rectangle<float> cellBounds (int row, bool minor) const
+    {
+        const auto area = getLocalBounds().toFloat().reduced (10.0f, 0.0f).withTrimmedTop (headerHeight);
+        const auto columnWidth = area.getWidth() / (float) columns();
+        const auto column = row / rowsPerColumn();
+        const auto line = juce::Rectangle<float> (area.getX() + columnWidth * (float) column, area.getY() + rowHeight() * (float) (row % rowsPerColumn()),
+                                                  columnWidth, rowHeight()).reduced (4.0f, 2.0f);
+        // [major | signature | minor]
+        const auto side = line.getWidth() * 0.38f;
+        return minor ? line.withTrimmedLeft (line.getWidth() - side) : line.withWidth (side);
+    }
+
+    // The key under a point (tests and clicks).
+    std::optional<pr7s::Key> keyAt (juce::Point<float> p) const
+    {
+        for (int row = 0; row < rows; ++row)
+            for (const auto minor : { false, true })
+                if (cellBounds (row, minor).contains (p))
+                    return pr7s::Key::all()[(size_t) (row + (minor ? rows : 0))];
+        return std::nullopt;
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (juce::Colour (0xff100c11));
+        g.setColour (ParagonColours::panelEdge);
+        g.fillRect (getWidth() - 1, 0, 1, getHeight());
+        const auto now = view.studio.getChordPads().key();
+        g.setColour (ParagonColours::textDim);
+        g.setFont (ParagonLookAndFeel::titleFont (13.0f));
+        g.drawText ("KEYS  -  MAJOR, ITS SIGNATURE, ITS RELATIVE MINOR", getLocalBounds().toFloat().reduced (14.0f, 0.0f).withHeight (headerHeight),
+                    juce::Justification::centredLeft, false);
+        const auto font = juce::jlimit (13.0f, 30.0f, rowHeight() * 0.5f);
+        for (int row = 0; row < rows; ++row)
+        {
+            for (const auto minor : { false, true })
+            {
+                const auto& key = pr7s::Key::all()[(size_t) (row + (minor ? rows : 0))];
+                const auto cell = cellBounds (row, minor);
+                const auto lit = key == now, over = hover && *hover == key;
+                g.setColour (lit ? ParagonColours::accent : over ? juce::Colour (0xff2a2129) : juce::Colour (0xff171318));
+                g.fillRoundedRectangle (cell, 4.0f);
+                g.setColour (lit ? juce::Colour (0xff120d10) : minor ? ParagonColours::text.withAlpha (0.85f) : ParagonColours::text);
+                g.setFont (chordFont (font));
+                g.drawText (key.name(), cell.reduced (font * 0.5f, 0.0f), juce::Justification::centredLeft, false);
+            }
+            const auto left = cellBounds (row, false), right = cellBounds (row, true);
+            g.setColour (ParagonColours::textDim);
+            g.setFont (chordFont (font * 0.8f));
+            g.drawText (signatureText (pr7s::Key::all()[(size_t) row]), left.withLeft (left.getRight()).withRight (right.getX()),
+                        juce::Justification::centred, false);
+        }
+    }
+
+    void mouseMove (const juce::MouseEvent& e) override
+    {
+        const auto now = keyAt (e.position);
+        if (now != hover)
+        {
+            hover = now;
+            repaint();
+        }
+    }
+    void mouseExit (const juce::MouseEvent&) override
+    {
+        hover.reset();
+        repaint();
+    }
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (const auto key = keyAt (e.position))
+            view.chooseKey (*key);
+    }
+
+    static constexpr int rows = 15;
+    static constexpr float headerHeight = 30.0f, minimumRow = 34.0f, maximumRow = 64.0f;
+
+private:
+    ChordPadsView& view;
+    std::optional<pr7s::Key> hover;
+};
+
+//==============================================================================
 ChordPadsView::ChordPadsView (pr7s::Studio& s) : studio (s)
 {
     setWantsKeyboardFocus (true);
@@ -409,6 +520,8 @@ ChordPadsView::ChordPadsView (pr7s::Studio& s) : studio (s)
     addChildComponent (*editor);
     circle = std::make_unique<CircleAssistant> (*this);
     addChildComponent (*circle);
+    keyList = std::make_unique<KeyList> (*this);
+    addChildComponent (*keyList);
     for (auto* key : { &rootKey, &presetsKey, &playerKey, &modeKey, &displayKey, &remoteKey })
         styleKey (*key, true);
     for (auto* key : { &previousPreset, &nextPreset, &saveKey, &editorKey, &circleKey, &windowKey, &closeKey, &selectAllKey, &editKey, &fromMidiKey,
@@ -541,12 +654,23 @@ void ChordPadsView::selectAll()
     selectPads (all);
 }
 
+bool ChordPadsView::isKeyListShown() const { return keyList != nullptr && keyList->isVisible(); }
+juce::Component* ChordPadsView::getKeyList() const noexcept { return keyList.get(); }
+juce::Component* ChordPadsView::getCircle() const noexcept { return circle.get(); }
+std::optional<pr7s::Key> ChordPadsView::keyListKeyAt (juce::Point<float> p) const { return keyList->keyAt (p); }
+
+juce::Rectangle<float> ChordPadsView::keyListCell (const pr7s::Key& key) const
+{
+    const auto& all = pr7s::Key::all();
+    const auto i = (int) (std::find (all.begin(), all.end(), key) - all.begin());
+    return keyList->cellBounds (i % KeyList::rows, i >= KeyList::rows);
+}
+
 void ChordPadsView::setEditorShown (bool shown)
 {
     editorShown = shown;
     if (shown)
         circleShown = false;   // (one panel at the right at a time)
-    circle->setVisible (circleShown);
     editor->setVisible (shown);
     resized();
     refresh();
@@ -558,7 +682,6 @@ void ChordPadsView::setCircleShown (bool shown)
     if (shown)
         editorShown = false;
     editor->setVisible (editorShown);
-    circle->setVisible (shown);
     resized();
     refresh();
 }
@@ -627,6 +750,8 @@ void ChordPadsView::refresh()
     circleKey.setToggleState (circleShown, juce::dontSendNotification);
     if (circle != nullptr)
         circle->refresh();
+    if (keyList != nullptr)
+        keyList->repaint();
     fromMidiKey.setToggleState (! studio.getAssignFromInput().empty(), juce::dontSendNotification);
     const auto* first = selected.empty() ? nullptr : &pads.pads[(size_t) selected.front()];
     lockKey.setToggleState (first != nullptr && first->locked, juce::dontSendNotification);
@@ -1254,13 +1379,27 @@ void ChordPadsView::resized()
     if (content.getWidth() > 2400)
         content = content.withSizeKeepingCentre (1920, content.getHeight());
 
+    // The screens either side (0.17.0, the owner): the keys on the left, the circle and its
+    // suggestions on the right, whenever there's a screen's worth of room (docked or a window).
+    const auto leftSide = getLocalBounds().withRight (content.getX());
+    const auto rightSide = getLocalBounds().withLeft (content.getRight());
+    keyList->setVisible (leftSide.getWidth() >= sideMinimum);
+    if (keyList->isVisible())
+        keyList->setBounds (leftSide.withTrimmedLeft (juce::jmax (0, leftSide.getWidth() - sideMaximum)));
+    circleOnSide = rightSide.getWidth() >= sideMinimum;
+    circleKey.setEnabled (! circleOnSide);
+    circleKey.setTooltip (circleOnSide ? "The circle of fifths is on the screen to the right" : "The circle of fifths and what could come next, beside the pads");
+
     auto area = content;
     bar = area.removeFromTop (toolbarHeight);
     extendedBar = area.removeFromTop (toolbarHeight);
     keysArea = area.removeFromBottom (keyboardHeight);
     if (editorShown)
         editor->setBounds (area.removeFromRight (juce::jmin (editorWidth, area.getWidth() / 2)));
-    if (circleShown)
+    circle->setVisible (circleOnSide || circleShown);
+    if (circleOnSide)
+        circle->setBounds (rightSide.withWidth (juce::jmin (rightSide.getWidth(), sideMaximum)));
+    else if (circleShown)
         circle->setBounds (area.removeFromRight (juce::jmin (circleWidth, area.getWidth() * 3 / 5)));
     padsArea = area.reduced (6, 4);
 

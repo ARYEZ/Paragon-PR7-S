@@ -1,6 +1,7 @@
 #include "MixerView.h"
 
 #include "ui/AutomationKeys.h"
+#include "ui/LinkGroupPage.h"
 #include "ui/ParagonLookAndFeel.h"
 
 namespace
@@ -229,6 +230,13 @@ void MixerView::Strip::paint (juce::Graphics& g)
         g.drawRect (bounds.reduced (1.0f, 0.0f).withTrimmedTop (4.0f), 1.0f);
     }
 
+    // Its link group (the manual: "the number and the name ... above the channel name").
+    if (const auto* link = owner.studio.getLinkGroupOf (busId))
+    {
+        g.setColour (ParagonColours::accent);
+        g.setFont (font (9.5f));
+        g.drawFittedText (juce::String (link->id) + "  " + link->name.toUpperCase(), linkArea.toNearestInt(), juce::Justification::centred, 1, 0.7f);
+    }
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (owner.isInWindow() ? 16.0f : 12.5f));
     g.drawFittedText (isMaster() ? juce::String ("MASTER") : track != nullptr ? track->name : juce::String(),
@@ -280,6 +288,7 @@ void MixerView::Strip::paint (juce::Graphics& g)
 void MixerView::Strip::resized()
 {
     auto area = getLocalBounds().reduced (6, 0).withTrimmedTop (8).withTrimmedBottom (6);
+    linkArea = area.removeFromTop (12).toFloat();
     nameArea = area.removeFromTop (owner.isInWindow() ? 24 : 18).toFloat();
     output.setBounds (area.removeFromTop (14).reduced (2, 0));   // OUT (the master's: "INSERTS")
     rackArea = area.withHeight (40).toFloat().withTrimmedTop (4.0f);
@@ -365,9 +374,22 @@ void MixerView::Strip::mouseDoubleClick (const juce::MouseEvent& e)
         pan.showEntry();
 }
 
-void MixerView::Strip::mouseDown (const juce::MouseEvent&)
+void MixerView::Strip::mouseDown (const juce::MouseEvent& e)
 {
-    if (! isMaster())
+    if (isMaster())
+        return;
+    if (e.mods.isPopupMenu())
+    {
+        if (! owner.studio.isTrackSelected (busId))
+            owner.studio.selectTrack (busId);
+        owner.showLinkMenu (busId);
+        return;
+    }
+    if (e.mods.isCommandDown())
+        owner.studio.toggleTrackSelected (busId);   // (several channels: to link them)
+    else if (e.mods.isShiftDown())
+        owner.studio.selectTrackRun (busId);
+    else
         owner.studio.selectTrack (busId);
 }
 
@@ -401,6 +423,27 @@ MixerView::MixerView (pr7s::Studio& studioToUse, bool singleStrip) : studio (stu
         if (! single)
             addAndMakeVisible (*button);
     }
+    for (auto* button : { &linkButton, &editLinkButton, &susButton, &absButton, &qLinkButton })
+    {
+        button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
+        button->setColour (juce::TextButton::textColourOffId, ParagonColours::text);
+        button->setColour (juce::TextButton::textColourOnId, ParagonColours::accent);
+        button->setWantsKeyboardFocus (false);
+        if (! single)
+            addAndMakeVisible (*button);
+    }
+    linkButton.onClick = [this] { LinkGroupPage::linkOrUnlinkSelected (*this, studio); };
+    editLinkButton.onClick = [this]
+    {
+        if (const auto* group = studio.getLinkGroupOf (studio.getSelectedTrack()))
+            LinkGroupPage::show (*this, studio, group->id, {});
+    };
+    susButton.setTooltip ("Suspend the links: each channel changed on its own (or hold Alt while you change it)");
+    susButton.onClick = [this] { studio.setLinksSuspended (! studio.areLinksSuspended()); };
+    absButton.setTooltip ("Absolute: a linked channel's level set to the same value (off: moved by the same amount, keeping their differences)");
+    absButton.onClick = [this] { studio.setLinksAbsolute (! studio.areLinksAbsolute()); };
+    qLinkButton.setTooltip ("Q-Link: whatever you change on a selected channel, on every selected channel (or hold Shift+Alt for a moment)");
+    qLinkButton.onClick = [this] { studio.setQLink (! studio.isQLinkOn()); };
     insertsButton.setTooltip ("Show each channel's inserts (its effects, top to bottom); click again to hide them (only the faders)");
     sendsButton.setTooltip ("Show each channel's sends (to the FX channels); click again to hide them (only the faders)");
     // The lit one again hides the rack; the other shows its own.
@@ -495,6 +538,67 @@ void MixerView::rebuild()
     for (auto& strip : strips)
         strip->refresh();
     master->refresh();
+    refreshLinkKeys();
+}
+
+void MixerView::refreshLinkKeys()
+{
+    const auto selected = studio.getSelectedTracks();
+    const auto* group = studio.getLinkGroupOf (studio.getSelectedTrack());
+    const auto allInGroup = group != nullptr && ! selected.empty()
+                         && std::all_of (selected.begin(), selected.end(), [&] (int id) { return studio.getProject().findTrack (id)->linkGroup == group->id; });
+    linkButton.setButtonText (allInGroup ? "UNLINK" : "LINK");
+    linkButton.setEnabled (allInGroup || selected.size() >= 2);
+    linkButton.setTooltip (allInGroup ? "Unlink " + group->name + " (its channels each on their own again)"
+                                      : "Link the selected channels (select two or more: click, Ctrl-click, Shift-click): choose what they share");
+    editLinkButton.setEnabled (group != nullptr);
+    editLinkButton.setTooltip (group != nullptr ? "What " + group->name + " shares, and its name" : "Select a linked channel to change what its group shares");
+    susButton.setToggleState (studio.areLinksSuspended(), juce::dontSendNotification);
+    absButton.setToggleState (studio.areLinksAbsolute(), juce::dontSendNotification);
+    qLinkButton.setToggleState (studio.isQLinkOn(), juce::dontSendNotification);
+}
+
+void MixerView::showLinkMenu (int trackId)
+{
+    const auto* track = studio.getProject().findTrack (trackId);
+    if (track == nullptr)
+        return;
+    const auto selected = studio.getSelectedTracks();
+    const auto* group = studio.getLinkGroupOf (trackId);
+    juce::PopupMenu menu, included;
+    menu.addSectionHeader ("LINK");
+    menu.addItem (1, "Link Selected Channels...", selected.size() >= 2);
+    if (group != nullptr)
+    {
+        menu.addItem (2, "Link Group Settings (" + group->name + ")...");
+        menu.addItem (3, "Unlink " + group->name);
+    }
+    included.addItem (100, "None", true, group == nullptr);
+    for (const auto& g : studio.getProject().linkGroups)
+        included.addItem (100 + g.id, juce::String (g.id) + "  " + g.name, true, group != nullptr && group->id == g.id);
+    menu.addSubMenu ("Included in Link Group: " + (group != nullptr ? group->name : juce::String ("None")), included);
+    menu.addSeparator();
+    menu.addItem (4, "Q-Link (what's touched on a selected channel, on all of them)", true, studio.isQLinkOn());
+    menu.addItem (5, "Suspend Links (each on its own)", true, studio.areLinksSuspended());
+    menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<MixerView> (this), trackId] (int chosen)
+    {
+        if (safe == nullptr || chosen == 0)
+            return;
+        auto& studio = safe->studio;
+        if (chosen == 1)
+            LinkGroupPage::show (*safe, studio, 0, studio.getSelectedTracks());
+        else if (chosen == 2 || chosen == 3)
+        {
+            if (const auto* g = studio.getLinkGroupOf (trackId))
+                chosen == 2 ? LinkGroupPage::show (*safe, studio, g->id, {}) : studio.removeLinkGroup (g->id);
+        }
+        else if (chosen == 4)
+            studio.setQLink (! studio.isQLinkOn());
+        else if (chosen == 5)
+            studio.setLinksSuspended (! studio.areLinksSuspended());
+        else if (chosen >= 100)
+            studio.setTrackLinkGroup (trackId, chosen - 100);
+    });
 }
 
 void MixerView::timerCallback()
@@ -602,7 +706,7 @@ void MixerView::paint (juce::Graphics& g)
               : ! rackShown ? "Each track's fader, pan and keys (INSERTS or SENDS shows their racks again)"
               : showSends ? "Each track's sends: some of its sound to an FX channel (before or after its fader), back into the master"
                           : "Each track: its instrument, its inserts (top to bottom; those below an orange line after the fader), its fader, its output",
-                bar.withTrimmedLeft (70.0f).withTrimmedRight (330.0f), juce::Justification::centredLeft, true);
+                bar.withTrimmedLeft (70.0f).withRight ((float) linkKeysLeft - 12.0f), juce::Justification::centredLeft, true);
     if (strips.empty())
     {
         g.setFont (font (13.0f, juce::Font::plain));
@@ -628,9 +732,24 @@ void MixerView::resized()
     bar.removeFromRight (6);
     windowButton.setBounds (bar.removeFromRight (74));
     bar.removeFromRight (16);
-    sendsButton.setBounds (bar.removeFromRight (62));
+    if (! inWindow)
+    {
+        sendsButton.setBounds (bar.removeFromRight (62));
+        bar.removeFromRight (4);
+        insertsButton.setBounds (bar.removeFromRight (72));
+        bar.removeFromRight (16);
+    }
+    // The link keys (0.17.0).
+    qLinkButton.setBounds (bar.removeFromRight (64));
     bar.removeFromRight (4);
-    insertsButton.setBounds (bar.removeFromRight (72));
+    absButton.setBounds (bar.removeFromRight (44));
+    bar.removeFromRight (4);
+    susButton.setBounds (bar.removeFromRight (44));
+    bar.removeFromRight (4);
+    editLinkButton.setBounds (bar.removeFromRight (82));
+    bar.removeFromRight (4);
+    linkButton.setBounds (bar.removeFromRight (70));
+    linkKeysLeft = bar.getRight();
 
     const auto stripW = inWindow ? windowStripWidth : stripWidth, masterW = inWindow ? windowMasterWidth : masterWidth;
     master->setBounds (area.removeFromRight (masterW));

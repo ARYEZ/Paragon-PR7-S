@@ -126,6 +126,24 @@ namespace pr7s
         bool operator== (const Send&) const = default;
     };
 
+    // A link group (0.17.0, as the manual's Linking Channels): channels whose
+    // settings follow each other. Which settings are linked is the group's
+    // (the Link Group Settings dialog; the manual's defaults: volume, sends,
+    // routing and selection). Volume (and pan, send levels) follow relatively,
+    // keeping the channels' differences, unless the mixer's ABS is on.
+    // No EQ or Dynamics (the studio has neither as a channel module).
+    struct LinkGroup
+    {
+        enum class What { volume, pan, sends, inserts, muteSolo, automation, routing, selection, recordMonitor };
+        int id = 0;
+        juce::String name;
+        bool volume = true, pan = false, sends = true, inserts = false, muteSolo = false,
+             automation = false, routing = true, selection = true, recordMonitor = false;
+        bool links (What) const noexcept;
+        void setLinks (What, bool) noexcept;
+        bool operator== (const LinkGroup&) const = default;
+    };
+
     struct Track
     {
         // An instrument track plays MIDI parts through its instrument; an
@@ -185,6 +203,7 @@ namespace pr7s
         std::vector<AutomationLane> automation;   // in the order shown
         bool automationOpen = false;     // its lanes shown under it
         bool automationRead = false, automationWrite = false;   // R and W (W turns R on)
+        int linkGroup = 0;               // the link group it's in (0.17.0; 0: none)
     };
 
     struct Project
@@ -201,6 +220,7 @@ namespace pr7s
         double tempoViewLow = 60.0, tempoViewHigh = 180.0;   // the curve's shown range (Visible Tempo Lower/Upper Limit)
         ChordPads chordPads = ChordPads::defaults();         // the chord pads (0.14.0): kept with the song, as the manual's
         ChordTrack chordTrack;                                // the chord track (0.16.0)
+        std::vector<LinkGroup> linkGroups;                    // (0.17.0) by id; each with two channels or more
         int numerator = 4, denominator = 4;   // the time signature
         bool loopOn = false;                  // CYCLE
         double loopStart = 0.0, loopEnd = 16.0;
@@ -227,6 +247,9 @@ namespace pr7s
         double bpmAt (double beat) const;
         bool followsTempoTrack() const noexcept { return tempoTrackOn && ! tempoEvents.empty(); }
 
+        LinkGroup* findLinkGroup (int id);
+        const LinkGroup* findLinkGroup (int id) const;
+        std::vector<int> linkGroupMembers (int groupId) const;   // in the tracks' order
         Track* findTrack (int id);
         const Track* findTrack (int id) const;
         Track* armedTrack();

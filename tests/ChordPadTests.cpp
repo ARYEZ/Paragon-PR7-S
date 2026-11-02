@@ -679,6 +679,35 @@ TEST_CASE ("The KEY menu's choice fills the pads; the circle suggests what comes
     CHECK (pads.getContentArea().getWidth() <= 1920);
     CHECK (std::abs (pads.getContentArea().getCentreX() - 2880) <= 1);
     CHECK (pads.getPadBounds (0).getX() >= (float) pads.getContentArea().getX());
+
+    // 0.17.0: the screens either side used: every key on the left, the circle always on the right.
+    pads.setCircleShown (false);
+    pads.setEditorShown (true);
+    REQUIRE (pads.isKeyListShown());
+    CHECK (pads.isCircleOnSide());
+    CHECK (pads.getCircle()->isVisible());
+    CHECK (pads.getKeyList()->getRight() <= pads.getContentArea().getX());
+    CHECK (pads.getCircle()->getX() >= pads.getContentArea().getRight());
+    CHECK (pads.isEditorShown());   // (the editor in the middle meanwhile)
+    // A key clicked there: chosen (filling the pads with its chords, as the KEY menu's choice).
+    const auto ab = Key { 5, -1, false };
+    const auto cell = pads.keyListCell (ab);
+    CHECK (cell.getHeight() >= 30.0f);   // (large: easy to read)
+    REQUIRE (pads.keyListKeyAt (cell.getCentre()).has_value());
+    CHECK (pads.keyListKeyAt (cell.getCentre())->name() == "Ab major");
+    auto* list = pads.getKeyList();
+    const auto at = cell.getCentre();
+    list->mouseDown (juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, {}, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                       list, list, juce::Time::getCurrentTime(), at, juce::Time::getCurrentTime(), 1, false));
+    CHECK (studio.getChordPads().key().name() == "Ab major");
+    CHECK (studio.getChordPads().pads[0].chord->name (studio.getChordPads().key()) == "Ab");
+    // Its relative minor sits on the same row (the same notes).
+    CHECK (pads.keyListKeyAt (pads.keyListCell (Key { 3, 0, true }).getCentre())->name() == "F minor");
+    CHECK (std::abs (pads.keyListCell (Key { 3, 0, true }).getY() - cell.getY()) < 0.5f);
+    // One screen only: neither side.
+    pads.setSize (1500, 320);
+    CHECK_FALSE (pads.isKeyListShown());
+    CHECK_FALSE (pads.isCircleOnSide());
 }
 
 TEST_CASE ("Suggestions after every chord in every key, and from outside it (0.16.1: 0.16.0 crashed on Windows)", "[chords]")

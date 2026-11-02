@@ -45,6 +45,14 @@ public:
     // The circle of fifths and its suggestions (0.15.0), in the editor's place.
     void setCircleShown (bool);
     bool isCircleShown() const noexcept { return circleShown; }
+    // The screens either side of the pads (0.17.0): all the keys on the left, the circle on the right.
+    bool isKeyListShown() const;
+    bool isCircleOnSide() const noexcept { return circleOnSide; }
+    juce::Component* getKeyList() const noexcept;
+    juce::Component* getCircle() const noexcept;
+    // The key under a point of the key list (tests).
+    std::optional<pr7s::Key> keyListKeyAt (juce::Point<float>) const;
+    juce::Rectangle<float> keyListCell (const pr7s::Key&) const;
     // What choosing a key does (fill the pads with its chords, at first).
     void chooseKey (const pr7s::Key&);
     pr7s::Studio::PadsKeyChange getKeyChange() const noexcept { return keyChange; }
@@ -84,16 +92,18 @@ public:
     void itemDragExit (const SourceDetails&) override;
     void itemDropped (const SourceDetails&) override;
 
-    static constexpr int toolbarHeight = 32, keyboardHeight = 42, editorWidth = 380, circleWidth = 660;
+    static constexpr int toolbarHeight = 32, keyboardHeight = 42, editorWidth = 380, circleWidth = 660,
+                         sideMinimum = 360, sideMaximum = 1920;
     static constexpr const char* chordDragPrefix = "chord:";   // a chord from the circle or the suggestions
     static constexpr const char* dragPrefix = "chordpad:";
 
 private:
     class ChordEditor;
     class CircleAssistant;
+    class KeyList;
     pr7s::Studio& studio;
     std::vector<int> selected;
-    bool editorShown = false, circleShown = false, inWindow = false, transposeOnRoot = false;
+    bool editorShown = false, circleShown = false, inWindow = false, transposeOnRoot = false, circleOnSide = false;
     pr7s::Studio::PadsKeyChange keyChange = pr7s::Studio::PadsKeyChange::fillWithChords;
     std::optional<pr7s::Chord> circleFrom;   // the chord clicked on the circle last (else the selected pad's)
     juce::Rectangle<int> content;
@@ -105,6 +115,7 @@ private:
     juce::Rectangle<int> padsArea, keysArea, bar, extendedBar;
     std::unique_ptr<ChordEditor> editor;
     std::unique_ptr<CircleAssistant> circle;
+    std::unique_ptr<KeyList> keyList;
     std::unique_ptr<juce::FileChooser> chooser;
 
     juce::TextButton rootKey, presetsKey { "PRESETS" }, previousPreset { "<" }, nextPreset { ">" }, saveKey { "SAVE" },

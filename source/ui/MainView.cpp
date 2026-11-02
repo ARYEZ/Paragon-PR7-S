@@ -139,6 +139,9 @@ MainView::MainView (pr7s::Studio& studioToUse)
     }
     registerCommands();
     // A long job's progress (Render in Place, Freeze): the box over the studio while it lasts.
+    // Holding Alt changes a linked channel on its own; Shift+Alt is Q-Link for the moment (0.17.0, the manual's).
+    studio.isSuspendHeld = [] { const auto m = juce::ModifierKeys::currentModifiers; return m.isAltDown() && ! m.isShiftDown(); };
+    studio.isQLinkHeld = [] { const auto m = juce::ModifierKeys::currentModifiers; return m.isAltDown() && m.isShiftDown(); };
     studio.onProgress = [this] (double progress, const juce::String& what)
     {
         if (progress < 0.0)
@@ -328,6 +331,8 @@ MainView::~MainView()
 {
     studio.renderRunner = nullptr;
     studio.onProgress = nullptr;
+    studio.isSuspendHeld = nullptr;
+    studio.isQLinkHeld = nullptr;
     arrangeAcross.removeListener (this);
     arrangeDown.removeListener (this);
     mixer.onMinimumHeightChange = nullptr;

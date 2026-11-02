@@ -155,6 +155,8 @@ namespace pr7s
     //==========================================================================
     void Studio::changed (bool undoable)
     {
+        if (mirroring)
+            return;   // (a linked change: the change it came from does all this once, after)
         // A frozen track's parts are locked: whatever changed them is put back.
         for (auto& track : project.tracks)
             if (track.frozen)
@@ -247,6 +249,7 @@ namespace pr7s
         project.tempoEvents = state.tempoEvents;
         project.tempoTrackShown = state.tempoTrackShown;
         project.chordTrack = state.chordTrack;   // (0.16.0: its chords and scales are undo steps)
+        project.linkGroups = state.linkGroups;   // (0.17.0)
         project.numerator = state.numerator;
         project.denominator = state.denominator;
         project.loopOn = state.loopOn;
@@ -271,6 +274,7 @@ namespace pr7s
                 track.midiInput = then->midiInput;
                 track.quickControls = then->quickControls;
                 track.midiChannel = then->midiChannel;
+                track.linkGroup = then->linkGroup;
             }
         restoreLanes (project.masterAutomation, state.masterAutomation);
         // The tracks' order as it was (tracks added since keep their places after them).
@@ -440,6 +444,7 @@ namespace pr7s
         if (track == nullptr || track->isChannel() || (groupId != 0 && (group == nullptr || ! group->isGroup())))
             return;   // (FX and group channels go to the master)
         track->output = groupId;
+        passOn (trackId, LinkGroup::What::routing, [&] (int other) { if (other != groupId) setOutput (other, groupId); });
         changed();
     }
 
@@ -459,6 +464,7 @@ namespace pr7s
         kept.levelDb = juce::jlimit (-60.0f, 6.0f, send.levelDb);
         while (! track->sends.empty() && track->sends.back().target == 0)
             track->sends.pop_back();
+        passOn (trackId, LinkGroup::What::sends, [&] (int other) { if (other != send.target) setSend (other, slot, send); });
         changed();
     }
 
@@ -480,8 +486,15 @@ namespace pr7s
         auto* track = project.findTrack (trackId);
         if (track == nullptr || ! juce::isPositiveAndBelow (slot, (int) track->sends.size()))
             return;
+        const auto before = track->sends[(size_t) slot].levelDb;
         track->sends[(size_t) slot].levelDb = juce::jlimit (-60.0f, 6.0f, db);
         const auto written = writeValue (trackId, control (AutomationLane::Target::send, slot), volumeToTravel (track->sends[(size_t) slot].levelDb));
+        const auto after = track->sends[(size_t) slot].levelDb;
+        passOn (trackId, LinkGroup::What::sends, [&] (int other)
+        {
+            if (const auto* t = project.findTrack (other); t != nullptr && slot < (int) t->sends.size() && t->sends[(size_t) slot].target != 0)
+                setSendLevel (other, slot, linkedLevel (t->sends[(size_t) slot].levelDb, before, after, -60.0f, 6.0f), undoable);
+        });
         changed (undoable && ! written);
     }
 
@@ -495,6 +508,7 @@ namespace pr7s
         if (auto* track = project.findTrack (trackId))
         {
             track->sendsBypass = bypass;
+            passOn (trackId, LinkGroup::What::sends, [&] (int other) { setSendsBypass (other, bypass); });
             changed();
         }
     }
@@ -514,6 +528,7 @@ namespace pr7s
         if (auto* track = project.findTrack (trackId); track != nullptr && track->isAudio())
         {
             track->monitor = on;
+            passOn (trackId, LinkGroup::What::recordMonitor, [&] (int other) { setMonitor (other, on); });
             changed (false);
         }
     }
@@ -531,6 +546,7 @@ namespace pr7s
             effectGoing (trackId, slot);
         const auto wasChannel = it->isChannel();
         project.tracks.erase (it);
+        pruneLinkGroups();   // (a link group left with one channel goes)
         engine.removeTrack (trackId);
         if (wasChannel)   // what was sent or routed to it: back to the master, no send
             for (auto& track : project.tracks)
@@ -557,21 +573,124 @@ namespace pr7s
     }
 
     //==========================================================================
+    //==========================================================================
+    // Link groups (0.17.0)
+    std::vector<int> Studio::linkedTracks (int trackId, LinkGroup::What what) const
+    {
+        std::vector<int> ids { trackId };
+        const auto* track = project.findTrack (trackId);
+        if (track == nullptr)
+            return ids;
+        const auto add = [&ids] (int id) { if (std::find (ids.begin(), ids.end(), id) == ids.end()) ids.push_back (id); };
+        const auto quick = qLink || (isQLinkHeld != nullptr && isQLinkHeld());
+        const auto suspended = ! quick && (linksSuspended || (isSuspendHeld != nullptr && isSuspendHeld()));
+        if (! suspended)
+            if (const auto* group = project.findLinkGroup (track->linkGroup); group != nullptr && group->links (what))
+                for (const auto id : project.linkGroupMembers (group->id))
+                    add (id);
+        // Q-Link (the manual): whatever is touched on a selected channel, on all the selected ones.
+        if (quick && what != LinkGroup::What::selection && isTrackSelected (trackId))
+            for (const auto id : getSelectedTracks())
+                add (id);
+        return ids;
+    }
+
+    float Studio::linkedLevel (float now, float before, float after, float low, float high) const
+    {
+        return linksAbsolute ? after : juce::jlimit (low, high, now + (after - before));
+    }
+
+    int Studio::linkTracks (const std::vector<int>& trackIds, const LinkGroup& settings)
+    {
+        std::vector<int> ids;
+        for (const auto id : trackIds)
+            if (project.findTrack (id) != nullptr && std::find (ids.begin(), ids.end(), id) == ids.end())
+                ids.push_back (id);
+        if (ids.size() < 2)
+            return 0;
+        auto group = settings;
+        group.id = 1;
+        for (const auto& g : project.linkGroups)
+            group.id = juce::jmax (group.id, g.id + 1);
+        if (group.name.trim().isEmpty())
+            group.name = "Link " + juce::String (group.id);
+        project.linkGroups.push_back (group);
+        for (const auto id : ids)
+            project.findTrack (id)->linkGroup = group.id;
+        pruneLinkGroups();
+        changed();
+        return group.id;
+    }
+
+    void Studio::removeLinkGroup (int groupId)
+    {
+        if (project.findLinkGroup (groupId) == nullptr)
+            return;
+        for (auto& track : project.tracks)
+            if (track.linkGroup == groupId)
+                track.linkGroup = 0;
+        pruneLinkGroups();
+        changed();
+    }
+
+    void Studio::setTrackLinkGroup (int trackId, int groupId)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || (groupId != 0 && project.findLinkGroup (groupId) == nullptr) || track->linkGroup == groupId)
+            return;
+        track->linkGroup = groupId;
+        pruneLinkGroups();
+        changed();
+    }
+
+    void Studio::setLinkGroupSettings (int groupId, const LinkGroup& settings)
+    {
+        auto* group = project.findLinkGroup (groupId);
+        if (group == nullptr)
+            return;
+        auto kept = settings;
+        kept.id = groupId;
+        if (kept.name.trim().isEmpty())
+            kept.name = group->name;
+        *group = kept;
+        changed();
+    }
+
+    const LinkGroup* Studio::getLinkGroupOf (int trackId) const
+    {
+        const auto* track = project.findTrack (trackId);
+        return track != nullptr ? project.findLinkGroup (track->linkGroup) : nullptr;
+    }
+
+    void Studio::pruneLinkGroups()
+    {
+        // A group needs two channels: with fewer, it goes (and its last channel is in none).
+        auto& groups = project.linkGroups;
+        groups.erase (std::remove_if (groups.begin(), groups.end(), [this] (const LinkGroup& g) { return project.linkGroupMembers (g.id).size() < 2; }),
+                      groups.end());
+        for (auto& track : project.tracks)
+            if (project.findLinkGroup (track.linkGroup) == nullptr)
+                track.linkGroup = 0;
+    }
+
     void Studio::toggleTrackSelected (int trackId)
     {
         masterSelected = false;
         if (project.findTrack (trackId) == nullptr)
             return;
-        if (isTrackSelected (trackId) && selectedTracks.size() > 1)
+        const auto group = linkedTracks (trackId, LinkGroup::What::selection);   // (it and its linked ones, together)
+        if (isTrackSelected (trackId) && selectedTracks.size() > group.size())
         {
-            selectedTracks.erase (std::remove (selectedTracks.begin(), selectedTracks.end(), trackId), selectedTracks.end());
-            if (selectedTrack == trackId)
+            for (const auto id : group)
+                selectedTracks.erase (std::remove (selectedTracks.begin(), selectedTracks.end(), id), selectedTracks.end());
+            if (std::find (group.begin(), group.end(), selectedTrack) != group.end())
                 selectedTrack = selectedTracks.back();
             changed (false);
             return;
         }
-        if (! isTrackSelected (trackId))
-            selectedTracks.push_back (trackId);
+        for (const auto id : group)
+            if (! isTrackSelected (id))
+                selectedTracks.push_back (id);
         selectedTrack = trackId;
         changed (false);
     }
@@ -651,6 +770,7 @@ namespace pr7s
         copy.armed = false;
         copy.disabled = false;   // (a copy of a disabled track is loaded and heard: our choice)
         copy.hidden = false;
+        copy.linkGroup = 0;      // (a copy is in no link group: our choice)
         // A copy of a frozen track is a live one (its instrument and effects loaded,
         // its parts editable): it never shares, or deletes, the original's freeze file.
         copy.frozen = false;
@@ -984,15 +1104,13 @@ namespace pr7s
         {
             // A click on M is a touch: with W on while playing, it writes (and latches).
             const auto muteControl = control (AutomationLane::Target::mute);
-            grabControl (trackId, muteControl);
+            grabOne (trackId, muteControl);
             track->mute = on;
-            if (writeValue (trackId, muteControl, on ? 1.0f : 0.0f))
-            {
-                releaseControl (trackId, muteControl);
-                changed (false);
-                return;
-            }
-            changed();
+            const auto written = writeValue (trackId, muteControl, on ? 1.0f : 0.0f);
+            if (written)
+                releaseOne (trackId, muteControl);
+            passOn (trackId, LinkGroup::What::muteSolo, [&] (int other) { setMute (other, on); });
+            changed (! written);
         }
     }
 
@@ -1004,6 +1122,7 @@ namespace pr7s
                 for (auto& other : project.tracks)
                     other.solo = false;
             project.findTrack (trackId)->solo = on;
+            passOn (trackId, LinkGroup::What::muteSolo, [&] (int other) { setSolo (other, on, false); });
             changed();
         }
     }
@@ -1040,9 +1159,16 @@ namespace pr7s
     {
         if (auto* track = project.findTrack (trackId))
         {
+            const auto before = track->volumeDb;
             track->volumeDb = juce::jlimit (-60.0f, 6.0f, db);
             // Being written: the pass is the undo step.
             const auto written = writeValue (trackId, control (AutomationLane::Target::volume), volumeToTravel (track->volumeDb));
+            const auto after = track->volumeDb;
+            passOn (trackId, LinkGroup::What::volume, [&] (int other)
+            {
+                if (const auto* t = project.findTrack (other))
+                    setVolume (other, linkedLevel (t->volumeDb, before, after, -60.0f, 6.0f), undoable);
+            });
             changed (undoable && ! written);
         }
     }
@@ -1051,8 +1177,15 @@ namespace pr7s
     {
         if (auto* track = project.findTrack (trackId))
         {
+            const auto before = track->pan;
             track->pan = juce::jlimit (-1.0f, 1.0f, pan);
             const auto written = writeValue (trackId, control (AutomationLane::Target::pan), panToTravel (track->pan));
+            const auto after = track->pan;
+            passOn (trackId, LinkGroup::What::pan, [&] (int other)
+            {
+                if (const auto* t = project.findTrack (other))
+                    setPan (other, linkedLevel (t->pan, before, after, -1.0f, 1.0f), undoable);
+            });
             changed (undoable && ! written);
         }
     }
@@ -1081,6 +1214,11 @@ namespace pr7s
         selectedTracks.clear();
         if (trackId != 0)
             selectedTracks.push_back (trackId);
+        // A channel of a link group selects the group (unless its Selection is off: the manual's).
+        if (trackId != 0)
+            for (const auto id : linkedTracks (trackId, LinkGroup::What::selection))
+                if (! isTrackSelected (id))
+                    selectedTracks.push_back (id);
         // Selecting arms it (when not recording), so you play and record the track you're on.
         const auto* selected = project.findTrack (trackId);
         if (! engine.isRecording() && (selected == nullptr || (! selected->isChannel() && ! selected->disabled && ! selected->frozen)))
@@ -1900,7 +2038,17 @@ namespace pr7s
                 *error = problem;
             return false;
         }
-        return addInsert (busId, insert, std::move (instance), slot);
+        const auto landed = slot >= 0 ? slot : (int) inserts->size();
+        if (! addInsert (busId, insert, std::move (instance), slot))
+            return false;
+        // Linked inserts (the manual): slot by slot; a linked channel's slot already used is left as it is.
+        if (passOn (busId, LinkGroup::What::inserts, [&] (int other)
+            {
+                if (const auto* theirs = insertsOf (other); theirs != nullptr && (landed >= (int) theirs->size() || (*theirs)[(size_t) landed].isEmpty()))
+                    addInsert (other, description, nullptr, landed);
+            }))
+            changed (false);
+        return true;
     }
 
     bool Studio::addInsert (int busId, const Insert& insert, std::unique_ptr<juce::AudioPluginInstance> instance, int slot)
@@ -1973,6 +2121,13 @@ namespace pr7s
         engine.insertEffect (busId, slot, std::move (instance));
         (*inserts)[(size_t) slot] = insert;
         insertGone (busId, slot, false);   // another plugin: the old one's automation means nothing to it
+        passOn (busId, LinkGroup::What::inserts, [&] (int other)
+        {
+            if (const auto* theirs = insertsOf (other); theirs != nullptr && slot < (int) theirs->size() && ! (*theirs)[(size_t) slot].isEmpty())
+                replaceInsert (other, slot, description, nullptr);
+            else
+                addInsert (other, description, nullptr, slot);
+        });
         changed (false);
         return true;
     }
@@ -1995,6 +2150,7 @@ namespace pr7s
             engine.removeEffect (busId, (int) inserts->size() - 1);
             inserts->pop_back();
         }
+        passOn (busId, LinkGroup::What::inserts, [&] (int other) { removeInsert (other, slot); });
         changed (false);
     }
 
@@ -2004,6 +2160,7 @@ namespace pr7s
         if (inserts == nullptr || ! juce::isPositiveAndBelow (slot, (int) inserts->size()))
             return;
         (*inserts)[(size_t) slot].bypass = bypass;
+        passOn (busId, LinkGroup::What::inserts, [&] (int other) { setInsertBypass (other, slot, bypass); });
         changed (false);
     }
 
@@ -2053,6 +2210,7 @@ namespace pr7s
             track->automationRead = on;
         else
             return;
+        passOn (busId, LinkGroup::What::automation, [&] (int other) { setAutomationRead (other, on); });
         changed (false);
     }
 
@@ -2076,6 +2234,7 @@ namespace pr7s
         {
             return;
         }
+        passOn (busId, LinkGroup::What::automation, [&] (int other) { setAutomationWrite (other, on); });
         changed (false);
     }
 
@@ -2522,7 +2681,36 @@ namespace pr7s
         return lane;
     }
 
+    std::optional<LinkGroup::What> Studio::linkFor (const AutomationLane& which)
+    {
+        using T = AutomationLane::Target;
+        switch (which.target)
+        {
+            case T::volume: return LinkGroup::What::volume;
+            case T::pan:    return LinkGroup::What::pan;
+            case T::mute:   return LinkGroup::What::muteSolo;
+            case T::send:   return LinkGroup::What::sends;
+            case T::insert: return LinkGroup::What::inserts;
+            default:        return std::nullopt;
+        }
+    }
+
     void Studio::grabControl (int busId, const AutomationLane& which)
+    {
+        // A hand on a linked control is on its linked ones too (they write what they're given).
+        grabOne (busId, which);
+        if (const auto what = linkFor (which))
+            passOn (busId, *what, [&] (int other) { grabOne (other, which); });
+    }
+
+    void Studio::releaseControl (int busId, const AutomationLane& which)
+    {
+        releaseOne (busId, which);
+        if (const auto what = linkFor (which))
+            passOn (busId, *what, [&] (int other) { releaseOne (other, which); });
+    }
+
+    void Studio::grabOne (int busId, const AutomationLane& which)
     {
         // (Mid-render the engine is "playing" the render's copy: a knob turned in a
         // plug-in's window then writes nothing.)
@@ -2572,7 +2760,7 @@ namespace pr7s
         return false;
     }
 
-    void Studio::releaseControl (int busId, const AutomationLane& which)
+    void Studio::releaseOne (int busId, const AutomationLane& which)
     {
         for (size_t i = 0; i < passes.size(); ++i)
             if (passes[i].busId == busId && passes[i].control.sameControl (which))
@@ -2588,6 +2776,20 @@ namespace pr7s
     void Studio::setKnob (int busId, const AutomationLane& which, float value)
     {
         writeValue (busId, which, value);
+        // A linked insert's knob (the manual: slot by slot): the same knob of the same
+        // effect in that slot on the linked channels (its watcher writes it there).
+        if (which.target != AutomationLane::Target::insert)
+            return;
+        const auto* source = engine.getEffect (busId, which.slot);
+        if (source == nullptr)
+            return;
+        passOn (busId, LinkGroup::What::inserts, [&] (int other)
+        {
+            if (auto* theirs = engine.getEffect (other, which.slot); theirs != nullptr && theirs->getName() == source->getName())
+                if (auto* parameter = theirs->getParameters()[which.parameter])
+                    if (std::abs (parameter->getValue() - value) > 1.0e-6f)
+                        parameter->setValueNotifyingHost (value);
+        });
     }
 
     bool Studio::isWritingAutomation (int busId) const

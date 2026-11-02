@@ -29,6 +29,14 @@
 //                  FX Channel to Send. PRE marks one before the fader
 //   INSERTS, SENDS which rack the strips show; click the lit one to hide it
 //                  (only the faders: the docked mixer then takes less room)
+//   LINK           (0.17.0, the manual's link groups) the selected channels
+//                  linked: which settings they share (volume, sends, routing
+//                  and selection at first); a linked channel selected: unlinked.
+//                  EDIT LINK its settings; SUS each on its own (or hold Alt);
+//                  ABS levels the same, not moved by the same amount; Q-LINK
+//                  what's touched on a selected channel goes to all the selected
+//                  (or hold Shift+Alt). A linked strip shows its group over its
+//                  name; right-click a strip for the group menu
 //   OUT            where the track's sound goes: the master, or a group channel
 //   MASTER         every track goes through it: its inserts, then its fader
 //
@@ -55,6 +63,8 @@ public:
     void showInsertMenu (int busId, int slot);
     void showSendMenu (int busId, int slot);
     void showOutputMenu (int busId);
+    void showLinkMenu (int trackId);   // a strip's right-click: link, its group, which group it's in
+    juce::TextButton& getLinkKey() noexcept { return linkButton; }
 
     // The strips' racks: their inserts, or their sends (INSERTS / SENDS in the
     // mixer's bar: our design, so the strips keep their faders' room), or
@@ -101,6 +111,9 @@ private:
     juce::Viewport viewport;
     juce::Component holder;   // the track strips, side by side, in the viewport
     juce::TextButton windowButton { "WINDOW" }, closeButton { "CLOSE" }, insertsButton { "INSERTS" }, sendsButton { "SENDS" };
+    juce::TextButton linkButton { "LINK" }, editLinkButton { "EDIT LINK" }, susButton { "SUS" }, absButton { "ABS" }, qLinkButton { "Q-LINK" };
+    void refreshLinkKeys();
+    int linkKeysLeft = 0;   // (the bar's text stops before them)
     bool inWindow = false, showSends = false, rackShown = true;
     void rackChanged();
     int rackRows (int insertRows) const;   // the rack's rows (slots) for the heights
@@ -148,7 +161,7 @@ public:
     juce::TextButton& getOutput() noexcept { return output; }
     int getShownSlots() const noexcept { return shownSlots; }
     // Its height without the rack, and with the shortest fader (the rack adds its slots).
-    static constexpr int fixedHeight = 8 + 18 + 14 + 6 + 50 + 22 + 6 + 16 + 6, shortestFader = 70, shortestSlot = 11, dividerHeight = 14;
+    static constexpr int fixedHeight = 8 + 12 + 18 + 14 + 6 + 50 + 22 + 6 + 16 + 6, shortestFader = 70, shortestSlot = 11, dividerHeight = 14;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -168,6 +181,7 @@ private:
     int shownSlots = 8;   // at least 8, and one more than the last used (up to 16)
     ValueSlider volume, pan;   // (double-click: type a value, 0.9.9)
     juce::TextButton mute { "M" }, solo { "S" }, read { "R" }, write { "W" };
+    juce::Rectangle<float> linkArea;   // its link group, over its name (0.17.0)
     juce::Rectangle<float> meterArea, nameArea, readoutArea, panReadoutArea, rackArea, sendsDivider;
     LevelMeter::Ballistics left, right;
 };

@@ -26,6 +26,7 @@ add_executable(ParagonPR7STests
     ReviewTests.cpp
     ChordPadTests.cpp
     ChordTrackTests.cpp
+    LinkTests.cpp
     UiTests.cpp
     PerfTests.cpp
     Snapshot.cpp)

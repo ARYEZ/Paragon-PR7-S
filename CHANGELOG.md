@@ -2,6 +2,25 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.17.0
+
+The chord pads use the screens either side, and tracks can be linked.
+
+### The chord pads on three screens
+- **Every key on the left screen.** When the studio spans more than one screen, the part of the chord pads zone on the left screen now lists all 30 keys in large type. Each row is a key signature: the major key, its signature (for example "3 flats"), and its relative minor (the same notes). C comes first, then the sharp keys, then the flat keys. Click one and the pads take that key, as the KEY menu does (filling the pads with its chords, unless you chose transpose or rename there). The key in use is lit. It works whether the pads are docked or in their own maximized window.
+- **The circle of fifths always on the right screen.** The circle and its scored list of what could come next now sit on the right screen whenever there is one, and their type grows with the room (up to about twice the size). The middle screen keeps the pads and the chord editor. The CIRCLE OF 5THS key is greyed out while the circle has its own screen. On a single screen everything works as before.
+
+### Link groups (as the manual's Linking Channels)
+- **Link Selected Channels.** Select two or more channels (click, Ctrl-click, Shift-click in the mixer or the track list), then click **LINK** in the mixer's bar or right-click and choose Link Selected Channels. A box asks for a name and which settings are linked: volume, pan, sends, inserts, mute/solo, automation read/write, routing, selection and monitoring. The manual's defaults are ticked: volume, sends, routing and selection.
+- **What linking does.** A change to one channel goes to the others in its group, for the settings ticked. Volume, pan and send levels move by the same amount, so the channels keep their differences; with **ABS** on they are set to the same value. Selecting one channel selects the whole group (unless Selection is off). Inserts link slot by slot: adding, replacing, removing or bypassing an effect in slot 3 does the same in slot 3 on the others, and turning a knob in an effect's window turns the same knob of the same effect in that slot on the others.
+- **Each on its own for a moment.** Hold **Alt** while you change something, or turn on **SUS**, and only that channel changes.
+- **Q-Link.** With **Q-LINK** on (or while holding **Shift+Alt**), whatever you change on a selected channel happens on every selected channel, linked or not.
+- **Seeing and changing groups.** A linked channel shows its group's number and name above its name in the mixer and the Inspector, and "LINKED: <name>" under its name in the track list. **EDIT LINK** (or the right-click menu) changes a group's name and settings. With a group's channels selected, LINK becomes **UNLINK**. Right-click a channel, "Included in Link Group", to move it into another group or out of all of them. A group left with one channel goes. Groups are saved with the song, and making, changing and removing them are undo steps.
+- **Where it differs from the manual (our choices, honestly):** there is no EQ or Dynamics to link (the studio has no channel EQ or dynamics yet), and no VCA faders. Record Enable isn't linked because the studio records one track at a time; Monitor is. At the top or bottom of a fader's travel the other channels stop there, so a channel pushed to the end loses its difference from the others. When linked channels have W on and you move a linked fader while playing, every linked channel writes its automation. A duplicated track isn't in its original's group.
+
+### Also
+- The chord pads crash fix from 0.16.1 is included.
+
 ## 0.16.1
 
 A fix for a crash in the chord pads.

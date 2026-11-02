@@ -200,6 +200,21 @@ namespace pr7s
         xml->addChildElement (chordPads.toXml().release());
         if (chordTrack.shown || ! chordTrack.events.empty())
             xml->addChildElement (chordTrack.toXml().release());
+        for (const auto& group : linkGroups)
+        {
+            auto* g = xml->createNewChildElement ("LinkGroup");
+            g->setAttribute ("id", group.id);
+            g->setAttribute ("name", group.name);
+            g->setAttribute ("volume", group.volume);
+            g->setAttribute ("pan", group.pan);
+            g->setAttribute ("sends", group.sends);
+            g->setAttribute ("inserts", group.inserts);
+            g->setAttribute ("muteSolo", group.muteSolo);
+            g->setAttribute ("automation", group.automation);
+            g->setAttribute ("routing", group.routing);
+            g->setAttribute ("selection", group.selection);
+            g->setAttribute ("recordMonitor", group.recordMonitor);
+        }
         if (! tempoEvents.empty() || tempoTrackShown)
         {
             auto* tempo = xml->createNewChildElement ("Tempo");
@@ -236,6 +251,8 @@ namespace pr7s
                 t->setAttribute ("output", track.output);
             if (track.sendsBypass)
                 t->setAttribute ("sendsBypass", true);
+            if (track.linkGroup != 0)
+                t->setAttribute ("linkGroup", track.linkGroup);
             for (const auto& send : track.sends)
             {
                 auto* e = t->createNewChildElement (sendTag);
@@ -414,6 +431,7 @@ namespace pr7s
                 track.kind = Track::Kind::group;
             track.output = juce::jmax (0, t->getIntAttribute ("output"));
             track.sendsBypass = t->getBoolAttribute ("sendsBypass");
+            track.linkGroup = juce::jmax (0, t->getIntAttribute ("linkGroup"));
             for (const auto* e : t->getChildWithTagNameIterator (sendTag))
             {
                 if ((int) track.sends.size() >= maxSends)
@@ -470,6 +488,33 @@ namespace pr7s
                 if (const auto* to = project.findTrack (send.target); to == nullptr || ! to->isFx())
                     send.target = 0;
         }
+        // Link groups (0.17.0): those with two members or more; a track in one that isn't there, in none.
+        for (const auto* g : xml.getChildWithTagNameIterator ("LinkGroup"))
+        {
+            LinkGroup group;
+            group.id = g->getIntAttribute ("id");
+            group.name = g->getStringAttribute ("name");
+            group.volume = g->getBoolAttribute ("volume", true);
+            group.pan = g->getBoolAttribute ("pan");
+            group.sends = g->getBoolAttribute ("sends", true);
+            group.inserts = g->getBoolAttribute ("inserts");
+            group.muteSolo = g->getBoolAttribute ("muteSolo");
+            group.automation = g->getBoolAttribute ("automation");
+            group.routing = g->getBoolAttribute ("routing", true);
+            group.selection = g->getBoolAttribute ("selection", true);
+            group.recordMonitor = g->getBoolAttribute ("recordMonitor");
+            if (group.id > 0 && project.findLinkGroup (group.id) == nullptr)
+                project.linkGroups.push_back (group);
+        }
+        for (auto& track : project.tracks)
+            if (project.findLinkGroup (track.linkGroup) == nullptr)
+                track.linkGroup = 0;
+        project.linkGroups.erase (std::remove_if (project.linkGroups.begin(), project.linkGroups.end(),
+                                                  [&project] (const LinkGroup& g) { return project.linkGroupMembers (g.id).size() < 2; }),
+                                  project.linkGroups.end());
+        for (auto& track : project.tracks)
+            if (project.findLinkGroup (track.linkGroup) == nullptr)
+                track.linkGroup = 0;
         if (const auto* master = xml.getChildByName (masterTag))   // songs from before 0.3.0 have none: 0 dB, no effects
         {
             project.masterVolumeDb = (float) juce::jlimit (-60.0, 6.0, master->getDoubleAttribute ("volumeDb", 0.0));
@@ -481,6 +526,61 @@ namespace pr7s
             project.masterWrite = master->getBoolAttribute ("automationWrite");
         }
         return project;
+    }
+
+    bool LinkGroup::links (What what) const noexcept
+    {
+        switch (what)
+        {
+            case What::volume:        return volume;
+            case What::pan:           return pan;
+            case What::sends:         return sends;
+            case What::inserts:       return inserts;
+            case What::muteSolo:      return muteSolo;
+            case What::automation:    return automation;
+            case What::routing:       return routing;
+            case What::selection:     return selection;
+            case What::recordMonitor: return recordMonitor;
+        }
+        return false;
+    }
+
+    void LinkGroup::setLinks (What what, bool on) noexcept
+    {
+        switch (what)
+        {
+            case What::volume:        volume = on; break;
+            case What::pan:           pan = on; break;
+            case What::sends:         sends = on; break;
+            case What::inserts:       inserts = on; break;
+            case What::muteSolo:      muteSolo = on; break;
+            case What::automation:    automation = on; break;
+            case What::routing:       routing = on; break;
+            case What::selection:     selection = on; break;
+            case What::recordMonitor: recordMonitor = on; break;
+        }
+    }
+
+    LinkGroup* Project::findLinkGroup (int id)
+    {
+        for (auto& g : linkGroups)
+            if (id != 0 && g.id == id)
+                return &g;
+        return nullptr;
+    }
+
+    const LinkGroup* Project::findLinkGroup (int id) const
+    {
+        return const_cast<Project*> (this)->findLinkGroup (id);
+    }
+
+    std::vector<int> Project::linkGroupMembers (int groupId) const
+    {
+        std::vector<int> ids;
+        for (const auto& t : tracks)
+            if (groupId != 0 && t.linkGroup == groupId)
+                ids.push_back (t.id);
+        return ids;
     }
 
     juce::String formatBarsBeats (double beats, const Project& project)
