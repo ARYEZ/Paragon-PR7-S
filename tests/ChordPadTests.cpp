@@ -680,3 +680,35 @@ TEST_CASE ("The KEY menu's choice fills the pads; the circle suggests what comes
     CHECK (std::abs (pads.getContentArea().getCentreX() - 2880) <= 1);
     CHECK (pads.getPadBounds (0).getX() >= (float) pads.getContentArea().getX());
 }
+
+TEST_CASE ("Suggestions after every chord in every key, and from outside it (0.16.1: 0.16.0 crashed on Windows)", "[chords]")
+{
+    // A secondary dominant's check read past its scale's end (two lists, begin of
+    // one and end of another): every key, every root and type, plain and seventh.
+    for (const auto& key : Key::all())
+        for (int root = 0; root < 12; ++root)
+            for (const auto type : { Chord::Type::major, Chord::Type::minor, Chord::Type::diminished, Chord::Type::augmented,
+                                     Chord::Type::sus2, Chord::Type::sus4 })
+                for (const auto tension : { Chord::Tension::none, Chord::Tension::seven })
+                {
+                    const auto next = suggestNext ({ root, type, tension, -1 }, key);
+                    REQUIRE_FALSE (next.empty());
+                    for (const auto& s : next)
+                    {
+                        REQUIRE (s.score >= 1);
+                        REQUIRE (s.score <= 99);
+                        REQUIRE (s.reason.isNotEmpty());
+                    }
+                }
+    // The secondary dominant's reason: in C, E (V of vi) pulls to vi.
+    const auto fromC = suggestNext ({ 0, Chord::Type::major, Chord::Tension::none, -1 }, Key { 0, 0, false });
+    auto found = false;
+    for (const auto& s : fromC)
+        if (s.chord.root == 4 && s.chord.type == Chord::Type::major)
+        {
+            found = true;
+            INFO (s.reason.toStdString());
+            CHECK (s.reason.contains ("secondary dominant: pulls to vi"));
+        }
+    CHECK (found);
+}

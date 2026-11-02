@@ -2,6 +2,14 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.16.1
+
+A fix for a crash in the chord pads.
+
+- **The chord pads crashed the studio.** It happened when the suggestions were worked out after certain chords: a chord from outside the key, in a major key, that could be a "secondary dominant". The check for that read past the end of the key's scale into memory that wasn't there, and Windows stopped the studio. It now reads the scale properly. A new test asks for suggestions after every chord (all 12 roots, six chord types, plain and seventh) in all 30 keys, so this path is checked on every build. The crash only showed on Windows; Linux, where the tests ran, happened to read harmless memory instead.
+- **Secondary dominants named correctly.** The same line named the chord it pulls to wrongly: in C, E pulls to vi (A minor), but the suggestion said "VI". It now names the key's own chord on that note.
+- **The session log has one line per entry again.** Since 0.9.14 the log's entries after the header ran together on one long line (every entry was written without a line end), which made it hard to read. Each entry now has its own line; a test checks it.
+
 ## 0.16.0
 
 **The chord track** (your choice after the circle of fifths; the manual's "Chord Functions"). It's a lane under the tempo track (Add Track > Chord track) holding your song's chords as a lead sheet does: each chord until the next one starts.

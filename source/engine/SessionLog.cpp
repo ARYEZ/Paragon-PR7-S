@@ -395,7 +395,7 @@ namespace pr7s::SessionLog
     {
         if (crashing.load())
             return;
-        writeRaw (stamp() + "  " + line, false);
+        writeRaw (stamp() + "  " + line + "\n", false);   // (one line each: 0.16.0 ran them together)
     }
 
     void stop()

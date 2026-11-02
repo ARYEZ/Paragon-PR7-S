@@ -19,6 +19,7 @@ TEST_CASE ("The session log: a readable file per session, closed normally or not
     CHECK (first.getFileName().startsWith ("PR7-S "));
     CHECK (first.getFileName().endsWith (".log"));
     SessionLog::note ("Opening a song");
+    SessionLog::note ("Loaded.");
     {
         const auto text = first.loadFileAsString();   // written at once (a crash next would keep it)
         CHECK (text.startsWith ("Paragon PR7-S test"));
@@ -26,6 +27,9 @@ TEST_CASE ("The session log: a readable file per session, closed normally or not
         CHECK (text.contains ("Processor: "));
         CHECK (text.contains ("Memory: "));
         CHECK (text.contains ("Opening a song"));
+        // One note a line (0.16.0 ran them together: "...a songhh:mm:ss Loaded.").
+        CHECK (text.contains ("Opening a song\r\n"));
+        CHECK (text.contains ("Loaded.\r\n"));
         CHECK_FALSE (SessionLog::closedNormally (first));
     }
     SessionLog::stop();
