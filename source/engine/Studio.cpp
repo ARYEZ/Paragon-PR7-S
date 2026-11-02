@@ -1592,6 +1592,44 @@ namespace pr7s
             changed();
     }
 
+    bool Studio::humanizeParts (const std::vector<int>& partIds, float amount)
+    {
+        if (amount < 0.0f)
+            amount = getHumanizeAmount();
+        if (amount <= 0.0f)
+            return false;   // (nothing would change: no empty undo step)
+        auto any = false;
+        for (auto& track : project.tracks)
+        {
+            if (track.isAudio() || track.isChannel() || track.frozen)
+                continue;
+            for (auto& part : track.parts)
+            {
+                if (std::find (partIds.begin(), partIds.end(), part.id) == partIds.end() || part.notes.empty())
+                    continue;
+                std::vector<LineNote> notes;
+                for (const auto& n : part.notes)
+                    notes.push_back ({ n.start, n.length, n.pitch, n.velocity });
+                HumanizeOptions o;
+                o.amount = amount;
+                o.bpm = project.bpmAt (part.start);
+                o.beatsPerBar = project.beatsPerBar();
+                o.originBeat = part.start;
+                if (getHumanizeKeepsLayers())
+                    o.layers = guitarLayers();
+                o.seed = (juce::uint32) juce::Random::getSystemRandom().nextInt();
+                notes = humanize (std::move (notes), o);
+                part.notes.clear();
+                for (const auto& n : notes)
+                    part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
+                any = true;
+            }
+        }
+        if (any)
+            changed();
+        return any;
+    }
+
     void Studio::deletePartsFrom (int trackId, int index)
     {
         auto* track = project.findTrack (trackId);

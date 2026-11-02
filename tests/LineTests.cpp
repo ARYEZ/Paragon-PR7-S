@@ -651,6 +651,31 @@ TEST_CASE ("Humanize: timing in milliseconds, the bar's first beat steadiest, ch
     CHECK (humanize (notes, lean).front().beat == 0.0);
 }
 
+TEST_CASE ("Humanizing whole parts: MIDI parts loosened, audio parts left alone, one undo step (0.20.1)", "[lines][humanize]")
+{
+    Studio studio (false);
+    const auto midiTrack = studio.getProject().tracks[0].id;
+    Part riff { 0.0, 4.0, "Riff", {} };
+    for (int i = 0; i < 16; ++i)
+        riff.notes.push_back ({ i * 0.25, 0.2, 40 + i % 5, 96.0f / 127.0f });
+    studio.addPart (midiTrack, riff);
+    const auto partId = studio.getProject().tracks[0].parts[0].id;
+    CHECK_FALSE (studio.humanizeParts ({}));
+    CHECK_FALSE (studio.humanizeParts ({ partId }, 0.0f));
+    const auto before = studio.getProject().tracks[0].parts[0].notes;
+    CHECK (studio.humanizeParts ({ partId }, 1.0f));
+    const auto& after = studio.getProject().tracks[0].parts[0].notes;
+    REQUIRE (after.size() == before.size());
+    CHECK (after != before);
+    for (const auto& n : after)
+    {
+        const auto v = juce::roundToInt (n.velocity * 127.0f);
+        CHECK ((v >= 60 && v <= 119));
+    }
+    studio.undo();
+    CHECK (studio.getProject().tracks[0].parts[0].notes == before);
+}
+
 TEST_CASE ("Humanize's settings are kept (0.20.0)", "[lines][humanize]")
 {
     Studio studio (false);
@@ -671,6 +696,21 @@ TEST_CASE ("Humanize's settings are kept (0.20.0)", "[lines][humanize]")
 #include "ui/MainView.h"
 #include "ui/ParagonLookAndFeel.h"
 #include "ui/Finish.h"
+
+TEST_CASE ("The chord pads open IDEAS: their IDEAS key, for the chord track's chords (0.20.2)", "[lines][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& pads = view.getChordPads();
+    REQUIRE (pads.getIdeasKey().onClick != nullptr);
+    studio.addChordEvent (0.0, { 9, T::minor, X::none, -1 });
+    studio.addChordEvent (4.0, { 5, T::major, X::none, -1 });
+    pads.getIdeasKey().onClick();
+    REQUIRE (view.getLinesWindow() != nullptr);
+    CHECK (view.getLinesWindow()->getPage().getIdeas (LineIdea::Part::rhythm).size() == 6);
+}
 
 TEST_CASE ("The IDEAS window: ideas heard, used, more of them (0.18.0); piano, guitar and bass tabs, the tuning (0.19.0)", "[lines][ui]")
 {

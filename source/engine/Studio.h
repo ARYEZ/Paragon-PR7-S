@@ -256,6 +256,10 @@ namespace pr7s
         void setHumanizeAmount (float);
         bool getHumanizeKeepsLayers() const;
         void setHumanizeKeepsLayers (bool);
+        // Every note of these MIDI parts humanized (0.20.1: the Humanize key with parts selected in
+        // the arrangement): the MIDI editor's amount and keep-layers; each part its own way; audio
+        // and frozen tracks' parts left alone. One undo step; false if nothing changed.
+        bool humanizeParts (const std::vector<int>& partIds, float amount = -1.0f);
         // An idea heard with its chords (soft, underneath) through the live track's instrument,
         // at the song's tempo; the chords alone with no idea. Stopped by stopPreview (or the next).
         void previewLine (const LineIdea*, const std::vector<ChordSpan>&, bool withChords = true);

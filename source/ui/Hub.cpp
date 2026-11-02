@@ -180,6 +180,45 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
     dropStrength.onValueChange = [this] { studio.setDropHighlight ((float) dropStrength.getValue() / 100.0f); };
     dropStrength.setTooltip ("10%: a faint wash; 100%: solid. The edge thickens with it");
     addAndMakeVisible (dropStrength);
+
+    // HUMANIZE (0.20.1).
+    for (auto* l : { &humanizeTitle, &humanizeKeyLabel, &humanizeAmountLabel, &humanizeNote })
+    {
+        l->setColour (juce::Label::textColourId, l == &humanizeNote ? ParagonColours::textDim : ParagonColours::text);
+        addAndMakeVisible (*l);
+    }
+    humanizeTitle.setText ("HUMANIZE", juce::dontSendNotification);
+    humanizeTitle.setFont (ParagonLookAndFeel::titleFont (18.0f));
+    humanizeAmountLabel.setText ("AMOUNT", juce::dontSendNotification);
+    humanizeNote.setText ("The key humanizes the notes selected in the MIDI editor, or every note of the parts selected in "
+                          "the arrangement (one undo step). It's the same key as KEYS' MIDI > Humanize; a Stream Deck button can press it.",
+                          juce::dontSendNotification);
+    humanizeNote.setJustificationType (juce::Justification::topLeft);
+    humanizeNote.setFont (juce::Font (juce::FontOptions (12.0f)));
+    for (auto* b : { &humanizeSetKey, &humanizeClearKey })
+    {
+        b->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        b->setWantsKeyboardFocus (false);
+        addAndMakeVisible (*b);
+    }
+    humanizeSetKey.setTooltip ("Press SET KEY, then the key (with Ctrl, Alt, Shift as you like). Escape cancels. A key another command had is taken from it");
+    humanizeSetKey.onClick = [this] { listenForHumanizeKey(); };
+    humanizeClearKey.setTooltip ("No key for Humanize (the MIDI editor's HUMANIZE key still works)");
+    humanizeClearKey.onClick = [this] { clearHumanizeKey(); };
+    humanizeAmount.setSliderStyle (juce::Slider::LinearBar);
+    humanizeAmount.setRange (5.0, 100.0, 1.0);
+    humanizeAmount.setTextValueSuffix ("%");
+    humanizeAmount.setColour (juce::Slider::trackColourId, ParagonColours::accent);
+    humanizeAmount.setColour (juce::Slider::textBoxTextColourId, ParagonColours::text);
+    humanizeAmount.setColour (juce::Slider::backgroundColourId, juce::Colour (0xff1b171c));
+    humanizeAmount.setColour (juce::Slider::textBoxOutlineColourId, ParagonColours::panelEdge);
+    humanizeAmount.setTooltip ("How much the key (and the MIDI editor's HUMANIZE) loosens: 100% is up to 12 ms, 10 velocity and 12% length");
+    humanizeAmount.onValueChange = [this] { studio.setHumanizeAmount ((float) humanizeAmount.getValue() / 100.0f); };
+    addAndMakeVisible (humanizeAmount);
+    humanizeLayers.setTooltip ("On: a palm mute stays a palm mute, a pinch harmonic stays 127 (guitar libraries). Off: for piano or drums");
+    humanizeLayers.onClick = [this] { studio.setHumanizeKeepsLayers (humanizeLayers.getToggleState()); };
+    addAndMakeVisible (humanizeLayers);
+    refreshHumanize();
     projectsTab.setClickingTogglesState (false);
     settingsTab.setClickingTogglesState (false);
     projectsTab.onClick = [this] { showSettingsPage (false); };
@@ -606,7 +645,9 @@ void Hub::resized()
     const auto locationOnPage = showProjects && library.showsLocation();
     for (auto* c : std::initializer_list<juce::Component*> { list.get(), &search, &createEmpty, &chooseFile, &open })
         c->setVisible (showProjects);
-    for (auto* c : std::initializer_list<juce::Component*> { &showPaths, &showLocation, &atStart, &addLocation, &removeLocation, &locationsBox, &dropLabel, &dropStrength })
+    for (auto* c : std::initializer_list<juce::Component*> { &showPaths, &showLocation, &atStart, &addLocation, &removeLocation, &locationsBox, &dropLabel, &dropStrength,
+                                                                     &humanizeTitle, &humanizeKeyLabel, &humanizeSetKey, &humanizeClearKey,
+                                                                     &humanizeAmountLabel, &humanizeAmount, &humanizeLayers, &humanizeNote })
         c->setVisible (settingsPage);
     for (auto* c : std::initializer_list<juce::Component*> { &useDefault, &locationLabel, &chooseLocation, &folderName })
         c->setVisible (settingsPage || locationOnPage);
@@ -655,16 +696,116 @@ void Hub::resized()
         locations.removeFromRight (8);
         locationsBox.setBounds (locations);
         p.removeFromTop (24);
+        const auto leftWidth = juce::jmin (560, p.getWidth() / 2);   // (the toggles and DRAG HIGHLIGHT; HUMANIZE to their right)
+        {
+            // HUMANIZE (0.20.1): a column to the right of the toggles, so the page needn't be taller.
+            auto column = p.withTrimmedLeft (leftWidth + 20).withWidth (juce::jmin (460, p.getWidth() - leftWidth - 20));
+            humanizeTitle.setBounds (column.removeFromTop (26));
+            column.removeFromTop (4);
+            auto keyRow = column.removeFromTop (28);
+            humanizeClearKey.setBounds (keyRow.removeFromRight (80));
+            keyRow.removeFromRight (6);
+            humanizeSetKey.setBounds (keyRow.removeFromRight (110));
+            keyRow.removeFromRight (8);
+            humanizeKeyLabel.setBounds (keyRow);
+            column.removeFromTop (8);
+            auto amountRow = column.removeFromTop (26);
+            humanizeAmountLabel.setBounds (amountRow.removeFromLeft (80));
+            humanizeAmount.setBounds (amountRow);
+            column.removeFromTop (8);
+            humanizeLayers.setBounds (column.removeFromTop (28));
+            column.removeFromTop (6);
+            humanizeNote.setBounds (column.removeFromTop (54));
+        }
         for (auto* t : { &showPaths, &showLocation, &atStart })
         {
-            t->setBounds (p.removeFromTop (28).withWidth (520));
+            t->setBounds (p.removeFromTop (28).withWidth (juce::jmin (520, leftWidth)));
             p.removeFromTop (6);
         }
         p.removeFromTop (18);
-        dropLabel.setBounds (p.removeFromTop (24).withWidth (560));
+        dropLabel.setBounds (p.removeFromTop (24).withWidth (leftWidth));
         p.removeFromTop (4);
-        dropStrength.setBounds (p.removeFromTop (26).withWidth (360));
+        dropStrength.setBounds (p.removeFromTop (26).withWidth (juce::jmin (360, leftWidth)));
     }
+}
+
+void Hub::setKeyCommands (KeyCommands::Map* map)
+{
+    keyMap = map;
+    refreshHumanize();
+}
+
+juce::String Hub::getHumanizeKeyText() const
+{
+    if (keyMap == nullptr)
+        return "ALT+H";
+    juce::StringArray names;
+    for (const auto& k : keyMap->keysFor (humanizeCommand))
+        names.add (KeyCommands::describe (k).toUpperCase());
+    return names.isEmpty() ? juce::String ("NONE") : names.joinIntoString (", ");
+}
+
+void Hub::refreshHumanize()
+{
+    if (listeningForKey)
+    {
+        humanizeKeyLabel.setText ("KEY: PRESS ONE NOW (ESCAPE CANCELS)", juce::dontSendNotification);
+        humanizeSetKey.setButtonText ("LISTENING");
+    }
+    else
+    {
+        humanizeKeyLabel.setText ("KEY: " + getHumanizeKeyText(), juce::dontSendNotification);
+        humanizeSetKey.setButtonText ("SET KEY");
+    }
+    humanizeSetKey.setToggleState (listeningForKey, juce::dontSendNotification);
+    humanizeSetKey.setEnabled (keyMap != nullptr);
+    humanizeClearKey.setEnabled (keyMap != nullptr && ! keyMap->keysFor (humanizeCommand).isEmpty());
+    humanizeAmount.setValue (studio.getHumanizeAmount() * 100.0, juce::dontSendNotification);
+    humanizeLayers.setToggleState (studio.getHumanizeKeepsLayers(), juce::dontSendNotification);
+}
+
+void Hub::listenForHumanizeKey()
+{
+    if (keyMap == nullptr)
+        return;
+    listeningForKey = true;
+    setWantsKeyboardFocus (true);
+    grabKeyboardFocus();
+    refreshHumanize();
+}
+
+bool Hub::takeHumanizeKey (const juce::KeyPress& key)
+{
+    if (! listeningForKey || keyMap == nullptr)
+        return false;
+    // (A modifier alone isn't a key yet: wait for the rest.)
+    const auto code = key.getKeyCode();
+    if (code == 0)
+        return true;
+    listeningForKey = false;
+    if (key != juce::KeyPress (juce::KeyPress::escapeKey))
+    {
+        for (const auto& old : keyMap->keysFor (humanizeCommand))
+            keyMap->removeKey (humanizeCommand, old);
+        keyMap->assign (humanizeCommand, key, false);
+    }
+    refreshHumanize();
+    return true;
+}
+
+void Hub::clearHumanizeKey()
+{
+    if (keyMap == nullptr)
+        return;
+    listeningForKey = false;
+    for (const auto& old : keyMap->keysFor (humanizeCommand))
+        keyMap->removeKey (humanizeCommand, old);
+    refreshHumanize();
+}
+
+bool Hub::keyPressed (const juce::KeyPress& key)
+{
+    return takeHumanizeKey (key);
 }
 
 //==============================================================================

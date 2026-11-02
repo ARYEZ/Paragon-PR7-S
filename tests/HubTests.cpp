@@ -152,6 +152,71 @@ TEST_CASE ("The Hub: its sections (recent, templates, the projects folder), the 
     root.deleteRecursively();
 }
 
+TEST_CASE ("Humanize's key: a command (Alt+H), set or cleared in the Hub's settings with the amount and layers (0.20.1)", "[hub][ui][humanize]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    auto& keys = view.getKeyMap();
+    REQUIRE (keys.keysFor ("MIDI.Humanize").size() == 1);
+    CHECK (KeyCommands::describe (keys.keysFor ("MIDI.Humanize")[0]) == "Alt+H");
+
+    // Alt+H with parts selected in the arrangement (the MIDI editor closed): their notes loosened, one undo step.
+    const auto trackId = studio.getProject().tracks[0].id;
+    Part riff { 0.0, 4.0, "Riff", {} };
+    for (int i = 0; i < 16; ++i)
+        riff.notes.push_back ({ i * 0.25, 0.2, 40, 44.0f / 127.0f });
+    studio.addPart (trackId, riff);
+    studio.addPart (trackId, Part { 8.0, 4.0, "Riff 2", riff.notes });
+    const auto before = studio.getProject().tracks[0].parts;
+    view.getArrangeView().selectParts ({ before[0].id, before[1].id });
+    CHECK (view.keyPressed (juce::KeyPress ('h', juce::ModifierKeys::altModifier, 0)));
+    const auto& after = studio.getProject().tracks[0].parts;
+    REQUIRE (after.size() == 2);
+    CHECK (after[0].notes != before[0].notes);
+    CHECK (after[1].notes != before[1].notes);
+    for (const auto& n : after[0].notes)
+        CHECK (juce::roundToInt (n.velocity * 127.0f) <= 59);   // palm mutes kept in their layer
+    studio.undo();
+    CHECK (studio.getProject().tracks[0].parts[0].notes == before[0].notes);
+    CHECK (studio.getProject().tracks[0].parts[1].notes == before[1].notes);
+
+    // The Hub: the same key map. SET KEY, then a key; it replaces Alt+H and works at once.
+    Hub hub (studio);
+    hub.setKeyCommands (&keys);
+    hub.showSettingsPage (true);
+    CHECK (hub.getHumanizeKeyText() == "ALT+H");
+    CHECK (hub.getHumanizeAmount().isVisible());
+    const juce::KeyPress ctrlShiftU ('U', juce::ModifierKeys (juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier), 0);
+    CHECK_FALSE (hub.takeHumanizeKey (ctrlShiftU));   // (not listening: not taken)
+    hub.listenForHumanizeKey();
+    CHECK (hub.isListeningForHumanizeKey());
+    CHECK (hub.takeHumanizeKey (ctrlShiftU));
+    CHECK_FALSE (hub.isListeningForHumanizeKey());
+    REQUIRE (keys.keysFor ("MIDI.Humanize").size() == 1);
+    CHECK (keys.keysFor ("MIDI.Humanize")[0] == ctrlShiftU);
+    CHECK (hub.getHumanizeKeyText() == KeyCommands::describe (ctrlShiftU).toUpperCase());
+    const auto partsNow = studio.getProject().tracks[0].parts;
+    CHECK (view.keyPressed (ctrlShiftU));
+    CHECK (studio.getProject().tracks[0].parts[0].notes != partsNow[0].notes);
+    // Escape cancels listening and keeps the key.
+    hub.listenForHumanizeKey();
+    CHECK (hub.takeHumanizeKey (juce::KeyPress (juce::KeyPress::escapeKey)));
+    CHECK (keys.keysFor ("MIDI.Humanize")[0] == ctrlShiftU);
+    // CLEAR: no key.
+    hub.clearHumanizeKey();
+    CHECK (keys.keysFor ("MIDI.Humanize").isEmpty());
+    CHECK (hub.getHumanizeKeyText() == "NONE");
+
+    // AMOUNT and the layers, the studio's (the MIDI editor's HUMANIZE uses them).
+    hub.getHumanizeAmount().setValue (30.0, juce::sendNotificationSync);
+    CHECK (std::abs (studio.getHumanizeAmount() - 0.3f) < 1.0e-6f);
+    hub.getHumanizeLayers().setToggleState (false, juce::dontSendNotification);
+    hub.getHumanizeLayers().onClick();
+    CHECK_FALSE (studio.getHumanizeKeepsLayers());
+}
+
 TEST_CASE ("The Hub from the main window: HUB opens it; a song chosen in it opens and the Hub closes (0.12.0)", "[hub][ui]")
 {
     Finish::set (Finish::Type::pearlWhite, false);

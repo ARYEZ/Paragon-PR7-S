@@ -750,7 +750,12 @@ TEST_CASE ("Snapshot: the Hub", "[.][snapshot-hub]")
         for (int i = 5; i >= 0; --i)
             library.addRecent (root.getChildFile (names[i]).getChildFile (juce::String (names[i]) + pr7s::Project::fileExtension));
         Hub hub (studio);
+        KeyCommands::Map keys;   // (HUMANIZE's key, 0.20.1, as the studio's map has it)
+        keys.add ({ Hub::humanizeCommand, "MIDI", "Humanize", { juce::KeyPress ('H', juce::ModifierKeys::altModifier, 0) }, {} });
+        hub.setKeyCommands (&keys);
         hub.setSize (Hub::preferredWidth, Hub::preferredHeight);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB_SMALL", {}) == "1")
+            hub.setSize (980, 620);
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "settings")
             hub.showSettingsPage (true);
         const auto image = hub.createComponentSnapshot (hub.getLocalBounds(), true, 1.0f);
