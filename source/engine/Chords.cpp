@@ -843,10 +843,20 @@ namespace pr7s
                     score -= 14;
                     const auto rootDegreeIsTonic = pc (c.root - tonic);
                     const auto secondaryTarget = pc (c.root + 5);   // a major chord pulls a fifth down
-                    const auto targetInKey = std::find (key.scale().begin(), key.scale().end(), secondaryTarget) != key.scale().end();
+                    // One copy of the scale: scale() returns a new list each call, and searching
+                    // from one copy's start to another's end read past the end (0.15.0's crash).
+                    const auto scale = key.scale();
+                    const auto targetInKey = std::find (scale.begin(), scale.end(), secondaryTarget) != scale.end();
                     if (c.type == T::major && targetInKey && secondaryTarget != tonic && ! key.minor
                         && (rootDegreeIsTonic == 2 || rootDegreeIsTonic == 4 || rootDegreeIsTonic == 9))
-                        why.add ("secondary dominant: pulls to " + Chord { secondaryTarget, T::major, X::none, -1 }.romanName (key).replace ("I", "I"));
+                    {
+                        // Named as the key's own chord on that note (in C: E pulls to vi, Am; not VI).
+                        auto target = Chord { secondaryTarget, T::major, X::none, -1 };
+                        for (int d = 0; d < 7; ++d)
+                            if (chords[(size_t) d].root == secondaryTarget)
+                                target = chords[(size_t) d];
+                        why.add ("secondary dominant: pulls to " + target.romanName (key));
+                    }
                     else
                         why.add (key.minor ? "borrowed colour (outside the minor key)" : "borrowed from the parallel minor");
                 }

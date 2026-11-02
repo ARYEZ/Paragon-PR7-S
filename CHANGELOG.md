@@ -2,6 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.15.1
+
+**Fixes the crash when choosing a chord pad** (your report of 2026-11-01: the studio closed with an access violation a moment after a pad was selected, in "The Island").
+
+- **What was wrong:** when the circle of fifths scores what could come next, it checks whether a chord from outside the key is a *secondary dominant* (D major in C pulls to G, the V). To do that it looks for a note in the key's scale, but it made three separate copies of the scale and searched "from the start of one copy to the end of another". On Windows the search started at one copy and walked on through memory looking for the other copy's end, until it reached memory that wasn't the studio's, and Windows stopped it. On Linux and macOS the copies happen to be made the other way round, so the search saw nothing to search and stopped at once: no crash, which is why no test ever saw it.
+- **The fix:** one copy of the scale, searched from its own start to its own end.
+- **And the wording:** the reason under a secondary dominant now names the chord it pulls to as the key has it: in C major, E pulls to **vi** (A minor) and A to **ii** (D minor); 0.15.0 wrote VI and II.
+- **A new test** goes through this search in all 30 keys from every one of their chords, and checks the answers in C major (D to V, E to vi, A to ii; B-flat borrowed from the minor). The whole test suite also ran with a memory checker (AddressSanitizer) and it found nothing anywhere.
+- **What I couldn't check here:** the crash itself. It only happens with the Windows compiler, and the cloud has no Windows: the old code doesn't fail on Linux even under the memory checker, for the reason above. The fix comes from reading the code and your crash report, which points at that exact line. Nothing else in the code searches between two copies like that (checked).
+
 ## 0.15.0
 
 **Chords you can trust, in a real key** (you asked: the chords must be accurate, mostly plain major and minor; pick a key like E-flat minor or A major and get all its chords and voicings; the circle of fifths suggesting what comes next, scored).

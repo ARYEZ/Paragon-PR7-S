@@ -621,6 +621,37 @@ TEST_CASE ("Suggestions: scored by function, the circle and common notes; V to I
     CHECK (std::is_sorted (next.begin(), next.end(), [] (const Suggestion& a, const Suggestion& b) { return a.score > b.score; }));
 }
 
+TEST_CASE ("Suggestions outside the key: secondary dominants found by searching one copy of the scale (0.15.1: 0.15.0 read past its end and crashed on Windows)", "[chords]")
+{
+    // In C major, D major leads to G (V), E major to A (vi), A major to D (ii): secondary dominants.
+    // Bb major leads to Eb, not in C major: borrowed. That search is the one that crashed.
+    const auto c = Key { 0, 0, false };
+    const auto next = suggestNext ({ 0, Chord::Type::major, Chord::Tension::none, -1 }, c);
+    const auto reasonFor = [&next] (int root)
+    {
+        for (const auto& s : next)
+            if (s.chord.root == root && s.chord.type == Chord::Type::major && s.chord.tension == Chord::Tension::none)
+                return s.reason;
+        return juce::String ("(missing)");
+    };
+    CHECK (reasonFor (2).contains ("secondary dominant: pulls to V"));
+    CHECK (reasonFor (4).contains ("secondary dominant: pulls to vi"));
+    CHECK (reasonFor (9).contains ("secondary dominant: pulls to ii"));
+    CHECK (reasonFor (10).contains ("borrowed from the parallel minor"));
+
+    // Every key, from every one of its chords: the out-of-key candidates all go through that search.
+    // (0.15.0's bug only showed with the Windows compiler: on Linux the copies come in the other
+    // order and the search was empty, so this can't fail the old code here. It runs the path.)
+    for (const auto& key : Key::all())
+        for (const auto& from : keyChords (key))
+            for (const auto& s : suggestNext (from, key))
+            {
+                CHECK (s.score >= 1);
+                CHECK (s.score <= 99);
+                CHECK (s.reason.isNotEmpty());
+            }
+}
+
 TEST_CASE ("The KEY menu's choice fills the pads; the circle suggests what comes next; chords from it onto pads; the pads on one screen (0.15.0)", "[chords][ui]")
 {
     Finish::set (Finish::Type::pearlWhite, false);
