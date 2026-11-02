@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/LinesPage.h"
+#include "ui/MediaBayPage.h"
 #include "ui/KeyCommands.h"
 #include "ui/ProgressBox.h"
 #include <juce_audio_utils/juce_audio_utils.h>
@@ -53,6 +54,7 @@
 // and Shift+A go to the editor whenever it's open.
 class MainView final : public juce::Component,
                        public juce::FileDragAndDropTarget,
+                       public juce::DragAndDropTarget,
                        private juce::ChangeListener,
                        private juce::ScrollBar::Listener
 {
@@ -76,6 +78,18 @@ public:
     // BASS & MELODY (0.18.0): ideas for these chord events (none: the cycle's, else all), in a window of its own.
     void openLineIdeas (std::vector<int> chordEvents = {});
     LinesWindow* getLinesWindow() noexcept { return linesWindow.get(); }
+    // The MediaBay (0.21.0): its window (F5 opens and closes it), and a file from it into the
+    // song: audio or MIDI on a new track at the playhead, a track preset as a new track, a song
+    // opened (after the unsaved-changes question). Its drags land as files dragged from the system do.
+    void toggleMediaBay();
+    MediaBayWindow* getMediaBayWindow() noexcept { return mediaBayWindow.get(); }
+    void useMedia (const juce::File&);
+    void mediaDropped (const juce::StringArray& files, int x, int y);
+    bool isInterestedInDragSource (const SourceDetails&) override;
+    void itemDragEnter (const SourceDetails&) override;
+    void itemDragMove (const SourceDetails&) override;
+    void itemDragExit (const SourceDetails&) override;
+    void itemDropped (const SourceDetails&) override;
     juce::DocumentWindow* getTempoEditorWindow() noexcept { return tempoEditorWindow.get(); }
     juce::DocumentWindow* getHubWindow() noexcept { return hubWindow.get(); }
     void openSong (const juce::File&);
@@ -222,6 +236,7 @@ private:
     std::unique_ptr<ProgressBox> progressBox;   // a long job's progress (0.11.1)
     std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow;
     std::unique_ptr<LinesWindow> linesWindow;
+    std::unique_ptr<MediaBayWindow> mediaBayWindow;
     // The MIDI file being dragged in: read once when it enters (its length in beats, its tracks).
     struct DraggedMidi { juce::String path, name; double length = 0.0; int tracks = 0; std::vector<pr7s::Note> notes; };
     std::optional<DraggedMidi> draggedMidi;

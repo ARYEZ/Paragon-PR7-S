@@ -1098,9 +1098,58 @@ namespace pr7s
             }
         }
 
+        // The MediaBay's preview (0.21.0), over everything.
+        if (previewPlaying.load() && preview != nullptr)
+        {
+            const auto length = preview->getNumSamples();
+            auto at = previewPosition.load();
+            const auto gain = previewGain.load();
+            for (int i = 0; i < numSamples && length > 0; ++i)
+            {
+                if (at >= length)
+                {
+                    if (! previewLoop.load())
+                    {
+                        previewPlaying = false;
+                        break;
+                    }
+                    at = 0;
+                }
+                for (int channel = 0; channel < juce::jmin (2, output.getNumChannels()); ++channel)
+                    output.getWritePointer (channel)[i] += gain * preview->getReadPointer (juce::jmin (channel, preview->getNumChannels() - 1))[at];
+                ++at;
+            }
+            previewPosition = at;
+        }
+
         for (int channel = 0; channel < juce::jmin (2, output.getNumChannels()); ++channel)
             for (auto& reader : outputMeters)
                 reader[(size_t) channel].pushSamples (output.getReadPointer (channel), numSamples);
+    }
+
+    void Engine::setPreview (std::shared_ptr<const juce::AudioBuffer<float>> sound, bool loop)
+    {
+        // The old sound leaves here, on the message thread, after the swap.
+        auto old = sound;
+        {
+            const juce::ScopedLock sl (lock);
+            std::swap (old, preview);
+            previewPosition = 0;
+            previewLength = preview != nullptr ? preview->getNumSamples() : 0;
+            previewLoop = loop;
+            previewPlaying = preview != nullptr && previewLength.load() > 0;
+        }
+    }
+
+    void Engine::stopPreview()
+    {
+        previewPlaying = false;
+    }
+
+    double Engine::getPreviewProgress() const noexcept
+    {
+        const auto length = previewLength.load();
+        return length > 0 ? juce::jlimit (0.0, 1.0, (double) previewPosition.load() / (double) length) : 0.0;
     }
 
     //==========================================================================

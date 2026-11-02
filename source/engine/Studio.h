@@ -7,6 +7,7 @@
 #include "PluginHost.h"
 #include "Project.h"
 #include "Lines.h"
+#include "MediaBay.h"
 
 #include <optional>
 
@@ -406,6 +407,8 @@ namespace pr7s
             double sampleRate = 48000.0;
         };
         std::shared_ptr<const AudioData> getAudio (const juce::String& file);   // none if it can't be read
+        // A file read whole at the engine's rate, not kept (the MediaBay's previews, 0.21.0).
+        std::shared_ptr<const AudioData> readAudio (const juce::File&);
         juce::File getAudioFolder() const;
         // The interface's delay, in and out: recordings are moved earlier by it,
         // so they land where they were played. Tests set it; else the device's.
@@ -727,6 +730,23 @@ namespace pr7s
         // Returns the new audio tracks' ids (none, and `error` set, if nothing could be rendered).
         std::vector<int> renderInPlace (const std::vector<RenderSource>&, const RenderOptions&, juce::String& error);
 
+        //======================================================================
+        // The MediaBay (0.21.0): the media files in the folders scanned, kept in "MediaBay.xml" beside
+        // the settings (in memory without a settings file). The first time, your Documents' Paragon
+        // PR7-S folder (songs, track presets) is a location. The scan waits while playing or recording.
+        MediaDatabase& getMediaBay();
+        // A file heard: audio through the engine's preview (over the output, at the preview level,
+        // looping when `loop` is on); a MIDI file through the live track's instrument at the song's
+        // tempo (as IDEAS' previews). False for files it can't play (presets, songs, unreadable).
+        bool previewMedia (const juce::File&, bool loop);
+        void stopMediaPreview();
+        bool isMediaPreviewing() const;
+        double getMediaPreviewProgress() const;                      // 0 to 1
+        std::shared_ptr<const AudioData> getMediaPreviewSound() const noexcept { return mediaPreviewSound; }   // (audio, for drawing)
+        void setMediaPreviewLoop (bool);
+        float getMediaPreviewLevel() const;                          // 0 to 1 (settings "mediaBayLevel", default 0.7)
+        void setMediaPreviewLevel (float);
+
     private:
         PadPlayer padPlayer;
         class LinePreview;
@@ -873,6 +893,11 @@ namespace pr7s
             bool finished = false;
         };
         std::unique_ptr<ExportJob> exportJob;
+        std::unique_ptr<MediaDatabase> mediaBay;   // (0.21.0; made when first asked for)
+        std::shared_ptr<const AudioData> mediaPreviewSound;
+        double mediaPreviewBeats = 0.0;
+        bool mediaPreviewMidi = false;
+        float mediaPreviewLevel = 0.7f;
         // Several renders in a row (Render in Place's stretches, Freeze's
         // tracks): the plugins stay offline and the interface off between
         // them, switched back once at the end (0.9.9).

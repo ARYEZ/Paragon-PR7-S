@@ -1,4 +1,5 @@
 #include "MainView.h"
+#include "ui/TrackActions.h"
 #include "engine/MidiImport.h"
 #include "ui/KeyCommandsPage.h"
 #include "ui/Hub.h"
@@ -70,6 +71,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
         menu.addItem (4, "Audio files, one after another on one track...");
         menu.addSeparator();
         menu.addItem (5, "DAWproject as a new song... (from Cubase: File > Export > DAWproject)");
+        menu.addSeparator();
+        menu.addItem (6, "MediaBay... (F5: browse, hear and drag in your samples, loops, MIDI files and presets)");
         menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&importButton), [safe = juce::Component::SafePointer<MainView> (this)] (int chosen)
         {
             if (safe == nullptr || chosen == 0)
@@ -83,6 +86,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
                     safe->importMidiFile (chosen == 2);
                 else if (chosen == 5)
                     safe->importDawProjectFile();
+                else if (chosen == 6)
+                    safe->toggleMediaBay();
                 else
                     safe->importAudioFiles (chosen == 4);
             });
@@ -847,6 +852,7 @@ bool MainView::handleKey (const juce::KeyPress& key)
     if (key.getKeyCode() == juce::KeyPress::F3Key)      { mods.isAltDown() ? toggleZonePlace (mixerZone) : toggleZone (mixerZone); return true; }
     // F4: the chord pads (0.14.0, our choice: the manual gives them no key; never Alt+F4, which closes the window).
     if (key.getKeyCode() == juce::KeyPress::F4Key && ! mods.isAltDown()) { toggleZone (padsZone); return true; }
+    if (key.getKeyCode() == juce::KeyPress::F5Key && ! mods.isAltDown()) { toggleMediaBay(); return true; }   // (the manual's MediaBay key)
     if (isKeyEditorOpen() && key == juce::KeyPress::escapeKey) { closeKeyEditor(); return true; }
     if (isMixerOpen() && key == juce::KeyPress::escapeKey)     { closeMixer(); return true; }
     if (key == juce::KeyPress::spaceKey)                { studio.togglePlay(); return true; }
@@ -1692,6 +1698,101 @@ void MainView::openSong (const juce::File& file)
         juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Some instruments, effects or recordings are missing",
                                                 "These aren't on this computer. Tracks without their instrument and clips without their "
                                                 "recording are silent, and the sound goes past missing effects, until they're found:\n\n" + problems);
+}
+
+void MainView::toggleMediaBay()
+{
+    const auto keepPlace = [this]
+    {
+        if (auto* settings = studio.getSettings(); settings != nullptr && mediaBayWindow != nullptr)
+            settings->setValue ("mediaBayWindow", mediaBayWindow->getWindowStateAsString());
+    };
+    if (mediaBayWindow != nullptr)
+    {
+        mediaBayWindow->getPage().stop();
+        keepPlace();
+        mediaBayWindow.reset();
+        return;
+    }
+    mediaBayWindow = std::make_unique<MediaBayWindow> (studio);
+    mediaBayWindow->onClose = [this, keepPlace]
+    {
+        keepPlace();
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->mediaBayWindow.reset(); });
+    };
+    mediaBayWindow->getPage().onUse = [this] (const juce::File& file) { useMedia (file); };
+    // Where it was last time, else centred on the studio.
+    auto* settings = studio.getSettings();
+    if (settings != nullptr && settings->containsKey ("mediaBayWindow"))
+        mediaBayWindow->restoreWindowStateFromString (settings->getValue ("mediaBayWindow"));
+    else
+        mediaBayWindow->centreAroundComponent (this, mediaBayWindow->getWidth(), mediaBayWindow->getHeight());
+    mediaBayWindow->setVisible (true);
+}
+
+void MainView::useMedia (const juce::File& file)
+{
+    const auto type = pr7s::mediaTypeOf (file);
+    if (! type)
+        return;
+    const auto at = studio.getEngine().getPosition();
+    switch (*type)
+    {
+        case pr7s::MediaType::audio: importAudio ({ file }, 0, at, true); break;
+        case pr7s::MediaType::midi: importMidiFilesNow ({ file }, false, at, false, 0); break;
+        case pr7s::MediaType::trackPreset:
+        {
+            juce::String error;
+            if (TrackActions::addTrackFrom (studio, file, error) == 0 || error.isNotEmpty())
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Track preset", error.isNotEmpty() ? error : "Couldn't read " + file.getFileName() + ".");
+            break;
+        }
+        case pr7s::MediaType::song:
+            whenSongCanGo ([safe = juce::Component::SafePointer<MainView> (this), file] { if (safe != nullptr) safe->openSong (file); });
+            break;
+    }
+}
+
+void MainView::mediaDropped (const juce::StringArray& files, int x, int y)
+{
+    // Audio and MIDI land as files dragged in from the system do (on the track under them,
+    // snapped); presets and songs are used as a double-click would.
+    juce::StringArray soundAndMidi;
+    for (const auto& path : files)
+    {
+        const auto type = pr7s::mediaTypeOf (juce::File (path));
+        if (type == pr7s::MediaType::audio || type == pr7s::MediaType::midi)
+            soundAndMidi.add (path);
+        else if (type)
+            useMedia (juce::File (path));
+    }
+    if (! soundAndMidi.isEmpty())
+        filesDropped (soundAndMidi, x, y);
+}
+
+bool MainView::isInterestedInDragSource (const SourceDetails& details)
+{
+    return details.description.toString().startsWith ("mediabay:");
+}
+
+void MainView::itemDragEnter (const SourceDetails& details)
+{
+    fileDragEnter (MediaBayPage::filesFromDragDescription (details.description.toString()), details.localPosition.x, details.localPosition.y);
+}
+
+void MainView::itemDragMove (const SourceDetails& details)
+{
+    fileDragMove (MediaBayPage::filesFromDragDescription (details.description.toString()), details.localPosition.x, details.localPosition.y);
+}
+
+void MainView::itemDragExit (const SourceDetails& details)
+{
+    fileDragExit (MediaBayPage::filesFromDragDescription (details.description.toString()));
+}
+
+void MainView::itemDropped (const SourceDetails& details)
+{
+    mediaDropped (MediaBayPage::filesFromDragDescription (details.description.toString()), details.localPosition.x, details.localPosition.y);
 }
 
 void MainView::openLineIdeas (std::vector<int> chordEvents)

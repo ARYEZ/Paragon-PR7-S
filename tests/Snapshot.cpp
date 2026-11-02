@@ -614,6 +614,92 @@ TEST_CASE ("Snapshot: the guitar VELOCITIES panel", "[.][snapshot-velocities]")
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
 
+#include "ui/MediaBayPage.h"
+
+TEST_CASE ("Snapshot: the MediaBay window", "[.][snapshot-mediabay]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "mediabay.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    const auto root = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("Metal Samples");
+    root.deleteRecursively();
+    {
+        // A sample library, as a producer's might be.
+        const auto wav = [] (const juce::File& file, double seconds, int channels, float frequency)
+        {
+            file.getParentDirectory().createDirectory();
+            const auto rate = 44100.0;
+            const auto samples = (int) (seconds * rate);
+            juce::AudioBuffer<float> sound (channels, samples);
+            for (int c = 0; c < channels; ++c)
+                for (int i = 0; i < samples; ++i)
+                {
+                    const auto beat = std::fmod ((double) i / rate, 0.5);
+                    sound.setSample (c, i, (float) (std::exp (-beat * 9.0) * 0.8 * std::sin ((double) i * frequency / rate * 6.283)));
+                }
+            juce::WavAudioFormat format;
+            auto stream = std::make_unique<juce::FileOutputStream> (file);
+            std::unique_ptr<juce::AudioFormatWriter> writer (format.createWriterFor (stream.get(), rate, (unsigned int) channels, 24, {}, 0));
+            stream.release();
+            writer->writeFromAudioSampleBuffer (sound, 0, samples);
+        };
+        wav (root.getChildFile ("Drums").getChildFile ("Drop A Chug Loop 140bpm.wav"), 3.43, 2, 110.0f);
+        wav (root.getChildFile ("Drums").getChildFile ("Gallop Kit Loop 160bpm.wav"), 3.0, 2, 90.0f);
+        wav (root.getChildFile ("Drums").getChildFile ("Kick 808 Long.wav"), 1.2, 1, 50.0f);
+        wav (root.getChildFile ("Drums").getChildFile ("Snare Heavy Room.wav"), 0.8, 2, 220.0f);
+        wav (root.getChildFile ("Guitars").getChildFile ("Rogue Riff Am 140bpm.wav"), 6.86, 2, 140.0f);
+        wav (root.getChildFile ("Guitars").getChildFile ("Jupiter Lead F#m 120bpm.wav"), 8.0, 2, 330.0f);
+        wav (root.getChildFile ("Bass").getChildFile ("Sub Bass E 128bpm.wav"), 3.75, 1, 41.0f);
+        juce::MidiMessageSequence sequence;
+        for (int i = 0; i < 16; ++i)
+        {
+            sequence.addEvent (juce::MidiMessage::noteOn (1, 33 + (i % 4) * 2, (juce::uint8) 100), i * 240.0);
+            sequence.addEvent (juce::MidiMessage::noteOff (1, 33 + (i % 4) * 2), i * 240.0 + 200.0);
+        }
+        sequence.updateMatchedPairs();
+        juce::MidiFile midi;
+        midi.setTicksPerQuarterNote (480);
+        midi.addTrack (sequence);
+        for (const auto* name : { "Djent Chug Pattern 140bpm.mid", "Power Chord Riff Am.mid" })
+        {
+            juce::FileOutputStream out (root.getChildFile ("MIDI").getChildFile (name));
+            root.getChildFile ("MIDI").createDirectory();
+            midi.writeTo (out);
+        }
+        root.getChildFile ("Presets").createDirectory();
+        root.getChildFile ("Presets").getChildFile ("Rogue Drop A Rhythm.pr7track").replaceWithText ("<PR7S/>");
+        root.getChildFile ("Songs").createDirectory();
+        root.getChildFile ("Songs").getChildFile ("Night Drive.pr7s").replaceWithText ("<PR7S/>");
+
+        pr7s::Studio studio (false);
+        auto& bay = studio.getMediaBay();
+        bay.addLocation (root);
+        bay.scanNow();
+        bay.setRating (root.getChildFile ("Drums").getChildFile ("Drop A Chug Loop 140bpm.wav"), 5);
+        bay.setRating (root.getChildFile ("Guitars").getChildFile ("Rogue Riff Am 140bpm.wav"), 4);
+        bay.setRating (root.getChildFile ("Drums").getChildFile ("Kick 808 Long.wav"), 3);
+        MediaBayPage page (studio);
+        page.setSize (1400, 820);
+        page.resetFilters();
+        page.setAutoPlay (false);
+        page.sortBy (pr7s::MediaColumn::rating, false);
+        page.selectRow (1);
+        page.play();
+        studio.setMediaPreviewLevel (0.0f);   // (silent: only the playhead moves)
+        juce::AudioBuffer<float> out (2, 44100);
+        studio.getEngine().render (out, 44100);
+        const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
+        page.stop();
+        juce::File (path).deleteFile();
+        juce::FileOutputStream stream { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, stream);
+    }
+    root.deleteRecursively();
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
 TEST_CASE ("Snapshot: the colour menu", "[.][snapshot-colours]")
 {
     const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "colours.png");

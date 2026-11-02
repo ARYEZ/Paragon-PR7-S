@@ -2,6 +2,19 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.21.0
+
+The MediaBay (the owner asked: as the other DAW's MediaBay). The first part of three, as agreed: the MediaBay window now; tags and the attribute inspector next (0.21.1); the Media rack docked at the right of the project window after (0.22.0).
+
+- **F5 opens it** (or IMPORT > MediaBay...). A window of its own, kept where you put it.
+- **LOCATIONS:** the folders it scans for media, each with its subfolders. The first time, your Documents' Paragon PR7-S folder (your songs and track presets) is in; ADD FOLDER... for your sample libraries, REMOVE to stop scanning one. Click one to see only its files (SUBFOLDERS: with or without its subfolders), or ALL LOCATIONS. Scanning runs in the background and **waits while the song plays or records**, as the manual's does; RESCAN looks again for new, changed and removed files (unchanged files aren't read again). What it found, and your ratings, are kept in MediaBay.xml beside the settings, so it opens straight away next time.
+- **The results:** audio files (WAV, AIFF, FLAC, Ogg, MP3), MIDI files, track presets and songs, with their rating, name, type, length (MIDI: bars), tempo, key, format (sample rate and mono/stereo; MIDI: its notes), folder, size and date. Click a heading to sort. Tempo and key come from the file's name ("Drop A Chug 140bpm", "Riff Am", "Pad F#m"; a MIDI file's own tempo if its name has none).
+- **Finding things:** the search box looks in the name, the folder, the type, the tempo and the key, with the manual's boolean search: words all found (a space, "and" or +), either ("or" or a comma), none ("not" or a minus at a word's start), parentheses, and "a phrase" in quotation marks. For example: `drum (kick, snare) -808`. AUDIO, MIDI, PRESETS and SONGS show only those types (none lit: all). The rating filter shows files rated that or better. SHUFFLE mixes the list; RESET clears the filters.
+- **Rating:** click a star in the first column (the same star again: none).
+- **The previewer:** select a file and PLAY. Audio plays over the output whether the song plays or not, at the previewer's LEVEL, with its shape drawn and a playhead; CYCLE loops it; AUTO PLAY plays each file as you select it. MIDI files play through the selected track's instrument (your guitar VST if it's selected) at the song's tempo.
+- **Into the song:** double-click (or USE IT): audio onto a new audio track at the playhead, a MIDI file onto a new instrument track, a track preset as a new track, a song opened (after asking about unsaved changes). Or **drag** files from the list onto the arrangement: they land as files dragged from Explorer do, snapped, on the track under them (a MIDI file onto an instrument track, lit in the gradient while you drag).
+- **Honestly:** our own design where the manual leaves room: the locations are whole folders, not a tree of ticked subfolders; tempo and key come from names, not from listening to the audio. The previewer doesn't stretch audio to the song's tempo (Link to Project Tempo needs time stretching, which the studio doesn't have yet), nor follow a transpose track, nor play at half or double speed; the level applies to MIDI previews only through their velocities. Not yet: tags, categories and the attribute inspector (0.21.1), the logical and attribute filters, plug-in presets (.vstpreset), the docked Media rack (0.22.0), Wait for Project Play.
+
 ## 0.20.2
 
 - **IDEAS from the chord pads** (the owner looked for the piano and guitar parts in the pads and couldn't find them). The pads' toolbar has an **IDEAS** key on its second row, after FROM CHORD TRACK: it opens the IDEAS window (piano, guitar and bass parts, VELOCITIES, TUNING, HUMANIZE) for the chord track's chords, those in the cycle when it's on, else all of them. The PLAYER menu's old "(Piano and guitar players: a later release)" line pointed the wrong way: it's now "Piano, Guitar and Bass Ideas..." and opens IDEAS too.

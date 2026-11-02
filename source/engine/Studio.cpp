@@ -92,6 +92,8 @@ namespace pr7s
 
     Studio::~Studio()
     {
+        mediaBay.reset();   // (its scan asks the engine whether it plays)
+        engine.stopPreview();
         stopPreview();
         linePreview.reset();
         engine.setPadPlayer (nullptr);
@@ -1993,8 +1995,18 @@ namespace pr7s
         if (auto found = audioCache.find (name); found != audioCache.end())
             return found->second;
 
+        auto data = readAudio (getAudioFolder().getChildFile (name));
+        if (data == nullptr)
+            return nullptr;
+        audioCache[name] = data;
+        return data;
+    }
+
+    std::shared_ptr<const Studio::AudioData> Studio::readAudio (const juce::File& file)
+    {
+        const auto rate = engine.getSampleRate();
         // Read whole, both sides (a mono file on both), at the engine's sample rate.
-        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (getAudioFolder().getChildFile (name)));
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
         if (reader == nullptr || reader->lengthInSamples <= 0)
             return nullptr;
         const auto length = (int) juce::jmin ((juce::int64) std::numeric_limits<int>::max() / 2, reader->lengthInSamples);
@@ -2027,8 +2039,111 @@ namespace pr7s
             const auto left = data->sound.getMagnitude (0, from, count), right = data->sound.getMagnitude (1, from, count);
             data->peaks.push_back (juce::jmax (left, right));
         }
-        audioCache[name] = data;
         return data;
+    }
+
+    //==========================================================================
+    // The MediaBay (0.21.0).
+    MediaDatabase& Studio::getMediaBay()
+    {
+        if (mediaBay == nullptr)
+        {
+            const auto store = settings != nullptr ? settings->getFile().getSiblingFile ("MediaBay.xml") : juce::File();
+            mediaBay = std::make_unique<MediaDatabase> (store);
+            mediaBay->shouldPause = [this] { return engine.isPlaying() || engine.isRecording(); };
+            if (settings != nullptr && ! mediaBay->hadStore())
+            {
+                const auto ours = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Paragon PR7-S");
+                ours.createDirectory();
+                mediaBay->addLocation (ours);
+                mediaBay->rescan();
+            }
+            if (settings != nullptr)
+                mediaPreviewLevel = (float) settings->getDoubleValue ("mediaBayLevel", mediaPreviewLevel);
+            engine.setPreviewGain (mediaPreviewLevel);
+        }
+        return *mediaBay;
+    }
+
+    bool Studio::previewMedia (const juce::File& file, bool loop)
+    {
+        stopMediaPreview();
+        const auto type = mediaTypeOf (file);
+        if (type == MediaType::audio)
+        {
+            auto sound = readAudio (file);
+            if (sound == nullptr)
+                return false;
+            mediaPreviewSound = sound;
+            engine.setPreviewGain (mediaPreviewLevel);
+            engine.setPreview (std::shared_ptr<const juce::AudioBuffer<float>> (sound, &sound->sound), loop);
+            return true;
+        }
+        if (type == MediaType::midi)
+        {
+            juce::String error;
+            const auto midi = readMidiFile (file, error);
+            if (! midi)
+                return false;
+            LineIdea idea;
+            idea.part = LineIdea::Part::melody;
+            idea.style = file.getFileNameWithoutExtension();
+            for (const auto& track : midi->tracks)
+                for (const auto& n : track.notes)
+                {
+                    idea.notes.push_back ({ n.start, n.length, n.pitch, n.velocity * juce::jlimit (0.05f, 1.0f, mediaPreviewLevel / 0.7f) });
+                    mediaPreviewBeats = juce::jmax (mediaPreviewBeats, n.start + n.length);
+                }
+            if (idea.notes.empty())
+                return false;
+            std::stable_sort (idea.notes.begin(), idea.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+            ChordSpan span;
+            span.start = 0.0;
+            span.end = juce::jmax (0.25, mediaPreviewBeats);
+            previewLine (&idea, { span }, false);
+            mediaPreviewMidi = true;
+            return true;
+        }
+        return false;
+    }
+
+    void Studio::stopMediaPreview()
+    {
+        engine.stopPreview();
+        if (mediaPreviewMidi)
+            stopPreview();
+        mediaPreviewMidi = false;
+        mediaPreviewBeats = 0.0;
+    }
+
+    bool Studio::isMediaPreviewing() const
+    {
+        return engine.isPreviewPlaying() || (mediaPreviewMidi && isPreviewing());
+    }
+
+    double Studio::getMediaPreviewProgress() const
+    {
+        if (mediaPreviewMidi)
+            return mediaPreviewBeats > 0.0 ? juce::jlimit (0.0, 1.0, getPreviewBeat() / mediaPreviewBeats) : 0.0;
+        return engine.getPreviewProgress();
+    }
+
+    void Studio::setMediaPreviewLoop (bool on)
+    {
+        engine.setPreviewLoop (on);
+    }
+
+    float Studio::getMediaPreviewLevel() const
+    {
+        return mediaPreviewLevel;
+    }
+
+    void Studio::setMediaPreviewLevel (float level)
+    {
+        mediaPreviewLevel = juce::jlimit (0.0f, 1.0f, level);
+        engine.setPreviewGain (mediaPreviewLevel);
+        if (settings != nullptr)
+            settings->setValue ("mediaBayLevel", (double) mediaPreviewLevel);
     }
 
     double Studio::recordingLatency() const
@@ -4151,6 +4266,7 @@ namespace pr7s
     bool Studio::beginExport (const juce::File& destination, const ExportOptions& options, juce::String& error)
     {
         SessionLog::note ("Rendering to " + destination.getFullPathName());
+        stopMediaPreview();   // (the MediaBay's preview plays over the output: never into a render)
         if (exportJob != nullptr || engine.isRecording())
         {
             error = "Not while recording or exporting.";
