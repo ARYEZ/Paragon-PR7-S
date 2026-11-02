@@ -306,26 +306,32 @@ TEST_CASE ("Guitar rhythm ideas: power chords with no third, nothing under the l
         }
 }
 
-TEST_CASE ("Guitar velocities in the owner's library's layout: 1-59 palm muted, 60-119 open, 120-127 pinch harmonics (0.19.1)", "[lines]")
+TEST_CASE ("Guitar velocities in the owner's library's layout: 1-59 palm muted, 60-119 open, 120-126 rakes, 127 pinch harmonics (0.19.1, 0.19.2)", "[lines]")
 {
     namespace V = GuitarVelocity;
     // The engine sends round (velocity * 127): each value comes back exactly.
-    for (const auto v : { V::muteTight, V::muteMid, V::muteLoose, V::sustainSoft, V::sustain, V::sustainHard, V::pinch })
+    for (const auto v : { V::muteTight, V::muteMid, V::muteLoose, V::sustainSoft, V::sustain, V::sustainHard, V::rake, V::pinch })
         CHECK (V::midiOf (V::of (v)) == v);
     CHECK (V::muteLoose <= V::mutedMost);
     CHECK (V::sustainHard <= V::sustainMost);
+    CHECK ((V::rake >= 120 && V::rake <= 126));
+    CHECK (V::pinch == 127);
 
     const Key am { 5, 0, true };
     const auto spans = bars ({ { 9, T::minor, X::none, -1 }, { 5, T::major, X::none, -1 }, { 0, T::major, X::none, -1 }, { 4, T::major, X::none, -1 } }, am);
     const auto& tuning = GuitarTuning::all()[0];
     const auto muted = [] (const LineNote& n) { return V::midiOf (n.velocity) >= 1 && V::midiOf (n.velocity) <= 59; };
     const auto open = [] (const LineNote& n) { return V::midiOf (n.velocity) >= 60 && V::midiOf (n.velocity) <= 119; };
-    const auto pinch = [] (const LineNote& n) { return V::midiOf (n.velocity) >= 120; };
+    const auto rake = [] (const LineNote& n) { return V::midiOf (n.velocity) >= 120 && V::midiOf (n.velocity) <= 126; };
+    const auto pinch = [] (const LineNote& n) { return V::midiOf (n.velocity) == 127; };
     for (int variation = 0; variation < 4; ++variation)
     {
         INFO ("variation " << variation);
         const auto rhythm = guitarRhythmIdeas (spans, 4.0, variation, tuning);
         const auto count = [] (const LineIdea& idea, auto&& is) { return (int) std::count_if (idea.notes.begin(), idea.notes.end(), is); };
+        // No rakes in the rhythm parts (a rake is into a single note).
+        for (const auto& idea : rhythm)
+            CHECK (count (idea, rake) == 0);
         // Chugs: muted between open accents, never a pinch or rake.
         const auto& chugs = ideaNamed (rhythm, "Palm-muted chugs");
         CHECK (count (chugs, pinch) == 0);
@@ -354,15 +360,26 @@ TEST_CASE ("Guitar velocities in the owner's library's layout: 1-59 palm muted, 
         for (const auto* name : { "Power chords", "Octave chords", "Open strummed shapes" })
             for (const auto& n : ideaNamed (rhythm, name).notes)
                 CHECK (open (n));
-        // Leads: open, but the pentatonic box's last note, a pinch-harmonic squeal.
+        // Leads: open, but rakes into phrase starts (every second bar's first note of the pentatonic
+        // box and the blues run, the triplet lick's first note) and the pentatonic box's last note,
+        // a pinch-harmonic squeal.
         for (const auto& idea : guitarLeadIdeas (spans, 4.0, variation, tuning))
         {
             INFO (idea.style);
             for (size_t i = 0; i < idea.notes.size(); ++i)
+            {
+                const auto& n = idea.notes[i];
+                const auto bar = (int) std::floor (n.beat / 4.0 + 1.0e-9);
+                const auto barStart = std::abs (n.beat - bar * 4.0) < 1.0e-6;
+                const auto wantsRake = ((idea.style == "Pentatonic box" || idea.style == "Blues scale run") && barStart && bar % 2 == 0)
+                                    || (idea.style == "Repeating triplet lick" && i == 0);
                 if (idea.style == "Pentatonic box" && i + 1 == idea.notes.size())
-                    CHECK (pinch (idea.notes[i]));
+                    CHECK (pinch (n));
+                else if (wantsRake)
+                    CHECK (rake (n));
                 else
-                    CHECK (open (idea.notes[i]));
+                    CHECK (open (n));
+            }
         }
     }
 }

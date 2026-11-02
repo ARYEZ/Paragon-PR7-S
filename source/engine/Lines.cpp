@@ -833,6 +833,8 @@ namespace pr7s
         for (size_t s = 0; s < spans.size(); ++s)
             for (auto t = spans[s].start; t < spans[s].end - 1.0e-9; t += beatsPerBar)
                 barsList.push_back ({ s, t - origin, juce::jmin (beatsPerBar, spans[s].end - t) });
+        // A rake into a phrase's first note: every second bar's first, from the first (0.19.2).
+        const auto raked = [&] (const Bar& b) { return ((&b - barsList.data()) % 2) == 0; };
         const auto target = [&] (const Bar& b, int prev) { return nearestOf (tonesOf (spans[b.span].chord), prev, low, high); };
         const auto lastOnChord = [&] (LineIdea& idea)
         {
@@ -843,7 +845,7 @@ namespace pr7s
             last.length = juce::jmax (last.length, spans.back().end - origin - last.beat);
         };
         {
-            auto& idea = make ("Pentatonic box", "Up and down one pentatonic box, landing on the chord each bar, ending on a pinch-harmonic squeal (the rock solo's home)");
+            auto& idea = make ("Pentatonic box", "Raked into, up and down a pentatonic box, on the chord each bar, ending on a pinch-harmonic squeal (rock solos)");
             auto prev = centre;
             for (const auto& b : barsList)
             {
@@ -854,7 +856,7 @@ namespace pr7s
                 for (auto at = 0.0; at < b.length - 1.0e-9; at += 0.5, ++i)
                 {
                     const auto len = (at + 0.5 >= b.length - 1.0e-9) ? b.length - at : 0.5;
-                    add (idea.notes, b.start + at, i == 0 ? 0.5 : len, pitch, V::of (i == 0 ? V::sustainHard : V::sustain - 6));
+                    add (idea.notes, b.start + at, i == 0 ? 0.5 : len, pitch, V::of (i == 0 ? (raked (b) ? V::rake : V::sustainHard) : V::sustain - 6));
                     if (i % 3 == 2)
                         dir = -dir;
                     pitch = stepFrom (pitch, dir, scale, juce::jmax (low, centre - 9), juce::jmin (high, centre + 12));
@@ -865,7 +867,7 @@ namespace pr7s
             idea.notes.back().velocity = V::of (V::pinch);   // (held to the end: a pinch-harmonic squeal)
         }
         {
-            auto& idea = make ("Blues scale run", "Down the blues scale in triplets, through its \"blue\" note, landing on the chord (blues rock)");
+            auto& idea = make ("Blues scale run", "Raked into, down the blues scale in triplets through its \"blue\" note, landing on the chord (blues rock)");
             auto prev = centre + 7;
             for (const auto& b : barsList)
             {
@@ -875,7 +877,7 @@ namespace pr7s
                 for (auto at = 0.0; at < b.length - 1.0e-9; at += 1.0 / 3.0, ++i)
                 {
                     const auto restOfBar = at + 1.0 / 3.0 >= b.length - 1.0e-9;
-                    add (idea.notes, b.start + at, restOfBar ? b.length - at : 1.0 / 3.0, pitch, V::of (i % 3 == 0 ? V::sustainHard - 4 : V::sustainSoft + 8));
+                    add (idea.notes, b.start + at, restOfBar ? b.length - at : 1.0 / 3.0, pitch, V::of (i == 0 && raked (b) ? V::rake : i % 3 == 0 ? V::sustainHard - 4 : V::sustainSoft + 8));
                     pitch = stepFrom (pitch, (i / 6) % 2 == 0 ? -1 : 1, scale, low, high);
                 }
                 prev = pitch;
@@ -884,7 +886,7 @@ namespace pr7s
         }
         {
             // A three-note cell from the pentatonic, repeated a step lower each beat.
-            auto& idea = make ("Repeating triplet lick", "A three-note pentatonic cell in triplets, repeated a step lower every beat (the classic rock run)");
+            auto& idea = make ("Repeating triplet lick", "Raked into, a three-note pentatonic cell in triplets, a step lower every beat (the classic rock run)");
             auto prev = centre + 9;
             for (const auto& b : barsList)
             {
@@ -896,7 +898,7 @@ namespace pr7s
                     const auto third = stepFrom (second, -1, scale, low, high);
                     const int cell[3] = { top, second, variation % 2 == 0 ? third : top };
                     for (auto k = 0; k < 3; ++k)
-                        add (idea.notes, b.start + beat + k / 3.0, 1.0 / 3.0, cell[k], V::of (k == 0 ? V::sustainHard : V::sustain - 6));
+                        add (idea.notes, b.start + beat + k / 3.0, 1.0 / 3.0, cell[k], V::of (k == 0 ? (&b == &barsList.front() && beat == 0.0 ? V::rake : V::sustainHard) : V::sustain - 6));
                     top = stepFrom (top, -1, scale, low + 4, high);
                 }
                 prev = top;

@@ -2,6 +2,14 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.19.2
+
+Rakes and pinch harmonics apart (the owner's layout for Shreddage: 120-126 rakes, 127 pinch harmonics).
+
+- **Pinch harmonics at 127.** 0.19.1 sent its pinch harmonics at 124, which in this layout is a rake. They're now at 127: the Pedal-point riff's every second bar and the Pentatonic box's last held note.
+- **Rakes (123), into the start of a phrase,** as a player rakes into a lick: the Pentatonic box and the Blues scale run rake into the first note of every second bar (bars 1, 3, 5...), the Repeating triplet lick into its very first note. Not in the chord parts (a rake goes into a single note) or the fast picking ideas (it would blur them).
+- **Honestly:** 123 is the middle of the rake range; where in 120-126 the library gives its strongest rake is for your ears (say if it should move). Which notes get a rake is our choice; MORE IDEAS doesn't change it.
+
 ## 0.19.1
 
 The guitar ideas' velocities in the layout of the owner's guitars (Shreddage Jupiter and Rogue: velocity chooses the articulation; 1-59 palm muting, tighter the lower; 60-119 sustain; 120-127 pinch harmonics and rakes).

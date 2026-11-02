@@ -64,15 +64,17 @@ namespace pr7s
     };
 
     // The guitar ideas' velocities (0.19.1, the owner's library, Shreddage: velocity picks the
-    // articulation). 1-59 palm muted, tighter the lower; 60-119 sustained (open); 120-127 pinch
-    // harmonics and rakes. Exact MIDI values: a note's velocity is value / 127 (the engine rounds
+    // articulation). 1-59 palm muted, tighter the lower; 60-119 sustained (open); 120-126 rakes
+    // (the pick dragged across muted strings into the note); 127 a pinch harmonic (0.19.2, the
+    // owner's split). Exact MIDI values: a note's velocity is value / 127 (the engine rounds
     // velocity * 127 back to the same number). On a library without such layers they're only
     // dynamics: muted notes quieter, which suits them too.
     namespace GuitarVelocity
     {
         constexpr int muteTight = 34, muteMid = 44, muteLoose = 54, mutedMost = 59;
         constexpr int sustainSoft = 80, sustain = 96, sustainHard = 110, sustainMost = 119;
-        constexpr int pinch = 124;
+        constexpr int rakeLeast = 120, rake = 123, rakeMost = 126;
+        constexpr int pinch = 127;
         constexpr float of (int midi) noexcept { return (float) midi / 127.0f; }
         constexpr int midiOf (float velocity) noexcept { return (int) (velocity * 127.0f + 0.5f); }
     }
