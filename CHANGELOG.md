@@ -2,6 +2,14 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.17.1
+
+The Inspector's keys as the owner asked, and the key's most used chords beside the suggestions.
+
+- **RENDER in the Inspector, in FREEZE's place.** RENDER renders the whole track in place, with the settings you used last time (the same as the track menu's "Render in Place (as last time)"): a new audio track under it. It's greyed out when the track has no parts, or is disabled or frozen. Freeze isn't gone: it's still in the track's right-click menu (Freeze, its tail sizes, Unfreeze). For the full Render in Place page, use the track menu's "Render in Place...".
+- **DISABLE / ENABLE TRACK always there.** The key at the top of the Inspector's first section now shows on every instrument and audio track: DISABLE TRACK on a track that's on, ENABLE TRACK (on red) on a disabled one. Before, it only appeared once a track was disabled. FX and group channels can't be disabled, so they don't show it. On a frozen track it's greyed out (its plugins are already unloaded: unfreeze it first).
+- **The ten most used chords in the key.** On the right screen, beside "What could come next", a new column lists the ten chords most used in the pads' key, most used first, each with its numeral and a few words on its role. In C major: C, G, F, Am, Dm, G7, Em, then three favourite visitors from outside the key: Bb (bVII), Fm (the minor iv) and D (V of V). In a minor key: i, VI, VII, iv, the major V, III, the minor v, V7, ii° and the Dorian IV. Chords from outside the key are shown in orange. Click one to hear it (the suggestions then follow it), double-click to put it on the selected pad, or drag it onto a pad or the chord track. Honestly: the ranking is ours, from common pop, rock, R&B and worship practice, not counted from a database of songs. The column appears only when there's room (the right screen); with a single screen the circle and suggestions stay as they were.
+
 ## 0.17.0
 
 The chord pads use the screens either side, and tracks can be linked.

@@ -2139,10 +2139,19 @@ TEST_CASE ("VISIBILITY: every track with a box to show or hide it; hidden and di
     studio.selectTrack (lead);
     studio.dispatchPendingMessages();
     CHECK (inspector.getEnableKey().isVisible());
+    CHECK (inspector.getEnableKey().getButtonText() == "ENABLE TRACK");
     inspector.getEnableKey().onClick();
     studio.dispatchPendingMessages();
     CHECK_FALSE (studio.getProject().findTrack (lead)->disabled);
-    CHECK_FALSE (inspector.getEnableKey().isVisible());
+    // Enabled: the key stays (0.17.1, the owner asked), now DISABLE TRACK.
+    CHECK (inspector.getEnableKey().isVisible());
+    CHECK (inspector.getEnableKey().getButtonText() == "DISABLE TRACK");
+    inspector.getEnableKey().onClick();
+    studio.dispatchPendingMessages();
+    CHECK (studio.getProject().findTrack (lead)->disabled);
+    inspector.getEnableKey().onClick();
+    studio.dispatchPendingMessages();
+    CHECK_FALSE (studio.getProject().findTrack (lead)->disabled);
 
     // SHOW ALL.
     inspector.setTab (Inspector::Tab::visibility);
@@ -2432,7 +2441,7 @@ TEST_CASE ("The Inspector's QUICK CONTROLS: 8 slots; an assigned one has a bar t
     CHECK (std::abs (studio.getProject().findTrack (track)->volumeDb + 3.0f) < 0.05f);
 }
 
-TEST_CASE ("Freeze and track presets on screen: FREEZE lit when frozen, PRESET; the track stamped; a preset file round trip", "[ui][freeze][preset]")
+TEST_CASE ("Track presets on screen: RENDER (0.17.1, in FREEZE's place) and PRESET; a preset file round trip", "[ui][freeze][preset]")
 {
     Finish::set (Finish::Type::pearlWhite, false);
     Studio studio (false);
@@ -2440,34 +2449,45 @@ TEST_CASE ("Freeze and track presets on screen: FREEZE lit when frozen, PRESET; 
     view.setSize (1500, 900);
     auto& inspector = view.getInspector();
     const auto synth = studio.getProject().tracks[0].id;
-    studio.addPart (synth, { 0.0, 4.0, "Riff", { { 0.0, 1.0, 60, 1.0f } } });
     studio.selectTrack (synth);
     studio.dispatchPendingMessages();
-    auto& freeze = inspector.getKey ("FREEZE");
+    auto& render = inspector.getKey ("RENDER");
     auto& preset = inspector.getKey ("PRESET");
-    CHECK (freeze.isVisible());
+    CHECK (render.isVisible());
     CHECK (preset.isVisible());
-    CHECK_FALSE (freeze.getToggleState());
+    CHECK_FALSE (render.isEnabled());   // (no parts: nothing to render)
     CHECK (inspector.getKey ("REC").isVisible());
+    studio.addPart (synth, { 0.0, 4.0, "Riff", { { 0.0, 1.0, 60, 1.0f } } });
+    studio.dispatchPendingMessages();
+    CHECK (render.isEnabled());
+    // RENDER asks for Render in Place of this track (the screen runs it as last time).
+    auto onRender = inspector.onRender;
+    int asked = 0;
+    inspector.onRender = [&asked] (int id) { asked = id; };
+    render.onClick();
+    CHECK (asked == synth);
+    inspector.onRender = onRender;
 
-    // Frozen (the selected tracks, as the menu does it): FREEZE lit.
+    // Frozen (from the track's menu): RENDER off (it plays its file), and so is DISABLE.
     juce::String error;
     REQUIRE (TrackActions::freezeSelected (studio, 0.0, error));
     studio.dispatchPendingMessages();
     CHECK (studio.isFrozen (synth));
-    CHECK (freeze.getToggleState());
+    CHECK_FALSE (render.isEnabled());
+    CHECK_FALSE (inspector.getEnableKey().isEnabled());
     TrackActions::unfreezeSelected (studio, true);
     studio.dispatchPendingMessages();
-    CHECK_FALSE (freeze.getToggleState());
+    CHECK (render.isEnabled());
 
-    // A group channel has neither; an FX channel only PRESET.
+    // A group channel has neither; an FX channel only PRESET; neither can be disabled.
     studio.selectTrack (studio.addGroupChannel());
     studio.dispatchPendingMessages();
-    CHECK_FALSE (freeze.isVisible());
+    CHECK_FALSE (render.isVisible());
     CHECK_FALSE (preset.isVisible());
+    CHECK_FALSE (inspector.getEnableKey().isVisible());
     studio.selectTrack (studio.addFxChannel (nullptr));
     studio.dispatchPendingMessages();
-    CHECK_FALSE (freeze.isVisible());
+    CHECK_FALSE (render.isVisible());
     CHECK (preset.isVisible());
 
     // The preset file: saved, then a new track from it.

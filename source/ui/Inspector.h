@@ -49,6 +49,7 @@ public:
     std::function<void (int trackId)> onOpenInstrument;   // EDIT
     std::function<void (int busId, int slot)> onOpenEffect;
     std::function<void()> onFindPlugins;
+    std::function<void (int trackId)> onRender;   // RENDER (0.17.1): Render in Place of the whole track, as last time
 
     static constexpr int width = 210;
     enum class Section { basics, routing, inserts, sends, fader, quick };
@@ -72,7 +73,7 @@ public:
     juce::TextButton& getInsertSlot (int slot) { return slots[(size_t) slot]; }
     juce::Viewport& getInsertsView() noexcept { return insertsView; }
     static constexpr int insertsInView = 5;
-    juce::TextButton& getKey (const juce::String& name);   // "M", "S", "R", "W", "REC", "MON", "FREEZE", "PRESET"
+    juce::TextButton& getKey (const juce::String& name);   // "M", "S", "R", "W", "REC", "MON", "RENDER", "PRESET"
     ValueSlider& getVolume() noexcept { return volume; }
     ValueSlider& getPan() noexcept { return pan; }
     juce::Label& getVolumeReadout() noexcept { return volumeReadout; }
@@ -86,7 +87,6 @@ public:
     juce::Slider& getQuickControlBar (int index) { return qcBars[(size_t) index]; }
     void showQuickControlMenu (int index);
     void showQuickControlsMenu();   // the section title's right-click
-    void showFreezeMenu();          // FREEZE (0.9.8): the tail sizes, or unfreeze
     juce::TextButton& getTabKey (Tab t) noexcept { return t == Tab::inspector ? inspectorTab : visibilityTab; }
     // VISIBILITY's box for a track (nullptr if it isn't listed), and SHOW ALL.
     juce::ToggleButton* getVisibilityBox (int trackId);
@@ -146,8 +146,8 @@ private:
     int shownSlots = 8, preFader = pr7s::Project::maxInserts, insertLineY = -1;
     std::array<std::unique_ptr<MixerView::SendSlot>, pr7s::Project::maxSends> sendSlots;
     MixerView fader { studio, true };   // (also the insert, send and output menus' owner)
-    juce::TextButton enable { "ENABLE TRACK" };   // a disabled track's
-    juce::TextButton freeze { "FREEZE" }, preset { "PRESET" };   // (0.9.8)
+    juce::TextButton enable { "DISABLE TRACK" };   // always (0.17.1, the owner asked): DISABLE TRACK, or ENABLE TRACK on a disabled one
+    juce::TextButton render { "RENDER" }, preset { "PRESET" };   // (0.9.8: FREEZE; RENDER since 0.17.1, the owner asked: Freeze is in the track's menu)
     std::unique_ptr<juce::FileChooser> chooser;   // a preset's
     std::array<juce::TextButton, pr7s::Track::numQuickControls> qcKeys;
     std::array<juce::Slider, pr7s::Track::numQuickControls> qcBars;

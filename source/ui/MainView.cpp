@@ -121,6 +121,17 @@ MainView::MainView (pr7s::Studio& studioToUse)
     inspector.onOpenInstrument = [this] (int trackId) { openInstrumentWindow (trackId); };
     inspector.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
     inspector.onFindPlugins = [this] { openPlugins(); };
+    // RENDER (0.17.1): the whole track, Render in Place as last time (the track menu's "as last time").
+    inspector.onRender = [this] (int trackId)
+    {
+        const auto* t = studio.getProject().findTrack (trackId);
+        if (t == nullptr || t->isChannel() || t->parts.empty())
+            return;
+        auto end = 0.0;
+        for (const auto& part : t->parts)
+            end = juce::jmax (end, part.end());
+        renderInPlace ({ { trackId, 0.0, end, true } }, false);
+    };
     pluginsButton.onClick = [this] { openPlugins(); };
     keysButton.onClick = [this] { openKeyCommands(); };
     keysButton.setTooltip ("Key Commands: give any action or macro a key (a Stream Deck's Hotkey buttons press them)");

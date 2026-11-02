@@ -208,18 +208,19 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     arm.onClick = [this] { if (const auto* t = track()) studio.setArmed (t->armed ? 0 : trackId); };
     monitor.onClick = [this] { if (const auto* t = track()) studio.setMonitor (trackId, ! t->monitor); };
 
-    // FREEZE (0.9.8, the manual's Freeze Channel in the top section) and PRESET (Load/Save Track Preset).
-    for (auto* key : { &freeze, &preset })
+    // RENDER (0.17.1, the owner asked: Render in Place as last time, in FREEZE's place; Freeze stays in
+    // the track's menu) and PRESET (Load/Save Track Preset).
+    for (auto* key : { &render, &preset })
     {
         key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         key->setWantsKeyboardFocus (false);
         content.addAndMakeVisible (*key);
     }
-    freeze.setTooltip ("FREEZE: render the instrument and its effects to a file and unload them (saves the computer's power). "
-                       "Lit: frozen. Click for the tail size, or to unfreeze");
+    render.setTooltip ("RENDER: Render in Place of the whole track, with the settings you used last time "
+                       "(a new audio track under it). For the settings page: the track's menu, Render in Place...");
     preset.setTooltip ("Save this track's sound (instrument, effects and their settings, fader, pan, colour, Quick Controls) "
                        "as a track preset, or load one onto it");
-    freeze.onClick = [this] { showFreezeMenu(); };
+    render.onClick = [this] { if (onRender) onRender (trackId); };
     preset.onClick = [this]
     {
         juce::PopupMenu menu;
@@ -413,11 +414,9 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
         content.addAndMakeVisible (bar);
     }
 
-    enable.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff3a0f18));
     enable.setColour (juce::TextButton::textColourOffId, ParagonColours::text);
     enable.setWantsKeyboardFocus (false);
-    enable.setTooltip ("This track is disabled: silent, its instrument and effects unloaded (their settings kept). Click to load them and hear it again");
-    enable.onClick = [this] { studio.setTracksDisabled ({ trackId }, false); };
+    enable.onClick = [this] { if (const auto* t = track()) studio.setTracksDisabled ({ trackId }, ! t->disabled); };
     content.addChildComponent (enable);
 
     // FADER
@@ -474,27 +473,9 @@ juce::Component& Inspector::getHeader (Section section)
     return *headers[(size_t) section];
 }
 
-void Inspector::showFreezeMenu()
-{
-    juce::PopupMenu menu;
-    TrackActions::addFreezeItems (menu, studio, trackId);
-    // The submenu's items, straight in this key's menu.
-    juce::PopupMenu items;
-    for (juce::PopupMenu::MenuItemIterator it (menu); it.next();)
-        if (auto* sub = it.getItem().subMenu.get())
-            items = *sub;
-    if (! studio.isTrackSelected (trackId))
-        studio.selectTrack (trackId);
-    items.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&freeze), [safe = juce::Component::SafePointer<Inspector> (this), id = trackId] (int chosen)
-    {
-        if (safe != nullptr)
-            TrackActions::handle (chosen, safe->studio, id, safe->chooser);
-    });
-}
-
 juce::TextButton& Inspector::getKey (const juce::String& name)
 {
-    for (auto* key : { &mute, &solo, &read, &write, &arm, &monitor, &freeze, &preset })
+    for (auto* key : { &mute, &solo, &read, &write, &arm, &monitor, &render, &preset })
         if (key->getButtonText() == name)
             return *key;
     return mute;
@@ -646,8 +627,15 @@ void Inspector::refresh()
     arm.setToggleState (t->armed, juce::dontSendNotification);
     monitor.setToggleState (t->monitor, juce::dontSendNotification);
     AutomationKeys::refresh (read, write, studio, trackId);
-    freeze.setToggleState (t->frozen, juce::dontSendNotification);
-    freeze.setEnabled (! t->disabled);
+    // RENDER: a track with parts, live (a frozen one plays its file: unfreeze it first).
+    render.setEnabled (! t->disabled && ! t->frozen && ! t->parts.empty());
+    // DISABLE / ENABLE TRACK, always there (0.17.1, the owner asked).
+    enable.setButtonText (t->disabled ? "ENABLE TRACK" : "DISABLE TRACK");
+    enable.setColour (juce::TextButton::buttonColourId, t->disabled ? juce::Colour (0xff3a0f18) : juce::Colour (0xff151217));
+    enable.setEnabled (! t->frozen);
+    enable.setTooltip (t->disabled ? "This track is disabled: silent, its instrument and effects unloaded (their settings kept). Click to load them and hear it again"
+                     : t->frozen ? "A frozen track's plugins are already unloaded: unfreeze it first (the track's menu)"
+                                 : "Disable the track: silent, its instrument and effects unloaded (their settings kept), so it costs no power");
     arm.setEnabled (! t->frozen);   // (a frozen track can't record)
     preset.setEnabled (! t->disabled);
 
@@ -885,8 +873,8 @@ void Inspector::layout()
         {
             case Section::basics:
             {
-                if (t->disabled)
-                    place (enable, row (rowHeight + 2));
+                if (! t->isChannel())
+                    place (enable, row (rowHeight + 2));   // (0.17.1: always; FX and group channels can't be disabled)
                 // M S R W (and REC, MON).
                 std::vector<juce::TextButton*> keys { &mute, &solo, &read, &write };
                 if (! t->isChannel())
@@ -905,7 +893,7 @@ void Inspector::layout()
                     auto line = row (rowHeight);
                     if (! t->isChannel())
                     {
-                        place (freeze, line.removeFromLeft ((line.getWidth() - 3) / 2));
+                        place (render, line.removeFromLeft ((line.getWidth() - 3) / 2));
                         line.removeFromLeft (3);
                     }
                     place (preset, line);

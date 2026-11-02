@@ -210,8 +210,38 @@ public:
     {
         auto area = getLocalBounds().toFloat().reduced (6.0f);
         area.removeFromLeft (circleArea().getWidth() + 14.0f);
+        if (const auto popular = popularArea(); ! popular.isEmpty())
+            area.setRight (popular.getX() - 18.0f * k());
         return area;
     }
+
+    // The key's ten most used chords (0.17.1, the owner asked), at the right when there's room.
+    juce::Rectangle<float> popularArea() const
+    {
+        auto area = getLocalBounds().toFloat().reduced (6.0f);
+        area.removeFromLeft (circleArea().getWidth() + 14.0f);
+        const auto width = popularWidth * k();
+        if (area.getWidth() < width + suggestionsLeast * k())
+            return {};
+        return area.removeFromRight (width);
+    }
+    bool showsPopular() const { return ! popularArea().isEmpty(); }
+    // All ten in the room there is (smaller rows than the suggestions' when it's short).
+    float popularRowHeight() const
+    {
+        return juce::jmin (rowHeight(), ((float) getHeight() - 12.0f - headerHeight()) / 10.0f);
+    }
+    static constexpr float popularWidth = 380.0f, suggestionsLeast = 560.0f;
+
+    int popularRowAt (juce::Point<float> p) const
+    {
+        const auto area = popularArea();
+        if (area.isEmpty() || ! area.contains (p) || p.y < area.getY() + headerHeight())
+            return -1;
+        const auto row = (int) ((p.y - area.getY() - headerHeight()) / popularRowHeight());
+        return row < (int) popular.size() ? row : -1;
+    }
+    const std::vector<pr7s::PopularChord>& getPopular() const noexcept { return popular; }
 
     // Larger with room (0.17.0: the right screen's whole height and width).
     float k() const { return juce::jlimit (1.0f, 2.2f, juce::jmin ((float) getHeight() / 230.0f, (float) getWidth() / 640.0f)); }
@@ -234,6 +264,8 @@ public:
                 return spot.chord;
         if (const auto row = rowAt (p); row >= 0)
             return shown[(size_t) row].chord;
+        if (const auto row = popularRowAt (p); row >= 0)
+            return popular[(size_t) row].chord;
         return std::nullopt;
     }
 
@@ -241,6 +273,7 @@ public:
     {
         const auto from = view.getSuggestionsFrom();
         shown = from ? view.getSuggestions() : std::vector<pr7s::Suggestion> {};
+        popular = pr7s::popularChords (view.studio.getChordPads().key());
         repaint();
     }
 
@@ -326,17 +359,58 @@ public:
             g.setFont (chordFont (10.5f * k()));
             g.drawText (s.reason, r, juce::Justification::centredLeft, true);
         }
+
+        // The key's most used chords, most used first.
+        if (auto area = popularArea(); ! area.isEmpty())
+        {
+            g.setColour (ParagonColours::panelEdge);
+            g.fillRect (area.getX() - 9.0f * k(), area.getY(), 1.0f, area.getHeight());
+            auto top = area.removeFromTop (headerHeight());
+            g.setColour (ParagonColours::textDim);
+            g.setFont (ParagonLookAndFeel::titleFont (12.0f * k()));
+            g.drawText ("MOST USED IN " + spokenKey (key).toUpperCase(), top, juce::Justification::centredLeft, true);
+            for (size_t i = 0; i < popular.size(); ++i)
+            {
+                if (area.getHeight() < popularRowHeight() - 0.5f)
+                    break;
+                const auto row = area.removeFromTop (popularRowHeight());
+                const auto& p = popular[i];
+                auto r = row.reduced (0.0f, 2.0f);
+                if ((int) i == hoverPopular)
+                {
+                    g.setColour (juce::Colour (0xff1e181f));
+                    g.fillRect (row);
+                }
+                const auto inKey = p.chord.isInKey (key);
+                g.setColour (ParagonColours::textDim);
+                g.setFont (chordFont (11.0f * k()));
+                g.drawText (juce::String ((int) i + 1), r.removeFromLeft (24.0f * k()), juce::Justification::centredLeft, false);
+                g.setColour (inKey ? ParagonColours::text : ParagonColours::accent);
+                g.setFont (chordFont (13.0f * k()));
+                g.drawText (p.chord.name (key), r.removeFromLeft (64.0f * k()), juce::Justification::centredLeft, false);
+                g.setFont (chordFont (11.0f * k()));
+                g.drawText (p.chord.romanName (key), r.removeFromLeft (56.0f * k()), juce::Justification::centredLeft, false);
+                g.setColour (ParagonColours::textDim);
+                g.setFont (chordFont (10.5f * k()));
+                g.drawText (p.role, r, juce::Justification::centredLeft, true);
+            }
+        }
     }
 
     void mouseMove (const juce::MouseEvent& e) override
     {
         const auto row = rowAt (e.position);
-        if (row != hoverRow)
+        const auto popularRow = popularRowAt (e.position);
+        if (row != hoverRow || popularRow != hoverPopular)
         {
             hoverRow = row;
+            hoverPopular = popularRow;
             repaint();
         }
-        if (row >= 0)
+        if (popularRow >= 0)
+            setTooltip ("Number " + juce::String (popularRow + 1) + " in this key: " + popular[(size_t) popularRow].role
+                        + ". Click to hear it (and see what could come next); double-click: onto the selected pad; or drag it onto a pad or the chord track");
+        else if (row >= 0)
         {
             const auto& s = shown[(size_t) row];
             setTooltip (juce::String (s.score >= 80 ? "Strong" : s.score >= 60 ? "Good" : "Adventurous") + " (" + juce::String (s.score) + "): "
@@ -349,6 +423,7 @@ public:
     void mouseExit (const juce::MouseEvent&) override
     {
         hoverRow = -1;
+        hoverPopular = -1;
         repaint();
     }
 
@@ -374,7 +449,7 @@ public:
             });
             return;
         }
-        // A chord on the circle: played, and the suggestions follow it; a suggestion: played.
+        // A chord on the circle or in the most used: played, and the suggestions follow it; a suggestion: played.
         const auto onCircle = rowAt (e.position) < 0;
         if (onCircle)
             view.circleChordClicked (*downChord);
@@ -401,7 +476,8 @@ private:
     std::vector<pr7s::Suggestion> shown;
     std::optional<Chord> downChord;
     bool dragged = false;
-    int hoverRow = -1;
+    int hoverRow = -1, hoverPopular = -1;
+    std::vector<pr7s::PopularChord> popular;
 };
 
 //==============================================================================
@@ -654,6 +730,7 @@ void ChordPadsView::selectAll()
     selectPads (all);
 }
 
+bool ChordPadsView::isPopularShown() const { return circle != nullptr && circle->isVisible() && circle->showsPopular(); }
 bool ChordPadsView::isKeyListShown() const { return keyList != nullptr && keyList->isVisible(); }
 juce::Component* ChordPadsView::getKeyList() const noexcept { return keyList.get(); }
 juce::Component* ChordPadsView::getCircle() const noexcept { return circle.get(); }

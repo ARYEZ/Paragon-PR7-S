@@ -48,6 +48,7 @@ public:
     // The screens either side of the pads (0.17.0): all the keys on the left, the circle on the right.
     bool isKeyListShown() const;
     bool isCircleOnSide() const noexcept { return circleOnSide; }
+    bool isPopularShown() const;   // the key's most used chords, beside the suggestions (0.17.1: when there's room)
     juce::Component* getKeyList() const noexcept;
     juce::Component* getCircle() const noexcept;
     // The key under a point of the key list (tests).

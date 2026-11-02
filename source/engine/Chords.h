@@ -141,6 +141,14 @@ namespace pr7s
     };
     std::vector<Suggestion> suggestNext (const Chord& from, const Key&);
 
+    // The ten chords most used in a key (0.17.1, the owner asked), most used first,
+    // each with a word on its role. Our ranking from common pop, rock, R&B and
+    // worship practice (not counted from data): major I V IV vi ii V7 iii, then the
+    // favourite visitors bVII, iv (borrowed from the minor) and II (V of V);
+    // minor i VI VII iv V III v V7, then ii° and IV (Dorian).
+    struct PopularChord { Chord chord; juce::String role; };
+    std::vector<PopularChord> popularChords (const Key&);
+
     // The chord track (0.16.0, the owner's choice; the manual's "Chord Functions"):
     // chord events (each until the next starts, as on a lead sheet) and scale
     // events (the key in force from each one on: worked out from the chords

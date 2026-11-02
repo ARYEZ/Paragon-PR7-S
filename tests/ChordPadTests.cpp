@@ -704,6 +704,8 @@ TEST_CASE ("The KEY menu's choice fills the pads; the circle suggests what comes
     // Its relative minor sits on the same row (the same notes).
     CHECK (pads.keyListKeyAt (pads.keyListCell (Key { 3, 0, true }).getCentre())->name() == "F minor");
     CHECK (std::abs (pads.keyListCell (Key { 3, 0, true }).getY() - cell.getY()) < 0.5f);
+    // The key's most used chords beside the suggestions (0.17.1): there's room on the right screen.
+    CHECK (pads.isPopularShown());
     // One screen only: neither side.
     pads.setSize (1500, 320);
     CHECK_FALSE (pads.isKeyListShown());
@@ -740,4 +742,26 @@ TEST_CASE ("Suggestions after every chord in every key, and from outside it (0.1
             CHECK (s.reason.contains ("secondary dominant: pulls to vi"));
         }
     CHECK (found);
+}
+
+TEST_CASE ("The ten most used chords in a key (0.17.1)", "[chords]")
+{
+    const auto names = [] (const Key& key)
+    {
+        juce::StringArray n;
+        for (const auto& p : popularChords (key))
+            n.add (p.chord.name (key));
+        return n.joinIntoString (" ");
+    };
+    CHECK (names (Key { 0, 0, false }) == "C G F Am Dm G7 Em Bb Fm D");
+    CHECK (names (Key { 5, 0, true }) == "Am F G Dm E C Em E7 Bdim D");
+    CHECK (names (Key { 2, -1, true }) == "Ebm Cb Db Abm Bb Gb Bbm Bb7 Fdim Ab");
+    for (const auto& key : Key::all())
+    {
+        const auto list = popularChords (key);
+        REQUIRE (list.size() == 10);
+        CHECK (list[0].chord.root == key.pitchClass());
+        for (const auto& p : list)
+            CHECK (p.role.isNotEmpty());
+    }
 }

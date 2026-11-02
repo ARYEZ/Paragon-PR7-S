@@ -738,6 +738,35 @@ namespace pr7s
         return chords;
     }
 
+    std::vector<PopularChord> popularChords (const Key& key)
+    {
+        const auto chords = keyChords (key);   // (the seven triads; minor: then V and vii°; then the sevenths)
+        const auto tonic = key.pitchClass();
+        using T = Chord::Type;
+        using X = Chord::Tension;
+        if (! key.minor)
+            return { { chords[0], "home" },
+                     { chords[4], "the pull home" },
+                     { chords[3], "lift away" },
+                     { chords[5], "the relative minor" },
+                     { chords[1], "before V" },
+                     { chords[7 + 4], "V with the 7th: a stronger pull" },
+                     { chords[2], "soft, between I and vi" },
+                     { { pc (tonic + 10), T::major, X::none, -1 }, "borrowed: rock's favourite" },
+                     { { pc (tonic + 5), T::minor, X::none, -1 }, "borrowed minor iv: bittersweet" },
+                     { { pc (tonic + 2), T::major, X::none, -1 }, "V of V: leads to V" } };
+        return { { chords[0], "home" },
+                 { chords[5], "lift, the major side" },
+                 { chords[6], "step up to i or III" },
+                 { chords[3], "the minor pre-dominant" },
+                 { chords[7], "major V: the strong pull home" },
+                 { chords[2], "the relative major" },
+                 { chords[4], "minor v: a softer pull" },
+                 { chords[16], "V with the 7th" },   // (harmonic V7: after the 7 triads, V, vii° and the 7 sevenths)
+                 { chords[1], "before V" },
+                 { { pc (tonic + 5), T::major, X::none, -1 }, "borrowed major IV: Dorian colour" } };
+    }
+
     std::vector<Suggestion> suggestNext (const Chord& from, const Key& key)
     {
         // How well each scale degree leads to each other one (rows: from; columns: to;
