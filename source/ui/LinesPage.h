@@ -35,6 +35,28 @@ private:
     juce::TextButton resetKey { "RESET (SHREDDAGE)" };
 };
 
+// HUMANIZE (0.20.0, the owner asked): how much the ideas are loosened (0: on the grid) and FEEL
+// (rhythm and bass a little ahead of the beat, leads and melodies a little behind).
+class HumanizePanel final : public juce::Component
+{
+public:
+    HumanizePanel (float amount, bool feel);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void setAmount (float);   // (as a drag would: onChange called)
+    void setFeel (bool);
+    float getAmount() const noexcept { return amount; }
+    bool getFeel() const noexcept { return feel; }
+    std::function<void (float amount, bool feel)> onChange;
+    static constexpr int width = 420, height = 170;
+
+private:
+    float amount;
+    bool feel;
+    juce::Slider bar { juce::Slider::LinearBar, juce::Slider::TextBoxLeft };
+    juce::TextButton feelKey { "FEEL" };
+};
+
 class LinesPage final : public juce::Component,
                         private juce::Timer
 {
@@ -55,6 +77,9 @@ public:
     const pr7s::GuitarTuning& getTuning() const;
     void setGuitarVelocities (const pr7s::GuitarVelocities&);   // (Studio::setGuitarVelocities), guitar ideas dealt again
     void showVelocities();                                     // the panel in a call-out under VELOCITIES
+    void setHumanize (float amount, bool feel);                // (Studio's ideas humanize), every tab dealt again
+    void showHumanize();
+    static juce::String humanizeText (float amount);           // "HUMANIZE 40%" / "HUMANIZE OFF"
 
     // What the keys do (tests drive them).
     void play (pr7s::LineIdea::Part, int index);
@@ -88,6 +113,7 @@ private:
     juce::Label tuningLabel { {}, "TUNING" };
     juce::ComboBox tuningBox;
     juce::TextButton velocitiesKey { "VELOCITIES" };
+    juce::TextButton humanizeKey;
     std::vector<juce::Rectangle<int>> columnTitles;
     double barBeats = 4.0;
 };

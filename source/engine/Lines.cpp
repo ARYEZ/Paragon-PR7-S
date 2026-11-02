@@ -1031,3 +1031,64 @@ namespace pr7s
         return ideas;
     }
 }
+
+//==============================================================================
+// Humanize (0.20.0).
+namespace pr7s
+{
+    const std::vector<std::pair<int, int>>& guitarLayers()
+    {
+        static const std::vector<std::pair<int, int>> layers { { 1, 59 }, { 60, 119 }, { 120, 126 }, { 127, 127 } };
+        return layers;
+    }
+
+    std::vector<LineNote> humanize (std::vector<LineNote> notes, const HumanizeOptions& o)
+    {
+        const auto amount = (double) juce::jlimit (0.0f, 1.0f, o.amount);
+        if (notes.empty() || (amount <= 0.0 && o.feelMs == 0.0))
+            return notes;
+        std::stable_sort (notes.begin(), notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+        juce::Random random ((juce::int64) o.seed * 2654435761u + 17);
+        const auto tri = [&random] { return (double) (random.nextFloat() + random.nextFloat() - 1.0f); };   // -1..1, small likelier
+        const auto beatsPerMs = juce::jmax (1.0, o.bpm) / 60000.0;
+        const auto weightAt = [&] (double beat)   // a bar's "one" moves least
+        {
+            const auto song = o.originBeat + beat;
+            const auto inBar = std::fmod (std::fmod (song, o.beatsPerBar) + o.beatsPerBar, o.beatsPerBar);
+            if (inBar < 0.01 || o.beatsPerBar - inBar < 0.01)
+                return 0.3;
+            const auto inBeat = song - std::floor (song + 0.01);
+            return std::abs (inBeat) < 0.01 ? 0.6 : 1.0;
+        };
+        const auto layerOf = [&] (int v) -> std::pair<int, int>
+        {
+            for (const auto& l : o.layers)
+                if (v >= l.first && v <= l.second)
+                    return l;
+            return { 1, 127 };
+        };
+        for (size_t first = 0; first < notes.size();)
+        {
+            // The notes starting together: a chord or a strum, moved as one.
+            auto last = first;
+            while (last + 1 < notes.size() && notes[last + 1].beat - notes[first].beat < HumanizeLimits::together)
+                ++last;
+            const auto start = notes[first].beat;
+            const auto shift = (tri() * HumanizeLimits::timingMs * amount * weightAt (start) + o.feelMs) * beatsPerMs;
+            const auto spread = 1.0 + tri() * HumanizeLimits::strum * amount;
+            for (auto i = first; i <= last; ++i)
+            {
+                auto& n = notes[i];
+                n.beat = juce::jmax (0.0, start + shift + (n.beat - start) * spread);
+                const auto v = GuitarVelocity::midiOf (n.velocity);
+                const auto layer = layerOf (v);
+                const auto moved = juce::jlimit (layer.first, layer.second, v + (int) std::round (tri() * HumanizeLimits::velocity * amount));
+                n.velocity = (float) juce::jlimit (1, 127, moved) / 127.0f;
+                n.length = juce::jmax (0.02, n.length * (1.0 + tri() * HumanizeLimits::length * amount));
+            }
+            first = last + 1;
+        }
+        std::stable_sort (notes.begin(), notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+        return notes;
+    }
+}

@@ -113,6 +113,18 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     velocityRangesKey.onClick = [this] { showVelocityRanges(); };
     panelColumn.addAndMakeVisible (velocityRangesKey);
     refreshVelocityKeys();
+    humanizeKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    humanizeKey.setWantsKeyboardFocus (false);
+    humanizeKey.setTooltip ("Humanize the selected notes: small differences in timing, velocity and length so they sound played (Ctrl+Z takes it back)");
+    humanizeKey.onClick = [this] { humanizeSelected(); };
+    panelColumn.addAndMakeVisible (humanizeKey);
+    humanizeMenuKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    humanizeMenuKey.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    humanizeMenuKey.setWantsKeyboardFocus (false);
+    humanizeMenuKey.setTooltip ("How much HUMANIZE loosens, and whether velocities keep to a guitar library's layers");
+    humanizeMenuKey.onClick = [this] { showHumanizeMenu(); };
+    panelColumn.addAndMakeVisible (humanizeMenuKey);
+    refreshHumanizeKey();
 
     autoScrollButton.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     autoScrollButton.setWantsKeyboardFocus (false);
@@ -573,6 +585,66 @@ bool KeyEditor::randomizeVelocities (int range)
     commit (std::move (edited));
     selectNotes (keep);   // (still selected: press again for another roll)
     return true;
+}
+
+bool KeyEditor::humanizeSelected (float amount)
+{
+    const auto* part = getPart();
+    if (part == nullptr || selected.empty())
+        return false;
+    if (amount < 0.0f)
+        amount = studio.getHumanizeAmount();
+    // The selected notes in time order, loosened, and written back into the same places.
+    auto slots = selected;
+    std::sort (slots.begin(), slots.end(), [part] (int a, int b) { return part->notes[(size_t) a].start < part->notes[(size_t) b].start; });
+    std::vector<pr7s::LineNote> notes;
+    for (const auto i : slots)
+    {
+        const auto& n = part->notes[(size_t) i];
+        notes.push_back ({ n.start, n.length, n.pitch, n.velocity });
+    }
+    pr7s::HumanizeOptions o;
+    o.amount = amount;
+    o.bpm = studio.getProject().bpmAt (part->start + notes.front().beat);
+    o.beatsPerBar = studio.getProject().beatsPerBar();
+    o.originBeat = part->start;
+    if (studio.getHumanizeKeepsLayers())
+        o.layers = pr7s::guitarLayers();
+    o.seed = (juce::uint32) random.nextInt();
+    notes = pr7s::humanize (std::move (notes), o);
+    auto edited = part->notes;
+    for (size_t k = 0; k < slots.size(); ++k)
+        edited[(size_t) slots[k]] = { notes[k].beat, notes[k].length, notes[k].pitch, notes[k].velocity };
+    const auto keep = selected;
+    commit (std::move (edited));
+    selectNotes (keep);
+    return true;
+}
+
+void KeyEditor::refreshHumanizeKey()
+{
+    humanizeKey.setButtonText ("HUMANIZE " + juce::String (juce::roundToInt (studio.getHumanizeAmount() * 100.0f)) + "%");
+}
+
+void KeyEditor::showHumanizeMenu()
+{
+    juce::PopupMenu menu;
+    const auto now = juce::roundToInt (studio.getHumanizeAmount() * 100.0f);
+    for (const auto percent : { 10, 25, 50, 75, 100 })
+        menu.addItem (percent, "Amount " + juce::String (percent) + "%", true, now == percent);
+    menu.addSeparator();
+    menu.addItem (1000, "Keep velocities in their layers (1-59 / 60-119 / 120-126 / 127)", true, studio.getHumanizeKeepsLayers());
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (humanizeMenuKey),
+                        [safe = juce::Component::SafePointer<KeyEditor> (this)] (int chosen)
+                        {
+                            if (safe == nullptr || chosen == 0)
+                                return;
+                            if (chosen == 1000)
+                                safe->studio.setHumanizeKeepsLayers (! safe->studio.getHumanizeKeepsLayers());
+                            else
+                                safe->studio.setHumanizeAmount ((float) chosen / 100.0f);
+                            safe->refreshHumanizeKey();
+                        });
 }
 
 void KeyEditor::setVelocityRange (int range, int low, int high)
@@ -1436,6 +1508,8 @@ void KeyEditor::layoutColumn()
     for (auto& key : velocityKeys)
         place (key);
     place (velocityRangesKey);
+    place (humanizeKey);
+    place (humanizeMenuKey);
     gap();
     infoView.setBounds (0, y, width, 40);
     y += 40;

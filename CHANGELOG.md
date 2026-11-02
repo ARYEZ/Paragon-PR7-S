@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.20.0
+
+Humanize, in the IDEAS window and the MIDI editor (the owner asked): small, controlled differences in timing, velocity and length so parts sound played rather than programmed.
+
+- **How it loosens a part.**
+  - **Timing:** each note lands up to 12 ms early or late at full amount. It's in milliseconds, as a player's timing is, not a fraction of the beat. Small moves are likely and big ones rare.
+  - **Downbeats move least:** a bar's first beat moves least (a third as much), the other beats a little more, and the notes between them most. Players lock the "one", so it sounds played, not sloppy.
+  - **Chords stay chords:** notes that start together (a chord, or a strum's six strings) move as one, and a strum's speed varies a little from strum to strum.
+  - **Velocity:** up to 10 softer or harder, **always inside its layer.** With your Shreddage layout a palm mute stays a palm mute (1-59), a sustain stays a sustain (60-119), a rake stays a rake (120-126) and a pinch harmonic stays exactly 127.
+  - **Length:** up to 12% longer or shorter (how soon a palm mute is choked, for instance).
+- **In IDEAS:** HUMANIZE in the header (every tab) shows the amount ("HUMANIZE OFF" to start, so nothing changes until you turn it up) and opens a panel with AMOUNT (0-100%) and FEEL. FEEL gives each part a lean, growing with the amount: rhythm guitar and bass push slightly ahead of the beat (up to 3 ms), leads and melodies lay back slightly behind it (up to 5 ms), piano sits on it. Each idea is loosened its own way but always the same way, so what HEAR plays is exactly what USE IT adds; MORE IDEAS deals new performances too.
+- **In the MIDI editor:** HUMANIZE 50% under the LOW/MID/HIGH velocity keys loosens the selected notes. It works on anything (parts you played in, imported or drew), one undo step each time, and the notes stay selected so you can press it again to loosen further. HUMANIZE SET (the arrow) chooses the amount (10/25/50/75/100%) and "Keep velocities in their layers" (on at first; turn it off for a piano or drums, where there are no layers to keep).
+- **Honestly:** the rules are our own, from how players play; how much sounds right is for your ears (tight djent chugs want little, strums and leads more). Shreddage already varies its samples on repeated notes (round-robins); humanize adds timing and feel, which round-robins don't. Not yet: a groove taken from a recording, a key for HUMANIZE (it can be given one in KEYS once it's a command), or humanizing a whole part from the arrangement.
+
 ## 0.19.3
 
 The guitar ideas' velocities, set by ear (the owner asked, to match them to Shreddage at home without waiting for a new version).

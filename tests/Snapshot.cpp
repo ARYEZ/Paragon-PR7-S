@@ -599,9 +599,14 @@ TEST_CASE ("Snapshot: the guitar VELOCITIES panel", "[.][snapshot-velocities]")
     ParagonLookAndFeel lookAndFeel;
     juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
     {
-        GuitarVelocityPanel panel ({});
-        panel.resized();
-        const auto image = panel.createComponentSnapshot (panel.getLocalBounds(), true, 2.0f);
+        // PARAGON_SNAPSHOT_HUMANIZE=1: IDEAS' HUMANIZE panel instead (0.20.0).
+        std::unique_ptr<juce::Component> panel;
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUMANIZE", {}) == "1")
+            panel = std::make_unique<HumanizePanel> (0.4f, true);
+        else
+            panel = std::make_unique<GuitarVelocityPanel> (pr7s::GuitarVelocities {});
+        panel->resized();
+        const auto image = panel->createComponentSnapshot (panel->getLocalBounds(), true, 2.0f);
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };
         juce::PNGImageFormat().writeImageToStream (image, out);

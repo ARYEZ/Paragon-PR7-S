@@ -5296,6 +5296,54 @@ namespace pr7s
             settings->setValue ("guitarVelocities", v.toString());
     }
 
+    float Studio::getIdeasHumanize() const
+    {
+        return settings != nullptr ? juce::jlimit (0.0f, 1.0f, (float) settings->getDoubleValue ("ideasHumanize", ideasHumanize)) : ideasHumanize;
+    }
+
+    void Studio::setIdeasHumanize (float amount)
+    {
+        ideasHumanize = juce::jlimit (0.0f, 1.0f, amount);
+        if (settings != nullptr)
+            settings->setValue ("ideasHumanize", (double) ideasHumanize);
+    }
+
+    bool Studio::getIdeasFeel() const
+    {
+        return settings != nullptr ? settings->getBoolValue ("ideasFeel", ideasFeel) : ideasFeel;
+    }
+
+    void Studio::setIdeasFeel (bool on)
+    {
+        ideasFeel = on;
+        if (settings != nullptr)
+            settings->setValue ("ideasFeel", on);
+    }
+
+    float Studio::getHumanizeAmount() const
+    {
+        return settings != nullptr ? juce::jlimit (0.05f, 1.0f, (float) settings->getDoubleValue ("humanizeAmount", humanizeAmount)) : humanizeAmount;
+    }
+
+    void Studio::setHumanizeAmount (float amount)
+    {
+        humanizeAmount = juce::jlimit (0.05f, 1.0f, amount);
+        if (settings != nullptr)
+            settings->setValue ("humanizeAmount", (double) humanizeAmount);
+    }
+
+    bool Studio::getHumanizeKeepsLayers() const
+    {
+        return settings != nullptr ? settings->getBoolValue ("humanizeLayers", humanizeLayers) : humanizeLayers;
+    }
+
+    void Studio::setHumanizeKeepsLayers (bool on)
+    {
+        humanizeLayers = on;
+        if (settings != nullptr)
+            settings->setValue ("humanizeLayers", on);
+    }
+
     void Studio::setGuitarTuning (const juce::String& name)
     {
         guitarTuning = GuitarTuning::named (name).name;

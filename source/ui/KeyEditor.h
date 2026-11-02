@@ -93,6 +93,15 @@ public:
     std::pair<int, int> getVelocityRange (int range) const;
     juce::TextButton& getVelocityKey (int range) { return velocityKeys[(size_t) range]; }
 
+    // Humanize (0.20.0, the owner asked): the selected notes loosened (pr7s::humanize: timing in
+    // ms, velocity inside its layer when HUMANIZE's "keep layers" is on, length; chords together;
+    // a bar's first beat moves least). The amount: Studio::getHumanizeAmount unless given. One edit;
+    // the selection kept (press again to loosen further, Ctrl+Z to take it back). False if nothing
+    // was selected.
+    bool humanizeSelected (float amount = -1.0f);
+    void showHumanizeMenu();
+    juce::TextButton& getHumanizeKey() { return humanizeKey; }
+
     // The editor's clipboard: notes kept with their timing relative to one
     // another, so they paste into this part or any other.
     void copySelected();
@@ -263,6 +272,8 @@ private:
     juce::ComboBox sizeBox;
     std::array<juce::TextButton, 3> velocityKeys;
     juce::TextButton velocityRangesKey;
+    juce::TextButton humanizeKey, humanizeMenuKey { "HUMANIZE SET" };
+    void refreshHumanizeKey();
     std::array<std::pair<int, int>, 3> velocityRanges { { { 40, 70 }, { 70, 100 }, { 100, 127 } } };
     juce::Random random;
     void refreshVelocityKeys();
