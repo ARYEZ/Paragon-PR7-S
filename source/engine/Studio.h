@@ -244,6 +244,18 @@ namespace pr7s
         // The guitar ideas' velocities (0.19.3, the VELOCITIES panel; settings key "guitarVelocities").
         GuitarVelocities getGuitarVelocities() const;
         void setGuitarVelocities (const GuitarVelocities&);
+        // Humanize (0.20.0). IDEAS: its amount (0-1, settings "ideasHumanize", default 0: on the
+        // grid as before) and FEEL ("ideasFeel", default on). The MIDI editor: its amount
+        // ("humanizeAmount", default 0.5) and whether velocities keep to the guitar library's
+        // layers ("humanizeLayers", default on).
+        float getIdeasHumanize() const;
+        void setIdeasHumanize (float);
+        bool getIdeasFeel() const;
+        void setIdeasFeel (bool);
+        float getHumanizeAmount() const;
+        void setHumanizeAmount (float);
+        bool getHumanizeKeepsLayers() const;
+        void setHumanizeKeepsLayers (bool);
         // An idea heard with its chords (soft, underneath) through the live track's instrument,
         // at the song's tempo; the chords alone with no idea. Stopped by stopPreview (or the next).
         void previewLine (const LineIdea*, const std::vector<ChordSpan>&, bool withChords = true);
@@ -790,6 +802,8 @@ namespace pr7s
         bool mirroring = false;
         juce::String guitarTuning;   // (without a settings file: the tests)
         GuitarVelocities guitarVelocities;
+        float ideasHumanize = 0.0f, humanizeAmount = 0.5f;   // (without a settings file: the tests)
+        bool ideasFeel = true, humanizeLayers = true;
         float dropHighlight = defaultDropHighlight;   // (without a settings file: the tests)   // (a linked change being passed on: not passed on again)
         void pruneLinkGroups();
         // `action` for each channel linked to this one for `what` (not itself); the

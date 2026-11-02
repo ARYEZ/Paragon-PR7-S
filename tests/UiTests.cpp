@@ -2351,6 +2351,59 @@ TEST_CASE ("The key editor at 200% (the default), SPLIT, the pencil, whole and h
     CHECK (editor.getMouseCursor() != juce::MouseCursor (juce::MouseCursor::CrosshairCursor));
 }
 
+TEST_CASE ("Humanize in the MIDI editor: the selected notes loosened, the others untouched, one undo step (0.20.0)", "[ui][editor][humanize]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto trackId = studio.getProject().tracks[0].id;
+    Part riff { 0.0, 8.0, "Riff", {} };
+    for (int i = 0; i < 32; ++i)
+        riff.notes.push_back ({ i * 0.25, 0.2, 40 + i % 12, (float) (i % 2 == 0 ? 44 : 96) / 127.0f });
+    studio.addPart (trackId, riff);
+    view.getArrangeView().select (trackId, 0);
+    view.openKeyEditor();
+    studio.dispatchPendingMessages();
+    auto& editor = view.getKeyEditor();
+    REQUIRE (editor.getPart() != nullptr);
+    CHECK (editor.getHumanizeKey().getButtonText() == "HUMANIZE 50%");
+
+    CHECK_FALSE (editor.humanizeSelected());   // nothing selected
+    std::vector<int> first16;
+    for (int i = 0; i < 16; ++i)
+        first16.push_back (i);
+    editor.selectNotes (first16);
+    const auto before = editor.getPart()->notes;
+    CHECK (editor.humanizeSelected (1.0f));
+    const auto& after = editor.getPart()->notes;
+    REQUIRE (after.size() == before.size());
+    auto changed = 0;
+    for (size_t i = 0; i < after.size(); ++i)
+    {
+        if (i >= 16)
+            CHECK (after[i] == before[i]);   // not selected: untouched
+        else
+            changed += after[i] != before[i] ? 1 : 0;
+    }
+    CHECK (changed > 8);
+    // Layers kept: a palm mute (44) stays under 60, a sustain (96) stays 60-119; pitches the same set.
+    std::multiset<int> pitchesBefore, pitchesAfter;
+    for (size_t i = 0; i < 16; ++i)
+    {
+        pitchesBefore.insert (before[i].pitch);
+        pitchesAfter.insert (after[i].pitch);
+        const auto v = juce::roundToInt (after[i].velocity * 127.0f);
+        CHECK (((v <= 59) || (v >= 60 && v <= 119)));
+        CHECK (std::abs (after[i].start - before[i].start) <= 12.0 * 120.0 / 60000.0 + 1.0e-9);
+    }
+    CHECK (pitchesBefore == pitchesAfter);
+    CHECK (editor.getSelectedNotes().size() == 16);   // still selected: press again to loosen further
+    // One undo step.
+    studio.undo();
+    CHECK (editor.getPart()->notes == before);
+}
+
 TEST_CASE ("Random velocities: Alt+B / N / M give the selected notes velocities within LOW / MID / HIGH", "[ui][editor][velocity]")
 {
     Finish::set (Finish::Type::pearlWhite, false);

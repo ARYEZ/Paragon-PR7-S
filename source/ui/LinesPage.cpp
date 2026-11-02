@@ -140,6 +140,77 @@ public:
 };
 
 //==============================================================================
+HumanizePanel::HumanizePanel (float a, bool f) : amount (juce::jlimit (0.0f, 1.0f, a)), feel (f)
+{
+    bar.setRange (0.0, 100.0, 1.0);
+    bar.setTextValueSuffix ("%");
+    bar.setColour (juce::Slider::trackColourId, ParagonColours::accent);
+    bar.setColour (juce::Slider::textBoxTextColourId, ParagonColours::text);
+    bar.setColour (juce::Slider::backgroundColourId, juce::Colour (0xff1b171c));
+    bar.setColour (juce::Slider::textBoxOutlineColourId, ParagonColours::panelEdge);
+    bar.setTooltip ("0%: exactly on the grid. 100%: notes up to 12 ms early or late, velocities up to 10 softer or harder (inside their layer), lengths up to 12% different");
+    bar.setValue (amount * 100.0, juce::dontSendNotification);
+    bar.onValueChange = [this] { setAmount ((float) bar.getValue() / 100.0f); };
+    addAndMakeVisible (bar);
+    feelKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    feelKey.setClickingTogglesState (false);
+    feelKey.setToggleState (feel, juce::dontSendNotification);
+    feelKey.setTooltip ("Each part's lean: rhythm guitar and bass a little ahead of the beat (pushing), leads and melodies a little behind (laying back), piano on it; grows with the amount");
+    feelKey.onClick = [this] { setFeel (! feel); };
+    addAndMakeVisible (feelKey);
+    setSize (width, height);
+}
+
+void HumanizePanel::setAmount (float a)
+{
+    a = juce::jlimit (0.0f, 1.0f, a);
+    if (a == amount)
+        return;
+    amount = a;
+    bar.setValue (amount * 100.0, juce::dontSendNotification);
+    if (onChange)
+        onChange (amount, feel);
+}
+
+void HumanizePanel::setFeel (bool f)
+{
+    if (f == feel)
+        return;
+    feel = f;
+    feelKey.setToggleState (feel, juce::dontSendNotification);
+    if (onChange)
+        onChange (amount, feel);
+}
+
+void HumanizePanel::paint (juce::Graphics& g)
+{
+    g.fillAll (juce::Colour (0xff0c0a0d));
+    auto area = getLocalBounds().reduced (14, 10);
+    g.setColour (ParagonColours::text);
+    g.setFont (ParagonLookAndFeel::titleFont (16.0f));
+    g.drawText ("HUMANIZE", area.removeFromTop (22), juce::Justification::centredLeft, false);
+    g.setColour (ParagonColours::textDim);
+    g.setFont (juce::Font (juce::FontOptions (11.5f)));
+    g.drawFittedText ("Small differences in timing, velocity and length so the ideas sound played. Chords stay together, "
+                      "a bar's first beat moves least, and velocities stay in their articulation's layer.",
+                      area.removeFromTop (44), juce::Justification::topLeft, 3, 0.9f);
+    g.setColour (ParagonColours::text);
+    g.setFont (ParagonLookAndFeel::titleFont (13.0f));
+    g.drawText ("AMOUNT", area.removeFromTop (30).removeFromLeft (80), juce::Justification::centredLeft, false);
+}
+
+void HumanizePanel::resized()
+{
+    auto area = getLocalBounds().reduced (14, 10);
+    area.removeFromTop (66);
+    auto row = area.removeFromTop (30);
+    row.removeFromLeft (80);
+    bar.setBounds (row.reduced (0, 4));
+    area.removeFromTop (12);
+    feelKey.setBounds (area.removeFromTop (28).removeFromLeft (120));
+}
+
+//==============================================================================
 GuitarVelocityPanel::GuitarVelocityPanel (pr7s::GuitarVelocities v) : values (v)
 {
     for (int i = 0; i < pr7s::GuitarVelocities::count; ++i)
@@ -260,6 +331,12 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
     velocitiesKey.setTooltip ("The velocity of each articulation (palm mute, sustain, rake, pinch harmonic), set by ear for your guitar library");
     velocitiesKey.onClick = [this] { showVelocities(); };
     addChildComponent (velocitiesKey);
+    humanizeKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    humanizeKey.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    humanizeKey.setWantsKeyboardFocus (false);
+    humanizeKey.setTooltip ("Loosen the ideas so they sound played: timing, velocity and length, with each part's feel");
+    humanizeKey.onClick = [this] { showHumanize(); };
+    addAndMakeVisible (humanizeKey);
 
     if (auto* settings = studio.getSettings())
     {
@@ -352,6 +429,32 @@ void LinesPage::showVelocities()
     juce::CallOutBox::launchAsynchronously (std::move (panel), velocitiesKey.getScreenBounds(), nullptr);
 }
 
+juce::String LinesPage::humanizeText (float amount)
+{
+    return amount <= 0.0f ? juce::String ("HUMANIZE OFF") : "HUMANIZE " + juce::String (juce::roundToInt (amount * 100.0f)) + "%";
+}
+
+void LinesPage::setHumanize (float amount, bool feel)
+{
+    if (amount == studio.getIdeasHumanize() && feel == studio.getIdeasFeel())
+        return;
+    stop();
+    studio.setIdeasHumanize (amount);
+    studio.setIdeasFeel (feel);
+    rebuild();
+}
+
+void LinesPage::showHumanize()
+{
+    auto panel = std::make_unique<HumanizePanel> (studio.getIdeasHumanize(), studio.getIdeasFeel());
+    panel->onChange = [safe = juce::Component::SafePointer<LinesPage> (this)] (float amount, bool feel)
+    {
+        if (safe != nullptr)
+            safe->setHumanize (amount, feel);
+    };
+    juce::CallOutBox::launchAsynchronously (std::move (panel), humanizeKey.getScreenBounds(), nullptr);
+}
+
 void LinesPage::rebuild()
 {
     using P = pr7s::LineIdea::Part;
@@ -362,6 +465,33 @@ void LinesPage::rebuild()
     const auto velocities = studio.getGuitarVelocities();
     ideas[(size_t) P::rhythm] = pr7s::guitarRhythmIdeas (spans, barBeats, variation, tuning, velocities);
     ideas[(size_t) P::lead] = pr7s::guitarLeadIdeas (spans, barBeats, variation, tuning, velocities);
+    // Humanize (0.20.0): each idea loosened its own repeatable way (what HEAR plays is what USE IT adds).
+    const auto amount = studio.getIdeasHumanize();
+    humanizeKey.setButtonText (humanizeText (amount));
+    if (amount > 0.0f && ! spans.empty())
+    {
+        const auto feel = studio.getIdeasFeel();
+        for (const auto part : { P::bass, P::melody, P::chords, P::rhythm, P::lead })
+        {
+            auto& list = ideas[(size_t) part];
+            for (size_t i = 0; i < list.size(); ++i)
+            {
+                pr7s::HumanizeOptions o;
+                o.amount = amount;
+                o.bpm = studio.getProject().bpmAt (spans.front().start);
+                o.beatsPerBar = barBeats;
+                o.originBeat = spans.front().start;
+                const auto guitar = part == P::rhythm || part == P::lead;
+                if (guitar)
+                    o.layers = pr7s::guitarLayers();
+                if (feel)
+                    o.feelMs = amount * (part == P::rhythm || part == P::bass ? pr7s::HumanizeLimits::feelAheadMs
+                                         : part == P::lead || part == P::melody ? pr7s::HumanizeLimits::feelBehindMs : 0.0);
+                o.seed = (juce::uint32) (variation * 1009 + (int) part * 101 + (int) i + 1);
+                list[i].notes = pr7s::humanize (std::move (list[i].notes), o);
+            }
+        }
+    }
     makeCards();
 }
 
@@ -491,7 +621,7 @@ void LinesPage::paint (juce::Graphics& g)
         what = juce::String ((int) spans.size()) + " chords, bars " + bar (spans.front().start) + " to " + bar (spans.back().end - 1.0e-6)
              + ", in " + ChordUi::spokenKey (spans.front().key) + ":  " + names.joinIntoString (" ");
     }
-    g.drawText (what, head.withTrimmedRight (320), juce::Justification::centredLeft, true);
+    g.drawText (what, head.withTrimmedRight (480), juce::Justification::centredLeft, true);
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (14.0f));
     const auto parts = partsOf (tab);
@@ -518,6 +648,8 @@ void LinesPage::resized()
     more.setBounds (head.removeFromRight (110));
     head.removeFromRight (6);
     hearChords.setBounds (head.removeFromRight (110));
+    head.removeFromRight (6);
+    humanizeKey.setBounds (head.removeFromRight (150));
 
     auto tabs = area.removeFromTop (tabsHeight).withTrimmedBottom (6);
     for (auto* key : { &pianoTab, &guitarTab, &bassTab })

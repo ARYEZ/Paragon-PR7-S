@@ -569,6 +569,105 @@ TEST_CASE ("Ideas onto the selected track, or a new one named for the part; the 
     CHECK (studio.getGuitarTuning() == "7-string drop A");
 }
 
+TEST_CASE ("Humanize: timing in milliseconds, the bar's first beat steadiest, chords together, velocities in their layers, repeatable (0.20.0)", "[lines][humanize]")
+{
+    // Sixteen bars of sixteenths at 120 BPM (a beat is 500 ms), velocities in each guitar layer.
+    std::vector<LineNote> notes;
+    const int layered[] = { 44, 96, 123, 127 };
+    for (int i = 0; i < 256; ++i)
+        notes.push_back ({ i * 0.25, 0.2, 40 + i % 12, (float) layered[i % 4] / 127.0f });
+    HumanizeOptions o;
+    o.bpm = 120.0;
+    o.layers = guitarLayers();
+    o.seed = 7;
+
+    // Amount 0: nothing changes.
+    CHECK (humanize (notes, o) == notes);
+
+    o.amount = 1.0f;
+    const auto loose = humanize (notes, o);
+    REQUIRE (loose.size() == notes.size());
+    CHECK (loose == humanize (notes, o));   // repeatable
+    o.seed = 8;
+    CHECK (loose != humanize (notes, o));   // another seed, another performance
+    o.seed = 7;
+
+    // Each note within 12 ms (0.024 beats at 120), the bar's first beat within 0.3 of that; some moved.
+    const auto msToBeats = 120.0 / 60000.0;
+    auto moved = 0, velocities = 0;
+    for (size_t i = 0; i < notes.size(); ++i)
+    {
+        // (Single notes 0.25 apart keep their order: the shift is under half the gap.)
+        const auto& a = notes[i];
+        const auto& b = loose[i];
+        CHECK (b.pitch == a.pitch);
+        const auto ms = std::abs (b.beat - a.beat) / msToBeats;
+        const auto downbeat = std::fmod (a.beat, 4.0) < 1.0e-9;
+        CHECK (ms <= (downbeat ? 12.0 * 0.3 : 12.0) + 1.0e-6);
+        moved += ms > 0.5 ? 1 : 0;
+        // Velocity: within 10, and inside its layer (a pinch stays 127, a rake stays a rake).
+        const auto va = GuitarVelocity::midiOf (a.velocity), vb = GuitarVelocity::midiOf (b.velocity);
+        CHECK (std::abs (vb - va) <= 10);
+        if (va == 127) CHECK (vb == 127);
+        if (va == 123) CHECK ((vb >= 120 && vb <= 126));
+        if (va == 96)  CHECK ((vb >= 60 && vb <= 119));
+        if (va == 44)  CHECK ((vb >= 1 && vb <= 59));
+        velocities += vb != va ? 1 : 0;
+        // Length: within 12%.
+        CHECK (std::abs (b.length - a.length) <= a.length * 0.12 + 1.0e-9);
+    }
+    CHECK (moved > 100);
+    CHECK (velocities > 100);
+
+    // A strummed chord (six notes 0.02 beats apart) moves as one: order kept, spread within 25%.
+    std::vector<LineNote> strum;
+    for (int bar = 0; bar < 8; ++bar)
+        for (int k = 0; k < 6; ++k)
+            strum.push_back ({ bar * 4.0 + 1.0 + k * 0.02, 1.0, 40 + k * 5, 0.75f });
+    const auto played = humanize (strum, o);
+    for (int bar = 0; bar < 8; ++bar)
+    {
+        const auto first = played[(size_t) bar * 6].beat, last = played[(size_t) bar * 6 + 5].beat;
+        CHECK (last - first >= 0.1 * 0.75 - 1.0e-9);
+        CHECK (last - first <= 0.1 * 1.25 + 1.0e-9);
+        for (int k = 0; k < 6; ++k)
+            CHECK (played[(size_t) bar * 6 + k].pitch == 40 + k * 5);   // still low to high
+    }
+    // A block chord stays exactly together.
+    std::vector<LineNote> block { { 1.0, 1.0, 48, 0.7f }, { 1.0, 1.0, 52, 0.7f }, { 1.0, 1.0, 55, 0.7f } };
+    const auto blockPlayed = humanize (block, o);
+    CHECK (blockPlayed[0].beat == blockPlayed[1].beat);
+    CHECK (blockPlayed[1].beat == blockPlayed[2].beat);
+
+    // FEEL: a lean added to every note (here 5 ms behind, with no randomness).
+    HumanizeOptions lean;
+    lean.feelMs = 5.0;
+    lean.bpm = 120.0;
+    const auto behind = humanize (notes, lean);
+    for (size_t i = 1; i < notes.size(); ++i)
+        CHECK (std::abs ((behind[i].beat - notes[i].beat) - 5.0 * msToBeats) < 1.0e-9);
+    // Nothing before the part's start.
+    lean.feelMs = -5.0;
+    CHECK (humanize (notes, lean).front().beat == 0.0);
+}
+
+TEST_CASE ("Humanize's settings are kept (0.20.0)", "[lines][humanize]")
+{
+    Studio studio (false);
+    CHECK (studio.getIdeasHumanize() == 0.0f);
+    CHECK (studio.getIdeasFeel());
+    CHECK (studio.getHumanizeAmount() == 0.5f);
+    CHECK (studio.getHumanizeKeepsLayers());
+    studio.setIdeasHumanize (0.4f);
+    studio.setIdeasFeel (false);
+    studio.setHumanizeAmount (2.0f);
+    studio.setHumanizeKeepsLayers (false);
+    CHECK (studio.getIdeasHumanize() == 0.4f);
+    CHECK_FALSE (studio.getIdeasFeel());
+    CHECK (studio.getHumanizeAmount() == 1.0f);
+    CHECK_FALSE (studio.getHumanizeKeepsLayers());
+}
+
 #include "ui/MainView.h"
 #include "ui/ParagonLookAndFeel.h"
 #include "ui/Finish.h"
@@ -654,6 +753,28 @@ TEST_CASE ("The IDEAS window: ideas heard, used, more of them (0.18.0); piano, g
     CHECK (changes == 2);
     CHECK (studio.getGuitarVelocities() == GuitarVelocities {});
     CHECK (panel.getValues() == GuitarVelocities {});
+
+    // HUMANIZE (0.20.0): the ideas loosened, the same each time (HEAR = USE IT); OFF puts them on the grid.
+    const auto onGrid = page.getIdeas (LineIdea::Part::lead);
+    HumanizePanel humanizePanel (studio.getIdeasHumanize(), studio.getIdeasFeel());
+    humanizePanel.onChange = [&] (float amount, bool feel) { page.setHumanize (amount, feel); };
+    humanizePanel.setAmount (0.6f);
+    CHECK (studio.getIdeasHumanize() == 0.6f);
+    CHECK (LinesPage::humanizeText (0.6f) == "HUMANIZE 60%");
+    CHECK (LinesPage::humanizeText (0.0f) == "HUMANIZE OFF");
+    const auto loosened = page.getIdeas (LineIdea::Part::lead);
+    auto differs = false;
+    for (size_t i = 0; i < onGrid.size(); ++i)
+        differs = differs || loosened[i].notes != onGrid[i].notes;
+    CHECK (differs);
+    page.setGuitarVelocities (studio.getGuitarVelocities());   // (no change: not dealt again)
+    page.moreIdeas();
+    const auto again = page.getIdeas (LineIdea::Part::lead);
+    page.setHumanize (0.6f, ! studio.getIdeasFeel());
+    page.setHumanize (0.6f, ! studio.getIdeasFeel());
+    CHECK (page.getIdeas (LineIdea::Part::lead)[0].notes == again[0].notes);   // the same performance each time
+    humanizePanel.setAmount (0.0f);
+    CHECK (studio.getIdeasHumanize() == 0.0f);
 
     // USE IT onto the selected track (an instrument track).
     const auto selected = studio.getSelectedTrack();

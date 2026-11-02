@@ -113,6 +113,39 @@ namespace pr7s
     std::vector<LineIdea> guitarLeadIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation, const GuitarTuning&,
                                             const GuitarVelocities& = {});
 
+    // Humanize (0.20.0, the owner asked): small, controlled differences so a part sounds played,
+    // not programmed. Our rules:
+    //   timing   each note early or late by up to 12 ms x amount (a triangle: small moves likely,
+    //            big ones rare), in milliseconds at the tempo there, not in beats; a bar's first
+    //            beat moves least (x0.3), the other beats x0.6, everything between x1 (players lock
+    //            the "one"). Notes starting together (a chord, a strum: within 0.11 beats) move
+    //            together, so chords stay chords; a strum's spread varies by up to 25% x amount.
+    //   feel     a lean for the whole part, in ms (negative: ahead of the beat), added as is.
+    //   velocity up to 10 x amount harder or softer, kept inside the layer it started in
+    //            (`layers`: a guitar library's 1-59 / 60-119 / 120-126 / 127, so a palm mute stays
+    //            a palm mute and a pinch harmonic stays 127).
+    //   length   up to 12% x amount longer or shorter (at least 0.02 beats).
+    // `seed` makes it repeatable: the same notes and seed give the same result (what HEAR plays is
+    // what USE IT adds). Amount 0 changes nothing.
+    struct HumanizeOptions
+    {
+        float amount = 0.0f;         // 0 to 1
+        double feelMs = 0.0;         // the whole part's lean (negative: ahead)
+        double bpm = 120.0;          // the tempo there (ms to beats)
+        double beatsPerBar = 4.0;
+        double originBeat = 0.0;     // the song beat the notes' beat 0 is at (for bar and beat positions)
+        std::vector<std::pair<int, int>> layers;   // velocity layers (inclusive); none: 1-127
+        juce::uint32 seed = 1;
+    };
+    std::vector<LineNote> humanize (std::vector<LineNote>, const HumanizeOptions&);
+    namespace HumanizeLimits
+    {
+        constexpr double timingMs = 12.0, velocity = 10.0, length = 0.12, strum = 0.25, together = 0.11;
+        constexpr double feelAheadMs = -3.0, feelBehindMs = 5.0;   // IDEAS' FEEL at amount 1: rhythm and bass push, leads and melodies lay back
+    }
+    // A guitar library's velocity layers as the owner described Shreddage's.
+    const std::vector<std::pair<int, int>>& guitarLayers();
+
     // Ranges (MIDI notes).
     namespace LineRanges
     {
