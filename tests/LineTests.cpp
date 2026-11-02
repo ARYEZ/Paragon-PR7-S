@@ -384,6 +384,61 @@ TEST_CASE ("Guitar velocities in the owner's library's layout: 1-59 palm muted, 
     }
 }
 
+TEST_CASE ("Guitar velocities set by the owner: the ideas use them, in-between values stay in the sustain range, kept in the settings (0.19.3)", "[lines]")
+{
+    GuitarVelocities v;
+    CHECK (v.toString() == "34,44,54,80,96,110,123,127");
+    CHECK (GuitarVelocities::fromString (v.toString()) == v);
+    CHECK (GuitarVelocities::fromString ("nonsense") == GuitarVelocities {});
+    CHECK (GuitarVelocities::fromString ("1,2,3") == GuitarVelocities {});
+    v.set (6, 200);
+    CHECK (v.rake == 127);   // (clamped to MIDI)
+    CHECK (GuitarVelocities::nameOf (7) == "PINCH HARMONIC");
+    CHECK (GuitarVelocities::layerOf (6) == "120-126");
+
+    // Another layout: every idea follows it.
+    GuitarVelocities mine;
+    mine.muteTight = 20; mine.muteMid = 30; mine.muteLoose = 40;
+    mine.sustainSoft = 70; mine.sustain = 85; mine.sustainHard = 100;
+    mine.rake = 121; mine.pinch = 127;
+    const Key am { 5, 0, true };
+    const auto spans = bars ({ { 9, T::minor, X::none, -1 }, { 5, T::major, X::none, -1 }, { 0, T::major, X::none, -1 }, { 4, T::major, X::none, -1 } }, am);
+    const auto& tuning = GuitarTuning::all()[0];
+    const auto rhythm = guitarRhythmIdeas (spans, 4.0, 0, tuning, mine);
+    const auto lead = guitarLeadIdeas (spans, 4.0, 0, tuning, mine);
+    std::set<int> used;
+    for (const auto* ideas : { &rhythm, &lead })
+        for (const auto& idea : *ideas)
+            for (const auto& n : idea.notes)
+                used.insert (GuitarVelocity::midiOf (n.velocity));
+    for (const auto u : used)
+    {
+        INFO (u);
+        // Each a value set, or an in-between one inside [sustainSoft, sustainHard].
+        const auto set = u == 20 || u == 30 || u == 40 || u == 121 || u == 127;
+        CHECK ((set || (u >= 70 && u <= 100)));
+    }
+    CHECK (used.count (20) == 1);
+    CHECK (used.count (121) == 1);
+    CHECK (used.count (127) == 1);
+    CHECK (used.count (100) == 1);
+    // A sustain range squeezed small: in-betweens stay inside it (never into the mute layers).
+    GuitarVelocities narrow;
+    narrow.sustainSoft = 62; narrow.sustain = 63; narrow.sustainHard = 64;
+    for (const auto& idea : guitarLeadIdeas (spans, 4.0, 1, tuning, narrow))
+        for (const auto& n : idea.notes)
+        {
+            const auto m = GuitarVelocity::midiOf (n.velocity);
+            CHECK ((m >= 62 || m == narrow.rake || m == narrow.pinch));
+        }
+
+    // The studio keeps them.
+    Studio studio (false);
+    CHECK (studio.getGuitarVelocities() == GuitarVelocities {});
+    studio.setGuitarVelocities (mine);
+    CHECK (studio.getGuitarVelocities() == mine);
+}
+
 TEST_CASE ("Guitar lead ideas: in the key's scales, a chord tone on every bar, in a lead's range, the last note on the chord (0.19.0)", "[lines]")
 {
     for (const auto& key : { Key { 5, 0, true }, Key { 2, 0, true }, Key { 0, 0, false }, Key { 4, 0, false } })
@@ -580,6 +635,26 @@ TEST_CASE ("The IDEAS window: ideas heard, used, more of them (0.18.0); piano, g
     for (const auto& idea : page.getIdeas (LineIdea::Part::rhythm))
         for (const auto& n : idea.notes)
             CHECK (n.pitch >= 40);
+    // VELOCITIES (0.19.3): the panel's changes reach the studio and deal the guitar ideas again; RESET.
+    page.setTab (LinesPage::Tab::guitar);
+    GuitarVelocityPanel panel (studio.getGuitarVelocities());
+    auto changes = 0;
+    panel.onChange = [&] (const GuitarVelocities& v) { ++changes; page.setGuitarVelocities (v); };
+    panel.setValue (1, 40);   // PALM MUTE
+    CHECK (changes == 1);
+    CHECK (studio.getGuitarVelocities().muteMid == 40);
+    auto found40 = false;
+    for (const auto& idea : page.getIdeas (LineIdea::Part::rhythm))
+        for (const auto& n : idea.notes)
+            found40 = found40 || GuitarVelocity::midiOf (n.velocity) == 40;
+    CHECK (found40);
+    panel.setValue (1, 40);   // (the same: nothing to do)
+    CHECK (changes == 1);
+    panel.reset();
+    CHECK (changes == 2);
+    CHECK (studio.getGuitarVelocities() == GuitarVelocities {});
+    CHECK (panel.getValues() == GuitarVelocities {});
+
     // USE IT onto the selected track (an instrument track).
     const auto selected = studio.getSelectedTrack();
     REQUIRE (studio.canTakeMidi (selected));

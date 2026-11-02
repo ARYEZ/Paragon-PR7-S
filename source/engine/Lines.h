@@ -79,17 +79,39 @@ namespace pr7s
         constexpr int midiOf (float velocity) noexcept { return (int) (velocity * 127.0f + 0.5f); }
     }
 
+    // The guitar ideas' velocities as the owner sets them (0.19.3: the VELOCITIES panel, so each
+    // layer can be matched by ear; defaults: GuitarVelocity's, Shreddage's layout). Values in
+    // between (a softer note in a lick) stay within [sustainSoft, sustainHard]: `open`.
+    struct GuitarVelocities
+    {
+        int muteTight = GuitarVelocity::muteTight, muteMid = GuitarVelocity::muteMid, muteLoose = GuitarVelocity::muteLoose;
+        int sustainSoft = GuitarVelocity::sustainSoft, sustain = GuitarVelocity::sustain, sustainHard = GuitarVelocity::sustainHard;
+        int rake = GuitarVelocity::rake, pinch = GuitarVelocity::pinch;
+
+        static constexpr int count = 8;
+        int get (int index) const noexcept;
+        void set (int index, int value) noexcept;   // (1 to 127)
+        static juce::String nameOf (int index);    // "PALM MUTE, TIGHT"...
+        static juce::String layerOf (int index);   // the range Shreddage puts it in: "1-59"...
+        int open (int value) const noexcept { return juce::jlimit (juce::jmin (sustainSoft, sustainHard), juce::jmax (sustainSoft, sustainHard), value); }
+        juce::String toString() const;             // "34,44,54,80,96,110,123,127"
+        static GuitarVelocities fromString (const juce::String&);   // (anything unreadable: the defaults)
+        bool operator== (const GuitarVelocities&) const = default;
+    };
+
     // Piano chords (0.19.0): Block chords, Broken chords, Ballad arpeggio, Stride, Octaves and
     // chords, Pop pulse. The right hand voiced near the chord before; a left hand where it's a style's.
     std::vector<LineIdea> pianoChordIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation = 0);
     // Guitar rhythm (0.19.0): Power chords, Octave chords, Palm-muted chugs, Gallop, Pedal-point
     // riff, Open strummed shapes. Power chords are root, fifth and octave (no third: they fit
     // major and minor); the low ones on the lowest strings, as rock and metal riffs are played.
-    std::vector<LineIdea> guitarRhythmIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation, const GuitarTuning&);
+    std::vector<LineIdea> guitarRhythmIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation, const GuitarTuning&,
+                                              const GuitarVelocities& = {});
     // Guitar lead (0.19.0): Pentatonic box, Blues scale run, Repeating triplet lick, Descending
     // fours, Neoclassical run, Tremolo picking. Every bar's first note on a chord tone (the
     // lick lands on the chord). No bends: parts don't hold pitch bend yet.
-    std::vector<LineIdea> guitarLeadIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation, const GuitarTuning&);
+    std::vector<LineIdea> guitarLeadIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation, const GuitarTuning&,
+                                            const GuitarVelocities& = {});
 
     // Ranges (MIDI notes).
     namespace LineRanges

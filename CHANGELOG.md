@@ -2,6 +2,14 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.19.3
+
+The guitar ideas' velocities, set by ear (the owner asked, to match them to Shreddage at home without waiting for a new version).
+
+- **VELOCITIES.** The IDEAS window's GUITAR tab has a VELOCITIES key beside TUNING. It opens a panel with the eight velocities the guitar ideas use: palm mute tight / normal / loose, sustain soft / normal / hard, rake, and pinch harmonic, each with its own bar (drag it, or double-click to type a number) and the range Shreddage puts that articulation in beside it. Every change deals the guitar ideas again at once, so you can HEAR a card, move a bar and HEAR it again. RESET (SHREDDAGE) puts back 34 / 44 / 54, 80 / 96 / 110, 123 and 127. Your values are kept with your settings.
+- **Nothing slips into another layer.** Where an idea plays a note a little softer or harder than the main sustain value (the notes between a lick's accents, say), it now stays between your SUSTAIN, SOFT and SUSTAIN, HARD, so a sustain range set narrow can't push a note into the palm-mute layer.
+- **Honestly:** the panel changes the ideas you add from now on; parts already added keep their velocities (edit those in the MIDI editor's velocity lane). The ranges shown are Shreddage's, as you described them; with another guitar library, set the bars to its layers.
+
 ## 0.19.2
 
 Rakes and pinch harmonics apart (the owner's layout for Shreddage: 120-126 rakes, 127 pinch harmonics).

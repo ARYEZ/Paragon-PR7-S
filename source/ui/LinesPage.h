@@ -13,6 +13,28 @@
 //   GUITAR  RHYTHM | LEAD   (TUNING: nothing below the lowest string, where guitar libraries
 //                            keep their keyswitches; the owner's: 7-string drop A)
 //   BASS    six bass lines across
+// VELOCITIES (0.19.3, the owner asked): the guitar ideas' eight velocities, matched by ear to
+// the guitar library's layers (Shreddage: 1-59 palm mute, 60-119 sustain, 120-126 rakes, 127
+// pinch harmonics). A bar per value (drag, or double-click to type), its layer beside it, RESET.
+class GuitarVelocityPanel final : public juce::Component
+{
+public:
+    explicit GuitarVelocityPanel (pr7s::GuitarVelocities);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void setValue (int index, int value);   // (as a drag would: onChange called)
+    void reset();                           // the defaults (Shreddage's layout)
+    const pr7s::GuitarVelocities& getValues() const noexcept { return values; }
+    std::function<void (const pr7s::GuitarVelocities&)> onChange;
+    static constexpr int rowHeight = 30, width = 440, titleHeight = 54;
+
+private:
+    void refresh();
+    pr7s::GuitarVelocities values;
+    juce::OwnedArray<juce::Slider> bars;
+    juce::TextButton resetKey { "RESET (SHREDDAGE)" };
+};
+
 class LinesPage final : public juce::Component,
                         private juce::Timer
 {
@@ -31,6 +53,8 @@ public:
     Tab getTab() const noexcept { return tab; }
     void setTuning (const juce::String&);   // the guitar ideas' (Studio::setGuitarTuning), dealt again
     const pr7s::GuitarTuning& getTuning() const;
+    void setGuitarVelocities (const pr7s::GuitarVelocities&);   // (Studio::setGuitarVelocities), guitar ideas dealt again
+    void showVelocities();                                     // the panel in a call-out under VELOCITIES
 
     // What the keys do (tests drive them).
     void play (pr7s::LineIdea::Part, int index);
@@ -63,6 +87,7 @@ private:
     juce::TextButton pianoTab { "PIANO" }, guitarTab { "GUITAR" }, bassTab { "BASS" };
     juce::Label tuningLabel { {}, "TUNING" };
     juce::ComboBox tuningBox;
+    juce::TextButton velocitiesKey { "VELOCITIES" };
     std::vector<juce::Rectangle<int>> columnTitles;
     double barBeats = 4.0;
 };

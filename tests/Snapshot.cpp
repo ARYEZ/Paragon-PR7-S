@@ -591,6 +591,24 @@ TEST_CASE ("Snapshot: the IDEAS window (PARAGON_SNAPSHOT_IDEAS=piano|guitar|bass
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
 
+TEST_CASE ("Snapshot: the guitar VELOCITIES panel", "[.][snapshot-velocities]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "velocities.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        GuitarVelocityPanel panel ({});
+        panel.resized();
+        const auto image = panel.createComponentSnapshot (panel.getLocalBounds(), true, 2.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
 TEST_CASE ("Snapshot: the colour menu", "[.][snapshot-colours]")
 {
     const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "colours.png");

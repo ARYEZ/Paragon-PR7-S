@@ -5282,6 +5282,20 @@ namespace pr7s
         return GuitarTuning::named (name).name;   // (unknown or empty: the first, 7-string drop A)
     }
 
+    GuitarVelocities Studio::getGuitarVelocities() const
+    {
+        if (settings != nullptr && settings->containsKey ("guitarVelocities"))
+            return GuitarVelocities::fromString (settings->getValue ("guitarVelocities"));
+        return guitarVelocities;
+    }
+
+    void Studio::setGuitarVelocities (const GuitarVelocities& v)
+    {
+        guitarVelocities = v;
+        if (settings != nullptr)
+            settings->setValue ("guitarVelocities", v.toString());
+    }
+
     void Studio::setGuitarTuning (const juce::String& name)
     {
         guitarTuning = GuitarTuning::named (name).name;

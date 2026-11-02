@@ -488,6 +488,59 @@ namespace pr7s
         }
     }
 
+    namespace
+    {
+        float of (int midi) { return (float) juce::jlimit (1, 127, midi) / 127.0f; }   // (exact: the engine sends round (v * 127))
+    }
+
+    int GuitarVelocities::get (int index) const noexcept
+    {
+        const int values[] = { muteTight, muteMid, muteLoose, sustainSoft, sustain, sustainHard, rake, pinch };
+        return juce::isPositiveAndBelow (index, count) ? values[index] : 0;
+    }
+
+    void GuitarVelocities::set (int index, int value) noexcept
+    {
+        int* values[] = { &muteTight, &muteMid, &muteLoose, &sustainSoft, &sustain, &sustainHard, &rake, &pinch };
+        if (juce::isPositiveAndBelow (index, count))
+            *values[index] = juce::jlimit (1, 127, value);
+    }
+
+    juce::String GuitarVelocities::nameOf (int index)
+    {
+        const char* names[] = { "PALM MUTE, TIGHT", "PALM MUTE", "PALM MUTE, LOOSE", "SUSTAIN, SOFT", "SUSTAIN", "SUSTAIN, HARD", "RAKE", "PINCH HARMONIC" };
+        return juce::isPositiveAndBelow (index, count) ? names[index] : "";
+    }
+
+    juce::String GuitarVelocities::layerOf (int index)
+    {
+        const char* layers[] = { "1-59", "1-59", "1-59", "60-119", "60-119", "60-119", "120-126", "127" };
+        return juce::isPositiveAndBelow (index, count) ? layers[index] : "";
+    }
+
+    juce::String GuitarVelocities::toString() const
+    {
+        juce::StringArray parts;
+        for (auto i = 0; i < count; ++i)
+            parts.add (juce::String (get (i)));
+        return parts.joinIntoString (",");
+    }
+
+    GuitarVelocities GuitarVelocities::fromString (const juce::String& text)
+    {
+        GuitarVelocities v;
+        const auto parts = juce::StringArray::fromTokens (text, ",", "");
+        if (parts.size() != count)
+            return v;
+        for (auto i = 0; i < count; ++i)
+        {
+            if (! parts[i].trim().containsOnly ("0123456789") || parts[i].trim().isEmpty())
+                return {};
+            v.set (i, parts[i].trim().getIntValue());
+        }
+        return v;
+    }
+
     const std::vector<GuitarTuning>& GuitarTuning::all()
     {
         static const std::vector<GuitarTuning> tunings {
@@ -624,13 +677,13 @@ namespace pr7s
     }
 
     //==========================================================================
-    std::vector<LineIdea> guitarRhythmIdeas (const std::vector<ChordSpan>& spans, double beatsPerBar, int variation, const GuitarTuning& tuning)
+    std::vector<LineIdea> guitarRhythmIdeas (const std::vector<ChordSpan>& spans, double beatsPerBar, int variation, const GuitarTuning& tuning,
+                                              const GuitarVelocities& vel)
     {
         std::vector<LineIdea> ideas;
         if (spans.empty())
             return ideas;
         const auto origin = spans.front().start;
-        namespace V = GuitarVelocity;
         const auto low = tuning.lowest(), high = tuning.highest();
         const auto make = [&] (const char* style, const char* description) -> LineIdea&
         {
@@ -665,7 +718,7 @@ namespace pr7s
         {
             auto& idea = make ("Power chords", "Root, fifth and octave on the low strings, held or pushed (rock, punk, metal)");
             each (variation % 2 == 0 ? Rhythm { { 0, 2, true }, { 2, 2, true } } : Rhythm { { 0, 1.5, true }, { 1.5, 1, false }, { 2.5, 1.5, false } },
-                  [&] (const Onset& o) { addChord (idea.notes, o.at, o.length, powerOf (spans[o.span].chord, lowRoots[o.span], true), V::of (o.strong ? V::sustainHard : V::sustain)); });
+                  [&] (const Onset& o) { addChord (idea.notes, o.at, o.length, powerOf (spans[o.span].chord, lowRoots[o.span], true), of (o.strong ? vel.sustainHard : vel.sustain)); });
         }
         {
             // An octave shape higher up (root on the third string up from the bottom, give or take).
@@ -673,7 +726,7 @@ namespace pr7s
             auto& idea = make ("Octave chords", "The root and its octave on eighth notes, higher up the neck (indie and alternative rock)");
             each (variation % 2 == 0 ? Rhythm { { 0, .5, true }, { .5, .5, false }, { 1, .5, false }, { 1.5, .5, false }, { 2, .5, true }, { 2.5, .5, false }, { 3, .5, false }, { 3.5, .5, false } }
                                      : Rhythm { { 0, .75, true }, { .75, .75, false }, { 1.5, 1, false }, { 2.5, .5, false }, { 3, 1, false } },
-                  [&] (const Onset& o) { addChord (idea.notes, o.at, o.length, { mid[o.span], mid[o.span] + 12 }, V::of (o.strong ? V::sustain + 8 : V::sustainSoft + 4)); });
+                  [&] (const Onset& o) { addChord (idea.notes, o.at, o.length, { mid[o.span], mid[o.span] + 12 }, of (o.strong ? vel.open (vel.sustain + 8) : vel.open (vel.sustainSoft + 4))); });
         }
         {
             auto& idea = make ("Palm-muted chugs", "Palm-muted root-and-fifth chugs, a full chord ringing open on the strong beats (metal, hard rock)");
@@ -685,10 +738,10 @@ namespace pr7s
             {
                 // The accents open (sustained), the chugs between palm muted: tighter on sixteenths.
                 if (o.strong)
-                    addChord (idea.notes, o.at, o.length * 1.6, powerOf (spans[o.span].chord, lowRoots[o.span], true), V::of (V::sustainHard));
+                    addChord (idea.notes, o.at, o.length * 1.6, powerOf (spans[o.span].chord, lowRoots[o.span], true), of (vel.sustainHard));
                 else
                     addChord (idea.notes, o.at, o.length * 0.8, powerOf (spans[o.span].chord, lowRoots[o.span], false),
-                              V::of (o.length < 0.3 ? V::muteTight : V::muteMid));
+                              of (o.length < 0.3 ? vel.muteTight : vel.muteMid));
             });
         }
         {
@@ -706,10 +759,10 @@ namespace pr7s
             {
                 const auto barStart = std::fmod (o.at + origin - spans[o.span].start, beatsPerBar) < 1.0e-9;
                 if (barStart && variation % 2 == 1)
-                    addChord (idea.notes, o.at, o.length * 0.9, powerOf (spans[o.span].chord, lowRoots[o.span], true), V::of (V::sustainHard));
+                    addChord (idea.notes, o.at, o.length * 0.9, powerOf (spans[o.span].chord, lowRoots[o.span], true), of (vel.sustainHard));
                 else
                     addChord (idea.notes, o.at, o.length * 0.85, powerOf (spans[o.span].chord, lowRoots[o.span], false),
-                              V::of (o.length > 0.3 ? V::muteLoose : V::muteMid));
+                              of (o.length > 0.3 ? vel.muteLoose : vel.muteMid));
             });
         }
         {
@@ -727,11 +780,11 @@ namespace pr7s
                 // last stab a pinch harmonic on its root (the metal "squeal").
                 const auto bar = (int) std::floor ((o.at + 1.0e-9) / beatsPerBar);
                 if (step == 7 && bar % 2 == 1)
-                    add (idea.notes, o.at, o.length * 0.95, upper[o.span], V::of (V::pinch));
+                    add (idea.notes, o.at, o.length * 0.95, upper[o.span], of (vel.pinch));
                 else if (chordOn[variation % 2][step] && step != 0)
-                    addChord (idea.notes, o.at, o.length * 0.9, powerOf (s.chord, upper[o.span], false), V::of (V::sustainHard));
+                    addChord (idea.notes, o.at, o.length * 0.9, powerOf (s.chord, upper[o.span], false), of (vel.sustainHard));
                 else
-                    add (idea.notes, o.at, o.length * 0.8, pedal, V::of (step == 0 ? V::muteLoose : V::muteTight));
+                    add (idea.notes, o.at, o.length * 0.8, pedal, of (step == 0 ? vel.muteLoose : vel.muteTight));
             });
         }
         {
@@ -787,7 +840,7 @@ namespace pr7s
                             strummed.assign (notes.end() - juce::jmin<std::ptrdiff_t> (4, (std::ptrdiff_t) notes.size()), notes.end());
                             std::reverse (strummed.begin(), strummed.end());
                         }
-                        addChord (idea.notes, at - origin, len, strummed, V::of (st.down ? V::sustain : V::sustainSoft), 0.02);
+                        addChord (idea.notes, at - origin, len, strummed, of (st.down ? vel.sustain : vel.sustainSoft), 0.02);
                     }
             }
         }
@@ -806,7 +859,8 @@ namespace pr7s
     }
 
     //==========================================================================
-    std::vector<LineIdea> guitarLeadIdeas (const std::vector<ChordSpan>& spans, double beatsPerBar, int variation, const GuitarTuning& tuning)
+    std::vector<LineIdea> guitarLeadIdeas (const std::vector<ChordSpan>& spans, double beatsPerBar, int variation, const GuitarTuning& tuning,
+                                            const GuitarVelocities& vel)
     {
         std::vector<LineIdea> ideas;
         if (spans.empty())
@@ -815,7 +869,6 @@ namespace pr7s
         // A lead's range: from the second string's fifth fret to the top string's 22nd.
         const auto low = juce::jmax (tuning.strings[1] + 5, 45), high = tuning.strings.back() + 22;
         const auto centre = (low + high) / 2 - 2;
-        namespace V = GuitarVelocity;
         juce::Random random (0x1ead + variation * 104729);
         const auto make = [&] (const char* style, const char* description) -> LineIdea&
         {
@@ -856,7 +909,7 @@ namespace pr7s
                 for (auto at = 0.0; at < b.length - 1.0e-9; at += 0.5, ++i)
                 {
                     const auto len = (at + 0.5 >= b.length - 1.0e-9) ? b.length - at : 0.5;
-                    add (idea.notes, b.start + at, i == 0 ? 0.5 : len, pitch, V::of (i == 0 ? (raked (b) ? V::rake : V::sustainHard) : V::sustain - 6));
+                    add (idea.notes, b.start + at, i == 0 ? 0.5 : len, pitch, of (i == 0 ? (raked (b) ? vel.rake : vel.sustainHard) : vel.open (vel.sustain - 6)));
                     if (i % 3 == 2)
                         dir = -dir;
                     pitch = stepFrom (pitch, dir, scale, juce::jmax (low, centre - 9), juce::jmin (high, centre + 12));
@@ -864,7 +917,7 @@ namespace pr7s
                 prev = pitch;
             }
             lastOnChord (idea);
-            idea.notes.back().velocity = V::of (V::pinch);   // (held to the end: a pinch-harmonic squeal)
+            idea.notes.back().velocity = of (vel.pinch);   // (held to the end: a pinch-harmonic squeal)
         }
         {
             auto& idea = make ("Blues scale run", "Raked into, down the blues scale in triplets through its \"blue\" note, landing on the chord (blues rock)");
@@ -877,7 +930,7 @@ namespace pr7s
                 for (auto at = 0.0; at < b.length - 1.0e-9; at += 1.0 / 3.0, ++i)
                 {
                     const auto restOfBar = at + 1.0 / 3.0 >= b.length - 1.0e-9;
-                    add (idea.notes, b.start + at, restOfBar ? b.length - at : 1.0 / 3.0, pitch, V::of (i == 0 && raked (b) ? V::rake : i % 3 == 0 ? V::sustainHard - 4 : V::sustainSoft + 8));
+                    add (idea.notes, b.start + at, restOfBar ? b.length - at : 1.0 / 3.0, pitch, of (i == 0 && raked (b) ? vel.rake : i % 3 == 0 ? vel.open (vel.sustainHard - 4) : vel.open (vel.sustainSoft + 8)));
                     pitch = stepFrom (pitch, (i / 6) % 2 == 0 ? -1 : 1, scale, low, high);
                 }
                 prev = pitch;
@@ -898,7 +951,7 @@ namespace pr7s
                     const auto third = stepFrom (second, -1, scale, low, high);
                     const int cell[3] = { top, second, variation % 2 == 0 ? third : top };
                     for (auto k = 0; k < 3; ++k)
-                        add (idea.notes, b.start + beat + k / 3.0, 1.0 / 3.0, cell[k], V::of (k == 0 ? (&b == &barsList.front() && beat == 0.0 ? V::rake : V::sustainHard) : V::sustain - 6));
+                        add (idea.notes, b.start + beat + k / 3.0, 1.0 / 3.0, cell[k], of (k == 0 ? (&b == &barsList.front() && beat == 0.0 ? vel.rake : vel.sustainHard) : vel.open (vel.sustain - 6)));
                     top = stepFrom (top, -1, scale, low + 4, high);
                 }
                 prev = top;
@@ -918,7 +971,7 @@ namespace pr7s
                     auto pitch = start;
                     for (auto k = 0; k < 4; ++k)
                     {
-                        add (idea.notes, b.start + beat + k * 0.25, 0.25, pitch, V::of (k == 0 ? V::sustainHard : V::sustain - 4));
+                        add (idea.notes, b.start + beat + k * 0.25, 0.25, pitch, of (k == 0 ? vel.sustainHard : vel.open (vel.sustain - 4)));
                         pitch = stepFrom (pitch, -1, scale, low, high);
                     }
                     start = stepFrom (start, -1, scale, low + 6, high);
@@ -949,7 +1002,7 @@ namespace pr7s
                 const auto half = b.length * 0.5;
                 for (auto at = 0.0; at < b.length - 1.0e-9; at += 0.25)
                 {
-                    add (idea.notes, b.start + at, 0.25, pitch, V::of (std::fmod (at, 1.0) < 1.0e-9 ? V::sustainHard : V::sustain - 6));
+                    add (idea.notes, b.start + at, 0.25, pitch, of (std::fmod (at, 1.0) < 1.0e-9 ? vel.sustainHard : vel.open (vel.sustain - 6)));
                     pitch = at < half - 1.0e-9 ? stepFrom (pitch, 1, tones, low, high) : stepFrom (pitch, -1, scale, low, high);
                 }
                 prev = pitch;
@@ -968,7 +1021,7 @@ namespace pr7s
                 for (auto beat = 0.0; beat < b.length - 1.0e-9; beat += 1.0)
                 {
                     for (auto k = 0; k < 4 && beat + k * 0.25 < b.length - 1.0e-9; ++k)
-                        add (idea.notes, b.start + beat + k * 0.25, 0.25, pitch, V::of (k == 0 ? V::sustain + 8 : V::sustainSoft + 8));
+                        add (idea.notes, b.start + beat + k * 0.25, 0.25, pitch, of (k == 0 ? vel.open (vel.sustain + 8) : vel.open (vel.sustainSoft + 8)));
                     pitch = stepFrom (pitch, random.nextBool() ? 1 : -1, av, low, high);
                 }
                 prev = pitch;

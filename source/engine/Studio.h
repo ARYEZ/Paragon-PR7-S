@@ -241,6 +241,9 @@ namespace pr7s
         // The guitar ideas' tuning (0.19.0; settings key "guitarTuning", default 7-string drop A).
         juce::String getGuitarTuning() const;
         void setGuitarTuning (const juce::String&);
+        // The guitar ideas' velocities (0.19.3, the VELOCITIES panel; settings key "guitarVelocities").
+        GuitarVelocities getGuitarVelocities() const;
+        void setGuitarVelocities (const GuitarVelocities&);
         // An idea heard with its chords (soft, underneath) through the live track's instrument,
         // at the song's tempo; the chords alone with no idea. Stopped by stopPreview (or the next).
         void previewLine (const LineIdea*, const std::vector<ChordSpan>&, bool withChords = true);
@@ -786,6 +789,7 @@ namespace pr7s
         bool linksSuspended = false, linksAbsolute = false, qLink = false;
         bool mirroring = false;
         juce::String guitarTuning;   // (without a settings file: the tests)
+        GuitarVelocities guitarVelocities;
         float dropHighlight = defaultDropHighlight;   // (without a settings file: the tests)   // (a linked change being passed on: not passed on again)
         void pruneLinkGroups();
         // `action` for each channel linked to this one for `what` (not itself); the

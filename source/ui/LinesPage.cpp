@@ -140,6 +140,91 @@ public:
 };
 
 //==============================================================================
+GuitarVelocityPanel::GuitarVelocityPanel (pr7s::GuitarVelocities v) : values (v)
+{
+    for (int i = 0; i < pr7s::GuitarVelocities::count; ++i)
+    {
+        auto* bar = bars.add (new juce::Slider (juce::Slider::LinearBar, juce::Slider::TextBoxLeft));
+        bar->setRange (1.0, 127.0, 1.0);
+        bar->setColour (juce::Slider::trackColourId, i < 3 ? pr7s::FamilyColours::orange : i < 6 ? pr7s::FamilyColours::red : pr7s::FamilyColours::pink);
+        bar->setColour (juce::Slider::textBoxTextColourId, ParagonColours::text);
+        bar->setColour (juce::Slider::backgroundColourId, juce::Colour (0xff1b171c));
+        bar->setColour (juce::Slider::textBoxOutlineColourId, ParagonColours::panelEdge);
+        bar->setTooltip ("Drag, or double-click to type (1-127). Your library's layer for it: " + pr7s::GuitarVelocities::layerOf (i));
+        bar->onValueChange = [this, i, bar] { setValue (i, (int) bar->getValue()); };
+        addAndMakeVisible (bar);
+    }
+    resetKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    resetKey.setTooltip ("Back to Shreddage's layout: mutes 34 / 44 / 54, sustain 80 / 96 / 110, rake 123, pinch 127");
+    resetKey.onClick = [this] { reset(); };
+    addAndMakeVisible (resetKey);
+    refresh();
+    setSize (width, titleHeight + rowHeight * pr7s::GuitarVelocities::count + 50);
+}
+
+void GuitarVelocityPanel::refresh()
+{
+    for (int i = 0; i < bars.size(); ++i)
+        bars[i]->setValue (values.get (i), juce::dontSendNotification);
+}
+
+void GuitarVelocityPanel::setValue (int index, int value)
+{
+    const auto before = values;
+    values.set (index, value);
+    refresh();
+    if (values != before && onChange)
+        onChange (values);
+}
+
+void GuitarVelocityPanel::reset()
+{
+    const auto before = values;
+    values = {};
+    refresh();
+    if (values != before && onChange)
+        onChange (values);
+}
+
+void GuitarVelocityPanel::paint (juce::Graphics& g)
+{
+    g.fillAll (juce::Colour (0xff0c0a0d));
+    auto area = getLocalBounds().reduced (14, 10);
+    auto title = area.removeFromTop (titleHeight - 10);
+    g.setColour (ParagonColours::text);
+    g.setFont (ParagonLookAndFeel::titleFont (16.0f));
+    g.drawText ("GUITAR VELOCITIES", title.removeFromTop (22), juce::Justification::centredLeft, false);
+    g.setColour (ParagonColours::textDim);
+    g.setFont (juce::Font (juce::FontOptions (11.5f)));
+    g.drawText ("Each articulation's velocity, set by ear. The ideas are dealt again as you change them.", title, juce::Justification::centredLeft, true);
+    for (int i = 0; i < pr7s::GuitarVelocities::count; ++i)
+    {
+        auto row = area.removeFromTop (rowHeight);
+        g.setColour (ParagonColours::text);
+        g.setFont (ParagonLookAndFeel::titleFont (13.0f));
+        g.drawText (pr7s::GuitarVelocities::nameOf (i), row.removeFromLeft (150), juce::Justification::centredLeft, false);
+        g.setColour (ParagonColours::textDim);
+        g.setFont (juce::Font (juce::FontOptions (11.0f)));
+        g.drawText (pr7s::GuitarVelocities::layerOf (i), row.removeFromRight (60), juce::Justification::centredRight, false);
+    }
+}
+
+void GuitarVelocityPanel::resized()
+{
+    auto area = getLocalBounds().reduced (14, 10);
+    area.removeFromTop (titleHeight - 10);
+    for (auto* bar : bars)
+    {
+        auto row = area.removeFromTop (rowHeight);
+        row.removeFromLeft (150);
+        row.removeFromRight (66);
+        bar->setBounds (row.reduced (0, 4));
+    }
+    area.removeFromTop (12);
+    resetKey.setBounds (area.removeFromTop (28).removeFromRight (170));
+}
+
+//==============================================================================
 LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : studio (s)
 {
     for (auto* key : { &hearChords, &more, &stopKey, &pianoTab, &guitarTab, &bassTab })
@@ -170,6 +255,11 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
     tuningBox.setTooltip ("The guitar's strings: nothing is played below the lowest one (guitar libraries keep their keyswitches down there)");
     tuningBox.onChange = [this] { setTuning (tuningBox.getText()); };
     addChildComponent (tuningBox);
+    velocitiesKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    velocitiesKey.setWantsKeyboardFocus (false);
+    velocitiesKey.setTooltip ("The velocity of each articulation (palm mute, sustain, rake, pinch harmonic), set by ear for your guitar library");
+    velocitiesKey.onClick = [this] { showVelocities(); };
+    addChildComponent (velocitiesKey);
 
     if (auto* settings = studio.getSettings())
     {
@@ -242,6 +332,26 @@ void LinesPage::setTuning (const juce::String& name)
     rebuild();
 }
 
+void LinesPage::setGuitarVelocities (const pr7s::GuitarVelocities& v)
+{
+    if (v == studio.getGuitarVelocities())
+        return;
+    stop();
+    studio.setGuitarVelocities (v);
+    rebuild();
+}
+
+void LinesPage::showVelocities()
+{
+    auto panel = std::make_unique<GuitarVelocityPanel> (studio.getGuitarVelocities());
+    panel->onChange = [safe = juce::Component::SafePointer<LinesPage> (this)] (const pr7s::GuitarVelocities& v)
+    {
+        if (safe != nullptr)
+            safe->setGuitarVelocities (v);
+    };
+    juce::CallOutBox::launchAsynchronously (std::move (panel), velocitiesKey.getScreenBounds(), nullptr);
+}
+
 void LinesPage::rebuild()
 {
     using P = pr7s::LineIdea::Part;
@@ -249,8 +359,9 @@ void LinesPage::rebuild()
     ideas[(size_t) P::bass] = pr7s::bassIdeas (spans, barBeats, variation);
     ideas[(size_t) P::melody] = pr7s::melodyIdeas (spans, barBeats, variation);
     ideas[(size_t) P::chords] = pr7s::pianoChordIdeas (spans, barBeats, variation);
-    ideas[(size_t) P::rhythm] = pr7s::guitarRhythmIdeas (spans, barBeats, variation, tuning);
-    ideas[(size_t) P::lead] = pr7s::guitarLeadIdeas (spans, barBeats, variation, tuning);
+    const auto velocities = studio.getGuitarVelocities();
+    ideas[(size_t) P::rhythm] = pr7s::guitarRhythmIdeas (spans, barBeats, variation, tuning, velocities);
+    ideas[(size_t) P::lead] = pr7s::guitarLeadIdeas (spans, barBeats, variation, tuning, velocities);
     makeCards();
 }
 
@@ -266,6 +377,7 @@ void LinesPage::makeCards()
     tuningBox.setText (getTuning().name, juce::dontSendNotification);
     tuningBox.setVisible (tab == Tab::guitar);
     tuningLabel.setVisible (tab == Tab::guitar);
+    velocitiesKey.setVisible (tab == Tab::guitar);
     resized();
     repaint();
 }
@@ -413,6 +525,8 @@ void LinesPage::resized()
         key->setBounds (tabs.removeFromLeft (100));
         tabs.removeFromLeft (6);
     }
+    velocitiesKey.setBounds (tabs.removeFromRight (110));
+    tabs.removeFromRight (8);
     tuningBox.setBounds (tabs.removeFromRight (220));
     tabs.removeFromRight (8);
     tuningLabel.setBounds (tabs.removeFromRight (70));
