@@ -2,6 +2,14 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.18.1
+
+Dragging MIDI files onto tracks (the owner's report and asks).
+
+- **A MIDI file dropped on an instrument track lands on that track.** Dragging a .mid from Explorer onto an instrument track made a new track instead: every MIDI drop went through the import that gives each of the file's tracks a new track of its own. Now the file goes onto the instrument track it's dropped on (one that isn't frozen or disabled). A file with several tracks: its first onto that track, the others onto new tracks below. Dropped on an audio track, a channel or below the tracks, it makes new tracks as before.
+- **It follows snap.** Where it goes in now follows the snap setting, as moving a part does: with snap on and 1/1, it moves a whole bar at a time as you drag; with 1/4 a beat at a time; with snap off, exactly where you let go. (Before, it always went to the start of the bar under the mouse.) Dropped audio files follow snap the same way.
+- **You see where it will land.** While you drag a MIDI file over an instrument track, the place it will land lights up on that track in the family's red, pink and orange gradient, as long as the file, with the file's name in it (and "+N more on new tracks" when the file has several tracks). It moves with the snap as you drag. Over anywhere else nothing lights (it would make new tracks).
+
 ## 0.18.0
 
 Bass and melody ideas for your chords (the owner asked: "I select a chord progression and then I get suggestions for bass lines and also for melodies").

@@ -159,6 +159,7 @@ TEST_CASE ("Importing a MIDI file on screen: IMPORT in the header; a .mid droppe
     CHECK_FALSE (view.isInterestedInFileDrag ({ "notes.txt" }));   // (audio files are taken too since 0.8.3)
     auto& arrange = view.getArrangeView();
     const auto dropAt = view.getLocalPoint (&arrange, juce::Point<int> ((int) (9.0 * Timeline().pixelsPerBeat), 60));
+    studio.setQuantizeBeats (4.0);   // (0.18.1: drops snap as the arrangement does; 1/1 = the bar)
     // The file is at 100 BPM, the song at 120: asked which (0.9.14). Cancel: nothing comes in.
     auto asked = 0;
     auto reply = 0;

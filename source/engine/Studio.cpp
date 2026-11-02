@@ -3762,14 +3762,20 @@ namespace pr7s
         sendChangeMessage();
     }
 
-    int Studio::importMidi (const juce::File& source, bool newSong, double atBeat, juce::String& error, bool matchTempo)
+    int Studio::importMidi (const juce::File& source, bool newSong, double atBeat, juce::String& error, bool matchTempo, int ontoTrackId)
     {
         SessionLog::note ("Importing the MIDI file " + source.getFullPathName());
         const auto read = readMidiFile (source, error);
-        return read ? importMidi (*read, newSong, atBeat, matchTempo) : 0;
+        return read ? importMidi (*read, newSong, atBeat, matchTempo, ontoTrackId) : 0;
     }
 
-    int Studio::importMidi (const MidiImport& midi, bool newSong, double atBeat, bool matchTempo)
+    bool Studio::canTakeMidi (int trackId) const
+    {
+        const auto* track = project.findTrack (trackId);
+        return track != nullptr && ! track->isChannel() && ! track->isAudio() && ! track->frozen && ! track->disabled;
+    }
+
+    int Studio::importMidi (const MidiImport& midi, bool newSong, double atBeat, bool matchTempo, int ontoTrackId)
     {
         // Its tempo changes on the tempo track (0.10.0): a new song's, or (matching the
         // file) from where it goes in, the song's tempo events before that kept.
@@ -3813,22 +3819,29 @@ namespace pr7s
         }
         const auto bar = project.beatsPerBar();
         auto added = 0;
+        auto onto = ! newSong && canTakeMidi (ontoTrackId) ? ontoTrackId : 0;
         for (const auto& imported : midi.tracks)
         {
-            const auto id = addTrack ({});
+            // The first onto the track it was dropped on (0.18.1: it made a new one); the others new tracks.
+            auto id = onto;
+            onto = 0;
             if (id == 0)
-                continue;
-            renameTrack (id, imported.name);
-            // One part over the bars its notes are in.
+            {
+                id = addTrack ({});
+                if (id == 0)
+                    continue;
+                renameTrack (id, imported.name);
+            }
+            // One part over the file's bars its notes are in, from where it went in (the drop: snapped).
             auto first = std::numeric_limits<double>::max(), last = 0.0;
             for (const auto& note : imported.notes)
             {
-                first = juce::jmin (first, atBeat + note.start);
-                last = juce::jmax (last, atBeat + note.start + note.length);
+                first = juce::jmin (first, note.start);
+                last = juce::jmax (last, note.start + note.length);
             }
             Part part;
-            part.start = juce::jmax (0.0, std::floor (first / bar + 1.0e-9) * bar);
-            part.length = juce::jmax (bar, std::ceil (last / bar - 1.0e-9) * bar - part.start);
+            part.start = juce::jmax (0.0, atBeat + std::floor (first / bar + 1.0e-9) * bar);
+            part.length = juce::jmax (bar, atBeat + std::ceil (last / bar - 1.0e-9) * bar - part.start);
             part.name = imported.name;
             for (auto note : imported.notes)
             {

@@ -1324,7 +1324,61 @@ void MainView::importAudioFiles (bool oneTrack)
                           });
 }
 
-void MainView::importMidiFiles (const juce::Array<juce::File>& files, bool newSong, double atBeat)
+std::pair<int, double> MainView::dropPlace (int x, int y) const
+{
+    const auto inArrange = arrange.getLocalPoint (this, juce::Point<int> (x, y));
+    if (! arrange.getLocalBounds().contains (inArrange) || inArrange.y < Timeline::rulerHeight)
+        return { 0, studio.getEngine().getPosition() };
+    const auto beat = juce::jmax (0.0, pr7s::snap (timeline.beatForX ((float) inArrange.x), timeline.snapGrid (studio.getProject())));
+    return { arrange.trackAtY ((float) inArrange.y), beat };
+}
+
+void MainView::fileDragEnter (const juce::StringArray& files, int x, int y)
+{
+    // A MIDI file: read now, so its place can be shown as it's dragged.
+    draggedMidi.reset();
+    for (const auto& path : files)
+        if (path.endsWithIgnoreCase (".mid") || path.endsWithIgnoreCase (".midi"))
+        {
+            juce::String error;
+            if (const auto midi = pr7s::readMidiFile (juce::File (path), error))
+            {
+                auto first = std::numeric_limits<double>::max(), last = 0.0;
+                for (const auto& t : midi->tracks)
+                    for (const auto& n : t.notes)
+                    {
+                        first = juce::jmin (first, n.start);
+                        last = juce::jmax (last, n.start + n.length);
+                    }
+                const auto bar = studio.getProject().beatsPerBar();
+                const auto length = juce::jmax (bar, std::ceil (last / bar - 1.0e-9) * bar - std::floor (first / bar + 1.0e-9) * bar);
+                draggedMidi = DraggedMidi { path, juce::File (path).getFileNameWithoutExtension(), length, (int) midi->tracks.size() };
+            }
+            break;
+        }
+    fileDragMove (files, x, y);
+}
+
+void MainView::fileDragMove (const juce::StringArray&, int x, int y)
+{
+    if (! draggedMidi)
+        return;
+    const auto [trackId, beat] = dropPlace (x, y);
+    if (! studio.canTakeMidi (trackId))
+    {
+        arrange.setDropPreview (std::nullopt);   // (not over an instrument track: new tracks, as before)
+        return;
+    }
+    arrange.setDropPreview (ArrangeView::DropPreview { trackId, beat, draggedMidi->length, draggedMidi->name, draggedMidi->tracks - 1 });
+}
+
+void MainView::fileDragExit (const juce::StringArray&)
+{
+    draggedMidi.reset();
+    arrange.setDropPreview (std::nullopt);
+}
+
+void MainView::importMidiFiles (const juce::Array<juce::File>& files, bool newSong, double atBeat, int ontoTrackId)
 {
     // Into this song: the file's tempo, or the song's? (Only asked when they differ;
     // a new song always takes the file's.)
@@ -1334,19 +1388,19 @@ void MainView::importMidiFiles (const juce::Array<juce::File>& files, bool newSo
         if (const auto midi = pr7s::readMidiFile (files.getFirst(), error);
             midi && (std::abs (midi->bpm - studio.getProject().bpm) > 0.005 || midi->tempoChanges.size() > 1))
         {
-            askMidiTempo (files.getFirst(), midi->bpm, [safe = juce::Component::SafePointer<MainView> (this), files, atBeat] (int result)
+            askMidiTempo (files.getFirst(), midi->bpm, [safe = juce::Component::SafePointer<MainView> (this), files, atBeat, ontoTrackId] (int result)
             {
                 // (1: match, 2: keep, 0: cancel)
                 if (safe != nullptr && result != 0)
-                    safe->importMidiFilesNow (files, false, atBeat, result == 1);
+                    safe->importMidiFilesNow (files, false, atBeat, result == 1, ontoTrackId);
             });
             return;
         }
     }
-    importMidiFilesNow (files, newSong, atBeat, false);
+    importMidiFilesNow (files, newSong, atBeat, false, ontoTrackId);
 }
 
-void MainView::importMidiFilesNow (const juce::Array<juce::File>& files, bool newSong, double atBeat, bool matchTempo)
+void MainView::importMidiFilesNow (const juce::Array<juce::File>& files, bool newSong, double atBeat, bool matchTempo, int ontoTrackId)
 {
     // The first into a new song if asked (its tempo and signature); the others into the song, every track of each a new track.
     juce::StringArray problems;
@@ -1354,7 +1408,7 @@ void MainView::importMidiFilesNow (const juce::Array<juce::File>& files, bool ne
     for (const auto& file : files)
     {
         juce::String error;
-        if (studio.importMidi (file, newSong && first, atBeat, error, matchTempo && first) == 0)
+        if (studio.importMidi (file, newSong && first, atBeat, error, matchTempo && first, first ? ontoTrackId : 0) == 0)
             problems.add (file.getFileName() + ": " + error);
         else
             first = false;
@@ -1389,15 +1443,10 @@ void MainView::filesDropped (const juce::StringArray& files, int x, int y)
             audio.add (juce::File (path));
     if (! audio.isEmpty())
     {
-        const auto inArrange = arrange.getLocalPoint (this, juce::Point<int> (x, y));
-        auto at = studio.getEngine().getPosition();
-        auto trackId = 0;
-        if (arrange.getLocalBounds().contains (inArrange))
-        {
-            const auto bar = studio.getProject().beatsPerBar();
-            at = juce::jmax (0.0, std::floor (timeline.beatForX ((float) inArrange.x) / bar) * bar);
-            trackId = arrange.trackAtY ((float) inArrange.y);
-        }
+        // (Snapped as the arrangement snaps, 0.18.1: it was always the bar.)
+        const auto place = dropPlace (x, y);
+        const auto trackId = place.first;
+        const auto at = place.second;
         if (audio.size() == 1)
             importAudio (audio, trackId, at, true);
         else
@@ -1416,19 +1465,20 @@ void MainView::filesDropped (const juce::StringArray& files, int x, int y)
         }
     }
 
-    // Into this song, at the bar it's dropped on (over the arrangement), else bar 1.
-    auto atBeat = 0.0;
+    // MIDI (0.18.1): onto the instrument track it's dropped on, where it was shown while dragged
+    // (snapped as the arrangement snaps); not over one: new tracks, at that place (else bar 1).
+    draggedMidi.reset();
+    arrange.setDropPreview (std::nullopt);
     const auto inArrange = arrange.getLocalPoint (this, juce::Point<int> (x, y));
-    if (arrange.getLocalBounds().contains (inArrange))
-    {
-        const auto bar = studio.getProject().beatsPerBar();
-        atBeat = juce::jmax (0.0, std::floor (timeline.beatForX ((float) inArrange.x) / bar) * bar);
-    }
+    auto [trackId, atBeat] = dropPlace (x, y);
+    if (! arrange.getLocalBounds().contains (inArrange))
+        atBeat = 0.0;
     juce::Array<juce::File> midi;
     for (const auto& path : files)
         if (path.endsWithIgnoreCase (".mid") || path.endsWithIgnoreCase (".midi"))
             midi.add (juce::File (path));
-    importMidiFiles (midi, false, atBeat);
+    if (! midi.isEmpty())
+        importMidiFiles (midi, false, atBeat, studio.canTakeMidi (trackId) ? trackId : 0);
 }
 
 //==============================================================================

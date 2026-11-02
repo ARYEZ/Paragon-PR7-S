@@ -588,7 +588,8 @@ namespace pr7s
         // song takes the file's tempo first (one undo step of its own), so the
         // notes play at the speed they were written at. Returns how many
         // tracks it added (0, with `error` set, if none).
-        int importMidi (const juce::File&, bool newSong, double atBeat, juce::String& error, bool matchTempo = false);
+        // `ontoTrackId` (0.18.1): dropped on an instrument track, the file's first track goes onto it (the others: new tracks).
+        int importMidi (const juce::File&, bool newSong, double atBeat, juce::String& error, bool matchTempo = false, int ontoTrackId = 0);
         // Audio file import (the manual's File > Import > Audio File): WAV,
         // AIFF, FLAC, Ogg Vorbis or MP3. Each file is copied into the song's
         // audio folder (the manual's Copy File to Project Folder: a WAV or AIFF
@@ -603,7 +604,8 @@ namespace pr7s
         // the track; else each file on a track of its own, all at `atBeat` (the
         // first on `trackId` if that's an audio track). Returns the (first) track.
         int importAudio (const juce::Array<juce::File>&, int trackId, double atBeat, juce::String& error, bool oneTrack = true);
-        int importMidi (const MidiImport&, bool newSong, double atBeat, bool matchTempo = false);
+        int importMidi (const MidiImport&, bool newSong, double atBeat, bool matchTempo = false, int ontoTrackId = 0);
+        bool canTakeMidi (int trackId) const;   // an instrument track, not frozen or disabled
         juce::File getFile() const noexcept { return file; }
         bool isModified() const noexcept { return modified; }
 

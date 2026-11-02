@@ -88,6 +88,27 @@ void ArrangeView::advancePlayhead()
     gliding = true;
 }
 
+juce::Rectangle<float> ArrangeView::dropPreviewBounds() const
+{
+    if (! dropPreview)
+        return {};
+    const auto x1 = timeline.xForBeat (dropPreview->start), x2 = timeline.xForBeat (dropPreview->start + dropPreview->length);
+    return { x1, trackTop (dropPreview->trackId) + 2.0f, juce::jmax (4.0f, x2 - x1), (float) timeline.trackRowHeight() - 4.0f };
+}
+
+void ArrangeView::setDropPreview (std::optional<DropPreview> preview)
+{
+    const auto same = [] (const std::optional<DropPreview>& a, const std::optional<DropPreview>& b)
+    {
+        return a.has_value() == b.has_value() && (! a || (a->trackId == b->trackId && a->start == b->start && a->length == b->length));
+    };
+    if (same (preview, dropPreview))
+        return;
+    repaint (dropPreviewBounds().expanded (3.0f).toNearestInt());
+    dropPreview = std::move (preview);
+    repaint (dropPreviewBounds().expanded (3.0f).toNearestInt());
+}
+
 void ArrangeView::setRulerHover (std::optional<double> beat)
 {
     if (beat == rulerHover)
@@ -772,6 +793,22 @@ void ArrangeView::paint (juce::Graphics& g)
         ghost.addTriangle (hx - 5.0f, (float) Timeline::rulerHeight - 11.0f, hx + 5.0f, (float) Timeline::rulerHeight - 11.0f, hx, (float) Timeline::rulerHeight - 3.0f);
         g.setColour (pr7s::FamilyColours::pink.withAlpha (0.55f));
         g.fillPath (ghost);
+    }
+
+    // A MIDI file being dragged in (0.18.1): where it lands, in the family's gradient.
+    if (dropPreview)
+    {
+        const auto r = dropPreviewBounds();
+        auto fill = Finish::neonGradient (r.getX(), r.getRight());
+        fill.multiplyOpacity (0.35f);
+        g.setGradientFill (fill);
+        g.fillRoundedRectangle (r, 3.0f);
+        g.setGradientFill (Finish::neonGradient (r.getX(), r.getRight()));
+        g.drawRoundedRectangle (r.reduced (1.0f), 3.0f, 2.0f);
+        g.setColour (juce::Colour (0xfff4eeea));
+        g.setFont (font (11.0f));
+        g.drawText (dropPreview->name + (dropPreview->moreTracks > 0 ? "  (+" + juce::String (dropPreview->moreTracks) + " more on new tracks)" : juce::String()),
+                    r.reduced (6.0f, 3.0f), juce::Justification::topLeft, true);
     }
 
     // The playhead: a line down the lanes and a marker on the ruler (where it's drawn: it glides, 0.17.4).

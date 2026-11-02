@@ -1855,6 +1855,7 @@ TEST_CASE ("Audio files dropped on the arrangement: on the audio track under the
     // Over the audio track's row, in bar 3 (beats 8 to 12 at 4/4).
     const auto inArrange = juce::Point<float> ((float) (9.5 * Timeline {}.pixelsPerBeat), arrange.trackTop (audio) + 20.0f);
     const auto inView = view.getLocalPoint (&arrange, inArrange.toInt());
+    studio.setQuantizeBeats (4.0);   // (0.18.1: drops snap as the arrangement does; 1/1 = the bar)
     view.filesDropped ({ file.getFullPathName() }, inView.x, inView.y);
     const auto& parts = studio.getProject().findTrack (audio)->parts;
     REQUIRE (parts.size() == 1);
@@ -3086,4 +3087,83 @@ TEST_CASE ("The MIDI editor's playhead glides as the arrangement's (0.17.5)", "[
     editor.advancePlayhead();
     CHECK (editor.getShownPlayhead() == studio.getEngine().getPosition());
     studio.stop();
+}
+
+TEST_CASE ("A MIDI file dropped on an instrument track lands on it, snapped, shown while dragged (0.18.1)", "[ui][drop]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    pr7s::Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto synth = studio.getProject().tracks[0].id;
+    const auto audio = studio.addAudioTrack (false);
+    studio.dispatchPendingMessages();
+
+    // A two-bar MIDI file (one track, 120 BPM, as the song).
+    juce::MidiMessageSequence seq;
+    seq.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0.0);
+    seq.addEvent (juce::MidiMessage::noteOff (1, 60), 480.0);
+    seq.addEvent (juce::MidiMessage::noteOn (1, 64, (juce::uint8) 100), 1920.0);
+    seq.addEvent (juce::MidiMessage::noteOff (1, 64), 2400.0);
+    seq.updateMatchedPairs();
+    juce::MidiFile mf;
+    mf.setTicksPerQuarterNote (480);
+    mf.addTrack (seq);
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("pr7s-drop.mid");
+    file.deleteFile();
+    {
+        juce::FileOutputStream out (file);
+        REQUIRE (mf.writeTo (out));
+    }
+    auto& arrange = view.getArrangeView();
+    const auto pointOver = [&] (int trackId, double beat)
+    {
+        const auto at = juce::Point<float> (view.getTimeline().xForBeat (beat), arrange.trackTop (trackId) + 10.0f);
+        return view.getLocalPoint (&arrange, at.toInt());
+    };
+
+    // Snap on, 1/1: whole bars. Dragged over the synth track at beat 5.3: shown at bar 2 (beat 4).
+    studio.setSnap (true);
+    studio.setQuantizeBeats (4.0);
+    const juce::StringArray files { file.getFullPathName() };
+    auto p = pointOver (synth, 5.3);
+    view.fileDragEnter (files, p.x, p.y);
+    REQUIRE (arrange.getDropPreview().has_value());
+    CHECK (arrange.getDropPreview()->trackId == synth);
+    CHECK (arrange.getDropPreview()->start == 4.0);
+    CHECK (arrange.getDropPreview()->length == 8.0);
+    // Moved on to 6.4: the next whole note (bar 3, beat 8).
+    p = pointOver (synth, 6.4);
+    view.fileDragMove (files, p.x, p.y);
+    CHECK (arrange.getDropPreview()->start == 8.0);
+    // Over the audio track: nothing shown (it'd go on a new track).
+    p = pointOver (audio, 6.4);
+    view.fileDragMove (files, p.x, p.y);
+    CHECK_FALSE (arrange.getDropPreview().has_value());
+
+    // Dropped on the synth track: there, not a new track (0.18.0 made a new one).
+    const auto tracksBefore = studio.getProject().tracks.size();
+    p = pointOver (synth, 6.4);
+    view.fileDragMove (files, p.x, p.y);
+    view.filesDropped (files, p.x, p.y);
+    CHECK_FALSE (arrange.getDropPreview().has_value());
+    CHECK (studio.getProject().tracks.size() == tracksBefore);
+    const auto* track = studio.getProject().findTrack (synth);
+    REQUIRE (track->parts.size() == 1);
+    CHECK (track->parts[0].start == 8.0);
+    CHECK (track->parts[0].length == 8.0);
+    REQUIRE (track->parts[0].notes.size() == 2);
+    CHECK (track->parts[0].notes[1].start == 4.0);   // (its second bar)
+
+    // Snap off: where it is.
+    studio.setSnap (false);
+    p = pointOver (synth, 13.0);
+    CHECK (std::abs (view.dropPlace (p.x, p.y).second - 13.0) < 0.1);
+
+    // Dropped on the audio track: a new instrument track, as before.
+    studio.setSnap (true);
+    p = pointOver (audio, 2.0);
+    view.filesDropped (files, p.x, p.y);
+    CHECK (studio.getProject().tracks.size() == tracksBefore + 1);
+    file.deleteFile();
 }

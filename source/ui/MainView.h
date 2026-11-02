@@ -116,11 +116,17 @@ public:
     void importAudio (const juce::Array<juce::File>&, int trackId, double atBeat, bool oneTrack);
     // Into this song: if the (first) file's tempo isn't the song's, asks whether
     // the song takes the file's tempo (0.9.14), then importMidiFilesNow.
-    void importMidiFiles (const juce::Array<juce::File>&, bool newSong, double atBeat);
-    void importMidiFilesNow (const juce::Array<juce::File>&, bool newSong, double atBeat, bool matchTempo);
+    void importMidiFiles (const juce::Array<juce::File>&, bool newSong, double atBeat, int ontoTrackId = 0);
+    void importMidiFilesNow (const juce::Array<juce::File>&, bool newSong, double atBeat, bool matchTempo, int ontoTrackId = 0);
     // The question itself (a box; tests answer it): `answer` 1 match, 2 keep, 0 cancel.
     std::function<void (const juce::File&, double fileBpm, std::function<void (int)> answer)> askMidiTempo;
     bool isInterestedInFileDrag (const juce::StringArray&) override;
+    void fileDragEnter (const juce::StringArray&, int x, int y) override;
+    void fileDragMove (const juce::StringArray&, int x, int y) override;
+    void fileDragExit (const juce::StringArray&) override;
+    // Where a dropped file lands (0.18.1): the track under (x, y) in this view's coordinates
+    // (0: none) and the beat, snapped as the arrangement snaps (off: where it is).
+    std::pair<int, double> dropPlace (int x, int y) const;
     void filesDropped (const juce::StringArray&, int x, int y) override;
 
     void openInstrumentWindow (int trackId);
@@ -216,6 +222,9 @@ private:
     std::unique_ptr<ProgressBox> progressBox;   // a long job's progress (0.11.1)
     std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow;
     std::unique_ptr<LinesWindow> linesWindow;
+    // The MIDI file being dragged in: read once when it enters (its length in beats, its tracks).
+    struct DraggedMidi { juce::String path, name; double length = 0.0; int tracks = 0; };
+    std::optional<DraggedMidi> draggedMidi;
     juce::TextButton hubButton { "HUB" };
     juce::TextButton padsButton { "PADS" };   // the chord pads (0.14.0), lit while open
     void registerCommands();

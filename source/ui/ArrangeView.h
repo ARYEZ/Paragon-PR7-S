@@ -299,6 +299,10 @@ public:
     std::optional<Timeline::Row> rowAt (float y) const;
     float rowTop (const Timeline::Row&) const;   // where a row is drawn now
     float trackTop (int trackId) const;
+    // A MIDI file being dragged in (0.18.1): where it will land, lit in the family's gradient.
+    struct DropPreview { int trackId = 0; double start = 0.0, length = 0.0; juce::String name; int moreTracks = 0; };
+    void setDropPreview (std::optional<DropPreview>);
+    const std::optional<DropPreview>& getDropPreview() const noexcept { return dropPreview; }
 
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
@@ -421,6 +425,8 @@ private:
     bool gliding = false;
     // Where a click in the ruler would put the playhead (snapped), shown while hovering.
     std::optional<double> rulerHover;
+    std::optional<DropPreview> dropPreview;
+    juce::Rectangle<float> dropPreviewBounds() const;
     void setRulerHover (std::optional<double>);
     bool playheadRed = false;
     void scrolled();             // the track list and the scroll bars follow
