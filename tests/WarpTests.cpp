@@ -310,8 +310,8 @@ TEST_CASE ("On screen: WARP catches a hitpoint and drags it; a modifier click re
     const juce::Point<float> from (timeline.xForBeat (2.0) + 5.0f, y), to (timeline.xForBeat (2.5) + 5.0f, y);
     arrange.mouseDown (mouseAt (arrange, from, from));
     for (int step = 1; step <= 4; ++step)
-        arrange.mouseDrag (mouseAt (arrange, from + (to - from) * ((float) step / 4.0f), from, juce::ModifierKeys (juce::ModifierKeys::ctrlModifier)));
-    arrange.mouseUp (mouseAt (arrange, to, from, juce::ModifierKeys (juce::ModifierKeys::ctrlModifier)));
+        arrange.mouseDrag (mouseAt (arrange, from + (to - from) * ((float) step / 4.0f), from, juce::ModifierKeys (juce::ModifierKeys::commandModifier)));
+    arrange.mouseUp (mouseAt (arrange, to, from, juce::ModifierKeys (juce::ModifierKeys::commandModifier)));
     REQUIRE (part().isWarped());
     REQUIRE (part().warp.size() == 3);
     CHECK_THAT (part().warp[1].seconds, WithinAbs (1.0, 0.004));                 // (the hit's own moment)
