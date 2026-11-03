@@ -1039,6 +1039,39 @@ void ArrangeView::updateCursor (const juce::MouseEvent& event)
                                            : juce::MouseCursor::NormalCursor);
         return;
     }
+    // (0.27.0) An automation lane: its handles' pointers, and the bend handle under the mouse.
+    if (const auto row = rowAt (event.position.y); row && row->kind == Timeline::Row::Kind::lane)
+    {
+        const auto bend = tool == Tool::select ? curveHandleAt (row->busId, row->laneIndex, event.position) : -1;
+        if (bend != hoverCurve.point || row->busId != hoverCurve.busId || row->laneIndex != hoverCurve.laneIndex)
+        {
+            hoverCurve = { row->busId, row->laneIndex, bend };
+            repaint (getLaneArea (row->busId, row->laneIndex).expanded (0.0f, 4.0f).toNearestIntEdges());
+        }
+        const auto h = pointSelection.busId == row->busId && pointSelection.laneIndex == row->laneIndex && tool == Tool::select
+                           ? pointHandleAt (event.position, event.mods.isAltDown()) : PointHandle::none;
+        if (h == PointHandle::stretch)
+            setMouseCursor (juce::MouseCursor::LeftRightResizeCursor);
+        else if (h != PointHandle::none || bend >= 0)
+            setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+        else if (tool == Tool::line)
+            setMouseCursor (juce::MouseCursor::CrosshairCursor);
+        else if (tool != Tool::select)
+        {
+            auto found = toolCursors.find ((int) tool);
+            if (found == toolCursors.end())
+                found = toolCursors.emplace ((int) tool, ToolIcons::cursor (tool)).first;
+            setMouseCursor (found->second);
+        }
+        else
+            setMouseCursor (juce::MouseCursor::NormalCursor);
+        return;
+    }
+    if (hoverCurve.point >= 0)
+    {
+        hoverCurve.point = -1;
+        repaint();
+    }
     if (tool == Tool::split)
     {
         // The cut line's old and new strips only: where the line is drawn
@@ -1257,7 +1290,8 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
         tempoDrag (event);
         return;
     }
-    if (drag == Drag::points || drag == Drag::band || drag == Drag::draw)
+    if (drag == Drag::points || drag == Drag::band || drag == Drag::draw || drag == Drag::erasePoints || drag == Drag::linePoints
+        || drag == Drag::pointHandle || drag == Drag::curve || drag == Drag::segmentScale)
     {
         automationDrag (event);
         return;
@@ -1437,7 +1471,8 @@ void ArrangeView::mouseUp (const juce::MouseEvent& event)
         tempoUp();
         return;
     }
-    if (drag == Drag::points || drag == Drag::band || drag == Drag::draw)
+    if (drag == Drag::points || drag == Drag::band || drag == Drag::draw || drag == Drag::erasePoints || drag == Drag::linePoints
+        || drag == Drag::pointHandle || drag == Drag::curve || drag == Drag::segmentScale)
     {
         automationUp();
         return;
@@ -1560,6 +1595,7 @@ const char* ArrangeView::toolName (Tool t)
         case Tool::zoom:   return "ZOOM";
         case Tool::mute:   return "MUTE";
         case Tool::draw:   return "DRAW";
+        case Tool::line:   return "LINE";
         case Tool::play:   return "PLAY";
     }
     return "";
@@ -1577,6 +1613,7 @@ int ArrangeView::toolKey (Tool t)
         case Tool::zoom:   return 6;
         case Tool::mute:   return 7;
         case Tool::draw:   return 8;
+        case Tool::line:   return 0;   // (no number key: the manual gives it none)
         case Tool::play:   return 9;
     }
     return 0;
@@ -1696,6 +1733,8 @@ bool ArrangeView::toolDown (const juce::MouseEvent& event)
             if (hit)
                 select (hit->first, hit->second);
             break;
+        case Tool::line:
+            break;   // (on the automation lanes only)
         case Tool::play:
             // Held: plays from here; let go: stops, back where it was.
             playReturn = studio.getEngine().getPosition();
@@ -1778,6 +1817,8 @@ void ArrangeView::toolUp (const juce::MouseEvent& event)
 
 void ArrangeView::mouseDoubleClick (const juce::MouseEvent& event)
 {
+    if (automationDoubleClick (event))   // (0.27.0) a point's value typed in, a bend straightened
+        return;
     // The chord track: a chord's editor; an empty spot, the chord the one before suggests (0.16.0).
     if (const auto row = rowAt (event.position.y); row && row->kind == Timeline::Row::Kind::chords)
     {
@@ -1997,7 +2038,9 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
     const auto* track = studio.getProject().findTrack (row.busId);
     const auto active = studio.getAutomationRead (row.busId) && ! lane->muted;
     const auto colour = active ? (track != nullptr ? track->colour : ParagonColours::accent) : ParagonColours::textDim.withAlpha (0.6f);
-    const auto editing = (drag == Drag::points || drag == Drag::draw) && pointSelection.busId == row.busId && pointSelection.laneIndex == row.laneIndex;
+    const auto editing = (drag == Drag::points || drag == Drag::draw || drag == Drag::erasePoints || drag == Drag::pointHandle
+                          || drag == Drag::curve || drag == Drag::segmentScale)
+                         && pointSelection.busId == row.busId && pointSelection.laneIndex == row.laneIndex;
     const auto& points = editing ? workingPoints : lane->points;
 
     if (points.empty())
@@ -2020,6 +2063,17 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
         const auto x = timeline.xForBeat (points[i].beat);
         if (lane->isStep() && i > 0)
             curve.lineTo (x, yForValue (area, points[i - 1].value));
+        else if (i > 0 && std::abs (points[i].curve) > 1.0e-4f)
+        {
+            // (0.27.0) A bent ramp, drawn a few pixels at a time.
+            const auto x0 = timeline.xForBeat (points[i - 1].beat);
+            for (auto px = x0 + 3.0f; px < x; px += 3.0f)
+            {
+                const auto along = (px - x0) / juce::jmax (1.0f, x - x0);
+                curve.lineTo (px, yForValue (area, points[i - 1].value + (points[i].value - points[i - 1].value)
+                                                       * pr7s::AutomationLane::curveShape (along, points[i].curve)));
+            }
+        }
         curve.lineTo (x, yForValue (area, points[i].value));
     }
     curve.lineTo (area.getRight(), yForValue (area, points.back().value));
@@ -2053,6 +2107,7 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
         g.setColour (ParagonColours::accent);
         g.drawRect (pointBand, 1.0f);
     }
+    paintPointHandles (g, row);
 }
 
 bool ArrangeView::automationDown (const juce::MouseEvent& event, const Timeline::Row& row)
@@ -2075,6 +2130,51 @@ bool ArrangeView::automationDown (const juce::MouseEvent& event, const Timeline:
     pointDownAt = event.position;
     dragMoved = false;
     copyingPoints = false;
+    ctrlToggle = false;
+
+    // (0.27.0) The tools: DRAW draws, ERASE erases, LINE draws a shape.
+    if (tool == Tool::draw)
+    {
+        drag = Drag::draw;
+        pointSelection.points.clear();
+        automationDrag (event);
+        return true;
+    }
+    if (tool == Tool::erase)
+    {
+        drag = Drag::erasePoints;
+        pointSelection.points.clear();
+        automationDrag (event);
+        return true;
+    }
+    if (tool == Tool::line)
+    {
+        drag = Drag::linePoints;
+        lineEnd = event.position;
+        pointSelection.points.clear();
+        repaint();
+        return true;
+    }
+    // The event editor's handles (two or more selected), a bend's handle, the quick scaling handle
+    // (a point under the mouse comes first: the box's edges run through the outer points).
+    auto onPoint = false;
+    for (int i = 0; i < (int) lane->points.size() && ! onPoint; ++i)
+        onPoint = getPointPosition (row.busId, row.laneIndex, i).getDistanceFrom (event.position) <= pointGrab;
+    if (sameLane && ! onPoint)
+        if (const auto h = pointHandleAt (event.position, event.mods.isAltDown()); h != PointHandle::none)
+        {
+            drag = Drag::pointHandle;
+            activeHandle = h;
+            boxAtDown = getPointBox();
+            selectionAtDown = pointSelection.points;
+            return true;
+        }
+    if (const auto c = onPoint ? -1 : curveHandleAt (row.busId, row.laneIndex, event.position); c >= 0)
+    {
+        drag = event.position.y <= area.getY() + 6.0f ? Drag::segmentScale : Drag::curve;
+        curvePoint = c;
+        return true;
+    }
 
     // On a point: select it (Shift adds or removes) and drag it (with the others selected).
     anchor = -1;
@@ -2088,6 +2188,8 @@ bool ArrangeView::automationDown (const juce::MouseEvent& event, const Timeline:
     if (anchor >= 0)
     {
         const auto already = std::binary_search (chosen.begin(), chosen.end(), anchor);
+        // (0.27.0) Ctrl-click adds or removes too (as Shift), unless it's dragged (Ctrl keeps a move to one direction).
+        ctrlToggle = event.mods.isCommandDown() && ! event.mods.isShiftDown();
         if (event.mods.isShiftDown())
         {
             if (already)
@@ -2098,7 +2200,9 @@ bool ArrangeView::automationDown (const juce::MouseEvent& event, const Timeline:
             repaint();
             return true;
         }
-        if (! already)
+        if (! already && ! ctrlToggle)
+            chosen = { anchor };
+        if (! already && ctrlToggle && chosen.empty())
             chosen = { anchor };
         copyingPoints = event.mods.isAltDown();
         drag = Drag::points;
@@ -2114,9 +2218,10 @@ bool ArrangeView::automationDown (const juce::MouseEvent& event, const Timeline:
         automationDrag (event);
         return true;
     }
-    if (! event.mods.isShiftDown())
+    if (! event.mods.isShiftDown() && ! event.mods.isCommandDown())
         chosen.clear();
     pointBand = { event.position, event.position };
+    bandBefore = chosen;
     drag = Drag::band;
     juce::ignoreUnused (area);
     repaint();
@@ -2135,10 +2240,12 @@ void ArrangeView::automationDrag (const juce::MouseEvent& event)
     {
         {
             pointBand = juce::Rectangle<float> (pointDownAt, event.position);
-            std::vector<int> inside;
+            auto inside = bandBefore;   // (Shift / Ctrl: added to what was selected)
             for (int i = 0; i < (int) lane->points.size(); ++i)
                 if (pointBand.contains (getPointPosition (pointSelection.busId, pointSelection.laneIndex, i)))
                     inside.push_back (i);
+            std::sort (inside.begin(), inside.end());
+            inside.erase (std::unique (inside.begin(), inside.end()), inside.end());
             pointSelection.points = inside;
         }
     }
@@ -2147,6 +2254,11 @@ void ArrangeView::automationDrag (const juce::MouseEvent& event)
         {
             if (! dragMoved || anchor < 0)
                 return;
+            if (! std::binary_search (pointSelection.points.begin(), pointSelection.points.end(), anchor))
+            {
+                // (Ctrl-dragging a point not selected: it joins the selection and moves with it.)
+                pointSelection.points.insert (std::upper_bound (pointSelection.points.begin(), pointSelection.points.end(), anchor), anchor);
+            }
             // The grabbed point to the mouse (snapped along the song), the others with it.
             const auto& grabbed = originalPoints[(size_t) anchor];
             const auto ctrl = event.mods.isCommandDown();
@@ -2205,6 +2317,42 @@ void ArrangeView::automationDrag (const juce::MouseEvent& event)
             workingPoints = std::move (kept);
         }
     }
+    else if (drag == Drag::erasePoints)
+    {
+        // (0.27.0) ERASE: the points the mouse has crossed since it went down.
+        const auto left = juce::jmin (pointDownAt.x, event.position.x) - pointGrab, right = juce::jmax (pointDownAt.x, event.position.x) + pointGrab;
+        workingPoints.clear();
+        for (const auto& p : originalPoints)
+        {
+            const auto x = timeline.xForBeat (p.beat);
+            if (x < left || x > right)
+                workingPoints.push_back (p);
+        }
+        dragMoved = true;
+    }
+    else if (drag == Drag::linePoints)
+    {
+        lineEnd = event.position;
+    }
+    else if (drag == Drag::pointHandle)
+    {
+        dragPointHandle (activeHandle, event.position - pointDownAt);
+    }
+    else if (drag == Drag::curve)
+    {
+        dragMoved = true;
+        bendSegment (pointSelection.busId, pointSelection.laneIndex, curvePoint, event.position.y);
+    }
+    else if (drag == Drag::segmentScale)
+    {
+        // Quick vertical scaling: the segment's two points, scaled from the bottom by the drag (up: higher).
+        dragMoved = true;
+        workingPoints = originalPoints;
+        const auto factor = juce::jmax (0.0f, 1.0f - (event.position.y - pointDownAt.y) / juce::jmax (1.0f, area.getHeight()));
+        for (const auto i : { curvePoint - 1, curvePoint })
+            if (juce::isPositiveAndBelow (i, (int) workingPoints.size()))
+                workingPoints[(size_t) i].value = juce::jlimit (0.0f, 1.0f, originalPoints[(size_t) i].value * factor);
+    }
     repaint();
 }
 
@@ -2215,6 +2363,45 @@ void ArrangeView::automationUp()
     const auto* lane = laneFor (pointSelection.busId, pointSelection.laneIndex);
     if (lane == nullptr)
         return;
+    if (finished == Drag::points && ! dragMoved && ctrlToggle && anchor >= 0)
+    {
+        // (0.27.0) A Ctrl-click (no drag): the point in or out of the selection.
+        auto& chosen = pointSelection.points;
+        if (const auto it = std::find (chosen.begin(), chosen.end(), anchor); it != chosen.end() && chosen.size() > 1)
+            chosen.erase (it);
+        else if (it == chosen.end())
+            chosen.insert (std::upper_bound (chosen.begin(), chosen.end(), anchor), anchor);
+        repaint();
+        return;
+    }
+    if (finished == Drag::erasePoints)
+    {
+        if (workingPoints.size() != originalPoints.size())
+            commitPoints (workingPoints, {});
+        repaint();
+        return;
+    }
+    if (finished == Drag::linePoints)
+    {
+        drawLineShape (pointSelection.busId, pointSelection.laneIndex, pointDownAt, lineEnd, juce::ModifierKeys::currentModifiers.isCommandDown());
+        return;
+    }
+    if (finished == Drag::pointHandle || finished == Drag::curve || finished == Drag::segmentScale)
+    {
+        if (dragMoved)
+        {
+            std::vector<pr7s::AutomationPoint> stillSelected;
+            for (const auto i : pointSelection.points)
+                if (juce::isPositiveAndBelow (i, (int) workingPoints.size()))
+                    stillSelected.push_back (workingPoints[(size_t) i]);
+            commitPoints (workingPoints, stillSelected);
+        }
+        activeHandle = PointHandle::none;
+        selectionAtDown.clear();
+        curvePoint = -1;
+        repaint();
+        return;
+    }
     if (finished == Drag::band && ! dragMoved && ! pointDownAt.isOrigin())
     {
         // A click: a point there (snapped along the song), unless it's on the
@@ -2305,7 +2492,8 @@ void ArrangeView::selectAllPoints (int busId, int laneIndex)
 
 bool ArrangeView::cancelDrag()
 {
-    if (drag != Drag::points && drag != Drag::draw && drag != Drag::band)
+    if (drag != Drag::points && drag != Drag::draw && drag != Drag::band && drag != Drag::erasePoints && drag != Drag::linePoints
+        && drag != Drag::pointHandle && drag != Drag::curve && drag != Drag::segmentScale)
         return false;
     drag = Drag::none;
     workingPoints = originalPoints;
@@ -2317,18 +2505,64 @@ bool ArrangeView::cancelDrag()
 void ArrangeView::showLaneMenu (int busId, int laneIndex)
 {
     juce::PopupMenu menu;
+    const auto selectedHere = pointSelection.busId == busId && pointSelection.laneIndex == laneIndex && hasSelectedPoints();
     menu.addItem (1, "Select All Events");
-    menu.addItem (2, "Delete", pointSelection.busId == busId && pointSelection.laneIndex == laneIndex && hasSelectedPoints());
+    menu.addItem (2, "Delete", selectedHere);
+    menu.addItem (4, "Type a Value...", selectedHere);
+    menu.addItem (5, "Straighten the Selected Ramps", selectedHere);
     menu.addSeparator();
+    juce::PopupMenu copyMenu, pasteMenu;
+    copyMenu.addItem (10, "Copy Automation of All Tracks (Locator Range)");
+    copyMenu.addItem (11, "Copy Automation of Selected Tracks (Locator Range)");
+    copyMenu.addItem (12, "Copy Automation of This Parameter (Locator Range)");
+    const auto canPaste = studio.hasAutomationClip();
+    pasteMenu.addItem (20, "Paste Automation of All Tracks (Locator Range)", canPaste);
+    pasteMenu.addItem (21, "Paste Automation onto Selected Tracks (Locator Range)", canPaste);
+    pasteMenu.addItem (22, "Paste Automation onto This Parameter (Locator Range)", canPaste);
+    menu.addSubMenu ("Copy Automation", copyMenu);
+    menu.addSubMenu ("Paste Automation", pasteMenu);
+    menu.addSeparator();
+    menu.addItem (6, "Show All Used Automation");
+    menu.addItem (7, "Remove Unused Parameters");
     menu.addItem (3, "Remove Parameter");
     menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ArrangeView> (this), busId, laneIndex] (int chosen)
     {
         if (safe == nullptr)
             return;
+        using Scope = pr7s::Studio::AutomationScope;
         if (chosen == 1)
             safe->selectAllPoints (busId, laneIndex);
         else if (chosen == 2)
             safe->deleteSelectedPoints();
+        else if (chosen == 4 && safe->hasSelectedPoints())
+            safe->showPointEntry (busId, laneIndex, safe->pointSelection.points.front());
+        else if (chosen == 5)
+        {
+            if (const auto* lane = safe->laneFor (busId, laneIndex))
+            {
+                auto points = lane->points;
+                std::vector<pr7s::AutomationPoint> kept;
+                for (const auto i : safe->pointSelection.points)
+                    if (juce::isPositiveAndBelow (i, (int) points.size()))
+                    {
+                        points[(size_t) i].curve = 0.0f;
+                        if (i + 1 < (int) points.size())
+                            points[(size_t) i + 1].curve = 0.0f;   // (the ramps either side of it)
+                    }
+                for (const auto i : safe->pointSelection.points)
+                    if (juce::isPositiveAndBelow (i, (int) points.size()))
+                        kept.push_back (points[(size_t) i]);
+                safe->commitPoints (points, kept);
+            }
+        }
+        else if (chosen == 6)
+            safe->studio.showAllUsedAutomation();
+        else if (chosen == 7)
+            safe->studio.removeUnusedAutomation (busId);
+        else if (chosen >= 10 && chosen <= 12)
+            safe->studio.copyAutomation (chosen == 10 ? Scope::allTracks : chosen == 11 ? Scope::selectedTracks : Scope::parameter, busId, laneIndex);
+        else if (chosen >= 20 && chosen <= 22)
+            safe->studio.pasteAutomation (chosen == 20 ? Scope::allTracks : chosen == 21 ? Scope::selectedTracks : Scope::parameter, busId, laneIndex);
         else if (chosen == 3)
         {
             safe->pointSelection = {};
@@ -2348,7 +2582,8 @@ ArrangeTools::ArrangeTools (ArrangeView& arrangeToUse) : arrange (arrangeToUse)
         "ERASE (5): click a part to delete it; Alt-click: it and all after it on its track",
         "ZOOM (6): click to zoom in there, Alt-click to zoom out; drag across a stretch to fill the view with it",
         "MUTE (7): click a part to mute or unmute it (muted parts aren't played); drag a rectangle over several",
-        "DRAW (8): drag on an instrument track to draw a new, empty part",
+        "DRAW (8): drag on an instrument track to draw a new, empty part; on an automation lane, draw points",
+        "LINE: drag on an automation lane for a line of points; click LINE again for its shapes (Line, Parabola, Sine, Triangle, Square)",
         "PLAY (9): hold the mouse down on the tracks to play from there; let go to stop" };
     for (size_t i = 0; i < buttons.size(); ++i)
     {
@@ -2359,7 +2594,13 @@ ArrangeTools::ArrangeTools (ArrangeView& arrangeToUse) : arrange (arrangeToUse)
         button.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         button.setWantsKeyboardFocus (false);
         button.setTooltip (tips[i]);
-        button.onClick = [this, t] { arrange.setTool (t); };
+        button.onClick = [this, t, &button]
+        {
+            if (t == ArrangeView::Tool::line && arrange.getTool() == t)
+                arrange.showLineShapeMenu (&button);   // (LINE again: its shapes, as the manual's)
+            else
+                arrange.setTool (t);
+        };
         addAndMakeVisible (button);
     }
     refresh();

@@ -100,6 +100,9 @@ namespace pr7s
     {
         double beat = 0.0;    // from the song's start
         float value = 0.0f;   // 0 to 1
+        // (0.27.0, the manual's Bézier curves) How the ramp arriving at this point bends:
+        // 0 straight; up to 1 bowed one way, down to -1 the other (`curveShape`).
+        float curve = 0.0f;
         bool operator== (const AutomationPoint&) const = default;
     };
 
@@ -123,6 +126,8 @@ namespace pr7s
         // a straight line between (a jump at the next point, for a step lane).
         // None if there are no points.
         std::optional<float> valueAt (double beat) const noexcept;
+        // A ramp's shape (0.27.0): `along` (0 to 1) bent by `curve`: along ^ 4^-curve.
+        static float curveShape (float along, float curve) noexcept;
         bool operator== (const AutomationLane&) const = default;
     };
 

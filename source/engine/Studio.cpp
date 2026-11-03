@@ -3179,6 +3179,160 @@ namespace pr7s
         changed();
     }
 
+    namespace
+    {
+        // A lane's points from `from` to `to` (beats), from 0, with its values at both ends.
+        std::vector<AutomationPoint> cutOut (const AutomationLane& lane, double from, double to)
+        {
+            std::vector<AutomationPoint> out;
+            if (lane.points.empty())
+                return out;
+            out.push_back ({ 0.0, *lane.valueAt (from), 0.0f });
+            for (const auto& p : lane.points)
+                if (p.beat > from + 1.0e-9 && p.beat < to - 1.0e-9)
+                    out.push_back ({ p.beat - from, p.value, p.curve });
+            out.push_back ({ to - from, *lane.valueAt (to), 0.0f });
+            return out;
+        }
+
+        // `clip` (points from 0) laid over `from` to `to`: what was there goes; the value at
+        // either side is kept a 960th of a beat outside; a longer range holds the last value.
+        void pasteOver (AutomationLane& lane, const std::vector<AutomationPoint>& clip, double from, double to)
+        {
+            constexpr double just = 1.0 / 960.0;
+            const auto hadPoints = ! lane.points.empty();
+            const auto before = hadPoints ? lane.valueAt (from - just) : std::nullopt;
+            const auto after = hadPoints ? lane.valueAt (to + just) : std::nullopt;
+            std::vector<AutomationPoint> kept;
+            for (const auto& p : lane.points)
+                if (p.beat < from - just * 0.5 || p.beat > to + just * 0.5)
+                    kept.push_back (p);
+            if (before && from - just > 0.0)
+                kept.push_back ({ from - just, *before, 0.0f });
+            auto last = clip.empty() ? 0.0f : clip.front().value;
+            for (const auto& p : clip)
+                if (p.beat <= to - from + 1.0e-9)
+                {
+                    kept.push_back ({ from + p.beat, p.value, p.curve });
+                    last = p.value;
+                }
+                else
+                {
+                    // Cut where the range ends: the value it had reached there.
+                    AutomationLane l;
+                    l.points = clip;
+                    kept.push_back ({ to, *l.valueAt (to - from), p.curve });
+                    last = kept.back().value;
+                    break;
+                }
+            if (! clip.empty() && clip.back().beat < to - from - 1.0e-9)
+                kept.push_back ({ to, last, 0.0f });   // (longer: the last value to the right locator)
+            if (after)
+                kept.push_back ({ to + just, *after, 0.0f });
+            std::stable_sort (kept.begin(), kept.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
+            lane.points = std::move (kept);
+        }
+    }
+
+    bool Studio::copyAutomation (AutomationScope scope, int busId, int laneIndex)
+    {
+        const auto from = project.loopStart, to = project.loopEnd;
+        if (to <= from)
+            return false;
+        std::vector<AutomationClipLane> clip;
+        const auto take = [&] (int bus)
+        {
+            if (const auto* lanes = getAutomation (bus))
+                for (const auto& lane : *lanes)
+                    if (! lane.points.empty())
+                    {
+                        auto copy = lane;
+                        copy.points = cutOut (lane, from, to);
+                        clip.push_back ({ bus, copy });
+                    }
+        };
+        if (scope == AutomationScope::parameter)
+        {
+            const auto* lanes = getAutomation (busId);
+            if (lanes == nullptr || ! juce::isPositiveAndBelow (laneIndex, (int) lanes->size()) || (*lanes)[(size_t) laneIndex].points.empty())
+                return false;
+            auto copy = (*lanes)[(size_t) laneIndex];
+            copy.points = cutOut (copy, from, to);
+            clip.push_back ({ busId, copy });
+        }
+        else
+        {
+            for (const auto& track : project.tracks)
+                if (scope == AutomationScope::allTracks || isTrackSelected (track.id))
+                    take (track.id);
+            if (scope == AutomationScope::allTracks || isMasterSelected())
+                take (Engine::masterBus);
+        }
+        if (clip.empty())
+            return false;
+        automationClip = std::move (clip);
+        automationClipLength = to - from;
+        return true;
+    }
+
+    bool Studio::pasteAutomation (AutomationScope scope, int busId, int laneIndex)
+    {
+        const auto from = project.loopStart, to = project.loopEnd;
+        if (automationClip.empty() || to <= from)
+            return false;
+        const auto laneFor = [this] (int bus, const AutomationLane& control) -> AutomationLane*
+        {
+            // The bus's lane for that control (a new one, hidden, if it has none).
+            auto* lanes = lanesOf (bus);
+            if (lanes == nullptr)
+                return nullptr;
+            for (auto& lane : *lanes)
+                if (lane.sameControl (control))
+                    return &lane;
+            auto added = control;
+            added.points.clear();
+            added.muted = false;
+            lanes->push_back (added);
+            return &lanes->back();
+        };
+        auto pasted = false;
+        if (scope == AutomationScope::parameter)
+        {
+            auto* lanes = lanesOf (busId);
+            if (lanes == nullptr || ! juce::isPositiveAndBelow (laneIndex, (int) lanes->size()))
+                return false;
+            pasteOver ((*lanes)[(size_t) laneIndex], automationClip.front().lane.points, from, to);
+            pasted = true;
+        }
+        else if (scope == AutomationScope::allTracks)
+        {
+            for (const auto& c : automationClip)
+                if (auto* lane = laneFor (c.busId, c.lane))
+                    pasteOver (*lane, c.lane.points, from, to), pasted = true;
+        }
+        else
+        {
+            // The copied tracks in order, onto the selected tracks in order.
+            std::vector<int> sources;
+            for (const auto& c : automationClip)
+                if (std::find (sources.begin(), sources.end(), c.busId) == sources.end())
+                    sources.push_back (c.busId);
+            const auto targets = getSelectedTracks();
+            for (size_t i = 0; i < targets.size() && ! sources.empty(); ++i)
+            {
+                const auto source = sources[i % sources.size()];
+                for (const auto& c : automationClip)
+                    if (c.busId == source)
+                        if (auto* lane = laneFor (targets[i], c.lane))
+                            pasteOver (*lane, c.lane.points, from, to), pasted = true;
+            }
+        }
+        if (! pasted)
+            return false;
+        changed();
+        return true;
+    }
+
     void Studio::insertGone (int busId, int slot, bool shiftUp)
     {
         const auto fix = [slot, shiftUp] (std::vector<AutomationLane>& lanes)

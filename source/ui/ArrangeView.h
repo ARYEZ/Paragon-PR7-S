@@ -206,8 +206,8 @@ public:
     std::function<void()> onPartsCopied;   // (Ctrl+V then pastes parts: MainView)
 
     // The editing tools (see above).
-    enum class Tool { select, range, split, glue, erase, zoom, mute, draw, play };
-    static constexpr Tool tools[] = { Tool::select, Tool::range, Tool::split, Tool::glue, Tool::erase, Tool::zoom, Tool::mute, Tool::draw, Tool::play };
+    enum class Tool { select, range, split, glue, erase, zoom, mute, draw, line, play };
+    static constexpr Tool tools[] = { Tool::select, Tool::range, Tool::split, Tool::glue, Tool::erase, Tool::zoom, Tool::mute, Tool::draw, Tool::line, Tool::play };
     static const char* toolName (Tool);
     static int toolKey (Tool);   // its number key
     void setTool (Tool);
@@ -270,6 +270,41 @@ public:
     // Where a lane, and a point on it, are drawn (for tests).
     juce::Rectangle<float> getLaneArea (int busId, int laneIndex) const;
     juce::Point<float> getPointPosition (int busId, int laneIndex, int point) const;
+
+    // Automation editing (0.27.0, the manual's Editing Automation Events):
+    //   SELECT    click a point; Shift- or Ctrl-click adds or removes one; drag a box round
+    //             several; drag them (Ctrl: one direction only; Alt: a copy); double-click one
+    //             to type its value (as its control reads: dB, L/C/R, ON/OFF, %) and where it is
+    //             (all the selected get the value); Alt-drag draws.
+    //   handles   two or more selected on a ramp: the manual's Automation Event Editor: the top
+    //             corners tilt that end (Alt: compress it), the top's middle scales, the top edge
+    //             moves them, the right edge's middle scales round the lane's middle (Alt: round
+    //             theirs), the bottom edge stretches them along the song
+    //   bends     on a ramp, the handle in a segment's middle bends it (the manual's Bézier
+    //             curves); double-click the handle straightens it. At the lane's top edge above a
+    //             segment: the quick vertical scaling handle
+    //   DRAW      draws; ERASE removes the points it crosses; LINE draws a shape (LINE again: Line,
+    //             Parabola (Ctrl: the other way), Sine, Triangle, Square: a period a grid step)
+    enum class LineShape { line, parabola, sine, triangle, square };
+    static juce::String lineShapeName (LineShape);
+    void setLineShape (LineShape);
+    LineShape getLineShape() const noexcept { return lineShape; }
+    void showLineShapeMenu (juce::Component* target);
+    void selectPoints (int busId, int laneIndex, std::vector<int> points);
+    std::optional<juce::String> formatPointValue (int busId, const pr7s::AutomationLane&, float value) const;
+    std::optional<float> parsePointValue (int busId, const pr7s::AutomationLane&, const juce::String&) const;
+    // Typing (as the box's SET): the selected points' value, and for one its position. False if not one.
+    bool enterPointValue (const juce::String& value, const juce::String& position);
+    void showPointEntry (int busId, int laneIndex, int point);
+    juce::Rectangle<float> getPointBox() const;              // the event editor's (empty: fewer than two, or a step lane)
+    enum class PointHandle { none, tiltLeft, tiltRight, compressLeft, compressRight, scale, move, scaleAbsolute, scaleRelative, stretch };
+    PointHandle pointHandleAt (juce::Point<float>, bool alt) const;
+    void dragPointHandle (PointHandle, juce::Point<float> offset);   // from the points as the drag began (tests drive it)
+    int curveHandleAt (int busId, int laneIndex, juce::Point<float>) const;   // the segment's end point (-1: none)
+    juce::Point<float> getCurveHandle (int busId, int laneIndex, int point) const;
+    void bendSegment (int busId, int laneIndex, int point, float towardsY);  // a segment's bend, so its middle is at that height
+    void drawLineShape (int busId, int laneIndex, juce::Point<float> from, juce::Point<float> to, bool reverse);
+    void showAutomationFunctions (int busId, int laneIndex);   // the lane menu's Copy / Paste Automation and the rest
 
     // Asked to edit the selected part's notes (double-click, or its menu): the key editor opens.
     std::function<void()> onEditNotes;
@@ -334,6 +369,7 @@ private:
     Selection selectionOf (int trackId, int index);
 
     enum class Drag { none, position, cycle, cycleMove, cycleLeft, cycleRight, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
+                      erasePoints, linePoints, pointHandle, curve, segmentScale,
                       newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove, marquee,
                       tempoPoints, tempoBand, tempoDraw, chordMove };
     std::vector<int> alsoSelected;              // the parts selected besides `selection` (by id)
@@ -381,6 +417,18 @@ private:
     int anchor = -1;               // the point grabbed
     bool copyingPoints = false;
     std::vector<pr7s::AutomationPoint> drawn;   // the points a drawing stroke has put down
+    LineShape lineShape = LineShape::line;
+    PointHandle activeHandle = PointHandle::none;
+    juce::Rectangle<float> boxAtDown;
+    std::vector<int> selectionAtDown;          // the handles' points, as indices into `originalPoints`
+    int curvePoint = -1;                       // the segment being bent or scaled (its end point)
+    bool ctrlToggle = false;                   // a Ctrl-click on a point: toggled on release if it didn't move
+    std::vector<int> bandBefore;               // the points selected when a Shift/Ctrl box began
+    struct HoverCurve { int busId = 0, laneIndex = -1, point = -1; } hoverCurve;   // the bend handle the mouse is on
+    juce::Point<float> lineEnd;
+    bool automationDoubleClick (const juce::MouseEvent&);
+    void paintPointHandles (juce::Graphics&, const Timeline::Row&) const;
+    float lineValueAt (double t, float v1, float v2, double beatsInto, bool reverse) const;
     void paintAutomation (juce::Graphics&, const Timeline::Row&) const;
     void paintTempo (juce::Graphics&, const Timeline::Row&) const;
     bool tempoDown (const juce::MouseEvent&);
@@ -453,7 +501,7 @@ public:
     // On the transport unit (a wide window): TOOLS stamped in the unit's ink, as the keys' names are.
     void setOnUnit (bool);
     int getPreferredWidth() const noexcept { return onUnit ? unitWidth() : 64 + (int) std::size (ArrangeView::tools) * 74; }
-    static int unitWidth() noexcept { return (int) std::size (ArrangeView::tools) * 64; }   // on the unit: no label (the icons tell them apart)
+    static int unitWidth() noexcept { return 576; }   // on the unit: no label (the icons tell them apart); 10 keys in the 9 x 64 it always had (0.27.0: LINE)
     juce::TextButton& getButton (ArrangeView::Tool);
     void paint (juce::Graphics&) override;
     void resized() override;

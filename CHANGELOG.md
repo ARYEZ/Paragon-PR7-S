@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.27.0
+
+Automation editing, the first part of automation as the manual has it (the owner asked: type a node's value, select several nodes, and everything else; the Automation panel's modes, Trim, Fill and Suspend come next, in 0.28.0).
+
+- **Typing a value (the owner asked):** double-click a point on an automation lane: a box with its **VALUE** as its control reads it (volume and sends in dB: -6, +3 dB, -inf; pan L30 / C / R20; mute ON / OFF; a plug-in's knob in %) and **AT** where it is (bar.beat.16th.tick). Enter or SET. With several points selected, all of them take the value. Also in the lane's right-click menu: Type a Value.
+- **Selecting several points (the owner asked):** Shift-click or **Ctrl-click** adds a point to the selection (or takes it out); drag a box round several (with Shift or Ctrl held, added to what's selected); the lane's menu has Select All Events.
+- **The Automation Event Editor** (the manual's): two or more points selected on a ramp lane get a box with handles. The top edge moves them all up or down; the top's middle scales them; the top corners tilt the left or right end (Alt: compress it); the right edge's middle scales them round the lane's middle (Alt: round their own middle); the bottom edge stretches them along the song.
+- **Curved ramps** (the manual's Bézier curves): hover over a ramp's middle and a handle appears; drag it up or down to bend the ramp into a curve; double-click the handle (or the menu's Straighten the Selected Ramps) to make it straight again. Playback follows the curve.
+- **Quick vertical scaling** (the manual's): at the lane's top edge over a ramp, a small handle scales that ramp's two points.
+- **The tools on a lane:** DRAW draws points, ERASE removes the points it's dragged across, and a new **LINE** tool (in the tools row, after DRAW; click it again for its shapes) draws a **Line** (a ramp), a **Parabola** (Ctrl: curved the other way), a **Sine**, **Triangle** or **Square** (one cycle per grid step, swinging round where you start, as far as you drag).
+- **Copy and paste automation** (the manual's Copy Automation to Other Tracks; the lane's right-click menu): copy what's between the locators, of all tracks, the selected tracks, or this parameter, and paste it between the locators somewhere else: all tracks onto the same tracks, the selected tracks onto other selected tracks in order, a parameter onto another lane. What was there is replaced; a shorter range cuts it, a longer one holds the last value to the right locator; the curve either side carries on. One undo step.
+- **Also in the lane's menu:** Show All Used Automation, Remove Unused Parameters.
+- **Honestly:** the curves are our shape (a power curve between the two points), drawn and played the same, rather than a true Bézier; LINE has no key (the manual gives it none); the event editor works on one lane at a time (the manual's Ctrl for several tracks isn't built), and selecting points with the RANGE tool isn't either. On the wide layout the tools' keys are a little narrower so ten fit where nine did. A MediaBay test that depends on timing failed once here and passed on every rerun; I'm watching it. Next (0.28.0): the Automation panel (F6): Touch, Auto-Latch and Cross-Over, Trim, the Fill options, Suspend Read/Write, Show, its functions, virgin territory and its settings.
+
 ## 0.26.0
 
 The drum editor, with drum maps (the owner asked: a drum editor with the map built in that says what drum each note plays; as the manual's Drum Editor and Drum Maps).

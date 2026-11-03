@@ -41,6 +41,8 @@ namespace pr7s
                     auto* p = e->createNewChildElement (pointTag);
                     p->setAttribute ("beat", point.beat);
                     p->setAttribute ("value", point.value);
+                    if (std::abs (point.curve) > 1.0e-6f)
+                        p->setAttribute ("curve", point.curve);
                 }
             }
         }
@@ -63,7 +65,8 @@ namespace pr7s
                 lane.muted = e->getBoolAttribute ("muted");
                 for (const auto* p : e->getChildWithTagNameIterator (pointTag))
                     lane.points.push_back ({ juce::jmax (0.0, p->getDoubleAttribute ("beat")),
-                                             (float) juce::jlimit (0.0, 1.0, p->getDoubleAttribute ("value")) });
+                                             (float) juce::jlimit (0.0, 1.0, p->getDoubleAttribute ("value")),
+                                             (float) juce::jlimit (-1.0, 1.0, p->getDoubleAttribute ("curve")) });
                 std::stable_sort (lane.points.begin(), lane.points.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
                 lanes.push_back (std::move (lane));
             }
@@ -121,7 +124,15 @@ namespace pr7s
             return before.value;
         const auto span = next->beat - before.beat;
         const auto along = span > 0.0 ? (float) ((beat - before.beat) / span) : 1.0f;
-        return before.value + (next->value - before.value) * along;
+        return before.value + (next->value - before.value) * curveShape (along, next->curve);
+    }
+
+    float AutomationLane::curveShape (float along, float curve) noexcept
+    {
+        along = juce::jlimit (0.0f, 1.0f, along);
+        if (std::abs (curve) < 1.0e-4f)
+            return along;
+        return std::pow (along, std::pow (4.0f, -juce::jlimit (-1.0f, 1.0f, curve)));
     }
 
     float volumeToTravel (float db) noexcept

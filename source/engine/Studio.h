@@ -508,6 +508,16 @@ namespace pr7s
         void setLaneMuted (int busId, int laneIndex, bool);           // Mute Automation
         // A lane's points replaced (an edit with the mouse: one undo step). Turns R on.
         void setAutomationPoints (int busId, int laneIndex, std::vector<AutomationPoint>);
+        // Copy Automation to Other Tracks (0.27.0, the manual's): the automation between the
+        // locators, of all tracks (and the master), the selected tracks, or one lane (a parameter);
+        // pasted between the locators, there: all tracks to the same tracks and controls, the
+        // selected tracks' in order onto the selected tracks, a lane's onto the lane given. What
+        // was there is overwritten; a shorter target cuts it, a longer one keeps the last value to
+        // the right locator (the manual's); the curve on either side carries on. One undo step.
+        enum class AutomationScope { allTracks, selectedTracks, parameter };
+        bool copyAutomation (AutomationScope, int busId = 0, int laneIndex = -1);   // false: nothing there
+        bool pasteAutomation (AutomationScope, int busId = 0, int laneIndex = -1);
+        bool hasAutomationClip() const noexcept { return ! automationClip.empty(); }
 
         // Writing automation (as the manual has it): with W on, while playing,
         // touching a control writes it. The screen says when a control is
@@ -866,6 +876,10 @@ namespace pr7s
         void buildRecordingControllers (std::vector<Controller>&, double partStart) const;   // (0.25.0: each kind's last pass in a cycle)
         bool newControllersRamp = true;   // (without a settings file)
         juce::File drumMapFolderOverride;
+        // Copied automation: each lane's control, its bus, and its points from the range's start.
+        struct AutomationClipLane { int busId = 0; AutomationLane lane; };
+        std::vector<AutomationClipLane> automationClip;
+        double automationClipLength = 0.0;
         void timerCallback() override;
         void changeListenerCallback (juce::ChangeBroadcaster*) override;   // the device settings changed: keep them
 

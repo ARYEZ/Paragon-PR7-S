@@ -946,7 +946,7 @@ bool MainView::handleKey (const juce::KeyPress& key)
     // The arrangement's tools: 1 and 3 to 9 (not after a click in the key editor: it has its own), F9 / F10, Alt+X.
     if (! mods.isAnyModifierKeyDown() && ! (isKeyEditorOpen() && keysToEditor))
         for (const auto t : ArrangeView::tools)
-            if (key.getTextCharacter() == (juce::juce_wchar) ('0' + ArrangeView::toolKey (t)))
+            if (ArrangeView::toolKey (t) > 0 && key.getTextCharacter() == (juce::juce_wchar) ('0' + ArrangeView::toolKey (t)))
             {
                 arrange.setTool (t);
                 return true;

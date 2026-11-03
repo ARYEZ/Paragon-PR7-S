@@ -117,6 +117,17 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         view.setSize (size[0].getIntValue(), size[1].getIntValue());
         scale = 1.0f;
     }
+    // PARAGON_SNAPSHOT_AUTOEDIT=1 (0.27.0, with PARAGON_SNAPSHOT_AUTOMATION): the lead's volume taller, a bent ramp,
+    // three points selected (the event editor's box), the LINE tool chosen.
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_AUTOEDIT", {}).isNotEmpty())
+    {
+        studio.setAutomationPoints (Engine::masterBus, 0, { { 16.0, 0.3f, 0.0f }, { 18.0, 0.9f, 0.6f }, { 21.0, 0.5f, 0.0f },
+                                                            { 24.0, 0.8f, -0.5f }, { 26.0, 0.4f, 0.0f }, { 30.0, 0.7f, 0.0f } });
+        for (int i = 0; i < 3; ++i)
+            view.getArrangeView().zoomRows (true);
+        view.getArrangeView().selectPoints (Engine::masterBus, 0, { 2, 3, 4 });
+        view.getArrangeView().setTool (ArrangeView::Tool::line);
+    }
     // PARAGON_SNAPSHOT_INSPECTOR=fader: the Inspector's inserts and sends folded (its fader shows); =none: hidden.
     if (const auto inspector = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_INSPECTOR", {}); inspector == "fader")
     {
