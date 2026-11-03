@@ -2,6 +2,22 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.34.3
+
+DAWproject import fixes (your report from a Cubase song), and the first part of the screen work.
+
+**DAWproject import**
+- **A new track after an import no longer fails or turns up as the wrong instrument.** The import never told the song which track number came next, so the next new track got the same number as the first imported one. When the studio then looked for the new track, it found the old one: the new track could fail, or come in with that track's instrument (Superior Drummer, for example). New tracks are now numbered after the imported ones. As a safety net, any song that opens checks this too.
+- **Rack instruments come across as instrument tracks.** Cubase writes a rack instrument as two tracks: a MIDI track holding the notes, and an audio channel holding the instrument. PR7-S made the channel an audio track and put the instrument (Superior Drummer) in its effect slots, while the MIDI track got PR7-K. Now they become one instrument track: your instrument with its settings, the MIDI track's parts, the MIDI track's name and place, and the instrument channel's own mix (its fader, pan and effects: what you heard). When several MIDI tracks play into one instrument (a multi-part Kontakt), their parts all go onto that one instrument track and the report says so: PR7-S has no MIDI tracks playing into another track's instrument yet. Each MIDI track's MIDI channel isn't kept, so a multitimbral set-up needs its parts moved by hand.
+- **No second master.** A song's output came in as an ordinary track beside PR7-S's own master whenever the file didn't label it as the master. Now the channel the other tracks play into, which itself plays into nothing and has no clips on it, becomes the master: its level, effects and automation. If the file gives no routing at all, an empty channel named Stereo Out, Main Out, Master or Output is used.
+- **Honestly:** I haven't seen a DAWproject file written by Cubase itself, only the format's specification and reports of how Cubase lays these out, and the tests use files built to that shape. If something still comes across wrong, send me the .dawproject (or the project.xml inside it; it's a zip) and I'll match the import to it exactly.
+
+**The screen (the first part of the speed work's third step; nothing looks different, checked pixel for pixel in all three finishes)**
+- **Moving a fader no longer redraws everything.** Each step of a fader, pan or send drag redrew the whole arrangement (across three screens on your set-up), the track list, the mixer and the transport. Now a change that only moves the mix is left to the meters and faders that show it.
+- **Mixer and Inspector send slots** redraw only when what they show changes, not every slot on every frame.
+- **A closed MIDI editor or mixer** stops following the playhead and the meters.
+- Still to come: drawing only the visible part of automation lanes, and the transport's and arrangement's other redraws.
+
 ## 0.34.2
 
 Running better, part two: the playback engine. As with 0.34.1, nothing you hear changes. The tests check the output is the same sample for sample, not just close.

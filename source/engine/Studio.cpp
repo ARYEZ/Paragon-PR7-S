@@ -7241,6 +7241,8 @@ namespace pr7s
         for (const auto& track : project.tracks)
             engine.removeTrack (track.id);
         project = std::move (*loaded);
+        for (const auto& track : project.tracks)   // (never a new track with an old one's number)
+            project.nextTrackId = juce::jmax (project.nextTrackId, track.id + 1);
         padsChanged();
 
         file = source;

@@ -125,6 +125,9 @@ namespace pr7s::DawProject
             std::vector<Pending> pending;
             int nextId = 1;
             juce::StringArray skippedDevices;
+            bool masterFound = false;                   // a channel said it's the master
+            std::map<int, juce::String> xmlIdOf;        // our track id -> its Track element's id
+            const juce::XmlElement* arrangement = nullptr;
 
             Reader (const juce::File& s, juce::ZipFile& z, const juce::File& a, const juce::Array<juce::PluginDescription>& k)
                 : source (s), zip (z), audioFolder (a), known (k) {}
@@ -266,7 +269,10 @@ namespace pr7s::DawProject
                                      ? " (a built-in device, such as the channel strip's)." : "."));
                         continue;
                     }
-                    if (role == "instrument" && instrument != nullptr && ! foundInstrument)
+                    // An instrument: said so, or (no role given) a plug-in known here as one.
+                    const auto isInstrument = role == "instrument"
+                        || (role.isEmpty() && [&] { const auto d = findPlugin (name, device->getStringAttribute ("deviceVendor"), true); return d && d->isInstrument; }());
+                    if (isInstrument && instrument != nullptr && ! foundInstrument)
                     {
                         instrument->kind = Instrument::Kind::plugin;
                         instrument->plugin = describe (device, where, true);
@@ -326,6 +332,7 @@ namespace pr7s::DawProject
 
                 if (role == "master")
                 {
+                    masterFound = true;
                     trackIdOf[t->getStringAttribute ("id")] = 0;
                     trackIdOf[channel->getStringAttribute ("id")] = 0;
                     auto& p = result.project;
@@ -368,6 +375,7 @@ namespace pr7s::DawProject
                     track.kind = channel != nullptr ? Track::Kind::audio : Track::Kind::instrument;
 
                 trackIdOf[t->getStringAttribute ("id")] = track.id;
+                xmlIdOf[track.id] = t->getStringAttribute ("id");
                 if (channel != nullptr)
                 {
                     trackIdOf[channel->getStringAttribute ("id")] = track.id;
@@ -377,19 +385,177 @@ namespace pr7s::DawProject
                         track.mute = mute->getBoolAttribute ("value", false);
                     track.solo = channel->getBoolAttribute ("solo", false);
                     track.stereoInput = channel->getIntAttribute ("audioChannels", 2) >= 2;
-                    readDevices (channel, track.id, name, track.kind == Track::Kind::instrument ? &track.instrument : nullptr, track.inserts);
+                    // (An audio track may hold the instrument too: Cubase writes a rack instrument as a MIDI
+                    // track playing into an audio channel that holds it. That channel is an instrument track here.)
+                    const auto takesInstrument = track.kind == Track::Kind::instrument || track.kind == Track::Kind::audio;
+                    readDevices (channel, track.id, name, takesInstrument ? &track.instrument : nullptr, track.inserts);
+                    if (track.kind == Track::Kind::audio && track.instrument.kind == Instrument::Kind::plugin)
+                        track.kind = Track::Kind::instrument;
                     indexMixParameters (channel, track.id);
                     Pending later { track.id, channel->getStringAttribute ("destination"), {} };
                     for (auto* send : children (channel->getChildByName ("Sends"), "Send"))
                         later.sends.push_back (send);
                     pending.push_back (later);
                 }
-                if (track.kind == Track::Kind::instrument && track.instrument.kind == Instrument::Kind::paragonSynth)
-                    note (name + ": no VST3 instrument came with it; it plays PR7-K, the studio's synth.");
                 result.project.tracks.push_back (std::move (track));
                 // A group with tracks inside: they follow it.
                 for (auto* child : nested)
                     readTrack (child, index++);
+            }
+
+            // ---- after the tracks are read ------------------------------------
+            Pending* pendingOf (int trackId)
+            {
+                for (auto& p : pending)
+                    if (p.trackId == trackId)
+                        return &p;
+                return nullptr;
+            }
+
+            int destinationOf (int trackId) const
+            {
+                for (const auto& p : pending)
+                    if (p.trackId == trackId && p.destination.isNotEmpty())
+                        if (const auto to = trackIdOf.find (p.destination); to != trackIdOf.end())
+                            return to->second;
+                return -1;   // (none given, or one we don't know)
+            }
+
+            // Content on the arrangement aimed at this Track element (clips or notes, not automation).
+            bool hasContent (const juce::XmlElement* e, const juce::String& xmlId, bool inside = false) const
+            {
+                if (e == nullptr)
+                    return false;
+                const auto here = inside || e->getStringAttribute ("track") == xmlId;
+                if (here && (e->hasTagName ("Clip") || e->hasTagName ("Notes") || e->hasTagName ("Audio")))
+                    return true;
+                for (auto* child : e->getChildIterator())
+                    if (hasContent (child, xmlId, here))
+                        return true;
+                return false;
+            }
+
+            void removeTracks (const std::set<int>& ids)
+            {
+                auto& tracks = result.project.tracks;
+                tracks.erase (std::remove_if (tracks.begin(), tracks.end(), [&] (const Track& t) { return ids.count (t.id) > 0; }), tracks.end());
+                pending.erase (std::remove_if (pending.begin(), pending.end(), [&] (const Pending& p) { return ids.count (p.trackId) > 0; }), pending.end());
+            }
+
+            // The song's output when no channel said "master" (the owner's song from Cubase: its
+            // Stereo Out came across as a track beside PR7-S's own master). The audio channel
+            // the others play into that plays into nothing itself; else, if no channel names
+            // where it goes, one called as an output is (with nothing on it). It becomes the
+            // master: its level and effects, its automation.
+            void findImplicitMaster()
+            {
+                if (masterFound)
+                    return;
+                std::map<int, int> pointedAt;
+                for (const auto& track : result.project.tracks)
+                    if (const auto to = destinationOf (track.id); to > 0)
+                        ++pointedAt[to];
+                const auto canBe = [&] (const Track& t)
+                {
+                    return t.kind == Track::Kind::audio && destinationOf (t.id) < 0 && ! hasContent (arrangement, xmlIdOf[t.id]);
+                };
+                const Track* best = nullptr;
+                auto most = 0;
+                for (const auto& track : result.project.tracks)
+                    if (const auto n = pointedAt.count (track.id) > 0 ? pointedAt.at (track.id) : 0; n > most && canBe (track))
+                    {
+                        best = &track;
+                        most = n;
+                    }
+                if (best == nullptr && pointedAt.empty())
+                    for (const auto& track : result.project.tracks)
+                    {
+                        const auto n = track.name.trim().toLowerCase();
+                        if ((n == "stereo out" || n == "main out" || n == "master" || n == "output" || n == "outputs") && canBe (track))
+                        {
+                            best = &track;
+                            break;
+                        }
+                    }
+                if (best == nullptr)
+                    return;
+                const auto id = best->id;
+                auto& p = result.project;
+                p.masterVolumeDb = best->volumeDb;
+                p.masterInserts = best->inserts;
+                if (std::abs (best->pan) > 0.01f)
+                    note ("The master's pan isn't kept (PR7-S's master has none).");
+                note ("\"" + best->name + "\" is the song's output: it became PR7-S's master (its level and effects).");
+                for (auto& [key, info] : parameters)
+                    if (info.busId == id)
+                        info.busId = 0;
+                for (auto& [key, busId] : trackIdOf)
+                    if (busId == id)
+                        busId = 0;
+                masterFound = true;
+                removeTracks ({ id });
+            }
+
+            // A MIDI track playing into another track's instrument (Cubase's rack instruments: a MIDI
+            // track and an audio channel holding the instrument): one instrument track here, the
+            // instrument's, where the MIDI track was, with the MIDI track's parts (and name, when
+            // only one plays into it). Its mix is the instrument channel's (what's heard).
+            void mergeIntoInstruments()
+            {
+                std::map<int, std::vector<int>> feeders;   // instrument track -> the MIDI tracks playing into it, in order
+                for (const auto& track : result.project.tracks)
+                {
+                    if (track.kind != Track::Kind::instrument || track.instrument.kind == Instrument::Kind::plugin)
+                        continue;
+                    const auto to = destinationOf (track.id);
+                    if (const auto* target = to > 0 ? result.project.findTrack (to) : nullptr;
+                        target != nullptr && target->id != track.id && target->kind == Track::Kind::instrument
+                        && target->instrument.kind == Instrument::Kind::plugin)
+                        feeders[target->id].push_back (track.id);
+                }
+                for (const auto& [targetId, from] : feeders)
+                {
+                    const std::set<int> fromIds (from.begin(), from.end());
+                    auto& tracks = result.project.tracks;
+                    auto target = *result.project.findTrack (targetId);
+                    const auto& first = *result.project.findTrack (from.front());
+                    const auto instrumentName = target.name;
+                    juce::StringArray names;
+                    for (const auto id : from)
+                        names.add (result.project.findTrack (id)->name);
+                    if (from.size() == 1)
+                    {
+                        target.name = first.name;
+                        target.colour = first.colour;
+                    }
+                    // Into the first MIDI track's place; the others and the instrument's own row go.
+                    std::vector<Track> list;
+                    for (auto& t : tracks)
+                        if (t.id == from.front())
+                            list.push_back (target);
+                        else if (t.id != targetId && fromIds.count (t.id) == 0)
+                            list.push_back (std::move (t));
+                    tracks = std::move (list);
+                    pending.erase (std::remove_if (pending.begin(), pending.end(), [&] (const Pending& p) { return fromIds.count (p.trackId) > 0; }), pending.end());
+                    // Their clips land on it; their own channels' controls (MIDI volume and pan) aren't PR7-S's.
+                    for (auto& [key, busId] : trackIdOf)
+                        if (fromIds.count (busId) > 0)
+                            busId = targetId;
+                    for (auto it = parameters.begin(); it != parameters.end();)
+                        it = fromIds.count (it->second.busId) > 0 ? parameters.erase (it) : std::next (it);
+                    if (from.size() == 1)
+                        note ("\"" + names[0] + "\" played " + instrumentName + " in another channel: they're one instrument track here.");
+                    else
+                        note (names.joinIntoString (", ") + " all played " + instrumentName
+                              + ": their parts are on its one instrument track here (PR7-S has no MIDI tracks playing into another track's instrument yet).");
+                }
+            }
+
+            void noteStudioSynths()
+            {
+                for (const auto& track : result.project.tracks)
+                    if (track.kind == Track::Kind::instrument && track.instrument.kind == Instrument::Kind::paragonSynth)
+                        note (track.name + ": no VST3 instrument came with it; it plays PR7-K, the studio's synth.");
             }
 
             void resolveRouting()
@@ -903,11 +1069,16 @@ namespace pr7s::DawProject
         for (auto* channel : children (xml->getChildByName ("Structure"), "Channel"))   // (a master channel on its own)
             if (channel->getStringAttribute ("role") == "master")
             {
+                reader.masterFound = true;
                 reader.trackIdOf[channel->getStringAttribute ("id")] = 0;
                 project.masterVolumeDb = volumeDb (channel->getChildByName ("Volume"));
                 reader.readDevices (channel, 0, "Master", nullptr, project.masterInserts);
                 reader.indexMixParameters (channel, 0);
             }
+        reader.arrangement = xml->getChildByName ("Arrangement");
+        reader.findImplicitMaster();
+        reader.mergeIntoInstruments();
+        reader.noteStudioSynths();
         reader.resolveRouting();
 
         if (const auto* arrangement = xml->getChildByName ("Arrangement"))
@@ -929,6 +1100,10 @@ namespace pr7s::DawProject
         for (const auto& track : project.tracks)
             for (const auto& part : track.parts)
                 end = juce::jmax (end, part.end());
+        // New tracks numbered after the imported ones (it stayed at 1: a new track took an
+        // imported one's number, and the studio found the old track when it looked for the new).
+        for (const auto& track : project.tracks)
+            project.nextTrackId = juce::jmax (project.nextTrackId, track.id + 1);
         project.loopStart = 0.0;
         project.loopEnd = end > 0.0 ? std::ceil (end / project.beatsPerBar()) * project.beatsPerBar() : 16.0;
         return std::move (reader.result);
