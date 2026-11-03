@@ -25,6 +25,7 @@ namespace pr7s
             juce::String name;
             int channel = 1;              // the MIDI channel its notes are on (the first, if several)
             std::vector<Note> notes;      // start: beats from the file's start
+            std::vector<Controller> controllers;   // (0.25.0) CCs, pitchbend, aftertouch, poly pressure, program changes; start likewise
         };
         std::vector<Track> tracks;        // only those with notes
     };

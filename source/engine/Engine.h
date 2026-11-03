@@ -16,6 +16,7 @@ namespace pr7s
     {
         double beat = 0.0;
         juce::uint8 status = 0, data1 = 0, data2 = 0;
+        int pass = 0;   // the cycle's pass it was played in (0.25.0: controllers keep the last pass's)
     };
 
     // The studio's sound: plays every track's parts through its instrument
@@ -254,6 +255,8 @@ namespace pr7s
             juce::SmoothedValue<float> left, right;
             std::bitset<128> held;       // notes sounding, to stop them on a jump or stop
             int heldChannel = 1;         // the channel they were started on (the track's may change meanwhile)
+            bool chase = false;          // (0.25.0) play started, jumped or came round: each controller's value there first
+            bool bent = false, sustained = false;   // a bend or the sustain pedal sent: reset on stop
             bool checkHeld = false;      // the events changed (an edit while playing): the notes they no longer end, ended
             juce::MidiBuffer midi;
             juce::AudioBuffer<float> buffer;
@@ -315,6 +318,8 @@ namespace pr7s
             double beatAt (double sample) const noexcept { return map->beatAt (sample / rate); }
         };
         void schedule (TrackState&, juce::int64 fromSample, juce::int64 toSample, int sampleOffset, const Timing&);
+        void chaseControllers (TrackState&, double beat, int sampleOffset);
+        void resetControllers (TrackState&, int sampleOffset);
         void stopHeldNotes (TrackState&, int sampleOffset);
         void endNotesNoLongerEnded (TrackState&, double beatNow, int sampleOffset);
         void renderBlock (juce::AudioBuffer<float>& output, int numSamples);

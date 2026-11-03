@@ -1,4 +1,5 @@
 #include "Project.h"
+#include "Controllers.h"
 
 namespace pr7s
 {
@@ -274,6 +275,15 @@ namespace pr7s
                 t->setAttribute ("midiChannel", track.midiChannel);
             if (track.disabled)
                 t->setAttribute ("disabled", true);
+            if (track.controllerLanes != std::vector<int> { ControllerKinds::velocity })
+                t->setAttribute ("controllerLanes", ControllerKinds::lanesToText (track.controllerLanes));
+            if (track.pitchbendUp != 2 || track.pitchbendDown != 2 || track.pitchbendSnap || track.pitchbendGrid)
+            {
+                t->setAttribute ("pitchbendUp", track.pitchbendUp);
+                t->setAttribute ("pitchbendDown", track.pitchbendDown);
+                t->setAttribute ("pitchbendSnap", track.pitchbendSnap);
+                t->setAttribute ("pitchbendGrid", track.pitchbendGrid);
+            }
             if (track.frozen)
             {
                 t->setAttribute ("frozen", true);
@@ -325,6 +335,15 @@ namespace pr7s
                     n->setAttribute ("length", note.length);
                     n->setAttribute ("pitch", note.pitch);
                     n->setAttribute ("velocity", note.velocity);
+                }
+                for (const auto& c : part.controllers)
+                {
+                    auto* e = p->createNewChildElement ("Controller");
+                    e->setAttribute ("kind", ControllerKinds::toText (ControllerKinds::codeOf (c)));
+                    e->setAttribute ("start", c.start);
+                    e->setAttribute ("value", c.value);
+                    if (c.ramp)
+                        e->setAttribute ("ramp", true);
                 }
             }
         }
@@ -401,6 +420,12 @@ namespace pr7s
             track.midiInput = t->getStringAttribute ("midiInput");
             track.midiChannel = juce::jlimit (1, 16, t->getIntAttribute ("midiChannel", 1));
             track.disabled = t->getBoolAttribute ("disabled");
+            if (t->hasAttribute ("controllerLanes"))
+                track.controllerLanes = ControllerKinds::lanesFromText (t->getStringAttribute ("controllerLanes"));
+            track.pitchbendUp = juce::jlimit (1, 96, t->getIntAttribute ("pitchbendUp", 2));
+            track.pitchbendDown = juce::jlimit (1, 96, t->getIntAttribute ("pitchbendDown", 2));
+            track.pitchbendSnap = t->getBoolAttribute ("pitchbendSnap");
+            track.pitchbendGrid = t->getBoolAttribute ("pitchbendGrid");
             track.freezeFile = t->getStringAttribute ("freezeFile");
             track.frozen = t->getBoolAttribute ("frozen") && track.freezeFile.isNotEmpty();
             for (const auto* e : t->getChildWithTagNameIterator ("QuickControl"))
@@ -470,6 +495,17 @@ namespace pr7s
                     part.notes.push_back ({ n->getDoubleAttribute ("start"), juce::jmax (0.001, n->getDoubleAttribute ("length", 0.25)),
                                             juce::jlimit (0, 127, n->getIntAttribute ("pitch", 60)),
                                             (float) juce::jlimit (0.0, 1.0, n->getDoubleAttribute ("velocity", 0.8)) });
+                for (const auto* e : p->getChildWithTagNameIterator ("Controller"))
+                {
+                    const auto code = ControllerKinds::fromText (e->getStringAttribute ("kind"));
+                    if (! ControllerKinds::isController (code))
+                        continue;
+                    part.controllers.push_back ({ ControllerKinds::typeOf (code), ControllerKinds::numberOf (code),
+                                                  juce::jmax (0.0, e->getDoubleAttribute ("start")),
+                                                  juce::jlimit (0, ControllerKinds::maxValue (code), e->getIntAttribute ("value")),
+                                                  e->getBoolAttribute ("ramp") });
+                }
+                ControllerKinds::sort (part.controllers);
                 track.parts.push_back (std::move (part));
             }
             highestId = juce::jmax (highestId, track.id);

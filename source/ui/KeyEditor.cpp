@@ -2,6 +2,7 @@
 
 #include "ui/ParagonLookAndFeel.h"
 #include "ui/ToolIcons.h"
+#include "engine/Controllers.h"
 
 #include <limits>
 #include <numeric>
@@ -55,6 +56,26 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     drawTool.onClick = [this] { setTool (Tool::draw); };
     eraseTool.onClick = [this] { setTool (Tool::erase); };
     quantizeButton.onClick = [this] { quantizeSelected(); };
+    // (0.25.0) LINE, its modes (click it again), and LANES (the controller lanes' menu).
+    for (auto* button : { &lineTool, &lanesKey })
+    {
+        button->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        button->setWantsKeyboardFocus (false);
+        panelColumn.addAndMakeVisible (*button);
+    }
+    lanesKey.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    lineTool.setTooltip ("LINE: drag in a controller lane (or the velocities) for a line of events; click LINE again for its modes "
+                         "(Line, Parabola, Sine, Triangle, Square, Paint; Ctrl: the other way round)");
+    lineTool.onClick = [this] { if (tool == Tool::line) showLineModeMenu(); else setTool (Tool::line); };
+    lanesKey.setTooltip ("The controller lanes under the notes: add one (modulation, pitchbend, expression, sustain, any CC...), "
+                         "show the used ones, velocity only, hide them; new events as ramps or steps");
+    lanesKey.onClick = [this] { showLanesMenu(); };
+    if (auto* settings = studio.getSettings())
+    {
+        laneHeight = juce::jlimit (40, 400, settings->getIntValue ("midiEditorLaneHeight", velocityHeight));
+        lineMode = (LineMode) juce::jlimit (0, 5, settings->getIntValue ("midiEditorLineMode", 0));
+    }
+    setLineMode (lineMode);
 
     // (0.9.10: the same keys as the rest of the column.)
     closeButton.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
@@ -181,8 +202,10 @@ void KeyEditor::setTool (Tool newTool)
     drawTool.setToggleState (tool == Tool::draw, juce::dontSendNotification);
     eraseTool.setToggleState (tool == Tool::erase, juce::dontSendNotification);
     splitTool.setToggleState (tool == Tool::split, juce::dontSendNotification);
+    lineTool.setToggleState (tool == Tool::line, juce::dontSendNotification);
     // The tool as the pointer (0.9.3: the pencil, not crosshairs; the scissors).
-    setMouseCursor (tool == Tool::draw ? penCursor : tool == Tool::split ? scissorsCursor : juce::MouseCursor::NormalCursor);
+    setMouseCursor (tool == Tool::draw ? penCursor : tool == Tool::split ? scissorsCursor
+                  : tool == Tool::line ? juce::MouseCursor::CrosshairCursor : juce::MouseCursor::NormalCursor);
     repaint();
 }
 
@@ -253,6 +276,8 @@ void KeyEditor::refresh()
         {
             partId = track->parts[(size_t) selection.index].id;
             selected.clear();
+            selectedControllers.clear();
+            knownControllers = track->parts[(size_t) selection.index].controllers;
             gesture = Gesture::none;
             stopAudition();
             knownNotes = track->parts[(size_t) selection.index].notes;
@@ -275,6 +300,20 @@ void KeyEditor::refresh()
         if (part->notes.size() != knownNotes.size())
             selected.clear();
         knownNotes = part->notes;
+    }
+    if (part != nullptr && part->controllers != knownControllers && ! editingControllers())
+    {
+        if (part->controllers.size() != knownControllers.size())
+            selectedControllers.clear();
+        knownControllers = part->controllers;
+    }
+    if (part == nullptr)
+        selectedControllers.clear();
+    // (The lanes may differ from the last part's: the notes' room follows.)
+    if (const auto top = lanesTop(); std::abs (top - lastLanesTop) > 0.5f)
+    {
+        lastLanesTop = top;
+        resized();
     }
     refreshPanel();
     repaint();
@@ -438,20 +477,22 @@ juce::Rectangle<float> KeyEditor::rulerArea() const
 
 juce::Rectangle<float> KeyEditor::keysArea() const
 {
-    return { (float) sideWidth, (float) rulerHeight, (float) keysWidth, (float) juce::jmax (0, getHeight() - rulerHeight - velocityHeight - scrollBarSize) };
+    return { (float) sideWidth, (float) rulerHeight, (float) keysWidth, juce::jmax (0.0f, lanesTop() - (float) rulerHeight) };
 }
 
 juce::Rectangle<float> KeyEditor::getNotesArea() const
 {
     // Room on the right for the scroll bar down, and at the bottom (under the velocities) for the one across.
     return { (float) (sideWidth + keysWidth), (float) rulerHeight, (float) (getWidth() - sideWidth - keysWidth - scrollBarSize),
-             (float) juce::jmax (0, getHeight() - rulerHeight - velocityHeight - scrollBarSize) };
+             juce::jmax (0.0f, lanesTop() - (float) rulerHeight) };
 }
 
 juce::Rectangle<float> KeyEditor::getVelocityArea() const
 {
-    return { (float) (sideWidth + keysWidth), (float) (getHeight() - velocityHeight - scrollBarSize), (float) (getWidth() - sideWidth - keysWidth),
-             (float) velocityHeight };
+    // (0.25.0) The velocity lane, wherever it is among the lanes (none shown: nothing).
+    if (const auto lane = laneOf (pr7s::ControllerKinds::velocity); lane >= 0)
+        return getLaneArea (lane);
+    return { (float) (sideWidth + keysWidth), (float) (getHeight() - scrollBarSize), (float) (getWidth() - sideWidth - keysWidth), 0.0f };
 }
 
 float KeyEditor::xForBeat (double songBeat) const noexcept
@@ -787,6 +828,11 @@ void KeyEditor::quantizeSelected()
 
 void KeyEditor::copySelected()
 {
+    if (lanesFocused && ! selectedControllers.empty())
+    {
+        copySelectedControllers();   // (0.25.0) the lane's events
+        return;
+    }
     const auto* part = getPart();
     if (selected.empty() || part == nullptr)
         return;
@@ -804,6 +850,12 @@ void KeyEditor::copySelected()
 
 void KeyEditor::cutSelected()
 {
+    if (lanesFocused && ! selectedControllers.empty())
+    {
+        copySelectedControllers();
+        deleteSelectedControllers();
+        return;
+    }
     copySelected();
     deleteSelected();
 }
@@ -812,6 +864,11 @@ void KeyEditor::paste()
 {
     // At the playhead (as in Cubase). If that's outside the part, the part
     // grows (to whole bars) to hold them.
+    if (lanesFocused && ! controllerClipboard.empty())
+    {
+        pasteControllers();
+        return;
+    }
     if (clipboard.empty() || getPart() == nullptr)
         return;
     insertNotes (clipboard, studio.getEngine().getPosition());
@@ -953,6 +1010,7 @@ bool KeyEditor::keyPressed (const juce::KeyPress& key)
     const auto code = key.getKeyCode();   // a letter only if it is one (see MainView::keyPressed)
     const auto letter = (code >= 'a' && code <= 'z') || (code >= 'A' && code <= 'Z')
                           ? juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) code) : (juce::juce_wchar) 0;
+    if (mods.isCommandDown() && letter == 'A' && lanesFocused && activeLane >= 0) { selectAllOnLane (activeLane); return true; }
     if (mods.isCommandDown() && letter == 'A')                                   { selectAll(); return true; }
     if (mods.isCommandDown() && letter == 'C')                                   { copySelected(); return true; }
     if (mods.isCommandDown() && letter == 'X')                                   { cutSelected(); return true; }
@@ -961,6 +1019,11 @@ bool KeyEditor::keyPressed (const juce::KeyPress& key)
     if (mods.isCommandDown())
         return false;
     if (mods.isShiftDown() && letter == 'A')                                     { selectAll(); return true; }
+    if ((key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey) && lanesFocused && ! selectedControllers.empty())
+    {
+        deleteSelectedControllers();
+        return true;
+    }
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey) { deleteSelected(); return true; }
     if (key.getKeyCode() == juce::KeyPress::upKey)                               { transposeSelected (mods.isShiftDown() ? 12 : 1); return true; }
     if (key.getKeyCode() == juce::KeyPress::downKey)                             { transposeSelected (mods.isShiftDown() ? -12 : -1); return true; }
@@ -1091,6 +1154,8 @@ void KeyEditor::dragVelocityHandle (float dy)
 
 void KeyEditor::mouseMove (const juce::MouseEvent& event)
 {
+    if (laneMouseMove (event))
+        return;
     switch (velocityHandleAt (event.position))
     {
         case VelocityHandle::move:
@@ -1130,6 +1195,8 @@ void KeyEditor::mouseDown (const juce::MouseEvent& event)
         studio.setPosition (juce::jmax (0.0, pr7s::snap (beatForX (point.x), grid)));
         return;
     }
+    if (laneMouseDown (event))   // (0.25.0) the controller lanes: their headers, events, the LINE tool, the divider
+        return;
     const auto* part = getPart();
     if (part == nullptr)
         return;
@@ -1168,6 +1235,9 @@ void KeyEditor::mouseDown (const juce::MouseEvent& event)
             gesture = Gesture::erase;
             eraseAt (point);
             return;
+
+        case Tool::line:
+            return;   // (in the lanes only)
 
         case Tool::split:
             if (hit >= 0)
@@ -1368,6 +1438,16 @@ void KeyEditor::mouseDrag (const juce::MouseEvent& event)
             lastVelocityX = point.x;
             return;
 
+        case Gesture::controllerDraw:
+        case Gesture::controllerErase:
+        case Gesture::controllerBand:
+        case Gesture::controllerMove:
+        case Gesture::controllerHandle:
+        case Gesture::controllerLine:
+        case Gesture::laneResize:
+            laneMouseDrag (event);
+            return;
+
         case Gesture::none:
             return;
     }
@@ -1375,6 +1455,13 @@ void KeyEditor::mouseDrag (const juce::MouseEvent& event)
 
 void KeyEditor::mouseUp (const juce::MouseEvent&)
 {
+    if (gesture == Gesture::controllerDraw || gesture == Gesture::controllerErase || gesture == Gesture::controllerBand
+        || gesture == Gesture::controllerMove || gesture == Gesture::controllerHandle || gesture == Gesture::controllerLine
+        || gesture == Gesture::laneResize)
+    {
+        laneMouseUp();
+        return;
+    }
     const auto finished = gesture;
     gesture = Gesture::none;
     stopAudition();
@@ -1407,6 +1494,13 @@ void KeyEditor::mouseUp (const juce::MouseEvent&)
         case Gesture::audition:
         case Gesture::band:
         case Gesture::none:
+        case Gesture::controllerDraw:
+        case Gesture::controllerErase:
+        case Gesture::controllerBand:
+        case Gesture::controllerMove:
+        case Gesture::controllerHandle:
+        case Gesture::controllerLine:
+        case Gesture::laneResize:
             break;
     }
     selectNotes (selected);
@@ -1414,6 +1508,8 @@ void KeyEditor::mouseUp (const juce::MouseEvent&)
 
 void KeyEditor::mouseDoubleClick (const juce::MouseEvent& event)
 {
+    if (laneDoubleClick (event))   // (0.25.0) an event's value typed in, or a new event
+        return;
     // SELECT: a double-click on a note deletes it; on empty space, draws a note there.
     const auto* part = getPart();
     if (tool != Tool::select || part == nullptr || ! getNotesArea().contains (event.position))
@@ -1500,11 +1596,12 @@ void KeyEditor::layoutColumn()
     place (windowButton);
     place (closeButton);
     gap();
-    for (auto* key : std::initializer_list<juce::Component*> { &selectTool, &drawTool, &splitTool, &eraseTool })
+    for (auto* key : std::initializer_list<juce::Component*> { &selectTool, &drawTool, &splitTool, &eraseTool, &lineTool })
         place (*key);
     gap();
     place (gridBox);
     place (quantizeButton);
+    place (lanesKey);
     gap();
     place (autoScrollButton);
     place (autoScrollMenu);
@@ -1535,7 +1632,7 @@ void KeyEditor::paint (juce::Graphics& g)
         g.reduceClipRegion (keysArea().getSmallestIntegerContainer());
         paintKeys (g);
     }
-    paintVelocities (g);
+    paintLanes (g);   // (0.25.0: the velocity lane among them)
     paintRuler (g);
 
     // The playhead, down the notes and the velocities (where it's drawn: it glides, 0.17.5).
@@ -1560,7 +1657,7 @@ void KeyEditor::paint (juce::Graphics& g)
 
     // The editor's frame and the line between the notes and the velocities.
     g.setColour (ParagonColours::panelEdge);
-    g.fillRect (juce::Rectangle<float> ((float) sideWidth, getVelocityArea().getY() - 1.0f, (float) (getWidth() - sideWidth), 1.0f));
+    g.fillRect (juce::Rectangle<float> ((float) sideWidth, lanesTop() - 1.0f, (float) (getWidth() - sideWidth), 1.0f));
     g.fillRect (juce::Rectangle<float> (0.0f, 0.0f, (float) getWidth(), 1.0f));
 }
 
@@ -1607,7 +1704,24 @@ void KeyEditor::paintInfo (juce::Graphics& g, juce::Rectangle<float> info)
     }
     const auto& list = notes();
     juce::String line1, line2;
-    if (selected.size() == 1 && juce::isPositiveAndBelow (selected.front(), (int) list.size()))
+    if (const auto& events = controllers(); lanesFocused && ! selectedControllers.empty()
+        && juce::isPositiveAndBelow (selectedControllers.front(), (int) events.size()))
+    {
+        // (0.25.0) The selected controller events.
+        const auto& c = events[(size_t) selectedControllers.front()];
+        const auto code = pr7s::ControllerKinds::codeOf (c);
+        if (selectedControllers.size() == 1)
+        {
+            line1 = pr7s::ControllerKinds::shortName (code) + "  " + pr7s::ControllerKinds::valueText (code, c.value) + (c.ramp ? "  RAMP" : "");
+            line2 = "at " + pr7s::formatBarsBeats (part->start + c.start, studio.getProject()).replace ("  ", " ") + ",  double-click to type";
+        }
+        else
+        {
+            line1 = juce::String ((int) selectedControllers.size()) + " " + pr7s::ControllerKinds::shortName (code) + " events selected";
+            line2 = "Double-click one to type their value";
+        }
+    }
+    else if (selected.size() == 1 && juce::isPositiveAndBelow (selected.front(), (int) list.size()))
     {
         const auto& n = list[(size_t) selected.front()];
         line1 = pr7s::noteName (n.pitch) + "    velocity " + juce::String (juce::roundToInt (n.velocity * 127.0f));
@@ -1774,9 +1888,6 @@ void KeyEditor::paintVelocities (juce::Graphics& g)
     const auto label = juce::Rectangle<float> ((float) sideWidth, area.getY(), (float) keysWidth, area.getHeight());
     g.setColour (juce::Colour (0xff100c11));
     g.fillRect (label);
-    g.setColour (ParagonColours::textDim);
-    g.setFont (font (8.5f));
-    g.drawText ("VELOCITY", label.reduced (2.0f, 4.0f), juce::Justification::centredBottom, false);
     g.setFont (font (8.5f, juce::Font::plain));
     const auto inner = area.reduced (0.0f, 6.0f);
     for (const auto level : { 127, 64 })

@@ -1,4 +1,5 @@
 #include "Engine.h"
+#include "Controllers.h"
 #include "SessionLog.h"
 
 namespace pr7s
@@ -494,12 +495,28 @@ namespace pr7s
                     p.events.push_back ({ on, (juce::uint8) (0x90 | channelBits), (juce::uint8) note.pitch, velocity });
                     p.events.push_back ({ off, (juce::uint8) (0x80 | channelBits), (juce::uint8) note.pitch, 0 });
                 }
-            // By beat; at the same beat a note off comes first, so a repeated note restarts.
-            std::sort (p.events.begin(), p.events.end(), [] (const Event& a, const Event& b)
+            // Controllers (0.25.0): each event, and a ramp as a value every 1/128 beat where it changes.
+            for (const auto& part : track.parts)
+            {
+                if (part.muted)
+                    continue;
+                ControllerKinds::expandRamps (part, 1.0 / 128.0, [&] (double beat, int code, int value)
+                {
+                    if (beat < 0.0 || beat >= part.length)
+                        return;
+                    const auto message = ControllerKinds::toMidi (code, value, channelBits + 1);
+                    const auto* raw = message.getRawData();
+                    p.events.push_back ({ part.start + beat, raw[0], raw[1], message.getRawDataSize() > 2 ? raw[2] : (juce::uint8) 0 });
+                });
+            }
+            // By beat; at the same beat a note off comes first, so a repeated note restarts, then
+            // controllers (a note starts with the bend and the controllers it's meant to have).
+            std::stable_sort (p.events.begin(), p.events.end(), [] (const Event& a, const Event& b)
             {
                 if (a.beat < b.beat || b.beat < a.beat)
                     return a.beat < b.beat;
-                return ((a.status & 0xf0) == 0x80) > ((b.status & 0xf0) == 0x80);
+                const auto rank = [] (const Event& e) { const auto kind = e.status & 0xf0; return kind == 0x80 ? 0 : kind == 0x90 ? 2 : 1; };
+                return rank (a) < rank (b);
             });
             prepared.push_back (std::move (p));
         }
@@ -647,6 +664,8 @@ namespace pr7s
     {
         // Every event whose sample (its beat by the tempo, rounded to the
         // nearest sample) is from `fromSample` up to (not including) `toSample`.
+        if (std::exchange (track.chase, false))
+            chaseControllers (track, timing.beatAt ((double) fromSample - 0.5), sampleOffset);
         const auto first = std::lower_bound (track.events.begin(), track.events.end(), timing.beatAt ((double) fromSample - 0.5),
                                              [] (const Event& e, double beat) { return e.beat < beat; });
         for (auto it = first; it != track.events.end(); ++it)
@@ -656,7 +675,8 @@ namespace pr7s
                 continue;
             if (at >= toSample)
                 break;
-            if ((it->status & 0xf0) == 0x90)
+            const auto kind = it->status & 0xf0;
+            if (kind == 0x90)
             {
                 const auto channel = (it->status & 0x0f) + 1;
                 if (track.held.any() && channel != track.heldChannel)
@@ -664,11 +684,65 @@ namespace pr7s
                 track.heldChannel = channel;
                 track.held.set (it->data1);
             }
-            else
+            else if (kind == 0x80)
                 track.held.reset (it->data1);
+            else if (kind == 0xe0)
+                track.bent = true;
+            else if (kind == 0xb0 && it->data1 == 64)
+                track.sustained = it->data2 >= 64;
             const juce::uint8 bytes[] = { it->status, it->data1, it->data2 };
             track.midi.addEvent (bytes, 3, sampleOffset + (int) (at - fromSample));
         }
+    }
+
+    void Engine::chaseControllers (TrackState& track, double beat, int sampleOffset)
+    {
+        // (0.25.0, the manual's chasing) Each controller's value where playing starts: the
+        // last event of its kind before it, so a sound starts with the bend, the pedal and the
+        // controllers it has there. (Audio thread: fixed arrays, no allocation.)
+        std::array<juce::int16, 128> cc;
+        cc.fill (-1);
+        int bend = -1, pressure = -1, program = -1;
+        auto channelBits = 0;
+        for (const auto& e : track.events)
+        {
+            if (e.beat >= beat)
+                break;
+            switch (e.status & 0xf0)
+            {
+                case 0xb0: cc[(size_t) (e.data1 & 0x7f)] = e.data2; channelBits = e.status & 0x0f; break;
+                case 0xe0: bend = e.data1 | (e.data2 << 7); channelBits = e.status & 0x0f; break;
+                case 0xd0: pressure = e.data1; channelBits = e.status & 0x0f; break;
+                case 0xc0: program = e.data1; channelBits = e.status & 0x0f; break;
+                default: break;
+            }
+        }
+        const auto channel = channelBits + 1;
+        if (program >= 0)
+            track.midi.addEvent (juce::MidiMessage::programChange (channel, program), sampleOffset);
+        for (int n = 0; n < 128; ++n)
+            if (cc[(size_t) n] >= 0)
+                track.midi.addEvent (juce::MidiMessage::controllerEvent (channel, n, cc[(size_t) n]), sampleOffset);
+        if (bend >= 0)
+        {
+            track.midi.addEvent (juce::MidiMessage::pitchWheel (channel, bend), sampleOffset);
+            track.bent = bend != 8192;
+        }
+        if (pressure >= 0)
+            track.midi.addEvent (juce::MidiMessage::channelPressureChange (channel, pressure), sampleOffset);
+        if (cc[64] >= 0)
+            track.sustained = cc[64] >= 64;
+    }
+
+    void Engine::resetControllers (TrackState& track, int sampleOffset)
+    {
+        // On stop (as the manual's Reset on Stop): a bend back to the middle and the sustain
+        // pedal up, so nothing rings or stays out of tune after the song stops.
+        if (track.bent)
+            track.midi.addEvent (juce::MidiMessage::pitchWheel (track.midiChannel, 8192), sampleOffset);
+        if (track.sustained)
+            track.midi.addEvent (juce::MidiMessage::controllerEvent (track.midiChannel, 64, 0), sampleOffset);
+        track.bent = track.sustained = false;
     }
 
     void Engine::stopHeldNotes (TrackState& track, int sampleOffset)
@@ -693,7 +767,7 @@ namespace pr7s
                 continue;
             auto ended = false;
             for (auto it = from; it != track.events.end(); ++it)
-                if (it->data1 == note && (it->status & 0x0f) == channelBits)
+                if (it->data1 == note && (it->status & 0x0f) == channelBits && ((it->status & 0xf0) == 0x80 || (it->status & 0xf0) == 0x90))
                 {
                     ended = (it->status & 0xf0) == 0x80;
                     break;
@@ -753,11 +827,14 @@ namespace pr7s
         {
             sampleClock = toSamples (jump);
             for (auto& track : tracks)
-                stopHeldNotes (*track, 0);
+                stopHeldNotes (*track, 0), track->chase = true;
         }
+        if (nowPlaying && ! wasPlaying)
+            for (auto& track : tracks)
+                track->chase = true;
         if ((wasPlaying && ! nowPlaying) || releaseAll.exchange (false))
             for (auto& track : tracks)
-                stopHeldNotes (*track, 0);
+                stopHeldNotes (*track, 0), resetControllers (*track, 0);
         wasPlaying = nowPlaying;
         if (nowPlaying)
         {
@@ -837,15 +914,17 @@ namespace pr7s
                         if (metadata.samplePosition >= done && metadata.samplePosition < done + length)
                         {
                             const auto message = metadata.getMessage();
-                            if (! message.isNoteOnOrOff())
-                                continue;
+                            if (! message.isNoteOnOrOff() && ! message.isController() && ! message.isPitchWheel()
+                                && ! message.isChannelPressure() && ! message.isAftertouch() && ! message.isProgramChange())
+                                continue;   // (0.25.0: controllers recorded too)
                             const auto scope = recordedFifo.write (1);
                             if (scope.blockSize1 + scope.blockSize2 == 0)
                                 continue;   // full: the message thread hasn't kept up
                             const auto at = scope.blockSize1 > 0 ? scope.startIndex1 : scope.startIndex2;
                             const auto* raw = message.getRawData();
                             recordedEvents[(size_t) at] = { timing.beatAt ((double) (clock + metadata.samplePosition - done)), raw[0],
-                                                            raw[1], message.getRawDataSize() > 2 ? raw[2] : (juce::uint8) 0 };
+                                                            raw[1], message.getRawDataSize() > 2 ? raw[2] : (juce::uint8) 0,
+                                                            cycleCount.load() };
                         }
 
                 done += length;
@@ -853,7 +932,7 @@ namespace pr7s
                 {
                     ++cycleCount;
                     for (auto& track : tracks)
-                        stopHeldNotes (*track, juce::jmin (done, numSamples - 1));
+                        stopHeldNotes (*track, juce::jmin (done, numSamples - 1)), track->chase = true;
                     clock = loopStart;
                 }
                 else

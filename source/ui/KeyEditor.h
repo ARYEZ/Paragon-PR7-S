@@ -55,7 +55,7 @@ public:
     KeyEditor (pr7s::Studio&, ArrangeView&);
     ~KeyEditor() override;
 
-    enum class Tool { select, draw, erase, split };
+    enum class Tool { select, draw, erase, split, line };
     void setTool (Tool);
     Tool getTool() const noexcept { return tool; }
 
@@ -167,6 +167,75 @@ public:
     juce::Rectangle<float> getVelocityBox() const;   // empty: fewer than two notes selected
     VelocityHandle velocityHandleAt (juce::Point<float>) const;
 
+    // Controller lanes (0.25.0, the manual's Controller Display): under the notes, one or more
+    // lanes, each showing one kind (ControllerKinds' codes: velocity, a CC, pitchbend,
+    // aftertouch, program change, poly pressure); the track keeps which (Track::controllerLanes).
+    //   header      the lane's name and its value at the playhead; click: the lane's menu (what
+    //               it shows, Select All, Remove This Lane, Create Controller Lane, Show Used
+    //               Controllers, Show Velocity Lane Only, the type of new events (ramp or step),
+    //               the selected events' curve, cut/copy/paste, pitchbend's semitone grid)
+    //   SELECT      click an event (Shift/Ctrl: add or remove), drag it (in time and value),
+    //               drag across empty space to select a group (two or more: the handles to tilt,
+    //               scale or move them, as the velocities'); Alt-drag draws; double-click an
+    //               event to type its value (and where it is, its curve); double-click empty
+    //               space for a new event
+    //   DRAW        click for an event on the grid step, drag to draw a curve
+    //   ERASE       click or drag across events to remove them
+    //   LINE        drag a line (and click LINE again for its modes: Line, Parabola (Ctrl: the
+    //               other way), Sine, Triangle, Square (Ctrl: the other phase; one period a grid
+    //               step), Paint); on the velocity lane it sets the notes' velocities along it
+    //   divider     drag the line above the lanes to make them taller or shorter
+    enum class LineMode { line, parabola, sine, triangle, square, paint };
+    static juce::String lineModeName (LineMode);
+    void setLineMode (LineMode);
+    LineMode getLineMode() const noexcept { return lineMode; }
+    void showLineModeMenu();
+    const std::vector<int>& getLanes() const;          // the shown part's track's (velocity alone without one)
+    int getNumLanes() const { return (int) getLanes().size(); }
+    juce::Rectangle<float> getLaneArea (int lane) const;     // its events' area (right of its header)
+    juce::Rectangle<float> getLaneHeader (int lane) const;
+    int laneAt (juce::Point<float>) const;              // -1: not in a lane
+    int laneOf (int code) const;                        // -1: not shown
+    void setLane (int lane, int code);                  // what a lane shows (a kind shown already: nothing)
+    void addLane (int code);                            // a lane at the bottom (shown already: nothing)
+    void removeLane (int lane);
+    void showUsedControllers();                         // a lane for each kind the part has events of
+    void showVelocityLaneOnly();
+    void toggleLanesShown();                            // hide them all / bring back the last ones
+    void setLaneHeight (int);                           // 40 to 400 px each (as the divider)
+    void showLaneMenu (int lane);
+    void showLanesMenu();                               // LANES in the panel
+    float yForValue (int lane, int value) const;
+    int valueForY (int lane, float y) const;            // (pitchbend: snapped to its semitones with SNAP on)
+
+    // The controller events (the part's, by index into Part::controllers, sorted).
+    const std::vector<pr7s::Controller>& controllers() const;   // the working copy while a gesture edits them
+    const std::vector<int>& getSelectedControllers() const noexcept { return selectedControllers; }
+    void selectControllers (std::vector<int>);
+    void selectAllOnLane (int lane);
+    juce::Point<float> getControllerPoint (int index) const;     // where it's drawn (its lane's)
+    int controllerAt (int lane, juce::Point<float>) const;        // -1: none
+    // A new event (as a click with DRAW): at `songBeat` on the grid step (exactly, if `free`),
+    // replacing one of its kind on that step. One edit. False outside the part.
+    bool addControllerAt (int lane, double songBeat, int value, bool free = false);
+    void deleteSelectedControllers();
+    void setSelectedControllersRamp (bool ramp);
+    // The LINE tool's result from one point to another in a lane (Ctrl: `reverse`). One edit.
+    void drawLine (int lane, juce::Point<float> from, juce::Point<float> to, bool reverse);
+    // Typing (double-click an event): the value as the lane shows it ("64", pitchbend "+4096" or
+    // "2st" semitones, pan "L12"/"C"/"R12", sustain "ON"/"OFF"), and for one event where it is
+    // ("bar.beat.16th.tick"; empty: left) and its curve. All selected get the value. False if not one.
+    bool enterControllerValue (const juce::String& value, const juce::String& position, std::optional<bool> ramp);
+    std::optional<int> parseControllerValue (int code, const juce::String&) const;
+    void showControllerEntry (int index);
+    void copySelectedControllers();
+    void pasteControllers (bool atOrigin = false);       // onto the lane last clicked (at the playhead, or where they were)
+    bool areLanesFocused() const noexcept { return lanesFocused; }
+    void setLanesFocused (bool focused) noexcept { lanesFocused = focused; }
+    // The handles for two or more selected events (the manual's Controller Event Editor, as the velocities').
+    juce::Rectangle<float> getControllerBox() const;
+    VelocityHandle controllerHandleAt (juce::Point<float>) const;
+
     static constexpr int sideWidth = 150, keysWidth = 54, rulerHeight = 26, velocityHeight = 86, scrollBarSize = 12;
     static constexpr int minimumHeight = 230;   // docked: the panel's keys and a few octaves
     static constexpr float minRowHeight = 6.0f, maxRowHeight = 36.0f;
@@ -181,7 +250,8 @@ public:
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
 private:
-    enum class Gesture { none, position, audition, band, move, resize, draw, erase, velocity, velocityHandle };
+    enum class Gesture { none, position, audition, band, move, resize, draw, erase, velocity, velocityHandle,
+                         controllerDraw, controllerErase, controllerBand, controllerMove, controllerHandle, controllerLine, laneResize };
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
@@ -224,6 +294,38 @@ private:   // the selected notes, at the column's foot
     void paintNotes (juce::Graphics&);
     void paintVelocities (juce::Graphics&);
     void paintRuler (juce::Graphics&);
+    // The lanes (KeyEditorLanes.cpp).
+    float laneHeightNow() const;
+    float lanesTop() const;
+    bool laneMouseDown (const juce::MouseEvent&);
+    void laneMouseDrag (const juce::MouseEvent&);
+    void laneMouseUp();
+    bool laneDoubleClick (const juce::MouseEvent&);
+    bool laneMouseMove (const juce::MouseEvent&);
+    void paintLanes (juce::Graphics&);
+    void paintControllerLane (juce::Graphics&, int lane);
+    void paintLaneHeader (juce::Graphics&, int lane);
+    bool editingControllers() const noexcept;
+    void beginControllers();
+    void commitControllers (std::vector<pr7s::Controller>, const std::vector<bool>& selectedFlags = {});
+    void drawControllersTo (juce::Point<float>);
+    void eraseControllersTo (juce::Point<float>);
+    void dragControllerHandle (float dy);
+    void applyVelocityLine (juce::Point<float> from, juce::Point<float> to, bool reverse);
+    double lineValueAt (double t, double v1, double v2, double beatInto, bool reverse) const;
+    int snapBend (int value) const;
+    std::vector<pr7s::Controller> workingControllers, originalControllers, knownControllers, controllerClipboard;
+    int clipboardCode = 0;
+    double clipboardOrigin = 0.0;                    // the copied events' first beat in the song (Paste at Origin)
+    std::vector<int> selectedControllers, controllersBefore, draggingControllers;
+    int activeLane = -1, anchorController = -1;
+    bool lanesFocused = false;
+    int laneHeight = velocityHeight;
+    std::vector<int> hiddenLanes;                    // what Show/Hide brings back
+    LineMode lineMode = LineMode::line;
+    juce::Point<float> lineFrom, lineTo, lastDrawPoint;
+    float heightAtDown = 0.0f, lastLanesTop = -1.0f;
+    juce::TextButton lineTool { "LINE" }, lanesKey { "LANES" };
 
     pr7s::Studio& studio;
     ArrangeView& arrange;

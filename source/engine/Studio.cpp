@@ -1,6 +1,8 @@
 #include "Studio.h"
+#include "Controllers.h"
 #include "Stretch.h"
 
+#include <map>
 #include <set>
 
 #include "AudioAdvice.h"
@@ -1435,6 +1437,45 @@ namespace pr7s
             }
             std::stable_sort (second.notes.begin(), second.notes.end(), [] (const Note& a, const Note& b) { return a.start < b.start; });
             part.notes = std::move (first);
+            // Controllers (0.25.0): each half its own; where a ramp crosses the cut, it ends there
+            // in the first half and the second starts from the value it had reached.
+            second.controllers.clear();
+            std::vector<Controller> firstControllers;
+            for (const auto code : ControllerKinds::usedCodes (part))
+            {
+                const auto at = ControllerKinds::valueAt (part.controllers, code, rel);
+                auto hasAtCut = false, crossed = false;
+                for (const auto& c : part.controllers)
+                    if (ControllerKinds::codeOf (c) == code && c.start >= rel)
+                    {
+                        hasAtCut = c.start <= rel + 1.0e-9;
+                        crossed = c.ramp && ! hasAtCut;
+                        break;
+                    }
+                if (at && ! hasAtCut)
+                {
+                    const auto type = ControllerKinds::typeOf (code);
+                    const auto number = ControllerKinds::numberOf (code);
+                    if (crossed && rel > 1.0 / 960.0)
+                        firstControllers.push_back ({ type, number, rel - 1.0 / 960.0,
+                                                      *ControllerKinds::valueAt (part.controllers, code, rel - 1.0 / 960.0), true });
+                    second.controllers.push_back ({ type, number, 0.0, *at, false });
+                }
+            }
+            for (const auto& c : part.controllers)
+            {
+                if (c.start < rel)
+                    firstControllers.push_back (c);
+                else
+                {
+                    auto moved = c;
+                    moved.start -= rel;
+                    second.controllers.push_back (moved);
+                }
+            }
+            ControllerKinds::sort (firstControllers);
+            ControllerKinds::sort (second.controllers);
+            part.controllers = std::move (firstControllers);
             part.length = rel;
             if (part.isAudio())
             {
@@ -1561,6 +1602,20 @@ namespace pr7s
             }
             std::stable_sort (notes.begin(), notes.end(), [] (const Note& a, const Note& b) { return a.start < b.start; });
             glued.notes = std::move (notes);
+            // Their controllers too (0.25.0), each in its place.
+            std::vector<Controller> controllers;
+            for (const auto& c : glued.controllers)
+                if (c.start < glued.length)
+                    controllers.push_back (c);
+            for (const auto i : after)
+            {
+                const auto& next = track->parts[(size_t) i];
+                for (auto c : next.controllers)
+                    if (c.start < next.length)
+                        c.start += next.start - glued.start, controllers.push_back (c);
+            }
+            ControllerKinds::sort (controllers);
+            glued.controllers = std::move (controllers);
             glued.length = end - glued.start;
         }
         track->parts[(size_t) index] = glued;
@@ -1866,6 +1921,62 @@ namespace pr7s
             return;   // nothing changed: no undo step
         part.notes = std::move (notes);
         changed();
+    }
+
+    void Studio::setControllers (int trackId, int index, std::vector<Controller> events)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! juce::isPositiveAndBelow (index, (int) track->parts.size()))
+            return;
+        for (auto& c : events)
+        {
+            const auto code = ControllerKinds::codeOf (c);
+            c.start = juce::jmax (0.0, c.start);
+            c.value = juce::jlimit (0, ControllerKinds::maxValue (code), c.value);
+            c.number = ControllerKinds::numberOf (code);
+        }
+        ControllerKinds::sort (events);
+        auto& part = track->parts[(size_t) index];
+        if (part.controllers == events)
+            return;   // nothing changed: no undo step
+        part.controllers = std::move (events);
+        changed();
+    }
+
+    void Studio::setControllerLanes (int trackId, std::vector<int> lanes)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr)
+            return;
+        lanes.erase (std::remove_if (lanes.begin(), lanes.end(), [] (int code) { return ! ControllerKinds::isValid (code); }), lanes.end());
+        if (track->controllerLanes == lanes)
+            return;
+        track->controllerLanes = std::move (lanes);
+        changed (false);
+    }
+
+    void Studio::setPitchbendGrid (int trackId, int up, int down, bool snapOn, bool shown)
+    {
+        if (auto* track = project.findTrack (trackId))
+        {
+            track->pitchbendUp = juce::jlimit (1, 96, up);
+            track->pitchbendDown = juce::jlimit (1, 96, down);
+            track->pitchbendSnap = snapOn;
+            track->pitchbendGrid = shown || snapOn;   // (the manual: Snap shows the grid it snaps to)
+            changed (false);
+        }
+    }
+
+    bool Studio::getNewControllersRamp() const
+    {
+        return settings != nullptr ? settings->getBoolValue ("controllerRamp", true) : newControllersRamp;
+    }
+
+    void Studio::setNewControllersRamp (bool ramp)
+    {
+        newControllersRamp = ramp;
+        if (settings != nullptr)
+            settings->setValue ("controllerRamp", ramp);
     }
 
     //==========================================================================
@@ -3984,6 +4095,41 @@ namespace pr7s
         std::sort (notes.begin(), notes.end(), [] (const Note& a, const Note& b) { return a.start < b.start; });
     }
 
+    void Studio::buildRecordingControllers (std::vector<Controller>& events, double partStart) const
+    {
+        // What was played on the controllers (the mod wheel, the bend, the pedal...). In a
+        // cycle each kind keeps only the last pass it was played in (as notes are merged,
+        // passes of a sweep would cross one another).
+        std::map<int, int> lastPass;
+        const auto codeFor = [] (const RecordedEvent& e) -> int
+        {
+            switch (e.status & 0xf0)
+            {
+                case 0xb0: return e.data1 & 0x7f;
+                case 0xe0: return ControllerKinds::pitchbend;
+                case 0xd0: return ControllerKinds::aftertouch;
+                case 0xc0: return ControllerKinds::programChange;
+                case 0xa0: return ControllerKinds::polyBase + (e.data1 & 0x7f);
+                default:   return -2;
+            }
+        };
+        for (const auto& e : recorded)
+            if (const auto code = codeFor (e); code != -2)
+                lastPass[code] = juce::jmax (lastPass[code], e.pass);
+        const auto ramp = getNewControllersRamp();
+        for (const auto& e : recorded)
+        {
+            const auto code = codeFor (e);
+            if (code == -2 || e.pass != lastPass[code])
+                continue;
+            const auto value = code == ControllerKinds::pitchbend ? (e.data1 & 0x7f) | ((e.data2 & 0x7f) << 7)
+                             : (e.status & 0xf0) == 0xd0 || (e.status & 0xf0) == 0xc0 ? (e.data1 & 0x7f) : (e.data2 & 0x7f);
+            events.push_back ({ ControllerKinds::typeOf (code), ControllerKinds::numberOf (code), juce::jmax (0.0, e.beat - partStart),
+                                value, ramp && ! ControllerKinds::alwaysStep (code) });
+        }
+        ControllerKinds::sort (events);
+    }
+
     std::optional<std::pair<int, Part>> Studio::getRecordingPreview() const
     {
         if (engine.isRecording() && audioWriter != nullptr)
@@ -4004,6 +4150,7 @@ namespace pr7s
         part.start = project.loopOn ? project.loopStart : std::floor (recordStart / bar) * bar;
         const auto now = engine.getPosition();
         buildRecordingNotes (part.notes, part.start, now);
+        buildRecordingControllers (part.controllers, part.start);
         part.length = project.loopOn ? project.loopEnd - project.loopStart : juce::jmax (bar, now - part.start);
         return std::pair<int, Part> { recordTrack, part };
     }
@@ -4079,8 +4226,9 @@ namespace pr7s
         const auto cycled = project.loopOn;
         part.start = cycled ? project.loopStart : std::floor (recordStart / bar) * bar;
         buildRecordingNotes (part.notes, part.start, endBeat);
+        buildRecordingControllers (part.controllers, part.start);
         recorded.clear();
-        if (part.notes.empty())
+        if (part.notes.empty() && part.controllers.empty())
             return;   // nothing played: no part
 
         // The part: the cycle, or whole bars from where recording started to where it stopped.
@@ -4093,6 +4241,8 @@ namespace pr7s
             auto end = endBeat;
             for (const auto& note : part.notes)
                 end = juce::jmax (end, part.start + note.start + note.length);
+            for (const auto& c : part.controllers)
+                end = juce::jmax (end, part.start + c.start + 1.0e-6);
             part.length = juce::jmax (bar, std::ceil ((end - part.start) / bar - 1.0e-9) * bar);
         }
         if (auto* track = project.findTrack (recordTrack))
@@ -4264,6 +4414,15 @@ namespace pr7s
                 note.start += atBeat - part.start;
                 part.notes.push_back (note);
             }
+            for (auto c : imported.controllers)
+            {
+                c.start += atBeat - part.start;
+                if (c.start >= 0.0 && c.start < part.length)
+                    part.controllers.push_back (c);
+                else if (c.start < 0.0)
+                    c.start = 0.0, part.controllers.push_back (c);   // (set before the first bar with notes: at the part's start)
+            }
+            ControllerKinds::sort (part.controllers);
             addPart (id, part);
             ++added;
         }

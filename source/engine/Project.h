@@ -26,12 +26,29 @@ namespace pr7s
         bool operator== (const Note&) const = default;
     };
 
+    // A MIDI controller event in a part (0.25.0, the manual's Controller Display): a
+    // continuous controller (CC), pitchbend, aftertouch, poly pressure or a program change.
+    // It has no length: its value holds until the next event of its kind. `ramp`: the way
+    // from the event before (of its kind, in the part) to this one is a ramp, else a step.
+    struct Controller
+    {
+        enum class Type { cc, pitchbend, aftertouch, polyPressure, programChange };   // saved by name
+        Type type = Type::cc;
+        int number = 1;          // a CC's number (0-127), poly pressure's note; else 0
+        double start = 0.0;      // beats from the part's start
+        int value = 0;           // 0-127; pitchbend 0-16383 (8192: no bend)
+        bool ramp = false;
+
+        bool operator== (const Controller&) const = default;
+    };
+
     struct Part
     {
         double start = 0.0;     // beats from the song's start
         double length = 4.0;    // beats
         juce::String name;
         std::vector<Note> notes;
+        std::vector<Controller> controllers;   // (0.25.0) by start
         int id = 0;             // given by the studio, so the key editor keeps the same part however the list changes (not saved)
 
         // An audio track's part (a clip): the recording it plays, from
@@ -190,6 +207,12 @@ namespace pr7s
         // volume, pan, mute, a send, an instrument's or an effect's knob), or none.
         static constexpr int numQuickControls = 8;
         std::array<std::optional<AutomationLane>, numQuickControls> quickControls;
+        // The MIDI editor's controller lanes for this track (0.25.0; ControllerKinds' codes,
+        // top to bottom; empty: the display hidden), and the pitchbend lane's semitone grid
+        // (the manual's Grid Settings: 1-96 up and down, 2 at first; saved with the song).
+        std::vector<int> controllerLanes { -1 };
+        int pitchbendUp = 2, pitchbendDown = 2;
+        bool pitchbendSnap = false, pitchbendGrid = false;
         bool isAudio() const noexcept { return kind == Kind::audio; }
         bool isFx() const noexcept { return kind == Kind::fx; }
         bool isGroup() const noexcept { return kind == Kind::group; }

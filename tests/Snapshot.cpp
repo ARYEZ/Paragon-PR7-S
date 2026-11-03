@@ -3,6 +3,7 @@
 #include "DeviceTests.h"
 #include "TestHelpers.h"
 #include "engine/Studio.h"
+#include "engine/Controllers.h"
 #include "ui/Finish.h"
 #include "ui/MainView.h"
 #include "ui/ToolIcons.h"
@@ -285,6 +286,44 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         view.openKeyEditor();
         studio.dispatchPendingMessages();
         view.getKeyEditor().selectNotes ({ 3, 4, 5 });
+        // PARAGON_SNAPSHOT_LANES=1 (0.25.0): the lead with modulation and pitchbend lanes, a swell, a bend
+        // with the semitone grid, some modulation events selected.
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_LANES", {}).isNotEmpty())
+        {
+            studio.setPosition (22.0);
+            namespace K = pr7s::ControllerKinds;
+            for (const auto& track : studio.getProject().tracks)
+                if (track.name == "Lead" && ! track.parts.empty())
+                {
+                    std::vector<Controller> events;
+                    for (int i = 0; i <= 24; ++i)   // modulation: a slow wave
+                        events.push_back ({ Controller::Type::cc, 1, i * 0.5, 40 + juce::roundToInt (50.0 * std::sin (i * 0.45)), false });
+                    events.push_back ({ Controller::Type::pitchbend, 0, 0.0, 8192, false });
+                    events.push_back ({ Controller::Type::pitchbend, 0, 3.0, 8192, false });
+                    events.push_back ({ Controller::Type::pitchbend, 0, 4.0, 16383, true });   // a whole tone up...
+                    events.push_back ({ Controller::Type::pitchbend, 0, 6.0, 16383, false });
+                    events.push_back ({ Controller::Type::pitchbend, 0, 6.5, 8192, true });    // ...and back
+                    events.push_back ({ Controller::Type::cc, 11, 0.0, 70, false });
+                    events.push_back ({ Controller::Type::cc, 11, 8.0, 127, true });
+                    K::sort (events);
+                    studio.setControllers (track.id, 0, events);
+                    studio.setControllerLanes (track.id, { K::velocity, 1, K::pitchbend });
+                    studio.setPitchbendGrid (track.id, 2, 2, false, true);
+                    studio.dispatchPendingMessages();
+                    auto& editor = view.getKeyEditor();
+                    editor.setLaneHeight (64);
+                    std::vector<int> some;
+                    for (int i = 0; i < (int) studio.getProject().findTrack (track.id)->parts[0].controllers.size(); ++i)
+                        if (const auto& c = studio.getProject().findTrack (track.id)->parts[0].controllers[(size_t) i];
+                            c.type == Controller::Type::cc && c.number == 1 && c.start >= 4.0 && c.start <= 7.0)
+                            some.push_back (i);
+                    editor.setLanesFocused (true);
+                    editor.selectAllOnLane (editor.laneOf (1));
+                    editor.selectControllers (some);
+                    editor.setTool (KeyEditor::Tool::line);
+                }
+            view.setDockedHeight (700);
+        }
     }
     // PARAGON_SNAPSHOT_EDIT=1: the SPLIT tool chosen, and the bass's second part muted.
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_EDIT", {}).isNotEmpty())

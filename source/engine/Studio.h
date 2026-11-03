@@ -393,6 +393,17 @@ namespace pr7s
         // A part's notes, replaced (the key editor's every edit: one undo step each).
         // Kept in the order given, so the editor's selection still points at the same notes.
         void setNotes (int trackId, int index, std::vector<Note>);
+        // MIDI controller lanes (0.25.0, the manual's Controller Display): a part's controller
+        // events replaced (one undo step; sorted by start, values kept in range), and the
+        // track's lanes as shown (codes in ControllerKinds; saved, not undo steps), its
+        // pitchbend grid (1-96 semitones up and down, SNAP, the grid shown), and whether new
+        // events ramp (the manual's Type of New Controller Events; settings "controllerRamp",
+        // on at first: our choice).
+        void setControllers (int trackId, int index, std::vector<Controller>);
+        void setControllerLanes (int trackId, std::vector<int> lanes);
+        void setPitchbendGrid (int trackId, int up, int down, bool snap, bool shown);
+        bool getNewControllersRamp() const;
+        void setNewControllersRamp (bool);
 
         //======================================================================
         // Recordings. They're files in the song's audio folder ("<song> Audio"
@@ -835,6 +846,8 @@ namespace pr7s
         void finishAudioRecording();
         double recordingLatency() const;
         void buildRecordingNotes (std::vector<Note>& notes, double partStart, double endBeat) const;
+        void buildRecordingControllers (std::vector<Controller>&, double partStart) const;   // (0.25.0: each kind's last pass in a cycle)
+        bool newControllersRamp = true;   // (without a settings file)
         void timerCallback() override;
         void changeListenerCallback (juce::ChangeBroadcaster*) override;   // the device settings changed: keep them
 
