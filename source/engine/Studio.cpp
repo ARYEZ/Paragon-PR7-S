@@ -3333,6 +3333,289 @@ namespace pr7s
         return true;
     }
 
+    //==========================================================================
+    void Studio::setAutomationSettings (const AutomationSettings& newSettings)
+    {
+        const auto leavingTrim = project.automationSettings.trim && ! newSettings.trim;
+        project.automationSettings = newSettings;
+        project.automationSettings.reductionLevel = juce::jlimit (0, 100, newSettings.reductionLevel);
+        project.automationSettings.returnSeconds = juce::jlimit (0.0, 5.0, newSettings.returnSeconds);
+        if (leavingTrim && newSettings.freezeTrim == AutomationSettings::FreezeTrim::onLeavingTrim)
+        {
+            for (auto& lane : project.masterAutomation)
+                freezeTrimOf (lane);
+            for (auto& track : project.tracks)
+                for (auto& lane : track.automation)
+                    freezeTrimOf (lane);
+            changed();
+            return;
+        }
+        changed (false);
+    }
+
+    void Studio::setAutomationMode (AutomationSettings::Mode mode)
+    {
+        auto s = project.automationSettings;
+        s.mode = mode;
+        setAutomationSettings (s);
+    }
+
+    Studio::AutomationSettings::Fill Studio::getFill (FillOption option) const noexcept
+    {
+        const auto& s = project.automationSettings;
+        switch (option)
+        {
+            case FillOption::toPunch: return s.toPunch;
+            case FillOption::toStart: return s.toStart;
+            case FillOption::toEnd:   return s.toEnd;
+            case FillOption::loop:    return s.loop;
+            case FillOption::gaps:    return s.gaps;
+        }
+        return AutomationSettings::Fill::off;
+    }
+
+    void Studio::stepFill (FillOption option)
+    {
+        using F = AutomationSettings::Fill;
+        auto s = project.automationSettings;
+        auto& f = option == FillOption::toPunch ? s.toPunch : option == FillOption::toStart ? s.toStart
+                : option == FillOption::toEnd ? s.toEnd : option == FillOption::loop ? s.loop : s.gaps;
+        f = f == F::off ? F::once : f == F::once ? F::locked : F::off;
+        setAutomationSettings (s);
+    }
+
+    void Studio::setSuspendRead (AutomationSettings::Group group, bool on)
+    {
+        auto s = project.automationSettings;
+        s.suspendRead[(size_t) group] = on;
+        setAutomationSettings (s);
+    }
+
+    void Studio::setSuspendWrite (AutomationSettings::Group group, bool on)
+    {
+        auto s = project.automationSettings;
+        s.suspendWrite[(size_t) group] = on;
+        if (on)
+            for (size_t i = passes.size(); i-- > 0;)
+                if (AutomationSettings::groupOf (passes[i].control) == group)
+                    punchOut (i, engine.getPosition());   // (the manual: it punches out of the pass)
+        setAutomationSettings (s);
+    }
+
+    void Studio::setAllSuspended (bool read, bool on)
+    {
+        auto s = project.automationSettings;
+        (read ? s.suspendRead : s.suspendWrite).fill (on);
+        if (! read && on)
+            punchOutAll();
+        setAutomationSettings (s);
+    }
+
+    bool Studio::isAllSuspended() const noexcept
+    {
+        const auto& s = project.automationSettings;
+        return std::all_of (s.suspendRead.begin(), s.suspendRead.end(), [] (bool b) { return b; })
+            && std::all_of (s.suspendWrite.begin(), s.suspendWrite.end(), [] (bool b) { return b; });
+    }
+
+    void Studio::setAllSuspended (bool on)
+    {
+        auto s = project.automationSettings;
+        s.suspendRead.fill (on);
+        s.suspendWrite.fill (on);
+        if (on)
+            punchOutAll();
+        setAutomationSettings (s);
+    }
+
+    void Studio::setTrim (bool on)
+    {
+        auto s = project.automationSettings;
+        s.trim = on;
+        setAutomationSettings (s);
+    }
+
+    void Studio::freezeTrimOf (AutomationLane& lane)
+    {
+        // The trim rendered into the points: a point wherever either curve has one.
+        if (lane.trim.empty() || lane.points.empty() || ! lane.canTrim())
+        {
+            lane.trim.clear();
+            return;
+        }
+        std::vector<double> beats;
+        for (const auto& p : lane.points)
+            beats.push_back (p.beat);
+        for (const auto& p : lane.trim)
+            beats.push_back (p.beat);
+        std::sort (beats.begin(), beats.end());
+        beats.erase (std::unique (beats.begin(), beats.end(), [] (double a, double b) { return std::abs (a - b) < 1.0e-9; }), beats.end());
+        std::vector<AutomationPoint> frozen;
+        for (const auto beat : beats)
+            frozen.push_back ({ beat, *lane.playedAt (beat, false), 0.0f });
+        lane.points = std::move (frozen);
+        lane.trim.clear();
+    }
+
+    void Studio::freezeTrim (bool selectedTracksOnly)
+    {
+        if (! selectedTracksOnly || isMasterSelected())
+            for (auto& lane : project.masterAutomation)
+                freezeTrimOf (lane);
+        for (auto& track : project.tracks)
+            if (! selectedTracksOnly || isTrackSelected (track.id))
+                for (auto& lane : track.automation)
+                    freezeTrimOf (lane);
+        changed();
+    }
+
+    void Studio::freezeTrim (int busId, int laneIndex)
+    {
+        auto* lanes = lanesOf (busId);
+        if (lanes == nullptr || ! juce::isPositiveAndBelow (laneIndex, (int) lanes->size()))
+            return;
+        freezeTrimOf ((*lanes)[(size_t) laneIndex]);
+        changed();
+    }
+
+    void Studio::setTrimPoints (int busId, int laneIndex, std::vector<AutomationPoint> points)
+    {
+        auto* lanes = lanesOf (busId);
+        if (lanes == nullptr || ! juce::isPositiveAndBelow (laneIndex, (int) lanes->size()) || ! (*lanes)[(size_t) laneIndex].canTrim())
+            return;
+        for (auto& p : points)
+            p.beat = juce::jmax (0.0, p.beat), p.value = juce::jlimit (0.0f, 1.0f, p.value), p.terminator = false;
+        std::stable_sort (points.begin(), points.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
+        (*lanes)[(size_t) laneIndex].trim = std::move (points);
+        changed();
+    }
+
+    void Studio::deleteAllAutomation()
+    {
+        for (auto& lane : project.masterAutomation)
+            lane.points.clear(), lane.trim.clear();
+        for (auto& track : project.tracks)
+            for (auto& lane : track.automation)
+                lane.points.clear(), lane.trim.clear();
+        changed();
+    }
+
+    void Studio::deleteAutomationOfSelectedTracks()
+    {
+        if (isMasterSelected())
+            for (auto& lane : project.masterAutomation)
+                lane.points.clear(), lane.trim.clear();
+        for (auto& track : project.tracks)
+            if (isTrackSelected (track.id))
+                for (auto& lane : track.automation)
+                    lane.points.clear(), lane.trim.clear();
+        changed();
+    }
+
+    void Studio::deleteAutomationInRange()
+    {
+        // Between the locators: gone, the curve either side as it was (a 960th of a beat inside the range).
+        const auto from = project.loopStart, to = project.loopEnd;
+        if (to <= from)
+            return;
+        const auto cut = [&] (AutomationLane& lane)
+        {
+            if (lane.points.empty())
+                return;
+            constexpr double just = 1.0 / 960.0;
+            const auto before = lane.valueAt (from), after = lane.valueAt (to);
+            std::vector<AutomationPoint> kept;
+            for (const auto& p : lane.points)
+                if (p.beat < from || p.beat > to)
+                    kept.push_back (p);
+            if (std::any_of (lane.points.begin(), lane.points.end(), [&] (const AutomationPoint& p) { return p.beat < from; }))
+                kept.push_back ({ from, *before, 0.0f, project.automationSettings.virginTerritory });
+            if (std::any_of (lane.points.begin(), lane.points.end(), [&] (const AutomationPoint& p) { return p.beat > to; }))
+                kept.push_back ({ to + just, *after });
+            std::stable_sort (kept.begin(), kept.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
+            lane.points = std::move (kept);
+        };
+        for (auto& lane : project.masterAutomation)
+            cut (lane);
+        for (auto& track : project.tracks)
+            for (auto& lane : track.automation)
+                cut (lane);
+        changed();
+    }
+
+    void Studio::fillGaps (bool withCurrentValue)
+    {
+        // The manual's Fill Gaps on Selected Tracks: a gap filled with its section's last value
+        // (or the control's setting now), up to a millisecond before the next section, then a ramp.
+        const auto fill = [&] (int busId, AutomationLane& lane)
+        {
+            std::vector<AutomationPoint> filled;
+            for (size_t i = 0; i < lane.points.size(); ++i)
+            {
+                auto p = lane.points[i];
+                const auto gap = p.terminator && i + 1 < lane.points.size();
+                p.terminator = false;
+                filled.push_back (p);
+                if (gap)
+                {
+                    const auto value = withCurrentValue ? getControlValue (busId, lane) : p.value;
+                    const auto next = lane.points[i + 1].beat;
+                    const auto ms = project.tempoMap().beatAfter (next, 0.0) - project.tempoMap().beatAt (juce::jmax (0.0, project.tempoMap().secondsAt (next) - 0.001));
+                    if (withCurrentValue)
+                        filled.push_back ({ p.beat + 1.0e-3, value });
+                    filled.push_back ({ juce::jmax (p.beat + 2.0e-3, next - ms), value });
+                }
+            }
+            lane.points = std::move (filled);
+        };
+        if (isMasterSelected())
+            for (auto& lane : project.masterAutomation)
+                fill (Engine::masterBus, lane);
+        for (auto& track : project.tracks)
+            if (isTrackSelected (track.id))
+                for (auto& lane : track.automation)
+                    fill (track.id, lane);
+        changed();
+    }
+
+    void Studio::showAutomationGroup (AutomationSettings::Group group, bool usedOnly)
+    {
+        // Every track's lanes of that kind (volume, pan, mute; sends and plug-in knobs: those it has lanes for).
+        const auto show = [&] (int busId, std::vector<AutomationLane>& lanes, bool& open)
+        {
+            auto any = false;
+            for (auto& lane : lanes)
+                if (AutomationSettings::groupOf (lane) == group && (! usedOnly || ! lane.points.empty()))
+                    lane.shown = any = true;
+            if (! any && ! usedOnly && group != AutomationSettings::Group::plugins)
+                for (const auto& control : getAutomationControls (busId))
+                {
+                    const auto lane = control.asLane();
+                    if (AutomationSettings::groupOf (lane) != group)
+                        continue;
+                    if (std::none_of (lanes.begin(), lanes.end(), [&] (const AutomationLane& l) { return l.sameControl (lane); }))
+                        lanes.push_back (lane);
+                    any = true;
+                    if (group != AutomationSettings::Group::sends)
+                        break;   // (one each: volume, pan, mute; every send)
+                }
+            if (any)
+                open = true;
+        };
+        show (Engine::masterBus, project.masterAutomation, project.masterAutomationOpen);
+        for (auto& track : project.tracks)
+            show (track.id, track.automation, track.automationOpen);
+        changed (false);
+    }
+
+    void Studio::hideAllAutomation()
+    {
+        project.masterAutomationOpen = false;
+        for (auto& track : project.tracks)
+            track.automationOpen = false;
+        changed (false);
+    }
+
     void Studio::insertGone (int busId, int slot, bool shiftUp)
     {
         const auto fix = [slot, shiftUp] (std::vector<AutomationLane>& lanes)
@@ -3524,12 +3807,23 @@ namespace pr7s
         // plug-in's window then writes nothing.)
         if (! engine.isPlaying() || exportJob != nullptr || ! getAutomationWrite (busId))
             return;
+        if (project.automationSettings.suspendWrite[(size_t) AutomationSettings::groupOf (which)])
+            return;   // (0.28.0: Suspend Write: this kind of control isn't written)
         for (auto& pass : passes)
             if (pass.busId == busId && pass.control.sameControl (which))
             {
-                pass.released = false;   // touched again (an on/off switch still latched)
+                pass.retouched = pass.released;   // touched again (latched: Cross-Over watches for the old curve)
+                if (pass.released && ! pass.points.empty())
+                    pass.points.push_back ({ engine.getPosition(), pass.points.back().value });   // (held flat while let go)
+                pass.released = false;
+                pass.aboveOld.reset();
                 return;
             }
+        startPass (busId, which);
+    }
+
+    void Studio::startPass (int busId, const AutomationLane& which)
+    {
         WritePass pass;
         pass.busId = busId;
         pass.control = which;
@@ -3559,7 +3853,33 @@ namespace pr7s
             if (beat + 1.0e-6 < pass.lastBeat)
             {
                 punchOut (i, pass.lastBeat);   // it jumped back
+                if (project.automationSettings.continueOnJump && engine.isPlaying())
+                {
+                    // (0.28.0, Continue Writing on Transport Jump) A new pass from where it jumped to.
+                    startPass (busId, which);
+                    passes.back().points.push_back ({ beat, juce::jlimit (0.0f, 1.0f, value) });
+                    return true;
+                }
                 return false;
+            }
+            if (pass.retouched && project.automationSettings.mode == AutomationSettings::Mode::crossOver)
+            {
+                // (0.28.0) Cross-Over: touched again, it punches out where the hand crosses the old curve.
+                const AutomationLane* old = nullptr;
+                if (const auto* lanes = getAutomation (busId))
+                    for (const auto& l : *lanes)
+                        if (l.sameControl (which))
+                            old = &l;
+                const auto oldValue = old != nullptr && ! old->points.empty() ? *old->valueAt (beat) : pass.before;
+                const auto above = value >= oldValue;
+                if (pass.aboveOld && *pass.aboveOld != above)
+                {
+                    pass.lastBeat = beat;
+                    pass.points.push_back ({ beat, oldValue });
+                    punchOut (i, beat, false);   // (met the old curve: no return)
+                    return false;
+                }
+                pass.aboveOld = above;
             }
             pass.lastBeat = beat;
             pass.points.push_back ({ beat, juce::jlimit (0.0f, 1.0f, value) });
@@ -3573,8 +3893,8 @@ namespace pr7s
         for (size_t i = 0; i < passes.size(); ++i)
             if (passes[i].busId == busId && passes[i].control.sameControl (which))
             {
-                if (which.isStep())
-                    passes[i].released = true;   // Auto-Latch: it keeps its last value until playing stops
+                if (which.isStep() || project.automationSettings.mode != AutomationSettings::Mode::touch)
+                    passes[i].released = true;   // Auto-Latch (and Cross-Over): its last value kept until it punches out
                 else
                     punchOut (i, engine.getPosition());   // Touch
                 return;
@@ -3874,7 +4194,7 @@ namespace pr7s
         }
     }
 
-    void Studio::punchOut (size_t index, double endBeat)
+    void Studio::punchOut (size_t index, double endBeat, bool returnToOld)
     {
         auto pass = passes[index];
         passes.erase (passes.begin() + (std::ptrdiff_t) index);
@@ -3882,6 +4202,7 @@ namespace pr7s
         auto* lanes = lanesOf (pass.busId);
         if (lanes == nullptr)
             return;
+        auto& as = project.automationSettings;
         endBeat = juce::jmax (endBeat, pass.start);
 
         // Its lane (a new one if the control had none: every pass is kept, to open later).
@@ -3890,21 +4211,46 @@ namespace pr7s
         {
             auto added = pass.control;
             added.shown = true;
+            added.trim.clear();
             if (auto* plugin = pluginFor (pass.busId, pass.control); plugin != nullptr && pass.control.parameter < plugin->getParameters().size())
                 added.parameterName = plugin->getParameters()[pass.control.parameter]->getName (64);
             lanes->push_back (added);
             lane = lanes->end() - 1;
         }
+        // (0.28.0, Trim) A volume or send pass with Trim on writes the trim curve: the hand's
+        // level less the curve's, around the middle.
+        const auto trimming = as.trim && lane->canTrim() && ! lane->points.empty();
         const auto old = *lane;
-        const auto oldAt = [&] (double beat) { return old.points.empty() ? pass.before : *old.valueAt (beat); };
-
-        // The written values, thinned: a point that's on the line between its
-        // neighbours (to within a hair) adds nothing.
+        const auto& oldCurve = trimming ? old.trim : old.points;
+        const auto oldAt = [&] (double beat) -> std::optional<float>
+        {
+            if (trimming)
+            {
+                if (old.trim.empty())
+                    return 0.5f;
+                AutomationLane t;
+                t.points = old.trim;
+                return *t.valueAt (beat);
+            }
+            if (old.points.empty())
+                return as.virginTerritory ? std::optional<float>() : std::optional<float> (pass.before);
+            return old.valueAt (beat, as.virginTerritory);
+        };
         auto written = pass.points;
+        if (trimming)
+            for (auto& p : written)
+            {
+                const auto base = travelToVolume (*old.valueAt (p.beat));
+                p.value = juce::jlimit (0.0f, 1.0f, 0.5f + (travelToVolume (p.value) - base) / (2.0f * AutomationLane::trimRange));
+            }
+        const auto startValue = written.empty() ? oldAt (pass.start).value_or (pass.before) : written.front().value;
         if (written.empty() || written.front().beat > pass.start)
-            written.insert (written.begin(), { pass.start, written.empty() ? pass.before : written.front().value });
+            written.insert (written.begin(), { pass.start, startValue });
         if (pass.control.isStep() || written.back().beat < endBeat)
-            written.push_back ({ endBeat, written.back().value });   // held to the end (a latched switch, or a still hand)
+            written.push_back ({ endBeat, written.back().value });   // held to the end (a latched control, or a still hand)
+
+        // Thinned (the Reduction Level: 0% only repeats; up to 100% smoother).
+        const auto tolerance = 0.0002f + 0.02f * (float) as.reductionLevel / 100.0f;
         std::vector<AutomationPoint> thin;
         for (size_t i = 0; i < written.size(); ++i)
         {
@@ -3914,7 +4260,7 @@ namespace pr7s
                 const auto& b = written[i + 1];
                 const auto along = b.beat > a.beat ? (written[i].beat - a.beat) / (b.beat - a.beat) : 0.0;
                 const auto line = a.value + (b.value - a.value) * (float) along;
-                if (std::abs (written[i].value - line) < 0.002f && ! pass.control.isStep())
+                if (std::abs (written[i].value - line) < tolerance && ! pass.control.isStep())
                     continue;
                 if (pass.control.isStep() && std::abs (written[i].value - a.value) < 1.0e-6f)
                     continue;
@@ -3922,24 +4268,104 @@ namespace pr7s
             thin.push_back (written[i]);
         }
 
+        // Fill (0.28.0, the manual's Fill Options): the value found, written across a stretch.
+        using F = AutomationSettings::Fill;
+        const auto fillValue = thin.back().value;
+        auto from = pass.start, to = endBeat;
+        auto doReturn = returnToOld;   // (an on/off switch jumps back: no ramp)
+        auto filled = false, toTheEnd = false;
+        if (! pass.control.isStep())
+        {
+            if (as.toPunch != F::off)
+                thin = { { pass.start, fillValue }, { endBeat, fillValue } }, filled = true;
+            if (as.toStart != F::off)
+                from = 0.0, thin = { { 0.0, fillValue }, { endBeat, fillValue } }, filled = true;
+            if (as.toEnd != F::off)
+            {
+                toTheEnd = true;   // (everything after goes: the value holds to the end)
+                if (thin.empty() || thin.back().beat < endBeat)
+                    thin.push_back ({ endBeat, fillValue });
+                doReturn = false;
+                filled = true;
+            }
+            if (as.loop != F::off && project.loopEnd > project.loopStart)
+            {
+                from = juce::jmin (from, project.loopStart);
+                to = juce::jmax (to, project.loopEnd);
+                std::vector<AutomationPoint> kept;
+                for (const auto& p : thin)
+                    if (p.beat < project.loopStart || p.beat > project.loopEnd)
+                        kept.push_back (p);
+                kept.push_back ({ project.loopStart, fillValue });
+                kept.push_back ({ project.loopEnd, fillValue });
+                std::stable_sort (kept.begin(), kept.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
+                thin = std::move (kept);
+                filled = true;
+            }
+        }
+        if (filled)
+            doReturn = doReturn && as.toEnd == F::off;
+
         // In place of what was there from the start to the end (and the return).
-        const auto returnBeats = pass.control.isStep() ? 0.0 : project.tempoMap().beatAfter (endBeat, returnSeconds) - endBeat;
+        const auto returnBeats = doReturn && ! pass.control.isStep() ? project.tempoMap().beatAfter (endBeat, as.returnSeconds) - endBeat : 0.0;
         const auto backAt = endBeat + returnBeats;
+        const auto clearTo = juce::jmax (backAt, filled ? to : backAt);
         std::vector<AutomationPoint> points;
-        for (const auto& p : old.points)
-            if (p.beat < pass.start)
+        for (const auto& p : oldCurve)
+            if (p.beat < from)
                 points.push_back (p);
-        points.push_back ({ pass.start, oldAt (pass.start) });   // up to the start as it was, then a jump to the hand's value
+        if (const auto before = oldAt (from); before && from > 0.0)
+            points.push_back ({ from, *before });   // up to the start as it was, then a jump to the hand's value
         for (const auto& p : thin)
             points.push_back (p);
-        points.push_back ({ backAt, oldAt (backAt) });            // and back to what was there (Touch's return)
-        for (const auto& p : old.points)
-            if (p.beat > backAt)
-                points.push_back (p);
-        lane->points = std::move (points);
+        if (! toTheEnd)
+        {
+            if (const auto after = oldAt (clearTo); after && doReturn)
+                points.push_back ({ clearTo, *after });            // and back to what was there (Touch's return)
+            else if (as.virginTerritory && ! points.empty() && ! oldAt (clearTo))
+                points.back().terminator = true;                    // (virgin territory after it: a gap, as the manual's)
+            for (const auto& p : oldCurve)
+                if (p.beat > clearTo)
+                    points.push_back (p);
+        }
+        std::stable_sort (points.begin(), points.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
+        if (as.gaps != F::off && as.virginTerritory && ! trimming && ! pass.control.isStep())
+        {
+            // Gaps: the curve's gaps filled with the value found.
+            std::vector<AutomationPoint> closed;
+            for (size_t i = 0; i < points.size(); ++i)
+            {
+                auto p = points[i];
+                const auto gap = p.terminator && i + 1 < points.size();
+                p.terminator = false;
+                closed.push_back (p);
+                if (gap)
+                {
+                    closed.push_back ({ p.beat + 1.0e-3, fillValue });
+                    closed.push_back ({ juce::jmax (p.beat + 2.0e-3, points[i + 1].beat - 1.0e-3), fillValue });
+                }
+            }
+            points = std::move (closed);
+        }
+        (trimming ? lane->trim : lane->points) = std::move (points);
 
-        // The control as it was set before (the lane carries the pass now).
+        // One-shot fills are used up; locked ones stay (the manual's One Shot vs Continuous).
+        for (auto* f : { &as.toPunch, &as.toStart, &as.toEnd, &as.loop, &as.gaps })
+            if (*f == F::once)
+                *f = F::off;
+        if (trimming && as.freezeTrim == AutomationSettings::FreezeTrim::onPassEnd)
+            freezeTrimOf (*lane);
+
+        // The control as it was set before (the lane carries the pass now); the lane shown (Reveal Parameter on Write).
         setControlValue (pass.busId, pass.control, pass.before);
+        if (as.revealOnWrite)
+        {
+            lane->shown = true;
+            if (pass.busId == Engine::masterBus)
+                project.masterAutomationOpen = true;
+            else if (auto* track = project.findTrack (pass.busId))
+                track->automationOpen = true;
+        }
         if (pass.busId == Engine::masterBus)
             project.masterRead = true;
         else if (auto* track = project.findTrack (pass.busId))

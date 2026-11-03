@@ -36,7 +36,7 @@ namespace pr7s
         // points, and its control not being held (written).
         template <typename LaneStates>
         void readLanes (const std::vector<AutomationLane>& lanes, bool read, LaneStates& into, bool& mixAutomated,
-                        int busId, const std::vector<std::pair<int, AutomationLane>>& held)
+                        int busId, const std::vector<std::pair<int, AutomationLane>>& held, const Project::AutomationSettings& automation)
         {
             mixAutomated = false;
             const auto isHeld = [&] (const AutomationLane& lane)
@@ -44,7 +44,8 @@ namespace pr7s
                 return std::any_of (held.begin(), held.end(), [&] (const auto& h) { return h.first == busId && h.second.sameControl (lane); });
             };
             for (const auto& lane : lanes)
-                if (read && ! lane.muted && ! lane.points.empty() && ! isHeld (lane))
+                if (read && ! lane.muted && ! lane.points.empty() && ! isHeld (lane)
+                    && ! automation.suspendRead[(size_t) Project::AutomationSettings::groupOf (lane)])   // (0.28.0: Suspend Read)
                 {
                     into.push_back ({ lane, -1.0f });
                     using T = AutomationLane::Target;
@@ -455,7 +456,7 @@ namespace pr7s
                 p.drumOut[(size_t) n] = (juce::int16) n, p.drumChannel[(size_t) n] = -1, p.drumIn[(size_t) n] = (juce::uint8) n;
             for (const auto& insert : track.inserts)
                 p.bypass.push_back (insert.bypass);
-            readLanes (track.automation, track.automationRead, p.automation, p.mixAutomated, track.id, held);
+            readLanes (track.automation, track.automationRead, p.automation, p.mixAutomated, track.id, held, project.automationSettings);
             if (track.disabled)
             {
                 // Disabled: nothing played, nothing read from disk (its plugins are unloaded too).
@@ -540,12 +541,12 @@ namespace pr7s
         const auto masterLevel = levelOf (project.masterVolumeDb);
         std::vector<LaneState> masterLanes;
         bool masterLanesMix = false;
-        readLanes (project.masterAutomation, project.masterRead, masterLanes, masterLanesMix, masterBus, held);
+        readLanes (project.masterAutomation, project.masterRead, masterLanes, masterLanesMix, masterBus, held, project.automationSettings);
 
         const juce::ScopedLock sl (lock);
         settings = { std::move (tempo), tempoVersion, project.numerator, project.denominator, project.loopOn,
                      project.loopStart, juce::jmax (project.loopStart + 0.0625, project.loopEnd), project.click, masterLevel,
-                     project.masterVolumeDb };
+                     project.masterVolumeDb, project.automationSettings.virginTerritory };
         std::swap (masterAutomation, masterLanes);
         masterPreFader = project.masterPreFaderSlots;
         masterAutomated = masterLanesMix;
@@ -1078,7 +1079,7 @@ namespace pr7s
                 // samples, in a straight line between (no steps to hear).
                 const auto gainsAt = [&] (double at)
                 {
-                    const auto mix = mixAt (track->automation, set, at);
+                    const auto mix = mixAt (track->automation, set, at, settings.virginTerritory);
                     return sideGains (mix.volumeDb, mix.pan, ! mix.mute && ! track->soloedOut);
                 };
                 std::pair<float, float> gains;
@@ -1140,7 +1141,7 @@ namespace pr7s
         if (masterAutomated)
         {
             const MixNow set { settings.masterVolumeDb, 0.0f, false };
-            const auto gainAt = [&] (double at) { return levelOf (mixAt (masterAutomation, set, at).volumeDb); };
+            const auto gainAt = [&] (double at) { return levelOf (mixAt (masterAutomation, set, at, settings.virginTerritory).volumeDb); };
             float gain = 0.0f;
             for (int s = 0; s < numSpans; ++s)
             {
@@ -1181,12 +1182,12 @@ namespace pr7s
         const auto endBeat = numSegments > 0 ? position.load() : blockBeat;
         for (auto& track : tracks)
         {
-            const auto now = mixAt (track->automation, { track->volumeDb, track->pan, track->mute }, endBeat);
+            const auto now = mixAt (track->automation, { track->volumeDb, track->pan, track->mute }, endBeat, settings.virginTerritory);
             track->nowVolumeDb = now.volumeDb;
             track->nowPan = now.pan;
             track->nowMute = now.mute;
         }
-        nowMasterVolumeDb = mixAt (masterAutomation, { settings.masterVolumeDb, 0.0f, false }, endBeat).volumeDb;
+        nowMasterVolumeDb = mixAt (masterAutomation, { settings.masterVolumeDb, 0.0f, false }, endBeat, settings.virginTerritory).volumeDb;
 
         // The click: a short tone at each beat, higher on the bar's first.
         for (int i = 0, next = 0; i < numSamples; ++i)
@@ -1299,11 +1300,13 @@ namespace pr7s
     }
 
     //==========================================================================
-    Engine::MixNow Engine::mixAt (const std::vector<LaneState>& lanes, MixNow mix, double beat)
+    Engine::MixNow Engine::mixAt (const std::vector<LaneState>& lanes, MixNow mix, double beat, bool virginTerritory)
     {
         for (const auto& state : lanes)
         {
-            const auto value = state.lane.valueAt (beat);
+            const auto value = state.lane.playedAt (beat, virginTerritory);   // (0.28.0: with its trim; none in a gap)
+            if (! value)
+                continue;
             switch (state.lane.target)
             {
                 case AutomationLane::Target::volume: mix.volumeDb = travelToVolume (*value); break;
@@ -1329,7 +1332,8 @@ namespace pr7s
             auto db = send.levelDb;
             for (const auto& state : track.automation)
                 if (state.lane.target == AutomationLane::Target::send && state.lane.slot == s)
-                    db = travelToVolume (*state.lane.valueAt (beat));
+                    if (const auto value = state.lane.playedAt (beat, settings.virginTerritory))
+                        db = travelToVolume (*value);
             track.nowSendDb[(size_t) s] = db;
             const auto gain = send.on ? levelOf (db) : 0.0f;
             auto* fx = send.target != 0 ? findTrack (send.target) : nullptr;
@@ -1364,7 +1368,10 @@ namespace pr7s
             const auto& parameters = plugin->getParameters();
             if (lane.parameter >= parameters.size())
                 continue;
-            const auto value = *lane.valueAt (beat);
+            const auto found = lane.valueAt (beat, settings.virginTerritory);
+            if (! found)
+                continue;   // (a gap: the knob stays where it's set)
+            const auto value = *found;
             if (std::abs (value - state.applied) < 1.0e-6f)
                 continue;
             state.applied = value;

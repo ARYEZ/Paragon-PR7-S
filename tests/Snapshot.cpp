@@ -7,6 +7,7 @@
 #include "ui/Finish.h"
 #include "ui/MainView.h"
 #include "ui/DrumMapPage.h"
+#include "ui/AutomationPanel.h"
 #include "ui/ToolIcons.h"
 #include "ui/Windows.h"
 #include "ui/ParagonLookAndFeel.h"
@@ -1161,6 +1162,34 @@ TEST_CASE ("Snapshot: the Drum Map Setup", "[.][snapshot-drummap]")
         page.selectSound (36);
         page.getTable().scrollToEnsureRowIsOnscreen (50);
         const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+TEST_CASE ("Snapshot: the Automation panel", "[.][snapshot-autopanel]")
+{
+    // PARAGON_SNAPSHOT_TAB=settings: its SETTINGS tab.
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "autopanel.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        studio.setAutomationMode (pr7s::Studio::AutomationSettings::Mode::autoLatch);
+        studio.stepFill (pr7s::Studio::FillOption::toEnd);
+        studio.stepFill (pr7s::Studio::FillOption::loop);
+        studio.stepFill (pr7s::Studio::FillOption::loop);
+        studio.setSuspendWrite (pr7s::Studio::AutomationSettings::Group::mute, true);
+        studio.setTrim (true);
+        AutomationPanel panel (studio);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_TAB", {}) == "settings")
+            panel.setTab (AutomationPanel::Tab::settings);
+        panel.refresh();
+        const auto image = panel.createComponentSnapshot (panel.getLocalBounds(), true, 1.0f);
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };
         juce::PNGImageFormat().writeImageToStream (image, out);

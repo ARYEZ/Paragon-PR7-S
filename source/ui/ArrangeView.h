@@ -305,6 +305,9 @@ public:
     void bendSegment (int busId, int laneIndex, int point, float towardsY);  // a segment's bend, so its middle is at that height
     void drawLineShape (int busId, int laneIndex, juce::Point<float> from, juce::Point<float> to, bool reverse);
     void showAutomationFunctions (int busId, int laneIndex);   // the lane menu's Copy / Paste Automation and the rest
+    // (0.28.0) Trim on and a volume or send lane with points: its trim curve is what's edited.
+    bool isTrimming (const pr7s::AutomationLane&) const;
+    const std::vector<pr7s::AutomationPoint>& editPointsOf (const pr7s::AutomationLane& lane) const { return isTrimming (lane) ? lane.trim : lane.points; }
 
     // Asked to edit the selected part's notes (double-click, or its menu): the key editor opens.
     std::function<void()> onEditNotes;

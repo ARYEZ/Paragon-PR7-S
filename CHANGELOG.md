@@ -2,6 +2,22 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.28.0
+
+The Automation panel (F6), the rest of automation as the manual has it (the owner asked for all of it).
+
+- **The panel** (F6, or the key command Open/Close Automation Panel): **READ** and **WRITE** for every track, **SUSPEND** (all reading and writing), the mode, **TRIM**, **FUNCTIONS**; then **FILL**, **SUSPEND READ**, **SUSPEND WRITE**, **SHOW**; and a **SETTINGS** tab. Everything in it is saved with the song.
+- **The modes:** **Touch** (as before: it writes while you hold a control, and goes back to what was there when you let go), **Auto-Latch** (let go, and its last value goes on being written until you stop, the cycle comes round, or W goes off), **Cross-Over** (as Auto-Latch; touch it again and move it back across the old curve, and the pass ends where it crosses, with no jump). On/off switches (mute) always latch, as the manual says.
+- **Fill** (what happens when a pass ends): **To Punch** (the value you ended on, from where you started: what you did while searching for it is gone), **To Start** (from the song's start), **To End** (to the end, no return), **Loop** (between the locators), **Gaps** (virgin territory's gaps filled). A click: once, for the next pass; a second click: locked, every pass; a third: off.
+- **Suspend Read / Write** by kind: volume, pan, mute, sends, plug-ins (SET ALL): a suspended read leaves the control where you put it by hand; a suspended write keeps it out of a pass (the manual's example: mute your tracks to listen without the mutes being written).
+- **Trim** (volume and send levels): with TRIM on, a pass (or editing the lane) writes a **trim curve** on top of the automation, up or down to 12 dB, keeping the automation as it was. The lane shows the automation light, what plays darker, and the trim curve. **Freeze Trim** (functions menu, a lane's menu, or by itself: on pass end, or on leaving trim mode) turns it into the automation.
+- **Virgin territory** (SETTINGS): no curve before a lane's first point or after its last, and **gaps** (the control stays as you set it there). Deleting points makes a gap; a point can be a **terminator** (the lane's menu: a gap after it). Fill Gaps (the functions) fills them.
+- **Functions:** Delete All Automation in Project, of the Selected Tracks, in Range (the locators); Fill Gaps on Selected Tracks (with its section's value, or the control's value now); Freeze All Trim / Freeze Trim of Selected Tracks; Copy and Paste Automation of All / Selected Tracks.
+- **Show:** every track's VOLUME, PAN, MUTE, SENDS or PLUG-INS lanes (USED ONLY: only those with automation), SHOW USED, HIDE ALL.
+- **Settings:** Use Virgin Territory, Continue Writing on Transport Jump (a jump starts a new pass instead of ending writing), Reveal Parameter on Write (the lane opens when it's written), Return Time (Touch's way back, 0 to 1000 ms), Reduction Level (how much a pass is thinned: 0% only repeats; the manual's default 50%), Freeze Trim.
+- **Key commands** (KEYS, Automation): the three modes, Trim, Suspend All, Fill To End / To Punch / Loop: for the Stream Deck.
+- **Honestly:** not built: Spike Detection Range, the Last Touched Parameter options, Show Data on Tracks, the panel in the right zone (a window here), drawing with Fill (fills act on passes, not on drawing), a mode key on the toolbar (the header has no room left at the smallest window: F6 and the key commands instead), the per-track automation mode. Trim's range (12 dB either way) is our choice. Checked with test passes written by the code, not with your hands on a controller.
+
 ## 0.27.0
 
 Automation editing, the first part of automation as the manual has it (the owner asked: type a node's value, select several nodes, and everything else; the Automation panel's modes, Trim, Fill and Suspend come next, in 0.28.0).

@@ -103,6 +103,9 @@ namespace pr7s
         // (0.27.0, the manual's Bézier curves) How the ramp arriving at this point bends:
         // 0 straight; up to 1 bowed one way, down to -1 the other (`curveShape`).
         float curve = 0.0f;
+        // (0.28.0, the manual's Defining a Terminator Point) The curve ends here: a gap (virgin
+        // territory: the control stays as it's set) until the next point.
+        bool terminator = false;
         bool operator== (const AutomationPoint&) const = default;
     };
 
@@ -116,6 +119,11 @@ namespace pr7s
         std::vector<AutomationPoint> points;   // in order of beat
         bool shown = true;     // its lane open under the track (a lane switched to another control keeps its points, hidden)
         bool muted = false;    // Mute Automation: not played back
+        // (0.28.0, the manual's Trim) Volume and send levels: a trim curve over the points, in
+        // the middle at 0 dB, up to `trimRange` dB either way; played on top of them.
+        std::vector<AutomationPoint> trim;
+        static constexpr float trimRange = 12.0f;   // our choice
+        bool canTrim() const noexcept { return target == Target::volume || target == Target::send; }
 
         bool isStep() const noexcept { return target == Target::mute; }
         bool sameControl (const AutomationLane& other) const noexcept
@@ -126,6 +134,12 @@ namespace pr7s
         // a straight line between (a jump at the next point, for a step lane).
         // None if there are no points.
         std::optional<float> valueAt (double beat) const noexcept;
+        // (0.28.0) With virgin territory: nothing before the first point, nor in a gap after a
+        // terminator (else as valueAt, which a gap doesn't stop).
+        std::optional<float> valueAt (double beat, bool virginTerritory) const noexcept;
+        // What plays: the value with the trim curve on top (volume and sends).
+        std::optional<float> playedAt (double beat, bool virginTerritory) const noexcept;
+        static float trimDb (const std::vector<AutomationPoint>& trim, double beat) noexcept;   // 0 without points
         // A ramp's shape (0.27.0): `along` (0 to 1) bent by `curve`: along ^ 4^-curve.
         static float curveShape (float along, float curve) noexcept;
         bool operator== (const AutomationLane&) const = default;
@@ -267,6 +281,28 @@ namespace pr7s
         std::vector<Insert> masterInserts;
         int masterPreFaderSlots = 16;
         std::vector<AutomationLane> masterAutomation;   // volume and the master's effects
+        // The Automation panel's settings (0.28.0; saved with the song, not undo steps).
+        struct AutomationSettings
+        {
+            enum class Mode { touch, autoLatch, crossOver };
+            Mode mode = Mode::touch;
+            // Fill (on punching out): off, once (the next pass), or locked (every pass).
+            enum class Fill { off, once, locked };
+            Fill toPunch = Fill::off, toStart = Fill::off, toEnd = Fill::off, loop = Fill::off, gaps = Fill::off;
+            // Suspend Read / Write, by group (AutomationSettings::Group), and all at once.
+            enum class Group { volume, pan, mute, sends, plugins };
+            static constexpr int numGroups = 5;
+            std::array<bool, numGroups> suspendRead {}, suspendWrite {};
+            bool trim = false;
+            enum class FreezeTrim { manually, onPassEnd, onLeavingTrim };
+            FreezeTrim freezeTrim = FreezeTrim::manually;
+            bool virginTerritory = false, continueOnJump = false, revealOnWrite = true;
+            double returnSeconds = 0.1;   // our choice (the manual gives none)
+            int reductionLevel = 50;      // % (the manual's default)
+            static Group groupOf (const AutomationLane&) noexcept;
+            bool operator== (const AutomationSettings&) const = default;
+        };
+        AutomationSettings automationSettings;
         bool masterAutomationOpen = false, masterRead = false, masterWrite = false;
         int nextTrackId = 1;
 

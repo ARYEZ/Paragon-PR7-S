@@ -78,6 +78,9 @@ public:
     void toggleTempoEditor();
     // The Drum Map Setup (0.26.0): its window (the MIDI editor's MAP menu, the drum list's menu, the Inspector's DRUM MAP).
     void openDrumMapSetup();
+    // The Automation panel (0.28.0, F6): its window.
+    void toggleAutomationPanel();
+    juce::DocumentWindow* getAutomationPanelWindow() noexcept { return automationWindow.get(); }
     juce::DocumentWindow* getDrumMapWindow() noexcept { return drumMapWindow.get(); }
     // BASS & MELODY (0.18.0): ideas for these chord events (none: the cycle's, else all), in a window of its own.
     void openLineIdeas (std::vector<int> chordEvents = {});
@@ -251,7 +254,7 @@ private:
     juce::TextButton keysButton { "KEYS" };
     int saveFlashes = 0;
     std::unique_ptr<ProgressBox> progressBox;   // a long job's progress (0.11.1)
-    std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow, drumMapWindow;
+    std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow, drumMapWindow, automationWindow;
     std::unique_ptr<LinesWindow> linesWindow;
     std::unique_ptr<MediaBayWindow> mediaBayWindow;
     std::unique_ptr<MediaRack> mediaRack;

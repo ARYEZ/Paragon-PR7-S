@@ -303,6 +303,7 @@ namespace pr7s
             bool click = false;
             float masterGain = 1.0f;
             float masterVolumeDb = 0.0f;
+            bool virginTerritory = false;   // (0.28.0) gaps and the stretch before a lane's first point leave the control alone
         };
 
         // Gives instruments the tempo and position, as a DAW does.
@@ -422,7 +423,7 @@ namespace pr7s
         std::atomic<float> nowMasterVolumeDb { 0.0f };
 
         void applyKnobs (std::vector<LaneState>&, juce::AudioPluginInstance* instrument, std::vector<Slot>& inserts, double beat);
-        static MixNow mixAt (const std::vector<LaneState>&, MixNow set, double beat);
+        static MixNow mixAt (const std::vector<LaneState>&, MixNow set, double beat, bool virginTerritory = false);
         juce::MidiBuffer effectMidi;   // effects get no MIDI
 
         Head head;

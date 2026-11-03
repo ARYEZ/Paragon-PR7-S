@@ -43,6 +43,16 @@ namespace pr7s
                     p->setAttribute ("value", point.value);
                     if (std::abs (point.curve) > 1.0e-6f)
                         p->setAttribute ("curve", point.curve);
+                    if (point.terminator)
+                        p->setAttribute ("terminator", true);
+                }
+                for (const auto& point : lane.trim)
+                {
+                    auto* p = e->createNewChildElement ("Trim");
+                    p->setAttribute ("beat", point.beat);
+                    p->setAttribute ("value", point.value);
+                    if (std::abs (point.curve) > 1.0e-6f)
+                        p->setAttribute ("curve", point.curve);
                 }
             }
         }
@@ -66,7 +76,13 @@ namespace pr7s
                 for (const auto* p : e->getChildWithTagNameIterator (pointTag))
                     lane.points.push_back ({ juce::jmax (0.0, p->getDoubleAttribute ("beat")),
                                              (float) juce::jlimit (0.0, 1.0, p->getDoubleAttribute ("value")),
-                                             (float) juce::jlimit (-1.0, 1.0, p->getDoubleAttribute ("curve")) });
+                                             (float) juce::jlimit (-1.0, 1.0, p->getDoubleAttribute ("curve")),
+                                             p->getBoolAttribute ("terminator") });
+                for (const auto* p : e->getChildWithTagNameIterator ("Trim"))
+                    lane.trim.push_back ({ juce::jmax (0.0, p->getDoubleAttribute ("beat")),
+                                           (float) juce::jlimit (0.0, 1.0, p->getDoubleAttribute ("value")),
+                                           (float) juce::jlimit (-1.0, 1.0, p->getDoubleAttribute ("curve")), false });
+                std::stable_sort (lane.trim.begin(), lane.trim.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
                 std::stable_sort (lane.points.begin(), lane.points.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
                 lanes.push_back (std::move (lane));
             }
@@ -125,6 +141,59 @@ namespace pr7s
         const auto span = next->beat - before.beat;
         const auto along = span > 0.0 ? (float) ((beat - before.beat) / span) : 1.0f;
         return before.value + (next->value - before.value) * curveShape (along, next->curve);
+    }
+
+    std::optional<float> AutomationLane::valueAt (double beat, bool virginTerritory) const noexcept
+    {
+        if (points.empty())
+            return std::nullopt;
+        if (! virginTerritory)
+            return valueAt (beat);
+        if (beat < points.front().beat)
+            return std::nullopt;   // virgin territory before the first point
+        // In a gap: after a terminator, before the next point.
+        const auto next = std::upper_bound (points.begin(), points.end(), beat, [] (double b, const AutomationPoint& p) { return b < p.beat; });
+        if (next != points.begin())
+        {
+            const auto& before = *std::prev (next);
+            if (before.terminator && beat > before.beat)
+                return std::nullopt;
+            if (next == points.end() && beat > before.beat)
+                return std::nullopt;   // virgin territory after the last point (the manual's)
+        }
+        return valueAt (beat);
+    }
+
+    float AutomationLane::trimDb (const std::vector<AutomationPoint>& trim, double beat) noexcept
+    {
+        if (trim.empty())
+            return 0.0f;
+        AutomationLane t;
+        t.points = trim;
+        return (*t.valueAt (beat) - 0.5f) * 2.0f * trimRange;
+    }
+
+    std::optional<float> AutomationLane::playedAt (double beat, bool virginTerritory) const noexcept
+    {
+        const auto value = valueAt (beat, virginTerritory);
+        if (! value || trim.empty() || ! canTrim())
+            return value;
+        return volumeToTravel (juce::jlimit (-60.0f, 6.0f, travelToVolume (*value) + trimDb (trim, beat)));
+    }
+
+    Project::AutomationSettings::Group Project::AutomationSettings::groupOf (const AutomationLane& lane) noexcept
+    {
+        using T = AutomationLane::Target;
+        switch (lane.target)
+        {
+            case T::volume: return Group::volume;
+            case T::pan:    return Group::pan;
+            case T::mute:   return Group::mute;
+            case T::send:   return Group::sends;
+            case T::instrument:
+            case T::insert: return Group::plugins;
+        }
+        return Group::plugins;
     }
 
     float AutomationLane::curveShape (float along, float curve) noexcept
@@ -385,6 +454,29 @@ namespace pr7s
         master->setAttribute ("automationOpen", masterAutomationOpen);
         master->setAttribute ("automationRead", masterRead);
         master->setAttribute ("automationWrite", masterWrite);
+        {
+            // (0.28.0) The Automation panel's settings.
+            const auto& a = automationSettings;
+            auto* e = xml->createNewChildElement ("AutomationSettings");
+            e->setAttribute ("mode", (int) a.mode);
+            e->setAttribute ("toPunch", (int) a.toPunch);
+            e->setAttribute ("toStart", (int) a.toStart);
+            e->setAttribute ("toEnd", (int) a.toEnd);
+            e->setAttribute ("loop", (int) a.loop);
+            e->setAttribute ("gaps", (int) a.gaps);
+            juce::String read, write;
+            for (int g = 0; g < AutomationSettings::numGroups; ++g)
+                read << (a.suspendRead[(size_t) g] ? "1" : "0"), write << (a.suspendWrite[(size_t) g] ? "1" : "0");
+            e->setAttribute ("suspendRead", read);
+            e->setAttribute ("suspendWrite", write);
+            e->setAttribute ("trim", a.trim);
+            e->setAttribute ("freezeTrim", (int) a.freezeTrim);
+            e->setAttribute ("virginTerritory", a.virginTerritory);
+            e->setAttribute ("continueOnJump", a.continueOnJump);
+            e->setAttribute ("revealOnWrite", a.revealOnWrite);
+            e->setAttribute ("returnSeconds", a.returnSeconds);
+            e->setAttribute ("reductionLevel", a.reductionLevel);
+        }
         return xml;
     }
 
@@ -598,6 +690,30 @@ namespace pr7s
             project.masterAutomationOpen = master->getBoolAttribute ("automationOpen");
             project.masterRead = master->getBoolAttribute ("automationRead");
             project.masterWrite = master->getBoolAttribute ("automationWrite");
+        }
+        if (const auto* e = xml.getChildByName ("AutomationSettings"))
+        {
+            auto& a = project.automationSettings;
+            using S = AutomationSettings;
+            a.mode = (S::Mode) juce::jlimit (0, 2, e->getIntAttribute ("mode"));
+            a.toPunch = (S::Fill) juce::jlimit (0, 2, e->getIntAttribute ("toPunch"));
+            a.toStart = (S::Fill) juce::jlimit (0, 2, e->getIntAttribute ("toStart"));
+            a.toEnd = (S::Fill) juce::jlimit (0, 2, e->getIntAttribute ("toEnd"));
+            a.loop = (S::Fill) juce::jlimit (0, 2, e->getIntAttribute ("loop"));
+            a.gaps = (S::Fill) juce::jlimit (0, 2, e->getIntAttribute ("gaps"));
+            const auto read = e->getStringAttribute ("suspendRead"), write = e->getStringAttribute ("suspendWrite");
+            for (int g = 0; g < S::numGroups; ++g)
+            {
+                a.suspendRead[(size_t) g] = read[g] == '1';
+                a.suspendWrite[(size_t) g] = write[g] == '1';
+            }
+            a.trim = e->getBoolAttribute ("trim");
+            a.freezeTrim = (S::FreezeTrim) juce::jlimit (0, 2, e->getIntAttribute ("freezeTrim"));
+            a.virginTerritory = e->getBoolAttribute ("virginTerritory");
+            a.continueOnJump = e->getBoolAttribute ("continueOnJump");
+            a.revealOnWrite = e->getBoolAttribute ("revealOnWrite", true);
+            a.returnSeconds = juce::jlimit (0.0, 5.0, e->getDoubleAttribute ("returnSeconds", 0.1));
+            a.reductionLevel = juce::jlimit (0, 100, e->getIntAttribute ("reductionLevel", 50));
         }
         return project;
     }

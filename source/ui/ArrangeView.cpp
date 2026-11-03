@@ -2022,10 +2022,10 @@ float ArrangeView::valueForY (juce::Rectangle<float> area, float y) const
 juce::Point<float> ArrangeView::getPointPosition (int busId, int laneIndex, int point) const
 {
     const auto* lane = laneFor (busId, laneIndex);
-    if (lane == nullptr || ! juce::isPositiveAndBelow (point, (int) lane->points.size()))
+    if (lane == nullptr || ! juce::isPositiveAndBelow (point, (int) editPointsOf (*lane).size()))
         return {};
     const auto area = getLaneArea (busId, laneIndex);
-    const auto& p = lane->points[(size_t) point];
+    const auto& p = editPointsOf (*lane)[(size_t) point];
     return { timeline.xForBeat (p.beat), yForValue (area, p.value) };
 }
 
@@ -2041,50 +2041,110 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
     const auto editing = (drag == Drag::points || drag == Drag::draw || drag == Drag::erasePoints || drag == Drag::pointHandle
                           || drag == Drag::curve || drag == Drag::segmentScale)
                          && pointSelection.busId == row.busId && pointSelection.laneIndex == row.laneIndex;
-    const auto& points = editing ? workingPoints : lane->points;
+    const auto& points = editing ? workingPoints : editPointsOf (*lane);
 
-    if (points.empty())
+    const auto virgin = studio.getAutomationSettings().virginTerritory;
+    const auto trimming = isTrimming (*lane);
+    const auto dotted = [&] (float y, juce::Colour c)
     {
-        // The static value line: the control's setting, dotted.
-        const auto y = yForValue (area, studio.getControlValue (row.busId, *lane));
-        g.setColour (ParagonColours::textDim);
+        g.setColour (c);
         for (auto x = 0.0f; x < area.getRight(); x += 6.0f)
             g.fillRect (x, y, 3.0f, 1.0f);
-        return;
-    }
-
-    // The curve: a ramp between points (a step for an on/off switch), flat before the first and after the last.
-    pr7s::AutomationLane shape = *lane;
-    shape.points = points;
-    juce::Path curve;
-    curve.startNewSubPath (0.0f, yForValue (area, points.front().value));
-    for (size_t i = 0; i < points.size(); ++i)
+    };
+    // A curve through points (a step for an on/off switch), flat before the first and after the
+    // last; with virgin territory (0.28.0) nothing there, nor after a terminator (a gap): so it's
+    // a list of stretches, each with where it starts and ends across.
+    struct Stretch { juce::Path path; float x0 = 0.0f, x1 = 0.0f; };
+    const auto curveOf = [&] (const std::vector<pr7s::AutomationPoint>& pts, bool step, bool gaps)
     {
-        const auto x = timeline.xForBeat (points[i].beat);
-        if (lane->isStep() && i > 0)
-            curve.lineTo (x, yForValue (area, points[i - 1].value));
-        else if (i > 0 && std::abs (points[i].curve) > 1.0e-4f)
+        std::vector<Stretch> stretches;
+        if (pts.empty())
+            return stretches;
+        const auto begin = [&] (float x, float y) { stretches.push_back ({}); stretches.back().path.startNewSubPath (x, y); stretches.back().x0 = stretches.back().x1 = x; };
+        const auto to = [&] (float x, float y) { stretches.back().path.lineTo (x, y); stretches.back().x1 = x; };
+        begin (gaps ? timeline.xForBeat (pts.front().beat) : 0.0f, yForValue (area, pts.front().value));
+        for (size_t i = 0; i < pts.size(); ++i)
         {
-            // (0.27.0) A bent ramp, drawn a few pixels at a time.
-            const auto x0 = timeline.xForBeat (points[i - 1].beat);
-            for (auto px = x0 + 3.0f; px < x; px += 3.0f)
+            const auto x = timeline.xForBeat (pts[i].beat);
+            if (i > 0 && gaps && pts[i - 1].terminator)
             {
-                const auto along = (px - x0) / juce::jmax (1.0f, x - x0);
-                curve.lineTo (px, yForValue (area, points[i - 1].value + (points[i].value - points[i - 1].value)
-                                                       * pr7s::AutomationLane::curveShape (along, points[i].curve)));
+                begin (x, yForValue (area, pts[i].value));   // (the gap's end: a new stretch)
+                continue;
             }
+            if (step && i > 0)
+                to (x, yForValue (area, pts[i - 1].value));
+            else if (i > 0 && std::abs (pts[i].curve) > 1.0e-4f)
+            {
+                // (0.27.0) A bent ramp, drawn a few pixels at a time.
+                const auto x0 = timeline.xForBeat (pts[i - 1].beat);
+                for (auto px = x0 + 3.0f; px < x; px += 3.0f)
+                {
+                    const auto along = (px - x0) / juce::jmax (1.0f, x - x0);
+                    to (px, yForValue (area, pts[i - 1].value + (pts[i].value - pts[i - 1].value) * pr7s::AutomationLane::curveShape (along, pts[i].curve)));
+                }
+            }
+            to (x, yForValue (area, pts[i].value));
         }
-        curve.lineTo (x, yForValue (area, points[i].value));
+        if (! gaps)
+            to (area.getRight(), yForValue (area, pts.back().value));
+        return stretches;
+    };
+    const auto stroke = [&] (const std::vector<Stretch>& stretches, juce::Colour c, float width, bool filled)
+    {
+        for (const auto& st : stretches)
+        {
+            if (filled)
+            {
+                auto fill = st.path;
+                fill.lineTo (st.x1, area.getBottom());
+                fill.lineTo (st.x0, area.getBottom());
+                fill.closeSubPath();
+                g.setColour (c.withAlpha (0.12f));
+                g.fillPath (fill);
+            }
+            g.setColour (c);
+            g.strokePath (st.path, juce::PathStrokeType (width));
+        }
+    };
+
+    if (trimming)
+    {
+        // (0.28.0, Trim) The automation as it was, light; what plays (with the trim), darker; the trim curve
+        // round the middle (0 dB), its points the ones edited.
+        stroke (curveOf (lane->points, false, virgin), colour.withAlpha (0.3f), 1.2f, false);
+        pr7s::AutomationLane result = *lane;
+        result.trim = points;
+        juce::Path played;
+        auto started = false;
+        for (auto x = 0.0f; x <= area.getRight(); x += 3.0f)
+            if (const auto v = result.playedAt (timeline.beatForX (x), virgin))
+            {
+                if (! started)
+                    played.startNewSubPath (x, yForValue (area, *v)), started = true;
+                else
+                    played.lineTo (x, yForValue (area, *v));
+            }
+        g.setColour (colour);
+        g.strokePath (played, juce::PathStrokeType (2.0f));
+        if (points.empty())
+        {
+            dotted (yForValue (area, 0.5f), juce::Colour (0xfff4eeea).withAlpha (0.8f));
+            return;
+        }
+        stroke (curveOf (points, false, false), juce::Colour (0xfff4eeea).withAlpha (0.8f), 1.2f, false);
     }
-    curve.lineTo (area.getRight(), yForValue (area, points.back().value));
-    auto fill = curve;
-    fill.lineTo (area.getRight(), area.getBottom());
-    fill.lineTo (0.0f, area.getBottom());
-    fill.closeSubPath();
-    g.setColour (colour.withAlpha (0.12f));
-    g.fillPath (fill);
-    g.setColour (colour);
-    g.strokePath (curve, juce::PathStrokeType (1.6f));
+    else
+    {
+        if (points.empty())
+        {
+            // The static value line: the control's setting, dotted.
+            dotted (yForValue (area, studio.getControlValue (row.busId, *lane)), ParagonColours::textDim);
+            return;
+        }
+        if (virgin)
+            dotted (yForValue (area, studio.getControlValue (row.busId, *lane)), ParagonColours::textDim.withAlpha (0.5f));   // (where it's virgin: the setting)
+        stroke (curveOf (points, lane->isStep(), virgin), colour, 1.6f, true);
+    }
 
     // The points: selected ones dark (as the manual has them).
     const auto selectedHere = pointSelection.busId == row.busId && pointSelection.laneIndex == row.laneIndex;
@@ -2126,7 +2186,7 @@ bool ArrangeView::automationDown (const juce::MouseEvent& event, const Timeline:
     const auto sameLane = pointSelection.busId == row.busId && pointSelection.laneIndex == row.laneIndex;
     if (! sameLane)
         pointSelection = { row.busId, row.laneIndex, {} };
-    originalPoints = workingPoints = lane->points;
+    originalPoints = workingPoints = editPointsOf (*lane);
     pointDownAt = event.position;
     dragMoved = false;
     copyingPoints = false;
@@ -2158,7 +2218,7 @@ bool ArrangeView::automationDown (const juce::MouseEvent& event, const Timeline:
     // The event editor's handles (two or more selected), a bend's handle, the quick scaling handle
     // (a point under the mouse comes first: the box's edges run through the outer points).
     auto onPoint = false;
-    for (int i = 0; i < (int) lane->points.size() && ! onPoint; ++i)
+    for (int i = 0; i < (int) editPointsOf (*lane).size() && ! onPoint; ++i)
         onPoint = getPointPosition (row.busId, row.laneIndex, i).getDistanceFrom (event.position) <= pointGrab;
     if (sameLane && ! onPoint)
         if (const auto h = pointHandleAt (event.position, event.mods.isAltDown()); h != PointHandle::none)
@@ -2178,7 +2238,7 @@ bool ArrangeView::automationDown (const juce::MouseEvent& event, const Timeline:
 
     // On a point: select it (Shift adds or removes) and drag it (with the others selected).
     anchor = -1;
-    for (int i = (int) lane->points.size() - 1; i >= 0; --i)
+    for (int i = (int) editPointsOf (*lane).size() - 1; i >= 0; --i)
         if (getPointPosition (row.busId, row.laneIndex, i).getDistanceFrom (event.position) <= pointGrab)
         {
             anchor = i;
@@ -2241,7 +2301,7 @@ void ArrangeView::automationDrag (const juce::MouseEvent& event)
         {
             pointBand = juce::Rectangle<float> (pointDownAt, event.position);
             auto inside = bandBefore;   // (Shift / Ctrl: added to what was selected)
-            for (int i = 0; i < (int) lane->points.size(); ++i)
+            for (int i = 0; i < (int) editPointsOf (*lane).size(); ++i)
                 if (pointBand.contains (getPointPosition (pointSelection.busId, pointSelection.laneIndex, i)))
                     inside.push_back (i);
             std::sort (inside.begin(), inside.end());
@@ -2409,9 +2469,11 @@ void ArrangeView::automationUp()
         const auto area = getLaneArea (pointSelection.busId, pointSelection.laneIndex);
         const pr7s::AutomationPoint p { juce::jmax (0.0, pr7s::snap (timeline.beatForX (pointDownAt.x), timeline.snapGrid (studio.getProject()))),
                                         valueForY (area, pointDownAt.y) };
-        auto points = lane->points;
+        auto points = editPointsOf (*lane);
         const auto between = ! points.empty() && p.beat > points.front().beat && p.beat < points.back().beat;
-        if (between && ! lane->isStep() && std::abs (*lane->valueAt (p.beat) - p.value) < 0.015f)
+        pr7s::AutomationLane curve;
+        curve.points = points;
+        if (between && ! lane->isStep() && std::abs (*curve.valueAt (p.beat) - p.value) < 0.015f)
             return;
         points.push_back (p);
         commitPoints (std::move (points), { p });
@@ -2458,11 +2520,14 @@ void ArrangeView::automationUp()
 void ArrangeView::commitPoints (std::vector<pr7s::AutomationPoint> points, const std::vector<pr7s::AutomationPoint>& selected)
 {
     const auto busId = pointSelection.busId, laneIndex = pointSelection.laneIndex;
-    studio.setAutomationPoints (busId, laneIndex, std::move (points));   // one undo step; turns R on
+    if (const auto* lane = laneFor (busId, laneIndex); lane != nullptr && isTrimming (*lane))
+        studio.setTrimPoints (busId, laneIndex, std::move (points));      // (0.28.0: Trim on: its trim curve)
+    else
+        studio.setAutomationPoints (busId, laneIndex, std::move (points));   // one undo step; turns R on
     std::vector<int> chosen;
     if (const auto* lane = laneFor (busId, laneIndex))
-        for (int i = 0; i < (int) lane->points.size(); ++i)
-            if (std::find (selected.begin(), selected.end(), lane->points[(size_t) i]) != selected.end())
+        for (int i = 0; i < (int) editPointsOf (*lane).size(); ++i)
+            if (std::find (selected.begin(), selected.end(), editPointsOf (*lane)[(size_t) i]) != selected.end())
                 chosen.push_back (i);
     pointSelection = { busId, laneIndex, chosen };
     repaint();
@@ -2474,9 +2539,15 @@ void ArrangeView::deleteSelectedPoints()
     if (lane == nullptr || pointSelection.points.empty())
         return;
     std::vector<pr7s::AutomationPoint> kept;
-    for (int i = 0; i < (int) lane->points.size(); ++i)
-        if (! std::binary_search (pointSelection.points.begin(), pointSelection.points.end(), i))
-            kept.push_back (lane->points[(size_t) i]);
+    const auto virgin = studio.getAutomationSettings().virginTerritory && ! isTrimming (*lane);
+    for (int i = 0; i < (int) editPointsOf (*lane).size(); ++i)
+    {
+        const auto deleted = std::binary_search (pointSelection.points.begin(), pointSelection.points.end(), i);
+        if (! deleted)
+            kept.push_back (editPointsOf (*lane)[(size_t) i]);
+        else if (virgin && ! kept.empty() && i + 1 < (int) editPointsOf (*lane).size())
+            kept.back().terminator = true;   // (0.28.0, virgin territory: deleting makes a gap)
+    }
     commitPoints (std::move (kept), {});
 }
 
@@ -2484,7 +2555,7 @@ void ArrangeView::selectAllPoints (int busId, int laneIndex)
 {
     std::vector<int> all;
     if (const auto* lane = laneFor (busId, laneIndex))
-        for (int i = 0; i < (int) lane->points.size(); ++i)
+        for (int i = 0; i < (int) editPointsOf (*lane).size(); ++i)
             all.push_back (i);
     pointSelection = { busId, laneIndex, all };
     repaint();
@@ -2510,6 +2581,15 @@ void ArrangeView::showLaneMenu (int busId, int laneIndex)
     menu.addItem (2, "Delete", selectedHere);
     menu.addItem (4, "Type a Value...", selectedHere);
     menu.addItem (5, "Straighten the Selected Ramps", selectedHere);
+    // (0.28.0) A terminator: the curve stops at the selected point, a gap until the next (virgin territory).
+    const auto* thisLane = laneFor (busId, laneIndex);
+    auto terminatorOn = false;
+    if (thisLane != nullptr && selectedHere)
+        for (const auto i : pointSelection.points)
+            if (juce::isPositiveAndBelow (i, (int) thisLane->points.size()))
+                terminatorOn = terminatorOn || thisLane->points[(size_t) i].terminator;
+    menu.addItem (8, "Terminator (a Gap After It)", selectedHere && studio.getAutomationSettings().virginTerritory && thisLane != nullptr && ! isTrimming (*thisLane), terminatorOn);
+    menu.addItem (9, "Freeze Trim", thisLane != nullptr && ! thisLane->trim.empty());
     menu.addSeparator();
     juce::PopupMenu copyMenu, pasteMenu;
     copyMenu.addItem (10, "Copy Automation of All Tracks (Locator Range)");
@@ -2540,7 +2620,7 @@ void ArrangeView::showLaneMenu (int busId, int laneIndex)
         {
             if (const auto* lane = safe->laneFor (busId, laneIndex))
             {
-                auto points = lane->points;
+                auto points = safe->editPointsOf (*lane);
                 std::vector<pr7s::AutomationPoint> kept;
                 for (const auto i : safe->pointSelection.points)
                     if (juce::isPositiveAndBelow (i, (int) points.size()))
@@ -2555,6 +2635,29 @@ void ArrangeView::showLaneMenu (int busId, int laneIndex)
                 safe->commitPoints (points, kept);
             }
         }
+        else if (chosen == 8)
+        {
+            if (const auto* lane = safe->laneFor (busId, laneIndex))
+            {
+                auto points = lane->points;
+                auto anyOn = false;
+                for (const auto i : safe->pointSelection.points)
+                    if (juce::isPositiveAndBelow (i, (int) points.size()))
+                        anyOn = anyOn || points[(size_t) i].terminator;
+                std::vector<pr7s::AutomationPoint> kept;
+                for (const auto i : safe->pointSelection.points)
+                    if (juce::isPositiveAndBelow (i, (int) points.size()))
+                    {
+                        points[(size_t) i].terminator = ! anyOn;
+                        kept.push_back (points[(size_t) i]);
+                    }
+                safe->studio.setAutomationPoints (busId, laneIndex, points);
+                safe->pointSelection = { busId, laneIndex, safe->pointSelection.points };
+                safe->repaint();
+            }
+        }
+        else if (chosen == 9)
+            safe->studio.freezeTrim (busId, laneIndex);
         else if (chosen == 6)
             safe->studio.showAllUsedAutomation();
         else if (chosen == 7)

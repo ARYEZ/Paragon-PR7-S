@@ -1,5 +1,6 @@
 #include "MainView.h"
 #include "ui/DrumMapPage.h"
+#include "ui/AutomationPanel.h"
 #include "ui/TrackActions.h"
 #include "engine/MidiImport.h"
 #include "ui/KeyCommandsPage.h"
@@ -221,7 +222,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     }
     readAllButton.getProperties().set (ParagonLookAndFeel::litColourProperty, (juce::int64) AutomationKeys::readColour.getARGB());
     writeAllButton.getProperties().set (ParagonLookAndFeel::litColourProperty, (juce::int64) AutomationKeys::writeColour.getARGB());
-    readAllButton.setTooltip ("Read automation for all tracks on or off (Alt+R): lit while any track's R is on");
+    readAllButton.setTooltip ("Read automation for all tracks on or off (Alt+R): lit while any track's R is on. F6: the Automation panel (modes, Trim, Fill, Suspend)");
     writeAllButton.setTooltip ("Write automation for all tracks on or off (Alt+W): lit while any track's W is on");
     // Snap on/off and the quantize value (0.9.10: the manual's Snap and Quantize Presets on the toolbar).
     for (auto* key : { &snapButton, &quantizeButton })
@@ -886,6 +887,7 @@ bool MainView::handleKey (const juce::KeyPress& key)
     // F4: the chord pads (0.14.0, our choice: the manual gives them no key; never Alt+F4, which closes the window).
     if (key.getKeyCode() == juce::KeyPress::F4Key && ! mods.isAltDown()) { toggleZone (padsZone); return true; }
     if (key.getKeyCode() == juce::KeyPress::F5Key && ! mods.isAltDown()) { toggleMediaBay(); return true; }   // (the manual's MediaBay key)
+    if (key.getKeyCode() == juce::KeyPress::F6Key && ! mods.isAltDown()) { toggleAutomationPanel(); return true; }   // (the manual's: 0.28.0)
     if (isKeyEditorOpen() && key == juce::KeyPress::escapeKey) { closeKeyEditor(); return true; }
     if (isMixerOpen() && key == juce::KeyPress::escapeKey)     { closeMixer(); return true; }
     if (key == juce::KeyPress::spaceKey)                { studio.togglePlay(); return true; }
@@ -1993,6 +1995,21 @@ void MainView::toggleTempoEditor()
         return safe->keyPressed (key);
     };
     tempoEditorWindow = std::move (window);
+}
+
+void MainView::toggleAutomationPanel()
+{
+    if (automationWindow != nullptr)
+    {
+        automationWindow = nullptr;
+        return;
+    }
+    auto window = std::make_unique<AutomationPanelWindow> (studio);
+    window->onClose = [safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->automationWindow = nullptr; });
+    };
+    automationWindow = std::move (window);
 }
 
 void MainView::openDrumMapSetup()

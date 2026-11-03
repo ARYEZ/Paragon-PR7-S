@@ -59,16 +59,27 @@ void ArrangeView::selectPoints (int busId, int laneIndex, std::vector<int> point
     std::sort (points.begin(), points.end());
     points.erase (std::unique (points.begin(), points.end()), points.end());
     const auto* lane = laneFor (busId, laneIndex);
-    const auto count = lane != nullptr ? (int) lane->points.size() : 0;
+    const auto count = lane != nullptr ? (int) editPointsOf (*lane).size() : 0;
     points.erase (std::remove_if (points.begin(), points.end(), [count] (int i) { return ! juce::isPositiveAndBelow (i, count); }), points.end());
     pointSelection = { busId, laneIndex, points };
     repaint();
+}
+
+bool ArrangeView::isTrimming (const pr7s::AutomationLane& lane) const
+{
+    return studio.getAutomationSettings().trim && lane.canTrim() && ! lane.points.empty();
 }
 
 //==============================================================================
 std::optional<juce::String> ArrangeView::formatPointValue (int, const pr7s::AutomationLane& lane, float value) const
 {
     using T = pr7s::AutomationLane::Target;
+    if (isTrimming (lane))
+    {
+        // (0.28.0) A trim point: its dB up or down.
+        const auto db = (value - 0.5f) * 2.0f * pr7s::AutomationLane::trimRange;
+        return (db > 0.0f ? "+" : "") + juce::String (db, 1) + " dB TRIM";
+    }
     switch (lane.target)
     {
         case T::volume:
@@ -97,6 +108,12 @@ std::optional<float> ArrangeView::parsePointValue (int, const pr7s::AutomationLa
     const auto text = typed.trim();
     if (text.isEmpty())
         return std::nullopt;
+    if (isTrimming (lane))
+    {
+        if (const auto db = ValueEntry::parseDb (text.toLowerCase().replace ("trim", ""), -pr7s::AutomationLane::trimRange, pr7s::AutomationLane::trimRange))
+            return 0.5f + (float) *db / (2.0f * pr7s::AutomationLane::trimRange);
+        return std::nullopt;
+    }
     switch (lane.target)
     {
         case T::volume:
@@ -134,7 +151,7 @@ bool ArrangeView::enterPointValue (const juce::String& valueText, const juce::St
     const auto* lane = laneFor (pointSelection.busId, pointSelection.laneIndex);
     if (lane == nullptr || pointSelection.points.empty())
         return false;
-    std::optional<float> value;
+    std::optional<float> value;   // (Trim on: the trim's dB)
     if (valueText.trim().isNotEmpty())
     {
         value = parsePointValue (pointSelection.busId, *lane, valueText);
@@ -148,7 +165,7 @@ bool ArrangeView::enterPointValue (const juce::String& valueText, const juce::St
         if (! position || *position < 0.0)
             return false;
     }
-    auto points = lane->points;
+    auto points = editPointsOf (*lane);
     std::vector<pr7s::AutomationPoint> chosen;
     for (const auto i : pointSelection.points)
         if (juce::isPositiveAndBelow (i, (int) points.size()))
@@ -166,7 +183,7 @@ bool ArrangeView::enterPointValue (const juce::String& valueText, const juce::St
 void ArrangeView::showPointEntry (int busId, int laneIndex, int point)
 {
     const auto* lane = laneFor (busId, laneIndex);
-    if (lane == nullptr || ! juce::isPositiveAndBelow (point, (int) lane->points.size()))
+    if (lane == nullptr || ! juce::isPositiveAndBelow (point, (int) editPointsOf (*lane).size()))
         return;
     if (pointSelection.busId != busId || pointSelection.laneIndex != laneIndex
         || ! std::binary_search (pointSelection.points.begin(), pointSelection.points.end(), point))
@@ -251,7 +268,7 @@ void ArrangeView::showPointEntry (int busId, int laneIndex, int point)
         juce::TextEditor valueField, atField;
         juce::TextButton setKey;
     };
-    const auto& p = lane->points[(size_t) point];
+    const auto& p = editPointsOf (*lane)[(size_t) point];
     const auto count = (int) pointSelection.points.size();
     const auto title = studio.getLaneName (busId, *lane).toUpperCase() + (count > 1 ? "  (" + juce::String (count) + " POINTS)" : juce::String());
     const auto at = count == 1 ? pr7s::formatBarsBeats (p.beat, studio.getProject()).replace ("  ", " ") : juce::String();
@@ -267,7 +284,7 @@ juce::Rectangle<float> ArrangeView::getPointBox() const
     if (lane == nullptr || lane->isStep() || pointSelection.points.size() < 2)
         return {};
     const auto area = getLaneArea (pointSelection.busId, pointSelection.laneIndex);
-    const auto& points = (drag == Drag::pointHandle) ? workingPoints : lane->points;
+    const auto& points = (drag == Drag::pointHandle) ? workingPoints : editPointsOf (*lane);
     auto left = std::numeric_limits<float>::max(), right = std::numeric_limits<float>::lowest(), top = area.getBottom() - 8.0f;
     for (const auto i : pointSelection.points)
         if (juce::isPositiveAndBelow (i, (int) points.size()))
@@ -316,7 +333,7 @@ void ArrangeView::dragPointHandle (PointHandle h, juce::Point<float> offset)
     if (drag != Drag::pointHandle || selectionAtDown.empty())
     {
         // (Called directly: from the lane as it is.)
-        originalPoints = lane->points;
+        originalPoints = editPointsOf (*lane);
         selectionAtDown = pointSelection.points;
     }
     const auto& chosen = selectionAtDown;   // (indices into originalPoints: the selection as the drag began)
@@ -373,11 +390,11 @@ void ArrangeView::dragPointHandle (PointHandle h, juce::Point<float> offset)
 juce::Point<float> ArrangeView::getCurveHandle (int busId, int laneIndex, int point) const
 {
     const auto* lane = laneFor (busId, laneIndex);
-    if (lane == nullptr || point < 1 || point >= (int) lane->points.size())
+    if (lane == nullptr || point < 1 || point >= (int) editPointsOf (*lane).size())
         return {};
     const auto area = getLaneArea (busId, laneIndex);
-    const auto& a = lane->points[(size_t) point - 1];
-    const auto& b = lane->points[(size_t) point];
+    const auto& a = editPointsOf (*lane)[(size_t) point - 1];
+    const auto& b = editPointsOf (*lane)[(size_t) point];
     const auto x = (timeline.xForBeat (a.beat) + timeline.xForBeat (b.beat)) * 0.5f;
     const auto value = a.value + (b.value - a.value) * pr7s::AutomationLane::curveShape (0.5f, b.curve);
     return { x, yForValue (area, value) };
@@ -390,10 +407,10 @@ int ArrangeView::curveHandleAt (int busId, int laneIndex, juce::Point<float> p) 
     if (lane == nullptr || lane->isStep() || tool != Tool::select)
         return -1;
     const auto area = getLaneArea (busId, laneIndex);
-    for (int i = 1; i < (int) lane->points.size(); ++i)
+    for (int i = 1; i < (int) editPointsOf (*lane).size(); ++i)
     {
-        const auto& a = lane->points[(size_t) i - 1];
-        const auto& b = lane->points[(size_t) i];
+        const auto& a = editPointsOf (*lane)[(size_t) i - 1];
+        const auto& b = editPointsOf (*lane)[(size_t) i];
         const auto x1 = timeline.xForBeat (a.beat), x2 = timeline.xForBeat (b.beat);
         if (x2 - x1 < 24.0f)
             continue;
@@ -411,10 +428,10 @@ int ArrangeView::curveHandleAt (int busId, int laneIndex, juce::Point<float> p) 
 void ArrangeView::bendSegment (int busId, int laneIndex, int point, float towardsY)
 {
     const auto* lane = laneFor (busId, laneIndex);
-    if (lane == nullptr || point < 1 || point >= (int) lane->points.size())
+    if (lane == nullptr || point < 1 || point >= (int) editPointsOf (*lane).size())
         return;
     if (drag != Drag::curve)
-        originalPoints = lane->points;
+        originalPoints = editPointsOf (*lane);
     workingPoints = originalPoints;
     const auto area = getLaneArea (busId, laneIndex);
     const auto a = workingPoints[(size_t) point - 1].value, b = workingPoints[(size_t) point].value;
@@ -468,7 +485,7 @@ void ArrangeView::drawLineShape (int busId, int laneIndex, juce::Point<float> fr
         return;
     const auto v1 = valueForY (area, from.y), v2 = valueForY (area, to.y);
     std::vector<pr7s::AutomationPoint> points;
-    for (const auto& p : lane->points)
+    for (const auto& p : editPointsOf (*lane))
         if (p.beat < b1 - 1.0e-9 || p.beat > b2 + 1.0e-9)
             points.push_back (p);
     std::vector<pr7s::AutomationPoint> added;
@@ -511,13 +528,13 @@ bool ArrangeView::automationDoubleClick (const juce::MouseEvent& event)
     // A bend's handle: straightened (the manual's).
     if (const auto c = curveHandleAt (row->busId, row->laneIndex, event.position); c >= 0 && event.position.y > getLaneArea (row->busId, row->laneIndex).getY() + 6.0f)
     {
-        auto points = lane->points;
+        auto points = editPointsOf (*lane);
         points[(size_t) c].curve = 0.0f;
         pointSelection = { row->busId, row->laneIndex, {} };
         commitPoints (std::move (points), {});
         return true;
     }
-    for (int i = (int) lane->points.size() - 1; i >= 0; --i)
+    for (int i = (int) editPointsOf (*lane).size() - 1; i >= 0; --i)
         if (getPointPosition (row->busId, row->laneIndex, i).getDistanceFrom (event.position) <= pointGrab)
         {
             showPointEntry (row->busId, row->laneIndex, i);
@@ -533,9 +550,9 @@ void ArrangeView::paintPointHandles (juce::Graphics& g, const Timeline::Row& row
     {
         const auto area = getLaneArea (row.busId, row.laneIndex);
         const auto* lane = laneFor (row.busId, row.laneIndex);
-        if (lane != nullptr && hoverCurve.point < (int) lane->points.size())
+        if (lane != nullptr && hoverCurve.point < (int) editPointsOf (*lane).size())
         {
-            const auto x = (timeline.xForBeat (lane->points[(size_t) hoverCurve.point - 1].beat) + timeline.xForBeat (lane->points[(size_t) hoverCurve.point].beat)) * 0.5f;
+            const auto x = (timeline.xForBeat (editPointsOf (*lane)[(size_t) hoverCurve.point - 1].beat) + timeline.xForBeat (editPointsOf (*lane)[(size_t) hoverCurve.point].beat)) * 0.5f;
             const auto handle = getCurveHandle (row.busId, row.laneIndex, hoverCurve.point);
             g.setColour (ParagonColours::accent);
             g.drawEllipse (juce::Rectangle<float> (9.0f, 9.0f).withCentre (handle), 1.5f);

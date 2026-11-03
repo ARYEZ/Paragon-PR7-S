@@ -519,6 +519,34 @@ namespace pr7s
         bool pasteAutomation (AutomationScope, int busId = 0, int laneIndex = -1);
         bool hasAutomationClip() const noexcept { return ! automationClip.empty(); }
 
+        // The Automation panel (0.28.0, the manual's): its settings (saved with the song; none
+        // are undo steps) and functions.
+        using AutomationSettings = Project::AutomationSettings;
+        const AutomationSettings& getAutomationSettings() const noexcept { return project.automationSettings; }
+        void setAutomationSettings (const AutomationSettings&);   // (Trim off with Freeze Trim "On Leaving Trim Mode": frozen)
+        void setAutomationMode (AutomationSettings::Mode);
+        // FILL's keys: off -> once (the next pass) -> locked (every pass) -> off (the manual's One Shot vs Continuous).
+        enum class FillOption { toPunch, toStart, toEnd, loop, gaps };
+        void stepFill (FillOption);
+        AutomationSettings::Fill getFill (FillOption) const noexcept;
+        void setSuspendRead (AutomationSettings::Group, bool);
+        void setSuspendWrite (AutomationSettings::Group, bool);
+        void setAllSuspended (bool read, bool on);   // SET ALL (on: all; off: none)
+        bool isAllSuspended() const noexcept;          // Suspend All Read/Write (every group, both)
+        void setAllSuspended (bool on);
+        void setTrim (bool);
+        // Functions.
+        void deleteAllAutomation();
+        void deleteAutomationOfSelectedTracks();
+        void deleteAutomationInRange();                  // between the locators, every track and the master
+        void fillGaps (bool withCurrentValue);           // the selected tracks' gaps (virgin territory)
+        void freezeTrim (bool selectedTracksOnly);
+        void freezeTrim (int busId, int laneIndex);
+        void setTrimPoints (int busId, int laneIndex, std::vector<AutomationPoint>);   // one undo step
+        // Show: a group's lanes on every track (`usedOnly`: only those with points), Show Used, Hide All.
+        void showAutomationGroup (AutomationSettings::Group, bool usedOnly);
+        void hideAllAutomation();
+
         // Writing automation (as the manual has it): with W on, while playing,
         // touching a control writes it. The screen says when a control is
         // grabbed and let go; its values come through setVolume, setPan,
@@ -843,7 +871,9 @@ namespace pr7s
             int cycleCount = 0;      // the engine's when it began: the cycle coming round ends it
             float before = 0.0f;
             std::vector<AutomationPoint> points;
-            bool released = false;   // let go (an on/off switch latches on until stop)
+            bool released = false;   // let go (an on/off switch latches on until stop; Auto-Latch, Cross-Over: every control)
+            bool retouched = false;  // Cross-Over: touched again after letting go (crossing the old curve punches out)
+            std::optional<bool> aboveOld;   // Cross-Over: which side of the old curve the hand was on
         };
         std::vector<WritePass> passes;
 
@@ -860,7 +890,9 @@ namespace pr7s
         void unloadPlugins (Track&);   // their settings kept first (disable, freeze)
         void loadPlugins (Track&);     // from the kept settings (enable, unfreeze)
         std::map<int, std::vector<Part>> frozenParts;   // the parts as they were frozen (locked)
-        void punchOut (size_t pass, double endBeat);
+        void punchOut (size_t pass, double endBeat, bool returnToOld = true);
+        void startPass (int busId, const AutomationLane& control);
+        static void freezeTrimOf (AutomationLane&);
         void punchOutAll();
         void setControlValue (int busId, const AutomationLane& control, float value);   // the static setting, without writing
         void effectGoing (int busId, int slot);
