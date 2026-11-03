@@ -357,6 +357,10 @@ public:
     std::optional<Timeline::Row> rowAt (float y) const;
     float rowTop (const Timeline::Row&) const;   // where a row is drawn now
     float trackTop (int trackId) const;
+    const std::vector<Timeline::Row>& rowsNow (std::vector<Timeline::Row>& made) const;
+    mutable const std::vector<Timeline::Row>* rowsInPaint = nullptr;   // (set while painting)
+    // What's drawn beyond what's being redrawn, so the lines crossing into it are the same (0.34.4).
+    static constexpr float rowMargin = 40.0f, curveMargin = 64.0f;
     // A MIDI file being dragged in (0.18.1): where it will land, lit in the family's gradient.
     struct DropPreview { int trackId = 0; double start = 0.0, length = 0.0; juce::String name; int moreTracks = 0;
                          std::vector<pr7s::Note> notes; };   // (the first track's, from the part's start: drawn inside it)

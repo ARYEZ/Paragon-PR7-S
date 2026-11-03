@@ -285,6 +285,18 @@ void TransportBar::paint (juce::Graphics& g)
 {
     Pearl::paintUnit (g, getLocalBounds().toFloat().reduced (4.0f), satin);
     glasses.clear();
+    // (0.34.4) The screens' redraws are of their own strips (the position 30 times a second), but
+    // every screen was drawn again each time, its shadow's blur and all, for JUCE to clip away.
+    // A screen well outside what's being redrawn isn't drawn; its glass is still noted (the
+    // reflections over the glasses are drawn after the keys, over whatever is redrawn).
+    const auto redrawn = g.getClipBounds().toFloat();
+    const auto outside = [&] (juce::Rectangle<float> screen)
+    {
+        if (redrawn.intersects (screen.expanded (LedDisplay::screenReach (screenSize))))
+            return false;
+        glasses.push_back (LedDisplay::glassOf (screen, screenSize));
+        return true;
+    };
 
     // The badge: the PR7-S mark and what it is, printed in red.
     {
@@ -313,6 +325,8 @@ void TransportBar::paint (juce::Graphics& g)
         const auto beats = studio.getEngine().getPosition();
         const auto drawScreen = [&] (juce::Rectangle<float> screen, const char* label, const juce::String& value)
         {
+            if (outside (screen))
+                return;
             const auto glass = LedDisplay::paintScreen (g, screen, screenSize);
             glasses.push_back (glass);
             auto inside = glass.reduced (12.0f, 6.0f);
@@ -328,6 +342,7 @@ void TransportBar::paint (juce::Graphics& g)
 
     // CPU: the audio processing load, as much of each block's time as it
     // takes (the average, big; the peak, small); OVER lit after an overload.
+    if (! outside (cpuScreen))
     {
         const auto glass = LedDisplay::paintScreen (g, cpuScreen, screenSize);
         glasses.push_back (glass);
@@ -348,6 +363,7 @@ void TransportBar::paint (juce::Graphics& g)
     }
 
     // TEMPO and SIGNATURE.
+    if (! outside (tempoScreen))
     {
         const auto glass = LedDisplay::paintScreen (g, tempoScreen, screenSize);
         glasses.push_back (glass);
@@ -361,6 +377,7 @@ void TransportBar::paint (juce::Graphics& g)
         g.setFont (font (10.0f));
         g.drawText ("BPM", inside.removeFromRight (28.0f), juce::Justification::centredRight, false);
     }
+    if (! outside (signatureScreen))
     {
         const auto glass = LedDisplay::paintScreen (g, signatureScreen, screenSize);
         glasses.push_back (glass);

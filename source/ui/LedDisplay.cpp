@@ -158,7 +158,7 @@ juce::Rectangle<float> LedDisplay::paintScreen (juce::Graphics& g, juce::Rectang
 
     // Tinted glass: very dark, warmed by the orange light behind it, with a
     // faint reflection across the top.
-    const auto glass = bounds.reduced (11.0f * size);
+    const auto glass = glassOf (bounds, size);
     const auto radius = 5.0f * size;
     juce::Path glassPath;
     glassPath.addRoundedRectangle (glass, radius);

@@ -247,3 +247,145 @@ TEST_CASE ("Automation in the arrangement: selecting, typing values, the handles
     CHECK (lowest < 0.25f);
     arrange.setTool (ArrangeView::Tool::select);
 }
+
+TEST_CASE ("0.34.4: automation and tempo lanes drawn strip by strip (as the playhead redraws them) give the same pixels as drawn whole", "[automation][ui][performance]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto trackId = studio.getProject().tracks[0].id;
+    studio.setAutomationOpen (trackId, true);
+    studio.appendAutomationLane (trackId, 0);
+    // Many points over a long song: ramps, bent ramps both ways, a terminator (a gap with virgin territory).
+    std::vector<AutomationPoint> volume, pan;
+    for (int i = 0; i < 400; ++i)
+    {
+        AutomationPoint p;
+        p.beat = i * 1.37;
+        p.value = 0.5f + 0.45f * (float) std::sin (i * 0.7);
+        p.curve = i % 3 == 0 ? 0.0f : (i % 3 == 1 ? 0.6f : -0.8f);
+        p.terminator = i == 150;
+        volume.push_back (p);
+        p.value = 0.5f + 0.4f * (float) std::cos (i * 0.3);
+        p.curve = 0.0f;
+        p.terminator = false;
+        pan.push_back (p);
+    }
+    studio.setAutomationPoints (trackId, 0, volume);
+    studio.setAutomationPoints (trackId, 1, pan);
+    studio.addTempoTrack();
+    studio.setTempoTrackOn (false);
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    auto& timeline = view.getTimeline();
+
+    const auto whole = [&]
+    {
+        juce::Image image (juce::Image::ARGB, arrange.getWidth(), arrange.getHeight(), true);
+        juce::Graphics g (image);
+        arrange.paintEntireComponent (g, true);
+        return image;
+    };
+    const auto inStrips = [&] (int width, int height)
+    {
+        juce::Image image (juce::Image::ARGB, arrange.getWidth(), arrange.getHeight(), true);
+        juce::Graphics g (image);
+        for (int x = 0; x < arrange.getWidth(); x += width)
+            for (int y = 0; y < arrange.getHeight(); y += height)
+            {
+                juce::Graphics::ScopedSaveState saved (g);
+                g.reduceClipRegion (x, y, width, height);
+                arrange.paintEntireComponent (g, true);
+            }
+        return image;
+    };
+    // JUCE's edges where a redraw cuts a line differ by a shade from the line drawn whole, so
+    // strips are checked against the whole within a few levels (the culled curve would be off by
+    // whole pixels); PARAGON_STRIPS=<folder> saves them, to compare two builds exactly.
+    const auto close = [] (const juce::Image& a, const juce::Image& b)
+    {
+        auto far = 0;
+        for (int y = 0; y < a.getHeight(); ++y)
+            for (int x = 0; x < a.getWidth(); ++x)
+            {
+                const auto p = a.getPixelAt (x, y), q = b.getPixelAt (x, y);
+                const auto d = juce::jmax (std::abs (p.getRed() - q.getRed()), std::abs (p.getGreen() - q.getGreen()), std::abs (p.getBlue() - q.getBlue()));
+                far += d > 24 ? 1 : 0;
+            }
+        return far;
+    };
+    auto pass = 0;
+    const auto check = [&]
+    {
+        const auto all = whole();
+        const juce::Image strips[] = { inStrips (7, all.getHeight()), inStrips (37, 23), inStrips (all.getWidth(), 31) };
+        for (const auto& image : strips)
+            CHECK (close (all, image) == 0);
+        if (const auto folder = juce::SystemStats::getEnvironmentVariable ("PARAGON_STRIPS", {}); folder.isNotEmpty())
+            for (int i = 0; i < 3; ++i)
+            {
+                juce::FileOutputStream out (juce::File (folder).getChildFile ("strips" + juce::String (pass) + "-" + juce::String (i) + ".png"));
+                out.setPosition (0);
+                out.truncate();
+                juce::PNGImageFormat().writeImageToStream (strips[i], out);
+            }
+        ++pass;
+    };
+    check();                         // the song's start, zoomed out
+    timeline.firstBeat = 150.0;      // in the middle, the gap's edge in view
+    for (int i = 0; i < 3; ++i)
+        arrange.zoom (true);
+    check();
+    studio.setTrim (true);           // trimming: the played curve sampled every 3 px
+    std::vector<AutomationPoint> trim { { 160.0, 0.7f }, { 190.0, 0.3f } };
+    studio.setTrimPoints (trackId, 0, trim);
+    studio.dispatchPendingMessages();
+    check();
+}
+
+TEST_CASE ("0.34.4: the transport drawn screen by screen (as its timer redraws them) gives the pixels it gave", "[ui][performance]")
+{
+    for (const auto finish : { Finish::Type::pearlWhite, Finish::Type::pearlBlack })
+    {
+        Finish::set (finish, false);
+        Studio studio (false);
+        MainView view (studio);
+        for (const auto width : { 1500, 3000 })   // (the wide layout too)
+        {
+            view.setSize (width, 900);
+            auto& bar = view.getTransport();
+            juce::Image whole (juce::Image::ARGB, bar.getWidth(), bar.getHeight(), true);
+            {
+                juce::Graphics g (whole);
+                bar.paintEntireComponent (g, true);
+            }
+            juce::Image strips (juce::Image::ARGB, bar.getWidth(), bar.getHeight(), true);
+            {
+                juce::Graphics g (strips);
+                for (int x = 0; x < bar.getWidth(); x += 29)
+                {
+                    juce::Graphics::ScopedSaveState saved (g);
+                    g.reduceClipRegion (x, 0, 29, bar.getHeight());
+                    bar.paintEntireComponent (g, true);
+                }
+            }
+            auto far = 0;
+            for (int y = 0; y < whole.getHeight(); ++y)
+                for (int x = 0; x < whole.getWidth(); ++x)
+                {
+                    const auto p = whole.getPixelAt (x, y), q = strips.getPixelAt (x, y);
+                    far += juce::jmax (std::abs (p.getRed() - q.getRed()), std::abs (p.getGreen() - q.getGreen()), std::abs (p.getBlue() - q.getBlue())) > 24 ? 1 : 0;
+                }
+            CHECK (far == 0);
+            if (const auto folder = juce::SystemStats::getEnvironmentVariable ("PARAGON_STRIPS", {}); folder.isNotEmpty())
+            {
+                juce::FileOutputStream out (juce::File (folder).getChildFile ("transport-" + juce::String ((int) finish) + "-" + juce::String (width) + ".png"));
+                out.setPosition (0);
+                out.truncate();
+                juce::PNGImageFormat().writeImageToStream (strips, out);
+            }
+        }
+    }
+    Finish::set (Finish::Type::pearlWhite, false);
+}

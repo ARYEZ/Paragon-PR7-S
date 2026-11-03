@@ -372,9 +372,20 @@ float ArrangeView::rowTop (const Timeline::Row& row) const
     return (float) (Timeline::rulerHeight + row.top - timeline.scrollY);
 }
 
+// The rows: while painting, the list worked out once for the whole paint (0.34.4: every track,
+// lane and part asked for it again, a fresh list each time); else worked out now into `made`.
+const std::vector<Timeline::Row>& ArrangeView::rowsNow (std::vector<Timeline::Row>& made) const
+{
+    if (rowsInPaint != nullptr)
+        return *rowsInPaint;
+    made = timeline.layout (studio);
+    return made;
+}
+
 float ArrangeView::trackTop (int trackId) const
 {
-    for (const auto& row : timeline.layout (studio))
+    std::vector<Timeline::Row> made;
+    for (const auto& row : rowsNow (made))
         if (row.kind == Timeline::Row::Kind::track && row.busId == trackId)
             return rowTop (row);
     return 0.0f;
@@ -382,9 +393,10 @@ float ArrangeView::trackTop (int trackId) const
 
 std::optional<Timeline::Row> ArrangeView::rowAt (float y) const
 {
+    std::vector<Timeline::Row> made;
     if (y < (float) Timeline::rulerHeight)
         return std::nullopt;
-    for (const auto& row : timeline.layout (studio))
+    for (const auto& row : rowsNow (made))
         if (y >= rowTop (row) && y < rowTop (row) + (float) row.height)
             return row;
     return std::nullopt;
@@ -406,8 +418,9 @@ juce::Rectangle<float> ArrangeView::partRow (int trackId, int lane) const
 {
     // A part's strip: its lane's row when the track shows its lanes (0.29.0), else the track's row.
     const auto* track = studio.getProject().findTrack (trackId);
+    std::vector<Timeline::Row> made;
     if (track != nullptr && track->showLanes && lane >= 0)
-        for (const auto& row : timeline.layout (studio))
+        for (const auto& row : rowsNow (made))
             if (row.kind == Timeline::Row::Kind::take && row.busId == trackId && row.laneIndex == lane)
                 return { 0.0f, rowTop (row) + 2.0f, 0.0f, (float) row.height - 4.0f };
     return { 0.0f, trackTop (trackId) + 3.0f, 0.0f, (float) timeline.trackRowHeight() - 6.0f };
@@ -590,6 +603,8 @@ void ArrangeView::paint (juce::Graphics& g)
     // The rows: each track's lane (the selected track's a little lighter),
     // its automation lanes, the master's row.
     const auto rows = timeline.layout (studio);
+    rowsInPaint = &rows;
+    const struct Forget { const std::vector<Timeline::Row>*& rows; ~Forget() { rows = nullptr; } } forget { rowsInPaint };
     auto trackNumber = 0;
     for (const auto& row : rows)
     {
@@ -619,9 +634,13 @@ void ArrangeView::paint (juce::Graphics& g)
         g.fillRect (juce::Rectangle<float> (timeline.xForBeat (beat), (float) Timeline::rulerHeight, 1.0f, bounds.getHeight()));
     }
 
-    // The automation lanes' curves.
+    // The automation lanes' curves (only the lanes in what's being redrawn: a lane's drawing stays
+    // within its row but for the handles, well inside the margin).
+    const auto redrawn = g.getClipBounds().toFloat();
     for (const auto& row : rows)
-        if (row.kind == Timeline::Row::Kind::lane)
+        if (rowTop (row) + (float) row.height + rowMargin < redrawn.getY() || rowTop (row) - rowMargin > redrawn.getBottom())
+            continue;
+        else if (row.kind == Timeline::Row::Kind::lane)
             paintAutomation (g, row);
         else if (row.kind == Timeline::Row::Kind::tempo)
             paintTempo (g, row);
@@ -2580,7 +2599,8 @@ const pr7s::AutomationLane* ArrangeView::laneFor (int busId, int laneIndex) cons
 
 juce::Rectangle<float> ArrangeView::getLaneArea (int busId, int laneIndex) const
 {
-    for (const auto& row : timeline.layout (studio))
+    std::vector<Timeline::Row> made;
+    for (const auto& row : rowsNow (made))
         if (row.kind == Timeline::Row::Kind::lane && row.busId == busId && row.laneIndex == laneIndex)
             return juce::Rectangle<float> (0.0f, rowTop (row), (float) getWidth(), (float) row.height).reduced (0.0f, laneInset);
     return {};
@@ -2622,23 +2642,33 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
 
     const auto virgin = studio.getAutomationSettings().virginTerritory;
     const auto trimming = isTrimming (*lane);
+    // (0.34.4) Only what's being redrawn is drawn, and a margin either side of it: every line
+    // that crosses into it is the same line, so the pixels are the same (the playhead's strip
+    // used to rebuild and stroke the lane's whole curve over the whole song).
+    const auto redrawn = g.getClipBounds().toFloat();
+    const auto left = redrawn.getX() - curveMargin, right = redrawn.getRight() + curveMargin;
     const auto dotted = [&] (float y, juce::Colour c)
     {
         g.setColour (c);
-        for (auto x = 0.0f; x < area.getRight(); x += 6.0f)
+        for (auto x = juce::jmax (0.0f, std::floor (left / 6.0f) * 6.0f); x < area.getRight() && x <= right; x += 6.0f)   // (multiples of 6: the same dashes)
             g.fillRect (x, y, 3.0f, 1.0f);
     };
     // A curve through points (a step for an on/off switch), flat before the first and after the
     // last; with virgin territory (0.28.0) nothing there, nor after a terminator (a gap): so it's
     // a list of stretches, each with where it starts and ends across.
     struct Stretch { juce::Path path; float x0 = 0.0f, x1 = 0.0f; };
+    struct Run { std::vector<juce::Point<float>> at; };
     const auto curveOf = [&] (const std::vector<pr7s::AutomationPoint>& pts, bool step, bool gaps)
     {
         std::vector<Stretch> stretches;
         if (pts.empty())
             return stretches;
-        const auto begin = [&] (float x, float y) { stretches.push_back ({}); stretches.back().path.startNewSubPath (x, y); stretches.back().x0 = stretches.back().x1 = x; };
-        const auto to = [&] (float x, float y) { stretches.back().path.lineTo (x, y); stretches.back().x1 = x; };
+        // Each stretch's corners in order (left to right), then the path through those the redrawn
+        // strip needs: those inside the margins, and the one either side of them.
+        std::vector<Run> runs;
+        const auto begin = [&] (float x, float y) { runs.push_back ({}); runs.back().at.push_back ({ x, y }); };
+        const auto to = [&] (float x, float y) { runs.back().at.push_back ({ x, y }); };
+        const auto inView = [&] (float x) { return x >= left && x <= right; };
         begin (gaps ? timeline.xForBeat (pts.front().beat) : 0.0f, yForValue (area, pts.front().value));
         for (size_t i = 0; i < pts.size(); ++i)
         {
@@ -2656,6 +2686,16 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
                 const auto x0 = timeline.xForBeat (pts[i - 1].beat);
                 for (auto px = x0 + 3.0f; px < x; px += 3.0f)
                 {
+                    if (px < left - 3.0f || px > right + 3.0f)
+                    {
+                        // (Far outside: a corner only if it's the one next to the margins.)
+                        if ((px < left && px + 3.0f >= left - 3.0f) || (px > right && px - 3.0f <= right + 3.0f))
+                        {
+                            const auto edge = (px - x0) / juce::jmax (1.0f, x - x0);
+                            to (px, yForValue (area, pts[i - 1].value + (pts[i].value - pts[i - 1].value) * pr7s::AutomationLane::curveShape (edge, pts[i].curve)));
+                        }
+                        continue;
+                    }
                     const auto along = (px - x0) / juce::jmax (1.0f, x - x0);
                     to (px, yForValue (area, pts[i - 1].value + (pts[i].value - pts[i - 1].value) * pr7s::AutomationLane::curveShape (along, pts[i].curve)));
                 }
@@ -2664,6 +2704,31 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
         }
         if (! gaps)
             to (area.getRight(), yForValue (area, pts.back().value));
+        for (const auto& run : runs)
+        {
+            const auto& at = run.at;
+            Stretch st;
+            auto started = false;
+            for (size_t i = 0; i < at.size(); ++i)
+            {
+                const auto keep = inView (at[i].x)
+                               || (at[i].x < left && i + 1 < at.size() && at[i + 1].x >= left)
+                               || (at[i].x > right && i > 0 && at[i - 1].x <= right);
+                if (! keep)
+                    continue;
+                if (! started)
+                {
+                    st.path.startNewSubPath (at[i]);
+                    st.x0 = at[i].x;
+                    started = true;
+                }
+                else
+                    st.path.lineTo (at[i]);
+                st.x1 = at[i].x;
+            }
+            if (started)
+                stretches.push_back (std::move (st));
+        }
         return stretches;
     };
     const auto stroke = [&] (const std::vector<Stretch>& stretches, juce::Colour c, float width, bool filled)
@@ -2693,13 +2758,23 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
         result.trim = points;
         juce::Path played;
         auto started = false;
-        for (auto x = 0.0f; x <= area.getRight(); x += 3.0f)
+        // (Every 3 px from 0, as before, but from the last value before the strip to the first after it.)
+        auto from = juce::jmax (0.0f, std::floor (left / 3.0f) * 3.0f);
+        for (auto x = from - 3.0f; x >= 0.0f; x -= 3.0f)
+            if (result.playedAt (timeline.beatForX (x), virgin))
+            {
+                from = x;
+                break;
+            }
+        for (auto x = from; x <= area.getRight(); x += 3.0f)
             if (const auto v = result.playedAt (timeline.beatForX (x), virgin))
             {
                 if (! started)
                     played.startNewSubPath (x, yForValue (area, *v)), started = true;
                 else
                     played.lineTo (x, yForValue (area, *v));
+                if (x > right)
+                    break;
             }
         g.setColour (colour);
         g.strokePath (played, juce::PathStrokeType (2.0f));
@@ -2728,7 +2803,7 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
     for (int i = 0; i < (int) points.size(); ++i)
     {
         const auto at = juce::Point<float> (timeline.xForBeat (points[(size_t) i].beat), yForValue (area, points[(size_t) i].value));
-        if (at.x < -pointSize || at.x > (float) getWidth() + pointSize)
+        if (at.x < -pointSize || at.x > (float) getWidth() + pointSize || at.x < left || at.x > right)
             continue;
         const auto box = juce::Rectangle<float> (pointSize, pointSize).withCentre (at);
         const auto selected = selectedHere && std::binary_search (pointSelection.points.begin(), pointSelection.points.end(), i);
@@ -3693,7 +3768,8 @@ bool ArrangeView::locatorsToSelection()
 // dragged along the song and up and down (the first stays at the start).
 juce::Rectangle<float> ArrangeView::getTempoArea() const
 {
-    for (const auto& row : timeline.layout (studio))
+    std::vector<Timeline::Row> made;
+    for (const auto& row : rowsNow (made))
         if (row.kind == Timeline::Row::Kind::tempo)
             return juce::Rectangle<float> (0.0f, rowTop (row), (float) getWidth(), (float) row.height).reduced (0.0f, laneInset);
     return {};
@@ -3744,7 +3820,8 @@ void ArrangeView::paintTempo (juce::Graphics& g, const Timeline::Row& row) const
     {
         const auto y = yForBpm (area, project.bpm);
         g.setColour (ParagonColours::text.withAlpha (0.7f));
-        for (auto x = 0.0f; x < area.getRight(); x += 6.0f)
+        const auto redrawn = g.getClipBounds().toFloat();
+        for (auto x = juce::jmax (0.0f, std::floor ((redrawn.getX() - curveMargin) / 6.0f) * 6.0f); x < area.getRight() && x <= redrawn.getRight() + curveMargin; x += 6.0f)
             g.fillRect (x, y, 3.0f, 1.0f);
     }
     if (events.empty())
@@ -4121,7 +4198,8 @@ void ArrangeView::itemDropped (const SourceDetails& details)
 // right-click: its menu; Delete: the selected go.
 juce::Rectangle<float> ArrangeView::getChordArea() const
 {
-    for (const auto& row : timeline.layout (studio))
+    std::vector<Timeline::Row> made;
+    for (const auto& row : rowsNow (made))
         if (row.kind == Timeline::Row::Kind::chords)
         {
             auto r = juce::Rectangle<float> (0.0f, rowTop (row), (float) getWidth(), (float) row.height).reduced (0.0f, 3.0f);

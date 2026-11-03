@@ -2,6 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.34.4
+
+Running better, the screen's second part. Nothing looks different. Every screenshot in all three finishes, and the arrangement and transport drawn strip by strip the way the playhead redraws them, came out the same as before, pixel for pixel.
+
+- **Automation lanes draw only where the screen is being redrawn.** As the playhead moves, the studio redraws a thin strip of the arrangement 30 to 60 times a second. Each time, every automation lane rebuilt its curve over the whole song, every point and every bend, and drew it all, for the screen to keep a few pixels of it. Now each lane builds only the part of its curve in that strip, plus a margin either side, so the lines crossing into the strip are the same lines as before. The same goes for Trim's played curve, the dotted value lines and the tempo track's line. Lanes outside the strip altogether aren't drawn at all. On a long song with dense automation, this was the biggest cost of the playhead moving.
+- **The arrangement works out its row layout once per redraw.** It used to work it out again for each track, each take lane and each part it drew, and building that list once means a song with many tracks doesn't cost many times over.
+- **The transport's screens.** The position screen changes 30 times a second while playing, and each time all five screens (position, time, CPU, tempo, signature) were drawn again, each with its blurred shadow, though only one had changed. Now only the screen being redrawn is drawn.
+- **Honestly:** I can't measure the gain on your PC from here, only the work removed. It matters most for you because your window spans three screens: a lane's curve is drawn across 5,760 pixels.
+- Still to come in the speed work: reading back controllers on a jump (it scans from the song's start), and smaller items. After that, VariAudio part two, when you say.
+
 ## 0.34.3
 
 DAWproject import fixes (your report from a Cubase song), and the first part of the screen work.
