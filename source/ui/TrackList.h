@@ -95,6 +95,8 @@ private:
     void placeRows();
 
     pr7s::Studio& studio;
+
+    juce::uint64 seenChange = 0;   // (0.34.3) the studio's change version last acted on
     Timeline& timeline;
     std::vector<std::unique_ptr<Row>> rows;
     std::vector<std::unique_ptr<LaneRow>> laneRows;

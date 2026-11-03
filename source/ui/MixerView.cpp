@@ -499,6 +499,9 @@ MixerView::Strip& MixerView::getStrip (int index)
 
 void MixerView::changeListenerCallback (juce::ChangeBroadcaster*)
 {
+    if (studio.getChangeVersion() == seenChange)
+        return;   // (0.34.3: only the mix moved; the strips follow it on their timer)
+    seenChange = studio.getChangeVersion();
     rebuild();
 }
 
@@ -603,6 +606,10 @@ void MixerView::showLinkMenu (int trackId)
 
 void MixerView::timerCallback()
 {
+    // (0.34.3) Put away (its zone closed): nothing to follow until it's shown again.
+    for (auto* c = static_cast<juce::Component*> (this); c != nullptr; c = c->getParentComponent())
+        if (! c->isVisible())
+            return;
     auto& engine = studio.getEngine();
     for (auto& strip : strips)
     {
@@ -611,7 +618,7 @@ void MixerView::timerCallback()
         strip->followMix();
         if (showsSends())
             for (int i = 0; i < pr7s::Project::maxSends; ++i)
-                strip->getSendSlot (i).repaint();
+                strip->getSendSlot (i).repaintIfChanged();
     }
     if (single && ! singleIsMaster)
         return;
@@ -937,8 +944,34 @@ void MixerView::SendSlot::refresh()
     repaint();
 }
 
+MixerView::SendSlot::Shown MixerView::SendSlot::showsNow() const
+{
+    Shown now;
+    const auto* s = send();
+    const auto* track = owner.studio.getProject().findTrack (busId);
+    if (s == nullptr || track == nullptr)
+        return now;
+    const auto* fx = owner.studio.getProject().findTrack (s->target);
+    now.has = true;
+    now.active = s->on && ! track->sendsBypass;
+    now.preFader = s->preFader;
+    now.db = track->automationRead ? owner.studio.getEngine().getSendNowDb (busId, slot) : s->levelDb;
+    now.name = fx != nullptr ? fx->name : juce::String ("?");
+    now.colour = (fx != nullptr ? fx->colour : ParagonColours::accent).getARGB();
+    return now;
+}
+
+void MixerView::SendSlot::repaintIfChanged()
+{
+    if (! isShowing())
+        return;
+    if (const auto now = showsNow(); ! shown || *shown != now)
+        repaint();
+}
+
 void MixerView::SendSlot::paint (juce::Graphics& g)
 {
+    shown = showsNow();
     const auto bounds = getLocalBounds().toFloat().reduced (0.5f);
     g.setColour (juce::Colour (0xff0b090c));
     g.fillRoundedRectangle (bounds, 3.0f);

@@ -31,6 +31,11 @@ ArrangeView::~ArrangeView()
 
 void ArrangeView::changeListenerCallback (juce::ChangeBroadcaster*)
 {
+    // (0.34.3) Only the mix moved (a fader, a pan, a send level): nothing here shows it. It repainted
+    // the whole arrangement, across three screens, on every step of a fader drag.
+    if (studio.getChangeVersion() == seenChange)
+        return;
+    seenChange = studio.getChangeVersion();
     // A range keeps only the tracks still there.
     if (range)
     {

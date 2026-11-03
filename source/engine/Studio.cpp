@@ -179,7 +179,7 @@ namespace pr7s
         if (undoable)
             recordUndoState();
         updateLiveTrack();
-        sendChangeMessage();
+        announce();
     }
 
     bool Studio::hasEditor (const juce::AudioProcessor* plugin)
@@ -524,6 +524,7 @@ namespace pr7s
             if (const auto* t = project.findTrack (other); t != nullptr && slot < (int) t->sends.size() && t->sends[(size_t) slot].target != 0)
                 setSendLevel (other, slot, linkedLevel (t->sends[(size_t) slot].levelDb, before, after, -60.0f, 6.0f), undoable);
         });
+        mixOnly (! written);
         changed (undoable && ! written);
     }
 
@@ -1216,6 +1217,7 @@ namespace pr7s
                 if (const auto* t = project.findTrack (other))
                     setVolume (other, linkedLevel (t->volumeDb, before, after, -60.0f, 6.0f), undoable);
             });
+            mixOnly (! written);   // (0.34.3: nothing but the mix moved, unless it wrote automation)
             changed (undoable && ! written);
         }
     }
@@ -1233,6 +1235,7 @@ namespace pr7s
                 if (const auto* t = project.findTrack (other))
                     setPan (other, linkedLevel (t->pan, before, after, -1.0f, 1.0f), undoable);
             });
+            mixOnly (! written);   // (0.34.3: nothing but the mix moved, unless it wrote automation)
             changed (undoable && ! written);
         }
     }
@@ -1251,7 +1254,7 @@ namespace pr7s
         // The master's row (0.9.12): the Inspector shows the master; no track selected.
         masterSelected = true;
         selectedTracks.clear();   // (no track looks chosen; recording still goes to the one last chosen)
-        sendChangeMessage();
+        announce();
     }
 
     void Studio::selectTrack (int trackId)
@@ -3730,6 +3733,7 @@ namespace pr7s
     {
         project.masterVolumeDb = juce::jlimit (-60.0f, 6.0f, db);
         const auto written = writeValue (Engine::masterBus, control (AutomationLane::Target::volume), volumeToTravel (project.masterVolumeDb));
+        mixOnly (! written);
         changed (undoable && ! written);
     }
 
@@ -3907,7 +3911,7 @@ namespace pr7s
         passes.push_back (pass);
         engine.setHeld (busId, which, true);   // the hand is heard, not the lane
         engine.update (project);
-        sendChangeMessage();                   // (W shows it's writing)
+        announce();                   // (W shows it's writing)
     }
 
     bool Studio::writeValue (int busId, const AutomationLane& which, float value)
@@ -4753,7 +4757,7 @@ namespace pr7s
             return;
         playStart = engine.getPosition();
         engine.play();
-        sendChangeMessage();
+        announce();
     }
 
     void Studio::stop()
@@ -4762,14 +4766,14 @@ namespace pr7s
         {
             // Stopped already: back to where playing started (inspired by Cubase's workflow).
             engine.setPosition (playStart);
-            sendChangeMessage();
+            announce();
             return;
         }
         if (engine.isRecording())
             finishRecording();
         punchOutAll();   // writing automation stops with playing
         engine.stop();
-        sendChangeMessage();
+        announce();
     }
 
     void Studio::record()
@@ -4777,7 +4781,7 @@ namespace pr7s
         if (engine.isRecording())
         {
             finishRecording();   // punch out: playing carries on
-            sendChangeMessage();
+            announce();
             return;
         }
         auto* armed = project.armedTrack();
@@ -4822,7 +4826,7 @@ namespace pr7s
         engine.takeRecorded (stale);   // anything left from before
         wasRecording = true;
         engine.record();
-        sendChangeMessage();
+        announce();
     }
 
     void Studio::goToStart()
@@ -4836,7 +4840,7 @@ namespace pr7s
         engine.setPosition (beats);
         if (! engine.isPlaying())
             playStart = juce::jmax (0.0, beats);
-        sendChangeMessage();
+        announce();
     }
 
     //==========================================================================
@@ -6267,7 +6271,7 @@ namespace pr7s
         if (engine.isRecording())
         {
             engine.takeRecorded (recorded);
-            sendChangeMessage();
+            announce();
         }
         else if (wasRecording)
         {
@@ -6302,7 +6306,7 @@ namespace pr7s
         undoIndex = -1;
         recordUndoState();
         modified = false;
-        sendChangeMessage();
+        announce();
     }
 
     int Studio::importMidi (const juce::File& source, bool newSong, double atBeat, juce::String& error, bool matchTempo, int ontoTrackId)
@@ -6437,7 +6441,7 @@ namespace pr7s
         file = destination;
         modified = false;
         library->addRecent (destination);
-        sendChangeMessage();
+        announce();
         return true;
     }
 
@@ -6475,7 +6479,7 @@ namespace pr7s
         forgetAllAudio();
         engine.update (project);
         modified = false;
-        sendChangeMessage();
+        announce();
         return true;
     }
 
@@ -6497,7 +6501,7 @@ namespace pr7s
         library->removeRecent (destination);
         file = keptFile;
         modified = keptModified;
-        sendChangeMessage();
+        announce();
         if (! written)
             error = "Couldn't write " + destination.getFullPathName();
         return written;
@@ -6521,7 +6525,7 @@ namespace pr7s
         modified = false;
         library->addRecent (destination);
         ++savesRunning;
-        sendChangeMessage();
+        announce();
         saver.addJob ([copy, destination, done, life = saveAlive, this]
         {
             const auto written = copy->toXml()->writeTo (destination);
@@ -6532,7 +6536,7 @@ namespace pr7s
                 --savesRunning;
                 if (! written)
                     modified = true;
-                sendChangeMessage();
+                announce();
                 if (done)
                     done (written);
             });
@@ -6841,7 +6845,7 @@ namespace pr7s
         engine.setPosition (job->previousPosition);
         if (withDevices && ! inBatch)
             devices.addAudioCallback (&engine);
-        sendChangeMessage();
+        announce();
     }
 
     void Studio::beginBatch()
@@ -7221,7 +7225,7 @@ namespace pr7s
         if (problems.isNotEmpty())
             notes.add (problems);
         report = notes.joinIntoString ("\n");
-        sendChangeMessage();
+        announce();
         return true;
     }
 
@@ -7332,7 +7336,7 @@ namespace pr7s
         recordUndoState();
         updateLiveTrack();
         modified = false;
-        sendChangeMessage();
+        announce();
     }
 
     //==========================================================================
@@ -7349,7 +7353,7 @@ namespace pr7s
         project.chordPads = pads;
         padsChanged();
         modified = true;
-        sendChangeMessage();
+        announce();
     }
 
     void Studio::setPadsActive (bool on)
@@ -7562,7 +7566,7 @@ namespace pr7s
         assignTargets = std::move (pads);
         assignHeld.clear();
         assignNotes.clear();
-        sendChangeMessage();
+        announce();
     }
 
     void Studio::padKeyPlayed (int note, bool on)
@@ -7587,7 +7591,7 @@ namespace pr7s
             auditionPad (pad);
         }
         assignNotes.clear();
-        sendChangeMessage();
+        announce();
     }
 
     void Studio::auditionPad (int pad)
@@ -8629,5 +8633,21 @@ namespace pr7s
         heardCache.clear();
         warpedVariSignatures.clear();
         warpRenderer.clear();
+    }
+
+    void Studio::mixOnly (bool onlyTheMix)
+    {
+        mixOnlyAsked = true;
+        mixOnlyBroken = mixOnlyBroken || ! onlyTheMix;
+    }
+
+    void Studio::announce()
+    {
+        // (0.34.3) Every change counts, but a fader, pan or send level moved (nothing written, nothing
+        // else changed with it): the views skip their full rebuild then, their timers following the mix.
+        if (! mixOnlyAsked || mixOnlyBroken)
+            ++changeVersion;
+        mixOnlyAsked = mixOnlyBroken = false;
+        sendChangeMessage();
     }
 }

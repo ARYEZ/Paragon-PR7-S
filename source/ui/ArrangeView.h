@@ -387,6 +387,8 @@ private:
     void showPartMenu (int trackId, int index);
 
     pr7s::Studio& studio;
+
+    juce::uint64 seenChange = 0;   // (0.34.3) the studio's change version last acted on
     Timeline& timeline;
     Selection selection;
     int selectedPartId = 0;                     // its part's id (found again after the song changes)

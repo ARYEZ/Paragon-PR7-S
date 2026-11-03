@@ -413,6 +413,9 @@ void MainView::changeListenerCallback (juce::ChangeBroadcaster* source)
         repaint();
         return;
     }
+    if (studio.getChangeVersion() == seenChange)
+        return;   // (0.34.3: only the mix moved)
+    seenChange = studio.getChangeVersion();
     refreshHeader();
     refreshScrollBars();
 }

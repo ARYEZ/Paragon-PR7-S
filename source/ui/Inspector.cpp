@@ -831,7 +831,7 @@ void Inspector::timerCallback()
             bar.setValue (studio.getQuickControlValue (trackId, i), juce::dontSendNotification);
     AutomationKeys::refresh (read, write, studio, trackId);
     for (auto& send : sendSlots)
-        send->repaint();
+        send->repaintIfChanged();   // (0.34.3: only when what it shows has changed)
 }
 
 void Inspector::layout()

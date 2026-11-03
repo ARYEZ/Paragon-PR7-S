@@ -306,6 +306,8 @@ private:
     void toggleZonePlace (Zone&);   // Alt+F2 / Alt+F3: docked or full screen
 
     pr7s::Studio& studio;
+
+    juce::uint64 seenChange = 0;   // (0.34.3) the studio's change version last acted on
     Timeline timeline;
     TransportBar transport;
     TrackList trackList;

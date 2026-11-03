@@ -75,6 +75,10 @@ void TransportBar::changeListenerCallback (juce::ChangeBroadcaster* source)
 {
     if (source == &Finish::changes())
         resized();   // the grain differs on black
+    else if (studio.getChangeVersion() == seenChange)
+        return;      // (0.34.3: only the mix moved; nothing here shows it)
+    else
+        seenChange = studio.getChangeVersion();
     refreshKeys();
     repaint();
 }

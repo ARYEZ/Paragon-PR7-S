@@ -33,6 +33,9 @@ namespace pr7s
         ~Studio() override;
 
         const Project& getProject() const noexcept { return project; }
+        // (0.34.3) Goes up with every change announced except a fader, pan or send level moved alone
+        // (not writing automation): a view that saw this version already has only the mix to follow.
+        juce::uint64 getChangeVersion() const noexcept { return changeVersion; }
         Engine& getEngine() noexcept { return engine; }
         PluginHost& getPluginHost() noexcept { return *host; }
         juce::AudioDeviceManager& getDeviceManager() noexcept { return devices; }
@@ -1095,6 +1098,10 @@ namespace pr7s
         GuitarVelocities guitarVelocities;
         float ideasHumanize = 0.0f, humanizeAmount = 0.5f;   // (without a settings file: the tests)
         bool ideasFeel = true, humanizeLayers = true;
+        void announce();               // (0.34.3) sendChangeMessage, the version counted
+        void mixOnly (bool onlyTheMix);
+        juce::uint64 changeVersion = 1;
+        bool mixOnlyAsked = false, mixOnlyBroken = false;
         AlignSettings alignSettings;   // (without a settings file: the tests)
         float dropHighlight = defaultDropHighlight;   // (without a settings file: the tests)   // (a linked change being passed on: not passed on again)
         void pruneLinkGroups();

@@ -103,6 +103,8 @@ private:
     void rebuild();
 
     pr7s::Studio& studio;
+
+    juce::uint64 seenChange = 0;   // (0.34.3) the studio's change version last acted on
     const bool single;
     int singleTrack = 0;
     bool singleIsMaster = false;
@@ -130,8 +132,21 @@ public:
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
+    // (0.34.3) Repainted only when what it shows has changed (the timers repainted every slot, every frame).
+    void repaintIfChanged();
 
 private:
+    // What it shows: whether there's a send, its level, on, pre-fader, its FX channel's name and colour.
+    struct Shown
+    {
+        bool has = false, active = false, preFader = false;
+        float db = 0.0f;
+        juce::String name;
+        juce::uint32 colour = 0;
+        bool operator== (const Shown&) const = default;
+    };
+    Shown showsNow() const;
+    std::optional<Shown> shown;
     const pr7s::Send* send() const;
     MixerView& owner;
     const int busId, slot;

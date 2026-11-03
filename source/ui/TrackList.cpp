@@ -812,6 +812,9 @@ TrackList::~TrackList()
 
 void TrackList::changeListenerCallback (juce::ChangeBroadcaster*)
 {
+    if (studio.getChangeVersion() == seenChange)
+        return;   // (0.34.3: only the mix moved; the rows follow it on their timer)
+    seenChange = studio.getChangeVersion();
     muteAll.setToggleState (studio.anyMute(), juce::dontSendNotification);
     soloAll.setToggleState (studio.anySolo(), juce::dontSendNotification);
     rebuild();

@@ -68,6 +68,8 @@ private:
     void refreshKeys();
 
     pr7s::Studio& studio;
+
+    juce::uint64 seenChange = 0;   // (0.34.3) the studio's change version last acted on
     // REC: a right-click opens the record modes (0.29.0), so it notes which button clicked it.
     struct RecordKey final : juce::TextButton
     {

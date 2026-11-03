@@ -392,6 +392,10 @@ void KeyEditor::timerCallback()
     const auto selection = arrange.getSelection();
     if (selection.trackId != lastArrangeTrack || selection.index != lastArrangeIndex)
         refresh();
+    // (0.34.3) Closed (its zone put away): no playhead, scroll bars or strips to keep up.
+    for (auto* c = static_cast<juce::Component*> (this); c != nullptr; c = c->getParentComponent())
+        if (! c->isVisible())
+            return;
 
     followPlayhead();
     refreshScrollBars();
