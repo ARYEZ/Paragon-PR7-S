@@ -2,6 +2,19 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.22.1
+
+The MediaBay's folder tree (the owner's screenshot of the other DAW's: the File Browser with its folders and subfolders, each with a box to scan it).
+
+- **FILE BROWSER** takes LOCATIONS' place at the left of the MediaBay window: a tree of folders. Its roots: **SCANNED FOLDERS** (what you've ticked, at a glance: our addition), **FAVORITES** (the same favorites as the Media rack's), **THIS COMPUTER** (Home, Desktop, Documents and every drive) and **USER CONTENT** (the Paragon PR7-S folder). The arrow opens a folder (its subfolders are read then); double-clicking a folder opens it too.
+- **The box beside each folder scans it**, as the manual's Scanning Folders: a **tick** means it and all its subfolders are scanned; a **square** means some of it is (a subfolder left out, or only a subfolder ticked); **empty** means none of it. Tick a folder deep in a drive (F:\Samples\GHOSTHACK) and only that folder is scanned; untick one subfolder inside a scanned folder and only that one is left out, its files leaving the results at once (their ratings and tags kept).
+- **Click a folder** to see its files in the results (with SUBFOLDERS lit, its subfolders' files too); click a root heading for every scanned file. A folder that isn't scanned says so in the title line.
+- **Folder colours:** pearl white when scanned, dim when not, the accent colour while a scan is running.
+- **Right-click a folder:** Scan This Folder, Don't Scan This Folder, **Refresh Views** (its subfolders read again and a rescan, the manual's way to see files added while the studio was closed), Add Favorite.
+- **ADD FOLDER...** (a folder picked from the system's chooser, for ones the tree can't reach easily) and **REFRESH** (the selected folder's Refresh Views) under the tree.
+- A favorite added in the MediaBay window shows in the Media rack too.
+- **Honestly:** our design where the manual leaves room: SCANNED FOLDERS is our root (the manual's has VST Sound and Factory Content instead; the studio has neither); left-out folders are remembered in MediaBay.xml; the arrow shows on every folder until it's opened (reading every folder's subfolders up front would be slow on big drives).
+
 ## 0.22.0
 
 The Media rack (the owner asked for 0.22.0 as planned: the manual's Media Rack in the Right Zone), the last of the MediaBay's three parts: your sounds, instruments, effects and presets in a panel at the right of the arrangement, so you can see your tracks while you drag things into the song.

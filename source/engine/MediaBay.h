@@ -117,10 +117,21 @@ namespace pr7s
         explicit MediaDatabase (juce::File store = {});
         ~MediaDatabase();
 
-        // The folders scanned (each with its subfolders).
+        // The folders scanned (each with its subfolders), and folders left out inside them.
         const juce::StringArray& getLocations() const noexcept { return locations; }
+        const juce::StringArray& getExclusions() const noexcept { return exclusions; }
         bool addLocation (const juce::File&);        // false if it isn't a folder or is in already
         void removeLocation (const juce::File&);     // its files leave the results (their ratings are kept)
+
+        // The file browser's tick boxes (0.22.1, the manual's Scanning Folders): a folder (and
+        // everything in it) scanned or not. A file is scanned when the nearest of the scanned
+        // and left-out folders above it is a scanned one. Not scanned any more: its files leave
+        // the results at once (ratings and tags kept). Scanned: call rescan() for its files.
+        void setIncluded (const juce::File& folder, bool scanned);
+        bool isIncluded (const juce::File&) const;
+        enum class ScanState { none, some, all };    // empty box, a square, a tick
+        ScanState scanState (const juce::File& folder) const;
+        static bool includedBy (const juce::File&, const juce::StringArray& locations, const juce::StringArray& exclusions);
         bool hadStore() const noexcept { return storeExisted; }
 
         // Scanning: in the background (`rescan`), or at once (`scanNow`, the tests). A file read
@@ -185,13 +196,14 @@ namespace pr7s
         std::vector<MediaItem> scanAll (std::function<bool()> stop);
         juce::File store;
         bool storeExisted = false;
-        juce::StringArray locations;
+        juce::StringArray locations, exclusions;
         std::vector<MediaItem> items;
         std::map<juce::String, int> ratings;   // full path: stars
         std::map<juce::String, MediaTags> tags;   // full path: tags
         std::vector<AttributeList> userCategories, userStyles;
         std::vector<UserAttribute> userAttributes;
         bool passes (const MediaItem&, const MediaQuery&, const TextSearch&) const;
+        void dropUnincluded();
         std::unique_ptr<Scanner> scanner;
         std::atomic<bool> scanning { false };
         std::atomic<int> filesSeen { 0 };

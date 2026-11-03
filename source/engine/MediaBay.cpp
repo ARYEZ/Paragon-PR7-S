@@ -443,6 +443,7 @@ namespace pr7s
         {
             const juce::ScopedLock sl (pendingLock);
             locations.add (folder.getFullPathName());
+            exclusions.removeString (folder.getFullPathName());
         }
         save();
         return true;
@@ -450,15 +451,75 @@ namespace pr7s
 
     void MediaDatabase::removeLocation (const juce::File& folder)
     {
-        const juce::ScopedLock sl (pendingLock);   // (a scan in another thread reads `items` and `locations`)
-        locations.removeString (folder.getFullPathName());
-        items.erase (std::remove_if (items.begin(), items.end(), [this] (const MediaItem& item)
         {
-            for (const auto& location : locations)
-                if (item.file.isAChildOf (juce::File (location)))
-                    return false;
-            return true;
-        }), items.end());
+            const juce::ScopedLock sl (pendingLock);   // (a scan in another thread reads `items` and `locations`)
+            locations.removeString (folder.getFullPathName());
+        }
+        dropUnincluded();
+        save();
+    }
+
+    void MediaDatabase::dropUnincluded()
+    {
+        const juce::ScopedLock sl (pendingLock);
+        items.erase (std::remove_if (items.begin(), items.end(), [this] (const MediaItem& item)
+                                     { return ! includedBy (item.file, locations, exclusions); }),
+                     items.end());
+    }
+
+    bool MediaDatabase::includedBy (const juce::File& file, const juce::StringArray& scanned, const juce::StringArray& leftOut)
+    {
+        // The deepest of the scanned and left-out folders holding it (or it) decides.
+        int deepest = -1;
+        bool in = false;
+        const auto consider = [&] (const juce::StringArray& list, bool scannedList)
+        {
+            for (const auto& path : list)
+            {
+                const juce::File folder (path);
+                if ((file == folder || file.isAChildOf (folder)) && path.length() > deepest)
+                {
+                    deepest = path.length();
+                    in = scannedList;
+                }
+            }
+        };
+        consider (scanned, true);
+        consider (leftOut, false);
+        return in;
+    }
+
+    bool MediaDatabase::isIncluded (const juce::File& file) const
+    {
+        return includedBy (file, locations, exclusions);
+    }
+
+    MediaDatabase::ScanState MediaDatabase::scanState (const juce::File& folder) const
+    {
+        const auto in = isIncluded (folder);
+        // Anything deeper that decides otherwise makes it a square.
+        for (const auto& path : in ? exclusions : locations)
+            if (juce::File (path).isAChildOf (folder))
+                return ScanState::some;
+        return in ? ScanState::all : ScanState::none;
+    }
+
+    void MediaDatabase::setIncluded (const juce::File& folder, bool scanned)
+    {
+        if (folder == juce::File())
+            return;
+        {
+            const juce::ScopedLock sl (pendingLock);
+            // What was decided inside it goes: the whole folder is as asked now.
+            const auto inside = [&folder] (const juce::String& path) { return juce::File (path).isAChildOf (folder); };
+            for (auto* list : { &locations, &exclusions })
+                for (int i = list->size(); --i >= 0;)
+                    if (inside ((*list)[i]) || juce::File ((*list)[i]) == folder)
+                        list->remove (i);
+            if (includedBy (folder, locations, exclusions) != scanned)
+                (scanned ? locations : exclusions).add (folder.getFullPathName());
+        }
+        dropUnincluded();
         save();
     }
 
@@ -468,12 +529,13 @@ namespace pr7s
         formats.registerBasicFormats();
         // What was read before, by path, to skip unchanged files. (A copy: the message thread owns `items`.)
         std::map<juce::String, MediaItem> known;
-        juce::StringArray where;
+        juce::StringArray where, leftOut;
         {
             const juce::ScopedLock sl (pendingLock);
             for (const auto& item : items)
                 known[item.file.getFullPathName()] = item;
             where = locations;
+            leftOut = exclusions;
         }
         std::vector<MediaItem> found;
         std::set<juce::String> seen;
@@ -488,6 +550,8 @@ namespace pr7s
                     juce::Thread::sleep (100);
                 const auto& file = entry.getFile();
                 if (! mediaTypeOf (file) || ! seen.insert (file.getFullPathName()).second)
+                    continue;
+                if (! leftOut.isEmpty() && ! includedBy (file, where, leftOut))
                     continue;
                 ++filesSeen;
                 if (auto old = known.find (file.getFullPathName());
@@ -983,6 +1047,8 @@ namespace pr7s
         storeExisted = true;
         for (const auto* e : xml->getChildWithTagNameIterator ("Location"))
             locations.addIfNotAlreadyThere (e->getStringAttribute ("path"));
+        for (const auto* e : xml->getChildWithTagNameIterator ("Exclude"))
+            exclusions.addIfNotAlreadyThere (e->getStringAttribute ("path"));
         for (const auto* e : xml->getChildWithTagNameIterator ("Rating"))
             ratings[e->getStringAttribute ("path")] = juce::jlimit (0, 5, e->getIntAttribute ("stars"));
         for (const auto* e : xml->getChildWithTagNameIterator ("Tags"))
@@ -1056,6 +1122,8 @@ namespace pr7s
         juce::XmlElement xml ("MediaBay");
         for (const auto& location : locations)
             xml.createNewChildElement ("Location")->setAttribute ("path", location);
+        for (const auto& folder : exclusions)
+            xml.createNewChildElement ("Exclude")->setAttribute ("path", folder);
         for (const auto& [path, stars] : ratings)
         {
             auto* e = xml.createNewChildElement ("Rating");

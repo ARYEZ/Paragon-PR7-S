@@ -151,6 +151,7 @@ private:
     std::optional<juce::uint32> shuffleSeed;
     bool filtersShown = false, autoPlay = true, byVendor = false, refreshing = false;
     juce::File previewing;
+    int favoritesCheck = 0;
 
     juce::TextEditor search;
     juce::TextButton resetSearchKey { "X" }, allKey { "ALL" }, backKey { "BACK" }, homeKey { "HOME" },

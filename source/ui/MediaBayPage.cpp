@@ -31,69 +31,322 @@ namespace
 }
 
 //==============================================================================
-// LOCATIONS: "ALL LOCATIONS", then each scanned folder (its name, its path under it).
-class MediaBayPage::Locations final : public juce::ListBox,
-                                     private juce::ListBoxModel
+// The FILE BROWSER (0.22.1, the manual's File Browser section): a tree of folders under SCANNED
+// FOLDERS (ours: what's ticked, at a glance), FAVORITES, THIS COMPUTER (home, desktop, documents,
+// the drives) and USER CONTENT. Each folder: the arrow opens it (its subfolders read then), the
+// box scans it (a tick: all of it; a square: some of it; empty: none), a click shows its files.
+// A folder being scanned is drawn in the accent colour, a scanned one in pearl white.
+class MediaBayPage::Browser final : public juce::TreeView
 {
 public:
-    explicit Locations (MediaBayPage& p) : page (p)
-    {
-        setModel (this);
-        setRowHeight (40);
-        setColour (juce::ListBox::backgroundColourId, juce::Colour (0xff100d11));
-        setOutlineThickness (0);
-    }
+    class FolderItem;
 
-    int getNumRows() override { return page.database.getLocations().size() + 1; }
-
-    void paintListBoxItem (int row, juce::Graphics& g, int width, int height, bool selected) override
+    // A root: a heading with folders under it; clicking it shows every scanned file.
+    class RootItem final : public juce::TreeViewItem
     {
-        if (selected)
+    public:
+        RootItem (Browser& b, juce::String n) : browser (b), name (std::move (n)) {}
+        bool mightContainSubItems() override { return true; }
+        juce::String getUniqueName() const override { return "root:" + name; }
+        int getItemHeight() const override { return 26; }
+        void paintItem (juce::Graphics& g, int width, int height) override
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.18f));
-            g.fillRect (0, 0, width, height);
+            if (isSelected())
+            {
+                g.setColour (ParagonColours::accent.withAlpha (0.18f));
+                g.fillRect (0, 0, width, height);
+            }
             g.setColour (ParagonColours::accent);
-            g.fillRect (0, 0, 3, height);
+            g.setFont (ParagonLookAndFeel::titleFont (13.5f));
+            g.drawText (name, 4, 0, width - 8, height, juce::Justification::centredLeft, true);
         }
-        auto area = juce::Rectangle<int> (0, 0, width, height).reduced (10, 4);
-        if (row == 0)
+        void itemSelectionChanged (bool nowSelected) override
         {
-            g.setColour (ParagonColours::text);
-            g.setFont (ParagonLookAndFeel::titleFont (14.0f));
-            g.drawText ("ALL LOCATIONS", area, juce::Justification::centredLeft, false);
-            return;
+            if (nowSelected && ! browser.updating)
+                browser.page.selectFolder ({});
         }
-        const juce::File folder (page.database.getLocations()[row - 1]);
-        g.setColour (ParagonColours::text);
-        g.setFont (ParagonLookAndFeel::titleFont (14.0f));
-        g.drawText (folder.getFileName().toUpperCase(), area.removeFromTop (18), juce::Justification::centredLeft, true);
-        g.setColour (ParagonColours::textDim);
-        g.setFont (interFont (10.5f));
-        g.drawText (folder.getParentDirectory().getFullPathName(), area, juce::Justification::centredLeft, true);
-    }
+        void itemOpennessChanged (bool open) override
+        {
+            if (open && getNumSubItems() == 0)
+                fill();
+        }
+        void fill();
+        void refill()
+        {
+            const auto wasOpen = isOpen();
+            clearSubItems();
+            if (wasOpen)
+                fill();
+        }
+        Browser& browser;
+        const juce::String name;
+    };
 
-    void selectedRowsChanged (int row) override
+    class FolderItem final : public juce::TreeViewItem
     {
-        if (! updating)
-            page.selectLocation (row <= 0 ? -1 : row - 1);
+    public:
+        FolderItem (Browser& b, juce::File f, juce::String l) : browser (b), folder (std::move (f)), label (std::move (l)) {}
+        bool mightContainSubItems() override { return ! loaded || getNumSubItems() > 0; }
+        juce::String getUniqueName() const override { return folder.getFullPathName(); }
+        int getItemHeight() const override { return 22; }
+
+        void paintItem (juce::Graphics& g, int width, int height) override
+        {
+            if (isSelected())
+            {
+                g.setColour (ParagonColours::accent.withAlpha (0.22f));
+                g.fillRect (0, 0, width, height);
+            }
+            // The box.
+            const auto box = juce::Rectangle<float> (2.0f, (float) height / 2.0f - 6.0f, 12.0f, 12.0f);
+            const auto state = browser.page.database.scanState (folder);
+            g.setColour (ParagonColours::panelEdge.brighter (0.4f));
+            g.drawRoundedRectangle (box, 2.0f, 1.0f);
+            if (state == pr7s::MediaDatabase::ScanState::all)
+            {
+                g.setColour (ParagonColours::accent);
+                g.fillRoundedRectangle (box, 2.0f);
+                juce::Path tick;
+                tick.startNewSubPath (box.getX() + 2.5f, box.getCentreY());
+                tick.lineTo (box.getX() + 5.0f, box.getBottom() - 3.0f);
+                tick.lineTo (box.getRight() - 2.5f, box.getY() + 3.0f);
+                g.setColour (juce::Colours::black);
+                g.strokePath (tick, juce::PathStrokeType (1.8f));
+            }
+            else if (state == pr7s::MediaDatabase::ScanState::some)
+            {
+                g.setColour (ParagonColours::accent);
+                g.fillRoundedRectangle (box.reduced (3.0f), 1.0f);
+            }
+            // A folder shape and the name: accent while it's being scanned, pearl white scanned, dim not.
+            const auto included = browser.page.database.isIncluded (folder);
+            const auto colour = included && browser.page.database.isScanning() ? ParagonColours::accent
+                              : included || state == pr7s::MediaDatabase::ScanState::some ? juce::Colour (0xfff4eeea)
+                              : ParagonColours::textDim;
+            auto icon = juce::Rectangle<float> (20.0f, (float) height / 2.0f - 5.0f, 14.0f, 10.0f);
+            juce::Path shape;
+            shape.addRoundedRectangle (icon.withTrimmedTop (2.0f), 1.5f);
+            shape.addRoundedRectangle (icon.withWidth (6.0f).withHeight (4.0f), 1.0f);
+            g.setColour (colour.withAlpha (0.75f));
+            g.fillPath (shape);
+            g.setColour (colour);
+            g.setFont (interFont (12.0f));
+            g.drawText (label, 40, 0, width - 42, height, juce::Justification::centredLeft, true);
+        }
+
+        void itemClicked (const juce::MouseEvent& e) override
+        {
+            if (e.mods.isPopupMenu())
+                return browser.showFolderMenu (folder);
+            if (e.x < 18)   // (the box)
+                browser.page.setFolderScanned (folder, browser.page.database.scanState (folder) != pr7s::MediaDatabase::ScanState::all);
+        }
+
+        void itemDoubleClicked (const juce::MouseEvent&) override { setOpen (! isOpen()); }
+
+        void itemSelectionChanged (bool nowSelected) override
+        {
+            if (nowSelected && ! browser.updating)
+                browser.page.selectFolder (folder);
+        }
+
+        void itemOpennessChanged (bool open) override
+        {
+            if (open && ! loaded)
+                load();
+        }
+
+        void load()
+        {
+            loaded = true;
+            clearSubItems();
+            auto folders = folder.findChildFiles (juce::File::findDirectories, false);
+            std::sort (folders.begin(), folders.end(), [] (const juce::File& a, const juce::File& b) { return a.getFileName().compareNatural (b.getFileName()) < 0; });
+            for (const auto& f : folders)
+                if (! f.isHidden() && ! f.getFileName().startsWithChar ('.'))
+                    addSubItem (new FolderItem (browser, f, f.getFileName()));
+            treeHasChanged();
+        }
+
+        void refreshViews()
+        {
+            // (The manual's Refresh Views: what's in it read again, open folders kept open.)
+            juce::StringArray open;
+            for (int i = 0; i < getNumSubItems(); ++i)
+                if (getSubItem (i)->isOpen())
+                    open.add (getSubItem (i)->getUniqueName());
+            if (! loaded)
+                return;
+            load();
+            for (int i = 0; i < getNumSubItems(); ++i)
+                if (open.contains (getSubItem (i)->getUniqueName()))
+                    getSubItem (i)->setOpen (true);
+        }
+
+        Browser& browser;
+        const juce::File folder;
+        const juce::String label;
+        bool loaded = false;
+    };
+
+    explicit Browser (MediaBayPage& p) : page (p)
+    {
+        setRootItem (&root);
+        setRootItemVisible (false);
+        setDefaultOpenness (false);
+        setIndentSize (16);
+        setColour (juce::TreeView::backgroundColourId, juce::Colour (0xff100d11));
+        setColour (juce::TreeView::linesColourId, ParagonColours::panelEdge);
+        setColour (juce::TreeView::selectedItemBackgroundColourId, juce::Colours::transparentBlack);
+        for (const auto* name : { "SCANNED FOLDERS", "FAVORITES", "THIS COMPUTER", "USER CONTENT" })
+            root.addSubItem (new RootItem (*this, name));
+        root.setOpen (true);   // (hidden, but its headings show only while it's open)
+        root.getSubItem (0)->setOpen (true);
+        root.getSubItem (2)->setOpen (true);
     }
 
-    void show (int index)
+    ~Browser() override { setRootItem (nullptr); }
+
+    // The scanned folders' and the favorites' lists again (after a tick, a new favorite).
+    void refreshLists()
     {
         const juce::ScopedValueSetter<bool> svs (updating, true);
-        updateContent();
-        selectRow (index + 1, true, true);
+        // (What was open stays open.)
+        juce::StringArray open;
+        std::function<void (juce::TreeViewItem&)> note = [&] (juce::TreeViewItem& item)
+        {
+            for (int i = 0; i < item.getNumSubItems(); ++i)
+                if (auto* sub = item.getSubItem (i); sub->isOpen())
+                {
+                    open.add (sub->getUniqueName());
+                    note (*sub);
+                }
+        };
+        std::function<void (juce::TreeViewItem&)> reopen = [&] (juce::TreeViewItem& item)
+        {
+            for (int i = 0; i < item.getNumSubItems(); ++i)
+                if (auto* sub = item.getSubItem (i); open.contains (sub->getUniqueName()))
+                {
+                    sub->setOpen (true);
+                    if (auto* folderItem = dynamic_cast<FolderItem*> (sub); folderItem != nullptr && ! folderItem->loaded)
+                        folderItem->load();
+                    reopen (*sub);
+                }
+        };
+        for (int i : { 0, 1 })
+        {
+            auto* heading = root.getSubItem (i);
+            open.clearQuick();
+            note (*heading);
+            static_cast<RootItem*> (heading)->refill();
+            reopen (*heading);
+        }
+        repaint();
     }
 
-private:
+    // The item for a folder, opening the way to it from the root that holds it (nullptr: none).
+    FolderItem* reveal (const juce::File& target)
+    {
+        const juce::ScopedValueSetter<bool> svs (updating, true);
+        for (int r = 0; r < root.getNumSubItems(); ++r)
+        {
+            auto* heading = root.getSubItem (r);
+            if (heading->getNumSubItems() == 0)
+                static_cast<RootItem*> (heading)->fill();
+            for (int i = 0; i < heading->getNumSubItems(); ++i)
+            {
+                auto* item = static_cast<FolderItem*> (heading->getSubItem (i));
+                if (item->folder == target)
+                    return heading->setOpen (true), item;
+                if (! target.isAChildOf (item->folder))
+                    continue;
+                heading->setOpen (true);
+                // Down the way.
+                auto* at = item;
+                while (at->folder != target)
+                {
+                    at->setOpen (true);
+                    if (! at->loaded)
+                        at->load();
+                    FolderItem* next = nullptr;
+                    for (int j = 0; j < at->getNumSubItems() && next == nullptr; ++j)
+                    {
+                        auto* child = static_cast<FolderItem*> (at->getSubItem (j));
+                        if (child->folder == target || target.isAChildOf (child->folder))
+                            next = child;
+                    }
+                    if (next == nullptr)
+                        return nullptr;
+                    at = next;
+                }
+                return at;
+            }
+        }
+        return nullptr;
+    }
+
+    void showFolderMenu (const juce::File& folder)
+    {
+        juce::PopupMenu menu;
+        const auto state = page.database.scanState (folder);
+        menu.addItem (1, "Scan This Folder (and its subfolders)", state != pr7s::MediaDatabase::ScanState::all);
+        menu.addItem (2, "Don't Scan This Folder", state != pr7s::MediaDatabase::ScanState::none);
+        menu.addSeparator();
+        menu.addItem (3, "Refresh Views (read the folder again, and rescan)");
+        menu.addItem (4, "Add Favorite (also in the Media rack)");
+        menu.showMenuAsync ({}, [safe = juce::Component::SafePointer<Browser> (this), folder] (int chosen)
+        {
+            if (safe == nullptr)
+                return;
+            switch (chosen)
+            {
+                case 1: safe->page.setFolderScanned (folder, true); break;
+                case 2: safe->page.setFolderScanned (folder, false); break;
+                case 3: safe->page.refreshFolder (folder); break;
+                case 4: safe->page.addFavorite (folder); break;
+                default: break;
+            }
+        });
+    }
+
+    struct Root final : public juce::TreeViewItem
+    {
+        bool mightContainSubItems() override { return true; }
+    };
     MediaBayPage& page;
+    Root root;
     bool updating = false;
 };
 
-//==============================================================================
-// One column of the attribute filter: its attribute (the title: click to choose another) and
-// the values found, with how many files have each. Click a value: only it; click it again: none;
-// Ctrl-click: one more (or one less).
+void MediaBayPage::Browser::RootItem::fill()
+{
+    clearSubItems();
+    const auto add = [this] (const juce::File& f, const juce::String& label)
+    {
+        if (f.isDirectory())
+            addSubItem (new FolderItem (browser, f, label));
+    };
+    if (name == "SCANNED FOLDERS")
+        for (const auto& path : browser.page.database.getLocations())
+            add (juce::File (path), juce::File (path).getFullPathName());
+    else if (name == "FAVORITES")
+        for (const auto& path : browser.page.getFavorites())
+            add (juce::File (path), juce::File (path).getFileName());
+    else if (name == "THIS COMPUTER")
+    {
+        add (juce::File::getSpecialLocation (juce::File::userHomeDirectory), "Home");
+        add (juce::File::getSpecialLocation (juce::File::userDesktopDirectory), "Desktop");
+        add (juce::File::getSpecialLocation (juce::File::userDocumentsDirectory), "Documents");
+        juce::Array<juce::File> drives;
+        juce::File::findFileSystemRoots (drives);
+        for (const auto& drive : drives)
+            add (drive, drive.getFullPathName());
+    }
+    else
+        add (juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Paragon PR7-S"), "Paragon PR7-S");
+    treeHasChanged();
+}
+
 //==============================================================================
 // The ATTRIBUTE INSPECTOR: the selected files' attributes in groups (MEDIA: what the files are;
 // MUSICAL: your tags; INFO: rating and comment; YOUR ATTRIBUTES). Click a value to set it for
@@ -556,7 +809,7 @@ MediaBayPage::MediaBayPage (pr7s::Studio& s)
     resetKey.onClick = [this] { resetFilters(); };
     rescanKey.setTooltip ("Look through the locations again for new, changed or removed files (it waits while the song plays)");
     rescanKey.onClick = [this] { database.rescan(); refreshKeys(); };
-    addKey.setTooltip ("A folder to scan, with its subfolders");
+    addKey.setTooltip ("A folder to scan, with its subfolders, picked from a file chooser (or tick its box in the tree)");
     addKey.onClick = [this]
     {
         chooser = std::make_unique<juce::FileChooser> ("A folder for the MediaBay to scan", juce::File::getSpecialLocation (juce::File::userHomeDirectory));
@@ -567,8 +820,8 @@ MediaBayPage::MediaBayPage (pr7s::Studio& s)
                                       safe->addLocation (c.getResult());
                               });
     };
-    removeKey.setTooltip ("Stop scanning the selected location (its files stay where they are; your ratings are kept)");
-    removeKey.onClick = [this] { removeSelectedLocation(); };
+    removeKey.setTooltip ("Refresh Views: the selected folder's subfolders read again, and a rescan");
+    removeKey.onClick = [this] { refreshFolder (selectedFolder); };
     playKey.setTooltip ("Hear the selected file (audio over the output; MIDI through the selected track's instrument)");
     playKey.onClick = [this] { studio.isMediaPreviewing() ? stop() : (void) play(); };
     cycleKey.setTooltip ("Audio plays round and round");
@@ -651,8 +904,8 @@ MediaBayPage::MediaBayPage (pr7s::Studio& s)
     table.setOutlineThickness (0);
     addAndMakeVisible (table);
 
-    locations = std::make_unique<Locations> (*this);
-    addAndMakeVisible (*locations);
+    browser = std::make_unique<Browser> (*this);
+    addAndMakeVisible (*browser);
 
     for (int i = 0; i < numFilterColumns; ++i)
     {
@@ -666,7 +919,6 @@ MediaBayPage::MediaBayPage (pr7s::Studio& s)
     addChildComponent (*inspectorView);
 
     setSize (1600, 900);
-    refreshLocations();
     refresh();
     refreshKeys();
     startTimerHz (20);
@@ -714,7 +966,7 @@ void MediaBayPage::refreshKeys()
     const auto playing = studio.isMediaPreviewing();
     playKey.setButtonText (playing ? "STOP" : "PLAY");
     playKey.setToggleState (playing, juce::dontSendNotification);
-    removeKey.setEnabled (locationIndex >= 0);
+    removeKey.setEnabled (true);
     useKey.setEnabled (getSelectedRow() >= 0);
     rescanKey.setEnabled (! database.isScanning());
     filtersKey.setToggleState (filtersShown, juce::dontSendNotification);
@@ -724,11 +976,9 @@ void MediaBayPage::refreshKeys()
     repaint (0, 0, getWidth(), titleHeight);
 }
 
-void MediaBayPage::refreshLocations()
+void MediaBayPage::refreshBrowser()
 {
-    if (locationIndex >= database.getLocations().size())
-        locationIndex = -1;
-    locations->show (locationIndex);
+    browser->refreshLists();
 }
 
 void MediaBayPage::refresh()
@@ -740,7 +990,7 @@ void MediaBayPage::refresh()
         if (const auto* item = getResult (rows[i]))
             selectedPaths.add (item->file.getFullPathName());
 
-    query.folder = locationIndex >= 0 ? juce::File (database.getLocations()[locationIndex]) : juce::File();
+    query.folder = selectedFolder;
     results = database.find (query);
     if (sortOrder)
         database.sort (results, sortOrder->first, sortOrder->second);
@@ -793,7 +1043,9 @@ juce::String MediaBayPage::getStatusText() const
     if (database.isScanning())
         text << "  -  SCANNING (" << juce::String (database.getFilesSeen()) << " SEEN)";
     else if (database.getLocations().isEmpty())
-        text << "  -  ADD A FOLDER TO SCAN";
+        text << "  -  TICK A FOLDER'S BOX IN THE FILE BROWSER TO SCAN IT";
+    else if (selectedFolder != juce::File() && database.scanState (selectedFolder) == pr7s::MediaDatabase::ScanState::none)
+        text << "  -  THIS FOLDER ISN'T SCANNED: TICK ITS BOX";
     return text;
 }
 
@@ -833,8 +1085,76 @@ void MediaBayPage::setSubfolders (bool on)
 
 void MediaBayPage::selectLocation (int index)
 {
-    locationIndex = juce::isPositiveAndBelow (index, database.getLocations().size()) ? index : -1;
+    selectFolder (juce::isPositiveAndBelow (index, database.getLocations().size()) ? juce::File (database.getLocations()[index]) : juce::File());
+}
+
+void MediaBayPage::selectFolder (const juce::File& folder)
+{
+    selectedFolder = folder;
     refresh();
+    repaint (0, 0, getWidth(), titleHeight);
+}
+
+void MediaBayPage::setFolderScanned (const juce::File& folder, bool scanned)
+{
+    database.setIncluded (folder, scanned);
+    if (scanned)
+        database.rescan();
+    refreshBrowser();
+    refresh();
+}
+
+void MediaBayPage::refreshFolder (const juce::File& folder)
+{
+    if (folder != juce::File())
+        if (auto* item = browser->reveal (folder))
+            item->refreshViews();
+    refreshBrowser();
+    database.rescan();
+    refreshKeys();
+}
+
+juce::StringArray MediaBayPage::getFavorites() const
+{
+    auto favorites = studio.getSettings() != nullptr ? juce::StringArray::fromLines (studio.getSettings()->getValue ("mediaRackFavorites")) : localFavorites;
+    favorites.removeEmptyStrings();
+    return favorites;
+}
+
+bool MediaBayPage::addFavorite (const juce::File& folder)
+{
+    auto favorites = getFavorites();
+    if (! folder.isDirectory() || favorites.contains (folder.getFullPathName()))
+        return false;
+    favorites.add (folder.getFullPathName());
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("mediaRackFavorites", favorites.joinIntoString ("\n"));
+    else
+        localFavorites = favorites;
+    // (As the rack's: a favorite's files are scanned.)
+    if (! database.isIncluded (folder))
+        setFolderScanned (folder, true);
+    refreshBrowser();
+    return true;
+}
+
+bool MediaBayPage::revealFolder (const juce::File& folder)
+{
+    return browser->reveal (folder) != nullptr;
+}
+
+juce::StringArray MediaBayPage::getFolderChildren (const juce::File& folder)
+{
+    juce::StringArray names;
+    if (auto* item = browser->reveal (folder))
+    {
+        item->setOpen (true);
+        if (! item->loaded)
+            item->load();
+        for (int i = 0; i < item->getNumSubItems(); ++i)
+            names.add (static_cast<Browser::FolderItem*> (item->getSubItem (i))->label);
+    }
+    return names;
 }
 
 void MediaBayPage::resetFilters()
@@ -930,10 +1250,13 @@ void MediaBayPage::use (int row)
 
 bool MediaBayPage::addLocation (const juce::File& folder)
 {
-    if (! database.addLocation (folder))
+    if (! folder.isDirectory() || database.getLocations().contains (folder.getFullPathName()))
         return false;
-    locationIndex = database.getLocations().size() - 1;
-    refreshLocations();
+    database.setIncluded (folder, true);
+    if (! database.getLocations().contains (folder.getFullPathName()))
+        database.addLocation (folder);   // (inside a scanned folder: a location of its own all the same, as asked)
+    selectedFolder = folder;
+    refreshBrowser();
     database.rescan();
     refresh();
     return true;
@@ -941,12 +1264,9 @@ bool MediaBayPage::addLocation (const juce::File& folder)
 
 void MediaBayPage::removeSelectedLocation()
 {
-    if (locationIndex < 0)
+    if (selectedFolder == juce::File())
         return;
-    database.removeLocation (juce::File (database.getLocations()[locationIndex]));
-    locationIndex = -1;
-    refreshLocations();
-    refresh();
+    setFolderScanned (selectedFolder, false);
 }
 
 //==============================================================================
@@ -1111,7 +1431,7 @@ std::vector<std::pair<juce::String, int>> MediaBayPage::getFilterValues (int col
     if (! juce::isPositiveAndBelow (column, (int) query.attributes.size()))
         return {};
     auto query1 = query;
-    query1.folder = locationIndex >= 0 ? juce::File (database.getLocations()[locationIndex]) : juce::File();
+    query1.folder = selectedFolder;
     auto values = database.valueCounts (query1, query.attributes[(size_t) column].attribute);
     // A chosen value no file has any more stays in the list (with 0), so it can be unchosen.
     for (const auto& chosen : query.attributes[(size_t) column].values)
@@ -1144,9 +1464,11 @@ void MediaBayPage::timerCallback()
 {
     if (database.takeScanResults())
     {
-        refreshLocations();
+        browser->repaint();
         refresh();
     }
+    else if (database.isScanning() && ++scanFrames % 10 == 0)
+        browser->repaint();   // (the folders being scanned in the accent colour)
     const auto playing = studio.isMediaPreviewing();
     if ((playKey.getButtonText() == "STOP") != playing || database.isScanning())
         refreshKeys();
@@ -1288,11 +1610,11 @@ void MediaBayPage::paint (juce::Graphics& g)
     g.setFont (ParagonLookAndFeel::titleFont (14.0f));
     g.drawText (getStatusText(), title.withTrimmedRight (110), juce::Justification::centredLeft, true);
 
-    // LOCATIONS' heading.
+    // The FILE BROWSER's heading.
     const auto left = juce::Rectangle<int> (gap, titleHeight + toolbarHeight, locationsWidth, 28);
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (14.0f));
-    g.drawText ("LOCATIONS", left, juce::Justification::centredLeft, false);
+    g.drawText ("FILE BROWSER", left, juce::Justification::centredLeft, false);
 
     if (filtersShown && ! filtersArea.isEmpty())
     {
@@ -1424,11 +1746,11 @@ void MediaBayPage::resized()
     area.removeFromLeft (gap);
     left.removeFromTop (30);
     auto leftKeys = left.removeFromBottom (28);
-    removeKey.setBounds (leftKeys.removeFromRight (80));
+    removeKey.setBounds (leftKeys.removeFromRight (90));
     leftKeys.removeFromRight (6);
     addKey.setBounds (leftKeys);
     left.removeFromBottom (6);
-    locations->setBounds (left);
+    browser->setBounds (left);
 
     area = area.withTrimmedRight (gap).withTrimmedTop (2);
     inspectorArea = {};

@@ -801,3 +801,110 @@ TEST_CASE ("The Media rack in the right zone: Ctrl+Alt+R, drops of instruments a
     CHECK (view.keyPressed (juce::KeyPress ('r', juce::ModifierKeys::commandModifier | juce::ModifierKeys::altModifier, 0)));
     CHECK_FALSE (view.isRightZoneShown());
 }
+
+TEST_CASE ("MediaBay folders scanned or left out: a tick, a square, an empty box (0.22.1)", "[mediabay]")
+{
+    using State = MediaDatabase::ScanState;
+    MediaFolder folder;
+    const auto kicks = folder.root.getChildFile ("Kicks");
+    const auto store = juce::File::createTempFile ("pr7s-mediabay-scan.xml");
+    {
+        MediaDatabase db (store);
+        db.setIncluded (folder.root, true);
+        db.scanNow();
+        CHECK (db.getItems().size() == 5);
+        CHECK (db.scanState (folder.root) == State::all);
+        CHECK (db.scanState (kicks) == State::all);
+
+        // A subfolder left out: its files go at once, the folder above gets a square.
+        db.setIncluded (kicks, false);
+        CHECK (db.getItems().size() == 4);
+        CHECK (db.scanState (folder.root) == State::some);
+        CHECK (db.scanState (kicks) == State::none);
+        CHECK_FALSE (db.isIncluded (kicks.getChildFile ("Kick 808.wav")));
+        CHECK (db.isIncluded (folder.root.getChildFile ("Drums_120bpm_Am.wav")));
+        db.scanNow();
+        CHECK (db.getItems().size() == 4);   // (a scan skips it)
+    }
+    {
+        // Kept: the left-out folder too.
+        MediaDatabase db (store);
+        CHECK (db.getExclusions().size() == 1);
+        CHECK (db.scanState (folder.root) == State::some);
+        // Ticked again: whole again, nothing left out.
+        db.setIncluded (kicks, true);
+        CHECK (db.getExclusions().isEmpty());
+        CHECK (db.getLocations().size() == 1);
+        CHECK (db.scanState (folder.root) == State::all);
+        db.scanNow();
+        CHECK (db.getItems().size() == 5);
+        // The whole folder left out: what was decided inside it goes too.
+        db.setIncluded (kicks, false);
+        db.setIncluded (folder.root, false);
+        CHECK (db.getLocations().isEmpty());
+        CHECK (db.getExclusions().isEmpty());
+        CHECK (db.getItems().empty());
+    }
+    {
+        // Only a subfolder scanned: the folder above has a square, its own files aren't scanned.
+        MediaDatabase db;
+        db.setIncluded (kicks, true);
+        db.scanNow();
+        CHECK (db.getItems().size() == 1);
+        CHECK (db.scanState (folder.root) == State::some);
+        CHECK (db.scanState (kicks) == State::all);
+        CHECK_FALSE (db.isIncluded (folder.root.getChildFile ("Drums_120bpm_Am.wav")));
+    }
+    store.deleteFile();
+}
+
+TEST_CASE ("The MediaBay window's file browser: the tree, its boxes, a folder's files, favorites (0.22.1)", "[mediabay][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    MediaFolder folder;
+    const auto kicks = folder.root.getChildFile ("Kicks");
+    Studio studio (false);
+    studio.getMediaBay().addLocation (folder.root);
+    studio.getMediaBay().scanNow();
+    MediaBayPage page (studio);
+    page.setAutoPlay (false);
+    page.resetFilters();
+    REQUIRE (page.getNumResults() == 5);
+
+    // The tree: the scanned folder (under SCANNED FOLDERS), opened: its subfolder.
+    CHECK (page.revealFolder (folder.root));
+    CHECK (page.getFolderChildren (folder.root) == juce::StringArray { "Kicks" });
+    CHECK (page.revealFolder (kicks));
+    CHECK_FALSE (page.revealFolder (juce::File ("/no/such/folder/here")));
+
+    // A click on a folder: its files (with SUBFOLDERS, its subfolders' too).
+    page.selectFolder (kicks);
+    CHECK (page.getNumResults() == 1);
+    page.selectFolder (folder.root);
+    CHECK (page.getNumResults() == 5);
+    page.setSubfolders (false);
+    CHECK (page.getNumResults() == 4);
+    page.setSubfolders (true);
+
+    // Its box: left out, its files go; the status says so when it's the one chosen.
+    page.setFolderScanned (kicks, false);
+    CHECK (page.getNumResults() == 4);
+    page.selectFolder (kicks);
+    CHECK (page.getNumResults() == 0);
+    CHECK (page.getStatusText().contains ("ISN'T SCANNED"));
+    page.setFolderScanned (kicks, true);
+    studio.getMediaBay().scanNow();
+    page.refresh();
+    CHECK (page.getNumResults() == 1);
+    page.selectFolder ({});
+    CHECK (page.getNumResults() == 5);
+
+    // A favorite (the Media rack's list too), scanned if it wasn't.
+    CHECK (page.addFavorite (kicks));
+    CHECK_FALSE (page.addFavorite (kicks));
+    CHECK (page.getFavorites() == juce::StringArray { kicks.getFullPathName() });
+
+    // ADD FOLDER... (as the chooser's answer): a folder of its own, chosen.
+    page.removeSelectedLocation();   // (none chosen: nothing)
+    CHECK (studio.getMediaBay().getLocations().size() == 1);
+}

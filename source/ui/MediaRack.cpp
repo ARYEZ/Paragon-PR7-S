@@ -328,11 +328,11 @@ bool MediaRack::addFavorite (const juce::File& folder)
     favorites.add (folder.getFullPathName());
     saveSettings();
     // (The manual: a favorite's files go into the MediaBay's database.)
-    bool covered = false;
-    for (const auto& location : database.getLocations())
-        covered = covered || folder == juce::File (location) || folder.isAChildOf (juce::File (location));
-    if (! covered && database.addLocation (folder))
+    if (! database.isIncluded (folder))
+    {
+        database.setIncluded (folder, true);
         database.rescan();
+    }
     rebuild();
     return true;
 }
@@ -1062,6 +1062,17 @@ void MediaRack::timerCallback()
 {
     if (database.takeScanResults())
         rebuild();
+    // Favorites added in the MediaBay window's file browser (0.22.1) show here too.
+    if (auto* settings = studio.getSettings(); settings != nullptr && ++favoritesCheck % 20 == 0)
+    {
+        auto saved = juce::StringArray::fromLines (settings->getValue ("mediaRackFavorites"));
+        saved.removeEmptyStrings();
+        if (saved != favorites)
+        {
+            favorites = saved;
+            rebuild();
+        }
+    }
     const auto playing = studio.isMediaPreviewing();
     if ((playKey.getButtonText() == "STOP") != playing)
         refreshKeys();

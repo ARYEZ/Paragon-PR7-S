@@ -759,8 +759,12 @@ TEST_CASE ("Snapshot: the MediaBay window", "[.][snapshot-mediabay]")
         page.resetFilters();
         page.setAutoPlay (false);
         page.sortBy (pr7s::MediaColumn::rating, false);
+        // The file browser (0.22.1): the library open, Bass left out (its box empty, the library's a square).
+        page.getFolderChildren (root);
+        page.setFolderScanned (root.getChildFile ("Bass"), false);
         page.clickFilterValue (2, "Metal", false);
         page.selectRow (1);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (60);   // (the tree lays out its rows on the message loop)
         page.play();
         studio.setMediaPreviewLevel (0.0f);   // (silent: only the playhead moves)
         juce::AudioBuffer<float> out (2, 44100);
