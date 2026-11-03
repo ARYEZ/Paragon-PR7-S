@@ -3,6 +3,7 @@
 #include "MidiImport.h"
 
 #include <algorithm>
+#include <cstring>
 #include <random>
 
 namespace pr7s
@@ -402,7 +403,7 @@ namespace pr7s
                 if (size <= 0 || size > 4 * 1024 * 1024)
                     return {};
                 juce::MemoryBlock block;
-                in.readIntoMemoryBlock (block, (ssize_t) size);
+                in.readIntoMemoryBlock (block, (juce::pointer_sized_int) size);   // (not ssize_t: Windows has none)
                 return block.toString();
             }
             if (! in.setPosition (next))

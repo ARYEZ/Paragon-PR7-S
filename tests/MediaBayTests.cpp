@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstring>
+
 #include "engine/MediaBay.h"
 #include "engine/Studio.h"
 #include "ui/Finish.h"
