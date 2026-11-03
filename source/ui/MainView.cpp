@@ -343,8 +343,15 @@ MainView::MainView (pr7s::Studio& studioToUse)
     trackList.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
     timeline.onScrollOrZoom = [this]
     {
-        trackList.resized();
-        trackList.repaint();
+        // (0.34.1) The track list follows only the vertical: a sideways scroll (Stationary Cursor
+        // moves the view every frame while playing) left it laid out and drawn again 30 times a second.
+        if (timeline.scrollY != trackListScrollY || ! juce::approximatelyEqual (timeline.rowZoom, trackListRowZoom))
+        {
+            trackListScrollY = timeline.scrollY;
+            trackListRowZoom = timeline.rowZoom;
+            trackList.resized();
+            trackList.repaint();
+        }
         arrange.repaint();
         refreshScrollBars();
     };

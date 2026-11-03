@@ -816,6 +816,9 @@ namespace pr7s
 
     void Engine::render (juce::AudioBuffer<float>& output, int numSamples, const juce::AudioBuffer<float>* input)
     {
+        // (0.34.1) Numbers too small to hear (under about -760 dB) count as 0: a decaying tail or a
+        // filter going quiet otherwise costs the processor many times over. Only this thread, only now.
+        const juce::ScopedNoDenormals noDenormals;
         // Larger than the device promised: in pieces.
         blockInputs = input != nullptr ? input->getArrayOfReadPointers() : nullptr;
         blockNumInputs = input != nullptr ? input->getNumChannels() : 0;
@@ -1414,6 +1417,7 @@ namespace pr7s
                                                    int numOutputChannels, int numSamples, const juce::AudioIODeviceCallbackContext&)
     {
         SessionLog::markAudioThread();   // (a crash here says so in the session log)
+        const juce::ScopedNoDenormals noDenormals;   // (0.34.1: as in render)
         const auto started = juce::Time::getHighResolutionTicks();
         // The studio renders stereo; the device's first two outputs get it.
         blockInputs = inputChannelData;

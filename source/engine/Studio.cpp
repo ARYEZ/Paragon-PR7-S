@@ -151,7 +151,7 @@ namespace pr7s
         // A new sample rate: the recordings are loaded again at it.
         if (! juce::approximatelyEqual (audioCacheRate, engine.getSampleRate()) && exportJob == nullptr)
         {
-            audioCache.clear();
+            forgetAllAudio();
             engine.update (project);
         }
         if (settings == nullptr)
@@ -222,16 +222,35 @@ namespace pr7s
 
     void Studio::recordUndoState()
     {
-        // A copy without the instruments' settings (they aren't undone, and can be large).
-        auto state = project;
-        for (auto& track : state.tracks)
+        // A copy without the plug-ins' settings (they aren't undone, and can be several MB each:
+        // since 0.34.1 they're moved out of the song while it's copied, not copied and thrown away),
+        // nor what undo never puts back (the drum maps, the hand-edited hitpoints).
+        std::vector<juce::MemoryBlock> keptStates;
+        const auto takeOut = [&keptStates] (juce::MemoryBlock& state) { keptStates.push_back (std::move (state)); state.reset(); };
+        for (auto& track : project.tracks)
         {
-            track.instrument.state.reset();
+            takeOut (track.instrument.state);
             for (auto& insert : track.inserts)
-                insert.state.reset();
+                takeOut (insert.state);
         }
-        for (auto& insert : state.masterInserts)
-            insert.state.reset();
+        for (auto& insert : project.masterInserts)
+            takeOut (insert.state);
+        auto drumMaps = std::move (project.drumMaps);
+        auto hitpointEdits = std::move (project.hitpointEdits);
+        project.drumMaps.clear();
+        project.hitpointEdits.clear();
+        auto state = project;
+        project.drumMaps = std::move (drumMaps);
+        project.hitpointEdits = std::move (hitpointEdits);
+        auto next = keptStates.begin();
+        for (auto& track : project.tracks)
+        {
+            track.instrument.state = std::move (*next++);
+            for (auto& insert : track.inserts)
+                insert.state = std::move (*next++);
+        }
+        for (auto& insert : project.masterInserts)
+            insert.state = std::move (*next++);
         undoStates.resize ((size_t) (undoIndex + 1));
         undoStates.push_back (std::move (state));
         if ((int) undoStates.size() > maxUndoSteps)
@@ -982,7 +1001,7 @@ namespace pr7s
             return false;
         track = project.findTrack (trackId);
         const auto name = "Freeze/" + file.getFileName();
-        audioCache.erase (name);
+        forgetAudio (name);
         unloadPlugins (*track);
         track->frozen = true;
         track->freezeFile = name;
@@ -1003,7 +1022,7 @@ namespace pr7s
         loadPlugins (*track);
         if (deleteFile)
         {
-            audioCache.erase (track->freezeFile);
+            forgetAudio (track->freezeFile);
             getAudioFolder().getChildFile (track->freezeFile).deleteFile();
         }
         track->freezeFile = {};
@@ -2277,7 +2296,7 @@ namespace pr7s
         const auto rate = engine.getSampleRate();
         if (! juce::approximatelyEqual (audioCacheRate, rate))
         {
-            audioCache.clear();
+            forgetAllAudio();
             audioCacheRate = rate;
         }
         if (auto found = audioCache.find (name); found != audioCache.end())
@@ -4923,7 +4942,7 @@ namespace pr7s
         audioWriter.reset();
         const auto startSample = engine.getAudioRecordStart();
         const auto name = audioRecording.getFileName();
-        audioCache.erase (name);
+        forgetAudio (name);
         auto data = startSample >= 0 ? getAudio (name) : nullptr;
         if (data == nullptr || data->sound.getNumSamples() == 0)
         {
@@ -5336,16 +5355,19 @@ namespace pr7s
 
     std::vector<double> Studio::getHitpoints (const juce::String& recording)
     {
+        // (0.34.1) Kept with the recording they came from: a file of the same name in another song,
+        // or written again, is found afresh.
+        const auto data = getAudio (recording);
         auto found = hitpointCache.find (recording);
-        if (found == hitpointCache.end())
+        if (found == hitpointCache.end() || found->second.first != data)
         {
             std::vector<Hitpoint> all;
-            if (const auto data = getAudio (recording))
+            if (data != nullptr)
                 all = detectHitpoints (data->sound, data->sampleRate);
-            found = hitpointCache.emplace (recording, std::move (all)).first;
+            found = hitpointCache.insert_or_assign (recording, std::pair { data, std::move (all) }).first;
         }
         const auto edits = project.hitpointEdits.find (recording);
-        return filterHitpoints (found->second, project.hitpointSettings.threshold, project.hitpointSettings.minimumSeconds,
+        return filterHitpoints (found->second.second, project.hitpointSettings.threshold, project.hitpointSettings.minimumSeconds,
                                 edits != project.hitpointEdits.end() ? &edits->second : nullptr);
     }
 
@@ -5599,7 +5621,7 @@ namespace pr7s
                     continue;
                 }
                 writer.reset();
-                audioCache.erase (flattened.getFileName());
+                forgetAudio (flattened.getFileName());
                 part.audioFile = flattened.getFileName();
                 part.audioOffset = 0.0;
                 part.warp.clear();
@@ -5913,7 +5935,7 @@ namespace pr7s
                 return 0;
             }
             writer.reset();
-            audioCache.erase (bounceFile.getFileName());
+            forgetAudio (bounceFile.getFileName());
             bounced.audioFile = bounceFile.getFileName();
             bounced.name = track->name + " bounce";
         }
@@ -6262,7 +6284,7 @@ namespace pr7s
         if (onInstrumentGoing)
             onInstrumentGoing (0);
         removeAllEffects();
-        audioCache.clear();
+        forgetAllAudio();
         engine.stop();
         for (const auto& track : project.tracks)
             engine.removeTrack (track.id);
@@ -6450,7 +6472,7 @@ namespace pr7s
         // (they stayed in the template's folder, and the song never found them again).
         if (! copyAudioFiles (templateAudio, unsavedAudioFolder))
             problems << "Some of the template's recordings couldn't be copied.\n";
-        audioCache.clear();
+        forgetAllAudio();
         engine.update (project);
         modified = false;
         sendChangeMessage();
@@ -7015,7 +7037,7 @@ namespace pr7s
                     problems.add (name + ": " + problem);
                     continue;
                 }
-                audioCache.erase (file.getFileName());
+                forgetAudio (file.getFileName());
                 const auto data = getAudio (file.getFileName());
                 if (data == nullptr)
                 {
@@ -7218,7 +7240,7 @@ namespace pr7s
         padsChanged();
 
         file = source;
-        audioCache.clear();
+        forgetAllAudio();
         juce::StringArray missing;
         // Each plug-in loaded is a step of the progress box (0.11.1: Kontakt and its kind take a while).
         auto toLoad = 0, nowLoading = 0;
@@ -8584,5 +8606,28 @@ namespace pr7s
             slice->copyFrom (c, 0, data->sound, c, from, to - from);
         engine.setPreviewSync (false, 0.0, 0.0);
         engine.setPreview (slice, loop);
+    }
+
+    void Studio::forgetAudio (const juce::String& name)
+    {
+        // (0.34.1) A recording gone or written again: everything made from it goes with it.
+        audioCache.erase (name);
+        hitpointCache.erase (name);
+        pitchCache.erase (name);
+        heardCache.erase (name);
+        warpedVariSignatures.erase (name);
+        warpRenderer.clear();
+    }
+
+    void Studio::forgetAllAudio()
+    {
+        // (0.34.1) A new song or sample rate: every recording and what was made from them (they
+        // stayed until the studio closed, the pitch and heard copies holding whole recordings).
+        audioCache.clear();
+        hitpointCache.clear();
+        pitchCache.clear();
+        heardCache.clear();
+        warpedVariSignatures.clear();
+        warpRenderer.clear();
     }
 }

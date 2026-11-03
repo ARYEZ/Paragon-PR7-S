@@ -382,9 +382,16 @@ namespace pr7s
             pieces.clear();
             samplesKept = 0;
         }
-        if (whole.size() > 64)
+        // (0.34.1) The whole clips too, by size: each marker drag or tempo edit makes a new one, and
+        // 64 three-minute clips were 4 GB. Every sound kept is counted, both sides.
+        const auto outSamples = (juce::int64) out->getNumSamples() * out->getNumChannels();
+        if (whole.size() >= 64 || wholeSamplesKept + outSamples > 100'000'000)
+        {
             whole.clear();
+            wholeSamplesKept = 0;
+        }
         whole[key] = out;
+        wholeSamplesKept += outSamples;
         return out;
     }
 }

@@ -127,20 +127,25 @@ namespace pr7s
         }
     }
 
-    std::optional<float> AutomationLane::valueAt (double beat) const noexcept
+    float AutomationLane::valueOf (const std::vector<AutomationPoint>& points, double beat, bool step) noexcept
     {
-        if (points.empty())
-            return std::nullopt;
         // The first point after the beat (the last of several at one beat wins before it).
         const auto next = std::upper_bound (points.begin(), points.end(), beat, [] (double b, const AutomationPoint& p) { return b < p.beat; });
         if (next == points.begin())
             return points.front().value;
         const auto& before = *std::prev (next);
-        if (next == points.end() || isStep())
+        if (next == points.end() || step)
             return before.value;
         const auto span = next->beat - before.beat;
         const auto along = span > 0.0 ? (float) ((beat - before.beat) / span) : 1.0f;
         return before.value + (next->value - before.value) * curveShape (along, next->curve);
+    }
+
+    std::optional<float> AutomationLane::valueAt (double beat) const noexcept
+    {
+        if (points.empty())
+            return std::nullopt;
+        return valueOf (points, beat, isStep());
     }
 
     std::optional<float> AutomationLane::valueAt (double beat, bool virginTerritory) const noexcept
@@ -168,9 +173,8 @@ namespace pr7s
     {
         if (trim.empty())
             return 0.0f;
-        AutomationLane t;
-        t.points = trim;
-        return (*t.valueAt (beat) - 0.5f) * 2.0f * trimRange;
+        // (0.34.1: read in place. It made a lane copying the points: an allocation on the audio thread.)
+        return (valueOf (trim, beat, false) - 0.5f) * 2.0f * trimRange;
     }
 
     std::optional<float> AutomationLane::playedAt (double beat, bool virginTerritory) const noexcept

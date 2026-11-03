@@ -264,6 +264,8 @@ private:
     int saveFlashes = 0;
     std::unique_ptr<ProgressBox> progressBox;   // a long job's progress (0.11.1)
     std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow, drumMapWindow, automationWindow, alignmentWindow, variAudioWindow;
+    int trackListScrollY = 0;          // (0.34.1) what the track list was last laid out for
+    double trackListRowZoom = 1.0;
     std::unique_ptr<LinesWindow> linesWindow;
     std::unique_ptr<MediaBayWindow> mediaBayWindow;
     std::unique_ptr<MediaRack> mediaRack;

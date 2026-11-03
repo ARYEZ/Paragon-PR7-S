@@ -2,6 +2,21 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.34.1
+
+Running better, part one: the safe fixes from a review of the whole studio for speed (you asked for one before VariAudio part two). Nothing you hear or see changes. These remove wasted work, one possible cause of clicks, and memory that kept growing.
+
+- **No more memory allocation while audio plays when Trim is on.** Reading a trimmed automation curve made a temporary copy of the trim's points, many times per audio block. Asking for memory on the audio thread can make it wait, and that is a classic cause of clicks and dropouts. It now reads the curve in place: the same numbers, worked out the same way, with no copy.
+- **Quiet tails no longer cost extra processor time.** When a reverb tail, a fade or a filter decays towards silence, the numbers get so tiny (below about -760 dB) that a processor slows down working on them, often 10 to 100 times. That's the "CPU spikes when the song goes quiet or stops" effect. The studio now treats them as zero, as nearly every DAW does, while playing, rendering and stretching. It covers our own processing and any plug-in that relies on the host for it. Nothing that small can be heard.
+- **Undo steps no longer copy every plug-in's settings.** Each undo step copied the whole song, every plug-in's saved settings included, then threw those settings away (undo never used them). After opening or saving a song, that could be tens of MB per edit with Kontakt or Superior Drummer. Now the settings are set aside while the copy is made. The drum maps and hand-edited hitpoints are left out of the copy too, because undo never put them back either.
+- **Memory is freed when you change song.** The hitpoint, VariAudio pitch and edited-sound stores were never emptied. Every recording ever analysed stayed in memory, two copies of it, until you quit. They're now emptied with the recordings whenever a song is opened or created, the sample rate changes, or a recording is written again.
+  - **This also fixes a bug:** hitpoints were stored by file name only, so a second song with a "Guitar 01.wav" of its own could show the first song's hitpoints.
+- **The warped clips' store has a size limit.** Each marker drag or tempo change made a new copy of a whole warped clip, up to 64 of them (about 4 GB of three-minute clips). It's now limited by size, about 400 MB, like the stretches it's made from. Anything dropped is simply made again when it's needed.
+- **The track list doesn't redraw on sideways scrolls.** With Auto-Scroll on Stationary Cursor, the arrangement scrolls every frame while playing. The track list was laid out and drawn again 30 times a second each time, although it only follows up and down scrolling.
+- **Honestly:** I can't measure the gains on your PC from here. How much they help depends on your songs: Trim, plug-ins with long tails, how long you work in one session, and warped clips.
+  - Tested: the trim values come out identical to the last digit, undo still works with a song holding 1 MB of plug-in settings (kept untouched), a same-named recording in a new song finds its own hitpoints, and the warp store counts what it holds. All 291 tests pass.
+- **Next, 0.34.2:** the bigger changes from the review. Moving a fader will stop rebuilding the whole song's playback, audio clips will mix faster, and automation will be read more cheaply, each proven to give the same output sample for sample.
+
 ## 0.34.0
 
 VariAudio, part one: the third of the four. It's pitch editing for a sung (or any one-note-at-a-time) recording. You can tune a flat note, take the wobble out of a held one, move a note to another pitch, or snap a whole line onto the song's scale. Part two (0.35.0) adds splitting and gluing segments, formants, tilting curves, timing per note and MIDI from the voice.

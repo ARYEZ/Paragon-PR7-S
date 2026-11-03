@@ -1045,7 +1045,9 @@ namespace pr7s
         void finishRecording();
         void finishAudioRecording();
         bool auditioning = false;   // (0.30.0) the engine plays a soloed copy
-        std::map<juce::String, std::vector<Hitpoint>> hitpointCache;   // (0.32.0) every candidate, by recording
+        std::map<juce::String, std::pair<std::shared_ptr<const AudioData>, std::vector<Hitpoint>>> hitpointCache;   // (0.32.0) every candidate, by recording and the data they came from
+        void forgetAudio (const juce::String& name);   // (0.34.1) a recording and everything made from it
+        void forgetAllAudio();
         WarpRenderer warpRenderer;
         // (0.34.0) VariAudio: each recording's pitch, and its sound as edited (by what was edited).
         juce::String variSignature (const juce::String& file) const;

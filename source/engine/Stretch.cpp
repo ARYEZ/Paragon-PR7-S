@@ -13,6 +13,7 @@ namespace pr7s
         output.clear();
         if (outputLength <= 0 || input.getNumSamples() <= 0)
             return output;
+        const juce::ScopedNoDenormals noDenormals;   // (0.34.1)
         signalsmith::stretch::SignalsmithStretch<float> stretch;
         stretch.presetDefault (channels, (float) sampleRate);
         stretch.setTransposeSemitones ((float) semitones);
@@ -37,6 +38,7 @@ namespace pr7s
         output.clear();
         if (length <= 0 || input.getNumChannels() == 0)
             return output;
+        const juce::ScopedNoDenormals noDenormals;   // (0.34.1)
         signalsmith::stretch::SignalsmithStretch<float> stretch;
         stretch.presetDefault (channels, (float) sampleRate);
         stretch.setFormantFactor (1.0f, true);

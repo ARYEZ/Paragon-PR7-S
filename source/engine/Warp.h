@@ -56,11 +56,12 @@ namespace pr7s
     public:
         std::shared_ptr<const juce::AudioBuffer<float>> render (const Part&, const juce::AudioBuffer<float>& recording,
                                                                 double sampleRate, const TempoMap&);
-        void clear() { pieces.clear(); whole.clear(); }
+        void clear() { pieces.clear(); whole.clear(); samplesKept = 0; wholeSamplesKept = 0; }
+        juce::int64 wholeSamplesHeld() const noexcept { return wholeSamplesKept; }
         size_t piecesKept() const noexcept { return pieces.size(); }
 
     private:
         std::map<juce::String, std::shared_ptr<const juce::AudioBuffer<float>>> pieces, whole;
-        juce::int64 samplesKept = 0;
+        juce::int64 samplesKept = 0, wholeSamplesKept = 0;
     };
 }

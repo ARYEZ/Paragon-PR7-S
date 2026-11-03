@@ -160,6 +160,8 @@ namespace pr7s
         // What plays: the value with the trim curve on top (volume and sends).
         std::optional<float> playedAt (double beat, bool virginTerritory) const noexcept;
         static float trimDb (const std::vector<AutomationPoint>& trim, double beat) noexcept;   // 0 without points
+        // A ramped (or stepped) curve's value at a beat, read in place (points not empty).
+        static float valueOf (const std::vector<AutomationPoint>& points, double beat, bool step) noexcept;
         // A ramp's shape (0.27.0): `along` (0 to 1) bent by `curve`: along ^ 4^-curve.
         static float curveShape (float along, float curve) noexcept;
         bool operator== (const AutomationLane&) const = default;
