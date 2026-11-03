@@ -5,6 +5,7 @@
 #include "ui/ChordUi.h"
 #include "ui/Finish.h"
 #include "ui/ToolIcons.h"
+#include "engine/Warp.h"
 #include "ui/ParagonLookAndFeel.h"
 
 namespace
@@ -812,6 +813,17 @@ void ArrangeView::paint (juce::Graphics& g)
                         area.withTrimmedTop (16.0f).reduced (6.0f, 2.0f), juce::Justification::topRight, false);
         }
 
+    // (0.32.0) WARP: the marker being dragged, where it'll go.
+    if (drag == Drag::warpMarker && dragMoved)
+        if (const auto at = studio.findPart (warpPartId))
+        {
+            const auto& p = project.findTrack (at->first)->parts[(size_t) at->second];
+            const auto area = getPartBounds (at->first, at->second);
+            const auto x = timeline.xForBeat (p.start + warpTo);
+            g.setColour (ParagonColours::accent);
+            g.fillRect (juce::Rectangle<float> (x - 1.0f, area.getY(), 2.0f, area.getHeight()));
+        }
+
     // The Comp tool's stretch on its lane (0.29.0).
     if (drag == Drag::comp && dragMoved && compTo > compFrom)
     {
@@ -1031,7 +1043,13 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
             // (Each pixel's seconds by the tempo map: with the tempo track, a pixel isn't always as long.)
             const auto tempo = studio.getProject().tempoMap();
             const auto startSeconds = tempo.secondsAt (part.start);
-            const auto secondsAtX = [&] (float x) { return part.audioOffset + tempo.secondsAt (part.start + (x - area.getX()) / timeline.pixelsPerBeat) - startSeconds; };
+            const auto secondsAtX = [&] (float x)
+            {
+                // (0.32.0) A warped clip: where its markers put the recording.
+                const auto beat = (x - area.getX()) / timeline.pixelsPerBeat;
+                return part.isWarped() ? pr7s::warpSecondsAt (part, beat, tempo)
+                                       : part.audioOffset + tempo.secondsAt (part.start + beat) - startSeconds;
+            };
             const auto peaksPerSecond = data->sampleRate / pr7s::Studio::AudioData::peakStep;
             const auto clip = wave.getIntersection (getLocalBounds().toFloat()).getIntersection (g.getClipBounds().toFloat().expanded (1.0f));
             g.setColour (colour.brighter (0.7f).withAlpha (0.9f));
@@ -1076,6 +1094,50 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
         g.setColour (juce::Colours::white);
         for (const auto in : { true, false })
             g.fillRect (fadeHandle (area, part, in));
+
+        // (0.32.0) The selected clip's hitpoints (the manual: "shown for the selected event, provided
+        // that the zoom factor is high enough"): thin pearl lines, a small triangle at their top.
+        if ((selected || tool == Tool::warp) && part.id != 0)
+        {
+            const auto hits = studio.getPartHitpoints (part.id);
+            auto roomy = true;
+            for (size_t i = 1; i < hits.size(); ++i)
+                roomy = roomy && (hits[i] - hits[i - 1]) * timeline.pixelsPerBeat >= hitpointRoom;
+            if (roomy)
+                for (const auto beat : hits)
+                {
+                    const auto x = area.getX() + (float) (beat * timeline.pixelsPerBeat);
+                    g.setColour (juce::Colour (0xfff4eeea).withAlpha (0.35f));
+                    g.fillRect (juce::Rectangle<float> (x, wave.getY(), 1.0f, wave.getHeight()));
+                    juce::Path tip;
+                    tip.addTriangle (x - 3.0f, wave.getY(), x + 3.0f, wave.getY(), x, wave.getY() + 4.0f);
+                    g.setColour (juce::Colour (0xfff4eeea).withAlpha (0.7f));
+                    g.fillPath (tip);
+                }
+        }
+        // Its warp markers: an orange line, a handle at the top, and how much the audio before it is stretched.
+        if (part.isWarped())
+        {
+            const auto factors = pr7s::warpFactors (part, studio.getProject().tempoMap());
+            for (size_t k = 1; k + 1 < part.warp.size(); ++k)
+            {
+                const auto x = area.getX() + (float) (part.warp[k].beat * timeline.pixelsPerBeat);
+                g.setColour (ParagonColours::accent);
+                g.fillRect (juce::Rectangle<float> (x - 0.75f, wave.getY(), 1.5f, wave.getHeight()));
+                g.fillRect (juce::Rectangle<float> (x - 4.0f, wave.getY(), 8.0f, 6.0f));
+                // (Only where it's stretched or squeezed, and where the label has room before it.)
+                const auto room = (part.warp[k].beat - part.warp[k - 1].beat) * timeline.pixelsPerBeat;
+                if (area.getHeight() > 34.0f && room > 36.0 && std::abs (factors[k] - 1.0) > 0.005)
+                {
+                    g.setFont (font (10.0f));
+                    g.drawText (juce::String (factors[k], 2), juce::Rectangle<float> (x - 34.0f, wave.getY() + 7.0f, 31.0f, 12.0f),
+                                juce::Justification::centredRight, false);
+                }
+            }
+            g.setColour (ParagonColours::accent.withAlpha (0.8f));
+            g.setFont (font (10.0f));
+            g.drawText ("WARP", area.withTrimmedTop (1.0f).withHeight (13.0f).reduced (5.0f, 0.0f), juce::Justification::centredRight, false);
+        }
     }
 
     // Its notes, scaled to the part's range of pitches.
@@ -1476,6 +1538,11 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
         compDrag (event);
         return;
     }
+    if (drag == Drag::warpMarker)
+    {
+        warpDrag (event);
+        return;
+    }
     if (drag == Drag::newPart || drag == Drag::muteBand || drag == Drag::zoomBand)
     {
         if (event.getDistanceFromDragStart() > 3)
@@ -1622,6 +1689,7 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
         case Drag::takeEdge:
         case Drag::slip:
         case Drag::audition:
+        case Drag::warpMarker:
         case Drag::none:
             break;
     }
@@ -1648,6 +1716,11 @@ void ArrangeView::mouseUp (const juce::MouseEvent& event)
     if (drag == Drag::comp || drag == Drag::takeEdge || drag == Drag::slip || drag == Drag::audition)
     {
         compUp();
+        return;
+    }
+    if (drag == Drag::warpMarker)
+    {
+        warpUp();
         return;
     }
     if (drag == Drag::newPart || drag == Drag::muteBand || drag == Drag::zoomBand || drag == Drag::play)
@@ -1754,6 +1827,7 @@ void ArrangeView::mouseUp (const juce::MouseEvent& event)
         case Drag::takeEdge:
         case Drag::slip:
         case Drag::audition:
+        case Drag::warpMarker:
         case Drag::none:
             break;
     }
@@ -1982,6 +2056,7 @@ const char* ArrangeView::toolName (Tool t)
         case Tool::line:   return "LINE";
         case Tool::play:   return "PLAY";
         case Tool::comp:   return "COMP";
+        case Tool::warp:   return "WARP";
     }
     return "";
 }
@@ -2001,6 +2076,7 @@ int ArrangeView::toolKey (Tool t)
         case Tool::line:   return 0;   // (no number key: the manual gives it none)
         case Tool::play:   return 9;
         case Tool::comp:   return 0;   // (no number key: the manual gives it none)
+        case Tool::warp:   return 0;   // (likewise)
     }
     return 0;
 }
@@ -2123,6 +2199,8 @@ bool ArrangeView::toolDown (const juce::MouseEvent& event)
             break;   // (on the automation lanes only)
         case Tool::comp:
             return compDown (event);
+        case Tool::warp:
+            return warpDown (event);
         case Tool::play:
             // Held: plays from here; let go: stops, back where it was.
             playReturn = studio.getEngine().getPosition();
@@ -2345,6 +2423,18 @@ void ArrangeView::showPartMenu (int trackId, int index)
         menu.addItem (15, track.isAudio() ? "Bounce Selection (the takes heard, into one clip)" : "Bounce MIDI (the takes heard, into one part)");
         menu.addItem (16, "Delete Overlaps (only what's heard, on one lane)");
         menu.addItem (17, "Merge MIDI in Loop (between the locators, onto a new track)", ! track.isAudio() && studio.getProject().loopEnd > studio.getProject().loopStart);
+        if (part.isAudio())
+        {
+            // (0.32.0) Hitpoints and warping.
+            juce::PopupMenu warp;
+            warp.addItem (18, "Create Warp Markers from Hitpoints");
+            warp.addItem (22, "Quantize (Q: to the quantize value)");
+            warp.addItem (19, "Reset Warp (its own speed again)", part.isWarped());
+            warp.addItem (20, "Flatten (written as it sounds: a new file, the markers gone)", part.isWarped());
+            warp.addSeparator();
+            warp.addItem (21, "Hitpoint Settings...");
+            menu.addSubMenu ("Hitpoints and Warp", warp);
+        }
     }
     menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, index, ids, muted = part.muted, start = part.start, end = part.end(), partId = part.id] (int chosen)
     {
@@ -2375,6 +2465,26 @@ void ArrangeView::showPartMenu (int trackId, int index)
             juce::String error;
             if (studio.bounceTakes (chosenIds, error) == 0 && error.isNotEmpty())
                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Not bounced", error);
+            return;
+        }
+        if (chosen >= 18 && chosen <= 22)
+        {
+            const auto chosenIds = ids.empty() ? std::vector<int> { partId } : ids;
+            if (chosen == 18)
+                studio.createWarpFromHitpoints (chosenIds);
+            else if (chosen == 19)
+                studio.resetWarp (chosenIds);
+            else if (chosen == 20)
+            {
+                juce::String error;
+                studio.flattenWarp (chosenIds, error);
+                if (error.isNotEmpty())
+                    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Not flattened", error);
+            }
+            else if (chosen == 21)
+                showHitpointSettings (this);
+            else
+                studio.quantizeAudio (chosenIds, studio.getProject().quantizeBeats);
             return;
         }
         if (chosen == 17)
@@ -3133,6 +3243,8 @@ ArrangeTools::ArrangeTools (ArrangeView& arrangeToUse) : arrange (arrangeToUse)
         "MUTE (7): click a part to mute or unmute it (muted parts aren't played); drag a rectangle over several",
         "DRAW (8): drag on an instrument track to draw a new, empty part; on an automation lane, draw points",
         "LINE: drag on an automation lane for a line of points; click LINE again for its shapes (Line, Parabola, Sine, Triangle, Square)",
+        "WARP (Free Warp): on an audio clip, click where a beat is (it catches the hitpoint nearby; Ctrl: exactly there) and drag it where it belongs: "
+        "the audio either side is stretched. Drag a marker to move it; a modifier key and click removes it. Alt-click adds a hitpoint, Shift-click one removes it",
         "PLAY (9): hold the mouse down on the tracks to play from there; let go to stop" };
     for (size_t i = 0; i < buttons.size(); ++i)
     {
@@ -4332,4 +4444,168 @@ void ArrangeView::showScaleMenu (double beat)
             scales.push_back ({ 0.0, studio.chordTrackKeyAt (0.0) });
         studio.setScaleEvents (scales);
     });
+}
+
+//==============================================================================
+// WARP (0.32.0, the manual's Free Warp: "click, and hold. A warp marker is inserted. Drag the warp
+// marker to the new position"; it snaps to hitpoints, Ctrl not; any modifier key and a click on a
+// marker removes it). Alt-click adds a hitpoint there, Shift-click one disables it (the manual's
+// Edit Hitpoints, which we keep in the arrangement: there's no Sample Editor).
+int ArrangeView::warpMarkerAt (int trackId, int index, juce::Point<float> point) const
+{
+    const auto* track = studio.getProject().findTrack (trackId);
+    if (track == nullptr || ! juce::isPositiveAndBelow (index, (int) track->parts.size()))
+        return -1;
+    const auto& part = track->parts[(size_t) index];
+    const auto area = getPartBounds (trackId, index);
+    for (int k = 1; k + 1 < (int) part.warp.size(); ++k)
+        if (std::abs (area.getX() + (float) (part.warp[(size_t) k].beat * timeline.pixelsPerBeat) - point.x) <= 5.0f)
+            return k;
+    return -1;
+}
+
+bool ArrangeView::warpDown (const juce::MouseEvent& event)
+{
+    const auto hit = partAt (event.position);
+    if (! hit)
+        return false;
+    const auto* track = studio.getProject().findTrack (hit->first);
+    const auto& part = track->parts[(size_t) hit->second];
+    if (! part.isAudio() || track->frozen)
+        return false;
+    select (hit->first, hit->second);
+    const auto area = getPartBounds (hit->first, hit->second);
+    const auto beat = (event.position.x - area.getX()) / timeline.pixelsPerBeat;
+    const auto tempo = studio.getProject().tempoMap();
+    drag = Drag::none;
+    const auto marker = warpMarkerAt (hit->first, hit->second, event.position);
+    const auto anyModifier = event.mods.isAltDown() || event.mods.isShiftDown() || event.mods.isCommandDown();
+    if (marker > 0 && anyModifier)
+    {
+        studio.removeWarpMarkers (part.id, { marker });
+        return true;
+    }
+    if (marker < 0 && event.mods.isAltDown())
+    {
+        studio.addHitpoint (part.audioFile, pr7s::warpSecondsAt (part, beat, tempo));
+        return true;
+    }
+    const auto hits = studio.getPartHitpoints (part.id);
+    if (marker < 0 && event.mods.isShiftDown())
+    {
+        for (const auto h : hits)
+            if (std::abs ((h - beat) * timeline.pixelsPerBeat) <= 4.0)
+            {
+                studio.removeHitpoint (part.audioFile, pr7s::warpSecondsAt (part, h, tempo));
+                break;
+            }
+        return true;
+    }
+    warpPartId = part.id;
+    warpIndex = marker;
+    if (marker < 0)
+    {
+        // A new marker: at the hitpoint within 8 px (Ctrl: exactly where clicked).
+        auto at = beat;
+        auto nearest = 8.0;   // px
+        if (! event.mods.isCommandDown())
+            for (const auto h : hits)
+                if (const auto d = std::abs ((h - beat) * timeline.pixelsPerBeat); d <= nearest)
+                {
+                    nearest = d;
+                    at = h;
+                }
+        if (! studio.addWarpMarker (part.id, at))
+            return true;
+        if (const auto found = studio.findPart (part.id))
+        {
+            const auto& now = studio.getProject().findTrack (found->first)->parts[(size_t) found->second];
+            for (int k = 1; k + 1 < (int) now.warp.size(); ++k)
+                if (std::abs (now.warp[(size_t) k].beat - at) < 1.0e-6)
+                    warpIndex = k;
+        }
+        if (warpIndex < 0)
+            return true;
+    }
+    warpTo = beat;
+    drag = Drag::warpMarker;
+    return true;
+}
+
+void ArrangeView::warpDrag (const juce::MouseEvent& event)
+{
+    if (event.getDistanceFromDragStart() > 2)
+        dragMoved = true;
+    if (const auto at = studio.findPart (warpPartId))
+    {
+        const auto& part = studio.getProject().findTrack (at->first)->parts[(size_t) at->second];
+        // The grid pulls it near (the manual: "magnetic"); Ctrl: free.
+        auto beat = timeline.beatForX (event.position.x);
+        if (! event.mods.isCommandDown())
+            if (const auto grid = timeline.snapGrid (studio.getProject()); grid > 0.0)
+            {
+                const auto snapped = pr7s::snap (beat, grid);
+                if (std::abs ((snapped - beat) * timeline.pixelsPerBeat) <= 8.0)
+                    beat = snapped;
+            }
+        warpTo = beat - part.start;
+    }
+    repaint();
+}
+
+void ArrangeView::warpUp()
+{
+    drag = Drag::none;
+    if (dragMoved)
+        studio.moveWarpMarker (warpPartId, warpIndex, warpTo);
+    warpPartId = 0;
+    warpIndex = -1;
+    repaint();
+}
+
+void ArrangeView::showHitpointSettings (juce::Component* target)
+{
+    // Threshold and Minimum Length (the manual's hitpoint filters), and the hand edits put back.
+    struct Panel final : juce::Component
+    {
+        explicit Panel (pr7s::Studio& s) : studio (s)
+        {
+            for (auto* slider : { &threshold, &minimum })
+            {
+                slider->setSliderStyle (juce::Slider::LinearHorizontal);
+                slider->setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 20);
+                addAndMakeVisible (*slider);
+            }
+            threshold.setRange (0.0, 1.0, 0.01);
+            threshold.setValue (studio.getHitpointSettings().threshold, juce::dontSendNotification);
+            minimum.setRange (0.0, 500.0, 1.0);
+            minimum.setTextValueSuffix (" ms");
+            minimum.setValue (studio.getHitpointSettings().minimumSeconds * 1000.0, juce::dontSendNotification);
+            const auto apply = [this] { studio.setHitpointSettings ({ threshold.getValue(), minimum.getValue() / 1000.0 }); };
+            threshold.onValueChange = apply;
+            minimum.onValueChange = apply;
+            for (auto* label : { &thresholdLabel, &minimumLabel })
+            {
+                label->setColour (juce::Label::textColourId, ParagonColours::textDim);
+                addAndMakeVisible (*label);
+            }
+            setSize (360, 76);
+        }
+        void resized() override
+        {
+            auto area = getLocalBounds().reduced (8);
+            auto row = area.removeFromTop (28);
+            thresholdLabel.setBounds (row.removeFromLeft (110));
+            threshold.setBounds (row);
+            area.removeFromTop (4);
+            row = area.removeFromTop (28);
+            minimumLabel.setBounds (row.removeFromLeft (110));
+            minimum.setBounds (row);
+        }
+        pr7s::Studio& studio;
+        juce::Slider threshold, minimum;
+        juce::Label thresholdLabel { {}, "THRESHOLD" }, minimumLabel { {}, "MINIMUM LENGTH" };
+    };
+    auto panel = std::make_unique<Panel> (studio);
+    juce::CallOutBox::launchAsynchronously (std::move (panel), target->getScreenBounds(), nullptr);
 }

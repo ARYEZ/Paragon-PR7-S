@@ -35,6 +35,7 @@ add_executable(ParagonPR7STests
     AutomationPanelTests.cpp
     TakeTests.cpp
     RenderKeyTests.cpp
+    WarpTests.cpp
     UiTests.cpp
     PerfTests.cpp
     Snapshot.cpp)

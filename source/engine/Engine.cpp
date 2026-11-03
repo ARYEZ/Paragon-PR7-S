@@ -487,10 +487,12 @@ namespace pr7s
                     const auto stretches = heardStretches (track, i);
                     if (stretches.empty())
                         continue;
-                    auto sound = audioSource (part.audioFile);
+                    // Warped (0.32.0): its stretched sound, from the clip's start.
+                    const auto warped = part.isWarped() && warpSource;
+                    auto sound = warped ? warpSource (part, tempo) : audioSource (part.audioFile);
+                    const auto offset = warped ? (juce::int64) 0 : (juce::int64) std::llround (part.audioOffset * sampleRate);
                     for (const auto& [from, to] : stretches)
-                        p.clips.push_back ({ part.start, part.end(), sound,
-                                             (juce::int64) std::llround (part.audioOffset * sampleRate),
+                        p.clips.push_back ({ part.start, part.end(), sound, offset,
                                              part.fadeIn * sampleRate, part.fadeOut * sampleRate, from, to });
                 }
                 prepared.push_back (std::move (p));

@@ -771,7 +771,10 @@ bool MainView::handleKey (const juce::KeyPress& key)
         if (isKeyEditorOpen() && keysToEditor && keyEditor.getPart() != nullptr)
             keyEditor.quantizeSelected();
         else if (! arrange.getSelectedParts().empty())
+        {
             studio.quantizeParts (arrange.getSelectedParts(), studio.getProject().quantizeBeats);
+            studio.quantizeAudio (arrange.getSelectedParts(), studio.getProject().quantizeBeats);   // (0.32.0: audio clips too)
+        }
         else if (isKeyEditorOpen() && keyEditor.getPart() != nullptr)
             keyEditor.quantizeSelected();
         return true;
@@ -845,6 +848,16 @@ bool MainView::handleKey (const juce::KeyPress& key)
             return keyEditor.humanizeSelected();
         return studio.humanizeParts (arrange.getSelectedParts());
     }
+    // (0.32.0) Alt+N / Alt+B on an audio track: to the next / previous hitpoint (the manual's Locating to
+    // Hitpoints). On other tracks they stay the MIDI editor's random velocities.
+    if (mods.isAltDown() && ! mods.isCommandDown() && ! mods.isShiftDown() && (letter == 'N' || letter == 'B')
+        && ! (isKeyEditorOpen() && keysToEditor))
+        if (const auto* track = studio.getProject().findTrack (studio.getSelectedTrack()); track != nullptr && track->isAudio())
+        {
+            if (const auto to = studio.nextHitpoint (track->id, studio.getEngine().getPosition(), letter == 'N'))
+                studio.setPosition (*to);
+            return true;
+        }
     // Otherwise copy, cut, paste and select all are the editor's wherever the
     // last click was, so notes copied in one part paste into another just
     // selected in the arrangement.
@@ -1105,10 +1118,17 @@ void MainView::showQuantizeMenu()
         const auto beats = 4.0 / denominator;
         menu.addItem (denominator, "1/" + juce::String (denominator), true, std::abs (studio.getProject().quantizeBeats - beats) < 1.0e-9);
     }
+    // (0.32.0) The manual's AudioWarp Quantize On/Off: Q on audio clips stretches them to the grid.
+    menu.addSeparator();
+    menu.addItem (1000, "AudioWarp Quantize (Q on audio: stretched to the grid, not moved)", true, studio.isAudioWarpQuantize());
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&quantizeButton),
                         [safe = juce::Component::SafePointer<MainView> (this)] (int chosen)
                         {
-                            if (safe != nullptr && chosen > 0)
+                            if (safe == nullptr || chosen <= 0)
+                                return;
+                            if (chosen == 1000)
+                                safe->studio.setAudioWarpQuantize (! safe->studio.isAudioWarpQuantize());
+                            else
                                 safe->studio.setQuantizeBeats (4.0 / chosen);
                         });
 }

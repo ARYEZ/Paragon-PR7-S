@@ -6,6 +6,7 @@
 #include "Engine.h"
 #include "PluginHost.h"
 #include "Project.h"
+#include "Warp.h"
 #include "Lines.h"
 #include "MediaBay.h"
 
@@ -387,6 +388,36 @@ namespace pr7s
         // The part (id) heard at a beat on a track (audio: the clip in front; MIDI: the first
         // unmuted part there), 0: none.
         int frontPartAt (int trackId, double beat) const;
+
+        // Hitpoints and warping (0.32.0, the manual's Hitpoints, Free Warp, AudioWarp Quantize and Flatten
+        // Real Time Processing). Hitpoints are found in each recording once (kept while the song is open),
+        // filtered by the song's settings and the hand edits per recording.
+        std::vector<double> getHitpoints (const juce::String& file);        // seconds into the recording
+        std::vector<double> getPartHitpoints (int partId);                  // beats from the clip's start, inside it
+        const Project::HitpointSettings& getHitpointSettings() const noexcept { return project.hitpointSettings; }
+        void setHitpointSettings (const Project::HitpointSettings&);        // (not undo steps, as hand edits)
+        void addHitpoint (const juce::String& file, double seconds);        // the manual's Alt-click
+        void removeHitpoint (const juce::String& file, double seconds);     // Shift-click: disabled
+        void moveHitpoint (const juce::String& file, double from, double to);
+        void resetHitpoints (const juce::String& file);                     // the hand edits gone
+        // The next (or previous) hitpoint after `fromBeat` on a track's clips heard (Alt+N / Alt+B), a song beat.
+        std::optional<double> nextHitpoint (int trackId, double fromBeat, bool forward);
+        // Warp markers (each an undo step; frozen tracks left alone; markers keep their order, at least a
+        // 256th of a beat and 5 ms apart, inside the recording):
+        bool createWarpFromHitpoints (const std::vector<int>& partIds);     // a marker at each hitpoint
+        bool addWarpMarker (int partId, double beat);                       // where the clip is heard at `beat` now
+        bool moveWarpMarker (int partId, int index, double toBeat);         // the audio at it heard at `toBeat`
+        bool removeWarpMarkers (int partId, std::vector<int> indices);      // (not its edges)
+        void setWarpMarkers (int partId, std::vector<WarpMarker>);          // checked as above
+        void resetWarp (const std::vector<int>& partIds);                   // the manual's Reset: at its own speed again
+        // Flatten: each warped clip written as it sounds to a new 32-bit file (the original kept), its markers gone.
+        int flattenWarp (const std::vector<int>& partIds, juce::String& error);
+        // Q on audio clips (the manual's Quantizing Audio Event Starts, or with AudioWarp Quantize on, AudioWarp
+        // Quantizing: markers from the hitpoints when it has none, then to the grid). One undo step.
+        bool quantizeAudio (const std::vector<int>& partIds, double grid);
+        void setAudioWarpQuantize (bool on);
+        bool isAudioWarpQuantize() const noexcept { return project.audioWarpQuantize; }
+        std::shared_ptr<const juce::AudioBuffer<float>> getWarpedSound (const Part&, const TempoMap&);
 
         // Comping, part two (0.30.0, the manual's Assembling Operations and Assembling a Perfect Take).
         // The takes on a part's track with its start and end (stacked: what the Comp tool moves together).
@@ -969,6 +1000,10 @@ namespace pr7s
         void finishRecording();
         void finishAudioRecording();
         bool auditioning = false;   // (0.30.0) the engine plays a soloed copy
+        std::map<juce::String, std::vector<Hitpoint>> hitpointCache;   // (0.32.0) every candidate, by recording
+        WarpRenderer warpRenderer;
+        std::pair<Track*, int> findPartById (int partId);
+        bool editWarp (int partId, const std::function<bool (Part&)>&);
         double recordingLatency() const;
         void buildRecordingNotes (std::vector<Note>& notes, double partStart, double endBeat, int onlyPass = -1) const;
         // (0.29.0) New takes onto the track by the record modes: each on the first lane it

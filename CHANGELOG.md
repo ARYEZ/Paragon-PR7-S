@@ -2,6 +2,35 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.32.0
+
+Hitpoints and audio warping: the first of the four releases you asked for (then Audio Alignment, then VariAudio in two parts). This is the groundwork the others stand on, and it's useful by itself: fixing the timing inside a recording without cutting it up.
+
+- **Hitpoints** (the manual's: "musically relevant positions in audio files"): where each note, hit or consonant starts, found in every recording automatically. They're drawn on the selected audio clip when you're zoomed in far enough. Right-click a clip, **Hitpoints and Warp > Hitpoint Settings...**:
+  - **Threshold:** quieter ones dropped.
+  - **Minimum Length:** none closer together than this.
+  - **By hand, with WARP:** Alt-click adds a hitpoint, Shift-click one removes it. These edits are kept with the song for each recording.
+- **Alt+N / Alt+B** on an audio track: the playhead to the next or previous hitpoint (the manual's keys). On other tracks they stay the MIDI editor's random velocities.
+- **Warp markers and the WARP tool** (the manual's Free Warp in the arrangement):
+  - Click on an audio clip where a beat is. The marker catches the hitpoint nearby (Ctrl: exactly where you clicked).
+  - Drag it where the beat belongs: the audio before and after it is stretched or squeezed to fit, its pitch kept. The grid pulls it in when it's near (Ctrl: free).
+  - Drag a marker to move it again. Hold a modifier key and click a marker to remove it.
+  - Each marker shows how much the audio before it is stretched (over 1.00 stretched, under squeezed; plain 1.00 isn't shown).
+- **Create Warp Markers from Hitpoints** (the clip's menu): a marker at every hitpoint, ready to drag.
+- **AudioWarp Quantize** (the header's quantize menu, at the bottom): Q on an audio clip then stretches its markers to the quantize value. As the manual describes, each grid line takes the marker nearest it, and the markers in between keep their spacing. With it off, Q moves the clip's start to the grid. Q works on MIDI and audio clips selected together.
+- **Reset Warp:** the clip at its own speed again.
+- **Flatten:** the warped clip written as it sounds to a new 32-bit file, its markers gone. Your original recording is kept.
+- **Warped clips stay right when edited:** cut, trimmed, resized or comped, the audio stays where it was in the song. Bounce and Render in Place play them warped. Glue refuses warped clips (Flatten them first).
+- **Honestly:**
+  - Hitpoints are found from sudden changes in the sound, the usual method. They're best on picked guitar, drums and clear consonants, as the manual says. Smooth legato or a heavily distorted sustain may need hand edits.
+  - The stretching is done ahead of time, not while playing. Moving a marker remakes only the two stretches beside it, but a long clip with many stretched markers takes a moment the first time.
+  - Not built:
+    - the manual's Musical Mode (a clip following tempo changes by itself);
+    - the Beats filter;
+    - slices, regions, groove and MIDI notes from hitpoints;
+    - "Sizing Applies Time Stretch".
+  - Tested with recordings made in code (plucks at known times: found within 3 ms, a moved hit heard within 10 ms of where it was put, the pitch kept within 3 %), not by ear on your guitar.
+
 ## 0.31.0
 
 Render in Place as you work, Q from anywhere, and the instrument from the editors (all four asked for).

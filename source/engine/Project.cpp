@@ -474,6 +474,12 @@ namespace pr7s
                 p->setAttribute ("name", part.name);
                 if (part.muted)
                     p->setAttribute ("muted", true);
+                for (const auto& m : part.warp)
+                {
+                    auto* w = p->createNewChildElement ("Warp");
+                    w->setAttribute ("beat", m.beat);
+                    w->setAttribute ("seconds", m.seconds);
+                }
                 if (part.lane != 0)
                     p->setAttribute ("lane", part.lane);
                 if (part.order != 0)
@@ -534,6 +540,23 @@ namespace pr7s
             e->setAttribute ("revealOnWrite", a.revealOnWrite);
             e->setAttribute ("returnSeconds", a.returnSeconds);
             e->setAttribute ("reductionLevel", a.reductionLevel);
+        }
+        if (hitpointSettings != HitpointSettings {} || ! hitpointEdits.empty() || audioWarpQuantize)
+        {
+            // (0.32.0) Hitpoints: how strict, and the hand edits per recording.
+            auto* e = xml->createNewChildElement ("Hitpoints");
+            e->setAttribute ("threshold", hitpointSettings.threshold);
+            e->setAttribute ("minimumSeconds", hitpointSettings.minimumSeconds);
+            e->setAttribute ("audioWarpQuantize", audioWarpQuantize);
+            for (const auto& [file, edits] : hitpointEdits)
+            {
+                auto* f = e->createNewChildElement ("File");
+                f->setAttribute ("name", file);
+                for (const auto a : edits.added)
+                    f->createNewChildElement ("Added")->setAttribute ("seconds", a);
+                for (const auto r : edits.removed)
+                    f->createNewChildElement ("Removed")->setAttribute ("seconds", r);
+            }
         }
         if (recordModes != RecordModes {})
         {
@@ -680,6 +703,11 @@ namespace pr7s
                 part.name = p->getStringAttribute ("name");
                 part.muted = p->getBoolAttribute ("muted");
                 part.lane = juce::jlimit (0, 255, p->getIntAttribute ("lane"));
+                for (const auto* w : p->getChildWithTagNameIterator ("Warp"))
+                    part.warp.push_back ({ w->getDoubleAttribute ("beat"), juce::jmax (0.0, w->getDoubleAttribute ("seconds")) });
+                std::sort (part.warp.begin(), part.warp.end(), [] (const WarpMarker& a, const WarpMarker& b) { return a.beat < b.beat; });
+                if (part.warp.size() < 2 || p->getStringAttribute ("audioFile").isEmpty())
+                    part.warp.clear();
                 part.order = p->getIntAttribute ("order");
                 part.audioFile = p->getStringAttribute ("audioFile");
                 part.audioOffset = juce::jmax (0.0, p->getDoubleAttribute ("audioOffset"));
@@ -760,6 +788,20 @@ namespace pr7s
             project.masterAutomationOpen = master->getBoolAttribute ("automationOpen");
             project.masterRead = master->getBoolAttribute ("automationRead");
             project.masterWrite = master->getBoolAttribute ("automationWrite");
+        }
+        if (const auto* e = xml.getChildByName ("Hitpoints"))
+        {
+            project.hitpointSettings.threshold = juce::jlimit (0.0, 1.0, e->getDoubleAttribute ("threshold", 0.25));
+            project.hitpointSettings.minimumSeconds = juce::jlimit (0.0, 2.0, e->getDoubleAttribute ("minimumSeconds", 0.06));
+            project.audioWarpQuantize = e->getBoolAttribute ("audioWarpQuantize");
+            for (const auto* f : e->getChildWithTagNameIterator ("File"))
+            {
+                auto& edits = project.hitpointEdits[f->getStringAttribute ("name")];
+                for (const auto* a : f->getChildWithTagNameIterator ("Added"))
+                    edits.added.push_back (a->getDoubleAttribute ("seconds"));
+                for (const auto* r : f->getChildWithTagNameIterator ("Removed"))
+                    edits.removed.push_back (r->getDoubleAttribute ("seconds"));
+            }
         }
         if (const auto* e = xml.getChildByName ("RecordModes"))
         {

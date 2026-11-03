@@ -209,8 +209,8 @@ public:
     std::function<void()> onPartsCopied;   // (Ctrl+V then pastes parts: MainView)
 
     // The editing tools (see above).
-    enum class Tool { select, range, split, glue, erase, zoom, mute, draw, line, play, comp };
-    static constexpr Tool tools[] = { Tool::select, Tool::comp, Tool::range, Tool::split, Tool::glue, Tool::erase, Tool::zoom, Tool::mute, Tool::draw, Tool::line, Tool::play };
+    enum class Tool { select, range, split, glue, erase, zoom, mute, draw, line, play, comp, warp };
+    static constexpr Tool tools[] = { Tool::select, Tool::comp, Tool::range, Tool::split, Tool::glue, Tool::erase, Tool::zoom, Tool::mute, Tool::draw, Tool::line, Tool::warp, Tool::play };
     static const char* toolName (Tool);
     static int toolKey (Tool);   // its number key
     void setTool (Tool);
@@ -331,6 +331,11 @@ public:
     juce::Rectangle<float> compHandleBounds (int trackId, int index) const;
     bool compHandleDown (const juce::MouseEvent&);
     double getEdgeTarget() const noexcept { return edgeTo; }
+    // (0.32.0) A warp marker's handle under a point on a clip: its index (-1: none).
+    int warpMarkerAt (int trackId, int index, juce::Point<float>) const;
+    // Hitpoints are drawn on the selected audio clip when they're at least this far apart (px).
+    static constexpr float hitpointRoom = 4.0f;
+    void showHitpointSettings (juce::Component* target);
     juce::Rectangle<float> partRow (int trackId, int lane) const;   // the strip (y and height) a part on that lane is drawn in
     // A chord pad dropped on a track: a one-bar MIDI part at the bar (0.14.0, the manual's
     // Creating MIDI Parts from Chord Pads).
@@ -388,7 +393,13 @@ private:
     enum class Drag { none, position, cycle, cycleMove, cycleLeft, cycleRight, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
                       erasePoints, linePoints, pointHandle, curve, segmentScale,
                       newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove, marquee,
-                      tempoPoints, tempoBand, tempoDraw, chordMove, comp, takeEdge, slip, audition };
+                      tempoPoints, tempoBand, tempoDraw, chordMove, comp, takeEdge, slip, audition, warpMarker };
+    // WARP (0.32.0, the manual's Free Warp in the event display): the marker being dragged.
+    int warpPartId = 0, warpIndex = -1;
+    double warpTo = 0.0;
+    bool warpDown (const juce::MouseEvent&);
+    void warpDrag (const juce::MouseEvent&);
+    void warpUp();
     // The Comp tool (0.29.0): its drag across a lane of takes.
     int compTrack = 0, compLane = -1, compPartId = 0;
     double compFrom = 0.0, compTo = 0.0;

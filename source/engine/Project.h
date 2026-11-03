@@ -43,6 +43,17 @@ namespace pr7s
         bool operator== (const Controller&) const = default;
     };
 
+    // A warp marker (0.32.0, the manual's Free Warp): a moment of an audio clip's recording
+    // (`seconds` into its file) pinned to a place in the clip (`beat`, from the clip's start).
+    // Between markers the audio is stretched to fit; with any markers, the clip's first and
+    // last are at its edges (0 and its length).
+    struct WarpMarker
+    {
+        double beat = 0.0;
+        double seconds = 0.0;
+        bool operator== (const WarpMarker&) const = default;
+    };
+
     struct Part
     {
         double start = 0.0;     // beats from the song's start
@@ -64,6 +75,9 @@ namespace pr7s
         // audio track plays one clip at a time. MIDI parts all play (only muting silences them).
         int lane = 0;
         int order = 0;
+        // (0.32.0) Warp markers, sorted by beat (none: the recording plays at its own speed).
+        std::vector<WarpMarker> warp;
+        bool isWarped() const noexcept { return warp.size() >= 2; }
 
         bool isAudio() const noexcept { return audioFile.isNotEmpty(); }
         double end() const noexcept { return start + length; }
@@ -327,6 +341,22 @@ namespace pr7s
             bool operator== (const RecordModes&) const = default;
         };
         RecordModes recordModes;
+        // Hitpoints (0.32.0, the manual's Hitpoints section): found in each recording; how
+        // strict the finding is (Threshold 0-1: the quieter ones dropped; Minimum Length: none
+        // closer than this), and what was changed by hand per recording (seconds added / removed).
+        struct HitpointSettings
+        {
+            double threshold = 0.25, minimumSeconds = 0.06;
+            bool operator== (const HitpointSettings&) const = default;
+        };
+        HitpointSettings hitpointSettings;
+        struct HitpointEdits
+        {
+            std::vector<double> added, removed;
+            bool operator== (const HitpointEdits&) const = default;
+        };
+        std::map<juce::String, HitpointEdits> hitpointEdits;   // by recording (file name)
+        bool audioWarpQuantize = false;   // Q on audio: stretched to the grid (else the clip's start moved)
         bool masterAutomationOpen = false, masterRead = false, masterWrite = false;
         int nextTrackId = 1;
 

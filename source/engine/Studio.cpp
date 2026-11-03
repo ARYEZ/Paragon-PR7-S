@@ -1,6 +1,7 @@
 #include "Studio.h"
 #include "Controllers.h"
 #include "Stretch.h"
+#include "Warp.h"
 
 #include <map>
 #include <set>
@@ -61,6 +62,7 @@ namespace pr7s
                 return { data, &data->sound };
             return nullptr;
         });
+        engine.setWarpSource ([this] (const Part& part, const TempoMap& tempo) { return getWarpedSound (part, tempo); });
         if (withDevices)
         {
             settings = std::make_unique<juce::PropertiesFile> (settingsOptions());
@@ -1413,7 +1415,10 @@ namespace pr7s
     {
         if (auto* track = project.findTrack (trackId); track != nullptr && juce::isPositiveAndBelow (index, (int) track->parts.size()))
         {
-            track->parts[(size_t) index].length = juce::jmax (0.25, newLength);
+            auto& part = track->parts[(size_t) index];
+            const auto old = part;
+            part.length = juce::jmax (0.25, newLength);
+            rebaseWarp (old, part, project.tempoMap());   // (0.32.0: a warped clip's end pinned where it now is)
             changed();
         }
     }
@@ -1423,6 +1428,7 @@ namespace pr7s
         // A part cut at `rel` beats from its start: it keeps what's before, and the rest is returned.
         Part cutPart (Part& part, double rel, const TempoMap& tempo)
         {
+            const auto original = part;   // (0.32.0: a warped clip's halves keep their audio where it was)
             auto second = part;
             second.id = 0;
             second.start = part.start + rel;
@@ -1501,6 +1507,11 @@ namespace pr7s
                 part.fadeOut = 0.0;
                 part.fadeIn = juce::jmin (part.fadeIn, seconds);
                 second.fadeOut = juce::jmin (second.fadeOut, tempo.secondsBetween (second.start, second.end()));
+                if (original.isWarped())
+                {
+                    rebaseWarp (original, part, tempo);
+                    rebaseWarp (original, second, tempo);
+                }
             }
             return second;
         }
@@ -1594,8 +1605,8 @@ namespace pr7s
                 const auto& next = track->parts[(size_t) i];
                 const auto secondsIn = glued.audioOffset + project.tempoMap().secondsBetween (glued.start, glued.end());
                 if (next.audioFile != glued.audioFile || std::abs (next.start - glued.end()) > 1.0e-6
-                    || std::abs (next.audioOffset - secondsIn) > 1.0e-4)
-                    return false;
+                    || std::abs (next.audioOffset - secondsIn) > 1.0e-4 || glued.isWarped() || next.isWarped())
+                    return false;   // (0.32.0: warped clips aren't glued: Flatten first)
                 glued.length = next.end() - glued.start;
                 glued.fadeOut = next.fadeOut;
             }
@@ -2145,7 +2156,12 @@ namespace pr7s
         {
             auto& existing = track->parts[(size_t) index];
             const auto id = existing.id;
+            const auto old = existing;
             existing = part;
+            // (0.32.0) A warped clip trimmed (its start or end moved, the audio staying put): markers follow.
+            if (old.isWarped() && part.warp == old.warp && part.audioFile == old.audioFile
+                && (std::abs (part.start - old.start) > 1.0e-9 || std::abs (part.length - old.length) > 1.0e-9))
+                rebaseWarp (old, existing, project.tempoMap());
             existing.id = id;
             existing.start = juce::jmax (0.0, existing.start);
             existing.length = juce::jmax (1.0 / 64.0, existing.length);
@@ -5049,6 +5065,7 @@ namespace pr7s
                 auto& a = track.parts[i];
                 const auto& b = track.parts[i + 1];
                 auto joins = a.lane == b.lane && std::abs (a.end() - b.start) < 1.0e-6 && a.muted == b.muted && a.order == b.order
+                          && ! a.isWarped() && ! b.isWarped()
                           && a.isAudio() == b.isAudio() && b.start > from + edge && b.start < to - edge;
                 if (joins && a.isAudio())
                 {
@@ -5291,6 +5308,353 @@ namespace pr7s
     }
 
     //==========================================================================
+    // Hitpoints and warping (0.32.0)
+    std::pair<Track*, int> Studio::findPartById (int partId)
+    {
+        for (auto& t : project.tracks)
+            for (int i = 0; i < (int) t.parts.size(); ++i)
+                if (t.parts[(size_t) i].id == partId)
+                    return { &t, i };
+        return { nullptr, -1 };
+    }
+
+    std::shared_ptr<const juce::AudioBuffer<float>> Studio::getWarpedSound (const Part& part, const TempoMap& tempo)
+    {
+        const auto data = getAudio (part.audioFile);
+        if (data == nullptr)
+            return nullptr;
+        return warpRenderer.render (part, data->sound, data->sampleRate, tempo);
+    }
+
+    std::vector<double> Studio::getHitpoints (const juce::String& recording)
+    {
+        auto found = hitpointCache.find (recording);
+        if (found == hitpointCache.end())
+        {
+            std::vector<Hitpoint> all;
+            if (const auto data = getAudio (recording))
+                all = detectHitpoints (data->sound, data->sampleRate);
+            found = hitpointCache.emplace (recording, std::move (all)).first;
+        }
+        const auto edits = project.hitpointEdits.find (recording);
+        return filterHitpoints (found->second, project.hitpointSettings.threshold, project.hitpointSettings.minimumSeconds,
+                                edits != project.hitpointEdits.end() ? &edits->second : nullptr);
+    }
+
+    std::vector<double> Studio::getPartHitpoints (int partId)
+    {
+        std::vector<double> beats;
+        const auto [track, index] = findPartById (partId);
+        if (track == nullptr || ! track->parts[(size_t) index].isAudio())
+            return beats;
+        const auto part = track->parts[(size_t) index];
+        const auto tempo = project.tempoMap();
+        for (const auto seconds : getHitpoints (part.audioFile))
+        {
+            const auto beat = warpBeatAt (part, seconds, tempo);
+            if (beat > 1.0e-6 && beat < part.length - 1.0e-6)
+                beats.push_back (beat);
+        }
+        std::sort (beats.begin(), beats.end());
+        return beats;
+    }
+
+    void Studio::setHitpointSettings (const Project::HitpointSettings& chosen)
+    {
+        project.hitpointSettings = { juce::jlimit (0.0, 1.0, chosen.threshold), juce::jlimit (0.0, 2.0, chosen.minimumSeconds) };
+        changed (false);
+    }
+
+    void Studio::addHitpoint (const juce::String& recording, double seconds)
+    {
+        auto& edits = project.hitpointEdits[recording];
+        edits.removed.erase (std::remove_if (edits.removed.begin(), edits.removed.end(), [seconds] (double r) { return std::abs (r - seconds) < 0.01; }),
+                             edits.removed.end());
+        edits.added.push_back (juce::jmax (0.0, seconds));
+        changed (false);
+    }
+
+    void Studio::removeHitpoint (const juce::String& recording, double seconds)
+    {
+        auto& edits = project.hitpointEdits[recording];
+        const auto added = std::find_if (edits.added.begin(), edits.added.end(), [seconds] (double a) { return std::abs (a - seconds) < 0.01; });
+        if (added != edits.added.end())
+            edits.added.erase (added);
+        else
+            edits.removed.push_back (seconds);
+        changed (false);
+    }
+
+    void Studio::moveHitpoint (const juce::String& recording, double from, double to)
+    {
+        removeHitpoint (recording, from);
+        addHitpoint (recording, to);
+    }
+
+    void Studio::resetHitpoints (const juce::String& recording)
+    {
+        project.hitpointEdits.erase (recording);
+        changed (false);
+    }
+
+    std::optional<double> Studio::nextHitpoint (int trackId, double fromBeat, bool forward)
+    {
+        const auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! track->isAudio())
+            return std::nullopt;
+        std::optional<double> best;
+        for (int i = 0; i < (int) track->parts.size(); ++i)
+        {
+            const auto& part = track->parts[(size_t) i];
+            if (! part.isAudio())
+                continue;
+            const auto heard = heardStretches (*track, i);
+            for (const auto beat : getPartHitpoints (part.id))
+            {
+                const auto at = part.start + beat;
+                const auto audible = std::any_of (heard.begin(), heard.end(), [at] (const auto& h) { return at >= h.first && at < h.second; });
+                if (! audible)
+                    continue;
+                if (forward ? at > fromBeat + 1.0e-6 && (! best || at < *best)
+                            : at < fromBeat - 1.0e-6 && (! best || at > *best))
+                    best = at;
+            }
+        }
+        return best;
+    }
+
+    bool Studio::editWarp (int partId, const std::function<bool (Part&)>& edit)
+    {
+        auto [track, index] = findPartById (partId);
+        if (track == nullptr || track->frozen || ! track->parts[(size_t) index].isAudio())
+            return false;
+        auto part = track->parts[(size_t) index];
+        if (! edit (part))
+            return false;
+        // Checked: in order, apart, inside the recording; the edges at the clip's.
+        auto& m = part.warp;
+        std::sort (m.begin(), m.end(), [] (const WarpMarker& a, const WarpMarker& b) { return a.beat < b.beat; });
+        const auto data = getAudio (part.audioFile);
+        const auto fileSeconds = data != nullptr ? data->seconds() : 1.0e9;
+        std::vector<WarpMarker> kept;
+        for (const auto& marker : m)
+        {
+            if (! kept.empty() && (marker.beat < kept.back().beat + 1.0 / 256.0 || marker.seconds < kept.back().seconds + 0.005))
+                continue;
+            kept.push_back ({ marker.beat, juce::jlimit (0.0, fileSeconds, marker.seconds) });
+        }
+        if (kept.size() >= 2)
+        {
+            kept.front().beat = 0.0;
+            kept.back().beat = part.length;
+            part.audioOffset = kept.front().seconds;
+        }
+        else
+            kept.clear();
+        m = std::move (kept);
+        track->parts[(size_t) index] = part;
+        changed();
+        return true;
+    }
+
+    bool Studio::createWarpFromHitpoints (const std::vector<int>& partIds)
+    {
+        auto any = false;
+        for (const auto id : partIds)
+        {
+            const auto beats = getPartHitpoints (id);
+            any = editWarp (id, [&] (Part& part)
+            {
+                ensureWarp (part, project.tempoMap());
+                const auto tempo = project.tempoMap();
+                for (const auto beat : beats)
+                    if (std::none_of (part.warp.begin(), part.warp.end(), [beat] (const WarpMarker& m) { return std::abs (m.beat - beat) < 1.0 / 256.0; }))
+                        part.warp.push_back ({ beat, warpSecondsAt (part, beat, tempo) });
+                return true;
+            }) || any;
+        }
+        return any;
+    }
+
+    bool Studio::addWarpMarker (int partId, double beat)
+    {
+        return editWarp (partId, [&] (Part& part)
+        {
+            if (beat <= 1.0e-6 || beat >= part.length - 1.0e-6)
+                return false;
+            const auto tempo = project.tempoMap();
+            ensureWarp (part, tempo);
+            const auto seconds = warpSecondsAt (part, beat, tempo);
+            part.warp.push_back ({ beat, seconds });
+            return true;
+        });
+    }
+
+    bool Studio::moveWarpMarker (int partId, int index, double toBeat)
+    {
+        return editWarp (partId, [&] (Part& part)
+        {
+            if (! part.isWarped() || index <= 0 || index >= (int) part.warp.size() - 1)
+                return false;   // (the edges stay)
+            const auto low = part.warp[(size_t) index - 1].beat + 1.0 / 256.0, high = part.warp[(size_t) index + 1].beat - 1.0 / 256.0;
+            if (low >= high)
+                return false;
+            part.warp[(size_t) index].beat = juce::jlimit (low, high, toBeat);
+            return true;
+        });
+    }
+
+    bool Studio::removeWarpMarkers (int partId, std::vector<int> indices)
+    {
+        return editWarp (partId, [&] (Part& part)
+        {
+            std::sort (indices.begin(), indices.end(), std::greater<>());
+            auto any = false;
+            for (const auto i : indices)
+                if (i > 0 && i < (int) part.warp.size() - 1)
+                {
+                    part.warp.erase (part.warp.begin() + i);
+                    any = true;
+                }
+            if (part.warp.size() == 2 && std::abs (warpFactors (part, project.tempoMap()).back() - 1.0) < 1.0e-6)
+                part.warp.clear();   // (back at its own speed: no markers needed)
+            return any;
+        });
+    }
+
+    void Studio::setWarpMarkers (int partId, std::vector<WarpMarker> markers)
+    {
+        editWarp (partId, [&] (Part& part)
+        {
+            part.warp = std::move (markers);
+            return true;
+        });
+    }
+
+    void Studio::resetWarp (const std::vector<int>& partIds)
+    {
+        auto any = false;
+        for (auto& track : project.tracks)
+            if (! track.frozen)
+                for (auto& part : track.parts)
+                    if (part.isWarped() && std::find (partIds.begin(), partIds.end(), part.id) != partIds.end())
+                    {
+                        part.audioOffset = part.warp.front().seconds;
+                        part.warp.clear();
+                        any = true;
+                    }
+        if (any)
+            changed();
+    }
+
+    int Studio::flattenWarp (const std::vector<int>& partIds, juce::String& error)
+    {
+        auto count = 0;
+        const auto tempo = project.tempoMap();
+        for (auto& track : project.tracks)
+        {
+            if (track.frozen)
+                continue;
+            for (auto& part : track.parts)
+            {
+                if (! part.isWarped() || std::find (partIds.begin(), partIds.end(), part.id) == partIds.end())
+                    continue;
+                const auto data = getAudio (part.audioFile);
+                const auto sound = getWarpedSound (part, tempo);
+                if (data == nullptr || sound == nullptr)
+                {
+                    error << part.name << ": its recording couldn't be read\n";
+                    continue;
+                }
+                auto folder = getAudioFolder();
+                folder.createDirectory();
+                juce::File flattened;
+                int n = 1;
+                do
+                    flattened = folder.getChildFile (juce::File::createLegalFileName (track.name) + " flattened " + juce::String (n++).paddedLeft ('0', 2) + ".wav");
+                while (flattened.exists());
+                std::unique_ptr<juce::OutputStream> stream (flattened.createOutputStream());
+                std::unique_ptr<juce::AudioFormatWriter> writer;
+                if (stream != nullptr)
+                    writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (data->sampleRate)
+                                                                                           .withNumChannels (sound->getNumChannels())
+                                                                                           .withBitsPerSample (32)
+                                                                                           .withSampleFormat (juce::AudioFormatWriterOptions::SampleFormat::floatingPoint));
+                if (writer == nullptr || ! writer->writeFromAudioSampleBuffer (*sound, 0, sound->getNumSamples()))
+                {
+                    error << part.name << ": couldn't write " << flattened.getFullPathName() << "\n";
+                    continue;
+                }
+                writer.reset();
+                audioCache.erase (flattened.getFileName());
+                part.audioFile = flattened.getFileName();
+                part.audioOffset = 0.0;
+                part.warp.clear();
+                ++count;
+            }
+        }
+        if (count > 0)
+            changed();
+        return count;
+    }
+
+    bool Studio::quantizeAudio (const std::vector<int>& partIds, double grid)
+    {
+        if (grid <= 0.0)
+            return false;
+        auto any = false;
+        const auto tempo = project.tempoMap();
+        if (project.audioWarpQuantize)
+        {
+            // The markers (from the hitpoints, the first time) to the grid, in one undo step.
+            std::vector<std::pair<int, std::vector<double>>> hits;
+            for (const auto id : partIds)
+                hits.push_back ({ id, getPartHitpoints (id) });
+            for (auto& track : project.tracks)
+            {
+                if (track.frozen || ! track.isAudio())
+                    continue;
+                for (auto& part : track.parts)
+                {
+                    const auto it = std::find_if (hits.begin(), hits.end(), [&part] (const auto& h) { return h.first == part.id; });
+                    if (it == hits.end() || ! part.isAudio())
+                        continue;
+                    const auto before = part.warp;
+                    ensureWarp (part, tempo);
+                    if (part.warp.size() <= 2)
+                        for (const auto beat : it->second)
+                            part.warp.push_back ({ beat, warpSecondsAt (part, beat, tempo) });
+                    std::sort (part.warp.begin(), part.warp.end(), [] (const WarpMarker& a, const WarpMarker& b) { return a.beat < b.beat; });
+                    quantizeWarp (part, grid, tempo);
+                    any = any || part.warp != before;
+                }
+            }
+        }
+        else
+        {
+            // The clips' starts to the nearest grid line (the manual's Quantizing Audio Event Starts).
+            for (auto& track : project.tracks)
+                if (! track.frozen && track.isAudio())
+                    for (auto& part : track.parts)
+                        if (part.isAudio() && std::find (partIds.begin(), partIds.end(), part.id) != partIds.end())
+                        {
+                            const auto to = juce::jmax (0.0, snap (part.start, grid));
+                            any = any || std::abs (to - part.start) > 1.0e-9;
+                            part.start = to;
+                        }
+        }
+        if (any)
+            changed();
+        return any;
+    }
+
+    void Studio::setAudioWarpQuantize (bool on)
+    {
+        project.audioWarpQuantize = on;
+        changed (false);
+    }
+
+    //==========================================================================
     // Comping, part two (0.30.0)
     namespace
     {
@@ -5309,6 +5673,15 @@ namespace pr7s
         // A part moved to start at `newStart` (its end staying): what it plays stays where it was.
         void moveStart (Part& part, double newStart, const TempoMap& tempo)
         {
+            if (part.isWarped())
+            {
+                auto moved = part;
+                moved.length = part.end() - newStart;
+                moved.start = newStart;
+                rebaseWarp (part, moved, tempo);
+                part = moved;
+                return;
+            }
             const auto delta = newStart - part.start;
             if (part.isAudio())
                 part.audioOffset = juce::jmax (0.0, part.audioOffset + (delta >= 0.0 ? tempo.secondsBetween (part.start, newStart)
@@ -5387,7 +5760,11 @@ namespace pr7s
         {
             const auto starts = at (p.start), ends = at (p.end());
             if (ends && ! starts)
+            {
+                const auto before = p;
                 p.length = newBeat - p.start;
+                rebaseWarp (before, p, tempo);   // (0.32.0)
+            }
             else if (starts && ! ends)
                 moveStart (p, newBeat, tempo);
         }
@@ -5479,6 +5856,10 @@ namespace pr7s
                 const auto data = getAudio (p.audioFile);
                 if (data == nullptr || ! p.isAudio())
                     continue;
+                // (0.32.0) A warped clip: its stretched sound, from its start.
+                const auto warped = p.isWarped() ? getWarpedSound (p, tempo) : nullptr;
+                const auto& heardSound = warped != nullptr ? *warped : data->sound;
+                const auto fromOffset = warped != nullptr ? 0.0 : p.audioOffset;
                 const auto clipStart = tempo.secondsAt (p.start), clipEnd = tempo.secondsAt (p.end());
                 for (const auto& [a, b] : heardStretches (among, i))
                 {
@@ -5488,14 +5869,14 @@ namespace pr7s
                     {
                         const auto when = startSeconds + s / rate;
                         const auto into = when - clipStart, left = clipEnd - when;
-                        const auto source = (int) std::llround ((p.audioOffset + into) * rate);
-                        if (source < 0 || source >= data->sound.getNumSamples())
+                        const auto source = (int) std::llround ((fromOffset + into) * rate);
+                        if (source < 0 || source >= heardSound.getNumSamples())
                             continue;
                         auto gain = 1.0;
                         if (p.fadeIn > 0.0 && into < p.fadeIn) gain *= into / p.fadeIn;
                         if (p.fadeOut > 0.0 && left < p.fadeOut) gain *= left / p.fadeOut;
                         for (int c = 0; c < sound.getNumChannels(); ++c)
-                            sound.setSample (c, s, (float) (data->sound.getSample (juce::jmin (c, data->sound.getNumChannels() - 1), source) * gain));
+                            sound.setSample (c, s, (float) (heardSound.getSample (juce::jmin (c, heardSound.getNumChannels() - 1), source) * gain));
                     }
                 }
             }

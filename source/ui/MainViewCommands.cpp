@@ -75,6 +75,16 @@ void MainView::registerCommands()
     add ("Edit.RenderInPlace", "Edit", "Render in Place (as last time)", { key ('R', alt) });   // (0.31.0, the owner's key)
     add ("Edit.RenderInPlaceSetup", "Edit", "Render in Place...", {}, [this] { renderInPlaceNow (true); });
     add ("MIDI.Quantize", "MIDI", "Quantize", { key ('Q') });
+    // (0.32.0) Alt+N / Alt+B do these on an audio track (MainView's handleKey: the velocities' keys elsewhere).
+    for (const auto forward : { true, false })
+        add (forward ? "Audio.NextHitpoint" : "Audio.PreviousHitpoint", "Audio", forward ? "Locate Next Hitpoint" : "Locate Previous Hitpoint", {},
+             [this, forward]
+             {
+                 if (const auto to = studio.nextHitpoint (studio.getSelectedTrack(), studio.getEngine().getPosition(), forward))
+                     studio.setPosition (*to);
+             });
+    add ("Audio.AudioWarpQuantize", "Audio", "AudioWarp Quantize On/Off", {}, [this] { studio.setAudioWarpQuantize (! studio.isAudioWarpQuantize()); });
+    add ("Audio.ResetWarp", "Audio", "Reset Warp", {}, [this] { studio.resetWarp (arrange.getSelectedParts()); });
     add ("Edit.WriteAll", "Edit", "Automation: Write All On/Off", { key ('W', alt) });
 
     // Range (the manual's Range Editing).

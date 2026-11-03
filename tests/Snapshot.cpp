@@ -31,6 +31,7 @@
 // PARAGON_SNAPSHOT_MASTER=1: the master's row chosen (its Inspector).
 // PARAGON_SNAPSHOT_RACK=home|loops|instruments: the Media rack in the right zone (0.22.0).
 // PARAGON_SNAPSHOT_TEMPO=1: the tempo track, with a ramp and a step (0.10.0).
+// PARAGON_SNAPSHOT_WARP=1: the guitar's clip warped (markers from its hitpoints, one dragged), selected, the WARP tool (0.32.0).
 // PARAGON_SNAPSHOT_TAKES=1: the guitar's three takes on lanes (LANES), comped (0.29.0), the COMP tool chosen.
 // PARAGON_SNAPSHOT_FREEZE=1: the lead frozen (FREEZE lit in its Inspector, its parts stamped).
 // PARAGON_SNAPSHOT_VISIBILITY=1: the VISIBILITY tab, the bass hidden, the keys disabled.
@@ -161,6 +162,18 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.setSolo (lead, true);
         studio.setMute (studio.getProject().tracks[1].id, true);
         studio.setArmed (studio.getProject().tracks[0].id);
+        studio.dispatchPendingMessages();
+    }
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_WARP", {}).isNotEmpty())
+    {
+        const auto& clip = studio.getProject().findTrack (guitar)->parts.at (0);
+        const auto id = clip.id;
+        studio.createWarpFromHitpoints ({ id });
+        if (const auto& warped = studio.getProject().findTrack (guitar)->parts.at (0); warped.warp.size() > 4)
+            studio.moveWarpMarker (id, 3, warped.warp[3].beat + 0.4);
+        view.getArrangeView().setTool (ArrangeView::Tool::warp);
+        view.getArrangeView().select (guitar, 0);
+        studio.selectTrack (guitar);
         studio.dispatchPendingMessages();
     }
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_TAKES", {}).isNotEmpty())

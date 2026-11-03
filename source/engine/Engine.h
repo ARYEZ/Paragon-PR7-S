@@ -127,6 +127,10 @@ namespace pr7s
         // (the studio's loaded recordings, at the engine's sample rate).
         using AudioSource = std::function<std::shared_ptr<const juce::AudioBuffer<float>> (const juce::String& file)>;
         void setAudioSource (AudioSource source) { audioSource = std::move (source); }
+        // (0.32.0) A warped clip's sound from its start (its warp markers applied): asked for
+        // instead of the recording when a clip has markers.
+        using WarpSource = std::function<std::shared_ptr<const juce::AudioBuffer<float>> (const Part&, const TempoMap&)>;
+        void setWarpSource (WarpSource source) { warpSource = std::move (source); }
         void addAudioTrack (int trackId);
         // An FX channel (what sends give it, through its inserts) or a group
         // channel (the tracks routed to it): no instrument, no parts.
@@ -349,6 +353,7 @@ namespace pr7s
         int blockNumInputs = 0, blockInputOffset = 0;
         std::vector<float> silence;   // for an input that isn't there
         AudioSource audioSource;
+        WarpSource warpSource;
         std::atomic<juce::int64> audioRecordStart { -1 };
 
         juce::CriticalSection lock;
