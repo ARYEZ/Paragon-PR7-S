@@ -10,3 +10,13 @@ FetchContent_Declare(juce
     GIT_SHALLOW    TRUE)
 
 FetchContent_MakeAvailable(juce)
+
+# Signalsmith Stretch: time-stretching and pitch-shifting (MIT licence; it fetches its own
+# signalsmith-linear 0.6.4, also MIT). 0.23.0, the owner's choice: the MediaBay's previews
+# stretched to the song's tempo and transposed.
+FetchContent_Declare(signalsmith-stretch
+    GIT_REPOSITORY https://github.com/Signalsmith-Audio/signalsmith-stretch.git
+    GIT_TAG        1.4.0
+    GIT_SHALLOW    TRUE)
+
+FetchContent_MakeAvailable(signalsmith-stretch)

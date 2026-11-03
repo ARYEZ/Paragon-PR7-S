@@ -233,9 +233,9 @@ TEST_CASE ("The key editor: draw, move, copy, lengthen, velocity, erase, keys, q
     REQUIRE (notes().size() == 1);
     CHECK (notes()[0].pitch == 62);
 
-    // Q quantizes (all the notes, with none selected) to the 1/4 grid.
+    // Q quantizes (all the notes, with none selected) to the song's quantize value, 1/4 (0.31.0: the header's, not the editor's grid).
     editor.setTool (KeyEditor::Tool::select);
-    editor.setGrid (1.0);
+    studio.setQuantizeBeats (1.0);
     studio.setNotes (trackId, 0, { { 1.4, 0.5, 62, 0.8f }, { 2.6, 0.5, 65, 0.8f } });
     studio.dispatchPendingMessages();
     CHECK (view.keyPressed (juce::KeyPress ('q', {}, 'q')));
@@ -938,20 +938,21 @@ TEST_CASE ("Automation on screen: lanes under their track, lined up; click adds 
     arrange.mouseUp (mouseAt (arrange, start + juce::Point<float> (6.0f * beatPixels, 0.0f), start, alt));
     CHECK (studio.getAutomation (first)->at (0).points.size() >= 4);
 
-    // Alt+R / Alt+W: read / write for all tracks; the header's keys light.
+    // Alt+W: write for all tracks; the header's keys light. (Read All: no default key since 0.31.0, Alt+R renders in place.)
     CHECK (view.keyPressed (juce::KeyPress ('w', juce::ModifierKeys::altModifier, 'w')));
     CHECK (studio.getAutomationWrite (first));
     CHECK (studio.getAutomationWrite (second));
     CHECK (studio.getAutomationWrite (Engine::masterBus));
     CHECK (view.keyPressed (juce::KeyPress ('w', juce::ModifierKeys::altModifier, 'w')));
     CHECK_FALSE (studio.anyAutomationWrite());
-    CHECK (view.keyPressed (juce::KeyPress ('r', juce::ModifierKeys::altModifier, 'r')));
+    studio.setAutomationReadAll (false);
     CHECK_FALSE (studio.anyAutomationRead());
     // A function key is never taken for a letter: Windows gives F3 the code 0x10072 ('r' with a flag), which upper-cased reads as R.
+    const auto tracksBefore = studio.getProject().tracks.size();
     view.keyPressed (juce::KeyPress (0x10000 | 'r', juce::ModifierKeys::altModifier, 0));
-    CHECK_FALSE (studio.anyAutomationRead());
+    CHECK (studio.getProject().tracks.size() == tracksBefore);   // (not Alt+R: nothing rendered)
     CHECK_FALSE (studio.getEngine().isRecording());   // (not R, which records)
-    CHECK (view.keyPressed (juce::KeyPress ('r', juce::ModifierKeys::altModifier, 'r')));
+    studio.setAutomationReadAll (true);
 
     // The mixer's fader follows the automation while it's read.
     studio.setAutomationPoints (first, 0, { { 0.0, volumeToTravel (-20.0f) } });

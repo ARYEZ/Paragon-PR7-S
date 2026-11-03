@@ -1,4 +1,5 @@
 #include "Engine.h"
+#include "Controllers.h"
 #include "SessionLog.h"
 
 namespace pr7s
@@ -35,7 +36,7 @@ namespace pr7s
         // points, and its control not being held (written).
         template <typename LaneStates>
         void readLanes (const std::vector<AutomationLane>& lanes, bool read, LaneStates& into, bool& mixAutomated,
-                        int busId, const std::vector<std::pair<int, AutomationLane>>& held)
+                        int busId, const std::vector<std::pair<int, AutomationLane>>& held, const Project::AutomationSettings& automation)
         {
             mixAutomated = false;
             const auto isHeld = [&] (const AutomationLane& lane)
@@ -43,7 +44,8 @@ namespace pr7s
                 return std::any_of (held.begin(), held.end(), [&] (const auto& h) { return h.first == busId && h.second.sameControl (lane); });
             };
             for (const auto& lane : lanes)
-                if (read && ! lane.muted && ! lane.points.empty() && ! isHeld (lane))
+                if (read && ! lane.muted && ! lane.points.empty() && ! isHeld (lane)
+                    && ! automation.suspendRead[(size_t) Project::AutomationSettings::groupOf (lane)])   // (0.28.0: Suspend Read)
                 {
                     into.push_back ({ lane, -1.0f });
                     using T = AutomationLane::Target;
@@ -340,7 +342,8 @@ namespace pr7s
         {
             const auto startSample = timing.sampleAt (clip.start);
             const auto endSample = timing.sampleAt (clip.end);
-            const auto from = juce::jmax (clock, startSample), to = juce::jmin (clock + length, endSample);
+            const auto from = juce::jmax (juce::jmax (clock, startSample), clip.from > clip.start ? timing.sampleAt (clip.from) : startSample);
+            const auto to = juce::jmin (juce::jmin (clock + length, endSample), clip.to < clip.end ? timing.sampleAt (clip.to) : endSample);
             if (from >= to || clip.sound == nullptr)
                 continue;
             const auto& sound = *clip.sound;
@@ -444,14 +447,17 @@ namespace pr7s
         const auto tempoVersion = settings.tempoVersion + (tempo.getEvents() == settings.tempo.getEvents() ? 0 : 1);
 
         struct Prepared { int id; std::vector<Event> events; std::pair<float, float> gains; std::vector<bool> bypass; std::vector<Clip> clips;
-                          std::vector<LaneState> automation; bool mixAutomated = false; };
+                          std::vector<LaneState> automation; bool mixAutomated = false;
+                          std::array<juce::int16, 128> drumOut {}; std::array<juce::int8, 128> drumChannel {}; std::array<juce::uint8, 128> drumIn {}; };
         std::vector<Prepared> prepared;
         for (const auto& track : project.tracks)
         {
-            Prepared p { track.id, {}, sideGains (track, ! track.mute && ! track.disabled && ! soloedOut (track)), {}, {}, {}, false };
+            Prepared p { track.id, {}, sideGains (track, ! track.mute && ! track.disabled && ! soloedOut (track)), {}, {}, {}, false, {}, {}, {} };
+            for (int n = 0; n < 128; ++n)
+                p.drumOut[(size_t) n] = (juce::int16) n, p.drumChannel[(size_t) n] = -1, p.drumIn[(size_t) n] = (juce::uint8) n;
             for (const auto& insert : track.inserts)
                 p.bypass.push_back (insert.bypass);
-            readLanes (track.automation, track.automationRead, p.automation, p.mixAutomated, track.id, held);
+            readLanes (track.automation, track.automationRead, p.automation, p.mixAutomated, track.id, held, project.automationSettings);
             if (track.disabled)
             {
                 // Disabled: nothing played, nothing read from disk (its plugins are unloaded too).
@@ -471,35 +477,75 @@ namespace pr7s
             }
             if (track.isAudio())
             {
-                for (const auto& part : track.parts)
-                    if (part.isAudio() && ! part.muted && audioSource)
-                        p.clips.push_back ({ part.start, part.end(), audioSource (part.audioFile),
+                // Only what's in front plays where clips overlap (takes, 0.29.0): each clip as
+                // many times as it has stretches heard, its fades still at its own ends.
+                for (int i = 0; i < (int) track.parts.size(); ++i)
+                {
+                    const auto& part = track.parts[(size_t) i];
+                    if (! part.isAudio() || ! audioSource)
+                        continue;
+                    const auto stretches = heardStretches (track, i);
+                    if (stretches.empty())
+                        continue;
+                    auto sound = audioSource (part.audioFile);
+                    for (const auto& [from, to] : stretches)
+                        p.clips.push_back ({ part.start, part.end(), sound,
                                              (juce::int64) std::llround (part.audioOffset * sampleRate),
-                                             part.fadeIn * sampleRate, part.fadeOut * sampleRate });
+                                             part.fadeIn * sampleRate, part.fadeOut * sampleRate, from, to });
+                }
                 prepared.push_back (std::move (p));
                 continue;
             }
             // On the track's MIDI channel (the instrument may listen to one: a Kontakt multi).
             const auto channelBits = juce::jlimit (1, 16, track.midiChannel) - 1;
+            // Through its drum map (0.26.0): each sound's O-note, its own channel if it has one, muted sounds silent.
+            const auto* map = project.drumMapOf (track);
+            for (int n = 0; n < 128; ++n)
+            {
+                const auto* sound = map != nullptr ? &map->sounds[(size_t) n] : nullptr;
+                p.drumOut[(size_t) n] = (juce::int16) (sound == nullptr ? n : sound->mute ? -1 : sound->outNote);
+                p.drumChannel[(size_t) n] = (juce::int8) (sound != nullptr && sound->channel >= 0 ? sound->channel : -1);
+                p.drumIn[(size_t) n] = (juce::uint8) (map != nullptr ? map->pitchForInput (n) : n);
+            }
             for (const auto& part : track.parts)
                 for (const auto& note : part.notes)
                 {
-                    if (part.muted)
-                        break;   // a muted part isn't played
+                    if (part.muted || (track.soloLane >= 0 && part.lane != track.soloLane))
+                        break;   // a muted part isn't played (nor, with a lane soloed, another lane's: 0.29.0)
                     const auto on = part.start + note.start;
                     if (note.start < 0.0 || note.start >= part.length)
                         continue;   // outside the part: not heard (as in a DAW)
+                    const auto out = p.drumOut[(size_t) juce::jlimit (0, 127, note.pitch)];
+                    if (out < 0)
+                        continue;   // a muted drum sound
+                    const auto bits = p.drumChannel[(size_t) juce::jlimit (0, 127, note.pitch)] >= 0 ? p.drumChannel[(size_t) note.pitch] : channelBits;
                     const auto off = part.start + juce::jmin (note.start + note.length, part.length);
                     const auto velocity = (juce::uint8) juce::jlimit (1, 127, juce::roundToInt (note.velocity * 127.0f));
-                    p.events.push_back ({ on, (juce::uint8) (0x90 | channelBits), (juce::uint8) note.pitch, velocity });
-                    p.events.push_back ({ off, (juce::uint8) (0x80 | channelBits), (juce::uint8) note.pitch, 0 });
+                    p.events.push_back ({ on, (juce::uint8) (0x90 | bits), (juce::uint8) out, velocity });
+                    p.events.push_back ({ off, (juce::uint8) (0x80 | bits), (juce::uint8) out, 0 });
                 }
-            // By beat; at the same beat a note off comes first, so a repeated note restarts.
-            std::sort (p.events.begin(), p.events.end(), [] (const Event& a, const Event& b)
+            // Controllers (0.25.0): each event, and a ramp as a value every 1/128 beat where it changes.
+            for (const auto& part : track.parts)
+            {
+                if (part.muted || (track.soloLane >= 0 && part.lane != track.soloLane))
+                    continue;
+                ControllerKinds::expandRamps (part, 1.0 / 128.0, [&] (double beat, int code, int value)
+                {
+                    if (beat < 0.0 || beat >= part.length)
+                        return;
+                    const auto message = ControllerKinds::toMidi (code, value, channelBits + 1);
+                    const auto* raw = message.getRawData();
+                    p.events.push_back ({ part.start + beat, raw[0], raw[1], message.getRawDataSize() > 2 ? raw[2] : (juce::uint8) 0 });
+                });
+            }
+            // By beat; at the same beat a note off comes first, so a repeated note restarts, then
+            // controllers (a note starts with the bend and the controllers it's meant to have).
+            std::stable_sort (p.events.begin(), p.events.end(), [] (const Event& a, const Event& b)
             {
                 if (a.beat < b.beat || b.beat < a.beat)
                     return a.beat < b.beat;
-                return ((a.status & 0xf0) == 0x80) > ((b.status & 0xf0) == 0x80);
+                const auto rank = [] (const Event& e) { const auto kind = e.status & 0xf0; return kind == 0x80 ? 0 : kind == 0x90 ? 2 : 1; };
+                return rank (a) < rank (b);
             });
             prepared.push_back (std::move (p));
         }
@@ -507,12 +553,12 @@ namespace pr7s
         const auto masterLevel = levelOf (project.masterVolumeDb);
         std::vector<LaneState> masterLanes;
         bool masterLanesMix = false;
-        readLanes (project.masterAutomation, project.masterRead, masterLanes, masterLanesMix, masterBus, held);
+        readLanes (project.masterAutomation, project.masterRead, masterLanes, masterLanesMix, masterBus, held, project.automationSettings);
 
         const juce::ScopedLock sl (lock);
         settings = { std::move (tempo), tempoVersion, project.numerator, project.denominator, project.loopOn,
                      project.loopStart, juce::jmax (project.loopStart + 0.0625, project.loopEnd), project.click, masterLevel,
-                     project.masterVolumeDb };
+                     project.masterVolumeDb, project.automationSettings.virginTerritory };
         std::swap (masterAutomation, masterLanes);
         masterPreFader = project.masterPreFaderSlots;
         masterAutomated = masterLanesMix;
@@ -546,6 +592,9 @@ namespace pr7s
                     }
                 }
                 std::swap (track->automation, p.automation);
+                track->drumOut = p.drumOut;
+                track->drumChannel = p.drumChannel;
+                track->drumIn = p.drumIn;
                 track->mixAutomated = p.mixAutomated;
                 track->gainLeft = p.gains.first;
                 track->gainRight = p.gains.second;
@@ -647,6 +696,8 @@ namespace pr7s
     {
         // Every event whose sample (its beat by the tempo, rounded to the
         // nearest sample) is from `fromSample` up to (not including) `toSample`.
+        if (std::exchange (track.chase, false))
+            chaseControllers (track, timing.beatAt ((double) fromSample - 0.5), sampleOffset);
         const auto first = std::lower_bound (track.events.begin(), track.events.end(), timing.beatAt ((double) fromSample - 0.5),
                                              [] (const Event& e, double beat) { return e.beat < beat; });
         for (auto it = first; it != track.events.end(); ++it)
@@ -656,7 +707,8 @@ namespace pr7s
                 continue;
             if (at >= toSample)
                 break;
-            if ((it->status & 0xf0) == 0x90)
+            const auto kind = it->status & 0xf0;
+            if (kind == 0x90)
             {
                 const auto channel = (it->status & 0x0f) + 1;
                 if (track.held.any() && channel != track.heldChannel)
@@ -664,11 +716,65 @@ namespace pr7s
                 track.heldChannel = channel;
                 track.held.set (it->data1);
             }
-            else
+            else if (kind == 0x80)
                 track.held.reset (it->data1);
+            else if (kind == 0xe0)
+                track.bent = true;
+            else if (kind == 0xb0 && it->data1 == 64)
+                track.sustained = it->data2 >= 64;
             const juce::uint8 bytes[] = { it->status, it->data1, it->data2 };
             track.midi.addEvent (bytes, 3, sampleOffset + (int) (at - fromSample));
         }
+    }
+
+    void Engine::chaseControllers (TrackState& track, double beat, int sampleOffset)
+    {
+        // (0.25.0, the manual's chasing) Each controller's value where playing starts: the
+        // last event of its kind before it, so a sound starts with the bend, the pedal and the
+        // controllers it has there. (Audio thread: fixed arrays, no allocation.)
+        std::array<juce::int16, 128> cc;
+        cc.fill (-1);
+        int bend = -1, pressure = -1, program = -1;
+        auto channelBits = 0;
+        for (const auto& e : track.events)
+        {
+            if (e.beat >= beat)
+                break;
+            switch (e.status & 0xf0)
+            {
+                case 0xb0: cc[(size_t) (e.data1 & 0x7f)] = e.data2; channelBits = e.status & 0x0f; break;
+                case 0xe0: bend = e.data1 | (e.data2 << 7); channelBits = e.status & 0x0f; break;
+                case 0xd0: pressure = e.data1; channelBits = e.status & 0x0f; break;
+                case 0xc0: program = e.data1; channelBits = e.status & 0x0f; break;
+                default: break;
+            }
+        }
+        const auto channel = channelBits + 1;
+        if (program >= 0)
+            track.midi.addEvent (juce::MidiMessage::programChange (channel, program), sampleOffset);
+        for (int n = 0; n < 128; ++n)
+            if (cc[(size_t) n] >= 0)
+                track.midi.addEvent (juce::MidiMessage::controllerEvent (channel, n, cc[(size_t) n]), sampleOffset);
+        if (bend >= 0)
+        {
+            track.midi.addEvent (juce::MidiMessage::pitchWheel (channel, bend), sampleOffset);
+            track.bent = bend != 8192;
+        }
+        if (pressure >= 0)
+            track.midi.addEvent (juce::MidiMessage::channelPressureChange (channel, pressure), sampleOffset);
+        if (cc[64] >= 0)
+            track.sustained = cc[64] >= 64;
+    }
+
+    void Engine::resetControllers (TrackState& track, int sampleOffset)
+    {
+        // On stop (as the manual's Reset on Stop): a bend back to the middle and the sustain
+        // pedal up, so nothing rings or stays out of tune after the song stops.
+        if (track.bent)
+            track.midi.addEvent (juce::MidiMessage::pitchWheel (track.midiChannel, 8192), sampleOffset);
+        if (track.sustained)
+            track.midi.addEvent (juce::MidiMessage::controllerEvent (track.midiChannel, 64, 0), sampleOffset);
+        track.bent = track.sustained = false;
     }
 
     void Engine::stopHeldNotes (TrackState& track, int sampleOffset)
@@ -693,7 +799,7 @@ namespace pr7s
                 continue;
             auto ended = false;
             for (auto it = from; it != track.events.end(); ++it)
-                if (it->data1 == note && (it->status & 0x0f) == channelBits)
+                if (it->data1 == note && (it->status & 0x0f) == channelBits && ((it->status & 0xf0) == 0x80 || (it->status & 0xf0) == 0x90))
                 {
                     ended = (it->status & 0xf0) == 0x80;
                     break;
@@ -753,11 +859,14 @@ namespace pr7s
         {
             sampleClock = toSamples (jump);
             for (auto& track : tracks)
-                stopHeldNotes (*track, 0);
+                stopHeldNotes (*track, 0), track->chase = true;
         }
+        if (nowPlaying && ! wasPlaying)
+            for (auto& track : tracks)
+                track->chase = true;
         if ((wasPlaying && ! nowPlaying) || releaseAll.exchange (false))
             for (auto& track : tracks)
-                stopHeldNotes (*track, 0);
+                stopHeldNotes (*track, 0), resetControllers (*track, 0);
         wasPlaying = nowPlaying;
         if (nowPlaying)
         {
@@ -785,6 +894,7 @@ namespace pr7s
         {
             // The block in segments: up to the cycle's end, then back to its start.
             const auto isRecording = recording.load();
+            const auto* recordingTrack = findTrack (liveTrack.load());
             const auto beatUnit = 4.0 / settings.denominator;   // the click's beat (a quarter in 4/4, an eighth in 6/8)
             const auto unitsPerBar = settings.numerator;
             const auto loopStart = toSamples (settings.loopStart), loopEnd = toSamples (settings.loopEnd);
@@ -837,15 +947,19 @@ namespace pr7s
                         if (metadata.samplePosition >= done && metadata.samplePosition < done + length)
                         {
                             const auto message = metadata.getMessage();
-                            if (! message.isNoteOnOrOff())
-                                continue;
+                            if (! message.isNoteOnOrOff() && ! message.isController() && ! message.isPitchWheel()
+                                && ! message.isChannelPressure() && ! message.isAftertouch() && ! message.isProgramChange())
+                                continue;   // (0.25.0: controllers recorded too)
                             const auto scope = recordedFifo.write (1);
                             if (scope.blockSize1 + scope.blockSize2 == 0)
                                 continue;   // full: the message thread hasn't kept up
                             const auto at = scope.blockSize1 > 0 ? scope.startIndex1 : scope.startIndex2;
                             const auto* raw = message.getRawData();
+                            // (A drum map's I-note recorded as its sound's pitch, as the manual's.)
+                            const auto data1 = message.isNoteOnOrOff() && recordingTrack != nullptr ? recordingTrack->drumIn[(size_t) (raw[1] & 0x7f)] : raw[1];
                             recordedEvents[(size_t) at] = { timing.beatAt ((double) (clock + metadata.samplePosition - done)), raw[0],
-                                                            raw[1], message.getRawDataSize() > 2 ? raw[2] : (juce::uint8) 0 };
+                                                            data1, message.getRawDataSize() > 2 ? raw[2] : (juce::uint8) 0,
+                                                            cycleCount.load() };
                         }
 
                 done += length;
@@ -853,7 +967,7 @@ namespace pr7s
                 {
                     ++cycleCount;
                     for (auto& track : tracks)
-                        stopHeldNotes (*track, juce::jmin (done, numSamples - 1));
+                        stopHeldNotes (*track, juce::jmin (done, numSamples - 1)), track->chase = true;
                     clock = loopStart;
                 }
                 else
@@ -908,6 +1022,17 @@ namespace pr7s
                     auto message = metadata.getMessage();
                     if (message.getChannel() > 0)
                         message.setChannel (track->midiChannel);
+                    if (message.isNoteOnOrOff())
+                    {
+                        // Through its drum map: the key played is a sound's I-note, sent as its O-note.
+                        const auto pitch = track->drumIn[(size_t) message.getNoteNumber()];
+                        const auto out = track->drumOut[pitch];
+                        if (out < 0)
+                            continue;   // a muted sound
+                        message.setNoteNumber (out);
+                        if (track->drumChannel[pitch] >= 0)
+                            message.setChannel (track->drumChannel[pitch] + 1);
+                    }
                     track->midi.addEvent (message, metadata.samplePosition);
                 }
             if (track->role != TrackState::Role::source)
@@ -966,7 +1091,7 @@ namespace pr7s
                 // samples, in a straight line between (no steps to hear).
                 const auto gainsAt = [&] (double at)
                 {
-                    const auto mix = mixAt (track->automation, set, at);
+                    const auto mix = mixAt (track->automation, set, at, settings.virginTerritory);
                     return sideGains (mix.volumeDb, mix.pan, ! mix.mute && ! track->soloedOut);
                 };
                 std::pair<float, float> gains;
@@ -1028,7 +1153,7 @@ namespace pr7s
         if (masterAutomated)
         {
             const MixNow set { settings.masterVolumeDb, 0.0f, false };
-            const auto gainAt = [&] (double at) { return levelOf (mixAt (masterAutomation, set, at).volumeDb); };
+            const auto gainAt = [&] (double at) { return levelOf (mixAt (masterAutomation, set, at, settings.virginTerritory).volumeDb); };
             float gain = 0.0f;
             for (int s = 0; s < numSpans; ++s)
             {
@@ -1069,12 +1194,12 @@ namespace pr7s
         const auto endBeat = numSegments > 0 ? position.load() : blockBeat;
         for (auto& track : tracks)
         {
-            const auto now = mixAt (track->automation, { track->volumeDb, track->pan, track->mute }, endBeat);
+            const auto now = mixAt (track->automation, { track->volumeDb, track->pan, track->mute }, endBeat, settings.virginTerritory);
             track->nowVolumeDb = now.volumeDb;
             track->nowPan = now.pan;
             track->nowMute = now.mute;
         }
-        nowMasterVolumeDb = mixAt (masterAutomation, { settings.masterVolumeDb, 0.0f, false }, endBeat).volumeDb;
+        nowMasterVolumeDb = mixAt (masterAutomation, { settings.masterVolumeDb, 0.0f, false }, endBeat, settings.virginTerritory).volumeDb;
 
         // The click: a short tone at each beat, higher on the bar's first.
         for (int i = 0, next = 0; i < numSamples; ++i)
@@ -1102,24 +1227,58 @@ namespace pr7s
         if (previewPlaying.load() && preview != nullptr)
         {
             const auto length = preview->getNumSamples();
-            auto at = previewPosition.load();
             const auto gain = previewGain.load();
-            for (int i = 0; i < numSamples && length > 0; ++i)
+            const auto addSample = [&] (int i, int at)
             {
-                if (at >= length)
-                {
-                    if (! previewLoop.load())
-                    {
-                        previewPlaying = false;
-                        break;
-                    }
-                    at = 0;
-                }
                 for (int channel = 0; channel < juce::jmin (2, output.getNumChannels()); ++channel)
                     output.getWritePointer (channel)[i] += gain * preview->getReadPointer (juce::jmin (channel, preview->getNumChannels() - 1))[at];
-                ++at;
+            };
+            const auto wait = previewWait.load();
+            const auto lockBeats = previewLockBeats.load();
+            if (wait && ! nowPlaying)
+            {
+                previewPosition = 0;   // (waiting for the song: from the start when it plays)
             }
-            previewPosition = at;
+            else if (wait && lockBeats > 0.0 && numSegments > 0 && length > 0)
+            {
+                // Locked to the beat (0.23.0): each stretch of the block (the cycle can come round
+                // inside it) starts where the song's beat says, from the left locator.
+                auto at = 0;
+                for (int k = 0; k < numSegments; ++k)
+                {
+                    const auto& segment = segments[(size_t) k];
+                    auto phase = std::fmod ((timing.beatAt ((double) segment.clock) - previewAnchor.load()) / lockBeats, 1.0);
+                    if (phase < 0.0)
+                        phase += 1.0;
+                    at = juce::jlimit (0, length - 1, (int) (phase * (double) length));
+                    for (int i = segment.offset; i < segment.offset + segment.length; ++i)
+                    {
+                        addSample (i, at);
+                        if (++at >= length)
+                            at = 0;   // (a locked loop always goes round)
+                    }
+                }
+                previewPosition = at;
+            }
+            else
+            {
+                auto at = previewPosition.load();
+                for (int i = 0; i < numSamples && length > 0; ++i)
+                {
+                    if (at >= length)
+                    {
+                        if (! previewLoop.load())
+                        {
+                            previewPlaying = false;
+                            break;
+                        }
+                        at = 0;
+                    }
+                    addSample (i, at);
+                    ++at;
+                }
+                previewPosition = at;
+            }
         }
 
         for (int channel = 0; channel < juce::jmin (2, output.getNumChannels()); ++channel)
@@ -1153,11 +1312,13 @@ namespace pr7s
     }
 
     //==========================================================================
-    Engine::MixNow Engine::mixAt (const std::vector<LaneState>& lanes, MixNow mix, double beat)
+    Engine::MixNow Engine::mixAt (const std::vector<LaneState>& lanes, MixNow mix, double beat, bool virginTerritory)
     {
         for (const auto& state : lanes)
         {
-            const auto value = state.lane.valueAt (beat);
+            const auto value = state.lane.playedAt (beat, virginTerritory);   // (0.28.0: with its trim; none in a gap)
+            if (! value)
+                continue;
             switch (state.lane.target)
             {
                 case AutomationLane::Target::volume: mix.volumeDb = travelToVolume (*value); break;
@@ -1183,7 +1344,8 @@ namespace pr7s
             auto db = send.levelDb;
             for (const auto& state : track.automation)
                 if (state.lane.target == AutomationLane::Target::send && state.lane.slot == s)
-                    db = travelToVolume (*state.lane.valueAt (beat));
+                    if (const auto value = state.lane.playedAt (beat, settings.virginTerritory))
+                        db = travelToVolume (*value);
             track.nowSendDb[(size_t) s] = db;
             const auto gain = send.on ? levelOf (db) : 0.0f;
             auto* fx = send.target != 0 ? findTrack (send.target) : nullptr;
@@ -1218,7 +1380,10 @@ namespace pr7s
             const auto& parameters = plugin->getParameters();
             if (lane.parameter >= parameters.size())
                 continue;
-            const auto value = *lane.valueAt (beat);
+            const auto found = lane.valueAt (beat, settings.virginTerritory);
+            if (! found)
+                continue;   // (a gap: the knob stays where it's set)
+            const auto value = *found;
             if (std::abs (value - state.applied) < 1.0e-6f)
                 continue;
             state.applied = value;

@@ -308,8 +308,10 @@ namespace pr7s
         //======================================================================
         // Parts (by track and index in its list).
         void addPart (int trackId, const Part&);
-        void movePart (int trackId, int index, int toTrackId, double newStart);
-        void copyPart (int trackId, int index, int toTrackId, double newStart);
+        // (0.29.0) toLane: the lane it goes onto (-1: its own on the same track, else the first);
+        // it lands in front of what it overlaps there.
+        void movePart (int trackId, int index, int toTrackId, double newStart, int toLane = -1);
+        void copyPart (int trackId, int index, int toTrackId, double newStart, int toLane = -1);
         void deletePart (int trackId, int index);
         // Several parts at once (0.9.2, the Object Selection tool's selection),
         // by part id; each one undo step. Moved (or, `copy`, copied) by beats
@@ -346,11 +348,73 @@ namespace pr7s
         // recording straight after it (a split glued back); anything else
         // returns false (an audio part holding several clips isn't there yet).
         bool glueParts (int trackId, int index, bool toAllFollowing);
+        // Quantize (Q in the arrangement, 0.31.0: the manual's "In the Project window, select a MIDI part"):
+        // every note of these MIDI parts to the nearest step of `grid` beats (the song's quantize value), its
+        // length kept. Audio and frozen parts are passed over. One undo step; false if nothing was there.
+        bool quantizeParts (const std::vector<int>& partIds, double grid);
         // The Mute tool (and the part's menu): muted parts stay, greyed, but aren't played.
         void setPartMuted (int trackId, int index, bool muted);
         void setPartsMuted (const std::vector<int>& partIds, bool muted);   // several at once (one step)
         // The Erase tool with Alt: the part and all after it on its track.
         void deletePartsFrom (int trackId, int index);
+
+        // Takes and comping (0.29.0, the manual's Lanes, Takes, and Overlapping Events and
+        // Assembling a Perfect Take). A track's parts sit on lanes (Part::lane); where audio
+        // clips overlap, the one in front plays (Part::order). Each edit one undo step but
+        // Show Lanes and a lane's solo (as Hide, not steps).
+        void setShowLanes (int trackId, bool shown);
+        void setLaneSolo (int trackId, int lane);   // -1: none (the lane's S again: off)
+        void setRecordModes (const Project::RecordModes&);
+        // To Front (the part's menu, the Comp tool's click): audio, in front of every clip it
+        // overlaps (and not muted); MIDI (all overlapping parts play), it's unmuted and the
+        // parts it overlaps on other lanes are muted. `toggle` (a click on the take in front
+        // already): audio, the one it hides comes back to the front; MIDI, it's muted.
+        void bringToFront (int partId, bool toggle = false);
+        // The Comp tool's drag on a lane: every part on the track crossing beats `start` or
+        // `end` is cut there, and the lane's part in between brought to front (none there:
+        // nothing). Adjacent pieces of one recording, played end to end, are glued back.
+        void compRange (int trackId, int lane, double start, double end);
+        // A part onto another lane of its track (a drag between lanes).
+        void setPartLane (int partId, int lane);
+        // The track's menu: Clean Up Lanes (what isn't heard is removed: audio, the hidden
+        // stretches of clips; MIDI, muted parts under an unmuted one; then empty lanes go),
+        // and Create Tracks from Lanes (each lane after the first a track of its own, a copy
+        // of this one with that lane's parts). Returns the new tracks' ids.
+        void cleanUpLanes (int trackId);
+        std::vector<int> createTracksFromLanes (int trackId);
+        // Every part on the lane, and the lane's parts that are heard at a beat.
+        std::vector<int> partsOnLane (int trackId, int lane) const;
+        // The part (id) heard at a beat on a track (audio: the clip in front; MIDI: the first
+        // unmuted part there), 0: none.
+        int frontPartAt (int trackId, double beat) const;
+
+        // Comping, part two (0.30.0, the manual's Assembling Operations and Assembling a Perfect Take).
+        // The takes on a part's track with its start and end (stacked: what the Comp tool moves together).
+        std::vector<int> stackedWith (int partId) const;
+        // Split (the Comp tool's Alt-click): every take on the track cut at the beat.
+        void splitTakesAt (int trackId, double beat);
+        // Adjust splits / Resize (the Comp tool): the edge at `beat` moved to `newBeat` on every take on
+        // the track that starts or ends there (all takes with the same start and end), held so it never
+        // passes another take on a lane, shortens one to nothing, or runs off the end of a recording.
+        // Returns where it went (one undo step; `beat` when it couldn't move).
+        double moveTakeEdge (int trackId, double beat, double newBeat);
+        // Slip Event (Alt+Shift-drag): what plays inside the part slides by `beats` (later: positive),
+        // the part staying put; audio held within its recording. One undo step.
+        void slipPart (int partId, double beats);
+        // Bounce (the manual's Bounce Selection for audio, Bounce MIDI): what's heard of the takes into
+        // one new clip or part over them all, on the first of their lanes, in front; the takes go.
+        // Audio: a new 32-bit file in the audio folder. Returns the new part's id (0: nothing, `error`).
+        int bounceTakes (const std::vector<int>& partIds, juce::String& error);
+        // Delete Overlaps: of these takes only what's heard stays, all on the first lane.
+        void deleteOverlaps (const std::vector<int>& partIds);
+        // Merge MIDI in Loop: what's heard of these tracks' MIDI between the locators, one part on a new
+        // track (a copy of the first, its instrument and effects). Returns its id (0: nothing there).
+        int mergeMidiInLoop (const std::vector<int>& trackIds);
+        // Audition (the Comp tool with Ctrl: the manual's Speaker tool): the engine plays only this
+        // track (and only `lane` when it's 0 or more) until stopAudition; the song isn't changed.
+        void startAudition (int trackId, int lane);
+        void stopAudition();
+        bool isAuditioning() const noexcept { return auditioning; }
 
         // Range Selection (the manual's Range Editing): a stretch of time
         // across some tracks, independent of the parts. Whatever a range
@@ -393,6 +457,34 @@ namespace pr7s
         // A part's notes, replaced (the key editor's every edit: one undo step each).
         // Kept in the order given, so the editor's selection still points at the same notes.
         void setNotes (int trackId, int index, std::vector<Note>);
+        // MIDI controller lanes (0.25.0, the manual's Controller Display): a part's controller
+        // events replaced (one undo step; sorted by start, values kept in range), and the
+        // track's lanes as shown (codes in ControllerKinds; saved, not undo steps), its
+        // pitchbend grid (1-96 semitones up and down, SNAP, the grid shown), and whether new
+        // events ramp (the manual's Type of New Controller Events; settings "controllerRamp",
+        // on at first: our choice).
+        void setControllers (int trackId, int index, std::vector<Controller>);
+        // Drum maps (0.26.0, the manual's Drum Maps): a track's map (by name; "" none; "GM Map"
+        // or a map from the drum map folder is added to the song when chosen), the song's maps
+        // (edited, renamed (the tracks follow), removed (the tracks lose it)), loading a .drm
+        // (or our own map XML), and the drum map folder (Documents/Paragon PR7-S/Drum Maps):
+        // maps saved there are offered in every song. None of these are undo steps (as the
+        // manual's Drum Map Setup); all are saved with the song.
+        static constexpr const char* noDrumMap = "";
+        const DrumMap* getDrumMapOf (int trackId) const;
+        void setTrackDrumMap (int trackId, const juce::String& mapName);
+        void setTrackDrumEditor (int trackId, bool drums);   // the MIDI editor shows its parts as drums
+        juce::String addDrumMap (DrumMap);                    // its name, made unique ("... 2")
+        bool setDrumMap (const juce::String& name, DrumMap edited);
+        void removeDrumMap (const juce::String& name);
+        juce::String loadDrumMap (const juce::File&, juce::String& error);   // the name it has in the song ("": not read)
+        static juce::File drumMapFolder();
+        juce::Array<juce::File> getLibraryDrumMaps() const;   // .drm files in the folder (and its folders), by name
+        void setDrumMapFolderForTests (const juce::File& f) { drumMapFolderOverride = f; }
+        void setControllerLanes (int trackId, std::vector<int> lanes);
+        void setPitchbendGrid (int trackId, int up, int down, bool snap, bool shown);
+        bool getNewControllersRamp() const;
+        void setNewControllersRamp (bool);
 
         //======================================================================
         // Recordings. They're files in the song's audio folder ("<song> Audio"
@@ -480,6 +572,44 @@ namespace pr7s
         void setLaneMuted (int busId, int laneIndex, bool);           // Mute Automation
         // A lane's points replaced (an edit with the mouse: one undo step). Turns R on.
         void setAutomationPoints (int busId, int laneIndex, std::vector<AutomationPoint>);
+        // Copy Automation to Other Tracks (0.27.0, the manual's): the automation between the
+        // locators, of all tracks (and the master), the selected tracks, or one lane (a parameter);
+        // pasted between the locators, there: all tracks to the same tracks and controls, the
+        // selected tracks' in order onto the selected tracks, a lane's onto the lane given. What
+        // was there is overwritten; a shorter target cuts it, a longer one keeps the last value to
+        // the right locator (the manual's); the curve on either side carries on. One undo step.
+        enum class AutomationScope { allTracks, selectedTracks, parameter };
+        bool copyAutomation (AutomationScope, int busId = 0, int laneIndex = -1);   // false: nothing there
+        bool pasteAutomation (AutomationScope, int busId = 0, int laneIndex = -1);
+        bool hasAutomationClip() const noexcept { return ! automationClip.empty(); }
+
+        // The Automation panel (0.28.0, the manual's): its settings (saved with the song; none
+        // are undo steps) and functions.
+        using AutomationSettings = Project::AutomationSettings;
+        const AutomationSettings& getAutomationSettings() const noexcept { return project.automationSettings; }
+        void setAutomationSettings (const AutomationSettings&);   // (Trim off with Freeze Trim "On Leaving Trim Mode": frozen)
+        void setAutomationMode (AutomationSettings::Mode);
+        // FILL's keys: off -> once (the next pass) -> locked (every pass) -> off (the manual's One Shot vs Continuous).
+        enum class FillOption { toPunch, toStart, toEnd, loop, gaps };
+        void stepFill (FillOption);
+        AutomationSettings::Fill getFill (FillOption) const noexcept;
+        void setSuspendRead (AutomationSettings::Group, bool);
+        void setSuspendWrite (AutomationSettings::Group, bool);
+        void setAllSuspended (bool read, bool on);   // SET ALL (on: all; off: none)
+        bool isAllSuspended() const noexcept;          // Suspend All Read/Write (every group, both)
+        void setAllSuspended (bool on);
+        void setTrim (bool);
+        // Functions.
+        void deleteAllAutomation();
+        void deleteAutomationOfSelectedTracks();
+        void deleteAutomationInRange();                  // between the locators, every track and the master
+        void fillGaps (bool withCurrentValue);           // the selected tracks' gaps (virgin territory)
+        void freezeTrim (bool selectedTracksOnly);
+        void freezeTrim (int busId, int laneIndex);
+        void setTrimPoints (int busId, int laneIndex, std::vector<AutomationPoint>);   // one undo step
+        // Show: a group's lanes on every track (`usedOnly`: only those with points), Show Used, Hide All.
+        void showAutomationGroup (AutomationSettings::Group, bool usedOnly);
+        void hideAllAutomation();
 
         // Writing automation (as the manual has it): with W on, while playing,
         // touching a control writes it. The screen says when a control is
@@ -714,12 +844,13 @@ namespace pr7s
             enum class Tail { off, bars, seconds };
             Tail tail = Tail::bars;
             double tailSize = 1.0;
-            int bitsPerSample = 24;   // 16, 24 or 32 (float)
+            int bitsPerSample = 32;   // 16, 24 or 32 (float: 0.31.0's default, the owner's: nothing over 0 dB is cut off)
             // The source: kept as it was, muted (the parts rendered; whole tracks: the track), or removed (whole tracks).
-            // Or (whole tracks) disabled: its plugins unloaded, as Freeze (0.9.1).
+            // Or (whole tracks) disabled: muted and its plugins unloaded, as Freeze (0.9.1; muted too since 0.31.0).
+            // A stretch of a track (a part, a range, the cycle): disable and remove mute the parts rendered there.
             enum class Source { keep, mute, remove, disable };
-            Source source = Source::keep;
-            bool hideSource = false;   // whole tracks: hidden after (the manual's Hide Source Tracks)
+            Source source = Source::disable;   // (0.31.0's default, the owner's: muted, disabled, hidden)
+            bool hideSource = true;   // whole tracks: hidden after (the manual's Hide Source Tracks)
         };
         struct RenderSource
         {
@@ -738,7 +869,38 @@ namespace pr7s
         // A file heard: audio through the engine's preview (over the output, at the preview level,
         // looping when `loop` is on); a MIDI file through the live track's instrument at the song's
         // tempo (as IDEAS' previews). False for files it can't play (presets, songs, unreadable).
+        // The previewer's options (0.23.0, the manual's Audio Files Previewer): LINK TEMPO (a loop
+        // stretched to the song's tempo at the playhead, its pitch kept; not one-shots or files
+        // without a tempo), WAIT FOR PLAY (heard only while the song plays; linked loops locked to
+        // the beat from the left locator), semitones or a root key to move to (the short way; a
+        // root key needs the file's key), half or double speed. Kept in the settings (mediaBay*).
+        struct MediaPreviewOptions
+        {
+            bool linkTempo = false, waitForPlay = false;
+            int semitones = 0;        // -12 to 12
+            int toKey = -1;           // a pitch class 0-11 (C = 0), or -1: off
+            double speed = 1.0;       // 0.5, 1 or 2
+            bool operator== (const MediaPreviewOptions&) const = default;
+        };
+        const MediaPreviewOptions& getMediaPreviewOptions();
+        void setMediaPreviewOptions (const MediaPreviewOptions&);
+        // What a preview of this file does with the options: the length factor (output / input),
+        // the semitones, and the beats it's locked to (0: not locked). (Worked out, not played: tests.)
+        struct MediaPreviewPlan { double lengthFactor = 1.0, semitones = 0.0, lockBeats = 0.0, songBpm = 120.0; };
+        MediaPreviewPlan planMediaPreview (const juce::File&, double seconds);
+        static int keyPitchClass (const juce::String& key);   // "F#m" -> 6; "" or unknown -> -1
         bool previewMedia (const juce::File&, bool loop);
+
+        // VST presets (0.24.0): the plug-in a .vstpreset is for (among the scanned ones and the
+        // studio's synth: by its class id as JUCE hashes it, else by name), and using it: a track
+        // of its own (an instrument's: an instrument track named after the preset; an effect's:
+        // an FX channel), or onto a track (an instrument's: that track's instrument, loaded into it
+        // when it's the same plug-in; an effect's: loaded into that effect if the track has it,
+        // else added to its inserts). The preset's settings go in as the plug-in's state.
+        struct PluginPreset { juce::PluginDescription plugin; juce::MemoryBlock state; juce::String name; bool instrument = false; };
+        std::optional<PluginPreset> readPluginPreset (const juce::File&, juce::String& error);
+        int addTrackFromPluginPreset (const juce::File&, juce::String& error);
+        bool applyPluginPreset (int trackId, const juce::File&, juce::String& error);   // trackId 0: the master (effects only)
         void stopMediaPreview();
         bool isMediaPreviewing() const;
         double getMediaPreviewProgress() const;                      // 0 to 1
@@ -774,7 +936,9 @@ namespace pr7s
             int cycleCount = 0;      // the engine's when it began: the cycle coming round ends it
             float before = 0.0f;
             std::vector<AutomationPoint> points;
-            bool released = false;   // let go (an on/off switch latches on until stop)
+            bool released = false;   // let go (an on/off switch latches on until stop; Auto-Latch, Cross-Over: every control)
+            bool retouched = false;  // Cross-Over: touched again after letting go (crossing the old curve punches out)
+            std::optional<bool> aboveOld;   // Cross-Over: which side of the old curve the hand was on
         };
         std::vector<WritePass> passes;
 
@@ -791,7 +955,9 @@ namespace pr7s
         void unloadPlugins (Track&);   // their settings kept first (disable, freeze)
         void loadPlugins (Track&);     // from the kept settings (enable, unfreeze)
         std::map<int, std::vector<Part>> frozenParts;   // the parts as they were frozen (locked)
-        void punchOut (size_t pass, double endBeat);
+        void punchOut (size_t pass, double endBeat, bool returnToOld = true);
+        void startPass (int busId, const AutomationLane& control);
+        static void freezeTrimOf (AutomationLane&);
         void punchOutAll();
         void setControlValue (int busId, const AutomationLane& control, float value);   // the static setting, without writing
         void effectGoing (int busId, int slot);
@@ -802,8 +968,20 @@ namespace pr7s
         void updateLiveTrack();
         void finishRecording();
         void finishAudioRecording();
+        bool auditioning = false;   // (0.30.0) the engine plays a soloed copy
         double recordingLatency() const;
-        void buildRecordingNotes (std::vector<Note>& notes, double partStart, double endBeat) const;
+        void buildRecordingNotes (std::vector<Note>& notes, double partStart, double endBeat, int onlyPass = -1) const;
+        // (0.29.0) New takes onto the track by the record modes: each on the first lane it
+        // fits without overlapping (or `lane` if given), in front, in order; `replace`:
+        // what's there over [from, to) cut out first.
+        void placeTakes (Track&, std::vector<Part> takes, double from, double to, bool replace, int lane = -1);
+        void buildRecordingControllers (std::vector<Controller>&, double partStart) const;   // (0.25.0: each kind's last pass in a cycle)
+        bool newControllersRamp = true;   // (without a settings file)
+        juce::File drumMapFolderOverride;
+        // Copied automation: each lane's control, its bus, and its points from the range's start.
+        struct AutomationClipLane { int busId = 0; AutomationLane lane; };
+        std::vector<AutomationClipLane> automationClip;
+        double automationClipLength = 0.0;
         void timerCallback() override;
         void changeListenerCallback (juce::ChangeBroadcaster*) override;   // the device settings changed: keep them
 
@@ -898,6 +1076,8 @@ namespace pr7s
         double mediaPreviewBeats = 0.0;
         bool mediaPreviewMidi = false;
         float mediaPreviewLevel = 0.7f;
+        MediaPreviewOptions mediaPreviewOptions;
+        bool mediaPreviewOptionsLoaded = false;
         // Several renders in a row (Render in Place's stretches, Freeze's
         // tracks): the plugins stay offline and the interface off between
         // them, switched back once at the end (0.9.9).

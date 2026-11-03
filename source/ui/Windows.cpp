@@ -299,19 +299,28 @@ namespace Windows
         RO options;
         if (settings == nullptr)
             return options;
+        // (0.31.0, the owner asked) The new defaults once: 32-bit float, the original muted, disabled and
+        // hidden. Kept settings from before were the old defaults (24-bit, kept), not choices.
+        if (! settings->containsKey ("renderDefaults031"))
+        {
+            settings->setValue ("renderBits", 32);
+            settings->setValue ("renderSource", (int) RO::Source::disable);
+            settings->setValue ("renderHide", true);
+            settings->setValue ("renderDefaults031", true);
+        }
         options.mode = (RO::Mode) juce::jlimit (0, 2, settings->getIntValue ("renderMode", (int) options.mode));
         options.processing = (RO::Processing) juce::jlimit (0, 3, settings->getIntValue ("renderProcessing", (int) options.processing));
         const auto tail = juce::jlimit (0, (int) std::size (tails) - 1, settings->getIntValue ("renderTail", 1));
         options.tail = tails[tail].first;
         options.tailSize = tails[tail].second;
-        const auto kept = settings->getIntValue ("renderBits", 24);
-        options.bitsPerSample = kept == 16 || kept == 32 ? kept : 24;
+        const auto kept = settings->getIntValue ("renderBits", 32);
+        options.bitsPerSample = kept == 16 || kept == 24 ? kept : 32;
         options.source = (RO::Source) juce::jlimit (0, 3, settings->getIntValue ("renderSource", (int) options.source));
-        options.hideSource = settings->getBoolValue ("renderHide", false);
+        options.hideSource = settings->getBoolValue ("renderHide", true);
         return options;
     }
 
-    RenderPage::RenderPage (pr7s::Studio& studioToUse, bool wholeTracks) : studio (studioToUse)
+    RenderPage::RenderPage (pr7s::Studio& studioToUse, bool whole) : studio (studioToUse), wholeTracks (whole)
     {
         for (auto* label : { &modeLabel, &processingLabel, &tailLabel, &bitsLabel, &sourceLabel })
         {
@@ -340,12 +349,12 @@ namespace Windows
         tail.addItem ("2 seconds", 6);
         tail.addItem ("5 seconds", 7);
         tail.addItem ("10 seconds", 8);
+        bits.addItem ("32-bit float (nothing over 0 dB is cut off)", 32);
         bits.addItem ("24-bit", 24);
         bits.addItem ("16-bit", 16);
-        bits.addItem ("32-bit float", 32);
         source.addItem ("Keep it as it is", 1);
         source.addItem (wholeTracks ? "Mute the track" : "Mute the parts rendered", 2);
-        source.addItem ("Disable the track (no CPU; enable it again to change it)", 4);
+        source.addItem ("Mute and disable the track (no CPU; enable it again to change it)", 4);
         source.addItem ("Remove the track", 3);
         source.setItemEnabled (3, wholeTracks);   // (only for tracks rendered whole)
         source.setItemEnabled (4, wholeTracks);
@@ -359,7 +368,8 @@ namespace Windows
                 tailIndex = i;
         tail.setSelectedId (tailIndex + 1, juce::dontSendNotification);
         bits.setSelectedId (kept.bitsPerSample, juce::dontSendNotification);
-        source.setSelectedId ((kept.source == RO::Source::remove || kept.source == RO::Source::disable) && ! wholeTracks ? 1 : (int) kept.source + 1,
+        // (A stretch of a track: disable or remove would silence the rest of it; the parts rendered are muted instead.)
+        source.setSelectedId ((kept.source == RO::Source::remove || kept.source == RO::Source::disable) && ! wholeTracks ? 2 : (int) kept.source + 1,
                               juce::dontSendNotification);
         hideSource.setToggleState (kept.hideSource && wholeTracks, juce::dontSendNotification);
         hideSource.setEnabled (wholeTracks);
@@ -391,8 +401,11 @@ namespace Windows
                 settings->setValue ("renderProcessing", processing.getSelectedId() - 1);
                 settings->setValue ("renderTail", tail.getSelectedId() - 1);
                 settings->setValue ("renderBits", bits.getSelectedId());
-                settings->setValue ("renderSource", source.getSelectedId() - 1);
-                settings->setValue ("renderHide", hideSource.getToggleState());
+                if (wholeTracks)
+                {
+                    settings->setValue ("renderSource", source.getSelectedId() - 1);
+                    settings->setValue ("renderHide", hideSource.getToggleState());
+                }
             }
             if (onRender)
                 onRender (getOptions());

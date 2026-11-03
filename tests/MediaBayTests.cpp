@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstring>
+
 #include "engine/MediaBay.h"
 #include "engine/Studio.h"
 #include "ui/Finish.h"
@@ -800,4 +802,483 @@ TEST_CASE ("The Media rack in the right zone: Ctrl+Alt+R, drops of instruments a
     // Ctrl+Alt+R again hides it.
     CHECK (view.keyPressed (juce::KeyPress ('r', juce::ModifierKeys::commandModifier | juce::ModifierKeys::altModifier, 0)));
     CHECK_FALSE (view.isRightZoneShown());
+}
+
+TEST_CASE ("MediaBay folders scanned or left out: a tick, a square, an empty box (0.22.1)", "[mediabay]")
+{
+    using State = MediaDatabase::ScanState;
+    MediaFolder folder;
+    const auto kicks = folder.root.getChildFile ("Kicks");
+    const auto store = juce::File::createTempFile ("pr7s-mediabay-scan.xml");
+    {
+        MediaDatabase db (store);
+        db.setIncluded (folder.root, true);
+        db.scanNow();
+        CHECK (db.getItems().size() == 5);
+        CHECK (db.scanState (folder.root) == State::all);
+        CHECK (db.scanState (kicks) == State::all);
+
+        // A subfolder left out: its files go at once, the folder above gets a square.
+        db.setIncluded (kicks, false);
+        CHECK (db.getItems().size() == 4);
+        CHECK (db.scanState (folder.root) == State::some);
+        CHECK (db.scanState (kicks) == State::none);
+        CHECK_FALSE (db.isIncluded (kicks.getChildFile ("Kick 808.wav")));
+        CHECK (db.isIncluded (folder.root.getChildFile ("Drums_120bpm_Am.wav")));
+        db.scanNow();
+        CHECK (db.getItems().size() == 4);   // (a scan skips it)
+    }
+    {
+        // Kept: the left-out folder too.
+        MediaDatabase db (store);
+        CHECK (db.getExclusions().size() == 1);
+        CHECK (db.scanState (folder.root) == State::some);
+        // Ticked again: whole again, nothing left out.
+        db.setIncluded (kicks, true);
+        CHECK (db.getExclusions().isEmpty());
+        CHECK (db.getLocations().size() == 1);
+        CHECK (db.scanState (folder.root) == State::all);
+        db.scanNow();
+        CHECK (db.getItems().size() == 5);
+        // The whole folder left out: what was decided inside it goes too.
+        db.setIncluded (kicks, false);
+        db.setIncluded (folder.root, false);
+        CHECK (db.getLocations().isEmpty());
+        CHECK (db.getExclusions().isEmpty());
+        CHECK (db.getItems().empty());
+    }
+    {
+        // Only a subfolder scanned: the folder above has a square, its own files aren't scanned.
+        MediaDatabase db;
+        db.setIncluded (kicks, true);
+        db.scanNow();
+        CHECK (db.getItems().size() == 1);
+        CHECK (db.scanState (folder.root) == State::some);
+        CHECK (db.scanState (kicks) == State::all);
+        CHECK_FALSE (db.isIncluded (folder.root.getChildFile ("Drums_120bpm_Am.wav")));
+    }
+    store.deleteFile();
+}
+
+TEST_CASE ("The MediaBay window's file browser: the tree, its boxes, a folder's files, favorites (0.22.1)", "[mediabay][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    MediaFolder folder;
+    const auto kicks = folder.root.getChildFile ("Kicks");
+    Studio studio (false);
+    studio.getMediaBay().addLocation (folder.root);
+    studio.getMediaBay().scanNow();
+    MediaBayPage page (studio);
+    page.setAutoPlay (false);
+    page.resetFilters();
+    REQUIRE (page.getNumResults() == 5);
+
+    // The tree: the scanned folder (under SCANNED FOLDERS), opened: its subfolder.
+    CHECK (page.revealFolder (folder.root));
+    CHECK (page.getFolderChildren (folder.root) == juce::StringArray { "Kicks" });
+    CHECK (page.revealFolder (kicks));
+    CHECK_FALSE (page.revealFolder (juce::File ("/no/such/folder/here")));
+
+    // A click on a folder: its files (with SUBFOLDERS, its subfolders' too).
+    page.selectFolder (kicks);
+    CHECK (page.getNumResults() == 1);
+    page.selectFolder (folder.root);
+    CHECK (page.getNumResults() == 5);
+    page.setSubfolders (false);
+    CHECK (page.getNumResults() == 4);
+    page.setSubfolders (true);
+
+    // Its box: left out, its files go; the status says so when it's the one chosen.
+    page.setFolderScanned (kicks, false);
+    CHECK (page.getNumResults() == 4);
+    page.selectFolder (kicks);
+    CHECK (page.getNumResults() == 0);
+    CHECK (page.getStatusText().contains ("ISN'T SCANNED"));
+    page.setFolderScanned (kicks, true);
+    studio.getMediaBay().scanNow();
+    page.refresh();
+    CHECK (page.getNumResults() == 1);
+    page.selectFolder ({});
+    CHECK (page.getNumResults() == 5);
+
+    // A favorite (the Media rack's list too), scanned if it wasn't.
+    CHECK (page.addFavorite (kicks));
+    CHECK_FALSE (page.addFavorite (kicks));
+    CHECK (page.getFavorites() == juce::StringArray { kicks.getFullPathName() });
+
+    // ADD FOLDER... (as the chooser's answer): a folder of its own, chosen.
+    page.removeSelectedLocation();   // (none chosen: nothing)
+    CHECK (studio.getMediaBay().getLocations().size() == 1);
+}
+
+namespace
+{
+    // A WAV with metadata (JUCE writes ACID and INFO from these), and an iXML chunk added after.
+    void writeTaggedWav (const juce::File& file, const juce::StringPairArray& metadata, double seconds = 2.0)
+    {
+        file.getParentDirectory().createDirectory();
+        file.deleteFile();
+        const auto rate = 44100.0;
+        const auto samples = (int) (seconds * rate);
+        juce::AudioBuffer<float> sound (1, samples);
+        for (int i = 0; i < samples; ++i)
+            sound.setSample (0, i, 0.3f * std::sin ((float) i * 0.03f));
+        juce::WavAudioFormat wav;
+        auto stream = std::make_unique<juce::FileOutputStream> (file);
+        std::unique_ptr<juce::AudioFormatWriter> writer (wav.createWriterFor (stream.get(), rate, 1, 16, metadata, 0));
+        REQUIRE (writer != nullptr);
+        stream.release();
+        writer->writeFromAudioSampleBuffer (sound, 0, samples);
+    }
+
+    void appendIXml (const juce::File& file, const juce::String& xml)
+    {
+        juce::MemoryBlock data;
+        file.loadFileAsData (data);
+        juce::MemoryOutputStream out (data, true);
+        const auto text = xml.toRawUTF8();
+        const auto size = (int) std::strlen (text);
+        out.write ("iXML", 4);
+        out.writeInt (size);
+        out.write (text, (size_t) size);
+        if (size & 1)
+            out.writeByte (0);
+        out.flush();
+        auto bytes = static_cast<char*> (data.getData());
+        const auto riffSize = (juce::uint32) data.getSize() - 8;
+        std::memcpy (bytes + 4, &riffSize, 4);   // (little-endian, as here)
+        file.replaceWithData (data.getData(), data.getSize());
+    }
+}
+
+TEST_CASE ("MediaBay reads what files say about themselves: ACID loops, INFO, the other DAW's iXML tags (0.22.2)", "[mediabay]")
+{
+    const auto root = juce::File::createTempFile ("pr7s-mediabay-meta");
+    root.createDirectory();
+    juce::StringPairArray loop;
+    loop.set (juce::WavAudioFormat::acidTempo, "128");
+    loop.set (juce::WavAudioFormat::acidBeats, "8");
+    loop.set (juce::WavAudioFormat::acidRootSet, "1");
+    loop.set (juce::WavAudioFormat::acidRootNote, "57");   // A
+    loop.set (juce::WavAudioFormat::acidOneShot, "0");
+    loop.set (juce::WavAudioFormat::acidNumerator, "4");
+    loop.set (juce::WavAudioFormat::acidDenominator, "4");
+    loop.set (juce::WavAudioFormat::riffInfoGenre, "Djent");
+    writeTaggedWav (root.getChildFile ("Loop 01.wav"), loop, 3.75);
+    writeTaggedWav (root.getChildFile ("Riff_Em.wav"), loop);           // (the name's key wins: it says minor)
+    auto shot = loop;
+    shot.set (juce::WavAudioFormat::acidOneShot, "1");
+    writeTaggedWav (root.getChildFile ("Kick.wav"), shot);               // (a one-shot has no tempo)
+    writeTaggedWav (root.getChildFile ("Tagged.wav"), {});
+    appendIXml (root.getChildFile ("Tagged.wav"),
+                "<?xml version=\"1.0\"?><BWFXML><STEINBERG><ATTR_LIST>"
+                "<ATTR><TYPE>string</TYPE><NAME>MusicalCategory</NAME><VALUE>Drums</VALUE></ATTR>"
+                "<ATTR><TYPE>string</TYPE><NAME>MusicalSubCategory</NAME><VALUE>Drums | Kick</VALUE></ATTR>"
+                "<ATTR><TYPE>string</TYPE><NAME>MusicalStyle</NAME><VALUE>Metal</VALUE></ATTR>"
+                "<ATTR><TYPE>string</TYPE><NAME>MusicalCharacter</NAME><VALUE>Distorted, Dark</VALUE></ATTR>"
+                "<ATTR><TYPE>float</TYPE><NAME>MediaTempo</NAME><VALUE>140</VALUE></ATTR>"
+                "<ATTR><TYPE>string</TYPE><NAME>MusicalKey</NAME><VALUE>F# minor</VALUE></ATTR>"
+                "<ATTR><TYPE>string</TYPE><NAME>MediaComment</NAME><VALUE>from the other DAW</VALUE></ATTR>"
+                "</ATTR_LIST></STEINBERG></BWFXML>");
+
+    const auto store = juce::File::createTempFile ("pr7s-mediabay-meta.xml");
+    const auto item = [] (MediaDatabase& db, const char* name) -> const MediaItem&
+    {
+        for (const auto& i : db.getItems())
+            if (i.name == name)
+                return i;
+        FAIL (name);
+        return db.getItems().front();
+    };
+    {
+        MediaDatabase db (store);
+        db.addLocation (root);
+        db.scanNow();
+        REQUIRE (db.getItems().size() == 4);
+        // ACID: the tempo, the beats, the root note (a plain letter: ACID doesn't say minor or major).
+        CHECK (std::abs (item (db, "Loop 01").tempo() - 128.0) < 0.01);
+        CHECK (item (db, "Loop 01").beats == 8.0);
+        CHECK (item (db, "Loop 01").keyName() == "A");
+        CHECK (item (db, "Riff_Em").keyName() == "Em");
+        CHECK (item (db, "Kick").tempo() == 0.0);
+        // INFO: searched.
+        MediaQuery query;
+        query.text = "djent";
+        CHECK (db.find (query).size() == 3);
+        // iXML: the other DAW's tags become its tags; tempo and key read.
+        const auto tagged = root.getChildFile ("Tagged.wav");
+        const auto tags = db.getTags (tagged);
+        CHECK (tags.category == "Drums");
+        CHECK (tags.subCategory == "Kick");
+        CHECK (tags.style == "Metal");
+        CHECK (tags.character.joinIntoString (",") == "Distorted,Dark");
+        CHECK (tags.comment == "from the other DAW");
+        CHECK (item (db, "Tagged").tempo() == 140.0);
+        CHECK (item (db, "Tagged").keyName() == "F#m");
+        // Yours win: changed, a scan doesn't put the file's back.
+        db.setAttribute ({ tagged }, { MediaAttribute::category, {} }, "Guitar");
+        db.scanNow();
+        CHECK (db.getTags (tagged).category == "Guitar");
+    }
+    {
+        // Files read by an older version are read again (once).
+        auto xml = juce::parseXML (store);
+        REQUIRE (xml != nullptr);
+        for (auto* e : xml->getChildWithTagNameIterator ("Item"))
+        {
+            e->setAttribute ("read", 1);
+            e->removeAttribute ("bpm");
+        }
+        xml->writeTo (store);
+        MediaDatabase db (store);
+        CHECK (item (db, "Loop 01").tempo() == 0.0);
+        db.scanNow();
+        CHECK (std::abs (item (db, "Loop 01").tempo() - 128.0) < 0.01);
+        CHECK (item (db, "Loop 01").readVersion == MediaItem::currentReadVersion);
+        CHECK (db.getTags (root.getChildFile ("Tagged.wav")).category == "Guitar");   // (still yours)
+    }
+    store.deleteFile();
+    root.deleteRecursively();
+
+    // The key from a root note: minor when told so.
+    CHECK (MediaDatabase::keyFromRootNote (57, 1) == "Am");
+    CHECK (MediaDatabase::keyFromRootNote (66, 0) == "F#");
+    CHECK (MediaDatabase::keyFromRootNote (63, -1) == "Eb");
+}
+
+TEST_CASE ("The MediaBay window opens where it was left: the open folders and the chosen one (0.22.2)", "[mediabay][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    MediaFolder folder;
+    const auto kicks = folder.root.getChildFile ("Kicks");
+    Studio studio (false);
+    studio.getMediaBay().addLocation (folder.root);
+    studio.getMediaBay().scanNow();
+    {
+        MediaBayPage page (studio);
+        page.setAutoPlay (false);
+        page.resetFilters();
+        page.getFolderChildren (folder.root);   // (opened)
+        page.selectFolder (kicks);
+        CHECK (page.getNumResults() == 1);
+        CHECK (page.isFolderOpenInTree (folder.root));
+    }
+    {
+        // Closed and opened again: the same folder open, the same one chosen, its files shown.
+        MediaBayPage page (studio);
+        CHECK (page.getSelectedFolder() == kicks);
+        CHECK (page.isFolderOpenInTree (folder.root));
+        CHECK (page.getNumResults() == 1);
+        page.selectFolder ({});   // (left as the other tests expect)
+    }
+}
+
+#include "engine/Stretch.h"
+
+namespace
+{
+    // Upward zero crossings per second (a plain tone's frequency).
+    double frequencyOf (const juce::AudioBuffer<float>& sound, double rate, int from, int count)
+    {
+        int crossings = 0;
+        const auto* x = sound.getReadPointer (0);
+        for (int i = from + 1; i < from + count; ++i)
+            if (x[i - 1] < 0.0f && x[i] >= 0.0f)
+                ++crossings;
+        return crossings * rate / count;
+    }
+}
+
+TEST_CASE ("The stretcher: a sound made longer keeps its pitch; transposed, it moves (0.23.0)", "[mediabay]")
+{
+    const auto rate = 44100.0;
+    juce::AudioBuffer<float> tone (2, (int) rate);
+    for (int c = 0; c < 2; ++c)
+        for (int i = 0; i < tone.getNumSamples(); ++i)
+            tone.setSample (c, i, 0.5f * (float) std::sin (juce::MathConstants<double>::twoPi * 440.0 * i / rate));
+    const auto longer = pr7s::stretchAudio (tone, rate, (int) (2 * rate), 0.0);
+    REQUIRE (longer.getNumSamples() == (int) (2 * rate));
+    CHECK (longer.getRMSLevel (0, 0, longer.getNumSamples()) > 0.2f);
+    CHECK (std::abs (frequencyOf (longer, rate, 20000, 44100) - 440.0) < 15.0);
+    const auto higher = pr7s::stretchAudio (tone, rate, (int) rate, 12.0);
+    CHECK (higher.getNumSamples() == (int) rate);
+    CHECK (std::abs (frequencyOf (higher, rate, 8000, 30000) - 880.0) < 30.0);
+}
+
+TEST_CASE ("MediaBay previews in time with the song: the plan, the stretch, the beat lock, waiting for play (0.23.0)", "[mediabay][studio]")
+{
+    MediaFolder folder;   // (Drums_120bpm_Am.wav: 22050 samples at 44.1 kHz, half a second: one beat at 120)
+    Studio studio (false);
+    studio.getMediaBay().addLocation (folder.root);
+    studio.getMediaBay().scanNow();
+    const auto drums = folder.root.getChildFile ("Drums_120bpm_Am.wav");
+    studio.setTempo (100.0);
+
+    // The plan: LINK TEMPO makes the one-beat loop a beat at 100 (0.6 s): 1.2 times as long.
+    Studio::MediaPreviewOptions options;
+    studio.setMediaPreviewOptions (options);
+    auto plan = studio.planMediaPreview (drums, 0.5);
+    CHECK (plan.lengthFactor == 1.0);
+    CHECK (plan.lockBeats == 0.0);
+    options.linkTempo = true;
+    studio.setMediaPreviewOptions (options);
+    plan = studio.planMediaPreview (drums, 0.5);
+    CHECK (plan.lockBeats == 1.0);
+    CHECK (std::abs (plan.lengthFactor - 1.2) < 1e-9);
+    // Double speed: half a beat; to the key of C from A minor's root A: up three (the short way).
+    options.speed = 2.0;
+    options.toKey = 0;
+    studio.setMediaPreviewOptions (options);
+    plan = studio.planMediaPreview (drums, 0.5);
+    CHECK (plan.lockBeats == 0.5);
+    CHECK (plan.semitones == 3.0);
+    options.toKey = 4;   // E: from A, down five, not up seven
+    studio.setMediaPreviewOptions (options);
+    CHECK (studio.planMediaPreview (drums, 0.5).semitones == -5.0);
+    CHECK (Studio::keyPitchClass ("F#m") == 6);
+    CHECK (Studio::keyPitchClass ("Bb") == 10);
+    CHECK (Studio::keyPitchClass ("") == -1);
+
+    // Played: the sound heard is the stretched one (a beat at 100, at the engine's rate).
+    options = {};
+    options.linkTempo = true;
+    studio.setMediaPreviewOptions (options);
+    REQUIRE (studio.previewMedia (drums, false));
+    const auto rate = studio.getEngine().getSampleRate();
+    REQUIRE (studio.getMediaPreviewSound() != nullptr);
+    CHECK (std::abs (studio.getMediaPreviewSound()->sound.getNumSamples() - (int) std::llround (0.6 * rate)) <= 1);
+    studio.stopMediaPreview();
+
+    // The engine's lock: WAIT FOR PLAY silent while stopped; playing, the sound's place follows
+    // the beat from the left locator.
+    auto& engine = studio.getEngine();
+    const auto length = (int) std::llround (4 * 60.0 / 100.0 * rate);   // four beats at 100
+    auto ramp = std::make_shared<juce::AudioBuffer<float>> (2, length);
+    for (int c = 0; c < 2; ++c)
+        for (int i = 0; i < length; ++i)
+            ramp->setSample (c, i, (float) i / (float) length);
+    engine.setPreviewGain (1.0f);
+    engine.setPreviewSync (true, 0.0, 4.0);
+    engine.setPreview (ramp, true);
+    juce::AudioBuffer<float> out (2, 256);
+    engine.render (out, 256);
+    CHECK (out.getMagnitude (0, 0, 256) == 0.0f);   // (waiting)
+    CHECK (engine.isPreviewWaiting());
+    engine.setPosition (1.0);   // a quarter of the way through the loop
+    engine.play();
+    engine.render (out, 256);
+    CHECK (std::abs (out.getSample (0, 0) - 0.25f) < 0.002f);
+    engine.render (out, 256);
+    CHECK (std::abs (out.getSample (0, 0) - (0.25f + 256.0f / (float) length)) < 0.002f);
+    engine.stop();
+    engine.render (out, 256);
+    CHECK (out.getMagnitude (0, 0, 256) == 0.0f);
+    engine.setPreviewSync (false, 0.0, 0.0);
+    engine.stopPreview();
+}
+
+namespace
+{
+    // A .vstpreset as the VST3 SDK writes one: header, the component's state ("Comp"), the
+    // Info (XML), then the chunk list.
+    void writeVstPreset (const juce::File& file, const juce::String& classId, const juce::String& infoXml, const juce::MemoryBlock& state)
+    {
+        juce::MemoryOutputStream out;
+        out.write ("VST3", 4);
+        out.writeInt (1);
+        out.write (classId.toRawUTF8(), 32);
+        const auto listOffsetAt = out.getPosition();
+        out.writeInt64 (0);   // (filled in below)
+        const auto compAt = (juce::int64) out.getPosition();
+        out.write (state.getData(), state.getSize());
+        const auto infoAt = (juce::int64) out.getPosition();
+        out.write (infoXml.toRawUTF8(), infoXml.getNumBytesAsUTF8());
+        const auto listAt = (juce::int64) out.getPosition();
+        out.write ("List", 4);
+        out.writeInt (2);
+        out.write ("Comp", 4); out.writeInt64 (compAt); out.writeInt64 ((juce::int64) state.getSize());
+        out.write ("Info", 4); out.writeInt64 (infoAt); out.writeInt64 ((juce::int64) infoXml.getNumBytesAsUTF8());
+        juce::MemoryBlock data (out.getData(), out.getDataSize());
+        std::memcpy (static_cast<char*> (data.getData()) + listOffsetAt, &listAt, 8);   // (little-endian, as here)
+        file.getParentDirectory().createDirectory();
+        file.replaceWithData (data.getData(), data.getSize());
+    }
+}
+
+TEST_CASE ("VST presets in the MediaBay: read, tagged, matched to their plug-in (0.24.0)", "[mediabay][studio]")
+{
+    const auto root = juce::File::createTempFile ("pr7s-vstpresets");
+    const auto classId = juce::String ("0123456789ABCDEF00112233AABBCCDD");
+    const auto preset = root.getChildFile ("Shreddage Rogue").getChildFile ("Djent Rhythm.vstpreset");
+    const juce::String info = "<?xml version=\"1.0\"?><MetaInfo>"
+                              "<Attr id=\"MediaType\" value=\"VstPreset\" type=\"string\"/>"
+                              "<Attr id=\"PlugInName\" value=\"Rogue\" type=\"string\"/>"
+                              "<Attr id=\"PlugInCategory\" value=\"Instrument|Sampler\" type=\"string\"/>"
+                              "<Attr id=\"Name\" value=\"Djent Rhythm DI\" type=\"string\"/>"
+                              "<Attr id=\"MusicalInstrument\" value=\"Guitar|Rhythm\" type=\"string\"/>"
+                              "<Attr id=\"MusicalStyle\" value=\"Metal|Djent\" type=\"string\"/>"
+                              "<Attr id=\"MusicalCharacter\" value=\"Distorted, Tight\" type=\"string\"/>"
+                              "</MetaInfo>";
+    const juce::MemoryBlock state ("settings!", 9);
+    writeVstPreset (preset, classId, info, state);
+
+    // The header and the Info.
+    juce::String readClass;
+    juce::StringPairArray readInfo;
+    REQUIRE (MediaDatabase::readVstPresetInfo (preset, readClass, readInfo));
+    CHECK (readClass == classId);
+    CHECK (readInfo.getValue ("PlugInName", {}) == "Rogue");
+    CHECK_FALSE (MediaDatabase::readVstPresetInfo (root.getChildFile ("nothing.vstpreset"), readClass, readInfo));
+    // JUCE's id for it: the four numbers hashed.
+    const auto expected = (int) (((((juce::uint32) 0x01234567 * 31u) + 0x89ABCDEFu) * 31u + 0x00112233u) * 31u + 0xAABBCCDDu);
+    CHECK (MediaDatabase::vst3UniqueIdFor (classId) == expected);
+    CHECK (MediaDatabase::vst3UniqueIdFor ("not hex") == 0);
+
+    // Scanned: a VST PRESET, named by its Info, its plug-in, an instrument's, tagged from its Info.
+    Studio studio (false);
+    auto& bay = studio.getMediaBay();
+    bay.addLocation (root);
+    bay.scanNow();
+    REQUIRE (bay.getItems().size() == 1);
+    const auto& item = bay.getItems().front();
+    CHECK (item.type == MediaType::pluginPreset);
+    CHECK (mediaTypeName (item.type) == "VST PRESET");
+    CHECK (item.name == "Djent Rhythm DI");
+    CHECK (item.presetPlugin == "Rogue");
+    CHECK (item.presetInstrument);
+    CHECK (item.tags.category == "Guitar");
+    CHECK (item.tags.subCategory == "Rhythm");
+    CHECK (item.tags.style == "Metal");
+    CHECK (item.tags.character.joinIntoString (",") == "Distorted,Tight");
+    MediaQuery query;
+    query.text = "rogue";
+    CHECK (bay.find (query).size() == 1);
+
+    // Its plug-in: not scanned, so it says which.
+    juce::String error;
+    CHECK_FALSE (studio.readPluginPreset (preset, error).has_value());
+    CHECK (error.contains ("Rogue"));
+    CHECK (studio.addTrackFromPluginPreset (preset, error) == 0);
+    // Scanned (a description as the scan would give it): found by its class id, the settings ready
+    // for the plug-in (JUCE's VST3 state with the preset's component chunk).
+    juce::PluginDescription rogue;
+    rogue.name = "Rogue (renamed)";   // (the id matches, not the name)
+    rogue.pluginFormatName = "VST3";
+    rogue.manufacturerName = "Impact Soundworks";
+    rogue.isInstrument = true;
+    rogue.uniqueId = expected;
+    rogue.fileOrIdentifier = "/nowhere/Rogue.vst3";
+    studio.getPluginHost().getKnownPlugins().addType (rogue);
+    error = {};
+    const auto found = studio.readPluginPreset (preset, error);
+    REQUIRE (found.has_value());
+    CHECK (found->plugin.name == "Rogue (renamed)");
+    CHECK (found->instrument);
+    CHECK (found->name == "Djent Rhythm DI");
+    const auto xml = juce::AudioProcessor::getXmlFromBinary (found->state.getData(), (int) found->state.getSize());
+    REQUIRE (xml != nullptr);
+    juce::MemoryBlock component;
+    component.fromBase64Encoding (xml->getChildElementAllSubText ("IComponent", {}));
+    CHECK (component == state);
+    root.deleteRecursively();
 }

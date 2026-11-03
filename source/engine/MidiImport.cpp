@@ -74,6 +74,26 @@ namespace pr7s
                 const auto& message = event->message;
                 if (message.isTrackNameEvent() && name.isEmpty())
                     name = message.getTextFromTextMetaEvent().trim();
+                if (message.isController() || message.isPitchWheel() || message.isChannelPressure()
+                    || message.isAftertouch() || message.isProgramChange())
+                {
+                    // (0.25.0) As steps, as recorded: a file's controllers are already as dense as they were played.
+                    auto& track = byChannel[format == 0 ? message.getChannel() : 0];
+                    Controller c;
+                    c.start = toBeats (message.getTimeStamp());
+                    if (message.isController())
+                        c = { Controller::Type::cc, message.getControllerNumber(), c.start, message.getControllerValue(), false };
+                    else if (message.isPitchWheel())
+                        c = { Controller::Type::pitchbend, 0, c.start, message.getPitchWheelValue(), false };
+                    else if (message.isChannelPressure())
+                        c = { Controller::Type::aftertouch, 0, c.start, message.getChannelPressureValue(), false };
+                    else if (message.isAftertouch())
+                        c = { Controller::Type::polyPressure, message.getNoteNumber(), c.start, message.getAfterTouchValue(), false };
+                    else
+                        c = { Controller::Type::programChange, 0, c.start, message.getProgramChangeNumber(), false };
+                    track.controllers.push_back (c);
+                    continue;
+                }
                 if (! message.isNoteOn())
                     continue;
                 const auto start = toBeats (message.getTimeStamp());
@@ -86,10 +106,13 @@ namespace pr7s
             for (auto& [channel, track] : byChannel)
             {
                 juce::ignoreUnused (channel);
+                if (track.notes.empty())
+                    continue;   // (controllers alone, as a format-0 file's channel with no notes: left out, as before)
                 track.name = name.isNotEmpty() ? name : "MIDI " + juce::String ((int) result.tracks.size() + 1).paddedLeft ('0', 2);
                 if (format == 0 && byChannel.size() > 1)
                     track.name << " (Ch. " << track.channel << ")";
                 std::stable_sort (track.notes.begin(), track.notes.end(), [] (const Note& a, const Note& b) { return a.start < b.start; });
+                std::stable_sort (track.controllers.begin(), track.controllers.end(), [] (const Controller& a, const Controller& b) { return a.start < b.start; });
                 result.tracks.push_back (std::move (track));
             }
         }

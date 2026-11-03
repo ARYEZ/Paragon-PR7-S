@@ -210,6 +210,10 @@ TEST_CASE ("Recording audio in a cycle keeps the last complete pass; recording n
 {
     Studio studio (false);
     const auto trackId = studio.addAudioTrack (true);
+    // (0.29.0: the Replace record mode; the default, Keep History, keeps every lap: tests/TakeTests.cpp)
+    auto modes = studio.getProject().recordModes;
+    modes.audio = Project::RecordModes::Audio::replace;
+    studio.setRecordModes (modes);
     studio.setCycle (0.0, 2.0);
     studio.setCycleOn (true);
     // Five beats: two whole passes and half of a third. The second is kept.
@@ -239,16 +243,19 @@ TEST_CASE ("Recording audio in a cycle keeps the last complete pass; recording n
     studio.record();
     studio.getEngine().render (output, (int) beat + (int) beat / 2, played.get());
     studio.stop();
-    REQUIRE (studio.getProject().findTrack (trackId)->parts.size() == 2);
-    CHECK_THAT (studio.getProject().findTrack (trackId)->parts[1].length, WithinAbs (1.5, 1.0e-6));
-    CHECK (studio.getProject().findTrack (trackId)->parts[1].audioOffset == 0.0);
+    // (Replace: what it covered of the first clip cut out, a sliver before it, from the
+    // interface's delay compensation, and the rest after it)
+    REQUIRE (studio.getProject().findTrack (trackId)->parts.size() == 3);
+    CHECK_THAT (studio.getProject().findTrack (trackId)->parts[2].length, WithinAbs (1.5, 1.0e-6));
+    CHECK (studio.getProject().findTrack (trackId)->parts[2].audioOffset == 0.0);
+    CHECK (studio.getProject().findTrack (trackId)->numLanes() == 1);
 
     // Record pressed and stopped at once (no audio went by): no clip, no file.
     studio.setCycleOn (false);
     const auto before = studio.getAudioFolder().getNumberOfChildFiles (juce::File::findFiles);
     studio.record();
     studio.stop();
-    CHECK (studio.getProject().findTrack (trackId)->parts.size() == 2);
+    CHECK (studio.getProject().findTrack (trackId)->parts.size() == 3);
     CHECK (studio.getAudioFolder().getNumberOfChildFiles (juce::File::findFiles) == before);
     studio.getAudioFolder().deleteRecursively();
 }

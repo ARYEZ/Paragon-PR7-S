@@ -3,8 +3,11 @@
 #include "DeviceTests.h"
 #include "TestHelpers.h"
 #include "engine/Studio.h"
+#include "engine/Controllers.h"
 #include "ui/Finish.h"
 #include "ui/MainView.h"
+#include "ui/DrumMapPage.h"
+#include "ui/AutomationPanel.h"
 #include "ui/ToolIcons.h"
 #include "ui/Windows.h"
 #include "ui/ParagonLookAndFeel.h"
@@ -28,6 +31,7 @@
 // PARAGON_SNAPSHOT_MASTER=1: the master's row chosen (its Inspector).
 // PARAGON_SNAPSHOT_RACK=home|loops|instruments: the Media rack in the right zone (0.22.0).
 // PARAGON_SNAPSHOT_TEMPO=1: the tempo track, with a ramp and a step (0.10.0).
+// PARAGON_SNAPSHOT_TAKES=1: the guitar's three takes on lanes (LANES), comped (0.29.0), the COMP tool chosen.
 // PARAGON_SNAPSHOT_FREEZE=1: the lead frozen (FREEZE lit in its Inspector, its parts stamped).
 // PARAGON_SNAPSHOT_VISIBILITY=1: the VISIBILITY tab, the bass hidden, the keys disabled.
 // PARAGON_SNAPSHOT_INSPECTOR=fader folds the Inspector's inserts and sends (=none hides it).
@@ -115,6 +119,17 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         view.setSize (size[0].getIntValue(), size[1].getIntValue());
         scale = 1.0f;
     }
+    // PARAGON_SNAPSHOT_AUTOEDIT=1 (0.27.0, with PARAGON_SNAPSHOT_AUTOMATION): the lead's volume taller, a bent ramp,
+    // three points selected (the event editor's box), the LINE tool chosen.
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_AUTOEDIT", {}).isNotEmpty())
+    {
+        studio.setAutomationPoints (Engine::masterBus, 0, { { 16.0, 0.3f, 0.0f }, { 18.0, 0.9f, 0.6f }, { 21.0, 0.5f, 0.0f },
+                                                            { 24.0, 0.8f, -0.5f }, { 26.0, 0.4f, 0.0f }, { 30.0, 0.7f, 0.0f } });
+        for (int i = 0; i < 3; ++i)
+            view.getArrangeView().zoomRows (true);
+        view.getArrangeView().selectPoints (Engine::masterBus, 0, { 2, 3, 4 });
+        view.getArrangeView().setTool (ArrangeView::Tool::line);
+    }
     // PARAGON_SNAPSHOT_INSPECTOR=fader: the Inspector's inserts and sends folded (its fader shows); =none: hidden.
     if (const auto inspector = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_INSPECTOR", {}); inspector == "fader")
     {
@@ -146,6 +161,28 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.setSolo (lead, true);
         studio.setMute (studio.getProject().tracks[1].id, true);
         studio.setArmed (studio.getProject().tracks[0].id);
+        studio.dispatchPendingMessages();
+    }
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_TAKES", {}).isNotEmpty())
+    {
+        // Two more takes of the guitar's (the same recording, further in: stand-ins), then comped:
+        // take 1 over bar 3, take 2 over bars 4 and 5, take 3 elsewhere.
+        for (int i = 1; i < 3; ++i)
+        {
+            Part another { 4.0, 20.0, "Guitar take " + juce::String (i + 1), {} };
+            another.audioFile = "Guitar 01.wav";
+            another.audioOffset = 1.0 + i * 0.37;
+            another.fadeIn = 0.4;
+            another.fadeOut = 1.5;
+            another.lane = i;
+            another.order = i;
+            studio.addPart (guitar, another);
+        }
+        studio.compRange (guitar, 0, 8.0, 12.0);
+        studio.compRange (guitar, 1, 12.0, 20.0);
+        studio.setShowLanes (guitar, true);
+        view.getArrangeView().setTool (ArrangeView::Tool::comp);
+        studio.selectTrack (guitar);
         studio.dispatchPendingMessages();
     }
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FREEZE", {}).isNotEmpty())
@@ -285,6 +322,86 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         view.openKeyEditor();
         studio.dispatchPendingMessages();
         view.getKeyEditor().selectNotes ({ 3, 4, 5 });
+        // PARAGON_SNAPSHOT_DRUMS=1 (0.26.0): a drum track with a rock beat in the drum editor (the GM Map;
+        // the crash muted, some hats selected; the velocity lane).
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_DRUMS", {}).isNotEmpty())
+        {
+            const auto drums = studio.addTrack ({});
+            studio.renameTrack (drums, "Drums");
+            Part beat { 16.0, 8.0, "Beat", {} };
+            for (int eighth = 0; eighth < 16; ++eighth)
+            {
+                beat.notes.push_back ({ eighth * 0.5, 0.25, eighth % 4 == 3 ? 46 : 42, eighth % 2 == 0 ? 0.85f : 0.55f });
+                if (eighth % 4 == 0)
+                    beat.notes.push_back ({ eighth * 0.5, 0.25, 36, 0.95f });
+                if (eighth % 4 == 2)
+                    beat.notes.push_back ({ eighth * 0.5, 0.25, 38, 0.9f });
+            }
+            beat.notes.push_back ({ 3.75, 0.25, 36, 0.7f });
+            beat.notes.push_back ({ 0.0, 0.5, 49, 1.0f });
+            beat.notes.push_back ({ 6.5, 0.25, 48, 0.8f });
+            beat.notes.push_back ({ 7.0, 0.25, 45, 0.8f });
+            beat.notes.push_back ({ 7.5, 0.25, 43, 0.85f });
+            studio.addPart (drums, beat);
+            studio.setTrackDrumMap (drums, "GM Map");
+            auto map = *studio.getDrumMapOf (drums);
+            map.sounds[57].mute = true;
+            studio.setDrumMap ("GM Map", map);
+            studio.dispatchPendingMessages();
+            const auto index = (int) studio.getProject().findTrack (drums)->parts.size() - 1;
+            view.getArrangeView().select (drums, index);
+            studio.dispatchPendingMessages();
+            auto& editor = view.getKeyEditor();
+            editor.setDrumRowsShown (KeyEditor::DrumRowsShown::named);
+            std::vector<int> hats;
+            const auto& notes = studio.getProject().findTrack (drums)->parts[(size_t) index].notes;
+            for (int i = 0; i < (int) notes.size(); ++i)
+                if (notes[(size_t) i].pitch == 42 && notes[(size_t) i].start >= 2.0 && notes[(size_t) i].start < 4.0)
+                    hats.push_back (i);
+            editor.selectNotes (hats);
+            editor.setTool (KeyEditor::Tool::draw);
+            view.setKeyEditorSize (150);
+            view.setDockedHeight (760);
+            editor.fitToPart();
+        }
+        // PARAGON_SNAPSHOT_LANES=1 (0.25.0): the lead with modulation and pitchbend lanes, a swell, a bend
+        // with the semitone grid, some modulation events selected.
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_LANES", {}).isNotEmpty())
+        {
+            studio.setPosition (22.0);
+            namespace K = pr7s::ControllerKinds;
+            for (const auto& track : studio.getProject().tracks)
+                if (track.name == "Lead" && ! track.parts.empty())
+                {
+                    std::vector<Controller> events;
+                    for (int i = 0; i <= 24; ++i)   // modulation: a slow wave
+                        events.push_back ({ Controller::Type::cc, 1, i * 0.5, 40 + juce::roundToInt (50.0 * std::sin (i * 0.45)), false });
+                    events.push_back ({ Controller::Type::pitchbend, 0, 0.0, 8192, false });
+                    events.push_back ({ Controller::Type::pitchbend, 0, 3.0, 8192, false });
+                    events.push_back ({ Controller::Type::pitchbend, 0, 4.0, 16383, true });   // a whole tone up...
+                    events.push_back ({ Controller::Type::pitchbend, 0, 6.0, 16383, false });
+                    events.push_back ({ Controller::Type::pitchbend, 0, 6.5, 8192, true });    // ...and back
+                    events.push_back ({ Controller::Type::cc, 11, 0.0, 70, false });
+                    events.push_back ({ Controller::Type::cc, 11, 8.0, 127, true });
+                    K::sort (events);
+                    studio.setControllers (track.id, 0, events);
+                    studio.setControllerLanes (track.id, { K::velocity, 1, K::pitchbend });
+                    studio.setPitchbendGrid (track.id, 2, 2, false, true);
+                    studio.dispatchPendingMessages();
+                    auto& editor = view.getKeyEditor();
+                    editor.setLaneHeight (64);
+                    std::vector<int> some;
+                    for (int i = 0; i < (int) studio.getProject().findTrack (track.id)->parts[0].controllers.size(); ++i)
+                        if (const auto& c = studio.getProject().findTrack (track.id)->parts[0].controllers[(size_t) i];
+                            c.type == Controller::Type::cc && c.number == 1 && c.start >= 4.0 && c.start <= 7.0)
+                            some.push_back (i);
+                    editor.setLanesFocused (true);
+                    editor.selectAllOnLane (editor.laneOf (1));
+                    editor.selectControllers (some);
+                    editor.setTool (KeyEditor::Tool::line);
+                }
+            view.setDockedHeight (700);
+        }
     }
     // PARAGON_SNAPSHOT_EDIT=1: the SPLIT tool chosen, and the bass's second part muted.
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_EDIT", {}).isNotEmpty())
@@ -712,6 +829,26 @@ TEST_CASE ("Snapshot: the MediaBay window", "[.][snapshot-mediabay]")
         }
         root.getChildFile ("Presets").createDirectory();
         root.getChildFile ("Presets").getChildFile ("Rogue Drop A Rhythm.pr7track").replaceWithText ("<PR7S/>");
+        {
+            // A VST preset (0.24.0): header, Info and the chunk list.
+            const juce::String infoXml = "<MetaInfo><Attr id=\"PlugInName\" value=\"Rogue\" type=\"string\"/>"
+                                         "<Attr id=\"PlugInCategory\" value=\"Instrument|Sampler\" type=\"string\"/>"
+                                         "<Attr id=\"Name\" value=\"Djent Rhythm DI\" type=\"string\"/>"
+                                         "<Attr id=\"MusicalInstrument\" value=\"Guitar|Rhythm\" type=\"string\"/>"
+                                         "<Attr id=\"MusicalStyle\" value=\"Metal|Djent\" type=\"string\"/></MetaInfo>";
+            juce::MemoryOutputStream out;
+            out.write ("VST3", 4);
+            out.writeInt (1);
+            out.write ("0123456789ABCDEF00112233AABBCCDD", 32);
+            const auto infoAt = (juce::int64) 48;
+            const auto listAt = infoAt + (juce::int64) infoXml.getNumBytesAsUTF8();
+            out.writeInt64 (listAt);
+            out.write (infoXml.toRawUTF8(), infoXml.getNumBytesAsUTF8());
+            out.write ("List", 4);
+            out.writeInt (1);
+            out.write ("Info", 4); out.writeInt64 (infoAt); out.writeInt64 ((juce::int64) infoXml.getNumBytesAsUTF8());
+            root.getChildFile ("Presets").getChildFile ("Djent Rhythm.vstpreset").replaceWithData (out.getData(), out.getDataSize());
+        }
         root.getChildFile ("Songs").createDirectory();
         root.getChildFile ("Songs").getChildFile ("Night Drive.pr7s").replaceWithText ("<PR7S/>");
 
@@ -759,8 +896,12 @@ TEST_CASE ("Snapshot: the MediaBay window", "[.][snapshot-mediabay]")
         page.resetFilters();
         page.setAutoPlay (false);
         page.sortBy (pr7s::MediaColumn::rating, false);
+        // The file browser (0.22.1): the library open, Bass left out (its box empty, the library's a square).
+        page.getFolderChildren (root);
+        page.setFolderScanned (root.getChildFile ("Bass"), false);
         page.clickFilterValue (2, "Metal", false);
         page.selectRow (1);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (60);   // (the tree lays out its rows on the message loop)
         page.play();
         studio.setMediaPreviewLevel (0.0f);   // (silent: only the playhead moves)
         juce::AudioBuffer<float> out (2, 44100);
@@ -1015,6 +1156,66 @@ TEST_CASE ("Snapshot: the chord pads zone", "[.][snapshot-pads]")
         juce::FileOutputStream out { juce::File (path) };
         juce::PNGImageFormat().writeImageToStream (image, out);
         studio.getPadPlayer().releaseAll();
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+TEST_CASE ("Snapshot: the Drum Map Setup", "[.][snapshot-drummap]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "drummap.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        studio.addDrumMap (pr7s::DrumMap::gm());
+        auto kit = pr7s::DrumMap::gm();
+        kit.name = "Metal Kit";
+        kit.sounds[36].name = "Kick Left";
+        kit.sounds[35].name = "Kick Right";
+        kit.sounds[36].outNote = 24;
+        kit.sounds[38].channel = 9;
+        kit.sounds[39].mute = true;
+        studio.addDrumMap (kit);
+        const auto trackId = studio.getProject().tracks[0].id;
+        DrumMapPage page (studio, [trackId] { return trackId; });
+        page.setSize (1100, 700);
+        page.selectMap ("Metal Kit");
+        page.selectSound (36);
+        page.getTable().scrollToEnsureRowIsOnscreen (50);
+        const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+TEST_CASE ("Snapshot: the Automation panel", "[.][snapshot-autopanel]")
+{
+    // PARAGON_SNAPSHOT_TAB=settings: its SETTINGS tab.
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "autopanel.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        studio.setAutomationMode (pr7s::Studio::AutomationSettings::Mode::autoLatch);
+        studio.stepFill (pr7s::Studio::FillOption::toEnd);
+        studio.stepFill (pr7s::Studio::FillOption::loop);
+        studio.stepFill (pr7s::Studio::FillOption::loop);
+        studio.setSuspendWrite (pr7s::Studio::AutomationSettings::Group::mute, true);
+        studio.setTrim (true);
+        AutomationPanel panel (studio);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_TAB", {}) == "settings")
+            panel.setTab (AutomationPanel::Tab::settings);
+        panel.refresh();
+        const auto image = panel.createComponentSnapshot (panel.getLocalBounds(), true, 1.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }

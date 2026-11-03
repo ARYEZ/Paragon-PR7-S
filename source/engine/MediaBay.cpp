@@ -3,6 +3,7 @@
 #include "MidiImport.h"
 
 #include <algorithm>
+#include <cstring>
 #include <random>
 
 namespace pr7s
@@ -15,6 +16,7 @@ namespace pr7s
             case MediaType::midi: return "MIDI";
             case MediaType::trackPreset: return "TRACK PRESET";
             case MediaType::song: return "SONG";
+            case MediaType::pluginPreset: return "VST PRESET";
         }
         return {};
     }
@@ -30,6 +32,8 @@ namespace pr7s
             return MediaType::trackPreset;
         if (extension == ".pr7s")
             return MediaType::song;
+        if (extension == ".vstpreset")
+            return MediaType::pluginPreset;
         return std::nullopt;
     }
 
@@ -37,12 +41,16 @@ namespace pr7s
     {
         juce::String text;
         text << name << ' ' << file.getFileName() << ' ' << file.getParentDirectory().getFileName() << ' ' << mediaTypeName (type);
-        if (type == MediaType::trackPreset)
+        if (type == MediaType::trackPreset || type == MediaType::pluginPreset)
             text << " preset";
+        if (presetPlugin.isNotEmpty())
+            text << ' ' << presetPlugin;
         if (tempo() > 0.0)
             text << ' ' << juce::String (tempo(), 0) << " bpm";
         if (keyName().isNotEmpty())
             text << ' ' << keyName();
+        if (info.isNotEmpty())
+            text << ' ' << info;
         for (const auto* t : { &tags.category, &tags.subCategory, &tags.style, &tags.subStyle, &tags.comment })
             if (t->isNotEmpty())
                 text << ' ' << *t;
@@ -368,6 +376,151 @@ namespace pr7s
         return {};
     }
 
+    juce::String MediaDatabase::keyFromRootNote (int midiNote, int mode)
+    {
+        static const char* const major[] { "C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B" };
+        static const char* const minor[] { "Cm", "C#m", "Dm", "Ebm", "Em", "Fm", "F#m", "Gm", "G#m", "Am", "Bbm", "Bm" };
+        const auto pc = ((midiNote % 12) + 12) % 12;
+        return mode == 1 ? minor[pc] : major[pc];
+    }
+
+    juce::String MediaDatabase::readIXml (const juce::File& wav)
+    {
+        // Walk the RIFF chunks for "iXML" (JUCE keeps only its ASWG part).
+        juce::FileInputStream in (wav);
+        if (! in.openedOk())
+            return {};
+        char riff[4], wave[4];
+        if (in.read (riff, 4) != 4 || std::memcmp (riff, "RIFF", 4) != 0)
+            return {};
+        in.readInt();
+        if (in.read (wave, 4) != 4 || std::memcmp (wave, "WAVE", 4) != 0)
+            return {};
+        for (int chunks = 0; chunks < 200 && ! in.isExhausted(); ++chunks)
+        {
+            char id[4];
+            if (in.read (id, 4) != 4)
+                return {};
+            const auto size = (juce::int64) (juce::uint32) in.readInt();
+            const auto next = in.getPosition() + size + (size & 1);
+            if (std::memcmp (id, "iXML", 4) == 0)
+            {
+                if (size <= 0 || size > 4 * 1024 * 1024)
+                    return {};
+                juce::MemoryBlock block;
+                in.readIntoMemoryBlock (block, (juce::pointer_sized_int) size);   // (not ssize_t: Windows has none)
+                return block.toString();
+            }
+            if (! in.setPosition (next))
+                return {};
+        }
+        return {};
+    }
+
+    MediaTags MediaDatabase::tagsFromIXml (const juce::String& ixml, double& bpm, juce::String& key)
+    {
+        // <BWFXML><STEINBERG><ATTR_LIST><ATTR><TYPE/><NAME/><VALUE/></ATTR>... The names aren't
+        // published: they're matched by what they hold (our best reading of them).
+        MediaTags t;
+        const auto xml = juce::parseXML (ixml);
+        const auto* steinberg = xml != nullptr ? xml->getChildByName ("STEINBERG") : nullptr;
+        const auto* list = steinberg != nullptr ? steinberg->getChildByName ("ATTR_LIST") : nullptr;
+        if (list == nullptr)
+            return t;
+        // ("Drum&Perc | Kick": the part after the bar.)
+        const auto lastPart = [] (const juce::String& v) { return v.fromLastOccurrenceOf ("|", false, false).trim(); };
+        for (const auto* attr : list->getChildWithTagNameIterator ("ATTR"))
+        {
+            const auto name = attr->getChildElementAllSubText ("NAME", {}).toLowerCase();
+            const auto value = attr->getChildElementAllSubText ("VALUE", {}).trim();
+            if (value.isEmpty())
+                continue;
+            const auto sub = name.contains ("sub");
+            if (name.contains ("category"))
+                (sub ? t.subCategory : t.category) = lastPart (value);
+            else if (name.contains ("style"))
+                (sub ? t.subStyle : t.style) = lastPart (value);
+            else if (name.contains ("character"))
+            {
+                for (auto word : juce::StringArray::fromTokens (value, ",|;", ""))
+                    for (const auto& pair : characterPairs())
+                        for (const auto& side : { pair.left, pair.right })
+                            if (word.trim().equalsIgnoreCase (side))
+                                t.character.addIfNotAlreadyThere (side);
+            }
+            else if (name.contains ("comment"))
+                t.comment = value;
+            else if (name.contains ("tempo") || name.contains ("bpm"))
+            {
+                const auto v = value.getDoubleValue();
+                if (v >= 20.0 && v <= 400.0)
+                    bpm = v;
+            }
+            else if (name.contains ("key") && ! name.contains ("keyword"))
+            {
+                // "Am", "A minor", "F# maj"...
+                auto spoken = value.replace (" minor", "m").replace (" Minor", "m").replace (" min", "m").replace (" major", "").replace (" Major", "").replace (" maj", "");
+                if (const auto k = keyFromName (spoken.removeCharacters (" ")); k.isNotEmpty())
+                    key = k;
+            }
+        }
+        return t;
+    }
+
+    bool MediaDatabase::readVstPresetInfo (const juce::File& file, juce::String& classId, juce::StringPairArray& info)
+    {
+        // "VST3", a version (4), the class id (32 ASCII), the chunk list's offset (8); the list:
+        // "List", a count, then per chunk its id (4), offset (8), size (8). Little-endian.
+        juce::FileInputStream in (file);
+        if (! in.openedOk() || in.getTotalLength() < 48)
+            return false;
+        char header[48];
+        if (in.read (header, 48) != 48 || std::memcmp (header, "VST3", 4) != 0)
+            return false;
+        classId = juce::String (juce::CharPointer_ASCII (header + 8), 32).trim();
+        const auto listAt = (juce::int64) juce::ByteOrder::littleEndianInt64 (header + 40);
+        const auto total = in.getTotalLength();
+        if (listAt < 48 || listAt + 8 > total || ! in.setPosition (listAt))
+            return true;
+        char list[8];
+        if (in.read (list, 8) != 8 || std::memcmp (list, "List", 4) != 0)
+            return true;
+        const auto count = juce::jlimit (0, 64, (int) juce::ByteOrder::littleEndianInt (list + 4));
+        for (int i = 0; i < count; ++i)
+        {
+            char entry[20];
+            if (! in.setPosition (listAt + 8 + (juce::int64) i * 20) || in.read (entry, 20) != 20)
+                break;
+            if (std::memcmp (entry, "Info", 4) != 0)
+                continue;
+            const auto offset = (juce::int64) juce::ByteOrder::littleEndianInt64 (entry + 4);
+            const auto size = (juce::int64) juce::ByteOrder::littleEndianInt64 (entry + 12);
+            if (offset < 0 || size <= 0 || size > 1024 * 1024 || offset > total || size > total - offset || ! in.setPosition (offset))
+                break;
+            juce::MemoryBlock block;
+            in.readIntoMemoryBlock (block, (juce::pointer_sized_int) size);
+            // <MetaInfo><Attr id="PlugInName" value="..." type="string"/>...</MetaInfo>
+            if (const auto xml = juce::parseXML (block.toString()))
+                for (const auto* attr : xml->getChildIterator())
+                    if (const auto id = attr->getStringAttribute ("id"); id.isNotEmpty())
+                        info.set (id, attr->getStringAttribute ("value"));
+            break;
+        }
+        return true;
+    }
+
+    int MediaDatabase::vst3UniqueIdFor (const juce::String& classId)
+    {
+        // As JUCE does for a VST3: the class id's four 32-bit numbers, hashed (value * 31 + each).
+        const auto hex = classId.trim();
+        if (hex.length() != 32 || ! hex.containsOnly ("0123456789abcdefABCDEF"))
+            return 0;
+        juce::uint32 value = 0;
+        for (int i = 0; i < 4; ++i)
+            value = value * 31 + (juce::uint32) hex.substring (i * 8, i * 8 + 8).getHexValue64();
+        return (int) value;
+    }
+
     MediaItem MediaDatabase::read (const juce::File& file, juce::AudioFormatManager& formats)
     {
         MediaItem item;
@@ -385,6 +538,87 @@ namespace pr7s
                 item.sampleRate = reader->sampleRate;
                 item.channels = (int) reader->numChannels;
                 item.seconds = reader->sampleRate > 0.0 ? (double) reader->lengthInSamples / reader->sampleRate : 0.0;
+
+                // What the file says about itself (0.22.2): a loop's tempo, beats and root note
+                // (WAV: ACID; AIFF: Apple loop), its description, genre, comments, keywords.
+                const auto& m = reader->metadataValues;
+                const auto number = [&m] (const char* k) { return m.getValue (k, {}).getDoubleValue(); };
+                double tempo = 0.0, beats = 0.0;
+                int root = -1, mode = -1;
+                bool oneShot = false;
+                if (m.containsKey (juce::WavAudioFormat::acidTempo) || m.containsKey (juce::WavAudioFormat::acidBeats))
+                {
+                    tempo = number (juce::WavAudioFormat::acidTempo);
+                    beats = number (juce::WavAudioFormat::acidBeats);
+                    oneShot = m.getValue (juce::WavAudioFormat::acidOneShot, "0") == "1";
+                    if (m.getValue (juce::WavAudioFormat::acidRootSet, "0") == "1")
+                        root = m.getValue (juce::WavAudioFormat::acidRootNote, "-1").getIntValue();
+                }
+                if (m.containsKey (juce::AiffAudioFormat::appleBeats))
+                {
+                    beats = number (juce::AiffAudioFormat::appleBeats);
+                    oneShot = m.getValue (juce::AiffAudioFormat::appleOneShot, "0") == "1";
+                    if (m.getValue (juce::AiffAudioFormat::appleRootSet, "0") == "1")
+                        root = m.getValue (juce::AiffAudioFormat::appleRootNote, "-1").getIntValue();
+                    const auto scale = m.getValue (juce::AiffAudioFormat::appleKey, {});
+                    mode = scale == "minor" ? 1 : scale == "major" ? 0 : -1;
+                }
+                if (tempo <= 0.0 && beats > 0.0 && item.seconds > 0.0 && ! oneShot)
+                    tempo = beats * 60.0 / item.seconds;
+                if (tempo >= 20.0 && tempo <= 400.0 && ! oneShot)
+                {
+                    item.bpm = std::round (tempo * 100.0) / 100.0;
+                    item.beats = beats;
+                }
+                if (item.key.isEmpty() && root >= 0 && root < 128)
+                    item.key = keyFromRootNote (root, mode);
+
+                juce::StringArray info;
+                for (const auto* k : { juce::WavAudioFormat::bwavDescription, juce::WavAudioFormat::riffInfoGenre, juce::WavAudioFormat::riffInfoComment,
+                                       juce::WavAudioFormat::riffInfoComments, juce::WavAudioFormat::riffInfoKeywords, juce::WavAudioFormat::riffInfoSubject })
+                    if (const auto v = m.getValue (k, {}).trim(); v.isNotEmpty())
+                        info.addIfNotAlreadyThere (v);
+                item.info = info.joinIntoString (" ").substring (0, 400);
+            }
+            // The other DAW's MediaBay tags, in the WAV's iXML.
+            if (file.hasFileExtension ("wav;wave;bwf"))
+                if (const auto ixml = readIXml (file); ixml.containsIgnoreCase ("STEINBERG"))
+                {
+                    double bpm = 0.0;
+                    juce::String key;
+                    item.fileTags = tagsFromIXml (ixml, bpm, key);
+                    if (bpm > 0.0 && item.bpm <= 0.0)
+                        item.bpm = bpm;
+                    if (key.isNotEmpty() && item.key.isEmpty())
+                        item.key = key;
+                }
+        }
+        else if (item.type == MediaType::pluginPreset)
+        {
+            // A VST preset (0.24.0): its plug-in, and the tags its Info gives (as the iXML's: they
+            // become its tags when it has none of yours).
+            juce::StringPairArray presetInfo;
+            if (readVstPresetInfo (file, item.presetClass, presetInfo))
+            {
+                item.presetPlugin = presetInfo.getValue ("PlugInName", {});
+                if (item.presetPlugin.isEmpty())   // (the VST3 preset folders: .../<Vendor>/<Plug-in>/<preset>.vstpreset)
+                    item.presetPlugin = file.getParentDirectory().getFileName();
+                item.presetInstrument = presetInfo.getValue ("PlugInCategory", {}).startsWithIgnoreCase ("Instrument");
+                const auto split = [] (const juce::String& v, juce::String& a, juce::String& b)
+                {
+                    a = v.upToFirstOccurrenceOf ("|", false, false).trim();
+                    b = v.fromFirstOccurrenceOf ("|", false, false).trim();
+                };
+                split (presetInfo.getValue ("MusicalInstrument", {}), item.fileTags.category, item.fileTags.subCategory);
+                split (presetInfo.getValue ("MusicalStyle", {}), item.fileTags.style, item.fileTags.subStyle);
+                for (auto word : juce::StringArray::fromTokens (presetInfo.getValue ("MusicalCharacter", {}), ",|;", ""))
+                    for (const auto& pair : characterPairs())
+                        for (const auto& side : { pair.left, pair.right })
+                            if (word.trim().equalsIgnoreCase (side))
+                                item.fileTags.character.addIfNotAlreadyThere (side);
+                if (const auto name = presetInfo.getValue ("Name", {}); name.isNotEmpty())
+                    item.name = name;
+                item.info = presetInfo.getValue ("PlugInCategory", {}).replaceCharacter ('|', ' ');
             }
         }
         else if (item.type == MediaType::midi)
@@ -443,6 +677,7 @@ namespace pr7s
         {
             const juce::ScopedLock sl (pendingLock);
             locations.add (folder.getFullPathName());
+            exclusions.removeString (folder.getFullPathName());
         }
         save();
         return true;
@@ -450,15 +685,75 @@ namespace pr7s
 
     void MediaDatabase::removeLocation (const juce::File& folder)
     {
-        const juce::ScopedLock sl (pendingLock);   // (a scan in another thread reads `items` and `locations`)
-        locations.removeString (folder.getFullPathName());
-        items.erase (std::remove_if (items.begin(), items.end(), [this] (const MediaItem& item)
         {
-            for (const auto& location : locations)
-                if (item.file.isAChildOf (juce::File (location)))
-                    return false;
-            return true;
-        }), items.end());
+            const juce::ScopedLock sl (pendingLock);   // (a scan in another thread reads `items` and `locations`)
+            locations.removeString (folder.getFullPathName());
+        }
+        dropUnincluded();
+        save();
+    }
+
+    void MediaDatabase::dropUnincluded()
+    {
+        const juce::ScopedLock sl (pendingLock);
+        items.erase (std::remove_if (items.begin(), items.end(), [this] (const MediaItem& item)
+                                     { return ! includedBy (item.file, locations, exclusions); }),
+                     items.end());
+    }
+
+    bool MediaDatabase::includedBy (const juce::File& file, const juce::StringArray& scanned, const juce::StringArray& leftOut)
+    {
+        // The deepest of the scanned and left-out folders holding it (or it) decides.
+        int deepest = -1;
+        bool in = false;
+        const auto consider = [&] (const juce::StringArray& list, bool scannedList)
+        {
+            for (const auto& path : list)
+            {
+                const juce::File folder (path);
+                if ((file == folder || file.isAChildOf (folder)) && path.length() > deepest)
+                {
+                    deepest = path.length();
+                    in = scannedList;
+                }
+            }
+        };
+        consider (scanned, true);
+        consider (leftOut, false);
+        return in;
+    }
+
+    bool MediaDatabase::isIncluded (const juce::File& file) const
+    {
+        return includedBy (file, locations, exclusions);
+    }
+
+    MediaDatabase::ScanState MediaDatabase::scanState (const juce::File& folder) const
+    {
+        const auto in = isIncluded (folder);
+        // Anything deeper that decides otherwise makes it a square.
+        for (const auto& path : in ? exclusions : locations)
+            if (juce::File (path).isAChildOf (folder))
+                return ScanState::some;
+        return in ? ScanState::all : ScanState::none;
+    }
+
+    void MediaDatabase::setIncluded (const juce::File& folder, bool scanned)
+    {
+        if (folder == juce::File())
+            return;
+        {
+            const juce::ScopedLock sl (pendingLock);
+            // What was decided inside it goes: the whole folder is as asked now.
+            const auto inside = [&folder] (const juce::String& path) { return juce::File (path).isAChildOf (folder); };
+            for (auto* list : { &locations, &exclusions })
+                for (int i = list->size(); --i >= 0;)
+                    if (inside ((*list)[i]) || juce::File ((*list)[i]) == folder)
+                        list->remove (i);
+            if (includedBy (folder, locations, exclusions) != scanned)
+                (scanned ? locations : exclusions).add (folder.getFullPathName());
+        }
+        dropUnincluded();
         save();
     }
 
@@ -468,12 +763,13 @@ namespace pr7s
         formats.registerBasicFormats();
         // What was read before, by path, to skip unchanged files. (A copy: the message thread owns `items`.)
         std::map<juce::String, MediaItem> known;
-        juce::StringArray where;
+        juce::StringArray where, leftOut;
         {
             const juce::ScopedLock sl (pendingLock);
             for (const auto& item : items)
                 known[item.file.getFullPathName()] = item;
             where = locations;
+            leftOut = exclusions;
         }
         std::vector<MediaItem> found;
         std::set<juce::String> seen;
@@ -489,9 +785,12 @@ namespace pr7s
                 const auto& file = entry.getFile();
                 if (! mediaTypeOf (file) || ! seen.insert (file.getFullPathName()).second)
                     continue;
+                if (! leftOut.isEmpty() && ! includedBy (file, where, leftOut))
+                    continue;
                 ++filesSeen;
                 if (auto old = known.find (file.getFullPathName());
-                    old != known.end() && old->second.size == entry.getFileSize() && old->second.modified == entry.getModificationTime())
+                    old != known.end() && old->second.size == entry.getFileSize() && old->second.modified == entry.getModificationTime()
+                    && old->second.readVersion >= MediaItem::currentReadVersion)
                 {
                     found.push_back (old->second);
                     continue;
@@ -541,6 +840,13 @@ namespace pr7s
             items = std::move (*result);
             for (auto& item : items)
             {
+                // A file read for the first time with tags of its own (0.22.2): they become its
+                // tags here, to change as you like (yours always win: only when it has none).
+                if (! item.fileTags.isEmpty() && tags.count (item.file.getFullPathName()) == 0)
+                {
+                    tags[item.file.getFullPathName()] = item.fileTags;
+                    item.fileTags = {};
+                }
                 item.rating = getRating (item.file);
                 item.tags = getTags (item.file);
             }
@@ -983,6 +1289,8 @@ namespace pr7s
         storeExisted = true;
         for (const auto* e : xml->getChildWithTagNameIterator ("Location"))
             locations.addIfNotAlreadyThere (e->getStringAttribute ("path"));
+        for (const auto* e : xml->getChildWithTagNameIterator ("Exclude"))
+            exclusions.addIfNotAlreadyThere (e->getStringAttribute ("path"));
         for (const auto* e : xml->getChildWithTagNameIterator ("Rating"))
             ratings[e->getStringAttribute ("path")] = juce::jlimit (0, 5, e->getIntAttribute ("stars"));
         for (const auto* e : xml->getChildWithTagNameIterator ("Tags"))
@@ -1043,6 +1351,13 @@ namespace pr7s
             item.key = e->getStringAttribute ("key");
             item.beats = e->getDoubleAttribute ("beats");
             item.notes = e->getIntAttribute ("notes");
+            item.info = e->getStringAttribute ("info");
+            item.presetClass = e->getStringAttribute ("class");
+            item.presetPlugin = e->getStringAttribute ("plugin");
+            item.presetInstrument = e->getBoolAttribute ("instrument");
+            if (item.type == MediaType::pluginPreset)
+                item.name = e->getStringAttribute ("name", item.name);
+            item.readVersion = e->getIntAttribute ("read", 1);
             item.rating = getRating (item.file);
             item.tags = getTags (item.file);
             items.push_back (item);
@@ -1056,6 +1371,8 @@ namespace pr7s
         juce::XmlElement xml ("MediaBay");
         for (const auto& location : locations)
             xml.createNewChildElement ("Location")->setAttribute ("path", location);
+        for (const auto& folder : exclusions)
+            xml.createNewChildElement ("Exclude")->setAttribute ("path", folder);
         for (const auto& [path, stars] : ratings)
         {
             auto* e = xml.createNewChildElement ("Rating");
@@ -1114,6 +1431,12 @@ namespace pr7s
             if (item.key.isNotEmpty()) e->setAttribute ("key", item.key);
             if (item.beats > 0.0) e->setAttribute ("beats", item.beats);
             if (item.notes > 0) e->setAttribute ("notes", item.notes);
+            if (item.info.isNotEmpty()) e->setAttribute ("info", item.info);
+            if (item.presetClass.isNotEmpty()) e->setAttribute ("class", item.presetClass);
+            if (item.presetPlugin.isNotEmpty()) e->setAttribute ("plugin", item.presetPlugin);
+            if (item.presetInstrument) e->setAttribute ("instrument", true);
+            if (item.type == MediaType::pluginPreset && item.name != item.file.getFileNameWithoutExtension()) e->setAttribute ("name", item.name);
+            e->setAttribute ("read", item.readVersion);
         }
         store.getParentDirectory().createDirectory();
         xml.writeTo (store);

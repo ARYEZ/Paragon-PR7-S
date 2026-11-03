@@ -21,6 +21,7 @@ namespace MediaUi
             case pr7s::MediaType::midi: return pr7s::FamilyColours::pink;
             case pr7s::MediaType::trackPreset: return pr7s::FamilyColours::red;
             case pr7s::MediaType::song: return juce::Colour (0xfff4eeea);
+            case pr7s::MediaType::pluginPreset: return pr7s::FamilyColours::red;
         }
         return pr7s::FamilyColours::red;
     }
@@ -70,6 +71,8 @@ namespace MediaUi
             text << juce::String (item.sampleRate / 1000.0, item.sampleRate == 44100.0 ? 1 : 0) << " kHz " << (item.channels == 1 ? "mono" : item.channels == 2 ? "stereo" : juce::String (item.channels) + " ch");
         else if (item.type == pr7s::MediaType::midi)
             text << juce::String (item.notes) << " notes";
+        else if (item.type == pr7s::MediaType::pluginPreset)
+            text << item.presetPlugin;
         return text;
     }
 

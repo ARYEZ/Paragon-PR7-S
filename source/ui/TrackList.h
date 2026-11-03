@@ -84,6 +84,7 @@ public:
 private:
     class Row;
     class LaneRow;
+    class TakeRow;   // (0.29.0) a lane of takes
     class MasterRow;
     class TempoRow;
     class ChordRow;
@@ -97,6 +98,7 @@ private:
     Timeline& timeline;
     std::vector<std::unique_ptr<Row>> rows;
     std::vector<std::unique_ptr<LaneRow>> laneRows;
+    std::vector<std::unique_ptr<TakeRow>> takeRows;
     std::unique_ptr<MasterRow> masterRow;
     std::unique_ptr<TempoRow> tempoRow;   // the tempo track's (0.10.0), while it's added
     std::unique_ptr<ChordRow> chordRow;   // the chord track's (0.16.0), while it's shown

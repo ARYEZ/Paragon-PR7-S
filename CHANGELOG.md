@@ -2,6 +2,213 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.31.0
+
+Render in Place as you work, Q from anywhere, and the instrument from the editors (all four asked for).
+
+- **Render in Place's new defaults:**
+  - **32-bit float:** nothing over 0 dB is ever cut off, and you can turn it down later with nothing lost. Files are about a third bigger than 24-bit.
+  - **The original track is muted, disabled (its plug-ins unloaded: no CPU) and hidden.** VISIBILITY shows it again; enable it to change it.
+  - Your saved Render in Place settings were moved to these once, since what was saved were the old defaults rather than choices. Anything you pick in the Render in Place window from now on stays.
+- **Only the cycle or the range:**
+  - Rendering a whole track (the Inspector's RENDER, the track menu, Alt+R) with a range set renders the range: its tracks and its stretch.
+  - Otherwise, with CYCLE on, it renders only the cycle's stretch.
+  - Before, it always rendered the whole track.
+  - A stretch never disables or hides the track, since that would silence the rest of it: only the parts rendered there are muted, and the rest plays on.
+- **Alt+R: Render in Place, as last time.** It renders the range if there is one, else the selected parts, else the selected tracks (over the cycle while CYCLE is on). It's a key command (KEYS: Edit > Render in Place), so you can change it or put it on the Stream Deck. **Read All automation no longer has a key:** use the header's R, or give it one in KEYS.
+- **Q quantizes from anywhere**, to the quantize value on the header (1/1, 1/2, 1/4, 1/8, 1/16, 1/32, 1/64), as the manual's Quantize does:
+  - in the MIDI or drum editor: the selected notes, or all of them with none selected;
+  - in the arrangement: every note of the selected MIDI parts.
+  - Each note moves to the nearest grid line and keeps its length.
+  - Before, Q only worked right after a click inside the editor, and used the editor's own grid. The editor's QUANTIZE key now shows the value it uses ("QUANTIZE 1/16").
+- **INSTRUMENT** at the top of the MIDI and drum editors' left panel opens the track's instrument window, which stays above the studio while you edit.
+- **Honestly:**
+  - Q quantizes note starts only (lengths stay), with nothing like the manual's Quantize Panel options (swing, soft quantize, groove) or Reset Quantize.
+  - The INSTRUMENT key was tested with a stand-in synth that has no window of its own: the test checks that the key asks for the right track's window, not the window itself. With PR7-K or your VST3 instruments it opens their window, as the Inspector's EDIT does.
+
+## 0.30.0
+
+Takes and comping, part two: the rest of the manual's Assembling Operations and Assembling a Perfect Take.
+
+- **The COMP tool, all of it:**
+  - **Ctrl-click and hold:** audition. Plays from there, only this track (on a lane: only that lane), until you let go; then back to where you were. The song isn't changed (the manual's Speaker tool).
+  - **Drag a split** (where two takes meet) left or right: it moves on every take cut there, so your comp's boundary moves as one.
+  - **Drag a take's edge:** every take with that start or end is resized together. It's held so it never runs into another take on its lane, shortens a take to nothing, or runs past the end of its recording.
+  - **Alt-click:** every take on the track is cut there (the Comp tool works on all lanes at once).
+  - **Drag on the track's own row:** the takes stacked there move together.
+- **Slip Event** (Alt+Shift-drag a take, with SELECT or COMP): what plays inside the take slides earlier or later while the take stays put, for fixing the timing of a part-take. Audio stays within its recording.
+- **The comp handle:** a small tab on the lower edge of any take that overlaps another. With LANES on, a click brings that take to the front (again: back). With lanes hidden, it opens the list of stacked takes to choose from (the manual's Handling Overlapping Audio).
+- **When the comp is done** (right-click a take):
+  - **Bounce Selection** (audio): what's heard of the selected takes becomes one new clip, written to a new file in the song's audio folder, fades included.
+  - **Bounce MIDI:** the heard notes of the selected takes become one part.
+  - **Delete Overlaps:** of the selected takes only what's heard stays, all on one lane.
+  - **Merge MIDI in Loop:** the heard MIDI between the locators goes onto a new track (a copy of this one, same instrument).
+- **Honestly:**
+  - Our choices:
+    - the edge and split drags snap to the grid (SNAP off: free);
+    - Ctrl in COMP is audition, so it doesn't also turn snapping off;
+    - the Slip drag snaps its amount to the grid;
+    - a bounced clip is a 32-bit file.
+  - Not built: gluing splits by double-clicking a range (bringing a range to the front glues already), auto fades and crossfades between comped takes (the manual suggests them after comping; not in PR7-S yet), Track Versions (you said you didn't want them).
+  - Checked with test recordings and real mouse drags in code, not by ear with your guitar takes.
+
+## 0.29.0
+
+Takes and comping, part one (the owner's last item; the manual's Lanes, Takes, and Overlapping Events and Assembling a Perfect Take).
+
+- **Takes on lanes:** a track's parts now sit on lanes. **LANES** on a track's row (or its right-click menu: Show Lanes) shows each lane under it, with an empty one at the bottom to drag a take onto. The track's own row then shows what's heard: the comp.
+- **One clip at a time on an audio track** (the manual's rule): where audio clips overlap, only the one in front plays. Until now they all played together. **Songs with overlapping clips will sound different:** the clip added last is in front, and you can bring another forward with To Front.
+- **To Front:** right-click a part. Audio: the clip comes to the front. MIDI (overlapping parts all play): the part is unmuted and the ones it overlaps on other lanes are muted.
+- **The COMP tool** (in TOOLS, after SELECT):
+  - Click a take on a lane: it comes to the front. Click it again: the take it hid comes back.
+  - Drag across a lane: every take is cut there and that stretch of this lane comes to the front. Pieces of the same recording that meet are joined again.
+  - Shift-click selects, Alt-click splits, and on the track's own row it moves parts as SELECT does.
+- **Drag a take to another lane** (SELECT or COMP on the track's row).
+- **Lane solo:** S on a lane's row. Only that lane is heard; solo the track too to hear it alone.
+- **Record modes** (right-click REC):
+  - Audio:
+    - **Keep History** (the default, as the manual's): what's there stays, and each take goes on a lane.
+    - **Cycle History + Replace:** the recording replaces what's there, and every lap of a cycle is kept.
+    - **Replace:** only the last take is kept, in place of what was there.
+  - In a cycle, **every lap is now a take of its own on its own lane**, the last one in front. Before, only the last complete lap was kept. A last lap stopped part-way is kept if a beat or more was played.
+  - MIDI:
+    - **New Parts:** the new part goes beside what's there.
+    - **Merge:** the new notes go into the part that's there.
+    - **Replace:** what was there in the recording's stretch goes.
+  - MIDI in a cycle:
+    - **Mix:** as before.
+    - **Overwrite:** playing in a lap replaces what earlier laps left from that point on.
+    - **Keep Last:** the last lap played through to its end.
+    - **Stacked:** each lap a part on its own lane, all but the last muted.
+    - **Mix-Stacked:** the same, none muted.
+- **Clean Up Lanes** (track or part menu): what isn't heard is removed (audio: the hidden stretches; MIDI: muted parts under heard ones) and empty lanes go. **Create Tracks from Lanes** (track menu): each lane after the first becomes a track of its own.
+- **Honestly:**
+  - Not in this release, coming in the next:
+    - auditioning with Ctrl in COMP (the manual's speaker);
+    - the comp handle on a take's lower edge;
+    - dragging a split between takes;
+    - constrained resizing and Slip Event in COMP;
+    - Bounce and Delete Overlaps.
+  - Not built: Track Versions (you said you didn't want them).
+  - Our choices, not the manual's:
+    - Show Lanes turns itself on when a recording stacks takes (in the manual you click it);
+    - the record modes are saved with the song;
+    - each audio lap is a clip of its own (where the manual makes one event with regions);
+    - clicking a heard audio take again brings back the one it hid.
+  - Checked with test recordings rendered in code, not with a real guitar through your interface.
+
+## 0.28.0
+
+The Automation panel (F6), the rest of automation as the manual has it (the owner asked for all of it).
+
+- **The panel** (F6, or the key command Open/Close Automation Panel): **READ** and **WRITE** for every track, **SUSPEND** (all reading and writing), the mode, **TRIM**, **FUNCTIONS**; then **FILL**, **SUSPEND READ**, **SUSPEND WRITE**, **SHOW**; and a **SETTINGS** tab. Everything in it is saved with the song.
+- **The modes:** **Touch** (as before: it writes while you hold a control, and goes back to what was there when you let go), **Auto-Latch** (let go, and its last value goes on being written until you stop, the cycle comes round, or W goes off), **Cross-Over** (as Auto-Latch; touch it again and move it back across the old curve, and the pass ends where it crosses, with no jump). On/off switches (mute) always latch, as the manual says.
+- **Fill** (what happens when a pass ends): **To Punch** (the value you ended on, from where you started: what you did while searching for it is gone), **To Start** (from the song's start), **To End** (to the end, no return), **Loop** (between the locators), **Gaps** (virgin territory's gaps filled). A click: once, for the next pass; a second click: locked, every pass; a third: off.
+- **Suspend Read / Write** by kind: volume, pan, mute, sends, plug-ins (SET ALL): a suspended read leaves the control where you put it by hand; a suspended write keeps it out of a pass (the manual's example: mute your tracks to listen without the mutes being written).
+- **Trim** (volume and send levels): with TRIM on, a pass (or editing the lane) writes a **trim curve** on top of the automation, up or down to 12 dB, keeping the automation as it was. The lane shows the automation light, what plays darker, and the trim curve. **Freeze Trim** (functions menu, a lane's menu, or by itself: on pass end, or on leaving trim mode) turns it into the automation.
+- **Virgin territory** (SETTINGS): no curve before a lane's first point or after its last, and **gaps** (the control stays as you set it there). Deleting points makes a gap; a point can be a **terminator** (the lane's menu: a gap after it). Fill Gaps (the functions) fills them.
+- **Functions:** Delete All Automation in Project, of the Selected Tracks, in Range (the locators); Fill Gaps on Selected Tracks (with its section's value, or the control's value now); Freeze All Trim / Freeze Trim of Selected Tracks; Copy and Paste Automation of All / Selected Tracks.
+- **Show:** every track's VOLUME, PAN, MUTE, SENDS or PLUG-INS lanes (USED ONLY: only those with automation), SHOW USED, HIDE ALL.
+- **Settings:** Use Virgin Territory, Continue Writing on Transport Jump (a jump starts a new pass instead of ending writing), Reveal Parameter on Write (the lane opens when it's written), Return Time (Touch's way back, 0 to 1000 ms), Reduction Level (how much a pass is thinned: 0% only repeats; the manual's default 50%), Freeze Trim.
+- **Key commands** (KEYS, Automation): the three modes, Trim, Suspend All, Fill To End / To Punch / Loop: for the Stream Deck.
+- **Honestly:** not built: Spike Detection Range, the Last Touched Parameter options, Show Data on Tracks, the panel in the right zone (a window here), drawing with Fill (fills act on passes, not on drawing), a mode key on the toolbar (the header has no room left at the smallest window: F6 and the key commands instead), the per-track automation mode. Trim's range (12 dB either way) is our choice. Checked with test passes written by the code, not with your hands on a controller.
+
+## 0.27.0
+
+Automation editing, the first part of automation as the manual has it (the owner asked: type a node's value, select several nodes, and everything else; the Automation panel's modes, Trim, Fill and Suspend come next, in 0.28.0).
+
+- **Typing a value (the owner asked):** double-click a point on an automation lane: a box with its **VALUE** as its control reads it (volume and sends in dB: -6, +3 dB, -inf; pan L30 / C / R20; mute ON / OFF; a plug-in's knob in %) and **AT** where it is (bar.beat.16th.tick). Enter or SET. With several points selected, all of them take the value. Also in the lane's right-click menu: Type a Value.
+- **Selecting several points (the owner asked):** Shift-click or **Ctrl-click** adds a point to the selection (or takes it out); drag a box round several (with Shift or Ctrl held, added to what's selected); the lane's menu has Select All Events.
+- **The Automation Event Editor** (the manual's): two or more points selected on a ramp lane get a box with handles. The top edge moves them all up or down; the top's middle scales them; the top corners tilt the left or right end (Alt: compress it); the right edge's middle scales them round the lane's middle (Alt: round their own middle); the bottom edge stretches them along the song.
+- **Curved ramps** (the manual's Bézier curves): hover over a ramp's middle and a handle appears; drag it up or down to bend the ramp into a curve; double-click the handle (or the menu's Straighten the Selected Ramps) to make it straight again. Playback follows the curve.
+- **Quick vertical scaling** (the manual's): at the lane's top edge over a ramp, a small handle scales that ramp's two points.
+- **The tools on a lane:** DRAW draws points, ERASE removes the points it's dragged across, and a new **LINE** tool (in the tools row, after DRAW; click it again for its shapes) draws a **Line** (a ramp), a **Parabola** (Ctrl: curved the other way), a **Sine**, **Triangle** or **Square** (one cycle per grid step, swinging round where you start, as far as you drag).
+- **Copy and paste automation** (the manual's Copy Automation to Other Tracks; the lane's right-click menu): copy what's between the locators, of all tracks, the selected tracks, or this parameter, and paste it between the locators somewhere else: all tracks onto the same tracks, the selected tracks onto other selected tracks in order, a parameter onto another lane. What was there is replaced; a shorter range cuts it, a longer one holds the last value to the right locator; the curve either side carries on. One undo step.
+- **Also in the lane's menu:** Show All Used Automation, Remove Unused Parameters.
+- **Honestly:** the curves are our shape (a power curve between the two points), drawn and played the same, rather than a true Bézier; LINE has no key (the manual gives it none); the event editor works on one lane at a time (the manual's Ctrl for several tracks isn't built), and selecting points with the RANGE tool isn't either. On the wide layout the tools' keys are a little narrower so ten fit where nine did. A MediaBay test that depends on timing failed once here and passed on every rerun; I'm watching it. Next (0.28.0): the Automation panel (F6): Touch, Auto-Latch and Cross-Over, Trim, the Fill options, Suspend Read/Write, Show, its functions, virgin territory and its settings.
+
+## 0.26.0
+
+The drum editor, with drum maps (the owner asked: a drum editor with the map built in that says what drum each note plays; as the manual's Drum Editor and Drum Maps).
+
+- **DRUMS** (in the MIDI editor's panel) turns the editor into the drum editor: the piano gives way to the **drum sound list**, a row per drum with its note and its **name** (BASS DRUM 1, ACOUSTIC SNARE, CLOSED HI-HAT...), in the map's order. Hits are drawn as **diamonds**; LENGTHS draws them as boxes as long as they are instead. The editor opens on the first drum the part plays.
+- **The GM Map is built in:** the General MIDI drum kit's names (35 Acoustic Bass Drum to 81 Open Triangle, plus General MIDI 2's extra sounds). Choosing DRUMS on a track with no map gives it the GM Map; choosing a map for a track turns the drum editor on by itself (the manual's "Use Drum Editor when Drum Map is assigned").
+- **Your kits' maps:** MAP (in the panel) and **DRUMS** in the Inspector's Routing choose the track's map: the GM Map, the song's maps, or any **.drm** drum map file in **Documents/Paragon PR7-S/Drum Maps** (Open the Drum Map Folder shows it). **Load a Drum Map (.drm)** reads the drum map files the other DAW uses, which drum instruments such as Superior Drummer, EZdrummer or Addictive Drums can export (check your instrument's mapping page); Save as a .drm writes one.
+- **The drum list:** click a drum to hear it; **M** mutes it (its hits go hollow and silent); double-click its name to rename it; right-click for Select All Notes of This Sound, its I-note, O-note and channel, and which drums are listed (the named ones and those with hits, only those with hits, or all 128).
+- **The drumstick** (DRAW in the drum editor): a click puts a hit on the grid step; dragging right puts a hit on every step (the manual's Inserting Multiple Drum Note Events). Moving hits up and down moves them from drum to drum along the list (Up and Down too).
+- **What the map does when playing** (the manual's I-notes and O-notes): each drum is sent to the instrument as its **O-note** (so a pattern written for one kit plays the right drums on another: change the map, not the notes), on its own **channel** if it has one, and **muted** drums are silent. What you play in goes through the **I-notes**: the key set for a drum plays and records that drum.
+- **Drum Map Setup** (from MAP, the drum list's menu or the Inspector): the song's maps (NEW MAP, NEW COPY, REMOVE, LOAD, SAVE, rename), each drum's name, I-note, O-note, channel and mute, the list's order (UP / DOWN), and FOR THE TRACK. Changes act at once on every track using the map and are saved with the song.
+- **The piano roll** names the drums too, when its track has a map (in the panel's foot and on notes wide enough).
+- **Honestly:** the .drm reader follows the format as we know it (the files are XML: a list of 128 drums with their I-note, O-note, channel, mute and name, and their order); it's checked with files we made in that layout, not with one exported from another program, so if one of your kit's files doesn't load, send it and I'll fix the reader. Not built: per-drum Snap and Insert Length (the editor's grid is used), the score settings (noteheads, voices, display notes), Create Drum Map from Instrument, O-Note Conversion, Solo Instrument, drum maps on MIDI outputs (instrument tracks only). Not checked by ear here: the mapping is checked to the note with a test instrument.
+
+## 0.25.0
+
+MIDI controller lanes in the MIDI editor (the owner asked; as the manual's Controller Display): modulation, pitchbend, expression, sustain, any of the 128 controllers, aftertouch, poly pressure and program changes, drawn, edited, played, recorded and imported.
+
+- **Lanes under the notes:** the velocity lane is now one lane among several. **LANES** (in the editor's panel) adds one (Create Controller Lane: the most used first, Modulation, Pitchbend, Expression, Volume, Sustain, Pan, Cutoff..., then all 128 by number, Aftertouch, Program Change, Poly Pressure), shows a lane for every kind the part already has (Show Used Controllers), goes back to velocity alone (Show Velocity Lane Only) or hides them all. Each track keeps its own lanes, saved with the song. Drag the line above the lanes to make them taller.
+- **Each lane's name** (at its left) opens its menu: what it shows, Select All Events on Lane, Remove This Lane, Cut / Copy / Paste / Paste at Origin, the selected events' curve (step or ramp), Type a Value. "(USED)" marks the kinds that already have events. Above the name: the value at the playhead.
+- **Drawing:** DRAW clicks an event onto the grid step (Ctrl: anywhere), or draws a curve as you drag. ERASE clicks or drags across events. SELECT with Alt draws too.
+- **LINE** (a new tool in the panel; click it again for its modes): **Line** (as a ramp, only its two ends), **Parabola** (Ctrl: curved the other way), **Sine**, **Triangle** and **Square** (one period a grid step, swinging round where you start the drag, as high as you drag; Ctrl: the other phase), **Paint** (freehand). On the velocity lane it sets the notes' velocities along the line (the selected notes, when some are).
+- **Selecting and editing:** SELECT clicks an event (Shift or Ctrl: add or remove), drags a box round a group, drags events in time and value. Two or more selected get the same handles as the velocities: tilt either end, scale, move, squash towards their middle. Delete removes them; Ctrl+C / X / V copy, cut and paste them (at the playhead, onto the lane last clicked: another controller's lane takes them as its own).
+- **Typing a value (the owner asked):** double-click an event: type its value as the lane shows it (64; pitchbend +4096 or in semitones, "2st"; pan L12 / C / R12; sustain ON / OFF), where it is (bar.beat.16th.tick) and whether it ramps. With several selected, all of them get the value. The panel's foot shows the selected event.
+- **Steps or ramps:** new events ramp to the next by default (LANES > Type of New Controller Events: Ramp or Step). Bank select, sustain, the RPN/NRPN numbers, the mode messages and program changes are always steps (the manual's list).
+- **Pitchbend's grid:** the pitchbend lane's menu shows a semitone grid and snaps to it (Snap Pitchbend Events), with its range up and down (1 to 96 semitones, 2 at first, kept per track). Set your instrument's bend range to match.
+- **Playing:** each event at its beat on the track's MIDI channel, before a note at the same beat (so a note starts already bent). A ramp is sent as a run of values. **Chasing:** pressing PLAY, jumping, or the cycle coming round first sends each controller's value there, so a sound starts with the pedal, the bend and the controllers it has at that place. **Stopping** puts the bend back to the middle and lifts the sustain pedal (nothing rings on or stays out of tune).
+- **Recording:** what you play on the mod wheel, the bend, the pedal and aftertouch goes into the part with the notes (a part with only controllers is kept too). In a cycle, each controller keeps the last pass you played it in.
+- **MIDI files** bring their controllers in (CCs, pitchbend, aftertouch, poly pressure, program changes). **Split and Glue** carry them; a ramp cut in two still gets where it was going.
+- **Honestly:** not built from the manual's chapter: SysEx, articulations and dynamics lanes, note-off velocity, velocity variance and play probability, Bézier curves (ramps are straight), Auto Select Controllers (moving notes doesn't move their controllers), lane presets, the MIDI Controller Setup dialog (every controller is offered instead), and automation tracks for MIDI controllers (the next releases' automation work). Moving notes with the keyboard doesn't move controllers. No default key for LINE (the manual gives it none we could find): give it one in KEYS if you like. Not checked by ear here: the playing and the chasing are checked to the sample with a test instrument, not with your Kontakt or Shreddage.
+
+## 0.24.0
+
+VST presets in the MediaBay and the Media rack (the third of the three additions the owner chose): your Shreddage, Kontakt or PR7 presets found, tagged and loaded like any other media.
+
+- **VST PRESET** is a new kind of file in the MediaBay (`.vstpreset`, the VST3 preset files plug-ins save, usually in "VST3 Presets" folders). Scanned like the rest: tick the folder holding them in the FILE BROWSER. Each shows its own name (from inside the file), its plug-in (in FORMAT), and the tags it carries: many presets say their instrument (Guitar / Rhythm), style (Metal / Djent) and character, and those become its tags (yours always win, as before).
+- **PRESETS** (the type key, and the Media rack's Presets page) now shows both kinds: track presets and VST presets.
+- **Double-click or USE IT:** an instrument's preset makes a new instrument track with that plug-in and the preset loaded, named after the preset; an effect's preset makes a new FX channel with it.
+- **Drag onto a track:** an instrument's preset onto an instrument track changes its instrument to that plug-in with the preset (or, when it's already that plug-in, just loads the preset into it); an effect's preset loads into that effect when the track has it, otherwise it's added to the track's inserts. Onto a track it can't go on: a new track, as a double-click.
+- **The Media rack:** right-click a VST preset: Add a Track with It, or Load on the selected track (or on the master, for an effect's preset).
+- **Its plug-in** is found among your scanned plug-ins by the preset's plug-in id (as the plug-in reports it), else by its name; when it isn't scanned, the message says which plug-in it needs (PLUGINS > SCAN / OPTIONS).
+- **Honestly:** the preset is loaded as the plug-in's whole state, as the VST3 standard does; a few plug-ins keep their sounds outside their presets (some samplers ask for their library again). Not checked here with real plug-ins (none can run in the cloud tests): checked with made-up presets, read and matched exactly as the real ones are. No preview for presets yet (the manual plays a few notes through the instrument: a later step); no FX-chain or strip presets (the studio doesn't have them).
+
+## 0.23.0
+
+The MediaBay's previews in time with the song (the second of the three additions the owner chose), as the manual's Audio Files Previewer.
+
+- **LINK TEMPO:** a loop is stretched to the song's tempo at the playhead, keeping its pitch: a 140 BPM riff previews at your song's 120. It needs the loop's tempo (from its name, its loop info or your tag); one-shots and files with no tempo play as they are.
+- **WAIT FOR PLAY:** the preview starts and stops with the song. With LINK TEMPO too, a loop **locks to the song's bars** from the left locator (put the left locator on a bar's start, as the manual says), and keeps going round in time, the cycle included: pick loops one after another while the song plays and each one drops in on the beat. Waiting, the previewer says so.
+- **TRANSPOSE:** up or down to 12 semitones. **TO KEY:** moves the preview to a root key, the short way (a loop in A minor to C: up three; to E: down five), when the file's key is known.
+- **1/2X and 2X:** half or double speed, the pitch kept.
+- **Where:** in the MediaBay window's previewer (LINK TEMPO, WAIT FOR PLAY, 1/2X, 2X, TRANSPOSE, TO KEY) and in the Media rack's (LINK, WAIT, and PITCH for the rest). They share one set of options, kept for next time. A sound being heard is heard again with a change at once.
+- **MIDI files** take the transposition and the speed too (they always played at the song's tempo).
+- **The stretching** is done by Signalsmith Stretch (an open-source library, MIT licence, now part of the build), on the whole sound before it plays, so nothing heavy runs while the audio does.
+- **Honestly:** the stretch follows the tempo at the playhead when you press PLAY (a tempo track's later changes aren't followed while it plays); files longer than 90 seconds play unstretched; the beat lock assumes the loop is a whole number of beats (it rounds to the nearest when the length is that close); not built: Link to Transpose Track (the studio has no transpose track yet), tapemachine style, and putting a stretched loop into the song stretched (it goes in as the file is: that needs audio that follows the tempo, a later release).
+
+## 0.22.2
+
+Two things the owner asked for: the MediaBay opens where you left it, and it reads tempo and key from inside your files (the first of the three additions the owner chose: this one, then previews in time with the song, then plug-in presets).
+
+- **The MediaBay opens where you left it** (the owner's report: every time it opened, the folder tree was back to the start). The folders you had open in the FILE BROWSER are open again, the folder you'd chosen is chosen again (scrolled to), and the results show its files. Kept in the settings, so it holds after closing the studio too.
+- **Tempo and key from inside the files**, not only from their names:
+  - **WAV loops with ACID info** (most commercial loop packs): the tempo, the length in beats and the root note. **AIFF Apple loops:** the beats, the root note, and whether it's major or minor. A loop without a tempo but with its beats gets its tempo worked out from its length. One-shots (a kick, a hit) show no tempo.
+  - **What wins:** your own tempo and key first; then for tempo the file's loop info, then the name's; for key the name's (a name like "Riff_Em" says minor), then the file's root note (ACID doesn't say major or minor: the key shows as the plain letter, "A").
+  - **Tags the other DAW's MediaBay wrote into WAV files** (in their iXML): category and sub category, style and sub style, character, tempo, key and comment become the file's tags here the first time it's read, so loops you tagged there arrive tagged. Yours always win: a tag you change stays as you set it.
+  - **A WAV's description, genre, comments and keywords** are searched too (a pack's "Djent" genre finds its loops).
+  - Files the MediaBay already knew are read again once, so your scanned library gets all this without anything to do (the scan runs in the background, as usual).
+- **Honestly:** the other DAW doesn't publish the names of the tags it writes into files; ours reads any of its attributes whose names hold "Category", "Style", "Character", "Tempo", "Key" or "Comment", which is our best reading of them (checked against the layout its files use, not against your own files yet). MP3 and FLAC files' tags aren't read; nothing is ever written into your files.
+
+## 0.22.1
+
+The MediaBay's folder tree (the owner's screenshot of the other DAW's: the File Browser with its folders and subfolders, each with a box to scan it).
+
+- **FILE BROWSER** takes LOCATIONS' place at the left of the MediaBay window: a tree of folders. Its roots: **SCANNED FOLDERS** (what you've ticked, at a glance: our addition), **FAVORITES** (the same favorites as the Media rack's), **THIS COMPUTER** (Home, Desktop, Documents and every drive) and **USER CONTENT** (the Paragon PR7-S folder). The arrow opens a folder (its subfolders are read then); double-clicking a folder opens it too.
+- **The box beside each folder scans it**, as the manual's Scanning Folders: a **tick** means it and all its subfolders are scanned; a **square** means some of it is (a subfolder left out, or only a subfolder ticked); **empty** means none of it. Tick a folder deep in a drive (F:\Samples\GHOSTHACK) and only that folder is scanned; untick one subfolder inside a scanned folder and only that one is left out, its files leaving the results at once (their ratings and tags kept).
+- **Click a folder** to see its files in the results (with SUBFOLDERS lit, its subfolders' files too); click a root heading for every scanned file. A folder that isn't scanned says so in the title line.
+- **Folder colours:** pearl white when scanned, dim when not, the accent colour while a scan is running.
+- **Right-click a folder:** Scan This Folder, Don't Scan This Folder, **Refresh Views** (its subfolders read again and a rescan, the manual's way to see files added while the studio was closed), Add Favorite.
+- **ADD FOLDER...** (a folder picked from the system's chooser, for ones the tree can't reach easily) and **REFRESH** (the selected folder's Refresh Views) under the tree.
+- A favorite added in the MediaBay window shows in the Media rack too.
+- **Honestly:** our design where the manual leaves room: SCANNED FOLDERS is our root (the manual's has VST Sound and Factory Content instead; the studio has neither); left-out folders are remembered in MediaBay.xml; the arrow shows on every folder until it's opened (reading every folder's subfolders up front would be slow on big drives).
+
 ## 0.22.0
 
 The Media rack (the owner asked for 0.22.0 as planned: the manual's Media Rack in the Right Zone), the last of the MediaBay's three parts: your sounds, instruments, effects and presets in a panel at the right of the arrangement, so you can see your tracks while you drag things into the song.

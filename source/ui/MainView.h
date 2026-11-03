@@ -35,7 +35,7 @@
 // duplicate it, Ctrl+Z / Ctrl+Shift+Z undo / redo, Ctrl+N / O / S new, open
 // and save (Ctrl+Shift+S save as), Ctrl+E the key editor (Escape closes it),
 // F3 the mixer in a window of its own, Alt+F3 (or MIXER) the mixer docked
-// (as Cubase's F3 and Alt+F3 do), Alt+R / Alt+W read / write automation for
+// (as Cubase's F3 and Alt+F3 do), Alt+W writes automation for (Alt+R: Render in Place since 0.31.0; Read All has no default key)
 // all tracks (the manual's keys). Delete removes the selected automation
 // points if there are any (else the selected part); Esc while dragging
 // points puts them back. H / G zoom in / out (a step, centred on the
@@ -76,6 +76,12 @@ public:
     void openHub();
     // The Tempo Track Editor (0.13.0, Ctrl+T as the manual has it): opened, or closed if it's open.
     void toggleTempoEditor();
+    // The Drum Map Setup (0.26.0): its window (the MIDI editor's MAP menu, the drum list's menu, the Inspector's DRUM MAP).
+    void openDrumMapSetup();
+    // The Automation panel (0.28.0, F6): its window.
+    void toggleAutomationPanel();
+    juce::DocumentWindow* getAutomationPanelWindow() noexcept { return automationWindow.get(); }
+    juce::DocumentWindow* getDrumMapWindow() noexcept { return drumMapWindow.get(); }
     // BASS & MELODY (0.18.0): ideas for these chord events (none: the cycle's, else all), in a window of its own.
     void openLineIdeas (std::vector<int> chordEvents = {});
     LinesWindow* getLinesWindow() noexcept { return linesWindow.get(); }
@@ -126,6 +132,8 @@ public:
     void exportMix();
     // RENDER IN PLACE: the sources (a part, a range, selected tracks) rendered
     // to audio; `ask`: the render page first (else as last time).
+    void renderInPlaceNow (bool ask = false);   // (0.31.0) Alt+R: as last time, of the range, the selected parts or the selected tracks
+    std::vector<pr7s::Studio::RenderSource> narrowedSources (std::vector<pr7s::Studio::RenderSource>) const;   // to the range, or the cycle
     void renderInPlace (std::vector<pr7s::Studio::RenderSource>, bool ask);
     Windows::RenderPage* getRenderPage() noexcept { return renderPage.getComponent(); }
     Windows::ExportPage* getExportPage() noexcept { return exportPage.getComponent(); }
@@ -158,6 +166,7 @@ public:
     void filesDropped (const juce::StringArray&, int x, int y) override;
 
     void openInstrumentWindow (int trackId);
+    bool isInstrumentWindowOpen (int trackId) const { return instrumentWindows.count (trackId) > 0; }   // (tests)
     void openSettings();
     // SPAN ALL SCREENS (in SETTINGS): the window across every screen (Windows'
     // maximize fills only one); again, back where it was. The window opens
@@ -248,7 +257,7 @@ private:
     juce::TextButton keysButton { "KEYS" };
     int saveFlashes = 0;
     std::unique_ptr<ProgressBox> progressBox;   // a long job's progress (0.11.1)
-    std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow;
+    std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow, drumMapWindow, automationWindow;
     std::unique_ptr<LinesWindow> linesWindow;
     std::unique_ptr<MediaBayWindow> mediaBayWindow;
     std::unique_ptr<MediaRack> mediaRack;

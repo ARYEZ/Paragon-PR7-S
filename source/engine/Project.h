@@ -5,6 +5,7 @@
 #include <optional>
 
 #include "Chords.h"
+#include "DrumMaps.h"
 #include "TempoMap.h"
 
 // A song: its tempo and time signature, the cycle (loop) range, and its
@@ -26,12 +27,29 @@ namespace pr7s
         bool operator== (const Note&) const = default;
     };
 
+    // A MIDI controller event in a part (0.25.0, the manual's Controller Display): a
+    // continuous controller (CC), pitchbend, aftertouch, poly pressure or a program change.
+    // It has no length: its value holds until the next event of its kind. `ramp`: the way
+    // from the event before (of its kind, in the part) to this one is a ramp, else a step.
+    struct Controller
+    {
+        enum class Type { cc, pitchbend, aftertouch, polyPressure, programChange };   // saved by name
+        Type type = Type::cc;
+        int number = 1;          // a CC's number (0-127), poly pressure's note; else 0
+        double start = 0.0;      // beats from the part's start
+        int value = 0;           // 0-127; pitchbend 0-16383 (8192: no bend)
+        bool ramp = false;
+
+        bool operator== (const Controller&) const = default;
+    };
+
     struct Part
     {
         double start = 0.0;     // beats from the song's start
         double length = 4.0;    // beats
         juce::String name;
         std::vector<Note> notes;
+        std::vector<Controller> controllers;   // (0.25.0) by start
         int id = 0;             // given by the studio, so the key editor keeps the same part however the list changes (not saved)
 
         // An audio track's part (a clip): the recording it plays, from
@@ -40,6 +58,12 @@ namespace pr7s
         double audioOffset = 0.0;    // seconds
         double fadeIn = 0.0, fadeOut = 0.0;   // seconds
         bool muted = false;          // the Mute tool: kept and edited as usual, but not played
+        // Takes (0.29.0, the manual's Lanes, Takes, and Overlapping Events): the lane it's on
+        // (0 the first; shown under the track with Show Lanes), and where several audio clips
+        // overlap, which one plays: the highest `order` (equal: the later in the list), as an
+        // audio track plays one clip at a time. MIDI parts all play (only muting silences them).
+        int lane = 0;
+        int order = 0;
 
         bool isAudio() const noexcept { return audioFile.isNotEmpty(); }
         double end() const noexcept { return start + length; }
@@ -82,6 +106,12 @@ namespace pr7s
     {
         double beat = 0.0;    // from the song's start
         float value = 0.0f;   // 0 to 1
+        // (0.27.0, the manual's Bézier curves) How the ramp arriving at this point bends:
+        // 0 straight; up to 1 bowed one way, down to -1 the other (`curveShape`).
+        float curve = 0.0f;
+        // (0.28.0, the manual's Defining a Terminator Point) The curve ends here: a gap (virgin
+        // territory: the control stays as it's set) until the next point.
+        bool terminator = false;
         bool operator== (const AutomationPoint&) const = default;
     };
 
@@ -95,6 +125,11 @@ namespace pr7s
         std::vector<AutomationPoint> points;   // in order of beat
         bool shown = true;     // its lane open under the track (a lane switched to another control keeps its points, hidden)
         bool muted = false;    // Mute Automation: not played back
+        // (0.28.0, the manual's Trim) Volume and send levels: a trim curve over the points, in
+        // the middle at 0 dB, up to `trimRange` dB either way; played on top of them.
+        std::vector<AutomationPoint> trim;
+        static constexpr float trimRange = 12.0f;   // our choice
+        bool canTrim() const noexcept { return target == Target::volume || target == Target::send; }
 
         bool isStep() const noexcept { return target == Target::mute; }
         bool sameControl (const AutomationLane& other) const noexcept
@@ -105,6 +140,14 @@ namespace pr7s
         // a straight line between (a jump at the next point, for a step lane).
         // None if there are no points.
         std::optional<float> valueAt (double beat) const noexcept;
+        // (0.28.0) With virgin territory: nothing before the first point, nor in a gap after a
+        // terminator (else as valueAt, which a gap doesn't stop).
+        std::optional<float> valueAt (double beat, bool virginTerritory) const noexcept;
+        // What plays: the value with the trim curve on top (volume and sends).
+        std::optional<float> playedAt (double beat, bool virginTerritory) const noexcept;
+        static float trimDb (const std::vector<AutomationPoint>& trim, double beat) noexcept;   // 0 without points
+        // A ramp's shape (0.27.0): `along` (0 to 1) bent by `curve`: along ^ 4^-curve.
+        static float curveShape (float along, float curve) noexcept;
         bool operator== (const AutomationLane&) const = default;
     };
 
@@ -190,6 +233,21 @@ namespace pr7s
         // volume, pan, mute, a send, an instrument's or an effect's knob), or none.
         static constexpr int numQuickControls = 8;
         std::array<std::optional<AutomationLane>, numQuickControls> quickControls;
+        // The MIDI editor's controller lanes for this track (0.25.0; ControllerKinds' codes,
+        // top to bottom; empty: the display hidden), and the pitchbend lane's semitone grid
+        // (the manual's Grid Settings: 1-96 up and down, 2 at first; saved with the song).
+        std::vector<int> controllerLanes { -1 };
+        int pitchbendUp = 2, pitchbendDown = 2;
+        // Its drum map (0.26.0; one of Project::drumMaps by name; empty: none), and whether the
+        // MIDI editor shows its parts as drums (on whenever a map is chosen, at first).
+        juce::String drumMap;
+        bool drumEditor = false;
+        bool pitchbendSnap = false, pitchbendGrid = false;
+        // Takes (0.29.0): its lanes shown under it (Show Lanes), and a lane soloed (-1: none):
+        // then only that lane's parts play.
+        bool showLanes = false;
+        int soloLane = -1;
+        int numLanes() const noexcept;   // one more than the highest lane a part is on (at least 1)
         bool isAudio() const noexcept { return kind == Kind::audio; }
         bool isFx() const noexcept { return kind == Kind::fx; }
         bool isGroup() const noexcept { return kind == Kind::group; }
@@ -220,6 +278,7 @@ namespace pr7s
         double tempoViewLow = 60.0, tempoViewHigh = 180.0;   // the curve's shown range (Visible Tempo Lower/Upper Limit)
         ChordPads chordPads = ChordPads::defaults();         // the chord pads (0.14.0): kept with the song, as the manual's
         ChordTrack chordTrack;                                // the chord track (0.16.0)
+        std::vector<DrumMap> drumMaps;                        // (0.26.0) the song's (the manual: saved with the song); names unique
         std::vector<LinkGroup> linkGroups;                    // (0.17.0) by id; each with two channels or more
         int numerator = 4, denominator = 4;   // the time signature
         bool loopOn = false;                  // CYCLE
@@ -233,6 +292,41 @@ namespace pr7s
         std::vector<Insert> masterInserts;
         int masterPreFaderSlots = 16;
         std::vector<AutomationLane> masterAutomation;   // volume and the master's effects
+        // The Automation panel's settings (0.28.0; saved with the song, not undo steps).
+        struct AutomationSettings
+        {
+            enum class Mode { touch, autoLatch, crossOver };
+            Mode mode = Mode::touch;
+            // Fill (on punching out): off, once (the next pass), or locked (every pass).
+            enum class Fill { off, once, locked };
+            Fill toPunch = Fill::off, toStart = Fill::off, toEnd = Fill::off, loop = Fill::off, gaps = Fill::off;
+            // Suspend Read / Write, by group (AutomationSettings::Group), and all at once.
+            enum class Group { volume, pan, mute, sends, plugins };
+            static constexpr int numGroups = 5;
+            std::array<bool, numGroups> suspendRead {}, suspendWrite {};
+            bool trim = false;
+            enum class FreezeTrim { manually, onPassEnd, onLeavingTrim };
+            FreezeTrim freezeTrim = FreezeTrim::manually;
+            bool virginTerritory = false, continueOnJump = false, revealOnWrite = true;
+            double returnSeconds = 0.1;   // our choice (the manual gives none)
+            int reductionLevel = 50;      // % (the manual's default)
+            static Group groupOf (const AutomationLane&) noexcept;
+            bool operator== (const AutomationSettings&) const = default;
+        };
+        AutomationSettings automationSettings;
+        // The record modes (0.29.0, the manual's Audio Record Modes, MIDI Record Modes and MIDI
+        // Cycle Record Modes; saved with the song). The manual's defaults.
+        struct RecordModes
+        {
+            enum class Audio { keepHistory, cycleHistoryReplace, replace };
+            enum class Midi { newParts, merge, replace };
+            enum class MidiCycle { mix, overwrite, keepLast, stacked, mixStacked };
+            Audio audio = Audio::keepHistory;
+            Midi midi = Midi::newParts;
+            MidiCycle midiCycle = MidiCycle::mix;
+            bool operator== (const RecordModes&) const = default;
+        };
+        RecordModes recordModes;
         bool masterAutomationOpen = false, masterRead = false, masterWrite = false;
         int nextTrackId = 1;
 
@@ -252,6 +346,8 @@ namespace pr7s
         std::vector<int> linkGroupMembers (int groupId) const;   // in the tracks' order
         Track* findTrack (int id);
         const Track* findTrack (int id) const;
+        const DrumMap* findDrumMap (const juce::String& name) const;
+        const DrumMap* drumMapOf (const Track&) const;   // its map, if it has one
         Track* armedTrack();
         const Track* armedTrack() const;
 
@@ -268,6 +364,15 @@ namespace pr7s
     // Positions as the transport shows them: "bar. beat. sixteenth. tick" from
     // 1.1.1.0 (ticks: 120 to a sixteenth, 480 to a beat), and minutes:seconds.
     juce::String formatBarsBeats (double beats, const Project&);
+
+    // Takes (0.29.0): the stretches (beats) of a track's part that are heard. Muted parts and,
+    // with a lane soloed, other lanes' parts: none. A MIDI part: all of it (overlapping MIDI
+    // parts all play). An audio clip: what no clip in front of it covers (the manual: "each
+    // track can only play back a single audio event at a time ... only the one that is in the
+    // front is played back").
+    std::vector<std::pair<double, double>> heardStretches (const Track&, int partIndex);
+    // Whether part a is in front of part b (higher order; equal: later in the list).
+    bool isInFront (const Track&, int a, int b);
     juce::String formatTime (double seconds);
 
     // The family's track colours, taken in turn: shades along its red, pink

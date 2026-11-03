@@ -71,7 +71,10 @@ void MainView::registerCommands()
             studio.addTempoTrack();
         studio.insertTempoEventAtCursor (studio.getTempoNow());
     });
-    add ("Edit.ReadAll", "Edit", "Automation: Read All On/Off", { key ('R', alt) });
+    add ("Edit.ReadAll", "Edit", "Automation: Read All On/Off", {}, [this] { studio.setAutomationReadAll (! studio.anyAutomationRead()); });
+    add ("Edit.RenderInPlace", "Edit", "Render in Place (as last time)", { key ('R', alt) });   // (0.31.0, the owner's key)
+    add ("Edit.RenderInPlaceSetup", "Edit", "Render in Place...", {}, [this] { renderInPlaceNow (true); });
+    add ("MIDI.Quantize", "MIDI", "Quantize", { key ('Q') });
     add ("Edit.WriteAll", "Edit", "Automation: Write All On/Off", { key ('W', alt) });
 
     // Range (the manual's Range Editing).
@@ -131,6 +134,15 @@ void MainView::registerCommands()
     add ("Window.Editor", "Window", "Open/Close Editor", { key ('E', ctrl) });
     add ("Window.KeyCommands", "Window", "Key Commands...", {}, [this] { openKeyCommands(); });
     add ("Window.TempoEditor", "Window", "Open/Close Tempo Track Editor", { key ('T', ctrl) });
+    add ("Window.AutomationPanel", "Window", "Open/Close Automation Panel", { KP (KP::F6Key) });   // (0.28.0)
+    add ("Automation.Touch", "Automation", "Automation Mode: Touch", {}, [this] { studio.setAutomationMode (pr7s::Studio::AutomationSettings::Mode::touch); });
+    add ("Automation.AutoLatch", "Automation", "Automation Mode: Auto-Latch", {}, [this] { studio.setAutomationMode (pr7s::Studio::AutomationSettings::Mode::autoLatch); });
+    add ("Automation.CrossOver", "Automation", "Automation Mode: Cross-Over", {}, [this] { studio.setAutomationMode (pr7s::Studio::AutomationSettings::Mode::crossOver); });
+    add ("Automation.Trim", "Automation", "Trim On/Off", {}, [this] { studio.setTrim (! studio.getAutomationSettings().trim); });
+    add ("Automation.SuspendAll", "Automation", "Suspend All Read/Write", {}, [this] { studio.setAllSuspended (! studio.isAllSuspended()); });
+    add ("Automation.FillToEnd", "Automation", "Fill to End", {}, [this] { studio.stepFill (pr7s::Studio::FillOption::toEnd); });
+    add ("Automation.FillToPunch", "Automation", "Fill to Punch", {}, [this] { studio.stepFill (pr7s::Studio::FillOption::toPunch); });
+    add ("Automation.FillLoop", "Automation", "Fill Loop", {}, [this] { studio.stepFill (pr7s::Studio::FillOption::loop); });
     add ("Window.Plugins", "Window", "Plug-ins...", {}, [this] { openPlugins(); });
     add ("Window.Settings", "Window", "Settings...", {}, [this] { openSettings(); });
 

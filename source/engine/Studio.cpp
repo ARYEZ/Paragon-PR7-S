@@ -1,5 +1,8 @@
 #include "Studio.h"
+#include "Controllers.h"
+#include "Stretch.h"
 
+#include <map>
 #include <set>
 
 #include "AudioAdvice.h"
@@ -1260,7 +1263,21 @@ namespace pr7s
         }
     }
 
-    void Studio::movePart (int trackId, int index, int toTrackId, double newStart)
+    namespace
+    {
+        // (0.29.0) A part moved or copied onto a track: on the lane asked for (else its own on
+        // the same track, the first on another), and in front of what it lands on.
+        void landOn (Part& part, const Track& to, bool sameTrack, int toLane)
+        {
+            part.lane = toLane >= 0 ? juce::jmin (255, toLane) : sameTrack ? part.lane : 0;
+            auto order = 0;
+            for (const auto& p : to.parts)
+                order = juce::jmax (order, p.order);
+            part.order = order + 1;
+        }
+    }
+
+    void Studio::movePart (int trackId, int index, int toTrackId, double newStart, int toLane)
     {
         auto* from = project.findTrack (trackId);
         auto* to = project.findTrack (toTrackId);
@@ -1270,12 +1287,13 @@ namespace pr7s
             return;   // (a frozen track's parts are locked: nothing leaves or joins them)
         auto part = from->parts[(size_t) index];
         part.start = juce::jmax (0.0, newStart);
+        landOn (part, *to, from == to, toLane);
         from->parts.erase (from->parts.begin() + index);
         to->parts.push_back (std::move (part));
         changed();
     }
 
-    void Studio::copyPart (int trackId, int index, int toTrackId, double newStart)
+    void Studio::copyPart (int trackId, int index, int toTrackId, double newStart, int toLane)
     {
         const auto* from = project.findTrack (trackId);
         auto* to = project.findTrack (toTrackId);
@@ -1283,6 +1301,7 @@ namespace pr7s
             return;
         auto part = from->parts[(size_t) index];
         part.start = juce::jmax (0.0, newStart);
+        landOn (part, *to, from == to, toLane);
         part.id = 0;   // a new part: numbered in changed()
         to->parts.push_back (std::move (part));
         changed();
@@ -1434,6 +1453,45 @@ namespace pr7s
             }
             std::stable_sort (second.notes.begin(), second.notes.end(), [] (const Note& a, const Note& b) { return a.start < b.start; });
             part.notes = std::move (first);
+            // Controllers (0.25.0): each half its own; where a ramp crosses the cut, it ends there
+            // in the first half and the second starts from the value it had reached.
+            second.controllers.clear();
+            std::vector<Controller> firstControllers;
+            for (const auto code : ControllerKinds::usedCodes (part))
+            {
+                const auto at = ControllerKinds::valueAt (part.controllers, code, rel);
+                auto hasAtCut = false, crossed = false;
+                for (const auto& c : part.controllers)
+                    if (ControllerKinds::codeOf (c) == code && c.start >= rel)
+                    {
+                        hasAtCut = c.start <= rel + 1.0e-9;
+                        crossed = c.ramp && ! hasAtCut;
+                        break;
+                    }
+                if (at && ! hasAtCut)
+                {
+                    const auto type = ControllerKinds::typeOf (code);
+                    const auto number = ControllerKinds::numberOf (code);
+                    if (crossed && rel > 1.0 / 960.0)
+                        firstControllers.push_back ({ type, number, rel - 1.0 / 960.0,
+                                                      *ControllerKinds::valueAt (part.controllers, code, rel - 1.0 / 960.0), true });
+                    second.controllers.push_back ({ type, number, 0.0, *at, false });
+                }
+            }
+            for (const auto& c : part.controllers)
+            {
+                if (c.start < rel)
+                    firstControllers.push_back (c);
+                else
+                {
+                    auto moved = c;
+                    moved.start -= rel;
+                    second.controllers.push_back (moved);
+                }
+            }
+            ControllerKinds::sort (firstControllers);
+            ControllerKinds::sort (second.controllers);
+            part.controllers = std::move (firstControllers);
             part.length = rel;
             if (part.isAudio())
             {
@@ -1560,6 +1618,20 @@ namespace pr7s
             }
             std::stable_sort (notes.begin(), notes.end(), [] (const Note& a, const Note& b) { return a.start < b.start; });
             glued.notes = std::move (notes);
+            // Their controllers too (0.25.0), each in its place.
+            std::vector<Controller> controllers;
+            for (const auto& c : glued.controllers)
+                if (c.start < glued.length)
+                    controllers.push_back (c);
+            for (const auto i : after)
+            {
+                const auto& next = track->parts[(size_t) i];
+                for (auto c : next.controllers)
+                    if (c.start < next.length)
+                        c.start += next.start - glued.start, controllers.push_back (c);
+            }
+            ControllerKinds::sort (controllers);
+            glued.controllers = std::move (controllers);
             glued.length = end - glued.start;
         }
         track->parts[(size_t) index] = glued;
@@ -1592,6 +1664,28 @@ namespace pr7s
                 }
         if (any)
             changed();
+    }
+
+    bool Studio::quantizeParts (const std::vector<int>& partIds, double grid)
+    {
+        if (grid <= 0.0)
+            return false;
+        auto any = false;
+        for (auto& track : project.tracks)
+        {
+            if (track.isAudio() || track.isChannel() || track.frozen)
+                continue;
+            for (auto& part : track.parts)
+                if (! part.notes.empty() && std::find (partIds.begin(), partIds.end(), part.id) != partIds.end())
+                {
+                    const auto before = part.notes;
+                    quantize (part, grid);
+                    any = any || part.notes != before;
+                }
+        }
+        if (any)
+            changed();
+        return any;
     }
 
     bool Studio::humanizeParts (const std::vector<int>& partIds, float amount)
@@ -1867,6 +1961,183 @@ namespace pr7s
         changed();
     }
 
+    void Studio::setControllers (int trackId, int index, std::vector<Controller> events)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! juce::isPositiveAndBelow (index, (int) track->parts.size()))
+            return;
+        for (auto& c : events)
+        {
+            const auto code = ControllerKinds::codeOf (c);
+            c.start = juce::jmax (0.0, c.start);
+            c.value = juce::jlimit (0, ControllerKinds::maxValue (code), c.value);
+            c.number = ControllerKinds::numberOf (code);
+        }
+        ControllerKinds::sort (events);
+        auto& part = track->parts[(size_t) index];
+        if (part.controllers == events)
+            return;   // nothing changed: no undo step
+        part.controllers = std::move (events);
+        changed();
+    }
+
+    void Studio::setControllerLanes (int trackId, std::vector<int> lanes)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr)
+            return;
+        lanes.erase (std::remove_if (lanes.begin(), lanes.end(), [] (int code) { return ! ControllerKinds::isValid (code); }), lanes.end());
+        if (track->controllerLanes == lanes)
+            return;
+        track->controllerLanes = std::move (lanes);
+        changed (false);
+    }
+
+    void Studio::setPitchbendGrid (int trackId, int up, int down, bool snapOn, bool shown)
+    {
+        if (auto* track = project.findTrack (trackId))
+        {
+            track->pitchbendUp = juce::jlimit (1, 96, up);
+            track->pitchbendDown = juce::jlimit (1, 96, down);
+            track->pitchbendSnap = snapOn;
+            track->pitchbendGrid = shown || snapOn;   // (the manual: Snap shows the grid it snaps to)
+            changed (false);
+        }
+    }
+
+    const DrumMap* Studio::getDrumMapOf (int trackId) const
+    {
+        const auto* track = project.findTrack (trackId);
+        return track != nullptr ? project.drumMapOf (*track) : nullptr;
+    }
+
+    void Studio::setTrackDrumMap (int trackId, const juce::String& mapName)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || track->isAudio() || track->isChannel())
+            return;
+        auto name = mapName;
+        if (name.isNotEmpty() && project.findDrumMap (name) == nullptr)
+        {
+            // Not in the song yet: the GM Map, or one from the drum map folder.
+            if (name == DrumMap::gm().name)
+                project.drumMaps.push_back (DrumMap::gm());
+            else
+            {
+                juce::String error;
+                for (const auto& libraryFile : getLibraryDrumMaps())
+                    if (libraryFile.getFileNameWithoutExtension() == name)
+                        if (auto map = DrumMap::readDrm (libraryFile, error))
+                        {
+                            map->name = name;
+                            project.drumMaps.push_back (std::move (*map));
+                            break;
+                        }
+                if (project.findDrumMap (name) == nullptr)
+                    return;
+            }
+        }
+        const auto hadNone = track->drumMap.isEmpty();
+        track->drumMap = name;
+        if (name.isEmpty())
+            track->drumEditor = false;
+        else if (hadNone)
+            track->drumEditor = true;   // (the manual's "Use Drum Editor when Drum Map is assigned")
+        SessionLog::note ("Drum map for track " + juce::String (trackId) + ": " + (name.isEmpty() ? juce::String ("none") : name));
+        changed (false);
+    }
+
+    void Studio::setTrackDrumEditor (int trackId, bool drums)
+    {
+        if (auto* track = project.findTrack (trackId); track != nullptr && track->drumEditor != drums)
+        {
+            if (drums && track->drumMap.isEmpty())
+                setTrackDrumMap (trackId, DrumMap::gm().name);   // (drums need names: the GM Map)
+            if (auto* again = project.findTrack (trackId))
+                again->drumEditor = drums;
+            changed (false);
+        }
+    }
+
+    juce::String Studio::addDrumMap (DrumMap map)
+    {
+        auto base = map.name.trim().isNotEmpty() ? map.name.trim() : juce::String ("Drum Map");
+        auto name = base;
+        for (int n = 2; project.findDrumMap (name) != nullptr; ++n)
+            name = base + " " + juce::String (n);
+        map.name = name;
+        project.drumMaps.push_back (std::move (map));
+        changed (false);
+        return name;
+    }
+
+    bool Studio::setDrumMap (const juce::String& name, DrumMap edited)
+    {
+        auto it = std::find_if (project.drumMaps.begin(), project.drumMaps.end(), [&] (const DrumMap& m) { return m.name == name; });
+        if (it == project.drumMaps.end())
+            return false;
+        edited.name = edited.name.trim();
+        if (edited.name.isEmpty() || (edited.name != name && project.findDrumMap (edited.name) != nullptr))
+            return false;   // (a name another map has)
+        for (auto& track : project.tracks)
+            if (track.drumMap == name)
+                track.drumMap = edited.name;
+        *it = std::move (edited);
+        changed (false);
+        return true;
+    }
+
+    void Studio::removeDrumMap (const juce::String& name)
+    {
+        const auto before = project.drumMaps.size();
+        project.drumMaps.erase (std::remove_if (project.drumMaps.begin(), project.drumMaps.end(), [&] (const DrumMap& m) { return m.name == name; }),
+                                project.drumMaps.end());
+        if (project.drumMaps.size() == before)
+            return;
+        for (auto& track : project.tracks)
+            if (track.drumMap == name)
+                track.drumMap = {}, track.drumEditor = false;
+        changed (false);
+    }
+
+    juce::String Studio::loadDrumMap (const juce::File& mapFile, juce::String& error)
+    {
+        std::optional<DrumMap> map;
+        if (const auto xml = juce::XmlDocument::parse (mapFile); xml != nullptr && xml->hasTagName ("DrumMap") && xml->hasAttribute ("name"))
+            map = DrumMap::fromXml (*xml);   // (ours)
+        if (! map)
+            map = DrumMap::readDrm (mapFile, error);
+        if (! map)
+            return {};
+        SessionLog::note ("Drum map loaded: " + mapFile.getFullPathName());
+        return addDrumMap (std::move (*map));
+    }
+
+    juce::File Studio::drumMapFolder()
+    {
+        return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Paragon PR7-S").getChildFile ("Drum Maps");
+    }
+
+    juce::Array<juce::File> Studio::getLibraryDrumMaps() const
+    {
+        const auto folder = drumMapFolderOverride != juce::File() ? drumMapFolderOverride : drumMapFolder();
+        auto files = folder.findChildFiles (juce::File::findFiles, true, "*.drm");
+        files.sort();
+        return files;
+    }
+
+    bool Studio::getNewControllersRamp() const
+    {
+        return settings != nullptr ? settings->getBoolValue ("controllerRamp", true) : newControllersRamp;
+    }
+
+    void Studio::setNewControllersRamp (bool ramp)
+    {
+        newControllersRamp = ramp;
+        if (settings != nullptr)
+            settings->setValue ("controllerRamp", ramp);
+    }
+
     //==========================================================================
     void Studio::updatePart (int trackId, int index, const Part& part)
     {
@@ -2065,6 +2336,97 @@ namespace pr7s
         return *mediaBay;
     }
 
+    const Studio::MediaPreviewOptions& Studio::getMediaPreviewOptions()
+    {
+        if (! mediaPreviewOptionsLoaded && settings != nullptr)
+        {
+            mediaPreviewOptions.linkTempo = settings->getBoolValue ("mediaBayLinkTempo", false);
+            mediaPreviewOptions.waitForPlay = settings->getBoolValue ("mediaBayWaitForPlay", false);
+            mediaPreviewOptions.semitones = juce::jlimit (-12, 12, settings->getIntValue ("mediaBaySemitones", 0));
+            mediaPreviewOptions.toKey = juce::jlimit (-1, 11, settings->getIntValue ("mediaBayToKey", -1));
+            const auto speed = settings->getDoubleValue ("mediaBaySpeed", 1.0);
+            mediaPreviewOptions.speed = speed < 0.75 ? 0.5 : speed > 1.5 ? 2.0 : 1.0;
+        }
+        mediaPreviewOptionsLoaded = true;
+        return mediaPreviewOptions;
+    }
+
+    void Studio::setMediaPreviewOptions (const MediaPreviewOptions& options)
+    {
+        mediaPreviewOptions = options;
+        mediaPreviewOptions.semitones = juce::jlimit (-12, 12, options.semitones);
+        mediaPreviewOptions.toKey = juce::jlimit (-1, 11, options.toKey);
+        mediaPreviewOptions.speed = options.speed < 0.75 ? 0.5 : options.speed > 1.5 ? 2.0 : 1.0;
+        mediaPreviewOptionsLoaded = true;
+        if (settings != nullptr)
+        {
+            settings->setValue ("mediaBayLinkTempo", mediaPreviewOptions.linkTempo);
+            settings->setValue ("mediaBayWaitForPlay", mediaPreviewOptions.waitForPlay);
+            settings->setValue ("mediaBaySemitones", mediaPreviewOptions.semitones);
+            settings->setValue ("mediaBayToKey", mediaPreviewOptions.toKey);
+            settings->setValue ("mediaBaySpeed", mediaPreviewOptions.speed);
+        }
+    }
+
+    int Studio::keyPitchClass (const juce::String& key)
+    {
+        if (key.isEmpty())
+            return -1;
+        static const int letters[] { 9, 11, 0, 2, 4, 5, 7 };   // A to G
+        const auto letter = juce::CharacterFunctions::toUpperCase (key[0]);
+        if (letter < 'A' || letter > 'G')
+            return -1;
+        auto pc = letters[letter - 'A'];
+        if (key.length() > 1 && key[1] == '#') ++pc;
+        if (key.length() > 1 && key[1] == 'b') --pc;
+        return (pc + 12) % 12;
+    }
+
+    Studio::MediaPreviewPlan Studio::planMediaPreview (const juce::File& file, double seconds)
+    {
+        const auto& options = getMediaPreviewOptions();
+        MediaPreviewPlan plan;
+        plan.songBpm = juce::jmax (20.0, project.bpmAt (engine.getPosition()));
+        // What the MediaBay knows of the file (else its name).
+        double fileBpm = 0.0, fileBeats = 0.0;
+        juce::String fileKey;
+        bool known = false;
+        for (const auto& item : getMediaBay().getItems())
+            if (item.file == file)
+            {
+                fileBpm = item.tempo();
+                fileBeats = item.beats;
+                fileKey = item.keyName();
+                known = true;
+                break;
+            }
+        if (! known)
+        {
+            fileBpm = MediaDatabase::bpmFromName (file.getFileNameWithoutExtension());
+            fileKey = MediaDatabase::keyFromName (file.getFileNameWithoutExtension());
+        }
+        // The pitch: to a root key (the short way) when the file's key is known, else semitones.
+        plan.semitones = options.semitones;
+        if (const auto from = keyPitchClass (fileKey); options.toKey >= 0 && from >= 0)
+        {
+            auto move = (options.toKey - from + 12) % 12;
+            plan.semitones = move > 6 ? move - 12 : move;
+        }
+        // The length: to the song's tempo (a loop's beats: as the file says, else its length at its
+        // tempo, to the nearest whole beat when it's that close), then the speed.
+        if (options.linkTempo && fileBpm > 0.0 && seconds > 0.0)
+        {
+            auto beats = fileBeats > 0.0 ? fileBeats : seconds * fileBpm / 60.0;
+            if (fileBeats <= 0.0 && std::abs (beats - std::round (beats)) < 0.05 * beats)
+                beats = juce::jmax (1.0, std::round (beats));
+            plan.lockBeats = beats / options.speed;
+            plan.lengthFactor = (plan.lockBeats * 60.0 / plan.songBpm) / seconds;
+        }
+        else
+            plan.lengthFactor = 1.0 / options.speed;
+        return plan;
+    }
+
     bool Studio::previewMedia (const juce::File& file, bool loop)
     {
         stopMediaPreview();
@@ -2074,9 +2436,35 @@ namespace pr7s
             auto sound = readAudio (file);
             if (sound == nullptr)
                 return false;
+            const auto& options = getMediaPreviewOptions();
+            const auto plan = planMediaPreview (file, sound->seconds());
+            const auto length = sound->sound.getNumSamples();
+            // Stretched or moved: the whole sound, ahead (up to 90 seconds: longer files play as they are).
+            const auto changes = std::abs (plan.lengthFactor - 1.0) > 0.0005 || plan.semitones != 0.0;
+            if (changes && length <= (int) (90.0 * sound->sampleRate))
+            {
+                const auto outLength = plan.lockBeats > 0.0 ? (int) std::llround (plan.lockBeats * 60.0 / plan.songBpm * sound->sampleRate)
+                                                            : (int) std::llround ((double) length * plan.lengthFactor);
+                auto stretched = std::make_shared<AudioData>();
+                stretched->sampleRate = sound->sampleRate;
+                stretched->sound = stretchAudio (sound->sound, sound->sampleRate, outLength, plan.semitones);
+                if (stretched->sound.getNumChannels() == 1)
+                {
+                    stretched->sound.setSize (2, outLength, true);
+                    stretched->sound.copyFrom (1, 0, stretched->sound, 0, 0, outLength);
+                }
+                for (int from = 0; from < outLength; from += AudioData::peakStep)
+                {
+                    const auto count = juce::jmin (AudioData::peakStep, outLength - from);
+                    stretched->peaks.push_back (juce::jmax (stretched->sound.getMagnitude (0, from, count), stretched->sound.getMagnitude (1, from, count)));
+                }
+                sound = stretched;
+            }
             mediaPreviewSound = sound;
             engine.setPreviewGain (mediaPreviewLevel);
-            engine.setPreview (std::shared_ptr<const juce::AudioBuffer<float>> (sound, &sound->sound), loop);
+            const auto locked = options.waitForPlay && plan.lockBeats > 0.0;
+            engine.setPreviewSync (options.waitForPlay, project.loopStart, locked ? plan.lockBeats : 0.0);
+            engine.setPreview (std::shared_ptr<const juce::AudioBuffer<float>> (sound, &sound->sound), loop || locked);
             return true;
         }
         if (type == MediaType::midi)
@@ -2088,11 +2476,15 @@ namespace pr7s
             LineIdea idea;
             idea.part = LineIdea::Part::melody;
             idea.style = file.getFileNameWithoutExtension();
+            // (0.23.0: moved by the previewer's semitones or to its root key, at its speed.)
+            const auto plan = planMediaPreview (file, 0.0);
+            const auto speed = getMediaPreviewOptions().speed;
             for (const auto& track : midi->tracks)
                 for (const auto& n : track.notes)
                 {
-                    idea.notes.push_back ({ n.start, n.length, n.pitch, n.velocity * juce::jlimit (0.05f, 1.0f, mediaPreviewLevel / 0.7f) });
-                    mediaPreviewBeats = juce::jmax (mediaPreviewBeats, n.start + n.length);
+                    const auto pitch = juce::jlimit (0, 127, n.pitch + (int) plan.semitones);
+                    idea.notes.push_back ({ n.start / speed, n.length / speed, pitch, n.velocity * juce::jlimit (0.05f, 1.0f, mediaPreviewLevel / 0.7f) });
+                    mediaPreviewBeats = juce::jmax (mediaPreviewBeats, (n.start + n.length) / speed);
                 }
             if (idea.notes.empty())
                 return false;
@@ -2105,6 +2497,133 @@ namespace pr7s
             return true;
         }
         return false;
+    }
+
+    std::optional<Studio::PluginPreset> Studio::readPluginPreset (const juce::File& presetFile, juce::String& error)
+    {
+        juce::String classId;
+        juce::StringPairArray info;
+        if (! MediaDatabase::readVstPresetInfo (presetFile, classId, info))
+        {
+            error = presetFile.getFileName() + " isn't a VST3 preset.";
+            return std::nullopt;
+        }
+        juce::MemoryBlock data;
+        presetFile.loadFileAsData (data);
+        PluginPreset preset;
+        preset.state = DawProject::vstPresetToHostState (data);
+        if (preset.state.isEmpty())
+        {
+            error = presetFile.getFileName() + " has no plug-in settings inside.";
+            return std::nullopt;
+        }
+        preset.name = info.getValue ("Name", presetFile.getFileNameWithoutExtension());
+        auto pluginName = info.getValue ("PlugInName", {});
+        if (pluginName.isEmpty())
+            pluginName = presetFile.getParentDirectory().getFileName();
+        // The plug-in: by its class id (as JUCE hashes it), else by name; the studio's synth too.
+        juce::Array<juce::PluginDescription> candidates = host->getInstruments();
+        candidates.addArray (host->getEffects());
+        if (const auto* synth = host->getStudioSynth())
+            candidates.add (*synth);
+        const auto uid = MediaDatabase::vst3UniqueIdFor (classId);
+        const juce::PluginDescription* found = nullptr;
+        for (const auto& d : candidates)
+            if (uid != 0 && d.pluginFormatName == "VST3" && d.uniqueId == uid)
+                found = &d;
+        if (found == nullptr)
+            for (const auto& d : candidates)
+                if (found == nullptr && pluginName.isNotEmpty() && d.name.equalsIgnoreCase (pluginName))
+                    found = &d;
+        if (found == nullptr)
+        {
+            error = "This preset is for " + (pluginName.isNotEmpty() ? pluginName : juce::String ("a plug-in"))
+                  + ", which isn't among your scanned plug-ins: PLUGINS > SCAN / OPTIONS, then try again.";
+            return std::nullopt;
+        }
+        preset.plugin = *found;
+        preset.instrument = found->isInstrument;
+        return preset;
+    }
+
+    int Studio::addTrackFromPluginPreset (const juce::File& presetFile, juce::String& error)
+    {
+        const auto preset = readPluginPreset (presetFile, error);
+        if (! preset)
+            return 0;
+        if (preset->instrument)
+        {
+            Instrument instrument;
+            instrument.kind = Instrument::Kind::plugin;
+            instrument.plugin = preset->plugin;
+            instrument.state = preset->state;
+            const auto id = addTrack (instrument, &error);
+            if (id != 0)
+                renameTrack (id, preset->name);
+            return id;
+        }
+        const auto id = addFxChannel (&preset->plugin, &error);
+        if (id != 0)
+            if (auto* effect = engine.getEffect (id, 0))
+                effect->setStateInformation (preset->state.getData(), (int) preset->state.getSize());
+        return id;
+    }
+
+    bool Studio::applyPluginPreset (int trackId, const juce::File& presetFile, juce::String& error)
+    {
+        const auto preset = readPluginPreset (presetFile, error);
+        if (! preset)
+            return false;
+        if (isFrozen (trackId))
+        {
+            error = "It's frozen: unfreeze it first.";
+            return false;
+        }
+        if (preset->instrument)
+        {
+            const auto* track = project.findTrack (trackId);
+            if (track == nullptr || track->kind != Track::Kind::instrument)
+            {
+                error = "An instrument's preset goes on an instrument track.";
+                return false;
+            }
+            // The same plug-in: the preset loaded into it; another: the instrument changed, with the preset.
+            if (auto* running = engine.getInstrument (trackId);
+                running != nullptr && track->instrument.kind == Instrument::Kind::plugin && track->instrument.plugin.uniqueId == preset->plugin.uniqueId
+                && track->instrument.plugin.name == preset->plugin.name)
+            {
+                running->setStateInformation (preset->state.getData(), (int) preset->state.getSize());
+                changed();
+                return true;
+            }
+            Instrument instrument;
+            instrument.kind = Instrument::Kind::plugin;
+            instrument.plugin = preset->plugin;
+            instrument.state = preset->state;
+            return changeInstrument (trackId, instrument, &error);
+        }
+        // An effect's: into that effect when the track has it, else a new insert with it.
+        if (const auto* inserts = insertsOf (trackId))
+            for (int slot = 0; slot < (int) inserts->size(); ++slot)
+                if (const auto& insert = (*inserts)[(size_t) slot];
+                    ! insert.isEmpty() && insert.plugin.uniqueId == preset->plugin.uniqueId && insert.plugin.name == preset->plugin.name)
+                    if (auto* effect = engine.getEffect (trackId, slot))
+                    {
+                        effect->setStateInformation (preset->state.getData(), (int) preset->state.getSize());
+                        changed();
+                        return true;
+                    }
+        Insert insert;
+        insert.plugin = preset->plugin;
+        insert.state = preset->state;
+        juce::String problem;
+        auto instance = host->createEffect (insert, engine.getSampleRate(), engine.getBlockSize(), problem);
+        if (instance == nullptr)
+        {
+            error = problem;
+            return false;
+        }
+        return addInsert (trackId, insert, std::move (instance));
     }
 
     void Studio::stopMediaPreview()
@@ -2698,6 +3217,443 @@ namespace pr7s
         changed();
     }
 
+    namespace
+    {
+        // A lane's points from `from` to `to` (beats), from 0, with its values at both ends.
+        std::vector<AutomationPoint> cutOut (const AutomationLane& lane, double from, double to)
+        {
+            std::vector<AutomationPoint> out;
+            if (lane.points.empty())
+                return out;
+            out.push_back ({ 0.0, *lane.valueAt (from), 0.0f });
+            for (const auto& p : lane.points)
+                if (p.beat > from + 1.0e-9 && p.beat < to - 1.0e-9)
+                    out.push_back ({ p.beat - from, p.value, p.curve });
+            out.push_back ({ to - from, *lane.valueAt (to), 0.0f });
+            return out;
+        }
+
+        // `clip` (points from 0) laid over `from` to `to`: what was there goes; the value at
+        // either side is kept a 960th of a beat outside; a longer range holds the last value.
+        void pasteOver (AutomationLane& lane, const std::vector<AutomationPoint>& clip, double from, double to)
+        {
+            constexpr double just = 1.0 / 960.0;
+            const auto hadPoints = ! lane.points.empty();
+            const auto before = hadPoints ? lane.valueAt (from - just) : std::nullopt;
+            const auto after = hadPoints ? lane.valueAt (to + just) : std::nullopt;
+            std::vector<AutomationPoint> kept;
+            for (const auto& p : lane.points)
+                if (p.beat < from - just * 0.5 || p.beat > to + just * 0.5)
+                    kept.push_back (p);
+            if (before && from - just > 0.0)
+                kept.push_back ({ from - just, *before, 0.0f });
+            auto last = clip.empty() ? 0.0f : clip.front().value;
+            for (const auto& p : clip)
+                if (p.beat <= to - from + 1.0e-9)
+                {
+                    kept.push_back ({ from + p.beat, p.value, p.curve });
+                    last = p.value;
+                }
+                else
+                {
+                    // Cut where the range ends: the value it had reached there.
+                    AutomationLane l;
+                    l.points = clip;
+                    kept.push_back ({ to, *l.valueAt (to - from), p.curve });
+                    last = kept.back().value;
+                    break;
+                }
+            if (! clip.empty() && clip.back().beat < to - from - 1.0e-9)
+                kept.push_back ({ to, last, 0.0f });   // (longer: the last value to the right locator)
+            if (after)
+                kept.push_back ({ to + just, *after, 0.0f });
+            std::stable_sort (kept.begin(), kept.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
+            lane.points = std::move (kept);
+        }
+    }
+
+    bool Studio::copyAutomation (AutomationScope scope, int busId, int laneIndex)
+    {
+        const auto from = project.loopStart, to = project.loopEnd;
+        if (to <= from)
+            return false;
+        std::vector<AutomationClipLane> clip;
+        const auto take = [&] (int bus)
+        {
+            if (const auto* lanes = getAutomation (bus))
+                for (const auto& lane : *lanes)
+                    if (! lane.points.empty())
+                    {
+                        auto copy = lane;
+                        copy.points = cutOut (lane, from, to);
+                        clip.push_back ({ bus, copy });
+                    }
+        };
+        if (scope == AutomationScope::parameter)
+        {
+            const auto* lanes = getAutomation (busId);
+            if (lanes == nullptr || ! juce::isPositiveAndBelow (laneIndex, (int) lanes->size()) || (*lanes)[(size_t) laneIndex].points.empty())
+                return false;
+            auto copy = (*lanes)[(size_t) laneIndex];
+            copy.points = cutOut (copy, from, to);
+            clip.push_back ({ busId, copy });
+        }
+        else
+        {
+            for (const auto& track : project.tracks)
+                if (scope == AutomationScope::allTracks || isTrackSelected (track.id))
+                    take (track.id);
+            if (scope == AutomationScope::allTracks || isMasterSelected())
+                take (Engine::masterBus);
+        }
+        if (clip.empty())
+            return false;
+        automationClip = std::move (clip);
+        automationClipLength = to - from;
+        return true;
+    }
+
+    bool Studio::pasteAutomation (AutomationScope scope, int busId, int laneIndex)
+    {
+        const auto from = project.loopStart, to = project.loopEnd;
+        if (automationClip.empty() || to <= from)
+            return false;
+        const auto laneFor = [this] (int bus, const AutomationLane& control) -> AutomationLane*
+        {
+            // The bus's lane for that control (a new one, hidden, if it has none).
+            auto* lanes = lanesOf (bus);
+            if (lanes == nullptr)
+                return nullptr;
+            for (auto& lane : *lanes)
+                if (lane.sameControl (control))
+                    return &lane;
+            auto added = control;
+            added.points.clear();
+            added.muted = false;
+            lanes->push_back (added);
+            return &lanes->back();
+        };
+        auto pasted = false;
+        if (scope == AutomationScope::parameter)
+        {
+            auto* lanes = lanesOf (busId);
+            if (lanes == nullptr || ! juce::isPositiveAndBelow (laneIndex, (int) lanes->size()))
+                return false;
+            pasteOver ((*lanes)[(size_t) laneIndex], automationClip.front().lane.points, from, to);
+            pasted = true;
+        }
+        else if (scope == AutomationScope::allTracks)
+        {
+            for (const auto& c : automationClip)
+                if (auto* lane = laneFor (c.busId, c.lane))
+                    pasteOver (*lane, c.lane.points, from, to), pasted = true;
+        }
+        else
+        {
+            // The copied tracks in order, onto the selected tracks in order.
+            std::vector<int> sources;
+            for (const auto& c : automationClip)
+                if (std::find (sources.begin(), sources.end(), c.busId) == sources.end())
+                    sources.push_back (c.busId);
+            const auto targets = getSelectedTracks();
+            for (size_t i = 0; i < targets.size() && ! sources.empty(); ++i)
+            {
+                const auto source = sources[i % sources.size()];
+                for (const auto& c : automationClip)
+                    if (c.busId == source)
+                        if (auto* lane = laneFor (targets[i], c.lane))
+                            pasteOver (*lane, c.lane.points, from, to), pasted = true;
+            }
+        }
+        if (! pasted)
+            return false;
+        changed();
+        return true;
+    }
+
+    //==========================================================================
+    void Studio::setAutomationSettings (const AutomationSettings& newSettings)
+    {
+        const auto leavingTrim = project.automationSettings.trim && ! newSettings.trim;
+        project.automationSettings = newSettings;
+        project.automationSettings.reductionLevel = juce::jlimit (0, 100, newSettings.reductionLevel);
+        project.automationSettings.returnSeconds = juce::jlimit (0.0, 5.0, newSettings.returnSeconds);
+        if (leavingTrim && newSettings.freezeTrim == AutomationSettings::FreezeTrim::onLeavingTrim)
+        {
+            for (auto& lane : project.masterAutomation)
+                freezeTrimOf (lane);
+            for (auto& track : project.tracks)
+                for (auto& lane : track.automation)
+                    freezeTrimOf (lane);
+            changed();
+            return;
+        }
+        changed (false);
+    }
+
+    void Studio::setAutomationMode (AutomationSettings::Mode mode)
+    {
+        auto s = project.automationSettings;
+        s.mode = mode;
+        setAutomationSettings (s);
+    }
+
+    Studio::AutomationSettings::Fill Studio::getFill (FillOption option) const noexcept
+    {
+        const auto& s = project.automationSettings;
+        switch (option)
+        {
+            case FillOption::toPunch: return s.toPunch;
+            case FillOption::toStart: return s.toStart;
+            case FillOption::toEnd:   return s.toEnd;
+            case FillOption::loop:    return s.loop;
+            case FillOption::gaps:    return s.gaps;
+        }
+        return AutomationSettings::Fill::off;
+    }
+
+    void Studio::stepFill (FillOption option)
+    {
+        using F = AutomationSettings::Fill;
+        auto s = project.automationSettings;
+        auto& f = option == FillOption::toPunch ? s.toPunch : option == FillOption::toStart ? s.toStart
+                : option == FillOption::toEnd ? s.toEnd : option == FillOption::loop ? s.loop : s.gaps;
+        f = f == F::off ? F::once : f == F::once ? F::locked : F::off;
+        setAutomationSettings (s);
+    }
+
+    void Studio::setSuspendRead (AutomationSettings::Group group, bool on)
+    {
+        auto s = project.automationSettings;
+        s.suspendRead[(size_t) group] = on;
+        setAutomationSettings (s);
+    }
+
+    void Studio::setSuspendWrite (AutomationSettings::Group group, bool on)
+    {
+        auto s = project.automationSettings;
+        s.suspendWrite[(size_t) group] = on;
+        if (on)
+            for (size_t i = passes.size(); i-- > 0;)
+                if (AutomationSettings::groupOf (passes[i].control) == group)
+                    punchOut (i, engine.getPosition());   // (the manual: it punches out of the pass)
+        setAutomationSettings (s);
+    }
+
+    void Studio::setAllSuspended (bool read, bool on)
+    {
+        auto s = project.automationSettings;
+        (read ? s.suspendRead : s.suspendWrite).fill (on);
+        if (! read && on)
+            punchOutAll();
+        setAutomationSettings (s);
+    }
+
+    bool Studio::isAllSuspended() const noexcept
+    {
+        const auto& s = project.automationSettings;
+        return std::all_of (s.suspendRead.begin(), s.suspendRead.end(), [] (bool b) { return b; })
+            && std::all_of (s.suspendWrite.begin(), s.suspendWrite.end(), [] (bool b) { return b; });
+    }
+
+    void Studio::setAllSuspended (bool on)
+    {
+        auto s = project.automationSettings;
+        s.suspendRead.fill (on);
+        s.suspendWrite.fill (on);
+        if (on)
+            punchOutAll();
+        setAutomationSettings (s);
+    }
+
+    void Studio::setTrim (bool on)
+    {
+        auto s = project.automationSettings;
+        s.trim = on;
+        setAutomationSettings (s);
+    }
+
+    void Studio::freezeTrimOf (AutomationLane& lane)
+    {
+        // The trim rendered into the points: a point wherever either curve has one.
+        if (lane.trim.empty() || lane.points.empty() || ! lane.canTrim())
+        {
+            lane.trim.clear();
+            return;
+        }
+        std::vector<double> beats;
+        for (const auto& p : lane.points)
+            beats.push_back (p.beat);
+        for (const auto& p : lane.trim)
+            beats.push_back (p.beat);
+        std::sort (beats.begin(), beats.end());
+        beats.erase (std::unique (beats.begin(), beats.end(), [] (double a, double b) { return std::abs (a - b) < 1.0e-9; }), beats.end());
+        std::vector<AutomationPoint> frozen;
+        for (const auto beat : beats)
+            frozen.push_back ({ beat, *lane.playedAt (beat, false), 0.0f });
+        lane.points = std::move (frozen);
+        lane.trim.clear();
+    }
+
+    void Studio::freezeTrim (bool selectedTracksOnly)
+    {
+        if (! selectedTracksOnly || isMasterSelected())
+            for (auto& lane : project.masterAutomation)
+                freezeTrimOf (lane);
+        for (auto& track : project.tracks)
+            if (! selectedTracksOnly || isTrackSelected (track.id))
+                for (auto& lane : track.automation)
+                    freezeTrimOf (lane);
+        changed();
+    }
+
+    void Studio::freezeTrim (int busId, int laneIndex)
+    {
+        auto* lanes = lanesOf (busId);
+        if (lanes == nullptr || ! juce::isPositiveAndBelow (laneIndex, (int) lanes->size()))
+            return;
+        freezeTrimOf ((*lanes)[(size_t) laneIndex]);
+        changed();
+    }
+
+    void Studio::setTrimPoints (int busId, int laneIndex, std::vector<AutomationPoint> points)
+    {
+        auto* lanes = lanesOf (busId);
+        if (lanes == nullptr || ! juce::isPositiveAndBelow (laneIndex, (int) lanes->size()) || ! (*lanes)[(size_t) laneIndex].canTrim())
+            return;
+        for (auto& p : points)
+            p.beat = juce::jmax (0.0, p.beat), p.value = juce::jlimit (0.0f, 1.0f, p.value), p.terminator = false;
+        std::stable_sort (points.begin(), points.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
+        (*lanes)[(size_t) laneIndex].trim = std::move (points);
+        changed();
+    }
+
+    void Studio::deleteAllAutomation()
+    {
+        for (auto& lane : project.masterAutomation)
+            lane.points.clear(), lane.trim.clear();
+        for (auto& track : project.tracks)
+            for (auto& lane : track.automation)
+                lane.points.clear(), lane.trim.clear();
+        changed();
+    }
+
+    void Studio::deleteAutomationOfSelectedTracks()
+    {
+        if (isMasterSelected())
+            for (auto& lane : project.masterAutomation)
+                lane.points.clear(), lane.trim.clear();
+        for (auto& track : project.tracks)
+            if (isTrackSelected (track.id))
+                for (auto& lane : track.automation)
+                    lane.points.clear(), lane.trim.clear();
+        changed();
+    }
+
+    void Studio::deleteAutomationInRange()
+    {
+        // Between the locators: gone, the curve either side as it was (a 960th of a beat inside the range).
+        const auto from = project.loopStart, to = project.loopEnd;
+        if (to <= from)
+            return;
+        const auto cut = [&] (AutomationLane& lane)
+        {
+            if (lane.points.empty())
+                return;
+            constexpr double just = 1.0 / 960.0;
+            const auto before = lane.valueAt (from), after = lane.valueAt (to);
+            std::vector<AutomationPoint> kept;
+            for (const auto& p : lane.points)
+                if (p.beat < from || p.beat > to)
+                    kept.push_back (p);
+            if (std::any_of (lane.points.begin(), lane.points.end(), [&] (const AutomationPoint& p) { return p.beat < from; }))
+                kept.push_back ({ from, *before, 0.0f, project.automationSettings.virginTerritory });
+            if (std::any_of (lane.points.begin(), lane.points.end(), [&] (const AutomationPoint& p) { return p.beat > to; }))
+                kept.push_back ({ to + just, *after });
+            std::stable_sort (kept.begin(), kept.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
+            lane.points = std::move (kept);
+        };
+        for (auto& lane : project.masterAutomation)
+            cut (lane);
+        for (auto& track : project.tracks)
+            for (auto& lane : track.automation)
+                cut (lane);
+        changed();
+    }
+
+    void Studio::fillGaps (bool withCurrentValue)
+    {
+        // The manual's Fill Gaps on Selected Tracks: a gap filled with its section's last value
+        // (or the control's setting now), up to a millisecond before the next section, then a ramp.
+        const auto fill = [&] (int busId, AutomationLane& lane)
+        {
+            std::vector<AutomationPoint> filled;
+            for (size_t i = 0; i < lane.points.size(); ++i)
+            {
+                auto p = lane.points[i];
+                const auto gap = p.terminator && i + 1 < lane.points.size();
+                p.terminator = false;
+                filled.push_back (p);
+                if (gap)
+                {
+                    const auto value = withCurrentValue ? getControlValue (busId, lane) : p.value;
+                    const auto next = lane.points[i + 1].beat;
+                    const auto ms = project.tempoMap().beatAfter (next, 0.0) - project.tempoMap().beatAt (juce::jmax (0.0, project.tempoMap().secondsAt (next) - 0.001));
+                    if (withCurrentValue)
+                        filled.push_back ({ p.beat + 1.0e-3, value });
+                    filled.push_back ({ juce::jmax (p.beat + 2.0e-3, next - ms), value });
+                }
+            }
+            lane.points = std::move (filled);
+        };
+        if (isMasterSelected())
+            for (auto& lane : project.masterAutomation)
+                fill (Engine::masterBus, lane);
+        for (auto& track : project.tracks)
+            if (isTrackSelected (track.id))
+                for (auto& lane : track.automation)
+                    fill (track.id, lane);
+        changed();
+    }
+
+    void Studio::showAutomationGroup (AutomationSettings::Group group, bool usedOnly)
+    {
+        // Every track's lanes of that kind (volume, pan, mute; sends and plug-in knobs: those it has lanes for).
+        const auto show = [&] (int busId, std::vector<AutomationLane>& lanes, bool& open)
+        {
+            auto any = false;
+            for (auto& lane : lanes)
+                if (AutomationSettings::groupOf (lane) == group && (! usedOnly || ! lane.points.empty()))
+                    lane.shown = any = true;
+            if (! any && ! usedOnly && group != AutomationSettings::Group::plugins)
+                for (const auto& control : getAutomationControls (busId))
+                {
+                    const auto lane = control.asLane();
+                    if (AutomationSettings::groupOf (lane) != group)
+                        continue;
+                    if (std::none_of (lanes.begin(), lanes.end(), [&] (const AutomationLane& l) { return l.sameControl (lane); }))
+                        lanes.push_back (lane);
+                    any = true;
+                    if (group != AutomationSettings::Group::sends)
+                        break;   // (one each: volume, pan, mute; every send)
+                }
+            if (any)
+                open = true;
+        };
+        show (Engine::masterBus, project.masterAutomation, project.masterAutomationOpen);
+        for (auto& track : project.tracks)
+            show (track.id, track.automation, track.automationOpen);
+        changed (false);
+    }
+
+    void Studio::hideAllAutomation()
+    {
+        project.masterAutomationOpen = false;
+        for (auto& track : project.tracks)
+            track.automationOpen = false;
+        changed (false);
+    }
+
     void Studio::insertGone (int busId, int slot, bool shiftUp)
     {
         const auto fix = [slot, shiftUp] (std::vector<AutomationLane>& lanes)
@@ -2889,12 +3845,23 @@ namespace pr7s
         // plug-in's window then writes nothing.)
         if (! engine.isPlaying() || exportJob != nullptr || ! getAutomationWrite (busId))
             return;
+        if (project.automationSettings.suspendWrite[(size_t) AutomationSettings::groupOf (which)])
+            return;   // (0.28.0: Suspend Write: this kind of control isn't written)
         for (auto& pass : passes)
             if (pass.busId == busId && pass.control.sameControl (which))
             {
-                pass.released = false;   // touched again (an on/off switch still latched)
+                pass.retouched = pass.released;   // touched again (latched: Cross-Over watches for the old curve)
+                if (pass.released && ! pass.points.empty())
+                    pass.points.push_back ({ engine.getPosition(), pass.points.back().value });   // (held flat while let go)
+                pass.released = false;
+                pass.aboveOld.reset();
                 return;
             }
+        startPass (busId, which);
+    }
+
+    void Studio::startPass (int busId, const AutomationLane& which)
+    {
         WritePass pass;
         pass.busId = busId;
         pass.control = which;
@@ -2924,7 +3891,33 @@ namespace pr7s
             if (beat + 1.0e-6 < pass.lastBeat)
             {
                 punchOut (i, pass.lastBeat);   // it jumped back
+                if (project.automationSettings.continueOnJump && engine.isPlaying())
+                {
+                    // (0.28.0, Continue Writing on Transport Jump) A new pass from where it jumped to.
+                    startPass (busId, which);
+                    passes.back().points.push_back ({ beat, juce::jlimit (0.0f, 1.0f, value) });
+                    return true;
+                }
                 return false;
+            }
+            if (pass.retouched && project.automationSettings.mode == AutomationSettings::Mode::crossOver)
+            {
+                // (0.28.0) Cross-Over: touched again, it punches out where the hand crosses the old curve.
+                const AutomationLane* old = nullptr;
+                if (const auto* lanes = getAutomation (busId))
+                    for (const auto& l : *lanes)
+                        if (l.sameControl (which))
+                            old = &l;
+                const auto oldValue = old != nullptr && ! old->points.empty() ? *old->valueAt (beat) : pass.before;
+                const auto above = value >= oldValue;
+                if (pass.aboveOld && *pass.aboveOld != above)
+                {
+                    pass.lastBeat = beat;
+                    pass.points.push_back ({ beat, oldValue });
+                    punchOut (i, beat, false);   // (met the old curve: no return)
+                    return false;
+                }
+                pass.aboveOld = above;
             }
             pass.lastBeat = beat;
             pass.points.push_back ({ beat, juce::jlimit (0.0f, 1.0f, value) });
@@ -2938,8 +3931,8 @@ namespace pr7s
         for (size_t i = 0; i < passes.size(); ++i)
             if (passes[i].busId == busId && passes[i].control.sameControl (which))
             {
-                if (which.isStep())
-                    passes[i].released = true;   // Auto-Latch: it keeps its last value until playing stops
+                if (which.isStep() || project.automationSettings.mode != AutomationSettings::Mode::touch)
+                    passes[i].released = true;   // Auto-Latch (and Cross-Over): its last value kept until it punches out
                 else
                     punchOut (i, engine.getPosition());   // Touch
                 return;
@@ -3239,7 +4232,7 @@ namespace pr7s
         }
     }
 
-    void Studio::punchOut (size_t index, double endBeat)
+    void Studio::punchOut (size_t index, double endBeat, bool returnToOld)
     {
         auto pass = passes[index];
         passes.erase (passes.begin() + (std::ptrdiff_t) index);
@@ -3247,6 +4240,7 @@ namespace pr7s
         auto* lanes = lanesOf (pass.busId);
         if (lanes == nullptr)
             return;
+        auto& as = project.automationSettings;
         endBeat = juce::jmax (endBeat, pass.start);
 
         // Its lane (a new one if the control had none: every pass is kept, to open later).
@@ -3255,21 +4249,46 @@ namespace pr7s
         {
             auto added = pass.control;
             added.shown = true;
+            added.trim.clear();
             if (auto* plugin = pluginFor (pass.busId, pass.control); plugin != nullptr && pass.control.parameter < plugin->getParameters().size())
                 added.parameterName = plugin->getParameters()[pass.control.parameter]->getName (64);
             lanes->push_back (added);
             lane = lanes->end() - 1;
         }
+        // (0.28.0, Trim) A volume or send pass with Trim on writes the trim curve: the hand's
+        // level less the curve's, around the middle.
+        const auto trimming = as.trim && lane->canTrim() && ! lane->points.empty();
         const auto old = *lane;
-        const auto oldAt = [&] (double beat) { return old.points.empty() ? pass.before : *old.valueAt (beat); };
-
-        // The written values, thinned: a point that's on the line between its
-        // neighbours (to within a hair) adds nothing.
+        const auto& oldCurve = trimming ? old.trim : old.points;
+        const auto oldAt = [&] (double beat) -> std::optional<float>
+        {
+            if (trimming)
+            {
+                if (old.trim.empty())
+                    return 0.5f;
+                AutomationLane t;
+                t.points = old.trim;
+                return *t.valueAt (beat);
+            }
+            if (old.points.empty())
+                return as.virginTerritory ? std::optional<float>() : std::optional<float> (pass.before);
+            return old.valueAt (beat, as.virginTerritory);
+        };
         auto written = pass.points;
+        if (trimming)
+            for (auto& p : written)
+            {
+                const auto base = travelToVolume (*old.valueAt (p.beat));
+                p.value = juce::jlimit (0.0f, 1.0f, 0.5f + (travelToVolume (p.value) - base) / (2.0f * AutomationLane::trimRange));
+            }
+        const auto startValue = written.empty() ? oldAt (pass.start).value_or (pass.before) : written.front().value;
         if (written.empty() || written.front().beat > pass.start)
-            written.insert (written.begin(), { pass.start, written.empty() ? pass.before : written.front().value });
+            written.insert (written.begin(), { pass.start, startValue });
         if (pass.control.isStep() || written.back().beat < endBeat)
-            written.push_back ({ endBeat, written.back().value });   // held to the end (a latched switch, or a still hand)
+            written.push_back ({ endBeat, written.back().value });   // held to the end (a latched control, or a still hand)
+
+        // Thinned (the Reduction Level: 0% only repeats; up to 100% smoother).
+        const auto tolerance = 0.0002f + 0.02f * (float) as.reductionLevel / 100.0f;
         std::vector<AutomationPoint> thin;
         for (size_t i = 0; i < written.size(); ++i)
         {
@@ -3279,7 +4298,7 @@ namespace pr7s
                 const auto& b = written[i + 1];
                 const auto along = b.beat > a.beat ? (written[i].beat - a.beat) / (b.beat - a.beat) : 0.0;
                 const auto line = a.value + (b.value - a.value) * (float) along;
-                if (std::abs (written[i].value - line) < 0.002f && ! pass.control.isStep())
+                if (std::abs (written[i].value - line) < tolerance && ! pass.control.isStep())
                     continue;
                 if (pass.control.isStep() && std::abs (written[i].value - a.value) < 1.0e-6f)
                     continue;
@@ -3287,24 +4306,104 @@ namespace pr7s
             thin.push_back (written[i]);
         }
 
+        // Fill (0.28.0, the manual's Fill Options): the value found, written across a stretch.
+        using F = AutomationSettings::Fill;
+        const auto fillValue = thin.back().value;
+        auto from = pass.start, to = endBeat;
+        auto doReturn = returnToOld;   // (an on/off switch jumps back: no ramp)
+        auto filled = false, toTheEnd = false;
+        if (! pass.control.isStep())
+        {
+            if (as.toPunch != F::off)
+                thin = { { pass.start, fillValue }, { endBeat, fillValue } }, filled = true;
+            if (as.toStart != F::off)
+                from = 0.0, thin = { { 0.0, fillValue }, { endBeat, fillValue } }, filled = true;
+            if (as.toEnd != F::off)
+            {
+                toTheEnd = true;   // (everything after goes: the value holds to the end)
+                if (thin.empty() || thin.back().beat < endBeat)
+                    thin.push_back ({ endBeat, fillValue });
+                doReturn = false;
+                filled = true;
+            }
+            if (as.loop != F::off && project.loopEnd > project.loopStart)
+            {
+                from = juce::jmin (from, project.loopStart);
+                to = juce::jmax (to, project.loopEnd);
+                std::vector<AutomationPoint> kept;
+                for (const auto& p : thin)
+                    if (p.beat < project.loopStart || p.beat > project.loopEnd)
+                        kept.push_back (p);
+                kept.push_back ({ project.loopStart, fillValue });
+                kept.push_back ({ project.loopEnd, fillValue });
+                std::stable_sort (kept.begin(), kept.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
+                thin = std::move (kept);
+                filled = true;
+            }
+        }
+        if (filled)
+            doReturn = doReturn && as.toEnd == F::off;
+
         // In place of what was there from the start to the end (and the return).
-        const auto returnBeats = pass.control.isStep() ? 0.0 : project.tempoMap().beatAfter (endBeat, returnSeconds) - endBeat;
+        const auto returnBeats = doReturn && ! pass.control.isStep() ? project.tempoMap().beatAfter (endBeat, as.returnSeconds) - endBeat : 0.0;
         const auto backAt = endBeat + returnBeats;
+        const auto clearTo = juce::jmax (backAt, filled ? to : backAt);
         std::vector<AutomationPoint> points;
-        for (const auto& p : old.points)
-            if (p.beat < pass.start)
+        for (const auto& p : oldCurve)
+            if (p.beat < from)
                 points.push_back (p);
-        points.push_back ({ pass.start, oldAt (pass.start) });   // up to the start as it was, then a jump to the hand's value
+        if (const auto before = oldAt (from); before && from > 0.0)
+            points.push_back ({ from, *before });   // up to the start as it was, then a jump to the hand's value
         for (const auto& p : thin)
             points.push_back (p);
-        points.push_back ({ backAt, oldAt (backAt) });            // and back to what was there (Touch's return)
-        for (const auto& p : old.points)
-            if (p.beat > backAt)
-                points.push_back (p);
-        lane->points = std::move (points);
+        if (! toTheEnd)
+        {
+            if (const auto after = oldAt (clearTo); after && doReturn)
+                points.push_back ({ clearTo, *after });            // and back to what was there (Touch's return)
+            else if (as.virginTerritory && ! points.empty() && ! oldAt (clearTo))
+                points.back().terminator = true;                    // (virgin territory after it: a gap, as the manual's)
+            for (const auto& p : oldCurve)
+                if (p.beat > clearTo)
+                    points.push_back (p);
+        }
+        std::stable_sort (points.begin(), points.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
+        if (as.gaps != F::off && as.virginTerritory && ! trimming && ! pass.control.isStep())
+        {
+            // Gaps: the curve's gaps filled with the value found.
+            std::vector<AutomationPoint> closed;
+            for (size_t i = 0; i < points.size(); ++i)
+            {
+                auto p = points[i];
+                const auto gap = p.terminator && i + 1 < points.size();
+                p.terminator = false;
+                closed.push_back (p);
+                if (gap)
+                {
+                    closed.push_back ({ p.beat + 1.0e-3, fillValue });
+                    closed.push_back ({ juce::jmax (p.beat + 2.0e-3, points[i + 1].beat - 1.0e-3), fillValue });
+                }
+            }
+            points = std::move (closed);
+        }
+        (trimming ? lane->trim : lane->points) = std::move (points);
 
-        // The control as it was set before (the lane carries the pass now).
+        // One-shot fills are used up; locked ones stay (the manual's One Shot vs Continuous).
+        for (auto* f : { &as.toPunch, &as.toStart, &as.toEnd, &as.loop, &as.gaps })
+            if (*f == F::once)
+                *f = F::off;
+        if (trimming && as.freezeTrim == AutomationSettings::FreezeTrim::onPassEnd)
+            freezeTrimOf (*lane);
+
+        // The control as it was set before (the lane carries the pass now); the lane shown (Reveal Parameter on Write).
         setControlValue (pass.busId, pass.control, pass.before);
+        if (as.revealOnWrite)
+        {
+            lane->shown = true;
+            if (pass.busId == Engine::masterBus)
+                project.masterAutomationOpen = true;
+            else if (auto* track = project.findTrack (pass.busId))
+                track->automationOpen = true;
+        }
         if (pass.busId == Engine::masterBus)
             project.masterRead = true;
         else if (auto* track = project.findTrack (pass.busId))
@@ -3705,7 +4804,7 @@ namespace pr7s
     }
 
     //==========================================================================
-    void Studio::buildRecordingNotes (std::vector<Note>& notes, double partStart, double endBeat) const
+    void Studio::buildRecordingNotes (std::vector<Note>& notes, double partStart, double endBeat, int onlyPass) const
     {
         // Pairs each note on with its note off. A note still held at the end
         // ends there; one held across the cycle's end ends at the cycle's end.
@@ -3724,6 +4823,11 @@ namespace pr7s
 
         for (const auto& event : recorded)
         {
+            if (onlyPass >= 0 && event.pass != onlyPass)
+                continue;   // (a lap of its own: 0.29.0's stacked takes)
+            const auto status = event.status & 0xf0;
+            if (status != 0x90 && status != 0x80)
+                continue;   // (controllers: buildRecordingControllers)
             const auto pitch = event.data1 & 0x7f;
             const auto isOn = (event.status & 0xf0) == 0x90 && event.data2 > 0;
             close (pitch, event.beat);
@@ -3733,6 +4837,41 @@ namespace pr7s
         for (int pitch = 0; pitch < 128; ++pitch)
             close (pitch, endBeat);
         std::sort (notes.begin(), notes.end(), [] (const Note& a, const Note& b) { return a.start < b.start; });
+    }
+
+    void Studio::buildRecordingControllers (std::vector<Controller>& events, double partStart) const
+    {
+        // What was played on the controllers (the mod wheel, the bend, the pedal...). In a
+        // cycle each kind keeps only the last pass it was played in (as notes are merged,
+        // passes of a sweep would cross one another).
+        std::map<int, int> lastPass;
+        const auto codeFor = [] (const RecordedEvent& e) -> int
+        {
+            switch (e.status & 0xf0)
+            {
+                case 0xb0: return e.data1 & 0x7f;
+                case 0xe0: return ControllerKinds::pitchbend;
+                case 0xd0: return ControllerKinds::aftertouch;
+                case 0xc0: return ControllerKinds::programChange;
+                case 0xa0: return ControllerKinds::polyBase + (e.data1 & 0x7f);
+                default:   return -2;
+            }
+        };
+        for (const auto& e : recorded)
+            if (const auto code = codeFor (e); code != -2)
+                lastPass[code] = juce::jmax (lastPass[code], e.pass);
+        const auto ramp = getNewControllersRamp();
+        for (const auto& e : recorded)
+        {
+            const auto code = codeFor (e);
+            if (code == -2 || e.pass != lastPass[code])
+                continue;
+            const auto value = code == ControllerKinds::pitchbend ? (e.data1 & 0x7f) | ((e.data2 & 0x7f) << 7)
+                             : (e.status & 0xf0) == 0xd0 || (e.status & 0xf0) == 0xc0 ? (e.data1 & 0x7f) : (e.data2 & 0x7f);
+            events.push_back ({ ControllerKinds::typeOf (code), ControllerKinds::numberOf (code), juce::jmax (0.0, e.beat - partStart),
+                                value, ramp && ! ControllerKinds::alwaysStep (code) });
+        }
+        ControllerKinds::sort (events);
     }
 
     std::optional<std::pair<int, Part>> Studio::getRecordingPreview() const
@@ -3755,6 +4894,7 @@ namespace pr7s
         part.start = project.loopOn ? project.loopStart : std::floor (recordStart / bar) * bar;
         const auto now = engine.getPosition();
         buildRecordingNotes (part.notes, part.start, now);
+        buildRecordingControllers (part.controllers, part.start);
         part.length = project.loopOn ? project.loopEnd - project.loopStart : juce::jmax (bar, now - part.start);
         return std::pair<int, Part> { recordTrack, part };
     }
@@ -3783,38 +4923,750 @@ namespace pr7s
         part.audioFile = name;
         part.audioOffset = latency;
         part.length = tempo.beatAfter (part.start, data->seconds() - latency) - part.start;
-        // In a cycle, the file holds every pass one after another: the clip
-        // plays the last complete one (as the manual's Replace mode keeps the
-        // last take), or what there is of the first if it wasn't finished.
+        // In a cycle, the file holds every lap one after another (0.29.0): each lap a take of its
+        // own, cut from it (the first from where recording began; a last lap stopped on the way,
+        // if a beat or more was played); the record mode decides what's kept: Keep History all
+        // of them and what was there, Cycle History + Replace all of them in place of what was
+        // there, Replace only the last complete lap (the manual's Audio Record Modes).
         const auto toSamples = [rate, &tempo] (double beats) { return (juce::int64) std::llround (tempo.secondsAt (beats) * rate); };
         const auto loopStart = toSamples (project.loopStart), loopEnd = toSamples (project.loopEnd);
+        using Audio = Project::RecordModes::Audio;
+        const auto mode = project.recordModes.audio;
+        std::vector<Part> takes;
         if (project.loopOn && startSample < loopEnd && loopEnd > loopStart)
         {
             const auto played = (juce::int64) data->sound.getNumSamples() - (juce::int64) std::llround (latency * rate);
             const auto firstPass = loopEnd - startSample, pass = loopEnd - loopStart;
-            const auto laps = played > firstPass ? (played - firstPass) / pass : 0;   // complete passes after the first
-            if (laps >= 1)
+            const auto laps = played > firstPass ? (played - firstPass) / pass : 0;   // complete laps after the first
+            const auto lapAt = [&] (juce::int64 into) // a lap from `into` samples into what was played
             {
-                part.start = project.loopStart;
-                part.audioOffset = latency + (double) (firstPass + (laps - 1) * pass) / rate;
-                part.length = project.loopEnd - project.loopStart;
-            }
-            else
+                Part lap = part;
+                lap.start = project.loopStart;
+                lap.audioOffset = latency + (double) into / rate;
+                lap.length = project.loopEnd - project.loopStart;
+                return lap;
+            };
+            auto first = part;
+            first.length = juce::jmin (part.length, tempo.beatAfter (part.start, (double) firstPass / rate) - part.start);
+            if (mode != Audio::replace || laps == 0)
+                takes.push_back (first);
+            for (juce::int64 l = 0; l < laps; ++l)
+                if (mode != Audio::replace || l == laps - 1)
+                    takes.push_back (lapAt (firstPass + l * pass));
+            const auto rest = played - firstPass - laps * pass;
+            if (mode != Audio::replace && laps >= 1 && rest > 0)
             {
-                part.length = juce::jmin (part.length, tempo.beatAfter (part.start, (double) firstPass / rate) - part.start);
+                auto last = lapAt (firstPass + laps * pass);
+                last.length = tempo.beatAfter (last.start, (double) rest / rate) - last.start;
+                if (last.length >= 1.0)
+                    takes.push_back (last);
             }
+        }
+        else
+        {
+            takes.push_back (part);
         }
         if (auto* track = project.findTrack (recordTrack))
         {
-            part.name = track->name;
-            track->parts.push_back (std::move (part));
+            for (size_t t = 0; t < takes.size(); ++t)
+            {
+                takes[t].name = track->name;
+                if (takes.size() > 1)
+                    takes[t].name << " take " << (int) (t + 1);
+            }
+            auto from = takes.front().start, to = takes.front().end();
+            for (const auto& take : takes)
+                from = juce::jmin (from, take.start), to = juce::jmax (to, take.end());
+            placeTakes (*track, std::move (takes), from, to, mode != Audio::keepHistory);
             changed();
         }
+    }
+
+    void Studio::placeTakes (Track& track, std::vector<Part> takes, double from, double to, bool replace, int lane)
+    {
+        if (replace)
+        {
+            // What's there over the recording's stretch is cut out.
+            splitTrackAt (track, from, project.tempoMap());
+            splitTrackAt (track, to, project.tempoMap());
+            track.parts.erase (std::remove_if (track.parts.begin(), track.parts.end(), [&] (const Part& p)
+                               {
+                                   return p.isAudio() == track.isAudio() && inside (p, from, to);
+                               }), track.parts.end());
+        }
+        auto order = 0;
+        for (const auto& p : track.parts)
+            order = juce::jmax (order, p.order);
+        const auto overlaps = [] (const Part& a, const Part& b) { return a.start < b.end() - 1.0e-9 && b.start < a.end() - 1.0e-9; };
+        auto stacked = false;
+        for (auto& take : takes)
+        {
+            take.order = ++order;
+            take.lane = juce::jmax (0, lane);
+            if (lane < 0)
+                for (;; ++take.lane)
+                {
+                    const auto taken = std::any_of (track.parts.begin(), track.parts.end(), [&] (const Part& p)
+                                                    {
+                                                        return p.lane == take.lane && overlaps (p, take);
+                                                    });
+                    if (! taken)
+                        break;
+                }
+            stacked = stacked || take.lane > 0;
+            track.parts.push_back (std::move (take));
+        }
+        // Takes stacked up on lanes: shown (our choice: the manual has Show Lanes clicked by hand).
+        if (stacked)
+            track.showLanes = true;
+    }
+
+    //==========================================================================
+    // Takes and comping (0.29.0)
+    namespace
+    {
+        bool overlapping (const Part& a, const Part& b)
+        {
+            return a.start < b.end() - edge && b.start < a.end() - edge;
+        }
+
+        int topOrder (const Track& track)
+        {
+            auto order = 0;
+            for (const auto& p : track.parts)
+                order = juce::jmax (order, p.order);
+            return order;
+        }
+
+        // Pieces on one lane cut from one recording (or MIDI) end to end, alike, meeting
+        // between `from` and `to`: one again.
+        void glueAdjacent (Track& track, const TempoMap& tempo, double from, double to)
+        {
+            std::sort (track.parts.begin(), track.parts.end(), [] (const Part& a, const Part& b)
+                       { return a.lane != b.lane ? a.lane < b.lane : a.start < b.start; });
+            for (size_t i = 0; i + 1 < track.parts.size();)
+            {
+                auto& a = track.parts[i];
+                const auto& b = track.parts[i + 1];
+                auto joins = a.lane == b.lane && std::abs (a.end() - b.start) < 1.0e-6 && a.muted == b.muted && a.order == b.order
+                          && a.isAudio() == b.isAudio() && b.start > from + edge && b.start < to - edge;
+                if (joins && a.isAudio())
+                {
+                    const auto seconds = tempo.secondsBetween (a.start, a.end());
+                    joins = a.audioFile == b.audioFile && a.fadeOut <= 0.0 && b.fadeIn <= 0.0
+                         && std::abs (b.audioOffset - (a.audioOffset + seconds)) < 1.0e-4;
+                }
+                if (! joins)
+                {
+                    ++i;
+                    continue;
+                }
+                const auto shift = a.length;
+                for (auto n : b.notes) { n.start += shift; a.notes.push_back (n); }
+                for (auto c : b.controllers) { c.start += shift; a.controllers.push_back (c); }
+                ControllerKinds::sort (a.controllers);
+                a.length += b.length;
+                a.fadeOut = b.fadeOut;
+                track.parts.erase (track.parts.begin() + (std::ptrdiff_t) i + 1);
+            }
+        }
+    }
+
+    void Studio::setShowLanes (int trackId, bool shown)
+    {
+        if (auto* track = project.findTrack (trackId); track != nullptr && ! track->isChannel() && track->showLanes != shown)
+        {
+            track->showLanes = shown;
+            changed (false);
+        }
+    }
+
+    void Studio::setLaneSolo (int trackId, int lane)
+    {
+        if (auto* track = project.findTrack (trackId); track != nullptr && ! track->isChannel())
+        {
+            track->soloLane = track->soloLane == lane ? -1 : juce::jmax (-1, lane);
+            changed (false);
+        }
+    }
+
+    void Studio::setRecordModes (const Project::RecordModes& modes)
+    {
+        project.recordModes = modes;
+        changed (false);
+    }
+
+    std::vector<int> Studio::partsOnLane (int trackId, int lane) const
+    {
+        std::vector<int> ids;
+        if (const auto* track = project.findTrack (trackId))
+            for (const auto& p : track->parts)
+                if (p.lane == lane)
+                    ids.push_back (p.id);
+        return ids;
+    }
+
+    int Studio::frontPartAt (int trackId, double beat) const
+    {
+        if (const auto* track = project.findTrack (trackId))
+            for (int i = 0; i < (int) track->parts.size(); ++i)
+                for (const auto& [from, to] : heardStretches (*track, i))
+                    if (beat >= from && beat < to)
+                        return track->parts[(size_t) i].id;
+        return 0;
+    }
+
+    void Studio::bringToFront (int partId, bool toggle)
+    {
+        Track* track = nullptr;
+        auto index = -1;
+        for (auto& t : project.tracks)
+            for (int i = 0; i < (int) t.parts.size(); ++i)
+                if (t.parts[(size_t) i].id == partId)
+                    track = &t, index = i;
+        if (track == nullptr || track->frozen)
+            return;
+        auto& part = track->parts[(size_t) index];
+        if (track->isAudio())
+        {
+            auto inFront = ! part.muted;
+            auto behind = -1;   // the clip in front of the rest under it
+            for (int j = 0; j < (int) track->parts.size(); ++j)
+                if (j != index && overlapping (track->parts[(size_t) j], part))
+                {
+                    if (isInFront (*track, j, index))
+                        inFront = false;
+                    else if (behind < 0 || isInFront (*track, j, behind))
+                        behind = j;
+                }
+            if (toggle && inFront && behind >= 0)
+            {
+                track->parts[(size_t) behind].order = topOrder (*track) + 1;   // the one it hid comes back
+                track->parts[(size_t) behind].muted = false;
+            }
+            else
+            {
+                part.order = topOrder (*track) + 1;
+                part.muted = false;
+            }
+        }
+        else if (toggle && ! part.muted)
+        {
+            part.muted = true;   // (MIDI: To Front clicked again mutes it, as the manual)
+        }
+        else
+        {
+            part.muted = false;
+            for (auto& other : track->parts)
+                if (other.id != partId && other.lane != part.lane && overlapping (other, part))
+                    other.muted = true;
+        }
+        changed();
+    }
+
+    void Studio::compRange (int trackId, int lane, double start, double end)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || track->isChannel() || track->frozen || end <= start + edge)
+            return;
+        const auto tempo = project.tempoMap();
+        splitTrackAt (*track, start, tempo);
+        splitTrackAt (*track, end, tempo);
+        const auto order = topOrder (*track) + 1;
+        auto any = false;
+        for (auto& p : track->parts)
+            if (p.lane == lane && inside (p, start, end))
+            {
+                p.order = order;   // (all the range's pieces alike: they glue back together)
+                p.muted = false;
+                any = true;
+            }
+        if (! any)
+        {
+            changed();   // (cut anyway, as the manual: "all takes are split")
+            return;
+        }
+        if (! track->isAudio())
+            for (auto& p : track->parts)
+                if (p.lane != lane && inside (p, start, end))
+                    p.muted = true;
+        glueAdjacent (*track, tempo, start, end);
+        changed();
+    }
+
+    void Studio::setPartLane (int partId, int lane)
+    {
+        for (auto& t : project.tracks)
+            for (auto& p : t.parts)
+                if (p.id == partId && ! t.frozen && p.lane != juce::jlimit (0, 255, lane))
+                {
+                    p.lane = juce::jlimit (0, 255, lane);
+                    changed();
+                    return;
+                }
+    }
+
+    void Studio::cleanUpLanes (int trackId)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || track->isChannel() || track->frozen)
+            return;
+        const auto tempo = project.tempoMap();
+        auto heard = *track;
+        heard.soloLane = -1;   // (what's heard with no lane soloed)
+        std::vector<Part> kept;
+        for (int i = 0; i < (int) track->parts.size(); ++i)
+        {
+            const auto& part = track->parts[(size_t) i];
+            const auto covered = std::any_of (track->parts.begin(), track->parts.end(), [&] (const Part& o)
+                                              { return &o != &part && overlapping (o, part); });
+            if (! covered)
+            {
+                kept.push_back (part);
+                continue;
+            }
+            if (track->isAudio())
+            {
+                // Only the stretches heard stay.
+                for (const auto& [from, to] : heardStretches (heard, i))
+                    if (auto piece = slice (part, from, to, tempo))
+                    {
+                        piece->id = from <= part.start + edge ? part.id : 0;
+                        kept.push_back (*piece);
+                    }
+            }
+            else if (! part.muted || ! std::any_of (track->parts.begin(), track->parts.end(), [&] (const Part& o)
+                                                    { return &o != &part && ! o.muted && overlapping (o, part); }))
+            {
+                kept.push_back (part);   // (MIDI: a muted part under one heard goes)
+            }
+        }
+        // The lanes left, numbered from 0 again.
+        std::vector<int> used;
+        for (const auto& p : kept)
+            if (std::find (used.begin(), used.end(), p.lane) == used.end())
+                used.push_back (p.lane);
+        std::sort (used.begin(), used.end());
+        for (auto& p : kept)
+            p.lane = (int) (std::find (used.begin(), used.end(), p.lane) - used.begin());
+        track->parts = std::move (kept);
+        if (track->soloLane >= (int) used.size())
+            track->soloLane = -1;
+        changed();
+    }
+
+    std::vector<int> Studio::createTracksFromLanes (int trackId)
+    {
+        std::vector<int> made;
+        const auto* track = project.findTrack (trackId);
+        if (track == nullptr || track->isChannel() || track->frozen)
+            return made;
+        const auto lanes = track->numLanes();
+        for (int lane = lanes - 1; lane >= 1; --lane)   // (each straight under the original: the last first)
+        {
+            if (partsOnLane (trackId, lane).empty())
+                continue;
+            const auto id = duplicateTrack (trackId);
+            if (id == 0)
+                continue;
+            auto* copy = project.findTrack (id);
+            copy->name = project.findTrack (trackId)->name + " lane " + juce::String (lane + 1);
+            copy->showLanes = false;
+            copy->soloLane = -1;
+            copy->solo = false;
+            copy->parts.erase (std::remove_if (copy->parts.begin(), copy->parts.end(), [lane] (const Part& p) { return p.lane != lane; }),
+                               copy->parts.end());
+            for (auto& p : copy->parts)
+                p.lane = 0;
+            made.insert (made.begin(), id);
+        }
+        if (auto* original = project.findTrack (trackId))
+        {
+            original->parts.erase (std::remove_if (original->parts.begin(), original->parts.end(), [] (const Part& p) { return p.lane != 0; }),
+                                   original->parts.end());
+            original->soloLane = -1;
+        }
+        changed();
+        return made;
+    }
+
+    //==========================================================================
+    // Comping, part two (0.30.0)
+    namespace
+    {
+        constexpr double shortestTake = 1.0 / 64.0;   // (beats: a take is never cut shorter)
+
+        // A part's track and index by its id.
+        std::pair<Track*, int> partById (Project& project, int partId)
+        {
+            for (auto& t : project.tracks)
+                for (int i = 0; i < (int) t.parts.size(); ++i)
+                    if (t.parts[(size_t) i].id == partId)
+                        return { &t, i };
+            return { nullptr, -1 };
+        }
+
+        // A part moved to start at `newStart` (its end staying): what it plays stays where it was.
+        void moveStart (Part& part, double newStart, const TempoMap& tempo)
+        {
+            const auto delta = newStart - part.start;
+            if (part.isAudio())
+                part.audioOffset = juce::jmax (0.0, part.audioOffset + (delta >= 0.0 ? tempo.secondsBetween (part.start, newStart)
+                                                                                      : -tempo.secondsBetween (newStart, part.start)));
+            for (auto& n : part.notes) n.start -= delta;
+            for (auto& c : part.controllers) c.start -= delta;
+            part.notes.erase (std::remove_if (part.notes.begin(), part.notes.end(), [] (const Note& n) { return n.start + n.length <= 0.0; }), part.notes.end());
+            part.start = newStart;
+            part.length -= delta;
+        }
+    }
+
+    std::vector<int> Studio::stackedWith (int partId) const
+    {
+        std::vector<int> ids;
+        for (const auto& t : project.tracks)
+            for (const auto& p : t.parts)
+                if (p.id == partId)
+                    for (const auto& o : t.parts)
+                        if (std::abs (o.start - p.start) < 1.0e-6 && std::abs (o.end() - p.end()) < 1.0e-6)
+                            ids.push_back (o.id);
+        return ids;
+    }
+
+    void Studio::splitTakesAt (int trackId, double beat)
+    {
+        if (auto* track = project.findTrack (trackId); track != nullptr && ! track->frozen && ! track->isChannel())
+        {
+            splitTrackAt (*track, beat, project.tempoMap());
+            changed();
+        }
+    }
+
+    double Studio::moveTakeEdge (int trackId, double beat, double newBeat)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || track->frozen || track->isChannel())
+            return beat;
+        const auto tempo = project.tempoMap();
+        const auto at = [beat] (double b) { return std::abs (b - beat) < 1.0e-6; };
+        auto low = 0.0, high = 1.0e9;
+        auto any = false;
+        for (const auto& p : track->parts)
+        {
+            const auto starts = at (p.start), ends = at (p.end());
+            if (! starts && ! ends)
+                continue;
+            any = true;
+            if (ends)
+            {
+                low = juce::jmax (low, p.start + shortestTake);
+                if (p.isAudio())
+                    if (const auto data = getAudio (p.audioFile))
+                        high = juce::jmin (high, tempo.beatAfter (p.start, data->seconds() - p.audioOffset));
+                // Not past the next take on its lane (one starting here moves with it).
+                for (const auto& o : track->parts)
+                    if (&o != &p && o.lane == p.lane && o.start > beat + 1.0e-6)
+                        high = juce::jmin (high, o.start);
+            }
+            if (starts)
+            {
+                high = juce::jmin (high, p.end() - shortestTake);
+                if (p.isAudio())
+                    low = juce::jmax (low, tempo.beatAt (juce::jmax (0.0, tempo.secondsAt (p.start) - p.audioOffset)));
+                for (const auto& o : track->parts)
+                    if (&o != &p && o.lane == p.lane && o.end() < beat - 1.0e-6)
+                        low = juce::jmax (low, o.end());
+            }
+        }
+        if (! any || low > high)
+            return beat;
+        newBeat = juce::jlimit (low, high, newBeat);
+        if (at (newBeat))
+            return beat;
+        for (auto& p : track->parts)
+        {
+            const auto starts = at (p.start), ends = at (p.end());
+            if (ends && ! starts)
+                p.length = newBeat - p.start;
+            else if (starts && ! ends)
+                moveStart (p, newBeat, tempo);
+        }
+        changed();
+        return newBeat;
+    }
+
+    void Studio::slipPart (int partId, double beats)
+    {
+        auto [track, index] = partById (project, partId);
+        if (track == nullptr || track->frozen || std::abs (beats) < 1.0e-9)
+            return;
+        auto& part = track->parts[(size_t) index];
+        if (part.isAudio())
+        {
+            const auto tempo = project.tempoMap();
+            // Later (positive): the recording starts further back, so less offset.
+            const auto seconds = beats >= 0.0 ? tempo.secondsBetween (part.start, part.start + beats) : -tempo.secondsBetween (part.start + beats, part.start);
+            auto offset = part.audioOffset - seconds;
+            if (const auto data = getAudio (part.audioFile))
+                offset = juce::jmin (offset, juce::jmax (0.0, data->seconds() - tempo.secondsBetween (part.start, part.end())));
+            offset = juce::jmax (0.0, offset);
+            if (std::abs (offset - part.audioOffset) < 1.0e-9)
+                return;
+            part.audioOffset = offset;
+        }
+        else
+        {
+            for (auto& n : part.notes) n.start += beats;
+            for (auto& c : part.controllers) c.start = juce::jmax (0.0, c.start + beats);
+            std::stable_sort (part.notes.begin(), part.notes.end(), [] (const Note& a, const Note& b) { return a.start < b.start; });
+        }
+        changed();
+    }
+
+    int Studio::bounceTakes (const std::vector<int>& partIds, juce::String& error)
+    {
+        Track* track = nullptr;
+        for (const auto id : partIds)
+            if (auto [t, i] = partById (project, id); t != nullptr)
+            {
+                if (track != nullptr && t != track)
+                {
+                    error = "Bounce works on the takes of one track.";
+                    return 0;
+                }
+                track = t;
+            }
+        if (track == nullptr || track->frozen)
+            return 0;
+        const auto chosen = [&] (const Part& p) { return std::find (partIds.begin(), partIds.end(), p.id) != partIds.end(); };
+        // What's heard among them alone (no lane soloed).
+        Track among = *track;
+        among.soloLane = -1;
+        among.parts.erase (std::remove_if (among.parts.begin(), among.parts.end(), [&] (const Part& p) { return ! chosen (p); }), among.parts.end());
+        if (among.parts.empty())
+            return 0;
+        auto from = among.parts.front().start, to = among.parts.front().end();
+        auto lane = among.parts.front().lane;
+        for (const auto& p : among.parts)
+            from = juce::jmin (from, p.start), to = juce::jmax (to, p.end()), lane = juce::jmin (lane, p.lane);
+        const auto tempo = project.tempoMap();
+        Part bounced;
+        bounced.start = from;
+        bounced.length = to - from;
+        bounced.name = among.parts.front().name;
+        bounced.lane = lane;
+        bounced.order = topOrder (*track) + 1;
+        if (track->isAudio())
+        {
+            // Each heard stretch's samples, faded at its clip's own ends, into one sound.
+            auto rate = 0.0;
+            auto channels = 1;
+            for (const auto& p : among.parts)
+                if (const auto data = getAudio (p.audioFile))
+                    rate = data->sampleRate, channels = juce::jmax (channels, data->sound.getNumChannels());
+            if (rate <= 0.0)
+            {
+                error = "The takes' recordings couldn't be read.";
+                return 0;
+            }
+            const auto startSeconds = tempo.secondsAt (from);
+            const auto total = (int) std::ceil ((tempo.secondsAt (to) - startSeconds) * rate);
+            juce::AudioBuffer<float> sound (juce::jmin (2, channels), juce::jmax (1, total));
+            sound.clear();
+            for (int i = 0; i < (int) among.parts.size(); ++i)
+            {
+                const auto& p = among.parts[(size_t) i];
+                const auto data = getAudio (p.audioFile);
+                if (data == nullptr || ! p.isAudio())
+                    continue;
+                const auto clipStart = tempo.secondsAt (p.start), clipEnd = tempo.secondsAt (p.end());
+                for (const auto& [a, b] : heardStretches (among, i))
+                {
+                    const auto first = (int) std::llround ((tempo.secondsAt (a) - startSeconds) * rate);
+                    const auto last = juce::jmin (total, (int) std::llround ((tempo.secondsAt (b) - startSeconds) * rate));
+                    for (int s = juce::jmax (0, first); s < last; ++s)
+                    {
+                        const auto when = startSeconds + s / rate;
+                        const auto into = when - clipStart, left = clipEnd - when;
+                        const auto source = (int) std::llround ((p.audioOffset + into) * rate);
+                        if (source < 0 || source >= data->sound.getNumSamples())
+                            continue;
+                        auto gain = 1.0;
+                        if (p.fadeIn > 0.0 && into < p.fadeIn) gain *= into / p.fadeIn;
+                        if (p.fadeOut > 0.0 && left < p.fadeOut) gain *= left / p.fadeOut;
+                        for (int c = 0; c < sound.getNumChannels(); ++c)
+                            sound.setSample (c, s, (float) (data->sound.getSample (juce::jmin (c, data->sound.getNumChannels() - 1), source) * gain));
+                    }
+                }
+            }
+            auto folder = getAudioFolder();
+            folder.createDirectory();
+            juce::File bounceFile;
+            int n = 1;
+            do
+                bounceFile = folder.getChildFile (juce::File::createLegalFileName (track->name) + " bounce " + juce::String (n++).paddedLeft ('0', 2) + ".wav");
+            while (bounceFile.exists());
+            std::unique_ptr<juce::OutputStream> stream (bounceFile.createOutputStream());
+            std::unique_ptr<juce::AudioFormatWriter> writer;
+            if (stream != nullptr)
+                writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (rate)
+                                                                                       .withNumChannels (sound.getNumChannels())
+                                                                                       .withBitsPerSample (32)
+                                                                                       .withSampleFormat (juce::AudioFormatWriterOptions::SampleFormat::floatingPoint));
+            if (writer == nullptr || ! writer->writeFromAudioSampleBuffer (sound, 0, sound.getNumSamples()))
+            {
+                error = "The bounce couldn't be written to " + bounceFile.getFullPathName();
+                return 0;
+            }
+            writer.reset();
+            audioCache.erase (bounceFile.getFileName());
+            bounced.audioFile = bounceFile.getFileName();
+            bounced.name = track->name + " bounce";
+        }
+        else
+        {
+            // The notes and controllers heard (unmuted takes, within each take), from the bounce's start.
+            for (const auto& p : among.parts)
+            {
+                if (p.muted)
+                    continue;
+                const auto shift = p.start - from;
+                for (auto note : p.notes)
+                    if (note.start >= 0.0 && note.start < p.length)
+                    {
+                        note.length = juce::jmin (note.length, p.length - note.start);
+                        note.start += shift;
+                        bounced.notes.push_back (note);
+                    }
+                for (auto c : p.controllers)
+                    if (c.start >= 0.0 && c.start < p.length)
+                    {
+                        c.start += shift;
+                        bounced.controllers.push_back (c);
+                    }
+            }
+            std::stable_sort (bounced.notes.begin(), bounced.notes.end(), [] (const Note& a, const Note& b) { return a.start < b.start; });
+            ControllerKinds::sort (bounced.controllers);
+        }
+        track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(), chosen), track->parts.end());
+        track->parts.push_back (std::move (bounced));
+        changed();
+        return track->parts.back().id;
+    }
+
+    void Studio::deleteOverlaps (const std::vector<int>& partIds)
+    {
+        Track* track = nullptr;
+        for (const auto id : partIds)
+            if (auto [t, i] = partById (project, id); t != nullptr && track == nullptr)
+                track = t;
+        if (track == nullptr || track->frozen)
+            return;
+        const auto chosen = [&] (const Part& p) { return std::find (partIds.begin(), partIds.end(), p.id) != partIds.end(); };
+        Track among = *track;
+        among.soloLane = -1;
+        among.parts.erase (std::remove_if (among.parts.begin(), among.parts.end(), [&] (const Part& p) { return ! chosen (p); }), among.parts.end());
+        auto lane = 255;
+        for (const auto& p : among.parts)
+            lane = juce::jmin (lane, p.lane);
+        const auto tempo = project.tempoMap();
+        std::vector<Part> kept;
+        for (int i = 0; i < (int) among.parts.size(); ++i)
+            for (const auto& [a, b] : heardStretches (among, i))
+                if (auto piece = slice (among.parts[(size_t) i], a, b, tempo))
+                {
+                    piece->id = a <= among.parts[(size_t) i].start + edge ? among.parts[(size_t) i].id : 0;
+                    piece->lane = lane;
+                    kept.push_back (*piece);
+                }
+        track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(), chosen), track->parts.end());
+        for (auto& p : kept)
+            track->parts.push_back (std::move (p));
+        changed();
+    }
+
+    int Studio::mergeMidiInLoop (const std::vector<int>& trackIds)
+    {
+        const auto from = project.loopStart, to = project.loopEnd;
+        if (to <= from + edge)
+            return 0;
+        Part merged;
+        merged.start = from;
+        merged.length = to - from;
+        int first = 0;
+        for (const auto id : trackIds)
+        {
+            const auto* track = project.findTrack (id);
+            if (track == nullptr || track->isAudio() || track->isChannel())
+                continue;
+            if (first == 0)
+                first = id;
+            for (int i = 0; i < (int) track->parts.size(); ++i)
+            {
+                const auto& p = track->parts[(size_t) i];
+                if (heardStretches (*track, i).empty())
+                    continue;
+                for (auto note : p.notes)
+                {
+                    const auto at = p.start + note.start;
+                    if (note.start < 0.0 || note.start >= p.length || at < from - edge || at >= to - edge)
+                        continue;
+                    note.length = juce::jmin (note.length, p.length - note.start, to - at);
+                    note.start = at - from;
+                    merged.notes.push_back (note);
+                }
+                for (auto c : p.controllers)
+                {
+                    const auto at = p.start + c.start;
+                    if (c.start < 0.0 || c.start >= p.length || at < from - edge || at >= to - edge)
+                        continue;
+                    c.start = at - from;
+                    merged.controllers.push_back (c);
+                }
+            }
+        }
+        if (first == 0 || (merged.notes.empty() && merged.controllers.empty()))
+            return 0;
+        std::stable_sort (merged.notes.begin(), merged.notes.end(), [] (const Note& a, const Note& b) { return a.start < b.start; });
+        ControllerKinds::sort (merged.controllers);
+        const auto id = duplicateTrack (first);
+        if (id == 0)
+            return 0;
+        auto* copy = project.findTrack (id);
+        copy->name = project.findTrack (first)->name + " merged";
+        copy->showLanes = false;
+        copy->soloLane = -1;
+        merged.name = copy->name;
+        copy->parts = { merged };
+        changed();
+        return id;
+    }
+
+    void Studio::startAudition (int trackId, int lane)
+    {
+        if (project.findTrack (trackId) == nullptr || exportJob != nullptr)
+            return;
+        auto heard = project;
+        for (auto& t : heard.tracks)
+            t.solo = t.id == trackId;
+        heard.findTrack (trackId)->soloLane = lane;
+        engine.update (heard);
+        auditioning = true;
+    }
+
+    void Studio::stopAudition()
+    {
+        if (! auditioning)
+            return;
+        auditioning = false;
+        if (exportJob == nullptr)
+            engine.update (project);
     }
 
     void Studio::finishRecording()
     {
         const auto endBeat = engine.getPosition();
+        const auto lapNow = engine.getCycleCount();   // (the lap being played when recording stopped)
         engine.stopRecording();
         wasRecording = false;
         if (audioWriter != nullptr)
@@ -3824,34 +5676,156 @@ namespace pr7s
         }
         engine.takeRecorded (recorded);
         wasRecording = false;
-
-        Part part;
-        const auto bar = project.beatsPerBar();
-        const auto cycled = project.loopOn;
-        part.start = cycled ? project.loopStart : std::floor (recordStart / bar) * bar;
-        buildRecordingNotes (part.notes, part.start, endBeat);
-        recorded.clear();
-        if (part.notes.empty())
-            return;   // nothing played: no part
-
-        // The part: the cycle, or whole bars from where recording started to where it stopped.
-        if (cycled)
+        auto* track = project.findTrack (recordTrack);
+        if (track == nullptr)
         {
-            part.length = project.loopEnd - project.loopStart;
+            recorded.clear();
+            return;
+        }
+
+        const auto bar = project.beatsPerBar();
+        const auto cycled = project.loopOn && project.loopEnd > project.loopStart;
+        const auto modes = project.recordModes;
+        using Cycle = Project::RecordModes::MidiCycle;
+        const auto named = [&] (Part part) { part.name = track->name; return part; };
+
+        // The laps something was played in (a cycle; 0.29.0, the manual's MIDI Cycle Record Modes).
+        std::vector<int> laps;
+        for (const auto& e : recorded)
+            if (std::find (laps.begin(), laps.end(), e.pass) == laps.end())
+                laps.push_back (e.pass);
+        std::sort (laps.begin(), laps.end());
+
+        std::vector<Part> takes;
+        if (cycled && (modes.midiCycle == Cycle::stacked || modes.midiCycle == Cycle::mixStacked) && laps.size() > 1)
+        {
+            // Stacked: each lap a part on a lane of its own; all but the last muted (Mix-Stacked: none).
+            for (size_t l = 0; l < laps.size(); ++l)
+            {
+                Part part;
+                part.start = project.loopStart;
+                part.length = project.loopEnd - project.loopStart;
+                buildRecordingNotes (part.notes, part.start, project.loopEnd, laps[l]);
+                if (part.notes.empty())
+                    continue;
+                part = named (std::move (part));
+                part.name << " take " << (int) (l + 1);
+                part.muted = modes.midiCycle == Cycle::stacked && l + 1 < laps.size();
+                takes.push_back (std::move (part));
+            }
+            // The controllers: with the last lap's notes (as each kind keeps its last pass).
+            if (! takes.empty())
+                buildRecordingControllers (takes.back().controllers, project.loopStart);
         }
         else
         {
-            auto end = endBeat;
-            for (const auto& note : part.notes)
-                end = juce::jmax (end, part.start + note.start + note.length);
-            part.length = juce::jmax (bar, std::ceil ((end - part.start) / bar - 1.0e-9) * bar);
+            Part part;
+            part.start = cycled ? project.loopStart : std::floor (recordStart / bar) * bar;
+            if (cycled && modes.midiCycle == Cycle::keepLast && ! laps.empty())
+            {
+                // Keep Last: the last lap played through to its end (stopped during one: the one before).
+                auto keep = laps.back();
+                if (keep == lapNow && laps.size() > 1)
+                    keep = laps[laps.size() - 2];
+                buildRecordingNotes (part.notes, part.start, project.loopEnd, keep);
+            }
+            else if (cycled && modes.midiCycle == Cycle::overwrite && laps.size() > 1)
+            {
+                // Overwrite: from the first thing played in a lap, what earlier laps left from there on goes.
+                for (const auto lap : laps)
+                {
+                    std::vector<Note> notes;
+                    buildRecordingNotes (notes, part.start, project.loopEnd, lap);
+                    if (notes.empty())
+                        continue;
+                    const auto from = notes.front().start;
+                    part.notes.erase (std::remove_if (part.notes.begin(), part.notes.end(), [from] (const Note& n) { return n.start >= from - 1.0e-9; }),
+                                      part.notes.end());
+                    part.notes.insert (part.notes.end(), notes.begin(), notes.end());
+                }
+                std::sort (part.notes.begin(), part.notes.end(), [] (const Note& a, const Note& b) { return a.start < b.start; });
+            }
+            else
+            {
+                buildRecordingNotes (part.notes, part.start, endBeat);   // (Mix: every lap together)
+            }
+            buildRecordingControllers (part.controllers, part.start);
+            if (part.notes.empty() && part.controllers.empty())
+            {
+                recorded.clear();
+                return;   // nothing played: no part
+            }
+            // The part: the cycle, or whole bars from where recording started to where it stopped.
+            if (cycled)
+            {
+                part.length = project.loopEnd - project.loopStart;
+            }
+            else
+            {
+                auto end = endBeat;
+                for (const auto& note : part.notes)
+                    end = juce::jmax (end, part.start + note.start + note.length);
+                for (const auto& c : part.controllers)
+                    end = juce::jmax (end, part.start + c.start + 1.0e-6);
+                part.length = juce::jmax (bar, std::ceil ((end - part.start) / bar - 1.0e-9) * bar);
+            }
+            takes.push_back (named (std::move (part)));
         }
-        if (auto* track = project.findTrack (recordTrack))
+        recorded.clear();
+        if (takes.empty())
+            return;
+
+        // The MIDI Record Mode: New Parts (beside what's there), Merge (into the part already
+        // there), Replace (what's there over the recording's stretch goes).
+        const auto from = takes.front().start, to = takes.front().end();
+        using Midi = Project::RecordModes::Midi;
+        Part* under = nullptr;
+        for (auto& p : track->parts)
+            if (p.start < to - 1.0e-9 && p.end() > from + 1.0e-9 && ! p.muted && ! p.isAudio())
+            {
+                under = &p;
+                break;
+            }
+        if (modes.midi == Midi::merge && under != nullptr && takes.size() == 1)
         {
-            part.name = track->name;
-            track->parts.push_back (std::move (part));
+            // Merge: the notes into the part there (it grows to hold them).
+            const auto& take = takes.front();
+            const auto newStart = juce::jmin (under->start, take.start), newEnd = juce::jmax (under->end(), take.end());
+            const auto shiftOld = under->start - newStart, shiftNew = take.start - newStart;
+            for (auto& n : under->notes) n.start += shiftOld;
+            for (auto& c : under->controllers) c.start += shiftOld;
+            for (auto n : take.notes) { n.start += shiftNew; under->notes.push_back (n); }
+            for (auto c : take.controllers) { c.start += shiftNew; under->controllers.push_back (c); }
+            std::stable_sort (under->notes.begin(), under->notes.end(), [] (const Note& a, const Note& b) { return a.start < b.start; });
+            ControllerKinds::sort (under->controllers);
+            under->start = newStart;
+            under->length = newEnd - newStart;
             changed();
+            return;
         }
+        if (modes.midi == Midi::replace)
+        {
+            // Replace: the notes and controllers starting in the recording's stretch go (parts left
+            // with nothing go too); the new part on the lane of the one it replaced in.
+            const auto lane = under != nullptr ? under->lane : 0;
+            for (auto& p : track->parts)
+            {
+                if (p.isAudio() || p.start >= to - 1.0e-9 || p.end() <= from + 1.0e-9)
+                    continue;
+                const auto in = [&] (double rel) { const auto at = p.start + rel; return at >= from - 1.0e-9 && at < to - 1.0e-9; };
+                p.notes.erase (std::remove_if (p.notes.begin(), p.notes.end(), [&] (const Note& n) { return in (n.start); }), p.notes.end());
+                p.controllers.erase (std::remove_if (p.controllers.begin(), p.controllers.end(), [&] (const Controller& c) { return in (c.start); }), p.controllers.end());
+            }
+            track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(), [&] (const Part& p)
+                                {
+                                    return ! p.isAudio() && p.notes.empty() && p.controllers.empty() && p.start >= from - 1.0e-9 && p.end() <= to + 1.0e-9;
+                                }), track->parts.end());
+            placeTakes (*track, std::move (takes), from, to, false, lane);
+            changed();
+            return;
+        }
+        placeTakes (*track, std::move (takes), from, to, false);
+        changed();
     }
 
     void Studio::timerCallback()
@@ -4015,6 +5989,15 @@ namespace pr7s
                 note.start += atBeat - part.start;
                 part.notes.push_back (note);
             }
+            for (auto c : imported.controllers)
+            {
+                c.start += atBeat - part.start;
+                if (c.start >= 0.0 && c.start < part.length)
+                    part.controllers.push_back (c);
+                else if (c.start < 0.0)
+                    c.start = 0.0, part.controllers.push_back (c);   // (set before the first bar with notes: at the part's start)
+            }
+            ControllerKinds::sort (part.controllers);
             addPart (id, part);
             ++added;
         }
@@ -4713,7 +6696,12 @@ namespace pr7s
                 from->solo = false;
             }
             // The source: kept, muted (the parts rendered, or the whole track), or removed (a whole track).
-            if (options.source == RenderOptions::Source::mute)
+            // Disabled (0.31.0): muted first. A stretch of a track: whatever was chosen but keep, its parts
+            // rendered there muted (disabling or removing the track would silence the rest of it).
+            const auto muteSource = options.source == RenderOptions::Source::mute
+                                 || (source.wholeTrack && options.source == RenderOptions::Source::disable)
+                                 || (! source.wholeTrack && options.source != RenderOptions::Source::keep);
+            if (muteSource)
             {
                 if (source.wholeTrack)
                     project.findTrack (sourceId)->mute = true;

@@ -15,7 +15,8 @@
 //   title    MEDIABAY, how many files, the scan's progress; RESCAN
 //   toolbar  search (and/+, or/comma, not/-, parentheses, "phrases"); AUDIO MIDI PRESETS SONGS;
 //            the rating filter; SUBFOLDERS; SHUFFLE; RESET
-//   left     LOCATIONS: all of them or one; ADD FOLDER, REMOVE
+//   left     FILE BROWSER (0.22.1): the folder tree; a box scans a folder, a click shows its
+//            files; ADD FOLDER (scan one picked from a chooser), REFRESH
 //   middle   the results: rating (click the stars), name, type, length, tempo, key, format,
 //            folder, size, date; click a heading to sort
 //   bottom   the previewer: PLAY / STOP, CYCLE, AUTO PLAY, LEVEL, the sound's shape with the
@@ -43,7 +44,21 @@ public:
     void setTypeShown (pr7s::MediaType, bool shown);
     void setMinimumRating (int stars);
     void setSubfolders (bool);
-    void selectLocation (int index);              // -1: all locations
+    void selectLocation (int index);              // -1: all locations (the scanned folders by number)
+    // The file browser (0.22.1).
+    void selectFolder (const juce::File&);        // its files in the results (none: all)
+    juce::File getSelectedFolder() const noexcept { return selectedFolder; }
+    void setFolderScanned (const juce::File&, bool scanned);   // its box (and a rescan)
+    void refreshFolder (const juce::File&);       // Refresh Views: its subfolders read again, and a rescan
+    bool addFavorite (const juce::File&);         // the Media rack's favorites (settings mediaRackFavorites)
+    juce::StringArray getFavorites() const;
+    bool revealFolder (const juce::File&);        // opened in the tree from the root holding it; false: not found
+    juce::StringArray getFolderChildren (const juce::File&);   // its subfolders' names as the tree shows them
+    // Where the browser was left (0.22.2): its open folders and the chosen one, kept in the
+    // settings (mediaBayTreeOpen, mediaBayFolder) and put back when the window opens again.
+    void saveBrowserState();
+    std::optional<std::pair<juce::StringArray, juce::File>> loadBrowserState() const;
+    bool isFolderOpenInTree (const juce::File&);
     void resetFilters();
     void shuffle (juce::uint32 seed);
     void sortBy (pr7s::MediaColumn, bool ascending);
@@ -54,6 +69,9 @@ public:
     void stop();
     void setAutoPlay (bool);
     void setCycle (bool);
+    // In time with the song (0.23.0): the studio's previewer options (LINK TEMPO, WAIT FOR PLAY,
+    // TRANSPOSE, TO KEY, 1/2X, 2X); a sound being heard is heard again with them.
+    void setPreviewOptions (const pr7s::Studio::MediaPreviewOptions&);
     void use (int row);                           // as a double-click
     bool addLocation (const juce::File&);
     void removeSelectedLocation();
@@ -92,7 +110,7 @@ public:
 
     std::function<void (const juce::File&)> onUse;   // MainView: into the song
 
-    static constexpr int titleHeight = 46, toolbarHeight = 40, previewerHeight = 118, locationsWidth = 250, gap = 10,
+    static constexpr int titleHeight = 46, toolbarHeight = 40, previewerHeight = 118, locationsWidth = 300, gap = 10,
                          inspectorWidth = 320, filtersHeight = 170;
 
 private:
@@ -108,12 +126,12 @@ private:
     juce::String getCellTooltip (int row, int column) override;
 
     void timerCallback() override;
-    void refreshLocations();
+    void refreshBrowser();
     void refreshKeys();
     void saveSettings();
     void paintPreviewer (juce::Graphics&, juce::Rectangle<int>);
 
-    class Locations;
+    class Browser;
     class Inspector;
     void refreshTags();          // the filter's columns and the inspector, after an edit or a new selection
     void attributesEdited();     // results again (a filter may drop a file), the tags shown
@@ -122,19 +140,23 @@ private:
     pr7s::MediaQuery query;
     std::vector<int> results;
     std::optional<std::pair<pr7s::MediaColumn, bool>> sortOrder;
-    int locationIndex = -1;
+    juce::File selectedFolder;
+    juce::StringArray localFavorites;   // (without a settings file: the tests)
+    int scanFrames = 0;
     bool autoPlay = true, cycle = false;
     juce::File previewing;   // the file the previewer holds
 
     juce::TextEditor search;
     juce::TextButton audioKey { "AUDIO" }, midiKey { "MIDI" }, presetsKey { "PRESETS" }, songsKey { "SONGS" },
                      subfoldersKey { "SUBFOLDERS" }, shuffleKey { "SHUFFLE" }, resetKey { "RESET" }, rescanKey { "RESCAN" },
-                     addKey { "ADD FOLDER..." }, removeKey { "REMOVE" },
-                     playKey { "PLAY" }, cycleKey { "CYCLE" }, autoPlayKey { "AUTO PLAY" }, useKey { "USE IT" };
+                     addKey { "ADD FOLDER..." }, removeKey { "REFRESH" },
+                     playKey { "PLAY" }, cycleKey { "CYCLE" }, autoPlayKey { "AUTO PLAY" }, useKey { "USE IT" },
+                     linkKey { "LINK TEMPO" }, waitKey { "WAIT FOR PLAY" }, halfKey { "1/2X" }, doubleKey { "2X" };
+    juce::ComboBox transposeBox, toKeyBox;
     juce::ComboBox ratingBox;
     juce::Slider level { juce::Slider::LinearBar, juce::Slider::NoTextBox };
     juce::TableListBox table;
-    std::unique_ptr<Locations> locations;
+    std::unique_ptr<Browser> browser;
     std::array<std::unique_ptr<MediaUi::AttributeFilterColumn>, numFilterColumns> filterColumns;
     std::unique_ptr<Inspector> inspector;
     std::unique_ptr<juce::Viewport> inspectorView;

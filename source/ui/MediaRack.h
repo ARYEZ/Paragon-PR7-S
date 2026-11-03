@@ -89,6 +89,8 @@ public:
     bool play();
     void stop();
     void setAutoPlay (bool);
+    void setPreviewOptions (const pr7s::Studio::MediaPreviewOptions&);   // (0.23.0: shared with the MediaBay window's)
+    void showPitchMenu();
     void refresh();                                    // the rows again (after a scan, a new plug-in...)
 
     // A drag's description for a plug-in ("mediarack:instrument:<id>" or "...effect:<id>"; the
@@ -151,13 +153,15 @@ private:
     std::optional<juce::uint32> shuffleSeed;
     bool filtersShown = false, autoPlay = true, byVendor = false, refreshing = false;
     juce::File previewing;
+    int favoritesCheck = 0;
 
     juce::TextEditor search;
     juce::TextButton resetSearchKey { "X" }, allKey { "ALL" }, backKey { "BACK" }, homeKey { "HOME" },
                      audioKey { "AUDIO" }, midiKey { "MIDI" }, presetsKey { "PRESETS" }, songsKey { "SONGS" },
                      shuffleKey { "SHUFFLE" }, filterKey { "FILTER" }, clearKey { "CLEAR" },
                      categoryKey { "BY CATEGORY" }, vendorKey { "BY VENDOR" }, upKey { "UP" }, favoriteKey { "ADD FAVORITE" },
-                     playKey { "PLAY" }, autoPlayKey { "AUTO PLAY" };
+                     playKey { "PLAY" }, autoPlayKey { "AUTO PLAY" },
+                     linkKey { "LINK" }, waitKey { "WAIT" }, pitchKey { "PITCH" };
     juce::ListBox list;
     std::array<std::unique_ptr<MediaUi::AttributeFilterColumn>, numFilterColumns> filterColumns;
     std::unique_ptr<juce::FileChooser> chooser;

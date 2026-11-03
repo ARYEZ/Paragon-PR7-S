@@ -17,8 +17,9 @@
 // tempo and key come from the file's name ("Drums_120bpm_Am.wav") or, for MIDI files, the file.
 namespace pr7s
 {
-    enum class MediaType { audio, midi, trackPreset, song };
-    juce::String mediaTypeName (MediaType);                       // "AUDIO", "MIDI", "TRACK PRESET", "SONG"
+    // (0.24.0: pluginPreset, a .vstpreset: a VST3 plug-in's settings, the plug-in named inside.)
+    enum class MediaType { audio, midi, trackPreset, song, pluginPreset };
+    juce::String mediaTypeName (MediaType);                       // "AUDIO", "MIDI", "TRACK PRESET", "SONG", "VST PRESET"
     std::optional<MediaType> mediaTypeOf (const juce::File&);   // by extension; none: not a media file
 
     // Tags (0.21.1, the manual's Attribute Inspector): what you say about a file, kept in the
@@ -75,6 +76,17 @@ namespace pr7s
         int notes = 0;                // MIDI files
         int rating = 0;               // 0 to 5 stars (yours)
         MediaTags tags;               // (yours, 0.21.1)
+        // From inside the file (0.22.2): its tags as another program wrote them (the other DAW's
+        // MediaBay tags in a WAV's iXML), put into `tags` when the file is first read; its
+        // description, genre, comments and keywords (searched).
+        MediaTags fileTags;
+        juce::String info;
+        // A VST preset's (0.24.0): its plug-in's class id (32 hex digits), name, and whether it's an
+        // instrument's (from the preset's Info: its category starts "Instrument").
+        juce::String presetClass, presetPlugin;
+        bool presetInstrument = false;
+        int readVersion = currentReadVersion;
+        static constexpr int currentReadVersion = 3;   // (older items are read again: 0.22.2 reads more)
         double tempo() const noexcept { return tags.bpm > 0.0 ? tags.bpm : bpm; }   // your tempo, else the name's or file's
         juce::String keyName() const { return tags.key.isNotEmpty() ? tags.key : key; }
         juce::String searchText() const;   // what a text search looks in (lower case; the tags too)
@@ -117,10 +129,21 @@ namespace pr7s
         explicit MediaDatabase (juce::File store = {});
         ~MediaDatabase();
 
-        // The folders scanned (each with its subfolders).
+        // The folders scanned (each with its subfolders), and folders left out inside them.
         const juce::StringArray& getLocations() const noexcept { return locations; }
+        const juce::StringArray& getExclusions() const noexcept { return exclusions; }
         bool addLocation (const juce::File&);        // false if it isn't a folder or is in already
         void removeLocation (const juce::File&);     // its files leave the results (their ratings are kept)
+
+        // The file browser's tick boxes (0.22.1, the manual's Scanning Folders): a folder (and
+        // everything in it) scanned or not. A file is scanned when the nearest of the scanned
+        // and left-out folders above it is a scanned one. Not scanned any more: its files leave
+        // the results at once (ratings and tags kept). Scanned: call rescan() for its files.
+        void setIncluded (const juce::File& folder, bool scanned);
+        bool isIncluded (const juce::File&) const;
+        enum class ScanState { none, some, all };    // empty box, a square, a tick
+        ScanState scanState (const juce::File& folder) const;
+        static bool includedBy (const juce::File&, const juce::StringArray& locations, const juce::StringArray& exclusions);
         bool hadStore() const noexcept { return storeExisted; }
 
         // Scanning: in the background (`rescan`), or at once (`scanNow`, the tests). A file read
@@ -175,6 +198,15 @@ namespace pr7s
         // A file's attributes, read now (any thread).
         static MediaItem read (const juce::File&, juce::AudioFormatManager&);
         static double bpmFromName (const juce::String&);          // "Beat 120bpm", "loop_95_bpm": 0 if none
+        static juce::String keyFromRootNote (int midiNote, int mode);   // mode 1 minor, 0 major, -1 unknown (a plain letter)
+        static MediaTags tagsFromIXml (const juce::String& ixml, double& bpm, juce::String& key);   // the other DAW's iXML attributes
+        static juce::String readIXml (const juce::File& wav);     // a WAV's iXML chunk ("" if none)
+        // A .vstpreset's header and Info (0.24.0): the class id, and the Info's attributes
+        // (the VST3 SDK's preset keys: PlugInName, PlugInCategory, MusicalInstrument, MusicalStyle,
+        // MusicalCharacter, Name...). False if it isn't one.
+        static bool readVstPresetInfo (const juce::File&, juce::String& classId, juce::StringPairArray& info);
+        // JUCE's id for a VST3 plug-in from its class id (as PluginDescription::uniqueId); 0 if not 32 hex digits.
+        static int vst3UniqueIdFor (const juce::String& classId);
         static juce::String keyFromName (const juce::String&);    // "Bass_Am_120": "Am"; "" if none
 
         void save() const;
@@ -185,13 +217,14 @@ namespace pr7s
         std::vector<MediaItem> scanAll (std::function<bool()> stop);
         juce::File store;
         bool storeExisted = false;
-        juce::StringArray locations;
+        juce::StringArray locations, exclusions;
         std::vector<MediaItem> items;
         std::map<juce::String, int> ratings;   // full path: stars
         std::map<juce::String, MediaTags> tags;   // full path: tags
         std::vector<AttributeList> userCategories, userStyles;
         std::vector<UserAttribute> userAttributes;
         bool passes (const MediaItem&, const MediaQuery&, const TextSearch&) const;
+        void dropUnincluded();
         std::unique_ptr<Scanner> scanner;
         std::atomic<bool> scanning { false };
         std::atomic<int> filesSeen { 0 };

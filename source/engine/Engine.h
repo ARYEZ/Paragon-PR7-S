@@ -16,6 +16,7 @@ namespace pr7s
     {
         double beat = 0.0;
         juce::uint8 status = 0, data1 = 0, data2 = 0;
+        int pass = 0;   // the cycle's pass it was played in (0.25.0: controllers keep the last pass's)
     };
 
     // The studio's sound: plays every track's parts through its instrument
@@ -147,6 +148,17 @@ namespace pr7s
         void stopPreview();
         void setPreviewLoop (bool on) noexcept { previewLoop = on; }
         void setPreviewGain (float gain) noexcept { previewGain = gain; }
+        // In time with the song (0.23.0, the manual's Wait for Project Play): the preview is heard
+        // only while the song plays; with `lockBeats` (the sound's length in beats at the song's
+        // tempo) its place follows the song's beat from `anchorBeat` (the left locator), so a loop
+        // lands on the bars, the cycle coming round too.
+        void setPreviewSync (bool waitForPlay, double anchorBeat, double lockBeats) noexcept
+        {
+            previewAnchor = anchorBeat;
+            previewLockBeats = lockBeats;
+            previewWait = waitForPlay;
+        }
+        bool isPreviewWaiting() const noexcept { return previewWait.load() && ! playing.load(); }
         bool isPreviewPlaying() const noexcept { return previewPlaying.load(); }
         double getPreviewProgress() const noexcept;   // 0 to 1 through the sound
 
@@ -215,6 +227,8 @@ namespace pr7s
             std::shared_ptr<const juce::AudioBuffer<float>> sound;
             juce::int64 offset = 0;
             double fadeIn = 0.0, fadeOut = 0.0;
+            // (0.29.0) The stretch of it heard (beats): another clip in front hides the rest.
+            double from = 0.0, to = 1.0e12;
         };
 
         // An automation lane being played back. Plugin knobs are set once a
@@ -243,6 +257,17 @@ namespace pr7s
             juce::SmoothedValue<float> left, right;
             std::bitset<128> held;       // notes sounding, to stop them on a jump or stop
             int heldChannel = 1;         // the channel they were started on (the track's may change meanwhile)
+            // Its drum map (0.26.0): each pitch's O-note (-1: muted), its channel (-1: the track's), and each key's sound.
+            std::array<juce::int16, 128> drumOut {};
+            std::array<juce::int8, 128> drumChannel {};
+            std::array<juce::uint8, 128> drumIn {};
+            TrackState()
+            {
+                for (int n = 0; n < 128; ++n)
+                    drumOut[(size_t) n] = (juce::int16) n, drumChannel[(size_t) n] = -1, drumIn[(size_t) n] = (juce::uint8) n;
+            }
+            bool chase = false;          // (0.25.0) play started, jumped or came round: each controller's value there first
+            bool bent = false, sustained = false;   // a bend or the sustain pedal sent: reset on stop
             bool checkHeld = false;      // the events changed (an edit while playing): the notes they no longer end, ended
             juce::MidiBuffer midi;
             juce::AudioBuffer<float> buffer;
@@ -280,6 +305,7 @@ namespace pr7s
             bool click = false;
             float masterGain = 1.0f;
             float masterVolumeDb = 0.0f;
+            bool virginTerritory = false;   // (0.28.0) gaps and the stretch before a lane's first point leave the control alone
         };
 
         // Gives instruments the tempo and position, as a DAW does.
@@ -304,6 +330,8 @@ namespace pr7s
             double beatAt (double sample) const noexcept { return map->beatAt (sample / rate); }
         };
         void schedule (TrackState&, juce::int64 fromSample, juce::int64 toSample, int sampleOffset, const Timing&);
+        void chaseControllers (TrackState&, double beat, int sampleOffset);
+        void resetControllers (TrackState&, int sampleOffset);
         void stopHeldNotes (TrackState&, int sampleOffset);
         void endNotesNoLongerEnded (TrackState&, double beatNow, int sampleOffset);
         void renderBlock (juce::AudioBuffer<float>& output, int numSamples);
@@ -375,6 +403,8 @@ namespace pr7s
         std::atomic<int> previewPosition { 0 }, previewLength { 0 };
         std::atomic<bool> previewPlaying { false }, previewLoop { false };
         std::atomic<float> previewGain { 0.7f };
+        std::atomic<bool> previewWait { false };
+        std::atomic<double> previewAnchor { 0.0 }, previewLockBeats { 0.0 };
 
         // The click: up to 64 ticks a block, each a short burst of a tone.
         struct Tick { int sample; bool accent; };
@@ -395,7 +425,7 @@ namespace pr7s
         std::atomic<float> nowMasterVolumeDb { 0.0f };
 
         void applyKnobs (std::vector<LaneState>&, juce::AudioPluginInstance* instrument, std::vector<Slot>& inserts, double beat);
-        static MixNow mixAt (const std::vector<LaneState>&, MixNow set, double beat);
+        static MixNow mixAt (const std::vector<LaneState>&, MixNow set, double beat, bool virginTerritory = false);
         juce::MidiBuffer effectMidi;   // effects get no MIDI
 
         Head head;

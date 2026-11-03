@@ -1,4 +1,6 @@
 #include "MainView.h"
+#include "ui/DrumMapPage.h"
+#include "ui/AutomationPanel.h"
 #include "ui/TrackActions.h"
 #include "engine/MidiImport.h"
 #include "ui/KeyCommandsPage.h"
@@ -141,6 +143,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     }
     inspector.onTrackMenu = [this] (int trackId) { trackList.showInstrumentMenu (trackId); };
     inspector.onOpenInstrument = [this] (int trackId) { openInstrumentWindow (trackId); };
+    keyEditor.onOpenInstrument = [this] (int trackId) { openInstrumentWindow (trackId); };   // (0.31.0: the editors' INSTRUMENT)
     inspector.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
     inspector.onFindPlugins = [this] { openPlugins(); };
     // RENDER (0.17.1): the whole track, Render in Place as last time (the track menu's "as last time").
@@ -220,7 +223,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     }
     readAllButton.getProperties().set (ParagonLookAndFeel::litColourProperty, (juce::int64) AutomationKeys::readColour.getARGB());
     writeAllButton.getProperties().set (ParagonLookAndFeel::litColourProperty, (juce::int64) AutomationKeys::writeColour.getARGB());
-    readAllButton.setTooltip ("Read automation for all tracks on or off (Alt+R): lit while any track's R is on");
+    readAllButton.setTooltip ("Read automation for all tracks on or off (no key by default: Alt+R renders in place; give it one in KEYS): lit while any track's R is on. F6: the Automation panel (modes, Trim, Fill, Suspend)");
     writeAllButton.setTooltip ("Write automation for all tracks on or off (Alt+W): lit while any track's W is on");
     // Snap on/off and the quantize value (0.9.10: the manual's Snap and Quantize Presets on the toolbar).
     for (auto* key : { &snapButton, &quantizeButton })
@@ -253,6 +256,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
         keyEditor.setSizeShown (percent);
     }
     keyEditor.onClose = [this] { closeKeyEditor(); };
+    keyEditor.onDrumMapSetup = [this] { openDrumMapSetup(); };
+    inspector.onDrumMapSetup = [this] { openDrumMapSetup(); };
     mixer.onClose = [this] { closeMixer(); };
     chordPads.onClose = [this] { closeZone (padsZone); };
     chordPads.onWindowToggle = [safe = juce::Component::SafePointer<MainView> (this)]
@@ -747,13 +752,28 @@ bool MainView::handleKey (const juce::KeyPress& key)
     }
     if (isKeyEditorOpen() && keysToEditor && keyEditor.keyPressed (key))
         return true;
-    // Automation: Alt+R / Alt+W for all tracks (before R, which records); Esc puts dragged points back.
-    if (mods.isAltDown() && ! mods.isCommandDown() && (letter == 'R' || letter == 'W'))
+    // Alt+R: Render in Place as last time (0.31.0, the owner's key; Read All moved to the header's R and KEYS).
+    // Alt+W: Write All for all tracks (before R, which records); Esc puts dragged points back.
+    if (mods.isAltDown() && ! mods.isCommandDown() && ! mods.isShiftDown() && letter == 'R')
     {
-        if (letter == 'R')
-            studio.setAutomationReadAll (! studio.anyAutomationRead());
-        else
-            studio.setAutomationWriteAll (! studio.anyAutomationWrite());
+        renderInPlaceNow();
+        return true;
+    }
+    if (mods.isAltDown() && ! mods.isCommandDown() && letter == 'W')
+    {
+        studio.setAutomationWriteAll (! studio.anyAutomationWrite());
+        return true;
+    }
+    // Q: Quantize (0.31.0, the manual's: to the quantize value on the header). After a click in the MIDI or
+    // drum editor its notes (the selected ones, else all); else the selected MIDI parts; else the editor's part.
+    if (letter == 'Q' && ! mods.isCommandDown() && ! mods.isAltDown() && ! mods.isShiftDown())
+    {
+        if (isKeyEditorOpen() && keysToEditor && keyEditor.getPart() != nullptr)
+            keyEditor.quantizeSelected();
+        else if (! arrange.getSelectedParts().empty())
+            studio.quantizeParts (arrange.getSelectedParts(), studio.getProject().quantizeBeats);
+        else if (isKeyEditorOpen() && keyEditor.getPart() != nullptr)
+            keyEditor.quantizeSelected();
         return true;
     }
     if (key == juce::KeyPress::escapeKey && arrange.cancelDrag())
@@ -883,6 +903,7 @@ bool MainView::handleKey (const juce::KeyPress& key)
     // F4: the chord pads (0.14.0, our choice: the manual gives them no key; never Alt+F4, which closes the window).
     if (key.getKeyCode() == juce::KeyPress::F4Key && ! mods.isAltDown()) { toggleZone (padsZone); return true; }
     if (key.getKeyCode() == juce::KeyPress::F5Key && ! mods.isAltDown()) { toggleMediaBay(); return true; }   // (the manual's MediaBay key)
+    if (key.getKeyCode() == juce::KeyPress::F6Key && ! mods.isAltDown()) { toggleAutomationPanel(); return true; }   // (the manual's: 0.28.0)
     if (isKeyEditorOpen() && key == juce::KeyPress::escapeKey) { closeKeyEditor(); return true; }
     if (isMixerOpen() && key == juce::KeyPress::escapeKey)     { closeMixer(); return true; }
     if (key == juce::KeyPress::spaceKey)                { studio.togglePlay(); return true; }
@@ -943,7 +964,7 @@ bool MainView::handleKey (const juce::KeyPress& key)
     // The arrangement's tools: 1 and 3 to 9 (not after a click in the key editor: it has its own), F9 / F10, Alt+X.
     if (! mods.isAnyModifierKeyDown() && ! (isKeyEditorOpen() && keysToEditor))
         for (const auto t : ArrangeView::tools)
-            if (key.getTextCharacter() == (juce::juce_wchar) ('0' + ArrangeView::toolKey (t)))
+            if (ArrangeView::toolKey (t) > 0 && key.getTextCharacter() == (juce::juce_wchar) ('0' + ArrangeView::toolKey (t)))
             {
                 arrange.setTool (t);
                 return true;
@@ -1589,8 +1610,60 @@ void MainView::chooseExportFile (const pr7s::Studio::ExportOptions& chosen)
     }
 }
 
+void MainView::renderInPlaceNow (bool ask)
+{
+    // Alt+R (0.31.0): as last time, of the range if there is one, else the selected parts, else the
+    // selected tracks (only the cycle's stretch while CYCLE is on: renderInPlace narrows them).
+    std::vector<pr7s::Studio::RenderSource> sources;
+    if (arrange.getSelectedParts().empty() || (arrange.getRange() && ! arrange.getRange()->isEmpty()))
+    {
+        for (const auto id : studio.getSelectedTracks())
+            if (const auto* t = studio.getProject().findTrack (id); t != nullptr && ! t->isChannel() && ! t->parts.empty())
+            {
+                auto end = 0.0;
+                for (const auto& part : t->parts)
+                    end = juce::jmax (end, part.end());
+                sources.push_back ({ id, 0.0, end, true });
+            }
+    }
+    else
+    {
+        for (const auto id : arrange.getSelectedParts())
+            if (const auto at = studio.findPart (id))
+            {
+                const auto& p = studio.getProject().findTrack (at->first)->parts[(size_t) at->second];
+                sources.push_back ({ at->first, p.start, p.end(), false });
+            }
+    }
+    renderInPlace (sources, ask);
+}
+
+std::vector<pr7s::Studio::RenderSource> MainView::narrowedSources (std::vector<pr7s::Studio::RenderSource> sources) const
+{
+    // (0.31.0, the owner asked) Whole tracks asked for, with a range set: the range (its tracks, its stretch);
+    // else with CYCLE on: only the cycle's stretch of each. Parts asked for stay as they are.
+    const auto anyWhole = std::any_of (sources.begin(), sources.end(), [] (const auto& s) { return s.wholeTrack; });
+    if (! anyWhole)
+        return sources;
+    const auto& project = studio.getProject();
+    if (const auto& range = arrange.getRange(); range && ! range->isEmpty())
+    {
+        std::vector<pr7s::Studio::RenderSource> ranged;
+        for (const auto id : range->trackIds)
+            if (const auto* t = project.findTrack (id); t != nullptr && ! t->isChannel() && ! t->parts.empty())
+                ranged.push_back ({ id, range->start, range->end, false });
+        return ranged;
+    }
+    if (project.loopOn && project.loopEnd > project.loopStart)
+        for (auto& s : sources)
+            if (s.wholeTrack)
+                s = { s.trackId, project.loopStart, project.loopEnd, false };
+    return sources;
+}
+
 void MainView::renderInPlace (std::vector<pr7s::Studio::RenderSource> sources, bool ask)
 {
+    sources = narrowedSources (std::move (sources));
     if (sources.empty() || studio.isExporting() || studio.getEngine().isRecording() || renderPage != nullptr)
         return;
     if (! ask)
@@ -1777,6 +1850,14 @@ void MainView::useMedia (const juce::File& file)
                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Track preset", error.isNotEmpty() ? error : "Couldn't read " + file.getFileName() + ".");
             break;
         }
+        case pr7s::MediaType::pluginPreset:
+        {
+            // (0.24.0: a track with the plug-in and the preset: an instrument track, or an FX channel.)
+            juce::String error;
+            if (studio.addTrackFromPluginPreset (file, error) == 0)
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "VST preset", error);
+            break;
+        }
         case pr7s::MediaType::song:
             whenSongCanGo ([safe = juce::Component::SafePointer<MainView> (this), file] { if (safe != nullptr) safe->openSong (file); });
             break;
@@ -1799,6 +1880,13 @@ void MainView::mediaDropped (const juce::StringArray& files, int x, int y)
             // a track of another kind: a new track, as below the track list.)
             juce::String error;
             if (! TrackActions::loadPresetFrom (studio, trackUnder (x, y), juce::File (path), error))
+                useMedia (juce::File (path));
+        }
+        else if (type == pr7s::MediaType::pluginPreset && trackUnder (x, y) != 0)
+        {
+            // (0.24.0: onto a track: its instrument, or its effects; refused (another kind of track): a new track.)
+            juce::String error;
+            if (! studio.applyPluginPreset (trackUnder (x, y), juce::File (path), error))
                 useMedia (juce::File (path));
         }
         else if (type)
@@ -1975,6 +2063,46 @@ void MainView::toggleTempoEditor()
         return safe->keyPressed (key);
     };
     tempoEditorWindow = std::move (window);
+}
+
+void MainView::toggleAutomationPanel()
+{
+    if (automationWindow != nullptr)
+    {
+        automationWindow = nullptr;
+        return;
+    }
+    auto window = std::make_unique<AutomationPanelWindow> (studio);
+    window->onClose = [safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->automationWindow = nullptr; });
+    };
+    automationWindow = std::move (window);
+}
+
+void MainView::openDrumMapSetup()
+{
+    if (drumMapWindow != nullptr)
+    {
+        drumMapWindow->toFront (true);
+        return;
+    }
+    // (Its maps are the song's: with none yet, the GM Map to start from.)
+    if (studio.getProject().drumMaps.empty())
+        studio.addDrumMap (pr7s::DrumMap::gm());
+    auto window = std::make_unique<DrumMapWindow> (studio, [safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        if (safe == nullptr)
+            return 0;
+        if (const auto id = safe->keyEditor.getTrackId(); id != 0)
+            return id;
+        return safe->studio.getSelectedTrack();
+    });
+    window->onClose = [safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->drumMapWindow = nullptr; });
+    };
+    drumMapWindow = std::move (window);
 }
 
 void MainView::openHub()

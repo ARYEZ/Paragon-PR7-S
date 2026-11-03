@@ -97,6 +97,23 @@ namespace ToolIcons
                 f.lineTo (8.5f, 19.5f);
                 f.closeSubPath();
                 break;
+            case T::line:     // a line between two points (0.27.0)
+                s.startNewSubPath (4.0f, 18.0f);
+                s.lineTo (20.0f, 6.0f);
+                f.addEllipse (2.0f, 16.0f, 4.5f, 4.5f);
+                f.addEllipse (18.0f, 4.0f, 4.5f, 4.5f);
+                break;
+            case T::comp:     // takes stacked on lanes, a stretch of the middle one brought forward (0.29.0)
+                s.startNewSubPath (3.0f, 5.0f);
+                s.lineTo (21.0f, 5.0f);
+                s.startNewSubPath (3.0f, 19.0f);
+                s.lineTo (21.0f, 19.0f);
+                s.startNewSubPath (3.0f, 12.0f);
+                s.lineTo (7.0f, 12.0f);
+                s.startNewSubPath (17.0f, 12.0f);
+                s.lineTo (21.0f, 12.0f);
+                f.addRoundedRectangle (7.5f, 8.5f, 9.0f, 7.0f, 1.5f);
+                break;
             case T::play:     // a speaker, a wave from it
                 f.startNewSubPath (3.0f, 9.0f);
                 f.lineTo (7.0f, 9.0f);

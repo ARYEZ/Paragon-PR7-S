@@ -1,4 +1,5 @@
 #include "Project.h"
+#include "Controllers.h"
 
 namespace pr7s
 {
@@ -40,6 +41,18 @@ namespace pr7s
                     auto* p = e->createNewChildElement (pointTag);
                     p->setAttribute ("beat", point.beat);
                     p->setAttribute ("value", point.value);
+                    if (std::abs (point.curve) > 1.0e-6f)
+                        p->setAttribute ("curve", point.curve);
+                    if (point.terminator)
+                        p->setAttribute ("terminator", true);
+                }
+                for (const auto& point : lane.trim)
+                {
+                    auto* p = e->createNewChildElement ("Trim");
+                    p->setAttribute ("beat", point.beat);
+                    p->setAttribute ("value", point.value);
+                    if (std::abs (point.curve) > 1.0e-6f)
+                        p->setAttribute ("curve", point.curve);
                 }
             }
         }
@@ -62,7 +75,14 @@ namespace pr7s
                 lane.muted = e->getBoolAttribute ("muted");
                 for (const auto* p : e->getChildWithTagNameIterator (pointTag))
                     lane.points.push_back ({ juce::jmax (0.0, p->getDoubleAttribute ("beat")),
-                                             (float) juce::jlimit (0.0, 1.0, p->getDoubleAttribute ("value")) });
+                                             (float) juce::jlimit (0.0, 1.0, p->getDoubleAttribute ("value")),
+                                             (float) juce::jlimit (-1.0, 1.0, p->getDoubleAttribute ("curve")),
+                                             p->getBoolAttribute ("terminator") });
+                for (const auto* p : e->getChildWithTagNameIterator ("Trim"))
+                    lane.trim.push_back ({ juce::jmax (0.0, p->getDoubleAttribute ("beat")),
+                                           (float) juce::jlimit (0.0, 1.0, p->getDoubleAttribute ("value")),
+                                           (float) juce::jlimit (-1.0, 1.0, p->getDoubleAttribute ("curve")), false });
+                std::stable_sort (lane.trim.begin(), lane.trim.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
                 std::stable_sort (lane.points.begin(), lane.points.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
                 lanes.push_back (std::move (lane));
             }
@@ -120,7 +140,68 @@ namespace pr7s
             return before.value;
         const auto span = next->beat - before.beat;
         const auto along = span > 0.0 ? (float) ((beat - before.beat) / span) : 1.0f;
-        return before.value + (next->value - before.value) * along;
+        return before.value + (next->value - before.value) * curveShape (along, next->curve);
+    }
+
+    std::optional<float> AutomationLane::valueAt (double beat, bool virginTerritory) const noexcept
+    {
+        if (points.empty())
+            return std::nullopt;
+        if (! virginTerritory)
+            return valueAt (beat);
+        if (beat < points.front().beat)
+            return std::nullopt;   // virgin territory before the first point
+        // In a gap: after a terminator, before the next point.
+        const auto next = std::upper_bound (points.begin(), points.end(), beat, [] (double b, const AutomationPoint& p) { return b < p.beat; });
+        if (next != points.begin())
+        {
+            const auto& before = *std::prev (next);
+            if (before.terminator && beat > before.beat)
+                return std::nullopt;
+            if (next == points.end() && beat > before.beat)
+                return std::nullopt;   // virgin territory after the last point (the manual's)
+        }
+        return valueAt (beat);
+    }
+
+    float AutomationLane::trimDb (const std::vector<AutomationPoint>& trim, double beat) noexcept
+    {
+        if (trim.empty())
+            return 0.0f;
+        AutomationLane t;
+        t.points = trim;
+        return (*t.valueAt (beat) - 0.5f) * 2.0f * trimRange;
+    }
+
+    std::optional<float> AutomationLane::playedAt (double beat, bool virginTerritory) const noexcept
+    {
+        const auto value = valueAt (beat, virginTerritory);
+        if (! value || trim.empty() || ! canTrim())
+            return value;
+        return volumeToTravel (juce::jlimit (-60.0f, 6.0f, travelToVolume (*value) + trimDb (trim, beat)));
+    }
+
+    Project::AutomationSettings::Group Project::AutomationSettings::groupOf (const AutomationLane& lane) noexcept
+    {
+        using T = AutomationLane::Target;
+        switch (lane.target)
+        {
+            case T::volume: return Group::volume;
+            case T::pan:    return Group::pan;
+            case T::mute:   return Group::mute;
+            case T::send:   return Group::sends;
+            case T::instrument:
+            case T::insert: return Group::plugins;
+        }
+        return Group::plugins;
+    }
+
+    float AutomationLane::curveShape (float along, float curve) noexcept
+    {
+        along = juce::jlimit (0.0f, 1.0f, along);
+        if (std::abs (curve) < 1.0e-4f)
+            return along;
+        return std::pow (along, std::pow (4.0f, -juce::jlimit (-1.0f, 1.0f, curve)));
     }
 
     float volumeToTravel (float db) noexcept
@@ -151,6 +232,19 @@ namespace pr7s
         return const_cast<Project*> (this)->findTrack (id);
     }
 
+    const DrumMap* Project::findDrumMap (const juce::String& mapName) const
+    {
+        for (const auto& map : drumMaps)
+            if (map.name == mapName)
+                return &map;
+        return nullptr;
+    }
+
+    const DrumMap* Project::drumMapOf (const Track& track) const
+    {
+        return track.drumMap.isNotEmpty() ? findDrumMap (track.drumMap) : nullptr;
+    }
+
     Track* Project::armedTrack()
     {
         for (auto& track : tracks)
@@ -162,6 +256,56 @@ namespace pr7s
     const Track* Project::armedTrack() const
     {
         return const_cast<Project*> (this)->armedTrack();
+    }
+
+    bool isInFront (const Track& track, int a, int b)
+    {
+        const auto& pa = track.parts[(size_t) a];
+        const auto& pb = track.parts[(size_t) b];
+        return pa.order != pb.order ? pa.order > pb.order : a > b;
+    }
+
+    std::vector<std::pair<double, double>> heardStretches (const Track& track, int index)
+    {
+        std::vector<std::pair<double, double>> heard;
+        if (! juce::isPositiveAndBelow (index, (int) track.parts.size()))
+            return heard;
+        const auto plays = [&] (const Part& p) { return ! p.muted && (track.soloLane < 0 || p.lane == track.soloLane); };
+        const auto& part = track.parts[(size_t) index];
+        if (! plays (part))
+            return heard;
+        heard.push_back ({ part.start, part.end() });
+        if (! track.isAudio() || ! part.isAudio())
+            return heard;
+        for (int j = 0; j < (int) track.parts.size() && ! heard.empty(); ++j)
+        {
+            const auto& other = track.parts[(size_t) j];
+            if (j == index || ! other.isAudio() || ! plays (other) || ! isInFront (track, j, index))
+                continue;
+            std::vector<std::pair<double, double>> left;
+            for (const auto& [from, to] : heard)
+            {
+                if (other.end() <= from || other.start >= to)
+                {
+                    left.push_back ({ from, to });
+                    continue;
+                }
+                if (other.start > from)
+                    left.push_back ({ from, other.start });
+                if (other.end() < to)
+                    left.push_back ({ other.end(), to });
+            }
+            heard = std::move (left);
+        }
+        return heard;
+    }
+
+    int Track::numLanes() const noexcept
+    {
+        auto lanes = 1;
+        for (const auto& part : parts)
+            lanes = juce::jmax (lanes, part.lane + 1);
+        return lanes;
     }
 
     double Project::lastBeat() const
@@ -200,6 +344,8 @@ namespace pr7s
         xml->addChildElement (chordPads.toXml().release());
         if (chordTrack.shown || ! chordTrack.events.empty())
             xml->addChildElement (chordTrack.toXml().release());
+        for (const auto& map : drumMaps)
+            xml->addChildElement (map.toXml().release());
         for (const auto& group : linkGroups)
         {
             auto* g = xml->createNewChildElement ("LinkGroup");
@@ -274,6 +420,19 @@ namespace pr7s
                 t->setAttribute ("midiChannel", track.midiChannel);
             if (track.disabled)
                 t->setAttribute ("disabled", true);
+            if (track.controllerLanes != std::vector<int> { ControllerKinds::velocity })
+                t->setAttribute ("controllerLanes", ControllerKinds::lanesToText (track.controllerLanes));
+            if (track.drumMap.isNotEmpty())
+                t->setAttribute ("drumMap", track.drumMap);
+            if (track.drumEditor)
+                t->setAttribute ("drumEditor", true);
+            if (track.pitchbendUp != 2 || track.pitchbendDown != 2 || track.pitchbendSnap || track.pitchbendGrid)
+            {
+                t->setAttribute ("pitchbendUp", track.pitchbendUp);
+                t->setAttribute ("pitchbendDown", track.pitchbendDown);
+                t->setAttribute ("pitchbendSnap", track.pitchbendSnap);
+                t->setAttribute ("pitchbendGrid", track.pitchbendGrid);
+            }
             if (track.frozen)
             {
                 t->setAttribute ("frozen", true);
@@ -291,6 +450,10 @@ namespace pr7s
                 }
             if (track.hidden)
                 t->setAttribute ("hidden", true);
+            if (track.showLanes)
+                t->setAttribute ("showLanes", true);
+            if (track.soloLane >= 0)
+                t->setAttribute ("soloLane", track.soloLane);
             t->setAttribute ("instrument", track.instrument.kind == Instrument::Kind::plugin ? "plugin" : "paragonSynth");
             if (track.instrument.kind == Instrument::Kind::plugin)
                 t->addChildElement (track.instrument.plugin.createXml().release());
@@ -311,6 +474,10 @@ namespace pr7s
                 p->setAttribute ("name", part.name);
                 if (part.muted)
                     p->setAttribute ("muted", true);
+                if (part.lane != 0)
+                    p->setAttribute ("lane", part.lane);
+                if (part.order != 0)
+                    p->setAttribute ("order", part.order);
                 if (part.isAudio())
                 {
                     p->setAttribute ("audioFile", part.audioFile);
@@ -326,6 +493,15 @@ namespace pr7s
                     n->setAttribute ("pitch", note.pitch);
                     n->setAttribute ("velocity", note.velocity);
                 }
+                for (const auto& c : part.controllers)
+                {
+                    auto* e = p->createNewChildElement ("Controller");
+                    e->setAttribute ("kind", ControllerKinds::toText (ControllerKinds::codeOf (c)));
+                    e->setAttribute ("start", c.start);
+                    e->setAttribute ("value", c.value);
+                    if (c.ramp)
+                        e->setAttribute ("ramp", true);
+                }
             }
         }
         auto* master = xml->createNewChildElement (masterTag);
@@ -336,6 +512,37 @@ namespace pr7s
         master->setAttribute ("automationOpen", masterAutomationOpen);
         master->setAttribute ("automationRead", masterRead);
         master->setAttribute ("automationWrite", masterWrite);
+        {
+            // (0.28.0) The Automation panel's settings.
+            const auto& a = automationSettings;
+            auto* e = xml->createNewChildElement ("AutomationSettings");
+            e->setAttribute ("mode", (int) a.mode);
+            e->setAttribute ("toPunch", (int) a.toPunch);
+            e->setAttribute ("toStart", (int) a.toStart);
+            e->setAttribute ("toEnd", (int) a.toEnd);
+            e->setAttribute ("loop", (int) a.loop);
+            e->setAttribute ("gaps", (int) a.gaps);
+            juce::String read, write;
+            for (int g = 0; g < AutomationSettings::numGroups; ++g)
+                read << (a.suspendRead[(size_t) g] ? "1" : "0"), write << (a.suspendWrite[(size_t) g] ? "1" : "0");
+            e->setAttribute ("suspendRead", read);
+            e->setAttribute ("suspendWrite", write);
+            e->setAttribute ("trim", a.trim);
+            e->setAttribute ("freezeTrim", (int) a.freezeTrim);
+            e->setAttribute ("virginTerritory", a.virginTerritory);
+            e->setAttribute ("continueOnJump", a.continueOnJump);
+            e->setAttribute ("revealOnWrite", a.revealOnWrite);
+            e->setAttribute ("returnSeconds", a.returnSeconds);
+            e->setAttribute ("reductionLevel", a.reductionLevel);
+        }
+        if (recordModes != RecordModes {})
+        {
+            // (0.29.0) The record modes.
+            auto* e = xml->createNewChildElement ("RecordModes");
+            e->setAttribute ("audio", (int) recordModes.audio);
+            e->setAttribute ("midi", (int) recordModes.midi);
+            e->setAttribute ("midiCycle", (int) recordModes.midiCycle);
+        }
         return xml;
     }
 
@@ -401,6 +608,14 @@ namespace pr7s
             track.midiInput = t->getStringAttribute ("midiInput");
             track.midiChannel = juce::jlimit (1, 16, t->getIntAttribute ("midiChannel", 1));
             track.disabled = t->getBoolAttribute ("disabled");
+            if (t->hasAttribute ("controllerLanes"))
+                track.controllerLanes = ControllerKinds::lanesFromText (t->getStringAttribute ("controllerLanes"));
+            track.drumMap = t->getStringAttribute ("drumMap");
+            track.drumEditor = t->getBoolAttribute ("drumEditor");
+            track.pitchbendUp = juce::jlimit (1, 96, t->getIntAttribute ("pitchbendUp", 2));
+            track.pitchbendDown = juce::jlimit (1, 96, t->getIntAttribute ("pitchbendDown", 2));
+            track.pitchbendSnap = t->getBoolAttribute ("pitchbendSnap");
+            track.pitchbendGrid = t->getBoolAttribute ("pitchbendGrid");
             track.freezeFile = t->getStringAttribute ("freezeFile");
             track.frozen = t->getBoolAttribute ("frozen") && track.freezeFile.isNotEmpty();
             for (const auto* e : t->getChildWithTagNameIterator ("QuickControl"))
@@ -418,6 +633,8 @@ namespace pr7s
                 track.quickControls[(size_t) q] = qc;
             }
             track.hidden = t->getBoolAttribute ("hidden");
+            track.showLanes = t->getBoolAttribute ("showLanes");
+            track.soloLane = juce::jlimit (-1, 255, t->getIntAttribute ("soloLane", -1));
             if (t->getStringAttribute ("kind") == "audio")
             {
                 track.kind = Track::Kind::audio;
@@ -462,6 +679,8 @@ namespace pr7s
                 part.length = juce::jmax (1.0e-6, p->getDoubleAttribute ("length", 4.0));
                 part.name = p->getStringAttribute ("name");
                 part.muted = p->getBoolAttribute ("muted");
+                part.lane = juce::jlimit (0, 255, p->getIntAttribute ("lane"));
+                part.order = p->getIntAttribute ("order");
                 part.audioFile = p->getStringAttribute ("audioFile");
                 part.audioOffset = juce::jmax (0.0, p->getDoubleAttribute ("audioOffset"));
                 part.fadeIn = juce::jmax (0.0, p->getDoubleAttribute ("fadeIn"));
@@ -470,6 +689,17 @@ namespace pr7s
                     part.notes.push_back ({ n->getDoubleAttribute ("start"), juce::jmax (0.001, n->getDoubleAttribute ("length", 0.25)),
                                             juce::jlimit (0, 127, n->getIntAttribute ("pitch", 60)),
                                             (float) juce::jlimit (0.0, 1.0, n->getDoubleAttribute ("velocity", 0.8)) });
+                for (const auto* e : p->getChildWithTagNameIterator ("Controller"))
+                {
+                    const auto code = ControllerKinds::fromText (e->getStringAttribute ("kind"));
+                    if (! ControllerKinds::isController (code))
+                        continue;
+                    part.controllers.push_back ({ ControllerKinds::typeOf (code), ControllerKinds::numberOf (code),
+                                                  juce::jmax (0.0, e->getDoubleAttribute ("start")),
+                                                  juce::jlimit (0, ControllerKinds::maxValue (code), e->getIntAttribute ("value")),
+                                                  e->getBoolAttribute ("ramp") });
+                }
+                ControllerKinds::sort (part.controllers);
                 track.parts.push_back (std::move (part));
             }
             highestId = juce::jmax (highestId, track.id);
@@ -506,6 +736,12 @@ namespace pr7s
             if (group.id > 0 && project.findLinkGroup (group.id) == nullptr)
                 project.linkGroups.push_back (group);
         }
+        for (const auto* m : xml.getChildWithTagNameIterator ("DrumMap"))
+            if (auto map = DrumMap::fromXml (*m); map && project.findDrumMap (map->name) == nullptr)
+                project.drumMaps.push_back (std::move (*map));
+        for (auto& track : project.tracks)
+            if (track.drumMap.isNotEmpty() && project.findDrumMap (track.drumMap) == nullptr)
+                track.drumMap = {}, track.drumEditor = false;   // (a map that isn't in the song: none)
         for (auto& track : project.tracks)
             if (project.findLinkGroup (track.linkGroup) == nullptr)
                 track.linkGroup = 0;
@@ -524,6 +760,37 @@ namespace pr7s
             project.masterAutomationOpen = master->getBoolAttribute ("automationOpen");
             project.masterRead = master->getBoolAttribute ("automationRead");
             project.masterWrite = master->getBoolAttribute ("automationWrite");
+        }
+        if (const auto* e = xml.getChildByName ("RecordModes"))
+        {
+            auto& r = project.recordModes;
+            r.audio = (RecordModes::Audio) juce::jlimit (0, 2, e->getIntAttribute ("audio"));
+            r.midi = (RecordModes::Midi) juce::jlimit (0, 2, e->getIntAttribute ("midi"));
+            r.midiCycle = (RecordModes::MidiCycle) juce::jlimit (0, 4, e->getIntAttribute ("midiCycle"));
+        }
+        if (const auto* e = xml.getChildByName ("AutomationSettings"))
+        {
+            auto& a = project.automationSettings;
+            using S = AutomationSettings;
+            a.mode = (S::Mode) juce::jlimit (0, 2, e->getIntAttribute ("mode"));
+            a.toPunch = (S::Fill) juce::jlimit (0, 2, e->getIntAttribute ("toPunch"));
+            a.toStart = (S::Fill) juce::jlimit (0, 2, e->getIntAttribute ("toStart"));
+            a.toEnd = (S::Fill) juce::jlimit (0, 2, e->getIntAttribute ("toEnd"));
+            a.loop = (S::Fill) juce::jlimit (0, 2, e->getIntAttribute ("loop"));
+            a.gaps = (S::Fill) juce::jlimit (0, 2, e->getIntAttribute ("gaps"));
+            const auto read = e->getStringAttribute ("suspendRead"), write = e->getStringAttribute ("suspendWrite");
+            for (int g = 0; g < S::numGroups; ++g)
+            {
+                a.suspendRead[(size_t) g] = read[g] == '1';
+                a.suspendWrite[(size_t) g] = write[g] == '1';
+            }
+            a.trim = e->getBoolAttribute ("trim");
+            a.freezeTrim = (S::FreezeTrim) juce::jlimit (0, 2, e->getIntAttribute ("freezeTrim"));
+            a.virginTerritory = e->getBoolAttribute ("virginTerritory");
+            a.continueOnJump = e->getBoolAttribute ("continueOnJump");
+            a.revealOnWrite = e->getBoolAttribute ("revealOnWrite", true);
+            a.returnSeconds = juce::jlimit (0.0, 5.0, e->getDoubleAttribute ("returnSeconds", 0.1));
+            a.reductionLevel = juce::jlimit (0, 100, e->getIntAttribute ("reductionLevel", 50));
         }
         return project;
     }

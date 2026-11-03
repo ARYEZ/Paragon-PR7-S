@@ -91,12 +91,15 @@ struct Timeline
     int tempoRowHeight() const noexcept { return juce::jmax (48, juce::roundToInt (tempoHeight * rowZoom)); }
     static constexpr int chordsHeight = 60;   // the chord track (0.16.0): chords above, the scales below
     int chordRowHeight() const noexcept { return juce::jmax (46, juce::roundToInt (chordsHeight * rowZoom)); }
+    static constexpr int takeHeight = 52;   // a lane of takes (0.29.0): smaller than its track's row (our choice)
+    int takeRowHeight() const noexcept { return juce::jmax (36, juce::roundToInt (takeHeight * rowZoom)); }
     struct Row
     {
-        enum class Kind { track, lane, master, tempo, chords };
+        // (0.29.0) take: one of a track's lanes of takes (Show Lanes), under its row.
+        enum class Kind { track, lane, master, tempo, chords, take };
         Kind kind = Kind::track;
         int busId = 0;          // a track's id, or the master's (0)
-        int laneIndex = -1;     // a lane: its index in the bus's automation
+        int laneIndex = -1;     // a lane: its index in the bus's automation; a take lane: its lane
         int top = 0, height = 0;
         bool operator== (const Row&) const = default;
     };
@@ -206,8 +209,8 @@ public:
     std::function<void()> onPartsCopied;   // (Ctrl+V then pastes parts: MainView)
 
     // The editing tools (see above).
-    enum class Tool { select, range, split, glue, erase, zoom, mute, draw, play };
-    static constexpr Tool tools[] = { Tool::select, Tool::range, Tool::split, Tool::glue, Tool::erase, Tool::zoom, Tool::mute, Tool::draw, Tool::play };
+    enum class Tool { select, range, split, glue, erase, zoom, mute, draw, line, play, comp };
+    static constexpr Tool tools[] = { Tool::select, Tool::comp, Tool::range, Tool::split, Tool::glue, Tool::erase, Tool::zoom, Tool::mute, Tool::draw, Tool::line, Tool::play };
     static const char* toolName (Tool);
     static int toolKey (Tool);   // its number key
     void setTool (Tool);
@@ -271,6 +274,44 @@ public:
     juce::Rectangle<float> getLaneArea (int busId, int laneIndex) const;
     juce::Point<float> getPointPosition (int busId, int laneIndex, int point) const;
 
+    // Automation editing (0.27.0, the manual's Editing Automation Events):
+    //   SELECT    click a point; Shift- or Ctrl-click adds or removes one; drag a box round
+    //             several; drag them (Ctrl: one direction only; Alt: a copy); double-click one
+    //             to type its value (as its control reads: dB, L/C/R, ON/OFF, %) and where it is
+    //             (all the selected get the value); Alt-drag draws.
+    //   handles   two or more selected on a ramp: the manual's Automation Event Editor: the top
+    //             corners tilt that end (Alt: compress it), the top's middle scales, the top edge
+    //             moves them, the right edge's middle scales round the lane's middle (Alt: round
+    //             theirs), the bottom edge stretches them along the song
+    //   bends     on a ramp, the handle in a segment's middle bends it (the manual's Bézier
+    //             curves); double-click the handle straightens it. At the lane's top edge above a
+    //             segment: the quick vertical scaling handle
+    //   DRAW      draws; ERASE removes the points it crosses; LINE draws a shape (LINE again: Line,
+    //             Parabola (Ctrl: the other way), Sine, Triangle, Square: a period a grid step)
+    enum class LineShape { line, parabola, sine, triangle, square };
+    static juce::String lineShapeName (LineShape);
+    void setLineShape (LineShape);
+    LineShape getLineShape() const noexcept { return lineShape; }
+    void showLineShapeMenu (juce::Component* target);
+    void selectPoints (int busId, int laneIndex, std::vector<int> points);
+    std::optional<juce::String> formatPointValue (int busId, const pr7s::AutomationLane&, float value) const;
+    std::optional<float> parsePointValue (int busId, const pr7s::AutomationLane&, const juce::String&) const;
+    // Typing (as the box's SET): the selected points' value, and for one its position. False if not one.
+    bool enterPointValue (const juce::String& value, const juce::String& position);
+    void showPointEntry (int busId, int laneIndex, int point);
+    juce::Rectangle<float> getPointBox() const;              // the event editor's (empty: fewer than two, or a step lane)
+    enum class PointHandle { none, tiltLeft, tiltRight, compressLeft, compressRight, scale, move, scaleAbsolute, scaleRelative, stretch };
+    PointHandle pointHandleAt (juce::Point<float>, bool alt) const;
+    void dragPointHandle (PointHandle, juce::Point<float> offset);   // from the points as the drag began (tests drive it)
+    int curveHandleAt (int busId, int laneIndex, juce::Point<float>) const;   // the segment's end point (-1: none)
+    juce::Point<float> getCurveHandle (int busId, int laneIndex, int point) const;
+    void bendSegment (int busId, int laneIndex, int point, float towardsY);  // a segment's bend, so its middle is at that height
+    void drawLineShape (int busId, int laneIndex, juce::Point<float> from, juce::Point<float> to, bool reverse);
+    void showAutomationFunctions (int busId, int laneIndex);   // the lane menu's Copy / Paste Automation and the rest
+    // (0.28.0) Trim on and a volume or send lane with points: its trim curve is what's edited.
+    bool isTrimming (const pr7s::AutomationLane&) const;
+    const std::vector<pr7s::AutomationPoint>& editPointsOf (const pr7s::AutomationLane& lane) const { return isTrimming (lane) ? lane.trim : lane.points; }
+
     // Asked to edit the selected part's notes (double-click, or its menu): the key editor opens.
     std::function<void()> onEditNotes;
     // Render in Place (a part's menu, the range's): what to render, and
@@ -280,7 +321,17 @@ public:
     // Where a part is drawn (for tests).
     juce::Rectangle<float> getPartBounds (int trackId, int index) const;
     float splitLineX() const;   // SPLIT: where its cut line is drawn now (snapped to the grid), -1: none
-    int trackAtY (float y) const;   // 0 if none (a lane or the master isn't a track)
+    int trackAtY (float y) const;   // 0 if none (a lane or the master isn't a track); a lane of takes: its track
+    int laneAtY (float y) const;    // a lane of takes (0.29.0): its lane; else -1
+    // For the tests (0.29.0): the Comp tool's band while dragged (beats; none: equal).
+    std::pair<double, double> getCompBand() const noexcept { return { compFrom, compTo }; }
+    // (0.30.0) The edge (a split between takes, or a take's own edge) under a point, if near one: its beat.
+    std::optional<double> takeEdgeAt (juce::Point<float>) const;
+    // The comp handle on a stacked take's lower edge (the manual's Comp symbol): none if not stacked.
+    juce::Rectangle<float> compHandleBounds (int trackId, int index) const;
+    bool compHandleDown (const juce::MouseEvent&);
+    double getEdgeTarget() const noexcept { return edgeTo; }
+    juce::Rectangle<float> partRow (int trackId, int lane) const;   // the strip (y and height) a part on that lane is drawn in
     // A chord pad dropped on a track: a one-bar MIDI part at the bar (0.14.0, the manual's
     // Creating MIDI Parts from Chord Pads).
     bool isInterestedInDragSource (const SourceDetails&) override;
@@ -323,8 +374,9 @@ public:
     // when it moved, nothing when nothing did (0.9.2: it was the whole view, 30
     // times a second, which on a big window kept the computer busy: the lag).
     void refreshPlayhead();
+    std::optional<std::pair<int, int>> partAt (juce::Point<float>) const;   // track id and index (public for the tests: 0.29.0)
+    Timeline& getTimeline() noexcept { return timeline; }
 private:
-    std::optional<std::pair<int, int>> partAt (juce::Point<float>) const;   // track id and index
     void showPartMenu (int trackId, int index);
 
     pr7s::Studio& studio;
@@ -334,8 +386,19 @@ private:
     Selection selectionOf (int trackId, int index);
 
     enum class Drag { none, position, cycle, cycleMove, cycleLeft, cycleRight, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
+                      erasePoints, linePoints, pointHandle, curve, segmentScale,
                       newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove, marquee,
-                      tempoPoints, tempoBand, tempoDraw, chordMove };
+                      tempoPoints, tempoBand, tempoDraw, chordMove, comp, takeEdge, slip, audition };
+    // The Comp tool (0.29.0): its drag across a lane of takes.
+    int compTrack = 0, compLane = -1, compPartId = 0;
+    double compFrom = 0.0, compTo = 0.0;
+    bool compDown (const juce::MouseEvent&);
+    void compDrag (const juce::MouseEvent&);
+    void compUp();
+    // (0.30.0) Adjusting a split / resizing (takeEdge), Slip Event (slip), the Comp tool's Ctrl (audition).
+    double edgeFrom = 0.0, edgeTo = 0.0, slipFrom = 0.0, slipDelta = 0.0;
+    int slipPartId = 0;
+    void frontClick (int trackId, int partId, double beat);   // to the front; heard there already: back
     std::vector<int> alsoSelected;              // the parts selected besides `selection` (by id)
     pr7s::Studio::RangeClip partsClip;          // parts copied (Ctrl+C / X)
     int partIdAt (const Selection&) const;
@@ -381,6 +444,18 @@ private:
     int anchor = -1;               // the point grabbed
     bool copyingPoints = false;
     std::vector<pr7s::AutomationPoint> drawn;   // the points a drawing stroke has put down
+    LineShape lineShape = LineShape::line;
+    PointHandle activeHandle = PointHandle::none;
+    juce::Rectangle<float> boxAtDown;
+    std::vector<int> selectionAtDown;          // the handles' points, as indices into `originalPoints`
+    int curvePoint = -1;                       // the segment being bent or scaled (its end point)
+    bool ctrlToggle = false;                   // a Ctrl-click on a point: toggled on release if it didn't move
+    std::vector<int> bandBefore;               // the points selected when a Shift/Ctrl box began
+    struct HoverCurve { int busId = 0, laneIndex = -1, point = -1; } hoverCurve;   // the bend handle the mouse is on
+    juce::Point<float> lineEnd;
+    bool automationDoubleClick (const juce::MouseEvent&);
+    void paintPointHandles (juce::Graphics&, const Timeline::Row&) const;
+    float lineValueAt (double t, float v1, float v2, double beatsInto, bool reverse) const;
     void paintAutomation (juce::Graphics&, const Timeline::Row&) const;
     void paintTempo (juce::Graphics&, const Timeline::Row&) const;
     bool tempoDown (const juce::MouseEvent&);
@@ -416,6 +491,7 @@ private:
     Drag drag = Drag::none;
     double dragStartBeat = 0.0, dragOriginalStart = 0.0, dragOriginalLength = 0.0;
     int dragTrack = 0, dragTargetTrack = 0;
+    int dragTargetLane = -1;   // (0.29.0) the lane of takes it's dragged onto (-1: not over one)
     double dragNewStart = 0.0, dragNewLength = 0.0;
     bool dragCopies = false, dragMoved = false;
     double lastPosition = 0.0;   // the playhead as last seen (Auto-Scroll follows a jump while stopped)
@@ -453,7 +529,7 @@ public:
     // On the transport unit (a wide window): TOOLS stamped in the unit's ink, as the keys' names are.
     void setOnUnit (bool);
     int getPreferredWidth() const noexcept { return onUnit ? unitWidth() : 64 + (int) std::size (ArrangeView::tools) * 74; }
-    static int unitWidth() noexcept { return (int) std::size (ArrangeView::tools) * 64; }   // on the unit: no label (the icons tell them apart)
+    static int unitWidth() noexcept { return 576; }   // on the unit: no label (the icons tell them apart); the keys share the 9 x 64 it always had (0.27.0: LINE, 0.29.0: COMP)
     juce::TextButton& getButton (ArrangeView::Tool);
     void paint (juce::Graphics&) override;
     void resized() override;

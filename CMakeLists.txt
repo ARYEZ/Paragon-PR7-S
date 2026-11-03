@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonPR7S VERSION 0.22.0 LANGUAGES C CXX)
+project(ParagonPR7S VERSION 0.31.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -54,6 +54,9 @@ add_library(PR7SCore STATIC
     source/engine/AudioAdvice.cpp
     source/engine/SessionLog.cpp
     source/engine/ProjectLibrary.cpp
+    source/engine/Stretch.cpp
+    source/engine/Controllers.cpp
+    source/engine/DrumMaps.cpp
     source/ui/ParagonLookAndFeel.cpp
     source/ui/Finish.cpp
     source/ui/LedDisplay.cpp
@@ -62,7 +65,12 @@ add_library(PR7SCore STATIC
     source/ui/TransportBar.cpp
     source/ui/TrackList.cpp
     source/ui/ArrangeView.cpp
+    source/ui/ArrangeAutomation.cpp
     source/ui/KeyEditor.cpp
+    source/ui/KeyEditorLanes.cpp
+    source/ui/KeyEditorDrums.cpp
+    source/ui/DrumMapPage.cpp
+    source/ui/AutomationPanel.cpp
     source/ui/MixerView.cpp
     source/ui/Inspector.cpp
     source/ui/TrackActions.cpp
@@ -96,6 +104,7 @@ target_compile_definitions(PR7SCore
 
 target_link_libraries(PR7SCore
     PRIVATE
+        signalsmith-stretch
         ParagonPR7SFonts
         juce::juce_audio_utils
         juce::juce_audio_processors
@@ -125,6 +134,13 @@ endif()
 # .pdb for parallel compiles to fight over); /OPT:REF,ICF keep the .exe as small.
 if(MSVC)
     target_compile_options(PR7SCore PUBLIC $<$<CONFIG:Release>:/Z7>)
+endif()
+
+# The stretcher's own code is theirs: our strict warnings stay off for its one file.
+if(MSVC)
+    set_source_files_properties(source/engine/Stretch.cpp PROPERTIES COMPILE_OPTIONS "/W0")
+else()
+    set_source_files_properties(source/engine/Stretch.cpp PROPERTIES COMPILE_OPTIONS "-w")
 endif()
 
 # Whoever links PR7SCore sees the JUCE modules' headers and settings too.
