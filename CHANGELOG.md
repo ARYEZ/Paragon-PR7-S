@@ -2,6 +2,24 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.34.2
+
+Running better, part two: the playback engine. As with 0.34.1, nothing you hear changes. The tests check the output is the same sample for sample, not just close.
+
+- **Moving a fader no longer rebuilds the whole song.** Every change, including each mouse movement of a fader, a pan, a send, a knob or Touch automation writing, rebuilt every MIDI track's playback list from scratch: every note, every controller ramp written out every 1/128 beat, then all of it sorted again.
+  - Now each track remembers exactly what its list was built from: its parts, MIDI channel, soloed lane and drum map. If none of those changed, the list is kept as it is.
+  - On a heavy test song (16 tracks, 2,000 notes each, mod-wheel ramps), one update after a fader move went from **8.5 ms to 0.07 ms**. A fader drag makes about 60 a second, so that was about half a second of work every second on the screen's thread, and it's now almost nothing.
+- **Audio clips mix faster.** Each audio clip was added in one sample at a time, with its fades and bounds checked on every sample, and its position worked out again from the tempo map for every clip in every block, even clips minutes away.
+  - Positions are now worked out once per edit.
+  - The middle of each clip, where no fade applies, is added in one fast block operation; the fade edges go a sample at a time as before.
+  - The test renders a clip with an offset, fades ending between samples and a tempo ramp under it, in three different block sizes. It matches the old way exactly at every sample.
+- **Automation is read more cheaply.** Every 32 samples, finding a track's volume, pan and mute read every lane on it, plug-in knobs and sends included, then threw those results away. Now it only reads the lanes that matter. The meters' readout at the end of each block skips the lanes entirely on tracks without volume, pan or mute automation.
+- **Faders, the master and sends that aren't moving** are applied in one block operation instead of sample by sample (the same gain, so the same result).
+- **Fewer spikes after an edit while playing.** After an edit during playback, the engine checks that every held note still has an ending ahead. That check walked the track's whole event list once per held note. It now walks once for all of them and stops as soon as every note is settled, so dense controller lanes no longer make an edit cost a spike.
+- **Honestly:**
+  - The 8.5 ms to 0.07 ms is measured here on that test song; the clip and automation gains I can't measure on your PC, only estimate from the work removed.
+  - Not done (yet): reading back controllers on a jump still scans from the song's start (only on play, jump and cycle laps), and the screen still redraws more than it needs to after each change. That's next, in 0.34.3.
+
 ## 0.34.1
 
 Running better, part one: the safe fixes from a review of the whole studio for speed (you asked for one before VariAudio part two). Nothing you hear or see changes. These remove wasted work, one possible cause of clicks, and memory that kept growing.

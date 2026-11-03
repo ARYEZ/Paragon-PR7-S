@@ -332,7 +332,15 @@ namespace pr7s
         return silence.data();
     }
 
-    void Engine::playClips (TrackState& track, juce::int64 clock, int offset, int length, const Timing& timing)
+    void Engine::placeClip (Clip& clip, const Timing& timing)
+    {
+        clip.startSample = timing.sampleAt (clip.start);
+        clip.endSample = timing.sampleAt (clip.end);
+        clip.fromSample = clip.from > clip.start ? timing.sampleAt (clip.from) : clip.startSample;
+        clip.toSample = clip.to < clip.end ? timing.sampleAt (clip.to) : clip.endSample;
+    }
+
+    void Engine::playClips (TrackState& track, juce::int64 clock, int offset, int length, const Timing&)
     {
         // Each clip's samples in this stretch of the song, faded at its ends,
         // added to the track's sound.
@@ -340,22 +348,23 @@ namespace pr7s
         auto* right = track.buffer.getWritePointer (1);
         for (const auto& clip : track.clips)
         {
-            const auto startSample = timing.sampleAt (clip.start);
-            const auto endSample = timing.sampleAt (clip.end);
-            const auto from = juce::jmax (juce::jmax (clock, startSample), clip.from > clip.start ? timing.sampleAt (clip.from) : startSample);
-            const auto to = juce::jmin (juce::jmin (clock + length, endSample), clip.to < clip.end ? timing.sampleAt (clip.to) : endSample);
+            const auto startSample = clip.startSample;
+            const auto endSample = clip.endSample;
+            const auto from = juce::jmax (juce::jmax (clock, startSample), clip.fromSample);
+            const auto to = juce::jmin (juce::jmin (clock + length, endSample), clip.toSample);
             if (from >= to || clip.sound == nullptr)
                 continue;
             const auto& sound = *clip.sound;
             const auto* sourceLeft = sound.getReadPointer (0);
             const auto* sourceRight = sound.getNumChannels() > 1 ? sound.getReadPointer (1) : sourceLeft;
             const auto clipLength = (double) (endSample - startSample);
-            for (auto s = from; s < to; ++s)
+            // One sample as it always was: inside the recording, faded at the clip's ends.
+            const auto playOne = [&] (juce::int64 s)
             {
                 const auto into = (double) (s - startSample);
                 const auto at = clip.offset + (s - startSample);
                 if (at < 0 || at >= sound.getNumSamples())
-                    continue;
+                    return;
                 auto gain = 1.0;
                 if (clip.fadeIn > 0.0 && into < clip.fadeIn)
                     gain *= into / clip.fadeIn;
@@ -364,7 +373,32 @@ namespace pr7s
                 const auto i = offset + (int) (s - clock);
                 left[i] += (float) (sourceLeft[at] * gain);
                 right[i] += (float) (sourceRight[at] * gain);
+            };
+            // (0.34.1) The middle (inside the recording, no fade: the gain is exactly 1, so each sample
+            // added as it is, the same as the line above) in one go; the edges one at a time.
+            const auto inFadeIn = [&] (juce::int64 s) { return clip.fadeIn > 0.0 && (double) (s - startSample) < clip.fadeIn; };
+            const auto inFadeOut = [&] (juce::int64 s) { return clip.fadeOut > 0.0 && clipLength - (double) (s - startSample) < clip.fadeOut; };
+            auto middleFrom = juce::jmax (from, startSample - clip.offset);                         // (the recording's first sample)
+            auto middleTo = juce::jmin (to, startSample - clip.offset + sound.getNumSamples());    // (past its last)
+            while (middleFrom < middleTo && inFadeIn (middleFrom))
+                ++middleFrom;   // (at most the fade's length, once per block)
+            while (middleTo > middleFrom && inFadeOut (middleTo - 1))
+                --middleTo;
+            if (middleFrom >= middleTo)
+            {
+                for (auto s = from; s < to; ++s)
+                    playOne (s);
+                continue;
             }
+            for (auto s = from; s < middleFrom; ++s)
+                playOne (s);
+            const auto n = (int) (middleTo - middleFrom);
+            const auto i = offset + (int) (middleFrom - clock);
+            const auto at = clip.offset + (middleFrom - startSample);
+            juce::FloatVectorOperations::add (left + i, sourceLeft + at, n);
+            juce::FloatVectorOperations::add (right + i, sourceRight + at, n);
+            for (auto s = middleTo; s < to; ++s)
+                playOne (s);
         }
     }
 
@@ -447,12 +481,15 @@ namespace pr7s
         const auto tempoVersion = settings.tempoVersion + (tempo.getEvents() == settings.tempo.getEvents() ? 0 : 1);
 
         struct Prepared { int id; std::vector<Event> events; std::pair<float, float> gains; std::vector<bool> bypass; std::vector<Clip> clips;
-                          std::vector<LaneState> automation; bool mixAutomated = false;
+                          std::vector<LaneState> automation; bool mixAutomated = false; bool eventsKept = false;
                           std::array<juce::int16, 128> drumOut {}; std::array<juce::int8, 128> drumChannel {}; std::array<juce::uint8, 128> drumIn {}; };
         std::vector<Prepared> prepared;
         for (const auto& track : project.tracks)
         {
-            Prepared p { track.id, {}, sideGains (track, ! track.mute && ! track.disabled && ! soloedOut (track)), {}, {}, {}, false, {}, {}, {} };
+            Prepared p { track.id, {}, sideGains (track, ! track.mute && ! track.disabled && ! soloedOut (track)), {}, {}, {}, false, false, {}, {}, {} };
+            auto* engineTrack = findTrack (track.id);   // (message thread: its builtFrom is ours alone)
+            if (engineTrack != nullptr && (track.disabled || track.frozen || track.isAudio()))
+                engineTrack->builtFrom.valid = false;   // (no events: the next notes are built afresh)
             for (int n = 0; n < 128; ++n)
                 p.drumOut[(size_t) n] = (juce::int16) n, p.drumChannel[(size_t) n] = -1, p.drumIn[(size_t) n] = (juce::uint8) n;
             for (const auto& insert : track.inserts)
@@ -472,6 +509,8 @@ namespace pr7s
                 if (audioSource)
                     if (auto sound = audioSource (track.freezeFile))
                         p.clips.push_back ({ 0.0, tempo.beatAt ((double) sound->getNumSamples() / sampleRate), sound, 0, 0.0, 0.0 });
+                for (auto& clip : p.clips)
+                    placeClip (clip, { &tempo, sampleRate });
                 prepared.push_back (std::move (p));
                 continue;
             }
@@ -495,6 +534,8 @@ namespace pr7s
                         p.clips.push_back ({ part.start, part.end(), sound, offset,
                                              part.fadeIn * sampleRate, part.fadeOut * sampleRate, from, to });
                 }
+                for (auto& clip : p.clips)
+                    placeClip (clip, { &tempo, sampleRate });
                 prepared.push_back (std::move (p));
                 continue;
             }
@@ -509,6 +550,21 @@ namespace pr7s
                 p.drumChannel[(size_t) n] = (juce::int8) (sound != nullptr && sound->channel >= 0 ? sound->channel : -1);
                 p.drumIn[(size_t) n] = (juce::uint8) (map != nullptr ? map->pitchForInput (n) : n);
             }
+            // (0.34.1) Built from exactly what it was last time: kept (the same events would come out).
+            const auto mapNow = map != nullptr ? std::optional<DrumMap> (*map) : std::nullopt;
+            if (engineTrack != nullptr)
+            {
+                auto& built = engineTrack->builtFrom;
+                if (built.valid && built.midiChannel == track.midiChannel && built.soloLane == track.soloLane
+                    && built.map == mapNow && built.parts == track.parts)
+                {
+                    p.eventsKept = true;
+                    prepared.push_back (std::move (p));
+                    continue;
+                }
+                built = { true, track.parts, track.midiChannel, track.soloLane, mapNow };
+            }
+            ++eventBuilds;
             for (const auto& part : track.parts)
                 for (const auto& note : part.notes)
                 {
@@ -567,8 +623,11 @@ namespace pr7s
         for (auto& p : prepared)
             if (auto* track = findTrack (p.id))
             {
-                std::swap (track->events, p.events);   // the old list goes out with `prepared`
-                track->checkHeld = true;
+                if (! p.eventsKept)
+                {
+                    std::swap (track->events, p.events);   // the old list goes out with `prepared`
+                    track->checkHeld = true;
+                }
                 std::swap (track->clips, p.clips);      // likewise the old clips
                 if (const auto* t = project.findTrack (p.id))
                 {
@@ -795,23 +854,24 @@ namespace pr7s
         const auto channelBits = (juce::uint8) (track.heldChannel - 1);
         const auto from = std::lower_bound (track.events.begin(), track.events.end(), beatNow - 1.0e-9,
                                             [] (const Event& e, double beat) { return e.beat < beat; });
-        for (int note = 0; note < 128; ++note)
+        // (0.34.1) One walk for every held note, stopping once each has met its next on or off (it
+        // walked the list once per note, to its end for a note never ended: a spike after an edit).
+        auto unsettled = track.held;
+        std::bitset<128> ends;
+        for (auto it = from; it != track.events.end() && unsettled.any(); ++it)
         {
-            if (! track.held.test ((size_t) note))
+            const auto kind = it->status & 0xf0;
+            if ((kind != 0x80 && kind != 0x90) || (it->status & 0x0f) != channelBits || ! unsettled.test (it->data1 & 0x7f))
                 continue;
-            auto ended = false;
-            for (auto it = from; it != track.events.end(); ++it)
-                if (it->data1 == note && (it->status & 0x0f) == channelBits && ((it->status & 0xf0) == 0x80 || (it->status & 0xf0) == 0x90))
-                {
-                    ended = (it->status & 0xf0) == 0x80;
-                    break;
-                }
-            if (! ended)
+            ends.set (it->data1 & 0x7f, kind == 0x80);
+            unsettled.reset (it->data1 & 0x7f);
+        }
+        for (int note = 0; note < 128; ++note)   // (in this order, as before)
+            if (track.held.test ((size_t) note) && ! ends.test ((size_t) note))
             {
                 track.midi.addEvent (juce::MidiMessage::noteOff (track.heldChannel, note), sampleOffset);
                 track.held.reset ((size_t) note);
             }
-        }
     }
 
     void Engine::render (juce::AudioBuffer<float>& output, int numSamples, const juce::AudioBuffer<float>* input)
@@ -1125,11 +1185,19 @@ namespace pr7s
             {
                 track->left.setTargetValue (track->gainLeft);
                 track->right.setTargetValue (track->gainRight);
-                for (int i = 0; i < numSamples; ++i)
+                if (! track->left.isSmoothing() && ! track->right.isSmoothing())
                 {
-                    left[i] *= track->left.getNextValue();
-                    right[i] *= track->right.getNextValue();
+                    // (0.34.1) Not moving: each side times its gain in one go (getNextValue would
+                    // return exactly that gain for every sample).
+                    juce::FloatVectorOperations::multiply (left, track->left.getTargetValue(), numSamples);
+                    juce::FloatVectorOperations::multiply (right, track->right.getTargetValue(), numSamples);
                 }
+                else
+                    for (int i = 0; i < numSamples; ++i)
+                    {
+                        left[i] *= track->left.getNextValue();
+                        right[i] *= track->right.getNextValue();
+                    }
             }
             runInserts (track->inserts, sound, numSamples, track->preFader, Project::maxInserts);
             runSends (*track, false, numSamples, blockBeat);  // the sends after it
@@ -1184,12 +1252,18 @@ namespace pr7s
             masterGain.setTargetValue (settings.masterGain);
             auto* masterLeft = master.getWritePointer (0);
             auto* masterRight = master.getWritePointer (1);
-            for (int i = 0; i < numSamples; ++i)
+            if (! masterGain.isSmoothing())
             {
-                const auto gain = masterGain.getNextValue();
-                masterLeft[i] *= gain;
-                masterRight[i] *= gain;
+                juce::FloatVectorOperations::multiply (masterLeft, masterGain.getTargetValue(), numSamples);   // (0.34.1: as the tracks')
+                juce::FloatVectorOperations::multiply (masterRight, masterGain.getTargetValue(), numSamples);
             }
+            else
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    const auto gain = masterGain.getNextValue();
+                    masterLeft[i] *= gain;
+                    masterRight[i] *= gain;
+                }
         }
         runInserts (masterInserts, master, numSamples, masterPreFader, Project::maxInserts);
         for (int channel = 0; channel < outputs; ++channel)
@@ -1199,7 +1273,8 @@ namespace pr7s
         const auto endBeat = numSegments > 0 ? position.load() : blockBeat;
         for (auto& track : tracks)
         {
-            const auto now = mixAt (track->automation, { track->volumeDb, track->pan, track->mute }, endBeat, settings.virginTerritory);
+            const MixNow set { track->volumeDb, track->pan, track->mute };
+            const auto now = track->mixAutomated ? mixAt (track->automation, set, endBeat, settings.virginTerritory) : set;   // (0.34.1)
             track->nowVolumeDb = now.volumeDb;
             track->nowPan = now.pan;
             track->nowMute = now.mute;
@@ -1321,10 +1396,13 @@ namespace pr7s
     {
         for (const auto& state : lanes)
         {
+            const auto target = state.lane.target;
+            if (target != AutomationLane::Target::volume && target != AutomationLane::Target::pan && target != AutomationLane::Target::mute)
+                continue;   // (0.34.1: knob and send lanes aren't read here at all)
             const auto value = state.lane.playedAt (beat, virginTerritory);   // (0.28.0: with its trim; none in a gap)
             if (! value)
                 continue;
-            switch (state.lane.target)
+            switch (target)
             {
                 case AutomationLane::Target::volume: mix.volumeDb = travelToVolume (*value); break;
                 case AutomationLane::Target::pan:    mix.pan = travelToPan (*value); break;
@@ -1363,8 +1441,12 @@ namespace pr7s
             {
                 const auto* from = track.buffer.getReadPointer (channel);
                 auto* to = fx->bus.getWritePointer (channel);
-                for (int i = 0; i < numSamples; ++i)
-                    to[i] += from[i] * (send.lastGain + (gain - send.lastGain) * (float) i / (float) numSamples);
+                if (juce::exactlyEqual (gain, send.lastGain))
+                    for (int i = 0; i < numSamples; ++i)   // (0.34.1: not moving, one gain: the ramp below gives exactly it)
+                        to[i] += from[i] * gain;
+                else
+                    for (int i = 0; i < numSamples; ++i)
+                        to[i] += from[i] * (send.lastGain + (gain - send.lastGain) * (float) i / (float) numSamples);
             }
             send.lastGain = gain;
         }

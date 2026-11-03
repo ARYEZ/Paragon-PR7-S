@@ -83,6 +83,7 @@ namespace pr7s
         // inserts are bypassed, and the master's volume.
         // Call after every change.
         void update (const Project&);
+        int getEventBuilds() const noexcept { return eventBuilds; }   // (0.34.2, tests) tracks' event lists built so far
 
         //======================================================================
         // Transport (any thread)
@@ -233,6 +234,9 @@ namespace pr7s
             double fadeIn = 0.0, fadeOut = 0.0;
             // (0.29.0) The stretch of it heard (beats): another clip in front hides the rest.
             double from = 0.0, to = 1.0e12;
+            // (0.34.1) Where those are in the song's samples, worked out in update (by the same tempo
+            // map and rate as playback: they were worked out again for every clip every block).
+            juce::int64 startSample = 0, endSample = 0, fromSample = 0, toSample = 0;
         };
 
         // An automation lane being played back. Plugin knobs are set once a
@@ -297,6 +301,17 @@ namespace pr7s
             bool mixAutomated = false;              // a volume, pan or mute lane among them
             std::atomic<float> nowVolumeDb { 0.0f }, nowPan { 0.0f };
             std::atomic<bool> nowMute { false };
+            // (0.34.1, message thread only) What its events were last built from: the same again (a
+            // fader moved, a send, a knob: anything but its notes), the events are kept as they are,
+            // not built, sorted and swapped in again.
+            struct BuiltFrom
+            {
+                bool valid = false;
+                std::vector<Part> parts;
+                int midiChannel = 1, soloLane = -1;
+                std::optional<DrumMap> map;
+            };
+            BuiltFrom builtFrom;
         };
 
         struct Settings
@@ -341,6 +356,7 @@ namespace pr7s
         void renderBlock (juce::AudioBuffer<float>& output, int numSamples);
         const float* inputChannel (int channel, int offset) const noexcept;
         void playClips (TrackState&, juce::int64 clock, int offset, int length, const Timing&);
+        static void placeClip (Clip&, const Timing&);   // (0.34.1) its samples, worked out once
         void runSends (TrackState&, bool preFader, int numSamples, double beat);
 
         // The block's segments (up to the cycle's end, then from its start): their song position, place in the block and length.
@@ -358,6 +374,7 @@ namespace pr7s
 
         juce::CriticalSection lock;
         std::vector<std::unique_ptr<TrackState>> tracks;
+        int eventBuilds = 0;   // (message thread)
         Settings settings;
         double sampleRate = 48000.0;
         int maxBlockSize = 512;
