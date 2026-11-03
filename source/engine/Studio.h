@@ -348,6 +348,10 @@ namespace pr7s
         // recording straight after it (a split glued back); anything else
         // returns false (an audio part holding several clips isn't there yet).
         bool glueParts (int trackId, int index, bool toAllFollowing);
+        // Quantize (Q in the arrangement, 0.31.0: the manual's "In the Project window, select a MIDI part"):
+        // every note of these MIDI parts to the nearest step of `grid` beats (the song's quantize value), its
+        // length kept. Audio and frozen parts are passed over. One undo step; false if nothing was there.
+        bool quantizeParts (const std::vector<int>& partIds, double grid);
         // The Mute tool (and the part's menu): muted parts stay, greyed, but aren't played.
         void setPartMuted (int trackId, int index, bool muted);
         void setPartsMuted (const std::vector<int>& partIds, bool muted);   // several at once (one step)
@@ -840,12 +844,13 @@ namespace pr7s
             enum class Tail { off, bars, seconds };
             Tail tail = Tail::bars;
             double tailSize = 1.0;
-            int bitsPerSample = 24;   // 16, 24 or 32 (float)
+            int bitsPerSample = 32;   // 16, 24 or 32 (float: 0.31.0's default, the owner's: nothing over 0 dB is cut off)
             // The source: kept as it was, muted (the parts rendered; whole tracks: the track), or removed (whole tracks).
-            // Or (whole tracks) disabled: its plugins unloaded, as Freeze (0.9.1).
+            // Or (whole tracks) disabled: muted and its plugins unloaded, as Freeze (0.9.1; muted too since 0.31.0).
+            // A stretch of a track (a part, a range, the cycle): disable and remove mute the parts rendered there.
             enum class Source { keep, mute, remove, disable };
-            Source source = Source::keep;
-            bool hideSource = false;   // whole tracks: hidden after (the manual's Hide Source Tracks)
+            Source source = Source::disable;   // (0.31.0's default, the owner's: muted, disabled, hidden)
+            bool hideSource = true;   // whole tracks: hidden after (the manual's Hide Source Tracks)
         };
         struct RenderSource
         {

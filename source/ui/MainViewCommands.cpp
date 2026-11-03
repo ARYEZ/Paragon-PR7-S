@@ -71,7 +71,10 @@ void MainView::registerCommands()
             studio.addTempoTrack();
         studio.insertTempoEventAtCursor (studio.getTempoNow());
     });
-    add ("Edit.ReadAll", "Edit", "Automation: Read All On/Off", { key ('R', alt) });
+    add ("Edit.ReadAll", "Edit", "Automation: Read All On/Off", {}, [this] { studio.setAutomationReadAll (! studio.anyAutomationRead()); });
+    add ("Edit.RenderInPlace", "Edit", "Render in Place (as last time)", { key ('R', alt) });   // (0.31.0, the owner's key)
+    add ("Edit.RenderInPlaceSetup", "Edit", "Render in Place...", {}, [this] { renderInPlaceNow (true); });
+    add ("MIDI.Quantize", "MIDI", "Quantize", { key ('Q') });
     add ("Edit.WriteAll", "Edit", "Automation: Write All On/Off", { key ('W', alt) });
 
     // Range (the manual's Range Editing).

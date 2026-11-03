@@ -35,7 +35,7 @@
 // duplicate it, Ctrl+Z / Ctrl+Shift+Z undo / redo, Ctrl+N / O / S new, open
 // and save (Ctrl+Shift+S save as), Ctrl+E the key editor (Escape closes it),
 // F3 the mixer in a window of its own, Alt+F3 (or MIXER) the mixer docked
-// (as Cubase's F3 and Alt+F3 do), Alt+R / Alt+W read / write automation for
+// (as Cubase's F3 and Alt+F3 do), Alt+W writes automation for (Alt+R: Render in Place since 0.31.0; Read All has no default key)
 // all tracks (the manual's keys). Delete removes the selected automation
 // points if there are any (else the selected part); Esc while dragging
 // points puts them back. H / G zoom in / out (a step, centred on the
@@ -132,6 +132,8 @@ public:
     void exportMix();
     // RENDER IN PLACE: the sources (a part, a range, selected tracks) rendered
     // to audio; `ask`: the render page first (else as last time).
+    void renderInPlaceNow (bool ask = false);   // (0.31.0) Alt+R: as last time, of the range, the selected parts or the selected tracks
+    std::vector<pr7s::Studio::RenderSource> narrowedSources (std::vector<pr7s::Studio::RenderSource>) const;   // to the range, or the cycle
     void renderInPlace (std::vector<pr7s::Studio::RenderSource>, bool ask);
     Windows::RenderPage* getRenderPage() noexcept { return renderPage.getComponent(); }
     Windows::ExportPage* getExportPage() noexcept { return exportPage.getComponent(); }
@@ -164,6 +166,7 @@ public:
     void filesDropped (const juce::StringArray&, int x, int y) override;
 
     void openInstrumentWindow (int trackId);
+    bool isInstrumentWindowOpen (int trackId) const { return instrumentWindows.count (trackId) > 0; }   // (tests)
     void openSettings();
     // SPAN ALL SCREENS (in SETTINGS): the window across every screen (Windows'
     // maximize fills only one); again, back where it was. The window opens

@@ -51,7 +51,14 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     splitTool.onClick = [this] { setTool (Tool::split); };
     penCursor = ToolIcons::cursor (ArrangeView::Tool::draw);
     scissorsCursor = ToolIcons::cursor (ArrangeView::Tool::split);
-    quantizeButton.setTooltip ("QUANTIZE (Q): moves the selected notes' starts (all the notes, with none selected) to the grid");
+    quantizeButton.setTooltip ("QUANTIZE (Q): moves the selected notes' starts (all the notes, with none selected) to the nearest step of "
+                               "the quantize value on the header (1/1 to 1/64); their lengths stay");
+    // (0.31.0) INSTRUMENT: the track's instrument window, to play with its sounds while editing (the manual's Edit Instrument).
+    instrumentKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    instrumentKey.setWantsKeyboardFocus (false);
+    instrumentKey.setTooltip ("INSTRUMENT: opens this track's instrument window (it stays above the studio while you edit)");
+    instrumentKey.onClick = [this] { if (onOpenInstrument && getPart() != nullptr) onOpenInstrument (getTrackId()); };
+    panelColumn.addAndMakeVisible (instrumentKey);
     selectTool.onClick = [this] { setTool (Tool::select); };
     drawTool.onClick = [this] { setTool (Tool::draw); };
     eraseTool.onClick = [this] { setTool (Tool::erase); };
@@ -878,13 +885,21 @@ bool KeyEditor::splitAt (int noteIndex, double beat)
     return true;
 }
 
+juce::String KeyEditor::quantizeText (double beats)
+{
+    // 4 beats: 1/1, 2: 1/2, 1: 1/4 ... 1/16 beat: 1/64.
+    return "1/" + juce::String (juce::roundToInt (4.0 / juce::jmax (1.0 / 16.0, beats)));
+}
+
 void KeyEditor::quantizeSelected()
 {
     const auto* part = getPart();
     if (part == nullptr)
         return;
     auto edited = *part;
-    pr7s::quantize (edited, grid, selected);
+    // (0.31.0) The song's quantize value, as the manual's Quantize ("You have set up a quantize grid on the
+    // Quantize Presets pop-up menu on the Project window toolbar"): the header's 1/1 to 1/64.
+    pr7s::quantize (edited, studio.getProject().quantizeBeats, selected);
     commit (std::move (edited.notes));
 }
 
@@ -1686,6 +1701,12 @@ void KeyEditor::refreshPanel()
     const auto hasPart = getPart() != nullptr;
     for (auto* button : { &selectTool, &drawTool, &eraseTool, &quantizeButton })
         button->setEnabled (hasPart);
+    // (0.31.0) The quantize value on QUANTIZE; INSTRUMENT for an instrument track's part.
+    quantizeButton.setButtonText ("QUANTIZE " + quantizeText (studio.getProject().quantizeBeats));
+    if (const auto* track = studio.getProject().findTrack (getTrackId()))
+        instrumentKey.setEnabled (hasPart && ! track->isAudio() && ! track->disabled && ! track->frozen);
+    else
+        instrumentKey.setEnabled (false);
     gridBox.setEnabled (hasPart);
     // (0.26.0) The drum keys follow the track.
     const auto* map = studio.getDrumMapOf (getTrackId());
@@ -1724,6 +1745,8 @@ void KeyEditor::layoutColumn()
     const auto gap = [&] { y += 6; };
     place (windowButton);
     place (closeButton);
+    gap();
+    place (instrumentKey);
     gap();
     for (auto* key : std::initializer_list<juce::Component*> { &selectTool, &drawTool, &splitTool, &eraseTool, &lineTool })
         place (*key);

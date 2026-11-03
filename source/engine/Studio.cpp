@@ -1666,6 +1666,28 @@ namespace pr7s
             changed();
     }
 
+    bool Studio::quantizeParts (const std::vector<int>& partIds, double grid)
+    {
+        if (grid <= 0.0)
+            return false;
+        auto any = false;
+        for (auto& track : project.tracks)
+        {
+            if (track.isAudio() || track.isChannel() || track.frozen)
+                continue;
+            for (auto& part : track.parts)
+                if (! part.notes.empty() && std::find (partIds.begin(), partIds.end(), part.id) != partIds.end())
+                {
+                    const auto before = part.notes;
+                    quantize (part, grid);
+                    any = any || part.notes != before;
+                }
+        }
+        if (any)
+            changed();
+        return any;
+    }
+
     bool Studio::humanizeParts (const std::vector<int>& partIds, float amount)
     {
         if (amount < 0.0f)
@@ -6674,7 +6696,12 @@ namespace pr7s
                 from->solo = false;
             }
             // The source: kept, muted (the parts rendered, or the whole track), or removed (a whole track).
-            if (options.source == RenderOptions::Source::mute)
+            // Disabled (0.31.0): muted first. A stretch of a track: whatever was chosen but keep, its parts
+            // rendered there muted (disabling or removing the track would silence the rest of it).
+            const auto muteSource = options.source == RenderOptions::Source::mute
+                                 || (source.wholeTrack && options.source == RenderOptions::Source::disable)
+                                 || (! source.wholeTrack && options.source != RenderOptions::Source::keep);
+            if (muteSource)
             {
                 if (source.wholeTrack)
                     project.findTrack (sourceId)->mute = true;

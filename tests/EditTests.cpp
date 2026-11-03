@@ -465,6 +465,8 @@ TEST_CASE ("Render in Place: a part to an audio clip on a new track under its ow
     const auto spb = studio.getProject().secondsPerBeat();
     Studio::RenderOptions options;
     options.tail = Studio::RenderOptions::Tail::off;
+    options.source = Studio::RenderOptions::Source::keep;   // (0.31.0: the default is muted, disabled, hidden)
+    options.hideSource = false;
 
     SECTION ("As separate events: a clip for each part, where it was; a new audio track straight under the source")
     {

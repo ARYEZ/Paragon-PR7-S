@@ -2,6 +2,30 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.31.0
+
+Render in Place as you work, Q from anywhere, and the instrument from the editors (all four asked for).
+
+- **Render in Place's new defaults:**
+  - **32-bit float:** nothing over 0 dB is ever cut off, and you can turn it down later with nothing lost. Files are about a third bigger than 24-bit.
+  - **The original track is muted, disabled (its plug-ins unloaded: no CPU) and hidden.** VISIBILITY shows it again; enable it to change it.
+  - Your saved Render in Place settings were moved to these once, since what was saved were the old defaults rather than choices. Anything you pick in the Render in Place window from now on stays.
+- **Only the cycle or the range:**
+  - Rendering a whole track (the Inspector's RENDER, the track menu, Alt+R) with a range set renders the range: its tracks and its stretch.
+  - Otherwise, with CYCLE on, it renders only the cycle's stretch.
+  - Before, it always rendered the whole track.
+  - A stretch never disables or hides the track, since that would silence the rest of it: only the parts rendered there are muted, and the rest plays on.
+- **Alt+R: Render in Place, as last time.** It renders the range if there is one, else the selected parts, else the selected tracks (over the cycle while CYCLE is on). It's a key command (KEYS: Edit > Render in Place), so you can change it or put it on the Stream Deck. **Read All automation no longer has a key:** use the header's R, or give it one in KEYS.
+- **Q quantizes from anywhere**, to the quantize value on the header (1/1, 1/2, 1/4, 1/8, 1/16, 1/32, 1/64), as the manual's Quantize does:
+  - in the MIDI or drum editor: the selected notes, or all of them with none selected;
+  - in the arrangement: every note of the selected MIDI parts.
+  - Each note moves to the nearest grid line and keeps its length.
+  - Before, Q only worked right after a click inside the editor, and used the editor's own grid. The editor's QUANTIZE key now shows the value it uses ("QUANTIZE 1/16").
+- **INSTRUMENT** at the top of the MIDI and drum editors' left panel opens the track's instrument window, which stays above the studio while you edit.
+- **Honestly:**
+  - Q quantizes note starts only (lengths stay), with nothing like the manual's Quantize Panel options (swing, soft quantize, groove) or Reset Quantize.
+  - The INSTRUMENT key was tested with a stand-in synth that has no window of its own: the test checks that the key asks for the right track's window, not the window itself. With PR7-K or your VST3 instruments it opens their window, as the Inspector's EDIT does.
+
 ## 0.30.0
 
 Takes and comping, part two: the rest of the manual's Assembling Operations and Assembling a Perfect Take.

@@ -71,6 +71,7 @@ namespace Windows
 
     private:
         pr7s::Studio& studio;
+        bool wholeTracks = true;   // (0.31.0: a stretch's choice of what happens to the original isn't kept for whole tracks)
         juce::Label modeLabel, processingLabel, tailLabel, bitsLabel, sourceLabel, note;
     };
 

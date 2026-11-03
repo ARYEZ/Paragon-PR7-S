@@ -77,7 +77,8 @@ public:
     void selectAll();
     void deleteSelected();
     void transposeSelected (int semitones);
-    void quantizeSelected();   // all the notes, with none selected
+    static juce::String quantizeText (double beats);   // "1/16"
+    void quantizeSelected();   // all the notes, with none selected; to the song's quantize value (the header's: 0.31.0)
     // SPLIT (3, as the manual's): the note at `beat` (song beats) cut in two
     // there; if it's one of several selected, all of those it crosses.
     // One edit. False if nothing was cut.
@@ -262,6 +263,9 @@ public:
     juce::Rectangle<float> getDrumMuteBox (int pitch) const;   // the M in its row
     int listWidth() const noexcept { return drumViewOn ? drumListWidth : keysWidth; }
     std::function<void()> onDrumMapSetup;                // MainView: the Drum Map Setup window
+    std::function<void (int trackId)> onOpenInstrument;  // (0.31.0) INSTRUMENT: MainView opens the track's instrument window
+    juce::TextButton& getInstrumentKey() noexcept { return instrumentKey; }
+    juce::TextButton& getQuantizeKey() noexcept { return quantizeButton; }
     std::function<void (std::function<void (const juce::File&)>)> chooseDrumMapFile;   // (tests answer it; else a FileChooser)
 
     static constexpr int sideWidth = 150, keysWidth = 54, rulerHeight = 26, velocityHeight = 86, scrollBarSize = 12, drumListWidth = 220;
@@ -426,7 +430,8 @@ private:
     void refreshVelocityKeys();
     void showVelocityRanges();
     juce::TextButton selectTool { "SELECT" }, drawTool { "DRAW" }, eraseTool { "ERASE" }, splitTool { "SPLIT" }, quantizeButton { "QUANTIZE" },
-                     windowButton { "WINDOW" }, closeButton { "CLOSE" }, autoScrollButton { "AUTO-SCROLL" }, autoScrollMenu;
+                     windowButton { "WINDOW" }, closeButton { "CLOSE" }, autoScrollButton { "AUTO-SCROLL" }, autoScrollMenu,
+                     instrumentKey { "INSTRUMENT" };   // (0.31.0) the track's instrument window
     bool inWindow = false;
     juce::ComboBox gridBox;
 };
