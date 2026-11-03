@@ -139,6 +139,17 @@ namespace pr7s
         // The song position (in samples) of the first sample recorded, or -1.
         juce::int64 getAudioRecordStart() const noexcept { return audioRecordStart.load(); }
 
+        // The MediaBay's preview (0.21.0): a sound (stereo, at the engine's rate) played over the
+        // output after the click, whether the song plays or not. The message thread hands it over
+        // under the lock (and keeps the old one alive: the audio thread never frees anything); the
+        // audio thread only reads it. Loops when `loop` is on, else stops at its end.
+        void setPreview (std::shared_ptr<const juce::AudioBuffer<float>>, bool loop);
+        void stopPreview();
+        void setPreviewLoop (bool on) noexcept { previewLoop = on; }
+        void setPreviewGain (float gain) noexcept { previewGain = gain; }
+        bool isPreviewPlaying() const noexcept { return previewPlaying.load(); }
+        double getPreviewProgress() const noexcept;   // 0 to 1 through the sound
+
         // One block of the studio's output: every track and the click,
         // stereo. `input`: the interface's inputs for the block (tests).
         void render (juce::AudioBuffer<float>& output, int numSamples, const juce::AudioBuffer<float>* input = nullptr);
@@ -358,6 +369,12 @@ namespace pr7s
         // Recorded notes, from the audio thread to the message thread.
         juce::AbstractFifo recordedFifo { 8192 };
         std::array<RecordedEvent, 8192> recordedEvents;
+
+        // The preview (0.21.0).
+        std::shared_ptr<const juce::AudioBuffer<float>> preview;
+        std::atomic<int> previewPosition { 0 }, previewLength { 0 };
+        std::atomic<bool> previewPlaying { false }, previewLoop { false };
+        std::atomic<float> previewGain { 0.7f };
 
         // The click: up to 64 ticks a block, each a short burst of a tone.
         struct Tick { int sample; bool accent; };

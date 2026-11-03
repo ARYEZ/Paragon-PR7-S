@@ -26,6 +26,7 @@
 // PARAGON_SNAPSHOT_MULTI=1: parts selected on two tracks.
 // PARAGON_SNAPSHOT_STATES=1: the lead soloed, the bass muted, the keys armed (written under their names; the header's M and S lit).
 // PARAGON_SNAPSHOT_MASTER=1: the master's row chosen (its Inspector).
+// PARAGON_SNAPSHOT_RACK=home|loops|instruments: the Media rack in the right zone (0.22.0).
 // PARAGON_SNAPSHOT_TEMPO=1: the tempo track, with a ramp and a step (0.10.0).
 // PARAGON_SNAPSHOT_FREEZE=1: the lead frozen (FREEZE lit in its Inspector, its parts stamped).
 // PARAGON_SNAPSHOT_VISIBILITY=1: the VISIBILITY tab, the bass hidden, the keys disabled.
@@ -349,6 +350,47 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         arrange.mouseMove (juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, {}, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                                              &arrange, &arrange, juce::Time::getCurrentTime(), at, juce::Time::getCurrentTime(), 0, false));
     }
+    if (const auto rackPage = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_RACK", {}); rackPage.isNotEmpty())
+    {
+        // The Media rack in the right zone (0.22.0): home, loops or instruments.
+        const auto root = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("Rack Samples");
+        root.deleteRecursively();
+        using A = pr7s::MediaAttribute;
+        auto& bay = studio.getMediaBay();
+        const std::vector<std::tuple<const char*, const char*, const char*, const char*>> files {
+            { "Drums", "Drop A Chug Loop 140bpm.wav", "Drums", "Metal" }, { "Drums", "Gallop Kit Loop 160bpm.wav", "Drums", "Metal" },
+            { "Drums", "Kick 808 Long.wav", "Drums", "" }, { "Guitars", "Rogue Riff Am 140bpm.wav", "Guitar", "Metal" },
+            { "Guitars", "Jupiter Lead F#m 120bpm.wav", "Guitar", "Metal" }, { "Bass", "Sub Bass E 128bpm.wav", "Bass", "" },
+            { "MIDI", "Djent Chug Pattern 140bpm.mid", "Guitar", "Metal" }, { "MIDI", "Power Chord Riff Am.mid", "Guitar", "Rock" } };
+        for (const auto& [sub, name, category, style] : files)
+        {
+            root.getChildFile (sub).createDirectory();
+            root.getChildFile (sub).getChildFile (name).replaceWithText ("x");
+        }
+        bay.addLocation (root);
+        bay.scanNow();
+        for (const auto& [sub, name, category, style] : files)
+        {
+            const auto file = root.getChildFile (sub).getChildFile (name);
+            bay.setAttribute ({ file }, { A::category, {} }, category);
+            bay.setAttribute ({ file }, { A::style, {} }, style);
+        }
+        view.setRightZoneShown (true);
+        auto* rack = view.getMediaRack();
+        rack->setAutoPlay (false);
+        if (rackPage == "loops")
+        {
+            rack->openPage (MediaRack::Page::loops);
+            rack->setFiltersShown (true);
+            rack->clickFilterValue (1, "Metal", false);
+            rack->selectRow (1);
+        }
+        else if (rackPage == "instruments")
+            rack->openPage (MediaRack::Page::instruments);
+        else
+            rack->home();
+        studio.dispatchPendingMessages();
+    }
     auto image = view.createComponentSnapshot (view.getLocalBounds(), true, scale);
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_RENDER", {}).isNotEmpty())
     {
@@ -611,6 +653,125 @@ TEST_CASE ("Snapshot: the guitar VELOCITIES panel", "[.][snapshot-velocities]")
         juce::FileOutputStream out { juce::File (path) };
         juce::PNGImageFormat().writeImageToStream (image, out);
     }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+#include "ui/MediaBayPage.h"
+
+TEST_CASE ("Snapshot: the MediaBay window", "[.][snapshot-mediabay]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "mediabay.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    const auto root = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("Metal Samples");
+    root.deleteRecursively();
+    {
+        // A sample library, as a producer's might be.
+        const auto wav = [] (const juce::File& file, double seconds, int channels, float frequency)
+        {
+            file.getParentDirectory().createDirectory();
+            const auto rate = 44100.0;
+            const auto samples = (int) (seconds * rate);
+            juce::AudioBuffer<float> sound (channels, samples);
+            for (int c = 0; c < channels; ++c)
+                for (int i = 0; i < samples; ++i)
+                {
+                    const auto beat = std::fmod ((double) i / rate, 0.5);
+                    sound.setSample (c, i, (float) (std::exp (-beat * 9.0) * 0.8 * std::sin ((double) i * frequency / rate * 6.283)));
+                }
+            juce::WavAudioFormat format;
+            auto stream = std::make_unique<juce::FileOutputStream> (file);
+            std::unique_ptr<juce::AudioFormatWriter> writer (format.createWriterFor (stream.get(), rate, (unsigned int) channels, 24, {}, 0));
+            stream.release();
+            writer->writeFromAudioSampleBuffer (sound, 0, samples);
+        };
+        wav (root.getChildFile ("Drums").getChildFile ("Drop A Chug Loop 140bpm.wav"), 3.43, 2, 110.0f);
+        wav (root.getChildFile ("Drums").getChildFile ("Gallop Kit Loop 160bpm.wav"), 3.0, 2, 90.0f);
+        wav (root.getChildFile ("Drums").getChildFile ("Kick 808 Long.wav"), 1.2, 1, 50.0f);
+        wav (root.getChildFile ("Drums").getChildFile ("Snare Heavy Room.wav"), 0.8, 2, 220.0f);
+        wav (root.getChildFile ("Guitars").getChildFile ("Rogue Riff Am 140bpm.wav"), 6.86, 2, 140.0f);
+        wav (root.getChildFile ("Guitars").getChildFile ("Jupiter Lead F#m 120bpm.wav"), 8.0, 2, 330.0f);
+        wav (root.getChildFile ("Bass").getChildFile ("Sub Bass E 128bpm.wav"), 3.75, 1, 41.0f);
+        juce::MidiMessageSequence sequence;
+        for (int i = 0; i < 16; ++i)
+        {
+            sequence.addEvent (juce::MidiMessage::noteOn (1, 33 + (i % 4) * 2, (juce::uint8) 100), i * 240.0);
+            sequence.addEvent (juce::MidiMessage::noteOff (1, 33 + (i % 4) * 2), i * 240.0 + 200.0);
+        }
+        sequence.updateMatchedPairs();
+        juce::MidiFile midi;
+        midi.setTicksPerQuarterNote (480);
+        midi.addTrack (sequence);
+        for (const auto* name : { "Djent Chug Pattern 140bpm.mid", "Power Chord Riff Am.mid" })
+        {
+            juce::FileOutputStream out (root.getChildFile ("MIDI").getChildFile (name));
+            root.getChildFile ("MIDI").createDirectory();
+            midi.writeTo (out);
+        }
+        root.getChildFile ("Presets").createDirectory();
+        root.getChildFile ("Presets").getChildFile ("Rogue Drop A Rhythm.pr7track").replaceWithText ("<PR7S/>");
+        root.getChildFile ("Songs").createDirectory();
+        root.getChildFile ("Songs").getChildFile ("Night Drive.pr7s").replaceWithText ("<PR7S/>");
+
+        pr7s::Studio studio (false);
+        auto& bay = studio.getMediaBay();
+        bay.addLocation (root);
+        bay.scanNow();
+        bay.setRating (root.getChildFile ("Drums").getChildFile ("Drop A Chug Loop 140bpm.wav"), 5);
+        bay.setRating (root.getChildFile ("Guitars").getChildFile ("Rogue Riff Am 140bpm.wav"), 4);
+        bay.setRating (root.getChildFile ("Drums").getChildFile ("Kick 808 Long.wav"), 3);
+        // Tags (0.21.1).
+        using A = pr7s::MediaAttribute;
+        const auto f = [&] (const char* folder, const char* name) { return root.getChildFile (folder).getChildFile (name); };
+        const juce::Array<juce::File> drumLoops { f ("Drums", "Drop A Chug Loop 140bpm.wav"), f ("Drums", "Gallop Kit Loop 160bpm.wav") };
+        bay.setAttribute (drumLoops, { A::category, {} }, "Drums");
+        bay.setAttribute (drumLoops, { A::subCategory, {} }, "Kit");
+        bay.setAttribute ({ f ("Drums", "Kick 808 Long.wav") }, { A::category, {} }, "Drums");
+        bay.setAttribute ({ f ("Drums", "Kick 808 Long.wav") }, { A::subCategory, {} }, "Kick");
+        bay.setAttribute ({ f ("Drums", "Snare Heavy Room.wav") }, { A::category, {} }, "Drums");
+        bay.setAttribute ({ f ("Drums", "Snare Heavy Room.wav") }, { A::subCategory, {} }, "Snare");
+        const juce::Array<juce::File> guitars { f ("Guitars", "Rogue Riff Am 140bpm.wav"), f ("Guitars", "Jupiter Lead F#m 120bpm.wav") };
+        bay.setAttribute ({ guitars[0] }, { A::category, {} }, "Guitar");
+        bay.setAttribute ({ guitars[0] }, { A::subCategory, {} }, "Riff");
+        bay.setAttribute ({ guitars[1] }, { A::category, {} }, "Guitar");
+        bay.setAttribute ({ guitars[1] }, { A::subCategory, {} }, "Lead");
+        bay.setAttribute ({ f ("Bass", "Sub Bass E 128bpm.wav") }, { A::category, {} }, "Bass");
+        bay.setAttribute ({ f ("Bass", "Sub Bass E 128bpm.wav") }, { A::subCategory, {} }, "Sub");
+        const juce::Array<juce::File> metal { drumLoops[0], drumLoops[1], guitars[0], guitars[1], f ("MIDI", "Djent Chug Pattern 140bpm.mid") };
+        bay.setAttribute (metal, { A::style, {} }, "Metal");
+        bay.setAttribute ({ drumLoops[0], guitars[0], f ("MIDI", "Djent Chug Pattern 140bpm.mid") }, { A::subStyle, {} }, "Djent");
+        bay.setAttribute ({ drumLoops[1], guitars[1] }, { A::subStyle, {} }, "Thrash");
+        bay.setCharacter ({ drumLoops[0], guitars[0], guitars[1] }, 0, 1);   // Distorted
+        bay.setCharacter ({ guitars[0], drumLoops[0] }, 7, -1);              // Tight
+        bay.setCharacter ({ guitars[0] }, 8, 1);                             // Aggressive
+        bay.setAttribute ({ guitars[0] }, { A::comment, {} }, "Shreddage Rogue, verse riff");
+        bay.addUserAttribute ({ "Session", pr7s::UserAttributeType::text, 0 });
+        bay.addUserAttribute ({ "Used in a song", pr7s::UserAttributeType::yesNo, 0 });
+        bay.setAttribute ({ guitars[0] }, { A::user, "Session" }, "Album demos");
+        bay.setAttribute ({ guitars[0] }, { A::user, "Used in a song" }, "yes");
+        MediaBayPage page (studio);
+        page.setSize (1600, 900);
+        page.setFiltersShown (true);
+        page.setInspectorShown (true);
+        page.setInspectorDynamic (false);
+        page.resetFilters();
+        page.setAutoPlay (false);
+        page.sortBy (pr7s::MediaColumn::rating, false);
+        page.clickFilterValue (2, "Metal", false);
+        page.selectRow (1);
+        page.play();
+        studio.setMediaPreviewLevel (0.0f);   // (silent: only the playhead moves)
+        juce::AudioBuffer<float> out (2, 44100);
+        studio.getEngine().render (out, 44100);
+        const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
+        page.stop();
+        juce::File (path).deleteFile();
+        juce::FileOutputStream stream { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, stream);
+    }
+    root.deleteRecursively();
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
 

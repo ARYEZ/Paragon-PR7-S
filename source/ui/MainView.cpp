@@ -1,4 +1,5 @@
 #include "MainView.h"
+#include "ui/TrackActions.h"
 #include "engine/MidiImport.h"
 #include "ui/KeyCommandsPage.h"
 #include "ui/Hub.h"
@@ -70,6 +71,9 @@ MainView::MainView (pr7s::Studio& studioToUse)
         menu.addItem (4, "Audio files, one after another on one track...");
         menu.addSeparator();
         menu.addItem (5, "DAWproject as a new song... (from Cubase: File > Export > DAWproject)");
+        menu.addSeparator();
+        menu.addItem (6, "MediaBay... (F5: browse, hear and drag in your samples, loops, MIDI files and presets)");
+        menu.addItem (7, "Media Rack (Ctrl+Alt+R: the MediaBay at the right of the arrangement)", true, rightZoneShown);
         menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&importButton), [safe = juce::Component::SafePointer<MainView> (this)] (int chosen)
         {
             if (safe == nullptr || chosen == 0)
@@ -83,6 +87,10 @@ MainView::MainView (pr7s::Studio& studioToUse)
                     safe->importMidiFile (chosen == 2);
                 else if (chosen == 5)
                     safe->importDawProjectFile();
+                else if (chosen == 6)
+                    safe->toggleMediaBay();
+                else if (chosen == 7)
+                    safe->toggleRightZone();
                 else
                     safe->importAudioFiles (chosen == 4);
             });
@@ -117,6 +125,20 @@ MainView::MainView (pr7s::Studio& studioToUse)
         inspectorWidth = juce::jlimit (minimumInspectorWidth, maximumInspectorWidth, settings->getIntValue ("inspectorWidth", Inspector::width));
     inspectorEdge = std::make_unique<InspectorEdge> (*this);
     addAndMakeVisible (*inspectorEdge);
+    rightZoneEdge = std::make_unique<RightZoneEdge> (*this);
+    addChildComponent (*rightZoneEdge);
+    if (auto* settings = studio.getSettings())
+    {
+        rightZoneWidth = juce::jlimit (MediaRack::minimumWidth, MediaRack::maximumWidth, settings->getIntValue ("rightZoneWidth", MediaRack::defaultWidth));
+        if (settings->getBoolValue ("rightZoneShown", false))
+        {
+            // (As last time; laid out with everything else.)
+            rightZoneShown = true;
+            mediaRack = std::make_unique<MediaRack> (studio);
+            mediaRack->onUseFile = [this] (const juce::File& file) { useMedia (file); };
+            addAndMakeVisible (*mediaRack);
+        }
+    }
     inspector.onTrackMenu = [this] (int trackId) { trackList.showInstrumentMenu (trackId); };
     inspector.onOpenInstrument = [this] (int trackId) { openInstrumentWindow (trackId); };
     inspector.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
@@ -545,6 +567,13 @@ void MainView::resized()
         inspector.setBounds (middle.removeFromLeft (inspectorWidth));
         inspectorEdge->setBounds (middle.removeFromLeft (5));
     }
+    // The right zone (0.22.0): the Media rack, the whole height on the right, as the Inspector on the left.
+    rightZoneEdge->setVisible (rightZoneShown && mediaRack != nullptr);
+    if (rightZoneShown && mediaRack != nullptr)
+    {
+        mediaRack->setBounds (middle.removeFromRight (juce::jmin (rightZoneWidth, juce::jmax (MediaRack::minimumWidth, middle.getWidth() / 2))));
+        rightZoneEdge->setBounds (middle.removeFromRight (5));
+    }
     zoneDivider->setVisible (false);
     if (auto* zone = dockedZone())
     {
@@ -704,6 +733,12 @@ bool MainView::handleKey (const juce::KeyPress& key)
     const auto letter = (code >= 'a' && code <= 'z') || (code >= 'A' && code <= 'Z')
                           ? juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) code) : (juce::juce_wchar) 0;
 
+    // Ctrl+Alt+R: the Media rack (the manual's Show/Hide Right Zone; before Alt+R and R).
+    if (mods.isCommandDown() && mods.isAltDown() && letter == 'R')
+    {
+        toggleRightZone();
+        return true;
+    }
     // Ctrl+Alt+L: the Inspector (the manual's Show/Hide Left Zone).
     if (mods.isCommandDown() && mods.isAltDown() && letter == 'L')
     {
@@ -847,6 +882,7 @@ bool MainView::handleKey (const juce::KeyPress& key)
     if (key.getKeyCode() == juce::KeyPress::F3Key)      { mods.isAltDown() ? toggleZonePlace (mixerZone) : toggleZone (mixerZone); return true; }
     // F4: the chord pads (0.14.0, our choice: the manual gives them no key; never Alt+F4, which closes the window).
     if (key.getKeyCode() == juce::KeyPress::F4Key && ! mods.isAltDown()) { toggleZone (padsZone); return true; }
+    if (key.getKeyCode() == juce::KeyPress::F5Key && ! mods.isAltDown()) { toggleMediaBay(); return true; }   // (the manual's MediaBay key)
     if (isKeyEditorOpen() && key == juce::KeyPress::escapeKey) { closeKeyEditor(); return true; }
     if (isMixerOpen() && key == juce::KeyPress::escapeKey)     { closeMixer(); return true; }
     if (key == juce::KeyPress::spaceKey)                { studio.togglePlay(); return true; }
@@ -1692,6 +1728,204 @@ void MainView::openSong (const juce::File& file)
         juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Some instruments, effects or recordings are missing",
                                                 "These aren't on this computer. Tracks without their instrument and clips without their "
                                                 "recording are silent, and the sound goes past missing effects, until they're found:\n\n" + problems);
+}
+
+void MainView::toggleMediaBay()
+{
+    const auto keepPlace = [this]
+    {
+        if (auto* settings = studio.getSettings(); settings != nullptr && mediaBayWindow != nullptr)
+            settings->setValue ("mediaBayWindow", mediaBayWindow->getWindowStateAsString());
+    };
+    if (mediaBayWindow != nullptr)
+    {
+        mediaBayWindow->getPage().stop();
+        keepPlace();
+        mediaBayWindow.reset();
+        return;
+    }
+    mediaBayWindow = std::make_unique<MediaBayWindow> (studio);
+    mediaBayWindow->onClose = [this, keepPlace]
+    {
+        keepPlace();
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->mediaBayWindow.reset(); });
+    };
+    mediaBayWindow->getPage().onUse = [this] (const juce::File& file) { useMedia (file); };
+    // Where it was last time, else centred on the studio.
+    auto* settings = studio.getSettings();
+    if (settings != nullptr && settings->containsKey ("mediaBayWindow"))
+        mediaBayWindow->restoreWindowStateFromString (settings->getValue ("mediaBayWindow"));
+    else
+        mediaBayWindow->centreAroundComponent (this, mediaBayWindow->getWidth(), mediaBayWindow->getHeight());
+    mediaBayWindow->setVisible (true);
+}
+
+void MainView::useMedia (const juce::File& file)
+{
+    const auto type = pr7s::mediaTypeOf (file);
+    if (! type)
+        return;
+    const auto at = studio.getEngine().getPosition();
+    switch (*type)
+    {
+        case pr7s::MediaType::audio: importAudio ({ file }, 0, at, true); break;
+        case pr7s::MediaType::midi: importMidiFilesNow ({ file }, false, at, false, 0); break;
+        case pr7s::MediaType::trackPreset:
+        {
+            juce::String error;
+            if (TrackActions::addTrackFrom (studio, file, error) == 0 || error.isNotEmpty())
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Track preset", error.isNotEmpty() ? error : "Couldn't read " + file.getFileName() + ".");
+            break;
+        }
+        case pr7s::MediaType::song:
+            whenSongCanGo ([safe = juce::Component::SafePointer<MainView> (this), file] { if (safe != nullptr) safe->openSong (file); });
+            break;
+    }
+}
+
+void MainView::mediaDropped (const juce::StringArray& files, int x, int y)
+{
+    // Audio and MIDI land as files dragged in from the system do (on the track under them,
+    // snapped); presets and songs are used as a double-click would.
+    juce::StringArray soundAndMidi;
+    for (const auto& path : files)
+    {
+        const auto type = pr7s::mediaTypeOf (juce::File (path));
+        if (type == pr7s::MediaType::audio || type == pr7s::MediaType::midi)
+            soundAndMidi.add (path);
+        else if (type == pr7s::MediaType::trackPreset && trackUnder (x, y) != 0)
+        {
+            // (0.22.0, the manual's Applying Track Presets: onto a track of its kind, applied to it;
+            // a track of another kind: a new track, as below the track list.)
+            juce::String error;
+            if (! TrackActions::loadPresetFrom (studio, trackUnder (x, y), juce::File (path), error))
+                useMedia (juce::File (path));
+        }
+        else if (type)
+            useMedia (juce::File (path));
+    }
+    if (! soundAndMidi.isEmpty())
+        filesDropped (soundAndMidi, x, y);
+}
+
+bool MainView::isInterestedInDragSource (const SourceDetails& details)
+{
+    const auto description = details.description.toString();
+    return description.startsWith ("mediabay:") || MediaRack::isRackDescription (description);
+}
+
+void MainView::itemDragEnter (const SourceDetails& details)
+{
+    fileDragEnter (MediaBayPage::filesFromDragDescription (details.description.toString()), details.localPosition.x, details.localPosition.y);
+}
+
+void MainView::itemDragMove (const SourceDetails& details)
+{
+    fileDragMove (MediaBayPage::filesFromDragDescription (details.description.toString()), details.localPosition.x, details.localPosition.y);
+}
+
+void MainView::itemDragExit (const SourceDetails& details)
+{
+    fileDragExit (MediaBayPage::filesFromDragDescription (details.description.toString()));
+}
+
+void MainView::itemDropped (const SourceDetails& details)
+{
+    if (rackDropped (details.description.toString(), details.localPosition.x, details.localPosition.y))
+        return;
+    mediaDropped (MediaBayPage::filesFromDragDescription (details.description.toString()), details.localPosition.x, details.localPosition.y);
+}
+
+//==============================================================================
+int MainView::trackUnder (int x, int y) const
+{
+    // The track list's rows line up with the arrangement's, so either's x will do.
+    const auto inArrange = arrange.getLocalPoint (this, juce::Point<int> (x, y));
+    const auto inList = trackList.getLocalPoint (this, juce::Point<int> (x, y));
+    const auto overList = trackList.getLocalBounds().contains (inList);
+    if ((! arrange.getLocalBounds().contains (inArrange) && ! overList) || inArrange.y < Timeline::rulerHeight
+        || inArrange.y < 0 || inArrange.y >= arrange.getHeight())
+        return 0;
+    return arrange.trackAtY ((float) inArrange.y);
+}
+
+bool MainView::rackDropped (const juce::String& description, int x, int y)
+{
+    juce::ignoreUnused (x, y);
+    if (! MediaRack::isRackDescription (description))
+        return false;
+    // An instrument: a new instrument track; an effect: a new FX channel (the manual's
+    // Adding VST Instruments / Effects to Projects, dragged onto the track list or event display).
+    juce::String error;
+    if (const auto instrument = MediaRack::instrumentFor (studio, description))
+    {
+        if (studio.addTrack (*instrument, &error) == 0 || error.isNotEmpty())
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't load the instrument", error);
+    }
+    else if (const auto effect = MediaRack::effectFor (studio, description))
+    {
+        if (studio.addFxChannel (&*effect, &error) == 0)
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't load the effect", error);
+    }
+    return true;
+}
+
+void MainView::toggleRightZone()
+{
+    setRightZoneShown (! rightZoneShown);
+}
+
+void MainView::setRightZoneShown (bool shown)
+{
+    rightZoneShown = shown;
+    if (shown && mediaRack == nullptr)
+    {
+        mediaRack = std::make_unique<MediaRack> (studio);
+        mediaRack->onUseFile = [this] (const juce::File& file) { useMedia (file); };
+        addChildComponent (*mediaRack);
+    }
+    if (mediaRack != nullptr)
+    {
+        if (! shown)
+            mediaRack->stop();
+        mediaRack->setVisible (shown);
+    }
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("rightZoneShown", shown);
+    resized();
+}
+
+void MainView::setRightZoneWidth (int width)
+{
+    rightZoneWidth = juce::jlimit (MediaRack::minimumWidth, MediaRack::maximumWidth, width);
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("rightZoneWidth", rightZoneWidth);
+    resized();
+}
+
+MainView::RightZoneEdge::RightZoneEdge (MainView& ownerToUse) : owner (ownerToUse)
+{
+    setMouseCursor (juce::MouseCursor::LeftRightResizeCursor);
+    setRepaintsOnMouseActivity (true);
+    setTooltip ("Drag to make the Media rack wider or narrower");
+}
+
+void MainView::RightZoneEdge::paint (juce::Graphics& g)
+{
+    const auto bounds = getLocalBounds().toFloat();
+    const auto lit = isMouseOverOrDragging();
+    g.setColour (lit ? ParagonColours::accent : ParagonColours::panelEdge);
+    g.fillRect (bounds.withSizeKeepingCentre (lit ? 2.0f : 1.0f, bounds.getHeight()));
+}
+
+void MainView::RightZoneEdge::mouseDown (const juce::MouseEvent&)
+{
+    widthAtDown = owner.getRightZoneWidth();
+}
+
+void MainView::RightZoneEdge::mouseDrag (const juce::MouseEvent& event)
+{
+    owner.setRightZoneWidth (widthAtDown - event.getDistanceFromDragStartX());
 }
 
 void MainView::openLineIdeas (std::vector<int> chordEvents)
