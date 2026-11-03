@@ -255,6 +255,15 @@ namespace pr7s
             juce::SmoothedValue<float> left, right;
             std::bitset<128> held;       // notes sounding, to stop them on a jump or stop
             int heldChannel = 1;         // the channel they were started on (the track's may change meanwhile)
+            // Its drum map (0.26.0): each pitch's O-note (-1: muted), its channel (-1: the track's), and each key's sound.
+            std::array<juce::int16, 128> drumOut {};
+            std::array<juce::int8, 128> drumChannel {};
+            std::array<juce::uint8, 128> drumIn {};
+            TrackState()
+            {
+                for (int n = 0; n < 128; ++n)
+                    drumOut[(size_t) n] = (juce::int16) n, drumChannel[(size_t) n] = -1, drumIn[(size_t) n] = (juce::uint8) n;
+            }
             bool chase = false;          // (0.25.0) play started, jumped or came round: each controller's value there first
             bool bent = false, sustained = false;   // a bend or the sustain pedal sent: reset on stop
             bool checkHeld = false;      // the events changed (an edit while playing): the notes they no longer end, ended

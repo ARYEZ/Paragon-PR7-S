@@ -71,6 +71,8 @@ public:
     juce::ComboBox& getChannel() noexcept { return channel; }
     juce::ComboBox& getAudioInput() noexcept { return audioInput; }
     juce::TextButton& getOutput() noexcept { return output; }
+    juce::TextButton& getDrumMapKey() noexcept { return drumMapKey; }
+    std::function<void()> onDrumMapSetup;   // MainView: the Drum Map Setup window
     juce::TextButton& getInsertSlot (int slot) { return slots[(size_t) slot]; }
     juce::Viewport& getInsertsView() noexcept { return insertsView; }
     static constexpr int insertsInView = 5;
@@ -128,7 +130,9 @@ private:
     ValueSlider volume, pan;   // (double-click: type a value, 0.9.9)
     juce::Label volumeLabel, panLabel, volumeReadout, panReadout;
     juce::TextButton instrument, edit { "EDIT" };
-    juce::Label midiInputLabel, channelLabel, audioInputLabel, outputLabel, noSends;
+    juce::Label midiInputLabel, channelLabel, audioInputLabel, outputLabel, noSends, drumMapLabel;
+    juce::TextButton drumMapKey;   // (0.26.0) the track's drum map (the manual's Routing section)
+    void showDrumMapMenu();
     // MIDI IN: the devices asked of the system only when its list opens (0.9.2:
     // asking on every change, every playhead move, was slow on Windows).
     struct DeviceBox final : juce::ComboBox

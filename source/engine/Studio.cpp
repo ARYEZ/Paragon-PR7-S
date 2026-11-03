@@ -1967,6 +1967,127 @@ namespace pr7s
         }
     }
 
+    const DrumMap* Studio::getDrumMapOf (int trackId) const
+    {
+        const auto* track = project.findTrack (trackId);
+        return track != nullptr ? project.drumMapOf (*track) : nullptr;
+    }
+
+    void Studio::setTrackDrumMap (int trackId, const juce::String& mapName)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || track->isAudio() || track->isChannel())
+            return;
+        auto name = mapName;
+        if (name.isNotEmpty() && project.findDrumMap (name) == nullptr)
+        {
+            // Not in the song yet: the GM Map, or one from the drum map folder.
+            if (name == DrumMap::gm().name)
+                project.drumMaps.push_back (DrumMap::gm());
+            else
+            {
+                juce::String error;
+                for (const auto& libraryFile : getLibraryDrumMaps())
+                    if (libraryFile.getFileNameWithoutExtension() == name)
+                        if (auto map = DrumMap::readDrm (libraryFile, error))
+                        {
+                            map->name = name;
+                            project.drumMaps.push_back (std::move (*map));
+                            break;
+                        }
+                if (project.findDrumMap (name) == nullptr)
+                    return;
+            }
+        }
+        const auto hadNone = track->drumMap.isEmpty();
+        track->drumMap = name;
+        if (name.isEmpty())
+            track->drumEditor = false;
+        else if (hadNone)
+            track->drumEditor = true;   // (the manual's "Use Drum Editor when Drum Map is assigned")
+        SessionLog::note ("Drum map for track " + juce::String (trackId) + ": " + (name.isEmpty() ? juce::String ("none") : name));
+        changed (false);
+    }
+
+    void Studio::setTrackDrumEditor (int trackId, bool drums)
+    {
+        if (auto* track = project.findTrack (trackId); track != nullptr && track->drumEditor != drums)
+        {
+            if (drums && track->drumMap.isEmpty())
+                setTrackDrumMap (trackId, DrumMap::gm().name);   // (drums need names: the GM Map)
+            if (auto* again = project.findTrack (trackId))
+                again->drumEditor = drums;
+            changed (false);
+        }
+    }
+
+    juce::String Studio::addDrumMap (DrumMap map)
+    {
+        auto base = map.name.trim().isNotEmpty() ? map.name.trim() : juce::String ("Drum Map");
+        auto name = base;
+        for (int n = 2; project.findDrumMap (name) != nullptr; ++n)
+            name = base + " " + juce::String (n);
+        map.name = name;
+        project.drumMaps.push_back (std::move (map));
+        changed (false);
+        return name;
+    }
+
+    bool Studio::setDrumMap (const juce::String& name, DrumMap edited)
+    {
+        auto it = std::find_if (project.drumMaps.begin(), project.drumMaps.end(), [&] (const DrumMap& m) { return m.name == name; });
+        if (it == project.drumMaps.end())
+            return false;
+        edited.name = edited.name.trim();
+        if (edited.name.isEmpty() || (edited.name != name && project.findDrumMap (edited.name) != nullptr))
+            return false;   // (a name another map has)
+        for (auto& track : project.tracks)
+            if (track.drumMap == name)
+                track.drumMap = edited.name;
+        *it = std::move (edited);
+        changed (false);
+        return true;
+    }
+
+    void Studio::removeDrumMap (const juce::String& name)
+    {
+        const auto before = project.drumMaps.size();
+        project.drumMaps.erase (std::remove_if (project.drumMaps.begin(), project.drumMaps.end(), [&] (const DrumMap& m) { return m.name == name; }),
+                                project.drumMaps.end());
+        if (project.drumMaps.size() == before)
+            return;
+        for (auto& track : project.tracks)
+            if (track.drumMap == name)
+                track.drumMap = {}, track.drumEditor = false;
+        changed (false);
+    }
+
+    juce::String Studio::loadDrumMap (const juce::File& mapFile, juce::String& error)
+    {
+        std::optional<DrumMap> map;
+        if (const auto xml = juce::XmlDocument::parse (mapFile); xml != nullptr && xml->hasTagName ("DrumMap") && xml->hasAttribute ("name"))
+            map = DrumMap::fromXml (*xml);   // (ours)
+        if (! map)
+            map = DrumMap::readDrm (mapFile, error);
+        if (! map)
+            return {};
+        SessionLog::note ("Drum map loaded: " + mapFile.getFullPathName());
+        return addDrumMap (std::move (*map));
+    }
+
+    juce::File Studio::drumMapFolder()
+    {
+        return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Paragon PR7-S").getChildFile ("Drum Maps");
+    }
+
+    juce::Array<juce::File> Studio::getLibraryDrumMaps() const
+    {
+        const auto folder = drumMapFolderOverride != juce::File() ? drumMapFolderOverride : drumMapFolder();
+        auto files = folder.findChildFiles (juce::File::findFiles, true, "*.drm");
+        files.sort();
+        return files;
+    }
+
     bool Studio::getNewControllersRamp() const
     {
         return settings != nullptr ? settings->getBoolValue ("controllerRamp", true) : newControllersRamp;

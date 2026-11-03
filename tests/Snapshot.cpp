@@ -6,6 +6,7 @@
 #include "engine/Controllers.h"
 #include "ui/Finish.h"
 #include "ui/MainView.h"
+#include "ui/DrumMapPage.h"
 #include "ui/ToolIcons.h"
 #include "ui/Windows.h"
 #include "ui/ParagonLookAndFeel.h"
@@ -286,6 +287,48 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         view.openKeyEditor();
         studio.dispatchPendingMessages();
         view.getKeyEditor().selectNotes ({ 3, 4, 5 });
+        // PARAGON_SNAPSHOT_DRUMS=1 (0.26.0): a drum track with a rock beat in the drum editor (the GM Map;
+        // the crash muted, some hats selected; the velocity lane).
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_DRUMS", {}).isNotEmpty())
+        {
+            const auto drums = studio.addTrack ({});
+            studio.renameTrack (drums, "Drums");
+            Part beat { 16.0, 8.0, "Beat", {} };
+            for (int eighth = 0; eighth < 16; ++eighth)
+            {
+                beat.notes.push_back ({ eighth * 0.5, 0.25, eighth % 4 == 3 ? 46 : 42, eighth % 2 == 0 ? 0.85f : 0.55f });
+                if (eighth % 4 == 0)
+                    beat.notes.push_back ({ eighth * 0.5, 0.25, 36, 0.95f });
+                if (eighth % 4 == 2)
+                    beat.notes.push_back ({ eighth * 0.5, 0.25, 38, 0.9f });
+            }
+            beat.notes.push_back ({ 3.75, 0.25, 36, 0.7f });
+            beat.notes.push_back ({ 0.0, 0.5, 49, 1.0f });
+            beat.notes.push_back ({ 6.5, 0.25, 48, 0.8f });
+            beat.notes.push_back ({ 7.0, 0.25, 45, 0.8f });
+            beat.notes.push_back ({ 7.5, 0.25, 43, 0.85f });
+            studio.addPart (drums, beat);
+            studio.setTrackDrumMap (drums, "GM Map");
+            auto map = *studio.getDrumMapOf (drums);
+            map.sounds[57].mute = true;
+            studio.setDrumMap ("GM Map", map);
+            studio.dispatchPendingMessages();
+            const auto index = (int) studio.getProject().findTrack (drums)->parts.size() - 1;
+            view.getArrangeView().select (drums, index);
+            studio.dispatchPendingMessages();
+            auto& editor = view.getKeyEditor();
+            editor.setDrumRowsShown (KeyEditor::DrumRowsShown::named);
+            std::vector<int> hats;
+            const auto& notes = studio.getProject().findTrack (drums)->parts[(size_t) index].notes;
+            for (int i = 0; i < (int) notes.size(); ++i)
+                if (notes[(size_t) i].pitch == 42 && notes[(size_t) i].start >= 2.0 && notes[(size_t) i].start < 4.0)
+                    hats.push_back (i);
+            editor.selectNotes (hats);
+            editor.setTool (KeyEditor::Tool::draw);
+            view.setKeyEditorSize (150);
+            view.setDockedHeight (760);
+            editor.fitToPart();
+        }
         // PARAGON_SNAPSHOT_LANES=1 (0.25.0): the lead with modulation and pitchbend lanes, a swell, a bend
         // with the semitone grid, some modulation events selected.
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_LANES", {}).isNotEmpty())
@@ -1078,6 +1121,38 @@ TEST_CASE ("Snapshot: the chord pads zone", "[.][snapshot-pads]")
         juce::FileOutputStream out { juce::File (path) };
         juce::PNGImageFormat().writeImageToStream (image, out);
         studio.getPadPlayer().releaseAll();
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+TEST_CASE ("Snapshot: the Drum Map Setup", "[.][snapshot-drummap]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "drummap.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        studio.addDrumMap (pr7s::DrumMap::gm());
+        auto kit = pr7s::DrumMap::gm();
+        kit.name = "Metal Kit";
+        kit.sounds[36].name = "Kick Left";
+        kit.sounds[35].name = "Kick Right";
+        kit.sounds[36].outNote = 24;
+        kit.sounds[38].channel = 9;
+        kit.sounds[39].mute = true;
+        studio.addDrumMap (kit);
+        const auto trackId = studio.getProject().tracks[0].id;
+        DrumMapPage page (studio, [trackId] { return trackId; });
+        page.setSize (1100, 700);
+        page.selectMap ("Metal Kit");
+        page.selectSound (36);
+        page.getTable().scrollToEnsureRowIsOnscreen (50);
+        const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }

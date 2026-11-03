@@ -294,7 +294,7 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
         studio.releaseControl (trackId, pr7s::Studio::control (pr7s::AutomationLane::Target::pan));
     };
 
-    for (auto* label : { &volumeLabel, &panLabel, &midiInputLabel, &channelLabel, &audioInputLabel, &outputLabel })
+    for (auto* label : { &volumeLabel, &panLabel, &midiInputLabel, &channelLabel, &audioInputLabel, &outputLabel, &drumMapLabel })
     {
         label->setFont (font (11.0f));
         label->setColour (juce::Label::textColourId, ParagonColours::textDim);
@@ -307,6 +307,7 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     channelLabel.setText ("CHANNEL", juce::dontSendNotification);
     audioInputLabel.setText ("INPUT", juce::dontSendNotification);
     outputLabel.setText ("OUT", juce::dontSendNotification);
+    drumMapLabel.setText ("DRUMS", juce::dontSendNotification);
     for (auto* readout : { &volumeReadout, &panReadout })
     {
         readout->setFont (font (11.0f));
@@ -316,7 +317,7 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
         content.addAndMakeVisible (*readout);
     }
 
-    for (auto* button : { &instrument, &edit, &output })
+    for (auto* button : { &instrument, &edit, &output, &drumMapKey })
     {
         button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
         button->setColour (juce::TextButton::textColourOffId, ParagonColours::text);
@@ -330,6 +331,9 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     output.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
     output.setTooltip ("Where its sound goes: the master, or a group channel (FX and group channels go to the master)");
     output.onClick = [this] { fader.showOutputMenu (trackId); };
+    drumMapKey.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    drumMapKey.setTooltip ("The track's drum map: names its notes after the drums they play (the MIDI editor's drum view) and plays them through it");
+    drumMapKey.onClick = [this] { showDrumMapMenu(); };
 
     // ROUTING
     for (auto* box : std::initializer_list<juce::ComboBox*> { &midiInput, &channel, &audioInput })
@@ -659,6 +663,7 @@ void Inspector::refresh()
 
     fillMidiInputs();
     channel.setSelectedId (t->midiChannel, juce::dontSendNotification);
+    drumMapKey.setButtonText (t->drumMap.isNotEmpty() ? t->drumMap.toUpperCase() : juce::String ("NO DRUM MAP"));
     // The inputs switched on in SETTINGS (two, with none to ask).
     auto inputs = 2;
     if (auto* device = studio.getDeviceManager().getCurrentAudioDevice())
@@ -937,6 +942,7 @@ void Inspector::layout()
                 {
                     labelled (midiInputLabel, midiInput);
                     labelled (channelLabel, channel);
+                    labelled (drumMapLabel, drumMapKey);
                 }
                 if (t->isAudio())
                     labelled (audioInputLabel, audioInput);
@@ -1037,4 +1043,35 @@ void Inspector::resized()
     visibilityView.setBounds (visibility);
     layout();
     refreshVisibility();
+}
+
+void Inspector::showDrumMapMenu()
+{
+    // (0.26.0) As the MIDI editor's MAP menu: none, the GM Map, the song's, the drum map folder's, the setup.
+    const auto* t = studio.getProject().findTrack (trackId);
+    if (t == nullptr)
+        return;
+    const auto id = trackId;
+    const auto current = t->drumMap;
+    auto& s = studio;
+    juce::PopupMenu menu;
+    menu.addItem ("No Drum Map", true, current.isEmpty(), [&s, id] { s.setTrackDrumMap (id, {}); });
+    const auto gm = pr7s::DrumMap::gm().name;
+    menu.addItem (gm + " (built in)", true, current == gm, [&s, id, gm] { s.setTrackDrumMap (id, gm); });
+    for (const auto& map : studio.getProject().drumMaps)
+        if (map.name != gm)
+            menu.addItem (map.name, true, current == map.name, [&s, id, name = map.name] { s.setTrackDrumMap (id, name); });
+    juce::PopupMenu fromFolder;
+    for (const auto& file : studio.getLibraryDrumMaps())
+        if (const auto name = file.getFileNameWithoutExtension(); studio.getProject().findDrumMap (name) == nullptr)
+            fromFolder.addItem (name, true, false, [&s, id, name] { s.setTrackDrumMap (id, name); });
+    if (fromFolder.getNumItems() > 0)
+        menu.addSubMenu ("From the Drum Map Folder", fromFolder);
+    menu.addSeparator();
+    menu.addItem ("Drum Map Setup...", true, false, [safe = juce::Component::SafePointer<Inspector> (this)]
+    {
+        if (safe != nullptr && safe->onDrumMapSetup)
+            safe->onDrumMapSetup();
+    });
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (drumMapKey));
 }

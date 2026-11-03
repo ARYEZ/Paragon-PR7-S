@@ -400,6 +400,23 @@ namespace pr7s
         // events ramp (the manual's Type of New Controller Events; settings "controllerRamp",
         // on at first: our choice).
         void setControllers (int trackId, int index, std::vector<Controller>);
+        // Drum maps (0.26.0, the manual's Drum Maps): a track's map (by name; "" none; "GM Map"
+        // or a map from the drum map folder is added to the song when chosen), the song's maps
+        // (edited, renamed (the tracks follow), removed (the tracks lose it)), loading a .drm
+        // (or our own map XML), and the drum map folder (Documents/Paragon PR7-S/Drum Maps):
+        // maps saved there are offered in every song. None of these are undo steps (as the
+        // manual's Drum Map Setup); all are saved with the song.
+        static constexpr const char* noDrumMap = "";
+        const DrumMap* getDrumMapOf (int trackId) const;
+        void setTrackDrumMap (int trackId, const juce::String& mapName);
+        void setTrackDrumEditor (int trackId, bool drums);   // the MIDI editor shows its parts as drums
+        juce::String addDrumMap (DrumMap);                    // its name, made unique ("... 2")
+        bool setDrumMap (const juce::String& name, DrumMap edited);
+        void removeDrumMap (const juce::String& name);
+        juce::String loadDrumMap (const juce::File&, juce::String& error);   // the name it has in the song ("": not read)
+        static juce::File drumMapFolder();
+        juce::Array<juce::File> getLibraryDrumMaps() const;   // .drm files in the folder (and its folders), by name
+        void setDrumMapFolderForTests (const juce::File& f) { drumMapFolderOverride = f; }
         void setControllerLanes (int trackId, std::vector<int> lanes);
         void setPitchbendGrid (int trackId, int up, int down, bool snap, bool shown);
         bool getNewControllersRamp() const;
@@ -848,6 +865,7 @@ namespace pr7s
         void buildRecordingNotes (std::vector<Note>& notes, double partStart, double endBeat) const;
         void buildRecordingControllers (std::vector<Controller>&, double partStart) const;   // (0.25.0: each kind's last pass in a cycle)
         bool newControllersRamp = true;   // (without a settings file)
+        juce::File drumMapFolderOverride;
         void timerCallback() override;
         void changeListenerCallback (juce::ChangeBroadcaster*) override;   // the device settings changed: keep them
 

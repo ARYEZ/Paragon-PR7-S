@@ -1,4 +1,5 @@
 #include "MainView.h"
+#include "ui/DrumMapPage.h"
 #include "ui/TrackActions.h"
 #include "engine/MidiImport.h"
 #include "ui/KeyCommandsPage.h"
@@ -253,6 +254,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
         keyEditor.setSizeShown (percent);
     }
     keyEditor.onClose = [this] { closeKeyEditor(); };
+    keyEditor.onDrumMapSetup = [this] { openDrumMapSetup(); };
+    inspector.onDrumMapSetup = [this] { openDrumMapSetup(); };
     mixer.onClose = [this] { closeMixer(); };
     chordPads.onClose = [this] { closeZone (padsZone); };
     chordPads.onWindowToggle = [safe = juce::Component::SafePointer<MainView> (this)]
@@ -1990,6 +1993,31 @@ void MainView::toggleTempoEditor()
         return safe->keyPressed (key);
     };
     tempoEditorWindow = std::move (window);
+}
+
+void MainView::openDrumMapSetup()
+{
+    if (drumMapWindow != nullptr)
+    {
+        drumMapWindow->toFront (true);
+        return;
+    }
+    // (Its maps are the song's: with none yet, the GM Map to start from.)
+    if (studio.getProject().drumMaps.empty())
+        studio.addDrumMap (pr7s::DrumMap::gm());
+    auto window = std::make_unique<DrumMapWindow> (studio, [safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        if (safe == nullptr)
+            return 0;
+        if (const auto id = safe->keyEditor.getTrackId(); id != 0)
+            return id;
+        return safe->studio.getSelectedTrack();
+    });
+    window->onClose = [safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->drumMapWindow = nullptr; });
+    };
+    drumMapWindow = std::move (window);
 }
 
 void MainView::openHub()

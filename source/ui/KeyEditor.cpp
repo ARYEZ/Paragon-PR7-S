@@ -70,6 +70,25 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     lanesKey.setTooltip ("The controller lanes under the notes: add one (modulation, pitchbend, expression, sustain, any CC...), "
                          "show the used ones, velocity only, hide them; new events as ramps or steps");
     lanesKey.onClick = [this] { showLanesMenu(); };
+    // (0.26.0) DRUMS (the drum view), MAP (the track's drum map), LENGTHS (hits as boxes).
+    for (auto* button : { &drumKey, &mapKey, &lengthsKey })
+    {
+        button->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        button->setWantsKeyboardFocus (false);
+        panelColumn.addAndMakeVisible (*button);
+    }
+    mapKey.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    drumKey.setTooltip ("DRUMS: the drum editor: a row per drum, named by the track's drum map, hits as diamonds (it chooses the GM Map if the track has none)");
+    mapKey.setTooltip ("The track's drum map: none, the GM Map (built in), the song's, those in the drum map folder; load a .drm; Drum Map Setup");
+    lengthsKey.setTooltip ("LENGTHS: drum hits drawn as boxes as long as they are (and lengthened by their end), not diamonds");
+    drumKey.onClick = [this] { setDrumView (! drumViewOn); };
+    mapKey.onClick = [this] { showDrumMapMenu(); };
+    lengthsKey.onClick = [this] { setShowDrumLengths (! showDrumLengths); };
+    if (auto* settings = studio.getSettings())
+    {
+        drumRowsShown = (DrumRowsShown) juce::jlimit (0, 2, settings->getIntValue ("drumRowsShown", 0));
+        showDrumLengths = settings->getBoolValue ("drumLengths", false);
+    }
     if (auto* settings = studio.getSettings())
     {
         laneHeight = juce::jlimit (40, 400, settings->getIntValue ("midiEditorLaneHeight", velocityHeight));
@@ -309,6 +328,7 @@ void KeyEditor::refresh()
     }
     if (part == nullptr)
         selectedControllers.clear();
+    refreshDrumRows();   // (0.26.0)
     // (The lanes may differ from the last part's: the notes' room follows.)
     if (const auto top = lanesTop(); std::abs (top - lastLanesTop) > 0.5f)
     {
@@ -327,7 +347,7 @@ void KeyEditor::fitToPart()
     const auto area = getNotesArea();
     const auto width = juce::jmax (100.0f, area.getWidth() - 20.0f);
     pixelsPerBeat = juce::jlimit (12.0, 400.0, (double) width / juce::jmax (1.0, part->length));
-    firstBeat = part->start;
+    firstBeat = juce::jmax (earliestFirstBeat(), part->start - (drumViewOn ? (double) rowHeight / pixelsPerBeat : 0.0));   // (drums: the first hit's whole diamond)
 
     // The notes in the middle, up and down (or round middle C for an empty part).
     auto lowest = 127, highest = 0;
@@ -338,12 +358,21 @@ void KeyEditor::fitToPart()
     }
     const auto middle = part->notes.empty() ? 60.0f : (float) (lowest + highest) * 0.5f;
     scrollY = (127.0f - middle) * rowHeight - area.getHeight() * 0.5f + rowHeight * 0.5f;
+    if (drumViewOn)
+    {
+        // (the drums from the first one the part plays, a row above it showing)
+        auto firstRow = numRows();
+        for (const auto& note : part->notes)
+            if (const auto row = juce::isPositiveAndBelow (note.pitch, 128) ? drumRowOf[(size_t) note.pitch] : -1; row >= 0)
+                firstRow = juce::jmin (firstRow, row);
+        scrollY = firstRow < numRows() ? juce::jmax (0.0f, ((float) firstRow - 1.0f) * rowHeight) : 0.0f;
+    }
     clampScroll();
 }
 
 void KeyEditor::clampScroll()
 {
-    const auto room = juce::jmax (0.0f, 128.0f * rowHeight - getNotesArea().getHeight());
+    const auto room = juce::jmax (0.0f, (float) numRows() * rowHeight - getNotesArea().getHeight());
     scrollY = juce::jlimit (0.0f, room, scrollY);
 }
 
@@ -427,7 +456,7 @@ void KeyEditor::zoom (bool in)
 {
     const auto cursor = studio.getEngine().getPosition();
     pixelsPerBeat = juce::jlimit (12.0, 600.0, in ? pixelsPerBeat * Timeline::zoomStep : pixelsPerBeat / Timeline::zoomStep);
-    firstBeat = juce::jmax (0.0, cursor - (double) getNotesArea().getWidth() * 0.5 / pixelsPerBeat);
+    firstBeat = juce::jmax (earliestFirstBeat(), cursor - (double) getNotesArea().getWidth() * 0.5 / pixelsPerBeat);
     refreshScrollBars();
     repaint();
 }
@@ -453,14 +482,14 @@ void KeyEditor::refreshScrollBars()
     const auto visibleBeats = (double) area.getWidth() / pixelsPerBeat;
     across.setRangeLimits (0.0, juce::jmax (Timeline::scrollLength (studio), firstBeat + visibleBeats), juce::dontSendNotification);
     across.setCurrentRange (firstBeat, visibleBeats, juce::dontSendNotification);
-    down.setRangeLimits (0.0, juce::jmax ((double) area.getHeight(), 128.0 * rowHeight), juce::dontSendNotification);
+    down.setRangeLimits (0.0, juce::jmax ((double) area.getHeight(), (double) numRows() * rowHeight), juce::dontSendNotification);
     down.setCurrentRange (scrollY, area.getHeight(), juce::dontSendNotification);
 }
 
 void KeyEditor::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
 {
     if (bar == &across)
-        firstBeat = juce::jmax (0.0, newRangeStart);
+        firstBeat = juce::jmax (earliestFirstBeat(), newRangeStart);
     else
     {
         scrollY = (float) newRangeStart;
@@ -472,18 +501,18 @@ void KeyEditor::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
 //==============================================================================
 juce::Rectangle<float> KeyEditor::rulerArea() const
 {
-    return { (float) (sideWidth + keysWidth), 0.0f, (float) (getWidth() - sideWidth - keysWidth), (float) rulerHeight };
+    return { (float) (sideWidth + listWidth()), 0.0f, (float) (getWidth() - sideWidth - listWidth()), (float) rulerHeight };
 }
 
 juce::Rectangle<float> KeyEditor::keysArea() const
 {
-    return { (float) sideWidth, (float) rulerHeight, (float) keysWidth, juce::jmax (0.0f, lanesTop() - (float) rulerHeight) };
+    return { (float) sideWidth, (float) rulerHeight, (float) listWidth(), juce::jmax (0.0f, lanesTop() - (float) rulerHeight) };
 }
 
 juce::Rectangle<float> KeyEditor::getNotesArea() const
 {
     // Room on the right for the scroll bar down, and at the bottom (under the velocities) for the one across.
-    return { (float) (sideWidth + keysWidth), (float) rulerHeight, (float) (getWidth() - sideWidth - keysWidth - scrollBarSize),
+    return { (float) (sideWidth + listWidth()), (float) rulerHeight, (float) (getWidth() - sideWidth - listWidth() - scrollBarSize),
              juce::jmax (0.0f, lanesTop() - (float) rulerHeight) };
 }
 
@@ -492,27 +521,50 @@ juce::Rectangle<float> KeyEditor::getVelocityArea() const
     // (0.25.0) The velocity lane, wherever it is among the lanes (none shown: nothing).
     if (const auto lane = laneOf (pr7s::ControllerKinds::velocity); lane >= 0)
         return getLaneArea (lane);
-    return { (float) (sideWidth + keysWidth), (float) (getHeight() - scrollBarSize), (float) (getWidth() - sideWidth - keysWidth), 0.0f };
+    return { (float) (sideWidth + listWidth()), (float) (getHeight() - scrollBarSize), (float) (getWidth() - sideWidth - listWidth()), 0.0f };
 }
 
 float KeyEditor::xForBeat (double songBeat) const noexcept
 {
-    return (float) (sideWidth + keysWidth) + (float) ((songBeat - firstBeat) * pixelsPerBeat);
+    return (float) (sideWidth + listWidth()) + (float) ((songBeat - firstBeat) * pixelsPerBeat);
 }
 
 double KeyEditor::beatForX (float x) const noexcept
 {
-    return firstBeat + (x - (float) (sideWidth + keysWidth)) / pixelsPerBeat;
+    return firstBeat + (x - (float) (sideWidth + listWidth())) / pixelsPerBeat;
 }
 
 float KeyEditor::yForPitch (int pitch) const noexcept
 {
+    if (drumViewOn)
+    {
+        // (0.26.0) Its drum's row; a pitch with no row far out of sight.
+        const auto row = juce::isPositiveAndBelow (pitch, 128) ? drumRowOf[(size_t) pitch] : -1;
+        return row < 0 ? -1.0e6f : (float) rulerHeight + (float) row * rowHeight - scrollY;
+    }
     return (float) rulerHeight + (float) (127 - pitch) * rowHeight - scrollY;
+}
+
+int KeyEditor::rowForY (float y) const noexcept
+{
+    return juce::jlimit (0, juce::jmax (0, numRows() - 1), (int) std::floor ((y - (float) rulerHeight + scrollY) / rowHeight));
 }
 
 int KeyEditor::pitchForY (float y) const noexcept
 {
+    if (drumViewOn)
+        return drumRows.empty() ? 60 : drumRows[(size_t) rowForY (y)];
     return juce::jlimit (0, 127, 127 - (int) std::floor ((y - (float) rulerHeight + scrollY) / rowHeight));
+}
+
+int KeyEditor::pitchMovedBy (int pitch, int rows) const noexcept
+{
+    if (! drumViewOn)
+        return juce::jlimit (0, 127, pitch + rows);
+    const auto row = juce::isPositiveAndBelow (pitch, 128) ? drumRowOf[(size_t) pitch] : -1;
+    if (row < 0 || drumRows.empty())
+        return pitch;   // (a sound not listed stays as it is)
+    return drumRows[(size_t) juce::jlimit (0, (int) drumRows.size() - 1, row - rows)];   // (up the list: rows > 0)
 }
 
 juce::Rectangle<float> KeyEditor::getNoteBounds (int index) const
@@ -523,6 +575,8 @@ juce::Rectangle<float> KeyEditor::getNoteBounds (int index) const
         return {};
     const auto& note = list[(size_t) index];
     const auto x = xForBeat (part->start + note.start);
+    if (drumViewOn && ! showDrumLengths)
+        return { x - rowHeight * 0.5f, yForPitch (note.pitch) + 1.0f, rowHeight - 1.0f, rowHeight - 1.0f };   // (a diamond's square, centred on its start)
     return { x, yForPitch (note.pitch) + 1.0f, juce::jmax (3.0f, (float) (note.length * pixelsPerBeat)), rowHeight - 1.0f };
 }
 
@@ -597,6 +651,14 @@ void KeyEditor::transposeSelected (int semitones)
     if (selected.empty() || part == nullptr)
         return;
     auto edited = part->notes;
+    if (drumViewOn)
+    {
+        // (0.26.0) Up or down the drum list, a row (Shift: as far as it goes).
+        for (const auto i : selected)
+            edited[(size_t) i].pitch = pitchMovedBy (edited[(size_t) i].pitch, semitones > 0 ? juce::jmin (semitones, 128) : juce::jmax (semitones, -128));
+        commit (std::move (edited));
+        return;
+    }
     // As far as it goes while every selected note stays on the keyboard.
     auto lowest = 127, highest = 0;
     for (const auto i : selected)
@@ -993,14 +1055,17 @@ void KeyEditor::startAudition (int pitch, float velocity)
     if (studio.getEngine().isRecording())
         return;
     auditioning = pitch;
-    studio.getEngine().getKeyboardState().noteOn (1, pitch, juce::jlimit (0.05f, 1.0f, velocity));
+    // (0.26.0) With a drum map the keyboard plays I-notes: the sound's own.
+    const auto* map = studio.getDrumMapOf (getTrackId());
+    auditionKey = map != nullptr ? map->sounds[(size_t) juce::jlimit (0, 127, pitch)].inNote : pitch;
+    studio.getEngine().getKeyboardState().noteOn (1, auditionKey, juce::jlimit (0.05f, 1.0f, velocity));
 }
 
 void KeyEditor::stopAudition()
 {
     if (auditioning >= 0)
-        studio.getEngine().getKeyboardState().noteOff (1, auditioning, 0.0f);
-    auditioning = -1;
+        studio.getEngine().getKeyboardState().noteOff (1, auditionKey >= 0 ? auditionKey : auditioning, 0.0f);
+    auditioning = auditionKey = -1;
 }
 
 //==============================================================================
@@ -1170,7 +1235,8 @@ void KeyEditor::mouseMove (const juce::MouseEvent& event)
     if (tool == Tool::select)
     {
         const auto hit = noteAt (event.position);
-        const auto atEnd = hit >= 0 && event.position.x > getNoteBounds (hit).getRight() - juce::jmin (edgeGrab, getNoteBounds (hit).getWidth() / 3.0f);
+        const auto atEnd = hit >= 0 && ! (drumViewOn && ! showDrumLengths)
+                           && event.position.x > getNoteBounds (hit).getRight() - juce::jmin (edgeGrab, getNoteBounds (hit).getWidth() / 3.0f);
         setMouseCursor (atEnd ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor);
     }
 }
@@ -1202,6 +1268,21 @@ void KeyEditor::mouseDown (const juce::MouseEvent& event)
         return;
     if (keysArea().contains (point))
     {
+        if (drumViewOn)
+        {
+            // (0.26.0) The drum list: M mutes the sound, a right-click its menu, else hear it.
+            const auto pitch = pitchForY (point.y);
+            if (event.mods.isPopupMenu())
+            {
+                showDrumSoundMenu (pitch);
+                return;
+            }
+            if (getDrumMuteBox (pitch).contains (point))
+            {
+                toggleDrumMute (pitch);
+                return;
+            }
+        }
         gesture = Gesture::audition;
         startAudition (pitchForY (point.y), newVelocity);
         return;
@@ -1264,6 +1345,7 @@ void KeyEditor::mouseDown (const juce::MouseEvent& event)
             gesture = Gesture::draw;
             working.push_back ({ start - part->start, free ? juce::jmax (finest, grid) : grid, pitchForY (point.y), newVelocity });
             anchor = (int) working.size() - 1;
+            drumDrawStart = start;
             selected = { anchor };
             moved = true;
             startAudition (working.back().pitch, newVelocity);
@@ -1302,7 +1384,8 @@ void KeyEditor::mouseDown (const juce::MouseEvent& event)
     begin();
     clicked = anchor = hit;
     const auto bounds = getNoteBounds (hit);
-    gesture = point.x > bounds.getRight() - juce::jmin (edgeGrab, bounds.getWidth() / 3.0f) ? Gesture::resize : Gesture::move;
+    gesture = point.x > bounds.getRight() - juce::jmin (edgeGrab, bounds.getWidth() / 3.0f) && ! (drumViewOn && ! showDrumLengths)
+                  ? Gesture::resize : Gesture::move;
     dragging = selected;
     if (gesture == Gesture::move && event.mods.isAltDown())
     {
@@ -1387,11 +1470,17 @@ void KeyEditor::mouseDrag (const juce::MouseEvent& event)
             }
             shift = juce::jmax (-earliest, juce::jmin (shift, part->length - finest - latest));
             semitones = juce::jlimit (-lowest, 127 - highest, semitones);
+            // (0.26.0) In the drum view, rows of the drum list.
+            const auto rows = rowForY (downAt.y) - rowForY (point.y);
             for (const auto i : dragging)
             {
                 working[(size_t) i] = original[(size_t) i];
                 working[(size_t) i].start += shift;
-                working[(size_t) i].pitch += semitones;
+                if (drumViewOn)
+                    working[(size_t) i].pitch = event.mods.isCommandDown() && ! event.mods.isShiftDown() && semitones == 0
+                                                    ? working[(size_t) i].pitch : pitchMovedBy (working[(size_t) i].pitch, rows);
+                else
+                    working[(size_t) i].pitch += semitones;
             }
             if (working[(size_t) anchor].pitch != auditioning)
                 startAudition (working[(size_t) anchor].pitch, working[(size_t) anchor].velocity);
@@ -1420,6 +1509,21 @@ void KeyEditor::mouseDrag (const juce::MouseEvent& event)
         {
             if (part == nullptr)
                 return;
+            if (drumViewOn && ! showDrumLengths)
+            {
+                // (0.26.0, the manual's Inserting Multiple Drum Note Events) The drumstick dragged right: a hit on every grid step.
+                const auto pitch = working[(size_t) anchor].pitch;
+                working.resize ((size_t) anchor + 1);
+                const auto step = free ? juce::jmax (finest, grid) : grid;
+                for (auto beat = drumDrawStart + step; beat <= beatForX (point.x) + 1.0e-9 && beat < part->end(); beat += step)
+                    working.push_back ({ beat - part->start, step, pitch, newVelocity });
+                selected.clear();
+                for (int i = anchor; i < (int) working.size(); ++i)
+                    selected.push_back (i);
+                refreshPanel();
+                repaint();
+                return;
+            }
             auto& n = working[(size_t) anchor];
             const auto start = part->start + n.start;
             const auto end = free ? beatForX (point.x) : std::ceil (beatForX (point.x) / grid - 1.0e-9) * grid;
@@ -1487,7 +1591,7 @@ void KeyEditor::mouseUp (const juce::MouseEvent&)
         case Gesture::velocityHandle:
             if (moved)
                 commit (working);
-            if (finished == Gesture::draw && getPart() != nullptr)
+            if (finished == Gesture::draw && getPart() != nullptr && selected.size() <= 1)
                 selected = { anchor };
             break;
         case Gesture::position:
@@ -1510,6 +1614,22 @@ void KeyEditor::mouseDoubleClick (const juce::MouseEvent& event)
 {
     if (laneDoubleClick (event))   // (0.25.0) an event's value typed in, or a new event
         return;
+    if (drumViewOn && keysArea().contains (event.position))
+    {
+        // (0.26.0) A drum's name typed in.
+        const auto pitch = pitchForY (event.position.y);
+        auto* box = new juce::AlertWindow ("RENAME " + pr7s::noteName (pitch), "The drum's name in this map (all the tracks using it):", juce::MessageBoxIconType::NoIcon);
+        box->addTextEditor ("name", drumNameOf (pitch));
+        box->addButton ("RENAME", 1, juce::KeyPress (juce::KeyPress::returnKey));
+        box->addButton ("CANCEL", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+        juce::Component::SafePointer<KeyEditor> safe (this);
+        box->enterModalState (true, juce::ModalCallbackFunction::create ([safe, box, pitch] (int result)
+        {
+            if (result == 1 && safe != nullptr)
+                safe->renameDrumSound (pitch, box->getTextEditorContents ("name"));
+        }), true);
+        return;
+    }
     // SELECT: a double-click on a note deletes it; on empty space, draws a note there.
     const auto* part = getPart();
     if (tool != Tool::select || part == nullptr || ! getNotesArea().contains (event.position))
@@ -1544,12 +1664,12 @@ void KeyEditor::mouseWheelMove (const juce::MouseEvent& event, const juce::Mouse
         const auto x = juce::jmax (getNotesArea().getX(), event.position.x);
         const auto beat = beatForX (x);
         pixelsPerBeat = juce::jlimit (12.0, 600.0, pixelsPerBeat * (wheel.deltaY > 0.0f ? 1.25 : 0.8));
-        firstBeat = juce::jmax (0.0, beat - (x - getNotesArea().getX()) / pixelsPerBeat);
+        firstBeat = juce::jmax (earliestFirstBeat(), beat - (x - getNotesArea().getX()) / pixelsPerBeat);
     }
     else if (event.mods.isShiftDown() || std::abs (wheel.deltaX) > std::abs (wheel.deltaY))
     {
         const auto delta = std::abs (wheel.deltaX) > std::abs (wheel.deltaY) ? wheel.deltaX : wheel.deltaY;
-        firstBeat = juce::jmax (0.0, firstBeat - delta * 400.0 / pixelsPerBeat);
+        firstBeat = juce::jmax (earliestFirstBeat(), firstBeat - delta * 400.0 / pixelsPerBeat);
     }
     else
     {
@@ -1567,6 +1687,15 @@ void KeyEditor::refreshPanel()
     for (auto* button : { &selectTool, &drawTool, &eraseTool, &quantizeButton })
         button->setEnabled (hasPart);
     gridBox.setEnabled (hasPart);
+    // (0.26.0) The drum keys follow the track.
+    const auto* map = studio.getDrumMapOf (getTrackId());
+    drumKey.setEnabled (hasPart);
+    drumKey.setToggleState (drumViewOn, juce::dontSendNotification);
+    mapKey.setEnabled (hasPart);
+    mapKey.setButtonText (map != nullptr ? "MAP: " + map->name.toUpperCase() : juce::String ("MAP: NONE"));
+    lengthsKey.setEnabled (drumViewOn);
+    lengthsKey.setToggleState (showDrumLengths, juce::dontSendNotification);
+    drawTool.setButtonText (drumViewOn ? "DRUMSTICK" : "DRAW");
     repaint (0, 0, sideWidth, getHeight());
 }
 
@@ -1578,7 +1707,7 @@ void KeyEditor::resized()
 
     const auto notesArea = getNotesArea().toNearestInt();
     down.setBounds (notesArea.getRight(), notesArea.getY(), scrollBarSize, notesArea.getHeight());
-    across.setBounds (notesArea.getX() - keysWidth, getHeight() - scrollBarSize, getWidth() - sideWidth, scrollBarSize);
+    across.setBounds (notesArea.getX() - listWidth(), getHeight() - scrollBarSize, getWidth() - sideWidth, scrollBarSize);
     clampScroll();
     refreshScrollBars();
 }
@@ -1602,6 +1731,10 @@ void KeyEditor::layoutColumn()
     place (gridBox);
     place (quantizeButton);
     place (lanesKey);
+    gap();
+    place (drumKey);
+    place (mapKey);
+    place (lengthsKey);
     gap();
     place (autoScrollButton);
     place (autoScrollMenu);
@@ -1630,7 +1763,10 @@ void KeyEditor::paint (juce::Graphics& g)
     {
         juce::Graphics::ScopedSaveState state (g);
         g.reduceClipRegion (keysArea().getSmallestIntegerContainer());
-        paintKeys (g);
+        if (drumViewOn)
+            paintDrumList (g);
+        else
+            paintKeys (g);
     }
     paintLanes (g);   // (0.25.0: the velocity lane among them)
     paintRuler (g);
@@ -1724,7 +1860,9 @@ void KeyEditor::paintInfo (juce::Graphics& g, juce::Rectangle<float> info)
     else if (selected.size() == 1 && juce::isPositiveAndBelow (selected.front(), (int) list.size()))
     {
         const auto& n = list[(size_t) selected.front()];
-        line1 = pr7s::noteName (n.pitch) + "    velocity " + juce::String (juce::roundToInt (n.velocity * 127.0f));
+        const auto drum = drumNameOf (n.pitch);
+        line1 = (drum.isNotEmpty() ? drum + " (" + pr7s::noteName (n.pitch) + ")" : pr7s::noteName (n.pitch))
+              + "    velocity " + juce::String (juce::roundToInt (n.velocity * 127.0f));
         line2 = "at " + pr7s::formatBarsBeats (part->start + n.start, studio.getProject()).replace ("  ", " ")
               + ",  " + describeLength (n.length);
     }
@@ -1801,7 +1939,17 @@ void KeyEditor::paintNotes (juce::Graphics& g)
     const auto area = getNotesArea();
     const auto& project = studio.getProject();
 
-    // The rows: darker for the black keys, a line at every C.
+    // The rows: darker for the black keys, a line at every C (drums: a row each, every other darker).
+    if (drumViewOn)
+        for (int row = rowForY (area.getY()); row <= rowForY (area.getBottom()) && row < numRows(); ++row)
+        {
+            const auto y = (float) rulerHeight + (float) row * rowHeight - scrollY;
+            g.setColour (row % 2 == 0 ? whiteRow : blackRow);
+            g.fillRect (juce::Rectangle<float> (area.getX(), y, area.getWidth(), rowHeight));
+            g.setColour (octaveLine.withAlpha (0.5f));
+            g.fillRect (juce::Rectangle<float> (area.getX(), y + rowHeight - 1.0f, area.getWidth(), 1.0f));
+        }
+    else
     for (int pitch = pitchForY (area.getBottom()); pitch <= pitchForY (area.getY()); ++pitch)
     {
         const auto row = juce::Rectangle<float> (area.getX(), yForPitch (pitch), area.getWidth(), rowHeight);
@@ -1859,6 +2007,21 @@ void KeyEditor::paintNotes (juce::Graphics& g)
         const auto& note = list[(size_t) i];
         const auto isSelected = std::binary_search (selected.begin(), selected.end(), i);
         const auto fill = velocityColour (note.velocity);
+        if (drumViewOn && ! showDrumLengths)
+        {
+            // (0.26.0) A drum hit: a diamond (muted sounds' hits hollow).
+            const auto* map = studio.getDrumMapOf (track->id);
+            const auto muted = map != nullptr && map->sounds[(size_t) juce::jlimit (0, 127, note.pitch)].mute;
+            juce::Path diamond;
+            const auto c = bounds.getCentre();
+            const auto r = bounds.getWidth() * 0.5f;
+            diamond.addQuadrilateral (c.x, c.y - r, c.x + r, c.y, c.x, c.y + r, c.x - r, c.y);
+            g.setColour ((isSelected ? fill.brighter (0.35f) : fill).withAlpha (muted ? 0.25f : 1.0f));
+            g.fillPath (diamond);
+            g.setColour (isSelected ? juce::Colours::white : juce::Colours::black.withAlpha (0.55f));
+            g.strokePath (diamond, juce::PathStrokeType (isSelected ? 1.5f : 1.0f));
+            continue;
+        }
         g.setColour (isSelected ? fill.brighter (0.35f) : fill);
         g.fillRoundedRectangle (bounds, 2.0f);
         g.setColour (isSelected ? juce::Colours::white : juce::Colours::black.withAlpha (0.55f));
@@ -1867,7 +2030,9 @@ void KeyEditor::paintNotes (juce::Graphics& g)
         {
             g.setColour (juce::Colours::black.withAlpha (0.75f));
             g.setFont (font (9.0f));
-            g.drawText (pr7s::noteName (note.pitch), bounds.withTrimmedLeft (4.0f), juce::Justification::centredLeft, false);
+            const auto drum = drumNameOf (note.pitch);   // (0.26.0: the drum it plays, with a map)
+            g.drawText (drum.isNotEmpty() && bounds.getWidth() > 60.0f ? drum : pr7s::noteName (note.pitch), bounds.withTrimmedLeft (4.0f),
+                        juce::Justification::centredLeft, false);
         }
     }
 
@@ -1885,7 +2050,7 @@ void KeyEditor::paintVelocities (juce::Graphics& g)
     const auto area = getVelocityArea();
     g.setColour (juce::Colour (0xff0b090c));
     g.fillRect (area);
-    const auto label = juce::Rectangle<float> ((float) sideWidth, area.getY(), (float) keysWidth, area.getHeight());
+    const auto label = juce::Rectangle<float> ((float) sideWidth, area.getY(), (float) listWidth(), area.getHeight());
     g.setColour (juce::Colour (0xff100c11));
     g.fillRect (label);
     g.setFont (font (8.5f, juce::Font::plain));

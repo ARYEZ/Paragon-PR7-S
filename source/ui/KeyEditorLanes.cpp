@@ -80,13 +80,13 @@ juce::Rectangle<float> KeyEditor::getLaneArea (int lane) const
     if (! juce::isPositiveAndBelow (lane, getNumLanes()))
         return {};
     const auto h = laneHeightNow();
-    return { (float) (sideWidth + keysWidth), lanesTop() + h * (float) lane, (float) (getWidth() - sideWidth - keysWidth), h };
+    return { (float) (sideWidth + listWidth()), lanesTop() + h * (float) lane, (float) (getWidth() - sideWidth - listWidth()), h };
 }
 
 juce::Rectangle<float> KeyEditor::getLaneHeader (int lane) const
 {
     const auto area = getLaneArea (lane);
-    return area.isEmpty() ? area : area.withX ((float) sideWidth).withWidth ((float) keysWidth);
+    return area.isEmpty() ? area : area.withX ((float) sideWidth).withWidth ((float) listWidth());
 }
 
 int KeyEditor::laneAt (juce::Point<float> p) const

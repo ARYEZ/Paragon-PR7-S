@@ -5,6 +5,7 @@
 #include <optional>
 
 #include "Chords.h"
+#include "DrumMaps.h"
 #include "TempoMap.h"
 
 // A song: its tempo and time signature, the cycle (loop) range, and its
@@ -212,6 +213,10 @@ namespace pr7s
         // (the manual's Grid Settings: 1-96 up and down, 2 at first; saved with the song).
         std::vector<int> controllerLanes { -1 };
         int pitchbendUp = 2, pitchbendDown = 2;
+        // Its drum map (0.26.0; one of Project::drumMaps by name; empty: none), and whether the
+        // MIDI editor shows its parts as drums (on whenever a map is chosen, at first).
+        juce::String drumMap;
+        bool drumEditor = false;
         bool pitchbendSnap = false, pitchbendGrid = false;
         bool isAudio() const noexcept { return kind == Kind::audio; }
         bool isFx() const noexcept { return kind == Kind::fx; }
@@ -243,6 +248,7 @@ namespace pr7s
         double tempoViewLow = 60.0, tempoViewHigh = 180.0;   // the curve's shown range (Visible Tempo Lower/Upper Limit)
         ChordPads chordPads = ChordPads::defaults();         // the chord pads (0.14.0): kept with the song, as the manual's
         ChordTrack chordTrack;                                // the chord track (0.16.0)
+        std::vector<DrumMap> drumMaps;                        // (0.26.0) the song's (the manual: saved with the song); names unique
         std::vector<LinkGroup> linkGroups;                    // (0.17.0) by id; each with two channels or more
         int numerator = 4, denominator = 4;   // the time signature
         bool loopOn = false;                  // CYCLE
@@ -275,6 +281,8 @@ namespace pr7s
         std::vector<int> linkGroupMembers (int groupId) const;   // in the tracks' order
         Track* findTrack (int id);
         const Track* findTrack (int id) const;
+        const DrumMap* findDrumMap (const juce::String& name) const;
+        const DrumMap* drumMapOf (const Track&) const;   // its map, if it has one
         Track* armedTrack();
         const Track* armedTrack() const;
 

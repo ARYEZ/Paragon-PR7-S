@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.26.0
+
+The drum editor, with drum maps (the owner asked: a drum editor with the map built in that says what drum each note plays; as the manual's Drum Editor and Drum Maps).
+
+- **DRUMS** (in the MIDI editor's panel) turns the editor into the drum editor: the piano gives way to the **drum sound list**, a row per drum with its note and its **name** (BASS DRUM 1, ACOUSTIC SNARE, CLOSED HI-HAT...), in the map's order. Hits are drawn as **diamonds**; LENGTHS draws them as boxes as long as they are instead. The editor opens on the first drum the part plays.
+- **The GM Map is built in:** the General MIDI drum kit's names (35 Acoustic Bass Drum to 81 Open Triangle, plus General MIDI 2's extra sounds). Choosing DRUMS on a track with no map gives it the GM Map; choosing a map for a track turns the drum editor on by itself (the manual's "Use Drum Editor when Drum Map is assigned").
+- **Your kits' maps:** MAP (in the panel) and **DRUMS** in the Inspector's Routing choose the track's map: the GM Map, the song's maps, or any **.drm** drum map file in **Documents/Paragon PR7-S/Drum Maps** (Open the Drum Map Folder shows it). **Load a Drum Map (.drm)** reads the drum map files the other DAW uses, which drum instruments such as Superior Drummer, EZdrummer or Addictive Drums can export (check your instrument's mapping page); Save as a .drm writes one.
+- **The drum list:** click a drum to hear it; **M** mutes it (its hits go hollow and silent); double-click its name to rename it; right-click for Select All Notes of This Sound, its I-note, O-note and channel, and which drums are listed (the named ones and those with hits, only those with hits, or all 128).
+- **The drumstick** (DRAW in the drum editor): a click puts a hit on the grid step; dragging right puts a hit on every step (the manual's Inserting Multiple Drum Note Events). Moving hits up and down moves them from drum to drum along the list (Up and Down too).
+- **What the map does when playing** (the manual's I-notes and O-notes): each drum is sent to the instrument as its **O-note** (so a pattern written for one kit plays the right drums on another: change the map, not the notes), on its own **channel** if it has one, and **muted** drums are silent. What you play in goes through the **I-notes**: the key set for a drum plays and records that drum.
+- **Drum Map Setup** (from MAP, the drum list's menu or the Inspector): the song's maps (NEW MAP, NEW COPY, REMOVE, LOAD, SAVE, rename), each drum's name, I-note, O-note, channel and mute, the list's order (UP / DOWN), and FOR THE TRACK. Changes act at once on every track using the map and are saved with the song.
+- **The piano roll** names the drums too, when its track has a map (in the panel's foot and on notes wide enough).
+- **Honestly:** the .drm reader follows the format as we know it (the files are XML: a list of 128 drums with their I-note, O-note, channel, mute and name, and their order); it's checked with files we made in that layout, not with one exported from another program, so if one of your kit's files doesn't load, send it and I'll fix the reader. Not built: per-drum Snap and Insert Length (the editor's grid is used), the score settings (noteheads, voices, display notes), Create Drum Map from Instrument, O-Note Conversion, Solo Instrument, drum maps on MIDI outputs (instrument tracks only). Not checked by ear here: the mapping is checked to the note with a test instrument.
+
 ## 0.25.0
 
 MIDI controller lanes in the MIDI editor (the owner asked; as the manual's Controller Display): modulation, pitchbend, expression, sustain, any of the 128 controllers, aftertouch, poly pressure and program changes, drawn, edited, played, recorded and imported.

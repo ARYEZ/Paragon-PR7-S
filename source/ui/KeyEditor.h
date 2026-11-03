@@ -236,7 +236,35 @@ public:
     juce::Rectangle<float> getControllerBox() const;
     VelocityHandle controllerHandleAt (juce::Point<float>) const;
 
-    static constexpr int sideWidth = 150, keysWidth = 54, rulerHeight = 26, velocityHeight = 86, scrollBarSize = 12;
+    // The drum editor (0.26.0, the manual's Drum Editor): on a track with a drum map (DRUMS in the
+    // panel, on by itself when a map is chosen), the piano gives way to the drum sound list: each
+    // drum's pitch and name (from the map), M to mute it, a click to hear it, a double-click to
+    // rename it, a right-click for its notes (I-note, O-note, channel), the sounds shown (named,
+    // all 128, or only those with notes). One row per drum, in the map's order; notes are drawn
+    // as diamonds (LENGTHS: as boxes as long as they are). DRAW is the drumstick: a click puts
+    // a hit on the grid step, a drag right a hit on every step. MAP chooses the track's map
+    // (GM Map built in, the song's, those in the drum map folder), loads a .drm, saves one, and
+    // opens the Drum Map Setup. With a map the piano roll names the drums too.
+    enum class DrumRowsShown { named, all, withEvents };
+    bool isDrumView() const noexcept { return drumViewOn; }
+    void setDrumView (bool);
+    const std::vector<int>& getDrumRows() const noexcept { return drumRows; }   // pitches, top to bottom
+    void setDrumRowsShown (DrumRowsShown);
+    DrumRowsShown getDrumRowsShown() const noexcept { return drumRowsShown; }
+    void setShowDrumLengths (bool);
+    bool getShowDrumLengths() const noexcept { return showDrumLengths; }
+    juce::String drumNameOf (int pitch) const;          // the map's name for it ("" without a map)
+    void toggleDrumMute (int pitch);
+    void renameDrumSound (int pitch, const juce::String&);
+    void selectNotesOfSound (int pitch);
+    void showDrumMapMenu();
+    void showDrumSoundMenu (int pitch);
+    juce::Rectangle<float> getDrumMuteBox (int pitch) const;   // the M in its row
+    int listWidth() const noexcept { return drumViewOn ? drumListWidth : keysWidth; }
+    std::function<void()> onDrumMapSetup;                // MainView: the Drum Map Setup window
+    std::function<void (std::function<void (const juce::File&)>)> chooseDrumMapFile;   // (tests answer it; else a FileChooser)
+
+    static constexpr int sideWidth = 150, keysWidth = 54, rulerHeight = 26, velocityHeight = 86, scrollBarSize = 12, drumListWidth = 220;
     static constexpr int minimumHeight = 230;   // docked: the panel's keys and a few octaves
     static constexpr float minRowHeight = 6.0f, maxRowHeight = 36.0f;
 
@@ -325,6 +353,23 @@ private:   // the selected notes, at the column's foot
     LineMode lineMode = LineMode::line;
     juce::Point<float> lineFrom, lineTo, lastDrawPoint;
     float heightAtDown = 0.0f, lastLanesTop = -1.0f;
+    // The drum view.
+    bool drumViewOn = false, showDrumLengths = false, refitAfterDrumRows = false;
+    DrumRowsShown drumRowsShown = DrumRowsShown::named;
+    std::vector<int> drumRows;
+    std::array<int, 128> drumRowOf {};
+    float pianoRowHeight = 12.0f;
+    double drumDrawStart = 0.0;
+    int auditionKey = -1;
+    void refreshDrumRows();
+    int numRows() const noexcept { return drumViewOn ? (int) drumRows.size() : 128; }
+    // The furthest left the view goes: the song's start (drums: a diamond's width before it, so a hit on beat 1 shows whole).
+    double earliestFirstBeat() const noexcept { return drumViewOn ? -(double) rowHeight / pixelsPerBeat : 0.0; }
+    int rowForY (float y) const noexcept;
+    int pitchMovedBy (int pitch, int rows) const noexcept;   // a row (drums) or a semitone (piano) away
+    void paintDrumList (juce::Graphics&);
+    juce::TextButton drumKey { "DRUMS" }, mapKey { "MAP" }, lengthsKey { "LENGTHS" };
+    std::unique_ptr<juce::FileChooser> drumChooser;
     juce::TextButton lineTool { "LINE" }, lanesKey { "LANES" };
 
     pr7s::Studio& studio;

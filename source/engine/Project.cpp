@@ -152,6 +152,19 @@ namespace pr7s
         return const_cast<Project*> (this)->findTrack (id);
     }
 
+    const DrumMap* Project::findDrumMap (const juce::String& mapName) const
+    {
+        for (const auto& map : drumMaps)
+            if (map.name == mapName)
+                return &map;
+        return nullptr;
+    }
+
+    const DrumMap* Project::drumMapOf (const Track& track) const
+    {
+        return track.drumMap.isNotEmpty() ? findDrumMap (track.drumMap) : nullptr;
+    }
+
     Track* Project::armedTrack()
     {
         for (auto& track : tracks)
@@ -201,6 +214,8 @@ namespace pr7s
         xml->addChildElement (chordPads.toXml().release());
         if (chordTrack.shown || ! chordTrack.events.empty())
             xml->addChildElement (chordTrack.toXml().release());
+        for (const auto& map : drumMaps)
+            xml->addChildElement (map.toXml().release());
         for (const auto& group : linkGroups)
         {
             auto* g = xml->createNewChildElement ("LinkGroup");
@@ -277,6 +292,10 @@ namespace pr7s
                 t->setAttribute ("disabled", true);
             if (track.controllerLanes != std::vector<int> { ControllerKinds::velocity })
                 t->setAttribute ("controllerLanes", ControllerKinds::lanesToText (track.controllerLanes));
+            if (track.drumMap.isNotEmpty())
+                t->setAttribute ("drumMap", track.drumMap);
+            if (track.drumEditor)
+                t->setAttribute ("drumEditor", true);
             if (track.pitchbendUp != 2 || track.pitchbendDown != 2 || track.pitchbendSnap || track.pitchbendGrid)
             {
                 t->setAttribute ("pitchbendUp", track.pitchbendUp);
@@ -422,6 +441,8 @@ namespace pr7s
             track.disabled = t->getBoolAttribute ("disabled");
             if (t->hasAttribute ("controllerLanes"))
                 track.controllerLanes = ControllerKinds::lanesFromText (t->getStringAttribute ("controllerLanes"));
+            track.drumMap = t->getStringAttribute ("drumMap");
+            track.drumEditor = t->getBoolAttribute ("drumEditor");
             track.pitchbendUp = juce::jlimit (1, 96, t->getIntAttribute ("pitchbendUp", 2));
             track.pitchbendDown = juce::jlimit (1, 96, t->getIntAttribute ("pitchbendDown", 2));
             track.pitchbendSnap = t->getBoolAttribute ("pitchbendSnap");
@@ -542,6 +563,12 @@ namespace pr7s
             if (group.id > 0 && project.findLinkGroup (group.id) == nullptr)
                 project.linkGroups.push_back (group);
         }
+        for (const auto* m : xml.getChildWithTagNameIterator ("DrumMap"))
+            if (auto map = DrumMap::fromXml (*m); map && project.findDrumMap (map->name) == nullptr)
+                project.drumMaps.push_back (std::move (*map));
+        for (auto& track : project.tracks)
+            if (track.drumMap.isNotEmpty() && project.findDrumMap (track.drumMap) == nullptr)
+                track.drumMap = {}, track.drumEditor = false;   // (a map that isn't in the song: none)
         for (auto& track : project.tracks)
             if (project.findLinkGroup (track.linkGroup) == nullptr)
                 track.linkGroup = 0;

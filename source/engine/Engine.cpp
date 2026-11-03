@@ -445,11 +445,14 @@ namespace pr7s
         const auto tempoVersion = settings.tempoVersion + (tempo.getEvents() == settings.tempo.getEvents() ? 0 : 1);
 
         struct Prepared { int id; std::vector<Event> events; std::pair<float, float> gains; std::vector<bool> bypass; std::vector<Clip> clips;
-                          std::vector<LaneState> automation; bool mixAutomated = false; };
+                          std::vector<LaneState> automation; bool mixAutomated = false;
+                          std::array<juce::int16, 128> drumOut {}; std::array<juce::int8, 128> drumChannel {}; std::array<juce::uint8, 128> drumIn {}; };
         std::vector<Prepared> prepared;
         for (const auto& track : project.tracks)
         {
-            Prepared p { track.id, {}, sideGains (track, ! track.mute && ! track.disabled && ! soloedOut (track)), {}, {}, {}, false };
+            Prepared p { track.id, {}, sideGains (track, ! track.mute && ! track.disabled && ! soloedOut (track)), {}, {}, {}, false, {}, {}, {} };
+            for (int n = 0; n < 128; ++n)
+                p.drumOut[(size_t) n] = (juce::int16) n, p.drumChannel[(size_t) n] = -1, p.drumIn[(size_t) n] = (juce::uint8) n;
             for (const auto& insert : track.inserts)
                 p.bypass.push_back (insert.bypass);
             readLanes (track.automation, track.automationRead, p.automation, p.mixAutomated, track.id, held);
@@ -482,6 +485,15 @@ namespace pr7s
             }
             // On the track's MIDI channel (the instrument may listen to one: a Kontakt multi).
             const auto channelBits = juce::jlimit (1, 16, track.midiChannel) - 1;
+            // Through its drum map (0.26.0): each sound's O-note, its own channel if it has one, muted sounds silent.
+            const auto* map = project.drumMapOf (track);
+            for (int n = 0; n < 128; ++n)
+            {
+                const auto* sound = map != nullptr ? &map->sounds[(size_t) n] : nullptr;
+                p.drumOut[(size_t) n] = (juce::int16) (sound == nullptr ? n : sound->mute ? -1 : sound->outNote);
+                p.drumChannel[(size_t) n] = (juce::int8) (sound != nullptr && sound->channel >= 0 ? sound->channel : -1);
+                p.drumIn[(size_t) n] = (juce::uint8) (map != nullptr ? map->pitchForInput (n) : n);
+            }
             for (const auto& part : track.parts)
                 for (const auto& note : part.notes)
                 {
@@ -490,10 +502,14 @@ namespace pr7s
                     const auto on = part.start + note.start;
                     if (note.start < 0.0 || note.start >= part.length)
                         continue;   // outside the part: not heard (as in a DAW)
+                    const auto out = p.drumOut[(size_t) juce::jlimit (0, 127, note.pitch)];
+                    if (out < 0)
+                        continue;   // a muted drum sound
+                    const auto bits = p.drumChannel[(size_t) juce::jlimit (0, 127, note.pitch)] >= 0 ? p.drumChannel[(size_t) note.pitch] : channelBits;
                     const auto off = part.start + juce::jmin (note.start + note.length, part.length);
                     const auto velocity = (juce::uint8) juce::jlimit (1, 127, juce::roundToInt (note.velocity * 127.0f));
-                    p.events.push_back ({ on, (juce::uint8) (0x90 | channelBits), (juce::uint8) note.pitch, velocity });
-                    p.events.push_back ({ off, (juce::uint8) (0x80 | channelBits), (juce::uint8) note.pitch, 0 });
+                    p.events.push_back ({ on, (juce::uint8) (0x90 | bits), (juce::uint8) out, velocity });
+                    p.events.push_back ({ off, (juce::uint8) (0x80 | bits), (juce::uint8) out, 0 });
                 }
             // Controllers (0.25.0): each event, and a ramp as a value every 1/128 beat where it changes.
             for (const auto& part : track.parts)
@@ -563,6 +579,9 @@ namespace pr7s
                     }
                 }
                 std::swap (track->automation, p.automation);
+                track->drumOut = p.drumOut;
+                track->drumChannel = p.drumChannel;
+                track->drumIn = p.drumIn;
                 track->mixAutomated = p.mixAutomated;
                 track->gainLeft = p.gains.first;
                 track->gainRight = p.gains.second;
@@ -862,6 +881,7 @@ namespace pr7s
         {
             // The block in segments: up to the cycle's end, then back to its start.
             const auto isRecording = recording.load();
+            const auto* recordingTrack = findTrack (liveTrack.load());
             const auto beatUnit = 4.0 / settings.denominator;   // the click's beat (a quarter in 4/4, an eighth in 6/8)
             const auto unitsPerBar = settings.numerator;
             const auto loopStart = toSamples (settings.loopStart), loopEnd = toSamples (settings.loopEnd);
@@ -922,8 +942,10 @@ namespace pr7s
                                 continue;   // full: the message thread hasn't kept up
                             const auto at = scope.blockSize1 > 0 ? scope.startIndex1 : scope.startIndex2;
                             const auto* raw = message.getRawData();
+                            // (A drum map's I-note recorded as its sound's pitch, as the manual's.)
+                            const auto data1 = message.isNoteOnOrOff() && recordingTrack != nullptr ? recordingTrack->drumIn[(size_t) (raw[1] & 0x7f)] : raw[1];
                             recordedEvents[(size_t) at] = { timing.beatAt ((double) (clock + metadata.samplePosition - done)), raw[0],
-                                                            raw[1], message.getRawDataSize() > 2 ? raw[2] : (juce::uint8) 0,
+                                                            data1, message.getRawDataSize() > 2 ? raw[2] : (juce::uint8) 0,
                                                             cycleCount.load() };
                         }
 
@@ -987,6 +1009,17 @@ namespace pr7s
                     auto message = metadata.getMessage();
                     if (message.getChannel() > 0)
                         message.setChannel (track->midiChannel);
+                    if (message.isNoteOnOrOff())
+                    {
+                        // Through its drum map: the key played is a sound's I-note, sent as its O-note.
+                        const auto pitch = track->drumIn[(size_t) message.getNoteNumber()];
+                        const auto out = track->drumOut[pitch];
+                        if (out < 0)
+                            continue;   // a muted sound
+                        message.setNoteNumber (out);
+                        if (track->drumChannel[pitch] >= 0)
+                            message.setChannel (track->drumChannel[pitch] + 1);
+                    }
                     track->midi.addEvent (message, metadata.samplePosition);
                 }
             if (track->role != TrackState::Role::source)

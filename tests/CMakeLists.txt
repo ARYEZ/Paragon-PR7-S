@@ -30,6 +30,7 @@ add_executable(ParagonPR7STests
     LineTests.cpp
     MediaBayTests.cpp
     ControllerTests.cpp
+    DrumTests.cpp
     UiTests.cpp
     PerfTests.cpp
     Snapshot.cpp)
