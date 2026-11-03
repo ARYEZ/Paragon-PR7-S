@@ -54,6 +54,11 @@ public:
     juce::StringArray getFavorites() const;
     bool revealFolder (const juce::File&);        // opened in the tree from the root holding it; false: not found
     juce::StringArray getFolderChildren (const juce::File&);   // its subfolders' names as the tree shows them
+    // Where the browser was left (0.22.2): its open folders and the chosen one, kept in the
+    // settings (mediaBayTreeOpen, mediaBayFolder) and put back when the window opens again.
+    void saveBrowserState();
+    std::optional<std::pair<juce::StringArray, juce::File>> loadBrowserState() const;
+    bool isFolderOpenInTree (const juce::File&);
     void resetFilters();
     void shuffle (juce::uint32 seed);
     void sortBy (pr7s::MediaColumn, bool ascending);

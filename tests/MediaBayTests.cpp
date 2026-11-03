@@ -908,3 +908,165 @@ TEST_CASE ("The MediaBay window's file browser: the tree, its boxes, a folder's 
     page.removeSelectedLocation();   // (none chosen: nothing)
     CHECK (studio.getMediaBay().getLocations().size() == 1);
 }
+
+namespace
+{
+    // A WAV with metadata (JUCE writes ACID and INFO from these), and an iXML chunk added after.
+    void writeTaggedWav (const juce::File& file, const juce::StringPairArray& metadata, double seconds = 2.0)
+    {
+        file.getParentDirectory().createDirectory();
+        file.deleteFile();
+        const auto rate = 44100.0;
+        const auto samples = (int) (seconds * rate);
+        juce::AudioBuffer<float> sound (1, samples);
+        for (int i = 0; i < samples; ++i)
+            sound.setSample (0, i, 0.3f * std::sin ((float) i * 0.03f));
+        juce::WavAudioFormat wav;
+        auto stream = std::make_unique<juce::FileOutputStream> (file);
+        std::unique_ptr<juce::AudioFormatWriter> writer (wav.createWriterFor (stream.get(), rate, 1, 16, metadata, 0));
+        REQUIRE (writer != nullptr);
+        stream.release();
+        writer->writeFromAudioSampleBuffer (sound, 0, samples);
+    }
+
+    void appendIXml (const juce::File& file, const juce::String& xml)
+    {
+        juce::MemoryBlock data;
+        file.loadFileAsData (data);
+        juce::MemoryOutputStream out (data, true);
+        const auto text = xml.toRawUTF8();
+        const auto size = (int) std::strlen (text);
+        out.write ("iXML", 4);
+        out.writeInt (size);
+        out.write (text, (size_t) size);
+        if (size & 1)
+            out.writeByte (0);
+        out.flush();
+        auto bytes = static_cast<char*> (data.getData());
+        const auto riffSize = (juce::uint32) data.getSize() - 8;
+        std::memcpy (bytes + 4, &riffSize, 4);   // (little-endian, as here)
+        file.replaceWithData (data.getData(), data.getSize());
+    }
+}
+
+TEST_CASE ("MediaBay reads what files say about themselves: ACID loops, INFO, the other DAW's iXML tags (0.22.2)", "[mediabay]")
+{
+    const auto root = juce::File::createTempFile ("pr7s-mediabay-meta");
+    root.createDirectory();
+    juce::StringPairArray loop;
+    loop.set (juce::WavAudioFormat::acidTempo, "128");
+    loop.set (juce::WavAudioFormat::acidBeats, "8");
+    loop.set (juce::WavAudioFormat::acidRootSet, "1");
+    loop.set (juce::WavAudioFormat::acidRootNote, "57");   // A
+    loop.set (juce::WavAudioFormat::acidOneShot, "0");
+    loop.set (juce::WavAudioFormat::acidNumerator, "4");
+    loop.set (juce::WavAudioFormat::acidDenominator, "4");
+    loop.set (juce::WavAudioFormat::riffInfoGenre, "Djent");
+    writeTaggedWav (root.getChildFile ("Loop 01.wav"), loop, 3.75);
+    writeTaggedWav (root.getChildFile ("Riff_Em.wav"), loop);           // (the name's key wins: it says minor)
+    auto shot = loop;
+    shot.set (juce::WavAudioFormat::acidOneShot, "1");
+    writeTaggedWav (root.getChildFile ("Kick.wav"), shot);               // (a one-shot has no tempo)
+    writeTaggedWav (root.getChildFile ("Tagged.wav"), {});
+    appendIXml (root.getChildFile ("Tagged.wav"),
+                "<?xml version=\"1.0\"?><BWFXML><STEINBERG><ATTR_LIST>"
+                "<ATTR><TYPE>string</TYPE><NAME>MusicalCategory</NAME><VALUE>Drums</VALUE></ATTR>"
+                "<ATTR><TYPE>string</TYPE><NAME>MusicalSubCategory</NAME><VALUE>Drums | Kick</VALUE></ATTR>"
+                "<ATTR><TYPE>string</TYPE><NAME>MusicalStyle</NAME><VALUE>Metal</VALUE></ATTR>"
+                "<ATTR><TYPE>string</TYPE><NAME>MusicalCharacter</NAME><VALUE>Distorted, Dark</VALUE></ATTR>"
+                "<ATTR><TYPE>float</TYPE><NAME>MediaTempo</NAME><VALUE>140</VALUE></ATTR>"
+                "<ATTR><TYPE>string</TYPE><NAME>MusicalKey</NAME><VALUE>F# minor</VALUE></ATTR>"
+                "<ATTR><TYPE>string</TYPE><NAME>MediaComment</NAME><VALUE>from the other DAW</VALUE></ATTR>"
+                "</ATTR_LIST></STEINBERG></BWFXML>");
+
+    const auto store = juce::File::createTempFile ("pr7s-mediabay-meta.xml");
+    const auto item = [] (MediaDatabase& db, const char* name) -> const MediaItem&
+    {
+        for (const auto& i : db.getItems())
+            if (i.name == name)
+                return i;
+        FAIL (name);
+        return db.getItems().front();
+    };
+    {
+        MediaDatabase db (store);
+        db.addLocation (root);
+        db.scanNow();
+        REQUIRE (db.getItems().size() == 4);
+        // ACID: the tempo, the beats, the root note (a plain letter: ACID doesn't say minor or major).
+        CHECK (std::abs (item (db, "Loop 01").tempo() - 128.0) < 0.01);
+        CHECK (item (db, "Loop 01").beats == 8.0);
+        CHECK (item (db, "Loop 01").keyName() == "A");
+        CHECK (item (db, "Riff_Em").keyName() == "Em");
+        CHECK (item (db, "Kick").tempo() == 0.0);
+        // INFO: searched.
+        MediaQuery query;
+        query.text = "djent";
+        CHECK (db.find (query).size() == 3);
+        // iXML: the other DAW's tags become its tags; tempo and key read.
+        const auto tagged = root.getChildFile ("Tagged.wav");
+        const auto tags = db.getTags (tagged);
+        CHECK (tags.category == "Drums");
+        CHECK (tags.subCategory == "Kick");
+        CHECK (tags.style == "Metal");
+        CHECK (tags.character.joinIntoString (",") == "Distorted,Dark");
+        CHECK (tags.comment == "from the other DAW");
+        CHECK (item (db, "Tagged").tempo() == 140.0);
+        CHECK (item (db, "Tagged").keyName() == "F#m");
+        // Yours win: changed, a scan doesn't put the file's back.
+        db.setAttribute ({ tagged }, { MediaAttribute::category, {} }, "Guitar");
+        db.scanNow();
+        CHECK (db.getTags (tagged).category == "Guitar");
+    }
+    {
+        // Files read by an older version are read again (once).
+        auto xml = juce::parseXML (store);
+        REQUIRE (xml != nullptr);
+        for (auto* e : xml->getChildWithTagNameIterator ("Item"))
+        {
+            e->setAttribute ("read", 1);
+            e->removeAttribute ("bpm");
+        }
+        xml->writeTo (store);
+        MediaDatabase db (store);
+        CHECK (item (db, "Loop 01").tempo() == 0.0);
+        db.scanNow();
+        CHECK (std::abs (item (db, "Loop 01").tempo() - 128.0) < 0.01);
+        CHECK (item (db, "Loop 01").readVersion == MediaItem::currentReadVersion);
+        CHECK (db.getTags (root.getChildFile ("Tagged.wav")).category == "Guitar");   // (still yours)
+    }
+    store.deleteFile();
+    root.deleteRecursively();
+
+    // The key from a root note: minor when told so.
+    CHECK (MediaDatabase::keyFromRootNote (57, 1) == "Am");
+    CHECK (MediaDatabase::keyFromRootNote (66, 0) == "F#");
+    CHECK (MediaDatabase::keyFromRootNote (63, -1) == "Eb");
+}
+
+TEST_CASE ("The MediaBay window opens where it was left: the open folders and the chosen one (0.22.2)", "[mediabay][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    MediaFolder folder;
+    const auto kicks = folder.root.getChildFile ("Kicks");
+    Studio studio (false);
+    studio.getMediaBay().addLocation (folder.root);
+    studio.getMediaBay().scanNow();
+    {
+        MediaBayPage page (studio);
+        page.setAutoPlay (false);
+        page.resetFilters();
+        page.getFolderChildren (folder.root);   // (opened)
+        page.selectFolder (kicks);
+        CHECK (page.getNumResults() == 1);
+        CHECK (page.isFolderOpenInTree (folder.root));
+    }
+    {
+        // Closed and opened again: the same folder open, the same one chosen, its files shown.
+        MediaBayPage page (studio);
+        CHECK (page.getSelectedFolder() == kicks);
+        CHECK (page.isFolderOpenInTree (folder.root));
+        CHECK (page.getNumResults() == 1);
+        page.selectFolder ({});   // (left as the other tests expect)
+    }
+}

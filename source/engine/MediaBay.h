@@ -75,6 +75,13 @@ namespace pr7s
         int notes = 0;                // MIDI files
         int rating = 0;               // 0 to 5 stars (yours)
         MediaTags tags;               // (yours, 0.21.1)
+        // From inside the file (0.22.2): its tags as another program wrote them (the other DAW's
+        // MediaBay tags in a WAV's iXML), put into `tags` when the file is first read; its
+        // description, genre, comments and keywords (searched).
+        MediaTags fileTags;
+        juce::String info;
+        int readVersion = currentReadVersion;
+        static constexpr int currentReadVersion = 2;   // (older items are read again: 0.22.2 reads more)
         double tempo() const noexcept { return tags.bpm > 0.0 ? tags.bpm : bpm; }   // your tempo, else the name's or file's
         juce::String keyName() const { return tags.key.isNotEmpty() ? tags.key : key; }
         juce::String searchText() const;   // what a text search looks in (lower case; the tags too)
@@ -186,6 +193,9 @@ namespace pr7s
         // A file's attributes, read now (any thread).
         static MediaItem read (const juce::File&, juce::AudioFormatManager&);
         static double bpmFromName (const juce::String&);          // "Beat 120bpm", "loop_95_bpm": 0 if none
+        static juce::String keyFromRootNote (int midiNote, int mode);   // mode 1 minor, 0 major, -1 unknown (a plain letter)
+        static MediaTags tagsFromIXml (const juce::String& ixml, double& bpm, juce::String& key);   // the other DAW's iXML attributes
+        static juce::String readIXml (const juce::File& wav);     // a WAV's iXML chunk ("" if none)
         static juce::String keyFromName (const juce::String&);    // "Bass_Am_120": "Am"; "" if none
 
         void save() const;

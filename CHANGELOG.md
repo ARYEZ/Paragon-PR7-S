@@ -2,6 +2,19 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.22.2
+
+Two things the owner asked for: the MediaBay opens where you left it, and it reads tempo and key from inside your files (the first of the three additions the owner chose: this one, then previews in time with the song, then plug-in presets).
+
+- **The MediaBay opens where you left it** (the owner's report: every time it opened, the folder tree was back to the start). The folders you had open in the FILE BROWSER are open again, the folder you'd chosen is chosen again (scrolled to), and the results show its files. Kept in the settings, so it holds after closing the studio too.
+- **Tempo and key from inside the files**, not only from their names:
+  - **WAV loops with ACID info** (most commercial loop packs): the tempo, the length in beats and the root note. **AIFF Apple loops:** the beats, the root note, and whether it's major or minor. A loop without a tempo but with its beats gets its tempo worked out from its length. One-shots (a kick, a hit) show no tempo.
+  - **What wins:** your own tempo and key first; then for tempo the file's loop info, then the name's; for key the name's (a name like "Riff_Em" says minor), then the file's root note (ACID doesn't say major or minor: the key shows as the plain letter, "A").
+  - **Tags the other DAW's MediaBay wrote into WAV files** (in their iXML): category and sub category, style and sub style, character, tempo, key and comment become the file's tags here the first time it's read, so loops you tagged there arrive tagged. Yours always win: a tag you change stays as you set it.
+  - **A WAV's description, genre, comments and keywords** are searched too (a pack's "Djent" genre finds its loops).
+  - Files the MediaBay already knew are read again once, so your scanned library gets all this without anything to do (the scan runs in the background, as usual).
+- **Honestly:** the other DAW doesn't publish the names of the tags it writes into files; ours reads any of its attributes whose names hold "Category", "Style", "Character", "Tempo", "Key" or "Comment", which is our best reading of them (checked against the layout its files use, not against your own files yet). MP3 and FLAC files' tags aren't read; nothing is ever written into your files.
+
 ## 0.22.1
 
 The MediaBay's folder tree (the owner's screenshot of the other DAW's: the File Browser with its folders and subfolders, each with a box to scan it).

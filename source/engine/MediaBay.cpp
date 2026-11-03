@@ -43,6 +43,8 @@ namespace pr7s
             text << ' ' << juce::String (tempo(), 0) << " bpm";
         if (keyName().isNotEmpty())
             text << ' ' << keyName();
+        if (info.isNotEmpty())
+            text << ' ' << info;
         for (const auto* t : { &tags.category, &tags.subCategory, &tags.style, &tags.subStyle, &tags.comment })
             if (t->isNotEmpty())
                 text << ' ' << *t;
@@ -368,6 +370,97 @@ namespace pr7s
         return {};
     }
 
+    juce::String MediaDatabase::keyFromRootNote (int midiNote, int mode)
+    {
+        static const char* const major[] { "C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B" };
+        static const char* const minor[] { "Cm", "C#m", "Dm", "Ebm", "Em", "Fm", "F#m", "Gm", "G#m", "Am", "Bbm", "Bm" };
+        const auto pc = ((midiNote % 12) + 12) % 12;
+        return mode == 1 ? minor[pc] : major[pc];
+    }
+
+    juce::String MediaDatabase::readIXml (const juce::File& wav)
+    {
+        // Walk the RIFF chunks for "iXML" (JUCE keeps only its ASWG part).
+        juce::FileInputStream in (wav);
+        if (! in.openedOk())
+            return {};
+        char riff[4], wave[4];
+        if (in.read (riff, 4) != 4 || std::memcmp (riff, "RIFF", 4) != 0)
+            return {};
+        in.readInt();
+        if (in.read (wave, 4) != 4 || std::memcmp (wave, "WAVE", 4) != 0)
+            return {};
+        for (int chunks = 0; chunks < 200 && ! in.isExhausted(); ++chunks)
+        {
+            char id[4];
+            if (in.read (id, 4) != 4)
+                return {};
+            const auto size = (juce::int64) (juce::uint32) in.readInt();
+            const auto next = in.getPosition() + size + (size & 1);
+            if (std::memcmp (id, "iXML", 4) == 0)
+            {
+                if (size <= 0 || size > 4 * 1024 * 1024)
+                    return {};
+                juce::MemoryBlock block;
+                in.readIntoMemoryBlock (block, (ssize_t) size);
+                return block.toString();
+            }
+            if (! in.setPosition (next))
+                return {};
+        }
+        return {};
+    }
+
+    MediaTags MediaDatabase::tagsFromIXml (const juce::String& ixml, double& bpm, juce::String& key)
+    {
+        // <BWFXML><STEINBERG><ATTR_LIST><ATTR><TYPE/><NAME/><VALUE/></ATTR>... The names aren't
+        // published: they're matched by what they hold (our best reading of them).
+        MediaTags t;
+        const auto xml = juce::parseXML (ixml);
+        const auto* steinberg = xml != nullptr ? xml->getChildByName ("STEINBERG") : nullptr;
+        const auto* list = steinberg != nullptr ? steinberg->getChildByName ("ATTR_LIST") : nullptr;
+        if (list == nullptr)
+            return t;
+        // ("Drum&Perc | Kick": the part after the bar.)
+        const auto lastPart = [] (const juce::String& v) { return v.fromLastOccurrenceOf ("|", false, false).trim(); };
+        for (const auto* attr : list->getChildWithTagNameIterator ("ATTR"))
+        {
+            const auto name = attr->getChildElementAllSubText ("NAME", {}).toLowerCase();
+            const auto value = attr->getChildElementAllSubText ("VALUE", {}).trim();
+            if (value.isEmpty())
+                continue;
+            const auto sub = name.contains ("sub");
+            if (name.contains ("category"))
+                (sub ? t.subCategory : t.category) = lastPart (value);
+            else if (name.contains ("style"))
+                (sub ? t.subStyle : t.style) = lastPart (value);
+            else if (name.contains ("character"))
+            {
+                for (auto word : juce::StringArray::fromTokens (value, ",|;", ""))
+                    for (const auto& pair : characterPairs())
+                        for (const auto& side : { pair.left, pair.right })
+                            if (word.trim().equalsIgnoreCase (side))
+                                t.character.addIfNotAlreadyThere (side);
+            }
+            else if (name.contains ("comment"))
+                t.comment = value;
+            else if (name.contains ("tempo") || name.contains ("bpm"))
+            {
+                const auto v = value.getDoubleValue();
+                if (v >= 20.0 && v <= 400.0)
+                    bpm = v;
+            }
+            else if (name.contains ("key") && ! name.contains ("keyword"))
+            {
+                // "Am", "A minor", "F# maj"...
+                auto spoken = value.replace (" minor", "m").replace (" Minor", "m").replace (" min", "m").replace (" major", "").replace (" Major", "").replace (" maj", "");
+                if (const auto k = keyFromName (spoken.removeCharacters (" ")); k.isNotEmpty())
+                    key = k;
+            }
+        }
+        return t;
+    }
+
     MediaItem MediaDatabase::read (const juce::File& file, juce::AudioFormatManager& formats)
     {
         MediaItem item;
@@ -385,7 +478,60 @@ namespace pr7s
                 item.sampleRate = reader->sampleRate;
                 item.channels = (int) reader->numChannels;
                 item.seconds = reader->sampleRate > 0.0 ? (double) reader->lengthInSamples / reader->sampleRate : 0.0;
+
+                // What the file says about itself (0.22.2): a loop's tempo, beats and root note
+                // (WAV: ACID; AIFF: Apple loop), its description, genre, comments, keywords.
+                const auto& m = reader->metadataValues;
+                const auto number = [&m] (const char* k) { return m.getValue (k, {}).getDoubleValue(); };
+                double tempo = 0.0, beats = 0.0;
+                int root = -1, mode = -1;
+                bool oneShot = false;
+                if (m.containsKey (juce::WavAudioFormat::acidTempo) || m.containsKey (juce::WavAudioFormat::acidBeats))
+                {
+                    tempo = number (juce::WavAudioFormat::acidTempo);
+                    beats = number (juce::WavAudioFormat::acidBeats);
+                    oneShot = m.getValue (juce::WavAudioFormat::acidOneShot, "0") == "1";
+                    if (m.getValue (juce::WavAudioFormat::acidRootSet, "0") == "1")
+                        root = m.getValue (juce::WavAudioFormat::acidRootNote, "-1").getIntValue();
+                }
+                if (m.containsKey (juce::AiffAudioFormat::appleBeats))
+                {
+                    beats = number (juce::AiffAudioFormat::appleBeats);
+                    oneShot = m.getValue (juce::AiffAudioFormat::appleOneShot, "0") == "1";
+                    if (m.getValue (juce::AiffAudioFormat::appleRootSet, "0") == "1")
+                        root = m.getValue (juce::AiffAudioFormat::appleRootNote, "-1").getIntValue();
+                    const auto scale = m.getValue (juce::AiffAudioFormat::appleKey, {});
+                    mode = scale == "minor" ? 1 : scale == "major" ? 0 : -1;
+                }
+                if (tempo <= 0.0 && beats > 0.0 && item.seconds > 0.0 && ! oneShot)
+                    tempo = beats * 60.0 / item.seconds;
+                if (tempo >= 20.0 && tempo <= 400.0 && ! oneShot)
+                {
+                    item.bpm = std::round (tempo * 100.0) / 100.0;
+                    item.beats = beats;
+                }
+                if (item.key.isEmpty() && root >= 0 && root < 128)
+                    item.key = keyFromRootNote (root, mode);
+
+                juce::StringArray info;
+                for (const auto* k : { juce::WavAudioFormat::bwavDescription, juce::WavAudioFormat::riffInfoGenre, juce::WavAudioFormat::riffInfoComment,
+                                       juce::WavAudioFormat::riffInfoComments, juce::WavAudioFormat::riffInfoKeywords, juce::WavAudioFormat::riffInfoSubject })
+                    if (const auto v = m.getValue (k, {}).trim(); v.isNotEmpty())
+                        info.addIfNotAlreadyThere (v);
+                item.info = info.joinIntoString (" ").substring (0, 400);
             }
+            // The other DAW's MediaBay tags, in the WAV's iXML.
+            if (file.hasFileExtension ("wav;wave;bwf"))
+                if (const auto ixml = readIXml (file); ixml.containsIgnoreCase ("STEINBERG"))
+                {
+                    double bpm = 0.0;
+                    juce::String key;
+                    item.fileTags = tagsFromIXml (ixml, bpm, key);
+                    if (bpm > 0.0 && item.bpm <= 0.0)
+                        item.bpm = bpm;
+                    if (key.isNotEmpty() && item.key.isEmpty())
+                        item.key = key;
+                }
         }
         else if (item.type == MediaType::midi)
         {
@@ -555,7 +701,8 @@ namespace pr7s
                     continue;
                 ++filesSeen;
                 if (auto old = known.find (file.getFullPathName());
-                    old != known.end() && old->second.size == entry.getFileSize() && old->second.modified == entry.getModificationTime())
+                    old != known.end() && old->second.size == entry.getFileSize() && old->second.modified == entry.getModificationTime()
+                    && old->second.readVersion >= MediaItem::currentReadVersion)
                 {
                     found.push_back (old->second);
                     continue;
@@ -605,6 +752,13 @@ namespace pr7s
             items = std::move (*result);
             for (auto& item : items)
             {
+                // A file read for the first time with tags of its own (0.22.2): they become its
+                // tags here, to change as you like (yours always win: only when it has none).
+                if (! item.fileTags.isEmpty() && tags.count (item.file.getFullPathName()) == 0)
+                {
+                    tags[item.file.getFullPathName()] = item.fileTags;
+                    item.fileTags = {};
+                }
                 item.rating = getRating (item.file);
                 item.tags = getTags (item.file);
             }
@@ -1109,6 +1263,8 @@ namespace pr7s
             item.key = e->getStringAttribute ("key");
             item.beats = e->getDoubleAttribute ("beats");
             item.notes = e->getIntAttribute ("notes");
+            item.info = e->getStringAttribute ("info");
+            item.readVersion = e->getIntAttribute ("read", 1);
             item.rating = getRating (item.file);
             item.tags = getTags (item.file);
             items.push_back (item);
@@ -1182,6 +1338,8 @@ namespace pr7s
             if (item.key.isNotEmpty()) e->setAttribute ("key", item.key);
             if (item.beats > 0.0) e->setAttribute ("beats", item.beats);
             if (item.notes > 0) e->setAttribute ("notes", item.notes);
+            if (item.info.isNotEmpty()) e->setAttribute ("info", item.info);
+            e->setAttribute ("read", item.readVersion);
         }
         store.getParentDirectory().createDirectory();
         xml.writeTo (store);

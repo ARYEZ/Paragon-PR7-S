@@ -69,6 +69,7 @@ public:
         {
             if (open && getNumSubItems() == 0)
                 fill();
+            browser.opennessChanged();
         }
         void fill();
         void refill()
@@ -154,6 +155,7 @@ public:
         {
             if (open && ! loaded)
                 load();
+            browser.opennessChanged();
         }
 
         void load()
@@ -191,6 +193,7 @@ public:
 
     explicit Browser (MediaBayPage& p) : page (p)
     {
+        const juce::ScopedValueSetter<bool> svs (updating, true);   // (nothing saved while it's being made)
         setRootItem (&root);
         setRootItemVisible (false);
         setDefaultOpenness (false);
@@ -206,6 +209,75 @@ public:
     }
 
     ~Browser() override { setRootItem (nullptr); }
+
+    // Remembering what's open (0.22.2, the owner asked: the MediaBay opens where it was left).
+    // Each open item by its heading and path: "root:THIS COMPUTER", "THIS COMPUTER|F:\Samples".
+    static juce::String keyFor (juce::TreeViewItem& item)
+    {
+        if (auto* heading = dynamic_cast<RootItem*> (&item))
+            return "root:" + heading->name;
+        auto* up = item.getParentItem();
+        while (up != nullptr && dynamic_cast<RootItem*> (up) == nullptr)
+            up = up->getParentItem();
+        const auto* heading = dynamic_cast<RootItem*> (up);
+        return (heading != nullptr ? heading->name : juce::String()) + "|" + item.getUniqueName();
+    }
+
+    juce::StringArray getOpenKeys()
+    {
+        juce::StringArray keys;
+        std::function<void (juce::TreeViewItem&)> walk = [&] (juce::TreeViewItem& item)
+        {
+            for (int i = 0; i < item.getNumSubItems(); ++i)
+                if (auto* sub = item.getSubItem (i); sub->isOpen())
+                {
+                    keys.add (keyFor (*sub));
+                    walk (*sub);
+                }
+        };
+        walk (root);
+        return keys;
+    }
+
+    void restoreOpenKeys (const juce::StringArray& keys)
+    {
+        const juce::ScopedValueSetter<bool> svs (updating, true);
+        std::function<void (juce::TreeViewItem&)> walk = [&] (juce::TreeViewItem& item)
+        {
+            for (int i = 0; i < item.getNumSubItems(); ++i)
+            {
+                auto* sub = item.getSubItem (i);
+                const auto open = keys.contains (keyFor (*sub));
+                sub->setOpen (open);
+                if (open)
+                {
+                    if (auto* folderItem = dynamic_cast<FolderItem*> (sub); folderItem != nullptr && ! folderItem->loaded)
+                        folderItem->load();
+                    walk (*sub);
+                }
+            }
+        };
+        walk (root);
+    }
+
+    // The chosen folder shown chosen (and scrolled to), without choosing it again.
+    void showSelected (const juce::File& folder)
+    {
+        const juce::ScopedValueSetter<bool> svs (updating, true);
+        if (folder == juce::File())
+            return;
+        if (auto* item = reveal (folder))
+        {
+            item->setSelected (true, true, juce::dontSendNotification);
+            scrollToKeepItemVisible (item);
+        }
+    }
+
+    void opennessChanged()
+    {
+        if (! updating)
+            page.saveBrowserState();
+    }
 
     // The scanned folders' and the favorites' lists again (after a tick, a new favorite).
     void refreshLists()
@@ -906,6 +978,19 @@ MediaBayPage::MediaBayPage (pr7s::Studio& s)
 
     browser = std::make_unique<Browser> (*this);
     addAndMakeVisible (*browser);
+    // Where it was left (0.22.2): the folders open then, and the one chosen.
+    {
+        const auto state = loadBrowserState();
+        if (state.has_value())
+        {
+            browser->restoreOpenKeys (state->first);
+            if (state->second != juce::File() && state->second.isDirectory())
+            {
+                selectedFolder = state->second;
+                browser->showSelected (selectedFolder);
+            }
+        }
+    }
 
     for (int i = 0; i < numFilterColumns; ++i)
     {
@@ -1088,9 +1173,48 @@ void MediaBayPage::selectLocation (int index)
     selectFolder (juce::isPositiveAndBelow (index, database.getLocations().size()) ? juce::File (database.getLocations()[index]) : juce::File());
 }
 
+namespace
+{
+    // Where the browser was left, when there's no settings file (the tests): for this run only.
+    std::optional<std::pair<juce::StringArray, juce::File>>& browserMemory()
+    {
+        static std::optional<std::pair<juce::StringArray, juce::File>> memory;
+        return memory;
+    }
+}
+
+void MediaBayPage::saveBrowserState()
+{
+    if (browser == nullptr)
+        return;
+    const auto open = browser->getOpenKeys();
+    if (auto* settings = studio.getSettings())
+    {
+        settings->setValue ("mediaBayTreeOpen", open.joinIntoString ("\n"));
+        settings->setValue ("mediaBayFolder", selectedFolder.getFullPathName());
+    }
+    else
+        browserMemory() = std::pair { open, selectedFolder };
+}
+
+std::optional<std::pair<juce::StringArray, juce::File>> MediaBayPage::loadBrowserState() const
+{
+    if (auto* settings = studio.getSettings())
+    {
+        if (! settings->containsKey ("mediaBayTreeOpen"))
+            return std::nullopt;
+        auto open = juce::StringArray::fromLines (settings->getValue ("mediaBayTreeOpen"));
+        open.removeEmptyStrings();
+        const auto folder = settings->getValue ("mediaBayFolder");
+        return std::pair { open, folder.isNotEmpty() ? juce::File (folder) : juce::File() };
+    }
+    return browserMemory();
+}
+
 void MediaBayPage::selectFolder (const juce::File& folder)
 {
     selectedFolder = folder;
+    saveBrowserState();
     refresh();
     repaint (0, 0, getWidth(), titleHeight);
 }
@@ -1807,4 +1931,22 @@ void MediaBayWindow::closeButtonPressed()
     page->stop();
     if (onClose)
         onClose();
+}
+
+bool MediaBayPage::isFolderOpenInTree (const juce::File& folder)
+{
+    // (Any item for it that's open, under any heading; nothing is opened to look.)
+    bool open = false;
+    std::function<void (juce::TreeViewItem&)> walk = [&] (juce::TreeViewItem& item)
+    {
+        for (int i = 0; i < item.getNumSubItems(); ++i)
+        {
+            auto* sub = item.getSubItem (i);
+            if (auto* folderItem = dynamic_cast<Browser::FolderItem*> (sub); folderItem != nullptr && folderItem->folder == folder && sub->isOpen())
+                open = true;
+            walk (*sub);
+        }
+    };
+    walk (*browser->getRootItem());
+    return open;
 }
