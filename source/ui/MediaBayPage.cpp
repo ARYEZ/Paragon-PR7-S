@@ -820,7 +820,7 @@ MediaBayPage::MediaBayPage (pr7s::Studio& s)
     {
         const auto types = juce::StringArray::fromTokens (settings->getValue ("mediaBayTypes"), ",", "");
         for (const auto& t : types)
-            for (const auto type : { MediaType::audio, MediaType::midi, MediaType::trackPreset, MediaType::song })
+            for (const auto type : { MediaType::audio, MediaType::midi, MediaType::trackPreset, MediaType::song, MediaType::pluginPreset })
                 if (t == pr7s::mediaTypeName (type))
                     query.types.insert (type);
         query.minimumRating = juce::jlimit (0, 5, settings->getIntValue ("mediaBayRating", 0));
@@ -871,7 +871,7 @@ MediaBayPage::MediaBayPage (pr7s::Studio& s)
     };
     typeKey (audioKey, MediaType::audio, "Audio files (WAV, AIFF, FLAC, Ogg, MP3). With no type lit, every type is shown");
     typeKey (midiKey, MediaType::midi, "MIDI files. With no type lit, every type is shown");
-    typeKey (presetsKey, MediaType::trackPreset, "Track presets (.pr7track). With no type lit, every type is shown");
+    typeKey (presetsKey, MediaType::trackPreset, "Presets: track presets (.pr7track) and VST presets (.vstpreset). With no type lit, every type is shown");
     typeKey (songsKey, MediaType::song, "Songs (.pr7s). With no type lit, every type is shown");
     subfoldersKey.setTooltip ("A location's subfolders too (off: only the files directly in it)");
     subfoldersKey.onClick = [this] { setSubfolders (! query.subfolders); };
@@ -1182,10 +1182,13 @@ void MediaBayPage::setSearch (const juce::String& text)
 
 void MediaBayPage::setTypeShown (pr7s::MediaType type, bool shown)
 {
-    if (shown)
-        query.types.insert (type);
-    else
-        query.types.erase (type);
+    // (0.24.0: PRESETS is both kinds: track presets and VST presets.)
+    const auto both = type == pr7s::MediaType::trackPreset || type == pr7s::MediaType::pluginPreset;
+    for (const auto t : both ? std::vector<pr7s::MediaType> { pr7s::MediaType::trackPreset, pr7s::MediaType::pluginPreset } : std::vector<pr7s::MediaType> { type })
+        if (shown)
+            query.types.insert (t);
+        else
+            query.types.erase (t);
     saveSettings();
     refresh();
 }
@@ -1854,9 +1857,11 @@ void MediaBayPage::paintPreviewer (juce::Graphics& g, juce::Rectangle<int> area)
         g.setColour (ParagonColours::textDim);
         g.setFont (interFont (12.0f));
         const auto waiting = item->file == previewing && studio.getEngine().isPreviewWaiting() && studio.isMediaPreviewing();
-        const auto text = waiting ? "WAITING FOR THE SONG TO PLAY (WAIT FOR PLAY is on)"
+        const juce::String text = waiting ? "WAITING FOR THE SONG TO PLAY (WAIT FOR PLAY is on)"
                         : item->type == pr7s::MediaType::midi ? "MIDI: plays through the selected track's instrument"
-                        : item->type == pr7s::MediaType::audio ? "Audio: PLAY to hear it" : "No preview for this type: USE IT or drag it onto the song";
+                        : item->type == pr7s::MediaType::audio ? "Audio: PLAY to hear it"
+                        : item->type == pr7s::MediaType::pluginPreset ? "VST preset for " + item->presetPlugin + ": USE IT for a track with it, or drag it onto a track"
+                        : "No preview for this type: USE IT or drag it onto the song";
         g.drawText (text, waveArea.reduced (10, 0), juce::Justification::centredLeft, true);
     }
     if (item != nullptr && item->file == previewing && studio.isMediaPreviewing())

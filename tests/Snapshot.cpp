@@ -712,6 +712,26 @@ TEST_CASE ("Snapshot: the MediaBay window", "[.][snapshot-mediabay]")
         }
         root.getChildFile ("Presets").createDirectory();
         root.getChildFile ("Presets").getChildFile ("Rogue Drop A Rhythm.pr7track").replaceWithText ("<PR7S/>");
+        {
+            // A VST preset (0.24.0): header, Info and the chunk list.
+            const juce::String infoXml = "<MetaInfo><Attr id=\"PlugInName\" value=\"Rogue\" type=\"string\"/>"
+                                         "<Attr id=\"PlugInCategory\" value=\"Instrument|Sampler\" type=\"string\"/>"
+                                         "<Attr id=\"Name\" value=\"Djent Rhythm DI\" type=\"string\"/>"
+                                         "<Attr id=\"MusicalInstrument\" value=\"Guitar|Rhythm\" type=\"string\"/>"
+                                         "<Attr id=\"MusicalStyle\" value=\"Metal|Djent\" type=\"string\"/></MetaInfo>";
+            juce::MemoryOutputStream out;
+            out.write ("VST3", 4);
+            out.writeInt (1);
+            out.write ("0123456789ABCDEF00112233AABBCCDD", 32);
+            const auto infoAt = (juce::int64) 48;
+            const auto listAt = infoAt + (juce::int64) infoXml.getNumBytesAsUTF8();
+            out.writeInt64 (listAt);
+            out.write (infoXml.toRawUTF8(), infoXml.getNumBytesAsUTF8());
+            out.write ("List", 4);
+            out.writeInt (1);
+            out.write ("Info", 4); out.writeInt64 (infoAt); out.writeInt64 ((juce::int64) infoXml.getNumBytesAsUTF8());
+            root.getChildFile ("Presets").getChildFile ("Djent Rhythm.vstpreset").replaceWithData (out.getData(), out.getDataSize());
+        }
         root.getChildFile ("Songs").createDirectory();
         root.getChildFile ("Songs").getChildFile ("Night Drive.pr7s").replaceWithText ("<PR7S/>");
 

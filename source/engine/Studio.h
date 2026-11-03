@@ -759,6 +759,17 @@ namespace pr7s
         MediaPreviewPlan planMediaPreview (const juce::File&, double seconds);
         static int keyPitchClass (const juce::String& key);   // "F#m" -> 6; "" or unknown -> -1
         bool previewMedia (const juce::File&, bool loop);
+
+        // VST presets (0.24.0): the plug-in a .vstpreset is for (among the scanned ones and the
+        // studio's synth: by its class id as JUCE hashes it, else by name), and using it: a track
+        // of its own (an instrument's: an instrument track named after the preset; an effect's:
+        // an FX channel), or onto a track (an instrument's: that track's instrument, loaded into it
+        // when it's the same plug-in; an effect's: loaded into that effect if the track has it,
+        // else added to its inserts). The preset's settings go in as the plug-in's state.
+        struct PluginPreset { juce::PluginDescription plugin; juce::MemoryBlock state; juce::String name; bool instrument = false; };
+        std::optional<PluginPreset> readPluginPreset (const juce::File&, juce::String& error);
+        int addTrackFromPluginPreset (const juce::File&, juce::String& error);
+        bool applyPluginPreset (int trackId, const juce::File&, juce::String& error);   // trackId 0: the master (effects only)
         void stopMediaPreview();
         bool isMediaPreviewing() const;
         double getMediaPreviewProgress() const;                      // 0 to 1

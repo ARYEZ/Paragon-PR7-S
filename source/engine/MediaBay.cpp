@@ -16,6 +16,7 @@ namespace pr7s
             case MediaType::midi: return "MIDI";
             case MediaType::trackPreset: return "TRACK PRESET";
             case MediaType::song: return "SONG";
+            case MediaType::pluginPreset: return "VST PRESET";
         }
         return {};
     }
@@ -31,6 +32,8 @@ namespace pr7s
             return MediaType::trackPreset;
         if (extension == ".pr7s")
             return MediaType::song;
+        if (extension == ".vstpreset")
+            return MediaType::pluginPreset;
         return std::nullopt;
     }
 
@@ -38,8 +41,10 @@ namespace pr7s
     {
         juce::String text;
         text << name << ' ' << file.getFileName() << ' ' << file.getParentDirectory().getFileName() << ' ' << mediaTypeName (type);
-        if (type == MediaType::trackPreset)
+        if (type == MediaType::trackPreset || type == MediaType::pluginPreset)
             text << " preset";
+        if (presetPlugin.isNotEmpty())
+            text << ' ' << presetPlugin;
         if (tempo() > 0.0)
             text << ' ' << juce::String (tempo(), 0) << " bpm";
         if (keyName().isNotEmpty())
@@ -462,6 +467,60 @@ namespace pr7s
         return t;
     }
 
+    bool MediaDatabase::readVstPresetInfo (const juce::File& file, juce::String& classId, juce::StringPairArray& info)
+    {
+        // "VST3", a version (4), the class id (32 ASCII), the chunk list's offset (8); the list:
+        // "List", a count, then per chunk its id (4), offset (8), size (8). Little-endian.
+        juce::FileInputStream in (file);
+        if (! in.openedOk() || in.getTotalLength() < 48)
+            return false;
+        char header[48];
+        if (in.read (header, 48) != 48 || std::memcmp (header, "VST3", 4) != 0)
+            return false;
+        classId = juce::String (juce::CharPointer_ASCII (header + 8), 32).trim();
+        const auto listAt = (juce::int64) juce::ByteOrder::littleEndianInt64 (header + 40);
+        const auto total = in.getTotalLength();
+        if (listAt < 48 || listAt + 8 > total || ! in.setPosition (listAt))
+            return true;
+        char list[8];
+        if (in.read (list, 8) != 8 || std::memcmp (list, "List", 4) != 0)
+            return true;
+        const auto count = juce::jlimit (0, 64, (int) juce::ByteOrder::littleEndianInt (list + 4));
+        for (int i = 0; i < count; ++i)
+        {
+            char entry[20];
+            if (! in.setPosition (listAt + 8 + (juce::int64) i * 20) || in.read (entry, 20) != 20)
+                break;
+            if (std::memcmp (entry, "Info", 4) != 0)
+                continue;
+            const auto offset = (juce::int64) juce::ByteOrder::littleEndianInt64 (entry + 4);
+            const auto size = (juce::int64) juce::ByteOrder::littleEndianInt64 (entry + 12);
+            if (offset < 0 || size <= 0 || size > 1024 * 1024 || offset > total || size > total - offset || ! in.setPosition (offset))
+                break;
+            juce::MemoryBlock block;
+            in.readIntoMemoryBlock (block, (juce::pointer_sized_int) size);
+            // <MetaInfo><Attr id="PlugInName" value="..." type="string"/>...</MetaInfo>
+            if (const auto xml = juce::parseXML (block.toString()))
+                for (const auto* attr : xml->getChildIterator())
+                    if (const auto id = attr->getStringAttribute ("id"); id.isNotEmpty())
+                        info.set (id, attr->getStringAttribute ("value"));
+            break;
+        }
+        return true;
+    }
+
+    int MediaDatabase::vst3UniqueIdFor (const juce::String& classId)
+    {
+        // As JUCE does for a VST3: the class id's four 32-bit numbers, hashed (value * 31 + each).
+        const auto hex = classId.trim();
+        if (hex.length() != 32 || ! hex.containsOnly ("0123456789abcdefABCDEF"))
+            return 0;
+        juce::uint32 value = 0;
+        for (int i = 0; i < 4; ++i)
+            value = value * 31 + (juce::uint32) hex.substring (i * 8, i * 8 + 8).getHexValue64();
+        return (int) value;
+    }
+
     MediaItem MediaDatabase::read (const juce::File& file, juce::AudioFormatManager& formats)
     {
         MediaItem item;
@@ -533,6 +592,34 @@ namespace pr7s
                     if (key.isNotEmpty() && item.key.isEmpty())
                         item.key = key;
                 }
+        }
+        else if (item.type == MediaType::pluginPreset)
+        {
+            // A VST preset (0.24.0): its plug-in, and the tags its Info gives (as the iXML's: they
+            // become its tags when it has none of yours).
+            juce::StringPairArray presetInfo;
+            if (readVstPresetInfo (file, item.presetClass, presetInfo))
+            {
+                item.presetPlugin = presetInfo.getValue ("PlugInName", {});
+                if (item.presetPlugin.isEmpty())   // (the VST3 preset folders: .../<Vendor>/<Plug-in>/<preset>.vstpreset)
+                    item.presetPlugin = file.getParentDirectory().getFileName();
+                item.presetInstrument = presetInfo.getValue ("PlugInCategory", {}).startsWithIgnoreCase ("Instrument");
+                const auto split = [] (const juce::String& v, juce::String& a, juce::String& b)
+                {
+                    a = v.upToFirstOccurrenceOf ("|", false, false).trim();
+                    b = v.fromFirstOccurrenceOf ("|", false, false).trim();
+                };
+                split (presetInfo.getValue ("MusicalInstrument", {}), item.fileTags.category, item.fileTags.subCategory);
+                split (presetInfo.getValue ("MusicalStyle", {}), item.fileTags.style, item.fileTags.subStyle);
+                for (auto word : juce::StringArray::fromTokens (presetInfo.getValue ("MusicalCharacter", {}), ",|;", ""))
+                    for (const auto& pair : characterPairs())
+                        for (const auto& side : { pair.left, pair.right })
+                            if (word.trim().equalsIgnoreCase (side))
+                                item.fileTags.character.addIfNotAlreadyThere (side);
+                if (const auto name = presetInfo.getValue ("Name", {}); name.isNotEmpty())
+                    item.name = name;
+                item.info = presetInfo.getValue ("PlugInCategory", {}).replaceCharacter ('|', ' ');
+            }
         }
         else if (item.type == MediaType::midi)
         {
@@ -1265,6 +1352,11 @@ namespace pr7s
             item.beats = e->getDoubleAttribute ("beats");
             item.notes = e->getIntAttribute ("notes");
             item.info = e->getStringAttribute ("info");
+            item.presetClass = e->getStringAttribute ("class");
+            item.presetPlugin = e->getStringAttribute ("plugin");
+            item.presetInstrument = e->getBoolAttribute ("instrument");
+            if (item.type == MediaType::pluginPreset)
+                item.name = e->getStringAttribute ("name", item.name);
             item.readVersion = e->getIntAttribute ("read", 1);
             item.rating = getRating (item.file);
             item.tags = getTags (item.file);
@@ -1340,6 +1432,10 @@ namespace pr7s
             if (item.beats > 0.0) e->setAttribute ("beats", item.beats);
             if (item.notes > 0) e->setAttribute ("notes", item.notes);
             if (item.info.isNotEmpty()) e->setAttribute ("info", item.info);
+            if (item.presetClass.isNotEmpty()) e->setAttribute ("class", item.presetClass);
+            if (item.presetPlugin.isNotEmpty()) e->setAttribute ("plugin", item.presetPlugin);
+            if (item.presetInstrument) e->setAttribute ("instrument", true);
+            if (item.type == MediaType::pluginPreset && item.name != item.file.getFileNameWithoutExtension()) e->setAttribute ("name", item.name);
             e->setAttribute ("read", item.readVersion);
         }
         store.getParentDirectory().createDirectory();

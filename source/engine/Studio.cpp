@@ -2229,6 +2229,133 @@ namespace pr7s
         return false;
     }
 
+    std::optional<Studio::PluginPreset> Studio::readPluginPreset (const juce::File& presetFile, juce::String& error)
+    {
+        juce::String classId;
+        juce::StringPairArray info;
+        if (! MediaDatabase::readVstPresetInfo (presetFile, classId, info))
+        {
+            error = presetFile.getFileName() + " isn't a VST3 preset.";
+            return std::nullopt;
+        }
+        juce::MemoryBlock data;
+        presetFile.loadFileAsData (data);
+        PluginPreset preset;
+        preset.state = DawProject::vstPresetToHostState (data);
+        if (preset.state.isEmpty())
+        {
+            error = presetFile.getFileName() + " has no plug-in settings inside.";
+            return std::nullopt;
+        }
+        preset.name = info.getValue ("Name", presetFile.getFileNameWithoutExtension());
+        auto pluginName = info.getValue ("PlugInName", {});
+        if (pluginName.isEmpty())
+            pluginName = presetFile.getParentDirectory().getFileName();
+        // The plug-in: by its class id (as JUCE hashes it), else by name; the studio's synth too.
+        juce::Array<juce::PluginDescription> candidates = host->getInstruments();
+        candidates.addArray (host->getEffects());
+        if (const auto* synth = host->getStudioSynth())
+            candidates.add (*synth);
+        const auto uid = MediaDatabase::vst3UniqueIdFor (classId);
+        const juce::PluginDescription* found = nullptr;
+        for (const auto& d : candidates)
+            if (uid != 0 && d.pluginFormatName == "VST3" && d.uniqueId == uid)
+                found = &d;
+        if (found == nullptr)
+            for (const auto& d : candidates)
+                if (found == nullptr && pluginName.isNotEmpty() && d.name.equalsIgnoreCase (pluginName))
+                    found = &d;
+        if (found == nullptr)
+        {
+            error = "This preset is for " + (pluginName.isNotEmpty() ? pluginName : juce::String ("a plug-in"))
+                  + ", which isn't among your scanned plug-ins: PLUGINS > SCAN / OPTIONS, then try again.";
+            return std::nullopt;
+        }
+        preset.plugin = *found;
+        preset.instrument = found->isInstrument;
+        return preset;
+    }
+
+    int Studio::addTrackFromPluginPreset (const juce::File& presetFile, juce::String& error)
+    {
+        const auto preset = readPluginPreset (presetFile, error);
+        if (! preset)
+            return 0;
+        if (preset->instrument)
+        {
+            Instrument instrument;
+            instrument.kind = Instrument::Kind::plugin;
+            instrument.plugin = preset->plugin;
+            instrument.state = preset->state;
+            const auto id = addTrack (instrument, &error);
+            if (id != 0)
+                renameTrack (id, preset->name);
+            return id;
+        }
+        const auto id = addFxChannel (&preset->plugin, &error);
+        if (id != 0)
+            if (auto* effect = engine.getEffect (id, 0))
+                effect->setStateInformation (preset->state.getData(), (int) preset->state.getSize());
+        return id;
+    }
+
+    bool Studio::applyPluginPreset (int trackId, const juce::File& presetFile, juce::String& error)
+    {
+        const auto preset = readPluginPreset (presetFile, error);
+        if (! preset)
+            return false;
+        if (isFrozen (trackId))
+        {
+            error = "It's frozen: unfreeze it first.";
+            return false;
+        }
+        if (preset->instrument)
+        {
+            const auto* track = project.findTrack (trackId);
+            if (track == nullptr || track->kind != Track::Kind::instrument)
+            {
+                error = "An instrument's preset goes on an instrument track.";
+                return false;
+            }
+            // The same plug-in: the preset loaded into it; another: the instrument changed, with the preset.
+            if (auto* running = engine.getInstrument (trackId);
+                running != nullptr && track->instrument.kind == Instrument::Kind::plugin && track->instrument.plugin.uniqueId == preset->plugin.uniqueId
+                && track->instrument.plugin.name == preset->plugin.name)
+            {
+                running->setStateInformation (preset->state.getData(), (int) preset->state.getSize());
+                changed();
+                return true;
+            }
+            Instrument instrument;
+            instrument.kind = Instrument::Kind::plugin;
+            instrument.plugin = preset->plugin;
+            instrument.state = preset->state;
+            return changeInstrument (trackId, instrument, &error);
+        }
+        // An effect's: into that effect when the track has it, else a new insert with it.
+        if (const auto* inserts = insertsOf (trackId))
+            for (int slot = 0; slot < (int) inserts->size(); ++slot)
+                if (const auto& insert = (*inserts)[(size_t) slot];
+                    ! insert.isEmpty() && insert.plugin.uniqueId == preset->plugin.uniqueId && insert.plugin.name == preset->plugin.name)
+                    if (auto* effect = engine.getEffect (trackId, slot))
+                    {
+                        effect->setStateInformation (preset->state.getData(), (int) preset->state.getSize());
+                        changed();
+                        return true;
+                    }
+        Insert insert;
+        insert.plugin = preset->plugin;
+        insert.state = preset->state;
+        juce::String problem;
+        auto instance = host->createEffect (insert, engine.getSampleRate(), engine.getBlockSize(), problem);
+        if (instance == nullptr)
+        {
+            error = problem;
+            return false;
+        }
+        return addInsert (trackId, insert, std::move (instance));
+    }
+
     void Studio::stopMediaPreview()
     {
         engine.stopPreview();

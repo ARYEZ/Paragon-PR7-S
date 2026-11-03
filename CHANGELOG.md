@@ -2,6 +2,18 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.24.0
+
+VST presets in the MediaBay and the Media rack (the third of the three additions the owner chose): your Shreddage, Kontakt or PR7 presets found, tagged and loaded like any other media.
+
+- **VST PRESET** is a new kind of file in the MediaBay (`.vstpreset`, the VST3 preset files plug-ins save, usually in "VST3 Presets" folders). Scanned like the rest: tick the folder holding them in the FILE BROWSER. Each shows its own name (from inside the file), its plug-in (in FORMAT), and the tags it carries: many presets say their instrument (Guitar / Rhythm), style (Metal / Djent) and character, and those become its tags (yours always win, as before).
+- **PRESETS** (the type key, and the Media rack's Presets page) now shows both kinds: track presets and VST presets.
+- **Double-click or USE IT:** an instrument's preset makes a new instrument track with that plug-in and the preset loaded, named after the preset; an effect's preset makes a new FX channel with it.
+- **Drag onto a track:** an instrument's preset onto an instrument track changes its instrument to that plug-in with the preset (or, when it's already that plug-in, just loads the preset into it); an effect's preset loads into that effect when the track has it, otherwise it's added to the track's inserts. Onto a track it can't go on: a new track, as a double-click.
+- **The Media rack:** right-click a VST preset: Add a Track with It, or Load on the selected track (or on the master, for an effect's preset).
+- **Its plug-in** is found among your scanned plug-ins by the preset's plug-in id (as the plug-in reports it), else by its name; when it isn't scanned, the message says which plug-in it needs (PLUGINS > SCAN / OPTIONS).
+- **Honestly:** the preset is loaded as the plug-in's whole state, as the VST3 standard does; a few plug-ins keep their sounds outside their presets (some samplers ask for their library again). Not checked here with real plug-ins (none can run in the cloud tests): checked with made-up presets, read and matched exactly as the real ones are. No preview for presets yet (the manual plays a few notes through the instrument: a later step); no FX-chain or strip presets (the studio doesn't have them).
+
 ## 0.23.0
 
 The MediaBay's previews in time with the song (the second of the three additions the owner chose), as the manual's Audio Files Previewer.

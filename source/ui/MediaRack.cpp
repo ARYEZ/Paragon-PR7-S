@@ -190,8 +190,8 @@ std::set<pr7s::MediaType> MediaRack::pageTypes() const
     switch (state.page)
     {
         case Page::loops: return { T::audio, T::midi };
-        case Page::presets: return { T::trackPreset };
-        default: return { T::audio, T::midi, T::trackPreset, T::song };
+        case Page::presets: return { T::trackPreset, T::pluginPreset };
+        default: return { T::audio, T::midi, T::trackPreset, T::song, T::pluginPreset };
     }
 }
 
@@ -284,10 +284,13 @@ void MediaRack::setSearch (const juce::String& text)
 
 void MediaRack::setTypeShown (pr7s::MediaType type, bool shown)
 {
-    if (shown)
-        typesShown.insert (type);
-    else
-        typesShown.erase (type);
+    // (0.24.0: PRESETS is both kinds.)
+    const auto both = type == pr7s::MediaType::trackPreset || type == pr7s::MediaType::pluginPreset;
+    for (const auto t : both ? std::vector<pr7s::MediaType> { pr7s::MediaType::trackPreset, pr7s::MediaType::pluginPreset } : std::vector<pr7s::MediaType> { type })
+        if (shown)
+            typesShown.insert (t);
+        else
+            typesShown.erase (t);
     rebuild();
 }
 
@@ -373,7 +376,7 @@ std::vector<MediaRack::Tile> MediaRack::tiles() const
         found.push_back ({ "VST EFFECTS", effects == 0 ? juce::String ("NONE FOUND YET (PLUGINS > SCAN)") : juce::String (effects) + " EFFECTS",
                            [self] { self->openPage (Page::effects); } });
         found.push_back ({ "LOOPS & SAMPLES", juce::String (count ({ pr7s::MediaType::audio, pr7s::MediaType::midi })) + " AUDIO AND MIDI FILES", [self] { self->openPage (Page::loops); } });
-        found.push_back ({ "PRESETS", juce::String (count ({ pr7s::MediaType::trackPreset })) + " TRACK PRESETS", [self] { self->openPage (Page::presets); } });
+        found.push_back ({ "PRESETS", juce::String (count ({ pr7s::MediaType::trackPreset, pr7s::MediaType::pluginPreset })) + " TRACK AND VST PRESETS", [self] { self->openPage (Page::presets); } });
         found.push_back ({ "FAVORITES", juce::String (favorites.size()) + " FOLDERS", [self] { self->openPage (Page::favorites); } });
         found.push_back ({ "FILE BROWSER", "YOUR FOLDERS AND DRIVES", [self] { self->openPage (Page::fileBrowser); } });
     }
@@ -592,6 +595,8 @@ void MediaRack::rebuild()
                 row.text = item.name;
                 juce::StringArray detail;
                 detail.add (pr7s::mediaTypeName (item.type));
+                if (item.presetPlugin.isNotEmpty())
+                    detail.add (item.presetPlugin.toUpperCase());
                 if (item.tempo() > 0.0)
                     detail.add (juce::String (item.tempo(), 0) + " BPM");
                 if (item.keyName().isNotEmpty())
@@ -733,9 +738,20 @@ bool MediaRack::changeSelectedInstrument (int index)
 bool MediaRack::applyToSelectedTrack (int index)
 {
     const auto* row = getRow (index);
-    if (row == nullptr || row->type != pr7s::MediaType::trackPreset || (row->kind != Row::Kind::media && row->kind != Row::Kind::file))
+    if (row == nullptr || (row->type != pr7s::MediaType::trackPreset && row->type != pr7s::MediaType::pluginPreset)
+        || (row->kind != Row::Kind::media && row->kind != Row::Kind::file))
         return false;
     juce::String error;
+    // (0.24.0: a VST preset loads into the selected track's instrument or effects, or the master's effects.)
+    if (row->type == pr7s::MediaType::pluginPreset)
+    {
+        if (! studio.applyPluginPreset (studio.isMasterSelected() ? 0 : studio.getSelectedTrack(), row->file, error))
+        {
+            warn ("VST preset", error);
+            return false;
+        }
+        return true;
+    }
     if (! TrackActions::loadPresetFrom (studio, studio.getSelectedTrack(), row->file, error) || error.isNotEmpty())
     {
         warn ("Track preset", error);
@@ -771,10 +787,11 @@ void MediaRack::showRowMenu (int index)
             menu.addItem (6, "Add Favorite", ! favorites.contains (row->file.getFullPathName()));
             break;
         default:
-            if (row->type == pr7s::MediaType::trackPreset)
+            if (row->type == pr7s::MediaType::trackPreset || row->type == pr7s::MediaType::pluginPreset)
             {
-                menu.addItem (1, "Add a Track from the Preset");
-                menu.addItem (4, "Apply to " + trackName, track != nullptr);
+                menu.addItem (1, row->type == pr7s::MediaType::pluginPreset ? "Add a Track with It" : "Add a Track from the Preset");
+                menu.addItem (4, (row->type == pr7s::MediaType::pluginPreset ? "Load on " : "Apply to ") + trackName,
+                              track != nullptr || (studio.isMasterSelected() && row->type == pr7s::MediaType::pluginPreset));
             }
             else
                 menu.addItem (1, row->type == pr7s::MediaType::song ? "Open the Song" : "Into the Song (a new track at the playhead)");

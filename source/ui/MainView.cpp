@@ -1777,6 +1777,14 @@ void MainView::useMedia (const juce::File& file)
                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Track preset", error.isNotEmpty() ? error : "Couldn't read " + file.getFileName() + ".");
             break;
         }
+        case pr7s::MediaType::pluginPreset:
+        {
+            // (0.24.0: a track with the plug-in and the preset: an instrument track, or an FX channel.)
+            juce::String error;
+            if (studio.addTrackFromPluginPreset (file, error) == 0)
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "VST preset", error);
+            break;
+        }
         case pr7s::MediaType::song:
             whenSongCanGo ([safe = juce::Component::SafePointer<MainView> (this), file] { if (safe != nullptr) safe->openSong (file); });
             break;
@@ -1799,6 +1807,13 @@ void MainView::mediaDropped (const juce::StringArray& files, int x, int y)
             // a track of another kind: a new track, as below the track list.)
             juce::String error;
             if (! TrackActions::loadPresetFrom (studio, trackUnder (x, y), juce::File (path), error))
+                useMedia (juce::File (path));
+        }
+        else if (type == pr7s::MediaType::pluginPreset && trackUnder (x, y) != 0)
+        {
+            // (0.24.0: onto a track: its instrument, or its effects; refused (another kind of track): a new track.)
+            juce::String error;
+            if (! studio.applyPluginPreset (trackUnder (x, y), juce::File (path), error))
                 useMedia (juce::File (path));
         }
         else if (type)

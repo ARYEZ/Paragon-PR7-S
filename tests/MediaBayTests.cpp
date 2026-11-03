@@ -1176,3 +1176,109 @@ TEST_CASE ("MediaBay previews in time with the song: the plan, the stretch, the 
     engine.setPreviewSync (false, 0.0, 0.0);
     engine.stopPreview();
 }
+
+namespace
+{
+    // A .vstpreset as the VST3 SDK writes one: header, the component's state ("Comp"), the
+    // Info (XML), then the chunk list.
+    void writeVstPreset (const juce::File& file, const juce::String& classId, const juce::String& infoXml, const juce::MemoryBlock& state)
+    {
+        juce::MemoryOutputStream out;
+        out.write ("VST3", 4);
+        out.writeInt (1);
+        out.write (classId.toRawUTF8(), 32);
+        const auto listOffsetAt = out.getPosition();
+        out.writeInt64 (0);   // (filled in below)
+        const auto compAt = (juce::int64) out.getPosition();
+        out.write (state.getData(), state.getSize());
+        const auto infoAt = (juce::int64) out.getPosition();
+        out.write (infoXml.toRawUTF8(), infoXml.getNumBytesAsUTF8());
+        const auto listAt = (juce::int64) out.getPosition();
+        out.write ("List", 4);
+        out.writeInt (2);
+        out.write ("Comp", 4); out.writeInt64 (compAt); out.writeInt64 ((juce::int64) state.getSize());
+        out.write ("Info", 4); out.writeInt64 (infoAt); out.writeInt64 ((juce::int64) infoXml.getNumBytesAsUTF8());
+        juce::MemoryBlock data (out.getData(), out.getDataSize());
+        std::memcpy (static_cast<char*> (data.getData()) + listOffsetAt, &listAt, 8);   // (little-endian, as here)
+        file.getParentDirectory().createDirectory();
+        file.replaceWithData (data.getData(), data.getSize());
+    }
+}
+
+TEST_CASE ("VST presets in the MediaBay: read, tagged, matched to their plug-in (0.24.0)", "[mediabay][studio]")
+{
+    const auto root = juce::File::createTempFile ("pr7s-vstpresets");
+    const auto classId = juce::String ("0123456789ABCDEF00112233AABBCCDD");
+    const auto preset = root.getChildFile ("Shreddage Rogue").getChildFile ("Djent Rhythm.vstpreset");
+    const juce::String info = "<?xml version=\"1.0\"?><MetaInfo>"
+                              "<Attr id=\"MediaType\" value=\"VstPreset\" type=\"string\"/>"
+                              "<Attr id=\"PlugInName\" value=\"Rogue\" type=\"string\"/>"
+                              "<Attr id=\"PlugInCategory\" value=\"Instrument|Sampler\" type=\"string\"/>"
+                              "<Attr id=\"Name\" value=\"Djent Rhythm DI\" type=\"string\"/>"
+                              "<Attr id=\"MusicalInstrument\" value=\"Guitar|Rhythm\" type=\"string\"/>"
+                              "<Attr id=\"MusicalStyle\" value=\"Metal|Djent\" type=\"string\"/>"
+                              "<Attr id=\"MusicalCharacter\" value=\"Distorted, Tight\" type=\"string\"/>"
+                              "</MetaInfo>";
+    const juce::MemoryBlock state ("settings!", 9);
+    writeVstPreset (preset, classId, info, state);
+
+    // The header and the Info.
+    juce::String readClass;
+    juce::StringPairArray readInfo;
+    REQUIRE (MediaDatabase::readVstPresetInfo (preset, readClass, readInfo));
+    CHECK (readClass == classId);
+    CHECK (readInfo.getValue ("PlugInName", {}) == "Rogue");
+    CHECK_FALSE (MediaDatabase::readVstPresetInfo (root.getChildFile ("nothing.vstpreset"), readClass, readInfo));
+    // JUCE's id for it: the four numbers hashed.
+    const auto expected = (int) (((((juce::uint32) 0x01234567 * 31u) + 0x89ABCDEFu) * 31u + 0x00112233u) * 31u + 0xAABBCCDDu);
+    CHECK (MediaDatabase::vst3UniqueIdFor (classId) == expected);
+    CHECK (MediaDatabase::vst3UniqueIdFor ("not hex") == 0);
+
+    // Scanned: a VST PRESET, named by its Info, its plug-in, an instrument's, tagged from its Info.
+    Studio studio (false);
+    auto& bay = studio.getMediaBay();
+    bay.addLocation (root);
+    bay.scanNow();
+    REQUIRE (bay.getItems().size() == 1);
+    const auto& item = bay.getItems().front();
+    CHECK (item.type == MediaType::pluginPreset);
+    CHECK (mediaTypeName (item.type) == "VST PRESET");
+    CHECK (item.name == "Djent Rhythm DI");
+    CHECK (item.presetPlugin == "Rogue");
+    CHECK (item.presetInstrument);
+    CHECK (item.tags.category == "Guitar");
+    CHECK (item.tags.subCategory == "Rhythm");
+    CHECK (item.tags.style == "Metal");
+    CHECK (item.tags.character.joinIntoString (",") == "Distorted,Tight");
+    MediaQuery query;
+    query.text = "rogue";
+    CHECK (bay.find (query).size() == 1);
+
+    // Its plug-in: not scanned, so it says which.
+    juce::String error;
+    CHECK_FALSE (studio.readPluginPreset (preset, error).has_value());
+    CHECK (error.contains ("Rogue"));
+    CHECK (studio.addTrackFromPluginPreset (preset, error) == 0);
+    // Scanned (a description as the scan would give it): found by its class id, the settings ready
+    // for the plug-in (JUCE's VST3 state with the preset's component chunk).
+    juce::PluginDescription rogue;
+    rogue.name = "Rogue (renamed)";   // (the id matches, not the name)
+    rogue.pluginFormatName = "VST3";
+    rogue.manufacturerName = "Impact Soundworks";
+    rogue.isInstrument = true;
+    rogue.uniqueId = expected;
+    rogue.fileOrIdentifier = "/nowhere/Rogue.vst3";
+    studio.getPluginHost().getKnownPlugins().addType (rogue);
+    error = {};
+    const auto found = studio.readPluginPreset (preset, error);
+    REQUIRE (found.has_value());
+    CHECK (found->plugin.name == "Rogue (renamed)");
+    CHECK (found->instrument);
+    CHECK (found->name == "Djent Rhythm DI");
+    const auto xml = juce::AudioProcessor::getXmlFromBinary (found->state.getData(), (int) found->state.getSize());
+    REQUIRE (xml != nullptr);
+    juce::MemoryBlock component;
+    component.fromBase64Encoding (xml->getChildElementAllSubText ("IComponent", {}));
+    CHECK (component == state);
+    root.deleteRecursively();
+}
