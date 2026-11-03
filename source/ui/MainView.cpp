@@ -1,6 +1,7 @@
 #include "MainView.h"
 #include "ui/DrumMapPage.h"
 #include "ui/AutomationPanel.h"
+#include "ui/AudioAlignmentPanel.h"
 #include "ui/TrackActions.h"
 #include "engine/MidiImport.h"
 #include "ui/KeyCommandsPage.h"
@@ -336,6 +337,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     trackList.onTempoMenu = [this] { arrange.showTempoMenu(); };
     arrange.onOpenTempoEditor = [this] { if (tempoEditorWindow == nullptr) toggleTempoEditor(); else tempoEditorWindow->toFront (true); };
     transport.onOpenTempoEditor = arrange.onOpenTempoEditor;
+    arrange.onOpenAudioAlignment = [this] { if (alignmentWindow == nullptr) toggleAudioAlignment(); else alignmentWindow->toFront (true); };
     trackList.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
     timeline.onScrollOrZoom = [this]
     {
@@ -2098,6 +2100,23 @@ void MainView::toggleAutomationPanel()
         juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->automationWindow = nullptr; });
     };
     automationWindow = std::move (window);
+}
+
+void MainView::toggleAudioAlignment()
+{
+    if (alignmentWindow != nullptr)
+    {
+        alignmentWindow = nullptr;
+        return;
+    }
+    auto window = std::make_unique<AudioAlignmentWindow> (studio,
+        [this] { return arrange.getSelectedParts(); },
+        [this] { return arrange.getRange(); });
+    window->onClose = [safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->alignmentWindow = nullptr; });
+    };
+    alignmentWindow = std::move (window);
 }
 
 void MainView::openDrumMapSetup()

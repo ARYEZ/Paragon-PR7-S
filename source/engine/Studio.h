@@ -7,6 +7,7 @@
 #include "PluginHost.h"
 #include "Project.h"
 #include "Warp.h"
+#include "Align.h"
 #include "Lines.h"
 #include "MediaBay.h"
 
@@ -418,6 +419,34 @@ namespace pr7s
         void setAudioWarpQuantize (bool on);
         bool isAudioWarpQuantize() const noexcept { return project.audioWarpQuantize; }
         std::shared_ptr<const juce::AudioBuffer<float>> getWarpedSound (const Part&, const TempoMap&);
+
+        // Audio Alignment (0.33.0, the manual's Audio Alignment Panel). The reference: what a track plays
+        // over a stretch (an event's, or a range's); the targets: clips on other audio tracks, each limited
+        // to a stretch if a range chose it. Each target is aligned where it overlaps the reference: split at
+        // the overlap's edges first (short crossfades there, as the manual), then warp markers written (or,
+        // when a plain move does, its audio moved). Sync points and protected ranges are in song beats.
+        struct AlignReference { int trackId = 0; double start = 0.0, end = 0.0; };
+        struct AlignTarget { int partId = 0; double start = -1.0, end = -1.0; };   // (-1: the whole clip)
+        struct AlignSync { int partId = 0; double referenceBeat = 0.0, targetBeat = 0.0; };
+        struct AlignReport
+        {
+            int aligned = 0, moved = 0, stretched = 0;
+            std::vector<int> unmetSyncs;          // indices into the sync points given
+            std::vector<int> alignedParts;        // per target: the clip aligned (the overlapping piece), 0: not aligned
+            double before = 0.0, after = 0.0;     // average distance from the reference (seconds), all targets
+            juce::StringArray notes;              // what couldn't be done and why
+        };
+        // One undo step. False when nothing was aligned (the notes say why).
+        bool alignAudio (const AlignReference&, const std::vector<AlignTarget>&, const AlignSettings&,
+                         const std::vector<AlignSync>&, const std::vector<juce::Range<double>>& protectedBeats, AlignReport&);
+        // What a track plays (its heard clips, warped as heard, both sides mixed) from `from` to `to`
+        // song seconds, at the recordings' rate (`rate` set; 0: nothing to hear).
+        std::vector<float> heardMono (int trackId, double from, double to, double& rate, int skipPartId = 0);
+        // A clip's recording as it's placed now, at its own speed (warps ignored), from `from` to `to`
+        // song seconds, reading on past its edges where the recording goes on.
+        std::vector<float> clipMono (const Part&, double from, double to, double& rate);
+        AlignSettings getAlignSettings() const;   // settings key "audioAlignment"
+        void setAlignSettings (const AlignSettings&);
 
         // Comping, part two (0.30.0, the manual's Assembling Operations and Assembling a Perfect Take).
         // The takes on a part's track with its start and end (stacked: what the Comp tool moves together).
@@ -1004,6 +1033,7 @@ namespace pr7s
         WarpRenderer warpRenderer;
         std::pair<Track*, int> findPartById (int partId);
         bool editWarp (int partId, const std::function<bool (Part&)>&);
+        void tidyWarp (Part&);   // markers in order, apart, inside the recording, edges at the clip's
         double recordingLatency() const;
         void buildRecordingNotes (std::vector<Note>& notes, double partStart, double endBeat, int onlyPass = -1) const;
         // (0.29.0) New takes onto the track by the record modes: each on the first lane it
@@ -1041,6 +1071,7 @@ namespace pr7s
         GuitarVelocities guitarVelocities;
         float ideasHumanize = 0.0f, humanizeAmount = 0.5f;   // (without a settings file: the tests)
         bool ideasFeel = true, humanizeLayers = true;
+        AlignSettings alignSettings;   // (without a settings file: the tests)
         float dropHighlight = defaultDropHighlight;   // (without a settings file: the tests)   // (a linked change being passed on: not passed on again)
         void pruneLinkGroups();
         // `action` for each channel linked to this one for `what` (not itself); the

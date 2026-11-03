@@ -2434,6 +2434,7 @@ void ArrangeView::showPartMenu (int trackId, int index)
             warp.addSeparator();
             warp.addItem (21, "Hitpoint Settings...");
             menu.addSubMenu ("Hitpoints and Warp", warp);
+            menu.addItem (23, "Audio Alignment...");   // (0.33.0)
         }
     }
     menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, index, ids, muted = part.muted, start = part.start, end = part.end(), partId = part.id] (int chosen)
@@ -2465,6 +2466,12 @@ void ArrangeView::showPartMenu (int trackId, int index)
             juce::String error;
             if (studio.bounceTakes (chosenIds, error) == 0 && error.isNotEmpty())
                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Not bounced", error);
+            return;
+        }
+        if (chosen == 23)
+        {
+            if (onOpenAudioAlignment)
+                onOpenAudioAlignment();
             return;
         }
         if (chosen >= 18 && chosen <= 22)
@@ -3599,8 +3606,16 @@ void ArrangeView::showRangeMenu()
     menu.addSeparator();
     menu.addItem (20, "Render in Place...");
     menu.addItem (21, "Render in Place (as last time)");
+    menu.addSeparator();
+    menu.addItem (22, "Audio Alignment...");   // (0.33.0)
     menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ArrangeView> (this)] (int chosen)
     {
+        if (safe != nullptr && chosen == 22)
+        {
+            if (safe->onOpenAudioAlignment)
+                safe->onOpenAudioAlignment();
+            return;
+        }
         if (safe != nullptr && (chosen == 20 || chosen == 21) && safe->range && safe->onRenderInPlace)
         {
             std::vector<pr7s::Studio::RenderSource> sources;

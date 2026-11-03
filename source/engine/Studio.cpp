@@ -5423,14 +5423,8 @@ namespace pr7s
         return best;
     }
 
-    bool Studio::editWarp (int partId, const std::function<bool (Part&)>& edit)
+    void Studio::tidyWarp (Part& part)
     {
-        auto [track, index] = findPartById (partId);
-        if (track == nullptr || track->frozen || ! track->parts[(size_t) index].isAudio())
-            return false;
-        auto part = track->parts[(size_t) index];
-        if (! edit (part))
-            return false;
         // Checked: in order, apart, inside the recording; the edges at the clip's.
         auto& m = part.warp;
         std::sort (m.begin(), m.end(), [] (const WarpMarker& a, const WarpMarker& b) { return a.beat < b.beat; });
@@ -5452,6 +5446,17 @@ namespace pr7s
         else
             kept.clear();
         m = std::move (kept);
+    }
+
+    bool Studio::editWarp (int partId, const std::function<bool (Part&)>& edit)
+    {
+        auto [track, index] = findPartById (partId);
+        if (track == nullptr || track->frozen || ! track->parts[(size_t) index].isAudio())
+            return false;
+        auto part = track->parts[(size_t) index];
+        if (! edit (part))
+            return false;
+        tidyWarp (part);
         track->parts[(size_t) index] = part;
         changed();
         return true;
@@ -8193,5 +8198,249 @@ namespace pr7s
         if (! project.chordTrack.scales.empty())
             pads.setKey (project.chordTrack.scales.front().key);
         setChordPads (pads);
+    }
+
+    //==========================================================================
+    // Audio Alignment (0.33.0)
+    AlignSettings Studio::getAlignSettings() const
+    {
+        if (settings != nullptr && settings->containsKey ("audioAlignment"))
+            return AlignSettings::fromString (settings->getValue ("audioAlignment"));
+        return alignSettings;
+    }
+
+    void Studio::setAlignSettings (const AlignSettings& s)
+    {
+        alignSettings = s;
+        if (settings != nullptr)
+            settings->setValue ("audioAlignment", s.toString());
+    }
+
+    std::vector<float> Studio::heardMono (int trackId, double from, double to, double& rate, int skipPartId)
+    {
+        rate = 0.0;
+        const auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! track->isAudio() || to <= from)
+            return {};
+        const auto tempo = project.tempoMap();
+        for (const auto& p : track->parts)
+            if (p.isAudio())
+                if (const auto data = getAudio (p.audioFile))
+                {
+                    rate = data->sampleRate;
+                    break;
+                }
+        if (rate <= 0.0)
+            return {};
+        const auto total = (int) std::ceil ((to - from) * rate);
+        std::vector<float> sound ((size_t) juce::jmax (1, total), 0.0f);
+        for (int i = 0; i < (int) track->parts.size(); ++i)
+        {
+            const auto& p = track->parts[(size_t) i];
+            if (! p.isAudio() || p.id == skipPartId)
+                continue;
+            const auto data = getAudio (p.audioFile);
+            if (data == nullptr)
+                continue;
+            const auto warped = p.isWarped() ? getWarpedSound (p, tempo) : nullptr;
+            const auto& heard = warped != nullptr ? *warped : data->sound;
+            const auto offset = warped != nullptr ? 0.0 : p.audioOffset;
+            const auto clipStart = tempo.secondsAt (p.start);
+            const auto channels = heard.getNumChannels();
+            if (channels == 0)
+                continue;
+            for (const auto& [a, b] : heardStretches (*track, i))
+            {
+                const auto first = juce::jmax (0, (int) std::llround ((tempo.secondsAt (a) - from) * rate));
+                const auto last = juce::jmin (total, (int) std::llround ((tempo.secondsAt (b) - from) * rate));
+                for (int s = first; s < last; ++s)
+                {
+                    const auto source = (int) std::llround ((offset + from + s / rate - clipStart) * rate);
+                    if (source < 0 || source >= heard.getNumSamples())
+                        continue;
+                    auto v = 0.0f;
+                    for (int c = 0; c < channels; ++c)
+                        v += heard.getSample (c, source);
+                    sound[(size_t) s] = v / (float) channels;
+                }
+            }
+        }
+        return sound;
+    }
+
+    std::vector<float> Studio::clipMono (const Part& part, double from, double to, double& rate)
+    {
+        rate = 0.0;
+        const auto data = part.isAudio() ? getAudio (part.audioFile) : nullptr;
+        if (data == nullptr || to <= from || data->sound.getNumChannels() == 0)
+            return {};
+        rate = data->sampleRate;
+        const auto clipStart = project.tempoMap().secondsAt (part.start);
+        const auto total = (int) std::ceil ((to - from) * rate);
+        std::vector<float> sound ((size_t) juce::jmax (1, total), 0.0f);
+        const auto channels = data->sound.getNumChannels();
+        for (int s = 0; s < total; ++s)
+        {
+            const auto source = (int) std::llround ((part.audioOffset + from + s / rate - clipStart) * rate);
+            if (source < 0 || source >= data->sound.getNumSamples())
+                continue;
+            auto v = 0.0f;
+            for (int c = 0; c < channels; ++c)
+                v += data->sound.getSample (c, source);
+            sound[(size_t) s] = v / (float) channels;
+        }
+        return sound;
+    }
+
+    bool Studio::alignAudio (const AlignReference& reference, const std::vector<AlignTarget>& targets, const AlignSettings& options,
+                             const std::vector<AlignSync>& syncs, const std::vector<juce::Range<double>>& protectedBeats, AlignReport& report)
+    {
+        report = {};
+        const auto* refTrack = project.findTrack (reference.trackId);
+        if (refTrack == nullptr || ! refTrack->isAudio() || reference.end <= reference.start)
+        {
+            report.notes.add ("Choose an audio event (or a range on an audio track) as the reference.");
+            return false;
+        }
+        const auto tempo = project.tempoMap();
+        constexpr double edgeRoom = 1.0 / 64.0;   // (no piece shorter than this is split off)
+        constexpr double crossfade = 0.01;         // seconds, where a target is split
+        auto apartBefore = 0.0, apartAfter = 0.0;
+        report.alignedParts.assign (targets.size(), 0);
+        for (size_t targetIndex = 0; targetIndex < targets.size(); ++targetIndex)
+        {
+            const auto& target = targets[targetIndex];
+            auto [track, index] = partById (project, target.partId);
+            if (track == nullptr)
+                continue;
+            const auto name = track->parts[(size_t) index].name.isNotEmpty() ? track->parts[(size_t) index].name : track->name;
+            if (! track->isAudio() || ! track->parts[(size_t) index].isAudio())
+            {
+                report.notes.add (name + ": only audio events can be aligned.");
+                continue;
+            }
+            if (track->id == reference.trackId)
+            {
+                report.notes.add (name + ": on the reference's own track (the target must be on another track).");
+                continue;
+            }
+            if (track->frozen)
+            {
+                report.notes.add (name + ": its track is frozen.");
+                continue;
+            }
+            const auto original = track->parts[(size_t) index];
+            auto start = juce::jmax (original.start, reference.start);
+            auto end = juce::jmin (original.end(), reference.end);
+            if (target.start >= 0.0)
+                start = juce::jmax (start, target.start);
+            if (target.end >= 0.0)
+                end = juce::jmin (end, target.end);
+            if (tempo.secondsAt (end) - tempo.secondsAt (start) < 0.1)
+            {
+                report.notes.add (name + ": doesn't overlap the reference.");
+                continue;
+            }
+            const auto savedParts = track->parts;   // (put back if it can't be aligned)
+            // Its warp replaced (the manual: the audio to align mustn't be warped already).
+            if (track->parts[(size_t) index].isWarped())
+            {
+                auto& p = track->parts[(size_t) index];
+                p.audioOffset = p.warp.front().seconds;
+                p.warp.clear();
+                report.notes.add (name + ": its warp markers were replaced by the alignment.");
+            }
+            // Split at the overlap's edges; short crossfades there (fades at the cuts replaced).
+            auto pieceIndex = index;
+            if (start > track->parts[(size_t) index].start + edgeRoom)
+            {
+                auto second = cutPart (track->parts[(size_t) index], start - track->parts[(size_t) index].start, tempo);
+                track->parts[(size_t) index].fadeOut = crossfade;
+                second.fadeIn = crossfade;
+                track->parts.push_back (second);
+                pieceIndex = (int) track->parts.size() - 1;
+            }
+            if (end < track->parts[(size_t) pieceIndex].end() - edgeRoom)
+            {
+                auto& piece = track->parts[(size_t) pieceIndex];
+                auto rest = cutPart (piece, end - piece.start, tempo);
+                piece.fadeOut = crossfade;
+                rest.fadeIn = crossfade;
+                track->parts.push_back (rest);
+            }
+            numberParts();
+            auto& piece = track->parts[(size_t) pieceIndex];
+            const auto from = tempo.secondsAt (piece.start), to = tempo.secondsAt (piece.end());
+            const auto margin = 0.05;
+            const auto reach = juce::jlimit (AlignSettings::leastShift, AlignSettings::mostShift, options.maxShiftSeconds) + margin;
+            AlignSound refSound, tgtSound;
+            double refRate = 0.0, tgtRate = 0.0;
+            refSound.samples = heardMono (reference.trackId, from - margin, to + margin, refRate);
+            refSound.start = from - margin;
+            tgtSound.samples = clipMono (piece, from - reach, to + reach, tgtRate);
+            tgtSound.start = from - reach;
+            if (refRate <= 0.0 || tgtRate <= 0.0 || std::abs (refRate - tgtRate) > 0.5)
+            {
+                track->parts = savedParts;
+                report.notes.add (name + ": its recording or the reference's couldn't be read.");
+                continue;
+            }
+            std::vector<AlignSyncPoint> points;
+            std::vector<int> pointIndex;
+            for (int s = 0; s < (int) syncs.size(); ++s)
+                if (syncs[(size_t) s].partId == original.id || syncs[(size_t) s].partId == piece.id)
+                {
+                    points.push_back ({ tempo.secondsAt (syncs[(size_t) s].referenceBeat), tempo.secondsAt (syncs[(size_t) s].targetBeat) });
+                    pointIndex.push_back (s);
+                }
+            std::vector<juce::Range<double>> held;
+            for (const auto& r : protectedBeats)
+                held.push_back ({ tempo.secondsAt (r.getStart()), tempo.secondsAt (r.getEnd()) });
+            const auto result = alignSounds (refSound, tgtSound, from, to, refRate, options, points, held);
+            for (const auto u : result.unmetSyncPoints)
+                report.unmetSyncs.push_back (pointIndex[(size_t) u]);
+            if (! result.ok)
+            {
+                track->parts = savedParts;
+                report.notes.add (name + ": " + result.error);
+                continue;
+            }
+            const auto pieceStart = from;
+            if (result.shiftOnly)
+            {
+                if (std::abs (result.shift) >= 0.0002)
+                {
+                    auto offset = piece.audioOffset + result.shift;
+                    if (offset < 0.0)
+                    {
+                        // (The recording starts later than the clip would: the clip starts later.)
+                        const auto newStart = tempo.beatAt (pieceStart - offset);
+                        piece.length -= newStart - piece.start;
+                        piece.start = newStart;
+                        offset = 0.0;
+                    }
+                    piece.audioOffset = offset;
+                }
+                ++report.moved;
+            }
+            else
+            {
+                piece.warp.clear();
+                for (const auto& [t, g] : result.points)
+                    piece.warp.push_back ({ tempo.beatAt (t) - piece.start, piece.audioOffset + g - pieceStart });
+                tidyWarp (piece);
+                ++report.stretched;
+            }
+            ++report.aligned;
+            report.alignedParts[targetIndex] = piece.id;
+            apartBefore += result.before;
+            apartAfter += result.after;
+        }
+        if (report.aligned == 0)
+            return false;
+        report.before = apartBefore / report.aligned;
+        report.after = apartAfter / report.aligned;
+        changed();
+        return true;
     }
 }

@@ -2,6 +2,34 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.33.0
+
+(Includes 0.32.0, hitpoints and audio warping, if its own release didn't appear: its builds passed on Windows and Linux, but GitHub had no Mac machine free to build it. Its notes are in the changelog under 0.32.0.)
+
+Audio Alignment: the second of the four (then VariAudio in two parts). It lines up a double, a harmony or a second guitar with the take it should follow, without you dragging each note by hand. The result is ordinary warp markers (0.32.0), so anything it gets wrong you fix with the WARP tool.
+
+- **Open it:** right-click an audio clip or a range, **Audio Alignment...** (or give the command "Open/Close Audio Alignment Panel" a key in KEYS).
+- **The reference** (the take to follow): select its clip, or a range on its track, then **SET REFERENCE**.
+- **The targets** (what moves): select clips on other tracks, or a range across them, then **ADD TARGETS**. With several, the box beside it chooses the one shown.
+- **The view:** the reference above, the target below, the stretch where they overlap lit.
+  - **Drag from the reference down to the target:** a sync point. That moment of the target lands exactly there. It turns red when it can't (too far for MAX SHIFT, or out of order with another).
+  - **Ctrl-drag on the target:** a protected range. That stretch is moved but never stretched (a held note, a breath you like).
+  - **Shift-click** either one to remove it.
+- **Settings** (kept between songs):
+  - **MATCH WORDS** (the manual's): the sound's shape counts more than its loudness. Best when the words are the same.
+  - **PREFER TIME SHIFTING** (the manual's): when a plain move is close enough, the audio is moved, not stretched, to the sample. This is for two microphones on one performance (a guitar's close and room mics: the phase lines up).
+  - **PRECISION** (the manual's Alignment Precision): at 100 % every moment lands within 2 ms; lower keeps a looser, more natural feel with fewer markers.
+  - **ONLY WHERE BOTH PLAY**, **FLEXIBILITY** (low, normal, high) and **MAX SHIFT** (10 to 500 ms) are our own, after the way a dedicated vocal-alignment tool works. They set where to match, how freely the pace may change, and how far any moment may move.
+- **ALIGN AUDIO:** each target is split where it stops overlapping the reference (short 10 ms crossfades at the cuts, as the manual says) and only that piece is aligned. The report line says how far apart they were on average before and after. It's one undo step.
+- **Honestly:**
+  - How it matches: both are measured every 10 ms (loudness, attacks, and the spectrum's shape, which follows syllables). The best path between them is found within MAX SHIFT, then each marker is placed to the sample on the attack nearby. The "before / after" figures are measured on that 10 ms grid, so "3 ms after" can mean closer than that.
+  - Tested with notes made in code (a different voice on the target, timing wandering by up to 60 ms: every note lands within 5 ms), not by ear on your vocals or guitars. Real doubles that differ a lot in their words or articulation may need a few sync points.
+  - The stretcher softens attacks it stretches a little (about 10 % in the tests). Notes that didn't need stretching are copied untouched.
+  - Not built:
+    - pitch matching (making a double follow the lead's pitch): after VariAudio;
+    - aligning to several references at once;
+    - aligning clips that are already warped. Their markers are replaced, and the report says so.
+
 ## 0.32.0
 
 Hitpoints and audio warping: the first of the four releases you asked for (then Audio Alignment, then VariAudio in two parts). This is the groundwork the others stand on, and it's useful by itself: fixing the timing inside a recording without cutting it up.
