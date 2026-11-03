@@ -2,6 +2,51 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.29.0
+
+Takes and comping, part one (the owner's last item; the manual's Lanes, Takes, and Overlapping Events and Assembling a Perfect Take).
+
+- **Takes on lanes:** a track's parts now sit on lanes. **LANES** on a track's row (or its right-click menu: Show Lanes) shows each lane under it, with an empty one at the bottom to drag a take onto. The track's own row then shows what's heard: the comp.
+- **One clip at a time on an audio track** (the manual's rule): where audio clips overlap, only the one in front plays. Until now they all played together. **Songs with overlapping clips will sound different:** the clip added last is in front, and you can bring another forward with To Front.
+- **To Front:** right-click a part. Audio: the clip comes to the front. MIDI (overlapping parts all play): the part is unmuted and the ones it overlaps on other lanes are muted.
+- **The COMP tool** (in TOOLS, after SELECT):
+  - Click a take on a lane: it comes to the front. Click it again: the take it hid comes back.
+  - Drag across a lane: every take is cut there and that stretch of this lane comes to the front. Pieces of the same recording that meet are joined again.
+  - Shift-click selects, Alt-click splits, and on the track's own row it moves parts as SELECT does.
+- **Drag a take to another lane** (SELECT or COMP on the track's row).
+- **Lane solo:** S on a lane's row. Only that lane is heard; solo the track too to hear it alone.
+- **Record modes** (right-click REC):
+  - Audio:
+    - **Keep History** (the default, as the manual's): what's there stays, and each take goes on a lane.
+    - **Cycle History + Replace:** the recording replaces what's there, and every lap of a cycle is kept.
+    - **Replace:** only the last take is kept, in place of what was there.
+  - In a cycle, **every lap is now a take of its own on its own lane**, the last one in front. Before, only the last complete lap was kept. A last lap stopped part-way is kept if a beat or more was played.
+  - MIDI:
+    - **New Parts:** the new part goes beside what's there.
+    - **Merge:** the new notes go into the part that's there.
+    - **Replace:** what was there in the recording's stretch goes.
+  - MIDI in a cycle:
+    - **Mix:** as before.
+    - **Overwrite:** playing in a lap replaces what earlier laps left from that point on.
+    - **Keep Last:** the last lap played through to its end.
+    - **Stacked:** each lap a part on its own lane, all but the last muted.
+    - **Mix-Stacked:** the same, none muted.
+- **Clean Up Lanes** (track or part menu): what isn't heard is removed (audio: the hidden stretches; MIDI: muted parts under heard ones) and empty lanes go. **Create Tracks from Lanes** (track menu): each lane after the first becomes a track of its own.
+- **Honestly:**
+  - Not in this release, coming in the next:
+    - auditioning with Ctrl in COMP (the manual's speaker);
+    - the comp handle on a take's lower edge;
+    - dragging a split between takes;
+    - constrained resizing and Slip Event in COMP;
+    - Bounce and Delete Overlaps.
+  - Not built: Track Versions (you said you didn't want them).
+  - Our choices, not the manual's:
+    - Show Lanes turns itself on when a recording stacks takes (in the manual you click it);
+    - the record modes are saved with the song;
+    - each audio lap is a clip of its own (where the manual makes one event with regions);
+    - clicking a heard audio take again brings back the one it hid.
+  - Checked with test recordings rendered in code, not with a real guitar through your interface.
+
 ## 0.28.0
 
 The Automation panel (F6), the rest of automation as the manual has it (the owner asked for all of it).

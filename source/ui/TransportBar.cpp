@@ -27,7 +27,7 @@ TransportBar::TransportBar (pr7s::Studio& studioToUse)
       leftMeter (studioToUse.getEngine().getOutputMeter (0)),
       rightMeter (studioToUse.getEngine().getOutputMeter (1))
 {
-    for (auto* key : { &toStart, &stopKey, &playKey, &recordKey, &cycleKey, &clickKey })
+    for (auto* key : std::initializer_list<juce::TextButton*> { &toStart, &stopKey, &playKey, &recordKey, &cycleKey, &clickKey })
     {
         key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         addAndMakeVisible (*key);
@@ -35,14 +35,21 @@ TransportBar::TransportBar (pr7s::Studio& studioToUse)
     toStart.setTooltip ("Back to the start (or the cycle's start). Home key");
     stopKey.setTooltip ("Stop. Press again to go back to where playing started. Space toggles play and stop");
     playKey.setTooltip ("Play. Space");
-    recordKey.setTooltip ("Record into the armed track (red R in the track list). R key. Press again while recording to stop recording and keep playing");
+    recordKey.setTooltip ("Record into the armed track (red R in the track list). R key. Press again while recording to stop recording and keep playing. "
+                          "Right-click: the record modes (what happens to what's there, and to a cycle's laps)");
     cycleKey.setTooltip ("CYCLE: play round the range marked on the ruler (drag across the ruler's top strip to set it). / key");
     clickKey.setTooltip ("CLICK: the metronome, on every beat (higher on the first of each bar). C key");
 
     toStart.onClick = [this] { studio.goToStart(); };
     stopKey.onClick = [this] { studio.stop(); };
     playKey.onClick = [this] { studio.play(); };
-    recordKey.onClick = [this] { studio.record(); };
+    recordKey.onClick = [this]
+    {
+        if (std::exchange (recordKey.popup, false))
+            showRecordModes();
+        else
+            studio.record();
+    };
     cycleKey.onClick = [this] { studio.setCycleOn (! studio.getProject().loopOn); };
     clickKey.onClick = [this] { studio.setClick (! studio.getProject().click); };
 
@@ -247,7 +254,7 @@ void TransportBar::resized()
     row.removeFromLeft (12.0f);
     keysArea = row.removeFromLeft (6.0f * keyPitch);
     auto keys = keysArea;
-    for (auto* key : { &toStart, &stopKey, &playKey, &recordKey, &cycleKey, &clickKey })
+    for (auto* key : std::initializer_list<juce::TextButton*> { &toStart, &stopKey, &playKey, &recordKey, &cycleKey, &clickKey })
         key->setBounds (keys.removeFromLeft (keyPitch).withSizeKeepingCentre (keyPitch - 8.0f, 40.0f).translated (0.0f, -6.0f).toNearestInt());
     row.removeFromLeft (12.0f);
     cpuScreen = row.removeFromLeft (cpuWidth);
@@ -373,6 +380,40 @@ void TransportBar::paintOverChildren (juce::Graphics& g)
 {
     for (const auto& glass : glasses)
         LedDisplay::paintGlassOverlay (g, glass, screenSize);
+}
+
+void TransportBar::showRecordModes()
+{
+    using Modes = pr7s::Project::RecordModes;
+    const auto modes = studio.getProject().recordModes;
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("AUDIO RECORD MODE");
+    menu.addItem (1, "Keep History (what's there stays; each take on a lane)", true, modes.audio == Modes::Audio::keepHistory);
+    menu.addItem (2, "Cycle History + Replace (replaces what's there; a cycle's laps kept)", true, modes.audio == Modes::Audio::cycleHistoryReplace);
+    menu.addItem (3, "Replace (only the last take, in place of what's there)", true, modes.audio == Modes::Audio::replace);
+    menu.addSectionHeader ("MIDI RECORD MODE");
+    menu.addItem (11, "New Parts (beside what's there)", true, modes.midi == Modes::Midi::newParts);
+    menu.addItem (12, "Merge (into the part that's there)", true, modes.midi == Modes::Midi::merge);
+    menu.addItem (13, "Replace (what's there goes)", true, modes.midi == Modes::Midi::replace);
+    menu.addSectionHeader ("MIDI CYCLE RECORD MODE");
+    menu.addItem (21, "Mix (each lap added to the last)", true, modes.midiCycle == Modes::MidiCycle::mix);
+    menu.addItem (22, "Overwrite (playing in a lap replaces what was there from then on)", true, modes.midiCycle == Modes::MidiCycle::overwrite);
+    menu.addItem (23, "Keep Last (the last whole lap played in)", true, modes.midiCycle == Modes::MidiCycle::keepLast);
+    menu.addItem (24, "Stacked (each lap a take on a lane, all but the last muted)", true, modes.midiCycle == Modes::MidiCycle::stacked);
+    menu.addItem (25, "Mix-Stacked (each lap a take on a lane, none muted)", true, modes.midiCycle == Modes::MidiCycle::mixStacked);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&recordKey), [this] (int chosen)
+    {
+        auto m = studio.getProject().recordModes;
+        if (chosen >= 1 && chosen <= 3)
+            m.audio = (Modes::Audio) (chosen - 1);
+        else if (chosen >= 11 && chosen <= 13)
+            m.midi = (Modes::Midi) (chosen - 11);
+        else if (chosen >= 21 && chosen <= 25)
+            m.midiCycle = (Modes::MidiCycle) (chosen - 21);
+        else
+            return;
+        studio.setRecordModes (m);
+    });
 }
 
 void TransportBar::mouseDown (const juce::MouseEvent& event)

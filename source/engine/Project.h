@@ -58,6 +58,12 @@ namespace pr7s
         double audioOffset = 0.0;    // seconds
         double fadeIn = 0.0, fadeOut = 0.0;   // seconds
         bool muted = false;          // the Mute tool: kept and edited as usual, but not played
+        // Takes (0.29.0, the manual's Lanes, Takes, and Overlapping Events): the lane it's on
+        // (0 the first; shown under the track with Show Lanes), and where several audio clips
+        // overlap, which one plays: the highest `order` (equal: the later in the list), as an
+        // audio track plays one clip at a time. MIDI parts all play (only muting silences them).
+        int lane = 0;
+        int order = 0;
 
         bool isAudio() const noexcept { return audioFile.isNotEmpty(); }
         double end() const noexcept { return start + length; }
@@ -237,6 +243,11 @@ namespace pr7s
         juce::String drumMap;
         bool drumEditor = false;
         bool pitchbendSnap = false, pitchbendGrid = false;
+        // Takes (0.29.0): its lanes shown under it (Show Lanes), and a lane soloed (-1: none):
+        // then only that lane's parts play.
+        bool showLanes = false;
+        int soloLane = -1;
+        int numLanes() const noexcept;   // one more than the highest lane a part is on (at least 1)
         bool isAudio() const noexcept { return kind == Kind::audio; }
         bool isFx() const noexcept { return kind == Kind::fx; }
         bool isGroup() const noexcept { return kind == Kind::group; }
@@ -303,6 +314,19 @@ namespace pr7s
             bool operator== (const AutomationSettings&) const = default;
         };
         AutomationSettings automationSettings;
+        // The record modes (0.29.0, the manual's Audio Record Modes, MIDI Record Modes and MIDI
+        // Cycle Record Modes; saved with the song). The manual's defaults.
+        struct RecordModes
+        {
+            enum class Audio { keepHistory, cycleHistoryReplace, replace };
+            enum class Midi { newParts, merge, replace };
+            enum class MidiCycle { mix, overwrite, keepLast, stacked, mixStacked };
+            Audio audio = Audio::keepHistory;
+            Midi midi = Midi::newParts;
+            MidiCycle midiCycle = MidiCycle::mix;
+            bool operator== (const RecordModes&) const = default;
+        };
+        RecordModes recordModes;
         bool masterAutomationOpen = false, masterRead = false, masterWrite = false;
         int nextTrackId = 1;
 
@@ -340,6 +364,15 @@ namespace pr7s
     // Positions as the transport shows them: "bar. beat. sixteenth. tick" from
     // 1.1.1.0 (ticks: 120 to a sixteenth, 480 to a beat), and minutes:seconds.
     juce::String formatBarsBeats (double beats, const Project&);
+
+    // Takes (0.29.0): the stretches (beats) of a track's part that are heard. Muted parts and,
+    // with a lane soloed, other lanes' parts: none. A MIDI part: all of it (overlapping MIDI
+    // parts all play). An audio clip: what no clip in front of it covers (the manual: "each
+    // track can only play back a single audio event at a time ... only the one that is in the
+    // front is played back").
+    std::vector<std::pair<double, double>> heardStretches (const Track&, int partIndex);
+    // Whether part a is in front of part b (higher order; equal: later in the list).
+    bool isInFront (const Track&, int a, int b);
     juce::String formatTime (double seconds);
 
     // The family's track colours, taken in turn: shades along its red, pink

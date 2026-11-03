@@ -31,6 +31,7 @@
 // PARAGON_SNAPSHOT_MASTER=1: the master's row chosen (its Inspector).
 // PARAGON_SNAPSHOT_RACK=home|loops|instruments: the Media rack in the right zone (0.22.0).
 // PARAGON_SNAPSHOT_TEMPO=1: the tempo track, with a ramp and a step (0.10.0).
+// PARAGON_SNAPSHOT_TAKES=1: the guitar's three takes on lanes (LANES), comped (0.29.0), the COMP tool chosen.
 // PARAGON_SNAPSHOT_FREEZE=1: the lead frozen (FREEZE lit in its Inspector, its parts stamped).
 // PARAGON_SNAPSHOT_VISIBILITY=1: the VISIBILITY tab, the bass hidden, the keys disabled.
 // PARAGON_SNAPSHOT_INSPECTOR=fader folds the Inspector's inserts and sends (=none hides it).
@@ -160,6 +161,28 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.setSolo (lead, true);
         studio.setMute (studio.getProject().tracks[1].id, true);
         studio.setArmed (studio.getProject().tracks[0].id);
+        studio.dispatchPendingMessages();
+    }
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_TAKES", {}).isNotEmpty())
+    {
+        // Two more takes of the guitar's (the same recording, further in: stand-ins), then comped:
+        // take 1 over bar 3, take 2 over bars 4 and 5, take 3 elsewhere.
+        for (int i = 1; i < 3; ++i)
+        {
+            Part another { 4.0, 20.0, "Guitar take " + juce::String (i + 1), {} };
+            another.audioFile = "Guitar 01.wav";
+            another.audioOffset = 1.0 + i * 0.37;
+            another.fadeIn = 0.4;
+            another.fadeOut = 1.5;
+            another.lane = i;
+            another.order = i;
+            studio.addPart (guitar, another);
+        }
+        studio.compRange (guitar, 0, 8.0, 12.0);
+        studio.compRange (guitar, 1, 12.0, 20.0);
+        studio.setShowLanes (guitar, true);
+        view.getArrangeView().setTool (ArrangeView::Tool::comp);
+        studio.selectTrack (guitar);
         studio.dispatchPendingMessages();
     }
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FREEZE", {}).isNotEmpty())

@@ -342,7 +342,8 @@ namespace pr7s
         {
             const auto startSample = timing.sampleAt (clip.start);
             const auto endSample = timing.sampleAt (clip.end);
-            const auto from = juce::jmax (clock, startSample), to = juce::jmin (clock + length, endSample);
+            const auto from = juce::jmax (juce::jmax (clock, startSample), clip.from > clip.start ? timing.sampleAt (clip.from) : startSample);
+            const auto to = juce::jmin (juce::jmin (clock + length, endSample), clip.to < clip.end ? timing.sampleAt (clip.to) : endSample);
             if (from >= to || clip.sound == nullptr)
                 continue;
             const auto& sound = *clip.sound;
@@ -476,11 +477,22 @@ namespace pr7s
             }
             if (track.isAudio())
             {
-                for (const auto& part : track.parts)
-                    if (part.isAudio() && ! part.muted && audioSource)
-                        p.clips.push_back ({ part.start, part.end(), audioSource (part.audioFile),
+                // Only what's in front plays where clips overlap (takes, 0.29.0): each clip as
+                // many times as it has stretches heard, its fades still at its own ends.
+                for (int i = 0; i < (int) track.parts.size(); ++i)
+                {
+                    const auto& part = track.parts[(size_t) i];
+                    if (! part.isAudio() || ! audioSource)
+                        continue;
+                    const auto stretches = heardStretches (track, i);
+                    if (stretches.empty())
+                        continue;
+                    auto sound = audioSource (part.audioFile);
+                    for (const auto& [from, to] : stretches)
+                        p.clips.push_back ({ part.start, part.end(), sound,
                                              (juce::int64) std::llround (part.audioOffset * sampleRate),
-                                             part.fadeIn * sampleRate, part.fadeOut * sampleRate });
+                                             part.fadeIn * sampleRate, part.fadeOut * sampleRate, from, to });
+                }
                 prepared.push_back (std::move (p));
                 continue;
             }
@@ -498,8 +510,8 @@ namespace pr7s
             for (const auto& part : track.parts)
                 for (const auto& note : part.notes)
                 {
-                    if (part.muted)
-                        break;   // a muted part isn't played
+                    if (part.muted || (track.soloLane >= 0 && part.lane != track.soloLane))
+                        break;   // a muted part isn't played (nor, with a lane soloed, another lane's: 0.29.0)
                     const auto on = part.start + note.start;
                     if (note.start < 0.0 || note.start >= part.length)
                         continue;   // outside the part: not heard (as in a DAW)
@@ -515,7 +527,7 @@ namespace pr7s
             // Controllers (0.25.0): each event, and a ramp as a value every 1/128 beat where it changes.
             for (const auto& part : track.parts)
             {
-                if (part.muted)
+                if (part.muted || (track.soloLane >= 0 && part.lane != track.soloLane))
                     continue;
                 ControllerKinds::expandRamps (part, 1.0 / 128.0, [&] (double beat, int code, int value)
                 {

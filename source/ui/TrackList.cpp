@@ -73,6 +73,11 @@ public:
         for (auto* key : { &mute, &solo, &arm })
             key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         monitor.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        lanes.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        lanes.setTooltip ("LANES (Show Lanes): the track's takes, each lane under it; the track's row shows what's heard. "
+                          "Comp with the COMP tool; right-click a part for To Front");
+        lanes.onClick = [this] { if (auto* t = track()) owner.studio.setShowLanes (trackId, ! t->showLanes); };
+        addChildComponent (lanes);
         monitor.setTooltip ("MON: hear what comes in from the interface (your guitar), through the track's effects");
         monitor.onClick = [this] { if (auto* t = track()) owner.studio.setMonitor (trackId, ! t->monitor); };
         addChildComponent (monitor);
@@ -143,6 +148,8 @@ public:
         }
         monitor.setVisible (t->isAudio());
         monitor.setToggleState (t->monitor, juce::dontSendNotification);
+        lanes.setToggleState (t->showLanes, juce::dontSendNotification);
+        lanes.setVisible (! t->isChannel() && getHeight() >= 66);
         AutomationKeys::refresh (read, write, owner.studio, trackId);
         arrow.open = t->automationOpen;
         arrow.repaint();
@@ -222,7 +229,7 @@ public:
         levelArea = {};
         auto area = getLocalBounds().withTrimmedLeft (12).reduced (6, compact ? juce::jmax (2, (getHeight() - 24) / 2) : 7);
         // On the right, level with the name: MON (an audio track's), the level, the volume.
-        auto right = area.removeFromRight (compact ? 32 : 130).withSizeKeepingCentre (compact ? 32 : 130, 24);
+        auto right = area.removeFromRight (compact ? 32 : 180).withSizeKeepingCentre (compact ? 32 : 180, 24);
         area.removeFromRight (6);
         volume.setVisible (true);
         volume.setBounds (right.removeFromRight (28));
@@ -232,9 +239,13 @@ public:
             levelArea = right.removeFromRight (44).toFloat().withSizeKeepingCentre (44.0f, 8.0f);
             right.removeFromRight (6);
             monitor.setBounds (right.removeFromRight (40));   // audio tracks only (hidden otherwise)
+            right.removeFromRight (4);
+            lanes.setBounds (right.removeFromRight (46));   // (0.29.0: Show Lanes)
         }
         else
-            monitor.setBounds ({});
+            monitor.setBounds ({}), lanes.setBounds ({});
+        if (const auto* t = track())
+            lanes.setVisible (! compact && ! t->isChannel());
         name.setBounds (area);
         arrow.setBounds (0, getHeight() - 18, 16, 16);
         // (Show/Hide Automation: the arrow at the lower left corner, as the manual has it.)
@@ -290,10 +301,71 @@ public:
     bool dragged = false, plainClickOnSelected = false;
     juce::Label name;
     juce::TextButton mute { "M" }, solo { "S" }, arm { "REC" }, monitor { "MON" }, instrument, read { "R" }, write { "W" };
+    juce::TextButton lanes { "LANES" };   // Show Lanes (0.29.0)
     ValueSlider volume;   // (double-click: type a value, 0.9.9)
     Arrow arrow;
     juce::Rectangle<float> levelArea;
     LevelMeter::Ballistics reading;
+};
+
+//==============================================================================
+// A lane of takes (0.29.0, the manual's Lanes): LANE n, how many takes are on it, and S (the
+// manual's lane Solo: only this lane heard; the track's own S too, to hear it alone).
+class TrackList::TakeRow final : public juce::Component
+{
+public:
+    TakeRow (TrackList& ownerList, int track, int laneNumber) : owner (ownerList), trackId (track), lane (laneNumber)
+    {
+        solo.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        solo.setTooltip ("Solo this lane: only its takes are heard (solo the track too, to hear it alone)");
+        solo.onClick = [this] { owner.studio.setLaneSolo (trackId, lane); };
+        addAndMakeVisible (solo);
+        refresh();
+    }
+
+    void refresh()
+    {
+        const auto* t = owner.studio.getProject().findTrack (trackId);
+        solo.setToggleState (t != nullptr && t->soloLane == lane, juce::dontSendNotification);
+        solo.setVisible (t != nullptr && lane < t->numLanes());
+        repaint();
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto* t = owner.studio.getProject().findTrack (trackId);
+        if (t == nullptr)
+            return;
+        const auto bounds = getLocalBounds().toFloat();
+        g.setColour (juce::Colour (0xff0d0a0e));
+        g.fillRect (bounds);
+        g.setColour (juce::Colour (0xff050405));
+        g.fillRect (bounds.withY (bounds.getBottom() - 1.0f).withHeight (1.0f));
+        g.setColour (t->colour.withAlpha (0.6f));
+        g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
+        auto takes = 0;
+        for (const auto& p : t->parts)
+            takes += p.lane == lane ? 1 : 0;
+        g.setColour (lane < t->numLanes() ? ParagonColours::text : ParagonColours::textDim);
+        g.setFont (font (14.0f));
+        const auto text = lane < t->numLanes() ? "LANE " + juce::String (lane + 1) + (takes > 0 ? "   " + juce::String (takes) + (takes == 1 ? " TAKE" : " TAKES") : juce::String())
+                                               : juce::String ("NEW LANE (DRAG A TAKE HERE)");
+        g.drawText (text, bounds.withTrimmedLeft (24.0f).withTrimmedRight (50.0f), juce::Justification::centredLeft, true);
+    }
+
+    void resized() override
+    {
+        solo.setBounds (getLocalBounds().removeFromRight (40).withSizeKeepingCentre (30, juce::jmin (24, getHeight() - 8)));
+    }
+
+    void mouseDown (const juce::MouseEvent&) override
+    {
+        owner.studio.selectTrack (trackId);
+    }
+
+    TrackList& owner;
+    const int trackId, lane;
+    juce::TextButton solo { "S" };
 };
 
 //==============================================================================
@@ -783,16 +855,24 @@ void TrackList::rebuild()
     if (layout != lastLayout)
     {
         laneRows.clear();
+        takeRows.clear();
         for (const auto& row : layout)
             if (row.kind == Timeline::Row::Kind::lane)
             {
                 laneRows.push_back (std::make_unique<LaneRow> (*this, row.busId, row.laneIndex));
                 addAndMakeVisible (*laneRows.back());
             }
+            else if (row.kind == Timeline::Row::Kind::take)
+            {
+                takeRows.push_back (std::make_unique<TakeRow> (*this, row.busId, row.laneIndex));
+                addAndMakeVisible (*takeRows.back());
+            }
         lastLayout = layout;
     }
     for (auto& lane : laneRows)
         lane->refresh();
+    for (auto& take : takeRows)
+        take->refresh();
     if (masterRow == nullptr)
     {
         masterRow = std::make_unique<MasterRow> (*this);
@@ -838,6 +918,7 @@ void TrackList::placeRows()
 {
     // Each where the layout has it (so they line up with the arrangement's rows).
     auto laneRow = laneRows.begin();
+    auto takeRow = takeRows.begin();
     for (const auto& row : timeline.layout (studio))
     {
         const juce::Rectangle<int> bounds (0, Timeline::rulerHeight + row.top - timeline.scrollY, getWidth(), row.height);
@@ -851,6 +932,11 @@ void TrackList::placeRows()
         {
             if (laneRow != laneRows.end())
                 (*laneRow++)->setBounds (bounds);
+        }
+        else if (row.kind == Timeline::Row::Kind::take)
+        {
+            if (takeRow != takeRows.end())
+                (*takeRow++)->setBounds (bounds);
         }
         else if (row.kind == Timeline::Row::Kind::tempo)
         {
@@ -1156,6 +1242,14 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
                                           : (several ? "Disable Selected Tracks" : "Disable Track"));
     menu.addItem (60, several ? "Hide Selected Tracks" : "Hide Track");
     menu.addItem (64, several ? "Colour the Selected Tracks..." : "Colour...");   // (0.17.3)
+    if (! track->isChannel())
+    {
+        // Takes (0.29.0).
+        menu.addSeparator();
+        menu.addItem (65, track->showLanes ? "Hide Lanes" : "Show Lanes");
+        menu.addItem (66, "Clean Up Lanes", track->parts.size() > 1 && ! track->frozen);
+        menu.addItem (67, "Create Tracks from Lanes", track->numLanes() > 1 && ! track->frozen);
+    }
     // Link groups (0.17.0, the manual's Linking Channels).
     menu.addSeparator();
     {
@@ -1185,6 +1279,19 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
         }
         if (TrackActions::handle (chosen, studio, trackId, chooser))
             return;
+        if (chosen == 65 || chosen == 66 || chosen == 67)
+        {
+            if (const auto* t = studio.getProject().findTrack (trackId))
+            {
+                if (chosen == 65)
+                    studio.setShowLanes (trackId, ! t->showLanes);
+                else if (chosen == 66)
+                    studio.cleanUpLanes (trackId);
+                else
+                    studio.createTracksFromLanes (trackId);
+            }
+            return;
+        }
         if (chosen == 64)
         {
             TrackColourMenu::show (*this, studio, studio.isTrackSelected (trackId) ? studio.getSelectedTracks() : std::vector<int> { trackId });

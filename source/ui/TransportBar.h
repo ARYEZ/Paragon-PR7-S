@@ -35,6 +35,7 @@ public:
     void paintOverChildren (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
+    void showRecordModes();   // (0.29.0: REC's right-click) the manual's Audio, MIDI and MIDI Cycle Record Modes
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
@@ -67,8 +68,16 @@ private:
     void refreshKeys();
 
     pr7s::Studio& studio;
-    juce::TextButton toStart { "|<" }, stopKey { "STOP" }, playKey { "PLAY" }, recordKey { "REC" },
-                     cycleKey { "CYCLE" }, clickKey { "CLICK" };
+    // REC: a right-click opens the record modes (0.29.0), so it notes which button clicked it.
+    struct RecordKey final : juce::TextButton
+    {
+        using juce::TextButton::TextButton;
+        bool popup = false;
+        void clicked (const juce::ModifierKeys& mods) override { popup = mods.isPopupMenu(); }
+    };
+    juce::TextButton toStart { "|<" }, stopKey { "STOP" }, playKey { "PLAY" };
+    RecordKey recordKey { "REC" };
+    juce::TextButton cycleKey { "CYCLE" }, clickKey { "CLICK" };
     LevelMeter leftMeter, rightMeter;
     juce::Rectangle<float> badge, positionScreen, timeScreen, tempoScreen, signatureScreen, keysArea, meterArea, cpuScreen, autoScrollStamp;
     juce::Rectangle<int> toolsArea, autoScrollArea;

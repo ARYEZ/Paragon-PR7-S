@@ -1,5 +1,7 @@
 #include "ArrangeView.h"
 
+#include <numeric>
+
 #include "ui/ChordUi.h"
 #include "ui/Finish.h"
 #include "ui/ToolIcons.h"
@@ -344,6 +346,10 @@ std::vector<Timeline::Row> Timeline::layout (const pr7s::Studio& studio) const
         if (track.hidden)
             continue;   // (VISIBILITY shows it again)
         add (Row::Kind::track, track.id, -1, trackRowHeight());
+        // Its lanes of takes (0.29.0, Show Lanes): each lane, and an empty one under them to drag onto.
+        if (track.showLanes && ! track.isChannel())
+            for (int lane = 0; lane <= track.numLanes(); ++lane)
+                add (Row::Kind::take, track.id, lane, takeRowHeight());
         addLanes (track.id);
     }
     return rows;
@@ -381,7 +387,24 @@ std::optional<Timeline::Row> ArrangeView::rowAt (float y) const
 int ArrangeView::trackAtY (float y) const
 {
     const auto row = rowAt (y);
-    return row && row->kind == Timeline::Row::Kind::track ? row->busId : 0;
+    return row && (row->kind == Timeline::Row::Kind::track || row->kind == Timeline::Row::Kind::take) ? row->busId : 0;
+}
+
+int ArrangeView::laneAtY (float y) const
+{
+    const auto row = rowAt (y);
+    return row && row->kind == Timeline::Row::Kind::take ? row->laneIndex : -1;
+}
+
+juce::Rectangle<float> ArrangeView::partRow (int trackId, int lane) const
+{
+    // A part's strip: its lane's row when the track shows its lanes (0.29.0), else the track's row.
+    const auto* track = studio.getProject().findTrack (trackId);
+    if (track != nullptr && track->showLanes && lane >= 0)
+        for (const auto& row : timeline.layout (studio))
+            if (row.kind == Timeline::Row::Kind::take && row.busId == trackId && row.laneIndex == lane)
+                return { 0.0f, rowTop (row) + 2.0f, 0.0f, (float) row.height - 4.0f };
+    return { 0.0f, trackTop (trackId) + 3.0f, 0.0f, (float) timeline.trackRowHeight() - 6.0f };
 }
 
 juce::Rectangle<float> ArrangeView::getPartBounds (int trackId, int index) const
@@ -389,7 +412,8 @@ juce::Rectangle<float> ArrangeView::getPartBounds (int trackId, int index) const
     if (const auto* track = studio.getProject().findTrack (trackId); track != nullptr && ! track->hidden && juce::isPositiveAndBelow (index, (int) track->parts.size()))
     {
         const auto& part = track->parts[(size_t) index];
-        return { timeline.xForBeat (part.start), trackTop (trackId) + 3.0f, (float) (part.length * timeline.pixelsPerBeat), (float) timeline.trackRowHeight() - 6.0f };
+        const auto strip = partRow (trackId, part.lane);
+        return { timeline.xForBeat (part.start), strip.getY(), (float) (part.length * timeline.pixelsPerBeat), strip.getHeight() };
     }
     return {};
 }
@@ -398,9 +422,21 @@ std::optional<std::pair<int, int>> ArrangeView::partAt (juce::Point<float> point
 {
     const auto trackId = trackAtY (point.y);
     if (const auto* track = studio.getProject().findTrack (trackId))
-        for (int i = (int) track->parts.size() - 1; i >= 0; --i)   // the one drawn on top first
+    {
+        // (The one in front first: as drawn.)
+        std::vector<int> order ((size_t) track->parts.size());
+        std::iota (order.begin(), order.end(), 0);
+        std::sort (order.begin(), order.end(), [track] (int a, int b) { return pr7s::isInFront (*track, a, b); });
+        for (const auto i : order)
             if (getPartBounds (trackId, i).contains (point))
                 return std::pair<int, int> { trackId, i };
+        // Lanes shown: the track's own row is what's heard there (0.29.0).
+        if (track->showLanes && laneAtY (point.y) < 0)
+            if (const auto id = studio.frontPartAt (trackId, timeline.beatForX (point.x)))
+                for (int i = 0; i < (int) track->parts.size(); ++i)
+                    if (track->parts[(size_t) i].id == id)
+                        return std::pair<int, int> { trackId, i };
+    }
     return std::nullopt;
 }
 
@@ -554,6 +590,8 @@ void ArrangeView::paint (juce::Graphics& g)
         const auto lane = juce::Rectangle<float> (0.0f, rowTop (row), bounds.getWidth(), (float) row.height);
         if (row.kind == Timeline::Row::Kind::track)
             g.setColour (row.busId == studio.getSelectedTrack() ? juce::Colour (0xff1c151b) : (trackNumber++ % 2 == 0 ? laneDark : laneLight));
+        else if (row.kind == Timeline::Row::Kind::take)
+            g.setColour (juce::Colour (0xff0e0b0e));   // (a lane of takes: darker than its track, lighter than automation)
         else
             g.setColour (juce::Colour (0xff09070a));
         g.fillRect (lane);
@@ -601,19 +639,53 @@ void ArrangeView::paint (juce::Graphics& g)
             continue;
         // A disabled track's parts: greyed out (its colour changes, as the manual has it).
         const auto colour = track.disabled ? juce::Colour (0xff4a454c) : track.colour;
-        // Its row, once (not for every part: that worked the layout out again each time).
+        // Its row, once (not for every part: that worked the layout out again each time); with
+        // its lanes shown (0.29.0), each lane's strip too.
         const auto top = trackTop (track.id) + 3.0f, height = (float) timeline.trackRowHeight() - 6.0f;
         const auto clip = g.getClipBounds().toFloat();
-        if (top + height < clip.getY() || top > clip.getBottom())
-            continue;   // the row isn't in what's being redrawn
-        for (int i = 0; i < (int) track.parts.size(); ++i)
+        std::vector<juce::Rectangle<float>> laneStrips;
+        if (track.showLanes)
+            for (int lane = 0; lane < track.numLanes(); ++lane)
+                laneStrips.push_back (partRow (track.id, lane));
+        const auto bottom = laneStrips.empty() ? top + height : laneStrips.back().getBottom();
+        if (bottom < clip.getY() || top > clip.getBottom())
+            continue;   // the rows aren't in what's being redrawn
+        const auto stripOf = [&] (const pr7s::Part& part)
+        {
+            return juce::isPositiveAndBelow (part.lane, (int) laneStrips.size()) ? laneStrips[(size_t) part.lane]
+                                                                                  : juce::Rectangle<float> (0.0f, top, 0.0f, height);
+        };
+        // Drawn back to front (the clip in front on top).
+        std::vector<int> drawOrder ((size_t) track.parts.size());
+        std::iota (drawOrder.begin(), drawOrder.end(), 0);
+        std::sort (drawOrder.begin(), drawOrder.end(), [&track] (int a, int b) { return pr7s::isInFront (track, b, a); });
+        if (track.showLanes)
+        {
+            // The track's own row: what's heard (the comp), each part only where it plays.
+            for (const auto i : drawOrder)
+            {
+                const auto& part = track.parts[(size_t) i];
+                const juce::Rectangle<float> area (timeline.xForBeat (part.start), top, (float) (part.length * timeline.pixelsPerBeat), height);
+                if (area.getRight() < clip.getX() || area.getX() > clip.getRight())
+                    continue;
+                for (const auto& [from, to] : pr7s::heardStretches (track, i))
+                {
+                    juce::Graphics::ScopedSaveState saved (g);
+                    const auto x1 = timeline.xForBeat (from), x2 = timeline.xForBeat (to);
+                    g.reduceClipRegion (juce::Rectangle<float> (x1, top - 1.0f, x2 - x1, height + 2.0f).getSmallestIntegerContainer());
+                    paintPart (g, area, part, colour, false, false);
+                }
+            }
+        }
+        for (const auto i : drawOrder)
         {
             const auto isClipDrag = drag == Drag::trimStart || drag == Drag::fadeIn || drag == Drag::fadeOut;
             const auto isDragged = (drag == Drag::move || drag == Drag::resize || isClipDrag) && dragMoved && track.id == dragTrack && i == selection.index;
             if (isDragged && isClipDrag)
             {
-                const juce::Rectangle<float> area (timeline.xForBeat (dragPart.start), trackTop (track.id) + 3.0f,
-                                                   (float) (dragPart.length * timeline.pixelsPerBeat), (float) timeline.trackRowHeight() - 6.0f);
+                const auto strip = stripOf (dragPart);
+                const juce::Rectangle<float> area (timeline.xForBeat (dragPart.start), strip.getY(),
+                                                   (float) (dragPart.length * timeline.pixelsPerBeat), strip.getHeight());
                 paintPart (g, area, dragPart, colour, true, false);
                 continue;
             }
@@ -622,10 +694,31 @@ void ArrangeView::paint (juce::Graphics& g)
             if (multiDrag && ! dragCopies && isSelected (track.id, i))
                 continue;   // (drawn where they're going, below)
             const auto& part = track.parts[(size_t) i];
-            const juce::Rectangle<float> area (timeline.xForBeat (part.start), top, (float) (part.length * timeline.pixelsPerBeat), height);
+            const auto strip = stripOf (part);
+            const juce::Rectangle<float> area (timeline.xForBeat (part.start), strip.getY(), (float) (part.length * timeline.pixelsPerBeat), strip.getHeight());
             if (area.getRight() < clip.getX() || area.getX() > clip.getRight())
                 continue;
             paintPart (g, area, part, colour, isSelected (track.id, i), false);
+            if (track.showLanes)
+            {
+                // On its lane: what isn't heard of it veiled (another take is in front there).
+                auto x = part.start;
+                auto veil = [&] (double from, double to)
+                {
+                    if (to > from + 1.0e-9)
+                    {
+                        const auto x1 = timeline.xForBeat (from), x2 = timeline.xForBeat (to);
+                        g.setColour (juce::Colours::black.withAlpha (0.5f));
+                        g.fillRect (juce::Rectangle<float> (x1, area.getY(), x2 - x1, area.getHeight()).getIntersection (area));
+                    }
+                };
+                for (const auto& [from, to] : pr7s::heardStretches (track, i))
+                {
+                    veil (x, from);
+                    x = to;
+                }
+                veil (x, part.end());
+            }
             if (track.frozen)
             {
                 // Frozen (0.9.8): veiled in pearl white and stamped; its parts can't be edited.
@@ -672,8 +765,9 @@ void ArrangeView::paint (juce::Graphics& g)
                 auto part = from->parts[(size_t) selection.index];
                 part.start = dragNewStart;
                 part.length = dragNewLength;
-                const juce::Rectangle<float> area (timeline.xForBeat (part.start), trackTop (dragTargetTrack) + 3.0f,
-                                                   (float) (part.length * timeline.pixelsPerBeat), (float) timeline.trackRowHeight() - 6.0f);
+                const auto strip = partRow (dragTargetTrack, dragTargetLane >= 0 ? dragTargetLane : dragTargetTrack == dragTrack ? part.lane : 0);
+                const juce::Rectangle<float> area (timeline.xForBeat (part.start), strip.getY(),
+                                                   (float) (part.length * timeline.pixelsPerBeat), strip.getHeight());
                 paintPart (g, area, part, from->colour, true, false);
             }
     if (recording)
@@ -687,6 +781,18 @@ void ArrangeView::paint (juce::Graphics& g)
             }
 
     paintRange (g);
+
+    // The Comp tool's stretch on its lane (0.29.0).
+    if (drag == Drag::comp && dragMoved && compTo > compFrom)
+    {
+        const auto strip = partRow (compTrack, compLane);
+        const auto x1 = timeline.xForBeat (compFrom), x2 = timeline.xForBeat (compTo);
+        const juce::Rectangle<float> band (x1, strip.getY(), x2 - x1, strip.getHeight());
+        g.setColour (ParagonColours::accent.withAlpha (0.25f));
+        g.fillRect (band);
+        g.setColour (ParagonColours::accent);
+        g.drawRect (band, 1.5f);
+    }
 
     // The tools: the part being drawn, MUTE's rectangle, ZOOM's stretch; SPLIT's cut under the mouse.
     if (! toolBand.isEmpty())
@@ -1273,6 +1379,7 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
     dragPart = part;
     dragCopies = drag == Drag::move && event.mods.isAltDown();   // Alt copies (Ctrl locks the direction)
     dragTrack = dragTargetTrack = hit->first;
+    dragTargetLane = -1;
     dragStartBeat = timeline.beatForX (event.position.x);
     dragOriginalStart = dragNewStart = part.start;
     dragOriginalLength = dragNewLength = part.length;
@@ -1312,6 +1419,11 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
         const juce::Point<float> anchor (timeline.xForBeat (marqueeBeat), marqueeRowY + (float) Timeline::rulerHeight - (float) timeline.scrollY);
         toolBand = juce::Rectangle<float> (anchor, event.position);
         repaint();
+        return;
+    }
+    if (drag == Drag::comp)
+    {
+        compDrag (event);
         return;
     }
     if (drag == Drag::newPart || drag == Drag::muteBand || drag == Drag::zoomBand)
@@ -1396,6 +1508,8 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
             const auto* overTrack = studio.getProject().findTrack (trackAtY (event.position.y));
             if (overTrack != nullptr && ! alongOnly && ! overTrack->isChannel() && overTrack->isAudio() == isAudioTrack (dragTrack))
                 dragTargetTrack = overTrack->id;   // (not an FX or group channel: no parts there)
+            // Onto a lane of takes (0.29.0): that lane.
+            dragTargetLane = dragTargetTrack == trackAtY (event.position.y) && ! alongOnly ? laneAtY (event.position.y) : -1;
             repaint();
             break;
         }
@@ -1454,6 +1568,7 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
         case Drag::rangeEnd:
         case Drag::rangeMove:
         case Drag::marquee:
+        case Drag::comp:
         case Drag::none:
             break;
     }
@@ -1475,6 +1590,11 @@ void ArrangeView::mouseUp (const juce::MouseEvent& event)
         || drag == Drag::pointHandle || drag == Drag::curve || drag == Drag::segmentScale)
     {
         automationUp();
+        return;
+    }
+    if (drag == Drag::comp)
+    {
+        compUp();
         return;
     }
     if (drag == Drag::newPart || drag == Drag::muteBand || drag == Drag::zoomBand || drag == Drag::play)
@@ -1546,12 +1666,13 @@ void ArrangeView::mouseUp (const juce::MouseEvent& event)
             }
             else if (dragCopies)
             {
-                studio.copyPart (dragTrack, selection.index, dragTargetTrack, dragNewStart);
+                studio.copyPart (dragTrack, selection.index, dragTargetTrack, dragNewStart, dragTargetLane);
                 select (dragTargetTrack, (int) studio.getProject().findTrack (dragTargetTrack)->parts.size() - 1);
             }
-            else if (std::abs (dragNewStart - dragOriginalStart) > 1.0e-9 || dragTargetTrack != dragTrack)
+            else if (std::abs (dragNewStart - dragOriginalStart) > 1.0e-9 || dragTargetTrack != dragTrack
+                     || (dragTargetLane >= 0 && dragTargetLane != dragPart.lane))
             {
-                studio.movePart (dragTrack, selection.index, dragTargetTrack, dragNewStart);
+                studio.movePart (dragTrack, selection.index, dragTargetTrack, dragNewStart, dragTargetLane);
                 select (dragTargetTrack, (int) studio.getProject().findTrack (dragTargetTrack)->parts.size() - 1);
             }
             break;
@@ -1576,9 +1697,70 @@ void ArrangeView::mouseUp (const juce::MouseEvent& event)
         case Drag::rangeEnd:
         case Drag::rangeMove:
         case Drag::marquee:
+        case Drag::comp:
         case Drag::none:
             break;
     }
+    repaint();
+}
+
+//==============================================================================
+// The Comp tool (0.29.0, the manual's Assembling Operations: "Bring to front: click on a take.
+// Click twice to toggle"; "Comping: click and drag on a lane. All takes are split at the start
+// and end of the range"). Shift-click selects and Alt-click splits, as SELECT; on the track's
+// own row it moves parts as SELECT does.
+bool ArrangeView::compDown (const juce::MouseEvent& event)
+{
+    if (event.mods.isShiftDown() || event.mods.isAltDown())
+        return false;
+    const auto lane = laneAtY (event.position.y);
+    const auto* track = studio.getProject().findTrack (trackAtY (event.position.y));
+    if (lane < 0 || track == nullptr || track->frozen)
+        return false;   // (the track's row: moving, as SELECT)
+    compTrack = track->id;
+    compLane = lane;
+    compFrom = compTo = timeline.beatForX (event.position.x);
+    compPartId = 0;
+    if (const auto hit = partAt (event.position); hit && hit->first == track->id)
+        compPartId = track->parts[(size_t) hit->second].id;
+    drag = Drag::comp;
+    return true;
+}
+
+void ArrangeView::compDrag (const juce::MouseEvent& event)
+{
+    if (event.getDistanceFromDragStart() > 3)
+        dragMoved = true;
+    const auto grid = timeline.snapGrid (studio.getProject());
+    const auto a = timeline.beatForX (event.mouseDownPosition.x), b = timeline.beatForX (event.position.x);
+    compFrom = juce::jmax (0.0, pr7s::snap (juce::jmin (a, b), grid));
+    compTo = juce::jmax (0.0, pr7s::snap (juce::jmax (a, b), grid));
+    repaint();
+}
+
+void ArrangeView::compUp()
+{
+    drag = Drag::none;
+    if (dragMoved)
+    {
+        if (compTo > compFrom + 1.0e-9)
+            studio.compRange (compTrack, compLane, compFrom, compTo);
+    }
+    else if (compPartId != 0)
+    {
+        // A click: to the front; on the one heard there already, back (the one it hid).
+        const auto beat = compFrom;
+        const auto* track = studio.getProject().findTrack (compTrack);
+        auto heardHere = false;
+        if (track != nullptr)
+            for (int i = 0; i < (int) track->parts.size(); ++i)
+                if (track->parts[(size_t) i].id == compPartId)
+                    for (const auto& [from, to] : pr7s::heardStretches (*track, i))
+                        heardHere = heardHere || (beat >= from && beat < to);
+        studio.bringToFront (compPartId, heardHere);
+    }
+    compFrom = compTo = 0.0;
+    compPartId = 0;
     repaint();
 }
 
@@ -1597,6 +1779,7 @@ const char* ArrangeView::toolName (Tool t)
         case Tool::draw:   return "DRAW";
         case Tool::line:   return "LINE";
         case Tool::play:   return "PLAY";
+        case Tool::comp:   return "COMP";
     }
     return "";
 }
@@ -1615,6 +1798,7 @@ int ArrangeView::toolKey (Tool t)
         case Tool::draw:   return 8;
         case Tool::line:   return 0;   // (no number key: the manual gives it none)
         case Tool::play:   return 9;
+        case Tool::comp:   return 0;   // (no number key: the manual gives it none)
     }
     return 0;
 }
@@ -1735,6 +1919,8 @@ bool ArrangeView::toolDown (const juce::MouseEvent& event)
             break;
         case Tool::line:
             break;   // (on the automation lanes only)
+        case Tool::comp:
+            return compDown (event);
         case Tool::play:
             // Held: plays from here; let go: stops, back where it was.
             playReturn = studio.getEngine().getPosition();
@@ -1938,8 +2124,40 @@ void ArrangeView::showPartMenu (int trackId, int index)
     menu.addItem (8, "Render in Place (as last time)");
     menu.addSeparator();
     menu.addItem (12, "Create Chord Events (the chords it plays, onto the chord track)", ! isAudioTrack (trackId));
+    // Takes (0.29.0, the manual's Handling Overlapping Audio: the To Front submenu).
+    {
+        const auto& track = *studio.getProject().findTrack (trackId);
+        juce::PopupMenu toFront;
+        for (int i = 0; i < (int) track.parts.size(); ++i)
+        {
+            const auto& other = track.parts[(size_t) i];
+            if (other.start < part.end() - 1.0e-9 && part.start < other.end() - 1.0e-9)
+                toFront.addItem (40000 + other.id, other.name + "  (lane " + juce::String (other.lane + 1) + ")", true,
+                                 ! pr7s::heardStretches (track, i).empty() && ! other.muted);
+        }
+        menu.addSeparator();
+        menu.addSubMenu ("To Front", toFront, toFront.getNumItems() > 1);
+        menu.addItem (13, track.showLanes ? "Hide Lanes" : "Show Lanes");
+        menu.addItem (14, "Clean Up Lanes", track.numLanes() > 1 || track.parts.size() > 1);
+    }
     menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, index, ids, muted = part.muted, start = part.start, end = part.end(), partId = part.id] (int chosen)
     {
+        if (chosen > 40000)
+        {
+            studio.bringToFront (chosen - 40000);
+            return;
+        }
+        if (chosen == 13)
+        {
+            if (const auto* t = studio.getProject().findTrack (trackId))
+                studio.setShowLanes (trackId, ! t->showLanes);
+            return;
+        }
+        if (chosen == 14)
+        {
+            studio.cleanUpLanes (trackId);
+            return;
+        }
         if (chosen == 12)
         {
             studio.chordsFromParts (ids.empty() ? std::vector<int> { partId } : ids);
@@ -2679,6 +2897,7 @@ ArrangeTools::ArrangeTools (ArrangeView& arrangeToUse) : arrange (arrangeToUse)
 {
     static const char* const tips[] = {
         "SELECT (1): select, move (Alt: copy) and resize parts; Alt-click splits a part there; Alt-drag on an empty instrument track draws a part",
+        "COMP: on a track's lanes (LANES), click a take to bring it to the front (again: back); drag across a lane to cut every take there and bring that stretch of this lane to the front; Shift-click selects; Alt-click splits",
         "RANGE (2): drag across the tracks to select a stretch of time; then Delete, Ctrl+X / C / V, Shift+X (split at its edges), drag to move what's in it (Alt: copy), right-click for more",
         "SPLIT (3): click a part to cut it there (on the grid; Ctrl: anywhere); Alt-click: into equal pieces that long",
         "GLUE (4): click a part to join it to the next one on its track; Alt-click: to all after it",
@@ -2766,9 +2985,11 @@ void ArrangeTools::paint (juce::Graphics& g)
 void ArrangeTools::resized()
 {
     auto area = getLocalBounds().withTrimmedLeft (onUnit ? 0 : 64);
+    const auto count = (int) buttons.size();
+    const auto keyWidth = juce::jmin (onUnit ? 60 : 70, (area.getWidth() - 4 * (count - 1)) / count);
     for (auto& button : buttons)
     {
-        button.setBounds (area.removeFromLeft (onUnit ? 60 : 70));
+        button.setBounds (area.removeFromLeft (keyWidth));
         area.removeFromLeft (4);
     }
 }

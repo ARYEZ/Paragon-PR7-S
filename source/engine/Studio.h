@@ -308,8 +308,10 @@ namespace pr7s
         //======================================================================
         // Parts (by track and index in its list).
         void addPart (int trackId, const Part&);
-        void movePart (int trackId, int index, int toTrackId, double newStart);
-        void copyPart (int trackId, int index, int toTrackId, double newStart);
+        // (0.29.0) toLane: the lane it goes onto (-1: its own on the same track, else the first);
+        // it lands in front of what it overlaps there.
+        void movePart (int trackId, int index, int toTrackId, double newStart, int toLane = -1);
+        void copyPart (int trackId, int index, int toTrackId, double newStart, int toLane = -1);
         void deletePart (int trackId, int index);
         // Several parts at once (0.9.2, the Object Selection tool's selection),
         // by part id; each one undo step. Moved (or, `copy`, copied) by beats
@@ -351,6 +353,36 @@ namespace pr7s
         void setPartsMuted (const std::vector<int>& partIds, bool muted);   // several at once (one step)
         // The Erase tool with Alt: the part and all after it on its track.
         void deletePartsFrom (int trackId, int index);
+
+        // Takes and comping (0.29.0, the manual's Lanes, Takes, and Overlapping Events and
+        // Assembling a Perfect Take). A track's parts sit on lanes (Part::lane); where audio
+        // clips overlap, the one in front plays (Part::order). Each edit one undo step but
+        // Show Lanes and a lane's solo (as Hide, not steps).
+        void setShowLanes (int trackId, bool shown);
+        void setLaneSolo (int trackId, int lane);   // -1: none (the lane's S again: off)
+        void setRecordModes (const Project::RecordModes&);
+        // To Front (the part's menu, the Comp tool's click): audio, in front of every clip it
+        // overlaps (and not muted); MIDI (all overlapping parts play), it's unmuted and the
+        // parts it overlaps on other lanes are muted. `toggle` (a click on the take in front
+        // already): audio, the one it hides comes back to the front; MIDI, it's muted.
+        void bringToFront (int partId, bool toggle = false);
+        // The Comp tool's drag on a lane: every part on the track crossing beats `start` or
+        // `end` is cut there, and the lane's part in between brought to front (none there:
+        // nothing). Adjacent pieces of one recording, played end to end, are glued back.
+        void compRange (int trackId, int lane, double start, double end);
+        // A part onto another lane of its track (a drag between lanes).
+        void setPartLane (int partId, int lane);
+        // The track's menu: Clean Up Lanes (what isn't heard is removed: audio, the hidden
+        // stretches of clips; MIDI, muted parts under an unmuted one; then empty lanes go),
+        // and Create Tracks from Lanes (each lane after the first a track of its own, a copy
+        // of this one with that lane's parts). Returns the new tracks' ids.
+        void cleanUpLanes (int trackId);
+        std::vector<int> createTracksFromLanes (int trackId);
+        // Every part on the lane, and the lane's parts that are heard at a beat.
+        std::vector<int> partsOnLane (int trackId, int lane) const;
+        // The part (id) heard at a beat on a track (audio: the clip in front; MIDI: the first
+        // unmuted part there), 0: none.
+        int frontPartAt (int trackId, double beat) const;
 
         // Range Selection (the manual's Range Editing): a stretch of time
         // across some tracks, independent of the parts. Whatever a range
@@ -904,7 +936,11 @@ namespace pr7s
         void finishRecording();
         void finishAudioRecording();
         double recordingLatency() const;
-        void buildRecordingNotes (std::vector<Note>& notes, double partStart, double endBeat) const;
+        void buildRecordingNotes (std::vector<Note>& notes, double partStart, double endBeat, int onlyPass = -1) const;
+        // (0.29.0) New takes onto the track by the record modes: each on the first lane it
+        // fits without overlapping (or `lane` if given), in front, in order; `replace`:
+        // what's there over [from, to) cut out first.
+        void placeTakes (Track&, std::vector<Part> takes, double from, double to, bool replace, int lane = -1);
         void buildRecordingControllers (std::vector<Controller>&, double partStart) const;   // (0.25.0: each kind's last pass in a cycle)
         bool newControllersRamp = true;   // (without a settings file)
         juce::File drumMapFolderOverride;

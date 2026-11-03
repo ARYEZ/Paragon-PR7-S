@@ -258,6 +258,56 @@ namespace pr7s
         return const_cast<Project*> (this)->armedTrack();
     }
 
+    bool isInFront (const Track& track, int a, int b)
+    {
+        const auto& pa = track.parts[(size_t) a];
+        const auto& pb = track.parts[(size_t) b];
+        return pa.order != pb.order ? pa.order > pb.order : a > b;
+    }
+
+    std::vector<std::pair<double, double>> heardStretches (const Track& track, int index)
+    {
+        std::vector<std::pair<double, double>> heard;
+        if (! juce::isPositiveAndBelow (index, (int) track.parts.size()))
+            return heard;
+        const auto plays = [&] (const Part& p) { return ! p.muted && (track.soloLane < 0 || p.lane == track.soloLane); };
+        const auto& part = track.parts[(size_t) index];
+        if (! plays (part))
+            return heard;
+        heard.push_back ({ part.start, part.end() });
+        if (! track.isAudio() || ! part.isAudio())
+            return heard;
+        for (int j = 0; j < (int) track.parts.size() && ! heard.empty(); ++j)
+        {
+            const auto& other = track.parts[(size_t) j];
+            if (j == index || ! other.isAudio() || ! plays (other) || ! isInFront (track, j, index))
+                continue;
+            std::vector<std::pair<double, double>> left;
+            for (const auto& [from, to] : heard)
+            {
+                if (other.end() <= from || other.start >= to)
+                {
+                    left.push_back ({ from, to });
+                    continue;
+                }
+                if (other.start > from)
+                    left.push_back ({ from, other.start });
+                if (other.end() < to)
+                    left.push_back ({ other.end(), to });
+            }
+            heard = std::move (left);
+        }
+        return heard;
+    }
+
+    int Track::numLanes() const noexcept
+    {
+        auto lanes = 1;
+        for (const auto& part : parts)
+            lanes = juce::jmax (lanes, part.lane + 1);
+        return lanes;
+    }
+
     double Project::lastBeat() const
     {
         double last = 0.0;
@@ -400,6 +450,10 @@ namespace pr7s
                 }
             if (track.hidden)
                 t->setAttribute ("hidden", true);
+            if (track.showLanes)
+                t->setAttribute ("showLanes", true);
+            if (track.soloLane >= 0)
+                t->setAttribute ("soloLane", track.soloLane);
             t->setAttribute ("instrument", track.instrument.kind == Instrument::Kind::plugin ? "plugin" : "paragonSynth");
             if (track.instrument.kind == Instrument::Kind::plugin)
                 t->addChildElement (track.instrument.plugin.createXml().release());
@@ -420,6 +474,10 @@ namespace pr7s
                 p->setAttribute ("name", part.name);
                 if (part.muted)
                     p->setAttribute ("muted", true);
+                if (part.lane != 0)
+                    p->setAttribute ("lane", part.lane);
+                if (part.order != 0)
+                    p->setAttribute ("order", part.order);
                 if (part.isAudio())
                 {
                     p->setAttribute ("audioFile", part.audioFile);
@@ -476,6 +534,14 @@ namespace pr7s
             e->setAttribute ("revealOnWrite", a.revealOnWrite);
             e->setAttribute ("returnSeconds", a.returnSeconds);
             e->setAttribute ("reductionLevel", a.reductionLevel);
+        }
+        if (recordModes != RecordModes {})
+        {
+            // (0.29.0) The record modes.
+            auto* e = xml->createNewChildElement ("RecordModes");
+            e->setAttribute ("audio", (int) recordModes.audio);
+            e->setAttribute ("midi", (int) recordModes.midi);
+            e->setAttribute ("midiCycle", (int) recordModes.midiCycle);
         }
         return xml;
     }
@@ -567,6 +633,8 @@ namespace pr7s
                 track.quickControls[(size_t) q] = qc;
             }
             track.hidden = t->getBoolAttribute ("hidden");
+            track.showLanes = t->getBoolAttribute ("showLanes");
+            track.soloLane = juce::jlimit (-1, 255, t->getIntAttribute ("soloLane", -1));
             if (t->getStringAttribute ("kind") == "audio")
             {
                 track.kind = Track::Kind::audio;
@@ -611,6 +679,8 @@ namespace pr7s
                 part.length = juce::jmax (1.0e-6, p->getDoubleAttribute ("length", 4.0));
                 part.name = p->getStringAttribute ("name");
                 part.muted = p->getBoolAttribute ("muted");
+                part.lane = juce::jlimit (0, 255, p->getIntAttribute ("lane"));
+                part.order = p->getIntAttribute ("order");
                 part.audioFile = p->getStringAttribute ("audioFile");
                 part.audioOffset = juce::jmax (0.0, p->getDoubleAttribute ("audioOffset"));
                 part.fadeIn = juce::jmax (0.0, p->getDoubleAttribute ("fadeIn"));
@@ -690,6 +760,13 @@ namespace pr7s
             project.masterAutomationOpen = master->getBoolAttribute ("automationOpen");
             project.masterRead = master->getBoolAttribute ("automationRead");
             project.masterWrite = master->getBoolAttribute ("automationWrite");
+        }
+        if (const auto* e = xml.getChildByName ("RecordModes"))
+        {
+            auto& r = project.recordModes;
+            r.audio = (RecordModes::Audio) juce::jlimit (0, 2, e->getIntAttribute ("audio"));
+            r.midi = (RecordModes::Midi) juce::jlimit (0, 2, e->getIntAttribute ("midi"));
+            r.midiCycle = (RecordModes::MidiCycle) juce::jlimit (0, 4, e->getIntAttribute ("midiCycle"));
         }
         if (const auto* e = xml.getChildByName ("AutomationSettings"))
         {

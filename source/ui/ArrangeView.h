@@ -91,12 +91,15 @@ struct Timeline
     int tempoRowHeight() const noexcept { return juce::jmax (48, juce::roundToInt (tempoHeight * rowZoom)); }
     static constexpr int chordsHeight = 60;   // the chord track (0.16.0): chords above, the scales below
     int chordRowHeight() const noexcept { return juce::jmax (46, juce::roundToInt (chordsHeight * rowZoom)); }
+    static constexpr int takeHeight = 52;   // a lane of takes (0.29.0): smaller than its track's row (our choice)
+    int takeRowHeight() const noexcept { return juce::jmax (36, juce::roundToInt (takeHeight * rowZoom)); }
     struct Row
     {
-        enum class Kind { track, lane, master, tempo, chords };
+        // (0.29.0) take: one of a track's lanes of takes (Show Lanes), under its row.
+        enum class Kind { track, lane, master, tempo, chords, take };
         Kind kind = Kind::track;
         int busId = 0;          // a track's id, or the master's (0)
-        int laneIndex = -1;     // a lane: its index in the bus's automation
+        int laneIndex = -1;     // a lane: its index in the bus's automation; a take lane: its lane
         int top = 0, height = 0;
         bool operator== (const Row&) const = default;
     };
@@ -206,8 +209,8 @@ public:
     std::function<void()> onPartsCopied;   // (Ctrl+V then pastes parts: MainView)
 
     // The editing tools (see above).
-    enum class Tool { select, range, split, glue, erase, zoom, mute, draw, line, play };
-    static constexpr Tool tools[] = { Tool::select, Tool::range, Tool::split, Tool::glue, Tool::erase, Tool::zoom, Tool::mute, Tool::draw, Tool::line, Tool::play };
+    enum class Tool { select, range, split, glue, erase, zoom, mute, draw, line, play, comp };
+    static constexpr Tool tools[] = { Tool::select, Tool::comp, Tool::range, Tool::split, Tool::glue, Tool::erase, Tool::zoom, Tool::mute, Tool::draw, Tool::line, Tool::play };
     static const char* toolName (Tool);
     static int toolKey (Tool);   // its number key
     void setTool (Tool);
@@ -318,7 +321,11 @@ public:
     // Where a part is drawn (for tests).
     juce::Rectangle<float> getPartBounds (int trackId, int index) const;
     float splitLineX() const;   // SPLIT: where its cut line is drawn now (snapped to the grid), -1: none
-    int trackAtY (float y) const;   // 0 if none (a lane or the master isn't a track)
+    int trackAtY (float y) const;   // 0 if none (a lane or the master isn't a track); a lane of takes: its track
+    int laneAtY (float y) const;    // a lane of takes (0.29.0): its lane; else -1
+    // For the tests (0.29.0): the Comp tool's band while dragged (beats; none: equal).
+    std::pair<double, double> getCompBand() const noexcept { return { compFrom, compTo }; }
+    juce::Rectangle<float> partRow (int trackId, int lane) const;   // the strip (y and height) a part on that lane is drawn in
     // A chord pad dropped on a track: a one-bar MIDI part at the bar (0.14.0, the manual's
     // Creating MIDI Parts from Chord Pads).
     bool isInterestedInDragSource (const SourceDetails&) override;
@@ -361,8 +368,9 @@ public:
     // when it moved, nothing when nothing did (0.9.2: it was the whole view, 30
     // times a second, which on a big window kept the computer busy: the lag).
     void refreshPlayhead();
+    std::optional<std::pair<int, int>> partAt (juce::Point<float>) const;   // track id and index (public for the tests: 0.29.0)
+    Timeline& getTimeline() noexcept { return timeline; }
 private:
-    std::optional<std::pair<int, int>> partAt (juce::Point<float>) const;   // track id and index
     void showPartMenu (int trackId, int index);
 
     pr7s::Studio& studio;
@@ -374,7 +382,13 @@ private:
     enum class Drag { none, position, cycle, cycleMove, cycleLeft, cycleRight, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
                       erasePoints, linePoints, pointHandle, curve, segmentScale,
                       newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove, marquee,
-                      tempoPoints, tempoBand, tempoDraw, chordMove };
+                      tempoPoints, tempoBand, tempoDraw, chordMove, comp };
+    // The Comp tool (0.29.0): its drag across a lane of takes.
+    int compTrack = 0, compLane = -1, compPartId = 0;
+    double compFrom = 0.0, compTo = 0.0;
+    bool compDown (const juce::MouseEvent&);
+    void compDrag (const juce::MouseEvent&);
+    void compUp();
     std::vector<int> alsoSelected;              // the parts selected besides `selection` (by id)
     pr7s::Studio::RangeClip partsClip;          // parts copied (Ctrl+C / X)
     int partIdAt (const Selection&) const;
@@ -467,6 +481,7 @@ private:
     Drag drag = Drag::none;
     double dragStartBeat = 0.0, dragOriginalStart = 0.0, dragOriginalLength = 0.0;
     int dragTrack = 0, dragTargetTrack = 0;
+    int dragTargetLane = -1;   // (0.29.0) the lane of takes it's dragged onto (-1: not over one)
     double dragNewStart = 0.0, dragNewLength = 0.0;
     bool dragCopies = false, dragMoved = false;
     double lastPosition = 0.0;   // the playhead as last seen (Auto-Scroll follows a jump while stopped)
@@ -504,7 +519,7 @@ public:
     // On the transport unit (a wide window): TOOLS stamped in the unit's ink, as the keys' names are.
     void setOnUnit (bool);
     int getPreferredWidth() const noexcept { return onUnit ? unitWidth() : 64 + (int) std::size (ArrangeView::tools) * 74; }
-    static int unitWidth() noexcept { return 576; }   // on the unit: no label (the icons tell them apart); 10 keys in the 9 x 64 it always had (0.27.0: LINE)
+    static int unitWidth() noexcept { return 576; }   // on the unit: no label (the icons tell them apart); the keys share the 9 x 64 it always had (0.27.0: LINE, 0.29.0: COMP)
     juce::TextButton& getButton (ArrangeView::Tool);
     void paint (juce::Graphics&) override;
     void resized() override;
