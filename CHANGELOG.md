@@ -2,6 +2,35 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.34.0
+
+VariAudio, part one: the third of the four. It's pitch editing for a sung (or any one-note-at-a-time) recording. You can tune a flat note, take the wobble out of a held one, move a note to another pitch, or snap a whole line onto the song's scale. Part two (0.35.0) adds splitting and gluing segments, formants, tilting curves, timing per note and MIDI from the voice.
+
+- **Open it:** double-click an audio clip (or its menu: **VariAudio...**). It opens in its own window; double-clicking another clip switches it to that one.
+- **EDIT VARIAUDIO** finds the notes and splits the recording into **segments**, one block per note. Each block sits at the pitch it's sung at on the keyboard down the side, with its **pitch curve** drawn inside it. Breaths, rests and most consonants fall in the gaps between segments.
+- **Moving a note:** drag a segment up or down, or use **Up / Down**. **PITCH SNAP** sets how it lands:
+  - **ABSOLUTE:** exactly on a semitone.
+  - **RELATIVE:** by whole semitones, keeping how sharp or flat it was.
+  - **OFF:** anywhere.
+  - Hold **Shift** for off, **Ctrl** for absolute or **Alt** for relative while dragging (the manual's keys). **Shift+Up/Down** moves a single cent.
+- **Smart controls** on the note under the mouse, as in the manual's default set:
+  - the white handle at the top **straightens the curve** (drag up: less vibrato and drift);
+  - the red handle at the bottom **corrects the pitch** toward the nearest semitone.
+- **The panel's sliders** do the same for the selected notes (all of them if none is selected): **CORRECT PITCH**, **STRAIGHTEN CURVE**, and **VOLUME** for each note's own level.
+- **Scale:** use the **EDITOR SCALE** (chosen in the box, or from **SUGGEST**, which lists the scales that fit the notes best) or the **CHORD TRACK**'s scale at each note.
+  - **SNAP TO SCALE:** moved notes land on the scale's notes.
+  - **SCALE GUIDES:** notes outside the scale are shown darker.
+  - **QUANTIZE PITCHES:** the selected notes onto the nearest scale note.
+- **Selecting:** click, Shift or Ctrl-click to add, or drag a box. **Left / Right** step through the notes. **Ctrl-click a piano key** selects every note on it; **Shift+double-click** a note selects it and every later one on the same note.
+- **Hearing it:** **AUDITION** plays the selected notes as changed. **BYPASS** plays the recording as it was, to compare. **RESET** removes it all.
+- Every change is one undo step and is saved with the song. Playback, export, Render in Place, bounce, warping and Audio Alignment all hear the edited recording. Nothing in it changes the recording file itself.
+- **Honestly:**
+  - How it hears pitch: the YIN method, every 5 ms, 60 Hz to 1100 Hz. That covers a low bass voice to a high soprano, but it's for one note at a time: chords and distorted guitars won't analyse well, as the manual also warns.
+  - A new note starts where the pitch settles somewhere else for 50 ms. A vibrato or a short scoop doesn't make one, but two notes on the same pitch sung legato stay as one segment until part two lets you split it.
+  - The pitch is moved with the same stretcher as warping, **keeping the voice's formants** (no chipmunk effect). Small moves sound natural; the further a note moves, the more it sounds processed (the manual says the same).
+  - Tested with sung-like notes made in code (each found within 0.12 semitones; moved notes analysed again land within 0.1; the stretches between the notes are the recording sample for sample), not by ear on your vocals.
+  - Not yet (part two): splitting, gluing and resizing segments, formant shift, tilt and rotate, straightening only part of a note, timing per note (warp start/end), MIDI from the voice, Step / MIDI input, the color schemes, harmony voices.
+
 ## 0.33.0
 
 (Includes 0.32.0, hitpoints and audio warping, if its own release didn't appear: its builds passed on Windows and Linux, but GitHub had no Mac machine free to build it. Its notes are in the changelog under 0.32.0.)

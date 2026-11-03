@@ -1038,7 +1038,7 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
     if (part.isAudio())
     {
         const auto wave = area.withTrimmedTop (16.0f).reduced (1.0f, 3.0f);
-        if (const auto data = studio.getAudio (part.audioFile))
+        if (const auto data = studio.getHeardAudio (part.audioFile))
         {
             // (Each pixel's seconds by the tempo map: with the tempo track, a pixel isn't always as long.)
             const auto tempo = studio.getProject().tempoMap();
@@ -2323,6 +2323,9 @@ void ArrangeView::mouseDoubleClick (const juce::MouseEvent& event)
         select (hit->first, hit->second);
         if (onEditNotes && ! isAudioTrack (hit->first))   // a clip has no notes
             onEditNotes();
+        else if (onEditAudio && isAudioTrack (hit->first))   // (0.34.0) a clip: VariAudio
+            if (const auto* t = studio.getProject().findTrack (hit->first); t != nullptr && juce::isPositiveAndBelow (hit->second, (int) t->parts.size()))
+                onEditAudio (t->parts[(size_t) hit->second].id);
         return;
     }
     const auto* clicked = studio.getProject().findTrack (trackAtY (event.position.y));
@@ -2435,6 +2438,7 @@ void ArrangeView::showPartMenu (int trackId, int index)
             warp.addItem (21, "Hitpoint Settings...");
             menu.addSubMenu ("Hitpoints and Warp", warp);
             menu.addItem (23, "Audio Alignment...");   // (0.33.0)
+            menu.addItem (24, "VariAudio... (pitch: double-click the clip)");   // (0.34.0)
         }
     }
     menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, index, ids, muted = part.muted, start = part.start, end = part.end(), partId = part.id] (int chosen)
@@ -2466,6 +2470,12 @@ void ArrangeView::showPartMenu (int trackId, int index)
             juce::String error;
             if (studio.bounceTakes (chosenIds, error) == 0 && error.isNotEmpty())
                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Not bounced", error);
+            return;
+        }
+        if (chosen == 24)
+        {
+            if (onEditAudio)
+                onEditAudio (partId);
             return;
         }
         if (chosen == 23)

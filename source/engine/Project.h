@@ -357,6 +357,28 @@ namespace pr7s
         };
         std::map<juce::String, HitpointEdits> hitpointEdits;   // by recording (file name)
         bool audioWarpQuantize = false;   // Q on audio: stretched to the grid (else the clip's start moved)
+        // VariAudio (0.34.0, the manual's Pitch Editing and Time Correction with VariAudio): per
+        // recording, its segments (the notes found in it: where they are in the recording, the
+        // pitch heard, as a MIDI note number with cents) and what was done to each.
+        struct VariSegment
+        {
+            double start = 0.0, end = 0.0;   // seconds into the recording
+            float pitch = 60.0f;             // the average pitch heard (MIDI note, fractional)
+            float shift = 0.0f;              // semitones moved (the segment's pitch is pitch + shift)
+            float straighten = 0.0f;         // 0-1: how much the curve's wobble around its pitch is flattened
+            float volumeDb = 0.0f;           // the segment's level
+            float pitchNow() const noexcept { return pitch + shift; }
+            bool isEdited() const noexcept { return std::abs (shift) > 1.0e-4f || straighten > 1.0e-4f || std::abs (volumeDb) > 1.0e-3f; }
+            bool operator== (const VariSegment&) const = default;
+        };
+        struct VariAudio
+        {
+            std::vector<VariSegment> segments;   // in time order
+            bool bypass = false;                 // the manual's VariAudio Changes Bypass
+            bool isEdited() const noexcept { return std::any_of (segments.begin(), segments.end(), [] (const VariSegment& s) { return s.isEdited(); }); }
+            bool operator== (const VariAudio&) const = default;
+        };
+        std::map<juce::String, VariAudio> variAudio;   // by recording (file name)
         bool masterAutomationOpen = false, masterRead = false, masterWrite = false;
         int nextTrackId = 1;
 

@@ -58,7 +58,7 @@ namespace pr7s
                                                .getChildFile ("PR7S-test-" + juce::String (juce::Random::getSystemRandom().nextInt64()));
         engine.setAudioSource ([this] (const juce::String& name) -> std::shared_ptr<const juce::AudioBuffer<float>>
         {
-            if (auto data = getAudio (name))
+            if (auto data = getHeardAudio (name))   // (0.34.0: VariAudio's edits heard)
                 return { data, &data->sound };
             return nullptr;
         });
@@ -258,6 +258,7 @@ namespace pr7s
         project.tempoEvents = state.tempoEvents;
         project.tempoTrackShown = state.tempoTrackShown;
         project.chordTrack = state.chordTrack;   // (0.16.0: its chords and scales are undo steps)
+        project.variAudio = state.variAudio;     // (0.34.0)
         project.linkGroups = state.linkGroups;   // (0.17.0)
         project.numerator = state.numerator;
         project.denominator = state.denominator;
@@ -5320,7 +5321,14 @@ namespace pr7s
 
     std::shared_ptr<const juce::AudioBuffer<float>> Studio::getWarpedSound (const Part& part, const TempoMap& tempo)
     {
-        const auto data = getAudio (part.audioFile);
+        // (0.34.0) The recording as VariAudio left it; the stretches made from an earlier version forgotten.
+        const auto signature = variSignature (part.audioFile);
+        if (auto& known = warpedVariSignatures[part.audioFile]; known != signature)
+        {
+            warpRenderer.clear();
+            known = signature;
+        }
+        const auto data = getHeardAudio (part.audioFile);
         if (data == nullptr)
             return nullptr;
         return warpRenderer.render (part, data->sound, data->sampleRate, tempo);
@@ -5858,7 +5866,7 @@ namespace pr7s
             for (int i = 0; i < (int) among.parts.size(); ++i)
             {
                 const auto& p = among.parts[(size_t) i];
-                const auto data = getAudio (p.audioFile);
+                const auto data = getHeardAudio (p.audioFile);
                 if (data == nullptr || ! p.isAudio())
                     continue;
                 // (0.32.0) A warped clip: its stretched sound, from its start.
@@ -8225,7 +8233,7 @@ namespace pr7s
         const auto tempo = project.tempoMap();
         for (const auto& p : track->parts)
             if (p.isAudio())
-                if (const auto data = getAudio (p.audioFile))
+                if (const auto data = getHeardAudio (p.audioFile))
                 {
                     rate = data->sampleRate;
                     break;
@@ -8239,7 +8247,7 @@ namespace pr7s
             const auto& p = track->parts[(size_t) i];
             if (! p.isAudio() || p.id == skipPartId)
                 continue;
-            const auto data = getAudio (p.audioFile);
+            const auto data = getHeardAudio (p.audioFile);
             if (data == nullptr)
                 continue;
             const auto warped = p.isWarped() ? getWarpedSound (p, tempo) : nullptr;
@@ -8271,7 +8279,7 @@ namespace pr7s
     std::vector<float> Studio::clipMono (const Part& part, double from, double to, double& rate)
     {
         rate = 0.0;
-        const auto data = part.isAudio() ? getAudio (part.audioFile) : nullptr;
+        const auto data = part.isAudio() ? getHeardAudio (part.audioFile) : nullptr;
         if (data == nullptr || to <= from || data->sound.getNumChannels() == 0)
             return {};
         rate = data->sampleRate;
@@ -8442,5 +8450,139 @@ namespace pr7s
         report.after = apartAfter / report.aligned;
         changed();
         return true;
+    }
+
+    //==========================================================================
+    // VariAudio (0.34.0)
+    juce::String Studio::variSignature (const juce::String& file) const
+    {
+        const auto found = project.variAudio.find (file);
+        if (found == project.variAudio.end() || found->second.bypass || ! found->second.isEdited())
+            return {};
+        juce::String text;
+        for (const auto& seg : found->second.segments)
+            if (seg.isEdited())
+                text << seg.start << ":" << seg.end << ":" << seg.shift << ":" << seg.straighten << ":" << seg.volumeDb << "|";
+        return text;
+    }
+
+    std::shared_ptr<const PitchAnalysis> Studio::getPitchAnalysis (const juce::String& file)
+    {
+        const auto data = getAudio (file);
+        if (data == nullptr)
+            return nullptr;
+        if (const auto found = pitchCache.find (file); found != pitchCache.end() && found->second.first == data)
+            return found->second.second;
+        auto analysis = std::make_shared<const PitchAnalysis> (analysePitch (data->sound, data->sampleRate));
+        pitchCache[file] = { data, analysis };
+        return analysis;
+    }
+
+    std::shared_ptr<const Studio::AudioData> Studio::getHeardAudio (const juce::String& file)
+    {
+        const auto signature = variSignature (file);
+        if (signature.isEmpty())
+            return getAudio (file);
+        const auto data = getAudio (file);
+        const auto analysis = getPitchAnalysis (file);
+        if (data == nullptr || analysis == nullptr)
+            return data;
+        if (const auto found = heardCache.find (file); found != heardCache.end()
+            && found->second.signature == signature && found->second.source == data)
+            return found->second.heard;
+        auto heard = std::make_shared<AudioData>();
+        heard->sampleRate = data->sampleRate;
+        heard->sound = renderVariAudio (data->sound, data->sampleRate, *analysis, project.variAudio[file].segments);
+        const auto samples = heard->sound.getNumSamples();
+        for (int from = 0; from < samples; from += AudioData::peakStep)
+        {
+            const auto count = juce::jmin (AudioData::peakStep, samples - from);
+            auto peak = 0.0f;
+            for (int c = 0; c < heard->sound.getNumChannels(); ++c)
+                peak = juce::jmax (peak, heard->sound.getMagnitude (c, from, count));
+            heard->peaks.push_back (peak);
+        }
+        heardCache[file] = { signature, data, heard };
+        return heard;
+    }
+
+    const Project::VariAudio* Studio::getVariAudio (const juce::String& file) const
+    {
+        const auto found = project.variAudio.find (file);
+        return found != project.variAudio.end() ? &found->second : nullptr;
+    }
+
+    bool Studio::editVariAudio (const juce::String& file)
+    {
+        if (project.variAudio.count (file) > 0)
+            return true;
+        const auto analysis = getPitchAnalysis (file);
+        if (analysis == nullptr)
+            return false;
+        project.variAudio[file].segments = segmentPitch (*analysis);
+        SessionLog::note ("VariAudio: " + file + " analysed, " + juce::String ((int) project.variAudio[file].segments.size()) + " segments");
+        changed();
+        return true;
+    }
+
+    void Studio::setVariSegments (const juce::String& file, std::vector<VariSegment> segments)
+    {
+        auto found = project.variAudio.find (file);
+        if (found == project.variAudio.end())
+            return;
+        for (auto& seg : segments)
+        {
+            seg.shift = juce::jlimit (-24.0f, 24.0f, seg.shift);
+            seg.straighten = juce::jlimit (0.0f, 1.0f, seg.straighten);
+            seg.volumeDb = juce::jlimit (-96.0f, 12.0f, seg.volumeDb);
+        }
+        std::sort (segments.begin(), segments.end(), [] (const VariSegment& a, const VariSegment& b) { return a.start < b.start; });
+        if (found->second.segments == segments)
+            return;
+        found->second.segments = std::move (segments);
+        changed();
+    }
+
+    void Studio::editVariSegments (const juce::String& file, const std::vector<int>& indices, const std::function<void (VariSegment&)>& edit)
+    {
+        const auto* vari = getVariAudio (file);
+        if (vari == nullptr)
+            return;
+        auto segments = vari->segments;
+        for (const auto i : indices)
+            if (juce::isPositiveAndBelow (i, (int) segments.size()))
+                edit (segments[(size_t) i]);
+        setVariSegments (file, std::move (segments));
+    }
+
+    void Studio::setVariAudioBypass (const juce::String& file, bool bypass)
+    {
+        auto found = project.variAudio.find (file);
+        if (found == project.variAudio.end() || found->second.bypass == bypass)
+            return;
+        found->second.bypass = bypass;
+        changed (false);   // (a comparison, not an edit: not an undo step)
+    }
+
+    void Studio::removeVariAudio (const juce::String& file)
+    {
+        if (project.variAudio.erase (file) > 0)
+            changed();
+    }
+
+    void Studio::auditionRecording (const juce::String& file, double fromSeconds, double toSeconds, bool loop)
+    {
+        const auto data = getHeardAudio (file);
+        if (data == nullptr)
+            return;
+        const auto from = juce::jlimit (0, data->sound.getNumSamples(), (int) (fromSeconds * data->sampleRate));
+        const auto to = juce::jlimit (from, data->sound.getNumSamples(), (int) (toSeconds * data->sampleRate));
+        if (to <= from)
+            return;
+        auto slice = std::make_shared<juce::AudioBuffer<float>> (data->sound.getNumChannels(), to - from);
+        for (int c = 0; c < slice->getNumChannels(); ++c)
+            slice->copyFrom (c, 0, data->sound, c, from, to - from);
+        engine.setPreviewSync (false, 0.0, 0.0);
+        engine.setPreview (slice, loop);
     }
 }

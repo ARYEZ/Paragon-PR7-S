@@ -558,6 +558,24 @@ namespace pr7s
                     f->createNewChildElement ("Removed")->setAttribute ("seconds", r);
             }
         }
+        for (const auto& [file, vari] : variAudio)
+        {
+            // (0.34.0) VariAudio: each recording's segments and their edits.
+            auto* e = xml->createNewChildElement ("VariAudio");
+            e->setAttribute ("file", file);
+            if (vari.bypass)
+                e->setAttribute ("bypass", true);
+            for (const auto& seg : vari.segments)
+            {
+                auto* s = e->createNewChildElement ("Segment");
+                s->setAttribute ("start", seg.start);
+                s->setAttribute ("end", seg.end);
+                s->setAttribute ("pitch", (double) seg.pitch);
+                if (std::abs (seg.shift) > 0.0f) s->setAttribute ("shift", (double) seg.shift);
+                if (seg.straighten > 0.0f) s->setAttribute ("straighten", (double) seg.straighten);
+                if (std::abs (seg.volumeDb) > 0.0f) s->setAttribute ("volume", (double) seg.volumeDb);
+            }
+        }
         if (recordModes != RecordModes {})
         {
             // (0.29.0) The record modes.
@@ -802,6 +820,23 @@ namespace pr7s
                 for (const auto* r : f->getChildWithTagNameIterator ("Removed"))
                     edits.removed.push_back (r->getDoubleAttribute ("seconds"));
             }
+        }
+        for (const auto* e : xml.getChildWithTagNameIterator ("VariAudio"))
+        {
+            auto& vari = project.variAudio[e->getStringAttribute ("file")];
+            vari.bypass = e->getBoolAttribute ("bypass");
+            for (const auto* s : e->getChildWithTagNameIterator ("Segment"))
+            {
+                VariSegment seg;
+                seg.start = juce::jmax (0.0, s->getDoubleAttribute ("start"));
+                seg.end = juce::jmax (seg.start + 0.001, s->getDoubleAttribute ("end"));
+                seg.pitch = (float) juce::jlimit (0.0, 127.0, s->getDoubleAttribute ("pitch", 60.0));
+                seg.shift = (float) juce::jlimit (-48.0, 48.0, s->getDoubleAttribute ("shift"));
+                seg.straighten = (float) juce::jlimit (0.0, 1.0, s->getDoubleAttribute ("straighten"));
+                seg.volumeDb = (float) juce::jlimit (-96.0, 12.0, s->getDoubleAttribute ("volume"));
+                vari.segments.push_back (seg);
+            }
+            std::sort (vari.segments.begin(), vari.segments.end(), [] (const VariSegment& a, const VariSegment& b) { return a.start < b.start; });
         }
         if (const auto* e = xml.getChildByName ("RecordModes"))
         {

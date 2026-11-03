@@ -8,6 +8,7 @@
 #include "Project.h"
 #include "Warp.h"
 #include "Align.h"
+#include "VariAudio.h"
 #include "Lines.h"
 #include "MediaBay.h"
 
@@ -445,6 +446,19 @@ namespace pr7s
         // A clip's recording as it's placed now, at its own speed (warps ignored), from `from` to `to`
         // song seconds, reading on past its edges where the recording goes on.
         std::vector<float> clipMono (const Part&, double from, double to, double& rate);
+        // VariAudio (0.34.0, the manual's Pitch Editing and Time Correction with VariAudio). A recording's
+        // pitch is found once (kept while the song is open); Edit VariAudio splits it into segments (an undo
+        // step), kept in the song by file; each edit of the segments is one undo step. What plays (and is
+        // bounced, rendered, warped, aligned) is the recording as edited, unless its bypass is on.
+        bool editVariAudio (const juce::String& file);                         // false: the file can't be read
+        const Project::VariAudio* getVariAudio (const juce::String& file) const;
+        std::shared_ptr<const PitchAnalysis> getPitchAnalysis (const juce::String& file);
+        void setVariSegments (const juce::String& file, std::vector<VariSegment>);
+        void editVariSegments (const juce::String& file, const std::vector<int>& indices, const std::function<void (VariSegment&)>&);
+        void setVariAudioBypass (const juce::String& file, bool);              // (not an undo step)
+        void removeVariAudio (const juce::String& file);                       // every segment and edit gone
+        // Audition: what the recording plays (as edited) between two moments of it, through the preview.
+        void auditionRecording (const juce::String& file, double fromSeconds, double toSeconds, bool loop = false);
         AlignSettings getAlignSettings() const;   // settings key "audioAlignment"
         void setAlignSettings (const AlignSettings&);
 
@@ -561,6 +575,8 @@ namespace pr7s
         std::shared_ptr<const AudioData> getAudio (const juce::String& file);   // none if it can't be read
         // A file read whole at the engine's rate, not kept (the MediaBay's previews, 0.21.0).
         std::shared_ptr<const AudioData> readAudio (const juce::File&);
+        // (0.34.0) A recording as VariAudio edited it (else getAudio's): what plays.
+        std::shared_ptr<const AudioData> getHeardAudio (const juce::String& file);   // as edited (else getAudio's)
         juce::File getAudioFolder() const;
         // The interface's delay, in and out: recordings are moved earlier by it,
         // so they land where they were played. Tests set it; else the device's.
@@ -1031,6 +1047,12 @@ namespace pr7s
         bool auditioning = false;   // (0.30.0) the engine plays a soloed copy
         std::map<juce::String, std::vector<Hitpoint>> hitpointCache;   // (0.32.0) every candidate, by recording
         WarpRenderer warpRenderer;
+        // (0.34.0) VariAudio: each recording's pitch, and its sound as edited (by what was edited).
+        juce::String variSignature (const juce::String& file) const;
+        std::map<juce::String, std::pair<std::shared_ptr<const AudioData>, std::shared_ptr<const PitchAnalysis>>> pitchCache;
+        struct HeardSound { juce::String signature; std::shared_ptr<const AudioData> source, heard; };
+        std::map<juce::String, HeardSound> heardCache;
+        std::map<juce::String, juce::String> warpedVariSignatures;
         std::pair<Track*, int> findPartById (int partId);
         bool editWarp (int partId, const std::function<bool (Part&)>&);
         void tidyWarp (Part&);   // markers in order, apart, inside the recording, edges at the clip's
