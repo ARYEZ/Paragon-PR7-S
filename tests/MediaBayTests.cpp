@@ -1072,3 +1072,107 @@ TEST_CASE ("The MediaBay window opens where it was left: the open folders and th
         page.selectFolder ({});   // (left as the other tests expect)
     }
 }
+
+#include "engine/Stretch.h"
+
+namespace
+{
+    // Upward zero crossings per second (a plain tone's frequency).
+    double frequencyOf (const juce::AudioBuffer<float>& sound, double rate, int from, int count)
+    {
+        int crossings = 0;
+        const auto* x = sound.getReadPointer (0);
+        for (int i = from + 1; i < from + count; ++i)
+            if (x[i - 1] < 0.0f && x[i] >= 0.0f)
+                ++crossings;
+        return crossings * rate / count;
+    }
+}
+
+TEST_CASE ("The stretcher: a sound made longer keeps its pitch; transposed, it moves (0.23.0)", "[mediabay]")
+{
+    const auto rate = 44100.0;
+    juce::AudioBuffer<float> tone (2, (int) rate);
+    for (int c = 0; c < 2; ++c)
+        for (int i = 0; i < tone.getNumSamples(); ++i)
+            tone.setSample (c, i, 0.5f * (float) std::sin (juce::MathConstants<double>::twoPi * 440.0 * i / rate));
+    const auto longer = pr7s::stretchAudio (tone, rate, (int) (2 * rate), 0.0);
+    REQUIRE (longer.getNumSamples() == (int) (2 * rate));
+    CHECK (longer.getRMSLevel (0, 0, longer.getNumSamples()) > 0.2f);
+    CHECK (std::abs (frequencyOf (longer, rate, 20000, 44100) - 440.0) < 15.0);
+    const auto higher = pr7s::stretchAudio (tone, rate, (int) rate, 12.0);
+    CHECK (higher.getNumSamples() == (int) rate);
+    CHECK (std::abs (frequencyOf (higher, rate, 8000, 30000) - 880.0) < 30.0);
+}
+
+TEST_CASE ("MediaBay previews in time with the song: the plan, the stretch, the beat lock, waiting for play (0.23.0)", "[mediabay][studio]")
+{
+    MediaFolder folder;   // (Drums_120bpm_Am.wav: 22050 samples at 44.1 kHz, half a second: one beat at 120)
+    Studio studio (false);
+    studio.getMediaBay().addLocation (folder.root);
+    studio.getMediaBay().scanNow();
+    const auto drums = folder.root.getChildFile ("Drums_120bpm_Am.wav");
+    studio.setTempo (100.0);
+
+    // The plan: LINK TEMPO makes the one-beat loop a beat at 100 (0.6 s): 1.2 times as long.
+    Studio::MediaPreviewOptions options;
+    studio.setMediaPreviewOptions (options);
+    auto plan = studio.planMediaPreview (drums, 0.5);
+    CHECK (plan.lengthFactor == 1.0);
+    CHECK (plan.lockBeats == 0.0);
+    options.linkTempo = true;
+    studio.setMediaPreviewOptions (options);
+    plan = studio.planMediaPreview (drums, 0.5);
+    CHECK (plan.lockBeats == 1.0);
+    CHECK (std::abs (plan.lengthFactor - 1.2) < 1e-9);
+    // Double speed: half a beat; to the key of C from A minor's root A: up three (the short way).
+    options.speed = 2.0;
+    options.toKey = 0;
+    studio.setMediaPreviewOptions (options);
+    plan = studio.planMediaPreview (drums, 0.5);
+    CHECK (plan.lockBeats == 0.5);
+    CHECK (plan.semitones == 3.0);
+    options.toKey = 4;   // E: from A, down five, not up seven
+    studio.setMediaPreviewOptions (options);
+    CHECK (studio.planMediaPreview (drums, 0.5).semitones == -5.0);
+    CHECK (Studio::keyPitchClass ("F#m") == 6);
+    CHECK (Studio::keyPitchClass ("Bb") == 10);
+    CHECK (Studio::keyPitchClass ("") == -1);
+
+    // Played: the sound heard is the stretched one (a beat at 100, at the engine's rate).
+    options = {};
+    options.linkTempo = true;
+    studio.setMediaPreviewOptions (options);
+    REQUIRE (studio.previewMedia (drums, false));
+    const auto rate = studio.getEngine().getSampleRate();
+    REQUIRE (studio.getMediaPreviewSound() != nullptr);
+    CHECK (std::abs (studio.getMediaPreviewSound()->sound.getNumSamples() - (int) std::llround (0.6 * rate)) <= 1);
+    studio.stopMediaPreview();
+
+    // The engine's lock: WAIT FOR PLAY silent while stopped; playing, the sound's place follows
+    // the beat from the left locator.
+    auto& engine = studio.getEngine();
+    const auto length = (int) std::llround (4 * 60.0 / 100.0 * rate);   // four beats at 100
+    auto ramp = std::make_shared<juce::AudioBuffer<float>> (2, length);
+    for (int c = 0; c < 2; ++c)
+        for (int i = 0; i < length; ++i)
+            ramp->setSample (c, i, (float) i / (float) length);
+    engine.setPreviewGain (1.0f);
+    engine.setPreviewSync (true, 0.0, 4.0);
+    engine.setPreview (ramp, true);
+    juce::AudioBuffer<float> out (2, 256);
+    engine.render (out, 256);
+    CHECK (out.getMagnitude (0, 0, 256) == 0.0f);   // (waiting)
+    CHECK (engine.isPreviewWaiting());
+    engine.setPosition (1.0);   // a quarter of the way through the loop
+    engine.play();
+    engine.render (out, 256);
+    CHECK (std::abs (out.getSample (0, 0) - 0.25f) < 0.002f);
+    engine.render (out, 256);
+    CHECK (std::abs (out.getSample (0, 0) - (0.25f + 256.0f / (float) length)) < 0.002f);
+    engine.stop();
+    engine.render (out, 256);
+    CHECK (out.getMagnitude (0, 0, 256) == 0.0f);
+    engine.setPreviewSync (false, 0.0, 0.0);
+    engine.stopPreview();
+}

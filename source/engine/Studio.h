@@ -738,6 +738,26 @@ namespace pr7s
         // A file heard: audio through the engine's preview (over the output, at the preview level,
         // looping when `loop` is on); a MIDI file through the live track's instrument at the song's
         // tempo (as IDEAS' previews). False for files it can't play (presets, songs, unreadable).
+        // The previewer's options (0.23.0, the manual's Audio Files Previewer): LINK TEMPO (a loop
+        // stretched to the song's tempo at the playhead, its pitch kept; not one-shots or files
+        // without a tempo), WAIT FOR PLAY (heard only while the song plays; linked loops locked to
+        // the beat from the left locator), semitones or a root key to move to (the short way; a
+        // root key needs the file's key), half or double speed. Kept in the settings (mediaBay*).
+        struct MediaPreviewOptions
+        {
+            bool linkTempo = false, waitForPlay = false;
+            int semitones = 0;        // -12 to 12
+            int toKey = -1;           // a pitch class 0-11 (C = 0), or -1: off
+            double speed = 1.0;       // 0.5, 1 or 2
+            bool operator== (const MediaPreviewOptions&) const = default;
+        };
+        const MediaPreviewOptions& getMediaPreviewOptions();
+        void setMediaPreviewOptions (const MediaPreviewOptions&);
+        // What a preview of this file does with the options: the length factor (output / input),
+        // the semitones, and the beats it's locked to (0: not locked). (Worked out, not played: tests.)
+        struct MediaPreviewPlan { double lengthFactor = 1.0, semitones = 0.0, lockBeats = 0.0, songBpm = 120.0; };
+        MediaPreviewPlan planMediaPreview (const juce::File&, double seconds);
+        static int keyPitchClass (const juce::String& key);   // "F#m" -> 6; "" or unknown -> -1
         bool previewMedia (const juce::File&, bool loop);
         void stopMediaPreview();
         bool isMediaPreviewing() const;
@@ -898,6 +918,8 @@ namespace pr7s
         double mediaPreviewBeats = 0.0;
         bool mediaPreviewMidi = false;
         float mediaPreviewLevel = 0.7f;
+        MediaPreviewOptions mediaPreviewOptions;
+        bool mediaPreviewOptionsLoaded = false;
         // Several renders in a row (Render in Place's stretches, Freeze's
         // tracks): the plugins stay offline and the interface off between
         // them, switched back once at the end (0.9.9).

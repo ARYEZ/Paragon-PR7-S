@@ -2,6 +2,19 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.23.0
+
+The MediaBay's previews in time with the song (the second of the three additions the owner chose), as the manual's Audio Files Previewer.
+
+- **LINK TEMPO:** a loop is stretched to the song's tempo at the playhead, keeping its pitch: a 140 BPM riff previews at your song's 120. It needs the loop's tempo (from its name, its loop info or your tag); one-shots and files with no tempo play as they are.
+- **WAIT FOR PLAY:** the preview starts and stops with the song. With LINK TEMPO too, a loop **locks to the song's bars** from the left locator (put the left locator on a bar's start, as the manual says), and keeps going round in time, the cycle included: pick loops one after another while the song plays and each one drops in on the beat. Waiting, the previewer says so.
+- **TRANSPOSE:** up or down to 12 semitones. **TO KEY:** moves the preview to a root key, the short way (a loop in A minor to C: up three; to E: down five), when the file's key is known.
+- **1/2X and 2X:** half or double speed, the pitch kept.
+- **Where:** in the MediaBay window's previewer (LINK TEMPO, WAIT FOR PLAY, 1/2X, 2X, TRANSPOSE, TO KEY) and in the Media rack's (LINK, WAIT, and PITCH for the rest). They share one set of options, kept for next time. A sound being heard is heard again with a change at once.
+- **MIDI files** take the transposition and the speed too (they always played at the song's tempo).
+- **The stretching** is done by Signalsmith Stretch (an open-source library, MIT licence, now part of the build), on the whole sound before it plays, so nothing heavy runs while the audio does.
+- **Honestly:** the stretch follows the tempo at the playhead when you press PLAY (a tempo track's later changes aren't followed while it plays); files longer than 90 seconds play unstretched; the beat lock assumes the loop is a whole number of beats (it rounds to the nearest when the length is that close); not built: Link to Transpose Track (the studio has no transpose track yet), tapemachine style, and putting a stretched loop into the song stretched (it goes in as the file is: that needs audio that follows the tempo, a later release).
+
 ## 0.22.2
 
 Two things the owner asked for: the MediaBay opens where you left it, and it reads tempo and key from inside your files (the first of the three additions the owner chose: this one, then previews in time with the song, then plug-in presets).

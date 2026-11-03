@@ -1,4 +1,5 @@
 #include "Studio.h"
+#include "Stretch.h"
 
 #include <set>
 
@@ -2065,6 +2066,97 @@ namespace pr7s
         return *mediaBay;
     }
 
+    const Studio::MediaPreviewOptions& Studio::getMediaPreviewOptions()
+    {
+        if (! mediaPreviewOptionsLoaded && settings != nullptr)
+        {
+            mediaPreviewOptions.linkTempo = settings->getBoolValue ("mediaBayLinkTempo", false);
+            mediaPreviewOptions.waitForPlay = settings->getBoolValue ("mediaBayWaitForPlay", false);
+            mediaPreviewOptions.semitones = juce::jlimit (-12, 12, settings->getIntValue ("mediaBaySemitones", 0));
+            mediaPreviewOptions.toKey = juce::jlimit (-1, 11, settings->getIntValue ("mediaBayToKey", -1));
+            const auto speed = settings->getDoubleValue ("mediaBaySpeed", 1.0);
+            mediaPreviewOptions.speed = speed < 0.75 ? 0.5 : speed > 1.5 ? 2.0 : 1.0;
+        }
+        mediaPreviewOptionsLoaded = true;
+        return mediaPreviewOptions;
+    }
+
+    void Studio::setMediaPreviewOptions (const MediaPreviewOptions& options)
+    {
+        mediaPreviewOptions = options;
+        mediaPreviewOptions.semitones = juce::jlimit (-12, 12, options.semitones);
+        mediaPreviewOptions.toKey = juce::jlimit (-1, 11, options.toKey);
+        mediaPreviewOptions.speed = options.speed < 0.75 ? 0.5 : options.speed > 1.5 ? 2.0 : 1.0;
+        mediaPreviewOptionsLoaded = true;
+        if (settings != nullptr)
+        {
+            settings->setValue ("mediaBayLinkTempo", mediaPreviewOptions.linkTempo);
+            settings->setValue ("mediaBayWaitForPlay", mediaPreviewOptions.waitForPlay);
+            settings->setValue ("mediaBaySemitones", mediaPreviewOptions.semitones);
+            settings->setValue ("mediaBayToKey", mediaPreviewOptions.toKey);
+            settings->setValue ("mediaBaySpeed", mediaPreviewOptions.speed);
+        }
+    }
+
+    int Studio::keyPitchClass (const juce::String& key)
+    {
+        if (key.isEmpty())
+            return -1;
+        static const int letters[] { 9, 11, 0, 2, 4, 5, 7 };   // A to G
+        const auto letter = juce::CharacterFunctions::toUpperCase (key[0]);
+        if (letter < 'A' || letter > 'G')
+            return -1;
+        auto pc = letters[letter - 'A'];
+        if (key.length() > 1 && key[1] == '#') ++pc;
+        if (key.length() > 1 && key[1] == 'b') --pc;
+        return (pc + 12) % 12;
+    }
+
+    Studio::MediaPreviewPlan Studio::planMediaPreview (const juce::File& file, double seconds)
+    {
+        const auto& options = getMediaPreviewOptions();
+        MediaPreviewPlan plan;
+        plan.songBpm = juce::jmax (20.0, project.bpmAt (engine.getPosition()));
+        // What the MediaBay knows of the file (else its name).
+        double fileBpm = 0.0, fileBeats = 0.0;
+        juce::String fileKey;
+        bool known = false;
+        for (const auto& item : getMediaBay().getItems())
+            if (item.file == file)
+            {
+                fileBpm = item.tempo();
+                fileBeats = item.beats;
+                fileKey = item.keyName();
+                known = true;
+                break;
+            }
+        if (! known)
+        {
+            fileBpm = MediaDatabase::bpmFromName (file.getFileNameWithoutExtension());
+            fileKey = MediaDatabase::keyFromName (file.getFileNameWithoutExtension());
+        }
+        // The pitch: to a root key (the short way) when the file's key is known, else semitones.
+        plan.semitones = options.semitones;
+        if (const auto from = keyPitchClass (fileKey); options.toKey >= 0 && from >= 0)
+        {
+            auto move = (options.toKey - from + 12) % 12;
+            plan.semitones = move > 6 ? move - 12 : move;
+        }
+        // The length: to the song's tempo (a loop's beats: as the file says, else its length at its
+        // tempo, to the nearest whole beat when it's that close), then the speed.
+        if (options.linkTempo && fileBpm > 0.0 && seconds > 0.0)
+        {
+            auto beats = fileBeats > 0.0 ? fileBeats : seconds * fileBpm / 60.0;
+            if (fileBeats <= 0.0 && std::abs (beats - std::round (beats)) < 0.05 * beats)
+                beats = juce::jmax (1.0, std::round (beats));
+            plan.lockBeats = beats / options.speed;
+            plan.lengthFactor = (plan.lockBeats * 60.0 / plan.songBpm) / seconds;
+        }
+        else
+            plan.lengthFactor = 1.0 / options.speed;
+        return plan;
+    }
+
     bool Studio::previewMedia (const juce::File& file, bool loop)
     {
         stopMediaPreview();
@@ -2074,9 +2166,35 @@ namespace pr7s
             auto sound = readAudio (file);
             if (sound == nullptr)
                 return false;
+            const auto& options = getMediaPreviewOptions();
+            const auto plan = planMediaPreview (file, sound->seconds());
+            const auto length = sound->sound.getNumSamples();
+            // Stretched or moved: the whole sound, ahead (up to 90 seconds: longer files play as they are).
+            const auto changes = std::abs (plan.lengthFactor - 1.0) > 0.0005 || plan.semitones != 0.0;
+            if (changes && length <= (int) (90.0 * sound->sampleRate))
+            {
+                const auto outLength = plan.lockBeats > 0.0 ? (int) std::llround (plan.lockBeats * 60.0 / plan.songBpm * sound->sampleRate)
+                                                            : (int) std::llround ((double) length * plan.lengthFactor);
+                auto stretched = std::make_shared<AudioData>();
+                stretched->sampleRate = sound->sampleRate;
+                stretched->sound = stretchAudio (sound->sound, sound->sampleRate, outLength, plan.semitones);
+                if (stretched->sound.getNumChannels() == 1)
+                {
+                    stretched->sound.setSize (2, outLength, true);
+                    stretched->sound.copyFrom (1, 0, stretched->sound, 0, 0, outLength);
+                }
+                for (int from = 0; from < outLength; from += AudioData::peakStep)
+                {
+                    const auto count = juce::jmin (AudioData::peakStep, outLength - from);
+                    stretched->peaks.push_back (juce::jmax (stretched->sound.getMagnitude (0, from, count), stretched->sound.getMagnitude (1, from, count)));
+                }
+                sound = stretched;
+            }
             mediaPreviewSound = sound;
             engine.setPreviewGain (mediaPreviewLevel);
-            engine.setPreview (std::shared_ptr<const juce::AudioBuffer<float>> (sound, &sound->sound), loop);
+            const auto locked = options.waitForPlay && plan.lockBeats > 0.0;
+            engine.setPreviewSync (options.waitForPlay, project.loopStart, locked ? plan.lockBeats : 0.0);
+            engine.setPreview (std::shared_ptr<const juce::AudioBuffer<float>> (sound, &sound->sound), loop || locked);
             return true;
         }
         if (type == MediaType::midi)
@@ -2088,11 +2206,15 @@ namespace pr7s
             LineIdea idea;
             idea.part = LineIdea::Part::melody;
             idea.style = file.getFileNameWithoutExtension();
+            // (0.23.0: moved by the previewer's semitones or to its root key, at its speed.)
+            const auto plan = planMediaPreview (file, 0.0);
+            const auto speed = getMediaPreviewOptions().speed;
             for (const auto& track : midi->tracks)
                 for (const auto& n : track.notes)
                 {
-                    idea.notes.push_back ({ n.start, n.length, n.pitch, n.velocity * juce::jlimit (0.05f, 1.0f, mediaPreviewLevel / 0.7f) });
-                    mediaPreviewBeats = juce::jmax (mediaPreviewBeats, n.start + n.length);
+                    const auto pitch = juce::jlimit (0, 127, n.pitch + (int) plan.semitones);
+                    idea.notes.push_back ({ n.start / speed, n.length / speed, pitch, n.velocity * juce::jlimit (0.05f, 1.0f, mediaPreviewLevel / 0.7f) });
+                    mediaPreviewBeats = juce::jmax (mediaPreviewBeats, (n.start + n.length) / speed);
                 }
             if (idea.notes.empty())
                 return false;

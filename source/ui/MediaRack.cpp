@@ -61,7 +61,7 @@ MediaRack::MediaRack (pr7s::Studio& s) : studio (s), database (s.getMediaBay())
     addAndMakeVisible (search);
 
     for (auto* key : { &resetSearchKey, &allKey, &backKey, &homeKey, &audioKey, &midiKey, &presetsKey, &songsKey, &shuffleKey, &filterKey,
-                       &clearKey, &categoryKey, &vendorKey, &upKey, &favoriteKey, &playKey, &autoPlayKey })
+                       &clearKey, &categoryKey, &vendorKey, &upKey, &favoriteKey, &playKey, &autoPlayKey, &linkKey, &waitKey, &pitchKey })
     {
         styleKey (*key);
         addChildComponent (*key);
@@ -125,6 +125,13 @@ MediaRack::MediaRack (pr7s::Studio& s) : studio (s), database (s.getMediaBay())
     playKey.onClick = [this] { studio.isMediaPreviewing() ? stop() : (void) play(); };
     autoPlayKey.setTooltip ("Play each file as it's selected");
     autoPlayKey.onClick = [this] { setAutoPlay (! autoPlay); };
+    linkKey.setTooltip ("LINK TEMPO: a loop stretched to the song's tempo at the playhead (its pitch kept)");
+    linkKey.onClick = [this] { auto o = studio.getMediaPreviewOptions(); o.linkTempo = ! o.linkTempo; setPreviewOptions (o); };
+    waitKey.setTooltip ("WAIT FOR PLAY: heard only while the song plays; with LINK, locked to the bars from the left locator");
+    waitKey.onClick = [this] { auto o = studio.getMediaPreviewOptions(); o.waitForPlay = ! o.waitForPlay; setPreviewOptions (o); };
+    pitchKey.setTooltip ("Transpose, move to a root key, half or double speed");
+    pitchKey.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    pitchKey.onClick = [this] { showPitchMenu(); };
 
     list.setModel (this);
     list.setRowHeight (rowHeight);
@@ -814,6 +821,44 @@ void MediaRack::stop()
     repaint (previewArea);
 }
 
+void MediaRack::setPreviewOptions (const pr7s::Studio::MediaPreviewOptions& options)
+{
+    const auto wasPlaying = studio.isMediaPreviewing();
+    studio.setMediaPreviewOptions (options);
+    refreshKeys();
+    if (wasPlaying)
+        play();
+    repaint (previewArea);
+}
+
+void MediaRack::showPitchMenu()
+{
+    const auto o = studio.getMediaPreviewOptions();
+    juce::PopupMenu menu, transpose, toKey;
+    for (int semis = -12; semis <= 12; ++semis)
+        transpose.addItem (1000 + semis + 12, semis == 0 ? juce::String ("0") : (semis > 0 ? "+" : "") + juce::String (semis), true, o.semitones == semis);
+    toKey.addItem (2000, "Off", true, o.toKey < 0);
+    static const char* const roots[] { "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab", "A", "A#/Bb", "B" };
+    for (int pc = 0; pc < 12; ++pc)
+        toKey.addItem (2001 + pc, roots[pc], true, o.toKey == pc);
+    menu.addSubMenu ("Transpose (semitones)", transpose);
+    menu.addSubMenu ("To Root Key", toKey);
+    menu.addSeparator();
+    menu.addItem (3, "Half Speed", true, o.speed < 0.75);
+    menu.addItem (4, "Normal Speed", true, o.speed > 0.75 && o.speed < 1.5);
+    menu.addItem (5, "Double Speed", true, o.speed > 1.5);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&pitchKey), [safe = juce::Component::SafePointer<MediaRack> (this)] (int chosen)
+    {
+        if (safe == nullptr || chosen == 0)
+            return;
+        auto options = safe->studio.getMediaPreviewOptions();
+        if (chosen >= 2000) options.toKey = chosen - 2001;
+        else if (chosen >= 1000) options.semitones = chosen - 1012;
+        else options.speed = chosen == 3 ? 0.5 : chosen == 5 ? 2.0 : 1.0;
+        safe->setPreviewOptions (options);
+    });
+}
+
 void MediaRack::setAutoPlay (bool on)
 {
     autoPlay = on;
@@ -1049,8 +1094,14 @@ void MediaRack::refreshKeys()
     upKey.setEnabled (state.folder != juce::File());
     favoriteKey.setVisible (state.page == Page::fileBrowser || (state.page == Page::favorites && state.folder == juce::File()));
     backKey.setEnabled (! history.empty());
-    playKey.setVisible (hasPreviewer());
-    autoPlayKey.setVisible (hasPreviewer());
+    for (auto* key : { &playKey, &autoPlayKey, &linkKey, &waitKey, &pitchKey })
+        key->setVisible (hasPreviewer());
+    {
+        const auto& o = studio.getMediaPreviewOptions();
+        linkKey.setToggleState (o.linkTempo, juce::dontSendNotification);
+        waitKey.setToggleState (o.waitForPlay, juce::dontSendNotification);
+        pitchKey.setToggleState (o.semitones != 0 || o.toKey >= 0 || o.speed != 1.0, juce::dontSendNotification);
+    }
     const auto playing = studio.isMediaPreviewing();
     playKey.setButtonText (playing ? "STOP" : "PLAY");
     playKey.setToggleState (playing, juce::dontSendNotification);
@@ -1236,9 +1287,13 @@ void MediaRack::layout()
         previewArea = area.removeFromBottom (previewerHeight).withTrimmedBottom (6);
         auto inner = previewArea.reduced (8, 8);
         auto keys = inner.removeFromBottom (24);
-        playKey.setBounds (keys.removeFromLeft (70));
-        keys.removeFromLeft (6);
-        autoPlayKey.setBounds (keys.removeFromLeft (90));
+        // (Shared out: PLAY, AUTO PLAY, LINK, WAIT, PITCH.)
+        const auto w = (keys.getWidth() - 4 * 4) / 5;
+        for (auto* key : { &playKey, &autoPlayKey, &linkKey, &waitKey, &pitchKey })
+        {
+            key->setBounds (keys.removeFromLeft (key == &autoPlayKey ? w + 12 : key == &playKey ? w - 4 : w - 2));
+            keys.removeFromLeft (4);
+        }
         inner.removeFromBottom (6);
         waveArea = inner;
         area.removeFromBottom (6);

@@ -69,6 +69,9 @@ public:
     void stop();
     void setAutoPlay (bool);
     void setCycle (bool);
+    // In time with the song (0.23.0): the studio's previewer options (LINK TEMPO, WAIT FOR PLAY,
+    // TRANSPOSE, TO KEY, 1/2X, 2X); a sound being heard is heard again with them.
+    void setPreviewOptions (const pr7s::Studio::MediaPreviewOptions&);
     void use (int row);                           // as a double-click
     bool addLocation (const juce::File&);
     void removeSelectedLocation();
@@ -147,7 +150,9 @@ private:
     juce::TextButton audioKey { "AUDIO" }, midiKey { "MIDI" }, presetsKey { "PRESETS" }, songsKey { "SONGS" },
                      subfoldersKey { "SUBFOLDERS" }, shuffleKey { "SHUFFLE" }, resetKey { "RESET" }, rescanKey { "RESCAN" },
                      addKey { "ADD FOLDER..." }, removeKey { "REFRESH" },
-                     playKey { "PLAY" }, cycleKey { "CYCLE" }, autoPlayKey { "AUTO PLAY" }, useKey { "USE IT" };
+                     playKey { "PLAY" }, cycleKey { "CYCLE" }, autoPlayKey { "AUTO PLAY" }, useKey { "USE IT" },
+                     linkKey { "LINK TEMPO" }, waitKey { "WAIT FOR PLAY" }, halfKey { "1/2X" }, doubleKey { "2X" };
+    juce::ComboBox transposeBox, toKeyBox;
     juce::ComboBox ratingBox;
     juce::Slider level { juce::Slider::LinearBar, juce::Slider::NoTextBox };
     juce::TableListBox table;

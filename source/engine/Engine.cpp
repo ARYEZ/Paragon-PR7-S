@@ -1102,24 +1102,58 @@ namespace pr7s
         if (previewPlaying.load() && preview != nullptr)
         {
             const auto length = preview->getNumSamples();
-            auto at = previewPosition.load();
             const auto gain = previewGain.load();
-            for (int i = 0; i < numSamples && length > 0; ++i)
+            const auto addSample = [&] (int i, int at)
             {
-                if (at >= length)
-                {
-                    if (! previewLoop.load())
-                    {
-                        previewPlaying = false;
-                        break;
-                    }
-                    at = 0;
-                }
                 for (int channel = 0; channel < juce::jmin (2, output.getNumChannels()); ++channel)
                     output.getWritePointer (channel)[i] += gain * preview->getReadPointer (juce::jmin (channel, preview->getNumChannels() - 1))[at];
-                ++at;
+            };
+            const auto wait = previewWait.load();
+            const auto lockBeats = previewLockBeats.load();
+            if (wait && ! nowPlaying)
+            {
+                previewPosition = 0;   // (waiting for the song: from the start when it plays)
             }
-            previewPosition = at;
+            else if (wait && lockBeats > 0.0 && numSegments > 0 && length > 0)
+            {
+                // Locked to the beat (0.23.0): each stretch of the block (the cycle can come round
+                // inside it) starts where the song's beat says, from the left locator.
+                auto at = 0;
+                for (int k = 0; k < numSegments; ++k)
+                {
+                    const auto& segment = segments[(size_t) k];
+                    auto phase = std::fmod ((timing.beatAt ((double) segment.clock) - previewAnchor.load()) / lockBeats, 1.0);
+                    if (phase < 0.0)
+                        phase += 1.0;
+                    at = juce::jlimit (0, length - 1, (int) (phase * (double) length));
+                    for (int i = segment.offset; i < segment.offset + segment.length; ++i)
+                    {
+                        addSample (i, at);
+                        if (++at >= length)
+                            at = 0;   // (a locked loop always goes round)
+                    }
+                }
+                previewPosition = at;
+            }
+            else
+            {
+                auto at = previewPosition.load();
+                for (int i = 0; i < numSamples && length > 0; ++i)
+                {
+                    if (at >= length)
+                    {
+                        if (! previewLoop.load())
+                        {
+                            previewPlaying = false;
+                            break;
+                        }
+                        at = 0;
+                    }
+                    addSample (i, at);
+                    ++at;
+                }
+                previewPosition = at;
+            }
         }
 
         for (int channel = 0; channel < juce::jmin (2, output.getNumChannels()); ++channel)

@@ -858,7 +858,7 @@ MediaBayPage::MediaBayPage (pr7s::Studio& s)
     addAndMakeVisible (search);
 
     for (auto* key : { &audioKey, &midiKey, &presetsKey, &songsKey, &subfoldersKey, &shuffleKey, &resetKey, &rescanKey,
-                       &addKey, &removeKey, &playKey, &cycleKey, &autoPlayKey, &useKey,
+                       &addKey, &removeKey, &playKey, &cycleKey, &autoPlayKey, &useKey, &linkKey, &waitKey, &halfKey, &doubleKey,
                        &filtersKey, &inspectorKey, &dynamicKey, &definedKey, &userKey })
     {
         styleKey (*key);
@@ -900,6 +900,34 @@ MediaBayPage::MediaBayPage (pr7s::Studio& s)
     cycleKey.onClick = [this] { setCycle (! cycle); };
     autoPlayKey.setTooltip ("Play each file as it's selected");
     autoPlayKey.onClick = [this] { setAutoPlay (! autoPlay); };
+    // In time with the song (0.23.0, the manual's Audio Files Previewer).
+    const auto change = [this] (std::function<void (pr7s::Studio::MediaPreviewOptions&)> edit)
+    {
+        auto options = studio.getMediaPreviewOptions();
+        edit (options);
+        setPreviewOptions (options);
+    };
+    linkKey.setTooltip ("A loop stretched to the song's tempo at the playhead (its pitch kept). Not for one-shots or files without a tempo");
+    linkKey.onClick = [change] { change ([] (auto& o) { o.linkTempo = ! o.linkTempo; }); };
+    waitKey.setTooltip ("Heard only while the song plays, starting and stopping with it. With LINK TEMPO a loop locks to the song's bars "
+                        "from the left locator (put it on a bar's start)");
+    waitKey.onClick = [change] { change ([] (auto& o) { o.waitForPlay = ! o.waitForPlay; }); };
+    halfKey.setTooltip ("Half speed (its pitch kept)");
+    halfKey.onClick = [change] { change ([] (auto& o) { o.speed = o.speed < 0.75 ? 1.0 : 0.5; }); };
+    doubleKey.setTooltip ("Double speed (its pitch kept)");
+    doubleKey.onClick = [change] { change ([] (auto& o) { o.speed = o.speed > 1.5 ? 1.0 : 2.0; }); };
+    for (int semis = -12; semis <= 12; ++semis)
+        transposeBox.addItem (semis == 0 ? juce::String ("TRANSPOSE 0") : (semis > 0 ? "+" : "") + juce::String (semis) + " SEMITONES", semis + 13);
+    transposeBox.setTooltip ("Moves the preview up or down (audio and MIDI)");
+    transposeBox.onChange = [this, change] { const auto semis = transposeBox.getSelectedId() - 13; change ([semis] (auto& o) { o.semitones = semis; }); };
+    addAndMakeVisible (transposeBox);
+    toKeyBox.addItem ("TO KEY: OFF", 1);
+    static const char* const roots[] { "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab", "A", "A#/Bb", "B" };
+    for (int pc = 0; pc < 12; ++pc)
+        toKeyBox.addItem ("TO KEY: " + juce::String (roots[pc]), pc + 2);
+    toKeyBox.setTooltip ("Moves the preview to this root key, the short way (needs the file's key: from its name, its loop info or your tag)");
+    toKeyBox.onChange = [this, change] { const auto key = toKeyBox.getSelectedId() - 2; change ([key] (auto& o) { o.toKey = key; }); };
+    addAndMakeVisible (toKeyBox);
     useKey.setTooltip ("Into the song (as a double-click): audio or MIDI on a new track at the playhead, a track preset as a new track, a song opened");
     useKey.onClick = [this] { use (getSelectedRow()); };
     filtersKey.setTooltip ("The attribute filter above the results: files by their category, style, character and more");
@@ -1048,6 +1076,15 @@ void MediaBayPage::refreshKeys()
     subfoldersKey.setToggleState (query.subfolders, juce::dontSendNotification);
     cycleKey.setToggleState (cycle, juce::dontSendNotification);
     autoPlayKey.setToggleState (autoPlay, juce::dontSendNotification);
+    {
+        const auto& options = studio.getMediaPreviewOptions();
+        linkKey.setToggleState (options.linkTempo, juce::dontSendNotification);
+        waitKey.setToggleState (options.waitForPlay, juce::dontSendNotification);
+        halfKey.setToggleState (options.speed < 0.75, juce::dontSendNotification);
+        doubleKey.setToggleState (options.speed > 1.5, juce::dontSendNotification);
+        transposeBox.setSelectedId (options.semitones + 13, juce::dontSendNotification);
+        toKeyBox.setSelectedId (options.toKey + 2, juce::dontSendNotification);
+    }
     const auto playing = studio.isMediaPreviewing();
     playKey.setButtonText (playing ? "STOP" : "PLAY");
     playKey.setToggleState (playing, juce::dontSendNotification);
@@ -1351,6 +1388,16 @@ void MediaBayPage::setAutoPlay (bool on)
     autoPlay = on;
     saveSettings();
     refreshKeys();
+}
+
+void MediaBayPage::setPreviewOptions (const pr7s::Studio::MediaPreviewOptions& options)
+{
+    const auto wasPlaying = studio.isMediaPreviewing();
+    studio.setMediaPreviewOptions (options);
+    refreshKeys();
+    if (wasPlaying)
+        play();   // (heard again with them)
+    repaint (previewArea);
 }
 
 void MediaBayPage::setCycle (bool on)
@@ -1806,7 +1853,9 @@ void MediaBayPage::paintPreviewer (juce::Graphics& g, juce::Rectangle<int> area)
     {
         g.setColour (ParagonColours::textDim);
         g.setFont (interFont (12.0f));
-        const auto text = item->type == pr7s::MediaType::midi ? "MIDI: plays through the selected track's instrument"
+        const auto waiting = item->file == previewing && studio.getEngine().isPreviewWaiting() && studio.isMediaPreviewing();
+        const auto text = waiting ? "WAITING FOR THE SONG TO PLAY (WAIT FOR PLAY is on)"
+                        : item->type == pr7s::MediaType::midi ? "MIDI: plays through the selected track's instrument"
                         : item->type == pr7s::MediaType::audio ? "Audio: PLAY to hear it" : "No preview for this type: USE IT or drag it onto the song";
         g.drawText (text, waveArea.reduced (10, 0), juce::Justification::centredLeft, true);
     }
@@ -1856,6 +1905,18 @@ void MediaBayPage::resized()
         cycleKey.setBounds (keys.removeFromLeft (76));
         keys.removeFromLeft (6);
         autoPlayKey.setBounds (keys.removeFromLeft (96));
+        keys.removeFromLeft (14);
+        linkKey.setBounds (keys.removeFromLeft (100));
+        keys.removeFromLeft (6);
+        waitKey.setBounds (keys.removeFromLeft (118));
+        keys.removeFromLeft (6);
+        halfKey.setBounds (keys.removeFromLeft (52));
+        keys.removeFromLeft (4);
+        doubleKey.setBounds (keys.removeFromLeft (44));
+        keys.removeFromLeft (10);
+        transposeBox.setBounds (keys.removeFromLeft (150));
+        keys.removeFromLeft (6);
+        toKeyBox.setBounds (keys.removeFromLeft (150));
         keys.removeFromLeft (14);
         useKey.setBounds (keys.removeFromRight (90));
         keys.removeFromRight (14);

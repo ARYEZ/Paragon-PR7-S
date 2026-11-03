@@ -147,6 +147,17 @@ namespace pr7s
         void stopPreview();
         void setPreviewLoop (bool on) noexcept { previewLoop = on; }
         void setPreviewGain (float gain) noexcept { previewGain = gain; }
+        // In time with the song (0.23.0, the manual's Wait for Project Play): the preview is heard
+        // only while the song plays; with `lockBeats` (the sound's length in beats at the song's
+        // tempo) its place follows the song's beat from `anchorBeat` (the left locator), so a loop
+        // lands on the bars, the cycle coming round too.
+        void setPreviewSync (bool waitForPlay, double anchorBeat, double lockBeats) noexcept
+        {
+            previewAnchor = anchorBeat;
+            previewLockBeats = lockBeats;
+            previewWait = waitForPlay;
+        }
+        bool isPreviewWaiting() const noexcept { return previewWait.load() && ! playing.load(); }
         bool isPreviewPlaying() const noexcept { return previewPlaying.load(); }
         double getPreviewProgress() const noexcept;   // 0 to 1 through the sound
 
@@ -375,6 +386,8 @@ namespace pr7s
         std::atomic<int> previewPosition { 0 }, previewLength { 0 };
         std::atomic<bool> previewPlaying { false }, previewLoop { false };
         std::atomic<float> previewGain { 0.7f };
+        std::atomic<bool> previewWait { false };
+        std::atomic<double> previewAnchor { 0.0 }, previewLockBeats { 0.0 };
 
         // The click: up to 64 ticks a block, each a short burst of a tone.
         struct Tick { int sample; bool accent; };
