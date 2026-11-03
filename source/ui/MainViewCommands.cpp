@@ -127,6 +127,7 @@ void MainView::registerCommands()
     add ("Window.ChordPads", "Window", "Show/Hide Chord Pads", { KP (KP::F4Key) });
     add ("Window.ChordPadsPlace", "Window", "Chord Pads Docked / Full Screen", {}, [this] { toggleChordPadsPlace(); });
     add ("Window.MediaBay", "Window", "Open/Close MediaBay", { KP (KP::F5Key) });   // (0.21.0)
+    add ("Window.RightZone", "Window", "Show/Hide Right Zone (Media Rack)", { key ('R', ctrl | alt) });   // (0.22.0)
     add ("Window.Editor", "Window", "Open/Close Editor", { key ('E', ctrl) });
     add ("Window.KeyCommands", "Window", "Key Commands...", {}, [this] { openKeyCommands(); });
     add ("Window.TempoEditor", "Window", "Open/Close Tempo Track Editor", { key ('T', ctrl) });

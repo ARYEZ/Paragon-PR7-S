@@ -5,6 +5,8 @@
 #include "ui/Finish.h"
 #include "ui/MainView.h"
 #include "ui/MediaBayPage.h"
+#include "ui/MediaRack.h"
+#include "ui/TrackActions.h"
 
 using namespace pr7s;
 
@@ -634,4 +636,168 @@ TEST_CASE ("The MediaBay window's attribute inspector and filter: several files 
     page.setFiltersShown (false);
     CHECK_FALSE (page.isInspectorShown());
     CHECK (page.getWidth() == before);
+}
+
+TEST_CASE ("The Media rack: home tiles, pages, search, types, filter, favorites, the file browser (0.22.0)", "[mediabay][ui]")
+{
+    using A = MediaAttribute;
+    using Page = MediaRack::Page;
+    Finish::set (Finish::Type::pearlWhite, false);
+    MediaFolder folder;
+    Studio studio (false);
+    studio.getMediaBay().addLocation (folder.root);
+    studio.getMediaBay().scanNow();
+    MediaRack rack (studio);
+    rack.setSize (360, 900);
+    rack.setAutoPlay (false);
+
+    // HOME: the manual's tiles (ours: no User Presets, one preset folder).
+    CHECK (rack.getPage() == Page::home);
+    CHECK (rack.getTileNames() == juce::StringArray { "VST INSTRUMENTS", "VST EFFECTS", "LOOPS & SAMPLES", "PRESETS", "FAVORITES", "FILE BROWSER" });
+    CHECK (rack.getAddress() == "HOME");
+
+    // VST INSTRUMENTS: the studio's synth first; a double-click makes an instrument track with it.
+    rack.clickTile (0);
+    CHECK (rack.getPage() == Page::instruments);
+    CHECK (rack.getAddress() == "HOME  /  VST INSTRUMENTS");
+    const auto synth = rack.findRow ("Paragon Synth");
+    REQUIRE (synth >= 0);
+    CHECK (rack.getRow (synth)->studioSynth);
+    CHECK (rack.getDragDescription (synth) == "mediarack:instrument:studio");
+    CHECK (MediaRack::instrumentFor (studio, "mediarack:instrument:studio").has_value());
+    const auto tracks = studio.getProject().tracks.size();
+    rack.use (synth);
+    CHECK (studio.getProject().tracks.size() == tracks + 1);
+    CHECK (studio.getProject().tracks.back().kind == Track::Kind::instrument);
+    rack.setSearch ("nothing like it");
+    CHECK (rack.findRow ("Paragon Synth") < 0);
+    rack.setSearch ({});
+
+    // BACK and HOME.
+    rack.back();
+    CHECK (rack.getPage() == Page::home);
+    rack.openPage (Page::loops);
+
+    // LOOPS & SAMPLES: the audio and MIDI files; the type keys narrow them; search; shuffle.
+    CHECK (rack.getNumRows() == 3);
+    CHECK (rack.getDragDescription (0).startsWith ("mediabay:"));
+    rack.setTypeShown (MediaType::audio, true);
+    CHECK (rack.getNumRows() == 2);
+    rack.setTypeShown (MediaType::audio, false);
+    rack.setSearch ("808");
+    CHECK (rack.getNumRows() == 1);
+    rack.setSearch ({});
+    rack.shuffle (7);
+    CHECK (rack.getNumRows() == 3);
+    // The attribute filter (two columns: CATEGORY, STYLE at first); CLEAR lights while one's set.
+    studio.getMediaBay().setAttribute ({ folder.root.getChildFile ("Drums_120bpm_Am.wav") }, { A::category, {} }, "Drums");
+    rack.refresh();
+    rack.setFiltersShown (true);
+    CHECK (rack.getFilterColumn (0) == AttributeId { A::category, {} });
+    using Counts = std::vector<std::pair<juce::String, int>>;
+    CHECK (rack.getFilterValues (0) == Counts { { "Drums", 1 } });
+    rack.clickFilterValue (0, "Drums", false);
+    CHECK (rack.isAttributeFilterSet());
+    CHECK (rack.getNumRows() == 1);
+    rack.resetAttributeFilter();
+    CHECK (rack.getNumRows() == 3);
+
+    // PRESETS: the track presets; ALL: every file.
+    rack.openPage (Page::presets);
+    CHECK (rack.getNumRows() == 1);
+    rack.openPage (Page::results);
+    CHECK (rack.getNumRows() == 5);
+    // A search on HOME looks through every file.
+    rack.home();
+    rack.setSearch ("bass");
+    CHECK (rack.getPage() == Page::results);
+    CHECK (rack.getNumRows() == 1);
+    rack.setSearch ({});
+
+    // FAVORITES: a folder (already in a location: not added again), its files as results.
+    rack.openPage (Page::favorites);
+    CHECK (rack.getTileNames().isEmpty());
+    CHECK (rack.addFavorite (folder.root.getChildFile ("Kicks")));
+    CHECK_FALSE (rack.addFavorite (folder.root.getChildFile ("Kicks")));
+    CHECK (studio.getMediaBay().getLocations().size() == 1);
+    CHECK (rack.getTileNames() == juce::StringArray { "KICKS" });
+    rack.clickTile (0);
+    CHECK (rack.getPage() == Page::favorites);
+    CHECK (rack.getAddress().endsWith ("KICKS"));
+    CHECK (rack.getNumRows() == 1);
+    CHECK (rack.getRow (0)->text == "Kick 808");
+
+    // FILE BROWSER: its roots (the favorites first), then a folder's folders and media files.
+    rack.openFolder ({});
+    CHECK (rack.getPage() == Page::fileBrowser);
+    CHECK (rack.findRow ("FAVORITES") == 0);
+    CHECK (rack.findRow ("Kicks") == 1);
+    rack.openFolder (folder.root);
+    REQUIRE (rack.getRow (0)->kind == MediaRack::Row::Kind::up);
+    CHECK (rack.findRow ("Kicks") == 1);
+    CHECK (rack.findRow ("Drums_120bpm_Am") > 1);
+    CHECK (rack.findRow ("Lead Guitar") > 1);
+    CHECK (rack.findRow ("notes") < 0);   // (not media)
+    rack.use (rack.findRow ("Kicks"));
+    CHECK (rack.getFolder() == folder.root.getChildFile ("Kicks"));
+    CHECK (rack.findRow ("Kick 808") >= 0);
+    rack.use (0);   // (up)
+    CHECK (rack.getFolder() == folder.root);
+    rack.back();
+    CHECK (rack.getFolder() == folder.root.getChildFile ("Kicks"));
+    rack.openPage (Page::favorites);
+    rack.removeFavorite (0);
+    CHECK (rack.getFavorites().isEmpty());
+}
+
+TEST_CASE ("The Media rack in the right zone: Ctrl+Alt+R, drops of instruments and track presets (0.22.0)", "[mediabay][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    MediaFolder folder;
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1600, 900);
+    studio.getMediaBay().addLocation (folder.root);
+    studio.getMediaBay().scanNow();
+
+    CHECK_FALSE (view.isRightZoneShown());
+    CHECK (view.keyPressed (juce::KeyPress ('r', juce::ModifierKeys::commandModifier | juce::ModifierKeys::altModifier, 0)));
+    CHECK (view.isRightZoneShown());
+    REQUIRE (view.getMediaRack() != nullptr);
+    CHECK (view.getMediaRack()->isVisible());
+    CHECK (view.getMediaRack()->getWidth() == MediaRack::defaultWidth);
+    CHECK (view.getMediaRack()->getRight() <= view.getWidth());
+    view.setRightZoneWidth (5000);
+    CHECK (view.getRightZoneWidth() == MediaRack::maximumWidth);
+    view.setRightZoneWidth (MediaRack::defaultWidth);
+
+    // An instrument dropped: a new instrument track.
+    const auto tracks = studio.getProject().tracks.size();
+    CHECK (view.rackDropped ("mediarack:instrument:studio", view.getWidth() / 2, 400));
+    CHECK (studio.getProject().tracks.size() == tracks + 1);
+    CHECK_FALSE (view.rackDropped ("mediabay:/x.wav", 0, 0));
+
+    // A track preset dropped on an instrument track is applied to it (no new track); dropped
+    // where there's no track, a new track.
+    const auto target = studio.getProject().tracks.front().id;
+    studio.setVolume (target, -6.0f);
+    const auto preset = folder.root.getChildFile ("Quiet.pr7track");
+    REQUIRE (TrackActions::savePresetTo (studio, target, preset));
+    studio.setVolume (target, 0.0f);
+    const auto x = view.getWidth() / 2;
+    int y = -1;
+    for (int yy = 0; yy < view.getHeight() && y < 0; ++yy)
+        if (view.trackUnder (x, yy) == target)
+            y = yy;
+    REQUIRE (y >= 0);
+    const auto before = studio.getProject().tracks.size();
+    view.mediaDropped ({ preset.getFullPathName() }, x, y);
+    CHECK (studio.getProject().tracks.size() == before);
+    CHECK (std::abs (studio.getProject().findTrack (target)->volumeDb - (-6.0f)) < 0.01f);
+    view.mediaDropped ({ preset.getFullPathName() }, x, view.getHeight() - 5);
+    CHECK (studio.getProject().tracks.size() == before + 1);
+
+    // Ctrl+Alt+R again hides it.
+    CHECK (view.keyPressed (juce::KeyPress ('r', juce::ModifierKeys::commandModifier | juce::ModifierKeys::altModifier, 0)));
+    CHECK_FALSE (view.isRightZoneShown());
 }

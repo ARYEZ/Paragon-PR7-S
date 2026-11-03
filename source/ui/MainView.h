@@ -2,6 +2,7 @@
 
 #include "ui/LinesPage.h"
 #include "ui/MediaBayPage.h"
+#include "ui/MediaRack.h"
 #include "ui/KeyCommands.h"
 #include "ui/ProgressBox.h"
 #include <juce_audio_utils/juce_audio_utils.h>
@@ -85,6 +86,19 @@ public:
     MediaBayWindow* getMediaBayWindow() noexcept { return mediaBayWindow.get(); }
     void useMedia (const juce::File&);
     void mediaDropped (const juce::StringArray& files, int x, int y);
+    // The right zone (0.22.0): the Media rack at the right, the whole height (Ctrl+Alt+R, the
+    // manual's Show/Hide Right Zone). Made the first time it's shown. Its drags: instruments a new
+    // instrument track, effects a new FX channel, files as the MediaBay's (a track preset onto a
+    // track of its kind is applied to it).
+    void toggleRightZone();
+    void setRightZoneShown (bool);
+    bool isRightZoneShown() const noexcept { return rightZoneShown; }
+    MediaRack* getMediaRack() noexcept { return mediaRack.get(); }
+    class RightZoneEdge;
+    void setRightZoneWidth (int);
+    int getRightZoneWidth() const noexcept { return rightZoneWidth; }
+    bool rackDropped (const juce::String& description, int x, int y);
+    int trackUnder (int x, int y) const;   // the track under a point of the track list or the arrangement (0: none)
     bool isInterestedInDragSource (const SourceDetails&) override;
     void itemDragEnter (const SourceDetails&) override;
     void itemDragMove (const SourceDetails&) override;
@@ -237,6 +251,10 @@ private:
     std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow;
     std::unique_ptr<LinesWindow> linesWindow;
     std::unique_ptr<MediaBayWindow> mediaBayWindow;
+    std::unique_ptr<MediaRack> mediaRack;
+    std::unique_ptr<RightZoneEdge> rightZoneEdge;
+    bool rightZoneShown = false;
+    int rightZoneWidth = MediaRack::defaultWidth;
     // The MIDI file being dragged in: read once when it enters (its length in beats, its tracks).
     struct DraggedMidi { juce::String path, name; double length = 0.0; int tracks = 0; std::vector<pr7s::Note> notes; };
     std::optional<DraggedMidi> draggedMidi;
@@ -322,6 +340,21 @@ class MainView::InspectorEdge final : public juce::Component,
 {
 public:
     explicit InspectorEdge (MainView&);
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+
+private:
+    MainView& owner;
+    int widthAtDown = 0;
+};
+
+// The right zone's left edge: drag it to make the Media rack wider or narrower.
+class MainView::RightZoneEdge final : public juce::Component,
+                                     public juce::SettableTooltipClient
+{
+public:
+    explicit RightZoneEdge (MainView&);
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;

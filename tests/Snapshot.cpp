@@ -26,6 +26,7 @@
 // PARAGON_SNAPSHOT_MULTI=1: parts selected on two tracks.
 // PARAGON_SNAPSHOT_STATES=1: the lead soloed, the bass muted, the keys armed (written under their names; the header's M and S lit).
 // PARAGON_SNAPSHOT_MASTER=1: the master's row chosen (its Inspector).
+// PARAGON_SNAPSHOT_RACK=home|loops|instruments: the Media rack in the right zone (0.22.0).
 // PARAGON_SNAPSHOT_TEMPO=1: the tempo track, with a ramp and a step (0.10.0).
 // PARAGON_SNAPSHOT_FREEZE=1: the lead frozen (FREEZE lit in its Inspector, its parts stamped).
 // PARAGON_SNAPSHOT_VISIBILITY=1: the VISIBILITY tab, the bass hidden, the keys disabled.
@@ -348,6 +349,47 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         const juce::Point<float> at { view.getTimeline().xForBeat (6.5), (float) (Timeline::cycleStripHeight + 6) };
         arrange.mouseMove (juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, {}, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                                              &arrange, &arrange, juce::Time::getCurrentTime(), at, juce::Time::getCurrentTime(), 0, false));
+    }
+    if (const auto rackPage = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_RACK", {}); rackPage.isNotEmpty())
+    {
+        // The Media rack in the right zone (0.22.0): home, loops or instruments.
+        const auto root = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("Rack Samples");
+        root.deleteRecursively();
+        using A = pr7s::MediaAttribute;
+        auto& bay = studio.getMediaBay();
+        const std::vector<std::tuple<const char*, const char*, const char*, const char*>> files {
+            { "Drums", "Drop A Chug Loop 140bpm.wav", "Drums", "Metal" }, { "Drums", "Gallop Kit Loop 160bpm.wav", "Drums", "Metal" },
+            { "Drums", "Kick 808 Long.wav", "Drums", "" }, { "Guitars", "Rogue Riff Am 140bpm.wav", "Guitar", "Metal" },
+            { "Guitars", "Jupiter Lead F#m 120bpm.wav", "Guitar", "Metal" }, { "Bass", "Sub Bass E 128bpm.wav", "Bass", "" },
+            { "MIDI", "Djent Chug Pattern 140bpm.mid", "Guitar", "Metal" }, { "MIDI", "Power Chord Riff Am.mid", "Guitar", "Rock" } };
+        for (const auto& [sub, name, category, style] : files)
+        {
+            root.getChildFile (sub).createDirectory();
+            root.getChildFile (sub).getChildFile (name).replaceWithText ("x");
+        }
+        bay.addLocation (root);
+        bay.scanNow();
+        for (const auto& [sub, name, category, style] : files)
+        {
+            const auto file = root.getChildFile (sub).getChildFile (name);
+            bay.setAttribute ({ file }, { A::category, {} }, category);
+            bay.setAttribute ({ file }, { A::style, {} }, style);
+        }
+        view.setRightZoneShown (true);
+        auto* rack = view.getMediaRack();
+        rack->setAutoPlay (false);
+        if (rackPage == "loops")
+        {
+            rack->openPage (MediaRack::Page::loops);
+            rack->setFiltersShown (true);
+            rack->clickFilterValue (1, "Metal", false);
+            rack->selectRow (1);
+        }
+        else if (rackPage == "instruments")
+            rack->openPage (MediaRack::Page::instruments);
+        else
+            rack->home();
+        studio.dispatchPendingMessages();
     }
     auto image = view.createComponentSnapshot (view.getLocalBounds(), true, scale);
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_RENDER", {}).isNotEmpty())

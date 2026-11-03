@@ -3,6 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "engine/Studio.h"
+#include "ui/MediaUi.h"
 
 #include <array>
 
@@ -26,6 +27,7 @@
 //            those set; + USER ATTRIBUTE). FILTERS and INSPECTOR in the title row show or hide them.
 class MediaBayPage final : public juce::Component,
                            public juce::DragAndDropContainer,
+                           public MediaUi::AttributeFilterHost,
                            private juce::TableListBoxModel,
                            private juce::Timer
 {
@@ -74,11 +76,12 @@ public:
     void setFiltersShown (bool);
     bool areFiltersShown() const noexcept { return filtersShown; }
     static constexpr int numFilterColumns = 4;
-    void setFilterColumn (int column, const pr7s::AttributeId&);
-    pr7s::AttributeId getFilterColumn (int column) const;
-    void clickFilterValue (int column, const juce::String& value, bool addToOthers);   // (as a click; Ctrl: addToOthers)
-    std::vector<std::pair<juce::String, int>> getFilterValues (int column) const;
-    juce::StringArray getFilterSelection (int column) const;
+    void setFilterColumn (int column, const pr7s::AttributeId&) override;
+    pr7s::AttributeId getFilterColumn (int column) const override;
+    void clickFilterValue (int column, const juce::String& value, bool addToOthers) override;   // (as a click; Ctrl: addToOthers)
+    std::vector<std::pair<juce::String, int>> getFilterValues (int column) const override;
+    juce::StringArray getFilterSelection (int column) const override;
+    const pr7s::MediaDatabase& getFilterDatabase() const override { return database; }
 
     int getNumResults() const noexcept { return (int) results.size(); }
     const pr7s::MediaItem* getResult (int row) const;
@@ -111,7 +114,6 @@ private:
     void paintPreviewer (juce::Graphics&, juce::Rectangle<int>);
 
     class Locations;
-    class FilterColumn;
     class Inspector;
     void refreshTags();          // the filter's columns and the inspector, after an edit or a new selection
     void attributesEdited();     // results again (a filter may drop a file), the tags shown
@@ -133,7 +135,7 @@ private:
     juce::Slider level { juce::Slider::LinearBar, juce::Slider::NoTextBox };
     juce::TableListBox table;
     std::unique_ptr<Locations> locations;
-    std::array<std::unique_ptr<FilterColumn>, numFilterColumns> filterColumns;
+    std::array<std::unique_ptr<MediaUi::AttributeFilterColumn>, numFilterColumns> filterColumns;
     std::unique_ptr<Inspector> inspector;
     std::unique_ptr<juce::Viewport> inspectorView;
     juce::TextButton filtersKey { "FILTERS" }, inspectorKey { "INSPECTOR" },

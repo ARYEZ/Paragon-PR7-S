@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.22.0
+
+The Media rack (the owner asked for 0.22.0 as planned: the manual's Media Rack in the Right Zone), the last of the MediaBay's three parts: your sounds, instruments, effects and presets in a panel at the right of the arrangement, so you can see your tracks while you drag things into the song.
+
+- **Ctrl+Alt+R** shows or hides it (the manual's Show/Hide Right Zone key; also IMPORT > Media Rack, and in KEYS as Show/Hide Right Zone). It runs the whole height on the right, as the Inspector does on the left; drag its left edge to make it wider or narrower. It stays shown (or hidden) for next time.
+- **HOME** has the manual's tiles: **VST INSTRUMENTS** (the studio's synth and yours, by category or by maker), **VST EFFECTS**, **LOOPS & SAMPLES** (the audio and MIDI files in the MediaBay's folders), **PRESETS** (your track presets), **FAVORITES** and **FILE BROWSER**. BACK and HOME find your way back; the address line shows where you are.
+- **Search** at the top looks through the page (on HOME: every file), by name or by your tags. **ALL** shows every result.
+- **Results pages** have the type keys (AUDIO, MIDI, PRESETS, SONGS), SHUFFLE, and **FILTER**: two attribute filter columns (CATEGORY and STYLE at first; click a title for another), as in the MediaBay window. **CLEAR** lights up while a filter is set. Each file shows its type, tempo, key, category and style.
+- **FAVORITES:** ADD FAVORITE picks a folder; it becomes a tile, and its files go into the MediaBay (as the manual's). Click a tile for its files; right-click to delete the favorite (the folder stays).
+- **FILE BROWSER:** your favorites, your home folder, desktop and drives, and the Paragon PR7-S folder. Double-click folders to go in (UP to come out); only media files are listed. ADD FAVORITE takes the selected folder (or the one you're in); right-click a folder for it too.
+- **The previewer** at the bottom: PLAY / STOP and AUTO PLAY, with the sound's shape and playhead (MIDI through the selected track's instrument).
+- **Into the song:** double-click, or drag onto the track list or the arrangement. An **instrument** makes a new instrument track with it; an **effect** a new FX channel (right-click an effect to insert it on the selected track or the master instead; right-click an instrument to change the selected track's instrument). Audio and MIDI land as from the MediaBay window. A **track preset** dropped on a track of its kind is applied to it (the manual's Applying Track Presets); dropped anywhere else it makes a new track.
+- **Honestly:** our version of the manual's rack. Only the MEDIA tab (no VSTi rack, control room or meter tabs), no plug-in pictures, collections or Plug-in Manager, no content sets, one Presets page for track presets (no strip, FX chain or pattern presets: the studio doesn't have them), and effects dropped on the Inspector's or mixer's insert slots aren't taken yet (right-click > Insert on... does it).
+
 ## 0.21.1
 
 Tags for the MediaBay (the owner asked for 0.21.1 as planned: the manual's Attribute Inspector and Attribute Filter), so you can find a sound by what it is, not only by its name.

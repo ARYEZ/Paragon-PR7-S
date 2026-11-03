@@ -2,10 +2,10 @@
 
 #include "ui/ParagonLookAndFeel.h"
 
+using namespace MediaUi;
+
 namespace
 {
-    juce::Font interFont (float height, bool bold = false) { return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain)); }
-
     enum Column { ratingColumn = 1, nameColumn, typeColumn, lengthColumn, tempoColumn, keyColumn, formatColumn, folderColumn, sizeColumn, dateColumn,
                   categoryColumn, styleColumn, characterColumn };
 
@@ -27,123 +27,6 @@ namespace
             case styleColumn: return C::style;
             default: return std::nullopt;
         }
-    }
-
-    // Each type in one of the family's colours (a small tab beside the name).
-    juce::Colour typeColour (pr7s::MediaType type)
-    {
-        switch (type)
-        {
-            case pr7s::MediaType::audio: return pr7s::FamilyColours::orange;
-            case pr7s::MediaType::midi: return pr7s::FamilyColours::pink;
-            case pr7s::MediaType::trackPreset: return pr7s::FamilyColours::red;
-            case pr7s::MediaType::song: return juce::Colour (0xfff4eeea);
-        }
-        return pr7s::FamilyColours::red;
-    }
-
-    juce::String lengthText (double seconds)
-    {
-        if (seconds <= 0.0)
-            return {};
-        const auto whole = (int) std::round (seconds * 10.0);
-        const auto minutes = whole / 600;
-        const auto rest = (whole % 600) / 10.0;
-        return minutes > 0 ? juce::String (minutes) + ":" + juce::String (rest, 1).paddedLeft ('0', 4) : juce::String (rest, 1) + " s";
-    }
-
-    juce::String sizeText (juce::int64 bytes)
-    {
-        if (bytes >= 1024 * 1024)
-            return juce::String ((double) bytes / (1024.0 * 1024.0), 1) + " MB";
-        return juce::String (juce::jmax ((juce::int64) 1, bytes / 1024)) + " KB";
-    }
-
-    void drawStars (juce::Graphics& g, juce::Rectangle<float> area, int rating)
-    {
-        const auto size = juce::jmin (area.getHeight() * 0.62f, area.getWidth() / 5.0f);
-        for (int i = 0; i < 5; ++i)
-        {
-            juce::Path star;
-            const auto centre = juce::Point<float> (area.getX() + (float) i * area.getWidth() / 5.0f + area.getWidth() / 10.0f, area.getCentreY());
-            star.addStar (centre, 5, size * 0.22f, size * 0.5f);   // (the first point at 12 o'clock)
-            if (i < rating)
-            {
-                g.setColour (pr7s::FamilyColours::orange);
-                g.fillPath (star);
-            }
-            else
-            {
-                g.setColour (ParagonColours::textDim.withAlpha (0.35f));
-                g.strokePath (star, juce::PathStrokeType (1.0f));
-            }
-        }
-    }
-
-    juce::String formatText (const pr7s::MediaItem& item)
-    {
-        juce::String text;
-        if (item.type == pr7s::MediaType::audio && item.sampleRate > 0.0)
-            text << juce::String (item.sampleRate / 1000.0, item.sampleRate == 44100.0 ? 1 : 0) << " kHz " << (item.channels == 1 ? "mono" : item.channels == 2 ? "stereo" : juce::String (item.channels) + " ch");
-        else if (item.type == pr7s::MediaType::midi)
-            text << juce::String (item.notes) << " notes";
-        return text;
-    }
-
-    juce::String joinedPair (const juce::String& a, const juce::String& b)
-    {
-        return b.isEmpty() ? a : a + " / " + b;
-    }
-
-    // An attribute in the settings file: its kind's number, or "user:" and its name.
-    juce::String attributeToken (const pr7s::AttributeId& id)
-    {
-        return id.kind == pr7s::MediaAttribute::user ? "user:" + id.user : juce::String ((int) id.kind);
-    }
-
-    pr7s::AttributeId attributeFromToken (const juce::String& token)
-    {
-        if (token.startsWith ("user:"))
-            return { pr7s::MediaAttribute::user, token.substring (5) };
-        const auto kind = token.getIntValue();
-        if (token.containsOnly ("0123456789") && token.isNotEmpty() && kind >= 0 && kind < (int) pr7s::MediaAttribute::user)
-            return { (pr7s::MediaAttribute) kind, {} };
-        return {};
-    }
-
-    const juce::String mixedText = "(MIXED)";
-
-    // The attributes a filter column can show (the user's after ours).
-    std::vector<pr7s::AttributeId> filterableAttributes (const pr7s::MediaDatabase& database)
-    {
-        using A = pr7s::MediaAttribute;
-        std::vector<pr7s::AttributeId> list;
-        for (const auto kind : { A::category, A::subCategory, A::style, A::subStyle, A::character, A::key, A::tempo, A::rating })
-            list.push_back ({ kind, {} });
-        for (const auto& user : database.getUserAttributes())
-            list.push_back ({ A::user, user.name });
-        return list;
-    }
-
-    // A stored value as shown: stars for a rating, YES / NO for a yes/no attribute.
-    juce::String shownValue (const pr7s::MediaDatabase& database, const pr7s::AttributeId& id, const juce::String& value)
-    {
-        if (value.isEmpty() || value == mixedText)
-            return value;
-        if (id.kind == pr7s::MediaAttribute::rating)
-            return juce::String::repeatedString (juce::String::fromUTF8 ("\xe2\x98\x85"), juce::jlimit (0, 5, value.getIntValue()));
-        if (id.kind == pr7s::MediaAttribute::tempo)
-            return value + " BPM";
-        if (id.kind == pr7s::MediaAttribute::user)
-            if (const auto* user = database.findUserAttribute (id.user); user != nullptr && user->type == pr7s::UserAttributeType::yesNo)
-                return value == "1" ? "YES" : "NO";
-        return value;
-    }
-
-    void styleKey (juce::TextButton& key)
-    {
-        key.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
-        key.setWantsKeyboardFocus (false);
     }
 }
 
@@ -211,102 +94,6 @@ private:
 // One column of the attribute filter: its attribute (the title: click to choose another) and
 // the values found, with how many files have each. Click a value: only it; click it again: none;
 // Ctrl-click: one more (or one less).
-class MediaBayPage::FilterColumn final : public juce::Component,
-                                        private juce::ListBoxModel
-{
-public:
-    FilterColumn (MediaBayPage& p, int i) : page (p), index (i)
-    {
-        styleKey (title);
-        title.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
-        title.setTooltip ("Which attribute this column filters by");
-        title.onClick = [this] { showAttributeMenu(); };
-        addAndMakeVisible (title);
-        list.setModel (this);
-        list.setRowHeight (22);
-        list.setColour (juce::ListBox::backgroundColourId, juce::Colour (0xff100d11));
-        list.setOutlineThickness (0);
-        addAndMakeVisible (list);
-    }
-
-    ~FilterColumn() override { list.setModel (nullptr); }
-
-    void refresh()
-    {
-        values = page.getFilterValues (index);
-        title.setButtonText (page.getFilterColumn (index).name());
-        list.updateContent();
-        list.repaint();
-    }
-
-    void resized() override
-    {
-        auto area = getLocalBounds();
-        title.setBounds (area.removeFromTop (26));
-        area.removeFromTop (4);
-        list.setBounds (area);
-    }
-
-    int getNumRows() override { return (int) values.size(); }
-
-    void paintListBoxItem (int row, juce::Graphics& g, int width, int height, bool) override
-    {
-        if (! juce::isPositiveAndBelow (row, (int) values.size()))
-            return;
-        const auto& [value, count] = values[(size_t) row];
-        const auto chosen = page.getFilterSelection (index).contains (value);
-        if (chosen)
-        {
-            g.setColour (ParagonColours::accent.withAlpha (0.22f));
-            g.fillRect (0, 0, width, height);
-            g.setColour (ParagonColours::accent);
-            g.fillRect (0, 0, 3, height);
-        }
-        auto area = juce::Rectangle<int> (0, 0, width, height).reduced (8, 0);
-        g.setFont (interFont (12.0f));
-        g.setColour (ParagonColours::textDim);
-        g.drawText (juce::String (count), area.removeFromRight (40), juce::Justification::centredRight, false);
-        const auto attribute = page.getFilterColumn (index);
-        g.setColour (chosen ? ParagonColours::text : ParagonColours::text.withAlpha (0.85f));
-        if (attribute.kind == pr7s::MediaAttribute::rating)
-            g.setColour (pr7s::FamilyColours::orange);
-        g.drawText (shownValue (page.database, attribute, value), area, juce::Justification::centredLeft, true);
-    }
-
-    void listBoxItemClicked (int row, const juce::MouseEvent& event) override
-    {
-        if (juce::isPositiveAndBelow (row, (int) values.size()))
-            page.clickFilterValue (index, values[(size_t) row].first, event.mods.isCommandDown());
-        list.deselectAllRows();
-    }
-
-private:
-    void showAttributeMenu()
-    {
-        juce::PopupMenu menu;
-        const auto all = filterableAttributes (page.database);
-        const auto current = page.getFilterColumn (index);
-        for (int i = 0; i < (int) all.size(); ++i)
-        {
-            if (all[(size_t) i].kind == pr7s::MediaAttribute::user && (i == 0 || all[(size_t) i - 1].kind != pr7s::MediaAttribute::user))
-                menu.addSectionHeader ("YOUR ATTRIBUTES");
-            menu.addItem (i + 1, all[(size_t) i].name(), true, all[(size_t) i] == current);
-        }
-        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&title),
-                            [safe = juce::Component::SafePointer<FilterColumn> (this), all] (int chosen)
-                            {
-                                if (safe != nullptr && chosen > 0)
-                                    safe->page.setFilterColumn (safe->index, all[(size_t) chosen - 1]);
-                            });
-    }
-
-    MediaBayPage& page;
-    const int index;
-    juce::TextButton title;
-    juce::ListBox list;
-    std::vector<std::pair<juce::String, int>> values;
-};
-
 //==============================================================================
 // The ATTRIBUTE INSPECTOR: the selected files' attributes in groups (MEDIA: what the files are;
 // MUSICAL: your tags; INFO: rating and comment; YOUR ATTRIBUTES). Click a value to set it for
@@ -869,7 +656,7 @@ MediaBayPage::MediaBayPage (pr7s::Studio& s)
 
     for (int i = 0; i < numFilterColumns; ++i)
     {
-        filterColumns[(size_t) i] = std::make_unique<FilterColumn> (*this, i);
+        filterColumns[(size_t) i] = std::make_unique<MediaUi::AttributeFilterColumn> (*this, i);
         addChildComponent (*filterColumns[(size_t) i]);
     }
     inspector = std::make_unique<Inspector> (*this);
