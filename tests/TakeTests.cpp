@@ -605,3 +605,285 @@ TEST_CASE ("On screen: LANES shows a row per lane; the Comp tool brings a take f
         CHECK (view.createComponentSnapshot (view.getLocalBounds()).isValid());
     }
 }
+
+//==============================================================================
+// Comping, part two (0.30.0)
+
+namespace
+{
+    // A WAV of one steady level (both sides) in the studio's audio folder: takes told apart by level.
+    void writeLevel (Studio& studio, const juce::String& name, float level, double seconds)
+    {
+        auto folder = studio.getAudioFolder();
+        folder.createDirectory();
+        juce::AudioBuffer<float> sound (2, (int) (rate * seconds));
+        for (int c = 0; c < 2; ++c)
+            juce::FloatVectorOperations::fill (sound.getWritePointer (c), level, sound.getNumSamples());
+        std::unique_ptr<juce::OutputStream> stream (folder.getChildFile (name).createOutputStream());
+        auto writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (rate).withNumChannels (2)
+                                                                           .withBitsPerSample (32)
+                                                                           .withSampleFormat (juce::AudioFormatWriterOptions::SampleFormat::floatingPoint));
+        REQUIRE (writer != nullptr);
+        writer->writeFromAudioSampleBuffer (sound, 0, sound.getNumSamples());
+    }
+
+    const Part& partWithId (const Studio& studio, int trackId, int id)
+    {
+        for (const auto& p : studio.getProject().findTrack (trackId)->parts)
+            if (p.id == id)
+                return p;
+        FAIL ("no part " << id);
+        return studio.getProject().findTrack (trackId)->parts.front();
+    }
+}
+
+TEST_CASE ("Moving a split or a take's edge moves it on every take sharing it, held by the others", "[takes][comp]")
+{
+    Takes t;
+    auto& studio = t.studio;
+    writeLevel (studio, "a.wav", 0.25f, 8.0);
+    writeLevel (studio, "b.wav", 0.5f, 8.0);
+    auto first = clip (0.0, 8.0, "a.wav");
+    auto second = clip (0.0, 8.0, "b.wav");
+    second.lane = 1;
+    studio.addPart (t.trackId, first);
+    studio.addPart (t.trackId, second);
+    studio.compRange (t.trackId, 0, 4.0, 8.0);   // a over 4-8: every take cut at 4
+    REQUIRE (t.track().parts.size() == 4);
+
+    // The split at 4 to 5: every take's piece ending there ends at 5, every one starting there starts at 5,
+    // what they play staying where it was (the second half's recording from 2.5 s, at 120 BPM).
+    CHECK_THAT (studio.moveTakeEdge (t.trackId, 4.0, 5.0), WithinAbs (5.0, 1.0e-9));
+    for (const auto& p : t.track().parts)
+    {
+        CHECK ((std::abs (p.start) < 1.0e-9 || std::abs (p.start - 5.0) < 1.0e-9));
+        if (p.start > 1.0)
+            CHECK_THAT (p.audioOffset, WithinAbs (2.5, 1.0e-6));
+    }
+    // Past the end: held a 64th short of it.
+    CHECK_THAT (studio.moveTakeEdge (t.trackId, 5.0, 9.0), WithinAbs (8.0 - 1.0 / 64.0, 1.0e-9));
+    studio.moveTakeEdge (t.trackId, 8.0 - 1.0 / 64.0, 4.0);
+
+    // The takes' end (8) earlier, to 7: on every take; later than the recordings: held at their end (8 s = 16 beats).
+    CHECK_THAT (studio.moveTakeEdge (t.trackId, 8.0, 7.0), WithinAbs (7.0, 1.0e-9));
+    for (const auto& p : t.track().parts)
+        CHECK (p.end() <= 7.0 + 1.0e-9);
+    CHECK_THAT (studio.moveTakeEdge (t.trackId, 7.0, 40.0), WithinAbs (16.0, 1.0e-6));
+    // A start earlier than its recording's beginning: held at it.
+    CHECK_THAT (studio.moveTakeEdge (t.trackId, 0.0, -3.0), WithinAbs (0.0, 1.0e-9));
+
+    // Another take on the lane, not at the edge: an end can't pass it.
+    Takes u;
+    auto& other = u.studio;
+    other.addPart (u.trackId, clip (0.0, 4.0, "x.wav"));
+    other.addPart (u.trackId, clip (6.0, 2.0, "y.wav"));
+    CHECK_THAT (other.moveTakeEdge (u.trackId, 4.0, 7.5), WithinAbs (6.0, 1.0e-9));
+    studio.getAudioFolder().deleteRecursively();
+}
+
+TEST_CASE ("Slip Event, Bounce, Delete Overlaps and Merge MIDI in Loop", "[takes][comp]")
+{
+    {
+        // Slip: an audio clip's recording slides under it (held within it); MIDI notes slide.
+        Takes t;
+        auto& studio = t.studio;
+        writeLevel (studio, "a.wav", 0.25f, 8.0);
+        studio.addPart (t.trackId, clip (2.0, 4.0, "a.wav", 1.0));
+        const auto id = t.track().parts[0].id;
+        studio.slipPart (id, 0.5);   // later: a quarter of a second less offset
+        CHECK_THAT (partWithId (studio, t.trackId, id).audioOffset, WithinAbs (0.75, 1.0e-9));
+        CHECK_THAT (partWithId (studio, t.trackId, id).start, WithinAbs (2.0, 1.0e-9));
+        studio.slipPart (id, 10.0);
+        CHECK_THAT (partWithId (studio, t.trackId, id).audioOffset, WithinAbs (0.0, 1.0e-9));
+        studio.slipPart (id, -100.0);   // (the recording's 8 s: 6 s at most, so 2 s of it still play)
+        CHECK_THAT (partWithId (studio, t.trackId, id).audioOffset, WithinAbs (6.0, 1.0e-6));
+        studio.getAudioFolder().deleteRecursively();
+
+        Studio midi (false);
+        const auto trackId = midi.getProject().tracks[0].id;
+        midi.addPart (trackId, { 0.0, 4.0, "riff", { { 1.0, 0.5, 60, 0.8f } } });
+        midi.slipPart (midi.getProject().tracks[0].parts[0].id, 0.25);
+        CHECK_THAT (midi.getProject().tracks[0].parts[0].notes[0].start, WithinAbs (1.25, 1.0e-9));
+    }
+    {
+        // Bounce (audio): three takes comped become one clip of what was heard, in a new file.
+        Takes t;
+        auto& studio = t.studio;
+        writeLevel (studio, "a.wav", 0.1f, 4.0);
+        writeLevel (studio, "b.wav", 0.2f, 4.0);
+        writeLevel (studio, "c.wav", 0.3f, 4.0);
+        int lane = 0;
+        for (const auto* name : { "a.wav", "b.wav", "c.wav" })
+        {
+            auto take = clip (0.0, 4.0, name);
+            take.lane = lane++;
+            studio.addPart (t.trackId, take);
+        }
+        studio.compRange (t.trackId, 0, 1.0, 2.0);
+        studio.compRange (t.trackId, 1, 2.0, 3.0);
+        // Heard: c 0-1, a 1-2, b 2-3, c 3-4.
+        std::vector<int> all;
+        for (const auto& p : t.track().parts)
+            all.push_back (p.id);
+        juce::String error;
+        const auto bounced = studio.bounceTakes (all, error);
+        REQUIRE (bounced != 0);
+        REQUIRE (t.track().parts.size() == 1);
+        const auto& result = t.track().parts[0];
+        CHECK_THAT (result.start, WithinAbs (0.0, 1.0e-9));
+        CHECK_THAT (result.length, WithinAbs (4.0, 1.0e-9));
+        const auto data = studio.getAudio (result.audioFile);
+        REQUIRE (data != nullptr);
+        const auto at = [&] (double beatsIn) { return data->sound.getSample (0, (int) (beatsIn * (double) beat)); };
+        CHECK_THAT (at (0.5), WithinAbs (0.3, 1.0e-5));
+        CHECK_THAT (at (1.5), WithinAbs (0.1, 1.0e-5));
+        CHECK_THAT (at (2.5), WithinAbs (0.2, 1.0e-5));
+        CHECK_THAT (at (3.5), WithinAbs (0.3, 1.0e-5));
+        studio.undo();
+        CHECK (t.track().parts.size() > 1);
+
+        // Delete Overlaps: only what's heard, all on the first lane, nothing overlapping.
+        all.clear();
+        for (const auto& p : t.track().parts)
+            all.push_back (p.id);
+        studio.deleteOverlaps (all);
+        double covered = 0.0;
+        for (const auto& p : t.track().parts)
+        {
+            CHECK (p.lane == 0);
+            covered += p.length;
+        }
+        CHECK_THAT (covered, WithinAbs (4.0, 1.0e-6));
+        CHECK (studio.frontPartAt (t.trackId, 1.5) != 0);
+        studio.getAudioFolder().deleteRecursively();
+    }
+    {
+        // Bounce MIDI: the heard takes' notes in one part; Merge MIDI in Loop: onto a new track.
+        Studio studio (false);
+        const auto trackId = studio.getProject().tracks[0].id;
+        for (int i = 0; i < 2; ++i)
+        {
+            Part take { 0.0, 4.0, "take", { { 0.5, 0.5, 60 + i, 0.8f }, { 2.5, 0.5, 60 + i, 0.8f } } };
+            take.lane = i;
+            take.muted = i == 0;   // (as Stacked records them)
+            studio.addPart (trackId, take);
+        }
+        studio.compRange (trackId, 0, 2.0, 4.0);   // lane 1 heard over 0-2, lane 0 over 2-4
+        studio.setCycle (0.0, 4.0);
+        const auto merged = studio.mergeMidiInLoop ({ trackId });
+        REQUIRE (merged != 0);
+        const auto& copy = *studio.getProject().findTrack (merged);
+        REQUIRE (copy.parts.size() == 1);
+        REQUIRE (copy.parts[0].notes.size() == 2);
+        CHECK (copy.parts[0].notes[0].pitch == 61);
+        CHECK (copy.parts[0].notes[1].pitch == 60);
+
+        std::vector<int> all;
+        for (const auto& p : studio.getProject().findTrack (trackId)->parts)
+            all.push_back (p.id);
+        juce::String error;
+        REQUIRE (studio.bounceTakes (all, error) != 0);
+        const auto& track = *studio.getProject().findTrack (trackId);
+        REQUIRE (track.parts.size() == 1);
+        REQUIRE (track.parts[0].notes.size() == 2);
+        CHECK (track.parts[0].notes[0].pitch == 61);
+        CHECK (track.parts[0].notes[1].pitch == 60);
+        CHECK (track.parts[0].lane == 0);
+    }
+}
+
+TEST_CASE ("Audition plays only the track (and lane) without changing the song", "[takes][comp]")
+{
+    Takes t;
+    auto& studio = t.studio;
+    const auto before = studio.getProject().toXml()->toString();
+    studio.startAudition (t.trackId, 1);
+    CHECK (studio.isAuditioning());
+    CHECK (studio.getProject().toXml()->toString() == before);
+    studio.stopAudition();
+    CHECK_FALSE (studio.isAuditioning());
+}
+
+TEST_CASE ("On screen: COMP moves a split, splits every take, slips; the comp handle brings a take forward", "[takes][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto trackId = studio.getProject().tracks[0].id;
+    for (int i = 0; i < 2; ++i)
+    {
+        Part take { 0.0, 8.0, "Take " + juce::String (i + 1), { { 1.0, 0.5, 60 + i * 4, 0.8f }, { 5.0, 0.5, 60 + i * 4, 0.8f } } };
+        take.lane = i;
+        studio.addPart (trackId, take);
+    }
+    studio.setShowLanes (trackId, true);
+    studio.compRange (trackId, 0, 4.0, 8.0);   // cut at 4
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    auto& timeline = arrange.getTimeline();
+    arrange.setTool (ArrangeView::Tool::comp);
+    const auto laneY = [&] (int lane) { const auto r = arrange.partRow (trackId, lane); return r.getCentreY(); };
+    const auto dragFrom = [&] (juce::Point<float> from, juce::Point<float> to, juce::ModifierKeys mods = {})
+    {
+        arrange.mouseDown (mouseAt (arrange, from, from, mods));
+        for (int step = 1; step <= 4; ++step)
+            arrange.mouseDrag (mouseAt (arrange, from + (to - from) * ((float) step / 4.0f), from, mods));
+        arrange.mouseUp (mouseAt (arrange, to, from, mods));
+        studio.dispatchPendingMessages();
+    };
+
+    // The split at 4, dragged to 6 on lane 1: every take's split there moves.
+    REQUIRE (arrange.takeEdgeAt ({ timeline.xForBeat (4.0) + 1.0f, laneY (1) }).has_value());
+    dragFrom ({ timeline.xForBeat (4.0) + 1.0f, laneY (1) }, { timeline.xForBeat (6.0), laneY (1) });
+    for (const auto& p : studio.getProject().findTrack (trackId)->parts)
+        CHECK ((std::abs (p.start) < 1.0e-9 || std::abs (p.start - 6.0) < 1.0e-9));
+
+    // Alt-click: every take cut there (bar 1's beat 2).
+    const auto before = studio.getProject().findTrack (trackId)->parts.size();
+    const juce::Point<float> at2 (timeline.xForBeat (2.0), laneY (0));
+    arrange.mouseDown (mouseAt (arrange, at2, at2, juce::ModifierKeys (juce::ModifierKeys::altModifier)));
+    arrange.mouseUp (mouseAt (arrange, at2, at2, juce::ModifierKeys (juce::ModifierKeys::altModifier)));
+    CHECK (studio.getProject().findTrack (trackId)->parts.size() == before + 2);
+
+    // Alt+Shift drag: the take's notes slide a beat later.
+    const auto& parts = studio.getProject().findTrack (trackId)->parts;
+    int index = -1;
+    for (int i = 0; i < (int) parts.size(); ++i)
+        if (parts[(size_t) i].lane == 0 && parts[(size_t) i].start < 1.0)
+            index = i;
+    REQUIRE (index >= 0);
+    const auto noteBefore = parts[(size_t) index].notes.at (0).start;
+    const auto id = parts[(size_t) index].id;
+    const juce::ModifierKeys slip (juce::ModifierKeys::altModifier | juce::ModifierKeys::shiftModifier);
+    const juce::Point<float> grab (timeline.xForBeat (1.2), laneY (0));
+    dragFrom (grab, grab + juce::Point<float> ((float) timeline.pixelsPerBeat, 0.0f), slip);
+    CHECK_THAT (partWithId (studio, trackId, id).notes.at (0).start, WithinAbs (noteBefore + 1.0, 1.0e-6));
+
+    // The comp handle (lanes shown) of the take not heard there (lane 2's): it comes to the front.
+    for (int i = 0; i < (int) parts.size(); ++i)
+        if (parts[(size_t) i].lane == 1 && parts[(size_t) i].start > 6.0 - 1.0e-9)
+            index = i;
+    const auto handle = arrange.compHandleBounds (trackId, index);
+    REQUIRE_FALSE (handle.isEmpty());
+    const auto front = parts[(size_t) index].id;
+    arrange.setTool (ArrangeView::Tool::select);
+    arrange.mouseDown (mouseAt (arrange, handle.getCentre(), handle.getCentre()));
+    arrange.mouseUp (mouseAt (arrange, handle.getCentre(), handle.getCentre()));
+    // (MIDI: heard = unmuted, the other lane's take there muted)
+    CHECK_FALSE (partWithId (studio, trackId, front).muted);
+    for (const auto& p : studio.getProject().findTrack (trackId)->parts)
+        if (p.lane == 0 && p.start > 6.0 - 1.0e-9)
+            CHECK (p.muted);
+    // Clicked again: it goes back (muted: MIDI's toggle).
+    const auto again = arrange.compHandleBounds (trackId, index).getCentre();
+    arrange.mouseDown (mouseAt (arrange, again, again));
+    arrange.mouseUp (mouseAt (arrange, again, again));
+    CHECK (partWithId (studio, trackId, front).muted);
+
+    for (const auto type : { Finish::Type::pearlBlack, Finish::Type::pearlWhiteNeon, Finish::Type::pearlWhite })
+    {
+        Finish::set (type, false);
+        CHECK (view.createComponentSnapshot (view.getLocalBounds()).isValid());
+    }
+}

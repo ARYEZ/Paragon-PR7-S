@@ -384,6 +384,34 @@ namespace pr7s
         // unmuted part there), 0: none.
         int frontPartAt (int trackId, double beat) const;
 
+        // Comping, part two (0.30.0, the manual's Assembling Operations and Assembling a Perfect Take).
+        // The takes on a part's track with its start and end (stacked: what the Comp tool moves together).
+        std::vector<int> stackedWith (int partId) const;
+        // Split (the Comp tool's Alt-click): every take on the track cut at the beat.
+        void splitTakesAt (int trackId, double beat);
+        // Adjust splits / Resize (the Comp tool): the edge at `beat` moved to `newBeat` on every take on
+        // the track that starts or ends there (all takes with the same start and end), held so it never
+        // passes another take on a lane, shortens one to nothing, or runs off the end of a recording.
+        // Returns where it went (one undo step; `beat` when it couldn't move).
+        double moveTakeEdge (int trackId, double beat, double newBeat);
+        // Slip Event (Alt+Shift-drag): what plays inside the part slides by `beats` (later: positive),
+        // the part staying put; audio held within its recording. One undo step.
+        void slipPart (int partId, double beats);
+        // Bounce (the manual's Bounce Selection for audio, Bounce MIDI): what's heard of the takes into
+        // one new clip or part over them all, on the first of their lanes, in front; the takes go.
+        // Audio: a new 32-bit file in the audio folder. Returns the new part's id (0: nothing, `error`).
+        int bounceTakes (const std::vector<int>& partIds, juce::String& error);
+        // Delete Overlaps: of these takes only what's heard stays, all on the first lane.
+        void deleteOverlaps (const std::vector<int>& partIds);
+        // Merge MIDI in Loop: what's heard of these tracks' MIDI between the locators, one part on a new
+        // track (a copy of the first, its instrument and effects). Returns its id (0: nothing there).
+        int mergeMidiInLoop (const std::vector<int>& trackIds);
+        // Audition (the Comp tool with Ctrl: the manual's Speaker tool): the engine plays only this
+        // track (and only `lane` when it's 0 or more) until stopAudition; the song isn't changed.
+        void startAudition (int trackId, int lane);
+        void stopAudition();
+        bool isAuditioning() const noexcept { return auditioning; }
+
         // Range Selection (the manual's Range Editing): a stretch of time
         // across some tracks, independent of the parts. Whatever a range
         // edit touches is cut at its edges first (a note across an edge is
@@ -935,6 +963,7 @@ namespace pr7s
         void updateLiveTrack();
         void finishRecording();
         void finishAudioRecording();
+        bool auditioning = false;   // (0.30.0) the engine plays a soloed copy
         double recordingLatency() const;
         void buildRecordingNotes (std::vector<Note>& notes, double partStart, double endBeat, int onlyPass = -1) const;
         // (0.29.0) New takes onto the track by the record modes: each on the first lane it

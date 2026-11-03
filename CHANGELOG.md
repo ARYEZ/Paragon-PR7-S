@@ -2,6 +2,32 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.30.0
+
+Takes and comping, part two: the rest of the manual's Assembling Operations and Assembling a Perfect Take.
+
+- **The COMP tool, all of it:**
+  - **Ctrl-click and hold:** audition. Plays from there, only this track (on a lane: only that lane), until you let go; then back to where you were. The song isn't changed (the manual's Speaker tool).
+  - **Drag a split** (where two takes meet) left or right: it moves on every take cut there, so your comp's boundary moves as one.
+  - **Drag a take's edge:** every take with that start or end is resized together. It's held so it never runs into another take on its lane, shortens a take to nothing, or runs past the end of its recording.
+  - **Alt-click:** every take on the track is cut there (the Comp tool works on all lanes at once).
+  - **Drag on the track's own row:** the takes stacked there move together.
+- **Slip Event** (Alt+Shift-drag a take, with SELECT or COMP): what plays inside the take slides earlier or later while the take stays put, for fixing the timing of a part-take. Audio stays within its recording.
+- **The comp handle:** a small tab on the lower edge of any take that overlaps another. With LANES on, a click brings that take to the front (again: back). With lanes hidden, it opens the list of stacked takes to choose from (the manual's Handling Overlapping Audio).
+- **When the comp is done** (right-click a take):
+  - **Bounce Selection** (audio): what's heard of the selected takes becomes one new clip, written to a new file in the song's audio folder, fades included.
+  - **Bounce MIDI:** the heard notes of the selected takes become one part.
+  - **Delete Overlaps:** of the selected takes only what's heard stays, all on one lane.
+  - **Merge MIDI in Loop:** the heard MIDI between the locators goes onto a new track (a copy of this one, same instrument).
+- **Honestly:**
+  - Our choices:
+    - the edge and split drags snap to the grid (SNAP off: free);
+    - Ctrl in COMP is audition, so it doesn't also turn snapping off;
+    - the Slip drag snaps its amount to the grid;
+    - a bounced clip is a 32-bit file.
+  - Not built: gluing splits by double-clicking a range (bringing a range to the front glues already), auto fades and crossfades between comped takes (the manual suggests them after comping; not in PR7-S yet), Track Versions (you said you didn't want them).
+  - Checked with test recordings and real mouse drags in code, not by ear with your guitar takes.
+
 ## 0.29.0
 
 Takes and comping, part one (the owner's last item; the manual's Lanes, Takes, and Overlapping Events and Assembling a Perfect Take).

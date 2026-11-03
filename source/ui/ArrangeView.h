@@ -325,6 +325,12 @@ public:
     int laneAtY (float y) const;    // a lane of takes (0.29.0): its lane; else -1
     // For the tests (0.29.0): the Comp tool's band while dragged (beats; none: equal).
     std::pair<double, double> getCompBand() const noexcept { return { compFrom, compTo }; }
+    // (0.30.0) The edge (a split between takes, or a take's own edge) under a point, if near one: its beat.
+    std::optional<double> takeEdgeAt (juce::Point<float>) const;
+    // The comp handle on a stacked take's lower edge (the manual's Comp symbol): none if not stacked.
+    juce::Rectangle<float> compHandleBounds (int trackId, int index) const;
+    bool compHandleDown (const juce::MouseEvent&);
+    double getEdgeTarget() const noexcept { return edgeTo; }
     juce::Rectangle<float> partRow (int trackId, int lane) const;   // the strip (y and height) a part on that lane is drawn in
     // A chord pad dropped on a track: a one-bar MIDI part at the bar (0.14.0, the manual's
     // Creating MIDI Parts from Chord Pads).
@@ -382,13 +388,17 @@ private:
     enum class Drag { none, position, cycle, cycleMove, cycleLeft, cycleRight, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
                       erasePoints, linePoints, pointHandle, curve, segmentScale,
                       newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove, marquee,
-                      tempoPoints, tempoBand, tempoDraw, chordMove, comp };
+                      tempoPoints, tempoBand, tempoDraw, chordMove, comp, takeEdge, slip, audition };
     // The Comp tool (0.29.0): its drag across a lane of takes.
     int compTrack = 0, compLane = -1, compPartId = 0;
     double compFrom = 0.0, compTo = 0.0;
     bool compDown (const juce::MouseEvent&);
     void compDrag (const juce::MouseEvent&);
     void compUp();
+    // (0.30.0) Adjusting a split / resizing (takeEdge), Slip Event (slip), the Comp tool's Ctrl (audition).
+    double edgeFrom = 0.0, edgeTo = 0.0, slipFrom = 0.0, slipDelta = 0.0;
+    int slipPartId = 0;
+    void frontClick (int trackId, int partId, double beat);   // to the front; heard there already: back
     std::vector<int> alsoSelected;              // the parts selected besides `selection` (by id)
     pr7s::Studio::RangeClip partsClip;          // parts copied (Ctrl+C / X)
     int partIdAt (const Selection&) const;
