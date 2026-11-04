@@ -2,6 +2,28 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.43.0
+
+**The channel EQ** (you chose it: "EQ later", now). Every channel has a built-in EQ and Pre section, as the manual's channel does: tracks, FX and group channels, and the master. No plug-in is needed.
+- **Pre section:** input gain (±24 dB), phase invert, a low cut (20 Hz to 20 kHz) and a high cut (50 Hz to 20 kHz). Each cut is 6, 12, 24, 36 or 48 dB per octave (12 at first).
+- **EQ:** four bands, each on or off, with gain (±24 dB), frequency (20 Hz to 20 kHz) and Q.
+  - Bands 1 and 4 can be parametric, a shelf or a cut. Bands 2 and 3 are always parametric.
+  - BYPASS takes all four bands out; the Pre section stays in.
+- **Where it plays:** Pre first, then the inserts before the fader, then the EQ, then the fader, as the manual's channel. Pre-fader sends hear the EQ'd sound.
+- **The curve:** it shows exactly what plays, the EQ and the Pre's cuts and gain together. A bypassed EQ is drawn dashed in grey.
+  - **Click** an empty spot: the nearest band that's off comes on there.
+  - **Drag** a point: frequency and gain. **Ctrl:** gain only. **Alt:** frequency only. **Shift:** its Q (up is narrower).
+  - **Double-click** a point: that band off.
+  - **Right-click:** Save Preset, Load Preset, Invert EQ Settings, Reset, Bypass.
+  - **In the EQ window,** the mouse's frequency, note and level show at the top.
+- **Typing a frequency:** Hz, kHz, or a note with cents, as the manual: "A3" is 440 Hz, "A5 -23", "C4 +49".
+- **Where to find it:**
+  - The Inspector's new **EQUALIZERS** section: the curve, edited right there, plus BYPASS and EDIT EQ. Right-click its header for presets.
+  - The **EQ window**, with every control: from EDIT EQ, from a mixer channel's right-click (Channel EQ...), or a key command (Window > Channel EQ) for your Stream Deck.
+- **It's kept:** saved with the song, undoable (one step per drag), carried by track presets (as the manual's "Loading Inserts and EQ from Track Presets"), and saved as EQ presets of its own (.pr7eq in Documents/Paragon PR7-S/EQ Presets).
+- **Our choices:** the bands' starting points (a low shelf at 100 Hz, 500 Hz, 2 kHz, a high shelf at 8 kHz, all off) and the filters (the standard "audio EQ cookbook" ones; Butterworth cuts).
+- **Not yet:** automating the EQ's knobs, the spectrum behind the curve, and comparing two channels' curves.
+
 ## 0.42.0
 
 **Chord detection** (you asked, as your chord tool has: chords read from MIDI and from audio). Right-click a part (MIDI or audio, one or several selected) > **Detect Chords**:
