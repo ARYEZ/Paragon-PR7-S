@@ -423,7 +423,6 @@ namespace pr7s
             k = end;
         }
         // Two on one pitch at one start: the softer dropped (it would only double the other).
-        std::vector<size_t> order (notes.size());
         for (size_t i = 0; i < order.size(); ++i)
             order[i] = i;
         std::sort (order.begin(), order.end(), [&] (size_t a, size_t b)
