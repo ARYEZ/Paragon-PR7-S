@@ -2,6 +2,19 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.38.0
+
+**The MIDI editor's info line** (you asked: as the automation's, for notes). A strip along the top of the MIDI editor, above its ruler, shows the selected notes: START, END, LENGTH, PITCH and VELOCITY.
+- **Which values it shows:** those of the first selected note, meaning the earliest, or the lowest if several start together. With several selected, the values are pink and it says how many.
+- **Changing them:** double-click a value and type. Every selected note changes by what the first one changes, so the selection keeps its shape:
+  - **Pitch:** your example works exactly so. D#-1 typed as D-2 takes every selected note 13 semitones down, an octave and a half step. Notes are named as the rest of the studio names them (middle C is C3), with sharps or flats ("Eb3"), or as a MIDI number. If a note would fall off the keyboard, the whole selection moves only as far as it can, so its shape is kept.
+  - **Velocity:** all up or down by the same amount.
+  - **Start:** all moved in time together.
+  - **End:** each note's end moves by the same amount, so its length changes and its start stays.
+  - **Length:** each note gets longer or shorter by the same amount. It's written bars.beats.16ths.ticks from zero: 0.1.0.0 is one beat.
+- **Ctrl as you press Enter** sets them all to exactly the value you typed (the manual's modifier), as on the automation info line.
+- **Undo:** each change is one undo step.
+
 ## 0.37.0
 
 Two things you asked for: an info line for automation points, as in your screenshot of the other DAW, and the last two Follow Chord Track modes, Voicings and Single Voice.
