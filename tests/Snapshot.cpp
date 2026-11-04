@@ -248,6 +248,14 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.setLiveFollow (lead, pr7s::LiveFollow::chords);
         studio.setChordShift (-30);
     }
+    // PARAGON_SNAPSHOT_LONGNAMES=1 (0.36.1): long track names, to show them running up to the meter.
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_LONGNAMES", {}).isNotEmpty())
+    {
+        studio.renameTrack (keys, "Forever Found Keys Layer");
+        studio.renameTrack (bass, "FFAW Main Vocals One");
+        studio.renameTrack (lead, "Bridge Synth Lead (Right)");
+        studio.renameTrack (guitar, "Forever Found Rhythm Guitar Double");
+    }
     // PARAGON_SNAPSHOT_VISIBILITY=1: the left zone's VISIBILITY, the bass hidden and the keys disabled.
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_VISIBILITY", {}).isNotEmpty())
     {
