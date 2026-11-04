@@ -396,6 +396,20 @@ TEST_CASE ("Snapshot: the VariAudio editor", "[.][snapshot-variaudio]")
         editor.straightenSelected (0.8f);             // (most of the vibrato gone)
         editor.selectSegments ({ 3 });
         editor.moveSelected (2.0f, PitchSnap::absolute);   // (the last C up to D)
+        // (0.35.0, part two) Every smart control; the first note's curve tilted up at its end, the
+        // second straightened over its middle only, the third's formants moved; a melody track's
+        // notes as the reference lines.
+        editor.setAllSmartControls (true);
+        studio.editVariSegments ("vocal.wav", { 0 }, [] (VariSegment& s) { s.tiltEnd = 1.5f; s.anchor = 0.3f; });
+        studio.editVariSegments ("vocal.wav", { 1 }, [] (VariSegment& s) { s.straightenFrom = 0.3f; s.straightenTo = 0.8f; });
+        studio.editVariSegments ("vocal.wav", { 2 }, [] (VariSegment& s) { s.formant = 30.0f; });
+        const auto melody = studio.addTrack ({});
+        Part line;
+        line.length = 6.0;
+        line.notes = { { 0.2, 0.8, 60, 0.8f }, { 1.1, 1.2, 64, 0.8f }, { 2.6, 0.8, 67, 0.8f }, { 3.6, 1.0, 62, 0.8f } };
+        studio.addPart (melody, line);
+        editor.setReferenceTrack (melody);
+        editor.selectSegments ({ 3 });
         const auto r = editor.getSegmentBounds (3);
         editor.mouseMove (mouseAt (editor, r.getCentre(), r.getCentre()));   // (its smart controls shown)
         const auto image = editor.createComponentSnapshot (editor.getLocalBounds(), true, 1.0f);

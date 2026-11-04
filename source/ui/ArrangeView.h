@@ -263,6 +263,7 @@ public:
     void selectAllTempoEvents();
     void showTempoMenu();
     std::function<void (int partId)> onEditAudio;   // an audio clip double-clicked: VariAudio (0.34.0)
+    std::function<void (int partId)> onHarmonyVoices;   // its menu's Generate Harmony Voices (0.35.0)
     std::function<void()> onOpenAudioAlignment;   // the part's and range's menus (0.33.0)
     std::function<void()> onOpenTempoEditor;   // the menu's Open Tempo Track Editor (0.13.0)
     // Where an event is drawn, and the tempo row's curve area (tests).

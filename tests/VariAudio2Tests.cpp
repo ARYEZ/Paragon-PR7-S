@@ -5,6 +5,8 @@
 #include "engine/VariAudio.h"
 #include "engine/Studio.h"
 #include "engine/Warp.h"
+#include "ui/Finish.h"
+#include "ui/VariAudioEditor.h"
 
 // VariAudio, part two (0.35.0): pitch curves tilted, rotated and straightened over a range,
 // formants shifted, segments split, glued, resized and deleted (their pitch found again), the
@@ -76,6 +78,26 @@ namespace
             return 0.0f;
         std::nth_element (values.begin(), values.begin() + (long) values.size() / 2, values.end());
         return values[values.size() / 2];
+    }
+
+    juce::MouseEvent mouseAt (juce::Component& target, juce::Point<float> at, juce::Point<float> downAt, juce::ModifierKeys mods = {})
+    {
+        const auto now = juce::Time::getCurrentTime();
+        return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at,
+                                 mods.withFlags (juce::ModifierKeys::leftButtonModifier), 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 &target, &target, now, downAt, now, 1, at != downAt);
+    }
+
+    // A press, a drag (or none) and a release, the segment hovered first (its smart controls shown).
+    void gesture (VariAudioEditor& editor, int segment, juce::Point<float> from, juce::Point<float> to, juce::ModifierKeys mods = {})
+    {
+        const auto centre = editor.getSegmentBounds (segment).getCentre();
+        editor.mouseMove (mouseAt (editor, centre, centre));
+        editor.mouseMove (mouseAt (editor, from, from));
+        editor.mouseDown (mouseAt (editor, from, from, mods));
+        if (to != from)
+            editor.mouseDrag (mouseAt (editor, to, from, mods));
+        editor.mouseUp (mouseAt (editor, to, from, mods));
     }
 
     // A clip of C4, E4, G4 (a little flat, quieter) and C4, on an audio track; its id.
@@ -410,4 +432,188 @@ TEST_CASE ("VariAudio 2: the keys played reach the studio while MIDI Input asks 
     CHECK (studio.takePlayedNotes() == std::vector<int> { 64, 67 });
     CHECK (studio.takePlayedNotes().empty());
     studio.setCatchingNotes (false);
+}
+
+TEST_CASE ("The VariAudio editor, part two: the smart controls by hand (default and all), Alt-click, Delete", "[variaudio][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    const auto partId = makeVocal (studio);
+    VariAudioEditor editor (studio, partId);
+    editor.setSize (1400, 720);
+    REQUIRE (editor.analyse());
+    editor.fitView();
+    const auto segs = [&] () -> const std::vector<VariSegment>& { return studio.getVariAudio ("vocal.wav")->segments; };
+    REQUIRE (segs().size() == 4);
+    using Control = VariAudioEditor::SmartControl;
+
+    // The default set: no tilt, formant or volume; all of them with ALL.
+    editor.setAllSmartControls (false);
+    for (const auto c : { Control::straighten, Control::correct, Control::glueLeft, Control::glueRight, Control::split, Control::warpStart, Control::warpEnd })
+        CHECK_FALSE (editor.getSmartControl (1, c).isEmpty());
+    for (const auto c : { Control::tiltLeft, Control::tiltRight, Control::anchor, Control::rangeFrom, Control::rangeTo, Control::formant, Control::volume })
+        CHECK (editor.getSmartControl (1, c).isEmpty());
+    editor.setAllSmartControls (true);
+    for (const auto c : { Control::tiltLeft, Control::tiltRight, Control::anchor, Control::rangeFrom, Control::rangeTo, Control::formant, Control::volume })
+        CHECK_FALSE (editor.getSmartControl (1, c).isEmpty());
+    for (const auto c : { Control::straighten, Control::correct, Control::glueLeft, Control::split, Control::warpStart, Control::tiltLeft, Control::anchor,
+                          Control::rangeTo, Control::formant, Control::volume })
+        CHECK (editor.smartControlAt (1, editor.getSmartControl (1, c).getCentre()) == c);
+
+    // Tilt the end up two rows' worth; then Alt on the start: rotated round the anchor.
+    const auto rows = editor.getSegmentBounds (1).getHeight();
+    auto at = editor.getSmartControl (1, Control::tiltRight).getCentre();
+    gesture (editor, 1, at, at.translated (0.0f, -2.0f * rows));
+    CHECK_THAT (segs()[1].tiltEnd, WithinAbs (2.0, 0.01));
+    CHECK (segs()[1].tiltStart == 0.0f);
+    at = editor.getSmartControl (1, Control::tiltLeft).getCentre();
+    gesture (editor, 1, at, at.translated (0.0f, -1.0f * rows), juce::ModifierKeys (juce::ModifierKeys::altModifier));
+    CHECK_THAT (segs()[1].tiltStart, WithinAbs (1.0, 0.01));
+    CHECK_THAT (segs()[1].tiltEnd, WithinAbs (1.0, 0.01));   // (2, less the rotation's 1 at the other end)
+
+    // The anchor dragged to a quarter in; Alt-click: back to the middle.
+    auto r = editor.getSegmentBounds (1);
+    at = editor.getSmartControl (1, Control::anchor).getCentre();
+    gesture (editor, 1, at, { r.getX() + r.getWidth() * 0.25f, at.y });
+    CHECK_THAT (segs()[1].anchor, WithinAbs (0.25, 0.02));
+    at = editor.getSmartControl (1, Control::anchor).getCentre();
+    gesture (editor, 1, at, at, juce::ModifierKeys (juce::ModifierKeys::altModifier));
+    CHECK (segs()[1].anchor == 0.5f);
+
+    // The straighten range's start dragged to the middle; formant up 40 px (20 %); volume down 36 px (-6 dB).
+    r = editor.getSegmentBounds (1);
+    at = editor.getSmartControl (1, Control::rangeFrom).getCentre();
+    gesture (editor, 1, at, { r.getCentreX(), at.y });
+    CHECK_THAT (segs()[1].straightenFrom, WithinAbs (0.5, 0.03));
+    at = editor.getSmartControl (1, Control::formant).getCentre();
+    gesture (editor, 1, at, at.translated (0.0f, -40.0f));
+    CHECK_THAT (segs()[1].formant, WithinAbs (20.0, 0.01));
+    at = editor.getSmartControl (1, Control::volume).getCentre();
+    gesture (editor, 1, at, at.translated (0.0f, 36.0f));
+    CHECK_THAT (segs()[1].volumeDb, WithinAbs (-6.0, 0.01));
+    CHECK (editor.getInfoText().contains ("FORMANT +20 %"));
+
+    // Glue the second to the next (its control below its right corner): three left; split it again on its bottom edge.
+    editor.selectSegments ({});
+    at = editor.getSmartControl (1, Control::glueRight).getCentre();
+    gesture (editor, 1, at, at);
+    REQUIRE (segs().size() == 3);
+    const auto glued = segs()[1];
+    const auto bottom = editor.getSmartControl (1, Control::split);
+    const juce::Point<float> splitAt { editor.xForSeconds ((glued.start + glued.end) * 0.5), bottom.getCentreY() };
+    gesture (editor, 1, splitAt, splitAt);
+    REQUIRE (segs().size() == 4);
+    CHECK_THAT (segs()[1].end, WithinAbs ((glued.start + glued.end) * 0.5, 0.01));
+
+    // Alt-click on a segment: split there too. Delete: the selected ones gone.
+    const auto last = segs()[3];
+    const juce::Point<float> inside { editor.xForSeconds (last.start + 0.2), editor.getSegmentBounds (3).getCentreY() };
+    gesture (editor, 3, inside, inside, juce::ModifierKeys (juce::ModifierKeys::altModifier));
+    REQUIRE (segs().size() == 5);
+    editor.selectSegments ({ 3, 4 });
+    CHECK (editor.keyPressed (juce::KeyPress (juce::KeyPress::deleteKey)));
+    CHECK (segs().size() == 3);
+}
+
+TEST_CASE ("The VariAudio editor, part two: warp start (in time) and Alt: the segment's edge", "[variaudio][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    const auto partId = makeVocal (studio);
+    VariAudioEditor editor (studio, partId);
+    editor.setSize (1400, 720);
+    REQUIRE (editor.analyse());
+    editor.fitView();
+    using Control = VariAudioEditor::SmartControl;
+    const auto seg = studio.getVariAudio ("vocal.wav")->segments[2];
+
+    // Alt + the warp start control: the segment's own start moves (later), no warp.
+    auto at = editor.getSmartControl (2, Control::warpStart).getCentre();
+    gesture (editor, 2, at, at.translated (12.0f, 0.0f), juce::ModifierKeys (juce::ModifierKeys::altModifier));
+    const auto moved = studio.getVariAudio ("vocal.wav")->segments[2];
+    CHECK (moved.start > seg.start + 0.01);
+    CHECK (moved.end == seg.end);
+    const auto partOf = [&] { const auto found = studio.findPart (partId); return studio.getProject().findTrack (found->first)->parts[(size_t) found->second]; };
+    CHECK_FALSE (partOf().isWarped());
+    studio.undo();
+
+    // Without Alt: its start heard 20 px later (warp markers).
+    at = editor.getSmartControl (2, Control::warpStart).getCentre();
+    gesture (editor, 2, at, at.translated (20.0f, 0.0f));
+    REQUIRE (partOf().isWarped());
+    const auto heardAt = partOf().start + warpBeatAt (partOf(), seg.start, studio.getProject().tempoMap());
+    CHECK_THAT (editor.xForBeat (heardAt), WithinAbs (at.x + 20.0f, 1.5));
+}
+
+TEST_CASE ("The VariAudio editor, part two: MIDI Input and Step, the colours, the reference track, the panel, the dialogs", "[variaudio][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    const auto partId = makeVocal (studio);
+    VariAudioEditor editor (studio, partId);
+    editor.setSize (1400, 720);
+    REQUIRE (editor.analyse());
+    const auto segs = [&] () -> const std::vector<VariSegment>& { return studio.getVariAudio ("vocal.wav")->segments; };
+
+    // MIDI Input: the first selected to the note played, the others as far; Step: then the next.
+    editor.setMidiInput (true);
+    CHECK (editor.keyNamed ("MIDI INPUT")->getToggleState());
+    editor.selectSegments ({ 0, 1 });
+    editor.notePlayed (62);
+    CHECK_THAT (segs()[0].pitchNow(), WithinAbs (62.0, 1.0e-3));
+    CHECK_THAT (segs()[1].pitchNow(), WithinAbs (66.0, 0.05));
+    editor.setStepMode (true);
+    editor.selectSegments ({ 2 });
+    editor.notePlayed (67);
+    CHECK_THAT (segs()[2].pitchNow(), WithinAbs (67.0, 1.0e-3));
+    CHECK (editor.getSelection() == std::vector<int> { 3 });
+    editor.notePlayed (100);   // (above C5: C5)
+    CHECK_THAT (segs()[3].pitchNow(), WithinAbs (84.0, 1.0e-3));
+    editor.setMidiInput (false);
+
+    // The colours: by pitch (the family's palette), by scale (C major: the C in orange, an F# in pink).
+    editor.setColours (VariAudioEditor::Colours::pitch);
+    CHECK (editor.colourOf (0) == FamilyColours::paletteColour (2 * 8 / 11, 3));   // (D: pitch class 2)
+    editor.setColours (VariAudioEditor::Colours::scale);
+    editor.setEditorScale (Key::fromPitchClass (0, false));
+    studio.editVariSegments ("vocal.wav", { 1 }, [] (VariSegment& s) { s.shift = 66.0f - s.pitch; });
+    CHECK (editor.colourOf (2) == FamilyColours::orange);   // G
+    CHECK (editor.colourOf (1) == FamilyColours::pink);     // F#
+    editor.setColours (VariAudioEditor::Colours::automatic);
+
+    // The reference track: an instrument track's notes; saved with the song.
+    const auto melody = studio.addTrack ({});
+    Part notes;
+    notes.length = 4.0;
+    notes.notes = { Note { 0.0, 1.0, 64, 0.8f } };
+    studio.addPart (melody, notes);
+    editor.setReferenceTrack (melody);
+    CHECK (studio.getProject().variAudioReference == melody);
+    CHECK (Project::fromXml (*studio.getProject().toXml())->variAudioReference == melody);
+    CHECK (editor.createComponentSnapshot (editor.getLocalBounds()).isValid());
+
+    // The panel: its keys there, scrolling in a short window.
+    for (const auto* name : { "FUNCTIONS", "DEFAULT", "ALL", "MIDI INPUT", "STEP", "EDIT VARIAUDIO", "QUANTIZE PITCHES", "AUDITION" })
+        CHECK (editor.keyNamed (name) != nullptr);
+    editor.setSize (1100, 520);
+    CHECK (editor.keyNamed ("AUDITION")->getParentComponent()->getHeight() > 520);
+
+    // The dialogs' choices.
+    ExtractMidiPage extract;
+    CHECK (extract.getOptions().pitch == ExtractMidiOptions::Pitch::notes);
+    CHECK (extract.getOptions().bendRange == 2);
+    CHECK (extract.getOptions().velocity == 100);
+    CHECK (extract.getDestination() == Studio::ExtractDestination::newTrack);
+    HarmonyVoicesPage harmony;
+    CHECK (harmony.getVoices() == 4);
+    CHECK_THAT (harmony.getVibratoReduction(), WithinAbs (0.5, 1.0e-6));
+    CHECK_FALSE (harmony.getOpenAfter());
+
+    // Extract MIDI and the resets through the editor.
+    juce::String error;
+    CHECK (editor.extractMidi ({}, Studio::ExtractDestination::newTrack, error) > 0);
+    editor.selectSegments ({});
+    editor.resetSelected (Studio::VariReset::pitch);
+    CHECK_FALSE (studio.getVariAudio ("vocal.wav")->isEdited());
+    CHECK (editor.reanalyse());
 }

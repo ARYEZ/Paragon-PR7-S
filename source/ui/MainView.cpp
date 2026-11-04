@@ -339,6 +339,16 @@ MainView::MainView (pr7s::Studio& studioToUse)
     arrange.onOpenTempoEditor = [this] { if (tempoEditorWindow == nullptr) toggleTempoEditor(); else tempoEditorWindow->toFront (true); };
     transport.onOpenTempoEditor = arrange.onOpenTempoEditor;
     arrange.onEditAudio = [this] (int partId) { openVariAudio (partId); };
+    arrange.onHarmonyVoices = [this] (int partId)
+    {
+        HarmonyVoicesPage::show (studio, partId, arrange, [safe = juce::Component::SafePointer<MainView> (this)] (int firstPart, juce::String error)
+        {
+            if (error.isNotEmpty())
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Generate Harmony Voices", error);
+            else if (safe != nullptr && firstPart > 0)
+                safe->openVariAudio (firstPart);
+        });
+    };
     arrange.onOpenAudioAlignment = [this] { if (alignmentWindow == nullptr) toggleAudioAlignment(); else alignmentWindow->toFront (true); };
     trackList.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
     timeline.onScrollOrZoom = [this]
@@ -2148,6 +2158,8 @@ void MainView::openVariAudio (int partId)
     {
         juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->variAudioWindow = nullptr; });
     };
+    // (0.35.0) After Generate Harmony Voices: the editor on the first voice.
+    window->getEditor().onOpenPart = [safe = juce::Component::SafePointer<MainView> (this)] (int id) { if (safe != nullptr) safe->openVariAudio (id); };
     variAudioWindow = std::move (window);
 }
 

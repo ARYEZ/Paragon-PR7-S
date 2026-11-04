@@ -2,6 +2,46 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.35.0
+
+VariAudio, part two: the rest of the manual's VariAudio, from editing the segments themselves to harmony voices. Also, as you asked, LANES and MON have moved into the Inspector.
+
+**The Inspector: LANES and MON** are in a new row directly beneath RENDER and PRESET. An audio track shows LANES and MON side by side; an instrument track shows LANES across the row. They're no longer on the track rows, and MON has left the M S R W REC row, so it isn't shown twice.
+
+**Editing the segments** (the manual's Segment Editing)
+- **Split:** click the segment's bottom edge where you want it cut, or Alt-click anywhere on it.
+- **Glue:** the small orange controls below a segment's corners glue it to the one before or after. With several neighbouring segments selected, they all become one.
+- **Move a segment's start or end:** hold Alt and drag the control on the lower half of its left or right side. It stops at the next segment; segments never overlap.
+- **Delete** (or Backspace) removes the selected segments, as the manual has it, for breaths and consonants that need no pitch editing.
+- After each of these, the segment's average pitch is found again from its curve. As the manual warns, a changed segment can therefore move in pitch slightly.
+
+**The pitch curve** (SMART CONTROLS: ALL, the manual's Show All Smart Controls)
+- **Tilt:** drag the white triangles above the corners up or down to tilt the start or the end of the curve.
+- **Rotate:** with Alt, the whole curve turns round its anchor.
+- **The anchor:** the pink mark on the top edge, in the middle by default. Drag it to move it; Alt-click it to put it back.
+- **Straighten a range:** the two thin marks on the top edge set where Straighten works. Inside the segment it eases in and out over 20 ms, so the move into the next note stays natural.
+
+**Formants** (FORMANT, from -100 to +100 %, and the F control above a segment): the voice's colour, darker or brighter, with its pitch kept. 100 % moves the formants by 12 semitones; that scale is our choice.
+
+**Timing** (Warp Start and Warp End): drag the control on the lower half of a segment's side to move its start or end in time. The segment and the one beside it stretch to fit, using warp markers on the clip, as the manual has it.
+
+**The Functions menu**
+- **Extract MIDI:** a note per segment at its pitch now. Pitchbend: none, one per segment, or following the curve, with a range of 1 to 24 to set on your instrument. Loudness: one velocity, each segment's own, or a controller curve (CC 7 unless you choose another). It goes onto the first selected instrument track, replacing that track's earlier extraction from the same clip, or onto a new track.
+- **Generate Harmony Voices:** up to four new tracks named Soprano, Alto, Tenor and Bass. Each has its own copy of the clip and of its recording, so their edits stay their own. With chords on the chord track, the voices follow the chord at each note. Without, they're 3 semitones up and 3, 6 and 9 down, as the manual has it. They're also offered in an audio clip's menu.
+- **Resets** for pitch, curve, formant, volume, warp, or all of them, on the selected segments or every one; and **Reanalyze Audio**.
+
+**MIDI INPUT** (and STEP): play a key, and the selected segment moves to that note. With several selected, the rest move as far. With STEP, the next segment is then selected. The range is E0 to C5, as the manual gives.
+
+**Display:** a **MIDI reference track**, whose notes show as lines to sing against (saved with the song), and the segment **colours**: Auto, the track's own colour, by pitch, or by whether each note fits the scale. All are in the family's colours.
+
+**The panel** scrolls when the window is short, because it has grown.
+
+**Honestly:**
+- I can't hear the formant shifts or the harmony voices here. The tests check that the pitch is kept, that the sound changes where it should, and that each voice is heard at its note. Whether a formant shift sounds natural on your voice is for your ears.
+- The harmony voicing over chords follows our own rules: the chord's next note at least a whole step above, the ones below, the chord's bass underneath.
+- Not done: Note Expression extraction, the Project Clipboard as an extraction target, and a separate Show Default / Show All per segment.
+- Fixed in passing: a VariAudio segment's times now come back from a saved song exactly. They came back a hair off before, too little to hear.
+
 ## 0.34.5
 
 **Multi-core audio.** Until now every track, instrument and effect was processed one after another on a single core of your processor, however many it has. Now tracks are processed side by side on all of them, the way Cubase does it. Heavy instruments and effects (Kontakt, Superior Drummer, amp sims) get far more room before the CPU meter fills up and the sound breaks up.

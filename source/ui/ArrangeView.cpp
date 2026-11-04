@@ -2463,6 +2463,7 @@ void ArrangeView::showPartMenu (int trackId, int index)
             menu.addSubMenu ("Hitpoints and Warp", warp);
             menu.addItem (23, "Audio Alignment...");   // (0.33.0)
             menu.addItem (24, "VariAudio... (pitch: double-click the clip)");   // (0.34.0)
+            menu.addItem (25, "Generate Harmony Voices...");                     // (0.35.0)
         }
     }
     menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, index, ids, muted = part.muted, start = part.start, end = part.end(), partId = part.id] (int chosen)
@@ -2500,6 +2501,12 @@ void ArrangeView::showPartMenu (int trackId, int index)
         {
             if (onEditAudio)
                 onEditAudio (partId);
+            return;
+        }
+        if (chosen == 25)
+        {
+            if (onHarmonyVoices)
+                onHarmonyVoices (partId);
             return;
         }
         if (chosen == 23)

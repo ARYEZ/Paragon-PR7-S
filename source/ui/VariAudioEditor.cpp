@@ -138,6 +138,7 @@ VariAudioEditor::VariAudioEditor (pr7s::Studio& s, int part) : studio (s), partI
         slider.setTextValueSuffix (suffix);
         slider.setColour (juce::Slider::trackColourId, ParagonColours::accent.withAlpha (0.6f));
         slider.setColour (juce::Slider::textBoxTextColourId, ParagonColours::text);
+        slider.setColour (juce::Slider::backgroundColourId, juce::Colour (0xff151217));   // (pearl onyx: JUCE's own is blue-grey)
         panel.addAndMakeVisible (slider);
         slider.onDragStart = [this] { base = segments(); working = base; gesture = Gesture::slider; };
         slider.onValueChange = [this, &slider, edit]
@@ -162,6 +163,7 @@ VariAudioEditor::VariAudioEditor (pr7s::Studio& s, int part) : studio (s), partI
     setUp (volume, -24.0, 12.0, " dB", [] (VariSegment& seg, const VariSegment&, double v) { seg.volumeDb = (float) v; });
     setUp (formant, -100.0, 100.0, " %", [] (VariSegment& seg, const VariSegment&, double v) { seg.formant = (float) v; });
     formant.setTooltip ("Shift Formant: the voice's colour moved (darker below 0, brighter above), its pitch kept");
+    formant.getProperties().set (ParagonLookAndFeel::barFromCentreProperty, true);   // (filled from 0, as the pan)
     correct.setTooltip ("Correct Pitch: the selected segments that far to the nearest semitone");
     straighten.setTooltip ("Straighten Curve: the wobble around each segment's pitch flattened (vibrato, drifts)");
     volume.setTooltip ("The selected segments' level");
