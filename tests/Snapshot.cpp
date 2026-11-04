@@ -228,6 +228,14 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
                                                          { 24.0, { 10, CT::major, CX::seven, -1 } }, { 28.0, { 3, CT::major, CX::none, -1 } } };
         for (const auto& [beat, chord] : chords)
             studio.addChordEvent (beat, chord);
+        // (0.44.0) PARAGON_SNAPSHOT_PERFORM=1: the chord track recording, the lead performing a pattern.
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_PERFORM", {}).isNotEmpty())
+        {
+            studio.setChordTrackRecord (true);
+            for (const auto& t : studio.getProject().tracks)
+                if (t.name == "Lead")
+                    studio.setPerformPattern (t.id, "Up and down");
+        }
     }
     // PARAGON_SNAPSHOT_FOLLOW=1 (0.36.0, with PARAGON_SNAPSHOT_CHORDS): the lead follows the chord track
     // (Chords & Scales, from the chords as they were), then two chords change: Eb -> Fm, Bb7 -> Cm7;
@@ -781,6 +789,7 @@ TEST_CASE ("Snapshot: a question box", "[.][snapshot-alert]")
 #include "ui/LinesPage.h"
 #include "ui/ProgressionsPage.h"
 #include "ui/EqEditor.h"
+#include "ui/PadsRemotePage.h"
 
 TEST_CASE ("Snapshot: the IDEAS window (PARAGON_SNAPSHOT_IDEAS=piano|guitar|bass|patterns)", "[.][snapshot-lines]")
 {
@@ -1400,6 +1409,30 @@ TEST_CASE ("Snapshot: the channel EQ (0.43.0; PARAGON_SNAPSHOT_EQ=inspector for 
             editor.setSize (EqEditor::width, EqEditor::height);
             image = editor.createComponentSnapshot (editor.getLocalBounds(), true, 1.0f);
         }
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+TEST_CASE ("Snapshot: the chord pads' REMOTE page (0.44.0; PARAGON_SNAPSHOT_REMOTE=learn: a box learning)", "[.][snapshot-remote]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "remote.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        auto pads = studio.getChordPads();
+        pads.sectionsMode = true;
+        pads.modifiersOn = true;
+        studio.setChordPads (pads);
+        PadsRemotePage page (studio);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_REMOTE", {}) == "learn")
+            page.learn (pr7s::Studio::PadLearn::section, 2);
+        const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };
         juce::PNGImageFormat().writeImageToStream (image, out);

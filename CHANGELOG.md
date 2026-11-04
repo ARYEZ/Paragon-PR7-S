@@ -2,6 +2,43 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.44.0
+
+**The chord tool, round two** (you chose it). Five parts, from the manual's chord pads and chord track chapters:
+
+**Recording chords onto the chord track.** The chord track's row has a **REC** key (Record Enable). While you record:
+- **Pads:** each pad you press becomes a chord event at that beat.
+- **Your keyboard:** with no pads pressed, each chord you play becomes one. Three or more different notes starting together count; single notes and two-note intervals don't.
+- **Placement:** on the grid when SNAP is on. What was on the chord track where you recorded is replaced.
+- **What's needed:** as the manual says, an instrument track armed or monitoring, so your keys get through.
+
+**Sections mode for the pads** (MODE > Sections, or REMOTE). A pad's key picks the chord; the **section keys** play its notes one at a time.
+- **Section keys:** C0 to E0 at first. Section 1 plays the lowest note (the bass), section 2 the next up, and so on.
+- **Subsection keys:** F0 to A0 at first. They play the same notes an octave up. That's our reading of the manual's "transposed by an offset".
+
+**REMOTE opens the pads' remote settings,** as the manual's Chord Pads Remote Settings. Click a box, then press the key on your MIDI keyboard (MIDI Learn):
+- **The pads' range:** press the first key, then the last.
+- **Latch Chords.**
+- **Sections mode and the ten section keys.**
+- **The chord modifiers:** next and previous voicing, more and fewer tensions, transpose up and down. ACTIVATE turns them on. They change the last pad you played and play it, so you hear the change.
+  - Their keys are C2 to F2 at first, our choice. They're off until you activate them, so they don't take any of your playing keys.
+
+**Your own patterns.** Right-click a MIDI part > **Make a Pattern from This Part**.
+- **How it reads the part:** each different note becomes a voice, counted from the lowest. The lowest is the bass when it sits a fifth or more under the rest.
+- **Where it appears:** under **MY PATTERNS** in IDEAS' PATTERNS tab, the pads' PERFORM, and the Inspector's PERFORM. Your patterns are kept between sessions.
+
+**A track performing the chord track.** In the Inspector's CHORDS section, **PERFORM** picks a pattern. The instrument track then plays it over the chord track's chords as the song plays, beside its own parts.
+- **Live:** change a chord and the performance follows.
+- **Undo:** each choice is an undo step, and it's saved with the song.
+
+**Also:** the EQ window's Pre gain bar now reads "GAIN +0.0 dB" from the start (it read "0.0" in 0.43.0).
+
+**Not yet:**
+- choosing which MIDI input the pads listen to (they take all);
+- velocity from the pattern or from your keyboard;
+- several players on several tracks;
+- the pads' modifiers for all pads at once (pitchbend or controller).
+
 ## 0.43.0
 
 **The channel EQ** (you chose it: "EQ later", now). Every channel has a built-in EQ and Pre section, as the manual's channel does: tracks, FX and group channels, and the master. No plug-in is needed.
