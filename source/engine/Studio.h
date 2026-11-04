@@ -13,6 +13,7 @@
 #include "Patterns.h"
 #include "Progressions.h"
 #include "Melody.h"
+#include "ChordDetect.h"
 #include "MediaBay.h"
 
 #include <optional>
@@ -308,6 +309,16 @@ namespace pr7s
         int chordsToMidi (int trackId, std::vector<int> indices = {});
         // The chords heard in these parts onto the chord track (replacing those over their span).
         int chordsFromParts (const std::vector<int>& partIds, double step = 1.0);
+        // Chord detection (0.42.0): the chords of these parts, MIDI and audio together (each
+        // source weighed alike), from the step grid at or before the first part's start.
+        std::vector<ChordEvent> detectChords (const std::vector<int>& partIds, const DetectSettings&);
+        // ... onto the chord track (what was over the parts' span replaced; one undo step) or the
+        // pads (each chord once, in order, from the first unlocked pad). How many chords.
+        int detectChordsToTrack (const std::vector<int>& partIds, const DetectSettings&);
+        int detectChordsToPads (const std::vector<int>& partIds, const DetectSettings&);
+        // The settings last used (settings key "chordDetect").
+        DetectSettings getDetectSettings() const;
+        void setDetectSettings (const DetectSettings&);
         // The manual's Assign from Chord Track: its chords, each once, onto the pads in order.
         void assignPadsFromChordTrack();
 
@@ -1177,6 +1188,7 @@ namespace pr7s
         bool mirroring = false;
         juce::StringArray progressionFavorites;   // (without a settings file)
         MelodySettings melodySettings;   // (without a settings file)
+        DetectSettings detectSettings;
         juce::String guitarTuning;   // (without a settings file: the tests)
         GuitarVelocities guitarVelocities;
         float ideasHumanize = 0.0f, humanizeAmount = 0.5f;   // (without a settings file: the tests)

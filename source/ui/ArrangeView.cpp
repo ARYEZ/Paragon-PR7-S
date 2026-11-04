@@ -2430,7 +2430,21 @@ void ArrangeView::showPartMenu (int trackId, int index)
     menu.addItem (7, "Render in Place...");
     menu.addItem (8, "Render in Place (as last time)");
     menu.addSeparator();
-    menu.addItem (12, "Create Chord Events (the chords it plays, onto the chord track)", ! isAudioTrack (trackId));
+    {
+        // Detect Chords (0.42.0): from MIDI or audio, onto the chord track or the pads.
+        const auto detect = studio.getDetectSettings();
+        juce::PopupMenu chords;
+        chords.addItem (120, several ? "Onto the Chord Track (from these parts)" : "Onto the Chord Track");
+        chords.addItem (121, "Onto the Chord Pads (each chord once)");
+        chords.addSeparator();
+        chords.addSectionHeader ("A CHORD AT MOST EVERY");
+        chords.addItem (122, "Beat", true, detect.stepBeats == 1.0);
+        chords.addItem (123, "Half Bar", true, detect.stepBeats == studio.getProject().beatsPerBar() / 2.0);
+        chords.addItem (124, "Bar", true, detect.stepBeats == studio.getProject().beatsPerBar());
+        chords.addSeparator();
+        chords.addItem (125, "Plain Chords Only (major, minor)", true, detect.plainOnly);
+        menu.addSubMenu (isAudioTrack (trackId) ? "Detect Chords (from the audio: a best guess)" : "Detect Chords", chords);
+    }
     {
         // (0.36.0) The manual's Map to Chord Track: the notes written moved onto the chord track's chords.
         juce::PopupMenu map;
@@ -2556,9 +2570,25 @@ void ArrangeView::showPartMenu (int trackId, int index)
             studio.mergeMidiInLoop (tracks);
             return;
         }
-        if (chosen == 12)
+        if (chosen >= 120 && chosen <= 125)
         {
-            studio.chordsFromParts (ids.empty() ? std::vector<int> { partId } : ids);
+            auto detect = studio.getDetectSettings();
+            const auto bar = studio.getProject().beatsPerBar();
+            const auto chosenIds = ids.empty() ? std::vector<int> { partId } : ids;
+            switch (chosen)
+            {
+                case 120:
+                    if (studio.detectChordsToTrack (chosenIds, detect) == 0)
+                        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "No chords found",
+                                                                "Nothing in it read as a chord: it needs at least two notes sounding together (or close together).");
+                    break;
+                case 121: studio.detectChordsToPads (chosenIds, detect); break;
+                case 122: detect.stepBeats = 1.0; studio.setDetectSettings (detect); break;
+                case 123: detect.stepBeats = bar / 2.0; studio.setDetectSettings (detect); break;
+                case 124: detect.stepBeats = bar; studio.setDetectSettings (detect); break;
+                case 125: detect.plainOnly = ! detect.plainOnly; studio.setDetectSettings (detect); break;
+                default: break;
+            }
             return;
         }
         if ((chosen == 7 || chosen == 8) && onRenderInPlace)

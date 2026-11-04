@@ -8346,6 +8346,106 @@ namespace pr7s
         return (int) found.size();
     }
 
+    std::vector<ChordEvent> Studio::detectChords (const std::vector<int>& partIds, const DetectSettings& settings)
+    {
+        const auto step = juce::jmax (0.25, settings.stepBeats);
+        const auto tempo = project.tempoMap();
+        std::vector<const Part*> parts;
+        auto from = std::numeric_limits<double>::max(), to = 0.0;
+        for (const auto id : partIds)
+            if (const auto at = findPart (id))
+            {
+                const auto& part = project.findTrack (at->first)->parts[(size_t) at->second];
+                parts.push_back (&part);
+                from = juce::jmin (from, part.start);
+                to = juce::jmax (to, part.end());
+            }
+        if (parts.empty() || to <= from)
+            return {};
+        // The grid from the step at or before the first start (bars' starts when the step is a bar).
+        from = std::floor (from / step + 1.0e-9) * step;
+        const auto count = (size_t) std::ceil ((to - from) / step - 1.0e-9);
+        std::vector<ChromaStep> steps (count);
+        const auto addIn = [&steps] (const std::vector<ChromaStep>& more)
+        {
+            // Each source's steps weighed alike: scaled so its strongest pitch class is 1.
+            for (size_t i = 0; i < steps.size() && i < more.size(); ++i)
+            {
+                const auto top = *std::max_element (more[i].weight.begin(), more[i].weight.end());
+                const auto bassTop = *std::max_element (more[i].bass.begin(), more[i].bass.end());
+                for (size_t p = 0; p < 12; ++p)
+                {
+                    steps[i].weight[p] += top > 0.0 ? more[i].weight[p] / top : 0.0;
+                    steps[i].bass[p] += bassTop > 0.0 ? more[i].bass[p] / bassTop : 0.0;
+                }
+            }
+        };
+        std::vector<HeardNote> notes;
+        for (const auto* part : parts)
+        {
+            if (part->isAudio())
+            {
+                auto rate = 0.0;
+                const auto start = tempo.secondsAt (part->start), end = tempo.secondsAt (part->end());
+                const auto sound = clipMono (*part, start, end, rate);
+                if (! sound.empty() && rate > 0.0)
+                    addIn (chromaFromAudio (sound.data(), (int) sound.size(), rate, part->start, tempo, from, from + step * (double) count, step));
+            }
+            else
+                for (const auto& n : part->notes)
+                    if (n.start < part->length && ! part->muted)
+                        notes.push_back ({ part->start + n.start, part->start + juce::jmin (n.start + n.length, part->length), n.pitch, n.velocity });
+        }
+        if (! notes.empty())
+            addIn (chromaFromNotes (notes, from, from + step * (double) count, step));
+        return chordsFromChroma (steps, from, step, settings);
+    }
+
+    int Studio::detectChordsToTrack (const std::vector<int>& partIds, const DetectSettings& settings)
+    {
+        setDetectSettings (settings);
+        const auto found = detectChords (partIds, settings);
+        if (found.empty())
+            return 0;
+        auto from = found.front().beat, to = 0.0;
+        for (const auto id : partIds)
+            if (const auto at = findPart (id))
+                to = juce::jmax (to, project.findTrack (at->first)->parts[(size_t) at->second].end());
+        auto events = project.chordTrack.events;
+        events.erase (std::remove_if (events.begin(), events.end(), [from, to] (const ChordEvent& e) { return e.beat >= from - 1.0e-9 && e.beat < to - 1.0e-9; }),
+                      events.end());
+        events.insert (events.end(), found.begin(), found.end());
+        std::sort (events.begin(), events.end(), [] (const ChordEvent& a, const ChordEvent& b) { return a.beat < b.beat; });
+        project.chordTrack.events = std::move (events);
+        project.chordTrack.shown = true;
+        chordTrackChanged();
+        return (int) found.size();
+    }
+
+    int Studio::detectChordsToPads (const std::vector<int>& partIds, const DetectSettings& settings)
+    {
+        setDetectSettings (settings);
+        std::vector<Chord> chords;
+        for (const auto& e : detectChords (partIds, settings))
+            if (std::find (chords.begin(), chords.end(), e.chord) == chords.end())
+                chords.push_back (e.chord);
+        return chords.empty() ? 0 : assignProgressionToPads (chords, 0);
+    }
+
+    DetectSettings Studio::getDetectSettings() const
+    {
+        if (settings != nullptr && settings->containsKey ("chordDetect"))
+            return DetectSettings::fromString (settings->getValue ("chordDetect"));
+        return detectSettings;
+    }
+
+    void Studio::setDetectSettings (const DetectSettings& d)
+    {
+        detectSettings = d;
+        if (settings != nullptr)
+            settings->setValue ("chordDetect", d.toString());
+    }
+
     void Studio::assignPadsFromChordTrack()
     {
         // In the chord track's order, each chord once; pads beyond them left without (locked ones kept).

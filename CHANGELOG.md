@@ -2,6 +2,27 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.42.0
+
+**Chord detection** (you asked, as your chord tool has: chords read from MIDI and from audio). Right-click a part (MIDI or audio, one or several selected) > **Detect Chords**:
+- **Onto the Chord Track:** the chords it plays, from the part's start. What was on the chord track over those parts is replaced, as one undo step.
+- **Onto the Chord Pads:** each chord once, in order (locked pads are skipped).
+- **A chord at most every Beat / Half Bar / Bar:** how often a chord may change.
+- **Plain Chords Only (major, minor):** on at first. Turn it off to get sevenths, sus chords and the rest.
+
+**How it reads:** in each beat, half bar or bar, it measures how strongly each of the twelve notes sounds and which note is lowest. Every chord is scored against that: its notes heard, notes outside it, its root in the bass.
+- **No flicker from melody notes:** a last pass changes the chord only where the notes clearly say so. Before, a melody note passing through could switch the chord for a beat.
+- **Inversions:** when the lowest note is another note of the chord, it's written as one (C/E).
+- **Silence:** carries the chord before it on.
+
+**From audio:** the sound is split into how strong each of the twelve notes is, beat by beat, following your tempo track.
+- **Overtones:** each note's overtones are partly taken out, so a C doesn't also read as G and E, and a minor chord doesn't turn major.
+- **The bass:** read from 40 to 260 Hz.
+- **What it's good at:** clear chordal parts, like a guitar or a piano, read well (in the tests, a played C Am F G comes back exactly at 120 and at 90 BPM).
+- **What it's not:** a full mix with vocals and drums is a best guess, and tuning far from A = 440 isn't handled. That's why the menu says "a best guess" on audio tracks.
+
+**The MIDI editor's info line names the chord** of the selected notes (CHORD Am7, beside VELOCITY), in the key of the chord track there.
+
 ## 0.41.0
 
 **Better melodies** (you asked, as your chord tool has: melodies you can shape). IDEAS has a new **MELODY** tab: six melodies composed for your chord track's chords, each in a different form. The way they're composed and the form names are our own.

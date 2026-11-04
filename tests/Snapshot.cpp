@@ -1333,3 +1333,33 @@ TEST_CASE ("Snapshot: the Follow Chord Track dialog", "[.][snapshot-follow-dialo
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
+
+TEST_CASE ("Snapshot: the MIDI editor's info line naming the selected notes' chord (0.42.0)", "[.][snapshot-chordinfo]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "chordinfo.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        MainView view (studio);
+        view.setSize (1500, 900);
+        const auto trackId = studio.getProject().tracks[0].id;
+        // Am7 with A in the bass, then F, G.
+        studio.addPart (trackId, { 0.0, 8.0, "Keys", { { 0.0, 2.0, 45, 0.8f }, { 0.0, 2.0, 60, 0.7f }, { 0.0, 2.0, 64, 0.7f }, { 0.0, 2.0, 67, 0.7f },
+                                                      { 2.0, 2.0, 41, 0.8f }, { 2.0, 2.0, 60, 0.7f }, { 2.0, 2.0, 65, 0.7f }, { 2.0, 2.0, 69, 0.7f } } });
+        studio.dispatchPendingMessages();
+        view.getArrangeView().select (trackId, 0);
+        view.openKeyEditor();
+        studio.dispatchPendingMessages();
+        view.setKeyEditorSize (100);
+        auto& editor = view.getKeyEditor();
+        editor.selectNotes ({ 0, 1, 2, 3 });
+        const auto image = view.createComponentSnapshot (view.getLocalArea (&view.getKeyEditorFrame(), view.getKeyEditorFrame().getLocalBounds()), true, 1.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}

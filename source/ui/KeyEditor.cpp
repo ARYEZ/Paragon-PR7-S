@@ -3,6 +3,8 @@
 #include "ui/ParagonLookAndFeel.h"
 #include "ui/ToolIcons.h"
 #include "ui/TempoEditor.h"
+#include "ui/ChordUi.h"
+#include "engine/ChordDetect.h"
 #include "engine/Controllers.h"
 
 #include <limits>
@@ -2313,6 +2315,17 @@ juce::String KeyEditor::getInfoField (const juce::String& name) const
     if (name == "LENGTH")   return lengthText (n.length, project);
     if (name == "PITCH")    return pr7s::noteName (n.pitch);
     if (name == "VELOCITY") return juce::String (juce::roundToInt (n.velocity * 127.0f));
+    if (name == "CHORD")
+    {
+        // (0.42.0) The chord the selected notes make together, named in the key there.
+        std::vector<int> pitches;
+        for (const auto i : selected)
+            if (juce::isPositiveAndBelow (i, (int) notes().size()))
+                pitches.push_back (notes()[(size_t) i].pitch);
+        if (const auto chord = pr7s::chordOfNotes (pitches))
+            return chord->name (studio.chordTrackKeyAt (part->start + n.start));
+        return {};
+    }
     return {};
 }
 
@@ -2322,9 +2335,11 @@ std::vector<std::pair<juce::String, juce::Rectangle<float>>> KeyEditor::infoArea
     std::vector<std::pair<juce::String, juce::Rectangle<float>>> areas;
     const juce::Font labelFont (font (10.5f, juce::Font::plain)), valueFont (font (13.0f));
     auto x = (float) sideWidth + 8.0f;
-    for (const auto* name : { "START", "END", "LENGTH", "PITCH", "VELOCITY" })
+    for (const auto* name : { "START", "END", "LENGTH", "PITCH", "VELOCITY", "CHORD" })
     {
         const auto value = getInfoField (name);
+        if (juce::String (name) == "CHORD" && value.isEmpty())
+            continue;   // (only when the selection makes one)
         const auto width = juce::GlyphArrangement::getStringWidth (labelFont, name) + 6.0f
                          + juce::jmax (36.0f, juce::GlyphArrangement::getStringWidth (valueFont, value.isEmpty() ? "0.0.0.0" : value)) + 22.0f;
         areas.push_back ({ name, { x, 0.0f, width, (float) infoHeight } });
@@ -2361,7 +2376,7 @@ void KeyEditor::paintInfoLine (juce::Graphics& g)
         if (name != infoEditing || infoEditor == nullptr)
         {
             g.setColour (valueColour);
-            g.setFont (font (13.0f));
+            g.setFont (name == "CHORD" ? ChordUi::chordFont (13.0f) : font (13.0f));   // (chord names in Inter: "Dm", not "DM")
             g.drawText (getInfoField (name), a.reduced (2.0f, 0.0f), juce::Justification::centredLeft, false);
         }
         g.setColour (ParagonColours::panelEdge);
@@ -2380,6 +2395,8 @@ void KeyEditor::paintInfoLine (juce::Graphics& g)
 
 void KeyEditor::beginInfoEdit (const juce::String& field)
 {
+    if (field == "CHORD")
+        return;   // (shown, not typed)
     infoEditing = field;
     infoEditor = std::make_unique<juce::TextEditor>();
     infoEditor->setFont (font (13.0f));

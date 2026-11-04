@@ -275,7 +275,7 @@ public:
     // Ctrl held as Enter goes in: all set to it (the manual's Value Editing Rules on the Info Line).
     static constexpr int infoHeight = 26;
     float notesTop() const noexcept { return (float) (infoHeight + rulerHeight); }
-    juce::String getInfoField (const juce::String& name) const;   // "START", "END", "LENGTH", "PITCH", "VELOCITY"; "" with none selected
+    juce::String getInfoField (const juce::String& name) const;   // "START", "END", "LENGTH", "PITCH", "VELOCITY", "CHORD" (0.42.0: the selection's chord); "" with none selected
     bool enterInfo (const juce::String& field, const juce::String& text, bool absolute);   // false: not a value it takes
     static std::optional<int> parseNoteName (const juce::String&);   // "D#-1", "Eb3", "c4", or a MIDI number (middle C = C3)
     static juce::String lengthText (double beats, const pr7s::Project&);   // bars.beats.16ths.ticks, from 0 ("0.1.0.0")
