@@ -2,6 +2,10 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.36.1
+
+**Longer track names in the track list** (you asked): a name now runs right up to the level meter. The row kept a 180-pixel strip on the right from when MON and LANES sat there. They moved to the Inspector in 0.35.0, but the strip stayed, so names were cut short with "..." while the space beside them stood empty. The strip is now exactly as wide as the meter and the volume knob, and the name takes the rest.
+
 ## 0.36.0
 
 Follow Chord Track: a MIDI track's notes follow the chord track. Change a chord and the part plays along with the new one, without being played again.

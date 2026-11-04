@@ -231,7 +231,10 @@ public:
         levelArea = {};
         auto area = getLocalBounds().withTrimmedLeft (12).reduced (6, compact ? juce::jmax (2, (getHeight() - 24) / 2) : 7);
         // On the right, level with the name: MON (an audio track's), the level, the volume.
-        auto right = area.removeFromRight (compact ? 32 : 180).withSizeKeepingCentre (compact ? 32 : 180, 24);
+        // (0.36.1, the owner asked: the name runs up to the meter. The strip is only as wide as what's
+        // in it: the level 44 + 4 + the volume 28; it was 180, kept from when MON and LANES sat there.)
+        const auto rightWidth = compact ? 32 : 76;
+        auto right = area.removeFromRight (rightWidth).withSizeKeepingCentre (rightWidth, 24);
         area.removeFromRight (6);
         volume.setVisible (true);
         volume.setBounds (right.removeFromRight (28));
