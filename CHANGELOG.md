@@ -2,6 +2,30 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.40.0
+
+**The progression library** (you asked, as your chord tool has: progressions by genre and mood). A new PROGRESSIONS window holds 157 chord progressions in 14 genres and 10 moods. The progressions, their names, and how they're sorted are our own.
+- **Genres:** pop, rock, metal (18, mostly minor, Phrygian and harmonic minor, for your 7-strings), blues, jazz, R&B & soul, gospel & worship, EDM, hip-hop & trap, lo-fi, film & game, folk & country, Latin, classical.
+- **Moods:** happy, sad, uplifting, epic, dark, tense, dreamy, chill, romantic, nostalgic. A progression can have two.
+- **Where to open it:** the PROGRESSIONS key on the chord pads (beside IDEAS), the chord track's right-click menu ("Progression Library..."), or a key command (Window > Progression Library) you can put on your Stream Deck.
+
+**In any key:** pick the key at the top (it starts in your song's key; FROM THE SONG goes back to it). Every progression is spelled in that key, with its numerals under the chords.
+- **The other mode's progressions:** a major progression in A minor is played in C major, and a minor one in D major is played in B minor. Every chord stays in the key's notes. KEY'S MODE ONLY hides these.
+- **Chords written with a flat or sharp keep it:** the "Tritone dread" in A minor is Am Bb Eb Am, not D#.
+- **Chord lengths:** a chord can last two bars or half a bar, and its box is drawn as wide as it lasts.
+
+**Each row:**
+- **HEAR:** plays it at the song's tempo, with the chord that's sounding lit.
+- **TO TRACK:** puts it on the chord track from the playhead's bar (one undo step).
+- **TO PADS:** puts it on the chord pads (locked pads are skipped).
+- **IDEAS:** puts it on the chord track, then opens IDEAS (piano, guitar, bass and patterns) for it.
+- **The mouse:** click the chords to hear it, double-click to put it on the chord track, or drag it onto the chord track's lane to drop it at that bar. Right-click for all of these.
+- **The star:** marks a favourite. FAVORITES shows only those.
+
+**Finding one:** pick a genre and a mood at the left (each shows how many it holds), and search by name, genre, mood, a chord ("Bb") or a numeral ("bVII").
+
+**The chord pads' second row of keys fits on one screen:** when the pads sit beside the Inspector on a single screen, the keys now shrink to fit. Before, IDEAS ran off the right edge (and the new PROGRESSIONS key would have too). On your three screens they keep their full size.
+
 ## 0.39.0
 
 **Performances** (you asked, as the chord tool you use has them): rhythm and arpeggio patterns that play any chords. There are 24 of them in four groups. The patterns and their names are our own design.

@@ -4174,7 +4174,7 @@ void ArrangeView::showTempoMenu()
 bool ArrangeView::isInterestedInDragSource (const SourceDetails& details)
 {
     const auto d = details.description.toString();
-    return d.startsWith ("chordpad:") || d.startsWith ("chord:");
+    return d.startsWith ("chordpad:") || d.startsWith ("chord:") || d.startsWith ("progression:");
 }
 
 void ArrangeView::itemDropped (const SourceDetails& details)
@@ -4185,6 +4185,12 @@ void ArrangeView::itemDropped (const SourceDetails& details)
     // Onto the chord track: a chord event at the bar (a pad's chord, or the circle's).
     if (const auto row = rowAt (at.y); row && row->kind == Timeline::Row::Kind::chords)
     {
+        // A progression from the library (0.40.0): from the bar dropped on.
+        if (d.startsWith ("progression:"))
+        {
+            studio.addProgressionToChordTrack (pr7s::progressionFromText (d.fromFirstOccurrenceOf ("progression:", false, false)), beat);
+            return;
+        }
         std::optional<pr7s::Chord> chord;
         if (d.startsWith ("chordpad:"))
         {
@@ -4489,6 +4495,7 @@ void ArrangeView::showChordMenu (double beat, int index)
     menu.addItem (5, "Chords to MIDI (all, onto the selected track)", ! track.events.empty());
     menu.addItem (6, "Assign the Chords to the Pads", ! track.events.empty());
     menu.addItem (9, chordSelection.size() > 1 ? "Piano, Guitar and Bass Ideas (for these)..." : "Piano, Guitar and Bass Ideas...", ! track.events.empty());
+    menu.addItem (11, "Progression Library...");
     menu.addItem (7, "Scales Follow the Chords", true, track.autoScales);
     menu.addSeparator();
     menu.addItem (8, "Remove the Chord Track (its chords kept)");
@@ -4509,6 +4516,7 @@ void ArrangeView::showChordMenu (double beat, int index)
             case 6: studio.assignPadsFromChordTrack(); if (safe->onChordsToPads) safe->onChordsToPads(); return;
             case 7: studio.setAutoScales (! studio.getChordTrack().autoScales); return;
             case 8: studio.removeChordTrack(); return;
+            case 11: if (safe->onProgressions) safe->onProgressions(); return;
             case 9: if (safe->onLineIdeas) safe->onLineIdeas (safe->chordSelection.size() > 1 ? safe->chordSelection : std::vector<int> {}); return;
             case 10:
             {

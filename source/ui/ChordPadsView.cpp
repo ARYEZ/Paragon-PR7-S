@@ -753,6 +753,10 @@ ChordPadsView::ChordPadsView (pr7s::Studio& s) : studio (s)
                          "power chords, chugs, leads, piano parts, bass lines; hear them and put one on a track");
     ideasKey.onClick = [this] { if (onLineIdeas) onLineIdeas ({}); };
     addAndMakeVisible (ideasKey);
+    styleKey (progressionsKey);
+    progressionsKey.setTooltip ("The progression library: progressions by genre and mood, heard in the key, onto the pads or the chord track");
+    progressionsKey.onClick = [this] { if (onProgressions) onProgressions(); };
+    addAndMakeVisible (progressionsKey);
     windowKey.onClick = [this] { if (onWindowToggle) onWindowToggle(); };
     closeKey.onClick = [this] { if (onClose) onClose(); };
 
@@ -1662,27 +1666,28 @@ void ChordPadsView::resized()
     place (editorKey, 70);
     place (circleKey, 116);
 
+    // The second row: when it's narrower than the keys want (the pads beside the Inspector on one
+    // screen), every key and gap shrinks in proportion, so none runs off the edge (0.40.0).
     auto e = extendedBar.reduced (6, 4);
-    const auto placeE = [&e] (juce::TextButton& key, int width, int gap = 4)
+    const std::vector<std::tuple<juce::TextButton*, int, int>> second {
+        { &selectAllKey, 84, 10 }, { &editKey, 86, 4 }, { &fromMidiKey, 84, 4 }, { &removeKey, 74, 10 },
+        { &transposeDown, 96, 2 }, { &transposeUp, 28, 8 }, { &tensionsDown, 90, 2 }, { &tensionsUp, 28, 8 },
+        { &voicingPrevious, 84, 2 }, { &voicingNext, 28, 10 }, { &lockKey, 56, 4 }, { &adaptiveKey, 84, 4 },
+        { &referenceKey, 90, 10 }, { &fromChordTrackKey, 132, 10 },
+        { &ideasKey, 70, 4 },   // (0.20.2: beside the other chord track key)
+        { &progressionsKey, 116, 0 } };
+    auto wanted = 0;
+    for (const auto& [key, width, gapAfter] : second)
+        wanted += width + gapAfter;
+    const auto scale = juce::jmin (1.0, (double) e.getWidth() / (double) juce::jmax (1, wanted));
+    auto x = (double) e.getX();
+    for (const auto& [key, width, gapAfter] : second)
     {
-        key.setBounds (e.removeFromLeft (width));
-        e.removeFromLeft (gap);
-    };
-    placeE (selectAllKey, 84, 10);
-    placeE (editKey, 86);
-    placeE (fromMidiKey, 84);
-    placeE (removeKey, 74, 10);
-    placeE (transposeDown, 96, 2);
-    placeE (transposeUp, 28, 8);
-    placeE (tensionsDown, 90, 2);
-    placeE (tensionsUp, 28, 8);
-    placeE (voicingPrevious, 84, 2);
-    placeE (voicingNext, 28, 10);
-    placeE (lockKey, 56);
-    placeE (adaptiveKey, 84);
-    placeE (referenceKey, 90, 10);
-    placeE (fromChordTrackKey, 132, 10);
-    placeE (ideasKey, 70);   // (0.20.2: beside the other chord track key; the top row is full at 1500 px)
+        const auto left = (int) std::round (x);
+        x += width * scale;
+        key->setBounds (left, e.getY(), (int) std::round (x) - left, e.getHeight());
+        x += gapAfter * scale;
+    }
 }
 
 //==============================================================================

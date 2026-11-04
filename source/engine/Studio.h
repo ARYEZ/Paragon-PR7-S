@@ -11,6 +11,7 @@
 #include "VariAudio.h"
 #include "Lines.h"
 #include "Patterns.h"
+#include "Progressions.h"
 #include "MediaBay.h"
 
 #include <optional>
@@ -241,6 +242,15 @@ namespace pr7s
         // A progression (0.17.2): one chord a bar from `atBeat` (the bar it's in), what was
         // there replaced; the chord track shown. One undo step.
         void addProgressionToChordTrack (const std::vector<Chord>&, double atBeat);
+        // The progression library (0.40.0): its steps (each chord its own bars) from the bar
+        // `atBeat` is in, what was over them replaced; the chord track shown. One undo step.
+        void addProgressionToChordTrack (const std::vector<ProgressionStep>&, double atBeat);
+        // The steps as chord spans from `startBeat` (the bars in the song's bars), in `key`: what
+        // previewLine plays and IDEAS writes under.
+        std::vector<ChordSpan> progressionSpans (const std::vector<ProgressionStep>&, double startBeat, const Key&) const;
+        // The library's favourites by name (settings key "progressionFavorites", a name a line).
+        juce::StringArray getProgressionFavorites() const;
+        void setProgressionFavorite (const juce::String& name, bool);
 
         // Bass and melody ideas (0.18.0, the owner asked). The chords they follow: the chord
         // track's events given (the selection), else those in the cycle when it's on and
@@ -1161,6 +1171,7 @@ namespace pr7s
         void sendGone (Track&, int slot);
         bool linksSuspended = false, linksAbsolute = false, qLink = false;
         bool mirroring = false;
+        juce::StringArray progressionFavorites;   // (without a settings file)
         juce::String guitarTuning;   // (without a settings file: the tests)
         GuitarVelocities guitarVelocities;
         float ideasHumanize = 0.0f, humanizeAmount = 0.5f;   // (without a settings file: the tests)

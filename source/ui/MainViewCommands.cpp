@@ -156,6 +156,7 @@ void MainView::registerCommands()
                     return;
                 }
     });
+    add ("Window.Progressions", "Window", "Progression Library", {}, [this] { openProgressions(); });   // (0.40.0)
     add ("Window.AudioAlignment", "Window", "Open/Close Audio Alignment Panel", {}, [this] { toggleAudioAlignment(); });   // (0.33.0)
     add ("Automation.Touch", "Automation", "Automation Mode: Touch", {}, [this] { studio.setAutomationMode (pr7s::Studio::AutomationSettings::Mode::touch); });
     add ("Automation.AutoLatch", "Automation", "Automation Mode: Auto-Latch", {}, [this] { studio.setAutomationMode (pr7s::Studio::AutomationSettings::Mode::autoLatch); });

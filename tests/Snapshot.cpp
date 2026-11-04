@@ -779,6 +779,7 @@ TEST_CASE ("Snapshot: a question box", "[.][snapshot-alert]")
 #include "ui/LinkGroupPage.h"
 #include "ui/TrackColours.h"
 #include "ui/LinesPage.h"
+#include "ui/ProgressionsPage.h"
 
 TEST_CASE ("Snapshot: the IDEAS window (PARAGON_SNAPSHOT_IDEAS=piano|guitar|bass|patterns)", "[.][snapshot-lines]")
 {
@@ -801,6 +802,33 @@ TEST_CASE ("Snapshot: the IDEAS window (PARAGON_SNAPSHOT_IDEAS=piano|guitar|bass
                    : tab == "patterns" ? LinesPage::Tab::patterns : LinesPage::Tab::guitar);   // (0.39.0: =patterns)
         page.play (tab == "piano" ? pr7s::LineIdea::Part::chords : tab == "bass" ? pr7s::LineIdea::Part::bass
                  : tab == "patterns" ? pr7s::LineIdea::Part::pattern : pr7s::LineIdea::Part::rhythm, 1);
+        const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
+        page.stop();
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+TEST_CASE ("Snapshot: the PROGRESSIONS window (0.40.0; PARAGON_SNAPSHOT_GENRE, PARAGON_SNAPSHOT_KEY)", "[.][snapshot-progressions]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "progressions.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        ProgressionsPage page (studio);
+        page.setSize (1500, 860);
+        const auto keyName = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_KEY", "A minor");
+        for (const auto& k : pr7s::Key::all())
+            if (k.name() == keyName)
+                page.setKey (k);
+        page.setGenre (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_GENRE", "METAL"));
+        studio.setProgressionFavorite (pr7s::progressionLibrary()[(size_t) page.getShown()[0]].name, true);
+        page.hear (page.getShown()[1]);
         const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
         page.stop();
         juce::File (path).deleteFile();

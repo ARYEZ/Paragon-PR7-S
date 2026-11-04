@@ -8101,6 +8101,64 @@ namespace pr7s
         chordTrackChanged();
     }
 
+    void Studio::addProgressionToChordTrack (const std::vector<ProgressionStep>& steps, double atBeat)
+    {
+        if (steps.empty())
+            return;
+        const auto bar = project.beatsPerBar();
+        const auto start = std::floor (juce::jmax (0.0, atBeat) / bar + 1.0e-9) * bar;
+        auto end = start;
+        for (const auto& s : steps)
+            end += s.bars * bar;
+        std::vector<ChordEvent> events;
+        for (const auto& e : project.chordTrack.events)
+            if (e.beat < start - 1.0e-6 || e.beat >= end - 1.0e-6)
+                events.push_back (e);
+        auto beat = start;
+        for (const auto& s : steps)
+        {
+            events.push_back ({ beat, s.chord });
+            beat += s.bars * bar;
+        }
+        std::sort (events.begin(), events.end(), [] (const ChordEvent& a, const ChordEvent& b) { return a.beat < b.beat; });
+        project.chordTrack.shown = true;
+        project.chordTrack.events = std::move (events);
+        chordTrackChanged();
+    }
+
+    std::vector<ChordSpan> Studio::progressionSpans (const std::vector<ProgressionStep>& steps, double startBeat, const Key& key) const
+    {
+        const auto bar = project.beatsPerBar();
+        std::vector<ChordSpan> spans;
+        auto beat = startBeat;
+        for (const auto& s : steps)
+        {
+            spans.push_back ({ beat, beat + s.bars * bar, s.chord, key });
+            beat += s.bars * bar;
+        }
+        return spans;
+    }
+
+    juce::StringArray Studio::getProgressionFavorites() const
+    {
+        if (settings == nullptr)
+            return progressionFavorites;
+        return juce::StringArray::fromLines (settings->getValue ("progressionFavorites"));
+    }
+
+    void Studio::setProgressionFavorite (const juce::String& name, bool on)
+    {
+        auto favorites = getProgressionFavorites();
+        favorites.removeEmptyStrings();
+        if (on)
+            favorites.addIfNotAlreadyThere (name);
+        else
+            favorites.removeString (name);
+        progressionFavorites = favorites;
+        if (settings != nullptr)
+            settings->setValue ("progressionFavorites", favorites.joinIntoString ("\n"));
+    }
+
     int Studio::assignProgressionToPads (const std::vector<Chord>& chords, int firstPad)
     {
         auto pads = project.chordPads;

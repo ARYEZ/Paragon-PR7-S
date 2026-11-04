@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/LinesPage.h"
+#include "ui/ProgressionsPage.h"
 #include "ui/MediaBayPage.h"
 #include "ui/MediaRack.h"
 #include "ui/KeyCommands.h"
@@ -92,6 +93,8 @@ public:
     // BASS & MELODY (0.18.0): ideas for these chord events (none: the cycle's, else all), in a window of its own.
     void openLineIdeas (std::vector<int> chordEvents = {});
     LinesWindow* getLinesWindow() noexcept { return linesWindow.get(); }
+    void openProgressions();   // the progression library (0.40.0): opened, or brought to the front
+    ProgressionsWindow* getProgressionsWindow() noexcept { return progressionsWindow.get(); }
     // The MediaBay (0.21.0): its window (F5 opens and closes it), and a file from it into the
     // song: audio or MIDI on a new track at the playhead, a track preset as a new track, a song
     // opened (after the unsaved-changes question). Its drags land as files dragged from the system do.
@@ -273,6 +276,7 @@ private:
     int trackListScrollY = 0;          // (0.34.1) what the track list was last laid out for
     double trackListRowZoom = 1.0;
     std::unique_ptr<LinesWindow> linesWindow;
+    std::unique_ptr<ProgressionsWindow> progressionsWindow;
     std::unique_ptr<MediaBayWindow> mediaBayWindow;
     std::unique_ptr<MediaRack> mediaRack;
     std::unique_ptr<RightZoneEdge> rightZoneEdge;

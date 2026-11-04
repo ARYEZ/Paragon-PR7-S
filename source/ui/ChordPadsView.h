@@ -34,6 +34,7 @@ public:
 
     std::function<void()> onClose, onWindowToggle;
     std::function<void (std::vector<int> chordEvents)> onLineIdeas;
+    std::function<void()> onProgressions;   // PROGRESSIONS (0.40.0): the library
     juce::TextButton& getIdeasKey() noexcept { return ideasKey; }   // BASS & MELODY (0.18.0): for these chord events (none: the cycle's or all)
     void setInWindow (bool);
     int getMinimumHeight() const noexcept { return toolbarHeight * 2 + 120 + keyboardHeight; }
@@ -129,7 +130,7 @@ private:
     juce::TextButton rootKey, presetsKey { "PRESETS" }, previousPreset { "<" }, nextPreset { ">" }, saveKey { "SAVE" },
                      playerKey { "PLAYER: BASIC" }, modeKey { "PLAIN CHORDS" }, displayKey { "DISPLAY" }, remoteKey { "REMOTE" },
                      editorKey { "EDITOR" }, circleKey { "CIRCLE OF 5THS" }, windowKey { "WINDOW" }, closeKey { "CLOSE" },
-                     ideasKey { "IDEAS" };   // (0.20.2: the IDEAS window from the pads)
+                     ideasKey { "IDEAS" }, progressionsKey { "PROGRESSIONS" };   // (0.20.2: the IDEAS window from the pads)
     juce::TextButton selectAllKey { "SELECT ALL" }, editKey { "EDIT CHORD" }, fromMidiKey { "FROM MIDI" }, removeKey { "REMOVE" },
                      transposeDown { "TRANSPOSE -" }, transposeUp { "+" }, tensionsDown { "TENSIONS -" }, tensionsUp { "+" },
                      voicingPrevious { "VOICING <" }, voicingNext { ">" }, lockKey { "LOCK" }, adaptiveKey { "ADAPTIVE" }, referenceKey { "REFERENCE" },

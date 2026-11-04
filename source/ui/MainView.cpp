@@ -332,6 +332,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
     trackList.onLineIdeas = [this] (std::vector<int> events) { openLineIdeas (std::move (events)); };
     arrange.onLineIdeas = [this] (std::vector<int> events) { openLineIdeas (std::move (events)); };
     chordPads.onLineIdeas = [this] (std::vector<int> events) { openLineIdeas (std::move (events)); };
+    chordPads.onProgressions = [this] { openProgressions(); };
+    arrange.onProgressions = [this] { openProgressions(); };
     // Told of clicks in the work areas, to know where the keys go.
     arrange.addMouseListener (this, true);
     trackList.addMouseListener (this, true);
@@ -2093,6 +2095,20 @@ void MainView::openLineIdeas (std::vector<int> chordEvents)
     linesWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->linesWindow.reset(); }); };
     linesWindow->centreAroundComponent (this, linesWindow->getWidth(), linesWindow->getHeight());
     linesWindow->setVisible (true);
+}
+
+void MainView::openProgressions()
+{
+    if (progressionsWindow != nullptr)
+    {
+        progressionsWindow->toFront (true);
+        return;
+    }
+    progressionsWindow = std::make_unique<ProgressionsWindow> (studio);
+    progressionsWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->progressionsWindow.reset(); }); };
+    progressionsWindow->getPage().onIdeas = [this] (std::vector<int> events) { openLineIdeas (std::move (events)); };
+    progressionsWindow->centreAroundComponent (this, progressionsWindow->getWidth(), progressionsWindow->getHeight());
+    progressionsWindow->setVisible (true);
 }
 
 void MainView::toggleTempoEditor()
