@@ -2318,10 +2318,15 @@ juce::String KeyEditor::getInfoField (const juce::String& name) const
 
 std::vector<std::pair<juce::String, juce::Rectangle<float>>> KeyEditor::infoAreas() const
 {
+    // Each field as wide as its label and value (the editor is drawn at up to 200%: fixed widths ran off).
     std::vector<std::pair<juce::String, juce::Rectangle<float>>> areas;
+    const juce::Font labelFont (font (10.5f, juce::Font::plain)), valueFont (font (13.0f));
     auto x = (float) sideWidth + 8.0f;
-    for (const auto& [name, width] : { std::pair { "START", 150.0f }, { "END", 150.0f }, { "LENGTH", 140.0f }, { "PITCH", 110.0f }, { "VELOCITY", 120.0f } })
+    for (const auto* name : { "START", "END", "LENGTH", "PITCH", "VELOCITY" })
     {
+        const auto value = getInfoField (name);
+        const auto width = juce::GlyphArrangement::getStringWidth (labelFont, name) + 6.0f
+                         + juce::jmax (36.0f, juce::GlyphArrangement::getStringWidth (valueFont, value.isEmpty() ? "0.0.0.0" : value)) + 22.0f;
         areas.push_back ({ name, { x, 0.0f, width, (float) infoHeight } });
         x += width;
     }
@@ -2404,7 +2409,10 @@ void KeyEditor::beginInfoEdit (const juce::String& field)
     infoEditor->onFocusLost = [finish] { finish (false); };
     for (const auto& [name, area] : infoAreas())
         if (name == field)
-            infoEditor->setBounds (area.withTrimmedLeft (52.0f).withTrimmedRight (8.0f).reduced (0.0f, 3.0f).toNearestInt());
+        {
+            const auto label = juce::GlyphArrangement::getStringWidth (juce::Font (font (10.5f, juce::Font::plain)), name) + 6.0f;
+            infoEditor->setBounds (area.withTrimmedLeft (label).withWidth (juce::jmax (70.0f, area.getWidth() - label)).reduced (0.0f, 3.0f).toNearestInt());
+        }
     addAndMakeVisible (*infoEditor);
     infoEditor->grabKeyboardFocus();
     repaint();
