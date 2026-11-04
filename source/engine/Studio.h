@@ -308,6 +308,13 @@ namespace pr7s
         // Live Input: the keys played into this track onto the chord or the scale in force.
         void setLiveFollow (int trackId, LiveFollow);
         void setChordShift (int ticks);                        // Shift Chords (-480 to 480 ticks), an undo step
+        // (0.38.0) Voicings and Single Voice: the voice, This Track's Voicings (none: the chord
+        // track's), the chord track's voicing library; each an undo step. The chord track's chords
+        // as voiced for a track (its voicings, else the chord track's).
+        void setFollowVoice (int trackId, Voice);
+        void setTrackVoicing (int trackId, std::optional<VoicingSettings>);
+        void setChordTrackVoicing (const VoicingSettings&);
+        std::vector<std::vector<int>> getChordTrackVoicings (int trackId) const;
         // A part's notes as they're heard (pitch, or -1: dropped as a double), for the MIDI editor.
         std::vector<int> followedPitches (int partId) const;
         // Map to Chord Track (the manual's): the chosen MIDI parts' notes written moved to the

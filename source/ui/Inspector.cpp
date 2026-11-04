@@ -298,7 +298,7 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     };
 
     for (auto* label : { &volumeLabel, &panLabel, &midiInputLabel, &channelLabel, &audioInputLabel, &outputLabel, &drumMapLabel,
-                         &followLabel, &liveLabel, &shiftLabel })
+                         &followLabel, &liveLabel, &shiftLabel, &voiceLabel, &voicingLabel })
     {
         label->setFont (font (11.0f));
         label->setColour (juce::Label::textColourId, ParagonColours::textDim);
@@ -315,6 +315,8 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     followLabel.setText ("FOLLOW", juce::dontSendNotification);
     liveLabel.setText ("LIVE IN", juce::dontSendNotification);
     shiftLabel.setText ("SHIFT", juce::dontSendNotification);
+    voiceLabel.setText ("VOICE", juce::dontSendNotification);
+    voicingLabel.setText ("VOICINGS", juce::dontSendNotification);
     for (auto* readout : { &volumeReadout, &panReadout })
     {
         readout->setFont (font (11.0f));
@@ -324,7 +326,7 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
         content.addAndMakeVisible (*readout);
     }
 
-    for (auto* button : { &instrument, &edit, &output, &drumMapKey, &followKey, &liveKey, &shiftKey })
+    for (auto* button : { &instrument, &edit, &output, &drumMapKey, &followKey, &liveKey, &shiftKey, &voiceKey, &voicingKey })
     {
         button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
         button->setColour (juce::TextButton::textColourOffId, ParagonColours::text);
@@ -342,8 +344,12 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     drumMapKey.setTooltip ("The track's drum map: names its notes after the drums they play (the MIDI editor's drum view) and plays them through it");
     drumMapKey.onClick = [this] { showDrumMapMenu(); };
     // CHORDS (0.36.0)
-    for (auto* key : { &followKey, &liveKey, &shiftKey })
+    for (auto* key : { &followKey, &liveKey, &shiftKey, &voiceKey, &voicingKey })
         key->getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    voiceKey.setTooltip ("Single Voice: the voice of the chord track's voicing every note becomes (soprano the highest, bass the lowest)");
+    voiceKey.onClick = [this] { showVoiceMenu(); };
+    voicingKey.setTooltip ("This Track's Voicings: the chord track's voicing library, or one of the track's own (Voicings and Single Voice use them)");
+    voicingKey.onClick = [this] { showVoicingMenu(); };
     followKey.setTooltip ("Follow Chord Track: the track's notes heard moved onto the chord track's chords (change the chords, the notes follow). "
                           "Its notes stay as played: the MIDI editor shows where they sound");
     followKey.onClick = [this] { showFollowMenu(); };
@@ -690,6 +696,9 @@ void Inspector::refresh()
         const auto ticks = studio.getChordTrack().shiftTicks;
         shiftKey.setButtonText (ticks == 0 ? juce::String ("0 TICKS") : (ticks > 0 ? "+" : "") + juce::String (ticks) + " TICKS");
     }
+    voiceKey.setButtonText (pr7s::voiceName (t->followVoice));
+    voicingKey.setButtonText (t->followVoicing ? pr7s::voicingSummary (*t->followVoicing)
+                                               : "CHORD TRACK'S (" + pr7s::voicingSummary (studio.getChordTrack().voicing) + ")");
     // The inputs switched on in SETTINGS (two, with none to ask).
     auto inputs = 2;
     if (auto* device = studio.getDeviceManager().getCurrentAudioDevice())
@@ -988,6 +997,10 @@ void Inspector::layout()
                 break;
             case Section::chords:
                 labelled (followLabel, followKey);
+                if (t->follow == pr7s::FollowMode::singleVoice)
+                    labelled (voiceLabel, voiceKey);
+                if (t->follow == pr7s::FollowMode::voicings || t->follow == pr7s::FollowMode::singleVoice)
+                    labelled (voicingLabel, voicingKey);
                 labelled (liveLabel, liveKey);
                 labelled (shiftLabel, shiftKey);
                 break;
@@ -1182,4 +1195,75 @@ void Inspector::showShiftMenu()
         menu.addItem ((ticks > 0 ? "+" : "") + juce::String (ticks) + " ticks" + (ticks < 0 ? " (notes played early)" : ticks > 0 ? " (notes played late)" : ""),
                       true, now == ticks, [&s, ticks] { s.setChordShift (ticks); });
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (shiftKey));
+}
+
+//==============================================================================
+// Voicings (0.38.0)
+namespace
+{
+    // A voicing library's settings as a menu: the library, its style, the options; `set` takes the change.
+    void addVoicingItems (juce::PopupMenu& menu, const pr7s::VoicingSettings& now, std::function<void (pr7s::VoicingSettings)> set)
+    {
+        using V = pr7s::VoicingSettings;
+        for (const auto library : { V::Library::piano, V::Library::guitar, V::Library::basic })
+            menu.addItem (pr7s::voicingLibraryName (library), true, now.library == library, [now, set, library] { auto s = now; s.library = library; set (s); });
+        menu.addSeparator();
+        if (now.library == V::Library::piano)
+        {
+            for (const auto style : { V::PianoStyle::triads, V::PianoStyle::triadsNine, V::PianoStyle::fourNote, V::PianoStyle::fourNoteOpen, V::PianoStyle::fiveNote })
+                menu.addItem (pr7s::pianoStyleName (style), true, now.piano == style, [now, set, style] { auto s = now; s.piano = style; set (s); });
+            menu.addSeparator();
+            menu.addItem ("Add Root Note (left hand)", true, now.addRoot, [now, set] { auto s = now; s.addRoot = ! s.addRoot; set (s); });
+            menu.addItem ("Duplicate Root", true, now.duplicateRoot, [now, set] { auto s = now; s.duplicateRoot = ! s.duplicateRoot; set (s); });
+            menu.addItem ("Fatten Up", true, now.fattenUp, [now, set] { auto s = now; s.fattenUp = ! s.fattenUp; set (s); });
+        }
+        else if (now.library == V::Library::guitar)
+        {
+            for (const auto style : { V::GuitarStyle::triads, V::GuitarStyle::fourNote, V::GuitarStyle::threeString })
+                menu.addItem (pr7s::guitarStyleName (style), true, now.guitar == style, [now, set, style] { auto s = now; s.guitar = style; set (s); });
+        }
+        else
+        {
+            for (int octave = -2; octave <= 2; ++octave)
+                menu.addItem ("Octave Offset from C3: " + juce::String (octave > 0 ? "+" : "") + juce::String (octave), true, now.basicOctave == octave,
+                              [now, set, octave] { auto s = now; s.basicOctave = octave; set (s); });
+        }
+        menu.addSeparator();
+        menu.addItem ("Adaptive Voicings (each chord moves least from the one before)", true, now.adaptive, [now, set] { auto s = now; s.adaptive = ! s.adaptive; set (s); });
+    }
+}
+
+void Inspector::showVoiceMenu()
+{
+    const auto* t = studio.getProject().findTrack (trackId);
+    if (t == nullptr)
+        return;
+    auto& s = studio;
+    const auto id = trackId;
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("SINGLE VOICE");
+    for (const auto voice : { pr7s::Voice::soprano, pr7s::Voice::alto, pr7s::Voice::tenor, pr7s::Voice::bass })
+        menu.addItem (pr7s::voiceName (voice), true, t->followVoice == voice, [&s, id, voice] { s.setFollowVoice (id, voice); });
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (voiceKey));
+}
+
+void Inspector::showVoicingMenu()
+{
+    const auto* t = studio.getProject().findTrack (trackId);
+    if (t == nullptr)
+        return;
+    auto& s = studio;
+    const auto id = trackId;
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("THIS TRACK'S VOICINGS");
+    menu.addItem ("The Chord Track's (" + pr7s::voicingSummary (studio.getChordTrack().voicing) + ")", true, ! t->followVoicing,
+                  [&s, id] { s.setTrackVoicing (id, std::nullopt); });
+    juce::PopupMenu own;
+    addVoicingItems (own, t->followVoicing.value_or (studio.getChordTrack().voicing), [&s, id] (pr7s::VoicingSettings v) { s.setTrackVoicing (id, v); });
+    menu.addSubMenu ("The Track's Own" + juce::String (t->followVoicing ? " (" + pr7s::voicingSummary (*t->followVoicing) + ")" : ""), own, true, juce::Image(), t->followVoicing.has_value());
+    menu.addSeparator();
+    juce::PopupMenu chordTrack;
+    addVoicingItems (chordTrack, studio.getChordTrack().voicing, [&s] (pr7s::VoicingSettings v) { s.setChordTrackVoicing (v); });
+    menu.addSubMenu ("The Chord Track's Voicings", chordTrack);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (voicingKey));
 }

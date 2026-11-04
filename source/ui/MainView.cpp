@@ -245,6 +245,10 @@ MainView::MainView (pr7s::Studio& studioToUse)
     addAndMakeVisible (transport);
     addAndMakeVisible (trackList);
     addAndMakeVisible (arrange);
+    addAndMakeVisible (infoLine);
+    infoLine.onHide = [this] { toggleInfoLine(); };
+    if (auto* settings = studio.getSettings())
+        infoLineShown = settings->getBoolValue ("infoLineShown", true);
     addAndMakeVisible (tools);
     arrange.onToolChange = [this] { tools.refresh(); };
     addChildComponent (keyEditorHolder);
@@ -609,6 +613,13 @@ void MainView::resized()
         zone->content.setBounds (middle.removeFromBottom (heightFor (*zone, middle.getHeight())));
         zoneDivider->setBounds (middle.removeFromBottom (dividerHeight));
         zoneDivider->setVisible (true);
+    }
+    // (0.37.0) The info line, over the track list and the arrangement.
+    infoLine.setVisible (infoLineShown);
+    if (infoLineShown)
+    {
+        infoLine.setBounds (middle.removeFromTop (InfoLine::height));
+        middle.removeFromTop (2);
     }
     // The scroll bars: across under the arrangement, down beside its rows.
     auto acrossRow = middle.removeFromBottom (scrollBarSize);
@@ -2331,4 +2342,12 @@ void MainView::toggleSpanAllScreens()
         if (const auto frame = peer->getFrameSizeIfPresent())
             area = frame->subtractedFrom (area);   // the title bar and edges inside it too
     window->setBounds (area);
+}
+
+void MainView::toggleInfoLine()
+{
+    infoLineShown = ! infoLineShown;
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("infoLineShown", infoLineShown);
+    resized();
 }

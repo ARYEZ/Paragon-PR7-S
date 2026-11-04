@@ -142,6 +142,7 @@ void MainView::registerCommands()
     add ("Window.MediaBay", "Window", "Open/Close MediaBay", { KP (KP::F5Key) });   // (0.21.0)
     add ("Window.RightZone", "Window", "Show/Hide Right Zone (Media Rack)", { key ('R', ctrl | alt) });   // (0.22.0)
     add ("Window.Editor", "Window", "Open/Close Editor", { key ('E', ctrl) });
+    add ("Window.InfoLine", "Window", "Show/Hide Info Line", {}, [this] { toggleInfoLine(); });   // (0.37.0)
     add ("Window.KeyCommands", "Window", "Key Commands...", {}, [this] { openKeyCommands(); });
     add ("Window.TempoEditor", "Window", "Open/Close Tempo Track Editor", { key ('T', ctrl) });
     add ("Window.AutomationPanel", "Window", "Open/Close Automation Panel", { KP (KP::F6Key) });   // (0.28.0)

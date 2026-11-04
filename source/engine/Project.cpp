@@ -436,6 +436,10 @@ namespace pr7s
                 t->setAttribute ("liveFollow", liveFollowId (track.liveFollow));
             if (! track.followReference.isEmpty())
                 t->addChildElement (track.followReference.toXml().release());
+            if (track.followVoice != Voice::soprano)
+                t->setAttribute ("followVoice", voiceId (track.followVoice));
+            if (track.followVoicing)
+                t->addChildElement (track.followVoicing->toXml ("TrackVoicing").release());
             if (track.pitchbendUp != 2 || track.pitchbendDown != 2 || track.pitchbendSnap || track.pitchbendGrid)
             {
                 t->setAttribute ("pitchbendUp", track.pitchbendUp);
@@ -676,6 +680,9 @@ namespace pr7s
             track.liveFollow = liveFollowFromId (t->getStringAttribute ("liveFollow"));
             if (const auto* reference = t->getChildByName ("FollowReference"))
                 track.followReference = FollowReference::fromXml (*reference);
+            track.followVoice = voiceFromId (t->getStringAttribute ("followVoice"));
+            if (const auto* voicing = t->getChildByName ("TrackVoicing"))
+                track.followVoicing = VoicingSettings::fromXml (*voicing);
             track.pitchbendUp = juce::jlimit (1, 96, t->getIntAttribute ("pitchbendUp", 2));
             track.pitchbendDown = juce::jlimit (1, 96, t->getIntAttribute ("pitchbendDown", 2));
             track.pitchbendSnap = t->getBoolAttribute ("pitchbendSnap");

@@ -339,6 +339,8 @@ namespace pr7s
                 track.follow = then->follow;                     // (0.36.0)
                 track.followReference = then->followReference;
                 track.liveFollow = then->liveFollow;
+                track.followVoice = then->followVoice;           // (0.38.0)
+                track.followVoicing = then->followVoicing;
             }
         restoreLanes (project.masterAutomation, state.masterAutomation);
         // The tracks' order as it was (tracks added since keep their places after them).
@@ -8374,6 +8376,39 @@ namespace pr7s
         changed (false);   // (as the MIDI input: a setting, not an edit)
     }
 
+    void Studio::setFollowVoice (int trackId, Voice voice)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || track->followVoice == voice)
+            return;
+        track->followVoice = voice;
+        changed();
+    }
+
+    void Studio::setTrackVoicing (int trackId, std::optional<VoicingSettings> voicing)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || track->followVoicing == voicing)
+            return;
+        track->followVoicing = voicing;
+        changed();
+    }
+
+    void Studio::setChordTrackVoicing (const VoicingSettings& voicing)
+    {
+        if (project.chordTrack.voicing == voicing)
+            return;
+        project.chordTrack.voicing = voicing;
+        changed();
+    }
+
+    std::vector<std::vector<int>> Studio::getChordTrackVoicings (int trackId) const
+    {
+        const auto* track = project.findTrack (trackId);
+        const auto& settings = track != nullptr && track->followVoicing ? *track->followVoicing : project.chordTrack.voicing;
+        return voiceChords (project.chordTrack.events, settings);
+    }
+
     void Studio::setChordShift (int ticks)
     {
         ticks = juce::jlimit (-480, 480, ticks);
@@ -8398,7 +8433,8 @@ namespace pr7s
             return pitches;
         }
         for (const auto& f : followNotes (part.notes, part.start, track.follow, track.followReference, project.chordTrack,
-                                          project.chordTrack.shiftTicks, project.chordPads.key()))
+                                          project.chordTrack.shiftTicks, project.chordPads.key(),
+                                          track.followVoicing ? &*track.followVoicing : nullptr, track.followVoice))
             pitches.push_back (f.dropped ? -1 : f.pitch);
         return pitches;
     }
@@ -8422,7 +8458,8 @@ namespace pr7s
                 continue;
             const auto reference = analysedReference ({ { &part, part.start } }, project.chordPads.key());
             const auto followed = followNotes (part.notes, part.start, mode, reference, project.chordTrack,
-                                               project.chordTrack.shiftTicks, project.chordPads.key());
+                                               project.chordTrack.shiftTicks, project.chordPads.key(),
+                                               track.followVoicing ? &*track.followVoicing : nullptr, track.followVoice);
             std::vector<Note> notes;
             for (size_t n = 0; n < part.notes.size(); ++n)
             {

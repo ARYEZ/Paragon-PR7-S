@@ -2,6 +2,8 @@
 
 #include "Project.h"
 
+#include <numeric>
+
 namespace pr7s
 {
     namespace
@@ -121,7 +123,7 @@ namespace pr7s
     const std::vector<FollowMode>& followModes()
     {
         static const std::vector<FollowMode> modes { FollowMode::off, FollowMode::chordsAndScales, FollowMode::chords,
-                                                     FollowMode::scales, FollowMode::rootNotes };
+                                                     FollowMode::scales, FollowMode::rootNotes, FollowMode::voicings, FollowMode::singleVoice };
         return modes;
     }
 
@@ -134,6 +136,8 @@ namespace pr7s
             case FollowMode::chords:          return "CHORDS";
             case FollowMode::scales:          return "SCALES";
             case FollowMode::rootNotes:       return "ROOT NOTES";
+            case FollowMode::voicings:        return "VOICINGS";
+            case FollowMode::singleVoice:     return "SINGLE VOICE";
         }
         return "OFF";
     }
@@ -147,6 +151,8 @@ namespace pr7s
             case FollowMode::chords:          return "chords";
             case FollowMode::scales:          return "scales";
             case FollowMode::rootNotes:       return "rootNotes";
+            case FollowMode::voicings:        return "voicings";
+            case FollowMode::singleVoice:     return "singleVoice";
         }
         return "off";
     }
@@ -268,6 +274,8 @@ namespace pr7s
             case FollowMode::rootNotes:
                 result = pitch + d;
                 break;
+            case FollowMode::voicings:      // (followNotes voices these, seeing the notes together; one asked alone: as Scales)
+            case FollowMode::singleVoice:
             case FollowMode::scales:
                 result = byScale (pitch, from, fromKey, to, toKey);
                 break;
@@ -330,22 +338,89 @@ namespace pr7s
     }
 
     std::vector<FollowedNote> followNotes (const std::vector<Note>& notes, double partStart, FollowMode mode,
-                                           const FollowReference& reference, const ChordTrack& chords, int shiftTicks, const Key& fallback)
+                                           const FollowReference& reference, const ChordTrack& chords, int shiftTicks, const Key& fallback,
+                                           const VoicingSettings* voicing, Voice voice)
     {
         std::vector<FollowedNote> result (notes.size());
         for (size_t i = 0; i < notes.size(); ++i)
-        {
             result[i].pitch = notes[i].pitch;
-            if (mode == FollowMode::off)
-                continue;
-            const auto beat = partStart + notes[i].start;
-            const auto index = chordIndexForNote (chords, beat, shiftTicks);
-            if (index < 0)
-                continue;   // no chord track: as played
+        if (mode == FollowMode::off || chords.events.empty())
+            return result;
+        const auto voiced = mode == FollowMode::voicings || mode == FollowMode::singleVoice;
+        const auto& settings = voicing != nullptr ? *voicing : chords.voicing;
+        // (Voicings: the chord track's chords voiced in order, and the reference's, once.)
+        const auto newVoicings = voiced ? voiceChords (chords.events, settings) : std::vector<std::vector<int>> {};
+        const auto oldVoicings = mode == FollowMode::voicings ? voiceChords (reference.chords, settings) : std::vector<std::vector<int>> {};
+        const auto oldVoicingAt = [&] (double look) -> std::vector<int>
+        {
+            if (oldVoicings.empty())
+                return voicingCandidates (reference.chordAt (look), settings).front();
+            auto found = 0;
+            for (int i = 0; i < (int) reference.chords.size(); ++i)
+                if (reference.chords[(size_t) i].beat <= look + 1.0e-9)
+                    found = i;
+            return oldVoicings[(size_t) found];
+        };
+        // Notes starting together, by start (Voicings voices them as one chord).
+        std::vector<size_t> order (notes.size());
+        for (size_t i = 0; i < order.size(); ++i)
+            order[i] = i;
+        std::stable_sort (order.begin(), order.end(), [&] (size_t x, size_t y)
+        {
+            if (std::abs (notes[x].start - notes[y].start) > 1.0e-6)
+                return notes[x].start < notes[y].start;
+            return notes[x].pitch < notes[y].pitch;
+        });
+        for (size_t k = 0; k < order.size();)
+        {
+            auto end = k + 1;
+            while (end < order.size() && std::abs (notes[order[end]].start - notes[order[k]].start) < 1.0 / 64.0)
+                ++end;
+            const auto beat = partStart + notes[order[k]].start;
             const auto look = beat - shiftTicks / 480.0;
-            const auto& to = chords.events[(size_t) index].chord;
-            const auto toKey = chords.keyAt (look, chords.scales.empty() ? fallback : chords.scales.front().key);
-            result[i].pitch = followPitch (notes[i].pitch, mode, reference.chordAt (look), reference.keyAt (look), to, toKey);
+            const auto index = chordIndexForNote (chords, beat, shiftTicks);
+            if (index >= 0)
+            {
+                const auto& to = chords.events[(size_t) index].chord;
+                if (mode == FollowMode::singleVoice)
+                {
+                    const auto pitch = voiceOf (newVoicings[(size_t) index], voice);
+                    for (auto g = k; g < end; ++g)
+                        result[order[g]].pitch = pitch >= 0 ? pitch : notes[order[g]].pitch;
+                }
+                else if (mode == FollowMode::voicings)
+                {
+                    const auto& v = newVoicings[(size_t) index];
+                    const auto n = (int) (end - k), m = (int) v.size();
+                    if (m > 0 && n > 1)
+                    {
+                        // A chord: the lowest note the lowest voice... (spread over them, or the outer ones kept).
+                        for (int g = 0; g < n; ++g)
+                            result[order[k + (size_t) g]].pitch = v[(size_t) juce::roundToInt ((double) g * (m - 1) / (n - 1))];
+                    }
+                    else if (m > 0)
+                    {
+                        // A note alone: the voice nearest it in the old voicing, as far above or below as it was.
+                        const auto old = oldVoicingAt (look);
+                        const auto pitch = notes[order[k]].pitch;
+                        auto nearest = 0;
+                        for (int i = 1; i < (int) old.size(); ++i)
+                            if (std::abs (old[(size_t) i] - pitch) < std::abs (old[(size_t) nearest] - pitch))
+                                nearest = i;
+                        const auto r = (int) old.size();
+                        const auto j = r > 1 ? juce::roundToInt ((double) nearest * (m - 1) / (r - 1)) : m - 1;
+                        const auto octaves = old.empty() ? 0 : juce::roundToInt ((pitch - old[(size_t) nearest]) / 12.0);
+                        result[order[k]].pitch = fold (v[(size_t) j] + 12 * octaves);
+                    }
+                }
+                else
+                {
+                    const auto toKey = chords.keyAt (look, chords.scales.empty() ? fallback : chords.scales.front().key);
+                    for (auto g = k; g < end; ++g)
+                        result[order[g]].pitch = followPitch (notes[order[g]].pitch, mode, reference.chordAt (look), reference.keyAt (look), to, toKey);
+                }
+            }
+            k = end;
         }
         // Two on one pitch at one start: the softer dropped (it would only double the other).
         std::vector<size_t> order (notes.size());
@@ -370,5 +445,315 @@ namespace pr7s
             }
         }
         return result;
+    }
+}
+
+//==============================================================================
+// Voicings (0.38.0)
+namespace pr7s
+{
+    namespace
+    {
+        using Lib = VoicingSettings::Library;
+        using PS = VoicingSettings::PianoStyle;
+        using GS = VoicingSettings::GuitarStyle;
+
+        // A triad's third and fifth (sus: its 2nd or 4th as the third).
+        std::pair<int, int> thirdAndFifth (const Chord& chord)
+        {
+            switch (chord.type)
+            {
+                case Chord::Type::major:      return { 4, 7 };
+                case Chord::Type::minor:      return { 3, 7 };
+                case Chord::Type::diminished: return { 3, 6 };
+                case Chord::Type::augmented:  return { 4, 8 };
+                case Chord::Type::sus2:       return { 2, 7 };
+                case Chord::Type::sus4:       return { 5, 7 };
+            }
+            return { 4, 7 };
+        }
+
+        // Its seventh: its own if it has one; else major 7 for major and augmented, b7 for minor
+        // and sus, bb7 for diminished (our choices).
+        int seventhOf (const Chord& chord)
+        {
+            for (const auto i : chord.intervals())
+                if (i >= 9 && i <= 11)
+                    return i;
+            switch (chord.type)
+            {
+                case Chord::Type::major:
+                case Chord::Type::augmented:  return 11;
+                case Chord::Type::diminished: return 9;
+                default:                      return 10;
+            }
+        }
+
+        // Pitch classes (relative to the root) stacked close upwards, each inversion, inside [low, high].
+        std::vector<std::vector<int>> closeStacks (int root, const std::vector<int>& tones, int low, int high)
+        {
+            std::vector<std::vector<int>> stacks;
+            if (tones.empty())
+                return stacks;
+            for (size_t first = 0; first < tones.size(); ++first)
+                for (int start = low; start < low + 12; ++start)
+                {
+                    if (pc (start - root - tones[first]) != 0)
+                        continue;
+                    std::vector<int> notes { start };
+                    for (size_t k = 1; k < tones.size(); ++k)
+                    {
+                        auto next = notes.back() + 1;
+                        while (pc (next - root - tones[(first + k) % tones.size()]) != 0)
+                            ++next;
+                        notes.push_back (next);
+                    }
+                    if (notes.back() <= high)
+                        stacks.push_back (notes);
+                }
+            std::sort (stacks.begin(), stacks.end());
+            stacks.erase (std::unique (stacks.begin(), stacks.end()), stacks.end());
+            return stacks;
+        }
+
+        std::vector<std::vector<int>> pianoVoicings (const Chord& chord, const VoicingSettings& s)
+        {
+            const auto [third, fifth] = thirdAndFifth (chord);
+            const auto seventh = seventhOf (chord);
+            std::vector<int> tones;
+            const auto plain = chord.tension == Chord::Tension::none;
+            if (! plain && s.piano == PS::triads)
+            {
+                for (const auto i : chord.intervals())   // (the manual: chords with more notes aren't changed)
+                    if (std::find (tones.begin(), tones.end(), pc (i)) == tones.end())
+                        tones.push_back (pc (i));
+            }
+            else
+                switch (s.piano)
+                {
+                    case PS::triads:       tones = { 0, third, fifth }; break;
+                    case PS::triadsNine:   tones = { third, fifth, 2 }; break;
+                    case PS::fourNote:     tones = { third, fifth, seventh, 2 }; break;
+                    case PS::fourNoteOpen: tones = { third, seventh, 2, 9 }; break;
+                    case PS::fiveNote:     tones = { 0, third, fifth, seventh, 2 }; break;
+                }
+            std::sort (tones.begin(), tones.end());
+            tones.erase (std::unique (tones.begin(), tones.end()), tones.end());
+            const auto low = juce::jlimit (24, 96, s.lowest), high = juce::jlimit (low + 12, 108, s.highest);
+            auto stacks = closeStacks (chord.root, tones, low, high);
+            if (stacks.empty())
+                stacks = closeStacks (chord.root, tones, low, high + 12);
+            // The left hand: the root (or a slash chord's bass) from lowestRoot up an octave.
+            const auto bass = chord.bass >= 0 ? chord.bass : chord.root;
+            auto lh = juce::jlimit (12, 84, s.lowestRoot);
+            while (pc (lh) != pc (bass))
+                ++lh;
+            for (auto& v : stacks)
+            {
+                if (s.fattenUp && v.front() - 12 > lh)
+                    v.insert (v.begin(), v.front() - 12);
+                if (s.addRoot || chord.bass >= 0)
+                {
+                    if (s.duplicateRoot && lh + 12 < v.front())
+                        v.insert (v.begin(), lh + 12);
+                    v.insert (v.begin(), lh);
+                }
+            }
+            return stacks;
+        }
+
+        std::vector<std::vector<int>> guitarVoicings (const Chord& chord, const VoicingSettings& s)
+        {
+            const auto [third, fifth] = thirdAndFifth (chord);
+            std::vector<std::vector<int>> shapes;
+            if (s.guitar == GS::threeString)
+                return closeStacks (chord.root, { 0, third, fifth }, 55, 79);   // the G, B and E strings
+            const auto octave = s.guitar == GS::fourNote ? seventhOf (chord) : 12;
+            // Barre shapes: the root on the low E string (frets 0-11), or on the A string.
+            for (int fret = 0; fret < 12; ++fret)
+            {
+                const auto e = 40 + fret;
+                if (pc (e) == pc (chord.root))
+                    shapes.push_back ({ e, e + fifth, e + octave, e + 12 + third, e + 12 + fifth, e + 24 });
+                const auto a = 45 + fret;
+                if (pc (a) == pc (chord.root))
+                    shapes.push_back ({ a, a + fifth, a + octave, a + 12 + third, a + 12 + fifth });
+            }
+            for (auto& v : shapes)
+                std::sort (v.begin(), v.end());
+            std::sort (shapes.begin(), shapes.end());
+            return shapes;
+        }
+
+        std::vector<std::vector<int>> basicVoicings (const Chord& chord, const VoicingSettings& s)
+        {
+            std::vector<int> tones;
+            for (const auto i : chord.intervals())
+                tones.push_back (pc (i));
+            std::sort (tones.begin(), tones.end());
+            tones.erase (std::unique (tones.begin(), tones.end()), tones.end());
+            const auto c3 = 60 + 12 * juce::jlimit (-3, 3, s.basicOctave);
+            // Root position from C3 first; then its inversions round it.
+            auto stacks = closeStacks (chord.root, tones, c3 - 6, c3 + 30);
+            std::stable_sort (stacks.begin(), stacks.end(), [&] (const auto& a, const auto& b)
+            {
+                const auto rootA = pc (a.front()) == pc (chord.root) && a.front() >= c3, rootB = pc (b.front()) == pc (chord.root) && b.front() >= c3;
+                if (rootA != rootB)
+                    return rootA;
+                return std::abs (a.front() - c3) < std::abs (b.front() - c3);
+            });
+            if (chord.bass >= 0)
+                for (auto& v : stacks)
+                {
+                    auto b = v.front() - 12;
+                    while (pc (b) != pc (chord.bass))
+                        ++b;
+                    if (b >= v.front())
+                        b -= 12;
+                    v.insert (v.begin(), b);
+                }
+            return stacks;
+        }
+    }
+
+    std::vector<std::vector<int>> voicingCandidates (const Chord& chord, const VoicingSettings& s)
+    {
+        auto found = s.library == Lib::piano ? pianoVoicings (chord, s) : s.library == Lib::guitar ? guitarVoicings (chord, s) : basicVoicings (chord, s);
+        if (found.empty())
+            found.push_back (voicingsFor (chord).front());
+        return found;
+    }
+
+    std::vector<std::vector<int>> voiceChords (const std::vector<ChordEvent>& events, const VoicingSettings& s)
+    {
+        std::vector<std::vector<int>> voiced;
+        std::vector<int> previous;
+        for (const auto& e : events)
+        {
+            const auto candidates = voicingCandidates (e.chord, s);
+            auto chosen = 0;
+            if (previous.empty() || ! s.adaptive)
+            {
+                // The first (or not adaptive): piano and basic the one nearest the middle of the range, guitar the lowest shape.
+                if (s.library != Lib::guitar)
+                {
+                    const auto middle = s.library == Lib::piano ? (s.lowest + s.highest) / 2.0 : 66.0 + 12 * s.basicOctave;
+                    auto best = std::numeric_limits<double>::max();
+                    for (int i = 0; i < (int) candidates.size(); ++i)
+                    {
+                        const auto& v = candidates[(size_t) i];
+                        const auto top = v.size() > 1 && s.library == Lib::piano ? std::vector<int> (v.begin() + 1, v.end()) : v;
+                        const auto centre = std::accumulate (top.begin(), top.end(), 0.0) / (double) top.size();
+                        if (s.library == Lib::basic)
+                        {
+                            chosen = 0;   // (root position from C3)
+                            break;
+                        }
+                        if (std::abs (centre - middle) < best)
+                            best = std::abs (centre - middle), chosen = i;
+                    }
+                }
+            }
+            else
+                chosen = closestVoicing (candidates, previous, {});
+            chosen = juce::jlimit (0, (int) candidates.size() - 1, chosen);
+            voiced.push_back (candidates[(size_t) chosen]);
+            previous = voiced.back();
+        }
+        return voiced;
+    }
+
+    int voiceOf (const std::vector<int>& voicing, Voice voice)
+    {
+        if (voicing.empty())
+            return -1;
+        const auto n = (int) voicing.size();
+        switch (voice)
+        {
+            case Voice::soprano: return voicing[(size_t) n - 1];
+            case Voice::alto:    return voicing[(size_t) juce::jmax (0, n - 2)];
+            case Voice::tenor:   return voicing[(size_t) juce::jmax (0, n - 3)];
+            case Voice::bass:    return voicing.front();
+        }
+        return -1;
+    }
+
+    juce::String voiceName (Voice v)
+    {
+        return v == Voice::soprano ? "SOPRANO" : v == Voice::alto ? "ALTO" : v == Voice::tenor ? "TENOR" : "BASS";
+    }
+
+    juce::String voiceId (Voice v)
+    {
+        return voiceName (v).toLowerCase();
+    }
+
+    Voice voiceFromId (const juce::String& id)
+    {
+        return id == "alto" ? Voice::alto : id == "tenor" ? Voice::tenor : id == "bass" ? Voice::bass : Voice::soprano;
+    }
+
+    juce::String voicingLibraryName (VoicingSettings::Library l)
+    {
+        return l == Lib::piano ? "PIANO" : l == Lib::guitar ? "GUITAR" : "BASIC";
+    }
+
+    juce::String pianoStyleName (VoicingSettings::PianoStyle p)
+    {
+        switch (p)
+        {
+            case PS::triads:       return "TRIADS";
+            case PS::triadsNine:   return "TRIADS WITH 9 (NO ROOT)";
+            case PS::fourNote:     return "4-NOTE CHORDS (NO ROOT)";
+            case PS::fourNoteOpen: return "4-NOTE CHORDS (OPEN JAZZ)";
+            case PS::fiveNote:     return "5-NOTE CHORDS";
+        }
+        return {};
+    }
+
+    juce::String guitarStyleName (VoicingSettings::GuitarStyle g)
+    {
+        return g == GS::triads ? "TRIADS" : g == GS::fourNote ? "4-NOTE CHORDS" : "3-STRING TRIADS";
+    }
+
+    juce::String voicingSummary (const VoicingSettings& s)
+    {
+        return voicingLibraryName (s.library) + (s.library == Lib::piano ? ": " + pianoStyleName (s.piano)
+                                               : s.library == Lib::guitar ? ": " + guitarStyleName (s.guitar)
+                                               : s.basicOctave == 0 ? juce::String() : ": " + juce::String (s.basicOctave > 0 ? "+" : "") + juce::String (s.basicOctave) + " OCT");
+    }
+
+    std::unique_ptr<juce::XmlElement> VoicingSettings::toXml (const juce::String& tag) const
+    {
+        auto x = std::make_unique<juce::XmlElement> (tag);
+        x->setAttribute ("library", (int) library);
+        x->setAttribute ("piano", (int) piano);
+        x->setAttribute ("guitar", (int) guitar);
+        x->setAttribute ("addRoot", addRoot);
+        x->setAttribute ("duplicateRoot", duplicateRoot);
+        x->setAttribute ("fattenUp", fattenUp);
+        x->setAttribute ("lowestRoot", lowestRoot);
+        x->setAttribute ("lowest", lowest);
+        x->setAttribute ("highest", highest);
+        x->setAttribute ("basicOctave", basicOctave);
+        x->setAttribute ("adaptive", adaptive);
+        return x;
+    }
+
+    VoicingSettings VoicingSettings::fromXml (const juce::XmlElement& x)
+    {
+        VoicingSettings s;
+        s.library = (Library) juce::jlimit (0, 2, x.getIntAttribute ("library", (int) s.library));
+        s.piano = (PianoStyle) juce::jlimit (0, 4, x.getIntAttribute ("piano", 0));
+        s.guitar = (GuitarStyle) juce::jlimit (0, 2, x.getIntAttribute ("guitar", 0));
+        s.addRoot = x.getBoolAttribute ("addRoot", true);
+        s.duplicateRoot = x.getBoolAttribute ("duplicateRoot", false);
+        s.fattenUp = x.getBoolAttribute ("fattenUp", false);
+        s.lowestRoot = juce::jlimit (12, 84, x.getIntAttribute ("lowestRoot", s.lowestRoot));
+        s.lowest = juce::jlimit (24, 96, x.getIntAttribute ("lowest", s.lowest));
+        s.highest = juce::jlimit (s.lowest + 12, 108, x.getIntAttribute ("highest", s.highest));
+        s.basicOctave = juce::jlimit (-3, 3, x.getIntAttribute ("basicOctave", 0));
+        s.adaptive = x.getBoolAttribute ("adaptive", true);
+        return s;
     }
 }

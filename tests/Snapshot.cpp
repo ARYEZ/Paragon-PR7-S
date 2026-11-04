@@ -256,6 +256,9 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.renameTrack (lead, "Bridge Synth Lead (Right)");
         studio.renameTrack (guitar, "Forever Found Rhythm Guitar Double");
     }
+    // PARAGON_SNAPSHOT_INFOLINE=1 (0.37.0, with PARAGON_SNAPSHOT_AUTOMATION): three of the lead's volume points selected (the info line shows them).
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_INFOLINE", {}).isNotEmpty())
+        view.getArrangeView().selectPoints (lead, 0, { 0, 1, 2 });
     // PARAGON_SNAPSHOT_VISIBILITY=1: the left zone's VISIBILITY, the bass hidden and the keys disabled.
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_VISIBILITY", {}).isNotEmpty())
     {

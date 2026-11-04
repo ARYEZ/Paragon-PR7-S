@@ -565,18 +565,22 @@ namespace pr7s
             const auto referenceNow = follows ? track.followReference : FollowReference {};
             const auto chordsNow = follows ? project.chordTrack : ChordTrack {};
             const auto fallbackNow = follows ? project.chordPads.key() : Key {};
+            const auto voiceNow = follows ? track.followVoice : Voice::soprano;
+            const auto voicingNow = follows ? track.followVoicing : std::nullopt;
             if (engineTrack != nullptr)
             {
                 auto& built = engineTrack->builtFrom;
                 if (built.valid && built.midiChannel == track.midiChannel && built.soloLane == track.soloLane
                     && built.map == mapNow && built.parts == track.parts && built.follow == followNow
-                    && built.reference == referenceNow && built.chords == chordsNow && built.fallback == fallbackNow)
+                    && built.reference == referenceNow && built.chords == chordsNow && built.fallback == fallbackNow
+                    && built.voice == voiceNow && built.voicing == voicingNow)
                 {
                     p.eventsKept = true;
                     prepared.push_back (std::move (p));
                     continue;
                 }
-                built = { true, track.parts, track.midiChannel, track.soloLane, mapNow, followNow, referenceNow, chordsNow, fallbackNow };
+                built = { true, track.parts, track.midiChannel, track.soloLane, mapNow, followNow, referenceNow, chordsNow, fallbackNow,
+                          voiceNow, voicingNow };
             }
             ++eventBuilds;
             for (const auto& part : track.parts)
@@ -585,7 +589,7 @@ namespace pr7s
                     continue;   // a muted part isn't played (nor, with a lane soloed, another lane's: 0.29.0)
                 // (0.36.0) Each note's pitch as the chord track has it now (dropped: doubled by another).
                 const auto followed = follows ? followNotes (part.notes, part.start, followNow, referenceNow, chordsNow,
-                                                             chordsNow.shiftTicks, fallbackNow)
+                                                             chordsNow.shiftTicks, fallbackNow, voicingNow ? &*voicingNow : nullptr, voiceNow)
                                               : std::vector<FollowedNote> {};
                 for (size_t n = 0; n < part.notes.size(); ++n)
                 {

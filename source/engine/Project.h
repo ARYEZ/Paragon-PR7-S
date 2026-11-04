@@ -285,6 +285,9 @@ namespace pr7s
         FollowMode follow = FollowMode::off;
         FollowReference followReference;
         LiveFollow liveFollow = LiveFollow::off;
+        // (0.38.0) Single Voice's voice, and This Track's Voicings (none: the chord track's).
+        Voice followVoice = Voice::soprano;
+        std::optional<VoicingSettings> followVoicing;
     };
 
     struct Project

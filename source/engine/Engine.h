@@ -328,6 +328,8 @@ namespace pr7s
                 FollowReference reference;
                 ChordTrack chords;
                 Key fallback;
+                Voice voice = Voice::soprano;              // (0.38.0)
+                std::optional<VoicingSettings> voicing;
             };
             BuiltFrom builtFrom;
             // (0.34.5) Its own work in a block may run on any core: what its effects are given, the

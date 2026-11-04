@@ -959,6 +959,8 @@ namespace pr7s
         xml->setAttribute ("autoScales", autoScales);
         if (shiftTicks != 0)
             xml->setAttribute ("shiftTicks", shiftTicks);
+        if (! (voicing == VoicingSettings {}))
+            xml->addChildElement (voicing.toXml().release());
         for (const auto& e : events)
         {
             auto* x = xml->createNewChildElement ("Chord");
@@ -982,6 +984,8 @@ namespace pr7s
         t.shown = xml.getBoolAttribute ("shown", false);
         t.autoScales = xml.getBoolAttribute ("autoScales", true);
         t.shiftTicks = juce::jlimit (-480, 480, xml.getIntAttribute ("shiftTicks", 0));
+        if (const auto* v = xml.getChildByName ("Voicing"))
+            t.voicing = VoicingSettings::fromXml (*v);
         for (const auto* x : xml.getChildWithTagNameIterator ("Chord"))
             if (const auto chord = Chord::fromText (x->getStringAttribute ("chord")))
                 t.events.push_back ({ juce::jmax (0.0, x->getDoubleAttribute ("beat")), *chord });

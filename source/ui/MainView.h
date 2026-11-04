@@ -13,6 +13,7 @@
 #include "ui/ChordPadsView.h"
 #include "ui/KeyEditor.h"
 #include "ui/Inspector.h"
+#include "ui/InfoLine.h"
 #include "ui/ScaledHolder.h"
 #include "ui/MixerView.h"
 #include "ui/TrackList.h"
@@ -104,6 +105,11 @@ public:
     // track of its kind is applied to it).
     void toggleRightZone();
     void setRightZoneShown (bool);
+    // The info line (0.37.0): over the track list and the arrangement (settings `infoLineShown`,
+    // on at first; command Window.InfoLine, its own right-click hides it).
+    void toggleInfoLine();
+    bool isInfoLineShown() const noexcept { return infoLineShown; }
+    InfoLine& getInfoLine() noexcept { return infoLine; }
     bool isRightZoneShown() const noexcept { return rightZoneShown; }
     MediaRack* getMediaRack() noexcept { return mediaRack.get(); }
     class RightZoneEdge;
@@ -313,6 +319,8 @@ private:
     TrackList trackList;
     ArrangeView arrange;
     ArrangeTools tools { arrange };
+    InfoLine infoLine { studio, arrange };
+    bool infoLineShown = true;
     juce::TextButton autoScrollKey { "AUTO-SCROLL" }, autoScrollMenu;   // the arrangement's Auto-Scroll, on the transport
     void toggleArrangeAutoScroll();
     KeyEditor keyEditor;

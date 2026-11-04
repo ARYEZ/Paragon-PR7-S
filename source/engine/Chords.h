@@ -166,6 +166,28 @@ namespace pr7s
         Key key;
         bool operator== (const ScaleEvent& o) const noexcept { return beat == o.beat && key == o.key; }
     };
+    // Voicings (0.38.0, the manual's "Voicings" and "Custom Voicing Panel"): how chords are spread
+    // over the keyboard or the strings, for Follow Chord Track's Voicings and Single Voice modes.
+    // The manual names the libraries and their styles but doesn't publish their voicings: these
+    // are our own (FollowChords.cpp: `voicingCandidates`).
+    struct VoicingSettings
+    {
+        enum class Library { basic, piano, guitar };
+        enum class PianoStyle { triads, triadsNine, fourNote, fourNoteOpen, fiveNote };
+        enum class GuitarStyle { triads, fourNote, threeString };
+        Library library = Library::piano;
+        PianoStyle piano = PianoStyle::triads;
+        GuitarStyle guitar = GuitarStyle::triads;
+        bool addRoot = true, duplicateRoot = false, fattenUp = false;   // (piano)
+        int lowestRoot = 36, lowest = 52, highest = 79;                  // (piano: the root's lowest, the right hand's range)
+        int basicOctave = 0;                                             // (basic: octaves from C3)
+        bool adaptive = true;                                            // each chord voiced to move least from the one before
+
+        bool operator== (const VoicingSettings&) const = default;
+        std::unique_ptr<juce::XmlElement> toXml (const juce::String& tag = "Voicing") const;
+        static VoicingSettings fromXml (const juce::XmlElement&);
+    };
+
     struct ChordTrack
     {
         bool shown = false;
@@ -176,10 +198,12 @@ namespace pr7s
         // chord takes over before (negative: notes played a little early) or after its event, for
         // the tracks following it.
         int shiftTicks = 0;
+        VoicingSettings voicing;          // (0.38.0) its voicings (the chord track Inspector's voicing library)
 
         bool operator== (const ChordTrack& o) const noexcept
         {
-            return shown == o.shown && events == o.events && scales == o.scales && autoScales == o.autoScales && shiftTicks == o.shiftTicks;
+            return shown == o.shown && events == o.events && scales == o.scales && autoScales == o.autoScales && shiftTicks == o.shiftTicks
+                && voicing == o.voicing;
         }
         int indexAt (double beat) const noexcept;               // the event sounding at `beat`, -1 if none yet
         double endOf (int index, double lastLength) const;       // the next one's start (the last: + lastLength)

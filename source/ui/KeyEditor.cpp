@@ -2068,7 +2068,8 @@ void KeyEditor::paintNotes (juce::Graphics& g)
     if (track->follow != pr7s::FollowMode::off && ! drumViewOn && ! project.chordTrack.events.empty())
     {
         const auto heard = pr7s::followNotes (list, part->start, track->follow, track->followReference, project.chordTrack,
-                                              project.chordTrack.shiftTicks, project.chordPads.key());
+                                              project.chordTrack.shiftTicks, project.chordPads.key(),
+                                              track->followVoicing ? &*track->followVoicing : nullptr, track->followVoice);
         const juce::Colour pearl (0xfff4eeea);
         for (int i = 0; i < (int) list.size(); ++i)
         {

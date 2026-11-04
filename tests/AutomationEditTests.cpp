@@ -389,3 +389,83 @@ TEST_CASE ("0.34.4: the transport drawn screen by screen (as its timer redraws t
     }
     Finish::set (Finish::Type::pearlWhite, false);
 }
+
+TEST_CASE ("0.37.0: the info line shows the selected points and changes them all by the same amount (the owner's examples)", "[automation][edit][ui][infoline]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto trackId = studio.getProject().tracks[0].id;
+    studio.setAutomationOpen (trackId, true);
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    auto& info = view.getInfoLine();
+    REQUIRE (view.isInfoLineShown());
+    CHECK (info.isVisible());
+    const auto& points = [&] () -> const std::vector<AutomationPoint>& { return (*studio.getAutomation (trackId))[0].points; };
+    const auto db = [&] (int i) { return travelToVolume (points()[(size_t) i].value); };
+
+    // Nothing selected: the fields are empty.
+    info.refresh();
+    CHECK (info.getField ("VALUE").isEmpty());
+
+    // Four points all at -3 dB (the owner's screenshot), selected by a box dragged from above
+    // the line (it used to grab the quick scaling handle there instead).
+    studio.setAutomationPoints (trackId, 0, { { 4.0, volumeToTravel (-3.0f), 0.0f }, { 5.0, volumeToTravel (-3.0f), 0.0f },
+                                              { 12.0, volumeToTravel (-3.0f), 0.0f }, { 13.0, volumeToTravel (-3.0f), 0.0f } });
+    studio.dispatchPendingMessages();
+    auto& timeline = view.getTimeline();
+    const auto area = arrange.getLaneArea (trackId, 0);
+    drag (arrange, { timeline.xForBeat (3.5), area.getY() + 1.0f }, { timeline.xForBeat (13.5), area.getBottom() - 1.0f });
+    REQUIRE (arrange.getPointSelection().points == std::vector<int> { 0, 1, 2, 3 });
+    info.refresh();
+    CHECK (info.getField ("TYPE").isNotEmpty());
+    CHECK (info.getField ("VALUE") == "-3.0 dB");
+    CHECK (info.getField ("TERMINATOR") == "NO");
+    // -3 typed as +5: all of them +8, to +5 dB.
+    REQUIRE (info.enter ("VALUE", "5", false));
+    for (int i = 0; i < 4; ++i)
+        CHECK_THAT (db (i), WithinAbs (5.0, 0.05));
+    CHECK (arrange.getPointSelection().points.size() == 4);   // (still selected)
+
+    // Different values (-5, -1, 0, +1): the first shown; typed as 0, each +5: 0, +4, +5, +6 (the fader's top is +6).
+    studio.setAutomationPoints (trackId, 0, { { 4.0, volumeToTravel (-5.0f), 0.0f }, { 5.0, volumeToTravel (-1.0f), 0.0f },
+                                              { 12.0, volumeToTravel (0.0f), 0.0f }, { 13.0, volumeToTravel (1.0f), 0.0f } });
+    arrange.selectPoints (trackId, 0, { 0, 1, 2, 3 });
+    info.refresh();
+    CHECK (info.getField ("VALUE") == "-5.0 dB");
+    REQUIRE (info.enter ("VALUE", "0.0", false));
+    CHECK_THAT (db (0), WithinAbs (0.0, 0.05));
+    CHECK_THAT (db (1), WithinAbs (4.0, 0.05));
+    CHECK_THAT (db (2), WithinAbs (5.0, 0.05));
+    CHECK_THAT (db (3), WithinAbs (6.0, 0.05));
+    // Ctrl (absolute): all to the value typed.
+    REQUIRE (info.enter ("VALUE", "-10", true));
+    for (int i = 0; i < 4; ++i)
+        CHECK_THAT (db (i), WithinAbs (-10.0, 0.05));
+    CHECK_FALSE (info.enter ("VALUE", "loud", false));
+    // One undo step each.
+    studio.undo();
+    CHECK_THAT (db (1), WithinAbs (4.0, 0.05));
+    studio.redo();
+
+    // Start: all move in time by what the first moves (bar 2 -> bar 3: 4 beats later).
+    REQUIRE (info.enter ("START", "3.1.1.0", false));
+    CHECK_THAT (points()[0].beat, WithinAbs (8.0, 1.0e-9));
+    CHECK_THAT (points()[3].beat, WithinAbs (17.0, 1.0e-9));
+    // Terminator: switched for all.
+    info.toggleTerminator();
+    for (const auto& p : points())
+        CHECK (p.terminator);
+    // Delete: all the selected at once.
+    arrange.selectPoints (trackId, 0, { 1, 2 });
+    arrange.deleteSelectedPoints();
+    CHECK (points().size() == 2);
+
+    // Hidden and shown again.
+    view.toggleInfoLine();
+    CHECK_FALSE (info.isVisible());
+    view.toggleInfoLine();
+    CHECK (info.isVisible());
+}

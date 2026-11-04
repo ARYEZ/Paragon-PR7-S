@@ -81,6 +81,7 @@ add_library(PR7SCore STATIC
     source/ui/MixerView.cpp
     source/ui/Inspector.cpp
     source/ui/FollowSetupPage.cpp
+    source/ui/InfoLine.cpp
     source/ui/TrackActions.cpp
     source/ui/MainView.cpp
     source/ui/MainViewCommands.cpp

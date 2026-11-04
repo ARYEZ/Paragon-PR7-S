@@ -76,6 +76,8 @@ public:
     juce::TextButton& getFollowKey() noexcept { return followKey; }
     juce::TextButton& getLiveKey() noexcept { return liveKey; }
     juce::TextButton& getShiftKey() noexcept { return shiftKey; }
+    juce::TextButton& getVoiceKey() noexcept { return voiceKey; }        // (0.38.0) Single Voice's voice
+    juce::TextButton& getVoicingKey() noexcept { return voicingKey; }    // This Track's Voicings (and the chord track's)
     void showFollowMenu();
     void chooseFollowMode (pr7s::FollowMode);   // the menu's choice: the dialog first if the track has never followed
     std::function<void()> onDrumMapSetup;   // MainView: the Drum Map Setup window
@@ -139,8 +141,10 @@ private:
     juce::TextButton instrument, edit { "EDIT" };
     juce::Label midiInputLabel, channelLabel, audioInputLabel, outputLabel, noSends, drumMapLabel;
     juce::TextButton drumMapKey;   // (0.26.0) the track's drum map (the manual's Routing section)
-    juce::TextButton followKey, liveKey, shiftKey;
-    juce::Label followLabel, liveLabel, shiftLabel;
+    juce::TextButton followKey, liveKey, shiftKey, voiceKey, voicingKey;
+    juce::Label followLabel, liveLabel, shiftLabel, voiceLabel, voicingLabel;
+    void showVoiceMenu();
+    void showVoicingMenu();
     void showLiveMenu();
     void showShiftMenu();
     void showDrumMapMenu();

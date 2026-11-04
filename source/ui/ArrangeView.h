@@ -301,6 +301,15 @@ public:
     std::optional<float> parsePointValue (int busId, const pr7s::AutomationLane&, const juce::String&) const;
     // Typing (as the box's SET): the selected points' value, and for one its position. False if not one.
     bool enterPointValue (const juce::String& value, const juce::String& position);
+    // The info line (0.37.0, the manual's Value Editing Rules): the selected points changed together,
+    // relative to their own values (each by what the first one moves, in the control's units: dB,
+    // pan, %), or all to the value typed (`absolute`: Ctrl held). Start moves them in time alike.
+    bool setSelectedPointsValue (const juce::String& text, bool absolute);
+    bool setSelectedPointsStart (const juce::String& text, bool absolute);
+    void setSelectedPointsTerminator (bool);
+    std::optional<double> pointDisplay (const pr7s::AutomationLane&, float value) const;   // dB, pan -100..100, %, 0/1
+    float pointFromDisplay (const pr7s::AutomationLane&, double display) const;
+    const pr7s::AutomationLane* getSelectedPointsLane() const { return laneFor (pointSelection.busId, pointSelection.laneIndex); }
     void showPointEntry (int busId, int laneIndex, int point);
     juce::Rectangle<float> getPointBox() const;              // the event editor's (empty: fewer than two, or a step lane)
     enum class PointHandle { none, tiltLeft, tiltRight, compressLeft, compressRight, scale, move, scaleAbsolute, scaleRelative, stretch };
