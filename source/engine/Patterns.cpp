@@ -265,7 +265,9 @@ namespace pr7s
                 startedMs = juce::Time::getMillisecondCounterHiRes();
                 const auto s = songBeat ? songBeat() : -1.0;
                 freeClock = s < 0.0;
-                lastBeat = now() - 1.0e-6;   // (a step right now plays)
+                // (A step right now plays: just before it, not read back from the clock, which has moved on
+                // by a few microseconds already; the pattern's first note was missed now and then.)
+                lastBeat = (freeClock ? 0.0 : s) - 1.0e-6;
             }
         }
         if (! isTimerRunning())
@@ -325,7 +327,7 @@ namespace pr7s
         {
             freeClock = free;
             startedMs = juce::Time::getMillisecondCounterHiRes();
-            lastBeat = now() - 1.0e-6;
+            lastBeat = (free ? 0.0 : s) - 1.0e-6;
         }
         const auto beat = now();
         if (beat < lastBeat)
