@@ -44,6 +44,7 @@ add_library(PR7SCore STATIC
     source/engine/TempoMap.cpp
     source/engine/Chords.cpp
     source/engine/FollowChords.cpp
+    source/engine/Patterns.cpp
     source/engine/Lines.cpp
     source/engine/MediaBay.cpp
     source/engine/ParagonSynth.cpp

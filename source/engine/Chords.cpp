@@ -1461,9 +1461,10 @@ namespace pr7s
                             noteOff (n, channel);
                     theirs.clear();   // (its sound is over, or carried on by the new chord)
                 }
-                for (const auto n : notes)
-                    if (std::find (sounding.begin(), sounding.end(), n) == sounding.end())
-                        noteOn (n, velocity, channel);
+                if (! (onPerform && onPerform (notes, velocity, channel)))
+                    for (const auto n : notes)
+                        if (std::find (sounding.begin(), sounding.end(), n) == sounding.end())
+                            noteOn (n, velocity, channel);
                 padNotes[pad] = notes;
                 held.erase (std::remove (held.begin(), held.end(), pad), held.end());
                 held.push_back (pad);
@@ -1504,6 +1505,8 @@ namespace pr7s
                 return;   // (latched: plays until pressed again)
             if (! releaseHeld (pad, channel))
                 return;
+            if (held.empty() && onPerformStop)
+                onPerformStop();
         }
         if (onPadChanged)
             onPadChanged (pad, false);
@@ -1520,6 +1523,8 @@ namespace pr7s
             held.clear();
             padNotes.clear();
             latched.clear();
+            if (onPerformStop)
+                onPerformStop();
         }
         if (onPadChanged)
             for (const auto p : wereHeld)

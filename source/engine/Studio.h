@@ -10,6 +10,7 @@
 #include "Align.h"
 #include "VariAudio.h"
 #include "Lines.h"
+#include "Patterns.h"
 #include "MediaBay.h"
 
 #include <optional>
@@ -307,6 +308,11 @@ namespace pr7s
         void resetFollowing (int trackId);                     // off, the reference forgotten (the dialog again next time)
         // Live Input: the keys played into this track onto the chord or the scale in force.
         void setLiveFollow (int trackId, LiveFollow);
+        // Performances (0.39.0): the chord pads play their chords through a pattern (Patterns.h;
+        // -1: as chords, as before). Kept in the settings by name (settings key `padPattern`).
+        void setPadPattern (int index);
+        int getPadPattern() const;
+        PatternPerformer& getPerformer() { return *performer; }
         void setChordShift (int ticks);                        // Shift Chords (-480 to 480 ticks), an undo step
         // (0.38.0) Voicings and Single Voice: the voice, This Track's Voicings (none: the chord
         // track's), the chord track's voicing library; each an undo step. The chord track's chords
@@ -1048,6 +1054,7 @@ namespace pr7s
 
     private:
         PadPlayer padPlayer;
+        std::unique_ptr<PatternPerformer> performer;   // (0.39.0) the pads' performance
         class LinePreview;
         std::unique_ptr<LinePreview> linePreview;
         bool padsActive = false;

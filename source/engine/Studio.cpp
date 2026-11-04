@@ -48,6 +48,17 @@ namespace pr7s
             });
         };
         padPlayer.setPads (project.chordPads);
+        // (0.39.0) A performance: a held pad plays its chord through a pattern, in time.
+        performer = std::make_unique<PatternPerformer> ([this] (const juce::MidiMessage& m) { padPlayer.send (m); });
+        performer->songBeat = [this] { return engine.isPlaying() ? engine.getPosition() : -1.0; };
+        padPlayer.onPerform = [this] (const std::vector<int>& notes, juce::uint8 velocity, int channel)
+        {
+            if (performer->getPattern() < 0)
+                return false;
+            performer->play (notes, velocity, channel);
+            return true;
+        };
+        padPlayer.onPerformStop = [this] { performer->stop(); };
         formats.registerBasicFormats();
         writerThread.startThread();
         // Recordings before a song is saved: a folder of their own in Documents (tests: a temporary one).
@@ -67,6 +78,7 @@ namespace pr7s
         {
             settings = std::make_unique<juce::PropertiesFile> (settingsOptions());
             host = std::make_unique<PluginHost> (settings.get());
+            performer->setPattern (patternNamed (settings->getValue ("padPattern")));   // (0.39.0: as last time)
 
             // Output only for now (audio recording is a later stage); every
             // MIDI input on, so a keyboard plugged in just plays.
@@ -129,6 +141,9 @@ namespace pr7s
 
     Studio::~Studio()
     {
+        padPlayer.onPerform = nullptr;
+        padPlayer.onPerformStop = nullptr;
+        performer.reset();   // (its timer sends through the pad player)
         mediaBay.reset();   // (its scan asks the engine whether it plays)
         engine.stopPreview();
         stopPreview();
@@ -6288,7 +6303,13 @@ namespace pr7s
     void Studio::timerCallback()
     {
         if (rendering || exportJob != nullptr)
-            return;   // (a render runs: the screen's thread carries on meanwhile, nothing to do here)
+            return;
+        if (performer != nullptr)
+        {
+            // (0.39.0) The performance's tempo and bar, from the song at the playhead.
+            performer->bpm = project.bpmAt (engine.getPosition());
+            performer->beatsPerBar = project.beatsPerBar();
+        }   // (a render runs: the screen's thread carries on meanwhile, nothing to do here)
         // Writing automation: the position going back (the cycle came round)
         // ends a pass where it got to; a latched switch's pass moves on with
         // the song (it has no new values to say so).
@@ -7851,6 +7872,7 @@ namespace pr7s
             case LineIdea::Part::chords: return "Piano";
             case LineIdea::Part::rhythm: return "Guitar";
             case LineIdea::Part::lead: return "Lead Guitar";
+            case LineIdea::Part::pattern: return "Pattern";
         }
         return "Idea";
     }
@@ -8407,6 +8429,22 @@ namespace pr7s
         const auto* track = project.findTrack (trackId);
         const auto& settings = track != nullptr && track->followVoicing ? *track->followVoicing : project.chordTrack.voicing;
         return voiceChords (project.chordTrack.events, settings);
+    }
+
+    void Studio::setPadPattern (int index)
+    {
+        if (! juce::isPositiveAndBelow (index, (int) patterns().size()))
+            index = -1;
+        performer->bpm = project.bpmAt (engine.getPosition());
+        performer->beatsPerBar = project.beatsPerBar();
+        performer->setPattern (index);
+        if (settings != nullptr)
+            settings->setValue ("padPattern", index < 0 ? juce::String() : patterns()[(size_t) index].name);
+    }
+
+    int Studio::getPadPattern() const
+    {
+        return performer->getPattern();
     }
 
     void Studio::setChordShift (int ticks)

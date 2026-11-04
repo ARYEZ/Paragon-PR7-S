@@ -1,4 +1,5 @@
 #include "ChordPadsView.h"
+#include "engine/Patterns.h"
 
 #include "ui/ChordUi.h"
 #include "ui/ParagonLookAndFeel.h"
@@ -943,8 +944,13 @@ void ChordPadsView::refresh()
 {
     const auto& pads = studio.getChordPads();
     rootKey.setButtonText ("KEY: " + spokenKey (pads.key()));
-    playerKey.setButtonText (pads.octaveOffset == 0 ? juce::String ("PLAYER: BASIC")
-                                                    : "PLAYER: BASIC " + juce::String (pads.octaveOffset > 0 ? "+" : "") + juce::String (pads.octaveOffset));
+    {
+        // (0.39.0) A performance chosen: its name (the pads play it); else the basic player.
+        const auto pattern = studio.getPadPattern();
+        const auto octave = pads.octaveOffset == 0 ? juce::String() : " " + juce::String (pads.octaveOffset > 0 ? "+" : "") + juce::String (pads.octaveOffset);
+        playerKey.setButtonText (pattern >= 0 ? "PERFORM: " + pr7s::patterns()[(size_t) pattern].name.toUpperCase() + octave
+                                              : "PLAYER: BASIC" + octave);
+    }
     modeKey.setButtonText (pads.overlap == ChordPads::Overlap::holdFirst ? "PLAIN: HOLD FIRST"
                          : pads.overlap == ChordPads::Overlap::stopFirst ? "PLAIN: STOP FIRST" : "PLAIN: LEGATO");
     editorKey.setToggleState (editorShown, juce::dontSendNotification);
@@ -1173,6 +1179,23 @@ void ChordPadsView::showPlayerMenu()
     // (0.20.2: the piano and guitar parts are in IDEAS, not a pad player; the menu says where.)
     menu.addItem (98, "Piano, Guitar and Bass Ideas... (IDEAS)", ! studio.getChordTrack().events.empty());
     menu.addSeparator();
+    // (0.39.0) PERFORM: a pad held plays its chord through a pattern, at the song's tempo.
+    menu.addSectionHeader ("PERFORM: A PAD HELD PLAYS A PATTERN");
+    const auto current = studio.getPadPattern();
+    menu.addItem (199, "Off (plain chords)", true, current < 0);
+    for (const auto& group : pr7s::patternGroups())
+    {
+        juce::PopupMenu sub;
+        auto any = false;
+        for (const auto index : pr7s::patternsInGroup (group))
+        {
+            sub.addItem (200 + index, pr7s::patterns()[(size_t) index].name + "  -  " + pr7s::patterns()[(size_t) index].description,
+                         true, index == current);
+            any = any || index == current;
+        }
+        menu.addSubMenu (group, sub, true, juce::Image(), any);
+    }
+    menu.addSeparator();
     menu.addSectionHeader ("OCTAVE");
     for (int o = -2; o <= 2; ++o)
         menu.addItem (10 + o, o == 0 ? juce::String ("0") : (o > 0 ? "+" : "") + juce::String (o), true, pads.octaveOffset == o);
@@ -1182,6 +1205,12 @@ void ChordPadsView::showPlayerMenu()
         if (safe != nullptr && chosen == 98 && safe->onLineIdeas)
         {
             safe->onLineIdeas ({});
+            return;
+        }
+        if (safe != nullptr && chosen >= 199 && chosen < 200 + (int) pr7s::patterns().size())
+        {
+            safe->studio.setPadPattern (chosen - 200);   // (199: off)
+            safe->refresh();
             return;
         }
         if (safe == nullptr || chosen < 8 || chosen > 12)

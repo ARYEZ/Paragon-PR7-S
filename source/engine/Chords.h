@@ -301,6 +301,10 @@ namespace pr7s
         std::function<void (const juce::MidiMessage&)> send;   // where the notes go (the live track's input)
         std::function<void (int pad, bool on)> onPadChanged;   // (any thread: the screen asks for an update)
         std::function<void (int note, bool on)> onOtherKey;   // (the devices' thread) a key outside the trigger range
+        // (0.39.0) A performance (a pattern) plays the chords instead: true if it took this chord
+        // (its notes aren't sent here then); `onPerformStop` when no pad is held any more.
+        std::function<bool (const std::vector<int>& notes, juce::uint8 velocity, int channel)> onPerform;
+        std::function<void()> onPerformStop;
 
         void setPads (const ChordPads&);
         void press (int pad, juce::uint8 velocity, int channel = 1);

@@ -68,7 +68,9 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
-    enum class Tab { piano, guitar, bass };
+    enum class Tab { piano, guitar, bass, patterns };   // (0.39.0: PATTERNS)
+    void setPatternGroup (const juce::String&);   // the PATTERNS tab's group (settings key "ideasPatternGroup")
+    juce::String getPatternGroup() const noexcept { return patternGroup; }
     static std::vector<pr7s::LineIdea::Part> partsOf (Tab);
     static juce::String titleOf (pr7s::LineIdea::Part);
     void setTab (Tab);   // (remembered: settings key "ideasTab")
@@ -102,14 +104,16 @@ private:
     void showUseMenu (pr7s::LineIdea::Part, int index, Card&);
     pr7s::Studio& studio;
     std::vector<pr7s::ChordSpan> spans;
-    std::array<std::vector<pr7s::LineIdea>, 5> ideas;
+    std::array<std::vector<pr7s::LineIdea>, 6> ideas;
+    juce::String patternGroup { "ARPEGGIOS" };
+    juce::ComboBox groupBox;
     int variation = 0;
     Tab tab = Tab::piano;
     std::optional<std::pair<pr7s::LineIdea::Part, int>> playing;
     bool playingChords = false;
     juce::OwnedArray<Card> cards;
     juce::TextButton hearChords { "HEAR CHORDS" }, more { "MORE IDEAS" }, stopKey { "STOP" };
-    juce::TextButton pianoTab { "PIANO" }, guitarTab { "GUITAR" }, bassTab { "BASS" };
+    juce::TextButton pianoTab { "PIANO" }, guitarTab { "GUITAR" }, bassTab { "BASS" }, patternsTab { "PATTERNS" };
     juce::Label tuningLabel { {}, "TUNING" };
     juce::ComboBox tuningBox;
     juce::TextButton velocitiesKey { "VELOCITIES" };

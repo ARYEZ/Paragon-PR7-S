@@ -12,7 +12,7 @@ namespace
     {
         using P = pr7s::LineIdea::Part;
         return part == P::bass || part == P::rhythm ? pr7s::FamilyColours::orange
-             : part == P::chords ? pr7s::FamilyColours::red : pr7s::FamilyColours::pink;
+             : part == P::chords || part == P::pattern ? pr7s::FamilyColours::red : pr7s::FamilyColours::pink;
     }
 }
 
@@ -298,7 +298,7 @@ void GuitarVelocityPanel::resized()
 //==============================================================================
 LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : studio (s)
 {
-    for (auto* key : { &hearChords, &more, &stopKey, &pianoTab, &guitarTab, &bassTab })
+    for (auto* key : { &hearChords, &more, &stopKey, &pianoTab, &guitarTab, &bassTab, &patternsTab })
     {
         key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         key->setWantsKeyboardFocus (false);
@@ -315,6 +315,20 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
     pianoTab.onClick = [this] { setTab (Tab::piano); };
     guitarTab.onClick = [this] { setTab (Tab::guitar); };
     bassTab.onClick = [this] { setTab (Tab::bass); };
+    // (0.39.0) PATTERNS: the chords played through rhythm and arpeggio patterns, a group at a time.
+    patternsTab.setTooltip ("Patterns: the chords played as arpeggios, strums, pulses, ballad figures and riffs (also playable live from the chord pads: PERFORM)");
+    patternsTab.onClick = [this] { setTab (Tab::patterns); };
+    {
+        int groupId = 1;
+        for (const auto& group : pr7s::patternGroups())
+            groupBox.addItem (group, groupId++);
+    }
+    groupBox.setTooltip ("Which patterns: six at a time");
+    groupBox.onChange = [this] { setPatternGroup (groupBox.getText()); };
+    addChildComponent (groupBox);
+    if (auto* settings = studio.getSettings())
+        if (const auto saved = settings->getValue ("ideasPatternGroup"); pr7s::patternGroups().contains (saved))
+            patternGroup = saved;
 
     tuningLabel.setFont (ParagonLookAndFeel::titleFont (13.0f));
     tuningLabel.setColour (juce::Label::textColourId, ParagonColours::textDim);
@@ -341,7 +355,7 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
     if (auto* settings = studio.getSettings())
     {
         const auto saved = settings->getValue ("ideasTab");
-        tab = saved == "guitar" ? Tab::guitar : saved == "bass" ? Tab::bass : Tab::piano;
+        tab = saved == "guitar" ? Tab::guitar : saved == "bass" ? Tab::bass : saved == "patterns" ? Tab::patterns : Tab::piano;
     }
     setSize (1240, 760);
     setChords (std::move (chords));
@@ -361,6 +375,7 @@ std::vector<pr7s::LineIdea::Part> LinesPage::partsOf (Tab t)
         case Tab::piano: return { P::chords, P::melody };
         case Tab::guitar: return { P::rhythm, P::lead };
         case Tab::bass: return { P::bass };
+        case Tab::patterns: return { P::pattern };
     }
     return {};
 }
@@ -375,6 +390,7 @@ juce::String LinesPage::titleOf (pr7s::LineIdea::Part part)
         case P::chords: return "CHORDS";
         case P::rhythm: return "RHYTHM";
         case P::lead: return "LEAD";
+        case P::pattern: return "PATTERNS";
     }
     return {};
 }
@@ -396,8 +412,19 @@ void LinesPage::setTab (Tab t)
 {
     tab = t;
     if (auto* settings = studio.getSettings())
-        settings->setValue ("ideasTab", t == Tab::guitar ? "guitar" : t == Tab::bass ? "bass" : "piano");
+        settings->setValue ("ideasTab", t == Tab::guitar ? "guitar" : t == Tab::bass ? "bass" : t == Tab::patterns ? "patterns" : "piano");
     makeCards();
+}
+
+void LinesPage::setPatternGroup (const juce::String& group)
+{
+    if (! pr7s::patternGroups().contains (group) || group == patternGroup)
+        return;
+    stop();
+    patternGroup = group;
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("ideasPatternGroup", group);
+    rebuild();
 }
 
 void LinesPage::setTuning (const juce::String& name)
@@ -465,13 +492,14 @@ void LinesPage::rebuild()
     const auto velocities = studio.getGuitarVelocities();
     ideas[(size_t) P::rhythm] = pr7s::guitarRhythmIdeas (spans, barBeats, variation, tuning, velocities);
     ideas[(size_t) P::lead] = pr7s::guitarLeadIdeas (spans, barBeats, variation, tuning, velocities);
+    ideas[(size_t) P::pattern] = pr7s::patternIdeas (spans, barBeats, patternGroup);
     // Humanize (0.20.0): each idea loosened its own repeatable way (what HEAR plays is what USE IT adds).
     const auto amount = studio.getIdeasHumanize();
     humanizeKey.setButtonText (humanizeText (amount));
     if (amount > 0.0f && ! spans.empty())
     {
         const auto feel = studio.getIdeasFeel();
-        for (const auto part : { P::bass, P::melody, P::chords, P::rhythm, P::lead })
+        for (const auto part : { P::bass, P::melody, P::chords, P::rhythm, P::lead, P::pattern })
         {
             auto& list = ideas[(size_t) part];
             for (size_t i = 0; i < list.size(); ++i)
@@ -504,6 +532,9 @@ void LinesPage::makeCards()
     pianoTab.setToggleState (tab == Tab::piano, juce::dontSendNotification);
     guitarTab.setToggleState (tab == Tab::guitar, juce::dontSendNotification);
     bassTab.setToggleState (tab == Tab::bass, juce::dontSendNotification);
+    patternsTab.setToggleState (tab == Tab::patterns, juce::dontSendNotification);
+    groupBox.setText (patternGroup, juce::dontSendNotification);
+    groupBox.setVisible (tab == Tab::patterns);
     tuningBox.setText (getTuning().name, juce::dontSendNotification);
     tuningBox.setVisible (tab == Tab::guitar);
     tuningLabel.setVisible (tab == Tab::guitar);
@@ -518,8 +549,9 @@ void LinesPage::play (pr7s::LineIdea::Part part, int index)
     if (! juce::isPositiveAndBelow (index, (int) list.size()))
         return;
     // Guitar ideas alone: chords voiced for a piano, played on a guitar library, would blur them.
-    const auto guitar = part == pr7s::LineIdea::Part::rhythm || part == pr7s::LineIdea::Part::lead;
-    studio.previewLine (&list[(size_t) index], spans, ! guitar);
+    // (A pattern is the chords itself: alone too.)
+    const auto alone = part == pr7s::LineIdea::Part::rhythm || part == pr7s::LineIdea::Part::lead || part == pr7s::LineIdea::Part::pattern;
+    studio.previewLine (&list[(size_t) index], spans, ! alone);
     playing = std::pair { part, index };
     playingChords = false;
     for (auto* card : cards)
@@ -652,11 +684,12 @@ void LinesPage::resized()
     humanizeKey.setBounds (head.removeFromRight (150));
 
     auto tabs = area.removeFromTop (tabsHeight).withTrimmedBottom (6);
-    for (auto* key : { &pianoTab, &guitarTab, &bassTab })
+    for (auto* key : { &pianoTab, &guitarTab, &bassTab, &patternsTab })
     {
         key->setBounds (tabs.removeFromLeft (100));
         tabs.removeFromLeft (6);
     }
+    groupBox.setBounds (tabs.withLeft (tabs.getRight() - 240));   // (PATTERNS only: where the guitar tab keeps its keys)
     velocitiesKey.setBounds (tabs.removeFromRight (110));
     tabs.removeFromRight (8);
     tuningBox.setBounds (tabs.removeFromRight (220));
