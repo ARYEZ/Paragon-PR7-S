@@ -332,6 +332,7 @@ namespace pr7s
                 Key fallback;
                 Voice voice = Voice::soprano;              // (0.38.0)
                 std::optional<VoicingSettings> voicing;
+                juce::String pattern;                      // (0.44.0) the pattern it performs
             };
             BuiltFrom builtFrom;
             // (0.34.5) Its own work in a block may run on any core: what its effects are given, the

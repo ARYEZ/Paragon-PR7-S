@@ -3,6 +3,7 @@
 #include "engine/Lines.h"
 
 #include <atomic>
+#include <optional>
 
 // Performances (0.39.0, the owner asked: as the chord tool they use does, "performances"):
 // rhythm and arpeggio patterns that play any chords. Each pattern is steps over a bar of
@@ -35,8 +36,24 @@ namespace pr7s
         std::vector<PatternStep> steps;
     };
 
-    const std::vector<Pattern>& patterns();          // every pattern, by group
-    const juce::StringArray& patternGroups();        // "ARPEGGIOS", "STRUMS & PULSES", "BALLAD & BROKEN", "RHYTHMIC RIFFS"
+    const std::vector<Pattern>& patterns();          // every pattern, by group (ours, then the user's: message thread)
+    const juce::StringArray& patternGroups();        // "ARPEGGIOS", "STRUMS & PULSES", "BALLAD & BROKEN", "RHYTHMIC RIFFS" (+ "MY PATTERNS")
+
+    // (0.44.0) The user's patterns (the manual's Pattern player mode: "Import from MIDI Loop"),
+    // after ours, in the group MY PATTERNS. Message thread only (the performer keeps a copy).
+    inline const juce::String userPatternGroup { "MY PATTERNS" };
+    void setUserPatterns (std::vector<Pattern>);
+    std::vector<Pattern> getUserPatterns();
+    // A MIDI part's notes as a pattern: each distinct pitch a voice, counted from the lowest; the
+    // lowest as the bass when it's a fifth or more under the next (a bass line under chords);
+    // the part's bars (whole) as the pattern's length. Notes in beats from the part's start.
+    Pattern patternFromNotes (const juce::String& name, const std::vector<LineNote>&, double lengthBeats, double beatsPerBar);
+    std::unique_ptr<juce::XmlElement> patternToXml (const Pattern&);
+    std::optional<Pattern> patternFromXml (const juce::XmlElement&);
+
+    // (0.44.0) A pattern over the chord track's chords (a track performing it): song beats, each chord
+    // voiced as IDEAS' patterns are (close round middle C, least movement, the root in the bass).
+    std::vector<LineNote> performChordTrack (const Pattern&, const std::vector<ChordSpan>&, double beatsPerBar);
     std::vector<int> patternsInGroup (const juce::String& group);   // indices into patterns()
     int patternNamed (const juce::String& name);     // -1: none
 
@@ -75,6 +92,7 @@ namespace pr7s
         void endDue (double beat, bool all);
         std::function<void (const juce::MidiMessage&)> sendTo;
         std::atomic<int> pattern { -1 };
+        Pattern current;   // (0.44.0) a copy of it: the list may change on the message thread meanwhile
         mutable juce::CriticalSection lock;
         std::vector<int> chord;
         juce::uint8 velocity = 100;

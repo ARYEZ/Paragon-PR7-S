@@ -657,7 +657,7 @@ class TrackList::ChordRow final : public juce::Component,
 public:
     explicit ChordRow (TrackList& ownerList) : owner (ownerList)
     {
-        for (auto* key : { &toPads, &toMidi, &autoScales, &lines })
+        for (auto* key : { &toPads, &toMidi, &autoScales, &lines, &record })
         {
             key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
             key->setWantsKeyboardFocus (false);
@@ -682,6 +682,9 @@ public:
         autoScales.onClick = [this] { owner.studio.setAutoScales (! owner.studio.getChordTrack().autoScales); };
         lines.setTooltip ("Piano, guitar and bass ideas for the chords (those in the cycle when it's on, else all): hear them, put one on a track");
         lines.onClick = [this] { if (owner.onLineIdeas) owner.onLineIdeas ({}); };
+        // (0.44.0) Record Enable: while recording, the chords played (pads or keyboard) land here.
+        record.setTooltip ("Record Enable: while you record, the chords you play (the pads, or three or more keys together) become chord events here");
+        record.onClick = [this] { owner.studio.setChordTrackRecord (! owner.studio.isChordTrackRecording()); refresh(); };
         setTooltip ("The chord track: double-click its lane to add a chord, right-click for its menu");
         refresh();
         startTimerHz (10);
@@ -690,6 +693,7 @@ public:
     void refresh()
     {
         autoScales.setToggleState (owner.studio.getChordTrack().autoScales, juce::dontSendNotification);
+        record.setToggleState (owner.studio.isChordTrackRecording(), juce::dontSendNotification);
         toPads.setEnabled (! owner.studio.getChordTrack().events.empty());
         toMidi.setEnabled (! owner.studio.getChordTrack().events.empty());
         lines.setEnabled (! owner.studio.getChordTrack().events.empty());
@@ -743,6 +747,8 @@ public:
         auto second = area.removeFromTop (juce::jmin (22, area.getHeight()));
         second.removeFromRight (6);
         lines.setBounds (second.removeFromRight (110).reduced (0, 1));
+        second.removeFromRight (3);
+        record.setBounds (second.removeFromRight (44).reduced (0, 1));
         nowArea = second.toFloat();
     }
 
@@ -771,7 +777,7 @@ public:
     }
 
     TrackList& owner;
-    juce::TextButton toPads { "TO PADS" }, toMidi { "TO MIDI" }, autoScales { "AUTO SCALES" }, lines { "IDEAS" };
+    juce::TextButton toPads { "TO PADS" }, toMidi { "TO MIDI" }, autoScales { "AUTO SCALES" }, lines { "IDEAS" }, record { "REC" };
     juce::Rectangle<float> nameArea, nowArea;
     juce::String shown;
 };

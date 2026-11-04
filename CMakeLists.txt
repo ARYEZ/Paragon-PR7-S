@@ -101,6 +101,7 @@ add_library(PR7SCore STATIC
     source/ui/LinesPage.cpp
     source/ui/ProgressionsPage.cpp
     source/ui/EqEditor.cpp
+    source/ui/PadsRemotePage.cpp
     source/ui/MediaBayPage.cpp
     source/ui/MediaUi.cpp
     source/ui/MediaRack.cpp

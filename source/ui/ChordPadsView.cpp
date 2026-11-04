@@ -1,5 +1,6 @@
 #include "ChordPadsView.h"
 #include "engine/Patterns.h"
+#include "ui/PadsRemotePage.h"
 
 #include "ui/ChordUi.h"
 #include "ui/ParagonLookAndFeel.h"
@@ -955,7 +956,8 @@ void ChordPadsView::refresh()
         playerKey.setButtonText (pattern >= 0 ? "PERFORM: " + pr7s::patterns()[(size_t) pattern].name.toUpperCase() + octave
                                               : "PLAYER: BASIC" + octave);
     }
-    modeKey.setButtonText (pads.overlap == ChordPads::Overlap::holdFirst ? "PLAIN: HOLD FIRST"
+    modeKey.setButtonText (pads.sectionsMode ? "MODE: SECTIONS"
+                         : pads.overlap == ChordPads::Overlap::holdFirst ? "PLAIN: HOLD FIRST"
                          : pads.overlap == ChordPads::Overlap::stopFirst ? "PLAIN: STOP FIRST" : "PLAIN: LEGATO");
     editorKey.setToggleState (editorShown, juce::dontSendNotification);
     circleKey.setToggleState (circleShown, juce::dontSendNotification);
@@ -1234,10 +1236,22 @@ void ChordPadsView::showModeMenu()
     menu.addItem (2, "Legato (the first ends, but its common notes go on)", true, pads.overlap == ChordPads::Overlap::legato);
     menu.addItem (3, "Stop First (the first ends, common notes too)", true, pads.overlap == ChordPads::Overlap::stopFirst);
     menu.addSeparator();
-    menu.addItem (99, "(Pattern and Sections modes: a later release)", false, false);
+    // (0.44.0) The manual's other player modes.
+    menu.addSectionHeader ("PATTERN AND SECTIONS");
+    menu.addItem (20, "Pattern: choose one in PLAYER > PERFORM (a held pad plays it)", false, studio.getPadPattern() >= 0);
+    menu.addItem (21, "Sections: a pad's key picks the chord, the section keys play its notes (REMOTE sets the keys)", true, pads.sectionsMode);
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&modeKey),
                         [safe = juce::Component::SafePointer<ChordPadsView> (this)] (int chosen)
     {
+        if (safe != nullptr && chosen == 21)
+        {
+            auto p = safe->studio.getChordPads();
+            p.sectionsMode = ! p.sectionsMode;
+            safe->studio.getPadPlayer().releaseAll();
+            safe->studio.setChordPads (p);
+            safe->refresh();
+            return;
+        }
         if (safe == nullptr || chosen < 1 || chosen > 3)
             return;
         auto p = safe->studio.getChordPads();
@@ -1320,33 +1334,9 @@ void ChordPadsView::showDisplayMenu()
 
 void ChordPadsView::showRemoteMenu()
 {
-    const auto& pads = studio.getChordPads();
-    juce::PopupMenu menu;
-    menu.addSectionHeader ("THE KEYS THAT PLAY THE PADS");
-    for (int octave = -1; octave <= 4; ++octave)
-    {
-        const auto first = (octave + 2) * 12;
-        menu.addItem (10 + octave + 1, keyName (first, pads.flats) + " to " + keyName (first + (int) pads.pads.size() - 1, pads.flats), true,
-                      pads.triggerStart == first);
-    }
-    menu.addSeparator();
-    menu.addItem (30, "Latch Chords (a pad plays until it's played again)", true, pads.latch);
-    menu.addItem (99, "(They work while the chord pads are open. MIDI Learn and the modifiers: a later release)", false, false);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&remoteKey),
-                        [safe = juce::Component::SafePointer<ChordPadsView> (this)] (int chosen)
-    {
-        if (safe == nullptr || chosen == 0)
-            return;
-        auto p = safe->studio.getChordPads();
-        if (chosen == 30)
-            p.latch = ! p.latch;
-        else if (chosen >= 10 && chosen <= 15)
-        {
-            p.triggerStart = (chosen - 11 + 2) * 12;
-            p.triggerEnd = juce::jmin (127, p.triggerStart + (int) p.pads.size() - 1);
-        }
-        safe->studio.setChordPads (p);
-    });
+    // (0.44.0) The manual's Chord Pads Remote Settings: a page of its own, with MIDI Learn.
+    auto page = std::make_unique<PadsRemotePage> (studio);
+    juce::CallOutBox::launchAsynchronously (std::move (page), remoteKey.getScreenBounds(), nullptr);
 }
 
 void ChordPadsView::showPadMenu (int pad)

@@ -320,7 +320,7 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     };
 
     for (auto* label : { &volumeLabel, &panLabel, &midiInputLabel, &channelLabel, &audioInputLabel, &outputLabel, &drumMapLabel,
-                         &followLabel, &liveLabel, &shiftLabel, &voiceLabel, &voicingLabel })
+                         &followLabel, &liveLabel, &shiftLabel, &voiceLabel, &voicingLabel, &performLabel })
     {
         label->setFont (font (11.0f));
         label->setColour (juce::Label::textColourId, ParagonColours::textDim);
@@ -339,6 +339,7 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     shiftLabel.setText ("SHIFT", juce::dontSendNotification);
     voiceLabel.setText ("VOICE", juce::dontSendNotification);
     voicingLabel.setText ("VOICINGS", juce::dontSendNotification);
+    performLabel.setText ("PERFORM", juce::dontSendNotification);
     for (auto* readout : { &volumeReadout, &panReadout })
     {
         readout->setFont (font (11.0f));
@@ -348,7 +349,7 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
         content.addAndMakeVisible (*readout);
     }
 
-    for (auto* button : { &instrument, &edit, &output, &drumMapKey, &followKey, &liveKey, &shiftKey, &voiceKey, &voicingKey })
+    for (auto* button : { &instrument, &edit, &output, &drumMapKey, &followKey, &liveKey, &shiftKey, &voiceKey, &voicingKey, &performKey })
     {
         button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
         button->setColour (juce::TextButton::textColourOffId, ParagonColours::text);
@@ -366,8 +367,10 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     drumMapKey.setTooltip ("The track's drum map: names its notes after the drums they play (the MIDI editor's drum view) and plays them through it");
     drumMapKey.onClick = [this] { showDrumMapMenu(); };
     // CHORDS (0.36.0)
-    for (auto* key : { &followKey, &liveKey, &shiftKey, &voiceKey, &voicingKey })
+    for (auto* key : { &followKey, &liveKey, &shiftKey, &voiceKey, &voicingKey, &performKey })
         key->getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    performKey.setTooltip ("Perform: the track plays a pattern (arpeggio, strum, riff...) over the chord track's chords as the song plays, beside its own parts");
+    performKey.onClick = [this] { showPerformMenu(); };
     voiceKey.setTooltip ("Single Voice: the voice of the chord track's voicing every note becomes (soprano the highest, bass the lowest)");
     voiceKey.onClick = [this] { showVoiceMenu(); };
     voicingKey.setTooltip ("This Track's Voicings: the chord track's voicing library, or one of the track's own (Voicings and Single Voice use them)");
@@ -723,6 +726,8 @@ void Inspector::refresh()
         shiftKey.setButtonText (ticks == 0 ? juce::String ("0 TICKS") : (ticks > 0 ? "+" : "") + juce::String (ticks) + " TICKS");
     }
     voiceKey.setButtonText (pr7s::voiceName (t->followVoice));
+    performKey.setButtonText (t->performPattern.isNotEmpty() ? t->performPattern.toUpperCase() : juce::String ("OFF"));
+    performKey.setColour (juce::TextButton::buttonColourId, t->performPattern.isNotEmpty() ? juce::Colour (0xff3a0f18) : juce::Colour (0xff151217));
     voicingKey.setButtonText (t->followVoicing ? pr7s::voicingSummary (*t->followVoicing)
                                                : "CHORD TRACK'S (" + pr7s::voicingSummary (studio.getChordTrack().voicing) + ")");
     // The inputs switched on in SETTINGS (two, with none to ask).
@@ -1029,6 +1034,7 @@ void Inspector::layout()
                     labelled (voicingLabel, voicingKey);
                 labelled (liveLabel, liveKey);
                 labelled (shiftLabel, shiftKey);
+                labelled (performLabel, performKey);
                 break;
             case Section::inserts:
             {
@@ -1218,6 +1224,37 @@ void Inspector::showLiveMenu()
     for (const auto live : { pr7s::LiveFollow::off, pr7s::LiveFollow::chords, pr7s::LiveFollow::scales })
         menu.addItem (pr7s::liveFollowName (live), true, t->liveFollow == live, [&s, id, live] { s.setLiveFollow (id, live); });
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (liveKey));
+}
+
+void Inspector::showPerformMenu()
+{
+    const auto* t = track();
+    if (t == nullptr)
+        return;
+    juce::PopupMenu menu;
+    menu.addItem (1, "Off", true, t->performPattern.isEmpty());
+    for (const auto& group : pr7s::patternGroups())
+    {
+        juce::PopupMenu sub;
+        for (const auto index : pr7s::patternsInGroup (group))
+        {
+            const auto& p = pr7s::patterns()[(size_t) index];
+            sub.addItem (100 + index, p.name, true, p.name == t->performPattern);
+        }
+        menu.addSubMenu (group, sub);
+    }
+    menu.addSeparator();
+    menu.addItem (2, "(Over the chord track's chords, as the song plays)", false);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&performKey),
+                        [safe = juce::Component::SafePointer<Inspector> (this), id = trackId] (int chosen)
+                        {
+                            if (safe == nullptr || chosen == 0)
+                                return;
+                            if (chosen == 1)
+                                safe->studio.setPerformPattern (id, {});
+                            else if (chosen >= 100 && chosen - 100 < (int) pr7s::patterns().size())
+                                safe->studio.setPerformPattern (id, pr7s::patterns()[(size_t) (chosen - 100)].name);
+                        });
 }
 
 void Inspector::showShiftMenu()

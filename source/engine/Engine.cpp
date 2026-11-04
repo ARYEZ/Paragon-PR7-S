@@ -1,6 +1,7 @@
 #include "Engine.h"
 #include "Controllers.h"
 #include "SessionLog.h"
+#include "Patterns.h"
 
 namespace pr7s
 {
@@ -565,9 +566,13 @@ namespace pr7s
             const auto mapNow = map != nullptr ? std::optional<DrumMap> (*map) : std::nullopt;
             // (0.36.0) Following the chord track: the chords it follows count as what it's built from.
             const auto follows = track.follow != FollowMode::off && ! project.chordTrack.events.empty();
+            // (0.44.0) Performing a pattern over the chord track.
+            const auto performIndex = track.kind == Track::Kind::instrument && ! project.chordTrack.events.empty()
+                                          ? patternNamed (track.performPattern) : -1;
+            const auto patternNow = performIndex >= 0 ? track.performPattern : juce::String();
             const auto followNow = follows ? track.follow : FollowMode::off;
             const auto referenceNow = follows ? track.followReference : FollowReference {};
-            const auto chordsNow = follows ? project.chordTrack : ChordTrack {};
+            const auto chordsNow = follows || performIndex >= 0 ? project.chordTrack : ChordTrack {};
             const auto fallbackNow = follows ? project.chordPads.key() : Key {};
             const auto voiceNow = follows ? track.followVoice : Voice::soprano;
             const auto voicingNow = follows ? track.followVoicing : std::nullopt;
@@ -577,14 +582,14 @@ namespace pr7s
                 if (built.valid && built.midiChannel == track.midiChannel && built.soloLane == track.soloLane
                     && built.map == mapNow && built.parts == track.parts && built.follow == followNow
                     && built.reference == referenceNow && built.chords == chordsNow && built.fallback == fallbackNow
-                    && built.voice == voiceNow && built.voicing == voicingNow)
+                    && built.voice == voiceNow && built.voicing == voicingNow && built.pattern == patternNow)
                 {
                     p.eventsKept = true;
                     prepared.push_back (std::move (p));
                     continue;
                 }
                 built = { true, track.parts, track.midiChannel, track.soloLane, mapNow, followNow, referenceNow, chordsNow, fallbackNow,
-                          voiceNow, voicingNow };
+                          voiceNow, voicingNow, patternNow };
             }
             ++eventBuilds;
             for (const auto& part : track.parts)
@@ -612,6 +617,21 @@ namespace pr7s
                     const auto velocity = (juce::uint8) juce::jlimit (1, 127, juce::roundToInt (note.velocity * 127.0f));
                     p.events.push_back ({ on, (juce::uint8) (0x90 | bits), (juce::uint8) out, velocity });
                     p.events.push_back ({ off, (juce::uint8) (0x80 | bits), (juce::uint8) out, 0 });
+                }
+            }
+            if (performIndex >= 0)
+            {
+                // (0.44.0) The pattern over each chord (until the next; the last a bar).
+                std::vector<ChordSpan> spans;
+                const auto& events = project.chordTrack.events;
+                for (size_t e = 0; e < events.size(); ++e)
+                    spans.push_back ({ events[e].beat, project.chordTrack.endOf ((int) e, project.beatsPerBar()), events[e].chord, Key {} });
+                for (const auto& note : performChordTrack (patterns()[(size_t) performIndex], spans, project.beatsPerBar()))
+                {
+                    const auto pitch = juce::jlimit (0, 127, note.pitch);
+                    const auto velocity = (juce::uint8) juce::jlimit (1, 127, juce::roundToInt (note.velocity * 127.0f));
+                    p.events.push_back ({ note.beat, (juce::uint8) (0x90 | channelBits), (juce::uint8) pitch, velocity });
+                    p.events.push_back ({ note.beat + note.length, (juce::uint8) (0x80 | channelBits), (juce::uint8) pitch, 0 });
                 }
             }
             // Controllers (0.25.0): each event, and a ramp as a value every 1/128 beat where it changes.

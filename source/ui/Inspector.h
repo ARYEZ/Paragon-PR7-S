@@ -144,12 +144,16 @@ private:
     juce::TextButton instrument, edit { "EDIT" };
     juce::Label midiInputLabel, channelLabel, audioInputLabel, outputLabel, noSends, drumMapLabel;
     juce::TextButton drumMapKey;   // (0.26.0) the track's drum map (the manual's Routing section)
-    juce::TextButton followKey, liveKey, shiftKey, voiceKey, voicingKey;
-    juce::Label followLabel, liveLabel, shiftLabel, voiceLabel, voicingLabel;
+    juce::TextButton followKey, liveKey, shiftKey, voiceKey, voicingKey, performKey;   // (0.44.0: PERFORM)
+    juce::Label followLabel, liveLabel, shiftLabel, voiceLabel, voicingLabel, performLabel;
     void showVoiceMenu();
     void showVoicingMenu();
     void showLiveMenu();
     void showShiftMenu();
+    void showPerformMenu();
+public:
+    juce::TextButton& getPerformKey() noexcept { return performKey; }
+private:
     void showDrumMapMenu();
     // MIDI IN: the devices asked of the system only when its list opens (0.9.2:
     // asking on every change, every playhead move, was slow on Windows).

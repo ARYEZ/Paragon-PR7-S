@@ -131,16 +131,149 @@ namespace pr7s
         constexpr double strumGap = 0.02;   // beats between strummed strings (as the guitar ideas')
     }
 
+    namespace
+    {
+        std::vector<Pattern>& library()
+        {
+            static auto all = makePatterns();
+            return all;
+        }
+        constexpr size_t builtIn = 24;
+
+        juce::StringArray& groupList()
+        {
+            static juce::StringArray groups { "ARPEGGIOS", "STRUMS & PULSES", "BALLAD & BROKEN", "RHYTHMIC RIFFS" };
+            return groups;
+        }
+    }
+
     const std::vector<Pattern>& patterns()
     {
-        static const auto all = makePatterns();
-        return all;
+        return library();
     }
 
     const juce::StringArray& patternGroups()
     {
-        static const juce::StringArray groups { "ARPEGGIOS", "STRUMS & PULSES", "BALLAD & BROKEN", "RHYTHMIC RIFFS" };
-        return groups;
+        return groupList();
+    }
+
+    void setUserPatterns (std::vector<Pattern> mine)
+    {
+        auto& all = library();
+        all.resize (juce::jmin (all.size(), builtIn));
+        for (auto& p : mine)
+        {
+            p.group = userPatternGroup;
+            all.push_back (std::move (p));
+        }
+        auto& groups = groupList();
+        groups.removeString (userPatternGroup);
+        if (all.size() > builtIn)
+            groups.add (userPatternGroup);
+    }
+
+    std::vector<Pattern> getUserPatterns()
+    {
+        const auto& all = library();
+        return { all.begin() + (std::ptrdiff_t) juce::jmin (all.size(), builtIn), all.end() };
+    }
+
+    Pattern patternFromNotes (const juce::String& name, const std::vector<LineNote>& notes, double lengthBeats, double beatsPerBar)
+    {
+        Pattern p;
+        p.name = name;
+        p.group = userPatternGroup;
+        p.description = "Made from a MIDI part";
+        beatsPerBar = juce::jmax (1.0, beatsPerBar);
+        p.bars = juce::jmax (1.0, std::ceil (lengthBeats / beatsPerBar - 1.0e-6));
+        std::vector<int> pitches;
+        for (const auto& n : notes)
+            if (std::find (pitches.begin(), pitches.end(), n.pitch) == pitches.end())
+                pitches.push_back (n.pitch);
+        std::sort (pitches.begin(), pitches.end());
+        const auto bassUnder = pitches.size() >= 3 && pitches[1] - pitches[0] >= 7;
+        const auto scale = 4.0 / beatsPerBar;   // (song beats to a 4/4 bar's quarters)
+        for (const auto& n : notes)
+        {
+            if (n.beat < 0.0 || n.beat >= p.bars * beatsPerBar)
+                continue;
+            const auto rank = (int) (std::find (pitches.begin(), pitches.end(), n.pitch) - pitches.begin());
+            PatternStep step;
+            step.beat = n.beat * scale;
+            step.length = juce::jmax (0.05, n.length * scale);
+            step.voice = bassUnder ? (rank == 0 ? PatternStep::bass : rank - 1) : rank;
+            step.velocity = juce::jlimit (0.05f, 1.0f, n.velocity);
+            p.steps.push_back (step);
+        }
+        std::sort (p.steps.begin(), p.steps.end(), [] (const PatternStep& a, const PatternStep& b) { return a.beat < b.beat; });
+        return p;
+    }
+
+    std::unique_ptr<juce::XmlElement> patternToXml (const Pattern& p)
+    {
+        auto xml = std::make_unique<juce::XmlElement> ("Pattern");
+        xml->setAttribute ("name", p.name);
+        xml->setAttribute ("description", p.description);
+        xml->setAttribute ("bars", p.bars);
+        for (const auto& s : p.steps)
+        {
+            auto* step = xml->createNewChildElement ("Step");
+            step->setAttribute ("beat", s.beat);
+            step->setAttribute ("length", s.length);
+            step->setAttribute ("voice", s.voice);
+            step->setAttribute ("octave", s.octave);
+            step->setAttribute ("velocity", s.velocity);
+            step->setAttribute ("strum", s.strum);
+        }
+        return xml;
+    }
+
+    std::optional<Pattern> patternFromXml (const juce::XmlElement& xml)
+    {
+        if (! xml.hasTagName ("Pattern") || xml.getStringAttribute ("name").isEmpty())
+            return std::nullopt;
+        Pattern p;
+        p.name = xml.getStringAttribute ("name");
+        p.group = userPatternGroup;
+        p.description = xml.getStringAttribute ("description");
+        p.bars = juce::jlimit (1.0, 16.0, xml.getDoubleAttribute ("bars", 1.0));
+        for (auto* s : xml.getChildWithTagNameIterator ("Step"))
+        {
+            PatternStep step;
+            step.beat = juce::jlimit (0.0, p.bars * 4.0 - 1.0e-6, s->getDoubleAttribute ("beat"));
+            step.length = juce::jmax (0.01, s->getDoubleAttribute ("length", 0.5));
+            step.voice = juce::jlimit (PatternStep::bassFifth, 15, s->getIntAttribute ("voice"));
+            step.octave = juce::jlimit (-3, 3, s->getIntAttribute ("octave"));
+            step.velocity = (float) juce::jlimit (0.01, 1.0, s->getDoubleAttribute ("velocity", 0.72));
+            step.strum = juce::jlimit (-1, 1, s->getIntAttribute ("strum"));
+            p.steps.push_back (step);
+        }
+        if (p.steps.empty())
+            return std::nullopt;
+        return p;
+    }
+
+    std::vector<LineNote> performChordTrack (const Pattern& pattern, const std::vector<ChordSpan>& spans, double beatsPerBar)
+    {
+        std::vector<LineNote> out;
+        if (spans.empty())
+            return out;
+        const auto origin = std::floor (spans.front().start / beatsPerBar + 1.0e-9) * beatsPerBar;
+        std::vector<int> previous;
+        for (const auto& span : spans)
+        {
+            const auto voicings = voicingsFor (span.chord, 55);
+            if (voicings.empty())
+                continue;
+            const auto& voicing = voicings[(size_t) closestVoicing (voicings, previous, {})];
+            previous = voicing;
+            auto bass = 36;
+            while ((bass % 12) != ((span.chord.bass >= 0 ? span.chord.bass : span.chord.root) % 12))
+                ++bass;
+            for (const auto& note : patternNotes (pattern, voicing, bass, span.start, span.end, origin, beatsPerBar))
+                out.push_back (note);
+        }
+        return out;
     }
 
     std::vector<int> patternsInGroup (const juce::String& group)
@@ -236,6 +369,10 @@ namespace pr7s
     {
         if (! juce::isPositiveAndBelow (index, (int) patterns().size()))
             index = -1;
+        {
+            const juce::ScopedLock sl (lock);
+            current = index >= 0 ? patterns()[(size_t) index] : Pattern {};
+        }
         if (pattern.exchange (index) != index)
             stop();
     }
@@ -333,7 +470,7 @@ namespace pr7s
         if (beat < lastBeat)
             lastBeat = beat - 1.0e-6;   // (a jump back: from here)
         endDue (beat, false);
-        const auto& p = patterns()[(size_t) index];
+        const auto& p = current;
         const auto barBeats = beatsPerBar.load();
         const auto scale = barBeats / 4.0, length = p.bars * barBeats;
         const auto bass = chord.front() - 12;

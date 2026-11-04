@@ -48,6 +48,27 @@ namespace pr7s
             });
         };
         padPlayer.setPads (project.chordPads);
+        // (0.44.0) A pad played: the modifiers' target; while recording chords, a chord event.
+        padPlayer.onPadChanged = [this] (int pad, bool on)
+        {
+            if (! on)
+                return;
+            lastPlayedPad = pad;
+            if (loggingChords.load() && engine.isRecording())
+                if (const auto chord = padPlayer.chordOf (pad))
+                {
+                    const std::scoped_lock l (chordLogLock);
+                    chordLog.push_back ({ engine.getPosition(), *chord });
+                }
+        };
+        padPlayer.onLearn = [weak = std::weak_ptr<bool> (alive), this] (int note)
+        {
+            juce::MessageManager::callAsync ([weak, this, note] { if (weak.lock() != nullptr) learnedKey (note); });
+        };
+        padPlayer.onModifier = [weak = std::weak_ptr<bool> (alive), this] (ChordPads::Modifier m)
+        {
+            juce::MessageManager::callAsync ([weak, this, m] { if (weak.lock() != nullptr) applyPadModifier (m); });
+        };
         // (0.39.0) A performance: a held pad plays its chord through a pattern, in time.
         performer = std::make_unique<PatternPerformer> ([this] (const juce::MidiMessage& m) { padPlayer.send (m); });
         performer->songBeat = [this] { return engine.isPlaying() ? engine.getPosition() : -1.0; };
@@ -78,7 +99,16 @@ namespace pr7s
         {
             settings = std::make_unique<juce::PropertiesFile> (settingsOptions());
             host = std::make_unique<PluginHost> (settings.get());
-            performer->setPattern (patternNamed (settings->getValue ("padPattern")));   // (0.39.0: as last time)
+            // (0.44.0) The user's patterns, then the pads' pattern as last time (0.39.0).
+            if (const auto xml = juce::parseXML (settings->getValue ("userPatterns")))
+            {
+                std::vector<Pattern> mine;
+                for (auto* p : xml->getChildWithTagNameIterator ("Pattern"))
+                    if (auto pattern = patternFromXml (*p))
+                        mine.push_back (std::move (*pattern));
+                setUserPatterns (std::move (mine));
+            }
+            performer->setPattern (patternNamed (settings->getValue ("padPattern")));
 
             // Output only for now (audio recording is a later stage); every
             // MIDI input on, so a keyboard plugged in just plays.
@@ -358,6 +388,7 @@ namespace pr7s
                 track.followVoice = then->followVoice;           // (0.38.0)
                 track.followVoicing = then->followVoicing;
                 track.eq = then->eq;                             // (0.43.0)
+                track.performPattern = then->performPattern;     // (0.44.0)
             }
         restoreLanes (project.masterAutomation, state.masterAutomation);
         // The tracks' order as it was (tracks added since keep their places after them).
@@ -4906,6 +4937,11 @@ namespace pr7s
         if (! engine.isPlaying())
             playStart = recordStart;
         recorded.clear();
+        {
+            const std::scoped_lock l (chordLogLock);
+            chordLog.clear();
+        }
+        loggingChords = project.chordTrack.record;   // (0.44.0)
 
         if (armed->isAudio())
         {
@@ -6197,13 +6233,43 @@ namespace pr7s
         const auto lapNow = engine.getCycleCount();   // (the lap being played when recording stopped)
         engine.stopRecording();
         wasRecording = false;
+        const auto chordsToo = loggingChords.exchange (false);   // (0.44.0: the chord track was recording)
         if (audioWriter != nullptr)
         {
             finishAudioRecording();
+            if (chordsToo)
+                takeRecordedChords (recordStart, endBeat, {});
             return;
         }
         engine.takeRecorded (recorded);
         wasRecording = false;
+        if (chordsToo)
+        {
+            // What was played (the last lap of a cycle): notes from their on and off.
+            auto lastLap = 0;
+            for (const auto& e : recorded)
+                lastLap = juce::jmax (lastLap, e.pass);
+            std::vector<HeardNote> played;
+            std::map<int, size_t> open;
+            for (const auto& e : recorded)
+            {
+                if (e.pass != lastLap)
+                    continue;
+                const auto kind = e.status & 0xf0;
+                if (kind == 0x90 && e.data2 > 0)
+                {
+                    open[e.data1] = played.size();
+                    played.push_back ({ e.beat, endBeat, e.data1, e.data2 / 127.0f });
+                }
+                else if (kind == 0x80 || (kind == 0x90 && e.data2 == 0))
+                    if (const auto found = open.find (e.data1); found != open.end())
+                    {
+                        played[found->second].end = e.beat;
+                        open.erase (found);
+                    }
+            }
+            takeRecordedChords (recordStart, endBeat, played);
+        }
         auto* track = project.findTrack (recordTrack);
         if (track == nullptr)
         {
@@ -6354,6 +6420,145 @@ namespace pr7s
         }
         placeTakes (*track, std::move (takes), from, to, false);
         changed();
+    }
+
+    std::vector<ChordEvent> Studio::chordsFromPlayed (const std::vector<HeardNote>& played) const
+    {
+        // Each group of notes starting together (within a 32nd): the chord sounding just after it,
+        // if three or more different notes make one.
+        std::vector<ChordEvent> found;
+        auto notes = played;
+        std::sort (notes.begin(), notes.end(), [] (const HeardNote& a, const HeardNote& b) { return a.start < b.start; });
+        constexpr double together = 0.125;
+        for (size_t i = 0; i < notes.size();)
+        {
+            const auto groupStart = notes[i].start;
+            auto j = i;
+            while (j < notes.size() && notes[j].start - groupStart <= together)
+                ++j;
+            const auto look = notes[j - 1].start + 0.01;
+            std::vector<int> pitches;
+            std::set<int> classes;
+            for (const auto& n : notes)
+                if (n.start <= look && n.end > look)
+                {
+                    pitches.push_back (n.pitch);
+                    classes.insert (n.pitch % 12);
+                }
+            if (classes.size() >= 3)
+                if (const auto chord = chordOfNotes (pitches))
+                    if (found.empty() || ! (found.back().chord == *chord))
+                        found.push_back ({ groupStart, *chord });
+            i = j;
+        }
+        return found;
+    }
+
+    void Studio::takeRecordedChords (double from, double to, const std::vector<HeardNote>& played)
+    {
+        std::vector<ChordEvent> events;
+        {
+            const std::scoped_lock l (chordLogLock);
+            events = chordLog;
+            chordLog.clear();
+        }
+        if (events.empty())
+            events = chordsFromPlayed (played);
+        if (events.empty())
+            return;
+        // On the grid when snapping; two on one beat: the later; the same chord twice: once.
+        const auto grid = project.snapOn ? project.quantizeBeats : 0.0;
+        std::vector<ChordEvent> placed;
+        for (auto e : events)
+        {
+            if (grid > 0.0)
+                e.beat = std::round (e.beat / grid) * grid;
+            e.beat = juce::jmax (0.0, e.beat);
+            if (! placed.empty() && std::abs (placed.back().beat - e.beat) < 1.0e-6)
+                placed.back() = e;
+            else if (placed.empty() || ! (placed.back().chord == e.chord))
+                placed.push_back (e);
+        }
+        from = juce::jmin (from, placed.front().beat);
+        auto kept = project.chordTrack.events;
+        kept.erase (std::remove_if (kept.begin(), kept.end(), [from, to] (const ChordEvent& e) { return e.beat >= from - 1.0e-9 && e.beat < to - 1.0e-9; }),
+                    kept.end());
+        kept.insert (kept.end(), placed.begin(), placed.end());
+        std::sort (kept.begin(), kept.end(), [] (const ChordEvent& a, const ChordEvent& b) { return a.beat < b.beat; });
+        project.chordTrack.events = std::move (kept);
+        project.chordTrack.shown = true;
+        chordTrackChanged();
+    }
+
+    void Studio::setChordTrackRecord (bool on)
+    {
+        if (project.chordTrack.record == on)
+            return;
+        project.chordTrack.record = on;
+        if (on)
+            project.chordTrack.shown = true;
+        announce();
+    }
+
+    void Studio::applyPadModifier (ChordPads::Modifier m)
+    {
+        const auto pad = lastPlayedPad.load();
+        if (! juce::isPositiveAndBelow (pad, (int) project.chordPads.pads.size()) || ! project.chordPads.pads[(size_t) pad].chord)
+            return;
+        using M = ChordPads::Modifier;
+        switch (m)
+        {
+            case M::nextVoicing:     changePadVoicings ({ pad }, 1); break;
+            case M::previousVoicing: changePadVoicings ({ pad }, -1); break;
+            case M::moreTensions:    changePadTensions ({ pad }, 1); break;
+            case M::fewerTensions:   changePadTensions ({ pad }, -1); break;
+            case M::transposeUp:     transposePads ({ pad }, 1); break;
+            case M::transposeDown:   transposePads ({ pad }, -1); break;
+        }
+        auditionPad (pad);   // (heard as it is now: the manual's "plays back ... and updates")
+    }
+
+    void Studio::startPadLearn (PadLearn what, int index)
+    {
+        padLearn = what;
+        padLearnIndex = index;
+        rangeFirst = -1;
+        padPlayer.learning = what != PadLearn::none;
+    }
+
+    void Studio::cancelPadLearn()
+    {
+        startPadLearn (PadLearn::none);
+    }
+
+    void Studio::learnedKey (int note)
+    {
+        if (padLearn == PadLearn::none)
+            return;
+        auto pads = project.chordPads;
+        const auto i = (size_t) juce::jlimit (0, 5, padLearnIndex);
+        switch (padLearn)
+        {
+            case PadLearn::range:
+                if (rangeFirst < 0)
+                {
+                    rangeFirst = note;
+                    padPlayer.learning = true;   // (the end next)
+                    return;
+                }
+                pads.triggerStart = juce::jmin (rangeFirst, note);
+                pads.triggerEnd = juce::jmax (rangeFirst, note);
+                break;
+            case PadLearn::modifier:   pads.modifierKeys[juce::jmin (i, (size_t) 5)] = note; break;
+            case PadLearn::section:    pads.sectionKeys[juce::jmin (i, (size_t) 4)] = note; break;
+            case PadLearn::subsection: pads.subsectionKeys[juce::jmin (i, (size_t) 4)] = note; break;
+            case PadLearn::none:       break;
+        }
+        padLearn = PadLearn::none;
+        padPlayer.learning = false;
+        setChordPads (pads);
+        if (onLearned)
+            onLearned();
     }
 
     void Studio::timerCallback()
@@ -8674,6 +8879,68 @@ namespace pr7s
     int Studio::getPadPattern() const
     {
         return performer->getPattern();
+    }
+
+    void Studio::setPerformPattern (int trackId, const juce::String& name)
+    {
+        auto* track = project.findTrack (trackId);
+        const auto chosen = patternNamed (name) >= 0 ? patterns()[(size_t) patternNamed (name)].name : juce::String();
+        if (track == nullptr || track->kind != Track::Kind::instrument || track->performPattern == chosen)
+            return;
+        track->performPattern = chosen;
+        changed();
+    }
+
+    namespace
+    {
+        void keepUserPatterns (juce::PropertiesFile* settings)
+        {
+            if (settings == nullptr)
+                return;
+            juce::XmlElement xml ("UserPatterns");
+            for (const auto& p : getUserPatterns())
+                xml.addChildElement (patternToXml (p).release());
+            settings->setValue ("userPatterns", xml.toString (juce::XmlElement::TextFormat().singleLine()));
+        }
+    }
+
+    juce::String Studio::addPatternFromPart (int partId, juce::String name)
+    {
+        const auto at = findPart (partId);
+        if (! at)
+            return {};
+        const auto& part = project.findTrack (at->first)->parts[(size_t) at->second];
+        if (part.isAudio() || part.notes.empty())
+            return {};
+        std::vector<LineNote> notes;
+        for (const auto& n : part.notes)
+            if (n.start >= 0.0 && n.start < part.length)
+                notes.push_back ({ n.start, juce::jmin (n.length, part.length - n.start), n.pitch, n.velocity });
+        if (name.trim().isEmpty())
+            name = part.name.isNotEmpty() ? part.name : "My pattern";
+        // A name not taken (ours or another of yours).
+        auto unique = name.trim();
+        for (int i = 2; patternNamed (unique) >= 0; ++i)
+            unique = name.trim() + " " + juce::String (i);
+        auto mine = getUserPatterns();
+        mine.push_back (patternFromNotes (unique, notes, part.length, project.beatsPerBar()));
+        setUserPatterns (std::move (mine));
+        keepUserPatterns (settings.get());
+        return unique;
+    }
+
+    void Studio::removeUserPattern (const juce::String& name)
+    {
+        auto mine = getUserPatterns();
+        const auto before = mine.size();
+        mine.erase (std::remove_if (mine.begin(), mine.end(), [&name] (const Pattern& p) { return p.name == name; }), mine.end());
+        if (mine.size() == before)
+            return;
+        const auto playing = performer->getPattern() >= 0 ? patterns()[(size_t) performer->getPattern()].name : juce::String();
+        setUserPatterns (std::move (mine));
+        keepUserPatterns (settings.get());
+        performer->setPattern (patternNamed (playing));   // (its index may have moved; gone: none)
+        changed();   // (a track performing it stops)
     }
 
     void Studio::setChordShift (int ticks)

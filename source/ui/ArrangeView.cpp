@@ -2444,6 +2444,8 @@ void ArrangeView::showPartMenu (int trackId, int index)
         chords.addSeparator();
         chords.addItem (125, "Plain Chords Only (major, minor)", true, detect.plainOnly);
         menu.addSubMenu (isAudioTrack (trackId) ? "Detect Chords (from the audio: a best guess)" : "Detect Chords", chords);
+        // (0.44.0) A MIDI part as one of your patterns (PERFORM, IDEAS' PATTERNS: MY PATTERNS).
+        menu.addItem (126, "Make a Pattern from This Part (MY PATTERNS)", ! isAudioTrack (trackId) && ! part.notes.empty());
     }
     {
         // (0.36.0) The manual's Map to Chord Track: the notes written moved onto the chord track's chords.
@@ -2568,6 +2570,16 @@ void ArrangeView::showPartMenu (int trackId, int index)
             if (std::find (tracks.begin(), tracks.end(), trackId) == tracks.end())
                 tracks.insert (tracks.begin(), trackId);
             studio.mergeMidiInLoop (tracks);
+            return;
+        }
+        if (chosen == 126)
+        {
+            const auto name = studio.addPatternFromPart (partId);
+            if (name.isNotEmpty())
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Pattern made",
+                                                        "\"" + name + "\" is in MY PATTERNS: in IDEAS' PATTERNS tab, the chord pads' PERFORM, "
+                                                        "and the Inspector's PERFORM. Its notes become voices from the lowest up "
+                                                        "(the lowest as the bass when it sits a fifth or more under the rest).");
             return;
         }
         if (chosen >= 120 && chosen <= 125)

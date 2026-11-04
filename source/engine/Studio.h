@@ -17,6 +17,7 @@
 #include "MediaBay.h"
 
 #include <optional>
+#include <mutex>
 
 namespace pr7s
 {
@@ -226,6 +227,26 @@ namespace pr7s
         int getPadVoicingCount (int pad) const;
         std::vector<int> getPadNotes (int pad) const;   // what it would play now
         void auditionPad (int pad);                     // played for a moment (acoustic feedback)
+        // (0.44.0) The chord modifiers (the manual's Pad Remote Control): on the last pad played.
+        void applyPadModifier (ChordPads::Modifier);
+        int getLastPlayedPad() const noexcept { return lastPlayedPad.load(); }
+        // MIDI Learn (the manual's Chord Pads Remote Settings): the next key pressed becomes this
+        // (the range takes two keys: its start, then its end); `onLearned` when done (message thread).
+        enum class PadLearn { none, range, modifier, section, subsection };
+        void startPadLearn (PadLearn, int index = 0);
+        void cancelPadLearn();
+        PadLearn getPadLearn() const noexcept { return padLearn; }
+        int getPadLearnIndex() const noexcept { return padLearnIndex; }
+        std::function<void()> onLearned;
+        void learnedKey (int note);                     // (the message thread; from the devices, or tests)
+        // (0.44.0) Recording chord events (the manual's Recording Chord Events with a MIDI Keyboard and
+        // Recording Chords on the Chord Track): the chord track's Record Enable; while recording,
+        // each pad pressed is a chord event at that beat; with none pressed, the chords recognised
+        // in what was played (three notes or more starting together). Snapped to the grid when
+        // snapping. They replace the chord events where recording ran; with the take's undo step.
+        void setChordTrackRecord (bool);
+        bool isChordTrackRecording() const noexcept { return project.chordTrack.record; }
+        std::vector<ChordEvent> chordsFromPlayed (const std::vector<HeardNote>&) const;   // (tests)
         // Drag a pad onto a track: a one-bar MIDI part there (the manual's Creating MIDI Parts from Chord Pads).
         int addPartFromPad (int pad, int trackId, double beat);
         enum class PadsPresetLoad { chordsAndPlayers, chordsOnly, playersOnly };
@@ -337,6 +358,13 @@ namespace pr7s
         // -1: as chords, as before). Kept in the settings by name (settings key `padPattern`).
         void setPadPattern (int index);
         int getPadPattern() const;
+        // (0.44.0) A track performing a pattern over the chord track (the Inspector's PERFORM; empty: none;
+        // instrument tracks). One undo step.
+        void setPerformPattern (int trackId, const juce::String& patternName);
+        // A MIDI part as one of your patterns (MY PATTERNS; settings key "userPatterns"); its name
+        // (made unique), empty if it's not a MIDI part with notes.
+        juce::String addPatternFromPart (int partId, juce::String name = {});
+        void removeUserPattern (const juce::String& name);
         PatternPerformer& getPerformer() { return *performer; }
         void setChordShift (int ticks);                        // Shift Chords (-480 to 480 ticks), an undo step
         // (0.38.0) Voicings and Single Voice: the voice, This Track's Voicings (none: the chord
@@ -1196,6 +1224,13 @@ namespace pr7s
         bool mirroring = false;
         juce::StringArray progressionFavorites;   // (without a settings file)
         MelodySettings melodySettings;   // (without a settings file)
+        std::atomic<int> lastPlayedPad { -1 };
+        PadLearn padLearn = PadLearn::none;
+        int padLearnIndex = 0, rangeFirst = -1;
+        std::mutex chordLogLock;
+        std::vector<ChordEvent> chordLog;   // pads pressed while recording (beats)
+        std::atomic<bool> loggingChords { false };
+        void takeRecordedChords (double from, double to, const std::vector<HeardNote>& played);
         DetectSettings detectSettings;
         juce::String guitarTuning;   // (without a settings file: the tests)
         GuitarVelocities guitarVelocities;

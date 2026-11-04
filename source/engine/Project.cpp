@@ -438,6 +438,8 @@ namespace pr7s
                 t->addChildElement (track.followReference.toXml().release());
             if (track.followVoice != Voice::soprano)
                 t->setAttribute ("followVoice", voiceId (track.followVoice));
+            if (track.performPattern.isNotEmpty())
+                t->setAttribute ("performPattern", track.performPattern);
             if (! (track.eq == ChannelEq {}))
                 t->addChildElement (track.eq.toXml().release());   // (0.43.0)
             if (track.followVoicing)
@@ -687,6 +689,7 @@ namespace pr7s
             track.followVoice = voiceFromId (t->getStringAttribute ("followVoice"));
             if (const auto* eq = t->getChildByName ("Eq"))
                 track.eq = ChannelEq::fromXml (*eq);
+            track.performPattern = t->getStringAttribute ("performPattern");
             if (const auto* voicing = t->getChildByName ("TrackVoicing"))
                 track.followVoicing = VoicingSettings::fromXml (*voicing);
             track.pitchbendUp = juce::jlimit (1, 96, t->getIntAttribute ("pitchbendUp", 2));

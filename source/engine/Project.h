@@ -291,6 +291,9 @@ namespace pr7s
         std::optional<VoicingSettings> followVoicing;
         // (0.43.0) The channel EQ and Pre section (audio-carrying channels: all but MIDI-only).
         ChannelEq eq;
+        // (0.44.0) A pattern it performs over the chord track while the song plays (a pattern's
+        // name; empty: none), beside its own parts.
+        juce::String performPattern;
     };
 
     struct Project
