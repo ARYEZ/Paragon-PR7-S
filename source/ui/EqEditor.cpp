@@ -32,7 +32,7 @@ namespace
         return pr7s::noteName (nearest) + (cents == 0 ? juce::String() : (cents > 0 ? " +" : " ") + juce::String (cents));
     }
 
-    juce::String dbText (double db) { return (db > 0.0 ? "+" : "") + juce::String (db, 1) + " dB"; }
+    juce::String dbText (double db) { return (db >= 0.0 ? "+" : "") + juce::String (db, 1) + " dB"; }
 
     void styleBar (juce::Slider& s)
     {
@@ -151,7 +151,8 @@ double EqCurve::dbForY (float y) const
 
 juce::Point<float> EqCurve::bandPoint (int band) const
 {
-    const auto& b = shown.bands[(size_t) band];
+    const auto eq = current();   // (the studio's now: an undo may have moved it since the last repaint)
+    const auto& b = eq.bands[(size_t) band];
     return { xForFrequency (b.frequency), yForDb (isCut (b.type) ? 0.0 : b.gainDb) };
 }
 
@@ -159,8 +160,9 @@ int EqCurve::bandAt (juce::Point<float> p) const
 {
     auto best = -1;
     auto bestDistance = compact ? 9.0f : 11.0f;
+    const auto eq = current();
     for (int i = 0; i < 4; ++i)
-        if (shown.bands[(size_t) i].on)
+        if (eq.bands[(size_t) i].on)
             if (const auto d = bandPoint (i).getDistanceFrom (p); d < bestDistance)
             {
                 best = i;
@@ -506,6 +508,7 @@ EqEditor::EqEditor (pr7s::Studio& s, int busId) : studio (s), bus (busId), curve
     frequencyBar (highCutFreq, pr7s::ChannelEq::minHighCut, pr7s::ChannelEq::maxFrequency);
     gainBar (preGain);
     preGain.setTooltip ("The input gain, before everything (+-24 dB; Ctrl-click: 0)");
+    preGain.textFromValueFunction = [] (double v) { return "GAIN " + dbText (v); };
     lowCutFreq.onValueChange = [this] { change ([v = lowCutFreq.getValue()] (pr7s::ChannelEq& e) { e.lowCut = v; e.lowCutOn = true; }, ! lowCutFreq.isMouseButtonDown()); };
     highCutFreq.onValueChange = [this] { change ([v = highCutFreq.getValue()] (pr7s::ChannelEq& e) { e.highCut = v; e.highCutOn = true; }, ! highCutFreq.isMouseButtonDown()); };
     preGain.onValueChange = [this] { change ([v = preGain.getValue()] (pr7s::ChannelEq& e) { e.preGainDb = v; }, ! preGain.isMouseButtonDown()); };

@@ -281,6 +281,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
         juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->setMixerInWindow (! safe->isMixerInWindow()); });
     };
     mixer.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
+    mixer.onOpenEq = [this] (int busId) { openEq (busId); };
     mixer.onFindPlugins = [this] { openPlugins(); };
     if (auto* settings = studio.getSettings())
     {

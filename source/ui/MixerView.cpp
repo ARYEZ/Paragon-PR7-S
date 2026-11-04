@@ -377,7 +377,20 @@ void MixerView::Strip::mouseDoubleClick (const juce::MouseEvent& e)
 void MixerView::Strip::mouseDown (const juce::MouseEvent& e)
 {
     if (isMaster())
+    {
+        // (0.43.0) The master's right-click: its EQ.
+        if (e.mods.isPopupMenu() && owner.onOpenEq)
+        {
+            juce::PopupMenu menu;
+            menu.addItem (1, "Channel EQ...");
+            menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<MixerView> (&owner)] (int chosen)
+            {
+                if (safe != nullptr && chosen == 1 && safe->onOpenEq)
+                    safe->onOpenEq (pr7s::Engine::masterBus);
+            });
+        }
         return;
+    }
     if (e.mods.isPopupMenu())
     {
         if (! owner.studio.isTrackSelected (busId))
@@ -569,6 +582,9 @@ void MixerView::showLinkMenu (int trackId)
     const auto selected = studio.getSelectedTracks();
     const auto* group = studio.getLinkGroupOf (trackId);
     juce::PopupMenu menu, included;
+    // (0.43.0) The channel's EQ, first.
+    menu.addItem (50, "Channel EQ...", onOpenEq != nullptr);
+    menu.addSeparator();
     menu.addSectionHeader ("LINK");
     menu.addItem (1, "Link Selected Channels...", selected.size() >= 2);
     if (group != nullptr)
@@ -588,6 +604,8 @@ void MixerView::showLinkMenu (int trackId)
         if (safe == nullptr || chosen == 0)
             return;
         auto& studio = safe->studio;
+        if (chosen == 50 && safe->onOpenEq)
+            safe->onOpenEq (trackId);
         if (chosen == 1)
             LinkGroupPage::show (*safe, studio, 0, studio.getSelectedTracks());
         else if (chosen == 2 || chosen == 3)

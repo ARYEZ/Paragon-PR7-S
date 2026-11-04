@@ -780,6 +780,7 @@ TEST_CASE ("Snapshot: a question box", "[.][snapshot-alert]")
 #include "ui/TrackColours.h"
 #include "ui/LinesPage.h"
 #include "ui/ProgressionsPage.h"
+#include "ui/EqEditor.h"
 
 TEST_CASE ("Snapshot: the IDEAS window (PARAGON_SNAPSHOT_IDEAS=piano|guitar|bass|patterns)", "[.][snapshot-lines]")
 {
@@ -1357,6 +1358,48 @@ TEST_CASE ("Snapshot: the MIDI editor's info line naming the selected notes' cho
         auto& editor = view.getKeyEditor();
         editor.selectNotes ({ 0, 1, 2, 3 });
         const auto image = view.createComponentSnapshot (view.getLocalArea (&view.getKeyEditorFrame(), view.getKeyEditorFrame().getLocalBounds()), true, 1.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+TEST_CASE ("Snapshot: the channel EQ (0.43.0; PARAGON_SNAPSHOT_EQ=inspector for the Inspector's section)", "[.][snapshot-eq]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "eq.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        using T = pr7s::EqBand::Type;
+        pr7s::Studio studio (false);
+        const auto id = studio.getProject().tracks[0].id;
+        pr7s::ChannelEq eq;
+        eq.bands[0] = { true, T::lowShelf, 3.0, 90.0, 0.71 };
+        eq.bands[1] = { true, T::parametric, -4.5, 320.0, 1.6 };
+        eq.bands[2] = { true, T::parametric, 2.5, 2500.0, 1.2 };
+        eq.bands[3] = { true, T::highShelf, 4.0, 9000.0, 0.71 };
+        eq.lowCutOn = true;
+        eq.lowCut = 40.0;
+        eq.lowCutSlope = 24;
+        studio.setChannelEq (id, eq);
+        juce::Image image;
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_EQ", {}) == "inspector")
+        {
+            MainView view (studio);
+            view.setSize (1500, 1000);
+            studio.dispatchPendingMessages();
+            auto& inspector = view.getInspector();
+            image = view.createComponentSnapshot (view.getLocalArea (&inspector, inspector.getLocalBounds()), true, 1.0f);
+        }
+        else
+        {
+            EqEditor editor (studio, id);
+            editor.setSize (EqEditor::width, EqEditor::height);
+            image = editor.createComponentSnapshot (editor.getLocalBounds(), true, 1.0f);
+        }
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };
         juce::PNGImageFormat().writeImageToStream (image, out);

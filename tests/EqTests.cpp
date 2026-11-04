@@ -217,3 +217,117 @@ TEST_CASE ("0.43.0: the studio: set, undone, saved with the song, in track prese
     CHECK (frequencyText (440.0) == "440 Hz");
     CHECK (frequencyText (1200.0) == "1.20 kHz");
 }
+
+#include "ui/EqEditor.h"
+#include "ui/Finish.h"
+
+namespace
+{
+    juce::MouseEvent mouseOn (juce::Component& c, juce::Point<float> at, juce::Point<float> downAt, juce::ModifierKeys mods = {}, int clicks = 1)
+    {
+        const auto now = juce::Time::getCurrentTime();
+        return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, mods.withFlags (juce::ModifierKeys::leftButtonModifier),
+                                 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, &c, &c, now, downAt, now, clicks, at != downAt);
+    }
+}
+
+TEST_CASE ("0.43.0: the curve by mouse: a click adds the nearest band there, a drag moves it (one undo step), keys limit it, double-click turns it off", "[eq][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    const auto id = studio.getProject().tracks[0].id;
+    EqCurve curve (studio, id, false);
+    curve.setSize (800, 300);
+    const auto at = [&curve] (double hz, double db) { return juce::Point<float> (curve.xForFrequency (hz), curve.yForDb (db)); };
+
+    // A click near 450 Hz at +6 dB: band 2 (500 Hz) is nearest, comes on there.
+    const auto down = at (450.0, 6.0);
+    curve.mouseDown (mouseOn (curve, down, down));
+    curve.mouseUp (mouseOn (curve, down, down));
+    auto eq = *studio.getChannelEq (id);
+    REQUIRE (eq.bands[1].on);
+    CHECK_THAT (eq.bands[1].frequency, WithinAbs (450.0, 5.0));
+    CHECK_THAT (eq.bands[1].gainDb, WithinAbs (6.0, 0.15));
+    CHECK_FALSE (eq.bands[0].on);
+    // Dragged to 900 Hz, -3 dB: one undo step back to where the click left it.
+    const auto point = curve.bandPoint (1);
+    CHECK (curve.bandAt (point) == 1);
+    curve.mouseDown (mouseOn (curve, point, point));
+    curve.mouseDrag (mouseOn (curve, at (900.0, -3.0), point));
+    curve.mouseUp (mouseOn (curve, at (900.0, -3.0), point));
+    eq = *studio.getChannelEq (id);
+    CHECK_THAT (eq.bands[1].frequency, WithinAbs (900.0, 10.0));
+    CHECK_THAT (eq.bands[1].gainDb, WithinAbs (-3.0, 0.15));
+    studio.undo();
+    CHECK_THAT (studio.getChannelEq (id)->bands[1].frequency, WithinAbs (450.0, 5.0));
+    // Ctrl: gain only; Alt: frequency only; Shift: Q (up: narrower).
+    {
+        const auto p = curve.bandPoint (1);
+        curve.mouseDown (mouseOn (curve, p, p));
+        curve.mouseDrag (mouseOn (curve, at (2000.0, 9.0), p, juce::ModifierKeys::commandModifier));
+        curve.mouseUp (mouseOn (curve, at (2000.0, 9.0), p, juce::ModifierKeys::commandModifier));
+        eq = *studio.getChannelEq (id);
+        CHECK_THAT (eq.bands[1].frequency, WithinAbs (450.0, 5.0));
+        CHECK_THAT (eq.bands[1].gainDb, WithinAbs (9.0, 0.15));
+    }
+    {
+        const auto p = curve.bandPoint (1);
+        curve.mouseDown (mouseOn (curve, p, p));
+        curve.mouseDrag (mouseOn (curve, at (2000.0, -9.0), p, juce::ModifierKeys::altModifier));
+        curve.mouseUp (mouseOn (curve, at (2000.0, -9.0), p, juce::ModifierKeys::altModifier));
+        eq = *studio.getChannelEq (id);
+        CHECK_THAT (eq.bands[1].frequency, WithinAbs (2000.0, 25.0));
+        CHECK_THAT (eq.bands[1].gainDb, WithinAbs (9.0, 0.15));
+    }
+    {
+        const auto p = curve.bandPoint (1);
+        const auto q = studio.getChannelEq (id)->bands[1].q;
+        curve.mouseDown (mouseOn (curve, p, p));
+        curve.mouseDrag (mouseOn (curve, p.translated (0.0f, -40.0f), p, juce::ModifierKeys::shiftModifier));
+        curve.mouseUp (mouseOn (curve, p.translated (0.0f, -40.0f), p, juce::ModifierKeys::shiftModifier));
+        CHECK_THAT (studio.getChannelEq (id)->bands[1].q, WithinAbs (q * 2.0, 0.01));
+    }
+    // Double-click: off.
+    const auto p = curve.bandPoint (1);
+    curve.mouseDoubleClick (mouseOn (curve, p, p, {}, 2));
+    CHECK_FALSE (studio.getChannelEq (id)->bands[1].on);
+    CHECK (curve.createComponentSnapshot (curve.getLocalBounds()).isValid());
+}
+
+TEST_CASE ("0.43.0: the EQ editor's controls, each an undo step; the window follows another channel", "[eq][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    const auto id = studio.getProject().tracks[0].id;
+    EqEditor editor (studio, id);
+    editor.setBandGain (2, 5.0);
+    editor.setBandFrequency (2, 3000.0);
+    editor.setBandQ (2, 2.0);
+    editor.setBandType (0, EqBand::Type::lowCut);
+    editor.setLowCut (true, 60.0, 36);
+    editor.setHighCut (true, 12000.0, 6);
+    editor.setPreGain (-2.0);
+    editor.setPhase (true);
+    auto eq = *studio.getChannelEq (id);
+    CHECK (eq.bands[2].on);
+    CHECK (eq.bands[2].gainDb == 5.0);
+    CHECK (eq.bands[2].frequency == 3000.0);
+    CHECK (eq.bands[0].type == EqBand::Type::lowCut);
+    CHECK (eq.lowCutSlope == 36);
+    CHECK (eq.highCutSlope == 6);
+    CHECK (eq.phaseInvert);
+    editor.invert();
+    CHECK (studio.getChannelEq (id)->bands[2].gainDb == -5.0);
+    studio.undo();
+    CHECK (studio.getChannelEq (id)->bands[2].gainDb == 5.0);
+    editor.setBypass (true);
+    CHECK (studio.getChannelEq (id)->bypass);
+    editor.reset();
+    CHECK (*studio.getChannelEq (id) == ChannelEq {});
+    editor.setBus (0);
+    editor.setBandOn (3, true);
+    CHECK (studio.getProject().masterEq.bands[3].on);
+    CHECK (EqEditor::channelName (studio, 0) == "MASTER");
+    editor.setSize (EqEditor::width, EqEditor::height);
+    CHECK (editor.createComponentSnapshot (editor.getLocalBounds()).isValid());
+}

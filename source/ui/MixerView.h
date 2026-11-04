@@ -55,6 +55,7 @@ public:
     ~MixerView() override;
 
     std::function<void (int busId, int slot)> onOpenEffect;   // its window
+    std::function<void (int busId)> onOpenEq;   // (0.43.0) a strip's right-click: Channel EQ...
     std::function<void()> onFindPlugins, onClose, onWindowToggle;
     void setInWindow (bool);   // the WINDOW / DOCK button's name follows
     bool isInWindow() const noexcept { return inWindow; }

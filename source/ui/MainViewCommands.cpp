@@ -156,6 +156,10 @@ void MainView::registerCommands()
                     return;
                 }
     });
+    add ("Window.ChannelEq", "Window", "Channel EQ (the selected track's, or the master's)", {}, [this]   // (0.43.0)
+    {
+        openEq (studio.isMasterSelected() ? pr7s::Engine::masterBus : studio.getSelectedTrack());
+    });
     add ("Window.Progressions", "Window", "Progression Library", {}, [this] { openProgressions(); });   // (0.40.0)
     add ("Window.AudioAlignment", "Window", "Open/Close Audio Alignment Panel", {}, [this] { toggleAudioAlignment(); });   // (0.33.0)
     add ("Automation.Touch", "Automation", "Automation Mode: Touch", {}, [this] { studio.setAutomationMode (pr7s::Studio::AutomationSettings::Mode::touch); });
