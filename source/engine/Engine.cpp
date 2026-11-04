@@ -198,6 +198,8 @@ namespace pr7s
         track.buffer.setSize (channelsNeeded (track), maxBlockSize);
         track.bus.setSize (2, maxBlockSize);
         track.midi.ensureSize (4096);
+        track.effectMidi.ensureSize (4096);   // (0.34.5: each track's own: effects may run on several cores at once)
+        track.preFaderCopy.setSize (2, maxBlockSize);
         track.left.reset (sampleRate, gainRampSeconds);
         track.right.reset (sampleRate, gainRampSeconds);
         track.left.setCurrentAndTargetValue (track.gainLeft);
@@ -247,6 +249,7 @@ namespace pr7s
             else
             {
                 tracks.push_back (std::move (incoming));
+                wave.reserve (tracks.size() + 16);   // (0.34.5: room for a wave of them, made here, not on the audio thread)
             }
         }
         if (old != nullptr && onPluginGoing)
@@ -292,6 +295,7 @@ namespace pr7s
         const juce::ScopedLock sl (lock);
         if (findTrack (trackId) == nullptr)
             tracks.push_back (std::move (incoming));
+        wave.reserve (tracks.size() + 16);   // (0.34.5: room for a wave of them, made here, not on the audio thread)
     }
 
     void Engine::addChannel (int trackId, bool group)
@@ -304,6 +308,7 @@ namespace pr7s
         const juce::ScopedLock sl (lock);
         if (findTrack (trackId) == nullptr)
             tracks.push_back (std::move (incoming));
+        wave.reserve (tracks.size() + 16);   // (0.34.5: room for a wave of them, made here, not on the audio thread)
     }
 
     float Engine::getSendNowDb (int trackId, int slot) const
@@ -416,6 +421,7 @@ namespace pr7s
             prepareTrack (*silent);
             const juce::ScopedLock sl (lock);
             tracks.push_back (std::move (silent));
+            wave.reserve (tracks.size() + 16);   // (0.34.5: room for a wave of them, made here, not on the audio thread)
         }
 
         // A bigger buffer, if this effect has more channels, made here; swapped in below.
@@ -722,7 +728,7 @@ namespace pr7s
         return track != nullptr ? track->meters[(size_t) juce::jlimit (0, 2, reader)].takePeak() : 0.0f;
     }
 
-    void Engine::runInserts (std::vector<Slot>& slots, juce::AudioBuffer<float>& buffer, int numSamples, int fromSlot, int toSlot)
+    void Engine::runInserts (std::vector<Slot>& slots, juce::AudioBuffer<float>& buffer, int numSamples, int fromSlot, int toSlot, juce::MidiBuffer& effectsMidi)
     {
         // In order, each on the sound in place. (Audio thread: no allocation.)
         for (int i = juce::jmax (0, fromSlot); i < juce::jmin (toSlot, (int) slots.size()); ++i)
@@ -745,8 +751,8 @@ namespace pr7s
             for (int channel = ins; channel < channels; ++channel)
                 juce::FloatVectorOperations::clear (buffer.getWritePointer (channel), numSamples);
             juce::AudioBuffer<float> view (buffer.getArrayOfWritePointers(), channels, numSamples);
-            effectMidi.clear();
-            effect.processBlock (view, effectMidi);
+            effectsMidi.clear();
+            effect.processBlock (view, effectsMidi);
             if (outs == 1 && buffer.getNumChannels() > 1)   // mono out: to both sides
                 juce::FloatVectorOperations::copy (buffer.getWritePointer (1), buffer.getReadPointer (0), numSamples);
         }
@@ -892,6 +898,175 @@ namespace pr7s
         }
         blockInputs = nullptr;
         blockNumInputs = 0;
+    }
+
+    void Engine::processTrack (TrackState& state, const BlockContext& block)
+    {
+        // (0.34.5) On any core: only this track's own things are touched here.
+        auto* track = &state;
+        track->playedThisBlock = false;
+        const auto numSamples = block.numSamples;
+        const auto& timing = *block.timing;
+        const auto liveId = block.liveId;
+        const auto* spans = block.spans;
+        const auto numSpans = block.numSpans;
+        const auto spanBeat = [&block] (const Segment& span, int sample) { return block.spanBeat (span, sample); };
+        if (track->id == liveId)
+            for (const auto metadata : live)   // played live: on the track's channel, as its notes
+            {
+                auto message = metadata.getMessage();
+                if (message.getChannel() > 0)
+                    message.setChannel (track->midiChannel);
+                if (message.isNoteOnOrOff())
+                {
+                    // Through its drum map: the key played is a sound's I-note, sent as its O-note.
+                    const auto pitch = track->drumIn[(size_t) message.getNoteNumber()];
+                    const auto out = track->drumOut[pitch];
+                    if (out < 0)
+                        continue;   // a muted sound
+                    message.setNoteNumber (out);
+                    if (track->drumChannel[pitch] >= 0)
+                        message.setChannel (track->drumChannel[pitch] + 1);
+                }
+                track->midi.addEvent (message, metadata.samplePosition);
+            }
+        if (track->role != TrackState::Role::source)
+        {
+            // A group or FX channel: what was routed or sent to it.
+            for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
+            {
+                if (channel < 2)
+                    juce::FloatVectorOperations::copy (track->buffer.getWritePointer (channel), track->bus.getReadPointer (channel), numSamples);
+                else
+                    juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
+            }
+        }
+        else if (track->audio || track->frozen)
+        {
+            // An audio track: its clips, and what comes in if it's monitored (a frozen track: its freeze file).
+            for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
+                juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
+            for (int i = 0; i < numSegments; ++i)
+                playClips (*track, segments[(size_t) i].clock, segments[(size_t) i].offset, segments[(size_t) i].length, timing);
+            if (track->monitor && track->audio && ! track->frozen)
+            {
+                juce::FloatVectorOperations::add (track->buffer.getWritePointer (0), inputChannel (track->input, 0), numSamples);
+                juce::FloatVectorOperations::add (track->buffer.getWritePointer (1),
+                                                  inputChannel (track->stereoInput ? track->input + 1 : track->input, 0), numSamples);
+            }
+        }
+        else if (track->instrument == nullptr)
+        {
+            return;   // (no instrument: nothing to play, send or meter)
+        }
+        else
+        {
+            // (Cleared and copied sample by sample: JUCE buffers remember being
+            // cleared, and a view cleared here wouldn't see the instrument's
+            // sound written through another view, then skip mixing it.)
+            for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
+                juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
+            juce::AudioBuffer<float> played (track->buffer.getArrayOfWritePointers(), track->instrumentChannels, numSamples);
+            track->instrument->processBlock (played, track->midi);
+            if (track->instrument->getTotalNumOutputChannels() == 1)   // a mono instrument: on both sides
+                juce::FloatVectorOperations::copy (track->buffer.getWritePointer (1), track->buffer.getReadPointer (0), numSamples);
+        }
+        juce::AudioBuffer<float> sound (track->buffer.getArrayOfWritePointers(), track->buffer.getNumChannels(), numSamples);
+        runInserts (track->inserts, sound, numSamples, 0, track->preFader, track->effectMidi);
+        // The sends before the fader take the sound as it is here: kept for them (they're added
+        // into the FX channels afterwards, on the audio thread, in the tracks' order).
+        const auto preSends = std::any_of (track->sends.begin(), track->sends.end(), [] (const auto& send) { return send.preFader && send.target != 0; });
+        if (preSends)
+            for (int channel = 0; channel < 2; ++channel)
+                juce::FloatVectorOperations::copy (track->preFaderCopy.getWritePointer (channel), sound.getReadPointer (channel), numSamples);
+
+        // Its fader and pan, on its own sound; then the inserts after the
+        // fader; then into the master.
+        auto* left = sound.getWritePointer (0);
+        auto* right = sound.getWritePointer (1);
+        const MixNow set { track->volumeDb, track->pan, track->mute };
+        if (track->mixAutomated)
+        {
+            // Volume, pan and mute as the lanes have them, every 32
+            // samples, in a straight line between (no steps to hear).
+            const auto gainsAt = [&] (double at)
+            {
+                const auto mix = mixAt (track->automation, set, at, settings.virginTerritory);
+                return sideGains (mix.volumeDb, mix.pan, ! mix.mute && ! track->soloedOut);
+            };
+            std::pair<float, float> gains;
+            for (int s = 0; s < numSpans; ++s)
+            {
+                const auto& span = spans[(size_t) s];
+                gains = gainsAt (spanBeat (span, span.offset));
+                for (int from = span.offset; from < span.offset + span.length; from += automationStep)
+                {
+                    const auto n = juce::jmin (automationStep, span.offset + span.length - from);
+                    const auto next = gainsAt (spanBeat (span, from + n));
+                    for (int i = 0; i < n; ++i)
+                    {
+                        const auto along = (float) i / (float) n;
+                        left[from + i] *= gains.first + (next.first - gains.first) * along;
+                        right[from + i] *= gains.second + (next.second - gains.second) * along;
+                    }
+                    gains = next;
+                }
+            }
+            // Turned off, the mix moves on from here.
+            track->left.setCurrentAndTargetValue (gains.first);
+            track->right.setCurrentAndTargetValue (gains.second);
+        }
+        else
+        {
+            track->left.setTargetValue (track->gainLeft);
+            track->right.setTargetValue (track->gainRight);
+            if (! track->left.isSmoothing() && ! track->right.isSmoothing())
+            {
+                // (0.34.1) Not moving: each side times its gain in one go (getNextValue would
+                // return exactly that gain for every sample).
+                juce::FloatVectorOperations::multiply (left, track->left.getTargetValue(), numSamples);
+                juce::FloatVectorOperations::multiply (right, track->right.getTargetValue(), numSamples);
+            }
+            else
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    left[i] *= track->left.getNextValue();
+                    right[i] *= track->right.getNextValue();
+                }
+        }
+        runInserts (track->inserts, sound, numSamples, track->preFader, Project::maxInserts, track->effectMidi);
+        float peak = 0.0f;
+        for (int i = 0; i < numSamples; ++i)
+            peak = juce::jmax (peak, std::abs (left[i]), std::abs (right[i]));
+        track->blockPeak = peak;
+        track->playedThisBlock = true;
+    }
+
+    void Engine::mixTrackOut (TrackState& state, const BlockContext& block, juce::AudioBuffer<float>& master)
+    {
+        // (0.34.5) On the audio thread, in the tracks' order: its sends, then its sound to its group or the master.
+        auto* track = &state;
+        if (! track->playedThisBlock)
+            return;
+        const auto numSamples = block.numSamples;
+        runSends (*track, true, numSamples, block.blockBeat, track->preFaderCopy);   // the sends before the fader
+        runSends (*track, false, numSamples, block.blockBeat, track->buffer);       // the sends after it
+        const auto* left = track->buffer.getReadPointer (0);
+        const auto* right = track->buffer.getReadPointer (1);
+
+        // To its group (a track routed to one), else the master.
+        auto* out = &master;
+        juce::AudioBuffer<float> toGroup;
+        if (track->role == TrackState::Role::source && track->output != 0)
+            if (auto* group = findTrack (track->output); group != nullptr && group->role == TrackState::Role::group)
+            {
+                toGroup.setDataToReferTo (group->bus.getArrayOfWritePointers(), 2, numSamples);
+                out = &toGroup;
+            }
+        juce::FloatVectorOperations::add (out->getWritePointer (0), left, numSamples);
+        juce::FloatVectorOperations::add (out->getWritePointer (1), right, numSamples);
+        for (auto& meter : track->meters)
+            meter.pushSamples (&track->blockPeak, 1);
     }
 
     void Engine::renderBlock (juce::AudioBuffer<float>& output, int numSamples)
@@ -1075,153 +1250,47 @@ namespace pr7s
                 for (int channel = 0; channel < 2; ++channel)
                     juce::FloatVectorOperations::clear (track->bus.getWritePointer (channel), numSamples);
         // Tracks, then groups (the tracks routed to them are in), then FX channels (every send is in).
+        // (0.34.5) Each kind's own work on the cores side by side, then their sums in order.
+        const BlockContext block { numSamples, spans.data(), numSpans, &timing, nowPlaying, blockBeat, liveId };
         for (const auto role : { TrackState::Role::source, TrackState::Role::group, TrackState::Role::fx })
-        for (auto& trackHolder : tracks)
         {
-            auto* track = trackHolder.get();
-            if (track->role != role)
-                continue;
-            if (track->id == liveId)
-                for (const auto metadata : live)   // played live: on the track's channel, as its notes
-                {
-                    auto message = metadata.getMessage();
-                    if (message.getChannel() > 0)
-                        message.setChannel (track->midiChannel);
-                    if (message.isNoteOnOrOff())
+            const auto oneByOne = [&]
+            {
+                for (auto& track : tracks)
+                    if (track->role == role)
                     {
-                        // Through its drum map: the key played is a sound's I-note, sent as its O-note.
-                        const auto pitch = track->drumIn[(size_t) message.getNoteNumber()];
-                        const auto out = track->drumOut[pitch];
-                        if (out < 0)
-                            continue;   // a muted sound
-                        message.setNoteNumber (out);
-                        if (track->drumChannel[pitch] >= 0)
-                            message.setChannel (track->drumChannel[pitch] + 1);
+                        processTrack (*track, block);
+                        mixTrackOut (*track, block, master);
                     }
-                    track->midi.addEvent (message, metadata.samplePosition);
-                }
-            if (track->role != TrackState::Role::source)
+            };
+            if (workers.getHelpers() == 0 || wave.capacity() < tracks.size())
             {
-                // A group or FX channel: what was routed or sent to it.
-                for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
-                {
-                    if (channel < 2)
-                        juce::FloatVectorOperations::copy (track->buffer.getWritePointer (channel), track->bus.getReadPointer (channel), numSamples);
-                    else
-                        juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
-                }
-            }
-            else if (track->audio || track->frozen)
-            {
-                // An audio track: its clips, and what comes in if it's monitored (a frozen track: its freeze file).
-                for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
-                    juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
-                for (int i = 0; i < numSegments; ++i)
-                    playClips (*track, segments[(size_t) i].clock, segments[(size_t) i].offset, segments[(size_t) i].length, timing);
-                if (track->monitor && track->audio && ! track->frozen)
-                {
-                    juce::FloatVectorOperations::add (track->buffer.getWritePointer (0), inputChannel (track->input, 0), numSamples);
-                    juce::FloatVectorOperations::add (track->buffer.getWritePointer (1),
-                                                      inputChannel (track->stereoInput ? track->input + 1 : track->input, 0), numSamples);
-                }
-            }
-            else if (track->instrument == nullptr)
-            {
+                oneByOne();
                 continue;
             }
-            else
-            {
-                // (Cleared and copied sample by sample: JUCE buffers remember being
-                // cleared, and a view cleared here wouldn't see the instrument's
-                // sound written through another view, then skip mixing it.)
-                for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
-                    juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
-                juce::AudioBuffer<float> played (track->buffer.getArrayOfWritePointers(), track->instrumentChannels, numSamples);
-                track->instrument->processBlock (played, track->midi);
-                if (track->instrument->getTotalNumOutputChannels() == 1)   // a mono instrument: on both sides
-                    juce::FloatVectorOperations::copy (track->buffer.getWritePointer (1), track->buffer.getReadPointer (0), numSamples);
-            }
-            juce::AudioBuffer<float> sound (track->buffer.getArrayOfWritePointers(), track->buffer.getNumChannels(), numSamples);
-            runInserts (track->inserts, sound, numSamples, 0, track->preFader);
-            runSends (*track, true, numSamples, blockBeat);   // the sends before the fader
-
-            // Its fader and pan, on its own sound; then the inserts after the
-            // fader; then into the master.
-            auto* left = sound.getWritePointer (0);
-            auto* right = sound.getWritePointer (1);
-            const MixNow set { track->volumeDb, track->pan, track->mute };
-            if (track->mixAutomated)
-            {
-                // Volume, pan and mute as the lanes have them, every 32
-                // samples, in a straight line between (no steps to hear).
-                const auto gainsAt = [&] (double at)
+            wave.clear();   // (keeps its room: nothing allocated)
+            auto fxIntoFx = false;   // an FX channel sending to another: they wait for each other, in order
+            for (auto& track : tracks)
+                if (track->role == role)
                 {
-                    const auto mix = mixAt (track->automation, set, at, settings.virginTerritory);
-                    return sideGains (mix.volumeDb, mix.pan, ! mix.mute && ! track->soloedOut);
-                };
-                std::pair<float, float> gains;
-                for (int s = 0; s < numSpans; ++s)
-                {
-                    const auto& span = spans[(size_t) s];
-                    gains = gainsAt (spanBeat (span, span.offset));
-                    for (int from = span.offset; from < span.offset + span.length; from += automationStep)
-                    {
-                        const auto n = juce::jmin (automationStep, span.offset + span.length - from);
-                        const auto next = gainsAt (spanBeat (span, from + n));
-                        for (int i = 0; i < n; ++i)
-                        {
-                            const auto along = (float) i / (float) n;
-                            left[from + i] *= gains.first + (next.first - gains.first) * along;
-                            right[from + i] *= gains.second + (next.second - gains.second) * along;
-                        }
-                        gains = next;
-                    }
+                    wave.push_back (track.get());
+                    if (role == TrackState::Role::fx)
+                        for (const auto& send : track->sends)
+                            fxIntoFx = fxIntoFx || send.target != 0;
                 }
-                // Turned off, the mix moves on from here.
-                track->left.setCurrentAndTargetValue (gains.first);
-                track->right.setCurrentAndTargetValue (gains.second);
-            }
-            else
+            if (wave.size() < 2 || fxIntoFx)
             {
-                track->left.setTargetValue (track->gainLeft);
-                track->right.setTargetValue (track->gainRight);
-                if (! track->left.isSmoothing() && ! track->right.isSmoothing())
-                {
-                    // (0.34.1) Not moving: each side times its gain in one go (getNextValue would
-                    // return exactly that gain for every sample).
-                    juce::FloatVectorOperations::multiply (left, track->left.getTargetValue(), numSamples);
-                    juce::FloatVectorOperations::multiply (right, track->right.getTargetValue(), numSamples);
-                }
-                else
-                    for (int i = 0; i < numSamples; ++i)
-                    {
-                        left[i] *= track->left.getNextValue();
-                        right[i] *= track->right.getNextValue();
-                    }
+                oneByOne();
+                continue;
             }
-            runInserts (track->inserts, sound, numSamples, track->preFader, Project::maxInserts);
-            runSends (*track, false, numSamples, blockBeat);  // the sends after it
-
-            // To its group (a track routed to one), else the master.
-            auto* out = &master;
-            juce::AudioBuffer<float> toGroup;
-            if (track->role == TrackState::Role::source && track->output != 0)
-                if (auto* group = findTrack (track->output); group != nullptr && group->role == TrackState::Role::group)
-                {
-                    toGroup.setDataToReferTo (group->bus.getArrayOfWritePointers(), 2, numSamples);
-                    out = &toGroup;
-                }
-            juce::FloatVectorOperations::add (out->getWritePointer (0), left, numSamples);
-            juce::FloatVectorOperations::add (out->getWritePointer (1), right, numSamples);
-            float peak = 0.0f;
-            for (int i = 0; i < numSamples; ++i)
-                peak = juce::jmax (peak, std::abs (left[i]), std::abs (right[i]));
-            for (auto& meter : track->meters)
-                meter.pushSamples (&peak, 1);
+            auto task = [this, &block] (int i) { processTrack (*wave[(size_t) i], block); };
+            workers.run ((int) wave.size(), task);
+            for (auto* track : wave)
+                mixTrackOut (*track, block, master);
         }
 
         // The master: its inserts before the fader, its volume, the inserts after it, to the output.
-        runInserts (masterInserts, master, numSamples, 0, masterPreFader);
+        runInserts (masterInserts, master, numSamples, 0, masterPreFader, effectMidi);
         const auto outputs = juce::jmin (2, output.getNumChannels());
         if (masterAutomated)
         {
@@ -1265,7 +1334,7 @@ namespace pr7s
                     masterRight[i] *= gain;
                 }
         }
-        runInserts (masterInserts, master, numSamples, masterPreFader, Project::maxInserts);
+        runInserts (masterInserts, master, numSamples, masterPreFader, Project::maxInserts, effectMidi);
         for (int channel = 0; channel < outputs; ++channel)
             juce::FloatVectorOperations::copy (output.getWritePointer (channel), master.getReadPointer (channel), numSamples);
 
@@ -1415,7 +1484,7 @@ namespace pr7s
         return mix;
     }
 
-    void Engine::runSends (TrackState& track, bool preFader, int numSamples, double beat)
+    void Engine::runSends (TrackState& track, bool preFader, int numSamples, double beat, const juce::AudioBuffer<float>& source)
     {
         // Each send that's on, to its FX channel: its level (or its lane's, while
         // R is on) ramped across the block from where it was, so moves don't click.
@@ -1439,7 +1508,7 @@ namespace pr7s
             }
             for (int channel = 0; channel < 2; ++channel)
             {
-                const auto* from = track.buffer.getReadPointer (channel);
+                const auto* from = source.getReadPointer (channel);
                 auto* to = fx->bus.getWritePointer (channel);
                 if (juce::exactlyEqual (gain, send.lastGain))
                     for (int i = 0; i < numSamples; ++i)   // (0.34.1: not moving, one gain: the ramp below gives exactly it)
@@ -1521,6 +1590,14 @@ namespace pr7s
             done += length;
         }
         notePerformance (juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - started), numSamples);
+    }
+
+    void Engine::setHelperThreads (int count)
+    {
+        // Under the lock: no block is being played while helpers stop and start.
+        const juce::ScopedLock sl (lock);
+        workers.setHelpers (count);
+        wave.reserve (tracks.size() + 16);
     }
 
     void Engine::settleMix()

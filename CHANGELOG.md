@@ -2,7 +2,21 @@
 
 Each version's notes appear on its GitHub Release page.
 
-## 0.34.4
+## 0.34.5
+
+**Multi-core audio.** Until now every track, instrument and effect was processed one after another on a single core of your processor, however many it has. Now tracks are processed side by side on all of them, the way Cubase does it. Heavy instruments and effects (Kontakt, Superior Drummer, amp sims) get far more room before the CPU meter fills up and the sound breaks up.
+
+- **How it works.** In each block of audio (a few milliseconds), every track's own work, its instrument or clips, its insert effects, its fader and pan, is shared among helper threads, one per core besides the audio thread's own. Group channels come next, then FX channels, because they need the tracks' sound first; then the master. Each track's sound is still added into its group, its sends and the master on one thread, in the same order as before.
+- **The sound is identical, to the last bit.** Adding numbers in a different order can change the last digit of a sample. Keeping the adding in the old order means the output is exactly the same as on one core. The tests check this with a 24-track song (groups, pre- and post-fader sends, automation, fader moves, effects that remember what they played), comparing every sample. They also run the whole test suite with every studio on four cores.
+- **How much faster:** on the 4-core machine here, that 24-track song took 708 ms on one core, 405 ms on two and 256 ms on four, so 2.8 times faster. Your PC's gain depends on its cores and your plug-ins. A song with one very heavy track gains least, because one track still runs on one core.
+- **The audio thread never waits for a helper to start.** It takes work itself until none is left, then waits only for what helpers have already begun. A helper that Windows is slow to wake costs nothing but its help. On Windows the helpers use the system's Pro Audio scheduling (MMCSS), as audio threads do; nothing else in the studio is raised.
+- **SETTINGS has a MULTI-CORE AUDIO switch (on).** It shows how many cores are in use. Switch it off if a plug-in misbehaves when run beside others; a few older ones assume they are alone. Everything then runs on one core, as before. The session log notes which way it was on each start.
+- **Exports, Render in Place and Freeze** use the cores too.
+- **Honestly:** I can't measure your PC from here. I can't promise every plug-in is happy on a helper thread either; running plug-ins this way is how every modern DAW does it, and it's the reason the switch exists. Not done: plug-in delay compensation, which is a separate thing; macOS's Apple-Silicon "audio workgroups" (the Mac build doesn't join them yet).
+
+**Also in this release:** 0.34.4, which never published. Its new strip-by-strip drawing test failed on macOS by one pixel: a Mac shades the edge where a redraw cuts a line slightly differently. The test now draws with JUCE's own renderer everywhere. The app was fine; Windows and Linux had passed.
+
+## 0.34.4 (released inside 0.34.5: its macOS test failed by one pixel)
 
 Running better, the screen's second part. Nothing looks different. Every screenshot in all three finishes, and the arrangement and transport drawn strip by strip the way the playhead redraws them, came out the same as before, pixel for pixel.
 

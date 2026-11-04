@@ -58,6 +58,12 @@ namespace pr7s
         // a buffer size set in the driver's own panel is read (for drivers that
         // don't say they changed).
         void reloadAudioDevice();
+        // Multi-core audio (0.34.5): tracks processed side by side on the computer's cores (settings
+        // `multiCoreAudio`, on; tests without devices: off). Off: everything on the audio thread, for a
+        // plug-in that doesn't like being run beside others. The output is the same either way.
+        bool getMultiCoreAudio() const;
+        void setMultiCoreAudio (bool);
+        int getAudioHelperThreads() const noexcept { return engine.getHelperThreads(); }
 
         // Told just before a track's instrument is replaced or removed (0:
         // every track's, for a new or opened song), so its window can close
@@ -1082,6 +1088,8 @@ namespace pr7s
         std::unique_ptr<PluginHost> host;
         juce::AudioDeviceManager devices;
         bool withDevices = false;
+        bool multiCoreAudio = false;   // (without a settings file)
+        void applyMultiCore();
         Engine engine;
 
         Project project;

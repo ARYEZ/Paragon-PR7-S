@@ -701,6 +701,7 @@ TEST_CASE ("Snapshot: the settings page", "[.][snapshot-settings]")
     studio.getDeviceManager().addAudioDeviceType (std::make_unique<FakeDriver> (type, type == "ASIO" ? juce::Array<int> { 64 } : juce::Array<int> { 480 },
                                                                                  type == "ASIO"));
     studio.getDeviceManager().setCurrentAudioDeviceType (type, true);
+    studio.setMultiCoreAudio (true);   // (0.34.5: as the app has it)
     Windows::Settings settings (studio, {}, {});
     auto* page = settings.getContentComponent();
     const auto image = page->createComponentSnapshot (page->getLocalBounds(), true, 1.5f);

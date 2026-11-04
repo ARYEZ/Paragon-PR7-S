@@ -60,9 +60,19 @@ namespace Windows
                 note.setColour (juce::Label::textColourId, ParagonColours::textDim);
                 note.setJustificationType (juce::Justification::topLeft);
                 addAndMakeVisible (note);
+                // (0.34.5) Multi-core audio, on unless switched off here.
+                multiCore.setColour (juce::ToggleButton::textColourId, ParagonColours::text);
+                multiCore.setColour (juce::ToggleButton::tickColourId, ParagonColours::accent);
+                multiCore.setToggleState (studio.getMultiCoreAudio(), juce::dontSendNotification);
+                multiCore.setTooltip ("Tracks are processed side by side on your computer's cores, so heavy plug-ins have room. "
+                                      "Off: everything on one core, as before 0.34.5, for a plug-in that misbehaves beside others. "
+                                      "What you hear is the same either way.");
+                multiCore.onClick = [this] { studio.setMultiCoreAudio (multiCore.getToggleState()); refreshMultiCore(); };
+                refreshMultiCore();
+                addAndMakeVisible (multiCore);
                 studio.getDeviceManager().addChangeListener (this);
                 refreshBuffer();
-                setSize (600, 640);
+                setSize (600, 676);
             }
 
             ~SettingsContent() override { studio.getDeviceManager().removeChangeListener (this); }
@@ -70,7 +80,7 @@ namespace Windows
             void resized() override
             {
                 auto area = getLocalBounds().reduced (12);
-                auto bottom = area.removeFromBottom (190);
+                auto bottom = area.removeFromBottom (226);
                 auto bufferRow = bottom.removeFromTop (88);
                 reload.setBounds (bufferRow.removeFromRight (130).removeFromTop (28));
                 bufferRow.removeFromRight (8);
@@ -81,6 +91,8 @@ namespace Windows
                 finish.setBounds (finishRow.removeFromLeft (220));
                 finishRow.removeFromLeft (16);
                 span.setBounds (finishRow.removeFromLeft (180));
+                bottom.removeFromTop (8);
+                multiCore.setBounds (bottom.removeFromTop (28));
                 note.setBounds (bottom.withTrimmedTop (8));
                 viewport.setBounds (area.withTrimmedBottom (8));
                 // The selector sets its own height; its width is the viewport's.
@@ -97,6 +109,13 @@ namespace Windows
             void refreshSpan()
             {
                 span.setButtonText (isSpanning && isSpanning() ? "BACK TO ONE SCREEN" : "SPAN ALL SCREENS");
+            }
+
+            void refreshMultiCore()
+            {
+                const auto helpers = studio.getAudioHelperThreads();
+                multiCore.setButtonText ("MULTI-CORE AUDIO" + juce::String (helpers > 0 ? ": tracks on " + juce::String (helpers + 1) + " cores at once"
+                                                                                      : juce::String (": off, everything on one core")));
             }
 
             juce::String getBufferText() const { return bufferText.getText(); }
@@ -129,6 +148,7 @@ namespace Windows
             juce::TextButton reload;
             juce::ComboBox finish;
             juce::TextButton span;
+            juce::ToggleButton multiCore;
             std::function<void()> toggleSpan;
             std::function<bool()> isSpanning;
         };

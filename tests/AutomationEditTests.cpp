@@ -282,14 +282,14 @@ TEST_CASE ("0.34.4: automation and tempo lanes drawn strip by strip (as the play
 
     const auto whole = [&]
     {
-        juce::Image image (juce::Image::ARGB, arrange.getWidth(), arrange.getHeight(), true);
+        juce::Image image (juce::Image::ARGB, arrange.getWidth(), arrange.getHeight(), true, juce::SoftwareImageType());   // (JUCE's own renderer everywhere: a Mac's shades a cut edge differently)
         juce::Graphics g (image);
         arrange.paintEntireComponent (g, true);
         return image;
     };
     const auto inStrips = [&] (int width, int height)
     {
-        juce::Image image (juce::Image::ARGB, arrange.getWidth(), arrange.getHeight(), true);
+        juce::Image image (juce::Image::ARGB, arrange.getWidth(), arrange.getHeight(), true, juce::SoftwareImageType());   // (JUCE's own renderer everywhere: a Mac's shades a cut edge differently)
         juce::Graphics g (image);
         for (int x = 0; x < arrange.getWidth(); x += width)
             for (int y = 0; y < arrange.getHeight(); y += height)
@@ -355,12 +355,12 @@ TEST_CASE ("0.34.4: the transport drawn screen by screen (as its timer redraws t
         {
             view.setSize (width, 900);
             auto& bar = view.getTransport();
-            juce::Image whole (juce::Image::ARGB, bar.getWidth(), bar.getHeight(), true);
+            juce::Image whole (juce::Image::ARGB, bar.getWidth(), bar.getHeight(), true, juce::SoftwareImageType());   // (JUCE's own renderer everywhere: a Mac's shades a cut edge differently)
             {
                 juce::Graphics g (whole);
                 bar.paintEntireComponent (g, true);
             }
-            juce::Image strips (juce::Image::ARGB, bar.getWidth(), bar.getHeight(), true);
+            juce::Image strips (juce::Image::ARGB, bar.getWidth(), bar.getHeight(), true, juce::SoftwareImageType());   // (JUCE's own renderer everywhere: a Mac's shades a cut edge differently)
             {
                 juce::Graphics g (strips);
                 for (int x = 0; x < bar.getWidth(); x += 29)

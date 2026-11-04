@@ -90,9 +90,41 @@ namespace pr7s
             engine.prepare (48000.0, 512);
         }
         library = std::make_unique<ProjectLibrary> (settings.get());
+        multiCoreAudio = withDevices;
+        applyMultiCore();
 
         newProject();
         startTimerHz (30);
+    }
+
+    bool Studio::getMultiCoreAudio() const
+    {
+        return settings != nullptr ? settings->getBoolValue ("multiCoreAudio", true) : multiCoreAudio;
+    }
+
+    void Studio::setMultiCoreAudio (bool on)
+    {
+        if (settings != nullptr)
+        {
+            settings->setValue ("multiCoreAudio", on);
+            settings->saveIfNeeded();
+        }
+        multiCoreAudio = on;
+        applyMultiCore();
+        announce();
+    }
+
+    void Studio::applyMultiCore()
+    {
+        // A helper per core but the audio thread's. (PARAGON_HELPERS=<n>: that many, for running the
+        // tests on several cores.)
+        auto helpers = getMultiCoreAudio() ? AudioWorkers::helpersForThisComputer() : 0;
+        if (const auto forced = juce::SystemStats::getEnvironmentVariable ("PARAGON_HELPERS", {}); forced.isNotEmpty())
+            helpers = forced.getIntValue();
+        engine.setHelperThreads (helpers);
+        SessionLog::note ("Multi-core audio: " + (helpers > 0 ? juce::String (helpers) + " helper threads beside the audio thread ("
+                                                                 + juce::String (juce::SystemStats::getNumPhysicalCpus()) + " cores)"
+                                                              : juce::String ("off (everything on the audio thread)")));
     }
 
     Studio::~Studio()

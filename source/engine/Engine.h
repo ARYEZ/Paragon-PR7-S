@@ -2,6 +2,7 @@
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include "AudioWorkers.h"
 #include "LevelMeterSource.h"
 #include "Project.h"
 
@@ -195,6 +196,10 @@ namespace pr7s
         // where it was (an export or a render starts here: its first moments
         // at the levels set, not still moving from the last playback's).
         void settleMix();
+        // Multi-core audio (0.34.5): helper threads beside the audio thread (0: everything on it).
+        // Message thread; waits for the block being played.
+        void setHelperThreads (int count);
+        int getHelperThreads() const noexcept { return workers.getHelpers(); }
 
         // One block measured (the audio callback calls it; tests too).
         void notePerformance (double secondsTaken, int numSamples) noexcept;
@@ -312,6 +317,12 @@ namespace pr7s
                 std::optional<DrumMap> map;
             };
             BuiltFrom builtFrom;
+            // (0.34.5) Its own work in a block may run on any core: what its effects are given, the
+            // sound before its fader for pre-fader sends, whether it played and how loud.
+            juce::MidiBuffer effectMidi;
+            juce::AudioBuffer<float> preFaderCopy;
+            bool playedThisBlock = false;
+            float blockPeak = 0.0f;
         };
 
         struct Settings
@@ -339,7 +350,9 @@ namespace pr7s
         void prepareEffect (juce::AudioPluginInstance&);
         static int channelsFor (const juce::AudioPluginInstance&);
         int channelsNeeded (const TrackState&) const;
-        void runInserts (std::vector<Slot>&, juce::AudioBuffer<float>&, int numSamples, int fromSlot = 0, int toSlot = Project::maxInserts);
+        void runInserts (std::vector<Slot>&, juce::AudioBuffer<float>&, int numSamples, int fromSlot, int toSlot, juce::MidiBuffer& effectMidi);
+        // The block's segments (up to the cycle's end, then from its start): their song position, place in the block and length.
+        struct Segment { juce::int64 clock; int offset, length; };
         // Beats to the song's samples and back, by the tempo map (0.10.0: it was one beats-per-sample).
         struct Timing
         {
@@ -357,10 +370,32 @@ namespace pr7s
         const float* inputChannel (int channel, int offset) const noexcept;
         void playClips (TrackState&, juce::int64 clock, int offset, int length, const Timing&);
         static void placeClip (Clip&, const Timing&);   // (0.34.1) its samples, worked out once
-        void runSends (TrackState&, bool preFader, int numSamples, double beat);
+        void runSends (TrackState&, bool preFader, int numSamples, double beat, const juce::AudioBuffer<float>& from);
 
-        // The block's segments (up to the cycle's end, then from its start): their song position, place in the block and length.
-        struct Segment { juce::int64 clock; int offset, length; };
+        // (0.34.5) A block's work, split in two. A track's own work (its instrument or clips, its
+        // inserts, fader and pan) touches nothing of any other track's, so tracks of one kind run
+        // side by side on the cores. Then, on the audio thread in the tracks' order as before, each
+        // track's sends and its sound into its group or the master: the same sums in the same
+        // order, so the output is the same to the last bit.
+        struct BlockContext
+        {
+            int numSamples = 0;
+            const Segment* spans = nullptr;
+            int numSpans = 0;
+            const Timing* timing = nullptr;
+            bool playing = false;
+            double blockBeat = 0.0;
+            int liveId = 0;
+            double spanBeat (const Segment& span, int sample) const
+            {
+                return playing ? timing->beatAt ((double) (span.clock + (sample - span.offset))) : blockBeat;
+            }
+        };
+        void processTrack (TrackState&, const BlockContext&);
+        void mixTrackOut (TrackState&, const BlockContext&, juce::AudioBuffer<float>& master);
+        AudioWorkers workers;
+        std::vector<TrackState*> wave;   // (room kept by the message thread: the audio thread never grows it)
+
         std::array<Segment, 16> segments;
         int numSegments = 0;
 
