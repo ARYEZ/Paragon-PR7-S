@@ -298,7 +298,7 @@ void GuitarVelocityPanel::resized()
 //==============================================================================
 LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : studio (s)
 {
-    for (auto* key : { &hearChords, &more, &stopKey, &pianoTab, &guitarTab, &bassTab, &patternsTab })
+    for (auto* key : { &hearChords, &more, &stopKey, &pianoTab, &guitarTab, &bassTab, &patternsTab, &melodyTab })
     {
         key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         key->setWantsKeyboardFocus (false);
@@ -318,6 +318,15 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
     // (0.39.0) PATTERNS: the chords played through rhythm and arpeggio patterns, a group at a time.
     patternsTab.setTooltip ("Patterns: the chords played as arpeggios, strums, pulses, ballad figures and riffs (also playable live from the chord pads: PERFORM)");
     patternsTab.onClick = [this] { setTab (Tab::patterns); };
+    // (0.41.0) MELODY: composed melodies in six forms, with their settings.
+    melodyTab.setTooltip ("Melodies composed for the chords: six forms (song form, question and answer, hook...), shaped by MELODY SETTINGS");
+    melodyTab.onClick = [this] { setTab (Tab::melody); };
+    melodyKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    melodyKey.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    melodyKey.setWantsKeyboardFocus (false);
+    melodyKey.setTooltip ("Density, range, steps or leaps, phrase length, how much phrases repeat, rests, syncopation");
+    melodyKey.onClick = [this] { showMelodySettings(); };
+    addChildComponent (melodyKey);
     {
         int groupId = 1;
         for (const auto& group : pr7s::patternGroups())
@@ -355,7 +364,8 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
     if (auto* settings = studio.getSettings())
     {
         const auto saved = settings->getValue ("ideasTab");
-        tab = saved == "guitar" ? Tab::guitar : saved == "bass" ? Tab::bass : saved == "patterns" ? Tab::patterns : Tab::piano;
+        tab = saved == "guitar" ? Tab::guitar : saved == "bass" ? Tab::bass : saved == "patterns" ? Tab::patterns
+            : saved == "melody" ? Tab::melody : Tab::piano;
     }
     setSize (1240, 760);
     setChords (std::move (chords));
@@ -376,6 +386,7 @@ std::vector<pr7s::LineIdea::Part> LinesPage::partsOf (Tab t)
         case Tab::guitar: return { P::rhythm, P::lead };
         case Tab::bass: return { P::bass };
         case Tab::patterns: return { P::pattern };
+        case Tab::melody: return { P::tune };
     }
     return {};
 }
@@ -391,6 +402,7 @@ juce::String LinesPage::titleOf (pr7s::LineIdea::Part part)
         case P::rhythm: return "RHYTHM";
         case P::lead: return "LEAD";
         case P::pattern: return "PATTERNS";
+        case P::tune: return "COMPOSED MELODIES";
     }
     return {};
 }
@@ -412,7 +424,8 @@ void LinesPage::setTab (Tab t)
 {
     tab = t;
     if (auto* settings = studio.getSettings())
-        settings->setValue ("ideasTab", t == Tab::guitar ? "guitar" : t == Tab::bass ? "bass" : t == Tab::patterns ? "patterns" : "piano");
+        settings->setValue ("ideasTab", t == Tab::guitar ? "guitar" : t == Tab::bass ? "bass" : t == Tab::patterns ? "patterns"
+                                     : t == Tab::melody ? "melody" : "piano");
     makeCards();
 }
 
@@ -482,6 +495,26 @@ void LinesPage::showHumanize()
     juce::CallOutBox::launchAsynchronously (std::move (panel), humanizeKey.getScreenBounds(), nullptr);
 }
 
+void LinesPage::setMelodySettings (const pr7s::MelodySettings& m)
+{
+    if (m.limited() == studio.getMelodySettings())
+        return;
+    stop();
+    studio.setMelodySettings (m);
+    rebuild();
+}
+
+void LinesPage::showMelodySettings()
+{
+    auto panel = std::make_unique<MelodyPanel> (studio.getMelodySettings());
+    panel->onChange = [safe = juce::Component::SafePointer<LinesPage> (this)] (const pr7s::MelodySettings& m)
+    {
+        if (safe != nullptr)
+            safe->setMelodySettings (m);
+    };
+    juce::CallOutBox::launchAsynchronously (std::move (panel), melodyKey.getScreenBounds(), nullptr);
+}
+
 void LinesPage::rebuild()
 {
     using P = pr7s::LineIdea::Part;
@@ -493,13 +526,16 @@ void LinesPage::rebuild()
     ideas[(size_t) P::rhythm] = pr7s::guitarRhythmIdeas (spans, barBeats, variation, tuning, velocities);
     ideas[(size_t) P::lead] = pr7s::guitarLeadIdeas (spans, barBeats, variation, tuning, velocities);
     ideas[(size_t) P::pattern] = pr7s::patternIdeas (spans, barBeats, patternGroup);
+    const auto melody = studio.getMelodySettings();
+    ideas[(size_t) P::tune] = pr7s::composedMelodies (spans, barBeats, melody, variation);
+    melodyKey.setButtonText (MelodyPanel::summary (melody));
     // Humanize (0.20.0): each idea loosened its own repeatable way (what HEAR plays is what USE IT adds).
     const auto amount = studio.getIdeasHumanize();
     humanizeKey.setButtonText (humanizeText (amount));
     if (amount > 0.0f && ! spans.empty())
     {
         const auto feel = studio.getIdeasFeel();
-        for (const auto part : { P::bass, P::melody, P::chords, P::rhythm, P::lead, P::pattern })
+        for (const auto part : { P::bass, P::melody, P::chords, P::rhythm, P::lead, P::pattern, P::tune })
         {
             auto& list = ideas[(size_t) part];
             for (size_t i = 0; i < list.size(); ++i)
@@ -514,7 +550,7 @@ void LinesPage::rebuild()
                     o.layers = pr7s::guitarLayers();
                 if (feel)
                     o.feelMs = amount * (part == P::rhythm || part == P::bass ? pr7s::HumanizeLimits::feelAheadMs
-                                         : part == P::lead || part == P::melody ? pr7s::HumanizeLimits::feelBehindMs : 0.0);
+                                         : part == P::lead || part == P::melody || part == P::tune ? pr7s::HumanizeLimits::feelBehindMs : 0.0);
                 o.seed = (juce::uint32) (variation * 1009 + (int) part * 101 + (int) i + 1);
                 list[i].notes = pr7s::humanize (std::move (list[i].notes), o);
             }
@@ -533,6 +569,8 @@ void LinesPage::makeCards()
     guitarTab.setToggleState (tab == Tab::guitar, juce::dontSendNotification);
     bassTab.setToggleState (tab == Tab::bass, juce::dontSendNotification);
     patternsTab.setToggleState (tab == Tab::patterns, juce::dontSendNotification);
+    melodyTab.setToggleState (tab == Tab::melody, juce::dontSendNotification);
+    melodyKey.setVisible (tab == Tab::melody);
     groupBox.setText (patternGroup, juce::dontSendNotification);
     groupBox.setVisible (tab == Tab::patterns);
     tuningBox.setText (getTuning().name, juce::dontSendNotification);
@@ -684,12 +722,13 @@ void LinesPage::resized()
     humanizeKey.setBounds (head.removeFromRight (150));
 
     auto tabs = area.removeFromTop (tabsHeight).withTrimmedBottom (6);
-    for (auto* key : { &pianoTab, &guitarTab, &bassTab, &patternsTab })
+    for (auto* key : { &pianoTab, &guitarTab, &bassTab, &patternsTab, &melodyTab })
     {
         key->setBounds (tabs.removeFromLeft (100));
         tabs.removeFromLeft (6);
     }
-    groupBox.setBounds (tabs.withLeft (tabs.getRight() - 240));   // (PATTERNS only: where the guitar tab keeps its keys)
+    groupBox.setBounds (tabs.withLeft (tabs.getRight() - 240));
+    melodyKey.setBounds (tabs.withLeft (tabs.getRight() - 300));   // (MELODY only)   // (PATTERNS only: where the guitar tab keeps its keys)
     velocitiesKey.setBounds (tabs.removeFromRight (110));
     tabs.removeFromRight (8);
     tuningBox.setBounds (tabs.removeFromRight (220));
@@ -745,4 +784,132 @@ void LinesWindow::closeButtonPressed()
     page->stop();
     if (onClose)
         onClose();
+}
+
+//==============================================================================
+// MELODY SETTINGS (0.41.0).
+MelodyPanel::MelodyPanel (pr7s::MelodySettings m) : settings (m.limited())
+{
+    const auto style = [this] (juce::Slider& s, double low, double high, double step, const char* tip)
+    {
+        s.setSliderStyle (juce::Slider::LinearBar);
+        s.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 80, 20);
+        s.setRange (low, high, step);
+        s.setColour (juce::Slider::trackColourId, ParagonColours::accent);
+        s.setColour (juce::Slider::textBoxTextColourId, ParagonColours::text);
+        s.setColour (juce::Slider::backgroundColourId, juce::Colour (0xff1b171c));
+        s.setColour (juce::Slider::textBoxOutlineColourId, ParagonColours::panelEdge);
+        s.setTooltip (tip);
+        addAndMakeVisible (s);
+    };
+    style (density, 0, 100, 1, "0%: a note or two a bar. 100%: busy, up to ten a bar");
+    style (low, pr7s::MelodySettings::lowest, pr7s::MelodySettings::highest - pr7s::MelodySettings::leastSpan, 1, "The lowest note the melody may use");
+    style (high, pr7s::MelodySettings::lowest + pr7s::MelodySettings::leastSpan, pr7s::MelodySettings::highest, 1, "The highest note the melody may use");
+    style (leaps, 0, 100, 1, "0%: only steps through the key (smooth, singable). 100%: mostly leaps of a third to a sixth (each followed by a step back)");
+    style (repeat, 0, 100, 1, "How closely a phrase that comes back copies the first time: 100% exactly, lower changes a few notes");
+    style (rests, 0, 100, 1, "Room to breathe: weak notes left out and phrase ends shortened");
+    for (auto* s : { &density, &leaps, &repeat, &rests })
+        s->setTextValueSuffix ("%");
+    for (auto* s : { &low, &high })
+    {
+        s->textFromValueFunction = [] (double v) { return pr7s::noteName (juce::roundToInt (v)); };
+        s->valueFromTextFunction = [] (const juce::String& t) { return (double) t.getIntValue(); };
+    }
+    density.onValueChange = [this] { auto m = settings; m.density = (float) density.getValue() / 100.0f; setSettings (m); };
+    low.onValueChange = [this] { auto m = settings; m.low = juce::roundToInt (low.getValue()); m.high = juce::jmax (m.high, m.low + pr7s::MelodySettings::leastSpan); setSettings (m); };
+    high.onValueChange = [this] { auto m = settings; m.high = juce::roundToInt (high.getValue()); m.low = juce::jmin (m.low, m.high - pr7s::MelodySettings::leastSpan); setSettings (m); };
+    leaps.onValueChange = [this] { auto m = settings; m.leaps = (float) leaps.getValue() / 100.0f; setSettings (m); };
+    repeat.onValueChange = [this] { auto m = settings; m.repetition = (float) repeat.getValue() / 100.0f; setSettings (m); };
+    rests.onValueChange = [this] { auto m = settings; m.rests = (float) rests.getValue() / 100.0f; setSettings (m); };
+    const std::pair<juce::TextButton*, int> phrases[] { { &oneBar, 1 }, { &twoBars, 2 }, { &fourBars, 4 } };
+    for (const auto& [key, bars] : phrases)
+        key->onClick = [this, bars = bars] { auto m = settings; m.phraseBars = bars; setSettings (m); };
+    oneBar.setTooltip ("A one-bar motif: short, punchy phrases");
+    twoBars.setTooltip ("Two-bar phrases (the usual)");
+    fourBars.setTooltip ("Four-bar phrases: long, flowing lines");
+    syncopation.setTooltip ("Notes pushed off the beat (pop, R&B, funk)");
+    syncopation.onClick = [this] { auto m = settings; m.syncopation = ! m.syncopation; setSettings (m); };
+    defaults.setTooltip ("Back to the starting settings");
+    defaults.onClick = [this] { setSettings ({}); };
+    for (auto* key : { &oneBar, &twoBars, &fourBars, &syncopation, &defaults })
+    {
+        key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        key->setWantsKeyboardFocus (false);
+        addAndMakeVisible (*key);
+    }
+    refresh();
+    setSize (width, titleHeight + rowHeight * 8 + 24);
+}
+
+juce::String MelodyPanel::summary (const pr7s::MelodySettings& m)
+{
+    return "MELODY: " + pr7s::noteName (m.low) + "-" + pr7s::noteName (m.high) + ", " + juce::String (m.phraseBars)
+         + (m.phraseBars == 1 ? " BAR" : " BARS");
+}
+
+void MelodyPanel::setSettings (const pr7s::MelodySettings& m)
+{
+    const auto limited = m.limited();
+    if (limited == settings)
+        return;
+    settings = limited;
+    refresh();
+    if (onChange)
+        onChange (settings);
+}
+
+void MelodyPanel::refresh()
+{
+    density.setValue (settings.density * 100.0, juce::dontSendNotification);
+    low.setValue (settings.low, juce::dontSendNotification);
+    high.setValue (settings.high, juce::dontSendNotification);
+    leaps.setValue (settings.leaps * 100.0, juce::dontSendNotification);
+    repeat.setValue (settings.repetition * 100.0, juce::dontSendNotification);
+    rests.setValue (settings.rests * 100.0, juce::dontSendNotification);
+    oneBar.setToggleState (settings.phraseBars == 1, juce::dontSendNotification);
+    twoBars.setToggleState (settings.phraseBars == 2, juce::dontSendNotification);
+    fourBars.setToggleState (settings.phraseBars == 4, juce::dontSendNotification);
+    syncopation.setToggleState (settings.syncopation, juce::dontSendNotification);
+}
+
+void MelodyPanel::paint (juce::Graphics& g)
+{
+    g.fillAll (juce::Colour (0xff0c0a0d));
+    auto area = getLocalBounds().reduced (14, 10);
+    g.setColour (ParagonColours::text);
+    g.setFont (ParagonLookAndFeel::titleFont (16.0f));
+    g.drawText ("MELODY SETTINGS", area.removeFromTop (22), juce::Justification::centredLeft, false);
+    g.setColour (ParagonColours::textDim);
+    g.setFont (juce::Font (juce::FontOptions (11.5f)));
+    g.drawFittedText ("What the six composed melodies are made of. They change as you move a control.",
+                      area.removeFromTop (titleHeight - 32), juce::Justification::topLeft, 2, 0.9f);
+    g.setColour (ParagonColours::text);
+    g.setFont (ParagonLookAndFeel::titleFont (13.0f));
+    for (const auto* name : { "DENSITY", "LOWEST", "HIGHEST", "LEAPS", "PHRASE", "REPEAT", "RESTS" })
+        g.drawText (name, area.removeFromTop (rowHeight).removeFromLeft (100), juce::Justification::centredLeft, false);
+}
+
+void MelodyPanel::resized()
+{
+    auto area = getLocalBounds().reduced (14, 10);
+    area.removeFromTop (titleHeight - 10);
+    const auto row = [&area] { auto r = area.removeFromTop (rowHeight); r.removeFromLeft (100); return r.reduced (0, 4); };
+    density.setBounds (row());
+    low.setBounds (row());
+    high.setBounds (row());
+    leaps.setBounds (row());
+    {
+        auto r = row();
+        const auto w = (r.getWidth() - 12) / 3;
+        oneBar.setBounds (r.removeFromLeft (w));
+        r.removeFromLeft (6);
+        twoBars.setBounds (r.removeFromLeft (w));
+        r.removeFromLeft (6);
+        fourBars.setBounds (r);
+    }
+    repeat.setBounds (row());
+    rests.setBounds (row());
+    auto last = area.removeFromTop (rowHeight).reduced (0, 2);
+    syncopation.setBounds (last.removeFromLeft (150));
+    defaults.setBounds (last.removeFromRight (110));
 }

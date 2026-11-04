@@ -12,6 +12,7 @@
 #include "Lines.h"
 #include "Patterns.h"
 #include "Progressions.h"
+#include "Melody.h"
 #include "MediaBay.h"
 
 #include <optional>
@@ -263,6 +264,9 @@ namespace pr7s
         int addLinePart (const LineIdea&, const std::vector<ChordSpan>&, int ontoTrackId = 0);
         static juce::String linePartName (LineIdea::Part);
         // The guitar ideas' tuning (0.19.0; settings key "guitarTuning", default 7-string drop A).
+        // The MELODY tab's settings (0.41.0; settings key "melodySettings").
+        MelodySettings getMelodySettings() const;
+        void setMelodySettings (const MelodySettings&);
         juce::String getGuitarTuning() const;
         void setGuitarTuning (const juce::String&);
         // The guitar ideas' velocities (0.19.3, the VELOCITIES panel; settings key "guitarVelocities").
@@ -1172,6 +1176,7 @@ namespace pr7s
         bool linksSuspended = false, linksAbsolute = false, qLink = false;
         bool mirroring = false;
         juce::StringArray progressionFavorites;   // (without a settings file)
+        MelodySettings melodySettings;   // (without a settings file)
         juce::String guitarTuning;   // (without a settings file: the tests)
         GuitarVelocities guitarVelocities;
         float ideasHumanize = 0.0f, humanizeAmount = 0.5f;   // (without a settings file: the tests)

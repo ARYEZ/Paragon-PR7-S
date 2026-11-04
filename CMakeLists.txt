@@ -46,6 +46,7 @@ add_library(PR7SCore STATIC
     source/engine/FollowChords.cpp
     source/engine/Patterns.cpp
     source/engine/Progressions.cpp
+    source/engine/Melody.cpp
     source/engine/Lines.cpp
     source/engine/MediaBay.cpp
     source/engine/ParagonSynth.cpp

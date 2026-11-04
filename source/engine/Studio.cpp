@@ -7873,6 +7873,7 @@ namespace pr7s
             case LineIdea::Part::rhythm: return "Guitar";
             case LineIdea::Part::lead: return "Lead Guitar";
             case LineIdea::Part::pattern: return "Pattern";
+            case LineIdea::Part::tune: return "Melody";
         }
         return "Idea";
     }
@@ -7965,6 +7966,20 @@ namespace pr7s
         humanizeLayers = on;
         if (settings != nullptr)
             settings->setValue ("humanizeLayers", on);
+    }
+
+    MelodySettings Studio::getMelodySettings() const
+    {
+        if (settings != nullptr && settings->containsKey ("melodySettings"))
+            return MelodySettings::fromString (settings->getValue ("melodySettings"));
+        return melodySettings;
+    }
+
+    void Studio::setMelodySettings (const MelodySettings& m)
+    {
+        melodySettings = m.limited();
+        if (settings != nullptr)
+            settings->setValue ("melodySettings", melodySettings.toString());
     }
 
     void Studio::setGuitarTuning (const juce::String& name)
