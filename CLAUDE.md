@@ -154,6 +154,7 @@ Cubase defaults it confirmed: Space, C, Delete, Ctrl+D, Ctrl+Z/Shift+Z, Ctrl+N/O
 
 - Bump `project(ParagonPR7S VERSION x.y.z)` and add a `## x.y.z` CHANGELOG section, then push. CI builds Windows, macOS and Linux, runs the tests, and publishes a release with `ParagonPR7-S-vX.Y.Z-<OS>.zip` (the app itself).
 - About 15 minutes after pushing, check the release has all three zips **and its tag is your commit**.
+- If a job was cancelled while waiting for a runner (0.39.0's Mac job: no steps, no runner), this session can't re-run it (403): push a small commit at the same version; the release job publishes whatever version isn't released yet.
 - The owner installs on **Windows** and works in **Cubase** and BeatMaker.
 
 ## Open questions (ask, don't guess)
