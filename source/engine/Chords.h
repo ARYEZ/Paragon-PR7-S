@@ -172,10 +172,14 @@ namespace pr7s
         std::vector<ChordEvent> events;   // by beat
         std::vector<ScaleEvent> scales;   // by beat
         bool autoScales = true;           // the scales follow the chords (off once one is set by hand)
+        // Shift Chords (0.36.0, the manual's chord track Inspector): ticks (480 to the quarter) a
+        // chord takes over before (negative: notes played a little early) or after its event, for
+        // the tracks following it.
+        int shiftTicks = 0;
 
         bool operator== (const ChordTrack& o) const noexcept
         {
-            return shown == o.shown && events == o.events && scales == o.scales && autoScales == o.autoScales;
+            return shown == o.shown && events == o.events && scales == o.scales && autoScales == o.autoScales && shiftTicks == o.shiftTicks;
         }
         int indexAt (double beat) const noexcept;               // the event sounding at `beat`, -1 if none yet
         double endOf (int index, double lastLength) const;       // the next one's start (the last: + lastLength)

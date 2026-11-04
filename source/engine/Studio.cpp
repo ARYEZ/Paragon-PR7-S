@@ -336,6 +336,9 @@ namespace pr7s
                 track.quickControls = then->quickControls;
                 track.midiChannel = then->midiChannel;
                 track.linkGroup = then->linkGroup;
+                track.follow = then->follow;                     // (0.36.0)
+                track.followReference = then->followReference;
+                track.liveFollow = then->liveFollow;
             }
         restoreLanes (project.masterAutomation, state.masterAutomation);
         // The tracks' order as it was (tracks added since keep their places after them).
@@ -8266,6 +8269,180 @@ namespace pr7s
         if (! project.chordTrack.scales.empty())
             pads.setKey (project.chordTrack.scales.front().key);
         setChordPads (pads);
+    }
+
+    //==========================================================================
+    // Follow Chord Track (0.36.0)
+    namespace
+    {
+        bool canFollow (const Track* track) noexcept
+        {
+            return track != nullptr && track->kind == Track::Kind::instrument && ! track->frozen;
+        }
+
+        // The chords a track's (or a part's) own notes make, as a reference ("C" if none found).
+        FollowReference analysedReference (const std::vector<std::pair<const Part*, double>>& parts, const Key& fallback)
+        {
+            std::vector<HeardNote> notes;
+            auto from = std::numeric_limits<double>::max(), to = 0.0;
+            for (const auto& [part, start] : parts)
+            {
+                from = juce::jmin (from, start);
+                to = juce::jmax (to, start + part->length);
+                for (const auto& n : part->notes)
+                    if (n.start < part->length)
+                        notes.push_back ({ start + n.start, start + juce::jmin (n.start + n.length, part->length), n.pitch, n.velocity });
+            }
+            FollowReference r;
+            if (! notes.empty())
+                r.chords = chordsFromNotes (notes, from, to, 1.0);
+            if (r.chords.empty())
+                return FollowReference::ofChord ({});   // (the manual: "C")
+            r.scales = scalesFromChords (r.chords, fallback);
+            return r;
+        }
+    }
+
+    bool Studio::needsFollowSetup (int trackId) const
+    {
+        const auto* track = project.findTrack (trackId);
+        return canFollow (track) && track->followReference.isEmpty();
+    }
+
+    bool Studio::startFollowing (int trackId, FollowMode mode, FollowStart start, const Chord& known)
+    {
+        auto* track = project.findTrack (trackId);
+        if (! canFollow (track))
+            return false;
+        switch (start)
+        {
+            case FollowStart::directly:
+                track->followReference = FollowReference::ofChordTrack (project.chordTrack);
+                if (track->followReference.isEmpty())
+                    track->followReference = FollowReference::ofChord ({});
+                break;
+            case FollowStart::analyze:
+            {
+                std::vector<std::pair<const Part*, double>> parts;
+                for (const auto& part : track->parts)
+                    if (! part.isAudio() && ! part.muted)
+                        parts.push_back ({ &part, part.start });
+                track->followReference = analysedReference (parts, project.chordPads.key());
+                break;
+            }
+            case FollowStart::knownChord:
+                track->followReference = FollowReference::ofChord (known);
+                break;
+        }
+        track->follow = mode;
+        SessionLog::note ("Follow Chord Track: " + track->name + ", " + followModeName (mode) + ", "
+                          + juce::String (track->followReference.chords.size()) + " reference chord(s)");
+        changed();
+        return true;
+    }
+
+    void Studio::setFollowMode (int trackId, FollowMode mode)
+    {
+        auto* track = project.findTrack (trackId);
+        if (! canFollow (track) || track->follow == mode)
+            return;
+        if (mode != FollowMode::off && track->followReference.isEmpty())
+        {
+            startFollowing (trackId, mode, FollowStart::directly);
+            return;
+        }
+        track->follow = mode;
+        changed();
+    }
+
+    void Studio::resetFollowing (int trackId)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || (track->follow == FollowMode::off && track->followReference.isEmpty()))
+            return;
+        track->follow = FollowMode::off;
+        track->followReference = {};
+        changed();
+    }
+
+    void Studio::setLiveFollow (int trackId, LiveFollow live)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || track->kind != Track::Kind::instrument || track->liveFollow == live)
+            return;
+        track->liveFollow = live;
+        changed (false);   // (as the MIDI input: a setting, not an edit)
+    }
+
+    void Studio::setChordShift (int ticks)
+    {
+        ticks = juce::jlimit (-480, 480, ticks);
+        if (project.chordTrack.shiftTicks == ticks)
+            return;
+        project.chordTrack.shiftTicks = ticks;
+        changed();
+    }
+
+    std::vector<int> Studio::followedPitches (int partId) const
+    {
+        const auto at = findPart (partId);
+        if (! at)
+            return {};
+        const auto& track = *project.findTrack (at->first);
+        const auto& part = track.parts[(size_t) at->second];
+        std::vector<int> pitches;
+        if (track.follow == FollowMode::off || project.chordTrack.events.empty() || part.isAudio())
+        {
+            for (const auto& n : part.notes)
+                pitches.push_back (n.pitch);
+            return pitches;
+        }
+        for (const auto& f : followNotes (part.notes, part.start, track.follow, track.followReference, project.chordTrack,
+                                          project.chordTrack.shiftTicks, project.chordPads.key()))
+            pitches.push_back (f.dropped ? -1 : f.pitch);
+        return pitches;
+    }
+
+    int Studio::mapToChordTrack (const std::vector<int>& partIds, FollowMode mode)
+    {
+        if (project.chordTrack.events.empty() || mode == FollowMode::off)
+            return -1;
+        auto moved = 0;
+        auto any = false;
+        for (const auto id : partIds)
+        {
+            const auto at = findPart (id);
+            if (! at)
+                continue;
+            auto& track = *project.findTrack (at->first);
+            if (track.frozen || track.isAudio())
+                continue;
+            auto& part = track.parts[(size_t) at->second];
+            if (part.isAudio() || part.notes.empty())
+                continue;
+            const auto reference = analysedReference ({ { &part, part.start } }, project.chordPads.key());
+            const auto followed = followNotes (part.notes, part.start, mode, reference, project.chordTrack,
+                                               project.chordTrack.shiftTicks, project.chordPads.key());
+            std::vector<Note> notes;
+            for (size_t n = 0; n < part.notes.size(); ++n)
+            {
+                if (followed[n].dropped)
+                {
+                    ++moved;
+                    continue;
+                }
+                auto note = part.notes[n];
+                if (note.pitch != followed[n].pitch)
+                    ++moved;
+                note.pitch = followed[n].pitch;
+                notes.push_back (note);
+            }
+            part.notes = std::move (notes);
+            any = true;
+        }
+        if (any)
+            changed();
+        return any ? moved : -1;
     }
 
     //==========================================================================

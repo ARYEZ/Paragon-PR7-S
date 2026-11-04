@@ -2063,6 +2063,47 @@ void KeyEditor::paintNotes (juce::Graphics& g)
         }
     }
 
+    // (0.36.0) Following the chord track: the notes stay as played; where each one sounds is
+    // drawn as a pearl outline on its row (a note dropped as a double: crossed through).
+    if (track->follow != pr7s::FollowMode::off && ! drumViewOn && ! project.chordTrack.events.empty())
+    {
+        const auto heard = pr7s::followNotes (list, part->start, track->follow, track->followReference, project.chordTrack,
+                                              project.chordTrack.shiftTicks, project.chordPads.key());
+        const juce::Colour pearl (0xfff4eeea);
+        for (int i = 0; i < (int) list.size(); ++i)
+        {
+            const auto bounds = getNoteBounds (i);
+            if (bounds.getRight() < area.getX() || bounds.getX() > area.getRight())
+                continue;
+            if (heard[(size_t) i].dropped)
+            {
+                g.setColour (pearl.withAlpha (0.8f));
+                g.drawLine (bounds.getX(), bounds.getCentreY(), bounds.getRight(), bounds.getCentreY(), 1.5f);
+                continue;
+            }
+            if (heard[(size_t) i].pitch == list[(size_t) i].pitch)
+                continue;
+            const auto at = bounds.withY (yForPitch (heard[(size_t) i].pitch) + 1.0f);
+            if (at.getBottom() < area.getY() || at.getY() > area.getBottom())
+                continue;
+            g.setColour (pearl.withAlpha (0.14f));
+            g.fillRoundedRectangle (at, 2.0f);
+            g.setColour (pearl.withAlpha (0.9f));
+            g.drawRoundedRectangle (at.reduced (0.75f), 2.0f, 1.5f);
+            g.setColour (pearl.withAlpha (0.35f));
+            g.fillRect (juce::Rectangle<float> (bounds.getX() + 1.0f, juce::jmin (bounds.getCentreY(), at.getCentreY()),
+                                                1.0f, std::abs (at.getCentreY() - bounds.getCentreY())));
+        }
+        auto stamp = area.withHeight (20.0f).withTrimmedLeft (8.0f).withTrimmedTop (4.0f);
+        const auto text = "FOLLOWS THE CHORD TRACK: " + pr7s::followModeName (track->follow) + "   (OUTLINES: WHERE THE NOTES SOUND)";
+        g.setFont (font (11.0f));
+        const auto textWidth = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text) + 14.0f;
+        g.setColour (juce::Colour (0xff0d0a0e).withAlpha (0.85f));
+        g.fillRoundedRectangle (stamp.withWidth (textWidth), 3.0f);
+        g.setColour (pearl);
+        g.drawText (text, stamp.withWidth (textWidth).withTrimmedLeft (7.0f), juce::Justification::centredLeft, false);
+    }
+
     if (gesture == Gesture::band && ! band.isEmpty())
     {
         g.setColour (ParagonColours::accent.withAlpha (0.12f));

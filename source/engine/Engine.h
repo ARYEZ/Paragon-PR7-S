@@ -323,6 +323,11 @@ namespace pr7s
                 std::vector<Part> parts;
                 int midiChannel = 1, soloLane = -1;
                 std::optional<DrumMap> map;
+                // (0.36.0) Following the chord track: its mode, reference, and the chord track as it was.
+                FollowMode follow = FollowMode::off;
+                FollowReference reference;
+                ChordTrack chords;
+                Key fallback;
             };
             BuiltFrom builtFrom;
             // (0.34.5) Its own work in a block may run on any core: what its effects are given, the
@@ -473,6 +478,16 @@ namespace pr7s
         juce::String liveFilter;
         juce::MidiKeyboardState keyboardState;
         juce::MidiBuffer live;
+        // Live Input (0.36.0): the live track's mode, the chord track's chords and scales as
+        // pitch-class bits by beat (built by `update`), and each key's note as it was sent
+        // (so its note off goes to the same note). Audio thread: mapLive.
+        struct LiveChord { double beat; juce::uint16 chord, scale; };
+        std::vector<LiveChord> liveChords;
+        LiveFollow liveFollowMode = LiveFollow::off;
+        int liveFollowTrack = 0;
+        std::array<std::array<juce::int16, 128>, 16> liveSent {};   // the note sent + 1 (0: none)
+        juce::MidiBuffer liveMapped;
+        void mapLive (double beat) noexcept;
 
         // Recorded notes, from the audio thread to the message thread.
         juce::AbstractFifo recordedFifo { 8192 };

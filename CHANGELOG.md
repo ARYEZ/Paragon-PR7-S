@@ -2,6 +2,35 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.36.0
+
+Follow Chord Track: a MIDI track's notes follow the chord track. Change a chord and the part plays along with the new one, without being played again.
+
+**Turning it on** (the Inspector's new CHORDS section, on instrument tracks)
+- **FOLLOW** chooses how the notes follow: CHORDS & SCALES, CHORDS, SCALES or ROOT NOTES, or OFF.
+- **The first time**, a dialog asks how the notes relate to the chord track. These are the manual's three choices:
+  - **Follow Directly:** the notes already go with the chord track's chords (made from them, or played over them).
+  - **Analyze Chords:** the notes have nothing to do with the chord track. Their own chords are found in them first, as Create Chord Events does.
+  - **Apply a Known Chord:** the notes stay on one chord all the way; you say which.
+- After that, switching modes needs no dialog. **Set Up Again...** in the same menu asks again.
+
+**What each mode does.** The manual says what each mode is for, not its exact rules, so these rules are our own:
+- **Root Notes:** every note moves by as much as the chord's root moved, the short way (up to 5 semitones up or 6 down). It's like a transpose track, and good for bass lines.
+- **Scales:** the notes move by steps of the scale. C E G over C, followed to F in C major, becomes F A C, with no notes from outside the key. When the scale changes (C major to A minor), each note keeps its place in the scale.
+- **Chords:** the notes move with the root, then each one goes onto the nearest note of the new chord.
+- **Chords & Scales:** a chord note stays the same chord note. The third stays the third and the seventh stays the seventh, if the new chord has one. The other notes move by scale steps.
+- **Doubles:** when two notes land on the same pitch at the same moment, the softer one isn't played. The manual warns that some notes may be muted.
+
+**Your notes stay as you played them.** Following changes what you hear, not what's written. In the MIDI editor, a pearl outline shows where each note actually sounds, linked to the note it came from. The track's row says FOLLOWS and the mode. Mixdowns, Render in Place and Freeze all use what you hear.
+
+**LIVE IN** (the manual's Live Input): the keys you play into the track go onto the chord track's chord (CHORDS) or scale (SCALES) at the playhead. They're recorded that way too. Each key's note-off goes to the same note its note-on went to, so nothing hangs.
+
+**SHIFT** (the manual's Shift Chords; it's the chord track's own setting): a chord can take over a little early, so notes played just before it (negative ticks) still take it. It also works the other way for notes played late (positive ticks). There are 480 ticks in a beat.
+
+**Map to Chord Track** (a MIDI part's menu): the part's notes are written moved onto the chord track, in the mode you pick. The part's own chords are found first; if none are found, C is assumed, as the manual has it. This is one undo step.
+
+**Not in this release:** the Voicings and Single Voice modes (the manual's voicing libraries aren't published, so they would need our own), and audio tracks (VariAudio segments) following the chord track. If you play the chord pads into a track with LIVE IN on, the pads' notes are moved to the chord track's chord too.
+
 ## 0.35.0
 
 VariAudio, part two: the rest of the manual's VariAudio, from editing the segments themselves to harmony voices. Also, as you asked, LANES and MON have moved into the Inspector.

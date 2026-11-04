@@ -86,6 +86,7 @@ namespace pr7s
         maxBlockSize = juce::jmax (1, newMaxBlockSize);
         midiInput.reset (sampleRate);
         live.ensureSize (2048);
+        liveMapped.ensureSize (2048);
         deviceBuffer.setSize (2, maxBlockSize);
         silence.assign ((size_t) maxBlockSize, 0.0f);
         effectMidi.ensureSize (4096);   // (an effect may send MIDI out: room for it, not grown on the audio thread)
@@ -558,36 +559,53 @@ namespace pr7s
             }
             // (0.34.1) Built from exactly what it was last time: kept (the same events would come out).
             const auto mapNow = map != nullptr ? std::optional<DrumMap> (*map) : std::nullopt;
+            // (0.36.0) Following the chord track: the chords it follows count as what it's built from.
+            const auto follows = track.follow != FollowMode::off && ! project.chordTrack.events.empty();
+            const auto followNow = follows ? track.follow : FollowMode::off;
+            const auto referenceNow = follows ? track.followReference : FollowReference {};
+            const auto chordsNow = follows ? project.chordTrack : ChordTrack {};
+            const auto fallbackNow = follows ? project.chordPads.key() : Key {};
             if (engineTrack != nullptr)
             {
                 auto& built = engineTrack->builtFrom;
                 if (built.valid && built.midiChannel == track.midiChannel && built.soloLane == track.soloLane
-                    && built.map == mapNow && built.parts == track.parts)
+                    && built.map == mapNow && built.parts == track.parts && built.follow == followNow
+                    && built.reference == referenceNow && built.chords == chordsNow && built.fallback == fallbackNow)
                 {
                     p.eventsKept = true;
                     prepared.push_back (std::move (p));
                     continue;
                 }
-                built = { true, track.parts, track.midiChannel, track.soloLane, mapNow };
+                built = { true, track.parts, track.midiChannel, track.soloLane, mapNow, followNow, referenceNow, chordsNow, fallbackNow };
             }
             ++eventBuilds;
             for (const auto& part : track.parts)
-                for (const auto& note : part.notes)
+            {
+                if (part.muted || (track.soloLane >= 0 && part.lane != track.soloLane))
+                    continue;   // a muted part isn't played (nor, with a lane soloed, another lane's: 0.29.0)
+                // (0.36.0) Each note's pitch as the chord track has it now (dropped: doubled by another).
+                const auto followed = follows ? followNotes (part.notes, part.start, followNow, referenceNow, chordsNow,
+                                                             chordsNow.shiftTicks, fallbackNow)
+                                              : std::vector<FollowedNote> {};
+                for (size_t n = 0; n < part.notes.size(); ++n)
                 {
-                    if (part.muted || (track.soloLane >= 0 && part.lane != track.soloLane))
-                        break;   // a muted part isn't played (nor, with a lane soloed, another lane's: 0.29.0)
+                    const auto& note = part.notes[n];
+                    if (follows && followed[n].dropped)
+                        continue;
+                    const auto pitch = juce::jlimit (0, 127, follows ? followed[n].pitch : note.pitch);
                     const auto on = part.start + note.start;
                     if (note.start < 0.0 || note.start >= part.length)
                         continue;   // outside the part: not heard (as in a DAW)
-                    const auto out = p.drumOut[(size_t) juce::jlimit (0, 127, note.pitch)];
+                    const auto out = p.drumOut[(size_t) pitch];
                     if (out < 0)
                         continue;   // a muted drum sound
-                    const auto bits = p.drumChannel[(size_t) juce::jlimit (0, 127, note.pitch)] >= 0 ? p.drumChannel[(size_t) note.pitch] : channelBits;
+                    const auto bits = p.drumChannel[(size_t) pitch] >= 0 ? p.drumChannel[(size_t) pitch] : channelBits;
                     const auto off = part.start + juce::jmin (note.start + note.length, part.length);
                     const auto velocity = (juce::uint8) juce::jlimit (1, 127, juce::roundToInt (note.velocity * 127.0f));
                     p.events.push_back ({ on, (juce::uint8) (0x90 | bits), (juce::uint8) out, velocity });
                     p.events.push_back ({ off, (juce::uint8) (0x80 | bits), (juce::uint8) out, 0 });
                 }
+            }
             // Controllers (0.25.0): each event, and a ramp as a value every 1/128 beat where it changes.
             for (const auto& part : track.parts)
             {
@@ -614,6 +632,24 @@ namespace pr7s
             prepared.push_back (std::move (p));
         }
 
+        // Live Input (0.36.0): the chord track as bits by beat, for the live track's keys.
+        std::vector<LiveChord> chordBits;
+        auto liveMode = LiveFollow::off;
+        auto liveModeTrack = 0;
+        for (const auto& track : project.tracks)
+            if (track.liveFollow != LiveFollow::off && ! track.isAudio() && ! track.isChannel())
+                if (track.id == liveTrack.load() || liveModeTrack == 0)
+                    liveMode = track.liveFollow, liveModeTrack = track.id;
+        if (liveMode != LiveFollow::off)
+        {
+            const auto fallback = project.chordPads.key();
+            for (const auto& e : project.chordTrack.events)
+            {
+                const auto key = project.chordTrack.keyAt (e.beat, project.chordTrack.scales.empty() ? fallback : project.chordTrack.scales.front().key);
+                chordBits.push_back ({ e.beat, pitchClassMask (e.chord.pitchClasses()), pitchClassMask (key.scale()) });
+            }
+        }
+
         const auto masterLevel = levelOf (project.masterVolumeDb);
         std::vector<LaneState> masterLanes;
         bool masterLanesMix = false;
@@ -624,6 +660,9 @@ namespace pr7s
                      project.loopStart, juce::jmax (project.loopStart + 0.0625, project.loopEnd), project.click, masterLevel,
                      project.masterVolumeDb, project.automationSettings.virginTerritory };
         std::swap (masterAutomation, masterLanes);
+        std::swap (liveChords, chordBits);   // (the old list goes out with `chordBits`)
+        liveFollowMode = liveMode;
+        liveFollowTrack = liveModeTrack;
         masterPreFader = project.masterPreFaderSlots;
         masterAutomated = masterLanesMix;
         for (auto& p : prepared)
@@ -1069,6 +1108,42 @@ namespace pr7s
             meter.pushSamples (&track->blockPeak, 1);
     }
 
+    void Engine::mapLive (double beat) noexcept
+    {
+        // The chord in force at the block's start (before the first: the first; none: as played).
+        const LiveChord* now = nullptr;
+        for (const auto& c : liveChords)
+            if (c.beat <= beat + 1.0e-9 || now == nullptr)
+                now = &c;
+            else
+                break;
+        liveMapped.clear();
+        for (const auto metadata : live)
+        {
+            auto message = metadata.getMessage();
+            if (message.isNoteOnOrOff())
+            {
+                const auto channel = juce::jlimit (1, 16, message.getChannel()) - 1;
+                const auto key = message.getNoteNumber();
+                auto& sent = liveSent[(size_t) channel][(size_t) key];
+                if (message.isNoteOn())
+                {
+                    const auto mask = now == nullptr ? (juce::uint16) 0 : liveFollowMode == LiveFollow::chords ? now->chord : now->scale;
+                    const auto to = nearestInMask (key, mask);
+                    sent = (juce::int16) (to + 1);
+                    message.setNoteNumber (to);
+                }
+                else if (sent > 0)
+                {
+                    message.setNoteNumber (sent - 1);   // (its note on's note)
+                    sent = 0;
+                }
+            }
+            liveMapped.addEvent (message, metadata.samplePosition);
+        }
+        live.swapWith (liveMapped);
+    }
+
     void Engine::renderBlock (juce::AudioBuffer<float>& output, int numSamples)
     {
         output.clear();
@@ -1118,6 +1193,8 @@ namespace pr7s
 
         auto clock = sampleClock;
         const auto beat = timing.beatAt ((double) clock);
+        if (liveFollowMode != LiveFollow::off && liveFollowTrack == liveTrack.load())
+            mapLive (beat);   // (0.36.0) keys onto the chord track's chord or scale, before they're played or recorded
         head.info.setBpm (settings.tempo.bpmAt (beat));
         head.info.setTimeSignature (juce::AudioPlayHead::TimeSignature { settings.numerator, settings.denominator });
         head.info.setPpqPosition (beat);

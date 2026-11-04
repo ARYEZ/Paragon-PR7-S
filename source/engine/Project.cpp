@@ -430,6 +430,12 @@ namespace pr7s
                 t->setAttribute ("drumMap", track.drumMap);
             if (track.drumEditor)
                 t->setAttribute ("drumEditor", true);
+            if (track.follow != FollowMode::off)
+                t->setAttribute ("follow", followModeId (track.follow));
+            if (track.liveFollow != LiveFollow::off)
+                t->setAttribute ("liveFollow", liveFollowId (track.liveFollow));
+            if (! track.followReference.isEmpty())
+                t->addChildElement (track.followReference.toXml().release());
             if (track.pitchbendUp != 2 || track.pitchbendDown != 2 || track.pitchbendSnap || track.pitchbendGrid)
             {
                 t->setAttribute ("pitchbendUp", track.pitchbendUp);
@@ -666,6 +672,10 @@ namespace pr7s
                 track.controllerLanes = ControllerKinds::lanesFromText (t->getStringAttribute ("controllerLanes"));
             track.drumMap = t->getStringAttribute ("drumMap");
             track.drumEditor = t->getBoolAttribute ("drumEditor");
+            track.follow = followModeFromId (t->getStringAttribute ("follow"));
+            track.liveFollow = liveFollowFromId (t->getStringAttribute ("liveFollow"));
+            if (const auto* reference = t->getChildByName ("FollowReference"))
+                track.followReference = FollowReference::fromXml (*reference);
             track.pitchbendUp = juce::jlimit (1, 96, t->getIntAttribute ("pitchbendUp", 2));
             track.pitchbendDown = juce::jlimit (1, 96, t->getIntAttribute ("pitchbendDown", 2));
             track.pitchbendSnap = t->getBoolAttribute ("pitchbendSnap");

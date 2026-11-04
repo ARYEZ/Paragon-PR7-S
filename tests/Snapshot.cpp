@@ -33,6 +33,7 @@
 // PARAGON_SNAPSHOT_TEMPO=1: the tempo track, with a ramp and a step (0.10.0).
 // PARAGON_SNAPSHOT_WARP=1: the guitar's clip warped (markers from its hitpoints, one dragged), selected, the WARP tool (0.32.0).
 // PARAGON_SNAPSHOT_TAKES=1: the guitar's three takes on lanes (LANES), comped (0.29.0), the COMP tool chosen.
+// PARAGON_SNAPSHOT_FOLLOW=1 (with PARAGON_SNAPSHOT_CHORDS): the lead following the chord track, two chords changed (0.36.0).
 // PARAGON_SNAPSHOT_FREEZE=1: the lead frozen (FREEZE lit in its Inspector, its parts stamped).
 // PARAGON_SNAPSHOT_VISIBILITY=1: the VISIBILITY tab, the bass hidden, the keys disabled.
 // PARAGON_SNAPSHOT_INSPECTOR=fader folds the Inspector's inserts and sends (=none hides it).
@@ -227,6 +228,25 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
                                                          { 24.0, { 10, CT::major, CX::seven, -1 } }, { 28.0, { 3, CT::major, CX::none, -1 } } };
         for (const auto& [beat, chord] : chords)
             studio.addChordEvent (beat, chord);
+    }
+    // PARAGON_SNAPSHOT_FOLLOW=1 (0.36.0, with PARAGON_SNAPSHOT_CHORDS): the lead follows the chord track
+    // (Chords & Scales, from the chords as they were), then two chords change: Eb -> Fm, Bb7 -> Cm7;
+    // its Live Input on chords; Shift Chords -30 ticks. (PARAGON_SNAPSHOT_SELECT=Lead for its Inspector.)
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FOLLOW", {}).isNotEmpty())
+    {
+        using CT = pr7s::Chord::Type;
+        using CX = pr7s::Chord::Tension;
+        studio.startFollowing (lead, pr7s::FollowMode::chordsAndScales, pr7s::FollowStart::directly);
+        const auto& events = studio.getChordTrack().events;
+        for (int i = 0; i < (int) events.size(); ++i)
+        {
+            if (events[(size_t) i].beat == 16.0)
+                studio.setChordEventChord (i, { 5, CT::minor, CX::none, -1 });
+            if (events[(size_t) i].beat == 24.0)
+                studio.setChordEventChord (i, { 0, CT::minor, CX::seven, -1 });
+        }
+        studio.setLiveFollow (lead, pr7s::LiveFollow::chords);
+        studio.setChordShift (-30);
     }
     // PARAGON_SNAPSHOT_VISIBILITY=1: the left zone's VISIBILITY, the bass hidden and the keys disabled.
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_VISIBILITY", {}).isNotEmpty())
@@ -1236,6 +1256,28 @@ TEST_CASE ("Snapshot: the Automation panel", "[.][snapshot-autopanel]")
             panel.setTab (AutomationPanel::Tab::settings);
         panel.refresh();
         const auto image = panel.createComponentSnapshot (panel.getLocalBounds(), true, 1.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+#include "ui/FollowSetupPage.h"
+
+// Follow Chord Track's dialog (0.36.0), Apply a Known Chord chosen.
+TEST_CASE ("Snapshot: the Follow Chord Track dialog", "[.][snapshot-follow-dialog]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "follow.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        FollowSetupPage page;
+        page.setStart (pr7s::FollowStart::knownChord);
+        page.setKnownChord ({ 2, pr7s::Chord::Type::minor, pr7s::Chord::Tension::none, -1 });
+        const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 2.0f);
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };
         juce::PNGImageFormat().writeImageToStream (image, out);

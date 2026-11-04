@@ -296,6 +296,25 @@ namespace pr7s
         // The manual's Assign from Chord Track: its chords, each once, onto the pads in order.
         void assignPadsFromChordTrack();
 
+        // Follow Chord Track (0.36.0, the manual's): a MIDI track's notes heard moved to the chord
+        // track's chords (FollowChords.h has the rules). The first time (no reference yet) it
+        // needs how to begin (the manual's dialog): Follow Directly (the chord track as it is now
+        // is what the notes were played over), Analyze Chords (found in the track's notes) or
+        // Apply a Known Chord. Later modes keep that reference. One undo step each.
+        bool needsFollowSetup (int trackId) const;
+        bool startFollowing (int trackId, FollowMode, FollowStart, const Chord& known = {});
+        void setFollowMode (int trackId, FollowMode);          // (with a reference: else Follow Directly)
+        void resetFollowing (int trackId);                     // off, the reference forgotten (the dialog again next time)
+        // Live Input: the keys played into this track onto the chord or the scale in force.
+        void setLiveFollow (int trackId, LiveFollow);
+        void setChordShift (int ticks);                        // Shift Chords (-480 to 480 ticks), an undo step
+        // A part's notes as they're heard (pitch, or -1: dropped as a double), for the MIDI editor.
+        std::vector<int> followedPitches (int partId) const;
+        // Map to Chord Track (the manual's): the chosen MIDI parts' notes written moved to the
+        // chord track, each part's own chords found in it first ("C" if none); doubles removed.
+        // One undo step; how many notes changed pitch (-1: nothing to map to).
+        int mapToChordTrack (const std::vector<int>& partIds, FollowMode);
+
         // Freeze (0.9.8, the manual's Freeze Channel): the track's instrument and
         // inserts (not its fader, pan or sends) rendered from the song's start to
         // its last part's end plus `tailSeconds`, into "<audio folder>/Freeze";

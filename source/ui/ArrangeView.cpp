@@ -2431,6 +2431,14 @@ void ArrangeView::showPartMenu (int trackId, int index)
     menu.addItem (8, "Render in Place (as last time)");
     menu.addSeparator();
     menu.addItem (12, "Create Chord Events (the chords it plays, onto the chord track)", ! isAudioTrack (trackId));
+    {
+        // (0.36.0) The manual's Map to Chord Track: the notes written moved onto the chord track's chords.
+        juce::PopupMenu map;
+        for (const auto mode : pr7s::followModes())
+            if (mode != pr7s::FollowMode::off)
+                map.addItem (39000 + (int) mode, pr7s::followModeName (mode));
+        menu.addSubMenu ("Map to Chord Track", map, ! isAudioTrack (trackId) && ! studio.getChordTrack().events.empty());
+    }
     // Takes (0.29.0, the manual's Handling Overlapping Audio: the To Front submenu).
     {
         const auto& track = *studio.getProject().findTrack (trackId);
@@ -2468,6 +2476,11 @@ void ArrangeView::showPartMenu (int trackId, int index)
     }
     menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, index, ids, muted = part.muted, start = part.start, end = part.end(), partId = part.id] (int chosen)
     {
+        if (chosen > 39000 && chosen < 39010)
+        {
+            studio.mapToChordTrack (ids.empty() ? std::vector<int> { partId } : ids, (pr7s::FollowMode) (chosen - 39000));
+            return;
+        }
         if (chosen > 40000)
         {
             studio.bringToFront (chosen - 40000);

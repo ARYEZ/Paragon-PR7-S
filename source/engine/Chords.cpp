@@ -957,6 +957,8 @@ namespace pr7s
         auto xml = std::make_unique<juce::XmlElement> ("ChordTrack");
         xml->setAttribute ("shown", shown);
         xml->setAttribute ("autoScales", autoScales);
+        if (shiftTicks != 0)
+            xml->setAttribute ("shiftTicks", shiftTicks);
         for (const auto& e : events)
         {
             auto* x = xml->createNewChildElement ("Chord");
@@ -979,6 +981,7 @@ namespace pr7s
         ChordTrack t;
         t.shown = xml.getBoolAttribute ("shown", false);
         t.autoScales = xml.getBoolAttribute ("autoScales", true);
+        t.shiftTicks = juce::jlimit (-480, 480, xml.getIntAttribute ("shiftTicks", 0));
         for (const auto* x : xml.getChildWithTagNameIterator ("Chord"))
             if (const auto chord = Chord::fromText (x->getStringAttribute ("chord")))
                 t.events.push_back ({ juce::jmax (0.0, x->getDoubleAttribute ("beat")), *chord });

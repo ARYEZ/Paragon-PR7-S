@@ -203,6 +203,8 @@ public:
             if (t->automationWrite) states.add ("WRITE");
             else if (t->automationRead) states.add ("READ");
             if (t->frozen) states.add ("FROZEN");
+            if (t->follow != pr7s::FollowMode::off) states.add ("FOLLOWS " + pr7s::followModeName (t->follow));   // (0.36.0)
+            if (t->liveFollow != pr7s::LiveFollow::off) states.add ("LIVE: " + pr7s::liveFollowName (t->liveFollow));
             if (const auto* link = owner.studio.getLinkGroupOf (t->id)) states.add ("LINKED: " + link->name.toUpperCase());
             if (! states.isEmpty())
             {

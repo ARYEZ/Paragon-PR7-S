@@ -40,6 +40,7 @@ add_executable(ParagonPR7STests
     AlignTests.cpp
     VariAudioTests.cpp
     VariAudio2Tests.cpp
+    FollowChordTests.cpp
     PerformanceTests.cpp
     UiTests.cpp
     PerfTests.cpp

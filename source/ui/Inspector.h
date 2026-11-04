@@ -53,8 +53,8 @@ public:
     std::function<void (int trackId)> onRender;   // RENDER (0.17.1): Render in Place of the whole track, as last time
 
     static constexpr int width = 210;
-    enum class Section { basics, routing, inserts, sends, fader, quick };
-    static constexpr int numSections = 6;
+    enum class Section { basics, routing, chords, inserts, sends, fader, quick };
+    static constexpr int numSections = 7;
     bool isFolded (Section) const;
     void setFolded (Section, bool);   // (kept in the settings file)
 
@@ -72,6 +72,12 @@ public:
     juce::ComboBox& getAudioInput() noexcept { return audioInput; }
     juce::TextButton& getOutput() noexcept { return output; }
     juce::TextButton& getDrumMapKey() noexcept { return drumMapKey; }
+    // CHORDS (0.36.0, the manual's Chords section): Follow Chord Track, Live Input, Shift Chords.
+    juce::TextButton& getFollowKey() noexcept { return followKey; }
+    juce::TextButton& getLiveKey() noexcept { return liveKey; }
+    juce::TextButton& getShiftKey() noexcept { return shiftKey; }
+    void showFollowMenu();
+    void chooseFollowMode (pr7s::FollowMode);   // the menu's choice: the dialog first if the track has never followed
     std::function<void()> onDrumMapSetup;   // MainView: the Drum Map Setup window
     juce::TextButton& getInsertSlot (int slot) { return slots[(size_t) slot]; }
     juce::Viewport& getInsertsView() noexcept { return insertsView; }
@@ -133,6 +139,10 @@ private:
     juce::TextButton instrument, edit { "EDIT" };
     juce::Label midiInputLabel, channelLabel, audioInputLabel, outputLabel, noSends, drumMapLabel;
     juce::TextButton drumMapKey;   // (0.26.0) the track's drum map (the manual's Routing section)
+    juce::TextButton followKey, liveKey, shiftKey;
+    juce::Label followLabel, liveLabel, shiftLabel;
+    void showLiveMenu();
+    void showShiftMenu();
     void showDrumMapMenu();
     // MIDI IN: the devices asked of the system only when its list opens (0.9.2:
     // asking on every change, every playhead move, was slow on Windows).

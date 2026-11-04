@@ -6,6 +6,7 @@
 
 #include "Chords.h"
 #include "DrumMaps.h"
+#include "FollowChords.h"
 #include "TempoMap.h"
 
 // A song: its tempo and time signature, the cycle (loop) range, and its
@@ -278,6 +279,12 @@ namespace pr7s
         bool automationOpen = false;     // its lanes shown under it
         bool automationRead = false, automationWrite = false;   // R and W (W turns R on)
         int linkGroup = 0;               // the link group it's in (0.17.0; 0: none)
+        // Follow Chord Track (0.36.0, the Inspector's CHORDS): how its notes follow the chord
+        // track, the chords they were played over (empty until following first begins: the
+        // dialog), and Live Input (keys played onto the chord or scale in force).
+        FollowMode follow = FollowMode::off;
+        FollowReference followReference;
+        LiveFollow liveFollow = LiveFollow::off;
     };
 
     struct Project
