@@ -77,7 +77,7 @@ TEST_CASE ("0.41.0: composed melodies: in range, chord tones on the beats, the k
                 CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
                 const auto& span = spanAt (spans, n.beat);
                 const auto tones = span.chord.pitchClasses();
-                const auto onBeat = std::abs (n.beat - std::round (n.beat)) < 1.0e-6;
+                const auto onBeat = std::abs (n.beat / 2.0 - std::round (n.beat / 2.0)) < 1.0e-6;   // (beats 1 and 3)
                 if (onBeat)
                     CHECK (std::find (tones.begin(), tones.end(), n.pitch % 12) != tones.end());
                 else

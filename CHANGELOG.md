@@ -2,6 +2,34 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.41.0
+
+**Better melodies** (you asked, as your chord tool has: melodies you can shape). IDEAS has a new **MELODY** tab: six melodies composed for your chord track's chords, each in a different form. The way they're composed and the form names are our own.
+- **Song form (AABA):** a phrase, the same again, something new, then the first one home.
+- **Question and answer (ABAB):** a phrase that asks, one that answers, and both again.
+- **Hook (AAAB):** one catchy phrase three times, then a turn.
+- **Two answers (ABAC):** the same question, answered differently each time.
+- **Climbing motif:** one motif, each time higher in the key.
+- **Always new:** every phrase different.
+
+**How they're built:** each phrase's rhythm and shape (a motif) is made once. When its letter comes back, the motif is bent to the chords under it.
+- Beats 1 and 3 land on chord tones. The notes between walk through the key, avoiding any note a half step against the chord.
+- A leap is followed by a step back the other way, as singers do.
+- Phrases rise, then fall.
+- The melody ends on the last chord's root.
+
+**MELODY SETTINGS** (the key at the right of the tabs; the six melodies change as you move a control):
+- **DENSITY:** from a note or two a bar to busy runs.
+- **LOWEST / HIGHEST:** the range, as note names (C3 to G4 at first, middle C = C3).
+- **LEAPS:** from steps only (smooth and singable) to mostly leaps. Thirds and fourths at first; fifths and sixths past 60%.
+- **PHRASE:** 1, 2 or 4 bars, which is how long the motif is.
+- **REPEAT:** how closely a returning phrase copies the first time. At 100% the rhythm returns exactly; lower changes a few notes.
+- **RESTS:** room to breathe. Weak notes are left out and the ends of phrases are shortened.
+- **SYNCOPATION:** notes pushed off the beat.
+- **DEFAULTS:** back to the starting settings.
+
+Your settings are kept. HEAR, USE IT (onto the selected track or a new "Melody" track), MORE IDEAS and HUMANIZE work as on the other tabs. The PIANO tab's six melody styles are still there as before.
+
 ## 0.40.0
 
 **The progression library** (you asked, as your chord tool has: progressions by genre and mood). A new PROGRESSIONS window holds 157 chord progressions in 14 genres and 10 moods. The progressions, their names, and how they're sorted are our own.

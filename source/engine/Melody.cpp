@@ -79,7 +79,9 @@ namespace pr7s
                 std::sort (chosen.begin(), chosen.end());
                 for (const auto s : chosen)
                 {
-                    const auto onBeat = s % 4 == 0;
+                    // Beats 1 and 3 land on chord tones; 2 and 4 may pass through the key (a run of
+                    // quarters over one chord would otherwise sit on one note).
+                    const auto onBeat = s % 8 == 0;
                     // Rests: some weak notes left out (never a phrase's first).
                     if (! motif.empty() && ! onBeat && random.nextFloat() < m.rests * 0.45f)
                         continue;
@@ -102,7 +104,7 @@ namespace pr7s
             }
             // The shape: up through the first half, down through the second; a leap (thirds to
             // sixths) as often as LEAPS asks, then a step back the other way.
-            const auto reach = juce::jmax (3, (m.high - m.low) * 7 / 24);   // scale steps either side of the start
+            const auto reach = juce::jlimit (3, 6, (m.high - m.low) * 7 / 24);   // scale steps either side of the start (at most a sixth)
             auto at = 0, afterLeap = 0;
             for (size_t i = 1; i < motif.size(); ++i)
             {
@@ -116,7 +118,8 @@ namespace pr7s
                 }
                 else if (random.nextFloat() < m.leaps)
                 {
-                    move = dir * (2 + random.nextInt (4));   // 2..5 steps: a third to a sixth
+                    // A third or a fourth; fifths and sixths too as LEAPS goes past 60%.
+                    move = dir * (2 + random.nextInt (m.leaps > 0.6f ? 4 : 2));
                     afterLeap = dir;
                 }
                 else
@@ -258,8 +261,11 @@ namespace pr7s
                     break;
                 const auto& span = spanAt (spans, at);
                 auto target = moveInScale (anchor, n.step, span.key.scale());
-                while (target > m.high) target -= 12;
-                while (target < m.low)  target += 12;
+                // Past the range's edge: turned back from it, as far as it went past (an octave's
+                // fold would jump; holding it at the edge would repeat one note).
+                if (target > m.high) target = m.high - (target - m.high);
+                if (target < m.low)  target = m.low + (m.low - target);
+                target = juce::jlimit (m.low, m.high, target);
                 const auto pitch = n.strong ? nearestIn (chordTonesOf (span.chord), target, m.low, m.high)
                                             : nearestIn (availableNotes (span.chord, span.key), target, m.low, m.high);
                 const auto length = juce::jmin (n.length, span.end - at);   // (not held into the next chord)

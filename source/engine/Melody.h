@@ -7,7 +7,7 @@
 // bars each); a phrase's material (its rhythm and its shape through the scale: a motif) is made
 // once per letter of a form ("AABA") and played again when its letter comes back, bent to the
 // chords under it and changed a little (less as REPEAT goes up). Strong beats land on chord
-// tones; the notes between walk the key (no note a half step against a chord tone outside it);
+// tones (beats 1 and 3); the notes between walk the key (no note a half step against a chord tone outside it);
 // a leap is followed by a step back the other way (as singers do); phrases rise then fall; the
 // last phrase ends on the chord's root. Our own rules and names.
 namespace pr7s

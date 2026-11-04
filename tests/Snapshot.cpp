@@ -799,9 +799,11 @@ TEST_CASE ("Snapshot: the IDEAS window (PARAGON_SNAPSHOT_IDEAS=piano|guitar|bass
         LinesPage page (studio, studio.getLineChords());
         const auto tab = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_IDEAS", "guitar");
         page.setTab (tab == "piano" ? LinesPage::Tab::piano : tab == "bass" ? LinesPage::Tab::bass
-                   : tab == "patterns" ? LinesPage::Tab::patterns : LinesPage::Tab::guitar);   // (0.39.0: =patterns)
+                   : tab == "patterns" ? LinesPage::Tab::patterns : tab == "melody" ? LinesPage::Tab::melody
+                   : LinesPage::Tab::guitar);   // (0.39.0: =patterns; 0.41.0: =melody)
         page.play (tab == "piano" ? pr7s::LineIdea::Part::chords : tab == "bass" ? pr7s::LineIdea::Part::bass
-                 : tab == "patterns" ? pr7s::LineIdea::Part::pattern : pr7s::LineIdea::Part::rhythm, 1);
+                 : tab == "patterns" ? pr7s::LineIdea::Part::pattern : tab == "melody" ? pr7s::LineIdea::Part::tune
+                 : pr7s::LineIdea::Part::rhythm, 1);
         const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
         page.stop();
         juce::File (path).deleteFile();
@@ -850,6 +852,8 @@ TEST_CASE ("Snapshot: the guitar VELOCITIES panel", "[.][snapshot-velocities]")
         std::unique_ptr<juce::Component> panel;
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUMANIZE", {}) == "1")
             panel = std::make_unique<HumanizePanel> (0.4f, true);
+        else if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUMANIZE", {}) == "melody")   // (0.41.0: MELODY SETTINGS)
+            panel = std::make_unique<MelodyPanel> (pr7s::MelodySettings {});
         else
             panel = std::make_unique<GuitarVelocityPanel> (pr7s::GuitarVelocities {});
         panel->resized();
