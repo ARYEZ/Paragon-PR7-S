@@ -1972,7 +1972,8 @@ TEST_CASE ("A wide window (spanning screens): the position screen centred at its
     CHECK (buttonNamed (transport, "|<")->getX() + transport.getX() >= 1920);
     CHECK (tools.getRight() <= 3840);
     CHECK (tools.getY() >= transport.getY());
-    CHECK (view.getArrangeView().getY() < transport.getBottom() + MainView::toolbarHeight);   // the tracks have the row's room
+    // (No tools row: the info line (0.37.0) and the track list's header are all that's over it.)
+    CHECK (view.getArrangeView().getY() < transport.getBottom() + MainView::toolbarHeight + (view.isInfoLineShown() ? InfoLine::height + 2 : 0));   // the tracks have the row's room
     // The header's keys: NEW to the quantize value in the middle.
     auto* newKey = buttonNamed (view, "NEW");
     auto& lastKey = view.getQuantizeButton();

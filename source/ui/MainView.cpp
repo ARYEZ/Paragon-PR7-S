@@ -607,19 +607,20 @@ void MainView::resized()
         mediaRack->setBounds (middle.removeFromRight (juce::jmin (rightZoneWidth, juce::jmax (MediaRack::minimumWidth, middle.getWidth() / 2))));
         rightZoneEdge->setBounds (middle.removeFromRight (5));
     }
+    // (0.37.0) The info line, over the track list and the arrangement (first: the docked zone's
+    // height is worked out from what's left, so the arrangement keeps its least).
+    infoLine.setVisible (infoLineShown);
+    if (infoLineShown)
+    {
+        infoLine.setBounds (middle.removeFromTop (InfoLine::height));
+        middle.removeFromTop (2);
+    }
     zoneDivider->setVisible (false);
     if (auto* zone = dockedZone())
     {
         zone->content.setBounds (middle.removeFromBottom (heightFor (*zone, middle.getHeight())));
         zoneDivider->setBounds (middle.removeFromBottom (dividerHeight));
         zoneDivider->setVisible (true);
-    }
-    // (0.37.0) The info line, over the track list and the arrangement.
-    infoLine.setVisible (infoLineShown);
-    if (infoLineShown)
-    {
-        infoLine.setBounds (middle.removeFromTop (InfoLine::height));
-        middle.removeFromTop (2);
     }
     // The scroll bars: across under the arrangement, down beside its rows.
     auto acrossRow = middle.removeFromBottom (scrollBarSize);
@@ -667,7 +668,8 @@ void MainView::setDockedHeight (int height)
     auto* zone = dockedZone();
     if (zone == nullptr)
         return;
-    const auto middleHeight = getHeight() - headerHeight - transportHeight - (isWide() ? 0 : toolbarHeight) - 6;
+    const auto middleHeight = getHeight() - headerHeight - transportHeight - (isWide() ? 0 : toolbarHeight) - 6
+                            - (infoLineShown ? InfoLine::height + 2 : 0);
     zone->dockedHeight = juce::jmax (1, height);   // (0 would mean the default)
     zone->dockedHeight = heightFor (*zone, middleHeight);   // kept to what it can be
     if (auto* settings = studio.getSettings())
