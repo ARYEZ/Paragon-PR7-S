@@ -780,7 +780,7 @@ TEST_CASE ("Snapshot: a question box", "[.][snapshot-alert]")
 #include "ui/TrackColours.h"
 #include "ui/LinesPage.h"
 
-TEST_CASE ("Snapshot: the IDEAS window (PARAGON_SNAPSHOT_IDEAS=piano|guitar|bass)", "[.][snapshot-lines]")
+TEST_CASE ("Snapshot: the IDEAS window (PARAGON_SNAPSHOT_IDEAS=piano|guitar|bass|patterns)", "[.][snapshot-lines]")
 {
     const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "lines.png");
     const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
@@ -797,8 +797,10 @@ TEST_CASE ("Snapshot: the IDEAS window (PARAGON_SNAPSHOT_IDEAS=piano|guitar|bass
         studio.addChordEvent (12.0, { 7, T::major, X::none, -1 });
         LinesPage page (studio, studio.getLineChords());
         const auto tab = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_IDEAS", "guitar");
-        page.setTab (tab == "piano" ? LinesPage::Tab::piano : tab == "bass" ? LinesPage::Tab::bass : LinesPage::Tab::guitar);
-        page.play (tab == "piano" ? pr7s::LineIdea::Part::chords : tab == "bass" ? pr7s::LineIdea::Part::bass : pr7s::LineIdea::Part::rhythm, 1);
+        page.setTab (tab == "piano" ? LinesPage::Tab::piano : tab == "bass" ? LinesPage::Tab::bass
+                   : tab == "patterns" ? LinesPage::Tab::patterns : LinesPage::Tab::guitar);   // (0.39.0: =patterns)
+        page.play (tab == "piano" ? pr7s::LineIdea::Part::chords : tab == "bass" ? pr7s::LineIdea::Part::bass
+                 : tab == "patterns" ? pr7s::LineIdea::Part::pattern : pr7s::LineIdea::Part::rhythm, 1);
         const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
         page.stop();
         juce::File (path).deleteFile();

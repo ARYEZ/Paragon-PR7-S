@@ -111,14 +111,13 @@ TEST_CASE ("0.39.0: pattern ideas under the chord track's chords: a group's six,
         CHECK (idea.notes.front().beat >= 0.0);   // (from the first chord's start)
         CHECK (idea.notes.back().beat < 12.0);
     }
-    // Held: each chord's root in C1-B1 (36-47): C 36, F 41, G 43; and nothing outside each chord.
+    // Held: each chord's lowest note is its root in C1-B1 (36-47): C 36, F 41, G 43.
     const auto& held = ideas[0];
     REQUIRE (held.style == "Held");
-    std::set<int> lowest;
+    std::array<int, 3> lowest { 127, 127, 127 };
     for (const auto& n : held.notes)
-        if (n.pitch < 48)
-            lowest.insert (n.pitch);
-    CHECK (lowest == std::set<int> { 36, 41, 43 });
+        lowest[(size_t) juce::jlimit (0, 2, (int) (n.beat / 4.0))] = juce::jmin (lowest[(size_t) juce::jlimit (0, 2, (int) (n.beat / 4.0))], n.pitch);
+    CHECK (lowest == std::array<int, 3> { 36, 41, 43 });
     for (const auto& n : held.notes)
     {
         const auto& chord = n.beat < 4.0 ? C : n.beat < 8.0 ? F : G;
