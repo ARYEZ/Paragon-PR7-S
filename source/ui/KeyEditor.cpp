@@ -2,6 +2,7 @@
 
 #include "ui/ParagonLookAndFeel.h"
 #include "ui/ToolIcons.h"
+#include "ui/TempoEditor.h"
 #include "engine/Controllers.h"
 
 #include <limits>
@@ -512,19 +513,19 @@ void KeyEditor::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
 //==============================================================================
 juce::Rectangle<float> KeyEditor::rulerArea() const
 {
-    return { (float) (sideWidth + listWidth()), 0.0f, (float) (getWidth() - sideWidth - listWidth()), (float) rulerHeight };
+    return { (float) (sideWidth + listWidth()), (float) infoHeight, (float) (getWidth() - sideWidth - listWidth()), (float) rulerHeight };
 }
 
 juce::Rectangle<float> KeyEditor::keysArea() const
 {
-    return { (float) sideWidth, (float) rulerHeight, (float) listWidth(), juce::jmax (0.0f, lanesTop() - (float) rulerHeight) };
+    return { (float) sideWidth, notesTop(), (float) listWidth(), juce::jmax (0.0f, lanesTop() - notesTop()) };
 }
 
 juce::Rectangle<float> KeyEditor::getNotesArea() const
 {
     // Room on the right for the scroll bar down, and at the bottom (under the velocities) for the one across.
-    return { (float) (sideWidth + listWidth()), (float) rulerHeight, (float) (getWidth() - sideWidth - listWidth() - scrollBarSize),
-             juce::jmax (0.0f, lanesTop() - (float) rulerHeight) };
+    return { (float) (sideWidth + listWidth()), notesTop(), (float) (getWidth() - sideWidth - listWidth() - scrollBarSize),
+             juce::jmax (0.0f, lanesTop() - notesTop()) };
 }
 
 juce::Rectangle<float> KeyEditor::getVelocityArea() const
@@ -551,21 +552,21 @@ float KeyEditor::yForPitch (int pitch) const noexcept
     {
         // (0.26.0) Its drum's row; a pitch with no row far out of sight.
         const auto row = juce::isPositiveAndBelow (pitch, 128) ? drumRowOf[(size_t) pitch] : -1;
-        return row < 0 ? -1.0e6f : (float) rulerHeight + (float) row * rowHeight - scrollY;
+        return row < 0 ? -1.0e6f : notesTop() + (float) row * rowHeight - scrollY;
     }
-    return (float) rulerHeight + (float) (127 - pitch) * rowHeight - scrollY;
+    return notesTop() + (float) (127 - pitch) * rowHeight - scrollY;
 }
 
 int KeyEditor::rowForY (float y) const noexcept
 {
-    return juce::jlimit (0, juce::jmax (0, numRows() - 1), (int) std::floor ((y - (float) rulerHeight + scrollY) / rowHeight));
+    return juce::jlimit (0, juce::jmax (0, numRows() - 1), (int) std::floor ((y - notesTop() + scrollY) / rowHeight));
 }
 
 int KeyEditor::pitchForY (float y) const noexcept
 {
     if (drumViewOn)
         return drumRows.empty() ? 60 : drumRows[(size_t) rowForY (y)];
-    return juce::jlimit (0, 127, 127 - (int) std::floor ((y - (float) rulerHeight + scrollY) / rowHeight));
+    return juce::jlimit (0, 127, 127 - (int) std::floor ((y - notesTop() + scrollY) / rowHeight));
 }
 
 int KeyEditor::pitchMovedBy (int pitch, int rows) const noexcept
@@ -1262,6 +1263,8 @@ void KeyEditor::mouseMove (const juce::MouseEvent& event)
 
 void KeyEditor::mouseDown (const juce::MouseEvent& event)
 {
+    if (event.position.y < (float) infoHeight && event.position.x >= (float) sideWidth)
+        return;   // (0.38.0) the info line: its values are typed with a double-click
     const auto point = event.position;
     downAt = point;
     moved = false;
@@ -1631,6 +1634,13 @@ void KeyEditor::mouseUp (const juce::MouseEvent&)
 
 void KeyEditor::mouseDoubleClick (const juce::MouseEvent& event)
 {
+    if (event.position.y < (float) infoHeight && event.position.x >= (float) sideWidth)
+    {
+        for (const auto& [name, area] : infoAreas())
+            if (area.contains (event.position) && getInfoField (name).isNotEmpty())
+                beginInfoEdit (name);
+        return;
+    }
     if (laneDoubleClick (event))   // (0.25.0) an event's value typed in, or a new event
         return;
     if (drumViewOn && keysArea().contains (event.position))
@@ -1807,14 +1817,14 @@ void KeyEditor::paint (juce::Graphics& g)
         const auto glowColour = red ? juce::Colour (0xffff3b2f) : pr7s::FamilyColours::pink;
         const auto lineColour = red ? juce::Colour (0xffff3b2f) : juce::Colour (0xfff4eeea);
         g.setColour (glowColour.withAlpha (0.18f));
-        g.fillRect (juce::Rectangle<float> (x - 4.0f, (float) rulerHeight, 9.2f, (float) (getHeight() - rulerHeight)));
+        g.fillRect (juce::Rectangle<float> (x - 4.0f, notesTop(), 9.2f, (float) getHeight() - notesTop()));
         g.setColour (glowColour.withAlpha (0.4f));
-        g.fillRect (juce::Rectangle<float> (x - 1.5f, (float) rulerHeight, 4.2f, (float) (getHeight() - rulerHeight)));
+        g.fillRect (juce::Rectangle<float> (x - 1.5f, notesTop(), 4.2f, (float) getHeight() - notesTop()));
         const auto colour = lineColour;
         g.setColour (colour);
-        g.fillRect (juce::Rectangle<float> (x, (float) rulerHeight - 6.0f, 1.4f, (float) (getHeight() - rulerHeight + 6)));
+        g.fillRect (juce::Rectangle<float> (x, notesTop() - 6.0f, 1.4f, (float) getHeight() - notesTop() + 6.0f));
         juce::Path marker;
-        marker.addTriangle (x - 5.0f, (float) rulerHeight - 11.0f, x + 5.0f, (float) rulerHeight - 11.0f, x, (float) rulerHeight - 2.0f);
+        marker.addTriangle (x - 5.0f, notesTop() - 11.0f, x + 5.0f, notesTop() - 11.0f, x, notesTop() - 2.0f);
         g.fillPath (marker);
     }
 
@@ -1970,7 +1980,7 @@ void KeyEditor::paintNotes (juce::Graphics& g)
     if (drumViewOn)
         for (int row = rowForY (area.getY()); row <= rowForY (area.getBottom()) && row < numRows(); ++row)
         {
-            const auto y = (float) rulerHeight + (float) row * rowHeight - scrollY;
+            const auto y = notesTop() + (float) row * rowHeight - scrollY;
             g.setColour (row % 2 == 0 ? whiteRow : blackRow);
             g.fillRect (juce::Rectangle<float> (area.getX(), y, area.getWidth(), rowHeight));
             g.setColour (octaveLine.withAlpha (0.5f));
@@ -2188,7 +2198,8 @@ void KeyEditor::paintVelocities (juce::Graphics& g)
 void KeyEditor::paintRuler (juce::Graphics& g)
 {
     const auto& project = studio.getProject();
-    const auto ruler = juce::Rectangle<float> ((float) sideWidth, 0.0f, (float) (getWidth() - sideWidth), (float) rulerHeight);
+    const auto ruler = juce::Rectangle<float> ((float) sideWidth, (float) infoHeight, (float) (getWidth() - sideWidth), (float) rulerHeight);
+    paintInfoLine (g);   // (the info line over the ruler: 0.38.0)
     g.setColour (juce::Colour (0xff151116));
     g.fillRect (ruler);
     g.setColour (ParagonColours::panelEdge);
@@ -2215,8 +2226,274 @@ void KeyEditor::paintRuler (juce::Graphics& g)
             continue;
         const auto x = xForBeat (b * bar);
         g.setColour (ParagonColours::textDim);
-        g.fillRect (juce::Rectangle<float> (x, 8.0f, 1.0f, ruler.getBottom() - 8.0f));
+        g.fillRect (juce::Rectangle<float> (x, ruler.getY() + 8.0f, 1.0f, ruler.getHeight() - 8.0f));
         g.setColour (ParagonColours::text);
-        g.drawText (juce::String (b + 1), juce::Rectangle<float> (x + 4.0f, 6.0f, 40.0f, 16.0f), juce::Justification::centredLeft, false);
+        g.drawText (juce::String (b + 1), juce::Rectangle<float> (x + 4.0f, ruler.getY() + 6.0f, 40.0f, 16.0f), juce::Justification::centredLeft, false);
     }
+}
+
+//==============================================================================
+// The info line (0.38.0, the owner asked: as the automation's in 0.37.0)
+std::optional<int> KeyEditor::parseNoteName (const juce::String& typed)
+{
+    auto text = typed.trim().toUpperCase().replace ("\u266F", "#").replace ("\u266D", "B").removeCharacters (" ");
+    if (text.isEmpty())
+        return std::nullopt;
+    if (text.containsOnly ("0123456789"))
+        return juce::isPositiveAndNotGreaterThan (text.getIntValue(), 127) ? std::optional<int> (text.getIntValue()) : std::nullopt;
+    static const int naturals[] = { 9, 11, 0, 2, 4, 5, 7 };   // A B C D E F G
+    const auto letter = text[0];
+    if (letter < 'A' || letter > 'G')
+        return std::nullopt;
+    auto pc = naturals[letter - 'A'];
+    auto rest = text.substring (1);
+    while (rest.startsWith ("#") || rest.startsWith ("B"))
+    {
+        pc += rest.startsWith ("#") ? 1 : -1;   // (a "b" after the letter is a flat)
+        rest = rest.substring (1);
+    }
+    if (rest.isEmpty() || ! rest.containsOnly ("-0123456789") || ! rest.containsAnyOf ("0123456789") || rest.lastIndexOfChar ('-') > 0)
+        return std::nullopt;
+    const auto pitch = (rest.getIntValue() + 2) * 12 + pc;   // (middle C = C3 = 60)
+    return juce::isPositiveAndNotGreaterThan (pitch, 127) ? std::optional<int> (pitch) : std::nullopt;
+}
+
+juce::String KeyEditor::lengthText (double beats, const pr7s::Project& project)
+{
+    const auto bar = project.beatsPerBar(), unit = 4.0 / project.denominator;
+    auto ticks = juce::roundToInt (juce::jmax (0.0, beats) * 480.0);
+    const auto barTicks = juce::roundToInt (bar * 480.0), unitTicks = juce::roundToInt (unit * 480.0);
+    const auto bars = ticks / barTicks;
+    ticks -= bars * barTicks;
+    const auto units = ticks / unitTicks;
+    ticks -= units * unitTicks;
+    const auto sixteenths = ticks / 120;
+    ticks -= sixteenths * 120;
+    return juce::String (bars) + "." + juce::String (units) + "." + juce::String (sixteenths) + "." + juce::String (ticks);
+}
+
+std::optional<double> KeyEditor::parseLength (const juce::String& typed, const pr7s::Project& project)
+{
+    const auto parts = juce::StringArray::fromTokens (typed.trim(), ". :", "");
+    if (parts.isEmpty() || parts.size() > 4)
+        return std::nullopt;
+    for (const auto& p : parts)
+        if (p.isEmpty() || ! p.containsOnly ("0123456789"))
+            return std::nullopt;
+    // From the right: ticks are the fourth; a lone number is bars ("1" = a bar), as positions are read.
+    const double scale[] = { project.beatsPerBar(), 4.0 / project.denominator, 0.25, 1.0 / 480.0 };
+    auto beats = 0.0;
+    for (int i = 0; i < parts.size(); ++i)
+        beats += parts[i].getDoubleValue() * scale[i];
+    return beats > 0.0 ? std::optional<double> (beats) : std::nullopt;
+}
+
+int KeyEditor::firstSelectedNote() const
+{
+    const auto& list = notes();
+    auto first = -1;
+    for (const auto i : selected)
+        if (juce::isPositiveAndBelow (i, (int) list.size()))
+            if (first < 0 || list[(size_t) i].start < list[(size_t) first].start - 1.0e-9
+                || (std::abs (list[(size_t) i].start - list[(size_t) first].start) < 1.0e-9 && list[(size_t) i].pitch < list[(size_t) first].pitch))
+                first = i;
+    return first;
+}
+
+juce::String KeyEditor::getInfoField (const juce::String& name) const
+{
+    const auto* part = getPart();
+    const auto first = firstSelectedNote();
+    if (part == nullptr || first < 0)
+        return {};
+    const auto& n = notes()[(size_t) first];
+    const auto& project = studio.getProject();
+    if (name == "START")    return pr7s::formatBarsBeats (part->start + n.start, project).replace ("  ", " ").replace (" ", "");
+    if (name == "END")      return pr7s::formatBarsBeats (part->start + n.start + n.length, project).replace ("  ", " ").replace (" ", "");
+    if (name == "LENGTH")   return lengthText (n.length, project);
+    if (name == "PITCH")    return pr7s::noteName (n.pitch);
+    if (name == "VELOCITY") return juce::String (juce::roundToInt (n.velocity * 127.0f));
+    return {};
+}
+
+std::vector<std::pair<juce::String, juce::Rectangle<float>>> KeyEditor::infoAreas() const
+{
+    std::vector<std::pair<juce::String, juce::Rectangle<float>>> areas;
+    auto x = (float) sideWidth + 8.0f;
+    for (const auto& [name, width] : { std::pair { "START", 150.0f }, { "END", 150.0f }, { "LENGTH", 140.0f }, { "PITCH", 110.0f }, { "VELOCITY", 120.0f } })
+    {
+        areas.push_back ({ name, { x, 0.0f, width, (float) infoHeight } });
+        x += width;
+    }
+    return areas;
+}
+
+void KeyEditor::paintInfoLine (juce::Graphics& g)
+{
+    const auto strip = juce::Rectangle<float> ((float) sideWidth, 0.0f, (float) (getWidth() - sideWidth), (float) infoHeight);
+    g.setColour (juce::Colour (0xff0d0a0e));
+    g.fillRect (strip);
+    g.setColour (ParagonColours::panelEdge);
+    g.fillRect (strip.withY (strip.getBottom() - 1.0f).withHeight (1.0f));
+    const auto count = (int) selected.size();
+    if (getInfoField ("PITCH").isEmpty())
+    {
+        g.setColour (ParagonColours::textDim);
+        g.setFont (font (11.5f, juce::Font::plain));
+        g.drawText ("INFO LINE: SELECT NOTES TO SEE AND CHANGE THEM HERE (DOUBLE-CLICK A VALUE TO TYPE)", strip.reduced (8.0f, 0.0f),
+                    juce::Justification::centredLeft, true);
+        return;
+    }
+    const auto valueColour = count > 1 ? pr7s::FamilyColours::pink.brighter (0.25f) : ParagonColours::accent;
+    auto right = strip.getX();
+    for (const auto& [name, area] : infoAreas())
+    {
+        auto a = area;
+        g.setColour (ParagonColours::textDim);
+        g.setFont (font (10.5f, juce::Font::plain));
+        const auto labelWidth = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), name) + 6.0f;
+        g.drawText (name, a.removeFromLeft (labelWidth), juce::Justification::centredLeft, false);
+        if (name != infoEditing || infoEditor == nullptr)
+        {
+            g.setColour (valueColour);
+            g.setFont (font (13.0f));
+            g.drawText (getInfoField (name), a.reduced (2.0f, 0.0f), juce::Justification::centredLeft, false);
+        }
+        g.setColour (ParagonColours::panelEdge);
+        g.fillRect (area.getRight() - 6.0f, 6.0f, 1.0f, (float) infoHeight - 12.0f);
+        right = area.getRight();
+    }
+    if (count > 1)
+    {
+        g.setColour (pr7s::FamilyColours::pink.brighter (0.25f));
+        g.setFont (font (11.5f));
+        g.drawText (juce::String (count) + " NOTES: CHANGES MOVE THEM ALL BY THE SAME AMOUNT (CTRL+ENTER: ALL TO THE VALUE)",
+                    juce::Rectangle<float> (right + 6.0f, 0.0f, juce::jmax (0.0f, strip.getRight() - right - 12.0f), (float) infoHeight),
+                    juce::Justification::centredLeft, true);
+    }
+}
+
+void KeyEditor::beginInfoEdit (const juce::String& field)
+{
+    infoEditing = field;
+    infoEditor = std::make_unique<juce::TextEditor>();
+    infoEditor->setFont (font (13.0f));
+    infoEditor->setText (getInfoField (field), false);
+    infoEditor->setSelectAllWhenFocused (true);
+    auto finish = [this] (bool apply)
+    {
+        if (infoEditor == nullptr)
+            return;
+        const auto text = infoEditor->getText();
+        const auto field = infoEditing;
+        const auto absolute = juce::ModifierKeys::getCurrentModifiersRealtime().isCommandDown();   // (the manual's modifier)
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<KeyEditor> (this)]
+        {
+            if (safe != nullptr)
+            {
+                safe->infoEditor.reset();
+                safe->infoEditing = {};
+                safe->repaint();
+            }
+        });
+        if (apply)
+            enterInfo (field, text, absolute);
+    };
+    infoEditor->onReturnKey = [finish] { finish (true); };
+    infoEditor->onEscapeKey = [finish] { finish (false); };
+    infoEditor->onFocusLost = [finish] { finish (false); };
+    for (const auto& [name, area] : infoAreas())
+        if (name == field)
+            infoEditor->setBounds (area.withTrimmedLeft (52.0f).withTrimmedRight (8.0f).reduced (0.0f, 3.0f).toNearestInt());
+    addAndMakeVisible (*infoEditor);
+    infoEditor->grabKeyboardFocus();
+    repaint();
+}
+
+bool KeyEditor::enterInfo (const juce::String& field, const juce::String& text, bool absolute)
+{
+    const auto* part = getPart();
+    const auto first = firstSelectedNote();
+    if (part == nullptr || first < 0)
+        return false;
+    const auto& project = studio.getProject();
+    auto edited = part->notes;
+    const auto& f = edited[(size_t) first];
+    if (field == "PITCH")
+    {
+        const auto pitch = parseNoteName (text);
+        if (! pitch)
+            return false;
+        if (absolute)
+            for (const auto i : selected)
+                edited[(size_t) i].pitch = *pitch;
+        else
+        {
+            // All by what the first moves, as far as every one stays on the keyboard (the shape kept).
+            auto delta = *pitch - f.pitch;
+            auto lowest = 127, highest = 0;
+            for (const auto i : selected)
+                lowest = juce::jmin (lowest, edited[(size_t) i].pitch), highest = juce::jmax (highest, edited[(size_t) i].pitch);
+            delta = juce::jlimit (-lowest, 127 - highest, delta);
+            for (const auto i : selected)
+                edited[(size_t) i].pitch += delta;
+        }
+    }
+    else if (field == "VELOCITY")
+    {
+        const auto t = text.trim();
+        if (t.isEmpty() || ! t.containsOnly ("0123456789"))
+            return false;
+        const auto velocity = juce::jlimit (1, 127, t.getIntValue());
+        const auto delta = velocity - juce::roundToInt (f.velocity * 127.0f);
+        for (const auto i : selected)
+        {
+            auto& n = edited[(size_t) i];
+            const auto now = absolute ? velocity : juce::jlimit (1, 127, juce::roundToInt (n.velocity * 127.0f) + delta);
+            n.velocity = (float) now / 127.0f;
+        }
+    }
+    else if (field == "START" || field == "END")
+    {
+        const auto at = TempoEditor::parsePosition (text, project);
+        if (! at)
+            return false;
+        const auto inPart = *at - part->start;
+        if (field == "START")
+        {
+            const auto delta = inPart - f.start;
+            for (const auto i : selected)
+                edited[(size_t) i].start = juce::jmax (0.0, absolute ? inPart : edited[(size_t) i].start + delta);
+        }
+        else
+        {
+            // End: the lengths change (the starts stay), as the manual's info line.
+            const auto delta = inPart - (f.start + f.length);
+            for (const auto i : selected)
+            {
+                auto& n = edited[(size_t) i];
+                n.length = absolute ? inPart - n.start : n.length + delta;
+                if (n.length <= 1.0e-3)
+                    return false;   // (an end before a start: not taken)
+            }
+        }
+    }
+    else if (field == "LENGTH")
+    {
+        const auto length = parseLength (text, project);
+        if (! length)
+            return false;
+        const auto delta = *length - f.length;
+        for (const auto i : selected)
+        {
+            auto& n = edited[(size_t) i];
+            n.length = absolute ? *length : n.length + delta;
+            if (n.length <= 1.0e-3)
+                return false;
+        }
+    }
+    else
+        return false;
+    commit (std::move (edited));
+    return true;
 }

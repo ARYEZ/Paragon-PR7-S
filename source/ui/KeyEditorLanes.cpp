@@ -66,7 +66,7 @@ float KeyEditor::laneHeightNow() const
     if (count == 0)
         return 0.0f;
     // As tall as set, but the notes keep some room.
-    const auto room = (float) (getHeight() - rulerHeight - scrollBarSize - 60) / (float) count;
+    const auto room = (float) getHeight() - notesTop() - (float) (scrollBarSize + 60) / (float) count;
     return juce::jmax (24.0f, juce::jmin ((float) laneHeight, room));
 }
 

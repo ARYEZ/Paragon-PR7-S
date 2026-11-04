@@ -3241,3 +3241,79 @@ TEST_CASE ("A MIDI file dropped on an instrument track lands on it, snapped, sho
     CHECK (studio.getProject().tracks.size() == tracksBefore + 1);
     file.deleteFile();
 }
+
+TEST_CASE ("0.38.0: the MIDI editor's info line: the first selected note's values, changed together (the owner's D#-1 to D-2)", "[ui][keyeditor][infoline]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto trackId = studio.getProject().tracks[0].id;
+    // D#-1 (15) first, then G-1 and C0; a note left out at E3.
+    studio.addPart (trackId, { 4.0, 8.0, "Bass", { { 2.0, 1.0, 19, 0.5f }, { 0.0, 1.0, 15, 0.8f }, { 4.0, 0.5, 24, 0.6f }, { 1.0, 1.0, 64, 0.7f } } });
+    studio.dispatchPendingMessages();
+    view.getArrangeView().select (trackId, 0);
+    view.openKeyEditor();
+    studio.dispatchPendingMessages();
+    view.setKeyEditorSize (100);
+    auto& editor = view.getKeyEditor();
+    editor.setSize (1300, 700);
+    REQUIRE (editor.getPart() != nullptr);
+    const auto pitches = [&] { std::vector<int> p; for (const auto& n : editor.getPart()->notes) p.push_back (n.pitch); return p; };
+
+    // Names both ways (middle C = C3).
+    CHECK (pr7s::noteName (15) == "D#-1");
+    CHECK (KeyEditor::parseNoteName ("D#-1") == 15);
+    CHECK (KeyEditor::parseNoteName ("d-2") == 2);
+    CHECK (KeyEditor::parseNoteName ("Eb3") == 63);
+    CHECK (KeyEditor::parseNoteName ("C3") == 60);
+    CHECK (KeyEditor::parseNoteName ("64") == 64);
+    CHECK_FALSE (KeyEditor::parseNoteName ("H2").has_value());
+    CHECK_FALSE (KeyEditor::parseNoteName ("C9").has_value());   // (above G8: off the keyboard)
+
+    // Nothing selected: empty.
+    CHECK (editor.getInfoField ("PITCH").isEmpty());
+    editor.selectNotes ({ 0, 1, 2 });
+    // The first is the earliest (not the first in the list): D#-1 at bar 2.
+    CHECK (editor.getInfoField ("PITCH") == "D#-1");
+    CHECK (editor.getInfoField ("START") == "2.1.1.0");
+    CHECK (editor.getInfoField ("LENGTH") == "0.1.0.0");
+    CHECK (editor.getInfoField ("VELOCITY") == "102");
+    // D#-1 typed as D-2: all 13 semitones down; the unselected E3 stays.
+    REQUIRE (editor.enterInfo ("PITCH", "D-2", false));
+    CHECK (pitches() == std::vector<int> { 6, 2, 11, 64 });
+    // As far as they can go: the lowest is D-2 (2), so C-2 and below stops at C-2 for it, the shape kept.
+    REQUIRE (editor.enterInfo ("PITCH", "C-3", false) == false);   // (not a note: below the keyboard)
+    REQUIRE (editor.enterInfo ("PITCH", "C-2", false));
+    CHECK (pitches() == std::vector<int> { 4, 0, 9, 64 });
+    // Ctrl: all to the note.
+    REQUIRE (editor.enterInfo ("PITCH", "A1", true));
+    CHECK (pitches() == std::vector<int> { 45, 45, 45, 64 });
+    studio.undo();
+    CHECK (pitches() == std::vector<int> { 4, 0, 9, 64 });
+
+    // Velocity: by the same amount (102 -> 112: +10).
+    REQUIRE (editor.enterInfo ("VELOCITY", "112", false));
+    const auto vel = [&] (int i) { return juce::roundToInt (editor.getPart()->notes[(size_t) i].velocity * 127.0f); };
+    CHECK (vel (1) == 112);
+    CHECK (vel (0) == 64 + 10);
+    CHECK (vel (3) == 89);   // (not selected)
+    // Start: a beat later for all (2.1.1.0 -> 2.2.1.0).
+    REQUIRE (editor.enterInfo ("START", "2.2.1.0", false));
+    CHECK (editor.getPart()->notes[1].start == 1.0);
+    CHECK (editor.getPart()->notes[0].start == 3.0);
+    // Length: each a 16th longer (0.1.0.0 -> 0.1.1.0).
+    REQUIRE (editor.enterInfo ("LENGTH", "0.1.1.0", false));
+    CHECK (editor.getPart()->notes[1].length == 1.25);
+    CHECK (editor.getPart()->notes[2].length == 0.75);
+    // End: absolute with Ctrl (all end at bar 4: 8 beats into the part).
+    REQUIRE (editor.enterInfo ("END", "4.1.1.0", true));
+    for (const auto i : { 0, 1, 2 })
+        CHECK (editor.getPart()->notes[(size_t) i].start + editor.getPart()->notes[(size_t) i].length == 8.0);
+    CHECK_FALSE (editor.enterInfo ("END", "2.1.1.0", true));   // (before some of their starts: not taken)
+    CHECK_FALSE (editor.enterInfo ("LENGTH", "nothing", false));
+
+    // The notes moved down to make room: the ruler sits under the info line.
+    CHECK (editor.getNotesArea().getY() == (float) (KeyEditor::infoHeight + KeyEditor::rulerHeight));
+    CHECK (view.createComponentSnapshot (view.getLocalBounds()).isValid());
+}

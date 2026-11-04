@@ -269,6 +269,17 @@ public:
     std::function<void (std::function<void (const juce::File&)>)> chooseDrumMapFile;   // (tests answer it; else a FileChooser)
 
     static constexpr int sideWidth = 150, keysWidth = 54, rulerHeight = 26, velocityHeight = 86, scrollBarSize = 12, drumListWidth = 220;
+    // (0.38.0) The info line over the ruler: the first selected note's START, END, LENGTH, PITCH and
+    // VELOCITY (the earliest; several: in pink with how many). Double-click a value to type it: every
+    // selected note changes by what the first one changes (D#-1 typed as D-2: all 13 semitones down);
+    // Ctrl held as Enter goes in: all set to it (the manual's Value Editing Rules on the Info Line).
+    static constexpr int infoHeight = 26;
+    float notesTop() const noexcept { return (float) (infoHeight + rulerHeight); }
+    juce::String getInfoField (const juce::String& name) const;   // "START", "END", "LENGTH", "PITCH", "VELOCITY"; "" with none selected
+    bool enterInfo (const juce::String& field, const juce::String& text, bool absolute);   // false: not a value it takes
+    static std::optional<int> parseNoteName (const juce::String&);   // "D#-1", "Eb3", "c4", or a MIDI number (middle C = C3)
+    static juce::String lengthText (double beats, const pr7s::Project&);   // bars.beats.16ths.ticks, from 0 ("0.1.0.0")
+    static std::optional<double> parseLength (const juce::String&, const pr7s::Project&);
     static constexpr int minimumHeight = 230;   // docked: the panel's keys and a few octaves
     static constexpr float minRowHeight = 6.0f, maxRowHeight = 36.0f;
 
@@ -293,6 +304,12 @@ private:
     void refreshScrollBars();
     void refreshPanel();
     void paintInfo (juce::Graphics&, juce::Rectangle<float>);
+    void paintInfoLine (juce::Graphics&);
+    int firstSelectedNote() const;                         // the earliest selected (ties: the lowest), -1: none
+    std::vector<std::pair<juce::String, juce::Rectangle<float>>> infoAreas() const;
+    void beginInfoEdit (const juce::String& field);
+    std::unique_ptr<juce::TextEditor> infoEditor;
+    juce::String infoEditing;
 public:
     juce::Colour velocityColour (float velocity) const;   // a note's colour by its velocity (0.9.12)
 private:   // the selected notes, at the column's foot
