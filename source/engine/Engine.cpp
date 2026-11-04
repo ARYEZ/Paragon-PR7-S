@@ -106,7 +106,11 @@ namespace pr7s
                 if (slot.plugin != nullptr)
                     prepareEffect (*slot.plugin);
             prepareTrack (*track);
+            track->eq.setDesign (designEq (track->eqSettings, sampleRate));   // (0.43.0: its filters at the new rate)
+            track->eq.reset();
         }
+        masterEq.setDesign (designEq (masterEqSettings, sampleRate));
+        masterEq.reset();
     }
 
     void Engine::setLiveInputFilter (const juce::String& deviceName)
@@ -668,6 +672,11 @@ namespace pr7s
         liveFollowMode = liveMode;
         liveFollowTrack = liveModeTrack;
         masterPreFader = project.masterPreFaderSlots;
+        if (! (masterEqSettings == project.masterEq))
+        {
+            masterEqSettings = project.masterEq;
+            masterEq.setDesign (designEq (masterEqSettings, sampleRate));
+        }
         masterAutomated = masterLanesMix;
         for (auto& p : prepared)
             if (auto* track = findTrack (p.id))
@@ -690,6 +699,11 @@ namespace pr7s
                     track->mute = t->mute || t->disabled;
                     track->soloedOut = soloedOut (*t);
                     track->preFader = t->preFaderSlots;
+                    if (! (track->eqSettings == t->eq))   // (0.43.0: designed only when it changed)
+                    {
+                        track->eqSettings = t->eq;
+                        track->eq.setDesign (designEq (t->eq, sampleRate));
+                    }
                     track->output = t->output;
                     for (int s = 0; s < Project::maxSends; ++s)
                     {
@@ -1015,7 +1029,13 @@ namespace pr7s
                 juce::FloatVectorOperations::copy (track->buffer.getWritePointer (1), track->buffer.getReadPointer (0), numSamples);
         }
         juce::AudioBuffer<float> sound (track->buffer.getArrayOfWritePointers(), track->buffer.getNumChannels(), numSamples);
+        // (0.43.0) The Pre section (gain, phase, cuts), the inserts before the fader, then the EQ.
+        // A frozen track's file has them already.
+        if (! track->frozen)
+            track->eq.processPre (sound.getArrayOfWritePointers(), sound.getNumChannels(), numSamples);
         runInserts (track->inserts, sound, numSamples, 0, track->preFader, track->effectMidi);
+        if (! track->frozen)
+            track->eq.processEq (sound.getArrayOfWritePointers(), sound.getNumChannels(), numSamples);
         // The sends before the fader take the sound as it is here: kept for them (they're added
         // into the FX channels afterwards, on the audio thread, in the tracks' order).
         const auto preSends = std::any_of (track->sends.begin(), track->sends.end(), [] (const auto& send) { return send.preFader && send.target != 0; });
@@ -1371,7 +1391,9 @@ namespace pr7s
         }
 
         // The master: its inserts before the fader, its volume, the inserts after it, to the output.
+        masterEq.processPre (master.getArrayOfWritePointers(), master.getNumChannels(), numSamples);
         runInserts (masterInserts, master, numSamples, 0, masterPreFader, effectMidi);
+        masterEq.processEq (master.getArrayOfWritePointers(), master.getNumChannels(), numSamples);
         const auto outputs = juce::jmin (2, output.getNumChannels());
         if (masterAutomated)
         {

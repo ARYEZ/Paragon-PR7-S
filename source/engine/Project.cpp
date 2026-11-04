@@ -438,6 +438,8 @@ namespace pr7s
                 t->addChildElement (track.followReference.toXml().release());
             if (track.followVoice != Voice::soprano)
                 t->setAttribute ("followVoice", voiceId (track.followVoice));
+            if (! (track.eq == ChannelEq {}))
+                t->addChildElement (track.eq.toXml().release());   // (0.43.0)
             if (track.followVoicing)
                 t->addChildElement (track.followVoicing->toXml ("TrackVoicing").release());
             if (track.pitchbendUp != 2 || track.pitchbendDown != 2 || track.pitchbendSnap || track.pitchbendGrid)
@@ -528,6 +530,8 @@ namespace pr7s
         master->setAttribute ("volumeDb", masterVolumeDb);
         insertsToXml (masterInserts, *master);
         master->setAttribute ("preFaderSlots", masterPreFaderSlots);
+        if (! (masterEq == ChannelEq {}))
+            master->addChildElement (masterEq.toXml().release());
         lanesToXml (masterAutomation, *master);
         master->setAttribute ("automationOpen", masterAutomationOpen);
         master->setAttribute ("automationRead", masterRead);
@@ -681,6 +685,8 @@ namespace pr7s
             if (const auto* reference = t->getChildByName ("FollowReference"))
                 track.followReference = FollowReference::fromXml (*reference);
             track.followVoice = voiceFromId (t->getStringAttribute ("followVoice"));
+            if (const auto* eq = t->getChildByName ("Eq"))
+                track.eq = ChannelEq::fromXml (*eq);
             if (const auto* voicing = t->getChildByName ("TrackVoicing"))
                 track.followVoicing = VoicingSettings::fromXml (*voicing);
             track.pitchbendUp = juce::jlimit (1, 96, t->getIntAttribute ("pitchbendUp", 2));
@@ -833,6 +839,8 @@ namespace pr7s
             project.masterVolumeDb = (float) juce::jlimit (-60.0, 6.0, master->getDoubleAttribute ("volumeDb", 0.0));
             project.masterInserts = insertsFromXml (*master);
             project.masterPreFaderSlots = juce::jlimit (0, maxInserts, master->getIntAttribute ("preFaderSlots", maxInserts));
+            if (const auto* eq = master->getChildByName ("Eq"))
+                project.masterEq = ChannelEq::fromXml (*eq);
             project.masterAutomation = lanesFromXml (*master);
             project.masterAutomationOpen = master->getBoolAttribute ("automationOpen");
             project.masterRead = master->getBoolAttribute ("automationRead");

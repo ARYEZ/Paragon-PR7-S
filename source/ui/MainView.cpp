@@ -147,6 +147,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     inspector.onOpenInstrument = [this] (int trackId) { openInstrumentWindow (trackId); };
     keyEditor.onOpenInstrument = [this] (int trackId) { openInstrumentWindow (trackId); };   // (0.31.0: the editors' INSTRUMENT)
     inspector.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
+    inspector.onOpenEq = [this] (int busId) { openEq (busId); };
     inspector.onFindPlugins = [this] { openPlugins(); };
     // RENDER (0.17.1): the whole track, Render in Place as last time (the track menu's "as last time").
     inspector.onRender = [this] (int trackId)
@@ -2095,6 +2096,20 @@ void MainView::openLineIdeas (std::vector<int> chordEvents)
     linesWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->linesWindow.reset(); }); };
     linesWindow->centreAroundComponent (this, linesWindow->getWidth(), linesWindow->getHeight());
     linesWindow->setVisible (true);
+}
+
+void MainView::openEq (int busId)
+{
+    if (eqWindow != nullptr)
+    {
+        eqWindow->getEditor().setBus (busId);
+        eqWindow->toFront (true);
+        return;
+    }
+    eqWindow = std::make_unique<EqWindow> (studio, busId);
+    eqWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->eqWindow.reset(); }); };
+    eqWindow->centreAroundComponent (this, eqWindow->getWidth(), eqWindow->getHeight());
+    eqWindow->setVisible (true);
 }
 
 void MainView::openProgressions()

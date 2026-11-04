@@ -6,6 +6,7 @@
 #include "ui/MixerView.h"
 #include "ui/ValueSlider.h"
 #include "ui/TrackColours.h"
+#include "ui/EqEditor.h"
 
 // The Inspector (0.9.0), inspired by Cubase's: left of the track list, the
 // selected track's settings in sections (click a title to fold it; which are
@@ -50,11 +51,13 @@ public:
     std::function<void (int trackId)> onOpenInstrument;   // EDIT
     std::function<void (int busId, int slot)> onOpenEffect;
     std::function<void()> onFindPlugins;
+    std::function<void (int busId)> onOpenEq;     // EQUALIZERS' EDIT (0.43.0): the EQ window on this channel
+    EqCurve& getEqCurve() noexcept { return eqCurve; }
     std::function<void (int trackId)> onRender;   // RENDER (0.17.1): Render in Place of the whole track, as last time
 
     static constexpr int width = 210;
-    enum class Section { basics, routing, chords, inserts, sends, fader, quick };
-    static constexpr int numSections = 7;
+    enum class Section { basics, routing, chords, inserts, eq, sends, fader, quick };   // (0.43.0: EQUALIZERS)
+    static constexpr int numSections = 8;
     bool isFolded (Section) const;
     void setFolded (Section, bool);   // (kept in the settings file)
 
@@ -168,6 +171,8 @@ private:
     MixerView fader { studio, true };   // (also the insert, send and output menus' owner)
     ColourKey colourKey;   // the colour menu (0.17.3), beside DISABLE TRACK
     juce::TextButton enable { "DISABLE TRACK" };   // always (0.17.1, the owner asked): DISABLE TRACK, or ENABLE TRACK on a disabled one
+    EqCurve eqCurve { studio, 0, true };   // (0.43.0)
+    juce::TextButton eqBypass { "BYPASS" }, eqEdit { "EDIT EQ" };
     juce::TextButton render { "RENDER" }, preset { "PRESET" };   // (0.9.8: FREEZE; RENDER since 0.17.1, the owner asked: Freeze is in the track's menu)
     std::unique_ptr<juce::FileChooser> chooser;   // a preset's
     std::array<juce::TextButton, pr7s::Track::numQuickControls> qcKeys;

@@ -297,6 +297,8 @@ namespace pr7s
             float volumeDb = 0.0f, pan = 0.0f;
             bool mute = false, soloedOut = false;   // soloedOut: another track is soloed
             int preFader = Project::maxInserts;     // the inserts before the fader (the rest after)
+            ChannelEq eqSettings;                   // (0.43.0) its EQ as set (a new rate designs it again)
+            EqProcessor eq;
             // What it is, where its sound goes, and its sends.
             enum class Role { source, group, fx };  // processed in this order: tracks, groups, FX
             Role role = Role::source;
@@ -517,6 +519,8 @@ namespace pr7s
         juce::SmoothedValue<float> masterGain;
         std::vector<LaneState> masterAutomation;
         int masterPreFader = Project::maxInserts;
+        ChannelEq masterEqSettings;   // (0.43.0)
+        EqProcessor masterEq;
         std::vector<std::pair<int, AutomationLane>> held;   // message thread: the controls being written
         bool masterAutomated = false;   // a volume lane among them
         std::atomic<float> nowMasterVolumeDb { 0.0f };

@@ -93,7 +93,9 @@ public:
     // BASS & MELODY (0.18.0): ideas for these chord events (none: the cycle's, else all), in a window of its own.
     void openLineIdeas (std::vector<int> chordEvents = {});
     LinesWindow* getLinesWindow() noexcept { return linesWindow.get(); }
-    void openProgressions();   // the progression library (0.40.0): opened, or brought to the front
+    void openProgressions();
+    void openEq (int busId);   // (0.43.0) the EQ window on a channel (one window: moved to another channel)
+    EqWindow* getEqWindow() noexcept { return eqWindow.get(); }   // the progression library (0.40.0): opened, or brought to the front
     ProgressionsWindow* getProgressionsWindow() noexcept { return progressionsWindow.get(); }
     // The MediaBay (0.21.0): its window (F5 opens and closes it), and a file from it into the
     // song: audio or MIDI on a new track at the playhead, a track preset as a new track, a song
@@ -277,6 +279,7 @@ private:
     double trackListRowZoom = 1.0;
     std::unique_ptr<LinesWindow> linesWindow;
     std::unique_ptr<ProgressionsWindow> progressionsWindow;
+    std::unique_ptr<EqWindow> eqWindow;
     std::unique_ptr<MediaBayWindow> mediaBayWindow;
     std::unique_ptr<MediaRack> mediaRack;
     std::unique_ptr<RightZoneEdge> rightZoneEdge;

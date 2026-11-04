@@ -692,6 +692,14 @@ namespace pr7s
         void removeInsert (int busId, int slot);   // its slot left empty (the others stay where they are)
         void setInsertBypass (int busId, int slot, bool);
         void setMasterVolume (float db, bool undoable = true);
+        // The channel EQ and Pre section (0.43.0; bus id 0 = the master). A drag sets it with
+        // undoable false, then once more with true on release (one undo step).
+        const ChannelEq* getChannelEq (int busId) const;
+        void setChannelEq (int busId, const ChannelEq&, bool undoable = true);
+        double getEqResponseDb (int busId, double frequency, bool withPre = true) const;   // the curve, as it plays
+        static juce::File eqPresetFolder();   // Documents/Paragon PR7-S/EQ Presets (.pr7eq)
+        bool saveEqPreset (int busId, const juce::File&) const;
+        bool loadEqPreset (int busId, const juce::File&);   // its bands and Pre onto the channel (one undo step)
         // Told just before an effect is deleted (nullptr: every effect, for a
         // new or opened song), so its window closes while it still exists.
         std::function<void (juce::AudioProcessor*)> onEffectGoing;

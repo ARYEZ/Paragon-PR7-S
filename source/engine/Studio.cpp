@@ -333,6 +333,7 @@ namespace pr7s
         project.loopEnd = state.loopEnd;
         project.click = state.click;
         project.masterVolumeDb = state.masterVolumeDb;
+        project.masterEq = state.masterEq;
         for (auto& track : project.tracks)
             if (const auto* then = state.findTrack (track.id))
             {
@@ -356,6 +357,7 @@ namespace pr7s
                 track.liveFollow = then->liveFollow;
                 track.followVoice = then->followVoice;           // (0.38.0)
                 track.followVoicing = then->followVoicing;
+                track.eq = then->eq;                             // (0.43.0)
             }
         restoreLanes (project.masterAutomation, state.masterAutomation);
         // The tracks' order as it was (tracks added since keep their places after them).
@@ -3789,6 +3791,59 @@ namespace pr7s
         changed (undoable && ! written);
     }
 
+    const ChannelEq* Studio::getChannelEq (int busId) const
+    {
+        if (busId == Engine::masterBus)
+            return &project.masterEq;
+        const auto* track = project.findTrack (busId);
+        return track != nullptr ? &track->eq : nullptr;
+    }
+
+    void Studio::setChannelEq (int busId, const ChannelEq& eq, bool undoable)
+    {
+        const auto limited = eq.limited();
+        auto* target = busId == Engine::masterBus ? &project.masterEq : nullptr;
+        if (target == nullptr)
+            if (auto* track = project.findTrack (busId))
+                target = &track->eq;
+        if (target == nullptr || (*target == limited && ! undoable))
+            return;
+        *target = limited;
+        changed (undoable);
+    }
+
+    double Studio::getEqResponseDb (int busId, double frequency, bool withPre) const
+    {
+        const auto* eq = getChannelEq (busId);
+        if (eq == nullptr)
+            return 0.0;
+        const auto rate = juce::jmax (44100.0, engine.getSampleRate());
+        return eqResponseDb (designEq (*eq, rate), frequency, rate, withPre);
+    }
+
+    juce::File Studio::eqPresetFolder()
+    {
+        return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Paragon PR7-S").getChildFile ("EQ Presets");
+    }
+
+    bool Studio::saveEqPreset (int busId, const juce::File& file) const
+    {
+        const auto* eq = getChannelEq (busId);
+        if (eq == nullptr)
+            return false;
+        file.getParentDirectory().createDirectory();
+        return eq->toXml ("EqPreset")->writeTo (file);
+    }
+
+    bool Studio::loadEqPreset (int busId, const juce::File& file)
+    {
+        const auto xml = juce::XmlDocument::parse (file);
+        if (xml == nullptr || ! xml->hasTagName ("EqPreset") || getChannelEq (busId) == nullptr)
+            return false;
+        setChannelEq (busId, ChannelEq::fromXml (*xml));
+        return true;
+    }
+
     //==========================================================================
     // Hears a plugin's knobs turned by hand (in its window) and passes them to
     // the studio's thread, where they're written (if a pass is going).
@@ -4168,6 +4223,7 @@ namespace pr7s
             t.quickControls = preset.quickControls;
             t.midiChannel = preset.midiChannel;
             t.preFaderSlots = preset.preFaderSlots;
+            t.eq = preset.eq;   // (0.43.0: the manual's "Loading Inserts and EQ from Track Presets")
             if (t.isAudio())
             {
                 t.input = preset.input;

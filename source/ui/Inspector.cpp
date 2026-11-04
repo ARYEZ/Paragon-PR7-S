@@ -17,8 +17,8 @@ namespace
         return percent == 0 ? juce::String ("C") : (pan < 0.0 ? "L " : "R ") + juce::String (percent);
     }
 
-    constexpr const char* sectionNames[] = { "basics", "routing", "chords", "inserts", "sends", "fader", "quick" };
-    constexpr const char* sectionTitles[] = { "", "ROUTING", "CHORDS", "INSERTS", "SENDS", "FADER", "QUICK CONTROLS" };
+    constexpr const char* sectionNames[] = { "basics", "routing", "chords", "inserts", "eq", "sends", "fader", "quick" };
+    constexpr const char* sectionTitles[] = { "", "ROUTING", "CHORDS", "INSERTS", "EQUALIZERS", "SENDS", "FADER", "QUICK CONTROLS" };
     constexpr int headerHeight = 22, rowHeight = 22, gap = 4, slotHeight = 17, slotGap = 2, faderHeight = 300, margin = 6;
     const juce::Colour panelColour { 0xff0d0a0e }, slotColour { 0xff0b090c }, postFaderColour { 0xff1c1108 };
 }
@@ -79,6 +79,8 @@ public:
     {
         if (e.mods.isPopupMenu() && section == Section::quick)
             owner.showQuickControlsMenu();
+        else if (e.mods.isPopupMenu() && section == Section::eq)   // (the manual: presets from the EQ section's header)
+            EqEditor::showPresetMenu (owner.studio, owner.trackId, this);
         else if (getLocalBounds().contains (e.getPosition()) && ! e.mods.isPopupMenu())
             owner.setFolded (section, ! owner.isFolded (section));
     }
@@ -224,6 +226,26 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     preset.setTooltip ("Save this track's sound (instrument, effects and their settings, fader, pan, colour, Quick Controls) "
                        "as a track preset, or load one onto it");
     render.onClick = [this] { if (onRender) onRender (trackId); };
+    // EQUALIZERS (0.43.0): the curve (edited right there), BYPASS, and EDIT EQ for the whole EQ.
+    content.addAndMakeVisible (eqCurve);
+    for (auto* k : { &eqBypass, &eqEdit })
+    {
+        k->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        k->setWantsKeyboardFocus (false);
+        content.addAndMakeVisible (*k);
+    }
+    eqBypass.setTooltip ("Bypass the four EQ bands (the Pre section stays in)");
+    eqBypass.onClick = [this]
+    {
+        if (const auto* eq = studio.getChannelEq (trackId))
+        {
+            auto e = *eq;
+            e.bypass = ! e.bypass;
+            studio.setChannelEq (trackId, e);
+        }
+    };
+    eqEdit.setTooltip ("The whole EQ: the four bands, the low and high cuts, gain and phase, presets");
+    eqEdit.onClick = [this] { if (onOpenEq) onOpenEq (trackId); };
     preset.onClick = [this]
     {
         juce::PopupMenu menu;
@@ -499,6 +521,8 @@ void Inspector::setFolded (Section section, bool shouldFold)
     layout();
     for (auto& header : headers)
         header->repaint();
+    if (const auto* eq = studio.getChannelEq (trackId))
+        eqBypass.setToggleState (eq->bypass, juce::dontSendNotification);
 }
 
 juce::Component& Inspector::getHeader (Section section)
@@ -590,6 +614,7 @@ void Inspector::showMaster()
     // The master (0.9.12, the owner asked): its R and W, volume, inserts and fader.
     master = true;
     trackId = pr7s::Engine::masterBus;
+    eqCurve.setBus (trackId);
     AutomationKeys::setUp (read, write, studio, trackId);
     fader.setSingleTrack (trackId, true);
     refresh();
@@ -599,6 +624,7 @@ void Inspector::showTrack (int id)
 {
     master = false;
     trackId = studio.getProject().findTrack (id) != nullptr ? id : 0;
+    eqCurve.setBus (trackId);
     AutomationKeys::setUp (read, write, studio, trackId);
     for (int i = 0; i < pr7s::Project::maxSends; ++i)
     {
@@ -892,7 +918,7 @@ void Inspector::layout()
         const auto section = (Section) i;
         auto& header = *headers[(size_t) i];
         // The master (0.9.12): its basics (R W, volume), inserts and fader.
-        const auto applies = master ? section == Section::basics || section == Section::inserts || section == Section::fader
+        const auto applies = master ? section == Section::basics || section == Section::inserts || section == Section::fader || section == Section::eq
                                     : t != nullptr && (section != Section::sends || ! t->isFx())
                                           && (section != Section::chords || t->kind == pr7s::Track::Kind::instrument);   // (0.36.0: MIDI only)
         if (! applies && section != Section::basics)
@@ -1022,6 +1048,15 @@ void Inspector::layout()
                 insertsHolder.setSize (holderWidth, top);
                 insertsHolder.repaint();
                 y += viewHeight + gap;
+                break;
+            }
+            case Section::eq:
+            {
+                place (eqCurve, row (juce::jlimit (80, 160, (w - 2 * margin) * 9 / 20)));
+                auto line = row (rowHeight);
+                place (eqBypass, line.removeFromLeft ((line.getWidth() - 3) / 2));
+                line.removeFromLeft (3);
+                place (eqEdit, line);
                 break;
             }
             case Section::sends:

@@ -8,6 +8,7 @@
 #include "DrumMaps.h"
 #include "FollowChords.h"
 #include "TempoMap.h"
+#include "Eq.h"
 
 // A song: its tempo and time signature, the cycle (loop) range, and its
 // tracks, each with an instrument and the MIDI parts on the timeline.
@@ -288,6 +289,8 @@ namespace pr7s
         // (0.38.0) Single Voice's voice, and This Track's Voicings (none: the chord track's).
         Voice followVoice = Voice::soprano;
         std::optional<VoicingSettings> followVoicing;
+        // (0.43.0) The channel EQ and Pre section (audio-carrying channels: all but MIDI-only).
+        ChannelEq eq;
     };
 
     struct Project
@@ -317,6 +320,7 @@ namespace pr7s
         float masterVolumeDb = 0.0f;          // the master bus: every track, then these effects, then this volume
         std::vector<Insert> masterInserts;
         int masterPreFaderSlots = 16;
+        ChannelEq masterEq;                   // (0.43.0)
         std::vector<AutomationLane> masterAutomation;   // volume and the master's effects
         // The Automation panel's settings (0.28.0; saved with the song, not undo steps).
         struct AutomationSettings

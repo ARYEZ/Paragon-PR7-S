@@ -48,6 +48,7 @@ add_library(PR7SCore STATIC
     source/engine/Progressions.cpp
     source/engine/Melody.cpp
     source/engine/ChordDetect.cpp
+    source/engine/Eq.cpp
     source/engine/Lines.cpp
     source/engine/MediaBay.cpp
     source/engine/ParagonSynth.cpp
@@ -99,6 +100,7 @@ add_library(PR7SCore STATIC
     source/ui/TrackColours.cpp
     source/ui/LinesPage.cpp
     source/ui/ProgressionsPage.cpp
+    source/ui/EqEditor.cpp
     source/ui/MediaBayPage.cpp
     source/ui/MediaUi.cpp
     source/ui/MediaRack.cpp
