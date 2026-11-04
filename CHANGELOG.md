@@ -2,6 +2,27 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.39.0
+
+**Performances** (you asked, as the chord tool you use has them): rhythm and arpeggio patterns that play any chords. There are 24 of them in four groups. The patterns and their names are our own design.
+- **Arpeggios:** Up, Down, Up and down, Sixteenths, Broken thirds, Alberti.
+- **Strums & pulses:** Held, Quarter pulse, Eighth pulse, Pop push, Off-beat chops, Strummed (down and up strokes spread like a guitar strum).
+- **Ballad & broken:** Ballad, Oom-pah, Stride, Gospel, Rolled, Pad and bell.
+- **Rhythmic riffs:** Tresillo, Synthwave, Gallop, Funk stabs, Driving octaves, Montuno (two bars long).
+
+**IDEAS' new PATTERNS tab:** a box at the right picks the group, and its six patterns appear as cards, each playing the chord track's chords.
+- Chords move as little as they can from one to the next, with the root in the bass.
+- HEAR plays a card; USE IT writes it onto the selected track or a new one.
+- In other time signatures the patterns fit the bar (in 3/4 a quarter pulse falls on 0, ¾, 1½ and 2¼ of a beat).
+
+**PERFORM on the chord pads** (the PLAYER menu): pick a pattern, and a pad you hold plays its chord through it at the song's tempo.
+- **Song playing:** it locks to the bars.
+- **Song stopped:** it starts from your press.
+- **Changing chords:** another pad switches chord without losing the beat.
+- **Stopping:** letting go stops it. "Off" brings plain chords back.
+- **The key's label:** it shows the pattern ("PERFORM: GALLOP").
+- **Recording:** what the pads perform is recorded onto an armed track, as plain chords are.
+
 ## 0.38.0
 
 **The MIDI editor's info line** (you asked: as the automation's, for notes). A strip along the top of the MIDI editor, above its ruler, shows the selected notes: START, END, LENGTH, PITCH and VELOCITY.
