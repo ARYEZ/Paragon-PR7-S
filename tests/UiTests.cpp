@@ -654,11 +654,23 @@ TEST_CASE ("Audio tracks on screen: MON and the input in the track list; clips t
         if (b->getButtonText() == "IN 1")
             input = b;
     }
-    REQUIRE (monitor != nullptr);
-    CHECK (monitors == 1);   // only the audio track has one
+    CHECK (monitor == nullptr);   // (0.35.0, the owner asked: MON and LANES are in the Inspector, not on the rows)
+    CHECK (monitors == 0);
     CHECK (input != nullptr);
-    monitor->onClick();
+    studio.selectTrack (guitar);
+    studio.dispatchPendingMessages();
+    auto& inspector = view.getInspector();
+    REQUIRE (inspector.getKey ("MON").isVisible());
+    REQUIRE (inspector.getKey ("LANES").isVisible());
+    // Under RENDER and PRESET, LANES then MON.
+    CHECK (inspector.getKey ("LANES").getY() > inspector.getKey ("RENDER").getY());
+    CHECK (inspector.getKey ("MON").getY() == inspector.getKey ("LANES").getY());
+    CHECK (inspector.getKey ("MON").getX() > inspector.getKey ("LANES").getX());
+    inspector.getKey ("MON").onClick();
     CHECK (studio.getProject().findTrack (guitar)->monitor);
+    inspector.getKey ("LANES").onClick();
+    CHECK (studio.getProject().findTrack (guitar)->showLanes);
+    inspector.getKey ("LANES").onClick();
     studio.setTrackInput (guitar, 0, true);
     studio.dispatchPendingMessages();
     CHECK (input->getButtonText() == "IN 1+2");

@@ -193,7 +193,7 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     }
 
     // BASICS
-    for (auto* key : { &mute, &solo, &read, &write, &arm, &monitor })
+    for (auto* key : { &mute, &solo, &read, &write, &arm, &monitor, &lanes })
     {
         key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         key->setWantsKeyboardFocus (false);
@@ -207,6 +207,8 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     solo.onClick = [this] { if (const auto* t = track()) studio.setSolo (trackId, ! t->solo || juce::ModifierKeys::currentModifiers.isCommandDown(), juce::ModifierKeys::currentModifiers.isCommandDown()); };
     arm.onClick = [this] { if (const auto* t = track()) studio.setArmed (t->armed ? 0 : trackId); };
     monitor.onClick = [this] { if (const auto* t = track()) studio.setMonitor (trackId, ! t->monitor); };
+    lanes.setTooltip ("LANES (Show Lanes): the track's takes, each on a lane under it; the track's row shows what's heard");
+    lanes.onClick = [this] { if (const auto* t = track()) studio.setShowLanes (trackId, ! t->showLanes); };
 
     // RENDER (0.17.1, the owner asked: Render in Place as last time, in FREEZE's place; Freeze stays in
     // the track's menu) and PRESET (Load/Save Track Preset).
@@ -485,7 +487,7 @@ juce::Component& Inspector::getHeader (Section section)
 
 juce::TextButton& Inspector::getKey (const juce::String& name)
 {
-    for (auto* key : { &mute, &solo, &read, &write, &arm, &monitor, &render, &preset })
+    for (auto* key : { &mute, &solo, &read, &write, &arm, &monitor, &render, &preset, &lanes })
         if (key->getButtonText() == name)
             return *key;
     return mute;
@@ -636,6 +638,7 @@ void Inspector::refresh()
     solo.setToggleState (t->solo, juce::dontSendNotification);
     arm.setToggleState (t->armed, juce::dontSendNotification);
     monitor.setToggleState (t->monitor, juce::dontSendNotification);
+    lanes.setToggleState (t->showLanes, juce::dontSendNotification);
     AutomationKeys::refresh (read, write, studio, trackId);
     // RENDER: a track with parts, live (a frozen one plays its file: unfreeze it first).
     render.setEnabled (! t->disabled && ! t->frozen && ! t->parts.empty());
@@ -894,12 +897,10 @@ void Inspector::layout()
                         place (enable, line);
                     }
                 }
-                // M S R W (and REC, MON).
+                // M S R W (and REC).
                 std::vector<juce::TextButton*> keys { &mute, &solo, &read, &write };
                 if (! t->isChannel())
                     keys.push_back (&arm);
-                if (t->isAudio())
-                    keys.push_back (&monitor);
                 auto r = row (rowHeight);
                 const auto keyWidth = (r.getWidth() - 3 * ((int) keys.size() - 1)) / (int) keys.size();
                 for (auto* key : keys)
@@ -916,6 +917,19 @@ void Inspector::layout()
                         line.removeFromLeft (3);
                     }
                     place (preset, line);
+                }
+                // (0.35.0, the owner asked) LANES and MON (an audio track's), under RENDER and PRESET.
+                if (! t->isChannel())
+                {
+                    auto line = row (rowHeight);
+                    if (t->isAudio())
+                    {
+                        place (lanes, line.removeFromLeft ((line.getWidth() - 3) / 2));
+                        line.removeFromLeft (3);
+                        place (monitor, line);
+                    }
+                    else
+                        place (lanes, line);
                 }
                 for (auto [label, slider, readout] : { std::tuple { &volumeLabel, &volume, &volumeReadout }, std::tuple { &panLabel, &pan, &panReadout } })
                 {

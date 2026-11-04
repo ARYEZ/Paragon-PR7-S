@@ -464,6 +464,15 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.selectMaster();   // (last: the set-up above chooses tracks)
         studio.dispatchPendingMessages();
     }
+    // PARAGON_SNAPSHOT_SELECT=<track name>: that track chosen last (its Inspector: 0.35.0's LANES and MON).
+    if (const auto name = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SELECT", {}); name.isNotEmpty())
+        for (const auto& t : studio.getProject().tracks)
+            if (t.name.equalsIgnoreCase (name))
+            {
+                studio.selectTrack (t.id);
+                studio.dispatchPendingMessages();
+                break;
+            }
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_DROP", {}).isNotEmpty())
     {
         // A MIDI file being dragged over the lead's track (0.18.1): where it will land, lit.

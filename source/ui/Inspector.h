@@ -76,7 +76,7 @@ public:
     juce::TextButton& getInsertSlot (int slot) { return slots[(size_t) slot]; }
     juce::Viewport& getInsertsView() noexcept { return insertsView; }
     static constexpr int insertsInView = 5;
-    juce::TextButton& getKey (const juce::String& name);   // "M", "S", "R", "W", "REC", "MON", "RENDER", "PRESET"
+    juce::TextButton& getKey (const juce::String& name);   // "M", "S", "R", "W", "REC", "MON", "RENDER", "PRESET", "LANES"
     ValueSlider& getVolume() noexcept { return volume; }
     ValueSlider& getPan() noexcept { return pan; }
     juce::Label& getVolumeReadout() noexcept { return volumeReadout; }
@@ -127,6 +127,7 @@ private:
     std::array<std::unique_ptr<Header>, numSections> headers;
 
     juce::TextButton mute { "M" }, solo { "S" }, read { "R" }, write { "W" }, arm { "REC" }, monitor { "MON" };
+    juce::TextButton lanes { "LANES" };   // (0.35.0, the owner asked: LANES and MON here, under RENDER and PRESET, not on the rows)
     ValueSlider volume, pan;   // (double-click: type a value, 0.9.9)
     juce::Label volumeLabel, panLabel, volumeReadout, panReadout;
     juce::TextButton instrument, edit { "EDIT" };

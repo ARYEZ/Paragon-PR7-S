@@ -18,7 +18,59 @@
 //               absolute, Alt: relative); its smart controls: straighten (top middle) and correct
 //               pitch (bottom middle). Up/Down move (Shift: a cent), Left/Right go through the
 //               segments, Ctrl+A, H/G zoom, the wheel scrolls (Shift: in time; Ctrl: zoom).
-class VariAudioEditor final : public juce::Component, private juce::ChangeListener
+// (0.35.0, part two) Smart controls in two sets (the manual's Show Default / Show All Smart
+// Controls): by default straighten (above the middle), correct pitch (below it), glue (below
+// the corners: to the one before / after), split (the bottom edge: click; or Alt-click the
+// segment), warp start / end (the lower half of its sides: drag in time; Alt: move the segment's
+// edge instead). All adds tilt (above the corners; Alt: rotate round the anchor), the anchor
+// (on the top edge), the straighten range (on the top edge's ends), formant and volume (above, a
+// quarter in). The panel: FUNCTIONS (Extract MIDI, Generate Harmony Voices, the resets,
+// Reanalyze), FORMANT, SMART CONTROLS DEFAULT / ALL, MIDI INPUT / STEP, the MIDI REFERENCE track,
+// the segment COLOURS. Delete removes the selected segments.
+
+// The Extract MIDI dialog (the manual's): pitch (notes; static or continuous pitchbend and its
+// range), volume (fixed or dynamic velocity, or a controller curve), where it goes.
+class ExtractMidiPage final : public juce::Component
+{
+public:
+    ExtractMidiPage();
+    void resized() override;
+    void paint (juce::Graphics&) override;
+    pr7s::ExtractMidiOptions getOptions() const;
+    pr7s::Studio::ExtractDestination getDestination() const;
+    std::function<void()> onOk, onCancel;
+
+private:
+    juce::ComboBox pitch, volume, destination;
+    juce::Slider range, velocity, controller;
+    juce::Label pitchLabel, rangeLabel, volumeLabel, velocityLabel, controllerLabel, destinationLabel;
+    juce::TextButton ok { "EXTRACT MIDI" }, cancel { "CANCEL" };
+};
+
+// The Generate Harmony Voices dialog (the manual's): how many voices (1-4), the vibrato
+// reduction, the editor opened on them after.
+class HarmonyVoicesPage final : public juce::Component
+{
+public:
+    HarmonyVoicesPage();
+    void resized() override;
+    void paint (juce::Graphics&) override;
+    int getVoices() const { return voices.getSelectedId(); }
+    float getVibratoReduction() const { return (float) vibrato.getValue() / 100.0f; }
+    bool getOpenAfter() const { return openAfter.getToggleState(); }
+    std::function<void()> onOk, onCancel;
+    // The dialog in a call-out over `target`; `done` gets the new tracks' first clip (0: none) and any error.
+    static void show (pr7s::Studio&, int partId, juce::Component& target, std::function<void (int firstPart, juce::String error)> done);
+
+private:
+    juce::ComboBox voices;
+    juce::Slider vibrato;
+    juce::ToggleButton openAfter { "Open the VariAudio editor on them after" };
+    juce::Label voicesLabel, vibratoLabel, note;
+    juce::TextButton ok { "GENERATE" }, cancel { "CANCEL" };
+};
+
+class VariAudioEditor final : public juce::Component, private juce::ChangeListener, private juce::Timer
 {
 public:
     VariAudioEditor (pr7s::Studio&, int partId);
@@ -61,6 +113,34 @@ public:
     juce::String getInfoText() const;
     juce::TextButton* keyNamed (const juce::String&);
 
+    // Part two (0.35.0).
+    enum class SmartControl { none, straighten, correct, warpStart, warpEnd, glueLeft, glueRight, split,
+                              tiltLeft, tiltRight, anchor, rangeFrom, rangeTo, formant, volume };
+    enum class Colours { automatic, event, pitch, scale };   // the manual's Auto, Event, Pitch, Scale/Chords
+    void setAllSmartControls (bool);
+    bool getAllSmartControls() const noexcept { return allSmartControls; }
+    juce::Rectangle<float> getSmartControl (int index, SmartControl) const;   // empty: not shown
+    SmartControl smartControlAt (int index, juce::Point<float>) const;
+    bool splitAt (int index, double seconds);
+    bool glue (int index, bool withNext);          // the selection when it holds `index` and others; else with the neighbour
+    bool deleteSelected();
+    void setFormantOfSelected (float percent);
+    void resetSelected (pr7s::Studio::VariReset);
+    bool reanalyse();
+    int extractMidi (const pr7s::ExtractMidiOptions&, pr7s::Studio::ExtractDestination, juce::String& error);
+    void setMidiInput (bool);
+    bool getMidiInput() const noexcept { return midiInput; }
+    void setStepMode (bool);
+    bool getStepMode() const noexcept { return stepMode; }
+    void notePlayed (int note);                    // MIDI Input: the selected segments to this note (Step: then the next)
+    void setReferenceTrack (int trackId);
+    void setColours (Colours);
+    Colours getColours() const noexcept { return colours; }
+    juce::Colour colourOf (int index) const;
+    double secondsForX (float x) const;            // the recording's moment under a place in the display
+    float xForBeat (double songBeat) const;
+    std::function<void (int partId)> onOpenPart;   // (after harmony voices: the editor on the first)
+
     // The display's mapping (for the mouse and the tests).
     juce::Rectangle<float> getSegmentBounds (int index) const;
     juce::Rectangle<float> getStraightenHandle (int index) const;
@@ -75,6 +155,18 @@ public:
     static constexpr int panelWidth = 250, keyboardWidth = 52, rulerHeight = 24;
 
 private:
+    struct Panel final : juce::Component
+    {
+        explicit Panel (VariAudioEditor& o) : owner (o) {}
+        void paint (juce::Graphics& g) override { owner.paintPanel (g); }
+        VariAudioEditor& owner;
+    };
+    void paintPanel (juce::Graphics&) const;
+    void timerCallback() override;
+    void showFunctionsMenu();
+    void showExtractMidi();
+    void layoutPanel();
+    void paintSmartControls (juce::Graphics&, int index) const;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void refresh();
     juce::TextButton& makeKey (const juce::String& text, std::function<void()> onClick, const juce::String& tip = {});
@@ -100,12 +192,20 @@ private:
     double firstBeat = 0.0, pixelsPerBeat = 120.0;
     float topPitch = 84.0f, rowHeight = 16.0f;
 
-    enum class Gesture { none, move, straighten, correct, marquee, slider };
+    enum class Gesture { none, move, straighten, correct, marquee, slider,
+                         warpEdge, resizeEdge, tilt, anchor, range, formant, volume };
     Gesture gesture = Gesture::none;
     juce::Point<float> downAt, dragAt;
     std::vector<pr7s::VariSegment> base, working;   // as they were when the gesture began; as it goes
     bool dragged = false;
     int hover = -1;
+    // (0.35.0) What the gesture works on: the smart control, the segment it was on, Alt held at the start.
+    SmartControl control = SmartControl::none;
+    int controlIndex = -1;
+    bool altAtDown = false;
+    float warpToX = 0.0f;
+    bool allSmartControls = false, midiInput = false, stepMode = false;
+    Colours colours = Colours::automatic;
 
     std::vector<std::unique_ptr<juce::TextButton>> keys;
     juce::TextButton* analyseKey = nullptr, *bypassKey = nullptr, *resetKey = nullptr, *auditionKey = nullptr;
@@ -113,9 +213,14 @@ private:
     juce::TextButton* editorScaleKey = nullptr, *chordTrackKey = nullptr, *suggestKey = nullptr, *snapScaleKey = nullptr,
                     * guidesKey = nullptr, *quantizeKey = nullptr;
     juce::ComboBox scaleBox;
-    juce::Slider correct, straighten, volume;
-    juce::Label title, info, correctLabel, straightenLabel, volumeLabel;
-    std::vector<std::pair<juce::String, juce::Rectangle<int>>> headings;
+    juce::Slider correct, straighten, volume, formant;
+    juce::Label title, info, correctLabel, straightenLabel, volumeLabel, formantLabel;
+    juce::TextButton* functionsKey = nullptr, *defaultControlsKey = nullptr, *allControlsKey = nullptr,
+                    * midiInputKey = nullptr, *stepKey = nullptr;
+    juce::ComboBox referenceBox, coloursBox;
+    std::vector<std::pair<juce::String, juce::Rectangle<int>>> headings;   // (in the panel)
+    Panel panel { *this };
+    juce::Viewport panelView;
 };
 
 class VariAudioWindow final : public juce::DocumentWindow

@@ -146,10 +146,10 @@ public:
             if (t->disabled)
                 instrument.setTooltip ("Disabled: silent, its instrument and effects unloaded (their settings kept). Click for Enable Track");
         }
-        monitor.setVisible (t->isAudio());
+        monitor.setVisible (false);   // (0.35.0: in the Inspector)
         monitor.setToggleState (t->monitor, juce::dontSendNotification);
         lanes.setToggleState (t->showLanes, juce::dontSendNotification);
-        lanes.setVisible (! t->isChannel() && getHeight() >= 66);
+        lanes.setVisible (false);
         AutomationKeys::refresh (read, write, owner.studio, trackId);
         arrow.open = t->automationOpen;
         arrow.repaint();
@@ -237,15 +237,11 @@ public:
         if (! compact)
         {
             levelArea = right.removeFromRight (44).toFloat().withSizeKeepingCentre (44.0f, 8.0f);
-            right.removeFromRight (6);
-            monitor.setBounds (right.removeFromRight (40));   // audio tracks only (hidden otherwise)
-            right.removeFromRight (4);
-            lanes.setBounds (right.removeFromRight (46));   // (0.29.0: Show Lanes)
         }
-        else
-            monitor.setBounds ({}), lanes.setBounds ({});
-        if (const auto* t = track())
-            lanes.setVisible (! compact && ! t->isChannel());
+        // (0.35.0, the owner asked) LANES and MON are in the Inspector, under RENDER and PRESET.
+        monitor.setBounds ({}), lanes.setBounds ({});
+        monitor.setVisible (false);
+        lanes.setVisible (false);
         name.setBounds (area);
         arrow.setBounds (0, getHeight() - 18, 16, 16);
         // (Show/Hide Automation: the arrow at the lower left corner, as the manual has it.)
