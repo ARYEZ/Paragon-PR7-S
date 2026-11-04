@@ -1192,8 +1192,8 @@ TEST_CASE ("Zoom, Auto-Scroll and scrolling (H in, G out, Shift+F, F; the scroll
             divider.mouseUp (mouseAt (divider, from.translated (0.0f, dy), from));
         };
         const auto height = mixer.getHeight();
-        dragDivider (-60.0f);
-        CHECK (mixer.getHeight() == height + 60);
+        dragDivider (-20.0f);   // (0.37.0: 20, not 60: the info line took 42 px of the room over it)
+        CHECK (mixer.getHeight() == height + 20);
         dragDivider (-2000.0f);   // the arrangement keeps its room
         CHECK (arrange.getHeight() + view.getArrangeScrollBarAcross().getHeight() >= MainView::minimumArrangeHeight - 1);
         dragDivider (2000.0f);    // no shorter than the mixer can be
