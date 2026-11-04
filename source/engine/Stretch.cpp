@@ -30,7 +30,8 @@ namespace pr7s
     }
 
     juce::AudioBuffer<float> shiftPitchAlong (const juce::AudioBuffer<float>& input, double sampleRate,
-                                              const std::function<float (int sample)>& semitonesAt)
+                                              const std::function<float (int sample)>& semitonesAt,
+                                              const std::function<float (int sample)>& formantAt)
     {
         const auto channels = juce::jmax (1, input.getNumChannels());
         const auto length = input.getNumSamples();
@@ -57,6 +58,8 @@ namespace pr7s
             const auto n = juce::jmin (block, total - done);
             // The change for the sound being worked on now (the input's latency behind).
             stretch.setTransposeSemitones (semitonesAt (juce::jlimit (0, length - 1, done - stretch.inputLatency())));
+            if (formantAt)
+                stretch.setFormantSemitones (formantAt (juce::jlimit (0, length - 1, done - stretch.inputLatency())), true);
             for (int c = 0; c < channels; ++c)
             {
                 in[(size_t) c] = fed.getReadPointer (c, done);

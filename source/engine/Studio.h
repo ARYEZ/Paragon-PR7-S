@@ -468,6 +468,32 @@ namespace pr7s
         void removeVariAudio (const juce::String& file);                       // every segment and edit gone
         // Audition: what the recording plays (as edited) between two moments of it, through the preview.
         void auditionRecording (const juce::String& file, double fromSeconds, double toSeconds, bool loop = false);
+
+        // VariAudio, part two (0.35.0). Segment editing, each one undo step (false: it couldn't).
+        bool splitVariSegment (const juce::String& file, int index, double seconds);
+        bool glueVariSegments (const juce::String& file, int first, int last);
+        bool deleteVariSegments (const juce::String& file, std::vector<int> indices);
+        bool setVariSegmentEdges (const juce::String& file, int index, double start, double end);
+        // The Functions menu's resets (the given segments, or all when none) and Reanalyze Audio.
+        enum class VariReset { pitch, curve, formant, volume, warp, all };
+        void resetVariAudio (int partId, std::vector<int> indices, VariReset);
+        bool reanalyseVariAudio (const juce::String& file);
+        // Warp Start / Warp End: a segment's start (or end) heard at `songBeat`, the segment and the
+        // one beside it stretched to fit (warp markers on the clip, as the manual has it).
+        bool warpVariSegment (int partId, int index, bool atStart, double songBeat);
+        // Extract MIDI: onto the first selected instrument track (its parts from earlier extractions
+        // replaced) or a new one. The new part's id (0: none, `error` says why).
+        enum class ExtractDestination { selectedTrack, newTrack };
+        int extractMidi (int partId, const ExtractMidiOptions&, ExtractDestination, juce::String& error);
+        // Generate Harmony Voices: up to four tracks (Soprano, Alto, Tenor, Bass), each with its own copy
+        // of the clip and of its recording, VariAudio moving every segment to its voice (the chord
+        // track's chord there, else +3, -3, -6, -9 semitones), straightened by `vibratoReduction` (0-1).
+        std::vector<int> generateHarmonyVoices (int partId, int voices, float vibratoReduction, juce::String& error);
+        // The MIDI reference track (its notes as lines in the editor; saved with the song).
+        void setVariAudioReference (int trackId);
+        // MIDI Input: the keys played (from any device) while asked for, taken on the message thread.
+        void setCatchingNotes (bool);
+        std::vector<int> takePlayedNotes();
         AlignSettings getAlignSettings() const;   // settings key "audioAlignment"
         void setAlignSettings (const AlignSettings&);
 

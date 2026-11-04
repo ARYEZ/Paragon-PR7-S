@@ -270,7 +270,216 @@ namespace pr7s
         auto heard = analysis.pitchAt (seconds);
         if (heard <= 0.0f || std::abs (heard - seg.pitch) > 3.0f)
             heard = seg.pitch;   // (unpitched or a stray: its pitch)
-        return seg.pitch + seg.shift + (heard - seg.pitch) * (1.0f - juce::jlimit (0.0f, 1.0f, seg.straighten));
+        return seg.pitch + seg.shift + tiltAt (seg, seconds) + (heard - seg.pitch) * (1.0f - straightenAt (seg, seconds));
+    }
+
+    float tiltAt (const VariSegment& seg, double seconds)
+    {
+        if (std::abs (seg.tiltStart) <= 1.0e-6f && std::abs (seg.tiltEnd) <= 1.0e-6f)
+            return 0.0f;
+        const auto length = juce::jmax (1.0e-6, seg.end - seg.start);
+        const auto along = (float) juce::jlimit (0.0, 1.0, (seconds - seg.start) / length);
+        const auto anchor = juce::jlimit (0.02f, 0.98f, seg.anchor);
+        return along < anchor ? seg.tiltStart * (anchor - along) / anchor : seg.tiltEnd * (along - anchor) / (1.0f - anchor);
+    }
+
+    float straightenAt (const VariSegment& seg, double seconds)
+    {
+        const auto amount = juce::jlimit (0.0f, 1.0f, seg.straighten);
+        if (amount <= 0.0f)
+            return 0.0f;
+        const auto length = juce::jmax (1.0e-6, seg.end - seg.start);
+        const auto from = seg.start + juce::jlimit (0.0, 1.0, (double) seg.straightenFrom) * length;
+        const auto to = seg.start + juce::jlimit (0.0, 1.0, (double) seg.straightenTo) * length;
+        if (seconds < from || seconds > to)
+            return 0.0f;
+        // Easing in and out at an edge of the range inside the segment (at the segment's own
+        // edges none: the whole segment straightened is as in part one).
+        constexpr double ease = 0.02;
+        auto weight = 1.0;
+        if (seg.straightenFrom > 0.0f)
+            weight = juce::jmin (weight, (seconds - from) / ease);
+        if (seg.straightenTo < 1.0f)
+            weight = juce::jmin (weight, (to - seconds) / ease);
+        return amount * (float) juce::jlimit (0.0, 1.0, weight);
+    }
+
+    void rotateSegment (VariSegment& seg, float semitones, bool atStart)
+    {
+        const auto anchor = juce::jlimit (0.02f, 0.98f, seg.anchor);
+        if (atStart)
+        {
+            seg.tiltStart += semitones;
+            seg.tiltEnd -= semitones * (1.0f - anchor) / anchor;   // (one straight line through the anchor)
+        }
+        else
+        {
+            seg.tiltEnd += semitones;
+            seg.tiltStart -= semitones * anchor / (1.0f - anchor);
+        }
+    }
+
+    float averagePitch (const PitchAnalysis& analysis, double start, double end, float fallback)
+    {
+        const auto hop = analysis.hopSeconds;
+        const auto count = (int) analysis.frames.size();
+        const auto collect = [&] (double a, double b)
+        {
+            std::vector<float> values;
+            for (int i = juce::jmax (0, (int) std::ceil (a / hop)); i <= juce::jmin (count - 1, (int) std::floor (b / hop)); ++i)
+                if (analysis.frames[(size_t) i].isVoiced())
+                    values.push_back (analysis.frames[(size_t) i].midi);
+            return values;
+        };
+        const auto length = end - start;
+        auto values = collect (start + 0.15 * length, end - 0.15 * length);
+        if (values.empty())
+            values = collect (start, end);
+        if (values.empty())
+            return fallback;
+        return medianOf (values);
+    }
+
+    bool splitSegment (std::vector<VariSegment>& segments, int index, double seconds, const PitchAnalysis& analysis)
+    {
+        if (! juce::isPositiveAndBelow (index, (int) segments.size()))
+            return false;
+        const auto seg = segments[(size_t) index];
+        if (seconds < seg.start + shortestSegment || seconds > seg.end - shortestSegment)
+            return false;
+        // Both halves keep its edits (but the tilt and the ranges, which were its own shape).
+        auto first = seg, second = seg;
+        for (auto* half : { &first, &second })
+        {
+            half->tiltStart = half->tiltEnd = 0.0f;
+            half->anchor = 0.5f;
+            half->straightenFrom = 0.0f;
+            half->straightenTo = 1.0f;
+        }
+        first.end = seconds;
+        second.start = seconds;
+        first.pitch = averagePitch (analysis, first.start, first.end, seg.pitch);
+        second.pitch = averagePitch (analysis, second.start, second.end, seg.pitch);
+        segments[(size_t) index] = first;
+        segments.insert (segments.begin() + index + 1, second);
+        return true;
+    }
+
+    bool glueSegments (std::vector<VariSegment>& segments, int first, int last, const PitchAnalysis& analysis)
+    {
+        if (first > last)
+            std::swap (first, last);
+        if (first < 0 || last >= (int) segments.size() || first == last)
+            return false;
+        // One segment from the first's start to the last's end, the first's edits.
+        auto glued = segments[(size_t) first];
+        glued.end = segments[(size_t) last].end;
+        glued.tiltStart = glued.tiltEnd = 0.0f;
+        glued.anchor = 0.5f;
+        glued.straightenFrom = 0.0f;
+        glued.straightenTo = 1.0f;
+        glued.pitch = averagePitch (analysis, glued.start, glued.end, glued.pitch);
+        segments.erase (segments.begin() + first + 1, segments.begin() + last + 1);
+        segments[(size_t) first] = glued;
+        return true;
+    }
+
+    bool setSegmentEdges (std::vector<VariSegment>& segments, int index, double start, double end, const PitchAnalysis& analysis)
+    {
+        if (! juce::isPositiveAndBelow (index, (int) segments.size()))
+            return false;
+        // Up to the next segments' edges (segments never overlap), inside the recording.
+        const auto low = index > 0 ? segments[(size_t) index - 1].end : 0.0;
+        const auto high = index + 1 < (int) segments.size() ? segments[(size_t) index + 1].start
+                                                              : juce::jmax (segments[(size_t) index].end, analysis.frames.size() * analysis.hopSeconds);
+        start = juce::jlimit (low, high, start);
+        end = juce::jlimit (low, high, end);
+        if (end - start < shortestSegment)
+            return false;
+        auto& seg = segments[(size_t) index];
+        seg.start = start;
+        seg.end = end;
+        seg.pitch = averagePitch (analysis, start, end, seg.pitch);
+        return true;
+    }
+
+    int harmonyPitch (int sung, const std::vector<int>& chord, int bass, int voice)
+    {
+        static const int apart[] { 3, -3, -6, -9 };
+        voice = juce::jlimit (0, 3, voice);
+        if (chord.empty())
+            return juce::jlimit (0, 127, sung + apart[voice]);
+        const auto inChord = [&chord] (int n) { return std::find (chord.begin(), chord.end(), (n % 12 + 12) % 12) != chord.end(); };
+        const auto below = [&] (int from) { for (int n = from; n > from - 13; --n) if (inChord (n)) return n; return from; };
+        const auto soprano = [&] { for (int n = sung + 2; n < sung + 14; ++n) if (inChord (n)) return n; return sung + 3; };
+        const auto alto = below (sung - 2);
+        const auto tenor = below (alto - 2);
+        auto result = sung;
+        switch (voice)
+        {
+            case 0: result = soprano(); break;
+            case 1: result = alto; break;
+            case 2: result = tenor; break;
+            default:
+            {
+                const auto root = bass >= 0 ? bass : chord.front();
+                result = tenor - 2;
+                while (((result % 12) + 12) % 12 != root)
+                    --result;
+                break;
+            }
+        }
+        return juce::jlimit (0, 127, result);
+    }
+
+    ExtractedMidi extractMidi (const std::vector<VariSegment>& segments, const PitchAnalysis& analysis, const ExtractMidiOptions& options)
+    {
+        ExtractedMidi out;
+        const auto range = (float) juce::jlimit (1, 24, options.bendRange);
+        const auto bendFor = [range] (float semitones) { return juce::jlimit (0, 16383, 8192 + juce::roundToInt (semitones / range * 8192.0f)); };
+        const auto levelAt = [&analysis] (double seconds)
+        {
+            const auto i = juce::jlimit (0, juce::jmax (0, (int) analysis.frames.size() - 1), (int) std::lround (seconds / analysis.hopSeconds));
+            return analysis.frames.empty() ? -120.0f : analysis.frames[(size_t) i].levelDb;
+        };
+        constexpr double step = 0.01;   // (curves: every 10 ms)
+        auto lastBend = 8192, lastCc = -1;
+        for (const auto& seg : segments)
+        {
+            const auto note = juce::jlimit (0, 127, (int) std::lround (seg.pitchNow()));
+            auto velocity = juce::jlimit (1, 127, options.velocity);
+            if (options.volume == ExtractMidiOptions::Volume::dynamic)
+            {
+                // Its loudest moment (our mapping: -48 dBFS is 1, 0 dBFS is 127), with its volume edit.
+                auto loudest = -120.0f;
+                for (auto t = seg.start; t < seg.end; t += step)
+                    loudest = juce::jmax (loudest, levelAt (t));
+                velocity = juce::jlimit (1, 127, juce::roundToInt (127.0f + (loudest + seg.volumeDb) * 126.0f / 48.0f));
+            }
+            out.notes.push_back ({ seg.start, seg.end, note, velocity });
+            const auto addBend = [&] (double t, int value)
+            {
+                if (value != lastBend)
+                    out.events.push_back ({ t, true, 0, value }), lastBend = value;
+            };
+            if (options.pitch == ExtractMidiOptions::Pitch::staticBend)
+                addBend (seg.start, bendFor (seg.pitchNow() - (float) note));
+            else if (options.pitch == ExtractMidiOptions::Pitch::continuousBend)
+                for (auto t = seg.start; t < seg.end; t += step)
+                    addBend (t, bendFor (editedPitchAt (seg, analysis, t) - (float) note));
+            if (options.volume == ExtractMidiOptions::Volume::controller)
+                for (auto t = seg.start; t < seg.end; t += step)
+                {
+                    // The level as a controller (our mapping: -60 dBFS to 0 dBFS over 0 to 127).
+                    const auto value = juce::jlimit (0, 127, juce::roundToInt ((levelAt (t) + seg.volumeDb + 60.0f) / 60.0f * 127.0f));
+                    if (value != lastCc)
+                        out.events.push_back ({ t, false, juce::jlimit (0, 127, options.controller), value }), lastCc = value;
+                }
+        }
+        if (lastBend != 8192 && ! segments.empty())
+            out.events.push_back ({ segments.back().end, true, 0, 8192 });   // (the bend back to the middle after)
+        std::stable_sort (out.events.begin(), out.events.end(), [] (const auto& a, const auto& b) { return a.seconds < b.seconds; });
+        return out;
     }
 
     float pitchChangeAt (const VariSegment& seg, const PitchAnalysis& analysis, double seconds)
@@ -367,7 +576,7 @@ namespace pr7s
         constexpr double margin = 0.03, fade = 0.01;
         std::vector<std::pair<int, int>> regions;
         for (const auto& s : segments)
-            if (std::abs (s.shift) > 1.0e-4f || s.straighten > 1.0e-4f)
+            if (s.changesPitch())
             {
                 const auto a = toSample (s.start - margin), b = toSample (s.end + margin);
                 if (! regions.empty() && a <= regions.back().second)
@@ -382,6 +591,18 @@ namespace pr7s
                     return pitchChangeAt (s, analysis, seconds);
             return 0.0f;
         };
+        // (0.35.0) Formants: each segment's shift, easing in and out over 10 ms at its edges.
+        const auto anyFormant = std::any_of (segments.begin(), segments.end(), [] (const VariSegment& s) { return std::abs (s.formant) > 1.0e-3f; });
+        const auto formantAt = [&] (double seconds)
+        {
+            for (const auto& s : segments)
+                if (seconds >= s.start && seconds < s.end)
+                {
+                    const auto ease = (float) juce::jlimit (0.0, 1.0, juce::jmin (seconds - s.start, s.end - seconds) / 0.01);
+                    return formantSemitones (s.formant) * ease;
+                }
+            return 0.0f;
+        };
         for (const auto& [a, b] : regions)
         {
             if (b <= a)
@@ -393,7 +614,10 @@ namespace pr7s
             juce::AudioBuffer<float> input (channels, total);
             for (int c = 0; c < channels; ++c)
                 input.copyFrom (c, 0, recording, c, feedFrom, total);
-            const auto output = shiftPitchAlong (input, sampleRate, [&] (int sample) { return changeAt ((feedFrom + sample) / sampleRate); });
+            const auto output = anyFormant
+                ? shiftPitchAlong (input, sampleRate, [&] (int sample) { return changeAt ((feedFrom + sample) / sampleRate); },
+                                   [&] (int sample) { return formantAt ((feedFrom + sample) / sampleRate); })
+                : shiftPitchAlong (input, sampleRate, [&] (int sample) { return changeAt ((feedFrom + sample) / sampleRate); });
             // Into the recording, crossfaded over 10 ms at both ends (where nothing is shifted).
             const auto fadeSamples = juce::jmax (1, (int) (fade * sampleRate));
             for (int k = a; k < b; ++k)

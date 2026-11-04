@@ -196,6 +196,14 @@ namespace pr7s
         // where it was (an export or a render starts here: its first moments
         // at the levels set, not still moving from the last playback's).
         void settleMix();
+        void setCatchingNotes (bool on) { catchingNotes = on; if (! on) takeCaughtNotes(); }
+        std::vector<int> takeCaughtNotes()
+        {
+            const juce::SpinLock::ScopedLockType sl (caughtLock);
+            std::vector<int> notes (caught.begin(), caught.begin() + numCaught);
+            numCaught = 0;
+            return notes;
+        }
         // Multi-core audio (0.34.5): helper threads beside the audio thread (0: everything on it).
         // Message thread; waits for the block being played.
         void setHelperThreads (int count);
@@ -436,6 +444,9 @@ namespace pr7s
             {
                 if (source == nullptr || engine.acceptsLiveFrom (source->getName()))
                 {
+                    // (0.35.0) Keys played, noted while VariAudio's MIDI Input asks (they still play on).
+                    if (engine.catchingNotes.load() && message.isNoteOn())
+                        engine.catchNote (message.getNoteNumber());
                     // The chord pads' trigger keys play the pads, not themselves (0.14.0).
                     if (auto* pads = engine.padPlayer.load(); pads != nullptr && pads->handle (message))
                         return;
@@ -445,6 +456,18 @@ namespace pr7s
             Engine& engine;
         };
         LiveInput liveInput { *this };
+        // (0.35.0) Keys played, for VariAudio's MIDI Input: from the devices' threads (a spin lock between
+        // them: never the audio thread), taken on the message thread.
+        std::atomic<bool> catchingNotes { false };
+        juce::SpinLock caughtLock;
+        std::array<int, 64> caught {};
+        int numCaught = 0;
+        void catchNote (int note)
+        {
+            const juce::SpinLock::ScopedLockType sl (caughtLock);
+            if (numCaught < (int) caught.size())
+                caught[(size_t) numCaught++] = note;
+        }
         std::atomic<PadPlayer*> padPlayer { nullptr };
         mutable juce::SpinLock liveFilterLock;
         juce::String liveFilter;

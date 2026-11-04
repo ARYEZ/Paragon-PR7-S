@@ -60,4 +60,57 @@ namespace pr7s
     // recording itself, sample for sample.
     juce::AudioBuffer<float> renderVariAudio (const juce::AudioBuffer<float>& recording, double sampleRate,
                                               const PitchAnalysis&, const std::vector<VariSegment>&);
+
+    //==========================================================================
+    // VariAudio, part two (0.35.0).
+
+    // Pitch curve changes (the manual's Tilt, Rotate, Straighten range): what the tilt adds at a
+    // moment (from the start's or the end's amount to none at the anchor), and how much Straighten
+    // works there (inside its range, easing in over 20 ms at a range edge inside the segment).
+    float tiltAt (const VariSegment&, double seconds);
+    float straightenAt (const VariSegment&, double seconds);
+    // Rotating (Alt on a Tilt control): the curve turned round its anchor, the start moved by
+    // `semitones` (`atStart`; else the end), the other side the opposite way in proportion.
+    void rotateSegment (VariSegment&, float semitones, bool atStart);
+    // Formant shift: -100 to +100 % as semitones the formants move (our scale: 100 % = 12).
+    inline float formantSemitones (float percent) noexcept { return percent * 0.12f; }
+
+    // Segment editing (the manual's Segment Editing). The average pitch is found again from the
+    // curve (the middle 70 %): an edited segment's pitch can change (the manual says so too).
+    // Each returns false when it can't (too short, outside, overlapping) and leaves them alone.
+    float averagePitch (const PitchAnalysis&, double start, double end, float fallback);
+    bool splitSegment (std::vector<VariSegment>&, int index, double seconds, const PitchAnalysis&);
+    bool glueSegments (std::vector<VariSegment>&, int first, int last, const PitchAnalysis&);
+    bool setSegmentEdges (std::vector<VariSegment>&, int index, double start, double end, const PitchAnalysis&);
+    constexpr double shortestSegment = 0.02;   // (by hand: 20 ms; the analysis makes none under 60)
+
+    // Extract MIDI (the manual's Extract MIDI dialog): a note per segment at its pitch now, with
+    // pitchbend (none, one per segment, or following the curve) and loudness (one velocity, each
+    // segment's own, or a controller following the level). Times in seconds into the recording.
+    struct ExtractMidiOptions
+    {
+        enum class Pitch { notes, staticBend, continuousBend };
+        enum class Volume { fixed, dynamic, controller };
+        Pitch pitch = Pitch::notes;
+        int bendRange = 2;      // semitones (1-24), as the instrument must be set
+        Volume volume = Volume::fixed;
+        int velocity = 100;     // fixed velocity (1-127)
+        int controller = 7;     // the controller curve's CC
+    };
+    struct ExtractedMidi
+    {
+        struct Note { double start, end; int pitch, velocity; };
+        struct Event { double seconds; bool bend; int number, value; };   // pitchbend (0-16383) or a CC
+        std::vector<Note> notes;
+        std::vector<Event> events;   // in time order
+    };
+    ExtractedMidi extractMidi (const std::vector<VariSegment>&, const PitchAnalysis&, const ExtractMidiOptions&);
+
+    // Harmony voices (the manual's Generate Harmony Voices): the note voice `voice` (0 soprano,
+    // 1 alto, 2 tenor, 3 bass) sings against `sung`. With a chord (its pitch classes, its bass):
+    // soprano the chord's next note at least a whole step up, alto the one at least a whole step
+    // down, tenor the one under that, bass the chord's bass under the tenor (our voicing rules).
+    // Without one: +3, -3, -6, -9 semitones (the manual's).
+    int harmonyPitch (int sung, const std::vector<int>& chordPitchClasses, int bassPitchClass, int voice);
+    inline const char* harmonyVoiceName (int voice) { static const char* names[] { "Soprano", "Alto", "Tenor", "Bass" }; return names[juce::jlimit (0, 3, voice)]; }
 }

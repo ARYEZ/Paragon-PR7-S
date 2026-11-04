@@ -8522,7 +8522,9 @@ namespace pr7s
         juce::String text;
         for (const auto& seg : found->second.segments)
             if (seg.isEdited())
-                text << seg.start << ":" << seg.end << ":" << seg.shift << ":" << seg.straighten << ":" << seg.volumeDb << "|";
+                text << seg.start << ":" << seg.end << ":" << seg.shift << ":" << seg.straighten << ":" << seg.volumeDb << ":"
+                     << seg.tiltStart << ":" << seg.tiltEnd << ":" << seg.anchor << ":" << seg.straightenFrom << ":" << seg.straightenTo
+                     << ":" << seg.formant << "|";
         return text;
     }
 
@@ -8595,6 +8597,12 @@ namespace pr7s
             seg.shift = juce::jlimit (-24.0f, 24.0f, seg.shift);
             seg.straighten = juce::jlimit (0.0f, 1.0f, seg.straighten);
             seg.volumeDb = juce::jlimit (-96.0f, 12.0f, seg.volumeDb);
+            seg.tiltStart = juce::jlimit (-24.0f, 24.0f, seg.tiltStart);
+            seg.tiltEnd = juce::jlimit (-24.0f, 24.0f, seg.tiltEnd);
+            seg.anchor = juce::jlimit (0.02f, 0.98f, seg.anchor);
+            seg.straightenFrom = juce::jlimit (0.0f, 1.0f, seg.straightenFrom);
+            seg.straightenTo = juce::jlimit (seg.straightenFrom, 1.0f, seg.straightenTo);
+            seg.formant = juce::jlimit (-100.0f, 100.0f, seg.formant);
         }
         std::sort (segments.begin(), segments.end(), [] (const VariSegment& a, const VariSegment& b) { return a.start < b.start; });
         if (found->second.segments == segments)
@@ -8644,6 +8652,384 @@ namespace pr7s
             slice->copyFrom (c, 0, data->sound, c, from, to - from);
         engine.setPreviewSync (false, 0.0, 0.0);
         engine.setPreview (slice, loop);
+    }
+
+    //==========================================================================
+    // VariAudio, part two (0.35.0)
+    bool Studio::splitVariSegment (const juce::String& file, int index, double seconds)
+    {
+        const auto* vari = getVariAudio (file);
+        const auto analysis = getPitchAnalysis (file);
+        if (vari == nullptr || analysis == nullptr)
+            return false;
+        auto segments = vari->segments;
+        if (! splitSegment (segments, index, seconds, *analysis))
+            return false;
+        setVariSegments (file, std::move (segments));
+        return true;
+    }
+
+    bool Studio::glueVariSegments (const juce::String& file, int first, int last)
+    {
+        const auto* vari = getVariAudio (file);
+        const auto analysis = getPitchAnalysis (file);
+        if (vari == nullptr || analysis == nullptr)
+            return false;
+        auto segments = vari->segments;
+        if (! glueSegments (segments, first, last, *analysis))
+            return false;
+        setVariSegments (file, std::move (segments));
+        return true;
+    }
+
+    bool Studio::deleteVariSegments (const juce::String& file, std::vector<int> indices)
+    {
+        const auto* vari = getVariAudio (file);
+        if (vari == nullptr || indices.empty())
+            return false;
+        auto segments = vari->segments;
+        std::sort (indices.rbegin(), indices.rend());
+        indices.erase (std::unique (indices.begin(), indices.end()), indices.end());
+        for (const auto i : indices)
+            if (juce::isPositiveAndBelow (i, (int) segments.size()))
+                segments.erase (segments.begin() + i);
+        if (segments.size() == vari->segments.size())
+            return false;
+        setVariSegments (file, std::move (segments));
+        return true;
+    }
+
+    bool Studio::setVariSegmentEdges (const juce::String& file, int index, double start, double end)
+    {
+        const auto* vari = getVariAudio (file);
+        const auto analysis = getPitchAnalysis (file);
+        if (vari == nullptr || analysis == nullptr)
+            return false;
+        auto segments = vari->segments;
+        if (! setSegmentEdges (segments, index, start, end, *analysis))
+            return false;
+        setVariSegments (file, std::move (segments));
+        return true;
+    }
+
+    void Studio::resetVariAudio (int partId, std::vector<int> indices, VariReset what)
+    {
+        const auto found = findPart (partId);
+        if (! found)
+            return;
+        const auto& part = project.findTrack (found->first)->parts[(size_t) found->second];
+        const auto file = part.audioFile;
+        if (what == VariReset::warp || what == VariReset::all)
+        {
+            // (The clip's warp markers: those VariAudio's Warp Start/End made, and any others.)
+            if (part.isWarped())
+            {
+                if (what == VariReset::warp)
+                {
+                    resetWarp ({ partId });
+                    return;
+                }
+                auto& p = project.findTrack (found->first)->parts[(size_t) found->second];
+                p.audioOffset = p.warp.front().seconds;
+                p.warp.clear();
+            }
+            if (what == VariReset::warp)
+                return;
+        }
+        const auto* vari = getVariAudio (file);
+        if (vari == nullptr)
+        {
+            changed();
+            return;
+        }
+        auto segments = vari->segments;
+        if (indices.empty())
+        {
+            indices.resize (segments.size());
+            std::iota (indices.begin(), indices.end(), 0);
+        }
+        for (const auto i : indices)
+        {
+            if (! juce::isPositiveAndBelow (i, (int) segments.size()))
+                continue;
+            auto& s = segments[(size_t) i];
+            if (what == VariReset::pitch || what == VariReset::all)
+                s.shift = 0.0f;
+            if (what == VariReset::curve || what == VariReset::all)
+            {
+                s.straighten = s.tiltStart = s.tiltEnd = 0.0f;
+                s.anchor = 0.5f;
+                s.straightenFrom = 0.0f;
+                s.straightenTo = 1.0f;
+            }
+            if (what == VariReset::formant || what == VariReset::all)
+                s.formant = 0.0f;
+            if (what == VariReset::volume || what == VariReset::all)
+                s.volumeDb = 0.0f;
+        }
+        if (segments == vari->segments)
+        {
+            if (what == VariReset::all)
+                changed();   // (the warp reset above)
+            return;
+        }
+        setVariSegments (file, std::move (segments));
+    }
+
+    bool Studio::reanalyseVariAudio (const juce::String& file)
+    {
+        const auto analysis = getPitchAnalysis (file);
+        if (analysis == nullptr)
+            return false;
+        auto& vari = project.variAudio[file];
+        vari.segments = segmentPitch (*analysis);
+        vari.bypass = false;
+        changed();
+        return true;
+    }
+
+    bool Studio::warpVariSegment (int partId, int index, bool atStart, double songBeat)
+    {
+        const auto found = findPart (partId);
+        if (! found)
+            return false;
+        const auto& original = project.findTrack (found->first)->parts[(size_t) found->second];
+        const auto* vari = getVariAudio (original.audioFile);
+        if (vari == nullptr || ! juce::isPositiveAndBelow (index, (int) vari->segments.size()))
+            return false;
+        const auto& segs = vari->segments;
+        const auto tempo = project.tempoMap();
+        auto part = original;
+        ensureWarp (part, tempo);
+        if (part.warp.size() < 2)
+            return false;
+        // The edge moved and the two around it held: the segment and its neighbour (or the clip's
+        // edge) stretch between them (the manual: "the segment and the adjacent segments").
+        const auto& seg = segs[(size_t) index];
+        const auto edge = atStart ? seg.start : seg.end;
+        const auto first = part.warp.front().seconds, last = part.warp.back().seconds;
+        const auto left = juce::jlimit (first, last, atStart ? (index > 0 ? segs[(size_t) index - 1].start : first) : seg.start);
+        const auto right = juce::jlimit (first, last, atStart ? seg.end : (index + 1 < (int) segs.size() ? segs[(size_t) index + 1].end : last));
+        if (edge <= left + 0.005 || edge >= right - 0.005)
+            return false;
+        const auto pin = [&] (double seconds)
+        {
+            for (size_t i = 0; i < part.warp.size(); ++i)
+                if (std::abs (part.warp[i].seconds - seconds) < 0.005)
+                    return;
+            part.warp.push_back ({ warpBeatAt (part, seconds, tempo), seconds });
+            std::sort (part.warp.begin(), part.warp.end(), [] (const WarpMarker& a, const WarpMarker& b) { return a.beat < b.beat; });
+        };
+        pin (left);
+        pin (right);
+        pin (edge);
+        auto at = -1;
+        for (size_t i = 0; i < part.warp.size(); ++i)
+            if (std::abs (part.warp[i].seconds - edge) < 0.005)
+                at = (int) i;
+        if (at <= 0 || at + 1 >= (int) part.warp.size())
+            return false;
+        constexpr double gap = 1.0 / 64.0;
+        const auto low = part.warp[(size_t) at - 1].beat + gap, high = part.warp[(size_t) at + 1].beat - gap;
+        if (high <= low)
+            return false;
+        part.warp[(size_t) at].beat = juce::jlimit (low, high, songBeat - part.start);
+        return editWarp (partId, [&] (Part& p) { p.warp = part.warp; p.audioOffset = part.audioOffset; return true; });
+    }
+
+    int Studio::extractMidi (int partId, const ExtractMidiOptions& options, ExtractDestination destination, juce::String& error)
+    {
+        const auto found = findPart (partId);
+        if (! found)
+            return 0;
+        const auto clip = project.findTrack (found->first)->parts[(size_t) found->second];
+        const auto clipTrackName = project.findTrack (found->first)->name;
+        const auto* vari = getVariAudio (clip.audioFile);
+        const auto analysis = getPitchAnalysis (clip.audioFile);
+        if (vari == nullptr || analysis == nullptr || vari->segments.empty())
+        {
+            error = "The clip has no VariAudio segments yet: click EDIT VARIAUDIO first.";
+            return 0;
+        }
+        const auto extracted = pr7s::extractMidi (vari->segments, *analysis, options);
+        const auto tempo = project.tempoMap();
+        const auto beatOf = [&] (double seconds) { return warpBeatAt (clip, seconds, tempo); };   // (from the clip's start)
+
+        // Where it goes.
+        auto trackId = 0;
+        if (destination == ExtractDestination::selectedTrack)
+        {
+            for (const auto id : getSelectedTracks())
+                if (canTakeMidi (id))
+                {
+                    trackId = id;
+                    break;
+                }
+            if (trackId == 0)
+            {
+                error = "No instrument track is selected: select one first, or choose a new track.";
+                return 0;
+            }
+        }
+        else
+        {
+            trackId = addTrack ({});
+            if (trackId == 0)
+            {
+                error = "A new instrument track couldn't be made.";
+                return 0;
+            }
+            renameTrack (trackId, clipTrackName + " MIDI");
+        }
+        auto* track = project.findTrack (trackId);
+        // An extraction from before, from the same clip's recording, on that track: replaced (the manual's).
+        const auto name = "Extracted: " + (clip.name.isNotEmpty() ? clip.name : clip.audioFile);
+        track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(), [&] (const Part& p) { return p.name == name && ! p.isAudio(); }),
+                            track->parts.end());
+        Part part;
+        part.start = clip.start;
+        part.length = clip.length;
+        part.name = name;
+        for (const auto& n : extracted.notes)
+        {
+            const auto a = beatOf (n.start), b = beatOf (n.end);
+            if (b <= 0.0 || a >= clip.length)
+                continue;   // (outside what the clip plays)
+            Note note;
+            note.start = juce::jmax (0.0, a);
+            note.length = juce::jmax (1.0 / 128.0, juce::jmin (clip.length, b) - note.start);
+            note.pitch = n.pitch;
+            note.velocity = (float) n.velocity / 127.0f;
+            part.notes.push_back (note);
+        }
+        auto lanes = track->controllerLanes;
+        for (const auto& e : extracted.events)
+        {
+            const auto at = beatOf (e.seconds);
+            if (at < 0.0 || at > clip.length)
+                continue;
+            Controller c;
+            c.type = e.bend ? Controller::Type::pitchbend : Controller::Type::cc;
+            c.number = e.bend ? 0 : e.number;
+            c.start = at;
+            c.value = e.value;
+            part.controllers.push_back (c);
+            const auto code = e.bend ? 128 : e.number;
+            if (std::find (lanes.begin(), lanes.end(), code) == lanes.end())
+                lanes.push_back (code);
+        }
+        std::stable_sort (part.controllers.begin(), part.controllers.end(), [] (const Controller& a, const Controller& b) { return a.start < b.start; });
+        if (options.pitch != ExtractMidiOptions::Pitch::notes)
+            track->pitchbendUp = track->pitchbendDown = juce::jlimit (1, 24, options.bendRange);
+        track->controllerLanes = lanes;   // (the lanes of what was made, shown in the MIDI editor)
+        track->parts.push_back (part);
+        std::sort (track->parts.begin(), track->parts.end(), [] (const Part& a, const Part& b) { return a.start < b.start; });
+        changed();
+        for (const auto& p : project.findTrack (trackId)->parts)
+            if (p.name == name)
+                return p.id;
+        return 0;
+    }
+
+    std::vector<int> Studio::generateHarmonyVoices (int partId, int voices, float vibratoReduction, juce::String& error)
+    {
+        std::vector<int> made;
+        const auto found = findPart (partId);
+        if (! found)
+            return made;
+        const auto sourceTrackId = project.findTrack (found->first)->id;
+        const auto clip = project.findTrack (found->first)->parts[(size_t) found->second];
+        if (! clip.isAudio() || ! editVariAudio (clip.audioFile))
+        {
+            error = "The clip's recording can't be read.";
+            return made;
+        }
+        const auto analysis = getPitchAnalysis (clip.audioFile);
+        const auto segments = getVariAudio (clip.audioFile)->segments;
+        if (analysis == nullptr || segments.empty())
+        {
+            error = "No notes were found in the clip (a monophonic recording: a voice, a solo instrument).";
+            return made;
+        }
+        const auto source = getAudioFolder().getChildFile (clip.audioFile);
+        const auto tempo = project.tempoMap();
+        auto after = sourceTrackId;
+        for (int voice = 0; voice < juce::jlimit (1, 4, voices); ++voice)
+        {
+            // Its own copy of the recording (VariAudio's edits are kept by recording).
+            const auto copyFile = getAudioFolder().getNonexistentChildFile (source.getFileNameWithoutExtension() + " " + harmonyVoiceName (voice),
+                                                                            source.getFileExtension(), false);
+            if (! source.copyFileTo (copyFile))
+            {
+                error = "The recording couldn't be copied for the " + juce::String (harmonyVoiceName (voice)) + " voice.";
+                break;
+            }
+            const auto trackId = duplicateTrack (sourceTrackId);
+            if (trackId == 0)
+                break;
+            auto* track = project.findTrack (trackId);
+            track->name = harmonyVoiceName (voice);
+            track->solo = track->mute = false;
+            auto voicePart = clip;
+            voicePart.id = 0;
+            voicePart.lane = 0;
+            voicePart.order = 0;
+            voicePart.audioFile = copyFile.getFileName();
+            track->parts = { voicePart };
+            track->showLanes = false;
+            // Its segments: the original's, each moved to the voice's note.
+            auto voiced = segments;
+            for (auto& seg : voiced)
+            {
+                const auto songBeat = clip.start + warpBeatAt (clip, (seg.start + seg.end) * 0.5, tempo);
+                std::vector<int> chord;
+                auto bass = -1;
+                const auto& chords = project.chordTrack.events;
+                if (const auto i = project.chordTrack.indexAt (songBeat); i >= 0 && ! chords.empty())
+                {
+                    for (const auto pc : chords[(size_t) i].chord.pitchClasses())
+                        chord.push_back (pc);
+                    bass = chords[(size_t) i].chord.bass >= 0 ? chords[(size_t) i].chord.bass : chords[(size_t) i].chord.root;
+                }
+                const auto target = harmonyPitch ((int) std::lround (seg.pitchNow()), chord, bass, voice);
+                seg.shift = (float) target - seg.pitch;
+                seg.straighten = juce::jmax (seg.straighten, juce::jlimit (0.0f, 1.0f, vibratoReduction));
+            }
+            project.variAudio[voicePart.audioFile].segments = voiced;
+            // The same recording: the same pitch (not found again).
+            if (const auto data = getAudio (voicePart.audioFile))
+                pitchCache[voicePart.audioFile] = { data, analysis };
+            // In order under the original: Soprano, Alto, Tenor, Bass.
+            auto& tracks = project.tracks;
+            const auto from = std::find_if (tracks.begin(), tracks.end(), [trackId] (const Track& t) { return t.id == trackId; });
+            auto moved = std::move (*from);
+            tracks.erase (from);
+            const auto to = std::find_if (tracks.begin(), tracks.end(), [after] (const Track& t) { return t.id == after; });
+            tracks.insert (to + 1, std::move (moved));
+            after = trackId;
+            made.push_back (trackId);
+        }
+        SessionLog::note ("Harmony voices: " + juce::String ((int) made.size()) + " made from " + clip.audioFile);
+        changed();
+        return made;
+    }
+
+    void Studio::setVariAudioReference (int trackId)
+    {
+        if (project.variAudioReference == trackId)
+            return;
+        project.variAudioReference = trackId;
+        changed (false);
+    }
+
+    void Studio::setCatchingNotes (bool on)
+    {
+        engine.setCatchingNotes (on);
+    }
+
+    std::vector<int> Studio::takePlayedNotes()
+    {
+        return engine.takeCaughtNotes();
     }
 
     void Studio::forgetAudio (const juce::String& name)

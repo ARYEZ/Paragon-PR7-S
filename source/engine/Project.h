@@ -369,8 +369,19 @@ namespace pr7s
             float shift = 0.0f;              // semitones moved (the segment's pitch is pitch + shift)
             float straighten = 0.0f;         // 0-1: how much the curve's wobble around its pitch is flattened
             float volumeDb = 0.0f;           // the segment's level
+            // (0.35.0) Its curve tilted: semitones at its start and its end, none at the anchor
+            // (0-1 along it; the manual's Tilt/Rotate Anchor, the middle by default).
+            float tiltStart = 0.0f, tiltEnd = 0.0f, anchor = 0.5f;
+            // (0.35.0) The part of it Straighten works on (0-1 along it: the manual's range).
+            float straightenFrom = 0.0f, straightenTo = 1.0f;
+            float formant = 0.0f;            // (0.35.0) the formant shift, -100 to +100 %
             float pitchNow() const noexcept { return pitch + shift; }
-            bool isEdited() const noexcept { return std::abs (shift) > 1.0e-4f || straighten > 1.0e-4f || std::abs (volumeDb) > 1.0e-3f; }
+            bool changesPitch() const noexcept   // (what the pitch shifter has to work on)
+            {
+                return std::abs (shift) > 1.0e-4f || straighten > 1.0e-4f || std::abs (tiltStart) > 1.0e-4f || std::abs (tiltEnd) > 1.0e-4f
+                    || std::abs (formant) > 1.0e-3f;
+            }
+            bool isEdited() const noexcept { return changesPitch() || std::abs (volumeDb) > 1.0e-3f; }
             bool operator== (const VariSegment&) const = default;
         };
         struct VariAudio
@@ -381,6 +392,7 @@ namespace pr7s
             bool operator== (const VariAudio&) const = default;
         };
         std::map<juce::String, VariAudio> variAudio;   // by recording (file name)
+        int variAudioReference = 0;   // (0.35.0) the MIDI track shown in the VariAudio editor as lines (0: none)
         bool masterAutomationOpen = false, masterRead = false, masterWrite = false;
         int nextTrackId = 1;
 

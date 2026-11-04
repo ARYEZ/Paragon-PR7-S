@@ -14,6 +14,8 @@ namespace pr7s
     // (0.34.0, VariAudio) The sound at its own length, its pitch moved moment by moment by
     // `semitonesAt (sample)` (worked out every 128 samples), its formants kept (a voice stays a
     // voice). Aligned with the input: the stretcher's delay taken off.
+    // (0.35.0) `formantAt`: the formants moved too, by that many semitones (none: kept where they are).
     juce::AudioBuffer<float> shiftPitchAlong (const juce::AudioBuffer<float>& input, double sampleRate,
-                                              const std::function<float (int sample)>& semitonesAt);
+                                              const std::function<float (int sample)>& semitonesAt,
+                                              const std::function<float (int sample)>& formantAt = {});
 }

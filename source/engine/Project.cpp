@@ -572,14 +572,23 @@ namespace pr7s
             for (const auto& seg : vari.segments)
             {
                 auto* s = e->createNewChildElement ("Segment");
-                s->setAttribute ("start", seg.start);
-                s->setAttribute ("end", seg.end);
+                // (0.35.0) Every digit: the times come back exactly as they were.
+                s->setAttribute ("start", juce::String (seg.start, 17));
+                s->setAttribute ("end", juce::String (seg.end, 17));
                 s->setAttribute ("pitch", (double) seg.pitch);
                 if (std::abs (seg.shift) > 0.0f) s->setAttribute ("shift", (double) seg.shift);
                 if (seg.straighten > 0.0f) s->setAttribute ("straighten", (double) seg.straighten);
                 if (std::abs (seg.volumeDb) > 0.0f) s->setAttribute ("volume", (double) seg.volumeDb);
+                if (std::abs (seg.tiltStart) > 0.0f) s->setAttribute ("tiltStart", (double) seg.tiltStart);
+                if (std::abs (seg.tiltEnd) > 0.0f) s->setAttribute ("tiltEnd", (double) seg.tiltEnd);
+                if (seg.anchor != 0.5f) s->setAttribute ("anchor", (double) seg.anchor);
+                if (seg.straightenFrom > 0.0f) s->setAttribute ("straightenFrom", (double) seg.straightenFrom);
+                if (seg.straightenTo < 1.0f) s->setAttribute ("straightenTo", (double) seg.straightenTo);
+                if (std::abs (seg.formant) > 0.0f) s->setAttribute ("formant", (double) seg.formant);
             }
         }
+        if (variAudioReference != 0)
+            xml->setAttribute ("variAudioReference", variAudioReference);
         if (recordModes != RecordModes {})
         {
             // (0.29.0) The record modes.
@@ -756,6 +765,7 @@ namespace pr7s
             project.tracks.push_back (std::move (track));
         }
         project.nextTrackId = juce::jmax (highestId + 1, xml.getIntAttribute ("nextTrackId", 1));
+        project.variAudioReference = xml.getIntAttribute ("variAudioReference", 0);
         // Routing that leads nowhere it can go: back to the master, or no send.
         for (auto& track : project.tracks)
         {
@@ -838,6 +848,12 @@ namespace pr7s
                 seg.shift = (float) juce::jlimit (-48.0, 48.0, s->getDoubleAttribute ("shift"));
                 seg.straighten = (float) juce::jlimit (0.0, 1.0, s->getDoubleAttribute ("straighten"));
                 seg.volumeDb = (float) juce::jlimit (-96.0, 12.0, s->getDoubleAttribute ("volume"));
+                seg.tiltStart = (float) juce::jlimit (-24.0, 24.0, s->getDoubleAttribute ("tiltStart"));
+                seg.tiltEnd = (float) juce::jlimit (-24.0, 24.0, s->getDoubleAttribute ("tiltEnd"));
+                seg.anchor = (float) juce::jlimit (0.0, 1.0, s->getDoubleAttribute ("anchor", 0.5));
+                seg.straightenFrom = (float) juce::jlimit (0.0, 1.0, s->getDoubleAttribute ("straightenFrom", 0.0));
+                seg.straightenTo = (float) juce::jlimit ((double) seg.straightenFrom, 1.0, s->getDoubleAttribute ("straightenTo", 1.0));
+                seg.formant = (float) juce::jlimit (-100.0, 100.0, s->getDoubleAttribute ("formant"));
                 vari.segments.push_back (seg);
             }
             std::sort (vari.segments.begin(), vari.segments.end(), [] (const VariSegment& a, const VariSegment& b) { return a.start < b.start; });
