@@ -236,7 +236,11 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     {
         using CT = pr7s::Chord::Type;
         using CX = pr7s::Chord::Tension;
-        studio.startFollowing (lead, pr7s::FollowMode::chordsAndScales, pr7s::FollowStart::directly);
+        // (=voice, 0.38.0: Single Voice, the alto of the piano voicings.)
+        const auto voice = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FOLLOW", {}) == "voice";
+        studio.startFollowing (lead, voice ? pr7s::FollowMode::singleVoice : pr7s::FollowMode::chordsAndScales, pr7s::FollowStart::directly);
+        if (voice)
+            studio.setFollowVoice (lead, pr7s::Voice::alto);
         const auto& events = studio.getChordTrack().events;
         for (int i = 0; i < (int) events.size(); ++i)
         {

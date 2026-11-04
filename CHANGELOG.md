@@ -2,6 +2,34 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.37.0
+
+Two things you asked for: an info line for automation points, as in your screenshot of the other DAW, and the last two Follow Chord Track modes, Voicings and Single Voice.
+
+**The info line** (the manual's Info Line). A strip over the track list and the arrangement now shows the automation points you've selected: TYPE (the lane), START, VALUE and TERMINATOR.
+- **Selecting:** drag a box round the points, or click them; Shift or Ctrl adds more.
+- **Several points selected:** the line shows the first one's values in pink, with how many are selected.
+- **Changing VALUE:** double-click it and type a new value. Every selected point moves by the same amount the first one moves, in the control's own units: dB for volume, L/R for pan, % for plug-in knobs. Your examples work exactly as you described:
+  - Four points at -3.0 dB, typed as 5.0: all become +5.0 (each +8).
+  - Points at -5, -1, 0 and +1 dB, the first typed as 0.0: they become 0, +4, +5 and +6.
+- **Ctrl as you press Enter** sets them all to the value you typed instead. That's the manual's modifier for absolute changes.
+- **START** moves them all in time by the same amount.
+- **A click on TERMINATOR** switches it for all of them.
+- **Delete** removes every selected point at once, as before.
+- **Hiding it:** right-click the line and choose Hide Info Line. It comes back with the key command "Show/Hide Info Line" in KEYS (no key at first; give it one there).
+
+**Box-selecting points over a high curve** now works. Dragging a box from just above a curve near the top of its lane (-3 dB sits there) used to grab the quick-scaling handle and squash the curve instead of selecting. That handle is now a small spot over the middle of each segment, so a box can start almost anywhere.
+
+**Follow Chord Track: Voicings and Single Voice** (the manual's last two modes).
+- **Voicings:** chords you played take the chord track's voicing of each new chord, with your rhythm kept: your lowest note becomes the voicing's lowest, and so on. A single note moves to the matching voice of the new chord, keeping its octave.
+- **Single Voice:** every note becomes one voice of the voicing: SOPRANO (the top), ALTO, TENOR or BASS (the lowest). Any part becomes a harmony line or a bass line in your rhythm.
+- **The voicing libraries.** The manual names the libraries and their styles but doesn't publish the voicings, so these are ours:
+  - **Piano:** the root in the left hand and the right hand close. Styles: Triads; Triads with 9 (no root); 4-Note (no root); 4-Note Open Jazz; 5-Note. Options: Add Root Note, Duplicate Root, Fatten Up.
+  - **Guitar:** barre shapes with the root on the 6th or 5th string, 4-note shapes with the seventh, or 3-string triads.
+  - **Basic:** close from C3, with an octave offset.
+  - **Adaptive Voicings** (on at first): each chord moves as little as it can from the one before.
+- **Where to set them:** the Inspector's CHORDS section has VOICE (Single Voice) and VOICINGS. VOICINGS sets the track's own library, or uses the chord track's, and it also sets the chord track's library for every track that follows it.
+
 ## 0.36.1
 
 **Longer track names in the track list** (you asked): a name now runs right up to the level meter. The row kept a 180-pixel strip on the right from when MON and LANES sat there. They moved to the Inspector in 0.35.0, but the strip stayed, so names were cut short with "..." while the space beside them stood empty. The strip is now exactly as wide as the meter and the volume knob, and the name takes the rest.
