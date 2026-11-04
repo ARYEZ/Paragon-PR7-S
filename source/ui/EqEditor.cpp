@@ -509,6 +509,7 @@ EqEditor::EqEditor (pr7s::Studio& s, int busId) : studio (s), bus (busId), curve
     gainBar (preGain);
     preGain.setTooltip ("The input gain, before everything (+-24 dB; Ctrl-click: 0)");
     preGain.textFromValueFunction = [] (double v) { return "GAIN " + dbText (v); };
+    preGain.updateText();   // (the text set before, by gainBar, is shown until told)
     lowCutFreq.onValueChange = [this] { change ([v = lowCutFreq.getValue()] (pr7s::ChannelEq& e) { e.lowCut = v; e.lowCutOn = true; }, ! lowCutFreq.isMouseButtonDown()); };
     highCutFreq.onValueChange = [this] { change ([v = highCutFreq.getValue()] (pr7s::ChannelEq& e) { e.highCut = v; e.highCutOn = true; }, ! highCutFreq.isMouseButtonDown()); };
     preGain.onValueChange = [this] { change ([v = preGain.getValue()] (pr7s::ChannelEq& e) { e.preGainDb = v; }, ! preGain.isMouseButtonDown()); };
