@@ -843,6 +843,8 @@ TEST_CASE ("Snapshot: a question box", "[.][snapshot-alert]")
 #include "ui/TrackColours.h"
 #include "ui/LinesPage.h"
 #include "ui/ProgressionsPage.h"
+#include "ui/DrumLearnPage.h"
+#include "DrumSongs.h"
 #include "ui/EqEditor.h"
 #include "ui/PadsRemotePage.h"
 
@@ -861,19 +863,147 @@ TEST_CASE ("Snapshot: the IDEAS window (PARAGON_SNAPSHOT_IDEAS=piano|guitar|bass
         studio.addChordEvent (4.0, { 5, T::major, X::none, -1 });
         studio.addChordEvent (8.0, { 0, T::major, X::none, -1 });
         studio.addChordEvent (12.0, { 7, T::major, X::none, -1 });
-        LinesPage page (studio, studio.getLineChords());
         const auto tab = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_IDEAS", "guitar");
+        // (0.54.0) The drums tab: a little groove library in the MediaBay (made-up files).
+        const auto grooveRoot = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("PR7-S snapshot library");
+        if (tab == "drums")
+        {
+            grooveRoot.deleteRecursively();
+            const char* names[] = { "Metal Drums/Metalcore/Breakdown 01 140bpm", "Metal Drums/Metalcore/Verse Double Kick 140bpm",
+                                    "Metal Drums/Metalcore/Chorus Half Time 140bpm", "Metal Drums/Metalcore/Blast 140bpm",
+                                    "Metal Drums/Rock/Straight 8ths 120bpm", "Metal Drums/Metalcore/Fill 03 140bpm" };
+            for (int f = 0; f < 6; ++f)
+            {
+                juce::MidiMessageSequence seq;
+                for (int step = 0; step < 32; ++step)
+                {
+                    const auto tick = step * 240.0;
+                    const auto kick = f == 0 ? (step % 8 == 0 || step % 8 == 3 || step % 8 == 6) : f == 1 ? true : step % 4 == 0;
+                    if (kick)
+                        seq.addEvent (juce::MidiMessage::noteOn (10, 36, (juce::uint8) 110), tick);
+                    if (step % 8 == (f == 2 || f == 0 ? 4 : 4) && (f != 2 || step % 16 == 8))
+                        seq.addEvent (juce::MidiMessage::noteOn (10, 38, (juce::uint8) 118), tick);
+                    if (step % 2 == 0)
+                        seq.addEvent (juce::MidiMessage::noteOn (10, f == 2 ? 51 : f == 0 ? 52 : 42, (juce::uint8) 90), tick);
+                }
+                for (int i = seq.getNumEvents(); --i >= 0;)
+                {
+                    const auto m = seq.getEventPointer (i)->message;
+                    seq.addEvent (juce::MidiMessage::noteOff (10, m.getNoteNumber()), m.getTimeStamp() + 100.0);
+                }
+                seq.updateMatchedPairs();
+                juce::MidiFile midi;
+                midi.setTicksPerQuarterNote (480);
+                midi.addTrack (seq);
+                const auto file = grooveRoot.getChildFile (juce::String (names[f]) + ".mid");
+                file.getParentDirectory().createDirectory();
+                juce::FileOutputStream out (file);
+                midi.writeTo (out);
+            }
+            studio.getMediaBay().addLocation (grooveRoot);
+            studio.getMediaBay().scanNow();
+            studio.getMediaBay().takeScanResults();
+        }
+        // (0.56.0) PARAGON_SNAPSHOT_DRUMMER=1: the generated column from a drummer learned from made-up songs.
+        const auto drummerRoot = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("PR7-S snapshot drummer");
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_DRUMMER", {}) == "1")
+        {
+            drummerRoot.deleteRecursively();
+            studio.setDrummerFolderForTests (drummerRoot);
+            std::vector<pr7s::DrumSong> songs;
+            for (const auto* layout : { "I4 V8 C8 V8 C8 B8 C8 E4", "V8 C8 V8 C8 R8 C8 E4" })
+                songs.push_back (pr7s::drumSongFromNotes (layout, drumsongs::songOf (layout), 120.0, pr7s::SignatureMap()));
+            juce::String error;
+            studio.saveDrummer (pr7s::learnProfile ("Session Drummer", songs), error);
+            studio.setIdeasDrummer ("Session Drummer");
+        }
+        LinesPage page (studio, studio.getLineChords());
         page.setTab (tab == "piano" ? LinesPage::Tab::piano : tab == "bass" ? LinesPage::Tab::bass
                    : tab == "patterns" ? LinesPage::Tab::patterns : tab == "melody" ? LinesPage::Tab::melody
-                   : LinesPage::Tab::guitar);   // (0.39.0: =patterns; 0.41.0: =melody)
+                   : tab == "drums" ? LinesPage::Tab::drums
+                   : LinesPage::Tab::guitar);   // (0.39.0: =patterns; 0.41.0: =melody; 0.54.0: =drums)
+        // (0.53.0) PARAGON_SNAPSHOT_STYLE=thrash|nu-metal|metalcore|shred: the guitar tab's STYLE.
+        if (const auto style = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_STYLE", {}); style.isNotEmpty())
+        {
+            page.setGuitarStyle (pr7s::guitarStyleNamed (style));
+            pr7s::RiffSettings riff;
+            riff.fills = true;
+            page.setRiffSettings (riff);
+        }
         page.play (tab == "piano" ? pr7s::LineIdea::Part::chords : tab == "bass" ? pr7s::LineIdea::Part::bass
                  : tab == "patterns" ? pr7s::LineIdea::Part::pattern : tab == "melody" ? pr7s::LineIdea::Part::tune
+                 : tab == "drums" ? pr7s::LineIdea::Part::drums
                  : pr7s::LineIdea::Part::rhythm, 1);
         const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
         page.stop();
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };
         juce::PNGImageFormat().writeImageToStream (image, out);
+        if (tab == "drums")
+            grooveRoot.deleteRecursively();
+        drummerRoot.deleteRecursively();
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+TEST_CASE ("Snapshot: BUILD SECTION's panel after a verse (0.57.0)", "[.][snapshot-build]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "build.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        using T = pr7s::Chord::Type;
+        using X = pr7s::Chord::Tension;
+        pr7s::Studio studio (false);
+        studio.addChordEvent (0.0, { 9, T::minor, X::none, -1 });
+        studio.addChordEvent (4.0, { 5, T::major, X::none, -1 });
+        studio.addChordEvent (8.0, { 0, T::major, X::none, -1 });
+        studio.addChordEvent (12.0, { 7, T::major, X::none, -1 });
+        LinesPage page (studio, studio.getLineChords());
+        page.setGuitarStyle (pr7s::guitarStyleNamed (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_STYLE", "metalcore")));
+        page.buildSection();
+        auto choice = page.getBuildChoice();
+        choice.section = pr7s::DrumSection::chorus;
+        page.setBuildChoice (choice);   // (as the panel's own clicks do: the descriptions follow it)
+        BuildSectionPanel panel (choice, [&page] (BuildChoice::Part p) { return page.describeBuildPart (p); }, page.getNextSuggestions());
+        const auto image = panel.createComponentSnapshot (panel.getLocalBounds(), true, 2.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+TEST_CASE ("Snapshot: LEARN A DRUMMER (0.56.0)", "[.][snapshot-learn]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "learn.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        const auto root = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("PR7-S snapshot songs").getChildFile ("Drum MIDI");
+        root.getParentDirectory().deleteRecursively();
+        const std::pair<const char*, const char*> songs[] = { { "01 First Light", "I4 V8 C8 V8 C8 B8 C8 E4" }, { "02 Undertow", "V8 C8 V8 C8 R8 C8 E4" },
+                                                              { "03 Glass Teeth", "I8 V8 V8 C8 V8 C8 B8 B8 C8 E4" }, { "04 Static Bloom", "I4 C8 V8 C8 R8 C8 C8 E4" },
+                                                              { "05 Hollow Crown", "V8 C8 B8 V8 C8 E4" }, { "06 Red Season", "I4 V8 C8 V8 C8 R8 B8 C8 E4" } };
+        for (const auto& [name, layout] : songs)
+            drumsongs::writeSong (root.getChildFile (juce::String (name) + ".mid"), drumsongs::songOf (layout));
+        pr7s::Studio studio (false);
+        DrumLearnPage page (studio);
+        page.setSize (1500, 640);
+        page.loadFolder (root);
+        page.setName ("Session Drummer");
+        page.setUsed (2, 0, false);   // (an intro left out: hatched)
+        page.hear (1, 2);
+        const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
+        page.stop();
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+        root.getParentDirectory().deleteRecursively();
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
@@ -919,6 +1049,15 @@ TEST_CASE ("Snapshot: the guitar VELOCITIES panel", "[.][snapshot-velocities]")
             panel = std::make_unique<HumanizePanel> (0.4f, true);
         else if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUMANIZE", {}) == "melody")   // (0.41.0: MELODY SETTINGS)
             panel = std::make_unique<MelodyPanel> (pr7s::MelodySettings {});
+        else if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUMANIZE", {}) == "drums")   // (0.55.0: DRUM SETTINGS)
+            panel = std::make_unique<DrumPanel> (pr7s::DrumSettings {});
+        else if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUMANIZE", {}) == "riff")   // (0.53.0: RIFF SETTINGS)
+        {
+            pr7s::RiffSettings riff;
+            riff.palmMutes = 0.7f;
+            riff.fills = true;
+            panel = std::make_unique<RiffPanel> (riff);
+        }
         else
             panel = std::make_unique<GuitarVelocityPanel> (pr7s::GuitarVelocities {});
         panel->resized();

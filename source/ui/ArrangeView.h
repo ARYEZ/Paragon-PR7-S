@@ -267,6 +267,14 @@ public:
     void selectAllTempoEvents();
     void showTempoMenu();
     std::function<void (int partId)> onEditAudio;   // an audio clip double-clicked: VariAudio (0.34.0)
+    // Drag out (0.53.1): one part dragged over another window (a plug-in's, another program's, the
+    // desktop), or Alt-dragged (a copy) out of the arrangement, leaves as a file (.mid, or a .wav of
+    // what the event plays: Studio::writePartForDrag) through the system's file drag, which plug-ins
+    // with their own JUCE and other programs take. The move is cancelled: the part stays where it was,
+    // no undo step. `onExternalDrag` stands in for the system's drag (tests); returns the file.
+    juce::File dragPartOut();
+    std::function<void (const juce::StringArray&)> onExternalDrag;
+    bool isDraggingOut() const noexcept { return draggingOut; }
     std::function<void (int partId)> onHarmonyVoices;   // its menu's Generate Harmony Voices (0.35.0)
     std::function<void()> onOpenAudioAlignment;   // the part's and range's menus (0.33.0)
     std::function<void()> onOpenTempoEditor;   // the menu's Open Tempo Track Editor (0.13.0)
@@ -408,7 +416,8 @@ public:
     ChordEventEditor* getChordEditor() noexcept { return chordEditor.getComponent(); }
     std::function<void()> onChordsToPads;                 // (the pads' view takes them)
     std::function<void()> onProgressions;   // the progression library (0.40.0)
-    std::function<void (std::vector<int> chordEvents)> onLineIdeas;   // BASS & MELODY (0.18.0): for these chord events (none: the cycle's or all)
+    std::function<void (std::vector<int> chordEvents)> onLineIdeas;
+    std::function<void (std::vector<int> chordEvents)> onBuildSection;   // (0.57.0) IDEAS with BUILD SECTION open   // BASS & MELODY (0.18.0): for these chord events (none: the cycle's or all)
     std::optional<Timeline::Row> rowAt (float y) const;
     float rowTop (const Timeline::Row&) const;   // where a row is drawn now
     float trackTop (int trackId) const;
@@ -593,6 +602,8 @@ private:
     int dragTargetLane = -1;   // (0.29.0) the lane of takes it's dragged onto (-1: not over one)
     double dragNewStart = 0.0, dragNewLength = 0.0;
     bool dragCopies = false, dragMoved = false;
+    bool draggingOut = false;
+    bool wantsDragOut (const juce::MouseEvent&) const;
     double lastPosition = 0.0;   // the playhead as last seen (Auto-Scroll follows a jump while stopped)
     float playheadX = -1.0e6f;   // where the playhead was last drawn (0.9.2: only its strip is redrawn as it moves)
     // The playhead as drawn (0.17.4, the owner asked: it glides into a new place while

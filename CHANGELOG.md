@@ -2,6 +2,151 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.57.0
+
+**Build a whole section** (you chose BUILD SECTION in IDEAS, and asked that it suggest what comes next as the chord suggestions do)
+- **BUILD SECTION** (in IDEAS' header; also **Build a Section...** in the chord track's menu and the pads' PLAYER menu) writes a whole section onto tracks in one click, over the chords IDEAS is showing:
+  - **DRUMS:** the beat for that section: your learned drummer's, or the style's rules.
+  - **BASS:** locked to that beat's kick, on the chords' roots.
+  - **GUITAR:** the riff you last played or used on the guitar tab, in your STYLE, tuning and RIFF SETTINGS.
+  - **LEAD, PIANO:** the cards you last played or used on their tabs. **MELODY** too if you light it (off at first).
+- **Each part goes onto its own track** (Drums, Bass, Guitar, Lead Guitar, Piano, Melody). The same tracks are used section after section, so the whole song lands on one band; a new Drums track gets the GM drum map.
+- **Building the same chords again replaces what's there.** All the parts are one undo step.
+- **NEXT: WHAT COULD FOLLOW.** Once a section is built, the panel suggests what comes next, scored, each with how it relates to what you've built:
+  - after a verse: a **chorus** from the verse's riff opened up (fewer palm mutes, looser, a fill into it), or a chorus with a new riff for contrast;
+  - after a chorus: back to the **verse** (its riff and settings exactly);
+  - two choruses in: a **breakdown** (the same riff tightened into chugs, half time; metal styles) or a **bridge** (a new, looser riff);
+  - after a bridge or breakdown: the **chorus** again, then an **ending**.
+  - The drums keep the same family of grooves throughout.
+- **One click on a suggestion builds it right after the last section.** It uses the chord track's chords there if you have some; otherwise it repeats these chords and writes them onto the chord track, so the song keeps its chords.
+- What's been built is remembered while the song is open, and forgotten when another song is opened.
+
+**What I can't check here:** how it sounds through your instruments. The order of sections and the riff changes are our own rules, not taken from a manual; tell me where they don't fit your songs.
+
+## 0.56.0
+
+**Learn a drummer** (you asked: beats trained on real drummers, from a folder of whole songs of drum MIDI with no section names)
+- On IDEAS' DRUMS tab, **DRUMMER** (over the generated column) > **Learn a Drummer from My Songs...** opens **LEARN A DRUMMER**. **CHOOSE FOLDER...** reads every MIDI file in the folder and the folders under it.
+- **Each song's sections are found from the drums alone:**
+  - It looks for the places where the playing changes: where the kick and snare land, the cymbal (hats, ride, china...), how busy it is, half time.
+  - It also looks at what drummers do at a change: a fill in the bar before, a crash on the first beat.
+  - A fill and a crash every four bars inside a verse don't split it.
+  - Sections that play alike are grouped, then named:
+    - half time is a **breakdown** (a quiet one, a **bridge**);
+    - a short first section is the **intro**, a short last one the **ending**;
+    - of the groups played more than once, the bigger one is the **chorus**, the other the **verse**;
+    - something played once later on is a **bridge**.
+  - Any kit's notes are read by what they are (Toontrack's hat notes as hats, for example). If a file has other instruments, only its drum channel (10) is read.
+- **It's a guess from the drums, so you check it.** Each song is a row of coloured blocks:
+  - **Click a block:** change what it is, **Leave Out of Learning**, **Split Here** (at the bar you clicked), or **Join With the Next**.
+  - **Drag a block's left edge** to move where it starts.
+  - **Double-click** a block to hear it (through the selected track, so put a drum instrument there).
+  - **The tick** on each row: learn from that song or not.
+- **SAVE PROFILE** (after naming the drummer) learns, for each section:
+  - the grooves they played most, exactly as played (notes, places, velocities);
+  - their fills;
+  - how likely a kick, snare or ghost note is on each sixteenth;
+  - their cymbal, how often a phrase starts on a crash, and half time;
+  - their feel: how far ahead of or behind the beat the kick, snare and cymbal sit.
+- **DRUMMER > the name:** the six generated beats are now played as that drummer.
+  - Each section uses one of their grooves, kept and repeated as a drummer does. The third bar of each phrase is another of their grooves, or a kick moved where they would put one.
+  - Their fills, their crashes, their feel.
+  - A section they never played takes the nearest one they did (the card says so).
+  - **DRUM SETTINGS** still shape it; at 50% it's as learned.
+  - **The Style's Rules** goes back to 0.55.0's generator.
+- **Check ...'s Songs and Sections...** opens a saved drummer again: the songs are read again, with the sections as you left them, so you can fix and save again. **Delete** removes the profile; your songs stay as they are.
+- Profiles are saved in Documents/Paragon PR7-S/Drummer Profiles (a `.pr7drummer` file each).
+- **Next (0.57.0):** BUILD SECTION: a whole section onto tracks.
+
+**What I can't check here:** your real drum songs. The section finder is tested on songs written for the tests: verses, choruses, breakdowns, bridges, fills, crashes. Real drummers vary much more, and some sections will need putting right on the review page. Tell me which kinds it gets wrong and I can tune it. I also can't hear the learned beats through your drum library.
+
+## 0.55.0
+
+**The beat generator** (you asked: beats made new, not only the written ones)
+- The DRUMS tab's left column is now **GENERATED: ONE PER SECTION**: an **Intro, Verse, Chorus, Bridge, Breakdown** and **Ending** beat for the STYLE you pick, built new from rules each time.
+- **MORE IDEAS** deals six new beats every time.
+- **How a beat is built:**
+  - Each style has its habits: where a kick is likely on each sixteenth, the snare's backbone (two and four, half time, or thrash's skank), the cymbal and how fast it's played, where ghost notes go, how much double kick.
+  - Each section changes them: the intro sparser, the chorus bigger (crashes, ride or china), the bridge on the ride bell in half time, the breakdown in half time with kicks in chug bursts and the china, the ending with a fill and a last big hit.
+  - A section's groove is drawn once and played again, as a drummer keeps a groove; the third bar of each phrase is slightly varied, and a crash marks where phrases begin.
+- **DRUM SETTINGS** (the key beside STYLE):
+  - **DENSITY:** fewer or more kicks.
+  - **DOUBLE KICK:** how much the feet fill in; near 100% in a metal style, constant sixteenths.
+  - **GHOST NOTES:** soft snare notes between the backbeats.
+  - **FILLS:** off, or every 2, 4 or 8 bars, one or two beats long.
+  - **CYMBAL:** each section's own, or hats, ride or china throughout.
+  - **LOCK KICK TO RIFF:** the kick on every hit of the guitar riff you last played or used.
+  - At 50% everything is the style's own.
+- The written beats from 0.54.0 are still there: **WRITTEN BEATS** switches the column to them.
+- **Next (0.56.0):** learning drummer profiles from your folder of song MIDI, finding each song's sections (intro, verse, chorus, bridge, breakdown, ending) for you to check, then driving this generator with what it learned.
+
+**What I can't check here:** how the beats feel played through your drum library. The rules and the notes they make are tested, not heard.
+
+## 0.54.0
+
+**A DRUMS tab in IDEAS** (you asked: beats generated from scratch, and the grooves in your library)
+- **GENERATED:** six beats for the STYLE you pick (the same STYLE box as the guitar tab; it now shows on the guitar, drums and bass tabs):
+  - **Rock:** straight rock, four on the floor, half-time, ride groove, ghost-note groove.
+  - **Thrash:** skank beat, double-kick gallop, sixteenth double kick, blast beat, half-time breakdown.
+  - **Nu-metal:** bounce groove, syncopated stomp, hip-hop swing, stop-start, tom groove.
+  - **Metalcore:** breakdown, double-time verse, gallop double kick, half-time chorus, blast into breakdown.
+  - **Shred:** power metal double kick, galloping double kick, driving rock, neoclassical march, half-time ballad.
+  - And in every style, **Locked to the riff**: the kick on every hit of the guitar riff you last played or used on the guitar tab (the kick and the chugs as one), the snare on the backbeat (on three in nu-metal and metalcore).
+  - Each beat has a crash at the start of every four-bar phrase and a fill on its last beat, in the style: snare to toms, snare rolls, kick-and-snare, tom triplets, toms down.
+  - Written for General MIDI drums (kick 36, snare 38, hats 42/46, ride 51, china 52, crash 49/57, toms), which most drum libraries follow.
+- **FROM MY LIBRARY:** the MIDI grooves in your MediaBay folders (files with a drum word in their name or folder: drum, groove, beat, GGD, Toontrack, EZdrummer, Superior...), best first: the style's words in them, a tempo near the song's, fills last. Six at a time; **MORE GROOVES** shows the next six. Each groove is laid over your chords from the first bar and repeated.
+- **USE IT** puts a beat on a new "Drums" track with the GM drum map (the MIDI editor shows the drums' names), or onto your selected track.
+
+**Two more bass ideas** on the BASS tab
+- **Locked to the kick:** the chord's root on every kick of the drum beat you last played or used.
+- **Following the riff:** the chord's root on every hit of the guitar riff.
+
+**What I can't check here:** how the beats feel through your drum library. If yours isn't laid out like General MIDI, tell me which it is and I'll add its map.
+
+## 0.53.1
+
+**Drag a part out of the arrangement as a file** (you asked, for PR7-D's GROOVES page)
+- **How:** drag a part (one at a time) out of the arrangement onto another window: a plug-in's window (such as PR7-D's), File Explorer, the desktop or another program. It arrives there as a file, and the part stays where it was in your song.
+  - Over a plug-in's window, or anywhere that isn't the studio's main window, the drag becomes a file drag by itself.
+  - If Explorer (or another program) sits on top of the studio's window, hold **Alt** while dragging (a copy): the moment the part leaves the arrangement it becomes a file. (The studio can't tell another program's window from its own underneath it.)
+  - Dropped back onto the studio, nothing happens.
+- **A MIDI part** becomes `<track> - <part>.mid`:
+  - the part's start is the file's beat 0;
+  - the song's tempo there and any tempo changes inside the part, and the time signature;
+  - the notes as you hear them (the part's Transpose and Velocity applied), on the track's MIDI channel, 480 ticks a beat.
+- **An audio event** becomes `<track> - <part> <tempo> BPM.wav` (for example `Rhythm Gtr - Verse riff 140 BPM.wav`):
+  - what the event plays: from its offset, for its length, through its warp markers, with its own volume and fades (not the track's fader or effects);
+  - 32-bit float at the recording's rate, at most five minutes (what PR7-D reads);
+  - the tempo also in the file's ACID tag, which loop software reads.
+- The files go in a "Paragon PR7-S Drag Out" folder in Windows' temporary folder, emptied each time the studio starts.
+
+**Releases are Windows and Linux only for now** (you asked): the Mac build is switched off, which also makes each release quicker. It can be switched back on whenever you want.
+
+**To check on Windows:**
+1. With PR7-D's window open, drag any .wav or .mid from File Explorer onto its GROOVES page. If PR7-D takes it, drops reach plug-in windows in the studio.
+2. Then drag a part from the arrangement onto the same page.
+
+## 0.53.0
+
+**Guitar ideas in five styles** (you asked for better guitar ideas)
+- IDEAS' GUITAR tab has a **STYLE** box: **ROCK** (the twelve ideas as before), **THRASH**, **NU-METAL**, **METALCORE** and **SHRED**. Each style has six rhythm parts and six leads, all on your chord track's chords, in your TUNING and in your guitar library's VELOCITIES (palm mutes, sustains, pinch harmonics).
+- **Thrash:** downpicked gallop, tremolo pedal, chromatic riff, skank beat, open-string stabs, stop-time break. Leads: chromatic tremolo, harmonic minor sixes, diminished climb, screaming tremolo, pedal-point lick, twin-guitar thirds.
+- **Nu-metal:** bounce riff, stop-start, tritone chug, groove and octave, half-step creep, dissonant ring. Leads: octave melody, siren, pinch pings, dissonant high line, tremolo swell, single-note hook.
+- **Metalcore:** breakdown, chug and stop, melodic octave riff, squeal breakdown, triplet burst, open chorus chords. Leads: twin harmony lead, octave chorus melody, tapped arpeggio, melodic sixteenth run, pinch and hold, call and answer.
+- **Shred:** power metal gallop, neoclassical pedal, driving eighths, double-time sixteenths, held chords, arpeggiated power chords under sweep arpeggios, legato runs, harmonic minor fours, diminished arpeggios, string skipping and pedal-tone tapping.
+- The heavier styles chug on the key's low note on your lowest string (the pedal), with the chord's power chords above it, the way these riffs are played.
+
+**RIFF SETTINGS** (the key beside STYLE; for every style's rhythm parts)
+- **LENGTH:** a riff of 1, 2 or 4 bars before it repeats. Two bars play A then B; four bars play A B A and a turnaround.
+- **PALM MUTES:** more palm mutes against open notes, or fewer (mutes let ring).
+- **TIGHTNESS:** tighter mutes (lower velocity, shorter) or looser ones.
+- **BUSYNESS:** from sparse (weak hits left out, more space) to busy (palm-muted chugs added in the gaps).
+- **FILLS:** a fill on the last beat of each phrase, as the style plays it: a chromatic run into the next chord, a burst of triplet chugs, a pinch-harmonic squeal or a stop.
+- At 50% everything is as written, so ROCK's ideas are exactly as before until you move a control.
+- MORE IDEAS still deals other versions: in the new styles the leads turn the other way and some riffs change their first bar.
+
+**What I can't check here:** how they sound through Shreddage. The riffs, rhythms and velocity layers are tested, but not heard.
+
 ## 0.52.3
 
 **The studio's own icon** (you asked: for the taskbar and your Stream Deck)

@@ -15,10 +15,12 @@ jobs:
         include:
           - name: Linux
             os: ubuntu-24.04
-          - name: macOS
-            # Intel machines: GitHub's Apple-chip ones were too few to start our job (Nov 2026).
-            # The app is still universal (CMAKE_OSX_ARCHITECTURES: arm64 and x86_64).
-            os: macos-15-intel
+          # (0.53.1) No macOS build for now: the owner works on Windows and Linux. To bring it back:
+          # - name: macOS
+          #   # Intel machines: GitHub's Apple-chip ones were too few to start our job (Nov 2026).
+          #   # The app is still universal (CMAKE_OSX_ARCHITECTURES: arm64 and x86_64).
+          #   os: macos-15-intel
+          # (and the macOS lines in the release job's "Zip each platform's app")
           - name: Windows
             os: windows-2022
 
@@ -139,7 +141,7 @@ jobs:
         run: |
           mkdir pr7k
           if gh release download --repo ARYEZ/Paragon-PR7-K --pattern "*-VST3.zip" --dir pr7k; then
-            for os in Windows macOS Linux; do
+            for os in Windows Linux; do
               zip=$(ls pr7k/*-${os}-VST3.zip 2>/dev/null | head -1)
               if [ -n "$zip" ]; then
                 unzip -q "$zip" -d "artifacts/ParagonPR7S-${os}/"
@@ -159,8 +161,8 @@ jobs:
           mkdir release
           # Artifact storage drops file permissions; put the executable flag
           # back on the macOS and Linux apps (and PR7-K's binaries).
-          chmod -R a+x "artifacts/ParagonPR7S-macOS/Paragon PR7-S.app/Contents/MacOS" "artifacts/ParagonPR7S-Linux/Paragon PR7-S"
-          chmod -R a+x artifacts/ParagonPR7S-macOS/*.vst3/Contents/MacOS artifacts/ParagonPR7S-Linux/*.vst3/Contents/x86_64-linux 2>/dev/null || true
+          chmod -R a+x "artifacts/ParagonPR7S-Linux/Paragon PR7-S"
+          chmod -R a+x artifacts/ParagonPR7S-Linux/*.vst3/Contents/x86_64-linux 2>/dev/null || true
           # Each zip: the app, its .pdb on Windows (names in the session log's
           # crash entries), and PR7-K's VST3 if it was fetched.
           pack() {   # folder, zip name, app, zip flags
@@ -171,7 +173,7 @@ jobs:
                && zip $4 "../../release/$2" "${files[@]}")
           }
           pack ParagonPR7S-Windows "ParagonPR7-S-${TAG}-Windows.zip" "Paragon PR7-S.exe" -qr
-          pack ParagonPR7S-macOS "ParagonPR7-S-${TAG}-macOS.zip" "Paragon PR7-S.app" -qry
+          # pack ParagonPR7S-macOS "ParagonPR7-S-${TAG}-macOS.zip" "Paragon PR7-S.app" -qry   (no macOS build for now)
           pack ParagonPR7S-Linux "ParagonPR7-S-${TAG}-Linux.zip" "Paragon PR7-S" -qr
           ls -l release
 

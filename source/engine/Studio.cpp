@@ -9,6 +9,7 @@
 #include "AudioAdvice.h"
 #include "DawProject.h"
 #include "SessionLog.h"
+#include "DrumIdeas.h"
 #include "MidiImport.h"
 
 namespace pr7s
@@ -7021,6 +7022,129 @@ namespace pr7s
         changed();
     }
 
+    // One clip of `among` (a track's copy) added into `sound` as it plays: its stretched sound when
+    // warped, its volume, its own fades, the auto fades and crossfades (0.52.0); `sound` starts at
+    // `startSeconds` in the song (Bounce, 0.30.0; a part dragged out, 0.53.1).
+    void Studio::mixHeardClip (juce::AudioBuffer<float>& sound, const Track& among, int i, double startSeconds, double rate)
+    {
+        const auto tempo = project.tempoMap();
+        const auto total = sound.getNumSamples();
+        const auto& p = among.parts[(size_t) i];
+        const auto data = getHeardAudio (p.audioFile);
+        if (data == nullptr || ! p.isAudio())
+            return;
+        // (0.32.0) A warped clip: its stretched sound, from its start.
+        const auto warped = p.isWarped() ? getWarpedSound (p, tempo) : nullptr;
+        const auto& heardSound = warped != nullptr ? *warped : data->sound;
+        const auto fromOffset = warped != nullptr ? 0.0 : p.audioOffset;
+        const auto clipStart = tempo.secondsAt (p.start), clipEnd = tempo.secondsAt (p.end());
+        // (0.52.0) With the auto fades and crossfades, as it plays.
+        const auto& fades = project.autoFadesOf (among);
+        const auto curve = [&fades] (double x)
+        {
+            x = juce::jlimit (0.0, 1.0, x);
+            return fades.equalPower ? std::sin (x * juce::MathConstants<double>::halfPi) : x;
+        };
+        const auto recording = [this, rate] (const Part& other)
+        {
+            const auto heard = getHeardAudio (other.audioFile);
+            return heard != nullptr ? (double) heard->sound.getNumSamples() / rate : 0.0;
+        };
+        for (const auto& f : fadedStretches (among, i, fades, tempo, recording))
+        {
+            const auto fromSeconds = tempo.secondsAt (f.from), toSeconds = tempo.secondsAt (f.to);
+            const auto first = (int) std::llround ((fromSeconds - startSeconds) * rate);
+            const auto last = juce::jmin (total, (int) std::llround ((toSeconds - startSeconds) * rate));
+            for (int s = juce::jmax (0, first); s < last; ++s)
+            {
+                const auto when = startSeconds + s / rate;
+                const auto into = when - clipStart, left = clipEnd - when;
+                const auto source = (int) std::llround ((fromOffset + into) * rate);
+                if (source < 0 || source >= heardSound.getNumSamples())
+                    continue;
+                auto gain = (double) p.gain();   // (0.47.0: its volume)
+                if (p.fadeIn > 0.0 && into < p.fadeIn) gain *= juce::jmax (0.0, into) / p.fadeIn;
+                if (p.fadeOut > 0.0 && left < p.fadeOut) gain *= juce::jmax (0.0, left) / p.fadeOut;
+                if (f.fadeIn > 0.0 && when - fromSeconds < f.fadeIn) gain *= curve ((when - fromSeconds) / f.fadeIn);
+                if (f.fadeOut > 0.0 && toSeconds - when < f.fadeOut) gain *= curve ((toSeconds - when) / f.fadeOut);
+                for (int c = 0; c < sound.getNumChannels(); ++c)
+                    sound.addSample (c, s, (float) (heardSound.getSample (juce::jmin (c, heardSound.getNumChannels() - 1), source) * gain));
+            }
+        }
+    }
+
+    juce::File Studio::writePartForDrag (int partId, juce::String& error)
+    {
+        const auto where = findPart (partId);
+        if (! where)
+            return {};
+        const auto* track = project.findTrack (where->first);
+        if (track == nullptr)
+            return {};
+        const auto& part = track->parts[(size_t) where->second];
+        const auto partName = part.name.isNotEmpty() ? part.name : (part.isAudio() ? juce::File (part.audioFile).getFileNameWithoutExtension() : juce::String ("Part"));
+        const auto base = juce::File::createLegalFileName (track->name + " - " + partName);
+        const auto folder = newDragOutFolder();
+        if (! part.isAudio())
+        {
+            const auto written = folder.getChildFile (base + ".mid");
+            const auto midi = makePartMidiFile (project, *track, part);
+            juce::FileOutputStream out (written);
+            if (! out.openedOk() || ! midi.writeTo (out, 1))
+            {
+                error = "Couldn't write " + written.getFullPathName();
+                return {};
+            }
+            SessionLog::note ("Drag out: " + written.getFileName());
+            return written;
+        }
+        const auto data = getHeardAudio (part.audioFile);
+        if (data == nullptr || data->sampleRate <= 0.0)
+        {
+            error = "The event's recording couldn't be read.";
+            return {};
+        }
+        const auto tempo = project.tempoMap();
+        const auto rate = data->sampleRate;
+        const auto startSeconds = tempo.secondsAt (part.start);
+        const auto seconds = juce::jmin (dragOutMostSeconds, tempo.secondsAt (part.end()) - startSeconds);
+        const auto samples = juce::jmax (1, (int) std::llround (seconds * rate));
+        // The event alone on its track (no comping): what it plays.
+        Track alone = *track;
+        alone.soloLane = -1;
+        alone.parts = { part };
+        alone.parts.front().muted = false;
+        juce::AudioBuffer<float> sound (juce::jlimit (1, 2, data->sound.getNumChannels()), samples);
+        sound.clear();
+        mixHeardClip (sound, alone, 0, startSeconds, rate);
+
+        const auto bpm = tempo.bpmAt (part.start);
+        const auto written = folder.getChildFile (base + " " + dragOutTempoText (bpm) + " BPM.wav");
+        std::unordered_map<juce::String, juce::String> metadata;
+        metadata[juce::WavAudioFormat::acidTempo] = juce::String (bpm, 3);
+        metadata[juce::WavAudioFormat::acidBeats] = juce::String (juce::jmax (1, juce::roundToInt (tempo.beatAt (startSeconds + seconds) - part.start)));
+        metadata[juce::WavAudioFormat::acidOneShot] = "0";
+        const auto& signature = project.signatures().segmentAt (part.start).event;
+        metadata[juce::WavAudioFormat::acidNumerator] = juce::String (signature.numerator);
+        metadata[juce::WavAudioFormat::acidDenominator] = juce::String (signature.denominator);
+        std::unique_ptr<juce::OutputStream> stream (written.createOutputStream());
+        std::unique_ptr<juce::AudioFormatWriter> writer;
+        if (stream != nullptr)
+            writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (rate)
+                                                                                   .withNumChannels (sound.getNumChannels())
+                                                                                   .withBitsPerSample (32)
+                                                                                   .withSampleFormat (juce::AudioFormatWriterOptions::SampleFormat::floatingPoint)
+                                                                                   .withMetadataValues (metadata));
+        if (writer == nullptr || ! writer->writeFromAudioSampleBuffer (sound, 0, sound.getNumSamples()))
+        {
+            error = "Couldn't write " + written.getFullPathName();
+            return {};
+        }
+        writer.reset();
+        SessionLog::note ("Drag out: " + written.getFileName());
+        return written;
+    }
+
     int Studio::bounceTakes (const std::vector<int>& partIds, juce::String& error)
     {
         Track* track = nullptr;
@@ -7072,50 +7196,7 @@ namespace pr7s
             juce::AudioBuffer<float> sound (juce::jmin (2, channels), juce::jmax (1, total));
             sound.clear();
             for (int i = 0; i < (int) among.parts.size(); ++i)
-            {
-                const auto& p = among.parts[(size_t) i];
-                const auto data = getHeardAudio (p.audioFile);
-                if (data == nullptr || ! p.isAudio())
-                    continue;
-                // (0.32.0) A warped clip: its stretched sound, from its start.
-                const auto warped = p.isWarped() ? getWarpedSound (p, tempo) : nullptr;
-                const auto& heardSound = warped != nullptr ? *warped : data->sound;
-                const auto fromOffset = warped != nullptr ? 0.0 : p.audioOffset;
-                const auto clipStart = tempo.secondsAt (p.start), clipEnd = tempo.secondsAt (p.end());
-                // (0.52.0) With the auto fades and crossfades, as it plays.
-                const auto& fades = project.autoFadesOf (among);
-                const auto curve = [&fades] (double x)
-                {
-                    x = juce::jlimit (0.0, 1.0, x);
-                    return fades.equalPower ? std::sin (x * juce::MathConstants<double>::halfPi) : x;
-                };
-                const auto recording = [this, rate] (const Part& other)
-                {
-                    const auto heard = getHeardAudio (other.audioFile);
-                    return heard != nullptr ? (double) heard->sound.getNumSamples() / rate : 0.0;
-                };
-                for (const auto& f : fadedStretches (among, i, fades, tempo, recording))
-                {
-                    const auto fromSeconds = tempo.secondsAt (f.from), toSeconds = tempo.secondsAt (f.to);
-                    const auto first = (int) std::llround ((fromSeconds - startSeconds) * rate);
-                    const auto last = juce::jmin (total, (int) std::llround ((toSeconds - startSeconds) * rate));
-                    for (int s = juce::jmax (0, first); s < last; ++s)
-                    {
-                        const auto when = startSeconds + s / rate;
-                        const auto into = when - clipStart, left = clipEnd - when;
-                        const auto source = (int) std::llround ((fromOffset + into) * rate);
-                        if (source < 0 || source >= heardSound.getNumSamples())
-                            continue;
-                        auto gain = (double) p.gain();   // (0.47.0: its volume)
-                        if (p.fadeIn > 0.0 && into < p.fadeIn) gain *= juce::jmax (0.0, into) / p.fadeIn;
-                        if (p.fadeOut > 0.0 && left < p.fadeOut) gain *= juce::jmax (0.0, left) / p.fadeOut;
-                        if (f.fadeIn > 0.0 && when - fromSeconds < f.fadeIn) gain *= curve ((when - fromSeconds) / f.fadeIn);
-                        if (f.fadeOut > 0.0 && toSeconds - when < f.fadeOut) gain *= curve ((toSeconds - when) / f.fadeOut);
-                        for (int c = 0; c < sound.getNumChannels(); ++c)
-                            sound.addSample (c, s, (float) (heardSound.getSample (juce::jmin (c, heardSound.getNumChannels() - 1), source) * gain));
-                    }
-                }
-            }
+                mixHeardClip (sound, among, i, startSeconds, rate);
             auto folder = getAudioFolder();
             folder.createDirectory();
             juce::File bounceFile;
@@ -7658,6 +7739,7 @@ namespace pr7s
     void Studio::newProject()
     {
         frozenParts.clear();
+        builtSections.clear();
         punchOutAll();   // (writing automation ends with the song)
         if (onInstrumentGoing)
             onInstrumentGoing (0);
@@ -8735,6 +8817,7 @@ namespace pr7s
 
     void Studio::openProject (Project&& loadedProject, const juce::File& source, juce::String& problems)
     {
+        builtSections.clear();
         std::optional<Project> loaded { std::move (loadedProject) };
         punchOutAll();
 
@@ -9320,6 +9403,8 @@ namespace pr7s
             case LineIdea::Part::lead: return "Lead Guitar";
             case LineIdea::Part::pattern: return "Pattern";
             case LineIdea::Part::tune: return "Melody";
+            case LineIdea::Part::drums:
+            case LineIdea::Part::groove: return "Drums";
         }
         return "Idea";
     }
@@ -9335,6 +9420,9 @@ namespace pr7s
             if (trackId == 0)
                 return 0;
             renameTrack (trackId, linePartName (idea.part));
+            // (0.54.0) Drums: the GM map, the MIDI editor's drum view.
+            if (idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove)
+                setTrackDrumMap (trackId, DrumMap::gm().name);
         }
         Part part;
         part.start = spans.front().start;
@@ -9344,6 +9432,121 @@ namespace pr7s
             part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
         addPart (trackId, part);
         return trackId;
+    }
+
+    int Studio::findIdeaTrack (LineIdea::Part part) const
+    {
+        const auto name = linePartName (part);
+        for (const auto& t : project.tracks)
+            if (t.name == name && canTakeMidi (t.id))
+                return t.id;
+        return 0;
+    }
+
+    std::vector<int> Studio::buildSection (const std::vector<LineIdea>& ideas, const std::vector<ChordSpan>& spans, const juce::String& sectionName)
+    {
+        std::vector<int> used;
+        if (spans.empty())
+            return used;
+        const auto start = spans.front().start, end = spans.back().end;
+        // The tracks first (adding a track is a step of its own), then every part in one change.
+        std::vector<std::pair<int, const LineIdea*>> plan;
+        for (const auto& idea : ideas)
+        {
+            if (idea.notes.empty())
+                continue;
+            auto trackId = findIdeaTrack (idea.part);
+            if (trackId == 0)
+            {
+                trackId = addTrack (Instrument {});
+                if (trackId == 0)
+                    continue;
+                renameTrack (trackId, linePartName (idea.part));
+                if (idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove)
+                    setTrackDrumMap (trackId, DrumMap::gm().name);
+            }
+            plan.emplace_back (trackId, &idea);
+            used.push_back (trackId);
+        }
+        for (const auto& [trackId, idea] : plan)
+            if (auto* track = project.findTrack (trackId))
+            {
+                track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(), [&] (const Part& p)
+                                    { return p.start >= start - 1.0e-9 && p.start + p.length <= end + 1.0e-9; }), track->parts.end());
+                Part part;
+                part.start = start;
+                part.length = end - start;
+                part.name = (sectionName.isNotEmpty() ? sectionName + ": " : juce::String()) + idea->style;
+                for (const auto& n : idea->notes)
+                    part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
+                track->parts.push_back (part);
+                track->parts.back().id = 0;
+            }
+        if (! plan.empty())
+        {
+            SessionLog::note ("Build section: " + sectionName + ", " + juce::String ((int) plan.size()) + " parts over beats "
+                              + juce::String (start, 2) + " to " + juce::String (end, 2));
+            changed();
+        }
+        return used;
+    }
+
+    void Studio::noteBuiltSection (const BuiltSection& section)
+    {
+        builtSections.erase (std::remove_if (builtSections.begin(), builtSections.end(), [&] (const BuiltSection& b)
+                             { return b.start < section.end - 1.0e-6 && section.start < b.end - 1.0e-6; }), builtSections.end());
+        builtSections.push_back (section);
+        std::sort (builtSections.begin(), builtSections.end(), [] (const BuiltSection& a, const BuiltSection& b) { return a.start < b.start; });
+    }
+
+    std::vector<ChordSpan> Studio::chordsForNextSection (const std::vector<ChordSpan>& spans, double from)
+    {
+        if (spans.empty())
+            return {};
+        const auto length = spans.back().end - spans.front().start;
+        const auto to = from + length;
+        const auto& events = project.chordTrack.events;
+        std::vector<int> which;
+        auto startsInside = false;
+        for (int i = 0; i < (int) events.size(); ++i)
+        {
+            const auto beat = events[(size_t) i].beat;
+            const auto next = i + 1 < (int) events.size() ? events[(size_t) i + 1].beat : 1.0e12;
+            if (beat < to - 1.0e-6 && next > from + 1.0e-6)
+                which.push_back (i);
+            startsInside = startsInside || (beat >= from - 1.0e-6 && beat < to - 1.0e-6);
+        }
+        if (startsInside)
+        {
+            auto found = getLineChords (which);
+            std::vector<ChordSpan> out;
+            for (auto span : found)
+            {
+                span.start = juce::jmax (span.start, from);
+                span.end = juce::jmin (span.end, to);
+                if (span.end > span.start + 1.0e-6)
+                    out.push_back (span);
+            }
+            if (! out.empty())
+            {
+                out.back().end = to;   // (the last chord lasts to the section's end)
+                return out;
+            }
+        }
+        // None there: these chords again, onto the chord track too.
+        const auto shift = from - spans.front().start;
+        std::vector<ChordSpan> out;
+        auto all = events;
+        for (auto span : spans)
+        {
+            span.start += shift;
+            span.end += shift;
+            out.push_back (span);
+            all.push_back ({ span.start, span.chord });
+        }
+        project.chordTrack.shown = true;
+        setChordEvents (std::move (all));
+        return out;
     }
 
     juce::String Studio::getGuitarTuning() const
@@ -9364,6 +9567,93 @@ namespace pr7s
         guitarVelocities = v;
         if (settings != nullptr)
             settings->setValue ("guitarVelocities", v.toString());
+    }
+
+    GuitarStyle Studio::getGuitarStyle() const
+    {
+        return settings != nullptr && settings->containsKey ("guitarStyle") ? guitarStyleNamed (settings->getValue ("guitarStyle")) : guitarStyle;
+    }
+
+    void Studio::setGuitarStyle (GuitarStyle s)
+    {
+        guitarStyle = s;
+        if (settings != nullptr)
+            settings->setValue ("guitarStyle", guitarStyleName (s));
+    }
+
+    RiffSettings Studio::getRiffSettings() const
+    {
+        if (settings != nullptr && settings->containsKey ("riffSettings"))
+            return RiffSettings::fromString (settings->getValue ("riffSettings"));
+        return riffSettings;
+    }
+
+    void Studio::setRiffSettings (const RiffSettings& r)
+    {
+        riffSettings = r.limited();
+        if (settings != nullptr)
+            settings->setValue ("riffSettings", riffSettings.toString());
+    }
+
+    DrumSettings Studio::getDrumSettings() const
+    {
+        if (settings != nullptr && settings->containsKey ("drumSettings"))
+            return DrumSettings::fromString (settings->getValue ("drumSettings"));
+        return drumSettings;
+    }
+
+    void Studio::setDrumSettings (const DrumSettings& d)
+    {
+        drumSettings = d.limited();
+        if (settings != nullptr)
+            settings->setValue ("drumSettings", drumSettings.toString());
+    }
+
+    std::optional<DrumProfile> Studio::loadDrummer (const juce::String& name) const
+    {
+        if (name.isEmpty())
+            return std::nullopt;
+        auto profile = DrumProfile::load (drummerFile (getDrummerFolder(), name));
+        if (profile.has_value() && profile->name.isEmpty())
+            profile->name = name;
+        return profile;
+    }
+
+    bool Studio::saveDrummer (const DrumProfile& profile, juce::String& error)
+    {
+        const auto file = drummerFile (getDrummerFolder(), profile.name);
+        if (! profile.save (file))
+        {
+            error = "Couldn't write " + file.getFullPathName();
+            return false;
+        }
+        SessionLog::note ("Drummer profile saved: " + file.getFullPathName() + " (" + juce::String (profile.barsLearned()) + " bars from "
+                          + juce::String ((int) profile.songs.size()) + " songs)");
+        return true;
+    }
+
+    bool Studio::deleteDrummer (const juce::String& name)
+    {
+        const auto file = drummerFile (getDrummerFolder(), name);
+        if (! file.existsAsFile() || ! file.deleteFile())
+            return false;
+        if (getIdeasDrummer() == name)
+            setIdeasDrummer ({});
+        return true;
+    }
+
+    juce::String Studio::getIdeasDrummer() const
+    {
+        if (settings != nullptr && settings->containsKey ("ideasDrummer"))
+            return settings->getValue ("ideasDrummer");
+        return ideasDrummer;
+    }
+
+    void Studio::setIdeasDrummer (const juce::String& name)
+    {
+        ideasDrummer = name;
+        if (settings != nullptr)
+            settings->setValue ("ideasDrummer", name);
     }
 
     float Studio::getIdeasHumanize() const

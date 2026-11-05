@@ -1707,6 +1707,11 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
         {
             if (event.getDistanceFromDragStart() > 3)
                 dragMoved = true;
+            if (dragMoved && wantsDragOut (event))
+            {
+                dragPartOut();
+                break;
+            }
             // Ctrl: only along the song, or only to another track, whichever the mouse has gone further.
             const auto offset = event.getOffsetFromDragStart();
             const auto locked = event.mods.isCommandDown();
@@ -4667,6 +4672,7 @@ void ArrangeView::showChordMenu (double beat, int index)
     menu.addItem (5, "Chords to MIDI (all, onto the selected track)", ! track.events.empty());
     menu.addItem (6, "Assign the Chords to the Pads", ! track.events.empty());
     menu.addItem (9, chordSelection.size() > 1 ? "Piano, Guitar and Bass Ideas (for these)..." : "Piano, Guitar and Bass Ideas...", ! track.events.empty());
+    menu.addItem (13, chordSelection.size() > 1 ? "Build a Section (for these)..." : "Build a Section...", ! track.events.empty());
     menu.addItem (11, "Progression Library...");
     menu.addItem (7, "Scales Follow the Chords", true, track.autoScales);
     menu.addSeparator();
@@ -4690,6 +4696,7 @@ void ArrangeView::showChordMenu (double beat, int index)
             case 8: studio.removeChordTrack(); return;
             case 11: if (safe->onProgressions) safe->onProgressions(); return;
             case 9: if (safe->onLineIdeas) safe->onLineIdeas (safe->chordSelection.size() > 1 ? safe->chordSelection : std::vector<int> {}); return;
+            case 13: if (safe->onBuildSection) safe->onBuildSection (safe->chordSelection.size() > 1 ? safe->chordSelection : std::vector<int> {}); return;
             case 10:
             {
                 const auto at = juce::jmax (0.0, pr7s::snap (beat, grid));
@@ -5023,4 +5030,41 @@ bool ArrangeView::folderDown (const juce::MouseEvent& event)
             return true;
         }
     return false;
+}
+
+//==============================================================================
+// Drag out (0.53.1).
+bool ArrangeView::wantsDragOut (const juce::MouseEvent& event) const
+{
+    // (Only on screen: off it, nothing is "under the mouse", which would read as another window.)
+    if (draggingOut || ! isShowing() || getSelectedParts().size() > 1 || ! selection.isValid())
+        return false;
+    // A copy (Alt) leaving the arrangement: for a program's window lying over the studio, which the
+    // studio can't tell from its own.
+    if (dragCopies && ! getLocalBounds().contains (event.position.toInt()))
+        return true;
+    // Over a window that isn't the studio's main one: a plug-in's, or none of ours (another program, the desktop).
+    const auto* under = juce::Desktop::getInstance().findComponentAt (event.getScreenPosition());
+    return under == nullptr || under->getTopLevelComponent() != getTopLevelComponent();
+}
+
+juce::File ArrangeView::dragPartOut()
+{
+    if (draggingOut || ! selection.isValid())
+        return {};
+    const auto partId = partIdAt (selection);
+    // The move is over: the part stays where it was.
+    drag = Drag::none;
+    dragMoved = false;
+    repaint();
+    juce::String error;
+    const auto file = studio.writePartForDrag (partId, error);
+    if (file == juce::File())
+        return {};
+    const juce::ScopedValueSetter<bool> busy (draggingOut, true);
+    if (onExternalDrag)
+        onExternalDrag ({ file.getFullPathName() });
+    else
+        juce::DragAndDropContainer::performExternalDragDropOfFiles ({ file.getFullPathName() }, false, this);   // (a copy, never a move)
+    return file;
 }

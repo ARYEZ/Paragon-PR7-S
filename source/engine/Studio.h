@@ -10,6 +10,11 @@
 #include "Align.h"
 #include "VariAudio.h"
 #include "Lines.h"
+#include "Riffs.h"
+#include "DragOut.h"
+#include "DrumGenerator.h"
+#include "DrumLearning.h"
+#include "SectionPlan.h"
 #include "Patterns.h"
 #include "Progressions.h"
 #include "Melody.h"
@@ -285,6 +290,21 @@ namespace pr7s
         // studio's synth) named for the part (Bass, Melody, Piano, Guitar, Lead Guitar). The
         // track's id; one undo step.
         int addLinePart (const LineIdea&, const std::vector<ChordSpan>&, int ontoTrackId = 0);
+        // (0.57.0) BUILD SECTION: each idea onto the track named after its part (Drums, Bass, Guitar,
+        // Lead Guitar, Piano, Melody: an instrument track of that name is reused, so section after
+        // section lands on the same band; else a new one), each part over the chords' span, named
+        // "<section>: <idea>". Parts lying wholly inside the span on those tracks are replaced
+        // (building the same stretch again). One undo step for the parts. The tracks used, in order.
+        std::vector<int> buildSection (const std::vector<LineIdea>&, const std::vector<ChordSpan>&, const juce::String& sectionName);
+        int findIdeaTrack (LineIdea::Part) const;   // the instrument track named after the part (0: none)
+        // The sections built so far in this song (for what comes next; forgotten with the song).
+        const std::vector<BuiltSection>& getBuiltSections() const noexcept { return builtSections; }
+        void noteBuiltSection (const BuiltSection&);   // (replaces one built over the same stretch)
+        void clearBuiltSections() { builtSections.clear(); }
+        // The chords for the section after `from`, as long as `spans`: the chord track's there when it
+        // has a chord starting in that stretch; else `spans` again from `from`, written onto the
+        // chord track (one undo step) so the song keeps its chords.
+        std::vector<ChordSpan> chordsForNextSection (const std::vector<ChordSpan>& spans, double from);
         static juce::String linePartName (LineIdea::Part);
         // The guitar ideas' tuning (0.19.0; settings key "guitarTuning", default 7-string drop A).
         // The MELODY tab's settings (0.41.0; settings key "melodySettings").
@@ -295,6 +315,24 @@ namespace pr7s
         // The guitar ideas' velocities (0.19.3, the VELOCITIES panel; settings key "guitarVelocities").
         GuitarVelocities getGuitarVelocities() const;
         void setGuitarVelocities (const GuitarVelocities&);
+        // The guitar tab's STYLE and RIFF SETTINGS (0.53.0; settings keys "guitarStyle", "riffSettings").
+        GuitarStyle getGuitarStyle() const;
+        void setGuitarStyle (GuitarStyle);
+        RiffSettings getRiffSettings() const;
+        void setRiffSettings (const RiffSettings&);
+        // The DRUMS tab's beat generator settings (0.55.0; settings key "drumSettings").
+        DrumSettings getDrumSettings() const;
+        void setDrumSettings (const DrumSettings&);
+        // Drummer profiles (0.56.0): their folder (Documents/Paragon PR7-S/Drummer Profiles), the one
+        // the DRUMS tab plays from (settings key "ideasDrummer"; empty: the style's rules).
+        juce::File getDrummerFolder() const { return drummerFolderOverride != juce::File() ? drummerFolderOverride : defaultDrummerFolder(); }
+        void setDrummerFolderForTests (const juce::File& f) { drummerFolderOverride = f; }
+        std::vector<juce::String> getDrummerNames() const { return drummerNames (getDrummerFolder()); }
+        std::optional<DrumProfile> loadDrummer (const juce::String& name) const;
+        bool saveDrummer (const DrumProfile&, juce::String& error);
+        bool deleteDrummer (const juce::String& name);
+        juce::String getIdeasDrummer() const;
+        void setIdeasDrummer (const juce::String&);
         // Humanize (0.20.0). IDEAS: its amount (0-1, settings "ideasHumanize", default 0: on the
         // grid as before) and FEEL ("ideasFeel", default on). The MIDI editor: its amount
         // ("humanizeAmount", default 0.5) and whether velocities keep to the guitar library's
@@ -616,6 +654,12 @@ namespace pr7s
         // one new clip or part over them all, on the first of their lanes, in front; the takes go.
         // Audio: a new 32-bit file in the audio folder. Returns the new part's id (0: nothing, `error`).
         int bounceTakes (const std::vector<int>& partIds, juce::String& error);
+        // A part as a file for another program (0.53.1, drag out): a MIDI part as "<track> - <part>.mid"
+        // (DragOut.h's makePartMidiFile), an audio event as "<track> - <part> <tempo> BPM.wav": what it
+        // plays (offset, length, warping, its volume and fades, the auto fades; not the track's fader or
+        // effects), 32-bit float at its recording's rate, at most five minutes, the tempo and beats in its
+        // ACID chunk. In a folder of its own under dragOutFolder(). The song isn't changed. None: an empty File.
+        juce::File writePartForDrag (int partId, juce::String& error);
         // Delete Overlaps: of these takes only what's heard stays, all on the first lane.
         void deleteOverlaps (const std::vector<int>& partIds);
         // Merge MIDI in Loop: what's heard of these tracks' MIDI between the locators, one part on a new
@@ -1354,6 +1398,7 @@ namespace pr7s
         // The song's recordings and freeze files (and its undo history's) copied from one folder to another.
         bool copyAudioFiles (const juce::File& from, const juce::File& to);
         void sendGone (Track&, int slot);
+        void mixHeardClip (juce::AudioBuffer<float>&, const Track& among, int index, double startSeconds, double rate);
         bool linksSuspended = false, linksAbsolute = false, qLink = false;
         bool mirroring = false;
         juce::StringArray progressionFavorites;   // (without a settings file)
@@ -1368,6 +1413,12 @@ namespace pr7s
         DetectSettings detectSettings;
         juce::String guitarTuning;   // (without a settings file: the tests)
         GuitarVelocities guitarVelocities;
+        GuitarStyle guitarStyle = GuitarStyle::rock;   // (without a settings file)
+        RiffSettings riffSettings;
+        DrumSettings drumSettings;
+        juce::File drummerFolderOverride;
+        std::vector<BuiltSection> builtSections;
+        juce::String ideasDrummer;
         float ideasHumanize = 0.0f, humanizeAmount = 0.5f;   // (without a settings file: the tests)
         bool ideasFeel = true, humanizeLayers = true;
         void announce();               // (0.34.3) sendChangeMessage, the version counted

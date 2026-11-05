@@ -725,7 +725,7 @@ TEST_CASE ("The IDEAS window: ideas heard, used, more of them (0.18.0); piano, g
     view.openLineIdeas();
     REQUIRE (view.getLinesWindow() != nullptr);
     auto& page = view.getLinesWindow()->getPage();
-    CHECK (page.getIdeas (LineIdea::Part::bass).size() == 6);
+    CHECK (page.getIdeas (LineIdea::Part::bass).size() == 8);   // (0.54.0: and the two locked ones)
     CHECK (page.getIdeas (LineIdea::Part::melody).size() == 6);
 
     // Heard: that one playing (with the chords), then stopped.
@@ -766,7 +766,7 @@ TEST_CASE ("The IDEAS window: ideas heard, used, more of them (0.18.0); piano, g
     CHECK (page.getIdeas (LineIdea::Part::rhythm).size() == 6);
     CHECK (page.getIdeas (LineIdea::Part::lead).size() == 6);
     page.setTab (LinesPage::Tab::bass);
-    CHECK (page.getNumCardsShown() == 6);
+    CHECK (page.getNumCardsShown() == 8);   // (0.54.0: six, and the two locked to the kick and the riff)
     // The tuning: the guitar ideas dealt again for it, nothing under its lowest string.
     page.setTuning ("6-string standard (E)");
     CHECK (studio.getGuitarTuning() == "6-string standard (E)");

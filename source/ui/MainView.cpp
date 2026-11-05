@@ -354,6 +354,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
     trackList.onLineIdeas = [this] (std::vector<int> events) { openLineIdeas (std::move (events)); };
     arrange.onLineIdeas = [this] (std::vector<int> events) { openLineIdeas (std::move (events)); };
     chordPads.onLineIdeas = [this] (std::vector<int> events) { openLineIdeas (std::move (events)); };
+    arrange.onBuildSection = [this] (std::vector<int> events) { openLineIdeas (std::move (events), true); };
+    chordPads.onBuildSection = [this] { openLineIdeas ({}, true); };
     chordPads.onProgressions = [this] { openProgressions(); };
     arrange.onProgressions = [this] { openProgressions(); };
     // Told of clicks in the work areas, to know where the keys go.
@@ -1528,6 +1530,9 @@ void MainView::importDawProject (const juce::File& file)
 
 bool MainView::isInterestedInFileDrag (const juce::StringArray& files)
 {
+    // (0.53.1) A part dragged out and back onto the studio: nothing (the drag is cancelled).
+    if (std::all_of (files.begin(), files.end(), [] (const juce::String& f) { return juce::File (f).isAChildOf (pr7s::dragOutFolder()); }))
+        return false;
     return std::any_of (files.begin(), files.end(), [] (const juce::String& f)
     {
         return f.endsWithIgnoreCase (".dawproject") || f.endsWithIgnoreCase (".mid") || f.endsWithIgnoreCase (".midi") || pr7s::Studio::isAudioFile (juce::File (f));
@@ -2289,7 +2294,7 @@ void MainView::RightZoneEdge::mouseDrag (const juce::MouseEvent& event)
     owner.setRightZoneWidth (widthAtDown - event.getDistanceFromDragStartX());
 }
 
-void MainView::openLineIdeas (std::vector<int> chordEvents)
+void MainView::openLineIdeas (std::vector<int> chordEvents, bool buildSection)
 {
     auto spans = studio.getLineChords (chordEvents);
     if (spans.empty())
@@ -2303,12 +2308,17 @@ void MainView::openLineIdeas (std::vector<int> chordEvents)
     {
         linesWindow->getPage().setChords (std::move (spans));
         linesWindow->toFront (true);
+        if (buildSection)
+            linesWindow->getPage().showBuildSection();
         return;
     }
     linesWindow = std::make_unique<LinesWindow> (studio, std::move (spans));
     linesWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->linesWindow.reset(); }); };
     linesWindow->centreAroundComponent (this, linesWindow->getWidth(), linesWindow->getHeight());
     linesWindow->setVisible (true);
+    if (buildSection)   // (once the window is on screen: the call-out points at its key)
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)]
+                                         { if (safe != nullptr && safe->linesWindow != nullptr) safe->linesWindow->getPage().showBuildSection(); });
 }
 
 void MainView::openEq (int busId)

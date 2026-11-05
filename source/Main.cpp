@@ -23,6 +23,7 @@ public:
         startTimer (250);   // the screen's heartbeat for the freeze watch
 
         juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+        pr7s::clearDragOutFolder();   // (0.53.1: last session's dragged-out parts)
         studio = std::make_unique<pr7s::Studio> (true);
         window = std::make_unique<MainWindow> (*this, *studio);
 

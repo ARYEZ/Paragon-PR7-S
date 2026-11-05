@@ -1184,6 +1184,7 @@ void ChordPadsView::showPlayerMenu()
     menu.addSectionHeader ("BASIC PLAYER: CLOSE CHORDS");
     // (0.20.2: the piano and guitar parts are in IDEAS, not a pad player; the menu says where.)
     menu.addItem (98, "Piano, Guitar and Bass Ideas... (IDEAS)", ! studio.getChordTrack().events.empty());
+    menu.addItem (97, "Build a Section from the Chord Track... (IDEAS)", ! studio.getChordTrack().events.empty());
     menu.addSeparator();
     // (0.39.0) PERFORM: a pad held plays its chord through a pattern, at the song's tempo.
     menu.addSectionHeader ("PERFORM: A PAD HELD PLAYS A PATTERN");
@@ -1208,6 +1209,11 @@ void ChordPadsView::showPlayerMenu()
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&playerKey),
                         [safe = juce::Component::SafePointer<ChordPadsView> (this)] (int chosen)
     {
+        if (safe != nullptr && chosen == 97 && safe->onBuildSection)
+        {
+            safe->onBuildSection();
+            return;
+        }
         if (safe != nullptr && chosen == 98 && safe->onLineIdeas)
         {
             safe->onLineIdeas ({});

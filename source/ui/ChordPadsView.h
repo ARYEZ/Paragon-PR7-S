@@ -34,6 +34,7 @@ public:
 
     std::function<void()> onClose, onWindowToggle;
     std::function<void (std::vector<int> chordEvents)> onLineIdeas;
+    std::function<void()> onBuildSection;   // (0.57.0) the PLAYER menu's Build a Section...
     std::function<void()> onProgressions;   // PROGRESSIONS (0.40.0): the library
     juce::TextButton& getIdeasKey() noexcept { return ideasKey; }   // BASS & MELODY (0.18.0): for these chord events (none: the cycle's or all)
     void setInWindow (bool);
