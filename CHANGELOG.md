@@ -19,6 +19,8 @@ Each version's notes appear on its GitHub Release page.
   - the tempo also in the file's ACID tag, which loop software reads.
 - The files go in a "Paragon PR7-S Drag Out" folder in Windows' temporary folder, emptied each time the studio starts.
 
+**Releases are Windows and Linux only for now** (you asked): the Mac build is switched off, which also makes each release quicker. It can be switched back on whenever you want.
+
 **To check on Windows:**
 1. With PR7-D's window open, drag any .wav or .mid from File Explorer onto its GROOVES page. If PR7-D takes it, drops reach plug-in windows in the studio.
 2. Then drag a part from the arrangement onto the same page.
