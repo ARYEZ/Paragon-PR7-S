@@ -607,8 +607,8 @@ namespace pr7s::SessionLog
                 auto frozenSince = 0.0, stuckSince = 0.0, lastRefresh = -1.0e9;
                 while (! threadShouldExit())
                 {
-                    const auto now = nowSeconds();
                    #if defined (_WIN32)
+                    const auto now = nowSeconds();
                     if (! frozen && ! stuck && now - lastRefresh > 5.0)
                     {
                         refreshModules();   // (while all answers: ready for a report)
