@@ -5034,7 +5034,8 @@ bool ArrangeView::folderDown (const juce::MouseEvent& event)
 // Drag out (0.53.1).
 bool ArrangeView::wantsDragOut (const juce::MouseEvent& event) const
 {
-    if (draggingOut || getSelectedParts().size() > 1 || ! selection.isValid())
+    // (Only on screen: off it, nothing is "under the mouse", which would read as another window.)
+    if (draggingOut || ! isShowing() || getSelectedParts().size() > 1 || ! selection.isValid())
         return false;
     // A copy (Alt) leaving the arrangement: for a program's window lying over the studio, which the
     // studio can't tell from its own.
