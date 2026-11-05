@@ -201,10 +201,12 @@ TEST_CASE ("0.43.0: the studio: set, undone, saved with the song, in track prese
     auto inverted = eq;
     inverted.invert();
     CHECK (inverted.bands[1].gainDb == -4.5);
-    // Bands 2 and 3 only parametric.
+    // Cuts only on bands 1 and 4 (0.46.0: shelves and the notch on all four).
     auto wrong = eq;
-    wrong.bands[2].type = T::lowShelf;
+    wrong.bands[2].type = T::lowCut;
     CHECK (wrong.limited().bands[2].type == T::parametric);
+    wrong.bands[2].type = T::lowShelf;
+    CHECK (wrong.limited().bands[2].type == T::lowShelf);
 
     // Frequencies typed as the manual: notes (A3 = 440 Hz), cents after a space, Hz and kHz.
     CHECK_THAT (*parseFrequency ("A3"), WithinAbs (440.0, 1.0e-9));
@@ -329,5 +331,197 @@ TEST_CASE ("0.43.0: the EQ editor's controls, each an undo step; the window foll
     CHECK (studio.getProject().masterEq.bands[3].on);
     CHECK (EqEditor::channelName (studio, 0) == "MASTER");
     editor.setSize (EqEditor::width, EqEditor::height);
+    CHECK (editor.createComponentSnapshot (editor.getLocalBounds()).isValid());
+}
+
+//==============================================================================
+// 0.46.0: the EQ as the other DAW's Frequency 2, four bands of it.
+
+TEST_CASE ("0.46.0: band shapes: cuts 6 to 96 dB an octave, Q as a cut's resonance and a shelf's corner, Notch, Invert Gain, Output", "[eq]")
+{
+    // Cuts on band 1: an octave under the frequency, about the slope down (Butterworth: -3 dB at it).
+    for (const auto slope : ChannelEq::bandSlopes())
+    {
+        auto e = oneBand (0, T::lowCut, 0.0, 400.0, 0.70710678);
+        e.bands[0].slope = slope;
+        INFO ("slope " << slope);
+        CHECK_THAT (response (e, 400.0), WithinAbs (-3.01, 0.05));
+        CHECK_THAT (response (e, 200.0), WithinAbs (-(double) slope, slope <= 12 ? 1.1 : 0.5));   // (Butterworth: 10 log10 (1 + 4^n))
+        CHECK (std::abs (response (e, 8000.0)) < 0.05);
+    }
+    // A high cut on band 4, 48 dB.
+    auto high = oneBand (3, T::highCut, 0.0, 1000.0, 0.70710678);   // (low enough not to be squeezed near half the rate)
+    high.bands[3].slope = 48;
+    CHECK_THAT (response (high, 2000.0), WithinAbs (-48.0, 0.5));
+    // Q over 0.71 on a cut: a resonance at its frequency (Q 2 on Cut 12: about +9 dB).
+    auto resonant = oneBand (0, T::lowCut, 0.0, 400.0, 2.0);
+    CHECK_THAT (response (resonant, 400.0), WithinAbs (juce::Decibels::gainToDecibels (2.0), 0.05));
+    // A song's cut from 0.43.0 (12 dB, its Q) sounds as it did: one biquad, the same curve.
+    const auto old = oneBand (0, T::lowCut, 0.0, 150.0, 1.3);
+    CHECK_THAT (response (old, 150.0), WithinAbs (juce::Decibels::gainToDecibels (1.3), 0.02));
+    // A shelf with Q over 0.71: a dip past its corner (a low shelf boost dips above it).
+    const auto plain = oneBand (0, T::lowShelf, 9.0, 300.0, 0.71), shaped = oneBand (0, T::lowShelf, 9.0, 300.0, 3.0);
+    auto lowest = [&] (const ChannelEq& e) { auto m = 100.0; for (auto f = 300.0; f < 3000.0; f *= 1.05) m = juce::jmin (m, response (e, f)); return m; };
+    CHECK (lowest (plain) > -0.1);
+    CHECK (lowest (shaped) < -1.0);
+    // Notch: the same gain, much narrower than a Peak.
+    const auto peak = oneBand (1, T::parametric, -12.0, 1000.0, 1.0), notch = oneBand (1, T::notch, -12.0, 1000.0, 1.0);
+    CHECK_THAT (response (notch, 1000.0), WithinAbs (-12.0, 0.01));
+    CHECK (response (notch, 1200.0) > response (peak, 1200.0) + 6.0);
+    // Invert Gain: +6 plays as -6; the point is drawn there too.
+    auto inverted = oneBand (1, T::parametric, 6.0, 1000.0, 1.0);
+    inverted.bands[1].invert = true;
+    CHECK_THAT (response (inverted, 1000.0), WithinAbs (-6.0, 0.01));
+    // Output: everything up or down; nothing when bypassed.
+    auto loud = oneBand (1, T::parametric, 6.0, 1000.0, 1.0);
+    loud.outputDb = -4.0;
+    CHECK_THAT (response (loud, 1000.0), WithinAbs (2.0, 0.01));
+    CHECK_THAT (response (loud, 50.0), WithinAbs (-4.0, 0.05));
+    CHECK_THAT (sineThrough (loud, 1000.0), WithinAbs (2.0, 0.1));
+    loud.bypass = true;
+    CHECK (std::abs (response (loud, 1000.0)) < 0.01);
+    // Types each band offers: cuts only on the outer two.
+    CHECK (ChannelEq::typesFor (0).back() == T::lowCut);
+    CHECK (ChannelEq::typesFor (3).back() == T::highCut);
+    CHECK (ChannelEq::typesFor (1).size() == 4);
+    // Saved and read back; a 0.43.0 song (no slope, invert, output) reads as 12 dB, not inverted, 0 dB.
+    auto saved = oneBand (0, T::lowCut, 0.0, 80.0, 0.71);
+    saved.bands[0].slope = 96;
+    saved.bands[1] = { true, T::notch, -9.0, 3000.0, 2.0 };
+    saved.bands[1].invert = true;
+    saved.outputDb = 3.5;
+    CHECK (ChannelEq::fromXml (*saved.toXml()) == saved);
+    juce::XmlElement older ("Eq");
+    auto* band = older.createNewChildElement ("Band");
+    band->setAttribute ("on", true);
+    band->setAttribute ("type", 3);
+    band->setAttribute ("frequency", 120.0);
+    band->setAttribute ("q", 0.9);
+    const auto read = ChannelEq::fromXml (older);
+    CHECK (read.bands[0].slope == 12);
+    CHECK_FALSE (read.bands[0].invert);
+    CHECK (read.outputDb == 0.0);
+}
+
+TEST_CASE ("0.46.0: the engine's spectrum tap and Auto Listen", "[eq][engine]")
+{
+    Engine engine;
+    engine.prepare (48000.0, 512);
+    Project project;
+    Track track;
+    track.id = 1;
+    project.tracks.push_back (track);
+    engine.setInstrument (1, std::make_unique<SteadyTone> (0.25f, 0.25f));
+    engine.update (project);
+    // The track's sound after its EQ, into the ring for the screen.
+    engine.setSpectrumBus (1);
+    renderSamples (engine, 4096, 512);
+    std::vector<float> heard (8192, -1.0f);
+    CHECK (engine.readSpectrum (heard) == 4096);
+    CHECK_THAT (heard.back(), WithinAbs (0.25, 1.0e-4));
+    CHECK_THAT (heard[0], WithinAbs (-1.0, 1.0e-6));   // (what was there before, moved along)
+    CHECK (engine.readSpectrum (heard) == 0);           // (nothing new)
+    engine.setSpectrumBus (-1);
+    renderSamples (engine, 1024, 512);
+    CHECK (engine.readSpectrum (heard) == 0);
+    // Auto Listen on a Peak at 1 kHz: a band pass, so the steady level (DC) goes; back when cleared.
+    EqBand peak { true, T::parametric, 6.0, 1000.0, 1.0 };
+    engine.setListen (1, listenDesign (peak, 48000.0));
+    CHECK (std::abs (renderSamples (engine, 9600, 512).back()) < 1.0e-3);
+    engine.clearListen();
+    CHECK_THAT (renderSamples (engine, 2048, 512).back(), WithinAbs (0.25, 1.0e-4));
+    // A low shelf's listen: a low pass under it (DC through).
+    EqBand shelf { true, T::lowShelf, 6.0, 200.0, 0.71 };
+    engine.setListen (1, listenDesign (shelf, 48000.0));
+    CHECK_THAT (renderSamples (engine, 9600, 512).back(), WithinAbs (0.25, 2.0e-3));
+    const auto listen = listenDesign (shelf, 48000.0);
+    CHECK (eqResponseDb (listen, 4000.0, 48000.0, false) < -40.0);
+}
+
+TEST_CASE ("0.46.0: the EQ window: types with cut slopes, INVERT, OUTPUT, the keyboard (a mark let go on a key), the wheel's Q, the spectrum", "[eq][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    const auto id = studio.getProject().tracks[0].id;
+    EqEditor editor (studio, id);
+    editor.setBounds (0, 0, EqEditor::width, EqEditor::height);
+    editor.setKeysShown (true);
+    editor.setSpectrumShown (true);
+    editor.setBandCut (0, 48);
+    auto eq = *studio.getChannelEq (id);
+    CHECK (eq.bands[0].type == T::lowCut);
+    CHECK (eq.bands[0].slope == 48);
+    editor.setBandCut (1, 24);   // (not on band 2)
+    CHECK_FALSE (studio.getChannelEq (id)->bands[1].isCut());
+    editor.setBandType (2, T::notch);
+    editor.setBandInvert (2, true);
+    editor.setOutput (-2.5);
+    eq = *studio.getChannelEq (id);
+    CHECK (eq.bands[2].type == T::notch);
+    CHECK (eq.bands[2].invert);
+    CHECK (eq.outputDb == -2.5);
+    studio.undo();
+    CHECK (studio.getChannelEq (id)->outputDb == 0.0);
+
+    // The keyboard: band 2's mark dragged near 445 Hz, let go: exactly A3 (440 Hz).
+    auto& curve = editor.getCurve();
+    editor.setBandType (1, T::parametric);
+    CHECK (studio.getChannelEq (id)->outputDb == 0.0);   // (an edit right after Undo doesn't bring the undone back)
+    editor.setBandFrequency (1, 300.0);
+    const auto keys = curve.keysArea();
+    REQUIRE_FALSE (keys.isEmpty());
+    const auto mark = curve.keyMark (1).getCentre();
+    const juce::Point<float> to (curve.xForFrequency (445.0), mark.y);
+    curve.mouseDown (mouseOn (curve, mark, mark));
+    curve.mouseDrag (mouseOn (curve, to, mark));
+    curve.mouseUp (mouseOn (curve, to, mark));
+    CHECK_THAT (studio.getChannelEq (id)->bands[1].frequency, WithinAbs (440.0, 1.0e-6));
+    CHECK_THAT (EqCurve::keyFrequency (60), WithinAbs (261.6256, 1.0e-3));   // middle C = C3
+
+    // The wheel over a point: its Q (up narrower).
+    const auto q = studio.getChannelEq (id)->bands[1].q;
+    juce::MouseWheelDetails wheel {};
+    wheel.deltaY = 1.0f;
+    const auto point = curve.bandPoint (1);
+    curve.mouseWheelMove (mouseOn (curve, point, point), wheel);
+    CHECK (studio.getChannelEq (id)->bands[1].q > q * 1.3);
+
+    // Auto Listen while a point is dragged: the engine listens to that band, and stops on release.
+    editor.setAutoListen (true);
+    const auto p = curve.bandPoint (1);
+    curve.mouseDown (mouseOn (curve, p, p));
+    CHECK (studio.getEngine().getListenBus() == id);
+    curve.mouseUp (mouseOn (curve, p, p));
+    CHECK (studio.getEngine().getListenBus() == -1);
+
+    // The spectrum from what the engine sends: a 1 kHz sine at half scale reads about -6 dB there,
+    // nothing much far from it.
+    struct Sine final : TestPlugin
+    {
+        Sine() : TestPlugin (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)) { instrument = true; name = "Sine"; }
+        void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
+        {
+            for (int i = 0; i < buffer.getNumSamples(); ++i, ++n)
+                for (int c = 0; c < buffer.getNumChannels(); ++c)
+                    buffer.setSample (c, i, 0.5f * (float) std::sin (juce::MathConstants<double>::twoPi * 1000.0 * (double) n / 48000.0));
+        }
+        juce::int64 n = 0;
+    };
+    editor.setBandOn (1, false);
+    editor.setBandOn (0, false);
+    editor.setBandOn (2, false);
+    auto& engine = studio.getEngine();
+    engine.prepare (48000.0, 512);
+    engine.setInstrument (id, std::make_unique<Sine>());
+    studio.setChannelEq (id, *studio.getChannelEq (id));   // (the engine brought up to date)
+    engine.setSpectrumBus (id);
+    editor.setOutput (0.0);
+    const auto out = renderSamples (engine, 8192, 512);
+    CHECK_THAT (*std::max_element (out.begin() + 4096, out.end()), WithinAbs (0.5, 0.01));
+    curve.updateSpectrum();
+    // (-6 dB, less up to 1.4 where 1 kHz falls between two of the analysis's frequencies.)
+    CHECK (curve.spectrumLevelAt (1000.0) <= -5.5f);
+    CHECK (curve.spectrumLevelAt (1000.0) >= -7.6f);
+    CHECK (curve.spectrumLevelAt (6000.0) < -50.0);
     CHECK (editor.createComponentSnapshot (editor.getLocalBounds()).isValid());
 }

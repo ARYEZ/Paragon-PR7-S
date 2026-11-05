@@ -31,21 +31,23 @@ namespace pr7s
             return { 1.0 / (1.0 + k), -1.0 / (1.0 + k), 0.0, (k - 1.0) / (k + 1.0), 0.0 };
         }
 
-        // A Butterworth cut of a slope (dB per octave) as stages.
-        int addCut (std::array<Biquad, EqDesign::maxStages>& stages, int count, bool high, double frequency, int slope, double rate)
+        // A Butterworth cut of a slope (dB per octave) as stages: order = slope / 6, its pole
+        // pairs' Qs 1 / (2 cos ((2k - 1) pi / 2n)) (6 dB: one pole; the others even). `resonance`
+        // (0.46.0, a band's Q over 0.71) raises the sharpest pair's Q by that much.
+        int addCut (std::array<Biquad, EqDesign::maxStages>& stages, int count, bool high, double frequency, int slope, double rate,
+                    double resonance = 1.0)
         {
-            static const std::vector<double> q12 { 0.70710678 }, q24 { 0.54119610, 1.30656296 },
-                                             q36 { 0.51763809, 0.70710678, 1.93185165 }, q48 { 0.50979558, 0.60134489, 0.89997622, 2.56291545 };
-            if (slope <= 6)
+            const auto order = juce::jlimit (1, 16, slope / 6);
+            if (order % 2 == 1 && count < EqDesign::maxStages)
+                stages[(size_t) count++] = onePole (high, frequency, rate);
+            for (int k = 1; k <= order / 2; ++k)
             {
-                if (count < EqDesign::maxStages)
-                    stages[(size_t) count++] = onePole (high, frequency, rate);
-                return count;
-            }
-            const auto& qs = slope <= 12 ? q12 : slope <= 24 ? q24 : slope <= 36 ? q36 : q48;
-            for (const auto q : qs)
+                auto q = 1.0 / (2.0 * std::cos ((2.0 * k - 1.0) * pi / (2.0 * order)));
+                if (k == order / 2)
+                    q *= resonance;   // (the last pair has the highest Q)
                 if (count < EqDesign::maxStages)
                     stages[(size_t) count++] = cut (high, frequency, q, rate);
+            }
             return count;
         }
 
@@ -57,6 +59,23 @@ namespace pr7s
                 case 'G': return 7; case 'A': return 9; case 'B': return 11; default: return -1;
             }
         }
+    }
+
+    const std::array<int, 5>& ChannelEq::bandSlopes()
+    {
+        static const std::array<int, 5> s { 6, 12, 24, 48, 96 };
+        return s;
+    }
+
+    std::vector<EqBand::Type> ChannelEq::typesFor (int band)
+    {
+        using T = EqBand::Type;
+        std::vector<T> types { T::lowShelf, T::parametric, T::highShelf, T::notch };
+        if (band == 0)
+            types.push_back (T::lowCut);
+        if (band == 3)
+            types.push_back (T::highCut);
+        return types;
     }
 
     const std::array<int, 5>& ChannelEq::slopes()
@@ -74,7 +93,9 @@ namespace pr7s
 
     bool ChannelEq::canBe (int band, EqBand::Type type)
     {
-        return band == 0 || band == 3 || type == EqBand::Type::parametric;
+        // (0.46.0: shelves and the notch on every band; cuts on the outer two. A song's low cut on
+        // band 4 or high cut on band 1 from before stays, so it sounds as it did.)
+        return band == 0 || band == 3 || ! (type == EqBand::Type::lowCut || type == EqBand::Type::highCut);
     }
 
     ChannelEq ChannelEq::limited() const
@@ -88,7 +109,13 @@ namespace pr7s
             b.gainDb = juce::jlimit (-maxGainDb, maxGainDb, b.gainDb);
             b.frequency = juce::jlimit (minFrequency, maxFrequency, b.frequency);
             b.q = juce::jlimit (minQ, maxQ, b.q);
+            auto best = 12;
+            for (const auto v : bandSlopes())
+                if (std::abs (v - b.slope) < std::abs (best - b.slope))
+                    best = v;
+            b.slope = best;
         }
+        e.outputDb = juce::jlimit (-maxGainDb, maxGainDb, e.outputDb);
         e.lowCut = juce::jlimit (minFrequency, maxFrequency, e.lowCut);
         e.highCut = juce::jlimit (minHighCut, maxFrequency, e.highCut);
         const auto nearestSlope = [] (int s)
@@ -107,7 +134,7 @@ namespace pr7s
 
     bool ChannelEq::eqActive() const
     {
-        return ! bypass && std::any_of (bands.begin(), bands.end(), [] (const EqBand& b) { return b.on; });
+        return ! bypass && (outputDb != 0.0 || std::any_of (bands.begin(), bands.end(), [] (const EqBand& b) { return b.on; }));
     }
 
     bool ChannelEq::preActive() const
@@ -130,7 +157,7 @@ namespace pr7s
     {
         return bypass == o.bypass && bands == o.bands && lowCutOn == o.lowCutOn && highCutOn == o.highCutOn && lowCut == o.lowCut
             && highCut == o.highCut && lowCutSlope == o.lowCutSlope && highCutSlope == o.highCutSlope && preGainDb == o.preGainDb
-            && phaseInvert == o.phaseInvert;
+            && phaseInvert == o.phaseInvert && outputDb == o.outputDb;
     }
 
     std::unique_ptr<juce::XmlElement> ChannelEq::toXml (const juce::String& tag) const
@@ -145,6 +172,8 @@ namespace pr7s
         xml->setAttribute ("highCutSlope", highCutSlope);
         xml->setAttribute ("preGain", preGainDb);
         xml->setAttribute ("phase", phaseInvert);
+        if (outputDb != 0.0)
+            xml->setAttribute ("output", outputDb);
         for (const auto& b : bands)
         {
             auto* band = xml->createNewChildElement ("Band");
@@ -153,6 +182,10 @@ namespace pr7s
             band->setAttribute ("gain", b.gainDb);
             band->setAttribute ("frequency", b.frequency);
             band->setAttribute ("q", b.q);
+            if (b.slope != 12)
+                band->setAttribute ("slope", b.slope);
+            if (b.invert)
+                band->setAttribute ("invert", true);
         }
         return xml;
     }
@@ -169,6 +202,7 @@ namespace pr7s
         e.highCutSlope = xml.getIntAttribute ("highCutSlope", e.highCutSlope);
         e.preGainDb = xml.getDoubleAttribute ("preGain");
         e.phaseInvert = xml.getBoolAttribute ("phase");
+        e.outputDb = xml.getDoubleAttribute ("output", 0.0);
         auto i = 0;
         for (auto* band : xml.getChildWithTagNameIterator ("Band"))
         {
@@ -176,7 +210,9 @@ namespace pr7s
                 break;
             auto& b = e.bands[(size_t) i++];
             b.on = band->getBoolAttribute ("on");
-            b.type = (EqBand::Type) juce::jlimit (0, 4, band->getIntAttribute ("type", (int) b.type));
+            b.type = (EqBand::Type) juce::jlimit (0, 5, band->getIntAttribute ("type", (int) b.type));
+            b.slope = band->getIntAttribute ("slope", 12);
+            b.invert = band->getBoolAttribute ("invert");
             b.gainDb = band->getDoubleAttribute ("gain", b.gainDb);
             b.frequency = band->getDoubleAttribute ("frequency", b.frequency);
             b.q = band->getDoubleAttribute ("q", b.q);
@@ -195,9 +231,10 @@ namespace pr7s
     {
         const auto w = 2.0 * pi * safeFrequency (b.frequency, rate) / rate;
         const auto c = std::cos (w), s = std::sin (w);
-        const auto q = juce::jmax (ChannelEq::minQ, b.q);
+        // (0.46.0: a Notch is a Peak eight times narrower.)
+        const auto q = juce::jmax (ChannelEq::minQ, b.q) * (b.type == EqBand::Type::notch ? 8.0 : 1.0);
         const auto alpha = s / (2.0 * q);
-        const auto a = std::pow (10.0, b.gainDb / 40.0);
+        const auto a = std::pow (10.0, b.playedGainDb() / 40.0);
         const auto root = 2.0 * std::sqrt (a) * alpha;
         switch (b.type)
         {
@@ -209,6 +246,7 @@ namespace pr7s
                                    (a + 1) - (a - 1) * c + root, 2 * ((a - 1) - (a + 1) * c), (a + 1) - (a - 1) * c - root);
             case EqBand::Type::lowCut:   return cut (false, b.frequency, q, rate);
             case EqBand::Type::highCut:  return cut (true, b.frequency, q, rate);
+            case EqBand::Type::notch:
             case EqBand::Type::parametric:
             default:
                 return normalised (1 + alpha * a, -2 * c, 1 - alpha * a, 1 + alpha / a, -2 * c, 1 - alpha / a);
@@ -226,9 +264,43 @@ namespace pr7s
         if (e.highCutOn)
             d.numPre = addCut (d.pre, d.numPre, true, e.highCut, e.highCutSlope, rate);
         if (! e.bypass)
+        {
             for (const auto& b : e.bands)
-                if (b.on && d.numEq < EqDesign::maxStages)
-                    d.eq[(size_t) d.numEq++] = bandFilter (b, rate);
+                if (b.on)
+                    d.numEq = addBand (d.eq, d.numEq, b, rate);
+            d.eqGain = (float) juce::Decibels::decibelsToGain (e.outputDb);
+        }
+        return d;
+    }
+
+    int addBand (std::array<Biquad, EqDesign::maxStages>& stages, int count, const EqBand& b, double rate)
+    {
+        if (b.isCut())
+            return addCut (stages, count, b.type == EqBand::Type::highCut, b.frequency, b.slope, rate,
+                           juce::jmax (0.1, b.q / 0.70710678));
+        if (count < EqDesign::maxStages)
+            stages[(size_t) count++] = bandFilter (b, rate);
+        return count;
+    }
+
+    EqDesign listenDesign (const EqBand& b, double rate)
+    {
+        EqDesign d;
+        rate = juce::jmax (8000.0, rate);
+        using T = EqBand::Type;
+        if (b.type == T::lowShelf || b.type == T::lowCut)
+            d.numEq = addCut (d.eq, 0, true, b.frequency, 24, rate);    // under it
+        else if (b.type == T::highShelf || b.type == T::highCut)
+            d.numEq = addCut (d.eq, 0, false, b.frequency, 24, rate);   // over it
+        else
+        {
+            // A band pass (0 dB at the centre) as wide as the band.
+            const auto w = 2.0 * pi * safeFrequency (b.frequency, rate) / rate;
+            const auto q = juce::jlimit (0.5, 40.0, b.q * (b.type == T::notch ? 8.0 : 1.0));
+            const auto alpha = std::sin (w) / (2.0 * q), c = std::cos (w);
+            d.eq[0] = normalised (alpha, 0.0, -alpha, 1.0 + alpha, -2.0 * c, 1.0 - alpha);
+            d.numEq = 1;
+        }
         return d;
     }
 
@@ -237,7 +309,7 @@ namespace pr7s
         std::complex<double> h { 1.0, 0.0 };
         for (int i = 0; i < d.numEq; ++i)
             h *= d.eq[(size_t) i].response (frequency, rate);
-        auto gain = std::abs (h);
+        auto gain = std::abs (h) * d.eqGain;
         if (withPre)
         {
             std::complex<double> p { 1.0, 0.0 };
@@ -302,10 +374,14 @@ namespace pr7s
 
     void EqProcessor::processEq (float* const* channels, int numChannels, int numSamples)
     {
-        if (design.numEq == 0)
+        if (design.numEq == 0 && design.eqGain == 1.0f)
             return;
         for (int c = 0; c < juce::jmin (2, numChannels); ++c)
+        {
             run (design.eq, design.numEq, eqState[(size_t) c], channels[c], numSamples);
+            if (design.eqGain != 1.0f)
+                juce::FloatVectorOperations::multiply (channels[c], design.eqGain, numSamples);
+        }
     }
 
     std::optional<double> parseFrequency (const juce::String& raw)
@@ -358,11 +434,12 @@ namespace pr7s
     {
         switch (t)
         {
-            case EqBand::Type::parametric: return "Parametric";
+            case EqBand::Type::parametric: return "Peak";
             case EqBand::Type::lowShelf:   return "Low Shelf";
             case EqBand::Type::highShelf:  return "High Shelf";
-            case EqBand::Type::lowCut:     return "Low Cut";
-            case EqBand::Type::highCut:    return "High Cut";
+            case EqBand::Type::lowCut:     return "Cut";
+            case EqBand::Type::highCut:    return "Cut";
+            case EqBand::Type::notch:      return "Notch";
         }
         return {};
     }

@@ -16,20 +16,33 @@
 // EQ, then the fader (so pre-fader sends hear the EQ). The filters are the standard "audio EQ
 // cookbook" biquads (R. Bristow-Johnson), the cuts Butterworth. The bands' starting frequencies
 // and shapes are our choice.
+//
+// Since 0.46.0 (the owner asked: as the other DAW's Frequency 2, four bands of it) every band can
+// be Low Shelf, Peak, High Shelf or Notch; band 1 also a low Cut and band 4 a high Cut, each 6,
+// 12, 24, 48 or 96 dB per octave. Q is the width of a Peak or Notch, the dip and bump at a
+// shelf's corner (above 0.71), and a Cut's resonance (none for Cut 6). Each band can invert its
+// gain; the EQ has an Output level. The type numbers stayed (parametric is the Peak), so songs
+// from 0.43.0 on sound as they did (their cuts were 12 dB per octave).
 namespace pr7s
 {
     struct EqBand
     {
-        enum class Type { parametric, lowShelf, highShelf, lowCut, highCut };
+        // (parametric = Peak; the numbers are what songs store)
+        enum class Type { parametric, lowShelf, highShelf, lowCut, highCut, notch };
         bool on = false;
         Type type = Type::parametric;
         double gainDb = 0.0;      // +-24 (not for cuts)
         double frequency = 1000.0;
         double q = 1.0;
+        int slope = 12;           // (0.46.0) a cut's: 6, 12, 24, 48 or 96 dB per octave
+        bool invert = false;      // (0.46.0) Invert Gain: the gain plays the other way
 
+        bool isCut() const noexcept { return type == Type::lowCut || type == Type::highCut; }
+        double playedGainDb() const noexcept { return invert ? -gainDb : gainDb; }
         bool operator== (const EqBand& o) const noexcept
         {
-            return on == o.on && type == o.type && gainDb == o.gainDb && frequency == o.frequency && q == o.q;
+            return on == o.on && type == o.type && gainDb == o.gainDb && frequency == o.frequency && q == o.q
+                && slope == o.slope && invert == o.invert;
         }
     };
 
@@ -42,12 +55,17 @@ namespace pr7s
         int lowCutSlope = 12, highCutSlope = 12;   // dB per octave: 6, 12, 24, 36, 48
         double preGainDb = 0.0;
         bool phaseInvert = false;
+        double outputDb = 0.0;   // (0.46.0) the EQ's Output, after its bands (+-24)
 
         static constexpr double minFrequency = 20.0, maxFrequency = 20000.0, minHighCut = 50.0;
         static constexpr double maxGainDb = 24.0, minQ = 0.1, maxQ = 12.0;
-        static const std::array<int, 5>& slopes();   // 6 12 24 36 48
+        static const std::array<int, 5>& slopes();   // the Pre's cuts: 6 12 24 36 48
+        static const std::array<int, 5>& bandSlopes();   // (0.46.0) a band's cut: 6 12 24 48 96
         static std::array<EqBand, 4> defaultBands(); // low shelf 100 Hz, 500 Hz, 2 kHz, high shelf 8 kHz (all off)
-        static bool canBe (int band, EqBand::Type);  // bands 2 and 3 only parametric
+        static bool canBe (int band, EqBand::Type);  // cuts on bands 1 and 4 only
+        // (0.46.0) The shapes a band offers: Low Shelf, Peak, High Shelf, Notch, and band 1 a low
+        // Cut, band 4 a high Cut.
+        static std::vector<EqBand::Type> typesFor (int band);
 
         ChannelEq limited() const;                   // every value in its range, types allowed
         bool isFlat() const;                         // nothing that changes the sound
@@ -70,13 +88,18 @@ namespace pr7s
     // left out), at most `maxStages` each.
     struct EqDesign
     {
-        static constexpr int maxStages = 8;
+        static constexpr int maxStages = 36;   // (0.46.0: four cuts of 96 dB are 32)
         std::array<Biquad, maxStages> pre {}, eq {};
         int numPre = 0, numEq = 0;
         float preGain = 1.0f;   // the input gain, with the phase's sign
+        float eqGain = 1.0f;    // (0.46.0) the Output, after the bands (not when bypassed)
     };
     EqDesign designEq (const ChannelEq&, double rate);
-    Biquad bandFilter (const EqBand&, double rate);
+    Biquad bandFilter (const EqBand&, double rate);   // one stage (a cut: its first; designEq makes them all)
+    int addBand (std::array<Biquad, EqDesign::maxStages>&, int count, const EqBand&, double rate);   // (0.46.0) its stages
+    // (0.46.0) Auto Listen: the stretch a band works on, alone (a band pass round a Peak or Notch,
+    // a low pass under a Low Shelf or low Cut's frequency, a high pass over a High Shelf or high Cut's).
+    EqDesign listenDesign (const EqBand&, double rate);
 
     // The level at a frequency (dB), as the design plays it: the EQ, and the Pre's cuts and gain when asked.
     double eqResponseDb (const EqDesign&, double frequency, double rate, bool withPre = true);
@@ -103,5 +126,5 @@ namespace pr7s
     // (middle C = C3, A3 = 440 Hz, as the manual); none when it can't be read.
     std::optional<double> parseFrequency (const juce::String&);
     juce::String frequencyText (double hz);   // "440 Hz", "1.20 kHz"
-    juce::String bandTypeName (EqBand::Type);
+    juce::String bandTypeName (EqBand::Type);   // "Peak", "Low Shelf", "Notch", "Cut"...
 }

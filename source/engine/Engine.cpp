@@ -1056,6 +1056,7 @@ namespace pr7s
         runInserts (track->inserts, sound, numSamples, 0, track->preFader, track->effectMidi);
         if (! track->frozen)
             track->eq.processEq (sound.getArrayOfWritePointers(), sound.getNumChannels(), numSamples);
+        afterEq (track->id, sound.getArrayOfWritePointers(), sound.getNumChannels(), numSamples);
         // The sends before the fader take the sound as it is here: kept for them (they're added
         // into the FX channels afterwards, on the audio thread, in the tracks' order).
         const auto preSends = std::any_of (track->sends.begin(), track->sends.end(), [] (const auto& send) { return send.preFader && send.target != 0; });
@@ -1424,6 +1425,7 @@ namespace pr7s
         masterEq.processPre (master.getArrayOfWritePointers(), master.getNumChannels(), numSamples);
         runInserts (masterInserts, master, numSamples, 0, masterPreFader, effectMidi);
         masterEq.processEq (master.getArrayOfWritePointers(), master.getNumChannels(), numSamples);
+        afterEq (masterBus, master.getArrayOfWritePointers(), master.getNumChannels(), numSamples);
         const auto outputs = juce::jmin (2, output.getNumChannels());
         if (masterAutomated)
         {
@@ -1784,5 +1786,68 @@ namespace pr7s
         for (auto& slot : masterInserts)
             if (slot.plugin != nullptr)
                 slot.plugin->releaseResources();
+    }
+
+    //==========================================================================
+    // (0.46.0) The EQ window's spectrum and Auto Listen.
+    void Engine::afterEq (int busId, float* const* channels, int numChannels, int numSamples) noexcept
+    {
+        if (numChannels <= 0 || numSamples <= 0)
+            return;
+        if (listenBus.load() == busId)
+            listenEq.processEq (channels, numChannels, numSamples);
+        if (spectrumBus.load() != busId)
+            return;
+        // Mono into the ring (a full ring: the oldest of this block left out; the screen reads often).
+        const auto scope = spectrumFifo.write (juce::jmin (numSamples, spectrumFifo.getFreeSpace()));
+        const auto mono = [&] (int i)
+        {
+            auto v = channels[0][i];
+            if (numChannels > 1)
+                v = 0.5f * (v + channels[1][i]);
+            return v;
+        };
+        const auto skip = numSamples - (scope.blockSize1 + scope.blockSize2);
+        for (int i = 0; i < scope.blockSize1; ++i)
+            spectrumRing[(size_t) (scope.startIndex1 + i)] = mono (skip + i);
+        for (int i = 0; i < scope.blockSize2; ++i)
+            spectrumRing[(size_t) (scope.startIndex2 + i)] = mono (skip + scope.blockSize1 + i);
+    }
+
+    int Engine::readSpectrum (std::vector<float>& into)
+    {
+        const auto ready = spectrumFifo.getNumReady();
+        if (ready <= 0 || into.empty())
+            return 0;
+        const auto take = juce::jmin (ready, (int) into.size());
+        // (More than fits: the oldest dropped.)
+        if (ready > take)
+        {
+            const auto drop = spectrumFifo.read (ready - take);
+            juce::ignoreUnused (drop);
+        }
+        const auto scope = spectrumFifo.read (take);
+        // Shift what's kept to the left; the new samples at the end.
+        std::move (into.begin() + take, into.end(), into.begin());
+        auto at = (int) into.size() - take;
+        for (int i = 0; i < scope.blockSize1; ++i)
+            into[(size_t) at++] = spectrumRing[(size_t) (scope.startIndex1 + i)];
+        for (int i = 0; i < scope.blockSize2; ++i)
+            into[(size_t) at++] = spectrumRing[(size_t) (scope.startIndex2 + i)];
+        return take;
+    }
+
+    void Engine::setListen (int busId, const EqDesign& design)
+    {
+        const juce::ScopedLock sl (lock);
+        if (listenBus.load() != busId)
+            listenEq.reset();
+        listenEq.setDesign (design);
+        listenBus = busId;
+    }
+
+    void Engine::clearListen()
+    {
+        listenBus = -1;
     }
 }

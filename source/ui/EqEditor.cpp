@@ -23,6 +23,12 @@ namespace
 
     bool isCut (pr7s::EqBand::Type t) { return t == pr7s::EqBand::Type::lowCut || t == pr7s::EqBand::Type::highCut; }
 
+    // A band's type as its key shows it: "PEAK", "LOW SHELF", "CUT 24".
+    juce::String typeText (const pr7s::EqBand& b)
+    {
+        return b.isCut() ? "CUT " + juce::String (b.slope) : pr7s::bandTypeName (b.type).toUpperCase();
+    }
+
     // "D6 +12": the note nearest a frequency and the cents off it (middle C = C3).
     juce::String noteOf (double hz)
     {
@@ -51,6 +57,7 @@ namespace
         s.setSkewFactorFromMidPoint (std::sqrt (low * high));
         s.textFromValueFunction = [] (double v) { return pr7s::frequencyText (v); };
         s.valueFromTextFunction = [&s] (const juce::String& t) { return pr7s::parseFrequency (t).value_or (s.getValue()); };
+        s.updateText();   // (0.46.0: the low cut's box read "20.0000000" until moved)
     }
 
     void gainBar (juce::Slider& s)
@@ -60,6 +67,7 @@ namespace
         s.textFromValueFunction = [] (double v) { return dbText (v); };
         s.valueFromTextFunction = [] (const juce::String& t) { return t.retainCharacters ("+-0123456789.").getDoubleValue(); };
         s.setDoubleClickReturnValue (true, 0.0, juce::ModifierKeys::commandModifier);
+        s.updateText();
     }
 
     void key (juce::TextButton& b, const juce::String& tip = {})
@@ -77,15 +85,94 @@ EqCurve::EqCurve (pr7s::Studio& s, int busId, bool c) : studio (s), bus (busId),
     shown = current();
     setTooltip (compact ? "The EQ's curve: click to add a band there, drag a point (Ctrl: gain only, Alt: frequency only, Shift: Q), double-click a point to switch it off"
                         : juce::String());
-    startTimerHz (15);
+    startTimerHz (compact ? 15 : 30);
+}
+
+EqCurve::~EqCurve()
+{
+    listenTo (-1);
+    if (tapping && studio.getEngine().getSpectrumBus() == bus)
+        studio.getEngine().setSpectrumBus (-1);
 }
 
 void EqCurve::setBus (int busId)
 {
+    listenTo (-1);
+    if (tapping && studio.getEngine().getSpectrumBus() == bus)
+        studio.getEngine().setSpectrumBus (-1);
+    tapping = false;
     bus = busId;
     dragging = -1;
+    keyDragging = -1;
     shown = current();
+    levels.clear();
+    std::fill (heard.begin(), heard.end(), 0.0f);
     repaint();
+}
+
+void EqCurve::setKeysShown (bool on)
+{
+    showKeys = on;
+    repaint();
+}
+
+void EqCurve::setSpectrumShown (bool on)
+{
+    showSpectrum = on;
+    if (! on && tapping && studio.getEngine().getSpectrumBus() == bus)
+        studio.getEngine().setSpectrumBus (-1), tapping = false;
+    repaint();
+}
+
+double EqCurve::keyFrequency (int midi)
+{
+    return 440.0 * std::pow (2.0, (midi - 69) / 12.0);
+}
+
+void EqCurve::listenTo (int band)
+{
+    auto& engine = studio.getEngine();
+    if (band < 0)
+    {
+        if (engine.getListenBus() == bus)
+            engine.clearListen();
+        return;
+    }
+    const auto eq = current();
+    engine.setListen (bus, pr7s::listenDesign (eq.bands[(size_t) band], engine.getSampleRate() > 0.0 ? engine.getSampleRate() : 48000.0));
+}
+
+void EqCurve::updateSpectrum()
+{
+    // The channel's sound since last time, onto the end of the last fftSize samples; a Hann
+    // window, its spectrum; each bin's level falls 1 dB a frame at most (a peak shows a moment).
+    auto& engine = studio.getEngine();
+    spectrumRate = engine.getSampleRate() > 0.0 ? engine.getSampleRate() : 48000.0;
+    if (engine.readSpectrum (heard) <= 0 && ! levels.empty())
+    {
+        for (auto& l : levels)
+            l = juce::jmax (-120.0f, l - 1.0f);
+        return;
+    }
+    std::fill (fftData.begin(), fftData.end(), 0.0f);
+    for (int i = 0; i < fftSize; ++i)
+        fftData[(size_t) i] = heard[(size_t) i] * (0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * (float) i / (float) (fftSize - 1)));
+    fft.performFrequencyOnlyForwardTransform (fftData.data(), true);
+    levels.resize ((size_t) fftSize / 2, -120.0f);
+    for (int b = 0; b < fftSize / 2; ++b)
+    {
+        // (A full-scale sine reads 0 dB: the Hann window halves the sum, the transform counts both halves.)
+        const auto db = juce::Decibels::gainToDecibels (fftData[(size_t) b] * 4.0f / (float) fftSize, -120.0f);
+        levels[(size_t) b] = juce::jmax (db, levels[(size_t) b] - 1.0f);
+    }
+}
+
+float EqCurve::spectrumLevelAt (double hz) const
+{
+    if (levels.empty())
+        return -120.0f;
+    const auto bin = juce::jlimit (0, (int) levels.size() - 1, juce::roundToInt (hz / spectrumRate * fftSize));
+    return levels[(size_t) bin];
 }
 
 pr7s::ChannelEq EqCurve::current() const
@@ -104,7 +191,20 @@ void EqCurve::apply (const pr7s::ChannelEq& e, bool undoable)
 void EqCurve::timerCallback()
 {
     if (! isShowing())
+    {
+        if (tapping && studio.getEngine().getSpectrumBus() == bus)
+            studio.getEngine().setSpectrumBus (-1);
+        tapping = false;
         return;
+    }
+    if (! compact && showSpectrum)
+    {
+        if (studio.getEngine().getSpectrumBus() != bus)
+            studio.getEngine().setSpectrumBus (bus);   // (one window shows a spectrum: this one)
+        tapping = true;
+        updateSpectrum();
+        repaint (plotArea().getSmallestIntegerContainer());
+    }
     if (const auto now = current(); ! (now == shown))
     {
         shown = now;
@@ -118,9 +218,26 @@ juce::Rectangle<float> EqCurve::plotArea() const
     if (compact)
         return r.reduced (2.0f, 4.0f);
     r.removeFromTop (20.0f);
-    r.removeFromBottom (16.0f);
+    r.removeFromBottom (16.0f + (showKeys ? (float) keysHeight + 4.0f : 0.0f));
     r.removeFromLeft (34.0f);
     return r.reduced (2.0f, 6.0f);
+}
+
+juce::Rectangle<float> EqCurve::keysArea() const
+{
+    if (compact || ! showKeys)
+        return {};
+    const auto a = plotArea();
+    return { a.getX(), (float) getHeight() - (float) keysHeight - 2.0f, a.getWidth(), (float) keysHeight };
+}
+
+juce::Rectangle<float> EqCurve::keyMark (int band) const
+{
+    const auto k = keysArea();
+    if (k.isEmpty())
+        return {};
+    const auto x = xForFrequency (current().bands[(size_t) band].frequency);
+    return { x - 5.0f, k.getY() - 1.0f, 10.0f, 9.0f };
 }
 
 float EqCurve::xForFrequency (double hz) const
@@ -153,7 +270,7 @@ juce::Point<float> EqCurve::bandPoint (int band) const
 {
     const auto eq = current();   // (the studio's now: an undo may have moved it since the last repaint)
     const auto& b = eq.bands[(size_t) band];
-    return { xForFrequency (b.frequency), yForDb (isCut (b.type) ? 0.0 : b.gainDb) };
+    return { xForFrequency (b.frequency), yForDb (b.isCut() ? 0.0 : b.playedGainDb()) };
 }
 
 int EqCurve::bandAt (juce::Point<float> p) const
@@ -201,6 +318,37 @@ void EqCurve::paint (juce::Graphics& g)
             g.setColour (ParagonColours::textDim);
             g.drawText ((db > 0 ? "+" : "") + juce::String (db), juce::Rectangle<float> (0.0f, y - 7.0f, 32.0f, 14.0f), juce::Justification::centredRight, false);
         }
+    }
+
+    // (0.46.0) The channel's sound after the EQ, behind the curve: -90 to 0 dB over the height.
+    if (! compact && showSpectrum && ! levels.empty())
+    {
+        juce::Path spectrum;
+        const auto yOfLevel = [&] (float db) { return a.getBottom() - juce::jlimit (0.0f, 1.0f, (db + 90.0f) / 90.0f) * a.getHeight(); };
+        spectrum.startNewSubPath (a.getX(), a.getBottom());
+        for (auto x = a.getX(); x <= a.getRight() + 0.5f; x += 2.0f)
+        {
+            // The loudest bin between this column and the next (the high end has many per column).
+            const auto exact = frequencyForX (x) / spectrumRate * fftSize;
+            const auto lowBin = juce::jlimit (1, (int) levels.size() - 2, (int) exact);
+            const auto highBin = juce::jlimit (lowBin, (int) levels.size() - 1, (int) (frequencyForX (x + 2.0f) / spectrumRate * fftSize));
+            auto loudest = -120.0f;
+            if (highBin == lowBin)
+            {
+                // (The low end: a bin spans many pixels; between two bins, by how far along.)
+                const auto along = (float) juce::jlimit (0.0, 1.0, exact - lowBin);
+                loudest = levels[(size_t) lowBin] + along * (levels[(size_t) lowBin + 1] - levels[(size_t) lowBin]);
+            }
+            for (int b = lowBin; b <= highBin && highBin > lowBin; ++b)
+                loudest = juce::jmax (loudest, levels[(size_t) b]);
+            spectrum.lineTo (x, yOfLevel (loudest));
+        }
+        spectrum.lineTo (a.getRight(), a.getBottom());
+        spectrum.closeSubPath();
+        g.setColour (juce::Colour (0xfff4eeea).withAlpha (0.07f));
+        g.fillPath (spectrum);
+        g.setColour (juce::Colour (0xfff4eeea).withAlpha (0.22f));
+        g.strokePath (spectrum, juce::PathStrokeType (1.0f));
     }
 
     // The curve as it plays (EQ and Pre); the EQ alone in grey when bypassed.
@@ -259,6 +407,46 @@ void EqCurve::paint (juce::Graphics& g)
         }
     }
 
+    // (0.46.0) The keyboard under it (C-1 to C9 as the scale has room), each band's mark on it.
+    if (const auto k = keysArea(); ! k.isEmpty())
+    {
+        g.setColour (juce::Colour (0xfff4eeea).withAlpha (0.85f));
+        g.fillRect (k);
+        for (int midi = 12; midi <= 136; ++midi)
+        {
+            const auto pc = midi % 12;
+            const auto black = pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10;
+            const auto x1 = xForFrequency (keyFrequency (midi) / std::pow (2.0, 1.0 / 24.0)), x2 = xForFrequency (keyFrequency (midi) * std::pow (2.0, 1.0 / 24.0));
+            if (x2 < k.getX() || x1 > k.getRight())
+                continue;
+            if (black)
+            {
+                g.setColour (juce::Colour (0xff120d10));
+                g.fillRect (juce::Rectangle<float> (x1, k.getY(), juce::jmax (1.0f, x2 - x1), k.getHeight() * 0.6f));
+            }
+            else if (pc == 0 || pc == 5)
+            {
+                g.setColour (juce::Colour (0xff120d10).withAlpha (0.35f));
+                g.fillRect (juce::Rectangle<float> (x1, k.getY(), 1.0f, k.getHeight()));
+                if (pc == 0 && x2 - x1 > 1.0f)
+                {
+                    g.setFont (interFont (8.0f));
+                    g.drawText ("C" + juce::String (midi / 12 - 2), juce::Rectangle<float> (x1 + 1.0f, k.getBottom() - 10.0f, 22.0f, 10.0f), juce::Justification::centredLeft, false);
+                }
+            }
+        }
+        for (int i = 0; i < 4; ++i)
+            if (shown.bands[(size_t) i].on)
+            {
+                const auto m = keyMark (i);
+                juce::Path mark;
+                mark.addTriangle (m.getX(), m.getY(), m.getRight(), m.getY(), m.getCentreX(), m.getBottom());
+                g.setColour (bandColour (i));
+                g.fillPath (mark);
+                g.fillRect (juce::Rectangle<float> (m.getCentreX() - 0.75f, m.getBottom(), 1.5f, k.getBottom() - m.getBottom()));
+            }
+    }
+
     // Where the mouse is: frequency, note, level (the manual's cross-hair readout).
     if (! compact && hover.x >= a.getX() && a.contains (hover))
     {
@@ -298,6 +486,21 @@ void EqCurve::mouseDown (const juce::MouseEvent& e)
             EqEditor::showPresetMenu (studio, bus, this);
         return;
     }
+    // (0.46.0) The keyboard: a band's mark dragged (the one nearest the click within 8 px).
+    if (const auto k = keysArea(); ! k.isEmpty() && e.position.y >= k.getY() - 2.0f)
+    {
+        auto best = -1;
+        auto bestDistance = 8.0f;
+        for (int i = 0; i < 4; ++i)
+            if (shown.bands[(size_t) i].on)
+                if (const auto d = std::abs (keyMark (i).getCentreX() - e.position.x); d < bestDistance)
+                    best = i, bestDistance = d;
+        keyDragging = best;
+        atDown = shown;
+        if (best >= 0 && autoListen)
+            listenTo (best);
+        return;
+    }
     auto band = bandAt (e.position);
     auto eq = shown;
     if (band < 0)
@@ -322,17 +525,28 @@ void EqCurve::mouseDown (const juce::MouseEvent& e)
         auto& b = eq.bands[(size_t) band];
         b.on = true;
         b.frequency = hz;
-        if (! isCut (b.type))
-            b.gainDb = std::round (dbForY (e.position.y) * 10.0) / 10.0;
+        if (! b.isCut())
+            b.gainDb = std::round ((b.invert ? -1.0 : 1.0) * dbForY (e.position.y) * 10.0) / 10.0;
         apply (eq, false);
     }
     dragging = band;
     atDown = current();
+    if (autoListen && band >= 0)
+        listenTo (band);
     repaint();
 }
 
 void EqCurve::mouseDrag (const juce::MouseEvent& e)
 {
+    if (keyDragging >= 0)
+    {
+        auto eq = atDown;
+        eq.bands[(size_t) keyDragging].frequency = frequencyForX (e.position.x);
+        apply (eq, false);
+        if (autoListen)
+            listenTo (keyDragging);
+        return;
+    }
     if (dragging < 0)
         return;
     auto eq = atDown;
@@ -343,18 +557,47 @@ void EqCurve::mouseDrag (const juce::MouseEvent& e)
     {
         if (! e.mods.isCommandDown())
             b.frequency = frequencyForX (e.position.x);
-        if (! e.mods.isAltDown() && ! isCut (b.type))
-            b.gainDb = std::round (dbForY (e.position.y) * 10.0) / 10.0;
+        if (! e.mods.isAltDown() && ! b.isCut())
+            b.gainDb = std::round ((b.invert ? -1.0 : 1.0) * dbForY (e.position.y) * 10.0) / 10.0;   // (inverted: the point stays under the mouse)
     }
     apply (eq, false);
+    if (autoListen)
+        listenTo (dragging);
 }
 
 void EqCurve::mouseUp (const juce::MouseEvent&)
 {
+    if (keyDragging >= 0)
+    {
+        // Let go on the keyboard: exactly the nearest key's frequency (the manual's).
+        auto eq = current();
+        auto& b = eq.bands[(size_t) keyDragging];
+        b.frequency = juce::jlimit (pr7s::ChannelEq::minFrequency, pr7s::ChannelEq::maxFrequency,
+                                    keyFrequency (juce::roundToInt (69.0 + 12.0 * std::log2 (b.frequency / 440.0))));
+        apply (eq, true);
+        keyDragging = -1;
+        listenTo (-1);
+        return;
+    }
     if (dragging >= 0)
         apply (current(), true);   // (the drag: one undo step)
     dragging = -1;
+    listenTo (-1);
     repaint();
+}
+
+void EqCurve::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
+{
+    // (0.46.0, the manual's) The wheel over a point: its Q (up narrower). One undo step a turn.
+    const auto band = bandAt (e.position);
+    if (band < 0 || wheel.deltaY == 0.0f)
+        return;
+    auto eq = current();
+    auto& b = eq.bands[(size_t) band];
+    if (b.isCut() && b.slope == 6)
+        return;
+    b.q = juce::jlimit (pr7s::ChannelEq::minQ, pr7s::ChannelEq::maxQ, b.q * std::pow (2.0, wheel.deltaY * (wheel.isReversed ? -1.0 : 1.0) * 0.5));
+    apply (eq, true);
 }
 
 void EqCurve::mouseDoubleClick (const juce::MouseEvent& e)
@@ -377,9 +620,13 @@ struct EqEditor::BandColumn final : public juce::Component
         on.setButtonText ("BAND " + juce::String (i + 1));
         on.onClick = [this] { editor.setBandOn (index, ! editor.shown.bands[(size_t) index].on); };
         addAndMakeVisible (on);
-        key (type, pr7s::ChannelEq::canBe (index, pr7s::EqBand::Type::lowShelf) ? "Its shape: parametric, shelf or cut"
-                                                                                : "Bands 2 and 3 are always parametric");
-        type.getProperties().set (ParagonLookAndFeel::menuArrowProperty, pr7s::ChannelEq::canBe (index, pr7s::EqBand::Type::lowShelf));
+        key (type, index == 0 ? "Its shape: Low Shelf, Peak, High Shelf, Notch, or a low Cut (6 to 96 dB an octave)"
+                   : index == 3 ? "Its shape: Low Shelf, Peak, High Shelf, Notch, or a high Cut (6 to 96 dB an octave)"
+                                : "Its shape: Low Shelf, Peak, High Shelf or Notch");
+        type.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+        key (invertKey, "Invert Gain: a boost becomes the same cut, and the other way round");
+        invertKey.onClick = [this] { editor.setBandInvert (index, ! editor.shown.bands[(size_t) index].invert); };
+        addAndMakeVisible (invertKey);
         type.onClick = [this] { showTypeMenu(); };
         addAndMakeVisible (type);
         gainBar (gain);
@@ -391,7 +638,8 @@ struct EqEditor::BandColumn final : public juce::Component
         q.setSkewFactorFromMidPoint (1.0);
         q.textFromValueFunction = [] (double v) { return "Q " + juce::String (v, 2); };
         q.valueFromTextFunction = [] (const juce::String& t) { return t.retainCharacters ("0123456789.").getDoubleValue(); };
-        q.setTooltip ("How wide: higher is narrower");
+        q.setTooltip ("Peak and Notch: how wide (higher is narrower). Shelves: over 0.71, a dip and a bump at the corner. "
+                      "Cuts: a resonance at the frequency (none for Cut 6). The wheel over a point on the curve sets it too");
         for (auto* s : { &gain, &frequency, &q })
         {
             s->onValueChange = [this, s] { sent (*s, ! s->isMouseButtonDown()); };
@@ -411,19 +659,23 @@ struct EqEditor::BandColumn final : public juce::Component
 
     void showTypeMenu()
     {
-        if (! pr7s::ChannelEq::canBe (index, pr7s::EqBand::Type::lowShelf))
-            return;
-        using T = pr7s::EqBand::Type;
+        // (0.46.0) Low Shelf, Peak, High Shelf, Notch; band 1 and 4 also their Cut and its slope.
         juce::PopupMenu menu;
-        const auto now = editor.shown.bands[(size_t) index].type;
-        const auto shelf = index == 0 ? T::lowShelf : T::highShelf;
-        const auto cutType = index == 0 ? T::lowCut : T::highCut;
-        for (const auto t : { T::parametric, shelf, cutType })
-            menu.addItem ((int) t + 1, pr7s::bandTypeName (t), true, t == now);
+        const auto& now = editor.shown.bands[(size_t) index];
+        for (const auto t : pr7s::ChannelEq::typesFor (index))
+            if (t == pr7s::EqBand::Type::lowCut || t == pr7s::EqBand::Type::highCut)
+                for (const auto slope : pr7s::ChannelEq::bandSlopes())
+                    menu.addItem (1000 + slope, "Cut " + juce::String (slope) + " dB/oct", true, now.isCut() && now.slope == slope);
+            else
+                menu.addItem ((int) t + 1, pr7s::bandTypeName (t), true, t == now.type);
         menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&type),
                             [safe = juce::Component::SafePointer<BandColumn> (this)] (int chosen)
                             {
-                                if (safe != nullptr && chosen > 0)
+                                if (safe == nullptr || chosen <= 0)
+                                    return;
+                                if (chosen > 1000)
+                                    safe->editor.setBandCut (safe->index, chosen - 1000);
+                                else
                                     safe->editor.setBandType (safe->index, (pr7s::EqBand::Type) (chosen - 1));
                             });
     }
@@ -431,11 +683,14 @@ struct EqEditor::BandColumn final : public juce::Component
     void refresh (const pr7s::EqBand& b)
     {
         on.setToggleState (b.on, juce::dontSendNotification);
-        type.setButtonText (pr7s::bandTypeName (b.type).toUpperCase());
+        type.setButtonText (typeText (b));
         gain.setValue (b.gainDb, juce::dontSendNotification);
         frequency.setValue (b.frequency, juce::dontSendNotification);
         q.setValue (b.q, juce::dontSendNotification);
-        gain.setEnabled (! isCut (b.type));
+        gain.setEnabled (! b.isCut());
+        q.setEnabled (! (b.isCut() && b.slope == 6));
+        invertKey.setToggleState (b.invert, juce::dontSendNotification);
+        invertKey.setEnabled (! b.isCut());
         for (auto* s : { &gain, &frequency, &q })
             s->setAlpha (b.on ? 1.0f : 0.5f);
     }
@@ -453,14 +708,17 @@ struct EqEditor::BandColumn final : public juce::Component
         const auto row = [&r] { auto line = r.removeFromTop (28); r.removeFromTop (6); return line; };
         on.setBounds (row());
         type.setBounds (row());
-        gain.setBounds (row());
+        auto gainRow = row();
+        invertKey.setBounds (gainRow.removeFromRight (64));
+        gainRow.removeFromRight (6);
+        gain.setBounds (gainRow);
         frequency.setBounds (row());
         q.setBounds (row());
     }
 
     EqEditor& editor;
     int index;
-    juce::TextButton on, type;
+    juce::TextButton on, type, invertKey { "INVERT" };
     juce::Slider gain, frequency, q;
 };
 
@@ -502,7 +760,35 @@ EqEditor::EqEditor (pr7s::Studio& s, int busId) : studio (s), bus (busId), curve
                                 });
         };
     }
-    for (auto* k : { &bypassKey, &presetsKey, &lowCutKey, &highCutKey, &phaseKey, &lowSlopeKey, &highSlopeKey })
+    // (0.46.0) As the other DAW's Frequency 2: Auto Listen, the keyboard, the spectrum, Output.
+    key (listenKey, "Auto Listen: while you drag a band's point, the channel plays only what that band works on");
+    listenKey.onClick = [this] { setAutoListen (! listenKey.getToggleState()); };
+    key (keysKey, "The keyboard under the curve: each band's mark on it (drag it; let go and it's exactly that key)");
+    keysKey.onClick = [this] { setKeysShown (! keysKey.getToggleState()); };
+    key (spectrumKey, "The channel's sound after the EQ, behind the curve");
+    spectrumKey.onClick = [this] { setSpectrumShown (! spectrumKey.getToggleState()); };
+    gainBar (output);
+    output.setTooltip ("Output: the EQ's level after its bands (+-24 dB; Ctrl-click: 0)");
+    output.textFromValueFunction = [] (double v) { return "OUTPUT " + dbText (v); };
+    output.updateText();
+    output.onValueChange = [this] { change ([v = output.getValue()] (pr7s::ChannelEq& e) { e.outputDb = v; }, ! output.isMouseButtonDown()); };
+    output.onDragEnd = [this] { change ([] (pr7s::ChannelEq&) {}, true); };
+    addAndMakeVisible (output);
+    if (auto* settings = studio.getSettings())
+    {
+        listenKey.setToggleState (settings->getBoolValue ("eqAutoListen", false), juce::dontSendNotification);
+        keysKey.setToggleState (settings->getBoolValue ("eqKeys", true), juce::dontSendNotification);
+        spectrumKey.setToggleState (settings->getBoolValue ("eqSpectrum", true), juce::dontSendNotification);
+    }
+    else
+    {
+        keysKey.setToggleState (true, juce::dontSendNotification);
+        spectrumKey.setToggleState (true, juce::dontSendNotification);
+    }
+    curve.setAutoListen (listenKey.getToggleState());
+    curve.setKeysShown (keysKey.getToggleState());
+    curve.setSpectrumShown (spectrumKey.getToggleState());
+    for (auto* k : { &bypassKey, &presetsKey, &lowCutKey, &highCutKey, &phaseKey, &lowSlopeKey, &highSlopeKey, &listenKey, &keysKey, &spectrumKey })
         addAndMakeVisible (*k);
     frequencyBar (lowCutFreq, pr7s::ChannelEq::minFrequency, pr7s::ChannelEq::maxFrequency);
     frequencyBar (highCutFreq, pr7s::ChannelEq::minHighCut, pr7s::ChannelEq::maxFrequency);
@@ -562,6 +848,7 @@ void EqEditor::refresh()
     if (! lowCutFreq.isMouseButtonDown())  lowCutFreq.setValue (shown.lowCut, juce::dontSendNotification);
     if (! highCutFreq.isMouseButtonDown()) highCutFreq.setValue (shown.highCut, juce::dontSendNotification);
     if (! preGain.isMouseButtonDown())     preGain.setValue (shown.preGainDb, juce::dontSendNotification);
+    if (! output.isMouseButtonDown())      output.setValue (shown.outputDb, juce::dontSendNotification);
     lowCutFreq.setAlpha (shown.lowCutOn ? 1.0f : 0.5f);
     highCutFreq.setAlpha (shown.highCutOn ? 1.0f : 0.5f);
     for (int i = 0; i < bands.size(); ++i)
@@ -571,7 +858,10 @@ void EqEditor::refresh()
 
 void EqEditor::change (const std::function<void (pr7s::ChannelEq&)>& edit, bool undoable)
 {
-    auto eq = shown;
+    // (0.46.0) From the song's EQ as it is now, not what was last shown: an Undo just before a
+    // click came back with the click (the shown copy catches up only on the timer).
+    const auto* now = studio.getChannelEq (bus);
+    auto eq = now != nullptr ? *now : shown;
     edit (eq);
     studio.setChannelEq (bus, eq, undoable);
     refresh();
@@ -583,6 +873,45 @@ void EqEditor::setBandGain (int band, double db)            { change ([band, db]
 void EqEditor::setBandFrequency (int band, double hz)       { change ([band, hz] (pr7s::ChannelEq& e) { e.bands[(size_t) band].frequency = hz; e.bands[(size_t) band].on = true; }); }
 void EqEditor::setBandQ (int band, double q)                { change ([band, q] (pr7s::ChannelEq& e) { e.bands[(size_t) band].q = q; e.bands[(size_t) band].on = true; }); }
 void EqEditor::setBypass (bool on)                          { change ([on] (pr7s::ChannelEq& e) { e.bypass = on; }); }
+void EqEditor::setBandInvert (int band, bool on)            { change ([band, on] (pr7s::ChannelEq& e) { e.bands[(size_t) band].invert = on; e.bands[(size_t) band].on = true; }); }
+void EqEditor::setOutput (double db)                        { change ([db] (pr7s::ChannelEq& e) { e.outputDb = db; }); }
+
+void EqEditor::setBandCut (int band, int slope)
+{
+    if (band != 0 && band != 3)
+        return;
+    change ([band, slope] (pr7s::ChannelEq& e)
+    {
+        auto& b = e.bands[(size_t) band];
+        b.type = band == 0 ? pr7s::EqBand::Type::lowCut : pr7s::EqBand::Type::highCut;
+        b.slope = slope;
+        b.on = true;
+    });
+}
+
+void EqEditor::setAutoListen (bool on)
+{
+    listenKey.setToggleState (on, juce::dontSendNotification);
+    curve.setAutoListen (on);
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("eqAutoListen", on);
+}
+
+void EqEditor::setKeysShown (bool on)
+{
+    keysKey.setToggleState (on, juce::dontSendNotification);
+    curve.setKeysShown (on);
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("eqKeys", on);
+}
+
+void EqEditor::setSpectrumShown (bool on)
+{
+    spectrumKey.setToggleState (on, juce::dontSendNotification);
+    curve.setSpectrumShown (on);
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("eqSpectrum", on);
+}
 void EqEditor::setLowCut (bool on, double hz, int slope)    { change ([=] (pr7s::ChannelEq& e) { e.lowCutOn = on; e.lowCut = hz; e.lowCutSlope = slope; }); }
 void EqEditor::setHighCut (bool on, double hz, int slope)   { change ([=] (pr7s::ChannelEq& e) { e.highCutOn = on; e.highCut = hz; e.highCutSlope = slope; }); }
 void EqEditor::setPreGain (double db)                       { change ([db] (pr7s::ChannelEq& e) { e.preGainDb = db; }); }
@@ -647,7 +976,7 @@ void EqEditor::paint (juce::Graphics& g)
     g.fillRect (0, 0, getWidth(), 3);
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (18.0f));
-    g.drawText ("EQ: " + channelName (studio, bus).toUpperCase(), juce::Rectangle<int> (14, 6, getWidth() - 300, 30), juce::Justification::centredLeft, true);
+    g.drawText ("EQ: " + channelName (studio, bus).toUpperCase(), juce::Rectangle<int> (14, 6, juce::jmax (80, listenKey.getX() - 24), 30), juce::Justification::centredLeft, true);
     g.setColour (ParagonColours::textDim);
     g.setFont (ParagonLookAndFeel::titleFont (13.0f));
     g.drawText ("PRE", juce::Rectangle<int> (14, getHeight() - 44, 40, 36), juce::Justification::centredLeft, false);
@@ -660,6 +989,14 @@ void EqEditor::resized()
     presetsKey.setBounds (top.removeFromRight (110));
     top.removeFromRight (8);
     bypassKey.setBounds (top.removeFromRight (90));
+    top.removeFromRight (16);
+    output.setBounds (top.removeFromRight (170));
+    top.removeFromRight (16);
+    spectrumKey.setBounds (top.removeFromRight (96));
+    top.removeFromRight (6);
+    keysKey.setBounds (top.removeFromRight (60));
+    top.removeFromRight (6);
+    listenKey.setBounds (top.removeFromRight (110));
     area.removeFromTop (6);
     auto pre = area.removeFromBottom (36).reduced (0, 4);
     pre.removeFromLeft (44);

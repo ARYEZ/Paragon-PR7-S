@@ -1402,13 +1402,35 @@ TEST_CASE ("Snapshot: the channel EQ (0.43.0; PARAGON_SNAPSHOT_EQ=inspector for 
         pr7s::Studio studio (false);
         const auto id = studio.getProject().tracks[0].id;
         pr7s::ChannelEq eq;
-        eq.bands[0] = { true, T::lowShelf, 3.0, 90.0, 0.71 };
-        eq.bands[1] = { true, T::parametric, -4.5, 320.0, 1.6 };
+        // (0.46.0) A low cut 24 on band 1, a notch, a peak, a high shelf with its corner shaped (Q 1.8), Output -1.5 dB.
+        eq.bands[0] = { true, T::lowCut, 0.0, 70.0, 0.71 };
+        eq.bands[0].slope = 24;
+        eq.bands[1] = { true, T::notch, -9.0, 320.0, 1.6 };
         eq.bands[2] = { true, T::parametric, 2.5, 2500.0, 1.2 };
-        eq.bands[3] = { true, T::highShelf, 4.0, 9000.0, 0.71 };
-        eq.lowCutOn = true;
-        eq.lowCut = 40.0;
-        eq.lowCutSlope = 24;
+        eq.bands[3] = { true, T::highShelf, 4.0, 9000.0, 1.8 };
+        eq.outputDb = -1.5;
+        studio.setChannelEq (id, eq);
+        // A sound to show the spectrum: a few tones over a little noise, through the channel.
+        struct Mix final : TestPlugin
+        {
+            Mix() : TestPlugin (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)) { instrument = true; name = "Mix"; }
+            void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
+            {
+                for (int i = 0; i < buffer.getNumSamples(); ++i, ++n)
+                {
+                    auto v = 0.04f * (random.nextFloat() * 2.0f - 1.0f);
+                    for (const auto [hz, level] : { std::pair { 110.0, 0.3f }, std::pair { 220.0, 0.15f }, std::pair { 440.0, 0.12f },
+                                                    std::pair { 1320.0, 0.05f }, std::pair { 3300.0, 0.02f } })
+                        v += level * (float) std::sin (juce::MathConstants<double>::twoPi * hz * (double) n / 48000.0);
+                    for (int c = 0; c < buffer.getNumChannels(); ++c)
+                        buffer.setSample (c, i, v);
+                }
+            }
+            juce::int64 n = 0;
+            juce::Random random { 7 };
+        };
+        studio.getEngine().prepare (48000.0, 512);
+        studio.getEngine().setInstrument (id, std::make_unique<Mix>());
         studio.setChannelEq (id, eq);
         juce::Image image;
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_EQ", {}) == "inspector")
@@ -1423,6 +1445,14 @@ TEST_CASE ("Snapshot: the channel EQ (0.43.0; PARAGON_SNAPSHOT_EQ=inspector for 
         {
             EqEditor editor (studio, id);
             editor.setSize (EqEditor::width, EqEditor::height);
+            editor.setKeysShown (true);
+            editor.setSpectrumShown (true);
+            studio.getEngine().setSpectrumBus (id);
+            for (int frame = 0; frame < 6; ++frame)
+            {
+                renderSamples (studio.getEngine(), 2048, 512);
+                editor.getCurve().updateSpectrum();
+            }
             image = editor.createComponentSnapshot (editor.getLocalBounds(), true, 1.0f);
         }
         juce::File (path).deleteFile();

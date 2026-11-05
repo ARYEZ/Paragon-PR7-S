@@ -154,6 +154,18 @@ namespace pr7s
         void stopPreview();
         void setPreviewLoop (bool on) noexcept { previewLoop = on; }
         void setPreviewGain (float gain) noexcept { previewGain = gain; }
+
+        // (0.46.0) The EQ window's live sound: the channel's after its EQ (0: the master; -1: none),
+        // mono, into a lock-free ring the screen empties (`readSpectrum`: what came since, at most
+        // `into`'s size, the newest kept).
+        void setSpectrumBus (int busId) noexcept { spectrumBus = busId; }
+        int getSpectrumBus() const noexcept { return spectrumBus.load(); }
+        int readSpectrum (std::vector<float>& into);
+        // (0.46.0) Auto Listen: this channel's sound through `design` after its EQ (a band alone),
+        // or nothing (-1). Under the lock (message thread).
+        void setListen (int busId, const EqDesign& design);
+        void clearListen();
+        int getListenBus() const noexcept { return listenBus.load(); }
         // In time with the song (0.23.0, the manual's Wait for Project Play): the preview is heard
         // only while the song plays; with `lockBeats` (the sound's length in beats at the song's
         // tempo) its place follows the song's beat from `anchorBeat` (the left locator), so a loop
@@ -522,6 +534,13 @@ namespace pr7s
         int masterPreFader = Project::maxInserts;
         ChannelEq masterEqSettings;   // (0.43.0)
         EqProcessor masterEq;
+        // (0.46.0) The spectrum's tap and Auto Listen.
+        std::atomic<int> spectrumBus { -1 }, listenBus { -1 };
+        static constexpr int spectrumRingSize = 32768;
+        juce::AbstractFifo spectrumFifo { spectrumRingSize };
+        std::vector<float> spectrumRing = std::vector<float> ((size_t) spectrumRingSize, 0.0f);
+        EqProcessor listenEq;
+        void afterEq (int busId, float* const* channels, int numChannels, int numSamples) noexcept;   // (audio thread)
         std::vector<std::pair<int, AutomationLane>> held;   // message thread: the controls being written
         bool masterAutomated = false;   // a volume lane among them
         std::atomic<float> nowMasterVolumeDb { 0.0f };

@@ -2,6 +2,30 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.46.0
+
+**The channel EQ, as four bands of the other DAW's Frequency 2** (you asked; you chose the core with the spectrum, in place of the old one). Every channel's EQ (the Inspector's EQUALIZERS and the EQ window) works like this now:
+
+**Every band has the same shapes:**
+- **Low Shelf, Peak, High Shelf, Notch.** A Notch is a very narrow Peak.
+- **Band 1 can also be a low Cut** and band 4 a high Cut, each 6, 12, 24, 48 or 96 dB per octave (pick it from the band's type menu).
+- **Q** is how wide a Peak or Notch is. On a shelf, Q above 0.71 adds the dip and bump at its corner. On a Cut, it adds a resonance at the frequency (there's none for Cut 6).
+- **INVERT** beside each band's gain turns a boost into the same cut (Invert Gain).
+- **OUTPUT** sets the EQ's level after the four bands.
+
+**The EQ window:**
+- **SPECTRUM:** the channel's sound after the EQ, live, behind the curve.
+- **KEYS:** a keyboard under the curve with each band's mark on it. Drag a mark and the band's frequency follows; let go and it sits exactly on that key (A3 = 440 Hz).
+- **AUTO LISTEN:** while you drag a band's point, the channel plays only what that band works on (around a Peak or Notch, under a low shelf or cut, over a high one). It stops when you let go.
+- **The mouse wheel** over a point sets its Q. Ctrl-drag still moves only the gain, Alt-drag only the frequency, Shift-drag the Q, as the manual has it.
+- **The Pre section** (gain, phase, its own cuts) stays as it was.
+
+**Your songs:** EQs saved before open sounding the same. The old Parametric is the new Peak, and the old cuts were 12 dB per octave, which they stay.
+
+**Also fixed:** an EQ edit made right after Undo could bring back what was undone. The EQ window edited from what it showed a moment before, not the song as it is now.
+
+**Not here (your choice for now):** dynamic EQ, side-chain, Mid/Side or left/right per band, linear phase, eight bands, single-band view.
+
 ## 0.45.1
 
 Two automation fixes you reported:
