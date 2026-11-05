@@ -1,5 +1,7 @@
 #pragma once
 
+#include <unordered_map>
+
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include <atomic>
@@ -216,6 +218,8 @@ namespace pr7s
 
         void save() const;
         mutable bool unsaved = false;
+        mutable std::unordered_map<juce::String, juce::String> searchCache;   // (0.57.2) by path
+        const juce::String& searchTextOf (const MediaItem&) const;
         double lastEdit = 0.0;
 
     private:

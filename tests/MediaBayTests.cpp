@@ -1282,3 +1282,23 @@ TEST_CASE ("VST presets in the MediaBay: read, tagged, matched to their plug-in 
     CHECK (component == state);
     root.deleteRecursively();
 }
+
+TEST_CASE ("0.57.2: the search text is kept between searches and made again after a tag or rating edit", "[mediabay]")
+{
+    using A = MediaAttribute;
+    MediaFolder folder;
+    const auto store = juce::File::createTempFile ("pr7s-mediabay-cache.xml");
+    const auto kick = folder.root.getChildFile ("Kicks").getChildFile ("Kick 808.wav");
+    MediaDatabase database (store);
+    database.addLocation (folder.root);
+    database.scanNow();
+    MediaQuery q;
+    q.text = "thunderous";
+    CHECK (database.find (q).empty());
+    CHECK (database.find (q).empty());                    // (the kept text)
+    database.setAttribute ({ kick }, { A::comment, {} }, "Thunderous low end");
+    CHECK (names (database, database.find (q)) == std::vector<juce::String> { "Kick 808" });
+    database.removeAttribute ({ kick }, { A::comment, {} });
+    CHECK (database.find (q).empty());
+    store.deleteFile();
+}

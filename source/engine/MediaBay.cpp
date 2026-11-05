@@ -674,6 +674,7 @@ namespace pr7s
 
     void MediaDatabase::saveSoon()
     {
+        searchCache.clear();
         unsaved = true;
         lastEdit = juce::Time::getMillisecondCounterHiRes();
     }
@@ -852,6 +853,7 @@ namespace pr7s
         {
             const juce::ScopedLock sl (pendingLock);   // (a scan in another thread reads `items`)
             items = std::move (*result);
+            searchCache.clear();
             for (auto& item : items)
             {
                 // A file read for the first time with tags of its own (0.22.2): they become its
@@ -913,7 +915,18 @@ namespace pr7s
                     return false;
             }
         }
-        return search.isEmpty() || search.matches (item.searchText());
+        return search.isEmpty() || search.matches (searchTextOf (item));
+    }
+
+    const juce::String& MediaDatabase::searchTextOf (const MediaItem& item) const
+    {
+        // (0.57.2) Made once per item (it was made for every item on every keystroke), forgotten when
+        // the items, their tags or ratings change.
+        const auto key = item.file.getFullPathName();
+        auto found = searchCache.find (key);
+        if (found == searchCache.end())
+            found = searchCache.emplace (key, item.searchText()).first;
+        return found->second;
     }
 
     std::vector<std::pair<juce::String, int>> MediaDatabase::valueCounts (const MediaQuery& query, const AttributeId& attribute) const
@@ -1295,6 +1308,7 @@ namespace pr7s
     //==========================================================================
     void MediaDatabase::load()
     {
+        searchCache.clear();
         if (store == juce::File() || ! store.existsAsFile())
             return;
         const auto xml = juce::XmlDocument::parse (store);
@@ -1380,6 +1394,7 @@ namespace pr7s
 
     void MediaDatabase::save() const
     {
+        searchCache.clear();
         unsaved = false;
         if (store == juce::File())
             return;
