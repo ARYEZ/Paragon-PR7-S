@@ -492,6 +492,7 @@ bool ArrangeView::isPartSelected (int partId) const
 void ArrangeView::selectParts (const std::vector<int>& partIds)
 {
     selection = {};
+    pointSelection = {};   // (0.47.0: the info line shows what was chosen last)
     alsoSelected.clear();
     for (const auto id : partIds)
         if (const auto at = studio.findPart (id))
@@ -1100,7 +1101,7 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
                 auto peak = 0.0f;
                 for (int i = juce::jmax (0, first); i < juce::jmin (last, (int) data->peaks.size()); ++i)
                     peak = juce::jmax (peak, data->peaks[(size_t) i]);
-                const auto height = juce::jmin (1.0f, peak) * wave.getHeight() * 0.5f;
+                const auto height = juce::jmin (1.0f, peak * part.gain()) * wave.getHeight() * 0.5f;
                 g.fillRect (juce::Rectangle<float> (x, wave.getCentreY() - height, 1.0f, juce::jmax (0.5f, height * 2.0f)));
             }
         }

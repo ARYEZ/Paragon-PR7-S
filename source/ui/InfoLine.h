@@ -14,6 +14,11 @@ class ArrangeView;
 // selected point moves by what the first one moves, in the control's own units (four points at
 // -5, -1, 0 and +1 dB, the first typed as 0 dB: 0, +4, +5, +6). Hold Ctrl when pressing Enter to
 // set them all to the value typed instead (the manual's modifier). TERMINATOR's click switches them.
+//
+// (0.47.0) With no points selected: the selected parts and audio events, the earliest first
+// (the one shown). An audio event: FILE, NAME, START, END, LENGTH, OFFSET, FADE-IN, FADE-OUT,
+// VOLUME, MUTE; a MIDI part: NAME, START, END, LENGTH, TRANSPOSE, VELOCITY, MUTE. The same
+// rules (relative, Ctrl+Enter absolute; NAME names them all, MUTE's click switches them all).
 class InfoLine final : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
 {
 public:
@@ -24,10 +29,13 @@ public:
     static constexpr int height = 40;
 
     // What's shown (for tests: the field's text, "" when nothing is selected).
-    juce::String getField (const juce::String& name) const;   // "TYPE", "START", "VALUE", "TERMINATOR"
+    juce::String getField (const juce::String& name) const;   // points: "TYPE", "START", "VALUE", "TERMINATOR"; parts: see above
     // A field typed (as Enter on it does); `absolute`: as with Ctrl held. False: not a value it takes.
     bool enter (const juce::String& field, const juce::String& text, bool absolute);
     void toggleTerminator();
+    void toggleMute();                 // (the parts' MUTE)
+    bool isShowingParts() const noexcept { return showingParts; }
+    std::vector<int> partsInOrder() const;   // the selected parts, the shown one first
     void refresh();
     void beginEdit (const juce::String& field);   // (a double-click's; tests type into `getEditor`)
     juce::TextEditor* getEditor() noexcept { return editor.get(); }
@@ -45,7 +53,10 @@ private:
     ArrangeView& arrange;
     std::vector<Field> fields;
     int count = 0;
+    bool showingParts = false;
     juce::String shownKey;
+    void refreshParts();
+    bool enterPart (const juce::String& field, const juce::String& text, bool absolute);
     std::unique_ptr<juce::TextEditor> editor;
     juce::String editing;
     void mouseDoubleClick (const juce::MouseEvent&) override;

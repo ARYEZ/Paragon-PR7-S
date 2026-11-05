@@ -453,6 +453,18 @@ namespace pr7s
         // The Mute tool (and the part's menu): muted parts stay, greyed, but aren't played.
         void setPartMuted (int trackId, int index, bool muted);
         void setPartsMuted (const std::vector<int>& partIds, bool muted);   // several at once (one step)
+        // (0.47.0) The info line for parts and events (the manual's Info Line and its Value
+        // Editing Rules): a field as a part has it (start/end/length in beats, offset and fades
+        // in seconds, volume in dB, transpose in semitones, velocity added; none: not this part's
+        // kind: offset, fades and volume are audio events', transpose and velocity MIDI parts').
+        enum class PartField { start, end, length, offset, fadeIn, fadeOut, volume, transpose, velocity };
+        std::optional<double> getPartField (int partId, PartField) const;
+        // The parts' field moved by what the first one's (the first that has it) moves to `value`
+        // (two events 1 and 2 bars long, LENGTH typed as 3 bars: 3 and 4); `absolute` (Ctrl): all
+        // set to it. Each limited as it can go (not before the song's start, an event not past its
+        // recording, fades within it); frozen tracks' parts left alone. One undo step; false: none moved.
+        bool setPartsField (const std::vector<int>& partIds, PartField, double value, bool absolute);
+        bool renameParts (const std::vector<int>& partIds, const juce::String& name);
         // The Erase tool with Alt: the part and all after it on its track.
         void deletePartsFrom (int trackId, int index);
 

@@ -48,6 +48,7 @@ add_executable(ParagonPR7STests
     EqTests.cpp
     ChordTool2Tests.cpp
     SignatureTests.cpp
+    InfoLinePartsTests.cpp
     PerformanceTests.cpp
     UiTests.cpp
     PerfTests.cpp

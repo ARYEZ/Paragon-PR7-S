@@ -1715,7 +1715,7 @@ namespace pr7s
             {
                 const auto& next = track->parts[(size_t) i];
                 const auto secondsIn = glued.audioOffset + project.tempoMap().secondsBetween (glued.start, glued.end());
-                if (next.audioFile != glued.audioFile || std::abs (next.start - glued.end()) > 1.0e-6
+                if (next.audioFile != glued.audioFile || std::abs (next.start - glued.end()) > 1.0e-6 || next.volumeDb != glued.volumeDb
                     || std::abs (next.audioOffset - secondsIn) > 1.0e-4 || glued.isWarped() || next.isWarped())
                     return false;   // (0.32.0: warped clips aren't glued: Flatten first)
                 glued.length = next.end() - glued.start;
@@ -1726,16 +1726,18 @@ namespace pr7s
         {
             // What was heard of each, in its place.
             std::vector<Note> notes;
+            // ((0.47.0) each part's info-line Transpose and Velocity written into its notes: the glued part has none.)
             for (const auto& note : glued.notes)
                 if (note.start >= 0.0 && note.start < glued.length)
-                    notes.push_back ({ note.start, juce::jmin (note.length, glued.length - note.start), note.pitch, note.velocity });
+                    notes.push_back ({ note.start, juce::jmin (note.length, glued.length - note.start), glued.heardPitch (note.pitch), glued.heardVelocity (note.velocity) });
             auto end = glued.end();
             for (const auto i : after)
             {
                 const auto& next = track->parts[(size_t) i];
                 for (const auto& note : next.notes)
                     if (note.start >= 0.0 && note.start < next.length)
-                        notes.push_back ({ next.start - glued.start + note.start, juce::jmin (note.length, next.length - note.start), note.pitch, note.velocity });
+                        notes.push_back ({ next.start - glued.start + note.start, juce::jmin (note.length, next.length - note.start),
+                                           next.heardPitch (note.pitch), next.heardVelocity (note.velocity) });
                 end = juce::jmax (end, next.end());
             }
             std::stable_sort (notes.begin(), notes.end(), [] (const Note& a, const Note& b) { return a.start < b.start; });
@@ -1755,6 +1757,8 @@ namespace pr7s
             ControllerKinds::sort (controllers);
             glued.controllers = std::move (controllers);
             glued.length = end - glued.start;
+            glued.transpose = 0;
+            glued.velocityOffset = 0;
         }
         track->parts[(size_t) index] = glued;
         std::sort (after.begin(), after.end(), std::greater<>());
@@ -1786,6 +1790,113 @@ namespace pr7s
                 }
         if (any)
             changed();
+    }
+
+    std::optional<double> Studio::getPartField (int partId, PartField field) const
+    {
+        const auto where = findPart (partId);
+        if (! where)
+            return std::nullopt;
+        const auto* track = project.findTrack (where->first);
+        const auto& part = track->parts[(size_t) where->second];
+        const auto audio = part.isAudio();
+        switch (field)
+        {
+            case PartField::start:     return part.start;
+            case PartField::end:       return part.end();
+            case PartField::length:    return part.length;
+            case PartField::offset:    if (audio && ! part.isWarped()) return part.audioOffset; break;
+            case PartField::fadeIn:    if (audio) return part.fadeIn; break;
+            case PartField::fadeOut:   if (audio) return part.fadeOut; break;
+            case PartField::volume:    if (audio) return part.volumeDb; break;
+            case PartField::transpose: if (! audio) return (double) part.transpose; break;
+            case PartField::velocity:  if (! audio) return (double) part.velocityOffset; break;
+        }
+        return std::nullopt;
+    }
+
+    bool Studio::setPartsField (const std::vector<int>& partIds, PartField field, double value, bool absolute)
+    {
+        // The change the first one makes (relative), worked out before anything moves.
+        std::optional<double> firstNow;
+        for (const auto id : partIds)
+            if ((firstNow = getPartField (id, field)))
+                break;
+        if (! firstNow || ! std::isfinite (value))
+            return false;
+        const auto delta = value - *firstNow;
+        const auto tempo = project.tempoMap();
+        auto any = false;
+        for (const auto id : partIds)
+        {
+            const auto now = getPartField (id, field);
+            const auto where = findPart (id);
+            if (! now || ! where)
+                continue;
+            auto* track = project.findTrack (where->first);
+            if (track->frozen)
+                continue;
+            auto& part = track->parts[(size_t) where->second];
+            const auto old = part;
+            const auto wanted = absolute ? value : *now + delta;
+            const auto data = part.isAudio() ? getAudio (part.audioFile) : nullptr;
+            const auto clipSeconds = [&] { return tempo.secondsBetween (part.start, part.end()); };
+            // How long it can be: an event not past its recording's end (a warped one stretches: free).
+            const auto setLength = [&] (double length)
+            {
+                length = juce::jmax (1.0 / 64.0, length);
+                if (data != nullptr && ! part.isWarped())
+                    length = juce::jmin (length, tempo.beatAfter (part.start, juce::jmax (0.0, data->seconds() - part.audioOffset)) - part.start);
+                if (length <= 0.0)
+                    return;
+                part.length = length;
+                if (old.isWarped())
+                    rebaseWarp (old, part, tempo);
+                const auto seconds = clipSeconds();
+                part.fadeIn = juce::jmin (part.fadeIn, seconds);
+                part.fadeOut = juce::jmin (part.fadeOut, seconds - part.fadeIn);
+            };
+            switch (field)
+            {
+                case PartField::start:  part.start = juce::jmax (0.0, wanted); break;
+                case PartField::end:    setLength (wanted - part.start); break;
+                case PartField::length: setLength (wanted); break;
+                case PartField::offset:
+                {
+                    const auto most = data != nullptr ? juce::jmax (0.0, data->seconds() - clipSeconds()) : wanted;
+                    part.audioOffset = juce::jlimit (0.0, juce::jmax (0.0, most), wanted);
+                    break;
+                }
+                case PartField::fadeIn:   part.fadeIn = juce::jlimit (0.0, juce::jmax (0.0, clipSeconds() - part.fadeOut), wanted); break;
+                case PartField::fadeOut:  part.fadeOut = juce::jlimit (0.0, juce::jmax (0.0, clipSeconds() - part.fadeIn), wanted); break;
+                case PartField::volume:   part.volumeDb = juce::jlimit (Part::leastVolumeDb, Part::mostVolumeDb, wanted); break;
+                case PartField::transpose: part.transpose = juce::jlimit (-48, 48, juce::roundToInt (wanted)); break;
+                case PartField::velocity: part.velocityOffset = juce::jlimit (-127, 127, juce::roundToInt (wanted)); break;
+            }
+            any = any || ! (part == old);
+        }
+        if (any)
+            changed();
+        return any;
+    }
+
+    bool Studio::renameParts (const std::vector<int>& partIds, const juce::String& name)
+    {
+        auto any = false;
+        for (const auto id : partIds)
+            if (const auto where = findPart (id))
+            {
+                auto* track = project.findTrack (where->first);
+                auto& part = track->parts[(size_t) where->second];
+                if (! track->frozen && part.name != name)
+                {
+                    part.name = name;
+                    any = true;
+                }
+            }
+        if (any)
+            changed();
+        return any;
     }
 
     bool Studio::quantizeParts (const std::vector<int>& partIds, double grid)
@@ -5658,12 +5769,12 @@ namespace pr7s
                 auto& a = track.parts[i];
                 const auto& b = track.parts[i + 1];
                 auto joins = a.lane == b.lane && std::abs (a.end() - b.start) < 1.0e-6 && a.muted == b.muted && a.order == b.order
-                          && ! a.isWarped() && ! b.isWarped()
+                          && ! a.isWarped() && ! b.isWarped() && a.transpose == b.transpose && a.velocityOffset == b.velocityOffset
                           && a.isAudio() == b.isAudio() && b.start > from + edge && b.start < to - edge;
                 if (joins && a.isAudio())
                 {
                     const auto seconds = tempo.secondsBetween (a.start, a.end());
-                    joins = a.audioFile == b.audioFile && a.fadeOut <= 0.0 && b.fadeIn <= 0.0
+                    joins = a.audioFile == b.audioFile && a.fadeOut <= 0.0 && b.fadeIn <= 0.0 && a.volumeDb == b.volumeDb
                          && std::abs (b.audioOffset - (a.audioOffset + seconds)) < 1.0e-4;
                 }
                 if (! joins)
@@ -6480,7 +6591,7 @@ namespace pr7s
                         const auto source = (int) std::llround ((fromOffset + into) * rate);
                         if (source < 0 || source >= heardSound.getNumSamples())
                             continue;
-                        auto gain = 1.0;
+                        auto gain = (double) p.gain();   // (0.47.0: its volume)
                         if (p.fadeIn > 0.0 && into < p.fadeIn) gain *= into / p.fadeIn;
                         if (p.fadeOut > 0.0 && left < p.fadeOut) gain *= left / p.fadeOut;
                         for (int c = 0; c < sound.getNumChannels(); ++c)
@@ -9027,7 +9138,7 @@ namespace pr7s
                 to = juce::jmax (to, part.end());
                 for (const auto& n : part.notes)
                     if (n.start < part.length)
-                        notes.push_back ({ part.start + n.start, part.start + juce::jmin (n.start + n.length, part.length), n.pitch, n.velocity });
+                        notes.push_back ({ part.start + n.start, part.start + juce::jmin (n.start + n.length, part.length), part.heardPitch (n.pitch), n.velocity });
             }
         if (notes.empty())
             return 0;
@@ -9092,7 +9203,7 @@ namespace pr7s
             else
                 for (const auto& n : part->notes)
                     if (n.start < part->length && ! part->muted)
-                        notes.push_back ({ part->start + n.start, part->start + juce::jmin (n.start + n.length, part->length), n.pitch, n.velocity });
+                        notes.push_back ({ part->start + n.start, part->start + juce::jmin (n.start + n.length, part->length), part->heardPitch (n.pitch), n.velocity });
         }
         if (! notes.empty())
             addIn (chromaFromNotes (notes, from, from + step * (double) count, step));

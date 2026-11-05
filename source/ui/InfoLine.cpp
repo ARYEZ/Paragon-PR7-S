@@ -1,18 +1,56 @@
 #include "InfoLine.h"
 
 #include "ui/ArrangeView.h"
+#include "ui/KeyEditor.h"
 #include "ui/ParagonLookAndFeel.h"
+#include "ui/TempoEditor.h"
 
 namespace
 {
     const juce::Colour stripColour { 0xff0d0a0e };
     constexpr int fieldWidth = 150, typeWidth = 220;
+    using PartField = pr7s::Studio::PartField;
+
+    // (0.47.0) How the parts' values read and are typed.
+    juce::String secondsText (double seconds) { return juce::String (seconds, 3) + " s"; }
+    juce::String volumeText (double db)
+    {
+        if (db <= pr7s::Part::leastVolumeDb)
+            return "-INF";
+        return (db > 0.0 ? "+" : "") + juce::String (db, 1) + " dB";
+    }
+    juce::String signedText (int v) { return v > 0 ? "+" + juce::String (v) : juce::String (v); }
+    // A number with what may follow it ("250 ms", "1.5 s", "-3 dB", "+2"); none: not a number.
+    std::optional<double> numberIn (juce::String text)
+    {
+        text = text.trim().toLowerCase();
+        const auto digits = text.initialSectionContainingOnly ("+-0123456789.,");
+        if (digits.isEmpty() || ! digits.containsAnyOf ("0123456789"))
+            return std::nullopt;
+        return digits.replaceCharacter (',', '.').getDoubleValue();
+    }
+    std::optional<double> parseSeconds (const juce::String& text)
+    {
+        const auto n = numberIn (text);
+        if (! n)
+            return std::nullopt;
+        const auto rest = text.trim().toLowerCase().trimCharactersAtStart ("+-0123456789.,").trim();
+        return rest.startsWith ("ms") ? *n / 1000.0 : *n;
+    }
+    std::optional<double> parseVolume (const juce::String& text)
+    {
+        const auto t = text.trim().toLowerCase();
+        if (t.contains ("inf") || t == "off")
+            return pr7s::Part::leastVolumeDb;
+        return numberIn (text);
+    }
 }
 
 InfoLine::InfoLine (pr7s::Studio& s, ArrangeView& a) : studio (s), arrange (a)
 {
-    setTooltip ("The info line: the selected automation points (the first one's values). Double-click START or VALUE to type: "
-                "all of them move by what the first one moves. Hold Ctrl as you press Enter to set them all to it. Right-click to hide");
+    setTooltip ("The info line: the selected automation points, else the selected parts and audio events (the first one's values). "
+                "Double-click a value to type: all of them move by what the first one moves. Hold Ctrl as you press Enter to set them all to it. "
+                "MUTE and TERMINATOR switch with a click. Right-click to hide");
     refresh();
     startTimerHz (10);
 }
@@ -26,6 +64,7 @@ void InfoLine::refresh()
 {
     fields.clear();
     count = 0;
+    showingParts = false;
     const auto& selection = arrange.getPointSelection();
     const auto* lane = arrange.getSelectedPointsLane();
     if (lane != nullptr && ! selection.points.empty())
@@ -42,6 +81,8 @@ void InfoLine::refresh()
             fields.push_back ({ "TERMINATOR", p.terminator ? "YES" : "NO", {}, ! arrange.isTrimming (*lane) });
         }
     }
+    if (fields.empty())
+        refreshParts();
     juce::String key (count);
     for (const auto& f : fields)
         key << "|" << f.value;
@@ -53,12 +94,71 @@ void InfoLine::refresh()
     }
 }
 
+std::vector<int> InfoLine::partsInOrder() const
+{
+    // The earliest first (the manual: "the first item in the selection"), then by the tracks' order.
+    auto ids = arrange.getSelectedParts();
+    const auto shown = studio.getShownTracks();
+    const auto key = [&] (int id)
+    {
+        const auto where = studio.findPart (id);
+        if (! where)
+            return std::pair<double, int> { 1.0e18, 0 };
+        const auto row = (int) (std::find (shown.begin(), shown.end(), where->first) - shown.begin());
+        return std::pair<double, int> { studio.getPartField (id, PartField::start).value_or (0.0), row };
+    };
+    std::stable_sort (ids.begin(), ids.end(), [&] (int a, int b) { return key (a) < key (b); });
+    ids.erase (std::remove_if (ids.begin(), ids.end(), [this] (int id) { return ! studio.findPart (id); }), ids.end());
+    return ids;
+}
+
+void InfoLine::refreshParts()
+{
+    const auto ids = partsInOrder();
+    if (ids.empty())
+        return;
+    const auto where = studio.findPart (ids.front());
+    const auto& project = studio.getProject();
+    const auto* track = project.findTrack (where->first);
+    const auto& part = track->parts[(size_t) where->second];
+    showingParts = true;
+    count = (int) ids.size();
+    const auto editable = ! track->frozen;
+    const auto position = [&] (double beat) { return pr7s::formatBarsBeats (beat, project).replace ("  ", " "); };
+    if (part.isAudio())
+        fields.push_back ({ "FILE", part.audioFile, {}, false });
+    fields.push_back ({ "NAME", part.name.isNotEmpty() ? part.name : track->name, {}, editable });
+    fields.push_back ({ "START", position (part.start), {}, editable });
+    fields.push_back ({ "END", position (part.end()), {}, editable });
+    fields.push_back ({ "LENGTH", KeyEditor::lengthText (part.length, project), {}, editable });
+    if (part.isAudio())
+    {
+        fields.push_back ({ "OFFSET", part.isWarped() ? juce::String ("WARPED") : secondsText (part.audioOffset), {}, editable && ! part.isWarped() });
+        fields.push_back ({ "FADE-IN", secondsText (part.fadeIn), {}, editable });
+        fields.push_back ({ "FADE-OUT", secondsText (part.fadeOut), {}, editable });
+        fields.push_back ({ "VOLUME", volumeText (part.volumeDb), {}, editable });
+    }
+    else
+    {
+        fields.push_back ({ "TRANSPOSE", signedText (part.transpose), {}, editable });
+        fields.push_back ({ "VELOCITY", signedText (part.velocityOffset), {}, editable });
+    }
+    fields.push_back ({ "MUTE", part.muted ? "YES" : "NO", {}, editable });
+}
+
 void InfoLine::resized()
 {
     auto x = 12;
     for (auto& f : fields)
     {
-        const auto w = f.name == "TYPE" ? typeWidth : fieldWidth;
+        auto w = f.name == "TYPE" ? typeWidth : fieldWidth;
+        if (showingParts)
+        {
+            // (Each as wide as its label and value need: ten of them must fit beside the track list.)
+            const auto valueWidth = juce::GlyphArrangement::getStringWidth (ParagonLookAndFeel::textFont (15.0f), f.value.toUpperCase());
+            const auto labelWidth = juce::GlyphArrangement::getStringWidth (ParagonLookAndFeel::textFont (12.0f), f.name);
+            w = juce::jlimit (64, f.name == "FILE" || f.name == "NAME" ? 260 : 170, (int) std::ceil (juce::jmax (valueWidth, labelWidth)) + 22);
+        }
         f.area = { x, 0, w, getHeight() };
         x += w;
     }
@@ -85,7 +185,7 @@ void InfoLine::paint (juce::Graphics& g)
     {
         g.setColour (ParagonColours::textDim);
         g.setFont (ParagonLookAndFeel::textFont (13.0f));
-        g.drawText ("INFO LINE: SELECT AUTOMATION POINTS (CLICK THEM, OR DRAG A BOX ROUND THEM) TO SEE AND CHANGE THEM HERE",
+        g.drawText ("INFO LINE: SELECT A PART, AN AUDIO EVENT OR AUTOMATION POINTS TO SEE AND CHANGE THEM HERE",
                     getLocalBounds().reduced (12, 0), juce::Justification::centredLeft, true);
         return;
     }
@@ -101,7 +201,7 @@ void InfoLine::paint (juce::Graphics& g)
         g.drawText (f.name, area.removeFromTop (getHeight() / 2).reduced (8, 0), juce::Justification::bottomLeft, false);
         if (f.name == editing && editor != nullptr)
             continue;
-        g.setColour (f.editable || f.name == "TYPE" ? valueColour : ParagonColours::textDim);
+        g.setColour (f.editable || f.name == "TYPE" || f.name == "FILE" ? valueColour : ParagonColours::textDim);
         g.setFont (ParagonLookAndFeel::textFont (15.0f));
         g.drawFittedText (f.value.toUpperCase(), area.reduced (8, 0), juce::Justification::topLeft, 1, 0.8f);
     }
@@ -110,7 +210,7 @@ void InfoLine::paint (juce::Graphics& g)
         g.setColour (pr7s::FamilyColours::pink.brighter (0.25f));
         g.setFont (ParagonLookAndFeel::textFont (13.0f));
         const auto x = fields.back().area.getRight() + 12;
-        g.drawText (juce::String (count) + " POINTS SELECTED: CHANGES MOVE THEM ALL BY THE SAME AMOUNT (CTRL+ENTER: ALL TO THE VALUE)",
+        g.drawText (juce::String (count) + (showingParts ? " PARTS SELECTED" : " POINTS SELECTED") + ": CHANGES MOVE THEM ALL BY THE SAME AMOUNT (CTRL+ENTER: ALL TO THE VALUE)",
                     juce::Rectangle<int> (x, 0, juce::jmax (0, getWidth() - x - 12), getHeight()), juce::Justification::centredLeft, true);
     }
 }
@@ -118,7 +218,7 @@ void InfoLine::paint (juce::Graphics& g)
 void InfoLine::mouseDoubleClick (const juce::MouseEvent& e)
 {
     for (const auto& f : fields)
-        if (f.area.contains (e.getPosition()) && f.editable && f.name != "TERMINATOR")
+        if (f.area.contains (e.getPosition()) && f.editable && f.name != "TERMINATOR" && f.name != "MUTE")
             beginEdit (f.name);
 }
 
@@ -136,8 +236,21 @@ void InfoLine::mouseUp (const juce::MouseEvent& e)
         return;
     }
     for (const auto& f : fields)
-        if (f.area.contains (e.getPosition()) && f.name == "TERMINATOR" && f.editable && e.getNumberOfClicks() == 1)
-            toggleTerminator();
+        if (f.area.contains (e.getPosition()) && f.editable && e.getNumberOfClicks() == 1)
+        {
+            if (f.name == "TERMINATOR")
+                toggleTerminator();
+            else if (f.name == "MUTE")
+                toggleMute();
+        }
+}
+
+void InfoLine::toggleMute()
+{
+    if (! showingParts)
+        return;
+    studio.setPartsMuted (partsInOrder(), getField ("MUTE") != "YES");
+    refresh();
 }
 
 void InfoLine::toggleTerminator()
@@ -175,6 +288,12 @@ void InfoLine::beginEdit (const juce::String& field)
 
 bool InfoLine::enter (const juce::String& field, const juce::String& text, bool absolute)
 {
+    if (showingParts)
+    {
+        const auto done = enterPart (field, text, absolute);
+        refresh();
+        return done;
+    }
     auto done = false;
     if (field == "VALUE")
         done = arrange.setSelectedPointsValue (text, absolute);
@@ -182,4 +301,44 @@ bool InfoLine::enter (const juce::String& field, const juce::String& text, bool 
         done = arrange.setSelectedPointsStart (text, absolute);
     refresh();
     return done;
+}
+
+bool InfoLine::enterPart (const juce::String& field, const juce::String& text, bool absolute)
+{
+    const auto ids = partsInOrder();
+    if (ids.empty())
+        return false;
+    const auto& project = studio.getProject();
+    if (field == "NAME")
+        return studio.renameParts (ids, text.trim());
+    std::optional<double> value;
+    PartField which {};
+    if (field == "START" || field == "END")
+    {
+        value = TempoEditor::parsePosition (text, project);
+        which = field == "START" ? PartField::start : PartField::end;
+    }
+    else if (field == "LENGTH")
+    {
+        value = KeyEditor::parseLength (text, project);
+        which = PartField::length;
+    }
+    else if (field == "OFFSET" || field == "FADE-IN" || field == "FADE-OUT")
+    {
+        value = parseSeconds (text);
+        which = field == "OFFSET" ? PartField::offset : field == "FADE-IN" ? PartField::fadeIn : PartField::fadeOut;
+    }
+    else if (field == "VOLUME")
+    {
+        value = parseVolume (text);
+        which = PartField::volume;
+    }
+    else if (field == "TRANSPOSE" || field == "VELOCITY")
+    {
+        value = numberIn (text);
+        which = field == "TRANSPOSE" ? PartField::transpose : PartField::velocity;
+    }
+    if (! value)
+        return false;
+    return studio.setPartsField (ids, which, *value, absolute);
 }

@@ -376,7 +376,7 @@ namespace pr7s
                 const auto at = clip.offset + (s - startSample);
                 if (at < 0 || at >= sound.getNumSamples())
                     return;
-                auto gain = 1.0;
+                auto gain = (double) clip.gain;
                 if (clip.fadeIn > 0.0 && into < clip.fadeIn)
                     gain *= into / clip.fadeIn;
                 if (clip.fadeOut > 0.0 && clipLength - into < clip.fadeOut)
@@ -406,8 +406,17 @@ namespace pr7s
             const auto n = (int) (middleTo - middleFrom);
             const auto i = offset + (int) (middleFrom - clock);
             const auto at = clip.offset + (middleFrom - startSample);
-            juce::FloatVectorOperations::add (left + i, sourceLeft + at, n);
-            juce::FloatVectorOperations::add (right + i, sourceRight + at, n);
+            if (clip.gain == 1.0f)
+            {
+                juce::FloatVectorOperations::add (left + i, sourceLeft + at, n);
+                juce::FloatVectorOperations::add (right + i, sourceRight + at, n);
+            }
+            else if (clip.gain > 0.0f)
+            {
+                // (0.47.0) The event's volume: one multiply-add (the same as playOne's, to a rounding).
+                juce::FloatVectorOperations::addWithMultiply (left + i, sourceLeft + at, clip.gain, n);
+                juce::FloatVectorOperations::addWithMultiply (right + i, sourceRight + at, clip.gain, n);
+            }
             for (auto s = middleTo; s < to; ++s)
                 playOne (s);
         }
@@ -544,7 +553,7 @@ namespace pr7s
                     const auto offset = warped ? (juce::int64) 0 : (juce::int64) std::llround (part.audioOffset * sampleRate);
                     for (const auto& [from, to] : stretches)
                         p.clips.push_back ({ part.start, part.end(), sound, offset,
-                                             part.fadeIn * sampleRate, part.fadeOut * sampleRate, from, to });
+                                             part.fadeIn * sampleRate, part.fadeOut * sampleRate, part.gain(), from, to });
                 }
                 for (auto& clip : p.clips)
                     placeClip (clip, { &tempo, sampleRate });
@@ -605,7 +614,8 @@ namespace pr7s
                     const auto& note = part.notes[n];
                     if (follows && followed[n].dropped)
                         continue;
-                    const auto pitch = juce::jlimit (0, 127, follows ? followed[n].pitch : note.pitch);
+                    // (0.47.0) The part's Transpose and Velocity from the info line, for playback only.
+                    const auto pitch = part.heardPitch (juce::jlimit (0, 127, follows ? followed[n].pitch : note.pitch));
                     const auto on = part.start + note.start;
                     if (note.start < 0.0 || note.start >= part.length)
                         continue;   // outside the part: not heard (as in a DAW)
@@ -614,7 +624,7 @@ namespace pr7s
                         continue;   // a muted drum sound
                     const auto bits = p.drumChannel[(size_t) pitch] >= 0 ? p.drumChannel[(size_t) pitch] : channelBits;
                     const auto off = part.start + juce::jmin (note.start + note.length, part.length);
-                    const auto velocity = (juce::uint8) juce::jlimit (1, 127, juce::roundToInt (note.velocity * 127.0f));
+                    const auto velocity = (juce::uint8) juce::jlimit (1, 127, juce::roundToInt (part.heardVelocity (note.velocity) * 127.0f));
                     p.events.push_back ({ on, (juce::uint8) (0x90 | bits), (juce::uint8) out, velocity });
                     p.events.push_back ({ off, (juce::uint8) (0x80 | bits), (juce::uint8) out, 0 });
                 }

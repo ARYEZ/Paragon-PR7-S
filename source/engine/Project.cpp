@@ -522,6 +522,12 @@ namespace pr7s
                     p->setAttribute ("fadeIn", part.fadeIn);
                     p->setAttribute ("fadeOut", part.fadeOut);
                 }
+                if (part.volumeDb != 0.0)
+                    p->setAttribute ("volume", part.volumeDb);
+                if (part.transpose != 0)
+                    p->setAttribute ("transpose", part.transpose);
+                if (part.velocityOffset != 0)
+                    p->setAttribute ("velocityOffset", part.velocityOffset);
                 for (const auto& note : part.notes)
                 {
                     auto* n = p->createNewChildElement (noteTag);
@@ -798,6 +804,9 @@ namespace pr7s
                 part.audioOffset = juce::jmax (0.0, p->getDoubleAttribute ("audioOffset"));
                 part.fadeIn = juce::jmax (0.0, p->getDoubleAttribute ("fadeIn"));
                 part.fadeOut = juce::jmax (0.0, p->getDoubleAttribute ("fadeOut"));
+                part.volumeDb = juce::jlimit (Part::leastVolumeDb, Part::mostVolumeDb, p->getDoubleAttribute ("volume"));
+                part.transpose = juce::jlimit (-48, 48, p->getIntAttribute ("transpose"));
+                part.velocityOffset = juce::jlimit (-127, 127, p->getIntAttribute ("velocityOffset"));
                 for (const auto* n : p->getChildWithTagNameIterator (noteTag))
                     part.notes.push_back ({ n->getDoubleAttribute ("start"), juce::jmax (0.001, n->getDoubleAttribute ("length", 0.25)),
                                             juce::jlimit (0, 127, n->getIntAttribute ("pitch", 60)),

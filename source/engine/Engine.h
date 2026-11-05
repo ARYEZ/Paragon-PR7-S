@@ -257,6 +257,7 @@ namespace pr7s
             std::shared_ptr<const juce::AudioBuffer<float>> sound;
             juce::int64 offset = 0;
             double fadeIn = 0.0, fadeOut = 0.0;
+            float gain = 1.0f;   // (0.47.0) the event's own volume
             // (0.29.0) The stretch of it heard (beats): another clip in front hides the rest.
             double from = 0.0, to = 1.0e12;
             // (0.34.1) Where those are in the song's samples, worked out in update (by the same tempo

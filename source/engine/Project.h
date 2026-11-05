@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <cmath>
 #include <optional>
 
 #include "Chords.h"
@@ -81,6 +82,21 @@ namespace pr7s
         // (0.32.0) Warp markers, sorted by beat (none: the recording plays at its own speed).
         std::vector<WarpMarker> warp;
         bool isWarped() const noexcept { return warp.size() >= 2; }
+        // (0.47.0, the info line) An audio event's own volume (dB, its gain before the track's
+        // fader; `leastVolumeDb` and under: silent), and a MIDI part's Transpose (semitones) and
+        // Velocity (added to each note's, 1-127): both for playback only, its notes stay as written.
+        double volumeDb = 0.0;
+        int transpose = 0;
+        int velocityOffset = 0;
+        static constexpr double leastVolumeDb = -60.0, mostVolumeDb = 6.0;
+        float gain() const noexcept { return volumeDb <= leastVolumeDb ? 0.0f : (float) std::pow (10.0, volumeDb / 20.0); }
+        // A note as it's heard: pitch transposed, velocity offset (both kept in range).
+        int heardPitch (int pitch) const noexcept { return pitch + transpose < 0 ? 0 : pitch + transpose > 127 ? 127 : pitch + transpose; }
+        float heardVelocity (float velocity) const noexcept
+        {
+            const auto v = velocity * 127.0f + (float) velocityOffset;
+            return (v < 1.0f ? 1.0f : v > 127.0f ? 127.0f : v) / 127.0f;
+        }
 
         bool isAudio() const noexcept { return audioFile.isNotEmpty(); }
         double end() const noexcept { return start + length; }

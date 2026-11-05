@@ -313,6 +313,16 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     // or the mixer, with some effects in (stand-ins named after the family's
     // plugins: the tests can't load real VST3s).
     view.getArrangeView().select (lead, 0);
+    // PARAGON_SNAPSHOT_INFOLINE=audio (0.47.0): the guitar's first event selected, at -3 dB with a fade-in (the info line shows it).
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_INFOLINE", {}) == "audio")
+        if (const auto* track = studio.getProject().findTrack (guitar); track != nullptr && ! track->parts.empty())
+        {
+            const auto id = track->parts.front().id;
+            studio.setPartsField ({ id }, Studio::PartField::volume, -3.0, true);
+            studio.setPartsField ({ id }, Studio::PartField::fadeIn, 0.4, true);
+            view.getArrangeView().selectParts ({ id });
+        }
+    view.getInfoLine().refresh();   // (its 10 Hz timer doesn't run before the picture)
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_MULTI", {}).isNotEmpty())
     {
         std::vector<int> ids;

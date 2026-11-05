@@ -2,6 +2,36 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.47.0
+
+**The info line for parts and events** (next on your list). The strip over the track list and the arrangement showed only automation points. Now it also shows the selected part or audio event, and you can type into it.
+
+**What it shows:**
+- **An audio event:** FILE, NAME, START, END, LENGTH, OFFSET, FADE-IN, FADE-OUT, VOLUME, MUTE.
+- **A MIDI part:** NAME, START, END, LENGTH, TRANSPOSE, VELOCITY, MUTE.
+- **Several selected:** the earliest one's values, in pink, with how many are selected.
+- **Automation points still come first:** when points are selected, it shows them as before. A click on a part shows the part.
+
+**How you change things (the manual's rules):**
+- **Double-click a value and type**, then press Enter. Every selected part changes by the same amount as the first one. The manual's example: two events 1 and 2 bars long, LENGTH typed as 3 bars, become 3 and 4 bars.
+- **Ctrl+Enter** sets them all to the value you typed: both become 3 bars.
+- **Clicking MUTE** mutes or unmutes them all. **NAME** names them all.
+- **Each change is one undo step.**
+- **How to type values:** START and END as positions (5.1.1.0). LENGTH in bars.beats.16ths.ticks (3.0.0.0 is three bars). OFFSET and the fades in seconds ("1.5", or "250 ms"). VOLUME in dB ("-6", or "-inf" for silent). TRANSPOSE and VELOCITY as numbers ("+5", "-20").
+- **Limits:** a part can't start before the song does. An event can't run past the end of its recording. Fades stay inside the event. A frozen track's parts are left alone.
+
+**Three new things a part can hold**, set from the info line:
+- **VOLUME on an audio event:** its own level before the track's fader, -INF to +6 dB. The waveform grows or shrinks with it, and bounces include it.
+- **TRANSPOSE on a MIDI part:** semitones, -48 to +48.
+- **VELOCITY on a MIDI part:** added to every note's velocity (kept within 1-127).
+- **TRANSPOSE and VELOCITY are for playback only, as in the manual:** the notes in the MIDI editor stay as you wrote them. Glue writes them into the notes (the glued part starts from 0). Detect Chords names the transposed chords, since that's what you hear.
+
+**Not yet:**
+- **No TRANSPOSE for audio events:** it needs pitch shifting, which only VariAudio does here so far.
+- **No Lock or Fine-Tune.**
+- **No info line for chord, tempo or signature events.**
+- **Nothing in the info line's right-click menu to choose which fields show.**
+
 ## 0.46.1
 
 Two more automation fixes you asked for:
