@@ -3,6 +3,7 @@
 #include "ui/AutomationPanel.h"
 #include "ui/AudioAlignmentPanel.h"
 #include "ui/TempoDetectionPanel.h"
+#include "ui/MarkersPage.h"
 #include "ui/VariAudioEditor.h"
 #include "ui/TrackActions.h"
 #include "engine/MidiImport.h"
@@ -361,6 +362,14 @@ MainView::MainView (pr7s::Studio& studioToUse)
     arrange.onOpenAudioAlignment = [this] { if (alignmentWindow == nullptr) toggleAudioAlignment(); else alignmentWindow->toFront (true); };
     // (0.45.0) Signatures, tap tempo, tempo detection.
     arrange.onTempoDetection = [this] (int partId) { openTempoDetection (partId); };
+    arrange.onOpenMarkers = [this] { toggleMarkersWindow (true); };
+    trackList.onMarkerMenu = [this] { arrange.showMarkerMenu (-1); };
+    trackList.onMarkerZoom = [this] (int index)
+    {
+        const auto& markers = studio.getMarkerTrack().markers;
+        if (juce::isPositiveAndBelow (index, (int) markers.size()))
+            arrange.zoomTo (markers[(size_t) index].start, markers[(size_t) index].end);
+    };
     trackList.onSignatureMenu = [this] { arrange.showSignatureMenu(); };
     trackList.onInsertSignature = [this] { insertSignatureAtCursor(); };
     transport.onInsertSignature = [this] { insertSignatureAtCursor(); };
@@ -952,6 +961,47 @@ bool MainView::handleKey (const juce::KeyPress& key)
             studio.setPosition (left ? project.loopStart : project.loopEnd);
         return true;
     }
+    // Markers (0.49.0, the manual's keys): Insert adds one at the playhead; Shift+N / Shift+B go to the
+    // next / previous; Shift+1..9 (and the number pad's 3 to 9) to marker 1..9; Ctrl+1..9 set marker
+    // 1..9 at the playhead. Before the Ctrl keys, the tool digits and * (Shift+8 types it).
+    {
+        auto digit = code >= '1' && code <= '9' ? (int) (code - '0') : 0;
+        if (digit == 0 && mods.isShiftDown())
+        {
+            // (Where Shift+digit comes as its shifted character: a US keyboard's !@#$%^&*(.)
+            const auto shifted = juce::String ("!@#$%^&*(").indexOfChar (key.getTextCharacter());
+            if (shifted >= 0)
+                digit = shifted + 1;
+        }
+        for (int n = 3; n <= 9; ++n)
+            if (code == juce::KeyPress::numberPad0 + n && ! mods.isAnyModifierKeyDown())
+                return studio.locateMarkerId (n) || true;
+        if (code == juce::KeyPress::insertKey && ! mods.isAnyModifierKeyDown())
+        {
+            studio.addPositionMarkerAtCursor();
+            return true;
+        }
+        if (mods.isShiftDown() && ! mods.isCommandDown() && ! mods.isAltDown() && (letter == 'N' || letter == 'B'))
+        {
+            studio.locateNextMarker (letter == 'N');
+            return true;
+        }
+        if (digit > 0 && mods.isShiftDown() && ! mods.isCommandDown() && ! mods.isAltDown())
+        {
+            studio.locateMarkerId (digit);
+            return true;
+        }
+        if (digit > 0 && mods.isCommandDown() && ! mods.isShiftDown() && ! mods.isAltDown())
+        {
+            studio.setMarkerIdAtCursor (digit);
+            return true;
+        }
+        if (letter == 'M' && mods.isCommandDown() && ! mods.isShiftDown() && ! mods.isAltDown())
+        {
+            toggleMarkersWindow();   // (the manual's Markers window key)
+            return true;
+        }
+    }
     if (mods.isCommandDown())
     {
         switch (letter)
@@ -989,7 +1039,9 @@ bool MainView::handleKey (const juce::KeyPress& key)
     if (key == juce::KeyPress::homeKey)                 { studio.goToStart(); return true; }
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
     {
-        if (arrange.hasSelectedTempoEvents())
+        if (arrange.hasSelectedMarkers())
+            arrange.deleteSelectedMarkers();
+        else if (arrange.hasSelectedTempoEvents())
             arrange.deleteSelectedTempoEvents();
         else if (arrange.hasSelectedSignatures())
             arrange.deleteSelectedSignatures();
@@ -2204,6 +2256,26 @@ void MainView::toggleAutomationPanel()
 void MainView::insertSignatureAtCursor()
 {
     arrange.editSignature (studio.getProject().signatures().barAt (studio.getEngine().getPosition()), true);
+}
+
+void MainView::toggleMarkersWindow (bool openOnly)
+{
+    if (markersWindow != nullptr)
+    {
+        if (openOnly)
+            markersWindow->toFront (true);
+        else
+            markersWindow = nullptr;
+        return;
+    }
+    auto window = std::make_unique<MarkersWindow> (studio);
+    window->onClose = [safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->markersWindow = nullptr; });
+    };
+    window->getPage().onOtherKey = [this] (const juce::KeyPress& k) { return keyPressed (k); };
+    markersWindow = std::move (window);
+    markersWindow->toFront (true);
 }
 
 void MainView::openTempoDetection (int partId)

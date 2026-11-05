@@ -88,6 +88,9 @@ public:
     void openTempoDetection (int partId);   // (0.45.0) the Tempo Detection panel
     void insertSignatureAtCursor();         // (0.45.0) the Insert Time Signature box at the cursor's bar
     juce::DocumentWindow* getTempoDetectionWindow() noexcept { return tempoDetectionWindow.get(); }
+    // The Markers window (0.49.0, Ctrl+M): opened, or closed if open (`openOnly`: brought to the front).
+    void toggleMarkersWindow (bool openOnly = false);
+    juce::DocumentWindow* getMarkersWindow() noexcept { return markersWindow.get(); }
     // The VariAudio editor (0.34.0) for an audio clip: one window, switched to the clip.
     void openVariAudio (int partId);
     juce::DocumentWindow* getVariAudioWindow() noexcept { return variAudioWindow.get(); }
@@ -277,7 +280,8 @@ private:
     juce::TextButton keysButton { "KEYS" };
     int saveFlashes = 0;
     std::unique_ptr<ProgressBox> progressBox;   // a long job's progress (0.11.1)
-    std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow, drumMapWindow, automationWindow, alignmentWindow, variAudioWindow, tempoDetectionWindow;
+    std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow, drumMapWindow, automationWindow, alignmentWindow, variAudioWindow, tempoDetectionWindow,
+                                          markersWindow;
     int trackListScrollY = 0;          // (0.34.1) what the track list was last laid out for
     double trackListRowZoom = 1.0;
     std::unique_ptr<LinesWindow> linesWindow;

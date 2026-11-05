@@ -2,6 +2,54 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.49.0
+
+**Markers** (the first of your four: then folder tracks, export round two, crossfades for comping). It follows the manual's Markers chapter.
+
+**The marker track** (+ ADD TRACK > Marker track, or just press Insert):
+- **Position markers** keep a place: an orange flag with their number and name.
+- **Cycle markers** keep a range, such as a verse or a chorus: a pink bar, with its number in brackets.
+- **The row's keys:**
+  - **+ POS** adds a marker at the playhead.
+  - **+ CYC** adds a cycle marker over the locators (Shift-click names it too).
+  - **LOCK** stops changes; you can still go to the markers.
+  - **GO TO** goes to a marker, sets the locators to a cycle marker, or zooms to one.
+- **Marker lines** run faintly down the whole arrangement, so you can see where sections start. Switch them off in the right-click menu.
+
+**On the marker track:**
+- **Alt-click** adds a position marker (Shift+Alt: and type its name). **Ctrl-drag** draws a cycle marker (Shift+Ctrl: and name it).
+- **Drag** a marker to move it (it snaps). Drag a cycle marker's edges to change its start or end.
+- **Double-click a cycle marker:** the locators go to it, ready to play round. **Alt + double-click:** it zooms to it too.
+- **Double-click a position marker:** type its name.
+- **With the Range tool,** double-click between two markers to select that whole stretch on every track.
+- **DRAW** adds and **ERASE** removes (Alt + ERASE: every marker from there on). **Delete** removes the selected.
+
+**Keys (the manual's own):**
+- **Insert:** a marker at the playhead.
+- **Shift+N / Shift+B:** the next / previous marker.
+- **Shift+1 to Shift+9** (and the number pad's 3 to 9): to marker 1 to 9.
+- **Ctrl+1 to Ctrl+9:** set marker 1 to 9 at the playhead.
+- **Ctrl+M:** the Markers window.
+- All of them can be changed in KEYS (they're in its Transport and Window lists), so a Stream Deck can press them.
+
+**The Markers window (Ctrl+M):**
+- **The list:** every marker with its ID, type, position, end, length and description. An arrow marks the one at the playhead; click the arrow column to go to a marker.
+- **Editing:** double-click any cell to type. Click a column's title to sort by it.
+- **Keys in the list:** Up/Down move through it and Return goes to the chosen marker.
+- **FUNCTIONS:** Move Markers to Cursor; Reassign Position / Cycle Marker IDs (numbers them again in time order).
+- **Settings:** SHOW IDS; CYCLE FOLLOWS (going to a marker also sets the locators to it); LINES; AUTO-SCROLL.
+
+**MIDI files:** markers in a MIDI file come onto the marker track when you import it.
+
+**Each marker change is one undo step.** Markers are saved with the song.
+
+**Not yet:**
+- **One marker track:** the manual allows ten.
+- **No marker lines in the MIDI editor.**
+- **No markers on the info line.**
+- **No WAV-file markers.**
+- **No marker export:** it comes with MIDI file export in 0.51.0.
+
 ## 0.48.0
 
 **The neon finishes get PR7-G 0.59.0's look: black keys in neon rings** (you asked; your design).

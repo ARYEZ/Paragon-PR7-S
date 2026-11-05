@@ -284,6 +284,17 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.renameTrack (lead, "Bridge Synth Lead (Right)");
         studio.renameTrack (guitar, "Forever Found Rhythm Guitar Double");
     }
+    // PARAGON_SNAPSHOT_MARKERS=1 (0.49.0): the marker track with position and cycle markers, one selected.
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_MARKERS", {}).isNotEmpty())
+    {
+        studio.addPositionMarker (0.0, "Intro");
+        studio.addCycleMarker (16.0, 32.0, "Verse");
+        studio.addPositionMarker (16.0, "Verse");
+        studio.addCycleMarker (32.0, 48.0, "Chorus");
+        studio.addPositionMarker (32.0, "Chorus");
+        studio.addPositionMarker (24.0, "Fill");
+        view.getArrangeView().selectMarkers ({ 1 });
+    }
     // PARAGON_SNAPSHOT_INFOLINE=1 (0.37.0, with PARAGON_SNAPSHOT_AUTOMATION): three of the lead's volume points selected (the info line shows them).
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_INFOLINE", {}).isNotEmpty())
         view.getArrangeView().selectPoints (lead, 0, { 0, 1, 2 });

@@ -100,6 +100,8 @@ namespace pr7s
                 const auto& message = event->message;
                 if (message.isTrackNameEvent() && name.isEmpty())
                     name = message.getTextFromTextMetaEvent().trim();
+                if (message.isMetaEvent() && message.getMetaEventType() == 6)
+                    result.markers.push_back ({ toBeats (message.getTimeStamp()), message.getTextFromTextMetaEvent().trim() });
                 if (message.isController() || message.isPitchWheel() || message.isChannelPressure()
                     || message.isAftertouch() || message.isProgramChange())
                 {

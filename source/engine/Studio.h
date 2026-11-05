@@ -893,6 +893,34 @@ namespace pr7s
         SignatureEvent getSignatureNow() const;                           // at the playhead
 
         //======================================================================
+        // Markers (0.49.0, the manual's Markers chapter). One marker track (our choice: the manual
+        // allows ten). Every edit is an undo step and is refused while the track is locked
+        // (locating isn't an edit). Indices are into `getMarkerTrack().markers` (sorted by start).
+        const MarkerTrack& getMarkerTrack() const noexcept { return project.markerTrack; }
+        void addMarkerTrack();       // shown (added once)
+        void removeMarkerTrack();    // hidden; its markers are kept (and come back with it)
+        void setMarkerTrackLocked (bool);
+        void renameMarkerTrack (const juce::String&);
+        void setMarkerSettings (bool showLines, bool showIds, bool cycleFollows);   // not undo steps
+        // Added markers show the track. Each returns the marker's index (-1: refused).
+        int addPositionMarker (double beat, const juce::String& name = {});
+        int addCycleMarker (double start, double end, const juce::String& name = {});
+        int addPositionMarkerAtCursor();   // the manual's Insert Marker (Insert)
+        int addCycleMarkerAtLocators();    // Insert Cycle Marker: the locators' range
+        bool setMarkers (std::vector<Marker>);   // all of them (drags, the Markers window); sorted, IDs kept unique
+        bool removeMarkers (std::vector<int> indices);
+        bool removeMarkersFrom (double beat);    // the Erase tool's Alt-click: every marker starting there or later
+        bool moveMarkersToCursor (const std::vector<int>& indices);   // a cycle marker keeps its length
+        void reassignMarkerIds (bool cycle);
+        // Locating: the playhead to the marker (a cycle marker's start); with Cycle Follows the
+        // locators too (a cycle marker's range; a position marker's: to the next marker, else a bar on).
+        bool locateMarker (int index);
+        bool cycleToMarker (int index);    // the locators to a cycle marker (a double-click on it)
+        bool locateMarkerId (int id);      // To Marker n (Shift+n, number pad 3-9): the position marker with ID n
+        bool setMarkerIdAtCursor (int id); // Set Marker n (Ctrl+n): that position marker to the playhead (added if none)
+        bool locateNextMarker (bool forward);   // Shift+N / Shift+B
+
+        //======================================================================
         // Tap tempo (0.45.0, the manual's Tap Tempo Modes): each tap's time in seconds (the
         // transport's TAP, Shift+Space). From the second tap the tempo is the average step of
         // the last eight; a gap of 2 s starts again. Applied at each tap by the mode (not an

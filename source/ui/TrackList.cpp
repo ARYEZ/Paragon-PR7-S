@@ -726,6 +726,176 @@ public:
 };
 
 //==============================================================================
+// The marker track's row (0.49.0, the manual's Marker Track controls): its name (double-click:
+// rename), + POS (Add Position Marker at the cursor), + CYC (Add Cycle Marker at the locators;
+// Shift-click: and name it), LOCK, and GO TO (the manual's Locate, Cycle and Zoom pop-up menus).
+class TrackList::MarkerRow final : public juce::Component,
+                                   public juce::SettableTooltipClient
+{
+public:
+    explicit MarkerRow (TrackList& ownerList) : owner (ownerList)
+    {
+        for (auto* key : { &addPosition, &addCycle, &lock, &goTo })
+        {
+            key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+            key->setWantsKeyboardFocus (false);
+            addAndMakeVisible (*key);
+        }
+        goTo.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+        addPosition.setTooltip ("Add Position Marker: a marker at the playhead (Insert)");
+        addCycle.setTooltip ("Add Cycle Marker: one over the locators' range (Shift-click: and name it)");
+        lock.setTooltip ("Lock: the markers can't be changed (you can still go to them)");
+        goTo.setTooltip ("Locate a marker, set the locators to a cycle marker, or zoom to one");
+        addPosition.onClick = [this] { owner.studio.addPositionMarkerAtCursor(); };
+        addCycle.onClick = [this]
+        {
+            const auto index = owner.studio.addCycleMarkerAtLocators();
+            if (index >= 0 && juce::ModifierKeys::currentModifiers.isShiftDown())
+                rename (index);
+        };
+        lock.onClick = [this] { owner.studio.setMarkerTrackLocked (! owner.studio.getMarkerTrack().locked); };
+        goTo.onClick = [this] { showGoToMenu(); };
+        setTooltip ("The marker track: right-click for its menu; double-click its name to rename it");
+        refresh();
+    }
+
+    void refresh()
+    {
+        const auto& track = owner.studio.getMarkerTrack();
+        lock.setToggleState (track.locked, juce::dontSendNotification);
+        addPosition.setEnabled (! track.locked);
+        addCycle.setEnabled (! track.locked);
+        repaint();
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto bounds = getLocalBounds().toFloat();
+        g.setColour (juce::Colour (0xff140f14));
+        g.fillRect (bounds);
+        g.setColour (juce::Colour (0xff050405));
+        g.fillRect (bounds.withY (bounds.getBottom() - 1.0f).withHeight (1.0f));
+        g.setColour (pr7s::FamilyColours::orange);
+        g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
+        g.setColour (ParagonColours::text);
+        g.setFont (ParagonLookAndFeel::titleFont (13.0f));
+        g.drawFittedText (owner.studio.getMarkerTrack().name.toUpperCase(), nameArea.toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().withTrimmedLeft (16).reduced (0, 4);
+        area.removeFromRight (6);
+        const auto keyHeight = juce::jmin (24, area.getHeight());
+        const auto place = [&] (juce::Button& key, int width)
+        {
+            key.setBounds (area.removeFromRight (width).withSizeKeepingCentre (width, keyHeight));
+            area.removeFromRight (4);
+        };
+        place (goTo, 62);
+        place (lock, 42);
+        place (addCycle, 46);
+        place (addPosition, 46);
+        nameArea = area.toFloat();
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (e.mods.isPopupMenu() && owner.onMarkerMenu)
+            owner.onMarkerMenu();
+    }
+
+    void mouseDoubleClick (const juce::MouseEvent& e) override
+    {
+        if (nameArea.contains (e.position))
+            renameTrack();
+    }
+
+private:
+    void showGoToMenu()
+    {
+        const auto& markers = owner.studio.getMarkerTrack().markers;
+        juce::PopupMenu menu, cycles, zooms;
+        menu.addSectionHeader ("LOCATE");
+        const auto label = [] (const pr7s::Marker& m)
+        {
+            return pr7s::markerIdText (m) + (m.name.isNotEmpty() ? "  " + m.name : juce::String());
+        };
+        for (int i = 0; i < (int) markers.size(); ++i)
+        {
+            menu.addItem (1 + i, label (markers[(size_t) i]));
+            if (markers[(size_t) i].cycle)
+            {
+                cycles.addItem (10001 + i, label (markers[(size_t) i]));
+                zooms.addItem (20001 + i, label (markers[(size_t) i]));
+            }
+        }
+        if (markers.empty())
+            menu.addItem (-1, "(no markers yet: + POS or + CYC)", false);
+        menu.addSeparator();
+        menu.addSubMenu ("Cycle (the locators to a cycle marker)", cycles, cycles.getNumItems() > 0);
+        menu.addSubMenu ("Zoom (to a cycle marker)", zooms, zooms.getNumItems() > 0);
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&goTo),
+                            [safe = juce::Component::SafePointer<MarkerRow> (this)] (int chosen)
+        {
+            if (safe == nullptr || chosen <= 0)
+                return;
+            auto& studio = safe->owner.studio;
+            if (chosen > 20000)
+            {
+                if (safe->owner.onMarkerZoom)
+                    safe->owner.onMarkerZoom (chosen - 20001);
+            }
+            else if (chosen > 10000)
+                studio.cycleToMarker (chosen - 10001);
+            else
+                studio.locateMarker (chosen - 1);
+        });
+    }
+
+    void rename (int index)
+    {
+        const auto& markers = owner.studio.getMarkerTrack().markers;
+        if (! juce::isPositiveAndBelow (index, (int) markers.size()))
+            return;
+        const auto marker = markers[(size_t) index];
+        auto* box = new juce::AlertWindow ("Cycle Marker " + pr7s::markerIdText (marker), "Its description.", juce::MessageBoxIconType::NoIcon);
+        box->addTextEditor ("name", marker.name, "DESCRIPTION");
+        box->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+        box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+        box->enterModalState (true, juce::ModalCallbackFunction::create ([box, marker, safe = juce::Component::SafePointer<MarkerRow> (this)] (int result)
+        {
+            if (safe == nullptr || result != 1)
+                return;
+            auto& studio = safe->owner.studio;
+            auto all = studio.getMarkerTrack().markers;
+            if (const auto i = studio.getMarkerTrack().indexOf (marker.id, marker.cycle); i >= 0)
+            {
+                all[(size_t) i].name = box->getTextEditorContents ("name").trim();
+                studio.setMarkers (std::move (all));
+            }
+        }), true);
+    }
+
+    void renameTrack()
+    {
+        auto* box = new juce::AlertWindow ("Marker Track", "Its name.", juce::MessageBoxIconType::NoIcon);
+        box->addTextEditor ("name", owner.studio.getMarkerTrack().name, "NAME");
+        box->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+        box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+        box->enterModalState (true, juce::ModalCallbackFunction::create ([box, safe = juce::Component::SafePointer<MarkerRow> (this)] (int result)
+        {
+            if (safe != nullptr && result == 1)
+                safe->owner.studio.renameMarkerTrack (box->getTextEditorContents ("name"));
+        }), true);
+    }
+
+    TrackList& owner;
+    juce::TextButton addPosition { "+ POS" }, addCycle { "+ CYC" }, lock { "LOCK" }, goTo { "GO TO" };
+    juce::Rectangle<float> nameArea;
+};
+
+//==============================================================================
 // The chord track's row (0.16.0): its name, the key at the playhead, TO PADS
 // (the manual's Assign from Chord Track), TO MIDI (its chords as a part on the
 // selected track), AUTO SCALES (the scales follow the chords).
@@ -988,6 +1158,15 @@ void TrackList::rebuild()
         signatureRow = nullptr;
     if (signatureRow != nullptr)
         signatureRow->refresh();
+    if (studio.getMarkerTrack().shown && markerRow == nullptr)
+    {
+        markerRow = std::make_unique<MarkerRow> (*this);
+        addAndMakeVisible (*markerRow);
+    }
+    else if (! studio.getMarkerTrack().shown)
+        markerRow = nullptr;
+    if (markerRow != nullptr)
+        markerRow->refresh();
     if (studio.getChordTrack().shown && chordRow == nullptr)
     {
         chordRow = std::make_unique<ChordRow> (*this);
@@ -1047,6 +1226,11 @@ void TrackList::placeRows()
         {
             if (signatureRow != nullptr)
                 signatureRow->setBounds (bounds);
+        }
+        else if (row.kind == Timeline::Row::Kind::markers)
+        {
+            if (markerRow != nullptr)
+                markerRow->setBounds (bounds);
         }
         else if (row.kind == Timeline::Row::Kind::chords)
         {
@@ -1113,6 +1297,7 @@ juce::PopupMenu TrackList::makeAddTrackMenu (int offset)
     menu.addSectionHeader ("ADD THE TEMPO TRACK");
     menu.addItem (offset + 8, "Tempo track (tempo changes: steps and ramps)", ! studio.getProject().tempoTrackShown);
     menu.addItem (offset + 10, "Signature track (time signature changes)", ! studio.getProject().signatureTrackShown);
+    menu.addItem (offset + 11, "Marker track (position and cycle markers)", ! studio.getMarkerTrack().shown);
     menu.addItem (offset + 9, "Chord track (the song's chords and scales)", ! studio.getChordTrack().shown);
     menu.addSeparator();
     menu.addItem (offset + 7, "Track from a preset...");
@@ -1139,6 +1324,10 @@ bool TrackList::addTrackChosen (int chosen)
         else if (chosen == 10)
         {
             studio.addSignatureTrack();
+        }
+        else if (chosen == 11)
+        {
+            studio.addMarkerTrack();
         }
         else if (chosen == 7)
         {

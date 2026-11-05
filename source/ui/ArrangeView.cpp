@@ -57,6 +57,12 @@ void ArrangeView::changeListenerCallback (juce::ChangeBroadcaster*)
                 selection = selectionOf (at->first, at->second);
     }
     selectedPartId = selection.isValid() ? selectedPartId : 0;
+    // (0.49.0) Markers selected that have gone (undo, delete) leave the selection.
+    {
+        const auto count = (int) studio.getMarkerTrack().markers.size();
+        markerSelection.erase (std::remove_if (markerSelection.begin(), markerSelection.end(), [count] (int i) { return i >= count; }),
+                               markerSelection.end());
+    }
     // Likewise automation points (an undo can change them under the selection).
     if (drag != Drag::points && drag != Drag::draw && drag != Drag::band)
     {
@@ -347,6 +353,8 @@ std::vector<Timeline::Row> Timeline::layout (const pr7s::Studio& studio) const
         add (Row::Kind::tempo, 0, -1, tempoRowHeight());
     if (studio.getProject().signatureTrackShown)
         add (Row::Kind::signature, 0, -1, signatureRowHeight());
+    if (studio.getProject().markerTrack.shown)
+        add (Row::Kind::markers, 0, -1, markerRowHeight());   // (0.49.0)
     if (studio.getProject().chordTrack.shown)
         add (Row::Kind::chords, 0, -1, chordRowHeight());   // (0.16.0: under the tempo track's)
     for (const auto& track : studio.getProject().tracks)
@@ -655,6 +663,11 @@ void ArrangeView::paint (juce::Graphics& g)
             paintChords (g, row);
         else if (row.kind == Timeline::Row::Kind::signature)
             paintSignature (g, row);
+        else if (row.kind == Timeline::Row::Kind::markers)
+            paintMarkers (g, row);
+
+    // (0.49.0) Marker lines down the arrangement, behind the parts (the manual's Show Marker Lines).
+    paintMarkerLines (g);
 
     // The cycle range over the lanes, faintly.
     {
@@ -1379,6 +1392,10 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
         return;
     if (const auto row = rowAt (event.position.y); row && row->kind == Timeline::Row::Kind::signature && signatureDown (event))
         return;
+    if (const auto row = rowAt (event.position.y); row && row->kind == Timeline::Row::Kind::markers && markerDown (event))
+        return;
+    if (! event.mods.isShiftDown())
+        markerSelection.clear();
     if (! event.mods.isShiftDown())
         signatureSelection.clear();
     if (! event.mods.isShiftDown())
@@ -1544,6 +1561,11 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
 
 void ArrangeView::mouseDrag (const juce::MouseEvent& event)
 {
+    if (drag == Drag::markerMove || drag == Drag::markerStart || drag == Drag::markerEnd || drag == Drag::markerNewCycle)
+    {
+        markerDrag (event);
+        return;
+    }
     if (drag == Drag::signatureMove)
     {
         signatureDrag (event);
@@ -1747,6 +1769,11 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
 
 void ArrangeView::mouseUp (const juce::MouseEvent& event)
 {
+    if (drag == Drag::markerMove || drag == Drag::markerStart || drag == Drag::markerEnd || drag == Drag::markerNewCycle)
+    {
+        markerUp();
+        return;
+    }
     if (drag == Drag::signatureMove)
     {
         signatureUp();
@@ -2339,6 +2366,8 @@ void ArrangeView::toolUp (const juce::MouseEvent& event)
 void ArrangeView::mouseDoubleClick (const juce::MouseEvent& event)
 {
     if (automationDoubleClick (event))   // (0.27.0) a point's value typed in, a bend straightened
+        return;
+    if (markerDoubleClick (event))   // (0.49.0)
         return;
     // The chord track: a chord's editor; an empty spot, the chord the one before suggests (0.16.0).
     if (const auto row = rowAt (event.position.y); row && row->kind == Timeline::Row::Kind::chords)

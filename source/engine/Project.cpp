@@ -365,6 +365,8 @@ namespace pr7s
             g->setAttribute ("selection", group.selection);
             g->setAttribute ("recordMonitor", group.recordMonitor);
         }
+        if (markerTrack.shown || ! markerTrack.isEmpty())
+            xml->addChildElement (markerTrack.toXml().release());   // (0.49.0)
         if (! signatureChanges.empty() || signatureTrackShown)
         {
             auto* signature = xml->createNewChildElement ("Signatures");
@@ -656,6 +658,8 @@ namespace pr7s
             project.chordTrack = ChordTrack::fromXml (*chords);
         if (! isValidSignature (project.numerator, project.denominator))
             project.numerator = 4, project.denominator = 4;
+        if (const auto* markers = xml.getChildByName ("MarkerTrack"))
+            project.markerTrack = MarkerTrack::fromXml (*markers);   // (0.49.0)
         if (const auto* signature = xml.getChildByName ("Signatures"))
         {
             project.signatureTrackShown = signature->getBoolAttribute ("shown");

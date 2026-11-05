@@ -361,6 +361,8 @@ namespace pr7s
         project.denominator = state.denominator;
         project.signatureChanges = state.signatureChanges;   // (0.45.0)
         project.signatureTrackShown = state.signatureTrackShown;
+        project.markerTrack.markers = state.markerTrack.markers;   // (0.49.0: marker edits are undo steps;
+        project.markerTrack.shown = state.markerTrack.shown;       //  the lock and the window's settings aren't)
         project.loopOn = state.loopOn;
         project.loopStart = state.loopStart;
         project.loopEnd = state.loopEnd;
@@ -5093,6 +5095,258 @@ namespace pr7s
     }
 
     //==========================================================================
+    // Markers (0.49.0).
+    void Studio::addMarkerTrack()
+    {
+        if (project.markerTrack.shown)
+            return;
+        project.markerTrack.shown = true;
+        changed();
+    }
+
+    void Studio::removeMarkerTrack()
+    {
+        if (! project.markerTrack.shown)
+            return;
+        project.markerTrack.shown = false;
+        changed();
+    }
+
+    void Studio::setMarkerTrackLocked (bool locked)
+    {
+        if (project.markerTrack.locked == locked)
+            return;
+        project.markerTrack.locked = locked;
+        changed (false);
+    }
+
+    void Studio::renameMarkerTrack (const juce::String& name)
+    {
+        const auto trimmed = name.trim().isEmpty() ? juce::String ("Markers") : name.trim();
+        if (project.markerTrack.name == trimmed)
+            return;
+        project.markerTrack.name = trimmed;
+        changed (false);
+    }
+
+    void Studio::setMarkerSettings (bool showLines, bool showIds, bool cycleFollows)
+    {
+        auto& track = project.markerTrack;
+        if (track.showLines == showLines && track.showIds == showIds && track.cycleFollows == cycleFollows)
+            return;
+        track.showLines = showLines;
+        track.showIds = showIds;
+        track.cycleFollows = cycleFollows;
+        changed (false);
+    }
+
+    namespace
+    {
+        int indexOfMarker (const MarkerTrack& track, const Marker& m)
+        {
+            return track.indexOf (m.id, m.cycle);
+        }
+    }
+
+    int Studio::addPositionMarker (double beat, const juce::String& name)
+    {
+        auto& track = project.markerTrack;
+        if (track.locked || ! std::isfinite (beat))
+            return -1;
+        Marker m;
+        m.id = track.nextId (false);
+        m.start = m.end = juce::jmax (0.0, beat);
+        m.name = name;
+        track.markers.push_back (m);
+        track.sort();
+        track.shown = true;
+        changed();
+        return indexOfMarker (track, m);
+    }
+
+    int Studio::addCycleMarker (double start, double end, const juce::String& name)
+    {
+        auto& track = project.markerTrack;
+        if (track.locked || ! std::isfinite (start) || ! std::isfinite (end))
+            return -1;
+        if (end < start)
+            std::swap (start, end);
+        start = juce::jmax (0.0, start);
+        if (end - start < 1.0e-3)
+            return -1;
+        Marker m;
+        m.cycle = true;
+        m.id = track.nextId (true);
+        m.start = start;
+        m.end = end;
+        m.name = name;
+        track.markers.push_back (m);
+        track.sort();
+        track.shown = true;
+        changed();
+        return indexOfMarker (track, m);
+    }
+
+    int Studio::addPositionMarkerAtCursor()
+    {
+        return addPositionMarker (engine.getPosition());
+    }
+
+    int Studio::addCycleMarkerAtLocators()
+    {
+        return addCycleMarker (project.loopStart, project.loopEnd);
+    }
+
+    bool Studio::setMarkers (std::vector<Marker> markers)
+    {
+        auto& track = project.markerTrack;
+        if (track.locked)
+            return false;
+        MarkerTrack tidy;
+        for (auto m : markers)
+        {
+            if (m.cycle && m.end - m.start < 1.0e-3)
+                continue;
+            if (m.id < 1 || tidy.indexOf (m.id, m.cycle) >= 0)
+                m.id = tidy.nextId (m.cycle);   // (the manual: a marker dropped where its ID is taken gets the first free one)
+            tidy.markers.push_back (m);
+        }
+        tidy.sort();
+        if (tidy.markers == track.markers)
+            return true;
+        track.markers = std::move (tidy.markers);
+        changed();
+        return true;
+    }
+
+    bool Studio::removeMarkers (std::vector<int> indices)
+    {
+        auto& track = project.markerTrack;
+        if (track.locked)
+            return false;
+        std::sort (indices.begin(), indices.end(), std::greater<>());
+        indices.erase (std::unique (indices.begin(), indices.end()), indices.end());
+        auto any = false;
+        for (const auto i : indices)
+            if (juce::isPositiveAndBelow (i, (int) track.markers.size()))
+            {
+                track.markers.erase (track.markers.begin() + i);
+                any = true;
+            }
+        if (any)
+            changed();
+        return any;
+    }
+
+    bool Studio::removeMarkersFrom (double beat)
+    {
+        std::vector<int> later;
+        for (int i = 0; i < (int) project.markerTrack.markers.size(); ++i)
+            if (project.markerTrack.markers[(size_t) i].start >= beat - 1.0e-6)
+                later.push_back (i);
+        return ! later.empty() && removeMarkers (later);
+    }
+
+    bool Studio::moveMarkersToCursor (const std::vector<int>& indices)
+    {
+        auto markers = project.markerTrack.markers;
+        const auto at = engine.getPosition();
+        auto any = false;
+        for (const auto i : indices)
+            if (juce::isPositiveAndBelow (i, (int) markers.size()))
+            {
+                auto& m = markers[(size_t) i];
+                const auto length = m.length();
+                m.start = at;
+                m.end = m.cycle ? at + length : at;
+                any = true;
+            }
+        return any && setMarkers (std::move (markers));
+    }
+
+    void Studio::reassignMarkerIds (bool cycle)
+    {
+        auto& track = project.markerTrack;
+        if (track.locked)
+            return;
+        const auto before = track.markers;
+        track.reassignIds (cycle);
+        if (track.markers != before)
+            changed();
+    }
+
+    bool Studio::locateMarker (int index)
+    {
+        const auto& track = project.markerTrack;
+        if (! juce::isPositiveAndBelow (index, (int) track.markers.size()))
+            return false;
+        const auto m = track.markers[(size_t) index];
+        setPosition (m.start);
+        if (track.cycleFollows)
+        {
+            // (A position marker's range: to the next marker's start, else a bar on: our reading.)
+            const auto end = m.cycle ? m.end : track.nextStart (m.start, true).value_or (project.nextBarAfter (m.start));
+            setCycle (m.start, end);
+        }
+        return true;
+    }
+
+    bool Studio::cycleToMarker (int index)
+    {
+        const auto& track = project.markerTrack;
+        if (! juce::isPositiveAndBelow (index, (int) track.markers.size()) || ! track.markers[(size_t) index].cycle)
+            return false;
+        const auto m = track.markers[(size_t) index];
+        setCycle (m.start, m.end);
+        return true;
+    }
+
+    bool Studio::locateMarkerId (int id)
+    {
+        return locateMarker (project.markerTrack.indexOf (id, false));
+    }
+
+    bool Studio::setMarkerIdAtCursor (int id)
+    {
+        auto& track = project.markerTrack;
+        if (track.locked || id < 1)
+            return false;
+        auto markers = track.markers;
+        const auto at = engine.getPosition();
+        if (const auto i = track.indexOf (id, false); i >= 0)
+            markers[(size_t) i].start = markers[(size_t) i].end = at;
+        else
+        {
+            Marker m;
+            m.id = id;
+            m.start = m.end = at;
+            markers.push_back (m);
+        }
+        const auto wasShown = track.shown;
+        const auto before = track.markers;
+        track.shown = true;
+        if (! setMarkers (std::move (markers)))
+        {
+            track.shown = wasShown;
+            return false;
+        }
+        if (! wasShown && track.markers == before)
+            changed();   // (shown, nothing else changed: still one undo step)
+        return true;
+    }
+
+    bool Studio::locateNextMarker (bool forward)
+    {
+        const auto to = project.markerTrack.nextStart (engine.getPosition(), forward);
+        if (! to)
+            return false;
+        for (int i = 0; i < (int) project.markerTrack.markers.size(); ++i)
+            if (std::abs (project.markerTrack.markers[(size_t) i].start - *to) < 1.0e-9)
+                return locateMarker (i);
+        return false;
+    }
+
+    //==========================================================================
     // Tap tempo (0.45.0).
     juce::String Studio::tapModeName (TapMode mode)
     {
@@ -7283,6 +7537,23 @@ namespace pr7s
             ControllerKinds::sort (part.controllers);
             addPart (id, part);
             ++added;
+        }
+        // (0.49.0) The file's markers onto the marker track (the manual: a file from other software's
+        // markers all go onto one track), from where it went in.
+        if (! midi.markers.empty() && ! project.markerTrack.locked)
+        {
+            auto& track = project.markerTrack;
+            for (const auto& fileMarker : midi.markers)
+            {
+                Marker m;
+                m.id = track.nextId (false);
+                m.start = m.end = juce::jmax (0.0, atBeat + fileMarker.beat);
+                m.name = fileMarker.name;
+                track.markers.push_back (m);
+                track.sort();
+            }
+            track.shown = true;
+            changed (! newSong);
         }
         if (newSong)
         {

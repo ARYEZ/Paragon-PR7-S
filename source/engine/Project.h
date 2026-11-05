@@ -11,6 +11,7 @@
 #include "TempoMap.h"
 #include "Eq.h"
 #include "Signature.h"
+#include "Markers.h"
 
 // A song: its tempo and time signature, the cycle (loop) range, and its
 // tracks, each with an instrument and the MIDI parts on the timeline.
@@ -334,6 +335,7 @@ namespace pr7s
         // signature track: shown in the track list (it can be added once) and its Lock.
         std::vector<SignatureEvent> signatureChanges;   // sorted by bar, each at bar 1 (index 1) or later
         bool signatureTrackShown = false, signatureLocked = false;
+        MarkerTrack markerTrack;                // (0.49.0) the marker track and its markers
         bool loopOn = false;                  // CYCLE
         double loopStart = 0.0, loopEnd = 16.0;
         bool click = false;                   // the metronome

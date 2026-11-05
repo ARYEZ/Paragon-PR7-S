@@ -42,6 +42,27 @@ void MainView::registerCommands()
     add ("Edit.InsertSignature", "Edit", "Insert Time Signature Event", {}, [this] { insertSignatureAtCursor(); });   // (0.45.0: no key, as the manual's)
     add ("Project.AddSignatureTrack", "Project", "Add Signature Track", {}, [this] { studio.addSignatureTrack(); });
     add ("Window.TempoDetection", "Window", "Tempo Detection", {}, [this] { openTempoDetection (0); });
+    // Markers (0.49.0, the manual's keys).
+    add ("Transport.InsertMarker", "Transport", "Insert Marker", { KP (KP::insertKey) });
+    add ("Transport.InsertCycleMarker", "Transport", "Insert Cycle Marker", {}, [this] { studio.addCycleMarkerAtLocators(); });
+    add ("Transport.NextMarker", "Transport", "Locate Next Marker", { key ('N', shift) });
+    add ("Transport.PreviousMarker", "Transport", "Locate Previous Marker", { key ('B', shift) });
+    for (int n = 1; n <= 9; ++n)
+    {
+        static const char* toIds[] = { "", "Transport.ToMarker1", "Transport.ToMarker2", "Transport.ToMarker3", "Transport.ToMarker4", "Transport.ToMarker5",
+                                       "Transport.ToMarker6", "Transport.ToMarker7", "Transport.ToMarker8", "Transport.ToMarker9" };
+        static const char* setIds[] = { "", "Transport.SetMarker1", "Transport.SetMarker2", "Transport.SetMarker3", "Transport.SetMarker4", "Transport.SetMarker5",
+                                        "Transport.SetMarker6", "Transport.SetMarker7", "Transport.SetMarker8", "Transport.SetMarker9" };
+        static const char* toNames[] = { "", "To Marker 1", "To Marker 2", "To Marker 3", "To Marker 4", "To Marker 5", "To Marker 6", "To Marker 7", "To Marker 8", "To Marker 9" };
+        static const char* setNames[] = { "", "Set Marker 1", "Set Marker 2", "Set Marker 3", "Set Marker 4", "Set Marker 5", "Set Marker 6", "Set Marker 7", "Set Marker 8", "Set Marker 9" };
+        juce::Array<KP> toKeys { KP ('0' + n, juce::ModifierKeys (shift), 0) };
+        if (n >= 3)
+            toKeys.add (KP (KP::numberPad0 + n));
+        add (toIds[n], "Transport", toNames[n], toKeys, [this, n] { studio.locateMarkerId (n); });
+        add (setIds[n], "Transport", setNames[n], { KP ('0' + n, juce::ModifierKeys (ctrl), 0) }, [this, n] { studio.setMarkerIdAtCursor (n); });
+    }
+    add ("Window.Markers", "Window", "Markers", { key ('M', ctrl) });
+    add ("Project.AddMarkerTrack", "Project", "Add Marker Track", {}, [this] { studio.addMarkerTrack(); });
 
     // File.
     add ("File.New", "File", "New Song", { key ('N', ctrl) });

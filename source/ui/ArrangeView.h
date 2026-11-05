@@ -93,12 +93,14 @@ struct Timeline
     int chordRowHeight() const noexcept { return juce::jmax (46, juce::roundToInt (chordsHeight * rowZoom)); }
     static constexpr int signatureHeight = 34;   // the signature track (0.45.0)
     int signatureRowHeight() const noexcept { return juce::jmax (28, juce::roundToInt (signatureHeight * rowZoom)); }
+    static constexpr int markerHeight = 40;   // the marker track (0.49.0): cycle markers above, position markers below
+    int markerRowHeight() const noexcept { return juce::jmax (32, juce::roundToInt (markerHeight * rowZoom)); }
     static constexpr int takeHeight = 52;   // a lane of takes (0.29.0): smaller than its track's row (our choice)
     int takeRowHeight() const noexcept { return juce::jmax (36, juce::roundToInt (takeHeight * rowZoom)); }
     struct Row
     {
         // (0.29.0) take: one of a track's lanes of takes (Show Lanes), under its row.
-        enum class Kind { track, lane, master, tempo, chords, take, signature };   // (0.45.0: the signature track, under the tempo track)
+        enum class Kind { track, lane, master, tempo, chords, take, signature, markers };   // (0.45.0: the signature track, under the tempo track; 0.49.0: the marker track, under it)
         Kind kind = Kind::track;
         int busId = 0;          // a track's id, or the master's (0)
         int laneIndex = -1;     // a lane: its index in the bus's automation; a take lane: its lane
@@ -282,6 +284,26 @@ public:
     juce::Rectangle<float> getSignatureArea() const;
     juce::Rectangle<float> getSignatureBounds (int bar) const;   // an event's label
     int signatureAt (juce::Point<float>) const;                  // the bar of the event there, -1: none
+
+    // The marker track (0.49.0, the manual's Markers): position markers (a line and a flag with
+    // their ID and description) and cycle markers (a bar between two flags). Click selects
+    // (Shift: more), drag moves (snapped), a cycle marker's edges drag its start or end;
+    // Alt-click adds a position marker (Shift+Alt: and names it), Ctrl-drag a cycle marker
+    // (Shift+Ctrl: and names it); DRAW adds, ERASE removes (Alt: all after it); a double-click
+    // on a cycle marker sets the locators to it (Alt: zooms to it), on a position marker names
+    // it; with the Range tool, a double-click between markers selects that range on every track.
+    const std::vector<int>& getMarkerSelection() const noexcept { return markerSelection; }
+    void selectMarkers (std::vector<int> indices) { markerSelection = std::move (indices); repaint(); }
+    bool hasSelectedMarkers() const noexcept { return ! markerSelection.empty(); }
+    void deleteSelectedMarkers();
+    void editMarkerName (int index);   // a box to type its description
+    void showMarkerMenu (int index);   // -1: the track's own
+    void zoomTo (double start, double end);   // the view to a range (a cycle marker's)
+    bool selectRangeBetweenMarkers (double beat);   // the Range tool's double-click
+    juce::Rectangle<float> getMarkerArea() const;
+    juce::Rectangle<float> getMarkerBounds (int index) const;   // a marker's flag (a cycle marker's: its bar)
+    int markerAt (juce::Point<float>) const;                     // the marker there, -1: none
+    std::function<void()> onOpenMarkers;   // the menu's Markers window (Ctrl+M)
     // Where an event is drawn, and the tempo row's curve area (tests).
     juce::Point<float> getTempoEventPosition (int index) const;
     juce::Rectangle<float> getTempoArea() const;
@@ -428,7 +450,8 @@ private:
     enum class Drag { none, signatureMove, position, cycle, cycleMove, cycleLeft, cycleRight, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
                       erasePoints, linePoints, pointHandle, curve, segmentScale,
                       newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove, marquee,
-                      tempoPoints, tempoBand, tempoDraw, chordMove, comp, takeEdge, slip, audition, warpMarker };
+                      tempoPoints, tempoBand, tempoDraw, chordMove, comp, takeEdge, slip, audition, warpMarker,
+                      markerMove, markerStart, markerEnd, markerNewCycle };   // (0.49.0)
     // WARP (0.32.0, the manual's Free Warp in the event display): the marker being dragged.
     int warpPartId = 0, warpIndex = -1;
     double warpTo = 0.0;
@@ -513,6 +536,18 @@ private:
     std::vector<int> signatureSelection;   // (0.45.0) bars
     int signatureDragFrom = -1, signatureDragTo = -1;
     void paintSignature (juce::Graphics&, const Timeline::Row&);
+    std::vector<int> markerSelection;   // (0.49.0) indices into the marker track
+    std::vector<pr7s::Marker> markerOriginal, markerDragged;   // a drag's start, and where it's going (drawn)
+    double markerDownBeat = 0.0;
+    int markerDragIndex = -1;
+    bool markerNameAfter = false;   // Shift held when adding: the name box follows
+    void paintMarkers (juce::Graphics&, const Timeline::Row&);
+    void paintMarkerLines (juce::Graphics&);
+    bool markerDown (const juce::MouseEvent&);
+    void markerDrag (const juce::MouseEvent&);
+    void markerUp();
+    bool markerDoubleClick (const juce::MouseEvent&);
+    const std::vector<pr7s::Marker>& shownMarkers() const;
     bool signatureDown (const juce::MouseEvent&);
     void signatureDrag (const juce::MouseEvent&);
     void signatureUp();

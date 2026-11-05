@@ -37,6 +37,8 @@ public:
     std::function<void()> onFindPlugins;
     std::function<void()> onSignatureMenu;   // (0.45.0) the signature row's right-click (the arrangement's signature menu)
     std::function<void()> onInsertSignature;   // (0.45.0) its double-click: the Insert Signature box
+    std::function<void()> onMarkerMenu;           // (0.49.0) the marker row's right-click (the arrangement's marker menu)
+    std::function<void (int index)> onMarkerZoom; // its GO TO menu's Zoom: the arrangement to that cycle marker
     std::function<void()> onTempoMenu;   // the tempo row's right-click (the arrangement's tempo menu)
     // Render in Place (the track's menu): the selected tracks whole; ask how (else as last time).
     std::function<void (std::vector<pr7s::Studio::RenderSource>, bool ask)> onRenderInPlace;
@@ -91,6 +93,7 @@ private:
     class TempoRow;
     class ChordRow;
     class SignatureRow;
+    class MarkerRow;
     class Arrow;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
@@ -107,6 +110,7 @@ private:
     std::unique_ptr<MasterRow> masterRow;
     std::unique_ptr<TempoRow> tempoRow;   // the tempo track's (0.10.0), while it's added
     std::unique_ptr<SignatureRow> signatureRow;   // the signature track's (0.45.0), while it's shown
+    std::unique_ptr<MarkerRow> markerRow;         // the marker track's (0.49.0), while it's shown
     std::unique_ptr<ChordRow> chordRow;   // the chord track's (0.16.0), while it's shown
     std::vector<Timeline::Row> lastLayout;
     int dropIndex = -1, dropY = -1;   // a drag of tracks: where they'd go
