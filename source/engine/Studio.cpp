@@ -7739,6 +7739,7 @@ namespace pr7s
     void Studio::newProject()
     {
         frozenParts.clear();
+        builtSections.clear();
         punchOutAll();   // (writing automation ends with the song)
         if (onInstrumentGoing)
             onInstrumentGoing (0);
@@ -8816,6 +8817,7 @@ namespace pr7s
 
     void Studio::openProject (Project&& loadedProject, const juce::File& source, juce::String& problems)
     {
+        builtSections.clear();
         std::optional<Project> loaded { std::move (loadedProject) };
         punchOutAll();
 
@@ -9430,6 +9432,121 @@ namespace pr7s
             part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
         addPart (trackId, part);
         return trackId;
+    }
+
+    int Studio::findIdeaTrack (LineIdea::Part part) const
+    {
+        const auto name = linePartName (part);
+        for (const auto& t : project.tracks)
+            if (t.name == name && canTakeMidi (t.id))
+                return t.id;
+        return 0;
+    }
+
+    std::vector<int> Studio::buildSection (const std::vector<LineIdea>& ideas, const std::vector<ChordSpan>& spans, const juce::String& sectionName)
+    {
+        std::vector<int> used;
+        if (spans.empty())
+            return used;
+        const auto start = spans.front().start, end = spans.back().end;
+        // The tracks first (adding a track is a step of its own), then every part in one change.
+        std::vector<std::pair<int, const LineIdea*>> plan;
+        for (const auto& idea : ideas)
+        {
+            if (idea.notes.empty())
+                continue;
+            auto trackId = findIdeaTrack (idea.part);
+            if (trackId == 0)
+            {
+                trackId = addTrack (Instrument {});
+                if (trackId == 0)
+                    continue;
+                renameTrack (trackId, linePartName (idea.part));
+                if (idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove)
+                    setTrackDrumMap (trackId, DrumMap::gm().name);
+            }
+            plan.emplace_back (trackId, &idea);
+            used.push_back (trackId);
+        }
+        for (const auto& [trackId, idea] : plan)
+            if (auto* track = project.findTrack (trackId))
+            {
+                track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(), [&] (const Part& p)
+                                    { return p.start >= start - 1.0e-9 && p.start + p.length <= end + 1.0e-9; }), track->parts.end());
+                Part part;
+                part.start = start;
+                part.length = end - start;
+                part.name = (sectionName.isNotEmpty() ? sectionName + ": " : juce::String()) + idea->style;
+                for (const auto& n : idea->notes)
+                    part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
+                track->parts.push_back (part);
+                track->parts.back().id = 0;
+            }
+        if (! plan.empty())
+        {
+            SessionLog::note ("Build section: " + sectionName + ", " + juce::String ((int) plan.size()) + " parts over beats "
+                              + juce::String (start, 2) + " to " + juce::String (end, 2));
+            changed();
+        }
+        return used;
+    }
+
+    void Studio::noteBuiltSection (const BuiltSection& section)
+    {
+        builtSections.erase (std::remove_if (builtSections.begin(), builtSections.end(), [&] (const BuiltSection& b)
+                             { return b.start < section.end - 1.0e-6 && section.start < b.end - 1.0e-6; }), builtSections.end());
+        builtSections.push_back (section);
+        std::sort (builtSections.begin(), builtSections.end(), [] (const BuiltSection& a, const BuiltSection& b) { return a.start < b.start; });
+    }
+
+    std::vector<ChordSpan> Studio::chordsForNextSection (const std::vector<ChordSpan>& spans, double from)
+    {
+        if (spans.empty())
+            return {};
+        const auto length = spans.back().end - spans.front().start;
+        const auto to = from + length;
+        const auto& events = project.chordTrack.events;
+        std::vector<int> which;
+        auto startsInside = false;
+        for (int i = 0; i < (int) events.size(); ++i)
+        {
+            const auto beat = events[(size_t) i].beat;
+            const auto next = i + 1 < (int) events.size() ? events[(size_t) i + 1].beat : 1.0e12;
+            if (beat < to - 1.0e-6 && next > from + 1.0e-6)
+                which.push_back (i);
+            startsInside = startsInside || (beat >= from - 1.0e-6 && beat < to - 1.0e-6);
+        }
+        if (startsInside)
+        {
+            auto found = getLineChords (which);
+            std::vector<ChordSpan> out;
+            for (auto span : found)
+            {
+                span.start = juce::jmax (span.start, from);
+                span.end = juce::jmin (span.end, to);
+                if (span.end > span.start + 1.0e-6)
+                    out.push_back (span);
+            }
+            if (! out.empty())
+            {
+                out.back().end = to;   // (the last chord lasts to the section's end)
+                return out;
+            }
+        }
+        // None there: these chords again, onto the chord track too.
+        const auto shift = from - spans.front().start;
+        std::vector<ChordSpan> out;
+        auto all = events;
+        for (auto span : spans)
+        {
+            span.start += shift;
+            span.end += shift;
+            out.push_back (span);
+            all.push_back ({ span.start, span.chord });
+        }
+        project.chordTrack.shown = true;
+        setChordEvents (std::move (all));
+        return out;
     }
 
     juce::String Studio::getGuitarTuning() const

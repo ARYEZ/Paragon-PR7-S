@@ -946,6 +946,35 @@ TEST_CASE ("Snapshot: the IDEAS window (PARAGON_SNAPSHOT_IDEAS=piano|guitar|bass
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
 
+TEST_CASE ("Snapshot: BUILD SECTION's panel after a verse (0.57.0)", "[.][snapshot-build]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "build.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        using T = pr7s::Chord::Type;
+        using X = pr7s::Chord::Tension;
+        pr7s::Studio studio (false);
+        studio.addChordEvent (0.0, { 9, T::minor, X::none, -1 });
+        studio.addChordEvent (4.0, { 5, T::major, X::none, -1 });
+        studio.addChordEvent (8.0, { 0, T::major, X::none, -1 });
+        studio.addChordEvent (12.0, { 7, T::major, X::none, -1 });
+        LinesPage page (studio, studio.getLineChords());
+        page.setGuitarStyle (pr7s::guitarStyleNamed (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_STYLE", "metalcore")));
+        page.buildSection();
+        auto choice = page.getBuildChoice();
+        choice.section = pr7s::DrumSection::chorus;
+        BuildSectionPanel panel (choice, [&page] (BuildChoice::Part p) { return page.describeBuildPart (p); }, page.getNextSuggestions());
+        const auto image = panel.createComponentSnapshot (panel.getLocalBounds(), true, 2.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
 TEST_CASE ("Snapshot: LEARN A DRUMMER (0.56.0)", "[.][snapshot-learn]")
 {
     const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "learn.png");

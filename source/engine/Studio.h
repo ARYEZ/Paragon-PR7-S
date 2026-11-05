@@ -14,6 +14,7 @@
 #include "DragOut.h"
 #include "DrumGenerator.h"
 #include "DrumLearning.h"
+#include "SectionPlan.h"
 #include "Patterns.h"
 #include "Progressions.h"
 #include "Melody.h"
@@ -289,6 +290,21 @@ namespace pr7s
         // studio's synth) named for the part (Bass, Melody, Piano, Guitar, Lead Guitar). The
         // track's id; one undo step.
         int addLinePart (const LineIdea&, const std::vector<ChordSpan>&, int ontoTrackId = 0);
+        // (0.57.0) BUILD SECTION: each idea onto the track named after its part (Drums, Bass, Guitar,
+        // Lead Guitar, Piano, Melody: an instrument track of that name is reused, so section after
+        // section lands on the same band; else a new one), each part over the chords' span, named
+        // "<section>: <idea>". Parts lying wholly inside the span on those tracks are replaced
+        // (building the same stretch again). One undo step for the parts. The tracks used, in order.
+        std::vector<int> buildSection (const std::vector<LineIdea>&, const std::vector<ChordSpan>&, const juce::String& sectionName);
+        int findIdeaTrack (LineIdea::Part) const;   // the instrument track named after the part (0: none)
+        // The sections built so far in this song (for what comes next; forgotten with the song).
+        const std::vector<BuiltSection>& getBuiltSections() const noexcept { return builtSections; }
+        void noteBuiltSection (const BuiltSection&);   // (replaces one built over the same stretch)
+        void clearBuiltSections() { builtSections.clear(); }
+        // The chords for the section after `from`, as long as `spans`: the chord track's there when it
+        // has a chord starting in that stretch; else `spans` again from `from`, written onto the
+        // chord track (one undo step) so the song keeps its chords.
+        std::vector<ChordSpan> chordsForNextSection (const std::vector<ChordSpan>& spans, double from);
         static juce::String linePartName (LineIdea::Part);
         // The guitar ideas' tuning (0.19.0; settings key "guitarTuning", default 7-string drop A).
         // The MELODY tab's settings (0.41.0; settings key "melodySettings").
@@ -1401,6 +1417,7 @@ namespace pr7s
         RiffSettings riffSettings;
         DrumSettings drumSettings;
         juce::File drummerFolderOverride;
+        std::vector<BuiltSection> builtSections;
         juce::String ideasDrummer;
         float ideasHumanize = 0.0f, humanizeAmount = 0.5f;   // (without a settings file: the tests)
         bool ideasFeel = true, humanizeLayers = true;

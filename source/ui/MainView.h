@@ -97,7 +97,7 @@ public:
     juce::DocumentWindow* getAudioAlignmentWindow() noexcept { return alignmentWindow.get(); }
     juce::DocumentWindow* getDrumMapWindow() noexcept { return drumMapWindow.get(); }
     // BASS & MELODY (0.18.0): ideas for these chord events (none: the cycle's, else all), in a window of its own.
-    void openLineIdeas (std::vector<int> chordEvents = {});
+    void openLineIdeas (std::vector<int> chordEvents = {}, bool buildSection = false);   // (0.57.0: with BUILD SECTION open)
     LinesWindow* getLinesWindow() noexcept { return linesWindow.get(); }
     void openProgressions();
     void openEq (int busId);   // (0.43.0) the EQ window on a channel (one window: moved to another channel)

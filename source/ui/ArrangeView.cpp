@@ -4672,6 +4672,7 @@ void ArrangeView::showChordMenu (double beat, int index)
     menu.addItem (5, "Chords to MIDI (all, onto the selected track)", ! track.events.empty());
     menu.addItem (6, "Assign the Chords to the Pads", ! track.events.empty());
     menu.addItem (9, chordSelection.size() > 1 ? "Piano, Guitar and Bass Ideas (for these)..." : "Piano, Guitar and Bass Ideas...", ! track.events.empty());
+    menu.addItem (13, chordSelection.size() > 1 ? "Build a Section (for these)..." : "Build a Section...", ! track.events.empty());
     menu.addItem (11, "Progression Library...");
     menu.addItem (7, "Scales Follow the Chords", true, track.autoScales);
     menu.addSeparator();
@@ -4695,6 +4696,7 @@ void ArrangeView::showChordMenu (double beat, int index)
             case 8: studio.removeChordTrack(); return;
             case 11: if (safe->onProgressions) safe->onProgressions(); return;
             case 9: if (safe->onLineIdeas) safe->onLineIdeas (safe->chordSelection.size() > 1 ? safe->chordSelection : std::vector<int> {}); return;
+            case 13: if (safe->onBuildSection) safe->onBuildSection (safe->chordSelection.size() > 1 ? safe->chordSelection : std::vector<int> {}); return;
             case 10:
             {
                 const auto at = juce::jmax (0.0, pr7s::snap (beat, grid));

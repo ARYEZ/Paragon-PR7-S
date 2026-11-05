@@ -129,6 +129,51 @@ private:
     juce::TextButton lock { "LOCK KICK TO RIFF" }, defaults { "DEFAULTS" };
 };
 
+
+// BUILD SECTION (0.57.0, the owner asked): a whole section onto tracks in one go. Which section
+// (its drums: the generated beat for it, from the learned drummer or the style's rules), which parts
+// (the drums, the bass locked to their kick, the guitar riff last played or used, the lead, piano
+// and melody cards last played or used), then BUILD. After the first, NEXT suggests what follows
+// (engine/SectionPlan.h) as the chord suggestions do: each with why and how it relates to what's
+// built, built at once after the last section with one click.
+struct BuildChoice
+{
+    enum Part { drums, bass, guitar, lead, piano, melody, count };
+    pr7s::DrumSection section = pr7s::DrumSection::verse;
+    std::array<bool, count> parts { true, true, true, true, true, false };
+    juce::String toString() const;                   // "verse,111110"
+    static BuildChoice fromString (const juce::String&);
+    bool operator== (const BuildChoice&) const = default;
+    static juce::String partName (Part);              // "DRUMS"
+};
+
+class BuildSectionPanel final : public juce::Component
+{
+public:
+    // `describe`: what a part will use; `suggestions`: what may come next (empty before the first).
+    BuildSectionPanel (BuildChoice, std::function<juce::String (BuildChoice::Part)> describe,
+                       std::vector<pr7s::SectionSuggestion> suggestions);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void setChoice (const BuildChoice&);   // (as the controls would: onChange called)
+    const BuildChoice& getChoice() const noexcept { return choice; }
+    std::function<void (const BuildChoice&)> onChange;
+    std::function<void()> onBuild;
+    std::function<void (const pr7s::SectionSuggestion&)> onBuildNext;
+    juce::TextButton& getBuildKey() noexcept { return build; }
+    int getNumNextKeys() const noexcept { return nextKeys.size(); }
+    juce::TextButton* getNextKey (int i) const { return nextKeys[i]; }
+    static constexpr int width = 640, rowHeight = 32, titleHeight = 62, nextHeight = 46;
+
+private:
+    void refresh();
+    BuildChoice choice;
+    std::function<juce::String (BuildChoice::Part)> describe;
+    std::vector<pr7s::SectionSuggestion> suggestions;
+    juce::OwnedArray<juce::TextButton> sectionKeys, partKeys, nextKeys;
+    juce::TextButton build { "BUILD" };
+};
+
 class LinesPage final : public juce::Component,
                         private juce::Timer
 {
@@ -166,6 +211,17 @@ public:
     void setDrummer (const juce::String& name);
     juce::String getDrummer() const { return drummer.has_value() ? drummer->name : juce::String(); }
     void showDrummerMenu();
+    // (0.57.0) BUILD SECTION.
+    void setBuildChoice (const BuildChoice&);   // (settings key "ideasBuild")
+    const BuildChoice& getBuildChoice() const noexcept { return buildChoice; }
+    std::vector<pr7s::LineIdea> sectionIdeas (const BuildChoice&) const;   // what BUILD writes, in part order
+    juce::String describeBuildPart (BuildChoice::Part) const;
+    std::vector<int> buildSection();            // the current choice over these chords: the tracks written
+    std::vector<pr7s::SectionSuggestion> getNextSuggestions() const;
+    std::vector<int> buildNext (const pr7s::SectionSuggestion&);   // after the last built section
+    void showBuildSection();
+    int getChosen (pr7s::LineIdea::Part p) const noexcept { return chosen[(size_t) p]; }
+    const std::vector<pr7s::ChordSpan>& getChords() const noexcept { return spans; }
     void openLearnWindow (const pr7s::DrumProfile* toEdit);
     class DrumLearnWindow* getLearnWindow() const noexcept { return learnWindow.get(); }
     int getNumLibraryGrooves() const noexcept { return (int) libraryGrooves.size(); }
@@ -223,6 +279,9 @@ private:
     juce::TextButton writtenKey { "WRITTEN BEATS" };    // (the drums tab)
     bool writtenBeats = false;
     juce::TextButton drummerKey;                        // DRUMMER (the drums tab's generated column)
+    juce::TextButton buildKey { "BUILD SECTION" };
+    BuildChoice buildChoice;
+    std::array<int, 9> chosen {};                       // the card last played or used, per part
     std::optional<pr7s::DrumProfile> drummer;
     std::unique_ptr<class DrumLearnWindow> learnWindow;
     std::vector<pr7s::LibraryGroove> libraryGrooves;

@@ -59,6 +59,7 @@ add_library(PR7SCore STATIC
     source/engine/DrumIdeas.cpp
     source/engine/DrumGenerator.cpp
     source/engine/DrumLearning.cpp
+    source/engine/SectionPlan.cpp
     source/engine/MediaBay.cpp
     source/engine/ParagonSynth.cpp
     source/engine/PluginHost.cpp

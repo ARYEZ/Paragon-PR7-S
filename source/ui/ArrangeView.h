@@ -416,7 +416,8 @@ public:
     ChordEventEditor* getChordEditor() noexcept { return chordEditor.getComponent(); }
     std::function<void()> onChordsToPads;                 // (the pads' view takes them)
     std::function<void()> onProgressions;   // the progression library (0.40.0)
-    std::function<void (std::vector<int> chordEvents)> onLineIdeas;   // BASS & MELODY (0.18.0): for these chord events (none: the cycle's or all)
+    std::function<void (std::vector<int> chordEvents)> onLineIdeas;
+    std::function<void (std::vector<int> chordEvents)> onBuildSection;   // (0.57.0) IDEAS with BUILD SECTION open   // BASS & MELODY (0.18.0): for these chord events (none: the cycle's or all)
     std::optional<Timeline::Row> rowAt (float y) const;
     float rowTop (const Timeline::Row&) const;   // where a row is drawn now
     float trackTop (int trackId) const;

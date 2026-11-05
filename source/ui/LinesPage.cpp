@@ -403,6 +403,12 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
     humanizeKey.setTooltip ("Loosen the ideas so they sound played: timing, velocity and length, with each part's feel");
     humanizeKey.onClick = [this] { showHumanize(); };
     addAndMakeVisible (humanizeKey);
+    buildKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    buildKey.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    buildKey.setWantsKeyboardFocus (false);
+    buildKey.setTooltip ("A whole section onto tracks: the drums for it, the bass on their kick, the guitar, lead and piano you last played or used. Then what comes next.");
+    buildKey.onClick = [this] { showBuildSection(); };
+    addAndMakeVisible (buildKey);
 
     if (auto* settings = studio.getSettings())
     {
@@ -411,6 +417,7 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
             : saved == "melody" ? Tab::melody : saved == "drums" ? Tab::drums : Tab::piano;
         riffIndex = juce::jlimit (0, 5, settings->getIntValue ("ideasLockedRiff", 0));
         writtenBeats = settings->getBoolValue ("ideasWrittenBeats", false);
+        buildChoice = BuildChoice::fromString (settings->getValue ("ideasBuild"));
     }
     setSize (1360, 760);
     setChords (std::move (chords));
@@ -599,6 +606,312 @@ void LinesPage::setWrittenBeats (bool on)
     rebuild();
 }
 
+//==============================================================================
+// BUILD SECTION (0.57.0).
+juce::String BuildChoice::toString() const
+{
+    juce::String bits;
+    for (const auto on : parts)
+        bits << (on ? "1" : "0");
+    return pr7s::drumSectionName (section).toLowerCase() + "," + bits;
+}
+
+BuildChoice BuildChoice::fromString (const juce::String& text)
+{
+    BuildChoice c;
+    const auto p = juce::StringArray::fromTokens (text, ",", "");
+    if (p.size() != 2 || p[1].length() != count)
+        return c;
+    if (const auto section = pr7s::drumSectionNamed (p[0]))
+        c.section = *section;
+    for (int i = 0; i < count; ++i)
+        c.parts[(size_t) i] = p[1][i] == '1';
+    return c;
+}
+
+juce::String BuildChoice::partName (Part p)
+{
+    switch (p)
+    {
+        case drums: return "DRUMS";
+        case bass: return "BASS";
+        case guitar: return "GUITAR";
+        case lead: return "LEAD";
+        case piano: return "PIANO";
+        case melody: return "MELODY";
+        case count: break;
+    }
+    return {};
+}
+
+BuildSectionPanel::BuildSectionPanel (BuildChoice initial, std::function<juce::String (BuildChoice::Part)> d,
+                                      std::vector<pr7s::SectionSuggestion> s)
+    : choice (initial), describe (std::move (d)), suggestions (std::move (s))
+{
+    const auto style = [this] (juce::TextButton& key, const juce::String& tip)
+    {
+        key.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        key.setWantsKeyboardFocus (false);
+        key.setTooltip (tip);
+        addAndMakeVisible (key);
+    };
+    for (const auto section : pr7s::drumSections())
+    {
+        auto* key = sectionKeys.add (new juce::TextButton (pr7s::drumSectionName (section)));
+        style (*key, "The section to build: its drums are the generated beat for it");
+        key->onClick = [this, section] { auto c = choice; c.section = section; setChoice (c); };
+    }
+    for (int i = 0; i < BuildChoice::count; ++i)
+    {
+        auto* key = partKeys.add (new juce::TextButton (BuildChoice::partName ((BuildChoice::Part) i)));
+        style (*key, "Write this part (onto its own track)");
+        key->onClick = [this, i] { auto c = choice; c.parts[(size_t) i] = ! c.parts[(size_t) i]; setChoice (c); };
+    }
+    for (size_t i = 0; i < suggestions.size() && i < 4; ++i)
+    {
+        const auto& sug = suggestions[i];
+        auto* key = nextKeys.add (new juce::TextButton ("BUILD " + pr7s::drumSectionName (sug.kind)));
+        style (*key, sug.reason);
+        key->onClick = [this, i] { if (onBuildNext) onBuildNext (suggestions[i]); };
+    }
+    style (build, "Write the parts lit onto their tracks over these chords (building the same chords again replaces them)");
+    build.onClick = [this] { if (onBuild) onBuild(); };
+    refresh();
+    setSize (width, titleHeight + rowHeight * (2 + BuildChoice::count) + 24
+                        + (nextKeys.isEmpty() ? 0 : 30 + nextHeight * nextKeys.size()));
+}
+
+void BuildSectionPanel::setChoice (const BuildChoice& c)
+{
+    if (c == choice)
+        return;
+    choice = c;
+    refresh();
+    repaint();
+    if (onChange)
+        onChange (choice);
+}
+
+void BuildSectionPanel::refresh()
+{
+    const auto& sections = pr7s::drumSections();
+    for (int i = 0; i < sectionKeys.size(); ++i)
+        sectionKeys[i]->setToggleState (sections[(size_t) i] == choice.section, juce::dontSendNotification);
+    for (int i = 0; i < partKeys.size(); ++i)
+        partKeys[i]->setToggleState (choice.parts[(size_t) i], juce::dontSendNotification);
+    build.setButtonText ("BUILD " + pr7s::drumSectionName (choice.section));
+}
+
+void BuildSectionPanel::paint (juce::Graphics& g)
+{
+    g.fillAll (juce::Colour (0xff0c0a0d));
+    auto area = getLocalBounds().reduced (14, 10);
+    g.setColour (ParagonColours::text);
+    g.setFont (ParagonLookAndFeel::titleFont (16.0f));
+    g.drawText ("BUILD SECTION", area.removeFromTop (22), juce::Justification::centredLeft, false);
+    g.setColour (ParagonColours::textDim);
+    g.setFont (juce::Font (juce::FontOptions (11.5f)));
+    g.drawFittedText ("Each part onto its own track (Drums, Bass, Guitar, Lead Guitar, Piano, Melody) over these chords. "
+                      "Building the same chords again replaces them; one undo step.",
+                      area.removeFromTop (titleHeight - 32), juce::Justification::topLeft, 2, 0.9f);
+    g.setColour (ParagonColours::text);
+    g.setFont (ParagonLookAndFeel::titleFont (13.0f));
+    g.drawText ("SECTION", area.removeFromTop (rowHeight).removeFromLeft (110), juce::Justification::centredLeft, false);
+    g.setFont (juce::Font (juce::FontOptions (12.0f)));
+    for (int i = 0; i < BuildChoice::count; ++i)
+    {
+        auto row = area.removeFromTop (rowHeight);
+        row.removeFromLeft (110 + 10);
+        g.setColour (choice.parts[(size_t) i] ? ParagonColours::text : ParagonColours::textDim.withAlpha (0.6f));
+        g.drawText (describe != nullptr ? describe ((BuildChoice::Part) i) : juce::String(), row, juce::Justification::centredLeft, true);
+    }
+    area.removeFromTop (rowHeight);   // (BUILD)
+    if (! nextKeys.isEmpty())
+    {
+        area.removeFromTop (6);
+        g.setColour (ParagonColours::panelEdge);
+        g.fillRect (area.removeFromTop (1));
+        g.setColour (ParagonColours::text);
+        g.setFont (ParagonLookAndFeel::titleFont (14.0f));
+        g.drawText ("NEXT: WHAT COULD FOLLOW", area.removeFromTop (23), juce::Justification::bottomLeft, false);
+        for (int i = 0; i < nextKeys.size(); ++i)
+        {
+            auto row = area.removeFromTop (nextHeight).reduced (0, 4);
+            row.removeFromLeft (150 + 10);
+            const auto& sug = suggestions[(size_t) i];
+            auto bar = row.removeFromRight (60).withSizeKeepingCentre (60, 6).toFloat();
+            g.setColour (ParagonColours::panelEdge);
+            g.fillRoundedRectangle (bar, 3.0f);
+            g.setColour (ParagonColours::accent);
+            g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * sug.score), 3.0f);
+            g.setColour (ParagonColours::textDim);
+            g.setFont (juce::Font (juce::FontOptions (11.5f)));
+            g.drawFittedText (sug.reason, row.withTrimmedRight (8), juce::Justification::centredLeft, 2, 0.9f);
+        }
+    }
+}
+
+void BuildSectionPanel::resized()
+{
+    auto area = getLocalBounds().reduced (14, 10);
+    area.removeFromTop (titleHeight - 10);
+    auto row = area.removeFromTop (rowHeight).reduced (0, 4);
+    row.removeFromLeft (110);
+    const auto w = (row.getWidth() - 5 * 5) / 6;
+    for (auto* key : sectionKeys)
+    {
+        key->setBounds (row.removeFromLeft (w));
+        row.removeFromLeft (5);
+    }
+    for (auto* key : partKeys)
+        key->setBounds (area.removeFromTop (rowHeight).reduced (0, 4).withWidth (110));
+    build.setBounds (area.removeFromTop (rowHeight).reduced (0, 3).withTrimmedLeft (110).withWidth (200));
+    if (! nextKeys.isEmpty())
+    {
+        area.removeFromTop (30);
+        for (auto* key : nextKeys)
+            key->setBounds (area.removeFromTop (nextHeight).reduced (0, 8).withWidth (150));
+    }
+}
+
+void LinesPage::setBuildChoice (const BuildChoice& c)
+{
+    buildChoice = c;
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("ideasBuild", c.toString());
+}
+
+std::vector<pr7s::LineIdea> LinesPage::sectionIdeas (const BuildChoice& c) const
+{
+    using P = pr7s::LineIdea::Part;
+    std::vector<pr7s::LineIdea> out;
+    const auto pickFrom = [this] (P part, int index) -> const pr7s::LineIdea*
+    {
+        const auto& list = ideas[(size_t) part];
+        return list.empty() ? nullptr : &list[(size_t) juce::jlimit (0, (int) list.size() - 1, index)];
+    };
+    // The drums: the generated beat for that section (written beats: the one last chosen).
+    const auto& beats = ideas[(size_t) P::drums];
+    const auto* drums = writtenBeats ? pickFrom (P::drums, beatIndex)
+                                     : pickFrom (P::drums, (int) std::distance (pr7s::drumSections().begin(),
+                                                                                std::find (pr7s::drumSections().begin(), pr7s::drumSections().end(), c.section)));
+    juce::ignoreUnused (beats);
+    if (c.parts[BuildChoice::drums] && drums != nullptr)
+        out.push_back (*drums);
+    if (c.parts[BuildChoice::bass])
+    {
+        if (c.parts[BuildChoice::drums] && drums != nullptr)
+            out.push_back (pr7s::bassOnHits (spans, pr7s::kickHits (*drums), "Locked to the kick", "The roots on the " + drums->style.toLowerCase() + " beat's kick"));
+        else if (const auto* b = pickFrom (P::bass, chosen[(size_t) P::bass]))
+            out.push_back (*b);
+    }
+    const auto add = [&] (BuildChoice::Part on, P part, int index)
+    {
+        if (c.parts[(size_t) on])
+            if (const auto* idea = pickFrom (part, index))
+                out.push_back (*idea);
+    };
+    add (BuildChoice::guitar, P::rhythm, riffIndex);
+    add (BuildChoice::lead, P::lead, chosen[(size_t) P::lead]);
+    add (BuildChoice::piano, P::chords, chosen[(size_t) P::chords]);
+    add (BuildChoice::melody, P::tune, chosen[(size_t) P::tune]);
+    return out;
+}
+
+juce::String LinesPage::describeBuildPart (BuildChoice::Part p) const
+{
+    using P = pr7s::LineIdea::Part;
+    const auto name = [this] (P part, int index)
+    {
+        const auto& list = ideas[(size_t) part];
+        return list.empty() ? juce::String ("(none)") : list[(size_t) juce::jlimit (0, (int) list.size() - 1, index)].style;
+    };
+    switch (p)
+    {
+        case BuildChoice::drums:
+            return writtenBeats ? "Written beat: " + name (P::drums, beatIndex)
+                                : "The " + pr7s::sectionWord (buildChoice.section).toLowerCase() + " beat, "
+                                      + (drummer.has_value() ? "as " + drummer->name : "by " + pr7s::guitarStyleName (studio.getGuitarStyle()) + "'s rules");
+        case BuildChoice::bass:
+            return buildChoice.parts[BuildChoice::drums] ? juce::String ("Locked to the drums' kick, the chords' roots") : "Bass: " + name (P::bass, chosen[(size_t) P::bass]);
+        case BuildChoice::guitar: return "Riff: " + name (P::rhythm, riffIndex) + " (" + RiffPanel::summary (studio.getRiffSettings()).fromFirstOccurrenceOf ("RIFF: ", false, false).toLowerCase() + ")";
+        case BuildChoice::lead: return "Lead: " + name (P::lead, chosen[(size_t) P::lead]);
+        case BuildChoice::piano: return "Piano: " + name (P::chords, chosen[(size_t) P::chords]);
+        case BuildChoice::melody: return "Melody: " + name (P::tune, chosen[(size_t) P::tune]);
+        case BuildChoice::count: break;
+    }
+    return {};
+}
+
+std::vector<int> LinesPage::buildSection()
+{
+    stop();
+    const auto list = sectionIdeas (buildChoice);
+    if (list.empty() || spans.empty())
+        return {};
+    const auto tracks = studio.buildSection (list, spans, pr7s::sectionWord (buildChoice.section));
+    if (! tracks.empty())
+        studio.noteBuiltSection ({ buildChoice.section, spans.front().start, spans.back().end, riffIndex, studio.getRiffSettings(), variation });
+    return tracks;
+}
+
+std::vector<pr7s::SectionSuggestion> LinesPage::getNextSuggestions() const
+{
+    return pr7s::suggestNextSections (studio.getBuiltSections(), studio.getGuitarStyle(), (int) ideas[(size_t) pr7s::LineIdea::Part::rhythm].size());
+}
+
+std::vector<int> LinesPage::buildNext (const pr7s::SectionSuggestion& next)
+{
+    const auto& built = studio.getBuiltSections();
+    if (built.empty() || spans.empty())
+        return {};
+    stop();
+    auto nextSpans = studio.chordsForNextSection (spans, built.back().end);
+    if (nextSpans.empty())
+        return {};
+    // What it relates to: the suggestion's riff and settings, the same family of beats.
+    studio.setRiffSettings (next.riffSettings);
+    riffIndex = next.riff;
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("ideasLockedRiff", riffIndex);
+    variation = next.variation;
+    auto c = buildChoice;
+    c.section = next.kind;
+    setBuildChoice (c);
+    setChords (std::move (nextSpans));
+    return buildSection();
+}
+
+void LinesPage::showBuildSection()
+{
+    auto panel = std::make_unique<BuildSectionPanel> (buildChoice, [this] (BuildChoice::Part p) { return describeBuildPart (p); }, getNextSuggestions());
+    auto* raw = panel.get();
+    panel->onChange = [safe = juce::Component::SafePointer<LinesPage> (this), raw] (const BuildChoice& c)
+    {
+        if (safe != nullptr)
+            safe->setBuildChoice (c);
+        raw->repaint();
+    };
+    const auto close = [raw]
+    {
+        if (auto* box = raw->findParentComponentOfClass<juce::CallOutBox>())
+            box->dismiss();
+    };
+    panel->onBuild = [safe = juce::Component::SafePointer<LinesPage> (this), close]
+    {
+        if (safe != nullptr)
+            safe->buildSection();
+        close();
+    };
+    panel->onBuildNext = [safe = juce::Component::SafePointer<LinesPage> (this), close] (const pr7s::SectionSuggestion& next)
+    {
+        if (safe != nullptr)
+            safe->buildNext (next);
+        close();
+    };
+    juce::CallOutBox::launchAsynchronously (std::move (panel), buildKey.getScreenBounds(), nullptr);
+}
+
 void LinesPage::setDrummer (const juce::String& name)
 {
     stop();
@@ -670,6 +983,7 @@ void LinesPage::openLearnWindow (const pr7s::DrumProfile* toEdit)
 
 void LinesPage::noteChosen (pr7s::LineIdea::Part part, int index)
 {
+    chosen[(size_t) part] = index;
     if (part == pr7s::LineIdea::Part::rhythm && index != riffIndex)
     {
         riffIndex = index;
@@ -1000,6 +1314,8 @@ void LinesPage::resized()
     hearChords.setBounds (head.removeFromRight (110));
     head.removeFromRight (6);
     humanizeKey.setBounds (head.removeFromRight (150));
+    head.removeFromRight (6);
+    buildKey.setBounds (head.removeFromRight (170));
 
     auto tabs = area.removeFromTop (tabsHeight).withTrimmedBottom (6);
     for (auto* key : { &pianoTab, &guitarTab, &bassTab, &patternsTab, &melodyTab, &drumsTab })
