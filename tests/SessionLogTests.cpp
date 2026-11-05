@@ -86,3 +86,74 @@ TEST_CASE ("The session log: a readable file per session, closed normally or not
 
     folder.deleteRecursively();
 }
+
+TEST_CASE ("0.52.1: steps under way are written as they start and named in FROZEN and STUCK entries; closing is watched", "[log]")
+{
+    const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("PR7-S log steps test");
+    folder.deleteRecursively();
+    SessionLog::start ("Paragon PR7-S test", folder, 3);
+    const auto text = [] { return SessionLog::getFile().loadFileAsString(); };
+
+    // A step: "Starting:" at once, "done:" with its time when it ends; listed while it runs.
+    {
+        const SessionLog::Step step ("Unloading the instrument Kontakt 8");
+        CHECK (text().contains ("Starting: Unloading the instrument Kontakt 8"));
+        CHECK (SessionLog::stepsUnderWay().contains ("Unloading the instrument Kontakt 8"));
+    }
+    CHECK (text().contains ("done: Unloading the instrument Kontakt 8 ("));
+    CHECK_FALSE (SessionLog::stepsUnderWay().contains ("Kontakt 8"));
+
+    // The screen stops answering inside a step (the plug-in "hangs"): FROZEN names the step under way,
+    // with every thread on Windows; then the answer.
+    SessionLog::startFreezeWatch (0.6, 0.8);
+    {
+        const SessionLog::Step step ("Switching Superior Drummer 3 to offline (for the render)");
+        juce::Thread::sleep (2200);
+    }
+    SessionLog::beat();
+    juce::Thread::sleep (700);
+    {
+        const auto log = text();
+        CHECK (log.contains ("FROZEN: the screen hasn't answered for"));
+        const auto frozenAt = log.indexOf ("FROZEN:");
+        CHECK (log.indexOf (frozenAt, "Under way:") > frozenAt);
+        CHECK (log.indexOf (frozenAt, "Switching Superior Drummer 3 to offline") > frozenAt);
+       #if JUCE_WINDOWS
+        CHECK (log.indexOf (frozenAt, "Every thread (") > frozenAt);
+        CHECK (log.indexOf (frozenAt, "THE SCREEN'S THREAD") > frozenAt);
+        CHECK (log.indexOf (frozenAt, "Their calls by name") > frozenAt);
+       #endif
+        CHECK (log.contains ("The screen answered again after"));
+    }
+
+    // A job on a thread of its own that stops moving (the screen still answering): STUCK, then moving again.
+    std::thread render ([]
+    {
+        const SessionLog::Job job ("the render of Bass Render 01.wav");
+        SessionLog::jobBeat();
+        juce::Thread::sleep (2200);   // (stuck)
+        SessionLog::jobBeat();
+        juce::Thread::sleep (700);
+    });
+    for (int i = 0; i < 30; ++i)
+    {
+        SessionLog::beat();   // (the screen answers all along)
+        juce::Thread::sleep (100);
+    }
+    render.join();
+    {
+        const auto log = text();
+        CHECK (log.contains ("STUCK: the render of Bass Render 01.wav hasn't moved for"));
+        CHECK (log.contains ("(the screen still answers)"));
+        CHECK (log.contains ("It moved again after"));
+    }
+
+    // Closing: the watch carries on (a hang there is written down, marked as while closing).
+    SessionLog::closing (0.6);
+    juce::Thread::sleep (1500);
+    CHECK (text().contains ("Closing."));
+    CHECK (text().contains ("(while closing)"));
+    SessionLog::stop();
+    CHECK (SessionLog::closedNormally (SessionLog::getFile()));
+    folder.deleteRecursively();
+}

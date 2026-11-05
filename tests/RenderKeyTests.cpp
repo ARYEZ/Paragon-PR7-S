@@ -91,12 +91,28 @@ TEST_CASE ("Render in Place of whole tracks takes only the range, or the cycle; 
     auto narrowed = view.narrowedSources (whole);
     REQUIRE (narrowed.size() == 1);
     CHECK (narrowed[0].wholeTrack);
-    // CYCLE on: its stretch only.
+    // CYCLE on: its stretch only, still a whole track (0.52.1: its original can be disabled and hidden),
+    // with the warning that parts outside the cycle go silent with it.
     studio.setCycle (4.0, 12.0);
     studio.setCycleOn (true);
     narrowed = view.narrowedSources (whole);
     REQUIRE (narrowed.size() == 1);
-    CHECK_FALSE (narrowed[0].wholeTrack);
+    CHECK (narrowed[0].wholeTrack);
+    CHECK (view.renderWarning (narrowed).contains ("CYCLE is on"));
+    {
+        Windows::RenderPage page (studio, narrowed[0].wholeTrack);
+        page.setWarning (view.renderWarning (narrowed));
+        CHECK (page.source.isItemEnabled (4));   // disable
+        CHECK (page.source.isItemEnabled (3));   // remove
+        CHECK (page.hideSource.isEnabled());
+        CHECK (page.getOptions().source == Studio::RenderOptions::Source::disable);
+        CHECK (page.getOptions().hideSource);
+        CHECK (page.getWarning().isNotEmpty());
+    }
+    // The cycle over all of it: no warning.
+    studio.setCycle (0.0, 16.0);
+    CHECK (view.renderWarning (view.narrowedSources (whole)).isEmpty());
+    studio.setCycle (4.0, 12.0);
     CHECK_THAT (narrowed[0].start, WithinAbs (4.0, 1.0e-9));
     CHECK_THAT (narrowed[0].end, WithinAbs (12.0, 1.0e-9));
     // A range set: the range, over the cycle.
@@ -120,7 +136,9 @@ TEST_CASE ("Render in Place of whole tracks takes only the range, or the cycle; 
     REQUIRE (rendered.isAudio());
     REQUIRE_FALSE (rendered.parts.empty());
     CHECK_THAT (rendered.parts.front().start, WithinAbs (4.0, 1.0e-6));
-    CHECK_FALSE (studio.getProject().findTrack (synth)->disabled);   // (a stretch: the track plays on)
+    // (0.52.1) A whole track over the cycle: the defaults, disabled and hidden.
+    CHECK (studio.getProject().findTrack (synth)->disabled);
+    CHECK (studio.getProject().findTrack (synth)->hidden);
     CHECK_FALSE (studio.getEngine().isRecording());                  // (not R)
     studio.getAudioFolder().deleteRecursively();
 }

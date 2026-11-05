@@ -1902,11 +1902,27 @@ std::vector<pr7s::Studio::RenderSource> MainView::narrowedSources (std::vector<p
                 ranged.push_back ({ id, range->start, range->end, false });
         return ranged;
     }
+    // (0.52.1, the owner's report) Still a whole track, only rendered over the cycle: the choices for the
+    // original (disable, hide, remove) stay offered. They were greyed out while CYCLE was on.
     if (project.loopOn && project.loopEnd > project.loopStart)
         for (auto& s : sources)
             if (s.wholeTrack)
-                s = { s.trackId, project.loopStart, project.loopEnd, false };
+                s = { s.trackId, project.loopStart, project.loopEnd, true };
     return sources;
+}
+
+juce::String MainView::renderWarning (const std::vector<pr7s::Studio::RenderSource>& sources) const
+{
+    // A whole track rendered over the cycle only, with parts outside it: disabling or removing it silences those.
+    const auto& project = studio.getProject();
+    for (const auto& s : sources)
+        if (s.wholeTrack)
+            if (const auto* t = project.findTrack (s.trackId))
+                for (const auto& p : t->parts)
+                    if (! p.muted && (p.start < s.start - 1.0e-9 || p.end() > s.end + 1.0e-9))
+                        return "CYCLE is on: only " + pr7s::formatBarsBeats (s.start, project) + " to " + pr7s::formatBarsBeats (s.end, project)
+                             + " is rendered. " + t->name + " has parts outside it: disabling or removing the track silences them too.";
+    return {};
 }
 
 void MainView::renderInPlace (std::vector<pr7s::Studio::RenderSource> sources, bool ask)
@@ -1920,6 +1936,7 @@ void MainView::renderInPlace (std::vector<pr7s::Studio::RenderSource> sources, b
         return;
     }
     auto* page = new Windows::RenderPage (studio, sources.front().wholeTrack);
+    page->setWarning (renderWarning (sources));
     renderPage = page;
     juce::DialogWindow::LaunchOptions options;
     options.content.setOwned (page);

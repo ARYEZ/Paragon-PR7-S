@@ -75,9 +75,30 @@ namespace pr7s
             for (auto& slot : masterInserts)
                 onPluginGoing (slot.plugin.get());
         }
-        const juce::ScopedLock sl (lock);
-        tracks.clear();
-        masterInserts.clear();
+        // (0.52.1) Out from under the lock, then each plug-in unloaded as a step of its own: a hang
+        // while closing names the plug-in.
+        std::vector<std::unique_ptr<TrackState>> going;
+        std::vector<Slot> masterGoing;
+        {
+            const juce::ScopedLock sl (lock);
+            std::swap (going, tracks);
+            std::swap (masterGoing, masterInserts);
+        }
+        const auto unload = [] (std::unique_ptr<juce::AudioPluginInstance>& plugin)
+        {
+            if (plugin == nullptr)
+                return;
+            const SessionLog::Step step ("Unloading " + plugin->getName());
+            plugin.reset();
+        };
+        for (auto& track : going)
+        {
+            for (auto& slot : track->inserts)
+                unload (slot.plugin);
+            unload (track->instrument);
+        }
+        for (auto& slot : masterGoing)
+            unload (slot.plugin);
     }
 
     void Engine::prepare (double newSampleRate, int newMaxBlockSize)
@@ -95,6 +116,7 @@ namespace pr7s
         for (auto& slot : masterInserts)
             if (slot.plugin != nullptr)
             {
+                const SessionLog::Step step ("Preparing " + slot.plugin->getName() + " (the master's) at " + juce::String (sampleRate, 0) + " Hz");
                 prepareEffect (*slot.plugin);
                 masterChannels = juce::jmax (masterChannels, channelsFor (*slot.plugin));
             }
@@ -105,8 +127,15 @@ namespace pr7s
         {
             for (auto& slot : track->inserts)
                 if (slot.plugin != nullptr)
+                {
+                    const SessionLog::Step step ("Preparing " + slot.plugin->getName() + " at " + juce::String (sampleRate, 0) + " Hz");
                     prepareEffect (*slot.plugin);
+                }
+            std::unique_ptr<SessionLog::Step> step;
+            if (track->instrument != nullptr)
+                step = std::make_unique<SessionLog::Step> ("Preparing " + track->instrument->getName() + " at " + juce::String (sampleRate, 0) + " Hz");
             prepareTrack (*track);
+            step.reset();
             track->eq.setDesign (designEq (track->eqSettings, sampleRate));   // (0.43.0: its filters at the new rate)
             track->eq.reset();
         }
@@ -142,6 +171,7 @@ namespace pr7s
         {
             if (plugin == nullptr || plugin->isNonRealtime() == offline)
                 return;
+            const SessionLog::Step step ("Switching " + plugin->getName() + (offline ? " to offline (for the render)" : " back to realtime"));
             plugin->releaseResources();
             plugin->setNonRealtime (offline);
             if (instrument)
@@ -228,7 +258,12 @@ namespace pr7s
         incoming->id = trackId;
         incoming->instrument = std::move (instrument);
         incoming->inserts.reserve ((size_t) Project::maxInserts);
-        prepareTrack (*incoming);
+        {
+            std::unique_ptr<SessionLog::Step> step;
+            if (incoming->instrument != nullptr)
+                step = std::make_unique<SessionLog::Step> ("Preparing the instrument " + incoming->instrument->getName());
+            prepareTrack (*incoming);
+        }
         // A track that has inserts already: room for them in the new buffer too.
         if (const auto* existing = findTrack (trackId))
         {
@@ -261,6 +296,11 @@ namespace pr7s
         if (old != nullptr && onPluginGoing)
             onPluginGoing (old.get());
         // `old` (and `incoming` if it was emptied) are freed here, outside the lock.
+        if (old != nullptr)
+        {
+            const SessionLog::Step step ("Unloading the instrument " + old->getName());
+            old.reset();
+        }
     }
 
     void Engine::removeTrack (int trackId)
@@ -281,6 +321,20 @@ namespace pr7s
             onPluginGoing (removed->instrument.get());
             for (auto& slot : removed->inserts)
                 onPluginGoing (slot.plugin.get());
+        }
+        if (removed != nullptr)
+        {
+            for (auto& slot : removed->inserts)
+                if (slot.plugin != nullptr)
+                {
+                    const SessionLog::Step step ("Unloading " + slot.plugin->getName() + " (a track removed)");
+                    slot.plugin.reset();
+                }
+            if (removed->instrument != nullptr)
+            {
+                const SessionLog::Step step ("Unloading the instrument " + removed->instrument->getName() + " (a track removed)");
+                removed->instrument.reset();
+            }
         }
     }
 
@@ -441,7 +495,10 @@ namespace pr7s
     void Engine::insertEffect (int busId, int slot, std::unique_ptr<juce::AudioPluginInstance> effect)
     {
         if (effect != nullptr)
+        {
+            const SessionLog::Step step ("Preparing the effect " + effect->getName());
             prepareEffect (*effect);
+        }
 
         // A track not here yet (its instrument couldn't be loaded): kept anyway, silent.
         if (busId != masterBus && findTrack (busId) == nullptr)
@@ -485,6 +542,11 @@ namespace pr7s
         if (removed != nullptr && onPluginGoing)
             onPluginGoing (removed.get());
         // `removed` is deleted here, outside the lock.
+        if (removed != nullptr)
+        {
+            const SessionLog::Step step ("Unloading the effect " + removed->getName());
+            removed.reset();
+        }
     }
 
     juce::AudioPluginInstance* Engine::getEffect (int busId, int slot) const

@@ -160,6 +160,7 @@ public:
     // to audio; `ask`: the render page first (else as last time).
     void renderInPlaceNow (bool ask = false);   // (0.31.0) Alt+R: as last time, of the range, the selected parts or the selected tracks
     std::vector<pr7s::Studio::RenderSource> narrowedSources (std::vector<pr7s::Studio::RenderSource>) const;   // to the range, or the cycle
+    juce::String renderWarning (const std::vector<pr7s::Studio::RenderSource>&) const;   // (0.52.1) a whole track rendered over the cycle only
     void renderInPlace (std::vector<pr7s::Studio::RenderSource>, bool ask);
     Windows::RenderPage* getRenderPage() noexcept { return renderPage.getComponent(); }
     Windows::ExportPage* getExportPage() noexcept { return exportPage.getComponent(); }

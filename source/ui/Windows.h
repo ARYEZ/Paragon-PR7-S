@@ -19,6 +19,7 @@ namespace Windows
     {
     public:
         Instrument (const juce::String& trackName, juce::AudioPluginInstance&);
+        ~Instrument() override;
         void closeButtonPressed() override;
         bool keyPressed (const juce::KeyPress&) override;
         std::function<void()> onClose;
@@ -26,6 +27,7 @@ namespace Windows
 
     private:
         void timerCallback() override;
+        juce::String pluginName;
     };
 
     // The key editor or the mixer in a window of its own (their WINDOW
@@ -62,6 +64,8 @@ namespace Windows
         void resized() override;
         void paint (juce::Graphics&) override;
         pr7s::Studio::RenderOptions getOptions() const;   // as chosen now
+        void setWarning (const juce::String&);   // (0.52.1) a line in the accent colour over the note (none: hidden)
+        juce::String getWarning() const { return warning.getText(); }
         static pr7s::Studio::RenderOptions keptOptions (juce::PropertiesFile*);   // the last ones chosen
         std::function<void (const pr7s::Studio::RenderOptions&)> onRender;
         std::function<void()> onCancel;
@@ -72,7 +76,7 @@ namespace Windows
     private:
         pr7s::Studio& studio;
         bool wholeTracks = true;   // (0.31.0: a stretch's choice of what happens to the original isn't kept for whole tracks)
-        juce::Label modeLabel, processingLabel, tailLabel, bitsLabel, sourceLabel, note;
+        juce::Label modeLabel, processingLabel, tailLabel, bitsLabel, sourceLabel, note, warning;
     };
 
     // Where a window spanning all the screens goes: across them all, side by

@@ -182,7 +182,10 @@ namespace pr7s
         engine.setPadPlayer (nullptr);
         // A save still writing finishes first (its call back here is dropped).
         saveAlive->store (false);
-        saver.removeAllJobs (false, 60000);
+        {
+            const SessionLog::Step step ("Waiting for a save still writing");
+            saver.removeAllJobs (false, 60000);
+        }
         stopTimer();
         unwatchAll();
         engine.onPluginGoing = nullptr;   // (the watchers are gone first)
@@ -195,11 +198,13 @@ namespace pr7s
         writerThread.stopThread (2000);
         if (withDevices)
         {
+            const SessionLog::Step step ("Closing the audio device and MIDI inputs");
             devices.removeChangeListener (this);
             devices.removeAudioCallback (&engine);
             devices.removeMidiInputDeviceCallback ({}, &engine.getLiveInput());
             devices.closeAudioDevice();
         }
+        // (The plug-ins are unloaded with the engine, after this: each a step of its own.)
     }
 
     void Studio::reloadAudioDevice()
@@ -209,6 +214,7 @@ namespace pr7s
         // (a size set in its own panel replaces one it no longer offers).
         if (devices.getCurrentAudioDevice() == nullptr)
             return;
+        const SessionLog::Step step ("Closing and opening the audio device again");
         devices.closeAudioDevice();
         devices.restartLastAudioDevice();
     }
@@ -1153,6 +1159,7 @@ namespace pr7s
             if (track == nullptr || track->isChannel() || track->disabled == disabled || track->frozen)
                 continue;   // (a frozen track's plugins are already unloaded)
             any = true;
+            const SessionLog::Step step ((disabled ? "Disabling the track " : "Enabling the track ") + track->name);
             if (disabled)
             {
                 unloadPlugins (*track);
@@ -1176,6 +1183,7 @@ namespace pr7s
         // Its settings kept (as saving does), then its plugins unloaded.
         if (auto* instrument = engine.getInstrument (id))
         {
+            const SessionLog::Step step ("Asking " + instrument->getName() + " for its settings");
             juce::MemoryBlock state;
             instrument->getStateInformation (state);
             track.instrument.state = std::move (state);
@@ -1183,6 +1191,7 @@ namespace pr7s
         for (int slot = 0; slot < (int) track.inserts.size(); ++slot)
             if (auto* effect = engine.getEffect (id, slot))
             {
+                const SessionLog::Step step ("Asking " + effect->getName() + " for its settings");
                 juce::MemoryBlock state;
                 effect->getStateInformation (state);
                 track.inserts[(size_t) slot].state = std::move (state);
@@ -8178,6 +8187,7 @@ namespace pr7s
                 return false;   // (looked at every block: an instrument rendering slowly still stops at once)
             const auto length = (int) juce::jmin ((juce::int64) blockSize, job.total - done);
             engine.render (block, length);
+            SessionLog::jobBeat();   // (0.52.1: a render that stops moving is written down)
             if (! job.writer->writeFromAudioSampleBuffer (block, 0, length))
                 return false;
             done += length;
@@ -8197,6 +8207,7 @@ namespace pr7s
                 const auto length = (int) juce::jmin ((juce::int64) blockSize, job.maxTail - done);
                 juce::AudioBuffer<float> into (tail.getArrayOfWritePointers(), 2, (int) done, length);
                 engine.render (into, length);
+                SessionLog::jobBeat();
                 for (int i = length - 1; i >= 0; --i)
                     if (std::abs (into.getSample (0, i)) > 1.0e-5f || std::abs (into.getSample (1, i)) > 1.0e-5f)
                     {
@@ -8379,8 +8390,12 @@ namespace pr7s
 
     bool Studio::exportMix (const juce::File& destination, const ExportOptions& options, juce::String& error)
     {
-        if (! beginExport (destination, options, error))
-            return false;
+        {
+            const SessionLog::Step step ("Setting up the render of " + destination.getFileName() + " (plug-ins switched to offline)");
+            if (! beginExport (destination, options, error))
+                return false;
+        }
+        const SessionLog::Job job ("the render of " + destination.getFileName());
         // Render in Place, Freeze: run by the renderRunner (the app: on a
         // thread of its own); its progress noted for the screen to show.
         rendering = true;
@@ -8406,6 +8421,7 @@ namespace pr7s
         SessionLog::note (threaded ? "  Rendering on a thread of its own" : "  Rendering");
         const auto rendered = threaded ? renderRunner (work) : work();
         rendering = false;
+        const SessionLog::Step step ("Ending the render (plug-ins back to realtime, the audio device back on)");
         endExport();
         if (! rendered)
             error = renderCancelled ? juce::String ("Cancelled.") : "Couldn't write " + destination.getFullPathName();

@@ -19,8 +19,11 @@
 // file (the studio itself, or a plug-in's .vst3: the culprit's name) and the
 // chain of calls that led there, with function names (and, for the studio,
 // source files and lines: the Windows zip has the app's .pdb for that).
-// If the screen stops answering for 10 seconds, a FROZEN entry with what the
-// screen's thread was doing (Windows), and how long until it answered again.
+// If the screen stops answering for 10 seconds, a FROZEN entry: written at once
+// with the steps under way (0.52.1), then what every thread is doing (Windows:
+// the module each is in and the modules on its stack, read without anything a
+// stuck plug-in could be holding; then, last, the calls by name), and how long
+// until it answered again. A render that stops moving: STUCK, the same report.
 //
 // The next start, a log that didn't end "closed normally" is offered to be
 // shown (the studio crashed, froze and was ended, or the computer went off).
@@ -44,11 +47,47 @@ namespace pr7s::SessionLog
     bool closedNormally (const juce::File&);
     bool recordsCrash (const juce::File&);
 
+    // (0.52.1) A step under way: "Starting: <what>" written at once, "  done: <what> (n ms)" when it
+    // ends. While it runs it's listed in a FROZEN or STUCK entry, with its thread and how long it's
+    // been going: a hang shows what had begun, not only what had finished. Any thread but the
+    // audio callback's. Nested steps are listed inside out.
+    class Step
+    {
+    public:
+        explicit Step (const juce::String& what);
+        ~Step();
+        Step (const Step&) = delete;
+        Step& operator= (const Step&) = delete;
+    private:
+        int slot = -1;
+        double started = 0.0;
+        juce::String text;
+    };
+    // What's under way now (each step's thread, how long, what): the lines a FROZEN entry gives.
+    juce::String stepsUnderWay();
+
+    // (0.52.1) A long job on a thread of its own (a render): `jobBeat` as it moves (any thread, cheap:
+    // an atomic). No beat for `jobSeconds` (startFreezeWatch) while one runs writes a STUCK entry
+    // (the screen still answers then, so FROZEN never would).
+    class Job
+    {
+    public:
+        explicit Job (const juce::String& what);
+        ~Job();
+        Job (const Job&) = delete;
+        Job& operator= (const Job&) = delete;
+    };
+    void jobBeat() noexcept;
+
+    // (0.52.1) Closing: the watch carries on (with `seconds` as its limit), so a hang while
+    // plug-ins unload is written down too; stop() ends it.
+    void closing (double seconds = 30.0);
+
     // Catches crashes (and std::terminate, abort) into the log. Once, after start.
     void installCrashHandler();
     // Watches the screen's thread: call `beat` from it (a Timer) a few times
     // a second; a gap of `seconds` writes a FROZEN entry.
-    void startFreezeWatch (double seconds = 10.0);
+    void startFreezeWatch (double seconds = 10.0, double jobSeconds = 30.0);
     void beat();
     void stopFreezeWatch();
 

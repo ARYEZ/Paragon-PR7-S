@@ -592,7 +592,18 @@ namespace Windows
                 onRender (getOptions());
         };
         cancelButton.onClick = [this] { if (onCancel) onCancel(); };
+        warning.setFont (font (13.0f, juce::Font::plain));
+        warning.setColour (juce::Label::textColourId, ParagonColours::accent);
+        addChildComponent (warning);
         setSize (640, 364);
+    }
+
+    void RenderPage::setWarning (const juce::String& text)
+    {
+        warning.setText (text, juce::dontSendNotification);
+        warning.setVisible (text.isNotEmpty());
+        setSize (640, text.isNotEmpty() ? 414 : 364);
+        resized();
     }
 
     RO RenderPage::getOptions() const
@@ -624,6 +635,8 @@ namespace Windows
         labelled (row (28), bitsLabel, bits);
         labelled (row (28), sourceLabel, source);
         hideSource.setBounds (row (24).withTrimmedLeft (120));
+        if (warning.isVisible())
+            warning.setBounds (row (40));
         note.setBounds (row (40));
         auto buttons = area.removeFromBottom (32);
         cancelButton.setBounds (buttons.removeFromRight (96));
@@ -641,9 +654,12 @@ namespace Windows
         : DocumentWindow (trackName + ": " + instance.getName(), windowColour, DocumentWindow::closeButton)
     {
         setUsingNativeTitleBar (true);
-        pr7s::SessionLog::note ("Opening the window of " + instance.getName() + " (" + trackName + ")");
-        if (auto* editor = instance.createEditorAndMakeActive())
-            setContentOwned (editor, true);
+        {
+            const pr7s::SessionLog::Step step ("Opening the window of " + instance.getName() + " (" + trackName + ")");
+            if (auto* editor = instance.createEditorAndMakeActive())
+                setContentOwned (editor, true);
+        }
+        pluginName = instance.getName();
         setResizable (instance.hasEditor() && getContentComponent() != nullptr
                           && dynamic_cast<juce::AudioProcessorEditor*> (getContentComponent())->isResizable(),
                       false);
@@ -651,6 +667,13 @@ namespace Windows
         setVisible (true);
         timerCallback();
         startTimer (300);
+    }
+
+    Instrument::~Instrument()
+    {
+        // (0.52.1) A plug-in's window can take a while to go (or not go): a step.
+        const pr7s::SessionLog::Step step ("Closing the window of " + pluginName);
+        clearContentComponent();
     }
 
     void Instrument::timerCallback()

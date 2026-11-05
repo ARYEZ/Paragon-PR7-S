@@ -2,6 +2,30 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.52.1
+
+Two fixes from your reports.
+
+**Render in Place: Disable and Hide were greyed out while CYCLE was on**
+- **What was wrong:** since 0.31.0, a whole track rendered with CYCLE on is rendered over the cycle only (as you asked then). But the studio then treated it as "a stretch of a track", which can only mute the parts it rendered. So "Mute and disable the track" and "Hide the track afterwards" were greyed out, and Render with the last settings (Alt+R) only ever muted.
+- **Now:** a track you render (the track menu, the Inspector's RENDER, Alt+R on selected tracks) stays a whole-track render. It's still rendered over the cycle only, but the original is muted, disabled and hidden by default, as you wanted.
+- **One thing to know:** if the track has parts outside the cycle, disabling it silences those too. The page now says so in a line above its note (for example "CYCLE is on: only 5.1.1.0 to 9.1.1.0 is rendered. Bass has parts outside it..."). Turn CYCLE off to render the whole track.
+- A **range** selected with the Range tool still renders just that stretch and mutes the parts rendered, as before: there the stretch is what you chose.
+
+**The session log: what the studio was doing when it hangs**
+- **What was wrong:** when the studio froze, the log ended with something that had finished ("rendered", "disabled a track"), never what came next. There were three reasons:
+  1. The freeze report itself could get stuck. Before writing a word, it asked Windows for the names and debugging information of every loaded module. A plug-in that hangs while it's loaded or unloaded (exactly what disabling a track or setting up a render does) holds a Windows lock those requests need. So the report waited forever and nothing was written.
+  2. Steps were only written once they'd finished.
+  3. A hang while closing wasn't watched at all, and neither was a render that got stuck on its own thread (the screen still answers then).
+- **Now:**
+  - **Every step that can hang is written as it starts** ("Starting: Unloading the instrument Kontakt 8") **and when it ends** ("done: ... (1250 ms)"). That covers loading, preparing, switching to offline and unloading each plug-in, a plug-in's window opening and closing, asking a plug-in for its settings, disabling or enabling a track, setting up and ending a render, the audio device, and closing.
+  - **A FROZEN entry is written at once**, with the steps under way and for how long, before anything else is tried.
+  - **Then what every thread is doing (Windows):** the studio's, the audio's, and every plug-in's and driver's own threads. For each, which module it's in (for example "Kontakt 8.vst3 + 0x1a2b3c") and the modules found on its stack. This is read from a list of modules the studio keeps up to date in advance, without asking Windows anything a stuck plug-in could be holding. Last of all come the calls by name. If that last part gets stuck too, everything above it is already saved.
+  - **A render that stops moving for 30 seconds** writes a STUCK entry with the same report, even though the screen still answers.
+  - **The watch stays on while closing:** a close that hangs for 30 seconds writes FROZEN "(while closing)" with the plug-in being unloaded.
+- **What helps:** when it hangs, wait about 30 seconds before ending it in Task Manager, so the report has time to be written. Then send the log: it should name the plug-in or the step.
+- I could only run the Windows parts through the build machines' tests (a deliberate freeze in the test program, which checks that the report lists every thread). I can't reproduce your hang here, so the next log is the real test.
+
 ## 0.52.0
 
 **Auto fades and crossfades** (the last of your four; the manual's Auto Fades dialog). Until now, where two comped takes met, playback jumped straight from one take to the other. If the sound wasn't at the same point in both waves, that left a small click at every cut. Now the studio crossfades there as it plays.
