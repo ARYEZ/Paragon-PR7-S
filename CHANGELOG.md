@@ -2,6 +2,27 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.54.0
+
+**A DRUMS tab in IDEAS** (you asked: beats generated from scratch, and the grooves in your library)
+- **GENERATED:** six beats for the STYLE you pick (the same STYLE box as the guitar tab; it now shows on the guitar, drums and bass tabs):
+  - **Rock:** straight rock, four on the floor, half-time, ride groove, ghost-note groove.
+  - **Thrash:** skank beat, double-kick gallop, sixteenth double kick, blast beat, half-time breakdown.
+  - **Nu-metal:** bounce groove, syncopated stomp, hip-hop swing, stop-start, tom groove.
+  - **Metalcore:** breakdown, double-time verse, gallop double kick, half-time chorus, blast into breakdown.
+  - **Shred:** power metal double kick, galloping double kick, driving rock, neoclassical march, half-time ballad.
+  - And in every style, **Locked to the riff**: the kick on every hit of the guitar riff you last played or used on the guitar tab (the kick and the chugs as one), the snare on the backbeat (on three in nu-metal and metalcore).
+  - Each beat has a crash at the start of every four-bar phrase and a fill on its last beat, in the style: snare to toms, snare rolls, kick-and-snare, tom triplets, toms down.
+  - Written for General MIDI drums (kick 36, snare 38, hats 42/46, ride 51, china 52, crash 49/57, toms), which most drum libraries follow.
+- **FROM MY LIBRARY:** the MIDI grooves in your MediaBay folders (files with a drum word in their name or folder: drum, groove, beat, GGD, Toontrack, EZdrummer, Superior...), best first: the style's words in them, a tempo near the song's, fills last. Six at a time; **MORE GROOVES** shows the next six. Each groove is laid over your chords from the first bar and repeated.
+- **USE IT** puts a beat on a new "Drums" track with the GM drum map (the MIDI editor shows the drums' names), or onto your selected track.
+
+**Two more bass ideas** on the BASS tab
+- **Locked to the kick:** the chord's root on every kick of the drum beat you last played or used.
+- **Following the riff:** the chord's root on every hit of the guitar riff.
+
+**What I can't check here:** how the beats feel through your drum library. If yours isn't laid out like General MIDI, tell me which it is and I'll add its map.
+
 ## 0.53.1
 
 **Drag a part out of the arrangement as a file** (you asked, for PR7-D's GROOVES page)
