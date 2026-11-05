@@ -177,7 +177,9 @@ namespace pr7s
                 d += std::abs (a.kick[(size_t) i] - b.kick[(size_t) i]) + std::abs (a.snare[(size_t) i] - b.snare[(size_t) i]);
             if (a.cymbal != b.cymbal)
                 d += 4.0f;
-            d += juce::jmin (4.0f, std::abs (a.hand - b.hand) / 3.0f);
+            // The cymbal's rate: twice or half as fast is a change of feel (quarters to eighths).
+            const auto fast = juce::jmax (a.hand, b.hand), slow = juce::jmin (a.hand, b.hand);
+            d += slow > 0.5f && fast / slow >= 1.6f ? 3.0f : juce::jmin (4.0f, (fast - slow) / 4.0f);
             d += 3.0f * std::abs (a.half - b.half);
             return d;
         }
@@ -604,7 +606,7 @@ namespace pr7s
             if (sums[(size_t) i].silent)
                 continue;
             for (size_t g = 0; g < leaders.size(); ++g)
-                if (summaryDistance (sums[(size_t) i], sums[(size_t) leaders[g]]) < 5.0f)
+                if (summaryDistance (sums[(size_t) i], sums[(size_t) leaders[g]]) < 4.5f)
                 {
                     sections[(size_t) i].group = (int) g;
                     break;
@@ -668,7 +670,7 @@ namespace pr7s
         while (first < count && sums[(size_t) first].silent)
             ++first;
         if (first < count && ! named[(size_t) first] && count > 1 && sections[(size_t) first].bars <= 8
-            && (groupSize (sections[(size_t) first].group) == 1 || sums[(size_t) first].energy < median))
+            && groupSize (sections[(size_t) first].group) == 1)   // (a groove played again later is a verse or chorus, not an intro)
             name (first, S::intro);
         auto last = count - 1;
         while (last > 0 && sums[(size_t) last].silent)

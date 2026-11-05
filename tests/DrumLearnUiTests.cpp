@@ -22,12 +22,13 @@ TEST_CASE ("LEARN A DRUMMER: a folder of songs read, sections put right, the pro
     studio.setDrummerFolderForTests (root.getChildFile ("Profiles"));
     DrumLearnPage page (studio);
     page.setSize (1500, 860);
+    page.setVisible (true);   // (getComponentAt finds only visible components)
     CHECK (page.loadFolder (songs) == 2);
     CHECK (page.getUnread().size() == 1);
     CHECK (page.getName() == "Songs");
     CHECK (page.getStatusText().startsWith ("2 songs"));
     REQUIRE (page.getSongs()[0].sections.size() == 8);
-    CHECK (page.getSongs()[1].bpm == 140.0);
+    CHECK (std::abs (page.getSongs()[1].bpm - 140.0) < 0.01);
 
     // Put right: the breakdown called a bridge, the first verse split, then joined back; a song left out.
     page.setKind (0, 5, DrumSection::bridge);
@@ -45,7 +46,7 @@ TEST_CASE ("LEARN A DRUMMER: a folder of songs read, sections put right, the pro
     {
         const auto box = page.getUseBox (1);
         const auto at = box.getCentre().toFloat();
-        const juce::MouseEvent e (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys(), juce::MouseInputSource::defaultPressure, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+        const juce::MouseEvent e (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys(), juce::MouseInputSource::defaultPressure, 0.0f, 0.0f, 0.0f, 0.0f,
                                   &page, &page, juce::Time::getCurrentTime(), at, juce::Time::getCurrentTime(), 1, false);
         auto* rows = page.getComponentAt (box.getCentre());
         REQUIRE (rows != nullptr);
