@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonPR7S VERSION 0.52.2 LANGUAGES C CXX)
+project(ParagonPR7S VERSION 0.52.3 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -185,6 +185,10 @@ juce_add_gui_app(ParagonPR7S
     PRODUCT_NAME                "Paragon PR7-S"
     COMPANY_NAME                "Paragon"
     BUNDLE_ID                   "com.paragon.paragonpr7s"
+    # (0.52.3) The app's icon: the taskbar, the title bar, the .exe (Windows makes its .ico from these).
+    # Drawn by Logo::drawAppIcon; written again with: PARAGON_ICON_DIR=<folder> ParagonPR7STests "[make-icon]".
+    ICON_BIG                    "${CMAKE_CURRENT_SOURCE_DIR}/resources/icon/icon-big.png"
+    ICON_SMALL                  "${CMAKE_CURRENT_SOURCE_DIR}/resources/icon/icon-small.png"
     MICROPHONE_PERMISSION_ENABLED TRUE)
 
 target_sources(ParagonPR7S PRIVATE source/Main.cpp)
