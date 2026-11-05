@@ -323,8 +323,11 @@ TEST_CASE ("Recording: what's played becomes a part on the armed track, on its b
     CHECK_THAT (part.notes[0].length, WithinAbs (2.0, 0.01));
     CHECK_THAT (part.notes[0].velocity, WithinAbs (0.75, 0.01));
     CHECK (part.notes[1].pitch == 64);
-    CHECK_THAT (part.notes[1].start, WithinAbs (3.0, 0.01));
-    CHECK_THAT (part.notes[1].length, WithinAbs (0.5, 0.01));   // ended where recording stopped
+    // (Within one block: JUCE's on-screen keyboard spreads events pressed in different milliseconds over
+    // the next block, so the note on after a note off can land up to 512 samples (0.021 beat) later on a
+    // slow machine: 0.50.0's Linux CI run saw 3.0107.)
+    CHECK_THAT (part.notes[1].start, WithinAbs (3.0, 0.022));
+    CHECK_THAT (part.notes[1].length, WithinAbs (0.5, 0.022));   // ended where recording stopped
     engine.getKeyboardState().noteOff (1, 64, 0.0f);
 
     // Undo takes the recording back.
