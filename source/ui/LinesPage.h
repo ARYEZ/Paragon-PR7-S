@@ -104,6 +104,31 @@ private:
     juce::TextButton oneBar { "1 BAR" }, twoBars { "2 BARS" }, fourBars { "4 BARS" }, fills { "FILLS" }, defaults { "DEFAULTS" };
 };
 
+// DRUM SETTINGS (0.55.0): the beat generator's DENSITY, DOUBLE KICK, GHOST NOTES (50%: the style's
+// own), FILLS (off, every 2 / 4 / 8 bars), FILL LENGTH (1 or 2 beats), CYMBAL (the style's, hats,
+// ride, china), LOCK KICK TO RIFF, DEFAULTS.
+class DrumPanel final : public juce::Component
+{
+public:
+    explicit DrumPanel (pr7s::DrumSettings);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void setSettings (const pr7s::DrumSettings&);   // (as the controls would: onChange called)
+    const pr7s::DrumSettings& getSettings() const noexcept { return settings; }
+    std::function<void (const pr7s::DrumSettings&)> onChange;
+    static juce::String summary (const pr7s::DrumSettings&);   // "DRUMS: FILL EVERY 4"
+    static constexpr int width = 480, rowHeight = 32, titleHeight = 60;
+
+private:
+    void refresh();
+    pr7s::DrumSettings settings;
+    juce::Slider density, doubleKick, ghosts;
+    juce::TextButton fillsOff { "OFF" }, fills2 { "2 BARS" }, fills4 { "4 BARS" }, fills8 { "8 BARS" };
+    juce::TextButton oneBeat { "1 BEAT" }, twoBeats { "2 BEATS" };
+    juce::TextButton cymAuto { "STYLE'S" }, cymHats { "HATS" }, cymRide { "RIDE" }, cymChina { "CHINA" };
+    juce::TextButton lock { "LOCK KICK TO RIFF" }, defaults { "DEFAULTS" };
+};
+
 class LinesPage final : public juce::Component,
                         private juce::Timer
 {
@@ -131,6 +156,11 @@ public:
     void showRiffSettings();
     // DRUMS (0.54.0): the library's grooves six at a time (MORE GROOVES: the next six, round again).
     void moreGrooves();
+    // (0.55.0) The generated column: the beat generator's six (one per section), or the written beats.
+    void setDrumSettings (const pr7s::DrumSettings&);
+    void showDrumSettings();
+    void setWrittenBeats (bool);   // (settings key "ideasWrittenBeats")
+    bool isShowingWrittenBeats() const noexcept { return writtenBeats; }
     int getNumLibraryGrooves() const noexcept { return (int) libraryGrooves.size(); }
     int getGroovePage() const noexcept { return groovePage; }
     // The guitar riff the drums' and bass's locked ideas follow, and the beat the bass's kick-locked
@@ -182,6 +212,9 @@ private:
     juce::ComboBox styleBox;     // STYLE (the guitar tab)
     juce::TextButton riffKey;    // RIFF SETTINGS (the guitar tab)
     juce::TextButton groovesKey { "MORE GROOVES" };   // (the drums tab)
+    juce::TextButton drumKey;                           // DRUM SETTINGS (the drums tab)
+    juce::TextButton writtenKey { "WRITTEN BEATS" };    // (the drums tab)
+    bool writtenBeats = false;
     std::vector<pr7s::LibraryGroove> libraryGrooves;
     bool groovesLooked = false;
     int groovePage = 0, riffIndex = 0, beatIndex = 0;

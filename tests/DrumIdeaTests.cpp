@@ -189,6 +189,7 @@ TEST_CASE ("IDEAS' DRUMS tab: the generated beats and the library's grooves; the
     const auto spans = bars ({ a, f, c, g }, am);
     LinesPage page (studio, spans);
     page.setGuitarStyle (GuitarStyle::numetal);
+    page.setWrittenBeats (true);   // (0.55.0: the written ones behind WRITTEN BEATS)
     page.setTab (LinesPage::Tab::drums);
     CHECK (page.getIdeas (LineIdea::Part::drums).size() == 6);
     CHECK (page.getIdeas (LineIdea::Part::drums).front().style == "Bounce groove");

@@ -9478,6 +9478,20 @@ namespace pr7s
             settings->setValue ("riffSettings", riffSettings.toString());
     }
 
+    DrumSettings Studio::getDrumSettings() const
+    {
+        if (settings != nullptr && settings->containsKey ("drumSettings"))
+            return DrumSettings::fromString (settings->getValue ("drumSettings"));
+        return drumSettings;
+    }
+
+    void Studio::setDrumSettings (const DrumSettings& d)
+    {
+        drumSettings = d.limited();
+        if (settings != nullptr)
+            settings->setValue ("drumSettings", drumSettings.toString());
+    }
+
     float Studio::getIdeasHumanize() const
     {
         return settings != nullptr ? juce::jlimit (0.0f, 1.0f, (float) settings->getDoubleValue ("ideasHumanize", ideasHumanize)) : ideasHumanize;

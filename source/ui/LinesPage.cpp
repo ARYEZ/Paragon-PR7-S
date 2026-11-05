@@ -329,6 +329,18 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
     groovesKey.setTooltip ("The next six grooves from your library (MediaBay folders: add yours there, F5)");
     groovesKey.onClick = [this] { moreGrooves(); };
     addChildComponent (groovesKey);
+    // (0.55.0) The beat generator's settings, and the written beats instead.
+    drumKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    drumKey.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    drumKey.setWantsKeyboardFocus (false);
+    drumKey.setTooltip ("Density, double kick, ghost notes, fills, the cymbal, the kick locked to the guitar riff");
+    drumKey.onClick = [this] { showDrumSettings(); };
+    addChildComponent (drumKey);
+    writtenKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    writtenKey.setWantsKeyboardFocus (false);
+    writtenKey.setTooltip ("Lit: the written beats (six fixed patterns per style). Off: beats generated new for each section (MORE IDEAS: new ones)");
+    writtenKey.onClick = [this] { setWrittenBeats (! writtenBeats); };
+    addChildComponent (writtenKey);
     melodyKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     melodyKey.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
     melodyKey.setWantsKeyboardFocus (false);
@@ -390,6 +402,7 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
         tab = saved == "guitar" ? Tab::guitar : saved == "bass" ? Tab::bass : saved == "patterns" ? Tab::patterns
             : saved == "melody" ? Tab::melody : saved == "drums" ? Tab::drums : Tab::piano;
         riffIndex = juce::jlimit (0, 5, settings->getIntValue ("ideasLockedRiff", 0));
+        writtenBeats = settings->getBoolValue ("ideasWrittenBeats", false);
     }
     setSize (1360, 760);
     setChords (std::move (chords));
@@ -428,7 +441,7 @@ juce::String LinesPage::titleOf (pr7s::LineIdea::Part part)
         case P::lead: return "LEAD";
         case P::pattern: return "PATTERNS";
         case P::tune: return "COMPOSED MELODIES";
-        case P::drums: return "GENERATED";
+        case P::drums: return "BEATS";
         case P::groove: return "FROM MY LIBRARY";
     }
     return {};
@@ -547,6 +560,37 @@ void LinesPage::moreGrooves()
     rebuild();
 }
 
+void LinesPage::setDrumSettings (const pr7s::DrumSettings& d)
+{
+    if (d.limited() == studio.getDrumSettings())
+        return;
+    stop();
+    studio.setDrumSettings (d);
+    rebuild();
+}
+
+void LinesPage::showDrumSettings()
+{
+    auto panel = std::make_unique<DrumPanel> (studio.getDrumSettings());
+    panel->onChange = [safe = juce::Component::SafePointer<LinesPage> (this)] (const pr7s::DrumSettings& d)
+    {
+        if (safe != nullptr)
+            safe->setDrumSettings (d);
+    };
+    juce::CallOutBox::launchAsynchronously (std::move (panel), drumKey.getScreenBounds(), nullptr);
+}
+
+void LinesPage::setWrittenBeats (bool on)
+{
+    if (on == writtenBeats)
+        return;
+    stop();
+    writtenBeats = on;
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("ideasWrittenBeats", on);
+    rebuild();
+}
+
 void LinesPage::noteChosen (pr7s::LineIdea::Part part, int index)
 {
     if (part == pr7s::LineIdea::Part::rhythm && index != riffIndex)
@@ -637,7 +681,11 @@ void LinesPage::rebuild()
     {
         const auto& riffs = ideas[(size_t) P::rhythm];
         const auto* lockedRiff = riffs.empty() ? nullptr : &riffs[(size_t) juce::jlimit (0, (int) riffs.size() - 1, riffIndex)];
-        ideas[(size_t) P::drums] = pr7s::drumIdeas (guitarStyle, spans, barBeats, variation, lockedRiff);
+        const auto drums = studio.getDrumSettings();
+        ideas[(size_t) P::drums] = writtenBeats ? pr7s::drumIdeas (guitarStyle, spans, barBeats, variation, lockedRiff)
+                                                : pr7s::generatedBeats (guitarStyle, spans, barBeats, drums, variation,
+                                                                        lockedRiff != nullptr ? pr7s::riffHits (*lockedRiff) : std::vector<double> {});
+        drumKey.setButtonText (DrumPanel::summary (drums));
         auto& grooves = ideas[(size_t) P::groove];
         grooves.clear();
         for (int i = groovePage * 6; i < (int) libraryGrooves.size() && (int) grooves.size() < 6; ++i)
@@ -701,6 +749,9 @@ void LinesPage::makeCards()
     melodyTab.setToggleState (tab == Tab::melody, juce::dontSendNotification);
     drumsTab.setToggleState (tab == Tab::drums, juce::dontSendNotification);
     groovesKey.setVisible (tab == Tab::drums);
+    drumKey.setVisible (tab == Tab::drums && ! writtenBeats);
+    writtenKey.setVisible (tab == Tab::drums);
+    writtenKey.setToggleState (writtenBeats, juce::dontSendNotification);
     groovesKey.setEnabled (libraryGrooves.size() > 6);
     melodyKey.setVisible (tab == Tab::melody);
     groupBox.setText (patternGroup, juce::dontSendNotification);
@@ -838,7 +889,9 @@ void LinesPage::paint (juce::Graphics& g)
         g.setColour (colourOf (parts[i]));
         g.fillRoundedRectangle (columnTitles[i].removeFromLeft (4).withSizeKeepingCentre (4, 14).toFloat(), 1.5f);
         g.setColour (ParagonColours::text);
-        g.drawText (titleOf (parts[i]), columnTitles[i].withTrimmedLeft (10), juce::Justification::centredLeft, false);
+        const auto title = parts[i] == pr7s::LineIdea::Part::drums ? juce::String (writtenBeats ? "WRITTEN BEATS" : "GENERATED: ONE PER SECTION")
+                                                                    : titleOf (parts[i]);
+        g.drawText (title, columnTitles[i].withTrimmedLeft (10), juce::Justification::centredLeft, false);
     }
     if (tab == Tab::drums && getIdeas (pr7s::LineIdea::Part::groove).empty() && columnTitles.size() == 2)
     {
@@ -884,6 +937,8 @@ void LinesPage::resized()
     tabs.removeFromRight (8);
     riffKey.setBounds (tabs.removeFromRight (180));
     groovesKey.setBounds (riffKey.getBounds());
+    drumKey.setBounds (tuningBox.getBounds().getUnion (tuningLabel.getBounds()));
+    writtenKey.setBounds (velocitiesKey.getBounds().withLeft (velocitiesKey.getX() - 30));
     tabs.removeFromRight (8);
     styleBox.setBounds (tabs.removeFromRight (140));
 
@@ -1174,5 +1229,130 @@ void RiffPanel::resized()
     busy.setBounds (row());
     auto last = area.removeFromTop (rowHeight).reduced (0, 2);
     fills.setBounds (last.removeFromLeft (150));
+    defaults.setBounds (last.removeFromRight (110));
+}
+
+//==============================================================================
+DrumPanel::DrumPanel (pr7s::DrumSettings initial) : settings (initial.limited())
+{
+    const auto bar = [this] (juce::Slider& s, const char* tip)
+    {
+        s.setSliderStyle (juce::Slider::LinearBar);
+        s.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 80, 20);
+        s.setRange (0.0, 100.0, 1.0);
+        s.setTextValueSuffix ("%");
+        s.setColour (juce::Slider::trackColourId, ParagonColours::accent);
+        s.setColour (juce::Slider::textBoxTextColourId, ParagonColours::text);
+        s.setColour (juce::Slider::backgroundColourId, juce::Colour (0xff1b171c));
+        s.setColour (juce::Slider::textBoxOutlineColourId, ParagonColours::panelEdge);
+        s.setTooltip (tip);
+        addAndMakeVisible (s);
+    };
+    bar (density, "50%: the style's own. Lower: fewer kicks, more space. Higher: more kicks and pushes");
+    bar (doubleKick, "50%: the style's own. 0%: none. Higher: the feet fill in between kicks; near 100% in a metal style, constant sixteenths");
+    bar (ghosts, "50%: the style's own. Soft snare notes between the backbeats (0%: none)");
+    density.onValueChange = [this] { auto d = settings; d.density = (float) density.getValue() / 100.0f; setSettings (d); };
+    doubleKick.onValueChange = [this] { auto d = settings; d.doubleKick = (float) doubleKick.getValue() / 100.0f; setSettings (d); };
+    ghosts.onValueChange = [this] { auto d = settings; d.ghostNotes = (float) ghosts.getValue() / 100.0f; setSettings (d); };
+    const std::pair<juce::TextButton*, int> fills[] { { &fillsOff, 0 }, { &fills2, 2 }, { &fills4, 4 }, { &fills8, 8 } };
+    for (const auto& [key, every] : fills)
+        key->onClick = [this, every = every] { auto d = settings; d.fillEvery = every; setSettings (d); };
+    oneBeat.onClick = [this] { auto d = settings; d.fillBeats = 1; setSettings (d); };
+    twoBeats.onClick = [this] { auto d = settings; d.fillBeats = 2; setSettings (d); };
+    using C = pr7s::DrumSettings::Cymbal;
+    const std::pair<juce::TextButton*, C> cymbals[] { { &cymAuto, C::automatic }, { &cymHats, C::hats }, { &cymRide, C::ride }, { &cymChina, C::china } };
+    for (const auto& [key, cymbal] : cymbals)
+        key->onClick = [this, cymbal = cymbal] { auto d = settings; d.cymbal = cymbal; setSettings (d); };
+    cymAuto.setTooltip ("Each section's own: hats or ride in the verse, the chorus's crashes or china, the bridge's ride bell, the breakdown's china");
+    lock.setTooltip ("The kick on every hit of the guitar riff last played or used on the guitar tab (verse, chorus, bridge, breakdown)");
+    lock.onClick = [this] { auto d = settings; d.lockToRiff = ! d.lockToRiff; setSettings (d); };
+    defaults.setTooltip ("Back to the style's own");
+    defaults.onClick = [this] { setSettings ({}); };
+    for (auto* key : { &fillsOff, &fills2, &fills4, &fills8, &oneBeat, &twoBeats, &cymAuto, &cymHats, &cymRide, &cymChina, &lock, &defaults })
+    {
+        key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        key->setWantsKeyboardFocus (false);
+        addAndMakeVisible (*key);
+    }
+    refresh();
+    setSize (width, titleHeight + rowHeight * 7 + 24);
+}
+
+juce::String DrumPanel::summary (const pr7s::DrumSettings& d)
+{
+    return juce::String ("DRUMS: ") + (d.fillEvery > 0 ? "FILL EVERY " + juce::String (d.fillEvery) : juce::String ("NO FILLS"))
+         + (d.lockToRiff ? ", LOCKED" : "");
+}
+
+void DrumPanel::setSettings (const pr7s::DrumSettings& d)
+{
+    const auto limited = d.limited();
+    if (limited == settings)
+        return;
+    settings = limited;
+    refresh();
+    if (onChange)
+        onChange (settings);
+}
+
+void DrumPanel::refresh()
+{
+    density.setValue (settings.density * 100.0, juce::dontSendNotification);
+    doubleKick.setValue (settings.doubleKick * 100.0, juce::dontSendNotification);
+    ghosts.setValue (settings.ghostNotes * 100.0, juce::dontSendNotification);
+    fillsOff.setToggleState (settings.fillEvery == 0, juce::dontSendNotification);
+    fills2.setToggleState (settings.fillEvery == 2, juce::dontSendNotification);
+    fills4.setToggleState (settings.fillEvery == 4, juce::dontSendNotification);
+    fills8.setToggleState (settings.fillEvery == 8, juce::dontSendNotification);
+    oneBeat.setToggleState (settings.fillBeats == 1, juce::dontSendNotification);
+    twoBeats.setToggleState (settings.fillBeats == 2, juce::dontSendNotification);
+    using C = pr7s::DrumSettings::Cymbal;
+    cymAuto.setToggleState (settings.cymbal == C::automatic, juce::dontSendNotification);
+    cymHats.setToggleState (settings.cymbal == C::hats, juce::dontSendNotification);
+    cymRide.setToggleState (settings.cymbal == C::ride, juce::dontSendNotification);
+    cymChina.setToggleState (settings.cymbal == C::china, juce::dontSendNotification);
+    lock.setToggleState (settings.lockToRiff, juce::dontSendNotification);
+}
+
+void DrumPanel::paint (juce::Graphics& g)
+{
+    g.fillAll (juce::Colour (0xff0c0a0d));
+    auto area = getLocalBounds().reduced (14, 10);
+    g.setColour (ParagonColours::text);
+    g.setFont (ParagonLookAndFeel::titleFont (16.0f));
+    g.drawText ("DRUM SETTINGS", area.removeFromTop (22), juce::Justification::centredLeft, false);
+    g.setColour (ParagonColours::textDim);
+    g.setFont (juce::Font (juce::FontOptions (11.5f)));
+    g.drawFittedText ("How the generated beats are built. They're made again as you change a control; MORE IDEAS deals new ones.",
+                      area.removeFromTop (titleHeight - 32), juce::Justification::topLeft, 2, 0.9f);
+    g.setColour (ParagonColours::text);
+    g.setFont (ParagonLookAndFeel::titleFont (13.0f));
+    for (const auto* name : { "DENSITY", "DOUBLE KICK", "GHOST NOTES", "FILLS", "FILL LENGTH", "CYMBAL" })
+        g.drawText (name, area.removeFromTop (rowHeight).removeFromLeft (110), juce::Justification::centredLeft, false);
+}
+
+void DrumPanel::resized()
+{
+    auto area = getLocalBounds().reduced (14, 10);
+    area.removeFromTop (titleHeight - 10);
+    const auto row = [&area] { auto r = area.removeFromTop (rowHeight); r.removeFromLeft (110); return r.reduced (0, 4); };
+    const auto keys = [] (juce::Rectangle<int> r, std::initializer_list<juce::TextButton*> list)
+    {
+        const auto n = (int) list.size();
+        const auto w = (r.getWidth() - 6 * (n - 1)) / n;
+        for (auto* key : list)
+        {
+            key->setBounds (r.removeFromLeft (w));
+            r.removeFromLeft (6);
+        }
+    };
+    density.setBounds (row());
+    doubleKick.setBounds (row());
+    ghosts.setBounds (row());
+    keys (row(), { &fillsOff, &fills2, &fills4, &fills8 });
+    keys (row(), { &oneBeat, &twoBeats });
+    keys (row(), { &cymAuto, &cymHats, &cymRide, &cymChina });
+    auto last = area.removeFromTop (rowHeight).reduced (0, 2);
+    lock.setBounds (last.removeFromLeft (190));
     defaults.setBounds (last.removeFromRight (110));
 }

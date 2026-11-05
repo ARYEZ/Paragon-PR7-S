@@ -12,6 +12,7 @@
 #include "Lines.h"
 #include "Riffs.h"
 #include "DragOut.h"
+#include "DrumGenerator.h"
 #include "Patterns.h"
 #include "Progressions.h"
 #include "Melody.h"
@@ -302,6 +303,9 @@ namespace pr7s
         void setGuitarStyle (GuitarStyle);
         RiffSettings getRiffSettings() const;
         void setRiffSettings (const RiffSettings&);
+        // The DRUMS tab's beat generator settings (0.55.0; settings key "drumSettings").
+        DrumSettings getDrumSettings() const;
+        void setDrumSettings (const DrumSettings&);
         // Humanize (0.20.0). IDEAS: its amount (0-1, settings "ideasHumanize", default 0: on the
         // grid as before) and FEEL ("ideasFeel", default on). The MIDI editor: its amount
         // ("humanizeAmount", default 0.5) and whether velocities keep to the guitar library's
@@ -1384,6 +1388,7 @@ namespace pr7s
         GuitarVelocities guitarVelocities;
         GuitarStyle guitarStyle = GuitarStyle::rock;   // (without a settings file)
         RiffSettings riffSettings;
+        DrumSettings drumSettings;
         float ideasHumanize = 0.0f, humanizeAmount = 0.5f;   // (without a settings file: the tests)
         bool ideasFeel = true, humanizeLayers = true;
         void announce();               // (0.34.3) sendChangeMessage, the version counted
