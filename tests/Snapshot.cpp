@@ -1523,3 +1523,29 @@ TEST_CASE ("Snapshot: the chord pads' REMOTE page (0.44.0; PARAGON_SNAPSHOT_REMO
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
+
+#include "ui/AutoFadesPage.h"
+
+TEST_CASE ("Snapshot: the Auto Fades dialog (0.52.0; a track's, its own settings)", "[.][snapshot-autofades]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "autofades.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        const auto track = studio.addAudioTrack (false);
+        studio.renameTrack (track, "Lead Vocal");
+        pr7s::AutoFades own;
+        own.fadeIn = own.fadeOut = true;
+        own.milliseconds = 25.0;
+        studio.setTrackAutoFades (track, own);
+        AutoFadesPage page (studio, track);
+        const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 2.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}

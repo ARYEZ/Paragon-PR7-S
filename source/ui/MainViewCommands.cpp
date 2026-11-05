@@ -1,4 +1,5 @@
 #include "MainView.h"
+#include "ui/AutoFadesPage.h"
 
 // Every action the studio has, as a key command (0.11.0): its category, its
 // name, its default keys (the studio's keys as they were) and what it does.
@@ -63,6 +64,7 @@ void MainView::registerCommands()
     }
     add ("Window.Markers", "Window", "Markers", { key ('M', ctrl) });
     add ("Project.AddMarkerTrack", "Project", "Add Marker Track", {}, [this] { studio.addMarkerTrack(); });
+    add ("Project.AutoFades", "Project", "Auto Fades Settings", {}, [this] { AutoFadesPage::show (*this, studio, 0); });   // (0.52.0)
 
     // File.
     add ("File.New", "File", "New Song", { key ('N', ctrl) });

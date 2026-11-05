@@ -8,6 +8,31 @@ namespace pr7s
 {
     namespace
     {
+        // (0.52.0) Auto Fades settings in the song: the song's, and a track's own.
+        std::unique_ptr<juce::XmlElement> autoFadesXml (const AutoFades& f)
+        {
+            auto e = std::make_unique<juce::XmlElement> ("AutoFades");
+            e->setAttribute ("fadeIn", f.fadeIn);
+            e->setAttribute ("fadeOut", f.fadeOut);
+            e->setAttribute ("crossfades", f.crossfades);
+            e->setAttribute ("ms", f.milliseconds);
+            e->setAttribute ("equalPower", f.equalPower);
+            return e;
+        }
+        AutoFades autoFadesFrom (const juce::XmlElement& e)
+        {
+            AutoFades f;
+            f.fadeIn = e.getBoolAttribute ("fadeIn");
+            f.fadeOut = e.getBoolAttribute ("fadeOut");
+            f.crossfades = e.getBoolAttribute ("crossfades", true);
+            f.milliseconds = juce::jlimit (1.0, 500.0, e.getDoubleAttribute ("ms", 10.0));
+            f.equalPower = e.getBoolAttribute ("equalPower", true);
+            return f;
+        }
+    }
+
+    namespace
+    {
         // Bump when the file layout changes in a way older versions can't read.
         constexpr int fileVersion = 1;
         const juce::Identifier projectTag { "PR7SProject" }, trackTag { "Track" }, partTag { "Part" }, noteTag { "Note" },
@@ -307,6 +332,99 @@ namespace pr7s
         return heard;
     }
 
+    std::vector<FadedStretch> fadedStretches (const Track& track, int index, const AutoFades& fades, const TempoMap& tempo,
+                                              const std::function<double (const Part&)>& recordingSeconds)
+    {
+        std::vector<FadedStretch> out;
+        const auto heard = heardStretches (track, index);
+        if (heard.empty())
+            return out;
+        const auto& part = track.parts[(size_t) index];
+        const auto length = juce::jlimit (1.0, 500.0, fades.milliseconds) / 1000.0;
+        constexpr auto near = 1.0e-6;
+        // Seconds into a clip's recording at a beat (before its start: negative past its offset).
+        const auto into = [&tempo] (const Part& p, double beat)
+        {
+            return beat >= p.start ? p.audioOffset + tempo.secondsBetween (p.start, beat) : p.audioOffset - tempo.secondsBetween (beat, p.start);
+        };
+        const auto roomAfter = [&] (const Part& p, double beat)
+        {
+            return p.isWarped() ? 0.0 : juce::jmax (0.0, (recordingSeconds ? recordingSeconds (p) : 0.0) - into (p, beat));
+        };
+        const auto roomBefore = [&] (const Part& p, double beat) { return p.isWarped() ? 0.0 : juce::jmax (0.0, into (p, beat)); };
+        // The crossfade at a cut from `outgoing` (heard `outSeconds` up to it) to `incoming` (heard
+        // `inSeconds` from it): x before the cut, y after it. Centred when both recordings reach
+        // (the incoming one before the cut, the outgoing one after it); else moved to the side
+        // that has sound, as long as it can be. Both clips work it out alike, so their fades match.
+        const auto window = [&] (const Part& outgoing, double outSeconds, const Part& incoming, double inSeconds, double cut)
+        {
+            const auto most = juce::jmin (length, outSeconds, inSeconds);
+            const auto beforeMost = juce::jmin (roomBefore (incoming, cut), outSeconds * 0.5);
+            const auto afterMost = juce::jmin (roomAfter (outgoing, cut), inSeconds * 0.5);
+            auto x = juce::jmin (most * 0.5, beforeMost), y = juce::jmin (most * 0.5, afterMost);
+            x = juce::jmin (beforeMost, most - y);
+            y = juce::jmin (afterMost, most - x);
+            return std::pair<double, double> { x, y };
+        };
+        // The other clip heard up to (before) or from this beat, and how long; none where the audio
+        // just goes on (the halves of one split recording: no fade at all).
+        struct Meeting { const Part* other = nullptr; double seconds = 0.0; };
+        const auto meets = [&] (double beat, bool before)
+        {
+            Meeting m;
+            if (! part.isAudio() || ! track.isAudio())
+                return m;
+            for (int j = 0; j < (int) track.parts.size() && m.other == nullptr; ++j)
+            {
+                if (j == index)
+                    continue;
+                const auto& other = track.parts[(size_t) j];
+                for (const auto& [a, b] : heardStretches (track, j))
+                    if (std::abs ((before ? b : a) - beat) < near)
+                    {
+                        const auto continues = other.audioFile == part.audioFile && ! other.isWarped() && ! part.isWarped()
+                                            && std::abs (into (other, beat) - into (part, beat)) < 1.0e-4;
+                        if (continues)
+                            return Meeting { &other, -1.0 };
+                        m = { &other, tempo.secondsBetween (a, b) };
+                        break;
+                    }
+            }
+            return m;
+        };
+        for (const auto& [a, b] : heard)
+        {
+            FadedStretch f { a, b, 0.0, 0.0 };
+            const auto seconds = tempo.secondsBetween (a, b);
+            const auto in = fades.crossfades ? meets (a, true) : Meeting {};
+            if (in.other != nullptr)
+            {
+                if (in.seconds > 0.0)
+                {
+                    const auto [x, y] = window (*in.other, in.seconds, part, seconds, a);
+                    f.from = tempo.beatAt (tempo.secondsAt (a) - x);
+                    f.fadeIn = x + y;
+                }
+            }
+            else if (fades.fadeIn && ! (std::abs (a - part.start) < near && part.fadeIn > 0.0))
+                f.fadeIn = juce::jmin (length, seconds * 0.5);
+            const auto outTo = fades.crossfades ? meets (b, false) : Meeting {};
+            if (outTo.other != nullptr)
+            {
+                if (outTo.seconds > 0.0)
+                {
+                    const auto [x, y] = window (part, seconds, *outTo.other, outTo.seconds, b);
+                    f.to = tempo.beatAt (tempo.secondsAt (b) + y);
+                    f.fadeOut = x + y;
+                }
+            }
+            else if (fades.fadeOut && ! (std::abs (b - part.end()) < near && part.fadeOut > 0.0))
+                f.fadeOut = juce::jmin (length, seconds * 0.5);
+            out.push_back (f);
+        }
+        return out;
+    }
+
     int Track::numLanes() const noexcept
     {
         auto lanes = 1;
@@ -368,6 +486,8 @@ namespace pr7s
             g->setAttribute ("selection", group.selection);
             g->setAttribute ("recordMonitor", group.recordMonitor);
         }
+        if (! (autoFades == AutoFades {}))
+            xml->addChildElement (autoFadesXml (autoFades).release());   // (0.52.0)
         if (markerTrack.shown || ! markerTrack.isEmpty())
             xml->addChildElement (markerTrack.toXml().release());   // (0.49.0)
         if (! signatureChanges.empty() || signatureTrackShown)
@@ -417,6 +537,8 @@ namespace pr7s
                 t->setAttribute ("kind", track.isFx() ? "fx" : track.isFolder() ? "folder" : "group");
             if (track.folder != 0)
                 t->setAttribute ("folder", track.folder);
+            if (track.autoFades)
+                t->addChildElement (autoFadesXml (*track.autoFades).release());   // (0.52.0)
             if (track.isFolder())
             {
                 t->setAttribute ("folderOpen", track.folderOpen);
@@ -671,6 +793,8 @@ namespace pr7s
             project.chordTrack = ChordTrack::fromXml (*chords);
         if (! isValidSignature (project.numerator, project.denominator))
             project.numerator = 4, project.denominator = 4;
+        if (const auto* fades = xml.getChildByName ("AutoFades"))
+            project.autoFades = autoFadesFrom (*fades);   // (0.52.0)
         if (const auto* markers = xml.getChildByName ("MarkerTrack"))
             project.markerTrack = MarkerTrack::fromXml (*markers);   // (0.49.0)
         if (const auto* signature = xml.getChildByName ("Signatures"))
@@ -785,6 +909,8 @@ namespace pr7s
                 track.folderData = (Track::FolderData) juce::jlimit (0, 2, t->getIntAttribute ("folderData"));
             }
             track.folder = juce::jmax (0, t->getIntAttribute ("folder"));
+            if (const auto* fades = t->getChildByName ("AutoFades"))
+                track.autoFades = autoFadesFrom (*fades);   // (0.52.0)
             track.output = juce::jmax (0, t->getIntAttribute ("output"));
             track.sendsBypass = t->getBoolAttribute ("sendsBypass");
             track.linkGroup = juce::jmax (0, t->getIntAttribute ("linkGroup"));

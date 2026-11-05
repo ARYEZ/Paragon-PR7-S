@@ -6284,6 +6284,32 @@ namespace pr7s
         changed (false);
     }
 
+    namespace
+    {
+        AutoFades limitedFades (AutoFades f)
+        {
+            f.milliseconds = juce::jlimit (1.0, 500.0, f.milliseconds);
+            return f;
+        }
+    }
+
+    void Studio::setAutoFades (const AutoFades& fades)
+    {
+        project.autoFades = limitedFades (fades);
+        changed (false);
+    }
+
+    void Studio::setTrackAutoFades (int trackId, std::optional<AutoFades> fades)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! track->isAudio())
+            return;
+        if (fades)
+            fades = limitedFades (*fades);
+        track->autoFades = fades;
+        changed (false);
+    }
+
     std::vector<int> Studio::partsOnLane (int trackId, int lane) const
     {
         std::vector<int> ids;
@@ -7047,10 +7073,23 @@ namespace pr7s
                 const auto& heardSound = warped != nullptr ? *warped : data->sound;
                 const auto fromOffset = warped != nullptr ? 0.0 : p.audioOffset;
                 const auto clipStart = tempo.secondsAt (p.start), clipEnd = tempo.secondsAt (p.end());
-                for (const auto& [a, b] : heardStretches (among, i))
+                // (0.52.0) With the auto fades and crossfades, as it plays.
+                const auto& fades = project.autoFadesOf (among);
+                const auto curve = [&fades] (double x)
                 {
-                    const auto first = (int) std::llround ((tempo.secondsAt (a) - startSeconds) * rate);
-                    const auto last = juce::jmin (total, (int) std::llround ((tempo.secondsAt (b) - startSeconds) * rate));
+                    x = juce::jlimit (0.0, 1.0, x);
+                    return fades.equalPower ? std::sin (x * juce::MathConstants<double>::halfPi) : x;
+                };
+                const auto recording = [this, rate] (const Part& other)
+                {
+                    const auto heard = getHeardAudio (other.audioFile);
+                    return heard != nullptr ? (double) heard->sound.getNumSamples() / rate : 0.0;
+                };
+                for (const auto& f : fadedStretches (among, i, fades, tempo, recording))
+                {
+                    const auto fromSeconds = tempo.secondsAt (f.from), toSeconds = tempo.secondsAt (f.to);
+                    const auto first = (int) std::llround ((fromSeconds - startSeconds) * rate);
+                    const auto last = juce::jmin (total, (int) std::llround ((toSeconds - startSeconds) * rate));
                     for (int s = juce::jmax (0, first); s < last; ++s)
                     {
                         const auto when = startSeconds + s / rate;
@@ -7059,10 +7098,12 @@ namespace pr7s
                         if (source < 0 || source >= heardSound.getNumSamples())
                             continue;
                         auto gain = (double) p.gain();   // (0.47.0: its volume)
-                        if (p.fadeIn > 0.0 && into < p.fadeIn) gain *= into / p.fadeIn;
-                        if (p.fadeOut > 0.0 && left < p.fadeOut) gain *= left / p.fadeOut;
+                        if (p.fadeIn > 0.0 && into < p.fadeIn) gain *= juce::jmax (0.0, into) / p.fadeIn;
+                        if (p.fadeOut > 0.0 && left < p.fadeOut) gain *= juce::jmax (0.0, left) / p.fadeOut;
+                        if (f.fadeIn > 0.0 && when - fromSeconds < f.fadeIn) gain *= curve ((when - fromSeconds) / f.fadeIn);
+                        if (f.fadeOut > 0.0 && toSeconds - when < f.fadeOut) gain *= curve ((toSeconds - when) / f.fadeOut);
                         for (int c = 0; c < sound.getNumChannels(); ++c)
-                            sound.setSample (c, s, (float) (heardSound.getSample (juce::jmin (c, heardSound.getNumChannels() - 1), source) * gain));
+                            sound.addSample (c, s, (float) (heardSound.getSample (juce::jmin (c, heardSound.getNumChannels() - 1), source) * gain));
                     }
                 }
             }

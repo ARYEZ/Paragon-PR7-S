@@ -475,6 +475,10 @@ namespace pr7s
         void setShowLanes (int trackId, bool shown);
         void setLaneSolo (int trackId, int lane);   // -1: none (the lane's S again: off)
         void setRecordModes (const Project::RecordModes&);
+        // (0.52.0, the manual's Auto Fades dialog) The song's auto fades, and a track's own
+        // (none: Use Project Settings). Not undo steps (as the record modes).
+        void setAutoFades (const AutoFades&);
+        void setTrackAutoFades (int trackId, std::optional<AutoFades>);
         // To Front (the part's menu, the Comp tool's click): audio, in front of every clip it
         // overlaps (and not muted); MIDI (all overlapping parts play), it's unmuted and the
         // parts it overlaps on other lanes are muted. `toggle` (a click on the take in front

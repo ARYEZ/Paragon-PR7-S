@@ -347,8 +347,12 @@ namespace pr7s
     {
         clip.startSample = timing.sampleAt (clip.start);
         clip.endSample = timing.sampleAt (clip.end);
-        clip.fromSample = clip.from > clip.start ? timing.sampleAt (clip.from) : clip.startSample;
-        clip.toSample = clip.to < clip.end ? timing.sampleAt (clip.to) : clip.endSample;
+        // ((0.52.0) A crossfade's stretch can reach past the clip's own edges, into its recording.)
+        // Only with an auto fade there to cover it; else within the clip, as before.
+        const auto from = clip.autoIn > 0.0 ? clip.from : juce::jmax (clip.from, clip.start);
+        const auto to = clip.autoOut > 0.0 ? clip.to : juce::jmin (clip.to, clip.end);
+        clip.fromSample = from != clip.start ? timing.sampleAt (from) : clip.startSample;
+        clip.toSample = to != clip.end ? timing.sampleAt (to) : clip.endSample;
     }
 
     void Engine::playClips (TrackState& track, juce::int64 clock, int offset, int length, const Timing&)
@@ -361,8 +365,8 @@ namespace pr7s
         {
             const auto startSample = clip.startSample;
             const auto endSample = clip.endSample;
-            const auto from = juce::jmax (juce::jmax (clock, startSample), clip.fromSample);
-            const auto to = juce::jmin (juce::jmin (clock + length, endSample), clip.toSample);
+            const auto from = juce::jmax (clock, clip.fromSample);
+            const auto to = juce::jmin (clock + length, clip.toSample);
             if (from >= to || clip.sound == nullptr)
                 continue;
             const auto& sound = *clip.sound;
@@ -378,17 +382,29 @@ namespace pr7s
                     return;
                 auto gain = (double) clip.gain;
                 if (clip.fadeIn > 0.0 && into < clip.fadeIn)
-                    gain *= into / clip.fadeIn;
+                    gain *= juce::jmax (0.0, into) / clip.fadeIn;
                 if (clip.fadeOut > 0.0 && clipLength - into < clip.fadeOut)
-                    gain *= (clipLength - into) / clip.fadeOut;
+                    gain *= juce::jmax (0.0, clipLength - into) / clip.fadeOut;
+                // (0.52.0) Auto fades at the stretch's ends.
+                const auto curve = [&clip] (double x)
+                {
+                    x = juce::jlimit (0.0, 1.0, x);
+                    return clip.equalPower ? std::sin (x * juce::MathConstants<double>::halfPi) : x;
+                };
+                if (clip.autoIn > 0.0 && (double) (s - clip.fromSample) < clip.autoIn)
+                    gain *= curve (((double) (s - clip.fromSample) + 0.5) / clip.autoIn);
+                if (clip.autoOut > 0.0 && (double) (clip.toSample - s) <= clip.autoOut)
+                    gain *= curve (((double) (clip.toSample - s) - 0.5) / clip.autoOut);
                 const auto i = offset + (int) (s - clock);
                 left[i] += (float) (sourceLeft[at] * gain);
                 right[i] += (float) (sourceRight[at] * gain);
             };
             // (0.34.1) The middle (inside the recording, no fade: the gain is exactly 1, so each sample
             // added as it is, the same as the line above) in one go; the edges one at a time.
-            const auto inFadeIn = [&] (juce::int64 s) { return clip.fadeIn > 0.0 && (double) (s - startSample) < clip.fadeIn; };
-            const auto inFadeOut = [&] (juce::int64 s) { return clip.fadeOut > 0.0 && clipLength - (double) (s - startSample) < clip.fadeOut; };
+            const auto inFadeIn = [&] (juce::int64 s) { return (clip.fadeIn > 0.0 && (double) (s - startSample) < clip.fadeIn)
+                                                               || s < startSample || (clip.autoIn > 0.0 && (double) (s - clip.fromSample) < clip.autoIn); };
+            const auto inFadeOut = [&] (juce::int64 s) { return (clip.fadeOut > 0.0 && clipLength - (double) (s - startSample) < clip.fadeOut)
+                                                                || s >= endSample || (clip.autoOut > 0.0 && (double) (clip.toSample - s) <= clip.autoOut); };
             auto middleFrom = juce::jmax (from, startSample - clip.offset);                         // (the recording's first sample)
             auto middleTo = juce::jmin (to, startSample - clip.offset + sound.getNumSamples());    // (past its last)
             while (middleFrom < middleTo && inFadeIn (middleFrom))
@@ -551,9 +567,22 @@ namespace pr7s
                     const auto warped = part.isWarped() && warpSource;
                     auto sound = warped ? warpSource (part, tempo) : audioSource (part.audioFile);
                     const auto offset = warped ? (juce::int64) 0 : (juce::int64) std::llround (part.audioOffset * sampleRate);
-                    for (const auto& [from, to] : stretches)
-                        p.clips.push_back ({ part.start, part.end(), sound, offset,
-                                             part.fadeIn * sampleRate, part.fadeOut * sampleRate, part.gain(), from, to });
+                    // (0.52.0) With the auto fades: a crossfade's stretch reaches past the cut.
+                    const auto& fades = project.autoFadesOf (track);
+                    const auto recording = [this] (const Part& other)
+                    {
+                        const auto s = audioSource ? audioSource (other.audioFile) : nullptr;
+                        return s != nullptr ? (double) s->getNumSamples() / sampleRate : 0.0;
+                    };
+                    for (const auto& f : fadedStretches (track, i, fades, tempo, recording))
+                    {
+                        Clip clip { part.start, part.end(), sound, offset, part.fadeIn * sampleRate, part.fadeOut * sampleRate, part.gain(), 0.0, 0.0, true,
+                                    f.from, f.to };
+                        clip.autoIn = f.fadeIn * sampleRate;
+                        clip.autoOut = f.fadeOut * sampleRate;
+                        clip.equalPower = fades.equalPower;
+                        p.clips.push_back (clip);
+                    }
                 }
                 for (auto& clip : p.clips)
                     placeClip (clip, { &tempo, sampleRate });

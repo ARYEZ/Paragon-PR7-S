@@ -2,6 +2,7 @@
 #include "ui/ChordUi.h"
 
 #include "ui/AutomationKeys.h"
+#include "ui/AutoFadesPage.h"
 #include "ui/LinkGroupPage.h"
 #include "ui/LevelMeter.h"
 #include "ui/ParagonLookAndFeel.h"
@@ -1612,6 +1613,10 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
         menu.addItem (65, track->showLanes ? "Hide Lanes" : "Show Lanes");
         menu.addItem (66, "Clean Up Lanes", track->parts.size() > 1 && ! track->frozen);
         menu.addItem (67, "Create Tracks from Lanes", track->numLanes() > 1 && ! track->frozen);
+        // Auto fades (0.52.0, the manual's Auto Fades dialog).
+        if (track->isAudio())
+            menu.addItem (88, "Auto Fades Settings...");
+        menu.addItem (89, "Song's Auto Fades Settings...");
     }
     // Link groups (0.17.0, the manual's Linking Channels).
     menu.addSeparator();
@@ -1702,6 +1707,11 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
                 if (chosen == 86) studio.setFolderData (trackId, pr7s::Track::FolderData::never);
                 if (chosen == 87) studio.setFolderData (trackId, pr7s::Track::FolderData::hideWhenExpanded);
             }
+            return;
+        }
+        if (chosen == 88 || chosen == 89)
+        {
+            AutoFadesPage::show (*this, studio, chosen == 88 ? trackId : 0);
             return;
         }
         if (chosen == 65 || chosen == 66 || chosen == 67)

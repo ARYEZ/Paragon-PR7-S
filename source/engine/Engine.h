@@ -263,6 +263,9 @@ namespace pr7s
             juce::int64 offset = 0;
             double fadeIn = 0.0, fadeOut = 0.0;
             float gain = 1.0f;   // (0.47.0) the event's own volume
+            // (0.52.0) Auto fades: at the heard stretch's own ends (samples; 0: none), Equal Power or straight.
+            double autoIn = 0.0, autoOut = 0.0;
+            bool equalPower = true;
             // (0.29.0) The stretch of it heard (beats): another clip in front hides the rest.
             double from = 0.0, to = 1.0e12;
             // (0.34.1) Where those are in the song's samples, worked out in update (by the same tempo

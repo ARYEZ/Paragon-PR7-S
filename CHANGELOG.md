@@ -2,6 +2,36 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.52.0
+
+**Auto fades and crossfades** (the last of your four; the manual's Auto Fades dialog). Until now, where two comped takes met, playback jumped straight from one take to the other. If the sound wasn't at the same point in both waves, that left a small click at every cut. Now the studio crossfades there as it plays.
+
+**Crossfades where takes meet (on by default)**
+- **At every comp cut,** and wherever one clip in front hides another, the take going out fades down while the take coming in fades up. The default is 10 ms.
+- **Centred on the cut:** half before it, half after, using each recording's audio just past its own edge. If a take's recording starts exactly at the cut, so there's nothing of it before, the whole crossfade moves after the cut. Both takes agree on it, so the two fades always match.
+- **Not between the two halves of one split recording:** that audio simply carries on, so nothing changes there.
+- **Nothing is drawn on the events,** as the manual says: auto fades are made as the audio plays. Your own fade handles stay as they were.
+
+**The Auto Fades dialog** (right-click a track > **Auto Fades Settings...** for an audio track, or **Song's Auto Fades Settings...**; the key command Project > Auto Fades Settings):
+- **AUTO FADE IN / AUTO FADE OUT:** a short fade at every event's start and end. Off at first. An event with its own fade there keeps its own.
+- **AUTO CROSSFADES:** the crossfades above. On at first.
+- **LENGTH:** 1 to 500 ms.
+- **EQUAL POWER or EQUAL GAIN:**
+  - Equal Power keeps the loudness steady when the two takes are different performances. This is the usual choice and the default.
+  - Equal Gain keeps the level steady when they're the same sound. With identical audio, Equal Power swells by up to 3 dB in the middle of the crossfade, which is how it's meant to work.
+- **USE PROJECT SETTINGS** (a track's dialog only): untick it to give that track its own settings.
+- **Saved with the song.** Changing them isn't an undo step (like the record modes).
+
+**Bounce** (0.30.0) writes the crossfades into its new file, so the bounced take sounds exactly as the comp played.
+
+**Honest limits:**
+- I checked the crossfades by measuring the output: no jump bigger than a few thousandths at a cut, and steady levels either side. I can't listen to them here.
+- **Not yet:**
+  - The manual's curve type and shape buttons (spline / damped spline); our curves are a sine for Equal Power and a straight line for Equal Gain.
+  - "As Default".
+  - Event-based crossfades you draw and edit (the manual's Crossfade editor and the X key).
+  - A cut between two warped clips still cuts directly, because a warped clip's stretched sound has nothing past its edges. With only one of them warped, the crossfade moves onto the other's side.
+
 ## 0.51.0
 
 **Export, round two** (the third of your four): stems, cycle-marker ranges and MIDI files. EXPORT now opens a small menu: **Audio Mixdown...** or **MIDI File...**

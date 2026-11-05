@@ -223,6 +223,19 @@ namespace pr7s
         bool operator== (const LinkGroup&) const = default;
     };
 
+    // (0.52.0, the manual's Auto Fades dialog) Fades made as the audio plays, not drawn on the
+    // events: a fade in and out at each event's ends, and crossfades where events meet (comped
+    // takes). The song's, or a track's own (`Track::autoFades`: Use Project Settings off).
+    struct AutoFades
+    {
+        bool fadeIn = false, fadeOut = false;
+        bool crossfades = true;      // (our default: on, so cuts between comped takes never click)
+        double milliseconds = 10.0;  // 1-500
+        bool equalPower = true;      // Equal Power (else Equal Gain: straight lines)
+        bool operator== (const AutoFades&) const = default;
+        bool any() const noexcept { return fadeIn || fadeOut || crossfades; }
+    };
+
     struct Track
     {
         // An instrument track plays MIDI parts through its instrument; an
@@ -293,6 +306,7 @@ namespace pr7s
         bool isGroup() const noexcept { return kind == Kind::group || (kind == Kind::folder && folderGroup); }
         bool isFolder() const noexcept { return kind == Kind::folder; }
         bool isChannel() const noexcept { return kind == Kind::fx || kind == Kind::group || kind == Kind::folder; }   // no parts, no instrument
+        std::optional<AutoFades> autoFades;   // (0.52.0) its own (none: the song's: Use Project Settings)
         int folder = 0;                  // (0.50.0) the folder track it's in (0: none)
         bool folderOpen = true;          // a folder: its tracks shown under it
         bool folderGroup = false;        // a folder: its group channel enabled
@@ -353,6 +367,8 @@ namespace pr7s
                 std::vector<SignatureEvent> signatureChanges;   // sorted by bar, each at bar 1 (index 1) or later
         bool signatureTrackShown = false, signatureLocked = false;
         MarkerTrack markerTrack;                // (0.49.0) the marker track and its markers
+        AutoFades autoFades;                    // (0.52.0) the song's Auto Fades settings
+        const AutoFades& autoFadesOf (const Track& t) const { return t.autoFades ? *t.autoFades : autoFades; }
         bool loopOn = false;                  // CYCLE
         double loopStart = 0.0, loopEnd = 16.0;
         bool click = false;                   // the metronome
@@ -502,6 +518,15 @@ namespace pr7s
     std::vector<std::pair<double, double>> heardStretches (const Track&, int partIndex);
     // Whether part a is in front of part b (higher order; equal: later in the list).
     bool isInFront (const Track&, int a, int b);
+    // (0.52.0, the manual's Auto Fades and Crossfades) A heard stretch with its auto fades: where it
+    // plays (beats; at a crossfade it reaches past the cut by half the length, into its own
+    // recording) and its fades (seconds) at either end. A crossfade where another clip's heard
+    // stretch meets it (comped takes, an overlap), centred on the cut; none where the audio just
+    // goes on (the halves of one split recording). `recordingSeconds`: how long a clip's
+    // recording is (how far past its end it can reach; none: 0).
+    struct FadedStretch { double from = 0.0, to = 0.0, fadeIn = 0.0, fadeOut = 0.0; };
+    std::vector<FadedStretch> fadedStretches (const Track&, int partIndex, const AutoFades&, const TempoMap&,
+                                              const std::function<double (const Part&)>& recordingSeconds);
     juce::String formatTime (double seconds);
 
     // The family's track colours, taken in turn: shades along its red, pink
