@@ -450,6 +450,23 @@ TEST_CASE ("0.37.0: the info line shows the selected points and changes them all
     CHECK_THAT (db (1), WithinAbs (4.0, 0.05));
     studio.redo();
 
+    // (0.45.1, the owner's report) Typed, then Ctrl+Enter: it went past the text box (JUCE's takes
+    // only a plain Enter) and nothing was set. Now the keys themselves.
+    REQUIRE (info.enter ("VALUE", "0.0", false));
+    info.beginEdit ("VALUE");
+    REQUIRE (info.getEditor() != nullptr);
+    info.getEditor()->setText ("-12", false);
+    CHECK (info.getEditor()->keyPressed (juce::KeyPress (juce::KeyPress::returnKey, juce::ModifierKeys::commandModifier, 0)));
+    for (int i = 0; i < 4; ++i)
+        CHECK_THAT (db (i), WithinAbs (-12.0, 0.05));
+    studio.dispatchPendingMessages();
+    info.beginEdit ("VALUE");
+    REQUIRE (info.getEditor() != nullptr);
+    info.getEditor()->setText ("-10", false);   // (plain Enter: relative, the first -12 -> -10, all +2)
+    CHECK (info.getEditor()->keyPressed (juce::KeyPress (juce::KeyPress::returnKey)));
+    for (int i = 0; i < 4; ++i)
+        CHECK_THAT (db (i), WithinAbs (-10.0, 0.05));
+    studio.dispatchPendingMessages();
     // Start: all move in time by what the first moves (bar 2 -> bar 3: 4 beats later).
     REQUIRE (info.enter ("START", "3.1.1.0", false));
     CHECK_THAT (points()[0].beat, WithinAbs (8.0, 1.0e-9));

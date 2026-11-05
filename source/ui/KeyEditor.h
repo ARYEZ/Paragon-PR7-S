@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/InfoEntry.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "engine/Studio.h"

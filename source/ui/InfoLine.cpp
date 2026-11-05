@@ -149,25 +149,24 @@ void InfoLine::toggleTerminator()
 void InfoLine::beginEdit (const juce::String& field)
 {
     editing = field;
-    editor = std::make_unique<juce::TextEditor>();
+    editor = std::make_unique<InfoEntry>();
     editor->setFont (ParagonLookAndFeel::textFont (14.0f));
     editor->setText (getField (field), false);
     editor->setSelectAllWhenFocused (true);
-    auto finish = [this] (bool apply)
+    auto finish = [this] (bool apply, bool absolute)
     {
         if (editor == nullptr)
             return;
         const auto text = editor->getText();
         const auto field = editing;
-        // (The manual's modifier: Ctrl held as the value goes in sets them all to it.)
-        const auto absolute = juce::ModifierKeys::getCurrentModifiersRealtime().isCommandDown();
+        // (The manual's modifier: Ctrl held as the value goes in (Ctrl+Enter) sets them all to it.)
         juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<InfoLine> (this)] { if (safe != nullptr) { safe->editor.reset(); safe->editing = {}; safe->refresh(); safe->repaint(); } });
         if (apply)
             enter (field, text, absolute);
     };
-    editor->onReturnKey = [finish] { finish (true); };
-    editor->onEscapeKey = [finish] { finish (false); };
-    editor->onFocusLost = [finish] { finish (false); };
+    static_cast<InfoEntry&> (*editor).onEnter = [finish] (bool absolute) { finish (true, absolute); };
+    editor->onEscapeKey = [finish] { finish (false, false); };
+    editor->onFocusLost = [finish] { finish (false, false); };
     addAndMakeVisible (*editor);
     resized();
     editor->grabKeyboardFocus();

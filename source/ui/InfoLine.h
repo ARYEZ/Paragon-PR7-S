@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/InfoEntry.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "engine/Studio.h"
@@ -28,6 +29,8 @@ public:
     bool enter (const juce::String& field, const juce::String& text, bool absolute);
     void toggleTerminator();
     void refresh();
+    void beginEdit (const juce::String& field);   // (a double-click's; tests type into `getEditor`)
+    juce::TextEditor* getEditor() noexcept { return editor.get(); }
     std::function<void()> onHide;   // right-click: Hide Info Line
 
 private:
@@ -45,6 +48,5 @@ private:
     juce::String shownKey;
     std::unique_ptr<juce::TextEditor> editor;
     juce::String editing;
-    void beginEdit (const juce::String& field);
     void mouseDoubleClick (const juce::MouseEvent&) override;
 };

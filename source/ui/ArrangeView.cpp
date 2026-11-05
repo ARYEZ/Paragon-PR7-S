@@ -3225,12 +3225,22 @@ void ArrangeView::automationUp()
     }
     if (finished == Drag::band && ! dragMoved && ! pointDownAt.isOrigin())
     {
-        // A click: a point there (snapped along the song), unless it's on the
-        // line between two points already (as the manual has it).
-        const auto area = getLaneArea (pointSelection.busId, pointSelection.laneIndex);
-        const pr7s::AutomationPoint p { juce::jmax (0.0, pr7s::snap (timeline.beatForX (pointDownAt.x), timeline.snapGrid (studio.getProject()))),
-                                        valueForY (area, pointDownAt.y) };
+        // A click: a point there (snapped along the song) on the line as it is: the curve's value
+        // there, or with no points yet the control's own (the owner's report: points took the
+        // mouse's height, so four clicks along a flat line gave four values; in the other DAW
+        // they all keep the line's). Moved up or down afterwards, or drawn with DRAW at a height.
+        // On the line between two points already, nothing stays (as the manual has it).
         auto points = editPointsOf (*lane);
+        const auto beat = juce::jmax (0.0, pr7s::snap (timeline.beatForX (pointDownAt.x), timeline.snapGrid (studio.getProject())));
+        auto value = isTrimming (*lane) ? 0.5f : studio.getControlValue (pointSelection.busId, *lane);
+        if (! points.empty())
+        {
+            pr7s::AutomationLane line;
+            line.points = points;
+            if (const auto onLine = line.valueAt (beat))
+                value = *onLine;
+        }
+        const pr7s::AutomationPoint p { beat, juce::jlimit (0.0f, 1.0f, value) };
         const auto between = ! points.empty() && p.beat > points.front().beat && p.beat < points.back().beat;
         pr7s::AutomationLane curve;
         curve.points = points;

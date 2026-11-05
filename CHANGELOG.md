@@ -2,6 +2,21 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.45.1
+
+Two automation fixes you reported:
+
+**A click on an automation lane puts the point on the line as it is.**
+- **Before:** a click with the Object Selection tool took the height you clicked at. Four clicks along a flat line gave four different values.
+- **Now:** a new point takes the line's value where you click, so the line stays where it was. On an empty lane it takes the control's current value (the fader's, for volume).
+- **To set a different value:** drag the point up or down, type it on the info line, or draw with the DRAW tool, which still follows the mouse's height.
+- **Between two points,** a click still adds nothing, since a point on the line changes nothing (as the manual has it).
+
+**Ctrl+Enter on the info line works.**
+- **What it does:** type a value and press Ctrl+Enter, and every selected point is set to that value, as the manual's info line rules say.
+- **What was wrong:** the typing box only answered a plain Enter. With Ctrl held the key went past it, and nothing was set. My test had called the setting directly rather than pressing the keys, so it missed this.
+- **Also fixed:** the MIDI editor's info line had the same bug.
+
 ## 0.45.0
 
 **Tempo and signature** (the third of your four choices). Three parts, from the manual's tempo and signature chapters:

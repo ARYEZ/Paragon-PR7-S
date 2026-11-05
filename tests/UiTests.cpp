@@ -898,31 +898,41 @@ TEST_CASE ("Automation on screen: lanes under their track, lined up; click adds 
     };
     const auto beatPixels = (float) Timeline().pixelsPerBeat;
     const auto yFor = [&] (float value) { return lane.getBottom() - value * lane.getHeight(); };
+    // (The owner's report, 0.45.1: a click puts the point on the line as it is, not at the mouse's
+    // height: the first takes the fader's value, the next ones the line's, wherever the click is.)
     CHECK_FALSE (studio.getAutomationRead (first));
+    const auto fader = pr7s::volumeToTravel (0.0f);
     click ({ 4.1f * beatPixels, yFor (0.75f) });
     REQUIRE (studio.getAutomation (first)->at (0).points.size() == 1);
     CHECK (studio.getAutomation (first)->at (0).points[0].beat == 4.0);
-    CHECK_THAT (studio.getAutomation (first)->at (0).points[0].value, WithinAbs (0.75, 0.01));
+    CHECK_THAT (studio.getAutomation (first)->at (0).points[0].value, WithinAbs (fader, 0.001));
     CHECK (studio.getAutomationRead (first));
     click ({ 8.0f * beatPixels, yFor (0.25f) });
+    REQUIRE (studio.getAutomation (first)->at (0).points.size() == 2);
+    CHECK_THAT (studio.getAutomation (first)->at (0).points[1].value, WithinAbs (fader, 0.001));
+    click ({ 10.0f * beatPixels, yFor (0.95f) });
+    REQUIRE (studio.getAutomation (first)->at (0).points.size() == 3);
+    CHECK_THAT (studio.getAutomation (first)->at (0).points[2].value, WithinAbs (fader, 0.001));
+    studio.undo();
+    studio.dispatchPendingMessages();
     REQUIRE (studio.getAutomation (first)->at (0).points.size() == 2);
     // On the line between them: nothing added (as the manual has it).
     click ({ 6.0f * beatPixels, yFor (0.5f) });
     CHECK (studio.getAutomation (first)->at (0).points.size() == 2);
 
-    // Drag the second point up (Ctrl: up and down only, so it stays on its beat).
+    // Drag the second point down (Ctrl: up and down only, so it stays on its beat).
     const auto point = arrange.getPointPosition (first, 0, 1);
     const auto ctrl = juce::ModifierKeys (juce::ModifierKeys::commandModifier);
     arrange.mouseDown (mouseAt (arrange, point, point, ctrl));
-    arrange.mouseDrag (mouseAt (arrange, point + juce::Point<float> (6.0f, -lane.getHeight() * 0.5f), point, ctrl));
-    arrange.mouseUp (mouseAt (arrange, point + juce::Point<float> (6.0f, -lane.getHeight() * 0.5f), point, ctrl));
+    arrange.mouseDrag (mouseAt (arrange, point + juce::Point<float> (6.0f, lane.getHeight() * 0.5f), point, ctrl));
+    arrange.mouseUp (mouseAt (arrange, point + juce::Point<float> (6.0f, lane.getHeight() * 0.5f), point, ctrl));
     REQUIRE (studio.getAutomation (first)->at (0).points.size() == 2);
     CHECK (studio.getAutomation (first)->at (0).points[1].beat == 8.0);
-    CHECK_THAT (studio.getAutomation (first)->at (0).points[1].value, WithinAbs (0.75, 0.02));
+    CHECK_THAT (studio.getAutomation (first)->at (0).points[1].value, WithinAbs (fader - 0.5f, 0.02));
     // Undo: back.
     studio.undo();
     studio.dispatchPendingMessages();
-    CHECK_THAT (studio.getAutomation (first)->at (0).points[1].value, WithinAbs (0.25, 0.01));
+    CHECK_THAT (studio.getAutomation (first)->at (0).points[1].value, WithinAbs (fader, 0.01));
 
     // Esc while dragging: back where it was, nothing changed.
     const auto p0 = arrange.getPointPosition (first, 0, 0);

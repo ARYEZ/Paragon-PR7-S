@@ -2406,17 +2406,16 @@ void KeyEditor::beginInfoEdit (const juce::String& field)
     if (field == "CHORD")
         return;   // (shown, not typed)
     infoEditing = field;
-    infoEditor = std::make_unique<juce::TextEditor>();
+    infoEditor = std::make_unique<InfoEntry>();
     infoEditor->setFont (font (13.0f));
     infoEditor->setText (getInfoField (field), false);
     infoEditor->setSelectAllWhenFocused (true);
-    auto finish = [this] (bool apply)
+    auto finish = [this] (bool apply, bool absolute)   // (absolute: Ctrl+Enter, the manual's modifier)
     {
         if (infoEditor == nullptr)
             return;
         const auto text = infoEditor->getText();
         const auto field = infoEditing;
-        const auto absolute = juce::ModifierKeys::getCurrentModifiersRealtime().isCommandDown();   // (the manual's modifier)
         juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<KeyEditor> (this)]
         {
             if (safe != nullptr)
@@ -2429,9 +2428,9 @@ void KeyEditor::beginInfoEdit (const juce::String& field)
         if (apply)
             enterInfo (field, text, absolute);
     };
-    infoEditor->onReturnKey = [finish] { finish (true); };
-    infoEditor->onEscapeKey = [finish] { finish (false); };
-    infoEditor->onFocusLost = [finish] { finish (false); };
+    static_cast<InfoEntry&> (*infoEditor).onEnter = [finish] (bool absolute) { finish (true, absolute); };
+    infoEditor->onEscapeKey = [finish] { finish (false, false); };
+    infoEditor->onFocusLost = [finish] { finish (false, false); };
     for (const auto& [name, area] : infoAreas())
         if (name == field)
         {
