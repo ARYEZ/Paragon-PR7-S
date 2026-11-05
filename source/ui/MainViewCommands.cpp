@@ -70,6 +70,7 @@ void MainView::registerCommands()
     add ("File.Save", "File", "Save", { key ('S', ctrl) });
     add ("File.SaveAs", "File", "Save As...", { key ('S', ctrl | shift) });
     add ("File.Export", "File", "Export Audio Mixdown...", {}, [this] { exportMix(); });
+    add ("File.ExportMidi", "File", "Export MIDI File...", {}, [this] { exportMidiFile(); });   // (0.51.0)
     add ("File.Hub", "File", "Open the Hub", {}, [this] { openHub(); });
     add ("File.SaveTemplate", "File", "Save as Template...", {}, [this] { saveAsTemplate(); });
     add ("File.ImportMidi", "File", "Import MIDI File into This Song...", {}, [this] { importMidiFile (false); });

@@ -195,7 +195,61 @@ namespace Windows
         range.addItem ("The whole song, to the end of its last part" + (end > 0.0 ? " (" + bars (0.0, end, project) + ")" : juce::String (" (it's empty)")), 1);
         range.addItem ("The cycle (" + bars (project.loopStart, project.loopEnd, project) + ")", 2);
         range.setSelectedId (project.loopOn || end <= 0.0 ? 2 : 1, juce::dontSendNotification);
-        range.onChange = [this] { exportButton.setEnabled (canExport()); };
+        // (0.51.0) The cycle markers' ranges, a file each.
+        for (int i = 0; i < (int) project.markerTrack.markers.size(); ++i)
+            if (project.markerTrack.markers[(size_t) i].cycle)
+                markerIndices.push_back (i);
+        range.addItem ("Cycle markers (a file each: choose them below)", 3);
+        range.setItemEnabled (3, ! markerIndices.empty());
+        range.onChange = [this] { refreshLists(); };
+        // (0.51.0) What: the main mix, or channels (a file each).
+        channelsLabel.setText ("CHANNELS", juce::dontSendNotification);
+        channelsLabel.setFont (font (13.0f));
+        channelsLabel.setColour (juce::Label::textColourId, ParagonColours::textDim);
+        addAndMakeVisible (channelsLabel);
+        channelsMode.addItem ("The main mix (everything, through the master)", 1);
+        channelsMode.addItem ("Channels: a file each (stems: choose them below)", 2);
+        channelsMode.setSelectedId (1, juce::dontSendNotification);
+        channelsMode.onChange = [this] { refreshLists(); };
+        addAndMakeVisible (channelsMode);
+        for (const auto id : studio.getExportableChannels())
+        {
+            const auto* t = project.findTrack (id);
+            const auto kind = t->isFolder() ? " (folder group)" : t->isGroup() ? " (group)" : t->isFx() ? " (FX)" : t->isAudio() ? " (audio)" : " (instrument)";
+            auto box = std::make_unique<juce::ToggleButton> (t->name + kind);
+            box->setColour (juce::ToggleButton::textColourId, ParagonColours::text);
+            box->setColour (juce::ToggleButton::tickColourId, ParagonColours::accent);
+            box->onClick = [this] { exportButton.setEnabled (canExport()); };
+            listContent.addChildComponent (*box);
+            channelBoxes.push_back (std::move (box));
+            channelIds.push_back (id);
+        }
+        for (const auto i : markerIndices)
+        {
+            const auto& m = project.markerTrack.markers[(size_t) i];
+            auto box = std::make_unique<juce::ToggleButton> (pr7s::markerIdText (m) + "  " + (m.name.isNotEmpty() ? m.name : juce::String ("Cycle marker"))
+                                                             + "  (" + bars (m.start, m.end, project) + ")");
+            box->setColour (juce::ToggleButton::textColourId, ParagonColours::text);
+            box->setColour (juce::ToggleButton::tickColourId, ParagonColours::accent);
+            box->setToggleState (true, juce::dontSendNotification);
+            box->onClick = [this] { exportButton.setEnabled (canExport()); };
+            listContent.addChildComponent (*box);
+            markerBoxes.push_back (std::move (box));
+        }
+        listView.setViewedComponent (&listContent, false);
+        listView.setScrollBarsShown (true, false);
+        addAndMakeVisible (listView);
+        for (auto* key : { &allKey, &noneKey })
+        {
+            key->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
+            key->setColour (juce::TextButton::textColourOffId, ParagonColours::text);
+            addChildComponent (*key);
+        }
+        allKey.onClick = [this] { for (auto& b : channelBoxes) b->setToggleState (true, juce::dontSendNotification); exportButton.setEnabled (canExport()); };
+        noneKey.onClick = [this] { for (auto& b : channelBoxes) b->setToggleState (false, juce::dontSendNotification); exportButton.setEnabled (canExport()); };
+        includeMaster.setColour (juce::ToggleButton::textColourId, ParagonColours::text);
+        includeMaster.setColour (juce::ToggleButton::tickColourId, ParagonColours::accent);
+        addChildComponent (includeMaster);
 
         rate.addItem ("As the interface (" + kHz (interfaceRate) + ")", 1);
         for (int i = 0; i < (int) std::size (rates); ++i)
@@ -217,7 +271,8 @@ namespace Windows
 
         note.setText ("Everything you hear (every track through its effects, then the master) as a stereo WAV, written faster "
                       "than it plays. The whole song rings out after its end until reverbs and delays die away; the cycle "
-                      "stops at its end. The interface is quiet meanwhile.", juce::dontSendNotification);
+                      "stops at its end. Channels: each one's own sound (its effects and fader) a file each, into a folder you choose.",
+                      juce::dontSendNotification);
         note.setFont (font (13.0f, juce::Font::plain));
         note.setColour (juce::Label::textColourId, ParagonColours::textDim);
         addAndMakeVisible (note);
@@ -233,17 +288,98 @@ namespace Windows
         exportButton.onClick = [this]
         {
             keep();
-            if (onExport)
+            if (isBatch())
+            {
+                if (onExportBatch)
+                    onExportBatch (getBatch());
+            }
+            else if (onExport)
                 onExport (getOptions());
         };
         cancelButton.onClick = [this] { if (onCancel) onCancel(); };
-        setSize (560, 290);
+        setSize (620, 330);
+        refreshLists();
     }
 
     void ExportPage::setRange (Range r)
     {
-        range.setSelectedId (r == Range::song ? 1 : 2, juce::dontSendNotification);
+        range.setSelectedId (r == Range::song ? 1 : r == Range::cycle ? 2 : 3, juce::dontSendNotification);
+        refreshLists();
+    }
+
+    void ExportPage::setChannelsMode (bool channels)
+    {
+        channelsMode.setSelectedId (channels ? 2 : 1, juce::dontSendNotification);
+        refreshLists();
+    }
+
+    void ExportPage::setChannelChosen (int trackId, bool chosen)
+    {
+        for (size_t i = 0; i < channelIds.size(); ++i)
+            if (channelIds[i] == trackId)
+                channelBoxes[i]->setToggleState (chosen, juce::dontSendNotification);
         exportButton.setEnabled (canExport());
+    }
+
+    void ExportPage::setCycleMarkerChosen (int index, bool chosen)
+    {
+        for (size_t i = 0; i < markerIndices.size(); ++i)
+            if (markerIndices[i] == index)
+                markerBoxes[i]->setToggleState (chosen, juce::dontSendNotification);
+        exportButton.setEnabled (canExport());
+    }
+
+    void ExportPage::refreshLists()
+    {
+        // The lists shown: the channels (stems), the cycle markers (their range chosen); the page grows to hold them.
+        const auto channels = isChannelsMode(), markers = range.getSelectedId() == 3;
+        click.setEnabled (! channels);
+        includeMaster.setVisible (channels);
+        allKey.setVisible (channels);
+        noneKey.setVisible (channels);
+        auto y = 0;
+        const auto place = [&] (juce::ToggleButton& box, bool shown)
+        {
+            box.setVisible (shown);
+            if (shown)
+            {
+                box.setBounds (4, y, 560, 22);
+                y += 24;
+            }
+        };
+        for (auto& box : channelBoxes)
+            place (*box, channels);
+        if (channels && markers)
+            y += 8;
+        for (auto& box : markerBoxes)
+            place (*box, markers);
+        listContent.setSize (580, y);
+        listView.setVisible (y > 0);
+        const auto listHeight = y > 0 ? juce::jmin (240, y + 4) : 0;
+        setSize (620, 318 + (channels ? 34 : 0) + (listHeight > 0 ? listHeight + 10 : 0));
+        exportButton.setEnabled (canExport());
+        resized();
+    }
+
+    pr7s::Studio::ExportBatch ExportPage::getBatch() const
+    {
+        pr7s::Studio::ExportBatch batch;
+        batch.options = getOptions();
+        if (isChannelsMode())
+            for (size_t i = 0; i < channelIds.size(); ++i)
+                if (channelBoxes[i]->getToggleState())
+                    batch.channels.push_back (channelIds[i]);
+        if (range.getSelectedId() == 3)
+            for (size_t i = 0; i < markerIndices.size(); ++i)
+                if (markerBoxes[i]->getToggleState())
+                    batch.cycleMarkers.push_back (markerIndices[i]);
+        batch.includeMaster = includeMaster.getToggleState();
+        return batch;
+    }
+
+    bool ExportPage::isBatch() const
+    {
+        return isChannelsMode() || range.getSelectedId() == 3;
     }
 
     pr7s::Studio::ExportOptions ExportPage::getOptions() const
@@ -262,14 +398,26 @@ namespace Windows
         options.sampleRate = rate.getSelectedId() >= 2 ? rates[rate.getSelectedId() - 2] : 0.0;
         options.bitsPerSample = bits.getSelectedId();
         options.click = click.getToggleState();
-        options.tailSeconds = range.getSelectedId() == 2 ? 0.0 : 30.0;   // the cycle: none (as the manual's locator export)
+        options.tailSeconds = range.getSelectedId() == 1 ? 30.0 : 0.0;   // the cycle, cycle markers: none (as the manual's locator export)
         return options;
     }
 
     bool ExportPage::canExport() const
     {
-        const auto options = getOptions();
-        return options.end > options.start;
+        if (range.getSelectedId() == 3)
+        {
+            if (std::none_of (markerBoxes.begin(), markerBoxes.end(), [] (const auto& b) { return b->getToggleState(); }))
+                return false;
+        }
+        else
+        {
+            const auto options = getOptions();
+            if (options.end <= options.start)
+                return false;
+        }
+        if (isChannelsMode() && std::none_of (channelBoxes.begin(), channelBoxes.end(), [] (const auto& b) { return b->getToggleState(); }))
+            return false;
+        return true;
     }
 
     void ExportPage::keep()
@@ -291,10 +439,21 @@ namespace Windows
             label.setBounds (r.removeFromLeft (110));
             field.setBounds (r);
         };
+        labelled (row (28), channelsLabel, channelsMode);
         labelled (row (28), rangeLabel, range);
         labelled (row (28), rateLabel, rate);
         labelled (row (28), bitsLabel, bits);
         click.setBounds (row (24).withTrimmedLeft (106));
+        if (includeMaster.isVisible())
+        {
+            auto r = row (24);
+            noneKey.setBounds (r.removeFromRight (60));
+            r.removeFromRight (6);
+            allKey.setBounds (r.removeFromRight (60));
+            includeMaster.setBounds (r.withTrimmedLeft (106));
+        }
+        if (listView.isVisible())
+            listView.setBounds (row (juce::jmin (240, listContent.getHeight() + 4)));
         note.setBounds (row (52));
         auto buttons = area.removeFromBottom (32);
         cancelButton.setBounds (buttons.removeFromRight (96));

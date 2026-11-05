@@ -1105,7 +1105,23 @@ namespace pr7s
             double tailSeconds = 30.0;
             // What's played can be changed first (Render in Place: only what's rendered, as it asks).
             std::function<void (Project&)> prepareSong;
+            int channel = 0;   // (0.51.0) a channel export: only this track or channel reaches the file (0: the mix)
         };
+        // (0.51.0, the manual's Export Audio Mixdown: Channel Selection Multiple, Export Range Cycle
+        // Markers) Several files in one go: each channel chosen (none: the main mix) over each cycle
+        // marker chosen (none: the options' own range), named "<base> - <channel> - <marker>.wav" in
+        // `folder` (an existing name: a number added). Channels' files leave out the master's inserts,
+        // EQ and fader unless `includeMaster`. Plug-ins stay offline across them (one batch).
+        struct ExportBatch
+        {
+            ExportOptions options;
+            std::vector<int> channels;
+            std::vector<int> cycleMarkers;   // indices into the marker track
+            bool includeMaster = false;
+        };
+        bool exportBatch (const juce::File& folder, const juce::String& baseName, const ExportBatch&, juce::String& error,
+                          std::vector<juce::File>* written = nullptr);
+        std::vector<int> getExportableChannels() const;   // tracks and channels a file can be made of (not plain folders)
         // In three steps, so the middle one can run on another thread behind a
         // progress bar: begin (message thread), render (any thread; false:
         // cancelled, or the disk failed), end (message thread; a file not

@@ -8051,6 +8051,7 @@ namespace pr7s
             return false;
         }
 
+        engine.setExportBus (options.channel);   // (0.51.0: a channel export)
         // The interface let go; the engine at the export's rate (the
         // recordings are loaded again at it), stopped (writing automation ends
         // with it, as when the song stops).
@@ -8179,6 +8180,7 @@ namespace pr7s
         SessionLog::note ("  Render done.");
         auto job = std::move (exportJob);
         engine.stop();
+        engine.setExportBus (0);
         job->writer.reset();   // the file finished
         if (! inBatch)   // (several renders in a row: back to realtime once, after the last)
             engine.setNonRealtime (false);
@@ -8234,6 +8236,104 @@ namespace pr7s
         progressWhat = {};
         if (onProgress)
             onProgress (-1.0, {});
+    }
+
+    std::vector<int> Studio::getExportableChannels() const
+    {
+        std::vector<int> ids;
+        for (const auto& t : project.tracks)
+            if (! (t.isFolder() && ! t.folderGroup))
+                ids.push_back (t.id);
+        return ids;
+    }
+
+    bool Studio::exportBatch (const juce::File& folder, const juce::String& baseName, const ExportBatch& batch, juce::String& error,
+                              std::vector<juce::File>* written)
+    {
+        struct Range { double start, end; juce::String label; };
+        std::vector<Range> ranges;
+        const auto& markers = project.markerTrack.markers;
+        for (const auto i : batch.cycleMarkers)
+            if (juce::isPositiveAndBelow (i, (int) markers.size()) && markers[(size_t) i].cycle)
+            {
+                const auto& m = markers[(size_t) i];
+                ranges.push_back ({ m.start, m.end, m.name.isNotEmpty() ? m.name : "Cycle " + juce::String (m.id) });
+            }
+        if (ranges.empty())
+            ranges.push_back ({ batch.options.start, batch.options.end, {} });
+        auto channels = batch.channels;
+        if (channels.empty())
+            channels.push_back (0);
+        if (! folder.isDirectory() && ! folder.createDirectory())
+        {
+            error = "Couldn't make the folder " + folder.getFullPathName();
+            return false;
+        }
+        const auto total = (int) (ranges.size() * channels.size());
+        const auto many = total > 1;
+        if (many)
+            beginBatch();
+        auto ok = true;
+        auto n = 0;
+        for (const auto& range : ranges)
+        {
+            for (const auto channel : channels)
+            {
+                const auto* track = project.findTrack (channel);
+                if (channel != 0 && track == nullptr)
+                    continue;
+                juce::StringArray parts { baseName };
+                if (track != nullptr)
+                    parts.add (track->name);
+                if (range.label.isNotEmpty())
+                    parts.add (range.label);
+                const auto name = juce::File::createLegalFileName (parts.joinIntoString (" - "));
+                auto file = folder.getChildFile (name + ".wav");
+                for (int number = 2; file.exists(); ++number)
+                    file = folder.getChildFile (name + " " + juce::String (number) + ".wav");   // (the manual's Create Unique File Name)
+                auto options = batch.options;
+                options.start = range.start;
+                options.end = range.end;
+                options.channel = channel;
+                if (channel != 0)
+                {
+                    options.click = false;
+                    if (! batch.includeMaster)
+                    {
+                        const auto before = options.prepareSong;
+                        options.prepareSong = [before] (Project& song)
+                        {
+                            if (before)
+                                before (song);
+                            for (auto& insert : song.masterInserts)
+                                insert.bypass = true;
+                            song.masterVolumeDb = 0.0f;
+                            song.masterRead = false;
+                            song.masterEq.bypass = true;
+                        };
+                    }
+                }
+                setProgressStage ((double) n / total, 1.0 / total, "Exporting " + name);
+                ++n;
+                if (! exportMix (file, options, error))
+                {
+                    ok = false;
+                    break;
+                }
+                if (written != nullptr)
+                    written->push_back (file);
+                if (wasRenderCancelled())
+                {
+                    ok = false;
+                    break;
+                }
+            }
+            if (! ok)
+                break;
+        }
+        if (many)
+            endBatch();
+        return ok;
     }
 
     bool Studio::exportMix (const juce::File& destination, const ExportOptions& options, juce::String& error)

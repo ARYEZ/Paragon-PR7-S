@@ -158,6 +158,11 @@ namespace pr7s
         // (0.46.0) The EQ window's live sound: the channel's after its EQ (0: the master; -1: none),
         // mono, into a lock-free ring the screen empties (`readSpectrum`: what came since, at most
         // `into`'s size, the newest kept).
+        // (0.51.0, the manual's Channel Selection in Export Audio Mixdown) A channel export: everything plays
+        // as usual (groups sum, sends feed FX channels), but only this channel reaches the output (a track
+        // routed to a group: straight to the output, its group left out). 0: the whole mix.
+        void setExportBus (int busId) noexcept { exportBus = busId; }
+        int getExportBus() const noexcept { return exportBus.load(); }
         void setSpectrumBus (int busId) noexcept { spectrumBus = busId; }
         int getSpectrumBus() const noexcept { return spectrumBus.load(); }
         int readSpectrum (std::vector<float>& into);
@@ -537,6 +542,7 @@ namespace pr7s
         EqProcessor masterEq;
         // (0.46.0) The spectrum's tap and Auto Listen.
         std::atomic<int> spectrumBus { -1 }, listenBus { -1 };
+        std::atomic<int> exportBus { 0 };   // (0.51.0) a channel export: only this channel reaches the output (0: all)
         static constexpr int spectrumRingSize = 32768;
         juce::AbstractFifo spectrumFifo { spectrumRingSize };
         std::vector<float> spectrumRing = std::vector<float> ((size_t) spectrumRingSize, 0.0f);

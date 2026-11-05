@@ -1154,14 +1154,18 @@ namespace pr7s
         // To its group (a track routed to one), else the master.
         auto* out = &master;
         juce::AudioBuffer<float> toGroup;
-        if (track->role == TrackState::Role::source && track->output != 0)
+        const auto only = exportBus.load();   // (0.51.0) a channel export: only that channel to the output
+        if (track->role == TrackState::Role::source && track->output != 0 && track->id != only)
             if (auto* group = findTrack (track->output); group != nullptr && group->role == TrackState::Role::group)
             {
                 toGroup.setDataToReferTo (group->bus.getArrayOfWritePointers(), 2, numSamples);
                 out = &toGroup;
             }
-        juce::FloatVectorOperations::add (out->getWritePointer (0), left, numSamples);
-        juce::FloatVectorOperations::add (out->getWritePointer (1), right, numSamples);
+        if (only == 0 || out != &master || track->id == only)
+        {
+            juce::FloatVectorOperations::add (out->getWritePointer (0), left, numSamples);
+            juce::FloatVectorOperations::add (out->getWritePointer (1), right, numSamples);
+        }
         for (auto& meter : track->meters)
             meter.pushSamples (&track->blockPeak, 1);
     }

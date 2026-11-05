@@ -153,6 +153,9 @@ public:
     // EXPORT: the mix to a WAV. Asks what (the export page), then where,
     // then writes it behind a progress bar (CANCEL stops it, leaving no file).
     void exportMix();
+    void exportMidiFile();   // (0.51.0) the MIDI export's options, then where
+    void chooseExportFolder (const pr7s::Studio::ExportBatch&);
+    void writeExportBatch (const juce::File& folder, const pr7s::Studio::ExportBatch&);
     // RENDER IN PLACE: the sources (a part, a range, selected tracks) rendered
     // to audio; `ask`: the render page first (else as last time).
     void renderInPlaceNow (bool ask = false);   // (0.31.0) Alt+R: as last time, of the range, the selected parts or the selected tracks

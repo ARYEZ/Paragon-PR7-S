@@ -2,6 +2,45 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.51.0
+
+**Export, round two** (the third of your four): stems, cycle-marker ranges and MIDI files. EXPORT now opens a small menu: **Audio Mixdown...** or **MIDI File...**
+
+**Audio Mixdown: CHANNELS**
+- **"The main mix"** works as before: everything through the master.
+- **"Channels: a file each (stems)":** tick any tracks, group channels (folder groups too) and FX channels. ALL and NONE tick or clear them all. You choose a folder (it starts in a "Mixdown" folder beside the song).
+- **Each file is that channel's own sound,** as the manual describes: its effects, EQ, fader and pan.
+  - A track's file doesn't go through its group.
+  - A group's file holds what's routed into it.
+  - An FX channel's file holds what every track sends to it, the return only.
+  - Everything plays just as in the song while it's written, but only that channel reaches the file.
+- **The master's effects, EQ and fader are left out,** unless you tick "Include the master's effects, EQ and fader".
+- **Files are named** "Song - Channel.wav". If the name is taken, a number is added (Song - Bass 2.wav), so nothing is overwritten.
+
+**Audio Mixdown: WHAT > Cycle markers (a file each)**
+- **Tick cycle markers** (from 0.49.0's marker track) and each one's range is written to its own file, named after the marker ("Song - Chorus.wav").
+- **Works with channels too:** every channel over every chosen marker.
+
+**MIDI File...** (the manual's Export Options):
+- **What's in the file:** every instrument track's parts as a standard MIDI file, each track named and on its MIDI channel, with the tempo (the tempo track's changes; a ramp written as steps every sixteenth, since a MIDI file has no ramps), the time signatures and the markers.
+- **Notes as you hear them:** a part's Transpose and Velocity (0.47.0) are applied, and muted parts are left out.
+- **Options:**
+  - Export Markers.
+  - Export as Type 0 (all on one track).
+  - Resolution: 48 to 960 ticks per quarter note; 480 at first.
+  - Export Locator Range: only between the locators, starting at 0.
+  - The tracks' Volume/Pan as CC 7 and CC 10.
+  - Your choices are kept for next time.
+- **Checked by reading it back:** the tests export a song and import the file again (notes, tempo changes, signatures, markers).
+
+**Also:** one older test checked a note recorded from the on-screen keyboard too tightly. On a slow machine JUCE can place that note up to one audio block later, which is what failed 0.50.0's first build. Its tolerance is now one block. Nothing about recording changed.
+
+**Not yet:**
+- **No export queue.** You make one export at a time.
+- **No naming-scheme dialog.**
+- **Audio files are WAV only** (no MP3 / FLAC / Ogg export).
+- **MIDI export can't include your automation lanes as controllers**, and you can't drag a part out to the desktop as a file.
+
 ## 0.50.0
 
 **Folder tracks** (the second of your four). It follows the manual's Folder Tracks.

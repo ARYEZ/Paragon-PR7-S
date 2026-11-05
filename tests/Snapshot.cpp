@@ -636,6 +636,14 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     {
         // The export page over the studio, as its dialog shows it (the title bar is the system's).
         Windows::ExportPage page (studio);
+        // (0.51.0) PARAGON_SNAPSHOT_EXPORT=stems: channels a file each, three chosen.
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_EXPORT", {}) == "stems")
+        {
+            page.setChannelsMode (true);
+            for (const auto& t : studio.getProject().tracks)
+                if (! t.isChannel() && &t != &studio.getProject().tracks.back())
+                    page.setChannelChosen (t.id, true);
+        }
         const auto pageImage = page.createComponentSnapshot (page.getLocalBounds(), true, scale);
         juce::Graphics g (image);
         g.fillAll (juce::Colours::black.withAlpha (0.45f));

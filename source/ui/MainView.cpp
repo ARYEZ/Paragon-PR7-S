@@ -4,6 +4,7 @@
 #include "ui/AudioAlignmentPanel.h"
 #include "ui/TempoDetectionPanel.h"
 #include "ui/MarkersPage.h"
+#include "ui/ExportPages.h"
 #include "ui/VariAudioEditor.h"
 #include "ui/TrackActions.h"
 #include "engine/MidiImport.h"
@@ -62,7 +63,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     openButton.setTooltip ("Open a song (Ctrl+O)");
     saveButton.setTooltip ("Save the song (Ctrl+S)");
     saveAsButton.setTooltip ("Save the song under a new name (Ctrl+Shift+S)");
-    exportButton.setTooltip ("Export the mix to a WAV file: the whole song or the cycle");
+    exportButton.setTooltip ("Export: the mix or its channels (stems) as WAV files, or the MIDI tracks as a MIDI file");
     importButton.setTooltip ("Import a MIDI file (a track for each of its tracks), audio files (WAV, AIFF, FLAC, Ogg, MP3: clips at the playhead), "
                              "or a DAWproject (a song from Cubase or another studio). Or drop them on the arrangement, at a bar");
     importButton.onClick = [this]
@@ -114,7 +115,23 @@ MainView::MainView (pr7s::Studio& studioToUse)
     openButton.onClick = [this] { openProject(); };
     saveButton.onClick = [this] { saveProject(); };
     saveAsButton.onClick = [this] { saveProjectAs(); };
-    exportButton.onClick = [this] { exportMix(); };
+    exportButton.onClick = [this]
+    {
+        // (0.51.0) Audio Mixdown (the mix or channels) or a MIDI file.
+        juce::PopupMenu menu;
+        menu.addItem (1, "Audio Mixdown... (the mix, or its channels a file each)");
+        menu.addItem (2, "MIDI File...");
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&exportButton),
+                            [safe = juce::Component::SafePointer<MainView> (this)] (int chosen)
+        {
+            if (safe == nullptr)
+                return;
+            if (chosen == 1)
+                safe->exportMix();
+            else if (chosen == 2)
+                safe->exportMidiFile();
+        });
+    };
     undoButton.onClick = [this] { studio.undo(); };
     redoButton.onClick = [this] { studio.redo(); };
     editorButton.onClick = [this] { isKeyEditorOpen() ? closeKeyEditor() : openKeyEditor(); };
@@ -1723,6 +1740,97 @@ void MainView::exportMix()
         {
             if (safe != nullptr)
                 safe->chooseExportFile (chosen);
+        });
+    };
+    page->onExportBatch = [this, close] (const pr7s::Studio::ExportBatch& batch)
+    {
+        close();
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this), batch]
+        {
+            if (safe != nullptr)
+                safe->chooseExportFolder (batch);
+        });
+    };
+}
+
+void MainView::chooseExportFolder (const pr7s::Studio::ExportBatch& batch)
+{
+    // (0.51.0) Several files: a folder (beside the song: its Mixdown folder, as the manual's).
+    const auto song = studio.getFile();
+    const auto start = song != juce::File() ? song.getParentDirectory().getChildFile ("Mixdown")
+                                            : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory);
+    start.createDirectory();
+    chooser = std::make_unique<juce::FileChooser> ("Export the channels into...", start);
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                          [safe = juce::Component::SafePointer<MainView> (this), batch] (const juce::FileChooser& fc)
+                          {
+                              const auto folder = fc.getResult();
+                              if (folder != juce::File())
+                                  juce::MessageManager::callAsync ([safe, batch, folder]
+                                  {
+                                      if (safe != nullptr)
+                                          safe->writeExportBatch (folder, batch);
+                                  });
+                          });
+}
+
+void MainView::writeExportBatch (const juce::File& folder, const pr7s::Studio::ExportBatch& batch)
+{
+    const auto song = studio.getFile();
+    const auto base = song != juce::File() ? song.getFileNameWithoutExtension() : juce::String ("Mix");
+    juce::String error;
+    std::vector<juce::File> written;
+    const auto ok = studio.exportBatch (folder, base, batch, error, &written);
+    const auto cancelled = studio.wasRenderCancelled();
+    studio.endProgress();
+    if (! ok && ! cancelled)
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't export",
+                                                error.isNotEmpty() ? error : "Couldn't write into " + folder.getFullPathName());
+    else if (ok)
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::NoIcon, "Exported",
+                                                juce::String ((int) written.size()) + (written.size() == 1 ? " file" : " files") + " in " + folder.getFullPathName());
+}
+
+void MainView::exportMidiFile()
+{
+    if (studio.isExporting() || exportPage != nullptr)
+        return;
+    auto* page = new MidiExportPage (studio);
+    juce::DialogWindow::LaunchOptions options;
+    options.content.setOwned (page);
+    options.dialogTitle = "Paragon PR7-S: Export a MIDI file";
+    options.dialogBackgroundColour = juce::Colour (0xff0c0a0d);
+    options.useNativeTitleBar = true;
+    options.resizable = false;
+    options.componentToCentreAround = this;
+    options.launchAsync();
+    auto close = [page]
+    {
+        if (auto* dialog = page->findParentComponentOfClass<juce::DialogWindow>())
+            dialog->exitModalState (0);
+    };
+    page->onCancel = close;
+    page->onExport = [this, close] (const pr7s::MidiExportOptions& chosen)
+    {
+        close();
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this), chosen]
+        {
+            if (safe == nullptr)
+                return;
+            const auto song = safe->studio.getFile();
+            const auto start = song != juce::File() ? song.withFileExtension (".mid")
+                                                    : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Song.mid");
+            safe->chooser = std::make_unique<juce::FileChooser> ("Export a MIDI file", start, "*.mid");
+            safe->chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
+                                        [safe, chosen] (const juce::FileChooser& fc)
+                                        {
+                                            const auto file = fc.getResult();
+                                            if (safe == nullptr || file == juce::File())
+                                                return;
+                                            juce::String error;
+                                            if (! pr7s::writeMidiFile (safe->studio.getProject(), chosen, file.withFileExtension (".mid"), error))
+                                                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't export", error);
+                                        });
         });
     };
 }

@@ -111,22 +111,36 @@ namespace Windows
         void resized() override;
         void paint (juce::Graphics&) override;
 
-        enum class Range { song, cycle };
+        enum class Range { song, cycle, cycleMarkers };   // (0.51.0: cycle markers, a file each)
         void setRange (Range);
         pr7s::Studio::ExportOptions getOptions() const;   // as chosen now
         bool canExport() const;                           // the chosen range isn't empty
+        // (0.51.0, the manual's Channel Selection) The main mix, or channels: a file each (stems).
+        void setChannelsMode (bool channels);
+        bool isChannelsMode() const { return channelsMode.getSelectedId() == 2; }
+        void setChannelChosen (int trackId, bool chosen);
+        void setCycleMarkerChosen (int index, bool chosen);
+        pr7s::Studio::ExportBatch getBatch() const;
+        bool isBatch() const;   // several files (or a channel): a folder is asked for, not a file
 
         std::function<void (const pr7s::Studio::ExportOptions&)> onExport;
+        std::function<void (const pr7s::Studio::ExportBatch&)> onExportBatch;
         std::function<void()> onCancel;
 
-        juce::ComboBox range, rate, bits;
+        juce::ComboBox range, rate, bits, channelsMode;
         juce::ToggleButton click { "Include the click" };
-        juce::TextButton exportButton { "EXPORT..." }, cancelButton { "CANCEL" };
+        juce::ToggleButton includeMaster { "Include the master's effects, EQ and fader" };
+        juce::TextButton exportButton { "EXPORT..." }, cancelButton { "CANCEL" }, allKey { "ALL" }, noneKey { "NONE" };
 
     private:
         void keep();
+        void refreshLists();
         pr7s::Studio& studio;
-        juce::Label rangeLabel, rateLabel, bitsLabel, note;
+        juce::Label rangeLabel, rateLabel, bitsLabel, note, channelsLabel;
+        juce::Viewport listView;
+        juce::Component listContent;
+        std::vector<std::unique_ptr<juce::ToggleButton>> channelBoxes, markerBoxes;
+        std::vector<int> channelIds, markerIndices;
         double interfaceRate = 48000.0;
         static constexpr double rates[] = { 44100.0, 48000.0, 88200.0, 96000.0 };
     };
