@@ -843,6 +843,8 @@ TEST_CASE ("Snapshot: a question box", "[.][snapshot-alert]")
 #include "ui/TrackColours.h"
 #include "ui/LinesPage.h"
 #include "ui/ProgressionsPage.h"
+#include "ui/DrumLearnPage.h"
+#include "DrumSongs.h"
 #include "ui/EqEditor.h"
 #include "ui/PadsRemotePage.h"
 
@@ -902,6 +904,19 @@ TEST_CASE ("Snapshot: the IDEAS window (PARAGON_SNAPSHOT_IDEAS=piano|guitar|bass
             studio.getMediaBay().scanNow();
             studio.getMediaBay().takeScanResults();
         }
+        // (0.56.0) PARAGON_SNAPSHOT_DRUMMER=1: the generated column from a drummer learned from made-up songs.
+        const auto drummerRoot = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("PR7-S snapshot drummer");
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_DRUMMER", {}) == "1")
+        {
+            drummerRoot.deleteRecursively();
+            studio.setDrummerFolderForTests (drummerRoot);
+            std::vector<pr7s::DrumSong> songs;
+            for (const auto* layout : { "I4 V8 C8 V8 C8 B8 C8 E4", "V8 C8 V8 C8 R8 C8 E4" })
+                songs.push_back (pr7s::drumSongFromNotes (layout, drumsongs::songOf (layout), 120.0, pr7s::SignatureMap()));
+            juce::String error;
+            studio.saveDrummer (pr7s::learnProfile ("Session Drummer", songs), error);
+            studio.setIdeasDrummer ("Session Drummer");
+        }
         LinesPage page (studio, studio.getLineChords());
         page.setTab (tab == "piano" ? LinesPage::Tab::piano : tab == "bass" ? LinesPage::Tab::bass
                    : tab == "patterns" ? LinesPage::Tab::patterns : tab == "melody" ? LinesPage::Tab::melody
@@ -926,6 +941,39 @@ TEST_CASE ("Snapshot: the IDEAS window (PARAGON_SNAPSHOT_IDEAS=piano|guitar|bass
         juce::PNGImageFormat().writeImageToStream (image, out);
         if (tab == "drums")
             grooveRoot.deleteRecursively();
+        drummerRoot.deleteRecursively();
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+TEST_CASE ("Snapshot: LEARN A DRUMMER (0.56.0)", "[.][snapshot-learn]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "learn.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        const auto root = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("PR7-S snapshot songs").getChildFile ("Drum MIDI");
+        root.getParentDirectory().deleteRecursively();
+        const std::pair<const char*, const char*> songs[] = { { "01 First Light", "I4 V8 C8 V8 C8 B8 C8 E4" }, { "02 Undertow", "V8 C8 V8 C8 R8 C8 E4" },
+                                                              { "03 Glass Teeth", "I8 V8 V8 C8 V8 C8 B8 B8 C8 E4" }, { "04 Static Bloom", "I4 C8 V8 C8 R8 C8 C8 E4" },
+                                                              { "05 Hollow Crown", "V8 C8 B8 V8 C8 E4" }, { "06 Red Season", "I4 V8 C8 V8 C8 R8 B8 C8 E4" } };
+        for (const auto& [name, layout] : songs)
+            drumsongs::writeSong (root.getChildFile (juce::String (name) + ".mid"), drumsongs::songOf (layout));
+        pr7s::Studio studio (false);
+        DrumLearnPage page (studio);
+        page.setSize (1500, 640);
+        page.loadFolder (root);
+        page.setName ("Session Drummer");
+        page.setUsed (2, 0, false);   // (an intro left out: hatched)
+        page.hear (1, 2);
+        const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
+        page.stop();
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+        root.getParentDirectory().deleteRecursively();
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }

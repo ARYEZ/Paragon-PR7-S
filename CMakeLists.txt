@@ -58,6 +58,7 @@ add_library(PR7SCore STATIC
     source/engine/DragOut.cpp
     source/engine/DrumIdeas.cpp
     source/engine/DrumGenerator.cpp
+    source/engine/DrumLearning.cpp
     source/engine/MediaBay.cpp
     source/engine/ParagonSynth.cpp
     source/engine/PluginHost.cpp
@@ -115,6 +116,7 @@ add_library(PR7SCore STATIC
     source/ui/TrackColours.cpp
     source/ui/LinesPage.cpp
     source/ui/ProgressionsPage.cpp
+    source/ui/DrumLearnPage.cpp
     source/ui/EqEditor.cpp
     source/ui/PadsRemotePage.cpp
     source/ui/MediaBayPage.cpp

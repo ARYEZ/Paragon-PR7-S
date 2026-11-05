@@ -1,4 +1,5 @@
 #include "ui/LinesPage.h"
+#include "ui/DrumLearnPage.h"
 
 #include "ui/ChordUi.h"
 #include "ui/ParagonLookAndFeel.h"
@@ -341,6 +342,13 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
     writtenKey.setTooltip ("Lit: the written beats (six fixed patterns per style). Off: beats generated new for each section (MORE IDEAS: new ones)");
     writtenKey.onClick = [this] { setWrittenBeats (! writtenBeats); };
     addChildComponent (writtenKey);
+    drummerKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    drummerKey.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    drummerKey.setWantsKeyboardFocus (false);
+    drummerKey.setTooltip ("Who the beats are generated as: the style's rules, or a drummer learned from your songs (LEARN A DRUMMER...)");
+    drummerKey.onClick = [this] { showDrummerMenu(); };
+    addChildComponent (drummerKey);
+    drummer = studio.loadDrummer (studio.getIdeasDrummer());
     melodyKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     melodyKey.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
     melodyKey.setWantsKeyboardFocus (false);
@@ -591,6 +599,75 @@ void LinesPage::setWrittenBeats (bool on)
     rebuild();
 }
 
+void LinesPage::setDrummer (const juce::String& name)
+{
+    stop();
+    drummer = studio.loadDrummer (name);
+    studio.setIdeasDrummer (drummer.has_value() ? name : juce::String());
+    rebuild();
+}
+
+void LinesPage::showDrummerMenu()
+{
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("GENERATE AS");
+    menu.addItem (1, "The Style's Rules (" + pr7s::guitarStyleName (studio.getGuitarStyle()) + ")", true, ! drummer.has_value());
+    const auto names = studio.getDrummerNames();
+    for (int i = 0; i < (int) names.size(); ++i)
+        menu.addItem (100 + i, names[(size_t) i], true, drummer.has_value() && drummer->name == names[(size_t) i]);
+    menu.addSeparator();
+    menu.addItem (2, "Learn a Drummer from My Songs...");
+    if (drummer.has_value())
+    {
+        menu.addItem (3, "Check " + drummer->name + "'s Songs and Sections...");
+        menu.addItem (4, "Delete " + drummer->name + "...");
+    }
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&drummerKey),
+                        [safe = juce::Component::SafePointer<LinesPage> (this), names] (int chosen)
+                        {
+                            if (safe == nullptr || chosen == 0)
+                                return;
+                            if (chosen == 1)
+                                safe->setDrummer ({});
+                            else if (chosen == 2)
+                                safe->openLearnWindow (nullptr);
+                            else if (chosen == 3 && safe->drummer.has_value())
+                            {
+                                const auto profile = *safe->drummer;
+                                safe->openLearnWindow (&profile);
+                            }
+                            else if (chosen == 4 && safe->drummer.has_value())
+                            {
+                                const auto name = safe->drummer->name;
+                                juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon, "Delete a Drummer",
+                                                                    "Delete the drummer profile \"" + name + "\"? (Your songs stay as they are.)", "DELETE", "CANCEL", nullptr,
+                                                                    juce::ModalCallbackFunction::create ([safe, name] (int ok)
+                                                                    {
+                                                                        if (safe != nullptr && ok == 1 && safe->studio.deleteDrummer (name))
+                                                                            safe->setDrummer ({});
+                                                                    }));
+                            }
+                            else if (chosen >= 100 && chosen - 100 < (int) names.size())
+                                safe->setDrummer (names[(size_t) (chosen - 100)]);
+                        });
+}
+
+void LinesPage::openLearnWindow (const pr7s::DrumProfile* toEdit)
+{
+    stop();
+    if (learnWindow == nullptr)
+    {
+        learnWindow = std::make_unique<DrumLearnWindow> (studio);
+        learnWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<LinesPage> (this)] { if (safe != nullptr) safe->learnWindow.reset(); }); };
+        learnWindow->getPage().onSaved = [this] (const juce::String& name) { setDrummer (name); };
+        learnWindow->centreWithSize (1500, 860);
+    }
+    if (toEdit != nullptr)
+        learnWindow->getPage().openProfile (*toEdit);
+    learnWindow->setVisible (true);
+    learnWindow->toFront (true);
+}
+
 void LinesPage::noteChosen (pr7s::LineIdea::Part part, int index)
 {
     if (part == pr7s::LineIdea::Part::rhythm && index != riffIndex)
@@ -682,9 +759,11 @@ void LinesPage::rebuild()
         const auto& riffs = ideas[(size_t) P::rhythm];
         const auto* lockedRiff = riffs.empty() ? nullptr : &riffs[(size_t) juce::jlimit (0, (int) riffs.size() - 1, riffIndex)];
         const auto drums = studio.getDrumSettings();
+        const auto hits = lockedRiff != nullptr ? pr7s::riffHits (*lockedRiff) : std::vector<double> {};
         ideas[(size_t) P::drums] = writtenBeats ? pr7s::drumIdeas (guitarStyle, spans, barBeats, variation, lockedRiff)
-                                                : pr7s::generatedBeats (guitarStyle, spans, barBeats, drums, variation,
-                                                                        lockedRiff != nullptr ? pr7s::riffHits (*lockedRiff) : std::vector<double> {});
+                                 : drummer.has_value() ? pr7s::generatedBeats (*drummer, spans, barBeats, drums, variation, hits)   // (0.56.0)
+                                                       : pr7s::generatedBeats (guitarStyle, spans, barBeats, drums, variation, hits);
+        drummerKey.setButtonText ("DRUMMER: " + (drummer.has_value() ? drummer->name.toUpperCase() : juce::String ("STYLE RULES")));
         drumKey.setButtonText (DrumPanel::summary (drums));
         auto& grooves = ideas[(size_t) P::groove];
         grooves.clear();
@@ -751,6 +830,7 @@ void LinesPage::makeCards()
     groovesKey.setVisible (tab == Tab::drums);
     drumKey.setVisible (tab == Tab::drums && ! writtenBeats);
     writtenKey.setVisible (tab == Tab::drums);
+    drummerKey.setVisible (tab == Tab::drums && ! writtenBeats);
     writtenKey.setToggleState (writtenBeats, juce::dontSendNotification);
     groovesKey.setEnabled (libraryGrooves.size() > 6);
     melodyKey.setVisible (tab == Tab::melody);
@@ -889,7 +969,7 @@ void LinesPage::paint (juce::Graphics& g)
         g.setColour (colourOf (parts[i]));
         g.fillRoundedRectangle (columnTitles[i].removeFromLeft (4).withSizeKeepingCentre (4, 14).toFloat(), 1.5f);
         g.setColour (ParagonColours::text);
-        const auto title = parts[i] == pr7s::LineIdea::Part::drums ? juce::String (writtenBeats ? "WRITTEN BEATS" : "GENERATED: ONE PER SECTION")
+        const auto title = parts[i] == pr7s::LineIdea::Part::drums ? juce::String (writtenBeats ? "WRITTEN BEATS" : drummer.has_value() ? "LEARNED: ONE PER SECTION" : "GENERATED: ONE PER SECTION")
                                                                     : titleOf (parts[i]);
         g.drawText (title, columnTitles[i].withTrimmedLeft (10), juce::Justification::centredLeft, false);
     }
@@ -968,6 +1048,7 @@ void LinesPage::resized()
         auto right = area;
         columnTitles.push_back (left.removeFromTop (columnTitleHeight));
         columnTitles.push_back (right.removeFromTop (columnTitleHeight));
+        drummerKey.setBounds (columnTitles[0].withLeft (columnTitles[0].getRight() - 300).reduced (0, 2));
         layout (left, parts[0], 2);
         layout (right, parts[1], 2);
     }

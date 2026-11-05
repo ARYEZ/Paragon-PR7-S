@@ -2,6 +2,43 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.56.0
+
+**Learn a drummer** (you asked: beats trained on real drummers, from a folder of whole songs of drum MIDI with no section names)
+- On IDEAS' DRUMS tab, **DRUMMER** (over the generated column) > **Learn a Drummer from My Songs...** opens **LEARN A DRUMMER**. **CHOOSE FOLDER...** reads every MIDI file in the folder and the folders under it.
+- **Each song's sections are found from the drums alone:**
+  - It looks for the places where the playing changes: where the kick and snare land, the cymbal (hats, ride, china...), how busy it is, half time.
+  - It also looks at what drummers do at a change: a fill in the bar before, a crash on the first beat.
+  - A fill and a crash every four bars inside a verse don't split it.
+  - Sections that play alike are grouped, then named:
+    - half time is a **breakdown** (a quiet one, a **bridge**);
+    - a short first section is the **intro**, a short last one the **ending**;
+    - of the groups played more than once, the bigger one is the **chorus**, the other the **verse**;
+    - something played once later on is a **bridge**.
+  - Any kit's notes are read by what they are (Toontrack's hat notes as hats, for example). If a file has other instruments, only its drum channel (10) is read.
+- **It's a guess from the drums, so you check it.** Each song is a row of coloured blocks:
+  - **Click a block:** change what it is, **Leave Out of Learning**, **Split Here** (at the bar you clicked), or **Join With the Next**.
+  - **Drag a block's left edge** to move where it starts.
+  - **Double-click** a block to hear it (through the selected track, so put a drum instrument there).
+  - **The tick** on each row: learn from that song or not.
+- **SAVE PROFILE** (after naming the drummer) learns, for each section:
+  - the grooves they played most, exactly as played (notes, places, velocities);
+  - their fills;
+  - how likely a kick, snare or ghost note is on each sixteenth;
+  - their cymbal, how often a phrase starts on a crash, and half time;
+  - their feel: how far ahead of or behind the beat the kick, snare and cymbal sit.
+- **DRUMMER > the name:** the six generated beats are now played as that drummer.
+  - Each section uses one of their grooves, kept and repeated as a drummer does. The third bar of each phrase is another of their grooves, or a kick moved where they would put one.
+  - Their fills, their crashes, their feel.
+  - A section they never played takes the nearest one they did (the card says so).
+  - **DRUM SETTINGS** still shape it; at 50% it's as learned.
+  - **The Style's Rules** goes back to 0.55.0's generator.
+- **Check ...'s Songs and Sections...** opens a saved drummer again: the songs are read again, with the sections as you left them, so you can fix and save again. **Delete** removes the profile; your songs stay as they are.
+- Profiles are saved in Documents/Paragon PR7-S/Drummer Profiles (a `.pr7drummer` file each).
+- **Next (0.57.0):** pads that build a whole section onto tracks.
+
+**What I can't check here:** your real drum songs. The section finder is tested on songs written for the tests: verses, choruses, breakdowns, bridges, fills, crashes. Real drummers vary much more, and some sections will need putting right on the review page. Tell me which kinds it gets wrong and I can tune it. I also can't hear the learned beats through your drum library.
+
 ## 0.55.0
 
 **The beat generator** (you asked: beats made new, not only the written ones)

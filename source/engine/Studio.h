@@ -13,6 +13,7 @@
 #include "Riffs.h"
 #include "DragOut.h"
 #include "DrumGenerator.h"
+#include "DrumLearning.h"
 #include "Patterns.h"
 #include "Progressions.h"
 #include "Melody.h"
@@ -306,6 +307,16 @@ namespace pr7s
         // The DRUMS tab's beat generator settings (0.55.0; settings key "drumSettings").
         DrumSettings getDrumSettings() const;
         void setDrumSettings (const DrumSettings&);
+        // Drummer profiles (0.56.0): their folder (Documents/Paragon PR7-S/Drummer Profiles), the one
+        // the DRUMS tab plays from (settings key "ideasDrummer"; empty: the style's rules).
+        juce::File getDrummerFolder() const { return drummerFolderOverride != juce::File() ? drummerFolderOverride : defaultDrummerFolder(); }
+        void setDrummerFolderForTests (const juce::File& f) { drummerFolderOverride = f; }
+        std::vector<juce::String> getDrummerNames() const { return drummerNames (getDrummerFolder()); }
+        std::optional<DrumProfile> loadDrummer (const juce::String& name) const;
+        bool saveDrummer (const DrumProfile&, juce::String& error);
+        bool deleteDrummer (const juce::String& name);
+        juce::String getIdeasDrummer() const;
+        void setIdeasDrummer (const juce::String&);
         // Humanize (0.20.0). IDEAS: its amount (0-1, settings "ideasHumanize", default 0: on the
         // grid as before) and FEEL ("ideasFeel", default on). The MIDI editor: its amount
         // ("humanizeAmount", default 0.5) and whether velocities keep to the guitar library's
@@ -1389,6 +1400,8 @@ namespace pr7s
         GuitarStyle guitarStyle = GuitarStyle::rock;   // (without a settings file)
         RiffSettings riffSettings;
         DrumSettings drumSettings;
+        juce::File drummerFolderOverride;
+        juce::String ideasDrummer;
         float ideasHumanize = 0.0f, humanizeAmount = 0.5f;   // (without a settings file: the tests)
         bool ideasFeel = true, humanizeLayers = true;
         void announce();               // (0.34.3) sendChangeMessage, the version counted

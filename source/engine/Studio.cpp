@@ -9492,6 +9492,53 @@ namespace pr7s
             settings->setValue ("drumSettings", drumSettings.toString());
     }
 
+    std::optional<DrumProfile> Studio::loadDrummer (const juce::String& name) const
+    {
+        if (name.isEmpty())
+            return std::nullopt;
+        auto profile = DrumProfile::load (drummerFile (getDrummerFolder(), name));
+        if (profile.has_value() && profile->name.isEmpty())
+            profile->name = name;
+        return profile;
+    }
+
+    bool Studio::saveDrummer (const DrumProfile& profile, juce::String& error)
+    {
+        const auto file = drummerFile (getDrummerFolder(), profile.name);
+        if (! profile.save (file))
+        {
+            error = "Couldn't write " + file.getFullPathName();
+            return false;
+        }
+        SessionLog::note ("Drummer profile saved: " + file.getFullPathName() + " (" + juce::String (profile.barsLearned()) + " bars from "
+                          + juce::String ((int) profile.songs.size()) + " songs)");
+        return true;
+    }
+
+    bool Studio::deleteDrummer (const juce::String& name)
+    {
+        const auto file = drummerFile (getDrummerFolder(), name);
+        if (! file.existsAsFile() || ! file.deleteFile())
+            return false;
+        if (getIdeasDrummer() == name)
+            setIdeasDrummer ({});
+        return true;
+    }
+
+    juce::String Studio::getIdeasDrummer() const
+    {
+        if (settings != nullptr && settings->containsKey ("ideasDrummer"))
+            return settings->getValue ("ideasDrummer");
+        return ideasDrummer;
+    }
+
+    void Studio::setIdeasDrummer (const juce::String& name)
+    {
+        ideasDrummer = name;
+        if (settings != nullptr)
+            settings->setValue ("ideasDrummer", name);
+    }
+
     float Studio::getIdeasHumanize() const
     {
         return settings != nullptr ? juce::jlimit (0.0f, 1.0f, (float) settings->getDoubleValue ("ideasHumanize", ideasHumanize)) : ideasHumanize;

@@ -161,6 +161,13 @@ public:
     void showDrumSettings();
     void setWrittenBeats (bool);   // (settings key "ideasWrittenBeats")
     bool isShowingWrittenBeats() const noexcept { return writtenBeats; }
+    // (0.56.0) DRUMMER: the generated column played from a learned drummer's profile ("": the
+    // style's rules; Studio::setIdeasDrummer), the LEARN A DRUMMER window (a profile to put right, or none).
+    void setDrummer (const juce::String& name);
+    juce::String getDrummer() const { return drummer.has_value() ? drummer->name : juce::String(); }
+    void showDrummerMenu();
+    void openLearnWindow (const pr7s::DrumProfile* toEdit);
+    class DrumLearnWindow* getLearnWindow() const noexcept { return learnWindow.get(); }
     int getNumLibraryGrooves() const noexcept { return (int) libraryGrooves.size(); }
     int getGroovePage() const noexcept { return groovePage; }
     // The guitar riff the drums' and bass's locked ideas follow, and the beat the bass's kick-locked
@@ -215,6 +222,9 @@ private:
     juce::TextButton drumKey;                           // DRUM SETTINGS (the drums tab)
     juce::TextButton writtenKey { "WRITTEN BEATS" };    // (the drums tab)
     bool writtenBeats = false;
+    juce::TextButton drummerKey;                        // DRUMMER (the drums tab's generated column)
+    std::optional<pr7s::DrumProfile> drummer;
+    std::unique_ptr<class DrumLearnWindow> learnWindow;
     std::vector<pr7s::LibraryGroove> libraryGrooves;
     bool groovesLooked = false;
     int groovePage = 0, riffIndex = 0, beatIndex = 0;
