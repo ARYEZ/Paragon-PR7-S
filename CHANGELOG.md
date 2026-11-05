@@ -2,6 +2,27 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.57.0
+
+**Build a whole section** (you chose BUILD SECTION in IDEAS, and asked that it suggest what comes next as the chord suggestions do)
+- **BUILD SECTION** (in IDEAS' header; also **Build a Section...** in the chord track's menu and the pads' PLAYER menu) writes a whole section onto tracks in one click, over the chords IDEAS is showing:
+  - **DRUMS:** the beat for that section: your learned drummer's, or the style's rules.
+  - **BASS:** locked to that beat's kick, on the chords' roots.
+  - **GUITAR:** the riff you last played or used on the guitar tab, in your STYLE, tuning and RIFF SETTINGS.
+  - **LEAD, PIANO:** the cards you last played or used on their tabs. **MELODY** too if you light it (off at first).
+- **Each part goes onto its own track** (Drums, Bass, Guitar, Lead Guitar, Piano, Melody). The same tracks are used section after section, so the whole song lands on one band; a new Drums track gets the GM drum map.
+- **Building the same chords again replaces what's there.** All the parts are one undo step.
+- **NEXT: WHAT COULD FOLLOW.** Once a section is built, the panel suggests what comes next, scored, each with how it relates to what you've built:
+  - after a verse: a **chorus** from the verse's riff opened up (fewer palm mutes, looser, a fill into it), or a chorus with a new riff for contrast;
+  - after a chorus: back to the **verse** (its riff and settings exactly);
+  - two choruses in: a **breakdown** (the same riff tightened into chugs, half time; metal styles) or a **bridge** (a new, looser riff);
+  - after a bridge or breakdown: the **chorus** again, then an **ending**.
+  - The drums keep the same family of grooves throughout.
+- **One click on a suggestion builds it right after the last section.** It uses the chord track's chords there if you have some; otherwise it repeats these chords and writes them onto the chord track, so the song keeps its chords.
+- What's been built is remembered while the song is open, and forgotten when another song is opened.
+
+**What I can't check here:** how it sounds through your instruments. The order of sections and the riff changes are our own rules, not taken from a manual; tell me where they don't fit your songs.
+
 ## 0.56.0
 
 **Learn a drummer** (you asked: beats trained on real drummers, from a folder of whole songs of drum MIDI with no section names)
@@ -35,7 +56,7 @@ Each version's notes appear on its GitHub Release page.
   - **The Style's Rules** goes back to 0.55.0's generator.
 - **Check ...'s Songs and Sections...** opens a saved drummer again: the songs are read again, with the sections as you left them, so you can fix and save again. **Delete** removes the profile; your songs stay as they are.
 - Profiles are saved in Documents/Paragon PR7-S/Drummer Profiles (a `.pr7drummer` file each).
-- **Next (0.57.0):** pads that build a whole section onto tracks.
+- **Next (0.57.0):** BUILD SECTION: a whole section onto tracks.
 
 **What I can't check here:** your real drum songs. The section finder is tested on songs written for the tests: verses, choruses, breakdowns, bridges, fills, crashes. Real drummers vary much more, and some sections will need putting right on the review page. Tell me which kinds it gets wrong and I can tune it. I also can't hear the learned beats through your drum library.
 
