@@ -966,6 +966,7 @@ TEST_CASE ("Snapshot: BUILD SECTION's panel after a verse (0.57.0)", "[.][snapsh
         page.buildSection();
         auto choice = page.getBuildChoice();
         choice.section = pr7s::DrumSection::chorus;
+        page.setBuildChoice (choice);   // (as the panel's own clicks do: the descriptions follow it)
         BuildSectionPanel panel (choice, [&page] (BuildChoice::Part p) { return page.describeBuildPart (p); }, page.getNextSuggestions());
         const auto image = panel.createComponentSnapshot (panel.getLocalBounds(), true, 2.0f);
         juce::File (path).deleteFile();
