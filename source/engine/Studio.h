@@ -893,6 +893,22 @@ namespace pr7s
         SignatureEvent getSignatureNow() const;                           // at the playhead
 
         //======================================================================
+        // Folder tracks (0.50.0, the manual's Folder Tracks and Organizing Tracks in Folder Tracks).
+        // A folder holds tracks (folders too); they sit right after it. Its M and S act on all of
+        // them; with its group channel enabled (`setFolderGroup`) it's a group channel: its tracks'
+        // outputs go to it (and back to the master when it's switched off or they leave). Removing
+        // a folder keeps its tracks (in the folder it was in: our choice). Tracks in a closed
+        // folder aren't shown (`getShownTracks`) but play as usual.
+        int addFolderTrack (const juce::String& name = {}, bool withGroup = false);
+        int moveTracksToNewFolder (std::vector<int> trackIds, bool withGroup);   // the folder where the first was
+        bool setTracksFolder (std::vector<int> trackIds, int folderId);          // 0: out of folders
+        void setFolderOpen (int folderId, bool open);                            // not an undo step
+        void setFolderGroup (int folderId, bool on);
+        void setFolderData (int folderId, Track::FolderData);                    // not an undo step
+        bool isFolderSoloed (int folderId) const;                                // every track in it soloed
+        int folderGroupOf (int trackId) const;   // the nearest folder round it with its group channel on (0: none)
+
+        //======================================================================
         // Markers (0.49.0, the manual's Markers chapter). One marker track (our choice: the manual
         // allows ten). Every edit is an undo step and is refused while the track is locked
         // (locating isn't an edit). Indices are into `getMarkerTrack().markers` (sorted by start).
@@ -1265,6 +1281,8 @@ namespace pr7s
         void removeAllEffects();
         void recordUndoState();
         void restore (const Project&);
+        void joinFolderGroup (Track&);    // (0.50.0)
+        void leaveFolderGroup (Track&);
         static void restoreLanes (std::vector<AutomationLane>& lanes, const std::vector<AutomationLane>& then);
         void updateLiveTrack();
         void finishRecording();

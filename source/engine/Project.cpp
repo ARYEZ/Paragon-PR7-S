@@ -1,6 +1,9 @@
 #include "Project.h"
 #include "Controllers.h"
 
+#include <functional>
+#include <set>
+
 namespace pr7s
 {
     namespace
@@ -411,7 +414,17 @@ namespace pr7s
             t->setAttribute ("solo", track.solo);
             t->setAttribute ("armed", track.armed);
             if (track.isChannel())
-                t->setAttribute ("kind", track.isFx() ? "fx" : "group");
+                t->setAttribute ("kind", track.isFx() ? "fx" : track.isFolder() ? "folder" : "group");
+            if (track.folder != 0)
+                t->setAttribute ("folder", track.folder);
+            if (track.isFolder())
+            {
+                t->setAttribute ("folderOpen", track.folderOpen);
+                if (track.folderGroup)
+                    t->setAttribute ("folderGroup", true);
+                if (track.folderData != Track::FolderData::always)
+                    t->setAttribute ("folderData", (int) track.folderData);
+            }
             if (track.output != 0)
                 t->setAttribute ("output", track.output);
             if (track.sendsBypass)
@@ -764,6 +777,14 @@ namespace pr7s
                 track.kind = Track::Kind::fx;
             if (t->getStringAttribute ("kind") == "group")
                 track.kind = Track::Kind::group;
+            if (t->getStringAttribute ("kind") == "folder")
+            {
+                track.kind = Track::Kind::folder;
+                track.folderOpen = t->getBoolAttribute ("folderOpen", true);
+                track.folderGroup = t->getBoolAttribute ("folderGroup");
+                track.folderData = (Track::FolderData) juce::jlimit (0, 2, t->getIntAttribute ("folderData"));
+            }
+            track.folder = juce::jmax (0, t->getIntAttribute ("folder"));
             track.output = juce::jmax (0, t->getIntAttribute ("output"));
             track.sendsBypass = t->getBoolAttribute ("sendsBypass");
             track.linkGroup = juce::jmax (0, t->getIntAttribute ("linkGroup"));
@@ -833,6 +854,7 @@ namespace pr7s
         }
         project.nextTrackId = juce::jmax (highestId + 1, xml.getIntAttribute ("nextTrackId", 1));
         project.variAudioReference = xml.getIntAttribute ("variAudioReference", 0);
+        project.tidyFolders();   // (0.50.0)
         // Routing that leads nowhere it can go: back to the master, or no send.
         for (auto& track : project.tracks)
         {
@@ -1116,5 +1138,98 @@ namespace pr7s
     juce::String noteName (int pitch)
     {
         return juce::MidiMessage::getMidiNoteName (juce::jlimit (0, 127, pitch), true, true, 3);
+    }
+
+    //==========================================================================
+    // Folder tracks (0.50.0).
+    bool Project::isInFolder (int trackId, int folderId) const
+    {
+        const auto* track = findTrack (trackId);
+        for (int steps = 0; track != nullptr && track->folder != 0 && steps < 256; ++steps)
+        {
+            if (track->folder == folderId)
+                return true;
+            track = findTrack (track->folder);
+        }
+        return false;
+    }
+
+    std::vector<int> Project::folderMembers (int folderId, bool deep) const
+    {
+        std::vector<int> out;
+        for (const auto& t : tracks)
+            if (t.id != folderId && (deep ? isInFolder (t.id, folderId) : t.folder == folderId))
+                out.push_back (t.id);
+        return out;
+    }
+
+    int Project::folderDepth (int trackId) const
+    {
+        int depth = 0;
+        const auto* track = findTrack (trackId);
+        for (; track != nullptr && track->folder != 0 && depth < 256; ++depth)
+            track = findTrack (track->folder);
+        return depth;
+    }
+
+    bool Project::isFoldedAway (const Track& track) const
+    {
+        const auto* parent = findTrack (track.folder);
+        for (int steps = 0; parent != nullptr && steps < 256; ++steps)
+        {
+            if (! parent->folderOpen)
+                return true;
+            parent = findTrack (parent->folder);
+        }
+        return false;
+    }
+
+    void Project::tidyFolders()
+    {
+        // Each track's folder: a folder track, not itself, and not one inside it (no loops).
+        for (auto& track : tracks)
+        {
+            const auto* parent = findTrack (track.folder);
+            if (parent == nullptr || ! parent->isFolder() || track.folder == track.id)
+                track.folder = 0;
+        }
+        for (auto& track : tracks)
+        {
+            std::set<int> seen { track.id };
+            for (const auto* up = findTrack (track.folder); up != nullptr; up = findTrack (up->folder))
+                if (! seen.insert (up->id).second)
+                {
+                    track.folder = 0;   // (a loop: this one leaves its folder)
+                    break;
+                }
+        }
+        // Every folder's tracks right after it, in the order they were in (the tracks moved, not copied).
+        std::vector<size_t> order;
+        order.reserve (tracks.size());
+        std::set<int> placed;
+        std::function<void (int)> place = [&] (int folderId)
+        {
+            for (size_t i = 0; i < tracks.size(); ++i)
+                if (tracks[i].folder == folderId && placed.insert (tracks[i].id).second)
+                {
+                    order.push_back (i);
+                    if (tracks[i].isFolder())
+                        place (tracks[i].id);
+                }
+        };
+        place (0);
+        for (size_t i = 0; i < tracks.size(); ++i)
+            if (placed.insert (tracks[i].id).second)
+                order.push_back (i);   // (anything left: kept, at the end)
+        auto inOrder = true;
+        for (size_t i = 0; i < order.size(); ++i)
+            inOrder = inOrder && order[i] == i;
+        if (inOrder)
+            return;
+        std::vector<Track> ordered;
+        ordered.reserve (tracks.size());
+        for (const auto i : order)
+            ordered.push_back (std::move (tracks[i]));
+        tracks = std::move (ordered);
     }
 }

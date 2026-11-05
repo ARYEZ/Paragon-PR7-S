@@ -344,12 +344,22 @@ namespace pr7s::DawProject
                     return;
                 }
 
-                // A folder: its tracks, flattened; with a group channel of its own, that's a group too.
+                // (0.50.0) A folder: a folder track holding its tracks; with a group channel of its own
+                // (a submix holding tracks), the folder's group channel.
                 if (! nested.empty() && role != "submix")
                 {
-                    note ("The folder \"" + name + "\" is flattened: its tracks come across without it (PR7-S has no folders yet).");
+                    Track folder;
+                    folder.id = nextId++;
+                    folder.name = name;
+                    folder.colour = colourOf (t, trackColour (folder.id - 1));
+                    folder.kind = Track::Kind::folder;
+                    folder.folder = currentFolder;
+                    trackIdOf[t->getStringAttribute ("id")] = folder.id;
+                    result.project.tracks.push_back (folder);
+                    const auto outer = std::exchange (currentFolder, folder.id);
                     for (auto* child : nested)
                         readTrack (child, index++);
+                    currentFolder = outer;
                     return;
                 }
 
@@ -357,7 +367,13 @@ namespace pr7s::DawProject
                 track.id = nextId++;
                 track.name = name;
                 track.colour = colourOf (t, trackColour (track.id - 1));
-                if (role == "effect")
+                track.folder = currentFolder;
+                if (role == "submix" && ! nested.empty())
+                {
+                    track.kind = Track::Kind::folder;   // (0.50.0: a group holding tracks: a folder with its group channel)
+                    track.folderGroup = true;
+                }
+                else if (role == "effect")
                     track.kind = Track::Kind::fx;
                 else if (role == "submix")
                     track.kind = Track::Kind::group;
@@ -397,11 +413,15 @@ namespace pr7s::DawProject
                         later.sends.push_back (send);
                     pending.push_back (later);
                 }
+                const auto id = track.id;
                 result.project.tracks.push_back (std::move (track));
-                // A group with tracks inside: they follow it.
+                // A group with tracks inside (a folder with its group channel, 0.50.0): they follow it, in it.
+                const auto outer = std::exchange (currentFolder, nested.empty() ? currentFolder : id);
                 for (auto* child : nested)
                     readTrack (child, index++);
+                currentFolder = outer;
             }
+            int currentFolder = 0;   // (0.50.0) the folder the tracks being read are in
 
             // ---- after the tracks are read ------------------------------------
             Pending* pendingOf (int trackId)
@@ -1106,6 +1126,7 @@ namespace pr7s::DawProject
             project.nextTrackId = juce::jmax (project.nextTrackId, track.id + 1);
         project.loopStart = 0.0;
         project.loopEnd = end > 0.0 ? std::ceil (end / project.beatsPerBar()) * project.beatsPerBar() : 16.0;
+        project.tidyFolders();   // (0.50.0: folders' tracks right after them, folders that went in merges dropped)
         return std::move (reader.result);
     }
 }

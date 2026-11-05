@@ -231,7 +231,11 @@ namespace pr7s
         // reverb, a delay); a group channel takes the tracks routed to it (a
         // submix: one fader and the same effects for all of them). Neither
         // has parts.
-        enum class Kind { instrument, audio, fx, group };   // saved by name
+        // (0.50.0) A folder track (the manual's Folder Tracks): it holds other tracks (`folder` on
+        // each is the folder it's in; folders nest), shown under it while it's open. No parts or
+        // instrument of its own; with its group channel enabled (`folderGroup`) it's a group
+        // channel too: its tracks' outputs go to it and it sums them.
+        enum class Kind { instrument, audio, fx, group, folder };   // saved by name
 
         int id = 0;                      // stays the same for the track's life (undo and the engine use it)
         Kind kind = Kind::instrument;
@@ -286,8 +290,14 @@ namespace pr7s
         int numLanes() const noexcept;   // one more than the highest lane a part is on (at least 1)
         bool isAudio() const noexcept { return kind == Kind::audio; }
         bool isFx() const noexcept { return kind == Kind::fx; }
-        bool isGroup() const noexcept { return kind == Kind::group; }
-        bool isChannel() const noexcept { return kind == Kind::fx || kind == Kind::group; }   // no parts, no instrument
+        bool isGroup() const noexcept { return kind == Kind::group || (kind == Kind::folder && folderGroup); }
+        bool isFolder() const noexcept { return kind == Kind::folder; }
+        bool isChannel() const noexcept { return kind == Kind::fx || kind == Kind::group || kind == Kind::folder; }   // no parts, no instrument
+        int folder = 0;                  // (0.50.0) the folder track it's in (0: none)
+        bool folderOpen = true;          // a folder: its tracks shown under it
+        bool folderGroup = false;        // a folder: its group channel enabled
+        enum class FolderData { always, never, hideWhenExpanded };   // the manual's Show Data on Folder Tracks
+        FolderData folderData = FolderData::always;
         int output = 0;                  // a group channel's id, or 0: the master (FX and group channels: the master)
         std::vector<Send> sends;         // by slot (none after the last used); FX channels have none
         bool sendsBypass = false;        // all of its sends off at once
@@ -333,7 +343,14 @@ namespace pr7s
         int numerator = 4, denominator = 4;   // the time signature (since 0.45.0 the first: at bar 1)
         // (0.45.0) Signature changes after bar 1 (the manual's time signature events), and the
         // signature track: shown in the track list (it can be added once) and its Lock.
-        std::vector<SignatureEvent> signatureChanges;   // sorted by bar, each at bar 1 (index 1) or later
+        // (0.50.0) Folders: each track's folder made valid (a folder, not itself or inside itself)
+        // and every folder's tracks (deep) put right after it, in the order they were in.
+        void tidyFolders();
+        bool isInFolder (int trackId, int folderId) const;   // in it, or in a folder in it
+        std::vector<int> folderMembers (int folderId, bool deep) const;   // in the tracks' order
+        int folderDepth (int trackId) const;                 // folders round it (0: none)
+        bool isFoldedAway (const Track&) const;              // in a closed folder (anywhere up)
+                std::vector<SignatureEvent> signatureChanges;   // sorted by bar, each at bar 1 (index 1) or later
         bool signatureTrackShown = false, signatureLocked = false;
         MarkerTrack markerTrack;                // (0.49.0) the marker track and its markers
         bool loopOn = false;                  // CYCLE

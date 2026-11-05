@@ -212,13 +212,18 @@ TEST_CASE ("DAWproject: a song from Cubase: tempo, tracks, mix, routing, plug-in
     CHECK (p.numerator == 3);
     CHECK_THAT (p.masterVolumeDb, WithinAbs (-6.02, 0.01));
 
-    // The tracks, in order: the folder flattened (its Pad after it), the master not a track.
-    REQUIRE (p.tracks.size() == 6);
+    // The tracks, in order: the folder (0.50.0: a folder track) with its Pad in it, the master not a track.
+    REQUIRE (p.tracks.size() == 7);
     const auto& keys = p.tracks[0];
     const auto& guitar = p.tracks[1];
     const auto& bus = p.tracks[2];
     const auto& reverb = p.tracks[3];
-    const auto& pad = p.tracks[4];
+    const auto& strings = p.tracks[4];
+    const auto& pad = p.tracks[5];
+    CHECK (strings.isFolder());
+    CHECK (strings.name == "Strings");
+    CHECK (pad.folder == strings.id);
+    CHECK (guitar.folder == 0);
     CHECK (keys.name == "Keys");
     CHECK (keys.kind == Track::Kind::instrument);
     CHECK (guitar.kind == Track::Kind::audio);
@@ -278,7 +283,7 @@ TEST_CASE ("DAWproject: a song from Cubase: tempo, tracks, mix, routing, plug-in
 
     // Clips that say their track themselves (as the official library writes them), audio through warps:
     // beat 8 for 6 beats, from 2 beats into the warped content (1.2 s at 100 bpm, the warps not stretching it).
-    const auto& loop = p.tracks[5];
+    const auto& loop = p.tracks[6];
     CHECK (loop.name == "Loop");
     REQUIRE (loop.parts.size() == 1);
     CHECK (loop.parts[0].start == 8.0);
@@ -308,7 +313,7 @@ TEST_CASE ("DAWproject: a song from Cubase: tempo, tracks, mix, routing, plug-in
     CHECK (p.tempoEvents[1].beat == 16.0);
     CHECK (p.tempoEvents[1].bpm == 140.0);
     CHECK_FALSE (p.tempoEvents[1].ramp);
-    CHECK (notes.contains ("folder \"Strings\""));
+    CHECK_FALSE (notes.contains ("flattened"));   // (0.50.0: the folder comes across)
     CHECK (notes.contains ("Channel EQ"));
     CHECK (notes.contains ("Test Synth isn't among the plug-ins"));
     CHECK_FALSE (notes.contains ("Time-stretched"));   // (the loop's warps play it at its own speed: nothing lost)
@@ -317,7 +322,7 @@ TEST_CASE ("DAWproject: a song from Cubase: tempo, tracks, mix, routing, plug-in
     Studio studio (false);
     juce::String report;
     REQUIRE (studio.importDawProject (file, report));
-    CHECK (studio.getProject().tracks.size() == 6);
+    CHECK (studio.getProject().tracks.size() == 7);   // (0.50.0: the folder is a track)
     CHECK (studio.getFile() == juce::File());
     CHECK (studio.isModified());
     CHECK (report.contains ("Test Synth"));
@@ -332,7 +337,7 @@ TEST_CASE ("DAWproject: a song from Cubase: tempo, tracks, mix, routing, plug-in
     notOne.replaceWithText ("hello");
     CHECK_FALSE (studio.importDawProject (notOne, report));
     CHECK (report.isNotEmpty());
-    CHECK (studio.getProject().tracks.size() == 6);
+    CHECK (studio.getProject().tracks.size() == 7);   // (0.50.0: the folder is a track)
     studio.getAudioFolder().deleteRecursively();
     temp.deleteRecursively();
 }

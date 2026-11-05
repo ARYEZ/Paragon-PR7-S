@@ -2,6 +2,33 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.50.0
+
+**Folder tracks** (the second of your four). It follows the manual's Folder Tracks.
+
+**Making folders:**
+- **+ ADD TRACK > Folder track** (or with its group channel, below it).
+- **Select tracks, then the track menu's Track Folding > Move Selected Tracks to New Folder** (or "... with Group Channel"). The folder appears where the first of them was, and they go inside it.
+- **Drag tracks** in the track list: drop one just under an open folder's row and it goes in; drop it above or outside the folder and it comes out. **Track Folding > Move into Folder / Move out of Its Folder** do the same from the menu.
+- **Folders can hold folders.** Tracks inside are indented, with a faint line for each folder around them.
+
+**Using them:**
+- **The arrow beside a folder's name** folds its tracks away or shows them again. Folded tracks still play; they're also hidden in the mixer, as the manual keeps the two in step.
+- **The folder's M and S** mute or solo every track in it.
+- **The folder's row shows its tracks' parts** as blocks, a strip for each track. **Click a block** to select every part in it (Shift adds); **drag it** to move them all together (Alt copies). Right-click > Track Folding > Show Data on Folder Tracks: always, never, or hidden while the folder is open.
+- **Enable Group Channel** (Track Folding menu): the folder becomes a group channel, so its tracks are summed into one fader, with inserts, sends and EQ, as any group. Every track in it is routed to it, and any track moved in later too. A track moved out goes back to the master. Switching the group channel off sends them all back to the master.
+- **Removing a folder keeps its tracks.** They move to the folder it was in, or to the top level. This is our choice; the manual removes them too.
+
+**DAWproject import:** folders from your other DAW's projects now come across as folder tracks. A group holding tracks becomes a folder with its group channel. Before, folders were flattened away.
+
+**Undo** brings back what was in which folder. Folders are saved with the song.
+
+**Not yet:**
+- **Group Editing Mode** (editing a part edits the same place on every track in the folder).
+- **Folder track colours applied to their tracks automatically.**
+- **Double-clicking a folder block to open the editors.**
+- **A folder's group channel inside another folder's** still goes straight to the master, not into the outer group.
+
 ## 0.49.0
 
 **Markers** (the first of your four: then folder tracks, export round two, crossfades for comping). It follows the manual's Markers chapter.

@@ -719,6 +719,9 @@ namespace pr7s
                 std::swap (track->clips, p.clips);      // likewise the old clips
                 if (const auto* t = project.findTrack (p.id))
                 {
+                    // (0.50.0) A channel's role follows the song: a folder with its group channel on is a group.
+                    if (t->isChannel())
+                        track->role = t->isGroup() ? TrackState::Role::group : TrackState::Role::fx;
                     track->input = t->input;
                     track->frozen = t->frozen;
                     track->midiChannel = juce::jlimit (1, 16, t->midiChannel);

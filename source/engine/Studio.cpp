@@ -394,6 +394,9 @@ namespace pr7s
                 track.followVoicing = then->followVoicing;
                 track.eq = then->eq;                             // (0.43.0)
                 track.performPattern = then->performPattern;     // (0.44.0)
+                track.folder = then->folder;                     // (0.50.0)
+                track.folderGroup = then->folderGroup;
+                track.folderData = then->folderData;
             }
         restoreLanes (project.masterAutomation, state.masterAutomation);
         // The tracks' order as it was (tracks added since keep their places after them).
@@ -406,6 +409,7 @@ namespace pr7s
         };
         std::stable_sort (project.tracks.begin(), project.tracks.end(),
                           [&] (const Track& a, const Track& b) { return placeIn (a.id) < placeIn (b.id); });
+        project.tidyFolders();
         changed (false);
     }
 
@@ -665,7 +669,11 @@ namespace pr7s
         for (int slot = 0; slot < (int) it->inserts.size(); ++slot)
             effectGoing (trackId, slot);
         const auto wasChannel = it->isChannel();
+        const auto parentFolder = it->folder;
         project.tracks.erase (it);
+        for (auto& track : project.tracks)
+            if (track.folder == trackId)
+                track.folder = parentFolder;   // (0.50.0: a folder removed: its tracks stay, in the folder it was in)
         pruneLinkGroups();   // (a link group left with one channel goes)
         engine.removeTrack (trackId);
         if (wasChannel)   // what was sent or routed to it: back to the master, no send
@@ -874,9 +882,188 @@ namespace pr7s
         }
         const auto at = std::find_if (staying.begin(), staying.end(), [anchor] (const Track& t) { return t.id == anchor; });
         const auto offset = std::distance (staying.begin(), anchor == 0 ? staying.end() : at);
+        // (0.50.0) Where they land decides their folder: under an open folder's row, in it; else in the
+        // folder of the track above (the top level at the top). A folder moves with its tracks.
+        auto landed = 0;
+        if (offset > 0)
+        {
+            const auto& above = staying[(size_t) offset - 1];
+            landed = above.isFolder() && above.folderOpen ? above.id : above.folder;
+        }
+        std::vector<int> movedIds;
+        for (const auto& t : moving)
+            movedIds.push_back (t.id);
         staying.insert (staying.begin() + offset, std::make_move_iterator (moving.begin()), std::make_move_iterator (moving.end()));
         tracks = std::move (staying);
+        for (const auto id : movedIds)
+            if (auto* t = project.findTrack (id))
+            {
+                // (only those whose folder isn't among the moved: a folder's tracks keep their folder)
+                if (std::find (movedIds.begin(), movedIds.end(), t->folder) == movedIds.end() && ! project.isInFolder (landed, t->id) && landed != t->id)
+                {
+                    leaveFolderGroup (*t);
+                    t->folder = landed;
+                    joinFolderGroup (*t);
+                }
+            }
+        project.tidyFolders();
         changed();
+    }
+
+    //==========================================================================
+    // Folder tracks (0.50.0).
+    int Studio::folderGroupOf (int trackId) const
+    {
+        const auto* track = project.findTrack (trackId);
+        for (const auto* up = track != nullptr ? project.findTrack (track->folder) : nullptr; up != nullptr; up = project.findTrack (up->folder))
+            if (up->folderGroup)
+                return up->id;
+        return 0;
+    }
+
+    void Studio::joinFolderGroup (Track& track)
+    {
+        // Into a folder with its group channel: its output goes to that group (the manual's).
+        if (track.isChannel() && ! track.isFolder())
+            return;
+        if (track.isFolder() && track.folderGroup)
+            return;   // (a folder's own group goes to the master: groups can't feed groups here)
+        if (const auto group = folderGroupOf (track.id); group != 0 && ! track.isFolder())
+            track.output = group;
+    }
+
+    void Studio::leaveFolderGroup (Track& track)
+    {
+        // Out of a folder's group: back to the master if it went to that group.
+        if (const auto group = folderGroupOf (track.id); group != 0 && track.output == group)
+            track.output = 0;
+    }
+
+    int Studio::addFolderTrack (const juce::String& name, bool withGroup)
+    {
+        int number = 1;
+        for (const auto& other : project.tracks)
+            if (other.isFolder())
+                ++number;
+        Track track;
+        track.id = project.nextTrackId++;
+        track.kind = Track::Kind::folder;
+        track.colour = trackColour ((int) project.tracks.size());
+        track.name = name.isNotEmpty() ? name : "Folder " + juce::String (number);
+        track.folderGroup = withGroup;
+        project.tracks.push_back (track);
+        engine.addChannel (track.id, withGroup);
+        selectTrack (track.id);
+        changed();
+        return track.id;
+    }
+
+    int Studio::moveTracksToNewFolder (std::vector<int> trackIds, bool withGroup)
+    {
+        // (The manual's Move Selected Tracks to New Folder: the folder where the first of them was.)
+        trackIds.erase (std::remove_if (trackIds.begin(), trackIds.end(), [this] (int id) { return project.findTrack (id) == nullptr; }), trackIds.end());
+        if (trackIds.empty())
+            return 0;
+        int firstIndex = (int) project.tracks.size(), parent = 0;
+        for (int i = 0; i < (int) project.tracks.size(); ++i)
+            if (std::find (trackIds.begin(), trackIds.end(), project.tracks[(size_t) i].id) != trackIds.end() && i < firstIndex)
+                firstIndex = i, parent = project.tracks[(size_t) i].folder;
+        int number = 1;
+        for (const auto& other : project.tracks)
+            if (other.isFolder())
+                ++number;
+        Track folder;
+        folder.id = project.nextTrackId++;
+        folder.kind = Track::Kind::folder;
+        folder.colour = project.tracks[(size_t) firstIndex].colour;
+        folder.name = "Folder " + juce::String (number);
+        folder.folder = parent;
+        folder.folderGroup = withGroup;
+        project.tracks.insert (project.tracks.begin() + firstIndex, folder);
+        engine.addChannel (folder.id, withGroup);
+        for (const auto id : trackIds)
+            if (auto* t = project.findTrack (id); t != nullptr && ! (t->isFolder() && project.isInFolder (parent, t->id)))
+            {
+                // (a folder chosen with one of its own tracks: the folder moves, its tracks with it)
+                if (std::find (trackIds.begin(), trackIds.end(), t->folder) != trackIds.end())
+                    continue;
+                leaveFolderGroup (*t);
+                t->folder = folder.id;
+                joinFolderGroup (*t);
+            }
+        project.tidyFolders();
+        selectTrack (folder.id);
+        changed();
+        return folder.id;
+    }
+
+    bool Studio::setTracksFolder (std::vector<int> trackIds, int folderId)
+    {
+        const auto* target = project.findTrack (folderId);
+        if (folderId != 0 && (target == nullptr || ! target->isFolder()))
+            return false;
+        auto any = false;
+        for (const auto id : trackIds)
+            if (auto* t = project.findTrack (id); t != nullptr && t->folder != folderId && id != folderId && ! project.isInFolder (folderId, id))
+            {
+                leaveFolderGroup (*t);
+                t->folder = folderId;
+                joinFolderGroup (*t);
+                any = true;
+            }
+        if (! any)
+            return false;
+        // At the end of the folder (after its last track), or, out of folders, kept where they are.
+        if (folderId != 0)
+        {
+            std::vector<Track> moving, staying;
+            for (auto& t : project.tracks)
+                (std::find (trackIds.begin(), trackIds.end(), t.id) != trackIds.end() ? moving : staying).push_back (std::move (t));
+            project.tracks = std::move (staying);
+            int last = -1;
+            for (int i = 0; i < (int) project.tracks.size(); ++i)
+                if (project.tracks[(size_t) i].id == folderId || project.isInFolder (project.tracks[(size_t) i].id, folderId))
+                    last = i;
+            project.tracks.insert (project.tracks.begin() + (last + 1), std::make_move_iterator (moving.begin()), std::make_move_iterator (moving.end()));
+        }
+        project.tidyFolders();
+        changed();
+        return true;
+    }
+
+    void Studio::setFolderOpen (int folderId, bool open)
+    {
+        auto* folder = project.findTrack (folderId);
+        if (folder == nullptr || ! folder->isFolder() || folder->folderOpen == open)
+            return;
+        folder->folderOpen = open;
+        changed (false);
+    }
+
+    void Studio::setFolderGroup (int folderId, bool on)
+    {
+        auto* folder = project.findTrack (folderId);
+        if (folder == nullptr || ! folder->isFolder() || folder->folderGroup == on)
+            return;
+        if (! on)
+            for (auto& t : project.tracks)
+                if (t.output == folderId)
+                    t.output = 0;   // (what went to its group: back to the master)
+        folder->folderGroup = on;
+        if (on)
+            for (const auto id : project.folderMembers (folderId, true))
+                if (auto* t = project.findTrack (id); t != nullptr && t->output == 0 && folderGroupOf (id) == folderId)
+                    joinFolderGroup (*t);
+        changed();
+    }
+
+    void Studio::setFolderData (int folderId, Track::FolderData data)
+    {
+        auto* folder = project.findTrack (folderId);
+        if (folder == nullptr || ! folder->isFolder() || folder->folderData == data)
+            return;
+        folder->folderData = data;
+        changed (false);
     }
 
     int Studio::duplicateTrack (int trackId)
@@ -1149,14 +1336,14 @@ namespace pr7s
     bool Studio::isTrackShown (int trackId) const
     {
         const auto* track = project.findTrack (trackId);
-        return track != nullptr && ! track->hidden;
+        return track != nullptr && ! track->hidden && ! project.isFoldedAway (*track);   // (0.50.0: in a closed folder: not shown)
     }
 
     std::vector<int> Studio::getShownTracks() const
     {
         std::vector<int> ids;
         for (const auto& track : project.tracks)
-            if (! track.hidden)
+            if (! track.hidden && ! project.isFoldedAway (track))
                 ids.push_back (track.id);
         return ids;
     }
@@ -1248,8 +1435,26 @@ namespace pr7s
             if (written)
                 releaseOne (trackId, muteControl);
             passOn (trackId, LinkGroup::What::muteSolo, [&] (int other) { setMute (other, on); });
+            // (0.50.0) A folder's M: every track in it (the manual: Mute mutes all tracks in the folder).
+            if (track->isFolder() && ! mirroring)
+                for (const auto id : project.folderMembers (trackId, true))
+                    if (auto* member = project.findTrack (id); member != nullptr && ! member->isFolder())
+                        member->mute = on;
             changed (! written);
         }
+    }
+
+    bool Studio::isFolderSoloed (int folderId) const
+    {
+        auto any = false;
+        for (const auto id : project.folderMembers (folderId, true))
+            if (const auto* member = project.findTrack (id); member != nullptr && ! member->isFolder())
+            {
+                if (! member->solo)
+                    return false;
+                any = true;
+            }
+        return any;
     }
 
     void Studio::setSolo (int trackId, bool on, bool exclusive)
@@ -1259,7 +1464,15 @@ namespace pr7s
             if (exclusive)   // Ctrl-click (the manual's exclusive solo): the others' solos off
                 for (auto& other : project.tracks)
                     other.solo = false;
-            project.findTrack (trackId)->solo = on;
+            if (track->isFolder() && ! track->folderGroup)
+            {
+                // (0.50.0) A folder's S: every track in it (its own solo isn't kept: it would silence the FX channels).
+                for (const auto id : project.folderMembers (trackId, true))
+                    if (auto* member = project.findTrack (id); member != nullptr && ! member->isFolder())
+                        member->solo = on && ! member->hidden && ! member->disabled;
+            }
+            else
+                project.findTrack (trackId)->solo = on;
             passOn (trackId, LinkGroup::What::muteSolo, [&] (int other) { setSolo (other, on, false); });
             changed();
         }

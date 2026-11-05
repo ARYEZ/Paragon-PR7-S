@@ -61,6 +61,10 @@ public:
         arrow.setTooltip ("Show/Hide Automation: this track's automation lanes");
         arrow.onClick = [this] { owner.studio.setAutomationOpen (trackId, ! owner.studio.isAutomationOpen (trackId)); };
         addAndMakeVisible (arrow);
+        // (0.50.0) A folder's Expand/Collapse, beside its name.
+        folderArrow.setTooltip ("Expand / Collapse Folder: its tracks shown under it, or folded away (they still play)");
+        folderArrow.onClick = [this] { if (auto* t = track()) owner.studio.setFolderOpen (trackId, ! t->folderOpen); };
+        addChildComponent (folderArrow);
         name.setFont (ParagonLookAndFeel::titleFont (22.0f));   // (0.9.2: 1.7 times the old 13, the owner asked for 1.5 to 2)
         name.setMinimumHorizontalScale (0.6f);
         name.setColour (juce::Label::textColourId, ParagonColours::text);
@@ -85,7 +89,9 @@ public:
         solo.setTooltip ("Solo: hear only the soloed tracks");
         arm.setTooltip ("REC: record-arm: recording and live playing go to this track");
         mute.onClick = [this] { if (auto* t = track()) owner.studio.setMute (trackId, ! t->mute); };
-        solo.onClick = [this] { if (auto* t = track()) owner.studio.setSolo (trackId, ! t->solo); };
+        solo.onClick = [this] { if (auto* t = track()) owner.studio.setSolo (trackId, ! soloed (*t)); };
+        addChildComponent (mute);   // (0.50.0: shown on a folder's row: its M and S act on its tracks)
+        addChildComponent (solo);
         arm.onClick = [this] { if (auto* t = track()) owner.studio.setArmed (t->armed ? 0 : trackId); };
 
         instrument.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
@@ -115,6 +121,11 @@ public:
     }
 
     const pr7s::Track* track() const { return owner.studio.getProject().findTrack (trackId); }
+    bool soloed (const pr7s::Track& t) const
+    {
+        return t.isFolder() && ! t.folderGroup ? owner.studio.isFolderSoloed (trackId) : t.solo;
+    }
+    int indent() const { return 14 * owner.studio.getProject().folderDepth (trackId); }   // (0.50.0) in folders: indented
 
     void refresh()
     {
@@ -125,13 +136,18 @@ public:
             name.setText (t->name, juce::dontSendNotification);
         name.setColour (juce::Label::textColourId, t->disabled ? ParagonColours::textDim : ParagonColours::text);
         mute.setToggleState (t->mute, juce::dontSendNotification);
-        solo.setToggleState (t->solo, juce::dontSendNotification);
+        solo.setToggleState (soloed (*t), juce::dontSendNotification);
+        folderArrow.setVisible (t->isFolder());
+        folderArrow.open = t->folderOpen;
+        folderArrow.repaint();
+        mute.setVisible (t->isFolder());
+        solo.setVisible (t->isFolder());
         arm.setToggleState (t->armed, juce::dontSendNotification);
         if (t->isChannel())
         {
             // An FX or group channel: what it is (an FX channel: its first effect).
             const auto& inserts = t->inserts;
-            instrument.setButtonText (t->isGroup() ? juce::String ("GROUP CHANNEL")
+            instrument.setButtonText (t->isFolder() ? juce::String ("FOLDER") : t->isGroup() ? juce::String ("GROUP CHANNEL")
                                       : ! inserts.empty() && ! inserts.front().isEmpty() ? "FX: " + inserts.front().plugin.name : juce::String ("FX CHANNEL"));
             instrument.setTooltip (t->isGroup() ? "A group channel: the tracks routed to it (their Output), through its effects and fader. Click to delete it"
                                                 : "An FX channel: what the tracks' sends give it, through its effects. Click to open its effect's window, or to delete it");
@@ -154,6 +170,7 @@ public:
         arrow.open = t->automationOpen;
         arrow.repaint();
         followMix();
+        resized();   // (0.50.0: a folder's keys follow its group channel)
         repaint();
     }
 
@@ -187,6 +204,17 @@ public:
         g.fillRect (bounds.withY (bounds.getBottom() - 1.0f).withHeight (1.0f));
         g.setColour (t->disabled ? juce::Colour (0xff4a454c) : t->colour);   // disabled: its colour greyed (as the manual has it)
         g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
+        // (0.50.0) In folders: a faint line for each folder round it; a folder: its colour's tab.
+        for (int level = 1; level * 14 <= indent(); ++level)
+        {
+            g.setColour (ParagonColours::textDim.withAlpha (0.25f));
+            g.fillRect (juce::Rectangle<float> (6.0f + (float) level * 14.0f - 4.0f, 0.0f, 1.0f, bounds.getHeight()));
+        }
+        if (t->isFolder())
+        {
+            g.setColour (t->colour.withAlpha (0.12f));
+            g.fillRect (bounds.withTrimmedLeft (6.0f + (float) indent()));
+        }
         if (selected)
         {
             g.setColour (ParagonColours::accent.withAlpha (0.6f));
@@ -197,7 +225,13 @@ public:
         if (getHeight() >= 66)
         {
             juce::StringArray states;
-            if (t->solo) states.add ("SOLO");
+            if (t->isFolder())
+            {
+                const auto count = (int) owner.studio.getProject().folderMembers (trackId, false).size();
+                states.add (juce::String (count) + (count == 1 ? " TRACK" : " TRACKS") + (t->folderOpen ? "" : " (FOLDED)"));
+                if (t->folderGroup) states.add ("GROUP CHANNEL");
+            }
+            if (soloed (*t)) states.add ("SOLO");
             if (t->mute) states.add ("MUTED");
             if (t->armed) states.add ("REC");
             if (t->automationWrite) states.add ("WRITE");
@@ -229,7 +263,31 @@ public:
         const auto compact = getHeight() < 66;
         instrument.setVisible (false);
         levelArea = {};
-        auto area = getLocalBounds().withTrimmedLeft (12).reduced (6, compact ? juce::jmax (2, (getHeight() - 24) / 2) : 7);
+        auto area = getLocalBounds().withTrimmedLeft (12 + indent()).reduced (6, compact ? juce::jmax (2, (getHeight() - 24) / 2) : 7);
+        const auto* t = track();
+        if (t != nullptr && t->isFolder())
+        {
+            // (0.50.0) A folder: its arrow, its name, M and S (and with its group channel, the volume).
+            folderArrow.setBounds (area.removeFromLeft (18).withSizeKeepingCentre (18, 18).translated (0, compact ? 0 : -8));
+            area.removeFromLeft (2);
+            auto right = area.removeFromRight (t->folderGroup ? 92 : 58).withSizeKeepingCentre (t->folderGroup ? 92 : 58, 24);
+            area.removeFromRight (6);
+            volume.setVisible (t->folderGroup);
+            if (t->folderGroup)
+            {
+                volume.setBounds (right.removeFromRight (28));
+                right.removeFromRight (6);
+            }
+            solo.setBounds (right.removeFromRight (26));
+            right.removeFromRight (4);
+            mute.setBounds (right.removeFromRight (26));
+            monitor.setBounds ({}), lanes.setBounds ({});
+            name.setBounds (area);
+            arrow.setVisible (t->folderGroup);
+            arrow.setBounds (indent(), getHeight() - 18, 16, 16);
+            return;
+        }
+        arrow.setVisible (true);
         // On the right, level with the name: MON (an audio track's), the level, the volume.
         // (0.36.1, the owner asked: the name runs up to the meter. The strip is only as wide as what's
         // in it: the level 44 + 4 + the volume 28; it was 180, kept from when MON and LANES sat there.)
@@ -248,7 +306,7 @@ public:
         monitor.setVisible (false);
         lanes.setVisible (false);
         name.setBounds (area);
-        arrow.setBounds (0, getHeight() - 18, 16, 16);
+        arrow.setBounds (indent(), getHeight() - 18, 16, 16);
         // (Show/Hide Automation: the arrow at the lower left corner, as the manual has it.)
     }
 
@@ -304,7 +362,7 @@ public:
     juce::TextButton mute { "M" }, solo { "S" }, arm { "REC" }, monitor { "MON" }, instrument, read { "R" }, write { "W" };
     juce::TextButton lanes { "LANES" };   // Show Lanes (0.29.0)
     ValueSlider volume;   // (double-click: type a value, 0.9.9)
-    Arrow arrow;
+    Arrow arrow, folderArrow;
     juce::Rectangle<float> levelArea;
     LevelMeter::Ballistics reading;
 };
@@ -1298,6 +1356,8 @@ juce::PopupMenu TrackList::makeAddTrackMenu (int offset)
     menu.addItem (offset + 8, "Tempo track (tempo changes: steps and ramps)", ! studio.getProject().tempoTrackShown);
     menu.addItem (offset + 10, "Signature track (time signature changes)", ! studio.getProject().signatureTrackShown);
     menu.addItem (offset + 11, "Marker track (position and cycle markers)", ! studio.getMarkerTrack().shown);
+    menu.addItem (offset + 12, "Folder track (holds tracks: fold them away, mute or solo them together)");
+    menu.addItem (offset + 13, "Folder track with group channel (its tracks summed)");
     menu.addItem (offset + 9, "Chord track (the song's chords and scales)", ! studio.getChordTrack().shown);
     menu.addSeparator();
     menu.addItem (offset + 7, "Track from a preset...");
@@ -1328,6 +1388,10 @@ bool TrackList::addTrackChosen (int chosen)
         else if (chosen == 11)
         {
             studio.addMarkerTrack();
+        }
+        else if (chosen == 12 || chosen == 13)
+        {
+            studio.addFolderTrack ({}, chosen == 13);
         }
         else if (chosen == 7)
         {
@@ -1565,6 +1629,30 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
             included.addItem (20000 + g.id, juce::String (g.id) + "  " + g.name, true, link != nullptr && link->id == g.id);
         menu.addSubMenu ("Included in Link Group: " + (link != nullptr ? link->name : juce::String ("None")), included);
     }
+    // Folders (0.50.0, the manual's Track Folding).
+    {
+        juce::PopupMenu folding, into;
+        folding.addItem (80, several ? "Move Selected Tracks to New Folder" : "Move Track to New Folder");
+        folding.addItem (81, several ? "Move Selected Tracks to New Folder with Group Channel" : "Move Track to New Folder with Group Channel");
+        for (const auto& other : studio.getProject().tracks)
+            if (other.isFolder() && other.id != trackId && ! studio.getProject().isInFolder (other.id, trackId))
+                into.addItem (500000 + other.id, other.name, true, track->folder == other.id);
+        folding.addSubMenu ("Move into Folder", into, into.getNumItems() > 0);
+        folding.addItem (82, "Move out of Its Folder", track->folder != 0);
+        if (track->isFolder())
+        {
+            folding.addSeparator();
+            folding.addItem (84, track->folderOpen ? "Collapse Folder" : "Expand Folder");
+            folding.addItem (83, track->folderGroup ? "Disable Group Channel" : "Enable Group Channel");
+            juce::PopupMenu data;
+            data.addItem (85, "Always Show Data", true, track->folderData == pr7s::Track::FolderData::always);
+            data.addItem (86, "Never Show Data", true, track->folderData == pr7s::Track::FolderData::never);
+            data.addItem (87, "Hide Data When Expanded", true, track->folderData == pr7s::Track::FolderData::hideWhenExpanded);
+            folding.addSubMenu ("Show Data on Folder Tracks", data);
+        }
+        menu.addSeparator();
+        menu.addSubMenu ("Track Folding", folding);
+    }
     // Add Track (0.9.11: the + ADD TRACK key's menu, here at the foot).
     menu.addSeparator();
     menu.addSubMenu ("Add Track", makeAddTrackMenu (addTrackOffset));
@@ -1578,6 +1666,44 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
         }
         if (TrackActions::handle (chosen, studio, trackId, chooser))
             return;
+        // Folders (0.50.0).
+        if (chosen == 80 || chosen == 81)
+        {
+            auto ids = studio.getSelectedTracks();
+            if (std::find (ids.begin(), ids.end(), trackId) == ids.end())
+                ids = { trackId };
+            studio.moveTracksToNewFolder (ids, chosen == 81);
+            return;
+        }
+        if (chosen >= 500000 && chosen < instrumentItems * 10)
+        {
+            auto ids = studio.getSelectedTracks();
+            if (std::find (ids.begin(), ids.end(), trackId) == ids.end())
+                ids = { trackId };
+            studio.setTracksFolder (ids, chosen - 500000);
+            return;
+        }
+        if (chosen == 82)
+        {
+            if (const auto* t = studio.getProject().findTrack (trackId))
+            {
+                const auto* parent = studio.getProject().findTrack (t->folder);
+                studio.setTracksFolder ({ trackId }, parent != nullptr ? parent->folder : 0);
+            }
+            return;
+        }
+        if (chosen >= 83 && chosen <= 87)
+        {
+            if (const auto* t = studio.getProject().findTrack (trackId))
+            {
+                if (chosen == 83) studio.setFolderGroup (trackId, ! t->folderGroup);
+                if (chosen == 84) studio.setFolderOpen (trackId, ! t->folderOpen);
+                if (chosen == 85) studio.setFolderData (trackId, pr7s::Track::FolderData::always);
+                if (chosen == 86) studio.setFolderData (trackId, pr7s::Track::FolderData::never);
+                if (chosen == 87) studio.setFolderData (trackId, pr7s::Track::FolderData::hideWhenExpanded);
+            }
+            return;
+        }
         if (chosen == 65 || chosen == 66 || chosen == 67)
         {
             if (const auto* t = studio.getProject().findTrack (trackId))

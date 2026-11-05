@@ -359,8 +359,8 @@ std::vector<Timeline::Row> Timeline::layout (const pr7s::Studio& studio) const
         add (Row::Kind::chords, 0, -1, chordRowHeight());   // (0.16.0: under the tempo track's)
     for (const auto& track : studio.getProject().tracks)
     {
-        if (track.hidden)
-            continue;   // (VISIBILITY shows it again)
+        if (track.hidden || studio.getProject().isFoldedAway (track))
+            continue;   // (VISIBILITY shows it again; 0.50.0: so does opening its folder)
         add (Row::Kind::track, track.id, -1, trackRowHeight());
         // Its lanes of takes (0.29.0, Show Lanes): each lane, and an empty one under them to drag onto.
         if (track.showLanes && ! track.isChannel())
@@ -438,7 +438,8 @@ juce::Rectangle<float> ArrangeView::partRow (int trackId, int lane) const
 
 juce::Rectangle<float> ArrangeView::getPartBounds (int trackId, int index) const
 {
-    if (const auto* track = studio.getProject().findTrack (trackId); track != nullptr && ! track->hidden && juce::isPositiveAndBelow (index, (int) track->parts.size()))
+    if (const auto* track = studio.getProject().findTrack (trackId); track != nullptr && ! track->hidden && ! studio.getProject().isFoldedAway (*track)
+                                                                      && juce::isPositiveAndBelow (index, (int) track->parts.size()))
     {
         const auto& part = track->parts[(size_t) index];
         const auto strip = partRow (trackId, part.lane);
@@ -668,6 +669,7 @@ void ArrangeView::paint (juce::Graphics& g)
 
     // (0.49.0) Marker lines down the arrangement, behind the parts (the manual's Show Marker Lines).
     paintMarkerLines (g);
+    paintFolders (g);   // (0.50.0) folders' blocks
 
     // The cycle range over the lanes, faintly.
     {
@@ -682,7 +684,7 @@ void ArrangeView::paint (juce::Graphics& g)
     for (size_t t = 0; t < project.tracks.size(); ++t)
     {
         const auto& track = project.tracks[t];
-        if (track.hidden)
+        if (track.hidden || project.isFoldedAway (track))
             continue;
         // A disabled track's parts: greyed out (its colour changes, as the manual has it).
         const auto colour = track.disabled ? juce::Colour (0xff4a454c) : track.colour;
@@ -1454,6 +1456,8 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
 
     if ((tool == Tool::select || tool == Tool::comp) && ! event.mods.isPopupMenu() && compHandleDown (event))
         return;
+    if (tool == Tool::select && ! event.mods.isPopupMenu() && folderDown (event))
+        return;
     if (toolDown (event))
         return;
     const auto hit = partAt (event.position);
@@ -1561,6 +1565,23 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
 
 void ArrangeView::mouseDrag (const juce::MouseEvent& event)
 {
+    if (drag == Drag::folderMove)
+    {
+        const auto grid = event.mods.isCommandDown() ? 0.0 : timeline.snapGrid (studio.getProject());
+        auto delta = timeline.beatForX (event.position.x) - folderDownBeat;
+        delta = grid > 0.0 ? std::round (delta / grid) * grid : delta;
+        // (none before the song's start)
+        for (const auto id : folderDragIds)
+            if (const auto where = studio.findPart (id))
+                delta = juce::jmax (delta, -studio.getProject().findTrack (where->first)->parts[(size_t) where->second].start);
+        if (std::abs (delta - folderDelta) > 1.0e-9)
+        {
+            folderDelta = delta;
+            dragMoved = std::abs (delta) > 1.0e-9;
+            repaint();
+        }
+        return;
+    }
     if (drag == Drag::markerMove || drag == Drag::markerStart || drag == Drag::markerEnd || drag == Drag::markerNewCycle)
     {
         markerDrag (event);
@@ -1769,6 +1790,18 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
 
 void ArrangeView::mouseUp (const juce::MouseEvent& event)
 {
+    if (drag == Drag::folderMove)
+    {
+        drag = Drag::none;
+        const auto delta = std::exchange (folderDelta, 0.0);
+        const auto ids = std::exchange (folderDragIds, {});
+        folderDragId = 0;
+        if (dragMoved && std::abs (delta) > 1.0e-9)
+            studio.moveParts (ids, delta, 0, event.mods.isAltDown());   // (Alt: copies)
+        dragMoved = false;
+        repaint();
+        return;
+    }
     if (drag == Drag::markerMove || drag == Drag::markerStart || drag == Drag::markerEnd || drag == Drag::markerNewCycle)
     {
         markerUp();
@@ -4882,4 +4915,112 @@ void ArrangeView::showHitpointSettings (juce::Component* target)
     };
     auto panel = std::make_unique<Panel> (studio);
     juce::CallOutBox::launchAsynchronously (std::move (panel), target->getScreenBounds(), nullptr);
+}
+
+//==============================================================================
+// Folder tracks (0.50.0).
+std::vector<std::pair<double, double>> ArrangeView::folderBlocks (int folderId) const
+{
+    const auto& project = studio.getProject();
+    std::vector<std::pair<double, double>> spans;
+    for (const auto id : project.folderMembers (folderId, true))
+        if (const auto* t = project.findTrack (id))
+            for (const auto& part : t->parts)
+                spans.push_back ({ part.start, part.end() });
+    std::sort (spans.begin(), spans.end());
+    std::vector<std::pair<double, double>> merged;
+    for (const auto& span : spans)
+        if (! merged.empty() && span.first <= merged.back().second + 1.0e-9)
+            merged.back().second = juce::jmax (merged.back().second, span.second);
+        else
+            merged.push_back (span);
+    return merged;
+}
+
+std::vector<int> ArrangeView::folderPartsIn (int folderId, double start, double end) const
+{
+    const auto& project = studio.getProject();
+    std::vector<int> ids;
+    for (const auto id : project.folderMembers (folderId, true))
+        if (const auto* t = project.findTrack (id); t != nullptr && ! t->frozen)
+            for (const auto& part : t->parts)
+                if (part.start < end - 1.0e-9 && part.end() > start + 1.0e-9)
+                    ids.push_back (part.id);
+    return ids;
+}
+
+void ArrangeView::paintFolders (juce::Graphics& g)
+{
+    const auto& project = studio.getProject();
+    const auto clip = g.getClipBounds().toFloat();
+    for (const auto& folder : project.tracks)
+    {
+        if (! folder.isFolder() || folder.hidden || project.isFoldedAway (folder))
+            continue;
+        if (folder.folderData == pr7s::Track::FolderData::never
+            || (folder.folderData == pr7s::Track::FolderData::hideWhenExpanded && folder.folderOpen))
+            continue;
+        const auto top = trackTop (folder.id) + 4.0f, height = (float) timeline.trackRowHeight() - 8.0f;
+        if (top > clip.getBottom() || top + height < clip.getY())
+            continue;
+        // The tracks in it with parts: a strip each inside the blocks.
+        std::vector<const pr7s::Track*> members;
+        for (const auto id : project.folderMembers (folder.id, true))
+            if (const auto* t = project.findTrack (id); t != nullptr && ! t->parts.empty())
+                members.push_back (t);
+        const auto shift = folderDragId == folder.id ? folderDelta : 0.0;
+        for (const auto& [start, end] : folderBlocks (folder.id))
+        {
+            const auto x1 = timeline.xForBeat (start + shift), x2 = timeline.xForBeat (end + shift);
+            if (x2 < clip.getX() || x1 > clip.getRight())
+                continue;
+            const auto block = juce::Rectangle<float> (x1, top, juce::jmax (2.0f, x2 - x1), height);
+            g.setColour (folder.colour.withAlpha (0.16f));
+            g.fillRoundedRectangle (block, 3.0f);
+            g.setColour (folder.colour.withAlpha (0.6f));
+            g.drawRoundedRectangle (block, 3.0f, 1.0f);
+            const auto strip = members.empty() ? 0.0f : (height - 6.0f) / (float) members.size();
+            for (size_t m = 0; m < members.size(); ++m)
+                for (const auto& part : members[m]->parts)
+                {
+                    if (part.end() <= start || part.start >= end)
+                        continue;
+                    const auto px1 = timeline.xForBeat (part.start + shift), px2 = timeline.xForBeat (part.end() + shift);
+                    g.setColour ((part.muted ? ParagonColours::textDim : members[m]->colour).withAlpha (0.8f));
+                    g.fillRect (juce::Rectangle<float> (px1, top + 3.0f + strip * (float) m + strip * 0.2f,
+                                                        juce::jmax (1.0f, px2 - px1), juce::jmax (1.0f, strip * 0.6f)));
+                }
+        }
+    }
+}
+
+bool ArrangeView::folderDown (const juce::MouseEvent& event)
+{
+    const auto row = rowAt (event.position.y);
+    if (! row || row->kind != Timeline::Row::Kind::track)
+        return false;
+    const auto* folder = studio.getProject().findTrack (row->busId);
+    if (folder == nullptr || ! folder->isFolder())
+        return false;
+    const auto beat = timeline.beatForX (event.position.x);
+    for (const auto& [start, end] : folderBlocks (folder->id))
+        if (beat >= start && beat <= end)
+        {
+            auto ids = folderPartsIn (folder->id, start, end);
+            if (event.mods.isShiftDown())
+                for (const auto id : getSelectedParts())
+                    if (std::find (ids.begin(), ids.end(), id) == ids.end())
+                        ids.push_back (id);
+            selectParts (ids);
+            studio.selectTrack (folder->id);
+            drag = Drag::folderMove;
+            dragMoved = false;
+            folderDragIds = ids;
+            folderDragId = folder->id;
+            folderDownBeat = beat;
+            folderDelta = 0.0;
+            repaint();
+            return true;
+        }
+    return false;
 }

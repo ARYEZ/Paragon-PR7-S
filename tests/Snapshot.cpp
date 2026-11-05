@@ -284,6 +284,15 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.renameTrack (lead, "Bridge Synth Lead (Right)");
         studio.renameTrack (guitar, "Forever Found Rhythm Guitar Double");
     }
+    // PARAGON_SNAPSHOT_FOLDERS=1 (0.50.0): keys and bass in a folder with its group channel; the guitar in a closed one.
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FOLDERS", {}).isNotEmpty())
+    {
+        const auto band = studio.moveTracksToNewFolder ({ keys, bass }, true);
+        studio.renameTrack (band, "Rhythm Section");
+        const auto gtr = studio.moveTracksToNewFolder ({ guitar }, false);
+        studio.renameTrack (gtr, "Guitars");
+        studio.setFolderOpen (gtr, false);
+    }
     // PARAGON_SNAPSHOT_MARKERS=1 (0.49.0): the marker track with position and cycle markers, one selected.
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_MARKERS", {}).isNotEmpty())
     {

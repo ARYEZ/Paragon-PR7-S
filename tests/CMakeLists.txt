@@ -50,6 +50,7 @@ add_executable(ParagonPR7STests
     SignatureTests.cpp
     InfoLinePartsTests.cpp
     MarkerTests.cpp
+    FolderTests.cpp
     PerformanceTests.cpp
     UiTests.cpp
     PerfTests.cpp

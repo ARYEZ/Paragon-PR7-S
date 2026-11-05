@@ -535,7 +535,10 @@ void MixerView::rebuild()
     // A strip for each track, in the track list's order (kept if the tracks are the same).
     std::vector<int> ids;
     for (const auto& track : studio.getProject().tracks)
-        if (single ? ! singleIsMaster && track.id == singleTrack : ! track.hidden && ! track.disabled)   // (hidden and disabled tracks: no strip, as the manual has it)
+        // (hidden and disabled tracks: no strip, as the manual has it; 0.50.0: nor a folder without its group
+        // channel, nor a track in a closed folder: the manual syncs the mixer with the track list)
+        if (single ? ! singleIsMaster && track.id == singleTrack
+                   : ! track.hidden && ! track.disabled && ! (track.isFolder() && ! track.folderGroup) && ! studio.getProject().isFoldedAway (track))
             ids.push_back (track.id);
     auto same = strips.size() == ids.size();
     for (size_t i = 0; same && i < ids.size(); ++i)

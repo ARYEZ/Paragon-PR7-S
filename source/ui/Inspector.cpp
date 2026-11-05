@@ -703,7 +703,9 @@ void Inspector::refresh()
     preset.setEnabled (! t->disabled);
 
     // The instrument key: its name (a menu); an FX channel's effect; a group.
-    if (t->isGroup())
+    if (t->isFolder())
+        instrument.setButtonText (t->folderGroup ? "FOLDER + GROUP CHANNEL" : "FOLDER");   // (0.50.0)
+    else if (t->isGroup())
         instrument.setButtonText ("GROUP CHANNEL");
     else if (t->isFx())
         instrument.setButtonText (! t->inserts.empty() && ! t->inserts.front().isEmpty() ? "FX: " + t->inserts.front().plugin.name : juce::String ("FX CHANNEL"));
@@ -925,7 +927,8 @@ void Inspector::layout()
         // The master (0.9.12): its basics (R W, volume), inserts and fader.
         const auto applies = master ? section == Section::basics || section == Section::inserts || section == Section::fader || section == Section::eq
                                     : t != nullptr && (section != Section::sends || ! t->isFx())
-                                          && (section != Section::chords || t->kind == pr7s::Track::Kind::instrument);   // (0.36.0: MIDI only)
+                                          && (section != Section::chords || t->kind == pr7s::Track::Kind::instrument)   // (0.36.0: MIDI only)
+                                          && (section == Section::basics || ! t->isFolder() || t->folderGroup);   // (0.50.0: a folder: its basics)
         if (! applies && section != Section::basics)
             continue;
         header.setBounds (0, y, w, headerHeight);

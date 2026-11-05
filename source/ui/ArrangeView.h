@@ -304,6 +304,12 @@ public:
     juce::Rectangle<float> getMarkerBounds (int index) const;   // a marker's flag (a cycle marker's: its bar)
     int markerAt (juce::Point<float>) const;                     // the marker there, -1: none
     std::function<void()> onOpenMarkers;   // the menu's Markers window (Ctrl+M)
+
+    // Folder tracks (0.50.0, the manual's Folder Parts): a folder's row shows its tracks' parts as
+    // blocks (where any of them has a part; each track a strip inside). A click on a block selects
+    // every part in it (Shift: adds them), a drag moves them all along the song (Alt: copies them).
+    std::vector<std::pair<double, double>> folderBlocks (int folderId) const;   // beats, merged
+    std::vector<int> folderPartsIn (int folderId, double start, double end) const;   // part ids
     // Where an event is drawn, and the tempo row's curve area (tests).
     juce::Point<float> getTempoEventPosition (int index) const;
     juce::Rectangle<float> getTempoArea() const;
@@ -451,7 +457,8 @@ private:
                       erasePoints, linePoints, pointHandle, curve, segmentScale,
                       newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove, marquee,
                       tempoPoints, tempoBand, tempoDraw, chordMove, comp, takeEdge, slip, audition, warpMarker,
-                      markerMove, markerStart, markerEnd, markerNewCycle };   // (0.49.0)
+                      markerMove, markerStart, markerEnd, markerNewCycle,   // (0.49.0)
+                      folderMove };   // (0.50.0)
     // WARP (0.32.0, the manual's Free Warp in the event display): the marker being dragged.
     int warpPartId = 0, warpIndex = -1;
     double warpTo = 0.0;
@@ -542,6 +549,11 @@ private:
     int markerDragIndex = -1;
     bool markerNameAfter = false;   // Shift held when adding: the name box follows
     void paintMarkers (juce::Graphics&, const Timeline::Row&);
+    void paintFolders (juce::Graphics&);
+    bool folderDown (const juce::MouseEvent&);
+    std::vector<int> folderDragIds;
+    int folderDragId = 0;
+    double folderDownBeat = 0.0, folderDelta = 0.0;
     void paintMarkerLines (juce::Graphics&);
     bool markerDown (const juce::MouseEvent&);
     void markerDrag (const juce::MouseEvent&);
