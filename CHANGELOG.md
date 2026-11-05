@@ -2,6 +2,41 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.57.1
+
+**Speed, round one** (you asked to make the studio run more efficiently). Three reviewers went through everything added since the last speed pass (0.34.5): the audio, the screen, and the waits. I checked each finding against the code before changing anything, and all 421 tests still pass. The sound is unchanged: the audio changes give exactly the same samples.
+
+**Audio and plug-ins**
+- **Automated plug-in knobs are now set only when they move.** Before, every change in the song (even a fader nudge) made the studio send every automated knob to its plug-in again, though nothing had moved. Plug-ins such as Kontakt take a parameter event as a reason to do work, so this was extra load on every change.
+- **Comped audio tracks are much cheaper to update.** Working out the auto crossfades looked at every other clip again for every clip. The cost grew with the cube of the number of clips, and it ran on every change, fader moves included. On a track of 100 comped or sliced clips that was tens of thousands of steps per change; now it is worked out once per track.
+- **The channel EQ** works on left and right together: the same samples, quicker.
+
+**The screen** (your window spans three monitors, so every full redraw is big)
+- **While recording,** the screen used to redraw everything 30 times a second whether or not anything arrived. Now it redraws when notes come in, and otherwise five times a second (so a growing audio recording still shows).
+- **The MIDI editor, the Inspector and the chord pads** no longer redraw at all on a fader, pan or send move. The arrangement and mixer already worked this way.
+- **The arrangement's playhead** redraws only a thin strip each frame, but the grid, ruler ticks, bar numbers and markers were still worked out across the whole width every frame. Now only the strip is.
+- **The info line** no longer re-sorts the selected parts ten times a second (with Ctrl+A on a big song, that was millions of checks a second while idle).
+
+**Waits**
+- **IDEAS** makes only the tab you're looking at (and what BUILD SECTION uses). It made every tab on each change, and read your library's groove files each time.
+- **LEARN A DRUMMER** reads your folder in the background, counting the songs as it goes, so the window doesn't freeze on a big folder.
+- **MediaBay ratings and tags** are saved once you stop clicking. Every star or tag rewrote the whole database file, which is megabytes for a big sample library.
+
+**Measured here** (a test song of 32 tracks with 2,000 notes each, EQ on every channel, Follow Chord Track and automation):
+- an engine update after a fader move: 0.2 ms;
+- one audio block: 0.44 ms of 10.7 ms;
+- IDEAS after a change: 0.3 ms (making every tab, as before: 1.3 ms);
+- reading 40 drum songs: 38 ms.
+
+These are on this cloud machine with stand-in instruments, not your plug-ins.
+
+**Next (0.57.2):**
+- audio tracks keeping their clips when only the mix changed;
+- VariAudio and warping rendered in the background;
+- recordings loaded in the background when a song opens;
+- the MediaBay search;
+- the transport's screens and the meters drawn more cheaply.
+
 ## 0.57.0
 
 **Build a whole section** (you chose BUILD SECTION in IDEAS, and asked that it suggest what comes next as the chord suggestions do)
