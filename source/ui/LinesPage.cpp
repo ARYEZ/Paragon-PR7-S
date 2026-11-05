@@ -937,8 +937,8 @@ void LinesPage::resized()
     tabs.removeFromRight (8);
     riffKey.setBounds (tabs.removeFromRight (180));
     groovesKey.setBounds (riffKey.getBounds());
-    drumKey.setBounds (tuningBox.getBounds().getUnion (tuningLabel.getBounds()));
     writtenKey.setBounds (velocitiesKey.getBounds().withLeft (velocitiesKey.getX() - 30));
+    drumKey.setBounds (tuningBox.getBounds().getUnion (tuningLabel.getBounds()).withRight (writtenKey.getX() - 8));
     tabs.removeFromRight (8);
     styleBox.setBounds (tabs.removeFromRight (140));
 

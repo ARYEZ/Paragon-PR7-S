@@ -306,7 +306,7 @@ namespace pr7s
             const auto last = bar == bars - 1;
             if (section == DrumSection::ending && last)
                 hits = { { 0, kick, 120 }, { 0, crash, 120 }, { 0, crash2, 112 }, { 0, snare, 110 } };   // the last hit
-            else if ((s.fillEvery > 0 && (bar + 1) % s.fillEvery == 0 && ! last) || (section == DrumSection::ending && bar == bars - 2))
+            else if ((s.fillEvery > 0 && (bar + 1) % s.fillEvery == 0 && section != DrumSection::ending) || (section == DrumSection::ending && bar == bars - 2))
                 addFill (hits, style, section == DrumSection::ending ? 2 : s.fillBeats, rng);
             // A crash where a phrase begins (and after every fill), with the kick.
             const auto afterFill = bar > 0 && s.fillEvery > 0 && bar % s.fillEvery == 0;

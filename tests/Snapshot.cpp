@@ -971,6 +971,8 @@ TEST_CASE ("Snapshot: the guitar VELOCITIES panel", "[.][snapshot-velocities]")
             panel = std::make_unique<HumanizePanel> (0.4f, true);
         else if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUMANIZE", {}) == "melody")   // (0.41.0: MELODY SETTINGS)
             panel = std::make_unique<MelodyPanel> (pr7s::MelodySettings {});
+        else if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUMANIZE", {}) == "drums")   // (0.55.0: DRUM SETTINGS)
+            panel = std::make_unique<DrumPanel> (pr7s::DrumSettings {});
         else if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUMANIZE", {}) == "riff")   // (0.53.0: RIFF SETTINGS)
         {
             pr7s::RiffSettings riff;

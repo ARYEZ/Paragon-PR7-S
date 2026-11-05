@@ -2,6 +2,28 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.55.0
+
+**The beat generator** (you asked: beats made new, not only the written ones)
+- The DRUMS tab's left column is now **GENERATED: ONE PER SECTION**: an **Intro, Verse, Chorus, Bridge, Breakdown** and **Ending** beat for the STYLE you pick, built new from rules each time.
+- **MORE IDEAS** deals six new beats every time.
+- **How a beat is built:**
+  - Each style has its habits: where a kick is likely on each sixteenth, the snare's backbone (two and four, half time, or thrash's skank), the cymbal and how fast it's played, where ghost notes go, how much double kick.
+  - Each section changes them: the intro sparser, the chorus bigger (crashes, ride or china), the bridge on the ride bell in half time, the breakdown in half time with kicks in chug bursts and the china, the ending with a fill and a last big hit.
+  - A section's groove is drawn once and played again, as a drummer keeps a groove; the third bar of each phrase is slightly varied, and a crash marks where phrases begin.
+- **DRUM SETTINGS** (the key beside STYLE):
+  - **DENSITY:** fewer or more kicks.
+  - **DOUBLE KICK:** how much the feet fill in; near 100% in a metal style, constant sixteenths.
+  - **GHOST NOTES:** soft snare notes between the backbeats.
+  - **FILLS:** off, or every 2, 4 or 8 bars, one or two beats long.
+  - **CYMBAL:** each section's own, or hats, ride or china throughout.
+  - **LOCK KICK TO RIFF:** the kick on every hit of the guitar riff you last played or used.
+  - At 50% everything is the style's own.
+- The written beats from 0.54.0 are still there: **WRITTEN BEATS** switches the column to them.
+- **Next (0.56.0):** learning drummer profiles from your folder of song MIDI, finding each song's sections (intro, verse, chorus, bridge, breakdown, ending) for you to check, then driving this generator with what it learned.
+
+**What I can't check here:** how the beats feel played through your drum library. The rules and the notes they make are tested, not heard.
+
 ## 0.54.0
 
 **A DRUMS tab in IDEAS** (you asked: beats generated from scratch, and the grooves in your library)
