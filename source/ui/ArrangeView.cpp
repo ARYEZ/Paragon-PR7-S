@@ -3229,7 +3229,8 @@ void ArrangeView::automationUp()
         // there, or with no points yet the control's own (the owner's report: points took the
         // mouse's height, so four clicks along a flat line gave four values; in the other DAW
         // they all keep the line's). Moved up or down afterwards, or drawn with DRAW at a height.
-        // On the line between two points already, nothing stays (as the manual has it).
+        // (0.46.1, the owner asked) Between two points too: it's added on the line there, to drag
+        // up or down (the manual drops a point that doesn't leave the line; the owner wants it).
         auto points = editPointsOf (*lane);
         const auto beat = juce::jmax (0.0, pr7s::snap (timeline.beatForX (pointDownAt.x), timeline.snapGrid (studio.getProject())));
         auto value = isTrimming (*lane) ? 0.5f : studio.getControlValue (pointSelection.busId, *lane);
@@ -3241,11 +3242,8 @@ void ArrangeView::automationUp()
                 value = *onLine;
         }
         const pr7s::AutomationPoint p { beat, juce::jlimit (0.0f, 1.0f, value) };
-        const auto between = ! points.empty() && p.beat > points.front().beat && p.beat < points.back().beat;
-        pr7s::AutomationLane curve;
-        curve.points = points;
-        if (between && ! lane->isStep() && std::abs (*curve.valueAt (p.beat) - p.value) < 0.015f)
-            return;
+        if (std::any_of (points.begin(), points.end(), [&p] (const pr7s::AutomationPoint& q) { return std::abs (q.beat - p.beat) < 1.0e-9; }))
+            return;   // (one there already)
         points.push_back (p);
         commitPoints (std::move (points), { p });
         return;
@@ -3311,15 +3309,28 @@ void ArrangeView::deleteSelectedPoints()
         return;
     std::vector<pr7s::AutomationPoint> kept;
     const auto virgin = studio.getAutomationSettings().virginTerritory && ! isTrimming (*lane);
-    for (int i = 0; i < (int) editPointsOf (*lane).size(); ++i)
+    const auto& points = editPointsOf (*lane);
+    for (int i = 0; i < (int) points.size(); ++i)
     {
         const auto deleted = std::binary_search (pointSelection.points.begin(), pointSelection.points.end(), i);
         if (! deleted)
-            kept.push_back (editPointsOf (*lane)[(size_t) i]);
-        else if (virgin && ! kept.empty() && i + 1 < (int) editPointsOf (*lane).size())
+            kept.push_back (points[(size_t) i]);
+        else if (virgin && ! kept.empty() && i + 1 < (int) points.size())
             kept.back().terminator = true;   // (0.28.0, virgin territory: deleting makes a gap)
     }
-    commitPoints (std::move (kept), {});
+    // (0.46.1, the owner asked) The next point after what went is selected, so Delete again takes
+    // it; at the end of the lane, the one before.
+    std::vector<pr7s::AutomationPoint> next;
+    const auto last = pointSelection.points.back();
+    if (last + 1 < (int) points.size())
+    {
+        const auto after = (size_t) (last + 1 - (int) pointSelection.points.size());
+        if (after < kept.size())
+            next.push_back (kept[after]);
+    }
+    else if (! kept.empty())
+        next.push_back (kept.back());
+    commitPoints (std::move (kept), std::move (next));
 }
 
 void ArrangeView::selectAllPoints (int busId, int laneIndex)

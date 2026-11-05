@@ -2,6 +2,18 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.46.1
+
+Two more automation fixes you asked for:
+
+**A point anywhere you click, between points too.**
+- **Before:** a click between two points added nothing. The manual drops a point that doesn't leave the line, so 0.45.1 still followed that rule.
+- **Now:** a point is added on the line where you click, between points or not, and it's selected so you can drag it up or down. (It still won't add a second point exactly where one is.)
+
+**Delete moves on to the next point.**
+- **What happens now:** delete a point (or several) and the next point after them is selected, so pressing Delete again takes that one, and so on along the lane. At the end of the lane, the one before is selected.
+- **Undo:** each Delete is its own undo step.
+
 ## 0.46.0
 
 **The channel EQ, as four bands of the other DAW's Frequency 2** (you asked; you chose the core with the spectrum, in place of the old one). Every channel's EQ (the Inspector's EQUALIZERS and the EQ window) works like this now:

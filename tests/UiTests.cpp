@@ -916,9 +916,28 @@ TEST_CASE ("Automation on screen: lanes under their track, lined up; click adds 
     studio.undo();
     studio.dispatchPendingMessages();
     REQUIRE (studio.getAutomation (first)->at (0).points.size() == 2);
-    // On the line between them: nothing added (as the manual has it).
+    // (0.46.1, the owner asked) Between them too: a point on the line there, selected.
     click ({ 6.0f * beatPixels, yFor (0.5f) });
-    CHECK (studio.getAutomation (first)->at (0).points.size() == 2);
+    REQUIRE (studio.getAutomation (first)->at (0).points.size() == 3);
+    CHECK (studio.getAutomation (first)->at (0).points[1].beat == 6.0);
+    CHECK_THAT (studio.getAutomation (first)->at (0).points[1].value, WithinAbs (fader, 0.001));
+    CHECK (arrange.getPointSelection().points == std::vector<int> { 1 });
+    // Delete: it goes and the next point (beat 8) is selected; Delete again takes that, then the
+    // one before it at the end of the lane (beat 4).
+    arrange.deleteSelectedPoints();
+    REQUIRE (studio.getAutomation (first)->at (0).points.size() == 2);
+    REQUIRE (arrange.getPointSelection().points == std::vector<int> { 1 });
+    CHECK (studio.getAutomation (first)->at (0).points[1].beat == 8.0);
+    arrange.deleteSelectedPoints();
+    REQUIRE (studio.getAutomation (first)->at (0).points.size() == 1);
+    CHECK (arrange.getPointSelection().points == std::vector<int> { 0 });
+    studio.undo();
+    studio.undo();
+    studio.dispatchPendingMessages();
+    REQUIRE (studio.getAutomation (first)->at (0).points.size() == 3);
+    studio.undo();   // (the point at beat 6 out again)
+    studio.dispatchPendingMessages();
+    REQUIRE (studio.getAutomation (first)->at (0).points.size() == 2);
 
     // Drag the second point down (Ctrl: up and down only, so it stays on its beat).
     const auto point = arrange.getPointPosition (first, 0, 1);
