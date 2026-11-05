@@ -1,5 +1,8 @@
 #include "Logo.h"
 
+#include "ui/Finish.h"
+#include "ui/ParagonLookAndFeel.h"
+
 namespace Logo
 {
     namespace
@@ -125,5 +128,85 @@ namespace Logo
             g.strokePath (seven, stroke);
         }
         return bounds;
+    }
+
+    void drawAppIcon (juce::Graphics& g, juce::Rectangle<float> area, bool withName)
+    {
+        const auto size = juce::jmin (area.getWidth(), area.getHeight());
+        const auto tile = area.withSizeKeepingCentre (size, size).reduced (size * 0.02f);
+        const auto corner = size * 0.2f;
+
+        // The tile: pearl onyx, a touch lighter at the top, the family's red glow round its edge.
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1d171c), tile.getCentreX(), tile.getY(),
+                                                 juce::Colour (0xff070508), tile.getCentreX(), tile.getBottom(), false));
+        g.fillRoundedRectangle (tile, corner);
+        if (size >= 24.0f)
+        {
+            g.setColour (ParagonColours::glow.withAlpha (0.28f));
+            g.drawRoundedRectangle (tile.reduced (size * 0.025f), corner * 0.9f, size * 0.035f);
+        }
+        g.setColour (ParagonColours::glow);
+        g.drawRoundedRectangle (tile.reduced (size * 0.008f), corner, juce::jmax (1.0f, size * 0.012f));
+
+        // The monogram: the mark's 7 and S, side by side, 1 unit tall, slanted as the mark.
+        juce::Path seven, ess;
+        ess.setUsingNonZeroWinding (false);
+        addPolygon (seven, { { 0.0f, 0.0f }, { 0.8f, 0.0f }, { 0.8f, 0.2f }, { 0.44f, 1.0f }, { 0.18f, 1.0f },
+                             { 0.5f, 0.2f }, { 0.0f, 0.2f } }, 0.0f);
+        addPolygon (ess, { { 0.16f, 0.0f }, { 0.8f, 0.0f }, { 0.8f, 0.2f }, { 0.24f, 0.2f }, { 0.24f, 0.4f },
+                           { 0.64f, 0.4f }, { 0.8f, 0.55f }, { 0.8f, 0.85f }, { 0.64f, 1.0f }, { 0.0f, 1.0f },
+                           { 0.0f, 0.8f }, { 0.56f, 0.8f }, { 0.56f, 0.6f }, { 0.16f, 0.6f }, { 0.0f, 0.45f }, { 0.0f, 0.15f } },
+                    0.8f + spacing * 1.5f);
+        const auto lean = juce::AffineTransform (1.0f, -slant, slant, 0.0f, 1.0f, 0.0f);
+        seven.applyTransform (lean);
+        ess.applyTransform (lean);
+        auto inner = tile.reduced (size * 0.13f);
+        auto nameArea = withName ? inner.removeFromBottom (inner.getHeight() * 0.24f) : juce::Rectangle<float>();
+
+        // Fitted by the letters' own outline (the slant included), centred in what's left.
+        juce::Path both (seven);
+        both.addPath (ess);
+        const auto shape = both.getBounds();
+        const auto fit = juce::jmin (inner.getWidth() * 0.9f / shape.getWidth(), inner.getHeight() * (withName ? 0.86f : 0.78f) / shape.getHeight());
+        const auto place = juce::AffineTransform::translation (-shape.getCentreX(), -shape.getCentreY())
+                               .scaled (fit).translated (inner.getCentreX(), inner.getCentreY());
+        seven.applyTransform (place);
+        ess.applyTransform (place);
+        const auto box = seven.getBounds().getUnion (ess.getBounds());
+        const auto height = box.getHeight();
+
+        // The letters (crisp: no halo), the speed cuts through them when big enough to see. The 7 in the
+        // family's colours, pink at the top to orange at its foot; the S pearl white.
+        {
+            juce::Graphics::ScopedSaveState saved (g);
+            if (size >= 48.0f)
+                for (const auto& [top, bottom] : cuts)
+                    g.excludeClipRegion (juce::Rectangle<float> (tile.getX(), box.getY() + height * top, tile.getWidth(), height * (bottom - top))
+                                             .getSmallestIntegerContainer());
+            const auto sevenBox = seven.getBounds();
+            g.setGradientFill (juce::ColourGradient (juce::Colour (0xffde0639), sevenBox.getCentreX(), sevenBox.getY(),
+                                                     juce::Colour (0xffcd6619), sevenBox.getCentreX(), sevenBox.getBottom(), false));
+            g.fillPath (seven);
+            g.setColour (juce::Colour (0xfff4eeea));   // pearl white
+            g.fillPath (ess);
+        }
+
+        // The whole mark under it, and the family's neon stripe between.
+        if (withName)
+        {
+            const auto stripe = nameArea.removeFromTop (nameArea.getHeight() * 0.22f).withSizeKeepingCentre (inner.getWidth() * 0.82f, juce::jmax (1.0f, size * 0.012f));
+            g.setGradientFill (Finish::neonGradient (stripe.getX(), stripe.getRight()));
+            g.fillRect (stripe);
+            drawMark (g, nameArea.reduced (0.0f, nameArea.getHeight() * 0.08f), juce::Justification::centred,
+                      { juce::Colour (0xfff4eeea), juce::Colour (0xffe0103c), {}, {}, 1.0f, false });
+        }
+    }
+
+    juce::Image makeAppIcon (int size, bool withName)
+    {
+        juce::Image image (juce::Image::ARGB, size, size, true, juce::SoftwareImageType());
+        juce::Graphics g (image);
+        drawAppIcon (g, image.getBounds().toFloat(), withName);
+        return image;
     }
 }

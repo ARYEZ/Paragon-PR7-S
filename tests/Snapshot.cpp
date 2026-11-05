@@ -1626,3 +1626,38 @@ TEST_CASE ("Snapshot: the PLUGINS page in the Hub's look (0.52.2)", "[.][snapsho
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
+
+#include "ui/Logo.h"
+
+// (0.52.3) Writes the app's icon files (resources/icon: the ones CMake builds into the app) and the
+// Stream Deck's: PARAGON_ICON_DIR=<folder>. Also a sheet of every size side by side, to look at.
+TEST_CASE ("The app's icon files (0.52.3)", "[.][make-icon]")
+{
+    const auto folder = juce::File (juce::SystemStats::getEnvironmentVariable ("PARAGON_ICON_DIR", "icons"));
+    folder.createDirectory();
+    const auto write = [&] (const juce::String& name, const juce::Image& image)
+    {
+        const auto file = folder.getChildFile (name);
+        file.deleteFile();
+        juce::FileOutputStream out { file };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    };
+    write ("PR7-S icon.png", Logo::makeAppIcon (1024, true));             // ICON_BIG (48 px and up)
+    write ("PR7-S icon small.png", Logo::makeAppIcon (256, false));      // ICON_SMALL (16 and 32 px)
+    write ("PR7-S Stream Deck 288.png", Logo::makeAppIcon (288, true));  // a Stream Deck key (its high-resolution size)
+    write ("PR7-S Stream Deck 144.png", Logo::makeAppIcon (144, true));
+    write ("PR7-S Stream Deck 7S 288.png", Logo::makeAppIcon (288, false));
+
+    // The sheet: each size as Windows will show it (made at that size), on the taskbar's dark grey.
+    const int sizes[] = { 16, 24, 32, 48, 64, 128, 256 };
+    juce::Image sheet (juce::Image::ARGB, 16 + 7 * 16 + 568, 300, true, juce::SoftwareImageType());
+    juce::Graphics g (sheet);
+    g.fillAll (juce::Colour (0xff202020));
+    auto x = 16;
+    for (const auto s : sizes)
+    {
+        g.drawImageAt (Logo::makeAppIcon (s, s >= 48), x, 150 - s / 2);
+        x += s + 16;
+    }
+    write ("PR7-S icon sizes.png", sheet);
+}

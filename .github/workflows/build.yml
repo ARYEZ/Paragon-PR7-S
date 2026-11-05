@@ -164,7 +164,9 @@ jobs:
           # Each zip: the app, its .pdb on Windows (names in the session log's
           # crash entries), and PR7-K's VST3 if it was fetched.
           pack() {   # folder, zip name, app, zip flags
-            (cd "artifacts/$1" && files=("$3") && { [ -e "Paragon PR7-S.pdb" ] && files+=("Paragon PR7-S.pdb"); true; } \
+            # (0.52.3) The icon for an Elgato Stream Deck's keys (the owner asked), in a folder beside the app.
+            mkdir -p "artifacts/$1/Stream Deck icons" && cp resources/icon/stream-deck-*.png "artifacts/$1/Stream Deck icons/"
+            (cd "artifacts/$1" && files=("$3" "Stream Deck icons") && { [ -e "Paragon PR7-S.pdb" ] && files+=("Paragon PR7-S.pdb"); true; } \
                && { [ -e "Paragon PR7-K.vst3" ] && files+=("Paragon PR7-K.vst3"); true; } \
                && zip $4 "../../release/$2" "${files[@]}")
           }

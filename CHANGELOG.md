@@ -2,6 +2,21 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.52.3
+
+**The studio's own icon** (you asked: for the taskbar and your Stream Deck)
+- **The design:** a "7S" monogram on a pearl onyx tile edged with the family's red glow.
+  - The 7 is in the family's pink-to-orange and the S in pearl white, both in the PR7 mark's slanted block letters with its two speed cuts.
+  - At larger sizes the full PR7-S mark sits underneath, with the red-to-orange stripe between.
+- **Where it shows:** the taskbar, the window's title bar, Alt+Tab and the .exe file itself. The Mac and Linux apps use it too.
+  - Small sizes (16 and 32 pixels) show just the monogram, which stays readable there; 48 pixels and up add the full mark.
+- **Stream Deck:** every download now has a **"Stream Deck icons"** folder beside the app:
+  - `stream-deck-288.png`: the icon with the name, at the size the Stream Deck uses for sharp keys.
+  - `stream-deck-144.png`: the same, smaller.
+  - `stream-deck-7s-288.png`: the monogram alone.
+  - In the Stream Deck app, click a key's icon and choose **Set from File** to use one.
+- Windows remembers icons for programs it has seen. If the taskbar still shows the old one after updating, unpin and pin the studio again, or restart Explorer.
+
 ## 0.52.2
 
 **Plug-in windows remember where you put them** (you asked)
