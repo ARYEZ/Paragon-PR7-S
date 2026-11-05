@@ -9366,6 +9366,32 @@ namespace pr7s
             settings->setValue ("guitarVelocities", v.toString());
     }
 
+    GuitarStyle Studio::getGuitarStyle() const
+    {
+        return settings != nullptr && settings->containsKey ("guitarStyle") ? guitarStyleNamed (settings->getValue ("guitarStyle")) : guitarStyle;
+    }
+
+    void Studio::setGuitarStyle (GuitarStyle s)
+    {
+        guitarStyle = s;
+        if (settings != nullptr)
+            settings->setValue ("guitarStyle", guitarStyleName (s));
+    }
+
+    RiffSettings Studio::getRiffSettings() const
+    {
+        if (settings != nullptr && settings->containsKey ("riffSettings"))
+            return RiffSettings::fromString (settings->getValue ("riffSettings"));
+        return riffSettings;
+    }
+
+    void Studio::setRiffSettings (const RiffSettings& r)
+    {
+        riffSettings = r.limited();
+        if (settings != nullptr)
+            settings->setValue ("riffSettings", riffSettings.toString());
+    }
+
     float Studio::getIdeasHumanize() const
     {
         return settings != nullptr ? juce::jlimit (0.0f, 1.0f, (float) settings->getDoubleValue ("ideasHumanize", ideasHumanize)) : ideasHumanize;

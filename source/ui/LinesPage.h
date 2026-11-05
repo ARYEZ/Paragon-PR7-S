@@ -80,6 +80,29 @@ private:
     juce::TextButton oneBar { "1 BAR" }, twoBars { "2 BARS" }, fourBars { "4 BARS" }, syncopation { "SYNCOPATION" }, defaults { "DEFAULTS" };
 };
 
+// RIFF SETTINGS (0.53.0, the owner asked): how the guitar tab's rhythm ideas are shaped, every
+// STYLE's: LENGTH (a riff of 1, 2 or 4 bars before it repeats), PALM MUTES (fewer or more against
+// open notes), TIGHTNESS (looser or tighter mutes), BUSYNESS (sparse to constant sixteenths), FILLS
+// (the last beat of each phrase), DEFAULTS. At 50% the riffs are as written.
+class RiffPanel final : public juce::Component
+{
+public:
+    explicit RiffPanel (pr7s::RiffSettings);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void setSettings (const pr7s::RiffSettings&);   // (as the controls would: onChange called)
+    const pr7s::RiffSettings& getSettings() const noexcept { return settings; }
+    std::function<void (const pr7s::RiffSettings&)> onChange;
+    static juce::String summary (const pr7s::RiffSettings&);   // "RIFF: 2 BARS, FILLS"
+    static constexpr int width = 460, rowHeight = 32, titleHeight = 60;
+
+private:
+    void refresh();
+    pr7s::RiffSettings settings;
+    juce::Slider palm, tight, busy;
+    juce::TextButton oneBar { "1 BAR" }, twoBars { "2 BARS" }, fourBars { "4 BARS" }, fills { "FILLS" }, defaults { "DEFAULTS" };
+};
+
 class LinesPage final : public juce::Component,
                         private juce::Timer
 {
@@ -101,6 +124,10 @@ public:
     void setTuning (const juce::String&);   // the guitar ideas' (Studio::setGuitarTuning), dealt again
     const pr7s::GuitarTuning& getTuning() const;
     void setGuitarVelocities (const pr7s::GuitarVelocities&);   // (Studio::setGuitarVelocities), guitar ideas dealt again
+    void setGuitarStyle (pr7s::GuitarStyle);                   // STYLE (0.53.0; Studio::setGuitarStyle), dealt again
+    pr7s::GuitarStyle getGuitarStyle() const;
+    void setRiffSettings (const pr7s::RiffSettings&);          // RIFF SETTINGS (Studio's), dealt again
+    void showRiffSettings();
     void showVelocities();                                     // the panel in a call-out under VELOCITIES
     void setHumanize (float amount, bool feel);                // (Studio's ideas humanize), every tab dealt again
     void showHumanize();
@@ -143,6 +170,8 @@ private:
     juce::Label tuningLabel { {}, "TUNING" };
     juce::ComboBox tuningBox;
     juce::TextButton velocitiesKey { "VELOCITIES" };
+    juce::ComboBox styleBox;     // STYLE (the guitar tab)
+    juce::TextButton riffKey;    // RIFF SETTINGS (the guitar tab)
     juce::TextButton humanizeKey;
     std::vector<juce::Rectangle<int>> columnTitles;
     double barBeats = 4.0;

@@ -866,6 +866,14 @@ TEST_CASE ("Snapshot: the IDEAS window (PARAGON_SNAPSHOT_IDEAS=piano|guitar|bass
         page.setTab (tab == "piano" ? LinesPage::Tab::piano : tab == "bass" ? LinesPage::Tab::bass
                    : tab == "patterns" ? LinesPage::Tab::patterns : tab == "melody" ? LinesPage::Tab::melody
                    : LinesPage::Tab::guitar);   // (0.39.0: =patterns; 0.41.0: =melody)
+        // (0.53.0) PARAGON_SNAPSHOT_STYLE=thrash|nu-metal|metalcore|shred: the guitar tab's STYLE.
+        if (const auto style = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_STYLE", {}); style.isNotEmpty())
+        {
+            page.setGuitarStyle (pr7s::guitarStyleNamed (style));
+            pr7s::RiffSettings riff;
+            riff.fills = true;
+            page.setRiffSettings (riff);
+        }
         page.play (tab == "piano" ? pr7s::LineIdea::Part::chords : tab == "bass" ? pr7s::LineIdea::Part::bass
                  : tab == "patterns" ? pr7s::LineIdea::Part::pattern : tab == "melody" ? pr7s::LineIdea::Part::tune
                  : pr7s::LineIdea::Part::rhythm, 1);
@@ -919,6 +927,13 @@ TEST_CASE ("Snapshot: the guitar VELOCITIES panel", "[.][snapshot-velocities]")
             panel = std::make_unique<HumanizePanel> (0.4f, true);
         else if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUMANIZE", {}) == "melody")   // (0.41.0: MELODY SETTINGS)
             panel = std::make_unique<MelodyPanel> (pr7s::MelodySettings {});
+        else if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUMANIZE", {}) == "riff")   // (0.53.0: RIFF SETTINGS)
+        {
+            pr7s::RiffSettings riff;
+            riff.palmMutes = 0.7f;
+            riff.fills = true;
+            panel = std::make_unique<RiffPanel> (riff);
+        }
         else
             panel = std::make_unique<GuitarVelocityPanel> (pr7s::GuitarVelocities {});
         panel->resized();

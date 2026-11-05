@@ -105,13 +105,20 @@ namespace pr7s
     // Guitar rhythm (0.19.0): Power chords, Octave chords, Palm-muted chugs, Gallop, Pedal-point
     // riff, Open strummed shapes. Power chords are root, fifth and octave (no third: they fit
     // major and minor); the low ones on the lowest strings, as rock and metal riffs are played.
+    // (0.53.0) `style`: rock is these six; the other styles' are Riffs.h's. RIFF SETTINGS shape every style's.
+    enum class GuitarStyle;
+    struct RiffSettings;
     std::vector<LineIdea> guitarRhythmIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation, const GuitarTuning&,
                                               const GuitarVelocities& = {});
+    std::vector<LineIdea> guitarRhythmIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation, const GuitarTuning&,
+                                              const GuitarVelocities&, GuitarStyle, const RiffSettings&);
     // Guitar lead (0.19.0): Pentatonic box, Blues scale run, Repeating triplet lick, Descending
     // fours, Neoclassical run, Tremolo picking. Every bar's first note on a chord tone (the
     // lick lands on the chord). No bends: parts don't hold pitch bend yet.
     std::vector<LineIdea> guitarLeadIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation, const GuitarTuning&,
                                             const GuitarVelocities& = {});
+    std::vector<LineIdea> guitarLeadIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation, const GuitarTuning&,
+                                            const GuitarVelocities&, GuitarStyle);
 
     // Humanize (0.20.0, the owner asked): small, controlled differences so a part sounds played,
     // not programmed. Our rules:

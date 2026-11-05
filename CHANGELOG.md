@@ -2,6 +2,27 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.53.0
+
+**Guitar ideas in five styles** (you asked for better guitar ideas)
+- IDEAS' GUITAR tab has a **STYLE** box: **ROCK** (the twelve ideas as before), **THRASH**, **NU-METAL**, **METALCORE** and **SHRED**. Each style has six rhythm parts and six leads, all on your chord track's chords, in your TUNING and in your guitar library's VELOCITIES (palm mutes, sustains, pinch harmonics).
+- **Thrash:** downpicked gallop, tremolo pedal, chromatic riff, skank beat, open-string stabs, stop-time break. Leads: chromatic tremolo, harmonic minor sixes, diminished climb, screaming tremolo, pedal-point lick, twin-guitar thirds.
+- **Nu-metal:** bounce riff, stop-start, tritone chug, groove and octave, half-step creep, dissonant ring. Leads: octave melody, siren, pinch pings, dissonant high line, tremolo swell, single-note hook.
+- **Metalcore:** breakdown, chug and stop, melodic octave riff, squeal breakdown, triplet burst, open chorus chords. Leads: twin harmony lead, octave chorus melody, tapped arpeggio, melodic sixteenth run, pinch and hold, call and answer.
+- **Shred:** power metal gallop, neoclassical pedal, driving eighths, double-time sixteenths, held chords, arpeggiated power chords under sweep arpeggios, legato runs, harmonic minor fours, diminished arpeggios, string skipping and pedal-tone tapping.
+- The heavier styles chug on the key's low note on your lowest string (the pedal), with the chord's power chords above it, the way these riffs are played.
+
+**RIFF SETTINGS** (the key beside STYLE; for every style's rhythm parts)
+- **LENGTH:** a riff of 1, 2 or 4 bars before it repeats. Two bars play A then B; four bars play A B A and a turnaround.
+- **PALM MUTES:** more palm mutes against open notes, or fewer (mutes let ring).
+- **TIGHTNESS:** tighter mutes (lower velocity, shorter) or looser ones.
+- **BUSYNESS:** from sparse (weak hits left out, more space) to busy (palm-muted chugs added in the gaps).
+- **FILLS:** a fill on the last beat of each phrase, as the style plays it: a chromatic run into the next chord, a burst of triplet chugs, a pinch-harmonic squeal or a stop.
+- At 50% everything is as written, so ROCK's ideas are exactly as before until you move a control.
+- MORE IDEAS still deals other versions: in the new styles the leads turn the other way and some riffs change their first bar.
+
+**What I can't check here:** how they sound through Shreddage. The riffs, rhythms and velocity layers are tested, but not heard.
+
 ## 0.52.3
 
 **The studio's own icon** (you asked: for the taskbar and your Stream Deck)

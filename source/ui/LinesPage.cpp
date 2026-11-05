@@ -310,7 +310,7 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
     more.onClick = [this] { moreIdeas(); };
     stopKey.onClick = [this] { stop(); };
     pianoTab.setTooltip ("Piano: chord accompaniments and melodies");
-    guitarTab.setTooltip ("Guitar: rock and metal rhythm parts (power chords, chugs, gallops) and leads (pentatonic, blues, shred runs)");
+    guitarTab.setTooltip ("Guitar: rhythm parts and leads in five styles (rock, thrash, nu-metal, metalcore, shred), shaped by RIFF SETTINGS");
     bassTab.setTooltip ("Bass lines");
     pianoTab.onClick = [this] { setTab (Tab::piano); };
     guitarTab.onClick = [this] { setTab (Tab::guitar); };
@@ -354,6 +354,21 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
     velocitiesKey.setTooltip ("The velocity of each articulation (palm mute, sustain, rake, pinch harmonic), set by ear for your guitar library");
     velocitiesKey.onClick = [this] { showVelocities(); };
     addChildComponent (velocitiesKey);
+    // (0.53.0) STYLE and RIFF SETTINGS.
+    {
+        int styleId = 1;
+        for (const auto st : pr7s::guitarStyles())
+            styleBox.addItem (pr7s::guitarStyleName (st), styleId++);
+    }
+    styleBox.setTooltip ("Which guitar ideas: rock, thrash, nu-metal, metalcore or shred (six rhythm parts and six leads each)");
+    styleBox.onChange = [this] { setGuitarStyle (pr7s::guitarStyleNamed (styleBox.getText())); };
+    addChildComponent (styleBox);
+    riffKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    riffKey.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    riffKey.setWantsKeyboardFocus (false);
+    riffKey.setTooltip ("Riff length, palm mutes, tightness, busyness and fills for the rhythm ideas");
+    riffKey.onClick = [this] { showRiffSettings(); };
+    addChildComponent (riffKey);
     humanizeKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     humanizeKey.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
     humanizeKey.setWantsKeyboardFocus (false);
@@ -367,7 +382,7 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
         tab = saved == "guitar" ? Tab::guitar : saved == "bass" ? Tab::bass : saved == "patterns" ? Tab::patterns
             : saved == "melody" ? Tab::melody : Tab::piano;
     }
-    setSize (1240, 760);
+    setSize (1360, 760);
     setChords (std::move (chords));
     startTimerHz (30);
 }
@@ -458,6 +473,40 @@ void LinesPage::setGuitarVelocities (const pr7s::GuitarVelocities& v)
     rebuild();
 }
 
+pr7s::GuitarStyle LinesPage::getGuitarStyle() const
+{
+    return studio.getGuitarStyle();
+}
+
+void LinesPage::setGuitarStyle (pr7s::GuitarStyle st)
+{
+    if (st == studio.getGuitarStyle())
+        return;
+    stop();
+    studio.setGuitarStyle (st);
+    rebuild();
+}
+
+void LinesPage::setRiffSettings (const pr7s::RiffSettings& r)
+{
+    if (r.limited() == studio.getRiffSettings())
+        return;
+    stop();
+    studio.setRiffSettings (r);
+    rebuild();
+}
+
+void LinesPage::showRiffSettings()
+{
+    auto panel = std::make_unique<RiffPanel> (studio.getRiffSettings());
+    panel->onChange = [safe = juce::Component::SafePointer<LinesPage> (this)] (const pr7s::RiffSettings& r)
+    {
+        if (safe != nullptr)
+            safe->setRiffSettings (r);
+    };
+    juce::CallOutBox::launchAsynchronously (std::move (panel), riffKey.getScreenBounds(), nullptr);
+}
+
 void LinesPage::showVelocities()
 {
     auto panel = std::make_unique<GuitarVelocityPanel> (studio.getGuitarVelocities());
@@ -523,8 +572,11 @@ void LinesPage::rebuild()
     ideas[(size_t) P::melody] = pr7s::melodyIdeas (spans, barBeats, variation);
     ideas[(size_t) P::chords] = pr7s::pianoChordIdeas (spans, barBeats, variation);
     const auto velocities = studio.getGuitarVelocities();
-    ideas[(size_t) P::rhythm] = pr7s::guitarRhythmIdeas (spans, barBeats, variation, tuning, velocities);
-    ideas[(size_t) P::lead] = pr7s::guitarLeadIdeas (spans, barBeats, variation, tuning, velocities);
+    const auto guitarStyle = studio.getGuitarStyle();
+    const auto riff = studio.getRiffSettings();
+    ideas[(size_t) P::rhythm] = pr7s::guitarRhythmIdeas (spans, barBeats, variation, tuning, velocities, guitarStyle, riff);
+    ideas[(size_t) P::lead] = pr7s::guitarLeadIdeas (spans, barBeats, variation, tuning, velocities, guitarStyle);
+    riffKey.setButtonText (RiffPanel::summary (riff));
     ideas[(size_t) P::pattern] = pr7s::patternIdeas (spans, barBeats, patternGroup);
     const auto melody = studio.getMelodySettings();
     ideas[(size_t) P::tune] = pr7s::composedMelodies (spans, barBeats, melody, variation);
@@ -577,6 +629,9 @@ void LinesPage::makeCards()
     tuningBox.setVisible (tab == Tab::guitar);
     tuningLabel.setVisible (tab == Tab::guitar);
     velocitiesKey.setVisible (tab == Tab::guitar);
+    styleBox.setText (pr7s::guitarStyleName (studio.getGuitarStyle()), juce::dontSendNotification);
+    styleBox.setVisible (tab == Tab::guitar);
+    riffKey.setVisible (tab == Tab::guitar);
     resized();
     repaint();
 }
@@ -724,16 +779,20 @@ void LinesPage::resized()
     auto tabs = area.removeFromTop (tabsHeight).withTrimmedBottom (6);
     for (auto* key : { &pianoTab, &guitarTab, &bassTab, &patternsTab, &melodyTab })
     {
-        key->setBounds (tabs.removeFromLeft (100));
+        key->setBounds (tabs.removeFromLeft (96));
         tabs.removeFromLeft (6);
     }
     groupBox.setBounds (tabs.withLeft (tabs.getRight() - 240));
     melodyKey.setBounds (tabs.withLeft (tabs.getRight() - 300));   // (MELODY only)   // (PATTERNS only: where the guitar tab keeps its keys)
     velocitiesKey.setBounds (tabs.removeFromRight (110));
     tabs.removeFromRight (8);
-    tuningBox.setBounds (tabs.removeFromRight (220));
+    tuningBox.setBounds (tabs.removeFromRight (190));
     tabs.removeFromRight (8);
-    tuningLabel.setBounds (tabs.removeFromRight (70));
+    tuningLabel.setBounds (tabs.removeFromRight (64));
+    tabs.removeFromRight (8);
+    riffKey.setBounds (tabs.removeFromRight (180));
+    tabs.removeFromRight (8);
+    styleBox.setBounds (tabs.removeFromRight (140));
 
     area.removeFromBottom (gap);
     const auto parts = partsOf (tab);
@@ -911,5 +970,113 @@ void MelodyPanel::resized()
     rests.setBounds (row());
     auto last = area.removeFromTop (rowHeight).reduced (0, 2);
     syncopation.setBounds (last.removeFromLeft (150));
+    defaults.setBounds (last.removeFromRight (110));
+}
+
+//==============================================================================
+RiffPanel::RiffPanel (pr7s::RiffSettings initial) : settings (initial.limited())
+{
+    const auto style = [this] (juce::Slider& s, const char* tip)
+    {
+        s.setSliderStyle (juce::Slider::LinearBar);
+        s.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 80, 20);
+        s.setRange (0.0, 100.0, 1.0);
+        s.setTextValueSuffix ("%");
+        s.setColour (juce::Slider::trackColourId, ParagonColours::accent);
+        s.setColour (juce::Slider::textBoxTextColourId, ParagonColours::text);
+        s.setColour (juce::Slider::backgroundColourId, juce::Colour (0xff1b171c));
+        s.setColour (juce::Slider::textBoxOutlineColourId, ParagonColours::panelEdge);
+        s.setTooltip (tip);
+        addAndMakeVisible (s);
+    };
+    style (palm, "50%: as written. Higher: open notes off the beat palm muted. Lower: palm mutes let ring open");
+    style (tight, "50%: as written. Higher: tighter palm mutes (lower velocity, shorter). Lower: looser");
+    style (busy, "50%: as written. Lower: weak hits left out, more space. Higher: palm-muted chugs added in the gaps");
+    palm.onValueChange = [this] { auto r = settings; r.palmMutes = (float) palm.getValue() / 100.0f; setSettings (r); };
+    tight.onValueChange = [this] { auto r = settings; r.tightness = (float) tight.getValue() / 100.0f; setSettings (r); };
+    busy.onValueChange = [this] { auto r = settings; r.busyness = (float) busy.getValue() / 100.0f; setSettings (r); };
+    const std::pair<juce::TextButton*, int> lengths[] { { &oneBar, 1 }, { &twoBars, 2 }, { &fourBars, 4 } };
+    for (const auto& [key, bars] : lengths)
+        key->onClick = [this, bars = bars] { auto r = settings; r.bars = bars; setSettings (r); };
+    oneBar.setTooltip ("A one-bar riff, repeated");
+    twoBars.setTooltip ("A two-bar riff: A then B");
+    fourBars.setTooltip ("A four-bar riff: A B A, then a turnaround");
+    fills.setTooltip ("A fill on the last beat of each phrase: a chromatic run into the next chord, a burst of chugs, a pinch-harmonic squeal or a stop, as the style plays them");
+    fills.onClick = [this] { auto r = settings; r.fills = ! r.fills; setSettings (r); };
+    defaults.setTooltip ("Back to the riffs as written");
+    defaults.onClick = [this] { setSettings ({}); };
+    for (auto* key : { &oneBar, &twoBars, &fourBars, &fills, &defaults })
+    {
+        key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        key->setWantsKeyboardFocus (false);
+        addAndMakeVisible (*key);
+    }
+    refresh();
+    setSize (width, titleHeight + rowHeight * 5 + 24);
+}
+
+juce::String RiffPanel::summary (const pr7s::RiffSettings& r)
+{
+    return "RIFF: " + juce::String (r.bars) + (r.bars == 1 ? " BAR" : " BARS") + (r.fills ? ", FILLS" : "");
+}
+
+void RiffPanel::setSettings (const pr7s::RiffSettings& r)
+{
+    const auto limited = r.limited();
+    if (limited == settings)
+        return;
+    settings = limited;
+    refresh();
+    if (onChange)
+        onChange (settings);
+}
+
+void RiffPanel::refresh()
+{
+    palm.setValue (settings.palmMutes * 100.0, juce::dontSendNotification);
+    tight.setValue (settings.tightness * 100.0, juce::dontSendNotification);
+    busy.setValue (settings.busyness * 100.0, juce::dontSendNotification);
+    oneBar.setToggleState (settings.bars == 1, juce::dontSendNotification);
+    twoBars.setToggleState (settings.bars == 2, juce::dontSendNotification);
+    fourBars.setToggleState (settings.bars == 4, juce::dontSendNotification);
+    fills.setToggleState (settings.fills, juce::dontSendNotification);
+}
+
+void RiffPanel::paint (juce::Graphics& g)
+{
+    g.fillAll (juce::Colour (0xff0c0a0d));
+    auto area = getLocalBounds().reduced (14, 10);
+    g.setColour (ParagonColours::text);
+    g.setFont (ParagonLookAndFeel::titleFont (16.0f));
+    g.drawText ("RIFF SETTINGS", area.removeFromTop (22), juce::Justification::centredLeft, false);
+    g.setColour (ParagonColours::textDim);
+    g.setFont (juce::Font (juce::FontOptions (11.5f)));
+    g.drawFittedText ("How the guitar's rhythm ideas are played, every style's. At 50% they are as written.",
+                      area.removeFromTop (titleHeight - 32), juce::Justification::topLeft, 2, 0.9f);
+    g.setColour (ParagonColours::text);
+    g.setFont (ParagonLookAndFeel::titleFont (13.0f));
+    for (const auto* name : { "LENGTH", "PALM MUTES", "TIGHTNESS", "BUSYNESS" })
+        g.drawText (name, area.removeFromTop (rowHeight).removeFromLeft (110), juce::Justification::centredLeft, false);
+}
+
+void RiffPanel::resized()
+{
+    auto area = getLocalBounds().reduced (14, 10);
+    area.removeFromTop (titleHeight - 10);
+    const auto row = [&area] { auto r = area.removeFromTop (rowHeight); r.removeFromLeft (110); return r.reduced (0, 4); };
+    {
+        auto r = row();
+        const auto w = (r.getWidth() - 12) / 3;
+        oneBar.setBounds (r.removeFromLeft (w));
+        r.removeFromLeft (6);
+        twoBars.setBounds (r.removeFromLeft (w));
+        r.removeFromLeft (6);
+        fourBars.setBounds (r);
+    }
+    palm.setBounds (row());
+    tight.setBounds (row());
+    busy.setBounds (row());
+    auto last = area.removeFromTop (rowHeight).reduced (0, 2);
+    fills.setBounds (last.removeFromLeft (150));
     defaults.setBounds (last.removeFromRight (110));
 }

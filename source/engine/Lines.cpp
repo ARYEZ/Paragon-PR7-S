@@ -1,4 +1,5 @@
 #include "engine/Lines.h"
+#include "engine/Riffs.h"
 
 namespace pr7s
 {
@@ -1029,6 +1030,29 @@ namespace pr7s
             lastOnChord (idea);
         }
         return ideas;
+    }
+}
+
+namespace pr7s
+{
+    // (0.53.0) A style: rock's own six (RIFF SETTINGS on them too), else the style's written riffs.
+    std::vector<LineIdea> guitarRhythmIdeas (const std::vector<ChordSpan>& spans, double beatsPerBar, int variation, const GuitarTuning& tuning,
+                                              const GuitarVelocities& vel, GuitarStyle style, const RiffSettings& riff)
+    {
+        if (style != GuitarStyle::rock)
+            return styleRhythmIdeas (style, spans, beatsPerBar, variation, tuning, vel, riff);
+        auto ideas = guitarRhythmIdeas (spans, beatsPerBar, variation, tuning, vel);
+        for (auto& idea : ideas)
+            shapeRiff (idea, spans, beatsPerBar, riff, vel, style, variation, tuning, idea.style == "Open strummed shapes");
+        return ideas;
+    }
+
+    std::vector<LineIdea> guitarLeadIdeas (const std::vector<ChordSpan>& spans, double beatsPerBar, int variation, const GuitarTuning& tuning,
+                                            const GuitarVelocities& vel, GuitarStyle style)
+    {
+        if (style != GuitarStyle::rock)
+            return styleLeadIdeas (style, spans, beatsPerBar, variation, tuning, vel);
+        return guitarLeadIdeas (spans, beatsPerBar, variation, tuning, vel);
     }
 }
 

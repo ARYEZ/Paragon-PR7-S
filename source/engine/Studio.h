@@ -10,6 +10,7 @@
 #include "Align.h"
 #include "VariAudio.h"
 #include "Lines.h"
+#include "Riffs.h"
 #include "Patterns.h"
 #include "Progressions.h"
 #include "Melody.h"
@@ -295,6 +296,11 @@ namespace pr7s
         // The guitar ideas' velocities (0.19.3, the VELOCITIES panel; settings key "guitarVelocities").
         GuitarVelocities getGuitarVelocities() const;
         void setGuitarVelocities (const GuitarVelocities&);
+        // The guitar tab's STYLE and RIFF SETTINGS (0.53.0; settings keys "guitarStyle", "riffSettings").
+        GuitarStyle getGuitarStyle() const;
+        void setGuitarStyle (GuitarStyle);
+        RiffSettings getRiffSettings() const;
+        void setRiffSettings (const RiffSettings&);
         // Humanize (0.20.0). IDEAS: its amount (0-1, settings "ideasHumanize", default 0: on the
         // grid as before) and FEEL ("ideasFeel", default on). The MIDI editor: its amount
         // ("humanizeAmount", default 0.5) and whether velocities keep to the guitar library's
@@ -1368,6 +1374,8 @@ namespace pr7s
         DetectSettings detectSettings;
         juce::String guitarTuning;   // (without a settings file: the tests)
         GuitarVelocities guitarVelocities;
+        GuitarStyle guitarStyle = GuitarStyle::rock;   // (without a settings file)
+        RiffSettings riffSettings;
         float ideasHumanize = 0.0f, humanizeAmount = 0.5f;   // (without a settings file: the tests)
         bool ideasFeel = true, humanizeLayers = true;
         void announce();               // (0.34.3) sendChangeMessage, the version counted
