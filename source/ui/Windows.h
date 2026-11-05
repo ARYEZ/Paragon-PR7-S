@@ -21,16 +21,23 @@ namespace Windows
                              private juce::Timer
     {
     public:
-        Instrument (const juce::String& trackName, juce::AudioPluginInstance&);
+        // (0.52.2) `settings`: where each plug-in's window was left is kept there (by the plug-in's
+        // name), and it opens there again; none kept (or off every screen now): the right-hand screen.
+        Instrument (const juce::String& trackName, juce::AudioPluginInstance&, juce::PropertiesFile* settings = nullptr);
         ~Instrument() override;
         void closeButtonPressed() override;
+        void moved() override;
+        static juce::String placeKey (const juce::String& pluginName) { return "pluginWindow." + pluginName; }
         bool keyPressed (const juce::KeyPress&) override;
         std::function<void()> onClose;
         std::function<bool (const juce::KeyPress&)> onKey;
 
     private:
         void timerCallback() override;
+        void keepPlace();
         juce::String pluginName;
+        juce::PropertiesFile* settings = nullptr;
+        bool placed = false;   // (moves before it's shown aren't the owner's)
     };
 
     // The key editor or the mixer in a window of its own (their WINDOW

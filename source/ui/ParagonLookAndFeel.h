@@ -121,6 +121,11 @@ public:
     juce::Font getAlertWindowMessageFont() override;
     juce::Font getAlertWindowFont() override;
     // Scroll bars: a dark track and an orange thumb (JUCE's own is blue: not the family's).
+    // (0.52.2) Table headers in the family's look (JUCE's are light grey): the Hub's dark panel,
+    // Bebas titles dimmed, the sorted column's arrow in the accent.
+    void drawTableHeaderBackground (juce::Graphics&, juce::TableHeaderComponent&) override;
+    void drawTableHeaderColumn (juce::Graphics&, juce::TableHeaderComponent&, const juce::String& columnName, int columnId,
+                                int width, int height, bool isMouseOver, bool isMouseDown, int columnFlags) override;
     void drawScrollbar (juce::Graphics&, juce::ScrollBar&, int x, int y, int width, int height, bool isScrollbarVertical,
                         int thumbStartPosition, int thumbSize, bool isMouseOver, bool isMouseDown) override;
     int getDefaultScrollbarWidth() override { return 12; }

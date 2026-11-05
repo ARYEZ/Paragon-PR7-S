@@ -55,6 +55,7 @@ namespace pr7s::SessionLog
         thread_local bool onAudioThread = false;
         std::atomic<bool> crashing { false };
         std::atomic<bool> closingNow { false };
+        std::atomic<double> closingEnd { 90.0 };
 
         juce::String stamp()
         {
@@ -629,6 +630,14 @@ namespace pr7s::SessionLog
                             report ("FROZEN: the screen hasn't answered for " + juce::String (at - last, 0) + " seconds"
                                     + (closingNow.load() ? juce::String (" (while closing)") : juce::String()) + ".");
                         }
+                        else if (frozen && closingNow.load() && at - frozenSince > closingEnd.load())
+                        {
+                            // (0.52.2) Closing stuck for `endAfter` (90 s): ended here, written down first.
+                            // The next start offers this log (it doesn't end "closed normally").
+                            writeRaw (stamp() + "  Closing didn't finish in " + juce::String (at - frozenSince, 0)
+                                      + " seconds: the studio ended itself (the song and settings were saved before closing began).", false);
+                            endProcessNow (1);
+                        }
                         else if (frozen && last > frozenSince)
                         {
                             writeRaw (stamp() + "  The screen answered again after " + juce::String (last - frozenSince, 1) + " seconds.", false);
@@ -820,13 +829,22 @@ namespace pr7s::SessionLog
 
     void jobBeat() noexcept { lastJobBeat.store (nowSeconds()); }
 
-    void closing (double seconds)
+    void closing (double seconds, double endAfter)
     {
+        closingEnd = endAfter;
         note ("Closing.");
         closingNow = true;
         beat();
         if (watch != nullptr)
             watch->limit = seconds;
+    }
+
+    void endProcessNow (int code)
+    {
+       #if defined (_WIN32)
+        TerminateProcess (GetCurrentProcess(), (UINT) code);
+       #endif
+        std::_Exit (code);
     }
 
     //==========================================================================

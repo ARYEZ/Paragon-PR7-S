@@ -1,4 +1,5 @@
 #include "Windows.h"
+#include "ui/PluginsPage.h"
 #include "engine/SessionLog.h"
 
 #include "engine/AudioAdvice.h"
@@ -650,21 +651,42 @@ namespace Windows
     }
 
     //==========================================================================
-    Instrument::Instrument (const juce::String& trackName, juce::AudioPluginInstance& instance)
-        : DocumentWindow (trackName + ": " + instance.getName(), windowColour, DocumentWindow::closeButton)
+    Instrument::Instrument (const juce::String& trackName, juce::AudioPluginInstance& instance, juce::PropertiesFile* settingsToUse)
+        : DocumentWindow (trackName + ": " + instance.getName(), windowColour, DocumentWindow::closeButton), settings (settingsToUse)
     {
         setUsingNativeTitleBar (true);
+        pluginName = instance.getName();
         {
             const pr7s::SessionLog::Step step ("Opening the window of " + instance.getName() + " (" + trackName + ")");
             if (auto* editor = instance.createEditorAndMakeActive())
                 setContentOwned (editor, true);
         }
-        pluginName = instance.getName();
         setResizable (instance.hasEditor() && getContentComponent() != nullptr
                           && dynamic_cast<juce::AudioProcessorEditor*> (getContentComponent())->isResizable(),
                       false);
         // (0.52.1, the owner asked) Centred on the right-hand screen (the owner's third); one screen: that one.
-        setBounds (rightmostScreenArea().withSizeKeepingCentre (getWidth(), getHeight()));
+        // (0.52.2, the owner asked) Unless this plug-in's window was left somewhere: there again, if its
+        // title bar would still be on a screen (a monitor unplugged since: the right-hand screen instead).
+        auto bounds = rightmostScreenArea().withSizeKeepingCentre (getWidth(), getHeight());
+        if (settings != nullptr)
+        {
+            const auto kept = juce::StringArray::fromTokens (settings->getValue (placeKey (pluginName)), " ", "");
+            if (kept.size() == 2)
+            {
+                const auto there = bounds.withPosition (kept[0].getIntValue(), kept[1].getIntValue());
+                // (enough of its title bar to grab it: 100 px, or half of it on a small window)
+                const auto titleBar = there.withHeight (30);
+                const auto enough = juce::jmax (1, juce::jmin (100, titleBar.getWidth() / 2));
+                for (const auto& d : juce::Desktop::getInstance().getDisplays().displays)
+                    if (const auto seen = d.userArea.getIntersection (titleBar); seen.getWidth() >= enough && seen.getHeight() > 0)
+                    {
+                        bounds = there;
+                        break;
+                    }
+            }
+        }
+        setBounds (bounds);
+        placed = true;
         setVisible (true);
         timerCallback();
         startTimer (300);
@@ -683,8 +705,21 @@ namespace Windows
     Instrument::~Instrument()
     {
         // (0.52.1) A plug-in's window can take a while to go (or not go): a step.
+        keepPlace();
         const pr7s::SessionLog::Step step ("Closing the window of " + pluginName);
         clearContentComponent();
+    }
+
+    void Instrument::moved()
+    {
+        DocumentWindow::moved();
+        keepPlace();
+    }
+
+    void Instrument::keepPlace()
+    {
+        if (settings != nullptr && placed && pluginName.isNotEmpty())
+            settings->setValue (placeKey (pluginName), juce::String (getX()) + " " + juce::String (getY()));
     }
 
     void Instrument::timerCallback()
@@ -802,13 +837,8 @@ namespace Windows
         : DocumentWindow ("Paragon PR7-S: VST3 instruments and effects", windowColour, DocumentWindow::closeButton)
     {
         setUsingNativeTitleBar (true);
-        auto& host = studio.getPluginHost();
         pr7s::SessionLog::note ("PLUGINS opened (scanning loads each plug-in to ask what it is)");
-        auto* list = new juce::PluginListComponent (host.getFormats(), host.getKnownPlugins(), pr7s::PluginHost::deadMansPedalFile(),
-                                                    studio.getSettings());
-        list->setOptionsButtonText ("SCAN / OPTIONS");
-        list->setSize (720, 520);
-        setContentOwned (list, true);
+        setContentOwned (new PluginsPage (studio), true);   // (0.52.2: the Hub's look)
         setResizable (true, false);
         centreWithSize (getWidth(), getHeight());
         setVisible (true);

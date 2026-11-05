@@ -149,7 +149,7 @@ TEST_CASE ("0.52.1: steps under way are written as they start and named in FROZE
     }
 
     // Closing: the watch carries on (a hang there is written down, marked as while closing).
-    SessionLog::closing (0.6);
+    SessionLog::closing (0.6, 1.0e6);   // (never ended here: this is the test program)
     juce::Thread::sleep (1500);
     CHECK (text().contains ("Closing."));
     CHECK (text().contains ("(while closing)"));

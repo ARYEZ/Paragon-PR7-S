@@ -241,3 +241,70 @@ TEST_CASE ("0.52.1: the export page shown bigger follows its own size; plug-in w
     for (const auto& d : juce::Desktop::getInstance().getDisplays().displays)
         CHECK (d.userArea.getCentreX() <= area.getCentreX());
 }
+
+#include "engine/ParagonSynth.h"
+
+TEST_CASE ("0.52.2: a plug-in's window opens where it was left; off every screen now: the right-hand screen", "[ui][pluginwindow]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("pr7s-window-places.settings");
+    file.deleteFile();
+    juce::PropertiesFile::Options options;
+    juce::PropertiesFile settings (file, options);
+    ParagonSynth synth;
+    const auto key = Windows::Instrument::placeKey (synth.getName());
+
+    // The first time: centred on the right-hand screen.
+    juce::Point<int> first;
+    {
+        Windows::Instrument window ("Lead", synth, &settings);
+        CHECK (Windows::rightmostScreenArea().contains (window.getBounds().getCentre()));
+        first = window.getPosition();
+        // Moved by the owner: kept.
+        window.setTopLeftPosition (first.x - 30, first.y + 20);
+        CHECK (settings.getValue (key) == juce::String (first.x - 30) + " " + juce::String (first.y + 20));
+    }
+    // Opened again (on any track): where it was left.
+    {
+        Windows::Instrument window ("Another track", synth, &settings);
+        INFO ("kept: " << settings.getValue (key) << ", now at " << window.getX() << " " << window.getY() << ", first " << first.x << " " << first.y);
+        CHECK (window.getPosition() == juce::Point<int> (first.x - 30, first.y + 20));
+    }
+    // A place no screen shows any more (a monitor unplugged): the right-hand screen again.
+    settings.setValue (key, "-50000 -50000");
+    {
+        Windows::Instrument window ("Lead", synth, &settings);
+        CHECK (Windows::rightmostScreenArea().contains (window.getBounds().getCentre()));
+    }
+    // Without settings: always the right-hand screen.
+    {
+        Windows::Instrument window ("Lead", synth);
+        CHECK (Windows::rightmostScreenArea().contains (window.getBounds().getCentre()));
+    }
+    file.deleteFile();
+}
+
+#include "ui/PluginsPage.h"
+
+TEST_CASE ("0.52.2: the PLUGINS page lists what was found, in the Hub's look", "[ui][pluginwindow]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    auto& known = studio.getPluginHost().getKnownPlugins();
+    known.clear();
+    juce::PluginDescription d;
+    d.name = "Kontakt 8";
+    d.pluginFormatName = "VST3";
+    d.category = "Instrument|Sampler";
+    d.manufacturerName = "Native Instruments";
+    d.version = "8.9.0";
+    d.fileOrIdentifier = "C:/VST3/Kontakt 8.vst3";
+    known.addType (d);
+    PluginsPage page (studio);
+    CHECK (page.getList().getTableListBox().getNumRows() == 1);
+    CHECK (PluginsPage::cellText (known, 0, 1) == "Kontakt 8");
+    CHECK (PluginsPage::cellText (known, 0, 3) == "INSTRUMENT  -  SAMPLER");
+    CHECK (PluginsPage::cellText (known, 0, 5) == "V8.9.0");
+    CHECK (page.createComponentSnapshot (page.getLocalBounds()).isValid());
+    known.clear();
+}

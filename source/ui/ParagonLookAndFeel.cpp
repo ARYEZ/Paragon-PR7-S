@@ -849,3 +849,42 @@ void ParagonLookAndFeel::drawProgressBar (juce::Graphics& g, juce::ProgressBar&,
         g.drawText (textToShow, area.withTrimmedLeft (bar.getWidth() + 6.0f), juce::Justification::centredRight, false);
     }
 }
+
+void ParagonLookAndFeel::drawTableHeaderBackground (juce::Graphics& g, juce::TableHeaderComponent& header)
+{
+    auto area = header.getLocalBounds();
+    g.setColour (juce::Colour (0xff1b1419));   // (the Hub's section strips)
+    g.fillRect (area);
+    g.setColour (ParagonColours::accent.withAlpha (0.35f));
+    g.fillRect (area.removeFromBottom (1));
+    g.setColour (juce::Colours::black.withAlpha (0.5f));
+    for (int i = header.getNumColumns (true); --i >= 0;)
+        g.fillRect (header.getColumnPosition (i).removeFromRight (1).reduced (0, 6));
+}
+
+void ParagonLookAndFeel::drawTableHeaderColumn (juce::Graphics& g, juce::TableHeaderComponent&, const juce::String& columnName, int,
+                                                int width, int height, bool isMouseOver, bool isMouseDown, int columnFlags)
+{
+    const auto highlight = isMouseDown ? 0.16f : isMouseOver ? 0.08f : 0.0f;
+    if (highlight > 0.0f)
+    {
+        g.setColour (ParagonColours::accent.withAlpha (highlight));
+        g.fillRect (0, 0, width, height);
+    }
+    auto area = juce::Rectangle<int> (width, height).reduced (8, 0);
+    const auto sorted = (columnFlags & (juce::TableHeaderComponent::sortedForwards | juce::TableHeaderComponent::sortedBackwards)) != 0;
+    if (sorted)
+    {
+        auto arrowArea = area.removeFromRight (14).toFloat().withSizeKeepingCentre (8.0f, 6.0f);
+        juce::Path arrow;
+        const auto forwards = (columnFlags & juce::TableHeaderComponent::sortedForwards) != 0;
+        arrow.addTriangle (arrowArea.getX(), forwards ? arrowArea.getBottom() : arrowArea.getY(),
+                           arrowArea.getRight(), forwards ? arrowArea.getBottom() : arrowArea.getY(),
+                           arrowArea.getCentreX(), forwards ? arrowArea.getY() : arrowArea.getBottom());
+        g.setColour (ParagonColours::accent);
+        g.fillPath (arrow);
+    }
+    g.setColour (sorted ? ParagonColours::accent : ParagonColours::textDim);
+    g.setFont (textFont (13.0f));
+    g.drawFittedText (columnName.toUpperCase(), area, juce::Justification::centredLeft, 1);
+}

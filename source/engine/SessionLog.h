@@ -80,8 +80,14 @@ namespace pr7s::SessionLog
     void jobBeat() noexcept;
 
     // (0.52.1) Closing: the watch carries on (with `seconds` as its limit), so a hang while
-    // plug-ins unload is written down too; stop() ends it.
-    void closing (double seconds = 30.0);
+    // plug-ins unload is written down too; stop() ends it. (0.52.2) Still stuck `endAfter` seconds
+    // after its last beat: the process is ended (endProcessNow), the log saying so.
+    void closing (double seconds = 30.0, double endAfter = 90.0);
+
+    // (0.52.2) Ends the process at once (Windows: TerminateProcess; elsewhere _Exit), without
+    // Windows unloading each loaded file again: a plug-in that won't let go at that point kept the
+    // studio in Task Manager after its window had gone. Only once everything is saved and closed.
+    void endProcessNow (int code = 0);
 
     // Catches crashes (and std::terminate, abort) into the log. Once, after start.
     void installCrashHandler();

@@ -2,6 +2,30 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.52.2
+
+**Plug-in windows remember where you put them** (you asked)
+- Move a plug-in's window and it opens there again next time, even after closing the studio. The place is remembered per plug-in: wherever you leave Kontakt, Kontakt opens there, on any track.
+- A plug-in you haven't placed yet opens centred on the right-hand screen (0.52.1).
+- If the remembered place is no longer on any screen (for example, a monitor unplugged), it opens on the right-hand screen instead.
+
+**The PLUGINS window in the Hub's look** (your screenshot)
+- The Hub's pearl header with the PR7-S mark, with how many plug-ins were found.
+- The list sits in the Hub's red-edged panel:
+  - Names in large Bebas.
+  - Kind, maker and version dimmed.
+  - The chosen row lit as in the Hub.
+  - The column titles on a dark strip, the sorted one in orange.
+- Everything works as before: SCAN / OPTIONS, the scan, Delete, the right-click menu, sorting by clicking a column.
+- Every other table now has the same column titles: the MediaBay's results, the Markers window and the Drum Map Setup.
+
+**The studio staying in Task Manager after closing**
+- **What was wrong:** after the window had gone and everything was saved, Windows still had to unload each plug-in's file as the program ended. A plug-in that doesn't let go at that point keeps the process alive with no window. This happens often with big instruments.
+- **Now:**
+  - Once the song and settings are saved, every plug-in is unloaded and the log is closed, the studio ends its own process at once instead of waiting on Windows.
+  - If closing itself gets stuck earlier (a plug-in that won't unload), 0.52.1's log writes what was being closed at 30 seconds. At 90 seconds the studio ends itself and the log says so. Next time you start, it offers to show you that log.
+- I can't reproduce this here, since it needs your plug-ins on Windows. If it still happens, the log will now say which plug-in it was.
+
 ## 0.52.1
 
 Two fixes from your reports, and two changes you asked for.

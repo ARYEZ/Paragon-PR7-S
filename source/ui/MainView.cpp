@@ -1347,7 +1347,7 @@ void MainView::openEffectWindow (int busId, int slot)
         return;
     }
     const auto* track = studio.getProject().findTrack (busId);
-    auto window = std::make_unique<Windows::Instrument> (track != nullptr ? track->name : juce::String ("Master"), *instance);
+    auto window = std::make_unique<Windows::Instrument> (track != nullptr ? track->name : juce::String ("Master"), *instance, studio.getSettings());
     window->onKey = [this] (const juce::KeyPress& key) { return keyPressed (key); };   // (the studio's keys work there too)
     window->onClose = [safe = juce::Component::SafePointer<MainView> (this), instance]
     {
@@ -2012,7 +2012,7 @@ void MainView::openInstrumentWindow (int trackId)
     const auto* track = studio.getProject().findTrack (trackId);
     if (instance == nullptr || track == nullptr || ! studio.hasEditor (instance))
         return;
-    auto window = std::make_unique<Windows::Instrument> (track->name, *instance);
+    auto window = std::make_unique<Windows::Instrument> (track->name, *instance, studio.getSettings());
     window->onKey = [this] (const juce::KeyPress& key) { return keyPressed (key); };   // (the studio's keys work there too)
     // Closed after its own click has finished (a window can't delete itself mid-click).
     window->onClose = [safe = juce::Component::SafePointer<MainView> (this), trackId]

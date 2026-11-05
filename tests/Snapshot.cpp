@@ -1584,3 +1584,44 @@ TEST_CASE ("Snapshot: Render in Place's page for a whole track over the cycle (0
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
+
+#include "ui/PluginsPage.h"
+
+TEST_CASE ("Snapshot: the PLUGINS page in the Hub's look (0.52.2)", "[.][snapshot-plugins]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "plugins.png");
+    Finish::set (Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        auto& known = studio.getPluginHost().getKnownPlugins();
+        known.clear();
+        const auto add = [&] (const char* name, const char* category, const char* maker, const char* version, bool instrument)
+        {
+            juce::PluginDescription d;
+            d.name = name;
+            d.pluginFormatName = "VST3";
+            d.category = category;
+            d.manufacturerName = maker;
+            d.version = version;
+            d.isInstrument = instrument;
+            d.fileOrIdentifier = juce::String ("C:/Program Files/Common Files/VST3/") + name + ".vst3";
+            known.addType (d);
+        };
+        add ("AmpliTube 5", "Fx|Distortion", "IK Multimedia", "5.10.9", false);
+        add ("Kontakt 8", "Instrument", "Native Instruments", "8.9.0", true);
+        add ("Neural Amp Modeler", "Fx", "Manos Labrakis", "0.4.0", false);
+        add ("Paragon PR7-B", "Fx|Distortion", "Paragon", "0.22.0", false);
+        add ("Paragon PR7-K", "Instrument|Synth", "Paragon", "0.31.0", true);
+        add ("Superior Drummer 3", "Instrument|Drum", "Toontrack", "3.4.4", true);
+        PluginsPage page (studio);
+        page.getList().getTableListBox().selectRow (1);
+        const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+        known.clear();
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
