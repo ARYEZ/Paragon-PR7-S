@@ -7021,6 +7021,129 @@ namespace pr7s
         changed();
     }
 
+    // One clip of `among` (a track's copy) added into `sound` as it plays: its stretched sound when
+    // warped, its volume, its own fades, the auto fades and crossfades (0.52.0); `sound` starts at
+    // `startSeconds` in the song (Bounce, 0.30.0; a part dragged out, 0.53.1).
+    void Studio::mixHeardClip (juce::AudioBuffer<float>& sound, const Track& among, int i, double startSeconds, double rate)
+    {
+        const auto tempo = project.tempoMap();
+        const auto total = sound.getNumSamples();
+        const auto& p = among.parts[(size_t) i];
+        const auto data = getHeardAudio (p.audioFile);
+        if (data == nullptr || ! p.isAudio())
+            return;
+        // (0.32.0) A warped clip: its stretched sound, from its start.
+        const auto warped = p.isWarped() ? getWarpedSound (p, tempo) : nullptr;
+        const auto& heardSound = warped != nullptr ? *warped : data->sound;
+        const auto fromOffset = warped != nullptr ? 0.0 : p.audioOffset;
+        const auto clipStart = tempo.secondsAt (p.start), clipEnd = tempo.secondsAt (p.end());
+        // (0.52.0) With the auto fades and crossfades, as it plays.
+        const auto& fades = project.autoFadesOf (among);
+        const auto curve = [&fades] (double x)
+        {
+            x = juce::jlimit (0.0, 1.0, x);
+            return fades.equalPower ? std::sin (x * juce::MathConstants<double>::halfPi) : x;
+        };
+        const auto recording = [this, rate] (const Part& other)
+        {
+            const auto heard = getHeardAudio (other.audioFile);
+            return heard != nullptr ? (double) heard->sound.getNumSamples() / rate : 0.0;
+        };
+        for (const auto& f : fadedStretches (among, i, fades, tempo, recording))
+        {
+            const auto fromSeconds = tempo.secondsAt (f.from), toSeconds = tempo.secondsAt (f.to);
+            const auto first = (int) std::llround ((fromSeconds - startSeconds) * rate);
+            const auto last = juce::jmin (total, (int) std::llround ((toSeconds - startSeconds) * rate));
+            for (int s = juce::jmax (0, first); s < last; ++s)
+            {
+                const auto when = startSeconds + s / rate;
+                const auto into = when - clipStart, left = clipEnd - when;
+                const auto source = (int) std::llround ((fromOffset + into) * rate);
+                if (source < 0 || source >= heardSound.getNumSamples())
+                    continue;
+                auto gain = (double) p.gain();   // (0.47.0: its volume)
+                if (p.fadeIn > 0.0 && into < p.fadeIn) gain *= juce::jmax (0.0, into) / p.fadeIn;
+                if (p.fadeOut > 0.0 && left < p.fadeOut) gain *= juce::jmax (0.0, left) / p.fadeOut;
+                if (f.fadeIn > 0.0 && when - fromSeconds < f.fadeIn) gain *= curve ((when - fromSeconds) / f.fadeIn);
+                if (f.fadeOut > 0.0 && toSeconds - when < f.fadeOut) gain *= curve ((toSeconds - when) / f.fadeOut);
+                for (int c = 0; c < sound.getNumChannels(); ++c)
+                    sound.addSample (c, s, (float) (heardSound.getSample (juce::jmin (c, heardSound.getNumChannels() - 1), source) * gain));
+            }
+        }
+    }
+
+    juce::File Studio::writePartForDrag (int partId, juce::String& error)
+    {
+        const auto where = findPart (partId);
+        if (! where)
+            return {};
+        const auto* track = project.findTrack (where->first);
+        if (track == nullptr)
+            return {};
+        const auto& part = track->parts[(size_t) where->second];
+        const auto partName = part.name.isNotEmpty() ? part.name : (part.isAudio() ? juce::File (part.audioFile).getFileNameWithoutExtension() : juce::String ("Part"));
+        const auto base = juce::File::createLegalFileName (track->name + " - " + partName);
+        const auto folder = newDragOutFolder();
+        if (! part.isAudio())
+        {
+            const auto written = folder.getChildFile (base + ".mid");
+            const auto midi = makePartMidiFile (project, *track, part);
+            juce::FileOutputStream out (written);
+            if (! out.openedOk() || ! midi.writeTo (out, 1))
+            {
+                error = "Couldn't write " + written.getFullPathName();
+                return {};
+            }
+            SessionLog::note ("Drag out: " + written.getFileName());
+            return written;
+        }
+        const auto data = getHeardAudio (part.audioFile);
+        if (data == nullptr || data->sampleRate <= 0.0)
+        {
+            error = "The event's recording couldn't be read.";
+            return {};
+        }
+        const auto tempo = project.tempoMap();
+        const auto rate = data->sampleRate;
+        const auto startSeconds = tempo.secondsAt (part.start);
+        const auto seconds = juce::jmin (dragOutMostSeconds, tempo.secondsAt (part.end()) - startSeconds);
+        const auto samples = juce::jmax (1, (int) std::llround (seconds * rate));
+        // The event alone on its track (no comping): what it plays.
+        Track alone = *track;
+        alone.soloLane = -1;
+        alone.parts = { part };
+        alone.parts.front().muted = false;
+        juce::AudioBuffer<float> sound (juce::jlimit (1, 2, data->sound.getNumChannels()), samples);
+        sound.clear();
+        mixHeardClip (sound, alone, 0, startSeconds, rate);
+
+        const auto bpm = tempo.bpmAt (part.start);
+        const auto written = folder.getChildFile (base + " " + dragOutTempoText (bpm) + " BPM.wav");
+        std::unordered_map<juce::String, juce::String> metadata;
+        metadata[juce::WavAudioFormat::acidTempo] = juce::String (bpm, 3);
+        metadata[juce::WavAudioFormat::acidBeats] = juce::String (juce::jmax (1, juce::roundToInt (tempo.beatAt (startSeconds + seconds) - part.start)));
+        metadata[juce::WavAudioFormat::acidOneShot] = "0";
+        const auto& signature = project.signatures().segmentAt (part.start).event;
+        metadata[juce::WavAudioFormat::acidNumerator] = juce::String (signature.numerator);
+        metadata[juce::WavAudioFormat::acidDenominator] = juce::String (signature.denominator);
+        std::unique_ptr<juce::OutputStream> stream (written.createOutputStream());
+        std::unique_ptr<juce::AudioFormatWriter> writer;
+        if (stream != nullptr)
+            writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (rate)
+                                                                                   .withNumChannels (sound.getNumChannels())
+                                                                                   .withBitsPerSample (32)
+                                                                                   .withSampleFormat (juce::AudioFormatWriterOptions::SampleFormat::floatingPoint)
+                                                                                   .withMetadataValues (metadata));
+        if (writer == nullptr || ! writer->writeFromAudioSampleBuffer (sound, 0, sound.getNumSamples()))
+        {
+            error = "Couldn't write " + written.getFullPathName();
+            return {};
+        }
+        writer.reset();
+        SessionLog::note ("Drag out: " + written.getFileName());
+        return written;
+    }
+
     int Studio::bounceTakes (const std::vector<int>& partIds, juce::String& error)
     {
         Track* track = nullptr;
@@ -7072,50 +7195,7 @@ namespace pr7s
             juce::AudioBuffer<float> sound (juce::jmin (2, channels), juce::jmax (1, total));
             sound.clear();
             for (int i = 0; i < (int) among.parts.size(); ++i)
-            {
-                const auto& p = among.parts[(size_t) i];
-                const auto data = getHeardAudio (p.audioFile);
-                if (data == nullptr || ! p.isAudio())
-                    continue;
-                // (0.32.0) A warped clip: its stretched sound, from its start.
-                const auto warped = p.isWarped() ? getWarpedSound (p, tempo) : nullptr;
-                const auto& heardSound = warped != nullptr ? *warped : data->sound;
-                const auto fromOffset = warped != nullptr ? 0.0 : p.audioOffset;
-                const auto clipStart = tempo.secondsAt (p.start), clipEnd = tempo.secondsAt (p.end());
-                // (0.52.0) With the auto fades and crossfades, as it plays.
-                const auto& fades = project.autoFadesOf (among);
-                const auto curve = [&fades] (double x)
-                {
-                    x = juce::jlimit (0.0, 1.0, x);
-                    return fades.equalPower ? std::sin (x * juce::MathConstants<double>::halfPi) : x;
-                };
-                const auto recording = [this, rate] (const Part& other)
-                {
-                    const auto heard = getHeardAudio (other.audioFile);
-                    return heard != nullptr ? (double) heard->sound.getNumSamples() / rate : 0.0;
-                };
-                for (const auto& f : fadedStretches (among, i, fades, tempo, recording))
-                {
-                    const auto fromSeconds = tempo.secondsAt (f.from), toSeconds = tempo.secondsAt (f.to);
-                    const auto first = (int) std::llround ((fromSeconds - startSeconds) * rate);
-                    const auto last = juce::jmin (total, (int) std::llround ((toSeconds - startSeconds) * rate));
-                    for (int s = juce::jmax (0, first); s < last; ++s)
-                    {
-                        const auto when = startSeconds + s / rate;
-                        const auto into = when - clipStart, left = clipEnd - when;
-                        const auto source = (int) std::llround ((fromOffset + into) * rate);
-                        if (source < 0 || source >= heardSound.getNumSamples())
-                            continue;
-                        auto gain = (double) p.gain();   // (0.47.0: its volume)
-                        if (p.fadeIn > 0.0 && into < p.fadeIn) gain *= juce::jmax (0.0, into) / p.fadeIn;
-                        if (p.fadeOut > 0.0 && left < p.fadeOut) gain *= juce::jmax (0.0, left) / p.fadeOut;
-                        if (f.fadeIn > 0.0 && when - fromSeconds < f.fadeIn) gain *= curve ((when - fromSeconds) / f.fadeIn);
-                        if (f.fadeOut > 0.0 && toSeconds - when < f.fadeOut) gain *= curve ((toSeconds - when) / f.fadeOut);
-                        for (int c = 0; c < sound.getNumChannels(); ++c)
-                            sound.addSample (c, s, (float) (heardSound.getSample (juce::jmin (c, heardSound.getNumChannels() - 1), source) * gain));
-                    }
-                }
-            }
+                mixHeardClip (sound, among, i, startSeconds, rate);
             auto folder = getAudioFolder();
             folder.createDirectory();
             juce::File bounceFile;

@@ -1528,6 +1528,9 @@ void MainView::importDawProject (const juce::File& file)
 
 bool MainView::isInterestedInFileDrag (const juce::StringArray& files)
 {
+    // (0.53.1) A part dragged out and back onto the studio: nothing (the drag is cancelled).
+    if (std::all_of (files.begin(), files.end(), [] (const juce::String& f) { return juce::File (f).isAChildOf (pr7s::dragOutFolder()); }))
+        return false;
     return std::any_of (files.begin(), files.end(), [] (const juce::String& f)
     {
         return f.endsWithIgnoreCase (".dawproject") || f.endsWithIgnoreCase (".mid") || f.endsWithIgnoreCase (".midi") || pr7s::Studio::isAudioFile (juce::File (f));

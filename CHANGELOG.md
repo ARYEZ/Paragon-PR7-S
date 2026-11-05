@@ -2,6 +2,27 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.53.1
+
+**Drag a part out of the arrangement as a file** (you asked, for PR7-D's GROOVES page)
+- **How:** drag a part (one at a time) out of the arrangement onto another window: a plug-in's window (such as PR7-D's), File Explorer, the desktop or another program. It arrives there as a file, and the part stays where it was in your song.
+  - Over a plug-in's window, or anywhere that isn't the studio's main window, the drag becomes a file drag by itself.
+  - If Explorer (or another program) sits on top of the studio's window, hold **Alt** while dragging (a copy): the moment the part leaves the arrangement it becomes a file. (The studio can't tell another program's window from its own underneath it.)
+  - Dropped back onto the studio, nothing happens.
+- **A MIDI part** becomes `<track> - <part>.mid`:
+  - the part's start is the file's beat 0;
+  - the song's tempo there and any tempo changes inside the part, and the time signature;
+  - the notes as you hear them (the part's Transpose and Velocity applied), on the track's MIDI channel, 480 ticks a beat.
+- **An audio event** becomes `<track> - <part> <tempo> BPM.wav` (for example `Rhythm Gtr - Verse riff 140 BPM.wav`):
+  - what the event plays: from its offset, for its length, through its warp markers, with its own volume and fades (not the track's fader or effects);
+  - 32-bit float at the recording's rate, at most five minutes (what PR7-D reads);
+  - the tempo also in the file's ACID tag, which loop software reads.
+- The files go in a "Paragon PR7-S Drag Out" folder in Windows' temporary folder, emptied each time the studio starts.
+
+**To check on Windows:**
+1. With PR7-D's window open, drag any .wav or .mid from File Explorer onto its GROOVES page. If PR7-D takes it, drops reach plug-in windows in the studio.
+2. Then drag a part from the arrangement onto the same page.
+
 ## 0.53.0
 
 **Guitar ideas in five styles** (you asked for better guitar ideas)

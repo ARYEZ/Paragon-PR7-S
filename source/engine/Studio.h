@@ -11,6 +11,7 @@
 #include "VariAudio.h"
 #include "Lines.h"
 #include "Riffs.h"
+#include "DragOut.h"
 #include "Patterns.h"
 #include "Progressions.h"
 #include "Melody.h"
@@ -622,6 +623,12 @@ namespace pr7s
         // one new clip or part over them all, on the first of their lanes, in front; the takes go.
         // Audio: a new 32-bit file in the audio folder. Returns the new part's id (0: nothing, `error`).
         int bounceTakes (const std::vector<int>& partIds, juce::String& error);
+        // A part as a file for another program (0.53.1, drag out): a MIDI part as "<track> - <part>.mid"
+        // (DragOut.h's makePartMidiFile), an audio event as "<track> - <part> <tempo> BPM.wav": what it
+        // plays (offset, length, warping, its volume and fades, the auto fades; not the track's fader or
+        // effects), 32-bit float at its recording's rate, at most five minutes, the tempo and beats in its
+        // ACID chunk. In a folder of its own under dragOutFolder(). The song isn't changed. None: an empty File.
+        juce::File writePartForDrag (int partId, juce::String& error);
         // Delete Overlaps: of these takes only what's heard stays, all on the first lane.
         void deleteOverlaps (const std::vector<int>& partIds);
         // Merge MIDI in Loop: what's heard of these tracks' MIDI between the locators, one part on a new
@@ -1360,6 +1367,7 @@ namespace pr7s
         // The song's recordings and freeze files (and its undo history's) copied from one folder to another.
         bool copyAudioFiles (const juce::File& from, const juce::File& to);
         void sendGone (Track&, int slot);
+        void mixHeardClip (juce::AudioBuffer<float>&, const Track& among, int index, double startSeconds, double rate);
         bool linksSuspended = false, linksAbsolute = false, qLink = false;
         bool mirroring = false;
         juce::StringArray progressionFavorites;   // (without a settings file)
