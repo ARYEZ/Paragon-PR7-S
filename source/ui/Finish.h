@@ -21,7 +21,10 @@ namespace Finish
     // `remember` saves it to the settings file (off for tests and snapshots).
     void set (Type, bool remember = true);
     inline bool isBlack() { return get() == Type::pearlBlack; }          // the chassis colour
-    inline bool neonKeys() { return get() != Type::pearlWhite; }         // the keys, knobs and pedal grips
+    // (0.48.0, PR7-G 0.59.0's look) The neon finishes' rings: the surrounds round the keys, the
+    // big keys' bezels and the knobs' glowing ring in the pink-to-orange gradient. The keys and
+    // knobs themselves are black in every finish.
+    inline bool neonRings() { return get() != Type::pearlWhite; }
 
     // Told whenever the finish changes, to repaint.
     juce::ChangeBroadcaster& changes();

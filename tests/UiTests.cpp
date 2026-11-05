@@ -5,6 +5,7 @@
 #include "TestHelpers.h"
 #include "engine/Studio.h"
 #include "ui/Finish.h"
+#include "ui/ParagonLookAndFeel.h"
 #include "ui/MainView.h"
 #include "ui/TrackActions.h"
 #include "ui/Windows.h"
@@ -3345,4 +3346,45 @@ TEST_CASE ("0.38.0: the MIDI editor's info line: the first selected note's value
     // The notes moved down to make room: the ruler sits under the info line.
     CHECK (editor.getNotesArea().getY() == (float) (KeyEditor::infoHeight + KeyEditor::rulerHeight));
     CHECK (view.createComponentSnapshot (view.getLocalBounds()).isValid());
+}
+
+TEST_CASE ("0.48.0: keys are black in every finish; on the neon finishes their surrounds are the gradient", "[ui][finish]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    CHECK_FALSE (Finish::neonRings());
+    Finish::set (Finish::Type::pearlWhiteNeon, false);
+    CHECK (Finish::neonRings());
+    Finish::set (Finish::Type::pearlBlack, false);
+    CHECK (Finish::neonRings());
+
+    ParagonLookAndFeel lookAndFeel;
+    juce::TextButton key;
+    key.setLookAndFeel (&lookAndFeel);
+    key.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    key.setSize (80, 30);
+    const auto draw = [&] (Finish::Type type)
+    {
+        Finish::set (type, false);
+        juce::Image image (juce::Image::ARGB, 80, 30, true, juce::SoftwareImageType());
+        juce::Graphics g (image);
+        key.paintEntireComponent (g, true);
+        return image;
+    };
+    for (const auto type : { Finish::Type::pearlWhite, Finish::Type::pearlBlack, Finish::Type::pearlWhiteNeon })
+    {
+        const auto image = draw (type);
+        // The key's face: black (no more pink-to-orange keys).
+        const auto face = image.getPixelAt (12, 12);   // (beside the LED stripe in the middle)
+        CHECK (face.getBrightness() < 0.25f);
+        CHECK (std::abs ((int) face.getRed() - (int) face.getBlue()) < 30);
+        // The surround's edge, a third of the way down on the left: chrome grey on Pearl White,
+        // the gradient (clearly red) on the neon finishes.
+        const auto rim = image.getPixelAt (1, 15);
+        if (type == Finish::Type::pearlWhite)
+            CHECK (std::abs ((int) rim.getRed() - (int) rim.getBlue()) < 40);
+        else
+            CHECK ((int) rim.getRed() > (int) rim.getBlue() + 60);
+    }
+    key.setLookAndFeel (nullptr);
+    Finish::set (Finish::Type::pearlWhite, false);
 }

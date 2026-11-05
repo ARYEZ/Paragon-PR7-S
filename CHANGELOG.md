@@ -2,6 +2,24 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.48.0
+
+**The neon finishes get PR7-G 0.59.0's look: black keys in neon rings** (you asked; your design).
+
+**On Pearl Black and Pearl White + Neon:**
+- **Every key is black**, the same as on Pearl White. No more pink-to-orange keys.
+- **The gradient moves to the rings round them.** Each key's surround is now pink to red to orange, lit along the top and darker at the front, as the chrome was.
+- **Lettering on the keys is light, as on Pearl White's black keys.** A key that's on lights its lettering (or its LED stripe) orange. Before, on the neon finishes a key that was on turned black among the neon ones. Now every key is black, so "on" shows the way it always has on Pearl White.
+
+**Pearl White doesn't change at all.** I checked the whole window pixel by pixel, with the MIDI editor open and with the mixer open: identical to 0.47.0.
+
+**What PR7-G has that the studio doesn't:**
+- **No footswitches, slot keys or expression pedal** here, so there are no bezels or ribs to see.
+- **The big knob isn't used in the studio.** The mixer's pan controls are small arc dials, which look the same in every finish.
+- **Both are updated anyway in the code the family shares:** the big bezel becomes the gradient and the big knob turns black with a gradient ring. They match PR7-G if the studio ever shows them.
+
+**SETTINGS:** the FINISH box has a tooltip describing each finish.
+
 ## 0.47.0
 
 **The info line for parts and events** (next on your list). The strip over the track list and the arrangement showed only automation points. Now it also shows the selected part or audio event, and you can type into it.

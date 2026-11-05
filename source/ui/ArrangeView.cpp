@@ -3512,9 +3512,9 @@ juce::TextButton& ArrangeTools::getButton (ArrangeView::Tool t)
 void ToolKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
 {
     getLookAndFeel().drawButtonBackground (g, *this, findColour (buttonColourId), highlighted, down);
-    // Lettering as the other keys': lit orange on a black key, white on a red one, else light.
+    // Lettering as the other keys': lit orange, else light (the keys are black in every finish since 0.48.0).
     const auto on = getToggleState();
-    const auto colour = on ? ParagonColours::accent : Finish::neonKeys() ? juce::Colours::white : ParagonColours::text;
+    const auto colour = on ? ParagonColours::accent : ParagonColours::text;
     auto area = getLocalBounds().toFloat().reduced (5.0f, 3.0f).translated (0.0f, down ? 0.5f : -0.5f);
     if (iconOnly)
     {

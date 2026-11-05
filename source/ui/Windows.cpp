@@ -51,6 +51,8 @@ namespace Windows
                 finish.addItemList (Finish::names, 1);
                 finish.setSelectedItemIndex ((int) Finish::get(), juce::dontSendNotification);
                 finish.onChange = [this] { Finish::set ((Finish::Type) finish.getSelectedItemIndex()); };
+                finish.setTooltip ("The unit's finish. Pearl White: a white unit with black keys in chrome surrounds. "
+                                   "Pearl Black and Pearl White + Neon: black keys and knobs in neon pink-to-orange rings.");
                 addAndMakeVisible (finish);
                 note.setText ("Inputs: switch on the ones you record from (audio tracks count them IN 1, IN 2... in the order "
                               "they're switched on). On Windows, pick your interface's driver above: ASIO for the lowest delay "
