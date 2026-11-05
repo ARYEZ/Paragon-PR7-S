@@ -3,6 +3,9 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_core/juce_core.h>
 
+#include <array>
+#include <atomic>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -166,16 +169,45 @@ namespace pr7s
         Key key;
         bool operator== (const ScaleEvent& o) const noexcept { return beat == o.beat && key == o.key; }
     };
+    // Voicings (0.38.0, the manual's "Voicings" and "Custom Voicing Panel"): how chords are spread
+    // over the keyboard or the strings, for Follow Chord Track's Voicings and Single Voice modes.
+    // The manual names the libraries and their styles but doesn't publish their voicings: these
+    // are our own (FollowChords.cpp: `voicingCandidates`).
+    struct VoicingSettings
+    {
+        enum class Library { basic, piano, guitar };
+        enum class PianoStyle { triads, triadsNine, fourNote, fourNoteOpen, fiveNote };
+        enum class GuitarStyle { triads, fourNote, threeString };
+        Library library = Library::piano;
+        PianoStyle piano = PianoStyle::triads;
+        GuitarStyle guitar = GuitarStyle::triads;
+        bool addRoot = true, duplicateRoot = false, fattenUp = false;   // (piano)
+        int lowestRoot = 36, lowest = 52, highest = 79;                  // (piano: the root's lowest, the right hand's range)
+        int basicOctave = 0;                                             // (basic: octaves from C3)
+        bool adaptive = true;                                            // each chord voiced to move least from the one before
+
+        bool operator== (const VoicingSettings&) const = default;
+        std::unique_ptr<juce::XmlElement> toXml (const juce::String& tag = "Voicing") const;
+        static VoicingSettings fromXml (const juce::XmlElement&);
+    };
+
     struct ChordTrack
     {
         bool shown = false;
+        bool record = false;              // (0.44.0) its Record Enable (not an edit: left out of ==)
         std::vector<ChordEvent> events;   // by beat
         std::vector<ScaleEvent> scales;   // by beat
         bool autoScales = true;           // the scales follow the chords (off once one is set by hand)
+        // Shift Chords (0.36.0, the manual's chord track Inspector): ticks (480 to the quarter) a
+        // chord takes over before (negative: notes played a little early) or after its event, for
+        // the tracks following it.
+        int shiftTicks = 0;
+        VoicingSettings voicing;          // (0.38.0) its voicings (the chord track Inspector's voicing library)
 
         bool operator== (const ChordTrack& o) const noexcept
         {
-            return shown == o.shown && events == o.events && scales == o.scales && autoScales == o.autoScales;
+            return shown == o.shown && events == o.events && scales == o.scales && autoScales == o.autoScales && shiftTicks == o.shiftTicks
+                && voicing == o.voicing;
         }
         int indexAt (double beat) const noexcept;               // the event sounding at `beat`, -1 if none yet
         double endOf (int index, double lastLength) const;       // the next one's start (the last: + lastLength)
@@ -232,6 +264,18 @@ namespace pr7s
         // Remote (the manual's Pad Remote Control): the keys that trigger the pads, C1 to B1.
         int triggerStart = 36, triggerEnd = 47;
         bool latch = false;
+        // (0.44.0) The manual's Player Mode Sections: a pad's key held picks its chord, the section
+        // keys play its notes from the bottom (1: the bass), the subsection keys the same an octave
+        // up (our reading of "transposed by an offset"). And its Chord Modifiers: keys for the next
+        // and previous voicing, more and fewer tensions, transposing up and down (Activate: on).
+        bool sectionsMode = false;
+        std::array<int, 5> sectionKeys { 24, 25, 26, 27, 28 };      // C0 to E0
+        std::array<int, 5> subsectionKeys { 29, 30, 31, 32, 33 };   // F0 to A0
+        enum class Modifier { nextVoicing, previousVoicing, moreTensions, fewerTensions, transposeUp, transposeDown };
+        static constexpr int numModifiers = 6;
+        static juce::String modifierName (Modifier);
+        bool modifiersOn = false;
+        std::array<int, 6> modifierKeys { 48, 49, 50, 51, 52, 53 }; // C2 to F2 (our choice; off until Activate)
 
         bool operator== (const ChordPads& o) const noexcept;
         // The key (0.15.0): rootKey is its tonic's pitch class; keyLetter its spelling
@@ -273,6 +317,18 @@ namespace pr7s
         std::function<void (const juce::MidiMessage&)> send;   // where the notes go (the live track's input)
         std::function<void (int pad, bool on)> onPadChanged;   // (any thread: the screen asks for an update)
         std::function<void (int note, bool on)> onOtherKey;   // (the devices' thread) a key outside the trigger range
+        // (0.39.0) A performance (a pattern) plays the chords instead: true if it took this chord
+        // (its notes aren't sent here then); `onPerformStop` when no pad is held any more.
+        std::function<bool (const std::vector<int>& notes, juce::uint8 velocity, int channel)> onPerform;
+        std::function<void()> onPerformStop;
+        // (0.44.0) MIDI Learn: while `learning`, the next key pressed is reported (and not played).
+        std::atomic<bool> learning { false };
+        std::function<void (int note)> onLearn;                  // (the devices' thread)
+        std::function<void (ChordPads::Modifier)> onModifier;   // a modifier key (the devices' thread)
+        std::optional<Chord> chordOf (int pad) const;           // (any thread)
+        // Sections mode: a section (0-4) of the held (else the last) chord, an octave up for a subsection.
+        void pressSection (int key, int section, bool octaveUp, juce::uint8 velocity, int channel = 1);
+        void releaseSection (int key, int channel = 1);
 
         void setPads (const ChordPads&);
         void press (int pad, juce::uint8 velocity, int channel = 1);
@@ -293,6 +349,7 @@ namespace pr7s
         std::map<int, std::vector<int>> padNotes; // the notes each pressed pad sounds
         std::vector<int> sounding, lastChord;
         std::set<int> latched;
+        std::map<int, int> sectionNotes;          // (0.44.0) a section key's note sounding
         void noteOn (int note, juce::uint8 velocity, int channel);
         bool releaseHeld (int pad, int channel);   // (under the lock)
         void noteOff (int note, int channel);

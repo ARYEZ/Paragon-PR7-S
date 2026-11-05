@@ -1,0 +1,286 @@
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
+
+#include "TestHelpers.h"
+#include "engine/Studio.h"
+#include "engine/Warp.h"
+
+// 0.34.1, the review's safe fixes (nothing heard or seen changes): the trim curve read in place
+// (no allocation on the audio thread), undo snapshots without the plug-ins' settings (moved out,
+// not copied), the recordings' caches emptied with the song (a same-named file in the next song
+// is analysed afresh), the warped clips' cache counted by size.
+
+using Catch::Matchers::WithinAbs;
+using namespace pr7s;
+
+namespace
+{
+    constexpr double rate = 48000.0;
+
+    void writeTones (const juce::File& file, const std::vector<double>& times, double seconds)
+    {
+        juce::AudioBuffer<float> sound (2, (int) (seconds * rate));
+        sound.clear();
+        for (const auto t : times)
+            for (int i = 0; i < (int) (0.2 * rate) && (int) (t * rate) + i < sound.getNumSamples(); ++i)
+            {
+                const auto v = 0.8f * (float) (std::sin (2.0 * juce::MathConstants<double>::pi * 440.0 * i / rate) * std::exp (-i / (0.05 * rate)));
+                sound.setSample (0, (int) (t * rate) + i, v);
+                sound.setSample (1, (int) (t * rate) + i, v);
+            }
+        file.getParentDirectory().createDirectory();
+        file.deleteFile();
+        std::unique_ptr<juce::OutputStream> stream (file.createOutputStream());
+        auto writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (rate).withNumChannels (2)
+                                                                           .withBitsPerSample (32)
+                                                                           .withSampleFormat (juce::AudioFormatWriterOptions::SampleFormat::floatingPoint));
+        REQUIRE (writer != nullptr);
+        writer->writeFromAudioSampleBuffer (sound, 0, sound.getNumSamples());
+    }
+}
+
+TEST_CASE ("0.34.1: the trim curve reads the same as before, in place", "[performance]")
+{
+    // The old way: a lane made of the trim's points, read with valueAt (bent curves too).
+    std::vector<AutomationPoint> trim { { 0.0, 0.5f }, { 2.0, 0.8f }, { 3.0, 0.2f }, { 5.0, 0.6f } };
+    trim[2].curve = 0.7f;
+    trim[3].curve = -0.4f;
+    AutomationLane old;
+    old.points = trim;
+    for (auto beat = -1.0; beat <= 6.0; beat += 0.0625)
+    {
+        const auto before = (*old.valueAt (beat) - 0.5f) * 2.0f * AutomationLane::trimRange;
+        CHECK (AutomationLane::trimDb (trim, beat) == before);   // (exactly: the same arithmetic)
+    }
+    CHECK (AutomationLane::trimDb ({}, 1.0) == 0.0f);
+}
+
+TEST_CASE ("0.34.1: an undo step leaves the plug-ins' settings in the song, and undo still works", "[performance]")
+{
+    Studio studio (false);
+    studio.addTrack ({});
+    // A song whose instrument has a megabyte of settings (as a sampler's would), opened.
+    const auto songFile = studio.getAudioFolder().getParentDirectory().getChildFile ("undo states.pr7s");
+    REQUIRE (studio.save (songFile));
+    auto xml = juce::parseXML (songFile);
+    REQUIRE (xml != nullptr);
+    juce::MemoryBlock big (1 << 20);
+    for (size_t i = 0; i < big.getSize(); ++i)
+        big[i] = (char) (i * 7);
+    auto* trackXml = xml->getChildByName ("Track");
+    REQUIRE (trackXml != nullptr);
+    trackXml->createNewChildElement ("InstrumentState")->addTextElement (big.toBase64Encoding());
+    REQUIRE (xml->writeTo (songFile));
+    juce::String problems;
+    REQUIRE (studio.open (songFile, problems));
+    const auto opened = studio.getProject().tracks.front().id;
+    const auto state = studio.getProject().findTrack (opened)->instrument.state;
+    REQUIRE (state == big);
+    const auto trackIdOpened = opened;
+
+    studio.setVolume (trackIdOpened, -6.0f);   // an undo step
+    CHECK (studio.getProject().findTrack (trackIdOpened)->instrument.state == state);
+    studio.setVolume (trackIdOpened, -12.0f);
+    CHECK (studio.getProject().findTrack (trackIdOpened)->instrument.state == state);
+    studio.undo();
+    CHECK_THAT (studio.getProject().findTrack (trackIdOpened)->volumeDb, WithinAbs (-6.0, 1.0e-6));
+    CHECK (studio.getProject().findTrack (trackIdOpened)->instrument.state == state);   // (undo doesn't take them either)
+    studio.redo();
+    CHECK_THAT (studio.getProject().findTrack (trackIdOpened)->volumeDb, WithinAbs (-12.0, 1.0e-6));
+}
+
+TEST_CASE ("0.34.1: a new song's recording of the same name is analysed afresh (hitpoints, pitch)", "[performance]")
+{
+    Studio studio (false);
+    writeTones (studio.getAudioFolder().getChildFile ("Guitar 01.wav"), { 0.5, 1.5 }, 3.0);
+    const auto first = studio.getHitpoints ("Guitar 01.wav");
+    REQUIRE (first.size() == 2);
+    REQUIRE (studio.getPitchAnalysis ("Guitar 01.wav") != nullptr);
+
+    studio.newProject();
+    writeTones (studio.getAudioFolder().getChildFile ("Guitar 01.wav"), { 0.25, 1.0, 2.0 }, 3.0);   // (another song's take)
+    const auto second = studio.getHitpoints ("Guitar 01.wav");
+    REQUIRE (second.size() == 3);
+    CHECK_THAT (second[0], WithinAbs (0.25, 0.01));
+}
+
+TEST_CASE ("0.34.1: the warped clips' cache counts what it holds and is emptied with the rest", "[performance]")
+{
+    juce::AudioBuffer<float> recording (2, (int) (4.0 * rate));
+    recording.clear();
+    for (int i = 0; i < recording.getNumSamples(); ++i)
+        recording.setSample (0, i, 0.1f * (float) std::sin (i * 0.05)), recording.setSample (1, i, recording.getSample (0, i));
+    const auto tempo = Project().tempoMap();
+    Part part;
+    part.audioFile = "x.wav";
+    part.length = 6.0;
+    part.warp = { { 0.0, 0.0 }, { 3.0, 1.2 }, { 6.0, 3.0 } };
+    WarpRenderer renderer;
+    const auto a = renderer.render (part, recording, rate, tempo);
+    REQUIRE (a != nullptr);
+    CHECK (renderer.wholeSamplesHeld() == (juce::int64) a->getNumSamples() * a->getNumChannels());
+    part.warp[1].beat = 2.5;   // (a marker dragged: a new whole clip)
+    const auto b = renderer.render (part, recording, rate, tempo);
+    CHECK (renderer.wholeSamplesHeld() == (juce::int64) (a->getNumSamples() + b->getNumSamples()) * 2);
+    CHECK (renderer.render (part, recording, rate, tempo) == b);   // (the same one again: kept)
+    renderer.clear();
+    CHECK (renderer.wholeSamplesHeld() == 0);
+}
+
+TEST_CASE ("0.34.2: audio clips mixed in one go in the middle give exactly the samples they gave one at a time", "[performance][engine]")
+{
+    // An awkward clip: off the beat, into its recording, fades ending between samples, a tempo
+    // ramp under it (so every position comes from the map), played in odd block sizes.
+    const auto sound = std::make_shared<juce::AudioBuffer<float>> (2, (int) (rate * 4));
+    for (int i = 0; i < sound->getNumSamples(); ++i)
+    {
+        sound->setSample (0, i, (float) std::sin (i * 0.0123) * 0.7f + (float) i * 1.0e-7f);
+        sound->setSample (1, i, (float) std::cos (i * 0.0071) * -0.6f);
+    }
+    for (const auto block : { 512, 333, 97 })
+    {
+        Engine engine;
+        engine.prepare (rate, 512);
+        engine.setAudioSource ([&sound] (const juce::String&) -> std::shared_ptr<const juce::AudioBuffer<float>> { return sound; });
+        Project project;
+        project.tempoTrackOn = true;
+        project.tempoEvents = { { 0.0, 120.0, false }, { 2.0, 150.0, true }, { 4.0, 110.0, true } };
+        Track track;
+        track.id = 1;
+        track.kind = Track::Kind::audio;
+        Part clip;
+        clip.start = 0.73;
+        clip.length = 3.11;
+        clip.audioFile = "take.wav";
+        clip.audioOffset = 0.0133;
+        clip.fadeIn = 0.01234;    // (592.3 samples)
+        clip.fadeOut = 0.03117;   // (1496.2 samples)
+        track.parts = { clip };
+        project.tracks.push_back (track);
+        engine.addAudioTrack (1);
+        engine.update (project);
+        engine.play();
+        const auto total = (int) (rate * 3);
+        std::vector<float> right;
+        const auto left = renderSamples (engine, total, block, &right);
+
+        // The old way, sample by sample (Engine::playClips before 0.34.2), through a 0 dB centre fader.
+        const auto tempo = project.tempoMap();
+        const auto sampleAt = [&] (double b) { return (juce::int64) std::llround (tempo.secondsAt (b) * rate); };
+        const auto startSample = sampleAt (clip.start), endSample = sampleAt (clip.end());
+        const auto offset = (juce::int64) std::llround (clip.audioOffset * rate);
+        const auto fadeIn = clip.fadeIn * rate, fadeOut = clip.fadeOut * rate;
+        const auto clipLength = (double) (endSample - startSample);
+        auto mismatches = 0;
+        for (juce::int64 s = 0; s < total; ++s)
+        {
+            float expectL = 0.0f, expectR = 0.0f;
+            if (s >= startSample && s < endSample)
+            {
+                const auto into = (double) (s - startSample);
+                const auto at = offset + (s - startSample);
+                if (at >= 0 && at < sound->getNumSamples())
+                {
+                    auto gain = 1.0;
+                    if (fadeIn > 0.0 && into < fadeIn) gain *= into / fadeIn;
+                    if (fadeOut > 0.0 && clipLength - into < fadeOut) gain *= (clipLength - into) / fadeOut;
+                    expectL = 0.0f + (float) (sound->getSample (0, (int) at) * gain);
+                    expectR = 0.0f + (float) (sound->getSample (1, (int) at) * gain);
+                }
+            }
+            if (left[(size_t) s] != expectL || right[(size_t) s] != expectR)
+                ++mismatches;
+        }
+        CHECK (mismatches == 0);   // (exactly: not within a tolerance)
+    }
+}
+
+TEST_CASE ("0.34.2: a fader moved keeps a track's events as they were; an edit to its notes builds them again", "[performance][engine]")
+{
+    Engine engine;
+    engine.prepare (rate, 512);
+    Project project;
+    Track track;
+    track.id = 1;
+    Part part;
+    part.length = 8.0;
+    part.notes = { { 0.0, 1.0, 60, 0.8f }, { 2.0, 1.0, 64, 0.8f } };
+    Controller bend;
+    bend.type = Controller::Type::cc;
+    bend.number = 1;
+    bend.start = 0.5;
+    bend.value = 100;
+    part.controllers = { bend };
+    track.parts = { part };
+    project.tracks.push_back (track);
+    auto probe = std::make_unique<Probe>();
+    auto* heard = probe.get();
+    engine.setInstrument (1, std::move (probe));
+    engine.update (project);
+    engine.play();
+    renderSamples (engine, 12000, 512);   // (into the first note)
+
+    // The fader moved: the same notes still play where they are (the list kept, nothing ended early).
+    const auto builds = engine.getEventBuilds();
+    project.tracks[0].volumeDb = -6.0f;
+    engine.update (project);
+    CHECK (engine.getEventBuilds() == builds);   // (kept, not built again)
+    renderSamples (engine, 24000 * 3, 512);
+    const auto on = heard->notesOn();
+    REQUIRE (on.size() == 2);
+    CHECK (on[0].sample == 0);
+    CHECK (on[1].sample == 48000);              // beat 2 at 120 BPM
+    REQUIRE (heard->notesOff().size() >= 1);
+    CHECK (heard->notesOff()[0].sample == 24000);   // the first note's own end, not cut at the update
+
+    // An edit: the second note moved up an octave plays as edited (built again).
+    project.tracks[0].parts[0].notes = { { 0.0, 1.0, 60, 0.8f }, { 6.0, 1.0, 76, 0.8f } };
+    engine.update (project);
+    CHECK (engine.getEventBuilds() == builds + 1);
+    renderSamples (engine, 24000 * 4, 512);
+    CHECK (heard->notesOn().back().message.getNoteNumber() == 76);
+    CHECK (heard->notesOn().back().sample == 24000 * 6);
+}
+
+TEST_CASE ("0.34.2 timing: an update after a fader move against one that builds every track's events", "[.][perf-update]")
+{
+    Engine engine;
+    engine.prepare (rate, 512);
+    Project project;
+    for (int t = 1; t <= 16; ++t)
+    {
+        Track track;
+        track.id = t;
+        Part part;
+        part.length = 512.0;
+        for (int n = 0; n < 2000; ++n)
+            part.notes.push_back ({ n * 0.25, 0.2, 40 + (n * 7 + t) % 40, 0.8f });
+        for (int c = 0; c < 64; ++c)
+        {
+            Controller cc;
+            cc.type = Controller::Type::cc;
+            cc.number = 1;
+            cc.start = c * 8.0;
+            cc.value = (c % 2) * 127;
+            cc.ramp = true;
+            part.controllers.push_back (cc);
+        }
+        track.parts = { part };
+        project.tracks.push_back (track);
+        engine.setInstrument (t, std::make_unique<Probe>());
+    }
+    engine.update (project);
+    const auto time = [&] (const std::function<void (int)>& change)
+    {
+        const auto start = juce::Time::getMillisecondCounterHiRes();
+        for (int i = 0; i < 30; ++i)
+        {
+            change (i);
+            engine.update (project);
+        }
+        return (juce::Time::getMillisecondCounterHiRes() - start) / 30.0;
+    };
+    const auto fader = time ([&] (int i) { project.tracks[3].volumeDb = -1.0f * (float) (i % 10); });
+    const auto rebuild = time ([&] (int i) { for (auto& t : project.tracks) t.parts[0].notes[0].pitch = 40 + i % 2; });
+    WARN ("per update: fader move " << fader << " ms; every track's events built (as before 0.34.2) " << rebuild << " ms");
+}

@@ -1,8 +1,36 @@
 #include "Project.h"
 #include "Controllers.h"
 
+#include <functional>
+#include <set>
+
 namespace pr7s
 {
+    namespace
+    {
+        // (0.52.0) Auto Fades settings in the song: the song's, and a track's own.
+        std::unique_ptr<juce::XmlElement> autoFadesXml (const AutoFades& f)
+        {
+            auto e = std::make_unique<juce::XmlElement> ("AutoFades");
+            e->setAttribute ("fadeIn", f.fadeIn);
+            e->setAttribute ("fadeOut", f.fadeOut);
+            e->setAttribute ("crossfades", f.crossfades);
+            e->setAttribute ("ms", f.milliseconds);
+            e->setAttribute ("equalPower", f.equalPower);
+            return e;
+        }
+        AutoFades autoFadesFrom (const juce::XmlElement& e)
+        {
+            AutoFades f;
+            f.fadeIn = e.getBoolAttribute ("fadeIn");
+            f.fadeOut = e.getBoolAttribute ("fadeOut");
+            f.crossfades = e.getBoolAttribute ("crossfades", true);
+            f.milliseconds = juce::jlimit (1.0, 500.0, e.getDoubleAttribute ("ms", 10.0));
+            f.equalPower = e.getBoolAttribute ("equalPower", true);
+            return f;
+        }
+    }
+
     namespace
     {
         // Bump when the file layout changes in a way older versions can't read.
@@ -127,20 +155,25 @@ namespace pr7s
         }
     }
 
-    std::optional<float> AutomationLane::valueAt (double beat) const noexcept
+    float AutomationLane::valueOf (const std::vector<AutomationPoint>& points, double beat, bool step) noexcept
     {
-        if (points.empty())
-            return std::nullopt;
         // The first point after the beat (the last of several at one beat wins before it).
         const auto next = std::upper_bound (points.begin(), points.end(), beat, [] (double b, const AutomationPoint& p) { return b < p.beat; });
         if (next == points.begin())
             return points.front().value;
         const auto& before = *std::prev (next);
-        if (next == points.end() || isStep())
+        if (next == points.end() || step)
             return before.value;
         const auto span = next->beat - before.beat;
         const auto along = span > 0.0 ? (float) ((beat - before.beat) / span) : 1.0f;
         return before.value + (next->value - before.value) * curveShape (along, next->curve);
+    }
+
+    std::optional<float> AutomationLane::valueAt (double beat) const noexcept
+    {
+        if (points.empty())
+            return std::nullopt;
+        return valueOf (points, beat, isStep());
     }
 
     std::optional<float> AutomationLane::valueAt (double beat, bool virginTerritory) const noexcept
@@ -168,9 +201,8 @@ namespace pr7s
     {
         if (trim.empty())
             return 0.0f;
-        AutomationLane t;
-        t.points = trim;
-        return (*t.valueAt (beat) - 0.5f) * 2.0f * trimRange;
+        // (0.34.1: read in place. It made a lane copying the points: an allocation on the audio thread.)
+        return (valueOf (trim, beat, false) - 0.5f) * 2.0f * trimRange;
     }
 
     std::optional<float> AutomationLane::playedAt (double beat, bool virginTerritory) const noexcept
@@ -300,6 +332,99 @@ namespace pr7s
         return heard;
     }
 
+    std::vector<FadedStretch> fadedStretches (const Track& track, int index, const AutoFades& fades, const TempoMap& tempo,
+                                              const std::function<double (const Part&)>& recordingSeconds)
+    {
+        std::vector<FadedStretch> out;
+        const auto heard = heardStretches (track, index);
+        if (heard.empty())
+            return out;
+        const auto& part = track.parts[(size_t) index];
+        const auto length = juce::jlimit (1.0, 500.0, fades.milliseconds) / 1000.0;
+        constexpr auto near = 1.0e-6;
+        // Seconds into a clip's recording at a beat (before its start: negative past its offset).
+        const auto into = [&tempo] (const Part& p, double beat)
+        {
+            return beat >= p.start ? p.audioOffset + tempo.secondsBetween (p.start, beat) : p.audioOffset - tempo.secondsBetween (beat, p.start);
+        };
+        const auto roomAfter = [&] (const Part& p, double beat)
+        {
+            return p.isWarped() ? 0.0 : juce::jmax (0.0, (recordingSeconds ? recordingSeconds (p) : 0.0) - into (p, beat));
+        };
+        const auto roomBefore = [&] (const Part& p, double beat) { return p.isWarped() ? 0.0 : juce::jmax (0.0, into (p, beat)); };
+        // The crossfade at a cut from `outgoing` (heard `outSeconds` up to it) to `incoming` (heard
+        // `inSeconds` from it): x before the cut, y after it. Centred when both recordings reach
+        // (the incoming one before the cut, the outgoing one after it); else moved to the side
+        // that has sound, as long as it can be. Both clips work it out alike, so their fades match.
+        const auto window = [&] (const Part& outgoing, double outSeconds, const Part& incoming, double inSeconds, double cut)
+        {
+            const auto most = juce::jmin (length, outSeconds, inSeconds);
+            const auto beforeMost = juce::jmin (roomBefore (incoming, cut), outSeconds * 0.5);
+            const auto afterMost = juce::jmin (roomAfter (outgoing, cut), inSeconds * 0.5);
+            auto x = juce::jmin (most * 0.5, beforeMost), y = juce::jmin (most * 0.5, afterMost);
+            x = juce::jmin (beforeMost, most - y);
+            y = juce::jmin (afterMost, most - x);
+            return std::pair<double, double> { x, y };
+        };
+        // The other clip heard up to (before) or from this beat, and how long; none where the audio
+        // just goes on (the halves of one split recording: no fade at all).
+        struct Meeting { const Part* other = nullptr; double seconds = 0.0; };
+        const auto meets = [&] (double beat, bool before)
+        {
+            Meeting m;
+            if (! part.isAudio() || ! track.isAudio())
+                return m;
+            for (int j = 0; j < (int) track.parts.size() && m.other == nullptr; ++j)
+            {
+                if (j == index)
+                    continue;
+                const auto& other = track.parts[(size_t) j];
+                for (const auto& [a, b] : heardStretches (track, j))
+                    if (std::abs ((before ? b : a) - beat) < near)
+                    {
+                        const auto continues = other.audioFile == part.audioFile && ! other.isWarped() && ! part.isWarped()
+                                            && std::abs (into (other, beat) - into (part, beat)) < 1.0e-4;
+                        if (continues)
+                            return Meeting { &other, -1.0 };
+                        m = { &other, tempo.secondsBetween (a, b) };
+                        break;
+                    }
+            }
+            return m;
+        };
+        for (const auto& [a, b] : heard)
+        {
+            FadedStretch f { a, b, 0.0, 0.0 };
+            const auto seconds = tempo.secondsBetween (a, b);
+            const auto in = fades.crossfades ? meets (a, true) : Meeting {};
+            if (in.other != nullptr)
+            {
+                if (in.seconds > 0.0)
+                {
+                    const auto [x, y] = window (*in.other, in.seconds, part, seconds, a);
+                    f.from = tempo.beatAt (tempo.secondsAt (a) - x);
+                    f.fadeIn = x + y;
+                }
+            }
+            else if (fades.fadeIn && ! (std::abs (a - part.start) < near && part.fadeIn > 0.0))
+                f.fadeIn = juce::jmin (length, seconds * 0.5);
+            const auto outTo = fades.crossfades ? meets (b, false) : Meeting {};
+            if (outTo.other != nullptr)
+            {
+                if (outTo.seconds > 0.0)
+                {
+                    const auto [x, y] = window (part, seconds, *outTo.other, outTo.seconds, b);
+                    f.to = tempo.beatAt (tempo.secondsAt (b) + y);
+                    f.fadeOut = x + y;
+                }
+            }
+            else if (fades.fadeOut && ! (std::abs (b - part.end()) < near && part.fadeOut > 0.0))
+                f.fadeOut = juce::jmin (length, seconds * 0.5);
+            out.push_back (f);
+        }
+        return out;
+    }
+
     int Track::numLanes() const noexcept
     {
         auto lanes = 1;
@@ -361,6 +486,23 @@ namespace pr7s
             g->setAttribute ("selection", group.selection);
             g->setAttribute ("recordMonitor", group.recordMonitor);
         }
+        if (! (autoFades == AutoFades {}))
+            xml->addChildElement (autoFadesXml (autoFades).release());   // (0.52.0)
+        if (markerTrack.shown || ! markerTrack.isEmpty())
+            xml->addChildElement (markerTrack.toXml().release());   // (0.49.0)
+        if (! signatureChanges.empty() || signatureTrackShown)
+        {
+            auto* signature = xml->createNewChildElement ("Signatures");
+            signature->setAttribute ("shown", signatureTrackShown);
+            signature->setAttribute ("locked", signatureLocked);
+            for (const auto& e : signatureChanges)
+            {
+                auto* event = signature->createNewChildElement ("Signature");
+                event->setAttribute ("bar", e.bar);
+                event->setAttribute ("numerator", e.numerator);
+                event->setAttribute ("denominator", e.denominator);
+            }
+        }
         if (! tempoEvents.empty() || tempoTrackShown)
         {
             auto* tempo = xml->createNewChildElement ("Tempo");
@@ -392,7 +534,19 @@ namespace pr7s
             t->setAttribute ("solo", track.solo);
             t->setAttribute ("armed", track.armed);
             if (track.isChannel())
-                t->setAttribute ("kind", track.isFx() ? "fx" : "group");
+                t->setAttribute ("kind", track.isFx() ? "fx" : track.isFolder() ? "folder" : "group");
+            if (track.folder != 0)
+                t->setAttribute ("folder", track.folder);
+            if (track.autoFades)
+                t->addChildElement (autoFadesXml (*track.autoFades).release());   // (0.52.0)
+            if (track.isFolder())
+            {
+                t->setAttribute ("folderOpen", track.folderOpen);
+                if (track.folderGroup)
+                    t->setAttribute ("folderGroup", true);
+                if (track.folderData != Track::FolderData::always)
+                    t->setAttribute ("folderData", (int) track.folderData);
+            }
             if (track.output != 0)
                 t->setAttribute ("output", track.output);
             if (track.sendsBypass)
@@ -426,6 +580,20 @@ namespace pr7s
                 t->setAttribute ("drumMap", track.drumMap);
             if (track.drumEditor)
                 t->setAttribute ("drumEditor", true);
+            if (track.follow != FollowMode::off)
+                t->setAttribute ("follow", followModeId (track.follow));
+            if (track.liveFollow != LiveFollow::off)
+                t->setAttribute ("liveFollow", liveFollowId (track.liveFollow));
+            if (! track.followReference.isEmpty())
+                t->addChildElement (track.followReference.toXml().release());
+            if (track.followVoice != Voice::soprano)
+                t->setAttribute ("followVoice", voiceId (track.followVoice));
+            if (track.performPattern.isNotEmpty())
+                t->setAttribute ("performPattern", track.performPattern);
+            if (! (track.eq == ChannelEq {}))
+                t->addChildElement (track.eq.toXml().release());   // (0.43.0)
+            if (track.followVoicing)
+                t->addChildElement (track.followVoicing->toXml ("TrackVoicing").release());
             if (track.pitchbendUp != 2 || track.pitchbendDown != 2 || track.pitchbendSnap || track.pitchbendGrid)
             {
                 t->setAttribute ("pitchbendUp", track.pitchbendUp);
@@ -474,6 +642,12 @@ namespace pr7s
                 p->setAttribute ("name", part.name);
                 if (part.muted)
                     p->setAttribute ("muted", true);
+                for (const auto& m : part.warp)
+                {
+                    auto* w = p->createNewChildElement ("Warp");
+                    w->setAttribute ("beat", m.beat);
+                    w->setAttribute ("seconds", m.seconds);
+                }
                 if (part.lane != 0)
                     p->setAttribute ("lane", part.lane);
                 if (part.order != 0)
@@ -485,6 +659,12 @@ namespace pr7s
                     p->setAttribute ("fadeIn", part.fadeIn);
                     p->setAttribute ("fadeOut", part.fadeOut);
                 }
+                if (part.volumeDb != 0.0)
+                    p->setAttribute ("volume", part.volumeDb);
+                if (part.transpose != 0)
+                    p->setAttribute ("transpose", part.transpose);
+                if (part.velocityOffset != 0)
+                    p->setAttribute ("velocityOffset", part.velocityOffset);
                 for (const auto& note : part.notes)
                 {
                     auto* n = p->createNewChildElement (noteTag);
@@ -508,6 +688,8 @@ namespace pr7s
         master->setAttribute ("volumeDb", masterVolumeDb);
         insertsToXml (masterInserts, *master);
         master->setAttribute ("preFaderSlots", masterPreFaderSlots);
+        if (! (masterEq == ChannelEq {}))
+            master->addChildElement (masterEq.toXml().release());
         lanesToXml (masterAutomation, *master);
         master->setAttribute ("automationOpen", masterAutomationOpen);
         master->setAttribute ("automationRead", masterRead);
@@ -535,6 +717,50 @@ namespace pr7s
             e->setAttribute ("returnSeconds", a.returnSeconds);
             e->setAttribute ("reductionLevel", a.reductionLevel);
         }
+        if (hitpointSettings != HitpointSettings {} || ! hitpointEdits.empty() || audioWarpQuantize)
+        {
+            // (0.32.0) Hitpoints: how strict, and the hand edits per recording.
+            auto* e = xml->createNewChildElement ("Hitpoints");
+            e->setAttribute ("threshold", hitpointSettings.threshold);
+            e->setAttribute ("minimumSeconds", hitpointSettings.minimumSeconds);
+            e->setAttribute ("audioWarpQuantize", audioWarpQuantize);
+            for (const auto& [file, edits] : hitpointEdits)
+            {
+                auto* f = e->createNewChildElement ("File");
+                f->setAttribute ("name", file);
+                for (const auto a : edits.added)
+                    f->createNewChildElement ("Added")->setAttribute ("seconds", a);
+                for (const auto r : edits.removed)
+                    f->createNewChildElement ("Removed")->setAttribute ("seconds", r);
+            }
+        }
+        for (const auto& [file, vari] : variAudio)
+        {
+            // (0.34.0) VariAudio: each recording's segments and their edits.
+            auto* e = xml->createNewChildElement ("VariAudio");
+            e->setAttribute ("file", file);
+            if (vari.bypass)
+                e->setAttribute ("bypass", true);
+            for (const auto& seg : vari.segments)
+            {
+                auto* s = e->createNewChildElement ("Segment");
+                // (0.35.0) Every digit: the times come back exactly as they were.
+                s->setAttribute ("start", juce::String (seg.start, 17));
+                s->setAttribute ("end", juce::String (seg.end, 17));
+                s->setAttribute ("pitch", (double) seg.pitch);
+                if (std::abs (seg.shift) > 0.0f) s->setAttribute ("shift", (double) seg.shift);
+                if (seg.straighten > 0.0f) s->setAttribute ("straighten", (double) seg.straighten);
+                if (std::abs (seg.volumeDb) > 0.0f) s->setAttribute ("volume", (double) seg.volumeDb);
+                if (std::abs (seg.tiltStart) > 0.0f) s->setAttribute ("tiltStart", (double) seg.tiltStart);
+                if (std::abs (seg.tiltEnd) > 0.0f) s->setAttribute ("tiltEnd", (double) seg.tiltEnd);
+                if (seg.anchor != 0.5f) s->setAttribute ("anchor", (double) seg.anchor);
+                if (seg.straightenFrom > 0.0f) s->setAttribute ("straightenFrom", (double) seg.straightenFrom);
+                if (seg.straightenTo < 1.0f) s->setAttribute ("straightenTo", (double) seg.straightenTo);
+                if (std::abs (seg.formant) > 0.0f) s->setAttribute ("formant", (double) seg.formant);
+            }
+        }
+        if (variAudioReference != 0)
+            xml->setAttribute ("variAudioReference", variAudioReference);
         if (recordModes != RecordModes {})
         {
             // (0.29.0) The record modes.
@@ -565,6 +791,25 @@ namespace pr7s
             project.chordPads = ChordPads::fromXml (*pads);
         if (const auto* chords = xml.getChildByName ("ChordTrack"))
             project.chordTrack = ChordTrack::fromXml (*chords);
+        if (! isValidSignature (project.numerator, project.denominator))
+            project.numerator = 4, project.denominator = 4;
+        if (const auto* fades = xml.getChildByName ("AutoFades"))
+            project.autoFades = autoFadesFrom (*fades);   // (0.52.0)
+        if (const auto* markers = xml.getChildByName ("MarkerTrack"))
+            project.markerTrack = MarkerTrack::fromXml (*markers);   // (0.49.0)
+        if (const auto* signature = xml.getChildByName ("Signatures"))
+        {
+            project.signatureTrackShown = signature->getBoolAttribute ("shown");
+            project.signatureLocked = signature->getBoolAttribute ("locked");
+            std::vector<SignatureEvent> changes;
+            for (const auto* e : signature->getChildWithTagNameIterator ("Signature"))
+                changes.push_back ({ e->getIntAttribute ("bar"), e->getIntAttribute ("numerator", 4), e->getIntAttribute ("denominator", 4) });
+            // (The map drops what's not a change after bar 1, invalid ones and duplicates.)
+            const SignatureMap map (project.numerator, project.denominator, changes);   // (kept: a loop over a temporary's list reads freed memory)
+            for (const auto& segment : map.segments())
+                if (segment.event.bar > 0)
+                    project.signatureChanges.push_back (segment.event);
+        }
         if (const auto* tempo = xml.getChildByName ("Tempo"))
         {
             project.tempoTrackShown = tempo->getBoolAttribute ("shown");
@@ -612,6 +857,16 @@ namespace pr7s
                 track.controllerLanes = ControllerKinds::lanesFromText (t->getStringAttribute ("controllerLanes"));
             track.drumMap = t->getStringAttribute ("drumMap");
             track.drumEditor = t->getBoolAttribute ("drumEditor");
+            track.follow = followModeFromId (t->getStringAttribute ("follow"));
+            track.liveFollow = liveFollowFromId (t->getStringAttribute ("liveFollow"));
+            if (const auto* reference = t->getChildByName ("FollowReference"))
+                track.followReference = FollowReference::fromXml (*reference);
+            track.followVoice = voiceFromId (t->getStringAttribute ("followVoice"));
+            if (const auto* eq = t->getChildByName ("Eq"))
+                track.eq = ChannelEq::fromXml (*eq);
+            track.performPattern = t->getStringAttribute ("performPattern");
+            if (const auto* voicing = t->getChildByName ("TrackVoicing"))
+                track.followVoicing = VoicingSettings::fromXml (*voicing);
             track.pitchbendUp = juce::jlimit (1, 96, t->getIntAttribute ("pitchbendUp", 2));
             track.pitchbendDown = juce::jlimit (1, 96, t->getIntAttribute ("pitchbendDown", 2));
             track.pitchbendSnap = t->getBoolAttribute ("pitchbendSnap");
@@ -646,6 +901,16 @@ namespace pr7s
                 track.kind = Track::Kind::fx;
             if (t->getStringAttribute ("kind") == "group")
                 track.kind = Track::Kind::group;
+            if (t->getStringAttribute ("kind") == "folder")
+            {
+                track.kind = Track::Kind::folder;
+                track.folderOpen = t->getBoolAttribute ("folderOpen", true);
+                track.folderGroup = t->getBoolAttribute ("folderGroup");
+                track.folderData = (Track::FolderData) juce::jlimit (0, 2, t->getIntAttribute ("folderData"));
+            }
+            track.folder = juce::jmax (0, t->getIntAttribute ("folder"));
+            if (const auto* fades = t->getChildByName ("AutoFades"))
+                track.autoFades = autoFadesFrom (*fades);   // (0.52.0)
             track.output = juce::jmax (0, t->getIntAttribute ("output"));
             track.sendsBypass = t->getBoolAttribute ("sendsBypass");
             track.linkGroup = juce::jmax (0, t->getIntAttribute ("linkGroup"));
@@ -680,11 +945,19 @@ namespace pr7s
                 part.name = p->getStringAttribute ("name");
                 part.muted = p->getBoolAttribute ("muted");
                 part.lane = juce::jlimit (0, 255, p->getIntAttribute ("lane"));
+                for (const auto* w : p->getChildWithTagNameIterator ("Warp"))
+                    part.warp.push_back ({ w->getDoubleAttribute ("beat"), juce::jmax (0.0, w->getDoubleAttribute ("seconds")) });
+                std::sort (part.warp.begin(), part.warp.end(), [] (const WarpMarker& a, const WarpMarker& b) { return a.beat < b.beat; });
+                if (part.warp.size() < 2 || p->getStringAttribute ("audioFile").isEmpty())
+                    part.warp.clear();
                 part.order = p->getIntAttribute ("order");
                 part.audioFile = p->getStringAttribute ("audioFile");
                 part.audioOffset = juce::jmax (0.0, p->getDoubleAttribute ("audioOffset"));
                 part.fadeIn = juce::jmax (0.0, p->getDoubleAttribute ("fadeIn"));
                 part.fadeOut = juce::jmax (0.0, p->getDoubleAttribute ("fadeOut"));
+                part.volumeDb = juce::jlimit (Part::leastVolumeDb, Part::mostVolumeDb, p->getDoubleAttribute ("volume"));
+                part.transpose = juce::jlimit (-48, 48, p->getIntAttribute ("transpose"));
+                part.velocityOffset = juce::jlimit (-127, 127, p->getIntAttribute ("velocityOffset"));
                 for (const auto* n : p->getChildWithTagNameIterator (noteTag))
                     part.notes.push_back ({ n->getDoubleAttribute ("start"), juce::jmax (0.001, n->getDoubleAttribute ("length", 0.25)),
                                             juce::jlimit (0, 127, n->getIntAttribute ("pitch", 60)),
@@ -706,6 +979,8 @@ namespace pr7s
             project.tracks.push_back (std::move (track));
         }
         project.nextTrackId = juce::jmax (highestId + 1, xml.getIntAttribute ("nextTrackId", 1));
+        project.variAudioReference = xml.getIntAttribute ("variAudioReference", 0);
+        project.tidyFolders();   // (0.50.0)
         // Routing that leads nowhere it can go: back to the master, or no send.
         for (auto& track : project.tracks)
         {
@@ -756,10 +1031,49 @@ namespace pr7s
             project.masterVolumeDb = (float) juce::jlimit (-60.0, 6.0, master->getDoubleAttribute ("volumeDb", 0.0));
             project.masterInserts = insertsFromXml (*master);
             project.masterPreFaderSlots = juce::jlimit (0, maxInserts, master->getIntAttribute ("preFaderSlots", maxInserts));
+            if (const auto* eq = master->getChildByName ("Eq"))
+                project.masterEq = ChannelEq::fromXml (*eq);
             project.masterAutomation = lanesFromXml (*master);
             project.masterAutomationOpen = master->getBoolAttribute ("automationOpen");
             project.masterRead = master->getBoolAttribute ("automationRead");
             project.masterWrite = master->getBoolAttribute ("automationWrite");
+        }
+        if (const auto* e = xml.getChildByName ("Hitpoints"))
+        {
+            project.hitpointSettings.threshold = juce::jlimit (0.0, 1.0, e->getDoubleAttribute ("threshold", 0.25));
+            project.hitpointSettings.minimumSeconds = juce::jlimit (0.0, 2.0, e->getDoubleAttribute ("minimumSeconds", 0.06));
+            project.audioWarpQuantize = e->getBoolAttribute ("audioWarpQuantize");
+            for (const auto* f : e->getChildWithTagNameIterator ("File"))
+            {
+                auto& edits = project.hitpointEdits[f->getStringAttribute ("name")];
+                for (const auto* a : f->getChildWithTagNameIterator ("Added"))
+                    edits.added.push_back (a->getDoubleAttribute ("seconds"));
+                for (const auto* r : f->getChildWithTagNameIterator ("Removed"))
+                    edits.removed.push_back (r->getDoubleAttribute ("seconds"));
+            }
+        }
+        for (const auto* e : xml.getChildWithTagNameIterator ("VariAudio"))
+        {
+            auto& vari = project.variAudio[e->getStringAttribute ("file")];
+            vari.bypass = e->getBoolAttribute ("bypass");
+            for (const auto* s : e->getChildWithTagNameIterator ("Segment"))
+            {
+                VariSegment seg;
+                seg.start = juce::jmax (0.0, s->getDoubleAttribute ("start"));
+                seg.end = juce::jmax (seg.start + 0.001, s->getDoubleAttribute ("end"));
+                seg.pitch = (float) juce::jlimit (0.0, 127.0, s->getDoubleAttribute ("pitch", 60.0));
+                seg.shift = (float) juce::jlimit (-48.0, 48.0, s->getDoubleAttribute ("shift"));
+                seg.straighten = (float) juce::jlimit (0.0, 1.0, s->getDoubleAttribute ("straighten"));
+                seg.volumeDb = (float) juce::jlimit (-96.0, 12.0, s->getDoubleAttribute ("volume"));
+                seg.tiltStart = (float) juce::jlimit (-24.0, 24.0, s->getDoubleAttribute ("tiltStart"));
+                seg.tiltEnd = (float) juce::jlimit (-24.0, 24.0, s->getDoubleAttribute ("tiltEnd"));
+                seg.anchor = (float) juce::jlimit (0.0, 1.0, s->getDoubleAttribute ("anchor", 0.5));
+                seg.straightenFrom = (float) juce::jlimit (0.0, 1.0, s->getDoubleAttribute ("straightenFrom", 0.0));
+                seg.straightenTo = (float) juce::jlimit ((double) seg.straightenFrom, 1.0, s->getDoubleAttribute ("straightenTo", 1.0));
+                seg.formant = (float) juce::jlimit (-100.0, 100.0, s->getDoubleAttribute ("formant"));
+                vari.segments.push_back (seg);
+            }
+            std::sort (vari.segments.begin(), vari.segments.end(), [] (const VariSegment& a, const VariSegment& b) { return a.start < b.start; });
         }
         if (const auto* e = xml.getChildByName ("RecordModes"))
         {
@@ -853,13 +1167,18 @@ namespace pr7s
     juce::String formatBarsBeats (double beats, const Project& project)
     {
         beats = juce::jmax (0.0, beats);
-        // Whole ticks first, so a position never shows "480" ticks.
+        // Whole ticks first, so a position never shows "480" ticks; bars by the signature track (0.45.0).
         constexpr int ticksPerBeat = 480, ticksPerSixteenth = 120;
-        const auto totalTicks = (juce::int64) std::floor (beats * ticksPerBeat + 1.0e-6);
-        const auto ticksPerBar = (juce::int64) std::llround (project.beatsPerBar() * ticksPerBeat);
-        const auto ticksPerUnit = (juce::int64) std::llround (4.0 / project.denominator * ticksPerBeat);   // the signature's beat (a quarter in 4/4, an eighth in 6/8)
-        const auto bar = totalTicks / ticksPerBar + 1;
-        auto rest = totalTicks % ticksPerBar;
+        const auto map = project.signatures();
+        const auto barIndex = map.barAt (beats);
+        const auto& signature = map.segmentOfBar (barIndex).event;
+        auto rest = (juce::int64) std::floor ((beats - map.beatOfBar (barIndex)) * ticksPerBeat + 1.0e-6);
+        const auto ticksPerBar = (juce::int64) std::llround (signature.barLength() * ticksPerBeat);
+        const auto ticksPerUnit = (juce::int64) std::llround (signature.unit() * ticksPerBeat);   // the signature's beat (a quarter in 4/4, an eighth in 6/8)
+        auto bar = (juce::int64) barIndex + 1;
+        if (rest >= ticksPerBar)
+            ++bar, rest -= ticksPerBar;   // (rounding at a bar line)
+        rest = juce::jmax ((juce::int64) 0, rest);
         const auto beat = rest / ticksPerUnit + 1;
         rest %= ticksPerUnit;
         const auto sixteenth = rest / ticksPerSixteenth + 1;
@@ -945,5 +1264,98 @@ namespace pr7s
     juce::String noteName (int pitch)
     {
         return juce::MidiMessage::getMidiNoteName (juce::jlimit (0, 127, pitch), true, true, 3);
+    }
+
+    //==========================================================================
+    // Folder tracks (0.50.0).
+    bool Project::isInFolder (int trackId, int folderId) const
+    {
+        const auto* track = findTrack (trackId);
+        for (int steps = 0; track != nullptr && track->folder != 0 && steps < 256; ++steps)
+        {
+            if (track->folder == folderId)
+                return true;
+            track = findTrack (track->folder);
+        }
+        return false;
+    }
+
+    std::vector<int> Project::folderMembers (int folderId, bool deep) const
+    {
+        std::vector<int> out;
+        for (const auto& t : tracks)
+            if (t.id != folderId && (deep ? isInFolder (t.id, folderId) : t.folder == folderId))
+                out.push_back (t.id);
+        return out;
+    }
+
+    int Project::folderDepth (int trackId) const
+    {
+        int depth = 0;
+        const auto* track = findTrack (trackId);
+        for (; track != nullptr && track->folder != 0 && depth < 256; ++depth)
+            track = findTrack (track->folder);
+        return depth;
+    }
+
+    bool Project::isFoldedAway (const Track& track) const
+    {
+        const auto* parent = findTrack (track.folder);
+        for (int steps = 0; parent != nullptr && steps < 256; ++steps)
+        {
+            if (! parent->folderOpen)
+                return true;
+            parent = findTrack (parent->folder);
+        }
+        return false;
+    }
+
+    void Project::tidyFolders()
+    {
+        // Each track's folder: a folder track, not itself, and not one inside it (no loops).
+        for (auto& track : tracks)
+        {
+            const auto* parent = findTrack (track.folder);
+            if (parent == nullptr || ! parent->isFolder() || track.folder == track.id)
+                track.folder = 0;
+        }
+        for (auto& track : tracks)
+        {
+            std::set<int> seen { track.id };
+            for (const auto* up = findTrack (track.folder); up != nullptr; up = findTrack (up->folder))
+                if (! seen.insert (up->id).second)
+                {
+                    track.folder = 0;   // (a loop: this one leaves its folder)
+                    break;
+                }
+        }
+        // Every folder's tracks right after it, in the order they were in (the tracks moved, not copied).
+        std::vector<size_t> order;
+        order.reserve (tracks.size());
+        std::set<int> placed;
+        std::function<void (int)> place = [&] (int folderId)
+        {
+            for (size_t i = 0; i < tracks.size(); ++i)
+                if (tracks[i].folder == folderId && placed.insert (tracks[i].id).second)
+                {
+                    order.push_back (i);
+                    if (tracks[i].isFolder())
+                        place (tracks[i].id);
+                }
+        };
+        place (0);
+        for (size_t i = 0; i < tracks.size(); ++i)
+            if (placed.insert (tracks[i].id).second)
+                order.push_back (i);   // (anything left: kept, at the end)
+        auto inOrder = true;
+        for (size_t i = 0; i < order.size(); ++i)
+            inOrder = inOrder && order[i] == i;
+        if (inOrder)
+            return;
+        std::vector<Track> ordered;
+        ordered.reserve (tracks.size());
+        for (const auto i : order)
+            ordered.push_back (std::move (tracks[i]));
+        tracks = std::move (ordered);
     }
 }

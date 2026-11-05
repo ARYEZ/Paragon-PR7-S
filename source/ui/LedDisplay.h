@@ -48,6 +48,9 @@ public:
     // returning the glass's area to draw the readout in. `size` scales the
     // frame and bezel (1 is this screen's).
     static juce::Rectangle<float> paintScreen (juce::Graphics&, juce::Rectangle<float> bounds, float size = 1.0f);
+    // The glass paintScreen returns, without painting; how far its shadow reaches past `bounds`.
+    static juce::Rectangle<float> glassOf (juce::Rectangle<float> bounds, float size = 1.0f) { return bounds.reduced (11.0f * size); }
+    static float screenReach (float size = 1.0f) { return 20.0f * size; }
     // What sits in front of the readout: pixel rows, the bezel's shadow and reflections.
     static void paintGlassOverlay (juce::Graphics&, juce::Rectangle<float> glass, float size = 1.0f);
 

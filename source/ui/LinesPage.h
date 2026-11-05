@@ -57,6 +57,29 @@ private:
     juce::TextButton feelKey { "FEEL" };
 };
 
+// MELODY SETTINGS (0.41.0, the owner asked: as their chord tool's melody controls): what the
+// MELODY tab's composer makes: DENSITY (notes a bar), LOWEST / HIGHEST (the range), LEAPS (steps
+// vs leaps), PHRASE (1, 2 or 4 bars: how long the motif is), REPEAT (how closely a returning
+// phrase copies the first), RESTS (room to breathe), SYNCOPATION (off-beat pushes), DEFAULTS.
+class MelodyPanel final : public juce::Component
+{
+public:
+    explicit MelodyPanel (pr7s::MelodySettings);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void setSettings (const pr7s::MelodySettings&);   // (as the controls would: onChange called)
+    const pr7s::MelodySettings& getSettings() const noexcept { return settings; }
+    std::function<void (const pr7s::MelodySettings&)> onChange;
+    static juce::String summary (const pr7s::MelodySettings&);   // "MELODY: C3-G4, 2 BARS"
+    static constexpr int width = 460, rowHeight = 32, titleHeight = 60;
+
+private:
+    void refresh();
+    pr7s::MelodySettings settings;
+    juce::Slider density, low, high, leaps, repeat, rests;
+    juce::TextButton oneBar { "1 BAR" }, twoBars { "2 BARS" }, fourBars { "4 BARS" }, syncopation { "SYNCOPATION" }, defaults { "DEFAULTS" };
+};
+
 class LinesPage final : public juce::Component,
                         private juce::Timer
 {
@@ -68,7 +91,9 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
-    enum class Tab { piano, guitar, bass };
+    enum class Tab { piano, guitar, bass, patterns, melody };   // (0.39.0: PATTERNS; 0.41.0: MELODY)
+    void setPatternGroup (const juce::String&);   // the PATTERNS tab's group (settings key "ideasPatternGroup")
+    juce::String getPatternGroup() const noexcept { return patternGroup; }
     static std::vector<pr7s::LineIdea::Part> partsOf (Tab);
     static juce::String titleOf (pr7s::LineIdea::Part);
     void setTab (Tab);   // (remembered: settings key "ideasTab")
@@ -80,6 +105,8 @@ public:
     void setHumanize (float amount, bool feel);                // (Studio's ideas humanize), every tab dealt again
     void showHumanize();
     static juce::String humanizeText (float amount);           // "HUMANIZE 40%" / "HUMANIZE OFF"
+    void setMelodySettings (const pr7s::MelodySettings&);      // (Studio's), the MELODY tab dealt again
+    void showMelodySettings();
 
     // What the keys do (tests drive them).
     void play (pr7s::LineIdea::Part, int index);
@@ -102,14 +129,17 @@ private:
     void showUseMenu (pr7s::LineIdea::Part, int index, Card&);
     pr7s::Studio& studio;
     std::vector<pr7s::ChordSpan> spans;
-    std::array<std::vector<pr7s::LineIdea>, 5> ideas;
+    std::array<std::vector<pr7s::LineIdea>, 7> ideas;
+    juce::String patternGroup { "ARPEGGIOS" };
+    juce::ComboBox groupBox;
     int variation = 0;
     Tab tab = Tab::piano;
     std::optional<std::pair<pr7s::LineIdea::Part, int>> playing;
     bool playingChords = false;
     juce::OwnedArray<Card> cards;
     juce::TextButton hearChords { "HEAR CHORDS" }, more { "MORE IDEAS" }, stopKey { "STOP" };
-    juce::TextButton pianoTab { "PIANO" }, guitarTab { "GUITAR" }, bassTab { "BASS" };
+    juce::TextButton pianoTab { "PIANO" }, guitarTab { "GUITAR" }, bassTab { "BASS" }, patternsTab { "PATTERNS" }, melodyTab { "MELODY" };
+    juce::TextButton melodyKey;   // MELODY SETTINGS (the MELODY tab)
     juce::Label tuningLabel { {}, "TUNING" };
     juce::ComboBox tuningBox;
     juce::TextButton velocitiesKey { "VELOCITIES" };

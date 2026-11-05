@@ -2,6 +2,780 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.52.2
+
+**Plug-in windows remember where you put them** (you asked)
+- Move a plug-in's window and it opens there again next time, even after closing the studio. The place is remembered per plug-in: wherever you leave Kontakt, Kontakt opens there, on any track.
+- A plug-in you haven't placed yet opens centred on the right-hand screen (0.52.1).
+- If the remembered place is no longer on any screen (for example, a monitor unplugged), it opens on the right-hand screen instead.
+
+**The PLUGINS window in the Hub's look** (your screenshot)
+- The Hub's pearl header with the PR7-S mark, with how many plug-ins were found.
+- The list sits in the Hub's red-edged panel:
+  - Names in large Bebas.
+  - Kind, maker and version dimmed.
+  - The chosen row lit as in the Hub.
+  - The column titles on a dark strip, the sorted one in orange.
+- Everything works as before: SCAN / OPTIONS, the scan, Delete, the right-click menu, sorting by clicking a column.
+- Every other table now has the same column titles: the MediaBay's results, the Markers window and the Drum Map Setup.
+
+**The studio staying in Task Manager after closing**
+- **What was wrong:** after the window had gone and everything was saved, Windows still had to unload each plug-in's file as the program ended. A plug-in that doesn't let go at that point keeps the process alive with no window. This happens often with big instruments.
+- **Now:**
+  - Once the song and settings are saved, every plug-in is unloaded and the log is closed, the studio ends its own process at once instead of waiting on Windows.
+  - If closing itself gets stuck earlier (a plug-in that won't unload), 0.52.1's log writes what was being closed at 30 seconds. At 90 seconds the studio ends itself and the log says so. Next time you start, it offers to show you that log.
+- I can't reproduce this here, since it needs your plug-ins on Windows. If it still happens, the log will now say which plug-in it was.
+
+## 0.52.1
+
+Two fixes from your reports, and two changes you asked for.
+
+**The export window, bigger** (you asked: about twice the size)
+- **Audio Mixdown and MIDI File** open with everything twice the size: text, boxes, keys.
+- **Limited by your screen:** at its tallest (with the channels listed) the page is about 600 points high, and twice that won't fit a 1080-high screen. So it's as big as the screen it opens on allows: about 1.65 times on yours, twice on a taller screen.
+- **It grows with its list** as before, still at the bigger size.
+
+**Plug-in windows open centred on the right-hand screen** (you asked: your third monitor)
+- Every instrument's and effect's window now opens in the middle of the screen furthest to the right. With one screen, that's the one.
+- They open there every time (a window you move isn't remembered yet: say if you'd like that).
+
+**Render in Place: Disable and Hide were greyed out while CYCLE was on**
+- **What was wrong:** since 0.31.0, a whole track rendered with CYCLE on is rendered over the cycle only (as you asked then). But the studio then treated it as "a stretch of a track", which can only mute the parts it rendered. So "Mute and disable the track" and "Hide the track afterwards" were greyed out, and Render with the last settings (Alt+R) only ever muted.
+- **Now:** a track you render (the track menu, the Inspector's RENDER, Alt+R on selected tracks) stays a whole-track render. It's still rendered over the cycle only, but the original is muted, disabled and hidden by default, as you wanted.
+- **One thing to know:** if the track has parts outside the cycle, disabling it silences those too. The page now says so in a line above its note (for example "CYCLE is on: only bars 5 to 8 will be rendered. Bass has parts outside the cycle..."). Turn CYCLE off to render the whole track.
+- A **range** selected with the Range tool still renders just that stretch and mutes the parts rendered, as before: there the stretch is what you chose.
+
+**The session log: what the studio was doing when it hangs**
+- **What was wrong:** when the studio froze, the log ended with something that had finished ("rendered", "disabled a track"), never what came next. There were three reasons:
+  1. The freeze report itself could get stuck. Before writing a word, it asked Windows for the names and debugging information of every loaded module. A plug-in that hangs while it's loaded or unloaded (exactly what disabling a track or setting up a render does) holds a Windows lock those requests need. So the report waited forever and nothing was written.
+  2. Steps were only written once they'd finished.
+  3. A hang while closing wasn't watched at all, and neither was a render that got stuck on its own thread (the screen still answers then).
+- **Now:**
+  - **Every step that can hang is written as it starts** ("Starting: Unloading the instrument Kontakt 8") **and when it ends** ("done: ... (1250 ms)"). That covers loading, preparing, switching to offline and unloading each plug-in, a plug-in's window opening and closing, asking a plug-in for its settings, disabling or enabling a track, setting up and ending a render, the audio device, and closing.
+  - **A FROZEN entry is written at once**, with the steps under way and for how long, before anything else is tried.
+  - **Then what every thread is doing (Windows):** the studio's, the audio's, and every plug-in's and driver's own threads. For each, which module it's in (for example "Kontakt 8.vst3 + 0x1a2b3c") and the modules found on its stack. This is read from a list of modules the studio keeps up to date in advance, without asking Windows anything a stuck plug-in could be holding. Last of all come the calls by name. If that last part gets stuck too, everything above it is already saved.
+  - **A render that stops moving for 30 seconds** writes a STUCK entry with the same report, even though the screen still answers.
+  - **The watch stays on while closing:** a close that hangs for 30 seconds writes FROZEN "(while closing)" with the plug-in being unloaded.
+- **What helps:** when it hangs, wait about 30 seconds before ending it in Task Manager, so the report has time to be written. Then send the log: it should name the plug-in or the step.
+- I could only run the Windows parts through the build machines' tests (a deliberate freeze in the test program, which checks that the report lists every thread). I can't reproduce your hang here, so the next log is the real test.
+
+## 0.52.0
+
+**Auto fades and crossfades** (the last of your four; the manual's Auto Fades dialog). Until now, where two comped takes met, playback jumped straight from one take to the other. If the sound wasn't at the same point in both waves, that left a small click at every cut. Now the studio crossfades there as it plays.
+
+**Crossfades where takes meet (on by default)**
+- **At every comp cut,** and wherever one clip in front hides another, the take going out fades down while the take coming in fades up. The default is 10 ms.
+- **Centred on the cut:** half before it, half after, using each recording's audio just past its own edge. If a take's recording starts exactly at the cut, so there's nothing of it before, the whole crossfade moves after the cut. Both takes agree on it, so the two fades always match.
+- **Not between the two halves of one split recording:** that audio simply carries on, so nothing changes there.
+- **Nothing is drawn on the events,** as the manual says: auto fades are made as the audio plays. Your own fade handles stay as they were.
+
+**The Auto Fades dialog** (right-click a track > **Auto Fades Settings...** for an audio track, or **Song's Auto Fades Settings...**; the key command Project > Auto Fades Settings):
+- **AUTO FADE IN / AUTO FADE OUT:** a short fade at every event's start and end. Off at first. An event with its own fade there keeps its own.
+- **AUTO CROSSFADES:** the crossfades above. On at first.
+- **LENGTH:** 1 to 500 ms.
+- **EQUAL POWER or EQUAL GAIN:**
+  - Equal Power keeps the loudness steady when the two takes are different performances. This is the usual choice and the default.
+  - Equal Gain keeps the level steady when they're the same sound. With identical audio, Equal Power swells by up to 3 dB in the middle of the crossfade, which is how it's meant to work.
+- **USE PROJECT SETTINGS** (a track's dialog only): untick it to give that track its own settings.
+- **Saved with the song.** Changing them isn't an undo step (like the record modes).
+
+**Bounce** (0.30.0) writes the crossfades into its new file, so the bounced take sounds exactly as the comp played.
+
+**Honest limits:**
+- I checked the crossfades by measuring the output: no jump bigger than a few thousandths at a cut, and steady levels either side. I can't listen to them here.
+- **Not yet:**
+  - The manual's curve type and shape buttons (spline / damped spline); our curves are a sine for Equal Power and a straight line for Equal Gain.
+  - "As Default".
+  - Event-based crossfades you draw and edit (the manual's Crossfade editor and the X key).
+  - A cut between two warped clips still cuts directly, because a warped clip's stretched sound has nothing past its edges. With only one of them warped, the crossfade moves onto the other's side.
+
+## 0.51.0
+
+**Export, round two** (the third of your four): stems, cycle-marker ranges and MIDI files. EXPORT now opens a small menu: **Audio Mixdown...** or **MIDI File...**
+
+**Audio Mixdown: CHANNELS**
+- **"The main mix"** works as before: everything through the master.
+- **"Channels: a file each (stems)":** tick any tracks, group channels (folder groups too) and FX channels. ALL and NONE tick or clear them all. You choose a folder (it starts in a "Mixdown" folder beside the song).
+- **Each file is that channel's own sound,** as the manual describes: its effects, EQ, fader and pan.
+  - A track's file doesn't go through its group.
+  - A group's file holds what's routed into it.
+  - An FX channel's file holds what every track sends to it, the return only.
+  - Everything plays just as in the song while it's written, but only that channel reaches the file.
+- **The master's effects, EQ and fader are left out,** unless you tick "Include the master's effects, EQ and fader".
+- **Files are named** "Song - Channel.wav". If the name is taken, a number is added (Song - Bass 2.wav), so nothing is overwritten.
+
+**Audio Mixdown: WHAT > Cycle markers (a file each)**
+- **Tick cycle markers** (from 0.49.0's marker track) and each one's range is written to its own file, named after the marker ("Song - Chorus.wav").
+- **Works with channels too:** every channel over every chosen marker.
+
+**MIDI File...** (the manual's Export Options):
+- **What's in the file:** every instrument track's parts as a standard MIDI file, each track named and on its MIDI channel, with the tempo (the tempo track's changes; a ramp written as steps every sixteenth, since a MIDI file has no ramps), the time signatures and the markers.
+- **Notes as you hear them:** a part's Transpose and Velocity (0.47.0) are applied, and muted parts are left out.
+- **Options:**
+  - Export Markers.
+  - Export as Type 0 (all on one track).
+  - Resolution: 48 to 960 ticks per quarter note; 480 at first.
+  - Export Locator Range: only between the locators, starting at 0.
+  - The tracks' Volume/Pan as CC 7 and CC 10.
+  - Your choices are kept for next time.
+- **Checked by reading it back:** the tests export a song and import the file again (notes, tempo changes, signatures, markers).
+
+**Also:** one older test checked a note recorded from the on-screen keyboard too tightly. On a slow machine JUCE can place that note up to one audio block later, which is what failed 0.50.0's first build. Its tolerance is now one block. Nothing about recording changed.
+
+**Not yet:**
+- **No export queue.** You make one export at a time.
+- **No naming-scheme dialog.**
+- **Audio files are WAV only** (no MP3 / FLAC / Ogg export).
+- **MIDI export can't include your automation lanes as controllers**, and you can't drag a part out to the desktop as a file.
+
+## 0.50.0
+
+**Folder tracks** (the second of your four). It follows the manual's Folder Tracks.
+
+**Making folders:**
+- **+ ADD TRACK > Folder track** (or with its group channel, below it).
+- **Select tracks, then the track menu's Track Folding > Move Selected Tracks to New Folder** (or "... with Group Channel"). The folder appears where the first of them was, and they go inside it.
+- **Drag tracks** in the track list: drop one just under an open folder's row and it goes in; drop it above or outside the folder and it comes out. **Track Folding > Move into Folder / Move out of Its Folder** do the same from the menu.
+- **Folders can hold folders.** Tracks inside are indented, with a faint line for each folder around them.
+
+**Using them:**
+- **The arrow beside a folder's name** folds its tracks away or shows them again. Folded tracks still play; they're also hidden in the mixer, as the manual keeps the two in step.
+- **The folder's M and S** mute or solo every track in it.
+- **The folder's row shows its tracks' parts** as blocks, a strip for each track. **Click a block** to select every part in it (Shift adds); **drag it** to move them all together (Alt copies). Right-click > Track Folding > Show Data on Folder Tracks: always, never, or hidden while the folder is open.
+- **Enable Group Channel** (Track Folding menu): the folder becomes a group channel, so its tracks are summed into one fader, with inserts, sends and EQ, as any group. Every track in it is routed to it, and any track moved in later too. A track moved out goes back to the master. Switching the group channel off sends them all back to the master.
+- **Removing a folder keeps its tracks.** They move to the folder it was in, or to the top level. This is our choice; the manual removes them too.
+
+**DAWproject import:** folders from your other DAW's projects now come across as folder tracks. A group holding tracks becomes a folder with its group channel. Before, folders were flattened away.
+
+**Undo** brings back what was in which folder. Folders are saved with the song.
+
+**Not yet:**
+- **Group Editing Mode** (editing a part edits the same place on every track in the folder).
+- **Folder track colours applied to their tracks automatically.**
+- **Double-clicking a folder block to open the editors.**
+- **A folder's group channel inside another folder's** still goes straight to the master, not into the outer group.
+
+## 0.49.0
+
+**Markers** (the first of your four: then folder tracks, export round two, crossfades for comping). It follows the manual's Markers chapter.
+
+**The marker track** (+ ADD TRACK > Marker track, or just press Insert):
+- **Position markers** keep a place: an orange flag with their number and name.
+- **Cycle markers** keep a range, such as a verse or a chorus: a pink bar, with its number in brackets.
+- **The row's keys:**
+  - **+ POS** adds a marker at the playhead.
+  - **+ CYC** adds a cycle marker over the locators (Shift-click names it too).
+  - **LOCK** stops changes; you can still go to the markers.
+  - **GO TO** goes to a marker, sets the locators to a cycle marker, or zooms to one.
+- **Marker lines** run faintly down the whole arrangement, so you can see where sections start. Switch them off in the right-click menu.
+
+**On the marker track:**
+- **Alt-click** adds a position marker (Shift+Alt: and type its name). **Ctrl-drag** draws a cycle marker (Shift+Ctrl: and name it).
+- **Drag** a marker to move it (it snaps). Drag a cycle marker's edges to change its start or end.
+- **Double-click a cycle marker:** the locators go to it, ready to play round. **Alt + double-click:** it zooms to it too.
+- **Double-click a position marker:** type its name.
+- **With the Range tool,** double-click between two markers to select that whole stretch on every track.
+- **DRAW** adds and **ERASE** removes (Alt + ERASE: every marker from there on). **Delete** removes the selected.
+
+**Keys (the manual's own):**
+- **Insert:** a marker at the playhead.
+- **Shift+N / Shift+B:** the next / previous marker.
+- **Shift+1 to Shift+9** (and the number pad's 3 to 9): to marker 1 to 9.
+- **Ctrl+1 to Ctrl+9:** set marker 1 to 9 at the playhead.
+- **Ctrl+M:** the Markers window.
+- All of them can be changed in KEYS (they're in its Transport and Window lists), so a Stream Deck can press them.
+
+**The Markers window (Ctrl+M):**
+- **The list:** every marker with its ID, type, position, end, length and description. An arrow marks the one at the playhead; click the arrow column to go to a marker.
+- **Editing:** double-click any cell to type. Click a column's title to sort by it.
+- **Keys in the list:** Up/Down move through it and Return goes to the chosen marker.
+- **FUNCTIONS:** Move Markers to Cursor; Reassign Position / Cycle Marker IDs (numbers them again in time order).
+- **Settings:** SHOW IDS; CYCLE FOLLOWS (going to a marker also sets the locators to it); LINES; AUTO-SCROLL.
+
+**MIDI files:** markers in a MIDI file come onto the marker track when you import it.
+
+**Each marker change is one undo step.** Markers are saved with the song.
+
+**Not yet:**
+- **One marker track:** the manual allows ten.
+- **No marker lines in the MIDI editor.**
+- **No markers on the info line.**
+- **No WAV-file markers.**
+- **No marker export:** it comes with MIDI file export in 0.51.0.
+
+## 0.48.0
+
+**The neon finishes get PR7-G 0.59.0's look: black keys in neon rings** (you asked; your design).
+
+**On Pearl Black and Pearl White + Neon:**
+- **Every key is black**, the same as on Pearl White. No more pink-to-orange keys.
+- **The gradient moves to the rings round them.** Each key's surround is now pink to red to orange, lit along the top and darker at the front, as the chrome was.
+- **Lettering on the keys is light, as on Pearl White's black keys.** A key that's on lights its lettering (or its LED stripe) orange. Before, on the neon finishes a key that was on turned black among the neon ones. Now every key is black, so "on" shows the way it always has on Pearl White.
+
+**Pearl White doesn't change at all.** I checked the whole window pixel by pixel, with the MIDI editor open and with the mixer open: identical to 0.47.0.
+
+**What PR7-G has that the studio doesn't:**
+- **No footswitches, slot keys or expression pedal** here, so there are no bezels or ribs to see.
+- **The big knob isn't used in the studio.** The mixer's pan controls are small arc dials, which look the same in every finish.
+- **Both are updated anyway in the code the family shares:** the big bezel becomes the gradient and the big knob turns black with a gradient ring. They match PR7-G if the studio ever shows them.
+
+**SETTINGS:** the FINISH box has a tooltip describing each finish.
+
+## 0.47.0
+
+**The info line for parts and events** (next on your list). The strip over the track list and the arrangement showed only automation points. Now it also shows the selected part or audio event, and you can type into it.
+
+**What it shows:**
+- **An audio event:** FILE, NAME, START, END, LENGTH, OFFSET, FADE-IN, FADE-OUT, VOLUME, MUTE.
+- **A MIDI part:** NAME, START, END, LENGTH, TRANSPOSE, VELOCITY, MUTE.
+- **Several selected:** the earliest one's values, in pink, with how many are selected.
+- **Automation points still come first:** when points are selected, it shows them as before. A click on a part shows the part.
+
+**How you change things (the manual's rules):**
+- **Double-click a value and type**, then press Enter. Every selected part changes by the same amount as the first one. The manual's example: two events 1 and 2 bars long, LENGTH typed as 3 bars, become 3 and 4 bars.
+- **Ctrl+Enter** sets them all to the value you typed: both become 3 bars.
+- **Clicking MUTE** mutes or unmutes them all. **NAME** names them all.
+- **Each change is one undo step.**
+- **How to type values:** START and END as positions (5.1.1.0). LENGTH in bars.beats.16ths.ticks (3.0.0.0 is three bars). OFFSET and the fades in seconds ("1.5", or "250 ms"). VOLUME in dB ("-6", or "-inf" for silent). TRANSPOSE and VELOCITY as numbers ("+5", "-20").
+- **Limits:** a part can't start before the song does. An event can't run past the end of its recording. Fades stay inside the event. A frozen track's parts are left alone.
+
+**Three new things a part can hold**, set from the info line:
+- **VOLUME on an audio event:** its own level before the track's fader, -INF to +6 dB. The waveform grows or shrinks with it, and bounces include it.
+- **TRANSPOSE on a MIDI part:** semitones, -48 to +48.
+- **VELOCITY on a MIDI part:** added to every note's velocity (kept within 1-127).
+- **TRANSPOSE and VELOCITY are for playback only, as in the manual:** the notes in the MIDI editor stay as you wrote them. Glue writes them into the notes (the glued part starts from 0). Detect Chords names the transposed chords, since that's what you hear.
+
+**Not yet:**
+- **No TRANSPOSE for audio events:** it needs pitch shifting, which only VariAudio does here so far.
+- **No Lock or Fine-Tune.**
+- **No info line for chord, tempo or signature events.**
+- **Nothing in the info line's right-click menu to choose which fields show.**
+
+## 0.46.1
+
+Two more automation fixes you asked for:
+
+**A point anywhere you click, between points too.**
+- **Before:** a click between two points added nothing. The manual drops a point that doesn't leave the line, so 0.45.1 still followed that rule.
+- **Now:** a point is added on the line where you click, between points or not, and it's selected so you can drag it up or down. (It still won't add a second point exactly where one is.)
+
+**Delete moves on to the next point.**
+- **What happens now:** delete a point (or several) and the next point after them is selected, so pressing Delete again takes that one, and so on along the lane. At the end of the lane, the one before is selected.
+- **Undo:** each Delete is its own undo step.
+
+## 0.46.0
+
+**The channel EQ, as four bands of the other DAW's Frequency 2** (you asked; you chose the core with the spectrum, in place of the old one). Every channel's EQ (the Inspector's EQUALIZERS and the EQ window) works like this now:
+
+**Every band has the same shapes:**
+- **Low Shelf, Peak, High Shelf, Notch.** A Notch is a very narrow Peak.
+- **Band 1 can also be a low Cut** and band 4 a high Cut, each 6, 12, 24, 48 or 96 dB per octave (pick it from the band's type menu).
+- **Q** is how wide a Peak or Notch is. On a shelf, Q above 0.71 adds the dip and bump at its corner. On a Cut, it adds a resonance at the frequency (there's none for Cut 6).
+- **INVERT** beside each band's gain turns a boost into the same cut (Invert Gain).
+- **OUTPUT** sets the EQ's level after the four bands.
+
+**The EQ window:**
+- **SPECTRUM:** the channel's sound after the EQ, live, behind the curve.
+- **KEYS:** a keyboard under the curve with each band's mark on it. Drag a mark and the band's frequency follows; let go and it sits exactly on that key (A3 = 440 Hz).
+- **AUTO LISTEN:** while you drag a band's point, the channel plays only what that band works on (around a Peak or Notch, under a low shelf or cut, over a high one). It stops when you let go.
+- **The mouse wheel** over a point sets its Q. Ctrl-drag still moves only the gain, Alt-drag only the frequency, Shift-drag the Q, as the manual has it.
+- **The Pre section** (gain, phase, its own cuts) stays as it was.
+
+**Your songs:** EQs saved before open sounding the same. The old Parametric is the new Peak, and the old cuts were 12 dB per octave, which they stay.
+
+**Also fixed:** an EQ edit made right after Undo could bring back what was undone. The EQ window edited from what it showed a moment before, not the song as it is now.
+
+**Not here (your choice for now):** dynamic EQ, side-chain, Mid/Side or left/right per band, linear phase, eight bands, single-band view.
+
+## 0.45.1
+
+Two automation fixes you reported:
+
+**A click on an automation lane puts the point on the line as it is.**
+- **Before:** a click with the Object Selection tool took the height you clicked at. Four clicks along a flat line gave four different values.
+- **Now:** a new point takes the line's value where you click, so the line stays where it was. On an empty lane it takes the control's current value (the fader's, for volume).
+- **To set a different value:** drag the point up or down, type it on the info line, or draw with the DRAW tool, which still follows the mouse's height.
+- **Between two points,** a click still adds nothing, since a point on the line changes nothing (as the manual has it).
+
+**Ctrl+Enter on the info line works.**
+- **What it does:** type a value and press Ctrl+Enter, and every selected point is set to that value, as the manual's info line rules say.
+- **What was wrong:** the typing box only answered a plain Enter. With Ctrl held the key went past it, and nothing was set. My test had called the setting directly rather than pressing the keys, so it missed this.
+- **Also fixed:** the MIDI editor's info line had the same bug.
+
+## 0.45.0
+
+**Tempo and signature** (the third of your four choices). Three parts, from the manual's tempo and signature chapters:
+
+**Time signature changes along the song.** Until now a song had one signature. Now it can change at any bar: a bar of 7/8, a 3/4 bridge, a 6/8 outro.
+- **The signature track** (Add Track > Signature track). Each change shows at its bar.
+  - **Adding one:** with the DRAW tool, click where it goes. Or double-click an empty bar. Type the signature (7/8) and the bar.
+  - **Editing:** drag a change along the bars. Double-click it to retype it. ERASE or Delete removes it.
+  - **The first signature:** at bar 1, it's the song's own. You can change it but not move or delete it.
+  - **LOCK** stops changes. Right-click the track for its menu.
+- **The Tempo Track Editor** (Ctrl+T) shows every change in its signature lane. DRAW and ERASE work there too.
+- **Insert Time Signature Event** puts one at the bar the cursor is in. It's on the transport's signature menu, and in KEYS with no key yet, as the manual has it.
+- **What follows the bars:** the ruler, the grid, the click (the accent on each bar's first beat), the position screen, typed positions, the MIDI editor, and the bar and beat your plug-ins are told.
+- **The transport's SIGNATURE screen** shows the signature where the playhead is.
+- **What stays put:** parts, notes and automation stay where they are in the song. A change moves the bar lines, not your music, as the manual describes.
+- **MIDI files** with signature changes bring them in when imported as a new song.
+
+**Tap tempo.** A **TAP** key beside the tempo. Tap the beat on it, or press **Shift+Space** (the manual's key).
+- **The tempo:** the average of your last eight taps, shown as TAP TEMPO on the screen while you tap. A two-second gap starts again.
+- **Right-click TAP for the Tap Tempo Mode:**
+  - **Automatic:** what's selected, else where playback started, else the cursor; with the tempo track off, the song's tempo.
+  - **The selection's start, the last playback start, the cursor, or the project tempo.**
+  - **Display only:** shows the tempo without changing anything.
+- **Undo:** a run of taps is one undo step, so one Undo puts the tempo back as it was.
+
+**Tempo detection.** Right-click an audio event or a MIDI part (7 seconds or more) > **Tempo Detection...**, then **ANALYZE**. The tempo track then follows the beats you played without a click, drift and all.
+- **How it finds the beats:** it listens for where sounds start (for MIDI, the notes), finds the overall tempo, then tracks each beat. It follows a drummer pushing or pulling, not sudden jumps.
+- **The result:** a tempo event on every beat. The first beat lands on a whole beat of the song.
+- **Everything keeps its place in time:** other parts, notes, automation, chords and the locators move to the beats they now sound at. That's the manual's linear time base during analysis.
+- **Corrections, as the manual's panel:**
+  - **X 2 and / 2:** twice or half as many beats.
+  - **X 4/3 and X 3/4:** for triplet or dotted feels.
+  - **OFFBEAT:** half a beat on, when the offbeat was taken for the beat.
+  - **SMOOTH TEMPO:** steadies an uneven result.
+  - **RESET:** goes back to the tempo before the analysis. Undo works too.
+- **Honestly:** it finds clear beats well; my tests have clicks drifting from 100 to 112 BPM found within 15 ms. Sparse or very rubato playing can need the corrections or a hand edit. I can't test it here on your recordings.
+
+**Our choices:**
+- The signature stays as it is after a detection (the manual sets 1/4).
+- Removing the signature track keeps its changes: they're the song's bars, and the Tempo Track Editor still shows them.
+
+**Not yet:**
+- click patterns per signature;
+- Process Bars (insert, delete, reinterpret bars);
+- tempo recording;
+- the Time Warp tool after a detection;
+- the panel's reanalysis direction.
+
+## 0.44.0
+
+**The chord tool, round two** (you chose it). Five parts, from the manual's chord pads and chord track chapters:
+
+**Recording chords onto the chord track.** The chord track's row has a **REC** key (Record Enable). While you record:
+- **Pads:** each pad you press becomes a chord event at that beat.
+- **Your keyboard:** with no pads pressed, each chord you play becomes one. Three or more different notes starting together count; single notes and two-note intervals don't.
+- **Placement:** on the grid when SNAP is on. What was on the chord track where you recorded is replaced.
+- **What's needed:** as the manual says, an instrument track armed or monitoring, so your keys get through.
+
+**Sections mode for the pads** (MODE > Sections, or REMOTE). A pad's key picks the chord; the **section keys** play its notes one at a time.
+- **Section keys:** C0 to E0 at first. Section 1 plays the lowest note (the bass), section 2 the next up, and so on.
+- **Subsection keys:** F0 to A0 at first. They play the same notes an octave up. That's our reading of the manual's "transposed by an offset".
+
+**REMOTE opens the pads' remote settings,** as the manual's Chord Pads Remote Settings. Click a box, then press the key on your MIDI keyboard (MIDI Learn):
+- **The pads' range:** press the first key, then the last.
+- **Latch Chords.**
+- **Sections mode and the ten section keys.**
+- **The chord modifiers:** next and previous voicing, more and fewer tensions, transpose up and down. ACTIVATE turns them on. They change the last pad you played and play it, so you hear the change.
+  - Their keys are C2 to F2 at first, our choice. They're off until you activate them, so they don't take any of your playing keys.
+
+**Your own patterns.** Right-click a MIDI part > **Make a Pattern from This Part**.
+- **How it reads the part:** each different note becomes a voice, counted from the lowest. The lowest is the bass when it sits a fifth or more under the rest.
+- **Where it appears:** under **MY PATTERNS** in IDEAS' PATTERNS tab, the pads' PERFORM, and the Inspector's PERFORM. Your patterns are kept between sessions.
+
+**A track performing the chord track.** In the Inspector's CHORDS section, **PERFORM** picks a pattern. The instrument track then plays it over the chord track's chords as the song plays, beside its own parts.
+- **Live:** change a chord and the performance follows.
+- **Undo:** each choice is an undo step, and it's saved with the song.
+
+**Also:** the EQ window's Pre gain bar now reads "GAIN +0.0 dB" from the start (it read "0.0" in 0.43.0).
+
+**Not yet:**
+- choosing which MIDI input the pads listen to (they take all);
+- velocity from the pattern or from your keyboard;
+- several players on several tracks;
+- the pads' modifiers for all pads at once (pitchbend or controller).
+
+## 0.43.0
+
+**The channel EQ** (you chose it: "EQ later", now). Every channel has a built-in EQ and Pre section, as the manual's channel does: tracks, FX and group channels, and the master. No plug-in is needed.
+- **Pre section:** input gain (±24 dB), phase invert, a low cut (20 Hz to 20 kHz) and a high cut (50 Hz to 20 kHz). Each cut is 6, 12, 24, 36 or 48 dB per octave (12 at first).
+- **EQ:** four bands, each on or off, with gain (±24 dB), frequency (20 Hz to 20 kHz) and Q.
+  - Bands 1 and 4 can be parametric, a shelf or a cut. Bands 2 and 3 are always parametric.
+  - BYPASS takes all four bands out; the Pre section stays in.
+- **Where it plays:** Pre first, then the inserts before the fader, then the EQ, then the fader, as the manual's channel. Pre-fader sends hear the EQ'd sound.
+- **The curve:** it shows exactly what plays, the EQ and the Pre's cuts and gain together. A bypassed EQ is drawn dashed in grey.
+  - **Click** an empty spot: the nearest band that's off comes on there.
+  - **Drag** a point: frequency and gain. **Ctrl:** gain only. **Alt:** frequency only. **Shift:** its Q (up is narrower).
+  - **Double-click** a point: that band off.
+  - **Right-click:** Save Preset, Load Preset, Invert EQ Settings, Reset, Bypass.
+  - **In the EQ window,** the mouse's frequency, note and level show at the top.
+- **Typing a frequency:** Hz, kHz, or a note with cents, as the manual: "A3" is 440 Hz, "A5 -23", "C4 +49".
+- **Where to find it:**
+  - The Inspector's new **EQUALIZERS** section: the curve, edited right there, plus BYPASS and EDIT EQ. Right-click its header for presets.
+  - The **EQ window**, with every control: from EDIT EQ, from a mixer channel's right-click (Channel EQ...), or a key command (Window > Channel EQ) for your Stream Deck.
+- **It's kept:** saved with the song, undoable (one step per drag), carried by track presets (as the manual's "Loading Inserts and EQ from Track Presets"), and saved as EQ presets of its own (.pr7eq in Documents/Paragon PR7-S/EQ Presets).
+- **Our choices:** the bands' starting points (a low shelf at 100 Hz, 500 Hz, 2 kHz, a high shelf at 8 kHz, all off) and the filters (the standard "audio EQ cookbook" ones; Butterworth cuts).
+- **Not yet:** automating the EQ's knobs, the spectrum behind the curve, and comparing two channels' curves.
+
+## 0.42.0
+
+**Chord detection** (you asked, as your chord tool has: chords read from MIDI and from audio). Right-click a part (MIDI or audio, one or several selected) > **Detect Chords**:
+- **Onto the Chord Track:** the chords it plays, from the part's start. What was on the chord track over those parts is replaced, as one undo step.
+- **Onto the Chord Pads:** each chord once, in order (locked pads are skipped).
+- **A chord at most every Beat / Half Bar / Bar:** how often a chord may change.
+- **Plain Chords Only (major, minor):** on at first. Turn it off to get sevenths, sus chords and the rest.
+
+**How it reads:** in each beat, half bar or bar, it measures how strongly each of the twelve notes sounds and which note is lowest. Every chord is scored against that: its notes heard, notes outside it, its root in the bass.
+- **No flicker from melody notes:** a last pass changes the chord only where the notes clearly say so. Before, a melody note passing through could switch the chord for a beat.
+- **Inversions:** when the lowest note is another note of the chord, it's written as one (C/E).
+- **Silence:** carries the chord before it on.
+
+**From audio:** the sound is split into how strong each of the twelve notes is, beat by beat, following your tempo track.
+- **Overtones:** each note's overtones are partly taken out, so a C doesn't also read as G and E, and a minor chord doesn't turn major.
+- **The bass:** read from 40 to 260 Hz.
+- **What it's good at:** clear chordal parts, like a guitar or a piano, read well (in the tests, a played C Am F G comes back exactly at 120 and at 90 BPM).
+- **What it's not:** a full mix with vocals and drums is a best guess, and tuning far from A = 440 isn't handled. That's why the menu says "a best guess" on audio tracks.
+
+**The MIDI editor's info line names the chord** of the selected notes (CHORD Am7, beside VELOCITY), in the key of the chord track there.
+
+## 0.41.0
+
+**Better melodies** (you asked, as your chord tool has: melodies you can shape). IDEAS has a new **MELODY** tab: six melodies composed for your chord track's chords, each in a different form. The way they're composed and the form names are our own.
+- **Song form (AABA):** a phrase, the same again, something new, then the first one home.
+- **Question and answer (ABAB):** a phrase that asks, one that answers, and both again.
+- **Hook (AAAB):** one catchy phrase three times, then a turn.
+- **Two answers (ABAC):** the same question, answered differently each time.
+- **Climbing motif:** one motif, each time higher in the key.
+- **Always new:** every phrase different.
+
+**How they're built:** each phrase's rhythm and shape (a motif) is made once. When its letter comes back, the motif is bent to the chords under it.
+- Beats 1 and 3 land on chord tones. The notes between walk through the key, avoiding any note a half step against the chord.
+- A leap is followed by a step back the other way, as singers do.
+- Phrases rise, then fall.
+- The melody ends on the last chord's root.
+
+**MELODY SETTINGS** (the key at the right of the tabs; the six melodies change as you move a control):
+- **DENSITY:** from a note or two a bar to busy runs.
+- **LOWEST / HIGHEST:** the range, as note names (C3 to G4 at first, middle C = C3).
+- **LEAPS:** from steps only (smooth and singable) to mostly leaps. Thirds and fourths at first; fifths and sixths past 60%.
+- **PHRASE:** 1, 2 or 4 bars, which is how long the motif is.
+- **REPEAT:** how closely a returning phrase copies the first time. At 100% the rhythm returns exactly; lower changes a few notes.
+- **RESTS:** room to breathe. Weak notes are left out and the ends of phrases are shortened.
+- **SYNCOPATION:** notes pushed off the beat.
+- **DEFAULTS:** back to the starting settings.
+
+Your settings are kept. HEAR, USE IT (onto the selected track or a new "Melody" track), MORE IDEAS and HUMANIZE work as on the other tabs. The PIANO tab's six melody styles are still there as before.
+
+## 0.40.0
+
+**The progression library** (you asked, as your chord tool has: progressions by genre and mood). A new PROGRESSIONS window holds 157 chord progressions in 14 genres and 10 moods. The progressions, their names, and how they're sorted are our own.
+- **Genres:** pop, rock, metal (18, mostly minor, Phrygian and harmonic minor, for your 7-strings), blues, jazz, R&B & soul, gospel & worship, EDM, hip-hop & trap, lo-fi, film & game, folk & country, Latin, classical.
+- **Moods:** happy, sad, uplifting, epic, dark, tense, dreamy, chill, romantic, nostalgic. A progression can have two.
+- **Where to open it:** the PROGRESSIONS key on the chord pads (beside IDEAS), the chord track's right-click menu ("Progression Library..."), or a key command (Window > Progression Library) you can put on your Stream Deck.
+
+**In any key:** pick the key at the top (it starts in your song's key; FROM THE SONG goes back to it). Every progression is spelled in that key, with its numerals under the chords.
+- **The other mode's progressions:** a major progression in A minor is played in C major, and a minor one in D major is played in B minor. Every chord stays in the key's notes. KEY'S MODE ONLY hides these.
+- **Chords written with a flat or sharp keep it:** the "Tritone dread" in A minor is Am Bb Eb Am, not D#.
+- **Chord lengths:** a chord can last two bars or half a bar, and its box is drawn as wide as it lasts.
+
+**Each row:**
+- **HEAR:** plays it at the song's tempo, with the chord that's sounding lit.
+- **TO TRACK:** puts it on the chord track from the playhead's bar (one undo step).
+- **TO PADS:** puts it on the chord pads (locked pads are skipped).
+- **IDEAS:** puts it on the chord track, then opens IDEAS (piano, guitar, bass and patterns) for it.
+- **The mouse:** click the chords to hear it, double-click to put it on the chord track, or drag it onto the chord track's lane to drop it at that bar. Right-click for all of these.
+- **The star:** marks a favourite. FAVORITES shows only those.
+
+**Finding one:** pick a genre and a mood at the left (each shows how many it holds), and search by name, genre, mood, a chord ("Bb") or a numeral ("bVII").
+
+**The chord pads' second row of keys fits on one screen:** when the pads sit beside the Inspector on a single screen, the keys now shrink to fit. Before, IDEAS ran off the right edge (and the new PROGRESSIONS key would have too). On your three screens they keep their full size.
+
+## 0.39.0
+
+**Performances** (you asked, as the chord tool you use has them): rhythm and arpeggio patterns that play any chords. There are 24 of them in four groups. The patterns and their names are our own design.
+- **Arpeggios:** Up, Down, Up and down, Sixteenths, Broken thirds, Alberti.
+- **Strums & pulses:** Held, Quarter pulse, Eighth pulse, Pop push, Off-beat chops, Strummed (down and up strokes spread like a guitar strum).
+- **Ballad & broken:** Ballad, Oom-pah, Stride, Gospel, Rolled, Pad and bell.
+- **Rhythmic riffs:** Tresillo, Synthwave, Gallop, Funk stabs, Driving octaves, Montuno (two bars long).
+
+**IDEAS' new PATTERNS tab:** a box at the right picks the group, and its six patterns appear as cards, each playing the chord track's chords.
+- Chords move as little as they can from one to the next, with the root in the bass.
+- HEAR plays a card; USE IT writes it onto the selected track or a new one.
+- In other time signatures the patterns fit the bar (in 3/4 a quarter pulse falls on 0, ¾, 1½ and 2¼ of a beat).
+
+**PERFORM on the chord pads** (the PLAYER menu): pick a pattern, and a pad you hold plays its chord through it at the song's tempo.
+- **Song playing:** it locks to the bars.
+- **Song stopped:** it starts from your press.
+- **Changing chords:** another pad switches chord without losing the beat.
+- **Stopping:** letting go stops it. "Off" brings plain chords back.
+- **The key's label:** it shows the pattern ("PERFORM: GALLOP").
+- **Recording:** what the pads perform is recorded onto an armed track, as plain chords are.
+
+## 0.38.0
+
+**The MIDI editor's info line** (you asked: as the automation's, for notes). A strip along the top of the MIDI editor, above its ruler, shows the selected notes: START, END, LENGTH, PITCH and VELOCITY.
+- **Which values it shows:** those of the first selected note, meaning the earliest, or the lowest if several start together. With several selected, the values are pink and it says how many.
+- **Changing them:** double-click a value and type. Every selected note changes by what the first one changes, so the selection keeps its shape:
+  - **Pitch:** your example works exactly so. D#-1 typed as D-2 takes every selected note 13 semitones down, an octave and a half step. Notes are named as the rest of the studio names them (middle C is C3), with sharps or flats ("Eb3"), or as a MIDI number. If a note would fall off the keyboard, the whole selection moves only as far as it can, so its shape is kept.
+  - **Velocity:** all up or down by the same amount.
+  - **Start:** all moved in time together.
+  - **End:** each note's end moves by the same amount, so its length changes and its start stays.
+  - **Length:** each note gets longer or shorter by the same amount. It's written bars.beats.16ths.ticks from zero: 0.1.0.0 is one beat.
+- **Ctrl as you press Enter** sets them all to exactly the value you typed (the manual's modifier), as on the automation info line.
+- **Undo:** each change is one undo step.
+
+## 0.37.0
+
+Two things you asked for: an info line for automation points, as in your screenshot of the other DAW, and the last two Follow Chord Track modes, Voicings and Single Voice.
+
+**The info line** (the manual's Info Line). A strip over the track list and the arrangement now shows the automation points you've selected: TYPE (the lane), START, VALUE and TERMINATOR.
+- **Selecting:** drag a box round the points, or click them; Shift or Ctrl adds more.
+- **Several points selected:** the line shows the first one's values in pink, with how many are selected.
+- **Changing VALUE:** double-click it and type a new value. Every selected point moves by the same amount the first one moves, in the control's own units: dB for volume, L/R for pan, % for plug-in knobs. Your examples work exactly as you described:
+  - Four points at -3.0 dB, typed as 5.0: all become +5.0 (each +8).
+  - Points at -5, -1, 0 and +1 dB, the first typed as 0.0: they become 0, +4, +5 and +6.
+- **Ctrl as you press Enter** sets them all to the value you typed instead. That's the manual's modifier for absolute changes.
+- **START** moves them all in time by the same amount.
+- **A click on TERMINATOR** switches it for all of them.
+- **Delete** removes every selected point at once, as before.
+- **Hiding it:** right-click the line and choose Hide Info Line. It comes back with the key command "Show/Hide Info Line" in KEYS (no key at first; give it one there).
+
+**Box-selecting points over a high curve** now works. Dragging a box from just above a curve near the top of its lane (-3 dB sits there) used to grab the quick-scaling handle and squash the curve instead of selecting. That handle is now a small spot over the middle of each segment, so a box can start almost anywhere.
+
+**Follow Chord Track: Voicings and Single Voice** (the manual's last two modes).
+- **Voicings:** chords you played take the chord track's voicing of each new chord, with your rhythm kept: your lowest note becomes the voicing's lowest, and so on. A single note moves to the matching voice of the new chord, keeping its octave.
+- **Single Voice:** every note becomes one voice of the voicing: SOPRANO (the top), ALTO, TENOR or BASS (the lowest). Any part becomes a harmony line or a bass line in your rhythm.
+- **The voicing libraries.** The manual names the libraries and their styles but doesn't publish the voicings, so these are ours:
+  - **Piano:** the root in the left hand and the right hand close. Styles: Triads; Triads with 9 (no root); 4-Note (no root); 4-Note Open Jazz; 5-Note. Options: Add Root Note, Duplicate Root, Fatten Up.
+  - **Guitar:** barre shapes with the root on the 6th or 5th string, 4-note shapes with the seventh, or 3-string triads.
+  - **Basic:** close from C3, with an octave offset.
+  - **Adaptive Voicings** (on at first): each chord moves as little as it can from the one before.
+- **Where to set them:** the Inspector's CHORDS section has VOICE (Single Voice) and VOICINGS. VOICINGS sets the track's own library, or uses the chord track's, and it also sets the chord track's library for every track that follows it.
+
+## 0.36.1
+
+**Longer track names in the track list** (you asked): a name now runs right up to the level meter. The row kept a 180-pixel strip on the right from when MON and LANES sat there. They moved to the Inspector in 0.35.0, but the strip stayed, so names were cut short with "..." while the space beside them stood empty. The strip is now exactly as wide as the meter and the volume knob, and the name takes the rest.
+
+## 0.36.0
+
+Follow Chord Track: a MIDI track's notes follow the chord track. Change a chord and the part plays along with the new one, without being played again.
+
+**Turning it on** (the Inspector's new CHORDS section, on instrument tracks)
+- **FOLLOW** chooses how the notes follow: CHORDS & SCALES, CHORDS, SCALES or ROOT NOTES, or OFF.
+- **The first time**, a dialog asks how the notes relate to the chord track. These are the manual's three choices:
+  - **Follow Directly:** the notes already go with the chord track's chords (made from them, or played over them).
+  - **Analyze Chords:** the notes have nothing to do with the chord track. Their own chords are found in them first, as Create Chord Events does.
+  - **Apply a Known Chord:** the notes stay on one chord all the way; you say which.
+- After that, switching modes needs no dialog. **Set Up Again...** in the same menu asks again.
+
+**What each mode does.** The manual says what each mode is for, not its exact rules, so these rules are our own:
+- **Root Notes:** every note moves by as much as the chord's root moved, the short way (up to 5 semitones up or 6 down). It's like a transpose track, and good for bass lines.
+- **Scales:** the notes move by steps of the scale. C E G over C, followed to F in C major, becomes F A C, with no notes from outside the key. When the scale changes (C major to A minor), each note keeps its place in the scale.
+- **Chords:** the notes move with the root, then each one goes onto the nearest note of the new chord.
+- **Chords & Scales:** a chord note stays the same chord note. The third stays the third and the seventh stays the seventh, if the new chord has one. The other notes move by scale steps.
+- **Doubles:** when two notes land on the same pitch at the same moment, the softer one isn't played. The manual warns that some notes may be muted.
+
+**Your notes stay as you played them.** Following changes what you hear, not what's written. In the MIDI editor, a pearl outline shows where each note actually sounds, linked to the note it came from. The track's row says FOLLOWS and the mode. Mixdowns, Render in Place and Freeze all use what you hear.
+
+**LIVE IN** (the manual's Live Input): the keys you play into the track go onto the chord track's chord (CHORDS) or scale (SCALES) at the playhead. They're recorded that way too. Each key's note-off goes to the same note its note-on went to, so nothing hangs.
+
+**SHIFT** (the manual's Shift Chords; it's the chord track's own setting): a chord can take over a little early, so notes played just before it (negative ticks) still take it. It also works the other way for notes played late (positive ticks). There are 480 ticks in a beat.
+
+**Map to Chord Track** (a MIDI part's menu): the part's notes are written moved onto the chord track, in the mode you pick. The part's own chords are found first; if none are found, C is assumed, as the manual has it. This is one undo step.
+
+**Not in this release:** the Voicings and Single Voice modes (the manual's voicing libraries aren't published, so they would need our own), and audio tracks (VariAudio segments) following the chord track. If you play the chord pads into a track with LIVE IN on, the pads' notes are moved to the chord track's chord too.
+
+## 0.35.0
+
+VariAudio, part two: the rest of the manual's VariAudio, from editing the segments themselves to harmony voices. Also, as you asked, LANES and MON have moved into the Inspector.
+
+**The Inspector: LANES and MON** are in a new row directly beneath RENDER and PRESET. An audio track shows LANES and MON side by side; an instrument track shows LANES across the row. They're no longer on the track rows, and MON has left the M S R W REC row, so it isn't shown twice.
+
+**Editing the segments** (the manual's Segment Editing)
+- **Split:** click the segment's bottom edge where you want it cut, or Alt-click anywhere on it.
+- **Glue:** the small orange controls below a segment's corners glue it to the one before or after. With several neighbouring segments selected, they all become one.
+- **Move a segment's start or end:** hold Alt and drag the control on the lower half of its left or right side. It stops at the next segment; segments never overlap.
+- **Delete** (or Backspace) removes the selected segments, as the manual has it, for breaths and consonants that need no pitch editing.
+- After each of these, the segment's average pitch is found again from its curve. As the manual warns, a changed segment can therefore move in pitch slightly.
+
+**The pitch curve** (SMART CONTROLS: ALL, the manual's Show All Smart Controls)
+- **Tilt:** drag the white triangles above the corners up or down to tilt the start or the end of the curve.
+- **Rotate:** with Alt, the whole curve turns round its anchor.
+- **The anchor:** the pink mark on the top edge, in the middle by default. Drag it to move it; Alt-click it to put it back.
+- **Straighten a range:** the two thin marks on the top edge set where Straighten works. Inside the segment it eases in and out over 20 ms, so the move into the next note stays natural.
+
+**Formants** (FORMANT, from -100 to +100 %, and the F control above a segment): the voice's colour, darker or brighter, with its pitch kept. 100 % moves the formants by 12 semitones; that scale is our choice.
+
+**Timing** (Warp Start and Warp End): drag the control on the lower half of a segment's side to move its start or end in time. The segment and the one beside it stretch to fit, using warp markers on the clip, as the manual has it.
+
+**The Functions menu**
+- **Extract MIDI:** a note per segment at its pitch now. Pitchbend: none, one per segment, or following the curve, with a range of 1 to 24 to set on your instrument. Loudness: one velocity, each segment's own, or a controller curve (CC 7 unless you choose another). It goes onto the first selected instrument track, replacing that track's earlier extraction from the same clip, or onto a new track.
+- **Generate Harmony Voices:** up to four new tracks named Soprano, Alto, Tenor and Bass. Each has its own copy of the clip and of its recording, so their edits stay their own. With chords on the chord track, the voices follow the chord at each note. Without, they're 3 semitones up and 3, 6 and 9 down, as the manual has it. They're also offered in an audio clip's menu.
+- **Resets** for pitch, curve, formant, volume, warp, or all of them, on the selected segments or every one; and **Reanalyze Audio**.
+
+**MIDI INPUT** (and STEP): play a key, and the selected segment moves to that note. With several selected, the rest move as far. With STEP, the next segment is then selected. The range is E0 to C5, as the manual gives.
+
+**Display:** a **MIDI reference track**, whose notes show as lines to sing against (saved with the song), and the segment **colours**: Auto, the track's own colour, by pitch, or by whether each note fits the scale. All are in the family's colours.
+
+**The panel** scrolls when the window is short, because it has grown.
+
+**Honestly:**
+- I can't hear the formant shifts or the harmony voices here. The tests check that the pitch is kept, that the sound changes where it should, and that each voice is heard at its note. Whether a formant shift sounds natural on your voice is for your ears.
+- The harmony voicing over chords follows our own rules: the chord's next note at least a whole step above, the ones below, the chord's bass underneath.
+- Not done: Note Expression extraction, the Project Clipboard as an extraction target, and a separate Show Default / Show All per segment.
+- Fixed in passing: a VariAudio segment's times now come back from a saved song exactly. They came back a hair off before, too little to hear.
+
+## 0.34.5
+
+**Multi-core audio.** Until now every track, instrument and effect was processed one after another on a single core of your processor, however many it has. Now tracks are processed side by side on all of them, the way Cubase does it. Heavy instruments and effects (Kontakt, Superior Drummer, amp sims) get far more room before the CPU meter fills up and the sound breaks up.
+
+- **How it works.** In each block of audio (a few milliseconds), every track's own work, its instrument or clips, its insert effects, its fader and pan, is shared among helper threads, one per core besides the audio thread's own. Group channels come next, then FX channels, because they need the tracks' sound first; then the master. Each track's sound is still added into its group, its sends and the master on one thread, in the same order as before.
+- **The sound is identical, to the last bit.** Adding numbers in a different order can change the last digit of a sample. Keeping the adding in the old order means the output is exactly the same as on one core. The tests check this with a 24-track song (groups, pre- and post-fader sends, automation, fader moves, effects that remember what they played), comparing every sample. They also run the whole test suite with every studio on four cores.
+- **How much faster:** on the 4-core machine here, that 24-track song took 708 ms on one core, 405 ms on two and 256 ms on four, so 2.8 times faster. Your PC's gain depends on its cores and your plug-ins. A song with one very heavy track gains least, because one track still runs on one core.
+- **The audio thread never waits for a helper to start.** It takes work itself until none is left, then waits only for what helpers have already begun. A helper that Windows is slow to wake costs nothing but its help. On Windows the helpers use the system's Pro Audio scheduling (MMCSS), as audio threads do; nothing else in the studio is raised.
+- **SETTINGS has a MULTI-CORE AUDIO switch (on).** It shows how many cores are in use. Switch it off if a plug-in misbehaves when run beside others; a few older ones assume they are alone. Everything then runs on one core, as before. The session log notes which way it was on each start.
+- **Exports, Render in Place and Freeze** use the cores too.
+- **Honestly:** I can't measure your PC from here. I can't promise every plug-in is happy on a helper thread either; running plug-ins this way is how every modern DAW does it, and it's the reason the switch exists. Not done: plug-in delay compensation, which is a separate thing; macOS's Apple-Silicon "audio workgroups" (the Mac build doesn't join them yet).
+
+**Also in this release:** 0.34.4, which never published. Its new strip-by-strip drawing test failed on macOS by one pixel: a Mac shades the edge where a redraw cuts a line slightly differently. The test now draws with JUCE's own renderer everywhere. The app was fine; Windows and Linux had passed.
+
+## 0.34.4 (released inside 0.34.5: its macOS test failed by one pixel)
+
+Running better, the screen's second part. Nothing looks different. Every screenshot in all three finishes, and the arrangement and transport drawn strip by strip the way the playhead redraws them, came out the same as before, pixel for pixel.
+
+- **Automation lanes draw only where the screen is being redrawn.** As the playhead moves, the studio redraws a thin strip of the arrangement 30 to 60 times a second. Each time, every automation lane rebuilt its curve over the whole song, every point and every bend, and drew it all, for the screen to keep a few pixels of it. Now each lane builds only the part of its curve in that strip, plus a margin either side, so the lines crossing into the strip are the same lines as before. The same goes for Trim's played curve, the dotted value lines and the tempo track's line. Lanes outside the strip altogether aren't drawn at all. On a long song with dense automation, this was the biggest cost of the playhead moving.
+- **The arrangement works out its row layout once per redraw.** It used to work it out again for each track, each take lane and each part it drew, and building that list once means a song with many tracks doesn't cost many times over.
+- **The transport's screens.** The position screen changes 30 times a second while playing, and each time all five screens (position, time, CPU, tempo, signature) were drawn again, each with its blurred shadow, though only one had changed. Now only the screen being redrawn is drawn.
+- **Honestly:** I can't measure the gain on your PC from here, only the work removed. It matters most for you because your window spans three screens: a lane's curve is drawn across 5,760 pixels.
+- Still to come in the speed work: reading back controllers on a jump (it scans from the song's start), and smaller items. After that, VariAudio part two, when you say.
+
+## 0.34.3
+
+DAWproject import fixes (your report from a Cubase song), and the first part of the screen work.
+
+**DAWproject import**
+- **A new track after an import no longer fails or turns up as the wrong instrument.** The import never told the song which track number came next, so the next new track got the same number as the first imported one. When the studio then looked for the new track, it found the old one: the new track could fail, or come in with that track's instrument (Superior Drummer, for example). New tracks are now numbered after the imported ones. As a safety net, any song that opens checks this too.
+- **Rack instruments come across as instrument tracks.** Cubase writes a rack instrument as two tracks: a MIDI track holding the notes, and an audio channel holding the instrument. PR7-S made the channel an audio track and put the instrument (Superior Drummer) in its effect slots, while the MIDI track got PR7-K. Now they become one instrument track: your instrument with its settings, the MIDI track's parts, the MIDI track's name and place, and the instrument channel's own mix (its fader, pan and effects: what you heard). When several MIDI tracks play into one instrument (a multi-part Kontakt), their parts all go onto that one instrument track and the report says so: PR7-S has no MIDI tracks playing into another track's instrument yet. Each MIDI track's MIDI channel isn't kept, so a multitimbral set-up needs its parts moved by hand.
+- **No second master.** A song's output came in as an ordinary track beside PR7-S's own master whenever the file didn't label it as the master. Now the channel the other tracks play into, which itself plays into nothing and has no clips on it, becomes the master: its level, effects and automation. If the file gives no routing at all, an empty channel named Stereo Out, Main Out, Master or Output is used.
+- **Honestly:** I haven't seen a DAWproject file written by Cubase itself, only the format's specification and reports of how Cubase lays these out, and the tests use files built to that shape. If something still comes across wrong, send me the .dawproject (or the project.xml inside it; it's a zip) and I'll match the import to it exactly.
+
+**The screen (the first part of the speed work's third step; nothing looks different, checked pixel for pixel in all three finishes)**
+- **Moving a fader no longer redraws everything.** Each step of a fader, pan or send drag redrew the whole arrangement (across three screens on your set-up), the track list, the mixer and the transport. Now a change that only moves the mix is left to the meters and faders that show it.
+- **Mixer and Inspector send slots** redraw only when what they show changes, not every slot on every frame.
+- **A closed MIDI editor or mixer** stops following the playhead and the meters.
+- Still to come: drawing only the visible part of automation lanes, and the transport's and arrangement's other redraws.
+
+## 0.34.2
+
+Running better, part two: the playback engine. As with 0.34.1, nothing you hear changes. The tests check the output is the same sample for sample, not just close.
+
+- **Moving a fader no longer rebuilds the whole song.** Every change, including each mouse movement of a fader, a pan, a send, a knob or Touch automation writing, rebuilt every MIDI track's playback list from scratch: every note, every controller ramp written out every 1/128 beat, then all of it sorted again.
+  - Now each track remembers exactly what its list was built from: its parts, MIDI channel, soloed lane and drum map. If none of those changed, the list is kept as it is.
+  - On a heavy test song (16 tracks, 2,000 notes each, mod-wheel ramps), one update after a fader move went from **8.5 ms to 0.07 ms**. A fader drag makes about 60 a second, so that was about half a second of work every second on the screen's thread, and it's now almost nothing.
+- **Audio clips mix faster.** Each audio clip was added in one sample at a time, with its fades and bounds checked on every sample, and its position worked out again from the tempo map for every clip in every block, even clips minutes away.
+  - Positions are now worked out once per edit.
+  - The middle of each clip, where no fade applies, is added in one fast block operation; the fade edges go a sample at a time as before.
+  - The test renders a clip with an offset, fades ending between samples and a tempo ramp under it, in three different block sizes. It matches the old way exactly at every sample.
+- **Automation is read more cheaply.** Every 32 samples, finding a track's volume, pan and mute read every lane on it, plug-in knobs and sends included, then threw those results away. Now it only reads the lanes that matter. The meters' readout at the end of each block skips the lanes entirely on tracks without volume, pan or mute automation.
+- **Faders, the master and sends that aren't moving** are applied in one block operation instead of sample by sample (the same gain, so the same result).
+- **Fewer spikes after an edit while playing.** After an edit during playback, the engine checks that every held note still has an ending ahead. That check walked the track's whole event list once per held note. It now walks once for all of them and stops as soon as every note is settled, so dense controller lanes no longer make an edit cost a spike.
+- **Honestly:**
+  - The 8.5 ms to 0.07 ms is measured here on that test song; the clip and automation gains I can't measure on your PC, only estimate from the work removed.
+  - Not done (yet): reading back controllers on a jump still scans from the song's start (only on play, jump and cycle laps), and the screen still redraws more than it needs to after each change. That's next, in 0.34.3.
+
+## 0.34.1
+
+Running better, part one: the safe fixes from a review of the whole studio for speed (you asked for one before VariAudio part two). Nothing you hear or see changes. These remove wasted work, one possible cause of clicks, and memory that kept growing.
+
+- **No more memory allocation while audio plays when Trim is on.** Reading a trimmed automation curve made a temporary copy of the trim's points, many times per audio block. Asking for memory on the audio thread can make it wait, and that is a classic cause of clicks and dropouts. It now reads the curve in place: the same numbers, worked out the same way, with no copy.
+- **Quiet tails no longer cost extra processor time.** When a reverb tail, a fade or a filter decays towards silence, the numbers get so tiny (below about -760 dB) that a processor slows down working on them, often 10 to 100 times. That's the "CPU spikes when the song goes quiet or stops" effect. The studio now treats them as zero, as nearly every DAW does, while playing, rendering and stretching. It covers our own processing and any plug-in that relies on the host for it. Nothing that small can be heard.
+- **Undo steps no longer copy every plug-in's settings.** Each undo step copied the whole song, every plug-in's saved settings included, then threw those settings away (undo never used them). After opening or saving a song, that could be tens of MB per edit with Kontakt or Superior Drummer. Now the settings are set aside while the copy is made. The drum maps and hand-edited hitpoints are left out of the copy too, because undo never put them back either.
+- **Memory is freed when you change song.** The hitpoint, VariAudio pitch and edited-sound stores were never emptied. Every recording ever analysed stayed in memory, two copies of it, until you quit. They're now emptied with the recordings whenever a song is opened or created, the sample rate changes, or a recording is written again.
+  - **This also fixes a bug:** hitpoints were stored by file name only, so a second song with a "Guitar 01.wav" of its own could show the first song's hitpoints.
+- **The warped clips' store has a size limit.** Each marker drag or tempo change made a new copy of a whole warped clip, up to 64 of them (about 4 GB of three-minute clips). It's now limited by size, about 400 MB, like the stretches it's made from. Anything dropped is simply made again when it's needed.
+- **The track list doesn't redraw on sideways scrolls.** With Auto-Scroll on Stationary Cursor, the arrangement scrolls every frame while playing. The track list was laid out and drawn again 30 times a second each time, although it only follows up and down scrolling.
+- **Honestly:** I can't measure the gains on your PC from here. How much they help depends on your songs: Trim, plug-ins with long tails, how long you work in one session, and warped clips.
+  - Tested: the trim values come out identical to the last digit, undo still works with a song holding 1 MB of plug-in settings (kept untouched), a same-named recording in a new song finds its own hitpoints, and the warp store counts what it holds. All 291 tests pass.
+- **Next, 0.34.2:** the bigger changes from the review. Moving a fader will stop rebuilding the whole song's playback, audio clips will mix faster, and automation will be read more cheaply, each proven to give the same output sample for sample.
+
+## 0.34.0
+
+VariAudio, part one: the third of the four. It's pitch editing for a sung (or any one-note-at-a-time) recording. You can tune a flat note, take the wobble out of a held one, move a note to another pitch, or snap a whole line onto the song's scale. Part two (0.35.0) adds splitting and gluing segments, formants, tilting curves, timing per note and MIDI from the voice.
+
+- **Open it:** double-click an audio clip (or its menu: **VariAudio...**). It opens in its own window; double-clicking another clip switches it to that one.
+- **EDIT VARIAUDIO** finds the notes and splits the recording into **segments**, one block per note. Each block sits at the pitch it's sung at on the keyboard down the side, with its **pitch curve** drawn inside it. Breaths, rests and most consonants fall in the gaps between segments.
+- **Moving a note:** drag a segment up or down, or use **Up / Down**. **PITCH SNAP** sets how it lands:
+  - **ABSOLUTE:** exactly on a semitone.
+  - **RELATIVE:** by whole semitones, keeping how sharp or flat it was.
+  - **OFF:** anywhere.
+  - Hold **Shift** for off, **Ctrl** for absolute or **Alt** for relative while dragging (the manual's keys). **Shift+Up/Down** moves a single cent.
+- **Smart controls** on the note under the mouse, as in the manual's default set:
+  - the white handle at the top **straightens the curve** (drag up: less vibrato and drift);
+  - the red handle at the bottom **corrects the pitch** toward the nearest semitone.
+- **The panel's sliders** do the same for the selected notes (all of them if none is selected): **CORRECT PITCH**, **STRAIGHTEN CURVE**, and **VOLUME** for each note's own level.
+- **Scale:** use the **EDITOR SCALE** (chosen in the box, or from **SUGGEST**, which lists the scales that fit the notes best) or the **CHORD TRACK**'s scale at each note.
+  - **SNAP TO SCALE:** moved notes land on the scale's notes.
+  - **SCALE GUIDES:** notes outside the scale are shown darker.
+  - **QUANTIZE PITCHES:** the selected notes onto the nearest scale note.
+- **Selecting:** click, Shift or Ctrl-click to add, or drag a box. **Left / Right** step through the notes. **Ctrl-click a piano key** selects every note on it; **Shift+double-click** a note selects it and every later one on the same note.
+- **Hearing it:** **AUDITION** plays the selected notes as changed. **BYPASS** plays the recording as it was, to compare. **RESET** removes it all.
+- Every change is one undo step and is saved with the song. Playback, export, Render in Place, bounce, warping and Audio Alignment all hear the edited recording. Nothing in it changes the recording file itself.
+- **Honestly:**
+  - How it hears pitch: the YIN method, every 5 ms, 60 Hz to 1100 Hz. That covers a low bass voice to a high soprano, but it's for one note at a time: chords and distorted guitars won't analyse well, as the manual also warns.
+  - A new note starts where the pitch settles somewhere else for 50 ms. A vibrato or a short scoop doesn't make one, but two notes on the same pitch sung legato stay as one segment until part two lets you split it.
+  - The pitch is moved with the same stretcher as warping, **keeping the voice's formants** (no chipmunk effect). Small moves sound natural; the further a note moves, the more it sounds processed (the manual says the same).
+  - Tested with sung-like notes made in code (each found within 0.12 semitones; moved notes analysed again land within 0.1; the stretches between the notes are the recording sample for sample), not by ear on your vocals.
+  - Not yet (part two): splitting, gluing and resizing segments, formant shift, tilt and rotate, straightening only part of a note, timing per note (warp start/end), MIDI from the voice, Step / MIDI input, the color schemes, harmony voices.
+
+## 0.33.0
+
+(Includes 0.32.0, hitpoints and audio warping, if its own release didn't appear: its builds passed on Windows and Linux, but GitHub had no Mac machine free to build it. Its notes are in the changelog under 0.32.0.)
+
+Audio Alignment: the second of the four (then VariAudio in two parts). It lines up a double, a harmony or a second guitar with the take it should follow, without you dragging each note by hand. The result is ordinary warp markers (0.32.0), so anything it gets wrong you fix with the WARP tool.
+
+- **Open it:** right-click an audio clip or a range, **Audio Alignment...** (or give the command "Open/Close Audio Alignment Panel" a key in KEYS).
+- **The reference** (the take to follow): select its clip, or a range on its track, then **SET REFERENCE**.
+- **The targets** (what moves): select clips on other tracks, or a range across them, then **ADD TARGETS**. With several, the box beside it chooses the one shown.
+- **The view:** the reference above, the target below, the stretch where they overlap lit.
+  - **Drag from the reference down to the target:** a sync point. That moment of the target lands exactly there. It turns red when it can't (too far for MAX SHIFT, or out of order with another).
+  - **Ctrl-drag on the target:** a protected range. That stretch is moved but never stretched (a held note, a breath you like).
+  - **Shift-click** either one to remove it.
+- **Settings** (kept between songs):
+  - **MATCH WORDS** (the manual's): the sound's shape counts more than its loudness. Best when the words are the same.
+  - **PREFER TIME SHIFTING** (the manual's): when a plain move is close enough, the audio is moved, not stretched, to the sample. This is for two microphones on one performance (a guitar's close and room mics: the phase lines up).
+  - **PRECISION** (the manual's Alignment Precision): at 100 % every moment lands within 2 ms; lower keeps a looser, more natural feel with fewer markers.
+  - **ONLY WHERE BOTH PLAY**, **FLEXIBILITY** (low, normal, high) and **MAX SHIFT** (10 to 500 ms) are our own, after the way a dedicated vocal-alignment tool works. They set where to match, how freely the pace may change, and how far any moment may move.
+- **ALIGN AUDIO:** each target is split where it stops overlapping the reference (short 10 ms crossfades at the cuts, as the manual says) and only that piece is aligned. The report line says how far apart they were on average before and after. It's one undo step.
+- **Honestly:**
+  - How it matches: both are measured every 10 ms (loudness, attacks, and the spectrum's shape, which follows syllables). The best path between them is found within MAX SHIFT, then each marker is placed to the sample on the attack nearby. The "before / after" figures are measured on that 10 ms grid, so "3 ms after" can mean closer than that.
+  - Tested with notes made in code (a different voice on the target, timing wandering by up to 60 ms: every note lands within 5 ms), not by ear on your vocals or guitars. Real doubles that differ a lot in their words or articulation may need a few sync points.
+  - The stretcher softens attacks it stretches a little (about 10 % in the tests). Notes that didn't need stretching are copied untouched.
+  - Not built:
+    - pitch matching (making a double follow the lead's pitch): after VariAudio;
+    - aligning to several references at once;
+    - aligning clips that are already warped. Their markers are replaced, and the report says so.
+
+## 0.32.0
+
+Hitpoints and audio warping: the first of the four releases you asked for (then Audio Alignment, then VariAudio in two parts). This is the groundwork the others stand on, and it's useful by itself: fixing the timing inside a recording without cutting it up.
+
+- **Hitpoints** (the manual's: "musically relevant positions in audio files"): where each note, hit or consonant starts, found in every recording automatically. They're drawn on the selected audio clip when you're zoomed in far enough. Right-click a clip, **Hitpoints and Warp > Hitpoint Settings...**:
+  - **Threshold:** quieter ones dropped.
+  - **Minimum Length:** none closer together than this.
+  - **By hand, with WARP:** Alt-click adds a hitpoint, Shift-click one removes it. These edits are kept with the song for each recording.
+- **Alt+N / Alt+B** on an audio track: the playhead to the next or previous hitpoint (the manual's keys). On other tracks they stay the MIDI editor's random velocities.
+- **Warp markers and the WARP tool** (the manual's Free Warp in the arrangement):
+  - Click on an audio clip where a beat is. The marker catches the hitpoint nearby (Ctrl: exactly where you clicked).
+  - Drag it where the beat belongs: the audio before and after it is stretched or squeezed to fit, its pitch kept. The grid pulls it in when it's near (Ctrl: free).
+  - Drag a marker to move it again. Hold a modifier key and click a marker to remove it.
+  - Each marker shows how much the audio before it is stretched (over 1.00 stretched, under squeezed; plain 1.00 isn't shown).
+- **Create Warp Markers from Hitpoints** (the clip's menu): a marker at every hitpoint, ready to drag.
+- **AudioWarp Quantize** (the header's quantize menu, at the bottom): Q on an audio clip then stretches its markers to the quantize value. As the manual describes, each grid line takes the marker nearest it, and the markers in between keep their spacing. With it off, Q moves the clip's start to the grid. Q works on MIDI and audio clips selected together.
+- **Reset Warp:** the clip at its own speed again.
+- **Flatten:** the warped clip written as it sounds to a new 32-bit file, its markers gone. Your original recording is kept.
+- **Warped clips stay right when edited:** cut, trimmed, resized or comped, the audio stays where it was in the song. Bounce and Render in Place play them warped. Glue refuses warped clips (Flatten them first).
+- **Honestly:**
+  - Hitpoints are found from sudden changes in the sound, the usual method. They're best on picked guitar, drums and clear consonants, as the manual says. Smooth legato or a heavily distorted sustain may need hand edits.
+  - The stretching is done ahead of time, not while playing. Moving a marker remakes only the two stretches beside it, but a long clip with many stretched markers takes a moment the first time.
+  - Not built:
+    - the manual's Musical Mode (a clip following tempo changes by itself);
+    - the Beats filter;
+    - slices, regions, groove and MIDI notes from hitpoints;
+    - "Sizing Applies Time Stretch".
+  - Tested with recordings made in code (plucks at known times: found within 3 ms, a moved hit heard within 10 ms of where it was put, the pitch kept within 3 %), not by ear on your guitar.
+
 ## 0.31.0
 
 Render in Place as you work, Q from anywhere, and the instrument from the editors (all four asked for).

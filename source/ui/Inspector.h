@@ -6,6 +6,7 @@
 #include "ui/MixerView.h"
 #include "ui/ValueSlider.h"
 #include "ui/TrackColours.h"
+#include "ui/EqEditor.h"
 
 // The Inspector (0.9.0), inspired by Cubase's: left of the track list, the
 // selected track's settings in sections (click a title to fold it; which are
@@ -50,11 +51,13 @@ public:
     std::function<void (int trackId)> onOpenInstrument;   // EDIT
     std::function<void (int busId, int slot)> onOpenEffect;
     std::function<void()> onFindPlugins;
+    std::function<void (int busId)> onOpenEq;     // EQUALIZERS' EDIT (0.43.0): the EQ window on this channel
+    EqCurve& getEqCurve() noexcept { return eqCurve; }
     std::function<void (int trackId)> onRender;   // RENDER (0.17.1): Render in Place of the whole track, as last time
 
     static constexpr int width = 210;
-    enum class Section { basics, routing, inserts, sends, fader, quick };
-    static constexpr int numSections = 6;
+    enum class Section { basics, routing, chords, inserts, eq, sends, fader, quick };   // (0.43.0: EQUALIZERS)
+    static constexpr int numSections = 8;
     bool isFolded (Section) const;
     void setFolded (Section, bool);   // (kept in the settings file)
 
@@ -72,11 +75,19 @@ public:
     juce::ComboBox& getAudioInput() noexcept { return audioInput; }
     juce::TextButton& getOutput() noexcept { return output; }
     juce::TextButton& getDrumMapKey() noexcept { return drumMapKey; }
+    // CHORDS (0.36.0, the manual's Chords section): Follow Chord Track, Live Input, Shift Chords.
+    juce::TextButton& getFollowKey() noexcept { return followKey; }
+    juce::TextButton& getLiveKey() noexcept { return liveKey; }
+    juce::TextButton& getShiftKey() noexcept { return shiftKey; }
+    juce::TextButton& getVoiceKey() noexcept { return voiceKey; }        // (0.38.0) Single Voice's voice
+    juce::TextButton& getVoicingKey() noexcept { return voicingKey; }    // This Track's Voicings (and the chord track's)
+    void showFollowMenu();
+    void chooseFollowMode (pr7s::FollowMode);   // the menu's choice: the dialog first if the track has never followed
     std::function<void()> onDrumMapSetup;   // MainView: the Drum Map Setup window
     juce::TextButton& getInsertSlot (int slot) { return slots[(size_t) slot]; }
     juce::Viewport& getInsertsView() noexcept { return insertsView; }
     static constexpr int insertsInView = 5;
-    juce::TextButton& getKey (const juce::String& name);   // "M", "S", "R", "W", "REC", "MON", "RENDER", "PRESET"
+    juce::TextButton& getKey (const juce::String& name);   // "M", "S", "R", "W", "REC", "MON", "RENDER", "PRESET", "LANES"
     ValueSlider& getVolume() noexcept { return volume; }
     ValueSlider& getPan() noexcept { return pan; }
     juce::Label& getVolumeReadout() noexcept { return volumeReadout; }
@@ -127,11 +138,22 @@ private:
     std::array<std::unique_ptr<Header>, numSections> headers;
 
     juce::TextButton mute { "M" }, solo { "S" }, read { "R" }, write { "W" }, arm { "REC" }, monitor { "MON" };
+    juce::TextButton lanes { "LANES" };   // (0.35.0, the owner asked: LANES and MON here, under RENDER and PRESET, not on the rows)
     ValueSlider volume, pan;   // (double-click: type a value, 0.9.9)
     juce::Label volumeLabel, panLabel, volumeReadout, panReadout;
     juce::TextButton instrument, edit { "EDIT" };
     juce::Label midiInputLabel, channelLabel, audioInputLabel, outputLabel, noSends, drumMapLabel;
     juce::TextButton drumMapKey;   // (0.26.0) the track's drum map (the manual's Routing section)
+    juce::TextButton followKey, liveKey, shiftKey, voiceKey, voicingKey, performKey;   // (0.44.0: PERFORM)
+    juce::Label followLabel, liveLabel, shiftLabel, voiceLabel, voicingLabel, performLabel;
+    void showVoiceMenu();
+    void showVoicingMenu();
+    void showLiveMenu();
+    void showShiftMenu();
+    void showPerformMenu();
+public:
+    juce::TextButton& getPerformKey() noexcept { return performKey; }
+private:
     void showDrumMapMenu();
     // MIDI IN: the devices asked of the system only when its list opens (0.9.2:
     // asking on every change, every playhead move, was slow on Windows).
@@ -153,6 +175,8 @@ private:
     MixerView fader { studio, true };   // (also the insert, send and output menus' owner)
     ColourKey colourKey;   // the colour menu (0.17.3), beside DISABLE TRACK
     juce::TextButton enable { "DISABLE TRACK" };   // always (0.17.1, the owner asked): DISABLE TRACK, or ENABLE TRACK on a disabled one
+    EqCurve eqCurve { studio, 0, true };   // (0.43.0)
+    juce::TextButton eqBypass { "BYPASS" }, eqEdit { "EDIT EQ" };
     juce::TextButton render { "RENDER" }, preset { "PRESET" };   // (0.9.8: FREEZE; RENDER since 0.17.1, the owner asked: Freeze is in the track's menu)
     std::unique_ptr<juce::FileChooser> chooser;   // a preset's
     std::array<juce::TextButton, pr7s::Track::numQuickControls> qcKeys;

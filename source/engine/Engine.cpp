@@ -1,6 +1,7 @@
 #include "Engine.h"
 #include "Controllers.h"
 #include "SessionLog.h"
+#include "Patterns.h"
 
 namespace pr7s
 {
@@ -74,9 +75,30 @@ namespace pr7s
             for (auto& slot : masterInserts)
                 onPluginGoing (slot.plugin.get());
         }
-        const juce::ScopedLock sl (lock);
-        tracks.clear();
-        masterInserts.clear();
+        // (0.52.1) Out from under the lock, then each plug-in unloaded as a step of its own: a hang
+        // while closing names the plug-in.
+        std::vector<std::unique_ptr<TrackState>> going;
+        std::vector<Slot> masterGoing;
+        {
+            const juce::ScopedLock sl (lock);
+            std::swap (going, tracks);
+            std::swap (masterGoing, masterInserts);
+        }
+        const auto unload = [] (std::unique_ptr<juce::AudioPluginInstance>& plugin)
+        {
+            if (plugin == nullptr)
+                return;
+            const SessionLog::Step step ("Unloading " + plugin->getName());
+            plugin.reset();
+        };
+        for (auto& track : going)
+        {
+            for (auto& slot : track->inserts)
+                unload (slot.plugin);
+            unload (track->instrument);
+        }
+        for (auto& slot : masterGoing)
+            unload (slot.plugin);
     }
 
     void Engine::prepare (double newSampleRate, int newMaxBlockSize)
@@ -86,6 +108,7 @@ namespace pr7s
         maxBlockSize = juce::jmax (1, newMaxBlockSize);
         midiInput.reset (sampleRate);
         live.ensureSize (2048);
+        liveMapped.ensureSize (2048);
         deviceBuffer.setSize (2, maxBlockSize);
         silence.assign ((size_t) maxBlockSize, 0.0f);
         effectMidi.ensureSize (4096);   // (an effect may send MIDI out: room for it, not grown on the audio thread)
@@ -93,6 +116,7 @@ namespace pr7s
         for (auto& slot : masterInserts)
             if (slot.plugin != nullptr)
             {
+                const SessionLog::Step step ("Preparing " + slot.plugin->getName() + " (the master's) at " + juce::String (sampleRate, 0) + " Hz");
                 prepareEffect (*slot.plugin);
                 masterChannels = juce::jmax (masterChannels, channelsFor (*slot.plugin));
             }
@@ -103,9 +127,20 @@ namespace pr7s
         {
             for (auto& slot : track->inserts)
                 if (slot.plugin != nullptr)
+                {
+                    const SessionLog::Step step ("Preparing " + slot.plugin->getName() + " at " + juce::String (sampleRate, 0) + " Hz");
                     prepareEffect (*slot.plugin);
+                }
+            std::unique_ptr<SessionLog::Step> step;
+            if (track->instrument != nullptr)
+                step = std::make_unique<SessionLog::Step> ("Preparing " + track->instrument->getName() + " at " + juce::String (sampleRate, 0) + " Hz");
             prepareTrack (*track);
+            step.reset();
+            track->eq.setDesign (designEq (track->eqSettings, sampleRate));   // (0.43.0: its filters at the new rate)
+            track->eq.reset();
         }
+        masterEq.setDesign (designEq (masterEqSettings, sampleRate));
+        masterEq.reset();
     }
 
     void Engine::setLiveInputFilter (const juce::String& deviceName)
@@ -136,6 +171,7 @@ namespace pr7s
         {
             if (plugin == nullptr || plugin->isNonRealtime() == offline)
                 return;
+            const SessionLog::Step step ("Switching " + plugin->getName() + (offline ? " to offline (for the render)" : " back to realtime"));
             plugin->releaseResources();
             plugin->setNonRealtime (offline);
             if (instrument)
@@ -198,6 +234,8 @@ namespace pr7s
         track.buffer.setSize (channelsNeeded (track), maxBlockSize);
         track.bus.setSize (2, maxBlockSize);
         track.midi.ensureSize (4096);
+        track.effectMidi.ensureSize (4096);   // (0.34.5: each track's own: effects may run on several cores at once)
+        track.preFaderCopy.setSize (2, maxBlockSize);
         track.left.reset (sampleRate, gainRampSeconds);
         track.right.reset (sampleRate, gainRampSeconds);
         track.left.setCurrentAndTargetValue (track.gainLeft);
@@ -220,7 +258,12 @@ namespace pr7s
         incoming->id = trackId;
         incoming->instrument = std::move (instrument);
         incoming->inserts.reserve ((size_t) Project::maxInserts);
-        prepareTrack (*incoming);
+        {
+            std::unique_ptr<SessionLog::Step> step;
+            if (incoming->instrument != nullptr)
+                step = std::make_unique<SessionLog::Step> ("Preparing the instrument " + incoming->instrument->getName());
+            prepareTrack (*incoming);
+        }
         // A track that has inserts already: room for them in the new buffer too.
         if (const auto* existing = findTrack (trackId))
         {
@@ -247,11 +290,17 @@ namespace pr7s
             else
             {
                 tracks.push_back (std::move (incoming));
+                wave.reserve (tracks.size() + 16);   // (0.34.5: room for a wave of them, made here, not on the audio thread)
             }
         }
         if (old != nullptr && onPluginGoing)
             onPluginGoing (old.get());
         // `old` (and `incoming` if it was emptied) are freed here, outside the lock.
+        if (old != nullptr)
+        {
+            const SessionLog::Step step ("Unloading the instrument " + old->getName());
+            old.reset();
+        }
     }
 
     void Engine::removeTrack (int trackId)
@@ -273,6 +322,20 @@ namespace pr7s
             for (auto& slot : removed->inserts)
                 onPluginGoing (slot.plugin.get());
         }
+        if (removed != nullptr)
+        {
+            for (auto& slot : removed->inserts)
+                if (slot.plugin != nullptr)
+                {
+                    const SessionLog::Step step ("Unloading " + slot.plugin->getName() + " (a track removed)");
+                    slot.plugin.reset();
+                }
+            if (removed->instrument != nullptr)
+            {
+                const SessionLog::Step step ("Unloading the instrument " + removed->instrument->getName() + " (a track removed)");
+                removed->instrument.reset();
+            }
+        }
     }
 
     juce::AudioPluginInstance* Engine::getInstrument (int trackId) const
@@ -292,6 +355,7 @@ namespace pr7s
         const juce::ScopedLock sl (lock);
         if (findTrack (trackId) == nullptr)
             tracks.push_back (std::move (incoming));
+        wave.reserve (tracks.size() + 16);   // (0.34.5: room for a wave of them, made here, not on the audio thread)
     }
 
     void Engine::addChannel (int trackId, bool group)
@@ -304,6 +368,7 @@ namespace pr7s
         const juce::ScopedLock sl (lock);
         if (findTrack (trackId) == nullptr)
             tracks.push_back (std::move (incoming));
+        wave.reserve (tracks.size() + 16);   // (0.34.5: room for a wave of them, made here, not on the audio thread)
     }
 
     float Engine::getSendNowDb (int trackId, int slot) const
@@ -332,7 +397,19 @@ namespace pr7s
         return silence.data();
     }
 
-    void Engine::playClips (TrackState& track, juce::int64 clock, int offset, int length, const Timing& timing)
+    void Engine::placeClip (Clip& clip, const Timing& timing)
+    {
+        clip.startSample = timing.sampleAt (clip.start);
+        clip.endSample = timing.sampleAt (clip.end);
+        // ((0.52.0) A crossfade's stretch can reach past the clip's own edges, into its recording.)
+        // Only with an auto fade there to cover it; else within the clip, as before.
+        const auto from = clip.autoIn > 0.0 ? clip.from : juce::jmax (clip.from, clip.start);
+        const auto to = clip.autoOut > 0.0 ? clip.to : juce::jmin (clip.to, clip.end);
+        clip.fromSample = from != clip.start ? timing.sampleAt (from) : clip.startSample;
+        clip.toSample = to != clip.end ? timing.sampleAt (to) : clip.endSample;
+    }
+
+    void Engine::playClips (TrackState& track, juce::int64 clock, int offset, int length, const Timing&)
     {
         // Each clip's samples in this stretch of the song, faded at its ends,
         // added to the track's sound.
@@ -340,38 +417,88 @@ namespace pr7s
         auto* right = track.buffer.getWritePointer (1);
         for (const auto& clip : track.clips)
         {
-            const auto startSample = timing.sampleAt (clip.start);
-            const auto endSample = timing.sampleAt (clip.end);
-            const auto from = juce::jmax (juce::jmax (clock, startSample), clip.from > clip.start ? timing.sampleAt (clip.from) : startSample);
-            const auto to = juce::jmin (juce::jmin (clock + length, endSample), clip.to < clip.end ? timing.sampleAt (clip.to) : endSample);
+            const auto startSample = clip.startSample;
+            const auto endSample = clip.endSample;
+            const auto from = juce::jmax (clock, clip.fromSample);
+            const auto to = juce::jmin (clock + length, clip.toSample);
             if (from >= to || clip.sound == nullptr)
                 continue;
             const auto& sound = *clip.sound;
             const auto* sourceLeft = sound.getReadPointer (0);
             const auto* sourceRight = sound.getNumChannels() > 1 ? sound.getReadPointer (1) : sourceLeft;
             const auto clipLength = (double) (endSample - startSample);
-            for (auto s = from; s < to; ++s)
+            // One sample as it always was: inside the recording, faded at the clip's ends.
+            const auto playOne = [&] (juce::int64 s)
             {
                 const auto into = (double) (s - startSample);
                 const auto at = clip.offset + (s - startSample);
                 if (at < 0 || at >= sound.getNumSamples())
-                    continue;
-                auto gain = 1.0;
+                    return;
+                auto gain = (double) clip.gain;
                 if (clip.fadeIn > 0.0 && into < clip.fadeIn)
-                    gain *= into / clip.fadeIn;
+                    gain *= juce::jmax (0.0, into) / clip.fadeIn;
                 if (clip.fadeOut > 0.0 && clipLength - into < clip.fadeOut)
-                    gain *= (clipLength - into) / clip.fadeOut;
+                    gain *= juce::jmax (0.0, clipLength - into) / clip.fadeOut;
+                // (0.52.0) Auto fades at the stretch's ends.
+                const auto curve = [&clip] (double x)
+                {
+                    x = juce::jlimit (0.0, 1.0, x);
+                    return clip.equalPower ? std::sin (x * juce::MathConstants<double>::halfPi) : x;
+                };
+                if (clip.autoIn > 0.0 && (double) (s - clip.fromSample) < clip.autoIn)
+                    gain *= curve (((double) (s - clip.fromSample) + 0.5) / clip.autoIn);
+                if (clip.autoOut > 0.0 && (double) (clip.toSample - s) <= clip.autoOut)
+                    gain *= curve (((double) (clip.toSample - s) - 0.5) / clip.autoOut);
                 const auto i = offset + (int) (s - clock);
                 left[i] += (float) (sourceLeft[at] * gain);
                 right[i] += (float) (sourceRight[at] * gain);
+            };
+            // (0.34.1) The middle (inside the recording, no fade: the gain is exactly 1, so each sample
+            // added as it is, the same as the line above) in one go; the edges one at a time.
+            const auto inFadeIn = [&] (juce::int64 s) { return (clip.fadeIn > 0.0 && (double) (s - startSample) < clip.fadeIn)
+                                                               || s < startSample || (clip.autoIn > 0.0 && (double) (s - clip.fromSample) < clip.autoIn); };
+            const auto inFadeOut = [&] (juce::int64 s) { return (clip.fadeOut > 0.0 && clipLength - (double) (s - startSample) < clip.fadeOut)
+                                                                || s >= endSample || (clip.autoOut > 0.0 && (double) (clip.toSample - s) <= clip.autoOut); };
+            auto middleFrom = juce::jmax (from, startSample - clip.offset);                         // (the recording's first sample)
+            auto middleTo = juce::jmin (to, startSample - clip.offset + sound.getNumSamples());    // (past its last)
+            while (middleFrom < middleTo && inFadeIn (middleFrom))
+                ++middleFrom;   // (at most the fade's length, once per block)
+            while (middleTo > middleFrom && inFadeOut (middleTo - 1))
+                --middleTo;
+            if (middleFrom >= middleTo)
+            {
+                for (auto s = from; s < to; ++s)
+                    playOne (s);
+                continue;
             }
+            for (auto s = from; s < middleFrom; ++s)
+                playOne (s);
+            const auto n = (int) (middleTo - middleFrom);
+            const auto i = offset + (int) (middleFrom - clock);
+            const auto at = clip.offset + (middleFrom - startSample);
+            if (clip.gain == 1.0f)
+            {
+                juce::FloatVectorOperations::add (left + i, sourceLeft + at, n);
+                juce::FloatVectorOperations::add (right + i, sourceRight + at, n);
+            }
+            else if (clip.gain > 0.0f)
+            {
+                // (0.47.0) The event's volume: one multiply-add (the same as playOne's, to a rounding).
+                juce::FloatVectorOperations::addWithMultiply (left + i, sourceLeft + at, clip.gain, n);
+                juce::FloatVectorOperations::addWithMultiply (right + i, sourceRight + at, clip.gain, n);
+            }
+            for (auto s = middleTo; s < to; ++s)
+                playOne (s);
         }
     }
 
     void Engine::insertEffect (int busId, int slot, std::unique_ptr<juce::AudioPluginInstance> effect)
     {
         if (effect != nullptr)
+        {
+            const SessionLog::Step step ("Preparing the effect " + effect->getName());
             prepareEffect (*effect);
+        }
 
         // A track not here yet (its instrument couldn't be loaded): kept anyway, silent.
         if (busId != masterBus && findTrack (busId) == nullptr)
@@ -382,6 +509,7 @@ namespace pr7s
             prepareTrack (*silent);
             const juce::ScopedLock sl (lock);
             tracks.push_back (std::move (silent));
+            wave.reserve (tracks.size() + 16);   // (0.34.5: room for a wave of them, made here, not on the audio thread)
         }
 
         // A bigger buffer, if this effect has more channels, made here; swapped in below.
@@ -414,6 +542,11 @@ namespace pr7s
         if (removed != nullptr && onPluginGoing)
             onPluginGoing (removed.get());
         // `removed` is deleted here, outside the lock.
+        if (removed != nullptr)
+        {
+            const SessionLog::Step step ("Unloading the effect " + removed->getName());
+            removed.reset();
+        }
     }
 
     juce::AudioPluginInstance* Engine::getEffect (int busId, int slot) const
@@ -447,12 +580,15 @@ namespace pr7s
         const auto tempoVersion = settings.tempoVersion + (tempo.getEvents() == settings.tempo.getEvents() ? 0 : 1);
 
         struct Prepared { int id; std::vector<Event> events; std::pair<float, float> gains; std::vector<bool> bypass; std::vector<Clip> clips;
-                          std::vector<LaneState> automation; bool mixAutomated = false;
+                          std::vector<LaneState> automation; bool mixAutomated = false; bool eventsKept = false;
                           std::array<juce::int16, 128> drumOut {}; std::array<juce::int8, 128> drumChannel {}; std::array<juce::uint8, 128> drumIn {}; };
         std::vector<Prepared> prepared;
         for (const auto& track : project.tracks)
         {
-            Prepared p { track.id, {}, sideGains (track, ! track.mute && ! track.disabled && ! soloedOut (track)), {}, {}, {}, false, {}, {}, {} };
+            Prepared p { track.id, {}, sideGains (track, ! track.mute && ! track.disabled && ! soloedOut (track)), {}, {}, {}, false, false, {}, {}, {} };
+            auto* engineTrack = findTrack (track.id);   // (message thread: its builtFrom is ours alone)
+            if (engineTrack != nullptr && (track.disabled || track.frozen || track.isAudio()))
+                engineTrack->builtFrom.valid = false;   // (no events: the next notes are built afresh)
             for (int n = 0; n < 128; ++n)
                 p.drumOut[(size_t) n] = (juce::int16) n, p.drumChannel[(size_t) n] = -1, p.drumIn[(size_t) n] = (juce::uint8) n;
             for (const auto& insert : track.inserts)
@@ -472,6 +608,8 @@ namespace pr7s
                 if (audioSource)
                     if (auto sound = audioSource (track.freezeFile))
                         p.clips.push_back ({ 0.0, tempo.beatAt ((double) sound->getNumSamples() / sampleRate), sound, 0, 0.0, 0.0 });
+                for (auto& clip : p.clips)
+                    placeClip (clip, { &tempo, sampleRate });
                 prepared.push_back (std::move (p));
                 continue;
             }
@@ -487,12 +625,29 @@ namespace pr7s
                     const auto stretches = heardStretches (track, i);
                     if (stretches.empty())
                         continue;
-                    auto sound = audioSource (part.audioFile);
-                    for (const auto& [from, to] : stretches)
-                        p.clips.push_back ({ part.start, part.end(), sound,
-                                             (juce::int64) std::llround (part.audioOffset * sampleRate),
-                                             part.fadeIn * sampleRate, part.fadeOut * sampleRate, from, to });
+                    // Warped (0.32.0): its stretched sound, from the clip's start.
+                    const auto warped = part.isWarped() && warpSource;
+                    auto sound = warped ? warpSource (part, tempo) : audioSource (part.audioFile);
+                    const auto offset = warped ? (juce::int64) 0 : (juce::int64) std::llround (part.audioOffset * sampleRate);
+                    // (0.52.0) With the auto fades: a crossfade's stretch reaches past the cut.
+                    const auto& fades = project.autoFadesOf (track);
+                    const auto recording = [this] (const Part& other)
+                    {
+                        const auto s = audioSource ? audioSource (other.audioFile) : nullptr;
+                        return s != nullptr ? (double) s->getNumSamples() / sampleRate : 0.0;
+                    };
+                    for (const auto& f : fadedStretches (track, i, fades, tempo, recording))
+                    {
+                        Clip clip { part.start, part.end(), sound, offset, part.fadeIn * sampleRate, part.fadeOut * sampleRate, part.gain(), 0.0, 0.0, true,
+                                    f.from, f.to };
+                        clip.autoIn = f.fadeIn * sampleRate;
+                        clip.autoOut = f.fadeOut * sampleRate;
+                        clip.equalPower = fades.equalPower;
+                        p.clips.push_back (clip);
+                    }
                 }
+                for (auto& clip : p.clips)
+                    placeClip (clip, { &tempo, sampleRate });
                 prepared.push_back (std::move (p));
                 continue;
             }
@@ -507,23 +662,79 @@ namespace pr7s
                 p.drumChannel[(size_t) n] = (juce::int8) (sound != nullptr && sound->channel >= 0 ? sound->channel : -1);
                 p.drumIn[(size_t) n] = (juce::uint8) (map != nullptr ? map->pitchForInput (n) : n);
             }
-            for (const auto& part : track.parts)
-                for (const auto& note : part.notes)
+            // (0.34.1) Built from exactly what it was last time: kept (the same events would come out).
+            const auto mapNow = map != nullptr ? std::optional<DrumMap> (*map) : std::nullopt;
+            // (0.36.0) Following the chord track: the chords it follows count as what it's built from.
+            const auto follows = track.follow != FollowMode::off && ! project.chordTrack.events.empty();
+            // (0.44.0) Performing a pattern over the chord track.
+            const auto performIndex = track.kind == Track::Kind::instrument && ! project.chordTrack.events.empty()
+                                          ? patternNamed (track.performPattern) : -1;
+            const auto patternNow = performIndex >= 0 ? track.performPattern : juce::String();
+            const auto followNow = follows ? track.follow : FollowMode::off;
+            const auto referenceNow = follows ? track.followReference : FollowReference {};
+            const auto chordsNow = follows || performIndex >= 0 ? project.chordTrack : ChordTrack {};
+            const auto fallbackNow = follows ? project.chordPads.key() : Key {};
+            const auto voiceNow = follows ? track.followVoice : Voice::soprano;
+            const auto voicingNow = follows ? track.followVoicing : std::nullopt;
+            if (engineTrack != nullptr)
+            {
+                auto& built = engineTrack->builtFrom;
+                if (built.valid && built.midiChannel == track.midiChannel && built.soloLane == track.soloLane
+                    && built.map == mapNow && built.parts == track.parts && built.follow == followNow
+                    && built.reference == referenceNow && built.chords == chordsNow && built.fallback == fallbackNow
+                    && built.voice == voiceNow && built.voicing == voicingNow && built.pattern == patternNow)
                 {
-                    if (part.muted || (track.soloLane >= 0 && part.lane != track.soloLane))
-                        break;   // a muted part isn't played (nor, with a lane soloed, another lane's: 0.29.0)
+                    p.eventsKept = true;
+                    prepared.push_back (std::move (p));
+                    continue;
+                }
+                built = { true, track.parts, track.midiChannel, track.soloLane, mapNow, followNow, referenceNow, chordsNow, fallbackNow,
+                          voiceNow, voicingNow, patternNow };
+            }
+            ++eventBuilds;
+            for (const auto& part : track.parts)
+            {
+                if (part.muted || (track.soloLane >= 0 && part.lane != track.soloLane))
+                    continue;   // a muted part isn't played (nor, with a lane soloed, another lane's: 0.29.0)
+                // (0.36.0) Each note's pitch as the chord track has it now (dropped: doubled by another).
+                const auto followed = follows ? followNotes (part.notes, part.start, followNow, referenceNow, chordsNow,
+                                                             chordsNow.shiftTicks, fallbackNow, voicingNow ? &*voicingNow : nullptr, voiceNow)
+                                              : std::vector<FollowedNote> {};
+                for (size_t n = 0; n < part.notes.size(); ++n)
+                {
+                    const auto& note = part.notes[n];
+                    if (follows && followed[n].dropped)
+                        continue;
+                    // (0.47.0) The part's Transpose and Velocity from the info line, for playback only.
+                    const auto pitch = part.heardPitch (juce::jlimit (0, 127, follows ? followed[n].pitch : note.pitch));
                     const auto on = part.start + note.start;
                     if (note.start < 0.0 || note.start >= part.length)
                         continue;   // outside the part: not heard (as in a DAW)
-                    const auto out = p.drumOut[(size_t) juce::jlimit (0, 127, note.pitch)];
+                    const auto out = p.drumOut[(size_t) pitch];
                     if (out < 0)
                         continue;   // a muted drum sound
-                    const auto bits = p.drumChannel[(size_t) juce::jlimit (0, 127, note.pitch)] >= 0 ? p.drumChannel[(size_t) note.pitch] : channelBits;
+                    const auto bits = p.drumChannel[(size_t) pitch] >= 0 ? p.drumChannel[(size_t) pitch] : channelBits;
                     const auto off = part.start + juce::jmin (note.start + note.length, part.length);
-                    const auto velocity = (juce::uint8) juce::jlimit (1, 127, juce::roundToInt (note.velocity * 127.0f));
+                    const auto velocity = (juce::uint8) juce::jlimit (1, 127, juce::roundToInt (part.heardVelocity (note.velocity) * 127.0f));
                     p.events.push_back ({ on, (juce::uint8) (0x90 | bits), (juce::uint8) out, velocity });
                     p.events.push_back ({ off, (juce::uint8) (0x80 | bits), (juce::uint8) out, 0 });
                 }
+            }
+            if (performIndex >= 0)
+            {
+                // (0.44.0) The pattern over each chord (until the next; the last a bar).
+                std::vector<ChordSpan> spans;
+                const auto& events = project.chordTrack.events;
+                for (size_t e = 0; e < events.size(); ++e)
+                    spans.push_back ({ events[e].beat, project.chordTrack.endOf ((int) e, project.beatsPerBar()), events[e].chord, Key {} });
+                for (const auto& note : performChordTrack (patterns()[(size_t) performIndex], spans, project.beatsPerBar()))
+                {
+                    const auto pitch = juce::jlimit (0, 127, note.pitch);
+                    const auto velocity = (juce::uint8) juce::jlimit (1, 127, juce::roundToInt (note.velocity * 127.0f));
+                    p.events.push_back ({ note.beat, (juce::uint8) (0x90 | channelBits), (juce::uint8) pitch, velocity });
+                    p.events.push_back ({ note.beat + note.length, (juce::uint8) (0x80 | channelBits), (juce::uint8) pitch, 0 });
+                }
+            }
             // Controllers (0.25.0): each event, and a ramp as a value every 1/128 beat where it changes.
             for (const auto& part : track.parts)
             {
@@ -550,26 +761,58 @@ namespace pr7s
             prepared.push_back (std::move (p));
         }
 
+        // Live Input (0.36.0): the chord track as bits by beat, for the live track's keys.
+        std::vector<LiveChord> chordBits;
+        auto liveMode = LiveFollow::off;
+        auto liveModeTrack = 0;
+        for (const auto& track : project.tracks)
+            if (track.liveFollow != LiveFollow::off && ! track.isAudio() && ! track.isChannel())
+                if (track.id == liveTrack.load() || liveModeTrack == 0)
+                    liveMode = track.liveFollow, liveModeTrack = track.id;
+        if (liveMode != LiveFollow::off)
+        {
+            const auto fallback = project.chordPads.key();
+            for (const auto& e : project.chordTrack.events)
+            {
+                const auto key = project.chordTrack.keyAt (e.beat, project.chordTrack.scales.empty() ? fallback : project.chordTrack.scales.front().key);
+                chordBits.push_back ({ e.beat, pitchClassMask (e.chord.pitchClasses()), pitchClassMask (key.scale()) });
+            }
+        }
+
         const auto masterLevel = levelOf (project.masterVolumeDb);
         std::vector<LaneState> masterLanes;
         bool masterLanesMix = false;
         readLanes (project.masterAutomation, project.masterRead, masterLanes, masterLanesMix, masterBus, held, project.automationSettings);
 
         const juce::ScopedLock sl (lock);
-        settings = { std::move (tempo), tempoVersion, project.numerator, project.denominator, project.loopOn,
+        settings = { std::move (tempo), tempoVersion, project.signatures(), project.loopOn,
                      project.loopStart, juce::jmax (project.loopStart + 0.0625, project.loopEnd), project.click, masterLevel,
                      project.masterVolumeDb, project.automationSettings.virginTerritory };
         std::swap (masterAutomation, masterLanes);
+        std::swap (liveChords, chordBits);   // (the old list goes out with `chordBits`)
+        liveFollowMode = liveMode;
+        liveFollowTrack = liveModeTrack;
         masterPreFader = project.masterPreFaderSlots;
+        if (! (masterEqSettings == project.masterEq))
+        {
+            masterEqSettings = project.masterEq;
+            masterEq.setDesign (designEq (masterEqSettings, sampleRate));
+        }
         masterAutomated = masterLanesMix;
         for (auto& p : prepared)
             if (auto* track = findTrack (p.id))
             {
-                std::swap (track->events, p.events);   // the old list goes out with `prepared`
-                track->checkHeld = true;
+                if (! p.eventsKept)
+                {
+                    std::swap (track->events, p.events);   // the old list goes out with `prepared`
+                    track->checkHeld = true;
+                }
                 std::swap (track->clips, p.clips);      // likewise the old clips
                 if (const auto* t = project.findTrack (p.id))
                 {
+                    // (0.50.0) A channel's role follows the song: a folder with its group channel on is a group.
+                    if (t->isChannel())
+                        track->role = t->isGroup() ? TrackState::Role::group : TrackState::Role::fx;
                     track->input = t->input;
                     track->frozen = t->frozen;
                     track->midiChannel = juce::jlimit (1, 16, t->midiChannel);
@@ -580,6 +823,11 @@ namespace pr7s
                     track->mute = t->mute || t->disabled;
                     track->soloedOut = soloedOut (*t);
                     track->preFader = t->preFaderSlots;
+                    if (! (track->eqSettings == t->eq))   // (0.43.0: designed only when it changed)
+                    {
+                        track->eqSettings = t->eq;
+                        track->eq.setDesign (designEq (t->eq, sampleRate));
+                    }
                     track->output = t->output;
                     for (int s = 0; s < Project::maxSends; ++s)
                     {
@@ -661,7 +909,7 @@ namespace pr7s
         return track != nullptr ? track->meters[(size_t) juce::jlimit (0, 2, reader)].takePeak() : 0.0f;
     }
 
-    void Engine::runInserts (std::vector<Slot>& slots, juce::AudioBuffer<float>& buffer, int numSamples, int fromSlot, int toSlot)
+    void Engine::runInserts (std::vector<Slot>& slots, juce::AudioBuffer<float>& buffer, int numSamples, int fromSlot, int toSlot, juce::MidiBuffer& effectsMidi)
     {
         // In order, each on the sound in place. (Audio thread: no allocation.)
         for (int i = juce::jmax (0, fromSlot); i < juce::jmin (toSlot, (int) slots.size()); ++i)
@@ -684,8 +932,8 @@ namespace pr7s
             for (int channel = ins; channel < channels; ++channel)
                 juce::FloatVectorOperations::clear (buffer.getWritePointer (channel), numSamples);
             juce::AudioBuffer<float> view (buffer.getArrayOfWritePointers(), channels, numSamples);
-            effectMidi.clear();
-            effect.processBlock (view, effectMidi);
+            effectsMidi.clear();
+            effect.processBlock (view, effectsMidi);
             if (outs == 1 && buffer.getNumChannels() > 1)   // mono out: to both sides
                 juce::FloatVectorOperations::copy (buffer.getWritePointer (1), buffer.getReadPointer (0), numSamples);
         }
@@ -793,27 +1041,31 @@ namespace pr7s
         const auto channelBits = (juce::uint8) (track.heldChannel - 1);
         const auto from = std::lower_bound (track.events.begin(), track.events.end(), beatNow - 1.0e-9,
                                             [] (const Event& e, double beat) { return e.beat < beat; });
-        for (int note = 0; note < 128; ++note)
+        // (0.34.1) One walk for every held note, stopping once each has met its next on or off (it
+        // walked the list once per note, to its end for a note never ended: a spike after an edit).
+        auto unsettled = track.held;
+        std::bitset<128> ends;
+        for (auto it = from; it != track.events.end() && unsettled.any(); ++it)
         {
-            if (! track.held.test ((size_t) note))
+            const auto kind = it->status & 0xf0;
+            if ((kind != 0x80 && kind != 0x90) || (it->status & 0x0f) != channelBits || ! unsettled.test (it->data1 & 0x7f))
                 continue;
-            auto ended = false;
-            for (auto it = from; it != track.events.end(); ++it)
-                if (it->data1 == note && (it->status & 0x0f) == channelBits && ((it->status & 0xf0) == 0x80 || (it->status & 0xf0) == 0x90))
-                {
-                    ended = (it->status & 0xf0) == 0x80;
-                    break;
-                }
-            if (! ended)
+            ends.set (it->data1 & 0x7f, kind == 0x80);
+            unsettled.reset (it->data1 & 0x7f);
+        }
+        for (int note = 0; note < 128; ++note)   // (in this order, as before)
+            if (track.held.test ((size_t) note) && ! ends.test ((size_t) note))
             {
                 track.midi.addEvent (juce::MidiMessage::noteOff (track.heldChannel, note), sampleOffset);
                 track.held.reset ((size_t) note);
             }
-        }
     }
 
     void Engine::render (juce::AudioBuffer<float>& output, int numSamples, const juce::AudioBuffer<float>* input)
     {
+        // (0.34.1) Numbers too small to hear (under about -760 dB) count as 0: a decaying tail or a
+        // filter going quiet otherwise costs the processor many times over. Only this thread, only now.
+        const juce::ScopedNoDenormals noDenormals;
         // Larger than the device promised: in pieces.
         blockInputs = input != nullptr ? input->getArrayOfReadPointers() : nullptr;
         blockNumInputs = input != nullptr ? input->getNumChannels() : 0;
@@ -827,6 +1079,222 @@ namespace pr7s
         }
         blockInputs = nullptr;
         blockNumInputs = 0;
+    }
+
+    void Engine::processTrack (TrackState& state, const BlockContext& block)
+    {
+        // (0.34.5) On any core: only this track's own things are touched here.
+        auto* track = &state;
+        track->playedThisBlock = false;
+        const auto numSamples = block.numSamples;
+        const auto& timing = *block.timing;
+        const auto liveId = block.liveId;
+        const auto* spans = block.spans;
+        const auto numSpans = block.numSpans;
+        const auto spanBeat = [&block] (const Segment& span, int sample) { return block.spanBeat (span, sample); };
+        if (track->id == liveId)
+            for (const auto metadata : live)   // played live: on the track's channel, as its notes
+            {
+                auto message = metadata.getMessage();
+                if (message.getChannel() > 0)
+                    message.setChannel (track->midiChannel);
+                if (message.isNoteOnOrOff())
+                {
+                    // Through its drum map: the key played is a sound's I-note, sent as its O-note.
+                    const auto pitch = track->drumIn[(size_t) message.getNoteNumber()];
+                    const auto out = track->drumOut[pitch];
+                    if (out < 0)
+                        continue;   // a muted sound
+                    message.setNoteNumber (out);
+                    if (track->drumChannel[pitch] >= 0)
+                        message.setChannel (track->drumChannel[pitch] + 1);
+                }
+                track->midi.addEvent (message, metadata.samplePosition);
+            }
+        if (track->role != TrackState::Role::source)
+        {
+            // A group or FX channel: what was routed or sent to it.
+            for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
+            {
+                if (channel < 2)
+                    juce::FloatVectorOperations::copy (track->buffer.getWritePointer (channel), track->bus.getReadPointer (channel), numSamples);
+                else
+                    juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
+            }
+        }
+        else if (track->audio || track->frozen)
+        {
+            // An audio track: its clips, and what comes in if it's monitored (a frozen track: its freeze file).
+            for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
+                juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
+            for (int i = 0; i < numSegments; ++i)
+                playClips (*track, segments[(size_t) i].clock, segments[(size_t) i].offset, segments[(size_t) i].length, timing);
+            if (track->monitor && track->audio && ! track->frozen)
+            {
+                juce::FloatVectorOperations::add (track->buffer.getWritePointer (0), inputChannel (track->input, 0), numSamples);
+                juce::FloatVectorOperations::add (track->buffer.getWritePointer (1),
+                                                  inputChannel (track->stereoInput ? track->input + 1 : track->input, 0), numSamples);
+            }
+        }
+        else if (track->instrument == nullptr)
+        {
+            return;   // (no instrument: nothing to play, send or meter)
+        }
+        else
+        {
+            // (Cleared and copied sample by sample: JUCE buffers remember being
+            // cleared, and a view cleared here wouldn't see the instrument's
+            // sound written through another view, then skip mixing it.)
+            for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
+                juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
+            juce::AudioBuffer<float> played (track->buffer.getArrayOfWritePointers(), track->instrumentChannels, numSamples);
+            track->instrument->processBlock (played, track->midi);
+            if (track->instrument->getTotalNumOutputChannels() == 1)   // a mono instrument: on both sides
+                juce::FloatVectorOperations::copy (track->buffer.getWritePointer (1), track->buffer.getReadPointer (0), numSamples);
+        }
+        juce::AudioBuffer<float> sound (track->buffer.getArrayOfWritePointers(), track->buffer.getNumChannels(), numSamples);
+        // (0.43.0) The Pre section (gain, phase, cuts), the inserts before the fader, then the EQ.
+        // A frozen track's file has them already.
+        if (! track->frozen)
+            track->eq.processPre (sound.getArrayOfWritePointers(), sound.getNumChannels(), numSamples);
+        runInserts (track->inserts, sound, numSamples, 0, track->preFader, track->effectMidi);
+        if (! track->frozen)
+            track->eq.processEq (sound.getArrayOfWritePointers(), sound.getNumChannels(), numSamples);
+        afterEq (track->id, sound.getArrayOfWritePointers(), sound.getNumChannels(), numSamples);
+        // The sends before the fader take the sound as it is here: kept for them (they're added
+        // into the FX channels afterwards, on the audio thread, in the tracks' order).
+        const auto preSends = std::any_of (track->sends.begin(), track->sends.end(), [] (const auto& send) { return send.preFader && send.target != 0; });
+        if (preSends)
+            for (int channel = 0; channel < 2; ++channel)
+                juce::FloatVectorOperations::copy (track->preFaderCopy.getWritePointer (channel), sound.getReadPointer (channel), numSamples);
+
+        // Its fader and pan, on its own sound; then the inserts after the
+        // fader; then into the master.
+        auto* left = sound.getWritePointer (0);
+        auto* right = sound.getWritePointer (1);
+        const MixNow set { track->volumeDb, track->pan, track->mute };
+        if (track->mixAutomated)
+        {
+            // Volume, pan and mute as the lanes have them, every 32
+            // samples, in a straight line between (no steps to hear).
+            const auto gainsAt = [&] (double at)
+            {
+                const auto mix = mixAt (track->automation, set, at, settings.virginTerritory);
+                return sideGains (mix.volumeDb, mix.pan, ! mix.mute && ! track->soloedOut);
+            };
+            std::pair<float, float> gains;
+            for (int s = 0; s < numSpans; ++s)
+            {
+                const auto& span = spans[(size_t) s];
+                gains = gainsAt (spanBeat (span, span.offset));
+                for (int from = span.offset; from < span.offset + span.length; from += automationStep)
+                {
+                    const auto n = juce::jmin (automationStep, span.offset + span.length - from);
+                    const auto next = gainsAt (spanBeat (span, from + n));
+                    for (int i = 0; i < n; ++i)
+                    {
+                        const auto along = (float) i / (float) n;
+                        left[from + i] *= gains.first + (next.first - gains.first) * along;
+                        right[from + i] *= gains.second + (next.second - gains.second) * along;
+                    }
+                    gains = next;
+                }
+            }
+            // Turned off, the mix moves on from here.
+            track->left.setCurrentAndTargetValue (gains.first);
+            track->right.setCurrentAndTargetValue (gains.second);
+        }
+        else
+        {
+            track->left.setTargetValue (track->gainLeft);
+            track->right.setTargetValue (track->gainRight);
+            if (! track->left.isSmoothing() && ! track->right.isSmoothing())
+            {
+                // (0.34.1) Not moving: each side times its gain in one go (getNextValue would
+                // return exactly that gain for every sample).
+                juce::FloatVectorOperations::multiply (left, track->left.getTargetValue(), numSamples);
+                juce::FloatVectorOperations::multiply (right, track->right.getTargetValue(), numSamples);
+            }
+            else
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    left[i] *= track->left.getNextValue();
+                    right[i] *= track->right.getNextValue();
+                }
+        }
+        runInserts (track->inserts, sound, numSamples, track->preFader, Project::maxInserts, track->effectMidi);
+        float peak = 0.0f;
+        for (int i = 0; i < numSamples; ++i)
+            peak = juce::jmax (peak, std::abs (left[i]), std::abs (right[i]));
+        track->blockPeak = peak;
+        track->playedThisBlock = true;
+    }
+
+    void Engine::mixTrackOut (TrackState& state, const BlockContext& block, juce::AudioBuffer<float>& master)
+    {
+        // (0.34.5) On the audio thread, in the tracks' order: its sends, then its sound to its group or the master.
+        auto* track = &state;
+        if (! track->playedThisBlock)
+            return;
+        const auto numSamples = block.numSamples;
+        runSends (*track, true, numSamples, block.blockBeat, track->preFaderCopy);   // the sends before the fader
+        runSends (*track, false, numSamples, block.blockBeat, track->buffer);       // the sends after it
+        const auto* left = track->buffer.getReadPointer (0);
+        const auto* right = track->buffer.getReadPointer (1);
+
+        // To its group (a track routed to one), else the master.
+        auto* out = &master;
+        juce::AudioBuffer<float> toGroup;
+        const auto only = exportBus.load();   // (0.51.0) a channel export: only that channel to the output
+        if (track->role == TrackState::Role::source && track->output != 0 && track->id != only)
+            if (auto* group = findTrack (track->output); group != nullptr && group->role == TrackState::Role::group)
+            {
+                toGroup.setDataToReferTo (group->bus.getArrayOfWritePointers(), 2, numSamples);
+                out = &toGroup;
+            }
+        if (only == 0 || out != &master || track->id == only)
+        {
+            juce::FloatVectorOperations::add (out->getWritePointer (0), left, numSamples);
+            juce::FloatVectorOperations::add (out->getWritePointer (1), right, numSamples);
+        }
+        for (auto& meter : track->meters)
+            meter.pushSamples (&track->blockPeak, 1);
+    }
+
+    void Engine::mapLive (double beat) noexcept
+    {
+        // The chord in force at the block's start (before the first: the first; none: as played).
+        const LiveChord* now = nullptr;
+        for (const auto& c : liveChords)
+            if (c.beat <= beat + 1.0e-9 || now == nullptr)
+                now = &c;
+            else
+                break;
+        liveMapped.clear();
+        for (const auto metadata : live)
+        {
+            auto message = metadata.getMessage();
+            if (message.isNoteOnOrOff())
+            {
+                const auto channel = juce::jlimit (1, 16, message.getChannel()) - 1;
+                const auto key = message.getNoteNumber();
+                auto& sent = liveSent[(size_t) channel][(size_t) key];
+                if (message.isNoteOn())
+                {
+                    const auto mask = now == nullptr ? (juce::uint16) 0 : liveFollowMode == LiveFollow::chords ? now->chord : now->scale;
+                    const auto to = nearestInMask (key, mask);
+                    sent = (juce::int16) (to + 1);
+                    message.setNoteNumber (to);
+                }
+                else if (sent > 0)
+                {
+                    message.setNoteNumber (sent - 1);   // (its note on's note)
+                    sent = 0;
+                }
+            }
+            liveMapped.addEvent (message, metadata.samplePosition);
+        }
+        live.swapWith (liveMapped);
     }
 
     void Engine::renderBlock (juce::AudioBuffer<float>& output, int numSamples)
@@ -878,8 +1346,15 @@ namespace pr7s
 
         auto clock = sampleClock;
         const auto beat = timing.beatAt ((double) clock);
+        if (liveFollowMode != LiveFollow::off && liveFollowTrack == liveTrack.load())
+            mapLive (beat);   // (0.36.0) keys onto the chord track's chord or scale, before they're played or recorded
         head.info.setBpm (settings.tempo.bpmAt (beat));
-        head.info.setTimeSignature (juce::AudioPlayHead::TimeSignature { settings.numerator, settings.denominator });
+        {
+            const auto& signature = settings.signatures.segmentAt (beat).event;
+            head.info.setTimeSignature (juce::AudioPlayHead::TimeSignature { signature.numerator, signature.denominator });
+            head.info.setPpqPositionOfLastBarStart (settings.signatures.barStart (beat));
+            head.info.setBarCount (settings.signatures.barAt (beat));
+        }
         head.info.setPpqPosition (beat);
         head.info.setIsPlaying (nowPlaying);
         head.info.setIsRecording (recording.load());
@@ -895,8 +1370,6 @@ namespace pr7s
             // The block in segments: up to the cycle's end, then back to its start.
             const auto isRecording = recording.load();
             const auto* recordingTrack = findTrack (liveTrack.load());
-            const auto beatUnit = 4.0 / settings.denominator;   // the click's beat (a quarter in 4/4, an eighth in 6/8)
-            const auto unitsPerBar = settings.numerator;
             const auto loopStart = toSamples (settings.loopStart), loopEnd = toSamples (settings.loopEnd);
             for (int done = 0; done < numSamples;)
             {
@@ -930,16 +1403,23 @@ namespace pr7s
                             track->recorder->write (channels, length);
                         }
 
+                // The click: the signature's beats (a quarter in 4/4, an eighth in 6/8), each bar's first
+                // accented, by the signature in force there (0.45.0).
                 if (settings.click)
-                    for (auto unit = (juce::int64) std::floor (timing.beatAt ((double) clock) / beatUnit); numTicks < (int) ticks.size(); ++unit)
+                {
+                    const auto& map = settings.signatures;
+                    auto pos = map.positionOf (timing.beatAt ((double) clock));
+                    for (auto guard = 0; numTicks < (int) ticks.size() && guard < 4096; ++guard)
                     {
-                        const auto at = toSamples ((double) unit * beatUnit);
-                        if (at < clock)
-                            continue;
+                        const auto at = toSamples (map.beatOf (pos.bar, pos.beat, 0.0));
                         if (at >= end)
                             break;
-                        ticks[(size_t) numTicks++] = { done + (int) (at - clock), unit % unitsPerBar == 0 };
+                        if (at >= clock)
+                            ticks[(size_t) numTicks++] = { done + (int) (at - clock), pos.beat == 0 };
+                        if (++pos.beat >= map.segmentOfBar (pos.bar).event.numerator)
+                            pos.beat = 0, ++pos.bar;
                     }
+                }
 
                 // Recording: each note played, at its beat in the song.
                 if (isRecording)
@@ -1010,145 +1490,50 @@ namespace pr7s
                 for (int channel = 0; channel < 2; ++channel)
                     juce::FloatVectorOperations::clear (track->bus.getWritePointer (channel), numSamples);
         // Tracks, then groups (the tracks routed to them are in), then FX channels (every send is in).
+        // (0.34.5) Each kind's own work on the cores side by side, then their sums in order.
+        const BlockContext block { numSamples, spans.data(), numSpans, &timing, nowPlaying, blockBeat, liveId };
         for (const auto role : { TrackState::Role::source, TrackState::Role::group, TrackState::Role::fx })
-        for (auto& trackHolder : tracks)
         {
-            auto* track = trackHolder.get();
-            if (track->role != role)
-                continue;
-            if (track->id == liveId)
-                for (const auto metadata : live)   // played live: on the track's channel, as its notes
-                {
-                    auto message = metadata.getMessage();
-                    if (message.getChannel() > 0)
-                        message.setChannel (track->midiChannel);
-                    if (message.isNoteOnOrOff())
+            const auto oneByOne = [&]
+            {
+                for (auto& track : tracks)
+                    if (track->role == role)
                     {
-                        // Through its drum map: the key played is a sound's I-note, sent as its O-note.
-                        const auto pitch = track->drumIn[(size_t) message.getNoteNumber()];
-                        const auto out = track->drumOut[pitch];
-                        if (out < 0)
-                            continue;   // a muted sound
-                        message.setNoteNumber (out);
-                        if (track->drumChannel[pitch] >= 0)
-                            message.setChannel (track->drumChannel[pitch] + 1);
+                        processTrack (*track, block);
+                        mixTrackOut (*track, block, master);
                     }
-                    track->midi.addEvent (message, metadata.samplePosition);
-                }
-            if (track->role != TrackState::Role::source)
+            };
+            if (workers.getHelpers() == 0 || wave.capacity() < tracks.size())
             {
-                // A group or FX channel: what was routed or sent to it.
-                for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
-                {
-                    if (channel < 2)
-                        juce::FloatVectorOperations::copy (track->buffer.getWritePointer (channel), track->bus.getReadPointer (channel), numSamples);
-                    else
-                        juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
-                }
-            }
-            else if (track->audio || track->frozen)
-            {
-                // An audio track: its clips, and what comes in if it's monitored (a frozen track: its freeze file).
-                for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
-                    juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
-                for (int i = 0; i < numSegments; ++i)
-                    playClips (*track, segments[(size_t) i].clock, segments[(size_t) i].offset, segments[(size_t) i].length, timing);
-                if (track->monitor && track->audio && ! track->frozen)
-                {
-                    juce::FloatVectorOperations::add (track->buffer.getWritePointer (0), inputChannel (track->input, 0), numSamples);
-                    juce::FloatVectorOperations::add (track->buffer.getWritePointer (1),
-                                                      inputChannel (track->stereoInput ? track->input + 1 : track->input, 0), numSamples);
-                }
-            }
-            else if (track->instrument == nullptr)
-            {
+                oneByOne();
                 continue;
             }
-            else
-            {
-                // (Cleared and copied sample by sample: JUCE buffers remember being
-                // cleared, and a view cleared here wouldn't see the instrument's
-                // sound written through another view, then skip mixing it.)
-                for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
-                    juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
-                juce::AudioBuffer<float> played (track->buffer.getArrayOfWritePointers(), track->instrumentChannels, numSamples);
-                track->instrument->processBlock (played, track->midi);
-                if (track->instrument->getTotalNumOutputChannels() == 1)   // a mono instrument: on both sides
-                    juce::FloatVectorOperations::copy (track->buffer.getWritePointer (1), track->buffer.getReadPointer (0), numSamples);
-            }
-            juce::AudioBuffer<float> sound (track->buffer.getArrayOfWritePointers(), track->buffer.getNumChannels(), numSamples);
-            runInserts (track->inserts, sound, numSamples, 0, track->preFader);
-            runSends (*track, true, numSamples, blockBeat);   // the sends before the fader
-
-            // Its fader and pan, on its own sound; then the inserts after the
-            // fader; then into the master.
-            auto* left = sound.getWritePointer (0);
-            auto* right = sound.getWritePointer (1);
-            const MixNow set { track->volumeDb, track->pan, track->mute };
-            if (track->mixAutomated)
-            {
-                // Volume, pan and mute as the lanes have them, every 32
-                // samples, in a straight line between (no steps to hear).
-                const auto gainsAt = [&] (double at)
+            wave.clear();   // (keeps its room: nothing allocated)
+            auto fxIntoFx = false;   // an FX channel sending to another: they wait for each other, in order
+            for (auto& track : tracks)
+                if (track->role == role)
                 {
-                    const auto mix = mixAt (track->automation, set, at, settings.virginTerritory);
-                    return sideGains (mix.volumeDb, mix.pan, ! mix.mute && ! track->soloedOut);
-                };
-                std::pair<float, float> gains;
-                for (int s = 0; s < numSpans; ++s)
-                {
-                    const auto& span = spans[(size_t) s];
-                    gains = gainsAt (spanBeat (span, span.offset));
-                    for (int from = span.offset; from < span.offset + span.length; from += automationStep)
-                    {
-                        const auto n = juce::jmin (automationStep, span.offset + span.length - from);
-                        const auto next = gainsAt (spanBeat (span, from + n));
-                        for (int i = 0; i < n; ++i)
-                        {
-                            const auto along = (float) i / (float) n;
-                            left[from + i] *= gains.first + (next.first - gains.first) * along;
-                            right[from + i] *= gains.second + (next.second - gains.second) * along;
-                        }
-                        gains = next;
-                    }
+                    wave.push_back (track.get());
+                    if (role == TrackState::Role::fx)
+                        for (const auto& send : track->sends)
+                            fxIntoFx = fxIntoFx || send.target != 0;
                 }
-                // Turned off, the mix moves on from here.
-                track->left.setCurrentAndTargetValue (gains.first);
-                track->right.setCurrentAndTargetValue (gains.second);
-            }
-            else
+            if (wave.size() < 2 || fxIntoFx)
             {
-                track->left.setTargetValue (track->gainLeft);
-                track->right.setTargetValue (track->gainRight);
-                for (int i = 0; i < numSamples; ++i)
-                {
-                    left[i] *= track->left.getNextValue();
-                    right[i] *= track->right.getNextValue();
-                }
+                oneByOne();
+                continue;
             }
-            runInserts (track->inserts, sound, numSamples, track->preFader, Project::maxInserts);
-            runSends (*track, false, numSamples, blockBeat);  // the sends after it
-
-            // To its group (a track routed to one), else the master.
-            auto* out = &master;
-            juce::AudioBuffer<float> toGroup;
-            if (track->role == TrackState::Role::source && track->output != 0)
-                if (auto* group = findTrack (track->output); group != nullptr && group->role == TrackState::Role::group)
-                {
-                    toGroup.setDataToReferTo (group->bus.getArrayOfWritePointers(), 2, numSamples);
-                    out = &toGroup;
-                }
-            juce::FloatVectorOperations::add (out->getWritePointer (0), left, numSamples);
-            juce::FloatVectorOperations::add (out->getWritePointer (1), right, numSamples);
-            float peak = 0.0f;
-            for (int i = 0; i < numSamples; ++i)
-                peak = juce::jmax (peak, std::abs (left[i]), std::abs (right[i]));
-            for (auto& meter : track->meters)
-                meter.pushSamples (&peak, 1);
+            auto task = [this, &block] (int i) { processTrack (*wave[(size_t) i], block); };
+            workers.run ((int) wave.size(), task);
+            for (auto* track : wave)
+                mixTrackOut (*track, block, master);
         }
 
         // The master: its inserts before the fader, its volume, the inserts after it, to the output.
-        runInserts (masterInserts, master, numSamples, 0, masterPreFader);
+        masterEq.processPre (master.getArrayOfWritePointers(), master.getNumChannels(), numSamples);
+        runInserts (masterInserts, master, numSamples, 0, masterPreFader, effectMidi);
+        masterEq.processEq (master.getArrayOfWritePointers(), master.getNumChannels(), numSamples);
+        afterEq (masterBus, master.getArrayOfWritePointers(), master.getNumChannels(), numSamples);
         const auto outputs = juce::jmin (2, output.getNumChannels());
         if (masterAutomated)
         {
@@ -1179,14 +1564,20 @@ namespace pr7s
             masterGain.setTargetValue (settings.masterGain);
             auto* masterLeft = master.getWritePointer (0);
             auto* masterRight = master.getWritePointer (1);
-            for (int i = 0; i < numSamples; ++i)
+            if (! masterGain.isSmoothing())
             {
-                const auto gain = masterGain.getNextValue();
-                masterLeft[i] *= gain;
-                masterRight[i] *= gain;
+                juce::FloatVectorOperations::multiply (masterLeft, masterGain.getTargetValue(), numSamples);   // (0.34.1: as the tracks')
+                juce::FloatVectorOperations::multiply (masterRight, masterGain.getTargetValue(), numSamples);
             }
+            else
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    const auto gain = masterGain.getNextValue();
+                    masterLeft[i] *= gain;
+                    masterRight[i] *= gain;
+                }
         }
-        runInserts (masterInserts, master, numSamples, masterPreFader, Project::maxInserts);
+        runInserts (masterInserts, master, numSamples, masterPreFader, Project::maxInserts, effectMidi);
         for (int channel = 0; channel < outputs; ++channel)
             juce::FloatVectorOperations::copy (output.getWritePointer (channel), master.getReadPointer (channel), numSamples);
 
@@ -1194,7 +1585,8 @@ namespace pr7s
         const auto endBeat = numSegments > 0 ? position.load() : blockBeat;
         for (auto& track : tracks)
         {
-            const auto now = mixAt (track->automation, { track->volumeDb, track->pan, track->mute }, endBeat, settings.virginTerritory);
+            const MixNow set { track->volumeDb, track->pan, track->mute };
+            const auto now = track->mixAutomated ? mixAt (track->automation, set, endBeat, settings.virginTerritory) : set;   // (0.34.1)
             track->nowVolumeDb = now.volumeDb;
             track->nowPan = now.pan;
             track->nowMute = now.mute;
@@ -1316,10 +1708,13 @@ namespace pr7s
     {
         for (const auto& state : lanes)
         {
+            const auto target = state.lane.target;
+            if (target != AutomationLane::Target::volume && target != AutomationLane::Target::pan && target != AutomationLane::Target::mute)
+                continue;   // (0.34.1: knob and send lanes aren't read here at all)
             const auto value = state.lane.playedAt (beat, virginTerritory);   // (0.28.0: with its trim; none in a gap)
             if (! value)
                 continue;
-            switch (state.lane.target)
+            switch (target)
             {
                 case AutomationLane::Target::volume: mix.volumeDb = travelToVolume (*value); break;
                 case AutomationLane::Target::pan:    mix.pan = travelToPan (*value); break;
@@ -1332,7 +1727,7 @@ namespace pr7s
         return mix;
     }
 
-    void Engine::runSends (TrackState& track, bool preFader, int numSamples, double beat)
+    void Engine::runSends (TrackState& track, bool preFader, int numSamples, double beat, const juce::AudioBuffer<float>& source)
     {
         // Each send that's on, to its FX channel: its level (or its lane's, while
         // R is on) ramped across the block from where it was, so moves don't click.
@@ -1356,10 +1751,14 @@ namespace pr7s
             }
             for (int channel = 0; channel < 2; ++channel)
             {
-                const auto* from = track.buffer.getReadPointer (channel);
+                const auto* from = source.getReadPointer (channel);
                 auto* to = fx->bus.getWritePointer (channel);
-                for (int i = 0; i < numSamples; ++i)
-                    to[i] += from[i] * (send.lastGain + (gain - send.lastGain) * (float) i / (float) numSamples);
+                if (juce::exactlyEqual (gain, send.lastGain))
+                    for (int i = 0; i < numSamples; ++i)   // (0.34.1: not moving, one gain: the ramp below gives exactly it)
+                        to[i] += from[i] * gain;
+                else
+                    for (int i = 0; i < numSamples; ++i)
+                        to[i] += from[i] * (send.lastGain + (gain - send.lastGain) * (float) i / (float) numSamples);
             }
             send.lastGain = gain;
         }
@@ -1412,6 +1811,7 @@ namespace pr7s
                                                    int numOutputChannels, int numSamples, const juce::AudioIODeviceCallbackContext&)
     {
         SessionLog::markAudioThread();   // (a crash here says so in the session log)
+        const juce::ScopedNoDenormals noDenormals;   // (0.34.1: as in render)
         const auto started = juce::Time::getHighResolutionTicks();
         // The studio renders stereo; the device's first two outputs get it.
         blockInputs = inputChannelData;
@@ -1433,6 +1833,14 @@ namespace pr7s
             done += length;
         }
         notePerformance (juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - started), numSamples);
+    }
+
+    void Engine::setHelperThreads (int count)
+    {
+        // Under the lock: no block is being played while helpers stop and start.
+        const juce::ScopedLock sl (lock);
+        workers.setHelpers (count);
+        wave.reserve (tracks.size() + 16);
     }
 
     void Engine::settleMix()
@@ -1486,5 +1894,68 @@ namespace pr7s
         for (auto& slot : masterInserts)
             if (slot.plugin != nullptr)
                 slot.plugin->releaseResources();
+    }
+
+    //==========================================================================
+    // (0.46.0) The EQ window's spectrum and Auto Listen.
+    void Engine::afterEq (int busId, float* const* channels, int numChannels, int numSamples) noexcept
+    {
+        if (numChannels <= 0 || numSamples <= 0)
+            return;
+        if (listenBus.load() == busId)
+            listenEq.processEq (channels, numChannels, numSamples);
+        if (spectrumBus.load() != busId)
+            return;
+        // Mono into the ring (a full ring: the oldest of this block left out; the screen reads often).
+        const auto scope = spectrumFifo.write (juce::jmin (numSamples, spectrumFifo.getFreeSpace()));
+        const auto mono = [&] (int i)
+        {
+            auto v = channels[0][i];
+            if (numChannels > 1)
+                v = 0.5f * (v + channels[1][i]);
+            return v;
+        };
+        const auto skip = numSamples - (scope.blockSize1 + scope.blockSize2);
+        for (int i = 0; i < scope.blockSize1; ++i)
+            spectrumRing[(size_t) (scope.startIndex1 + i)] = mono (skip + i);
+        for (int i = 0; i < scope.blockSize2; ++i)
+            spectrumRing[(size_t) (scope.startIndex2 + i)] = mono (skip + scope.blockSize1 + i);
+    }
+
+    int Engine::readSpectrum (std::vector<float>& into)
+    {
+        const auto ready = spectrumFifo.getNumReady();
+        if (ready <= 0 || into.empty())
+            return 0;
+        const auto take = juce::jmin (ready, (int) into.size());
+        // (More than fits: the oldest dropped.)
+        if (ready > take)
+        {
+            const auto drop = spectrumFifo.read (ready - take);
+            juce::ignoreUnused (drop);
+        }
+        const auto scope = spectrumFifo.read (take);
+        // Shift what's kept to the left; the new samples at the end.
+        std::move (into.begin() + take, into.end(), into.begin());
+        auto at = (int) into.size() - take;
+        for (int i = 0; i < scope.blockSize1; ++i)
+            into[(size_t) at++] = spectrumRing[(size_t) (scope.startIndex1 + i)];
+        for (int i = 0; i < scope.blockSize2; ++i)
+            into[(size_t) at++] = spectrumRing[(size_t) (scope.startIndex2 + i)];
+        return take;
+    }
+
+    void Engine::setListen (int busId, const EqDesign& design)
+    {
+        const juce::ScopedLock sl (lock);
+        if (listenBus.load() != busId)
+            listenEq.reset();
+        listenEq.setDesign (design);
+        listenBus = busId;
+    }
+
+    void Engine::clearListen()
+    {
+        listenBus = -1;
     }
 }

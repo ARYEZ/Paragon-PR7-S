@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/LinesPage.h"
+#include "ui/ProgressionsPage.h"
 #include "ui/MediaBayPage.h"
 #include "ui/MediaRack.h"
 #include "ui/KeyCommands.h"
@@ -13,6 +14,7 @@
 #include "ui/ChordPadsView.h"
 #include "ui/KeyEditor.h"
 #include "ui/Inspector.h"
+#include "ui/InfoLine.h"
 #include "ui/ScaledHolder.h"
 #include "ui/MixerView.h"
 #include "ui/TrackList.h"
@@ -81,10 +83,26 @@ public:
     // The Automation panel (0.28.0, F6): its window.
     void toggleAutomationPanel();
     juce::DocumentWindow* getAutomationPanelWindow() noexcept { return automationWindow.get(); }
+    // The Audio Alignment panel (0.33.0): opened from the part's and range's menus (and a command).
+    void toggleAudioAlignment();
+    void openTempoDetection (int partId);   // (0.45.0) the Tempo Detection panel
+    void insertSignatureAtCursor();         // (0.45.0) the Insert Time Signature box at the cursor's bar
+    juce::DocumentWindow* getTempoDetectionWindow() noexcept { return tempoDetectionWindow.get(); }
+    // The Markers window (0.49.0, Ctrl+M): opened, or closed if open (`openOnly`: brought to the front).
+    void toggleMarkersWindow (bool openOnly = false);
+    juce::DocumentWindow* getMarkersWindow() noexcept { return markersWindow.get(); }
+    // The VariAudio editor (0.34.0) for an audio clip: one window, switched to the clip.
+    void openVariAudio (int partId);
+    juce::DocumentWindow* getVariAudioWindow() noexcept { return variAudioWindow.get(); }
+    juce::DocumentWindow* getAudioAlignmentWindow() noexcept { return alignmentWindow.get(); }
     juce::DocumentWindow* getDrumMapWindow() noexcept { return drumMapWindow.get(); }
     // BASS & MELODY (0.18.0): ideas for these chord events (none: the cycle's, else all), in a window of its own.
     void openLineIdeas (std::vector<int> chordEvents = {});
     LinesWindow* getLinesWindow() noexcept { return linesWindow.get(); }
+    void openProgressions();
+    void openEq (int busId);   // (0.43.0) the EQ window on a channel (one window: moved to another channel)
+    EqWindow* getEqWindow() noexcept { return eqWindow.get(); }   // the progression library (0.40.0): opened, or brought to the front
+    ProgressionsWindow* getProgressionsWindow() noexcept { return progressionsWindow.get(); }
     // The MediaBay (0.21.0): its window (F5 opens and closes it), and a file from it into the
     // song: audio or MIDI on a new track at the playhead, a track preset as a new track, a song
     // opened (after the unsaved-changes question). Its drags land as files dragged from the system do.
@@ -98,6 +116,11 @@ public:
     // track of its kind is applied to it).
     void toggleRightZone();
     void setRightZoneShown (bool);
+    // The info line (0.37.0): over the track list and the arrangement (settings `infoLineShown`,
+    // on at first; command Window.InfoLine, its own right-click hides it).
+    void toggleInfoLine();
+    bool isInfoLineShown() const noexcept { return infoLineShown; }
+    InfoLine& getInfoLine() noexcept { return infoLine; }
     bool isRightZoneShown() const noexcept { return rightZoneShown; }
     MediaRack* getMediaRack() noexcept { return mediaRack.get(); }
     class RightZoneEdge;
@@ -130,10 +153,14 @@ public:
     // EXPORT: the mix to a WAV. Asks what (the export page), then where,
     // then writes it behind a progress bar (CANCEL stops it, leaving no file).
     void exportMix();
+    void exportMidiFile();   // (0.51.0) the MIDI export's options, then where
+    void chooseExportFolder (const pr7s::Studio::ExportBatch&);
+    void writeExportBatch (const juce::File& folder, const pr7s::Studio::ExportBatch&);
     // RENDER IN PLACE: the sources (a part, a range, selected tracks) rendered
     // to audio; `ask`: the render page first (else as last time).
     void renderInPlaceNow (bool ask = false);   // (0.31.0) Alt+R: as last time, of the range, the selected parts or the selected tracks
     std::vector<pr7s::Studio::RenderSource> narrowedSources (std::vector<pr7s::Studio::RenderSource>) const;   // to the range, or the cycle
+    juce::String renderWarning (const std::vector<pr7s::Studio::RenderSource>&) const;   // (0.52.1) a whole track rendered over the cycle only
     void renderInPlace (std::vector<pr7s::Studio::RenderSource>, bool ask);
     Windows::RenderPage* getRenderPage() noexcept { return renderPage.getComponent(); }
     Windows::ExportPage* getExportPage() noexcept { return exportPage.getComponent(); }
@@ -257,8 +284,13 @@ private:
     juce::TextButton keysButton { "KEYS" };
     int saveFlashes = 0;
     std::unique_ptr<ProgressBox> progressBox;   // a long job's progress (0.11.1)
-    std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow, drumMapWindow, automationWindow;
+    std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow, drumMapWindow, automationWindow, alignmentWindow, variAudioWindow, tempoDetectionWindow,
+                                          markersWindow;
+    int trackListScrollY = 0;          // (0.34.1) what the track list was last laid out for
+    double trackListRowZoom = 1.0;
     std::unique_ptr<LinesWindow> linesWindow;
+    std::unique_ptr<ProgressionsWindow> progressionsWindow;
+    std::unique_ptr<EqWindow> eqWindow;
     std::unique_ptr<MediaBayWindow> mediaBayWindow;
     std::unique_ptr<MediaRack> mediaRack;
     std::unique_ptr<RightZoneEdge> rightZoneEdge;
@@ -298,11 +330,15 @@ private:
     void toggleZonePlace (Zone&);   // Alt+F2 / Alt+F3: docked or full screen
 
     pr7s::Studio& studio;
+
+    juce::uint64 seenChange = 0;   // (0.34.3) the studio's change version last acted on
     Timeline timeline;
     TransportBar transport;
     TrackList trackList;
     ArrangeView arrange;
     ArrangeTools tools { arrange };
+    InfoLine infoLine { studio, arrange };
+    bool infoLineShown = true;
     juce::TextButton autoScrollKey { "AUTO-SCROLL" }, autoScrollMenu;   // the arrangement's Auto-Scroll, on the transport
     void toggleArrangeAutoScroll();
     KeyEditor keyEditor;

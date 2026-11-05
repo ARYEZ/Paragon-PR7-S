@@ -6,10 +6,19 @@
 #include "Engine.h"
 #include "PluginHost.h"
 #include "Project.h"
+#include "Warp.h"
+#include "Align.h"
+#include "VariAudio.h"
 #include "Lines.h"
+#include "Patterns.h"
+#include "Progressions.h"
+#include "Melody.h"
+#include "ChordDetect.h"
+#include "TempoDetect.h"
 #include "MediaBay.h"
 
 #include <optional>
+#include <mutex>
 
 namespace pr7s
 {
@@ -30,6 +39,9 @@ namespace pr7s
         ~Studio() override;
 
         const Project& getProject() const noexcept { return project; }
+        // (0.34.3) Goes up with every change announced except a fader, pan or send level moved alone
+        // (not writing automation): a view that saw this version already has only the mix to follow.
+        juce::uint64 getChangeVersion() const noexcept { return changeVersion; }
         Engine& getEngine() noexcept { return engine; }
         PluginHost& getPluginHost() noexcept { return *host; }
         juce::AudioDeviceManager& getDeviceManager() noexcept { return devices; }
@@ -52,6 +64,12 @@ namespace pr7s
         // a buffer size set in the driver's own panel is read (for drivers that
         // don't say they changed).
         void reloadAudioDevice();
+        // Multi-core audio (0.34.5): tracks processed side by side on the computer's cores (settings
+        // `multiCoreAudio`, on; tests without devices: off). Off: everything on the audio thread, for a
+        // plug-in that doesn't like being run beside others. The output is the same either way.
+        bool getMultiCoreAudio() const;
+        void setMultiCoreAudio (bool);
+        int getAudioHelperThreads() const noexcept { return engine.getHelperThreads(); }
 
         // Told just before a track's instrument is replaced or removed (0:
         // every track's, for a new or opened song), so its window can close
@@ -210,6 +228,26 @@ namespace pr7s
         int getPadVoicingCount (int pad) const;
         std::vector<int> getPadNotes (int pad) const;   // what it would play now
         void auditionPad (int pad);                     // played for a moment (acoustic feedback)
+        // (0.44.0) The chord modifiers (the manual's Pad Remote Control): on the last pad played.
+        void applyPadModifier (ChordPads::Modifier);
+        int getLastPlayedPad() const noexcept { return lastPlayedPad.load(); }
+        // MIDI Learn (the manual's Chord Pads Remote Settings): the next key pressed becomes this
+        // (the range takes two keys: its start, then its end); `onLearned` when done (message thread).
+        enum class PadLearn { none, range, modifier, section, subsection };
+        void startPadLearn (PadLearn, int index = 0);
+        void cancelPadLearn();
+        PadLearn getPadLearn() const noexcept { return padLearn; }
+        int getPadLearnIndex() const noexcept { return padLearnIndex; }
+        std::function<void()> onLearned;
+        void learnedKey (int note);                     // (the message thread; from the devices, or tests)
+        // (0.44.0) Recording chord events (the manual's Recording Chord Events with a MIDI Keyboard and
+        // Recording Chords on the Chord Track): the chord track's Record Enable; while recording,
+        // each pad pressed is a chord event at that beat; with none pressed, the chords recognised
+        // in what was played (three notes or more starting together). Snapped to the grid when
+        // snapping. They replace the chord events where recording ran; with the take's undo step.
+        void setChordTrackRecord (bool);
+        bool isChordTrackRecording() const noexcept { return project.chordTrack.record; }
+        std::vector<ChordEvent> chordsFromPlayed (const std::vector<HeardNote>&) const;   // (tests)
         // Drag a pad onto a track: a one-bar MIDI part there (the manual's Creating MIDI Parts from Chord Pads).
         int addPartFromPad (int pad, int trackId, double beat);
         enum class PadsPresetLoad { chordsAndPlayers, chordsOnly, playersOnly };
@@ -228,6 +266,15 @@ namespace pr7s
         // A progression (0.17.2): one chord a bar from `atBeat` (the bar it's in), what was
         // there replaced; the chord track shown. One undo step.
         void addProgressionToChordTrack (const std::vector<Chord>&, double atBeat);
+        // The progression library (0.40.0): its steps (each chord its own bars) from the bar
+        // `atBeat` is in, what was over them replaced; the chord track shown. One undo step.
+        void addProgressionToChordTrack (const std::vector<ProgressionStep>&, double atBeat);
+        // The steps as chord spans from `startBeat` (the bars in the song's bars), in `key`: what
+        // previewLine plays and IDEAS writes under.
+        std::vector<ChordSpan> progressionSpans (const std::vector<ProgressionStep>&, double startBeat, const Key&) const;
+        // The library's favourites by name (settings key "progressionFavorites", a name a line).
+        juce::StringArray getProgressionFavorites() const;
+        void setProgressionFavorite (const juce::String& name, bool);
 
         // Bass and melody ideas (0.18.0, the owner asked). The chords they follow: the chord
         // track's events given (the selection), else those in the cycle when it's on and
@@ -240,6 +287,9 @@ namespace pr7s
         int addLinePart (const LineIdea&, const std::vector<ChordSpan>&, int ontoTrackId = 0);
         static juce::String linePartName (LineIdea::Part);
         // The guitar ideas' tuning (0.19.0; settings key "guitarTuning", default 7-string drop A).
+        // The MELODY tab's settings (0.41.0; settings key "melodySettings").
+        MelodySettings getMelodySettings() const;
+        void setMelodySettings (const MelodySettings&);
         juce::String getGuitarTuning() const;
         void setGuitarTuning (const juce::String&);
         // The guitar ideas' velocities (0.19.3, the VELOCITIES panel; settings key "guitarVelocities").
@@ -281,8 +331,56 @@ namespace pr7s
         int chordsToMidi (int trackId, std::vector<int> indices = {});
         // The chords heard in these parts onto the chord track (replacing those over their span).
         int chordsFromParts (const std::vector<int>& partIds, double step = 1.0);
+        // Chord detection (0.42.0): the chords of these parts, MIDI and audio together (each
+        // source weighed alike), from the step grid at or before the first part's start.
+        std::vector<ChordEvent> detectChords (const std::vector<int>& partIds, const DetectSettings&);
+        // ... onto the chord track (what was over the parts' span replaced; one undo step) or the
+        // pads (each chord once, in order, from the first unlocked pad). How many chords.
+        int detectChordsToTrack (const std::vector<int>& partIds, const DetectSettings&);
+        int detectChordsToPads (const std::vector<int>& partIds, const DetectSettings&);
+        // The settings last used (settings key "chordDetect").
+        DetectSettings getDetectSettings() const;
+        void setDetectSettings (const DetectSettings&);
         // The manual's Assign from Chord Track: its chords, each once, onto the pads in order.
         void assignPadsFromChordTrack();
+
+        // Follow Chord Track (0.36.0, the manual's): a MIDI track's notes heard moved to the chord
+        // track's chords (FollowChords.h has the rules). The first time (no reference yet) it
+        // needs how to begin (the manual's dialog): Follow Directly (the chord track as it is now
+        // is what the notes were played over), Analyze Chords (found in the track's notes) or
+        // Apply a Known Chord. Later modes keep that reference. One undo step each.
+        bool needsFollowSetup (int trackId) const;
+        bool startFollowing (int trackId, FollowMode, FollowStart, const Chord& known = {});
+        void setFollowMode (int trackId, FollowMode);          // (with a reference: else Follow Directly)
+        void resetFollowing (int trackId);                     // off, the reference forgotten (the dialog again next time)
+        // Live Input: the keys played into this track onto the chord or the scale in force.
+        void setLiveFollow (int trackId, LiveFollow);
+        // Performances (0.39.0): the chord pads play their chords through a pattern (Patterns.h;
+        // -1: as chords, as before). Kept in the settings by name (settings key `padPattern`).
+        void setPadPattern (int index);
+        int getPadPattern() const;
+        // (0.44.0) A track performing a pattern over the chord track (the Inspector's PERFORM; empty: none;
+        // instrument tracks). One undo step.
+        void setPerformPattern (int trackId, const juce::String& patternName);
+        // A MIDI part as one of your patterns (MY PATTERNS; settings key "userPatterns"); its name
+        // (made unique), empty if it's not a MIDI part with notes.
+        juce::String addPatternFromPart (int partId, juce::String name = {});
+        void removeUserPattern (const juce::String& name);
+        PatternPerformer& getPerformer() { return *performer; }
+        void setChordShift (int ticks);                        // Shift Chords (-480 to 480 ticks), an undo step
+        // (0.38.0) Voicings and Single Voice: the voice, This Track's Voicings (none: the chord
+        // track's), the chord track's voicing library; each an undo step. The chord track's chords
+        // as voiced for a track (its voicings, else the chord track's).
+        void setFollowVoice (int trackId, Voice);
+        void setTrackVoicing (int trackId, std::optional<VoicingSettings>);
+        void setChordTrackVoicing (const VoicingSettings&);
+        std::vector<std::vector<int>> getChordTrackVoicings (int trackId) const;
+        // A part's notes as they're heard (pitch, or -1: dropped as a double), for the MIDI editor.
+        std::vector<int> followedPitches (int partId) const;
+        // Map to Chord Track (the manual's): the chosen MIDI parts' notes written moved to the
+        // chord track, each part's own chords found in it first ("C" if none); doubles removed.
+        // One undo step; how many notes changed pitch (-1: nothing to map to).
+        int mapToChordTrack (const std::vector<int>& partIds, FollowMode);
 
         // Freeze (0.9.8, the manual's Freeze Channel): the track's instrument and
         // inserts (not its fader, pan or sends) rendered from the song's start to
@@ -355,6 +453,18 @@ namespace pr7s
         // The Mute tool (and the part's menu): muted parts stay, greyed, but aren't played.
         void setPartMuted (int trackId, int index, bool muted);
         void setPartsMuted (const std::vector<int>& partIds, bool muted);   // several at once (one step)
+        // (0.47.0) The info line for parts and events (the manual's Info Line and its Value
+        // Editing Rules): a field as a part has it (start/end/length in beats, offset and fades
+        // in seconds, volume in dB, transpose in semitones, velocity added; none: not this part's
+        // kind: offset, fades and volume are audio events', transpose and velocity MIDI parts').
+        enum class PartField { start, end, length, offset, fadeIn, fadeOut, volume, transpose, velocity };
+        std::optional<double> getPartField (int partId, PartField) const;
+        // The parts' field moved by what the first one's (the first that has it) moves to `value`
+        // (two events 1 and 2 bars long, LENGTH typed as 3 bars: 3 and 4); `absolute` (Ctrl): all
+        // set to it. Each limited as it can go (not before the song's start, an event not past its
+        // recording, fades within it); frozen tracks' parts left alone. One undo step; false: none moved.
+        bool setPartsField (const std::vector<int>& partIds, PartField, double value, bool absolute);
+        bool renameParts (const std::vector<int>& partIds, const juce::String& name);
         // The Erase tool with Alt: the part and all after it on its track.
         void deletePartsFrom (int trackId, int index);
 
@@ -365,6 +475,10 @@ namespace pr7s
         void setShowLanes (int trackId, bool shown);
         void setLaneSolo (int trackId, int lane);   // -1: none (the lane's S again: off)
         void setRecordModes (const Project::RecordModes&);
+        // (0.52.0, the manual's Auto Fades dialog) The song's auto fades, and a track's own
+        // (none: Use Project Settings). Not undo steps (as the record modes).
+        void setAutoFades (const AutoFades&);
+        void setTrackAutoFades (int trackId, std::optional<AutoFades>);
         // To Front (the part's menu, the Comp tool's click): audio, in front of every clip it
         // overlaps (and not muted); MIDI (all overlapping parts play), it's unmuted and the
         // parts it overlaps on other lanes are muted. `toggle` (a click on the take in front
@@ -387,6 +501,103 @@ namespace pr7s
         // The part (id) heard at a beat on a track (audio: the clip in front; MIDI: the first
         // unmuted part there), 0: none.
         int frontPartAt (int trackId, double beat) const;
+
+        // Hitpoints and warping (0.32.0, the manual's Hitpoints, Free Warp, AudioWarp Quantize and Flatten
+        // Real Time Processing). Hitpoints are found in each recording once (kept while the song is open),
+        // filtered by the song's settings and the hand edits per recording.
+        std::vector<double> getHitpoints (const juce::String& file);        // seconds into the recording
+        std::vector<double> getPartHitpoints (int partId);                  // beats from the clip's start, inside it
+        const Project::HitpointSettings& getHitpointSettings() const noexcept { return project.hitpointSettings; }
+        void setHitpointSettings (const Project::HitpointSettings&);        // (not undo steps, as hand edits)
+        void addHitpoint (const juce::String& file, double seconds);        // the manual's Alt-click
+        void removeHitpoint (const juce::String& file, double seconds);     // Shift-click: disabled
+        void moveHitpoint (const juce::String& file, double from, double to);
+        void resetHitpoints (const juce::String& file);                     // the hand edits gone
+        // The next (or previous) hitpoint after `fromBeat` on a track's clips heard (Alt+N / Alt+B), a song beat.
+        std::optional<double> nextHitpoint (int trackId, double fromBeat, bool forward);
+        // Warp markers (each an undo step; frozen tracks left alone; markers keep their order, at least a
+        // 256th of a beat and 5 ms apart, inside the recording):
+        bool createWarpFromHitpoints (const std::vector<int>& partIds);     // a marker at each hitpoint
+        bool addWarpMarker (int partId, double beat);                       // where the clip is heard at `beat` now
+        bool moveWarpMarker (int partId, int index, double toBeat);         // the audio at it heard at `toBeat`
+        bool removeWarpMarkers (int partId, std::vector<int> indices);      // (not its edges)
+        void setWarpMarkers (int partId, std::vector<WarpMarker>);          // checked as above
+        void resetWarp (const std::vector<int>& partIds);                   // the manual's Reset: at its own speed again
+        // Flatten: each warped clip written as it sounds to a new 32-bit file (the original kept), its markers gone.
+        int flattenWarp (const std::vector<int>& partIds, juce::String& error);
+        // Q on audio clips (the manual's Quantizing Audio Event Starts, or with AudioWarp Quantize on, AudioWarp
+        // Quantizing: markers from the hitpoints when it has none, then to the grid). One undo step.
+        bool quantizeAudio (const std::vector<int>& partIds, double grid);
+        void setAudioWarpQuantize (bool on);
+        bool isAudioWarpQuantize() const noexcept { return project.audioWarpQuantize; }
+        std::shared_ptr<const juce::AudioBuffer<float>> getWarpedSound (const Part&, const TempoMap&);
+
+        // Audio Alignment (0.33.0, the manual's Audio Alignment Panel). The reference: what a track plays
+        // over a stretch (an event's, or a range's); the targets: clips on other audio tracks, each limited
+        // to a stretch if a range chose it. Each target is aligned where it overlaps the reference: split at
+        // the overlap's edges first (short crossfades there, as the manual), then warp markers written (or,
+        // when a plain move does, its audio moved). Sync points and protected ranges are in song beats.
+        struct AlignReference { int trackId = 0; double start = 0.0, end = 0.0; };
+        struct AlignTarget { int partId = 0; double start = -1.0, end = -1.0; };   // (-1: the whole clip)
+        struct AlignSync { int partId = 0; double referenceBeat = 0.0, targetBeat = 0.0; };
+        struct AlignReport
+        {
+            int aligned = 0, moved = 0, stretched = 0;
+            std::vector<int> unmetSyncs;          // indices into the sync points given
+            std::vector<int> alignedParts;        // per target: the clip aligned (the overlapping piece), 0: not aligned
+            double before = 0.0, after = 0.0;     // average distance from the reference (seconds), all targets
+            juce::StringArray notes;              // what couldn't be done and why
+        };
+        // One undo step. False when nothing was aligned (the notes say why).
+        bool alignAudio (const AlignReference&, const std::vector<AlignTarget>&, const AlignSettings&,
+                         const std::vector<AlignSync>&, const std::vector<juce::Range<double>>& protectedBeats, AlignReport&);
+        // What a track plays (its heard clips, warped as heard, both sides mixed) from `from` to `to`
+        // song seconds, at the recordings' rate (`rate` set; 0: nothing to hear).
+        std::vector<float> heardMono (int trackId, double from, double to, double& rate, int skipPartId = 0);
+        // A clip's recording as it's placed now, at its own speed (warps ignored), from `from` to `to`
+        // song seconds, reading on past its edges where the recording goes on.
+        std::vector<float> clipMono (const Part&, double from, double to, double& rate);
+        // VariAudio (0.34.0, the manual's Pitch Editing and Time Correction with VariAudio). A recording's
+        // pitch is found once (kept while the song is open); Edit VariAudio splits it into segments (an undo
+        // step), kept in the song by file; each edit of the segments is one undo step. What plays (and is
+        // bounced, rendered, warped, aligned) is the recording as edited, unless its bypass is on.
+        bool editVariAudio (const juce::String& file);                         // false: the file can't be read
+        const Project::VariAudio* getVariAudio (const juce::String& file) const;
+        std::shared_ptr<const PitchAnalysis> getPitchAnalysis (const juce::String& file);
+        void setVariSegments (const juce::String& file, std::vector<VariSegment>);
+        void editVariSegments (const juce::String& file, const std::vector<int>& indices, const std::function<void (VariSegment&)>&);
+        void setVariAudioBypass (const juce::String& file, bool);              // (not an undo step)
+        void removeVariAudio (const juce::String& file);                       // every segment and edit gone
+        // Audition: what the recording plays (as edited) between two moments of it, through the preview.
+        void auditionRecording (const juce::String& file, double fromSeconds, double toSeconds, bool loop = false);
+
+        // VariAudio, part two (0.35.0). Segment editing, each one undo step (false: it couldn't).
+        bool splitVariSegment (const juce::String& file, int index, double seconds);
+        bool glueVariSegments (const juce::String& file, int first, int last);
+        bool deleteVariSegments (const juce::String& file, std::vector<int> indices);
+        bool setVariSegmentEdges (const juce::String& file, int index, double start, double end);
+        // The Functions menu's resets (the given segments, or all when none) and Reanalyze Audio.
+        enum class VariReset { pitch, curve, formant, volume, warp, all };
+        void resetVariAudio (int partId, std::vector<int> indices, VariReset);
+        bool reanalyseVariAudio (const juce::String& file);
+        // Warp Start / Warp End: a segment's start (or end) heard at `songBeat`, the segment and the
+        // one beside it stretched to fit (warp markers on the clip, as the manual has it).
+        bool warpVariSegment (int partId, int index, bool atStart, double songBeat);
+        // Extract MIDI: onto the first selected instrument track (its parts from earlier extractions
+        // replaced) or a new one. The new part's id (0: none, `error` says why).
+        enum class ExtractDestination { selectedTrack, newTrack };
+        int extractMidi (int partId, const ExtractMidiOptions&, ExtractDestination, juce::String& error);
+        // Generate Harmony Voices: up to four tracks (Soprano, Alto, Tenor, Bass), each with its own copy
+        // of the clip and of its recording, VariAudio moving every segment to its voice (the chord
+        // track's chord there, else +3, -3, -6, -9 semitones), straightened by `vibratoReduction` (0-1).
+        std::vector<int> generateHarmonyVoices (int partId, int voices, float vibratoReduction, juce::String& error);
+        // The MIDI reference track (its notes as lines in the editor; saved with the song).
+        void setVariAudioReference (int trackId);
+        // MIDI Input: the keys played (from any device) while asked for, taken on the message thread.
+        void setCatchingNotes (bool);
+        std::vector<int> takePlayedNotes();
+        AlignSettings getAlignSettings() const;   // settings key "audioAlignment"
+        void setAlignSettings (const AlignSettings&);
 
         // Comping, part two (0.30.0, the manual's Assembling Operations and Assembling a Perfect Take).
         // The takes on a part's track with its start and end (stacked: what the Comp tool moves together).
@@ -501,6 +712,8 @@ namespace pr7s
         std::shared_ptr<const AudioData> getAudio (const juce::String& file);   // none if it can't be read
         // A file read whole at the engine's rate, not kept (the MediaBay's previews, 0.21.0).
         std::shared_ptr<const AudioData> readAudio (const juce::File&);
+        // (0.34.0) A recording as VariAudio edited it (else getAudio's): what plays.
+        std::shared_ptr<const AudioData> getHeardAudio (const juce::String& file);   // as edited (else getAudio's)
         juce::File getAudioFolder() const;
         // The interface's delay, in and out: recordings are moved earlier by it,
         // so they land where they were played. Tests set it; else the device's.
@@ -524,6 +737,14 @@ namespace pr7s
         void removeInsert (int busId, int slot);   // its slot left empty (the others stay where they are)
         void setInsertBypass (int busId, int slot, bool);
         void setMasterVolume (float db, bool undoable = true);
+        // The channel EQ and Pre section (0.43.0; bus id 0 = the master). A drag sets it with
+        // undoable false, then once more with true on release (one undo step).
+        const ChannelEq* getChannelEq (int busId) const;
+        void setChannelEq (int busId, const ChannelEq&, bool undoable = true);
+        double getEqResponseDb (int busId, double frequency, bool withPre = true) const;   // the curve, as it plays
+        static juce::File eqPresetFolder();   // Documents/Paragon PR7-S/EQ Presets (.pr7eq)
+        bool saveEqPreset (int busId, const juce::File&) const;
+        bool loadEqPreset (int busId, const juce::File&);   // its bands and Pre onto the channel (one undo step)
         // Told just before an effect is deleted (nullptr: every effect, for a
         // new or opened song), so its window closes while it still exists.
         std::function<void (juce::AudioProcessor*)> onEffectGoing;
@@ -657,7 +878,106 @@ namespace pr7s
         //======================================================================
         // The song.
         void setTempo (double bpm);   // the fixed tempo (the tempo track off)
-        void setSignature (int numerator, int denominator);
+        void setSignature (int numerator, int denominator);   // the first (bar 1)
+
+        //======================================================================
+        // Signature changes (0.45.0, the manual's Time Signature Events and Signature Track).
+        // Events sit at bars (from 0: bar 1 on screen) and hold until the next; the first, at
+        // bar 1, is the song's own signature and can't be moved or removed. What's placed in
+        // the song stays at its beats: the bar lines move (as the manual's, in musical time).
+        // Each edit is an undo step; none while the signature track is locked (but the first,
+        // the transport's).
+        void addSignatureTrack();      // shown (it can be added once)
+        void removeSignatureTrack();   // hidden; its events stay (they're the song's bars; the Tempo Track Editor shows them)
+        void setSignatureLocked (bool);
+        bool setSignatureAt (int bar, int numerator, int denominator);   // bar 0: the first; one already there changes
+        bool removeSignatures (std::vector<int> bars);                    // never bar 0
+        bool moveSignature (int fromBar, int toBar);                      // onto another: it replaces it
+        bool insertSignatureAtCursor (int numerator, int denominator);    // at the bar the playhead is in
+        SignatureEvent getSignatureNow() const;                           // at the playhead
+
+        //======================================================================
+        // Folder tracks (0.50.0, the manual's Folder Tracks and Organizing Tracks in Folder Tracks).
+        // A folder holds tracks (folders too); they sit right after it. Its M and S act on all of
+        // them; with its group channel enabled (`setFolderGroup`) it's a group channel: its tracks'
+        // outputs go to it (and back to the master when it's switched off or they leave). Removing
+        // a folder keeps its tracks (in the folder it was in: our choice). Tracks in a closed
+        // folder aren't shown (`getShownTracks`) but play as usual.
+        int addFolderTrack (const juce::String& name = {}, bool withGroup = false);
+        int moveTracksToNewFolder (std::vector<int> trackIds, bool withGroup);   // the folder where the first was
+        bool setTracksFolder (std::vector<int> trackIds, int folderId);          // 0: out of folders
+        void setFolderOpen (int folderId, bool open);                            // not an undo step
+        void setFolderGroup (int folderId, bool on);
+        void setFolderData (int folderId, Track::FolderData);                    // not an undo step
+        bool isFolderSoloed (int folderId) const;                                // every track in it soloed
+        int folderGroupOf (int trackId) const;   // the nearest folder round it with its group channel on (0: none)
+
+        //======================================================================
+        // Markers (0.49.0, the manual's Markers chapter). One marker track (our choice: the manual
+        // allows ten). Every edit is an undo step and is refused while the track is locked
+        // (locating isn't an edit). Indices are into `getMarkerTrack().markers` (sorted by start).
+        const MarkerTrack& getMarkerTrack() const noexcept { return project.markerTrack; }
+        void addMarkerTrack();       // shown (added once)
+        void removeMarkerTrack();    // hidden; its markers are kept (and come back with it)
+        void setMarkerTrackLocked (bool);
+        void renameMarkerTrack (const juce::String&);
+        void setMarkerSettings (bool showLines, bool showIds, bool cycleFollows);   // not undo steps
+        // Added markers show the track. Each returns the marker's index (-1: refused).
+        int addPositionMarker (double beat, const juce::String& name = {});
+        int addCycleMarker (double start, double end, const juce::String& name = {});
+        int addPositionMarkerAtCursor();   // the manual's Insert Marker (Insert)
+        int addCycleMarkerAtLocators();    // Insert Cycle Marker: the locators' range
+        bool setMarkers (std::vector<Marker>);   // all of them (drags, the Markers window); sorted, IDs kept unique
+        bool removeMarkers (std::vector<int> indices);
+        bool removeMarkersFrom (double beat);    // the Erase tool's Alt-click: every marker starting there or later
+        bool moveMarkersToCursor (const std::vector<int>& indices);   // a cycle marker keeps its length
+        void reassignMarkerIds (bool cycle);
+        // Locating: the playhead to the marker (a cycle marker's start); with Cycle Follows the
+        // locators too (a cycle marker's range; a position marker's: to the next marker, else a bar on).
+        bool locateMarker (int index);
+        bool cycleToMarker (int index);    // the locators to a cycle marker (a double-click on it)
+        bool locateMarkerId (int id);      // To Marker n (Shift+n, number pad 3-9): the position marker with ID n
+        bool setMarkerIdAtCursor (int id); // Set Marker n (Ctrl+n): that position marker to the playhead (added if none)
+        bool locateNextMarker (bool forward);   // Shift+N / Shift+B
+
+        //======================================================================
+        // Tap tempo (0.45.0, the manual's Tap Tempo Modes): each tap's time in seconds (the
+        // transport's TAP, Shift+Space). From the second tap the tempo is the average step of
+        // the last eight; a gap of 2 s starts again. Applied at each tap by the mode (not an
+        // undo step each: one when the taps stop, so Undo goes back to before tapping).
+        enum class TapMode { automatic, selectionStart, playbackStart, cursor, projectTempo, displayOnly };
+        static juce::String tapModeName (TapMode);
+        TapMode getTapMode() const noexcept { return tapMode; }
+        void setTapMode (TapMode);   // (kept in the settings)
+        struct TapResult
+        {
+            double bpm = 0.0;     // 0: not yet (one tap)
+            int taps = 0;
+            juce::String where;   // what it did ("Tempo event at 5. 1. 1.   0", "Project tempo", "Display only"...)
+            double at = -1.0;     // the beat of the event it changed (-1: none)
+        };
+        // `selectionStart`: the start of what's selected (a range, parts), for Automatic and At Selection Start.
+        TapResult tapTempo (double nowSeconds, std::optional<double> selectionStart = std::nullopt);
+        const TapResult& getLastTap() const noexcept { return lastTap; }
+        bool isTapping (double nowSeconds) const noexcept { return lastTap.taps > 0 && nowSeconds - tapTimes.back() < tapGapSeconds; }
+        void endTapping();   // (Studio's timer: the taps stopped; the undo step)
+        static constexpr double tapGapSeconds = 2.0;
+
+        //======================================================================
+        // Tempo detection (0.45.0, the manual's Tempo Detection panel): the beats of an audio clip
+        // (as heard) or a MIDI part, at least 7 s long. `applyDetectedBeats` makes the tempo
+        // track follow them from the part's start: a tempo event on each beat (the first on
+        // the whole beat that keeps the tempo nearest; the stretch from the part's start to it
+        // set so it lands), the tempo track on and shown, events from the part's start on
+        // replaced. Everything in the song keeps its place in time (the manual's linear time
+        // base while it analyses): parts, notes, controllers, automation, chords and the
+        // locators move to the beats they now sound at. One undo step.
+        bool analyseTempo (int partId, BeatAnalysis& result, juce::String& error);
+        bool applyDetectedBeats (int partId, const std::vector<double>& beatSeconds, juce::String& report);
+        // The tempo events put back (Reset): everything moved to where it sounds by those.
+        void restoreTempo (bool on, std::vector<TempoEvent> events);
+        // Every beat position moved so it sounds where it did under `before` (the song now follows `after`).
+        void keepInTime (const TempoMap& before, const TempoMap& after);
 
         //======================================================================
         // The tempo track (0.10.0, the manual's Tempo Track): added once
@@ -789,7 +1109,23 @@ namespace pr7s
             double tailSeconds = 30.0;
             // What's played can be changed first (Render in Place: only what's rendered, as it asks).
             std::function<void (Project&)> prepareSong;
+            int channel = 0;   // (0.51.0) a channel export: only this track or channel reaches the file (0: the mix)
         };
+        // (0.51.0, the manual's Export Audio Mixdown: Channel Selection Multiple, Export Range Cycle
+        // Markers) Several files in one go: each channel chosen (none: the main mix) over each cycle
+        // marker chosen (none: the options' own range), named "<base> - <channel> - <marker>.wav" in
+        // `folder` (an existing name: a number added). Channels' files leave out the master's inserts,
+        // EQ and fader unless `includeMaster`. Plug-ins stay offline across them (one batch).
+        struct ExportBatch
+        {
+            ExportOptions options;
+            std::vector<int> channels;
+            std::vector<int> cycleMarkers;   // indices into the marker track
+            bool includeMaster = false;
+        };
+        bool exportBatch (const juce::File& folder, const juce::String& baseName, const ExportBatch&, juce::String& error,
+                          std::vector<juce::File>* written = nullptr);
+        std::vector<int> getExportableChannels() const;   // tracks and channels a file can be made of (not plain folders)
         // In three steps, so the middle one can run on another thread behind a
         // progress bar: begin (message thread), render (any thread; false:
         // cancelled, or the disk failed), end (message thread; a file not
@@ -911,6 +1247,7 @@ namespace pr7s
 
     private:
         PadPlayer padPlayer;
+        std::unique_ptr<PatternPerformer> performer;   // (0.39.0) the pads' performance
         class LinePreview;
         std::unique_ptr<LinePreview> linePreview;
         bool padsActive = false;
@@ -964,11 +1301,26 @@ namespace pr7s
         void removeAllEffects();
         void recordUndoState();
         void restore (const Project&);
+        void joinFolderGroup (Track&);    // (0.50.0)
+        void leaveFolderGroup (Track&);
         static void restoreLanes (std::vector<AutomationLane>& lanes, const std::vector<AutomationLane>& then);
         void updateLiveTrack();
         void finishRecording();
         void finishAudioRecording();
         bool auditioning = false;   // (0.30.0) the engine plays a soloed copy
+        std::map<juce::String, std::pair<std::shared_ptr<const AudioData>, std::vector<Hitpoint>>> hitpointCache;   // (0.32.0) every candidate, by recording and the data they came from
+        void forgetAudio (const juce::String& name);   // (0.34.1) a recording and everything made from it
+        void forgetAllAudio();
+        WarpRenderer warpRenderer;
+        // (0.34.0) VariAudio: each recording's pitch, and its sound as edited (by what was edited).
+        juce::String variSignature (const juce::String& file) const;
+        std::map<juce::String, std::pair<std::shared_ptr<const AudioData>, std::shared_ptr<const PitchAnalysis>>> pitchCache;
+        struct HeardSound { juce::String signature; std::shared_ptr<const AudioData> source, heard; };
+        std::map<juce::String, HeardSound> heardCache;
+        std::map<juce::String, juce::String> warpedVariSignatures;
+        std::pair<Track*, int> findPartById (int partId);
+        bool editWarp (int partId, const std::function<bool (Part&)>&);
+        void tidyWarp (Part&);   // markers in order, apart, inside the recording, edges at the clip's
         double recordingLatency() const;
         void buildRecordingNotes (std::vector<Note>& notes, double partStart, double endBeat, int onlyPass = -1) const;
         // (0.29.0) New takes onto the track by the record modes: each on the first lane it
@@ -990,6 +1342,8 @@ namespace pr7s
         std::unique_ptr<PluginHost> host;
         juce::AudioDeviceManager devices;
         bool withDevices = false;
+        bool multiCoreAudio = false;   // (without a settings file)
+        void applyMultiCore();
         Engine engine;
 
         Project project;
@@ -1002,10 +1356,25 @@ namespace pr7s
         void sendGone (Track&, int slot);
         bool linksSuspended = false, linksAbsolute = false, qLink = false;
         bool mirroring = false;
+        juce::StringArray progressionFavorites;   // (without a settings file)
+        MelodySettings melodySettings;   // (without a settings file)
+        std::atomic<int> lastPlayedPad { -1 };
+        PadLearn padLearn = PadLearn::none;
+        int padLearnIndex = 0, rangeFirst = -1;
+        std::mutex chordLogLock;
+        std::vector<ChordEvent> chordLog;   // pads pressed while recording (beats)
+        std::atomic<bool> loggingChords { false };
+        void takeRecordedChords (double from, double to, const std::vector<HeardNote>& played);
+        DetectSettings detectSettings;
         juce::String guitarTuning;   // (without a settings file: the tests)
         GuitarVelocities guitarVelocities;
         float ideasHumanize = 0.0f, humanizeAmount = 0.5f;   // (without a settings file: the tests)
         bool ideasFeel = true, humanizeLayers = true;
+        void announce();               // (0.34.3) sendChangeMessage, the version counted
+        void mixOnly (bool onlyTheMix);
+        juce::uint64 changeVersion = 1;
+        bool mixOnlyAsked = false, mixOnlyBroken = false;
+        AlignSettings alignSettings;   // (without a settings file: the tests)
         float dropHighlight = defaultDropHighlight;   // (without a settings file: the tests)   // (a linked change being passed on: not passed on again)
         void pruneLinkGroups();
         // `action` for each channel linked to this one for `what` (not itself); the
@@ -1042,6 +1411,10 @@ namespace pr7s
         // Recording: where it started, into which track, and what's come in so far.
         bool wasRecording = false;
         double recordStart = 0.0, playStart = 0.0;
+        TapMode tapMode = TapMode::automatic;
+        std::vector<double> tapTimes;
+        TapResult lastTap;
+        bool tapUnrecorded = false;
         int recordTrack = 0;
         std::vector<RecordedEvent> recorded;
 

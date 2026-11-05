@@ -14,18 +14,30 @@ namespace Windows
     // behind the studio's window, which spans three screens, and looked
     // closed), and stays open until closed (as the manual's plug-in windows).
     // The keys it doesn't use go to the studio (`onKey`: Space, R...).
+    // (0.52.1) The right-hand screen's area (its usable part): where plug-in windows open.
+    juce::Rectangle<int> rightmostScreenArea();
+
     class Instrument final : public juce::DocumentWindow,
                              private juce::Timer
     {
     public:
-        Instrument (const juce::String& trackName, juce::AudioPluginInstance&);
+        // (0.52.2) `settings`: where each plug-in's window was left is kept there (by the plug-in's
+        // name), and it opens there again; none kept (or off every screen now): the right-hand screen.
+        Instrument (const juce::String& trackName, juce::AudioPluginInstance&, juce::PropertiesFile* settings = nullptr);
+        ~Instrument() override;
         void closeButtonPressed() override;
+        void moved() override;
+        static juce::String placeKey (const juce::String& pluginName) { return "pluginWindow." + pluginName; }
         bool keyPressed (const juce::KeyPress&) override;
         std::function<void()> onClose;
         std::function<bool (const juce::KeyPress&)> onKey;
 
     private:
         void timerCallback() override;
+        void keepPlace();
+        juce::String pluginName;
+        juce::PropertiesFile* settings = nullptr;
+        bool placed = false;   // (moves before it's shown aren't the owner's)
     };
 
     // The key editor or the mixer in a window of its own (their WINDOW
@@ -62,6 +74,8 @@ namespace Windows
         void resized() override;
         void paint (juce::Graphics&) override;
         pr7s::Studio::RenderOptions getOptions() const;   // as chosen now
+        void setWarning (const juce::String&);   // (0.52.1) a line in the accent colour over the note (none: hidden)
+        juce::String getWarning() const { return warning.getText(); }
         static pr7s::Studio::RenderOptions keptOptions (juce::PropertiesFile*);   // the last ones chosen
         std::function<void (const pr7s::Studio::RenderOptions&)> onRender;
         std::function<void()> onCancel;
@@ -72,7 +86,7 @@ namespace Windows
     private:
         pr7s::Studio& studio;
         bool wholeTracks = true;   // (0.31.0: a stretch's choice of what happens to the original isn't kept for whole tracks)
-        juce::Label modeLabel, processingLabel, tailLabel, bitsLabel, sourceLabel, note;
+        juce::Label modeLabel, processingLabel, tailLabel, bitsLabel, sourceLabel, note, warning;
     };
 
     // Where a window spanning all the screens goes: across them all, side by
@@ -111,22 +125,36 @@ namespace Windows
         void resized() override;
         void paint (juce::Graphics&) override;
 
-        enum class Range { song, cycle };
+        enum class Range { song, cycle, cycleMarkers };   // (0.51.0: cycle markers, a file each)
         void setRange (Range);
         pr7s::Studio::ExportOptions getOptions() const;   // as chosen now
         bool canExport() const;                           // the chosen range isn't empty
+        // (0.51.0, the manual's Channel Selection) The main mix, or channels: a file each (stems).
+        void setChannelsMode (bool channels);
+        bool isChannelsMode() const { return channelsMode.getSelectedId() == 2; }
+        void setChannelChosen (int trackId, bool chosen);
+        void setCycleMarkerChosen (int index, bool chosen);
+        pr7s::Studio::ExportBatch getBatch() const;
+        bool isBatch() const;   // several files (or a channel): a folder is asked for, not a file
 
         std::function<void (const pr7s::Studio::ExportOptions&)> onExport;
+        std::function<void (const pr7s::Studio::ExportBatch&)> onExportBatch;
         std::function<void()> onCancel;
 
-        juce::ComboBox range, rate, bits;
+        juce::ComboBox range, rate, bits, channelsMode;
         juce::ToggleButton click { "Include the click" };
-        juce::TextButton exportButton { "EXPORT..." }, cancelButton { "CANCEL" };
+        juce::ToggleButton includeMaster { "Include the master's effects, EQ and fader" };
+        juce::TextButton exportButton { "EXPORT..." }, cancelButton { "CANCEL" }, allKey { "ALL" }, noneKey { "NONE" };
 
     private:
         void keep();
+        void refreshLists();
         pr7s::Studio& studio;
-        juce::Label rangeLabel, rateLabel, bitsLabel, note;
+        juce::Label rangeLabel, rateLabel, bitsLabel, note, channelsLabel;
+        juce::Viewport listView;
+        juce::Component listContent;
+        std::vector<std::unique_ptr<juce::ToggleButton>> channelBoxes, markerBoxes;
+        std::vector<int> channelIds, markerIndices;
         double interfaceRate = 48000.0;
         static constexpr double rates[] = { 44100.0, 48000.0, 88200.0, 96000.0 };
     };

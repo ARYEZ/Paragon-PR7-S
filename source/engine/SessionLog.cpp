@@ -8,7 +8,10 @@
  #endif
  #include <windows.h>
  #include <dbghelp.h>
+ #include <psapi.h>
+ #include <tlhelp32.h>
  #pragma comment (lib, "dbghelp.lib")
+ #pragma comment (lib, "psapi.lib")
 #endif
 
 #include "SessionLog.h"
@@ -16,10 +19,14 @@
 #include <juce_data_structures/juce_data_structures.h>
 #include <juce_events/juce_events.h>
 
+#include <algorithm>
 #include <atomic>
 #include <csignal>
+#include <cstring>
 #include <exception>
+#include <map>
 #include <thread>
+#include <vector>
 
 #if ! defined (_WIN32)
  #include <execinfo.h>
@@ -47,11 +54,15 @@ namespace pr7s::SessionLog
 
         thread_local bool onAudioThread = false;
         std::atomic<bool> crashing { false };
+        std::atomic<bool> closingNow { false };
+        std::atomic<double> closingEnd { 90.0 };
 
         juce::String stamp()
         {
             return juce::Time::getCurrentTime().formatted ("%H:%M:%S.") + juce::String (juce::Time::getCurrentTime().getMilliseconds()).paddedLeft ('0', 3);
         }
+
+        double nowSeconds() { return juce::Time::getMillisecondCounterHiRes() / 1000.0; }
 
         void writeRaw (const juce::String& text, bool fromCrash)
         {
@@ -77,18 +88,179 @@ namespace pr7s::SessionLog
                 s.lock.exit();
         }
 
+        // The threads that run the sound (the device's callback, the helper cores): marked so a
+        // crash or a freeze report can name them. Ids only (no allocation: the audio thread marks itself).
+        constexpr int audioIdCount = 32;
+        std::atomic<juce::uint64> audioIds[audioIdCount] {};
+
+        juce::uint64 thisThreadKey() noexcept
+        {
+           #if defined (_WIN32)
+            return (juce::uint64) GetCurrentThreadId();
+           #else
+            return (juce::uint64) (juce::pointer_sized_int) juce::Thread::getCurrentThreadId() + 1;
+           #endif
+        }
+
+        bool isScreenThread()
+        {
+            auto* mm = juce::MessageManager::getInstanceWithoutCreating();
+            return mm != nullptr && mm->isThisTheMessageThread();
+        }
+
         juce::String threadName()
         {
             if (onAudioThread)
                 return "the audio thread (the sound: instruments and effects play here)";
-            if (auto* mm = juce::MessageManager::getInstanceWithoutCreating(); mm != nullptr && mm->isThisTheMessageThread())
+            if (isScreenThread())
                 return "the screen's thread (the window, clicks and keys)";
             if (auto* t = juce::Thread::getCurrentThread())
                 return "the studio's thread \"" + t->getThreadName() + "\"";
             return "another thread (a driver's or a plug-in's own)";
         }
 
+        //======================================================================
+        // (0.52.1) Steps under way: fixed slots, so a report can read them while the thread that
+        // began them is stuck (no lock to wait for, nothing it could be holding).
+        struct StepSlot
+        {
+            std::atomic<juce::uint64> thread { 0 };   // 0: free
+            std::atomic<double> started { 0.0 };
+            char text[240] {};
+            char where[96] {};
+        };
+        constexpr int stepSlotCount = 48;
+        StepSlot stepSlots[stepSlotCount];
+
+        void copyText (char* into, size_t size, const juce::String& text)
+        {
+            const auto utf8 = text.toRawUTF8();
+            auto length = std::strlen (utf8);
+            if (length >= size)
+                length = size - 1;
+            while (length > 0 && (((unsigned char) utf8[length]) & 0xc0) == 0x80)
+                --length;   // (not halfway through a character)
+            std::memcpy (into, utf8, length);
+            into[length] = 0;
+        }
+
+        // A long job (a render): beaten as it moves.
+        std::atomic<int> jobDepth { 0 };
+        std::atomic<double> lastJobBeat { 0.0 };
+        char jobName[200] {};
+
        #if defined (_WIN32)
+        //======================================================================
+        // The modules (the studio, Windows' own, every plug-in's .vst3, drivers) and where each
+        // lies in memory. Read through the process's own records (psapi: no loader lock), kept
+        // up to date by the watch while all is well, so a report never needs to ask Windows then:
+        // a plug-in stuck loading or unloading holds the loader lock, and asking for a module's
+        // name the usual way (GetModuleHandleEx / GetModuleFileName) or loading symbols for the
+        // whole process (SymInitialize's "invade") waits for that lock for ever. Until 0.52.1 the
+        // FROZEN entry did both before writing a word: the hangs the owner saw left nothing.
+        struct Module
+        {
+            DWORD64 base = 0, size = 0;
+            juce::String path, name;
+        };
+        juce::CriticalSection moduleLock;
+        std::vector<Module> modules;   // sorted by base
+
+        std::vector<Module> readModules()
+        {
+            std::vector<Module> found;
+            const auto process = GetCurrentProcess();
+            std::vector<HMODULE> handles (2048);
+            DWORD needed = 0;
+            if (! EnumProcessModules (process, handles.data(), (DWORD) (handles.size() * sizeof (HMODULE)), &needed))
+                return found;
+            handles.resize (juce::jmin (handles.size(), (size_t) needed / sizeof (HMODULE)));
+            for (auto* handle : handles)
+            {
+                MODULEINFO info {};
+                if (! GetModuleInformation (process, handle, &info, sizeof (info)))
+                    continue;
+                wchar_t path[MAX_PATH] {};
+                GetModuleFileNameExW (process, handle, path, MAX_PATH);
+                Module m;
+                m.base = (DWORD64) info.lpBaseOfDll;
+                m.size = (DWORD64) info.SizeOfImage;
+                m.path = juce::String (path);
+                m.name = juce::File (m.path).getFileName();
+                found.push_back (m);
+            }
+            std::sort (found.begin(), found.end(), [] (const Module& a, const Module& b) { return a.base < b.base; });
+            return found;
+        }
+
+        const Module* moduleAt (const std::vector<Module>& list, DWORD64 address)
+        {
+            auto it = std::upper_bound (list.begin(), list.end(), address, [] (DWORD64 a, const Module& m) { return a < m.base; });
+            if (it == list.begin())
+                return nullptr;
+            --it;
+            return address < it->base + it->size ? &*it : nullptr;
+        }
+
+        std::vector<Module> knownModules()
+        {
+            const juce::ScopedLock sl (moduleLock);
+            return modules;
+        }
+
+        //======================================================================
+        // Symbols (dbghelp: one caller at a time). Each module registered from the list above
+        // (SymInitialize without "invade": no loader lock), its names read lazily from the disk.
+        juce::CriticalSection dbgLock;
+        bool symbolsReady = false;
+        std::map<DWORD64, juce::String> symbolModules;   // base -> path, as dbghelp knows them
+
+        void syncSymbols (const std::vector<Module>& list)   // (dbgLock held)
+        {
+            const auto process = GetCurrentProcess();
+            if (! symbolsReady)
+            {
+                symbolsReady = true;
+                SymSetOptions (SymGetOptions() | SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES | SYMOPT_FAIL_CRITICAL_ERRORS);
+                // The app's folder first: its .pdb is beside it (the names and lines of the studio's own code).
+                const auto folder = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getParentDirectory().getFullPathName();
+                SymInitializeW (process, folder.toWideCharPointer(), FALSE);
+            }
+            for (const auto& m : list)
+            {
+                auto known = symbolModules.find (m.base);
+                if (known != symbolModules.end() && known->second == m.path)
+                    continue;
+                if (known != symbolModules.end())
+                    SymUnloadModule64 (process, m.base);   // (another module where an unloaded one was)
+                SymLoadModuleExW (process, nullptr, m.path.toWideCharPointer(), nullptr, m.base, (DWORD) m.size, nullptr, 0);
+                symbolModules[m.base] = m.path;
+            }
+        }
+
+        // The list read again and given to dbghelp (the watch, while the screen answers).
+        void refreshModules()
+        {
+            auto list = readModules();
+            if (list.empty())
+                return;
+            {
+                const juce::ScopedLock sl (moduleLock);
+                modules = list;
+            }
+            if (dbgLock.tryEnter())
+            {
+                syncSymbols (list);
+                dbgLock.exit();
+            }
+        }
+
+        // For a crash: the list as it is now (a plug-in may have loaded since the watch looked).
+        void initSymbols()
+        {
+            refreshModules();
+        }
+
         juce::String exceptionName (DWORD code)
         {
             switch (code)
@@ -111,36 +283,20 @@ namespace pr7s::SessionLog
             }
         }
 
-        bool symbolsReady = false;
-        void initSymbols()
+        // "Kontakt 8.vst3 + 0x1a2b3c", from the module list alone.
+        juce::String placeOf (const std::vector<Module>& list, DWORD64 address)
         {
-            if (symbolsReady)
-                return;
-            symbolsReady = true;
-            SymSetOptions (SymGetOptions() | SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES | SYMOPT_FAIL_CRITICAL_ERRORS);
-            // The app's folder first: its .pdb is beside it (the names and lines of the studio's own code).
-            const auto folder = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getParentDirectory().getFullPathName();
-            SymInitialize (GetCurrentProcess(), folder.toRawUTF8(), TRUE);
+            if (const auto* m = moduleAt (list, address))
+                return m->name + " + 0x" + juce::String::toHexString ((juce::int64) (address - m->base));
+            return "0x" + juce::String::toHexString ((juce::int64) address) + " (in no file)";
         }
 
-        // "Kontakt 8.vst3 + 0x1a2b3c: SomeFunction + 0x12 (Engine.cpp:345)"
+        // "Kontakt 8.vst3 + 0x1a2b3c: SomeFunction + 0x12 (Engine.cpp:345)". (dbgLock held)
         juce::String describeAddress (DWORD64 address)
         {
             const auto process = GetCurrentProcess();
-            juce::String text;
-            HMODULE module = nullptr;
-            if (GetModuleHandleExW (GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                                    reinterpret_cast<LPCWSTR> (address), &module) && module != nullptr)
-            {
-                wchar_t path[MAX_PATH] {};
-                GetModuleFileNameW (module, path, MAX_PATH);
-                text << juce::File (juce::String (path)).getFileName()
-                     << " + 0x" << juce::String::toHexString ((juce::int64) (address - (DWORD64) module));
-            }
-            else
-            {
-                text << "0x" << juce::String::toHexString ((juce::int64) address) << " (in no file)";
-            }
+            const auto list = knownModules();
+            juce::String text = placeOf (list, address);
             alignas (SYMBOL_INFO) char buffer[sizeof (SYMBOL_INFO) + 512] {};
             auto* symbol = reinterpret_cast<SYMBOL_INFO*> (buffer);
             symbol->SizeOfStruct = sizeof (SYMBOL_INFO);
@@ -156,20 +312,20 @@ namespace pr7s::SessionLog
             return text;
         }
 
-        // The freeze watch's copy of the screen thread's stack (walked after the thread runs again).
+        // A thread's stack, copied while it was stopped (walked after it runs again).
         struct StackCopy
         {
             DWORD64 base = 0;
             size_t size = 0;
-            std::vector<unsigned char> data;
+            const unsigned char* data = nullptr;
         };
-        StackCopy* stackCopy = nullptr;
+        const StackCopy* stackCopy = nullptr;
 
         BOOL CALLBACK readMemory (HANDLE process, DWORD64 address, PVOID buffer, DWORD size, LPDWORD read)
         {
             if (stackCopy != nullptr && address >= stackCopy->base && address + size <= stackCopy->base + stackCopy->size)
             {
-                std::memcpy (buffer, stackCopy->data.data() + (address - stackCopy->base), size);
+                std::memcpy (buffer, stackCopy->data + (address - stackCopy->base), size);
                 *read = size;
                 return TRUE;
             }
@@ -179,9 +335,9 @@ namespace pr7s::SessionLog
             return ok;
         }
 
+        // (dbgLock held)
         juce::String walkStack (HANDLE thread, const CONTEXT& start, bool fromCopy)
         {
-            initSymbols();
             CONTEXT context = start;   // (StackWalk64 changes it as it goes)
             STACKFRAME64 frame {};
             DWORD machine = 0;
@@ -214,56 +370,175 @@ namespace pr7s::SessionLog
             return text.isEmpty() ? juce::String ("  (the calls couldn't be read)\r\n") : text;
         }
 
-        HANDLE screenThread = nullptr;
+        //======================================================================
+        // Every thread of the studio (its own, Windows', drivers', plug-ins'), each stopped for a
+        // moment while its registers and stack are copied (nothing allocated meanwhile: it may hold
+        // the memory lock), then let go at once.
+        DWORD screenThreadId = 0;
+        using GetDescription = HRESULT (WINAPI*) (HANDLE, PWSTR*);
+        GetDescription getThreadDescription = nullptr;   // (Windows 10 1607 on; found at start)
 
-        juce::String screenThreadStack()
+        struct Captured
         {
-            // Stopped for a moment while its registers and stack are copied (nothing
-            // allocated meanwhile: it may hold the memory lock), then walked.
-            static StackCopy copy;
-            if (copy.data.empty())
-                copy.data.resize (512 * 1024);
-            if (screenThread == nullptr || SuspendThread (screenThread) == (DWORD) -1)
-                return "  (couldn't look at it)\r\n";
+            DWORD id = 0;
+            HANDLE handle = nullptr;
             CONTEXT context {};
-            context.ContextFlags = CONTEXT_FULL;
-            auto ok = GetThreadContext (screenThread, &context) != 0;
-            if (ok)
+            std::vector<unsigned char> data;
+            StackCopy copy;
+            bool ok = false;
+            juce::String label;
+        };
+
+        DWORD64 stackPointer (const CONTEXT& c)
+        {
+           #if defined (_M_X64)
+            return c.Rsp;
+           #elif defined (_M_ARM64)
+            return c.Sp;
+           #else
+            return c.Esp;
+           #endif
+        }
+
+        DWORD64 programCounter (const CONTEXT& c)
+        {
+           #if defined (_M_X64)
+            return c.Rip;
+           #elif defined (_M_ARM64)
+            return c.Pc;
+           #else
+            return c.Eip;
+           #endif
+        }
+
+        bool isAudioId (DWORD id)
+        {
+            for (auto& a : audioIds)
+                if (a.load() == (juce::uint64) id)
+                    return true;
+            return false;
+        }
+
+        std::vector<std::unique_ptr<Captured>> captureThreads()
+        {
+            std::vector<DWORD> ids;
+            const auto self = GetCurrentThreadId(), process = GetCurrentProcessId();
+            const auto snapshot = CreateToolhelp32Snapshot (TH32CS_SNAPTHREAD, 0);
+            if (snapshot != INVALID_HANDLE_VALUE)
             {
-               #if defined (_M_X64)
-                const DWORD64 sp = context.Rsp;
-               #elif defined (_M_ARM64)
-                const DWORD64 sp = context.Sp;
-               #else
-                const DWORD64 sp = context.Esp;
-               #endif
-                MEMORY_BASIC_INFORMATION info {};
-                ok = VirtualQuery (reinterpret_cast<LPCVOID> (sp), &info, sizeof (info)) != 0;
-                if (ok)
-                {
-                    const auto end = (DWORD64) info.BaseAddress + (DWORD64) info.RegionSize;
-                    copy.base = sp;
-                    copy.size = (size_t) juce::jmin<DWORD64> (end - sp, (DWORD64) copy.data.size());
-                    std::memcpy (copy.data.data(), reinterpret_cast<const void*> (sp), copy.size);
-                }
+                THREADENTRY32 entry {};
+                entry.dwSize = sizeof (entry);
+                for (auto more = Thread32First (snapshot, &entry); more; more = Thread32Next (snapshot, &entry))
+                    if (entry.th32OwnerProcessID == process && entry.th32ThreadID != self)
+                        ids.push_back (entry.th32ThreadID);
+                CloseHandle (snapshot);
             }
-            ResumeThread (screenThread);
-            if (! ok)
-                return "  (couldn't look at it)\r\n";
-            stackCopy = &copy;
-            auto text = walkStack (screenThread, context, true);
-            stackCopy = nullptr;
+            // The screen's first, then the sound's, then the rest; at most 160.
+            std::stable_sort (ids.begin(), ids.end(), [] (DWORD a, DWORD b)
+            {
+                const auto rank = [] (DWORD id) { return id == screenThreadId ? 0 : isAudioId (id) ? 1 : 2; };
+                return rank (a) < rank (b);
+            });
+            if (ids.size() > 160)
+                ids.resize (160);
+            std::vector<std::unique_ptr<Captured>> threads;
+            for (const auto id : ids)
+            {
+                auto c = std::make_unique<Captured>();
+                c->id = id;
+                c->data.resize (id == screenThreadId ? 512 * 1024 : 96 * 1024);   // (made before anything is stopped)
+                threads.push_back (std::move (c));
+            }
+            for (auto& c : threads)
+            {
+                c->handle = OpenThread (THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION | THREAD_QUERY_LIMITED_INFORMATION,
+                                        FALSE, c->id);
+                if (c->handle == nullptr)
+                    continue;
+                if (SuspendThread (c->handle) == (DWORD) -1)
+                    continue;
+                c->context.ContextFlags = CONTEXT_FULL;
+                if (GetThreadContext (c->handle, &c->context) != 0)
+                {
+                    const auto sp = stackPointer (c->context);
+                    MEMORY_BASIC_INFORMATION info {};
+                    if (VirtualQuery (reinterpret_cast<LPCVOID> (sp), &info, sizeof (info)) != 0)
+                    {
+                        const auto end = (DWORD64) info.BaseAddress + (DWORD64) info.RegionSize;
+                        c->copy.base = sp;
+                        c->copy.size = (size_t) juce::jmin<DWORD64> (end - sp, (DWORD64) c->data.size());
+                        std::memcpy (c->data.data(), reinterpret_cast<const void*> (sp), c->copy.size);
+                        c->copy.data = c->data.data();
+                        c->ok = true;
+                    }
+                }
+                ResumeThread (c->handle);
+            }
+            // Names (after they all run again: these allocate).
+            for (auto& c : threads)
+            {
+                juce::String described;
+                if (getThreadDescription != nullptr && c->handle != nullptr)
+                {
+                    PWSTR name = nullptr;
+                    if (SUCCEEDED (getThreadDescription (c->handle, &name)) && name != nullptr)
+                    {
+                        described = juce::String (name);
+                        LocalFree (name);
+                    }
+                }
+                c->label = c->id == screenThreadId ? "THE SCREEN'S THREAD (the window, clicks and keys)"
+                         : isAudioId (c->id) ? "an audio thread (instruments and effects play here)"
+                         : described.isNotEmpty() ? "thread \"" + described + "\""
+                         : juce::String ("a thread");
+                c->label << " [" << (int) c->id << "]";
+            }
+            return threads;
+        }
+
+        // Each thread: where it is (module + offset) and the modules found on its stack, from the
+        // module list alone (nothing that could wait).
+        juce::String rawThreadReport (const std::vector<std::unique_ptr<Captured>>& threads)
+        {
+            const auto list = knownModules();
+            juce::String text;
+            text << "  Every thread (" << (int) threads.size() << "): where it is, and the modules found on its stack (innermost first):\r\n";
+            for (const auto& c : threads)
+            {
+                text << "  - " << c->label << ": ";
+                if (! c->ok)
+                {
+                    text << "(couldn't look at it)\r\n";
+                    continue;
+                }
+                text << "at " << placeOf (list, programCounter (c->context)) << "\r\n";
+                juce::StringArray seen, places;
+                const auto words = c->copy.size / sizeof (DWORD64);
+                for (size_t i = 0; i < words && places.size() < 12; ++i)
+                {
+                    DWORD64 value = 0;
+                    std::memcpy (&value, c->copy.data + i * sizeof (DWORD64), sizeof (value));
+                    if (const auto* m = moduleAt (list, value))
+                    {
+                        seen.addIfNotAlreadyThere (m->name);
+                        places.add (placeOf (list, value));
+                    }
+                }
+                for (size_t i = 0; i < words; ++i)   // (every module, beyond the first dozen places)
+                {
+                    DWORD64 value = 0;
+                    std::memcpy (&value, c->copy.data + i * sizeof (DWORD64), sizeof (value));
+                    if (const auto* m = moduleAt (list, value))
+                        seen.addIfNotAlreadyThere (m->name);
+                }
+                if (! seen.isEmpty())
+                    text << "      modules: " << seen.joinIntoString (", ") << "\r\n"
+                         << "      places:  " << places.joinIntoString (", ") << "\r\n";
+            }
             return text;
         }
-
-        juce::String hereStack()
-        {
-            CONTEXT context {};
-            RtlCaptureContext (&context);
-            return walkStack (GetCurrentThread(), context, false);
-        }
        #else
-        juce::String hereStack()
+        juce::String hereStackPosix()
         {
             void* frames[64];
             const auto count = backtrace (frames, 64);
@@ -286,42 +561,111 @@ namespace pr7s::SessionLog
         }
 
         //======================================================================
+        // A FROZEN or STUCK report: the headline and the steps under way written at once (whatever
+        // follows may not finish), then every thread, then (last, slowest) their calls by name.
+        void report (const juce::String& headline)
+        {
+            juce::String text;
+            text << "\r\n" << stamp() << "  " << headline << "\r\n"
+                 << "  Under way:\r\n" << stepsUnderWay();
+            writeRaw (text, false);
+           #if defined (_WIN32)
+            const auto threads = captureThreads();
+            writeRaw (rawThreadReport (threads), false);
+            writeRaw ("  Their calls by name (if this stops part way, looking them up got stuck too: what's above is what counts):", false);
+            if (dbgLock.tryEnter())
+            {
+                for (const auto& c : threads)
+                {
+                    if (! c->ok || c->handle == nullptr)
+                        continue;
+                    stackCopy = &c->copy;
+                    const auto calls = walkStack (c->handle, c->context, true);
+                    stackCopy = nullptr;
+                    writeRaw ("  " + c->label + ":\r\n" + calls, false);
+                }
+                dbgLock.exit();
+            }
+            else
+            {
+                writeRaw ("  (the names were busy: a crash being written)", false);
+            }
+            for (const auto& c : threads)
+                if (c->handle != nullptr)
+                    CloseHandle (c->handle);
+           #else
+            writeRaw ("  (each thread's calls are only shown on Windows)\r\n", false);
+           #endif
+        }
+
+        //======================================================================
         struct FreezeWatch final : juce::Thread
         {
-            explicit FreezeWatch (double s) : juce::Thread ("PR7-S freeze watch"), limit (s) {}
+            FreezeWatch (double s, double job) : juce::Thread ("PR7-S freeze watch"), limit (s), jobLimit (job) {}
             void run() override
             {
-                auto frozen = false;
-                auto frozenSince = 0.0;
+                auto frozen = false, stuck = false;
+                auto frozenSince = 0.0, stuckSince = 0.0, lastRefresh = -1.0e9;
                 while (! threadShouldExit())
                 {
-                    wait (500);
-                    const auto now = juce::Time::getMillisecondCounterHiRes() / 1000.0;
+                   #if defined (_WIN32)
+                    const auto now = nowSeconds();
+                    if (! frozen && ! stuck && now - lastRefresh > 5.0)
+                    {
+                        refreshModules();   // (while all answers: ready for a report)
+                        lastRefresh = now;
+                    }
+                   #else
+                    juce::ignoreUnused (lastRefresh);
+                   #endif
+                    wait (250);
+                    const auto at = nowSeconds();
                     const auto last = lastBeat.load();
-                    if (last <= 0.0)
-                        continue;
-                    if (! frozen && now - last > limit)
+                    if (last > 0.0)
                     {
-                        frozen = true;
-                        frozenSince = last;
-                        juce::String text;
-                        text << "\r\n" << stamp() << "  FROZEN: the screen hasn't answered for " << juce::String (now - last, 0) << " seconds.\r\n"
-                             << "  What its thread is doing:\r\n";
-                       #if defined (_WIN32)
-                        text << screenThreadStack();
-                       #else
-                        text << "  (only shown on Windows)\r\n";
-                       #endif
-                        writeRaw (text, false);
+                        if (! frozen && at - last > limit.load())
+                        {
+                            frozen = true;
+                            frozenSince = last;
+                            report ("FROZEN: the screen hasn't answered for " + juce::String (at - last, 0) + " seconds"
+                                    + (closingNow.load() ? juce::String (" (while closing)") : juce::String()) + ".");
+                        }
+                        else if (frozen && closingNow.load() && at - frozenSince > closingEnd.load())
+                        {
+                            // (0.52.2) Closing stuck for `endAfter` (90 s): ended here, written down first.
+                            // The next start offers this log (it doesn't end "closed normally").
+                            writeRaw (stamp() + "  Closing didn't finish in " + juce::String (at - frozenSince, 0)
+                                      + " seconds: the studio ended itself (the song and settings were saved before closing began).", false);
+                            endProcessNow (1);
+                        }
+                        else if (frozen && last > frozenSince)
+                        {
+                            writeRaw (stamp() + "  The screen answered again after " + juce::String (last - frozenSince, 1) + " seconds.", false);
+                            frozen = false;
+                        }
                     }
-                    else if (frozen && last > frozenSince)
+                    if (jobDepth.load() > 0)
                     {
-                        writeRaw (stamp() + "  The screen answered again after " + juce::String (last - frozenSince, 1) + " seconds.", false);
-                        frozen = false;
+                        const auto moved = lastJobBeat.load();
+                        if (! stuck && at - moved > jobLimit)
+                        {
+                            stuck = true;
+                            stuckSince = moved;
+                            report ("STUCK: " + juce::String (juce::CharPointer_UTF8 (jobName)) + " hasn't moved for "
+                                    + juce::String (at - moved, 0) + " seconds (the screen still answers).");
+                        }
+                        else if (stuck && moved > stuckSince)
+                        {
+                            writeRaw (stamp() + "  It moved again after " + juce::String (moved - stuckSince, 1) + " seconds.", false);
+                            stuck = false;
+                        }
                     }
+                    else
+                        stuck = false;
                 }
             }
-            const double limit;
+            std::atomic<double> limit;
+            const double jobLimit;
             std::atomic<double> lastBeat { 0.0 };
         };
         std::unique_ptr<FreezeWatch> watch;
@@ -367,6 +711,7 @@ namespace pr7s::SessionLog
         for (int i = 0; i < logs.size() - (keep - 1); ++i)
             logs.getReference (i).deleteFile();
 
+        closingNow = false;
         auto& s = state();
         const juce::ScopedLock sl (s.lock);
         s.started = juce::Time::getCurrentTime();
@@ -411,7 +756,112 @@ namespace pr7s::SessionLog
         s.out = nullptr;
     }
 
-    void markAudioThread (bool on) noexcept { onAudioThread = on; }
+    //==========================================================================
+    Step::Step (const juce::String& what) : started (nowSeconds()), text (what)
+    {
+        note ("Starting: " + what);
+        juce::String where = isScreenThread() ? juce::String ("the screen's thread")
+                           : onAudioThread ? juce::String ("an audio thread")
+                           : juce::Thread::getCurrentThread() != nullptr ? "thread \"" + juce::Thread::getCurrentThread()->getThreadName() + "\""
+                           : juce::String ("a thread");
+        for (int i = 0; i < stepSlotCount; ++i)
+        {
+            auto& s = stepSlots[i];
+            juce::uint64 free = 0;
+            // Claimed with a marker first, filled, then marked as this thread's (a reader sees it whole).
+            if (s.thread.compare_exchange_strong (free, ~(juce::uint64) 0))
+            {
+                copyText (s.text, sizeof (s.text), what);
+                copyText (s.where, sizeof (s.where), where);
+                s.started = started;
+                s.thread.store (thisThreadKey(), std::memory_order_release);
+                slot = i;
+                break;
+            }
+        }
+    }
+
+    Step::~Step()
+    {
+        if (slot >= 0)
+            stepSlots[slot].thread.store (0, std::memory_order_release);
+        note ("  done: " + text + " (" + juce::String (juce::roundToInt ((nowSeconds() - started) * 1000.0)) + " ms)");
+    }
+
+    juce::String stepsUnderWay()
+    {
+        struct Line { double started; juce::String text; };
+        std::vector<Line> lines;
+        const auto now = nowSeconds();
+        for (auto& s : stepSlots)
+        {
+            const auto owner = s.thread.load (std::memory_order_acquire);
+            if (owner == 0 || owner == ~(juce::uint64) 0)
+                continue;
+            char text[sizeof (s.text)], where[sizeof (s.where)];
+            std::memcpy (text, s.text, sizeof (text));
+            std::memcpy (where, s.where, sizeof (where));
+            text[sizeof (text) - 1] = where[sizeof (where) - 1] = 0;
+            const auto started = s.started.load();
+            lines.push_back ({ started, "  - " + juce::String (juce::CharPointer_UTF8 (where)) + ", for " + juce::String (now - started, 1) + " s: "
+                                        + juce::String (juce::CharPointer_UTF8 (text)) });
+        }
+        if (jobDepth.load() > 0)
+            lines.push_back ({ now, "  - the job " + juce::String (juce::CharPointer_UTF8 (jobName)) + ", last moved "
+                                    + juce::String (now - lastJobBeat.load(), 1) + " s ago" });
+        if (lines.empty())
+            return "  (nothing marked: it stopped between steps)\r\n";
+        std::sort (lines.begin(), lines.end(), [] (const Line& a, const Line& b) { return a.started < b.started; });
+        juce::String text;
+        for (const auto& l : lines)
+            text << l.text << "\r\n";
+        return text;
+    }
+
+    Job::Job (const juce::String& what)
+    {
+        copyText (jobName, sizeof (jobName), what);
+        jobBeat();
+        ++jobDepth;
+    }
+
+    Job::~Job() { --jobDepth; }
+
+    void jobBeat() noexcept { lastJobBeat.store (nowSeconds()); }
+
+    void closing (double seconds, double endAfter)
+    {
+        closingEnd = endAfter;
+        note ("Closing.");
+        closingNow = true;
+        beat();
+        if (watch != nullptr)
+            watch->limit = seconds;
+    }
+
+    void endProcessNow (int code)
+    {
+       #if defined (_WIN32)
+        TerminateProcess (GetCurrentProcess(), (UINT) code);
+       #endif
+        std::_Exit (code);
+    }
+
+    //==========================================================================
+    void markAudioThread (bool on) noexcept
+    {
+        if (on == onAudioThread)
+            return;
+        onAudioThread = on;
+        const auto key = thisThreadKey();
+        for (auto& a : audioIds)
+        {
+            juce::uint64 expected = on ? 0 : key;
+            if (a.compare_exchange_strong (expected, on ? key : 0))
+                break;
+        }
+    }
+
     bool isAudioThread() noexcept { return onAudioThread; }
 
     juce::String describeCrash (const juce::String& what, void* info)
@@ -422,7 +872,6 @@ namespace pr7s::SessionLog
        #if defined (_WIN32)
         if (auto* pointers = static_cast<EXCEPTION_POINTERS*> (info); pointers != nullptr && pointers->ExceptionRecord != nullptr)
         {
-            initSymbols();
             const auto* record = pointers->ExceptionRecord;
             text << "  " << exceptionName (record->ExceptionCode) << "\r\n";
             if (record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && record->NumberParameters >= 2)
@@ -432,16 +881,39 @@ namespace pr7s::SessionLog
                      << juce::String::toHexString ((juce::int64) record->ExceptionInformation[1])
                      << (record->ExceptionInformation[1] < 0x10000 ? " (nothing there: a pointer that was empty)" : "") << "\r\n";
             }
-            text << "  Where: " << describeAddress ((DWORD64) record->ExceptionAddress) << "\r\n"
+            // dbghelp one caller at a time (the freeze watch may be using it: wait a little, not for ever).
+            auto locked = dbgLock.tryEnter();
+            for (int i = 0; ! locked && i < 200; ++i)
+            {
+                juce::Thread::sleep (10);
+                locked = dbgLock.tryEnter();
+            }
+            initSymbols();
+            if (locked && symbolsReady)
+                syncSymbols (knownModules());
+            text << "  Where: " << (locked ? describeAddress ((DWORD64) record->ExceptionAddress)
+                                           : placeOf (knownModules(), (DWORD64) record->ExceptionAddress)) << "\r\n"
                  << "  The calls that led there (the innermost first):\r\n"
-                 << walkStack (GetCurrentThread(), *pointers->ContextRecord, false);
+                 << (locked ? walkStack (GetCurrentThread(), *pointers->ContextRecord, false) : juce::String ("  (busy: not read)\r\n"));
+            if (locked)
+                dbgLock.exit();
             return text;
         }
+        text << "  The calls that led there (the innermost first):\r\n";
+        if (dbgLock.tryEnter())
+        {
+            initSymbols();
+            CONTEXT context {};
+            RtlCaptureContext (&context);
+            text << walkStack (GetCurrentThread(), context, false);
+            dbgLock.exit();
+        }
+        return text;
        #else
         juce::ignoreUnused (info);
-       #endif
-        text << "  The calls that led there (the innermost first):\r\n" << hereStack();
+        text << "  The calls that led there (the innermost first):\r\n" << hereStackPosix();
         return text;
+       #endif
     }
 
     void installCrashHandler()
@@ -474,14 +946,19 @@ namespace pr7s::SessionLog
        #endif
     }
 
-    void startFreezeWatch (double seconds)
+    void startFreezeWatch (double seconds, double jobSeconds)
     {
        #if defined (_WIN32)
-        if (screenThread == nullptr)
-            screenThread = OpenThread (THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, GetCurrentThreadId());
+        // The screen's thread is the one starting the watch. GetThreadDescription found now (not
+        // while something may be stuck holding the loader lock).
+        screenThreadId = GetCurrentThreadId();
+        if (getThreadDescription == nullptr)
+            if (auto* kernel = GetModuleHandleW (L"kernel32.dll"))
+                getThreadDescription = reinterpret_cast<GetDescription> (reinterpret_cast<void*> (GetProcAddress (kernel, "GetThreadDescription")));
        #endif
         stopFreezeWatch();
-        watch = std::make_unique<FreezeWatch> (seconds);
+        closingNow = false;
+        watch = std::make_unique<FreezeWatch> (seconds, jobSeconds);
         beat();
         watch->startThread (juce::Thread::Priority::low);
     }
@@ -489,14 +966,14 @@ namespace pr7s::SessionLog
     void beat()
     {
         if (watch != nullptr)
-            watch->lastBeat = juce::Time::getMillisecondCounterHiRes() / 1000.0;
+            watch->lastBeat = nowSeconds();
     }
 
     void stopFreezeWatch()
     {
         if (watch != nullptr)
         {
-            watch->stopThread (2000);
+            watch->stopThread (5000);
             watch = nullptr;
         }
     }

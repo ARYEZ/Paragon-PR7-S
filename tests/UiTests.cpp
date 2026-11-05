@@ -5,6 +5,7 @@
 #include "TestHelpers.h"
 #include "engine/Studio.h"
 #include "ui/Finish.h"
+#include "ui/ParagonLookAndFeel.h"
 #include "ui/MainView.h"
 #include "ui/TrackActions.h"
 #include "ui/Windows.h"
@@ -654,11 +655,23 @@ TEST_CASE ("Audio tracks on screen: MON and the input in the track list; clips t
         if (b->getButtonText() == "IN 1")
             input = b;
     }
-    REQUIRE (monitor != nullptr);
-    CHECK (monitors == 1);   // only the audio track has one
+    CHECK (monitor == nullptr);   // (0.35.0, the owner asked: MON and LANES are in the Inspector, not on the rows)
+    CHECK (monitors == 0);
     CHECK (input != nullptr);
-    monitor->onClick();
+    studio.selectTrack (guitar);
+    studio.dispatchPendingMessages();
+    auto& inspector = view.getInspector();
+    REQUIRE (inspector.getKey ("MON").isVisible());
+    REQUIRE (inspector.getKey ("LANES").isVisible());
+    // Under RENDER and PRESET, LANES then MON.
+    CHECK (inspector.getKey ("LANES").getY() > inspector.getKey ("RENDER").getY());
+    CHECK (inspector.getKey ("MON").getY() == inspector.getKey ("LANES").getY());
+    CHECK (inspector.getKey ("MON").getX() > inspector.getKey ("LANES").getX());
+    inspector.getKey ("MON").onClick();
     CHECK (studio.getProject().findTrack (guitar)->monitor);
+    inspector.getKey ("LANES").onClick();
+    CHECK (studio.getProject().findTrack (guitar)->showLanes);
+    inspector.getKey ("LANES").onClick();
     studio.setTrackInput (guitar, 0, true);
     studio.dispatchPendingMessages();
     CHECK (input->getButtonText() == "IN 1+2");
@@ -886,31 +899,60 @@ TEST_CASE ("Automation on screen: lanes under their track, lined up; click adds 
     };
     const auto beatPixels = (float) Timeline().pixelsPerBeat;
     const auto yFor = [&] (float value) { return lane.getBottom() - value * lane.getHeight(); };
+    // (The owner's report, 0.45.1: a click puts the point on the line as it is, not at the mouse's
+    // height: the first takes the fader's value, the next ones the line's, wherever the click is.)
     CHECK_FALSE (studio.getAutomationRead (first));
+    const auto fader = pr7s::volumeToTravel (0.0f);
     click ({ 4.1f * beatPixels, yFor (0.75f) });
     REQUIRE (studio.getAutomation (first)->at (0).points.size() == 1);
     CHECK (studio.getAutomation (first)->at (0).points[0].beat == 4.0);
-    CHECK_THAT (studio.getAutomation (first)->at (0).points[0].value, WithinAbs (0.75, 0.01));
+    CHECK_THAT (studio.getAutomation (first)->at (0).points[0].value, WithinAbs (fader, 0.001));
     CHECK (studio.getAutomationRead (first));
     click ({ 8.0f * beatPixels, yFor (0.25f) });
     REQUIRE (studio.getAutomation (first)->at (0).points.size() == 2);
-    // On the line between them: nothing added (as the manual has it).
+    CHECK_THAT (studio.getAutomation (first)->at (0).points[1].value, WithinAbs (fader, 0.001));
+    click ({ 10.0f * beatPixels, yFor (0.95f) });
+    REQUIRE (studio.getAutomation (first)->at (0).points.size() == 3);
+    CHECK_THAT (studio.getAutomation (first)->at (0).points[2].value, WithinAbs (fader, 0.001));
+    studio.undo();
+    studio.dispatchPendingMessages();
+    REQUIRE (studio.getAutomation (first)->at (0).points.size() == 2);
+    // (0.46.1, the owner asked) Between them too: a point on the line there, selected.
     click ({ 6.0f * beatPixels, yFor (0.5f) });
-    CHECK (studio.getAutomation (first)->at (0).points.size() == 2);
+    REQUIRE (studio.getAutomation (first)->at (0).points.size() == 3);
+    CHECK (studio.getAutomation (first)->at (0).points[1].beat == 6.0);
+    CHECK_THAT (studio.getAutomation (first)->at (0).points[1].value, WithinAbs (fader, 0.001));
+    CHECK (arrange.getPointSelection().points == std::vector<int> { 1 });
+    // Delete: it goes and the next point (beat 8) is selected; Delete again takes that, then the
+    // one before it at the end of the lane (beat 4).
+    arrange.deleteSelectedPoints();
+    REQUIRE (studio.getAutomation (first)->at (0).points.size() == 2);
+    REQUIRE (arrange.getPointSelection().points == std::vector<int> { 1 });
+    CHECK (studio.getAutomation (first)->at (0).points[1].beat == 8.0);
+    arrange.deleteSelectedPoints();
+    REQUIRE (studio.getAutomation (first)->at (0).points.size() == 1);
+    CHECK (arrange.getPointSelection().points == std::vector<int> { 0 });
+    studio.undo();
+    studio.undo();
+    studio.dispatchPendingMessages();
+    REQUIRE (studio.getAutomation (first)->at (0).points.size() == 3);
+    studio.undo();   // (the point at beat 6 out again)
+    studio.dispatchPendingMessages();
+    REQUIRE (studio.getAutomation (first)->at (0).points.size() == 2);
 
-    // Drag the second point up (Ctrl: up and down only, so it stays on its beat).
+    // Drag the second point down (Ctrl: up and down only, so it stays on its beat).
     const auto point = arrange.getPointPosition (first, 0, 1);
     const auto ctrl = juce::ModifierKeys (juce::ModifierKeys::commandModifier);
     arrange.mouseDown (mouseAt (arrange, point, point, ctrl));
-    arrange.mouseDrag (mouseAt (arrange, point + juce::Point<float> (6.0f, -lane.getHeight() * 0.5f), point, ctrl));
-    arrange.mouseUp (mouseAt (arrange, point + juce::Point<float> (6.0f, -lane.getHeight() * 0.5f), point, ctrl));
+    arrange.mouseDrag (mouseAt (arrange, point + juce::Point<float> (6.0f, lane.getHeight() * 0.5f), point, ctrl));
+    arrange.mouseUp (mouseAt (arrange, point + juce::Point<float> (6.0f, lane.getHeight() * 0.5f), point, ctrl));
     REQUIRE (studio.getAutomation (first)->at (0).points.size() == 2);
     CHECK (studio.getAutomation (first)->at (0).points[1].beat == 8.0);
-    CHECK_THAT (studio.getAutomation (first)->at (0).points[1].value, WithinAbs (0.75, 0.02));
+    CHECK_THAT (studio.getAutomation (first)->at (0).points[1].value, WithinAbs (fader - 0.5f, 0.02));
     // Undo: back.
     studio.undo();
     studio.dispatchPendingMessages();
-    CHECK_THAT (studio.getAutomation (first)->at (0).points[1].value, WithinAbs (0.25, 0.01));
+    CHECK_THAT (studio.getAutomation (first)->at (0).points[1].value, WithinAbs (fader, 0.01));
 
     // Esc while dragging: back where it was, nothing changed.
     const auto p0 = arrange.getPointPosition (first, 0, 0);
@@ -1180,8 +1222,8 @@ TEST_CASE ("Zoom, Auto-Scroll and scrolling (H in, G out, Shift+F, F; the scroll
             divider.mouseUp (mouseAt (divider, from.translated (0.0f, dy), from));
         };
         const auto height = mixer.getHeight();
-        dragDivider (-60.0f);
-        CHECK (mixer.getHeight() == height + 60);
+        dragDivider (-20.0f);   // (0.37.0: 20, not 60: the info line took 42 px of the room over it)
+        CHECK (mixer.getHeight() == height + 20);
         dragDivider (-2000.0f);   // the arrangement keeps its room
         CHECK (arrange.getHeight() + view.getArrangeScrollBarAcross().getHeight() >= MainView::minimumArrangeHeight - 1);
         dragDivider (2000.0f);    // no shorter than the mixer can be
@@ -1960,7 +2002,8 @@ TEST_CASE ("A wide window (spanning screens): the position screen centred at its
     CHECK (buttonNamed (transport, "|<")->getX() + transport.getX() >= 1920);
     CHECK (tools.getRight() <= 3840);
     CHECK (tools.getY() >= transport.getY());
-    CHECK (view.getArrangeView().getY() < transport.getBottom() + MainView::toolbarHeight);   // the tracks have the row's room
+    // (No tools row: the info line (0.37.0) and the track list's header are all that's over it.)
+    CHECK (view.getArrangeView().getY() < transport.getBottom() + MainView::toolbarHeight + (view.isInfoLineShown() ? InfoLine::height + 2 : 0));   // the tracks have the row's room
     // The header's keys: NEW to the quantize value in the middle.
     auto* newKey = buttonNamed (view, "NEW");
     auto& lastKey = view.getQuantizeButton();
@@ -3227,4 +3270,121 @@ TEST_CASE ("A MIDI file dropped on an instrument track lands on it, snapped, sho
     view.filesDropped (files, p.x, p.y);
     CHECK (studio.getProject().tracks.size() == tracksBefore + 1);
     file.deleteFile();
+}
+
+TEST_CASE ("0.38.0: the MIDI editor's info line: the first selected note's values, changed together (the owner's D#-1 to D-2)", "[ui][keyeditor][infoline]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto trackId = studio.getProject().tracks[0].id;
+    // D#-1 (15) first, then G-1 and C0; a note left out at E3.
+    studio.addPart (trackId, { 4.0, 8.0, "Bass", { { 2.0, 1.0, 19, 0.5f }, { 0.0, 1.0, 15, 0.8f }, { 4.0, 0.5, 24, 0.6f }, { 1.0, 1.0, 64, 0.7f } } });
+    studio.dispatchPendingMessages();
+    view.getArrangeView().select (trackId, 0);
+    view.openKeyEditor();
+    studio.dispatchPendingMessages();
+    view.setKeyEditorSize (100);
+    auto& editor = view.getKeyEditor();
+    editor.setSize (1300, 700);
+    REQUIRE (editor.getPart() != nullptr);
+    const auto pitches = [&] { std::vector<int> p; for (const auto& n : editor.getPart()->notes) p.push_back (n.pitch); return p; };
+
+    // Names both ways (middle C = C3).
+    CHECK (pr7s::noteName (15) == "D#-1");
+    CHECK (KeyEditor::parseNoteName ("D#-1") == 15);
+    CHECK (KeyEditor::parseNoteName ("d-2") == 2);
+    CHECK (KeyEditor::parseNoteName ("Eb3") == 63);
+    CHECK (KeyEditor::parseNoteName ("C3") == 60);
+    CHECK (KeyEditor::parseNoteName ("64") == 64);
+    CHECK_FALSE (KeyEditor::parseNoteName ("H2").has_value());
+    CHECK_FALSE (KeyEditor::parseNoteName ("C9").has_value());   // (above G8: off the keyboard)
+
+    // Nothing selected: empty.
+    CHECK (editor.getInfoField ("PITCH").isEmpty());
+    editor.selectNotes ({ 0, 1, 2 });
+    // The first is the earliest (not the first in the list): D#-1 at bar 2.
+    CHECK (editor.getInfoField ("PITCH") == "D#-1");
+    CHECK (editor.getInfoField ("START") == "2.1.1.0");
+    CHECK (editor.getInfoField ("LENGTH") == "0.1.0.0");
+    CHECK (editor.getInfoField ("VELOCITY") == "102");
+    // D#-1 typed as D-2: all 13 semitones down; the unselected E3 stays.
+    REQUIRE (editor.enterInfo ("PITCH", "D-2", false));
+    CHECK (pitches() == std::vector<int> { 6, 2, 11, 64 });
+    // As far as they can go: the lowest is D-2 (2), so C-2 and below stops at C-2 for it, the shape kept.
+    REQUIRE (editor.enterInfo ("PITCH", "C-3", false) == false);   // (not a note: below the keyboard)
+    REQUIRE (editor.enterInfo ("PITCH", "C-2", false));
+    CHECK (pitches() == std::vector<int> { 4, 0, 9, 64 });
+    // Ctrl: all to the note.
+    REQUIRE (editor.enterInfo ("PITCH", "A1", true));
+    CHECK (pitches() == std::vector<int> { 45, 45, 45, 64 });
+    studio.undo();
+    CHECK (pitches() == std::vector<int> { 4, 0, 9, 64 });
+
+    // Velocity: by the same amount (102 -> 112: +10).
+    REQUIRE (editor.enterInfo ("VELOCITY", "112", false));
+    const auto vel = [&] (int i) { return juce::roundToInt (editor.getPart()->notes[(size_t) i].velocity * 127.0f); };
+    CHECK (vel (1) == 112);
+    CHECK (vel (0) == 64 + 10);
+    CHECK (vel (3) == 89);   // (not selected)
+    // Start: a beat later for all (2.1.1.0 -> 2.2.1.0).
+    REQUIRE (editor.enterInfo ("START", "2.2.1.0", false));
+    CHECK (editor.getPart()->notes[1].start == 1.0);
+    CHECK (editor.getPart()->notes[0].start == 3.0);
+    // Length: each a 16th longer (0.1.0.0 -> 0.1.1.0).
+    REQUIRE (editor.enterInfo ("LENGTH", "0.1.1.0", false));
+    CHECK (editor.getPart()->notes[1].length == 1.25);
+    CHECK (editor.getPart()->notes[2].length == 0.75);
+    // End: absolute with Ctrl (all end at bar 4: 8 beats into the part).
+    REQUIRE (editor.enterInfo ("END", "4.1.1.0", true));
+    for (const auto i : { 0, 1, 2 })
+        CHECK (editor.getPart()->notes[(size_t) i].start + editor.getPart()->notes[(size_t) i].length == 8.0);
+    CHECK_FALSE (editor.enterInfo ("END", "2.1.1.0", true));   // (before some of their starts: not taken)
+    CHECK_FALSE (editor.enterInfo ("LENGTH", "nothing", false));
+
+    // The notes moved down to make room: the ruler sits under the info line.
+    CHECK (editor.getNotesArea().getY() == (float) (KeyEditor::infoHeight + KeyEditor::rulerHeight));
+    CHECK (view.createComponentSnapshot (view.getLocalBounds()).isValid());
+}
+
+TEST_CASE ("0.48.0: keys are black in every finish; on the neon finishes their surrounds are the gradient", "[ui][finish]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    CHECK_FALSE (Finish::neonRings());
+    Finish::set (Finish::Type::pearlWhiteNeon, false);
+    CHECK (Finish::neonRings());
+    Finish::set (Finish::Type::pearlBlack, false);
+    CHECK (Finish::neonRings());
+
+    ParagonLookAndFeel lookAndFeel;
+    juce::TextButton key;
+    key.setLookAndFeel (&lookAndFeel);
+    key.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    key.setSize (80, 30);
+    const auto draw = [&] (Finish::Type type)
+    {
+        Finish::set (type, false);
+        juce::Image image (juce::Image::ARGB, 80, 30, true, juce::SoftwareImageType());
+        juce::Graphics g (image);
+        key.paintEntireComponent (g, true);
+        return image;
+    };
+    for (const auto type : { Finish::Type::pearlWhite, Finish::Type::pearlBlack, Finish::Type::pearlWhiteNeon })
+    {
+        const auto image = draw (type);
+        // The key's face: black (no more pink-to-orange keys).
+        const auto face = image.getPixelAt (12, 12);   // (beside the LED stripe in the middle)
+        CHECK (face.getBrightness() < 0.25f);
+        CHECK (std::abs ((int) face.getRed() - (int) face.getBlue()) < 30);
+        // The surround's edge, a third of the way down on the left: chrome grey on Pearl White,
+        // the gradient (clearly red) on the neon finishes.
+        const auto rim = image.getPixelAt (1, 15);
+        if (type == Finish::Type::pearlWhite)
+            CHECK (std::abs ((int) rim.getRed() - (int) rim.getBlue()) < 40);
+        else
+            CHECK ((int) rim.getRed() > (int) rim.getBlue() + 60);
+    }
+    key.setLookAndFeel (nullptr);
+    Finish::set (Finish::Type::pearlWhite, false);
 }

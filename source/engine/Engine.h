@@ -2,6 +2,7 @@
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include "AudioWorkers.h"
 #include "LevelMeterSource.h"
 #include "Project.h"
 
@@ -83,6 +84,7 @@ namespace pr7s
         // inserts are bypassed, and the master's volume.
         // Call after every change.
         void update (const Project&);
+        int getEventBuilds() const noexcept { return eventBuilds; }   // (0.34.2, tests) tracks' event lists built so far
 
         //======================================================================
         // Transport (any thread)
@@ -127,6 +129,10 @@ namespace pr7s
         // (the studio's loaded recordings, at the engine's sample rate).
         using AudioSource = std::function<std::shared_ptr<const juce::AudioBuffer<float>> (const juce::String& file)>;
         void setAudioSource (AudioSource source) { audioSource = std::move (source); }
+        // (0.32.0) A warped clip's sound from its start (its warp markers applied): asked for
+        // instead of the recording when a clip has markers.
+        using WarpSource = std::function<std::shared_ptr<const juce::AudioBuffer<float>> (const Part&, const TempoMap&)>;
+        void setWarpSource (WarpSource source) { warpSource = std::move (source); }
         void addAudioTrack (int trackId);
         // An FX channel (what sends give it, through its inserts) or a group
         // channel (the tracks routed to it): no instrument, no parts.
@@ -148,6 +154,23 @@ namespace pr7s
         void stopPreview();
         void setPreviewLoop (bool on) noexcept { previewLoop = on; }
         void setPreviewGain (float gain) noexcept { previewGain = gain; }
+
+        // (0.46.0) The EQ window's live sound: the channel's after its EQ (0: the master; -1: none),
+        // mono, into a lock-free ring the screen empties (`readSpectrum`: what came since, at most
+        // `into`'s size, the newest kept).
+        // (0.51.0, the manual's Channel Selection in Export Audio Mixdown) A channel export: everything plays
+        // as usual (groups sum, sends feed FX channels), but only this channel reaches the output (a track
+        // routed to a group: straight to the output, its group left out). 0: the whole mix.
+        void setExportBus (int busId) noexcept { exportBus = busId; }
+        int getExportBus() const noexcept { return exportBus.load(); }
+        void setSpectrumBus (int busId) noexcept { spectrumBus = busId; }
+        int getSpectrumBus() const noexcept { return spectrumBus.load(); }
+        int readSpectrum (std::vector<float>& into);
+        // (0.46.0) Auto Listen: this channel's sound through `design` after its EQ (a band alone),
+        // or nothing (-1). Under the lock (message thread).
+        void setListen (int busId, const EqDesign& design);
+        void clearListen();
+        int getListenBus() const noexcept { return listenBus.load(); }
         // In time with the song (0.23.0, the manual's Wait for Project Play): the preview is heard
         // only while the song plays; with `lockBeats` (the sound's length in beats at the song's
         // tempo) its place follows the song's beat from `anchorBeat` (the left locator), so a loop
@@ -190,6 +213,18 @@ namespace pr7s
         // where it was (an export or a render starts here: its first moments
         // at the levels set, not still moving from the last playback's).
         void settleMix();
+        void setCatchingNotes (bool on) { catchingNotes = on; if (! on) takeCaughtNotes(); }
+        std::vector<int> takeCaughtNotes()
+        {
+            const juce::SpinLock::ScopedLockType sl (caughtLock);
+            std::vector<int> notes (caught.begin(), caught.begin() + numCaught);
+            numCaught = 0;
+            return notes;
+        }
+        // Multi-core audio (0.34.5): helper threads beside the audio thread (0: everything on it).
+        // Message thread; waits for the block being played.
+        void setHelperThreads (int count);
+        int getHelperThreads() const noexcept { return workers.getHelpers(); }
 
         // One block measured (the audio callback calls it; tests too).
         void notePerformance (double secondsTaken, int numSamples) noexcept;
@@ -227,8 +262,15 @@ namespace pr7s
             std::shared_ptr<const juce::AudioBuffer<float>> sound;
             juce::int64 offset = 0;
             double fadeIn = 0.0, fadeOut = 0.0;
+            float gain = 1.0f;   // (0.47.0) the event's own volume
+            // (0.52.0) Auto fades: at the heard stretch's own ends (samples; 0: none), Equal Power or straight.
+            double autoIn = 0.0, autoOut = 0.0;
+            bool equalPower = true;
             // (0.29.0) The stretch of it heard (beats): another clip in front hides the rest.
             double from = 0.0, to = 1.0e12;
+            // (0.34.1) Where those are in the song's samples, worked out in update (by the same tempo
+            // map and rate as playback: they were worked out again for every clip every block).
+            juce::int64 startSample = 0, endSample = 0, fromSample = 0, toSample = 0;
         };
 
         // An automation lane being played back. Plugin knobs are set once a
@@ -276,6 +318,8 @@ namespace pr7s
             float volumeDb = 0.0f, pan = 0.0f;
             bool mute = false, soloedOut = false;   // soloedOut: another track is soloed
             int preFader = Project::maxInserts;     // the inserts before the fader (the rest after)
+            ChannelEq eqSettings;                   // (0.43.0) its EQ as set (a new rate designs it again)
+            EqProcessor eq;
             // What it is, where its sound goes, and its sends.
             enum class Role { source, group, fx };  // processed in this order: tracks, groups, FX
             Role role = Role::source;
@@ -293,13 +337,38 @@ namespace pr7s
             bool mixAutomated = false;              // a volume, pan or mute lane among them
             std::atomic<float> nowVolumeDb { 0.0f }, nowPan { 0.0f };
             std::atomic<bool> nowMute { false };
+            // (0.34.1, message thread only) What its events were last built from: the same again (a
+            // fader moved, a send, a knob: anything but its notes), the events are kept as they are,
+            // not built, sorted and swapped in again.
+            struct BuiltFrom
+            {
+                bool valid = false;
+                std::vector<Part> parts;
+                int midiChannel = 1, soloLane = -1;
+                std::optional<DrumMap> map;
+                // (0.36.0) Following the chord track: its mode, reference, and the chord track as it was.
+                FollowMode follow = FollowMode::off;
+                FollowReference reference;
+                ChordTrack chords;
+                Key fallback;
+                Voice voice = Voice::soprano;              // (0.38.0)
+                std::optional<VoicingSettings> voicing;
+                juce::String pattern;                      // (0.44.0) the pattern it performs
+            };
+            BuiltFrom builtFrom;
+            // (0.34.5) Its own work in a block may run on any core: what its effects are given, the
+            // sound before its fader for pre-fader sends, whether it played and how loud.
+            juce::MidiBuffer effectMidi;
+            juce::AudioBuffer<float> preFaderCopy;
+            bool playedThisBlock = false;
+            float blockPeak = 0.0f;
         };
 
         struct Settings
         {
             TempoMap tempo;            // the fixed tempo, or the tempo track's (0.10.0)
             int tempoVersion = 0;      // changes when the tempo does (the clock re-bases)
-            int numerator = 4, denominator = 4;
+            SignatureMap signatures;   // (0.45.0) the bars: the click's accents, the play head's signature
             bool loopOn = false;
             double loopStart = 0.0, loopEnd = 16.0;
             bool click = false;
@@ -320,7 +389,9 @@ namespace pr7s
         void prepareEffect (juce::AudioPluginInstance&);
         static int channelsFor (const juce::AudioPluginInstance&);
         int channelsNeeded (const TrackState&) const;
-        void runInserts (std::vector<Slot>&, juce::AudioBuffer<float>&, int numSamples, int fromSlot = 0, int toSlot = Project::maxInserts);
+        void runInserts (std::vector<Slot>&, juce::AudioBuffer<float>&, int numSamples, int fromSlot, int toSlot, juce::MidiBuffer& effectMidi);
+        // The block's segments (up to the cycle's end, then from its start): their song position, place in the block and length.
+        struct Segment { juce::int64 clock; int offset, length; };
         // Beats to the song's samples and back, by the tempo map (0.10.0: it was one beats-per-sample).
         struct Timing
         {
@@ -337,10 +408,33 @@ namespace pr7s
         void renderBlock (juce::AudioBuffer<float>& output, int numSamples);
         const float* inputChannel (int channel, int offset) const noexcept;
         void playClips (TrackState&, juce::int64 clock, int offset, int length, const Timing&);
-        void runSends (TrackState&, bool preFader, int numSamples, double beat);
+        static void placeClip (Clip&, const Timing&);   // (0.34.1) its samples, worked out once
+        void runSends (TrackState&, bool preFader, int numSamples, double beat, const juce::AudioBuffer<float>& from);
 
-        // The block's segments (up to the cycle's end, then from its start): their song position, place in the block and length.
-        struct Segment { juce::int64 clock; int offset, length; };
+        // (0.34.5) A block's work, split in two. A track's own work (its instrument or clips, its
+        // inserts, fader and pan) touches nothing of any other track's, so tracks of one kind run
+        // side by side on the cores. Then, on the audio thread in the tracks' order as before, each
+        // track's sends and its sound into its group or the master: the same sums in the same
+        // order, so the output is the same to the last bit.
+        struct BlockContext
+        {
+            int numSamples = 0;
+            const Segment* spans = nullptr;
+            int numSpans = 0;
+            const Timing* timing = nullptr;
+            bool playing = false;
+            double blockBeat = 0.0;
+            int liveId = 0;
+            double spanBeat (const Segment& span, int sample) const
+            {
+                return playing ? timing->beatAt ((double) (span.clock + (sample - span.offset))) : blockBeat;
+            }
+        };
+        void processTrack (TrackState&, const BlockContext&);
+        void mixTrackOut (TrackState&, const BlockContext&, juce::AudioBuffer<float>& master);
+        AudioWorkers workers;
+        std::vector<TrackState*> wave;   // (room kept by the message thread: the audio thread never grows it)
+
         std::array<Segment, 16> segments;
         int numSegments = 0;
 
@@ -349,10 +443,12 @@ namespace pr7s
         int blockNumInputs = 0, blockInputOffset = 0;
         std::vector<float> silence;   // for an input that isn't there
         AudioSource audioSource;
+        WarpSource warpSource;
         std::atomic<juce::int64> audioRecordStart { -1 };
 
         juce::CriticalSection lock;
         std::vector<std::unique_ptr<TrackState>> tracks;
+        int eventBuilds = 0;   // (message thread)
         Settings settings;
         double sampleRate = 48000.0;
         int maxBlockSize = 512;
@@ -379,6 +475,9 @@ namespace pr7s
             {
                 if (source == nullptr || engine.acceptsLiveFrom (source->getName()))
                 {
+                    // (0.35.0) Keys played, noted while VariAudio's MIDI Input asks (they still play on).
+                    if (engine.catchingNotes.load() && message.isNoteOn())
+                        engine.catchNote (message.getNoteNumber());
                     // The chord pads' trigger keys play the pads, not themselves (0.14.0).
                     if (auto* pads = engine.padPlayer.load(); pads != nullptr && pads->handle (message))
                         return;
@@ -388,11 +487,33 @@ namespace pr7s
             Engine& engine;
         };
         LiveInput liveInput { *this };
+        // (0.35.0) Keys played, for VariAudio's MIDI Input: from the devices' threads (a spin lock between
+        // them: never the audio thread), taken on the message thread.
+        std::atomic<bool> catchingNotes { false };
+        juce::SpinLock caughtLock;
+        std::array<int, 64> caught {};
+        int numCaught = 0;
+        void catchNote (int note)
+        {
+            const juce::SpinLock::ScopedLockType sl (caughtLock);
+            if (numCaught < (int) caught.size())
+                caught[(size_t) numCaught++] = note;
+        }
         std::atomic<PadPlayer*> padPlayer { nullptr };
         mutable juce::SpinLock liveFilterLock;
         juce::String liveFilter;
         juce::MidiKeyboardState keyboardState;
         juce::MidiBuffer live;
+        // Live Input (0.36.0): the live track's mode, the chord track's chords and scales as
+        // pitch-class bits by beat (built by `update`), and each key's note as it was sent
+        // (so its note off goes to the same note). Audio thread: mapLive.
+        struct LiveChord { double beat; juce::uint16 chord, scale; };
+        std::vector<LiveChord> liveChords;
+        LiveFollow liveFollowMode = LiveFollow::off;
+        int liveFollowTrack = 0;
+        std::array<std::array<juce::int16, 128>, 16> liveSent {};   // the note sent + 1 (0: none)
+        juce::MidiBuffer liveMapped;
+        void mapLive (double beat) noexcept;
 
         // Recorded notes, from the audio thread to the message thread.
         juce::AbstractFifo recordedFifo { 8192 };
@@ -420,6 +541,16 @@ namespace pr7s
         juce::SmoothedValue<float> masterGain;
         std::vector<LaneState> masterAutomation;
         int masterPreFader = Project::maxInserts;
+        ChannelEq masterEqSettings;   // (0.43.0)
+        EqProcessor masterEq;
+        // (0.46.0) The spectrum's tap and Auto Listen.
+        std::atomic<int> spectrumBus { -1 }, listenBus { -1 };
+        std::atomic<int> exportBus { 0 };   // (0.51.0) a channel export: only this channel reaches the output (0: all)
+        static constexpr int spectrumRingSize = 32768;
+        juce::AbstractFifo spectrumFifo { spectrumRingSize };
+        std::vector<float> spectrumRing = std::vector<float> ((size_t) spectrumRingSize, 0.0f);
+        EqProcessor listenEq;
+        void afterEq (int busId, float* const* channels, int numChannels, int numSamples) noexcept;   // (audio thread)
         std::vector<std::pair<int, AutomationLane>> held;   // message thread: the controls being written
         bool masterAutomated = false;   // a volume lane among them
         std::atomic<float> nowMasterVolumeDb { 0.0f };

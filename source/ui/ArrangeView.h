@@ -91,12 +91,16 @@ struct Timeline
     int tempoRowHeight() const noexcept { return juce::jmax (48, juce::roundToInt (tempoHeight * rowZoom)); }
     static constexpr int chordsHeight = 60;   // the chord track (0.16.0): chords above, the scales below
     int chordRowHeight() const noexcept { return juce::jmax (46, juce::roundToInt (chordsHeight * rowZoom)); }
+    static constexpr int signatureHeight = 34;   // the signature track (0.45.0)
+    int signatureRowHeight() const noexcept { return juce::jmax (28, juce::roundToInt (signatureHeight * rowZoom)); }
+    static constexpr int markerHeight = 40;   // the marker track (0.49.0): cycle markers above, position markers below
+    int markerRowHeight() const noexcept { return juce::jmax (32, juce::roundToInt (markerHeight * rowZoom)); }
     static constexpr int takeHeight = 52;   // a lane of takes (0.29.0): smaller than its track's row (our choice)
     int takeRowHeight() const noexcept { return juce::jmax (36, juce::roundToInt (takeHeight * rowZoom)); }
     struct Row
     {
         // (0.29.0) take: one of a track's lanes of takes (Show Lanes), under its row.
-        enum class Kind { track, lane, master, tempo, chords, take };
+        enum class Kind { track, lane, master, tempo, chords, take, signature, markers };   // (0.45.0: the signature track, under the tempo track; 0.49.0: the marker track, under it)
         Kind kind = Kind::track;
         int busId = 0;          // a track's id, or the master's (0)
         int laneIndex = -1;     // a lane: its index in the bus's automation; a take lane: its lane
@@ -209,8 +213,8 @@ public:
     std::function<void()> onPartsCopied;   // (Ctrl+V then pastes parts: MainView)
 
     // The editing tools (see above).
-    enum class Tool { select, range, split, glue, erase, zoom, mute, draw, line, play, comp };
-    static constexpr Tool tools[] = { Tool::select, Tool::comp, Tool::range, Tool::split, Tool::glue, Tool::erase, Tool::zoom, Tool::mute, Tool::draw, Tool::line, Tool::play };
+    enum class Tool { select, range, split, glue, erase, zoom, mute, draw, line, play, comp, warp };
+    static constexpr Tool tools[] = { Tool::select, Tool::comp, Tool::range, Tool::split, Tool::glue, Tool::erase, Tool::zoom, Tool::mute, Tool::draw, Tool::line, Tool::warp, Tool::play };
     static const char* toolName (Tool);
     static int toolKey (Tool);   // its number key
     void setTool (Tool);
@@ -262,7 +266,50 @@ public:
     void deleteSelectedTempoEvents();
     void selectAllTempoEvents();
     void showTempoMenu();
+    std::function<void (int partId)> onEditAudio;   // an audio clip double-clicked: VariAudio (0.34.0)
+    std::function<void (int partId)> onHarmonyVoices;   // its menu's Generate Harmony Voices (0.35.0)
+    std::function<void()> onOpenAudioAlignment;   // the part's and range's menus (0.33.0)
     std::function<void()> onOpenTempoEditor;   // the menu's Open Tempo Track Editor (0.13.0)
+    std::function<void (int partId)> onTempoDetection;   // the part menu's Tempo Detection (0.45.0)
+
+    // The signature track (0.45.0, the manual's): its events at their bars (the first, bar 1, always
+    // there), click to select, drag along the bars, DRAW (or a double-click on an empty bar) adds one
+    // there, ERASE or Delete removes, a double-click types a new signature or bar.
+    const std::vector<int>& getSignatureSelection() const noexcept { return signatureSelection; }
+    void selectSignatures (std::vector<int> bars) { signatureSelection = std::move (bars); repaint(); }
+    bool hasSelectedSignatures() const noexcept { return ! signatureSelection.empty(); }
+    void deleteSelectedSignatures();
+    void editSignature (int bar, bool adding);   // the box (an AlertWindow): signature and bar
+    void showSignatureMenu();
+    juce::Rectangle<float> getSignatureArea() const;
+    juce::Rectangle<float> getSignatureBounds (int bar) const;   // an event's label
+    int signatureAt (juce::Point<float>) const;                  // the bar of the event there, -1: none
+
+    // The marker track (0.49.0, the manual's Markers): position markers (a line and a flag with
+    // their ID and description) and cycle markers (a bar between two flags). Click selects
+    // (Shift: more), drag moves (snapped), a cycle marker's edges drag its start or end;
+    // Alt-click adds a position marker (Shift+Alt: and names it), Ctrl-drag a cycle marker
+    // (Shift+Ctrl: and names it); DRAW adds, ERASE removes (Alt: all after it); a double-click
+    // on a cycle marker sets the locators to it (Alt: zooms to it), on a position marker names
+    // it; with the Range tool, a double-click between markers selects that range on every track.
+    const std::vector<int>& getMarkerSelection() const noexcept { return markerSelection; }
+    void selectMarkers (std::vector<int> indices) { markerSelection = std::move (indices); repaint(); }
+    bool hasSelectedMarkers() const noexcept { return ! markerSelection.empty(); }
+    void deleteSelectedMarkers();
+    void editMarkerName (int index);   // a box to type its description
+    void showMarkerMenu (int index);   // -1: the track's own
+    void zoomTo (double start, double end);   // the view to a range (a cycle marker's)
+    bool selectRangeBetweenMarkers (double beat);   // the Range tool's double-click
+    juce::Rectangle<float> getMarkerArea() const;
+    juce::Rectangle<float> getMarkerBounds (int index) const;   // a marker's flag (a cycle marker's: its bar)
+    int markerAt (juce::Point<float>) const;                     // the marker there, -1: none
+    std::function<void()> onOpenMarkers;   // the menu's Markers window (Ctrl+M)
+
+    // Folder tracks (0.50.0, the manual's Folder Parts): a folder's row shows its tracks' parts as
+    // blocks (where any of them has a part; each track a strip inside). A click on a block selects
+    // every part in it (Shift: adds them), a drag moves them all along the song (Alt: copies them).
+    std::vector<std::pair<double, double>> folderBlocks (int folderId) const;   // beats, merged
+    std::vector<int> folderPartsIn (int folderId, double start, double end) const;   // part ids
     // Where an event is drawn, and the tempo row's curve area (tests).
     juce::Point<float> getTempoEventPosition (int index) const;
     juce::Rectangle<float> getTempoArea() const;
@@ -298,6 +345,15 @@ public:
     std::optional<float> parsePointValue (int busId, const pr7s::AutomationLane&, const juce::String&) const;
     // Typing (as the box's SET): the selected points' value, and for one its position. False if not one.
     bool enterPointValue (const juce::String& value, const juce::String& position);
+    // The info line (0.37.0, the manual's Value Editing Rules): the selected points changed together,
+    // relative to their own values (each by what the first one moves, in the control's units: dB,
+    // pan, %), or all to the value typed (`absolute`: Ctrl held). Start moves them in time alike.
+    bool setSelectedPointsValue (const juce::String& text, bool absolute);
+    bool setSelectedPointsStart (const juce::String& text, bool absolute);
+    void setSelectedPointsTerminator (bool);
+    std::optional<double> pointDisplay (const pr7s::AutomationLane&, float value) const;   // dB, pan -100..100, %, 0/1
+    float pointFromDisplay (const pr7s::AutomationLane&, double display) const;
+    const pr7s::AutomationLane* getSelectedPointsLane() const { return laneFor (pointSelection.busId, pointSelection.laneIndex); }
     void showPointEntry (int busId, int laneIndex, int point);
     juce::Rectangle<float> getPointBox() const;              // the event editor's (empty: fewer than two, or a step lane)
     enum class PointHandle { none, tiltLeft, tiltRight, compressLeft, compressRight, scale, move, scaleAbsolute, scaleRelative, stretch };
@@ -331,6 +387,11 @@ public:
     juce::Rectangle<float> compHandleBounds (int trackId, int index) const;
     bool compHandleDown (const juce::MouseEvent&);
     double getEdgeTarget() const noexcept { return edgeTo; }
+    // (0.32.0) A warp marker's handle under a point on a clip: its index (-1: none).
+    int warpMarkerAt (int trackId, int index, juce::Point<float>) const;
+    // Hitpoints are drawn on the selected audio clip when they're at least this far apart (px).
+    static constexpr float hitpointRoom = 4.0f;
+    void showHitpointSettings (juce::Component* target);
     juce::Rectangle<float> partRow (int trackId, int lane) const;   // the strip (y and height) a part on that lane is drawn in
     // A chord pad dropped on a track: a one-bar MIDI part at the bar (0.14.0, the manual's
     // Creating MIDI Parts from Chord Pads).
@@ -346,10 +407,15 @@ public:
     void editChordEvent (int index);                      // the chord editor box (a double-click)
     ChordEventEditor* getChordEditor() noexcept { return chordEditor.getComponent(); }
     std::function<void()> onChordsToPads;                 // (the pads' view takes them)
+    std::function<void()> onProgressions;   // the progression library (0.40.0)
     std::function<void (std::vector<int> chordEvents)> onLineIdeas;   // BASS & MELODY (0.18.0): for these chord events (none: the cycle's or all)
     std::optional<Timeline::Row> rowAt (float y) const;
     float rowTop (const Timeline::Row&) const;   // where a row is drawn now
     float trackTop (int trackId) const;
+    const std::vector<Timeline::Row>& rowsNow (std::vector<Timeline::Row>& made) const;
+    mutable const std::vector<Timeline::Row>* rowsInPaint = nullptr;   // (set while painting)
+    // What's drawn beyond what's being redrawn, so the lines crossing into it are the same (0.34.4).
+    static constexpr float rowMargin = 40.0f, curveMargin = 64.0f;
     // A MIDI file being dragged in (0.18.1): where it will land, lit in the family's gradient.
     struct DropPreview { int trackId = 0; double start = 0.0, length = 0.0; juce::String name; int moreTracks = 0;
                          std::vector<pr7s::Note> notes; };   // (the first track's, from the part's start: drawn inside it)
@@ -380,15 +446,25 @@ private:
     void showPartMenu (int trackId, int index);
 
     pr7s::Studio& studio;
+
+    juce::uint64 seenChange = 0;   // (0.34.3) the studio's change version last acted on
     Timeline& timeline;
     Selection selection;
     int selectedPartId = 0;                     // its part's id (found again after the song changes)
     Selection selectionOf (int trackId, int index);
 
-    enum class Drag { none, position, cycle, cycleMove, cycleLeft, cycleRight, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
+    enum class Drag { none, signatureMove, position, cycle, cycleMove, cycleLeft, cycleRight, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
                       erasePoints, linePoints, pointHandle, curve, segmentScale,
                       newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove, marquee,
-                      tempoPoints, tempoBand, tempoDraw, chordMove, comp, takeEdge, slip, audition };
+                      tempoPoints, tempoBand, tempoDraw, chordMove, comp, takeEdge, slip, audition, warpMarker,
+                      markerMove, markerStart, markerEnd, markerNewCycle,   // (0.49.0)
+                      folderMove };   // (0.50.0)
+    // WARP (0.32.0, the manual's Free Warp in the event display): the marker being dragged.
+    int warpPartId = 0, warpIndex = -1;
+    double warpTo = 0.0;
+    bool warpDown (const juce::MouseEvent&);
+    void warpDrag (const juce::MouseEvent&);
+    void warpUp();
     // The Comp tool (0.29.0): its drag across a lane of takes.
     int compTrack = 0, compLane = -1, compPartId = 0;
     double compFrom = 0.0, compTo = 0.0;
@@ -464,6 +540,29 @@ private:
     void editTempoEvent (int index);   // a box to type its tempo (double-click)
     std::vector<int> tempoSelection;
     std::vector<int> chordSelection;
+    std::vector<int> signatureSelection;   // (0.45.0) bars
+    int signatureDragFrom = -1, signatureDragTo = -1;
+    void paintSignature (juce::Graphics&, const Timeline::Row&);
+    std::vector<int> markerSelection;   // (0.49.0) indices into the marker track
+    std::vector<pr7s::Marker> markerOriginal, markerDragged;   // a drag's start, and where it's going (drawn)
+    double markerDownBeat = 0.0;
+    int markerDragIndex = -1;
+    bool markerNameAfter = false;   // Shift held when adding: the name box follows
+    void paintMarkers (juce::Graphics&, const Timeline::Row&);
+    void paintFolders (juce::Graphics&);
+    bool folderDown (const juce::MouseEvent&);
+    std::vector<int> folderDragIds;
+    int folderDragId = 0;
+    double folderDownBeat = 0.0, folderDelta = 0.0;
+    void paintMarkerLines (juce::Graphics&);
+    bool markerDown (const juce::MouseEvent&);
+    void markerDrag (const juce::MouseEvent&);
+    void markerUp();
+    bool markerDoubleClick (const juce::MouseEvent&);
+    const std::vector<pr7s::Marker>& shownMarkers() const;
+    bool signatureDown (const juce::MouseEvent&);
+    void signatureDrag (const juce::MouseEvent&);
+    void signatureUp();
     std::vector<pr7s::ChordEvent> chordOriginal;
     double chordDownBeat = 0.0;
     juce::Component::SafePointer<ChordEventEditor> chordEditor;

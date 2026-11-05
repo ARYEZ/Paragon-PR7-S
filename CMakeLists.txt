@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonPR7S VERSION 0.31.0 LANGUAGES C CXX)
+project(ParagonPR7S VERSION 0.52.2 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -42,11 +42,22 @@ juce_add_binary_data(ParagonPR7SFonts
 add_library(PR7SCore STATIC
     source/engine/Project.cpp
     source/engine/TempoMap.cpp
+    source/engine/Signature.cpp
+    source/engine/Markers.cpp
+    source/engine/MidiExport.cpp
+    source/engine/TempoDetect.cpp
     source/engine/Chords.cpp
+    source/engine/FollowChords.cpp
+    source/engine/Patterns.cpp
+    source/engine/Progressions.cpp
+    source/engine/Melody.cpp
+    source/engine/ChordDetect.cpp
+    source/engine/Eq.cpp
     source/engine/Lines.cpp
     source/engine/MediaBay.cpp
     source/engine/ParagonSynth.cpp
     source/engine/PluginHost.cpp
+    source/engine/AudioWorkers.cpp
     source/engine/Engine.cpp
     source/engine/Studio.cpp
     source/engine/MidiImport.cpp
@@ -55,6 +66,9 @@ add_library(PR7SCore STATIC
     source/engine/SessionLog.cpp
     source/engine/ProjectLibrary.cpp
     source/engine/Stretch.cpp
+    source/engine/Warp.cpp
+    source/engine/Align.cpp
+    source/engine/VariAudio.cpp
     source/engine/Controllers.cpp
     source/engine/DrumMaps.cpp
     source/ui/ParagonLookAndFeel.cpp
@@ -66,13 +80,22 @@ add_library(PR7SCore STATIC
     source/ui/TrackList.cpp
     source/ui/ArrangeView.cpp
     source/ui/ArrangeAutomation.cpp
+    source/ui/ArrangeSignature.cpp
+    source/ui/ArrangeMarkers.cpp
+    source/ui/MarkersPage.cpp
+    source/ui/ExportPages.cpp
+    source/ui/TempoDetectionPanel.cpp
     source/ui/KeyEditor.cpp
     source/ui/KeyEditorLanes.cpp
     source/ui/KeyEditorDrums.cpp
     source/ui/DrumMapPage.cpp
     source/ui/AutomationPanel.cpp
+    source/ui/AudioAlignmentPanel.cpp
+    source/ui/VariAudioEditor.cpp
     source/ui/MixerView.cpp
     source/ui/Inspector.cpp
+    source/ui/FollowSetupPage.cpp
+    source/ui/InfoLine.cpp
     source/ui/TrackActions.cpp
     source/ui/MainView.cpp
     source/ui/MainViewCommands.cpp
@@ -83,8 +106,13 @@ add_library(PR7SCore STATIC
     source/ui/ChordPadsView.cpp
     source/ui/ChordEventEditor.cpp
     source/ui/LinkGroupPage.cpp
+    source/ui/AutoFadesPage.cpp
+    source/ui/PluginsPage.cpp
     source/ui/TrackColours.cpp
     source/ui/LinesPage.cpp
+    source/ui/ProgressionsPage.cpp
+    source/ui/EqEditor.cpp
+    source/ui/PadsRemotePage.cpp
     source/ui/MediaBayPage.cpp
     source/ui/MediaUi.cpp
     source/ui/MediaRack.cpp

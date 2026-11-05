@@ -121,6 +121,11 @@ public:
     juce::Font getAlertWindowMessageFont() override;
     juce::Font getAlertWindowFont() override;
     // Scroll bars: a dark track and an orange thumb (JUCE's own is blue: not the family's).
+    // (0.52.2) Table headers in the family's look (JUCE's are light grey): the Hub's dark panel,
+    // Bebas titles dimmed, the sorted column's arrow in the accent.
+    void drawTableHeaderBackground (juce::Graphics&, juce::TableHeaderComponent&) override;
+    void drawTableHeaderColumn (juce::Graphics&, juce::TableHeaderComponent&, const juce::String& columnName, int columnId,
+                                int width, int height, bool isMouseOver, bool isMouseDown, int columnFlags) override;
     void drawScrollbar (juce::Graphics&, juce::ScrollBar&, int x, int y, int width, int height, bool isScrollbarVertical,
                         int thumbStartPosition, int thumbSize, bool isMouseOver, bool isMouseDown) override;
     int getDefaultScrollbarWidth() override { return 12; }
@@ -134,10 +139,10 @@ public:
     // The mockup's piano-black keys (footswitches, slot blocks, small
     // buttons): a glossy black top set in chamfered edges, the top bevel
     // catching the light, the side bevels reflecting the red glow, and a
-    // soft shadow on the metal. `bevel` is the chamfer's width. `neon`
-    // draws it pink to red to orange (the pearl black unit's keys).
+    // soft shadow on the metal. `bevel` is the chamfer's width. Black in
+    // every finish (0.48.0: the neon finishes' gradient is in the rings round it).
     static void drawPianoKey (juce::Graphics&, juce::Rectangle<float> area, float radius, float bevel,
-                              bool pressed, bool highlighted, bool neon = false);
+                              bool pressed, bool highlighted);
 
     // The mockup's LED bars: when lit, a neon tube (white-hot core inside a
     // red-orange outline, with a soft glow); when off, a dimmer solid red.

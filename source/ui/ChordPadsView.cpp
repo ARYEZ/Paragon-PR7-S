@@ -1,4 +1,6 @@
 #include "ChordPadsView.h"
+#include "engine/Patterns.h"
+#include "ui/PadsRemotePage.h"
 
 #include "ui/ChordUi.h"
 #include "ui/ParagonLookAndFeel.h"
@@ -275,7 +277,7 @@ public:
             return;
         auto& studio = view.studio;
         const auto bar = studio.getProject().beatsPerBar();
-        const auto start = std::floor (studio.getEngine().getPosition() / bar + 1.0e-9) * bar;
+        const auto start = studio.getProject().barStartAt (studio.getEngine().getPosition());
         const auto end = start + bar * (double) popular[(size_t) index].chords.size();
         studio.addProgressionToChordTrack (popular[(size_t) index].chords, start);
         std::vector<int> events;
@@ -752,6 +754,10 @@ ChordPadsView::ChordPadsView (pr7s::Studio& s) : studio (s)
                          "power chords, chugs, leads, piano parts, bass lines; hear them and put one on a track");
     ideasKey.onClick = [this] { if (onLineIdeas) onLineIdeas ({}); };
     addAndMakeVisible (ideasKey);
+    styleKey (progressionsKey);
+    progressionsKey.setTooltip ("The progression library: progressions by genre and mood, heard in the key, onto the pads or the chord track");
+    progressionsKey.onClick = [this] { if (onProgressions) onProgressions(); };
+    addAndMakeVisible (progressionsKey);
     windowKey.onClick = [this] { if (onWindowToggle) onWindowToggle(); };
     closeKey.onClick = [this] { if (onClose) onClose(); };
 
@@ -943,9 +949,15 @@ void ChordPadsView::refresh()
 {
     const auto& pads = studio.getChordPads();
     rootKey.setButtonText ("KEY: " + spokenKey (pads.key()));
-    playerKey.setButtonText (pads.octaveOffset == 0 ? juce::String ("PLAYER: BASIC")
-                                                    : "PLAYER: BASIC " + juce::String (pads.octaveOffset > 0 ? "+" : "") + juce::String (pads.octaveOffset));
-    modeKey.setButtonText (pads.overlap == ChordPads::Overlap::holdFirst ? "PLAIN: HOLD FIRST"
+    {
+        // (0.39.0) A performance chosen: its name (the pads play it); else the basic player.
+        const auto pattern = studio.getPadPattern();
+        const auto octave = pads.octaveOffset == 0 ? juce::String() : " " + juce::String (pads.octaveOffset > 0 ? "+" : "") + juce::String (pads.octaveOffset);
+        playerKey.setButtonText (pattern >= 0 ? "PERFORM: " + pr7s::patterns()[(size_t) pattern].name.toUpperCase() + octave
+                                              : "PLAYER: BASIC" + octave);
+    }
+    modeKey.setButtonText (pads.sectionsMode ? "MODE: SECTIONS"
+                         : pads.overlap == ChordPads::Overlap::holdFirst ? "PLAIN: HOLD FIRST"
                          : pads.overlap == ChordPads::Overlap::stopFirst ? "PLAIN: STOP FIRST" : "PLAIN: LEGATO");
     editorKey.setToggleState (editorShown, juce::dontSendNotification);
     circleKey.setToggleState (circleShown, juce::dontSendNotification);
@@ -1173,6 +1185,23 @@ void ChordPadsView::showPlayerMenu()
     // (0.20.2: the piano and guitar parts are in IDEAS, not a pad player; the menu says where.)
     menu.addItem (98, "Piano, Guitar and Bass Ideas... (IDEAS)", ! studio.getChordTrack().events.empty());
     menu.addSeparator();
+    // (0.39.0) PERFORM: a pad held plays its chord through a pattern, at the song's tempo.
+    menu.addSectionHeader ("PERFORM: A PAD HELD PLAYS A PATTERN");
+    const auto current = studio.getPadPattern();
+    menu.addItem (199, "Off (plain chords)", true, current < 0);
+    for (const auto& group : pr7s::patternGroups())
+    {
+        juce::PopupMenu sub;
+        auto any = false;
+        for (const auto index : pr7s::patternsInGroup (group))
+        {
+            sub.addItem (200 + index, pr7s::patterns()[(size_t) index].name + "  -  " + pr7s::patterns()[(size_t) index].description,
+                         true, index == current);
+            any = any || index == current;
+        }
+        menu.addSubMenu (group, sub, true, juce::Image(), any);
+    }
+    menu.addSeparator();
     menu.addSectionHeader ("OCTAVE");
     for (int o = -2; o <= 2; ++o)
         menu.addItem (10 + o, o == 0 ? juce::String ("0") : (o > 0 ? "+" : "") + juce::String (o), true, pads.octaveOffset == o);
@@ -1182,6 +1211,12 @@ void ChordPadsView::showPlayerMenu()
         if (safe != nullptr && chosen == 98 && safe->onLineIdeas)
         {
             safe->onLineIdeas ({});
+            return;
+        }
+        if (safe != nullptr && chosen >= 199 && chosen < 200 + (int) pr7s::patterns().size())
+        {
+            safe->studio.setPadPattern (chosen - 200);   // (199: off)
+            safe->refresh();
             return;
         }
         if (safe == nullptr || chosen < 8 || chosen > 12)
@@ -1201,10 +1236,22 @@ void ChordPadsView::showModeMenu()
     menu.addItem (2, "Legato (the first ends, but its common notes go on)", true, pads.overlap == ChordPads::Overlap::legato);
     menu.addItem (3, "Stop First (the first ends, common notes too)", true, pads.overlap == ChordPads::Overlap::stopFirst);
     menu.addSeparator();
-    menu.addItem (99, "(Pattern and Sections modes: a later release)", false, false);
+    // (0.44.0) The manual's other player modes.
+    menu.addSectionHeader ("PATTERN AND SECTIONS");
+    menu.addItem (20, "Pattern: choose one in PLAYER > PERFORM (a held pad plays it)", false, studio.getPadPattern() >= 0);
+    menu.addItem (21, "Sections: a pad's key picks the chord, the section keys play its notes (REMOTE sets the keys)", true, pads.sectionsMode);
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&modeKey),
                         [safe = juce::Component::SafePointer<ChordPadsView> (this)] (int chosen)
     {
+        if (safe != nullptr && chosen == 21)
+        {
+            auto p = safe->studio.getChordPads();
+            p.sectionsMode = ! p.sectionsMode;
+            safe->studio.getPadPlayer().releaseAll();
+            safe->studio.setChordPads (p);
+            safe->refresh();
+            return;
+        }
         if (safe == nullptr || chosen < 1 || chosen > 3)
             return;
         auto p = safe->studio.getChordPads();
@@ -1287,33 +1334,9 @@ void ChordPadsView::showDisplayMenu()
 
 void ChordPadsView::showRemoteMenu()
 {
-    const auto& pads = studio.getChordPads();
-    juce::PopupMenu menu;
-    menu.addSectionHeader ("THE KEYS THAT PLAY THE PADS");
-    for (int octave = -1; octave <= 4; ++octave)
-    {
-        const auto first = (octave + 2) * 12;
-        menu.addItem (10 + octave + 1, keyName (first, pads.flats) + " to " + keyName (first + (int) pads.pads.size() - 1, pads.flats), true,
-                      pads.triggerStart == first);
-    }
-    menu.addSeparator();
-    menu.addItem (30, "Latch Chords (a pad plays until it's played again)", true, pads.latch);
-    menu.addItem (99, "(They work while the chord pads are open. MIDI Learn and the modifiers: a later release)", false, false);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&remoteKey),
-                        [safe = juce::Component::SafePointer<ChordPadsView> (this)] (int chosen)
-    {
-        if (safe == nullptr || chosen == 0)
-            return;
-        auto p = safe->studio.getChordPads();
-        if (chosen == 30)
-            p.latch = ! p.latch;
-        else if (chosen >= 10 && chosen <= 15)
-        {
-            p.triggerStart = (chosen - 11 + 2) * 12;
-            p.triggerEnd = juce::jmin (127, p.triggerStart + (int) p.pads.size() - 1);
-        }
-        safe->studio.setChordPads (p);
-    });
+    // (0.44.0) The manual's Chord Pads Remote Settings: a page of its own, with MIDI Learn.
+    auto page = std::make_unique<PadsRemotePage> (studio);
+    juce::CallOutBox::launchAsynchronously (std::move (page), remoteKey.getScreenBounds(), nullptr);
 }
 
 void ChordPadsView::showPadMenu (int pad)
@@ -1633,27 +1656,28 @@ void ChordPadsView::resized()
     place (editorKey, 70);
     place (circleKey, 116);
 
+    // The second row: when it's narrower than the keys want (the pads beside the Inspector on one
+    // screen), every key and gap shrinks in proportion, so none runs off the edge (0.40.0).
     auto e = extendedBar.reduced (6, 4);
-    const auto placeE = [&e] (juce::TextButton& key, int width, int gap = 4)
+    const std::vector<std::tuple<juce::TextButton*, int, int>> second {
+        { &selectAllKey, 84, 10 }, { &editKey, 86, 4 }, { &fromMidiKey, 84, 4 }, { &removeKey, 74, 10 },
+        { &transposeDown, 96, 2 }, { &transposeUp, 28, 8 }, { &tensionsDown, 90, 2 }, { &tensionsUp, 28, 8 },
+        { &voicingPrevious, 84, 2 }, { &voicingNext, 28, 10 }, { &lockKey, 56, 4 }, { &adaptiveKey, 84, 4 },
+        { &referenceKey, 90, 10 }, { &fromChordTrackKey, 132, 10 },
+        { &ideasKey, 70, 4 },   // (0.20.2: beside the other chord track key)
+        { &progressionsKey, 116, 0 } };
+    auto wanted = 0;
+    for (const auto& [key, width, gapAfter] : second)
+        wanted += width + gapAfter;
+    const auto scale = juce::jmin (1.0, (double) e.getWidth() / (double) juce::jmax (1, wanted));
+    auto x = (double) e.getX();
+    for (const auto& [key, width, gapAfter] : second)
     {
-        key.setBounds (e.removeFromLeft (width));
-        e.removeFromLeft (gap);
-    };
-    placeE (selectAllKey, 84, 10);
-    placeE (editKey, 86);
-    placeE (fromMidiKey, 84);
-    placeE (removeKey, 74, 10);
-    placeE (transposeDown, 96, 2);
-    placeE (transposeUp, 28, 8);
-    placeE (tensionsDown, 90, 2);
-    placeE (tensionsUp, 28, 8);
-    placeE (voicingPrevious, 84, 2);
-    placeE (voicingNext, 28, 10);
-    placeE (lockKey, 56);
-    placeE (adaptiveKey, 84);
-    placeE (referenceKey, 90, 10);
-    placeE (fromChordTrackKey, 132, 10);
-    placeE (ideasKey, 70);   // (0.20.2: beside the other chord track key; the top row is full at 1500 px)
+        const auto left = (int) std::round (x);
+        x += width * scale;
+        key->setBounds (left, e.getY(), (int) std::round (x) - left, e.getHeight());
+        x += gapAfter * scale;
+    }
 }
 
 //==============================================================================

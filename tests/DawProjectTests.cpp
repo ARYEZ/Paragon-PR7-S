@@ -212,13 +212,18 @@ TEST_CASE ("DAWproject: a song from Cubase: tempo, tracks, mix, routing, plug-in
     CHECK (p.numerator == 3);
     CHECK_THAT (p.masterVolumeDb, WithinAbs (-6.02, 0.01));
 
-    // The tracks, in order: the folder flattened (its Pad after it), the master not a track.
-    REQUIRE (p.tracks.size() == 6);
+    // The tracks, in order: the folder (0.50.0: a folder track) with its Pad in it, the master not a track.
+    REQUIRE (p.tracks.size() == 7);
     const auto& keys = p.tracks[0];
     const auto& guitar = p.tracks[1];
     const auto& bus = p.tracks[2];
     const auto& reverb = p.tracks[3];
-    const auto& pad = p.tracks[4];
+    const auto& strings = p.tracks[4];
+    const auto& pad = p.tracks[5];
+    CHECK (strings.isFolder());
+    CHECK (strings.name == "Strings");
+    CHECK (pad.folder == strings.id);
+    CHECK (guitar.folder == 0);
     CHECK (keys.name == "Keys");
     CHECK (keys.kind == Track::Kind::instrument);
     CHECK (guitar.kind == Track::Kind::audio);
@@ -278,7 +283,7 @@ TEST_CASE ("DAWproject: a song from Cubase: tempo, tracks, mix, routing, plug-in
 
     // Clips that say their track themselves (as the official library writes them), audio through warps:
     // beat 8 for 6 beats, from 2 beats into the warped content (1.2 s at 100 bpm, the warps not stretching it).
-    const auto& loop = p.tracks[5];
+    const auto& loop = p.tracks[6];
     CHECK (loop.name == "Loop");
     REQUIRE (loop.parts.size() == 1);
     CHECK (loop.parts[0].start == 8.0);
@@ -308,7 +313,7 @@ TEST_CASE ("DAWproject: a song from Cubase: tempo, tracks, mix, routing, plug-in
     CHECK (p.tempoEvents[1].beat == 16.0);
     CHECK (p.tempoEvents[1].bpm == 140.0);
     CHECK_FALSE (p.tempoEvents[1].ramp);
-    CHECK (notes.contains ("folder \"Strings\""));
+    CHECK_FALSE (notes.contains ("flattened"));   // (0.50.0: the folder comes across)
     CHECK (notes.contains ("Channel EQ"));
     CHECK (notes.contains ("Test Synth isn't among the plug-ins"));
     CHECK_FALSE (notes.contains ("Time-stretched"));   // (the loop's warps play it at its own speed: nothing lost)
@@ -317,7 +322,7 @@ TEST_CASE ("DAWproject: a song from Cubase: tempo, tracks, mix, routing, plug-in
     Studio studio (false);
     juce::String report;
     REQUIRE (studio.importDawProject (file, report));
-    CHECK (studio.getProject().tracks.size() == 6);
+    CHECK (studio.getProject().tracks.size() == 7);   // (0.50.0: the folder is a track)
     CHECK (studio.getFile() == juce::File());
     CHECK (studio.isModified());
     CHECK (report.contains ("Test Synth"));
@@ -332,7 +337,168 @@ TEST_CASE ("DAWproject: a song from Cubase: tempo, tracks, mix, routing, plug-in
     notOne.replaceWithText ("hello");
     CHECK_FALSE (studio.importDawProject (notOne, report));
     CHECK (report.isNotEmpty());
-    CHECK (studio.getProject().tracks.size() == 6);
+    CHECK (studio.getProject().tracks.size() == 7);   // (0.50.0: the folder is a track)
     studio.getAudioFolder().deleteRecursively();
+    temp.deleteRecursively();
+}
+
+namespace
+{
+    juce::File zipSong (const juce::File& at, const char* xml)
+    {
+        juce::ZipFile::Builder builder;
+        builder.addEntry (new juce::MemoryInputStream (xml, std::strlen (xml), false), 9, "project.xml", juce::Time());
+        at.deleteFile();
+        juce::FileOutputStream out (at);
+        builder.writeToStream (out, nullptr);
+        return at;
+    }
+
+    // As the owner's song from Cubase came: a rack instrument (a MIDI track playing into an
+    // audio channel that holds the instrument), two MIDI tracks into one sampler, and the
+    // Stereo Out as a plain channel the others play into (no "master" role).
+    const char* rackXml = R"(<?xml version="1.0" encoding="UTF-8"?>
+<Project version="1.0">
+  <Application name="Cubase" version="15.0.30"/>
+  <Transport><Tempo unit="bpm" value="120" id="tempo"/><TimeSignature numerator="4" denominator="4" id="sig"/></Transport>
+  <Structure>
+    <Track contentType="notes" id="t1" name="Drums" color="#d42e2a">
+      <Channel role="regular" destination="c2" id="c1"><Volume unit="linear" value="1" id="mv1"/></Channel>
+    </Track>
+    <Track contentType="audio" id="t2" name="Superior Drummer 3">
+      <Channel role="regular" audioChannels="2" destination="c9" id="c2">
+        <Devices>
+          <Vst3Plugin deviceRole="instrument" deviceName="Superior Drummer 3" deviceVendor="Toontrack" id="d2"/>
+          <Vst3Plugin deviceRole="audioFX" deviceName="Test Comp" deviceVendor="Paragon" id="d3"/>
+        </Devices>
+        <Volume unit="decibel" value="-4" id="vol2"/>
+      </Channel>
+    </Track>
+    <Track contentType="notes" id="t3" name="Strings Hi">
+      <Channel role="regular" destination="c5" id="c3"/>
+    </Track>
+    <Track contentType="notes" id="t4" name="Strings Lo">
+      <Channel role="regular" destination="c5" id="c4"/>
+    </Track>
+    <Track contentType="audio" id="t5" name="Kontakt">
+      <Channel role="regular" destination="c9" id="c5">
+        <Devices><Vst3Plugin deviceRole="instrument" deviceName="Kontakt 7" deviceVendor="Native Instruments" id="d5"/></Devices>
+      </Channel>
+    </Track>
+    <Track contentType="audio" id="t6" name="Vox">
+      <Channel role="regular" audioChannels="1" destination="c9" id="c6"/>
+    </Track>
+    <Track contentType="audio" id="t9" name="Stereo Out">
+      <Channel role="regular" audioChannels="2" id="c9">
+        <Devices><Vst3Plugin deviceRole="audioFX" deviceName="Test Limiter" deviceVendor="Paragon" id="d9"/></Devices>
+        <Volume unit="linear" value="0.5" id="vol9"/>
+      </Channel>
+    </Track>
+  </Structure>
+  <Arrangement id="a">
+    <Lanes timeUnit="beats" id="l0">
+      <Lanes track="t1" id="l1"><Clips id="cl1">
+        <Clip time="0" duration="4" name="Beat"><Notes id="n1"><Note time="0" duration="0.25" key="36" vel="0.9"/><Note time="1" duration="0.25" key="38" vel="0.9"/></Notes></Clip>
+      </Clips></Lanes>
+      <Lanes track="t3" id="l3"><Clips id="cl3">
+        <Clip time="0" duration="4" name="Hi"><Notes id="n3"><Note time="0" duration="4" key="72" vel="0.6"/></Notes></Clip>
+      </Clips></Lanes>
+      <Lanes track="t4" id="l4"><Clips id="cl4">
+        <Clip time="4" duration="4" name="Lo"><Notes id="n4"><Note time="0" duration="4" key="48" vel="0.6"/></Notes></Clip>
+      </Clips></Lanes>
+      <Lanes track="t9" id="l9">
+        <Points id="pt9" unit="linear"><Target parameter="vol9"/><RealPoint time="0" value="0.5"/><RealPoint time="8" value="0.25"/></Points>
+      </Lanes>
+    </Lanes>
+  </Arrangement>
+</Project>)";
+}
+
+TEST_CASE ("DAWproject: rack instruments become instrument tracks with their MIDI, an unnamed output becomes the master, new tracks get new numbers", "[dawproject]")
+{
+    const auto temp = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("pr7s-dawproject-rack");
+    temp.deleteRecursively();
+    temp.createDirectory();
+    const auto file = zipSong (temp.getChildFile ("Rack.dawproject"), rackXml);
+    juce::String error;
+    const auto imported = DawProject::read (file, temp.getChildFile ("Audio"), {}, error);
+    REQUIRE (imported.has_value());
+    const auto& p = imported->project;
+    const auto notes = imported->notes.joinIntoString ("\n");
+
+    // Drums (Superior Drummer in its place, with the MIDI track's part), Strings Hi (Kontakt with both
+    // MIDI tracks' parts), Vox. No Stereo Out track: it's the master.
+    REQUIRE (p.tracks.size() == 3);
+    const auto& drums = p.tracks[0];
+    CHECK (drums.name == "Drums");
+    CHECK (drums.kind == Track::Kind::instrument);
+    CHECK (drums.instrument.kind == Instrument::Kind::plugin);
+    CHECK (drums.instrument.plugin.name == "Superior Drummer 3");
+    REQUIRE (drums.inserts.size() == 1);
+    CHECK (drums.inserts[0].plugin.name == "Test Comp");   // (not the instrument as an effect)
+    CHECK_THAT (drums.volumeDb, WithinAbs (-4.0, 0.01));   // the instrument channel's mix: what's heard
+    REQUIRE (drums.parts.size() == 1);
+    CHECK (drums.parts[0].notes.size() == 2);
+    CHECK (drums.output == 0);
+
+    const auto& strings = p.tracks[1];
+    CHECK (strings.name == "Kontakt");
+    CHECK (strings.kind == Track::Kind::instrument);
+    CHECK (strings.instrument.plugin.name == "Kontakt 7");
+    REQUIRE (strings.parts.size() == 2);
+    CHECK (notes.contains ("Strings Hi, Strings Lo all played Kontakt"));
+
+    CHECK (p.tracks[2].name == "Vox");
+    CHECK (p.tracks[2].kind == Track::Kind::audio);
+    for (const auto& track : p.tracks)
+        CHECK_FALSE (track.name == "Stereo Out");
+    CHECK_THAT (p.masterVolumeDb, WithinAbs (-6.02, 0.01));
+    REQUIRE (p.masterInserts.size() == 1);
+    CHECK (p.masterInserts[0].plugin.name == "Test Limiter");
+    CHECK (p.masterAutomation.size() == 1);
+    CHECK (notes.contains ("\"Stereo Out\" is the song's output"));
+    CHECK_FALSE (notes.contains ("plays PR7-K"));   // (every MIDI track found its instrument)
+
+    // New tracks numbered after the imported ones.
+    for (const auto& track : p.tracks)
+        CHECK (p.nextTrackId > track.id);
+
+    // In the studio: a new track is a track of its own, not an imported one found again.
+    Studio studio (false);
+    juce::String report;
+    REQUIRE (studio.importDawProject (file, report));
+    const auto before = studio.getProject().tracks.size();
+    const auto id = studio.addTrack ({});
+    REQUIRE (id > 0);
+    CHECK (studio.getProject().tracks.size() == before + 1);
+    std::set<int> ids;
+    for (const auto& track : studio.getProject().tracks)
+        CHECK (ids.insert (track.id).second);
+    CHECK (studio.getProject().findTrack (id)->instrument.kind == Instrument::Kind::paragonSynth);
+    CHECK (studio.getProject().findTrack (id)->parts.empty());
+    studio.getAudioFolder().deleteRecursively();
+    temp.deleteRecursively();
+}
+
+TEST_CASE ("DAWproject: with no routing at all, an empty Stereo Out channel is the master", "[dawproject]")
+{
+    const char* xml = R"(<?xml version="1.0" encoding="UTF-8"?>
+<Project version="1.0">
+  <Transport><Tempo unit="bpm" value="120" id="tempo"/></Transport>
+  <Structure>
+    <Track contentType="audio" id="t1" name="Guitar"><Channel role="regular" id="c1"/></Track>
+    <Track contentType="audio" id="t2" name="Stereo Out"><Channel role="regular" id="c2"><Volume unit="decibel" value="-2" id="v2"/></Channel></Track>
+  </Structure>
+  <Arrangement id="a"/>
+</Project>)";
+    const auto temp = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("pr7s-dawproject-out");
+    temp.deleteRecursively();
+    temp.createDirectory();
+    juce::String error;
+    const auto imported = DawProject::read (zipSong (temp.getChildFile ("Out.dawproject"), xml), temp.getChildFile ("Audio"), {}, error);
+    REQUIRE (imported.has_value());
+    REQUIRE (imported->project.tracks.size() == 1);
+    CHECK (imported->project.tracks[0].name == "Guitar");
+    CHECK_THAT (imported->project.masterVolumeDb, WithinAbs (-2.0, 0.01));
     temp.deleteRecursively();
 }

@@ -955,8 +955,14 @@ namespace pr7s
     std::unique_ptr<juce::XmlElement> ChordTrack::toXml() const
     {
         auto xml = std::make_unique<juce::XmlElement> ("ChordTrack");
+        if (record)
+            xml->setAttribute ("record", true);
         xml->setAttribute ("shown", shown);
         xml->setAttribute ("autoScales", autoScales);
+        if (shiftTicks != 0)
+            xml->setAttribute ("shiftTicks", shiftTicks);
+        if (! (voicing == VoicingSettings {}))
+            xml->addChildElement (voicing.toXml().release());
         for (const auto& e : events)
         {
             auto* x = xml->createNewChildElement ("Chord");
@@ -978,7 +984,11 @@ namespace pr7s
     {
         ChordTrack t;
         t.shown = xml.getBoolAttribute ("shown", false);
+        t.record = xml.getBoolAttribute ("record", false);
         t.autoScales = xml.getBoolAttribute ("autoScales", true);
+        t.shiftTicks = juce::jlimit (-480, 480, xml.getIntAttribute ("shiftTicks", 0));
+        if (const auto* v = xml.getChildByName ("Voicing"))
+            t.voicing = VoicingSettings::fromXml (*v);
         for (const auto* x : xml.getChildWithTagNameIterator ("Chord"))
             if (const auto chord = Chord::fromText (x->getStringAttribute ("chord")))
                 t.events.push_back ({ juce::jmax (0.0, x->getDoubleAttribute ("beat")), *chord });
@@ -1183,7 +1193,22 @@ namespace pr7s
             && octaveOffset == o.octaveOffset && overlap == o.overlap && layout == o.layout && startNote == o.startNote
             && rows == o.rows && columns == o.columns && primary == o.primary && secondary == o.secondary
             && showVoicing == o.showVoicing && triggerStart == o.triggerStart && triggerEnd == o.triggerEnd && latch == o.latch
-            && minor == o.minor && key() == o.key();
+            && minor == o.minor && key() == o.key() && sectionsMode == o.sectionsMode && sectionKeys == o.sectionKeys
+            && subsectionKeys == o.subsectionKeys && modifiersOn == o.modifiersOn && modifierKeys == o.modifierKeys;
+    }
+
+    juce::String ChordPads::modifierName (Modifier m)
+    {
+        switch (m)
+        {
+            case Modifier::nextVoicing:     return "Next Voicing";
+            case Modifier::previousVoicing: return "Previous Voicing";
+            case Modifier::moreTensions:    return "More Tensions";
+            case Modifier::fewerTensions:   return "Fewer Tensions";
+            case Modifier::transposeUp:     return "Transpose Up";
+            case Modifier::transposeDown:   return "Transpose Down";
+        }
+        return {};
     }
 
     juce::String ChordPads::displayName (const Chord& chord, Display display) const
@@ -1258,6 +1283,13 @@ namespace pr7s
         xml->setAttribute ("triggerStart", triggerStart);
         xml->setAttribute ("triggerEnd", triggerEnd);
         xml->setAttribute ("latch", latch);
+        // (0.44.0) Sections and the modifiers' keys.
+        const auto keysText = [] (const auto& keys) { juce::StringArray t; for (const auto k : keys) t.add (juce::String (k)); return t.joinIntoString (" "); };
+        xml->setAttribute ("sectionsMode", sectionsMode);
+        xml->setAttribute ("sectionKeys", keysText (sectionKeys));
+        xml->setAttribute ("subsectionKeys", keysText (subsectionKeys));
+        xml->setAttribute ("modifiersOn", modifiersOn);
+        xml->setAttribute ("modifierKeys", keysText (modifierKeys));
         xml->setAttribute ("count", (int) pads.size());
         for (size_t i = 0; i < pads.size(); ++i)
         {
@@ -1305,6 +1337,18 @@ namespace pr7s
         p.triggerStart = clampInt ("triggerStart", 36, 0, 127);
         p.triggerEnd = clampInt ("triggerEnd", 47, p.triggerStart, 127);
         p.latch = xml.getBoolAttribute ("latch", false);
+        const auto readKeys = [&xml] (const char* name, auto& keys)
+        {
+            const auto t = juce::StringArray::fromTokens (xml.getStringAttribute (name), " ", {});
+            if (t.size() == (int) keys.size())
+                for (size_t i = 0; i < keys.size(); ++i)
+                    keys[i] = juce::jlimit (-1, 127, t[(int) i].getIntValue());
+        };
+        p.sectionsMode = xml.getBoolAttribute ("sectionsMode");
+        readKeys ("sectionKeys", p.sectionKeys);
+        readKeys ("subsectionKeys", p.subsectionKeys);
+        p.modifiersOn = xml.getBoolAttribute ("modifiersOn");
+        readKeys ("modifierKeys", p.modifierKeys);
         p.pads = std::vector<ChordPad> ((size_t) clampInt ("count", 12, 1, 128));
         p.adaptiveReference = clampInt ("adaptiveReference", -1, -1, (int) p.pads.size() - 1);
         for (const auto* e : xml.getChildWithTagNameIterator ("Pad"))
@@ -1454,9 +1498,11 @@ namespace pr7s
                             noteOff (n, channel);
                     theirs.clear();   // (its sound is over, or carried on by the new chord)
                 }
-                for (const auto n : notes)
-                    if (std::find (sounding.begin(), sounding.end(), n) == sounding.end())
-                        noteOn (n, velocity, channel);
+                // (0.44.0) Sections mode: the pad picks the chord; the section keys play it.
+                if (! pads.sectionsMode && ! (onPerform && onPerform (notes, velocity, channel)))
+                    for (const auto n : notes)
+                        if (std::find (sounding.begin(), sounding.end(), n) == sounding.end())
+                            noteOn (n, velocity, channel);
                 padNotes[pad] = notes;
                 held.erase (std::remove (held.begin(), held.end(), pad), held.end());
                 held.push_back (pad);
@@ -1497,6 +1543,8 @@ namespace pr7s
                 return;   // (latched: plays until pressed again)
             if (! releaseHeld (pad, channel))
                 return;
+            if (held.empty() && onPerformStop)
+                onPerformStop();
         }
         if (onPadChanged)
             onPadChanged (pad, false);
@@ -1507,22 +1555,108 @@ namespace pr7s
         std::vector<int> wereHeld;
         {
             const juce::ScopedLock sl (lock);
+            sectionNotes.clear();
             for (const auto n : std::vector<int> (sounding))
                 noteOff (n, channel);
             wereHeld = held;
             held.clear();
             padNotes.clear();
             latched.clear();
+            if (onPerformStop)
+                onPerformStop();
         }
         if (onPadChanged)
             for (const auto p : wereHeld)
                 onPadChanged (p, false);
     }
 
+    std::optional<Chord> PadPlayer::chordOf (int pad) const
+    {
+        const juce::ScopedLock sl (lock);
+        return juce::isPositiveAndBelow (pad, (int) pads.pads.size()) ? pads.pads[(size_t) pad].chord : std::nullopt;
+    }
+
+    void PadPlayer::pressSection (int key, int section, bool octaveUp, juce::uint8 velocity, int channel)
+    {
+        const juce::ScopedLock sl (lock);
+        auto chord = ! held.empty() && padNotes.count (held.back()) > 0 ? padNotes[held.back()] : lastChord;
+        if (chord.empty())
+            return;
+        std::sort (chord.begin(), chord.end());
+        const auto count = (int) chord.size();
+        const auto note = juce::jlimit (0, 127, chord[(size_t) (section % count)] + 12 * (section / count) + (octaveUp ? 12 : 0));
+        if (const auto old = sectionNotes.find (key); old != sectionNotes.end())
+        {
+            noteOff (old->second, channel);
+            sectionNotes.erase (old);
+        }
+        noteOn (note, velocity, channel);
+        sectionNotes[key] = note;
+    }
+
+    void PadPlayer::releaseSection (int key, int channel)
+    {
+        const juce::ScopedLock sl (lock);
+        if (const auto found = sectionNotes.find (key); found != sectionNotes.end())
+        {
+            const auto note = found->second;
+            sectionNotes.erase (found);
+            auto stillWanted = false;
+            for (const auto& [k, n] : sectionNotes)
+                stillWanted = stillWanted || n == note;
+            if (! stillWanted)
+                noteOff (note, channel);
+        }
+    }
+
     bool PadPlayer::handle (const juce::MidiMessage& message)
     {
         if (! message.isNoteOnOrOff())
             return false;
+        const auto key = message.getNoteNumber();
+        // (0.44.0) MIDI Learn: the key is reported, not played.
+        if (learning.load())
+        {
+            if (message.isNoteOn())
+            {
+                learning = false;
+                if (onLearn)
+                    onLearn (key);
+            }
+            return true;
+        }
+        std::optional<ChordPads::Modifier> modifier;
+        auto section = -1;
+        auto octaveUp = false;
+        {
+            const juce::ScopedLock sl (lock);
+            if (pads.modifiersOn)
+                for (int m = 0; m < ChordPads::numModifiers; ++m)
+                    if (pads.modifierKeys[(size_t) m] == key)
+                        modifier = (ChordPads::Modifier) m;
+            if (pads.sectionsMode)
+                for (int s = 0; s < 5; ++s)
+                {
+                    if (pads.sectionKeys[(size_t) s] == key)
+                        section = s;
+                    if (pads.subsectionKeys[(size_t) s] == key)
+                        section = s, octaveUp = true;
+                }
+        }
+        if (modifier)
+        {
+            if (message.isNoteOn() && onModifier)
+                onModifier (*modifier);
+            return true;
+        }
+        if (section >= 0)
+        {
+            if (message.isNoteOn())
+                pressSection (key, section, octaveUp, message.getVelocity());
+            else
+                releaseSection (key);
+            return true;
+        }
         int pad;
         {
             const juce::ScopedLock sl (lock);

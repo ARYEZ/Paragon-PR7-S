@@ -14,6 +14,7 @@
 namespace
 {
     constexpr float handleGrab = 6.0f, handleCorner = 10.0f, pointGrab = 6.0f;   // (pointGrab: as ArrangeView.cpp's)
+    constexpr float scaleHandleHalfWidth = 10.0f;
 }
 
 juce::String ArrangeView::lineShapeName (LineShape shape)
@@ -414,8 +415,10 @@ int ArrangeView::curveHandleAt (int busId, int laneIndex, juce::Point<float> p) 
         const auto x1 = timeline.xForBeat (a.beat), x2 = timeline.xForBeat (b.beat);
         if (x2 - x1 < 24.0f)
             continue;
-        // The quick vertical scaling handle: the lane's top edge, over the segment's middle half.
-        if (p.y <= area.getY() + 6.0f && p.y >= area.getY() - 2.0f && p.x > x1 + (x2 - x1) * 0.25f && p.x < x2 - (x2 - x1) * 0.25f)
+        // The quick vertical scaling handle: the lane's top edge, at the segment's middle. (0.37.0: a
+        // handle 20 px wide; it was the segment's whole middle half, so a box dragged from above a
+        // curve near the top (-3 dB sits there) scaled it instead of selecting, the owner found.)
+        if (p.y <= area.getY() + 6.0f && p.y >= area.getY() - 2.0f && std::abs (p.x - (x1 + x2) * 0.5f) <= scaleHandleHalfWidth)
             return i;
         if (std::abs (b.value - a.value) < 0.02f)
             continue;
@@ -591,4 +594,116 @@ void ArrangeView::paintPointHandles (juce::Graphics& g, const Timeline::Row& row
 void ArrangeView::showAutomationFunctions (int busId, int laneIndex)
 {
     showLaneMenu (busId, laneIndex);
+}
+
+//==============================================================================
+// The info line (0.37.0, the manual's Info Line and its Value Editing Rules): the selected points
+// shown as the first one, and changed together, relative to their own values (Ctrl: all to it).
+std::optional<double> ArrangeView::pointDisplay (const pr7s::AutomationLane& lane, float value) const
+{
+    using T = pr7s::AutomationLane::Target;
+    if (isTrimming (lane))
+        return (value - 0.5f) * 2.0f * pr7s::AutomationLane::trimRange;
+    switch (lane.target)
+    {
+        case T::volume:
+        case T::send:       return juce::jmax (-60.0f, pr7s::travelToVolume (value));
+        case T::pan:        return pr7s::travelToPan (value) * 100.0f;
+        case T::mute:       return value >= 0.5f ? 1.0 : 0.0;
+        case T::instrument:
+        case T::insert:     return value * 100.0f;
+    }
+    return std::nullopt;
+}
+
+float ArrangeView::pointFromDisplay (const pr7s::AutomationLane& lane, double display) const
+{
+    using T = pr7s::AutomationLane::Target;
+    if (isTrimming (lane))
+        return juce::jlimit (0.0f, 1.0f, 0.5f + (float) display / (2.0f * pr7s::AutomationLane::trimRange));
+    switch (lane.target)
+    {
+        case T::volume:
+        case T::send:       return juce::jlimit (0.0f, 1.0f, pr7s::volumeToTravel ((float) juce::jlimit (-60.0, 6.0, display)));
+        case T::pan:        return juce::jlimit (0.0f, 1.0f, pr7s::panToTravel ((float) juce::jlimit (-100.0, 100.0, display) / 100.0f));
+        case T::mute:       return display >= 0.5 ? 1.0f : 0.0f;
+        case T::instrument:
+        case T::insert:     return juce::jlimit (0.0f, 1.0f, (float) display / 100.0f);
+    }
+    return 0.0f;
+}
+
+bool ArrangeView::setSelectedPointsValue (const juce::String& text, bool absolute)
+{
+    const auto* lane = laneFor (pointSelection.busId, pointSelection.laneIndex);
+    if (lane == nullptr || pointSelection.points.empty())
+        return false;
+    const auto typed = parsePointValue (pointSelection.busId, *lane, text);
+    if (! typed)
+        return false;
+    auto points = editPointsOf (*lane);
+    const auto first = pointSelection.points.front();
+    if (! juce::isPositiveAndBelow (first, (int) points.size()))
+        return false;
+    // Relative: each moves by what the first moves, in the control's own units (dB, pan, %).
+    const auto from = pointDisplay (*lane, points[(size_t) first].value);
+    const auto to = pointDisplay (*lane, *typed);
+    if (! from || ! to)
+        return false;
+    const auto delta = *to - *from;
+    std::vector<pr7s::AutomationPoint> chosen;
+    for (const auto i : pointSelection.points)
+        if (juce::isPositiveAndBelow (i, (int) points.size()))
+        {
+            auto& p = points[(size_t) i];
+            if (absolute)
+                p.value = *typed;
+            else if (const auto own = pointDisplay (*lane, p.value))
+                p.value = pointFromDisplay (*lane, *own + delta);
+            chosen.push_back (p);
+        }
+    commitPoints (std::move (points), chosen);
+    return true;
+}
+
+bool ArrangeView::setSelectedPointsStart (const juce::String& text, bool absolute)
+{
+    const auto* lane = laneFor (pointSelection.busId, pointSelection.laneIndex);
+    if (lane == nullptr || pointSelection.points.empty())
+        return false;
+    const auto typed = TempoEditor::parsePosition (text, studio.getProject());
+    if (! typed || *typed < 0.0)
+        return false;
+    auto points = editPointsOf (*lane);
+    const auto first = pointSelection.points.front();
+    if (! juce::isPositiveAndBelow (first, (int) points.size()))
+        return false;
+    const auto delta = *typed - points[(size_t) first].beat;
+    std::vector<pr7s::AutomationPoint> chosen;
+    for (const auto i : pointSelection.points)
+        if (juce::isPositiveAndBelow (i, (int) points.size()))
+        {
+            auto& p = points[(size_t) i];
+            p.beat = absolute ? *typed : juce::jmax (0.0, p.beat + delta);
+            chosen.push_back (p);
+        }
+    std::stable_sort (points.begin(), points.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
+    commitPoints (std::move (points), chosen);
+    return true;
+}
+
+void ArrangeView::setSelectedPointsTerminator (bool on)
+{
+    const auto* lane = laneFor (pointSelection.busId, pointSelection.laneIndex);
+    if (lane == nullptr || pointSelection.points.empty() || isTrimming (*lane))
+        return;
+    auto points = editPointsOf (*lane);
+    std::vector<pr7s::AutomationPoint> chosen;
+    for (const auto i : pointSelection.points)
+        if (juce::isPositiveAndBelow (i, (int) points.size()))
+        {
+            points[(size_t) i].terminator = on;
+            chosen.push_back (points[(size_t) i]);
+        }
+    commitPoints (std::move (points), chosen);
 }

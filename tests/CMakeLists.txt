@@ -9,6 +9,7 @@ add_executable(ParagonPR7STests
     ProjectTests.cpp
     EngineTests.cpp
     MixerTests.cpp
+    MultiCoreTests.cpp
     AudioTests.cpp
     ExportTests.cpp
     AutomationTests.cpp
@@ -34,7 +35,25 @@ add_executable(ParagonPR7STests
     AutomationEditTests.cpp
     AutomationPanelTests.cpp
     TakeTests.cpp
+    AutoFadeTests.cpp
     RenderKeyTests.cpp
+    WarpTests.cpp
+    AlignTests.cpp
+    VariAudioTests.cpp
+    VariAudio2Tests.cpp
+    FollowChordTests.cpp
+    PatternTests.cpp
+    ProgressionTests.cpp
+    MelodyTests.cpp
+    ChordDetectTests.cpp
+    EqTests.cpp
+    ChordTool2Tests.cpp
+    SignatureTests.cpp
+    InfoLinePartsTests.cpp
+    MarkerTests.cpp
+    FolderTests.cpp
+    StemExportTests.cpp
+    PerformanceTests.cpp
     UiTests.cpp
     PerfTests.cpp
     Snapshot.cpp)

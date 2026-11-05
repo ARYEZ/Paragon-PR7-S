@@ -1,6 +1,12 @@
 #include "MainView.h"
 #include "ui/DrumMapPage.h"
 #include "ui/AutomationPanel.h"
+#include "ui/AudioAlignmentPanel.h"
+#include "ui/TempoDetectionPanel.h"
+#include "ui/MarkersPage.h"
+#include "ui/ExportPages.h"
+#include "ui/ScaledHolder.h"
+#include "ui/VariAudioEditor.h"
 #include "ui/TrackActions.h"
 #include "engine/MidiImport.h"
 #include "ui/KeyCommandsPage.h"
@@ -58,7 +64,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     openButton.setTooltip ("Open a song (Ctrl+O)");
     saveButton.setTooltip ("Save the song (Ctrl+S)");
     saveAsButton.setTooltip ("Save the song under a new name (Ctrl+Shift+S)");
-    exportButton.setTooltip ("Export the mix to a WAV file: the whole song or the cycle");
+    exportButton.setTooltip ("Export: the mix or its channels (stems) as WAV files, or the MIDI tracks as a MIDI file");
     importButton.setTooltip ("Import a MIDI file (a track for each of its tracks), audio files (WAV, AIFF, FLAC, Ogg, MP3: clips at the playhead), "
                              "or a DAWproject (a song from Cubase or another studio). Or drop them on the arrangement, at a bar");
     importButton.onClick = [this]
@@ -110,7 +116,23 @@ MainView::MainView (pr7s::Studio& studioToUse)
     openButton.onClick = [this] { openProject(); };
     saveButton.onClick = [this] { saveProject(); };
     saveAsButton.onClick = [this] { saveProjectAs(); };
-    exportButton.onClick = [this] { exportMix(); };
+    exportButton.onClick = [this]
+    {
+        // (0.51.0) Audio Mixdown (the mix or channels) or a MIDI file.
+        juce::PopupMenu menu;
+        menu.addItem (1, "Audio Mixdown... (the mix, or its channels a file each)");
+        menu.addItem (2, "MIDI File...");
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&exportButton),
+                            [safe = juce::Component::SafePointer<MainView> (this)] (int chosen)
+        {
+            if (safe == nullptr)
+                return;
+            if (chosen == 1)
+                safe->exportMix();
+            else if (chosen == 2)
+                safe->exportMidiFile();
+        });
+    };
     undoButton.onClick = [this] { studio.undo(); };
     redoButton.onClick = [this] { studio.redo(); };
     editorButton.onClick = [this] { isKeyEditorOpen() ? closeKeyEditor() : openKeyEditor(); };
@@ -145,6 +167,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     inspector.onOpenInstrument = [this] (int trackId) { openInstrumentWindow (trackId); };
     keyEditor.onOpenInstrument = [this] (int trackId) { openInstrumentWindow (trackId); };   // (0.31.0: the editors' INSTRUMENT)
     inspector.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
+    inspector.onOpenEq = [this] (int busId) { openEq (busId); };
     inspector.onFindPlugins = [this] { openPlugins(); };
     // RENDER (0.17.1): the whole track, Render in Place as last time (the track menu's "as last time").
     inspector.onRender = [this] (int trackId)
@@ -243,6 +266,10 @@ MainView::MainView (pr7s::Studio& studioToUse)
     addAndMakeVisible (transport);
     addAndMakeVisible (trackList);
     addAndMakeVisible (arrange);
+    addAndMakeVisible (infoLine);
+    infoLine.onHide = [this] { toggleInfoLine(); };
+    if (auto* settings = studio.getSettings())
+        infoLineShown = settings->getBoolValue ("infoLineShown", true);
     addAndMakeVisible (tools);
     arrange.onToolChange = [this] { tools.refresh(); };
     addChildComponent (keyEditorHolder);
@@ -274,6 +301,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
         juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->setMixerInWindow (! safe->isMixerInWindow()); });
     };
     mixer.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
+    mixer.onOpenEq = [this] (int busId) { openEq (busId); };
     mixer.onFindPlugins = [this] { openPlugins(); };
     if (auto* settings = studio.getSettings())
     {
@@ -326,6 +354,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
     trackList.onLineIdeas = [this] (std::vector<int> events) { openLineIdeas (std::move (events)); };
     arrange.onLineIdeas = [this] (std::vector<int> events) { openLineIdeas (std::move (events)); };
     chordPads.onLineIdeas = [this] (std::vector<int> events) { openLineIdeas (std::move (events)); };
+    chordPads.onProgressions = [this] { openProgressions(); };
+    arrange.onProgressions = [this] { openProgressions(); };
     // Told of clicks in the work areas, to know where the keys go.
     arrange.addMouseListener (this, true);
     trackList.addMouseListener (this, true);
@@ -336,11 +366,57 @@ MainView::MainView (pr7s::Studio& studioToUse)
     trackList.onTempoMenu = [this] { arrange.showTempoMenu(); };
     arrange.onOpenTempoEditor = [this] { if (tempoEditorWindow == nullptr) toggleTempoEditor(); else tempoEditorWindow->toFront (true); };
     transport.onOpenTempoEditor = arrange.onOpenTempoEditor;
+    arrange.onEditAudio = [this] (int partId) { openVariAudio (partId); };
+    arrange.onHarmonyVoices = [this] (int partId)
+    {
+        HarmonyVoicesPage::show (studio, partId, arrange, [safe = juce::Component::SafePointer<MainView> (this)] (int firstPart, juce::String error)
+        {
+            if (error.isNotEmpty())
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Generate Harmony Voices", error);
+            else if (safe != nullptr && firstPart > 0)
+                safe->openVariAudio (firstPart);
+        });
+    };
+    arrange.onOpenAudioAlignment = [this] { if (alignmentWindow == nullptr) toggleAudioAlignment(); else alignmentWindow->toFront (true); };
+    // (0.45.0) Signatures, tap tempo, tempo detection.
+    arrange.onTempoDetection = [this] (int partId) { openTempoDetection (partId); };
+    arrange.onOpenMarkers = [this] { toggleMarkersWindow (true); };
+    trackList.onMarkerMenu = [this] { arrange.showMarkerMenu (-1); };
+    trackList.onMarkerZoom = [this] (int index)
+    {
+        const auto& markers = studio.getMarkerTrack().markers;
+        if (juce::isPositiveAndBelow (index, (int) markers.size()))
+            arrange.zoomTo (markers[(size_t) index].start, markers[(size_t) index].end);
+    };
+    trackList.onSignatureMenu = [this] { arrange.showSignatureMenu(); };
+    trackList.onInsertSignature = [this] { insertSignatureAtCursor(); };
+    transport.onInsertSignature = [this] { insertSignatureAtCursor(); };
+    transport.getSelectionStart = [this]() -> std::optional<double>
+    {
+        if (const auto range = arrange.getRange())
+            return range->start;
+        std::optional<double> first;
+        for (const auto id : arrange.getSelectedParts())
+            if (const auto where = studio.findPart (id))
+                if (const auto* track = studio.getProject().findTrack (where->first))
+                {
+                    const auto start = track->parts[(size_t) where->second].start;
+                    first = first ? juce::jmin (*first, start) : start;
+                }
+        return first;
+    };
     trackList.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
     timeline.onScrollOrZoom = [this]
     {
-        trackList.resized();
-        trackList.repaint();
+        // (0.34.1) The track list follows only the vertical: a sideways scroll (Stationary Cursor
+        // moves the view every frame while playing) left it laid out and drawn again 30 times a second.
+        if (timeline.scrollY != trackListScrollY || ! juce::approximatelyEqual (timeline.rowZoom, trackListRowZoom))
+        {
+            trackListScrollY = timeline.scrollY;
+            trackListRowZoom = timeline.rowZoom;
+            trackList.resized();
+            trackList.repaint();
+        }
         arrange.repaint();
         refreshScrollBars();
     };
@@ -402,6 +478,9 @@ void MainView::changeListenerCallback (juce::ChangeBroadcaster* source)
         repaint();
         return;
     }
+    if (studio.getChangeVersion() == seenChange)
+        return;   // (0.34.3: only the mix moved)
+    seenChange = studio.getChangeVersion();
     refreshHeader();
     refreshScrollBars();
 }
@@ -579,6 +658,14 @@ void MainView::resized()
         mediaRack->setBounds (middle.removeFromRight (juce::jmin (rightZoneWidth, juce::jmax (MediaRack::minimumWidth, middle.getWidth() / 2))));
         rightZoneEdge->setBounds (middle.removeFromRight (5));
     }
+    // (0.37.0) The info line, over the track list and the arrangement (first: the docked zone's
+    // height is worked out from what's left, so the arrangement keeps its least).
+    infoLine.setVisible (infoLineShown);
+    if (infoLineShown)
+    {
+        infoLine.setBounds (middle.removeFromTop (InfoLine::height));
+        middle.removeFromTop (2);
+    }
     zoneDivider->setVisible (false);
     if (auto* zone = dockedZone())
     {
@@ -632,7 +719,8 @@ void MainView::setDockedHeight (int height)
     auto* zone = dockedZone();
     if (zone == nullptr)
         return;
-    const auto middleHeight = getHeight() - headerHeight - transportHeight - (isWide() ? 0 : toolbarHeight) - 6;
+    const auto middleHeight = getHeight() - headerHeight - transportHeight - (isWide() ? 0 : toolbarHeight) - 6
+                            - (infoLineShown ? InfoLine::height + 2 : 0);
     zone->dockedHeight = juce::jmax (1, height);   // (0 would mean the default)
     zone->dockedHeight = heightFor (*zone, middleHeight);   // kept to what it can be
     if (auto* settings = studio.getSettings())
@@ -771,7 +859,10 @@ bool MainView::handleKey (const juce::KeyPress& key)
         if (isKeyEditorOpen() && keysToEditor && keyEditor.getPart() != nullptr)
             keyEditor.quantizeSelected();
         else if (! arrange.getSelectedParts().empty())
+        {
             studio.quantizeParts (arrange.getSelectedParts(), studio.getProject().quantizeBeats);
+            studio.quantizeAudio (arrange.getSelectedParts(), studio.getProject().quantizeBeats);   // (0.32.0: audio clips too)
+        }
         else if (isKeyEditorOpen() && keyEditor.getPart() != nullptr)
             keyEditor.quantizeSelected();
         return true;
@@ -845,6 +936,16 @@ bool MainView::handleKey (const juce::KeyPress& key)
             return keyEditor.humanizeSelected();
         return studio.humanizeParts (arrange.getSelectedParts());
     }
+    // (0.32.0) Alt+N / Alt+B on an audio track: to the next / previous hitpoint (the manual's Locating to
+    // Hitpoints). On other tracks they stay the MIDI editor's random velocities.
+    if (mods.isAltDown() && ! mods.isCommandDown() && ! mods.isShiftDown() && (letter == 'N' || letter == 'B')
+        && ! (isKeyEditorOpen() && keysToEditor))
+        if (const auto* track = studio.getProject().findTrack (studio.getSelectedTrack()); track != nullptr && track->isAudio())
+        {
+            if (const auto to = studio.nextHitpoint (track->id, studio.getEngine().getPosition(), letter == 'N'))
+                studio.setPosition (*to);
+            return true;
+        }
     // Otherwise copy, cut, paste and select all are the editor's wherever the
     // last click was, so notes copied in one part paste into another just
     // selected in the arrangement.
@@ -878,6 +979,47 @@ bool MainView::handleKey (const juce::KeyPress& key)
             studio.setPosition (left ? project.loopStart : project.loopEnd);
         return true;
     }
+    // Markers (0.49.0, the manual's keys): Insert adds one at the playhead; Shift+N / Shift+B go to the
+    // next / previous; Shift+1..9 (and the number pad's 3 to 9) to marker 1..9; Ctrl+1..9 set marker
+    // 1..9 at the playhead. Before the Ctrl keys, the tool digits and * (Shift+8 types it).
+    {
+        auto digit = code >= '1' && code <= '9' ? (int) (code - '0') : 0;
+        if (digit == 0 && mods.isShiftDown())
+        {
+            // (Where Shift+digit comes as its shifted character: a US keyboard's !@#$%^&*(.)
+            const auto shifted = juce::String ("!@#$%^&*(").indexOfChar (key.getTextCharacter());
+            if (shifted >= 0)
+                digit = shifted + 1;
+        }
+        for (int n = 3; n <= 9; ++n)
+            if (code == juce::KeyPress::numberPad0 + n && ! mods.isAnyModifierKeyDown())
+                return studio.locateMarkerId (n) || true;
+        if (code == juce::KeyPress::insertKey && ! mods.isAnyModifierKeyDown())
+        {
+            studio.addPositionMarkerAtCursor();
+            return true;
+        }
+        if (mods.isShiftDown() && ! mods.isCommandDown() && ! mods.isAltDown() && (letter == 'N' || letter == 'B'))
+        {
+            studio.locateNextMarker (letter == 'N');
+            return true;
+        }
+        if (digit > 0 && mods.isShiftDown() && ! mods.isCommandDown() && ! mods.isAltDown())
+        {
+            studio.locateMarkerId (digit);
+            return true;
+        }
+        if (digit > 0 && mods.isCommandDown() && ! mods.isShiftDown() && ! mods.isAltDown())
+        {
+            studio.setMarkerIdAtCursor (digit);
+            return true;
+        }
+        if (letter == 'M' && mods.isCommandDown() && ! mods.isShiftDown() && ! mods.isAltDown())
+        {
+            toggleMarkersWindow();   // (the manual's Markers window key)
+            return true;
+        }
+    }
     if (mods.isCommandDown())
     {
         switch (letter)
@@ -906,12 +1048,21 @@ bool MainView::handleKey (const juce::KeyPress& key)
     if (key.getKeyCode() == juce::KeyPress::F6Key && ! mods.isAltDown()) { toggleAutomationPanel(); return true; }   // (the manual's: 0.28.0)
     if (isKeyEditorOpen() && key == juce::KeyPress::escapeKey) { closeKeyEditor(); return true; }
     if (isMixerOpen() && key == juce::KeyPress::escapeKey)     { closeMixer(); return true; }
+    if (key.getKeyCode() == juce::KeyPress::spaceKey && mods.isShiftDown() && ! mods.isCommandDown() && ! mods.isAltDown())
+    {
+        transport.tap();   // (0.45.0, the manual's: Shift+Space taps the tempo)
+        return true;
+    }
     if (key == juce::KeyPress::spaceKey)                { studio.togglePlay(); return true; }
     if (key == juce::KeyPress::homeKey)                 { studio.goToStart(); return true; }
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
     {
-        if (arrange.hasSelectedTempoEvents())
+        if (arrange.hasSelectedMarkers())
+            arrange.deleteSelectedMarkers();
+        else if (arrange.hasSelectedTempoEvents())
             arrange.deleteSelectedTempoEvents();
+        else if (arrange.hasSelectedSignatures())
+            arrange.deleteSelectedSignatures();
         else if (arrange.hasSelectedChordEvents())
             arrange.deleteSelectedChordEvents();
         else
@@ -1105,10 +1256,17 @@ void MainView::showQuantizeMenu()
         const auto beats = 4.0 / denominator;
         menu.addItem (denominator, "1/" + juce::String (denominator), true, std::abs (studio.getProject().quantizeBeats - beats) < 1.0e-9);
     }
+    // (0.32.0) The manual's AudioWarp Quantize On/Off: Q on audio clips stretches them to the grid.
+    menu.addSeparator();
+    menu.addItem (1000, "AudioWarp Quantize (Q on audio: stretched to the grid, not moved)", true, studio.isAudioWarpQuantize());
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&quantizeButton),
                         [safe = juce::Component::SafePointer<MainView> (this)] (int chosen)
                         {
-                            if (safe != nullptr && chosen > 0)
+                            if (safe == nullptr || chosen <= 0)
+                                return;
+                            if (chosen == 1000)
+                                safe->studio.setAudioWarpQuantize (! safe->studio.isAudioWarpQuantize());
+                            else
                                 safe->studio.setQuantizeBeats (4.0 / chosen);
                         });
 }
@@ -1189,7 +1347,7 @@ void MainView::openEffectWindow (int busId, int slot)
         return;
     }
     const auto* track = studio.getProject().findTrack (busId);
-    auto window = std::make_unique<Windows::Instrument> (track != nullptr ? track->name : juce::String ("Master"), *instance);
+    auto window = std::make_unique<Windows::Instrument> (track != nullptr ? track->name : juce::String ("Master"), *instance, studio.getSettings());
     window->onKey = [this] (const juce::KeyPress& key) { return keyPressed (key); };   // (the studio's keys work there too)
     window->onClose = [safe = juce::Component::SafePointer<MainView> (this), instance]
     {
@@ -1561,7 +1719,8 @@ void MainView::exportMix()
     auto* page = new Windows::ExportPage (studio);
     exportPage = page;
     juce::DialogWindow::LaunchOptions options;
-    options.content.setOwned (page);
+    // (0.52.1, the owner asked) Twice the size, or as big as the screen allows (the page at its tallest: ~600 px).
+    options.content.setOwned (new ScaledPage (std::unique_ptr<juce::Component> (page), ScaledPage::scaleFor (*this, page->getWidth(), 610)));
     options.dialogTitle = "Paragon PR7-S: Export the mix";
     options.dialogBackgroundColour = juce::Colour (0xff0c0a0d);
     options.useNativeTitleBar = true;
@@ -1583,6 +1742,97 @@ void MainView::exportMix()
         {
             if (safe != nullptr)
                 safe->chooseExportFile (chosen);
+        });
+    };
+    page->onExportBatch = [this, close] (const pr7s::Studio::ExportBatch& batch)
+    {
+        close();
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this), batch]
+        {
+            if (safe != nullptr)
+                safe->chooseExportFolder (batch);
+        });
+    };
+}
+
+void MainView::chooseExportFolder (const pr7s::Studio::ExportBatch& batch)
+{
+    // (0.51.0) Several files: a folder (beside the song: its Mixdown folder, as the manual's).
+    const auto song = studio.getFile();
+    const auto start = song != juce::File() ? song.getParentDirectory().getChildFile ("Mixdown")
+                                            : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory);
+    start.createDirectory();
+    chooser = std::make_unique<juce::FileChooser> ("Export the channels into...", start);
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                          [safe = juce::Component::SafePointer<MainView> (this), batch] (const juce::FileChooser& fc)
+                          {
+                              const auto folder = fc.getResult();
+                              if (folder != juce::File())
+                                  juce::MessageManager::callAsync ([safe, batch, folder]
+                                  {
+                                      if (safe != nullptr)
+                                          safe->writeExportBatch (folder, batch);
+                                  });
+                          });
+}
+
+void MainView::writeExportBatch (const juce::File& folder, const pr7s::Studio::ExportBatch& batch)
+{
+    const auto song = studio.getFile();
+    const auto base = song != juce::File() ? song.getFileNameWithoutExtension() : juce::String ("Mix");
+    juce::String error;
+    std::vector<juce::File> written;
+    const auto ok = studio.exportBatch (folder, base, batch, error, &written);
+    const auto cancelled = studio.wasRenderCancelled();
+    studio.endProgress();
+    if (! ok && ! cancelled)
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't export",
+                                                error.isNotEmpty() ? error : "Couldn't write into " + folder.getFullPathName());
+    else if (ok)
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::NoIcon, "Exported",
+                                                juce::String ((int) written.size()) + (written.size() == 1 ? " file" : " files") + " in " + folder.getFullPathName());
+}
+
+void MainView::exportMidiFile()
+{
+    if (studio.isExporting() || exportPage != nullptr)
+        return;
+    auto* page = new MidiExportPage (studio);
+    juce::DialogWindow::LaunchOptions options;
+    options.content.setOwned (new ScaledPage (std::unique_ptr<juce::Component> (page), ScaledPage::scaleFor (*this, page->getWidth(), page->getHeight())));
+    options.dialogTitle = "Paragon PR7-S: Export a MIDI file";
+    options.dialogBackgroundColour = juce::Colour (0xff0c0a0d);
+    options.useNativeTitleBar = true;
+    options.resizable = false;
+    options.componentToCentreAround = this;
+    options.launchAsync();
+    auto close = [page]
+    {
+        if (auto* dialog = page->findParentComponentOfClass<juce::DialogWindow>())
+            dialog->exitModalState (0);
+    };
+    page->onCancel = close;
+    page->onExport = [this, close] (const pr7s::MidiExportOptions& chosen)
+    {
+        close();
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this), chosen]
+        {
+            if (safe == nullptr)
+                return;
+            const auto song = safe->studio.getFile();
+            const auto start = song != juce::File() ? song.withFileExtension (".mid")
+                                                    : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Song.mid");
+            safe->chooser = std::make_unique<juce::FileChooser> ("Export a MIDI file", start, "*.mid");
+            safe->chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
+                                        [safe, chosen] (const juce::FileChooser& fc)
+                                        {
+                                            const auto file = fc.getResult();
+                                            if (safe == nullptr || file == juce::File())
+                                                return;
+                                            juce::String error;
+                                            if (! pr7s::writeMidiFile (safe->studio.getProject(), chosen, file.withFileExtension (".mid"), error))
+                                                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't export", error);
+                                        });
         });
     };
 }
@@ -1654,11 +1904,33 @@ std::vector<pr7s::Studio::RenderSource> MainView::narrowedSources (std::vector<p
                 ranged.push_back ({ id, range->start, range->end, false });
         return ranged;
     }
+    // (0.52.1, the owner's report) Still a whole track, only rendered over the cycle: the choices for the
+    // original (disable, hide, remove) stay offered. They were greyed out while CYCLE was on.
     if (project.loopOn && project.loopEnd > project.loopStart)
         for (auto& s : sources)
             if (s.wholeTrack)
-                s = { s.trackId, project.loopStart, project.loopEnd, false };
+                s = { s.trackId, project.loopStart, project.loopEnd, true };
     return sources;
+}
+
+juce::String MainView::renderWarning (const std::vector<pr7s::Studio::RenderSource>& sources) const
+{
+    // A whole track rendered over the cycle only, with parts outside it: disabling or removing it silences those.
+    const auto& project = studio.getProject();
+    for (const auto& s : sources)
+        if (s.wholeTrack)
+            if (const auto* t = project.findTrack (s.trackId))
+                for (const auto& p : t->parts)
+                    if (! p.muted && (p.start < s.start - 1.0e-9 || p.end() > s.end + 1.0e-9))
+                    {
+                        // Bars as they're numbered on the ruler (from 1); the cycle's end bar is the last one in it.
+                        const auto map = project.signatures();
+                        const auto first = map.barAt (s.start) + 1, last = juce::jmax (first, map.barAt (s.end - 0.01) + 1);
+                        return "CYCLE is on: only bar" + (first == last ? " " + juce::String (first) : "s " + juce::String (first) + " to " + juce::String (last))
+                             + " will be rendered. " + t->name + " has parts outside the cycle: disabling or removing the track silences them too. "
+                               "Turn CYCLE off to render all of it.";
+                    }
+    return {};
 }
 
 void MainView::renderInPlace (std::vector<pr7s::Studio::RenderSource> sources, bool ask)
@@ -1672,6 +1944,7 @@ void MainView::renderInPlace (std::vector<pr7s::Studio::RenderSource> sources, b
         return;
     }
     auto* page = new Windows::RenderPage (studio, sources.front().wholeTrack);
+    page->setWarning (renderWarning (sources));
     renderPage = page;
     juce::DialogWindow::LaunchOptions options;
     options.content.setOwned (page);
@@ -1739,7 +2012,7 @@ void MainView::openInstrumentWindow (int trackId)
     const auto* track = studio.getProject().findTrack (trackId);
     if (instance == nullptr || track == nullptr || ! studio.hasEditor (instance))
         return;
-    auto window = std::make_unique<Windows::Instrument> (track->name, *instance);
+    auto window = std::make_unique<Windows::Instrument> (track->name, *instance, studio.getSettings());
     window->onKey = [this] (const juce::KeyPress& key) { return keyPressed (key); };   // (the studio's keys work there too)
     // Closed after its own click has finished (a window can't delete itself mid-click).
     window->onClose = [safe = juce::Component::SafePointer<MainView> (this), trackId]
@@ -2038,6 +2311,34 @@ void MainView::openLineIdeas (std::vector<int> chordEvents)
     linesWindow->setVisible (true);
 }
 
+void MainView::openEq (int busId)
+{
+    if (eqWindow != nullptr)
+    {
+        eqWindow->getEditor().setBus (busId);
+        eqWindow->toFront (true);
+        return;
+    }
+    eqWindow = std::make_unique<EqWindow> (studio, busId);
+    eqWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->eqWindow.reset(); }); };
+    eqWindow->centreAroundComponent (this, eqWindow->getWidth(), eqWindow->getHeight());
+    eqWindow->setVisible (true);
+}
+
+void MainView::openProgressions()
+{
+    if (progressionsWindow != nullptr)
+    {
+        progressionsWindow->toFront (true);
+        return;
+    }
+    progressionsWindow = std::make_unique<ProgressionsWindow> (studio);
+    progressionsWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->progressionsWindow.reset(); }); };
+    progressionsWindow->getPage().onIdeas = [this] (std::vector<int> events) { openLineIdeas (std::move (events)); };
+    progressionsWindow->centreAroundComponent (this, progressionsWindow->getWidth(), progressionsWindow->getHeight());
+    progressionsWindow->setVisible (true);
+}
+
 void MainView::toggleTempoEditor()
 {
     if (tempoEditorWindow != nullptr)
@@ -2062,6 +2363,11 @@ void MainView::toggleTempoEditor()
         }
         return safe->keyPressed (key);
     };
+    window->getEditor().onEditSignature = [safe = juce::Component::SafePointer<MainView> (this)] (int bar, bool adding)
+    {
+        if (safe != nullptr)
+            safe->arrange.editSignature (bar, adding);
+    };
     tempoEditorWindow = std::move (window);
 }
 
@@ -2078,6 +2384,85 @@ void MainView::toggleAutomationPanel()
         juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->automationWindow = nullptr; });
     };
     automationWindow = std::move (window);
+}
+
+void MainView::insertSignatureAtCursor()
+{
+    arrange.editSignature (studio.getProject().signatures().barAt (studio.getEngine().getPosition()), true);
+}
+
+void MainView::toggleMarkersWindow (bool openOnly)
+{
+    if (markersWindow != nullptr)
+    {
+        if (openOnly)
+            markersWindow->toFront (true);
+        else
+            markersWindow = nullptr;
+        return;
+    }
+    auto window = std::make_unique<MarkersWindow> (studio);
+    window->onClose = [safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->markersWindow = nullptr; });
+    };
+    window->getPage().onOtherKey = [this] (const juce::KeyPress& k) { return keyPressed (k); };
+    markersWindow = std::move (window);
+    markersWindow->toFront (true);
+}
+
+void MainView::openTempoDetection (int partId)
+{
+    if (tempoDetectionWindow == nullptr)
+    {
+        auto window = std::make_unique<TempoDetectionWindow> (studio, [this] { return arrange.getSelectedParts(); });
+        window->onClose = [safe = juce::Component::SafePointer<MainView> (this)]
+        {
+            juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->tempoDetectionWindow = nullptr; });
+        };
+        tempoDetectionWindow = std::move (window);
+    }
+    tempoDetectionWindow->toFront (true);
+    juce::ignoreUnused (partId);   // (the panel analyses the selected part when ANALYZE is clicked, as the manual's)
+}
+
+void MainView::toggleAudioAlignment()
+{
+    if (alignmentWindow != nullptr)
+    {
+        alignmentWindow = nullptr;
+        return;
+    }
+    auto window = std::make_unique<AudioAlignmentWindow> (studio,
+        [this] { return arrange.getSelectedParts(); },
+        [this] { return arrange.getRange(); });
+    window->onClose = [safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->alignmentWindow = nullptr; });
+    };
+    alignmentWindow = std::move (window);
+}
+
+void MainView::openVariAudio (int partId)
+{
+    if (auto* open = dynamic_cast<VariAudioWindow*> (variAudioWindow.get()))
+    {
+        open->getEditor().setPart (partId);
+        open->toFront (true);
+        return;
+    }
+    auto window = std::make_unique<VariAudioWindow> (studio, partId);
+    window->getEditor().onOtherKey = [safe = juce::Component::SafePointer<MainView> (this)] (const juce::KeyPress& key)
+    {
+        return safe != nullptr && safe->keyPressed (key);
+    };
+    window->onClose = [safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->variAudioWindow = nullptr; });
+    };
+    // (0.35.0) After Generate Harmony Voices: the editor on the first voice.
+    window->getEditor().onOpenPart = [safe = juce::Component::SafePointer<MainView> (this)] (int id) { if (safe != nullptr) safe->openVariAudio (id); };
+    variAudioWindow = std::move (window);
 }
 
 void MainView::openDrumMapSetup()
@@ -2248,4 +2633,12 @@ void MainView::toggleSpanAllScreens()
         if (const auto frame = peer->getFrameSizeIfPresent())
             area = frame->subtractedFrom (area);   // the title bar and edges inside it too
     window->setBounds (area);
+}
+
+void MainView::toggleInfoLine()
+{
+    infoLineShown = ! infoLineShown;
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("infoLineShown", infoLineShown);
+    resized();
 }

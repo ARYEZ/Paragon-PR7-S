@@ -1,4 +1,5 @@
 #include "MainView.h"
+#include "ui/AutoFadesPage.h"
 
 // Every action the studio has, as a key command (0.11.0): its category, its
 // name, its default keys (the studio's keys as they were) and what it does.
@@ -38,6 +39,32 @@ void MainView::registerCommands()
     add ("Transport.LocatorsToSelection", "Transport", "Locators to Selection", { key ('P') });
     add ("Transport.LoopSelection", "Transport", "Loop Selection", { key ('P', alt) });
     add ("Transport.TempoTrack", "Transport", "Activate Tempo Track", {}, [this] { studio.setTempoTrackOn (! studio.getProject().followsTempoTrack()); });
+    add ("Transport.TapTempo", "Transport", "Tap Tempo", { KP (KP::spaceKey, juce::ModifierKeys::shiftModifier, 0) });   // (0.45.0, the manual's)
+    add ("Edit.InsertSignature", "Edit", "Insert Time Signature Event", {}, [this] { insertSignatureAtCursor(); });   // (0.45.0: no key, as the manual's)
+    add ("Project.AddSignatureTrack", "Project", "Add Signature Track", {}, [this] { studio.addSignatureTrack(); });
+    add ("Window.TempoDetection", "Window", "Tempo Detection", {}, [this] { openTempoDetection (0); });
+    // Markers (0.49.0, the manual's keys).
+    add ("Transport.InsertMarker", "Transport", "Insert Marker", { KP (KP::insertKey) });
+    add ("Transport.InsertCycleMarker", "Transport", "Insert Cycle Marker", {}, [this] { studio.addCycleMarkerAtLocators(); });
+    add ("Transport.NextMarker", "Transport", "Locate Next Marker", { key ('N', shift) });
+    add ("Transport.PreviousMarker", "Transport", "Locate Previous Marker", { key ('B', shift) });
+    for (int n = 1; n <= 9; ++n)
+    {
+        static const char* toIds[] = { "", "Transport.ToMarker1", "Transport.ToMarker2", "Transport.ToMarker3", "Transport.ToMarker4", "Transport.ToMarker5",
+                                       "Transport.ToMarker6", "Transport.ToMarker7", "Transport.ToMarker8", "Transport.ToMarker9" };
+        static const char* setIds[] = { "", "Transport.SetMarker1", "Transport.SetMarker2", "Transport.SetMarker3", "Transport.SetMarker4", "Transport.SetMarker5",
+                                        "Transport.SetMarker6", "Transport.SetMarker7", "Transport.SetMarker8", "Transport.SetMarker9" };
+        static const char* toNames[] = { "", "To Marker 1", "To Marker 2", "To Marker 3", "To Marker 4", "To Marker 5", "To Marker 6", "To Marker 7", "To Marker 8", "To Marker 9" };
+        static const char* setNames[] = { "", "Set Marker 1", "Set Marker 2", "Set Marker 3", "Set Marker 4", "Set Marker 5", "Set Marker 6", "Set Marker 7", "Set Marker 8", "Set Marker 9" };
+        juce::Array<KP> toKeys { KP ('0' + n, juce::ModifierKeys (shift), 0) };
+        if (n >= 3)
+            toKeys.add (KP (KP::numberPad0 + n));
+        add (toIds[n], "Transport", toNames[n], toKeys, [this, n] { studio.locateMarkerId (n); });
+        add (setIds[n], "Transport", setNames[n], { KP ('0' + n, juce::ModifierKeys (ctrl), 0) }, [this, n] { studio.setMarkerIdAtCursor (n); });
+    }
+    add ("Window.Markers", "Window", "Markers", { key ('M', ctrl) });
+    add ("Project.AddMarkerTrack", "Project", "Add Marker Track", {}, [this] { studio.addMarkerTrack(); });
+    add ("Project.AutoFades", "Project", "Auto Fades Settings", {}, [this] { AutoFadesPage::show (*this, studio, 0); });   // (0.52.0)
 
     // File.
     add ("File.New", "File", "New Song", { key ('N', ctrl) });
@@ -45,6 +72,7 @@ void MainView::registerCommands()
     add ("File.Save", "File", "Save", { key ('S', ctrl) });
     add ("File.SaveAs", "File", "Save As...", { key ('S', ctrl | shift) });
     add ("File.Export", "File", "Export Audio Mixdown...", {}, [this] { exportMix(); });
+    add ("File.ExportMidi", "File", "Export MIDI File...", {}, [this] { exportMidiFile(); });   // (0.51.0)
     add ("File.Hub", "File", "Open the Hub", {}, [this] { openHub(); });
     add ("File.SaveTemplate", "File", "Save as Template...", {}, [this] { saveAsTemplate(); });
     add ("File.ImportMidi", "File", "Import MIDI File into This Song...", {}, [this] { importMidiFile (false); });
@@ -75,6 +103,16 @@ void MainView::registerCommands()
     add ("Edit.RenderInPlace", "Edit", "Render in Place (as last time)", { key ('R', alt) });   // (0.31.0, the owner's key)
     add ("Edit.RenderInPlaceSetup", "Edit", "Render in Place...", {}, [this] { renderInPlaceNow (true); });
     add ("MIDI.Quantize", "MIDI", "Quantize", { key ('Q') });
+    // (0.32.0) Alt+N / Alt+B do these on an audio track (MainView's handleKey: the velocities' keys elsewhere).
+    for (const auto forward : { true, false })
+        add (forward ? "Audio.NextHitpoint" : "Audio.PreviousHitpoint", "Audio", forward ? "Locate Next Hitpoint" : "Locate Previous Hitpoint", {},
+             [this, forward]
+             {
+                 if (const auto to = studio.nextHitpoint (studio.getSelectedTrack(), studio.getEngine().getPosition(), forward))
+                     studio.setPosition (*to);
+             });
+    add ("Audio.AudioWarpQuantize", "Audio", "AudioWarp Quantize On/Off", {}, [this] { studio.setAudioWarpQuantize (! studio.isAudioWarpQuantize()); });
+    add ("Audio.ResetWarp", "Audio", "Reset Warp", {}, [this] { studio.resetWarp (arrange.getSelectedParts()); });
     add ("Edit.WriteAll", "Edit", "Automation: Write All On/Off", { key ('W', alt) });
 
     // Range (the manual's Range Editing).
@@ -132,9 +170,26 @@ void MainView::registerCommands()
     add ("Window.MediaBay", "Window", "Open/Close MediaBay", { KP (KP::F5Key) });   // (0.21.0)
     add ("Window.RightZone", "Window", "Show/Hide Right Zone (Media Rack)", { key ('R', ctrl | alt) });   // (0.22.0)
     add ("Window.Editor", "Window", "Open/Close Editor", { key ('E', ctrl) });
+    add ("Window.InfoLine", "Window", "Show/Hide Info Line", {}, [this] { toggleInfoLine(); });   // (0.37.0)
     add ("Window.KeyCommands", "Window", "Key Commands...", {}, [this] { openKeyCommands(); });
     add ("Window.TempoEditor", "Window", "Open/Close Tempo Track Editor", { key ('T', ctrl) });
     add ("Window.AutomationPanel", "Window", "Open/Close Automation Panel", { KP (KP::F6Key) });   // (0.28.0)
+    add ("Audio.VariAudio", "Audio", "VariAudio (the selected audio clip)", {}, [this]   // (0.34.0)
+    {
+        for (const auto id : arrange.getSelectedParts())
+            if (const auto found = studio.findPart (id))
+                if (studio.getProject().findTrack (found->first)->parts[(size_t) found->second].isAudio())
+                {
+                    openVariAudio (id);
+                    return;
+                }
+    });
+    add ("Window.ChannelEq", "Window", "Channel EQ (the selected track's, or the master's)", {}, [this]   // (0.43.0)
+    {
+        openEq (studio.isMasterSelected() ? pr7s::Engine::masterBus : studio.getSelectedTrack());
+    });
+    add ("Window.Progressions", "Window", "Progression Library", {}, [this] { openProgressions(); });   // (0.40.0)
+    add ("Window.AudioAlignment", "Window", "Open/Close Audio Alignment Panel", {}, [this] { toggleAudioAlignment(); });   // (0.33.0)
     add ("Automation.Touch", "Automation", "Automation Mode: Touch", {}, [this] { studio.setAutomationMode (pr7s::Studio::AutomationSettings::Mode::touch); });
     add ("Automation.AutoLatch", "Automation", "Automation Mode: Auto-Latch", {}, [this] { studio.setAutomationMode (pr7s::Studio::AutomationSettings::Mode::autoLatch); });
     add ("Automation.CrossOver", "Automation", "Automation Mode: Cross-Over", {}, [this] { studio.setAutomationMode (pr7s::Studio::AutomationSettings::Mode::crossOver); });

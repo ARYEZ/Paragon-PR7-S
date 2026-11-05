@@ -59,13 +59,24 @@ public:
 
     void shutdown() override
     {
-        pr7s::SessionLog::note ("Closing.");
+        // (0.52.1) The watch carries on while closing (30 s, plug-ins unloading can take a while):
+        // a hang here used to leave nothing in the log.
+        pr7s::SessionLog::closing (30.0);
         stopTimer();
-        pr7s::SessionLog::stopFreezeWatch();   // (closing can take a while: plug-ins unloading)
-        window = nullptr;
-        studio = nullptr;
+        {
+            const pr7s::SessionLog::Step step ("Closing the window");
+            window = nullptr;
+        }
+        {
+            const pr7s::SessionLog::Step step ("Closing the studio (the audio device, every plug-in unloaded)");
+            studio = nullptr;
+        }
         juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
         pr7s::SessionLog::stop();
+        // (0.52.2, the owner's report: still in Task Manager after closing) Everything is saved, every
+        // plug-in unloaded and the log closed: the process ends here, not left waiting on Windows going
+        // through each plug-in's file once more as it exits (a plug-in that won't let go kept it alive).
+        pr7s::SessionLog::endProcessNow (0);
     }
 
     void unhandledException (const std::exception* e, const juce::String& sourceFile, int lineNumber) override

@@ -1,6 +1,7 @@
 #include "Studio.h"
 #include "Controllers.h"
 #include "Stretch.h"
+#include "Warp.h"
 
 #include <map>
 #include <set>
@@ -47,6 +48,38 @@ namespace pr7s
             });
         };
         padPlayer.setPads (project.chordPads);
+        // (0.44.0) A pad played: the modifiers' target; while recording chords, a chord event.
+        padPlayer.onPadChanged = [this] (int pad, bool on)
+        {
+            if (! on)
+                return;
+            lastPlayedPad = pad;
+            if (loggingChords.load() && engine.isRecording())
+                if (const auto chord = padPlayer.chordOf (pad))
+                {
+                    const std::scoped_lock l (chordLogLock);
+                    chordLog.push_back ({ engine.getPosition(), *chord });
+                }
+        };
+        padPlayer.onLearn = [weak = std::weak_ptr<bool> (alive), this] (int note)
+        {
+            juce::MessageManager::callAsync ([weak, this, note] { if (weak.lock() != nullptr) learnedKey (note); });
+        };
+        padPlayer.onModifier = [weak = std::weak_ptr<bool> (alive), this] (ChordPads::Modifier m)
+        {
+            juce::MessageManager::callAsync ([weak, this, m] { if (weak.lock() != nullptr) applyPadModifier (m); });
+        };
+        // (0.39.0) A performance: a held pad plays its chord through a pattern, in time.
+        performer = std::make_unique<PatternPerformer> ([this] (const juce::MidiMessage& m) { padPlayer.send (m); });
+        performer->songBeat = [this] { return engine.isPlaying() ? engine.getPosition() : -1.0; };
+        padPlayer.onPerform = [this] (const std::vector<int>& notes, juce::uint8 velocity, int channel)
+        {
+            if (performer->getPattern() < 0)
+                return false;
+            performer->play (notes, velocity, channel);
+            return true;
+        };
+        padPlayer.onPerformStop = [this] { performer->stop(); };
         formats.registerBasicFormats();
         writerThread.startThread();
         // Recordings before a song is saved: a folder of their own in Documents (tests: a temporary one).
@@ -57,14 +90,26 @@ namespace pr7s
                                                .getChildFile ("PR7S-test-" + juce::String (juce::Random::getSystemRandom().nextInt64()));
         engine.setAudioSource ([this] (const juce::String& name) -> std::shared_ptr<const juce::AudioBuffer<float>>
         {
-            if (auto data = getAudio (name))
+            if (auto data = getHeardAudio (name))   // (0.34.0: VariAudio's edits heard)
                 return { data, &data->sound };
             return nullptr;
         });
+        engine.setWarpSource ([this] (const Part& part, const TempoMap& tempo) { return getWarpedSound (part, tempo); });
         if (withDevices)
         {
             settings = std::make_unique<juce::PropertiesFile> (settingsOptions());
             host = std::make_unique<PluginHost> (settings.get());
+            // (0.44.0) The user's patterns, then the pads' pattern as last time (0.39.0).
+            if (const auto xml = juce::parseXML (settings->getValue ("userPatterns")))
+            {
+                std::vector<Pattern> mine;
+                for (auto* p : xml->getChildWithTagNameIterator ("Pattern"))
+                    if (auto pattern = patternFromXml (*p))
+                        mine.push_back (std::move (*pattern));
+                setUserPatterns (std::move (mine));
+            }
+            performer->setPattern (patternNamed (settings->getValue ("padPattern")));
+            tapMode = (TapMode) juce::jlimit (0, (int) TapMode::displayOnly, settings->getIntValue ("tapTempoMode", 0));
 
             // Output only for now (audio recording is a later stage); every
             // MIDI input on, so a keyboard plugged in just plays.
@@ -88,13 +133,48 @@ namespace pr7s
             engine.prepare (48000.0, 512);
         }
         library = std::make_unique<ProjectLibrary> (settings.get());
+        multiCoreAudio = withDevices;
+        applyMultiCore();
 
         newProject();
         startTimerHz (30);
     }
 
+    bool Studio::getMultiCoreAudio() const
+    {
+        return settings != nullptr ? settings->getBoolValue ("multiCoreAudio", true) : multiCoreAudio;
+    }
+
+    void Studio::setMultiCoreAudio (bool on)
+    {
+        if (settings != nullptr)
+        {
+            settings->setValue ("multiCoreAudio", on);
+            settings->saveIfNeeded();
+        }
+        multiCoreAudio = on;
+        applyMultiCore();
+        announce();
+    }
+
+    void Studio::applyMultiCore()
+    {
+        // A helper per core but the audio thread's. (PARAGON_HELPERS=<n>: that many, for running the
+        // tests on several cores.)
+        auto helpers = getMultiCoreAudio() ? AudioWorkers::helpersForThisComputer() : 0;
+        if (const auto forced = juce::SystemStats::getEnvironmentVariable ("PARAGON_HELPERS", {}); forced.isNotEmpty())
+            helpers = forced.getIntValue();
+        engine.setHelperThreads (helpers);
+        SessionLog::note ("Multi-core audio: " + (helpers > 0 ? juce::String (helpers) + " helper threads beside the audio thread ("
+                                                                 + juce::String (juce::SystemStats::getNumPhysicalCpus()) + " cores)"
+                                                              : juce::String ("off (everything on the audio thread)")));
+    }
+
     Studio::~Studio()
     {
+        padPlayer.onPerform = nullptr;
+        padPlayer.onPerformStop = nullptr;
+        performer.reset();   // (its timer sends through the pad player)
         mediaBay.reset();   // (its scan asks the engine whether it plays)
         engine.stopPreview();
         stopPreview();
@@ -102,7 +182,10 @@ namespace pr7s
         engine.setPadPlayer (nullptr);
         // A save still writing finishes first (its call back here is dropped).
         saveAlive->store (false);
-        saver.removeAllJobs (false, 60000);
+        {
+            const SessionLog::Step step ("Waiting for a save still writing");
+            saver.removeAllJobs (false, 60000);
+        }
         stopTimer();
         unwatchAll();
         engine.onPluginGoing = nullptr;   // (the watchers are gone first)
@@ -115,11 +198,13 @@ namespace pr7s
         writerThread.stopThread (2000);
         if (withDevices)
         {
+            const SessionLog::Step step ("Closing the audio device and MIDI inputs");
             devices.removeChangeListener (this);
             devices.removeAudioCallback (&engine);
             devices.removeMidiInputDeviceCallback ({}, &engine.getLiveInput());
             devices.closeAudioDevice();
         }
+        // (The plug-ins are unloaded with the engine, after this: each a step of its own.)
     }
 
     void Studio::reloadAudioDevice()
@@ -129,6 +214,7 @@ namespace pr7s
         // (a size set in its own panel replaces one it no longer offers).
         if (devices.getCurrentAudioDevice() == nullptr)
             return;
+        const SessionLog::Step step ("Closing and opening the audio device again");
         devices.closeAudioDevice();
         devices.restartLastAudioDevice();
     }
@@ -149,7 +235,7 @@ namespace pr7s
         // A new sample rate: the recordings are loaded again at it.
         if (! juce::approximatelyEqual (audioCacheRate, engine.getSampleRate()) && exportJob == nullptr)
         {
-            audioCache.clear();
+            forgetAllAudio();
             engine.update (project);
         }
         if (settings == nullptr)
@@ -177,7 +263,7 @@ namespace pr7s
         if (undoable)
             recordUndoState();
         updateLiveTrack();
-        sendChangeMessage();
+        announce();
     }
 
     bool Studio::hasEditor (const juce::AudioProcessor* plugin)
@@ -220,16 +306,35 @@ namespace pr7s
 
     void Studio::recordUndoState()
     {
-        // A copy without the instruments' settings (they aren't undone, and can be large).
-        auto state = project;
-        for (auto& track : state.tracks)
+        // A copy without the plug-ins' settings (they aren't undone, and can be several MB each:
+        // since 0.34.1 they're moved out of the song while it's copied, not copied and thrown away),
+        // nor what undo never puts back (the drum maps, the hand-edited hitpoints).
+        std::vector<juce::MemoryBlock> keptStates;
+        const auto takeOut = [&keptStates] (juce::MemoryBlock& state) { keptStates.push_back (std::move (state)); state.reset(); };
+        for (auto& track : project.tracks)
         {
-            track.instrument.state.reset();
+            takeOut (track.instrument.state);
             for (auto& insert : track.inserts)
-                insert.state.reset();
+                takeOut (insert.state);
         }
-        for (auto& insert : state.masterInserts)
-            insert.state.reset();
+        for (auto& insert : project.masterInserts)
+            takeOut (insert.state);
+        auto drumMaps = std::move (project.drumMaps);
+        auto hitpointEdits = std::move (project.hitpointEdits);
+        project.drumMaps.clear();
+        project.hitpointEdits.clear();
+        auto state = project;
+        project.drumMaps = std::move (drumMaps);
+        project.hitpointEdits = std::move (hitpointEdits);
+        auto next = keptStates.begin();
+        for (auto& track : project.tracks)
+        {
+            track.instrument.state = std::move (*next++);
+            for (auto& insert : track.inserts)
+                insert.state = std::move (*next++);
+        }
+        for (auto& insert : project.masterInserts)
+            insert.state = std::move (*next++);
         undoStates.resize ((size_t) (undoIndex + 1));
         undoStates.push_back (std::move (state));
         if ((int) undoStates.size() > maxUndoSteps)
@@ -256,14 +361,20 @@ namespace pr7s
         project.tempoEvents = state.tempoEvents;
         project.tempoTrackShown = state.tempoTrackShown;
         project.chordTrack = state.chordTrack;   // (0.16.0: its chords and scales are undo steps)
+        project.variAudio = state.variAudio;     // (0.34.0)
         project.linkGroups = state.linkGroups;   // (0.17.0)
         project.numerator = state.numerator;
         project.denominator = state.denominator;
+        project.signatureChanges = state.signatureChanges;   // (0.45.0)
+        project.signatureTrackShown = state.signatureTrackShown;
+        project.markerTrack.markers = state.markerTrack.markers;   // (0.49.0: marker edits are undo steps;
+        project.markerTrack.shown = state.markerTrack.shown;       //  the lock and the window's settings aren't)
         project.loopOn = state.loopOn;
         project.loopStart = state.loopStart;
         project.loopEnd = state.loopEnd;
         project.click = state.click;
         project.masterVolumeDb = state.masterVolumeDb;
+        project.masterEq = state.masterEq;
         for (auto& track : project.tracks)
             if (const auto* then = state.findTrack (track.id))
             {
@@ -282,6 +393,16 @@ namespace pr7s
                 track.quickControls = then->quickControls;
                 track.midiChannel = then->midiChannel;
                 track.linkGroup = then->linkGroup;
+                track.follow = then->follow;                     // (0.36.0)
+                track.followReference = then->followReference;
+                track.liveFollow = then->liveFollow;
+                track.followVoice = then->followVoice;           // (0.38.0)
+                track.followVoicing = then->followVoicing;
+                track.eq = then->eq;                             // (0.43.0)
+                track.performPattern = then->performPattern;     // (0.44.0)
+                track.folder = then->folder;                     // (0.50.0)
+                track.folderGroup = then->folderGroup;
+                track.folderData = then->folderData;
             }
         restoreLanes (project.masterAutomation, state.masterAutomation);
         // The tracks' order as it was (tracks added since keep their places after them).
@@ -294,6 +415,7 @@ namespace pr7s
         };
         std::stable_sort (project.tracks.begin(), project.tracks.end(),
                           [&] (const Track& a, const Track& b) { return placeIn (a.id) < placeIn (b.id); });
+        project.tidyFolders();
         changed (false);
     }
 
@@ -502,6 +624,7 @@ namespace pr7s
             if (const auto* t = project.findTrack (other); t != nullptr && slot < (int) t->sends.size() && t->sends[(size_t) slot].target != 0)
                 setSendLevel (other, slot, linkedLevel (t->sends[(size_t) slot].levelDb, before, after, -60.0f, 6.0f), undoable);
         });
+        mixOnly (! written);
         changed (undoable && ! written);
     }
 
@@ -552,7 +675,11 @@ namespace pr7s
         for (int slot = 0; slot < (int) it->inserts.size(); ++slot)
             effectGoing (trackId, slot);
         const auto wasChannel = it->isChannel();
+        const auto parentFolder = it->folder;
         project.tracks.erase (it);
+        for (auto& track : project.tracks)
+            if (track.folder == trackId)
+                track.folder = parentFolder;   // (0.50.0: a folder removed: its tracks stay, in the folder it was in)
         pruneLinkGroups();   // (a link group left with one channel goes)
         engine.removeTrack (trackId);
         if (wasChannel)   // what was sent or routed to it: back to the master, no send
@@ -761,9 +888,188 @@ namespace pr7s
         }
         const auto at = std::find_if (staying.begin(), staying.end(), [anchor] (const Track& t) { return t.id == anchor; });
         const auto offset = std::distance (staying.begin(), anchor == 0 ? staying.end() : at);
+        // (0.50.0) Where they land decides their folder: under an open folder's row, in it; else in the
+        // folder of the track above (the top level at the top). A folder moves with its tracks.
+        auto landed = 0;
+        if (offset > 0)
+        {
+            const auto& above = staying[(size_t) offset - 1];
+            landed = above.isFolder() && above.folderOpen ? above.id : above.folder;
+        }
+        std::vector<int> movedIds;
+        for (const auto& t : moving)
+            movedIds.push_back (t.id);
         staying.insert (staying.begin() + offset, std::make_move_iterator (moving.begin()), std::make_move_iterator (moving.end()));
         tracks = std::move (staying);
+        for (const auto id : movedIds)
+            if (auto* t = project.findTrack (id))
+            {
+                // (only those whose folder isn't among the moved: a folder's tracks keep their folder)
+                if (std::find (movedIds.begin(), movedIds.end(), t->folder) == movedIds.end() && ! project.isInFolder (landed, t->id) && landed != t->id)
+                {
+                    leaveFolderGroup (*t);
+                    t->folder = landed;
+                    joinFolderGroup (*t);
+                }
+            }
+        project.tidyFolders();
         changed();
+    }
+
+    //==========================================================================
+    // Folder tracks (0.50.0).
+    int Studio::folderGroupOf (int trackId) const
+    {
+        const auto* track = project.findTrack (trackId);
+        for (const auto* up = track != nullptr ? project.findTrack (track->folder) : nullptr; up != nullptr; up = project.findTrack (up->folder))
+            if (up->folderGroup)
+                return up->id;
+        return 0;
+    }
+
+    void Studio::joinFolderGroup (Track& track)
+    {
+        // Into a folder with its group channel: its output goes to that group (the manual's).
+        if (track.isChannel() && ! track.isFolder())
+            return;
+        if (track.isFolder() && track.folderGroup)
+            return;   // (a folder's own group goes to the master: groups can't feed groups here)
+        if (const auto group = folderGroupOf (track.id); group != 0 && ! track.isFolder())
+            track.output = group;
+    }
+
+    void Studio::leaveFolderGroup (Track& track)
+    {
+        // Out of a folder's group: back to the master if it went to that group.
+        if (const auto group = folderGroupOf (track.id); group != 0 && track.output == group)
+            track.output = 0;
+    }
+
+    int Studio::addFolderTrack (const juce::String& name, bool withGroup)
+    {
+        int number = 1;
+        for (const auto& other : project.tracks)
+            if (other.isFolder())
+                ++number;
+        Track track;
+        track.id = project.nextTrackId++;
+        track.kind = Track::Kind::folder;
+        track.colour = trackColour ((int) project.tracks.size());
+        track.name = name.isNotEmpty() ? name : "Folder " + juce::String (number);
+        track.folderGroup = withGroup;
+        project.tracks.push_back (track);
+        engine.addChannel (track.id, withGroup);
+        selectTrack (track.id);
+        changed();
+        return track.id;
+    }
+
+    int Studio::moveTracksToNewFolder (std::vector<int> trackIds, bool withGroup)
+    {
+        // (The manual's Move Selected Tracks to New Folder: the folder where the first of them was.)
+        trackIds.erase (std::remove_if (trackIds.begin(), trackIds.end(), [this] (int id) { return project.findTrack (id) == nullptr; }), trackIds.end());
+        if (trackIds.empty())
+            return 0;
+        int firstIndex = (int) project.tracks.size(), parent = 0;
+        for (int i = 0; i < (int) project.tracks.size(); ++i)
+            if (std::find (trackIds.begin(), trackIds.end(), project.tracks[(size_t) i].id) != trackIds.end() && i < firstIndex)
+                firstIndex = i, parent = project.tracks[(size_t) i].folder;
+        int number = 1;
+        for (const auto& other : project.tracks)
+            if (other.isFolder())
+                ++number;
+        Track folder;
+        folder.id = project.nextTrackId++;
+        folder.kind = Track::Kind::folder;
+        folder.colour = project.tracks[(size_t) firstIndex].colour;
+        folder.name = "Folder " + juce::String (number);
+        folder.folder = parent;
+        folder.folderGroup = withGroup;
+        project.tracks.insert (project.tracks.begin() + firstIndex, folder);
+        engine.addChannel (folder.id, withGroup);
+        for (const auto id : trackIds)
+            if (auto* t = project.findTrack (id); t != nullptr && ! (t->isFolder() && project.isInFolder (parent, t->id)))
+            {
+                // (a folder chosen with one of its own tracks: the folder moves, its tracks with it)
+                if (std::find (trackIds.begin(), trackIds.end(), t->folder) != trackIds.end())
+                    continue;
+                leaveFolderGroup (*t);
+                t->folder = folder.id;
+                joinFolderGroup (*t);
+            }
+        project.tidyFolders();
+        selectTrack (folder.id);
+        changed();
+        return folder.id;
+    }
+
+    bool Studio::setTracksFolder (std::vector<int> trackIds, int folderId)
+    {
+        const auto* target = project.findTrack (folderId);
+        if (folderId != 0 && (target == nullptr || ! target->isFolder()))
+            return false;
+        auto any = false;
+        for (const auto id : trackIds)
+            if (auto* t = project.findTrack (id); t != nullptr && t->folder != folderId && id != folderId && ! project.isInFolder (folderId, id))
+            {
+                leaveFolderGroup (*t);
+                t->folder = folderId;
+                joinFolderGroup (*t);
+                any = true;
+            }
+        if (! any)
+            return false;
+        // At the end of the folder (after its last track), or, out of folders, kept where they are.
+        if (folderId != 0)
+        {
+            std::vector<Track> moving, staying;
+            for (auto& t : project.tracks)
+                (std::find (trackIds.begin(), trackIds.end(), t.id) != trackIds.end() ? moving : staying).push_back (std::move (t));
+            project.tracks = std::move (staying);
+            int last = -1;
+            for (int i = 0; i < (int) project.tracks.size(); ++i)
+                if (project.tracks[(size_t) i].id == folderId || project.isInFolder (project.tracks[(size_t) i].id, folderId))
+                    last = i;
+            project.tracks.insert (project.tracks.begin() + (last + 1), std::make_move_iterator (moving.begin()), std::make_move_iterator (moving.end()));
+        }
+        project.tidyFolders();
+        changed();
+        return true;
+    }
+
+    void Studio::setFolderOpen (int folderId, bool open)
+    {
+        auto* folder = project.findTrack (folderId);
+        if (folder == nullptr || ! folder->isFolder() || folder->folderOpen == open)
+            return;
+        folder->folderOpen = open;
+        changed (false);
+    }
+
+    void Studio::setFolderGroup (int folderId, bool on)
+    {
+        auto* folder = project.findTrack (folderId);
+        if (folder == nullptr || ! folder->isFolder() || folder->folderGroup == on)
+            return;
+        if (! on)
+            for (auto& t : project.tracks)
+                if (t.output == folderId)
+                    t.output = 0;   // (what went to its group: back to the master)
+        folder->folderGroup = on;
+        if (on)
+            for (const auto id : project.folderMembers (folderId, true))
+                if (auto* t = project.findTrack (id); t != nullptr && t->output == 0 && folderGroupOf (id) == folderId)
+                    joinFolderGroup (*t);
+        changed();
+    }
+
+    void Studio::setFolderData (int folderId, Track::FolderData data)
+    {
+        auto* folder = project.findTrack (folderId);
+        if (folder == nullptr || ! folder->isFolder() || folder->folderData == data)
+            return;
+        folder->folderData = data;
+        changed (false);
     }
 
     int Studio::duplicateTrack (int trackId)
@@ -853,6 +1159,7 @@ namespace pr7s
             if (track == nullptr || track->isChannel() || track->disabled == disabled || track->frozen)
                 continue;   // (a frozen track's plugins are already unloaded)
             any = true;
+            const SessionLog::Step step ((disabled ? "Disabling the track " : "Enabling the track ") + track->name);
             if (disabled)
             {
                 unloadPlugins (*track);
@@ -876,6 +1183,7 @@ namespace pr7s
         // Its settings kept (as saving does), then its plugins unloaded.
         if (auto* instrument = engine.getInstrument (id))
         {
+            const SessionLog::Step step ("Asking " + instrument->getName() + " for its settings");
             juce::MemoryBlock state;
             instrument->getStateInformation (state);
             track.instrument.state = std::move (state);
@@ -883,6 +1191,7 @@ namespace pr7s
         for (int slot = 0; slot < (int) track.inserts.size(); ++slot)
             if (auto* effect = engine.getEffect (id, slot))
             {
+                const SessionLog::Step step ("Asking " + effect->getName() + " for its settings");
                 juce::MemoryBlock state;
                 effect->getStateInformation (state);
                 track.inserts[(size_t) slot].state = std::move (state);
@@ -979,7 +1288,7 @@ namespace pr7s
             return false;
         track = project.findTrack (trackId);
         const auto name = "Freeze/" + file.getFileName();
-        audioCache.erase (name);
+        forgetAudio (name);
         unloadPlugins (*track);
         track->frozen = true;
         track->freezeFile = name;
@@ -1000,7 +1309,7 @@ namespace pr7s
         loadPlugins (*track);
         if (deleteFile)
         {
-            audioCache.erase (track->freezeFile);
+            forgetAudio (track->freezeFile);
             getAudioFolder().getChildFile (track->freezeFile).deleteFile();
         }
         track->freezeFile = {};
@@ -1036,14 +1345,14 @@ namespace pr7s
     bool Studio::isTrackShown (int trackId) const
     {
         const auto* track = project.findTrack (trackId);
-        return track != nullptr && ! track->hidden;
+        return track != nullptr && ! track->hidden && ! project.isFoldedAway (*track);   // (0.50.0: in a closed folder: not shown)
     }
 
     std::vector<int> Studio::getShownTracks() const
     {
         std::vector<int> ids;
         for (const auto& track : project.tracks)
-            if (! track.hidden)
+            if (! track.hidden && ! project.isFoldedAway (track))
                 ids.push_back (track.id);
         return ids;
     }
@@ -1135,8 +1444,26 @@ namespace pr7s
             if (written)
                 releaseOne (trackId, muteControl);
             passOn (trackId, LinkGroup::What::muteSolo, [&] (int other) { setMute (other, on); });
+            // (0.50.0) A folder's M: every track in it (the manual: Mute mutes all tracks in the folder).
+            if (track->isFolder() && ! mirroring)
+                for (const auto id : project.folderMembers (trackId, true))
+                    if (auto* member = project.findTrack (id); member != nullptr && ! member->isFolder())
+                        member->mute = on;
             changed (! written);
         }
+    }
+
+    bool Studio::isFolderSoloed (int folderId) const
+    {
+        auto any = false;
+        for (const auto id : project.folderMembers (folderId, true))
+            if (const auto* member = project.findTrack (id); member != nullptr && ! member->isFolder())
+            {
+                if (! member->solo)
+                    return false;
+                any = true;
+            }
+        return any;
     }
 
     void Studio::setSolo (int trackId, bool on, bool exclusive)
@@ -1146,7 +1473,15 @@ namespace pr7s
             if (exclusive)   // Ctrl-click (the manual's exclusive solo): the others' solos off
                 for (auto& other : project.tracks)
                     other.solo = false;
-            project.findTrack (trackId)->solo = on;
+            if (track->isFolder() && ! track->folderGroup)
+            {
+                // (0.50.0) A folder's S: every track in it (its own solo isn't kept: it would silence the FX channels).
+                for (const auto id : project.folderMembers (trackId, true))
+                    if (auto* member = project.findTrack (id); member != nullptr && ! member->isFolder())
+                        member->solo = on && ! member->hidden && ! member->disabled;
+            }
+            else
+                project.findTrack (trackId)->solo = on;
             passOn (trackId, LinkGroup::What::muteSolo, [&] (int other) { setSolo (other, on, false); });
             changed();
         }
@@ -1194,6 +1529,7 @@ namespace pr7s
                 if (const auto* t = project.findTrack (other))
                     setVolume (other, linkedLevel (t->volumeDb, before, after, -60.0f, 6.0f), undoable);
             });
+            mixOnly (! written);   // (0.34.3: nothing but the mix moved, unless it wrote automation)
             changed (undoable && ! written);
         }
     }
@@ -1211,6 +1547,7 @@ namespace pr7s
                 if (const auto* t = project.findTrack (other))
                     setPan (other, linkedLevel (t->pan, before, after, -1.0f, 1.0f), undoable);
             });
+            mixOnly (! written);   // (0.34.3: nothing but the mix moved, unless it wrote automation)
             changed (undoable && ! written);
         }
     }
@@ -1229,7 +1566,7 @@ namespace pr7s
         // The master's row (0.9.12): the Inspector shows the master; no track selected.
         masterSelected = true;
         selectedTracks.clear();   // (no track looks chosen; recording still goes to the one last chosen)
-        sendChangeMessage();
+        announce();
     }
 
     void Studio::selectTrack (int trackId)
@@ -1413,7 +1750,10 @@ namespace pr7s
     {
         if (auto* track = project.findTrack (trackId); track != nullptr && juce::isPositiveAndBelow (index, (int) track->parts.size()))
         {
-            track->parts[(size_t) index].length = juce::jmax (0.25, newLength);
+            auto& part = track->parts[(size_t) index];
+            const auto old = part;
+            part.length = juce::jmax (0.25, newLength);
+            rebaseWarp (old, part, project.tempoMap());   // (0.32.0: a warped clip's end pinned where it now is)
             changed();
         }
     }
@@ -1423,6 +1763,7 @@ namespace pr7s
         // A part cut at `rel` beats from its start: it keeps what's before, and the rest is returned.
         Part cutPart (Part& part, double rel, const TempoMap& tempo)
         {
+            const auto original = part;   // (0.32.0: a warped clip's halves keep their audio where it was)
             auto second = part;
             second.id = 0;
             second.start = part.start + rel;
@@ -1501,6 +1842,11 @@ namespace pr7s
                 part.fadeOut = 0.0;
                 part.fadeIn = juce::jmin (part.fadeIn, seconds);
                 second.fadeOut = juce::jmin (second.fadeOut, tempo.secondsBetween (second.start, second.end()));
+                if (original.isWarped())
+                {
+                    rebaseWarp (original, part, tempo);
+                    rebaseWarp (original, second, tempo);
+                }
             }
             return second;
         }
@@ -1593,9 +1939,9 @@ namespace pr7s
             {
                 const auto& next = track->parts[(size_t) i];
                 const auto secondsIn = glued.audioOffset + project.tempoMap().secondsBetween (glued.start, glued.end());
-                if (next.audioFile != glued.audioFile || std::abs (next.start - glued.end()) > 1.0e-6
-                    || std::abs (next.audioOffset - secondsIn) > 1.0e-4)
-                    return false;
+                if (next.audioFile != glued.audioFile || std::abs (next.start - glued.end()) > 1.0e-6 || next.volumeDb != glued.volumeDb
+                    || std::abs (next.audioOffset - secondsIn) > 1.0e-4 || glued.isWarped() || next.isWarped())
+                    return false;   // (0.32.0: warped clips aren't glued: Flatten first)
                 glued.length = next.end() - glued.start;
                 glued.fadeOut = next.fadeOut;
             }
@@ -1604,16 +1950,18 @@ namespace pr7s
         {
             // What was heard of each, in its place.
             std::vector<Note> notes;
+            // ((0.47.0) each part's info-line Transpose and Velocity written into its notes: the glued part has none.)
             for (const auto& note : glued.notes)
                 if (note.start >= 0.0 && note.start < glued.length)
-                    notes.push_back ({ note.start, juce::jmin (note.length, glued.length - note.start), note.pitch, note.velocity });
+                    notes.push_back ({ note.start, juce::jmin (note.length, glued.length - note.start), glued.heardPitch (note.pitch), glued.heardVelocity (note.velocity) });
             auto end = glued.end();
             for (const auto i : after)
             {
                 const auto& next = track->parts[(size_t) i];
                 for (const auto& note : next.notes)
                     if (note.start >= 0.0 && note.start < next.length)
-                        notes.push_back ({ next.start - glued.start + note.start, juce::jmin (note.length, next.length - note.start), note.pitch, note.velocity });
+                        notes.push_back ({ next.start - glued.start + note.start, juce::jmin (note.length, next.length - note.start),
+                                           next.heardPitch (note.pitch), next.heardVelocity (note.velocity) });
                 end = juce::jmax (end, next.end());
             }
             std::stable_sort (notes.begin(), notes.end(), [] (const Note& a, const Note& b) { return a.start < b.start; });
@@ -1633,6 +1981,8 @@ namespace pr7s
             ControllerKinds::sort (controllers);
             glued.controllers = std::move (controllers);
             glued.length = end - glued.start;
+            glued.transpose = 0;
+            glued.velocityOffset = 0;
         }
         track->parts[(size_t) index] = glued;
         std::sort (after.begin(), after.end(), std::greater<>());
@@ -1664,6 +2014,113 @@ namespace pr7s
                 }
         if (any)
             changed();
+    }
+
+    std::optional<double> Studio::getPartField (int partId, PartField field) const
+    {
+        const auto where = findPart (partId);
+        if (! where)
+            return std::nullopt;
+        const auto* track = project.findTrack (where->first);
+        const auto& part = track->parts[(size_t) where->second];
+        const auto audio = part.isAudio();
+        switch (field)
+        {
+            case PartField::start:     return part.start;
+            case PartField::end:       return part.end();
+            case PartField::length:    return part.length;
+            case PartField::offset:    if (audio && ! part.isWarped()) return part.audioOffset; break;
+            case PartField::fadeIn:    if (audio) return part.fadeIn; break;
+            case PartField::fadeOut:   if (audio) return part.fadeOut; break;
+            case PartField::volume:    if (audio) return part.volumeDb; break;
+            case PartField::transpose: if (! audio) return (double) part.transpose; break;
+            case PartField::velocity:  if (! audio) return (double) part.velocityOffset; break;
+        }
+        return std::nullopt;
+    }
+
+    bool Studio::setPartsField (const std::vector<int>& partIds, PartField field, double value, bool absolute)
+    {
+        // The change the first one makes (relative), worked out before anything moves.
+        std::optional<double> firstNow;
+        for (const auto id : partIds)
+            if ((firstNow = getPartField (id, field)))
+                break;
+        if (! firstNow || ! std::isfinite (value))
+            return false;
+        const auto delta = value - *firstNow;
+        const auto tempo = project.tempoMap();
+        auto any = false;
+        for (const auto id : partIds)
+        {
+            const auto now = getPartField (id, field);
+            const auto where = findPart (id);
+            if (! now || ! where)
+                continue;
+            auto* track = project.findTrack (where->first);
+            if (track->frozen)
+                continue;
+            auto& part = track->parts[(size_t) where->second];
+            const auto old = part;
+            const auto wanted = absolute ? value : *now + delta;
+            const auto data = part.isAudio() ? getAudio (part.audioFile) : nullptr;
+            const auto clipSeconds = [&] { return tempo.secondsBetween (part.start, part.end()); };
+            // How long it can be: an event not past its recording's end (a warped one stretches: free).
+            const auto setLength = [&] (double length)
+            {
+                length = juce::jmax (1.0 / 64.0, length);
+                if (data != nullptr && ! part.isWarped())
+                    length = juce::jmin (length, tempo.beatAfter (part.start, juce::jmax (0.0, data->seconds() - part.audioOffset)) - part.start);
+                if (length <= 0.0)
+                    return;
+                part.length = length;
+                if (old.isWarped())
+                    rebaseWarp (old, part, tempo);
+                const auto seconds = clipSeconds();
+                part.fadeIn = juce::jmin (part.fadeIn, seconds);
+                part.fadeOut = juce::jmin (part.fadeOut, seconds - part.fadeIn);
+            };
+            switch (field)
+            {
+                case PartField::start:  part.start = juce::jmax (0.0, wanted); break;
+                case PartField::end:    setLength (wanted - part.start); break;
+                case PartField::length: setLength (wanted); break;
+                case PartField::offset:
+                {
+                    const auto most = data != nullptr ? juce::jmax (0.0, data->seconds() - clipSeconds()) : wanted;
+                    part.audioOffset = juce::jlimit (0.0, juce::jmax (0.0, most), wanted);
+                    break;
+                }
+                case PartField::fadeIn:   part.fadeIn = juce::jlimit (0.0, juce::jmax (0.0, clipSeconds() - part.fadeOut), wanted); break;
+                case PartField::fadeOut:  part.fadeOut = juce::jlimit (0.0, juce::jmax (0.0, clipSeconds() - part.fadeIn), wanted); break;
+                case PartField::volume:   part.volumeDb = juce::jlimit (Part::leastVolumeDb, Part::mostVolumeDb, wanted); break;
+                case PartField::transpose: part.transpose = juce::jlimit (-48, 48, juce::roundToInt (wanted)); break;
+                case PartField::velocity: part.velocityOffset = juce::jlimit (-127, 127, juce::roundToInt (wanted)); break;
+            }
+            any = any || ! (part == old);
+        }
+        if (any)
+            changed();
+        return any;
+    }
+
+    bool Studio::renameParts (const std::vector<int>& partIds, const juce::String& name)
+    {
+        auto any = false;
+        for (const auto id : partIds)
+            if (const auto where = findPart (id))
+            {
+                auto* track = project.findTrack (where->first);
+                auto& part = track->parts[(size_t) where->second];
+                if (! track->frozen && part.name != name)
+                {
+                    part.name = name;
+                    any = true;
+                }
+            }
+        if (any)
+            changed();
+        return any;
     }
 
     bool Studio::quantizeParts (const std::vector<int>& partIds, double grid)
@@ -2145,7 +2602,12 @@ namespace pr7s
         {
             auto& existing = track->parts[(size_t) index];
             const auto id = existing.id;
+            const auto old = existing;
             existing = part;
+            // (0.32.0) A warped clip trimmed (its start or end moved, the audio staying put): markers follow.
+            if (old.isWarped() && part.warp == old.warp && part.audioFile == old.audioFile
+                && (std::abs (part.start - old.start) > 1.0e-9 || std::abs (part.length - old.length) > 1.0e-9))
+                rebaseWarp (old, existing, project.tempoMap());
             existing.id = id;
             existing.start = juce::jmax (0.0, existing.start);
             existing.length = juce::jmax (1.0 / 64.0, existing.length);
@@ -2260,7 +2722,7 @@ namespace pr7s
         const auto rate = engine.getSampleRate();
         if (! juce::approximatelyEqual (audioCacheRate, rate))
         {
-            audioCache.clear();
+            forgetAllAudio();
             audioCacheRate = rate;
         }
         if (auto found = audioCache.find (name); found != audioCache.end())
@@ -3694,7 +4156,61 @@ namespace pr7s
     {
         project.masterVolumeDb = juce::jlimit (-60.0f, 6.0f, db);
         const auto written = writeValue (Engine::masterBus, control (AutomationLane::Target::volume), volumeToTravel (project.masterVolumeDb));
+        mixOnly (! written);
         changed (undoable && ! written);
+    }
+
+    const ChannelEq* Studio::getChannelEq (int busId) const
+    {
+        if (busId == Engine::masterBus)
+            return &project.masterEq;
+        const auto* track = project.findTrack (busId);
+        return track != nullptr ? &track->eq : nullptr;
+    }
+
+    void Studio::setChannelEq (int busId, const ChannelEq& eq, bool undoable)
+    {
+        const auto limited = eq.limited();
+        auto* target = busId == Engine::masterBus ? &project.masterEq : nullptr;
+        if (target == nullptr)
+            if (auto* track = project.findTrack (busId))
+                target = &track->eq;
+        if (target == nullptr || (*target == limited && ! undoable))
+            return;
+        *target = limited;
+        changed (undoable);
+    }
+
+    double Studio::getEqResponseDb (int busId, double frequency, bool withPre) const
+    {
+        const auto* eq = getChannelEq (busId);
+        if (eq == nullptr)
+            return 0.0;
+        const auto rate = juce::jmax (44100.0, engine.getSampleRate());
+        return eqResponseDb (designEq (*eq, rate), frequency, rate, withPre);
+    }
+
+    juce::File Studio::eqPresetFolder()
+    {
+        return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Paragon PR7-S").getChildFile ("EQ Presets");
+    }
+
+    bool Studio::saveEqPreset (int busId, const juce::File& file) const
+    {
+        const auto* eq = getChannelEq (busId);
+        if (eq == nullptr)
+            return false;
+        file.getParentDirectory().createDirectory();
+        return eq->toXml ("EqPreset")->writeTo (file);
+    }
+
+    bool Studio::loadEqPreset (int busId, const juce::File& file)
+    {
+        const auto xml = juce::XmlDocument::parse (file);
+        if (xml == nullptr || ! xml->hasTagName ("EqPreset") || getChannelEq (busId) == nullptr)
+            return false;
+        setChannelEq (busId, ChannelEq::fromXml (*xml));
+        return true;
     }
 
     //==========================================================================
@@ -3871,7 +4387,7 @@ namespace pr7s
         passes.push_back (pass);
         engine.setHeld (busId, which, true);   // the hand is heard, not the lane
         engine.update (project);
-        sendChangeMessage();                   // (W shows it's writing)
+        announce();                   // (W shows it's writing)
     }
 
     bool Studio::writeValue (int busId, const AutomationLane& which, float value)
@@ -4076,6 +4592,7 @@ namespace pr7s
             t.quickControls = preset.quickControls;
             t.midiChannel = preset.midiChannel;
             t.preFaderSlots = preset.preFaderSlots;
+            t.eq = preset.eq;   // (0.43.0: the manual's "Loading Inserts and EQ from Track Presets")
             if (t.isAudio())
             {
                 t.input = preset.input;
@@ -4673,8 +5190,682 @@ namespace pr7s
 
     void Studio::setSignature (int numerator, int denominator)
     {
-        project.numerator = juce::jlimit (1, 32, numerator);
-        project.denominator = denominator == 2 || denominator == 8 || denominator == 16 ? denominator : 4;
+        setSignatureAt (0, juce::jlimit (1, 32, numerator), isValidSignature (4, denominator) ? denominator : 4);
+    }
+
+    //==========================================================================
+    // Signature changes (0.45.0).
+    void Studio::addSignatureTrack()
+    {
+        if (project.signatureTrackShown)
+            return;
+        project.signatureTrackShown = true;
+        changed();
+    }
+
+    void Studio::removeSignatureTrack()
+    {
+        if (! project.signatureTrackShown)
+            return;
+        project.signatureTrackShown = false;
+        changed();
+    }
+
+    void Studio::setSignatureLocked (bool locked)
+    {
+        if (project.signatureLocked == locked)
+            return;
+        project.signatureLocked = locked;
+        changed (false);
+    }
+
+    namespace
+    {
+        // The changes after bar 1, tidied by the map (sorted, at bars 1 and later, one a bar, valid);
+        // a change to what the bar before already has is left out (it changes nothing).
+        std::vector<SignatureEvent> tidySignatures (int numerator, int denominator, const std::vector<SignatureEvent>& changes)
+        {
+            std::vector<SignatureEvent> out;
+            const SignatureMap map (numerator, denominator, changes);
+            for (size_t i = 1; i < map.segments().size(); ++i)
+            {
+                const auto& e = map.segments()[i].event;
+                const auto& before = map.segments()[i - 1].event;
+                if (e.numerator != before.numerator || e.denominator != before.denominator)
+                    out.push_back (e);
+            }
+            return out;
+        }
+    }
+
+    bool Studio::setSignatureAt (int bar, int numerator, int denominator)
+    {
+        if (! isValidSignature (numerator, denominator) || bar < 0)
+            return false;
+        if (bar == 0)
+        {
+            if (project.numerator == numerator && project.denominator == denominator)
+                return true;
+            project.numerator = numerator;
+            project.denominator = denominator;
+            project.signatureChanges = tidySignatures (numerator, denominator, project.signatureChanges);
+            changed();
+            return true;
+        }
+        if (project.signatureLocked)
+            return false;
+        auto changes = project.signatureChanges;
+        changes.push_back ({ bar, numerator, denominator });
+        auto tidy = tidySignatures (project.numerator, project.denominator, changes);
+        // (The same as the bar before: kept anyway when asked for, so it can be changed later, as an event you see.)
+        if (std::none_of (tidy.begin(), tidy.end(), [bar] (const SignatureEvent& e) { return e.bar == bar; }))
+        {
+            tidy.push_back ({ bar, numerator, denominator });
+            std::sort (tidy.begin(), tidy.end(), [] (const SignatureEvent& a, const SignatureEvent& b) { return a.bar < b.bar; });
+        }
+        if (tidy == project.signatureChanges)
+            return true;
+        project.signatureChanges = std::move (tidy);
+        changed();
+        return true;
+    }
+
+    bool Studio::removeSignatures (std::vector<int> bars)
+    {
+        if (project.signatureLocked)
+            return false;
+        auto changes = project.signatureChanges;
+        const auto before = changes.size();
+        changes.erase (std::remove_if (changes.begin(), changes.end(), [&] (const SignatureEvent& e)
+                                       { return std::find (bars.begin(), bars.end(), e.bar) != bars.end(); }), changes.end());
+        if (changes.size() == before)
+            return false;
+        project.signatureChanges = std::move (changes);
+        changed();
+        return true;
+    }
+
+    bool Studio::moveSignature (int fromBar, int toBar)
+    {
+        if (project.signatureLocked || fromBar <= 0 || toBar <= 0)
+            return false;
+        auto changes = project.signatureChanges;
+        auto it = std::find_if (changes.begin(), changes.end(), [fromBar] (const SignatureEvent& e) { return e.bar == fromBar; });
+        if (it == changes.end())
+            return false;
+        if (fromBar == toBar)
+            return true;
+        auto moved = *it;
+        changes.erase (it);
+        changes.erase (std::remove_if (changes.begin(), changes.end(), [toBar] (const SignatureEvent& e) { return e.bar == toBar; }), changes.end());
+        moved.bar = toBar;
+        changes.push_back (moved);
+        std::sort (changes.begin(), changes.end(), [] (const SignatureEvent& a, const SignatureEvent& b) { return a.bar < b.bar; });
+        project.signatureChanges = std::move (changes);
+        changed();
+        return true;
+    }
+
+    bool Studio::insertSignatureAtCursor (int numerator, int denominator)
+    {
+        return setSignatureAt (project.signatures().barAt (engine.getPosition()), numerator, denominator);
+    }
+
+    SignatureEvent Studio::getSignatureNow() const
+    {
+        return project.signatures().segmentAt (engine.getPosition()).event;
+    }
+
+    //==========================================================================
+    // Markers (0.49.0).
+    void Studio::addMarkerTrack()
+    {
+        if (project.markerTrack.shown)
+            return;
+        project.markerTrack.shown = true;
+        changed();
+    }
+
+    void Studio::removeMarkerTrack()
+    {
+        if (! project.markerTrack.shown)
+            return;
+        project.markerTrack.shown = false;
+        changed();
+    }
+
+    void Studio::setMarkerTrackLocked (bool locked)
+    {
+        if (project.markerTrack.locked == locked)
+            return;
+        project.markerTrack.locked = locked;
+        changed (false);
+    }
+
+    void Studio::renameMarkerTrack (const juce::String& name)
+    {
+        const auto trimmed = name.trim().isEmpty() ? juce::String ("Markers") : name.trim();
+        if (project.markerTrack.name == trimmed)
+            return;
+        project.markerTrack.name = trimmed;
+        changed (false);
+    }
+
+    void Studio::setMarkerSettings (bool showLines, bool showIds, bool cycleFollows)
+    {
+        auto& track = project.markerTrack;
+        if (track.showLines == showLines && track.showIds == showIds && track.cycleFollows == cycleFollows)
+            return;
+        track.showLines = showLines;
+        track.showIds = showIds;
+        track.cycleFollows = cycleFollows;
+        changed (false);
+    }
+
+    namespace
+    {
+        int indexOfMarker (const MarkerTrack& track, const Marker& m)
+        {
+            return track.indexOf (m.id, m.cycle);
+        }
+    }
+
+    int Studio::addPositionMarker (double beat, const juce::String& name)
+    {
+        auto& track = project.markerTrack;
+        if (track.locked || ! std::isfinite (beat))
+            return -1;
+        Marker m;
+        m.id = track.nextId (false);
+        m.start = m.end = juce::jmax (0.0, beat);
+        m.name = name;
+        track.markers.push_back (m);
+        track.sort();
+        track.shown = true;
+        changed();
+        return indexOfMarker (track, m);
+    }
+
+    int Studio::addCycleMarker (double start, double end, const juce::String& name)
+    {
+        auto& track = project.markerTrack;
+        if (track.locked || ! std::isfinite (start) || ! std::isfinite (end))
+            return -1;
+        if (end < start)
+            std::swap (start, end);
+        start = juce::jmax (0.0, start);
+        if (end - start < 1.0e-3)
+            return -1;
+        Marker m;
+        m.cycle = true;
+        m.id = track.nextId (true);
+        m.start = start;
+        m.end = end;
+        m.name = name;
+        track.markers.push_back (m);
+        track.sort();
+        track.shown = true;
+        changed();
+        return indexOfMarker (track, m);
+    }
+
+    int Studio::addPositionMarkerAtCursor()
+    {
+        return addPositionMarker (engine.getPosition());
+    }
+
+    int Studio::addCycleMarkerAtLocators()
+    {
+        return addCycleMarker (project.loopStart, project.loopEnd);
+    }
+
+    bool Studio::setMarkers (std::vector<Marker> markers)
+    {
+        auto& track = project.markerTrack;
+        if (track.locked)
+            return false;
+        MarkerTrack tidy;
+        for (auto m : markers)
+        {
+            if (m.cycle && m.end - m.start < 1.0e-3)
+                continue;
+            if (m.id < 1 || tidy.indexOf (m.id, m.cycle) >= 0)
+                m.id = tidy.nextId (m.cycle);   // (the manual: a marker dropped where its ID is taken gets the first free one)
+            tidy.markers.push_back (m);
+        }
+        tidy.sort();
+        if (tidy.markers == track.markers)
+            return true;
+        track.markers = std::move (tidy.markers);
+        changed();
+        return true;
+    }
+
+    bool Studio::removeMarkers (std::vector<int> indices)
+    {
+        auto& track = project.markerTrack;
+        if (track.locked)
+            return false;
+        std::sort (indices.begin(), indices.end(), std::greater<>());
+        indices.erase (std::unique (indices.begin(), indices.end()), indices.end());
+        auto any = false;
+        for (const auto i : indices)
+            if (juce::isPositiveAndBelow (i, (int) track.markers.size()))
+            {
+                track.markers.erase (track.markers.begin() + i);
+                any = true;
+            }
+        if (any)
+            changed();
+        return any;
+    }
+
+    bool Studio::removeMarkersFrom (double beat)
+    {
+        std::vector<int> later;
+        for (int i = 0; i < (int) project.markerTrack.markers.size(); ++i)
+            if (project.markerTrack.markers[(size_t) i].start >= beat - 1.0e-6)
+                later.push_back (i);
+        return ! later.empty() && removeMarkers (later);
+    }
+
+    bool Studio::moveMarkersToCursor (const std::vector<int>& indices)
+    {
+        auto markers = project.markerTrack.markers;
+        const auto at = engine.getPosition();
+        auto any = false;
+        for (const auto i : indices)
+            if (juce::isPositiveAndBelow (i, (int) markers.size()))
+            {
+                auto& m = markers[(size_t) i];
+                const auto length = m.length();
+                m.start = at;
+                m.end = m.cycle ? at + length : at;
+                any = true;
+            }
+        return any && setMarkers (std::move (markers));
+    }
+
+    void Studio::reassignMarkerIds (bool cycle)
+    {
+        auto& track = project.markerTrack;
+        if (track.locked)
+            return;
+        const auto before = track.markers;
+        track.reassignIds (cycle);
+        if (track.markers != before)
+            changed();
+    }
+
+    bool Studio::locateMarker (int index)
+    {
+        const auto& track = project.markerTrack;
+        if (! juce::isPositiveAndBelow (index, (int) track.markers.size()))
+            return false;
+        const auto m = track.markers[(size_t) index];
+        setPosition (m.start);
+        if (track.cycleFollows)
+        {
+            // (A position marker's range: to the next marker's start, else a bar on: our reading.)
+            const auto end = m.cycle ? m.end : track.nextStart (m.start, true).value_or (project.nextBarAfter (m.start));
+            setCycle (m.start, end);
+        }
+        return true;
+    }
+
+    bool Studio::cycleToMarker (int index)
+    {
+        const auto& track = project.markerTrack;
+        if (! juce::isPositiveAndBelow (index, (int) track.markers.size()) || ! track.markers[(size_t) index].cycle)
+            return false;
+        const auto m = track.markers[(size_t) index];
+        setCycle (m.start, m.end);
+        return true;
+    }
+
+    bool Studio::locateMarkerId (int id)
+    {
+        return locateMarker (project.markerTrack.indexOf (id, false));
+    }
+
+    bool Studio::setMarkerIdAtCursor (int id)
+    {
+        auto& track = project.markerTrack;
+        if (track.locked || id < 1)
+            return false;
+        auto markers = track.markers;
+        const auto at = engine.getPosition();
+        if (const auto i = track.indexOf (id, false); i >= 0)
+            markers[(size_t) i].start = markers[(size_t) i].end = at;
+        else
+        {
+            Marker m;
+            m.id = id;
+            m.start = m.end = at;
+            markers.push_back (m);
+        }
+        const auto wasShown = track.shown;
+        const auto before = track.markers;
+        track.shown = true;
+        if (! setMarkers (std::move (markers)))
+        {
+            track.shown = wasShown;
+            return false;
+        }
+        if (! wasShown && track.markers == before)
+            changed();   // (shown, nothing else changed: still one undo step)
+        return true;
+    }
+
+    bool Studio::locateNextMarker (bool forward)
+    {
+        const auto to = project.markerTrack.nextStart (engine.getPosition(), forward);
+        if (! to)
+            return false;
+        for (int i = 0; i < (int) project.markerTrack.markers.size(); ++i)
+            if (std::abs (project.markerTrack.markers[(size_t) i].start - *to) < 1.0e-9)
+                return locateMarker (i);
+        return false;
+    }
+
+    //==========================================================================
+    // Tap tempo (0.45.0).
+    juce::String Studio::tapModeName (TapMode mode)
+    {
+        switch (mode)
+        {
+            case TapMode::automatic:      return "Automatic";
+            case TapMode::selectionStart: return "Insert Tempo Event at Selection Start";
+            case TapMode::playbackStart:  return "Insert Tempo Event at Last Playback Start Position";
+            case TapMode::cursor:         return "Insert Tempo Event at Cursor Position";
+            case TapMode::projectTempo:   return "Set Project Tempo";
+            case TapMode::displayOnly:    return "Display Only";
+        }
+        return {};
+    }
+
+    void Studio::setTapMode (TapMode mode)
+    {
+        tapMode = mode;
+        if (settings != nullptr)
+            settings->setValue ("tapTempoMode", (int) mode);
+    }
+
+    Studio::TapResult Studio::tapTempo (double now, std::optional<double> selectionStart)
+    {
+        if (! tapTimes.empty() && (now - tapTimes.back() >= tapGapSeconds || now <= tapTimes.back()))
+        {
+            endTapping();
+            tapTimes.clear();
+        }
+        if (tapTimes.empty())
+            lastTap = {};   // (a new run of taps: its place is chosen again)
+        tapTimes.push_back (now);
+        if (tapTimes.size() > 9)
+            tapTimes.erase (tapTimes.begin());
+        lastTap.taps = juce::jmin (lastTap.taps + 1, 1000000);
+        if (tapTimes.size() < 2)
+        {
+            lastTap.bpm = 0.0;
+            lastTap.where = "Tap again...";
+            announce();
+            return lastTap;
+        }
+        const auto seconds = (tapTimes.back() - tapTimes.front()) / (double) (tapTimes.size() - 1);
+        const auto bpm = juce::jlimit (Project::minBpm, Project::maxBpm, std::round (60.0 / seconds * 100.0) / 100.0);
+        lastTap.bpm = bpm;
+
+        // Where it goes (the manual's Tap Tempo Modes), chosen at the second tap and kept for the run.
+        if (lastTap.taps == 2)
+        {
+            auto mode = tapMode;
+            lastTap.at = -1.0;
+            if (mode == TapMode::automatic)
+                mode = ! project.followsTempoTrack() ? TapMode::projectTempo
+                     : selectionStart ? TapMode::selectionStart
+                     : engine.isPlaying() ? TapMode::playbackStart : TapMode::cursor;
+            if (project.followsTempoTrack() || mode == TapMode::displayOnly)
+            {
+                if (mode == TapMode::selectionStart)
+                    lastTap.at = selectionStart ? juce::jmax (0.0, *selectionStart) : -2.0;
+                else if (mode == TapMode::playbackStart)
+                    lastTap.at = playStart;
+                else if (mode == TapMode::cursor)
+                    lastTap.at = engine.getPosition();
+                else if (mode == TapMode::projectTempo)
+                    lastTap.at = 0.0;
+            }
+            if (mode == TapMode::displayOnly || lastTap.at == -2.0)
+                lastTap.where = mode == TapMode::displayOnly ? "Display only" : "Nothing selected: display only";
+            else if (! project.followsTempoTrack())
+                lastTap.where = "Project tempo";
+            else
+                lastTap.where = lastTap.at == 0.0 ? juce::String ("The first tempo event") : "Tempo event at " + formatBarsBeats (lastTap.at, project).replace ("  ", " ");
+            if (mode == TapMode::displayOnly || lastTap.at == -2.0)
+                lastTap.at = -3.0;   // (shown only)
+        }
+        if (lastTap.at == -3.0 || (project.tempoLocked && project.followsTempoTrack()))
+        {
+            announce();
+            return lastTap;
+        }
+        if (! project.followsTempoTrack())
+        {
+            project.bpm = bpm;
+        }
+        else
+        {
+            auto events = project.tempoEvents;
+            auto found = false;
+            for (auto& e : events)
+                if (std::abs (e.beat - lastTap.at) < 1.0e-6)
+                    e.bpm = bpm, found = true;
+            if (! found)
+                events.push_back ({ lastTap.at, bpm, false });
+            tidyTempo (events, project.bpm);
+            project.tempoEvents = std::move (events);
+        }
+        tapUnrecorded = true;
+        changed (false);
+        return lastTap;
+    }
+
+    void Studio::endTapping()
+    {
+        if (std::exchange (tapUnrecorded, false))
+            recordUndoState();
+    }
+
+    //==========================================================================
+    // Tempo detection (0.45.0).
+    void Studio::keepInTime (const TempoMap& before, const TempoMap& after)
+    {
+        const auto to = [&] (double beat) { return after.beatAt (before.secondsAt (beat)); };
+        const auto movePart = [&] (Part& part)
+        {
+            const auto start = part.start, end = part.start + part.length;
+            const auto newStart = to (start);
+            for (auto& n : part.notes)
+            {
+                const auto a = to (start + n.start), b = to (start + n.start + n.length);
+                n.start = a - newStart;
+                n.length = juce::jmax (1.0e-6, b - a);
+            }
+            for (auto& c : part.controllers)
+                c.start = to (start + c.start) - newStart;
+            for (auto& m : part.warp)
+                m.beat = to (start + m.beat) - newStart;
+            part.start = newStart;
+            part.length = juce::jmax (1.0e-6, to (end) - newStart);
+            if (! part.warp.empty())
+                part.warp.back().beat = part.length, part.warp.front().beat = 0.0;
+        };
+        const auto moveLanes = [&] (std::vector<AutomationLane>& lanes)
+        {
+            for (auto& lane : lanes)
+            {
+                for (auto& p : lane.points)
+                    p.beat = to (p.beat);
+                for (auto& p : lane.trim)
+                    p.beat = to (p.beat);
+            }
+        };
+        for (auto& track : project.tracks)
+        {
+            for (auto& part : track.parts)
+                movePart (part);
+            moveLanes (track.automation);
+        }
+        for (auto& [id, parts] : frozenParts)
+            for (auto& part : parts)
+                movePart (part);
+        moveLanes (project.masterAutomation);
+        for (auto& e : project.chordTrack.events)
+            e.beat = to (e.beat);
+        for (auto& e : project.chordTrack.scales)
+            e.beat = to (e.beat);
+        project.loopStart = to (project.loopStart);
+        project.loopEnd = juce::jmax (project.loopStart + 0.0625, to (project.loopEnd));
+        playStart = to (playStart);
+        recordStart = to (recordStart);
+        engine.setPosition (juce::jmax (0.0, to (engine.getPosition())));
+    }
+
+    bool Studio::analyseTempo (int partId, BeatAnalysis& result, juce::String& error)
+    {
+        result = {};
+        const auto found = findPart (partId);
+        const auto* owner = found ? project.findTrack (found->first) : nullptr;   // (findPart gives the track's id)
+        const auto* part = owner != nullptr ? &owner->parts[(size_t) found->second] : nullptr;
+        if (part == nullptr)
+        {
+            error = "Select an audio event or a MIDI part first.";
+            return false;
+        }
+        const auto tempo = project.tempoMap();
+        const auto from = tempo.secondsAt (part->start), to = tempo.secondsAt (part->start + part->length);
+        if (to - from < leastDetectSeconds - 1.0e-6)
+        {
+            error = "It's " + juce::String (to - from, 1) + " s long: tempo detection needs at least " + juce::String ((int) leastDetectSeconds) + " seconds.";
+            return false;
+        }
+        if (part->isAudio())
+        {
+            double rate = 0.0;
+            const auto sound = clipMono (*part, from, to, rate);
+            if (rate <= 0.0 || sound.empty())
+            {
+                error = "The recording couldn't be read.";
+                return false;
+            }
+            result = detectBeats (sound.data(), (int) sound.size(), rate);
+        }
+        else
+        {
+            std::vector<DetectNote> notes;
+            for (const auto& n : part->notes)
+                if (n.start >= 0.0 && n.start < part->length)
+                    notes.push_back ({ tempo.secondsAt (part->start + n.start) - from, n.velocity });
+            if (notes.size() < 8)
+            {
+                error = "There aren't enough notes in it to find a beat.";
+                return false;
+            }
+            result = detectBeats (notes, to - from);
+        }
+        if (result.beats.size() < 4)
+        {
+            error = "No steady beat was found in it.";
+            return false;
+        }
+        SessionLog::note ("Tempo detection: " + juce::String (result.beats.size()) + " beats, " + juce::String (result.bpm, 2) + " BPM");
+        return true;
+    }
+
+    bool Studio::applyDetectedBeats (int partId, const std::vector<double>& beatSeconds, juce::String& report)
+    {
+        const auto found = findPart (partId);
+        const auto* owner = found ? project.findTrack (found->first) : nullptr;   // (findPart gives the track's id)
+        const auto* part = owner != nullptr ? &owner->parts[(size_t) found->second] : nullptr;
+        if (part == nullptr || beatSeconds.size() < 2)
+        {
+            report = "Nothing to apply.";
+            return false;
+        }
+        if (project.tempoLocked)
+        {
+            report = "The tempo track is locked.";
+            return false;
+        }
+        const auto before = project.tempoMap();
+        const auto start = part->start;
+        const auto overall = medianBpm (beatSeconds);
+        const auto clamp = [] (double bpm) { return juce::jlimit (Project::minBpm, Project::maxBpm, bpm); };
+        // The first beat: on the whole beat at or after the part's start that keeps the tempo
+        // into it nearest the tempo overall (it can't be heard before the part starts).
+        const auto first = beatSeconds.front();
+        auto landing = std::ceil (start - 1.0e-6);
+        auto lead = -1.0, bestMiss = 1.0e9;
+        for (int m = 0; m < 8; ++m)
+        {
+            const auto k = std::ceil (start - 1.0e-6) + m;
+            if (k - start < 1.0e-6)
+            {
+                if (first < 0.012)
+                {
+                    landing = k, lead = 0.0;   // (it's on the part's start already)
+                    break;
+                }
+                continue;
+            }
+            const auto bpm = 60.0 * (k - start) / juce::jmax (1.0e-6, first);
+            if (bpm < Project::minBpm || bpm > Project::maxBpm)
+                continue;
+            const auto miss = std::abs (std::log (bpm / overall));
+            if (miss < bestMiss)
+                bestMiss = miss, landing = k, lead = bpm;
+        }
+        std::vector<TempoEvent> events;
+        for (const auto& e : project.followsTempoTrack() ? project.tempoEvents : std::vector<TempoEvent> { { 0.0, project.bpm, false } })
+            if (e.beat < start - 1.0e-6)
+                events.push_back (e);
+        if (events.empty() && start > 1.0e-6)
+            events.push_back ({ 0.0, project.bpm, false });
+        auto offset = 0.0;
+        if (landing > start + 1.0e-6)
+        {
+            if (lead <= 0.0)   // (no tempo in range lands it: it lands as near as it can, the rest is reported)
+                lead = clamp (60.0 * (landing - start) / juce::jmax (1.0e-6, first));
+            events.push_back ({ start, lead, false });
+            offset = first - 60.0 * (landing - start) / lead;
+        }
+        else
+            offset = first;
+        for (size_t i = 0; i + 1 < beatSeconds.size(); ++i)
+            events.push_back ({ landing + (double) i, clamp (60.0 / juce::jmax (1.0e-4, beatSeconds[i + 1] - beatSeconds[i])), false });
+        tidyTempo (events, project.bpm);
+        const TempoMap after (events);
+        keepInTime (before, after);
+        project.tempoEvents = std::move (events);
+        project.tempoTrackOn = true;
+        project.tempoTrackShown = true;
+        changed();
+        report = juce::String ((int) beatSeconds.size()) + " beats from " + formatBarsBeats (landing, project).replace ("  ", " ")
+               + ", " + juce::String (overall, 1) + " BPM on average";
+        if (std::abs (offset) > 0.005)
+            report << ". The first beat is " << juce::roundToInt (std::abs (offset) * 1000.0) << " ms " << (offset > 0.0 ? "after" : "before") << " its beat line";
+        SessionLog::note ("Tempo detection applied: " + report);
+        return true;
+    }
+
+    void Studio::restoreTempo (bool on, std::vector<TempoEvent> events)
+    {
+        const auto before = project.tempoMap();
+        tidyTempo (events, project.bpm);
+        const auto after = on ? TempoMap (events) : TempoMap (project.bpm);
+        keepInTime (before, after);
+        project.tempoEvents = std::move (events);
+        project.tempoTrackOn = on;
         changed();
     }
 
@@ -4717,7 +5908,7 @@ namespace pr7s
             return;
         playStart = engine.getPosition();
         engine.play();
-        sendChangeMessage();
+        announce();
     }
 
     void Studio::stop()
@@ -4726,14 +5917,14 @@ namespace pr7s
         {
             // Stopped already: back to where playing started (inspired by Cubase's workflow).
             engine.setPosition (playStart);
-            sendChangeMessage();
+            announce();
             return;
         }
         if (engine.isRecording())
             finishRecording();
         punchOutAll();   // writing automation stops with playing
         engine.stop();
-        sendChangeMessage();
+        announce();
     }
 
     void Studio::record()
@@ -4741,7 +5932,7 @@ namespace pr7s
         if (engine.isRecording())
         {
             finishRecording();   // punch out: playing carries on
-            sendChangeMessage();
+            announce();
             return;
         }
         auto* armed = project.armedTrack();
@@ -4758,6 +5949,11 @@ namespace pr7s
         if (! engine.isPlaying())
             playStart = recordStart;
         recorded.clear();
+        {
+            const std::scoped_lock l (chordLogLock);
+            chordLog.clear();
+        }
+        loggingChords = project.chordTrack.record;   // (0.44.0)
 
         if (armed->isAudio())
         {
@@ -4786,7 +5982,7 @@ namespace pr7s
         engine.takeRecorded (stale);   // anything left from before
         wasRecording = true;
         engine.record();
-        sendChangeMessage();
+        announce();
     }
 
     void Studio::goToStart()
@@ -4800,7 +5996,7 @@ namespace pr7s
         engine.setPosition (beats);
         if (! engine.isPlaying())
             playStart = juce::jmax (0.0, beats);
-        sendChangeMessage();
+        announce();
     }
 
     //==========================================================================
@@ -4891,7 +6087,7 @@ namespace pr7s
             return std::nullopt;
         Part part;
         const auto bar = project.beatsPerBar();
-        part.start = project.loopOn ? project.loopStart : std::floor (recordStart / bar) * bar;
+        part.start = project.loopOn ? project.loopStart : project.barStartAt (recordStart);
         const auto now = engine.getPosition();
         buildRecordingNotes (part.notes, part.start, now);
         buildRecordingControllers (part.controllers, part.start);
@@ -4906,7 +6102,7 @@ namespace pr7s
         audioWriter.reset();
         const auto startSample = engine.getAudioRecordStart();
         const auto name = audioRecording.getFileName();
-        audioCache.erase (name);
+        forgetAudio (name);
         auto data = startSample >= 0 ? getAudio (name) : nullptr;
         if (data == nullptr || data->sound.getNumSamples() == 0)
         {
@@ -5049,11 +6245,12 @@ namespace pr7s
                 auto& a = track.parts[i];
                 const auto& b = track.parts[i + 1];
                 auto joins = a.lane == b.lane && std::abs (a.end() - b.start) < 1.0e-6 && a.muted == b.muted && a.order == b.order
+                          && ! a.isWarped() && ! b.isWarped() && a.transpose == b.transpose && a.velocityOffset == b.velocityOffset
                           && a.isAudio() == b.isAudio() && b.start > from + edge && b.start < to - edge;
                 if (joins && a.isAudio())
                 {
                     const auto seconds = tempo.secondsBetween (a.start, a.end());
-                    joins = a.audioFile == b.audioFile && a.fadeOut <= 0.0 && b.fadeIn <= 0.0
+                    joins = a.audioFile == b.audioFile && a.fadeOut <= 0.0 && b.fadeIn <= 0.0 && a.volumeDb == b.volumeDb
                          && std::abs (b.audioOffset - (a.audioOffset + seconds)) < 1.0e-4;
                 }
                 if (! joins)
@@ -5093,6 +6290,32 @@ namespace pr7s
     void Studio::setRecordModes (const Project::RecordModes& modes)
     {
         project.recordModes = modes;
+        changed (false);
+    }
+
+    namespace
+    {
+        AutoFades limitedFades (AutoFades f)
+        {
+            f.milliseconds = juce::jlimit (1.0, 500.0, f.milliseconds);
+            return f;
+        }
+    }
+
+    void Studio::setAutoFades (const AutoFades& fades)
+    {
+        project.autoFades = limitedFades (fades);
+        changed (false);
+    }
+
+    void Studio::setTrackAutoFades (int trackId, std::optional<AutoFades> fades)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! track->isAudio())
+            return;
+        if (fades)
+            fades = limitedFades (*fades);
+        track->autoFades = fades;
         changed (false);
     }
 
@@ -5291,6 +6514,368 @@ namespace pr7s
     }
 
     //==========================================================================
+    // Hitpoints and warping (0.32.0)
+    std::pair<Track*, int> Studio::findPartById (int partId)
+    {
+        for (auto& t : project.tracks)
+            for (int i = 0; i < (int) t.parts.size(); ++i)
+                if (t.parts[(size_t) i].id == partId)
+                    return { &t, i };
+        return { nullptr, -1 };
+    }
+
+    std::shared_ptr<const juce::AudioBuffer<float>> Studio::getWarpedSound (const Part& part, const TempoMap& tempo)
+    {
+        // (0.34.0) The recording as VariAudio left it; the stretches made from an earlier version forgotten.
+        const auto signature = variSignature (part.audioFile);
+        if (auto& known = warpedVariSignatures[part.audioFile]; known != signature)
+        {
+            warpRenderer.clear();
+            known = signature;
+        }
+        const auto data = getHeardAudio (part.audioFile);
+        if (data == nullptr)
+            return nullptr;
+        return warpRenderer.render (part, data->sound, data->sampleRate, tempo);
+    }
+
+    std::vector<double> Studio::getHitpoints (const juce::String& recording)
+    {
+        // (0.34.1) Kept with the recording they came from: a file of the same name in another song,
+        // or written again, is found afresh.
+        const auto data = getAudio (recording);
+        auto found = hitpointCache.find (recording);
+        if (found == hitpointCache.end() || found->second.first != data)
+        {
+            std::vector<Hitpoint> all;
+            if (data != nullptr)
+                all = detectHitpoints (data->sound, data->sampleRate);
+            found = hitpointCache.insert_or_assign (recording, std::pair { data, std::move (all) }).first;
+        }
+        const auto edits = project.hitpointEdits.find (recording);
+        return filterHitpoints (found->second.second, project.hitpointSettings.threshold, project.hitpointSettings.minimumSeconds,
+                                edits != project.hitpointEdits.end() ? &edits->second : nullptr);
+    }
+
+    std::vector<double> Studio::getPartHitpoints (int partId)
+    {
+        std::vector<double> beats;
+        const auto [track, index] = findPartById (partId);
+        if (track == nullptr || ! track->parts[(size_t) index].isAudio())
+            return beats;
+        const auto part = track->parts[(size_t) index];
+        const auto tempo = project.tempoMap();
+        for (const auto seconds : getHitpoints (part.audioFile))
+        {
+            const auto beat = warpBeatAt (part, seconds, tempo);
+            if (beat > 1.0e-6 && beat < part.length - 1.0e-6)
+                beats.push_back (beat);
+        }
+        std::sort (beats.begin(), beats.end());
+        return beats;
+    }
+
+    void Studio::setHitpointSettings (const Project::HitpointSettings& chosen)
+    {
+        project.hitpointSettings = { juce::jlimit (0.0, 1.0, chosen.threshold), juce::jlimit (0.0, 2.0, chosen.minimumSeconds) };
+        changed (false);
+    }
+
+    void Studio::addHitpoint (const juce::String& recording, double seconds)
+    {
+        auto& edits = project.hitpointEdits[recording];
+        edits.removed.erase (std::remove_if (edits.removed.begin(), edits.removed.end(), [seconds] (double r) { return std::abs (r - seconds) < 0.01; }),
+                             edits.removed.end());
+        edits.added.push_back (juce::jmax (0.0, seconds));
+        changed (false);
+    }
+
+    void Studio::removeHitpoint (const juce::String& recording, double seconds)
+    {
+        auto& edits = project.hitpointEdits[recording];
+        const auto added = std::find_if (edits.added.begin(), edits.added.end(), [seconds] (double a) { return std::abs (a - seconds) < 0.01; });
+        if (added != edits.added.end())
+            edits.added.erase (added);
+        else
+            edits.removed.push_back (seconds);
+        changed (false);
+    }
+
+    void Studio::moveHitpoint (const juce::String& recording, double from, double to)
+    {
+        removeHitpoint (recording, from);
+        addHitpoint (recording, to);
+    }
+
+    void Studio::resetHitpoints (const juce::String& recording)
+    {
+        project.hitpointEdits.erase (recording);
+        changed (false);
+    }
+
+    std::optional<double> Studio::nextHitpoint (int trackId, double fromBeat, bool forward)
+    {
+        const auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! track->isAudio())
+            return std::nullopt;
+        std::optional<double> best;
+        for (int i = 0; i < (int) track->parts.size(); ++i)
+        {
+            const auto& part = track->parts[(size_t) i];
+            if (! part.isAudio())
+                continue;
+            const auto heard = heardStretches (*track, i);
+            for (const auto beat : getPartHitpoints (part.id))
+            {
+                const auto at = part.start + beat;
+                const auto audible = std::any_of (heard.begin(), heard.end(), [at] (const auto& h) { return at >= h.first && at < h.second; });
+                if (! audible)
+                    continue;
+                if (forward ? at > fromBeat + 1.0e-6 && (! best || at < *best)
+                            : at < fromBeat - 1.0e-6 && (! best || at > *best))
+                    best = at;
+            }
+        }
+        return best;
+    }
+
+    void Studio::tidyWarp (Part& part)
+    {
+        // Checked: in order, apart, inside the recording; the edges at the clip's.
+        auto& m = part.warp;
+        std::sort (m.begin(), m.end(), [] (const WarpMarker& a, const WarpMarker& b) { return a.beat < b.beat; });
+        const auto data = getAudio (part.audioFile);
+        const auto fileSeconds = data != nullptr ? data->seconds() : 1.0e9;
+        std::vector<WarpMarker> kept;
+        for (const auto& marker : m)
+        {
+            if (! kept.empty() && (marker.beat < kept.back().beat + 1.0 / 256.0 || marker.seconds < kept.back().seconds + 0.005))
+                continue;
+            kept.push_back ({ marker.beat, juce::jlimit (0.0, fileSeconds, marker.seconds) });
+        }
+        if (kept.size() >= 2)
+        {
+            kept.front().beat = 0.0;
+            kept.back().beat = part.length;
+            part.audioOffset = kept.front().seconds;
+        }
+        else
+            kept.clear();
+        m = std::move (kept);
+    }
+
+    bool Studio::editWarp (int partId, const std::function<bool (Part&)>& edit)
+    {
+        auto [track, index] = findPartById (partId);
+        if (track == nullptr || track->frozen || ! track->parts[(size_t) index].isAudio())
+            return false;
+        auto part = track->parts[(size_t) index];
+        if (! edit (part))
+            return false;
+        tidyWarp (part);
+        track->parts[(size_t) index] = part;
+        changed();
+        return true;
+    }
+
+    bool Studio::createWarpFromHitpoints (const std::vector<int>& partIds)
+    {
+        auto any = false;
+        for (const auto id : partIds)
+        {
+            const auto beats = getPartHitpoints (id);
+            any = editWarp (id, [&] (Part& part)
+            {
+                ensureWarp (part, project.tempoMap());
+                const auto tempo = project.tempoMap();
+                for (const auto beat : beats)
+                    if (std::none_of (part.warp.begin(), part.warp.end(), [beat] (const WarpMarker& m) { return std::abs (m.beat - beat) < 1.0 / 256.0; }))
+                        part.warp.push_back ({ beat, warpSecondsAt (part, beat, tempo) });
+                return true;
+            }) || any;
+        }
+        return any;
+    }
+
+    bool Studio::addWarpMarker (int partId, double beat)
+    {
+        return editWarp (partId, [&] (Part& part)
+        {
+            if (beat <= 1.0e-6 || beat >= part.length - 1.0e-6)
+                return false;
+            const auto tempo = project.tempoMap();
+            ensureWarp (part, tempo);
+            const auto seconds = warpSecondsAt (part, beat, tempo);
+            part.warp.push_back ({ beat, seconds });
+            return true;
+        });
+    }
+
+    bool Studio::moveWarpMarker (int partId, int index, double toBeat)
+    {
+        return editWarp (partId, [&] (Part& part)
+        {
+            if (! part.isWarped() || index <= 0 || index >= (int) part.warp.size() - 1)
+                return false;   // (the edges stay)
+            const auto low = part.warp[(size_t) index - 1].beat + 1.0 / 256.0, high = part.warp[(size_t) index + 1].beat - 1.0 / 256.0;
+            if (low >= high)
+                return false;
+            part.warp[(size_t) index].beat = juce::jlimit (low, high, toBeat);
+            return true;
+        });
+    }
+
+    bool Studio::removeWarpMarkers (int partId, std::vector<int> indices)
+    {
+        return editWarp (partId, [&] (Part& part)
+        {
+            std::sort (indices.begin(), indices.end(), std::greater<>());
+            auto any = false;
+            for (const auto i : indices)
+                if (i > 0 && i < (int) part.warp.size() - 1)
+                {
+                    part.warp.erase (part.warp.begin() + i);
+                    any = true;
+                }
+            if (part.warp.size() == 2 && std::abs (warpFactors (part, project.tempoMap()).back() - 1.0) < 1.0e-6)
+                part.warp.clear();   // (back at its own speed: no markers needed)
+            return any;
+        });
+    }
+
+    void Studio::setWarpMarkers (int partId, std::vector<WarpMarker> markers)
+    {
+        editWarp (partId, [&] (Part& part)
+        {
+            part.warp = std::move (markers);
+            return true;
+        });
+    }
+
+    void Studio::resetWarp (const std::vector<int>& partIds)
+    {
+        auto any = false;
+        for (auto& track : project.tracks)
+            if (! track.frozen)
+                for (auto& part : track.parts)
+                    if (part.isWarped() && std::find (partIds.begin(), partIds.end(), part.id) != partIds.end())
+                    {
+                        part.audioOffset = part.warp.front().seconds;
+                        part.warp.clear();
+                        any = true;
+                    }
+        if (any)
+            changed();
+    }
+
+    int Studio::flattenWarp (const std::vector<int>& partIds, juce::String& error)
+    {
+        auto count = 0;
+        const auto tempo = project.tempoMap();
+        for (auto& track : project.tracks)
+        {
+            if (track.frozen)
+                continue;
+            for (auto& part : track.parts)
+            {
+                if (! part.isWarped() || std::find (partIds.begin(), partIds.end(), part.id) == partIds.end())
+                    continue;
+                const auto data = getAudio (part.audioFile);
+                const auto sound = getWarpedSound (part, tempo);
+                if (data == nullptr || sound == nullptr)
+                {
+                    error << part.name << ": its recording couldn't be read\n";
+                    continue;
+                }
+                auto folder = getAudioFolder();
+                folder.createDirectory();
+                juce::File flattened;
+                int n = 1;
+                do
+                    flattened = folder.getChildFile (juce::File::createLegalFileName (track.name) + " flattened " + juce::String (n++).paddedLeft ('0', 2) + ".wav");
+                while (flattened.exists());
+                std::unique_ptr<juce::OutputStream> stream (flattened.createOutputStream());
+                std::unique_ptr<juce::AudioFormatWriter> writer;
+                if (stream != nullptr)
+                    writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (data->sampleRate)
+                                                                                           .withNumChannels (sound->getNumChannels())
+                                                                                           .withBitsPerSample (32)
+                                                                                           .withSampleFormat (juce::AudioFormatWriterOptions::SampleFormat::floatingPoint));
+                if (writer == nullptr || ! writer->writeFromAudioSampleBuffer (*sound, 0, sound->getNumSamples()))
+                {
+                    error << part.name << ": couldn't write " << flattened.getFullPathName() << "\n";
+                    continue;
+                }
+                writer.reset();
+                forgetAudio (flattened.getFileName());
+                part.audioFile = flattened.getFileName();
+                part.audioOffset = 0.0;
+                part.warp.clear();
+                ++count;
+            }
+        }
+        if (count > 0)
+            changed();
+        return count;
+    }
+
+    bool Studio::quantizeAudio (const std::vector<int>& partIds, double grid)
+    {
+        if (grid <= 0.0)
+            return false;
+        auto any = false;
+        const auto tempo = project.tempoMap();
+        if (project.audioWarpQuantize)
+        {
+            // The markers (from the hitpoints, the first time) to the grid, in one undo step.
+            std::vector<std::pair<int, std::vector<double>>> hits;
+            for (const auto id : partIds)
+                hits.push_back ({ id, getPartHitpoints (id) });
+            for (auto& track : project.tracks)
+            {
+                if (track.frozen || ! track.isAudio())
+                    continue;
+                for (auto& part : track.parts)
+                {
+                    const auto it = std::find_if (hits.begin(), hits.end(), [&part] (const auto& h) { return h.first == part.id; });
+                    if (it == hits.end() || ! part.isAudio())
+                        continue;
+                    const auto before = part.warp;
+                    ensureWarp (part, tempo);
+                    if (part.warp.size() <= 2)
+                        for (const auto beat : it->second)
+                            part.warp.push_back ({ beat, warpSecondsAt (part, beat, tempo) });
+                    std::sort (part.warp.begin(), part.warp.end(), [] (const WarpMarker& a, const WarpMarker& b) { return a.beat < b.beat; });
+                    quantizeWarp (part, grid, tempo);
+                    any = any || part.warp != before;
+                }
+            }
+        }
+        else
+        {
+            // The clips' starts to the nearest grid line (the manual's Quantizing Audio Event Starts).
+            for (auto& track : project.tracks)
+                if (! track.frozen && track.isAudio())
+                    for (auto& part : track.parts)
+                        if (part.isAudio() && std::find (partIds.begin(), partIds.end(), part.id) != partIds.end())
+                        {
+                            const auto to = juce::jmax (0.0, snap (part.start, grid));
+                            any = any || std::abs (to - part.start) > 1.0e-9;
+                            part.start = to;
+                        }
+        }
+        if (any)
+            changed();
+        return any;
+    }
+
+    void Studio::setAudioWarpQuantize (bool on)
+    {
+        project.audioWarpQuantize = on;
+        changed (false);
+    }
+
+    //==========================================================================
     // Comping, part two (0.30.0)
     namespace
     {
@@ -5309,6 +6894,15 @@ namespace pr7s
         // A part moved to start at `newStart` (its end staying): what it plays stays where it was.
         void moveStart (Part& part, double newStart, const TempoMap& tempo)
         {
+            if (part.isWarped())
+            {
+                auto moved = part;
+                moved.length = part.end() - newStart;
+                moved.start = newStart;
+                rebaseWarp (part, moved, tempo);
+                part = moved;
+                return;
+            }
             const auto delta = newStart - part.start;
             if (part.isAudio())
                 part.audioOffset = juce::jmax (0.0, part.audioOffset + (delta >= 0.0 ? tempo.secondsBetween (part.start, newStart)
@@ -5387,7 +6981,11 @@ namespace pr7s
         {
             const auto starts = at (p.start), ends = at (p.end());
             if (ends && ! starts)
+            {
+                const auto before = p;
                 p.length = newBeat - p.start;
+                rebaseWarp (before, p, tempo);   // (0.32.0)
+            }
             else if (starts && ! ends)
                 moveStart (p, newBeat, tempo);
         }
@@ -5476,26 +7074,45 @@ namespace pr7s
             for (int i = 0; i < (int) among.parts.size(); ++i)
             {
                 const auto& p = among.parts[(size_t) i];
-                const auto data = getAudio (p.audioFile);
+                const auto data = getHeardAudio (p.audioFile);
                 if (data == nullptr || ! p.isAudio())
                     continue;
+                // (0.32.0) A warped clip: its stretched sound, from its start.
+                const auto warped = p.isWarped() ? getWarpedSound (p, tempo) : nullptr;
+                const auto& heardSound = warped != nullptr ? *warped : data->sound;
+                const auto fromOffset = warped != nullptr ? 0.0 : p.audioOffset;
                 const auto clipStart = tempo.secondsAt (p.start), clipEnd = tempo.secondsAt (p.end());
-                for (const auto& [a, b] : heardStretches (among, i))
+                // (0.52.0) With the auto fades and crossfades, as it plays.
+                const auto& fades = project.autoFadesOf (among);
+                const auto curve = [&fades] (double x)
                 {
-                    const auto first = (int) std::llround ((tempo.secondsAt (a) - startSeconds) * rate);
-                    const auto last = juce::jmin (total, (int) std::llround ((tempo.secondsAt (b) - startSeconds) * rate));
+                    x = juce::jlimit (0.0, 1.0, x);
+                    return fades.equalPower ? std::sin (x * juce::MathConstants<double>::halfPi) : x;
+                };
+                const auto recording = [this, rate] (const Part& other)
+                {
+                    const auto heard = getHeardAudio (other.audioFile);
+                    return heard != nullptr ? (double) heard->sound.getNumSamples() / rate : 0.0;
+                };
+                for (const auto& f : fadedStretches (among, i, fades, tempo, recording))
+                {
+                    const auto fromSeconds = tempo.secondsAt (f.from), toSeconds = tempo.secondsAt (f.to);
+                    const auto first = (int) std::llround ((fromSeconds - startSeconds) * rate);
+                    const auto last = juce::jmin (total, (int) std::llround ((toSeconds - startSeconds) * rate));
                     for (int s = juce::jmax (0, first); s < last; ++s)
                     {
                         const auto when = startSeconds + s / rate;
                         const auto into = when - clipStart, left = clipEnd - when;
-                        const auto source = (int) std::llround ((p.audioOffset + into) * rate);
-                        if (source < 0 || source >= data->sound.getNumSamples())
+                        const auto source = (int) std::llround ((fromOffset + into) * rate);
+                        if (source < 0 || source >= heardSound.getNumSamples())
                             continue;
-                        auto gain = 1.0;
-                        if (p.fadeIn > 0.0 && into < p.fadeIn) gain *= into / p.fadeIn;
-                        if (p.fadeOut > 0.0 && left < p.fadeOut) gain *= left / p.fadeOut;
+                        auto gain = (double) p.gain();   // (0.47.0: its volume)
+                        if (p.fadeIn > 0.0 && into < p.fadeIn) gain *= juce::jmax (0.0, into) / p.fadeIn;
+                        if (p.fadeOut > 0.0 && left < p.fadeOut) gain *= juce::jmax (0.0, left) / p.fadeOut;
+                        if (f.fadeIn > 0.0 && when - fromSeconds < f.fadeIn) gain *= curve ((when - fromSeconds) / f.fadeIn);
+                        if (f.fadeOut > 0.0 && toSeconds - when < f.fadeOut) gain *= curve ((toSeconds - when) / f.fadeOut);
                         for (int c = 0; c < sound.getNumChannels(); ++c)
-                            sound.setSample (c, s, (float) (data->sound.getSample (juce::jmin (c, data->sound.getNumChannels() - 1), source) * gain));
+                            sound.addSample (c, s, (float) (heardSound.getSample (juce::jmin (c, heardSound.getNumChannels() - 1), source) * gain));
                     }
                 }
             }
@@ -5519,7 +7136,7 @@ namespace pr7s
                 return 0;
             }
             writer.reset();
-            audioCache.erase (bounceFile.getFileName());
+            forgetAudio (bounceFile.getFileName());
             bounced.audioFile = bounceFile.getFileName();
             bounced.name = track->name + " bounce";
         }
@@ -5669,13 +7286,43 @@ namespace pr7s
         const auto lapNow = engine.getCycleCount();   // (the lap being played when recording stopped)
         engine.stopRecording();
         wasRecording = false;
+        const auto chordsToo = loggingChords.exchange (false);   // (0.44.0: the chord track was recording)
         if (audioWriter != nullptr)
         {
             finishAudioRecording();
+            if (chordsToo)
+                takeRecordedChords (recordStart, endBeat, {});
             return;
         }
         engine.takeRecorded (recorded);
         wasRecording = false;
+        if (chordsToo)
+        {
+            // What was played (the last lap of a cycle): notes from their on and off.
+            auto lastLap = 0;
+            for (const auto& e : recorded)
+                lastLap = juce::jmax (lastLap, e.pass);
+            std::vector<HeardNote> played;
+            std::map<int, size_t> open;
+            for (const auto& e : recorded)
+            {
+                if (e.pass != lastLap)
+                    continue;
+                const auto kind = e.status & 0xf0;
+                if (kind == 0x90 && e.data2 > 0)
+                {
+                    open[e.data1] = played.size();
+                    played.push_back ({ e.beat, endBeat, e.data1, e.data2 / 127.0f });
+                }
+                else if (kind == 0x80 || (kind == 0x90 && e.data2 == 0))
+                    if (const auto found = open.find (e.data1); found != open.end())
+                    {
+                        played[found->second].end = e.beat;
+                        open.erase (found);
+                    }
+            }
+            takeRecordedChords (recordStart, endBeat, played);
+        }
         auto* track = project.findTrack (recordTrack);
         if (track == nullptr)
         {
@@ -5828,10 +7475,157 @@ namespace pr7s
         changed();
     }
 
+    std::vector<ChordEvent> Studio::chordsFromPlayed (const std::vector<HeardNote>& played) const
+    {
+        // Each group of notes starting together (within a 32nd): the chord sounding just after it,
+        // if three or more different notes make one.
+        std::vector<ChordEvent> found;
+        auto notes = played;
+        std::sort (notes.begin(), notes.end(), [] (const HeardNote& a, const HeardNote& b) { return a.start < b.start; });
+        constexpr double together = 0.125;
+        for (size_t i = 0; i < notes.size();)
+        {
+            const auto groupStart = notes[i].start;
+            auto j = i;
+            while (j < notes.size() && notes[j].start - groupStart <= together)
+                ++j;
+            const auto look = notes[j - 1].start + 0.01;
+            std::vector<int> pitches;
+            std::set<int> classes;
+            for (const auto& n : notes)
+                if (n.start <= look && n.end > look)
+                {
+                    pitches.push_back (n.pitch);
+                    classes.insert (n.pitch % 12);
+                }
+            if (classes.size() >= 3)
+                if (const auto chord = chordOfNotes (pitches))
+                    if (found.empty() || ! (found.back().chord == *chord))
+                        found.push_back ({ groupStart, *chord });
+            i = j;
+        }
+        return found;
+    }
+
+    void Studio::takeRecordedChords (double from, double to, const std::vector<HeardNote>& played)
+    {
+        std::vector<ChordEvent> events;
+        {
+            const std::scoped_lock l (chordLogLock);
+            events = chordLog;
+            chordLog.clear();
+        }
+        if (events.empty())
+            events = chordsFromPlayed (played);
+        if (events.empty())
+            return;
+        // On the grid when snapping; two on one beat: the later; the same chord twice: once.
+        const auto grid = project.snapOn ? project.quantizeBeats : 0.0;
+        std::vector<ChordEvent> placed;
+        for (auto e : events)
+        {
+            if (grid > 0.0)
+                e.beat = std::round (e.beat / grid) * grid;
+            e.beat = juce::jmax (0.0, e.beat);
+            if (! placed.empty() && std::abs (placed.back().beat - e.beat) < 1.0e-6)
+                placed.back() = e;
+            else if (placed.empty() || ! (placed.back().chord == e.chord))
+                placed.push_back (e);
+        }
+        from = juce::jmin (from, placed.front().beat);
+        auto kept = project.chordTrack.events;
+        kept.erase (std::remove_if (kept.begin(), kept.end(), [from, to] (const ChordEvent& e) { return e.beat >= from - 1.0e-9 && e.beat < to - 1.0e-9; }),
+                    kept.end());
+        kept.insert (kept.end(), placed.begin(), placed.end());
+        std::sort (kept.begin(), kept.end(), [] (const ChordEvent& a, const ChordEvent& b) { return a.beat < b.beat; });
+        project.chordTrack.events = std::move (kept);
+        project.chordTrack.shown = true;
+        chordTrackChanged();
+    }
+
+    void Studio::setChordTrackRecord (bool on)
+    {
+        if (project.chordTrack.record == on)
+            return;
+        project.chordTrack.record = on;
+        if (on)
+            project.chordTrack.shown = true;
+        announce();
+    }
+
+    void Studio::applyPadModifier (ChordPads::Modifier m)
+    {
+        const auto pad = lastPlayedPad.load();
+        if (! juce::isPositiveAndBelow (pad, (int) project.chordPads.pads.size()) || ! project.chordPads.pads[(size_t) pad].chord)
+            return;
+        using M = ChordPads::Modifier;
+        switch (m)
+        {
+            case M::nextVoicing:     changePadVoicings ({ pad }, 1); break;
+            case M::previousVoicing: changePadVoicings ({ pad }, -1); break;
+            case M::moreTensions:    changePadTensions ({ pad }, 1); break;
+            case M::fewerTensions:   changePadTensions ({ pad }, -1); break;
+            case M::transposeUp:     transposePads ({ pad }, 1); break;
+            case M::transposeDown:   transposePads ({ pad }, -1); break;
+        }
+        auditionPad (pad);   // (heard as it is now: the manual's "plays back ... and updates")
+    }
+
+    void Studio::startPadLearn (PadLearn what, int index)
+    {
+        padLearn = what;
+        padLearnIndex = index;
+        rangeFirst = -1;
+        padPlayer.learning = what != PadLearn::none;
+    }
+
+    void Studio::cancelPadLearn()
+    {
+        startPadLearn (PadLearn::none);
+    }
+
+    void Studio::learnedKey (int note)
+    {
+        if (padLearn == PadLearn::none)
+            return;
+        auto pads = project.chordPads;
+        const auto i = (size_t) juce::jlimit (0, 5, padLearnIndex);
+        switch (padLearn)
+        {
+            case PadLearn::range:
+                if (rangeFirst < 0)
+                {
+                    rangeFirst = note;
+                    padPlayer.learning = true;   // (the end next)
+                    return;
+                }
+                pads.triggerStart = juce::jmin (rangeFirst, note);
+                pads.triggerEnd = juce::jmax (rangeFirst, note);
+                break;
+            case PadLearn::modifier:   pads.modifierKeys[juce::jmin (i, (size_t) 5)] = note; break;
+            case PadLearn::section:    pads.sectionKeys[juce::jmin (i, (size_t) 4)] = note; break;
+            case PadLearn::subsection: pads.subsectionKeys[juce::jmin (i, (size_t) 4)] = note; break;
+            case PadLearn::none:       break;
+        }
+        padLearn = PadLearn::none;
+        padPlayer.learning = false;
+        setChordPads (pads);
+        if (onLearned)
+            onLearned();
+    }
+
     void Studio::timerCallback()
     {
+        if (tapUnrecorded && ! isTapping (juce::Time::getMillisecondCounterHiRes() / 1000.0))
+            endTapping();   // (0.45.0: the taps stopped; their undo step)
         if (rendering || exportJob != nullptr)
-            return;   // (a render runs: the screen's thread carries on meanwhile, nothing to do here)
+            return;
+        if (performer != nullptr)
+        {
+            // (0.39.0) The performance's tempo and bar, from the song at the playhead.
+            performer->bpm = project.bpmAt (engine.getPosition());
+            performer->beatsPerBar = project.beatsPerBar();
+        }   // (a render runs: the screen's thread carries on meanwhile, nothing to do here)
         // Writing automation: the position going back (the cycle came round)
         // ends a pass where it got to; a latched switch's pass moves on with
         // the song (it has no new values to say so).
@@ -5851,7 +7645,7 @@ namespace pr7s
         if (engine.isRecording())
         {
             engine.takeRecorded (recorded);
-            sendChangeMessage();
+            announce();
         }
         else if (wasRecording)
         {
@@ -5868,7 +7662,7 @@ namespace pr7s
         if (onInstrumentGoing)
             onInstrumentGoing (0);
         removeAllEffects();
-        audioCache.clear();
+        forgetAllAudio();
         engine.stop();
         for (const auto& track : project.tracks)
             engine.removeTrack (track.id);
@@ -5886,7 +7680,7 @@ namespace pr7s
         undoIndex = -1;
         recordUndoState();
         modified = false;
-        sendChangeMessage();
+        announce();
     }
 
     int Studio::importMidi (const juce::File& source, bool newSong, double atBeat, juce::String& error, bool matchTempo, int ontoTrackId)
@@ -5935,6 +7729,12 @@ namespace pr7s
                 removeTrack (project.tracks.front().id);
             setTempo (midi.bpm);
             setSignature (midi.numerator, midi.denominator);
+            if (! midi.signatureChanges.empty())
+            {
+                project.signatureChanges = midi.signatureChanges;   // (0.45.0)
+                project.signatureTrackShown = true;
+                changed (false);
+            }
             atBeat = 0.0;
         }
         if (changes && (newSong || matchTempo))
@@ -6001,6 +7801,23 @@ namespace pr7s
             addPart (id, part);
             ++added;
         }
+        // (0.49.0) The file's markers onto the marker track (the manual: a file from other software's
+        // markers all go onto one track), from where it went in.
+        if (! midi.markers.empty() && ! project.markerTrack.locked)
+        {
+            auto& track = project.markerTrack;
+            for (const auto& fileMarker : midi.markers)
+            {
+                Marker m;
+                m.id = track.nextId (false);
+                m.start = m.end = juce::jmax (0.0, atBeat + fileMarker.beat);
+                m.name = fileMarker.name;
+                track.markers.push_back (m);
+                track.sort();
+            }
+            track.shown = true;
+            changed (! newSong);
+        }
         if (newSong)
         {
             // The import is where the new song starts: nothing to undo before it.
@@ -6021,7 +7838,7 @@ namespace pr7s
         file = destination;
         modified = false;
         library->addRecent (destination);
-        sendChangeMessage();
+        announce();
         return true;
     }
 
@@ -6056,10 +7873,10 @@ namespace pr7s
         // (they stayed in the template's folder, and the song never found them again).
         if (! copyAudioFiles (templateAudio, unsavedAudioFolder))
             problems << "Some of the template's recordings couldn't be copied.\n";
-        audioCache.clear();
+        forgetAllAudio();
         engine.update (project);
         modified = false;
-        sendChangeMessage();
+        announce();
         return true;
     }
 
@@ -6081,7 +7898,7 @@ namespace pr7s
         library->removeRecent (destination);
         file = keptFile;
         modified = keptModified;
-        sendChangeMessage();
+        announce();
         if (! written)
             error = "Couldn't write " + destination.getFullPathName();
         return written;
@@ -6105,7 +7922,7 @@ namespace pr7s
         modified = false;
         library->addRecent (destination);
         ++savesRunning;
-        sendChangeMessage();
+        announce();
         saver.addJob ([copy, destination, done, life = saveAlive, this]
         {
             const auto written = copy->toXml()->writeTo (destination);
@@ -6116,7 +7933,7 @@ namespace pr7s
                 --savesRunning;
                 if (! written)
                     modified = true;
-                sendChangeMessage();
+                announce();
                 if (done)
                     done (written);
             });
@@ -6284,6 +8101,7 @@ namespace pr7s
             return false;
         }
 
+        engine.setExportBus (options.channel);   // (0.51.0: a channel export)
         // The interface let go; the engine at the export's rate (the
         // recordings are loaded again at it), stopped (writing automation ends
         // with it, as when the song stops).
@@ -6369,6 +8187,7 @@ namespace pr7s
                 return false;   // (looked at every block: an instrument rendering slowly still stops at once)
             const auto length = (int) juce::jmin ((juce::int64) blockSize, job.total - done);
             engine.render (block, length);
+            SessionLog::jobBeat();   // (0.52.1: a render that stops moving is written down)
             if (! job.writer->writeFromAudioSampleBuffer (block, 0, length))
                 return false;
             done += length;
@@ -6388,6 +8207,7 @@ namespace pr7s
                 const auto length = (int) juce::jmin ((juce::int64) blockSize, job.maxTail - done);
                 juce::AudioBuffer<float> into (tail.getArrayOfWritePointers(), 2, (int) done, length);
                 engine.render (into, length);
+                SessionLog::jobBeat();
                 for (int i = length - 1; i >= 0; --i)
                     if (std::abs (into.getSample (0, i)) > 1.0e-5f || std::abs (into.getSample (1, i)) > 1.0e-5f)
                     {
@@ -6412,6 +8232,7 @@ namespace pr7s
         SessionLog::note ("  Render done.");
         auto job = std::move (exportJob);
         engine.stop();
+        engine.setExportBus (0);
         job->writer.reset();   // the file finished
         if (! inBatch)   // (several renders in a row: back to realtime once, after the last)
             engine.setNonRealtime (false);
@@ -6425,7 +8246,7 @@ namespace pr7s
         engine.setPosition (job->previousPosition);
         if (withDevices && ! inBatch)
             devices.addAudioCallback (&engine);
-        sendChangeMessage();
+        announce();
     }
 
     void Studio::beginBatch()
@@ -6469,10 +8290,112 @@ namespace pr7s
             onProgress (-1.0, {});
     }
 
+    std::vector<int> Studio::getExportableChannels() const
+    {
+        std::vector<int> ids;
+        for (const auto& t : project.tracks)
+            if (! (t.isFolder() && ! t.folderGroup))
+                ids.push_back (t.id);
+        return ids;
+    }
+
+    bool Studio::exportBatch (const juce::File& folder, const juce::String& baseName, const ExportBatch& batch, juce::String& error,
+                              std::vector<juce::File>* written)
+    {
+        struct Range { double start, end; juce::String label; };
+        std::vector<Range> ranges;
+        const auto& markers = project.markerTrack.markers;
+        for (const auto i : batch.cycleMarkers)
+            if (juce::isPositiveAndBelow (i, (int) markers.size()) && markers[(size_t) i].cycle)
+            {
+                const auto& m = markers[(size_t) i];
+                ranges.push_back ({ m.start, m.end, m.name.isNotEmpty() ? m.name : "Cycle " + juce::String (m.id) });
+            }
+        if (ranges.empty())
+            ranges.push_back ({ batch.options.start, batch.options.end, {} });
+        auto channels = batch.channels;
+        if (channels.empty())
+            channels.push_back (0);
+        if (! folder.isDirectory() && ! folder.createDirectory())
+        {
+            error = "Couldn't make the folder " + folder.getFullPathName();
+            return false;
+        }
+        const auto total = (int) (ranges.size() * channels.size());
+        const auto many = total > 1;
+        if (many)
+            beginBatch();
+        auto ok = true;
+        auto n = 0;
+        for (const auto& range : ranges)
+        {
+            for (const auto channel : channels)
+            {
+                const auto* track = project.findTrack (channel);
+                if (channel != 0 && track == nullptr)
+                    continue;
+                juce::StringArray parts { baseName };
+                if (track != nullptr)
+                    parts.add (track->name);
+                if (range.label.isNotEmpty())
+                    parts.add (range.label);
+                const auto name = juce::File::createLegalFileName (parts.joinIntoString (" - "));
+                auto file = folder.getChildFile (name + ".wav");
+                for (int number = 2; file.exists(); ++number)
+                    file = folder.getChildFile (name + " " + juce::String (number) + ".wav");   // (the manual's Create Unique File Name)
+                auto options = batch.options;
+                options.start = range.start;
+                options.end = range.end;
+                options.channel = channel;
+                if (channel != 0)
+                {
+                    options.click = false;
+                    if (! batch.includeMaster)
+                    {
+                        const auto before = options.prepareSong;
+                        options.prepareSong = [before] (Project& song)
+                        {
+                            if (before)
+                                before (song);
+                            for (auto& insert : song.masterInserts)
+                                insert.bypass = true;
+                            song.masterVolumeDb = 0.0f;
+                            song.masterRead = false;
+                            song.masterEq.bypass = true;
+                        };
+                    }
+                }
+                setProgressStage ((double) n / total, 1.0 / total, "Exporting " + name);
+                ++n;
+                if (! exportMix (file, options, error))
+                {
+                    ok = false;
+                    break;
+                }
+                if (written != nullptr)
+                    written->push_back (file);
+                if (wasRenderCancelled())
+                {
+                    ok = false;
+                    break;
+                }
+            }
+            if (! ok)
+                break;
+        }
+        if (many)
+            endBatch();
+        return ok;
+    }
+
     bool Studio::exportMix (const juce::File& destination, const ExportOptions& options, juce::String& error)
     {
-        if (! beginExport (destination, options, error))
-            return false;
+        {
+            const SessionLog::Step step ("Setting up the render of " + destination.getFileName() + " (plug-ins switched to offline)");
+            if (! beginExport (destination, options, error))
+                return false;
+        }
+        const SessionLog::Job job ("the render of " + destination.getFileName());
         // Render in Place, Freeze: run by the renderRunner (the app: on a
         // thread of its own); its progress noted for the screen to show.
         rendering = true;
@@ -6498,6 +8421,7 @@ namespace pr7s
         SessionLog::note (threaded ? "  Rendering on a thread of its own" : "  Rendering");
         const auto rendered = threaded ? renderRunner (work) : work();
         rendering = false;
+        const SessionLog::Step step ("Ending the render (plug-ins back to realtime, the audio device back on)");
         endExport();
         if (! rendered)
             error = renderCancelled ? juce::String ("Cancelled.") : "Couldn't write " + destination.getFullPathName();
@@ -6621,7 +8545,7 @@ namespace pr7s
                     problems.add (name + ": " + problem);
                     continue;
                 }
-                audioCache.erase (file.getFileName());
+                forgetAudio (file.getFileName());
                 const auto data = getAudio (file.getFileName());
                 if (data == nullptr)
                 {
@@ -6805,7 +8729,7 @@ namespace pr7s
         if (problems.isNotEmpty())
             notes.add (problems);
         report = notes.joinIntoString ("\n");
-        sendChangeMessage();
+        announce();
         return true;
     }
 
@@ -6821,10 +8745,12 @@ namespace pr7s
         for (const auto& track : project.tracks)
             engine.removeTrack (track.id);
         project = std::move (*loaded);
+        for (const auto& track : project.tracks)   // (never a new track with an old one's number)
+            project.nextTrackId = juce::jmax (project.nextTrackId, track.id + 1);
         padsChanged();
 
         file = source;
-        audioCache.clear();
+        forgetAllAudio();
         juce::StringArray missing;
         // Each plug-in loaded is a step of the progress box (0.11.1: Kontakt and its kind take a while).
         auto toLoad = 0, nowLoading = 0;
@@ -6916,7 +8842,7 @@ namespace pr7s
         recordUndoState();
         updateLiveTrack();
         modified = false;
-        sendChangeMessage();
+        announce();
     }
 
     //==========================================================================
@@ -6933,7 +8859,7 @@ namespace pr7s
         project.chordPads = pads;
         padsChanged();
         modified = true;
-        sendChangeMessage();
+        announce();
     }
 
     void Studio::setPadsActive (bool on)
@@ -7146,7 +9072,7 @@ namespace pr7s
         assignTargets = std::move (pads);
         assignHeld.clear();
         assignNotes.clear();
-        sendChangeMessage();
+        announce();
     }
 
     void Studio::padKeyPlayed (int note, bool on)
@@ -7171,7 +9097,7 @@ namespace pr7s
             auditionPad (pad);
         }
         assignNotes.clear();
-        sendChangeMessage();
+        announce();
     }
 
     void Studio::auditionPad (int pad)
@@ -7190,9 +9116,9 @@ namespace pr7s
         const auto notes = getPadNotes (pad);
         if (track == nullptr || track->isAudio() || track->isChannel() || track->frozen || notes.empty())
             return 0;
-        const auto bar = project.beatsPerBar();
+        const auto bar = project.beatsPerBarAt (beat);
         Part part;
-        part.start = juce::jmax (0.0, std::floor (beat / bar + 1.0e-9) * bar);
+        part.start = juce::jmax (0.0, project.barStartAt (beat));
         part.length = bar;
         part.name = project.chordPads.pads[(size_t) pad].chord->name (project.chordPads.flats);
         for (const auto n : notes)
@@ -7392,6 +9318,8 @@ namespace pr7s
             case LineIdea::Part::chords: return "Piano";
             case LineIdea::Part::rhythm: return "Guitar";
             case LineIdea::Part::lead: return "Lead Guitar";
+            case LineIdea::Part::pattern: return "Pattern";
+            case LineIdea::Part::tune: return "Melody";
         }
         return "Idea";
     }
@@ -7484,6 +9412,20 @@ namespace pr7s
         humanizeLayers = on;
         if (settings != nullptr)
             settings->setValue ("humanizeLayers", on);
+    }
+
+    MelodySettings Studio::getMelodySettings() const
+    {
+        if (settings != nullptr && settings->containsKey ("melodySettings"))
+            return MelodySettings::fromString (settings->getValue ("melodySettings"));
+        return melodySettings;
+    }
+
+    void Studio::setMelodySettings (const MelodySettings& m)
+    {
+        melodySettings = m.limited();
+        if (settings != nullptr)
+            settings->setValue ("melodySettings", melodySettings.toString());
     }
 
     void Studio::setGuitarTuning (const juce::String& name)
@@ -7604,20 +9546,82 @@ namespace pr7s
     {
         if (chords.empty())
             return;
-        const auto bar = project.beatsPerBar();
-        const auto start = std::floor (juce::jmax (0.0, atBeat) / bar + 1.0e-9) * bar;
-        const auto end = start + bar * (double) chords.size();
+        // (Bar by bar by the signature track, 0.45.0.)
+        const auto map = project.signatures();
+        const auto firstBar = map.barAt (juce::jmax (0.0, atBeat));
+        const auto start = map.beatOfBar (firstBar);
+        const auto end = map.beatOfBar (firstBar + (int) chords.size());
         // What was over those bars goes; then a chord a bar.
         std::vector<ChordEvent> events;
         for (const auto& e : project.chordTrack.events)
             if (e.beat < start - 1.0e-6 || e.beat >= end - 1.0e-6)
                 events.push_back (e);
         for (size_t i = 0; i < chords.size(); ++i)
-            events.push_back ({ start + bar * (double) i, chords[i] });
+            events.push_back ({ map.beatOfBar (firstBar + (int) i), chords[i] });
         std::sort (events.begin(), events.end(), [] (const ChordEvent& a, const ChordEvent& b) { return a.beat < b.beat; });
         project.chordTrack.shown = true;   // (in the same undo step)
         project.chordTrack.events = std::move (events);
         chordTrackChanged();
+    }
+
+    void Studio::addProgressionToChordTrack (const std::vector<ProgressionStep>& steps, double atBeat)
+    {
+        if (steps.empty())
+            return;
+        const auto map = project.signatures();
+        const auto firstBar = map.barAt (juce::jmax (0.0, atBeat));
+        const auto start = map.beatOfBar (firstBar);
+        // Each step its bars long, by the bar it starts in (half bars too).
+        std::vector<double> at;
+        auto end = start;
+        for (const auto& s : steps)
+        {
+            at.push_back (end);
+            end += s.bars * map.barLengthAt (end);
+        }
+        std::vector<ChordEvent> events;
+        for (const auto& e : project.chordTrack.events)
+            if (e.beat < start - 1.0e-6 || e.beat >= end - 1.0e-6)
+                events.push_back (e);
+        for (size_t i = 0; i < steps.size(); ++i)
+            events.push_back ({ at[i], steps[i].chord });
+        std::sort (events.begin(), events.end(), [] (const ChordEvent& a, const ChordEvent& b) { return a.beat < b.beat; });
+        project.chordTrack.shown = true;
+        project.chordTrack.events = std::move (events);
+        chordTrackChanged();
+    }
+
+    std::vector<ChordSpan> Studio::progressionSpans (const std::vector<ProgressionStep>& steps, double startBeat, const Key& key) const
+    {
+        const auto bar = project.beatsPerBar();
+        std::vector<ChordSpan> spans;
+        auto beat = startBeat;
+        for (const auto& s : steps)
+        {
+            spans.push_back ({ beat, beat + s.bars * bar, s.chord, key });
+            beat += s.bars * bar;
+        }
+        return spans;
+    }
+
+    juce::StringArray Studio::getProgressionFavorites() const
+    {
+        if (settings == nullptr)
+            return progressionFavorites;
+        return juce::StringArray::fromLines (settings->getValue ("progressionFavorites"));
+    }
+
+    void Studio::setProgressionFavorite (const juce::String& name, bool on)
+    {
+        auto favorites = getProgressionFavorites();
+        favorites.removeEmptyStrings();
+        if (on)
+            favorites.addIfNotAlreadyThere (name);
+        else
+            favorites.removeString (name);
+        progressionFavorites = favorites;
+        if (settings != nullptr)
+            settings->setValue ("progressionFavorites", favorites.joinIntoString ("\n"));
     }
 
     int Studio::assignProgressionToPads (const std::vector<Chord>& chords, int firstPad)
@@ -7730,9 +9734,9 @@ namespace pr7s
             trackId = addTrack ({});
         if (project.findTrack (trackId) == nullptr)
             return 0;
-        const auto bar = project.beatsPerBar();
         const auto first = track.events[(size_t) indices.front()].beat;
-        const auto start = std::floor (first / bar + 1.0e-9) * bar;
+        const auto bar = project.beatsPerBarAt (first);
+        const auto start = project.barStartAt (first);
         Part part;
         part.start = start;
         part.name = "Chords";
@@ -7775,7 +9779,7 @@ namespace pr7s
                 to = juce::jmax (to, part.end());
                 for (const auto& n : part.notes)
                     if (n.start < part.length)
-                        notes.push_back ({ part.start + n.start, part.start + juce::jmin (n.start + n.length, part.length), n.pitch, n.velocity });
+                        notes.push_back ({ part.start + n.start, part.start + juce::jmin (n.start + n.length, part.length), part.heardPitch (n.pitch), n.velocity });
             }
         if (notes.empty())
             return 0;
@@ -7790,6 +9794,106 @@ namespace pr7s
         project.chordTrack.shown = true;
         chordTrackChanged();
         return (int) found.size();
+    }
+
+    std::vector<ChordEvent> Studio::detectChords (const std::vector<int>& partIds, const DetectSettings& settings)
+    {
+        const auto step = juce::jmax (0.25, settings.stepBeats);
+        const auto tempo = project.tempoMap();
+        std::vector<const Part*> parts;
+        auto from = std::numeric_limits<double>::max(), to = 0.0;
+        for (const auto id : partIds)
+            if (const auto at = findPart (id))
+            {
+                const auto& part = project.findTrack (at->first)->parts[(size_t) at->second];
+                parts.push_back (&part);
+                from = juce::jmin (from, part.start);
+                to = juce::jmax (to, part.end());
+            }
+        if (parts.empty() || to <= from)
+            return {};
+        // The grid from the step at or before the first start (bars' starts when the step is a bar).
+        from = std::floor (from / step + 1.0e-9) * step;
+        const auto count = (size_t) std::ceil ((to - from) / step - 1.0e-9);
+        std::vector<ChromaStep> steps (count);
+        const auto addIn = [&steps] (const std::vector<ChromaStep>& more)
+        {
+            // Each source's steps weighed alike: scaled so its strongest pitch class is 1.
+            for (size_t i = 0; i < steps.size() && i < more.size(); ++i)
+            {
+                const auto top = *std::max_element (more[i].weight.begin(), more[i].weight.end());
+                const auto bassTop = *std::max_element (more[i].bass.begin(), more[i].bass.end());
+                for (size_t p = 0; p < 12; ++p)
+                {
+                    steps[i].weight[p] += top > 0.0 ? more[i].weight[p] / top : 0.0;
+                    steps[i].bass[p] += bassTop > 0.0 ? more[i].bass[p] / bassTop : 0.0;
+                }
+            }
+        };
+        std::vector<HeardNote> notes;
+        for (const auto* part : parts)
+        {
+            if (part->isAudio())
+            {
+                auto rate = 0.0;
+                const auto start = tempo.secondsAt (part->start), end = tempo.secondsAt (part->end());
+                const auto sound = clipMono (*part, start, end, rate);
+                if (! sound.empty() && rate > 0.0)
+                    addIn (chromaFromAudio (sound.data(), (int) sound.size(), rate, part->start, tempo, from, from + step * (double) count, step));
+            }
+            else
+                for (const auto& n : part->notes)
+                    if (n.start < part->length && ! part->muted)
+                        notes.push_back ({ part->start + n.start, part->start + juce::jmin (n.start + n.length, part->length), part->heardPitch (n.pitch), n.velocity });
+        }
+        if (! notes.empty())
+            addIn (chromaFromNotes (notes, from, from + step * (double) count, step));
+        return chordsFromChroma (steps, from, step, settings);
+    }
+
+    int Studio::detectChordsToTrack (const std::vector<int>& partIds, const DetectSettings& settings)
+    {
+        setDetectSettings (settings);
+        const auto found = detectChords (partIds, settings);
+        if (found.empty())
+            return 0;
+        auto from = found.front().beat, to = 0.0;
+        for (const auto id : partIds)
+            if (const auto at = findPart (id))
+                to = juce::jmax (to, project.findTrack (at->first)->parts[(size_t) at->second].end());
+        auto events = project.chordTrack.events;
+        events.erase (std::remove_if (events.begin(), events.end(), [from, to] (const ChordEvent& e) { return e.beat >= from - 1.0e-9 && e.beat < to - 1.0e-9; }),
+                      events.end());
+        events.insert (events.end(), found.begin(), found.end());
+        std::sort (events.begin(), events.end(), [] (const ChordEvent& a, const ChordEvent& b) { return a.beat < b.beat; });
+        project.chordTrack.events = std::move (events);
+        project.chordTrack.shown = true;
+        chordTrackChanged();
+        return (int) found.size();
+    }
+
+    int Studio::detectChordsToPads (const std::vector<int>& partIds, const DetectSettings& settings)
+    {
+        setDetectSettings (settings);
+        std::vector<Chord> chords;
+        for (const auto& e : detectChords (partIds, settings))
+            if (std::find (chords.begin(), chords.end(), e.chord) == chords.end())
+                chords.push_back (e.chord);
+        return chords.empty() ? 0 : assignProgressionToPads (chords, 0);
+    }
+
+    DetectSettings Studio::getDetectSettings() const
+    {
+        if (settings != nullptr && settings->containsKey ("chordDetect"))
+            return DetectSettings::fromString (settings->getValue ("chordDetect"));
+        return detectSettings;
+    }
+
+    void Studio::setDetectSettings (const DetectSettings& d)
+    {
+        detectSettings = d;
+        if (settings != nullptr)
+            settings->setValue ("chordDetect", d.toString());
     }
 
     void Studio::assignPadsFromChordTrack()
@@ -7812,5 +9916,1095 @@ namespace pr7s
         if (! project.chordTrack.scales.empty())
             pads.setKey (project.chordTrack.scales.front().key);
         setChordPads (pads);
+    }
+
+    //==========================================================================
+    // Follow Chord Track (0.36.0)
+    namespace
+    {
+        bool canFollow (const Track* track) noexcept
+        {
+            return track != nullptr && track->kind == Track::Kind::instrument && ! track->frozen;
+        }
+
+        // The chords a track's (or a part's) own notes make, as a reference ("C" if none found).
+        FollowReference analysedReference (const std::vector<std::pair<const Part*, double>>& parts, const Key& fallback)
+        {
+            std::vector<HeardNote> notes;
+            auto from = std::numeric_limits<double>::max(), to = 0.0;
+            for (const auto& [part, start] : parts)
+            {
+                from = juce::jmin (from, start);
+                to = juce::jmax (to, start + part->length);
+                for (const auto& n : part->notes)
+                    if (n.start < part->length)
+                        notes.push_back ({ start + n.start, start + juce::jmin (n.start + n.length, part->length), n.pitch, n.velocity });
+            }
+            FollowReference r;
+            if (! notes.empty())
+                r.chords = chordsFromNotes (notes, from, to, 1.0);
+            if (r.chords.empty())
+                return FollowReference::ofChord ({});   // (the manual: "C")
+            r.scales = scalesFromChords (r.chords, fallback);
+            return r;
+        }
+    }
+
+    bool Studio::needsFollowSetup (int trackId) const
+    {
+        const auto* track = project.findTrack (trackId);
+        return canFollow (track) && track->followReference.isEmpty();
+    }
+
+    bool Studio::startFollowing (int trackId, FollowMode mode, FollowStart start, const Chord& known)
+    {
+        auto* track = project.findTrack (trackId);
+        if (! canFollow (track))
+            return false;
+        switch (start)
+        {
+            case FollowStart::directly:
+                track->followReference = FollowReference::ofChordTrack (project.chordTrack);
+                if (track->followReference.isEmpty())
+                    track->followReference = FollowReference::ofChord ({});
+                break;
+            case FollowStart::analyze:
+            {
+                std::vector<std::pair<const Part*, double>> parts;
+                for (const auto& part : track->parts)
+                    if (! part.isAudio() && ! part.muted)
+                        parts.push_back ({ &part, part.start });
+                track->followReference = analysedReference (parts, project.chordPads.key());
+                break;
+            }
+            case FollowStart::knownChord:
+                track->followReference = FollowReference::ofChord (known);
+                break;
+        }
+        track->follow = mode;
+        SessionLog::note ("Follow Chord Track: " + track->name + ", " + followModeName (mode) + ", "
+                          + juce::String (track->followReference.chords.size()) + " reference chord(s)");
+        changed();
+        return true;
+    }
+
+    void Studio::setFollowMode (int trackId, FollowMode mode)
+    {
+        auto* track = project.findTrack (trackId);
+        if (! canFollow (track) || track->follow == mode)
+            return;
+        if (mode != FollowMode::off && track->followReference.isEmpty())
+        {
+            startFollowing (trackId, mode, FollowStart::directly);
+            return;
+        }
+        track->follow = mode;
+        changed();
+    }
+
+    void Studio::resetFollowing (int trackId)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || (track->follow == FollowMode::off && track->followReference.isEmpty()))
+            return;
+        track->follow = FollowMode::off;
+        track->followReference = {};
+        changed();
+    }
+
+    void Studio::setLiveFollow (int trackId, LiveFollow live)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || track->kind != Track::Kind::instrument || track->liveFollow == live)
+            return;
+        track->liveFollow = live;
+        changed (false);   // (as the MIDI input: a setting, not an edit)
+    }
+
+    void Studio::setFollowVoice (int trackId, Voice voice)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || track->followVoice == voice)
+            return;
+        track->followVoice = voice;
+        changed();
+    }
+
+    void Studio::setTrackVoicing (int trackId, std::optional<VoicingSettings> voicing)
+    {
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || track->followVoicing == voicing)
+            return;
+        track->followVoicing = voicing;
+        changed();
+    }
+
+    void Studio::setChordTrackVoicing (const VoicingSettings& voicing)
+    {
+        if (project.chordTrack.voicing == voicing)
+            return;
+        project.chordTrack.voicing = voicing;
+        changed();
+    }
+
+    std::vector<std::vector<int>> Studio::getChordTrackVoicings (int trackId) const
+    {
+        const auto* track = project.findTrack (trackId);
+        const auto& settings = track != nullptr && track->followVoicing ? *track->followVoicing : project.chordTrack.voicing;
+        return voiceChords (project.chordTrack.events, settings);
+    }
+
+    void Studio::setPadPattern (int index)
+    {
+        if (! juce::isPositiveAndBelow (index, (int) patterns().size()))
+            index = -1;
+        performer->bpm = project.bpmAt (engine.getPosition());
+        performer->beatsPerBar = project.beatsPerBar();
+        performer->setPattern (index);
+        if (settings != nullptr)
+            settings->setValue ("padPattern", index < 0 ? juce::String() : patterns()[(size_t) index].name);
+    }
+
+    int Studio::getPadPattern() const
+    {
+        return performer->getPattern();
+    }
+
+    void Studio::setPerformPattern (int trackId, const juce::String& name)
+    {
+        auto* track = project.findTrack (trackId);
+        const auto chosen = patternNamed (name) >= 0 ? patterns()[(size_t) patternNamed (name)].name : juce::String();
+        if (track == nullptr || track->kind != Track::Kind::instrument || track->performPattern == chosen)
+            return;
+        track->performPattern = chosen;
+        changed();
+    }
+
+    namespace
+    {
+        void keepUserPatterns (juce::PropertiesFile* settings)
+        {
+            if (settings == nullptr)
+                return;
+            juce::XmlElement xml ("UserPatterns");
+            for (const auto& p : getUserPatterns())
+                xml.addChildElement (patternToXml (p).release());
+            settings->setValue ("userPatterns", xml.toString (juce::XmlElement::TextFormat().singleLine()));
+        }
+    }
+
+    juce::String Studio::addPatternFromPart (int partId, juce::String name)
+    {
+        const auto at = findPart (partId);
+        if (! at)
+            return {};
+        const auto& part = project.findTrack (at->first)->parts[(size_t) at->second];
+        if (part.isAudio() || part.notes.empty())
+            return {};
+        std::vector<LineNote> notes;
+        for (const auto& n : part.notes)
+            if (n.start >= 0.0 && n.start < part.length)
+                notes.push_back ({ n.start, juce::jmin (n.length, part.length - n.start), n.pitch, n.velocity });
+        if (name.trim().isEmpty())
+            name = part.name.isNotEmpty() ? part.name : "My pattern";
+        // A name not taken (ours or another of yours).
+        auto unique = name.trim();
+        for (int i = 2; patternNamed (unique) >= 0; ++i)
+            unique = name.trim() + " " + juce::String (i);
+        auto mine = getUserPatterns();
+        mine.push_back (patternFromNotes (unique, notes, part.length, project.beatsPerBar()));
+        setUserPatterns (std::move (mine));
+        keepUserPatterns (settings.get());
+        return unique;
+    }
+
+    void Studio::removeUserPattern (const juce::String& name)
+    {
+        auto mine = getUserPatterns();
+        const auto before = mine.size();
+        mine.erase (std::remove_if (mine.begin(), mine.end(), [&name] (const Pattern& p) { return p.name == name; }), mine.end());
+        if (mine.size() == before)
+            return;
+        const auto playing = performer->getPattern() >= 0 ? patterns()[(size_t) performer->getPattern()].name : juce::String();
+        setUserPatterns (std::move (mine));
+        keepUserPatterns (settings.get());
+        performer->setPattern (patternNamed (playing));   // (its index may have moved; gone: none)
+        changed();   // (a track performing it stops)
+    }
+
+    void Studio::setChordShift (int ticks)
+    {
+        ticks = juce::jlimit (-480, 480, ticks);
+        if (project.chordTrack.shiftTicks == ticks)
+            return;
+        project.chordTrack.shiftTicks = ticks;
+        changed();
+    }
+
+    std::vector<int> Studio::followedPitches (int partId) const
+    {
+        const auto at = findPart (partId);
+        if (! at)
+            return {};
+        const auto& track = *project.findTrack (at->first);
+        const auto& part = track.parts[(size_t) at->second];
+        std::vector<int> pitches;
+        if (track.follow == FollowMode::off || project.chordTrack.events.empty() || part.isAudio())
+        {
+            for (const auto& n : part.notes)
+                pitches.push_back (n.pitch);
+            return pitches;
+        }
+        for (const auto& f : followNotes (part.notes, part.start, track.follow, track.followReference, project.chordTrack,
+                                          project.chordTrack.shiftTicks, project.chordPads.key(),
+                                          track.followVoicing ? &*track.followVoicing : nullptr, track.followVoice))
+            pitches.push_back (f.dropped ? -1 : f.pitch);
+        return pitches;
+    }
+
+    int Studio::mapToChordTrack (const std::vector<int>& partIds, FollowMode mode)
+    {
+        if (project.chordTrack.events.empty() || mode == FollowMode::off)
+            return -1;
+        auto moved = 0;
+        auto any = false;
+        for (const auto id : partIds)
+        {
+            const auto at = findPart (id);
+            if (! at)
+                continue;
+            auto& track = *project.findTrack (at->first);
+            if (track.frozen || track.isAudio())
+                continue;
+            auto& part = track.parts[(size_t) at->second];
+            if (part.isAudio() || part.notes.empty())
+                continue;
+            const auto reference = analysedReference ({ { &part, part.start } }, project.chordPads.key());
+            const auto followed = followNotes (part.notes, part.start, mode, reference, project.chordTrack,
+                                               project.chordTrack.shiftTicks, project.chordPads.key(),
+                                               track.followVoicing ? &*track.followVoicing : nullptr, track.followVoice);
+            std::vector<Note> notes;
+            for (size_t n = 0; n < part.notes.size(); ++n)
+            {
+                if (followed[n].dropped)
+                {
+                    ++moved;
+                    continue;
+                }
+                auto note = part.notes[n];
+                if (note.pitch != followed[n].pitch)
+                    ++moved;
+                note.pitch = followed[n].pitch;
+                notes.push_back (note);
+            }
+            part.notes = std::move (notes);
+            any = true;
+        }
+        if (any)
+            changed();
+        return any ? moved : -1;
+    }
+
+    //==========================================================================
+    // Audio Alignment (0.33.0)
+    AlignSettings Studio::getAlignSettings() const
+    {
+        if (settings != nullptr && settings->containsKey ("audioAlignment"))
+            return AlignSettings::fromString (settings->getValue ("audioAlignment"));
+        return alignSettings;
+    }
+
+    void Studio::setAlignSettings (const AlignSettings& s)
+    {
+        alignSettings = s;
+        if (settings != nullptr)
+            settings->setValue ("audioAlignment", s.toString());
+    }
+
+    std::vector<float> Studio::heardMono (int trackId, double from, double to, double& rate, int skipPartId)
+    {
+        rate = 0.0;
+        const auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! track->isAudio() || to <= from)
+            return {};
+        const auto tempo = project.tempoMap();
+        for (const auto& p : track->parts)
+            if (p.isAudio())
+                if (const auto data = getHeardAudio (p.audioFile))
+                {
+                    rate = data->sampleRate;
+                    break;
+                }
+        if (rate <= 0.0)
+            return {};
+        const auto total = (int) std::ceil ((to - from) * rate);
+        std::vector<float> sound ((size_t) juce::jmax (1, total), 0.0f);
+        for (int i = 0; i < (int) track->parts.size(); ++i)
+        {
+            const auto& p = track->parts[(size_t) i];
+            if (! p.isAudio() || p.id == skipPartId)
+                continue;
+            const auto data = getHeardAudio (p.audioFile);
+            if (data == nullptr)
+                continue;
+            const auto warped = p.isWarped() ? getWarpedSound (p, tempo) : nullptr;
+            const auto& heard = warped != nullptr ? *warped : data->sound;
+            const auto offset = warped != nullptr ? 0.0 : p.audioOffset;
+            const auto clipStart = tempo.secondsAt (p.start);
+            const auto channels = heard.getNumChannels();
+            if (channels == 0)
+                continue;
+            for (const auto& [a, b] : heardStretches (*track, i))
+            {
+                const auto first = juce::jmax (0, (int) std::llround ((tempo.secondsAt (a) - from) * rate));
+                const auto last = juce::jmin (total, (int) std::llround ((tempo.secondsAt (b) - from) * rate));
+                for (int s = first; s < last; ++s)
+                {
+                    const auto source = (int) std::llround ((offset + from + s / rate - clipStart) * rate);
+                    if (source < 0 || source >= heard.getNumSamples())
+                        continue;
+                    auto v = 0.0f;
+                    for (int c = 0; c < channels; ++c)
+                        v += heard.getSample (c, source);
+                    sound[(size_t) s] = v / (float) channels;
+                }
+            }
+        }
+        return sound;
+    }
+
+    std::vector<float> Studio::clipMono (const Part& part, double from, double to, double& rate)
+    {
+        rate = 0.0;
+        const auto data = part.isAudio() ? getHeardAudio (part.audioFile) : nullptr;
+        if (data == nullptr || to <= from || data->sound.getNumChannels() == 0)
+            return {};
+        rate = data->sampleRate;
+        const auto clipStart = project.tempoMap().secondsAt (part.start);
+        const auto total = (int) std::ceil ((to - from) * rate);
+        std::vector<float> sound ((size_t) juce::jmax (1, total), 0.0f);
+        const auto channels = data->sound.getNumChannels();
+        for (int s = 0; s < total; ++s)
+        {
+            const auto source = (int) std::llround ((part.audioOffset + from + s / rate - clipStart) * rate);
+            if (source < 0 || source >= data->sound.getNumSamples())
+                continue;
+            auto v = 0.0f;
+            for (int c = 0; c < channels; ++c)
+                v += data->sound.getSample (c, source);
+            sound[(size_t) s] = v / (float) channels;
+        }
+        return sound;
+    }
+
+    bool Studio::alignAudio (const AlignReference& reference, const std::vector<AlignTarget>& targets, const AlignSettings& options,
+                             const std::vector<AlignSync>& syncs, const std::vector<juce::Range<double>>& protectedBeats, AlignReport& report)
+    {
+        report = {};
+        const auto* refTrack = project.findTrack (reference.trackId);
+        if (refTrack == nullptr || ! refTrack->isAudio() || reference.end <= reference.start)
+        {
+            report.notes.add ("Choose an audio event (or a range on an audio track) as the reference.");
+            return false;
+        }
+        const auto tempo = project.tempoMap();
+        constexpr double edgeRoom = 1.0 / 64.0;   // (no piece shorter than this is split off)
+        constexpr double crossfade = 0.01;         // seconds, where a target is split
+        auto apartBefore = 0.0, apartAfter = 0.0;
+        report.alignedParts.assign (targets.size(), 0);
+        for (size_t targetIndex = 0; targetIndex < targets.size(); ++targetIndex)
+        {
+            const auto& target = targets[targetIndex];
+            auto [track, index] = partById (project, target.partId);
+            if (track == nullptr)
+                continue;
+            const auto name = track->parts[(size_t) index].name.isNotEmpty() ? track->parts[(size_t) index].name : track->name;
+            if (! track->isAudio() || ! track->parts[(size_t) index].isAudio())
+            {
+                report.notes.add (name + ": only audio events can be aligned.");
+                continue;
+            }
+            if (track->id == reference.trackId)
+            {
+                report.notes.add (name + ": on the reference's own track (the target must be on another track).");
+                continue;
+            }
+            if (track->frozen)
+            {
+                report.notes.add (name + ": its track is frozen.");
+                continue;
+            }
+            const auto original = track->parts[(size_t) index];
+            auto start = juce::jmax (original.start, reference.start);
+            auto end = juce::jmin (original.end(), reference.end);
+            if (target.start >= 0.0)
+                start = juce::jmax (start, target.start);
+            if (target.end >= 0.0)
+                end = juce::jmin (end, target.end);
+            if (tempo.secondsAt (end) - tempo.secondsAt (start) < 0.1)
+            {
+                report.notes.add (name + ": doesn't overlap the reference.");
+                continue;
+            }
+            const auto savedParts = track->parts;   // (put back if it can't be aligned)
+            // Its warp replaced (the manual: the audio to align mustn't be warped already).
+            if (track->parts[(size_t) index].isWarped())
+            {
+                auto& p = track->parts[(size_t) index];
+                p.audioOffset = p.warp.front().seconds;
+                p.warp.clear();
+                report.notes.add (name + ": its warp markers were replaced by the alignment.");
+            }
+            // Split at the overlap's edges; short crossfades there (fades at the cuts replaced).
+            auto pieceIndex = index;
+            if (start > track->parts[(size_t) index].start + edgeRoom)
+            {
+                auto second = cutPart (track->parts[(size_t) index], start - track->parts[(size_t) index].start, tempo);
+                track->parts[(size_t) index].fadeOut = crossfade;
+                second.fadeIn = crossfade;
+                track->parts.push_back (second);
+                pieceIndex = (int) track->parts.size() - 1;
+            }
+            if (end < track->parts[(size_t) pieceIndex].end() - edgeRoom)
+            {
+                auto& piece = track->parts[(size_t) pieceIndex];
+                auto rest = cutPart (piece, end - piece.start, tempo);
+                piece.fadeOut = crossfade;
+                rest.fadeIn = crossfade;
+                track->parts.push_back (rest);
+            }
+            numberParts();
+            auto& piece = track->parts[(size_t) pieceIndex];
+            const auto from = tempo.secondsAt (piece.start), to = tempo.secondsAt (piece.end());
+            const auto margin = 0.05;
+            const auto reach = juce::jlimit (AlignSettings::leastShift, AlignSettings::mostShift, options.maxShiftSeconds) + margin;
+            AlignSound refSound, tgtSound;
+            double refRate = 0.0, tgtRate = 0.0;
+            refSound.samples = heardMono (reference.trackId, from - margin, to + margin, refRate);
+            refSound.start = from - margin;
+            tgtSound.samples = clipMono (piece, from - reach, to + reach, tgtRate);
+            tgtSound.start = from - reach;
+            if (refRate <= 0.0 || tgtRate <= 0.0 || std::abs (refRate - tgtRate) > 0.5)
+            {
+                track->parts = savedParts;
+                report.notes.add (name + ": its recording or the reference's couldn't be read.");
+                continue;
+            }
+            std::vector<AlignSyncPoint> points;
+            std::vector<int> pointIndex;
+            for (int s = 0; s < (int) syncs.size(); ++s)
+                if (syncs[(size_t) s].partId == original.id || syncs[(size_t) s].partId == piece.id)
+                {
+                    points.push_back ({ tempo.secondsAt (syncs[(size_t) s].referenceBeat), tempo.secondsAt (syncs[(size_t) s].targetBeat) });
+                    pointIndex.push_back (s);
+                }
+            std::vector<juce::Range<double>> held;
+            for (const auto& r : protectedBeats)
+                held.push_back ({ tempo.secondsAt (r.getStart()), tempo.secondsAt (r.getEnd()) });
+            const auto result = alignSounds (refSound, tgtSound, from, to, refRate, options, points, held);
+            for (const auto u : result.unmetSyncPoints)
+                report.unmetSyncs.push_back (pointIndex[(size_t) u]);
+            if (! result.ok)
+            {
+                track->parts = savedParts;
+                report.notes.add (name + ": " + result.error);
+                continue;
+            }
+            const auto pieceStart = from;
+            if (result.shiftOnly)
+            {
+                if (std::abs (result.shift) >= 0.0002)
+                {
+                    auto offset = piece.audioOffset + result.shift;
+                    if (offset < 0.0)
+                    {
+                        // (The recording starts later than the clip would: the clip starts later.)
+                        const auto newStart = tempo.beatAt (pieceStart - offset);
+                        piece.length -= newStart - piece.start;
+                        piece.start = newStart;
+                        offset = 0.0;
+                    }
+                    piece.audioOffset = offset;
+                }
+                ++report.moved;
+            }
+            else
+            {
+                piece.warp.clear();
+                for (const auto& [t, g] : result.points)
+                    piece.warp.push_back ({ tempo.beatAt (t) - piece.start, piece.audioOffset + g - pieceStart });
+                tidyWarp (piece);
+                ++report.stretched;
+            }
+            ++report.aligned;
+            report.alignedParts[targetIndex] = piece.id;
+            apartBefore += result.before;
+            apartAfter += result.after;
+        }
+        if (report.aligned == 0)
+            return false;
+        report.before = apartBefore / report.aligned;
+        report.after = apartAfter / report.aligned;
+        changed();
+        return true;
+    }
+
+    //==========================================================================
+    // VariAudio (0.34.0)
+    juce::String Studio::variSignature (const juce::String& file) const
+    {
+        const auto found = project.variAudio.find (file);
+        if (found == project.variAudio.end() || found->second.bypass || ! found->second.isEdited())
+            return {};
+        juce::String text;
+        for (const auto& seg : found->second.segments)
+            if (seg.isEdited())
+                text << seg.start << ":" << seg.end << ":" << seg.shift << ":" << seg.straighten << ":" << seg.volumeDb << ":"
+                     << seg.tiltStart << ":" << seg.tiltEnd << ":" << seg.anchor << ":" << seg.straightenFrom << ":" << seg.straightenTo
+                     << ":" << seg.formant << "|";
+        return text;
+    }
+
+    std::shared_ptr<const PitchAnalysis> Studio::getPitchAnalysis (const juce::String& file)
+    {
+        const auto data = getAudio (file);
+        if (data == nullptr)
+            return nullptr;
+        if (const auto found = pitchCache.find (file); found != pitchCache.end() && found->second.first == data)
+            return found->second.second;
+        auto analysis = std::make_shared<const PitchAnalysis> (analysePitch (data->sound, data->sampleRate));
+        pitchCache[file] = { data, analysis };
+        return analysis;
+    }
+
+    std::shared_ptr<const Studio::AudioData> Studio::getHeardAudio (const juce::String& file)
+    {
+        const auto signature = variSignature (file);
+        if (signature.isEmpty())
+            return getAudio (file);
+        const auto data = getAudio (file);
+        const auto analysis = getPitchAnalysis (file);
+        if (data == nullptr || analysis == nullptr)
+            return data;
+        if (const auto found = heardCache.find (file); found != heardCache.end()
+            && found->second.signature == signature && found->second.source == data)
+            return found->second.heard;
+        auto heard = std::make_shared<AudioData>();
+        heard->sampleRate = data->sampleRate;
+        heard->sound = renderVariAudio (data->sound, data->sampleRate, *analysis, project.variAudio[file].segments);
+        const auto samples = heard->sound.getNumSamples();
+        for (int from = 0; from < samples; from += AudioData::peakStep)
+        {
+            const auto count = juce::jmin (AudioData::peakStep, samples - from);
+            auto peak = 0.0f;
+            for (int c = 0; c < heard->sound.getNumChannels(); ++c)
+                peak = juce::jmax (peak, heard->sound.getMagnitude (c, from, count));
+            heard->peaks.push_back (peak);
+        }
+        heardCache[file] = { signature, data, heard };
+        return heard;
+    }
+
+    const Project::VariAudio* Studio::getVariAudio (const juce::String& file) const
+    {
+        const auto found = project.variAudio.find (file);
+        return found != project.variAudio.end() ? &found->second : nullptr;
+    }
+
+    bool Studio::editVariAudio (const juce::String& file)
+    {
+        if (project.variAudio.count (file) > 0)
+            return true;
+        const auto analysis = getPitchAnalysis (file);
+        if (analysis == nullptr)
+            return false;
+        project.variAudio[file].segments = segmentPitch (*analysis);
+        SessionLog::note ("VariAudio: " + file + " analysed, " + juce::String ((int) project.variAudio[file].segments.size()) + " segments");
+        changed();
+        return true;
+    }
+
+    void Studio::setVariSegments (const juce::String& file, std::vector<VariSegment> segments)
+    {
+        auto found = project.variAudio.find (file);
+        if (found == project.variAudio.end())
+            return;
+        for (auto& seg : segments)
+        {
+            seg.shift = juce::jlimit (-24.0f, 24.0f, seg.shift);
+            seg.straighten = juce::jlimit (0.0f, 1.0f, seg.straighten);
+            seg.volumeDb = juce::jlimit (-96.0f, 12.0f, seg.volumeDb);
+            seg.tiltStart = juce::jlimit (-24.0f, 24.0f, seg.tiltStart);
+            seg.tiltEnd = juce::jlimit (-24.0f, 24.0f, seg.tiltEnd);
+            seg.anchor = juce::jlimit (0.02f, 0.98f, seg.anchor);
+            seg.straightenFrom = juce::jlimit (0.0f, 1.0f, seg.straightenFrom);
+            seg.straightenTo = juce::jlimit (seg.straightenFrom, 1.0f, seg.straightenTo);
+            seg.formant = juce::jlimit (-100.0f, 100.0f, seg.formant);
+        }
+        std::sort (segments.begin(), segments.end(), [] (const VariSegment& a, const VariSegment& b) { return a.start < b.start; });
+        if (found->second.segments == segments)
+            return;
+        found->second.segments = std::move (segments);
+        changed();
+    }
+
+    void Studio::editVariSegments (const juce::String& file, const std::vector<int>& indices, const std::function<void (VariSegment&)>& edit)
+    {
+        const auto* vari = getVariAudio (file);
+        if (vari == nullptr)
+            return;
+        auto segments = vari->segments;
+        for (const auto i : indices)
+            if (juce::isPositiveAndBelow (i, (int) segments.size()))
+                edit (segments[(size_t) i]);
+        setVariSegments (file, std::move (segments));
+    }
+
+    void Studio::setVariAudioBypass (const juce::String& file, bool bypass)
+    {
+        auto found = project.variAudio.find (file);
+        if (found == project.variAudio.end() || found->second.bypass == bypass)
+            return;
+        found->second.bypass = bypass;
+        changed (false);   // (a comparison, not an edit: not an undo step)
+    }
+
+    void Studio::removeVariAudio (const juce::String& file)
+    {
+        if (project.variAudio.erase (file) > 0)
+            changed();
+    }
+
+    void Studio::auditionRecording (const juce::String& file, double fromSeconds, double toSeconds, bool loop)
+    {
+        const auto data = getHeardAudio (file);
+        if (data == nullptr)
+            return;
+        const auto from = juce::jlimit (0, data->sound.getNumSamples(), (int) (fromSeconds * data->sampleRate));
+        const auto to = juce::jlimit (from, data->sound.getNumSamples(), (int) (toSeconds * data->sampleRate));
+        if (to <= from)
+            return;
+        auto slice = std::make_shared<juce::AudioBuffer<float>> (data->sound.getNumChannels(), to - from);
+        for (int c = 0; c < slice->getNumChannels(); ++c)
+            slice->copyFrom (c, 0, data->sound, c, from, to - from);
+        engine.setPreviewSync (false, 0.0, 0.0);
+        engine.setPreview (slice, loop);
+    }
+
+    //==========================================================================
+    // VariAudio, part two (0.35.0)
+    bool Studio::splitVariSegment (const juce::String& file, int index, double seconds)
+    {
+        const auto* vari = getVariAudio (file);
+        const auto analysis = getPitchAnalysis (file);
+        if (vari == nullptr || analysis == nullptr)
+            return false;
+        auto segments = vari->segments;
+        if (! splitSegment (segments, index, seconds, *analysis))
+            return false;
+        setVariSegments (file, std::move (segments));
+        return true;
+    }
+
+    bool Studio::glueVariSegments (const juce::String& file, int first, int last)
+    {
+        const auto* vari = getVariAudio (file);
+        const auto analysis = getPitchAnalysis (file);
+        if (vari == nullptr || analysis == nullptr)
+            return false;
+        auto segments = vari->segments;
+        if (! glueSegments (segments, first, last, *analysis))
+            return false;
+        setVariSegments (file, std::move (segments));
+        return true;
+    }
+
+    bool Studio::deleteVariSegments (const juce::String& file, std::vector<int> indices)
+    {
+        const auto* vari = getVariAudio (file);
+        if (vari == nullptr || indices.empty())
+            return false;
+        auto segments = vari->segments;
+        std::sort (indices.rbegin(), indices.rend());
+        indices.erase (std::unique (indices.begin(), indices.end()), indices.end());
+        for (const auto i : indices)
+            if (juce::isPositiveAndBelow (i, (int) segments.size()))
+                segments.erase (segments.begin() + i);
+        if (segments.size() == vari->segments.size())
+            return false;
+        setVariSegments (file, std::move (segments));
+        return true;
+    }
+
+    bool Studio::setVariSegmentEdges (const juce::String& file, int index, double start, double end)
+    {
+        const auto* vari = getVariAudio (file);
+        const auto analysis = getPitchAnalysis (file);
+        if (vari == nullptr || analysis == nullptr)
+            return false;
+        auto segments = vari->segments;
+        if (! setSegmentEdges (segments, index, start, end, *analysis))
+            return false;
+        setVariSegments (file, std::move (segments));
+        return true;
+    }
+
+    void Studio::resetVariAudio (int partId, std::vector<int> indices, VariReset what)
+    {
+        const auto found = findPart (partId);
+        if (! found)
+            return;
+        const auto& part = project.findTrack (found->first)->parts[(size_t) found->second];
+        const auto file = part.audioFile;
+        if (what == VariReset::warp || what == VariReset::all)
+        {
+            // (The clip's warp markers: those VariAudio's Warp Start/End made, and any others.)
+            if (part.isWarped())
+            {
+                if (what == VariReset::warp)
+                {
+                    resetWarp ({ partId });
+                    return;
+                }
+                auto& p = project.findTrack (found->first)->parts[(size_t) found->second];
+                p.audioOffset = p.warp.front().seconds;
+                p.warp.clear();
+            }
+            if (what == VariReset::warp)
+                return;
+        }
+        const auto* vari = getVariAudio (file);
+        if (vari == nullptr)
+        {
+            changed();
+            return;
+        }
+        auto segments = vari->segments;
+        if (indices.empty())
+        {
+            indices.resize (segments.size());
+            std::iota (indices.begin(), indices.end(), 0);
+        }
+        for (const auto i : indices)
+        {
+            if (! juce::isPositiveAndBelow (i, (int) segments.size()))
+                continue;
+            auto& s = segments[(size_t) i];
+            if (what == VariReset::pitch || what == VariReset::all)
+                s.shift = 0.0f;
+            if (what == VariReset::curve || what == VariReset::all)
+            {
+                s.straighten = s.tiltStart = s.tiltEnd = 0.0f;
+                s.anchor = 0.5f;
+                s.straightenFrom = 0.0f;
+                s.straightenTo = 1.0f;
+            }
+            if (what == VariReset::formant || what == VariReset::all)
+                s.formant = 0.0f;
+            if (what == VariReset::volume || what == VariReset::all)
+                s.volumeDb = 0.0f;
+        }
+        if (segments == vari->segments)
+        {
+            if (what == VariReset::all)
+                changed();   // (the warp reset above)
+            return;
+        }
+        setVariSegments (file, std::move (segments));
+    }
+
+    bool Studio::reanalyseVariAudio (const juce::String& file)
+    {
+        const auto analysis = getPitchAnalysis (file);
+        if (analysis == nullptr)
+            return false;
+        auto& vari = project.variAudio[file];
+        vari.segments = segmentPitch (*analysis);
+        vari.bypass = false;
+        changed();
+        return true;
+    }
+
+    bool Studio::warpVariSegment (int partId, int index, bool atStart, double songBeat)
+    {
+        const auto found = findPart (partId);
+        if (! found)
+            return false;
+        const auto& original = project.findTrack (found->first)->parts[(size_t) found->second];
+        const auto* vari = getVariAudio (original.audioFile);
+        if (vari == nullptr || ! juce::isPositiveAndBelow (index, (int) vari->segments.size()))
+            return false;
+        const auto& segs = vari->segments;
+        const auto tempo = project.tempoMap();
+        auto part = original;
+        ensureWarp (part, tempo);
+        if (part.warp.size() < 2)
+            return false;
+        // The edge moved and the two around it held: the segment and its neighbour (or the clip's
+        // edge) stretch between them (the manual: "the segment and the adjacent segments").
+        const auto& seg = segs[(size_t) index];
+        const auto edge = atStart ? seg.start : seg.end;
+        const auto first = part.warp.front().seconds, last = part.warp.back().seconds;
+        const auto left = juce::jlimit (first, last, atStart ? (index > 0 ? segs[(size_t) index - 1].start : first) : seg.start);
+        const auto right = juce::jlimit (first, last, atStart ? seg.end : (index + 1 < (int) segs.size() ? segs[(size_t) index + 1].end : last));
+        if (edge <= left + 0.005 || edge >= right - 0.005)
+            return false;
+        const auto pin = [&] (double seconds)
+        {
+            for (size_t i = 0; i < part.warp.size(); ++i)
+                if (std::abs (part.warp[i].seconds - seconds) < 0.005)
+                    return;
+            part.warp.push_back ({ warpBeatAt (part, seconds, tempo), seconds });
+            std::sort (part.warp.begin(), part.warp.end(), [] (const WarpMarker& a, const WarpMarker& b) { return a.beat < b.beat; });
+        };
+        pin (left);
+        pin (right);
+        pin (edge);
+        auto at = -1;
+        for (size_t i = 0; i < part.warp.size(); ++i)
+            if (std::abs (part.warp[i].seconds - edge) < 0.005)
+                at = (int) i;
+        if (at <= 0 || at + 1 >= (int) part.warp.size())
+            return false;
+        constexpr double gap = 1.0 / 64.0;
+        const auto low = part.warp[(size_t) at - 1].beat + gap, high = part.warp[(size_t) at + 1].beat - gap;
+        if (high <= low)
+            return false;
+        part.warp[(size_t) at].beat = juce::jlimit (low, high, songBeat - part.start);
+        return editWarp (partId, [&] (Part& p) { p.warp = part.warp; p.audioOffset = part.audioOffset; return true; });
+    }
+
+    int Studio::extractMidi (int partId, const ExtractMidiOptions& options, ExtractDestination destination, juce::String& error)
+    {
+        const auto found = findPart (partId);
+        if (! found)
+            return 0;
+        const auto clip = project.findTrack (found->first)->parts[(size_t) found->second];
+        const auto clipTrackName = project.findTrack (found->first)->name;
+        const auto* vari = getVariAudio (clip.audioFile);
+        const auto analysis = getPitchAnalysis (clip.audioFile);
+        if (vari == nullptr || analysis == nullptr || vari->segments.empty())
+        {
+            error = "The clip has no VariAudio segments yet: click EDIT VARIAUDIO first.";
+            return 0;
+        }
+        const auto extracted = pr7s::extractMidi (vari->segments, *analysis, options);
+        const auto tempo = project.tempoMap();
+        const auto beatOf = [&] (double seconds) { return warpBeatAt (clip, seconds, tempo); };   // (from the clip's start)
+
+        // Where it goes.
+        auto trackId = 0;
+        if (destination == ExtractDestination::selectedTrack)
+        {
+            for (const auto id : getSelectedTracks())
+                if (canTakeMidi (id))
+                {
+                    trackId = id;
+                    break;
+                }
+            if (trackId == 0)
+            {
+                error = "No instrument track is selected: select one first, or choose a new track.";
+                return 0;
+            }
+        }
+        else
+        {
+            trackId = addTrack ({});
+            if (trackId == 0)
+            {
+                error = "A new instrument track couldn't be made.";
+                return 0;
+            }
+            renameTrack (trackId, clipTrackName + " MIDI");
+        }
+        auto* track = project.findTrack (trackId);
+        // An extraction from before, from the same clip's recording, on that track: replaced (the manual's).
+        const auto name = "Extracted: " + (clip.name.isNotEmpty() ? clip.name : clip.audioFile);
+        track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(), [&] (const Part& p) { return p.name == name && ! p.isAudio(); }),
+                            track->parts.end());
+        Part part;
+        part.start = clip.start;
+        part.length = clip.length;
+        part.name = name;
+        for (const auto& n : extracted.notes)
+        {
+            const auto a = beatOf (n.start), b = beatOf (n.end);
+            if (b <= 0.0 || a >= clip.length)
+                continue;   // (outside what the clip plays)
+            Note note;
+            note.start = juce::jmax (0.0, a);
+            note.length = juce::jmax (1.0 / 128.0, juce::jmin (clip.length, b) - note.start);
+            note.pitch = n.pitch;
+            note.velocity = (float) n.velocity / 127.0f;
+            part.notes.push_back (note);
+        }
+        auto lanes = track->controllerLanes;
+        for (const auto& e : extracted.events)
+        {
+            const auto at = beatOf (e.seconds);
+            if (at < 0.0 || at > clip.length)
+                continue;
+            Controller c;
+            c.type = e.bend ? Controller::Type::pitchbend : Controller::Type::cc;
+            c.number = e.bend ? 0 : e.number;
+            c.start = at;
+            c.value = e.value;
+            part.controllers.push_back (c);
+            const auto code = e.bend ? 128 : e.number;
+            if (std::find (lanes.begin(), lanes.end(), code) == lanes.end())
+                lanes.push_back (code);
+        }
+        std::stable_sort (part.controllers.begin(), part.controllers.end(), [] (const Controller& a, const Controller& b) { return a.start < b.start; });
+        if (options.pitch != ExtractMidiOptions::Pitch::notes)
+            track->pitchbendUp = track->pitchbendDown = juce::jlimit (1, 24, options.bendRange);
+        track->controllerLanes = lanes;   // (the lanes of what was made, shown in the MIDI editor)
+        track->parts.push_back (part);
+        std::sort (track->parts.begin(), track->parts.end(), [] (const Part& a, const Part& b) { return a.start < b.start; });
+        changed();
+        for (const auto& p : project.findTrack (trackId)->parts)
+            if (p.name == name)
+                return p.id;
+        return 0;
+    }
+
+    std::vector<int> Studio::generateHarmonyVoices (int partId, int voices, float vibratoReduction, juce::String& error)
+    {
+        std::vector<int> made;
+        const auto found = findPart (partId);
+        if (! found)
+            return made;
+        const auto sourceTrackId = project.findTrack (found->first)->id;
+        const auto clip = project.findTrack (found->first)->parts[(size_t) found->second];
+        if (! clip.isAudio() || ! editVariAudio (clip.audioFile))
+        {
+            error = "The clip's recording can't be read.";
+            return made;
+        }
+        const auto analysis = getPitchAnalysis (clip.audioFile);
+        const auto segments = getVariAudio (clip.audioFile)->segments;
+        if (analysis == nullptr || segments.empty())
+        {
+            error = "No notes were found in the clip (a monophonic recording: a voice, a solo instrument).";
+            return made;
+        }
+        const auto source = getAudioFolder().getChildFile (clip.audioFile);
+        const auto tempo = project.tempoMap();
+        auto after = sourceTrackId;
+        for (int voice = 0; voice < juce::jlimit (1, 4, voices); ++voice)
+        {
+            // Its own copy of the recording (VariAudio's edits are kept by recording).
+            const auto copyFile = getAudioFolder().getNonexistentChildFile (source.getFileNameWithoutExtension() + " " + harmonyVoiceName (voice),
+                                                                            source.getFileExtension(), false);
+            if (! source.copyFileTo (copyFile))
+            {
+                error = "The recording couldn't be copied for the " + juce::String (harmonyVoiceName (voice)) + " voice.";
+                break;
+            }
+            const auto trackId = duplicateTrack (sourceTrackId);
+            if (trackId == 0)
+                break;
+            auto* track = project.findTrack (trackId);
+            track->name = harmonyVoiceName (voice);
+            track->solo = track->mute = false;
+            auto voicePart = clip;
+            voicePart.id = 0;
+            voicePart.lane = 0;
+            voicePart.order = 0;
+            voicePart.audioFile = copyFile.getFileName();
+            track->parts = { voicePart };
+            track->showLanes = false;
+            // Its segments: the original's, each moved to the voice's note.
+            auto voiced = segments;
+            for (auto& seg : voiced)
+            {
+                const auto songBeat = clip.start + warpBeatAt (clip, (seg.start + seg.end) * 0.5, tempo);
+                std::vector<int> chord;
+                auto bass = -1;
+                const auto& chords = project.chordTrack.events;
+                if (const auto i = project.chordTrack.indexAt (songBeat); i >= 0 && ! chords.empty())
+                {
+                    for (const auto pc : chords[(size_t) i].chord.pitchClasses())
+                        chord.push_back (pc);
+                    bass = chords[(size_t) i].chord.bass >= 0 ? chords[(size_t) i].chord.bass : chords[(size_t) i].chord.root;
+                }
+                const auto target = harmonyPitch ((int) std::lround (seg.pitchNow()), chord, bass, voice);
+                seg.shift = (float) target - seg.pitch;
+                seg.straighten = juce::jmax (seg.straighten, juce::jlimit (0.0f, 1.0f, vibratoReduction));
+            }
+            project.variAudio[voicePart.audioFile].segments = voiced;
+            // The same recording: the same pitch (not found again).
+            if (const auto data = getAudio (voicePart.audioFile))
+                pitchCache[voicePart.audioFile] = { data, analysis };
+            // In order under the original: Soprano, Alto, Tenor, Bass.
+            auto& tracks = project.tracks;
+            const auto from = std::find_if (tracks.begin(), tracks.end(), [trackId] (const Track& t) { return t.id == trackId; });
+            auto moved = std::move (*from);
+            tracks.erase (from);
+            const auto to = std::find_if (tracks.begin(), tracks.end(), [after] (const Track& t) { return t.id == after; });
+            tracks.insert (to + 1, std::move (moved));
+            after = trackId;
+            made.push_back (trackId);
+        }
+        SessionLog::note ("Harmony voices: " + juce::String ((int) made.size()) + " made from " + clip.audioFile);
+        changed();
+        return made;
+    }
+
+    void Studio::setVariAudioReference (int trackId)
+    {
+        if (project.variAudioReference == trackId)
+            return;
+        project.variAudioReference = trackId;
+        changed (false);
+    }
+
+    void Studio::setCatchingNotes (bool on)
+    {
+        engine.setCatchingNotes (on);
+    }
+
+    std::vector<int> Studio::takePlayedNotes()
+    {
+        return engine.takeCaughtNotes();
+    }
+
+    void Studio::forgetAudio (const juce::String& name)
+    {
+        // (0.34.1) A recording gone or written again: everything made from it goes with it.
+        audioCache.erase (name);
+        hitpointCache.erase (name);
+        pitchCache.erase (name);
+        heardCache.erase (name);
+        warpedVariSignatures.erase (name);
+        warpRenderer.clear();
+    }
+
+    void Studio::forgetAllAudio()
+    {
+        // (0.34.1) A new song or sample rate: every recording and what was made from them (they
+        // stayed until the studio closed, the pitch and heard copies holding whole recordings).
+        audioCache.clear();
+        hitpointCache.clear();
+        pitchCache.clear();
+        heardCache.clear();
+        warpedVariSignatures.clear();
+        warpRenderer.clear();
+    }
+
+    void Studio::mixOnly (bool onlyTheMix)
+    {
+        mixOnlyAsked = true;
+        mixOnlyBroken = mixOnlyBroken || ! onlyTheMix;
+    }
+
+    void Studio::announce()
+    {
+        // (0.34.3) Every change counts, but a fader, pan or send level moved (nothing written, nothing
+        // else changed with it): the views skip their full rebuild then, their timers following the mix.
+        if (! mixOnlyAsked || mixOnlyBroken)
+            ++changeVersion;
+        mixOnlyAsked = mixOnlyBroken = false;
+        sendChangeMessage();
     }
 }

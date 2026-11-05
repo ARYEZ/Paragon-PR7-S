@@ -91,12 +91,28 @@ TEST_CASE ("Render in Place of whole tracks takes only the range, or the cycle; 
     auto narrowed = view.narrowedSources (whole);
     REQUIRE (narrowed.size() == 1);
     CHECK (narrowed[0].wholeTrack);
-    // CYCLE on: its stretch only.
+    // CYCLE on: its stretch only, still a whole track (0.52.1: its original can be disabled and hidden),
+    // with the warning that parts outside the cycle go silent with it.
     studio.setCycle (4.0, 12.0);
     studio.setCycleOn (true);
     narrowed = view.narrowedSources (whole);
     REQUIRE (narrowed.size() == 1);
-    CHECK_FALSE (narrowed[0].wholeTrack);
+    CHECK (narrowed[0].wholeTrack);
+    CHECK (view.renderWarning (narrowed).contains ("CYCLE is on: only bars 2 to 3 will be rendered"));   // (beats 4-12 in 4/4)
+    {
+        Windows::RenderPage page (studio, narrowed[0].wholeTrack);
+        page.setWarning (view.renderWarning (narrowed));
+        CHECK (page.source.isItemEnabled (4));   // disable
+        CHECK (page.source.isItemEnabled (3));   // remove
+        CHECK (page.hideSource.isEnabled());
+        CHECK (page.getOptions().source == Studio::RenderOptions::Source::disable);
+        CHECK (page.getOptions().hideSource);
+        CHECK (page.getWarning().isNotEmpty());
+    }
+    // The cycle over all of it: no warning.
+    studio.setCycle (0.0, 16.0);
+    CHECK (view.renderWarning (view.narrowedSources (whole)).isEmpty());
+    studio.setCycle (4.0, 12.0);
     CHECK_THAT (narrowed[0].start, WithinAbs (4.0, 1.0e-9));
     CHECK_THAT (narrowed[0].end, WithinAbs (12.0, 1.0e-9));
     // A range set: the range, over the cycle.
@@ -120,7 +136,9 @@ TEST_CASE ("Render in Place of whole tracks takes only the range, or the cycle; 
     REQUIRE (rendered.isAudio());
     REQUIRE_FALSE (rendered.parts.empty());
     CHECK_THAT (rendered.parts.front().start, WithinAbs (4.0, 1.0e-6));
-    CHECK_FALSE (studio.getProject().findTrack (synth)->disabled);   // (a stretch: the track plays on)
+    // (0.52.1) A whole track over the cycle: the defaults, disabled and hidden.
+    CHECK (studio.getProject().findTrack (synth)->disabled);
+    CHECK (studio.getProject().findTrack (synth)->hidden);
     CHECK_FALSE (studio.getEngine().isRecording());                  // (not R)
     studio.getAudioFolder().deleteRecursively();
 }
@@ -195,4 +213,98 @@ TEST_CASE ("The MIDI and drum editors' INSTRUMENT key opens the track's instrume
     asked = 0;
     key.onClick();
     CHECK (asked == trackId);
+}
+
+#include "ui/ScaledHolder.h"
+
+TEST_CASE ("0.52.1: the export page shown bigger follows its own size; plug-in windows open on the right-hand screen", "[render][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    auto* page = new Windows::ExportPage (studio);
+    ScaledPage scaled (std::unique_ptr<juce::Component> (page), 2.0f);
+    CHECK (scaled.getWidth() == page->getWidth() * 2);
+    CHECK (scaled.getHeight() == page->getHeight() * 2);
+    // The channels' list: the page grows, the frame with it (and the page keeps its own size).
+    const auto before = page->getHeight();
+    page->setChannelsMode (true);
+    CHECK (page->getHeight() > before);
+    CHECK (scaled.getHeight() == page->getHeight() * 2);
+    CHECK (page->getWidth() * 2 == scaled.getWidth());
+    // Never more than twice, never less than once.
+    CHECK (ScaledPage::scaleFor (scaled, 620, 610) <= 2.0f);
+    CHECK (ScaledPage::scaleFor (scaled, 620, 610) >= 1.0f);
+
+    // The right-hand screen: one of the screens there are, the furthest right.
+    const auto area = Windows::rightmostScreenArea();
+    CHECK_FALSE (area.isEmpty());
+    for (const auto& d : juce::Desktop::getInstance().getDisplays().displays)
+        CHECK (d.userArea.getCentreX() <= area.getCentreX());
+}
+
+#include "engine/ParagonSynth.h"
+
+TEST_CASE ("0.52.2: a plug-in's window opens where it was left; off every screen now: the right-hand screen", "[ui][pluginwindow]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("pr7s-window-places.settings");
+    file.deleteFile();
+    juce::PropertiesFile::Options options;
+    juce::PropertiesFile settings (file, options);
+    ParagonSynth synth;
+    const auto key = Windows::Instrument::placeKey (synth.getName());
+
+    // The first time: centred on the right-hand screen.
+    juce::Point<int> first;
+    {
+        Windows::Instrument window ("Lead", synth, &settings);
+        CHECK (Windows::rightmostScreenArea().contains (window.getBounds().getCentre()));
+        first = window.getPosition();
+        // Moved by the owner: kept.
+        window.setTopLeftPosition (first.x - 30, first.y + 20);
+        CHECK (settings.getValue (key) == juce::String (first.x - 30) + " " + juce::String (first.y + 20));
+    }
+    // Opened again (on any track): where it was left.
+    {
+        Windows::Instrument window ("Another track", synth, &settings);
+        INFO ("kept: " << settings.getValue (key) << ", now at " << window.getX() << " " << window.getY() << ", first " << first.x << " " << first.y);
+        CHECK (window.getPosition() == juce::Point<int> (first.x - 30, first.y + 20));
+    }
+    // A place no screen shows any more (a monitor unplugged): the right-hand screen again.
+    settings.setValue (key, "-50000 -50000");
+    {
+        Windows::Instrument window ("Lead", synth, &settings);
+        CHECK (Windows::rightmostScreenArea().contains (window.getBounds().getCentre()));
+    }
+    // Without settings: always the right-hand screen.
+    {
+        Windows::Instrument window ("Lead", synth);
+        CHECK (Windows::rightmostScreenArea().contains (window.getBounds().getCentre()));
+    }
+    file.deleteFile();
+}
+
+#include "ui/PluginsPage.h"
+
+TEST_CASE ("0.52.2: the PLUGINS page lists what was found, in the Hub's look", "[ui][pluginwindow]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    auto& known = studio.getPluginHost().getKnownPlugins();
+    known.clear();
+    juce::PluginDescription d;
+    d.name = "Kontakt 8";
+    d.pluginFormatName = "VST3";
+    d.category = "Instrument|Sampler";
+    d.manufacturerName = "Native Instruments";
+    d.version = "8.9.0";
+    d.fileOrIdentifier = "C:/VST3/Kontakt 8.vst3";
+    known.addType (d);
+    PluginsPage page (studio);
+    CHECK (page.getList().getTableListBox().getNumRows() == 1);
+    CHECK (PluginsPage::cellText (known, 0, 1) == "Kontakt 8");
+    CHECK (PluginsPage::cellText (known, 0, 3) == "INSTRUMENT  -  SAMPLER");
+    CHECK (PluginsPage::cellText (known, 0, 5) == "V8.9.0");
+    CHECK (page.createComponentSnapshot (page.getLocalBounds()).isValid());
+    known.clear();
 }

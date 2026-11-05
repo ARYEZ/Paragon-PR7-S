@@ -1,4 +1,5 @@
 #include "Inspector.h"
+#include "FollowSetupPage.h"
 #include "ui/TrackActions.h"
 
 #include "ui/AutomationKeys.h"
@@ -16,8 +17,8 @@ namespace
         return percent == 0 ? juce::String ("C") : (pan < 0.0 ? "L " : "R ") + juce::String (percent);
     }
 
-    constexpr const char* sectionNames[] = { "basics", "routing", "inserts", "sends", "fader", "quick" };
-    constexpr const char* sectionTitles[] = { "", "ROUTING", "INSERTS", "SENDS", "FADER", "QUICK CONTROLS" };
+    constexpr const char* sectionNames[] = { "basics", "routing", "chords", "inserts", "eq", "sends", "fader", "quick" };
+    constexpr const char* sectionTitles[] = { "", "ROUTING", "CHORDS", "INSERTS", "EQUALIZERS", "SENDS", "FADER", "QUICK CONTROLS" };
     constexpr int headerHeight = 22, rowHeight = 22, gap = 4, slotHeight = 17, slotGap = 2, faderHeight = 300, margin = 6;
     const juce::Colour panelColour { 0xff0d0a0e }, slotColour { 0xff0b090c }, postFaderColour { 0xff1c1108 };
 }
@@ -78,6 +79,8 @@ public:
     {
         if (e.mods.isPopupMenu() && section == Section::quick)
             owner.showQuickControlsMenu();
+        else if (e.mods.isPopupMenu() && section == Section::eq)   // (the manual: presets from the EQ section's header)
+            EqEditor::showPresetMenu (owner.studio, owner.trackId, this);
         else if (getLocalBounds().contains (e.getPosition()) && ! e.mods.isPopupMenu())
             owner.setFolded (section, ! owner.isFolded (section));
     }
@@ -193,7 +196,7 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     }
 
     // BASICS
-    for (auto* key : { &mute, &solo, &read, &write, &arm, &monitor })
+    for (auto* key : { &mute, &solo, &read, &write, &arm, &monitor, &lanes })
     {
         key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         key->setWantsKeyboardFocus (false);
@@ -207,6 +210,8 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     solo.onClick = [this] { if (const auto* t = track()) studio.setSolo (trackId, ! t->solo || juce::ModifierKeys::currentModifiers.isCommandDown(), juce::ModifierKeys::currentModifiers.isCommandDown()); };
     arm.onClick = [this] { if (const auto* t = track()) studio.setArmed (t->armed ? 0 : trackId); };
     monitor.onClick = [this] { if (const auto* t = track()) studio.setMonitor (trackId, ! t->monitor); };
+    lanes.setTooltip ("LANES (Show Lanes): the track's takes, each on a lane under it; the track's row shows what's heard");
+    lanes.onClick = [this] { if (const auto* t = track()) studio.setShowLanes (trackId, ! t->showLanes); };
 
     // RENDER (0.17.1, the owner asked: Render in Place as last time, in FREEZE's place; Freeze stays in
     // the track's menu) and PRESET (Load/Save Track Preset).
@@ -221,6 +226,26 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     preset.setTooltip ("Save this track's sound (instrument, effects and their settings, fader, pan, colour, Quick Controls) "
                        "as a track preset, or load one onto it");
     render.onClick = [this] { if (onRender) onRender (trackId); };
+    // EQUALIZERS (0.43.0): the curve (edited right there), BYPASS, and EDIT EQ for the whole EQ.
+    content.addAndMakeVisible (eqCurve);
+    for (auto* k : { &eqBypass, &eqEdit })
+    {
+        k->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        k->setWantsKeyboardFocus (false);
+        content.addAndMakeVisible (*k);
+    }
+    eqBypass.setTooltip ("Bypass the four EQ bands (the Pre section stays in)");
+    eqBypass.onClick = [this]
+    {
+        if (const auto* eq = studio.getChannelEq (trackId))
+        {
+            auto e = *eq;
+            e.bypass = ! e.bypass;
+            studio.setChannelEq (trackId, e);
+        }
+    };
+    eqEdit.setTooltip ("The whole EQ: the four bands, the low and high cuts, gain and phase, presets");
+    eqEdit.onClick = [this] { if (onOpenEq) onOpenEq (trackId); };
     preset.onClick = [this]
     {
         juce::PopupMenu menu;
@@ -294,7 +319,8 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
         studio.releaseControl (trackId, pr7s::Studio::control (pr7s::AutomationLane::Target::pan));
     };
 
-    for (auto* label : { &volumeLabel, &panLabel, &midiInputLabel, &channelLabel, &audioInputLabel, &outputLabel, &drumMapLabel })
+    for (auto* label : { &volumeLabel, &panLabel, &midiInputLabel, &channelLabel, &audioInputLabel, &outputLabel, &drumMapLabel,
+                         &followLabel, &liveLabel, &shiftLabel, &voiceLabel, &voicingLabel, &performLabel })
     {
         label->setFont (font (11.0f));
         label->setColour (juce::Label::textColourId, ParagonColours::textDim);
@@ -308,6 +334,12 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     audioInputLabel.setText ("INPUT", juce::dontSendNotification);
     outputLabel.setText ("OUT", juce::dontSendNotification);
     drumMapLabel.setText ("DRUMS", juce::dontSendNotification);
+    followLabel.setText ("FOLLOW", juce::dontSendNotification);
+    liveLabel.setText ("LIVE IN", juce::dontSendNotification);
+    shiftLabel.setText ("SHIFT", juce::dontSendNotification);
+    voiceLabel.setText ("VOICE", juce::dontSendNotification);
+    voicingLabel.setText ("VOICINGS", juce::dontSendNotification);
+    performLabel.setText ("PERFORM", juce::dontSendNotification);
     for (auto* readout : { &volumeReadout, &panReadout })
     {
         readout->setFont (font (11.0f));
@@ -317,7 +349,7 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
         content.addAndMakeVisible (*readout);
     }
 
-    for (auto* button : { &instrument, &edit, &output, &drumMapKey })
+    for (auto* button : { &instrument, &edit, &output, &drumMapKey, &followKey, &liveKey, &shiftKey, &voiceKey, &voicingKey, &performKey })
     {
         button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
         button->setColour (juce::TextButton::textColourOffId, ParagonColours::text);
@@ -334,6 +366,22 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     drumMapKey.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
     drumMapKey.setTooltip ("The track's drum map: names its notes after the drums they play (the MIDI editor's drum view) and plays them through it");
     drumMapKey.onClick = [this] { showDrumMapMenu(); };
+    // CHORDS (0.36.0)
+    for (auto* key : { &followKey, &liveKey, &shiftKey, &voiceKey, &voicingKey, &performKey })
+        key->getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+    performKey.setTooltip ("Perform: the track plays a pattern (arpeggio, strum, riff...) over the chord track's chords as the song plays, beside its own parts");
+    performKey.onClick = [this] { showPerformMenu(); };
+    voiceKey.setTooltip ("Single Voice: the voice of the chord track's voicing every note becomes (soprano the highest, bass the lowest)");
+    voiceKey.onClick = [this] { showVoiceMenu(); };
+    voicingKey.setTooltip ("This Track's Voicings: the chord track's voicing library, or one of the track's own (Voicings and Single Voice use them)");
+    voicingKey.onClick = [this] { showVoicingMenu(); };
+    followKey.setTooltip ("Follow Chord Track: the track's notes heard moved onto the chord track's chords (change the chords, the notes follow). "
+                          "Its notes stay as played: the MIDI editor shows where they sound");
+    followKey.onClick = [this] { showFollowMenu(); };
+    liveKey.setTooltip ("Live Input: the keys you play into this track go out on the chord track's chord (or scale) at the playhead, and are recorded so");
+    liveKey.onClick = [this] { showLiveMenu(); };
+    shiftKey.setTooltip ("Shift Chords (the chord track's): notes played a little before a chord (negative) or after it (positive) still take that chord");
+    shiftKey.onClick = [this] { showShiftMenu(); };
 
     // ROUTING
     for (auto* box : std::initializer_list<juce::ComboBox*> { &midiInput, &channel, &audioInput })
@@ -476,6 +524,8 @@ void Inspector::setFolded (Section section, bool shouldFold)
     layout();
     for (auto& header : headers)
         header->repaint();
+    if (const auto* eq = studio.getChannelEq (trackId))
+        eqBypass.setToggleState (eq->bypass, juce::dontSendNotification);
 }
 
 juce::Component& Inspector::getHeader (Section section)
@@ -485,7 +535,7 @@ juce::Component& Inspector::getHeader (Section section)
 
 juce::TextButton& Inspector::getKey (const juce::String& name)
 {
-    for (auto* key : { &mute, &solo, &read, &write, &arm, &monitor, &render, &preset })
+    for (auto* key : { &mute, &solo, &read, &write, &arm, &monitor, &render, &preset, &lanes })
         if (key->getButtonText() == name)
             return *key;
     return mute;
@@ -567,6 +617,7 @@ void Inspector::showMaster()
     // The master (0.9.12, the owner asked): its R and W, volume, inserts and fader.
     master = true;
     trackId = pr7s::Engine::masterBus;
+    eqCurve.setBus (trackId);
     AutomationKeys::setUp (read, write, studio, trackId);
     fader.setSingleTrack (trackId, true);
     refresh();
@@ -576,6 +627,7 @@ void Inspector::showTrack (int id)
 {
     master = false;
     trackId = studio.getProject().findTrack (id) != nullptr ? id : 0;
+    eqCurve.setBus (trackId);
     AutomationKeys::setUp (read, write, studio, trackId);
     for (int i = 0; i < pr7s::Project::maxSends; ++i)
     {
@@ -636,6 +688,7 @@ void Inspector::refresh()
     solo.setToggleState (t->solo, juce::dontSendNotification);
     arm.setToggleState (t->armed, juce::dontSendNotification);
     monitor.setToggleState (t->monitor, juce::dontSendNotification);
+    lanes.setToggleState (t->showLanes, juce::dontSendNotification);
     AutomationKeys::refresh (read, write, studio, trackId);
     // RENDER: a track with parts, live (a frozen one plays its file: unfreeze it first).
     render.setEnabled (! t->disabled && ! t->frozen && ! t->parts.empty());
@@ -650,7 +703,9 @@ void Inspector::refresh()
     preset.setEnabled (! t->disabled);
 
     // The instrument key: its name (a menu); an FX channel's effect; a group.
-    if (t->isGroup())
+    if (t->isFolder())
+        instrument.setButtonText (t->folderGroup ? "FOLDER + GROUP CHANNEL" : "FOLDER");   // (0.50.0)
+    else if (t->isGroup())
         instrument.setButtonText ("GROUP CHANNEL");
     else if (t->isFx())
         instrument.setButtonText (! t->inserts.empty() && ! t->inserts.front().isEmpty() ? "FX: " + t->inserts.front().plugin.name : juce::String ("FX CHANNEL"));
@@ -664,6 +719,19 @@ void Inspector::refresh()
     fillMidiInputs();
     channel.setSelectedId (t->midiChannel, juce::dontSendNotification);
     drumMapKey.setButtonText (t->drumMap.isNotEmpty() ? t->drumMap.toUpperCase() : juce::String ("NO DRUM MAP"));
+    followKey.setButtonText (pr7s::followModeName (t->follow));
+    followKey.setColour (juce::TextButton::buttonColourId, t->follow != pr7s::FollowMode::off ? juce::Colour (0xff3a0f18) : juce::Colour (0xff151217));
+    liveKey.setButtonText (pr7s::liveFollowName (t->liveFollow));
+    liveKey.setColour (juce::TextButton::buttonColourId, t->liveFollow != pr7s::LiveFollow::off ? juce::Colour (0xff3a0f18) : juce::Colour (0xff151217));
+    {
+        const auto ticks = studio.getChordTrack().shiftTicks;
+        shiftKey.setButtonText (ticks == 0 ? juce::String ("0 TICKS") : (ticks > 0 ? "+" : "") + juce::String (ticks) + " TICKS");
+    }
+    voiceKey.setButtonText (pr7s::voiceName (t->followVoice));
+    performKey.setButtonText (t->performPattern.isNotEmpty() ? t->performPattern.toUpperCase() : juce::String ("OFF"));
+    performKey.setColour (juce::TextButton::buttonColourId, t->performPattern.isNotEmpty() ? juce::Colour (0xff3a0f18) : juce::Colour (0xff151217));
+    voicingKey.setButtonText (t->followVoicing ? pr7s::voicingSummary (*t->followVoicing)
+                                               : "CHORD TRACK'S (" + pr7s::voicingSummary (studio.getChordTrack().voicing) + ")");
     // The inputs switched on in SETTINGS (two, with none to ask).
     auto inputs = 2;
     if (auto* device = studio.getDeviceManager().getCurrentAudioDevice())
@@ -831,7 +899,7 @@ void Inspector::timerCallback()
             bar.setValue (studio.getQuickControlValue (trackId, i), juce::dontSendNotification);
     AutomationKeys::refresh (read, write, studio, trackId);
     for (auto& send : sendSlots)
-        send->repaint();
+        send->repaintIfChanged();   // (0.34.3: only when what it shows has changed)
 }
 
 void Inspector::layout()
@@ -857,8 +925,10 @@ void Inspector::layout()
         const auto section = (Section) i;
         auto& header = *headers[(size_t) i];
         // The master (0.9.12): its basics (R W, volume), inserts and fader.
-        const auto applies = master ? section == Section::basics || section == Section::inserts || section == Section::fader
-                                    : t != nullptr && (section != Section::sends || ! t->isFx());
+        const auto applies = master ? section == Section::basics || section == Section::inserts || section == Section::fader || section == Section::eq
+                                    : t != nullptr && (section != Section::sends || ! t->isFx())
+                                          && (section != Section::chords || t->kind == pr7s::Track::Kind::instrument)   // (0.36.0: MIDI only)
+                                          && (section == Section::basics || ! t->isFolder() || t->folderGroup);   // (0.50.0: a folder: its basics)
         if (! applies && section != Section::basics)
             continue;
         header.setBounds (0, y, w, headerHeight);
@@ -894,12 +964,10 @@ void Inspector::layout()
                         place (enable, line);
                     }
                 }
-                // M S R W (and REC, MON).
+                // M S R W (and REC).
                 std::vector<juce::TextButton*> keys { &mute, &solo, &read, &write };
                 if (! t->isChannel())
                     keys.push_back (&arm);
-                if (t->isAudio())
-                    keys.push_back (&monitor);
                 auto r = row (rowHeight);
                 const auto keyWidth = (r.getWidth() - 3 * ((int) keys.size() - 1)) / (int) keys.size();
                 for (auto* key : keys)
@@ -916,6 +984,19 @@ void Inspector::layout()
                         line.removeFromLeft (3);
                     }
                     place (preset, line);
+                }
+                // (0.35.0, the owner asked) LANES and MON (an audio track's), under RENDER and PRESET.
+                if (! t->isChannel())
+                {
+                    auto line = row (rowHeight);
+                    if (t->isAudio())
+                    {
+                        place (lanes, line.removeFromLeft ((line.getWidth() - 3) / 2));
+                        line.removeFromLeft (3);
+                        place (monitor, line);
+                    }
+                    else
+                        place (lanes, line);
                 }
                 for (auto [label, slider, readout] : { std::tuple { &volumeLabel, &volume, &volumeReadout }, std::tuple { &panLabel, &pan, &panReadout } })
                 {
@@ -948,6 +1029,16 @@ void Inspector::layout()
                     labelled (audioInputLabel, audioInput);
                 labelled (outputLabel, output);
                 break;
+            case Section::chords:
+                labelled (followLabel, followKey);
+                if (t->follow == pr7s::FollowMode::singleVoice)
+                    labelled (voiceLabel, voiceKey);
+                if (t->follow == pr7s::FollowMode::voicings || t->follow == pr7s::FollowMode::singleVoice)
+                    labelled (voicingLabel, voicingKey);
+                labelled (liveLabel, liveKey);
+                labelled (shiftLabel, shiftKey);
+                labelled (performLabel, performKey);
+                break;
             case Section::inserts:
             {
                 // All 16 in a holder; five in view, the rest scrolled to.
@@ -966,6 +1057,15 @@ void Inspector::layout()
                 insertsHolder.setSize (holderWidth, top);
                 insertsHolder.repaint();
                 y += viewHeight + gap;
+                break;
+            }
+            case Section::eq:
+            {
+                place (eqCurve, row (juce::jlimit (80, 160, (w - 2 * margin) * 9 / 20)));
+                auto line = row (rowHeight);
+                place (eqBypass, line.removeFromLeft ((line.getWidth() - 3) / 2));
+                line.removeFromLeft (3);
+                place (eqEdit, line);
                 break;
             }
             case Section::sends:
@@ -1074,4 +1174,171 @@ void Inspector::showDrumMapMenu()
             safe->onDrumMapSetup();
     });
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (drumMapKey));
+}
+
+//==============================================================================
+// CHORDS (0.36.0)
+void Inspector::showFollowMenu()
+{
+    const auto* t = studio.getProject().findTrack (trackId);
+    if (t == nullptr)
+        return;
+    juce::Component::SafePointer<Inspector> safe (this);
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("FOLLOW CHORD TRACK");
+    for (const auto mode : pr7s::followModes())
+        menu.addItem (pr7s::followModeName (mode), ! t->frozen, t->follow == mode, [safe, mode]
+        {
+            if (safe != nullptr)
+                safe->chooseFollowMode (mode);
+        });
+    menu.addSeparator();
+    menu.addItem ("Set Up Again...", ! t->followReference.isEmpty() && ! t->frozen, false, [safe]
+    {
+        if (safe == nullptr)
+            return;
+        const auto* now = safe->studio.getProject().findTrack (safe->trackId);
+        const auto mode = now != nullptr && now->follow != pr7s::FollowMode::off ? now->follow : pr7s::FollowMode::chordsAndScales;
+        FollowSetupPage::show (safe->studio, safe->trackId, mode, safe->followKey);
+    });
+    if (studio.getChordTrack().events.empty())
+        menu.addItem ("(The chord track has no chords yet: nothing to follow)", false, false, [] {});
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (followKey));
+}
+
+void Inspector::chooseFollowMode (pr7s::FollowMode mode)
+{
+    // The first time (the manual): the dialog asks how the notes relate to the chord track.
+    if (mode != pr7s::FollowMode::off && studio.needsFollowSetup (trackId))
+        FollowSetupPage::show (studio, trackId, mode, followKey);
+    else
+        studio.setFollowMode (trackId, mode);
+}
+
+void Inspector::showLiveMenu()
+{
+    const auto* t = studio.getProject().findTrack (trackId);
+    if (t == nullptr)
+        return;
+    auto& s = studio;
+    const auto id = trackId;
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("LIVE INPUT");
+    for (const auto live : { pr7s::LiveFollow::off, pr7s::LiveFollow::chords, pr7s::LiveFollow::scales })
+        menu.addItem (pr7s::liveFollowName (live), true, t->liveFollow == live, [&s, id, live] { s.setLiveFollow (id, live); });
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (liveKey));
+}
+
+void Inspector::showPerformMenu()
+{
+    const auto* t = track();
+    if (t == nullptr)
+        return;
+    juce::PopupMenu menu;
+    menu.addItem (1, "Off", true, t->performPattern.isEmpty());
+    for (const auto& group : pr7s::patternGroups())
+    {
+        juce::PopupMenu sub;
+        for (const auto index : pr7s::patternsInGroup (group))
+        {
+            const auto& p = pr7s::patterns()[(size_t) index];
+            sub.addItem (100 + index, p.name, true, p.name == t->performPattern);
+        }
+        menu.addSubMenu (group, sub);
+    }
+    menu.addSeparator();
+    menu.addItem (2, "(Over the chord track's chords, as the song plays)", false);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&performKey),
+                        [safe = juce::Component::SafePointer<Inspector> (this), id = trackId] (int chosen)
+                        {
+                            if (safe == nullptr || chosen == 0)
+                                return;
+                            if (chosen == 1)
+                                safe->studio.setPerformPattern (id, {});
+                            else if (chosen >= 100 && chosen - 100 < (int) pr7s::patterns().size())
+                                safe->studio.setPerformPattern (id, pr7s::patterns()[(size_t) (chosen - 100)].name);
+                        });
+}
+
+void Inspector::showShiftMenu()
+{
+    auto& s = studio;
+    const auto now = studio.getChordTrack().shiftTicks;
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("SHIFT CHORDS (THE CHORD TRACK'S; 480 TICKS A BEAT)");
+    for (const auto ticks : { -120, -60, -30, -15, 0, 15, 30, 60, 120 })
+        menu.addItem ((ticks > 0 ? "+" : "") + juce::String (ticks) + " ticks" + (ticks < 0 ? " (notes played early)" : ticks > 0 ? " (notes played late)" : ""),
+                      true, now == ticks, [&s, ticks] { s.setChordShift (ticks); });
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (shiftKey));
+}
+
+//==============================================================================
+// Voicings (0.38.0)
+namespace
+{
+    // A voicing library's settings as a menu: the library, its style, the options; `set` takes the change.
+    void addVoicingItems (juce::PopupMenu& menu, const pr7s::VoicingSettings& now, std::function<void (pr7s::VoicingSettings)> set)
+    {
+        using V = pr7s::VoicingSettings;
+        for (const auto library : { V::Library::piano, V::Library::guitar, V::Library::basic })
+            menu.addItem (pr7s::voicingLibraryName (library), true, now.library == library, [now, set, library] { auto s = now; s.library = library; set (s); });
+        menu.addSeparator();
+        if (now.library == V::Library::piano)
+        {
+            for (const auto style : { V::PianoStyle::triads, V::PianoStyle::triadsNine, V::PianoStyle::fourNote, V::PianoStyle::fourNoteOpen, V::PianoStyle::fiveNote })
+                menu.addItem (pr7s::pianoStyleName (style), true, now.piano == style, [now, set, style] { auto s = now; s.piano = style; set (s); });
+            menu.addSeparator();
+            menu.addItem ("Add Root Note (left hand)", true, now.addRoot, [now, set] { auto s = now; s.addRoot = ! s.addRoot; set (s); });
+            menu.addItem ("Duplicate Root", true, now.duplicateRoot, [now, set] { auto s = now; s.duplicateRoot = ! s.duplicateRoot; set (s); });
+            menu.addItem ("Fatten Up", true, now.fattenUp, [now, set] { auto s = now; s.fattenUp = ! s.fattenUp; set (s); });
+        }
+        else if (now.library == V::Library::guitar)
+        {
+            for (const auto style : { V::GuitarStyle::triads, V::GuitarStyle::fourNote, V::GuitarStyle::threeString })
+                menu.addItem (pr7s::guitarStyleName (style), true, now.guitar == style, [now, set, style] { auto s = now; s.guitar = style; set (s); });
+        }
+        else
+        {
+            for (int octave = -2; octave <= 2; ++octave)
+                menu.addItem ("Octave Offset from C3: " + juce::String (octave > 0 ? "+" : "") + juce::String (octave), true, now.basicOctave == octave,
+                              [now, set, octave] { auto s = now; s.basicOctave = octave; set (s); });
+        }
+        menu.addSeparator();
+        menu.addItem ("Adaptive Voicings (each chord moves least from the one before)", true, now.adaptive, [now, set] { auto s = now; s.adaptive = ! s.adaptive; set (s); });
+    }
+}
+
+void Inspector::showVoiceMenu()
+{
+    const auto* t = studio.getProject().findTrack (trackId);
+    if (t == nullptr)
+        return;
+    auto& s = studio;
+    const auto id = trackId;
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("SINGLE VOICE");
+    for (const auto voice : { pr7s::Voice::soprano, pr7s::Voice::alto, pr7s::Voice::tenor, pr7s::Voice::bass })
+        menu.addItem (pr7s::voiceName (voice), true, t->followVoice == voice, [&s, id, voice] { s.setFollowVoice (id, voice); });
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (voiceKey));
+}
+
+void Inspector::showVoicingMenu()
+{
+    const auto* t = studio.getProject().findTrack (trackId);
+    if (t == nullptr)
+        return;
+    auto& s = studio;
+    const auto id = trackId;
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("THIS TRACK'S VOICINGS");
+    menu.addItem ("The Chord Track's (" + pr7s::voicingSummary (studio.getChordTrack().voicing) + ")", true, ! t->followVoicing,
+                  [&s, id] { s.setTrackVoicing (id, std::nullopt); });
+    juce::PopupMenu own;
+    addVoicingItems (own, t->followVoicing.value_or (studio.getChordTrack().voicing), [&s, id] (pr7s::VoicingSettings v) { s.setTrackVoicing (id, v); });
+    menu.addSubMenu ("The Track's Own" + juce::String (t->followVoicing ? " (" + pr7s::voicingSummary (*t->followVoicing) + ")" : ""), own, true, juce::Image(), t->followVoicing.has_value());
+    menu.addSeparator();
+    juce::PopupMenu chordTrack;
+    addVoicingItems (chordTrack, studio.getChordTrack().voicing, [&s] (pr7s::VoicingSettings v) { s.setChordTrackVoicing (v); });
+    menu.addSubMenu ("The Chord Track's Voicings", chordTrack);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (voicingKey));
 }

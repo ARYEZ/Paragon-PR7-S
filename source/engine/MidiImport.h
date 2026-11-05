@@ -20,6 +20,10 @@ namespace pr7s
         // One or none: a steady tempo.
         std::vector<TempoEvent> tempoChanges;
         int numerator = 4, denominator = 4;
+        std::vector<SignatureEvent> signatureChanges;   // (0.45.0) after the first, at their bars
+        // (0.49.0) The file's markers (meta event 6: the manual's Importing Markers via MIDI), beats from its start.
+        struct FileMarker { double beat = 0.0; juce::String name; };
+        std::vector<FileMarker> markers;
         struct Track
         {
             juce::String name;

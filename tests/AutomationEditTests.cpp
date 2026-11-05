@@ -247,3 +247,242 @@ TEST_CASE ("Automation in the arrangement: selecting, typing values, the handles
     CHECK (lowest < 0.25f);
     arrange.setTool (ArrangeView::Tool::select);
 }
+
+TEST_CASE ("0.34.4: automation and tempo lanes drawn strip by strip (as the playhead redraws them) give the same pixels as drawn whole", "[automation][ui][performance]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto trackId = studio.getProject().tracks[0].id;
+    studio.setAutomationOpen (trackId, true);
+    studio.appendAutomationLane (trackId, 0);
+    // Many points over a long song: ramps, bent ramps both ways, a terminator (a gap with virgin territory).
+    std::vector<AutomationPoint> volume, pan;
+    for (int i = 0; i < 400; ++i)
+    {
+        AutomationPoint p;
+        p.beat = i * 1.37;
+        p.value = 0.5f + 0.45f * (float) std::sin (i * 0.7);
+        p.curve = i % 3 == 0 ? 0.0f : (i % 3 == 1 ? 0.6f : -0.8f);
+        p.terminator = i == 150;
+        volume.push_back (p);
+        p.value = 0.5f + 0.4f * (float) std::cos (i * 0.3);
+        p.curve = 0.0f;
+        p.terminator = false;
+        pan.push_back (p);
+    }
+    studio.setAutomationPoints (trackId, 0, volume);
+    studio.setAutomationPoints (trackId, 1, pan);
+    studio.addTempoTrack();
+    studio.setTempoTrackOn (false);
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    auto& timeline = view.getTimeline();
+
+    const auto whole = [&]
+    {
+        juce::Image image (juce::Image::ARGB, arrange.getWidth(), arrange.getHeight(), true, juce::SoftwareImageType());   // (JUCE's own renderer everywhere: a Mac's shades a cut edge differently)
+        juce::Graphics g (image);
+        arrange.paintEntireComponent (g, true);
+        return image;
+    };
+    const auto inStrips = [&] (int width, int height)
+    {
+        juce::Image image (juce::Image::ARGB, arrange.getWidth(), arrange.getHeight(), true, juce::SoftwareImageType());   // (JUCE's own renderer everywhere: a Mac's shades a cut edge differently)
+        juce::Graphics g (image);
+        for (int x = 0; x < arrange.getWidth(); x += width)
+            for (int y = 0; y < arrange.getHeight(); y += height)
+            {
+                juce::Graphics::ScopedSaveState saved (g);
+                g.reduceClipRegion (x, y, width, height);
+                arrange.paintEntireComponent (g, true);
+            }
+        return image;
+    };
+    // JUCE's edges where a redraw cuts a line differ by a shade from the line drawn whole, so
+    // strips are checked against the whole within a few levels (the culled curve would be off by
+    // whole pixels); PARAGON_STRIPS=<folder> saves them, to compare two builds exactly.
+    const auto close = [] (const juce::Image& a, const juce::Image& b)
+    {
+        auto far = 0;
+        for (int y = 0; y < a.getHeight(); ++y)
+            for (int x = 0; x < a.getWidth(); ++x)
+            {
+                const auto p = a.getPixelAt (x, y), q = b.getPixelAt (x, y);
+                const auto d = juce::jmax (std::abs (p.getRed() - q.getRed()), std::abs (p.getGreen() - q.getGreen()), std::abs (p.getBlue() - q.getBlue()));
+                far += d > 24 ? 1 : 0;
+            }
+        return far;
+    };
+    auto pass = 0;
+    const auto check = [&]
+    {
+        const auto all = whole();
+        const juce::Image strips[] = { inStrips (7, all.getHeight()), inStrips (37, 23), inStrips (all.getWidth(), 31) };
+        for (const auto& image : strips)
+            CHECK (close (all, image) == 0);
+        if (const auto folder = juce::SystemStats::getEnvironmentVariable ("PARAGON_STRIPS", {}); folder.isNotEmpty())
+            for (int i = 0; i < 3; ++i)
+            {
+                juce::FileOutputStream out (juce::File (folder).getChildFile ("strips" + juce::String (pass) + "-" + juce::String (i) + ".png"));
+                out.setPosition (0);
+                out.truncate();
+                juce::PNGImageFormat().writeImageToStream (strips[i], out);
+            }
+        ++pass;
+    };
+    check();                         // the song's start, zoomed out
+    timeline.firstBeat = 150.0;      // in the middle, the gap's edge in view
+    for (int i = 0; i < 3; ++i)
+        arrange.zoom (true);
+    check();
+    studio.setTrim (true);           // trimming: the played curve sampled every 3 px
+    std::vector<AutomationPoint> trim { { 160.0, 0.7f }, { 190.0, 0.3f } };
+    studio.setTrimPoints (trackId, 0, trim);
+    studio.dispatchPendingMessages();
+    check();
+}
+
+TEST_CASE ("0.34.4: the transport drawn screen by screen (as its timer redraws them) gives the pixels it gave", "[ui][performance]")
+{
+    for (const auto finish : { Finish::Type::pearlWhite, Finish::Type::pearlBlack })
+    {
+        Finish::set (finish, false);
+        Studio studio (false);
+        MainView view (studio);
+        for (const auto width : { 1500, 3000 })   // (the wide layout too)
+        {
+            view.setSize (width, 900);
+            auto& bar = view.getTransport();
+            juce::Image whole (juce::Image::ARGB, bar.getWidth(), bar.getHeight(), true, juce::SoftwareImageType());   // (JUCE's own renderer everywhere: a Mac's shades a cut edge differently)
+            {
+                juce::Graphics g (whole);
+                bar.paintEntireComponent (g, true);
+            }
+            juce::Image strips (juce::Image::ARGB, bar.getWidth(), bar.getHeight(), true, juce::SoftwareImageType());   // (JUCE's own renderer everywhere: a Mac's shades a cut edge differently)
+            {
+                juce::Graphics g (strips);
+                for (int x = 0; x < bar.getWidth(); x += 29)
+                {
+                    juce::Graphics::ScopedSaveState saved (g);
+                    g.reduceClipRegion (x, 0, 29, bar.getHeight());
+                    bar.paintEntireComponent (g, true);
+                }
+            }
+            auto far = 0;
+            for (int y = 0; y < whole.getHeight(); ++y)
+                for (int x = 0; x < whole.getWidth(); ++x)
+                {
+                    const auto p = whole.getPixelAt (x, y), q = strips.getPixelAt (x, y);
+                    far += juce::jmax (std::abs (p.getRed() - q.getRed()), std::abs (p.getGreen() - q.getGreen()), std::abs (p.getBlue() - q.getBlue())) > 24 ? 1 : 0;
+                }
+            CHECK (far == 0);
+            if (const auto folder = juce::SystemStats::getEnvironmentVariable ("PARAGON_STRIPS", {}); folder.isNotEmpty())
+            {
+                juce::FileOutputStream out (juce::File (folder).getChildFile ("transport-" + juce::String ((int) finish) + "-" + juce::String (width) + ".png"));
+                out.setPosition (0);
+                out.truncate();
+                juce::PNGImageFormat().writeImageToStream (strips, out);
+            }
+        }
+    }
+    Finish::set (Finish::Type::pearlWhite, false);
+}
+
+TEST_CASE ("0.37.0: the info line shows the selected points and changes them all by the same amount (the owner's examples)", "[automation][edit][ui][infoline]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto trackId = studio.getProject().tracks[0].id;
+    studio.setAutomationOpen (trackId, true);
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    auto& info = view.getInfoLine();
+    REQUIRE (view.isInfoLineShown());
+    CHECK (info.isVisible());
+    const auto& points = [&] () -> const std::vector<AutomationPoint>& { return (*studio.getAutomation (trackId))[0].points; };
+    const auto db = [&] (int i) { return travelToVolume (points()[(size_t) i].value); };
+
+    // Nothing selected: the fields are empty.
+    info.refresh();
+    CHECK (info.getField ("VALUE").isEmpty());
+
+    // Four points all at -3 dB (the owner's screenshot), selected by a box dragged from above
+    // the line (it used to grab the quick scaling handle there instead).
+    studio.setAutomationPoints (trackId, 0, { { 4.0, volumeToTravel (-3.0f), 0.0f }, { 5.0, volumeToTravel (-3.0f), 0.0f },
+                                              { 12.0, volumeToTravel (-3.0f), 0.0f }, { 13.0, volumeToTravel (-3.0f), 0.0f } });
+    studio.dispatchPendingMessages();
+    auto& timeline = view.getTimeline();
+    const auto area = arrange.getLaneArea (trackId, 0);
+    drag (arrange, { timeline.xForBeat (3.5), area.getY() + 1.0f }, { timeline.xForBeat (13.5), area.getBottom() - 1.0f });
+    REQUIRE (arrange.getPointSelection().points == std::vector<int> { 0, 1, 2, 3 });
+    info.refresh();
+    CHECK (info.getField ("TYPE").isNotEmpty());
+    CHECK (info.getField ("VALUE") == "-3.0 dB");
+    CHECK (info.getField ("TERMINATOR") == "NO");
+    // -3 typed as +5: all of them +8, to +5 dB.
+    REQUIRE (info.enter ("VALUE", "5", false));
+    for (int i = 0; i < 4; ++i)
+        CHECK_THAT (db (i), WithinAbs (5.0, 0.05));
+    CHECK (arrange.getPointSelection().points.size() == 4);   // (still selected)
+
+    // Different values (-5, -1, 0, +1): the first shown; typed as 0, each +5: 0, +4, +5, +6 (the fader's top is +6).
+    studio.setAutomationPoints (trackId, 0, { { 4.0, volumeToTravel (-5.0f), 0.0f }, { 5.0, volumeToTravel (-1.0f), 0.0f },
+                                              { 12.0, volumeToTravel (0.0f), 0.0f }, { 13.0, volumeToTravel (1.0f), 0.0f } });
+    arrange.selectPoints (trackId, 0, { 0, 1, 2, 3 });
+    info.refresh();
+    CHECK (info.getField ("VALUE") == "-5.0 dB");
+    REQUIRE (info.enter ("VALUE", "0.0", false));
+    CHECK_THAT (db (0), WithinAbs (0.0, 0.05));
+    CHECK_THAT (db (1), WithinAbs (4.0, 0.05));
+    CHECK_THAT (db (2), WithinAbs (5.0, 0.05));
+    CHECK_THAT (db (3), WithinAbs (6.0, 0.05));
+    // Ctrl (absolute): all to the value typed.
+    REQUIRE (info.enter ("VALUE", "-10", true));
+    for (int i = 0; i < 4; ++i)
+        CHECK_THAT (db (i), WithinAbs (-10.0, 0.05));
+    CHECK_FALSE (info.enter ("VALUE", "loud", false));
+    // One undo step each.
+    studio.undo();
+    CHECK_THAT (db (1), WithinAbs (4.0, 0.05));
+    studio.redo();
+
+    // (0.45.1, the owner's report) Typed, then Ctrl+Enter: it went past the text box (JUCE's takes
+    // only a plain Enter) and nothing was set. Now the keys themselves.
+    REQUIRE (info.enter ("VALUE", "0.0", false));
+    info.beginEdit ("VALUE");
+    REQUIRE (info.getEditor() != nullptr);
+    info.getEditor()->setText ("-12", false);
+    CHECK (info.getEditor()->keyPressed (juce::KeyPress (juce::KeyPress::returnKey, juce::ModifierKeys::commandModifier, 0)));
+    for (int i = 0; i < 4; ++i)
+        CHECK_THAT (db (i), WithinAbs (-12.0, 0.05));
+    studio.dispatchPendingMessages();
+    info.beginEdit ("VALUE");
+    REQUIRE (info.getEditor() != nullptr);
+    info.getEditor()->setText ("-10", false);   // (plain Enter: relative, the first -12 -> -10, all +2)
+    CHECK (info.getEditor()->keyPressed (juce::KeyPress (juce::KeyPress::returnKey)));
+    for (int i = 0; i < 4; ++i)
+        CHECK_THAT (db (i), WithinAbs (-10.0, 0.05));
+    studio.dispatchPendingMessages();
+    // Start: all move in time by what the first moves (bar 2 -> bar 3: 4 beats later).
+    REQUIRE (info.enter ("START", "3.1.1.0", false));
+    CHECK_THAT (points()[0].beat, WithinAbs (8.0, 1.0e-9));
+    CHECK_THAT (points()[3].beat, WithinAbs (17.0, 1.0e-9));
+    // Terminator: switched for all.
+    info.toggleTerminator();
+    for (const auto& p : points())
+        CHECK (p.terminator);
+    // Delete: all the selected at once.
+    arrange.selectPoints (trackId, 0, { 1, 2 });
+    arrange.deleteSelectedPoints();
+    CHECK (points().size() == 2);
+
+    // Hidden and shown again.
+    view.toggleInfoLine();
+    CHECK_FALSE (info.isVisible());
+    view.toggleInfoLine();
+    CHECK (info.isVisible());
+}

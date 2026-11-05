@@ -377,7 +377,20 @@ void MixerView::Strip::mouseDoubleClick (const juce::MouseEvent& e)
 void MixerView::Strip::mouseDown (const juce::MouseEvent& e)
 {
     if (isMaster())
+    {
+        // (0.43.0) The master's right-click: its EQ.
+        if (e.mods.isPopupMenu() && owner.onOpenEq)
+        {
+            juce::PopupMenu menu;
+            menu.addItem (1, "Channel EQ...");
+            menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<MixerView> (&owner)] (int chosen)
+            {
+                if (safe != nullptr && chosen == 1 && safe->onOpenEq)
+                    safe->onOpenEq (pr7s::Engine::masterBus);
+            });
+        }
         return;
+    }
     if (e.mods.isPopupMenu())
     {
         if (! owner.studio.isTrackSelected (busId))
@@ -499,6 +512,9 @@ MixerView::Strip& MixerView::getStrip (int index)
 
 void MixerView::changeListenerCallback (juce::ChangeBroadcaster*)
 {
+    if (studio.getChangeVersion() == seenChange)
+        return;   // (0.34.3: only the mix moved; the strips follow it on their timer)
+    seenChange = studio.getChangeVersion();
     rebuild();
 }
 
@@ -519,7 +535,10 @@ void MixerView::rebuild()
     // A strip for each track, in the track list's order (kept if the tracks are the same).
     std::vector<int> ids;
     for (const auto& track : studio.getProject().tracks)
-        if (single ? ! singleIsMaster && track.id == singleTrack : ! track.hidden && ! track.disabled)   // (hidden and disabled tracks: no strip, as the manual has it)
+        // (hidden and disabled tracks: no strip, as the manual has it; 0.50.0: nor a folder without its group
+        // channel, nor a track in a closed folder: the manual syncs the mixer with the track list)
+        if (single ? ! singleIsMaster && track.id == singleTrack
+                   : ! track.hidden && ! track.disabled && ! (track.isFolder() && ! track.folderGroup) && ! studio.getProject().isFoldedAway (track))
             ids.push_back (track.id);
     auto same = strips.size() == ids.size();
     for (size_t i = 0; same && i < ids.size(); ++i)
@@ -566,6 +585,9 @@ void MixerView::showLinkMenu (int trackId)
     const auto selected = studio.getSelectedTracks();
     const auto* group = studio.getLinkGroupOf (trackId);
     juce::PopupMenu menu, included;
+    // (0.43.0) The channel's EQ, first.
+    menu.addItem (50, "Channel EQ...", onOpenEq != nullptr);
+    menu.addSeparator();
     menu.addSectionHeader ("LINK");
     menu.addItem (1, "Link Selected Channels...", selected.size() >= 2);
     if (group != nullptr)
@@ -585,6 +607,8 @@ void MixerView::showLinkMenu (int trackId)
         if (safe == nullptr || chosen == 0)
             return;
         auto& studio = safe->studio;
+        if (chosen == 50 && safe->onOpenEq)
+            safe->onOpenEq (trackId);
         if (chosen == 1)
             LinkGroupPage::show (*safe, studio, 0, studio.getSelectedTracks());
         else if (chosen == 2 || chosen == 3)
@@ -603,6 +627,10 @@ void MixerView::showLinkMenu (int trackId)
 
 void MixerView::timerCallback()
 {
+    // (0.34.3) Put away (its zone closed): nothing to follow until it's shown again.
+    for (auto* c = static_cast<juce::Component*> (this); c != nullptr; c = c->getParentComponent())
+        if (! c->isVisible())
+            return;
     auto& engine = studio.getEngine();
     for (auto& strip : strips)
     {
@@ -611,7 +639,7 @@ void MixerView::timerCallback()
         strip->followMix();
         if (showsSends())
             for (int i = 0; i < pr7s::Project::maxSends; ++i)
-                strip->getSendSlot (i).repaint();
+                strip->getSendSlot (i).repaintIfChanged();
     }
     if (single && ! singleIsMaster)
         return;
@@ -937,8 +965,34 @@ void MixerView::SendSlot::refresh()
     repaint();
 }
 
+MixerView::SendSlot::Shown MixerView::SendSlot::showsNow() const
+{
+    Shown now;
+    const auto* s = send();
+    const auto* track = owner.studio.getProject().findTrack (busId);
+    if (s == nullptr || track == nullptr)
+        return now;
+    const auto* fx = owner.studio.getProject().findTrack (s->target);
+    now.has = true;
+    now.active = s->on && ! track->sendsBypass;
+    now.preFader = s->preFader;
+    now.db = track->automationRead ? owner.studio.getEngine().getSendNowDb (busId, slot) : s->levelDb;
+    now.name = fx != nullptr ? fx->name : juce::String ("?");
+    now.colour = (fx != nullptr ? fx->colour : ParagonColours::accent).getARGB();
+    return now;
+}
+
+void MixerView::SendSlot::repaintIfChanged()
+{
+    if (! isShowing())
+        return;
+    if (const auto now = showsNow(); ! shown || *shown != now)
+        repaint();
+}
+
 void MixerView::SendSlot::paint (juce::Graphics& g)
 {
+    shown = showsNow();
     const auto bounds = getLocalBounds().toFloat().reduced (0.5f);
     g.setColour (juce::Colour (0xff0b090c));
     g.fillRoundedRectangle (bounds, 3.0f);
