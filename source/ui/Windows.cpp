@@ -663,10 +663,21 @@ namespace Windows
         setResizable (instance.hasEditor() && getContentComponent() != nullptr
                           && dynamic_cast<juce::AudioProcessorEditor*> (getContentComponent())->isResizable(),
                       false);
-        centreWithSize (getWidth(), getHeight());
+        // (0.52.1, the owner asked) Centred on the right-hand screen (the owner's third); one screen: that one.
+        setBounds (rightmostScreenArea().withSizeKeepingCentre (getWidth(), getHeight()));
         setVisible (true);
         timerCallback();
         startTimer (300);
+    }
+
+    juce::Rectangle<int> rightmostScreenArea()
+    {
+        const auto& displays = juce::Desktop::getInstance().getDisplays().displays;
+        juce::Rectangle<int> area;
+        for (const auto& d : displays)
+            if (area.isEmpty() || d.userArea.getCentreX() > area.getCentreX())
+                area = d.userArea;
+        return area.isEmpty() ? juce::Rectangle<int> (0, 0, 1280, 800) : area;
     }
 
     Instrument::~Instrument()

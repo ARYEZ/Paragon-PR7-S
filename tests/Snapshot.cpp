@@ -10,6 +10,7 @@
 #include "ui/AutomationPanel.h"
 #include "ui/ToolIcons.h"
 #include "ui/Windows.h"
+#include "ui/ScaledHolder.h"
 #include "ui/ParagonLookAndFeel.h"
 
 // Hidden test (the "[.]" tag): renders the studio's window to a PNG, with a
@@ -1546,6 +1547,40 @@ TEST_CASE ("Snapshot: the Auto Fades dialog (0.52.0; a track's, its own settings
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };
         juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+TEST_CASE ("Snapshot: Render in Place's page for a whole track over the cycle (0.52.1: the warning)", "[.][snapshot-renderpage]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "renderpage.png");
+    Finish::set (Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        const auto synth = studio.getProject().tracks[0].id;
+        studio.renameTrack (synth, "Bass");
+        studio.addPart (synth, { 0.0, 32.0, "Bass", { { 0.0, 1.0, 40, 1.0f } } });
+        studio.setCycle (16.0, 32.0);
+        studio.setCycleOn (true);
+        MainView view (studio);
+        view.setSize (1500, 900);
+        const auto sources = view.narrowedSources ({ { synth, 0.0, 32.0, true } });
+        Windows::RenderPage page (studio, sources.front().wholeTrack);
+        page.setWarning (view.renderWarning (sources));
+        const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 2.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+        // (0.52.1) The export page as it opens now: bigger (1.65 here: the owner's 1080-high screens), channels listed.
+        auto* exportPage = new Windows::ExportPage (studio);
+        ScaledPage scaled (std::unique_ptr<juce::Component> (exportPage), 1.65f);
+        exportPage->setChannelsMode (true);
+        const auto exportPath = juce::File (path).getSiblingFile ("exportpage-scaled.png");
+        exportPath.deleteFile();
+        juce::FileOutputStream exportOut { exportPath };
+        juce::PNGImageFormat().writeImageToStream (scaled.createComponentSnapshot (scaled.getLocalBounds(), true, 1.0f), exportOut);
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }

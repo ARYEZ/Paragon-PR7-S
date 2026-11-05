@@ -5,6 +5,7 @@
 #include "ui/TempoDetectionPanel.h"
 #include "ui/MarkersPage.h"
 #include "ui/ExportPages.h"
+#include "ui/ScaledHolder.h"
 #include "ui/VariAudioEditor.h"
 #include "ui/TrackActions.h"
 #include "engine/MidiImport.h"
@@ -1718,7 +1719,8 @@ void MainView::exportMix()
     auto* page = new Windows::ExportPage (studio);
     exportPage = page;
     juce::DialogWindow::LaunchOptions options;
-    options.content.setOwned (page);
+    // (0.52.1, the owner asked) Twice the size, or as big as the screen allows (the page at its tallest: ~600 px).
+    options.content.setOwned (new ScaledPage (std::unique_ptr<juce::Component> (page), ScaledPage::scaleFor (*this, page->getWidth(), 610)));
     options.dialogTitle = "Paragon PR7-S: Export the mix";
     options.dialogBackgroundColour = juce::Colour (0xff0c0a0d);
     options.useNativeTitleBar = true;
@@ -1797,7 +1799,7 @@ void MainView::exportMidiFile()
         return;
     auto* page = new MidiExportPage (studio);
     juce::DialogWindow::LaunchOptions options;
-    options.content.setOwned (page);
+    options.content.setOwned (new ScaledPage (std::unique_ptr<juce::Component> (page), ScaledPage::scaleFor (*this, page->getWidth(), page->getHeight())));
     options.dialogTitle = "Paragon PR7-S: Export a MIDI file";
     options.dialogBackgroundColour = juce::Colour (0xff0c0a0d);
     options.useNativeTitleBar = true;
@@ -1920,8 +1922,14 @@ juce::String MainView::renderWarning (const std::vector<pr7s::Studio::RenderSour
             if (const auto* t = project.findTrack (s.trackId))
                 for (const auto& p : t->parts)
                     if (! p.muted && (p.start < s.start - 1.0e-9 || p.end() > s.end + 1.0e-9))
-                        return "CYCLE is on: only " + pr7s::formatBarsBeats (s.start, project) + " to " + pr7s::formatBarsBeats (s.end, project)
-                             + " is rendered. " + t->name + " has parts outside it: disabling or removing the track silences them too.";
+                    {
+                        // Bars as they're numbered on the ruler (from 1); the cycle's end bar is the last one in it.
+                        const auto map = project.signatures();
+                        const auto first = map.barAt (s.start) + 1, last = juce::jmax (first, map.barAt (s.end - 0.01) + 1);
+                        return "CYCLE is on: only bar" + (first == last ? " " + juce::String (first) : "s " + juce::String (first) + " to " + juce::String (last))
+                             + " will be rendered. " + t->name + " has parts outside the cycle: disabling or removing the track silences them too. "
+                               "Turn CYCLE off to render all of it.";
+                    }
     return {};
 }
 

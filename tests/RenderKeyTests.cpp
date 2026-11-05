@@ -98,7 +98,7 @@ TEST_CASE ("Render in Place of whole tracks takes only the range, or the cycle; 
     narrowed = view.narrowedSources (whole);
     REQUIRE (narrowed.size() == 1);
     CHECK (narrowed[0].wholeTrack);
-    CHECK (view.renderWarning (narrowed).contains ("CYCLE is on"));
+    CHECK (view.renderWarning (narrowed).contains ("CYCLE is on: only bars 2 to 3 will be rendered"));   // (beats 4-12 in 4/4)
     {
         Windows::RenderPage page (studio, narrowed[0].wholeTrack);
         page.setWarning (view.renderWarning (narrowed));
@@ -213,4 +213,31 @@ TEST_CASE ("The MIDI and drum editors' INSTRUMENT key opens the track's instrume
     asked = 0;
     key.onClick();
     CHECK (asked == trackId);
+}
+
+#include "ui/ScaledHolder.h"
+
+TEST_CASE ("0.52.1: the export page shown bigger follows its own size; plug-in windows open on the right-hand screen", "[render][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    auto* page = new Windows::ExportPage (studio);
+    ScaledPage scaled (std::unique_ptr<juce::Component> (page), 2.0f);
+    CHECK (scaled.getWidth() == page->getWidth() * 2);
+    CHECK (scaled.getHeight() == page->getHeight() * 2);
+    // The channels' list: the page grows, the frame with it (and the page keeps its own size).
+    const auto before = page->getHeight();
+    page->setChannelsMode (true);
+    CHECK (page->getHeight() > before);
+    CHECK (scaled.getHeight() == page->getHeight() * 2);
+    CHECK (page->getWidth() * 2 == scaled.getWidth());
+    // Never more than twice, never less than once.
+    CHECK (ScaledPage::scaleFor (scaled, 620, 610) <= 2.0f);
+    CHECK (ScaledPage::scaleFor (scaled, 620, 610) >= 1.0f);
+
+    // The right-hand screen: one of the screens there are, the furthest right.
+    const auto area = Windows::rightmostScreenArea();
+    CHECK_FALSE (area.isEmpty());
+    for (const auto& d : juce::Desktop::getInstance().getDisplays().displays)
+        CHECK (d.userArea.getCentreX() <= area.getCentreX());
 }

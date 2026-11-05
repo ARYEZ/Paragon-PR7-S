@@ -14,6 +14,9 @@ namespace Windows
     // behind the studio's window, which spans three screens, and looked
     // closed), and stays open until closed (as the manual's plug-in windows).
     // The keys it doesn't use go to the studio (`onKey`: Space, R...).
+    // (0.52.1) The right-hand screen's area (its usable part): where plug-in windows open.
+    juce::Rectangle<int> rightmostScreenArea();
+
     class Instrument final : public juce::DocumentWindow,
                              private juce::Timer
     {

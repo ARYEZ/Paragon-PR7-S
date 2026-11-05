@@ -4,12 +4,21 @@ Each version's notes appear on its GitHub Release page.
 
 ## 0.52.1
 
-Two fixes from your reports.
+Two fixes from your reports, and two changes you asked for.
+
+**The export window, bigger** (you asked: about twice the size)
+- **Audio Mixdown and MIDI File** open with everything twice the size: text, boxes, keys.
+- **Limited by your screen:** at its tallest (with the channels listed) the page is about 600 points high, and twice that won't fit a 1080-high screen. So it's as big as the screen it opens on allows: about 1.65 times on yours, twice on a taller screen.
+- **It grows with its list** as before, still at the bigger size.
+
+**Plug-in windows open centred on the right-hand screen** (you asked: your third monitor)
+- Every instrument's and effect's window now opens in the middle of the screen furthest to the right. With one screen, that's the one.
+- They open there every time (a window you move isn't remembered yet: say if you'd like that).
 
 **Render in Place: Disable and Hide were greyed out while CYCLE was on**
 - **What was wrong:** since 0.31.0, a whole track rendered with CYCLE on is rendered over the cycle only (as you asked then). But the studio then treated it as "a stretch of a track", which can only mute the parts it rendered. So "Mute and disable the track" and "Hide the track afterwards" were greyed out, and Render with the last settings (Alt+R) only ever muted.
 - **Now:** a track you render (the track menu, the Inspector's RENDER, Alt+R on selected tracks) stays a whole-track render. It's still rendered over the cycle only, but the original is muted, disabled and hidden by default, as you wanted.
-- **One thing to know:** if the track has parts outside the cycle, disabling it silences those too. The page now says so in a line above its note (for example "CYCLE is on: only 5.1.1.0 to 9.1.1.0 is rendered. Bass has parts outside it..."). Turn CYCLE off to render the whole track.
+- **One thing to know:** if the track has parts outside the cycle, disabling it silences those too. The page now says so in a line above its note (for example "CYCLE is on: only bars 5 to 8 will be rendered. Bass has parts outside the cycle..."). Turn CYCLE off to render the whole track.
 - A **range** selected with the Range tool still renders just that stretch and mutes the parts rendered, as before: there the stretch is what you chose.
 
 **The session log: what the studio was doing when it hangs**
