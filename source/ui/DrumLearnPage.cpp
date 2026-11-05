@@ -501,7 +501,8 @@ juce::String DrumLearnPage::getStatusText() const
     juce::StringArray kinds;
     for (const auto kind : pr7s::drumSections())
         if (sections[(size_t) kind] > 0)
-            kinds.add (juce::String (sections[(size_t) kind]) + " " + pr7s::drumSectionName (kind).toLowerCase() + (sections[(size_t) kind] == 1 ? "" : "s")
+            kinds.add (juce::String (sections[(size_t) kind]) + " " + pr7s::drumSectionName (kind).toLowerCase()
+                       + (sections[(size_t) kind] == 1 ? "" : kind == pr7s::DrumSection::chorus ? "es" : "s")
                        + " (" + juce::String (bars[(size_t) kind]) + " bars)");
     auto text = plural ((int) songs.size(), "song") + ", " + plural (total, "bar") + "; learning from " + juce::String (used) + ": "
               + (kinds.isEmpty() ? juce::String ("nothing") : kinds.joinIntoString (", ")) + ".";
