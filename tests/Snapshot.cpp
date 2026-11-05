@@ -1616,6 +1616,7 @@ TEST_CASE ("Snapshot: the PLUGINS page in the Hub's look (0.52.2)", "[.][snapsho
         add ("Paragon PR7-K", "Instrument|Synth", "Paragon", "0.31.0", true);
         add ("Superior Drummer 3", "Instrument|Drum", "Toontrack", "3.4.4", true);
         PluginsPage page (studio);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (100);   // (the table sorts itself on the message loop)
         page.getList().getTableListBox().selectRow (1);
         const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
         juce::File (path).deleteFile();
