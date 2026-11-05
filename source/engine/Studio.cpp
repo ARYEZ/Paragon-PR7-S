@@ -9,6 +9,7 @@
 #include "AudioAdvice.h"
 #include "DawProject.h"
 #include "SessionLog.h"
+#include "DrumIdeas.h"
 #include "MidiImport.h"
 
 namespace pr7s
@@ -9400,6 +9401,8 @@ namespace pr7s
             case LineIdea::Part::lead: return "Lead Guitar";
             case LineIdea::Part::pattern: return "Pattern";
             case LineIdea::Part::tune: return "Melody";
+            case LineIdea::Part::drums:
+            case LineIdea::Part::groove: return "Drums";
         }
         return "Idea";
     }
@@ -9415,6 +9418,9 @@ namespace pr7s
             if (trackId == 0)
                 return 0;
             renameTrack (trackId, linePartName (idea.part));
+            // (0.54.0) Drums: the GM map, the MIDI editor's drum view.
+            if (idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove)
+                setTrackDrumMap (trackId, DrumMap::gm().name);
         }
         Part part;
         part.start = spans.front().start;

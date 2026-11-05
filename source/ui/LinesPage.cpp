@@ -12,7 +12,7 @@ namespace
     {
         using P = pr7s::LineIdea::Part;
         return part == P::bass || part == P::rhythm ? pr7s::FamilyColours::orange
-             : part == P::chords || part == P::pattern ? pr7s::FamilyColours::red : pr7s::FamilyColours::pink;
+             : part == P::chords || part == P::pattern || part == P::drums ? pr7s::FamilyColours::red : pr7s::FamilyColours::pink;
     }
 }
 
@@ -298,7 +298,7 @@ void GuitarVelocityPanel::resized()
 //==============================================================================
 LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : studio (s)
 {
-    for (auto* key : { &hearChords, &more, &stopKey, &pianoTab, &guitarTab, &bassTab, &patternsTab, &melodyTab })
+    for (auto* key : { &hearChords, &more, &stopKey, &pianoTab, &guitarTab, &bassTab, &patternsTab, &melodyTab, &drumsTab })
     {
         key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         key->setWantsKeyboardFocus (false);
@@ -321,6 +321,14 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
     // (0.41.0) MELODY: composed melodies in six forms, with their settings.
     melodyTab.setTooltip ("Melodies composed for the chords: six forms (song form, question and answer, hook...), shaped by MELODY SETTINGS");
     melodyTab.onClick = [this] { setTab (Tab::melody); };
+    // (0.54.0) DRUMS: beats generated in the STYLE, and the grooves in your library.
+    drumsTab.setTooltip ("Drums: beats generated for the STYLE (one locked to the guitar riff), and the MIDI grooves in your MediaBay folders");
+    drumsTab.onClick = [this] { setTab (Tab::drums); };
+    groovesKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    groovesKey.setWantsKeyboardFocus (false);
+    groovesKey.setTooltip ("The next six grooves from your library (MediaBay folders: add yours there, F5)");
+    groovesKey.onClick = [this] { moreGrooves(); };
+    addChildComponent (groovesKey);
     melodyKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     melodyKey.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
     melodyKey.setWantsKeyboardFocus (false);
@@ -380,7 +388,8 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
     {
         const auto saved = settings->getValue ("ideasTab");
         tab = saved == "guitar" ? Tab::guitar : saved == "bass" ? Tab::bass : saved == "patterns" ? Tab::patterns
-            : saved == "melody" ? Tab::melody : Tab::piano;
+            : saved == "melody" ? Tab::melody : saved == "drums" ? Tab::drums : Tab::piano;
+        riffIndex = juce::jlimit (0, 5, settings->getIntValue ("ideasLockedRiff", 0));
     }
     setSize (1360, 760);
     setChords (std::move (chords));
@@ -402,6 +411,7 @@ std::vector<pr7s::LineIdea::Part> LinesPage::partsOf (Tab t)
         case Tab::bass: return { P::bass };
         case Tab::patterns: return { P::pattern };
         case Tab::melody: return { P::tune };
+        case Tab::drums: return { P::drums, P::groove };
     }
     return {};
 }
@@ -418,6 +428,8 @@ juce::String LinesPage::titleOf (pr7s::LineIdea::Part part)
         case P::lead: return "LEAD";
         case P::pattern: return "PATTERNS";
         case P::tune: return "COMPOSED MELODIES";
+        case P::drums: return "GENERATED";
+        case P::groove: return "FROM MY LIBRARY";
     }
     return {};
 }
@@ -440,7 +452,15 @@ void LinesPage::setTab (Tab t)
     tab = t;
     if (auto* settings = studio.getSettings())
         settings->setValue ("ideasTab", t == Tab::guitar ? "guitar" : t == Tab::bass ? "bass" : t == Tab::patterns ? "patterns"
-                                     : t == Tab::melody ? "melody" : "piano");
+                                     : t == Tab::melody ? "melody" : t == Tab::drums ? "drums" : "piano");
+    // The drums and bass follow the riff and beat last chosen; the library is looked at the first time.
+    if (t == Tab::drums || t == Tab::bass)
+    {
+        if (t == Tab::drums && ! groovesLooked)
+            lookForGrooves();
+        rebuild();
+        return;
+    }
     makeCards();
 }
 
@@ -484,6 +504,8 @@ void LinesPage::setGuitarStyle (pr7s::GuitarStyle st)
         return;
     stop();
     studio.setGuitarStyle (st);
+    if (groovesLooked)
+        lookForGrooves();   // (ranked for the new style)
     rebuild();
 }
 
@@ -505,6 +527,36 @@ void LinesPage::showRiffSettings()
             safe->setRiffSettings (r);
     };
     juce::CallOutBox::launchAsynchronously (std::move (panel), riffKey.getScreenBounds(), nullptr);
+}
+
+void LinesPage::lookForGrooves()
+{
+    groovesLooked = true;
+    const auto bpm = spans.empty() ? studio.getProject().bpm : studio.getProject().bpmAt (spans.front().start);
+    libraryGrooves = pr7s::findLibraryGrooves (studio.getMediaBay().getItems(), studio.getGuitarStyle(), bpm);
+    groovePage = 0;
+}
+
+void LinesPage::moreGrooves()
+{
+    stop();
+    const auto page = groovePage;
+    lookForGrooves();   // (again: the MediaBay may have found more since)
+    const auto pages = juce::jmax (1, ((int) libraryGrooves.size() + 5) / 6);
+    groovePage = (page + 1) % pages;
+    rebuild();
+}
+
+void LinesPage::noteChosen (pr7s::LineIdea::Part part, int index)
+{
+    if (part == pr7s::LineIdea::Part::rhythm && index != riffIndex)
+    {
+        riffIndex = index;
+        if (auto* settings = studio.getSettings())
+            settings->setValue ("ideasLockedRiff", index);
+    }
+    else if (part == pr7s::LineIdea::Part::drums)
+        beatIndex = index;
 }
 
 void LinesPage::showVelocities()
@@ -580,6 +632,31 @@ void LinesPage::rebuild()
     ideas[(size_t) P::pattern] = pr7s::patternIdeas (spans, barBeats, patternGroup);
     const auto melody = studio.getMelodySettings();
     ideas[(size_t) P::tune] = pr7s::composedMelodies (spans, barBeats, melody, variation);
+    // (0.54.0) Drums: the style's beats (the sixth on the chosen riff), the library's page of grooves;
+    // the bass's two locked ideas.
+    {
+        const auto& riffs = ideas[(size_t) P::rhythm];
+        const auto* lockedRiff = riffs.empty() ? nullptr : &riffs[(size_t) juce::jlimit (0, (int) riffs.size() - 1, riffIndex)];
+        ideas[(size_t) P::drums] = pr7s::drumIdeas (guitarStyle, spans, barBeats, variation, lockedRiff);
+        auto& grooves = ideas[(size_t) P::groove];
+        grooves.clear();
+        for (int i = groovePage * 6; i < (int) libraryGrooves.size() && (int) grooves.size() < 6; ++i)
+        {
+            juce::String error;
+            if (auto idea = pr7s::grooveIdea (libraryGrooves[(size_t) i], spans, barBeats, error))
+                grooves.push_back (std::move (*idea));
+        }
+        const auto& beats = ideas[(size_t) P::drums];
+        if (! spans.empty() && ! beats.empty())
+        {
+            const auto& beat = beats[(size_t) juce::jlimit (0, (int) beats.size() - 1, beatIndex)];
+            ideas[(size_t) P::bass].push_back (pr7s::bassOnHits (spans, pr7s::kickHits (beat), "Locked to the kick",
+                                                                 "The chord's root on every kick of the drum beat \"" + beat.style + "\" (the bass and kick as one)"));
+            if (lockedRiff != nullptr)
+                ideas[(size_t) P::bass].push_back (pr7s::bassOnHits (spans, pr7s::riffHits (*lockedRiff), "Following the riff",
+                                                                     "The chord's root on every hit of the guitar riff \"" + lockedRiff->style + "\" (doubling the guitar)"));
+        }
+    }
     melodyKey.setButtonText (MelodyPanel::summary (melody));
     // Humanize (0.20.0): each idea loosened its own repeatable way (what HEAR plays is what USE IT adds).
     const auto amount = studio.getIdeasHumanize();
@@ -587,7 +664,7 @@ void LinesPage::rebuild()
     if (amount > 0.0f && ! spans.empty())
     {
         const auto feel = studio.getIdeasFeel();
-        for (const auto part : { P::bass, P::melody, P::chords, P::rhythm, P::lead, P::pattern, P::tune })
+        for (const auto part : { P::bass, P::melody, P::chords, P::rhythm, P::lead, P::pattern, P::tune, P::drums, P::groove })
         {
             auto& list = ideas[(size_t) part];
             for (size_t i = 0; i < list.size(); ++i)
@@ -622,6 +699,9 @@ void LinesPage::makeCards()
     bassTab.setToggleState (tab == Tab::bass, juce::dontSendNotification);
     patternsTab.setToggleState (tab == Tab::patterns, juce::dontSendNotification);
     melodyTab.setToggleState (tab == Tab::melody, juce::dontSendNotification);
+    drumsTab.setToggleState (tab == Tab::drums, juce::dontSendNotification);
+    groovesKey.setVisible (tab == Tab::drums);
+    groovesKey.setEnabled (libraryGrooves.size() > 6);
     melodyKey.setVisible (tab == Tab::melody);
     groupBox.setText (patternGroup, juce::dontSendNotification);
     groupBox.setVisible (tab == Tab::patterns);
@@ -630,7 +710,7 @@ void LinesPage::makeCards()
     tuningLabel.setVisible (tab == Tab::guitar);
     velocitiesKey.setVisible (tab == Tab::guitar);
     styleBox.setText (pr7s::guitarStyleName (studio.getGuitarStyle()), juce::dontSendNotification);
-    styleBox.setVisible (tab == Tab::guitar);
+    styleBox.setVisible (tab == Tab::guitar || tab == Tab::drums || tab == Tab::bass);
     riffKey.setVisible (tab == Tab::guitar);
     resized();
     repaint();
@@ -643,7 +723,9 @@ void LinesPage::play (pr7s::LineIdea::Part part, int index)
         return;
     // Guitar ideas alone: chords voiced for a piano, played on a guitar library, would blur them.
     // (A pattern is the chords itself: alone too.)
-    const auto alone = part == pr7s::LineIdea::Part::rhythm || part == pr7s::LineIdea::Part::lead || part == pr7s::LineIdea::Part::pattern;
+    const auto alone = part == pr7s::LineIdea::Part::rhythm || part == pr7s::LineIdea::Part::lead || part == pr7s::LineIdea::Part::pattern
+                    || part == pr7s::LineIdea::Part::drums || part == pr7s::LineIdea::Part::groove;
+    noteChosen (part, index);
     studio.previewLine (&list[(size_t) index], spans, ! alone);
     playing = std::pair { part, index };
     playingChords = false;
@@ -674,6 +756,7 @@ int LinesPage::use (pr7s::LineIdea::Part part, int index, int ontoTrackId)
     const auto& list = getIdeas (part);
     if (! juce::isPositiveAndBelow (index, (int) list.size()))
         return 0;
+    noteChosen (part, index);
     const auto trackId = studio.addLinePart (list[(size_t) index], spans, ontoTrackId);
     for (auto* card : cards)
         if (card->part == part && card->index == index)
@@ -757,6 +840,15 @@ void LinesPage::paint (juce::Graphics& g)
         g.setColour (ParagonColours::text);
         g.drawText (titleOf (parts[i]), columnTitles[i].withTrimmedLeft (10), juce::Justification::centredLeft, false);
     }
+    if (tab == Tab::drums && getIdeas (pr7s::LineIdea::Part::groove).empty() && columnTitles.size() == 2)
+    {
+        g.setColour (ParagonColours::textDim);
+        g.setFont (interFont (13.0f));
+        g.drawFittedText ("No drum grooves found yet.\n\nThe MediaBay (F5) scans your folders for MIDI files; grooves are those with a drum word "
+                          "in their name or folder (drum, groove, beat, GGD, Toontrack, EZdrummer, Superior...). Add your groove folders there, "
+                          "then come back to this tab.",
+                          columnTitles[1].withY (columnTitles[1].getBottom() + 20).withHeight (160).reduced (20, 0), juce::Justification::topLeft, 8, 1.0f);
+    }
     if (parts.size() == 2)
     {
         g.setColour (ParagonColours::panelEdge);
@@ -777,9 +869,9 @@ void LinesPage::resized()
     humanizeKey.setBounds (head.removeFromRight (150));
 
     auto tabs = area.removeFromTop (tabsHeight).withTrimmedBottom (6);
-    for (auto* key : { &pianoTab, &guitarTab, &bassTab, &patternsTab, &melodyTab })
+    for (auto* key : { &pianoTab, &guitarTab, &bassTab, &patternsTab, &melodyTab, &drumsTab })
     {
-        key->setBounds (tabs.removeFromLeft (96));
+        key->setBounds (tabs.removeFromLeft (92));
         tabs.removeFromLeft (6);
     }
     groupBox.setBounds (tabs.withLeft (tabs.getRight() - 240));
@@ -791,6 +883,7 @@ void LinesPage::resized()
     tuningLabel.setBounds (tabs.removeFromRight (64));
     tabs.removeFromRight (8);
     riffKey.setBounds (tabs.removeFromRight (180));
+    groovesKey.setBounds (riffKey.getBounds());
     tabs.removeFromRight (8);
     styleBox.setBounds (tabs.removeFromRight (140));
 
@@ -800,7 +893,10 @@ void LinesPage::resized()
     // Two columns of three cards a side; one part alone: three across, two down.
     const auto layout = [this] (juce::Rectangle<int> column, pr7s::LineIdea::Part part, int across)
     {
-        const auto down = (6 + across - 1) / across;
+        auto count = 0;
+        for (auto* card : cards)
+            count += card->part == part ? 1 : 0;
+        const auto down = juce::jmax (1, (juce::jmax (6, count) + across - 1) / across);
         const auto w = (column.getWidth() - (across - 1) * gap) / across, h = (column.getHeight() - (down - 1) * gap) / down;
         auto i = 0;
         for (auto* card : cards)
@@ -823,7 +919,7 @@ void LinesPage::resized()
     else if (parts.size() == 1)
     {
         columnTitles.push_back (area.removeFromTop (columnTitleHeight));
-        layout (area, parts[0], 3);
+        layout (area, parts[0], getIdeas (parts[0]).size() > 6 ? 4 : 3);
     }
 }
 

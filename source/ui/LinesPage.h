@@ -3,6 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "engine/Studio.h"
+#include "engine/DrumIdeas.h"
 
 // IDEAS (0.18.0 as BASS & MELODY, the owner asked; 0.19.0: tabs for piano, guitar and bass).
 // Ideas to go with the chord track's chords, each drawn as a little piano roll over the
@@ -114,7 +115,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
-    enum class Tab { piano, guitar, bass, patterns, melody };   // (0.39.0: PATTERNS; 0.41.0: MELODY)
+    enum class Tab { piano, guitar, bass, patterns, melody, drums };   // (0.39.0: PATTERNS; 0.41.0: MELODY; 0.54.0: DRUMS)
     void setPatternGroup (const juce::String&);   // the PATTERNS tab's group (settings key "ideasPatternGroup")
     juce::String getPatternGroup() const noexcept { return patternGroup; }
     static std::vector<pr7s::LineIdea::Part> partsOf (Tab);
@@ -128,6 +129,14 @@ public:
     pr7s::GuitarStyle getGuitarStyle() const;
     void setRiffSettings (const pr7s::RiffSettings&);          // RIFF SETTINGS (Studio's), dealt again
     void showRiffSettings();
+    // DRUMS (0.54.0): the library's grooves six at a time (MORE GROOVES: the next six, round again).
+    void moreGrooves();
+    int getNumLibraryGrooves() const noexcept { return (int) libraryGrooves.size(); }
+    int getGroovePage() const noexcept { return groovePage; }
+    // The guitar riff the drums' and bass's locked ideas follow, and the beat the bass's kick-locked
+    // one follows: the rhythm / drums card last played or used (else the first).
+    int getLockedRiff() const noexcept { return riffIndex; }
+    int getLockedBeat() const noexcept { return beatIndex; }
     void showVelocities();                                     // the panel in a call-out under VELOCITIES
     void setHumanize (float amount, bool feel);                // (Studio's ideas humanize), every tab dealt again
     void showHumanize();
@@ -156,7 +165,7 @@ private:
     void showUseMenu (pr7s::LineIdea::Part, int index, Card&);
     pr7s::Studio& studio;
     std::vector<pr7s::ChordSpan> spans;
-    std::array<std::vector<pr7s::LineIdea>, 7> ideas;
+    std::array<std::vector<pr7s::LineIdea>, 9> ideas;
     juce::String patternGroup { "ARPEGGIOS" };
     juce::ComboBox groupBox;
     int variation = 0;
@@ -165,13 +174,19 @@ private:
     bool playingChords = false;
     juce::OwnedArray<Card> cards;
     juce::TextButton hearChords { "HEAR CHORDS" }, more { "MORE IDEAS" }, stopKey { "STOP" };
-    juce::TextButton pianoTab { "PIANO" }, guitarTab { "GUITAR" }, bassTab { "BASS" }, patternsTab { "PATTERNS" }, melodyTab { "MELODY" };
+    juce::TextButton pianoTab { "PIANO" }, guitarTab { "GUITAR" }, bassTab { "BASS" }, patternsTab { "PATTERNS" }, melodyTab { "MELODY" }, drumsTab { "DRUMS" };
     juce::TextButton melodyKey;   // MELODY SETTINGS (the MELODY tab)
     juce::Label tuningLabel { {}, "TUNING" };
     juce::ComboBox tuningBox;
     juce::TextButton velocitiesKey { "VELOCITIES" };
     juce::ComboBox styleBox;     // STYLE (the guitar tab)
     juce::TextButton riffKey;    // RIFF SETTINGS (the guitar tab)
+    juce::TextButton groovesKey { "MORE GROOVES" };   // (the drums tab)
+    std::vector<pr7s::LibraryGroove> libraryGrooves;
+    bool groovesLooked = false;
+    int groovePage = 0, riffIndex = 0, beatIndex = 0;
+    void lookForGrooves();
+    void noteChosen (pr7s::LineIdea::Part, int index);
     juce::TextButton humanizeKey;
     std::vector<juce::Rectangle<int>> columnTitles;
     double barBeats = 4.0;

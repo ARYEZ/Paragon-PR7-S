@@ -861,11 +861,52 @@ TEST_CASE ("Snapshot: the IDEAS window (PARAGON_SNAPSHOT_IDEAS=piano|guitar|bass
         studio.addChordEvent (4.0, { 5, T::major, X::none, -1 });
         studio.addChordEvent (8.0, { 0, T::major, X::none, -1 });
         studio.addChordEvent (12.0, { 7, T::major, X::none, -1 });
-        LinesPage page (studio, studio.getLineChords());
         const auto tab = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_IDEAS", "guitar");
+        // (0.54.0) The drums tab: a little groove library in the MediaBay (made-up files).
+        const auto grooveRoot = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("PR7-S snapshot library");
+        if (tab == "drums")
+        {
+            grooveRoot.deleteRecursively();
+            const char* names[] = { "Metal Drums/Metalcore/Breakdown 01 140bpm", "Metal Drums/Metalcore/Verse Double Kick 140bpm",
+                                    "Metal Drums/Metalcore/Chorus Half Time 140bpm", "Metal Drums/Metalcore/Blast 140bpm",
+                                    "Metal Drums/Rock/Straight 8ths 120bpm", "Metal Drums/Metalcore/Fill 03 140bpm" };
+            for (int f = 0; f < 6; ++f)
+            {
+                juce::MidiMessageSequence seq;
+                for (int step = 0; step < 32; ++step)
+                {
+                    const auto tick = step * 240.0;
+                    const auto kick = f == 0 ? (step % 8 == 0 || step % 8 == 3 || step % 8 == 6) : f == 1 ? true : step % 4 == 0;
+                    if (kick)
+                        seq.addEvent (juce::MidiMessage::noteOn (10, 36, (juce::uint8) 110), tick);
+                    if (step % 8 == (f == 2 || f == 0 ? 4 : 4) && (f != 2 || step % 16 == 8))
+                        seq.addEvent (juce::MidiMessage::noteOn (10, 38, (juce::uint8) 118), tick);
+                    if (step % 2 == 0)
+                        seq.addEvent (juce::MidiMessage::noteOn (10, f == 2 ? 51 : f == 0 ? 52 : 42, (juce::uint8) 90), tick);
+                }
+                for (int i = seq.getNumEvents(); --i >= 0;)
+                {
+                    const auto m = seq.getEventPointer (i)->message;
+                    seq.addEvent (juce::MidiMessage::noteOff (10, m.getNoteNumber()), m.getTimeStamp() + 100.0);
+                }
+                seq.updateMatchedPairs();
+                juce::MidiFile midi;
+                midi.setTicksPerQuarterNote (480);
+                midi.addTrack (seq);
+                const auto file = grooveRoot.getChildFile (juce::String (names[f]) + ".mid");
+                file.getParentDirectory().createDirectory();
+                juce::FileOutputStream out (file);
+                midi.writeTo (out);
+            }
+            studio.getMediaBay().addLocation (grooveRoot);
+            studio.getMediaBay().scanNow();
+            studio.getMediaBay().takeScanResults();
+        }
+        LinesPage page (studio, studio.getLineChords());
         page.setTab (tab == "piano" ? LinesPage::Tab::piano : tab == "bass" ? LinesPage::Tab::bass
                    : tab == "patterns" ? LinesPage::Tab::patterns : tab == "melody" ? LinesPage::Tab::melody
-                   : LinesPage::Tab::guitar);   // (0.39.0: =patterns; 0.41.0: =melody)
+                   : tab == "drums" ? LinesPage::Tab::drums
+                   : LinesPage::Tab::guitar);   // (0.39.0: =patterns; 0.41.0: =melody; 0.54.0: =drums)
         // (0.53.0) PARAGON_SNAPSHOT_STYLE=thrash|nu-metal|metalcore|shred: the guitar tab's STYLE.
         if (const auto style = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_STYLE", {}); style.isNotEmpty())
         {
@@ -876,12 +917,15 @@ TEST_CASE ("Snapshot: the IDEAS window (PARAGON_SNAPSHOT_IDEAS=piano|guitar|bass
         }
         page.play (tab == "piano" ? pr7s::LineIdea::Part::chords : tab == "bass" ? pr7s::LineIdea::Part::bass
                  : tab == "patterns" ? pr7s::LineIdea::Part::pattern : tab == "melody" ? pr7s::LineIdea::Part::tune
+                 : tab == "drums" ? pr7s::LineIdea::Part::drums
                  : pr7s::LineIdea::Part::rhythm, 1);
         const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
         page.stop();
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };
         juce::PNGImageFormat().writeImageToStream (image, out);
+        if (tab == "drums")
+            grooveRoot.deleteRecursively();
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
