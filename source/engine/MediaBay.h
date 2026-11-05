@@ -128,6 +128,11 @@ namespace pr7s
         // ratings are read from it now and written back after each change.
         explicit MediaDatabase (juce::File store = {});
         ~MediaDatabase();
+        // (0.57.1) Ratings and tags mark it to be saved; written when edits stop for a while (the
+        // studio's timer calls saveIfDue) or when it closes. Each star click wrote the whole database.
+        void saveSoon();
+        void saveIfDue (double quietMs = 2000.0);
+        bool hasUnsavedEdits() const noexcept { return unsaved; }
 
         // The folders scanned (each with its subfolders), and folders left out inside them.
         const juce::StringArray& getLocations() const noexcept { return locations; }
@@ -210,6 +215,8 @@ namespace pr7s
         static juce::String keyFromName (const juce::String&);    // "Bass_Am_120": "Am"; "" if none
 
         void save() const;
+        mutable bool unsaved = false;
+        double lastEdit = 0.0;
 
     private:
         class Scanner;

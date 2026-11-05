@@ -244,7 +244,10 @@ public:
     int use (pr7s::LineIdea::Part, int index, int ontoTrackId = 0);   // the track's id (0: a new one)
     void moreIdeas();
     int getVariation() const noexcept { return variation; }
-    const std::vector<pr7s::LineIdea>& getIdeas (pr7s::LineIdea::Part part) const noexcept { return ideas[(size_t) part]; }
+    // (Made when first asked for, kept until something they're made from changes: a change no longer
+    // deals every tab's ideas, only those shown or used.)
+    const std::vector<pr7s::LineIdea>& getIdeas (pr7s::LineIdea::Part part) const;
+    int getDealCount() const noexcept { return deals; }   // (tests: how many kinds were made since the page opened)
     std::optional<std::pair<pr7s::LineIdea::Part, int>> getPlaying() const noexcept { return playing; }
     int getNumCardsShown() const noexcept { return cards.size(); }
 
@@ -258,7 +261,10 @@ private:
     void showUseMenu (pr7s::LineIdea::Part, int index, Card&);
     pr7s::Studio& studio;
     std::vector<pr7s::ChordSpan> spans;
-    std::array<std::vector<pr7s::LineIdea>, 9> ideas;
+    mutable std::array<std::vector<pr7s::LineIdea>, 9> ideas, raw;   // (raw: before humanizing; the locked ones are made from those)
+    mutable std::array<bool, 9> made {}, madeRaw {};
+    mutable int deals = 0;
+    const std::vector<pr7s::LineIdea>& rawIdeas (pr7s::LineIdea::Part) const;
     juce::String patternGroup { "ARPEGGIOS" };
     juce::ComboBox groupBox;
     int variation = 0;

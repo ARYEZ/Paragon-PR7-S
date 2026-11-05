@@ -55,6 +55,11 @@ private:
     int count = 0;
     bool showingParts = false;
     juce::String shownKey;
+    // (0.57.1) What the last refresh was made from (skipped when all is the same).
+    juce::uint64 seenChange = 0;
+    std::vector<int> seenParts, seenPoints;
+    int seenBus = -1, seenLane = -2;
+    bool fieldsDirty = true;
     void refreshParts();
     bool enterPart (const juce::String& field, const juce::String& text, bool absolute);
     std::unique_ptr<juce::TextEditor> editor;

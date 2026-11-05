@@ -4,6 +4,8 @@
 #include "ui/ParagonLookAndFeel.h"
 #include "engine/SessionLog.h"
 
+#include <thread>
+
 namespace
 {
     juce::Font interFont (float height, bool bold = false) { return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain)); }
@@ -322,22 +324,60 @@ DrumLearnPage::DrumLearnPage (pr7s::Studio& s) : studio (s)
 DrumLearnPage::~DrumLearnPage()
 {
     stop();
+    cancelReading();
+}
+
+struct DrumLearnPage::Reading
+{
+    std::thread thread;
+    std::atomic<int> done { 0 };
+    int total = 0;
+    std::atomic<bool> cancel { false }, finished { false };
+    std::vector<pr7s::DrumSong> songs;   // (the thread's own until finished)
+    juce::StringArray unread;
+};
+
+void DrumLearnPage::readInto (std::vector<pr7s::DrumSong>& out, juce::StringArray& unread, const std::vector<ToRead>& files,
+                              std::atomic<int>* done, std::atomic<bool>* cancel)
+{
+    for (const auto& item : files)
+    {
+        if (cancel != nullptr && cancel->load())
+            return;
+        juce::String error;
+        if (auto song = pr7s::readDrumSong (item.file, error))
+        {
+            if (item.fromProfile)
+            {
+                if (const auto sections = pr7s::sectionsFromText (item.sections, (int) song->bars.size()))
+                    song->sections = *sections;
+                song->use = item.use;
+            }
+            out.push_back (std::move (*song));
+        }
+        else
+            unread.add (item.file.getFileName());
+        if (done != nullptr)
+            ++*done;
+    }
+}
+
+namespace
+{
+    std::vector<juce::File> songsIn (const juce::File& folder) { return pr7s::findDrumSongs (folder); }
 }
 
 int DrumLearnPage::loadFolder (const juce::File& f)
 {
     stop();
+    cancelReading();
     folder = f;
     songs.clear();
     unread.clear();
-    for (const auto& file : pr7s::findDrumSongs (f))
-    {
-        juce::String error;
-        if (auto song = pr7s::readDrumSong (file, error))
-            songs.push_back (std::move (*song));
-        else
-            unread.add (file.getFileName());
-    }
+    std::vector<ToRead> files;
+    for (const auto& file : songsIn (f))
+        files.push_back ({ file });
+    readInto (songs, unread, files);
     if (nameEditor.isEmpty())
         nameEditor.setText (f.getFileName(), false);
     pr7s::SessionLog::note ("Learn a Drummer: " + juce::String ((int) songs.size()) + " songs read from " + f.getFullPathName()
@@ -349,26 +389,91 @@ int DrumLearnPage::loadFolder (const juce::File& f)
 void DrumLearnPage::openProfile (const pr7s::DrumProfile& profile)
 {
     stop();
+    cancelReading();
     songs.clear();
     unread.clear();
     folder = juce::File();
+    std::vector<ToRead> files;
     for (const auto& saved : profile.songs)
-    {
-        const juce::File file (saved.path);
-        juce::String error;
-        auto song = pr7s::readDrumSong (file, error);
-        if (! song.has_value())
-        {
-            unread.add (file.getFileName());
-            continue;
-        }
-        if (const auto sections = pr7s::sectionsFromText (saved.sections, (int) song->bars.size()))
-            song->sections = *sections;
-        song->use = saved.use;
-        songs.push_back (std::move (*song));
-    }
+        files.push_back ({ juce::File (saved.path), saved.sections, saved.use, true });
+    readInto (songs, unread, files);
     nameEditor.setText (profile.name, false);
     changed();
+}
+
+void DrumLearnPage::loadFolderInBackground (const juce::File& f)
+{
+    stop();
+    folder = f;
+    if (nameEditor.isEmpty())
+        nameEditor.setText (f.getFileName(), false);
+    std::vector<ToRead> files;
+    for (const auto& file : songsIn (f))
+        files.push_back ({ file });
+    startReading (std::move (files));
+}
+
+void DrumLearnPage::openProfileInBackground (const pr7s::DrumProfile& profile)
+{
+    stop();
+    folder = juce::File();
+    nameEditor.setText (profile.name, false);
+    std::vector<ToRead> files;
+    for (const auto& saved : profile.songs)
+        files.push_back ({ juce::File (saved.path), saved.sections, saved.use, true });
+    startReading (std::move (files));
+}
+
+void DrumLearnPage::cancelReading()
+{
+    if (reading == nullptr)
+        return;
+    reading->cancel = true;
+    if (reading->thread.joinable())
+        reading->thread.join();
+    reading.reset();
+}
+
+void DrumLearnPage::startReading (std::vector<ToRead> files)
+{
+    cancelReading();
+    songs.clear();
+    unread.clear();
+    reading = std::make_unique<Reading>();
+    reading->total = (int) files.size();
+    auto* r = reading.get();
+    r->thread = std::thread ([r, list = std::move (files)]
+    {
+        readInto (r->songs, r->unread, list, &r->done, &r->cancel);
+        r->finished = true;
+    });
+    startTimerHz (10);
+    changed();
+}
+
+void DrumLearnPage::finishReading()
+{
+    if (reading == nullptr)
+        return;
+    if (reading->thread.joinable())
+        reading->thread.join();
+    songs = std::move (reading->songs);
+    unread = reading->unread;
+    reading.reset();
+    pr7s::SessionLog::note ("Learn a Drummer: " + juce::String ((int) songs.size()) + " songs read"
+                            + (folder.isDirectory() ? " from " + folder.getFullPathName() : juce::String())
+                            + (unread.isEmpty() ? juce::String() : ", " + juce::String (unread.size()) + " not"));
+    changed();
+}
+
+void DrumLearnPage::waitForReading()
+{
+    if (reading != nullptr)
+    {
+        if (reading->thread.joinable())
+            reading->thread.join();
+        finishReading();
+    }
 }
 
 void DrumLearnPage::setName (const juce::String& name) { nameEditor.setText (name, false); }
@@ -467,19 +572,31 @@ void DrumLearnPage::stop()
     if (hearing.first >= 0)
         studio.stopPreview();
     hearing = { -1, -1 };
-    stopTimer();
+    if (reading == nullptr)
+        stopTimer();
     if (rows != nullptr)
         rows->repaint();
 }
 
 void DrumLearnPage::timerCallback()
 {
-    if (! studio.isPreviewing())
+    if (reading != nullptr)
+    {
+        if (reading->finished)
+            finishReading();
+        else
+            repaint (0, 0, getWidth(), headerHeight);
+    }
+    if (hearing.first >= 0 && ! studio.isPreviewing())
         stop();
+    if (reading == nullptr && hearing.first < 0)
+        stopTimer();
 }
 
 juce::String DrumLearnPage::getStatusText() const
 {
+    if (reading != nullptr)
+        return "Reading the songs: " + juce::String (reading->done.load()) + " of " + juce::String (reading->total) + "...";
     if (songs.empty())
         return unread.isEmpty() ? juce::String ("No songs yet.") : "None of the " + plural (unread.size(), "file") + " held drums.";
     std::array<int, 6> sections {};
@@ -528,7 +645,7 @@ void DrumLearnPage::chooseFolder()
                           [safe = juce::Component::SafePointer<DrumLearnPage> (this)] (const juce::FileChooser& fc)
                           {
                               if (safe != nullptr && fc.getResult().isDirectory())
-                                  safe->loadFolder (fc.getResult());
+                                  safe->loadFolderInBackground (fc.getResult());
                           });
 }
 

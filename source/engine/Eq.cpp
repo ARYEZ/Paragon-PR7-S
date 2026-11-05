@@ -362,8 +362,44 @@ namespace pr7s
         }
     }
 
+    void EqProcessor::runStereo (const std::array<Biquad, EqDesign::maxStages>& stages, int count,
+                                 std::array<std::array<std::array<double, 2>, EqDesign::maxStages>, 2>& state,
+                                 float* left, float* right, int numSamples)
+    {
+        for (int k = 0; k < count; ++k)
+        {
+            const auto& f = stages[(size_t) k];
+            auto l1 = state[0][(size_t) k][0], l2 = state[0][(size_t) k][1];
+            auto r1 = state[1][(size_t) k][0], r2 = state[1][(size_t) k][1];
+            for (int i = 0; i < numSamples; ++i)
+            {
+                const double xl = left[i], xr = right[i];
+                const auto yl = f.b0 * xl + l1;
+                const auto yr = f.b0 * xr + r1;
+                l1 = f.b1 * xl - f.a1 * yl + l2;
+                r1 = f.b1 * xr - f.a1 * yr + r2;
+                l2 = f.b2 * xl - f.a2 * yl;
+                r2 = f.b2 * xr - f.a2 * yr;
+                left[i] = (float) yl;
+                right[i] = (float) yr;
+            }
+            state[0][(size_t) k][0] = std::abs (l1) < 1.0e-25 ? 0.0 : l1;
+            state[0][(size_t) k][1] = std::abs (l2) < 1.0e-25 ? 0.0 : l2;
+            state[1][(size_t) k][0] = std::abs (r1) < 1.0e-25 ? 0.0 : r1;
+            state[1][(size_t) k][1] = std::abs (r2) < 1.0e-25 ? 0.0 : r2;
+        }
+    }
+
     void EqProcessor::processPre (float* const* channels, int numChannels, int numSamples)
     {
+        if (numChannels >= 2 && channels[0] != channels[1])
+        {
+            if (design.preGain != 1.0f)
+                for (int c = 0; c < 2; ++c)
+                    juce::FloatVectorOperations::multiply (channels[c], design.preGain, numSamples);
+            runStereo (design.pre, design.numPre, preState, channels[0], channels[1], numSamples);
+            return;
+        }
         for (int c = 0; c < juce::jmin (2, numChannels); ++c)
         {
             if (design.preGain != 1.0f)
@@ -376,6 +412,14 @@ namespace pr7s
     {
         if (design.numEq == 0 && design.eqGain == 1.0f)
             return;
+        if (numChannels >= 2 && channels[0] != channels[1])
+        {
+            runStereo (design.eq, design.numEq, eqState, channels[0], channels[1], numSamples);
+            if (design.eqGain != 1.0f)
+                for (int c = 0; c < 2; ++c)
+                    juce::FloatVectorOperations::multiply (channels[c], design.eqGain, numSamples);
+            return;
+        }
         for (int c = 0; c < juce::jmin (2, numChannels); ++c)
         {
             run (design.eq, design.numEq, eqState[(size_t) c], channels[c], numSamples);

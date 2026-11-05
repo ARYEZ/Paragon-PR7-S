@@ -332,11 +332,20 @@ namespace pr7s
         return heard;
     }
 
+    HeardList heardStretchesOf (const Track& track)
+    {
+        HeardList all;
+        all.reserve (track.parts.size());
+        for (int i = 0; i < (int) track.parts.size(); ++i)
+            all.push_back (heardStretches (track, i));
+        return all;
+    }
+
     std::vector<FadedStretch> fadedStretches (const Track& track, int index, const AutoFades& fades, const TempoMap& tempo,
-                                              const std::function<double (const Part&)>& recordingSeconds)
+                                              const std::function<double (const Part&)>& recordingSeconds, const HeardList* heardOf)
     {
         std::vector<FadedStretch> out;
-        const auto heard = heardStretches (track, index);
+        const auto heard = heardOf != nullptr ? (*heardOf)[(size_t) index] : heardStretches (track, index);
         if (heard.empty())
             return out;
         const auto& part = track.parts[(size_t) index];
@@ -379,7 +388,8 @@ namespace pr7s
                 if (j == index)
                     continue;
                 const auto& other = track.parts[(size_t) j];
-                for (const auto& [a, b] : heardStretches (track, j))
+                const auto othersHeard = heardOf != nullptr ? (*heardOf)[(size_t) j] : heardStretches (track, j);
+                for (const auto& [a, b] : othersHeard)
                     if (std::abs ((before ? b : a) - beat) < near)
                     {
                         const auto continues = other.audioFile == part.audioFile && ! other.isWarped() && ! part.isWarped()

@@ -294,6 +294,7 @@ public:
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
 private:
+    juce::uint64 seenChange = 0;   // (0.57.1) the studio's change version last acted on
     enum class Gesture { none, position, audition, band, move, resize, draw, erase, velocity, velocityHandle,
                          controllerDraw, controllerErase, controllerBand, controllerMove, controllerHandle, controllerLine, laneResize };
 

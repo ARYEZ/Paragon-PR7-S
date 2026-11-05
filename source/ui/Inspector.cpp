@@ -597,6 +597,11 @@ void Inspector::refreshVisibility()
 
 void Inspector::changeListenerCallback (juce::ChangeBroadcaster*)
 {
+    // (0.57.1) Only the mix moved: the timer follows the fader, pan and sends (followMix); laying out
+    // its sixty controls again on every step of a fader drag isn't needed.
+    if (studio.getChangeVersion() == seenChange)
+        return;
+    seenChange = studio.getChangeVersion();
     refreshVisibility();
     if (studio.isMasterSelected())   // the master's row (0.9.12)
     {

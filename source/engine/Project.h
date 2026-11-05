@@ -525,8 +525,12 @@ namespace pr7s
     // goes on (the halves of one split recording). `recordingSeconds`: how long a clip's
     // recording is (how far past its end it can reach; none: 0).
     struct FadedStretch { double from = 0.0, to = 0.0, fadeIn = 0.0, fadeOut = 0.0; };
+    // (0.57.1) `heard`: every part's heardStretches worked out once for the track (by index); without
+    // it each call works out every other part's again (a comped track's update grew as the cube of its clips).
+    using HeardList = std::vector<std::vector<std::pair<double, double>>>;
+    HeardList heardStretchesOf (const Track&);
     std::vector<FadedStretch> fadedStretches (const Track&, int partIndex, const AutoFades&, const TempoMap&,
-                                              const std::function<double (const Part&)>& recordingSeconds);
+                                              const std::function<double (const Part&)>& recordingSeconds, const HeardList* heard = nullptr);
     juce::String formatTime (double seconds);
 
     // The family's track colours, taken in turn: shades along its red, pink

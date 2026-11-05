@@ -30,8 +30,14 @@ public:
     void resized() override;
 
     // What the controls do (tests drive them).
-    int loadFolder (const juce::File&);                // the songs read (files that weren't: getUnread)
-    void openProfile (const pr7s::DrumProfile&);
+    int loadFolder (const juce::File&);                // the songs read (files that weren't: getUnread); waits
+    void openProfile (const pr7s::DrumProfile&);       // (waits)
+    // (0.57.1) The same on a thread of its own: the window stays usable, the status line counts the
+    // songs read, and the rows appear when all are in. CHOOSE FOLDER... and Check...'s Songs use them.
+    void loadFolderInBackground (const juce::File&);
+    void openProfileInBackground (const pr7s::DrumProfile&);
+    bool isReading() const noexcept { return reading != nullptr; }
+    void waitForReading();                             // (tests)
     const std::vector<pr7s::DrumSong>& getSongs() const noexcept { return songs; }
     const juce::StringArray& getUnread() const noexcept { return unread; }
     void setName (const juce::String&);
@@ -57,6 +63,14 @@ public:
     static constexpr int headerHeight = 128, rowHeight = 62, gap = 12, nameWidth = 270, useWidth = 30;
 
 private:
+    struct Reading;
+    struct ToRead { juce::File file; juce::String sections; bool use = true; bool fromProfile = false; };
+    static void readInto (std::vector<pr7s::DrumSong>&, juce::StringArray& unread, const std::vector<ToRead>&,
+                          std::atomic<int>* done = nullptr, std::atomic<bool>* cancel = nullptr);
+    void startReading (std::vector<ToRead>);
+    void finishReading();
+    void cancelReading();
+    std::unique_ptr<Reading> reading;
     void timerCallback() override;
     void chooseFolder();
     void changed();

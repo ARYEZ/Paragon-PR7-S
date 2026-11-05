@@ -286,6 +286,11 @@ bool KeyEditor::editing() const noexcept
 //==============================================================================
 void KeyEditor::changeListenerCallback (juce::ChangeBroadcaster*)
 {
+    // (0.57.1) Only the mix moved (a fader, a pan, a send level): nothing here shows it. The docked
+    // editor at 200% across three screens repainted whole on every step of a fader drag.
+    if (studio.getChangeVersion() == seenChange)
+        return;
+    seenChange = studio.getChangeVersion();
     refresh();
 }
 

@@ -942,6 +942,11 @@ void ChordPadsView::circleChordClicked (const Chord& chord)
 
 void ChordPadsView::changeListenerCallback (juce::ChangeBroadcaster*)
 {
+    // (0.57.1) Only the mix moved: nothing on the pads shows it (the suggestions were worked out
+    // again and three screens repainted on every step of a fader drag).
+    if (studio.getChangeVersion() == seenChange)
+        return;
+    seenChange = studio.getChangeVersion();
     selectPads (selected);   // (pads may have gone: fewer of them)
 }
 

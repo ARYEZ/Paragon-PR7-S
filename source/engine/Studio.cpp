@@ -7699,6 +7699,8 @@ namespace pr7s
     {
         if (tapUnrecorded && ! isTapping (juce::Time::getMillisecondCounterHiRes() / 1000.0))
             endTapping();   // (0.45.0: the taps stopped; their undo step)
+        if (mediaBay != nullptr)
+            mediaBay->saveIfDue();   // (0.57.1: ratings and tags written once the edits stop)
         if (rendering || exportJob != nullptr)
             return;
         if (performer != nullptr)
@@ -7725,8 +7727,15 @@ namespace pr7s
         // only so long) and redraw the part taking shape.
         if (engine.isRecording())
         {
+            // (0.57.1) Every view redraws on a change: only when notes came in, else five times a
+            // second (an audio recording still grows): it was 30 times a second, whatever came in.
+            const auto before = recorded.size();
             engine.takeRecorded (recorded);
-            announce();
+            if (recorded.size() != before || ++quietRecordingTicks >= 6)
+            {
+                quietRecordingTicks = 0;
+                announce();
+            }
         }
         else if (wasRecording)
         {

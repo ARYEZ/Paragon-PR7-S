@@ -118,6 +118,10 @@ namespace pr7s
     private:
         static void run (const std::array<Biquad, EqDesign::maxStages>&, int stages, std::array<std::array<double, 2>, EqDesign::maxStages>& state,
                          float* samples, int numSamples);
+        // (0.57.1) Both sides at once: two independent chains side by side (the same sums per side).
+        static void runStereo (const std::array<Biquad, EqDesign::maxStages>&, int stages,
+                               std::array<std::array<std::array<double, 2>, EqDesign::maxStages>, 2>& state,
+                               float* left, float* right, int numSamples);
         EqDesign design;
         std::array<std::array<std::array<double, 2>, EqDesign::maxStages>, 2> preState {}, eqState {};
     };

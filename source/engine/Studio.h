@@ -1468,6 +1468,7 @@ namespace pr7s
         bool tapUnrecorded = false;
         int recordTrack = 0;
         std::vector<RecordedEvent> recorded;
+        int quietRecordingTicks = 0;
 
         // Recording audio: the file being written, and its writer.
         juce::AudioFormatManager formats;

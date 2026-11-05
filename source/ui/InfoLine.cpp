@@ -1,5 +1,7 @@
 #include "InfoLine.h"
 
+#include <unordered_map>
+
 #include "ui/ArrangeView.h"
 #include "ui/KeyEditor.h"
 #include "ui/ParagonLookAndFeel.h"
@@ -51,6 +53,7 @@ InfoLine::InfoLine (pr7s::Studio& s, ArrangeView& a) : studio (s), arrange (a)
     setTooltip ("The info line: the selected automation points, else the selected parts and audio events (the first one's values). "
                 "Double-click a value to type: all of them move by what the first one moves. Hold Ctrl as you press Enter to set them all to it. "
                 "MUTE and TERMINATOR switch with a click. Right-click to hide");
+    setOpaque (true);   // (0.57.1: paint fills it all)
     refresh();
     startTimerHz (10);
 }
@@ -62,6 +65,20 @@ void InfoLine::timerCallback()
 
 void InfoLine::refresh()
 {
+    // (0.57.1) Nothing changed (the song, the parts or points selected): nothing to do. It sorted the
+    // selection ten times a second, searching the whole song for each part as it went.
+    const auto& chosenPoints = arrange.getPointSelection();
+    auto parts = arrange.getSelectedParts();
+    if (studio.getChangeVersion() == seenChange && parts == seenParts && chosenPoints.busId == seenBus
+        && chosenPoints.laneIndex == seenLane && chosenPoints.points == seenPoints && ! fieldsDirty
+        && ! juce::ModifierKeys::currentModifiers.isAnyMouseButtonDown())   // (a drag shows its working copy)
+        return;
+    seenChange = studio.getChangeVersion();
+    seenParts = std::move (parts);
+    seenBus = chosenPoints.busId;
+    seenLane = chosenPoints.laneIndex;
+    seenPoints = chosenPoints.points;
+    fieldsDirty = false;
     fields.clear();
     count = 0;
     showingParts = false;
@@ -85,11 +102,11 @@ void InfoLine::refresh()
         refreshParts();
     juce::String key (count);
     for (const auto& f : fields)
-        key << "|" << f.value;
-    resized();
+        key << "|" << f.name << "=" << f.value;
     if (key != shownKey)
     {
         shownKey = key;
+        resized();
         repaint();
     }
 }
@@ -99,16 +116,17 @@ std::vector<int> InfoLine::partsInOrder() const
     // The earliest first (the manual: "the first item in the selection"), then by the tracks' order.
     auto ids = arrange.getSelectedParts();
     const auto shown = studio.getShownTracks();
-    const auto key = [&] (int id)
+    // (0.57.1) Each part's place found once, from one walk of the song (it was searched for twice per
+    // comparison: with Ctrl+A on thousands of parts, millions of checks ten times a second).
+    std::unordered_map<int, std::pair<double, int>> keys;
+    for (const auto& track : studio.getProject().tracks)
     {
-        const auto where = studio.findPart (id);
-        if (! where)
-            return std::pair<double, int> { 1.0e18, 0 };
-        const auto row = (int) (std::find (shown.begin(), shown.end(), where->first) - shown.begin());
-        return std::pair<double, int> { studio.getPartField (id, PartField::start).value_or (0.0), row };
-    };
-    std::stable_sort (ids.begin(), ids.end(), [&] (int a, int b) { return key (a) < key (b); });
-    ids.erase (std::remove_if (ids.begin(), ids.end(), [this] (int id) { return ! studio.findPart (id); }), ids.end());
+        const auto row = (int) (std::find (shown.begin(), shown.end(), track.id) - shown.begin());
+        for (const auto& part : track.parts)
+            keys[part.id] = { part.start, row };
+    }
+    ids.erase (std::remove_if (ids.begin(), ids.end(), [&] (int id) { return keys.find (id) == keys.end(); }), ids.end());
+    std::stable_sort (ids.begin(), ids.end(), [&] (int a, int b) { return keys[a] < keys[b]; });
     return ids;
 }
 

@@ -2,6 +2,7 @@
 #include "Controllers.h"
 #include "SessionLog.h"
 #include "Patterns.h"
+#include <map>
 
 namespace pr7s
 {
@@ -35,6 +36,20 @@ namespace pr7s
 
         // The lanes that are played back: R on, the lane not muted, with
         // points, and its control not being held (written).
+        // (0.57.1) A knob's last value set carried over to the new lanes (the same control): an update
+        // no longer has every automated plug-in knob set again on the next block when nothing moved.
+        template <typename LaneStates>
+        void keepApplied (LaneStates& into, const LaneStates& from)
+        {
+            for (auto& state : into)
+                for (const auto& old : from)
+                    if (old.lane.sameControl (state.lane))
+                    {
+                        state.applied = old.applied;
+                        break;
+                    }
+        }
+
         template <typename LaneStates>
         void readLanes (const std::vector<AutomationLane>& lanes, bool read, LaneStates& into, bool& mixAutomated,
                         int busId, const std::vector<std::pair<int, AutomationLane>>& held, const Project::AutomationSettings& automation)
@@ -282,6 +297,8 @@ namespace pr7s
             {
                 // Keep the notes and mix; send the old instrument away.
                 old = std::move (existing->instrument);
+                for (auto& state : existing->automation)   // (0.57.1: the new one is sent every automated value)
+                    state.applied = -1.0f;
                 existing->instrument = std::move (incoming->instrument);
                 existing->instrumentChannels = incoming->instrumentChannels;
                 std::swap (existing->buffer, incoming->buffer);
@@ -520,6 +537,8 @@ namespace pr7s
             bigger.setSize (channelsFor (*effect), maxBlockSize);
 
         const juce::ScopedLock sl (lock);
+        for (auto& state : busId == masterBus ? masterAutomation : findTrack (busId)->automation)   // (0.57.1: the slots move: sent again)
+            state.applied = -1.0f;
         Slot added;
         added.plugin = std::move (effect);
         inserts.insert (inserts.begin() + juce::jlimit (0, (int) inserts.size(), slot), std::move (added));
@@ -538,6 +557,8 @@ namespace pr7s
                 return;
             removed = std::move ((*inserts)[(size_t) slot].plugin);
             inserts->erase (inserts->begin() + slot);
+            for (auto& state : track != nullptr ? track->automation : masterAutomation)   // (0.57.1: the slots move: sent again)
+                state.applied = -1.0f;
         }
         if (removed != nullptr && onPluginGoing)
             onPluginGoing (removed.get());
@@ -617,26 +638,36 @@ namespace pr7s
             {
                 // Only what's in front plays where clips overlap (takes, 0.29.0): each clip as
                 // many times as it has stretches heard, its fades still at its own ends.
+                // (0.57.1) Each part's heard stretches once for the track, each recording asked for once.
+                const auto heardOf = heardStretchesOf (track);
+                std::map<juce::String, decltype (audioSource (juce::String()))> sounds;
+                const auto soundOf = [&] (const juce::String& file)
+                {
+                    auto found = sounds.find (file);
+                    if (found == sounds.end())
+                        found = sounds.emplace (file, audioSource (file)).first;
+                    return found->second;
+                };
                 for (int i = 0; i < (int) track.parts.size(); ++i)
                 {
                     const auto& part = track.parts[(size_t) i];
                     if (! part.isAudio() || ! audioSource)
                         continue;
-                    const auto stretches = heardStretches (track, i);
+                    const auto& stretches = heardOf[(size_t) i];
                     if (stretches.empty())
                         continue;
                     // Warped (0.32.0): its stretched sound, from the clip's start.
                     const auto warped = part.isWarped() && warpSource;
-                    auto sound = warped ? warpSource (part, tempo) : audioSource (part.audioFile);
+                    auto sound = warped ? warpSource (part, tempo) : soundOf (part.audioFile);
                     const auto offset = warped ? (juce::int64) 0 : (juce::int64) std::llround (part.audioOffset * sampleRate);
                     // (0.52.0) With the auto fades: a crossfade's stretch reaches past the cut.
                     const auto& fades = project.autoFadesOf (track);
-                    const auto recording = [this] (const Part& other)
+                    const auto recording = [&] (const Part& other)
                     {
-                        const auto s = audioSource ? audioSource (other.audioFile) : nullptr;
+                        const auto s = soundOf (other.audioFile);
                         return s != nullptr ? (double) s->getNumSamples() / sampleRate : 0.0;
                     };
-                    for (const auto& f : fadedStretches (track, i, fades, tempo, recording))
+                    for (const auto& f : fadedStretches (track, i, fades, tempo, recording, &heardOf))
                     {
                         Clip clip { part.start, part.end(), sound, offset, part.fadeIn * sampleRate, part.fadeOut * sampleRate, part.gain(), 0.0, 0.0, true,
                                     f.from, f.to };
@@ -788,6 +819,7 @@ namespace pr7s
         settings = { std::move (tempo), tempoVersion, project.signatures(), project.loopOn,
                      project.loopStart, juce::jmax (project.loopStart + 0.0625, project.loopEnd), project.click, masterLevel,
                      project.masterVolumeDb, project.automationSettings.virginTerritory };
+        keepApplied (masterLanes, masterAutomation);
         std::swap (masterAutomation, masterLanes);
         std::swap (liveChords, chordBits);   // (the old list goes out with `chordBits`)
         liveFollowMode = liveMode;
@@ -839,6 +871,7 @@ namespace pr7s
                         send.preFader = from != nullptr && from->preFader;
                     }
                 }
+                keepApplied (p.automation, track->automation);
                 std::swap (track->automation, p.automation);
                 track->drumOut = p.drumOut;
                 track->drumChannel = p.drumChannel;

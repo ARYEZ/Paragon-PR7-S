@@ -111,6 +111,7 @@ public:
     void resized() override;
 
 private:
+    juce::uint64 seenChange = 0;   // (0.57.1) the studio's change version last acted on
     class Header;
     class VisibilityRow;
     void refreshVisibility();

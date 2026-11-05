@@ -668,6 +668,20 @@ namespace pr7s
     MediaDatabase::~MediaDatabase()
     {
         scanner.reset();
+        if (unsaved)
+            save();
+    }
+
+    void MediaDatabase::saveSoon()
+    {
+        unsaved = true;
+        lastEdit = juce::Time::getMillisecondCounterHiRes();
+    }
+
+    void MediaDatabase::saveIfDue (double quietMs)
+    {
+        if (unsaved && juce::Time::getMillisecondCounterHiRes() - lastEdit >= quietMs)
+            save();
     }
 
     bool MediaDatabase::addLocation (const juce::File& folder)
@@ -989,7 +1003,7 @@ namespace pr7s
                         item.rating = stars;
             }
         }
-        save();
+        saveSoon();   // (0.57.1: a rating or tag: written once things go quiet)
     }
 
     int MediaDatabase::getRating (const juce::File& file) const
@@ -1024,7 +1038,7 @@ namespace pr7s
                         item.tags = t;
             }
         }
-        save();
+        saveSoon();   // (0.57.1: a rating or tag: written once things go quiet)
     }
 
     namespace
@@ -1366,6 +1380,7 @@ namespace pr7s
 
     void MediaDatabase::save() const
     {
+        unsaved = false;
         if (store == juce::File())
             return;
         juce::XmlElement xml ("MediaBay");

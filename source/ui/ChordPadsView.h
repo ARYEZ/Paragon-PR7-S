@@ -108,6 +108,7 @@ public:
     static constexpr const char* dragPrefix = "chordpad:";
 
 private:
+    juce::uint64 seenChange = 0;   // (0.57.1) the studio's change version last acted on
     class ChordEditor;
     class CircleAssistant;
     class KeyList;
