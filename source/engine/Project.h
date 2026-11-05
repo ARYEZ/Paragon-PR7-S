@@ -9,6 +9,7 @@
 #include "FollowChords.h"
 #include "TempoMap.h"
 #include "Eq.h"
+#include "Signature.h"
 
 // A song: its tempo and time signature, the cycle (loop) range, and its
 // tracks, each with an instrument and the MIDI parts on the timeline.
@@ -312,7 +313,11 @@ namespace pr7s
         ChordTrack chordTrack;                                // the chord track (0.16.0)
         std::vector<DrumMap> drumMaps;                        // (0.26.0) the song's (the manual: saved with the song); names unique
         std::vector<LinkGroup> linkGroups;                    // (0.17.0) by id; each with two channels or more
-        int numerator = 4, denominator = 4;   // the time signature
+        int numerator = 4, denominator = 4;   // the time signature (since 0.45.0 the first: at bar 1)
+        // (0.45.0) Signature changes after bar 1 (the manual's time signature events), and the
+        // signature track: shown in the track list (it can be added once) and its Lock.
+        std::vector<SignatureEvent> signatureChanges;   // sorted by bar, each at bar 1 (index 1) or later
+        bool signatureTrackShown = false, signatureLocked = false;
         bool loopOn = false;                  // CYCLE
         double loopStart = 0.0, loopEnd = 16.0;
         bool click = false;                   // the metronome
@@ -417,7 +422,13 @@ namespace pr7s
         static constexpr int maxInserts = 16;  // insert slots on a channel (and on the master), as the manual has
         static constexpr int maxSends = 8;     // send slots on a channel (our choice: the manual gives no number)
 
-        double beatsPerBar() const noexcept { return numerator * 4.0 / denominator; }
+        double beatsPerBar() const noexcept { return numerator * 4.0 / denominator; }   // the first signature's bar
+        // (0.45.0) Bars by the signature track: where a bar starts, which bar a beat is in, how long it is.
+        SignatureMap signatures() const { return SignatureMap (numerator, denominator, signatureChanges); }
+        double barStartAt (double beat) const { return signatures().barStart (beat); }
+        double nextBarAfter (double beat) const { return signatures().nextBarStart (beat); }
+        double beatsPerBarAt (double beat) const { return signatures().barLengthAt (beat); }
+        double beatOfBar (int bar) const { return signatures().beatOfBar (bar); }
         double secondsPerBeat() const noexcept { return 60.0 / bpm; }   // the fixed tempo's (with the tempo track on: tempoMap)
         // Beats to seconds and back, by the tempo track when it's on.
         TempoMap tempoMap() const;

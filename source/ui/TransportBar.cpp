@@ -51,6 +51,18 @@ TransportBar::TransportBar (pr7s::Studio& studioToUse)
             studio.record();
     };
     cycleKey.onClick = [this] { studio.setCycleOn (! studio.getProject().loopOn); };
+    tapKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    tapKey.setWantsKeyboardFocus (false);
+    tapKey.setTooltip ("TAP: tap the beat (or Shift+Space) to set the tempo; the screen shows the tapped tempo. "
+                       "Right-click: where it goes (the Tap Tempo Mode)");
+    tapKey.onClick = [this]
+    {
+        if (std::exchange (tapKey.popup, false))
+            showTapModes();
+        else
+            tap();
+    };
+    addAndMakeVisible (tapKey);
     clickKey.onClick = [this] { studio.setClick (! studio.getProject().click); };
 
     for (auto* meter : { &leftMeter, &rightMeter })
@@ -92,8 +104,14 @@ void TransportBar::timerCallback()
         shownPosition = position;
         repaint (positionScreen.getUnion (timeScreen).expanded (4.0f).getSmallestIntegerContainer());
     }
-    // The tempo track: the tempo where the playhead is (0.10.0).
-    if (const auto text = getTempoText(); text != shownTempo)
+    // The signature where the playhead is (0.45.0).
+    if (const auto now = studio.getSignatureNow(); now != shownSignature)
+    {
+        shownSignature = now;
+        repaint (signatureScreen.expanded (4.0f).getSmallestIntegerContainer());
+    }
+    // The tempo track: the tempo where the playhead is (0.10.0); a tapped tempo while tapping (0.45.0).
+    if (const auto text = getTempoText() + (isShowingTap() ? "t" : ""); text != shownTempo)
     {
         shownTempo = text;
         repaint (tempoScreen.expanded (4.0f).getSmallestIntegerContainer());
@@ -208,7 +226,35 @@ juce::String TransportBar::getPositionText() const
 
 juce::String TransportBar::getTempoText() const
 {
+    if (isShowingTap())
+        return studio.getLastTap().bpm > 0.0 ? juce::String (studio.getLastTap().bpm, 2) : juce::String ("TAP");
     return juce::String (studio.getTempoNow(), 2);   // (the tempo track's where the playhead is, else the fixed tempo)
+}
+
+bool TransportBar::isShowingTap() const
+{
+    return studio.isTapping (juce::Time::getMillisecondCounterHiRes() / 1000.0);
+}
+
+void TransportBar::tap()
+{
+    studio.tapTempo (juce::Time::getMillisecondCounterHiRes() / 1000.0, getSelectionStart ? getSelectionStart() : std::nullopt);
+    shownTempo = {};
+    repaint (tempoScreen.expanded (4.0f).getSmallestIntegerContainer());
+}
+
+void TransportBar::showTapModes()
+{
+    using Mode = pr7s::Studio::TapMode;
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("TAP TEMPO MODE");
+    for (auto m : { Mode::automatic, Mode::selectionStart, Mode::playbackStart, Mode::cursor, Mode::projectTempo, Mode::displayOnly })
+        menu.addItem ((int) m + 1, pr7s::Studio::tapModeName (m), true, studio.getTapMode() == m);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&tapKey), [this] (int chosen)
+    {
+        if (chosen > 0)
+            studio.setTapMode ((Mode) (chosen - 1));
+    });
 }
 
 void TransportBar::resized()
@@ -223,7 +269,8 @@ void TransportBar::resized()
     const auto keyPitch = wide ? 66.0f : 70.0f;
     const auto autoWidth = keyPitch + 3.0f + 20.0f;
     const auto cpuWidth = wide ? 92.0f : 96.0f;
-    const auto tempoWidth = wide ? 136.0f : 150.0f;
+    const auto tempoWidth = wide ? 116.0f : 128.0f;
+    const auto tapWidth = 46.0f;   // (0.45.0: TAP between the tempo and the signature)
     const auto signatureWidth = wide ? 88.0f : 96.0f;
 
     auto area = getLocalBounds().toFloat().reduced (14.0f, 12.0f);
@@ -242,7 +289,7 @@ void TransportBar::resized()
     // in the middle (as near as the badge and the meters allow), so on three
     // screens it's all on the middle one.
     const auto leftWidth = autoWidth + 12.0f + 6.0f * keyPitch + 12.0f + cpuWidth + 12.0f;
-    const auto rightWidth = 12.0f + tempoWidth + 12.0f + signatureWidth + (wide ? 20.0f + (float) toolsWidth : 0.0f);
+    const auto rightWidth = 12.0f + tempoWidth + 6.0f + tapWidth + 6.0f + signatureWidth + (wide ? 20.0f + (float) toolsWidth : 0.0f);
     auto x = area.getX();
     auto positionWidth = area.getWidth() - leftWidth - rightWidth;
     if (wide)
@@ -269,7 +316,9 @@ void TransportBar::resized()
     timeScreen.removeFromLeft (12.0f);
     row.removeFromLeft (12.0f);
     tempoScreen = row.removeFromLeft (tempoWidth);
-    row.removeFromLeft (12.0f);
+    row.removeFromLeft (6.0f);
+    tapKey.setBounds (row.removeFromLeft (tapWidth).withSizeKeepingCentre (tapWidth, 40.0f).withY ((float) toStart.getY()).toNearestInt());
+    row.removeFromLeft (6.0f);
     signatureScreen = row.removeFromLeft (signatureWidth);
     toolsArea = {};
     if (wide)
@@ -336,7 +385,7 @@ void TransportBar::paint (juce::Graphics& g)
             g.setColour (orange);
             drawFixedPitch (g, value, inside, juce::jmin (44.0f, inside.getHeight() * 0.95f));
         };
-        drawScreen (positionScreen, "POSITION", screenPosition (getPositionText(), studio.getProject().numerator));
+        drawScreen (positionScreen, "POSITION", screenPosition (getPositionText(), [this] { auto most = studio.getProject().numerator; for (const auto& e : studio.getProject().signatureChanges) most = juce::jmax (most, e.numerator); return most; }()));
         drawScreen (timeScreen, "TIME", pr7s::formatTime (studio.getProject().tempoMap().secondsAt (beats)));
     }
 
@@ -370,7 +419,7 @@ void TransportBar::paint (juce::Graphics& g)
         auto inside = glass.reduced (10.0f, 6.0f);
         g.setColour (orange.withAlpha (0.6f));
         g.setFont (font (9.0f));
-        g.drawText (studio.getProject().followsTempoTrack() ? "TEMPO TRACK" : "TEMPO", inside.removeFromTop (12.0f), juce::Justification::topLeft, false);
+        g.drawText (isShowingTap() ? "TAP TEMPO" : studio.getProject().followsTempoTrack() ? "TEMPO TRACK" : "TEMPO", inside.removeFromTop (12.0f), juce::Justification::topLeft, false);
         g.setColour (orange);
         g.setFont (font (juce::jmin (28.0f, inside.getHeight() * 0.62f)));
         g.drawFittedText (getTempoText(), inside.withTrimmedRight (30.0f).toNearestInt(), juce::Justification::centredRight, 1, 0.7f);
@@ -384,11 +433,12 @@ void TransportBar::paint (juce::Graphics& g)
         auto inside = glass.reduced (10.0f, 6.0f);
         g.setColour (orange.withAlpha (0.6f));
         g.setFont (font (9.0f));
-        g.drawText ("SIGNATURE", inside.removeFromTop (12.0f), juce::Justification::topLeft, false);
+        // The signature where the playhead is (0.45.0: it can change along the song).
+        const auto now = studio.getSignatureNow();
+        g.drawText (now.bar > 0 ? "SIGN. BAR " + juce::String (now.bar + 1) : juce::String ("SIGNATURE"), inside.removeFromTop (12.0f), juce::Justification::topLeft, false);
         g.setColour (orange);
         g.setFont (font (juce::jmin (28.0f, inside.getHeight() * 0.62f)));
-        const auto& project = studio.getProject();
-        g.drawFittedText (juce::String (project.numerator) + "/" + juce::String (project.denominator), inside.toNearestInt(),
+        g.drawFittedText (juce::String (now.numerator) + "/" + juce::String (now.denominator), inside.toNearestInt(),
                           juce::Justification::centred, 1, 0.7f);
     }
     stamped (g, "L", juce::Rectangle<float> (meterArea.getX() + 4.0f, meterArea.getY(), 14.0f, 10.0f), 8.0f);
@@ -476,17 +526,29 @@ void TransportBar::mouseDown (const juce::MouseEvent& event)
     {
         juce::PopupMenu menu;
         const auto& project = studio.getProject();
+        menu.addSectionHeader (project.signatureChanges.empty() ? "THE SONG'S SIGNATURE" : "THE FIRST SIGNATURE (BAR 1)");
         for (size_t i = 0; i < std::size (signatures); ++i)
         {
             const auto [numerator, denominator] = signatures[i];
             menu.addItem ((int) i + 1, juce::String (numerator) + "/" + juce::String (denominator), true,
                           project.numerator == numerator && project.denominator == denominator);
         }
+        // (0.45.0) Changes along the song.
+        menu.addSeparator();
+        menu.addItem (100, "Insert Signature at the Cursor's Bar...", onInsertSignature != nullptr && ! project.signatureLocked);
+        menu.addItem (101, project.signatureTrackShown ? "The signature track is in the track list" : "Add the Signature Track", ! project.signatureTrackShown);
+        menu.addItem (102, "Open Tempo Track Editor (Ctrl+T)", onOpenTempoEditor != nullptr);
         menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (
                                 localAreaToGlobal (signatureScreen.toNearestInt())),
                             [this] (int chosen)
                             {
-                                if (chosen > 0)
+                                if (chosen == 100 && onInsertSignature)
+                                    onInsertSignature();
+                                else if (chosen == 101)
+                                    studio.addSignatureTrack();
+                                else if (chosen == 102 && onOpenTempoEditor)
+                                    onOpenTempoEditor();
+                                else if (chosen > 0 && chosen <= (int) std::size (signatures))
                                     studio.setSignature (signatures[(size_t) chosen - 1].first, signatures[(size_t) chosen - 1].second);
                             });
     }

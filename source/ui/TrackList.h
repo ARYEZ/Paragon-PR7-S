@@ -35,6 +35,8 @@ public:
     std::function<void (int)> onOpenInstrument;
     std::function<void (int busId, int slot)> onOpenEffect;   // an effect's window (an FX channel's)
     std::function<void()> onFindPlugins;
+    std::function<void()> onSignatureMenu;   // (0.45.0) the signature row's right-click (the arrangement's signature menu)
+    std::function<void()> onInsertSignature;   // (0.45.0) its double-click: the Insert Signature box
     std::function<void()> onTempoMenu;   // the tempo row's right-click (the arrangement's tempo menu)
     // Render in Place (the track's menu): the selected tracks whole; ask how (else as last time).
     std::function<void (std::vector<pr7s::Studio::RenderSource>, bool ask)> onRenderInPlace;
@@ -88,6 +90,7 @@ private:
     class MasterRow;
     class TempoRow;
     class ChordRow;
+    class SignatureRow;
     class Arrow;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
@@ -103,6 +106,7 @@ private:
     std::vector<std::unique_ptr<TakeRow>> takeRows;
     std::unique_ptr<MasterRow> masterRow;
     std::unique_ptr<TempoRow> tempoRow;   // the tempo track's (0.10.0), while it's added
+    std::unique_ptr<SignatureRow> signatureRow;   // the signature track's (0.45.0), while it's shown
     std::unique_ptr<ChordRow> chordRow;   // the chord track's (0.16.0), while it's shown
     std::vector<Timeline::Row> lastLayout;
     int dropIndex = -1, dropY = -1;   // a drag of tracks: where they'd go

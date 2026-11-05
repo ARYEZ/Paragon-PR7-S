@@ -20,6 +20,7 @@ namespace pr7s
         // One or none: a steady tempo.
         std::vector<TempoEvent> tempoChanges;
         int numerator = 4, denominator = 4;
+        std::vector<SignatureEvent> signatureChanges;   // (0.45.0) after the first, at their bars
         struct Track
         {
             juce::String name;

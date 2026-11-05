@@ -109,6 +109,7 @@ namespace pr7s
                 setUserPatterns (std::move (mine));
             }
             performer->setPattern (patternNamed (settings->getValue ("padPattern")));
+            tapMode = (TapMode) juce::jlimit (0, (int) TapMode::displayOnly, settings->getIntValue ("tapTempoMode", 0));
 
             // Output only for now (audio recording is a later stage); every
             // MIDI input on, so a keyboard plugged in just plays.
@@ -358,6 +359,8 @@ namespace pr7s
         project.linkGroups = state.linkGroups;   // (0.17.0)
         project.numerator = state.numerator;
         project.denominator = state.denominator;
+        project.signatureChanges = state.signatureChanges;   // (0.45.0)
+        project.signatureTrackShown = state.signatureTrackShown;
         project.loopOn = state.loopOn;
         project.loopStart = state.loopStart;
         project.loopEnd = state.loopEnd;
@@ -4852,8 +4855,430 @@ namespace pr7s
 
     void Studio::setSignature (int numerator, int denominator)
     {
-        project.numerator = juce::jlimit (1, 32, numerator);
-        project.denominator = denominator == 2 || denominator == 8 || denominator == 16 ? denominator : 4;
+        setSignatureAt (0, juce::jlimit (1, 32, numerator), isValidSignature (4, denominator) ? denominator : 4);
+    }
+
+    //==========================================================================
+    // Signature changes (0.45.0).
+    void Studio::addSignatureTrack()
+    {
+        if (project.signatureTrackShown)
+            return;
+        project.signatureTrackShown = true;
+        changed();
+    }
+
+    void Studio::removeSignatureTrack()
+    {
+        if (! project.signatureTrackShown)
+            return;
+        project.signatureTrackShown = false;
+        changed();
+    }
+
+    void Studio::setSignatureLocked (bool locked)
+    {
+        if (project.signatureLocked == locked)
+            return;
+        project.signatureLocked = locked;
+        changed (false);
+    }
+
+    namespace
+    {
+        // The changes after bar 1, tidied by the map (sorted, at bars 1 and later, one a bar, valid);
+        // a change to what the bar before already has is left out (it changes nothing).
+        std::vector<SignatureEvent> tidySignatures (int numerator, int denominator, const std::vector<SignatureEvent>& changes)
+        {
+            std::vector<SignatureEvent> out;
+            const SignatureMap map (numerator, denominator, changes);
+            for (size_t i = 1; i < map.segments().size(); ++i)
+            {
+                const auto& e = map.segments()[i].event;
+                const auto& before = map.segments()[i - 1].event;
+                if (e.numerator != before.numerator || e.denominator != before.denominator)
+                    out.push_back (e);
+            }
+            return out;
+        }
+    }
+
+    bool Studio::setSignatureAt (int bar, int numerator, int denominator)
+    {
+        if (! isValidSignature (numerator, denominator) || bar < 0)
+            return false;
+        if (bar == 0)
+        {
+            if (project.numerator == numerator && project.denominator == denominator)
+                return true;
+            project.numerator = numerator;
+            project.denominator = denominator;
+            project.signatureChanges = tidySignatures (numerator, denominator, project.signatureChanges);
+            changed();
+            return true;
+        }
+        if (project.signatureLocked)
+            return false;
+        auto changes = project.signatureChanges;
+        changes.push_back ({ bar, numerator, denominator });
+        auto tidy = tidySignatures (project.numerator, project.denominator, changes);
+        // (The same as the bar before: kept anyway when asked for, so it can be changed later, as an event you see.)
+        if (std::none_of (tidy.begin(), tidy.end(), [bar] (const SignatureEvent& e) { return e.bar == bar; }))
+        {
+            tidy.push_back ({ bar, numerator, denominator });
+            std::sort (tidy.begin(), tidy.end(), [] (const SignatureEvent& a, const SignatureEvent& b) { return a.bar < b.bar; });
+        }
+        if (tidy == project.signatureChanges)
+            return true;
+        project.signatureChanges = std::move (tidy);
+        changed();
+        return true;
+    }
+
+    bool Studio::removeSignatures (std::vector<int> bars)
+    {
+        if (project.signatureLocked)
+            return false;
+        auto changes = project.signatureChanges;
+        const auto before = changes.size();
+        changes.erase (std::remove_if (changes.begin(), changes.end(), [&] (const SignatureEvent& e)
+                                       { return std::find (bars.begin(), bars.end(), e.bar) != bars.end(); }), changes.end());
+        if (changes.size() == before)
+            return false;
+        project.signatureChanges = std::move (changes);
+        changed();
+        return true;
+    }
+
+    bool Studio::moveSignature (int fromBar, int toBar)
+    {
+        if (project.signatureLocked || fromBar <= 0 || toBar <= 0)
+            return false;
+        auto changes = project.signatureChanges;
+        auto it = std::find_if (changes.begin(), changes.end(), [fromBar] (const SignatureEvent& e) { return e.bar == fromBar; });
+        if (it == changes.end())
+            return false;
+        if (fromBar == toBar)
+            return true;
+        auto moved = *it;
+        changes.erase (it);
+        changes.erase (std::remove_if (changes.begin(), changes.end(), [toBar] (const SignatureEvent& e) { return e.bar == toBar; }), changes.end());
+        moved.bar = toBar;
+        changes.push_back (moved);
+        std::sort (changes.begin(), changes.end(), [] (const SignatureEvent& a, const SignatureEvent& b) { return a.bar < b.bar; });
+        project.signatureChanges = std::move (changes);
+        changed();
+        return true;
+    }
+
+    bool Studio::insertSignatureAtCursor (int numerator, int denominator)
+    {
+        return setSignatureAt (project.signatures().barAt (engine.getPosition()), numerator, denominator);
+    }
+
+    SignatureEvent Studio::getSignatureNow() const
+    {
+        return project.signatures().segmentAt (engine.getPosition()).event;
+    }
+
+    //==========================================================================
+    // Tap tempo (0.45.0).
+    juce::String Studio::tapModeName (TapMode mode)
+    {
+        switch (mode)
+        {
+            case TapMode::automatic:      return "Automatic";
+            case TapMode::selectionStart: return "Insert Tempo Event at Selection Start";
+            case TapMode::playbackStart:  return "Insert Tempo Event at Last Playback Start Position";
+            case TapMode::cursor:         return "Insert Tempo Event at Cursor Position";
+            case TapMode::projectTempo:   return "Set Project Tempo";
+            case TapMode::displayOnly:    return "Display Only";
+        }
+        return {};
+    }
+
+    void Studio::setTapMode (TapMode mode)
+    {
+        tapMode = mode;
+        if (settings != nullptr)
+            settings->setValue ("tapTempoMode", (int) mode);
+    }
+
+    Studio::TapResult Studio::tapTempo (double now, std::optional<double> selectionStart)
+    {
+        if (! tapTimes.empty() && (now - tapTimes.back() >= tapGapSeconds || now <= tapTimes.back()))
+        {
+            endTapping();
+            tapTimes.clear();
+        }
+        if (tapTimes.empty())
+            lastTap = {};   // (a new run of taps: its place is chosen again)
+        tapTimes.push_back (now);
+        if (tapTimes.size() > 9)
+            tapTimes.erase (tapTimes.begin());
+        lastTap.taps = juce::jmin (lastTap.taps + 1, 1000000);
+        if (tapTimes.size() < 2)
+        {
+            lastTap.bpm = 0.0;
+            lastTap.where = "Tap again...";
+            announce();
+            return lastTap;
+        }
+        const auto seconds = (tapTimes.back() - tapTimes.front()) / (double) (tapTimes.size() - 1);
+        const auto bpm = juce::jlimit (Project::minBpm, Project::maxBpm, std::round (60.0 / seconds * 100.0) / 100.0);
+        lastTap.bpm = bpm;
+
+        // Where it goes (the manual's Tap Tempo Modes), chosen at the second tap and kept for the run.
+        if (lastTap.taps == 2)
+        {
+            auto mode = tapMode;
+            lastTap.at = -1.0;
+            if (mode == TapMode::automatic)
+                mode = ! project.followsTempoTrack() ? TapMode::projectTempo
+                     : selectionStart ? TapMode::selectionStart
+                     : engine.isPlaying() ? TapMode::playbackStart : TapMode::cursor;
+            if (project.followsTempoTrack() || mode == TapMode::displayOnly)
+            {
+                if (mode == TapMode::selectionStart)
+                    lastTap.at = selectionStart ? juce::jmax (0.0, *selectionStart) : -2.0;
+                else if (mode == TapMode::playbackStart)
+                    lastTap.at = playStart;
+                else if (mode == TapMode::cursor)
+                    lastTap.at = engine.getPosition();
+                else if (mode == TapMode::projectTempo)
+                    lastTap.at = 0.0;
+            }
+            if (mode == TapMode::displayOnly || lastTap.at == -2.0)
+                lastTap.where = mode == TapMode::displayOnly ? "Display only" : "Nothing selected: display only";
+            else if (! project.followsTempoTrack())
+                lastTap.where = "Project tempo";
+            else
+                lastTap.where = lastTap.at == 0.0 ? juce::String ("The first tempo event") : "Tempo event at " + formatBarsBeats (lastTap.at, project).replace ("  ", " ");
+            if (mode == TapMode::displayOnly || lastTap.at == -2.0)
+                lastTap.at = -3.0;   // (shown only)
+        }
+        if (lastTap.at == -3.0 || (project.tempoLocked && project.followsTempoTrack()))
+        {
+            announce();
+            return lastTap;
+        }
+        if (! project.followsTempoTrack())
+        {
+            project.bpm = bpm;
+        }
+        else
+        {
+            auto events = project.tempoEvents;
+            auto found = false;
+            for (auto& e : events)
+                if (std::abs (e.beat - lastTap.at) < 1.0e-6)
+                    e.bpm = bpm, found = true;
+            if (! found)
+                events.push_back ({ lastTap.at, bpm, false });
+            tidyTempo (events, project.bpm);
+            project.tempoEvents = std::move (events);
+        }
+        tapUnrecorded = true;
+        changed (false);
+        return lastTap;
+    }
+
+    void Studio::endTapping()
+    {
+        if (std::exchange (tapUnrecorded, false))
+            recordUndoState();
+    }
+
+    //==========================================================================
+    // Tempo detection (0.45.0).
+    void Studio::keepInTime (const TempoMap& before, const TempoMap& after)
+    {
+        const auto to = [&] (double beat) { return after.beatAt (before.secondsAt (beat)); };
+        const auto movePart = [&] (Part& part)
+        {
+            const auto start = part.start, end = part.start + part.length;
+            const auto newStart = to (start);
+            for (auto& n : part.notes)
+            {
+                const auto a = to (start + n.start), b = to (start + n.start + n.length);
+                n.start = a - newStart;
+                n.length = juce::jmax (1.0e-6, b - a);
+            }
+            for (auto& c : part.controllers)
+                c.start = to (start + c.start) - newStart;
+            for (auto& m : part.warp)
+                m.beat = to (start + m.beat) - newStart;
+            part.start = newStart;
+            part.length = juce::jmax (1.0e-6, to (end) - newStart);
+            if (! part.warp.empty())
+                part.warp.back().beat = part.length, part.warp.front().beat = 0.0;
+        };
+        const auto moveLanes = [&] (std::vector<AutomationLane>& lanes)
+        {
+            for (auto& lane : lanes)
+            {
+                for (auto& p : lane.points)
+                    p.beat = to (p.beat);
+                for (auto& p : lane.trim)
+                    p.beat = to (p.beat);
+            }
+        };
+        for (auto& track : project.tracks)
+        {
+            for (auto& part : track.parts)
+                movePart (part);
+            moveLanes (track.automation);
+        }
+        for (auto& [id, parts] : frozenParts)
+            for (auto& part : parts)
+                movePart (part);
+        moveLanes (project.masterAutomation);
+        for (auto& e : project.chordTrack.events)
+            e.beat = to (e.beat);
+        for (auto& e : project.chordTrack.scales)
+            e.beat = to (e.beat);
+        project.loopStart = to (project.loopStart);
+        project.loopEnd = juce::jmax (project.loopStart + 0.0625, to (project.loopEnd));
+        playStart = to (playStart);
+        recordStart = to (recordStart);
+        engine.setPosition (juce::jmax (0.0, to (engine.getPosition())));
+    }
+
+    bool Studio::analyseTempo (int partId, BeatAnalysis& result, juce::String& error)
+    {
+        result = {};
+        const auto found = findPart (partId);
+        const auto* owner = found ? project.findTrack (found->first) : nullptr;   // (findPart gives the track's id)
+        const auto* part = owner != nullptr ? &owner->parts[(size_t) found->second] : nullptr;
+        if (part == nullptr)
+        {
+            error = "Select an audio event or a MIDI part first.";
+            return false;
+        }
+        const auto tempo = project.tempoMap();
+        const auto from = tempo.secondsAt (part->start), to = tempo.secondsAt (part->start + part->length);
+        if (to - from < leastDetectSeconds - 1.0e-6)
+        {
+            error = "It's " + juce::String (to - from, 1) + " s long: tempo detection needs at least " + juce::String ((int) leastDetectSeconds) + " seconds.";
+            return false;
+        }
+        if (part->isAudio())
+        {
+            double rate = 0.0;
+            const auto sound = clipMono (*part, from, to, rate);
+            if (rate <= 0.0 || sound.empty())
+            {
+                error = "The recording couldn't be read.";
+                return false;
+            }
+            result = detectBeats (sound.data(), (int) sound.size(), rate);
+        }
+        else
+        {
+            std::vector<DetectNote> notes;
+            for (const auto& n : part->notes)
+                if (n.start >= 0.0 && n.start < part->length)
+                    notes.push_back ({ tempo.secondsAt (part->start + n.start) - from, n.velocity });
+            if (notes.size() < 8)
+            {
+                error = "There aren't enough notes in it to find a beat.";
+                return false;
+            }
+            result = detectBeats (notes, to - from);
+        }
+        if (result.beats.size() < 4)
+        {
+            error = "No steady beat was found in it.";
+            return false;
+        }
+        SessionLog::note ("Tempo detection: " + juce::String (result.beats.size()) + " beats, " + juce::String (result.bpm, 2) + " BPM");
+        return true;
+    }
+
+    bool Studio::applyDetectedBeats (int partId, const std::vector<double>& beatSeconds, juce::String& report)
+    {
+        const auto found = findPart (partId);
+        const auto* owner = found ? project.findTrack (found->first) : nullptr;   // (findPart gives the track's id)
+        const auto* part = owner != nullptr ? &owner->parts[(size_t) found->second] : nullptr;
+        if (part == nullptr || beatSeconds.size() < 2)
+        {
+            report = "Nothing to apply.";
+            return false;
+        }
+        if (project.tempoLocked)
+        {
+            report = "The tempo track is locked.";
+            return false;
+        }
+        const auto before = project.tempoMap();
+        const auto start = part->start;
+        const auto overall = medianBpm (beatSeconds);
+        const auto clamp = [] (double bpm) { return juce::jlimit (Project::minBpm, Project::maxBpm, bpm); };
+        // The first beat: on the whole beat at or after the part's start that keeps the tempo
+        // into it nearest the tempo overall (it can't be heard before the part starts).
+        const auto first = beatSeconds.front();
+        auto landing = std::ceil (start - 1.0e-6);
+        auto lead = -1.0, bestMiss = 1.0e9;
+        for (int m = 0; m < 8; ++m)
+        {
+            const auto k = std::ceil (start - 1.0e-6) + m;
+            if (k - start < 1.0e-6)
+            {
+                if (first < 0.012)
+                {
+                    landing = k, lead = 0.0;   // (it's on the part's start already)
+                    break;
+                }
+                continue;
+            }
+            const auto bpm = 60.0 * (k - start) / juce::jmax (1.0e-6, first);
+            if (bpm < Project::minBpm || bpm > Project::maxBpm)
+                continue;
+            const auto miss = std::abs (std::log (bpm / overall));
+            if (miss < bestMiss)
+                bestMiss = miss, landing = k, lead = bpm;
+        }
+        std::vector<TempoEvent> events;
+        for (const auto& e : project.followsTempoTrack() ? project.tempoEvents : std::vector<TempoEvent> { { 0.0, project.bpm, false } })
+            if (e.beat < start - 1.0e-6)
+                events.push_back (e);
+        if (events.empty() && start > 1.0e-6)
+            events.push_back ({ 0.0, project.bpm, false });
+        auto offset = 0.0;
+        if (landing > start + 1.0e-6)
+        {
+            if (lead <= 0.0)   // (no tempo in range lands it: it lands as near as it can, the rest is reported)
+                lead = clamp (60.0 * (landing - start) / juce::jmax (1.0e-6, first));
+            events.push_back ({ start, lead, false });
+            offset = first - 60.0 * (landing - start) / lead;
+        }
+        else
+            offset = first;
+        for (size_t i = 0; i + 1 < beatSeconds.size(); ++i)
+            events.push_back ({ landing + (double) i, clamp (60.0 / juce::jmax (1.0e-4, beatSeconds[i + 1] - beatSeconds[i])), false });
+        tidyTempo (events, project.bpm);
+        const TempoMap after (events);
+        keepInTime (before, after);
+        project.tempoEvents = std::move (events);
+        project.tempoTrackOn = true;
+        project.tempoTrackShown = true;
+        changed();
+        report = juce::String ((int) beatSeconds.size()) + " beats from " + formatBarsBeats (landing, project).replace ("  ", " ")
+               + ", " + juce::String (overall, 1) + " BPM on average";
+        if (std::abs (offset) > 0.005)
+            report << ". The first beat is " << juce::roundToInt (std::abs (offset) * 1000.0) << " ms " << (offset > 0.0 ? "after" : "before") << " its beat line";
+        SessionLog::note ("Tempo detection applied: " + report);
+        return true;
+    }
+
+    void Studio::restoreTempo (bool on, std::vector<TempoEvent> events)
+    {
+        const auto before = project.tempoMap();
+        tidyTempo (events, project.bpm);
+        const auto after = on ? TempoMap (events) : TempoMap (project.bpm);
+        keepInTime (before, after);
+        project.tempoEvents = std::move (events);
+        project.tempoTrackOn = on;
         changed();
     }
 
@@ -5075,7 +5500,7 @@ namespace pr7s
             return std::nullopt;
         Part part;
         const auto bar = project.beatsPerBar();
-        part.start = project.loopOn ? project.loopStart : std::floor (recordStart / bar) * bar;
+        part.start = project.loopOn ? project.loopStart : project.barStartAt (recordStart);
         const auto now = engine.getPosition();
         buildRecordingNotes (part.notes, part.start, now);
         buildRecordingControllers (part.controllers, part.start);
@@ -6563,6 +6988,8 @@ namespace pr7s
 
     void Studio::timerCallback()
     {
+        if (tapUnrecorded && ! isTapping (juce::Time::getMillisecondCounterHiRes() / 1000.0))
+            endTapping();   // (0.45.0: the taps stopped; their undo step)
         if (rendering || exportJob != nullptr)
             return;
         if (performer != nullptr)
@@ -6674,6 +7101,12 @@ namespace pr7s
                 removeTrack (project.tracks.front().id);
             setTempo (midi.bpm);
             setSignature (midi.numerator, midi.denominator);
+            if (! midi.signatureChanges.empty())
+            {
+                project.signatureChanges = midi.signatureChanges;   // (0.45.0)
+                project.signatureTrackShown = true;
+                changed (false);
+            }
             atBeat = 0.0;
         }
         if (changes && (newSong || matchTempo))
@@ -7931,9 +8364,9 @@ namespace pr7s
         const auto notes = getPadNotes (pad);
         if (track == nullptr || track->isAudio() || track->isChannel() || track->frozen || notes.empty())
             return 0;
-        const auto bar = project.beatsPerBar();
+        const auto bar = project.beatsPerBarAt (beat);
         Part part;
-        part.start = juce::jmax (0.0, std::floor (beat / bar + 1.0e-9) * bar);
+        part.start = juce::jmax (0.0, project.barStartAt (beat));
         part.length = bar;
         part.name = project.chordPads.pads[(size_t) pad].chord->name (project.chordPads.flats);
         for (const auto n : notes)
@@ -8361,16 +8794,18 @@ namespace pr7s
     {
         if (chords.empty())
             return;
-        const auto bar = project.beatsPerBar();
-        const auto start = std::floor (juce::jmax (0.0, atBeat) / bar + 1.0e-9) * bar;
-        const auto end = start + bar * (double) chords.size();
+        // (Bar by bar by the signature track, 0.45.0.)
+        const auto map = project.signatures();
+        const auto firstBar = map.barAt (juce::jmax (0.0, atBeat));
+        const auto start = map.beatOfBar (firstBar);
+        const auto end = map.beatOfBar (firstBar + (int) chords.size());
         // What was over those bars goes; then a chord a bar.
         std::vector<ChordEvent> events;
         for (const auto& e : project.chordTrack.events)
             if (e.beat < start - 1.0e-6 || e.beat >= end - 1.0e-6)
                 events.push_back (e);
         for (size_t i = 0; i < chords.size(); ++i)
-            events.push_back ({ start + bar * (double) i, chords[i] });
+            events.push_back ({ map.beatOfBar (firstBar + (int) i), chords[i] });
         std::sort (events.begin(), events.end(), [] (const ChordEvent& a, const ChordEvent& b) { return a.beat < b.beat; });
         project.chordTrack.shown = true;   // (in the same undo step)
         project.chordTrack.events = std::move (events);
@@ -8381,21 +8816,23 @@ namespace pr7s
     {
         if (steps.empty())
             return;
-        const auto bar = project.beatsPerBar();
-        const auto start = std::floor (juce::jmax (0.0, atBeat) / bar + 1.0e-9) * bar;
+        const auto map = project.signatures();
+        const auto firstBar = map.barAt (juce::jmax (0.0, atBeat));
+        const auto start = map.beatOfBar (firstBar);
+        // Each step its bars long, by the bar it starts in (half bars too).
+        std::vector<double> at;
         auto end = start;
         for (const auto& s : steps)
-            end += s.bars * bar;
+        {
+            at.push_back (end);
+            end += s.bars * map.barLengthAt (end);
+        }
         std::vector<ChordEvent> events;
         for (const auto& e : project.chordTrack.events)
             if (e.beat < start - 1.0e-6 || e.beat >= end - 1.0e-6)
                 events.push_back (e);
-        auto beat = start;
-        for (const auto& s : steps)
-        {
-            events.push_back ({ beat, s.chord });
-            beat += s.bars * bar;
-        }
+        for (size_t i = 0; i < steps.size(); ++i)
+            events.push_back ({ at[i], steps[i].chord });
         std::sort (events.begin(), events.end(), [] (const ChordEvent& a, const ChordEvent& b) { return a.beat < b.beat; });
         project.chordTrack.shown = true;
         project.chordTrack.events = std::move (events);
@@ -8545,9 +8982,9 @@ namespace pr7s
             trackId = addTrack ({});
         if (project.findTrack (trackId) == nullptr)
             return 0;
-        const auto bar = project.beatsPerBar();
         const auto first = track.events[(size_t) indices.front()].beat;
-        const auto start = std::floor (first / bar + 1.0e-9) * bar;
+        const auto bar = project.beatsPerBarAt (first);
+        const auto start = project.barStartAt (first);
         Part part;
         part.start = start;
         part.name = "Chords";

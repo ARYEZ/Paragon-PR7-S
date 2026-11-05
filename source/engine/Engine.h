@@ -347,7 +347,7 @@ namespace pr7s
         {
             TempoMap tempo;            // the fixed tempo, or the tempo track's (0.10.0)
             int tempoVersion = 0;      // changes when the tempo does (the clock re-bases)
-            int numerator = 4, denominator = 4;
+            SignatureMap signatures;   // (0.45.0) the bars: the click's accents, the play head's signature
             bool loopOn = false;
             double loopStart = 0.0, loopEnd = 16.0;
             bool click = false;

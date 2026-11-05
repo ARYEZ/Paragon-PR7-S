@@ -81,16 +81,16 @@ public:
         const auto ruler = bounds.withTrimmedLeft ((float) scaleWidth).withHeight ((float) rulerHeight);
         g.setColour (juce::Colour (0xff151116));
         g.fillRect (ruler);
-        const auto bar = project.beatsPerBar();
+        const auto signatures = project.signatures();   // (bars by the signature events, 0.45.0)
         const auto lastBeat = editor.timeline.beatForX (bounds.getWidth());
-        const auto barStep = std::ceil (60.0 / (bar * editor.timeline.pixelsPerBeat));   // bars between numbers
+        const auto barStep = std::ceil (60.0 / (signatures.barLengthAt (editor.timeline.firstBeat) * editor.timeline.pixelsPerBeat));   // bars between numbers
         g.setFont (font (12.0f));
-        for (auto b = std::floor (editor.timeline.firstBeat / bar) * bar; b <= lastBeat; b += bar)
+        for (auto barIndex = signatures.barAt (editor.timeline.firstBeat); signatures.beatOfBar (barIndex) <= lastBeat; ++barIndex)
         {
-            const auto x = editor.xForBeat (b);
+            const auto x = editor.xForBeat (signatures.beatOfBar (barIndex));
             if (x < (float) scaleWidth)
                 continue;
-            const auto number = juce::roundToInt (b / bar) + 1;
+            const auto number = barIndex + 1;
             g.setColour (juce::Colour (0xff3a3238));
             g.fillRect (juce::Rectangle<float> (x, ruler.getBottom(), 1.0f, bounds.getHeight() - ruler.getBottom()));
             if ((number - 1) % juce::jmax (1, (int) barStep) == 0)
@@ -107,18 +107,21 @@ public:
             g.fillRect (juce::Rectangle<float> (x1, ruler.getBottom(), x2 - x1, bounds.getHeight()).getIntersection (bounds.withTrimmedLeft ((float) scaleWidth)));
         }
 
-        // The time signature display: the song's one signature (no changes yet), at bar 1.
+        // The time signature display: each signature event at its bar (0.45.0).
         const auto signature = bounds.withTrimmedLeft ((float) scaleWidth).withY (ruler.getBottom()).withHeight ((float) signatureHeight);
         g.setColour (juce::Colour (0xff0f0b10));
         g.fillRect (signature);
         g.setColour (ParagonColours::panelEdge);
         g.fillRect (signature.withY (signature.getBottom() - 1.0f).withHeight (1.0f));
-        const auto x0 = editor.xForBeat (0.0);
-        if (x0 >= (float) scaleWidth - 1.0f)
+        g.setFont (ParagonLookAndFeel::titleFont (13.0f));
+        for (const auto& segment : signatures.segments())
         {
-            g.setColour (ParagonColours::accent);
-            g.setFont (ParagonLookAndFeel::titleFont (13.0f));
-            g.drawText (juce::String (project.numerator) + "/" + juce::String (project.denominator),
+            const auto x0 = editor.xForBeat (segment.beat);
+            if (x0 < (float) scaleWidth - 1.0f || x0 > bounds.getRight())
+                continue;
+            g.setColour (segment.event.bar == 0 ? ParagonColours::accent : pr7s::FamilyColours::pink);
+            g.fillRect (juce::Rectangle<float> (x0, signature.getY() + 2.0f, 1.5f, signature.getHeight() - 4.0f));
+            g.drawText (juce::String (segment.event.numerator) + "/" + juce::String (segment.event.denominator),
                         juce::Rectangle<float> (x0 + 4.0f, signature.getY(), 60.0f, signature.getHeight()), juce::Justification::centredLeft, false);
         }
 
@@ -225,6 +228,19 @@ public:
         {
             drag = Drag::position;   // the ruler: the playhead there
             studio.setPosition (juce::jmax (0.0, editor.timeline.beatForX (e.position.x - (float) scaleWidth)));
+            return;
+        }
+        if (e.position.x >= (float) scaleWidth && e.position.y < (float) (rulerHeight + signatureHeight) && ! e.mods.isPopupMenu())
+        {
+            // The signature display (0.45.0): DRAW adds one at the nearest bar line, ERASE removes the one there.
+            const auto map = project.signatures();
+            const auto beat = editor.timeline.beatForX (e.position.x - (float) scaleWidth);
+            const auto bar = signatureAt (e.position);
+            if (editor.tool == Tool::erase && bar > 0)
+                studio.removeSignatures ({ bar });
+            else if (editor.tool == Tool::draw && bar < 0 && editor.onEditSignature)
+                editor.onEditSignature (map.barAt (beat + 0.5 * map.barLengthAt (beat)), true);
+            repaint();
             return;
         }
         if (e.position.x < (float) scaleWidth || e.position.y < (float) (rulerHeight + signatureHeight))
@@ -394,8 +410,34 @@ public:
         editor.refresh();
     }
 
+    // The signature event whose label is under the point (its bar), -1: none.
+    int signatureAt (juce::Point<float> at) const
+    {
+        if (at.y < (float) rulerHeight || at.y >= (float) (rulerHeight + signatureHeight))
+            return -1;
+        const auto map = editor.studio.getProject().signatures();
+        for (auto it = map.segments().rbegin(); it != map.segments().rend(); ++it)
+        {
+            const auto x = editor.xForBeat (it->beat);
+            if (at.x >= x - 2.0f && at.x <= x + 44.0f)
+                return it->event.bar;
+        }
+        return -1;
+    }
+
     void mouseDoubleClick (const juce::MouseEvent& e) override
     {
+        if (e.position.y >= (float) rulerHeight && e.position.y < (float) (rulerHeight + signatureHeight) && e.position.x >= (float) scaleWidth)
+        {
+            if (editor.onEditSignature)
+            {
+                const auto map = editor.studio.getProject().signatures();
+                const auto beat = editor.timeline.beatForX (e.position.x - (float) scaleWidth);
+                const auto bar = signatureAt (e.position);
+                editor.onEditSignature (bar >= 0 ? bar : map.barAt (beat + 0.5 * map.barLengthAt (beat)), bar < 0);
+            }
+            return;
+        }
         // An event: its value typed in the info line.
         if (const auto i = eventAt (e.position); i >= 0)
         {
@@ -645,8 +687,9 @@ std::optional<double> TempoEditor::parsePosition (const juce::String& text, cons
                sixteenth = parts.size() > 2 ? parts[2].getIntValue() : 1, tick = parts.size() > 3 ? parts[3].getIntValue() : 0;
     if (bar < 1 || beat < 1 || sixteenth < 1 || tick < 0)
         return std::nullopt;
-    const auto beatUnit = 4.0 / project.denominator;
-    return (bar - 1) * project.beatsPerBar() + (beat - 1) * beatUnit + (sixteenth - 1) * 0.25 + tick / 480.0;
+    // (Bars by the signature track, 0.45.0: the beat in the signature of its bar.)
+    const auto map = project.signatures();
+    return map.beatOf (bar - 1, beat - 1, (sixteenth - 1) * 0.25 + tick / 480.0);
 }
 
 bool TempoEditor::setSelectedPosition (const juce::String& text)

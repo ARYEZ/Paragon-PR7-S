@@ -85,6 +85,9 @@ public:
     juce::DocumentWindow* getAutomationPanelWindow() noexcept { return automationWindow.get(); }
     // The Audio Alignment panel (0.33.0): opened from the part's and range's menus (and a command).
     void toggleAudioAlignment();
+    void openTempoDetection (int partId);   // (0.45.0) the Tempo Detection panel
+    void insertSignatureAtCursor();         // (0.45.0) the Insert Time Signature box at the cursor's bar
+    juce::DocumentWindow* getTempoDetectionWindow() noexcept { return tempoDetectionWindow.get(); }
     // The VariAudio editor (0.34.0) for an audio clip: one window, switched to the clip.
     void openVariAudio (int partId);
     juce::DocumentWindow* getVariAudioWindow() noexcept { return variAudioWindow.get(); }
@@ -274,7 +277,7 @@ private:
     juce::TextButton keysButton { "KEYS" };
     int saveFlashes = 0;
     std::unique_ptr<ProgressBox> progressBox;   // a long job's progress (0.11.1)
-    std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow, drumMapWindow, automationWindow, alignmentWindow, variAudioWindow;
+    std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow, drumMapWindow, automationWindow, alignmentWindow, variAudioWindow, tempoDetectionWindow;
     int trackListScrollY = 0;          // (0.34.1) what the track list was last laid out for
     double trackListRowZoom = 1.0;
     std::unique_ptr<LinesWindow> linesWindow;

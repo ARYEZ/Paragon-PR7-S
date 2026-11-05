@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonPR7S VERSION 0.44.0 LANGUAGES C CXX)
+project(ParagonPR7S VERSION 0.45.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -42,6 +42,8 @@ juce_add_binary_data(ParagonPR7SFonts
 add_library(PR7SCore STATIC
     source/engine/Project.cpp
     source/engine/TempoMap.cpp
+    source/engine/Signature.cpp
+    source/engine/TempoDetect.cpp
     source/engine/Chords.cpp
     source/engine/FollowChords.cpp
     source/engine/Patterns.cpp
@@ -76,6 +78,8 @@ add_library(PR7SCore STATIC
     source/ui/TrackList.cpp
     source/ui/ArrangeView.cpp
     source/ui/ArrangeAutomation.cpp
+    source/ui/ArrangeSignature.cpp
+    source/ui/TempoDetectionPanel.cpp
     source/ui/KeyEditor.cpp
     source/ui/KeyEditorLanes.cpp
     source/ui/KeyEditorDrums.cpp

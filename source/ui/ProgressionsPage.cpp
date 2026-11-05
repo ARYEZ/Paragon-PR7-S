@@ -578,7 +578,7 @@ void ProgressionsPage::toIdeas (int index)
         return;
     stop();
     const auto bar = studio.getProject().beatsPerBar();
-    const auto start = std::floor (juce::jmax (0.0, studio.getEngine().getPosition()) / bar + 1.0e-9) * bar;
+    const auto start = studio.getProject().barStartAt (juce::jmax (0.0, studio.getEngine().getPosition()));
     auto end = start;
     for (const auto& s : steps)
         end += s.bars * bar;

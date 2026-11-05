@@ -997,12 +997,13 @@ void KeyEditor::insertNotes (const std::vector<pr7s::Note>& notesToAdd, double a
         first = juce::jmin (first, at + note.start);
         last = juce::jmax (last, at + note.start + note.length);
     }
-    const auto bar = studio.getProject().beatsPerBar();
+    // (Bars by the signature track, 0.45.0.)
+    const auto map = studio.getProject().signatures();
     auto grown = *part;
     if (first < part->start)
-        grown.start = juce::jmax (0.0, std::floor (first / bar) * bar);
+        grown.start = juce::jmax (0.0, map.barStart (first));
     if (last > part->end())
-        grown.length = std::ceil (last / bar - 1.0e-9) * bar - grown.start;
+        grown.length = (map.isBarLine (last) ? last : map.nextBarStart (last)) - grown.start;
     grown.length += part->start - grown.start;
     for (auto& note : grown.notes)
         note.start += part->start - grown.start;
@@ -1858,7 +1859,7 @@ void KeyEditor::paintPanel (juce::Graphics& g)
     g.setColour (ParagonColours::textDim);
     g.setFont (font (11.0f, juce::Font::plain));
     if (track != nullptr && part != nullptr)
-        g.drawText (track->name + ", from bar " + juce::String ((int) std::floor (part->start / studio.getProject().beatsPerBar()) + 1),
+        g.drawText (track->name + ", from bar " + juce::String (studio.getProject().signatures().barAt (part->start) + 1),
                     area.removeFromTop (14.0f), juce::Justification::centredLeft, true);
 
 }
@@ -2002,8 +2003,7 @@ void KeyEditor::paintNotes (juce::Graphics& g)
     }
 
     // Bars, beats and the grid's steps (each when there's room to see it).
-    const auto beatUnit = 4.0 / project.denominator;
-    const auto bar = project.beatsPerBar();
+    const auto signatures = project.signatures();
     const auto last = beatForX (area.getRight());
     if (grid * pixelsPerBeat >= 6.0)
         for (auto beat = std::floor (firstBeat / grid) * grid; beat <= last; beat += grid)
@@ -2011,13 +2011,17 @@ void KeyEditor::paintNotes (juce::Graphics& g)
             g.setColour (gridStep);
             g.fillRect (juce::Rectangle<float> (xForBeat (beat), area.getY(), 1.0f, area.getHeight()));
         }
-    for (auto beat = std::floor (firstBeat / beatUnit) * beatUnit; beat <= last; beat += beatUnit)
+    // Bars and beats by the signature in force (0.45.0).
+    for (auto barIndex = signatures.barAt (firstBeat); signatures.beatOfBar (barIndex) <= last; ++barIndex)
     {
-        const auto isBar = std::abs (std::fmod (beat, bar)) < 1.0e-6;
-        if (! isBar && beatUnit * pixelsPerBeat < 10.0)
-            continue;
-        g.setColour (isBar ? gridBar : gridBeat);
-        g.fillRect (juce::Rectangle<float> (xForBeat (beat), area.getY(), 1.0f, area.getHeight()));
+        const auto& signature = signatures.segmentOfBar (barIndex).event;
+        const auto start = signatures.beatOfBar (barIndex);
+        const auto beats = signature.unit() * pixelsPerBeat >= 10.0 ? signature.numerator : 1;
+        for (int b = 0; b < beats; ++b)
+        {
+            g.setColour (b == 0 ? gridBar : gridBeat);
+            g.fillRect (juce::Rectangle<float> (xForBeat (start + b * signature.unit()), area.getY(), 1.0f, area.getHeight()));
+        }
     }
 
     const auto* part = getPart();
@@ -2209,24 +2213,28 @@ void KeyEditor::paintRuler (juce::Graphics& g)
 
     juce::Graphics::ScopedSaveState state (g);
     g.reduceClipRegion (rulerArea().getSmallestIntegerContainer());
-    const auto bar = project.beatsPerBar();
-    const auto beatUnit = 4.0 / project.denominator;
+    const auto signatures = project.signatures();
     const auto last = beatForX ((float) getWidth());
-    if (beatUnit * pixelsPerBeat >= 10.0)
-        for (auto beat = std::floor (firstBeat / beatUnit) * beatUnit; beat <= last; beat += beatUnit)
+    for (auto b = signatures.barAt (firstBeat); signatures.beatOfBar (b) <= last; ++b)
+    {
+        const auto& signature = signatures.segmentOfBar (b).event;
+        if (signature.unit() * pixelsPerBeat < 10.0)
+            continue;
+        for (int k = 1; k < signature.numerator; ++k)
         {
             g.setColour (ParagonColours::panelEdge);
-            g.fillRect (juce::Rectangle<float> (xForBeat (beat), ruler.getBottom() - 6.0f, 1.0f, 6.0f));
+            g.fillRect (juce::Rectangle<float> (xForBeat (signatures.beatOfBar (b) + k * signature.unit()), ruler.getBottom() - 6.0f, 1.0f, 6.0f));
         }
+    }
     auto every = 1;
-    while (bar * every * pixelsPerBeat < 36.0)
+    while (signatures.barLengthAt (firstBeat) * every * pixelsPerBeat < 36.0 && every < 4096)
         every *= 2;
     g.setFont (font (11.0f));
-    for (auto b = (int) std::floor (firstBeat / bar); b * bar <= last; ++b)
+    for (auto b = signatures.barAt (firstBeat); signatures.beatOfBar (b) <= last; ++b)
     {
-        if (b % every != 0)
+        if (b % every != 0 && signatures.segmentOfBar (b).event.bar != b)
             continue;
-        const auto x = xForBeat (b * bar);
+        const auto x = xForBeat (signatures.beatOfBar (b));
         g.setColour (ParagonColours::textDim);
         g.fillRect (juce::Rectangle<float> (x, ruler.getY() + 8.0f, 1.0f, ruler.getHeight() - 8.0f));
         g.setColour (ParagonColours::text);

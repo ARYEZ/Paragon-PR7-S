@@ -31,6 +31,8 @@
 // PARAGON_SNAPSHOT_MASTER=1: the master's row chosen (its Inspector).
 // PARAGON_SNAPSHOT_RACK=home|loops|instruments: the Media rack in the right zone (0.22.0).
 // PARAGON_SNAPSHOT_TEMPO=1: the tempo track, with a ramp and a step (0.10.0).
+// PARAGON_SNAPSHOT_SIGNATURE=1: the signature track, 7/8 from bar 3 and 3/4 from bar 5, the playhead in the 7/8 (0.45.0).
+// PARAGON_SNAPSHOT_TAP=1: the transport while tapping the tempo (0.45.0).
 // PARAGON_SNAPSHOT_WARP=1: the guitar's clip warped (markers from its hitpoints, one dragged), selected, the WARP tool (0.32.0).
 // PARAGON_SNAPSHOT_TAKES=1: the guitar's three takes on lanes (LANES), comped (0.29.0), the COMP tool chosen.
 // PARAGON_SNAPSHOT_FOLLOW=1 (with PARAGON_SNAPSHOT_CHORDS): the lead following the chord track, two chords changed (0.36.0).
@@ -147,6 +149,20 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.addTempoTrack();
         studio.setTempoEvents ({ { 0.0, 120.0, false }, { 8.0, 140.0, true }, { 16.0, 96.0, false }, { 24.0, 104.0, true } });
         studio.getEngine().setPosition (5.0);
+    }
+    // PARAGON_SNAPSHOT_SIGNATURE=1 (0.45.0): the signature track with two changes, the 7/8 selected.
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SIGNATURE", {}).isNotEmpty())
+    {
+        studio.addSignatureTrack();
+        studio.setSignatureAt (2, 7, 8);
+        studio.setSignatureAt (4, 3, 4);
+        studio.getEngine().setPosition (9.0);
+    }
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_TAP", {}).isNotEmpty())
+    {
+        const auto now = juce::Time::getMillisecondCounterHiRes() / 1000.0;
+        for (int i = 3; i >= 0; --i)
+            studio.tapTempo (now - 0.48 * i);   // 125 BPM
     }
     // PARAGON_SNAPSHOT_QC=1: the lead's Quick Controls (volume, pan, a send-less mix: mute), the other sections folded.
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_QC", {}).isNotEmpty())
@@ -292,7 +308,7 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.getEngine().notePerformance ((i % 10 == 0 ? 0.6 : 0.33) * 512.0 / studio.getEngine().getSampleRate(), 512);
     juce::Thread::sleep (40);
     juce::Timer::callPendingTimersSynchronously();
-    studio.getEngine().setPosition (21.0);
+    studio.getEngine().setPosition (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SIGNATURE", {}).isNotEmpty() ? 9.0 : 21.0);
     // The key editor open on the lead part, a few of its notes selected;
     // or the mixer, with some effects in (stand-ins named after the family's
     // plugins: the tests can't load real VST3s).

@@ -28,6 +28,12 @@ class TransportBar final : public juce::Component,
 {
 public:
     std::function<void()> onOpenTempoEditor;   // the tempo screen's menu (0.13.0)
+    std::function<void()> onInsertSignature;   // (0.45.0) the signature screen's menu: the Insert Signature box
+    std::function<std::optional<double>()> getSelectionStart;   // (0.45.0) for tap tempo's modes: what's selected
+    // TAP (0.45.0, the manual's Tap Tempo): a tap now (the key, Shift+Space); right-click: the modes.
+    void tap();
+    void showTapModes();
+    bool isShowingTap() const;
     explicit TransportBar (pr7s::Studio&);
     ~TransportBar() override;
 
@@ -80,6 +86,8 @@ private:
     juce::TextButton toStart { "|<" }, stopKey { "STOP" }, playKey { "PLAY" };
     RecordKey recordKey { "REC" };
     juce::TextButton cycleKey { "CYCLE" }, clickKey { "CLICK" };
+    RecordKey tapKey { "TAP" };   // (0.45.0; a RecordKey for its right-click)
+    pr7s::SignatureEvent shownSignature { -1, 0, 0 };
     LevelMeter leftMeter, rightMeter;
     juce::Rectangle<float> badge, positionScreen, timeScreen, tempoScreen, signatureScreen, keysArea, meterArea, cpuScreen, autoScrollStamp;
     juce::Rectangle<int> toolsArea, autoScrollArea;

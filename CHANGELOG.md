@@ -2,6 +2,54 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.45.0
+
+**Tempo and signature** (the third of your four choices). Three parts, from the manual's tempo and signature chapters:
+
+**Time signature changes along the song.** Until now a song had one signature. Now it can change at any bar: a bar of 7/8, a 3/4 bridge, a 6/8 outro.
+- **The signature track** (Add Track > Signature track). Each change shows at its bar.
+  - **Adding one:** with the DRAW tool, click where it goes. Or double-click an empty bar. Type the signature (7/8) and the bar.
+  - **Editing:** drag a change along the bars. Double-click it to retype it. ERASE or Delete removes it.
+  - **The first signature:** at bar 1, it's the song's own. You can change it but not move or delete it.
+  - **LOCK** stops changes. Right-click the track for its menu.
+- **The Tempo Track Editor** (Ctrl+T) shows every change in its signature lane. DRAW and ERASE work there too.
+- **Insert Time Signature Event** puts one at the bar the cursor is in. It's on the transport's signature menu, and in KEYS with no key yet, as the manual has it.
+- **What follows the bars:** the ruler, the grid, the click (the accent on each bar's first beat), the position screen, typed positions, the MIDI editor, and the bar and beat your plug-ins are told.
+- **The transport's SIGNATURE screen** shows the signature where the playhead is.
+- **What stays put:** parts, notes and automation stay where they are in the song. A change moves the bar lines, not your music, as the manual describes.
+- **MIDI files** with signature changes bring them in when imported as a new song.
+
+**Tap tempo.** A **TAP** key beside the tempo. Tap the beat on it, or press **Shift+Space** (the manual's key).
+- **The tempo:** the average of your last eight taps, shown as TAP TEMPO on the screen while you tap. A two-second gap starts again.
+- **Right-click TAP for the Tap Tempo Mode:**
+  - **Automatic:** what's selected, else where playback started, else the cursor; with the tempo track off, the song's tempo.
+  - **The selection's start, the last playback start, the cursor, or the project tempo.**
+  - **Display only:** shows the tempo without changing anything.
+- **Undo:** a run of taps is one undo step, so one Undo puts the tempo back as it was.
+
+**Tempo detection.** Right-click an audio event or a MIDI part (7 seconds or more) > **Tempo Detection...**, then **ANALYZE**. The tempo track then follows the beats you played without a click, drift and all.
+- **How it finds the beats:** it listens for where sounds start (for MIDI, the notes), finds the overall tempo, then tracks each beat. It follows a drummer pushing or pulling, not sudden jumps.
+- **The result:** a tempo event on every beat. The first beat lands on a whole beat of the song.
+- **Everything keeps its place in time:** other parts, notes, automation, chords and the locators move to the beats they now sound at. That's the manual's linear time base during analysis.
+- **Corrections, as the manual's panel:**
+  - **X 2 and / 2:** twice or half as many beats.
+  - **X 4/3 and X 3/4:** for triplet or dotted feels.
+  - **OFFBEAT:** half a beat on, when the offbeat was taken for the beat.
+  - **SMOOTH TEMPO:** steadies an uneven result.
+  - **RESET:** goes back to the tempo before the analysis. Undo works too.
+- **Honestly:** it finds clear beats well; my tests have clicks drifting from 100 to 112 BPM found within 15 ms. Sparse or very rubato playing can need the corrections or a hand edit. I can't test it here on your recordings.
+
+**Our choices:**
+- The signature stays as it is after a detection (the manual sets 1/4).
+- Removing the signature track keeps its changes: they're the song's bars, and the Tempo Track Editor still shows them.
+
+**Not yet:**
+- click patterns per signature;
+- Process Bars (insert, delete, reinterpret bars);
+- tempo recording;
+- the Time Warp tool after a detection;
+- the panel's reanalysis direction.
+
 ## 0.44.0
 
 **The chord tool, round two** (you chose it). Five parts, from the manual's chord pads and chord track chapters:

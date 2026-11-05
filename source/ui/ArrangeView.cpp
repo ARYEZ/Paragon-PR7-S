@@ -345,6 +345,8 @@ std::vector<Timeline::Row> Timeline::layout (const pr7s::Studio& studio) const
     addLanes (pr7s::Engine::masterBus);
     if (studio.getProject().tempoTrackShown)
         add (Row::Kind::tempo, 0, -1, tempoRowHeight());
+    if (studio.getProject().signatureTrackShown)
+        add (Row::Kind::signature, 0, -1, signatureRowHeight());
     if (studio.getProject().chordTrack.shown)
         add (Row::Kind::chords, 0, -1, chordRowHeight());   // (0.16.0: under the tempo track's)
     for (const auto& track : studio.getProject().tracks)
@@ -620,18 +622,22 @@ void ArrangeView::paint (juce::Graphics& g)
         g.fillRect (lane.withHeight (1.0f).withY (lane.getBottom() - 1.0f));
     }
 
-    // The grid: bars brighter than beats (beats only when there's room).
-    const auto beatUnit = 4.0 / project.denominator;
-    const auto bar = project.beatsPerBar();
+    // The grid: bars brighter than beats (beats only when there's room), bar by bar by the
+    // signature in force there (0.45.0).
+    const auto signatures = project.signatures();
     const auto lastVisible = timeline.beatForX (bounds.getWidth());
-    const auto showBeats = beatUnit * timeline.pixelsPerBeat >= 10.0;
-    for (auto beat = std::floor (timeline.firstBeat / beatUnit) * beatUnit; beat <= lastVisible; beat += beatUnit)
+    for (auto barIndex = signatures.barAt (timeline.firstBeat); signatures.beatOfBar (barIndex) <= lastVisible; ++barIndex)
     {
-        const auto isBar = std::abs (std::fmod (beat, bar)) < 1.0e-6;
-        if (! isBar && ! showBeats)
-            continue;
-        g.setColour (isBar ? gridBar : gridBeat);
-        g.fillRect (juce::Rectangle<float> (timeline.xForBeat (beat), (float) Timeline::rulerHeight, 1.0f, bounds.getHeight()));
+        const auto& signature = signatures.segmentOfBar (barIndex).event;
+        const auto start = signatures.beatOfBar (barIndex);
+        const auto showBeats = signature.unit() * timeline.pixelsPerBeat >= 10.0;
+        if (signature.barLength() * timeline.pixelsPerBeat < 3.0 && barIndex % 4 != 0)
+            continue;   // (zoomed far out: every fourth bar)
+        for (int b = 0; b < (showBeats ? signature.numerator : 1); ++b)
+        {
+            g.setColour (b == 0 ? gridBar : gridBeat);
+            g.fillRect (juce::Rectangle<float> (timeline.xForBeat (start + b * signature.unit()), (float) Timeline::rulerHeight, 1.0f, bounds.getHeight()));
+        }
     }
 
     // The automation lanes' curves (only the lanes in what's being redrawn: a lane's drawing stays
@@ -646,6 +652,8 @@ void ArrangeView::paint (juce::Graphics& g)
             paintTempo (g, row);
         else if (row.kind == Timeline::Row::Kind::chords)
             paintChords (g, row);
+        else if (row.kind == Timeline::Row::Kind::signature)
+            paintSignature (g, row);
 
     // The cycle range over the lanes, faintly.
     {
@@ -932,26 +940,34 @@ void ArrangeView::paint (juce::Graphics& g)
         {
             const auto beat = first + step * i;
             const auto coarser = step < 1.0 && std::abs (std::fmod (beat, step * 2.0)) < 1.0e-6;   // (drawn by the longer tick)
-            if (coarser || std::abs (std::fmod (beat, bar)) < 1.0e-6)
+            if (coarser || signatures.isBarLine (beat))
                 continue;
             g.fillRect (juce::Rectangle<float> (timeline.xForBeat (beat), ruler.getBottom() - 1.0f - height, 1.0f, height));
         }
     }
-    // Bar numbers every bar if there's room, else every 2, 4, 8...
+    // Bar numbers every bar if there's room, else every 2, 4, 8... (bar by bar by the signature
+    // track, 0.45.0: a bar where the signature changes is always numbered, with its signature).
     auto every = 1;
-    while (bar * every * timeline.pixelsPerBeat < 36.0)
+    while (signatures.barLengthAt (timeline.firstBeat) * every * timeline.pixelsPerBeat < 36.0 && every < 4096)
         every *= 2;
     g.setFont (font (11.0f));
-    for (auto b = (int) std::floor (timeline.firstBeat / bar); b * bar <= lastVisible; ++b)
+    for (auto b = signatures.barAt (timeline.firstBeat); signatures.beatOfBar (b) <= lastVisible; ++b)
     {
-        const auto x = timeline.xForBeat (b * bar);
-        const auto numbered = b % every == 0;
+        const auto x = timeline.xForBeat (signatures.beatOfBar (b));
+        const auto& segment = signatures.segmentOfBar (b);
+        const auto changes = b > 0 && segment.event.bar == b;
+        const auto numbered = b % every == 0 || changes;
+        if (! numbered && signatures.barLengthAt (signatures.beatOfBar (b)) * timeline.pixelsPerBeat < 3.0)
+            continue;
         g.setColour (numbered ? ParagonColours::textDim : ParagonColours::panelEdge);
         g.fillRect (juce::Rectangle<float> (x, numbered ? 16.0f : 26.0f, 1.0f, ruler.getBottom() - (numbered ? 16.0f : 26.0f)));
         if (numbered)
         {
             g.setColour (ParagonColours::text);
-            g.drawText (juce::String (b + 1), juce::Rectangle<float> (x + 4.0f, 15.0f, 40.0f, 16.0f), juce::Justification::centredLeft, false);
+            auto text = juce::String (b + 1);
+            if (changes && ! project.signatureTrackShown)
+                text << "  " << segment.event.numerator << "/" << segment.event.denominator;
+            g.drawText (text, juce::Rectangle<float> (x + 4.0f, 15.0f, 60.0f, 16.0f), juce::Justification::centredLeft, false);
         }
     }
 
@@ -1360,6 +1376,10 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
         return;
     if (const auto row = rowAt (event.position.y); row && row->kind == Timeline::Row::Kind::chords && chordDown (event))
         return;
+    if (const auto row = rowAt (event.position.y); row && row->kind == Timeline::Row::Kind::signature && signatureDown (event))
+        return;
+    if (! event.mods.isShiftDown())
+        signatureSelection.clear();
     if (! event.mods.isShiftDown())
         chordSelection.clear();
     if (! event.mods.isShiftDown())
@@ -1523,6 +1543,11 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
 
 void ArrangeView::mouseDrag (const juce::MouseEvent& event)
 {
+    if (drag == Drag::signatureMove)
+    {
+        signatureDrag (event);
+        return;
+    }
     if (drag == Drag::chordMove)
     {
         chordDragTo (event);
@@ -1721,6 +1746,11 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
 
 void ArrangeView::mouseUp (const juce::MouseEvent& event)
 {
+    if (drag == Drag::signatureMove)
+    {
+        signatureUp();
+        return;
+    }
     if (drag == Drag::chordMove)
     {
         chordUp();
@@ -2326,6 +2356,16 @@ void ArrangeView::mouseDoubleClick (const juce::MouseEvent& event)
         studio.auditionChord (studio.getChordTrack().events[(size_t) index].chord);
         return;
     }
+    // The signature track (0.45.0): an event's box, or one added at the bar.
+    if (const auto row = rowAt (event.position.y); row && row->kind == Timeline::Row::Kind::signature)
+    {
+        const auto bar = signatureAt (event.position);
+        if (bar >= 0)
+            editSignature (bar, false);
+        else
+            editSignature (studio.getProject().signatures().barAt (timeline.beatForX (event.position.x) + 0.5 * studio.getProject().beatsPerBarAt (timeline.beatForX (event.position.x))), true);
+        return;
+    }
     // A tempo event: type its tempo.
     if (const auto row = rowAt (event.position.y); row && row->kind == Timeline::Row::Kind::tempo)
     {
@@ -2360,7 +2400,6 @@ void ArrangeView::mouseDoubleClick (const juce::MouseEvent& event)
     if (const auto trackId = trackAtY (event.position.y))
     {
         const auto& project = studio.getProject();
-        const auto bar = project.beatsPerBar();
         const auto at = timeline.beatForX (event.position.x);
         pr7s::Part part;
         if (at >= project.loopStart && at < project.loopEnd)
@@ -2370,8 +2409,8 @@ void ArrangeView::mouseDoubleClick (const juce::MouseEvent& event)
         }
         else
         {
-            part.start = juce::jmax (0.0, std::floor (at / bar) * bar);
-            part.length = bar;
+            part.start = juce::jmax (0.0, project.barStartAt (at));   // (by the signature there, 0.45.0)
+            part.length = project.beatsPerBarAt (at);
         }
         part.name = project.findTrack (trackId)->name;
         studio.addPart (trackId, part);
@@ -2447,6 +2486,8 @@ void ArrangeView::showPartMenu (int trackId, int index)
         // (0.44.0) A MIDI part as one of your patterns (PERFORM, IDEAS' PATTERNS: MY PATTERNS).
         menu.addItem (126, "Make a Pattern from This Part (MY PATTERNS)", ! isAudioTrack (trackId) && ! part.notes.empty());
     }
+    // (0.45.0) The manual's Tempo Detection: the tempo track follows this part's beats.
+    menu.addItem (127, "Tempo Detection...", onTempoDetection != nullptr);
     {
         // (0.36.0) The manual's Map to Chord Track: the notes written moved onto the chord track's chords.
         juce::PopupMenu map;
@@ -2570,6 +2611,12 @@ void ArrangeView::showPartMenu (int trackId, int index)
             if (std::find (tracks.begin(), tracks.end(), trackId) == tracks.end())
                 tracks.insert (tracks.begin(), trackId);
             studio.mergeMidiInLoop (tracks);
+            return;
+        }
+        if (chosen == 127)
+        {
+            if (onTempoDetection)
+                onTempoDetection (partId);
             return;
         }
         if (chosen == 126)
@@ -4244,8 +4291,7 @@ void ArrangeView::itemDropped (const SourceDetails& details)
             chord = pr7s::Chord::fromText (d.fromFirstOccurrenceOf ("chord:", false, false));
         if (chord)
         {
-            const auto bar = studio.getProject().beatsPerBar();
-            const auto snapped = timeline.snapGrid (studio.getProject()) > 0.0 ? std::floor (beat / bar + 1.0e-9) * bar : beat;
+            const auto snapped = timeline.snapGrid (studio.getProject()) > 0.0 ? studio.getProject().barStartAt (beat) : beat;
             chordSelection = { studio.addChordEvent (snapped, *chord) };
         }
         return;
@@ -4613,8 +4659,7 @@ void ArrangeView::showScaleMenu (double beat)
         // At the chord sounding here (else the bar).
         auto scales = studio.getChordTrack().scales;
         const auto index = studio.getChordTrack().indexAt (beat);
-        const auto bar = studio.getProject().beatsPerBar();
-        const auto at = index >= 0 ? studio.getChordTrack().events[(size_t) index].beat : std::floor (beat / bar) * bar;
+        const auto at = index >= 0 ? studio.getChordTrack().events[(size_t) index].beat : studio.getProject().barStartAt (beat);
         scales.erase (std::remove_if (scales.begin(), scales.end(), [at] (const pr7s::ScaleEvent& s) { return std::abs (s.beat - at) < 1.0e-6; }),
                       scales.end());
         scales.push_back ({ at, keys[(size_t) (chosen - 1)] });

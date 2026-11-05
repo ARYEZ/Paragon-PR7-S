@@ -647,6 +647,85 @@ public:
 };
 
 //==============================================================================
+// The signature track's row (0.45.0, the manual's Signature Track Controls): LOCK and the
+// signature at the playhead (double-click: insert one there).
+class TrackList::SignatureRow final : public juce::Component,
+                                      public juce::SettableTooltipClient
+{
+public:
+    explicit SignatureRow (TrackList& ownerList) : owner (ownerList)
+    {
+        lock.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        lock.setWantsKeyboardFocus (false);
+        lock.setClickingTogglesState (false);
+        lock.setTooltip ("Lock: the signature events can't be changed");
+        lock.onClick = [this] { owner.studio.setSignatureLocked (! owner.studio.getProject().signatureLocked); };
+        addAndMakeVisible (lock);
+        setTooltip ("The signature track: right-click for its menu; double-click to insert a signature at the cursor's bar");
+        refresh();
+    }
+
+    void refresh()
+    {
+        lock.setToggleState (owner.studio.getProject().signatureLocked, juce::dontSendNotification);
+        followSignature();
+        repaint();
+    }
+
+    void followSignature()
+    {
+        const auto now = owner.studio.getSignatureNow();
+        if (now != shown)
+        {
+            shown = now;
+            repaint();
+        }
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto bounds = getLocalBounds().toFloat();
+        g.setColour (juce::Colour (0xff140f14));
+        g.fillRect (bounds);
+        g.setColour (juce::Colour (0xff050405));
+        g.fillRect (bounds.withY (bounds.getBottom() - 1.0f).withHeight (1.0f));
+        g.setColour (pr7s::FamilyColours::pink);
+        g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
+        g.setColour (ParagonColours::text);
+        g.setFont (ParagonLookAndFeel::titleFont (13.0f));
+        g.drawText ("SIGNATURE", nameArea, juce::Justification::centredLeft, false);
+        g.setFont (ParagonLookAndFeel::titleFont (15.0f));
+        g.drawText (juce::String (shown.numerator) + "/" + juce::String (shown.denominator), valueArea, juce::Justification::centredLeft, false);
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().withTrimmedLeft (24).reduced (0, 4);
+        nameArea = area.removeFromLeft (84).toFloat();
+        area.removeFromRight (6);
+        lock.setBounds (area.removeFromRight (44).withSizeKeepingCentre (44, juce::jmin (24, area.getHeight())));
+        valueArea = area.toFloat();
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (e.mods.isPopupMenu() && owner.onSignatureMenu)
+            owner.onSignatureMenu();
+    }
+
+    void mouseDoubleClick (const juce::MouseEvent&) override
+    {
+        if (owner.onInsertSignature)
+            owner.onInsertSignature();
+    }
+
+    TrackList& owner;
+    juce::TextButton lock { "LOCK" };
+    juce::Rectangle<float> nameArea, valueArea;
+    pr7s::SignatureEvent shown { -1, 0, 0 };
+};
+
+//==============================================================================
 // The chord track's row (0.16.0): its name, the key at the playhead, TO PADS
 // (the manual's Assign from Chord Track), TO MIDI (its chords as a part on the
 // selected track), AUTO SCALES (the scales follow the chords).
@@ -838,6 +917,8 @@ void TrackList::timerCallback()
         lane->repaint (lane->valueArea.toNearestInt());
     if (tempoRow != nullptr)
         tempoRow->followTempo();
+    if (signatureRow != nullptr)
+        signatureRow->followSignature();
 }
 
 void TrackList::rebuild()
@@ -898,6 +979,15 @@ void TrackList::rebuild()
         tempoRow = nullptr;
     if (tempoRow != nullptr)
         tempoRow->refresh();
+    if (studio.getProject().signatureTrackShown && signatureRow == nullptr)
+    {
+        signatureRow = std::make_unique<SignatureRow> (*this);
+        addAndMakeVisible (*signatureRow);
+    }
+    else if (! studio.getProject().signatureTrackShown)
+        signatureRow = nullptr;
+    if (signatureRow != nullptr)
+        signatureRow->refresh();
     if (studio.getChordTrack().shown && chordRow == nullptr)
     {
         chordRow = std::make_unique<ChordRow> (*this);
@@ -952,6 +1042,11 @@ void TrackList::placeRows()
         {
             if (tempoRow != nullptr)
                 tempoRow->setBounds (bounds);
+        }
+        else if (row.kind == Timeline::Row::Kind::signature)
+        {
+            if (signatureRow != nullptr)
+                signatureRow->setBounds (bounds);
         }
         else if (row.kind == Timeline::Row::Kind::chords)
         {
@@ -1017,6 +1112,7 @@ juce::PopupMenu TrackList::makeAddTrackMenu (int offset)
     menu.addItem (offset + 6, "Group channel (a submix: route tracks to it)");
     menu.addSectionHeader ("ADD THE TEMPO TRACK");
     menu.addItem (offset + 8, "Tempo track (tempo changes: steps and ramps)", ! studio.getProject().tempoTrackShown);
+    menu.addItem (offset + 10, "Signature track (time signature changes)", ! studio.getProject().signatureTrackShown);
     menu.addItem (offset + 9, "Chord track (the song's chords and scales)", ! studio.getChordTrack().shown);
     menu.addSeparator();
     menu.addItem (offset + 7, "Track from a preset...");
@@ -1039,6 +1135,10 @@ bool TrackList::addTrackChosen (int chosen)
         else if (chosen == 9)
         {
             studio.addChordTrack();
+        }
+        else if (chosen == 10)
+        {
+            studio.addSignatureTrack();
         }
         else if (chosen == 7)
         {

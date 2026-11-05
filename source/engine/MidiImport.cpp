@@ -54,6 +54,32 @@ namespace pr7s
             result.tempoChanges.insert (result.tempoChanges.begin(), { 0.0, 120.0, false });
             result.bpm = 120.0;
         }
+        // Every signature change after the first, at its bar (0.45.0): bars counted from the
+        // signature before it (a change off a bar line goes to the bar it's in).
+        if (timeFormat > 0 && isValidSignature (result.numerator, result.denominator))
+        {
+            SignatureEvent last { 0, result.numerator, result.denominator };
+            auto lastBeat = 0.0;
+            for (int i = 0; i < signatures.getNumEvents(); ++i)
+            {
+                const auto& message = signatures.getEventPointer (i)->message;
+                const auto beat = message.getTimeStamp() / (double) timeFormat;
+                int n = 4, d = 4;
+                message.getTimeSignatureInfo (n, d);
+                if (! isValidSignature (n, d))
+                    continue;
+                const auto bar = last.bar + (int) std::floor ((beat - lastBeat) / last.barLength() + 1.0e-6);
+                if (bar <= 0)
+                    continue;   // (the first: the song's own)
+                if (n == last.numerator && d == last.denominator)
+                    continue;
+                if (! result.signatureChanges.empty() && result.signatureChanges.back().bar == bar)
+                    result.signatureChanges.pop_back();
+                lastBeat += (bar - last.bar) * last.barLength();
+                last = { bar, n, d };
+                result.signatureChanges.push_back (last);
+            }
+        }
         if (timeFormat <= 0)
             midi.convertTimestampTicksToSeconds();
         const auto toBeats = [&] (double time)

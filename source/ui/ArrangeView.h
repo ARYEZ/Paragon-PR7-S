@@ -91,12 +91,14 @@ struct Timeline
     int tempoRowHeight() const noexcept { return juce::jmax (48, juce::roundToInt (tempoHeight * rowZoom)); }
     static constexpr int chordsHeight = 60;   // the chord track (0.16.0): chords above, the scales below
     int chordRowHeight() const noexcept { return juce::jmax (46, juce::roundToInt (chordsHeight * rowZoom)); }
+    static constexpr int signatureHeight = 34;   // the signature track (0.45.0)
+    int signatureRowHeight() const noexcept { return juce::jmax (28, juce::roundToInt (signatureHeight * rowZoom)); }
     static constexpr int takeHeight = 52;   // a lane of takes (0.29.0): smaller than its track's row (our choice)
     int takeRowHeight() const noexcept { return juce::jmax (36, juce::roundToInt (takeHeight * rowZoom)); }
     struct Row
     {
         // (0.29.0) take: one of a track's lanes of takes (Show Lanes), under its row.
-        enum class Kind { track, lane, master, tempo, chords, take };
+        enum class Kind { track, lane, master, tempo, chords, take, signature };   // (0.45.0: the signature track, under the tempo track)
         Kind kind = Kind::track;
         int busId = 0;          // a track's id, or the master's (0)
         int laneIndex = -1;     // a lane: its index in the bus's automation; a take lane: its lane
@@ -266,6 +268,20 @@ public:
     std::function<void (int partId)> onHarmonyVoices;   // its menu's Generate Harmony Voices (0.35.0)
     std::function<void()> onOpenAudioAlignment;   // the part's and range's menus (0.33.0)
     std::function<void()> onOpenTempoEditor;   // the menu's Open Tempo Track Editor (0.13.0)
+    std::function<void (int partId)> onTempoDetection;   // the part menu's Tempo Detection (0.45.0)
+
+    // The signature track (0.45.0, the manual's): its events at their bars (the first, bar 1, always
+    // there), click to select, drag along the bars, DRAW (or a double-click on an empty bar) adds one
+    // there, ERASE or Delete removes, a double-click types a new signature or bar.
+    const std::vector<int>& getSignatureSelection() const noexcept { return signatureSelection; }
+    void selectSignatures (std::vector<int> bars) { signatureSelection = std::move (bars); repaint(); }
+    bool hasSelectedSignatures() const noexcept { return ! signatureSelection.empty(); }
+    void deleteSelectedSignatures();
+    void editSignature (int bar, bool adding);   // the box (an AlertWindow): signature and bar
+    void showSignatureMenu();
+    juce::Rectangle<float> getSignatureArea() const;
+    juce::Rectangle<float> getSignatureBounds (int bar) const;   // an event's label
+    int signatureAt (juce::Point<float>) const;                  // the bar of the event there, -1: none
     // Where an event is drawn, and the tempo row's curve area (tests).
     juce::Point<float> getTempoEventPosition (int index) const;
     juce::Rectangle<float> getTempoArea() const;
@@ -409,7 +425,7 @@ private:
     int selectedPartId = 0;                     // its part's id (found again after the song changes)
     Selection selectionOf (int trackId, int index);
 
-    enum class Drag { none, position, cycle, cycleMove, cycleLeft, cycleRight, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
+    enum class Drag { none, signatureMove, position, cycle, cycleMove, cycleLeft, cycleRight, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
                       erasePoints, linePoints, pointHandle, curve, segmentScale,
                       newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove, marquee,
                       tempoPoints, tempoBand, tempoDraw, chordMove, comp, takeEdge, slip, audition, warpMarker };
@@ -494,6 +510,12 @@ private:
     void editTempoEvent (int index);   // a box to type its tempo (double-click)
     std::vector<int> tempoSelection;
     std::vector<int> chordSelection;
+    std::vector<int> signatureSelection;   // (0.45.0) bars
+    int signatureDragFrom = -1, signatureDragTo = -1;
+    void paintSignature (juce::Graphics&, const Timeline::Row&);
+    bool signatureDown (const juce::MouseEvent&);
+    void signatureDrag (const juce::MouseEvent&);
+    void signatureUp();
     std::vector<pr7s::ChordEvent> chordOriginal;
     double chordDownBeat = 0.0;
     juce::Component::SafePointer<ChordEventEditor> chordEditor;

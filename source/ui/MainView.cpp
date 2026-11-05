@@ -2,6 +2,7 @@
 #include "ui/DrumMapPage.h"
 #include "ui/AutomationPanel.h"
 #include "ui/AudioAlignmentPanel.h"
+#include "ui/TempoDetectionPanel.h"
 #include "ui/VariAudioEditor.h"
 #include "ui/TrackActions.h"
 #include "engine/MidiImport.h"
@@ -358,6 +359,25 @@ MainView::MainView (pr7s::Studio& studioToUse)
         });
     };
     arrange.onOpenAudioAlignment = [this] { if (alignmentWindow == nullptr) toggleAudioAlignment(); else alignmentWindow->toFront (true); };
+    // (0.45.0) Signatures, tap tempo, tempo detection.
+    arrange.onTempoDetection = [this] (int partId) { openTempoDetection (partId); };
+    trackList.onSignatureMenu = [this] { arrange.showSignatureMenu(); };
+    trackList.onInsertSignature = [this] { insertSignatureAtCursor(); };
+    transport.onInsertSignature = [this] { insertSignatureAtCursor(); };
+    transport.getSelectionStart = [this]() -> std::optional<double>
+    {
+        if (const auto range = arrange.getRange())
+            return range->start;
+        std::optional<double> first;
+        for (const auto id : arrange.getSelectedParts())
+            if (const auto where = studio.findPart (id))
+                if (const auto* track = studio.getProject().findTrack (where->first))
+                {
+                    const auto start = track->parts[(size_t) where->second].start;
+                    first = first ? juce::jmin (*first, start) : start;
+                }
+        return first;
+    };
     trackList.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
     timeline.onScrollOrZoom = [this]
     {
@@ -960,12 +980,19 @@ bool MainView::handleKey (const juce::KeyPress& key)
     if (key.getKeyCode() == juce::KeyPress::F6Key && ! mods.isAltDown()) { toggleAutomationPanel(); return true; }   // (the manual's: 0.28.0)
     if (isKeyEditorOpen() && key == juce::KeyPress::escapeKey) { closeKeyEditor(); return true; }
     if (isMixerOpen() && key == juce::KeyPress::escapeKey)     { closeMixer(); return true; }
+    if (key.getKeyCode() == juce::KeyPress::spaceKey && mods.isShiftDown() && ! mods.isCommandDown() && ! mods.isAltDown())
+    {
+        transport.tap();   // (0.45.0, the manual's: Shift+Space taps the tempo)
+        return true;
+    }
     if (key == juce::KeyPress::spaceKey)                { studio.togglePlay(); return true; }
     if (key == juce::KeyPress::homeKey)                 { studio.goToStart(); return true; }
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
     {
         if (arrange.hasSelectedTempoEvents())
             arrange.deleteSelectedTempoEvents();
+        else if (arrange.hasSelectedSignatures())
+            arrange.deleteSelectedSignatures();
         else if (arrange.hasSelectedChordEvents())
             arrange.deleteSelectedChordEvents();
         else
@@ -2151,6 +2178,11 @@ void MainView::toggleTempoEditor()
         }
         return safe->keyPressed (key);
     };
+    window->getEditor().onEditSignature = [safe = juce::Component::SafePointer<MainView> (this)] (int bar, bool adding)
+    {
+        if (safe != nullptr)
+            safe->arrange.editSignature (bar, adding);
+    };
     tempoEditorWindow = std::move (window);
 }
 
@@ -2167,6 +2199,26 @@ void MainView::toggleAutomationPanel()
         juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->automationWindow = nullptr; });
     };
     automationWindow = std::move (window);
+}
+
+void MainView::insertSignatureAtCursor()
+{
+    arrange.editSignature (studio.getProject().signatures().barAt (studio.getEngine().getPosition()), true);
+}
+
+void MainView::openTempoDetection (int partId)
+{
+    if (tempoDetectionWindow == nullptr)
+    {
+        auto window = std::make_unique<TempoDetectionWindow> (studio, [this] { return arrange.getSelectedParts(); });
+        window->onClose = [safe = juce::Component::SafePointer<MainView> (this)]
+        {
+            juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->tempoDetectionWindow = nullptr; });
+        };
+        tempoDetectionWindow = std::move (window);
+    }
+    tempoDetectionWindow->toFront (true);
+    juce::ignoreUnused (partId);   // (the panel analyses the selected part when ANALYZE is clicked, as the manual's)
 }
 
 void MainView::toggleAudioAlignment()

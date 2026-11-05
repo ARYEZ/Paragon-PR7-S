@@ -14,6 +14,7 @@
 #include "Progressions.h"
 #include "Melody.h"
 #include "ChordDetect.h"
+#include "TempoDetect.h"
 #include "MediaBay.h"
 
 #include <optional>
@@ -861,7 +862,62 @@ namespace pr7s
         //======================================================================
         // The song.
         void setTempo (double bpm);   // the fixed tempo (the tempo track off)
-        void setSignature (int numerator, int denominator);
+        void setSignature (int numerator, int denominator);   // the first (bar 1)
+
+        //======================================================================
+        // Signature changes (0.45.0, the manual's Time Signature Events and Signature Track).
+        // Events sit at bars (from 0: bar 1 on screen) and hold until the next; the first, at
+        // bar 1, is the song's own signature and can't be moved or removed. What's placed in
+        // the song stays at its beats: the bar lines move (as the manual's, in musical time).
+        // Each edit is an undo step; none while the signature track is locked (but the first,
+        // the transport's).
+        void addSignatureTrack();      // shown (it can be added once)
+        void removeSignatureTrack();   // hidden; its events stay (they're the song's bars; the Tempo Track Editor shows them)
+        void setSignatureLocked (bool);
+        bool setSignatureAt (int bar, int numerator, int denominator);   // bar 0: the first; one already there changes
+        bool removeSignatures (std::vector<int> bars);                    // never bar 0
+        bool moveSignature (int fromBar, int toBar);                      // onto another: it replaces it
+        bool insertSignatureAtCursor (int numerator, int denominator);    // at the bar the playhead is in
+        SignatureEvent getSignatureNow() const;                           // at the playhead
+
+        //======================================================================
+        // Tap tempo (0.45.0, the manual's Tap Tempo Modes): each tap's time in seconds (the
+        // transport's TAP, Shift+Space). From the second tap the tempo is the average step of
+        // the last eight; a gap of 2 s starts again. Applied at each tap by the mode (not an
+        // undo step each: one when the taps stop, so Undo goes back to before tapping).
+        enum class TapMode { automatic, selectionStart, playbackStart, cursor, projectTempo, displayOnly };
+        static juce::String tapModeName (TapMode);
+        TapMode getTapMode() const noexcept { return tapMode; }
+        void setTapMode (TapMode);   // (kept in the settings)
+        struct TapResult
+        {
+            double bpm = 0.0;     // 0: not yet (one tap)
+            int taps = 0;
+            juce::String where;   // what it did ("Tempo event at 5. 1. 1.   0", "Project tempo", "Display only"...)
+            double at = -1.0;     // the beat of the event it changed (-1: none)
+        };
+        // `selectionStart`: the start of what's selected (a range, parts), for Automatic and At Selection Start.
+        TapResult tapTempo (double nowSeconds, std::optional<double> selectionStart = std::nullopt);
+        const TapResult& getLastTap() const noexcept { return lastTap; }
+        bool isTapping (double nowSeconds) const noexcept { return lastTap.taps > 0 && nowSeconds - tapTimes.back() < tapGapSeconds; }
+        void endTapping();   // (Studio's timer: the taps stopped; the undo step)
+        static constexpr double tapGapSeconds = 2.0;
+
+        //======================================================================
+        // Tempo detection (0.45.0, the manual's Tempo Detection panel): the beats of an audio clip
+        // (as heard) or a MIDI part, at least 7 s long. `applyDetectedBeats` makes the tempo
+        // track follow them from the part's start: a tempo event on each beat (the first on
+        // the whole beat that keeps the tempo nearest; the stretch from the part's start to it
+        // set so it lands), the tempo track on and shown, events from the part's start on
+        // replaced. Everything in the song keeps its place in time (the manual's linear time
+        // base while it analyses): parts, notes, controllers, automation, chords and the
+        // locators move to the beats they now sound at. One undo step.
+        bool analyseTempo (int partId, BeatAnalysis& result, juce::String& error);
+        bool applyDetectedBeats (int partId, const std::vector<double>& beatSeconds, juce::String& report);
+        // The tempo events put back (Reset): everything moved to where it sounds by those.
+        void restoreTempo (bool on, std::vector<TempoEvent> events);
+        // Every beat position moved so it sounds where it did under `before` (the song now follows `after`).
+        void keepInTime (const TempoMap& before, const TempoMap& after);
 
         //======================================================================
         // The tempo track (0.10.0, the manual's Tempo Track): added once
@@ -1277,6 +1333,10 @@ namespace pr7s
         // Recording: where it started, into which track, and what's come in so far.
         bool wasRecording = false;
         double recordStart = 0.0, playStart = 0.0;
+        TapMode tapMode = TapMode::automatic;
+        std::vector<double> tapTimes;
+        TapResult lastTap;
+        bool tapUnrecorded = false;
         int recordTrack = 0;
         std::vector<RecordedEvent> recorded;
 

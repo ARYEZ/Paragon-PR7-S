@@ -684,7 +684,7 @@ namespace pr7s
         readLanes (project.masterAutomation, project.masterRead, masterLanes, masterLanesMix, masterBus, held, project.automationSettings);
 
         const juce::ScopedLock sl (lock);
-        settings = { std::move (tempo), tempoVersion, project.numerator, project.denominator, project.loopOn,
+        settings = { std::move (tempo), tempoVersion, project.signatures(), project.loopOn,
                      project.loopStart, juce::jmax (project.loopStart + 0.0625, project.loopEnd), project.click, masterLevel,
                      project.masterVolumeDb, project.automationSettings.virginTerritory };
         std::swap (masterAutomation, masterLanes);
@@ -1240,7 +1240,12 @@ namespace pr7s
         if (liveFollowMode != LiveFollow::off && liveFollowTrack == liveTrack.load())
             mapLive (beat);   // (0.36.0) keys onto the chord track's chord or scale, before they're played or recorded
         head.info.setBpm (settings.tempo.bpmAt (beat));
-        head.info.setTimeSignature (juce::AudioPlayHead::TimeSignature { settings.numerator, settings.denominator });
+        {
+            const auto& signature = settings.signatures.segmentAt (beat).event;
+            head.info.setTimeSignature (juce::AudioPlayHead::TimeSignature { signature.numerator, signature.denominator });
+            head.info.setPpqPositionOfLastBarStart (settings.signatures.barStart (beat));
+            head.info.setBarCount (settings.signatures.barAt (beat));
+        }
         head.info.setPpqPosition (beat);
         head.info.setIsPlaying (nowPlaying);
         head.info.setIsRecording (recording.load());
@@ -1256,8 +1261,6 @@ namespace pr7s
             // The block in segments: up to the cycle's end, then back to its start.
             const auto isRecording = recording.load();
             const auto* recordingTrack = findTrack (liveTrack.load());
-            const auto beatUnit = 4.0 / settings.denominator;   // the click's beat (a quarter in 4/4, an eighth in 6/8)
-            const auto unitsPerBar = settings.numerator;
             const auto loopStart = toSamples (settings.loopStart), loopEnd = toSamples (settings.loopEnd);
             for (int done = 0; done < numSamples;)
             {
@@ -1291,16 +1294,23 @@ namespace pr7s
                             track->recorder->write (channels, length);
                         }
 
+                // The click: the signature's beats (a quarter in 4/4, an eighth in 6/8), each bar's first
+                // accented, by the signature in force there (0.45.0).
                 if (settings.click)
-                    for (auto unit = (juce::int64) std::floor (timing.beatAt ((double) clock) / beatUnit); numTicks < (int) ticks.size(); ++unit)
+                {
+                    const auto& map = settings.signatures;
+                    auto pos = map.positionOf (timing.beatAt ((double) clock));
+                    for (auto guard = 0; numTicks < (int) ticks.size() && guard < 4096; ++guard)
                     {
-                        const auto at = toSamples ((double) unit * beatUnit);
-                        if (at < clock)
-                            continue;
+                        const auto at = toSamples (map.beatOf (pos.bar, pos.beat, 0.0));
                         if (at >= end)
                             break;
-                        ticks[(size_t) numTicks++] = { done + (int) (at - clock), unit % unitsPerBar == 0 };
+                        if (at >= clock)
+                            ticks[(size_t) numTicks++] = { done + (int) (at - clock), pos.beat == 0 };
+                        if (++pos.beat >= map.segmentOfBar (pos.bar).event.numerator)
+                            pos.beat = 0, ++pos.bar;
                     }
+                }
 
                 // Recording: each note played, at its beat in the song.
                 if (isRecording)

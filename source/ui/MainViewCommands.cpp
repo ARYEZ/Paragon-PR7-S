@@ -38,6 +38,10 @@ void MainView::registerCommands()
     add ("Transport.LocatorsToSelection", "Transport", "Locators to Selection", { key ('P') });
     add ("Transport.LoopSelection", "Transport", "Loop Selection", { key ('P', alt) });
     add ("Transport.TempoTrack", "Transport", "Activate Tempo Track", {}, [this] { studio.setTempoTrackOn (! studio.getProject().followsTempoTrack()); });
+    add ("Transport.TapTempo", "Transport", "Tap Tempo", { KP (KP::spaceKey, juce::ModifierKeys::shiftModifier, 0) });   // (0.45.0, the manual's)
+    add ("Edit.InsertSignature", "Edit", "Insert Time Signature Event", {}, [this] { insertSignatureAtCursor(); });   // (0.45.0: no key, as the manual's)
+    add ("Project.AddSignatureTrack", "Project", "Add Signature Track", {}, [this] { studio.addSignatureTrack(); });
+    add ("Window.TempoDetection", "Window", "Tempo Detection", {}, [this] { openTempoDetection (0); });
 
     // File.
     add ("File.New", "File", "New Song", { key ('N', ctrl) });

@@ -277,7 +277,7 @@ public:
             return;
         auto& studio = view.studio;
         const auto bar = studio.getProject().beatsPerBar();
-        const auto start = std::floor (studio.getEngine().getPosition() / bar + 1.0e-9) * bar;
+        const auto start = studio.getProject().barStartAt (studio.getEngine().getPosition());
         const auto end = start + bar * (double) popular[(size_t) index].chords.size();
         studio.addProgressionToChordTrack (popular[(size_t) index].chords, start);
         std::vector<int> events;

@@ -365,6 +365,19 @@ namespace pr7s
             g->setAttribute ("selection", group.selection);
             g->setAttribute ("recordMonitor", group.recordMonitor);
         }
+        if (! signatureChanges.empty() || signatureTrackShown)
+        {
+            auto* signature = xml->createNewChildElement ("Signatures");
+            signature->setAttribute ("shown", signatureTrackShown);
+            signature->setAttribute ("locked", signatureLocked);
+            for (const auto& e : signatureChanges)
+            {
+                auto* event = signature->createNewChildElement ("Signature");
+                event->setAttribute ("bar", e.bar);
+                event->setAttribute ("numerator", e.numerator);
+                event->setAttribute ("denominator", e.denominator);
+            }
+        }
         if (! tempoEvents.empty() || tempoTrackShown)
         {
             auto* tempo = xml->createNewChildElement ("Tempo");
@@ -635,6 +648,21 @@ namespace pr7s
             project.chordPads = ChordPads::fromXml (*pads);
         if (const auto* chords = xml.getChildByName ("ChordTrack"))
             project.chordTrack = ChordTrack::fromXml (*chords);
+        if (! isValidSignature (project.numerator, project.denominator))
+            project.numerator = 4, project.denominator = 4;
+        if (const auto* signature = xml.getChildByName ("Signatures"))
+        {
+            project.signatureTrackShown = signature->getBoolAttribute ("shown");
+            project.signatureLocked = signature->getBoolAttribute ("locked");
+            std::vector<SignatureEvent> changes;
+            for (const auto* e : signature->getChildWithTagNameIterator ("Signature"))
+                changes.push_back ({ e->getIntAttribute ("bar"), e->getIntAttribute ("numerator", 4), e->getIntAttribute ("denominator", 4) });
+            // (The map drops what's not a change after bar 1, invalid ones and duplicates.)
+            const SignatureMap map (project.numerator, project.denominator, changes);   // (kept: a loop over a temporary's list reads freed memory)
+            for (const auto& segment : map.segments())
+                if (segment.event.bar > 0)
+                    project.signatureChanges.push_back (segment.event);
+        }
         if (const auto* tempo = xml.getChildByName ("Tempo"))
         {
             project.tempoTrackShown = tempo->getBoolAttribute ("shown");
@@ -978,13 +1006,18 @@ namespace pr7s
     juce::String formatBarsBeats (double beats, const Project& project)
     {
         beats = juce::jmax (0.0, beats);
-        // Whole ticks first, so a position never shows "480" ticks.
+        // Whole ticks first, so a position never shows "480" ticks; bars by the signature track (0.45.0).
         constexpr int ticksPerBeat = 480, ticksPerSixteenth = 120;
-        const auto totalTicks = (juce::int64) std::floor (beats * ticksPerBeat + 1.0e-6);
-        const auto ticksPerBar = (juce::int64) std::llround (project.beatsPerBar() * ticksPerBeat);
-        const auto ticksPerUnit = (juce::int64) std::llround (4.0 / project.denominator * ticksPerBeat);   // the signature's beat (a quarter in 4/4, an eighth in 6/8)
-        const auto bar = totalTicks / ticksPerBar + 1;
-        auto rest = totalTicks % ticksPerBar;
+        const auto map = project.signatures();
+        const auto barIndex = map.barAt (beats);
+        const auto& signature = map.segmentOfBar (barIndex).event;
+        auto rest = (juce::int64) std::floor ((beats - map.beatOfBar (barIndex)) * ticksPerBeat + 1.0e-6);
+        const auto ticksPerBar = (juce::int64) std::llround (signature.barLength() * ticksPerBeat);
+        const auto ticksPerUnit = (juce::int64) std::llround (signature.unit() * ticksPerBeat);   // the signature's beat (a quarter in 4/4, an eighth in 6/8)
+        auto bar = (juce::int64) barIndex + 1;
+        if (rest >= ticksPerBar)
+            ++bar, rest -= ticksPerBar;   // (rounding at a bar line)
+        rest = juce::jmax ((juce::int64) 0, rest);
         const auto beat = rest / ticksPerUnit + 1;
         rest %= ticksPerUnit;
         const auto sixteenth = rest / ticksPerSixteenth + 1;

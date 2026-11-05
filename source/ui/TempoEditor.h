@@ -57,6 +57,9 @@ public:
     static std::optional<double> parsePosition (const juce::String&, const pr7s::Project&);
 
     std::function<bool (const juce::KeyPress&)> onOtherKey;   // keys it doesn't use (the studio's)
+    // (0.45.0) The signature display: DRAW (or a double-click) adds one at the bar, a double-click on
+    // one edits it (MainView: the arrangement's box); ERASE removes one.
+    std::function<void (int bar, bool adding)> onEditSignature;
 
     bool keyPressed (const juce::KeyPress&) override;
     void paint (juce::Graphics&) override;
