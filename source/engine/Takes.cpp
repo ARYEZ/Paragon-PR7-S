@@ -243,20 +243,23 @@ namespace pr7s
 
     const std::vector<GuitarTuning>& bassTunings()
     {
+        // (0.62.0: each named with its notes, as the studio names them: middle C = C3. A sample library can
+        // play a bass an octave higher than these: its INSTRUMENTS profile in the Hub says where.)
         static const std::vector<GuitarTuning> all {
-            { "4-string standard (E)", { 28, 33, 38, 43 } },
-            { "5-string standard (B)", { 23, 28, 33, 38, 43 } },
-            { "4-string drop D", { 26, 33, 38, 43 } },
-            { "4-string drop C", { 24, 31, 36, 41 } },
-            { "5-string drop A", { 21, 28, 33, 38, 43 } },
-            { "6-string standard (B)", { 23, 28, 33, 38, 43, 48 } } };
+            { "4-string standard (E0 A0 D1 G1)", { 28, 33, 38, 43 } },
+            { "5-string standard (B-1 E0 A0 D1 G1)", { 23, 28, 33, 38, 43 } },
+            { "4-string drop D (D0 A0 D1 G1)", { 26, 33, 38, 43 } },
+            { "4-string drop C (C0 G0 C1 F1)", { 24, 31, 36, 41 } },
+            { "5-string drop A (A-1 E0 A0 D1 G1)", { 21, 28, 33, 38, 43 } },
+            { "6-string standard (B-1 E0 A0 D1 G1 C2)", { 23, 28, 33, 38, 43, 48 } } };
         return all;
     }
 
     const GuitarTuning& bassTuningNamed (const juce::String& name)
     {
+        // (0.61.0's names had no notes: "5-string drop A" still finds its tuning.)
         for (const auto& t : bassTunings())
-            if (t.name == name)
+            if (t.name == name || t.name.upToFirstOccurrenceOf (" (", false, false) == name.upToFirstOccurrenceOf (" (", false, false))
                 return t;
         return bassTunings().front();
     }

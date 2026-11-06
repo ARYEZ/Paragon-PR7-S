@@ -37,6 +37,7 @@ add_executable(ParagonPR7STests
     DrumLearnUiTests.cpp
     BuildSectionTests.cpp
     ComposerTests.cpp
+    InstrumentTests.cpp
     GroupRoutingTests.cpp
     NewSongTests.cpp
     SpeedTests.cpp

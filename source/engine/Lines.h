@@ -25,6 +25,7 @@ namespace pr7s
         double beat = 0.0, length = 0.0;   // from the first chord's start, in beats
         int pitch = 60;
         float velocity = 0.8f;
+        bool keyswitch = false;            // (0.62.0) a library's keyswitch held, not a note heard (not drawn)
         bool operator== (const LineNote&) const = default;
     };
 

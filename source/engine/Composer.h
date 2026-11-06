@@ -7,6 +7,7 @@
 #include "engine/DrumGenerator.h"
 #include "engine/DrumLearning.h"
 #include "engine/Takes.h"
+#include "engine/Instruments.h"
 
 #include <array>
 #include <optional>
@@ -45,6 +46,7 @@ namespace pr7s
         int variation = 0;    // the take (0.61.0: ROLL draws another; engine/Takes.h)
         float busy = 0.5f;    // BUSY (0.61.0): 0 sparse .. 0.5 the approach as usual .. 1 busy
         bool lowString = false;   // LOW STRING (0.61.0: bass and guitar)
+        int onlyString = 0;       // ONLY STRING n (0.62.0; 1 the lowest; 0: off): engine/Instruments.h's playOnString
         bool operator== (const ComposerLane&) const = default;
     };
 
@@ -72,6 +74,8 @@ namespace pr7s
         double beatsPerBar = 4.0;
         GuitarTuning tuning = GuitarTuning::all().front();
         GuitarTuning bassTuning = bassTunings().front();   // (0.61.0: LOW STRING and the bass's range)
+        // (0.62.0) The Hub's INSTRUMENTS profiles used for these lanes (none: the tunings above).
+        std::optional<InstrumentProfile> bassProfile, guitarProfile, leadProfile;
         GuitarVelocities velocities;
         GuitarStyle style {};
         RiffSettings riff;
@@ -102,6 +106,9 @@ namespace pr7s
     // ROLL (0.61.0, the owner's rule: the approach is chosen only in the style menu): a new take of the
     // same style (another variation); the chords keep their progression. Locked or not: the caller decides.
     void rollLane (ComposerState&, ComposerLayer, juce::Random&);
+    // The strings, frets and the profile (if any) a lane plays on (0.62.0; the bass and the guitar).
+    struct LaneStrings { std::vector<int> strings; int frets = 24; const InstrumentProfile* profile = nullptr; };
+    LaneStrings composerStrings (ComposerLayer, const ComposerContext&);
     // Whether a layer has LOW STRING (the bass and the guitar).
     inline bool hasLowString (ComposerLayer l) { return l == ComposerLayer::bass || l == ComposerLayer::guitar; }
     // GENERATE: every unlocked lane rolled (new takes, the same styles). Returns how many were.

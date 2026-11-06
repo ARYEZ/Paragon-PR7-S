@@ -9590,6 +9590,9 @@ namespace pr7s
         c.beatsPerBar = project.beatsPerBarAt (atBeat);
         c.tuning = GuitarTuning::named (getGuitarTuning());
         c.bassTuning = bassTuningNamed (getBassTuning());
+        c.bassProfile = profileFor (ProfileUse::bass);
+        c.guitarProfile = profileFor (ProfileUse::guitar);
+        c.leadProfile = profileFor (ProfileUse::lead);
         c.velocities = getGuitarVelocities();
         c.style = getGuitarStyle();
         c.riff = getRiffSettings();
@@ -9975,6 +9978,32 @@ namespace pr7s
     {
         const auto name = settings != nullptr ? settings->getValue ("bassTuning") : bassTuning;
         return bassTuningNamed (name).name;
+    }
+
+    std::vector<InstrumentProfile> Studio::getInstrumentProfiles() const
+    {
+        const auto stored = settings != nullptr ? (settings->containsKey ("instrumentProfiles") ? std::optional<juce::String> (settings->getValue ("instrumentProfiles"))
+                                                                                                 : std::nullopt)
+                                                : instrumentProfiles;
+        if (! stored.has_value())
+            return { InstrumentProfile::djinnBass2() };   // (the first time: the owner's bass)
+        return profilesFromText (*stored);
+    }
+
+    void Studio::setInstrumentProfiles (const std::vector<InstrumentProfile>& profiles)
+    {
+        const auto text = profilesToText (profiles);
+        instrumentProfiles = text;
+        if (settings != nullptr)
+            settings->setValue ("instrumentProfiles", text);
+    }
+
+    std::optional<InstrumentProfile> Studio::profileFor (ProfileUse use) const
+    {
+        for (const auto& p : getInstrumentProfiles())
+            if ((use == ProfileUse::bass && p.forBass) || (use == ProfileUse::guitar && p.forGuitar) || (use == ProfileUse::lead && p.forLead))
+                return p;
+        return {};
     }
 
     void Studio::setBassTuning (const juce::String& name)

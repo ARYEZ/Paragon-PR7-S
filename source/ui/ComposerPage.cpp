@@ -122,7 +122,7 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
         lane.roll.setTooltip ("A new take of this style: another rhythm and other notes, the same approach (choose the approach in the menu beside it)");
         lane.style.setTooltip ("Which of the layer's styles: the approach (ROLL keeps it)");
         lane.busy.setTooltip ("How busy its takes are: sparse, as the approach usually goes (50%), or busy. ROLL keeps it");
-        lane.low.setTooltip ("Lit: played on the lowest string as much as it can be (the open string to its 12th fret). The menu also has the tuning");
+        lane.low.setTooltip ("Which string: any, the lowest as much as it can be, or the whole part on one string (with the INSTRUMENTS profile's keyswitch for it held). The menu also has the tuning");
         lane.track.setTooltip ("The track it plays on and is written to (automatic: the track named for it, else a new one when used)");
         lane.on.onClick = [this, l] { setOn (l, ! state.lane (l).on); };
         lane.lock.onClick = [this, l] { setLocked (l, ! state.lane (l).locked); };
@@ -191,7 +191,8 @@ void ComposerPage::refresh (bool rehear)
         lane.style.setButtonText (ideas[(size_t) l].style.isEmpty() ? juce::String ("STYLE") : ideas[(size_t) l].style.toUpperCase());
         lane.track.setButtonText (trackText (l));
         lane.busy.setButtonText ("BUSY " + juce::String (juce::roundToInt (s.busy * 100.0f)) + "%");
-        lane.low.setToggleState (s.lowString, juce::dontSendNotification);
+        lane.low.setToggleState (s.lowString || s.onlyString > 0, juce::dontSendNotification);
+        lane.low.setButtonText (stringText (l));
     }
     seenChange = studio.getChangeVersion();
 
@@ -251,7 +252,26 @@ void ComposerPage::setLowString (ComposerLayer l, bool on)
     if (! pr7s::hasLowString (l))
         return;
     state.lane (l).lowString = on;
+    if (on)
+        state.lane (l).onlyString = 0;
     refresh();
+}
+
+void ComposerPage::setOnlyString (ComposerLayer l, int string)
+{
+    if (! pr7s::hasLowString (l))
+        return;
+    const auto strings = (int) pr7s::composerStrings (l, context).strings.size();
+    state.lane (l).onlyString = juce::jlimit (0, strings, string);
+    if (string > 0)
+        state.lane (l).lowString = false;
+    refresh();
+}
+
+juce::String ComposerPage::stringText (ComposerLayer l) const
+{
+    const auto& s = state.lane (l);
+    return s.onlyString > 0 ? "STRING " + juce::String (s.onlyString) + " ONLY" : s.lowString ? juce::String ("LOW STRING") : juce::String ("ANY STRING");
 }
 
 void ComposerPage::setTuning (ComposerLayer l, const juce::String& name)
@@ -281,21 +301,48 @@ void ComposerPage::showBusyMenu (ComposerLayer l)
 
 void ComposerPage::showLowMenu (ComposerLayer l)
 {
+    const auto& s = state.lane (l);
+    const auto on = pr7s::composerStrings (l, context);
     juce::PopupMenu menu;
-    menu.addItem (1, "Play on the lowest string as much as it can", true, state.lane (l).lowString);
+    menu.addItem (1, "Any string", true, ! s.lowString && s.onlyString == 0);
+    menu.addItem (2, "The lowest string as much as it can (open to the 12th fret)", true, s.lowString);
+    menu.addSectionHeader ("ONLY ONE STRING (THE WHOLE PART ON IT)");
+    for (int i = 0; i < (int) on.strings.size(); ++i)
+    {
+        const auto key = on.profile != nullptr ? on.profile->keyFor (i + 1) : -1;
+        menu.addItem (10 + i + 1, "String " + juce::String (i + 1) + " (" + pr7s::noteName (on.strings[(size_t) i]) + ")"
+                                  + (key >= 0 ? ", keyswitch " + pr7s::noteName (key) + " held" : juce::String (on.profile != nullptr ? ", no keyswitch for it" : "")),
+                      true, s.onlyString == i + 1);
+    }
     menu.addSeparator();
-    const auto& tunings = l == ComposerLayer::bass ? pr7s::bassTunings() : pr7s::GuitarTuning::all();
-    const auto current = l == ComposerLayer::bass ? studio.getBassTuning() : studio.getGuitarTuning();
-    menu.addSectionHeader (l == ComposerLayer::bass ? "BASS TUNING" : "GUITAR TUNING");
-    for (size_t i = 0; i < tunings.size(); ++i)
-        menu.addItem (100 + (int) i, tunings[i].name, true, tunings[i].name == current);
+    if (on.profile != nullptr)
+    {
+        menu.addSectionHeader ("TUNING AND RANGE");
+        menu.addItem (-1, "From the Hub's INSTRUMENTS: " + on.profile->name + " (" + pr7s::noteName (on.profile->rangeLow()) + " to "
+                          + pr7s::noteName (on.profile->rangeHigh()) + ")", false, false);
+    }
+    else
+    {
+        const auto& tunings = l == ComposerLayer::bass ? pr7s::bassTunings() : pr7s::GuitarTuning::all();
+        const auto current = l == ComposerLayer::bass ? studio.getBassTuning() : studio.getGuitarTuning();
+        menu.addSectionHeader (l == ComposerLayer::bass ? "BASS TUNING" : "GUITAR TUNING");
+        for (size_t i = 0; i < tunings.size(); ++i)
+            menu.addItem (100 + (int) i, tunings[i].name, true, tunings[i].name == current);
+    }
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (lanes[(size_t) l].low),
                         [safe = juce::Component::SafePointer<ComposerPage> (this), l] (int chosen)
                         {
                             if (safe == nullptr || chosen == 0)
                                 return;
                             if (chosen == 1)
-                                safe->setLowString (l, ! safe->state.lane (l).lowString);
+                            {
+                                safe->state.lane (l).lowString = false;
+                                safe->setOnlyString (l, 0);
+                            }
+                            else if (chosen == 2)
+                                safe->setLowString (l, true);
+                            else if (chosen > 10 && chosen < 100)
+                                safe->setOnlyString (l, chosen - 10);
                             else
                             {
                                 const auto& list = l == ComposerLayer::bass ? pr7s::bassTunings() : pr7s::GuitarTuning::all();
@@ -840,21 +887,33 @@ void ComposerPage::paintLane (juce::Graphics& g, ComposerLayer l, const Lane& la
     const auto& notes = ideas[(size_t) l].notes;
     auto low = 127, high = 0;
     for (const auto& n : notes)
-    {
-        low = juce::jmin (low, n.pitch);
-        high = juce::jmax (high, n.pitch);
-    }
+        if (! n.keyswitch)
+        {
+            low = juce::jmin (low, n.pitch);
+            high = juce::jmax (high, n.pitch);
+        }
     low -= 2;
     high += 2;
     const auto body = r.reduced (0.0f, 4.0f);
     const auto row = body.getHeight() / (float) juce::jmax (1, high - low + 1);
     for (const auto& n : notes)
     {
+        if (n.keyswitch)
+            continue;   // (a keyswitch held: named on the lane instead)
         const auto y = body.getBottom() - (float) (n.pitch - low + 1) * row;
         g.setColour (colour.withAlpha ((s.on ? 0.45f + 0.55f * n.velocity : 0.18f)));
         g.fillRoundedRectangle (juce::Rectangle<float> (xFor (n.beat), y, juce::jmax (2.0f, xFor (n.beat + n.length) - xFor (n.beat) - 1.0f),
                                                         juce::jmax (2.0f, row - 1.0f)), 1.5f);
     }
+    for (const auto& n : notes)
+        if (n.keyswitch)
+        {
+            g.setColour (ParagonColours::textDim);
+            g.setFont (ParagonLookAndFeel::titleFont (12.0f));
+            g.drawText ("KEYSWITCH " + pr7s::noteName (n.pitch) + " HELD (STRING " + juce::String (s.onlyString) + ")",
+                        lane.notes.reduced (10, 6), juce::Justification::bottomRight, false);
+            break;
+        }
     if (! s.on)
     {
         g.setColour (ParagonColours::textDim);
@@ -926,7 +985,7 @@ void ComposerPage::resized()
             auto second = keys.removeFromTop (26);
             if (low)
             {
-                lane.low.setBounds (second.removeFromRight (104));
+                lane.low.setBounds (second.removeFromRight (124));
                 second.removeFromRight (6);
             }
             lane.busy.setBounds (second.removeFromRight (96));

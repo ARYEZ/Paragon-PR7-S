@@ -57,7 +57,7 @@ namespace pr7s
         juce::StringArray lanesText;
         for (const auto& l : lanes)
             lanesText.add (juce::String (l.on ? 1 : 0) + "," + juce::String (l.locked ? 1 : 0) + "," + juce::String (l.style) + "," + juce::String (l.variation)
-                           + "," + juce::String (l.busy, 2) + "," + juce::String (l.lowString ? 1 : 0));
+                           + "," + juce::String (l.busy, 2) + "," + juce::String (l.lowString ? 1 : 0) + "," + juce::String (l.onlyString));
         return juce::String (keyIndex) + "|" + genre + "|" + mood + "|" + juce::String (bars) + "|" + progression + "|"
              + (fromChordTrack ? "1" : "0") + "|" + (toChordTrack ? "1" : "0") + "|" + lanesText.joinIntoString (";");
     }
@@ -94,6 +94,8 @@ namespace pr7s
                 l.busy = juce::jlimit (0.0f, 1.0f, v[4].getFloatValue());
                 l.lowString = v[5] == "1";
             }
+            if (v.size() >= 7)
+                l.onlyString = juce::jlimit (0, 12, v[6].getIntValue());
         }
         return s;
     }
@@ -191,8 +193,15 @@ namespace pr7s
             const auto& lane = s.lane (ComposerLayer::guitar);
             auto riff = c.riff;
             riff.busyness = lane.busy;   // (BUSY: RIFF SETTINGS' busyness, 0.5 as written)
-            auto idea = pick (guitarRhythmIdeas (spans, c.beatsPerBar, lane.variation, c.tuning, c.velocities, c.style, riff), lane.style);
-            riffTake (idea, spans, c.beatsPerBar, takeOf (lane, ComposerLayer::guitar, c.tuning.lowest(), c.tuning.highest()), c.style);
+            const auto& profile = c.guitarProfile;
+            const auto tuning = profile.has_value() ? profile->tuning() : c.tuning;
+            const auto velocities = profile.has_value() && profile->velocities.has_value() ? *profile->velocities : c.velocities;
+            auto idea = pick (guitarRhythmIdeas (spans, c.beatsPerBar, lane.variation, tuning, velocities, c.style, riff), lane.style);
+            const auto low = profile.has_value() ? profile->rangeLow() : tuning.lowest();
+            const auto high = profile.has_value() ? profile->rangeHigh() : tuning.highest();
+            riffTake (idea, spans, c.beatsPerBar, takeOf (lane, ComposerLayer::guitar, low, high), c.style);
+            if (profile.has_value())
+                keepInRange (idea, low, high);
             return idea;
         }
 
@@ -211,8 +220,13 @@ namespace pr7s
                 case ComposerLayer::guitar: return guitarOf (s, spans, c);
                 case ComposerLayer::lead:
                 {
-                    auto idea = pick (guitarLeadIdeas (spans, c.beatsPerBar, lane.variation, c.tuning, c.velocities, c.style), lane.style);
+                    const auto& profile = c.leadProfile.has_value() ? c.leadProfile : c.guitarProfile;
+                    const auto tuning = profile.has_value() ? profile->tuning() : c.tuning;
+                    const auto velocities = profile.has_value() && profile->velocities.has_value() ? *profile->velocities : c.velocities;
+                    auto idea = pick (guitarLeadIdeas (spans, c.beatsPerBar, lane.variation, tuning, velocities, c.style), lane.style);
                     thinTake (idea, c.beatsPerBar, takeOf (lane, l, 0, 127));
+                    if (profile.has_value())
+                        keepInRange (idea, profile->rangeLow(), profile->rangeHigh());
                     return idea;
                 }
                 case ComposerLayer::drums:
@@ -222,7 +236,9 @@ namespace pr7s
                 }
                 case ComposerLayer::bass:
                 {
-                    const auto lowest = c.bassTuning.lowest(), highest = bassTop (c.bassTuning);
+                    const auto& profile = c.bassProfile;
+                    const auto lowest = profile.has_value() ? profile->rangeLow() : c.bassTuning.lowest();
+                    const auto highest = profile.has_value() ? profile->rangeHigh() : bassTop (c.bassTuning);
                     if (lane.style >= 6)
                     {
                         // The seventh: the roots on the drums' kick (the drums lane's beat, heard or not).
@@ -239,6 +255,21 @@ namespace pr7s
             }
             return {};
         }
+    }
+
+    LaneStrings composerStrings (ComposerLayer l, const ComposerContext& c)
+    {
+        LaneStrings out;
+        const auto& profile = l == ComposerLayer::bass ? c.bassProfile : l == ComposerLayer::lead && c.leadProfile.has_value() ? c.leadProfile : c.guitarProfile;
+        if (profile.has_value() && (l == ComposerLayer::bass || l == ComposerLayer::guitar || l == ComposerLayer::lead))
+        {
+            out.strings = profile->strings;
+            out.frets = profile->frets;
+            out.profile = &*profile;
+        }
+        else
+            out.strings = l == ComposerLayer::bass ? c.bassTuning.strings : c.tuning.strings;
+        return out;
     }
 
     std::vector<LineIdea> composerChoices (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
@@ -281,6 +312,13 @@ namespace pr7s
                 const auto& lane = s.lane (l);
                 o.seed = (juce::uint32) (lane.variation * 1009 + (int) l * 101 + lane.style + 1);
                 idea.notes = humanize (std::move (idea.notes), o);
+            }
+            // ONLY STRING (0.62.0): onto that string, its keyswitch (the INSTRUMENTS profile's) held through it.
+            if (const auto string = s.lane (l).onlyString; string > 0 && hasLowString (l))
+            {
+                const auto on = composerStrings (l, c);
+                playOnString (idea, on.strings, string, on.frets, on.profile != nullptr ? on.profile->keyFor (string) : -1,
+                              spans.back().end - spans.front().start);
             }
             out[(size_t) l] = std::move (idea);
         }

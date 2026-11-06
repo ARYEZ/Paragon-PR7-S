@@ -1322,6 +1322,7 @@ TEST_CASE ("Snapshot: the progress box, and SAVE lit", "[.][snapshot-progress]")
 }
 
 #include "ui/Hub.h"
+#include "ui/InstrumentsPage.h"
 
 TEST_CASE ("Snapshot: the Hub", "[.][snapshot-hub]")
 {
@@ -1356,6 +1357,11 @@ TEST_CASE ("Snapshot: the Hub", "[.][snapshot-hub]")
             hub.setSize (980, 620);
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "settings")
             hub.showSettingsPage (true);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "instruments")
+        {
+            hub.showInstrumentsPage();
+            hub.getInstrumentsPage()->setUse (pr7s::Studio::ProfileUse::bass, true);   // (Djinn Bass 2, the first time's)
+        }
         const auto image = hub.createComponentSnapshot (hub.getLocalBounds(), true, 1.0f);
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };

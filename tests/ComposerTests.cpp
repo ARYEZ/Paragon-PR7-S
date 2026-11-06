@@ -536,7 +536,7 @@ TEST_CASE ("The composer page: ROLL keeps the style, BUSY and LOW STRING keys (0
     page.setLowString (L::drums, true);
     CHECK_FALSE (page.getState().lane (L::drums).lowString);
     page.setTuning (L::bass, "5-string drop A");
-    CHECK (studio.getBassTuning() == "5-string drop A");
+    CHECK (studio.getBassTuning().startsWith ("5-string drop A"));
     for (const auto& n : page.getIdea (L::bass).notes)
         CHECK (n.pitch >= 21);
 }

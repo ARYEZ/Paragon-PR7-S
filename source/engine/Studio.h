@@ -340,6 +340,12 @@ namespace pr7s
         // "bassTuning", default 4-string standard; engine/Takes.h's bassTunings).
         juce::String getBassTuning() const;
         void setBassTuning (const juce::String&);
+        // The Hub's INSTRUMENTS (0.62.0; settings key "instrumentProfiles"; engine/Instruments.h). The first
+        // time: Djinn Bass 2 (the owner's) for the bass. `profileFor`: the one marked for that lane.
+        std::vector<InstrumentProfile> getInstrumentProfiles() const;
+        void setInstrumentProfiles (const std::vector<InstrumentProfile>&);
+        enum class ProfileUse { bass, guitar, lead };
+        std::optional<InstrumentProfile> profileFor (ProfileUse) const;
         // The guitar ideas' velocities (0.19.3, the VELOCITIES panel; settings key "guitarVelocities").
         GuitarVelocities getGuitarVelocities() const;
         void setGuitarVelocities (const GuitarVelocities&);
@@ -1456,6 +1462,7 @@ namespace pr7s
         DetectSettings detectSettings;
         juce::String guitarTuning;   // (without a settings file: the tests)
         juce::String bassTuning;
+        std::optional<juce::String> instrumentProfiles;   // (without a settings file: the tests)
         GuitarVelocities guitarVelocities;
         GuitarStyle guitarStyle = GuitarStyle::rock;   // (without a settings file)
         RiffSettings riffSettings;

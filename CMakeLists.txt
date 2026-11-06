@@ -62,6 +62,7 @@ add_library(PR7SCore STATIC
     source/engine/SectionPlan.cpp
     source/engine/Composer.cpp
     source/engine/Takes.cpp
+    source/engine/Instruments.cpp
     source/engine/MediaBay.cpp
     source/engine/ParagonSynth.cpp
     source/engine/PluginHost.cpp
@@ -119,6 +120,7 @@ add_library(PR7SCore STATIC
     source/ui/TrackColours.cpp
     source/ui/LinesPage.cpp
     source/ui/ComposerPage.cpp
+    source/ui/InstrumentsPage.cpp
     source/ui/ProgressionsPage.cpp
     source/ui/DrumLearnPage.cpp
     source/ui/EqEditor.cpp

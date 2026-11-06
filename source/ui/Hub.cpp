@@ -1,4 +1,5 @@
 #include "Hub.h"
+#include "ui/InstrumentsPage.h"
 
 #include "ui/Finish.h"
 #include "ui/Logo.h"
@@ -154,7 +155,7 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
 {
     list = std::make_unique<SongList> (*this);
     addAndMakeVisible (*list);
-    for (auto* b : { &projectsTab, &settingsTab, &createEmpty, &chooseFile, &open, &driverPanel, &audioSettings, &chooseLocation, &addLocation, &removeLocation })
+    for (auto* b : { &projectsTab, &settingsTab, &instrumentsTab, &createEmpty, &chooseFile, &open, &driverPanel, &audioSettings, &chooseLocation, &addLocation, &removeLocation })
     {
         styleKey (*b);
         addAndMakeVisible (*b);
@@ -221,8 +222,11 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
     refreshHumanize();
     projectsTab.setClickingTogglesState (false);
     settingsTab.setClickingTogglesState (false);
+    instrumentsTab.setClickingTogglesState (false);
     projectsTab.onClick = [this] { showSettingsPage (false); };
     settingsTab.onClick = [this] { showSettingsPage (true); };
+    instrumentsTab.setTooltip ("Each instrument's range, tuning, velocity layers and keyswitches (the composer writes for them)");
+    instrumentsTab.onClick = [this] { showInstrumentsPage(); };
     createEmpty.setTooltip ("Create Empty: a new song, in a folder of its own at the project location");
     createEmpty.onClick = [this]
     {
@@ -468,6 +472,20 @@ void Hub::openItem (int index)
 void Hub::showSettingsPage (bool on)
 {
     settingsPage = on;
+    instrumentsPage = false;
+    resized();
+    repaint();
+}
+
+void Hub::showInstrumentsPage()
+{
+    if (instruments == nullptr)
+    {
+        instruments = std::make_unique<InstrumentsPage> (studio);
+        addChildComponent (*instruments);
+    }
+    settingsPage = false;
+    instrumentsPage = true;
     resized();
     repaint();
 }
@@ -592,6 +610,8 @@ void Hub::paint (juce::Graphics& g)
 
     g.setColour (ParagonColours::textDim);
     g.setFont (font (12.0f));
+    if (instrumentsPage)
+        return;
     if (! settingsPage && studio.getLibrary().showsLocation())
     {
         g.drawText ("PROJECT LOCATION", locationRow.withHeight (14).toFloat(), juce::Justification::topLeft, false);
@@ -634,11 +654,29 @@ void Hub::resized()
         projectsTab.setBounds (n.removeFromTop (34));
         n.removeFromTop (8);
         settingsTab.setBounds (n.removeFromTop (34));
-        projectsTab.setToggleState (! settingsPage, juce::dontSendNotification);
+        n.removeFromTop (8);
+        instrumentsTab.setBounds (n.removeFromTop (34));
+        projectsTab.setToggleState (! settingsPage && ! instrumentsPage, juce::dontSendNotification);
         settingsTab.setToggleState (settingsPage, juce::dontSendNotification);
+        instrumentsTab.setToggleState (instrumentsPage, juce::dontSendNotification);
     }
     area.removeFromLeft (16);
     page = area;
+    if (instruments != nullptr)
+    {
+        instruments->setVisible (instrumentsPage);
+        instruments->setBounds (page.reduced (20, 16));
+    }
+    if (instrumentsPage)
+    {
+        for (auto* c : std::initializer_list<juce::Component*> { list.get(), &search, &createEmpty, &chooseFile, &open, &showPaths, &showLocation, &atStart,
+                                                                         &addLocation, &removeLocation, &locationsBox, &dropLabel, &dropStrength,
+                                                                         &humanizeTitle, &humanizeKeyLabel, &humanizeSetKey, &humanizeClearKey,
+                                                                         &humanizeAmountLabel, &humanizeAmount, &humanizeLayers, &humanizeNote,
+                                                                         &useDefault, &locationLabel, &chooseLocation, &folderName })
+            c->setVisible (false);
+        return;
+    }
 
     const auto showProjects = ! settingsPage;
     const auto& library = studio.getLibrary();

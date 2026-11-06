@@ -3,6 +3,8 @@
 #include "engine/Studio.h"
 #include "ui/KeyCommands.h"
 
+class InstrumentsPage;
+
 // The Hub (0.12.0, the owner asked: a start window like the other DAW's Hub,
 // opening on the folder where the songs are kept), in the PR7 family's look.
 //
@@ -38,6 +40,10 @@ public:
     void openItem (int index);   // as a double-click
     void showSettingsPage (bool);
     bool isShowingSettings() const noexcept { return settingsPage; }
+    // INSTRUMENTS (0.62.0): the third tab (ui/InstrumentsPage.h), made the first time it's shown.
+    void showInstrumentsPage();
+    bool isShowingInstruments() const noexcept { return instrumentsPage; }
+    InstrumentsPage* getInstrumentsPage() noexcept { return instruments.get(); }
     void refresh();
 
     void paint (juce::Graphics&) override;
@@ -51,10 +57,11 @@ private:
     std::unique_ptr<SongList> list;
     std::vector<Item> items;
     juce::StringArray folded;
-    bool settingsPage = false;
+    bool settingsPage = false, instrumentsPage = false;
+    std::unique_ptr<InstrumentsPage> instruments;
     juce::Image satin;
 
-    juce::TextButton projectsTab { "PROJECTS" }, settingsTab { "HUB SETTINGS" },
+    juce::TextButton projectsTab { "PROJECTS" }, settingsTab { "HUB SETTINGS" }, instrumentsTab { "INSTRUMENTS" },
                      createEmpty { "+  CREATE EMPTY" }, chooseFile { "CHOOSE FILE..." }, open { "OPEN" },
                      driverPanel { "DRIVER PANEL" }, audioSettings { "SETTINGS" },
                      chooseLocation { "CHOOSE..." }, addLocation { "ADD A FOLDER..." }, removeLocation { "REMOVE THE FOLDER" };

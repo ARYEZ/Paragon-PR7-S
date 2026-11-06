@@ -57,6 +57,8 @@ public:
     void setTrack (pr7s::ComposerLayer, int trackId);   // 0: automatic (the one named for it, else new)
     void setBusy (pr7s::ComposerLayer, float);           // (0.61.0) 0 sparse .. 0.5 as usual .. 1 busy
     void setLowString (pr7s::ComposerLayer, bool);       // (0.61.0) bass and guitar
+    void setOnlyString (pr7s::ComposerLayer, int);       // (0.62.0) 1.. the string (1 the lowest); 0 off
+    juce::String stringText (pr7s::ComposerLayer) const; // the key's text: ANY STRING, LOW STRING, STRING 2 ONLY
     void setTuning (pr7s::ComposerLayer, const juce::String& name);   // the bass's or the guitar's
     int trackFor (pr7s::ComposerLayer, bool hearing) const;   // (0: a new track when used / not heard)
     bool hear();                             // false: nothing to play them on
@@ -79,7 +81,7 @@ public:
 private:
     struct Lane
     {
-        juce::TextButton on { "ON" }, lock { "LOCK" }, roll { "ROLL" }, style, track, busy, low { "LOW STRING" };
+        juce::TextButton on { "ON" }, lock { "LOCK" }, roll { "ROLL" }, style, track, busy, low { "ANY STRING" };
         juce::Rectangle<int> header, notes;
     };
 
