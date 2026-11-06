@@ -18,17 +18,17 @@ The owner's order:
 
 Round 1: [Gilmour](gilmour.md), [Joe Perry](joe-perry.md), [Eddie Van Halen](eddie-van-halen.md), [Jimmy Page](jimmy-page.md).
 
-## Round 1 side by side (for the engine's settings)
+## Round 1 side by side (for the engine's settings; revised from the full articles)
 
 | | Gilmour | Joe Perry | Van Halen | Page |
 |---|---|---|---|---|
-| Notes | minor pent. + 2 and 6 (Dorian); major pent. on major chords | minor pent. + b5; major pent./Mixolydian mixed | minor pent./blues, chromatic passing, major swaps | minor pent. + b5 and 2; Dorian 6 in modal songs |
-| Density | 2-6 notes a bar, 6-12 at the peak | 4-10, bursts 12-16 | melodic 1-2 a beat, bursts 6 a beat | melodic 4-8 a bar, bursts 12-24 |
-| Space | lots (30-50% rest early) | 1-4 beats between phrases | 20-30% in melody | 1-2 beats |
-| Phrases | 1-2 bar motif, answered, moved up | short motif repeated 2-4x | cells looped 2-4x | a cell looped 3-8x, broken by a bend |
-| Rhythm | quarters, 8ths, long notes; triplets | swung 16ths, off-beat starts | triplet/sextuplet tapping, tremolo | 8th triplets, sextuplet bursts, 16th runs |
-| Bends | slow, singing; whole, 1.5, 2 steps; pre-bend/release | slow whole steps, bend-and-release; double-stop/unison | quick; up to a major third | fast; 1.5-2 step over-bends; pre-bends that cry |
-| Vibrato | wide, slow (4-6 Hz), delayed | wide (5-6 Hz) | wide, aggressive (5-7 Hz), bar vibrato | fast, shimmering (6-7 Hz) |
-| Signature | space, long notes, building arc | swing, loose feel, slides in | tapping, legato, dives, harmonics | repeated triplet pull-offs, crammed bursts |
+| Notes | minor pent. + 2 and 6 (Dorian), b5 passing; major pent. + 4 on major chords; phrases start/end on roots and 5ths | minor pent. + b5 + major 6th; minor and major 3rd; Mixolydian | blues + b5/5 zigzags; "Van Halen scale" for fast runs; tapped triads, tap at the 12th | minor pent. 12th-fret box + b5, 9, natural 6; major/minor mixing a core habit; b3 a quarter tone sharp |
+| Density | 2-6 notes a bar, 6-12 at the peak [I] | 4-8, bursts 12-16 [I] | melody 1-2 a beat, bursts 6-8 a beat (32nds) | melody 4-8, "crammed" bursts 12-24 |
+| Space | rests core; the fastest burst near the end, short | space "to the max" | 20-30% in melody [I] | 1-2 beats [I] |
+| Phrases | a motif that keeps coming back; sung leaps | call and response; rarely the same twice | cells across descending string pairs; up a 2nd / down a 3rd endings | thematic repetition; 1.5-beat or six-16th licks rotating against the bar |
+| Rhythm | quarters, 8ths, triplets; 3 against 4 | swung 16ths (2:1) when the song swings; behind the beat | swung, push-pull; groupings of 3, 5, 7 | triplets, sextuplets, 32nds; way behind the beat at points |
+| Bends | whole steps most; 3-4 semitones; two-stage, multiple, pre-bend; unison | constant; whole, half, 1.5; double-stop, unison | up to a major third; pairs of bends; bends with taps | half to 2.5 steps; unison, pedal-steel, smear openings |
+| Vibrato | a quarter-step dip on bends, not fast; restrained | wide, varied speed | wide; bar vibrato | fast, steady, swinging below the bent note |
+| Signature | space, held notes, building arc, returning motif | swing, slides in, 6th double stops, loose | tapping, legato, harmonics (tapped 12/7/5/4 frets up), whammy: scoops, dips, dives, whinny | repeated licks, displacement, a repeated bend into a pull-off climax |
 
-All numbers marked [I] in the sheets are starting points to tune by ear. The researchers could read only search summaries (guitarworld.com, musicradar.com and premierguitar.com weren't reachable from the session).
+Numbers marked [I] in the sheets are starting points to tune by ear. Round 1 was first researched from search summaries, then revised from the full articles (the environment now allows the lesson sites).
