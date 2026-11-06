@@ -10,6 +10,7 @@ Each version's notes appear on its GitHub Release page.
   - **PINCH SQUEAL:** a pentatonic melody first, then picked six-note runs down the boxes (each group a step lower, drifting against the beat), pinch-harmonic squeals shaken wide in the gaps (one every two bars at most), very wide vibrato on phrase ends. Major pentatonic over major chords.
   - **PROG PRECISION:** natural minor (its 2 and b6 heard), singing in-tune bends, then picked six-note scale sequences climbing two steps at a time and seventh-chord arpeggios up and back down, building to a chromatic climb at the climax.
 - **The research** is in `docs/solo-styles` (a sheet per player, 16-21 sources each, several from the players' own magazine columns). Techniques only, never their solos. As before, note counts, bend sizes and vibrato speeds are mostly our estimates: tune by ear.
+- **Every style's fast passages now come later** in a short solo (they're placed counting back from the end), so even an 8-bar solo builds.
 - **Dives and screams** need the bend range set as for 0.66.0: Shreddage's Pitch Bend Range and the INSTRUMENTS profile's BEND RANGE the same, 12 or more.
 
 ## 0.66.0

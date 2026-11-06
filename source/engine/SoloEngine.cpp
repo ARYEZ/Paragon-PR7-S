@@ -103,7 +103,7 @@ namespace pr7s
                     break;
                 case SoloStyle::progPrecision:
                     p.aeolian = true;
-                    p.startDensity = 3.5f; p.peakDensity = 16.0f; p.restBeats = 1.0; p.phraseBars = 2;
+                    p.startDensity = 3.5f; p.peakDensity = 16.0f; p.restBeats = 1.0; p.phraseBars = 1;
                     p.burst = Burst::sequence; p.burstFrom = 0.3f;
                     p.bendChance = 0.5f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.3f }, { 3.0f, 0.15f } };
                     p.vibrato = 0.9f; p.climb = 14;
@@ -346,7 +346,7 @@ namespace pr7s
             const auto centre = (double) low + 7.0 + p.climb * t;
             const auto lastPhrase = ph == phrases - 1;
             const auto burstHere = ph > 0 && ! lastPhrase && t >= p.burstFrom
-                                && (p.burstEveryOther ? ph % 2 == 1 : ph == phrases - 2);
+                                && (p.burstEveryOther ? (phrases - 1 - ph) % 2 == 1 : ph == phrases - 2);   // (0.67.0: counted back from the end, so the busy phrases come late)
             if (burstHere)
             {
                 const auto burstIndex = burstCount++;
