@@ -11,6 +11,11 @@ The owner's order:
 | 3 | C.C. DeVille, Mick Mars, Slash, Prince |
 | 4 | Synyster Gates, Clint Lowery, Jerry Cantrell, Kurt Cobain |
 
+**The owner's decisions:**
+- **Names:** the app uses our own descriptive names for the styles, never the players' names (to be safe); the sheets here keep the players' names as research notes.
+- **Dive bombs:** wanted. They need a big pitch bend range: the owner sets Shreddage's Pitch Bend Range and the INSTRUMENTS profile's BEND RANGE to the same number (12 or more); bends are written by that range, so ordinary whole-step bends stay right.
+- **The owner's Shreddage keys:** Sustain C-1, Power Chords C#-1 (theirs); the rest as the Jupiter manual lists them: Staccato D-1, Tremolo F#-1, Choke G-1, Harmonics G#-1, Tapping A-1, FX A#-1; legato (hammer-on, pull-off, slide) by overlapping notes.
+
 Round 1: [Gilmour](gilmour.md), [Joe Perry](joe-perry.md), [Eddie Van Halen](eddie-van-halen.md), [Jimmy Page](jimmy-page.md).
 
 ## Round 1 side by side (for the engine's settings)
