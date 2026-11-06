@@ -62,3 +62,21 @@ Round 3: [C.C. DeVille](cc-deville.md), [Mick Mars](mick-mars.md), [Slash](slash
 | Bends | long drawn-out, slow in ballads, pre-bends | held, "get everything out of a note" | slow, a little loose, held and released several times; unison, oblique | subtle at first, ever bigger |
 | Vibrato | lots [weak source] | "aggressive" [weak source]; whammy as a voice | expressive | "Santana-level" |
 | Signature | a fast picked burst at the very end | whammy dips, slide (one album) | melody first, behind the beat, no tapping | held screaming high notes, one outburst outside the key at the peak |
+
+Names in the app for round 3 (ours, the owner approved): GLAM FLASH (DeVille), SLEAZE BLUES (Mars), TOP HAT MELODY (Slash), PURPLE SCREAM (Prince); 0.68.0.
+
+Round 4: [Synyster Gates](synyster-gates.md), [Clint Lowery](clint-lowery.md), [Jerry Cantrell](jerry-cantrell.md), [Kurt Cobain](kurt-cobain.md). Gates and Cantrell are well covered in their own words; Lowery's is thin (interviews only, no lesson breaks down his solos); Cobain's solos are described by writers and bandmates more than by him. Each sheet says so at its top.
+
+## Round 4 side by side
+
+| | Gates | Lowery | Cantrell | Cobain |
+|---|---|---|---|---|
+| Notes | chord tones (thirds: "the less apparent route"), gypsy jazz and minor blues (his words), whole-tone/augmented colour; harmonic minor / Phrygian dominant only from lesson blurbs | "the notes you choose"; dissonance on purpose (after Trent Reznor); no scale named | by ear ("couldn't tell you what scale"); blues, country, Southern; [I] minor pent. + major 3rd and 6th | the vocal melody or the main riff restated; minor pent. with chromatic passing notes |
+| Density | melody "number one"; shred where the song allows, "tasteful" | clean and deliberate ("every note its own area code"), speed held back | short, "not a shredder", "more vibe than technical prowess"; occasional fast legato bursts | sparse and short, "served the song"; 2-6 a bar, 8 bars [I] |
+| Phrases | improvised then kept; a "machine-gun spray" building into melody | "tastily mapped-out" (writer) | composed from the best improvised bits: "a scene change", "singable", horn line + vocal line | melodic, or chaotic ("composed at times"): noisy runs, big bends |
+| Rhythm | economy picking, sweeps | legato + alternate picking | slides joining phrases | |
+| Bends | octave bends, wide-interval licks | "most important" (his advice) [sizes I] | slow bends into a note, held for dissonance ("tortured", after Iommi); minor-to-major 3rd; unison | big bends in the noisy mode; double stops and bends |
+| Vibrato | [I] | looser (writer) | wide, dark, bluesy (writers) | subtle, on the last note |
+| Signature | harmony lines in 3rds (or 6ths below), no 4ths/5ths; whammy thrown around; legato "the worst thing in the world for me" | dissonance resolved, legato, high in standard tuning | slow dissonant held bends, harmonised leads in 3rds | the vocal line on guitar; no whammy ("totally worthless") |
+
+Names for the app (ours): to be agreed with the owner before the engine work.
