@@ -313,6 +313,10 @@ namespace pr7s
                 o.seed = (juce::uint32) (lane.variation * 1009 + (int) l * 101 + lane.style + 1);
                 idea.notes = humanize (std::move (idea.notes), o);
             }
+            // (0.63.1) What the instrument can play: its shortest note, its chugs in a row.
+            if (hasLowString (l) || l == ComposerLayer::lead)
+                if (const auto* profile = composerStrings (l, c).profile)
+                    keepPlayable (idea, profile->shortestNote, profile->chugRun, spans.back().end - spans.front().start);
             // (0.63.0) Power chords by the instrument's keyswitch (its root alone), single notes back on theirs.
             if (l == ComposerLayer::guitar || l == ComposerLayer::lead)
                 if (const auto* profile = composerStrings (l, c).profile)

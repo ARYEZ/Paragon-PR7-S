@@ -1181,9 +1181,17 @@ const std::vector<pr7s::LineIdea>& LinesPage::getIdeas (pr7s::LineIdea::Part par
             profile = studio.profileFor (pr7s::Studio::ProfileUse::guitar);
         if (profile.has_value())
             for (auto& idea : list)
+            {
+                pr7s::keepPlayable (idea, profile->shortestNote, profile->chugRun, spans.empty() ? 0.0 : spans.back().end - spans.front().start);
                 pr7s::usePowerChordKeys (idea, profile->keyUsedFor (pr7s::Keyswitch::Use::powerChords),
                                          profile->keyUsedFor (pr7s::Keyswitch::Use::singleNotes));
+            }
     }
+    // (0.63.1) The bass on its profile (the BASS lane's): its shortest note.
+    if (part == P::bass)
+        if (const auto profile = studio.profileFor (pr7s::Studio::ProfileUse::bass))
+            for (auto& idea : list)
+                pr7s::keepPlayable (idea, profile->shortestNote, profile->chugRun, spans.empty() ? 0.0 : spans.back().end - spans.front().start);
     return list;
 }
 

@@ -190,6 +190,39 @@ public:
         }
         label ("BEND RANGE", { 342, y, 100, rowHeight });
         edit (juce::String (profile->bendRange), { 442, y, 50, rowHeight }, [this] (const juce::String& t) { page.setBendRange (t); });
+        y += rowHeight + 8;
+        // (0.63.1) The shortest note, and the palm-muted hits a sixteenth apart in a row.
+        label ("SHORTEST NOTE", { 0, y, 120, rowHeight });
+        {
+            auto* box = own (new juce::ComboBox());
+            const std::pair<double, const char*> lengths[] = { { 0.0, "ANY" }, { 0.125, "1/32" }, { 0.25, "1/16" }, { 0.5, "1/8" } };
+            for (int i = 0; i < 4; ++i)
+                box->addItem (lengths[i].second, i + 1);
+            for (int i = 0; i < 4; ++i)
+                if (std::abs (lengths[i].first - profile->shortestNote) < 1.0e-6)
+                    box->setSelectedId (i + 1, juce::dontSendNotification);
+            box->setBounds (120, y, 90, rowHeight);
+            box->onChange = [this, box]
+            {
+                const double values[] = { 0.0, 0.125, 0.25, 0.5 };
+                const auto chosen = values[juce::jlimit (0, 3, box->getSelectedId() - 1)];
+                later (page, [this, chosen] { page.setShortestNote (chosen); });
+            };
+        }
+        label ("16TH CHUGS IN A ROW", { 230, y, 170, rowHeight });
+        {
+            auto* box = own (new juce::ComboBox());
+            box->addItem ("ANY", 1);
+            for (int n = 1; n <= 4; ++n)
+                box->addItem (juce::String (n), n + 1);
+            box->setSelectedId (profile->chugRun <= 0 ? 1 : juce::jmin (5, profile->chugRun + 1), juce::dontSendNotification);
+            box->setBounds (400, y, 80, rowHeight);
+            box->onChange = [this, box]
+            {
+                const auto chosen = box->getSelectedId() - 1;
+                later (page, [this, chosen] { page.setChugRun (chosen); });
+            };
+        }
         y += rowHeight + 4;
         label ("NOTHING IS WRITTEN OUTSIDE " + pr7s::noteName (profile->rangeLow()) + " TO " + pr7s::noteName (profile->rangeHigh())
                    + " (EMPTY: THE LOWEST STRING TO THE TOP STRING'S LAST FRET)", { 0, y, 600, 18 });
@@ -518,6 +551,24 @@ bool InstrumentsPage::setBendRange (const juce::String& text)
     p->bendRange = juce::jlimit (0, 48, text.getIntValue());
     store();
     return true;
+}
+
+void InstrumentsPage::setShortestNote (double beats)
+{
+    auto* p = current();
+    if (p == nullptr)
+        return;
+    p->shortestNote = juce::jlimit (0.0, 1.0, beats);
+    store();
+}
+
+void InstrumentsPage::setChugRun (int run)
+{
+    auto* p = current();
+    if (p == nullptr)
+        return;
+    p->chugRun = juce::jlimit (0, 16, run);
+    store();
 }
 
 void InstrumentsPage::addKeyswitch()

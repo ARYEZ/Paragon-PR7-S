@@ -39,6 +39,8 @@ public:
     bool setFrets (const juce::String&);
     bool setRange (const juce::String& lowest, const juce::String& highest);   // (empty: from the strings)
     bool setBendRange (const juce::String&);
+    void setShortestNote (double beats);   // (0.63.1) 0: any
+    void setChugRun (int);                 // (0.63.1) 0: any
     void addKeyswitch();
     // forcesString: 1.. a string, 0 an articulation, -1 turns forcing off, -101 power chords, -102 single notes.
     bool setKeyswitch (int index, const juce::String& name, const juce::String& note, int forcesString);

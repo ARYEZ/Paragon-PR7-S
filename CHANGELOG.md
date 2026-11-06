@@ -2,6 +2,21 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.63.1
+
+- **Nothing faster or shorter than a 16th on your libraries** (you asked: for Shreddage and Djinn Bass the shortest a note should be is a 16th, and 16th chugs should be rare). Each INSTRUMENTS profile now has two settings:
+  - **SHORTEST NOTE** (any, 1/32, 1/16, 1/8; 1/16 for Djinn, Jupiter and Rogue):
+    - A hit starting less than that after the one before is left out. A hit is a note, or notes played together.
+    - Every note is at least that long, unless the next hit or the end of the part comes first.
+    - A few milliseconds early still counts (HUMANIZE moves notes slightly), so a humanized 16th isn't dropped.
+  - **16TH CHUGS IN A ROW** (any, 1-4; 2 for Jupiter and Rogue): palm-muted hits (velocity 1-59) a 16th apart may come at most that many in a row. Later ones in the run are left out until a longer gap or an open note breaks it.
+    - So a gallop (an 8th then two 16ths) and a pair of 16ths still play.
+    - Machine-gun runs of 16th chugs get thinned to pairs.
+    - The 32nd- and 16th-triplet bursts in the metal styles' fills are mostly left out on these guitars.
+- **Where:** the composer's BASS, GUITAR and LEAD lanes, and IDEAS' bass and guitar tabs, whenever the lane's INSTRUMENTS profile is used. The bass gets the shortest note only; it has no chug limit.
+- **Your saved profiles:** Djinn Bass 2 from 0.62.0 picks up 1/16 by itself. Guitars added before this version pick up 1/16 and two chugs.
+- **Also in this release (0.63.0):** power chords played by Shreddage's power chord keyswitch (C#-1), single notes back on Sustain (C-1).
+
 ## 0.63.0
 
 - **Power chords played by Shreddage's power chord articulation** (you asked: its recorded power chords sound better than three notes on Sustain). For a guitar with an INSTRUMENTS profile (your Jupiter and Rogue):

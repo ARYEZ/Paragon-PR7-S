@@ -66,6 +66,8 @@ namespace pr7s
         xml->setAttribute ("lowest", lowest);
         xml->setAttribute ("highest", highest);
         xml->setAttribute ("bendRange", bendRange);
+        xml->setAttribute ("shortestNote", shortestNote);
+        xml->setAttribute ("chugRun", chugRun);
         xml->setAttribute ("forBass", forBass);
         xml->setAttribute ("forGuitar", forGuitar);
         xml->setAttribute ("forLead", forLead);
@@ -102,6 +104,8 @@ namespace pr7s
         p.lowest = juce::jlimit (-1, 127, xml.getIntAttribute ("lowest", -1));
         p.highest = juce::jlimit (-1, 127, xml.getIntAttribute ("highest", -1));
         p.bendRange = juce::jlimit (0, 48, xml.getIntAttribute ("bendRange", 2));
+        p.shortestNote = juce::jlimit (0.0, 1.0, xml.getDoubleAttribute ("shortestNote", 0.25));
+        p.chugRun = juce::jlimit (0, 16, xml.getIntAttribute ("chugRun", p.kind == Kind::guitar ? 2 : 0));   // (0.62's guitars: 2)
         p.forBass = xml.getBoolAttribute ("forBass");
         p.forGuitar = xml.getBoolAttribute ("forGuitar");
         p.forLead = xml.getBoolAttribute ("forLead");
@@ -149,6 +153,8 @@ namespace pr7s
         p.frets = 24;
         p.velocities = velocities;   // (1-59 palm mute, 60-119 sustain, 120-126 rakes, 127 pinch harmonics)
         p.bendRange = 2;
+        p.shortestNote = 0.25;
+        p.chugRun = 2;
         p.keyswitches = {
             { "Sustain (palm mute 1-59, sustain 60-119, rake 120-126, pinch 127)", 12, 0, Keyswitch::Use::singleNotes },   // C-1
             { "Power Chords (the same velocity layers)", 13, 0, Keyswitch::Use::powerChords } };                         // C#-1 (the owner's)
@@ -342,6 +348,74 @@ namespace pr7s
             else
                 out.insert (out.end(), played.begin() + (long) i, played.begin() + (long) j);
             i = j;
+        }
+        out.insert (out.end(), keys.begin(), keys.end());
+        std::stable_sort (out.begin(), out.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+        idea.notes = std::move (out);
+    }
+}
+
+namespace pr7s
+{
+    void keepPlayable (LineIdea& idea, double shortest, int chugRun, double length)
+    {
+        if (idea.notes.empty() || (shortest <= 0.0 && chugRun <= 0))
+            return;
+        std::vector<LineNote> keys, played;
+        for (const auto& n : idea.notes)
+            (n.keyswitch ? keys : played).push_back (n);
+        std::stable_sort (played.begin(), played.end(), [] (const LineNote& a, const LineNote& b)
+                          { return a.beat < b.beat || (a.beat == b.beat && a.pitch < b.pitch); });
+        constexpr auto together = 1.0e-4, slack = 0.04;   // (a few ms of humanize at most)
+        // Hits: groups starting together.
+        struct Hit { size_t from, to; double beat; bool muted; };
+        std::vector<Hit> hits;
+        for (size_t i = 0; i < played.size();)
+        {
+            auto j = i + 1;
+            auto muted = played[i].velocity * 127.0f < 59.5f;
+            while (j < played.size() && played[j].beat - played[i].beat < together)
+            {
+                muted = muted && played[j].velocity * 127.0f < 59.5f;
+                ++j;
+            }
+            hits.push_back ({ i, j, played[i].beat, muted });
+            i = j;
+        }
+        std::vector<Hit> kept;
+        auto run = 0;   // muted hits a sixteenth apart in a row, ending at the last kept
+        for (const auto& h : hits)
+        {
+            if (! kept.empty())
+            {
+                const auto gap = h.beat - kept.back().beat;
+                if (shortest > 0.0 && gap < shortest - slack)
+                    continue;
+                const auto sixteenth = gap < 0.25 + slack;
+                if (h.muted && kept.back().muted && sixteenth)
+                {
+                    if (chugRun > 0 && run + 1 > chugRun)
+                        continue;
+                    ++run;
+                }
+                else
+                    run = h.muted ? 1 : 0;
+            }
+            else
+                run = h.muted ? 1 : 0;
+            kept.push_back (h);
+        }
+        std::vector<LineNote> out;
+        for (size_t k = 0; k < kept.size(); ++k)
+        {
+            const auto next = k + 1 < kept.size() ? kept[k + 1].beat : juce::jmax (length, kept[k].beat + shortest);
+            for (auto i = kept[k].from; i < kept[k].to; ++i)
+            {
+                auto n = played[i];
+                if (n.length < shortest)
+                    n.length = juce::jmax (n.length, juce::jmin (shortest, next - n.beat));
+                out.push_back (n);
+            }
         }
         out.insert (out.end(), keys.begin(), keys.end());
         std::stable_sort (out.begin(), out.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });

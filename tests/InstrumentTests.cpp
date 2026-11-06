@@ -440,3 +440,71 @@ TEST_CASE ("The composer's guitar on Shreddage: no power chord left as three not
     for (const auto& n : layers[(size_t) ComposerLayer::guitar].notes)
         CHECK_FALSE (n.keyswitch);
 }
+
+TEST_CASE ("Playable: nothing faster than a sixteenth, nothing shorter, two palm-muted sixteenths in a row at most (0.63.1)", "[instruments]")
+{
+    const auto note = [] (double beat, int pitch, int velocity, double length = 0.1) { return LineNote { beat, length, pitch, (float) velocity / 127.0f }; };
+    LineIdea idea;
+    idea.notes = { note (0.0, 33, 40), note (0.125, 33, 40),                                  // a 32nd: left out
+                   note (0.25, 33, 40), note (0.5, 33, 40), note (0.75, 33, 40),              // the third 16th chug in a row: out
+                   note (1.0, 33, 40), note (1.25, 33, 40),
+                   note (2.0, 45, 96, 0.05), note (2.0, 52, 96, 0.05),                        // a chord: one hit, both lengthened
+                   note (2.25, 45, 96), note (2.5, 45, 96), note (2.75, 45, 96) };             // open 16ths: kept
+    keepPlayable (idea, 0.25, 2, 4.0);
+    std::vector<double> starts;
+    for (const auto& n : idea.notes)
+    {
+        starts.push_back (n.beat);
+        CHECK (n.length >= 0.25 - 1.0e-9);
+    }
+    CHECK (starts == std::vector<double> { 0.0, 0.25, 0.75, 1.0, 2.0, 2.0, 2.25, 2.5, 2.75 });
+    // Humanize's few milliseconds early still count as a sixteenth.
+    LineIdea loose;
+    loose.notes = { note (0.0, 33, 96, 0.25), note (0.235, 33, 96, 0.25) };
+    keepPlayable (loose, 0.25, 2, 1.0);
+    CHECK (loose.notes.size() == 2);
+}
+
+TEST_CASE ("The composer on Djinn and Shreddage: every note a sixteenth or longer, a sixteenth apart or more (0.63.1)", "[instruments][composer]")
+{
+    ComposerContext c;
+    c.humanize = 0.0f;
+    c.bassProfile = InstrumentProfile::djinnBass2();
+    c.guitarProfile = InstrumentProfile::shreddage ("Shreddage Jupiter");
+    c.leadProfile = InstrumentProfile::shreddage ("Shreddage Rogue");
+    for (const auto style : guitarStyles())
+    {
+        c.style = style;
+        ComposerState s;
+        s.lane (ComposerLayer::lead).on = true;
+        const auto spans = composerSpans (s, 0.0, c.beatsPerBar);
+        for (const auto layer : { ComposerLayer::bass, ComposerLayer::guitar, ComposerLayer::lead })
+            for (int card = 0; card < 6; ++card)
+                for (const auto busy : { 0.5f, 1.0f })
+                {
+                    INFO (guitarStyleName (style) << " " << composerLayerName (layer) << " card " << card << " busy " << busy);
+                    auto t = s;
+                    t.lane (layer).style = card;
+                    t.lane (layer).busy = busy;
+                    const auto layers = composeLayers (t, spans, c);
+                    std::vector<LineNote> hits;
+                    for (const auto& n : layers[(size_t) layer].notes)
+                        if (! n.keyswitch)
+                        {
+                            CHECK (n.length >= 0.25 - 1.0e-6);
+                            if (hits.empty() || n.beat - hits.back().beat > 1.0e-4)
+                                hits.push_back (n);
+                        }
+                    auto mutedRun = 0;
+                    for (size_t i = 1; i < hits.size(); ++i)
+                    {
+                        const auto gap = hits[i].beat - hits[i - 1].beat;
+                        CHECK (gap >= 0.25 - 0.04);
+                        const auto muted = hits[i].velocity * 127.0f < 59.5f && hits[i - 1].velocity * 127.0f < 59.5f;
+                        mutedRun = muted && gap < 0.29 ? mutedRun + 1 : 0;
+                        if (layer != ComposerLayer::bass)
+                            CHECK (mutedRun < 2);   // (at most two in a row: one sixteenth step between them)
+                    }
+                }
+    }
+}

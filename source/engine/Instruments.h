@@ -44,6 +44,11 @@ namespace pr7s
         int frets = 24;
         int lowest = -1, highest = -1;                 // -1: from the strings and frets
         int bendRange = 2;
+        // (0.63.1, the owner: "the shortest a note should ever be is 1/16th, and even that is very uncommon for
+        // chugs") The shortest note in beats (0: any), and how many palm-muted hits (velocity 1-59) may come
+        // a sixteenth apart in a row (0: any).
+        double shortestNote = 0.25;
+        int chugRun = 0;
         std::vector<Keyswitch> keyswitches;
         bool forBass = false, forGuitar = false, forLead = false;
         std::optional<GuitarVelocities> velocities;    // (guitars: the layers this library uses)
@@ -92,4 +97,11 @@ namespace pr7s
     // the first notes always (the instrument may be left in either). A key on the same beat as its notes
     // (Shreddage takes keys first). Notes strummed apart aren't a power chord: they stay as they are.
     void usePowerChordKeys (LineIdea&, int powerChordKey, int singleNoteKey);
+
+    // PLAYABLE (0.63.1): notes played together count as one hit. A hit starting less than `shortest` beats
+    // after the hit before is left out (a little less is allowed: humanize moves notes by a few ms); every
+    // note at least `shortest` long (but not past the next hit or the part's `length`). Then palm-muted
+    // hits (velocity 1-59) a sixteenth apart: at most `chugRun` in a row, every later one left out until the
+    // run is broken. Keyswitch notes are left alone.
+    void keepPlayable (LineIdea&, double shortest, int chugRun, double length);
 }
