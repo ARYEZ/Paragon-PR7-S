@@ -142,10 +142,10 @@ public:
 
         // NAME, BASS / GUITAR.
         label ("NAME", { 0, y, 120, rowHeight });
-        edit (profile->name, { 120, y, 300, rowHeight }, [this] (const juce::String& t) { page.setName (t); });
+        edit (profile->name, { 120, y, 240, rowHeight }, [this] (const juce::String& t) { page.setName (t); });
         const auto bass = profile->kind == Profile::Kind::bass;
-        key ("BASS", { 440, y, 90, rowHeight }, bass, [this] { page.setKind (Profile::Kind::bass); });
-        key ("GUITAR", { 536, y, 90, rowHeight }, ! bass, [this] { page.setKind (Profile::Kind::guitar); });
+        key ("BASS", { 376, y, 84, rowHeight }, bass, [this] { page.setKind (Profile::Kind::bass); });
+        key ("GUITAR", { 466, y, 86, rowHeight }, ! bass, [this] { page.setKind (Profile::Kind::guitar); });
         y += rowHeight + 12;
 
         // USED FOR.
@@ -192,7 +192,7 @@ public:
         edit (juce::String (profile->bendRange), { 442, y, 50, rowHeight }, [this] (const juce::String& t) { page.setBendRange (t); });
         y += rowHeight + 4;
         label ("NOTHING IS WRITTEN OUTSIDE " + pr7s::noteName (profile->rangeLow()) + " TO " + pr7s::noteName (profile->rangeHigh())
-                   + " (EMPTY: THE LOWEST STRING TO THE TOP STRING'S LAST FRET)", { 0, y, 720, 18 });
+                   + " (EMPTY: THE LOWEST STRING TO THE TOP STRING'S LAST FRET)", { 0, y, 600, 18 });
         y += 28;
 
         // VELOCITY LAYERS (guitars).
@@ -238,7 +238,7 @@ public:
         }
         key ("+ KEYSWITCH", { 0, y + 4, 160, rowHeight }, false, [this] { page.addKeyswitch(); });
         y += rowHeight + 16;
-        setSize (740, y);
+        setSize (600, y);
     }
 
     juce::Button* keyNamed (const juce::String& text)

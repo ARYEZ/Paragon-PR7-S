@@ -1357,6 +1357,8 @@ TEST_CASE ("Snapshot: the Hub", "[.][snapshot-hub]")
             hub.setSize (980, 620);
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "settings")
             hub.showSettingsPage (true);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB_TALL", {}) == "1")
+            hub.setSize (Hub::preferredWidth, 1500);
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "instruments")
         {
             hub.showInstrumentsPage();
