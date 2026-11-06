@@ -572,9 +572,8 @@ namespace pr7s
     void Studio::setOutput (int trackId, int groupId)
     {
         auto* track = project.findTrack (trackId);
-        const auto* group = project.findTrack (groupId);
-        if (track == nullptr || track->isChannel() || (groupId != 0 && (group == nullptr || ! group->isGroup())))
-            return;   // (FX and group channels go to the master)
+        if (track == nullptr || ! project.canRouteTo (trackId, groupId))
+            return;   // (FX channels go to the master; 0.59.0: a group may go to another group, never round in a loop)
         track->output = groupId;
         passOn (trackId, LinkGroup::What::routing, [&] (int other) { if (other != groupId) setOutput (other, groupId); });
         changed();
@@ -7081,6 +7080,34 @@ namespace pr7s
                     sound.addSample (c, s, (float) (heardSound.getSample (juce::jmin (c, heardSound.getNumChannels() - 1), source) * gain));
             }
         }
+    }
+
+    juce::File Studio::writeLineForDrag (const LineIdea& idea, const std::vector<ChordSpan>& spans, int channel, const juce::String& name, juce::String& error)
+    {
+        if (spans.empty() || idea.notes.empty())
+        {
+            error = "Nothing to drag: the lane has no notes.";
+            return {};
+        }
+        Track track;
+        track.name = name;
+        track.midiChannel = juce::jlimit (1, 16, channel);
+        Part part;
+        part.start = spans.front().start;
+        part.length = spans.back().end - spans.front().start;
+        part.name = idea.style;
+        for (const auto& n : idea.notes)
+            part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
+        const auto written = newDragOutFolder (composerDragFolder()).getChildFile (juce::File::createLegalFileName (name) + ".mid");
+        const auto midi = makePartMidiFile (project, track, part);
+        juce::FileOutputStream out (written);
+        if (! out.openedOk() || ! midi.writeTo (out, 1))
+        {
+            error = "Couldn't write " + written.getFullPathName();
+            return {};
+        }
+        SessionLog::note ("Composer drag out: " + written.getFileName());
+        return written;
     }
 
     juce::File Studio::writePartForDrag (int partId, juce::String& error)

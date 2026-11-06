@@ -362,6 +362,7 @@ namespace pr7s
             // What it is, where its sound goes, and its sends.
             enum class Role { source, group, fx };  // processed in this order: tracks, groups, FX
             Role role = Role::source;
+            int groupHeight = 0;                    // (0.59.0) groups: how many groups lie between it and the master (worked out each block)
             int output = 0;                         // a group channel's id, or 0: the master
             struct SendState
             {

@@ -749,7 +749,7 @@ void Inspector::refresh()
     audioInput.setSelectedId (t->stereoInput ? 1000 + t->input : 1 + t->input, juce::dontSendNotification);
     const auto* to = studio.getProject().findTrack (t->output);
     output.setButtonText (to != nullptr ? to->name : juce::String ("MASTER"));
-    output.setEnabled (! t->isChannel());
+    output.setEnabled (studio.getProject().hasOutput (*t));   // (0.59.0: group channels too)
 
     refreshInserts();
     for (auto& send : sendSlots)

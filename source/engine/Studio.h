@@ -680,6 +680,10 @@ namespace pr7s
         // effects), 32-bit float at its recording's rate, at most five minutes, the tempo and beats in its
         // ACID chunk. In a folder of its own under dragOutFolder(). The song isn't changed. None: an empty File.
         juce::File writePartForDrag (int partId, juce::String& error);
+        // (0.59.0) A composer lane as a MIDI file for a drag: the idea's notes as a part over `spans` (the tempo
+        // and signature there), on `channel` (the drums: 10, General MIDI's), "<name>.mid" in the composer's
+        // drag folder. The song untouched.
+        juce::File writeLineForDrag (const LineIdea&, const std::vector<ChordSpan>& spans, int channel, const juce::String& name, juce::String& error);
         // Delete Overlaps: of these takes only what's heard stays, all on the first lane.
         void deleteOverlaps (const std::vector<int>& partIds);
         // Merge MIDI in Loop: what's heard of these tracks' MIDI between the locators, one part on a new

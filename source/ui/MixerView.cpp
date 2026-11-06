@@ -141,7 +141,7 @@ void MixerView::Strip::refresh()
     {
         const auto* to = project.findTrack (track->output);
         output.setButtonText ("OUT: " + (to != nullptr ? to->name : juce::String ("MASTER")));
-        output.setEnabled (! track->isChannel());
+        output.setEnabled (project.hasOutput (*track));   // (0.59.0: group channels too)
     }
     for (int i = 0; i < (int) slots.size(); ++i)
     {
@@ -861,13 +861,13 @@ int MixerView::getMinimumHeight() const
 void MixerView::showOutputMenu (int busId)
 {
     const auto* track = studio.getProject().findTrack (busId);
-    if (track == nullptr || track->isChannel())
+    if (track == nullptr || ! studio.getProject().hasOutput (*track))
         return;
     juce::PopupMenu menu;
     menu.addSectionHeader ("OUTPUT");
     menu.addItem (1, "Master", true, track->output == 0);
     for (const auto& other : studio.getProject().tracks)
-        if (other.isGroup())
+        if (other.isGroup() && studio.getProject().canRouteTo (busId, other.id))   // (0.59.0: groups into groups, never a loop)
             menu.addItem (1000 + other.id, other.name, true, track->output == other.id);
     menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<MixerView> (this), busId] (int chosen)
     {

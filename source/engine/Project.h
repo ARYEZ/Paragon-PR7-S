@@ -491,6 +491,11 @@ namespace pr7s
         std::vector<int> linkGroupMembers (int groupId) const;   // in the tracks' order
         Track* findTrack (int id);
         const Track* findTrack (int id) const;
+        // (0.59.0) Whether a track's sound can go to that group (0: the master always can): a track that isn't
+        // a channel, or a group channel (groups feed groups: "verse vox" into "John vox" into the master), into
+        // a group channel that doesn't lead back to it (no loops).
+        bool canRouteTo (int trackId, int groupId) const;
+        bool hasOutput (const Track& t) const noexcept { return ! t.isChannel() || t.isGroup(); }
         const DrumMap* findDrumMap (const juce::String& name) const;
         const DrumMap* drumMapOf (const Track&) const;   // its map, if it has one
         Track* armedTrack();

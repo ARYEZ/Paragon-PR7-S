@@ -561,15 +561,64 @@ void ComposerPage::showLaneMenu (ComposerLayer l)
 
 void ComposerPage::mouseDown (const juce::MouseEvent& e)
 {
+    pressedLane = -1;
+    draggedOut = false;
     for (const auto l : pr7s::composerLayers())
         if (lanes[(size_t) l].notes.contains (e.getPosition()))
         {
             if (e.mods.isPopupMenu())
                 showLaneMenu (l);
             else
-                isHearing() ? stop() : (void) hear();
+                pressedLane = (int) l;   // (a click hears on release; a drag takes the lane out)
             return;
         }
+}
+
+void ComposerPage::mouseDrag (const juce::MouseEvent& e)
+{
+    if (pressedLane < 0 || draggedOut || e.getDistanceFromDragStart() < 6)
+        return;
+    draggedOut = true;
+    dragLaneOut ((ComposerLayer) pressedLane);
+}
+
+void ComposerPage::mouseUp (const juce::MouseEvent&)
+{
+    if (pressedLane >= 0 && ! draggedOut)
+        isHearing() ? stop() : (void) hear();
+    pressedLane = -1;
+}
+
+void ComposerPage::mouseMove (const juce::MouseEvent& e)
+{
+    const auto overNotes = std::any_of (lanes.begin(), lanes.end(), [&e] (const Lane& lane) { return lane.notes.contains (e.getPosition()); });
+    setMouseCursor (overNotes ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::NormalCursor);
+}
+
+juce::File ComposerPage::dragLaneOut (ComposerLayer l)
+{
+    const auto& idea = ideas[(size_t) l];
+    if (spans.empty() || idea.notes.empty())
+        return {};
+    // Where it would be placed (the tempo there goes in the file), on its track's channel; the drums on 10.
+    const auto* track = studio.getProject().findTrack (trackFor (l, false));
+    const auto channel = l == ComposerLayer::drums ? 10 : track != nullptr ? track->midiChannel : 1;
+    const auto name = juce::String ("Composer ") + pr7s::composerLayerName (l).toLowerCase() + " - " + idea.style;   // ("Composer bass - Walking")
+    juce::String error;
+    const auto file = studio.writeLineForDrag (idea, placedSpans(), channel, name, error);
+    if (file == juce::File())
+    {
+        status = error;
+        repaint();
+        return {};
+    }
+    status = "Dragged out: " + file.getFileName();
+    repaint();
+    if (onExternalDrag)
+        onExternalDrag ({ file.getFullPathName() });
+    else
+        juce::DragAndDropContainer::performExternalDragDropOfFiles ({ file.getFullPathName() }, false, this);   // (a copy, never a move)
+    return file;
 }
 
 void ComposerPage::timerCallback()
@@ -658,6 +707,11 @@ void ComposerPage::paint (juce::Graphics& g)
                         juce::Justification::centredLeft, true);
         }
     }
+    // (0.59.0) The hint, where the lanes' headers meet the ruler.
+    g.setColour (ParagonColours::textDim);
+    g.setFont (ParagonLookAndFeel::titleFont (11.0f));
+    g.drawText ("CLICK THE NOTES TO HEAR, DRAG THEM OUT AS A MIDI FILE",
+                juce::Rectangle<int> (gap, ruler.getY(), laneHeaderWidth, ruler.getHeight()), juce::Justification::centredLeft, true);
     for (const auto l : pr7s::composerLayers())
         paintLane (g, l, lanes[(size_t) l]);
 }

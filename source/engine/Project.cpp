@@ -264,6 +264,27 @@ namespace pr7s
         return const_cast<Project*> (this)->findTrack (id);
     }
 
+    bool Project::canRouteTo (int trackId, int groupId) const
+    {
+        const auto* track = findTrack (trackId);
+        if (track == nullptr || ! hasOutput (*track))
+            return false;
+        if (groupId == 0)
+            return true;
+        const auto* group = findTrack (groupId);
+        if (group == nullptr || ! group->isGroup() || groupId == trackId)
+            return false;
+        // Down the group's own way to the master: never back through this track.
+        auto steps = 0;
+        for (const auto* at = group; at != nullptr && at->output != 0 && steps < (int) tracks.size() + 1; ++steps)
+        {
+            if (at->output == trackId)
+                return false;
+            at = findTrack (at->output);
+        }
+        return steps <= (int) tracks.size();
+    }
+
     const DrumMap* Project::findDrumMap (const juce::String& mapName) const
     {
         for (const auto& map : drumMaps)
@@ -994,9 +1015,8 @@ namespace pr7s
         // Routing that leads nowhere it can go: back to the master, or no send.
         for (auto& track : project.tracks)
         {
-            const auto* out = project.findTrack (track.output);
-            if (track.isChannel() || out == nullptr || ! out->isGroup())
-                track.output = 0;
+            if (track.output != 0 && ! project.canRouteTo (track.id, track.output))
+                track.output = 0;   // (0.59.0: groups may go to groups; a loop goes to the master)
             if (track.isFx())
                 track.sends.clear();
             for (auto& send : track.sends)

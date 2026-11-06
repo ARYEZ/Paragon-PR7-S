@@ -1531,6 +1531,17 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
     }
     if (track->isChannel())
     {
+        if (track->isGroup())
+        {
+            // (0.59.0) A group's output: the master, or another group (verse vox into John vox), never round in a loop.
+            juce::PopupMenu output;
+            output.addItem (30, "Master", true, track->output == 0);
+            for (const auto& other : studio.getProject().tracks)
+                if (other.isGroup() && studio.getProject().canRouteTo (trackId, other.id))
+                    output.addItem (30000 + other.id, other.name, true, track->output == other.id);
+            menu.addSubMenu ("Output", output);
+            menu.addSeparator();
+        }
         if (track->isFx())
         {
             const auto hasEffect = ! track->inserts.empty() && ! track->inserts.front().isEmpty() && studio.getEngine().getEffect (trackId, 0) != nullptr;
@@ -1545,7 +1556,7 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
         juce::PopupMenu output;
         output.addItem (30, "Master", true, track->output == 0);
         for (const auto& other : studio.getProject().tracks)
-            if (other.isGroup())
+            if (other.isGroup() && studio.getProject().canRouteTo (trackId, other.id))
                 output.addItem (30000 + other.id, other.name, true, track->output == other.id);
         menu.addSubMenu ("Output", output);
         menu.addSeparator();

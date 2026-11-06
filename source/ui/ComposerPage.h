@@ -29,6 +29,15 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void mouseMove (const juce::MouseEvent&) override;
+
+    // (0.59.0) A lane's notes dragged out as a MIDI file (the system's file drag: onto a track in the
+    // arrangement, the desktop, another program or a plug-in's window). `onExternalDrag` stands in for the
+    // system's drag (tests). Returns the file written.
+    juce::File dragLaneOut (pr7s::ComposerLayer);
+    std::function<void (const juce::StringArray&)> onExternalDrag;
 
     // What the keys do (tests drive them).
     void generate();
@@ -94,6 +103,8 @@ private:
     double hearingStart = 0.0;
     juce::String status;
     juce::uint64 seenChange = 0;
+    int pressedLane = -1;          // the lane the mouse went down on (a click hears, a drag takes it out)
+    bool draggedOut = false;
 
     juce::ComboBox keyBox, genreBox, moodBox, lengthBox, styleBox;
     juce::TextButton progressionKey, libraryKey { "LIBRARY" }, chordTrackKey { "CHORD TRACK" }, toChordTrackKey { "+ CHORD TRACK" };

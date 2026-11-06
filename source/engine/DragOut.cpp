@@ -91,14 +91,19 @@ namespace pr7s
         return juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("Paragon PR7-S Drag Out");
     }
 
+    juce::File composerDragFolder()
+    {
+        return juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("Paragon PR7-S Composer");
+    }
+
     void clearDragOutFolder()
     {
         dragOutFolder().deleteRecursively();
+        composerDragFolder().deleteRecursively();
     }
 
-    juce::File newDragOutFolder()
+    juce::File newDragOutFolder (const juce::File& root)
     {
-        const auto root = dragOutFolder();
         root.createDirectory();
         for (int n = 1;; ++n)
         {

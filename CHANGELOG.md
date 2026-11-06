@@ -2,6 +2,15 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.59.0
+
+- **Groups into groups** (you asked: "John verse vox" and "John chorus vox" both into a "John vox" group, and that one into the master). A group channel now has an OUTPUT of its own: in the mixer (OUT on its strip), in the Inspector, and in its right-click menu. Choose the master or any other group, as deep as you like (verse vox into John vox into All vox).
+  - **Loops are refused:** a group can't go to itself, or to a group that leads back to it. Those choices aren't offered, and a song saved with a loop opens with it broken (that group back to the master).
+  - **Mixing order:** groups are mixed in the right order whatever order they sit in: a group is mixed only once everything feeding it is in, on one core or several.
+  - **Removing a group** sends what went into it back to the master, as before.
+  - FX channels still go to the master only.
+- **A composer lane dragged out as a MIDI file:** press on a lane's notes and drag (a click still plays and stops it). Drop it on a track in the arrangement, on the desktop, into another program, or onto a plug-in's window. The file is the lane's notes from bar 1, with the song's tempo there. The drums are on channel 10 (General MIDI's drum channel); the other lanes on their track's channel. The file is named "Composer bass - Walking.mid" and so on.
+
 ## 0.58.0
 
 - **THE COMPOSER, a new page with all the layers stacked** (you asked: one page, a lock and a re-roll on each layer, one GENERATE button). Open it from IDEAS (COMPOSER, top right), from the chord pads (COMPOSER, second row), or give the "Composer" command a key in KEYS.
