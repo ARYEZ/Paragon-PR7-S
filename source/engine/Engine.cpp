@@ -601,15 +601,15 @@ namespace pr7s
         const auto tempoVersion = settings.tempoVersion + (tempo.getEvents() == settings.tempo.getEvents() ? 0 : 1);
 
         struct Prepared { int id; std::vector<Event> events; std::pair<float, float> gains; std::vector<bool> bypass; std::vector<Clip> clips;
-                          std::vector<LaneState> automation; bool mixAutomated = false; bool eventsKept = false;
+                          std::vector<LaneState> automation; bool mixAutomated = false; bool eventsKept = false; bool clipsKept = false;
                           std::array<juce::int16, 128> drumOut {}; std::array<juce::int8, 128> drumChannel {}; std::array<juce::uint8, 128> drumIn {}; };
         std::vector<Prepared> prepared;
         for (const auto& track : project.tracks)
         {
-            Prepared p { track.id, {}, sideGains (track, ! track.mute && ! track.disabled && ! soloedOut (track)), {}, {}, {}, false, false, {}, {}, {} };
+            Prepared p { track.id, {}, sideGains (track, ! track.mute && ! track.disabled && ! soloedOut (track)), {}, {}, {}, false, false, false, {}, {}, {} };
             auto* engineTrack = findTrack (track.id);   // (message thread: its builtFrom is ours alone)
-            if (engineTrack != nullptr && (track.disabled || track.frozen || track.isAudio()))
-                engineTrack->builtFrom.valid = false;   // (no events: the next notes are built afresh)
+            if (engineTrack != nullptr && (track.disabled || track.frozen))
+                engineTrack->builtFrom.valid = false;   // (no events or clips of its own: built afresh next time)
             for (int n = 0; n < 128; ++n)
                 p.drumOut[(size_t) n] = (juce::int16) n, p.drumChannel[(size_t) n] = -1, p.drumIn[(size_t) n] = (juce::uint8) n;
             for (const auto& insert : track.inserts)
@@ -639,7 +639,6 @@ namespace pr7s
                 // Only what's in front plays where clips overlap (takes, 0.29.0): each clip as
                 // many times as it has stretches heard, its fades still at its own ends.
                 // (0.57.1) Each part's heard stretches once for the track, each recording asked for once.
-                const auto heardOf = heardStretchesOf (track);
                 std::map<juce::String, decltype (audioSource (juce::String()))> sounds;
                 const auto soundOf = [&] (const juce::String& file)
                 {
@@ -648,6 +647,53 @@ namespace pr7s
                         found = sounds.emplace (file, audioSource (file)).first;
                     return found->second;
                 };
+                const auto soundFor = [&] (const Part& part)
+                {
+                    return part.isWarped() && warpSource ? warpSource (part, tempo) : soundOf (part.audioFile);
+                };
+                // (0.57.2) Built from the same parts, solo lane, auto fades, tempo and rate, the same parts
+                // are heard; if they still play the very same sounds, the same clips would come out: kept
+                // (a fader moved, a send, a knob).
+                const auto& fadesNow = project.autoFadesOf (track);
+                if (engineTrack != nullptr)
+                {
+                    const auto& built = engineTrack->builtFrom;
+                    auto same = built.valid && built.parts == track.parts && built.soloLane == track.soloLane
+                                && built.fades == fadesNow && built.tempo == tempo.getEvents() && built.rate == sampleRate
+                                && built.sounds.size() == track.parts.size();
+                    for (size_t i = 0; same && i < track.parts.size(); ++i)
+                        if (built.sounds[i] != nullptr)
+                            same = soundFor (track.parts[i]).get() == built.sounds[i];
+                    if (same)
+                    {
+                        p.clipsKept = true;
+                        prepared.push_back (std::move (p));
+                        continue;
+                    }
+                }
+                const auto heardOf = heardStretchesOf (track);
+                std::vector<decltype (audioSource (juce::String()))> partSounds (track.parts.size());
+                std::vector<const void*> soundIds (track.parts.size(), nullptr);
+                for (int i = 0; i < (int) track.parts.size(); ++i)
+                {
+                    const auto& part = track.parts[(size_t) i];
+                    if (! part.isAudio() || ! audioSource || heardOf[(size_t) i].empty())
+                        continue;
+                    partSounds[(size_t) i] = soundFor (part);
+                    soundIds[(size_t) i] = partSounds[(size_t) i].get();
+                }
+                if (engineTrack != nullptr)
+                {
+                    auto& built = engineTrack->builtFrom;
+                    built.valid = true;
+                    built.parts = track.parts;
+                    built.soloLane = track.soloLane;
+                    built.sounds = soundIds;
+                    built.fades = fadesNow;
+                    built.tempo = tempo.getEvents();
+                    built.rate = sampleRate;
+                }
+                ++clipBuilds;
                 for (int i = 0; i < (int) track.parts.size(); ++i)
                 {
                     const auto& part = track.parts[(size_t) i];
@@ -658,7 +704,7 @@ namespace pr7s
                         continue;
                     // Warped (0.32.0): its stretched sound, from the clip's start.
                     const auto warped = part.isWarped() && warpSource;
-                    auto sound = warped ? warpSource (part, tempo) : soundOf (part.audioFile);
+                    auto sound = partSounds[(size_t) i];
                     const auto offset = warped ? (juce::int64) 0 : (juce::int64) std::llround (part.audioOffset * sampleRate);
                     // (0.52.0) With the auto fades: a crossfade's stretch reaches past the cut.
                     const auto& fades = project.autoFadesOf (track);
@@ -839,7 +885,8 @@ namespace pr7s
                     std::swap (track->events, p.events);   // the old list goes out with `prepared`
                     track->checkHeld = true;
                 }
-                std::swap (track->clips, p.clips);      // likewise the old clips
+                if (! p.clipsKept)
+                    std::swap (track->clips, p.clips);  // likewise the old clips
                 if (const auto* t = project.findTrack (p.id))
                 {
                     // (0.50.0) A channel's role follows the song: a folder with its group channel on is a group.

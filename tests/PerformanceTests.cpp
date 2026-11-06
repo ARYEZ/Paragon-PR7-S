@@ -284,3 +284,82 @@ TEST_CASE ("0.34.2 timing: an update after a fader move against one that builds 
     const auto rebuild = time ([&] (int i) { for (auto& t : project.tracks) t.parts[0].notes[0].pitch = 40 + i % 2; });
     WARN ("per update: fader move " << fader << " ms; every track's events built (as before 0.34.2) " << rebuild << " ms");
 }
+
+TEST_CASE ("0.57.2: an audio track's clips are kept after a fader move, built again when what they come from changes", "[engine][audio]")
+{
+    Engine engine;
+    engine.prepare (rate, 512);
+    // Every sample told apart: a ramp; another sound for the "new recording".
+    auto ramp = std::make_shared<juce::AudioBuffer<float>> (2, 48000 * 8);
+    auto other = std::make_shared<juce::AudioBuffer<float>> (2, 48000 * 8);
+    for (int c = 0; c < 2; ++c)
+        for (int i = 0; i < ramp->getNumSamples(); ++i)
+        {
+            ramp->setSample (c, i, (float) i / (float) ramp->getNumSamples());
+            other->setSample (c, i, 0.25f);
+        }
+    auto current = ramp;
+    engine.setAudioSource ([&] (const juce::String&) -> std::shared_ptr<const juce::AudioBuffer<float>> { return current; });
+    Project project;
+    project.autoFades.crossfades = true;
+    Track track;
+    track.id = 1;
+    track.kind = Track::Kind::audio;
+    Part a, b;
+    a.audioFile = b.audioFile = "take.wav";
+    a.length = 4.0;
+    b.start = 2.0;
+    b.length = 4.0;
+    b.audioOffset = 1.0;
+    b.lane = 1;
+    b.order = 1;
+    track.parts = { a, b };
+    project.tracks.push_back (track);
+    engine.addAudioTrack (1);
+    const auto play = [&]
+    {
+        engine.stop();
+        engine.setPosition (0.0);
+        engine.play();
+        return renderSamples (engine, 24000 * 6);
+    };
+    engine.update (project);
+    const auto first = play();
+    const auto builds = engine.getClipBuilds();
+
+    // A fader move: the same clips (kept), the same sound but the gain.
+    project.tracks[0].volumeDb = -6.0f;
+    engine.update (project);
+    CHECK (engine.getClipBuilds() == builds);
+    project.tracks[0].volumeDb = 0.0f;
+    engine.update (project);
+    CHECK (engine.getClipBuilds() == builds);
+    CHECK (play() == first);
+
+    // Each thing a clip is made from builds them again.
+    project.tracks[0].parts[1].fadeIn = 0.05;
+    engine.update (project);
+    CHECK (engine.getClipBuilds() == builds + 1);
+    project.tracks[0].soloLane = 0;
+    engine.update (project);
+    CHECK (engine.getClipBuilds() == builds + 2);
+    project.autoFades.milliseconds = 40.0;
+    engine.update (project);
+    CHECK (engine.getClipBuilds() == builds + 3);
+    project.tempoTrackOn = true;
+    project.tempoEvents = { { 0.0, 100.0, false } };
+    engine.update (project);
+    CHECK (engine.getClipBuilds() == builds + 4);
+    current = other;   // (a VariAudio edit: a new heard sound for the same file)
+    engine.update (project);
+    CHECK (engine.getClipBuilds() == builds + 5);
+    const auto now = play();
+    CHECK (std::abs (now[24000] - 0.25f) < 1.0e-6f);   // (the new sound plays)
+
+    // Disabled and enabled again: built afresh.
+    project.tracks[0].disabled = true;
+    engine.update (project);
+    project.tracks[0].disabled = false;
+    engine.update (project);
+    CHECK (engine.getClipBuilds() == builds + 6);
+}

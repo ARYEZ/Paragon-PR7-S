@@ -161,3 +161,45 @@ TEST_CASE ("Speed: reading a folder of drum songs and learning from it", "[.][pe
           << "  six beats from it: " << beats << " ms");
     folder.deleteRecursively();
 }
+
+TEST_CASE ("Speed: audio tracks in the engine (takes on lanes, auto crossfades)", "[.][perf-audio]")
+{
+    Engine engine;
+    engine.prepare (rate, 512);
+    auto sound = std::make_shared<juce::AudioBuffer<float>> (2, (int) (rate * 300.0));
+    sound->clear();
+    engine.setAudioSource ([sound] (const juce::String&) -> std::shared_ptr<const juce::AudioBuffer<float>> { return sound; });
+    Project project;
+    project.autoFades.crossfades = true;
+    for (int t = 1; t <= 24; ++t)
+    {
+        Track track;
+        track.id = t;
+        track.kind = Track::Kind::audio;
+        for (int lane = 0; lane < 3; ++lane)
+            for (int c = 0; c < 40; ++c)
+            {
+                Part p;
+                p.start = c * 4.0 + lane * 0.5;
+                p.length = 3.5;
+                p.audioFile = "take" + juce::String (lane) + ".wav";
+                p.audioOffset = c * 2.0;
+                p.lane = lane;
+                p.order = (c * 7 + lane) % 3;
+                track.parts.push_back (p);
+            }
+        project.tracks.push_back (track);
+        engine.addAudioTrack (t);
+    }
+    engine.update (project);
+    engine.setPosition (0.0);
+    engine.play();
+    juce::AudioBuffer<float> buffer (2, 512);
+    const auto perBlock = millisecondsOf (400, [&] (int) { engine.render (buffer, 512); });
+    const auto fader = millisecondsOf (20, [&] (int i) { project.tracks[3].volumeDb = -1.0f * (float) (i % 10); engine.update (project); });
+    const auto clipEdit = millisecondsOf (20, [&] (int i) { project.tracks[5].parts[7].fadeIn = 0.01 * (i % 3); engine.update (project); });
+    WARN ("24 audio tracks x 120 clips on 3 lanes, auto crossfades:\n"
+          << "  render a 512-sample block: " << perBlock << " ms\n"
+          << "  update after a fader move: " << fader << " ms\n"
+          << "  update after a clip edit: " << clipEdit << " ms");
+}

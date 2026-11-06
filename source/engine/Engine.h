@@ -85,6 +85,7 @@ namespace pr7s
         // Call after every change.
         void update (const Project&);
         int getEventBuilds() const noexcept { return eventBuilds; }   // (0.34.2, tests) tracks' event lists built so far
+        int getClipBuilds() const noexcept { return clipBuilds; }     // (0.57.2, tests) audio tracks' clip lists built
 
         //======================================================================
         // Transport (any thread)
@@ -354,6 +355,12 @@ namespace pr7s
                 Voice voice = Voice::soprano;              // (0.38.0)
                 std::optional<VoicingSettings> voicing;
                 juce::String pattern;                      // (0.44.0) the pattern it performs
+                // (0.57.2) An audio track's clips: kept while its parts, solo lane, auto fades, the
+                // tempo, the rate and the very sounds its clips play are the same.
+                std::vector<const void*> sounds;
+                AutoFades fades;
+                std::vector<TempoEvent> tempo;
+                double rate = 0.0;
             };
             BuiltFrom builtFrom;
             // (0.34.5) Its own work in a block may run on any core: what its effects are given, the
@@ -449,6 +456,7 @@ namespace pr7s
         juce::CriticalSection lock;
         std::vector<std::unique_ptr<TrackState>> tracks;
         int eventBuilds = 0;   // (message thread)
+        int clipBuilds = 0;    // (message thread)
         Settings settings;
         double sampleRate = 48000.0;
         int maxBlockSize = 512;
