@@ -54,6 +54,10 @@ namespace pr7s
         static std::optional<InstrumentProfile> fromXml (const juce::XmlElement&);
 
         static InstrumentProfile djinnBass2();         // the owner's: A0 D1 A1 D2 G2, the map from Djinn's KEYSWITCH MAP
+        // (0.62.1) The owner's Shreddage guitars (Jupiter, Rogue): 7-string drop A (A0 E1 A1 D2 G2 B2 E3),
+        // 24 frets, the velocity layers given (the split IDEAS' VELOCITIES uses), Sustain C-1, Power Chord
+        // Sustain C-2.
+        static InstrumentProfile shreddage (const juce::String& name, const GuitarVelocities& = {});
         static InstrumentProfile blank (Kind);
     };
 

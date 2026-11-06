@@ -294,7 +294,7 @@ InstrumentsPage::InstrumentsPage (pr7s::Studio& s) : studio (s)
         pedal (*key, key == &newKey);
         addAndMakeVisible (*key);
     }
-    newKey.setTooltip ("A new instrument: Djinn Bass 2 (its keyswitches), a bass, a guitar, or a copy of this one");
+    newKey.setTooltip ("A new instrument: Djinn Bass 2, Shreddage Jupiter or Rogue (set up), a bass, a guitar, or a copy of this one");
     newKey.onClick = [this] { showNewMenu(); };
     deleteKey.onClick = [this] { deleteProfile(); };
     selectProfile (profiles.empty() ? -1 : 0);
@@ -340,6 +340,8 @@ void InstrumentsPage::addProfile (NewKind kind)
     switch (kind)
     {
         case NewKind::djinnBass2: p = Profile::djinnBass2(); p.forBass = false; break;
+        case NewKind::jupiter: p = Profile::shreddage ("Shreddage Jupiter", studio.getGuitarVelocities()); break;
+        case NewKind::rogue: p = Profile::shreddage ("Shreddage Rogue", studio.getGuitarVelocities()); break;
         case NewKind::bass: p = Profile::blank (Profile::Kind::bass); break;
         case NewKind::guitar: p = Profile::blank (Profile::Kind::guitar); break;
         case NewKind::copy:
@@ -578,6 +580,8 @@ void InstrumentsPage::showNewMenu()
 {
     juce::PopupMenu menu;
     menu.addItem (1, "Djinn Bass 2 (its keyswitch map)");
+    menu.addItem (5, "Shreddage Jupiter (7-string drop A)");
+    menu.addItem (6, "Shreddage Rogue (7-string drop A)");
     menu.addItem (2, "A bass");
     menu.addItem (3, "A guitar");
     menu.addItem (4, "A copy of this one", current() != nullptr);
@@ -585,7 +589,7 @@ void InstrumentsPage::showNewMenu()
     {
         if (safe == nullptr || chosen == 0)
             return;
-        const NewKind kinds[] = { NewKind::djinnBass2, NewKind::bass, NewKind::guitar, NewKind::copy };
+        const NewKind kinds[] = { NewKind::djinnBass2, NewKind::bass, NewKind::guitar, NewKind::copy, NewKind::jupiter, NewKind::rogue };
         safe->addProfile (kinds[chosen - 1]);
     });
 }

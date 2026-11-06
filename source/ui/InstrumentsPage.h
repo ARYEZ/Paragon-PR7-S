@@ -27,7 +27,7 @@ public:
     const std::vector<pr7s::InstrumentProfile>& getProfiles() const noexcept { return profiles; }
     int getSelected() const noexcept { return selected; }
     void selectProfile (int);
-    enum class NewKind { djinnBass2, bass, guitar, copy };
+    enum class NewKind { djinnBass2, bass, guitar, copy, jupiter, rogue };
     void addProfile (NewKind);
     void deleteProfile();
     void setName (const juce::String&);

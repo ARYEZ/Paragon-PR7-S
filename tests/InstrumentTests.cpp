@@ -256,3 +256,53 @@ TEST_CASE ("The Hub's INSTRUMENTS page: new, strings, range, one lane each, keys
     hub.showSettingsPage (false);
     CHECK_FALSE (page.isVisible());
 }
+
+TEST_CASE ("Shreddage Jupiter and Rogue: 7-string drop A, 24 frets, the velocity layers, Sustain C-1, Power Chord Sustain C-2 (0.62.1)", "[instruments]")
+{
+    const auto p = InstrumentProfile::shreddage ("Shreddage Jupiter");
+    CHECK (p.kind == InstrumentProfile::Kind::guitar);
+    CHECK (p.strings == std::vector<int> { *parseNoteText ("A0"), *parseNoteText ("E1"), *parseNoteText ("A1"), *parseNoteText ("D2"),
+                                           *parseNoteText ("G2"), *parseNoteText ("B2"), *parseNoteText ("E3") });
+    CHECK (p.frets == 24);
+    CHECK (p.rangeLow() == 33);
+    CHECK (p.rangeHigh() == 64 + 24);
+    REQUIRE (p.velocities.has_value());
+    CHECK (*p.velocities == GuitarVelocities {});
+    CHECK (p.isKeyswitch (*parseNoteText ("C-1")));
+    CHECK (p.isKeyswitch (*parseNoteText ("C-2")));
+    for (const auto& k : p.keyswitches)
+        CHECK (k.note < p.rangeLow());
+    CHECK (p.tuning().strings == GuitarTuning::all().front().strings);   // (the same as IDEAS' 7-string drop A)
+
+    // From the INSTRUMENTS page's + NEW, with the studio's own VELOCITIES.
+    Studio studio (false);
+    auto v = GuitarVelocities {};
+    v.pinch = 127;
+    v.muteTight = 30;
+    studio.setGuitarVelocities (v);
+    InstrumentsPage page (studio);
+    page.addProfile (InstrumentsPage::NewKind::jupiter);
+    page.addProfile (InstrumentsPage::NewKind::rogue);
+    const auto& profiles = page.getProfiles();
+    REQUIRE (profiles.size() == 3);
+    CHECK (profiles[1].name == "Shreddage Jupiter");
+    CHECK (profiles[2].name == "Shreddage Rogue");
+    CHECK (profiles[1].velocities == v);
+    // The guitar lane on Jupiter: every note in its range, none on its keyswitches.
+    page.selectProfile (1);
+    page.setUse (Studio::ProfileUse::guitar, true);
+    const auto c = studio.getComposerContext (0.0);
+    REQUIRE (c.guitarProfile.has_value());
+    ComposerState s;
+    const auto spans = composerSpans (s, 0.0, c.beatsPerBar);
+    for (int style = 0; style < 6; ++style)
+    {
+        s.lane (ComposerLayer::guitar).style = style;
+        const auto layers = composeLayers (s, spans, c);
+        for (const auto& n : layers[(size_t) ComposerLayer::guitar].notes)
+        {
+            CHECK (n.pitch >= 33);
+            CHECK (n.pitch <= 88);
+        }
+    }
+}

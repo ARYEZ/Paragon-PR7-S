@@ -2,6 +2,18 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.62.1
+
+- **Shreddage Jupiter and Rogue in INSTRUMENTS** (as you gave them). Each is one click on **+ NEW** in the Hub's INSTRUMENTS tab, set up as follows:
+  - **Tuning:** 7-string drop A, A0 E1 A1 D2 G2 B2 E3.
+  - **Frets:** 24, so either guitar is written from A0 to E5.
+  - **Velocity layers:** 1-59 palm mute, 60-119 sustain, 120-126 rakes, 127 pinch harmonics. They start from your VELOCITIES values, so any by-ear changes you made there come along.
+  - **Keyswitches:** Sustain on C-1 and Power Chord Sustain on C-2. Both sit below the lowest string, so the composer never writes a note on them.
+- **Which guitar plays which lane:** mark one for the composer's GUITAR lane and the other (or the same one) for the LEAD lane. Each lane then uses that guitar's range and velocity layers.
+- **Not yet:**
+  - Neither guitar has force-string keys, so ONLY STRING on the guitar lane moves the notes onto that string without a keyswitch.
+  - The two articulation keyswitches are kept, but nothing switches them yet. A part written for Sustain plays as written, as long as Shreddage is on Sustain.
+
 ## 0.62.0
 
 - **INSTRUMENTS in the Hub** (you asked: rules for each instrument you use). A third tab beside PROJECTS and HUB SETTINGS, with a profile per sample library. Each profile holds:

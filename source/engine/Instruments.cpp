@@ -117,6 +117,18 @@ namespace pr7s
         return p;
     }
 
+    InstrumentProfile InstrumentProfile::shreddage (const juce::String& name, const GuitarVelocities& velocities)
+    {
+        InstrumentProfile p;
+        p.name = name;
+        p.kind = Kind::guitar;
+        p.strings = { 33, 40, 45, 50, 55, 59, 64 };   // A0 E1 A1 D2 G2 B2 E3
+        p.frets = 24;
+        p.velocities = velocities;   // (1-59 palm mute, 60-119 sustain, 120-126 rakes, 127 pinch harmonics)
+        p.keyswitches = { { "Sustain", 12, 0 }, { "Power Chord Sustain", 0, 0 } };   // C-1, C-2
+        return p;
+    }
+
     InstrumentProfile InstrumentProfile::blank (Kind kind)
     {
         InstrumentProfile p;
