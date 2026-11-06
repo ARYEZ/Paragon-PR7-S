@@ -61,6 +61,14 @@ namespace
     }
 
     // The median pitch heard between two moments.
+    std::vector<Note> manyNotes (int count)   // (0.57.2) short notes up and down a scale
+    {
+        std::vector<Note> notes;
+        for (int i = 0; i < count; ++i)
+            notes.push_back ({ 0.3, 60.0f + (float) (i % 7), 60.0f + (float) (i % 7), 0.0f, 0.05 });
+        return notes;
+    }
+
     float heardBetween (const PitchAnalysis& a, double from, double to)
     {
         std::vector<float> values;
@@ -418,4 +426,30 @@ TEST_CASE ("Snapshot: the VariAudio editor", "[.][snapshot-variaudio]")
         juce::PNGImageFormat().writeImageToStream (image, out);
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+TEST_CASE ("Speed: a change in a song with an edited VariAudio recording (the edits' signature)", "[.][perf-vari]")
+{
+    Studio studio (false);
+    writeWav (studio.getAudioFolder().getChildFile ("vocal.wav"), sing (manyNotes (60)));
+    const auto track = studio.addAudioTrack (false);
+    for (int c = 0; c < 8; ++c)
+    {
+        Part clip;
+        clip.start = c * 48.0;
+        clip.length = 40.0;
+        clip.audioFile = "vocal.wav";
+        studio.addPart (track, clip);
+    }
+    REQUIRE (studio.editVariAudio ("vocal.wav"));
+    std::vector<int> all;
+    for (int i = 0; i < (int) studio.getVariAudio ("vocal.wav")->segments.size(); ++i)
+        all.push_back (i);
+    studio.editVariSegments ("vocal.wav", all, [] (VariSegment& s) { s.shift = 1.0f; s.straighten = 0.5f; });
+    studio.getHeardAudio ("vocal.wav");   // (made once)
+    const auto start = juce::Time::getMillisecondCounterHiRes();
+    for (int i = 0; i < 50; ++i)
+        studio.setVolume (track, -1.0f * (float) (i % 6));
+    WARN (studio.getVariAudio ("vocal.wav")->segments.size() << " edited segments, 8 clips: a fader set "
+          << (juce::Time::getMillisecondCounterHiRes() - start) / 50 << " ms");
 }

@@ -10755,12 +10755,15 @@ namespace pr7s
         const auto found = project.variAudio.find (file);
         if (found == project.variAudio.end() || found->second.bypass || ! found->second.isEdited())
             return {};
+        if (const auto known = variSignatures.find (file); known != variSignatures.end() && known->second.first == found->second)
+            return known->second.second;
         juce::String text;
         for (const auto& seg : found->second.segments)
             if (seg.isEdited())
                 text << seg.start << ":" << seg.end << ":" << seg.shift << ":" << seg.straighten << ":" << seg.volumeDb << ":"
                      << seg.tiltStart << ":" << seg.tiltEnd << ":" << seg.anchor << ":" << seg.straightenFrom << ":" << seg.straightenTo
                      << ":" << seg.formant << "|";
+        variSignatures.insert_or_assign (file, std::pair { found->second, text });
         return text;
     }
 
@@ -11287,6 +11290,7 @@ namespace pr7s
         hitpointCache.clear();
         pitchCache.clear();
         heardCache.clear();
+        variSignatures.clear();
         warpedVariSignatures.clear();
         warpRenderer.clear();
     }

@@ -1358,6 +1358,9 @@ namespace pr7s
         WarpRenderer warpRenderer;
         // (0.34.0) VariAudio: each recording's pitch, and its sound as edited (by what was edited).
         juce::String variSignature (const juce::String& file) const;
+        // (0.57.2) Each recording's signature with the edits it was made from: written out again only
+        // when they differ (it was written for every clip of the file on every change in the song).
+        mutable std::map<juce::String, std::pair<Project::VariAudio, juce::String>> variSignatures;
         std::map<juce::String, std::pair<std::shared_ptr<const AudioData>, std::shared_ptr<const PitchAnalysis>>> pitchCache;
         struct HeardSound { juce::String signature; std::shared_ptr<const AudioData> source, heard; };
         std::map<juce::String, HeardSound> heardCache;
