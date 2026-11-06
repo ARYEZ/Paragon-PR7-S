@@ -47,4 +47,18 @@ Round 2: [Dimebag Darrell](dimebag-darrell.md), [Kirk Hammett](kirk-hammett.md),
 | Vibrato | aggressive; whammy vibrato on harmonics | wide, consistent | very wide (a tone; a minor 3rd on pinches), at full width at once, on every phrase end | a repeated bend up and back |
 | Signature | harmonic screams (bar dumped, pulled up), dive bombs, pinch harmonics at the end | pentatonic speed, repeated licks, trills, wah (out of scope), ends "dripping up high" | pinch-harmonic squeals in every gap, alternate-picked pentatonic boxes linked by slides, no whammy | alternate-picked runs, sweeps, legato, odd groupings, something "outside" at the climax |
 
-Names for the app (ours): to be agreed with the owner before the engine work.
+Names in the app (ours, the owner approved): SCREAM & DIVE (Dimebag), THRASH FIRE (Hammett), PINCH SQUEAL (Wylde), PROG PRECISION (Petrucci); 0.67.0.
+
+Round 3: [C.C. DeVille](cc-deville.md), [Mick Mars](mick-mars.md), [Slash](slash.md), [Prince](prince.md). **The evidence is thinner here:** DeVille has no interview where he explains his soloing (a staff feature and lesson blurbs), Mars talks about values more than technique, Prince rarely spoke about guitar (bandmates and writers mostly). Slash is the best covered. Each sheet says so at its top.
+
+## Round 3 side by side
+
+| | DeVille | Mars | Slash | Prince |
+|---|---|---|---|---|
+| Notes | blues-rooted hard rock [I scales]; some "outside" colour around 1990 | a bluesman, not scale-based; [I] minor pent. + blues | minor pent. + b5; b6 and harmonic minor in dramatic solos; major pent. over happy major chords (no b3) | major pent. + blue b3, b7 (writers); "crazy pentatonic stuff" |
+| Density | sustained notes, the speed saved for "the last possible moment" | a melody "you can hum", not "a barrage of notes"; 3-6 a bar [I] | "I can sit on one note forever"; fast is "an energy thing" | "hold a high note... while you play 100 notes"; bursts |
+| Phrases | long bends answered by melodic bursts; lyrical double stops | weaving round the singer, a two-bar phrase and its answer | melodic first half, wilder second; a four-note sequence up a step; a motif an octave up | a home motif brought back higher; escalating bends to a scream |
+| Rhythm | against the beat at times | an occasional fast single-string burst | loose, behind the beat; three against four; 32nd/triplet flurries between melody notes | rhythm first; funk: very short notes; triplets natural |
+| Bends | long drawn-out, slow in ballads, pre-bends | held, "get everything out of a note" | slow, a little loose, held and released several times; unison, oblique | subtle at first, ever bigger |
+| Vibrato | lots [weak source] | "aggressive" [weak source]; whammy as a voice | expressive | "Santana-level" |
+| Signature | a fast picked burst at the very end | whammy dips, slide (one album) | melody first, behind the beat, no tapping | held screaming high notes, one outburst outside the key at the peak |
