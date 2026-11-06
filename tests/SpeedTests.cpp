@@ -5,6 +5,7 @@
 #include "ui/LinesPage.h"
 #include "ui/DrumLearnPage.h"
 #include "ui/MainView.h"
+#include "ui/Finish.h"
 #include "ui/MixerView.h"
 #include "DrumSongs.h"
 
@@ -235,4 +236,51 @@ TEST_CASE ("Speed: the screen's redraws while playing (the transport's screens, 
           << "  the whole transport: " << clipped (transport, transport.getLocalBounds()) << " ms\n"
           << "  a mixer strip's meter: " << clipped (strip, strip.getMeterArea()) << " ms (x 17 strips)\n"
           << "  the whole strip: " << clipped (strip, strip.getLocalBounds()) << " ms");
+}
+
+TEST_CASE ("Snapshot: the transport whole and redrawn in strips (to compare two builds pixel by pixel)", "[.][snapshot-transport]")
+{
+    // PARAGON_TRANSPORT_PNG=<folder>: transport-whole.png, and transport-strips.png (each screen redrawn
+    // over the whole as it is while playing). Every finish.
+    const auto folder = juce::File (juce::SystemStats::getEnvironmentVariable ("PARAGON_TRANSPORT_PNG", {}));
+    REQUIRE (folder != juce::File());
+    folder.createDirectory();
+    for (const auto finish : { Finish::Type::pearlWhite, Finish::Type::pearlBlack, Finish::Type::pearlWhiteNeon })
+        {
+            Finish::set (finish, false);
+            Studio studio (false);
+            MainView view (studio);
+            view.setSize (1920, 1000);
+            studio.setPosition (37.25);
+            studio.dispatchPendingMessages();
+            auto& transport = view.getTransport();
+            const auto name = juce::String (finish == Finish::Type::pearlWhite ? "white" : finish == Finish::Type::pearlBlack ? "black" : "neon");
+            for (const auto scale : { 1.0f, 1.5f })
+            {
+                const auto w = juce::roundToInt (transport.getWidth() * scale), h = juce::roundToInt (transport.getHeight() * scale);
+                juce::Image whole (juce::Image::ARGB, w, h, true, juce::SoftwareImageType());
+                {
+                    juce::Graphics g (whole);
+                    g.addTransform (juce::AffineTransform::scale (scale));
+                    transport.paintEntireComponent (g, false);
+                }
+                auto strips = whole.createCopy();
+                for (const auto screen : { transport.getPositionScreen(), transport.getTimeScreen() })
+                {
+                    juce::Graphics g (strips);
+                    g.addTransform (juce::AffineTransform::scale (scale));
+                    g.reduceClipRegion (screen.expanded (4.0f).getSmallestIntegerContainer());
+                    transport.paintEntireComponent (g, false);
+                }
+                const auto suffix = name + "-" + juce::String (scale, 1) + ".png";
+                for (const auto& [image, file] : { std::pair { whole, "transport-whole-" + suffix }, std::pair { strips, "transport-strips-" + suffix } })
+                {
+                    juce::FileOutputStream out (folder.getChildFile (file));
+                    out.setPosition (0);
+                    out.truncate();
+                    juce::PNGImageFormat().writeImageToStream (image, out);
+                }
+            }
+        }
+    Finish::set (Finish::Type::pearlWhite, false);
 }

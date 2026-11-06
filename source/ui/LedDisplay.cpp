@@ -1,5 +1,7 @@
 #include "LedDisplay.h"
 
+#include <algorithm>
+
 #include "ParagonLookAndFeel.h"
 
 namespace
@@ -122,13 +124,52 @@ void LedDisplay::drawDigit (juce::Graphics& g, juce::juce_wchar digit, juce::Rec
     g.strokePath (litPath, juce::PathStrokeType (t * 0.12f), juce::AffineTransform());
 }
 
+namespace
+{
+    // (0.57.3) The frame's drop shadow, as juce::DropShadow::drawForPath draws it (black at 0.6, the
+    // path filled into a one-channel image, box-blurred), made once per frame shape and kept: it was
+    // blurred again on every redraw (the transport's screens 30 times a second while playing: a third
+    // of their time). drawForPath blurs only the part near what's being redrawn; the blur reaches
+    // only its radius, so whatever shows is the same.
+    void drawKeptShadow (juce::Graphics& g, const juce::Path& path, int radius, int offsetY)
+    {
+        struct Kept { juce::Rectangle<float> bounds; int radius = 0, offsetY = 0; juce::Rectangle<int> area; juce::Image image; };
+        static std::vector<Kept> kept;   // (message thread only)
+        const auto bounds = path.getBounds();
+        const juce::Point<int> offset { 0, offsetY };
+        auto found = std::find_if (kept.begin(), kept.end(), [&] (const Kept& k)
+                                   { return k.bounds == bounds && k.radius == radius && k.offsetY == offsetY; });
+        if (found == kept.end())
+        {
+            const auto area = (bounds.getSmallestIntegerContainer() + offset).expanded (radius + 1);
+            if (area.getWidth() <= 2 || area.getHeight() <= 2)
+                return;
+            if (kept.size() >= 32)
+                kept.clear();
+            const auto type = g.getInternalContext().getPreferredImageTypeForTemporaryImages();   // (as drawForPath)
+            juce::Image image (juce::Image::SingleChannel, area.getWidth(), area.getHeight(), true, *type);
+            image.setBackupEnabled (false);
+            {
+                juce::Graphics g2 (image);
+                g2.setColour (juce::Colours::white);
+                g2.fillPath (path, juce::AffineTransform::translation ((float) (offset.x - area.getX()), (float) (offset.y - area.getY())));
+            }
+            image.getPixelData()->applySingleChannelBoxBlurEffect (radius);
+            kept.push_back ({ bounds, radius, offsetY, area, image });
+            found = std::prev (kept.end());
+        }
+        g.setColour (juce::Colours::black.withAlpha (0.6f));
+        g.drawImageAt (found->image, found->area.getX(), found->area.getY(), true);
+    }
+}
+
 juce::Rectangle<float> LedDisplay::paintScreen (juce::Graphics& g, juce::Rectangle<float> bounds, float size)
 {
     // A polished metal frame set into the face: chrome lit from above, with
     // a dark seam where it meets the black bezel inside it.
     juce::Path frame;
     frame.addRoundedRectangle (bounds.reduced (1.0f), 11.0f * size);
-    juce::DropShadow (juce::Colours::black.withAlpha (0.6f), juce::roundToInt (9.0f * size), { 0, juce::roundToInt (3.0f * size) }).drawForPath (g, frame);
+    drawKeptShadow (g, frame, juce::roundToInt (9.0f * size), juce::roundToInt (3.0f * size));
     {
         juce::ColourGradient chrome (juce::Colour (0xfffaf3f6), 0.0f, bounds.getY(), juce::Colour (0xff5e4f57), 0.0f, bounds.getBottom(), false);
         chrome.addColour (0.12, juce::Colour (0xffcbbac3));

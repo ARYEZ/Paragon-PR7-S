@@ -1,5 +1,7 @@
 #include "TransportBar.h"
 
+#include <map>
+
 #include "ui/LedDisplay.h"
 #include "ui/Logo.h"
 #include "ui/Pearl.h"
@@ -175,8 +177,19 @@ void TransportBar::drawFixedPitch (juce::Graphics& g, const juce::String& text, 
     // Bebas's figures differ in width: each in a cell as wide as the widest,
     // the separators and spaces in narrower ones, the whole fitted and centred.
     juce::Font f (font (height));
-    const auto digit = juce::jmax (juce::GlyphArrangement::getStringWidth (f, "0"), juce::GlyphArrangement::getStringWidth (f, "8"),
-                                   juce::GlyphArrangement::getStringWidth (f, "4")) * 1.05f;
+    // (0.57.3) The widest figure's width, measured once per font and height (measuring asked the
+    // system's font lookup for each figure: a sixth of the screens' time, 30 times a second).
+    static std::map<std::pair<juce::String, float>, float> widths;   // (message thread only)
+    const auto key = std::pair { f.getTypefaceName() + "/" + f.getTypefaceStyle(), height };
+    auto known = widths.find (key);
+    if (known == widths.end())
+    {
+        if (widths.size() > 64)
+            widths.clear();
+        known = widths.emplace (key, juce::jmax (juce::GlyphArrangement::getStringWidth (f, "0"), juce::GlyphArrangement::getStringWidth (f, "8"),
+                                                 juce::GlyphArrangement::getStringWidth (f, "4")) * 1.05f).first;
+    }
+    const auto digit = known->second;
     // (A figure space, U+2007, is a blank as wide as a figure: padding that keeps the value's width.)
     const auto cellFor = [digit] (juce::juce_wchar c) { return juce::CharacterFunctions::isDigit (c) || c == 0x2007 ? digit : digit * 0.5f; };
     auto total = 0.0f;
