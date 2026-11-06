@@ -451,3 +451,38 @@ TEST_CASE ("0.57.3: the spike report in words (the session log's line)", "[studi
     r.sinceLastMs = 32.0;
     CHECK (studio.describeSpike (r).contains ("the driver called 32.0 ms after the last block"));
 }
+
+TEST_CASE ("0.57.4: the spike report gives each plug-in's own time: the instrument and each insert", "[engine]")
+{
+    Engine engine;
+    engine.prepare (rate, 512);
+    Project project;
+    Track track;
+    track.id = 1;
+    project.tracks.push_back (track);
+    auto instrument = std::make_unique<Probe>();
+    instrument->busyMs = 1.0;
+    engine.setInstrument (1, std::move (instrument));
+    auto heavy = std::make_unique<Probe>();
+    heavy->busyMs = 4.0;   // (the insert: the heavier of the two)
+    engine.insertEffect (1, 0, std::move (heavy));
+    auto light = std::make_unique<Probe>();
+    engine.insertEffect (1, 1, std::move (light));
+    engine.update (project);
+    const auto budget = 512.0 / rate;
+    juce::AudioBuffer<float> buffer (2, 512);
+    engine.render (buffer, 512);
+    engine.noteSpike (budget * 2.0, 512, budget);
+    const auto report = engine.takeSpikeReport();
+    REQUIRE (report.has_value());
+    REQUIRE (report->numSlowest == 1);
+    const auto& slow = report->slowest[0];
+    REQUIRE (slow.numPlugins == 3);
+    CHECK (slow.plugins[0].slot == 0);      // the heavy insert first
+    CHECK (slow.plugins[0].ms >= 4.0f);
+    CHECK (slow.plugins[1].slot == -1);     // then the instrument
+    CHECK (slow.plugins[1].ms >= 1.0f);
+    CHECK (slow.plugins[1].ms < slow.plugins[0].ms);
+    CHECK (slow.plugins[2].slot == 1);
+    CHECK (slow.ms >= slow.plugins[0].ms + slow.plugins[1].ms);   // (the track's time holds its plug-ins')
+}

@@ -250,7 +250,10 @@ namespace pr7s
             double masterMs = 0.0;             // the master's EQ and inserts
             int helpers = 0;                   // multi-core helper threads
             int numTracks = 0;
-            struct Slow { int trackId = 0; float ms = 0.0f, usualMs = 0.0f; };
+            // (0.57.4) Each slow track's plug-ins: its instrument, and its slowest inserts (by slot).
+            struct Plugin { int slot = -1; float ms = 0.0f, usualMs = 0.0f; };   // slot -1: the instrument
+            static constexpr int mostPlugins = 4;
+            struct Slow { int trackId = 0; float ms = 0.0f, usualMs = 0.0f; std::array<Plugin, mostPlugins> plugins {}; int numPlugins = 0; };
             std::array<Slow, mostTracks> slowest {};
             int numSlowest = 0;
             int missedSince = 0;               // spikes while this one waited to be taken
@@ -282,6 +285,8 @@ namespace pr7s
         {
             std::unique_ptr<juce::AudioPluginInstance> plugin;   // none: couldn't be loaded
             bool bypass = false;
+            double ownSeconds = 0.0;   // (0.57.4, audio thread) its time this call, and usually
+            float usualSeconds = 0.0f;
         };
 
         // An audio clip as it plays: from `start` to `end` (beats), its sound
@@ -316,6 +321,8 @@ namespace pr7s
             int id = 0;
             double ownSeconds = 0.0;     // (0.57.3) its own work this call (any core), and usually
             float usualSeconds = 0.0f;
+            double instrumentSeconds = 0.0;   // (0.57.4) its instrument's part of it, and usually
+            float instrumentUsual = 0.0f;
             bool audio = false;          // an audio track: clips and input, no instrument
             bool frozen = false;         // its freeze file plays as a clip (no instrument, no inserts)
             std::vector<Clip> clips;

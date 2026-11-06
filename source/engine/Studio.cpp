@@ -7721,20 +7721,23 @@ namespace pr7s
                     break;
                 juce::String what;
                 if (const auto* t = project.findTrack (slow.trackId))
-                {
                     what << "\"" << t->name << "\"";
-                    juce::StringArray plugins;
-                    if (t->kind == Track::Kind::instrument && ! t->disabled && ! t->frozen)
-                        plugins.add (t->instrument.getName());
-                    for (const auto& insert : t->inserts)
-                        if (! insert.isEmpty() && ! insert.bypass)
-                            plugins.add (insert.plugin.name);
-                    if (! plugins.isEmpty())
-                        what << " [" << plugins.joinIntoString (", ") << "]";
-                }
                 else
                     what << "track " << slow.trackId;
-                text << (i == 0 ? "; slowest: " : ", ") << what << " " << ms (slow.ms) << " (usually " << ms (slow.usualMs) << ")";
+                // (0.57.4) Each plug-in's own share, with its usual time; else the plug-ins by name.
+                juce::StringArray plugins;
+                for (int k = 0; k < slow.numPlugins; ++k)
+                {
+                    const auto& plugin = slow.plugins[(size_t) k];
+                    auto* instance = plugin.slot < 0 ? engine.getInstrument (slow.trackId) : engine.getEffect (slow.trackId, plugin.slot);
+                    const auto name = instance != nullptr ? instance->getName()
+                                                          : (plugin.slot < 0 ? juce::String ("instrument") : "insert " + juce::String (plugin.slot + 1));
+                    plugins.add (name + " " + ms (plugin.ms) + " (usually " + ms (plugin.usualMs) + ")");
+                }
+                what << " " << ms (slow.ms) << " (usually " << ms (slow.usualMs) << ")";
+                if (! plugins.isEmpty())
+                    what << " [" << plugins.joinIntoString (", ") << "]";
+                text << (i == 0 ? "; slowest: " : ", ") << what;
             }
         }
         if (r.missedSince > 0)

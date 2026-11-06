@@ -2,6 +2,15 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.57.5
+
+**The spike report names each plug-in's own time** (you asked, after your 0.57.3 log showed the Bass track, Kontakt 8 with PR7-B, as the slow one).
+- Each slow track in a SPIKE line now lists every plug-in on it with its own time in that block and its usual time, slowest first. For example: `"Bass" 42.9 ms (usually 16.1 ms) [Kontakt 8 30.1 ms (usually 11.0 ms), Paragon PR7-B 12.4 ms (usually 4.9 ms)]` (made-up numbers to show the shape).
+- So we'll see whether it's Kontakt or PR7-B that jumps. If PR7-B is a big part of it, that's our own plug-in, and I can speed it up in PR7-B.
+- Timing each plug-in costs a few hundred nanoseconds per plug-in per block. Nothing else in the sound changes.
+
+**Please** play the song until it clicks a few times (with your usual settings, so we compare like with like), close the studio, and send me the newest log from `%APPDATA%\Paragon PR7-S\Logs`.
+
 ## 0.57.4
 
 **Question boxes now have the progress box's clean corners** (you saw squared-off ends at the corners of CREATE EMPTY and the other boxes).

@@ -1013,7 +1013,9 @@ namespace pr7s
                 juce::FloatVectorOperations::clear (buffer.getWritePointer (channel), numSamples);
             juce::AudioBuffer<float> view (buffer.getArrayOfWritePointers(), channels, numSamples);
             effectsMidi.clear();
+            const auto started = juce::Time::getHighResolutionTicks();   // (0.57.4: each plug-in's own time)
             effect.processBlock (view, effectsMidi);
+            slot.ownSeconds += juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - started);
             if (outs == 1 && buffer.getNumChannels() > 1)   // mono out: to both sides
                 juce::FloatVectorOperations::copy (buffer.getWritePointer (1), buffer.getReadPointer (0), numSamples);
         }
@@ -1231,7 +1233,9 @@ namespace pr7s
             for (int channel = 0; channel < track->buffer.getNumChannels(); ++channel)
                 juce::FloatVectorOperations::clear (track->buffer.getWritePointer (channel), numSamples);
             juce::AudioBuffer<float> played (track->buffer.getArrayOfWritePointers(), track->instrumentChannels, numSamples);
+            const auto started = juce::Time::getHighResolutionTicks();   // (0.57.4: the instrument's own time)
             track->instrument->processBlock (played, track->midi);
+            track->instrumentSeconds += juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - started);
             if (track->instrument->getTotalNumOutputChannels() == 1)   // a mono instrument: on both sides
                 juce::FloatVectorOperations::copy (track->buffer.getWritePointer (1), track->buffer.getReadPointer (0), numSamples);
         }
@@ -1390,8 +1394,16 @@ namespace pr7s
             return;   // the screen is swapping something in: one silent block
         }
         if (std::exchange (newCall, false))
+        {
+            for (auto& slot : masterInserts)
+                slot.ownSeconds = 0.0;
             for (auto& track : tracks)
-                track->ownSeconds = 0.0;
+            {
+                track->ownSeconds = track->instrumentSeconds = 0.0;
+                for (auto& slot : track->inserts)
+                    slot.ownSeconds = 0.0;
+            }
+        }
 
         // What's being played live this block: devices and the on-screen keyboard.
         live.clear();
@@ -2007,12 +2019,37 @@ namespace pr7s
                     {
                         for (auto k = juce::jmin (spike.numSlowest, SpikeReport::mostTracks - 1); k > at; --k)
                             spike.slowest[(size_t) k] = spike.slowest[(size_t) k - 1];
-                        spike.slowest[(size_t) at] = { track->id, ms, track->usualSeconds * 1000.0f };
+                        auto& slow = spike.slowest[(size_t) at];
+                        slow = { track->id, ms, track->usualSeconds * 1000.0f, {}, 0 };
                         spike.numSlowest = juce::jmin (spike.numSlowest + 1, SpikeReport::mostTracks);
+                        // Its plug-ins, slowest first among the few: the instrument, then each insert.
+                        const auto addPlugin = [&slow] (int slotIndex, double seconds, float usual)
+                        {
+                            const auto pms = (float) (seconds * 1000.0);
+                            auto place = slow.numPlugins;
+                            while (place > 0 && slow.plugins[(size_t) place - 1].ms < pms)
+                                --place;
+                            if (place >= SpikeReport::mostPlugins)
+                                return;
+                            for (auto k = juce::jmin (slow.numPlugins, SpikeReport::mostPlugins - 1); k > place; --k)
+                                slow.plugins[(size_t) k] = slow.plugins[(size_t) k - 1];
+                            slow.plugins[(size_t) place] = { slotIndex, pms, usual * 1000.0f };
+                            slow.numPlugins = juce::jmin (slow.numPlugins + 1, SpikeReport::mostPlugins);
+                        };
+                        if (track->instrument != nullptr)
+                            addPlugin (-1, track->instrumentSeconds, track->instrumentUsual);
+                        for (int i = 0; i < (int) track->inserts.size(); ++i)
+                            if (const auto& slot = track->inserts[(size_t) i]; slot.plugin != nullptr && ! slot.bypass)
+                                addPlugin (i, slot.ownSeconds, slot.usualSeconds);
                     }
                 }
                 if (! lockMissedThisCall)
+                {
                     track->usualSeconds = track->usualSeconds * 0.95f + (float) track->ownSeconds * 0.05f;
+                    track->instrumentUsual = track->instrumentUsual * 0.95f + (float) track->instrumentSeconds * 0.05f;
+                    for (auto& slot : track->inserts)
+                        slot.usualSeconds = slot.usualSeconds * 0.95f + (float) slot.ownSeconds * 0.05f;
+                }
             }
         if (fill)
         {
