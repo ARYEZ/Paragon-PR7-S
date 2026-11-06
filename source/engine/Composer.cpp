@@ -56,7 +56,8 @@ namespace pr7s
         const auto keyIndex = (int) std::distance (keys.begin(), std::find (keys.begin(), keys.end(), key));
         juce::StringArray lanesText;
         for (const auto& l : lanes)
-            lanesText.add (juce::String (l.on ? 1 : 0) + "," + juce::String (l.locked ? 1 : 0) + "," + juce::String (l.style) + "," + juce::String (l.variation));
+            lanesText.add (juce::String (l.on ? 1 : 0) + "," + juce::String (l.locked ? 1 : 0) + "," + juce::String (l.style) + "," + juce::String (l.variation)
+                           + "," + juce::String (l.busy, 2) + "," + juce::String (l.lowString ? 1 : 0));
         return juce::String (keyIndex) + "|" + genre + "|" + mood + "|" + juce::String (bars) + "|" + progression + "|"
              + (fromChordTrack ? "1" : "0") + "|" + (toChordTrack ? "1" : "0") + "|" + lanesText.joinIntoString (";");
     }
@@ -88,6 +89,11 @@ namespace pr7s
             l.locked = v[1] == "1";
             l.style = juce::jlimit (0, composerStyleCount (composerLayers()[(size_t) i]) - 1, v[2].getIntValue());
             l.variation = juce::jmax (0, v[3].getIntValue());
+            if (v.size() >= 6)
+            {
+                l.busy = juce::jlimit (0.0f, 1.0f, v[4].getFloatValue());
+                l.lowString = v[5] == "1";
+            }
         }
         return s;
     }
@@ -147,14 +153,29 @@ namespace pr7s
 
     namespace
     {
+        // A lane's take options: its seed (from the variation and the layer), BUSY, LOW STRING.
+        TakeOptions takeOf (const ComposerLane& lane, ComposerLayer l, int lowest, int highest)
+        {
+            TakeOptions o;
+            o.seed = (juce::uint32) (lane.variation * 7919 + (int) l * 131 + 1);
+            o.busy = lane.busy;
+            o.lowString = lane.lowString;
+            o.lowest = lowest;
+            o.highest = highest;
+            return o;
+        }
+
         LineIdea drumsOf (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c, int section,
                           const std::vector<double>& riffHits)
         {
             const auto& sections = drumSections();
             const auto which = sections[(size_t) juce::jlimit (0, (int) sections.size() - 1, section)];
-            const auto seed = (juce::uint32) (s.lane (ComposerLayer::drums).variation * 7919 + 1);
-            return c.drummer.has_value() ? generateBeat (*c.drummer, which, spans, c.beatsPerBar, c.drums, seed, riffHits)
-                                         : generateBeat (c.style, which, spans, c.beatsPerBar, c.drums, seed, riffHits);
+            const auto& lane = s.lane (ComposerLayer::drums);
+            const auto seed = (juce::uint32) (lane.variation * 7919 + 1);
+            auto drums = c.drums;
+            drums.density = lane.busy;   // (BUSY: the generator's density, 0.5 the style's own)
+            return c.drummer.has_value() ? generateBeat (*c.drummer, which, spans, c.beatsPerBar, drums, seed, riffHits)
+                                         : generateBeat (c.style, which, spans, c.beatsPerBar, drums, seed, riffHits);
         }
 
         LineIdea pick (std::vector<LineIdea> list, int style)
@@ -168,7 +189,11 @@ namespace pr7s
         LineIdea guitarOf (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
             const auto& lane = s.lane (ComposerLayer::guitar);
-            return pick (guitarRhythmIdeas (spans, c.beatsPerBar, lane.variation, c.tuning, c.velocities, c.style, c.riff), lane.style);
+            auto riff = c.riff;
+            riff.busyness = lane.busy;   // (BUSY: RIFF SETTINGS' busyness, 0.5 as written)
+            auto idea = pick (guitarRhythmIdeas (spans, c.beatsPerBar, lane.variation, c.tuning, c.velocities, c.style, riff), lane.style);
+            riffTake (idea, spans, c.beatsPerBar, takeOf (lane, ComposerLayer::guitar, c.tuning.lowest(), c.tuning.highest()), c.style);
+            return idea;
         }
 
         LineIdea rawLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
@@ -176,10 +201,20 @@ namespace pr7s
             const auto& lane = s.lane (l);
             switch (l)
             {
-                case ComposerLayer::chords: return pick (pianoChordIdeas (spans, c.beatsPerBar, lane.variation), lane.style);
-                case ComposerLayer::melody: return pick (composedMelodies (spans, c.beatsPerBar, c.melody, lane.variation), lane.style);
+                case ComposerLayer::chords: return pianoTake (lane.style, spans, c.beatsPerBar, takeOf (lane, l, 21, 108));
+                case ComposerLayer::melody:
+                {
+                    auto melody = c.melody;
+                    melody.density = lane.busy * 0.9f;   // (BUSY: the MELODY SETTINGS' density; 0.5: its default 0.45)
+                    return pick (composedMelodies (spans, c.beatsPerBar, melody, lane.variation), lane.style);
+                }
                 case ComposerLayer::guitar: return guitarOf (s, spans, c);
-                case ComposerLayer::lead: return pick (guitarLeadIdeas (spans, c.beatsPerBar, lane.variation, c.tuning, c.velocities, c.style), lane.style);
+                case ComposerLayer::lead:
+                {
+                    auto idea = pick (guitarLeadIdeas (spans, c.beatsPerBar, lane.variation, c.tuning, c.velocities, c.style), lane.style);
+                    thinTake (idea, c.beatsPerBar, takeOf (lane, l, 0, 127));
+                    return idea;
+                }
                 case ComposerLayer::drums:
                 {
                     const auto hits = c.drums.lockToRiff ? riffHits (guitarOf (s, spans, c)) : std::vector<double> {};
@@ -187,14 +222,19 @@ namespace pr7s
                 }
                 case ComposerLayer::bass:
                 {
+                    const auto lowest = c.bassTuning.lowest(), highest = bassTop (c.bassTuning);
                     if (lane.style >= 6)
                     {
                         // The seventh: the roots on the drums' kick (the drums lane's beat, heard or not).
                         const auto hits = c.drums.lockToRiff ? riffHits (guitarOf (s, spans, c)) : std::vector<double> {};
                         const auto beat = drumsOf (s, spans, c, s.lane (ComposerLayer::drums).style, hits);
-                        return bassOnHits (spans, kickHits (beat), "Locked to the kick", "The chords' roots on every kick of the drums' " + beat.style.toLowerCase());
+                        auto idea = bassOnHits (spans, kickHits (beat), "Locked to the kick", "The chords' roots on every kick of the drums' " + beat.style.toLowerCase());
+                        if (lane.lowString)
+                            keepInRange (idea, lowest, lowest + 12);
+                        keepInRange (idea, lowest, highest);
+                        return idea;
                     }
-                    return pick (bassIdeas (spans, c.beatsPerBar, lane.variation), lane.style);
+                    return bassTake (lane.style, spans, c.beatsPerBar, takeOf (lane, l, lowest, highest));
                 }
             }
             return {};
@@ -250,29 +290,12 @@ namespace pr7s
     //==========================================================================
     void rollLane (ComposerState& s, ComposerLayer l, juce::Random& random)
     {
+        // A new take, never the one it has (0.61.0: the style stays; the owner chooses it in the menu).
         auto& lane = s.lane (l);
-        const auto count = composerStyleCount (l);
-        if (count > 1)
-        {
-            auto next = random.nextInt (count - 1);   // another style: never the one it has
-            lane.style = next >= lane.style ? next + 1 : next;
-        }
-        lane.variation = random.nextInt (10000);
-        if (l == ComposerLayer::chords && ! s.fromChordTrack)
-        {
-            // Another progression, in the key's own mode when there are any (a minor key's minor ones).
-            auto found = composerProgressions (s);
-            const auto& library = progressionLibrary();
-            std::vector<int> own;
-            for (const auto i : found)
-                if (library[(size_t) i].minor == s.key.minor)
-                    own.push_back (i);
-            auto& from = own.empty() ? found : own;
-            const auto current = composerProgressionIndex (s);
-            from.erase (std::remove (from.begin(), from.end(), current), from.end());
-            if (! from.empty())
-                s.progression = library[(size_t) from[(size_t) random.nextInt ((int) from.size())]].name;
-        }
+        const auto old = lane.variation;
+        do
+            lane.variation = random.nextInt (10000);
+        while (lane.variation == old);
     }
 
     int generateComposer (ComposerState& s, juce::Random& random)

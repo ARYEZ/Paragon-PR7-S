@@ -336,6 +336,10 @@ namespace pr7s
         void setMelodySettings (const MelodySettings&);
         juce::String getGuitarTuning() const;
         void setGuitarTuning (const juce::String&);
+        // The bass's tuning (0.61.0: the composer's LOW STRING and the bass's range; settings key
+        // "bassTuning", default 4-string standard; engine/Takes.h's bassTunings).
+        juce::String getBassTuning() const;
+        void setBassTuning (const juce::String&);
         // The guitar ideas' velocities (0.19.3, the VELOCITIES panel; settings key "guitarVelocities").
         GuitarVelocities getGuitarVelocities() const;
         void setGuitarVelocities (const GuitarVelocities&);
@@ -1451,6 +1455,7 @@ namespace pr7s
         void takeRecordedChords (double from, double to, const std::vector<HeardNote>& played);
         DetectSettings detectSettings;
         juce::String guitarTuning;   // (without a settings file: the tests)
+        juce::String bassTuning;
         GuitarVelocities guitarVelocities;
         GuitarStyle guitarStyle = GuitarStyle::rock;   // (without a settings file)
         RiffSettings riffSettings;

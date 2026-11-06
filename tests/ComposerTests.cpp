@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <set>
+
 #include "engine/Studio.h"
 #include "engine/Composer.h"
 #include "engine/DrumIdeas.h"
@@ -153,18 +155,17 @@ TEST_CASE ("The composer's bass locked to the kick: a note on every kick of the 
     CHECK (layers2[(size_t) L::bass].notes != bass);
 }
 
-TEST_CASE ("ROLL and GENERATE: unlocked layers change, locked ones keep their style and variation (0.58.0)", "[composer]")
+TEST_CASE ("ROLL and GENERATE: a new take of the same style, the progression kept; locked layers kept (0.61.0)", "[composer]")
 {
     juce::Random random (42);
     ComposerState s;
     const auto before = s;
     rollLane (s, L::guitar, random);
-    CHECK (s.lane (L::guitar).style != before.lane (L::guitar).style);
-    // ROLL on the chords: another progression too.
+    CHECK (s.lane (L::guitar).style == before.lane (L::guitar).style);       // (the owner: the approach only from the menu)
+    CHECK (s.lane (L::guitar).variation != before.lane (L::guitar).variation);
     const auto progression = composerProgressionIndex (s);
     rollLane (s, L::chords, random);
-    CHECK (composerProgressionIndex (s) != progression);
-    CHECK (progressionLibrary()[(size_t) composerProgressionIndex (s)].minor == s.key.minor);   // (the key's own mode)
+    CHECK (composerProgressionIndex (s) == progression);
 
     // Locked: kept through GENERATE.
     s.lane (L::bass).locked = true;
@@ -178,6 +179,7 @@ TEST_CASE ("ROLL and GENERATE: unlocked layers change, locked ones keep their st
     CHECK (s.lane (L::bass) == lockedBass);
     CHECK (s.progression == keptProgression);
     CHECK_FALSE (s.lane (L::drums) == drumsBefore);
+    CHECK (s.lane (L::drums).style == drumsBefore.style);
     // The chords locked too: the bass's notes exactly as they were... unless it's on the kick and the drums changed.
     if (lockedBass.style < 6)
         CHECK (composeLayers (s, composerSpans (s, 0.0, 4.0), c)[(size_t) L::bass].notes == bassBefore);
@@ -358,4 +360,183 @@ TEST_CASE ("Snapshot: the composer (0.58.0)", "[.][snapshot-composer]")
         juce::PNGImageFormat().writeImageToStream (image, out);
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+TEST_CASE ("Takes: every ROLL of a bass or piano approach a different part, still that approach (0.61.0)", "[composer][takes]")
+{
+    ComposerState s;
+    s.bars = 8;
+    const auto c = plainContext();
+    const auto spans = composerSpans (s, 0.0, c.beatsPerBar);
+    REQUIRE_FALSE (spans.empty());
+    const auto origin = spans.front().start;
+    const auto spanAt = [&] (double beat) -> const ChordSpan&
+    {
+        for (const auto& sp : spans)
+            if (beat + origin < sp.end - 1.0e-9)
+                return sp;
+        return spans.back();
+    };
+    for (const auto layer : { L::bass, L::chords })
+        for (int style = 0; style < 6; ++style)
+        {
+            INFO (composerLayerName (layer) << " style " << style);
+            std::vector<std::vector<LineNote>> seen;
+            auto t = s;
+            t.lane (layer).style = style;
+            juce::Random random (7);
+            for (int roll = 0; roll < 10; ++roll)
+            {
+                rollLane (t, layer, random);
+                const auto idea = composeLayers (t, spans, c)[(size_t) layer];
+                REQUIRE_FALSE (idea.notes.empty());
+                CHECK (idea.style == composerChoices (layer, s, spans, c)[(size_t) style].style);   // (the approach's name)
+                if (std::find (seen.begin(), seen.end(), idea.notes) == seen.end())
+                    seen.push_back (idea.notes);
+                // Every chord's first beat: the bass on its root (or slash bass).
+                if (layer == L::bass)
+                    for (const auto& n : idea.notes)
+                        for (const auto& sp : spans)
+                            if (std::abs (n.beat - (sp.start - origin)) < 1.0e-6)
+                                CHECK (n.pitch % 12 == (sp.chord.bass >= 0 ? sp.chord.bass : sp.chord.root) % 12);
+                // Root and fifth: only the root, fifth and octave (and a note leading in at a chord's end).
+                if (layer == L::bass && style == 1)
+                    for (const auto& n : idea.notes)
+                    {
+                        const auto& sp = spanAt (n.beat);
+                        const auto interval = ((n.pitch - sp.chord.root) % 12 + 12) % 12;
+                        const auto endsChord = n.beat + n.length >= sp.end - origin - 1.1;
+                        CHECK ((interval == 0 || interval == 7 || interval == 6 || interval == 8 || endsChord));
+                    }
+            }
+            CHECK (seen.size() >= 7);   // (ten rolls: almost all different)
+        }
+}
+
+TEST_CASE ("BUSY: sparse takes have fewer notes, busy ones more; ROLL keeps it (0.61.0)", "[composer][takes]")
+{
+    ComposerState s;
+    const auto c = plainContext();
+    const auto spans = composerSpans (s, 0.0, c.beatsPerBar);
+    for (const auto layer : { L::bass, L::chords, L::guitar, L::melody, L::drums })
+        for (int style = 0; style < 6; ++style)
+        {
+            INFO (composerLayerName (layer) << " style " << style);
+            if (layer == L::drums && style != 1)
+                break;
+            auto count = [&] (float busy)
+            {
+                size_t total = 0;
+                for (int v = 0; v < 6; ++v)
+                {
+                    auto t = s;
+                    t.lane (layer).style = style;
+                    t.lane (layer).variation = v * 37 + 3;
+                    t.lane (layer).busy = busy;
+                    std::set<double> onsets;
+                    const auto layers = composeLayers (t, spans, c);
+                    for (const auto& n : layers[(size_t) layer].notes)
+                        if (layer != L::drums || n.pitch == 35 || n.pitch == 36)   // (the drums: BUSY is the kicks' density)
+                            onsets.insert (std::round (n.beat * 960.0));
+                    total += onsets.size();
+                }
+                return total;
+            };
+            const auto sparse = count (0.0f), usual = count (0.5f), busy = count (1.0f);
+            CHECK (sparse <= usual);
+            CHECK (usual <= busy);
+            CHECK (sparse < busy);
+        }
+    juce::Random random (3);
+    auto t = s;
+    t.lane (L::bass).busy = 0.8f;
+    rollLane (t, L::bass, random);
+    CHECK (t.lane (L::bass).busy == 0.8f);
+    // Kept in the saved state.
+    t.lane (L::guitar).lowString = true;
+    const auto back = ComposerState::fromString (t.toString());
+    CHECK (back.lane (L::bass).busy == 0.8f);
+    CHECK (back.lane (L::guitar).lowString);
+    CHECK (back == t);
+}
+
+TEST_CASE ("LOW STRING: the bass's roots on its lowest string, within its tuning's range (0.61.0)", "[composer][takes]")
+{
+    ComposerState s;
+    auto c = plainContext();
+    c.bassTuning = bassTuningNamed ("5-string drop A");
+    const auto spans = composerSpans (s, 0.0, c.beatsPerBar);
+    const auto lowest = c.bassTuning.lowest();
+    for (int style = 0; style < 6; ++style)
+    {
+        INFO ("style " << style);
+        auto t = s;
+        t.lane (L::bass).style = style;
+        t.lane (L::bass).lowString = true;
+        t.lane (L::bass).variation = 11 + style;
+        const auto idea = composeLayers (t, spans, c)[(size_t) L::bass];
+        REQUIRE_FALSE (idea.notes.empty());
+        auto onLow = 0;
+        for (const auto& n : idea.notes)
+        {
+            CHECK (n.pitch >= lowest);
+            CHECK (n.pitch <= bassTop (c.bassTuning));
+            if (n.pitch <= lowest + 12)
+                ++onLow;
+        }
+        CHECK (onLow * 10 >= (int) idea.notes.size() * (style == 3 ? 4 : 8));   // (octaves: the high notes leave it)
+        // Every chord's first note on the low string.
+        for (const auto& sp : spans)
+            for (const auto& n : idea.notes)
+                if (std::abs (n.beat - (sp.start - spans.front().start)) < 1.0e-6)
+                    CHECK (n.pitch <= lowest + 12);
+    }
+    // Off: never below the tuning's lowest either.
+    auto t = s;
+    for (int style = 0; style < 7; ++style)
+    {
+        t.lane (L::bass).style = style;
+        const auto layers = composeLayers (t, spans, c);
+        for (const auto& n : layers[(size_t) L::bass].notes)
+        {
+            INFO ("style " << style << " beat " << n.beat << " length " << n.length << " velocity " << n.velocity);
+            CHECK (n.pitch >= lowest);
+        }
+    }
+    // The guitar: its riff folded onto the low string.
+    auto g = s;
+    g.lane (L::guitar).lowString = true;
+    const auto guitarLayers = composeLayers (g, spans, c);
+    for (const auto& n : guitarLayers[(size_t) L::guitar].notes)
+        if (n.velocity * 127.0f < 119.5f)
+        {
+            INFO ("beat " << n.beat << " length " << n.length << " velocity " << n.velocity);
+            CHECK (n.pitch >= c.tuning.lowest());
+        }
+}
+
+TEST_CASE ("The composer page: ROLL keeps the style, BUSY and LOW STRING keys (0.61.0)", "[composer][ui]")
+{
+    Studio studio (false);
+    ComposerPage page (studio);
+    page.setRandomSeed (5);
+    page.setStyle (L::bass, 2);
+    const auto before = page.getIdea (L::bass).notes;
+    page.roll (L::bass);
+    CHECK (page.getState().lane (L::bass).style == 2);
+    CHECK (page.getIdea (L::bass).style == "Driving eighths");
+    CHECK (page.getIdea (L::bass).notes != before);
+    page.setBusy (L::bass, 1.0f);
+    REQUIRE (page.keyNamed ("BASS BUSY") != nullptr);
+    CHECK (page.keyNamed ("BASS BUSY")->getButtonText() == "BUSY 100%");
+    page.setLowString (L::bass, true);
+    CHECK (page.keyNamed ("BASS LOW")->getToggleState());
+    CHECK (page.keyNamed ("BASS LOW")->isVisible());
+    CHECK_FALSE (page.keyNamed ("DRUMS LOW")->isVisible());
+    page.setLowString (L::drums, true);
+    CHECK_FALSE (page.getState().lane (L::drums).lowString);
+    page.setTuning (L::bass, "5-string drop A");
+    CHECK (studio.getBassTuning() == "5-string drop A");
+    for (const auto& n : page.getIdea (L::bass).notes)
+        CHECK (n.pitch >= 21);
 }

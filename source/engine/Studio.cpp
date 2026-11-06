@@ -9589,6 +9589,7 @@ namespace pr7s
         ComposerContext c;
         c.beatsPerBar = project.beatsPerBarAt (atBeat);
         c.tuning = GuitarTuning::named (getGuitarTuning());
+        c.bassTuning = bassTuningNamed (getBassTuning());
         c.velocities = getGuitarVelocities();
         c.style = getGuitarStyle();
         c.riff = getRiffSettings();
@@ -9968,6 +9969,19 @@ namespace pr7s
         melodySettings = m.limited();
         if (settings != nullptr)
             settings->setValue ("melodySettings", melodySettings.toString());
+    }
+
+    juce::String Studio::getBassTuning() const
+    {
+        const auto name = settings != nullptr ? settings->getValue ("bassTuning") : bassTuning;
+        return bassTuningNamed (name).name;
+    }
+
+    void Studio::setBassTuning (const juce::String& name)
+    {
+        bassTuning = bassTuningNamed (name).name;
+        if (settings != nullptr)
+            settings->setValue ("bassTuning", bassTuning);
     }
 
     void Studio::setGuitarTuning (const juce::String& name)

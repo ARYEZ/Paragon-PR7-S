@@ -43,7 +43,7 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
         pedal (*key, key == &useKey);
         addAndMakeVisible (*key);
     }
-    generateKey.setTooltip ("Every layer that isn't locked rolled at once: new chords (from the library), a new style and new choices for each");
+    generateKey.setTooltip ("A new take of every layer that isn't locked, at once: the same styles and progression, new rhythms and notes");
     hearKey.setTooltip ("All the layers that are on, together and looped, through the song's own tracks (those tracks alone). The song isn't changed. Space stops it too.");
     useKey.setTooltip ("The layers that are on onto their tracks at the playhead's bar (one undo step); the chords onto the chord track too");
     generateKey.onClick = [this] { generate(); };
@@ -92,7 +92,7 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
             addAndMakeVisible (*box);
     }
     pedal (progressionKey, true);
-    progressionKey.setTooltip ("The progression: the library's that pass KEY, GENRE and MOOD (ROLL on CHORDS, or GENERATE, picks another)");
+    progressionKey.setTooltip ("The progression: the library's that pass KEY, GENRE and MOOD (ROLL and GENERATE keep it: choose another here)");
     progressionKey.onClick = [this] { showProgressionMenu(); };
     addAndMakeVisible (progressionKey);
     for (auto* key : { &libraryKey, &chordTrackKey, &toChordTrackKey })
@@ -111,21 +111,26 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
     for (const auto l : pr7s::composerLayers())
     {
         auto& lane = lanes[(size_t) l];
-        for (auto* key : { &lane.on, &lane.lock, &lane.roll, &lane.style, &lane.track })
+        for (auto* key : { &lane.on, &lane.lock, &lane.roll, &lane.style, &lane.track, &lane.busy, &lane.low })
         {
-            pedal (*key, key == &lane.style || key == &lane.track);
-            addAndMakeVisible (*key);
+            pedal (*key, key == &lane.style || key == &lane.track || key == &lane.busy || key == &lane.low);
+            if (key != &lane.low || pr7s::hasLowString (l))
+                addAndMakeVisible (*key);
         }
         lane.on.setTooltip ("Lit: heard and used. Off: left out (still made, shown dimmed)");
         lane.lock.setTooltip ("Lit: kept through GENERATE (and ROLL on the others). Locked with the chords, its notes stay exactly as they are");
-        lane.roll.setTooltip ("Another style and other choices for this layer alone" + juce::String (l == ComposerLayer::chords ? " (and another progression)" : ""));
-        lane.style.setTooltip ("Which of the layer's styles (IDEAS' own)");
+        lane.roll.setTooltip ("A new take of this style: another rhythm and other notes, the same approach (choose the approach in the menu beside it)");
+        lane.style.setTooltip ("Which of the layer's styles: the approach (ROLL keeps it)");
+        lane.busy.setTooltip ("How busy its takes are: sparse, as the approach usually goes (50%), or busy. ROLL keeps it");
+        lane.low.setTooltip ("Lit: played on the lowest string as much as it can be (the open string to its 12th fret). The menu also has the tuning");
         lane.track.setTooltip ("The track it plays on and is written to (automatic: the track named for it, else a new one when used)");
         lane.on.onClick = [this, l] { setOn (l, ! state.lane (l).on); };
         lane.lock.onClick = [this, l] { setLocked (l, ! state.lane (l).locked); };
         lane.roll.onClick = [this, l] { roll (l); };
         lane.style.onClick = [this, l] { showStyleMenu (l); };
         lane.track.onClick = [this, l] { showTrackMenu (l); };
+        lane.busy.onClick = [this, l] { showBusyMenu (l); };
+        lane.low.onClick = [this, l] { showLowMenu (l); };
     }
 
     setSize (1500, 900);
@@ -185,6 +190,8 @@ void ComposerPage::refresh (bool rehear)
         lane.lock.setToggleState (s.locked, juce::dontSendNotification);
         lane.style.setButtonText (ideas[(size_t) l].style.isEmpty() ? juce::String ("STYLE") : ideas[(size_t) l].style.toUpperCase());
         lane.track.setButtonText (trackText (l));
+        lane.busy.setButtonText ("BUSY " + juce::String (juce::roundToInt (s.busy * 100.0f)) + "%");
+        lane.low.setToggleState (s.lowString, juce::dontSendNotification);
     }
     seenChange = studio.getChangeVersion();
 
@@ -222,15 +229,80 @@ std::vector<pr7s::ChordSpan> ComposerPage::placedSpans() const
 void ComposerPage::generate()
 {
     pr7s::generateComposer (state, random);
-    status = "Generated: every layer not locked rolled";
+    status = "Generated: a new take of every layer not locked";
     refresh();
 }
 
 void ComposerPage::roll (ComposerLayer l)
 {
     pr7s::rollLane (state, l, random);
-    status = pr7s::composerLayerName (l) + " rolled";
+    status = pr7s::composerLayerName (l) + ": a new take";
     refresh();
+}
+
+void ComposerPage::setBusy (ComposerLayer l, float busy)
+{
+    state.lane (l).busy = juce::jlimit (0.0f, 1.0f, busy);
+    refresh();
+}
+
+void ComposerPage::setLowString (ComposerLayer l, bool on)
+{
+    if (! pr7s::hasLowString (l))
+        return;
+    state.lane (l).lowString = on;
+    refresh();
+}
+
+void ComposerPage::setTuning (ComposerLayer l, const juce::String& name)
+{
+    if (l == ComposerLayer::bass)
+        studio.setBassTuning (name);
+    else if (l == ComposerLayer::guitar)
+        studio.setGuitarTuning (name);
+    refresh();
+}
+
+void ComposerPage::showBusyMenu (ComposerLayer l)
+{
+    juce::PopupMenu menu;
+    const auto current = juce::roundToInt (state.lane (l).busy * 100.0f);
+    const std::pair<int, const char*> choices[] = { { 0, "0%: sparse" }, { 15, "15%" }, { 30, "30%" }, { 50, "50%: as the approach usually goes" },
+                                                     { 65, "65%" }, { 80, "80%" }, { 100, "100%: busy" } };
+    for (const auto& c : choices)
+        menu.addItem (c.first + 1, c.second, true, c.first == current);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (lanes[(size_t) l].busy),
+                        [safe = juce::Component::SafePointer<ComposerPage> (this), l] (int chosen)
+                        {
+                            if (safe != nullptr && chosen > 0)
+                                safe->setBusy (l, (float) (chosen - 1) / 100.0f);
+                        });
+}
+
+void ComposerPage::showLowMenu (ComposerLayer l)
+{
+    juce::PopupMenu menu;
+    menu.addItem (1, "Play on the lowest string as much as it can", true, state.lane (l).lowString);
+    menu.addSeparator();
+    const auto& tunings = l == ComposerLayer::bass ? pr7s::bassTunings() : pr7s::GuitarTuning::all();
+    const auto current = l == ComposerLayer::bass ? studio.getBassTuning() : studio.getGuitarTuning();
+    menu.addSectionHeader (l == ComposerLayer::bass ? "BASS TUNING" : "GUITAR TUNING");
+    for (size_t i = 0; i < tunings.size(); ++i)
+        menu.addItem (100 + (int) i, tunings[i].name, true, tunings[i].name == current);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (lanes[(size_t) l].low),
+                        [safe = juce::Component::SafePointer<ComposerPage> (this), l] (int chosen)
+                        {
+                            if (safe == nullptr || chosen == 0)
+                                return;
+                            if (chosen == 1)
+                                safe->setLowString (l, ! safe->state.lane (l).lowString);
+                            else
+                            {
+                                const auto& list = l == ComposerLayer::bass ? pr7s::bassTunings() : pr7s::GuitarTuning::all();
+                                if (juce::isPositiveAndBelow (chosen - 100, (int) list.size()))
+                                    safe->setTuning (l, list[(size_t) chosen - 100].name);
+                            }
+                        });
 }
 
 void ComposerPage::setLocked (ComposerLayer l, bool on)
@@ -431,6 +503,8 @@ juce::Button* ComposerPage::keyNamed (const juce::String& name)
         if (name == prefix + "ROLL") return &lane.roll;
         if (name == prefix + "STYLE") return &lane.style;
         if (name == prefix + "TRACK") return &lane.track;
+        if (name == prefix + "BUSY") return &lane.busy;
+        if (name == prefix + "LOW") return &lane.low;
     }
     return nullptr;
 }
@@ -538,7 +612,7 @@ void ComposerPage::showLaneMenu (ComposerLayer l)
 {
     const auto& s = state.lane (l);
     juce::PopupMenu menu;
-    menu.addItem (1, "Roll");
+    menu.addItem (1, "Roll (a New Take)");
     menu.addItem (2, s.locked ? "Unlock" : "Lock");
     menu.addItem (3, s.on ? "Switch Off" : "Switch On");
     menu.addSeparator();
@@ -844,18 +918,35 @@ void ComposerPage::resized()
         first.removeFromLeft (6);
         lane.roll.setBounds (first.removeFromLeft (64));
         first.removeFromLeft (6);
+        const auto low = pr7s::hasLowString (l);
         if (two)
         {
             lane.style.setBounds (first);
             keys.removeFromTop (6);
-            lane.track.setBounds (keys.removeFromTop (26));
+            auto second = keys.removeFromTop (26);
+            if (low)
+            {
+                lane.low.setBounds (second.removeFromRight (104));
+                second.removeFromRight (6);
+            }
+            lane.busy.setBounds (second.removeFromRight (96));
+            second.removeFromRight (6);
+            lane.track.setBounds (second);
         }
         else
         {
             auto rest = first;
-            lane.style.setBounds (rest.removeFromLeft (rest.getWidth() / 2 - 3));
+            const auto each = (rest.getWidth() - (low ? 18 : 12)) / (low ? 4 : 3);
+            lane.style.setBounds (rest.removeFromLeft (each));
             rest.removeFromLeft (6);
-            lane.track.setBounds (rest);
+            lane.track.setBounds (rest.removeFromLeft (each));
+            rest.removeFromLeft (6);
+            lane.busy.setBounds (rest.removeFromLeft (each));
+            if (low)
+            {
+                rest.removeFromLeft (6);
+                lane.low.setBounds (rest);
+            }
         }
     }
 }

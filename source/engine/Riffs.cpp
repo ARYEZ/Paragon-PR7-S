@@ -780,10 +780,16 @@ namespace pr7s
         };
         // (MORE IDEAS: the odd variations turn every line the other way: up for down.)
         const auto flip = variation % 2 == 1 ? -1 : 1;
+        // (0.61.0: the composer's takes, every two variations another: where in its moves a line
+        // starts, the two rhythms swapped, and a start a few steps higher or lower.)
+        const auto take = variation / 2;
         for (const auto& def : leadsOf (style))
         {
             LineIdea idea { LineIdea::Part::lead, def.name, def.description, {} };
             auto prev = def.startHigh ? high - 5 : centre;
+            if (take > 0)
+                prev = juce::jlimit (low, high, prev + ((take / 3) % 5 - 2) * 2);
+            const auto swapRhythms = take > 0 && (take / 2) % 2 == 1 && def.rhythmB != nullptr;
             auto bounce = 1;        // -1 once a line has turned round at the range's edge
             auto turned = false;
             for (const auto& b : barsList)
@@ -792,14 +798,14 @@ namespace pr7s
                 const auto scale = scaleFor (def.scale, s);
                 const auto keyScale = s.key.scale();
                 const std::vector<int> keyNotes (keyScale.begin(), keyScale.end());
-                const char* rhythm = def.rhythmB != nullptr && b.index % 2 == 1 ? def.rhythmB : def.rhythm;
+                const char* rhythm = def.rhythmB != nullptr && (b.index % 2 == 1) != swapRhythms ? def.rhythmB : def.rhythm;
                 const auto steps = (int) std::strlen (rhythm);
                 if (steps == 0)
                     continue;
                 const auto step = beatsPerBar / steps;
                 auto cur = prev, pedal = prev;
                 auto first = true;
-                size_t moveIndex = 0;
+                size_t moveIndex = def.moves.empty() ? 0 : (size_t) take % def.moves.size();
                 for (auto i = 0; i < steps; ++i)
                 {
                     const auto ch = rhythm[i];

@@ -11,7 +11,9 @@
 //               and drums' style), CHORDS FROM: LIBRARY | CHORD TRACK, + CHORD TRACK; HEAR, USE ALL,
 //               GENERATE (every unlocked layer rolled).
 //   lanes       CHORDS, MELODY, BASS, GUITAR, LEAD, DRUMS stacked over the same bars: each with ON (heard
-//               and used), LOCK, ROLL, its style (a menu of the six), the track it plays on, and its notes.
+//               and used), LOCK, ROLL (0.61.0: a new take of the same style), its style (a menu of the six:
+//               the only way the approach changes), the track it plays on, BUSY, LOW STRING (bass, guitar:
+//               with the tuning) and its notes.
 //   HEAR        every lane that's on, together and looped, through the song's own tracks (each lane's
 //               track: chosen in its TRACK menu, else the one named for it, Bass, Drums..., else the
 //               selected track; the drums only on a track of their own), those tracks alone, from the
@@ -53,6 +55,9 @@ public:
     void setFromChordTrack (bool);
     void setToChordTrack (bool);
     void setTrack (pr7s::ComposerLayer, int trackId);   // 0: automatic (the one named for it, else new)
+    void setBusy (pr7s::ComposerLayer, float);           // (0.61.0) 0 sparse .. 0.5 as usual .. 1 busy
+    void setLowString (pr7s::ComposerLayer, bool);       // (0.61.0) bass and guitar
+    void setTuning (pr7s::ComposerLayer, const juce::String& name);   // the bass's or the guitar's
     int trackFor (pr7s::ComposerLayer, bool hearing) const;   // (0: a new track when used / not heard)
     bool hear();                             // false: nothing to play them on
     void stop();
@@ -69,12 +74,12 @@ public:
     juce::Button* keyNamed (const juce::String&);   // header keys by their text, lanes' as "<LAYER> ON/LOCK/ROLL"
     void setRandomSeed (juce::int64 seed) { random.setSeed (seed); }
 
-    static constexpr int headerHeight = 64, controlsHeight = 44, rulerHeight = 30, laneHeaderWidth = 360, gap = 12;
+    static constexpr int headerHeight = 64, controlsHeight = 44, rulerHeight = 30, laneHeaderWidth = 420, gap = 12;
 
 private:
     struct Lane
     {
-        juce::TextButton on { "ON" }, lock { "LOCK" }, roll { "ROLL" }, style, track;
+        juce::TextButton on { "ON" }, lock { "LOCK" }, roll { "ROLL" }, style, track, busy, low { "LOW STRING" };
         juce::Rectangle<int> header, notes;
     };
 
@@ -85,6 +90,8 @@ private:
     void showProgressionMenu();
     void showUseMenu();
     void showLaneMenu (pr7s::ComposerLayer);
+    void showBusyMenu (pr7s::ComposerLayer);
+    void showLowMenu (pr7s::ComposerLayer);
     std::vector<pr7s::ChordSpan> placedSpans() const;
     juce::String trackText (pr7s::ComposerLayer) const;
     juce::String summary() const;

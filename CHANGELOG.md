@@ -2,6 +2,15 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.61.0
+
+- **The composer's ROLL makes a new take and keeps the approach** (you asked). On BASS with Root and fifth chosen, ROLL now plays another Root and fifth part over the same chords: another rhythm, other notes between the roots, other lead-ins into the next chord. The approach only changes when you choose it in the menu beside ROLL. GENERATE does the same for every unlocked lane, and both keep the PROGRESSION too (choose another in its menu).
+  - **Why the bass and the chords were rebuilt:** IDEAS' bass and piano parts had only one to six written versions of each approach, so rolling kept landing on the same riffs. In the composer they're now made from rules per approach (where its notes may fall in a bar, which notes it may use, how it gets to the next chord), and each roll draws a new part within them. Parts repeat like a player's would: a bar, the same bar or a small change of it, the bar again, and a fill leading into the next phrase. In our tests ten rolls of every approach gave at least seven different parts, and every chord's first bass note stays on its root.
+  - **Guitar, lead, melody and drums:** melody, rock leads and drums already drew new parts per roll. Rhythm guitar now also changes a few hits per take (a root moved to its octave or fifth, or in the metal styles to the flat second or minor third, and an accent turned palm muted or open), at the same places in every bar so the riff still repeats. The other styles' leads start somewhere else in their line, higher or lower, and swap their two rhythms.
+- **BUSY on every lane:** from sparse to busy, kept when you roll. 50% is the approach as it usually goes. On the bass and chords it sets how many notes each bar draws. On the guitar it's RIFF SETTINGS' busyness, on the melody its density and on the drums the generator's density (the kicks).
+- **LOW STRING on the bass and guitar lanes:** played on the lowest string as much as it can be (from the open string to the 12th fret). On the bass the roots go there and fifths go under the root where they fit. Only the Octaves approach's high notes leave the low string, because they are the approach. The key's menu also holds the tuning. **The bass now has a tuning of its own:** 4-string standard, 5-string standard, 4-string drop D, 4-string drop C, 5-string drop A or 6-string. It sets the bass's range (the lowest string to two octaves over it), so nothing is written below your bass's lowest note.
+- **Not yet (0.62.0, as planned):** the Hub's INSTRUMENTS profiles (each instrument's range, tuning, velocity layers and keyswitches), and a riff played on one chosen string through keyswitches. Those wait for Djinn Bass 2's keyswitch list.
+
 ## 0.60.0
 
 - **Routing with no limits but loops, as the other DAW's** (you asked: any track to any track, never itself). Any track that makes sound (audio, instrument, group channel, FX channel, a folder with its group channel) can now have its output go to the master, **any group channel, or any FX channel**. Groups into FX channels, FX channels into groups, and FX channels into other FX channels all work.

@@ -6,6 +6,7 @@
 #include "engine/Riffs.h"
 #include "engine/DrumGenerator.h"
 #include "engine/DrumLearning.h"
+#include "engine/Takes.h"
 
 #include <array>
 #include <optional>
@@ -22,7 +23,8 @@
 //                (its `style`: which of them; its `variation`: IDEAS' MORE IDEAS count). The bass has a
 //                seventh style, locked to the drums' kick; the drums' six styles are the generator's
 //                six sections (intro to ending), by the guitar STYLE (or the learned DRUMMER).
-//   ROLL         a layer gets another style and variation (the chords: another progression too).
+//   ROLL         a new take of the layer's style (0.61.0; before: another style and progression).
+//   BUSY         per lane, sparse to busy (0.61.0); LOW STRING on bass and guitar.
 //   LOCK         a locked layer keeps its style and variation through GENERATE and ROLL. With the chords
 //                locked too its notes stay exactly as they are; when the chords change, a locked layer
 //                plays the same idea over the new chords (it can't keep notes that no longer fit).
@@ -40,7 +42,9 @@ namespace pr7s
     {
         bool on = true, locked = false;
         int style = 0;        // which of the layer's ideas
-        int variation = 0;    // as IDEAS' MORE IDEAS
+        int variation = 0;    // the take (0.61.0: ROLL draws another; engine/Takes.h)
+        float busy = 0.5f;    // BUSY (0.61.0): 0 sparse .. 0.5 the approach as usual .. 1 busy
+        bool lowString = false;   // LOW STRING (0.61.0: bass and guitar)
         bool operator== (const ComposerLane&) const = default;
     };
 
@@ -67,6 +71,7 @@ namespace pr7s
     {
         double beatsPerBar = 4.0;
         GuitarTuning tuning = GuitarTuning::all().front();
+        GuitarTuning bassTuning = bassTunings().front();   // (0.61.0: LOW STRING and the bass's range)
         GuitarVelocities velocities;
         GuitarStyle style {};
         RiffSettings riff;
@@ -94,9 +99,11 @@ namespace pr7s
     // Every layer's idea, the lanes switched off too (shown dimmed), humanized as IDEAS' HUMANIZE.
     std::array<LineIdea, composerLayerCount> composeLayers (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
 
-    // ROLL: another style and variation (never the same style when there are others); the chords also
-    // another progression (when they're the library's and others pass). Locked or not: the caller decides.
+    // ROLL (0.61.0, the owner's rule: the approach is chosen only in the style menu): a new take of the
+    // same style (another variation); the chords keep their progression. Locked or not: the caller decides.
     void rollLane (ComposerState&, ComposerLayer, juce::Random&);
-    // GENERATE: every unlocked lane rolled. Returns how many were.
+    // Whether a layer has LOW STRING (the bass and the guitar).
+    inline bool hasLowString (ComposerLayer l) { return l == ComposerLayer::bass || l == ComposerLayer::guitar; }
+    // GENERATE: every unlocked lane rolled (new takes, the same styles). Returns how many were.
     int generateComposer (ComposerState&, juce::Random&);
 }
