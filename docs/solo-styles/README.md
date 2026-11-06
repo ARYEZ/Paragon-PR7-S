@@ -32,3 +32,19 @@ Round 1: [Gilmour](gilmour.md), [Joe Perry](joe-perry.md), [Eddie Van Halen](edd
 | Signature | space, held notes, building arc, returning motif | swing, slides in, 6th double stops, loose | tapping, legato, harmonics (tapped 12/7/5/4 frets up), whammy: scoops, dips, dives, whinny | repeated licks, displacement, a repeated bend into a pull-off climax |
 
 Numbers marked [I] in the sheets are starting points to tune by ear. Round 1 was first researched from search summaries, then revised from the full articles (the environment now allows the lesson sites).
+
+Round 2: [Dimebag Darrell](dimebag-darrell.md), [Kirk Hammett](kirk-hammett.md), [Zakk Wylde](zakk-wylde.md), [John Petrucci](john-petrucci.md) (researched from the full articles: 16-21 sources each, several of them the players' own columns).
+
+## Round 2 side by side
+
+| | Dimebag | Hammett | Wylde | Petrucci |
+|---|---|---|---|---|
+| Notes | minor pent. / blues + major 3rd, major 6th, b5; chromatic moves anywhere ("no rules") | minor pent. home, b5 targets, "bluesier" now; harmonic minor / Phrygian colour sparingly | minor pent. + b5 by design (he crossed out exotic scales); major pent. on Southern/ballad parts; rare chromatic passing notes | diatonic modes (natural minor, Mixolydian), harmonic minor, diminished; seventh-chord arpeggios, stacked triads; a bluesy side for contrast |
+| Density | melodic start, bursts of 16ths/sextuplets [I numbers] | 4-8 bar melodic opening, then repeated-lick bursts [I numbers] | 3-8 a bar melodic, 16-24 in bursts [I] | 3-6 a bar singing, 16ths/sextuplets/16th triplets in bursts |
+| Phrases | a motif repeated an octave up/down; a lick moved a fret at a time; symmetrical runs | a short lick repeated 4-8 times; a three-beat lick drifting across the bar; the opening idea back at the end | melody, then "the afterburners near the end"; beginning, middle, end | composed to the song's story, "big curves" to a climax, ideas from the song's melody, never repeating himself |
+| Rhythm | eight-note cells in a 16th-triplet feel, shifting against the beat | picked triplets/sextuplets; enters on an upbeat; plays through the bar line | six-note descending groups as 16ths (drifting) or sextuplets (on the beat) | six-note cells two steps apart; groups of 5 and 7; phrases ending off the one |
+| Bends | "Texas" half step from below, slow; wide multi-finger bends; unison, double stops | expressive, bend and release, a semitone on a double stop [sizes I] | varied speeds ("shades of the bend"); bend and tap | slow, perfectly in tune (the melodic gear) |
+| Vibrato | aggressive; whammy vibrato on harmonics | wide, consistent | very wide (a tone; a minor 3rd on pinches), at full width at once, on every phrase end | a repeated bend up and back |
+| Signature | harmonic screams (bar dumped, pulled up), dive bombs, pinch harmonics at the end | pentatonic speed, repeated licks, trills, wah (out of scope), ends "dripping up high" | pinch-harmonic squeals in every gap, alternate-picked pentatonic boxes linked by slides, no whammy | alternate-picked runs, sweeps, legato, odd groupings, something "outside" at the climax |
+
+Names for the app (ours): to be agreed with the owner before the engine work.
