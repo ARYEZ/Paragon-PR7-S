@@ -81,7 +81,8 @@ namespace pr7s
             if (k.forcesString != 0)
                 e->setAttribute ("string", k.forcesString);
             if (k.use != Keyswitch::Use::none)
-                e->setAttribute ("use", k.use == Keyswitch::Use::powerChords ? "powerChords" : "singleNotes");
+                e->setAttribute ("use", k.use == Keyswitch::Use::powerChords ? "powerChords" : k.use == Keyswitch::Use::singleNotes ? "singleNotes"
+                                        : k.use == Keyswitch::Use::tapping ? "tapping" : k.use == Keyswitch::Use::tremolo ? "tremolo" : "harmonics");
         }
         return xml;
     }
@@ -116,7 +117,9 @@ namespace pr7s
             Keyswitch k { e->getStringAttribute ("name"), juce::jlimit (0, 127, e->getIntAttribute ("note")),
                           juce::jmax (-1, e->getIntAttribute ("string")) };
             const auto use = e->getStringAttribute ("use");
-            k.use = use == "powerChords" ? Keyswitch::Use::powerChords : use == "singleNotes" ? Keyswitch::Use::singleNotes : Keyswitch::Use::none;
+            k.use = use == "powerChords" ? Keyswitch::Use::powerChords : use == "singleNotes" ? Keyswitch::Use::singleNotes
+                  : use == "tapping" ? Keyswitch::Use::tapping : use == "tremolo" ? Keyswitch::Use::tremolo
+                  : use == "harmonics" ? Keyswitch::Use::harmonics : Keyswitch::Use::none;
             p.keyswitches.push_back (k);
         }
         return p;
@@ -157,7 +160,14 @@ namespace pr7s
         p.chugRun = 2;
         p.keyswitches = {
             { "Sustain (palm mute 1-59, sustain 60-119, rake 120-126, pinch 127)", 12, 0, Keyswitch::Use::singleNotes },   // C-1
-            { "Power Chords (the same velocity layers)", 13, 0, Keyswitch::Use::powerChords } };                         // C#-1 (the owner's)
+            { "Power Chords (the same velocity layers)", 13, 0, Keyswitch::Use::powerChords },                           // C#-1 (the owner's)
+            // (0.66.0) The rest of the owner's map is the manual's.
+            { "Staccato", 14, 0 },                                                                                         // D-1
+            { "Tremolo", 18, 0, Keyswitch::Use::tremolo },                                                                 // F#-1
+            { "Choke", 19, 0 },                                                                                            // G-1
+            { "Harmonics", 20, 0, Keyswitch::Use::harmonics },                                                             // G#-1
+            { "Tapping", 21, 0, Keyswitch::Use::tapping },                                                                 // A-1
+            { "FX", 22, 0 } };                                                                                             // A#-1
         // The manual's Behavioral Keyswitches: C-2 forces the lowest A string, each key up the next string.
         const char* names[] = { "low A", "E", "A", "D", "G", "B", "high E" };
         for (int s = 1; s <= 7; ++s)
@@ -293,26 +303,44 @@ namespace pr7s
 
 namespace pr7s
 {
+    ArticulationKeys ArticulationKeys::of (const InstrumentProfile& p)
+    {
+        using U = Keyswitch::Use;
+        return { p.keyUsedFor (U::powerChords), p.keyUsedFor (U::singleNotes), p.keyUsedFor (U::tapping),
+                 p.keyUsedFor (U::tremolo), p.keyUsedFor (U::harmonics) };
+    }
+
     void usePowerChordKeys (LineIdea& idea, int powerChordKey, int singleNoteKey)
     {
-        if (powerChordKey < 0 || singleNoteKey < 0 || idea.notes.empty())
+        if (powerChordKey < 0 || singleNoteKey < 0)
             return;
+        ArticulationKeys k;
+        k.power = powerChordKey;
+        k.single = singleNoteKey;
+        useArticulationKeys (idea, k);
+    }
+
+    void useArticulationKeys (LineIdea& idea, const ArticulationKeys& with)
+    {
+        if (with.single < 0 || idea.notes.empty() || (with.power < 0 && with.tapping < 0 && with.tremolo < 0 && with.harmonics < 0))
+            return;
+        const auto powerChordKey = with.power, singleNoteKey = with.single;
         std::vector<LineNote> keys, played;
         for (const auto& n : idea.notes)
             (n.keyswitch ? keys : played).push_back (n);
         std::stable_sort (played.begin(), played.end(), [] (const LineNote& a, const LineNote& b)
                           { return a.beat < b.beat || (a.beat == b.beat && a.pitch < b.pitch); });
         std::vector<LineNote> out;
-        auto mode = 0;   // 1 power chords, 2 single notes
-        const auto press = [&] (double beat, int wanted)
+        auto mode = -1;   // the key pressed last
+        const auto press = [&] (double beat, int key)
         {
-            if (mode == wanted)
+            if (mode == key)
                 return;
-            mode = wanted;
+            mode = key;
             LineNote k;
             k.beat = beat;
             k.length = 1.0 / 16.0;
-            k.pitch = wanted == 1 ? powerChordKey : singleNoteKey;
+            k.pitch = key;
             k.velocity = 100.0f / 127.0f;
             k.keyswitch = true;
             out.push_back (k);
@@ -333,8 +361,17 @@ namespace pr7s
                 else if (interval % 12 != 0)
                     power = false;
             }
-            power = power && hasFifth;
-            press (played[i].beat, power ? 1 : 2);
+            power = power && hasFifth && powerChordKey >= 0;
+            // A technique: the group's first note's, when the instrument has a key for it.
+            auto key = singleNoteKey;
+            switch (played[i].technique)
+            {
+                case LineNote::Technique::tapping: if (with.tapping >= 0) key = with.tapping; break;
+                case LineNote::Technique::tremolo: if (with.tremolo >= 0) key = with.tremolo; break;
+                case LineNote::Technique::harmonic: if (with.harmonics >= 0) key = with.harmonics; break;
+                case LineNote::Technique::normal: break;
+            }
+            press (played[i].beat, power ? powerChordKey : key);
             if (power)
             {
                 auto n = played[i];

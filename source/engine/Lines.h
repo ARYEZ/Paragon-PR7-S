@@ -20,6 +20,7 @@
 // shape): the same chords, style and variation always give the same notes.
 namespace pr7s
 {
+    enum class SoloStyle : int;   // (SoloEngine.h)
     struct LineNote
     {
         double beat = 0.0, length = 0.0;   // from the first chord's start, in beats
@@ -31,8 +32,16 @@ namespace pr7s
         // controller) or a bend up a whole step (pitch bend, by the instrument's bend range; back to none
         // as it ends). A pitch bend bends the whole channel, so everything starting with the note bends too.
         // `ring`: no controller, but a stab left ringing (the riff settings never palm mute or drop one).
-        enum class Effect { none, vibrato, bend, ring };
+        // (0.66.0) `dive`: the whammy bar pushed down over the note (pitch bend down by `amount` semitones, as
+        // far as the bend range reaches). `amount`: a bend's size in semitones (0: a whole step), a vibrato's
+        // depth 0-1 (0: the usual), a dive's depth in semitones.
+        enum class Effect { none, vibrato, bend, ring, dive };
         Effect effect = Effect::none;
+        float amount = 0.0f;
+        // (0.66.0) How the note is played, for an instrument with keys for it (Shreddage: Tapping A-1, Tremolo
+        // F#-1, Harmonics G#-1): `useArticulationKeys` presses the key before it and Sustain after.
+        enum class Technique { normal, tapping, tremolo, harmonic };
+        Technique technique = Technique::normal;
         bool operator== (const LineNote&) const = default;
     };
 
@@ -125,8 +134,10 @@ namespace pr7s
     // lick lands on the chord). No bends: parts don't hold pitch bend yet.
     std::vector<LineIdea> guitarLeadIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation, const GuitarTuning&,
                                             const GuitarVelocities& = {});
+    // (0.66.0) `solo`: SOLO STYLE for the seventh, the whole solo (automatic: made from the six; else
+    // SoloEngine.h's `composeSolo`); `shortest` the instrument's SHORTEST NOTE (0: none).
     std::vector<LineIdea> guitarLeadIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation, const GuitarTuning&,
-                                            const GuitarVelocities&, GuitarStyle);
+                                            const GuitarVelocities&, GuitarStyle, SoloStyle solo = {}, double shortest = 0.0);
 
     // Humanize (0.20.0, the owner asked): small, controlled differences so a part sounds played,
     // not programmed. Our rules:

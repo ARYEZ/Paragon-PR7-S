@@ -9543,14 +9543,28 @@ namespace pr7s
         return "Idea";
     }
 
+    void Studio::fitBends (std::vector<LineNote>& notes, int bendRange)
+    {
+        // (0.66.0) A bend bigger than the bend range reaches: written that much higher, bent only as far as
+        // the range goes, so it still arrives on its note.
+        const auto range = (float) juce::jmax (1, bendRange);
+        for (auto& n : notes)
+            if (n.effect == LineNote::Effect::bend && n.amount > range)
+            {
+                n.pitch += juce::roundToInt (n.amount - range);
+                n.amount = range;
+            }
+    }
+
     std::vector<Controller> Studio::effectControllers (const std::vector<LineNote>& notes, int bendRange)
     {
         // Each group of notes with an effect starting together (a stab's two notes): its controllers.
-        struct Group { double at, length; LineNote::Effect effect; };
+        using E = LineNote::Effect;
+        struct Group { double at, length; E effect; float amount; };
         std::vector<Group> groups;
         for (const auto& n : notes)
         {
-            if (n.keyswitch || (n.effect != LineNote::Effect::vibrato && n.effect != LineNote::Effect::bend))
+            if (n.keyswitch || (n.effect != E::vibrato && n.effect != E::bend && n.effect != E::dive))
                 continue;
             auto found = false;
             for (auto& g : groups)
@@ -9560,26 +9574,40 @@ namespace pr7s
                     found = true;
                 }
             if (! found)
-                groups.push_back ({ n.beat, n.length, n.effect });
+                groups.push_back ({ n.beat, n.length, n.effect, n.amount });
         }
         std::vector<Controller> out;
-        const auto range = juce::jmax (1, bendRange);
-        const auto bent = juce::jlimit (0, 16383, 8192 + juce::roundToInt (juce::jmin (1.0, 2.0 / range) * 8191.0));
+        const auto range = (double) juce::jmax (1, bendRange);
         for (const auto& g : groups)
         {
             const auto end = g.at + juce::jmax (0.05, g.length);
-            if (g.effect == LineNote::Effect::bend)
+            if (g.effect == E::bend)
             {
+                // (0.66.0) Up by its amount (0: a whole step), as far as the bend range reaches.
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 2.0;
+                const auto bent = juce::jlimit (0, 16383, 8192 + juce::roundToInt (juce::jmin (1.0, semitones / range) * 8191.0));
                 const auto up = g.at + juce::jmin (0.25, (end - g.at) * 0.5);
                 out.push_back ({ Controller::Type::pitchbend, 0, g.at, 8192, false });
                 out.push_back ({ Controller::Type::pitchbend, 0, up, bent, true });
                 out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
             }
+            else if (g.effect == E::dive)
+            {
+                // (0.66.0) The whammy bar: straight for a quarter of the note, then down by its amount (12: an
+                // octave) over the rest, as far as the bend range reaches; back to none as the note ends.
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 12.0;
+                const auto down = juce::jlimit (0, 16383, 8192 - juce::roundToInt (juce::jmin (1.0, semitones / range) * 8192.0));
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + (end - g.at) * 0.25, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + (end - g.at) * 0.9, down, true });
+                out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
+            }
             else
             {
+                const auto peak = juce::jlimit (1, 127, juce::roundToInt (96.0f * (g.amount > 0.0f ? g.amount : 1.0f)));
                 out.push_back ({ Controller::Type::cc, 1, g.at, 0, false });
                 out.push_back ({ Controller::Type::cc, 1, g.at + (end - g.at) * 0.3, 0, false });
-                out.push_back ({ Controller::Type::cc, 1, g.at + (end - g.at) * 0.8, 96, true });
+                out.push_back ({ Controller::Type::cc, 1, g.at + (end - g.at) * 0.8, peak, true });
                 out.push_back ({ Controller::Type::cc, 1, end, 0, false });
             }
         }
@@ -9593,14 +9621,19 @@ namespace pr7s
         part.start = start;
         part.length = length;
         part.name = name;
-        for (const auto& n : idea.notes)
-            part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
         auto range = 2;
         const auto use = idea.part == LineIdea::Part::lead ? ProfileUse::lead
                        : idea.part == LineIdea::Part::rhythm ? ProfileUse::guitar : ProfileUse::bass;
-        if (const auto profile = profileFor (use))
+        auto profile = profileFor (use);
+        if (! profile.has_value() && use == ProfileUse::lead)
+            profile = profileFor (ProfileUse::guitar);
+        if (profile.has_value())
             range = profile->bendRange;
-        part.controllers = effectControllers (idea.notes, range);
+        auto notes = idea.notes;
+        fitBends (notes, range);
+        for (const auto& n : notes)
+            part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
+        part.controllers = effectControllers (notes, range);
         return part;
     }
 
@@ -9646,6 +9679,7 @@ namespace pr7s
         c.leadProfile = profileFor (ProfileUse::lead);
         c.velocities = getGuitarVelocities();
         c.style = getGuitarStyle();
+        c.solo = getSoloStyle();
         c.riff = getRiffSettings();
         c.drums = getDrumSettings();
         c.melody = getMelodySettings();
@@ -9874,6 +9908,18 @@ namespace pr7s
         guitarStyle = s;
         if (settings != nullptr)
             settings->setValue ("guitarStyle", guitarStyleName (s));
+    }
+
+    SoloStyle Studio::getSoloStyle() const
+    {
+        return settings != nullptr && settings->containsKey ("soloStyle") ? soloStyleNamed (settings->getValue ("soloStyle")) : soloStyle;
+    }
+
+    void Studio::setSoloStyle (SoloStyle s)
+    {
+        soloStyle = s;
+        if (settings != nullptr)
+            settings->setValue ("soloStyle", soloStyleName (s));
     }
 
     RiffSettings Studio::getRiffSettings() const

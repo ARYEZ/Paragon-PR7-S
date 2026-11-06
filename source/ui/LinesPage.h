@@ -196,6 +196,8 @@ public:
     const pr7s::GuitarTuning& getTuning() const;
     void setGuitarVelocities (const pr7s::GuitarVelocities&);   // (Studio::setGuitarVelocities), guitar ideas dealt again
     void setGuitarStyle (pr7s::GuitarStyle);                   // STYLE (0.53.0; Studio::setGuitarStyle), dealt again
+    void setSoloStyle (pr7s::SoloStyle);                       // SOLO STYLE (0.66.0; Studio::setSoloStyle), dealt again
+    juce::ComboBox& getSoloBox() { return soloBox; }
     pr7s::GuitarStyle getGuitarStyle() const;
     void setRiffSettings (const pr7s::RiffSettings&);          // RIFF SETTINGS (Studio's), dealt again
     void showRiffSettings();
@@ -280,6 +282,7 @@ private:
     juce::ComboBox tuningBox;
     juce::TextButton velocitiesKey { "VELOCITIES" };
     juce::ComboBox styleBox;     // STYLE (the guitar tab)
+    juce::ComboBox soloBox;      // SOLO STYLE (0.66.0, the guitar tab: the seventh lead, the whole solo)
     juce::TextButton riffKey;    // RIFF SETTINGS (the guitar tab)
     juce::TextButton groovesKey { "MORE GROOVES" };   // (the drums tab)
     juce::TextButton drumKey;                           // DRUM SETTINGS (the drums tab)

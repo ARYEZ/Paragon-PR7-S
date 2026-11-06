@@ -1,4 +1,5 @@
 #include "engine/Lines.h"
+#include "engine/SoloEngine.h"
 #include "engine/Riffs.h"
 
 namespace pr7s
@@ -1048,12 +1049,14 @@ namespace pr7s
     }
 
     std::vector<LineIdea> guitarLeadIdeas (const std::vector<ChordSpan>& spans, double beatsPerBar, int variation, const GuitarTuning& tuning,
-                                            const GuitarVelocities& vel, GuitarStyle style)
+                                            const GuitarVelocities& vel, GuitarStyle style, SoloStyle soloStyle, double shortest)
     {
         auto ideas = style != GuitarStyle::rock ? styleLeadIdeas (style, spans, beatsPerBar, variation, tuning, vel)
                                                 : guitarLeadIdeas (spans, beatsPerBar, variation, tuning, vel);
         // (0.65.0) The seventh: a whole solo made from the six.
-        auto solo = guitarSolo (ideas, spans, beatsPerBar, tuning);
+        // (0.66.0) Or one in a SOLO STYLE.
+        auto solo = soloStyle == SoloStyle::automatic ? guitarSolo (ideas, spans, beatsPerBar, tuning)
+                                                      : composeSolo (soloStyle, spans, beatsPerBar, tuning, vel, variation, shortest);
         if (! solo.notes.empty())
             ideas.push_back (std::move (solo));
         return ideas;

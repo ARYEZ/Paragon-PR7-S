@@ -253,15 +253,20 @@ public:
             row.use->addItem ("Turns forcing off", 100);
             row.use->addItem ("Power chords (a root alone)", 101);
             row.use->addItem ("Single notes", 102);
-            row.use->setSelectedId (k.forcesString < 0 ? 100 : k.use == pr7s::Keyswitch::Use::powerChords ? 101
-                                    : k.use == pr7s::Keyswitch::Use::singleNotes ? 102 : 1 + k.forcesString, juce::dontSendNotification);
+            row.use->addItem ("Tapping (solos)", 103);     // (0.66.0)
+            row.use->addItem ("Tremolo (solos)", 104);
+            row.use->addItem ("Harmonics (solos)", 105);
+            using U = pr7s::Keyswitch::Use;
+            row.use->setSelectedId (k.forcesString < 0 ? 100 : k.use == U::powerChords ? 101 : k.use == U::singleNotes ? 102
+                                    : k.use == U::tapping ? 103 : k.use == U::tremolo ? 104 : k.use == U::harmonics ? 105
+                                    : 1 + k.forcesString, juce::dontSendNotification);
             row.use->setBounds (362, y, 190, rowHeight - 4);
             const auto commit = [this, i]
             {
                 const auto& r = rows[(size_t) i];
                 const auto name = r.name->getText(), note = r.note->getText();
                 const auto id = r.use->getSelectedId();
-                const auto use = id == 100 ? -1 : id == 101 ? -101 : id == 102 ? -102 : id - 1;
+                const auto use = id == 100 ? -1 : id >= 101 ? -id : id - 1;
                 later (page, [this, i, name, note, use] { page.setKeyswitch (i, name, note, use); });
             };
             for (auto* e : { row.name, row.note })
@@ -591,7 +596,10 @@ bool InstrumentsPage::setKeyswitch (int index, const juce::String& name, const j
         return false;
     }
     // (forcesString -101 / -102: marked for power chords / single notes, 0.63.0)
-    const auto use = forcesString == -101 ? pr7s::Keyswitch::Use::powerChords : forcesString == -102 ? pr7s::Keyswitch::Use::singleNotes : pr7s::Keyswitch::Use::none;
+    // (0.66.0: -103 / -104 / -105 tapping / tremolo / harmonics)
+    using U = pr7s::Keyswitch::Use;
+    const auto use = forcesString == -101 ? U::powerChords : forcesString == -102 ? U::singleNotes : forcesString == -103 ? U::tapping
+                   : forcesString == -104 ? U::tremolo : forcesString == -105 ? U::harmonics : U::none;
     pr7s::Keyswitch k { name.trim().isEmpty() ? p->keyswitches[(size_t) index].name : name.trim(), *note,
                         forcesString <= -101 ? 0 : forcesString < 0 ? -1 : juce::jlimit (0, (int) p->strings.size(), forcesString), use };
     // One key per use.

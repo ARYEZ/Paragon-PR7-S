@@ -22,6 +22,7 @@
 #include "TempoDetect.h"
 #include "MediaBay.h"
 #include "Composer.h"
+#include "SoloEngine.h"
 
 #include <optional>
 #include <mutex>
@@ -304,6 +305,7 @@ namespace pr7s
         // INSTRUMENTS profile on the idea's lane, else 2 semitones) and back to none as it ends.
         Part partFromIdea (const LineIdea&, double start, double length, const juce::String& name) const;
         static std::vector<Controller> effectControllers (const std::vector<LineNote>&, int bendRange);
+        static void fitBends (std::vector<LineNote>&, int bendRange);   // (0.66.0) bends past the range made smaller
         // (0.57.0) BUILD SECTION: each idea onto the track named after its part (Drums, Bass, Guitar,
         // Lead Guitar, Piano, Melody: an instrument track of that name is reused, so section after
         // section lands on the same band; else a new one), each part over the chords' span, named
@@ -358,6 +360,9 @@ namespace pr7s
         // The guitar tab's STYLE and RIFF SETTINGS (0.53.0; settings keys "guitarStyle", "riffSettings").
         GuitarStyle getGuitarStyle() const;
         void setGuitarStyle (GuitarStyle);
+        // The guitar tab's SOLO STYLE (0.66.0; settings key "soloStyle"; automatic: by the STYLE).
+        SoloStyle getSoloStyle() const;
+        void setSoloStyle (SoloStyle);
         RiffSettings getRiffSettings() const;
         void setRiffSettings (const RiffSettings&);
         // The DRUMS tab's beat generator settings (0.55.0; settings key "drumSettings").
@@ -1471,6 +1476,7 @@ namespace pr7s
         std::optional<juce::String> instrumentProfiles;   // (without a settings file: the tests)
         GuitarVelocities guitarVelocities;
         GuitarStyle guitarStyle = GuitarStyle::rock;   // (without a settings file)
+        SoloStyle soloStyle = SoloStyle::automatic;    // (without a settings file)
         RiffSettings riffSettings;
         DrumSettings drumSettings;
         juce::File drummerFolderOverride;

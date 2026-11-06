@@ -394,6 +394,16 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
     styleBox.setTooltip ("Which guitar ideas: rock, thrash, nu-metal, metalcore or shred (six rhythm parts and six leads each)");
     styleBox.onChange = [this] { setGuitarStyle (pr7s::guitarStyleNamed (styleBox.getText())); };
     addChildComponent (styleBox);
+    // (0.66.0) SOLO STYLE.
+    {
+        int soloId = 1;
+        for (const auto st : pr7s::soloStyles())
+            soloBox.addItem ("SOLO: " + pr7s::soloStyleName (st), soloId++);
+    }
+    soloBox.setTooltip ("How the whole solo (the last lead card) is written: by the STYLE, or in one of the solo styles "
+                        "(a motif stated, answered and developed, building to a climax)");
+    soloBox.onChange = [this] { setSoloStyle (pr7s::soloStyles()[(size_t) juce::jmax (0, soloBox.getSelectedItemIndex())]); };
+    addChildComponent (soloBox);
     riffKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     riffKey.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
     riffKey.setWantsKeyboardFocus (false);
@@ -427,7 +437,7 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
         writtenBeats = settings->getBoolValue ("ideasWrittenBeats", false);
         buildChoice = BuildChoice::fromString (settings->getValue ("ideasBuild"));
     }
-    setSize (1360, 760);
+    setSize (1600, 760);
     setChords (std::move (chords));
     startTimerHz (30);
 }
@@ -542,6 +552,15 @@ void LinesPage::setGuitarStyle (pr7s::GuitarStyle st)
     studio.setGuitarStyle (st);
     if (groovesLooked)
         lookForGrooves();   // (ranked for the new style)
+    rebuild();
+}
+
+void LinesPage::setSoloStyle (pr7s::SoloStyle st)
+{
+    if (st == studio.getSoloStyle())
+        return;
+    stop();
+    studio.setSoloStyle (st);
     rebuild();
 }
 
@@ -1139,7 +1158,14 @@ const std::vector<pr7s::LineIdea>& LinesPage::rawIdeas (pr7s::LineIdea::Part par
             list = pr7s::guitarRhythmIdeas (spans, barBeats, variation, getTuning(), studio.getGuitarVelocities(), studio.getGuitarStyle(), studio.getRiffSettings());
             break;
         case P::lead:
-            list = pr7s::guitarLeadIdeas (spans, barBeats, variation, getTuning(), studio.getGuitarVelocities(), studio.getGuitarStyle());
+        {
+            // (0.66.0) The solo in the SOLO STYLE, nothing shorter than the instrument's shortest note.
+            auto profile = studio.profileFor (pr7s::Studio::ProfileUse::lead);
+            if (! profile.has_value())
+                profile = studio.profileFor (pr7s::Studio::ProfileUse::guitar);
+            list = pr7s::guitarLeadIdeas (spans, barBeats, variation, getTuning(), studio.getGuitarVelocities(), studio.getGuitarStyle(),
+                                          studio.getSoloStyle(), profile.has_value() ? profile->shortestNote : 0.0);
+        }
             break;
         case P::pattern: list = pr7s::patternIdeas (spans, barBeats, patternGroup); break;
         case P::tune: list = pr7s::composedMelodies (spans, barBeats, studio.getMelodySettings(), variation); break;
@@ -1213,8 +1239,7 @@ const std::vector<pr7s::LineIdea>& LinesPage::getIdeas (pr7s::LineIdea::Part par
             for (auto& idea : list)
             {
                 pr7s::keepPlayable (idea, profile->shortestNote, profile->chugRun, spans.empty() ? 0.0 : spans.back().end - spans.front().start);
-                pr7s::usePowerChordKeys (idea, profile->keyUsedFor (pr7s::Keyswitch::Use::powerChords),
-                                         profile->keyUsedFor (pr7s::Keyswitch::Use::singleNotes));
+                pr7s::useArticulationKeys (idea, pr7s::ArticulationKeys::of (*profile));   // (0.66.0: tapping, tremolo, harmonics too)
             }
     }
     // (0.63.1) The bass on its profile (the BASS lane's): its shortest note.
@@ -1252,6 +1277,8 @@ void LinesPage::makeCards()
     velocitiesKey.setVisible (tab == Tab::guitar);
     styleBox.setText (pr7s::guitarStyleName (studio.getGuitarStyle()), juce::dontSendNotification);
     styleBox.setVisible (tab == Tab::guitar || tab == Tab::drums || tab == Tab::bass);
+    soloBox.setText ("SOLO: " + pr7s::soloStyleName (studio.getSoloStyle()), juce::dontSendNotification);
+    soloBox.setVisible (tab == Tab::guitar);
     riffKey.setVisible (tab == Tab::guitar);
     resized();
     repaint();
@@ -1435,6 +1462,8 @@ void LinesPage::resized()
     drumKey.setBounds (tuningBox.getBounds().getUnion (tuningLabel.getBounds()).withRight (writtenKey.getX() - 8));
     tabs.removeFromRight (8);
     styleBox.setBounds (tabs.removeFromRight (140));
+    tabs.removeFromRight (8);
+    soloBox.setBounds (tabs.removeFromRight (230));
 
     area.removeFromBottom (gap);
     const auto parts = partsOf (tab);

@@ -224,7 +224,8 @@ namespace pr7s
                     const auto& profile = c.leadProfile.has_value() ? c.leadProfile : c.guitarProfile;
                     const auto tuning = profile.has_value() ? profile->tuning() : c.tuning;
                     const auto velocities = profile.has_value() && profile->velocities.has_value() ? *profile->velocities : c.velocities;
-                    auto idea = pick (guitarLeadIdeas (spans, c.beatsPerBar, lane.variation, tuning, velocities, c.style), lane.style);
+                    auto idea = pick (guitarLeadIdeas (spans, c.beatsPerBar, lane.variation, tuning, velocities, c.style, c.solo,
+                                                       profile.has_value() ? profile->shortestNote : 0.0), lane.style);
                     thinTake (idea, c.beatsPerBar, takeOf (lane, l, 0, 127));
                     if (profile.has_value())
                         keepInRange (idea, profile->rangeLow(), profile->rangeHigh());
@@ -321,7 +322,7 @@ namespace pr7s
             // (0.63.0) Power chords by the instrument's keyswitch (its root alone), single notes back on theirs.
             if (l == ComposerLayer::guitar || l == ComposerLayer::lead)
                 if (const auto* profile = composerStrings (l, c).profile)
-                    usePowerChordKeys (idea, profile->keyUsedFor (Keyswitch::Use::powerChords), profile->keyUsedFor (Keyswitch::Use::singleNotes));
+                    useArticulationKeys (idea, ArticulationKeys::of (*profile));   // (0.66.0: tapping, tremolo, harmonics too)
             // ONLY STRING (0.62.0): onto that string, its keyswitch (the INSTRUMENTS profile's) held through it.
             if (const auto string = s.lane (l).onlyString; string > 0 && hasLowString (l))
             {

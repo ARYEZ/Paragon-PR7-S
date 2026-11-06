@@ -42,7 +42,8 @@ public:
     void setShortestNote (double beats);   // (0.63.1) 0: any
     void setChugRun (int);                 // (0.63.1) 0: any
     void addKeyswitch();
-    // forcesString: 1.. a string, 0 an articulation, -1 turns forcing off, -101 power chords, -102 single notes.
+    // forcesString: 1.. a string, 0 an articulation, -1 turns forcing off, -101 power chords, -102 single notes,
+    // (0.66.0) -103 tapping, -104 tremolo, -105 harmonics.
     bool setKeyswitch (int index, const juce::String& name, const juce::String& note, int forcesString);
     void removeKeyswitch (int index);
     void setVelocities (const pr7s::GuitarVelocities&);

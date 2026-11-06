@@ -8,6 +8,7 @@
 #include "engine/DrumLearning.h"
 #include "engine/Takes.h"
 #include "engine/Instruments.h"
+#include "engine/SoloEngine.h"
 
 #include <array>
 #include <optional>
@@ -78,6 +79,7 @@ namespace pr7s
         std::optional<InstrumentProfile> bassProfile, guitarProfile, leadProfile;
         GuitarVelocities velocities;
         GuitarStyle style {};
+        SoloStyle solo {};   // (0.66.0: the lead lane's seventh style, the whole solo)
         RiffSettings riff;
         DrumSettings drums;
         MelodySettings melody;

@@ -30,7 +30,7 @@ namespace pr7s
                                 // -1 (0.62.2): it turns a forced string off again (Shreddage's G-2: its force keys latch)
         // (0.63.0) What an articulation is for in the riffs: power chords (a root alone plays the chord, as
         // Shreddage's power chord articulations) or single notes (the sustain the other notes go back to).
-        enum class Use { none, powerChords, singleNotes };
+        enum class Use { none, powerChords, singleNotes, tapping, tremolo, harmonics };   // (0.66.0: the last three)
         Use use = Use::none;
         bool operator== (const Keyswitch&) const = default;
     };
@@ -97,6 +97,16 @@ namespace pr7s
     // the first notes always (the instrument may be left in either). A key on the same beat as its notes
     // (Shreddage takes keys first). Notes strummed apart aren't a power chord: they stay as they are.
     void usePowerChordKeys (LineIdea&, int powerChordKey, int singleNoteKey);
+
+    // (0.66.0) The same with the techniques' keys too: a note marked tapping, tremolo or harmonic (`LineNote::
+    // technique`) gets that key before it (when the profile has one), the next plain note the single notes' key.
+    // A key only where the kind changes, as for power chords. -1: no key for that.
+    struct ArticulationKeys
+    {
+        int power = -1, single = -1, tapping = -1, tremolo = -1, harmonics = -1;
+        static ArticulationKeys of (const InstrumentProfile&);
+    };
+    void useArticulationKeys (LineIdea&, const ArticulationKeys&);
 
     // PLAYABLE (0.63.1): notes played together count as one hit. A hit starting less than `shortest` beats
     // after the hit before is left out (a little less is allowed: humanize moves notes by a few ms); every

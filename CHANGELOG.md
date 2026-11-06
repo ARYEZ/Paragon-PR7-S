@@ -2,6 +2,23 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.66.0
+
+- **Solo styles, round one** (you asked: solos in the manner of players you love). On IDEAS' guitar tab, **SOLO:** chooses how the whole solo (the last lead card, and BUILD SECTION > SOLO) is written:
+  - **BY STYLE:** as in 0.65.0, made from your STYLE's six leads.
+  - **SOARING BENDS:** slow and spacious. A singing motif that keeps coming back, long notes bent slowly into their pitch, restrained vibrato, climbing to big bends and one short fast run near the end.
+  - **ROCK 'N' ROLL SWAGGER:** loose, swung bluesy rock. Short call-and-response phrases, the major 6th and both thirds, 6th double stops, repeated licks midway, a tremolo-picked accent.
+  - **TAP & DIVE:** melodic phrases traded with tapped arpeggios that follow the chords, legato runs, a harmonic now and then, big bends, ending on a pinch harmonic and a whammy dive.
+  - **BLUES HAMMER:** major and minor mixed, flat thirds curled sharp, a six-note lick repeated so it lands somewhere new in each bar, big over-bends near the climax.
+- **How a solo is built** (the same for every style, as players build one): a short motif is stated, answered (the same rhythm, a new ending), stated higher, then developed. The style's signature passage comes in the later phrases. Notes get busier and higher through the solo, chord tones sit on the downbeats and phrase ends, and the last note is the last chord's root, held.
+- **The names are ours.** The research behind each style is in the repository (`docs/solo-styles`): a technique sheet per player, from guitar lessons and interviews. No player's solo is copied; only habits (scales, phrasing, bends, vibrato, techniques). Note counts and some details are our estimates, marked as such in the sheets: tune by ear.
+- **Bends by size:** a bend can now be a half step, a whole step, or 1.5 to 2.5 steps. It's written in proportion to your INSTRUMENTS profile's BEND RANGE. A bend bigger than the range is written higher and bent only as far as the range reaches, so it still lands on its note.
+- **Dive bombs:** the whammy dive is pitch bend down an octave, so it needs a big range. Set **Shreddage's Pitch Bend Range and the profile's BEND RANGE to the same number, 12 or more**. With the default 2, the dive only drops a whole step.
+- **Shreddage's technique keys:** Tapping (A-1), Tremolo (F#-1) and Harmonics (G#-1) are pressed before the notes that use them, then Sustain (C-1) again. Staccato (D-1), Choke (G-1) and FX (A#-1) are listed too. **To get them, add Jupiter or Rogue again from + NEW in INSTRUMENTS** (a profile you already have keeps its old keys). Each key's USE menu has the new uses: Tapping, Tremolo, Harmonics.
+- **Vibrato depth** now varies by style (some styles hold back on high notes).
+- **The composer:** the LEAD lane's Solo style follows SOLO.
+- The IDEAS window is wider (1600) to fit the new box.
+
 ## 0.65.0
 
 - **A SOLO section for guitars** (you asked). SOLO is now a song section next to INTRO, VERSE, CHORUS, BRIDGE, BREAKDOWN and ENDING.
