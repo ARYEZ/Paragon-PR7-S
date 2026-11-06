@@ -305,10 +305,11 @@ TEST_CASE ("Shreddage Jupiter and Rogue: 7-string drop A, 24 frets, the velocity
         s.lane (ComposerLayer::guitar).style = style;
         const auto layers = composeLayers (s, spans, c);
         for (const auto& n : layers[(size_t) ComposerLayer::guitar].notes)
-        {
-            CHECK (n.pitch >= 33);
-            CHECK (n.pitch <= 88);
-        }
+            if (! n.keyswitch)   // (0.63.0: the power chord / sustain keys sit under the range on purpose)
+            {
+                CHECK (n.pitch >= 33);
+                CHECK (n.pitch <= 88);
+            }
     }
 }
 
@@ -424,10 +425,21 @@ TEST_CASE ("The composer's guitar on Shreddage: no power chord left as three not
                     ++keysSeen;
                     continue;
                 }
-                // No root-and-fifth group left.
+                // No power chord (only roots, fifths and octaves, two or more) left as notes; other chords
+                // (triads, octaves, tritones) may be.
+                if (i > 0 && ! notes[i - 1].keyswitch && std::abs (notes[i - 1].beat - n.beat) < 1.0e-4)
+                    continue;   // (a group's first note only)
+                auto count = 1;
+                auto onlyFifths = true, fifth = false;
                 for (size_t j = i + 1; j < notes.size() && std::abs (notes[j].beat - n.beat) < 1.0e-4; ++j)
                     if (! notes[j].keyswitch)
-                        CHECK ((notes[j].pitch - n.pitch) % 12 != 7);
+                    {
+                        ++count;
+                        const auto interval = (notes[j].pitch - n.pitch) % 12;
+                        fifth = fifth || interval == 7;
+                        onlyFifths = onlyFifths && (interval == 0 || interval == 7);
+                    }
+                CHECK_FALSE ((count >= 2 && onlyFifths && fifth));
             }
         }
         CHECK (keysSeen > 0);
