@@ -264,25 +264,48 @@ namespace pr7s
         return const_cast<Project*> (this)->findTrack (id);
     }
 
-    bool Project::canRouteTo (int trackId, int groupId) const
+    bool Project::reaches (int from, int to) const
+    {
+        // Down every output and send from `from` (a walk with a guard: no song has more steps than tracks).
+        std::vector<int> stack { from };
+        std::vector<int> seen;
+        while (! stack.empty() && seen.size() <= tracks.size())
+        {
+            const auto id = stack.back();
+            stack.pop_back();
+            if (id == to)
+                return true;
+            if (id == 0 || std::find (seen.begin(), seen.end(), id) != seen.end())
+                continue;
+            seen.push_back (id);
+            if (const auto* t = findTrack (id))
+            {
+                stack.push_back (t->output);
+                for (const auto& send : t->sends)
+                    if (send.target != 0)
+                        stack.push_back (send.target);
+            }
+        }
+        return false;
+    }
+
+    bool Project::canRouteTo (int trackId, int destinationId) const
     {
         const auto* track = findTrack (trackId);
         if (track == nullptr || ! hasOutput (*track))
             return false;
-        if (groupId == 0)
+        if (destinationId == 0)
             return true;
-        const auto* group = findTrack (groupId);
-        if (group == nullptr || ! group->isGroup() || groupId == trackId)
-            return false;
-        // Down the group's own way to the master: never back through this track.
-        auto steps = 0;
-        for (const auto* at = group; at != nullptr && at->output != 0 && steps < (int) tracks.size() + 1; ++steps)
-        {
-            if (at->output == trackId)
-                return false;
-            at = findTrack (at->output);
-        }
-        return steps <= (int) tracks.size();
+        const auto* destination = findTrack (destinationId);
+        return destination != nullptr && (destination->isGroup() || destination->isFx()) && destinationId != trackId
+            && ! reaches (destinationId, trackId);
+    }
+
+    bool Project::canSendTo (int trackId, int fxId) const
+    {
+        const auto* track = findTrack (trackId);
+        const auto* fx = findTrack (fxId);
+        return track != nullptr && hasOutput (*track) && fx != nullptr && fx->isFx() && fxId != trackId && ! reaches (fxId, trackId);
     }
 
     const DrumMap* Project::findDrumMap (const juce::String& mapName) const
@@ -1016,12 +1039,14 @@ namespace pr7s
         for (auto& track : project.tracks)
         {
             if (track.output != 0 && ! project.canRouteTo (track.id, track.output))
-                track.output = 0;   // (0.59.0: groups may go to groups; a loop goes to the master)
-            if (track.isFx())
-                track.sends.clear();
+                track.output = 0;   // (0.59.0: channels may go to channels; a loop goes to the master)
             for (auto& send : track.sends)
-                if (const auto* to = project.findTrack (send.target); to == nullptr || ! to->isFx())
-                    send.target = 0;
+                if (send.target != 0)
+                {
+                    const auto target = std::exchange (send.target, 0);
+                    if (project.canSendTo (track.id, target))   // (0.60.0: FX channels send too; never a loop)
+                        send.target = target;
+                }
         }
         // Link groups (0.17.0): those with two members or more; a track in one that isn't there, in none.
         for (const auto* g : xml.getChildWithTagNameIterator ("LinkGroup"))

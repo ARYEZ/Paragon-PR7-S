@@ -141,6 +141,22 @@ namespace pr7s
         startTimerHz (30);
     }
 
+    bool Studio::getSoftwareDrawing() const
+    {
+        return settings != nullptr ? settings->getBoolValue ("softwareDrawing", false) : softwareDrawing;
+    }
+
+    void Studio::setSoftwareDrawing (bool on)
+    {
+        if (settings != nullptr)
+        {
+            settings->setValue ("softwareDrawing", on);
+            settings->saveIfNeeded();
+        }
+        softwareDrawing = on;
+        SessionLog::note (on ? "Drawing: with the processor (SETTINGS)" : "Drawing: with the graphics card");
+    }
+
     bool Studio::getMultiCoreAudio() const
     {
         return settings != nullptr ? settings->getBoolValue ("multiCoreAudio", true) : multiCoreAudio;
@@ -573,7 +589,7 @@ namespace pr7s
     {
         auto* track = project.findTrack (trackId);
         if (track == nullptr || ! project.canRouteTo (trackId, groupId))
-            return;   // (FX channels go to the master; 0.59.0: a group may go to another group, never round in a loop)
+            return;   // (0.60.0: any channel to any group or FX channel, never itself, never round in a loop)
         track->output = groupId;
         passOn (trackId, LinkGroup::What::routing, [&] (int other) { if (other != groupId) setOutput (other, groupId); });
         changed();
@@ -582,10 +598,20 @@ namespace pr7s
     void Studio::setSend (int trackId, int slot, const Send& send)
     {
         auto* track = project.findTrack (trackId);
-        const auto* fx = project.findTrack (send.target);
-        if (track == nullptr || track->isFx() || ! juce::isPositiveAndBelow (slot, Project::maxSends)
-            || (send.target != 0 && (fx == nullptr || ! fx->isFx())))
+        if (track == nullptr || ! juce::isPositiveAndBelow (slot, Project::maxSends))
             return;
+        if (send.target != 0)
+        {
+            // (0.60.0) Any track that makes sound, FX channels too, to any FX channel that doesn't lead back to it
+            // (the slot's own send left out of the check: it's being replaced).
+            const auto hasSlot = juce::isPositiveAndBelow (slot, (int) track->sends.size());
+            const auto was = hasSlot ? std::exchange (track->sends[(size_t) slot].target, 0) : 0;
+            const auto allowed = project.canSendTo (trackId, send.target);
+            if (hasSlot)
+                track->sends[(size_t) slot].target = was;
+            if (! allowed)
+                return;
+        }
         if ((int) track->sends.size() <= slot)
             track->sends.resize ((size_t) slot + 1);
         auto& kept = track->sends[(size_t) slot];

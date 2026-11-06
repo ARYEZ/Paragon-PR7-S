@@ -1064,7 +1064,7 @@ TEST_CASE ("Sends and FX channels on screen: the SENDS rack, a send's dot, level
     mixer.setShowSends (true);
     CHECK_FALSE (strip.getInsertSlot (0).isVisible());
     CHECK (strip.getSendSlot (0).isVisible());
-    CHECK_FALSE (mixer.getStrip (1).getSendSlot (0).isVisible());   // the FX channel: no sends
+    CHECK (mixer.getStrip (1).getSendSlot (0).isVisible());   // the FX channel (0.60.0: FX channels send too)
 
     // The dot turns the send off and on.
     auto& send = strip.getSendSlot (0);
@@ -2092,7 +2092,7 @@ TEST_CASE ("The Inspector: the selected track's settings, by kind, in sections t
         studio.dispatchPendingMessages();
         CHECK (inspector.getChannel().getSelectedId() == 3);
     }
-    SECTION ("An audio track: its input and MON, no MIDI; an FX channel: no sends, no REC")
+    SECTION ("An audio track: its input and MON, no MIDI; an FX channel: sends and an output, no REC")
     {
         const auto guitar = studio.addAudioTrack (true);
         studio.selectTrack (guitar);
@@ -2106,9 +2106,9 @@ TEST_CASE ("The Inspector: the selected track's settings, by kind, in sections t
         const auto fx = studio.addFxChannel (nullptr);
         studio.selectTrack (fx);
         studio.dispatchPendingMessages();
-        CHECK_FALSE (inspector.getHeader (S::sends).isVisible());
+        CHECK (inspector.getHeader (S::sends).isVisible());     // (0.60.0: FX channels send too)
         CHECK_FALSE (inspector.getKey ("REC").isVisible());
-        CHECK_FALSE (inspector.getOutput().isEnabled());   // FX channels go to the master
+        CHECK (inspector.getOutput().isEnabled());               // (0.60.0: and go to any group or FX channel)
     }
     SECTION ("A section's title folds it; the others move up")
     {

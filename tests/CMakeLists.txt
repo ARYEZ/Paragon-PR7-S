@@ -38,6 +38,7 @@ add_executable(ParagonPR7STests
     BuildSectionTests.cpp
     ComposerTests.cpp
     GroupRoutingTests.cpp
+    NewSongTests.cpp
     SpeedTests.cpp
     MediaBayTests.cpp
     ControllerTests.cpp

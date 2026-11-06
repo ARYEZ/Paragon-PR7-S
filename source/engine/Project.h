@@ -491,11 +491,16 @@ namespace pr7s
         std::vector<int> linkGroupMembers (int groupId) const;   // in the tracks' order
         Track* findTrack (int id);
         const Track* findTrack (int id) const;
-        // (0.59.0) Whether a track's sound can go to that group (0: the master always can): a track that isn't
-        // a channel, or a group channel (groups feed groups: "verse vox" into "John vox" into the master), into
-        // a group channel that doesn't lead back to it (no loops).
-        bool canRouteTo (int trackId, int groupId) const;
-        bool hasOutput (const Track& t) const noexcept { return ! t.isChannel() || t.isGroup(); }
+        // (0.59.0, 0.60.0: as the other DAW's routing) Whether a track's output can go to that channel (0: the
+        // master always can): any track that makes sound (audio, instrument, group and FX channels, a folder with
+        // its group channel) into any group or FX channel (a folder's group too), except itself and except a
+        // channel that already leads back to it by its output or its sends (no loops).
+        bool canRouteTo (int trackId, int destinationId) const;
+        // Whether a track can send to that FX channel (FX channels may send too): never itself, never round in a loop.
+        bool canSendTo (int trackId, int fxId) const;
+        // Whether `from`'s sound reaches `to` through outputs and sends (any number of channels between).
+        bool reaches (int from, int to) const;
+        bool hasOutput (const Track& t) const noexcept { return ! t.isChannel() || t.isGroup() || t.isFx(); }
         const DrumMap* findDrumMap (const juce::String& name) const;
         const DrumMap* drumMapOf (const Track&) const;   // its map, if it has one
         Track* armedTrack();

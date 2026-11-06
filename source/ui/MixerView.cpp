@@ -134,7 +134,7 @@ void MixerView::Strip::refresh()
     const auto preFader = owner.studio.getPreFaderSlots (busId);
     for (int i = 0; i < (int) sendSlots.size(); ++i)
     {
-        sendSlots[(size_t) i]->setVisible (owner.showsSends() && track != nullptr && ! track->isFx());
+        sendSlots[(size_t) i]->setVisible (owner.showsSends() && track != nullptr);   // (0.60.0: FX channels send too)
         sendSlots[(size_t) i]->refresh();
     }
     if (track != nullptr)
@@ -245,8 +245,6 @@ void MixerView::Strip::paint (juce::Graphics& g)
     g.setFont (font (8.5f));
     if (isMaster() && (owner.showsInserts() || owner.showsSends()))
         g.drawText (owner.showsInserts() ? "INSERTS" : "NO SENDS", nameArea.translated (0.0f, nameArea.getHeight()).withHeight (12.0f), juce::Justification::centred, false);
-    else if (owner.showsSends() && track != nullptr && track->isFx())
-        g.drawText ("NO SENDS (AN FX CHANNEL)", rackArea, juce::Justification::centredTop, true);
     // Both racks (the mixer's window): a line and SENDS between them.
     if (owner.showsInserts() && owner.showsSends() && ! sendsDivider.isEmpty())
     {
@@ -866,9 +864,23 @@ void MixerView::showOutputMenu (int busId)
     juce::PopupMenu menu;
     menu.addSectionHeader ("OUTPUT");
     menu.addItem (1, "Master", true, track->output == 0);
+    // (0.60.0) Any group or FX channel that doesn't lead back here.
+    auto heading = false;
     for (const auto& other : studio.getProject().tracks)
-        if (other.isGroup() && studio.getProject().canRouteTo (busId, other.id))   // (0.59.0: groups into groups, never a loop)
+        if (other.isGroup() && studio.getProject().canRouteTo (busId, other.id))
+        {
+            if (! std::exchange (heading, true))
+                menu.addSectionHeader ("GROUP CHANNELS");
             menu.addItem (1000 + other.id, other.name, true, track->output == other.id);
+        }
+    heading = false;
+    for (const auto& other : studio.getProject().tracks)
+        if (other.isFx() && studio.getProject().canRouteTo (busId, other.id))
+        {
+            if (! std::exchange (heading, true))
+                menu.addSectionHeader ("FX CHANNELS");
+            menu.addItem (1000 + other.id, other.name, true, track->output == other.id);
+        }
     menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<MixerView> (this), busId] (int chosen)
     {
         if (safe != nullptr && chosen > 0)
@@ -879,7 +891,7 @@ void MixerView::showOutputMenu (int busId)
 void MixerView::showSendMenu (int busId, int slot)
 {
     const auto* track = studio.getProject().findTrack (busId);
-    if (track == nullptr || track->isFx())
+    if (track == nullptr || ! studio.getProject().hasOutput (*track))
         return;
     const auto current = juce::isPositiveAndBelow (slot, (int) track->sends.size()) ? track->sends[(size_t) slot] : pr7s::Send {};
     const auto effects = studio.getPluginHost().getEffects();
@@ -887,9 +899,11 @@ void MixerView::showSendMenu (int busId, int slot)
     menu.addSectionHeader ("SEND " + juce::String (slot + 1));
     auto anyFx = false;
     for (const auto& other : studio.getProject().tracks)
-        if (other.isFx())
+        if (other.isFx() && other.id != busId)
         {
-            menu.addItem (10000 + other.id, other.name, true, current.target == other.id);
+            // (0.60.0) One that leads back here would make a loop: shown, not offered.
+            const auto ok = other.id == current.target || studio.getProject().canSendTo (busId, other.id);
+            menu.addItem (10000 + other.id, other.name + (ok ? juce::String() : juce::String ("  (would loop back)")), ok, current.target == other.id);
             anyFx = true;
         }
     if (! anyFx)

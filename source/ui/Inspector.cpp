@@ -931,7 +931,7 @@ void Inspector::layout()
         auto& header = *headers[(size_t) i];
         // The master (0.9.12): its basics (R W, volume), inserts and fader.
         const auto applies = master ? section == Section::basics || section == Section::inserts || section == Section::fader || section == Section::eq
-                                    : t != nullptr && (section != Section::sends || ! t->isFx())
+                                    : t != nullptr && (section != Section::sends || studio.getProject().hasOutput (*t))   // (0.60.0: FX channels send too)
                                           && (section != Section::chords || t->kind == pr7s::Track::Kind::instrument)   // (0.36.0: MIDI only)
                                           && (section == Section::basics || ! t->isFolder() || t->folderGroup);   // (0.50.0: a folder: its basics)
         if (! applies && section != Section::basics)

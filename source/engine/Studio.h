@@ -75,6 +75,10 @@ namespace pr7s
         // plug-in that doesn't like being run beside others. The output is the same either way.
         bool getMultiCoreAudio() const;
         void setMultiCoreAudio (bool);
+        // (0.60.0) Drawing the windows with the processor instead of the graphics card (settings key "softwareDrawing",
+        // default off): the owner's NEW froze inside the graphics driver; this tells whether the driver is to blame.
+        bool getSoftwareDrawing() const;
+        void setSoftwareDrawing (bool);
         int getAudioHelperThreads() const noexcept { return engine.getHelperThreads(); }
         // (0.57.3) A spike report in words (the session log's line); how many were written.
         juce::String describeSpike (const Engine::SpikeReport&) const;
@@ -1421,6 +1425,7 @@ namespace pr7s
         juce::AudioDeviceManager devices;
         bool withDevices = false;
         bool multiCoreAudio = false;   // (without a settings file)
+        bool softwareDrawing = false;  // (without a settings file)
         void applyMultiCore();
         Engine engine;
 

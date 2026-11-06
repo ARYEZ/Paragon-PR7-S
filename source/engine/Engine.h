@@ -362,7 +362,7 @@ namespace pr7s
             // What it is, where its sound goes, and its sends.
             enum class Role { source, group, fx };  // processed in this order: tracks, groups, FX
             Role role = Role::source;
-            int groupHeight = 0;                    // (0.59.0) groups: how many groups lie between it and the master (worked out each block)
+            int height = 0;                         // (0.60.0) channels: the longest chain of channels it feeds to the master (worked out in update)
             int output = 0;                         // a group channel's id, or 0: the master
             struct SendState
             {
@@ -480,6 +480,7 @@ namespace pr7s
         void timedTrack (TrackState&, const BlockContext&);   // (0.57.3) processTrack, timed
         void mixTrackOut (TrackState&, const BlockContext&, juce::AudioBuffer<float>& master);
         AudioWorkers workers;
+        int deepestChannel = 0;          // (0.60.0) the highest channel `height` (under the lock)
         std::vector<TrackState*> wave;   // (room kept by the message thread: the audio thread never grows it)
 
         std::array<Segment, 16> segments;

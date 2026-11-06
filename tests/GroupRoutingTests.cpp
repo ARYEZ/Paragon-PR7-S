@@ -102,6 +102,40 @@ TEST_CASE ("Groups into groups on several cores: the same (0.59.0)", "[engine][s
     groupsIntoGroups (desk);
 }
 
+TEST_CASE ("Any channel into any other: FX into groups, groups into FX, FX sending to FX, in the right order (0.60.0)", "[engine][sends][groups]")
+{
+    for (const auto helpers : { 0, 3 })
+    {
+        Desk desk;
+        desk.engine.setHelperThreads (helpers);
+        // The list's order the reverse of the sound's: a group (20), the FX channel feeding it (21), a second FX
+        // channel sending into the first (22), the track (1).
+        desk.addGroup (20);
+        Track fxTrack;
+        fxTrack.id = 21;
+        fxTrack.kind = Track::Kind::fx;
+        desk.project.tracks.push_back (fxTrack);
+        desk.engine.addChannel (21, false);
+        Track fx2;
+        fx2.id = 22;
+        fx2.kind = Track::Kind::fx;
+        desk.project.tracks.push_back (fx2);
+        desk.engine.addChannel (22, false);
+        desk.addTrack (1, 0.5f);
+        // The track straight to the master, and sent to FX 22 (halving), which sends to FX 21 and goes to the master;
+        // FX 21 into the group (halving), into the master.
+        desk.engine.insertEffect (22, 0, timesEffect (0.5f));
+        desk.track (22).inserts.resize (1);
+        desk.engine.insertEffect (20, 0, timesEffect (0.5f));
+        desk.track (20).inserts.resize (1);
+        desk.track (1).sends = { { 22, 0.0f, true, false } };
+        desk.track (22).sends = { { 21, 0.0f, true, false } };
+        desk.track (21).output = 20;
+        // 0.5 dry + 0.25 from FX 22 + (0.25 into FX 21 -> group halves) 0.125.
+        CHECK_THAT (desk.output(), WithinAbs (0.875, 1.0e-5));
+    }
+}
+
 TEST_CASE ("The studio's groups into groups: allowed, never a loop, kept in the song, reset when the group goes (0.59.0)", "[studio][sends][groups]")
 {
     Studio studio (false);
@@ -123,12 +157,30 @@ TEST_CASE ("The studio's groups into groups: allowed, never a loop, kept in the 
     CHECK (studio.getProject().findTrack (john)->output == 0);
     CHECK_FALSE (studio.getProject().canRouteTo (john, verse));
     CHECK (studio.getProject().canRouteTo (verse, chorus));   // (sideways is fine)
-    // An FX channel still goes to the master.
-    if (fx != 0)
-    {
-        studio.setOutput (fx, john);
-        CHECK (studio.getProject().findTrack (fx)->output == 0);
-    }
+    // (0.60.0) An FX channel's output into John vox. Then John vox can't send to that FX channel (it leads back to
+    // him: a loop); his verse group can (verse vox into the FX into John vox: no way back to the verse group).
+    REQUIRE (fx != 0);
+    studio.setOutput (fx, john);
+    CHECK (studio.getProject().findTrack (fx)->output == john);
+    studio.setSend (john, 0, { fx, 0.0f, true, false });
+    CHECK ((studio.getProject().findTrack (john)->sends.empty() || studio.getProject().findTrack (john)->sends[0].target == 0));
+    studio.setSend (verse, 0, { fx, 0.0f, true, false });
+    REQUIRE (studio.getProject().findTrack (verse)->sends.size() == 1);
+    CHECK (studio.getProject().findTrack (verse)->sends[0].target == fx);
+    studio.setSend (verse, 0, {});
+    // A track not feeding John sends to it freely; an FX channel sends to another.
+    const auto fx2 = studio.addFxChannel ({});
+    REQUIRE (fx2 != 0);
+    studio.setSend (fx2, 0, { fx, 0.0f, true, false });
+    REQUIRE (studio.getProject().findTrack (fx2)->sends.size() == 1);
+    CHECK (studio.getProject().findTrack (fx2)->sends[0].target == fx);
+    // ...and back would be a loop.
+    studio.setSend (fx, 0, { fx2, 0.0f, true, false });
+    CHECK ((studio.getProject().findTrack (fx)->sends.empty() || studio.getProject().findTrack (fx)->sends[0].target == 0));
+    // A track's output to an FX channel.
+    studio.setOutput (vocal, fx2);
+    CHECK (studio.getProject().findTrack (vocal)->output == fx2);
+    studio.setOutput (vocal, verse);
 
     // Saved and opened again.
     const auto file = juce::File::createTempFile (".pr7s");

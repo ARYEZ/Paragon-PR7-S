@@ -2,6 +2,15 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.60.0
+
+- **Routing with no limits but loops, as the other DAW's** (you asked: any track to any track, never itself). Any track that makes sound (audio, instrument, group channel, FX channel, a folder with its group channel) can now have its output go to the master, **any group channel, or any FX channel**. Groups into FX channels, FX channels into groups, and FX channels into other FX channels all work.
+  - **FX channels have an OUT and sends of their own now** (in the mixer, the Inspector and their right-click menu), so an FX channel can send to another FX channel too.
+  - **The one rule left:** nothing may lead back into itself, by its output or by a send. The menus leave out (or grey, marked "would loop back") a destination that would make a loop. A song with a loop in it opens with the loop broken.
+  - **Order:** the mixer works out the order the channels are mixed in whenever routing changes, so every channel is mixed after everything feeding it, whatever order the tracks sit in, on one core or several.
+  - **What the other DAW doesn't do either:** an audio or instrument track isn't an output destination there (its output goes to busses, groups or FX channels; a group can feed an audio track's *input* for recording a submix). That's left out here too; say if you want it.
+- **NEW froze the studio (your log): a switch to test the likely cause.** The log shows the screen's thread waiting inside the graphics card's driver (NVIDIA's DirectX driver) just after the new song was set up: not in the studio's own steps, which had all finished. Drawing the whole studio at your three screens' width right after NEW takes 30 ms here and nothing in it is drawn oversized, so it couldn't be reproduced without your graphics card. New in SETTINGS: **DRAW WITHOUT THE GRAPHICS CARD**, which draws every studio window with the processor instead. If NEW stops freezing with it on, the driver is to blame (updating the NVIDIA driver may then fix it with the switch off again); if it still freezes, the log will say where now.
+
 ## 0.59.0
 
 - **Groups into groups** (you asked: "John verse vox" and "John chorus vox" both into a "John vox" group, and that one into the master). A group channel now has an OUTPUT of its own: in the mixer (OUT on its strip), in the Inspector, and in its right-click menu. Choose the master or any other group, as deep as you like (verse vox into John vox into All vox).

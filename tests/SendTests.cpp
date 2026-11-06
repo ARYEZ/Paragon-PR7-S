@@ -155,7 +155,9 @@ TEST_CASE ("The studio's FX and group channels: added (named as the manual's), s
     REQUIRE (studio.getProject().findTrack (track)->sends.size() == 1);
     studio.setOutput (track, group);
     CHECK (studio.getProject().findTrack (track)->output == group);
-    studio.setOutput (track, fx);   // an FX channel isn't an output
+    studio.setOutput (track, fx);   // (0.60.0: an FX channel is an output too, as the other DAW's)
+    CHECK (studio.getProject().findTrack (track)->output == fx);
+    studio.undo();
     CHECK (studio.getProject().findTrack (track)->output == group);
     studio.undo();
     CHECK (studio.getProject().findTrack (track)->output == 0);

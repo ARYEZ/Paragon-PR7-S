@@ -931,6 +931,36 @@ namespace pr7s
             }
         for (size_t i = 0; i < juce::jmin (project.masterInserts.size(), masterInserts.size()); ++i)
             masterInserts[i].bypass = project.masterInserts[i].bypass;
+        // (0.60.0) The order channels are mixed in: a channel only once everything feeding it is in. Its height:
+        // the longest chain of channels its output and sends lead through to the master (one that feeds the
+        // master alone: 0). The studio never makes a loop; the passes stop after one per track anyway.
+        for (auto& track : tracks)
+            track->height = 0;
+        deepestChannel = 0;
+        for (size_t pass = 0; pass <= tracks.size(); ++pass)
+        {
+            auto grew = false;
+            for (auto& track : tracks)
+            {
+                if (track->role == TrackState::Role::source)
+                    continue;
+                const auto feed = [&] (int id)
+                {
+                    if (const auto* to = id != 0 ? findTrack (id) : nullptr; to != nullptr && to != track.get() && to->role != TrackState::Role::source
+                                                                             && track->height < to->height + 1)
+                    {
+                        track->height = to->height + 1;
+                        grew = true;
+                    }
+                };
+                feed (track->output);
+                for (const auto& send : track->sends)
+                    feed (send.target);
+                deepestChannel = juce::jmax (deepestChannel, track->height);
+            }
+            if (! grew)
+                break;
+        }
     }
 
     void Engine::setHeld (int busId, const AutomationLane& control, bool isHeld)
@@ -1333,8 +1363,8 @@ namespace pr7s
         auto* out = &master;
         juce::AudioBuffer<float> toGroup;
         const auto only = exportBus.load();   // (0.51.0) a channel export: only that channel to the output
-        if (track->role != TrackState::Role::fx && track->output != 0 && track->id != only)   // (0.59.0: a group into a group too)
-            if (auto* group = findTrack (track->output); group != nullptr && group->role == TrackState::Role::group && group != track)
+        if (track->output != 0 && track->id != only)   // (0.60.0: any track or channel into any group or FX channel)
+            if (auto* group = findTrack (track->output); group != nullptr && group->role != TrackState::Role::source && group != track)
             {
                 toGroup.setDataToReferTo (group->bus.getArrayOfWritePointers(), 2, numSamples);
                 out = &toGroup;
@@ -1590,29 +1620,17 @@ namespace pr7s
             if (track->role != TrackState::Role::source)
                 for (int channel = 0; channel < 2; ++channel)
                     juce::FloatVectorOperations::clear (track->bus.getWritePointer (channel), numSamples);
-        // (0.59.0) Groups may feed groups ("verse vox" into "John vox" into the master): a group is mixed
-        // once everything feeding it is in, so the deepest go first. Its height: the groups between it and
-        // the master (the studio never makes a loop; a guard stops one anyway).
-        auto deepestGroup = 0;
-        for (auto& track : tracks)
-            if (track->role == TrackState::Role::group)
-            {
-                auto height = 0;
-                for (const auto* at = findTrack (track->output); at != nullptr && at->role == TrackState::Role::group && height < (int) tracks.size();
-                     at = findTrack (at->output))
-                    ++height;
-                track->groupHeight = height;
-                deepestGroup = juce::jmax (deepestGroup, height);
-            }
-        // Tracks, then groups (the tracks routed to them are in), then FX channels (every send is in).
-        // (0.34.5) Each kind's own work on the cores side by side, then their sums in order.
+        // The tracks, then the group and FX channels, deepest first (0.60.0: any channel may feed any other; a
+        // channel is mixed once everything routed or sent to it is in: its `height`, worked out in update).
+        // (0.34.5) Each pass's own work on the cores side by side, then their sums in order.
         const BlockContext block { numSamples, spans.data(), numSpans, &timing, nowPlaying, blockBeat, liveId };
-        for (int pass = 0; pass < deepestGroup + 3; ++pass)
+        for (int pass = 0; pass < deepestChannel + 2; ++pass)
         {
-            // Passes: the tracks; the groups, deepest first; the FX channels.
-            const auto role = pass == 0 ? TrackState::Role::source : pass == deepestGroup + 2 ? TrackState::Role::fx : TrackState::Role::group;
-            const auto height = deepestGroup - (pass - 1);
-            const auto inPass = [role, height] (const TrackState& t) { return t.role == role && (role != TrackState::Role::group || t.groupHeight == height); };
+            const auto height = deepestChannel - (pass - 1);
+            const auto inPass = [pass, height] (const TrackState& t)
+            {
+                return pass == 0 ? t.role == TrackState::Role::source : t.role != TrackState::Role::source && t.height == height;
+            };
             const auto oneByOne = [&]
             {
                 for (auto& track : tracks)
@@ -1628,16 +1646,10 @@ namespace pr7s
                 continue;
             }
             wave.clear();   // (keeps its room: nothing allocated)
-            auto fxIntoFx = false;   // an FX channel sending to another: they wait for each other, in order
             for (auto& track : tracks)
                 if (inPass (*track))
-                {
-                    wave.push_back (track.get());
-                    if (role == TrackState::Role::fx)
-                        for (const auto& send : track->sends)
-                            fxIntoFx = fxIntoFx || send.target != 0;
-                }
-            if (wave.size() < 2 || fxIntoFx)
+                    wave.push_back (track.get());   // (none of a pass feeds another of it: their heights would differ)
+            if (wave.size() < 2)
             {
                 oneByOne();
                 continue;

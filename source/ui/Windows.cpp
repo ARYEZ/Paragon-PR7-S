@@ -73,9 +73,22 @@ namespace Windows
                 multiCore.onClick = [this] { studio.setMultiCoreAudio (multiCore.getToggleState()); refreshMultiCore(); };
                 refreshMultiCore();
                 addAndMakeVisible (multiCore);
+                // (0.60.0) The windows drawn with the processor (a graphics driver that hangs).
+                softwareDrawing.setColour (juce::ToggleButton::textColourId, ParagonColours::text);
+                softwareDrawing.setColour (juce::ToggleButton::tickColourId, ParagonColours::accent);
+                softwareDrawing.setToggleState (studio.getSoftwareDrawing(), juce::dontSendNotification);
+                softwareDrawing.setButtonText ("DRAW WITHOUT THE GRAPHICS CARD");
+                softwareDrawing.setTooltip ("The studio's windows drawn by the processor instead of the graphics card. Try it if the "
+                                            "screen freezes (a graphics driver that hangs); a little more work for the processor on big windows.");
+                softwareDrawing.onClick = [this]
+                {
+                    studio.setSoftwareDrawing (softwareDrawing.getToggleState());
+                    Windows::applyDrawing (softwareDrawing.getToggleState());
+                };
+                addAndMakeVisible (softwareDrawing);
                 studio.getDeviceManager().addChangeListener (this);
                 refreshBuffer();
-                setSize (600, 676);
+                setSize (600, 712);
             }
 
             ~SettingsContent() override { studio.getDeviceManager().removeChangeListener (this); }
@@ -83,7 +96,7 @@ namespace Windows
             void resized() override
             {
                 auto area = getLocalBounds().reduced (12);
-                auto bottom = area.removeFromBottom (226);
+                auto bottom = area.removeFromBottom (262);
                 auto bufferRow = bottom.removeFromTop (88);
                 reload.setBounds (bufferRow.removeFromRight (130).removeFromTop (28));
                 bufferRow.removeFromRight (8);
@@ -96,6 +109,8 @@ namespace Windows
                 span.setBounds (finishRow.removeFromLeft (180));
                 bottom.removeFromTop (8);
                 multiCore.setBounds (bottom.removeFromTop (28));
+                bottom.removeFromTop (8);
+                softwareDrawing.setBounds (bottom.removeFromTop (28));
                 note.setBounds (bottom.withTrimmedTop (8));
                 viewport.setBounds (area.withTrimmedBottom (8));
                 // The selector sets its own height; its width is the viewport's.
@@ -151,7 +166,7 @@ namespace Windows
             juce::TextButton reload;
             juce::ComboBox finish;
             juce::TextButton span;
-            juce::ToggleButton multiCore;
+            juce::ToggleButton multiCore, softwareDrawing;
             std::function<void()> toggleSpan;
             std::function<bool()> isSpanning;
         };
@@ -690,6 +705,29 @@ namespace Windows
         setVisible (true);
         timerCallback();
         startTimer (300);
+    }
+
+    int applyDrawing (bool software)
+    {
+        auto switched = 0;
+        for (int i = 0; i < juce::ComponentPeer::getNumPeers(); ++i)
+            if (auto* peer = juce::ComponentPeer::getPeer (i))
+            {
+                const auto engines = peer->getAvailableRenderingEngines();
+                if (engines.size() < 2)
+                    continue;
+                auto wanted = engines.indexOf ("Software Renderer");
+                if (! software)
+                    for (int e = 0; e < engines.size(); ++e)
+                        if (e != engines.indexOf ("Software Renderer"))
+                            wanted = e;
+                if (wanted >= 0 && peer->getCurrentRenderingEngine() != wanted)
+                {
+                    peer->setCurrentRenderingEngine (wanted);
+                    ++switched;
+                }
+            }
+        return switched;
     }
 
     juce::Rectangle<int> rightmostScreenArea()
