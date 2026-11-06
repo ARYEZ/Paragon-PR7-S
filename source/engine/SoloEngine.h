@@ -21,10 +21,12 @@
 namespace pr7s
 {
     enum class SoloStyle : int { automatic, soaringBends, rockSwagger, tapAndDive, bluesHammer,
-                                 screamAndDive, thrashFire, pinchSqueal, progPrecision };   // (0.67.0: round two)
+                                 screamAndDive, thrashFire, pinchSqueal, progPrecision,   // (0.67.0: round two)
+                                 glamFlash, sleazeBlues, topHatMelody, purpleScream };    // (0.68.0: round three)
     const std::vector<SoloStyle>& soloStyles();      // automatic first
     juce::String soloStyleName (SoloStyle);          // "BY STYLE", "SOARING BENDS", "ROCK 'N' ROLL SWAGGER", "TAP & DIVE", "BLUES HAMMER",
-                                                     // "SCREAM & DIVE", "THRASH FIRE", "PINCH SQUEAL", "PROG PRECISION"
+                                                     // "SCREAM & DIVE", "THRASH FIRE", "PINCH SQUEAL", "PROG PRECISION",
+                                                     // "GLAM FLASH", "SLEAZE BLUES", "TOP HAT MELODY", "PURPLE SCREAM"
     SoloStyle soloStyleNamed (const juce::String&);  // (else automatic)
     juce::String soloStyleDescription (SoloStyle);
 

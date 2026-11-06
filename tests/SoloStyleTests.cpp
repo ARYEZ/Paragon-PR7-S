@@ -46,14 +46,15 @@ namespace
 
 TEST_CASE ("0.66.0: solo style names are ours, round trip, and never a player's", "[solo][solostyles]")
 {
-    REQUIRE (soloStyles().size() == 9);
+    REQUIRE (soloStyles().size() == 13);
     CHECK (soloStyles().front() == SoloStyle::automatic);
     for (const auto s : soloStyles())
     {
         CHECK (soloStyleNamed (soloStyleName (s)) == s);
         CHECK (soloStyleDescription (s).isNotEmpty());
         for (const auto* player : { "Gilmour", "Perry", "Van Halen", "Page", "EVH", "Zeppelin", "Floyd", "Aerosmith",
-                                   "Dimebag", "Darrell", "Pantera", "Hammett", "Metallica", "Wylde", "Black Label", "Petrucci", "Dream Theater" })
+                                   "Dimebag", "Darrell", "Pantera", "Hammett", "Metallica", "Wylde", "Black Label", "Petrucci", "Dream Theater",
+                                   "DeVille", "Poison", "Mick Mars", "Motley", "Slash", "Guns N", "Prince" })
         {
             CHECK_FALSE (soloStyleName (s).containsIgnoreCase (player));
             CHECK_FALSE (soloStyleDescription (s).containsIgnoreCase (player));
@@ -298,4 +299,80 @@ TEST_CASE ("0.67.0: round two's styles have their own habits", "[solo][solostyle
         }
         CHECK (longest >= 12);
     }
+}
+
+TEST_CASE ("0.68.0: round three's styles have their own habits", "[solo][solostyles]")
+{
+    const auto spans = amBars (16);
+    const auto& tuning = GuitarTuning::all()[0];
+    const auto longestRun = [] (const LineIdea& idea, double from, double to)
+    {
+        auto run = 0, longest = 0;
+        for (size_t i = 1; i < idea.notes.size(); ++i)
+        {
+            if (idea.notes[i].beat < from || idea.notes[i].beat >= to)
+                continue;
+            run = std::abs (idea.notes[i].beat - idea.notes[i - 1].beat - 0.25) < 1.0e-6 ? run + 1 : 0;
+            longest = juce::jmax (longest, run);
+        }
+        return longest;
+    };
+    auto thirds = 0, dips = 0;
+    for (int variation = 0; variation < 4; ++variation)
+    {
+        INFO ("variation " << variation);
+        // GLAM FLASH: no fast run in the first half; one near the end; double stops in thirds.
+        const auto glam = composeSolo (SoloStyle::glamFlash, spans, 4.0, tuning, {}, variation);
+        CHECK (longestRun (glam, 0.0, 32.0) < 4);
+        CHECK (longestRun (glam, 32.0, 64.0) >= 4);
+        for (size_t i = 1; i < glam.notes.size(); ++i)
+            if (std::abs (glam.notes[i].beat - glam.notes[i - 1].beat) < 1.0e-6)
+            {
+                const auto gap = std::abs (glam.notes[i].pitch - glam.notes[i - 1].pitch);
+                CHECK ((gap == 3 || gap == 4));
+                ++thirds;
+            }
+
+        // SLEAZE BLUES: at most one whammy dip, a semitone; nothing busier than 8 notes a bar outside the run.
+        const auto sleaze = composeSolo (SoloStyle::sleazeBlues, spans, 4.0, tuning, {}, variation);
+        auto here = 0;
+        for (const auto& n : sleaze.notes)
+            if (n.effect == LineNote::Effect::dive)
+            {
+                CHECK (n.amount == 1.0f);
+                ++here;
+            }
+        CHECK (here <= 1);
+        dips += here;
+
+        // TOP HAT MELODY: the melody laid back off the grid.
+        const auto hat = composeSolo (SoloStyle::topHatMelody, spans, 4.0, tuning, {}, variation);
+        auto late = 0;
+        for (const auto& n : hat.notes)
+        {
+            const auto off = n.beat * 4.0 - std::floor (n.beat * 4.0 + 1.0e-6);
+            late += std::abs (off - 0.12) < 1.0e-3 ? 1 : 0;
+        }
+        CHECK (late >= 8);
+
+        // PURPLE SCREAM: bends grow through the solo, an outburst climbing by half steps, a high ending.
+        const auto purple = composeSolo (SoloStyle::purpleScream, spans, 4.0, tuning, {}, variation);
+        auto lastBend = 0.0f;
+        for (const auto& n : purple.notes)
+            if (n.effect == LineNote::Effect::bend && n.amount >= 1.0f)
+            {
+                CHECK (n.amount >= lastBend);
+                lastBend = n.amount;
+            }
+        auto climb = 0, longestClimb = 0;
+        for (size_t i = 1; i < purple.notes.size(); ++i)
+        {
+            climb = purple.notes[i].pitch == purple.notes[i - 1].pitch + 1 ? climb + 1 : 0;
+            longestClimb = juce::jmax (longestClimb, climb);
+        }
+        CHECK (longestClimb >= 8);
+        CHECK (purple.notes.back().pitch >= tuning.strings.back() + 10);
+    }
+    CHECK (thirds > 0);
+    CHECK (dips > 0);
 }

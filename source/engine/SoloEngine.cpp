@@ -10,12 +10,16 @@ namespace pr7s
 
         // A style's rules (from docs/solo-styles: what the lessons say each player does; the numbers are
         // starting points to tune by ear).
-        enum class Burst { run, cell, tapping, displaced, chromaticShift, repeatLick, sixes, sequence };
+        enum class Burst { run, cell, tapping, displaced, chromaticShift, repeatLick, sixes, sequence, fourSequence, risingFlurry };
         struct Profile
         {
             bool sixth = false, ninth = false, flatFive = false, majorOnMajor = false, curls = false;
             bool majorThird = false, aeolian = false;                   // (0.67.0) the major 3rd over minor; natural minor's 2 and b6
             bool pinchSqueals = false, scream = false, upbeatEntry = false, endHigh = false;   // (0.67.0)
+            // (0.68.0) thirds for double stops (else 6ths); one whammy dip; melody behind the beat; the blue b3 and b7
+            // over major chords; bends bigger as the solo goes; the last burst outside the key.
+            bool thirdDoubleStops = false, dip = false, blueOnMajor = false, escalate = false, outburst = false;
+            double lateBeats = 0.0;
             float startDensity = 4.0f, peakDensity = 10.0f;   // notes a bar
             double restBeats = 1.0;                            // between phrases
             int phraseBars = 2;
@@ -110,6 +114,42 @@ namespace pr7s
                     p.description = "Precise and composed: singing in-tune bends traded with picked six-note scale sequences and "
                                     "seventh-chord arpeggios, building in curves to something outside at the climax";
                     break;
+                case SoloStyle::glamFlash:
+                    p.majorOnMajor = p.flatFive = true;
+                    p.startDensity = 3.0f; p.peakDensity = 12.0f; p.restBeats = 1.0; p.phraseBars = 1;
+                    p.burst = Burst::run; p.burstFrom = 0.5f; p.burstEveryOther = false;
+                    p.bendChance = 0.65f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.3f }, { 3.0f, 0.2f } }; p.bigFrom = 0.5f;
+                    p.vibrato = 1.3f; p.climb = 10; p.doubleStops = p.thirdDoubleStops = true;
+                    p.description = "Glam hard rock: sustained notes and long bends held with vibrato, lyrical double stops in thirds, "
+                                    "melodic answers, and the fast picked run saved for the very end";
+                    break;
+                case SoloStyle::sleazeBlues:
+                    p.flatFive = p.majorOnMajor = p.curls = true;
+                    p.startDensity = 3.0f; p.peakDensity = 8.0f; p.restBeats = 1.5; p.phraseBars = 2;
+                    p.burst = Burst::run; p.burstFrom = 0.5f; p.burstEveryOther = false;
+                    p.bendChance = 0.7f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.3f } };
+                    p.vibrato = 1.1f; p.climb = 7; p.dip = true;
+                    p.description = "A bluesman's melody you could hum: two-bar phrases and their answers, a bend held on every bar, "
+                                    "space for the singer, one whammy dip, a quick run near the end and a long held note to finish";
+                    break;
+                case SoloStyle::topHatMelody:
+                    p.flatFive = p.majorOnMajor = true;
+                    p.startDensity = 3.5f; p.peakDensity = 12.0f; p.restBeats = 1.0; p.phraseBars = 1;
+                    p.burst = Burst::fourSequence; p.burstFrom = 0.5f;
+                    p.bendChance = 0.6f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.4f }, { 3.0f, 0.3f } }; p.bigFrom = 0.5f;
+                    p.vibrato = 1.2f; p.climb = 12; p.lateBeats = 0.03;
+                    p.description = "Melody first: slow, loose bends and held notes laid back behind the beat, a motif played again "
+                                    "higher, then a wilder second half of four-note sequences climbing the scale";
+                    break;
+                case SoloStyle::purpleScream:
+                    p.majorOnMajor = p.blueOnMajor = true;
+                    p.startDensity = 2.5f; p.peakDensity = 12.0f; p.restBeats = 1.5; p.phraseBars = 2;
+                    p.burst = Burst::risingFlurry; p.burstFrom = 0.4f;
+                    p.bendChance = 0.7f; p.bends = { { 2.0f, 1.0f } };
+                    p.vibrato = 1.4f; p.climb = 14; p.escalate = p.outburst = p.endHigh = true;
+                    p.description = "Restrained, then soaring: a motif brought back higher each time, bends bigger every time, "
+                                    "rising flurries, one outburst outside the key at the peak and a screaming held high note";
+                    break;
                 case SoloStyle::automatic: break;
             }
             return p;
@@ -142,6 +182,7 @@ namespace pr7s
             {
                 for (const auto s : { 0, 2, 4, 7, 9 })
                     add (span.chord.root + s);
+                if (p.blueOnMajor) { add (span.chord.root + 3); add (span.chord.root + 10); }
                 return out;
             }
             const auto minorRoot = span.key.minor ? span.key.pitchClass() : span.key.pitchClass() + 9;
@@ -246,7 +287,8 @@ namespace pr7s
         static const std::vector<SoloStyle> all { SoloStyle::automatic, SoloStyle::soaringBends, SoloStyle::rockSwagger,
                                                   SoloStyle::tapAndDive, SoloStyle::bluesHammer,
                                                   SoloStyle::screamAndDive, SoloStyle::thrashFire, SoloStyle::pinchSqueal,
-                                                  SoloStyle::progPrecision };
+                                                  SoloStyle::progPrecision, SoloStyle::glamFlash, SoloStyle::sleazeBlues,
+                                                  SoloStyle::topHatMelody, SoloStyle::purpleScream };
         return all;
     }
 
@@ -263,6 +305,10 @@ namespace pr7s
             case SoloStyle::thrashFire: return "THRASH FIRE";
             case SoloStyle::pinchSqueal: return "PINCH SQUEAL";
             case SoloStyle::progPrecision: return "PROG PRECISION";
+            case SoloStyle::glamFlash: return "GLAM FLASH";
+            case SoloStyle::sleazeBlues: return "SLEAZE BLUES";
+            case SoloStyle::topHatMelody: return "TOP HAT MELODY";
+            case SoloStyle::purpleScream: return "PURPLE SCREAM";
         }
         return "BY STYLE";
     }
@@ -298,6 +344,10 @@ namespace pr7s
                 case SoloStyle::thrashFire: return "Thrash Fire";
                 case SoloStyle::pinchSqueal: return "Pinch Squeal";
                 case SoloStyle::progPrecision: return "Prog Precision";
+                case SoloStyle::glamFlash: return "Glam Flash";
+                case SoloStyle::sleazeBlues: return "Sleaze Blues";
+                case SoloStyle::topHatMelody: return "Top Hat Melody";
+                case SoloStyle::purpleScream: return "Purple Scream";
                 case SoloStyle::automatic: break;
             }
             return "By Style";
@@ -464,6 +514,43 @@ namespace pr7s
                         }
                         break;
                     }
+                    case Burst::fourSequence:
+                    {
+                        // A four-note run down from a scale note, each one starting a step higher, in 16ths.
+                        const auto g = gridFor (0.25);
+                        const int four[] = { 0, -1, -2, -3 };
+                        auto k = 0;
+                        for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                        {
+                            const auto here = poolOf (scaleAt (x), low, high);
+                            const auto base = nearestIndex (here, centre);
+                            const auto at = juce::jlimit (0, (int) here.size() - 1, base + k / 4 + four[k % 4]);
+                            addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 4 == 0));
+                        }
+                        break;
+                    }
+                    case Burst::risingFlurry:
+                    {
+                        const auto g = gridFor (0.25);
+                        auto k = 0;
+                        if (p.outburst && ph == phrases - 2)
+                        {
+                            // The peak: an outburst outside the key, climbing by half steps.
+                            const auto start = nearestOf (chordTones (burstFrom), centre + 2.0, low, high);
+                            for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                                addNote (notes, x, g, juce::jlimit (low, high, start + k), velocityAt (t, k % 4 == 0));
+                            break;
+                        }
+                        // Up the scale, turning back down a step every fourth note.
+                        for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                        {
+                            const auto here = poolOf (scaleAt (x), low, high);
+                            const auto base = nearestIndex (here, centre - 2.0);
+                            const auto at = juce::jlimit (0, (int) here.size() - 1, base + k - 2 * (k / 4));
+                            addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 4 == 0));
+                        }
+                        break;
+                    }
                     case Burst::sequence:
                     {
                         const auto g = gridFor (0.25);
@@ -606,6 +693,7 @@ namespace pr7s
         std::vector<LineNote> added;
         auto tremoloUsed = false;
         auto pinchBar = -2;
+        auto dipUsed = false;
         auto harmonicBar = -1;
         for (size_t i = 0; i < notes.size(); ++i)
         {
@@ -640,6 +728,14 @@ namespace pr7s
                 n.amount = p.vibrato;
                 continue;
             }
+            if (p.dip && ! dipUsed && t > 0.5f && n.length >= 1.0)
+            {
+                // (0.68.0) A whammy dip: down a semitone and back, like a voice.
+                dipUsed = true;
+                n.effect = LineNote::Effect::dive;
+                n.amount = 1.0f;
+                continue;
+            }
             if (p.tremolo && ! tremoloUsed && t > 0.7f)
             {
                 tremoloUsed = true;
@@ -661,6 +757,8 @@ namespace pr7s
                         if (pick < w) { size = s; break; }
                         pick -= w;
                     }
+                if (p.escalate)
+                    size = t < 0.34f ? 1.0f : t < 0.67f ? 2.0f : 3.0f;   // (0.68.0: half, whole, a step and a half)
                 const auto semis = juce::roundToInt (size);
                 if (n.pitch - semis >= low)
                 {
@@ -674,7 +772,8 @@ namespace pr7s
             {
                 // A 6th double stop: a note a sixth under it.
                 LineNote under = n;
-                under.pitch = n.pitch - (has (scaleAt (n.beat), pcOf (n.pitch - 9)) ? 9 : 8);
+                under.pitch = p.thirdDoubleStops ? n.pitch - (has (scaleAt (n.beat), pcOf (n.pitch - 4)) ? 4 : 3)   // (0.68.0: thirds)
+                                                 : n.pitch - (has (scaleAt (n.beat), pcOf (n.pitch - 9)) ? 9 : 8);
                 if (under.pitch >= low)
                 {
                     added.push_back (under);
@@ -747,6 +846,11 @@ namespace pr7s
                     n.beat += shift;
             }
         }
+        // (0.68.0) Laid back: the melody (not the bursts) a little behind the beat.
+        if (p.lateBeats > 0.0)
+            for (auto& n : notes)
+                if (! inBurst (n.beat))
+                    n.beat += p.lateBeats;
         std::stable_sort (notes.begin(), notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
         if (p.legato)
             for (size_t i = 0; i + 1 < notes.size(); ++i)
