@@ -2,6 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.67.0
+
+- **Solo styles, round two** (you asked; the names are ours). Four more in SOLO: on IDEAS' guitar tab (and the composer's lead lane):
+  - **SCREAM & DIVE:** aggressive groove-metal lead. The blues scale with the major 3rd and 6th, slow half-step bends from below, a lick shifted up a fret every beat (outside the scale as it climbs), a harmonic screamed up a minor third with the bar, and a dive bomb to end.
+  - **THRASH FIRE:** comes in on an upbeat with a vocal-like pentatonic melody, then a picked triplet lick three beats long, repeated so it starts somewhere new in each bar. Wide vibrato, and it ends high.
+  - **PINCH SQUEAL:** a pentatonic melody first, then picked six-note runs down the boxes (each group a step lower, drifting against the beat), pinch-harmonic squeals shaken wide in the gaps (one every two bars at most), very wide vibrato on phrase ends. Major pentatonic over major chords.
+  - **PROG PRECISION:** natural minor (its 2 and b6 heard), singing in-tune bends, then picked six-note scale sequences climbing two steps at a time and seventh-chord arpeggios up and back down, building to a chromatic climb at the climax.
+- **The research** is in `docs/solo-styles` (a sheet per player, 16-21 sources each, several from the players' own magazine columns). Techniques only, never their solos. As before, note counts, bend sizes and vibrato speeds are mostly our estimates: tune by ear.
+- **Dives and screams** need the bend range set as for 0.66.0: Shreddage's Pitch Bend Range and the INSTRUMENTS profile's BEND RANGE the same, 12 or more.
+
 ## 0.66.0
 
 - **Solo styles, round one** (you asked: solos in the manner of players you love). On IDEAS' guitar tab, **SOLO:** chooses how the whole solo (the last lead card, and BUILD SECTION > SOLO) is written:

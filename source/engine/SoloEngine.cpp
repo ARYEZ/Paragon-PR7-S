@@ -10,10 +10,12 @@ namespace pr7s
 
         // A style's rules (from docs/solo-styles: what the lessons say each player does; the numbers are
         // starting points to tune by ear).
-        enum class Burst { run, cell, tapping, displaced };
+        enum class Burst { run, cell, tapping, displaced, chromaticShift, repeatLick, sixes, sequence };
         struct Profile
         {
             bool sixth = false, ninth = false, flatFive = false, majorOnMajor = false, curls = false;
+            bool majorThird = false, aeolian = false;                   // (0.67.0) the major 3rd over minor; natural minor's 2 and b6
+            bool pinchSqueals = false, scream = false, upbeatEntry = false, endHigh = false;   // (0.67.0)
             float startDensity = 4.0f, peakDensity = 10.0f;   // notes a bar
             double restBeats = 1.0;                            // between phrases
             int phraseBars = 2;
@@ -72,6 +74,42 @@ namespace pr7s
                     p.description = "Bluesy and loose: major and minor mixed, flat thirds curled sharp, licks repeated so they "
                                     "shift against the bar, crammed bursts, big over-bends and a climax of repeated bends";
                     break;
+                case SoloStyle::screamAndDive:
+                    p.sixth = p.flatFive = p.majorThird = true;
+                    p.startDensity = 4.0f; p.peakDensity = 14.0f; p.restBeats = 1.0; p.phraseBars = 1;
+                    p.burst = Burst::chromaticShift; p.burstFrom = 0.3f;
+                    p.bendChance = 0.6f; p.bends = { { 1.0f, 1.0f }, { 2.0f, 0.8f }, { 3.0f, 0.3f }, { 4.0f, 0.2f } }; p.bigFrom = 0.5f;
+                    p.vibrato = 1.3f; p.climb = 12; p.dive = p.scream = true;
+                    p.description = "Aggressive groove-metal lead: the blues scale with the major 3rd and 6th, slow half-step bends "
+                                    "from below, licks shifted up a fret at a time, a harmonic screamed up with the bar and a dive bomb to end";
+                    break;
+                case SoloStyle::thrashFire:
+                    p.flatFive = true;
+                    p.startDensity = 5.0f; p.peakDensity = 14.0f; p.restBeats = 0.75; p.phraseBars = 2;
+                    p.burst = Burst::repeatLick; p.burstFrom = 0.3f;
+                    p.bendChance = 0.45f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.5f }, { 3.0f, 0.2f } };
+                    p.vibrato = 1.2f; p.climb = 14; p.upbeatEntry = p.endHigh = true;
+                    p.description = "Thrash pentatonic fire: in on an upbeat with a vocal-like melody, then a picked triplet lick "
+                                    "repeated so it drifts across the bar, wide vibrato, ending high";
+                    break;
+                case SoloStyle::pinchSqueal:
+                    p.flatFive = p.majorOnMajor = true;
+                    p.startDensity = 4.0f; p.peakDensity = 16.0f; p.restBeats = 1.0; p.phraseBars = 1;
+                    p.burst = Burst::sixes; p.burstFrom = 0.45f;
+                    p.bendChance = 0.5f; p.bends = { { 2.0f, 1.0f }, { 3.0f, 0.3f }, { 1.0f, 0.3f } };
+                    p.vibrato = 1.6f; p.climb = 12; p.pinchSqueals = true;
+                    p.description = "Heavy pentatonic: a melody first, then picked six-note runs down the boxes near the end, "
+                                    "pinch-harmonic squeals in the gaps, very wide vibrato on every phrase end";
+                    break;
+                case SoloStyle::progPrecision:
+                    p.aeolian = true;
+                    p.startDensity = 3.5f; p.peakDensity = 16.0f; p.restBeats = 1.0; p.phraseBars = 2;
+                    p.burst = Burst::sequence; p.burstFrom = 0.3f;
+                    p.bendChance = 0.5f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.3f }, { 3.0f, 0.15f } };
+                    p.vibrato = 0.9f; p.climb = 14;
+                    p.description = "Precise and composed: singing in-tune bends traded with picked six-note scale sequences and "
+                                    "seventh-chord arpeggios, building in curves to something outside at the climax";
+                    break;
                 case SoloStyle::automatic: break;
             }
             return p;
@@ -111,6 +149,8 @@ namespace pr7s
                 add (minorRoot + s);
             if (p.ninth) add (minorRoot + 2);
             if (p.sixth) add (minorRoot + 9);
+            if (p.majorThird) add (minorRoot + 4);
+            if (p.aeolian) { add (minorRoot + 2); add (minorRoot + 8); }
             if (p.flatFive) add (minorRoot + 6);
             return out;
         }
@@ -204,7 +244,9 @@ namespace pr7s
     const std::vector<SoloStyle>& soloStyles()
     {
         static const std::vector<SoloStyle> all { SoloStyle::automatic, SoloStyle::soaringBends, SoloStyle::rockSwagger,
-                                                  SoloStyle::tapAndDive, SoloStyle::bluesHammer };
+                                                  SoloStyle::tapAndDive, SoloStyle::bluesHammer,
+                                                  SoloStyle::screamAndDive, SoloStyle::thrashFire, SoloStyle::pinchSqueal,
+                                                  SoloStyle::progPrecision };
         return all;
     }
 
@@ -217,6 +259,10 @@ namespace pr7s
             case SoloStyle::rockSwagger: return "ROCK 'N' ROLL SWAGGER";
             case SoloStyle::tapAndDive: return "TAP & DIVE";
             case SoloStyle::bluesHammer: return "BLUES HAMMER";
+            case SoloStyle::screamAndDive: return "SCREAM & DIVE";
+            case SoloStyle::thrashFire: return "THRASH FIRE";
+            case SoloStyle::pinchSqueal: return "PINCH SQUEAL";
+            case SoloStyle::progPrecision: return "PROG PRECISION";
         }
         return "BY STYLE";
     }
@@ -248,6 +294,10 @@ namespace pr7s
                 case SoloStyle::rockSwagger: return "Rock 'n' Roll Swagger";
                 case SoloStyle::tapAndDive: return "Tap & Dive";
                 case SoloStyle::bluesHammer: return "Blues Hammer";
+                case SoloStyle::screamAndDive: return "Scream & Dive";
+                case SoloStyle::thrashFire: return "Thrash Fire";
+                case SoloStyle::pinchSqueal: return "Pinch Squeal";
+                case SoloStyle::progPrecision: return "Prog Precision";
                 case SoloStyle::automatic: break;
             }
             return "By Style";
@@ -276,7 +326,11 @@ namespace pr7s
             const auto count = juce::jmax (2, juce::roundToInt (p.startDensity * p.phraseBars));
             motif.at = rhythmOf (count, phraseLength - p.restBeats, gridFor (p.startDensity > 4.0f ? 0.25 : 0.5), r, true);
             motif.steps = contourOf ((int) motif.at.size(), r);
+            // (0.67.0) In on an upbeat: the first note off the beat, where there's room.
+            if (p.upbeatEntry && motif.at.size() > 1 && motif.at[0] < 0.5 && motif.at[1] >= 0.5 + gridFor (0.25) - 1.0e-9)
+                motif.at[0] = 0.5;
         }
+        auto burstCount = 0;
         const auto velocityAt = [&] (float t, bool accent)
         {
             const auto base = (float) vel.sustainSoft + ((float) vel.sustainHard - (float) vel.sustainSoft) * t;
@@ -295,6 +349,7 @@ namespace pr7s
                                 && (p.burstEveryOther ? ph % 2 == 1 : ph == phrases - 2);
             if (burstHere)
             {
+                const auto burstIndex = burstCount++;
                 // The style's signature passage, then a held landing note on the last beat.
                 const auto landing = juce::jmax (from, to - juce::jmin (1.0, beatsPerBar * 0.25) - (p.burstEveryOther ? 0.0 : p.restBeats));
                 const auto burstFrom = p.burstEveryOther ? from : juce::jmax (from, landing - 2.0);
@@ -360,6 +415,100 @@ namespace pr7s
                             const auto base = nearestIndex (here, centre + 2.0);
                             const auto at = juce::jlimit (0, (int) here.size() - 1, base + cell[k % 6]);
                             addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 6 == 0));
+                        }
+                        break;
+                    }
+                    case Burst::chromaticShift:
+                    {
+                        // A four-note cell moved up a fret every beat, outside the scale as it goes.
+                        const auto g = gridFor (0.25);
+                        const auto per = juce::jmax (1, juce::roundToInt (1.0 / g));
+                        const auto here = poolOf (scaleAt (burstFrom), low, high);
+                        const auto base = nearestIndex (here, centre);
+                        int cell[4];
+                        const int shape[] = { 0, 2, 1, 2 };
+                        for (int c = 0; c < 4; ++c)
+                            cell[c] = here[(size_t) juce::jlimit (0, (int) here.size() - 1, base + shape[c])];
+                        auto k = 0;
+                        for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                            addNote (notes, x, g, juce::jlimit (low, high, cell[k % 4] + k / per), velocityAt (t, k % 4 == 0));
+                        break;
+                    }
+                    case Burst::repeatLick:
+                    {
+                        // A three-beat lick in picked triplets, repeated so it starts somewhere new in each bar.
+                        const auto g = gridFor (1.0 / 3.0);
+                        const int lick[] = { 2, 1, 0, 2, 1, 0, 1, 0, -1 };
+                        auto k = 0;
+                        for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                        {
+                            const auto here = poolOf (scaleAt (x), low, high);
+                            const auto base = nearestIndex (here, centre + 3.0);
+                            const auto at = juce::jlimit (0, (int) here.size() - 1, base + lick[k % 9]);
+                            addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 9 == 0));
+                        }
+                        break;
+                    }
+                    case Burst::sixes:
+                    {
+                        // Six-note groups down the scale in 16ths (each a step lower), drifting against the beat.
+                        const auto g = gridFor (0.25);
+                        const int six[] = { 0, -1, -2, -1, -2, -3 };
+                        auto k = 0;
+                        for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                        {
+                            const auto here = poolOf (scaleAt (x), low, high);
+                            const auto top = nearestIndex (here, centre + 9.0);
+                            const auto at = juce::jlimit (0, (int) here.size() - 1, top - k / 6 + six[k % 6]);
+                            addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 6 == 0));
+                        }
+                        break;
+                    }
+                    case Burst::sequence:
+                    {
+                        const auto g = gridFor (0.25);
+                        auto k = 0;
+                        if (t > 0.75f && burstIndex > 0)
+                        {
+                            // The climax: something outside, a chromatic climb.
+                            const auto start = nearestOf (chordTones (burstFrom), centre, low, high);
+                            for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                                addNote (notes, x, g, juce::jlimit (low, high, start + k), velocityAt (t, k % 4 == 0));
+                        }
+                        else if (burstIndex % 2 == 0)
+                        {
+                            // Six-note scale cells, each starting two steps higher (turning round at the top).
+                            const int cell[] = { 0, 1, 2, 3, 2, 1 };
+                            for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                            {
+                                const auto here = poolOf (scaleAt (x), low, high);
+                                const auto base = nearestIndex (here, centre - 4.0);
+                                const auto span = juce::jmax (1, (int) here.size() - 4 - base);
+                                auto climb = (k / 6) * 2;
+                                climb = climb % (2 * span);
+                                if (climb > span) climb = 2 * span - climb;
+                                const auto at = juce::jlimit (0, (int) here.size() - 1, base + climb + cell[k % 6]);
+                                addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 6 == 0));
+                            }
+                        }
+                        else
+                        {
+                            // The chord's seventh arpeggio, one note each, up and back down.
+                            for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                            {
+                                const auto& span = chordAt (x);
+                                auto tones = chordTones (x);
+                                const auto seventh = pcOf (span.chord.root + (span.chord.type == Chord::Type::major
+                                                                              && has (scaleAt (x), pcOf (span.chord.root + 11)) ? 11 : 10));
+                                if (! has (tones, seventh))
+                                    tones.push_back (seventh);
+                                const auto arp = poolOf (tones, low, high);
+                                const auto base = nearestIndex (arp, centre - 3.0);
+                                const auto up = juce::jmin (6, (int) arp.size() - 1 - base);
+                                const auto pos = k % juce::jmax (1, 2 * up);
+                                const auto at = base + (pos <= up ? pos : 2 * up - pos);
+                                addNote (notes, x, g, arp[(size_t) juce::jlimit (0, (int) arp.size() - 1, at)], velocityAt (t, pos == 0));
+                            }
                         }
                         break;
                     }
@@ -434,7 +583,7 @@ namespace pr7s
         {
             auto& last = notes.back();
             const auto& c = chordAt (last.beat).chord;
-            last.pitch = nearestOf ({ c.root }, last.pitch, low, high);
+            last.pitch = nearestOf ({ c.root }, p.endHigh ? (double) high - 4.0 : (double) last.pitch, low, high);   // (0.67.0: or high)
             last.length = juce::jmax (last.length, total - last.beat);
             last.technique = LineNote::Technique::normal;
         }
@@ -456,6 +605,7 @@ namespace pr7s
         };
         std::vector<LineNote> added;
         auto tremoloUsed = false;
+        auto pinchBar = -2;
         auto harmonicBar = -1;
         for (size_t i = 0; i < notes.size(); ++i)
         {
@@ -479,6 +629,15 @@ namespace pr7s
             {
                 harmonicBar = bar;
                 n.technique = LineNote::Technique::harmonic;
+                continue;
+            }
+            if (p.pinchSqueals && bar - pinchBar >= 2)
+            {
+                // A pinch-harmonic squeal shaken wide, every two bars at most.
+                pinchBar = bar;
+                n.velocity = GuitarVelocity::of (vel.pinch);
+                n.effect = LineNote::Effect::vibrato;
+                n.amount = p.vibrato;
                 continue;
             }
             if (p.tremolo && ! tremoloUsed && t > 0.7f)
@@ -536,6 +695,22 @@ namespace pr7s
             for (auto& n : notes)
                 if (n.beat >= last->beat)
                     last = &n;
+            if (p.scream)
+            {
+                // (0.67.0) Before it, a harmonic screamed up with the bar: the last held note before the end.
+                LineNote* held = nullptr;
+                for (auto& n : notes)
+                    if (&n != last && n.length >= 0.5 && n.beat < last->beat - 1.0e-6 && ! inBurst (n.beat) && n.pitch - 3 >= low)
+                        held = &n;
+                if (held != nullptr)
+                {
+                    held->technique = LineNote::Technique::harmonic;
+                    // (written 3 under its note; a note already bent: from where its own bend began)
+                    held->pitch += (held->effect == LineNote::Effect::bend ? juce::roundToInt (held->amount) : 0) - 3;
+                    held->effect = LineNote::Effect::bend;
+                    held->amount = 3.0f;
+                }
+            }
             if (p.dive)
             {
                 last->velocity = GuitarVelocity::of (vel.pinch);

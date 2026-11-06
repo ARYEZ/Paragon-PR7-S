@@ -20,9 +20,11 @@
 // Nothing faster than `shortest` beats (the instrument's SHORTEST NOTE; 0: as the style plays it).
 namespace pr7s
 {
-    enum class SoloStyle : int { automatic, soaringBends, rockSwagger, tapAndDive, bluesHammer };
+    enum class SoloStyle : int { automatic, soaringBends, rockSwagger, tapAndDive, bluesHammer,
+                                 screamAndDive, thrashFire, pinchSqueal, progPrecision };   // (0.67.0: round two)
     const std::vector<SoloStyle>& soloStyles();      // automatic first
-    juce::String soloStyleName (SoloStyle);          // "BY STYLE", "SOARING BENDS", "ROCK 'N' ROLL SWAGGER", "TAP & DIVE", "BLUES HAMMER"
+    juce::String soloStyleName (SoloStyle);          // "BY STYLE", "SOARING BENDS", "ROCK 'N' ROLL SWAGGER", "TAP & DIVE", "BLUES HAMMER",
+                                                     // "SCREAM & DIVE", "THRASH FIRE", "PINCH SQUEAL", "PROG PRECISION"
     SoloStyle soloStyleNamed (const juce::String&);  // (else automatic)
     juce::String soloStyleDescription (SoloStyle);
 

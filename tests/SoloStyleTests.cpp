@@ -46,13 +46,14 @@ namespace
 
 TEST_CASE ("0.66.0: solo style names are ours, round trip, and never a player's", "[solo][solostyles]")
 {
-    REQUIRE (soloStyles().size() == 5);
+    REQUIRE (soloStyles().size() == 9);
     CHECK (soloStyles().front() == SoloStyle::automatic);
     for (const auto s : soloStyles())
     {
         CHECK (soloStyleNamed (soloStyleName (s)) == s);
         CHECK (soloStyleDescription (s).isNotEmpty());
-        for (const auto* player : { "Gilmour", "Perry", "Van Halen", "Page", "EVH", "Zeppelin", "Floyd", "Aerosmith" })
+        for (const auto* player : { "Gilmour", "Perry", "Van Halen", "Page", "EVH", "Zeppelin", "Floyd", "Aerosmith",
+                                   "Dimebag", "Darrell", "Pantera", "Hammett", "Metallica", "Wylde", "Black Label", "Petrucci", "Dream Theater" })
         {
             CHECK_FALSE (soloStyleName (s).containsIgnoreCase (player));
             CHECK_FALSE (soloStyleDescription (s).containsIgnoreCase (player));
@@ -243,4 +244,58 @@ TEST_CASE ("0.66.0: bends by their size, dives down by the bend range", "[solo][
     Studio::fitBends (big, 2);
     CHECK (big[0].pitch == 62);
     CHECK (big[0].amount == 2.0f);
+}
+
+TEST_CASE ("0.67.0: round two's styles have their own habits", "[solo][solostyles]")
+{
+    const auto spans = amBars (16);
+    const auto& tuning = GuitarTuning::all()[0];
+    const auto count = [] (const LineIdea& idea, auto&& test)
+    {
+        auto c = 0;
+        for (const auto& n : idea.notes)
+            c += test (n) ? 1 : 0;
+        return c;
+    };
+    const auto pinch = GuitarVelocity::of (127);
+    for (int variation = 0; variation < 3; ++variation)
+    {
+        INFO ("variation " << variation);
+        // SCREAM & DIVE: a harmonic bent up a minor third before a dive at the end; licks shifted a fret at a time.
+        const auto scream = composeSolo (SoloStyle::screamAndDive, spans, 4.0, tuning, {}, variation);
+        CHECK (count (scream, [] (const LineNote& n) { return n.technique == LineNote::Technique::harmonic
+                                                             && n.effect == LineNote::Effect::bend && n.amount == 3.0f; }) == 1);
+        CHECK (count (scream, [] (const LineNote& n) { return n.effect == LineNote::Effect::dive; }) == 1);
+        auto climbs = 0;   // four 16ths a semitone over the four before
+        for (size_t i = 4; i < scream.notes.size(); ++i)
+            climbs += scream.notes[i].pitch == scream.notes[i - 4].pitch + 1
+                      && std::abs (scream.notes[i].beat - scream.notes[i - 4].beat - 1.0) < 1.0e-6 ? 1 : 0;
+        CHECK (climbs >= 8);
+
+        // THRASH FIRE: in on an upbeat, ends high.
+        const auto thrash = composeSolo (SoloStyle::thrashFire, spans, 4.0, tuning, {}, variation);
+        CHECK (thrash.notes.front().beat >= 0.5 - 1.0e-9);
+        CHECK (thrash.notes.back().pitch >= tuning.strings.back() + 10);
+
+        // PINCH SQUEAL: pinch harmonics shaken wide, at most one every two bars.
+        const auto squeal = composeSolo (SoloStyle::pinchSqueal, spans, 4.0, tuning, {}, variation);
+        std::vector<double> pinches;
+        for (const auto& n : squeal.notes)
+            if (n.velocity == pinch && n.effect == LineNote::Effect::vibrato && n.amount > 1.5f)
+                pinches.push_back (n.beat);
+        CHECK (pinches.size() >= 2);
+        for (size_t i = 1; i < pinches.size(); ++i)
+            CHECK (pinches[i] - pinches[i - 1] >= 4.0);   // (different bars two apart at least: a bar is 4 beats here)
+
+        // PROG PRECISION: natural minor's 2 and b6 are heard (B and F in A minor), and long 16th runs.
+        const auto prog = composeSolo (SoloStyle::progPrecision, spans, 4.0, tuning, {}, variation);
+        CHECK (count (prog, [] (const LineNote& n) { return ((n.pitch % 12) + 12) % 12 == 11; }) > 0);
+        auto run = 0, longest = 0;
+        for (size_t i = 1; i < prog.notes.size(); ++i)
+        {
+            run = std::abs (prog.notes[i].beat - prog.notes[i - 1].beat - 0.25) < 1.0e-6 ? run + 1 : 0;
+            longest = juce::jmax (longest, run);
+        }
+        CHECK (longest >= 12);
+    }
 }
