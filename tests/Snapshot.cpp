@@ -930,6 +930,9 @@ TEST_CASE ("Snapshot: the IDEAS window (PARAGON_SNAPSHOT_IDEAS=piano|guitar|bass
             riff.fills = true;
             page.setRiffSettings (riff);
         }
+        // (0.66.0) PARAGON_SNAPSHOT_SOLO=tap & dive|...: the guitar tab's SOLO STYLE.
+        if (const auto solo = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SOLO", {}); solo.isNotEmpty())
+            page.setSoloStyle (pr7s::soloStyleNamed (solo));
         page.play (tab == "piano" ? pr7s::LineIdea::Part::chords : tab == "bass" ? pr7s::LineIdea::Part::bass
                  : tab == "patterns" ? pr7s::LineIdea::Part::pattern : tab == "melody" ? pr7s::LineIdea::Part::tune
                  : tab == "drums" ? pr7s::LineIdea::Part::drums

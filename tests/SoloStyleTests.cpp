@@ -228,10 +228,12 @@ TEST_CASE ("0.66.0: bends by their size, dives down by the bend range", "[solo][
         (k.type == Controller::Type::pitchbend ? bends : wheel).push_back (k);
     REQUIRE (bends.size() == 7);
     CHECK (bends[1].value == 8192 + juce::roundToInt (8191.0 / 12.0));   // a half step on a 12-semitone range
-    CHECK (bends[3].value == 8192);                                        // the dive holds for a quarter
-    CHECK (bends[4].value == 0);                                           // an octave down
-    CHECK (bends[4].start == 2.0 + 2.0 * 0.9);
-    CHECK (bends[5].value == 8192);
+    CHECK (bends[3].value == 8192);                                        // the dive starts level,
+    CHECK (bends[4].value == 8192);                                        // holds for a quarter,
+    CHECK (bends[4].start == 2.0 + 2.0 * 0.25);
+    CHECK (bends[5].value == 0);                                           // goes an octave down,
+    CHECK (bends[5].start == 2.0 + 2.0 * 0.9);
+    CHECK (bends[6].value == 8192);                                        // and comes back as the note ends
     REQUIRE (wheel.size() == 4);
     CHECK (wheel[2].value == 48);                                          // half the usual depth
 
