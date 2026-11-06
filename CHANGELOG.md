@@ -2,6 +2,15 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.68.0
+
+- **Solo styles, round three** (you asked; the names are ours). Four more in SOLO: on IDEAS' guitar tab (and the composer's lead lane):
+  - **GLAM FLASH:** sustained notes and long bends held with vibrato, lyrical double stops in thirds, melodic answers, and the one fast picked run saved for the very end.
+  - **SLEAZE BLUES:** a bluesman's melody you could hum. Two-bar phrases and their answers, a bend held on most bars, room left for a singer, one whammy dip (down a semitone and back, "like a voice"), a quick run near the end and a long held note to finish.
+  - **TOP HAT MELODY:** melody first. Slow, loose bends and held notes laid back a little behind the beat, a motif played again higher, then a wilder second half of four-note runs climbing the scale. Major pentatonic over major chords.
+  - **PURPLE SCREAM:** restrained, then soaring. The blue notes (b3, b7) over major chords, a motif coming back higher each time, bends that grow (a half step, then a whole step, then a step and a half), rising flurries, one outburst outside the key at the peak, and a screaming high note to end.
+- **The research was thinner this round** (the sheets in `docs/solo-styles` say so at the top): one player's habits come mostly from a magazine feature and lesson descriptions, and another rarely spoke about guitar, so bandmates and writers fill in. These four lean more on our own estimates than the earlier eight: tune by ear.
+
 ## 0.67.0
 
 - **Solo styles, round two** (you asked; the names are ours). Four more in SOLO: on IDEAS' guitar tab (and the composer's lead lane):
