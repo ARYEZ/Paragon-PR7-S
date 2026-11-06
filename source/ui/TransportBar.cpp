@@ -5,6 +5,7 @@
 #include "ui/LedDisplay.h"
 #include "ui/Logo.h"
 #include "ui/Pearl.h"
+#include "ui/ParagonLookAndFeel.h"
 
 namespace
 {
@@ -585,7 +586,7 @@ void TransportBar::mouseDoubleClick (const juce::MouseEvent& event)
 {
     if (! tempoScreen.contains (event.position) || studio.getProject().followsTempoTrack())
         return;
-    auto* window = new juce::AlertWindow ("Tempo", "The song's tempo, in beats per minute (20 to 300):", juce::MessageBoxIconType::NoIcon);
+    auto* window = new FamilyAlertWindow ("Tempo", "The song's tempo, in beats per minute (20 to 300):", juce::MessageBoxIconType::NoIcon);
     window->addTextEditor ("bpm", juce::String (studio.getProject().bpm, 2));
     window->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
     window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));

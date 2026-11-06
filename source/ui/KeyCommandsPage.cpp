@@ -353,7 +353,7 @@ KeyCommandsPage::KeyCommandsPage (KeyCommands::Map& m) : map (m)
     {
         if (! juce::isPositiveAndBelow (macroIndex, (int) map.getMacros().size()))
             return;
-        auto* box = new juce::AlertWindow ("Macro", "Its name:", juce::MessageBoxIconType::NoIcon);
+        auto* box = new FamilyAlertWindow ("Macro", "Its name:", juce::MessageBoxIconType::NoIcon);
         box->addTextEditor ("name", map.getMacros()[(size_t) macroIndex].name);
         box->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
         box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
@@ -570,7 +570,7 @@ void KeyCommandsPage::showPresetMenu()
             });
         else if (chosen == 1)
         {
-            auto* box = new juce::AlertWindow ("Save Preset", "A name for these key commands and macros:", juce::MessageBoxIconType::NoIcon);
+            auto* box = new FamilyAlertWindow ("Save Preset", "A name for these key commands and macros:", juce::MessageBoxIconType::NoIcon);
             box->addTextEditor ("name", "My keys");
             box->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
             box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));

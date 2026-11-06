@@ -233,7 +233,7 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
                 onCreate ({});   // (no location: a new song; saving asks where)
             return;
         }
-        auto* box = new juce::AlertWindow ("Create Empty", "Its name (its folder goes in " + library.getDefaultLocation().getFullPathName() + "):",
+        auto* box = new FamilyAlertWindow ("Create Empty", "Its name (its folder goes in " + library.getDefaultLocation().getFullPathName() + "):",
                                            juce::MessageBoxIconType::NoIcon);
         box->addTextEditor ("name", library.getFolderName());
         box->addButton ("Create", 1, juce::KeyPress (juce::KeyPress::returnKey));
@@ -522,7 +522,7 @@ void Hub::showMenu (int index)
 
 void Hub::rename (const juce::File& file)
 {
-    auto* box = new juce::AlertWindow ("Rename", "Its new name:", juce::MessageBoxIconType::NoIcon);
+    auto* box = new FamilyAlertWindow ("Rename", "Its new name:", juce::MessageBoxIconType::NoIcon);
     box->addTextEditor ("name", file.getFileNameWithoutExtension());
     box->addButton ("Rename", 1, juce::KeyPress (juce::KeyPress::returnKey));
     box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));

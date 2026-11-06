@@ -1655,7 +1655,7 @@ void KeyEditor::mouseDoubleClick (const juce::MouseEvent& event)
     {
         // (0.26.0) A drum's name typed in.
         const auto pitch = pitchForY (event.position.y);
-        auto* box = new juce::AlertWindow ("RENAME " + pr7s::noteName (pitch), "The drum's name in this map (all the tracks using it):", juce::MessageBoxIconType::NoIcon);
+        auto* box = new FamilyAlertWindow ("RENAME " + pr7s::noteName (pitch), "The drum's name in this map (all the tracks using it):", juce::MessageBoxIconType::NoIcon);
         box->addTextEditor ("name", drumNameOf (pitch));
         box->addButton ("RENAME", 1, juce::KeyPress (juce::KeyPress::returnKey));
         box->addButton ("CANCEL", 0, juce::KeyPress (juce::KeyPress::escapeKey));

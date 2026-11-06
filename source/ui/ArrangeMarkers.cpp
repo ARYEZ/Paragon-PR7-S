@@ -413,7 +413,7 @@ void ArrangeView::editMarkerName (int index)
     if (track.locked || ! juce::isPositiveAndBelow (index, (int) track.markers.size()))
         return;
     const auto marker = track.markers[(size_t) index];
-    auto* box = new juce::AlertWindow (marker.cycle ? "Cycle Marker " + pr7s::markerIdText (marker) : "Marker " + pr7s::markerIdText (marker),
+    auto* box = new FamilyAlertWindow (marker.cycle ? "Cycle Marker " + pr7s::markerIdText (marker) : "Marker " + pr7s::markerIdText (marker),
                                        "Its description (shown on the marker track and in the Markers window).",
                                        juce::MessageBoxIconType::NoIcon);
     box->addTextEditor ("name", marker.name, "DESCRIPTION");

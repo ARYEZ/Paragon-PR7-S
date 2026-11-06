@@ -189,7 +189,7 @@ void ArrangeView::editSignature (int bar, bool adding)
         return;
     const auto map = project.signatures();
     const auto now = map.segmentOfBar (bar).event;
-    auto* box = new juce::AlertWindow (adding ? "Insert Time Signature" : "Time Signature",
+    auto* box = new FamilyAlertWindow (adding ? "Insert Time Signature" : "Time Signature",
                                        bar == 0 ? juce::String ("The song's first signature (bar 1: it can't be moved).")
                                                 : juce::String ("A signature holds from its bar to the next one. Type it as 7/8, and the bar it starts at."),
                                        juce::MessageBoxIconType::NoIcon);

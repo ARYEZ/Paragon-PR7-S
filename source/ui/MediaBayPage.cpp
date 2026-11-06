@@ -683,7 +683,7 @@ private:
     void askNewValue (bool isStyle)
     {
         const Id parent { isStyle ? A::style : A::category, {} }, sub { isStyle ? A::subStyle : A::subCategory, {} };
-        auto* box = new juce::AlertWindow ("Add a " + parent.name().toLowerCase(),
+        auto* box = new FamilyAlertWindow ("Add a " + parent.name().toLowerCase(),
                                            "A " + parent.name().toLowerCase() + " (one in the list, or a new one) and, if you like, a "
                                                + sub.name().toLowerCase() + " under it:", juce::MessageBoxIconType::NoIcon);
         const auto current = page.getAttributeText (parent);
@@ -726,7 +726,7 @@ private:
 
     void askText (const Row& row, const juce::String& title, const juce::String& message)
     {
-        auto* box = new juce::AlertWindow (title, message, juce::MessageBoxIconType::NoIcon);
+        auto* box = new FamilyAlertWindow (title, message, juce::MessageBoxIconType::NoIcon);
         box->addTextEditor ("value", row.value == mixedText ? juce::String() : row.value, {});
         box->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
         box->addButton ("CANCEL", 0, juce::KeyPress (juce::KeyPress::escapeKey));
@@ -941,7 +941,7 @@ MediaBayPage::MediaBayPage (pr7s::Studio& s)
     userKey.setTooltip ("An attribute of your own (text, a number, or yes/no), for every file");
     userKey.onClick = [this]
     {
-        auto* box = new juce::AlertWindow ("Add a user attribute", "Its name, and what it holds:", juce::MessageBoxIconType::NoIcon);
+        auto* box = new FamilyAlertWindow ("Add a user attribute", "Its name, and what it holds:", juce::MessageBoxIconType::NoIcon);
         box->addTextEditor ("name", {}, "NAME");
         box->addComboBox ("type", { "Text", "Number", "Yes / No" }, "TYPE");
         box->getComboBoxComponent ("type")->setSelectedItemIndex (0, juce::dontSendNotification);

@@ -1167,7 +1167,7 @@ void ChordPadsView::stepPreset (int direction)
 
 void ChordPadsView::savePreset()
 {
-    auto* box = new juce::AlertWindow ("Save chord pads preset", "Its name:", juce::MessageBoxIconType::NoIcon);
+    auto* box = new FamilyAlertWindow ("Save chord pads preset", "Its name:", juce::MessageBoxIconType::NoIcon);
     box->addTextEditor ("name", "My chords");
     box->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
     box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));

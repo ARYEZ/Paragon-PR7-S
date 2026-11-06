@@ -2,6 +2,19 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.57.4
+
+**Question boxes now have the progress box's clean corners** (you saw squared-off ends at the corners of CREATE EMPTY and the other boxes).
+- **What was wrong:** the box is drawn as a rounded rectangle, but Windows held it in a solid square window, so the square's corners showed outside the rounded edge. On top of that, the toolkit drew its own square drop shadow round the window.
+- **The fix:** every question and naming box (CREATE EMPTY, Rename, Save as Template, tempo, markers, signatures, presets, drum names, MediaBay attributes, key-command macros, and the standard yes/no boxes) is now a see-through window with no square shadow, as the progress box has always been.
+- **Not checked here:** this cloud machine doesn't draw see-through windows the way Windows does. The test confirms every box is now made see-through with the square shadow off, but please tell me how they look on your screen.
+
+**About your clicks** (your log from 0.57.3, thank you): every click was a block that took 42–56 ms when it lasts 46 ms. There were no silent blocks from the studio and no late calls from your interface. In every spike:
+- the Bass track (Kontakt 8 with PR7-B) took 40–55 ms, though it usually takes 13–20 ms;
+- every other track was 2 to 3 times slower too, at the same moment.
+
+When everything slows down together like that, the processor usually had less to give at that moment. Things to try: Windows' **High performance** power plan, and **Multiprocessing** off in Kontakt's Engine options. The first spikes also came within a second of opening a plug-in window. Next, the spike report will give each plug-in's own time, so we can see whether PR7-B or Kontakt is the heavy one.
+
 ## 0.57.3
 
 **Finding your clicks** (you hear clicks, and PEAK and OVER jump, with the CPU meter at about 29% and a buffer of 2048). At 2048 samples each audio block lasts about 43 ms. When OVER lights, one block took longer than all 43 ms, while the average shows 29%. Something occasionally holds the audio up for tens of milliseconds, and the meter can't say what.

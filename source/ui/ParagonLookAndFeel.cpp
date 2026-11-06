@@ -823,6 +823,17 @@ void ParagonLookAndFeel::drawAlertBox (juce::Graphics& g, juce::AlertWindow& ale
     juce::ignoreUnused (textArea);
 }
 
+juce::AlertWindow* ParagonLookAndFeel::createAlertWindow (const juce::String& title, const juce::String& message, const juce::String& button1,
+                                                         const juce::String& button2, const juce::String& button3, juce::MessageBoxIconType icon,
+                                                         int numButtons, juce::Component* associatedComponent)
+{
+    // (0.57.4) JUCE's own boxes (questions, notices) see-through at the corners too.
+    auto* box = juce::LookAndFeel_V4::createAlertWindow (title, message, button1, button2, button3, icon, numButtons, associatedComponent);
+    if (box != nullptr)
+        FamilyAlertWindow::makeSeeThrough (*box);
+    return box;
+}
+
 juce::Font ParagonLookAndFeel::getAlertWindowTitleFont()   { return juce::Font (titleFont (20.0f)); }
 juce::Font ParagonLookAndFeel::getAlertWindowMessageFont() { return juce::Font (textFont (15.0f, juce::Font::plain)); }
 juce::Font ParagonLookAndFeel::getAlertWindowFont()        { return juce::Font (textFont (14.0f, juce::Font::plain)); }

@@ -33,6 +33,30 @@ namespace ParagonColours
     // family's red, pink and orange, pearl white and pearl onyx.)
 }
 
+// (0.57.4) A question box with see-through corners, as the progress box (the owner: the boxes'
+// corners showed squared-off ends). JUCE makes an AlertWindow a solid square desktop window, so
+// the rounded box drawAlertBox paints left the square's corners filled in; this one is made
+// see-through and put on the desktop again before it's shown. Every box the studio makes is one
+// (ParagonLookAndFeel::createAlertWindow makes JUCE's own boxes see-through too).
+class FamilyAlertWindow final : public juce::AlertWindow
+{
+public:
+    FamilyAlertWindow (const juce::String& title, const juce::String& message,
+                       juce::MessageBoxIconType icon = juce::MessageBoxIconType::NoIcon, juce::Component* associated = nullptr)
+        : juce::AlertWindow (title, message, icon, associated)
+    {
+        makeSeeThrough (*this);
+    }
+
+    static void makeSeeThrough (juce::AlertWindow& box)
+    {
+        // (JUCE's own shadow is drawn round the window's square: off, as the progress box has none.)
+        box.setDropShadowEnabled (false);
+        box.setOpaque (false);
+        box.addToDesktop();   // (again: a window's see-through is set as it goes on the desktop)
+    }
+};
+
 class ParagonLookAndFeel final : public juce::LookAndFeel_V4
 {
 public:
@@ -115,6 +139,9 @@ public:
     void drawButtonText (juce::Graphics&, juce::TextButton&, bool highlighted, bool down) override;
     // Question and message boxes (0.9.10, the owner asked): pearl black, white text, the PR7-S mark for the icon.
     void drawAlertBox (juce::Graphics&, juce::AlertWindow&, const juce::Rectangle<int>& textArea, juce::TextLayout&) override;
+    juce::AlertWindow* createAlertWindow (const juce::String& title, const juce::String& message, const juce::String& button1,
+                                          const juce::String& button2, const juce::String& button3, juce::MessageBoxIconType,
+                                          int numButtons, juce::Component* associatedComponent) override;
     // Progress bars (the export's, scanning plug-ins): one of the studio's horizontal meters (0.11.1).
     void drawProgressBar (juce::Graphics&, juce::ProgressBar&, int width, int height, double progress, const juce::String& textToShow) override;
     juce::Font getAlertWindowTitleFont() override;

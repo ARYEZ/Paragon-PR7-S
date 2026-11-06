@@ -684,7 +684,7 @@ public:
     {
         if (! tempoArea.contains (e.position))
             return;
-        auto* box = new juce::AlertWindow ("Tempo", owner.studio.getProject().followsTempoTrack()
+        auto* box = new FamilyAlertWindow ("Tempo", owner.studio.getProject().followsTempoTrack()
                                                         ? "The tempo where the cursor is (the tempo event in effect there changes)."
                                                         : "The song's tempo (the tempo track is off).",
                                            juce::MessageBoxIconType::NoIcon);
@@ -918,7 +918,7 @@ private:
         if (! juce::isPositiveAndBelow (index, (int) markers.size()))
             return;
         const auto marker = markers[(size_t) index];
-        auto* box = new juce::AlertWindow ("Cycle Marker " + pr7s::markerIdText (marker), "Its description.", juce::MessageBoxIconType::NoIcon);
+        auto* box = new FamilyAlertWindow ("Cycle Marker " + pr7s::markerIdText (marker), "Its description.", juce::MessageBoxIconType::NoIcon);
         box->addTextEditor ("name", marker.name, "DESCRIPTION");
         box->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
         box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
@@ -938,7 +938,7 @@ private:
 
     void renameTrack()
     {
-        auto* box = new juce::AlertWindow ("Marker Track", "Its name.", juce::MessageBoxIconType::NoIcon);
+        auto* box = new FamilyAlertWindow ("Marker Track", "Its name.", juce::MessageBoxIconType::NoIcon);
         box->addTextEditor ("name", owner.studio.getMarkerTrack().name, "NAME");
         box->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
         box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));

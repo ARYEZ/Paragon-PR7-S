@@ -4279,7 +4279,7 @@ void ArrangeView::editTempoEvent (int index)
     const auto& events = studio.getProject().tempoEvents;
     if (! juce::isPositiveAndBelow (index, (int) events.size()) || studio.getProject().tempoLocked)
         return;
-    auto* box = new juce::AlertWindow ("Tempo event", "At " + pr7s::formatBarsBeats (events[(size_t) index].beat, studio.getProject())
+    auto* box = new FamilyAlertWindow ("Tempo event", "At " + pr7s::formatBarsBeats (events[(size_t) index].beat, studio.getProject())
                                                           + ": its tempo in BPM, and whether it ramps there from the event before.",
                                        juce::MessageBoxIconType::NoIcon);
     box->addTextEditor ("bpm", juce::String (events[(size_t) index].bpm, 2), "BPM");

@@ -3388,3 +3388,20 @@ TEST_CASE ("0.48.0: keys are black in every finish; on the neon finishes their s
     key.setLookAndFeel (nullptr);
     Finish::set (Finish::Type::pearlWhite, false);
 }
+
+TEST_CASE ("0.57.4: question boxes have see-through corners and no square shadow (as the progress box)", "[ui]")
+{
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        FamilyAlertWindow box ("Create Empty", "Its name:");
+        CHECK_FALSE (box.isOpaque());
+        CHECK (box.isOnDesktop());
+        CHECK_FALSE (box.isDropShadowEnabled());
+        std::unique_ptr<juce::AlertWindow> own (lookAndFeel.createAlertWindow ("Delete", "Sure?", "Yes", "No", {}, juce::MessageBoxIconType::QuestionIcon, 2, nullptr));
+        REQUIRE (own != nullptr);
+        CHECK_FALSE (own->isOpaque());
+        CHECK_FALSE (own->isDropShadowEnabled());
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
