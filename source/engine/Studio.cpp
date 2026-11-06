@@ -7695,8 +7695,70 @@ namespace pr7s
             onLearned();
     }
 
+    juce::String Studio::describeSpike (const Engine::SpikeReport& r) const
+    {
+        // (0.57.3) One line in plain words: what happened, then where the time went.
+        const auto ms = [] (double v) { return juce::String (v, v < 10.0 ? 2 : 1) + " ms"; };
+        juce::String text;
+        if (r.missedLock)
+            text << "SPIKE: one block of silence (" << ms (r.budgetMs) << "): the engine was taking a change in (the lock)";
+        else
+            text << "SPIKE: a block took " << ms (r.blockMs) << " of its " << ms (r.budgetMs) << " ("
+                 << juce::roundToInt (r.load * 100.0f) << "%)";
+        if (r.lateCall)
+            text << "; the driver called " << ms (r.sinceLastMs) << " after the last block (" << ms (r.budgetMs)
+                 << " expected: the computer was late, not the studio)";
+        if (! r.missedLock)
+        {
+            text << "; tracks " << ms (r.tracksMs) << " in all (" << r.numTracks << "), master " << ms (r.masterMs)
+                 << ", " << (r.helpers > 0 ? juce::String (r.helpers) + " helper threads" : juce::String ("one core"));
+            if (r.helpers > 0 && r.blockMs > r.tracksMs / (r.helpers + 1) + r.masterMs + 0.5 * r.budgetMs)
+                text << " (more than the tracks' work spread over the cores: a thread waited)";
+            for (int i = 0; i < r.numSlowest; ++i)
+            {
+                const auto& slow = r.slowest[(size_t) i];
+                if (slow.ms < 0.05f)
+                    break;
+                juce::String what;
+                if (const auto* t = project.findTrack (slow.trackId))
+                {
+                    what << "\"" << t->name << "\"";
+                    juce::StringArray plugins;
+                    if (t->kind == Track::Kind::instrument && ! t->disabled && ! t->frozen)
+                        plugins.add (t->instrument.getName());
+                    for (const auto& insert : t->inserts)
+                        if (! insert.isEmpty() && ! insert.bypass)
+                            plugins.add (insert.plugin.name);
+                    if (! plugins.isEmpty())
+                        what << " [" << plugins.joinIntoString (", ") << "]";
+                }
+                else
+                    what << "track " << slow.trackId;
+                text << (i == 0 ? "; slowest: " : ", ") << what << " " << ms (slow.ms) << " (usually " << ms (slow.usualMs) << ")";
+            }
+        }
+        if (r.missedSince > 0)
+            text << "; and " << r.missedSince << " more since the last report";
+        return text;
+    }
+
+    void Studio::noteSpikes()
+    {
+        // At most a line a second (a run of spikes is counted in the next one).
+        const auto now = juce::Time::getMillisecondCounter();
+        if (now - lastSpikeNote < 1000 && lastSpikeNote != 0)
+            return;
+        if (const auto report = engine.takeSpikeReport())
+        {
+            lastSpikeNote = now;
+            ++spikesNoted;
+            SessionLog::note (describeSpike (*report));
+        }
+    }
+
     void Studio::timerCallback()
     {
+        noteSpikes();   // (0.57.3: first, even while rendering)
         if (tapUnrecorded && ! isTapping (juce::Time::getMillisecondCounterHiRes() / 1000.0))
             endTapping();   // (0.45.0: the taps stopped; their undo step)
         if (mediaBay != nullptr)

@@ -363,3 +363,91 @@ TEST_CASE ("0.57.2: an audio track's clips are kept after a fader move, built ag
     engine.update (project);
     CHECK (engine.getClipBuilds() == builds + 6);
 }
+
+TEST_CASE ("0.57.3: the spike report: a slow block, the tracks that took the time, a late call, a run counted", "[engine]")
+{
+    Engine engine;
+    engine.prepare (rate, 512);
+    Project project;
+    for (int t = 1; t <= 4; ++t)
+    {
+        Track track;
+        track.id = t;
+        track.name = "Track " + juce::String (t);
+        project.tracks.push_back (track);
+        auto probe = std::make_unique<Probe>();
+        probe->busyMs = t == 3 ? 4.0 : 0.0;   // (track 3: the heavy plug-in)
+        engine.setInstrument (t, std::move (probe));
+    }
+    engine.update (project);
+    const auto budget = 512.0 / rate;
+    juce::AudioBuffer<float> buffer (2, 512);
+
+    // An easy block: no report.
+    engine.render (buffer, 512);
+    engine.noteSpike (budget * 0.5, 512, budget);
+    CHECK_FALSE (engine.takeSpikeReport().has_value());
+
+    // A slow one: the report, track 3 first.
+    engine.render (buffer, 512);
+    engine.noteSpike (budget * 2.0, 512, budget);
+    auto report = engine.takeSpikeReport();
+    REQUIRE (report.has_value());
+    CHECK (report->load == 2.0f);
+    CHECK_FALSE (report->missedLock);
+    CHECK_FALSE (report->lateCall);
+    CHECK (report->numTracks == 4);
+    REQUIRE (report->numSlowest >= 1);
+    CHECK (report->slowest[0].trackId == 3);
+    CHECK (report->slowest[0].ms >= 4.0f);
+    CHECK (report->tracksMs >= 4.0);
+    CHECK_FALSE (engine.takeSpikeReport().has_value());   // (taken)
+
+    // The driver late: reported though the block itself was quick; a second's pause isn't.
+    engine.render (buffer, 512);
+    engine.noteSpike (budget * 0.1, 512, budget * 3.0);
+    report = engine.takeSpikeReport();
+    REQUIRE (report.has_value());
+    CHECK (report->lateCall);
+    engine.noteSpike (budget * 0.1, 512, 2.0);
+    CHECK_FALSE (engine.takeSpikeReport().has_value());
+
+    // A run while one waits: the waiting one kept, the others counted in the next.
+    engine.noteSpike (budget * 1.5, 512, budget);
+    engine.noteSpike (budget * 3.0, 512, budget);
+    engine.noteSpike (budget * 3.0, 512, budget);
+    report = engine.takeSpikeReport();
+    REQUIRE (report.has_value());
+    CHECK (report->load == 1.5f);
+    engine.noteSpike (budget, 512, budget);
+    report = engine.takeSpikeReport();
+    REQUIRE (report.has_value());
+    CHECK (report->missedSince == 2);
+}
+
+TEST_CASE ("0.57.3: the spike report in words (the session log's line)", "[studio]")
+{
+    Studio studio (false);
+    const auto id = studio.addTrack ({});
+    Engine::SpikeReport r;
+    r.load = 1.6f;
+    r.blockMs = 17.1;
+    r.budgetMs = 10.7;
+    r.tracksMs = 15.0;
+    r.numTracks = 1;
+    r.masterMs = 0.4;
+    r.helpers = 3;
+    r.numSlowest = 1;
+    r.slowest[0] = { id, 14.2f, 1.1f };
+    const auto text = studio.describeSpike (r);
+    CHECK (text.startsWith ("SPIKE: a block took 17.1 ms of its 10.7 ms (160%)"));
+    CHECK (text.contains ("\"" + studio.getProject().findTrack (id)->name + "\""));
+    CHECK (text.contains ("14.2 ms (usually 1.10 ms)"));
+    CHECK (text.contains ("3 helper threads"));
+    r.missedLock = true;
+    CHECK (studio.describeSpike (r).startsWith ("SPIKE: one block of silence"));
+    r.missedLock = false;
+    r.lateCall = true;
+    r.sinceLastMs = 32.0;
+    CHECK (studio.describeSpike (r).contains ("the driver called 32.0 ms after the last block"));
+}

@@ -1149,6 +1149,9 @@ namespace pr7s
         // Larger than the device promised: in pieces.
         blockInputs = input != nullptr ? input->getArrayOfReadPointers() : nullptr;
         blockNumInputs = input != nullptr ? input->getNumChannels() : 0;
+        newCall = true;
+        lockMissedThisCall = false;
+        masterSecondsThisCall = 0.0;
         for (int done = 0; done < numSamples;)
         {
             const auto length = juce::jmin (maxBlockSize, numSamples - done);
@@ -1382,7 +1385,13 @@ namespace pr7s
         output.clear();
         const juce::ScopedTryLock sl (lock);
         if (! sl.isLocked())
+        {
+            lockMissedThisCall = true;   // (0.57.3: the spike report says so)
             return;   // the screen is swapping something in: one silent block
+        }
+        if (std::exchange (newCall, false))
+            for (auto& track : tracks)
+                track->ownSeconds = 0.0;
 
         // What's being played live this block: devices and the on-screen keyboard.
         live.clear();
@@ -1579,7 +1588,7 @@ namespace pr7s
                 for (auto& track : tracks)
                     if (track->role == role)
                     {
-                        processTrack (*track, block);
+                        timedTrack (*track, block);
                         mixTrackOut (*track, block, master);
                     }
             };
@@ -1603,13 +1612,14 @@ namespace pr7s
                 oneByOne();
                 continue;
             }
-            auto task = [this, &block] (int i) { processTrack (*wave[(size_t) i], block); };
+            auto task = [this, &block] (int i) { timedTrack (*wave[(size_t) i], block); };
             workers.run ((int) wave.size(), task);
             for (auto* track : wave)
                 mixTrackOut (*track, block, master);
         }
 
         // The master: its inserts before the fader, its volume, the inserts after it, to the output.
+        const auto masterStarted = juce::Time::getHighResolutionTicks();
         masterEq.processPre (master.getArrayOfWritePointers(), master.getNumChannels(), numSamples);
         runInserts (masterInserts, master, numSamples, 0, masterPreFader, effectMidi);
         masterEq.processEq (master.getArrayOfWritePointers(), master.getNumChannels(), numSamples);
@@ -1658,6 +1668,7 @@ namespace pr7s
                 }
         }
         runInserts (masterInserts, master, numSamples, masterPreFader, Project::maxInserts, effectMidi);
+        masterSecondsThisCall += juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - masterStarted);
         for (int channel = 0; channel < outputs; ++channel)
             juce::FloatVectorOperations::copy (output.getWritePointer (channel), master.getReadPointer (channel), numSamples);
 
@@ -1893,6 +1904,12 @@ namespace pr7s
         SessionLog::markAudioThread();   // (a crash here says so in the session log)
         const juce::ScopedNoDenormals noDenormals;   // (0.34.1: as in render)
         const auto started = juce::Time::getHighResolutionTicks();
+        // (0.57.3) For the spike report: how long since the driver's last call; each track's time anew.
+        const auto lastCall = lastCallTicks.exchange (started);
+        const auto sinceLast = lastCall != 0 ? juce::Time::highResolutionTicksToSeconds (started - lastCall) : 0.0;
+        lockMissedThisCall = false;
+        masterSecondsThisCall = 0.0;
+        newCall = true;
         // The studio renders stereo; the device's first two outputs get it.
         blockInputs = inputChannelData;
         blockNumInputs = numInputChannels;
@@ -1912,7 +1929,9 @@ namespace pr7s
                 }
             done += length;
         }
-        notePerformance (juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - started), numSamples);
+        const auto taken = juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - started);
+        notePerformance (taken, numSamples);
+        noteSpike (taken, numSamples, sinceLast);
     }
 
     void Engine::setHelperThreads (int count)
@@ -1936,6 +1955,81 @@ namespace pr7s
         masterGain.setCurrentAndTargetValue (settings.masterGain);
     }
 
+    void Engine::timedTrack (TrackState& track, const BlockContext& block)
+    {
+        // (0.57.3) Its own time (on whichever core runs it; a thread Windows paused meanwhile counts too).
+        const auto started = juce::Time::getHighResolutionTicks();
+        processTrack (track, block);
+        track.ownSeconds += juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - started);
+    }
+
+    void Engine::noteSpike (double secondsTaken, int numSamples, double secondsSinceLast) noexcept
+    {
+        const auto rate = getSampleRate();
+        if (rate <= 0.0 || numSamples <= 0)
+            return;
+        const auto budget = (double) numSamples / rate;
+        const auto load = (float) (secondsTaken / budget);
+        // Later than one and a half blocks after the last call (not a pause of a second or more: the
+        // device stopped and started, or the computer slept).
+        const auto late = secondsSinceLast > budget * 1.5 && secondsSinceLast < 1.0;
+        const auto spiked = load >= 0.9f || lockMissedThisCall || late;
+        const auto fill = spiked && ! spikeReady.load (std::memory_order_acquire);
+        if (spiked && ! fill)
+            ++spikesMissed;
+        if (fill)
+        {
+            spike = {};
+            spike.load = load;
+            spike.blockMs = secondsTaken * 1000.0;
+            spike.budgetMs = budget * 1000.0;
+            spike.sinceLastMs = secondsSinceLast * 1000.0;
+            spike.missedLock = lockMissedThisCall;
+            spike.lateCall = late;
+            spike.masterMs = masterSecondsThisCall * 1000.0;
+            spike.helpers = workers.getHelpers();
+        }
+        // Each track's time against its usual (the track list only read under the lock; busy: skipped).
+        const juce::ScopedTryLock sl (lock);
+        if (sl.isLocked())
+            for (auto& track : tracks)
+            {
+                if (fill && ! lockMissedThisCall)
+                {
+                    const auto ms = (float) (track->ownSeconds * 1000.0);
+                    spike.tracksMs += ms;
+                    ++spike.numTracks;
+                    // Kept slowest first among the few.
+                    auto at = spike.numSlowest;
+                    while (at > 0 && spike.slowest[(size_t) at - 1].ms < ms)
+                        --at;
+                    if (at < SpikeReport::mostTracks)
+                    {
+                        for (auto k = juce::jmin (spike.numSlowest, SpikeReport::mostTracks - 1); k > at; --k)
+                            spike.slowest[(size_t) k] = spike.slowest[(size_t) k - 1];
+                        spike.slowest[(size_t) at] = { track->id, ms, track->usualSeconds * 1000.0f };
+                        spike.numSlowest = juce::jmin (spike.numSlowest + 1, SpikeReport::mostTracks);
+                    }
+                }
+                if (! lockMissedThisCall)
+                    track->usualSeconds = track->usualSeconds * 0.95f + (float) track->ownSeconds * 0.05f;
+            }
+        if (fill)
+        {
+            spike.missedSince = spikesMissed.exchange (0);
+            spikeReady.store (true, std::memory_order_release);
+        }
+    }
+
+    std::optional<Engine::SpikeReport> Engine::takeSpikeReport()
+    {
+        if (! spikeReady.load (std::memory_order_acquire))
+            return std::nullopt;
+        auto report = spike;
+        spikeReady.store (false, std::memory_order_release);
+        return report;
+    }
+
     void Engine::notePerformance (double secondsTaken, int numSamples) noexcept
     {
         const auto rate = getSampleRate();
@@ -1957,6 +2051,7 @@ namespace pr7s
 
     void Engine::audioDeviceAboutToStart (juce::AudioIODevice* device)
     {
+        lastCallTicks = 0;   // (0.57.3: the first call isn't late)
         prepare (device->getCurrentSampleRate(), device->getCurrentBufferSizeSamples());
     }
 

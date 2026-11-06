@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include "AudioWorkers.h"
@@ -230,6 +232,33 @@ namespace pr7s
         // One block measured (the audio callback calls it; tests too).
         void notePerformance (double secondsTaken, int numSamples) noexcept;
 
+        // (0.57.3) The spike report: a block of the interface's that took 90% of its time or more,
+        // played silence because the engine was busy taking a change in (the lock), or was called
+        // late by the driver. The audio thread fills one report (nothing allocated, nothing waited
+        // for) and the screen's thread takes it (Studio writes it into the session log); spikes
+        // while one waits to be taken are counted. Each track's own time is measured every block
+        // (its instrument and inserts), with its usual time beside it.
+        struct SpikeReport
+        {
+            static constexpr int mostTracks = 6;
+            float load = 0.0f;                 // the block's time against its length (1 = all of it)
+            double blockMs = 0.0, budgetMs = 0.0;
+            double sinceLastMs = 0.0;          // since the driver's call before (about budgetMs when on time)
+            bool missedLock = false;           // silence: the engine was taking a change in
+            bool lateCall = false;             // the driver called over 1.5 blocks after the last
+            double tracksMs = 0.0;             // the tracks' own work, all added up
+            double masterMs = 0.0;             // the master's EQ and inserts
+            int helpers = 0;                   // multi-core helper threads
+            int numTracks = 0;
+            struct Slow { int trackId = 0; float ms = 0.0f, usualMs = 0.0f; };
+            std::array<Slow, mostTracks> slowest {};
+            int numSlowest = 0;
+            int missedSince = 0;               // spikes while this one waited to be taken
+        };
+        std::optional<SpikeReport> takeSpikeReport();   // (message thread)
+        // How a block is judged (tests set them): its share of the time; lateness.
+        void noteSpike (double secondsTaken, int numSamples, double secondsSinceLast) noexcept;
+
         // What a track's (or the master's: masterBus) mix is at now, its
         // automation included, for the screen's faders to follow (any thread).
         struct MixNow { float volumeDb = 0.0f, pan = 0.0f; bool mute = false; };
@@ -285,6 +314,8 @@ namespace pr7s
         struct TrackState
         {
             int id = 0;
+            double ownSeconds = 0.0;     // (0.57.3) its own work this call (any core), and usually
+            float usualSeconds = 0.0f;
             bool audio = false;          // an audio track: clips and input, no instrument
             bool frozen = false;         // its freeze file plays as a clip (no instrument, no inserts)
             std::vector<Clip> clips;
@@ -438,6 +469,7 @@ namespace pr7s
             }
         };
         void processTrack (TrackState&, const BlockContext&);
+        void timedTrack (TrackState&, const BlockContext&);   // (0.57.3) processTrack, timed
         void mixTrackOut (TrackState&, const BlockContext&, juce::AudioBuffer<float>& master);
         AudioWorkers workers;
         std::vector<TrackState*> wave;   // (room kept by the message thread: the audio thread never grows it)
@@ -474,6 +506,14 @@ namespace pr7s
         std::atomic<int> liveTrack { 0 };
         std::atomic<float> averageLoad { 0.0f }, peakLoad { 0.0f };
         std::atomic<int> overloads { 0 };
+        // (0.57.3) The spike report (audio thread writes; message thread takes when `spikeReady`).
+        SpikeReport spike;
+        std::atomic<bool> spikeReady { false };
+        std::atomic<int> spikesMissed { 0 };
+        bool lockMissedThisCall = false;    // (audio thread)
+        bool newCall = false;               // (audio thread) each track's own time starts again
+        double masterSecondsThisCall = 0.0; // (audio thread)
+        std::atomic<juce::int64> lastCallTicks { 0 };
 
         juce::MidiMessageCollector midiInput;
         struct LiveInput final : juce::MidiInputCallback

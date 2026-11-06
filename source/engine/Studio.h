@@ -75,6 +75,9 @@ namespace pr7s
         bool getMultiCoreAudio() const;
         void setMultiCoreAudio (bool);
         int getAudioHelperThreads() const noexcept { return engine.getHelperThreads(); }
+        // (0.57.3) A spike report in words (the session log's line); how many were written.
+        juce::String describeSpike (const Engine::SpikeReport&) const;
+        int getSpikesNoted() const noexcept { return spikesNoted; }
 
         // Told just before a track's instrument is replaced or removed (0:
         // every track's, for a new or opened song), so its window can close
@@ -1357,6 +1360,9 @@ namespace pr7s
         void forgetAllAudio();
         WarpRenderer warpRenderer;
         // (0.34.0) VariAudio: each recording's pitch, and its sound as edited (by what was edited).
+        void noteSpikes();                  // (0.57.3) the engine's spike report into the session log
+        juce::uint32 lastSpikeNote = 0;
+        int spikesNoted = 0;
         juce::String variSignature (const juce::String& file) const;
         // (0.57.2) Each recording's signature with the edits it was made from: written out again only
         // when they differ (it was written for every clip of the file on every change in the song).
