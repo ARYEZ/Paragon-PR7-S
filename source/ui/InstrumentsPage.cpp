@@ -218,13 +218,17 @@ public:
             for (int s = 1; s <= juce::jmax (1, (int) profile->strings.size()); ++s)
                 row.use->addItem ("Forces string " + juce::String (s), 1 + s);
             row.use->addItem ("Turns forcing off", 100);
-            row.use->setSelectedId (k.forcesString < 0 ? 100 : 1 + k.forcesString, juce::dontSendNotification);
+            row.use->addItem ("Power chords (a root alone)", 101);
+            row.use->addItem ("Single notes", 102);
+            row.use->setSelectedId (k.forcesString < 0 ? 100 : k.use == pr7s::Keyswitch::Use::powerChords ? 101
+                                    : k.use == pr7s::Keyswitch::Use::singleNotes ? 102 : 1 + k.forcesString, juce::dontSendNotification);
             row.use->setBounds (362, y, 190, rowHeight - 4);
             const auto commit = [this, i]
             {
                 const auto& r = rows[(size_t) i];
                 const auto name = r.name->getText(), note = r.note->getText();
-                const auto use = r.use->getSelectedId() == 100 ? -1 : r.use->getSelectedId() - 1;
+                const auto id = r.use->getSelectedId();
+                const auto use = id == 100 ? -1 : id == 101 ? -101 : id == 102 ? -102 : id - 1;
                 later (page, [this, i, name, note, use] { page.setKeyswitch (i, name, note, use); });
             };
             for (auto* e : { row.name, row.note })
@@ -535,8 +539,15 @@ bool InstrumentsPage::setKeyswitch (int index, const juce::String& name, const j
         rebuild();
         return false;
     }
+    // (forcesString -101 / -102: marked for power chords / single notes, 0.63.0)
+    const auto use = forcesString == -101 ? pr7s::Keyswitch::Use::powerChords : forcesString == -102 ? pr7s::Keyswitch::Use::singleNotes : pr7s::Keyswitch::Use::none;
     pr7s::Keyswitch k { name.trim().isEmpty() ? p->keyswitches[(size_t) index].name : name.trim(), *note,
-                        forcesString < 0 ? -1 : juce::jlimit (0, (int) p->strings.size(), forcesString) };
+                        forcesString <= -101 ? 0 : forcesString < 0 ? -1 : juce::jlimit (0, (int) p->strings.size(), forcesString), use };
+    // One key per use.
+    if (use != pr7s::Keyswitch::Use::none)
+        for (int i = 0; i < (int) p->keyswitches.size(); ++i)
+            if (i != index && p->keyswitches[(size_t) i].use == use)
+                p->keyswitches[(size_t) i].use = pr7s::Keyswitch::Use::none;
     // One key per string.
     if (k.forcesString > 0)
         for (int i = 0; i < (int) p->keyswitches.size(); ++i)

@@ -40,6 +40,14 @@ namespace pr7s
         return -1;
     }
 
+    int InstrumentProfile::keyUsedFor (Keyswitch::Use use) const
+    {
+        for (const auto& k : keyswitches)
+            if (k.use == use && use != Keyswitch::Use::none)
+                return k.note;
+        return -1;
+    }
+
     bool InstrumentProfile::isKeyswitch (int note) const
     {
         return std::any_of (keyswitches.begin(), keyswitches.end(), [note] (const Keyswitch& k) { return k.note == note; });
@@ -70,6 +78,8 @@ namespace pr7s
             e->setAttribute ("note", k.note);
             if (k.forcesString != 0)
                 e->setAttribute ("string", k.forcesString);
+            if (k.use != Keyswitch::Use::none)
+                e->setAttribute ("use", k.use == Keyswitch::Use::powerChords ? "powerChords" : "singleNotes");
         }
         return xml;
     }
@@ -98,8 +108,13 @@ namespace pr7s
         if (xml.hasAttribute ("velocities"))
             p.velocities = GuitarVelocities::fromString (xml.getStringAttribute ("velocities"));
         for (auto* e : xml.getChildWithTagNameIterator ("Keyswitch"))
-            p.keyswitches.push_back ({ e->getStringAttribute ("name"), juce::jlimit (0, 127, e->getIntAttribute ("note")),
-                                       juce::jmax (-1, e->getIntAttribute ("string")) });
+        {
+            Keyswitch k { e->getStringAttribute ("name"), juce::jlimit (0, 127, e->getIntAttribute ("note")),
+                          juce::jmax (-1, e->getIntAttribute ("string")) };
+            const auto use = e->getStringAttribute ("use");
+            k.use = use == "powerChords" ? Keyswitch::Use::powerChords : use == "singleNotes" ? Keyswitch::Use::singleNotes : Keyswitch::Use::none;
+            p.keyswitches.push_back (k);
+        }
         return p;
     }
 
@@ -135,8 +150,8 @@ namespace pr7s
         p.velocities = velocities;   // (1-59 palm mute, 60-119 sustain, 120-126 rakes, 127 pinch harmonics)
         p.bendRange = 2;
         p.keyswitches = {
-            { "Sustain (palm mute 1-59, sustain 60-119, rake 120-126, pinch 127)", 12, 0 },   // C-1
-            { "Power Chords", 13, 0 } };                                                       // C#-1 (the owner's)
+            { "Sustain (palm mute 1-59, sustain 60-119, rake 120-126, pinch 127)", 12, 0, Keyswitch::Use::singleNotes },   // C-1
+            { "Power Chords (the same velocity layers)", 13, 0, Keyswitch::Use::powerChords } };                         // C#-1 (the owner's)
         // The manual's Behavioral Keyswitches: C-2 forces the lowest A string, each key up the next string.
         const char* names[] = { "low A", "E", "A", "D", "G", "B", "high E" };
         for (int s = 1; s <= 7; ++s)
@@ -219,11 +234,14 @@ namespace pr7s
         auto& notes = idea.notes;
         std::stable_sort (notes.begin(), notes.end(), [] (const LineNote& a, const LineNote& b)
                           { return a.beat < b.beat || (a.beat == b.beat && a.pitch < b.pitch); });
-        std::vector<LineNote> kept;
+        std::vector<LineNote> kept, keys;
         for (const auto& n : notes)
         {
             if (n.keyswitch)
+            {
+                keys.push_back (n);   // (0.63.0: the articulations' keys stay)
                 continue;
+            }
             if (! kept.empty() && std::abs (kept.back().beat - n.beat) < 1.0e-4)
                 continue;   // (a string plays one note at a time: the lowest kept)
             auto m = n;
@@ -261,6 +279,72 @@ namespace pr7s
                 kept.push_back (off);
             }
         }
+        kept.insert (kept.end(), keys.begin(), keys.end());
+        std::stable_sort (kept.begin(), kept.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
         notes = std::move (kept);
+    }
+}
+
+namespace pr7s
+{
+    void usePowerChordKeys (LineIdea& idea, int powerChordKey, int singleNoteKey)
+    {
+        if (powerChordKey < 0 || singleNoteKey < 0 || idea.notes.empty())
+            return;
+        std::vector<LineNote> keys, played;
+        for (const auto& n : idea.notes)
+            (n.keyswitch ? keys : played).push_back (n);
+        std::stable_sort (played.begin(), played.end(), [] (const LineNote& a, const LineNote& b)
+                          { return a.beat < b.beat || (a.beat == b.beat && a.pitch < b.pitch); });
+        std::vector<LineNote> out;
+        auto mode = 0;   // 1 power chords, 2 single notes
+        const auto press = [&] (double beat, int wanted)
+        {
+            if (mode == wanted)
+                return;
+            mode = wanted;
+            LineNote k;
+            k.beat = beat;
+            k.length = 1.0 / 16.0;
+            k.pitch = wanted == 1 ? powerChordKey : singleNoteKey;
+            k.velocity = 100.0f / 127.0f;
+            k.keyswitch = true;
+            out.push_back (k);
+        };
+        for (size_t i = 0; i < played.size();)
+        {
+            auto j = i + 1;
+            while (j < played.size() && std::abs (played[j].beat - played[i].beat) < 1.0e-4)
+                ++j;
+            const auto root = played[i].pitch;
+            auto power = j - i >= 2;
+            auto hasFifth = false;
+            for (auto k = i; k < j && power; ++k)
+            {
+                const auto interval = played[k].pitch - root;
+                if (interval % 12 == 7)
+                    hasFifth = true;
+                else if (interval % 12 != 0)
+                    power = false;
+            }
+            power = power && hasFifth;
+            press (played[i].beat, power ? 1 : 2);
+            if (power)
+            {
+                auto n = played[i];
+                for (auto k = i + 1; k < j; ++k)
+                {
+                    n.length = juce::jmax (n.length, played[k].length);
+                    n.velocity = juce::jmax (n.velocity, played[k].velocity);
+                }
+                out.push_back (n);
+            }
+            else
+                out.insert (out.end(), played.begin() + (long) i, played.begin() + (long) j);
+            i = j;
+        }
+        out.insert (out.end(), keys.begin(), keys.end());
+        std::stable_sort (out.begin(), out.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+        idea.notes = std::move (out);
     }
 }

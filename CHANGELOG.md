@@ -2,6 +2,22 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.63.0
+
+- **Power chords played by Shreddage's power chord articulation** (you asked: its recorded power chords sound better than three notes on Sustain). For a guitar with an INSTRUMENTS profile (your Jupiter and Rogue):
+  - **Each power chord is written as its root alone**, after your Power Chords key (C#-1), so Shreddage plays its own power chord sample. A power chord here means notes starting together: a root and its fifth, with octaves of either.
+  - **Single notes and other chords go back to Sustain (C-1).** The keys stay on until changed, so the studio adds a key only where the riff switches between power chords and single notes, plus one before the first note so the guitar starts in the right mode.
+  - **A key sits on the same beat as its note.** The manual says Shreddage takes keys first, so nothing is nudged.
+- **Velocities carry over:** the root keeps the loudest velocity of the chord it replaces. You told me C#-1 has the same velocity layers as C-1, so palm-muted chugs stay palm-muted power chords (1-59) and open ones stay open (60-119).
+- **Left as written:** octave chords, the tritone dyads, the higher chord shapes and strummed shapes. They aren't power chords (a strum's notes don't start together), so they stay on Sustain as full notes.
+- **Where:** the composer's GUITAR and LEAD lanes, and IDEAS' guitar tab (rhythm and lead), whenever the INSTRUMENTS profile used for that lane has keys marked **Power chords** and **Single notes**. The keys are written onto the track and into dragged-out MIDI files.
+- **INSTRUMENTS page:** a keyswitch can now be marked "Power chords (a root alone)" or "Single notes".
+  - Jupiter and Rogue from + NEW come marked.
+  - **If you added them before this version**, add them again (or mark C#-1 and C-1 yourself), or no keys will be written.
+- **Worth knowing:**
+  - Shreddage's power chords are root, fifth and octave, so they'll sound a little bigger than the root-and-fifth chords written before.
+  - IDEAS' HEAR plays its preview through the selected track's instrument. On a track that isn't Shreddage, the two keys (C-1, C#-1) sound as very low notes.
+
 ## 0.62.2
 
 - **Shreddage Jupiter and Rogue set up from the Jupiter manual and your map.** The presets on + NEW now have:

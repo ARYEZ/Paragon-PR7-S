@@ -28,6 +28,10 @@ namespace pr7s
         int note = 0;
         int forcesString = 0;   // 1..: holding it plays that string (1 the lowest); 0: an articulation;
                                 // -1 (0.62.2): it turns a forced string off again (Shreddage's G-2: its force keys latch)
+        // (0.63.0) What an articulation is for in the riffs: power chords (a root alone plays the chord, as
+        // Shreddage's power chord articulations) or single notes (the sustain the other notes go back to).
+        enum class Use { none, powerChords, singleNotes };
+        Use use = Use::none;
         bool operator== (const Keyswitch&) const = default;
     };
 
@@ -49,6 +53,7 @@ namespace pr7s
         GuitarTuning tuning() const;                   // (the name: the profile's)
         int keyFor (int string) const;                 // the key forcing that string (1 the lowest); -1: none
         int releaseKey() const;                        // (0.62.2) the key turning forcing off; -1: none
+        int keyUsedFor (Keyswitch::Use) const;         // (0.63.0) the power chords' / single notes' key; -1: none
         bool isKeyswitch (int note) const;
         bool operator== (const InstrumentProfile&) const = default;
 
@@ -77,4 +82,14 @@ namespace pr7s
     // `release` key (0.62.2), that key pressed after the part's last note starts: a latching force (Shreddage)
     // doesn't stay on for what's played after the part.
     void playOnString (LineIdea&, const std::vector<int>& strings, int string, int frets, int keyswitch, double length, int release = -1);
+
+    // POWER CHORDS BY KEYSWITCH (0.63.0, the owner asked: Shreddage's recorded power chords sound better than
+    // three notes on the single-note articulation). Every power chord (notes starting together: a root, its
+    // fifth, and the octaves of either; at least two) becomes its root alone, the longest of their lengths,
+    // the loudest of their velocities (its velocity layer still picks the palm mute: the owner's power chord
+    // key has the same layers as Sustain). Before it, the power chords' key; before the next single note
+    // (or any other chord), the single notes' key: only where the kind changes (the keys latch), and before
+    // the first notes always (the instrument may be left in either). A key on the same beat as its notes
+    // (Shreddage takes keys first). Notes strummed apart aren't a power chord: they stay as they are.
+    void usePowerChordKeys (LineIdea&, int powerChordKey, int singleNoteKey);
 }

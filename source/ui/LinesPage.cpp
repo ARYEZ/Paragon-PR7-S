@@ -94,10 +94,11 @@ public:
         const auto& notes = idea().notes;
         auto low = 127, high = 0;
         for (const auto& n : notes)
-        {
-            low = juce::jmin (low, n.pitch);
-            high = juce::jmax (high, n.pitch);
-        }
+            if (! n.keyswitch)
+            {
+                low = juce::jmin (low, n.pitch);
+                high = juce::jmax (high, n.pitch);
+            }
         low -= 2;
         high += 2;
         const auto body = r.withTrimmedTop (14.0f).reduced (0.0f, 3.0f);
@@ -105,6 +106,8 @@ public:
         const auto colour = colourOf (part);
         for (const auto& n : notes)
         {
+            if (n.keyswitch)
+                continue;   // (0.63.0: a keyswitch, not a note heard)
             const auto y = body.getBottom() - (float) (n.pitch - low + 1) * row;
             g.setColour (colour.withAlpha (0.45f + 0.55f * n.velocity));
             g.fillRoundedRectangle (juce::Rectangle<float> (xFor (n.beat), y, juce::jmax (2.0f, xFor (n.beat + n.length) - xFor (n.beat) - 1.0f),
@@ -1168,6 +1171,18 @@ const std::vector<pr7s::LineIdea>& LinesPage::getIdeas (pr7s::LineIdea::Part par
             o.seed = (juce::uint32) (variation * 1009 + (int) part * 101 + (int) i + 1);
             list[i].notes = pr7s::humanize (std::move (list[i].notes), o);
         }
+    }
+    // (0.63.0) The guitar's power chords by its INSTRUMENTS profile's keyswitch (the GUITAR lane's; leads:
+    // the LEAD lane's, else the guitar's).
+    if (part == P::rhythm || part == P::lead)
+    {
+        auto profile = part == P::lead ? studio.profileFor (pr7s::Studio::ProfileUse::lead) : std::optional<pr7s::InstrumentProfile> {};
+        if (! profile.has_value())
+            profile = studio.profileFor (pr7s::Studio::ProfileUse::guitar);
+        if (profile.has_value())
+            for (auto& idea : list)
+                pr7s::usePowerChordKeys (idea, profile->keyUsedFor (pr7s::Keyswitch::Use::powerChords),
+                                         profile->keyUsedFor (pr7s::Keyswitch::Use::singleNotes));
     }
     return list;
 }

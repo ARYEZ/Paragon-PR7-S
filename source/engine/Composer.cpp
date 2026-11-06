@@ -313,6 +313,10 @@ namespace pr7s
                 o.seed = (juce::uint32) (lane.variation * 1009 + (int) l * 101 + lane.style + 1);
                 idea.notes = humanize (std::move (idea.notes), o);
             }
+            // (0.63.0) Power chords by the instrument's keyswitch (its root alone), single notes back on theirs.
+            if (l == ComposerLayer::guitar || l == ComposerLayer::lead)
+                if (const auto* profile = composerStrings (l, c).profile)
+                    usePowerChordKeys (idea, profile->keyUsedFor (Keyswitch::Use::powerChords), profile->keyUsedFor (Keyswitch::Use::singleNotes));
             // ONLY STRING (0.62.0): onto that string, its keyswitch (the INSTRUMENTS profile's) held through it.
             if (const auto string = s.lane (l).onlyString; string > 0 && hasLowString (l))
             {

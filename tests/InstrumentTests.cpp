@@ -353,3 +353,90 @@ TEST_CASE ("ONLY STRING on Shreddage: the string's key from the start, G-2 after
         keys += n.keyswitch ? 1 : 0;
     CHECK (keys == 1);
 }
+
+TEST_CASE ("Power chords by keyswitch: a root alone after C#-1, single notes after C-1, only where the kind changes (0.63.0)", "[instruments]")
+{
+    const auto power = 13, single = 12;
+    LineIdea idea;
+    const auto note = [] (double beat, int pitch, float velocity, double length = 0.5) { return LineNote { beat, length, pitch, velocity }; };
+    idea.notes = {
+        note (0.0, 33, 40.0f / 127.0f), note (0.0, 40, 44.0f / 127.0f, 0.6), note (0.0, 45, 40.0f / 127.0f),   // a palm-muted power chord (root, fifth, octave)
+        note (0.5, 33, 40.0f / 127.0f), note (0.5, 40, 40.0f / 127.0f),                                    // another (root, fifth)
+        note (1.0, 33, 96.0f / 127.0f),                                                                     // a single note
+        note (1.5, 36, 96.0f / 127.0f),                                                                     // another
+        note (2.0, 45, 96.0f / 127.0f), note (2.0, 49, 96.0f / 127.0f),                                     // a third (not a power chord)
+        note (3.0, 33, 100.0f / 127.0f), note (3.02, 40, 100.0f / 127.0f), note (3.04, 45, 100.0f / 127.0f) // strummed: stays
+    };
+    usePowerChordKeys (idea, power, single);
+    std::vector<std::pair<double, int>> keys;
+    std::vector<LineNote> played;
+    for (const auto& n : idea.notes)
+        (n.keyswitch ? (void) keys.push_back ({ n.beat, n.pitch }) : played.push_back (n));
+    CHECK (keys == std::vector<std::pair<double, int>> { { 0.0, power }, { 1.0, single } });
+    REQUIRE (played.size() == 2 + 2 + 2 + 3);
+    CHECK (played[0].pitch == 33);
+    CHECK (played[0].beat == 0.0);
+    CHECK (played[0].length == 0.6);                                   // (the longest)
+    CHECK (juce::roundToInt (played[0].velocity * 127.0f) == 44);      // (the loudest: still a palm mute)
+    CHECK (played[1].pitch == 33);
+    CHECK (played[1].beat == 0.5);
+    CHECK (played[2].pitch == 33);
+    CHECK (played[3].pitch == 36);
+    // The keys before their notes, in time order.
+    CHECK (idea.notes.front().keyswitch);
+    // Nothing to do without both keys.
+    LineIdea other;
+    other.notes = { note (0.0, 33, 0.5f), note (0.0, 40, 0.5f) };
+    usePowerChordKeys (other, power, -1);
+    CHECK (other.notes.size() == 2);
+}
+
+TEST_CASE ("The composer's guitar on Shreddage: no power chord left as three notes, the keys where the kind changes (0.63.0)", "[instruments][composer]")
+{
+    ComposerContext c;
+    c.humanize = 0.0f;
+    c.guitarProfile = InstrumentProfile::shreddage ("Shreddage Jupiter");
+    REQUIRE (c.guitarProfile->keyUsedFor (Keyswitch::Use::powerChords) == *parseNoteText ("C#-1"));
+    REQUIRE (c.guitarProfile->keyUsedFor (Keyswitch::Use::singleNotes) == *parseNoteText ("C-1"));
+    for (const auto style : guitarStyles())
+    {
+        c.style = style;
+        ComposerState s;
+        const auto spans = composerSpans (s, 0.0, c.beatsPerBar);
+        auto keysSeen = 0;
+        for (int card = 0; card < 6; ++card)
+        {
+            INFO (guitarStyleName (style) << " card " << card);
+            s.lane (ComposerLayer::guitar).style = card;
+            const auto layers = composeLayers (s, spans, c);
+            const auto& notes = layers[(size_t) ComposerLayer::guitar].notes;
+            REQUIRE_FALSE (notes.empty());
+            CHECK (notes.front().keyswitch);   // (the instrument set before the first note)
+            int lastKey = -1;
+            for (size_t i = 0; i < notes.size(); ++i)
+            {
+                const auto& n = notes[i];
+                if (n.keyswitch)
+                {
+                    CHECK ((n.pitch == 12 || n.pitch == 13));
+                    CHECK (n.pitch != lastKey);   // (only where the kind changes)
+                    lastKey = n.pitch;
+                    ++keysSeen;
+                    continue;
+                }
+                // No root-and-fifth group left.
+                for (size_t j = i + 1; j < notes.size() && std::abs (notes[j].beat - n.beat) < 1.0e-4; ++j)
+                    if (! notes[j].keyswitch)
+                        CHECK ((notes[j].pitch - n.pitch) % 12 != 7);
+            }
+        }
+        CHECK (keysSeen > 0);
+    }
+    // Without a profile: as before (no keys).
+    ComposerContext plain;
+    plain.humanize = 0.0f;
+    ComposerState s;
+    const auto layers = composeLayers (s, composerSpans (s, 0.0, plain.beatsPerBar), plain);
+    for (const auto& n : layers[(size_t) ComposerLayer::guitar].notes)
+        CHECK_FALSE (n.keyswitch);
+}
