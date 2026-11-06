@@ -2,6 +2,17 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.62.2
+
+- **Shreddage Jupiter and Rogue set up from the Jupiter manual and your map.** The presets on + NEW now have:
+  - **Your articulations:** Sustain on C-1 (palm mute 1-59, sustain 60-119, rakes 120-126, pinch harmonics 127) and Power Chords on **C#-1**. 0.62.1 had Power Chords on C-2: that was a mix-up.
+  - **The manual's force-string keys** (its Behavioral Keyswitches, page 34): C-2 forces the low A string, and each key up forces the next string, to F#-2 for the high E. G-2 turns forcing off.
+  - **Pitch bend range 2**, the manual's default.
+- **ONLY STRING on the guitar lane now drives Shreddage's string:** the string's force key is held from the part's start. Then **G-2 is pressed just after the part's last note starts**. Shreddage's force keys latch (stay on until turned off), so without G-2 the guitar would stay stuck on that string for everything played after the part.
+- **A keyswitch can now be marked "Turns forcing off"** on the INSTRUMENTS page, for any library that has such a key.
+- **Already in your profile list?** If you added Jupiter or Rogue with 0.62.1, delete it and add it again from + NEW to get these keys.
+- **Not checked:** Rogue's map is assumed to be the same as Jupiter's (the same Shreddage 3.5 engine); the manual sent was Jupiter's. If Rogue differs, change its keys on the INSTRUMENTS page, or tell me.
+
 ## 0.62.1
 
 - **Shreddage Jupiter and Rogue in INSTRUMENTS** (as you gave them). Each is one click on **+ NEW** in the Hub's INSTRUMENTS tab, set up as follows:

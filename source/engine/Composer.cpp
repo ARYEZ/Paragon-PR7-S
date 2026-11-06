@@ -318,7 +318,7 @@ namespace pr7s
             {
                 const auto on = composerStrings (l, c);
                 playOnString (idea, on.strings, string, on.frets, on.profile != nullptr ? on.profile->keyFor (string) : -1,
-                              spans.back().end - spans.front().start);
+                              spans.back().end - spans.front().start, on.profile != nullptr ? on.profile->releaseKey() : -1);
             }
             out[(size_t) l] = std::move (idea);
         }

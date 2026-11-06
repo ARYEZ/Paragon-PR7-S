@@ -257,7 +257,7 @@ TEST_CASE ("The Hub's INSTRUMENTS page: new, strings, range, one lane each, keys
     CHECK_FALSE (page.isVisible());
 }
 
-TEST_CASE ("Shreddage Jupiter and Rogue: 7-string drop A, 24 frets, the velocity layers, Sustain C-1, Power Chord Sustain C-2 (0.62.1)", "[instruments]")
+TEST_CASE ("Shreddage Jupiter and Rogue: 7-string drop A, 24 frets, the velocity layers, Sustain C-1, Power Chords C#-1, force keys (0.62.2)", "[instruments]")
 {
     const auto p = InstrumentProfile::shreddage ("Shreddage Jupiter");
     CHECK (p.kind == InstrumentProfile::Kind::guitar);
@@ -269,7 +269,12 @@ TEST_CASE ("Shreddage Jupiter and Rogue: 7-string drop A, 24 frets, the velocity
     REQUIRE (p.velocities.has_value());
     CHECK (*p.velocities == GuitarVelocities {});
     CHECK (p.isKeyswitch (*parseNoteText ("C-1")));
-    CHECK (p.isKeyswitch (*parseNoteText ("C-2")));
+    CHECK (p.isKeyswitch (*parseNoteText ("C#-1")));
+    CHECK (p.keyFor (1) == *parseNoteText ("C-2"));    // (the manual: C-2 the lowest A string)
+    CHECK (p.keyFor (7) == *parseNoteText ("F#-2"));
+    CHECK (p.releaseKey() == *parseNoteText ("G-2"));
+    CHECK (p.bendRange == 2);
+    CHECK (profilesFromText (profilesToText ({ p })).front() == p);   // (the release key kept)
     for (const auto& k : p.keyswitches)
         CHECK (k.note < p.rangeLow());
     CHECK (p.tuning().strings == GuitarTuning::all().front().strings);   // (the same as IDEAS' 7-string drop A)
@@ -305,4 +310,46 @@ TEST_CASE ("Shreddage Jupiter and Rogue: 7-string drop A, 24 frets, the velocity
             CHECK (n.pitch <= 88);
         }
     }
+}
+
+TEST_CASE ("ONLY STRING on Shreddage: the string's key from the start, G-2 after the last note (0.62.2)", "[instruments][composer]")
+{
+    ComposerContext c;
+    c.humanize = 0.0f;
+    c.guitarProfile = InstrumentProfile::shreddage ("Shreddage Jupiter");
+    ComposerState s;
+    const auto spans = composerSpans (s, 0.0, c.beatsPerBar);
+    const auto total = spans.back().end - spans.front().start;
+    s.lane (ComposerLayer::guitar).onlyString = 2;
+    const auto layers = composeLayers (s, spans, c);
+    const auto& notes = layers[(size_t) ComposerLayer::guitar].notes;
+    const LineNote* force = nullptr;
+    const LineNote* release = nullptr;
+    auto lastStart = 0.0;
+    for (const auto& n : notes)
+    {
+        if (n.keyswitch && n.pitch == *parseNoteText ("C#-2")) force = &n;
+        else if (n.keyswitch && n.pitch == *parseNoteText ("G-2")) release = &n;
+        else if (! n.keyswitch)
+        {
+            lastStart = juce::jmax (lastStart, n.beat);
+            CHECK (n.pitch >= 40);
+            CHECK (n.pitch <= 64);
+        }
+    }
+    REQUIRE (force != nullptr);
+    REQUIRE (release != nullptr);
+    CHECK (force->beat == 0.0);
+    CHECK (release->beat > lastStart);
+    CHECK (release->beat + release->length <= total + 1.0e-9);
+    // Djinn (no release key): none added.
+    ComposerContext d;
+    d.humanize = 0.0f;
+    d.bassProfile = InstrumentProfile::djinnBass2();
+    s.lane (ComposerLayer::bass).onlyString = 1;
+    const auto bass = composeLayers (s, spans, d);
+    auto keys = 0;
+    for (const auto& n : bass[(size_t) ComposerLayer::bass].notes)
+        keys += n.keyswitch ? 1 : 0;
+    CHECK (keys == 1);
 }

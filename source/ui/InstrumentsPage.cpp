@@ -217,13 +217,14 @@ public:
             row.use->addItem ("Articulation", 1);
             for (int s = 1; s <= juce::jmax (1, (int) profile->strings.size()); ++s)
                 row.use->addItem ("Forces string " + juce::String (s), 1 + s);
-            row.use->setSelectedId (1 + juce::jmax (0, k.forcesString), juce::dontSendNotification);
-            row.use->setBounds (362, y, 170, rowHeight - 4);
+            row.use->addItem ("Turns forcing off", 100);
+            row.use->setSelectedId (k.forcesString < 0 ? 100 : 1 + k.forcesString, juce::dontSendNotification);
+            row.use->setBounds (362, y, 190, rowHeight - 4);
             const auto commit = [this, i]
             {
                 const auto& r = rows[(size_t) i];
                 const auto name = r.name->getText(), note = r.note->getText();
-                const auto use = r.use->getSelectedId() - 1;
+                const auto use = r.use->getSelectedId() == 100 ? -1 : r.use->getSelectedId() - 1;
                 later (page, [this, i, name, note, use] { page.setKeyswitch (i, name, note, use); });
             };
             for (auto* e : { row.name, row.note })
@@ -232,7 +233,7 @@ public:
                 e->onFocusLost = commit;
             }
             row.use->onChange = commit;
-            key ("X", { 538, y, 34, rowHeight - 4 }, false, [this, i] { page.removeKeyswitch (i); });
+            key ("X", { 558, y, 34, rowHeight - 4 }, false, [this, i] { page.removeKeyswitch (i); });
             rows.push_back (row);
             y += rowHeight;
         }
@@ -535,7 +536,7 @@ bool InstrumentsPage::setKeyswitch (int index, const juce::String& name, const j
         return false;
     }
     pr7s::Keyswitch k { name.trim().isEmpty() ? p->keyswitches[(size_t) index].name : name.trim(), *note,
-                        juce::jlimit (0, (int) p->strings.size(), forcesString) };
+                        forcesString < 0 ? -1 : juce::jlimit (0, (int) p->strings.size(), forcesString) };
     // One key per string.
     if (k.forcesString > 0)
         for (int i = 0; i < (int) p->keyswitches.size(); ++i)

@@ -26,7 +26,8 @@ namespace pr7s
     {
         juce::String name;
         int note = 0;
-        int forcesString = 0;   // 1..: holding it plays that string (1 the lowest); 0: an articulation
+        int forcesString = 0;   // 1..: holding it plays that string (1 the lowest); 0: an articulation;
+                                // -1 (0.62.2): it turns a forced string off again (Shreddage's G-2: its force keys latch)
         bool operator== (const Keyswitch&) const = default;
     };
 
@@ -47,6 +48,7 @@ namespace pr7s
         int rangeHigh() const;
         GuitarTuning tuning() const;                   // (the name: the profile's)
         int keyFor (int string) const;                 // the key forcing that string (1 the lowest); -1: none
+        int releaseKey() const;                        // (0.62.2) the key turning forcing off; -1: none
         bool isKeyswitch (int note) const;
         bool operator== (const InstrumentProfile&) const = default;
 
@@ -55,8 +57,9 @@ namespace pr7s
 
         static InstrumentProfile djinnBass2();         // the owner's: A0 D1 A1 D2 G2, the map from Djinn's KEYSWITCH MAP
         // (0.62.1) The owner's Shreddage guitars (Jupiter, Rogue): 7-string drop A (A0 E1 A1 D2 G2 B2 E3),
-        // 24 frets, the velocity layers given (the split IDEAS' VELOCITIES uses), Sustain C-1, Power Chord
-        // Sustain C-2.
+        // 24 frets, the velocity layers given (the split IDEAS' VELOCITIES uses), Sustain C-1 and Power Chords
+        // C#-1 (the owner's map); from the Jupiter manual (0.62.2): Force String C-2 (the low A) to F#-2 (the
+        // high E), latching, and G-2 turning it off; pitch bend 2.
         static InstrumentProfile shreddage (const juce::String& name, const GuitarVelocities& = {});
         static InstrumentProfile blank (Kind);
     };
@@ -70,6 +73,8 @@ namespace pr7s
     // ONLY STRING (0.62.0): every note moved by octaves onto that string (its open note to its last
     // fret); notes played together keep only the lowest (a string plays one note at a time). With a
     // keyswitch for it, that key held through the whole part (`LineNote::keyswitch`), from the part's
-    // start, so the library plays the string chosen whether its keyswitches latch or are held.
-    void playOnString (LineIdea&, const std::vector<int>& strings, int string, int frets, int keyswitch, double length);
+    // start, so the library plays the string chosen whether its keyswitches latch or are held. With a
+    // `release` key (0.62.2), that key pressed after the part's last note starts: a latching force (Shreddage)
+    // doesn't stay on for what's played after the part.
+    void playOnString (LineIdea&, const std::vector<int>& strings, int string, int frets, int keyswitch, double length, int release = -1);
 }

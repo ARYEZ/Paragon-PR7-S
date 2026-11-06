@@ -32,6 +32,14 @@ namespace pr7s
         return -1;
     }
 
+    int InstrumentProfile::releaseKey() const
+    {
+        for (const auto& k : keyswitches)
+            if (k.forcesString < 0)
+                return k.note;
+        return -1;
+    }
+
     bool InstrumentProfile::isKeyswitch (int note) const
     {
         return std::any_of (keyswitches.begin(), keyswitches.end(), [note] (const Keyswitch& k) { return k.note == note; });
@@ -60,7 +68,7 @@ namespace pr7s
             auto* e = xml->createNewChildElement ("Keyswitch");
             e->setAttribute ("name", k.name);
             e->setAttribute ("note", k.note);
-            if (k.forcesString > 0)
+            if (k.forcesString != 0)
                 e->setAttribute ("string", k.forcesString);
         }
         return xml;
@@ -91,7 +99,7 @@ namespace pr7s
             p.velocities = GuitarVelocities::fromString (xml.getStringAttribute ("velocities"));
         for (auto* e : xml.getChildWithTagNameIterator ("Keyswitch"))
             p.keyswitches.push_back ({ e->getStringAttribute ("name"), juce::jlimit (0, 127, e->getIntAttribute ("note")),
-                                       juce::jmax (0, e->getIntAttribute ("string")) });
+                                       juce::jmax (-1, e->getIntAttribute ("string")) });
         return p;
     }
 
@@ -125,7 +133,15 @@ namespace pr7s
         p.strings = { 33, 40, 45, 50, 55, 59, 64 };   // A0 E1 A1 D2 G2 B2 E3
         p.frets = 24;
         p.velocities = velocities;   // (1-59 palm mute, 60-119 sustain, 120-126 rakes, 127 pinch harmonics)
-        p.keyswitches = { { "Sustain", 12, 0 }, { "Power Chord Sustain", 0, 0 } };   // C-1, C-2
+        p.bendRange = 2;
+        p.keyswitches = {
+            { "Sustain (palm mute 1-59, sustain 60-119, rake 120-126, pinch 127)", 12, 0 },   // C-1
+            { "Power Chords", 13, 0 } };                                                       // C#-1 (the owner's)
+        // The manual's Behavioral Keyswitches: C-2 forces the lowest A string, each key up the next string.
+        const char* names[] = { "low A", "E", "A", "D", "G", "B", "high E" };
+        for (int s = 1; s <= 7; ++s)
+            p.keyswitches.push_back ({ "Force String " + juce::String (s) + " (" + names[s - 1] + ")", s - 1, s });
+        p.keyswitches.push_back ({ "Force String Off", 7, -1 });   // G-2
         return p;
     }
 
@@ -195,7 +211,7 @@ namespace pr7s
         return note;
     }
 
-    void playOnString (LineIdea& idea, const std::vector<int>& strings, int string, int frets, int keyswitch, double length)
+    void playOnString (LineIdea& idea, const std::vector<int>& strings, int string, int frets, int keyswitch, double length, int release)
     {
         if (strings.empty() || string < 1 || string > (int) strings.size())
             return;
@@ -231,6 +247,19 @@ namespace pr7s
             key.velocity = 100.0f / 127.0f;
             key.keyswitch = true;
             kept.insert (kept.begin(), key);
+            if (release >= 0)
+            {
+                // After the last note starts (a force only steers where a note is played), a 1/32 beat long.
+                auto last = 0.0;
+                for (const auto& n : kept)
+                    if (! n.keyswitch)
+                        last = juce::jmax (last, n.beat);
+                LineNote off = key;
+                off.pitch = release;
+                off.beat = juce::jmin (last + 1.0 / 64.0, juce::jmax (0.0, length - 1.0 / 32.0));
+                off.length = juce::jmax (1.0 / 128.0, juce::jmin (1.0 / 32.0, length - off.beat));
+                kept.push_back (off);
+            }
         }
         notes = std::move (kept);
     }
