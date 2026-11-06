@@ -51,7 +51,7 @@ namespace pr7s
             {
                 case GuitarStyle::rock: return Fill::snareToToms;
                 case GuitarStyle::thrash: return Fill::snareRoll;
-                case GuitarStyle::numetal: return Fill::kickSnare;
+                case GuitarStyle::numetal: case GuitarStyle::groove: return Fill::kickSnare;
                 case GuitarStyle::metalcore: return Fill::tomSextuplets;
                 case GuitarStyle::shred: return Fill::tomsDown;
             }
@@ -122,7 +122,7 @@ namespace pr7s
             {
                 case GuitarStyle::rock: return rock;
                 case GuitarStyle::thrash: return thrash;
-                case GuitarStyle::numetal: return numetal;
+                case GuitarStyle::numetal: case GuitarStyle::groove: return numetal;   // (0.64.0: groove plays the nu-metal beats)
                 case GuitarStyle::metalcore: return metalcore;
                 case GuitarStyle::shred: return shred;
             }
@@ -270,7 +270,7 @@ namespace pr7s
         }
         // Locked to the riff: the kick on its hits.
         {
-            const auto halfTime = style == GuitarStyle::numetal || style == GuitarStyle::metalcore;
+            const auto halfTime = style == GuitarStyle::numetal || style == GuitarStyle::groove || style == GuitarStyle::metalcore;
             LineIdea idea { LineIdea::Part::drums, "Locked to the riff",
                             riff != nullptr ? "The kick on every hit of the guitar riff \"" + riff->style + "\", " + (halfTime ? "the snare on three" : "the snare on two and four")
                                             : juce::String ("The kick on one and three (no guitar riff to follow yet)"),
@@ -340,6 +340,7 @@ namespace pr7s
             case GuitarStyle::numetal: styleWords = { "nu metal", "nu-metal", "numetal", "nu_metal", "bounce", "hip hop", "hiphop" }; break;
             case GuitarStyle::metalcore: styleWords = { "core", "breakdown", "djent", "chug" }; break;
             case GuitarStyle::shred: styleWords = { "power", "prog", "double", "shred", "speed" }; break;
+            case GuitarStyle::groove: styleWords = { "groove", "pantera", "sludge", "nu metal", "nu-metal", "bounce" }; break;
         }
         std::vector<LibraryGroove> out;
         for (const auto& item : items)

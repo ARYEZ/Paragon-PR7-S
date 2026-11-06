@@ -15,9 +15,12 @@
 // turnaround). The leads are a rhythm per bar and the moves a line makes through a scale.
 namespace pr7s
 {
-    enum class GuitarStyle { rock, thrash, numetal, metalcore, shred };
+    // (0.64.0) GROOVE: low palm-muted chugs answered by a high, dissonant two-note stab (a tritone with
+    // vibrato, a whole step bent up, a ringing unison): the owner's examples were groove metal and
+    // nu-metal records. Added last, so the others keep their numbers.
+    enum class GuitarStyle { rock, thrash, numetal, metalcore, shred, groove };
     const std::vector<GuitarStyle>& guitarStyles();
-    juce::String guitarStyleName (GuitarStyle);        // "ROCK", "THRASH", "NU-METAL", "METALCORE", "SHRED"
+    juce::String guitarStyleName (GuitarStyle);        // "ROCK", "THRASH", "NU-METAL", "METALCORE", "SHRED", "GROOVE"
     GuitarStyle guitarStyleNamed (const juce::String&);   // (else rock)
     juce::String guitarStyleDescription (GuitarStyle);
 

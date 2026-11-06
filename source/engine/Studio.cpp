@@ -7118,12 +7118,7 @@ namespace pr7s
         Track track;
         track.name = name;
         track.midiChannel = juce::jlimit (1, 16, channel);
-        Part part;
-        part.start = spans.front().start;
-        part.length = spans.back().end - spans.front().start;
-        part.name = idea.style;
-        for (const auto& n : idea.notes)
-            part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
+        const auto part = partFromIdea (idea, spans.front().start, spans.back().end - spans.front().start, idea.style);
         const auto written = newDragOutFolder (composerDragFolder()).getChildFile (juce::File::createLegalFileName (name) + ".mid");
         const auto midi = makePartMidiFile (project, track, part);
         juce::FileOutputStream out (written);
@@ -9548,6 +9543,67 @@ namespace pr7s
         return "Idea";
     }
 
+    std::vector<Controller> Studio::effectControllers (const std::vector<LineNote>& notes, int bendRange)
+    {
+        // Each group of notes with an effect starting together (a stab's two notes): its controllers.
+        struct Group { double at, length; LineNote::Effect effect; };
+        std::vector<Group> groups;
+        for (const auto& n : notes)
+        {
+            if (n.keyswitch || (n.effect != LineNote::Effect::vibrato && n.effect != LineNote::Effect::bend))
+                continue;
+            auto found = false;
+            for (auto& g : groups)
+                if (g.effect == n.effect && std::abs (g.at - n.beat) < HumanizeLimits::together)
+                {
+                    g.length = juce::jmax (g.length, n.length);
+                    found = true;
+                }
+            if (! found)
+                groups.push_back ({ n.beat, n.length, n.effect });
+        }
+        std::vector<Controller> out;
+        const auto range = juce::jmax (1, bendRange);
+        const auto bent = juce::jlimit (0, 16383, 8192 + juce::roundToInt (juce::jmin (1.0, 2.0 / range) * 8191.0));
+        for (const auto& g : groups)
+        {
+            const auto end = g.at + juce::jmax (0.05, g.length);
+            if (g.effect == LineNote::Effect::bend)
+            {
+                const auto up = g.at + juce::jmin (0.25, (end - g.at) * 0.5);
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, up, bent, true });
+                out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
+            }
+            else
+            {
+                out.push_back ({ Controller::Type::cc, 1, g.at, 0, false });
+                out.push_back ({ Controller::Type::cc, 1, g.at + (end - g.at) * 0.3, 0, false });
+                out.push_back ({ Controller::Type::cc, 1, g.at + (end - g.at) * 0.8, 96, true });
+                out.push_back ({ Controller::Type::cc, 1, end, 0, false });
+            }
+        }
+        std::stable_sort (out.begin(), out.end(), [] (const Controller& a, const Controller& b) { return a.start < b.start; });
+        return out;
+    }
+
+    Part Studio::partFromIdea (const LineIdea& idea, double start, double length, const juce::String& name) const
+    {
+        Part part;
+        part.start = start;
+        part.length = length;
+        part.name = name;
+        for (const auto& n : idea.notes)
+            part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
+        auto range = 2;
+        const auto use = idea.part == LineIdea::Part::lead ? ProfileUse::lead
+                       : idea.part == LineIdea::Part::rhythm ? ProfileUse::guitar : ProfileUse::bass;
+        if (const auto profile = profileFor (use))
+            range = profile->bendRange;
+        part.controllers = effectControllers (idea.notes, range);
+        return part;
+    }
+
     int Studio::addLinePart (const LineIdea& idea, const std::vector<ChordSpan>& spans, int ontoTrackId)
     {
         if (spans.empty() || idea.notes.empty())
@@ -9563,12 +9619,7 @@ namespace pr7s
             if (idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove)
                 setTrackDrumMap (trackId, DrumMap::gm().name);
         }
-        Part part;
-        part.start = spans.front().start;
-        part.length = spans.back().end - spans.front().start;
-        part.name = linePartName (idea.part) + ": " + idea.style;
-        for (const auto& n : idea.notes)
-            part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
+        const auto part = partFromIdea (idea, spans.front().start, spans.back().end - spans.front().start, linePartName (idea.part) + ": " + idea.style);
         addPart (trackId, part);
         return trackId;
     }
@@ -9630,13 +9681,7 @@ namespace pr7s
             if (! canTakeMidi (trackId) || idea.notes.empty())
                 continue;
             auto* track = heard.findTrack (trackId);
-            Part part;
-            part.start = start;
-            part.length = end - start;
-            part.name = idea.style;
-            for (const auto& n : idea.notes)
-                part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
-            track->parts.push_back (std::move (part));
+            track->parts.push_back (partFromIdea (idea, start, end - start, idea.style));
             playing.insert (trackId);
         }
         if (playing.empty())
@@ -9729,13 +9774,7 @@ namespace pr7s
             {
                 track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(), [&] (const Part& p)
                                     { return p.start >= start - 1.0e-9 && p.start + p.length <= end + 1.0e-9; }), track->parts.end());
-                Part part;
-                part.start = start;
-                part.length = end - start;
-                part.name = (sectionName.isNotEmpty() ? sectionName + ": " : juce::String()) + idea->style;
-                for (const auto& n : idea->notes)
-                    part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
-                track->parts.push_back (part);
+                track->parts.push_back (partFromIdea (*idea, start, end - start, (sectionName.isNotEmpty() ? sectionName + ": " : juce::String()) + idea->style));
                 track->parts.back().id = 0;
             }
         if (! plan.empty())

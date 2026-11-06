@@ -806,7 +806,7 @@ namespace pr7s
         if (spans.empty() || idea.notes.empty() || beatsPerBar <= 0.0)
             return;
         const auto origin = spans.front().start;
-        const auto metal = style == GuitarStyle::thrash || style == GuitarStyle::numetal || style == GuitarStyle::metalcore;
+        const auto metal = style == GuitarStyle::thrash || style == GuitarStyle::numetal || style == GuitarStyle::metalcore || style == GuitarStyle::groove;
         // The choices at a place of the bar (the fill bars their own): the same for every bar.
         const auto decide = [&] (int bar, int step, int salt)
         {
@@ -835,7 +835,10 @@ namespace pr7s
             const auto pos = (note.beat - barStart) / 0.25;
             const auto step = (int) std::lround (pos);
             const auto midi = (int) std::lround (note.velocity * 127.0f);
-            const auto muted = midi <= 59, special = midi >= 120;
+            auto stab = false;   // (0.64.0) a groove stab stays as written (high, ringing, bent)
+            for (auto k = i; k < j; ++k)
+                stab = stab || notes[k].effect != LineNote::Effect::none;
+            const auto muted = midi <= 59, special = midi >= 120 || stab;
             if (single && std::abs (pos - step) < 1.0e-3 && step != 0 && ! special)
             {
                 const auto root = spans[s].chord.root;

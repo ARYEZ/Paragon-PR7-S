@@ -2,6 +2,23 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.64.0
+
+- **A new guitar STYLE: GROOVE** (you asked, after Machine Head's "Ten Ton Hammer" and Kittie's "Brackish"). Palm-muted chugs on the low string, answered by a high, dissonant two-note **stab** two octaves up. Six riffs, all ours, written in the spirit of those songs rather than copied:
+  - **Tritone stab:** a ringing tritone with vibrato, then four chugs (the Ten Ton Hammer idea). On your 7-string in A: A2 + D#3 over the low A.
+  - **Bent stab:** a chug, then a whole step (the flat 7th and the octave) bent up a whole step, the phrase ending on a ringing unison note (the Brackish idea). In A: G2 + A2 bent up to A2 + B2, then B2.
+  - **Backbeat stabs** (on beats two and four, with the snare), **Off-beat stabs**, **Stab gallop**, **Half-time stabs** (the breakdown).
+  - The stab sits over the riff's low note (the key's note on the lowest string), so it follows the key you're in.
+- **Bends and vibrato are written into the part** when a riff goes onto a track (USE IT, BUILD SECTION, the composer, dragging a lane out as MIDI):
+  - **A bend** is pitch bend: straight at the attack, up a whole step over the first half of the note (an 8th at most), back to none as the note ends, before the next chug. It uses the BEND RANGE in the guitar's INSTRUMENTS profile (2 for Jupiter and Rogue, Shreddage's default: so the bend goes all the way up), else 2.
+  - **Vibrato** is the mod wheel (CC 1), Shreddage's vibrato controller: none for the first third of the note, rising after, back to 0 as it ends.
+  - A pitch bend bends the whole channel. The riffs never start a chug while a stab is bent, so only the stab bends.
+- **RIFF SETTINGS and the composer's ROLL leave the stabs alone:** PALM MUTES never mute them, BUSYNESS never drops them, and LOW STRING never folds them down.
+- **The rest of GROOVE** borrows from NU-METAL: its leads (octave melodies, sirens, pinch pings), drum beats, beat generator rules and fills. FROM MY LIBRARY looks for grooves named groove, Pantera, sludge, nu-metal or bounce.
+- **Not yet:**
+  - IDEAS' HEAR previews play the notes without the bend or vibrato. The part on a track, and the composer's HEAR, play them.
+  - A unison is written as one note: two of the same note on one channel would cut each other off.
+
 ## 0.63.1
 
 - **Nothing faster or shorter than a 16th on your libraries** (you asked: for Shreddage and Djinn Bass the shortest a note should be is a 16th, and 16th chugs should be rare). Each INSTRUMENTS profile now has two settings:

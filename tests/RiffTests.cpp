@@ -78,7 +78,7 @@ TEST_CASE ("Guitar styles: six rhythm ideas and six leads each, on the chords, i
     const Key am { 5, 0, true };
     const auto spans = bars ({ { 9, T::minor, X::none, -1 }, { 5, T::major, X::none, -1 }, { 0, T::major, X::none, -1 }, { 7, T::major, X::none, -1 },
                                { 11, T::diminished, X::none, -1 }, { 4, T::major, X::none, -1 }, { 9, T::minor, X::none, -1 }, { 4, T::major, X::none, -1 } }, am);
-    CHECK (guitarStyles().size() == 5);
+    CHECK (guitarStyles().size() == 6);   // (0.64.0: GROOVE)
     for (const auto style : guitarStyles())
     {
         CHECK (guitarStyleNamed (guitarStyleName (style)) == style);

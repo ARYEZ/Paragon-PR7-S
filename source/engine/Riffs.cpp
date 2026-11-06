@@ -129,6 +129,10 @@ namespace pr7s
         //   o    an open octave shape                          b B  a root and flat fifth dyad
         //   h    a ringing chord high on the neck (its three notes)
         //   p    a pinch-harmonic squeal (the root an octave up)    r  a rake into the root an octave up
+        //   (0.64.0) stabs high on the neck, two octaves over the base, always ringing:
+        //   v    a tritone stab (the octave and its flat fifth) with vibrato
+        //   w    a whole-step stab (the flat seventh and the octave) both bent up a whole step
+        //   u    a unison ring (the ninth: two strings on one note, written as one note)
         enum class Base { root, pedal };
         struct RiffDef
         {
@@ -153,6 +157,7 @@ namespace pr7s
                 case GuitarStyle::numetal: return odd ? FillKind::squeal : FillKind::stop;
                 case GuitarStyle::metalcore: return odd ? FillKind::squeal : FillKind::burst;
                 case GuitarStyle::shred: return odd ? FillKind::burst : FillKind::chromatic;
+                case GuitarStyle::groove: return odd ? FillKind::squeal : FillKind::slide;
             }
             return FillKind::chromatic;
         }
@@ -211,6 +216,19 @@ namespace pr7s
                   Base::root, "#===============", "#=======#=======" },
                 { "Arpeggiated power chords", "The chord's root, fifth and third picked one at a time and left ringing (melodic power metal)",
                   Base::root, "XGTGXGTGXGTGXGTG", "XGTGXGTG#=======" } };
+            static const std::vector<RiffDef> groove {
+                { "Tritone stab", "A high tritone left ringing with vibrato, then palm-muted chugs on the low string; power chords to turn it round",
+                  Base::pedal, "v=====z-z-z-z---", "v=====z-z-z-zz#=", "z-z-z-z-#===#===" },
+                { "Bent stab", "Chugs answered by a high whole step bent up a whole step; the phrase ends on a ringing unison",
+                  Base::pedal, "z===w=z---z-w===", "z===w=z---z-u===" },
+                { "Backbeat stabs", "High stabs on beats two and four, where the snare hits, chugs between them",
+                  Base::pedal, "z-z-v=z-z-z-v=z-", "z-zzv=z-z-z-w===" },
+                { "Off-beat stabs", "Short tritone stabs on the off-beats against eighth-note chugs",
+                  Base::pedal, "z-v=z-v=zzv=z-v=", "z-v=z-v=zzw===--" },
+                { "Stab gallop", "A gallop of chugs, then a ringing stab answering it",
+                  Base::pedal, "z-zzv===z-zzv===", "z-zzv===z-zzw===" },
+                { "Half-time stabs", "Heavy half-time chugs with a long bent stab, then a ringing unison (the breakdown)",
+                  Base::pedal, "z--z--w=====z-z-", "z--z--v=====u===" } };
             static const std::vector<RiffDef> none;
             switch (style)
             {
@@ -218,6 +236,7 @@ namespace pr7s
                 case GuitarStyle::numetal: return numetal;
                 case GuitarStyle::metalcore: return metalcore;
                 case GuitarStyle::shred: return shred;
+                case GuitarStyle::groove: return groove;
                 case GuitarStyle::rock: break;
             }
             return none;
@@ -307,6 +326,7 @@ namespace pr7s
                 case GuitarStyle::numetal: return numetal;
                 case GuitarStyle::metalcore: return metalcore;
                 case GuitarStyle::shred: return shred;
+                case GuitarStyle::groove: return numetal;   // (0.64.0: the nu-metal leads: octave melodies, sirens, pinch pings)
                 case GuitarStyle::rock: break;
             }
             return none;
@@ -318,7 +338,7 @@ namespace pr7s
     //==========================================================================
     const std::vector<GuitarStyle>& guitarStyles()
     {
-        static const std::vector<GuitarStyle> styles { GuitarStyle::rock, GuitarStyle::thrash, GuitarStyle::numetal, GuitarStyle::metalcore, GuitarStyle::shred };
+        static const std::vector<GuitarStyle> styles { GuitarStyle::rock, GuitarStyle::thrash, GuitarStyle::numetal, GuitarStyle::metalcore, GuitarStyle::shred, GuitarStyle::groove };
         return styles;
     }
 
@@ -331,6 +351,7 @@ namespace pr7s
             case GuitarStyle::numetal: return "NU-METAL";
             case GuitarStyle::metalcore: return "METALCORE";
             case GuitarStyle::shred: return "SHRED";
+            case GuitarStyle::groove: return "GROOVE";
         }
         return "ROCK";
     }
@@ -352,6 +373,7 @@ namespace pr7s
             case GuitarStyle::numetal: return "Nu-metal: syncopated bounce, stops, the flat fifth and half step; octave melodies, sirens, pinch pings";
             case GuitarStyle::metalcore: return "Metalcore: breakdowns, chug-and-stop, triplet bursts, octave choruses; twin harmony and tapped leads";
             case GuitarStyle::shred: return "Shred: power metal rhythm under sweeps, legato runs, harmonic minor and diminished arpeggios, tapping";
+            case GuitarStyle::groove: return "Groove: low chugs answered by high dissonant stabs (tritones with vibrato, bent whole steps, unisons); nu-metal leads";
         }
         return {};
     }
@@ -495,6 +517,19 @@ namespace pr7s
                             }
                             case 'p': add (idea.notes, when, length, root + 12, of (vel.pinch)); break;
                             case 'r': add (idea.notes, when, length, root + 12, of (vel.rake)); break;
+                            case 'v': case 'w': case 'u':
+                            {
+                                const auto stab = base + 24;
+                                const auto pitches = lower == 'v' ? std::vector<int> { stab, stab + 6 }
+                                                   : lower == 'w' ? std::vector<int> { stab - 2, stab }
+                                                                  : std::vector<int> { stab + 2 };
+                                for (const auto p : pitches)
+                                {
+                                    add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
+                                    idea.notes.back().effect = lower == 'v' ? LineNote::Effect::vibrato : lower == 'w' ? LineNote::Effect::bend : LineNote::Effect::ring;
+                                }
+                                break;
+                            }
                             default: break;
                         }
                     }
@@ -525,6 +560,7 @@ namespace pr7s
         const auto barPos = [&] (double beat) { auto p = std::fmod (beat, beatsPerBar); return p > beatsPerBar - 1.0e-6 ? 0.0 : p; };
         const auto isBarStart = [&] (double beat) { return barPos (beat) < 1.0e-6; };
         const auto isOnBeat = [&] (double beat) { const auto p = barPos (beat); return std::abs (p - std::round (p)) < 1.0e-6; };
+        const auto plain = [] (const LineNote& n) { return n.effect == LineNote::Effect::none; };   // (0.64.0: stabs left as written)
 
         // Groups: notes starting together (a chord, a strum).
         struct Group { size_t first, last; double at; };
@@ -551,7 +587,7 @@ namespace pr7s
         {
             const auto p = (riff.palmMutes - 0.5f) * 2.0f;
             for (const auto& g : groupsOf())
-                if (! isBarStart (g.at) && all (g, openNote) && chance (g.at, 1, variation) < (isOnBeat (g.at) ? p * 0.5f : p))
+                if (! isBarStart (g.at) && all (g, openNote) && all (g, plain) && chance (g.at, 1, variation) < (isOnBeat (g.at) ? p * 0.5f : p))
                     for (auto i = g.first; i <= g.last; ++i)
                     {
                         notes[i].velocity = of (vel.muteMid);
@@ -602,7 +638,7 @@ namespace pr7s
             for (int k = 0; k < (int) groups.size(); ++k)
             {
                 const auto& g = groups[(size_t) k];
-                const auto special = ! all (g, [&] (const LineNote& n) { return muted (n) || openNote (n); });
+                const auto special = ! all (g, [&] (const LineNote& n) { return (muted (n) || openNote (n)) && plain (n); });
                 if (isBarStart (g.at) || special || chance (g.at, 3, variation) >= (isOnBeat (g.at) ? p * 0.35f : p))
                 {
                     lastKept = k;

@@ -26,6 +26,13 @@ namespace pr7s
         int pitch = 60;
         float velocity = 0.8f;
         bool keyswitch = false;            // (0.62.0) a library's keyswitch held, not a note heard (not drawn)
+        // (0.64.0) What the hand does to the note while it rings, written into the part as controllers when it
+        // becomes one (Studio): vibrato (the mod wheel, CC 1, rising after the attack: Shreddage's vibrato
+        // controller) or a bend up a whole step (pitch bend, by the instrument's bend range; back to none
+        // as it ends). A pitch bend bends the whole channel, so everything starting with the note bends too.
+        // `ring`: no controller, but a stab left ringing (the riff settings never palm mute or drop one).
+        enum class Effect { none, vibrato, bend, ring };
+        Effect effect = Effect::none;
         bool operator== (const LineNote&) const = default;
     };
 

@@ -298,6 +298,12 @@ namespace pr7s
         // studio's synth) named for the part (Bass, Melody, Piano, Guitar, Lead Guitar). The
         // track's id; one undo step.
         int addLinePart (const LineIdea&, const std::vector<ChordSpan>&, int ontoTrackId = 0);
+        // (0.64.0) An idea as a part (from `start`, `length` beats long): its notes (keyswitches too), and
+        // its notes' effects as controllers: vibrato as the mod wheel (CC 1) rising after the attack and
+        // back to 0 as it ends, a bend as pitch bend up a whole step by the instrument's bend range (the
+        // INSTRUMENTS profile on the idea's lane, else 2 semitones) and back to none as it ends.
+        Part partFromIdea (const LineIdea&, double start, double length, const juce::String& name) const;
+        static std::vector<Controller> effectControllers (const std::vector<LineNote>&, int bendRange);
         // (0.57.0) BUILD SECTION: each idea onto the track named after its part (Drums, Bass, Guitar,
         // Lead Guitar, Piano, Melody: an instrument track of that name is reused, so section after
         // section lands on the same band; else a new one), each part over the chords' span, named
