@@ -965,7 +965,7 @@ namespace pr7s
             std::array<double, 3> push {};
             std::array<int, 3> pushBars {};
         };
-        std::array<Acc, 6> acc;
+        std::array<Acc, DrumProfile::sectionCount> acc;
         const auto add = [] (std::map<juce::String, Counted>& into, const std::vector<LearnedHit>& hits, int beats)
         {
             juce::StringArray key;

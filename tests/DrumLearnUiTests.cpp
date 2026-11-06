@@ -132,7 +132,7 @@ TEST_CASE ("LEARN A DRUMMER: a folder of songs read, sections put right, the pro
         CHECK (ideas.getDrummer() == "Session drummer");
         CHECK (studio.getIdeasDrummer() == "Session drummer");
         const auto& beats = ideas.getIdeas (LineIdea::Part::drums);
-        REQUIRE (beats.size() == 6);
+        REQUIRE (beats.size() == 7);
         CHECK (beats[1].description.startsWith ("Session drummer: "));
         CHECK (beats[1].style == "Verse");
         CHECK_FALSE (beats[1].notes.empty());

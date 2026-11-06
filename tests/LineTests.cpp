@@ -762,9 +762,9 @@ TEST_CASE ("The IDEAS window: ideas heard, used, more of them (0.18.0); piano, g
     CHECK (page.getNumCardsShown() == 12);
     CHECK (page.getIdeas (LineIdea::Part::chords).size() == 6);
     page.setTab (LinesPage::Tab::guitar);
-    CHECK (page.getNumCardsShown() == 12);
+    CHECK (page.getNumCardsShown() == 13);   // (0.65.0: the solo the lead's seventh)
     CHECK (page.getIdeas (LineIdea::Part::rhythm).size() == 6);
-    CHECK (page.getIdeas (LineIdea::Part::lead).size() == 6);
+    CHECK (page.getIdeas (LineIdea::Part::lead).size() == 7);
     page.setTab (LinesPage::Tab::bass);
     CHECK (page.getNumCardsShown() == 8);   // (0.54.0: six, and the two locked to the kick and the riff)
     // The tuning: the guitar ideas dealt again for it, nothing under its lowest string.

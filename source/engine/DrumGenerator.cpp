@@ -219,6 +219,8 @@ namespace pr7s
         return all;
     }
 
+    static_assert ((int) DrumSection::solo + 1 == 7, "DrumProfile::sectionCount and the arrays by section follow DrumSection");
+
     juce::String drumSectionName (DrumSection section)
     {
         switch (section)

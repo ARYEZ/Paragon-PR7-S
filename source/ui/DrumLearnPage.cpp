@@ -600,8 +600,8 @@ juce::String DrumLearnPage::getStatusText() const
         return "Reading the songs: " + juce::String (reading->done.load()) + " of " + juce::String (reading->total) + "...";
     if (songs.empty())
         return unread.isEmpty() ? juce::String ("No songs yet.") : "None of the " + plural (unread.size(), "file") + " held drums.";
-    std::array<int, 6> sections {};
-    std::array<int, 6> bars {};
+    std::array<int, pr7s::DrumProfile::sectionCount> sections {};
+    std::array<int, pr7s::DrumProfile::sectionCount> bars {};
     auto used = 0, total = 0;
     for (const auto& s : songs)
     {

@@ -341,13 +341,13 @@ TEST_CASE ("IDEAS' guitar tab: STYLE deals the style's twelve, RIFF SETTINGS dea
     const auto spans = bars ({ { 9, T::minor, X::none, -1 }, { 5, T::major, X::none, -1 }, { 0, T::major, X::none, -1 }, { 4, T::major, X::none, -1 } }, am);
     LinesPage page (studio, spans);
     page.setTab (LinesPage::Tab::guitar);
-    CHECK (page.getNumCardsShown() == 12);
+    CHECK (page.getNumCardsShown() == 13);
     CHECK (page.getIdeas (LineIdea::Part::rhythm).front().style == "Power chords");
     page.setGuitarStyle (GuitarStyle::thrash);
     CHECK (studio.getGuitarStyle() == GuitarStyle::thrash);
     CHECK (page.getIdeas (LineIdea::Part::rhythm).front().style == "Downpicked gallop");
     CHECK (page.getIdeas (LineIdea::Part::lead).front().style == "Chromatic tremolo");
-    CHECK (page.getNumCardsShown() == 12);
+    CHECK (page.getNumCardsShown() == 13);
     page.setGuitarStyle (GuitarStyle::shred);
     CHECK (page.getIdeas (LineIdea::Part::lead).front().style == "Sweep arpeggio");
     const auto before = page.getIdeas (LineIdea::Part::rhythm).front().notes;

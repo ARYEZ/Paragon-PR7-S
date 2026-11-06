@@ -46,7 +46,7 @@ TEST_CASE ("The composer's state: kept as text, the lead off and the bass on the
     CHECK (s.lane (L::chords).on);
     CHECK (s.lane (L::bass).style == composerStyleCount (L::bass) - 1);
     CHECK (composerStyleCount (L::bass) == 7);
-    CHECK (composerStyleCount (L::drums) == 6);
+    CHECK (composerStyleCount (L::drums) == 7);   // (0.65.0: SOLO)
 
     s.key = Key::all()[20];
     s.genre = progressionGenres()[0];
@@ -64,7 +64,7 @@ TEST_CASE ("The composer's state: kept as text, the lead off and the bass on the
     auto odd = s;
     odd.lane (L::drums).style = 5;
     auto text = odd.toString().replace ("1,0,5,", "1,0,99,");
-    CHECK (ComposerState::fromString (text).lane (L::drums).style <= 5);
+    CHECK (ComposerState::fromString (text).lane (L::drums).style <= 6);   // (0.65.0: seven sections)
 }
 
 TEST_CASE ("The composer's chords: the library's progression in the key, repeated to the length (0.58.0)", "[composer]")
