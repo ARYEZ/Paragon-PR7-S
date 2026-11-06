@@ -4,6 +4,8 @@
 #include "engine/Studio.h"
 #include "ui/LinesPage.h"
 #include "ui/DrumLearnPage.h"
+#include "ui/MainView.h"
+#include "ui/MixerView.h"
 #include "DrumSongs.h"
 
 // Timings for the speed pass after 0.57.0 (hidden: run with "[perf-heavy]", "[perf-studio]",
@@ -202,4 +204,35 @@ TEST_CASE ("Speed: audio tracks in the engine (takes on lanes, auto crossfades)"
           << "  render a 512-sample block: " << perBlock << " ms\n"
           << "  update after a fader move: " << fader << " ms\n"
           << "  update after a clip edit: " << clipEdit << " ms");
+}
+
+TEST_CASE ("Speed: the screen's redraws while playing (the transport's screens, a mixer meter)", "[.][perf-screen]")
+{
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1920, 1000);
+    for (int t = 1; t < 16; ++t)
+        studio.addTrack ({});
+    studio.dispatchPendingMessages();
+    view.openMixer();
+    studio.dispatchPendingMessages();
+    auto image = juce::Image (juce::Image::ARGB, 1920, 1000, true);
+    const auto clipped = [&] (juce::Component& c, juce::Rectangle<int> area)
+    {
+        return millisecondsOf (40, [&] (int)
+        {
+            juce::Graphics g (image);
+            g.reduceClipRegion (area);
+            c.paintEntireComponent (g, false);
+        });
+    };
+    auto& transport = view.getTransport();
+    const auto screens = transport.getPositionScreen().expanded (4.0f).getSmallestIntegerContainer()
+                             .getUnion (transport.getTimeScreen().expanded (4.0f).getSmallestIntegerContainer());
+    auto& strip = view.getMixer().getStrip (3);
+    WARN ("A frame's redraws:\n"
+          << "  the transport's POSITION and TIME screens: " << clipped (transport, screens) << " ms\n"
+          << "  the whole transport: " << clipped (transport, transport.getLocalBounds()) << " ms\n"
+          << "  a mixer strip's meter: " << clipped (strip, strip.getMeterArea()) << " ms (x 17 strips)\n"
+          << "  the whole strip: " << clipped (strip, strip.getLocalBounds()) << " ms");
 }

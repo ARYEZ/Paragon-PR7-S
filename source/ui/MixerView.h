@@ -164,6 +164,7 @@ public:
     void refresh();
     void setLevels (float left, float right);
     int getBusId() const noexcept { return busId; }
+    juce::Rectangle<int> getMeterArea() const { return meterArea.toNearestInt().expanded (2); }   // (tests: what a level redraws)
 
     ValueSlider& getVolume() noexcept { return volume; }
     ValueSlider& getPan() noexcept { return pan; }
