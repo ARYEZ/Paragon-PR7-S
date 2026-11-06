@@ -93,7 +93,7 @@ TEST_CASE ("Guitar styles: six rhythm ideas and six leads each, on the chords, i
                     const auto rhythm = guitarRhythmIdeas (spans, 4.0, variation, tuning, {}, style, riff);
                     const auto lead = guitarLeadIdeas (spans, 4.0, variation, tuning, {}, style);
                     REQUIRE (rhythm.size() == 6);
-                    REQUIRE (lead.size() == 6);
+                    REQUIRE (lead.size() == 7);   // (0.65.0: the seventh, the whole solo)
                     std::set<juce::String> names;
                     for (const auto* list : { &rhythm, &lead })
                         for (const auto& idea : *list)
@@ -135,7 +135,7 @@ TEST_CASE ("Guitar styles: six rhythm ideas and six leads each, on the chords, i
                                         continue;
                                     bool tone = false;
                                     for (const auto& n : idea.notes)
-                                        if (std::abs (n.beat - first) < 1.0e-6 && isChordTone (spanAt (spans, n.beat).chord, n.pitch))
+                                        if (std::abs (n.beat - first) < 1.0e-6 && isChordTone (spanAt (spans, n.beat).chord, n.pitch + (n.effect == LineNote::Effect::bend ? 2 : 0)))   // (a bend sounds a whole step up)
                                             tone = true;
                                     CHECK (tone);
                                 }
@@ -152,7 +152,7 @@ TEST_CASE ("Guitar styles: six rhythm ideas and six leads each, on the chords, i
                                         }
                             }
                         }
-                    CHECK (names.size() == 12);   // (every idea its own name)
+                    CHECK (names.size() == 13);   // (every idea its own name)
                 }
     }
 }

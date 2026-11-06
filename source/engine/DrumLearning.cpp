@@ -240,6 +240,7 @@ namespace pr7s
                 case S::breakdown: order.insert (order.end(), { S::chorus, S::bridge, S::verse, S::intro, S::ending }); break;
                 case S::intro: order.insert (order.end(), { S::verse, S::chorus, S::bridge, S::breakdown, S::ending }); break;
                 case S::ending: order.insert (order.end(), { S::verse, S::chorus, S::intro, S::bridge, S::breakdown }); break;
+                case S::solo: order.insert (order.end(), { S::chorus, S::verse, S::bridge, S::breakdown, S::intro, S::ending }); break;
             }
             for (const auto s : order)
                 if (profile.has (s) && ! profile.of (s).grooves.empty())

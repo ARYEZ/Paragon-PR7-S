@@ -768,6 +768,95 @@ namespace pr7s
     }
 
     //==========================================================================
+    LineIdea guitarSolo (const std::vector<LineIdea>& leads, const std::vector<ChordSpan>& spans, double beatsPerBar, const GuitarTuning& tuning)
+    {
+        LineIdea solo { LineIdea::Part::lead, "Solo", {}, {} };
+        if (leads.empty() || spans.empty() || beatsPerBar <= 0.0)
+            return solo;
+        const auto origin = spans.front().start;
+        const auto total = spans.back().end - origin;
+        // The leads from the calmest to the busiest.
+        std::vector<const LineIdea*> order;
+        for (const auto& l : leads)
+            if (! l.notes.empty())
+                order.push_back (&l);
+        if (order.empty())
+            return solo;
+        const auto onsetsPerBeat = [total] (const LineIdea* l)
+        {
+            std::vector<long> starts;
+            for (const auto& n : l->notes)
+                if (! n.keyswitch)
+                    starts.push_back (std::lround (n.beat * 96.0));
+            std::sort (starts.begin(), starts.end());
+            starts.erase (std::unique (starts.begin(), starts.end()), starts.end());
+            return (double) starts.size() / juce::jmax (1.0, total);
+        };
+        std::stable_sort (order.begin(), order.end(), [&] (const LineIdea* a, const LineIdea* b) { return onsetsPerBeat (a) < onsetsPerBeat (b); });
+
+        const auto bars = juce::jmax (1, (int) std::ceil (total / beatsPerBar - 1.0e-6));
+        const auto phrases = (bars + 1) / 2;
+        const auto low = juce::jmax (tuning.strings.size() > 1 ? tuning.strings[1] + 5 : tuning.lowest(), 45);
+        juce::StringArray used;
+        for (int p = 0; p < phrases; ++p)
+        {
+            const auto along = phrases == 1 ? 1.0 : (double) p / (double) (phrases - 1);
+            const auto* lead = order[(size_t) juce::roundToInt (along * (double) (order.size() - 1))];
+            if (! used.contains (lead->style))
+                used.add (lead->style);
+            const auto from = p * 2 * beatsPerBar, to = juce::jmin (total, (p + 1) * 2 * beatsPerBar);
+            std::vector<LineNote> phrase;
+            for (auto n : lead->notes)
+                if (! n.keyswitch && n.beat >= from - 1.0e-9 && n.beat < to - 1.0e-9)
+                {
+                    n.length = juce::jmin (n.length, to - n.beat);
+                    phrase.push_back (n);
+                }
+            // Long single notes (alone at their start, not a pinch or rake): the longest bent into, the others with vibrato.
+            const auto single = [&phrase] (size_t i)
+            {
+                for (size_t k = 0; k < phrase.size(); ++k)
+                    if (k != i && std::abs (phrase[k].beat - phrase[i].beat) < HumanizeLimits::together)
+                        return false;
+                return true;
+            };
+            const auto plain = [] (const LineNote& n) { const auto m = GuitarVelocity::midiOf (n.velocity); return m > GuitarVelocity::mutedMost && m <= GuitarVelocity::sustainMost; };
+            int longest = -1;
+            for (size_t i = 0; i < phrase.size(); ++i)
+                if (phrase[i].length >= 0.75 - 1.0e-9 && single (i) && plain (phrase[i]))
+                {
+                    phrase[i].effect = LineNote::Effect::vibrato;
+                    if (longest < 0 || phrase[i].length > phrase[(size_t) longest].length)
+                        longest = (int) i;
+                }
+            if (longest >= 0 && phrase[(size_t) longest].pitch - 2 >= low)
+            {
+                phrase[(size_t) longest].pitch -= 2;
+                phrase[(size_t) longest].effect = LineNote::Effect::bend;
+            }
+            solo.notes.insert (solo.notes.end(), phrase.begin(), phrase.end());
+        }
+        std::stable_sort (solo.notes.begin(), solo.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+        // The last note (or chord) held to the end, with vibrato when it's a single note.
+        if (! solo.notes.empty())
+        {
+            const auto lastStart = solo.notes.back().beat;
+            auto count = 0;
+            for (auto& n : solo.notes)
+                if (std::abs (n.beat - lastStart) < HumanizeLimits::together)
+                {
+                    n.length = juce::jmax (n.length, (total - n.beat) * 0.96);
+                    ++count;
+                }
+            if (count == 1 && solo.notes.back().effect == LineNote::Effect::none
+                && GuitarVelocity::midiOf (solo.notes.back().velocity) <= GuitarVelocity::sustainMost)
+                solo.notes.back().effect = LineNote::Effect::vibrato;
+        }
+        solo.description = "A whole solo building up: " + used.joinIntoString (", then ").toLowerCase()
+                         + "; long notes bent into and held with vibrato, the last one left ringing";
+        return solo;
+    }
+
     std::vector<LineIdea> styleLeadIdeas (GuitarStyle style, const std::vector<ChordSpan>& spans, double beatsPerBar, int variation,
                                           const GuitarTuning& tuning, const GuitarVelocities& vel)
     {

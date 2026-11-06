@@ -163,7 +163,7 @@ public:
     juce::TextButton& getBuildKey() noexcept { return build; }
     int getNumNextKeys() const noexcept { return nextKeys.size(); }
     juce::TextButton* getNextKey (int i) const { return nextKeys[i]; }
-    static constexpr int width = 640, rowHeight = 32, titleHeight = 62, nextHeight = 46;
+    static constexpr int width = 720, rowHeight = 32, titleHeight = 62, nextHeight = 46;
 
 private:
     void refresh();

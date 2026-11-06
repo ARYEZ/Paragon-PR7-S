@@ -2,6 +2,24 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.65.0
+
+- **A SOLO section for guitars** (you asked). SOLO is now a song section next to INTRO, VERSE, CHORUS, BRIDGE, BREAKDOWN and ENDING.
+- **BUILD SECTION > SOLO** writes:
+  - **Lead Guitar: a whole solo.** It's made from your STYLE's own six leads, ordered from the calmest to the busiest, a lead every two bars. So it starts melodic and climbs to the style's fastest playing at the end:
+    - GROOVE and NU-METAL: octave melodies, sirens and pinch pings.
+    - THRASH: tremolo and chromatic runs.
+    - SHRED: sweeps, legato and tapping.
+    - ROCK: pentatonic and blues.
+  - **Bends and vibrato:** each two-bar phrase's longest note is bent up a whole step into its note, other long notes get vibrato, and the last note rings to the end with vibrato. On a track these play as pitch bend and the mod wheel, as in 0.64.0.
+  - **Guitar: your riff, thinned out under the solo**, so the lead has room.
+  - **Drums: a SOLO beat**, driven on the ride. A learned drummer plays the section you marked SOLO on LEARN A DRUMMER, else their chorus.
+  - **Bass:** locked to the kick, as in the other sections.
+- **NEXT suggests a solo** after the second chorus or after a bridge, and after the solo, the chorus again, a breakdown or the ending. One solo per song.
+- **The solo is also the seventh lead card** on IDEAS' guitar tab: HEAR it, or USE IT anywhere.
+- **The composer:** the LEAD lane's style menu has **Solo**, and the DRUMS lane has the **SOLO** beat.
+- **LEARN A DRUMMER** can now mark a section of a song as SOLO.
+
 ## 0.64.0
 
 - **A new guitar STYLE: GROOVE** (you asked, after Machine Head's "Ten Ton Hammer" and Kittie's "Brackish"). Palm-muted chugs on the low string, answered by a high, dissonant two-note **stab** two octaves up. Six riffs, all ours, written in the spirit of those songs rather than copied:

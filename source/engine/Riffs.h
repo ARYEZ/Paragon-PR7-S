@@ -50,6 +50,14 @@ namespace pr7s
     std::vector<LineIdea> styleLeadIdeas (GuitarStyle, const std::vector<ChordSpan>&, double beatsPerBar, int variation,
                                           const GuitarTuning&, const GuitarVelocities&);
 
+    // (0.65.0) A WHOLE GUITAR SOLO over the chords (the owner asked for a Solo section): made from the
+    // style's own six leads, ordered from the calmest (fewest notes a beat) to the busiest, a lead per
+    // two-bar phrase so the solo starts melodic and climbs to its fastest phrase at the end. Each phrase's
+    // longest single note (held at least three quarters of a beat) is bent up a whole step into its note
+    // (written a whole step under, `LineNote::Effect::bend`), the other long single notes get vibrato, and
+    // the last note is held to the end with vibrato. Pinch harmonics and rakes are left as they are.
+    LineIdea guitarSolo (const std::vector<LineIdea>& leads, const std::vector<ChordSpan>&, double beatsPerBar, const GuitarTuning&);
+
     // PALM MUTES, TIGHTNESS, BUSYNESS and FILLS on a rhythm idea's notes (beats from the first
     // chord's start): every style's, rock's too. `strummed`: no chugs added (a strum isn't chugged).
     void shapeRiff (LineIdea&, const std::vector<ChordSpan>&, double beatsPerBar, const RiffSettings&, const GuitarVelocities&,

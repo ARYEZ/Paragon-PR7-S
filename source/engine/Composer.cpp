@@ -150,7 +150,8 @@ namespace pr7s
     //==========================================================================
     int composerStyleCount (ComposerLayer l)
     {
-        return l == ComposerLayer::bass ? 7 : 6;
+        // (0.65.0) The lead's seventh is the whole solo; the drums' seventh the solo section.
+        return l == ComposerLayer::bass || l == ComposerLayer::lead ? 7 : l == ComposerLayer::drums ? (int) drumSections().size() : 6;
     }
 
     namespace

@@ -765,7 +765,8 @@ void BuildSectionPanel::resized()
     area.removeFromTop (titleHeight - 10);
     auto row = area.removeFromTop (rowHeight).reduced (0, 4);
     row.removeFromLeft (110);
-    const auto w = (row.getWidth() - 5 * 5) / 6;
+    const auto keys = juce::jmax (1, sectionKeys.size());
+    const auto w = (row.getWidth() - 5 * (keys - 1)) / keys;
     for (auto* key : sectionKeys)
     {
         key->setBounds (row.removeFromLeft (w));
@@ -819,8 +820,31 @@ std::vector<pr7s::LineIdea> LinesPage::sectionIdeas (const BuildChoice& c) const
             if (const auto* idea = pickFrom (part, index))
                 out.push_back (*idea);
     };
-    add (BuildChoice::guitar, P::rhythm, riffIndex);
-    add (BuildChoice::lead, P::lead, chosen[(size_t) P::lead]);
+    const auto solo = c.section == pr7s::DrumSection::solo;
+    if (solo && c.parts[BuildChoice::guitar])
+    {
+        // (0.65.0) Under a solo the rhythm guitar backs it more simply: its weak hits left out.
+        if (const auto* riff = pickFrom (P::rhythm, riffIndex))
+        {
+            auto backing = *riff;
+            pr7s::RiffSettings thinner;
+            thinner.bars = studio.getRiffSettings().bars;
+            thinner.busyness = 0.2f;
+            pr7s::shapeRiff (backing, spans, barBeats, thinner, studio.getGuitarVelocities(), studio.getGuitarStyle(), variation, getTuning());
+            out.push_back (std::move (backing));
+        }
+    }
+    else
+        add (BuildChoice::guitar, P::rhythm, riffIndex);
+    if (solo && c.parts[BuildChoice::lead])
+    {
+        // The lead plays the whole solo (the lead ideas' last).
+        const auto& leads = getIdeas (P::lead);
+        if (! leads.empty())
+            out.push_back (leads.back());
+    }
+    else
+        add (BuildChoice::lead, P::lead, chosen[(size_t) P::lead]);
     add (BuildChoice::piano, P::chords, chosen[(size_t) P::chords]);
     add (BuildChoice::melody, P::tune, chosen[(size_t) P::tune]);
     return out;
@@ -842,8 +866,14 @@ juce::String LinesPage::describeBuildPart (BuildChoice::Part p) const
                                       + (drummer.has_value() ? "as " + drummer->name : "by " + pr7s::guitarStyleName (studio.getGuitarStyle()) + "'s rules");
         case BuildChoice::bass:
             return buildChoice.parts[BuildChoice::drums] ? juce::String ("Locked to the drums' kick, the chords' roots") : "Bass: " + name (P::bass, chosen[(size_t) P::bass]);
-        case BuildChoice::guitar: return "Riff: " + name (P::rhythm, riffIndex) + " (" + RiffPanel::summary (studio.getRiffSettings()).fromFirstOccurrenceOf ("RIFF: ", false, false).toLowerCase() + ")";
-        case BuildChoice::lead: return "Lead: " + name (P::lead, chosen[(size_t) P::lead]);
+        case BuildChoice::guitar:
+            if (buildChoice.section == pr7s::DrumSection::solo)
+                return "Riff: " + name (P::rhythm, riffIndex) + ", thinned out under the solo";
+            return "Riff: " + name (P::rhythm, riffIndex) + " (" + RiffPanel::summary (studio.getRiffSettings()).fromFirstOccurrenceOf ("RIFF: ", false, false).toLowerCase() + ")";
+        case BuildChoice::lead:
+            if (buildChoice.section == pr7s::DrumSection::solo)
+                return "The whole solo: melodic first, building to the style's fastest lead, bends and vibrato";
+            return "Lead: " + name (P::lead, chosen[(size_t) P::lead]);
         case BuildChoice::piano: return "Piano: " + name (P::chords, chosen[(size_t) P::chords]);
         case BuildChoice::melody: return "Melody: " + name (P::tune, chosen[(size_t) P::tune]);
         case BuildChoice::count: break;

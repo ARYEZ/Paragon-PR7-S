@@ -25,7 +25,7 @@ namespace pr7s
         };
         const auto heavy = style != GuitarStyle::rock;
         const auto verses = count (S::verse), choruses = count (S::chorus);
-        const auto bridged = count (S::bridge) > 0, brokenDown = count (S::breakdown) > 0;
+        const auto bridged = count (S::bridge) > 0, brokenDown = count (S::breakdown) > 0, soloed = count (S::solo) > 0;
         const auto riffs = juce::jmax (1, riffCount);
         const auto newRiff = [&] (int from, int step) { return (from + step) % riffs; };
         const auto clamp = [] (float v) { return juce::jlimit (0.0f, 1.0f, v); };
@@ -91,6 +91,15 @@ namespace pr7s
             r.busyness = clamp (r.busyness - 0.2f);
             add (S::bridge, score, "Somewhere new: a new riff, looser, half time on the ride bell", newRiff (last.riff, 2), r);
         };
+        // (0.65.0) A guitar solo: over the chorus's riff (the studio thins the rhythm out under it).
+        const auto solo = [&] (float score)
+        {
+            if (soloed)
+                return;
+            const auto& from = chorusBefore != nullptr ? *chorusBefore : last;
+            add (S::solo, score, "A guitar solo: the lead builds from melodic to its fastest, the riff thinned out under it, the drums on the ride",
+                 from.riff, from.riffSettings);
+        };
         const auto ending = [&] (float score)
         {
             const auto& from = chorusBefore != nullptr ? *chorusBefore : last;
@@ -128,9 +137,12 @@ namespace pr7s
                     ending (0.7f);
                 if (choruses < 2)
                     breakdown (heavy ? 0.35f : 0.0f);
+                if (choruses >= 2)
+                    solo (bridged || brokenDown ? 0.5f : 0.75f);
                 break;
             case S::bridge:
                 chorusAgain (0.9f);
+                solo (0.6f);
                 if (heavy && ! brokenDown)
                     breakdown (0.55f);
                 ending (0.3f);
@@ -140,6 +152,12 @@ namespace pr7s
                 ending (0.45f);
                 if (! bridged)
                     bridge (0.3f);
+                break;
+            case S::solo:
+                chorusAgain (0.9f);
+                if (heavy && ! brokenDown)
+                    breakdown (0.5f);
+                ending (0.4f);
                 break;
             case S::ending:
                 break;

@@ -66,6 +66,7 @@ namespace pr7s
                 case DrumSection::breakdown: return china;
                 case DrumSection::bridge: return ride;
                 case DrumSection::intro: return style == GuitarStyle::rock || style == GuitarStyle::numetal || style == GuitarStyle::groove ? closedHat : ride;
+                case DrumSection::solo: return ride;   // (0.65.0: the ride drives a solo, out of the guitar's way)
                 case DrumSection::verse:
                 case DrumSection::ending: break;
             }
@@ -214,7 +215,7 @@ namespace pr7s
     const std::vector<DrumSection>& drumSections()
     {
         static const std::vector<DrumSection> all { DrumSection::intro, DrumSection::verse, DrumSection::chorus,
-                                                    DrumSection::bridge, DrumSection::breakdown, DrumSection::ending };
+                                                    DrumSection::bridge, DrumSection::breakdown, DrumSection::ending, DrumSection::solo };
         return all;
     }
 
@@ -228,6 +229,7 @@ namespace pr7s
             case DrumSection::bridge: return "BRIDGE";
             case DrumSection::breakdown: return "BREAKDOWN";
             case DrumSection::ending: return "ENDING";
+            case DrumSection::solo: return "SOLO";
         }
         return {};
     }

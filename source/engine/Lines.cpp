@@ -1050,9 +1050,13 @@ namespace pr7s
     std::vector<LineIdea> guitarLeadIdeas (const std::vector<ChordSpan>& spans, double beatsPerBar, int variation, const GuitarTuning& tuning,
                                             const GuitarVelocities& vel, GuitarStyle style)
     {
-        if (style != GuitarStyle::rock)
-            return styleLeadIdeas (style, spans, beatsPerBar, variation, tuning, vel);
-        return guitarLeadIdeas (spans, beatsPerBar, variation, tuning, vel);
+        auto ideas = style != GuitarStyle::rock ? styleLeadIdeas (style, spans, beatsPerBar, variation, tuning, vel)
+                                                : guitarLeadIdeas (spans, beatsPerBar, variation, tuning, vel);
+        // (0.65.0) The seventh: a whole solo made from the six.
+        auto solo = guitarSolo (ideas, spans, beatsPerBar, tuning);
+        if (! solo.notes.empty())
+            ideas.push_back (std::move (solo));
+        return ideas;
     }
 }
 

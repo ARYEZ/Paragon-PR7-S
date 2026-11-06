@@ -39,6 +39,7 @@ add_executable(ParagonPR7STests
     ComposerTests.cpp
     InstrumentTests.cpp
     GrooveTests.cpp
+    SoloTests.cpp
     GroupRoutingTests.cpp
     NewSongTests.cpp
     SpeedTests.cpp

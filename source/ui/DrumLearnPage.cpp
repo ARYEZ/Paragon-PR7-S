@@ -25,6 +25,7 @@ juce::Colour DrumLearnPage::colourOf (pr7s::DrumSection s)
         case S::bridge: return pr7s::FamilyColours::paletteColour (6, 5);       // a pale orange-red
         case S::breakdown: return pr7s::FamilyColours::red;
         case S::ending: return juce::Colour (0xff8d8389);                      // pearl onyx, lighter
+        case S::solo: return pr7s::FamilyColours::paletteColour (2, 3);        // (0.65.0) a deep pink-red
     }
     return pr7s::FamilyColours::orange;
 }

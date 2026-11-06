@@ -18,7 +18,8 @@
 // for every section), LOCK KICK TO RIFF (the kick on the guitar riff's hits).
 namespace pr7s
 {
-    enum class DrumSection { intro, verse, chorus, bridge, breakdown, ending };
+    // (0.65.0: SOLO, the owner asked: a guitar solo's section; added last, so the others keep their numbers.)
+    enum class DrumSection { intro, verse, chorus, bridge, breakdown, ending, solo };
     const std::vector<DrumSection>& drumSections();
     juce::String drumSectionName (DrumSection);   // "INTRO", "VERSE"...
 
@@ -42,7 +43,7 @@ namespace pr7s
     LineIdea generateBeat (GuitarStyle, DrumSection, const std::vector<ChordSpan>&, double beatsPerBar,
                            const DrumSettings&, juce::uint32 seed, const std::vector<double>& riffHits = {});
 
-    // The six, one per section (the generated column of IDEAS' DRUMS tab).
+    // One per section (the generated column of IDEAS' DRUMS tab).
     std::vector<LineIdea> generatedBeats (GuitarStyle, const std::vector<ChordSpan>&, double beatsPerBar,
                                           const DrumSettings&, int variation, const std::vector<double>& riffHits = {});
 }

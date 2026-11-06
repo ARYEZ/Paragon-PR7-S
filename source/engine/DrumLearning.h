@@ -126,7 +126,7 @@ namespace pr7s
     struct DrumProfile
     {
         juce::String name;
-        std::array<SectionHabits, 6> sections;   // by DrumSection
+        std::array<SectionHabits, 7> sections;   // by DrumSection
         struct Song { juce::String path, sections; bool use = true; };
         std::vector<Song> songs;                  // what it learned from (the review page opens them again)
 
