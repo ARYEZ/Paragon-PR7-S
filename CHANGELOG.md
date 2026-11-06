@@ -2,6 +2,24 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.57.2
+
+**Speed, round two: audio tracks and VariAudio.** All 424 tests pass, and the sound is unchanged.
+
+- **Audio tracks keep their clips when only the mix changes.** Every change in the song, even a fader nudge, made the studio work out every audio track's clips again: which takes are heard, the auto crossfades, where each clip lands in samples. MIDI tracks stopped doing this in 0.34.2. Now an audio track remembers what its clips were made from (its clips, which lane is soloed, the auto fades, the tempo, and the sounds they play) and keeps them while all of that is the same.
+  - **Measured:** on 24 audio tracks of 120 comped clips each, a fader move went from **6.8 ms to 0.12 ms**, and a clip edit from 6.6 ms to 0.5 ms.
+  - A VariAudio or warp edit gives the clip a new sound, so its clips are made again.
+- **VariAudio edits are checked more cheaply.** On every change in the song, each edited recording's VariAudio edits were written out as text (every number of every edited note) to check whether its edited sound was still current. Now that text is written only when the edits change.
+  - **Measured:** a vocal with 60 edited notes: **0.27 ms to 0.004 ms** per change. The old cost grew with every edited note.
+- **The MediaBay's search** keeps each file's searchable text (name, folder, tags...) between keystrokes, instead of building it for every file on every key you type. It's made again when the files, their tags or their ratings change. Not timed here; it matters most on a big library.
+
+**Looked at and left as it was:** editing a chord while 8 tracks follow the chord track takes about 7 ms on a big test song. I tried two changes: answers worked out once and reused, and quicker searches through the chords. They cut the work counted by a profiler by a quarter, but not the time on the clock. Most of what's left is sorting the rebuilt notes. It's one click, and 7 ms is under a single screen frame, so I took those changes back out rather than keep extra code that didn't measurably help.
+
+**Next:**
+- the screen: the transport's screens and the meters drawn more cheaply;
+- recordings loaded in the background when a song opens;
+- VariAudio and warping rendered in the background.
+
 ## 0.57.1
 
 **Speed, round one** (you asked to make the studio run more efficiently). Three reviewers went through everything added since the last speed pass (0.34.5): the audio, the screen, and the waits. I checked each finding against the code before changing anything, and all 421 tests still pass. The sound is unchanged: the audio changes give exactly the same samples.
