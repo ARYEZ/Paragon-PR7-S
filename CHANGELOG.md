@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.57.3
+
+**Finding your clicks** (you hear clicks, and PEAK and OVER jump, with the CPU meter at about 29% and a buffer of 2048). At 2048 samples each audio block lasts about 43 ms. When OVER lights, one block took longer than all 43 ms, while the average shows 29%. Something occasionally holds the audio up for tens of milliseconds, and the meter can't say what.
+
+- **The spike report.** The session log now gets a line for every audio block that took 90% or more of its time. It also gets a line when a block played silence because the engine was busy taking a change in (that one never showed on the meter at all), and when the audio driver called later than it should. Each line gives:
+  - how long the block took against its length;
+  - the tracks' and the master's time, and how many helper cores were working;
+  - the slowest tracks, with their plug-ins and how long each usually takes. For example: `SPIKE: a block took 17.1 ms of its 10.7 ms (160%); ... slowest: "Rhythm Left (D)" [Kontakt] 14.2 ms (usually 1.10 ms)`.
+  - It tells apart a plug-in that suddenly takes far longer than usual, a block of silence from the studio itself, and a driver or Windows calling late (the computer, not the studio).
+  - At most one line a second; the spikes in between are counted. Nothing is allocated or waited for on the audio thread to do this.
+- **The POSITION and TIME screens are cheaper to redraw** (they redraw 30 times a second while playing). Each redraw blurred the screens' shadows again and asked the system's fonts for the width of the figures. Both are now made once and kept. **Measured: 5.8 ms to 3.0 ms per redraw.** I compared the transport before and after in all three finishes, at 100% and 150% display scaling: every pixel is the same.
+
+**Please play the song until it clicks a few times, close the studio, and send me the newest log** from `%APPDATA%\Paragon PR7-S\Logs` (paste `%APPDATA%` into Explorer's address bar). The SPIKE lines say where the time went.
+
 ## 0.57.2
 
 **Speed, round two: audio tracks and VariAudio.** All 424 tests pass, and the sound is unchanged.
