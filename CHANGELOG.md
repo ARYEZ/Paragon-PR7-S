@@ -2,6 +2,30 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.62.0
+
+- **INSTRUMENTS in the Hub** (you asked: rules for each instrument you use). A third tab beside PROJECTS and HUB SETTINGS, with a profile per sample library. Each profile holds:
+  - **name** and kind (bass or guitar);
+  - **strings**, low to high, typed as notes;
+  - **frets**;
+  - **lowest and highest note** it may play (empty: from the lowest string to the top string's last fret);
+  - **bend range**;
+  - **keyswitches**: each a name, its note, and whether it's an articulation or forces a string;
+  - for guitars, **velocity layers**;
+  - which composer lane it's **used for** (BASS, GUITAR or LEAD lane; each lane uses one).
+- **Djinn Bass 2 is built in**, set from your screenshot: your tuning A0 D1 A1 D2 G2, 24 frets, bend range 4, and its keyswitch map. The articulations Djinn leaves out (shown grey there) aren't listed. Its five Force String keys force strings 1 to 5. It's used for the composer's BASS lane from the start, so the bass is written only from A0 to G4 and never lands on a keyswitch key.
+- **Note names:** Djinn names notes as the studio does (key 0 is C-2, middle C is C3), so your A0 is the same note in both: MIDI note 33.
+- **The composer's string menu** (the BASS and GUITAR lanes; it was LOW STRING) has three choices:
+  - **Any string.**
+  - **Low string:** as much as it can.
+  - **String 1 to 5 only:** the whole part on that string, one note at a time; chords keep their lowest note. With an INSTRUMENTS profile, that string's keyswitch is held from the part's start to its end. It's written onto the track and into dragged-out MIDI files, so Djinn plays the string you chose whether its keyswitches latch or only last while held. The lane says which keyswitch it holds.
+- **The bass tunings now show their notes** (e.g. "4-string standard (E0 A0 D1 G1)"), so it's clear they sit an octave under where Djinn puts its strings. When an INSTRUMENTS profile is used for a lane, its tuning and range win.
+- **Not yet:**
+  - The other keyswitches (slap, pop, palm mute...) are kept but no rule uses them yet.
+  - IDEAS doesn't use the profiles yet; only the composer does.
+  - Next: profiles for your Shreddage Jupiter and Rogue, as you asked.
+- **Worth checking by ear:** play an A0 into Djinn from the MIDI editor. It should sound your open low string. If it sounds an octave off, change the strings on the INSTRUMENTS page.
+
 ## 0.61.0
 
 - **The composer's ROLL makes a new take and keeps the approach** (you asked). On BASS with Root and fifth chosen, ROLL now plays another Root and fifth part over the same chords: another rhythm, other notes between the roots, other lead-ins into the next chord. The approach only changes when you choose it in the menu beside ROLL. GENERATE does the same for every unlocked lane, and both keep the PROGRESSION too (choose another in its menu).
