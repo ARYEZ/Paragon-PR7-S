@@ -79,4 +79,4 @@ Round 4: [Synyster Gates](synyster-gates.md), [Clint Lowery](clint-lowery.md), [
 | Vibrato | [I] | looser (writer) | wide, dark, bluesy (writers) | subtle, on the last note |
 | Signature | harmony lines in 3rds (or 6ths below), no 4ths/5ths; whammy thrown around; legato "the worst thing in the world for me" | dissonance resolved, legato, high in standard tuning | slow dissonant held bends, harmonised leads in 3rds | the vocal line on guitar; no whammy ("totally worthless") |
 
-Names for the app (ours): to be agreed with the owner before the engine work.
+Names in the app (ours, the owner approved): GYPSY SHRED (Gates), TENSION & RELEASE (Lowery), TORTURED BENDS (Cantrell), GRUNGE MELODY (Cobain); 0.69.0.

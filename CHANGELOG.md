@@ -2,6 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.69.0
+
+- **Solo styles, round four, the last of your list** (the names are ours). Four more in SOLO: on IDEAS' guitar tab (and the composer's lead lane), sixteen in all plus BY STYLE:
+  - **GYPSY SHRED:** melody first, phrases landing on the chords' thirds, gypsy-jazz minor colour (natural minor's 2 and b6, harmonic minor's raised 7th), the higher phrases harmonised a third above, picked sweeps of each chord's arpeggio in triplets, octave bends and a whammy dip. No legato (the player calls it his weak spot).
+  - **TENSION & RELEASE:** note choice over speed. High, clean phrases, each one's last note approached from a dissonant half step above, clean picked runs held back for later.
+  - **TORTURED BENDS:** short and singable, a scene change in the song. Slow bends held, some left a quarter tone short so they rub against the chord, wide dark vibrato, a phrase harmonised a third above, one quick burst.
+  - **GRUNGE MELODY:** sparse and simple. The opening tune played again through the solo (an octave up in the second half), the way a vocal melody comes back; a chromatic passing note now and then; vibrato only on the last note; no whammy at all. One take in four (MORE IDEAS) is a noisy one, with a burst of notes thrown around the scale.
+- **The research** (`docs/solo-styles`): two of these players are well covered in their own words; the other two less so (interviews only, or writers and bandmates), and their sheets say so. As before, note counts, bend sizes and vibrato are mostly our estimates: tune by ear.
+- **What a MIDI part can't do:** the wah, feedback, noise and amp sounds these players use. The solos give the notes, bends and vibrato; the tone is yours.
+
 ## 0.68.0
 
 - **Solo styles, round three** (you asked; the names are ours). Four more in SOLO: on IDEAS' guitar tab (and the composer's lead lane):

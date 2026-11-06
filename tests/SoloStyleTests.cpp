@@ -46,7 +46,7 @@ namespace
 
 TEST_CASE ("0.66.0: solo style names are ours, round trip, and never a player's", "[solo][solostyles]")
 {
-    REQUIRE (soloStyles().size() == 13);
+    REQUIRE (soloStyles().size() == 17);
     CHECK (soloStyles().front() == SoloStyle::automatic);
     for (const auto s : soloStyles())
     {
@@ -54,7 +54,8 @@ TEST_CASE ("0.66.0: solo style names are ours, round trip, and never a player's"
         CHECK (soloStyleDescription (s).isNotEmpty());
         for (const auto* player : { "Gilmour", "Perry", "Van Halen", "Page", "EVH", "Zeppelin", "Floyd", "Aerosmith",
                                    "Dimebag", "Darrell", "Pantera", "Hammett", "Metallica", "Wylde", "Black Label", "Petrucci", "Dream Theater",
-                                   "DeVille", "Poison", "Mick Mars", "Motley", "Slash", "Guns N", "Prince" })
+                                   "DeVille", "Poison", "Mick Mars", "Motley", "Slash", "Guns N", "Prince",
+                                   "Synyster", "Avenged", "Lowery", "Sevendust", "Cantrell", "Alice in Chains", "Cobain", "Nirvana" })
         {
             CHECK_FALSE (soloStyleName (s).containsIgnoreCase (player));
             CHECK_FALSE (soloStyleDescription (s).containsIgnoreCase (player));
@@ -375,4 +376,69 @@ TEST_CASE ("0.68.0: round three's styles have their own habits", "[solo][solosty
     }
     CHECK (thirds > 0);
     CHECK (dips > 0);
+}
+
+TEST_CASE ("0.69.0: round four's styles have their own habits", "[solo][solostyles]")
+{
+    const auto spans = amBars (16);
+    const auto& tuning = GuitarTuning::all()[0];
+    auto harmonised = 0, shortBends = 0, gypsyNotes = 0;
+    for (int variation = 0; variation < 4; ++variation)
+    {
+        INFO ("variation " << variation);
+        // GYPSY SHRED: harmony a third above (3 or 4 semitones, together), harmonic minor's G# heard, no dives.
+        const auto gypsy = composeSolo (SoloStyle::gypsyShred, spans, 4.0, tuning, {}, variation);
+        for (size_t i = 1; i < gypsy.notes.size(); ++i)
+            if (std::abs (gypsy.notes[i].beat - gypsy.notes[i - 1].beat) < 1.0e-6)
+            {
+                const auto gap = std::abs (gypsy.notes[i].pitch - gypsy.notes[i - 1].pitch);
+                harmonised += gap == 3 || gap == 4 ? 1 : 0;
+            }
+        for (const auto& n : gypsy.notes)
+        {
+            gypsyNotes += ((n.pitch % 12) + 12) % 12 == 8 ? 1 : 0;
+            CHECK ((n.effect != LineNote::Effect::dive || n.amount == 1.0f));   // (a dip, never a dive bomb)
+        }
+
+        // TENSION & RELEASE: phrase ends approached from a half step above.
+        const auto tension = composeSolo (SoloStyle::tensionRelease, spans, 4.0, tuning, {}, variation);
+        auto resolved = 0;
+        for (size_t i = 1; i < tension.notes.size(); ++i)
+            resolved += tension.notes[i - 1].pitch == tension.notes[i].pitch + 1 ? 1 : 0;
+        CHECK (resolved >= 4);
+
+        // TORTURED BENDS: some bends left a quarter tone short.
+        const auto tortured = composeSolo (SoloStyle::torturedBends, spans, 4.0, tuning, {}, variation);
+        for (const auto& n : tortured.notes)
+            shortBends += n.effect == LineNote::Effect::bend && std::abs (n.amount - std::round (n.amount)) > 0.1f ? 1 : 0;
+
+        // GRUNGE MELODY: no whammy at all; vibrato only on the last note; the second half the first an octave up.
+        const auto grunge = composeSolo (SoloStyle::grungeMelody, spans, 4.0, tuning, {}, variation);
+        auto vibratos = 0;
+        for (const auto& n : grunge.notes)
+        {
+            CHECK (n.effect != LineNote::Effect::dive);
+            vibratos += n.effect == LineNote::Effect::vibrato ? 1 : 0;
+        }
+        CHECK (vibratos == 1);
+        if (variation % 4 != 3)
+        {
+            // (the tune's first phrase, and the same phrase in the second half an octave higher)
+            std::vector<int> first, again;
+            for (const auto& n : grunge.notes)
+            {
+                if (n.beat < 6.0) first.push_back (n.pitch);
+                if (n.beat >= 32.0 && n.beat < 38.0) again.push_back (n.pitch);
+            }
+            REQUIRE (first.size() >= 2);
+            CHECK (again.size() == first.size());
+            auto higher = 0;
+            for (size_t i = 0; i < juce::jmin (first.size(), again.size()); ++i)
+                higher += again[i] > first[i] ? 1 : 0;
+            CHECK (higher >= (int) first.size() / 2);
+        }
+    }
+    CHECK (harmonised > 0);
+    CHECK (shortBends > 0);
+    CHECK (gypsyNotes > 0);
 }
