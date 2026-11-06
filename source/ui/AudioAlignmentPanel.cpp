@@ -80,16 +80,18 @@ public:
         g.fillAll (viewColour);
         g.setColour (ParagonColours::panelEdge);
         g.drawRect (getLocalBounds());
+        const auto refLane = referenceLane(), tgtLane = targetLane();
+        g.drawHorizontalLine ((int) ((refLane.getBottom() + tgtLane.getY()) * 0.5f), 8.0f, (float) getWidth() - 8.0f);
         const auto span = panel.shownSpan();
         g.setFont (ParagonLookAndFeel::textFont (14.0f));
+        // (0.57.6) An empty lane says what to do.
+        g.setColour (ParagonColours::textDim);
+        if (! panel.reference)
+            g.drawText ("SELECT THE AUDIO EVENT TO ALIGN TO IN THE ARRANGEMENT, THEN CLICK + BESIDE REFERENCE", refLane, juce::Justification::centred, true);
+        if (panel.targets.empty())
+            g.drawText ("SELECT THE EVENTS TO ALIGN IN THE ARRANGEMENT, THEN CLICK + BESIDE TARGET", tgtLane, juce::Justification::centred, true);
         if (! span)
-        {
-            g.setColour (ParagonColours::textDim);
-            g.drawText ("SELECT AN AUDIO EVENT (OR A RANGE) AND CLICK SET REFERENCE; THEN THE EVENTS TO ALIGN AND ADD TARGETS",
-                        getLocalBounds(), juce::Justification::centred, true);
             return;
-        }
-        const auto refLane = referenceLane(), tgtLane = targetLane();
         // Bars: faint lines, numbered.
         const auto& project = panel.studio.getProject();
         const auto perBar = juce::jmax (1.0, project.beatsPerBar());
@@ -149,13 +151,7 @@ public:
         };
         drawPeaks (referencePeaks, refLane, orange);
         drawPeaks (targetPeaks, tgtLane, pink);
-        g.setColour (ParagonColours::panelEdge);
-        g.drawHorizontalLine ((int) ((refLane.getBottom() + tgtLane.getY()) * 0.5f), 8.0f, (float) getWidth() - 8.0f);
-        g.setFont (ParagonLookAndFeel::textFont (13.0f));
-        g.setColour (orange);
-        g.drawText ("REFERENCE", refLane.withHeight (16.0f).translated (4.0f, 14.0f), juce::Justification::centredLeft, false);
-        g.setColour (pink);
-        g.drawText (target != nullptr ? "TARGET" : "NO TARGET YET", tgtLane.withHeight (16.0f).translated (4.0f, 14.0f), juce::Justification::centredLeft, false);
+
         // Sync points (red: couldn't be met).
         for (int s = 0; s < (int) panel.syncs.size(); ++s)
         {
@@ -245,10 +241,18 @@ AudioAlignmentPanel::AudioAlignmentPanel (pr7s::Studio& s, std::function<std::ve
     : studio (s), selectedParts (std::move (parts)), rangeOf (std::move (range))
 {
     using Settings = pr7s::AlignSettings;
-    referenceKey = &makeKey ("SET REFERENCE", [this] { setReferenceFromSelection(); },
-                             "The selected audio event (or the range, on its first audio track) is what the others are aligned to");
-    targetsKey = &makeKey ("ADD TARGETS", [this] { addTargetsFromSelection(); },
-                           "The selected audio events on other tracks (or the range's events on them) are aligned to the reference");
+    referenceKey = &makeKey ("+", [this] { setReferenceFromSelection(); },
+                             "Add Selection as Alignment Reference: the audio event selected in the arrangement (or the range, "
+                             "on its first audio track) is what the others are aligned to");
+    targetsKey = &makeKey ("+", [this] { addTargetsFromSelection(); },
+                           "Add Selection as Alignment Target: the audio events selected in the arrangement (or the range's "
+                           "events on other tracks) are aligned to the reference");
+    clearReferenceKey = &makeKey ("CLEAR", [this]
+    {
+        reference.reset();
+        syncs.clear();
+        reported = false;
+    }, "No reference");
     clearKey = &makeKey ("CLEAR", [this] { clearTargets(); }, "No targets");
     const auto change = [this] (std::function<void (Settings&)> edit)
     {
@@ -305,6 +309,11 @@ AudioAlignmentPanel::AudioAlignmentPanel (pr7s::Studio& s, std::function<std::ve
     flexLabel.setText ("FLEXIBILITY", juce::dontSendNotification);
     referenceText.setColour (juce::Label::textColourId, orange);
     targetText.setColour (juce::Label::textColourId, pink);
+    for (auto* label : { &referenceText, &targetText })
+    {
+        label->setJustificationType (juce::Justification::topLeft);
+        label->setMinimumHorizontalScale (0.7f);
+    }
     reportText.setColour (juce::Label::textColourId, ParagonColours::text);
     reportText.setJustificationType (juce::Justification::topLeft);
     hint.setText ("DRAG FROM THE REFERENCE DOWN TO THE TARGET: A SYNC POINT.   CTRL-DRAG ON THE TARGET: A PROTECTED RANGE.   SHIFT-CLICK: REMOVE.",
@@ -594,8 +603,14 @@ void AudioAlignmentPanel::refresh()
     shown = juce::jlimit (0, juce::jmax (0, (int) targets.size() - 1), shown);
     targetBox.setSelectedItemIndex (shown, juce::dontSendNotification);
     targetBox.setEnabled (targets.size() > 1);
-    targetText.setText (targets.empty() ? juce::String ("NO TARGETS") : juce::String ((int) targets.size()) + (targets.size() == 1 ? " TARGET" : " TARGETS"),
+    // (0.57.6) One target: what it is; several: how many, and the box to choose the one shown.
+    targetText.setText (targets.empty() ? juce::String ("NO TARGET")
+                        : targets.size() == 1 ? targetBox.getItemText (0)
+                        : juce::String ((int) targets.size()) + " TARGETS: THE ONE SHOWN",
                         juce::dontSendNotification);
+    targetBox.setVisible (targets.size() > 1);
+    clearReferenceKey->setEnabled (reference.has_value());
+    clearKey->setEnabled (! targets.empty());
     alignKey->setEnabled (reference.has_value() && ! targets.empty());
     reportText.setText (getReportText(), juce::dontSendNotification);
     view->refreshSounds();
@@ -604,6 +619,21 @@ void AudioAlignmentPanel::refresh()
 void AudioAlignmentPanel::paint (juce::Graphics& g)
 {
     g.fillAll (pageColour);
+    // (0.57.6) The lanes' names, beside them.
+    for (const auto& [area, name, colour] : { std::tuple { referenceHeader, "REFERENCE", orange }, std::tuple { targetHeader, "TARGET", pink } })
+    {
+        if (area.isEmpty())
+            continue;
+        g.setColour (viewColour);
+        g.fillRect (area);
+        g.setColour (colour);
+        g.fillRect (area.withWidth (3));
+        g.setColour (ParagonColours::panelEdge);
+        g.drawRect (area);
+        g.setFont (ParagonLookAndFeel::titleFont (20.0f));
+        g.setColour (colour);
+        g.drawText (name, area.reduced (14, 8).removeFromTop (26), juce::Justification::centredLeft, false);
+    }
     g.setFont (ParagonLookAndFeel::titleFont (13.0f));
     for (const auto& [text, area] : headings)
     {
@@ -623,15 +653,8 @@ void AudioAlignmentPanel::resized()
         headings.push_back ({ text, r.removeFromTop (20) });
         r.removeFromTop (6);
     };
-    heading ("SELECTION");
-    auto line = r.removeFromTop (32);
-    referenceKey->setBounds (line.removeFromLeft (150).reduced (2));
-    referenceText.setBounds (line.removeFromLeft (360));
-    targetsKey->setBounds (line.removeFromLeft (130).reduced (2));
-    clearKey->setBounds (line.removeFromLeft (80).reduced (2));
-    targetText.setBounds (line.removeFromRight (110));
-    targetBox.setBounds (line.reduced (2));
-    r.removeFromTop (10);
+    heading ("AUDIO ALIGNMENT SELECTION");
+    juce::Rectangle<int> line;
 
     // The bottom: settings, ALIGN AUDIO and the report.
     auto bottom = r.removeFromBottom (190);
@@ -660,7 +683,28 @@ void AudioAlignmentPanel::resized()
     maxShift.setBounds (line.removeFromLeft (220).reduced (2, 4));
 
     hint.setBounds (r.removeFromBottom (22));
+    // (0.57.6) Each lane's header at its left, level with the lane (the view's halves, as View lays them).
+    auto headers = r.removeFromLeft (250);
+    r.removeFromLeft (6);
     view->setBounds (r);
+    headers.reduce (0, 6);
+    referenceHeader = headers.removeFromTop (headers.getHeight() / 2).reduced (0, 4);
+    targetHeader = headers.reduced (0, 4);
+    const auto layoutHeader = [] (juce::Rectangle<int> area, juce::TextButton& plus, juce::TextButton& clear, juce::Component& under)
+    {
+        auto inside = area.reduced (14, 8);
+        inside.removeFromTop (30);
+        auto keysRow = inside.removeFromTop (34);
+        plus.setBounds (keysRow.removeFromLeft (52).reduced (2));
+        keysRow.removeFromLeft (6);
+        clear.setBounds (keysRow.removeFromLeft (90).reduced (2));
+        inside.removeFromTop (6);
+        under.setBounds (inside.removeFromTop (juce::jmin (inside.getHeight(), 44)));
+        return inside;
+    };
+    layoutHeader (referenceHeader, *referenceKey, *clearReferenceKey, referenceText);
+    auto rest = layoutHeader (targetHeader, *targetsKey, *clearKey, targetText);
+    targetBox.setBounds (rest.removeFromTop (juce::jmin (rest.getHeight(), 30)).reduced (0, 2));
 }
 
 //==============================================================================

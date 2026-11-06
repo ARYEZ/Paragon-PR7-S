@@ -2,6 +2,10 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.57.6
+
+- **The Audio Alignment panel works the way you asked:** two lanes, REFERENCE on top and TARGET under it, each with its own **+** and CLEAR at its left. Select an audio event in the arrangement and click **+** beside REFERENCE; select the events to line up and click **+** beside TARGET; then ALIGN AUDIO. An empty lane says what to do. Each lane's header names what it holds (with several targets, a box under TARGET picks the one shown). The SELECTION row across the top is gone: the lanes' keys do its job.
+
 ## 0.57.5
 
 **The spike report names each plug-in's own time** (you asked, after your 0.57.3 log showed the Bass track, Kontakt 8 with PR7-B, as the slow one).

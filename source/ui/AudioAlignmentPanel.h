@@ -7,9 +7,10 @@
 // The Audio Alignment panel (0.33.0, the manual's Audio Alignment Panel; the part's and the range's
 // menus, the command Window.AudioAlignment).
 //
-//   SELECTION  SET REFERENCE (the selected event, or the range on its first audio track), ADD TARGETS
-//              (the selected events on other tracks, or the range's events on them), CLEAR; with
-//              several targets, which one is shown.
+//   The lanes  (0.57.6, the owner asked: as the manual's panel) REFERENCE above, TARGET below, each
+//              with its + (the manual's Add Selection as Alignment Reference / Target: the event
+//              selected in the arrangement, or the range: the reference on its first audio track, the
+//              targets on the others) and CLEAR; with several targets, which one is shown.
 //   The view   The reference above, the shown target below, the overlap lit. Drag from the reference
 //              down to the target: a sync point (that moment of the target lands there; red when it
 //              can't). Ctrl-drag on the target: a protected range (moved, never stretched). Shift-click
@@ -76,6 +77,8 @@ private:
 
     std::vector<std::unique_ptr<juce::TextButton>> keys;
     juce::TextButton* referenceKey = nullptr, *targetsKey = nullptr, *clearKey = nullptr, *alignKey = nullptr;
+    juce::TextButton* clearReferenceKey = nullptr;
+    juce::Rectangle<int> referenceHeader, targetHeader;   // (0.57.6) each lane's name, its + and CLEAR, what it holds
     juce::TextButton* wordsKey = nullptr, *shiftKey = nullptr, *bothKey = nullptr, *clearMarksKey = nullptr;
     std::array<juce::TextButton*, 3> flexKeys {};
     juce::ComboBox targetBox;
