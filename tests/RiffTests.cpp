@@ -145,7 +145,7 @@ TEST_CASE ("Guitar styles: six rhythm ideas and six leads each, on the chords, i
                                 // A bar's first hit: the chord's root (or its notes) or the key's low note (the pedal).
                                 for (int bar = 0; bar < 8; ++bar)
                                     for (const auto& n : idea.notes)
-                                        if (std::abs (n.beat - bar * 4.0) < 1.0e-6)
+                                        if (std::abs (n.beat - bar * 4.0) < 1.0e-6 && n.effect == LineNote::Effect::none)   // (0.64.0: GROOVE's stabs are dissonant on purpose)
                                         {
                                             const auto& s = spans[(size_t) bar];
                                             CHECK ((isChordTone (s.chord, n.pitch) || pcOf (n.pitch) == 9));
