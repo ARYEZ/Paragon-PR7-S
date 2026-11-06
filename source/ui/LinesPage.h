@@ -220,6 +220,7 @@ public:
     std::vector<pr7s::SectionSuggestion> getNextSuggestions() const;
     std::vector<int> buildNext (const pr7s::SectionSuggestion&);   // after the last built section
     void showBuildSection();
+    std::function<void()> onComposer;   // (0.58.0) COMPOSER: the combined page
     int getChosen (pr7s::LineIdea::Part p) const noexcept { return chosen[(size_t) p]; }
     const std::vector<pr7s::ChordSpan>& getChords() const noexcept { return spans; }
     void openLearnWindow (const pr7s::DrumProfile* toEdit);
@@ -286,6 +287,7 @@ private:
     bool writtenBeats = false;
     juce::TextButton drummerKey;                        // DRUMMER (the drums tab's generated column)
     juce::TextButton buildKey { "BUILD SECTION" };
+    juce::TextButton composerKey { "COMPOSER" };
     BuildChoice buildChoice;
     std::array<int, 9> chosen {};                       // the card last played or used, per part
     std::optional<pr7s::DrumProfile> drummer;

@@ -251,6 +251,8 @@ namespace pr7s
     {
         if (mirroring)
             return;   // (a linked change: the change it came from does all this once, after)
+        if (composerAudition.has_value())
+            endComposerAudition (false);   // (0.58.0: the song changed; the engine plays it again below)
         // A frozen track's parts are locked: whatever changed them is put back.
         for (auto& track : project.tracks)
             if (track.frozen)
@@ -5905,6 +5907,8 @@ namespace pr7s
     //==========================================================================
     void Studio::play()
     {
+        if (composerAudition.has_value())
+            stopComposerAudition();   // (0.58.0: the song's own play, from where it was)
         if (engine.isPlaying())
             return;
         playStart = engine.getPosition();
@@ -5914,6 +5918,11 @@ namespace pr7s
 
     void Studio::stop()
     {
+        if (composerAudition.has_value())
+        {
+            stopComposerAudition();   // (0.58.0: the transport's stop ends hearing the composer)
+            return;
+        }
         if (! engine.isPlaying())
         {
             // Stopped already: back to where playing started (inspired by Cubase's workflow).
@@ -5930,6 +5939,7 @@ namespace pr7s
 
     void Studio::record()
     {
+        endComposerAudition (true);   // (0.58.0: the song again, then recording)
         if (engine.isRecording())
         {
             finishRecording();   // punch out: playing carries on
@@ -7812,6 +7822,7 @@ namespace pr7s
     //==========================================================================
     void Studio::newProject()
     {
+        endComposerAudition (false);   // (0.58.0)
         frozenParts.clear();
         builtSections.clear();
         punchOutAll();   // (writing automation ends with the song)
@@ -8891,6 +8902,7 @@ namespace pr7s
 
     void Studio::openProject (Project&& loadedProject, const juce::File& source, juce::String& problems)
     {
+        endComposerAudition (false);   // (0.58.0)
         builtSections.clear();
         std::optional<Project> loaded { std::move (loadedProject) };
         punchOutAll();
@@ -9517,7 +9529,119 @@ namespace pr7s
         return 0;
     }
 
-    std::vector<int> Studio::buildSection (const std::vector<LineIdea>& ideas, const std::vector<ChordSpan>& spans, const juce::String& sectionName)
+    //==========================================================================
+    // THE COMPOSER (0.58.0)
+    ComposerContext Studio::getComposerContext (double atBeat) const
+    {
+        ComposerContext c;
+        c.beatsPerBar = project.beatsPerBarAt (atBeat);
+        c.tuning = GuitarTuning::named (getGuitarTuning());
+        c.velocities = getGuitarVelocities();
+        c.style = getGuitarStyle();
+        c.riff = getRiffSettings();
+        c.drums = getDrumSettings();
+        c.melody = getMelodySettings();
+        if (const auto name = getIdeasDrummer(); name.isNotEmpty())
+            c.drummer = loadDrummer (name);
+        c.humanize = getIdeasHumanize();
+        c.feel = getIdeasFeel();
+        c.bpm = project.bpmAt (atBeat);
+        return c;
+    }
+
+    juce::String Studio::getComposerState() const
+    {
+        return settings != nullptr ? settings->getValue ("composer") : composerState;
+    }
+
+    void Studio::setComposerState (const juce::String& text)
+    {
+        composerState = text;
+        if (settings != nullptr)
+            settings->setValue ("composer", text);
+    }
+
+    bool Studio::auditionComposer (const std::vector<std::pair<int, LineIdea>>& layers, double start, double end)
+    {
+        if (exportJob != nullptr || end <= start || engine.isRecording())
+            return false;
+        // A copy of the song: each layer a part on its track, those tracks alone, the cycle round the layers.
+        auto heard = project;
+        std::set<int> playing;
+        for (const auto& [trackId, idea] : layers)
+        {
+            if (! canTakeMidi (trackId) || idea.notes.empty())
+                continue;
+            auto* track = heard.findTrack (trackId);
+            Part part;
+            part.start = start;
+            part.length = end - start;
+            part.name = idea.style;
+            for (const auto& n : idea.notes)
+                part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
+            track->parts.push_back (std::move (part));
+            playing.insert (trackId);
+        }
+        if (playing.empty())
+            return false;
+        for (auto& t : heard.tracks)
+        {
+            t.solo = playing.count (t.id) > 0;
+            t.mute = false;
+        }
+        heard.loopOn = true;
+        heard.loopStart = start;
+        heard.loopEnd = end;
+        const auto first = ! composerAudition.has_value();
+        if (first)
+        {
+            // From the song's own playing: stopped first (where it was is where it goes back to).
+            if (engine.isPlaying())
+            {
+                punchOutAll();
+                engine.stop();
+            }
+            composerAudition = ComposerAudition { start, end, engine.getPosition() };
+        }
+        else
+        {
+            composerAudition->start = start;
+            composerAudition->end = end;
+        }
+        engine.update (heard);
+        if (first || ! engine.isPlaying())
+        {
+            engine.setPosition (start);
+            engine.play();
+        }
+        else if (const auto at = engine.getPosition(); at < start || at >= end)
+            engine.setPosition (start);
+        announce();
+        return true;
+    }
+
+    void Studio::endComposerAudition (bool backToSong)
+    {
+        if (! composerAudition.has_value())
+            return;
+        const auto wasAt = composerAudition->wasAt;
+        composerAudition.reset();
+        engine.stop();
+        engine.setPosition (wasAt);
+        if (backToSong && exportJob == nullptr)
+            engine.update (project);
+    }
+
+    void Studio::stopComposerAudition()
+    {
+        if (! composerAudition.has_value())
+            return;
+        endComposerAudition (true);
+        announce();
+    }
+
+    std::vector<int> Studio::buildSection (const std::vector<LineIdea>& ideas, const std::vector<ChordSpan>& spans, const juce::String& sectionName,
+                                           const std::vector<int>& onto)
     {
         std::vector<int> used;
         if (spans.empty())
@@ -9525,11 +9649,12 @@ namespace pr7s
         const auto start = spans.front().start, end = spans.back().end;
         // The tracks first (adding a track is a step of its own), then every part in one change.
         std::vector<std::pair<int, const LineIdea*>> plan;
-        for (const auto& idea : ideas)
+        for (size_t i = 0; i < ideas.size(); ++i)
         {
+            const auto& idea = ideas[i];
             if (idea.notes.empty())
                 continue;
-            auto trackId = findIdeaTrack (idea.part);
+            auto trackId = i < onto.size() && canTakeMidi (onto[i]) ? onto[i] : findIdeaTrack (idea.part);
             if (trackId == 0)
             {
                 trackId = addTrack (Instrument {});

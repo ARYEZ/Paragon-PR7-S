@@ -409,6 +409,11 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
     buildKey.setTooltip ("A whole section onto tracks: the drums for it, the bass on their kick, the guitar, lead and piano you last played or used. Then what comes next.");
     buildKey.onClick = [this] { showBuildSection(); };
     addAndMakeVisible (buildKey);
+    composerKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    composerKey.setWantsKeyboardFocus (false);
+    composerKey.setTooltip ("The composer: every layer stacked, each locked or rolled, one GENERATE");
+    composerKey.onClick = [this] { if (onComposer) onComposer(); };
+    addAndMakeVisible (composerKey);
 
     if (auto* settings = studio.getSettings())
     {
@@ -1312,7 +1317,7 @@ void LinesPage::paint (juce::Graphics& g)
         what = juce::String ((int) spans.size()) + " chords, bars " + bar (spans.front().start) + " to " + bar (spans.back().end - 1.0e-6)
              + ", in " + ChordUi::spokenKey (spans.front().key) + ":  " + names.joinIntoString (" ");
     }
-    g.drawText (what, head.withTrimmedRight (480), juce::Justification::centredLeft, true);
+    g.drawText (what, head.withTrimmedRight (780), juce::Justification::centredLeft, true);
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (14.0f));
     const auto parts = partsOf (tab);
@@ -1354,6 +1359,8 @@ void LinesPage::resized()
     humanizeKey.setBounds (head.removeFromRight (150));
     head.removeFromRight (6);
     buildKey.setBounds (head.removeFromRight (170));
+    head.removeFromRight (6);
+    composerKey.setBounds (head.removeFromRight (110));
 
     auto tabs = area.removeFromTop (tabsHeight).withTrimmedBottom (6);
     for (auto* key : { &pianoTab, &guitarTab, &bassTab, &patternsTab, &melodyTab, &drumsTab })

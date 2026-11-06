@@ -21,6 +21,7 @@
 #include "ChordDetect.h"
 #include "TempoDetect.h"
 #include "MediaBay.h"
+#include "Composer.h"
 
 #include <optional>
 #include <mutex>
@@ -298,8 +299,24 @@ namespace pr7s
         // section lands on the same band; else a new one), each part over the chords' span, named
         // "<section>: <idea>". Parts lying wholly inside the span on those tracks are replaced
         // (building the same stretch again). One undo step for the parts. The tracks used, in order.
-        std::vector<int> buildSection (const std::vector<LineIdea>&, const std::vector<ChordSpan>&, const juce::String& sectionName);
+        // (0.58.0) `onto`: per idea, a track to write it on instead (when it can take MIDI; 0: as above).
+        std::vector<int> buildSection (const std::vector<LineIdea>&, const std::vector<ChordSpan>&, const juce::String& sectionName,
+                                       const std::vector<int>& onto = {});
         int findIdeaTrack (LineIdea::Part) const;   // the instrument track named after the part (0: none)
+        // THE COMPOSER (0.58.0): what its layers are made with (IDEAS' settings; the tempo and bar at `atBeat`).
+        ComposerContext getComposerContext (double atBeat) const;
+        juce::String getComposerState() const;            // (settings key "composer"; in memory without a settings file)
+        void setComposerState (const juce::String&);
+        // Hearing the composer: its layers played through the song's own tracks (each onto `trackId`), looped over
+        // [start, end), those tracks alone (soloed), while the song itself stays as it is (the engine plays a copy,
+        // as the comp tool's audition). Called again while it plays: the new layers from where it is. False when
+        // there's nothing to play them on. It ends on stopComposerAudition, on the transport's stop, and on any
+        // change to the song (the engine then plays the song again).
+        bool auditionComposer (const std::vector<std::pair<int, LineIdea>>& layers, double start, double end);
+        void stopComposerAudition();
+        bool isComposerAuditioning() const noexcept { return composerAudition.has_value(); }
+        double getComposerAuditionStart() const noexcept { return composerAudition.has_value() ? composerAudition->start : 0.0; }
+        double getComposerAuditionEnd() const noexcept { return composerAudition.has_value() ? composerAudition->end : 0.0; }
         // The sections built so far in this song (for what comes next; forgotten with the song).
         const std::vector<BuiltSection>& getBuiltSections() const noexcept { return builtSections; }
         void noteBuiltSection (const BuiltSection&);   // (replaces one built over the same stretch)
@@ -1355,6 +1372,10 @@ namespace pr7s
         void finishRecording();
         void finishAudioRecording();
         bool auditioning = false;   // (0.30.0) the engine plays a soloed copy
+        struct ComposerAudition { double start = 0.0, end = 0.0, wasAt = 0.0; };
+        std::optional<ComposerAudition> composerAudition;   // (0.58.0)
+        juce::String composerState;                         // (without a settings file)
+        void endComposerAudition (bool backToSong);
         std::map<juce::String, std::pair<std::shared_ptr<const AudioData>, std::vector<Hitpoint>>> hitpointCache;   // (0.32.0) every candidate, by recording and the data they came from
         void forgetAudio (const juce::String& name);   // (0.34.1) a recording and everything made from it
         void forgetAllAudio();

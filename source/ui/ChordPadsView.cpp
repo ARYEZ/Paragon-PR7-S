@@ -758,6 +758,10 @@ ChordPadsView::ChordPadsView (pr7s::Studio& s) : studio (s)
     progressionsKey.setTooltip ("The progression library: progressions by genre and mood, heard in the key, onto the pads or the chord track");
     progressionsKey.onClick = [this] { if (onProgressions) onProgressions(); };
     addAndMakeVisible (progressionsKey);
+    styleKey (composerKey);
+    composerKey.setTooltip ("The composer: chords, melody, bass, guitar, lead and drums stacked, each locked or rolled, one GENERATE");
+    composerKey.onClick = [this] { if (onComposer) onComposer(); };
+    addAndMakeVisible (composerKey);
     windowKey.onClick = [this] { if (onWindowToggle) onWindowToggle(); };
     closeKey.onClick = [this] { if (onClose) onClose(); };
 
@@ -1676,7 +1680,8 @@ void ChordPadsView::resized()
         { &voicingPrevious, 84, 2 }, { &voicingNext, 28, 10 }, { &lockKey, 56, 4 }, { &adaptiveKey, 84, 4 },
         { &referenceKey, 90, 10 }, { &fromChordTrackKey, 132, 10 },
         { &ideasKey, 70, 4 },   // (0.20.2: beside the other chord track key)
-        { &progressionsKey, 116, 0 } };
+        { &progressionsKey, 116, 4 },
+        { &composerKey, 96, 0 } };
     auto wanted = 0;
     for (const auto& [key, width, gapAfter] : second)
         wanted += width + gapAfter;

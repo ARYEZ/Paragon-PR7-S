@@ -357,6 +357,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     arrange.onBuildSection = [this] (std::vector<int> events) { openLineIdeas (std::move (events), true); };
     chordPads.onBuildSection = [this] { openLineIdeas ({}, true); };
     chordPads.onProgressions = [this] { openProgressions(); };
+    chordPads.onComposer = [this] { openComposer(); };
     arrange.onProgressions = [this] { openProgressions(); };
     // Told of clicks in the work areas, to know where the keys go.
     arrange.addMouseListener (this, true);
@@ -2313,6 +2314,7 @@ void MainView::openLineIdeas (std::vector<int> chordEvents, bool buildSection)
         return;
     }
     linesWindow = std::make_unique<LinesWindow> (studio, std::move (spans));
+    linesWindow->getPage().onComposer = [this] { openComposer(); };
     linesWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->linesWindow.reset(); }); };
     linesWindow->centreAroundComponent (this, linesWindow->getWidth(), linesWindow->getHeight());
     linesWindow->setVisible (true);
@@ -2347,6 +2349,19 @@ void MainView::openProgressions()
     progressionsWindow->getPage().onIdeas = [this] (std::vector<int> events) { openLineIdeas (std::move (events)); };
     progressionsWindow->centreAroundComponent (this, progressionsWindow->getWidth(), progressionsWindow->getHeight());
     progressionsWindow->setVisible (true);
+}
+
+void MainView::openComposer()
+{
+    if (composerWindow != nullptr)
+    {
+        composerWindow->toFront (true);
+        return;
+    }
+    composerWindow = std::make_unique<ComposerWindow> (studio);
+    composerWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->composerWindow.reset(); }); };
+    composerWindow->centreAroundComponent (this, composerWindow->getWidth(), composerWindow->getHeight());
+    composerWindow->setVisible (true);
 }
 
 void MainView::toggleTempoEditor()

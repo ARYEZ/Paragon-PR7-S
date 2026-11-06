@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.58.0
+
+- **THE COMPOSER, a new page with all the layers stacked** (you asked: one page, a lock and a re-roll on each layer, one GENERATE button). Open it from IDEAS (COMPOSER, top right), from the chord pads (COMPOSER, second row), or give the "Composer" command a key in KEYS.
+  - **Six lanes over the same bars:** CHORDS, MELODY, BASS, GUITAR, LEAD and DRUMS, each drawn as a little piano roll under the chord names.
+  - **Each lane has ON** (heard and used), **LOCK** (kept through GENERATE), **ROLL** (another style and other choices for that lane alone), its **style** (a menu of its six: the same ideas as IDEAS' tabs) and its **TRACK**.
+  - **GENERATE** rolls every unlocked lane at once. ROLL on CHORDS picks another progression from the library too.
+  - **The chords** come from our progression library, chosen by **KEY, GENRE and MOOD**, repeated to **LENGTH** (4, 8 or 16 bars); pick one by name with PROGRESSION. Or use **CHORD TRACK** to write the layers under the chord track's chords.
+  - **STYLE** (rock, thrash, nu-metal, metalcore, shred) drives the guitar, lead and drums. The bass's seventh style plays the roots on every kick of the drums lane, so the two lock together. IDEAS' settings (riff, drum, melody, humanize, velocities, tuning, drummer) all apply.
+  - **A locked lane** keeps its style and choices. With the chords locked as well, its notes stay exactly the same; when the chords change, it plays the same idea over the new chords (notes that no longer fit can't be kept).
+  - **HEAR** plays every lane that's on, together and looped, **through your song's own tracks**, so the bass sounds on your bass instrument and the drums on your drums. Those tracks play alone, from the playhead's bar, and **the song itself isn't changed** while you listen. Rolling, locking or switching lanes while it plays carries on from where it is. STOP, Space, or any change to the song ends it, and the playhead goes back to where it was.
+  - **Which track each lane uses:** the one you choose in its TRACK menu; else a track named for it (Bass, Drums, Guitar, Lead Guitar, Piano, Melody); else, while you listen, the selected track. The drums are only heard on a track of their own (on a piano they'd be noise), and the TRACK menu can make that track for you.
+  - **USE ALL** writes the lanes that are on onto their tracks at the playhead's bar (one undo step), and the library's chords onto the chord track (+ CHORD TRACK). USE ALL's menu writes one lane alone.
+  - **Our own page and rules:** the layers are the ideas IDEAS already makes. Not yet: dragging a lane out as a MIDI file, and sounds of its own (it plays your tracks' instruments).
+
 ## 0.57.6
 
 - **The Audio Alignment panel works the way you asked:** two lanes, REFERENCE on top and TARGET under it, each with its own **+** and CLEAR at its left. Select an audio event in the arrangement and click **+** beside REFERENCE; select the events to line up and click **+** beside TARGET; then ALIGN AUDIO. An empty lane says what to do. Each lane's header names what it holds (with several targets, a box under TARGET picks the one shown). The SELECTION row across the top is gone: the lanes' keys do its job.

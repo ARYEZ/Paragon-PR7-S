@@ -2,6 +2,7 @@
 
 #include "ui/LinesPage.h"
 #include "ui/ProgressionsPage.h"
+#include "ui/ComposerPage.h"
 #include "ui/MediaBayPage.h"
 #include "ui/MediaRack.h"
 #include "ui/KeyCommands.h"
@@ -103,6 +104,8 @@ public:
     void openEq (int busId);   // (0.43.0) the EQ window on a channel (one window: moved to another channel)
     EqWindow* getEqWindow() noexcept { return eqWindow.get(); }   // the progression library (0.40.0): opened, or brought to the front
     ProgressionsWindow* getProgressionsWindow() noexcept { return progressionsWindow.get(); }
+    void openComposer();   // (0.58.0) THE COMPOSER
+    ComposerWindow* getComposerWindow() noexcept { return composerWindow.get(); }
     // The MediaBay (0.21.0): its window (F5 opens and closes it), and a file from it into the
     // song: audio or MIDI on a new track at the playhead, a track preset as a new track, a song
     // opened (after the unsaved-changes question). Its drags land as files dragged from the system do.
@@ -290,6 +293,7 @@ private:
     double trackListRowZoom = 1.0;
     std::unique_ptr<LinesWindow> linesWindow;
     std::unique_ptr<ProgressionsWindow> progressionsWindow;
+    std::unique_ptr<ComposerWindow> composerWindow;
     std::unique_ptr<EqWindow> eqWindow;
     std::unique_ptr<MediaBayWindow> mediaBayWindow;
     std::unique_ptr<MediaRack> mediaRack;
