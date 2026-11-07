@@ -487,4 +487,43 @@ namespace pr7s
         }
         return {};
     }
+
+    const std::vector<EqStartingPoint>& eqStartingPoints()
+    {
+        using T = EqBand::Type;
+        // A band: on, its type, gain, frequency, Q.
+        const auto band = [] (T type, double gain, double hz, double q) { return EqBand { true, type, gain, hz, q }; };
+        const auto off = [] (int i) { auto b = ChannelEq::defaultBands()[(size_t) i]; b.on = false; return b; };
+        const auto make = [&] (double lowCut, std::array<EqBand, 4> bands, double highCut = 0.0)
+        {
+            ChannelEq eq;
+            eq.bands = bands;
+            if (lowCut > 0.0) { eq.lowCutOn = true; eq.lowCut = lowCut; eq.lowCutSlope = 24; }
+            if (highCut > 0.0) { eq.highCutOn = true; eq.highCut = highCut; eq.highCutSlope = 12; }
+            return eq.limited();
+        };
+        static const std::vector<EqStartingPoint> points {
+            { "VOCALS", "Lead Vocal: Presence", make (90.0, { off (0), band (T::parametric, -2.5, 300.0, 1.2), band (T::parametric, 2.5, 3500.0, 1.0), band (T::highShelf, 2.5, 10000.0, 0.71) }) },
+            { "VOCALS", "Lead Vocal: Warm", make (80.0, { band (T::lowShelf, 1.5, 200.0, 0.71), band (T::parametric, -2.0, 450.0, 1.4), band (T::parametric, 1.5, 2500.0, 1.0), band (T::highShelf, 1.5, 9000.0, 0.71) }) },
+            { "VOCALS", "Backing Vocals: Tucked In", make (150.0, { off (0), band (T::parametric, -3.0, 400.0, 1.0), band (T::parametric, -2.0, 3000.0, 1.2), band (T::highShelf, 2.0, 11000.0, 0.71) }) },
+            { "VOCALS", "Scream: Tame the Harshness", make (100.0, { off (0), band (T::parametric, -2.0, 500.0, 1.0), band (T::parametric, -3.0, 2800.0, 3.0), band (T::highShelf, 1.5, 9000.0, 0.71) }) },
+            { "VOCALS", "Telephone Voice", make (400.0, { off (0), band (T::parametric, 6.0, 1500.0, 1.0), off (2), off (3) }, 3500.0) },
+            { "DRUMS", "Kick: Punch and Click", make (35.0, { band (T::parametric, 3.0, 60.0, 1.4), band (T::parametric, -4.0, 350.0, 1.5), band (T::parametric, 3.0, 4000.0, 1.4), off (3) }) },
+            { "DRUMS", "Snare: Body and Crack", make (80.0, { band (T::parametric, 2.0, 200.0, 1.4), band (T::parametric, -2.5, 800.0, 2.0), band (T::parametric, 2.0, 5000.0, 1.0), band (T::highShelf, 1.5, 10000.0, 0.71) }) },
+            { "DRUMS", "Toms: Less Ring", make (60.0, { band (T::parametric, 2.0, 110.0, 1.4), band (T::parametric, -4.0, 500.0, 2.0), band (T::parametric, 2.0, 3500.0, 1.4), off (3) }) },
+            { "DRUMS", "Overheads: Cymbals Only", make (250.0, { off (0), band (T::parametric, -2.0, 1000.0, 1.0), off (2), band (T::highShelf, 2.0, 10000.0, 0.71) }) },
+            { "DRUMS", "Drum Bus: Weight and Snap", make (30.0, { band (T::lowShelf, 2.0, 80.0, 0.71), band (T::parametric, -2.0, 400.0, 1.0), band (T::parametric, 1.5, 5000.0, 1.0), off (3) }) },
+            { "BASS", "Bass: Tight Low End", make (35.0, { band (T::parametric, 2.0, 80.0, 1.2), band (T::parametric, -3.0, 250.0, 1.4), band (T::parametric, 2.5, 900.0, 1.4), off (3) }, 6000.0) },
+            { "BASS", "Bass: Growl", make (40.0, { band (T::lowShelf, 1.5, 100.0, 0.71), band (T::parametric, -2.0, 300.0, 1.4), band (T::parametric, 3.5, 1500.0, 1.2), band (T::parametric, 2.0, 3500.0, 1.4) }) },
+            { "GUITARS", "Rhythm Guitar: Clear the Mud", make (80.0, { off (0), band (T::parametric, -3.0, 250.0, 1.4), band (T::parametric, -1.5, 3500.0, 2.0), off (3) }, 12000.0) },
+            { "GUITARS", "Rhythm Guitar: Scooped Metal", make (90.0, { band (T::parametric, 1.5, 120.0, 1.0), band (T::parametric, -4.0, 700.0, 1.0), band (T::parametric, 2.0, 3000.0, 1.2), off (3) }, 11000.0) },
+            { "GUITARS", "Lead Guitar: Cut Through", make (100.0, { off (0), band (T::parametric, -2.0, 300.0, 1.2), band (T::parametric, 3.0, 1800.0, 1.2), off (3) }, 10000.0) },
+            { "GUITARS", "Acoustic Guitar: Sparkle", make (80.0, { off (0), band (T::parametric, -3.0, 200.0, 1.4), band (T::parametric, 1.5, 4000.0, 1.0), band (T::highShelf, 2.5, 10000.0, 0.71) }) },
+            { "KEYS AND SYNTHS", "Piano: Clear", make (60.0, { off (0), band (T::parametric, -2.0, 300.0, 1.2), band (T::parametric, 1.5, 3000.0, 1.0), band (T::highShelf, 1.5, 9000.0, 0.71) }) },
+            { "KEYS AND SYNTHS", "Pad: Out of the Way", make (200.0, { off (0), band (T::parametric, -2.5, 600.0, 1.0), band (T::parametric, -2.5, 3000.0, 1.0), off (3) }, 10000.0) },
+            { "MIX", "Master: Gentle Smile", make (25.0, { band (T::lowShelf, 1.0, 80.0, 0.71), band (T::parametric, -1.0, 400.0, 0.7), off (2), band (T::highShelf, 1.0, 12000.0, 0.71) }) },
+            { "MIX", "Clean Up Lows (Low Cut 100 Hz)", make (100.0, { off (0), off (1), off (2), off (3) }) },
+        };
+        return points;
+    }
 }

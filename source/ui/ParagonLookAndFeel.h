@@ -112,6 +112,12 @@ public:
     static constexpr float bebasScale = 1.3f;
     juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override;
     juce::Font getPopupMenuFont() override;
+    // (0.71.0, the owner asked) Menus in the studio's look: the question boxes' dark panel and red
+    // edge, the item under the mouse lit in the cycle strip's gradient (JUCE's: a flat block).
+    void drawPopupMenuBackground (juce::Graphics&, int width, int height) override;
+    void drawPopupMenuItem (juce::Graphics&, const juce::Rectangle<int>& area, bool isSeparator, bool isActive, bool isHighlighted,
+                            bool isTicked, bool hasSubMenu, const juce::String& text, const juce::String& shortcutKeyText,
+                            const juce::Drawable* icon, const juce::Colour* textColour) override;
     juce::Font getComboBoxFont (juce::ComboBox&) override;
 
     void drawRotarySlider (juce::Graphics&, int x, int y, int width, int height,
@@ -132,6 +138,10 @@ public:
                            juce::Slider::SliderStyle, juce::Slider&) override;
 
     void drawToggleButton (juce::Graphics&, juce::ToggleButton&, bool highlighted, bool down) override;
+
+    // (0.71.0, the owner's) The cycle strip's red / pink / orange along a line: faders, pan, bars, lights.
+    static juce::ColourGradient familyGradient (juce::Point<float> from, juce::Point<float> to);
+    static constexpr float barOpacity = 0.8f;   // (bars: their text stays readable over it)
 
     void drawButtonBackground (juce::Graphics&, juce::Button&, const juce::Colour& background,
                                bool highlighted, bool down) override;

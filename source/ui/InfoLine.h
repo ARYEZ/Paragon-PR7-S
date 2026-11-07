@@ -29,7 +29,8 @@ public:
     static constexpr int height = 40;
 
     // What's shown (for tests: the field's text, "" when nothing is selected).
-    juce::String getField (const juce::String& name) const;   // points: "TYPE", "START", "VALUE", "TERMINATOR"; parts: see above
+    juce::String getField (const juce::String& name) const;
+    juce::Rectangle<int> getFieldArea (const juce::String& name) const;   // (tests: where to click)   // points: "TYPE", "START", "VALUE", "TERMINATOR"; parts: see above
     // A field typed (as Enter on it does); `absolute`: as with Ctrl held. False: not a value it takes.
     bool enter (const juce::String& field, const juce::String& text, bool absolute);
     void toggleTerminator();

@@ -177,7 +177,7 @@ private:
     ColourKey colourKey;   // the colour menu (0.17.3), beside DISABLE TRACK
     juce::TextButton enable { "DISABLE TRACK" };   // always (0.17.1, the owner asked): DISABLE TRACK, or ENABLE TRACK on a disabled one
     EqCurve eqCurve { studio, 0, true };   // (0.43.0)
-    juce::TextButton eqBypass { "BYPASS" }, eqEdit { "EDIT EQ" };
+    juce::TextButton eqBypass { "BYPASS" }, eqPresets { "PRESETS" }, eqEdit { "EDIT" };   // (0.71.0: PRESETS; EDIT opens the whole EQ)
     juce::TextButton render { "RENDER" }, preset { "PRESET" };   // (0.9.8: FREEZE; RENDER since 0.17.1, the owner asked: Freeze is in the track's menu)
     std::unique_ptr<juce::FileChooser> chooser;   // a preset's
     std::array<juce::TextButton, pr7s::Track::numQuickControls> qcKeys;

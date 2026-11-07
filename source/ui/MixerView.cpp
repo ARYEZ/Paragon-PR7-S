@@ -50,6 +50,7 @@ MixerView::Strip::Strip (MixerView& ownerView, int id) : owner (ownerView), busI
     volume.getProperties().set (ParagonLookAndFeel::faderFromBottomProperty, true);
     volume.setColour (juce::Slider::trackColourId, ParagonColours::accent);
     volume.setRange (-60.0, 6.0, 0.1);
+    volume.dragStep = 0.5;   // (0.71.0, the owner's: a drag moves in half-dB steps; typing takes any value)
     volume.setSkewFactorFromMidPoint (-12.0);
     // Ctrl-click (or double-click) resets it; Shift-drag moves it finely (as the manual has it).
     volume.setDoubleClickReturnValue (true, 0.0, juce::ModifierKeys::commandModifier);

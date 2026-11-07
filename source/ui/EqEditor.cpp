@@ -451,9 +451,7 @@ void EqCurve::paint (juce::Graphics& g)
     if (! compact && hover.x >= a.getX() && a.contains (hover))
     {
         const auto hz = frequencyForX (hover.x);
-        g.setColour (juce::Colour (0xfff4eeea).withAlpha (0.35f));
-        g.fillRect (hover.x, a.getY(), 1.0f, a.getHeight());
-        g.fillRect (a.getX(), hover.y, a.getWidth(), 1.0f);
+        // (0.71.0, the owner's: the ordinary pointer, no cross-hair lines; the readout stays.)
         g.setColour (ParagonColours::text);
         g.setFont (interFont (12.0f));
         g.drawText (pr7s::frequencyText (hz) + "   " + noteOf (hz) + "   " + dbText (dbForY (hover.y)),
@@ -466,7 +464,7 @@ void EqCurve::mouseMove (const juce::MouseEvent& e)
     hover = e.position;
     if (! compact)
         repaint();
-    setMouseCursor (bandAt (e.position) >= 0 ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::CrosshairCursor);
+    setMouseCursor (bandAt (e.position) >= 0 ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::NormalCursor);
 }
 
 void EqCurve::mouseExit (const juce::MouseEvent&)
@@ -935,6 +933,27 @@ void EqEditor::showPresetMenu (pr7s::Studio& studio, int busId, juce::Component*
     menu.addSectionHeader ("EQ: " + channelName (studio, busId).toUpperCase());
     menu.addItem (1, "Save Preset...");
     menu.addSubMenu ("Load Preset", load, files.size() > 0);
+    // (0.71.0) Our starting points, by kind of source.
+    {
+        juce::PopupMenu starting;
+        juce::String group;
+        juce::PopupMenu sub;
+        const auto& points = pr7s::eqStartingPoints();
+        for (int i = 0; i <= (int) points.size(); ++i)
+        {
+            if (i == (int) points.size() || points[(size_t) i].group != group)
+            {
+                if (group.isNotEmpty())
+                    starting.addSubMenu (group, sub);
+                if (i == (int) points.size())
+                    break;
+                group = points[(size_t) i].group;
+                sub = {};
+            }
+            sub.addItem (startingPointItems + i, points[(size_t) i].name);
+        }
+        menu.addSubMenu ("Starting Points", starting);
+    }
     menu.addSeparator();
     menu.addItem (2, "Invert EQ Settings");
     menu.addItem (3, "Reset EQ and Pre");
@@ -950,6 +969,15 @@ void EqEditor::showPresetMenu (pr7s::Studio& studio, int busId, juce::Component*
                             if (chosen == 2) { eq.invert(); studio.setChannelEq (busId, eq); }
                             if (chosen == 3) studio.setChannelEq (busId, {});
                             if (chosen == 4) { eq.bypass = ! eq.bypass; studio.setChannelEq (busId, eq); }
+                            if (const auto& points = pr7s::eqStartingPoints();
+                                chosen >= startingPointItems && chosen - startingPointItems < (int) points.size())
+                            {
+                                // (The starting point's bands and Pre; this channel's bypass kept.)
+                                auto chosenEq = points[(size_t) (chosen - startingPointItems)].eq;
+                                chosenEq.bypass = eq.bypass;
+                                studio.setChannelEq (busId, chosenEq);
+                                return;
+                            }
                             if (chosen >= 100 && chosen - 100 < files.size())
                                 studio.loadEqPreset (busId, files[chosen - 100]);
                             if (chosen == 1)

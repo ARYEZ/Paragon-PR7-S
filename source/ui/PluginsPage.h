@@ -23,6 +23,5 @@ public:
 private:
     pr7s::Studio& studio;
     std::unique_ptr<juce::PluginListComponent> list;
-    juce::Rectangle<int> header, page;
     juce::Image satin;
 };

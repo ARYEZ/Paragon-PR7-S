@@ -8871,6 +8871,51 @@ namespace pr7s
         return made;
     }
 
+    int Studio::removeMissing()
+    {
+        auto removed = 0;
+        {
+            // (Each change made here alone: not passed on to linked tracks, one engine update after.)
+            const juce::ScopedValueSetter<bool> alone (mirroring, true);
+            // Effects from the last slot back (emptying one can drop the empty slots after it).
+            auto items = missingItems;
+            std::stable_sort (items.begin(), items.end(), [] (const MissingItem& a, const MissingItem& b) { return a.slot > b.slot; });
+            for (const auto& item : items)
+            {
+                if (item.kind == MissingItem::Kind::effect)
+                {
+                    const auto* inserts = insertsOf (item.trackId);
+                    if (inserts == nullptr || ! juce::isPositiveAndBelow (item.slot, (int) inserts->size()) || (*inserts)[(size_t) item.slot].isEmpty())
+                        continue;
+                    removeInsert (item.trackId, item.slot);
+                    ++removed;
+                }
+                else if (item.kind == MissingItem::Kind::recording)
+                {
+                    auto* track = project.findTrack (item.trackId);
+                    if (track == nullptr || track->frozen)
+                        continue;
+                    const auto before = track->parts.size();
+                    track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(),
+                                                        [&] (const Part& p) { return p.isAudio() && p.audioFile == item.file; }),
+                                        track->parts.end());
+                    removed += (int) (before - track->parts.size());
+                }
+                else
+                {
+                    auto* track = project.findTrack (item.trackId);
+                    if (track == nullptr || track->isAudio() || track->isChannel())
+                        continue;
+                    if (changeInstrument (item.trackId, Instrument {}))
+                        ++removed;
+                }
+            }
+            missingItems.clear();
+        }
+        changed();
+        return removed;
+    }
+
     bool Studio::open (const juce::File& source, juce::String& problems)
     {
         SessionLog::note ("Opening " + source.getFullPathName());
@@ -8969,6 +9014,7 @@ namespace pr7s
         file = source;
         forgetAllAudio();
         juce::StringArray missing;
+        missingItems.clear();
         // Each plug-in loaded is a step of the progress box (0.11.1: Kontakt and its kind take a while).
         auto toLoad = 0, nowLoading = 0;
         for (const auto& track : project.tracks)
@@ -8999,7 +9045,10 @@ namespace pr7s
                 engine.addAudioTrack (track.id);
                 for (const auto& part : track.parts)
                     if (part.isAudio() && getAudio (part.audioFile) == nullptr)
+                    {
                         missing.add (track.name + ": the recording " + part.audioFile + " isn't in " + getAudioFolder().getFullPathName());
+                        missingItems.push_back ({ MissingItem::Kind::recording, track.id, -1, part.audioFile });
+                    }
                 continue;
             }
             juce::String error;
@@ -9012,7 +9061,10 @@ namespace pr7s
             if (auto instance = host->create (track.instrument, engine.getSampleRate(), engine.getBlockSize(), error))
                 engine.setInstrument (track.id, std::move (instance));
             else
+            {
                 missing.add (track.name + " (" + track.instrument.getName() + "): " + error);   // the track stays (its parts too), silent
+                missingItems.push_back ({ MissingItem::Kind::instrument, track.id, -1, {} });
+            }
         }
         // The effects: one that can't be loaded keeps its place (and its
         // settings, for when it's back), and the sound goes past it.
@@ -9029,7 +9081,10 @@ namespace pr7s
                 loading ("Loading " + inserts[(size_t) slot].plugin.name + " (" + where + ")");
                 auto instance = host->createEffect (inserts[(size_t) slot], engine.getSampleRate(), engine.getBlockSize(), error);
                 if (instance == nullptr)
+                {
                     missing.add (where + ", insert " + juce::String (slot + 1) + " (" + inserts[(size_t) slot].plugin.name + "): " + error);
+                    missingItems.push_back ({ MissingItem::Kind::effect, busId, slot, {} });
+                }
                 engine.insertEffect (busId, slot, std::move (instance));
             }
         };

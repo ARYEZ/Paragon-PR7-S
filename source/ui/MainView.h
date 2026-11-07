@@ -139,6 +139,11 @@ public:
     juce::DocumentWindow* getTempoEditorWindow() noexcept { return tempoEditorWindow.get(); }
     juce::DocumentWindow* getHubWindow() noexcept { return hubWindow.get(); }
     void openSong (const juce::File&);
+    // (0.71.0) The box listing what a song opened without, with REMOVE THEM / KEEP THEM.
+    void reportMissing (const juce::String& problems);
+    // (0.71.0, the owner's) The docked zone's height when not dragged: the master and this many tracks above it.
+    static constexpr int defaultTracksShown = 5;
+    int arrangeHeightForTracks (int count) const;
     void saveAsTemplate();
     // Changes not saved: asks first (Save / Don't save / Cancel), then `then`.
     void whenSongCanGo (std::function<void()> then);

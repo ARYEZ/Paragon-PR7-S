@@ -118,6 +118,7 @@ public:
     EqCurve& getCurve() noexcept { return curve; }
 
     static void showPresetMenu (pr7s::Studio&, int busId, juce::Component* target);
+    static constexpr int startingPointItems = 5000;   // (0.71.0: the menu's starting points from here)
     static juce::String channelName (pr7s::Studio&, int busId);
     static constexpr int width = 960, height = 660;
 

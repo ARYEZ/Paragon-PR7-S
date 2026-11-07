@@ -59,15 +59,21 @@ void ParagonLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton
     const auto led = bounds.removeFromLeft (bounds.getHeight()).withSizeKeepingCentre (ledSize, ledSize);
     const auto on = button.getToggleState();
 
+    // (0.71.0, the owner's) A lit LED in the cycle strip's gradient, with its soft glow.
+    const auto lit = familyGradient (led.getTopLeft(), led.getBottomRight());
     if (on)
     {
-        // Soft glow behind a lit LED.
-        g.setColour (ParagonColours::accent.withAlpha (0.25f));
+        g.setGradientFill (lit);
+        g.setOpacity (0.25f);
         g.fillEllipse (led.expanded (3.0f));
+        g.setOpacity (1.0f);
+        g.fillEllipse (led);
     }
-
-    g.setColour (on ? ParagonColours::accent : ParagonColours::accentDim.darker (0.6f));
-    g.fillEllipse (led);
+    else
+    {
+        g.setColour (ParagonColours::accentDim.darker (0.6f));
+        g.fillEllipse (led);
+    }
     g.setColour (highlighted ? ParagonColours::text : juce::Colours::black);
     g.drawEllipse (led, 1.0f);
 
@@ -430,6 +436,15 @@ void ParagonLookAndFeel::drawPedalKnob (juce::Graphics& g, juce::Rectangle<float
     }
 }
 
+juce::ColourGradient ParagonLookAndFeel::familyGradient (juce::Point<float> from, juce::Point<float> to)
+{
+    // (0.71.0, the owner's) The cycle strip's red / pink / orange (Finish::neonGradient) along any line.
+    auto gradient = Finish::neonGradient (0.0f, 1.0f);
+    gradient.point1 = from;
+    gradient.point2 = to;
+    return gradient;
+}
+
 void ParagonLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
                                            float sliderPos, float startAngle, float endAngle,
                                            juce::Slider& slider)
@@ -454,7 +469,7 @@ void ParagonLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int 
 
     juce::Path value;
     value.addCentredArc (centre.x, centre.y, arcRadius, arcRadius, 0.0f, startAngle, angle, true);
-    g.setColour (ParagonColours::accent);
+    g.setGradientFill (familyGradient ({ bounds.getX(), centre.y }, { bounds.getRight(), centre.y }));
     g.strokePath (value, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
     // Knob body.
@@ -484,10 +499,24 @@ void ParagonLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int 
         g.setColour (slider.findColour (juce::Slider::backgroundColourId));
         g.fillRect (area);
         const auto centre = area.getCentreX();
-        g.setColour (slider.findColour (juce::Slider::trackColourId));
+        g.setGradientFill (familyGradient ({ area.getX(), 0.0f }, { area.getRight(), 0.0f }));
+        g.setOpacity (barOpacity);
         g.fillRect (juce::Rectangle<float>::leftTopRightBottom (juce::jmin (centre, sliderPos), area.getY(), juce::jmax (centre, sliderPos), area.getBottom()));
+        g.setOpacity (1.0f);
         g.setColour (ParagonColours::text.withAlpha (0.6f));
         g.fillRect (juce::Rectangle<float> (1.0f, area.getHeight()).withCentre (area.getCentre()));
+        return;
+    }
+    // (0.71.0) Every other bar: lit from the left to the value in the family's gradient.
+    if (style == juce::Slider::LinearBar)
+    {
+        const auto area = juce::Rectangle<float> ((float) x, (float) y, (float) width, (float) height);
+        g.setColour (slider.findColour (juce::Slider::backgroundColourId));
+        g.fillRect (area);
+        g.setGradientFill (familyGradient ({ area.getX(), 0.0f }, { area.getRight(), 0.0f }));
+        g.setOpacity (barOpacity);
+        g.fillRect (area.withRight (juce::jlimit (area.getX(), area.getRight(), sliderPos)));
+        g.setOpacity (1.0f);
         return;
     }
     if (style == juce::Slider::LinearVertical && slider.getProperties()[eqFaderProperty])
@@ -504,15 +533,19 @@ void ParagonLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int 
         g.drawRoundedRectangle (juce::Rectangle<float> (4.0f, bottom - top).withCentre ({ centreX, middle }), 2.0f, 0.8f);
         const auto from = slider.getProperties()[faderFromBottomProperty] ? bottom : middle;
         const auto lit = juce::Rectangle<float>::leftTopRightBottom (centreX - 1.5f, juce::jmin (sliderPos, from), centreX + 1.5f, juce::jmax (sliderPos, from));
-        g.setColour (colour.withAlpha (0.3f));
+        // (0.71.0) The cycle strip's gradient up the fader's whole travel (orange at the foot, pink at the top).
+        const auto travel = familyGradient ({ centreX, top }, { centreX, bottom });
+        g.setGradientFill (travel);
+        g.setOpacity (0.3f);
         g.fillRoundedRectangle (lit.expanded (2.5f, 0.0f), 2.0f);
-        g.setColour (colour);
+        g.setOpacity (1.0f);
         g.fillRoundedRectangle (lit, 1.5f);
+        juce::ignoreUnused (colour);
 
         // The cap: a small piano-black key with a lit line across it.
         const auto cap = juce::Rectangle<float> (juce::jmin (26.0f, (float) width - 4.0f), 14.0f).withCentre ({ centreX, sliderPos });
         drawPianoKey (g, cap, 3.0f, 2.0f, slider.isMouseButtonDown(), slider.isMouseOver());
-        g.setColour (colour);
+        g.setColour (travel.getColourAtPosition (juce::jlimit (0.0, 1.0, (double) ((sliderPos - top) / juce::jmax (1.0f, bottom - top)))));
         g.fillRect (cap.reduced (5.0f, 0.0f).withSizeKeepingCentre (cap.getWidth() - 10.0f, 1.6f).translated (0.0f, -0.5f));
         return;
     }
@@ -528,7 +561,7 @@ void ParagonLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int 
 
     g.setColour (ParagonColours::panelEdge);
     g.fillRoundedRectangle (left, centreY - 2.0f, right - left, 4.0f, 2.0f);
-    g.setColour (ParagonColours::accent);
+    g.setGradientFill (familyGradient ({ left, centreY }, { right, centreY }));
     g.fillRoundedRectangle (minSliderPos, centreY - 2.0f, maxSliderPos - minSliderPos, 4.0f, 2.0f);
 
     for (auto position : { minSliderPos, maxSliderPos })
@@ -588,6 +621,32 @@ juce::FontOptions ParagonLookAndFeel::titleFont (float height)
     if (getDisplayFont() != DisplayFont::inter)
         return juce::FontOptions (bebasName, height * bebasScale, juce::Font::plain);
     return juce::FontOptions (height, juce::Font::bold);
+}
+
+void ParagonLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int width, int height)
+{
+    const auto area = juce::Rectangle<float> ((float) width, (float) height);
+    g.fillAll (findColour (juce::PopupMenu::backgroundColourId));
+    g.setColour (ParagonColours::glow.withAlpha (0.25f));
+    g.drawRect (area.reduced (1.5f), 2.0f);
+    g.setColour (ParagonColours::glow);
+    g.drawRect (area, 1.0f);
+}
+
+void ParagonLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rectangle<int>& area, bool isSeparator, bool isActive, bool isHighlighted,
+                                            bool isTicked, bool hasSubMenu, const juce::String& text, const juce::String& shortcutKeyText,
+                                            const juce::Drawable* icon, const juce::Colour* textColour)
+{
+    if (isHighlighted && isActive && ! isSeparator)
+    {
+        const auto lit = area.toFloat().reduced (3.0f, 1.0f);
+        g.setGradientFill (familyGradient ({ lit.getX(), 0.0f }, { lit.getRight(), 0.0f }));
+        g.fillRoundedRectangle (lit, 3.0f);
+        const auto white = juce::Colours::white;
+        LookAndFeel_V4::drawPopupMenuItem (g, area, isSeparator, isActive, false, isTicked, hasSubMenu, text, shortcutKeyText, icon, &white);
+        return;
+    }
+    LookAndFeel_V4::drawPopupMenuItem (g, area, isSeparator, isActive, false, isTicked, hasSubMenu, text, shortcutKeyText, icon, textColour);
 }
 
 juce::Font ParagonLookAndFeel::getPopupMenuFont()

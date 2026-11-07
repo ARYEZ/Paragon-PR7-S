@@ -311,6 +311,16 @@ MainView::MainView (pr7s::Studio& studioToUse)
         mixerZone.dockedHeight = settings->getIntValue ("mixerHeight", 0);
         padsZone.inWindow = settings->getBoolValue ("chordPadsInWindow", false);
         padsZone.dockedHeight = settings->getIntValue ("chordPadsHeight", 0);
+        // (0.71.0, the owner's) Once: every zone back to the new default (five tracks above it).
+        if (! settings->getBoolValue ("dockHeights071", false))
+        {
+            settings->setValue ("dockHeights071", true);
+            for (auto* zone : { &editorZone, &mixerZone, &padsZone })
+            {
+                zone->dockedHeight = 0;
+                settings->removeValue (zone->settingsKey + "Height");
+            }
+        }
     }
     // Each view's Auto-Scroll and its settings, kept for next time.
     timeline.autoScroll.load (studio.getSettings(), "arrange");
@@ -626,7 +636,7 @@ void MainView::resized()
     {
         wasWide = true;
         mixer.setRackShown (false);
-        mixerZone.dockedHeight = 1;   // (kept to its least)
+        mixerZone.dockedHeight = 0;   // (0.71.0: the default, five tracks above it; was its least)
         if (mixerZone.inWindow)
             setMixerInWindow (false);
         if (! isMixerOpen())
@@ -752,13 +762,16 @@ int MainView::heightFor (Zone& zone, int middleHeight) const
     // leaves the arrangement its room (its least wins if there isn't enough).
     const auto least = juce::jmin (minimumHeight (zone), middleHeight);
     const auto most = juce::jlimit (least, middleHeight, middleHeight - minimumArrangeHeight - dividerHeight);
-    // (Not dragged yet: a little over half, or the mixer's whole rack and a full fader if that's more.)
-    auto wanted = zone.dockedHeight > 0 ? zone.dockedHeight : juce::roundToInt ((float) middleHeight * 0.6f);
-    if (zone.dockedHeight <= 0 && &zone == &mixerZone)
-        wanted = juce::jmax (wanted, mixer.getPreferredHeight());
-    if (zone.dockedHeight <= 0 && &zone == &padsZone)
-        wanted = 320;   // (the pads at a comfortable size, the arrangement kept large: our choice)
+    // (0.71.0, the owner's) Not dragged yet: what leaves the ruler, the master's row and five whole
+    // tracks' rows (at the vertical zoom now) above it, for the mixer, the MIDI editor and the pads alike.
+    auto wanted = zone.dockedHeight > 0 ? zone.dockedHeight : middleHeight - arrangeHeightForTracks (defaultTracksShown);
     return juce::jlimit (least, most, wanted);
+}
+
+int MainView::arrangeHeightForTracks (int count) const
+{
+    // The ruler, the master's row, `count` tracks' rows, the scroll bar under them and the divider.
+    return Timeline::rulerHeight + timeline.masterRowHeight() + count * timeline.trackRowHeight() + scrollBarSize + dividerHeight;
 }
 
 void MainView::setDockedHeight (int height)
@@ -1435,9 +1448,7 @@ void MainView::openProject()
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't open the song",
                                                     file.getFullPathName() + " isn't a Paragon PR7-S song (or is from a newer version).");
         else if (problems.isNotEmpty())
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Some instruments, effects or recordings are missing",
-                                                    "These aren't on this computer. Tracks without their instrument and clips without their "
-                                                    "recording are silent, and the sound goes past missing effects, until they're found:\n\n" + problems);
+            reportMissing (problems);
     });
 }
 
@@ -2121,9 +2132,30 @@ void MainView::openSong (const juce::File& file)
         juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't open the song",
                                                 file.getFullPathName() + " isn't a Paragon PR7-S song (or is from a newer version).");
     else if (problems.isNotEmpty())
-        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Some instruments, effects or recordings are missing",
-                                                "These aren't on this computer. Tracks without their instrument and clips without their "
-                                                "recording are silent, and the sound goes past missing effects, until they're found:\n\n" + problems);
+        reportMissing (problems);
+}
+
+void MainView::reportMissing (const juce::String& problems)
+{
+    // (0.71.0, the owner asked) What's missing listed, with the choice to take it out of the song.
+    const auto canRemove = ! studio.getMissing().empty();
+    const auto message = "These aren't on this computer. Tracks without their instrument and clips without their "
+                         "recording are silent, and the sound goes past missing effects, until they're found:\n\n" + problems
+                         + (canRemove ? "\n\nREMOVE THEM takes them out of the song: the missing effects' slots emptied, the clips "
+                                        "without their recording deleted, and a track without its instrument given the studio's synth "
+                                        "(its parts kept). KEEP THEM leaves the song as it is (for when they're installed)." : "");
+    if (! canRemove)
+    {
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Some instruments, effects or recordings are missing", message);
+        return;
+    }
+    juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::WarningIcon, "Some instruments, effects or recordings are missing", message,
+                                        "Remove them", "Keep them", nullptr,
+                                        juce::ModalCallbackFunction::create ([safe = juce::Component::SafePointer<MainView> (this)] (int result)
+                                        {
+                                            if (safe != nullptr && result == 1)
+                                                safe->studio.removeMissing();
+                                        }));
 }
 
 void MainView::toggleMediaBay()

@@ -1152,6 +1152,20 @@ namespace pr7s
         }
         // `problems`: instruments that couldn't be loaded (the project opens anyway).
         bool open (const juce::File&, juce::String& problems);
+        // (0.71.0, the owner asked) What the song opened without: an instrument, an effect or a recording
+        // not on this computer. `removeMissing` takes them out of the song: missing effects' slots emptied,
+        // clips whose recording is missing deleted, and a missing instrument's track given the studio's synth
+        // (its parts kept). One undo step; returns how many were taken out.
+        struct MissingItem
+        {
+            enum class Kind { instrument, effect, recording };
+            Kind kind = Kind::effect;
+            int trackId = 0;     // (effects: 0 = the master)
+            int slot = -1;       // (effects)
+            juce::String file;   // (recordings)
+        };
+        const std::vector<MissingItem>& getMissing() const noexcept { return missingItems; }
+        int removeMissing();
         // A DAWproject (0.9.13: songs from Cubase, File > Export > DAWproject;
         // see DawProject.h) as a new song, not saved yet. `report`: what didn't
         // come across, or the error if it couldn't be read.
@@ -1514,6 +1528,7 @@ namespace pr7s
         // A level moved on one channel, on a linked one: by the same amount, or the same (ABS).
         float linkedLevel (float now, float before, float after, float low, float high) const;
         static void silenceForRender (Track&);
+        std::vector<MissingItem> missingItems;
         void openProject (Project&&, const juce::File& source, juce::String& problems);   // open's and importDawProject's   // the plugins' settings into the song; the recordings beside it
         juce::ThreadPool saver { juce::ThreadPoolOptions{}.withThreadName ("Paragon PR7-S save").withNumberOfThreads (1) };
         std::shared_ptr<std::atomic<bool>> saveAlive = std::make_shared<std::atomic<bool>> (true);   // (false once the studio goes)

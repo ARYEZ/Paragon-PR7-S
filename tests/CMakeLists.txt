@@ -70,6 +70,7 @@ add_executable(ParagonPR7STests
     StemExportTests.cpp
     PerformanceTests.cpp
     UiTests.cpp
+    Tweaks071Tests.cpp
     PerfTests.cpp
     Snapshot.cpp)
 

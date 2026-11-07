@@ -1,4 +1,5 @@
 #include "ui/PluginsPage.h"
+#include "ui/HubFrame.h"
 
 #include "engine/PluginHost.h"
 #include "ui/Finish.h"
@@ -138,31 +139,12 @@ PluginsPage::PluginsPage (pr7s::Studio& s) : studio (s)
 
 void PluginsPage::paint (juce::Graphics& g)
 {
-    g.fillAll (onyx);
-    Pearl::paintUnit (g, header.toFloat().reduced (4.0f), satin);
-    auto badge = header.toFloat().reduced (24.0f, 14.0f).withWidth (420.0f);
-    Logo::drawMark (g, badge.removeFromTop (badge.getHeight() * 0.66f), juce::Justification::centredLeft,
-                    { Finish::ink(), juce::Colour (0xffe0103c), Finish::stampEdge(), {}, 1.0f, false });
-    g.setColour (Finish::printedRed());
-    g.setFont (ParagonLookAndFeel::textFont (12.0f));
     const auto found = studio.getPluginHost().getKnownPlugins().getNumTypes();
-    g.drawText ("PLUG-INS  -  VST3 INSTRUMENTS AND EFFECTS  -  " + juce::String (found) + " FOUND", badge, juce::Justification::topLeft, false);
-
-    // The page: the Hub's panel with the question boxes' red edge.
-    const auto pageArea = page.toFloat();
-    g.setColour (panelColour);
-    g.fillRoundedRectangle (pageArea, 6.0f);
-    g.setColour (ParagonColours::glow.withAlpha (0.3f));
-    g.drawRoundedRectangle (pageArea.reduced (1.5f), 5.0f, 3.0f);
-    g.setColour (ParagonColours::glow);
-    g.drawRoundedRectangle (pageArea, 6.0f, 1.2f);
+    HubFrame::paint (g, getLocalBounds(), satin, "PLUG-INS  -  VST3 INSTRUMENTS AND EFFECTS  -  " + juce::String (found) + " FOUND");
 }
 
 void PluginsPage::resized()
 {
-    satin = Finish::makeSatinGrain (juce::jmax (1, getWidth() * 2), 220, 4242);
-    auto area = getLocalBounds();
-    header = area.removeFromTop (96);
-    page = area.reduced (18, 14);
-    list->setBounds (page.reduced (14));
+    satin = HubFrame::makeSatin (getWidth());
+    list->setBounds (HubFrame::contentOf (getLocalBounds()));
 }

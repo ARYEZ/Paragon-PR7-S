@@ -1,4 +1,5 @@
 #include "Windows.h"
+#include "ui/HubFrame.h"
 #include "ui/PluginsPage.h"
 #include "engine/SessionLog.h"
 
@@ -88,14 +89,20 @@ namespace Windows
                 addAndMakeVisible (softwareDrawing);
                 studio.getDeviceManager().addChangeListener (this);
                 refreshBuffer();
-                setSize (600, 712);
+                // (0.71.0, the owner asked) In the Hub's look, as PLUGINS: the pearl header, the panel; Bebas.
+                for (auto* label : { &bufferText, &note })
+                    label->setFont (ParagonLookAndFeel::textFont (label == &note ? 13.0f : 14.0f, juce::Font::plain));
+                finishLabel.setFont (ParagonLookAndFeel::textFont (13.0f));
+                devices.setColour (juce::ListBox::backgroundColourId, HubFrame::panel);
+                setSize (600 + HubFrame::extraWidth - 24, 712 + HubFrame::extraHeight - 24);
             }
 
             ~SettingsContent() override { studio.getDeviceManager().removeChangeListener (this); }
 
             void resized() override
             {
-                auto area = getLocalBounds().reduced (12);
+                satin = HubFrame::makeSatin (getWidth());
+                auto area = HubFrame::contentOf (getLocalBounds());
                 auto bottom = area.removeFromBottom (262);
                 auto bufferRow = bottom.removeFromTop (88);
                 reload.setBounds (bufferRow.removeFromRight (130).removeFromTop (28));
@@ -119,9 +126,10 @@ namespace Windows
 
             void paint (juce::Graphics& g) override
             {
-                g.fillAll (windowColour);
+                HubFrame::paint (g, getLocalBounds(), satin, "SETTINGS  -  AUDIO INTERFACE, BUFFER, FINISH, SCREENS");
+                const auto content = HubFrame::contentOf (getLocalBounds());
                 g.setColour (ParagonColours::textDim.withAlpha (0.3f));
-                g.drawHorizontalLine (bufferText.getY() - 6, 12.0f, (float) getWidth() - 12.0f);
+                g.drawHorizontalLine (bufferText.getY() - 6, (float) content.getX(), (float) content.getRight());
             }
 
             void refreshSpan()
@@ -169,6 +177,7 @@ namespace Windows
             juce::ToggleButton multiCore, softwareDrawing;
             std::function<void()> toggleSpan;
             std::function<bool()> isSpanning;
+            juce::Image satin;
         };
     }
 
@@ -848,7 +857,7 @@ namespace Windows
     }
 
     Settings::Settings (pr7s::Studio& studio, std::function<void()> toggleSpan, std::function<bool()> isSpanning)
-        : DocumentWindow ("Paragon PR7-S: Settings", windowColour, DocumentWindow::closeButton)
+        : DocumentWindow ("Paragon PR7-S: Settings", HubFrame::onyx, DocumentWindow::closeButton)
     {
         setUsingNativeTitleBar (true);
         setContentOwned (new SettingsContent (studio, std::move (toggleSpan), std::move (isSpanning)), true);

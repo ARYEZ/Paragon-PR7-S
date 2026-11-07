@@ -194,6 +194,14 @@ juce::String InfoLine::getField (const juce::String& name) const
     return {};
 }
 
+juce::Rectangle<int> InfoLine::getFieldArea (const juce::String& name) const
+{
+    for (const auto& f : fields)
+        if (f.name == name)
+            return f.area;
+    return {};
+}
+
 void InfoLine::paint (juce::Graphics& g)
 {
     g.fillAll (stripColour);

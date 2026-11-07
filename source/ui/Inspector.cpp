@@ -228,7 +228,7 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     render.onClick = [this] { if (onRender) onRender (trackId); };
     // EQUALIZERS (0.43.0): the curve (edited right there), BYPASS, and EDIT EQ for the whole EQ.
     content.addAndMakeVisible (eqCurve);
-    for (auto* k : { &eqBypass, &eqEdit })
+    for (auto* k : { &eqBypass, &eqPresets, &eqEdit })
     {
         k->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         k->setWantsKeyboardFocus (false);
@@ -246,6 +246,9 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     };
     eqEdit.setTooltip ("The whole EQ: the four bands, the low and high cuts, gain and phase, presets");
     eqEdit.onClick = [this] { if (onOpenEq) onOpenEq (trackId); };
+    // (0.71.0, the owner asked) The EQ's presets right here: our starting points, yours, save, reset.
+    eqPresets.setTooltip ("EQ presets: starting points for vocals, drums, bass, guitars and the mix; your own saved presets; save this one");
+    eqPresets.onClick = [this] { EqEditor::showPresetMenu (studio, trackId, &eqPresets); };
     preset.onClick = [this]
     {
         juce::PopupMenu menu;
@@ -1068,7 +1071,10 @@ void Inspector::layout()
             {
                 place (eqCurve, row (juce::jlimit (80, 160, (w - 2 * margin) * 9 / 20)));
                 auto line = row (rowHeight);
-                place (eqBypass, line.removeFromLeft ((line.getWidth() - 3) / 2));
+                const auto third = (line.getWidth() - 6) / 3;
+                place (eqBypass, line.removeFromLeft (third));
+                line.removeFromLeft (3);
+                place (eqPresets, line.removeFromLeft (third));
                 line.removeFromLeft (3);
                 place (eqEdit, line);
                 break;
