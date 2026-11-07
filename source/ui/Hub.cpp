@@ -1,4 +1,5 @@
 #include "Hub.h"
+#include "ui/InstrumentsPage.h"
 
 #include "ui/Finish.h"
 #include "ui/Logo.h"
@@ -154,7 +155,7 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
 {
     list = std::make_unique<SongList> (*this);
     addAndMakeVisible (*list);
-    for (auto* b : { &projectsTab, &settingsTab, &createEmpty, &chooseFile, &open, &driverPanel, &audioSettings, &chooseLocation, &addLocation, &removeLocation })
+    for (auto* b : { &projectsTab, &settingsTab, &instrumentsTab, &createEmpty, &chooseFile, &open, &driverPanel, &audioSettings, &chooseLocation, &addLocation, &removeLocation })
     {
         styleKey (*b);
         addAndMakeVisible (*b);
@@ -181,6 +182,43 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
     dropStrength.setTooltip ("10%: a faint wash; 100%: solid. The edge thickens with it");
     addAndMakeVisible (dropStrength);
 
+    // AUTO-SAVE (0.72.0, the owner asked: the choices here).
+    autoSaveTitle.setText ("AUTO-SAVE", juce::dontSendNotification);
+    autoSaveTitle.setFont (ParagonLookAndFeel::titleFont (18.0f));
+    autoSaveTitle.setColour (juce::Label::textColourId, ParagonColours::text);
+    addAndMakeVisible (autoSaveTitle);
+    for (const auto minutes : autoSaveChoices)
+        autoSaveBox.addItem (minutes == 0 ? juce::String ("OFF") : "EVERY " + juce::String (minutes) + (minutes == 1 ? " MINUTE" : " MINUTES"), minutes + 1);
+    autoSaveBox.setSelectedId (studio.getAutoSaveMinutes() + 1, juce::dontSendNotification);
+    if (autoSaveBox.getSelectedId() == 0)
+        autoSaveBox.addItem ("EVERY " + juce::String (studio.getAutoSaveMinutes()) + " MINUTES", studio.getAutoSaveMinutes() + 1), autoSaveBox.setSelectedId (studio.getAutoSaveMinutes() + 1, juce::dontSendNotification);
+    autoSaveBox.onChange = [this] { studio.setAutoSaveMinutes (autoSaveBox.getSelectedId() - 1); };
+    autoSaveBox.setTooltip ("How often a backup copy of the song is written while it has unsaved changes (OFF: never)");
+    addAndMakeVisible (autoSaveBox);
+    for (const auto copies : keepChoices)
+        keepBox.addItem ("KEEP THE NEWEST " + juce::String (copies), copies);
+    keepBox.setSelectedId (studio.getAutoSaveKeep(), juce::dontSendNotification);
+    if (keepBox.getSelectedId() == 0)
+        keepBox.addItem ("KEEP THE NEWEST " + juce::String (studio.getAutoSaveKeep()), studio.getAutoSaveKeep()), keepBox.setSelectedId (studio.getAutoSaveKeep(), juce::dontSendNotification);
+    keepBox.onChange = [this] { studio.setAutoSaveKeep (keepBox.getSelectedId()); };
+    keepBox.setTooltip ("How many backup copies of each song are kept; older ones are deleted");
+    addAndMakeVisible (keepBox);
+    showBackups.setTooltip ("Opens the folder the current song's backups go into");
+    showBackups.onClick = [this]
+    {
+        const auto folder = studio.backupFolder();
+        folder.createDirectory();
+        folder.startAsProcess();
+    };
+    addAndMakeVisible (showBackups);
+    autoSaveNote.setText ("Backups are copies: your song's own file changes only when you SAVE. They go into a Backups folder beside "
+                          "the song (Documents/Paragon PR7-S/Backups for a song not saved yet), only while there are unsaved changes, "
+                          "never while recording. To go back to one: OPEN it, then SAVE AS.", juce::dontSendNotification);
+    autoSaveNote.setColour (juce::Label::textColourId, ParagonColours::textDim);
+    autoSaveNote.setJustificationType (juce::Justification::topLeft);
+    autoSaveNote.setFont (juce::Font (ParagonLookAndFeel::textFont (12.0f)));
+    addAndMakeVisible (autoSaveNote);
+
     // HUMANIZE (0.20.1).
     for (auto* l : { &humanizeTitle, &humanizeKeyLabel, &humanizeAmountLabel, &humanizeNote })
     {
@@ -194,7 +232,7 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
                           "the arrangement (one undo step). It's the same key as KEYS' MIDI > Humanize; a Stream Deck button can press it.",
                           juce::dontSendNotification);
     humanizeNote.setJustificationType (juce::Justification::topLeft);
-    humanizeNote.setFont (juce::Font (juce::FontOptions (12.0f)));
+    humanizeNote.setFont (juce::Font (ParagonLookAndFeel::textFont (12.0f)));
     for (auto* b : { &humanizeSetKey, &humanizeClearKey })
     {
         b->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
@@ -221,8 +259,11 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
     refreshHumanize();
     projectsTab.setClickingTogglesState (false);
     settingsTab.setClickingTogglesState (false);
+    instrumentsTab.setClickingTogglesState (false);
     projectsTab.onClick = [this] { showSettingsPage (false); };
     settingsTab.onClick = [this] { showSettingsPage (true); };
+    instrumentsTab.setTooltip ("Each instrument's range, tuning, velocity layers and keyswitches (the composer writes for them)");
+    instrumentsTab.onClick = [this] { showInstrumentsPage(); };
     createEmpty.setTooltip ("Create Empty: a new song, in a folder of its own at the project location");
     createEmpty.onClick = [this]
     {
@@ -233,7 +274,7 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
                 onCreate ({});   // (no location: a new song; saving asks where)
             return;
         }
-        auto* box = new juce::AlertWindow ("Create Empty", "Its name (its folder goes in " + library.getDefaultLocation().getFullPathName() + "):",
+        auto* box = new FamilyAlertWindow ("Create Empty", "Its name (its folder goes in " + library.getDefaultLocation().getFullPathName() + "):",
                                            juce::MessageBoxIconType::NoIcon);
         box->addTextEditor ("name", library.getFolderName());
         box->addButton ("Create", 1, juce::KeyPress (juce::KeyPress::returnKey));
@@ -468,6 +509,20 @@ void Hub::openItem (int index)
 void Hub::showSettingsPage (bool on)
 {
     settingsPage = on;
+    instrumentsPage = false;
+    resized();
+    repaint();
+}
+
+void Hub::showInstrumentsPage()
+{
+    if (instruments == nullptr)
+    {
+        instruments = std::make_unique<InstrumentsPage> (studio);
+        addChildComponent (*instruments);
+    }
+    settingsPage = false;
+    instrumentsPage = true;
     resized();
     repaint();
 }
@@ -522,7 +577,7 @@ void Hub::showMenu (int index)
 
 void Hub::rename (const juce::File& file)
 {
-    auto* box = new juce::AlertWindow ("Rename", "Its new name:", juce::MessageBoxIconType::NoIcon);
+    auto* box = new FamilyAlertWindow ("Rename", "Its new name:", juce::MessageBoxIconType::NoIcon);
     box->addTextEditor ("name", file.getFileNameWithoutExtension());
     box->addButton ("Rename", 1, juce::KeyPress (juce::KeyPress::returnKey));
     box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
@@ -592,6 +647,8 @@ void Hub::paint (juce::Graphics& g)
 
     g.setColour (ParagonColours::textDim);
     g.setFont (font (12.0f));
+    if (instrumentsPage)
+        return;
     if (! settingsPage && studio.getLibrary().showsLocation())
     {
         g.drawText ("PROJECT LOCATION", locationRow.withHeight (14).toFloat(), juce::Justification::topLeft, false);
@@ -634,11 +691,30 @@ void Hub::resized()
         projectsTab.setBounds (n.removeFromTop (34));
         n.removeFromTop (8);
         settingsTab.setBounds (n.removeFromTop (34));
-        projectsTab.setToggleState (! settingsPage, juce::dontSendNotification);
+        n.removeFromTop (8);
+        instrumentsTab.setBounds (n.removeFromTop (34));
+        projectsTab.setToggleState (! settingsPage && ! instrumentsPage, juce::dontSendNotification);
         settingsTab.setToggleState (settingsPage, juce::dontSendNotification);
+        instrumentsTab.setToggleState (instrumentsPage, juce::dontSendNotification);
     }
     area.removeFromLeft (16);
     page = area;
+    if (instruments != nullptr)
+    {
+        instruments->setVisible (instrumentsPage);
+        instruments->setBounds (page.reduced (20, 16));
+    }
+    if (instrumentsPage)
+    {
+        for (auto* c : std::initializer_list<juce::Component*> { list.get(), &search, &createEmpty, &chooseFile, &open, &showPaths, &showLocation, &atStart,
+                                                                         &addLocation, &removeLocation, &locationsBox, &dropLabel, &dropStrength,
+                                                                         &humanizeTitle, &humanizeKeyLabel, &humanizeSetKey, &humanizeClearKey,
+                                                                         &humanizeAmountLabel, &humanizeAmount, &humanizeLayers, &humanizeNote,
+                                                                         &autoSaveTitle, &autoSaveBox, &keepBox, &showBackups, &autoSaveNote,
+                                                                         &useDefault, &locationLabel, &chooseLocation, &folderName })
+            c->setVisible (false);
+        return;
+    }
 
     const auto showProjects = ! settingsPage;
     const auto& library = studio.getLibrary();
@@ -647,7 +723,8 @@ void Hub::resized()
         c->setVisible (showProjects);
     for (auto* c : std::initializer_list<juce::Component*> { &showPaths, &showLocation, &atStart, &addLocation, &removeLocation, &locationsBox, &dropLabel, &dropStrength,
                                                                      &humanizeTitle, &humanizeKeyLabel, &humanizeSetKey, &humanizeClearKey,
-                                                                     &humanizeAmountLabel, &humanizeAmount, &humanizeLayers, &humanizeNote })
+                                                                     &humanizeAmountLabel, &humanizeAmount, &humanizeLayers, &humanizeNote,
+                                                                     &autoSaveTitle, &autoSaveBox, &keepBox, &showBackups, &autoSaveNote })
         c->setVisible (settingsPage);
     for (auto* c : std::initializer_list<juce::Component*> { &useDefault, &locationLabel, &chooseLocation, &folderName })
         c->setVisible (settingsPage || locationOnPage);
@@ -716,6 +793,18 @@ void Hub::resized()
             humanizeLayers.setBounds (column.removeFromTop (28));
             column.removeFromTop (6);
             humanizeNote.setBounds (column.removeFromTop (54));
+            // AUTO-SAVE (0.72.0) under it.
+            column.removeFromTop (14);
+            autoSaveTitle.setBounds (column.removeFromTop (26));
+            column.removeFromTop (4);
+            auto saveRow = column.removeFromTop (28);
+            autoSaveBox.setBounds (saveRow.removeFromLeft (juce::jmin (210, saveRow.getWidth() / 2 - 4)));
+            saveRow.removeFromLeft (8);
+            keepBox.setBounds (saveRow);
+            column.removeFromTop (8);
+            showBackups.setBounds (column.removeFromTop (28).withWidth (juce::jmin (220, column.getWidth())));
+            column.removeFromTop (6);
+            autoSaveNote.setBounds (column.removeFromTop (70));
         }
         for (auto* t : { &showPaths, &showLocation, &atStart })
         {

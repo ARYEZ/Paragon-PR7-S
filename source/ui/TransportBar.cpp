@@ -1,8 +1,11 @@
 #include "TransportBar.h"
 
+#include <map>
+
 #include "ui/LedDisplay.h"
 #include "ui/Logo.h"
 #include "ui/Pearl.h"
+#include "ui/ParagonLookAndFeel.h"
 
 namespace
 {
@@ -23,9 +26,7 @@ namespace
 }
 
 TransportBar::TransportBar (pr7s::Studio& studioToUse)
-    : studio (studioToUse),
-      leftMeter (studioToUse.getEngine().getOutputMeter (0)),
-      rightMeter (studioToUse.getEngine().getOutputMeter (1))
+    : studio (studioToUse)
 {
     for (auto* key : std::initializer_list<juce::TextButton*> { &toStart, &stopKey, &playKey, &recordKey, &cycleKey, &clickKey })
     {
@@ -51,25 +52,7 @@ TransportBar::TransportBar (pr7s::Studio& studioToUse)
             studio.record();
     };
     cycleKey.onClick = [this] { studio.setCycleOn (! studio.getProject().loopOn); };
-    tapKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
-    tapKey.setWantsKeyboardFocus (false);
-    tapKey.setTooltip ("TAP: tap the beat (or Shift+Space) to set the tempo; the screen shows the tapped tempo. "
-                       "Right-click: where it goes (the Tap Tempo Mode)");
-    tapKey.onClick = [this]
-    {
-        if (std::exchange (tapKey.popup, false))
-            showTapModes();
-        else
-            tap();
-    };
-    addAndMakeVisible (tapKey);
     clickKey.onClick = [this] { studio.setClick (! studio.getProject().click); };
-
-    for (auto* meter : { &leftMeter, &rightMeter })
-    {
-        meter->setShowScale (false);
-        addAndMakeVisible (*meter);
-    }
 
     studio.addChangeListener (this);
     Finish::changes().addChangeListener (this);
@@ -117,6 +100,29 @@ void TransportBar::timerCallback()
         repaint (tempoScreen.expanded (4.0f).getSmallestIntegerContainer());
     }
     followPerformance();
+    followOutput();
+}
+
+void TransportBar::followOutput()
+{
+    // (0.73.2, the owner asked) OUT holds the loudest peak since it was last clicked, as a mixer's
+    // max readout does. The output's peaks are read every tick (30 a second, so none is missed);
+    // the number only ever rises, so the screen is redrawn only when a louder peak comes.
+    auto& engine = studio.getEngine();
+    outPeak = juce::jmax (outPeak, engine.getOutputMeter (0).takePeak(), engine.getOutputMeter (1).takePeak());
+    const auto db = juce::Decibels::gainToDecibels (outPeak, LevelMeter::minDb);
+    if (std::abs (db - shownOutDb) >= 0.05f)
+    {
+        shownOutDb = db;
+        repaint (outScreen.expanded (4.0f).getSmallestIntegerContainer());
+    }
+}
+
+void TransportBar::resetOutPeak()
+{
+    outPeak = 0.0f;
+    shownOutDb = LevelMeter::minDb;
+    repaint (outScreen.expanded (4.0f).getSmallestIntegerContainer());
 }
 
 void TransportBar::followPerformance()
@@ -140,6 +146,9 @@ juce::String TransportBar::getTooltip()
         return studio.getProject().followsTempoTrack()
                  ? "The tempo track's tempo where the playhead is (change it on the tempo track). Right-click: Activate Tempo Track"
                  : "The song's tempo: drag up or down, or double-click to type it. Right-click: Activate Tempo Track, or add the tempo track";
+    if (outScreen.contains (getMouseXYRelative().toFloat()))
+        return "OUT: the loudest peak of the output (left or right) since you last clicked here, in dB. "
+               "Red over 0 dB (clipping). Click to start again";
     if (! cpuScreen.contains (getMouseXYRelative().toFloat()))
         return {};
     const auto overloads = studio.getEngine().getOverloads();   // (not takePerformance: that takes the peak the meter shows)
@@ -175,8 +184,19 @@ void TransportBar::drawFixedPitch (juce::Graphics& g, const juce::String& text, 
     // Bebas's figures differ in width: each in a cell as wide as the widest,
     // the separators and spaces in narrower ones, the whole fitted and centred.
     juce::Font f (font (height));
-    const auto digit = juce::jmax (juce::GlyphArrangement::getStringWidth (f, "0"), juce::GlyphArrangement::getStringWidth (f, "8"),
-                                   juce::GlyphArrangement::getStringWidth (f, "4")) * 1.05f;
+    // (0.57.3) The widest figure's width, measured once per font and height (measuring asked the
+    // system's font lookup for each figure: a sixth of the screens' time, 30 times a second).
+    static std::map<std::pair<juce::String, float>, float> widths;   // (message thread only)
+    const auto key = std::pair { f.getTypefaceName() + "/" + f.getTypefaceStyle(), height };
+    auto known = widths.find (key);
+    if (known == widths.end())
+    {
+        if (widths.size() > 64)
+            widths.clear();
+        known = widths.emplace (key, juce::jmax (juce::GlyphArrangement::getStringWidth (f, "0"), juce::GlyphArrangement::getStringWidth (f, "8"),
+                                                 juce::GlyphArrangement::getStringWidth (f, "4")) * 1.05f).first;
+    }
+    const auto digit = known->second;
     // (A figure space, U+2007, is a blank as wide as a figure: padding that keeps the value's width.)
     const auto cellFor = [digit] (juce::juce_wchar c) { return juce::CharacterFunctions::isDigit (c) || c == 0x2007 ? digit : digit * 0.5f; };
     auto total = 0.0f;
@@ -243,14 +263,14 @@ void TransportBar::tap()
     repaint (tempoScreen.expanded (4.0f).getSmallestIntegerContainer());
 }
 
-void TransportBar::showTapModes()
+void TransportBar::showTapModes (juce::Component* target)
 {
     using Mode = pr7s::Studio::TapMode;
     juce::PopupMenu menu;
     menu.addSectionHeader ("TAP TEMPO MODE");
     for (auto m : { Mode::automatic, Mode::selectionStart, Mode::playbackStart, Mode::cursor, Mode::projectTempo, Mode::displayOnly })
         menu.addItem ((int) m + 1, pr7s::Studio::tapModeName (m), true, studio.getTapMode() == m);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&tapKey), [this] (int chosen)
+    menu.showMenuAsync (target != nullptr ? juce::PopupMenu::Options().withTargetComponent (target) : juce::PopupMenu::Options(), [this] (int chosen)
     {
         if (chosen > 0)
             studio.setTapMode ((Mode) (chosen - 1));
@@ -270,26 +290,20 @@ void TransportBar::resized()
     const auto autoWidth = keyPitch + 3.0f + 20.0f;
     const auto cpuWidth = wide ? 92.0f : 96.0f;
     const auto tempoWidth = wide ? 116.0f : 128.0f;
-    const auto tapWidth = 46.0f;   // (0.45.0: TAP between the tempo and the signature)
+    const auto outWidth = cpuWidth;   // (0.73.0: OUT a screen beside CPU; TAP moved to the header)
     const auto signatureWidth = wide ? 88.0f : 96.0f;
 
     auto area = getLocalBounds().toFloat().reduced (14.0f, 12.0f);
     badge = area.removeFromLeft (! wide && getWidth() < 1700 ? 150.0f : 190.0f);
     area.removeFromLeft (16.0f);
-    // The output meters: two LED columns, L and R, with OUT stamped under them.
-    meterArea = area.removeFromRight (36.0f);
-    const auto columns = meterArea.withTrimmedTop (10.0f).withTrimmedBottom (14.0f);
-    leftMeter.setBounds (columns.withWidth (10.0f).translated (6.0f, 0.0f).toNearestInt());
-    rightMeter.setBounds (columns.withWidth (10.0f).translated (20.0f, 0.0f).toNearestInt());
-    area.removeFromRight (16.0f);
 
     // The group from AUTO-SCROLL to the signature (and the tools): on one
     // screen it starts after the badge and the position screen takes what's
     // left; wide, the position screen has its own width and the group sits
     // in the middle (as near as the badge and the meters allow), so on three
     // screens it's all on the middle one.
-    const auto leftWidth = autoWidth + 12.0f + 6.0f * keyPitch + 12.0f + cpuWidth + 12.0f;
-    const auto rightWidth = 12.0f + tempoWidth + 6.0f + tapWidth + 6.0f + signatureWidth + (wide ? 20.0f + (float) toolsWidth : 0.0f);
+    const auto leftWidth = autoWidth + 12.0f + 6.0f * keyPitch + 12.0f + cpuWidth + 12.0f + outWidth + 12.0f;
+    const auto rightWidth = 12.0f + tempoWidth + 12.0f + signatureWidth + (wide ? 20.0f + (float) toolsWidth : 0.0f);
     auto x = area.getX();
     auto positionWidth = area.getWidth() - leftWidth - rightWidth;
     if (wide)
@@ -310,15 +324,15 @@ void TransportBar::resized()
     row.removeFromLeft (12.0f);
     cpuScreen = row.removeFromLeft (cpuWidth);
     row.removeFromLeft (12.0f);
+    outScreen = row.removeFromLeft (outWidth);
+    row.removeFromLeft (12.0f);
     // Two screens alike, POSITION and TIME, in the position's room.
     timeScreen = row.removeFromLeft (positionWidth);
     positionScreen = timeScreen.removeFromLeft ((positionWidth - 12.0f) * 0.5f);
     timeScreen.removeFromLeft (12.0f);
     row.removeFromLeft (12.0f);
     tempoScreen = row.removeFromLeft (tempoWidth);
-    row.removeFromLeft (6.0f);
-    tapKey.setBounds (row.removeFromLeft (tapWidth).withSizeKeepingCentre (tapWidth, 40.0f).withY ((float) toStart.getY()).toNearestInt());
-    row.removeFromLeft (6.0f);
+    row.removeFromLeft (12.0f);
     signatureScreen = row.removeFromLeft (signatureWidth);
     toolsArea = {};
     if (wide)
@@ -441,10 +455,26 @@ void TransportBar::paint (juce::Graphics& g)
         g.drawFittedText (juce::String (now.numerator) + "/" + juce::String (now.denominator), inside.toNearestInt(),
                           juce::Justification::centred, 1, 0.7f);
     }
-    stamped (g, "L", juce::Rectangle<float> (meterArea.getX() + 4.0f, meterArea.getY(), 14.0f, 10.0f), 8.0f);
-    stamped (g, "R", juce::Rectangle<float> (meterArea.getX() + 18.0f, meterArea.getY(), 14.0f, 10.0f), 8.0f);
-    stamped (g, "OUT", meterArea.withTrimmedTop (meterArea.getHeight() - 12.0f), 8.0f);
-
+    // OUT (0.73.0, the owner's: the output's level as a screen beside CPU; 0.73.1: the number only;
+    // 0.73.2: the loudest peak since OUT was last clicked, in dB; red over 0 dB).
+    if (! outside (outScreen))
+    {
+        const auto glass = LedDisplay::paintScreen (g, outScreen, screenSize);
+        glasses.push_back (glass);
+        auto inside = glass.reduced (9.0f, 6.0f);
+        auto top = inside.removeFromTop (12.0f);
+        g.setFont (font (9.0f));
+        g.setColour (orange.withAlpha (0.6f));
+        g.drawText ("OUT", top, juce::Justification::topLeft, false);
+        auto bottom = inside.removeFromBottom (12.0f);
+        g.setColour (orange.withAlpha (0.75f));
+        g.drawText ("DB MAX", bottom, juce::Justification::bottomRight, false);
+        const auto silent = shownOutDb <= LevelMeter::minDb + 0.1f;
+        g.setColour (shownOutDb > 0.0f ? ParagonColours::meterRed : orange);
+        g.setFont (font (juce::jmin (26.0f, inside.getHeight() * 0.95f)));
+        g.drawFittedText (silent ? juce::String ("-INF") : (shownOutDb > 0.0f ? "+" : "") + juce::String (shownOutDb, 1),
+                          inside.toNearestInt(), juce::Justification::centredRight, 1, 0.7f);
+    }
 }
 
 void TransportBar::paintOverChildren (juce::Graphics& g)
@@ -489,6 +519,11 @@ void TransportBar::showRecordModes()
 
 void TransportBar::mouseDown (const juce::MouseEvent& event)
 {
+    if (outScreen.contains (event.position))
+    {
+        resetOutPeak();   // (0.73.2) the loudest from now on
+        return;
+    }
     if (cpuScreen.contains (event.position))
     {
         studio.getEngine().resetOverloads();   // (as the manual has it: a click resets the overload light)
@@ -572,7 +607,7 @@ void TransportBar::mouseDoubleClick (const juce::MouseEvent& event)
 {
     if (! tempoScreen.contains (event.position) || studio.getProject().followsTempoTrack())
         return;
-    auto* window = new juce::AlertWindow ("Tempo", "The song's tempo, in beats per minute (20 to 300):", juce::MessageBoxIconType::NoIcon);
+    auto* window = new FamilyAlertWindow ("Tempo", "The song's tempo, in beats per minute (20 to 300):", juce::MessageBoxIconType::NoIcon);
     window->addTextEditor ("bpm", juce::String (studio.getProject().bpm, 2));
     window->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
     window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));

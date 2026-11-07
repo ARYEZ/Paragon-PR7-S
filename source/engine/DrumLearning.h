@@ -126,7 +126,8 @@ namespace pr7s
     struct DrumProfile
     {
         juce::String name;
-        std::array<SectionHabits, 6> sections;   // by DrumSection
+        static constexpr size_t sectionCount = 7;    // (DrumSection's, SOLO the seventh since 0.65.0)
+        std::array<SectionHabits, sectionCount> sections;   // by DrumSection
         struct Song { juce::String path, sections; bool use = true; };
         std::vector<Song> songs;                  // what it learned from (the review page opens them again)
 

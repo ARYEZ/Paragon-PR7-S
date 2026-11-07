@@ -1,5 +1,7 @@
 #include "InfoLine.h"
 
+#include <unordered_map>
+
 #include "ui/ArrangeView.h"
 #include "ui/KeyEditor.h"
 #include "ui/ParagonLookAndFeel.h"
@@ -51,6 +53,7 @@ InfoLine::InfoLine (pr7s::Studio& s, ArrangeView& a) : studio (s), arrange (a)
     setTooltip ("The info line: the selected automation points, else the selected parts and audio events (the first one's values). "
                 "Double-click a value to type: all of them move by what the first one moves. Hold Ctrl as you press Enter to set them all to it. "
                 "MUTE and TERMINATOR switch with a click. Right-click to hide");
+    setOpaque (true);   // (0.57.1: paint fills it all)
     refresh();
     startTimerHz (10);
 }
@@ -62,6 +65,20 @@ void InfoLine::timerCallback()
 
 void InfoLine::refresh()
 {
+    // (0.57.1) Nothing changed (the song, the parts or points selected): nothing to do. It sorted the
+    // selection ten times a second, searching the whole song for each part as it went.
+    const auto& chosenPoints = arrange.getPointSelection();
+    auto parts = arrange.getSelectedParts();
+    if (studio.getChangeVersion() == seenChange && parts == seenParts && chosenPoints.busId == seenBus
+        && chosenPoints.laneIndex == seenLane && chosenPoints.points == seenPoints && ! fieldsDirty
+        && ! juce::ModifierKeys::currentModifiers.isAnyMouseButtonDown())   // (a drag shows its working copy)
+        return;
+    seenChange = studio.getChangeVersion();
+    seenParts = std::move (parts);
+    seenBus = chosenPoints.busId;
+    seenLane = chosenPoints.laneIndex;
+    seenPoints = chosenPoints.points;
+    fieldsDirty = false;
     fields.clear();
     count = 0;
     showingParts = false;
@@ -85,7 +102,10 @@ void InfoLine::refresh()
         refreshParts();
     juce::String key (count);
     for (const auto& f : fields)
-        key << "|" << f.value;
+        key << "|" << f.name << "=" << f.value;
+    // (0.71.1) The fields were made again just now: they always need their places back. Laid out
+    // only when the text changed, they kept none whenever the song changed elsewhere (the timer
+    // refreshes ten times a second), and a click on VALUE found no field: the owner's "nothing happens".
     resized();
     if (key != shownKey)
     {
@@ -99,16 +119,17 @@ std::vector<int> InfoLine::partsInOrder() const
     // The earliest first (the manual: "the first item in the selection"), then by the tracks' order.
     auto ids = arrange.getSelectedParts();
     const auto shown = studio.getShownTracks();
-    const auto key = [&] (int id)
+    // (0.57.1) Each part's place found once, from one walk of the song (it was searched for twice per
+    // comparison: with Ctrl+A on thousands of parts, millions of checks ten times a second).
+    std::unordered_map<int, std::pair<double, int>> keys;
+    for (const auto& track : studio.getProject().tracks)
     {
-        const auto where = studio.findPart (id);
-        if (! where)
-            return std::pair<double, int> { 1.0e18, 0 };
-        const auto row = (int) (std::find (shown.begin(), shown.end(), where->first) - shown.begin());
-        return std::pair<double, int> { studio.getPartField (id, PartField::start).value_or (0.0), row };
-    };
-    std::stable_sort (ids.begin(), ids.end(), [&] (int a, int b) { return key (a) < key (b); });
-    ids.erase (std::remove_if (ids.begin(), ids.end(), [this] (int id) { return ! studio.findPart (id); }), ids.end());
+        const auto row = (int) (std::find (shown.begin(), shown.end(), track.id) - shown.begin());
+        for (const auto& part : track.parts)
+            keys[part.id] = { part.start, row };
+    }
+    ids.erase (std::remove_if (ids.begin(), ids.end(), [&] (int id) { return keys.find (id) == keys.end(); }), ids.end());
+    std::stable_sort (ids.begin(), ids.end(), [&] (int a, int b) { return keys[a] < keys[b]; });
     return ids;
 }
 
@@ -165,7 +186,7 @@ void InfoLine::resized()
     if (editor != nullptr)
         for (const auto& f : fields)
             if (f.name == editing)
-                editor->setBounds (f.area.withTrimmedTop (getHeight() / 2 - 2).reduced (6, 2));
+                editor->setBounds (f.area.withTrimmedTop (getHeight() / 2 - 4).reduced (4, 1).withWidth (juce::jmax (f.area.getWidth() - 8, 110)));
 }
 
 juce::String InfoLine::getField (const juce::String& name) const
@@ -173,6 +194,14 @@ juce::String InfoLine::getField (const juce::String& name) const
     for (const auto& f : fields)
         if (f.name == name)
             return f.value;
+    return {};
+}
+
+juce::Rectangle<int> InfoLine::getFieldArea (const juce::String& name) const
+{
+    for (const auto& f : fields)
+        if (f.name == name)
+            return f.area;
     return {};
 }
 
@@ -218,7 +247,7 @@ void InfoLine::paint (juce::Graphics& g)
 void InfoLine::mouseDoubleClick (const juce::MouseEvent& e)
 {
     for (const auto& f : fields)
-        if (f.area.contains (e.getPosition()) && f.editable && f.name != "TERMINATOR" && f.name != "MUTE")
+        if (f.area.contains (e.getPosition()) && f.editable && f.name != "TERMINATOR" && f.name != "MUTE" && f.name != editing)
             beginEdit (f.name);
 }
 
@@ -242,6 +271,9 @@ void InfoLine::mouseUp (const juce::MouseEvent& e)
                 toggleTerminator();
             else if (f.name == "MUTE")
                 toggleMute();
+            else if (f.name != editing && ! e.mouseWasDraggedSinceMouseDown())
+                beginEdit (f.name);   // (0.71.0: a click opens it too, as the other DAW's info line)
+            return;
         }
 }
 
@@ -263,9 +295,16 @@ void InfoLine::beginEdit (const juce::String& field)
 {
     editing = field;
     editor = std::make_unique<InfoEntry>();
-    editor->setFont (ParagonLookAndFeel::textFont (14.0f));
+    editor->setFont (ParagonLookAndFeel::textFont (15.0f));
+    // (0.71.0) Plainly a box to type in: white on black, the accent round it.
+    editor->setColour (juce::TextEditor::backgroundColourId, juce::Colours::black);
+    editor->setColour (juce::TextEditor::textColourId, juce::Colours::white);
+    editor->setColour (juce::TextEditor::outlineColourId, ParagonColours::accent);
+    editor->setColour (juce::TextEditor::focusedOutlineColourId, ParagonColours::accent);
+    editor->setColour (juce::TextEditor::highlightColourId, pr7s::FamilyColours::pink.withAlpha (0.6f));
     editor->setText (getField (field), false);
     editor->setSelectAllWhenFocused (true);
+    const auto opened = juce::Time::getMillisecondCounter();
     auto finish = [this] (bool apply, bool absolute)
     {
         if (editor == nullptr)
@@ -279,7 +318,21 @@ void InfoLine::beginEdit (const juce::String& field)
     };
     static_cast<InfoEntry&> (*editor).onEnter = [finish] (bool absolute) { finish (true, absolute); };
     editor->onEscapeKey = [finish] { finish (false, false); };
-    editor->onFocusLost = [finish] { finish (false, false); };
+    // (0.71.0) Focus taken away just as it opens (the second click's own handling, another window
+    // coming forward): it takes it back rather than closing at once.
+    editor->onFocusLost = [this, finish, opened]
+    {
+        if (juce::Time::getMillisecondCounter() - opened < 500 && editor != nullptr)
+        {
+            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<InfoLine> (this)]
+            {
+                if (safe != nullptr && safe->editor != nullptr && safe->editor->isShowing())
+                    safe->editor->grabKeyboardFocus();
+            });
+            return;
+        }
+        finish (false, false);
+    };
     addAndMakeVisible (*editor);
     resized();
     editor->grabKeyboardFocus();

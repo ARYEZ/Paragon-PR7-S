@@ -284,3 +284,205 @@ TEST_CASE ("0.34.2 timing: an update after a fader move against one that builds 
     const auto rebuild = time ([&] (int i) { for (auto& t : project.tracks) t.parts[0].notes[0].pitch = 40 + i % 2; });
     WARN ("per update: fader move " << fader << " ms; every track's events built (as before 0.34.2) " << rebuild << " ms");
 }
+
+TEST_CASE ("0.57.2: an audio track's clips are kept after a fader move, built again when what they come from changes", "[engine][audio]")
+{
+    Engine engine;
+    engine.prepare (rate, 512);
+    // Every sample told apart: a ramp; another sound for the "new recording".
+    auto ramp = std::make_shared<juce::AudioBuffer<float>> (2, 48000 * 8);
+    auto other = std::make_shared<juce::AudioBuffer<float>> (2, 48000 * 8);
+    for (int c = 0; c < 2; ++c)
+        for (int i = 0; i < ramp->getNumSamples(); ++i)
+        {
+            ramp->setSample (c, i, (float) i / (float) ramp->getNumSamples());
+            other->setSample (c, i, 0.25f);
+        }
+    auto current = ramp;
+    engine.setAudioSource ([&] (const juce::String&) -> std::shared_ptr<const juce::AudioBuffer<float>> { return current; });
+    Project project;
+    project.autoFades.crossfades = true;
+    Track track;
+    track.id = 1;
+    track.kind = Track::Kind::audio;
+    Part a, b;
+    a.audioFile = b.audioFile = "take.wav";
+    a.length = 4.0;
+    b.start = 2.0;
+    b.length = 4.0;
+    b.audioOffset = 1.0;
+    b.lane = 1;
+    b.order = 1;
+    track.parts = { a, b };
+    project.tracks.push_back (track);
+    engine.addAudioTrack (1);
+    const auto play = [&]
+    {
+        engine.stop();
+        engine.setPosition (0.0);
+        engine.play();
+        return renderSamples (engine, 24000 * 6);
+    };
+    engine.update (project);
+    const auto first = play();
+    const auto builds = engine.getClipBuilds();
+
+    // A fader move: the same clips (kept), the same sound but the gain.
+    project.tracks[0].volumeDb = -6.0f;
+    engine.update (project);
+    CHECK (engine.getClipBuilds() == builds);
+    project.tracks[0].volumeDb = 0.0f;
+    engine.update (project);
+    CHECK (engine.getClipBuilds() == builds);
+    CHECK (play() == first);
+
+    // Each thing a clip is made from builds them again.
+    project.tracks[0].parts[1].fadeIn = 0.05;
+    engine.update (project);
+    CHECK (engine.getClipBuilds() == builds + 1);
+    project.tracks[0].soloLane = 0;
+    engine.update (project);
+    CHECK (engine.getClipBuilds() == builds + 2);
+    project.autoFades.milliseconds = 40.0;
+    engine.update (project);
+    CHECK (engine.getClipBuilds() == builds + 3);
+    project.tempoTrackOn = true;
+    project.tempoEvents = { { 0.0, 100.0, false } };
+    engine.update (project);
+    CHECK (engine.getClipBuilds() == builds + 4);
+    current = other;   // (a VariAudio edit: a new heard sound for the same file)
+    engine.update (project);
+    CHECK (engine.getClipBuilds() == builds + 5);
+    const auto now = play();
+    CHECK (std::abs (now[24000] - 0.25f) < 1.0e-6f);   // (the new sound plays)
+
+    // Disabled and enabled again: built afresh.
+    project.tracks[0].disabled = true;
+    engine.update (project);
+    project.tracks[0].disabled = false;
+    engine.update (project);
+    CHECK (engine.getClipBuilds() == builds + 6);
+}
+
+TEST_CASE ("0.57.3: the spike report: a slow block, the tracks that took the time, a late call, a run counted", "[engine]")
+{
+    Engine engine;
+    engine.prepare (rate, 512);
+    Project project;
+    for (int t = 1; t <= 4; ++t)
+    {
+        Track track;
+        track.id = t;
+        track.name = "Track " + juce::String (t);
+        project.tracks.push_back (track);
+        auto probe = std::make_unique<Probe>();
+        probe->busyMs = t == 3 ? 4.0 : 0.0;   // (track 3: the heavy plug-in)
+        engine.setInstrument (t, std::move (probe));
+    }
+    engine.update (project);
+    const auto budget = 512.0 / rate;
+    juce::AudioBuffer<float> buffer (2, 512);
+
+    // An easy block: no report.
+    engine.render (buffer, 512);
+    engine.noteSpike (budget * 0.5, 512, budget);
+    CHECK_FALSE (engine.takeSpikeReport().has_value());
+
+    // A slow one: the report, track 3 first.
+    engine.render (buffer, 512);
+    engine.noteSpike (budget * 2.0, 512, budget);
+    auto report = engine.takeSpikeReport();
+    REQUIRE (report.has_value());
+    CHECK (report->load == 2.0f);
+    CHECK_FALSE (report->missedLock);
+    CHECK_FALSE (report->lateCall);
+    CHECK (report->numTracks == 4);
+    REQUIRE (report->numSlowest >= 1);
+    CHECK (report->slowest[0].trackId == 3);
+    CHECK (report->slowest[0].ms >= 4.0f);
+    CHECK (report->tracksMs >= 4.0);
+    CHECK_FALSE (engine.takeSpikeReport().has_value());   // (taken)
+
+    // The driver late: reported though the block itself was quick; a second's pause isn't.
+    engine.render (buffer, 512);
+    engine.noteSpike (budget * 0.1, 512, budget * 3.0);
+    report = engine.takeSpikeReport();
+    REQUIRE (report.has_value());
+    CHECK (report->lateCall);
+    engine.noteSpike (budget * 0.1, 512, 2.0);
+    CHECK_FALSE (engine.takeSpikeReport().has_value());
+
+    // A run while one waits: the waiting one kept, the others counted in the next.
+    engine.noteSpike (budget * 1.5, 512, budget);
+    engine.noteSpike (budget * 3.0, 512, budget);
+    engine.noteSpike (budget * 3.0, 512, budget);
+    report = engine.takeSpikeReport();
+    REQUIRE (report.has_value());
+    CHECK (report->load == 1.5f);
+    engine.noteSpike (budget, 512, budget);
+    report = engine.takeSpikeReport();
+    REQUIRE (report.has_value());
+    CHECK (report->missedSince == 2);
+}
+
+TEST_CASE ("0.57.3: the spike report in words (the session log's line)", "[studio]")
+{
+    Studio studio (false);
+    const auto id = studio.addTrack ({});
+    Engine::SpikeReport r;
+    r.load = 1.6f;
+    r.blockMs = 17.1;
+    r.budgetMs = 10.7;
+    r.tracksMs = 15.0;
+    r.numTracks = 1;
+    r.masterMs = 0.4;
+    r.helpers = 3;
+    r.numSlowest = 1;
+    r.slowest[0] = { id, 14.2f, 1.1f };
+    const auto text = studio.describeSpike (r);
+    CHECK (text.startsWith ("SPIKE: a block took 17.1 ms of its 10.7 ms (160%)"));
+    CHECK (text.contains ("\"" + studio.getProject().findTrack (id)->name + "\""));
+    CHECK (text.contains ("14.2 ms (usually 1.10 ms)"));
+    CHECK (text.contains ("3 helper threads"));
+    r.missedLock = true;
+    CHECK (studio.describeSpike (r).startsWith ("SPIKE: one block of silence"));
+    r.missedLock = false;
+    r.lateCall = true;
+    r.sinceLastMs = 32.0;
+    CHECK (studio.describeSpike (r).contains ("the driver called 32.0 ms after the last block"));
+}
+
+TEST_CASE ("0.57.4: the spike report gives each plug-in's own time: the instrument and each insert", "[engine]")
+{
+    Engine engine;
+    engine.prepare (rate, 512);
+    Project project;
+    Track track;
+    track.id = 1;
+    project.tracks.push_back (track);
+    auto instrument = std::make_unique<Probe>();
+    instrument->busyMs = 1.0;
+    engine.setInstrument (1, std::move (instrument));
+    auto heavy = std::make_unique<Probe>();
+    heavy->busyMs = 4.0;   // (the insert: the heavier of the two)
+    engine.insertEffect (1, 0, std::move (heavy));
+    auto light = std::make_unique<Probe>();
+    engine.insertEffect (1, 1, std::move (light));
+    engine.update (project);
+    const auto budget = 512.0 / rate;
+    juce::AudioBuffer<float> buffer (2, 512);
+    engine.render (buffer, 512);
+    engine.noteSpike (budget * 2.0, 512, budget);
+    const auto report = engine.takeSpikeReport();
+    REQUIRE (report.has_value());
+    REQUIRE (report->numSlowest == 1);
+    const auto& slow = report->slowest[0];
+    REQUIRE (slow.numPlugins == 3);
+    CHECK (slow.plugins[0].slot == 0);      // the heavy insert first
+    CHECK (slow.plugins[0].ms >= 4.0f);
+    CHECK (slow.plugins[1].slot == -1);     // then the instrument
+    CHECK (slow.plugins[1].ms >= 1.0f);
+    CHECK (slow.plugins[1].ms < slow.plugins[0].ms);
+    CHECK (slow.plugins[2].slot == 1);
+    CHECK (slow.ms >= slow.plugins[0].ms + slow.plugins[1].ms);   // (the track's time holds its plug-ins')
+}

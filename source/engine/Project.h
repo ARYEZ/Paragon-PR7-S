@@ -312,6 +312,11 @@ namespace pr7s
         bool folderGroup = false;        // a folder: its group channel enabled
         enum class FolderData { always, never, hideWhenExpanded };   // the manual's Show Data on Folder Tracks
         FolderData folderData = FolderData::always;
+        // (0.73.0, the owner asked, as the other DAW's track list colouring) The track's colour over its
+        // row in the track list: on or off, and how much (1-100 %). Saved; not an undo step.
+        bool listColourOn = false;
+        int listColourAmount = 25;
+        static constexpr int defaultListColourAmount = 25;
         int output = 0;                  // a group channel's id, or 0: the master (FX and group channels: the master)
         std::vector<Send> sends;         // by slot (none after the last used); FX channels have none
         bool sendsBypass = false;        // all of its sends off at once
@@ -491,6 +496,23 @@ namespace pr7s
         std::vector<int> linkGroupMembers (int groupId) const;   // in the tracks' order
         Track* findTrack (int id);
         const Track* findTrack (int id) const;
+        // (0.59.0, 0.60.0: as the other DAW's routing) Whether a track's output can go to that channel (0: the
+        // master always can): any track that makes sound (audio, instrument, group and FX channels, a folder with
+        // its group channel) into any group or FX channel (a folder's group too), except itself and except a
+        // channel that already leads back to it by its output or its sends (no loops).
+        bool canRouteTo (int trackId, int destinationId) const;
+        // Whether a track can send to that FX channel (FX channels may send too): never itself, never round in a loop.
+        bool canSendTo (int trackId, int fxId) const;
+        // Whether `from`'s sound reaches `to` through outputs and sends (any number of channels between).
+        bool reaches (int from, int to) const;
+        // Whether `from`'s output leads into `to` (outputs only, through any groups between; not sends).
+        bool feedsInto (int from, int to) const;
+        // SOLO (0.70.0, the owner's rule): with any track soloed (not disabled), only these make sound: the soloed
+        // tracks, what is routed into them (outputs only; for a soloed FX channel also what sends to it, else it
+        // would be silent), and the channels they go on into (their groups and FX returns, to the master).
+        // Everything else is soloed out. Empty: nothing soloed.
+        std::vector<int> soloedOutTracks() const;
+        bool hasOutput (const Track& t) const noexcept { return ! t.isChannel() || t.isGroup() || t.isFx(); }
         const DrumMap* findDrumMap (const juce::String& name) const;
         const DrumMap* drumMapOf (const Track&) const;   // its map, if it has one
         Track* armedTrack();
@@ -525,8 +547,12 @@ namespace pr7s
     // goes on (the halves of one split recording). `recordingSeconds`: how long a clip's
     // recording is (how far past its end it can reach; none: 0).
     struct FadedStretch { double from = 0.0, to = 0.0, fadeIn = 0.0, fadeOut = 0.0; };
+    // (0.57.1) `heard`: every part's heardStretches worked out once for the track (by index); without
+    // it each call works out every other part's again (a comped track's update grew as the cube of its clips).
+    using HeardList = std::vector<std::vector<std::pair<double, double>>>;
+    HeardList heardStretchesOf (const Track&);
     std::vector<FadedStretch> fadedStretches (const Track&, int partIndex, const AutoFades&, const TempoMap&,
-                                              const std::function<double (const Part&)>& recordingSeconds);
+                                              const std::function<double (const Part&)>& recordingSeconds, const HeardList* heard = nullptr);
     juce::String formatTime (double seconds);
 
     // The family's track colours, taken in turn: shades along its red, pink

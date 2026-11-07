@@ -362,7 +362,7 @@ void DrumMapPage::cellDoubleClicked (int row, int column, const juce::MouseEvent
     if (m == nullptr || column != nameColumn || ! juce::isPositiveAndBelow (row, (int) m->order.size()))
         return;
     const auto pitch = m->order[(size_t) row];
-    auto* box = new juce::AlertWindow ("RENAME " + pr7s::noteName (pitch), "The drum's name:", juce::MessageBoxIconType::NoIcon);
+    auto* box = new FamilyAlertWindow ("RENAME " + pr7s::noteName (pitch), "The drum's name:", juce::MessageBoxIconType::NoIcon);
     box->addTextEditor ("name", m->sounds[(size_t) pitch].name);
     box->addButton ("RENAME", 1, juce::KeyPress (juce::KeyPress::returnKey));
     box->addButton ("CANCEL", 0, juce::KeyPress (juce::KeyPress::escapeKey));

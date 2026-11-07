@@ -138,7 +138,7 @@ TEST_CASE ("The key editor: draw, move, copy, lengthen, velocity, erase, keys, q
     Finish::set (Finish::Type::pearlWhite, false);
     Studio studio (false);
     MainView view (studio);
-    view.setSize (1500, 900);
+    view.setSize (1500, 1300);   // (0.71.0: the docked editor leaves five tracks above it; these notes need its room)
     const auto trackId = studio.getProject().tracks[0].id;
     studio.addPart (trackId, { 4.0, 4.0, "Riff", { { 0.0, 1.0, 60, 0.8f }, { 1.0, 0.5, 64, 0.8f } } });
 
@@ -447,7 +447,7 @@ TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inse
     Finish::set (Finish::Type::pearlWhite, false);
     Studio studio (false);
     MainView view (studio);
-    view.setSize (1500, 900);
+    view.setSize (1500, 1300);   // (0.71.0: the docked mixer leaves five tracks above it)
     const auto first = studio.getProject().tracks[0].id;
     const auto second = studio.addTrack ({});
     studio.dispatchPendingMessages();
@@ -1064,7 +1064,7 @@ TEST_CASE ("Sends and FX channels on screen: the SENDS rack, a send's dot, level
     mixer.setShowSends (true);
     CHECK_FALSE (strip.getInsertSlot (0).isVisible());
     CHECK (strip.getSendSlot (0).isVisible());
-    CHECK_FALSE (mixer.getStrip (1).getSendSlot (0).isVisible());   // the FX channel: no sends
+    CHECK (mixer.getStrip (1).getSendSlot (0).isVisible());   // the FX channel (0.60.0: FX channels send too)
 
     // The dot turns the send off and on.
     auto& send = strip.getSendSlot (0);
@@ -1172,6 +1172,7 @@ TEST_CASE ("Zoom, Auto-Scroll and scrolling (H in, G out, Shift+F, F; the scroll
             studio.addTrack ({});
         studio.dispatchPendingMessages();
         auto& down = view.getArrangeScrollBarDown();
+        down.setCurrentRangeStart (0.0, juce::sendNotificationSync);   // (0.70.0: the new track was brought into view: back to the top)
         const auto top = arrange.trackTop (trackId);
         down.setCurrentRangeStart (100.0, juce::sendNotificationSync);
         CHECK_THAT (arrange.trackTop (trackId), WithinAbs (top - 100.0f, 0.01));
@@ -1972,11 +1973,13 @@ TEST_CASE ("A wide window (spanning screens): the position screen centred at its
     CHECK_FALSE (view.isMixerOpen());
     view.setSize (5760, 1000);
     REQUIRE (view.isWide());
-    // Turning wide: the mixer docked, its racks hidden, as short as it goes (the owner's choice).
+    // Turning wide: the mixer docked, its racks hidden (the owner's choice); since 0.71.0 at the
+    // default height (the master and five tracks above it, or its least if that's more).
     CHECK (view.isMixerOpen());
     CHECK_FALSE (view.isMixerInWindow());
     CHECK_FALSE (view.getMixer().isRackShown());
-    CHECK (view.getMixer().getHeight() == view.getMixer().getMinimumHeight());
+    CHECK (view.getMixer().getHeight() >= view.getMixer().getMinimumHeight());
+    CHECK (view.getArrangeView().getHeight() <= Timeline::rulerHeight + view.getTimeline().masterRowHeight() + 5 * view.getTimeline().trackRowHeight() + 4);
     // What's changed after it turned wide stays (it isn't done again on every resize).
     view.getMixer().setRackShown (true);
     view.setSize (5700, 1000);
@@ -1987,12 +1990,14 @@ TEST_CASE ("A wide window (spanning screens): the position screen centred at its
     // The keys on its left, the tools on its right (on the transport, no row of their own).
     auto* clickKey = buttonNamed (transport, "CLICK");
     REQUIRE (clickKey != nullptr);
-    // CLICK, then the CPU screen, then the position screen (the owner's order).
-    const auto cpu = transport.getCpuArea();
+    // CLICK, then the CPU screen, (0.73.0) the OUT screen, then the position screen (the owner's order).
+    const auto cpu = transport.getCpuArea(), out = transport.getOutArea();
     CHECK (clickKey->getRight() <= (int) cpu.getX());
     CHECK (clickKey->getRight() > (int) cpu.getX() - 30);
-    CHECK (cpu.getRight() <= screen.getX());
-    CHECK (cpu.getRight() > screen.getX() - 30);
+    CHECK (cpu.getRight() <= out.getX());
+    CHECK (cpu.getRight() > out.getX() - 30);
+    CHECK (out.getRight() <= screen.getX());
+    CHECK (out.getRight() > screen.getX() - 30);
     // AUTO-SCROLL just before HOME.
     CHECK (view.getAutoScrollButton().getRight() < buttonNamed (transport, "|<")->getX() + transport.getX());
     CHECK (view.getAutoScrollButton().getRight() > buttonNamed (transport, "|<")->getX() + transport.getX() - 50);
@@ -2004,9 +2009,9 @@ TEST_CASE ("A wide window (spanning screens): the position screen centred at its
     CHECK (tools.getY() >= transport.getY());
     // (No tools row: the info line (0.37.0) and the track list's header are all that's over it.)
     CHECK (view.getArrangeView().getY() < transport.getBottom() + MainView::toolbarHeight + (view.isInfoLineShown() ? InfoLine::height + 2 : 0));   // the tracks have the row's room
-    // The header's keys: NEW to the quantize value in the middle.
+    // The header's keys: NEW to (0.73.0) S in the middle.
     auto* newKey = buttonNamed (view, "NEW");
-    auto& lastKey = view.getQuantizeButton();
+    auto& lastKey = view.getSoloAllButton();
     REQUIRE (newKey != nullptr);
     CHECK (std::abs ((newKey->getX() + lastKey.getRight()) / 2 - view.getWidth() / 2) < 4);
     CHECK (newKey->getX() > 2000);
@@ -2092,7 +2097,7 @@ TEST_CASE ("The Inspector: the selected track's settings, by kind, in sections t
         studio.dispatchPendingMessages();
         CHECK (inspector.getChannel().getSelectedId() == 3);
     }
-    SECTION ("An audio track: its input and MON, no MIDI; an FX channel: no sends, no REC")
+    SECTION ("An audio track: its input and MON, no MIDI; an FX channel: sends and an output, no REC")
     {
         const auto guitar = studio.addAudioTrack (true);
         studio.selectTrack (guitar);
@@ -2106,9 +2111,9 @@ TEST_CASE ("The Inspector: the selected track's settings, by kind, in sections t
         const auto fx = studio.addFxChannel (nullptr);
         studio.selectTrack (fx);
         studio.dispatchPendingMessages();
-        CHECK_FALSE (inspector.getHeader (S::sends).isVisible());
+        CHECK (inspector.getHeader (S::sends).isVisible());     // (0.60.0: FX channels send too)
         CHECK_FALSE (inspector.getKey ("REC").isVisible());
-        CHECK_FALSE (inspector.getOutput().isEnabled());   // FX channels go to the master
+        CHECK (inspector.getOutput().isEnabled());               // (0.60.0: and go to any group or FX channel)
     }
     SECTION ("A section's title folds it; the others move up")
     {
@@ -2668,14 +2673,19 @@ TEST_CASE ("Track rows without M S REC R W (0.9.9): the state written under the 
     auto& list = view.getTrackList();
     auto& muteAll = list.getMuteAllKey();
     auto& soloAll = list.getSoloAllKey();
-    CHECK (muteAll.isVisible());
-    CHECK (soloAll.isVisible());
+    // (0.73.0, the owner asked) On the header's top row now: the track list's are kept hidden.
+    CHECK_FALSE (muteAll.isVisible());
+    CHECK_FALSE (soloAll.isVisible());
+    CHECK (view.getMuteAllButton().isVisible());
+    CHECK (view.getSoloAllButton().isVisible());
     CHECK_FALSE (soloAll.getToggleState());
     studio.setSolo (a, true);
     studio.setMute (b, true);
     studio.dispatchPendingMessages();
     CHECK (soloAll.getToggleState());
     CHECK (muteAll.getToggleState());
+    CHECK (view.getSoloAllButton().getToggleState());   // (0.73.0: the header's light too)
+    CHECK (view.getMuteAllButton().getToggleState());
     soloAll.onClick();
     muteAll.onClick();
     studio.dispatchPendingMessages();
@@ -3387,4 +3397,75 @@ TEST_CASE ("0.48.0: keys are black in every finish; on the neon finishes their s
     }
     key.setLookAndFeel (nullptr);
     Finish::set (Finish::Type::pearlWhite, false);
+}
+
+TEST_CASE ("0.57.4: question boxes have see-through corners and no square shadow (as the progress box)", "[ui]")
+{
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        FamilyAlertWindow box ("Create Empty", "Its name:");
+        CHECK_FALSE (box.isOpaque());
+        CHECK (box.isOnDesktop());
+        CHECK_FALSE (box.isDropShadowEnabled());
+        std::unique_ptr<juce::AlertWindow> own (lookAndFeel.createAlertWindow ("Delete", "Sure?", "Yes", "No", {}, juce::MessageBoxIconType::QuestionIcon, 2, nullptr));
+        REQUIRE (own != nullptr);
+        CHECK_FALSE (own->isOpaque());
+        CHECK_FALSE (own->isDropShadowEnabled());
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+TEST_CASE ("0.70.0: a track chosen anywhere is shown in the track list and the mixer; Top / Bottom", "[ui][tracks]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    for (int i = 0; i < 30; ++i)
+        studio.addTrack (Instrument {});
+    // (the views follow the studio's change messages: the message loop runs them)
+    const auto settle = [] { juce::MessageManager::getInstance()->runDispatchLoopUntil (60); };
+    settle();
+    auto& mixer = view.getMixer();
+    mixer.setSize (900, 400);
+    settle();
+    mixer.resized();
+
+    const auto shown = studio.getShownTracks();
+    // The bottom track, chosen (as from the mixer): the track list scrolls down to it, the mixer across.
+    studio.selectTrack (shown.back());
+    settle();
+    CHECK (view.getTimeline().scrollY > 0);
+    auto rowVisible = [&] (int id)
+    {
+        const auto lanes = view.getArrangeView().getHeight() - Timeline::rulerHeight;
+        for (const auto& row : view.getTimeline().layout (studio))
+            if (row.kind == Timeline::Row::Kind::track && row.busId == id)
+                return row.top >= view.getTimeline().scrollY && row.top + row.height <= view.getTimeline().scrollY + lanes;
+        return false;
+    };
+    CHECK (rowVisible (shown.back()));
+    CHECK (mixer.getViewPosition().x > 0);
+
+    // Top: the first track selected, back in view in both.
+    view.selectTopTrack();
+    settle();
+    CHECK (studio.getSelectedTrack() == shown.front());
+    CHECK (rowVisible (shown.front()));
+    CHECK (mixer.getViewPosition().x == 0);
+    // Bottom: the last.
+    view.selectBottomTrack();
+    settle();
+    CHECK (studio.getSelectedTrack() == shown.back());
+    CHECK (rowVisible (shown.back()));
+
+    // Both are key commands with no default key (Home stays Go to Start), for KEYS.
+    auto& keys = view.getKeyMap();
+    CHECK (keys.keysFor ("Navigate.Top").isEmpty());
+    CHECK (keys.keysFor ("Navigate.Bottom").isEmpty());
+    keys.assign ("Navigate.Top", juce::KeyPress (juce::KeyPress::homeKey, juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 0));
+    auto swallowed = false;
+    CHECK (keys.handle (juce::KeyPress (juce::KeyPress::homeKey, juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 0), swallowed));
+    CHECK (studio.getSelectedTrack() == shown.front());
 }

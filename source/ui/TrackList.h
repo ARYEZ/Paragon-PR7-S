@@ -106,6 +106,13 @@ private:
     Timeline& timeline;
     std::vector<std::unique_ptr<Row>> rows;
     std::vector<std::unique_ptr<LaneRow>> laneRows;
+public:
+    juce::Button* getLaneRemoveKey (int busId, int laneIndex);   // (0.72.0: the lane's X; tests)
+    // (0.73.0) The slots' numbers (1 at the top) and moving a track to one (the number typed).
+    bool moveTrackToSlot (int trackId, int slot);
+    int getTrackNumber (int trackId) const;   // 0: not shown
+    juce::Label* getNumberLabel (int trackId);   // (tests)
+private:
     std::vector<std::unique_ptr<TakeRow>> takeRows;
     std::unique_ptr<MasterRow> masterRow;
     std::unique_ptr<TempoRow> tempoRow;   // the tempo track's (0.10.0), while it's added

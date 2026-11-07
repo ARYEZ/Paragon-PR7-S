@@ -2,6 +2,7 @@
 
 #include "ui/LinesPage.h"
 #include "ui/ProgressionsPage.h"
+#include "ui/ComposerPage.h"
 #include "ui/MediaBayPage.h"
 #include "ui/MediaRack.h"
 #include "ui/KeyCommands.h"
@@ -103,6 +104,8 @@ public:
     void openEq (int busId);   // (0.43.0) the EQ window on a channel (one window: moved to another channel)
     EqWindow* getEqWindow() noexcept { return eqWindow.get(); }   // the progression library (0.40.0): opened, or brought to the front
     ProgressionsWindow* getProgressionsWindow() noexcept { return progressionsWindow.get(); }
+    void openComposer();   // (0.58.0) THE COMPOSER
+    ComposerWindow* getComposerWindow() noexcept { return composerWindow.get(); }
     // The MediaBay (0.21.0): its window (F5 opens and closes it), and a file from it into the
     // song: audio or MIDI on a new track at the playhead, a track preset as a new track, a song
     // opened (after the unsaved-changes question). Its drags land as files dragged from the system do.
@@ -136,6 +139,11 @@ public:
     juce::DocumentWindow* getTempoEditorWindow() noexcept { return tempoEditorWindow.get(); }
     juce::DocumentWindow* getHubWindow() noexcept { return hubWindow.get(); }
     void openSong (const juce::File&);
+    // (0.71.0) The box listing what a song opened without, with REMOVE THEM / KEEP THEM.
+    void reportMissing (const juce::String& problems);
+    // (0.71.0, the owner's) The docked zone's height when not dragged: the master and this many tracks above it.
+    static constexpr int defaultTracksShown = 5;
+    int arrangeHeightForTracks (int count) const;
     void saveAsTemplate();
     // Changes not saved: asks first (Save / Don't save / Cancel), then `then`.
     void whenSongCanGo (std::function<void()> then);
@@ -269,6 +277,13 @@ public:
     TransportBar& getTransport() noexcept { return transport; }
     KeyEditor& getKeyEditor() noexcept { return keyEditor; }
     MixerView& getMixer() noexcept { return mixer; }
+    // (0.70.0, the owner asked) Brings a track's row into view in the track list and arrangement (and its strip
+    // in the mixer). A track chosen anywhere (the mixer, the track list, Up/Down, Top/Bottom) is shown in both.
+    void revealTrack (int trackId);
+    // (0.70.0, the manual's Navigate > Top / Bottom: the first / last shown track selected and shown. No default
+    // keys: Home is the owner's Go to Start; set them in KEYS.)
+    void selectTopTrack();
+    void selectBottomTrack();
     juce::TextButton& getSnapButton() noexcept { return snapButton; }
     juce::TextButton& getQuantizeButton() noexcept { return quantizeButton; }
 
@@ -290,6 +305,7 @@ private:
     double trackListRowZoom = 1.0;
     std::unique_ptr<LinesWindow> linesWindow;
     std::unique_ptr<ProgressionsWindow> progressionsWindow;
+    std::unique_ptr<ComposerWindow> composerWindow;
     std::unique_ptr<EqWindow> eqWindow;
     std::unique_ptr<MediaBayWindow> mediaBayWindow;
     std::unique_ptr<MediaRack> mediaRack;
@@ -332,6 +348,7 @@ private:
     pr7s::Studio& studio;
 
     juce::uint64 seenChange = 0;   // (0.34.3) the studio's change version last acted on
+    int shownSelection = -1;       // (0.70.0) the selected track last brought into view
     Timeline timeline;
     TransportBar transport;
     TrackList trackList;
@@ -361,6 +378,20 @@ private:
                      undoButton { "UNDO" }, redoButton { "REDO" }, editorButton { "KEY EDITOR" }, mixerButton { "MIXER" }, inspectorButton { "INSPECTOR" },
                      pluginsButton { "PLUGINS" }, settingsButton { "SETTINGS" }, readAllButton { "R" }, writeAllButton { "W" },
                      snapButton { "SNAP" }, quantizeButton { "1/16" };   // (0.9.10)
+    // (0.73.0, the owner's) TAP and the all-tracks M / S in the header's row, after the quantize value.
+    struct PopupKey final : juce::TextButton
+    {
+        using juce::TextButton::TextButton;
+        bool popup = false;
+        void clicked (const juce::ModifierKeys& mods) override { popup = mods.isPopupMenu(); }
+    };
+    PopupKey tapButton { "TAP" };
+    juce::TextButton muteAllButton { "M" }, soloAllButton { "S" };
+public:
+    juce::TextButton& getTapButton() noexcept { return tapButton; }
+    juce::TextButton& getMuteAllButton() noexcept { return muteAllButton; }
+    juce::TextButton& getSoloAllButton() noexcept { return soloAllButton; }
+private:
     // After the editor and the mixer: their windows go first.
     Zone editorZone { keyEditorHolder, editorButton, "MIDI Editor", "keyEditor", false, false, {} },
          mixerZone { mixer, mixerButton, "Mixer", "mixer", false, false, {} },

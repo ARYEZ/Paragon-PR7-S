@@ -16,6 +16,9 @@ namespace Windows
     // The keys it doesn't use go to the studio (`onKey`: Space, R...).
     // (0.52.1) The right-hand screen's area (its usable part): where plug-in windows open.
     juce::Rectangle<int> rightmostScreenArea();
+    // (0.60.0) Every open window drawn with the processor ("Software Renderer") or the graphics card (Direct2D on
+    // Windows): those not already so are switched. Returns how many were. (Elsewhere there's one way: nothing to do.)
+    int applyDrawing (bool software);
 
     class Instrument final : public juce::DocumentWindow,
                              private juce::Timer

@@ -269,7 +269,7 @@ TEST_CASE ("Learning: beats played from a profile (their groove kept, their fill
     CHECK_FALSE (bridge.notes.empty());
     // Nothing learned: nothing.
     CHECK (generateBeat (DrumProfile {}, DrumSection::verse, spans, 4.0, {}, 1).notes.empty());
-    CHECK (generatedBeats (profile, spans, 4.0, {}, 0).size() == 6);
+    CHECK (generatedBeats (profile, spans, 4.0, {}, 0).size() == 7);
 
     // DRUM SETTINGS: the cymbal, no ghosts, the kick on the riff.
     DrumSettings rideAll;

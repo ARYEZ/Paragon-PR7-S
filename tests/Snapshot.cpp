@@ -6,6 +6,7 @@
 #include "engine/Controllers.h"
 #include "ui/Finish.h"
 #include "ui/MainView.h"
+#include "ui/TransportBar.h"
 #include "ui/DrumMapPage.h"
 #include "ui/AutomationPanel.h"
 #include "ui/ToolIcons.h"
@@ -28,6 +29,7 @@
 // Auto-Scroll suspended.
 // PARAGON_SNAPSHOT_QC=1: the Inspector's Quick Controls, three assigned.
 // PARAGON_SNAPSHOT_MULTI=1: parts selected on two tracks.
+// PARAGON_SNAPSHOT_LISTCOLOUR=1: the first four tracks' colour in the track list (15, 35, 60, 100 %).
 // PARAGON_SNAPSHOT_STATES=1: the lead soloed, the bass muted, the keys armed (written under their names; the header's M and S lit).
 // PARAGON_SNAPSHOT_MASTER=1: the master's row chosen (its Inspector).
 // PARAGON_SNAPSHOT_RACK=home|loops|instruments: the Media rack in the right zone (0.22.0).
@@ -180,6 +182,21 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.setSolo (lead, true);
         studio.setMute (studio.getProject().tracks[1].id, true);
         studio.setArmed (studio.getProject().tracks[0].id);
+        studio.dispatchPendingMessages();
+    }
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_OUT", {}).isNotEmpty())
+    {
+        // (0.73.1) OUT showing a peak (-4.3 dB): the demo is silent in a snapshot.
+        const float peak[] = { juce::Decibels::decibelsToGain (-4.3f) };
+        studio.getEngine().getOutputMeter (0).pushSamples (peak, 1);
+        view.getTransport().followOutputForTests();
+    }
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_LISTCOLOUR", {}).isNotEmpty())
+    {
+        // (0.73.0) Each track's colour in the track list, at 15, 35, 60 and 100 % (the rest off).
+        const int amounts[] = { 15, 35, 60, 100 };
+        for (int i = 0; i < 4 && i < (int) studio.getProject().tracks.size(); ++i)
+            studio.setTracksListColour ({ studio.getProject().tracks[(size_t) i].id }, true, amounts[i]);
         studio.dispatchPendingMessages();
     }
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_WARP", {}).isNotEmpty())
@@ -930,6 +947,9 @@ TEST_CASE ("Snapshot: the IDEAS window (PARAGON_SNAPSHOT_IDEAS=piano|guitar|bass
             riff.fills = true;
             page.setRiffSettings (riff);
         }
+        // (0.66.0) PARAGON_SNAPSHOT_SOLO=tap & dive|...: the guitar tab's SOLO STYLE.
+        if (const auto solo = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SOLO", {}); solo.isNotEmpty())
+            page.setSoloStyle (pr7s::soloStyleNamed (solo));
         page.play (tab == "piano" ? pr7s::LineIdea::Part::chords : tab == "bass" ? pr7s::LineIdea::Part::bass
                  : tab == "patterns" ? pr7s::LineIdea::Part::pattern : tab == "melody" ? pr7s::LineIdea::Part::tune
                  : tab == "drums" ? pr7s::LineIdea::Part::drums
@@ -1322,6 +1342,7 @@ TEST_CASE ("Snapshot: the progress box, and SAVE lit", "[.][snapshot-progress]")
 }
 
 #include "ui/Hub.h"
+#include "ui/InstrumentsPage.h"
 
 TEST_CASE ("Snapshot: the Hub", "[.][snapshot-hub]")
 {
@@ -1356,6 +1377,13 @@ TEST_CASE ("Snapshot: the Hub", "[.][snapshot-hub]")
             hub.setSize (980, 620);
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "settings")
             hub.showSettingsPage (true);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB_TALL", {}) == "1")
+            hub.setSize (Hub::preferredWidth, 1500);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "instruments")
+        {
+            hub.showInstrumentsPage();
+            hub.getInstrumentsPage()->setUse (pr7s::Studio::ProfileUse::bass, true);   // (Djinn Bass 2, the first time's)
+        }
         const auto image = hub.createComponentSnapshot (hub.getLocalBounds(), true, 1.0f);
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };
@@ -1799,4 +1827,54 @@ TEST_CASE ("The app's icon files (0.52.3)", "[.][make-icon]")
         x += s + 16;
     }
     write ("PR7-S icon sizes.png", sheet);
+}
+
+// (0.71.0) A drop-down menu as the studio shows them: the red-edged dark panel, the item under the
+// mouse in the cycle strip's gradient. (`PARAGON_SNAPSHOT_FINISH` as the others.)
+TEST_CASE ("Snapshot: a menu", "[.][snapshot-menu]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "menu.png");
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        juce::Component anchor;
+        anchor.setBounds (100, 100, 200, 30);
+        anchor.addToDesktop (0);
+        anchor.setVisible (true);
+        juce::PopupMenu menu, sub;
+        sub.addItem (10, "Lead Vocal: Presence");
+        menu.addSectionHeader ("EQ: VOCALS");
+        menu.addItem (1, "Save Preset...");
+        menu.addSubMenu ("Starting Points", sub);
+        menu.addSeparator();
+        menu.addItem (2, "Invert EQ Settings", true, true);
+        menu.addItem (3, "Reset EQ and Pre");
+        menu.addItem (4, "Bypass", false);
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&anchor));
+        for (int wait = 0; wait < 10 && juce::Desktop::getInstance().getNumComponents() < 2; ++wait)
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
+        juce::Component* window = nullptr;
+        for (int i = 0; i < juce::Desktop::getInstance().getNumComponents(); ++i)
+            if (auto* c = juce::Desktop::getInstance().getComponent (i); c != &anchor)
+                window = c;
+        INFO (juce::Desktop::getInstance().getNumComponents());
+        REQUIRE (window != nullptr);
+        // The second item lit, as under the mouse.
+        auto* peer = window->getPeer();
+        REQUIRE (peer != nullptr);
+        const auto type = juce::Desktop::getInstance().getMainMouseSource().getType();
+        for (int step = 0; step < 6; ++step)
+        {
+            peer->handleMouseEvent (type, { 60.0f, 46.0f + (float) step }, {}, juce::MouseInputSource::defaultPressure,
+                                    juce::MouseInputSource::defaultOrientation, juce::Time::currentTimeMillis());
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+        }
+        const auto image = window->createComponentSnapshot (window->getLocalBounds(), true, 2.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+        juce::PopupMenu::dismissAllActiveMenus();
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }

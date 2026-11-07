@@ -163,7 +163,7 @@ public:
     juce::TextButton& getBuildKey() noexcept { return build; }
     int getNumNextKeys() const noexcept { return nextKeys.size(); }
     juce::TextButton* getNextKey (int i) const { return nextKeys[i]; }
-    static constexpr int width = 640, rowHeight = 32, titleHeight = 62, nextHeight = 46;
+    static constexpr int width = 720, rowHeight = 32, titleHeight = 62, nextHeight = 46;
 
 private:
     void refresh();
@@ -196,6 +196,8 @@ public:
     const pr7s::GuitarTuning& getTuning() const;
     void setGuitarVelocities (const pr7s::GuitarVelocities&);   // (Studio::setGuitarVelocities), guitar ideas dealt again
     void setGuitarStyle (pr7s::GuitarStyle);                   // STYLE (0.53.0; Studio::setGuitarStyle), dealt again
+    void setSoloStyle (pr7s::SoloStyle);                       // SOLO STYLE (0.66.0; Studio::setSoloStyle), dealt again
+    juce::ComboBox& getSoloBox() { return soloBox; }
     pr7s::GuitarStyle getGuitarStyle() const;
     void setRiffSettings (const pr7s::RiffSettings&);          // RIFF SETTINGS (Studio's), dealt again
     void showRiffSettings();
@@ -220,6 +222,7 @@ public:
     std::vector<pr7s::SectionSuggestion> getNextSuggestions() const;
     std::vector<int> buildNext (const pr7s::SectionSuggestion&);   // after the last built section
     void showBuildSection();
+    std::function<void()> onComposer;   // (0.58.0) COMPOSER: the combined page
     int getChosen (pr7s::LineIdea::Part p) const noexcept { return chosen[(size_t) p]; }
     const std::vector<pr7s::ChordSpan>& getChords() const noexcept { return spans; }
     void openLearnWindow (const pr7s::DrumProfile* toEdit);
@@ -244,7 +247,10 @@ public:
     int use (pr7s::LineIdea::Part, int index, int ontoTrackId = 0);   // the track's id (0: a new one)
     void moreIdeas();
     int getVariation() const noexcept { return variation; }
-    const std::vector<pr7s::LineIdea>& getIdeas (pr7s::LineIdea::Part part) const noexcept { return ideas[(size_t) part]; }
+    // (Made when first asked for, kept until something they're made from changes: a change no longer
+    // deals every tab's ideas, only those shown or used.)
+    const std::vector<pr7s::LineIdea>& getIdeas (pr7s::LineIdea::Part part) const;
+    int getDealCount() const noexcept { return deals; }   // (tests: how many kinds were made since the page opened)
     std::optional<std::pair<pr7s::LineIdea::Part, int>> getPlaying() const noexcept { return playing; }
     int getNumCardsShown() const noexcept { return cards.size(); }
 
@@ -258,7 +264,10 @@ private:
     void showUseMenu (pr7s::LineIdea::Part, int index, Card&);
     pr7s::Studio& studio;
     std::vector<pr7s::ChordSpan> spans;
-    std::array<std::vector<pr7s::LineIdea>, 9> ideas;
+    mutable std::array<std::vector<pr7s::LineIdea>, 9> ideas, raw;   // (raw: before humanizing; the locked ones are made from those)
+    mutable std::array<bool, 9> made {}, madeRaw {};
+    mutable int deals = 0;
+    const std::vector<pr7s::LineIdea>& rawIdeas (pr7s::LineIdea::Part) const;
     juce::String patternGroup { "ARPEGGIOS" };
     juce::ComboBox groupBox;
     int variation = 0;
@@ -273,6 +282,7 @@ private:
     juce::ComboBox tuningBox;
     juce::TextButton velocitiesKey { "VELOCITIES" };
     juce::ComboBox styleBox;     // STYLE (the guitar tab)
+    juce::ComboBox soloBox;      // SOLO STYLE (0.66.0, the guitar tab: the seventh lead, the whole solo)
     juce::TextButton riffKey;    // RIFF SETTINGS (the guitar tab)
     juce::TextButton groovesKey { "MORE GROOVES" };   // (the drums tab)
     juce::TextButton drumKey;                           // DRUM SETTINGS (the drums tab)
@@ -280,6 +290,7 @@ private:
     bool writtenBeats = false;
     juce::TextButton drummerKey;                        // DRUMMER (the drums tab's generated column)
     juce::TextButton buildKey { "BUILD SECTION" };
+    juce::TextButton composerKey { "COMPOSER" };
     BuildChoice buildChoice;
     std::array<int, 9> chosen {};                       // the card last played or used, per part
     std::optional<pr7s::DrumProfile> drummer;

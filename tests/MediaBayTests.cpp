@@ -18,7 +18,22 @@ namespace
     // subfolder), a MIDI file, a track preset, a song and a file that isn't media.
     struct MediaFolder
     {
-        juce::File root = juce::File::createTempFile ("pr7s-mediabay");
+        // Letters only: the search reads folder names, and a random hex name once held "808".
+        juce::File root = lettersOnlyFolder();
+
+        static juce::File lettersOnlyFolder()
+        {
+            juce::Random random;
+            for (;;)
+            {
+                juce::String name ("pr7s-mediabay-");
+                for (int i = 0; i < 10; ++i)
+                    name << (juce::juce_wchar) ('a' + random.nextInt (26));
+                auto f = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile (name);
+                if (! f.exists())
+                    return f;
+            }
+        }
 
         MediaFolder()
         {
@@ -1281,4 +1296,24 @@ TEST_CASE ("VST presets in the MediaBay: read, tagged, matched to their plug-in 
     component.fromBase64Encoding (xml->getChildElementAllSubText ("IComponent", {}));
     CHECK (component == state);
     root.deleteRecursively();
+}
+
+TEST_CASE ("0.57.2: the search text is kept between searches and made again after a tag or rating edit", "[mediabay]")
+{
+    using A = MediaAttribute;
+    MediaFolder folder;
+    const auto store = juce::File::createTempFile ("pr7s-mediabay-cache.xml");
+    const auto kick = folder.root.getChildFile ("Kicks").getChildFile ("Kick 808.wav");
+    MediaDatabase database (store);
+    database.addLocation (folder.root);
+    database.scanNow();
+    MediaQuery q;
+    q.text = "thunderous";
+    CHECK (database.find (q).empty());
+    CHECK (database.find (q).empty());                    // (the kept text)
+    database.setAttribute ({ kick }, { A::comment, {} }, "Thunderous low end");
+    CHECK (names (database, database.find (q)) == std::vector<juce::String> { "Kick 808" });
+    database.removeAttribute ({ kick }, { A::comment, {} });
+    CHECK (database.find (q).empty());
+    store.deleteFile();
 }

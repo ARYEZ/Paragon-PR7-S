@@ -29,7 +29,8 @@ public:
     static constexpr int height = 40;
 
     // What's shown (for tests: the field's text, "" when nothing is selected).
-    juce::String getField (const juce::String& name) const;   // points: "TYPE", "START", "VALUE", "TERMINATOR"; parts: see above
+    juce::String getField (const juce::String& name) const;
+    juce::Rectangle<int> getFieldArea (const juce::String& name) const;   // (tests: where to click)   // points: "TYPE", "START", "VALUE", "TERMINATOR"; parts: see above
     // A field typed (as Enter on it does); `absolute`: as with Ctrl held. False: not a value it takes.
     bool enter (const juce::String& field, const juce::String& text, bool absolute);
     void toggleTerminator();
@@ -55,6 +56,11 @@ private:
     int count = 0;
     bool showingParts = false;
     juce::String shownKey;
+    // (0.57.1) What the last refresh was made from (skipped when all is the same).
+    juce::uint64 seenChange = 0;
+    std::vector<int> seenParts, seenPoints;
+    int seenBus = -1, seenLane = -2;
+    bool fieldsDirty = true;
     void refreshParts();
     bool enterPart (const juce::String& field, const juce::String& text, bool absolute);
     std::unique_ptr<juce::TextEditor> editor;

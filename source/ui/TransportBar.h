@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "engine/Studio.h"
@@ -32,7 +34,7 @@ public:
     std::function<std::optional<double>()> getSelectionStart;   // (0.45.0) for tap tempo's modes: what's selected
     // TAP (0.45.0, the manual's Tap Tempo): a tap now (the key, Shift+Space); right-click: the modes.
     void tap();
-    void showTapModes();
+    void showTapModes (juce::Component* target = nullptr);   // (0.73.0: TAP's key is in the header now)
     bool isShowingTap() const;
     explicit TransportBar (pr7s::Studio&);
     ~TransportBar() override;
@@ -63,6 +65,10 @@ public:
     float getShownPeak() const noexcept { return shownPeak; }
     bool isOverloadLit() const noexcept { return overloadLit; }
     juce::Rectangle<float> getCpuArea() const noexcept { return cpuScreen; }
+    juce::Rectangle<float> getOutArea() const noexcept { return outScreen; }   // (0.73.0)
+    float getShownOutDb() const noexcept { return shownOutDb; }   // (0.73.1) the number OUT shows
+    void followOutputForTests() { followOutput(); }
+    void resetOutPeak();   // (0.73.2) a click on OUT: back to -INF, the loudest from now on
     // Where the arrangement's AUTO-SCROLL key and its menu arrow go (the main window puts them there).
     juce::Rectangle<int> getAutoScrollArea() const noexcept { return autoScrollArea; }
     juce::String getTooltip() override;
@@ -86,10 +92,12 @@ private:
     juce::TextButton toStart { "|<" }, stopKey { "STOP" }, playKey { "PLAY" };
     RecordKey recordKey { "REC" };
     juce::TextButton cycleKey { "CYCLE" }, clickKey { "CLICK" };
-    RecordKey tapKey { "TAP" };   // (0.45.0; a RecordKey for its right-click)
     pr7s::SignatureEvent shownSignature { -1, 0, 0 };
-    LevelMeter leftMeter, rightMeter;
-    juce::Rectangle<float> badge, positionScreen, timeScreen, tempoScreen, signatureScreen, keysArea, meterArea, cpuScreen, autoScrollStamp;
+    // (0.73.2, the owner asked) OUT's number: the loudest peak (both sides) since OUT was last clicked.
+    float outPeak = 0.0f;   // gain
+    float shownOutDb = LevelMeter::minDb;
+    void followOutput();
+    juce::Rectangle<float> badge, positionScreen, timeScreen, tempoScreen, signatureScreen, keysArea, cpuScreen, outScreen, autoScrollStamp;
     juce::Rectangle<int> toolsArea, autoScrollArea;
     float keyPitchNow = 70.0f;
     int toolsWidth = 0;

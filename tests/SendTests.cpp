@@ -155,7 +155,9 @@ TEST_CASE ("The studio's FX and group channels: added (named as the manual's), s
     REQUIRE (studio.getProject().findTrack (track)->sends.size() == 1);
     studio.setOutput (track, group);
     CHECK (studio.getProject().findTrack (track)->output == group);
-    studio.setOutput (track, fx);   // an FX channel isn't an output
+    studio.setOutput (track, fx);   // (0.60.0: an FX channel is an output too, as the other DAW's)
+    CHECK (studio.getProject().findTrack (track)->output == fx);
+    studio.undo();
     CHECK (studio.getProject().findTrack (track)->output == group);
     studio.undo();
     CHECK (studio.getProject().findTrack (track)->output == 0);
@@ -180,4 +182,55 @@ TEST_CASE ("The studio's FX and group channels: added (named as the manual's), s
     CHECK (studio.getProject().findTrack (track)->sends.empty());
     studio.removeTrack (group);
     CHECK (studio.getProject().findTrack (track)->output == 0);
+}
+
+TEST_CASE ("0.70.0: solo plays only that track, what is routed into it and where it goes on to", "[engine][sends][solo]")
+{
+    // The owner's rule: solo the vocal group and only the vocals routed into it are heard.
+    Desk desk;
+    desk.addChannel (10, true);                     // the vocal group
+    desk.addChannel (11, true);                     // another group
+    desk.addChannel (20, false);                    // a reverb
+    desk.engine.insertEffect (20, 0, timesEffect (0.5f));
+    desk.track (20).inserts.resize (1);
+    desk.addTrack (1, 0.5f).output = 10;            // vocal A into the vocal group
+    desk.addTrack (2, 0.25f).output = 10;           // vocal B into the vocal group
+    desk.addTrack (3, 0.125f);                      // a guitar to the master
+    desk.addTrack (4, 0.0625f).output = 11;         // other vocals into the other group
+    CHECK_THAT (desk.output(), WithinAbs (0.9375, 1.0e-5));
+
+    // The vocal group soloed: its two vocals only.
+    desk.track (10).solo = true;
+    CHECK_THAT (desk.output(), WithinAbs (0.75, 1.0e-5));
+    CHECK (desk.project.soloedOutTracks() == std::vector<int> { 11, 20, 3, 4 });
+    desk.track (10).solo = false;
+
+    // A vocal soloed: it alone, through its group.
+    desk.track (1).solo = true;
+    CHECK_THAT (desk.output(), WithinAbs (0.5, 1.0e-5));
+    desk.track (1).solo = false;
+
+    // Groups into groups: the other group soloed with the vocal group routed into it hears all three vocals.
+    desk.track (10).output = 11;
+    desk.track (11).solo = true;
+    CHECK_THAT (desk.output(), WithinAbs (0.8125, 1.0e-5));
+    desk.track (11).solo = false;
+    desk.track (10).output = 0;
+
+    // A soloed track still feeds the reverb it sends to.
+    desk.track (3).sends = { { 20, 0.0f, true, false } };
+    desk.track (3).solo = true;
+    CHECK_THAT (desk.output(), WithinAbs (0.125 + 0.0625, 1.0e-5));
+    desk.track (3).solo = false;
+
+    // The reverb soloed: the tracks that send to it play too (else it would be silent): ours.
+    desk.track (20).solo = true;
+    CHECK_THAT (desk.output(), WithinAbs (0.125 + 0.0625, 1.0e-5));
+    desk.track (20).solo = false;
+
+    // Nothing soloed: all again; a disabled track's solo doesn't count.
+    CHECK (desk.project.soloedOutTracks().empty());
+    desk.track (4).solo = true;
+    desk.track (4).disabled = true;
+    CHECK (desk.project.soloedOutTracks().empty());
 }

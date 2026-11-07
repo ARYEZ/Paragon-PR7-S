@@ -1,4 +1,5 @@
 #include "KeyCommandsPage.h"
+#include "ui/HubFrame.h"
 
 #include "engine/Project.h"
 #include "ui/ParagonLookAndFeel.h"
@@ -353,7 +354,7 @@ KeyCommandsPage::KeyCommandsPage (KeyCommands::Map& m) : map (m)
     {
         if (! juce::isPositiveAndBelow (macroIndex, (int) map.getMacros().size()))
             return;
-        auto* box = new juce::AlertWindow ("Macro", "Its name:", juce::MessageBoxIconType::NoIcon);
+        auto* box = new FamilyAlertWindow ("Macro", "Its name:", juce::MessageBoxIconType::NoIcon);
         box->addTextEditor ("name", map.getMacros()[(size_t) macroIndex].name);
         box->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
         box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
@@ -570,7 +571,7 @@ void KeyCommandsPage::showPresetMenu()
             });
         else if (chosen == 1)
         {
-            auto* box = new juce::AlertWindow ("Save Preset", "A name for these key commands and macros:", juce::MessageBoxIconType::NoIcon);
+            auto* box = new FamilyAlertWindow ("Save Preset", "A name for these key commands and macros:", juce::MessageBoxIconType::NoIcon);
             box->addTextEditor ("name", "My keys");
             box->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
             box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
@@ -589,10 +590,11 @@ void KeyCommandsPage::showPresetMenu()
 //==============================================================================
 void KeyCommandsPage::paint (juce::Graphics& g)
 {
-    g.fillAll (pageColour);
+    // (0.71.0, the owner asked) In the Hub's look, as PLUGINS: the pearl header, the red-edged panel.
+    HubFrame::paint (g, getLocalBounds(), satin, "KEYS  -  KEY COMMANDS AND MACROS (A STREAM DECK'S HOTKEYS PRESS THEM)");
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (14.0f));
-    g.drawText ("KEY COMMANDS", commandArea.getX(), 10, 300, 22, juce::Justification::centredLeft, false);
+    g.drawText ("KEY COMMANDS", commandArea.getX(), HubFrame::contentOf (getLocalBounds()).getY(), 300, 22, juce::Justification::centredLeft, false);
     g.drawText (selected.startsWith (KeyCommands::Map::macroPrefix) ? "THE MACRO'S KEYS" : "ITS KEYS", keysTitle, juce::Justification::centredLeft, false);
     g.drawText ("MACROS", macrosTitle, juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::accent);
@@ -607,7 +609,8 @@ void KeyCommandsPage::paint (juce::Graphics& g)
 
 void KeyCommandsPage::resized()
 {
-    auto area = getLocalBounds().reduced (14);
+    satin = HubFrame::makeSatin (getWidth());
+    auto area = HubFrame::contentOf (getLocalBounds());
     area.removeFromTop (28);
     auto foot = area.removeFromBottom (30);
     area.removeFromBottom (8);
@@ -676,7 +679,7 @@ void KeyCommandsPage::resized()
 
 //==============================================================================
 KeyCommandsWindow::KeyCommandsWindow (KeyCommands::Map& map)
-    : DocumentWindow ("Paragon PR7-S: key commands and macros", pageColour, DocumentWindow::closeButton)
+    : DocumentWindow ("Paragon PR7-S: key commands and macros", HubFrame::onyx, DocumentWindow::closeButton)
 {
     setUsingNativeTitleBar (true);
     page = new KeyCommandsPage (map);

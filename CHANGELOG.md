@@ -2,6 +2,368 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.73.2
+
+- **OUT holds the loudest peak since you last clicked it** (you asked), as a mixer's max readout does. It only ever goes up; **click OUT** to start again (it reads -INF until the next sound). It turns red over 0 dB, so a clip anywhere in a pass stays on screen until you click it away. The screen now reads **DB MAX**, and its tooltip says so.
+  - It's still read 30 times a second (no peak is missed), and it's redrawn only when a louder peak comes, so it's the lightest it's been on the CPU.
+
+## 0.73.1
+
+- **OUT is one number now** (you asked): the two L/R bars are gone; the screen shows the output's peak in dB, large, as CPU shows its percent (red over 0 dB, -INF in silence).
+- **It flickers less** (you: it moved more than it needs to). Before, the number was worked out 30 times a second and showed the peak held for 1.5 seconds, then fell with the meter, changing every 30th of a second as it fell. Now the output's peaks are still read 30 times a second (so no peak is missed), but the number is worked out only about **four times a second**, and it's the **loudest peak of the last second** (left and right together). So a hit holds for about a second, and the number steps rather than slides.
+  - It also redraws its screen at most four times a second (before: up to 30), so it's lighter on the CPU than 0.73.0's.
+
+## 0.73.0
+
+- **TAP, M and S on the header's top row** (you asked), right of the quantize box:
+  - **TAP** taps the tempo as before; right-click it for the tap modes.
+  - **M** and **S** turn every mute and every solo off at once (they were in the track list's header). Each lights while something is muted or soloed.
+- **The output meter is an LCD now** (you asked), the same size as the CPU screen and right beside it, so there are two screens either side of POSITION and TIME. It reads **OUT**, the held peak in dB (red over 0 dB), and a bar each for L and R.
+  - **CPU:** it costs less than the old meter, not more. It's only redrawn when the level it shows changes (the old meters were two components redrawn on their own), and it reads the same peaks the old meter did.
+- **Tracks are numbered** (you asked): 1 at the top, counting down. The number belongs to the place, not the track: move the third track to the seventh place and it reads 7. Folder tracks and FX/group channels count as places too. Folded-away and hidden tracks aren't numbered (they aren't in the list).
+- **Double-click a track's number and type another to move it there** (you asked). Type 5 on track 97: it goes to place 5, and the tracks from 5 to 96 move down one. Moving down works the same way. A folder takes its tracks with it. Undo puts it back.
+- **The track's colour in the track list** (you asked, as the other DAW's): in the colour menu (the colour key in the track list's header, or the track menu's Colour), **COLOUR IN THE TRACK LIST** and a bar from **1 % to 100 %**. It's per track: only the tracks the menu was opened for (the selected ones) change. Off, the row stays as it was: dark, with the colour down the left edge. Saved with the song.
+
+## 0.72.0
+
+- **AUTO-SAVE** (you asked), on **HUB SETTINGS** under HUMANIZE:
+  - **How often:** OFF, or every 1, 2, 5, 10, 15 or 30 minutes (every 5 to begin with).
+  - **How many kept:** the newest 3, 5, 10, 20 or 50 copies of each song (10 to begin with); older ones are deleted.
+  - **SHOW BACKUPS** opens the folder the current song's backups go into.
+  - **Backups are copies:** your song's own file changes only when you SAVE. They go into a **Backups** folder beside the song (Documents/Paragon PR7-S/Backups for a song not saved yet), named with the song and the date and time ("Riff backup 2026-11-07 14-05-00").
+  - A copy is made only while the song has unsaved changes, never while recording or rendering, and not again when nothing changed since the last one.
+  - **To go back to one:** OPEN it (from the Hub's CHOOSE FILE... or the studio's OPEN), then SAVE AS. A backup remembers where the song's recordings are, so it opens with them; SAVE AS copies them beside the new song.
+- **An X on every automation lane** (you couldn't find how to delete one): in the track list, beside the lane's M. It removes that lane and its points only; Undo puts it back. (It was already in the lane's menu, as Remove Parameter: click the lane's name, or right-click the lane.)
+
+## 0.71.1
+
+- **Clicking the info line's VALUE (or START) opens it for typing now** (you: 50 clicks, nothing). The info line refreshes ten times a second; each time it rebuilt its fields but, when their text hadn't changed, didn't give them their places on screen again, so a click found no field there (a right-click doesn't look for one: that's why HIDE worked). They're placed on every refresh now. A test now does exactly what you did (the line refreshes, then a click on VALUE) and failed before the fix.
+- **Bebas Neue everywhere** (you: unless lowercase is needed). The rule is now built in: any text without a font of its own is Bebas, so JUCE's own boxes are too (SETTINGS' DEVICE / SAMPLE RATE..., the EQ window's value boxes and its scale, text boxes, tooltips), along with every page that still used Inter (the EQ window, the chord pads' key list and suggestions, IDEAS' cards, the MediaBay and Media rack, the composer, the progressions, LEARN A DRUMMER).
+  - **Kept in Inter because small letters matter:** chord names and Roman numerals (Cm7 is minor, CM7 major; ii and II are different chords), and a secondary dominant's reason, which names its numeral. The LED screens' figures stay as they were.
+  - **Keys are spelled out** in the key list and scale names ("B-FLAT MAJOR"): Bebas has no small letters, so "Bb" would read "BB", and neither font has a ♭ sign.
+  - Two suggestion reasons are now in words ("the natural minor's minor five: a softer pull than the major five"; "deceptive: the five goes to the minor six instead of home") so they read right in capitals.
+
+## 0.71.0
+
+- **The info line opens for typing with one click** (you asked: double-click VALUE to type). A click (or a double-click) on VALUE or START opens it as a clear box, white on black with an orange edge; type, Enter. This worked on the test machine with real mouse clicks, even after clicking a point first, so we couldn't see why it didn't for you on Windows. The box now also takes the keyboard back if something steals it just as it opens, which is our best guess at what happened. Tell us if it still doesn't open.
+- **Mixer faders move in half-dB steps when dragged** (you asked). Typed values (double-click the fader) take any value, and automation isn't rounded.
+- **The cycle strip's red / pink / orange gradient in place of the plain orange** (you asked) on the faders (orange at the foot, pink at the top), the pan knobs, every value bar (the EQ window's GAIN, FREQ, Q, OUTPUT; the Inspector's VOL and PAN...), the lit lights (MULTI-CORE AUDIO, the channel tick boxes) and the item under the mouse in every drop-down menu.
+- **Drop-down menus in the studio's look:** the dark panel with the question boxes' red edge, and the item under the mouse lit in the gradient. We checked every menu in PR7-S goes through this look. **The menu in your PR7-D picture is PR7-D's own** (a plug-in draws its own menus inside its window): it needs the same change in PR7-D.
+- **EQ presets in the Inspector** (you asked): EQUALIZERS has **BYPASS | PRESETS | EDIT**. PRESETS (also in the EQ window and on the section's title, right-click) now has **Starting Points**, our 20 common moves by source (lead vocal, backing vocals, scream, telephone voice, kick, snare, toms, overheads, drum bus, bass, rhythm and lead guitar, acoustic, piano, pads, master, a low cut), as well as your own saved presets. They're starting points: adjust by ear.
+- **The EQ curve shows the ordinary pointer** (you asked), not a cross-hair; the frequency, note and level readout stays at the top right.
+- **What a song opened without can be removed** (you asked). The "Some instruments, effects or recordings are missing" box now has **REMOVE THEM** and **KEEP THEM**. REMOVE THEM empties the missing effects' slots, deletes the clips whose recording is missing, and gives a track whose instrument is missing the studio's synth (its MIDI parts stay). KEEP THEM leaves the song as it was, for when they're installed. Undo puts the clips back (plug-in changes aren't undo steps anywhere in the studio).
+- **The mixer, MIDI editor and chord pads open docked at the height you showed:** the ruler, the master's row and five full tracks above them (at your vertical zoom). The heights dragged before are reset to this once; drag the line to change it again.
+- **SETTINGS and KEYS in the Hub's look** (you asked), as PLUGINS: the pearl header with the mark, and the page in the Hub's red-edged panel.
+
+## 0.70.0
+
+- **Solo works by routing** (you asked). Solo a track and you hear only that track, everything routed into it, and the channels it goes on through to the master. Solo your vocal group and you hear only the vocals routed into it: no other vocals, no instruments. Groups into groups work too: solo a bus and every group and track feeding it plays.
+  - A soloed track still feeds its own group and the FX channels it sends to.
+  - Soloing an FX channel (a reverb) keeps the tracks that send into it playing, or the reverb would have nothing to play. That's our choice; the other DAW's manual doesn't say.
+  - Tracks routed into a soloed group lose their sends to FX channels outside the group (the reverb isn't on the group's path), so a soloed group plays dry unless the group itself sends to the reverb.
+- **Top and Bottom** (the other DAW's Navigate > Top / Bottom): select the first or last track in the track list and scroll to it. They're in KEYS under NAVIGATE, with no key yet: the other DAW uses Home and End, but Home is your Go to Start, so set your own (End is free).
+- **The mixer and the track list follow each other:** click a channel in the mixer and the track list (and arrangement) scrolls to that track and highlights it. Pick a track in the track list (or with Up/Down, Top/Bottom, or a new track) and the mixer scrolls to its channel.
+- **The composer's lead lane** has **Solo Style** at the bottom of its style menu (the same setting as IDEAS' SOLO box). Choosing one switches the lane to the solo so you hear it.
+
+## 0.69.1
+
+- **The SOLO box is where you can see it** (you couldn't find it). It's now on the right of the **LEAD** column's title, on IDEAS' guitar tab. In 0.66.0 to 0.69.0 it sat in the row of tabs, and an IDEAS window narrower than 1600 (yours was about 1360) squeezed it to nothing. A test now checks it's visible, readable and uncovered at widths from 1000 to 1600.
+- The IDEAS window opens 1360 wide again.
+
+## 0.69.0
+
+- **Solo styles, round four, the last of your list** (the names are ours). Four more in SOLO: on IDEAS' guitar tab (and the composer's lead lane), sixteen in all plus BY STYLE:
+  - **GYPSY SHRED:** melody first, phrases landing on the chords' thirds, gypsy-jazz minor colour (natural minor's 2 and b6, harmonic minor's raised 7th), the higher phrases harmonised a third above, picked sweeps of each chord's arpeggio in triplets, octave bends and a whammy dip. No legato (the player calls it his weak spot).
+  - **TENSION & RELEASE:** note choice over speed. High, clean phrases, each one's last note approached from a dissonant half step above, clean picked runs held back for later.
+  - **TORTURED BENDS:** short and singable, a scene change in the song. Slow bends held, some left a quarter tone short so they rub against the chord, wide dark vibrato, a phrase harmonised a third above, one quick burst.
+  - **GRUNGE MELODY:** sparse and simple. The opening tune played again through the solo (an octave up in the second half), the way a vocal melody comes back; a chromatic passing note now and then; vibrato only on the last note; no whammy at all. One take in four (MORE IDEAS) is a noisy one, with a burst of notes thrown around the scale.
+- **The research** (`docs/solo-styles`): two of these players are well covered in their own words; the other two less so (interviews only, or writers and bandmates), and their sheets say so. As before, note counts, bend sizes and vibrato are mostly our estimates: tune by ear.
+- **What a MIDI part can't do:** the wah, feedback, noise and amp sounds these players use. The solos give the notes, bends and vibrato; the tone is yours.
+
+## 0.68.0
+
+- **Solo styles, round three** (you asked; the names are ours). Four more in SOLO: on IDEAS' guitar tab (and the composer's lead lane):
+  - **GLAM FLASH:** sustained notes and long bends held with vibrato, lyrical double stops in thirds, melodic answers, and the one fast picked run saved for the very end.
+  - **SLEAZE BLUES:** a bluesman's melody you could hum. Two-bar phrases and their answers, a bend held on most bars, room left for a singer, one whammy dip (down a semitone and back, "like a voice"), a quick run near the end and a long held note to finish.
+  - **TOP HAT MELODY:** melody first. Slow, loose bends and held notes laid back a little behind the beat, a motif played again higher, then a wilder second half of four-note runs climbing the scale. Major pentatonic over major chords.
+  - **PURPLE SCREAM:** restrained, then soaring. The blue notes (b3, b7) over major chords, a motif coming back higher each time, bends that grow (a half step, then a whole step, then a step and a half), rising flurries, one outburst outside the key at the peak, and a screaming high note to end.
+- **The research was thinner this round** (the sheets in `docs/solo-styles` say so at the top): one player's habits come mostly from a magazine feature and lesson descriptions, and another rarely spoke about guitar, so bandmates and writers fill in. These four lean more on our own estimates than the earlier eight: tune by ear.
+
+## 0.67.0
+
+- **Solo styles, round two** (you asked; the names are ours). Four more in SOLO: on IDEAS' guitar tab (and the composer's lead lane):
+  - **SCREAM & DIVE:** aggressive groove-metal lead. The blues scale with the major 3rd and 6th, slow half-step bends from below, a lick shifted up a fret every beat (outside the scale as it climbs), a harmonic screamed up a minor third with the bar, and a dive bomb to end.
+  - **THRASH FIRE:** comes in on an upbeat with a vocal-like pentatonic melody, then a picked triplet lick three beats long, repeated so it starts somewhere new in each bar. Wide vibrato, and it ends high.
+  - **PINCH SQUEAL:** a pentatonic melody first, then picked six-note runs down the boxes (each group a step lower, drifting against the beat), pinch-harmonic squeals shaken wide in the gaps (one every two bars at most), very wide vibrato on phrase ends. Major pentatonic over major chords.
+  - **PROG PRECISION:** natural minor (its 2 and b6 heard), singing in-tune bends, then picked six-note scale sequences climbing two steps at a time and seventh-chord arpeggios up and back down, building to a chromatic climb at the climax.
+- **The research** is in `docs/solo-styles` (a sheet per player, 16-21 sources each, several from the players' own magazine columns). Techniques only, never their solos. As before, note counts, bend sizes and vibrato speeds are mostly our estimates: tune by ear.
+- **Every style's fast passages now come later** in a short solo (they're placed counting back from the end), so even an 8-bar solo builds.
+- **Dives and screams** need the bend range set as for 0.66.0: Shreddage's Pitch Bend Range and the INSTRUMENTS profile's BEND RANGE the same, 12 or more.
+
+## 0.66.0
+
+- **Solo styles, round one** (you asked: solos in the manner of players you love). On IDEAS' guitar tab, **SOLO:** chooses how the whole solo (the last lead card, and BUILD SECTION > SOLO) is written:
+  - **BY STYLE:** as in 0.65.0, made from your STYLE's six leads.
+  - **SOARING BENDS:** slow and spacious. A singing motif that keeps coming back, long notes bent slowly into their pitch, restrained vibrato, climbing to big bends and one short fast run near the end.
+  - **ROCK 'N' ROLL SWAGGER:** loose, swung bluesy rock. Short call-and-response phrases, the major 6th and both thirds, 6th double stops, repeated licks midway, a tremolo-picked accent.
+  - **TAP & DIVE:** melodic phrases traded with tapped arpeggios that follow the chords, legato runs, a harmonic now and then, big bends, ending on a pinch harmonic and a whammy dive.
+  - **BLUES HAMMER:** major and minor mixed, flat thirds curled sharp, a six-note lick repeated so it lands somewhere new in each bar, big over-bends near the climax.
+- **How a solo is built** (the same for every style, as players build one): a short motif is stated, answered (the same rhythm, a new ending), stated higher, then developed. The style's signature passage comes in the later phrases. Notes get busier and higher through the solo, chord tones sit on the downbeats and phrase ends, and the last note is the last chord's root, held.
+- **The names are ours.** The research behind each style is in the repository (`docs/solo-styles`): a technique sheet per player, from guitar lessons and interviews. No player's solo is copied; only habits (scales, phrasing, bends, vibrato, techniques). Note counts and some details are our estimates, marked as such in the sheets: tune by ear.
+- **Bends by size:** a bend can now be a half step, a whole step, or 1.5 to 2.5 steps. It's written in proportion to your INSTRUMENTS profile's BEND RANGE. A bend bigger than the range is written higher and bent only as far as the range reaches, so it still lands on its note.
+- **Dive bombs:** the whammy dive is pitch bend down an octave, so it needs a big range. Set **Shreddage's Pitch Bend Range and the profile's BEND RANGE to the same number, 12 or more**. With the default 2, the dive only drops a whole step.
+- **Shreddage's technique keys:** Tapping (A-1), Tremolo (F#-1) and Harmonics (G#-1) are pressed before the notes that use them, then Sustain (C-1) again. Staccato (D-1), Choke (G-1) and FX (A#-1) are listed too. **To get them, add Jupiter or Rogue again from + NEW in INSTRUMENTS** (a profile you already have keeps its old keys). Each key's USE menu has the new uses: Tapping, Tremolo, Harmonics.
+- **Vibrato depth** now varies by style (some styles hold back on high notes).
+- **The composer:** the LEAD lane's Solo style follows SOLO.
+- The IDEAS window is wider (1600) to fit the new box.
+
+## 0.65.0
+
+- **A SOLO section for guitars** (you asked). SOLO is now a song section next to INTRO, VERSE, CHORUS, BRIDGE, BREAKDOWN and ENDING.
+- **BUILD SECTION > SOLO** writes:
+  - **Lead Guitar: a whole solo.** It's made from your STYLE's own six leads, ordered from the calmest to the busiest, a lead every two bars. So it starts melodic and climbs to the style's fastest playing at the end:
+    - GROOVE and NU-METAL: octave melodies, sirens and pinch pings.
+    - THRASH: tremolo and chromatic runs.
+    - SHRED: sweeps, legato and tapping.
+    - ROCK: pentatonic and blues.
+  - **Bends and vibrato:** each two-bar phrase's longest note is bent up a whole step into its note, other long notes get vibrato, and the last note rings to the end with vibrato. On a track these play as pitch bend and the mod wheel, as in 0.64.0.
+  - **Guitar: your riff, thinned out under the solo**, so the lead has room.
+  - **Drums: a SOLO beat**, driven on the ride. A learned drummer plays the section you marked SOLO on LEARN A DRUMMER, else their chorus.
+  - **Bass:** locked to the kick, as in the other sections.
+- **NEXT suggests a solo** after the second chorus or after a bridge, and after the solo, the chorus again, a breakdown or the ending. One solo per song.
+- **The solo is also the seventh lead card** on IDEAS' guitar tab: HEAR it, or USE IT anywhere.
+- **The composer:** the LEAD lane's style menu has **Solo**, and the DRUMS lane has the **SOLO** beat.
+- **LEARN A DRUMMER** can now mark a section of a song as SOLO.
+
+## 0.64.0
+
+- **A new guitar STYLE: GROOVE** (you asked, after Machine Head's "Ten Ton Hammer" and Kittie's "Brackish"). Palm-muted chugs on the low string, answered by a high, dissonant two-note **stab** two octaves up. Six riffs, all ours, written in the spirit of those songs rather than copied:
+  - **Tritone stab:** a ringing tritone with vibrato, then four chugs (the Ten Ton Hammer idea). On your 7-string in A: A2 + D#3 over the low A.
+  - **Bent stab:** a chug, then a whole step (the flat 7th and the octave) bent up a whole step, the phrase ending on a ringing unison note (the Brackish idea). In A: G2 + A2 bent up to A2 + B2, then B2.
+  - **Backbeat stabs** (on beats two and four, with the snare), **Off-beat stabs**, **Stab gallop**, **Half-time stabs** (the breakdown).
+  - The stab sits over the riff's low note (the key's note on the lowest string), so it follows the key you're in.
+- **Bends and vibrato are written into the part** when a riff goes onto a track (USE IT, BUILD SECTION, the composer, dragging a lane out as MIDI):
+  - **A bend** is pitch bend: straight at the attack, up a whole step over the first half of the note (an 8th at most), back to none as the note ends, before the next chug. It uses the BEND RANGE in the guitar's INSTRUMENTS profile (2 for Jupiter and Rogue, Shreddage's default: so the bend goes all the way up), else 2.
+  - **Vibrato** is the mod wheel (CC 1), Shreddage's vibrato controller: none for the first third of the note, rising after, back to 0 as it ends.
+  - A pitch bend bends the whole channel. The riffs never start a chug while a stab is bent, so only the stab bends.
+- **RIFF SETTINGS and the composer's ROLL leave the stabs alone:** PALM MUTES never mute them, BUSYNESS never drops them, and LOW STRING never folds them down.
+- **The rest of GROOVE** borrows from NU-METAL: its leads (octave melodies, sirens, pinch pings), drum beats, beat generator rules and fills. FROM MY LIBRARY looks for grooves named groove, Pantera, sludge, nu-metal or bounce.
+- **Not yet:**
+  - IDEAS' HEAR previews play the notes without the bend or vibrato. The part on a track, and the composer's HEAR, play them.
+  - A unison is written as one note: two of the same note on one channel would cut each other off.
+
+## 0.63.1
+
+- **Nothing faster or shorter than a 16th on your libraries** (you asked: for Shreddage and Djinn Bass the shortest a note should be is a 16th, and 16th chugs should be rare). Each INSTRUMENTS profile now has two settings:
+  - **SHORTEST NOTE** (any, 1/32, 1/16, 1/8; 1/16 for Djinn, Jupiter and Rogue):
+    - A hit starting less than that after the one before is left out. A hit is a note, or notes played together.
+    - Every note is at least that long, unless the next hit or the end of the part comes first.
+    - A few milliseconds early still counts (HUMANIZE moves notes slightly), so a humanized 16th isn't dropped.
+  - **16TH CHUGS IN A ROW** (any, 1-4; 2 for Jupiter and Rogue): palm-muted hits (velocity 1-59) a 16th apart may come at most that many in a row. Later ones in the run are left out until a longer gap or an open note breaks it.
+    - So a gallop (an 8th then two 16ths) and a pair of 16ths still play.
+    - Machine-gun runs of 16th chugs get thinned to pairs.
+    - The 32nd- and 16th-triplet bursts in the metal styles' fills are mostly left out on these guitars.
+- **Where:** the composer's BASS, GUITAR and LEAD lanes, and IDEAS' bass and guitar tabs, whenever the lane's INSTRUMENTS profile is used. The bass gets the shortest note only; it has no chug limit.
+- **Your saved profiles:** Djinn Bass 2 from 0.62.0 picks up 1/16 by itself. Guitars added before this version pick up 1/16 and two chugs.
+- **Also in this release (0.63.0):** power chords played by Shreddage's power chord keyswitch (C#-1), single notes back on Sustain (C-1).
+
+## 0.63.0
+
+- **Power chords played by Shreddage's power chord articulation** (you asked: its recorded power chords sound better than three notes on Sustain). For a guitar with an INSTRUMENTS profile (your Jupiter and Rogue):
+  - **Each power chord is written as its root alone**, after your Power Chords key (C#-1), so Shreddage plays its own power chord sample. A power chord here means notes starting together: a root and its fifth, with octaves of either.
+  - **Single notes and other chords go back to Sustain (C-1).** The keys stay on until changed, so the studio adds a key only where the riff switches between power chords and single notes, plus one before the first note so the guitar starts in the right mode.
+  - **A key sits on the same beat as its note.** The manual says Shreddage takes keys first, so nothing is nudged.
+- **Velocities carry over:** the root keeps the loudest velocity of the chord it replaces. You told me C#-1 has the same velocity layers as C-1, so palm-muted chugs stay palm-muted power chords (1-59) and open ones stay open (60-119).
+- **Left as written:** octave chords, the tritone dyads, the higher chord shapes and strummed shapes. They aren't power chords (a strum's notes don't start together), so they stay on Sustain as full notes.
+- **Where:** the composer's GUITAR and LEAD lanes, and IDEAS' guitar tab (rhythm and lead), whenever the INSTRUMENTS profile used for that lane has keys marked **Power chords** and **Single notes**. The keys are written onto the track and into dragged-out MIDI files.
+- **INSTRUMENTS page:** a keyswitch can now be marked "Power chords (a root alone)" or "Single notes".
+  - Jupiter and Rogue from + NEW come marked.
+  - **If you added them before this version**, add them again (or mark C#-1 and C-1 yourself), or no keys will be written.
+- **Worth knowing:**
+  - Shreddage's power chords are root, fifth and octave, so they'll sound a little bigger than the root-and-fifth chords written before.
+  - IDEAS' HEAR plays its preview through the selected track's instrument. On a track that isn't Shreddage, the two keys (C-1, C#-1) sound as very low notes.
+
+## 0.62.2
+
+- **Shreddage Jupiter and Rogue set up from the Jupiter manual and your map.** The presets on + NEW now have:
+  - **Your articulations:** Sustain on C-1 (palm mute 1-59, sustain 60-119, rakes 120-126, pinch harmonics 127) and Power Chords on **C#-1**. 0.62.1 had Power Chords on C-2: that was a mix-up.
+  - **The manual's force-string keys** (its Behavioral Keyswitches, page 34): C-2 forces the low A string, and each key up forces the next string, to F#-2 for the high E. G-2 turns forcing off.
+  - **Pitch bend range 2**, the manual's default.
+- **ONLY STRING on the guitar lane now drives Shreddage's string:** the string's force key is held from the part's start. Then **G-2 is pressed just after the part's last note starts**. Shreddage's force keys latch (stay on until turned off), so without G-2 the guitar would stay stuck on that string for everything played after the part.
+- **A keyswitch can now be marked "Turns forcing off"** on the INSTRUMENTS page, for any library that has such a key.
+- **Already in your profile list?** If you added Jupiter or Rogue with 0.62.1, delete it and add it again from + NEW to get these keys.
+- **Not checked:** Rogue's map is assumed to be the same as Jupiter's (the same Shreddage 3.5 engine); the manual sent was Jupiter's. If Rogue differs, change its keys on the INSTRUMENTS page, or tell me.
+
+## 0.62.1
+
+- **Shreddage Jupiter and Rogue in INSTRUMENTS** (as you gave them). Each is one click on **+ NEW** in the Hub's INSTRUMENTS tab, set up as follows:
+  - **Tuning:** 7-string drop A, A0 E1 A1 D2 G2 B2 E3.
+  - **Frets:** 24, so either guitar is written from A0 to E5.
+  - **Velocity layers:** 1-59 palm mute, 60-119 sustain, 120-126 rakes, 127 pinch harmonics. They start from your VELOCITIES values, so any by-ear changes you made there come along.
+  - **Keyswitches:** Sustain on C-1 and Power Chord Sustain on C-2. Both sit below the lowest string, so the composer never writes a note on them.
+- **Which guitar plays which lane:** mark one for the composer's GUITAR lane and the other (or the same one) for the LEAD lane. Each lane then uses that guitar's range and velocity layers.
+- **Not yet:**
+  - Neither guitar has force-string keys, so ONLY STRING on the guitar lane moves the notes onto that string without a keyswitch.
+  - The two articulation keyswitches are kept, but nothing switches them yet. A part written for Sustain plays as written, as long as Shreddage is on Sustain.
+
+## 0.62.0
+
+- **INSTRUMENTS in the Hub** (you asked: rules for each instrument you use). A third tab beside PROJECTS and HUB SETTINGS, with a profile per sample library. Each profile holds:
+  - **name** and kind (bass or guitar);
+  - **strings**, low to high, typed as notes;
+  - **frets**;
+  - **lowest and highest note** it may play (empty: from the lowest string to the top string's last fret);
+  - **bend range**;
+  - **keyswitches**: each a name, its note, and whether it's an articulation or forces a string;
+  - for guitars, **velocity layers**;
+  - which composer lane it's **used for** (BASS, GUITAR or LEAD lane; each lane uses one).
+- **Djinn Bass 2 is built in**, set from your screenshot: your tuning A0 D1 A1 D2 G2, 24 frets, bend range 4, and its keyswitch map. The articulations Djinn leaves out (shown grey there) aren't listed. Its five Force String keys force strings 1 to 5. It's used for the composer's BASS lane from the start, so the bass is written only from A0 to G4 and never lands on a keyswitch key.
+- **Note names:** Djinn names notes as the studio does (key 0 is C-2, middle C is C3), so your A0 is the same note in both: MIDI note 33.
+- **The composer's string menu** (the BASS and GUITAR lanes; it was LOW STRING) has three choices:
+  - **Any string.**
+  - **Low string:** as much as it can.
+  - **String 1 to 5 only:** the whole part on that string, one note at a time; chords keep their lowest note. With an INSTRUMENTS profile, that string's keyswitch is held from the part's start to its end. It's written onto the track and into dragged-out MIDI files, so Djinn plays the string you chose whether its keyswitches latch or only last while held. The lane says which keyswitch it holds.
+- **The bass tunings now show their notes** (e.g. "4-string standard (E0 A0 D1 G1)"), so it's clear they sit an octave under where Djinn puts its strings. When an INSTRUMENTS profile is used for a lane, its tuning and range win.
+- **Not yet:**
+  - The other keyswitches (slap, pop, palm mute...) are kept but no rule uses them yet.
+  - IDEAS doesn't use the profiles yet; only the composer does.
+  - Next: profiles for your Shreddage Jupiter and Rogue, as you asked.
+- **Worth checking by ear:** play an A0 into Djinn from the MIDI editor. It should sound your open low string. If it sounds an octave off, change the strings on the INSTRUMENTS page.
+
+## 0.61.0
+
+- **The composer's ROLL makes a new take and keeps the approach** (you asked). On BASS with Root and fifth chosen, ROLL now plays another Root and fifth part over the same chords: another rhythm, other notes between the roots, other lead-ins into the next chord. The approach only changes when you choose it in the menu beside ROLL. GENERATE does the same for every unlocked lane, and both keep the PROGRESSION too (choose another in its menu).
+  - **Why the bass and the chords were rebuilt:** IDEAS' bass and piano parts had only one to six written versions of each approach, so rolling kept landing on the same riffs. In the composer they're now made from rules per approach (where its notes may fall in a bar, which notes it may use, how it gets to the next chord), and each roll draws a new part within them. Parts repeat like a player's would: a bar, the same bar or a small change of it, the bar again, and a fill leading into the next phrase. In our tests ten rolls of every approach gave at least seven different parts, and every chord's first bass note stays on its root.
+  - **Guitar, lead, melody and drums:** melody, rock leads and drums already drew new parts per roll. Rhythm guitar now also changes a few hits per take (a root moved to its octave or fifth, or in the metal styles to the flat second or minor third, and an accent turned palm muted or open), at the same places in every bar so the riff still repeats. The other styles' leads start somewhere else in their line, higher or lower, and swap their two rhythms.
+- **BUSY on every lane:** from sparse to busy, kept when you roll. 50% is the approach as it usually goes. On the bass and chords it sets how many notes each bar draws. On the guitar it's RIFF SETTINGS' busyness, on the melody its density and on the drums the generator's density (the kicks).
+- **LOW STRING on the bass and guitar lanes:** played on the lowest string as much as it can be (from the open string to the 12th fret). On the bass the roots go there and fifths go under the root where they fit. Only the Octaves approach's high notes leave the low string, because they are the approach. The key's menu also holds the tuning. **The bass now has a tuning of its own:** 4-string standard, 5-string standard, 4-string drop D, 4-string drop C, 5-string drop A or 6-string. It sets the bass's range (the lowest string to two octaves over it), so nothing is written below your bass's lowest note.
+- **Not yet (0.62.0, as planned):** the Hub's INSTRUMENTS profiles (each instrument's range, tuning, velocity layers and keyswitches), and a riff played on one chosen string through keyswitches. Those wait for Djinn Bass 2's keyswitch list.
+
+## 0.60.0
+
+- **Routing with no limits but loops, as the other DAW's** (you asked: any track to any track, never itself). Any track that makes sound (audio, instrument, group channel, FX channel, a folder with its group channel) can now have its output go to the master, **any group channel, or any FX channel**. Groups into FX channels, FX channels into groups, and FX channels into other FX channels all work.
+  - **FX channels have an OUT and sends of their own now** (in the mixer, the Inspector and their right-click menu), so an FX channel can send to another FX channel too.
+  - **The one rule left:** nothing may lead back into itself, by its output or by a send. The menus leave out (or grey, marked "would loop back") a destination that would make a loop. A song with a loop in it opens with the loop broken.
+  - **Order:** the mixer works out the order the channels are mixed in whenever routing changes, so every channel is mixed after everything feeding it, whatever order the tracks sit in, on one core or several.
+  - **What the other DAW doesn't do either:** an audio or instrument track isn't an output destination there (its output goes to busses, groups or FX channels; a group can feed an audio track's *input* for recording a submix). That's left out here too; say if you want it.
+- **NEW froze the studio (your log): a switch to test the likely cause.** The log shows the screen's thread waiting inside the graphics card's driver (NVIDIA's DirectX driver) just after the new song was set up: not in the studio's own steps, which had all finished. Drawing the whole studio at your three screens' width right after NEW takes 30 ms here and nothing in it is drawn oversized, so it couldn't be reproduced without your graphics card. New in SETTINGS: **DRAW WITHOUT THE GRAPHICS CARD**, which draws every studio window with the processor instead. If NEW stops freezing with it on, the driver is to blame (updating the NVIDIA driver may then fix it with the switch off again); if it still freezes, the log will say where now.
+
+## 0.59.0
+
+- **Groups into groups** (you asked: "John verse vox" and "John chorus vox" both into a "John vox" group, and that one into the master). A group channel now has an OUTPUT of its own: in the mixer (OUT on its strip), in the Inspector, and in its right-click menu. Choose the master or any other group, as deep as you like (verse vox into John vox into All vox).
+  - **Loops are refused:** a group can't go to itself, or to a group that leads back to it. Those choices aren't offered, and a song saved with a loop opens with it broken (that group back to the master).
+  - **Mixing order:** groups are mixed in the right order whatever order they sit in: a group is mixed only once everything feeding it is in, on one core or several.
+  - **Removing a group** sends what went into it back to the master, as before.
+  - FX channels still go to the master only.
+- **A composer lane dragged out as a MIDI file:** press on a lane's notes and drag (a click still plays and stops it). Drop it on a track in the arrangement, on the desktop, into another program, or onto a plug-in's window. The file is the lane's notes from bar 1, with the song's tempo there. The drums are on channel 10 (General MIDI's drum channel); the other lanes on their track's channel. The file is named "Composer bass - Walking.mid" and so on.
+
+## 0.58.0
+
+- **THE COMPOSER, a new page with all the layers stacked** (you asked: one page, a lock and a re-roll on each layer, one GENERATE button). Open it from IDEAS (COMPOSER, top right), from the chord pads (COMPOSER, second row), or give the "Composer" command a key in KEYS.
+  - **Six lanes over the same bars:** CHORDS, MELODY, BASS, GUITAR, LEAD and DRUMS, each drawn as a little piano roll under the chord names.
+  - **Each lane has ON** (heard and used), **LOCK** (kept through GENERATE), **ROLL** (another style and other choices for that lane alone), its **style** (a menu of its six: the same ideas as IDEAS' tabs) and its **TRACK**.
+  - **GENERATE** rolls every unlocked lane at once. ROLL on CHORDS picks another progression from the library too.
+  - **The chords** come from our progression library, chosen by **KEY, GENRE and MOOD**, repeated to **LENGTH** (4, 8 or 16 bars); pick one by name with PROGRESSION. Or use **CHORD TRACK** to write the layers under the chord track's chords.
+  - **STYLE** (rock, thrash, nu-metal, metalcore, shred) drives the guitar, lead and drums. The bass's seventh style plays the roots on every kick of the drums lane, so the two lock together. IDEAS' settings (riff, drum, melody, humanize, velocities, tuning, drummer) all apply.
+  - **A locked lane** keeps its style and choices. With the chords locked as well, its notes stay exactly the same; when the chords change, it plays the same idea over the new chords (notes that no longer fit can't be kept).
+  - **HEAR** plays every lane that's on, together and looped, **through your song's own tracks**, so the bass sounds on your bass instrument and the drums on your drums. Those tracks play alone, from the playhead's bar, and **the song itself isn't changed** while you listen. Rolling, locking or switching lanes while it plays carries on from where it is. STOP, Space, or any change to the song ends it, and the playhead goes back to where it was.
+  - **Which track each lane uses:** the one you choose in its TRACK menu; else a track named for it (Bass, Drums, Guitar, Lead Guitar, Piano, Melody); else, while you listen, the selected track. The drums are only heard on a track of their own (on a piano they'd be noise), and the TRACK menu can make that track for you.
+  - **USE ALL** writes the lanes that are on onto their tracks at the playhead's bar (one undo step), and the library's chords onto the chord track (+ CHORD TRACK). USE ALL's menu writes one lane alone.
+  - **Our own page and rules:** the layers are the ideas IDEAS already makes. Not yet: dragging a lane out as a MIDI file, and sounds of its own (it plays your tracks' instruments).
+
+## 0.57.6
+
+- **The Audio Alignment panel works the way you asked:** two lanes, REFERENCE on top and TARGET under it, each with its own **+** and CLEAR at its left. Select an audio event in the arrangement and click **+** beside REFERENCE; select the events to line up and click **+** beside TARGET; then ALIGN AUDIO. An empty lane says what to do. Each lane's header names what it holds (with several targets, a box under TARGET picks the one shown). The SELECTION row across the top is gone: the lanes' keys do its job.
+
+## 0.57.5
+
+**The spike report names each plug-in's own time** (you asked, after your 0.57.3 log showed the Bass track, Kontakt 8 with PR7-B, as the slow one).
+- Each slow track in a SPIKE line now lists every plug-in on it with its own time in that block and its usual time, slowest first. For example: `"Bass" 42.9 ms (usually 16.1 ms) [Kontakt 8 30.1 ms (usually 11.0 ms), Paragon PR7-B 12.4 ms (usually 4.9 ms)]` (made-up numbers to show the shape).
+- So we'll see whether it's Kontakt or PR7-B that jumps. If PR7-B is a big part of it, that's our own plug-in, and I can speed it up in PR7-B.
+- Timing each plug-in costs a few hundred nanoseconds per plug-in per block. Nothing else in the sound changes.
+
+**Please** play the song until it clicks a few times (with your usual settings, so we compare like with like), close the studio, and send me the newest log from `%APPDATA%\Paragon PR7-S\Logs`.
+
+## 0.57.4
+
+**Question boxes now have the progress box's clean corners** (you saw squared-off ends at the corners of CREATE EMPTY and the other boxes).
+- **What was wrong:** the box is drawn as a rounded rectangle, but Windows held it in a solid square window, so the square's corners showed outside the rounded edge. On top of that, the toolkit drew its own square drop shadow round the window.
+- **The fix:** every question and naming box (CREATE EMPTY, Rename, Save as Template, tempo, markers, signatures, presets, drum names, MediaBay attributes, key-command macros, and the standard yes/no boxes) is now a see-through window with no square shadow, as the progress box has always been.
+- **Not checked here:** this cloud machine doesn't draw see-through windows the way Windows does. The test confirms every box is now made see-through with the square shadow off, but please tell me how they look on your screen.
+
+**About your clicks** (your log from 0.57.3, thank you): every click was a block that took 42–56 ms when it lasts 46 ms. There were no silent blocks from the studio and no late calls from your interface. In every spike:
+- the Bass track (Kontakt 8 with PR7-B) took 40–55 ms, though it usually takes 13–20 ms;
+- every other track was 2 to 3 times slower too, at the same moment.
+
+When everything slows down together like that, the processor usually had less to give at that moment. Things to try: Windows' **High performance** power plan, and **Multiprocessing** off in Kontakt's Engine options. The first spikes also came within a second of opening a plug-in window. Next, the spike report will give each plug-in's own time, so we can see whether PR7-B or Kontakt is the heavy one.
+
+## 0.57.3
+
+**Finding your clicks** (you hear clicks, and PEAK and OVER jump, with the CPU meter at about 29% and a buffer of 2048). At 2048 samples each audio block lasts about 43 ms. When OVER lights, one block took longer than all 43 ms, while the average shows 29%. Something occasionally holds the audio up for tens of milliseconds, and the meter can't say what.
+
+- **The spike report.** The session log now gets a line for every audio block that took 90% or more of its time. It also gets a line when a block played silence because the engine was busy taking a change in (that one never showed on the meter at all), and when the audio driver called later than it should. Each line gives:
+  - how long the block took against its length;
+  - the tracks' and the master's time, and how many helper cores were working;
+  - the slowest tracks, with their plug-ins and how long each usually takes. For example: `SPIKE: a block took 17.1 ms of its 10.7 ms (160%); ... slowest: "Rhythm Left (D)" [Kontakt] 14.2 ms (usually 1.10 ms)`.
+  - It tells apart a plug-in that suddenly takes far longer than usual, a block of silence from the studio itself, and a driver or Windows calling late (the computer, not the studio).
+  - At most one line a second; the spikes in between are counted. Nothing is allocated or waited for on the audio thread to do this.
+- **The POSITION and TIME screens are cheaper to redraw** (they redraw 30 times a second while playing). Each redraw blurred the screens' shadows again and asked the system's fonts for the width of the figures. Both are now made once and kept. **Measured: 5.8 ms to 3.0 ms per redraw.** I compared the transport before and after in all three finishes, at 100% and 150% display scaling: every pixel is the same.
+
+**Please play the song until it clicks a few times, close the studio, and send me the newest log** from `%APPDATA%\Paragon PR7-S\Logs` (paste `%APPDATA%` into Explorer's address bar). The SPIKE lines say where the time went.
+
+## 0.57.2
+
+**Speed, round two: audio tracks and VariAudio.** All 424 tests pass, and the sound is unchanged.
+
+- **Audio tracks keep their clips when only the mix changes.** Every change in the song, even a fader nudge, made the studio work out every audio track's clips again: which takes are heard, the auto crossfades, where each clip lands in samples. MIDI tracks stopped doing this in 0.34.2. Now an audio track remembers what its clips were made from (its clips, which lane is soloed, the auto fades, the tempo, and the sounds they play) and keeps them while all of that is the same.
+  - **Measured:** on 24 audio tracks of 120 comped clips each, a fader move went from **6.8 ms to 0.12 ms**, and a clip edit from 6.6 ms to 0.5 ms.
+  - A VariAudio or warp edit gives the clip a new sound, so its clips are made again.
+- **VariAudio edits are checked more cheaply.** On every change in the song, each edited recording's VariAudio edits were written out as text (every number of every edited note) to check whether its edited sound was still current. Now that text is written only when the edits change.
+  - **Measured:** a vocal with 60 edited notes: **0.27 ms to 0.004 ms** per change. The old cost grew with every edited note.
+- **The MediaBay's search** keeps each file's searchable text (name, folder, tags...) between keystrokes, instead of building it for every file on every key you type. It's made again when the files, their tags or their ratings change. Not timed here; it matters most on a big library.
+
+**Looked at and left as it was:** editing a chord while 8 tracks follow the chord track takes about 7 ms on a big test song. I tried two changes: answers worked out once and reused, and quicker searches through the chords. They cut the work counted by a profiler by a quarter, but not the time on the clock. Most of what's left is sorting the rebuilt notes. It's one click, and 7 ms is under a single screen frame, so I took those changes back out rather than keep extra code that didn't measurably help.
+
+**Next:**
+- the screen: the transport's screens and the meters drawn more cheaply;
+- recordings loaded in the background when a song opens;
+- VariAudio and warping rendered in the background.
+
+## 0.57.1
+
+**Speed, round one** (you asked to make the studio run more efficiently). Three reviewers went through everything added since the last speed pass (0.34.5): the audio, the screen, and the waits. I checked each finding against the code before changing anything, and all 421 tests still pass. The sound is unchanged: the audio changes give exactly the same samples.
+
+**Audio and plug-ins**
+- **Automated plug-in knobs are now set only when they move.** Before, every change in the song (even a fader nudge) made the studio send every automated knob to its plug-in again, though nothing had moved. Plug-ins such as Kontakt take a parameter event as a reason to do work, so this was extra load on every change.
+- **Comped audio tracks are much cheaper to update.** Working out the auto crossfades looked at every other clip again for every clip. The cost grew with the cube of the number of clips, and it ran on every change, fader moves included. On a track of 100 comped or sliced clips that was tens of thousands of steps per change; now it is worked out once per track.
+- **The channel EQ** works on left and right together: the same samples, quicker.
+
+**The screen** (your window spans three monitors, so every full redraw is big)
+- **While recording,** the screen used to redraw everything 30 times a second whether or not anything arrived. Now it redraws when notes come in, and otherwise five times a second (so a growing audio recording still shows).
+- **The MIDI editor, the Inspector and the chord pads** no longer redraw at all on a fader, pan or send move. The arrangement and mixer already worked this way.
+- **The arrangement's playhead** redraws only a thin strip each frame, but the grid, ruler ticks, bar numbers and markers were still worked out across the whole width every frame. Now only the strip is.
+- **The info line** no longer re-sorts the selected parts ten times a second (with Ctrl+A on a big song, that was millions of checks a second while idle).
+
+**Waits**
+- **IDEAS** makes only the tab you're looking at (and what BUILD SECTION uses). It made every tab on each change, and read your library's groove files each time.
+- **LEARN A DRUMMER** reads your folder in the background, counting the songs as it goes, so the window doesn't freeze on a big folder.
+- **MediaBay ratings and tags** are saved once you stop clicking. Every star or tag rewrote the whole database file, which is megabytes for a big sample library.
+
+**Measured here** (a test song of 32 tracks with 2,000 notes each, EQ on every channel, Follow Chord Track and automation):
+- an engine update after a fader move: 0.2 ms;
+- one audio block: 0.44 ms of 10.7 ms;
+- IDEAS after a change: 0.3 ms (making every tab, as before: 1.3 ms);
+- reading 40 drum songs: 38 ms.
+
+These are on this cloud machine with stand-in instruments, not your plug-ins.
+
+**Next (0.57.2):**
+- audio tracks keeping their clips when only the mix changed;
+- VariAudio and warping rendered in the background;
+- recordings loaded in the background when a song opens;
+- the MediaBay search;
+- the transport's screens and the meters drawn more cheaply.
+
 ## 0.57.0
 
 **Build a whole section** (you chose BUILD SECTION in IDEAS, and asked that it suggest what comes next as the chord suggestions do)

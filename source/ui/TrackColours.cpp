@@ -11,8 +11,22 @@ TrackColourMenu::TrackColourMenu (pr7s::Studio& s, std::vector<int> ids) : studi
     defaultKey.setTooltip ("Their automatic colour back: red, pink and orange in turn, by their place in the list");
     defaultKey.onClick = [this] { studio.setTracksColour (trackIds, std::nullopt); repaint(); };
     addAndMakeVisible (defaultKey);
+    // (0.73.0) The colour in the track list: per track, 1-100 %.
+    const auto* first = [this]() -> const Track* { for (const auto id : trackIds) if (const auto* t = studio.getProject().findTrack (id)) return t; return nullptr; }();
+    listKey.setToggleState (first != nullptr && first->listColourOn, juce::dontSendNotification);
+    listKey.setWantsKeyboardFocus (false);
+    listKey.setTooltip ("Shows the track's colour over its row in the track list (only the tracks chosen), as much as the bar says");
+    listKey.onClick = [this] { setListColour (listKey.getToggleState(), (int) listAmount.getValue()); };
+    addAndMakeVisible (listKey);
+    listAmount.setRange (1.0, 100.0, 1.0);
+    listAmount.setValue (first != nullptr ? first->listColourAmount : Track::defaultListColourAmount, juce::dontSendNotification);
+    listAmount.setTextValueSuffix (" %");
+    listAmount.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 60, 22);
+    listAmount.setTooltip ("How much of the track's colour the row shows: 1 % a faint tint, 100 % the whole colour");
+    listAmount.onValueChange = [this] { setListColour (true, (int) listAmount.getValue()); };
+    addAndMakeVisible (listAmount);
     const auto width = margin * 2 + FamilyColours::paletteHues * (cell + gap) - gap;
-    const auto height = titleHeight + familyHeight + gap + FamilyColours::paletteShades * (cell + gap) + footerHeight;
+    const auto height = titleHeight + familyHeight + gap + FamilyColours::paletteShades * (cell + gap) + footerHeight + listHeight;
     setSize (width, height);
 }
 
@@ -45,7 +59,19 @@ void TrackColourMenu::resized()
             swatches.push_back ({ juce::Rectangle<float> (area.getX() + (float) (hue * (cell + gap)), area.getY() + (float) (shade * (cell + gap)),
                                                           (float) cell, (float) cell),
                                   FamilyColours::paletteColour (hue, shade) });
-    defaultKey.setBounds (getLocalBounds().removeFromBottom (footerHeight).reduced (margin, 8));
+    auto bottom = getLocalBounds();
+    auto list = bottom.removeFromBottom (listHeight).reduced (margin, 6);
+    defaultKey.setBounds (bottom.removeFromBottom (footerHeight).reduced (margin, 8));
+    listKey.setBounds (list.removeFromTop (28));
+    list.removeFromTop (4);
+    listAmount.setBounds (list.removeFromTop (24));
+}
+
+void TrackColourMenu::setListColour (bool on, int amount)
+{
+    listKey.setToggleState (on, juce::dontSendNotification);
+    listAmount.setValue (amount, juce::dontSendNotification);
+    studio.setTracksListColour (trackIds, on, amount);
 }
 
 void TrackColourMenu::paint (juce::Graphics& g)
@@ -74,7 +100,8 @@ void TrackColourMenu::paint (juce::Graphics& g)
         }
     }
     g.setColour (ParagonColours::panelEdge);
-    g.fillRect (margin, getHeight() - footerHeight, getWidth() - 2 * margin, 1);
+    g.fillRect (margin, getHeight() - footerHeight - listHeight, getWidth() - 2 * margin, 1);
+    g.fillRect (margin, getHeight() - listHeight, getWidth() - 2 * margin, 1);
 }
 
 std::optional<juce::Colour> TrackColourMenu::colourAt (juce::Point<float> p) const

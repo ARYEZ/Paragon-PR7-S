@@ -4,7 +4,7 @@
 
 namespace
 {
-    juce::Font interFont (float height, bool bold = false) { return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain)); }
+    juce::Font interFont (float height, bool bold = false) { return juce::Font (ParagonLookAndFeel::textFont (height, bold ? juce::Font::bold : juce::Font::plain)); }   // (0.71.1: Bebas, the owner's rule; the old name kept)
     const juce::Colour page { 0xff0c0a0d }, rowDark { 0xff151217 }, rowLit { 0xff1e181f }, cell { 0xff171318 };
 
     // A star (the favourite mark), filled or outlined.
@@ -93,8 +93,8 @@ public:
             drawStar (g, r.removeFromLeft (starWidth).withSizeKeepingCentre (18, 18).toFloat(), favorites.contains (p.name));
             auto name = r.removeFromLeft (nameWidth).reduced (4, 0);
             g.setColour (ParagonColours::text);
-            g.setFont (ChordUi::chordFont (15.0f));
-            g.drawText (p.name, name.removeFromTop (name.getHeight() / 2), juce::Justification::bottomLeft, true);
+            g.setFont (interFont (15.0f));
+            g.drawText (p.name.toUpperCase(), name.removeFromTop (name.getHeight() / 2), juce::Justification::bottomLeft, true);
             g.setColour (ParagonColours::textDim);
             g.setFont (interFont (11.5f));
             const auto mode = p.minor == owner.key.minor ? juce::String() : "  (" + juce::String (p.minor ? "minor, on the relative minor" : "major, on the relative major") + ")";
@@ -203,8 +203,8 @@ public:
                 g.setColour (ParagonColours::accent.withAlpha (0.85f));
                 g.fillRoundedRectangle (image.getBounds().toFloat(), 5.0f);
                 g.setColour (juce::Colour (0xff120d10));
-                g.setFont (ChordUi::chordFont (14.0f));
-                g.drawText (pr7s::progressionLibrary()[(size_t) index].name, image.getBounds(), juce::Justification::centred, true);
+                g.setFont (interFont (14.0f));
+                g.drawText (pr7s::progressionLibrary()[(size_t) index].name.toUpperCase(), image.getBounds(), juce::Justification::centred, true);
             }
             container->startDragging ("progression:" + pr7s::progressionToText (owner.stepsOf (index)), this,
                                       juce::ScaledImage (image), true);

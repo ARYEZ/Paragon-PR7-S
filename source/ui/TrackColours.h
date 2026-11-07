@@ -22,11 +22,15 @@ public:
     std::optional<juce::Colour> colourAt (juce::Point<float>) const;   // (tests)
     juce::Rectangle<float> swatchFor (juce::Colour) const;             // (tests: where a colour is)
     juce::TextButton defaultKey { "SET TRACK COLOUR TO DEFAULT" };
+    // (0.73.0, the owner asked) The colour over the tracks' rows in the track list: on, and how much.
+    juce::ToggleButton listKey { "COLOUR IN THE TRACK LIST" };
+    juce::Slider listAmount { juce::Slider::LinearBar, juce::Slider::TextBoxLeft };
+    void setListColour (bool on, int amount);   // (tests: as the toggle and the bar)
 
     // Opened beside `around` for the tracks given (the selected ones, else the one clicked).
     static void show (juce::Component& around, pr7s::Studio&, std::vector<int> trackIds);
 
-    static constexpr int cell = 30, gap = 4, margin = 12, titleHeight = 30, familyHeight = 40, footerHeight = 44;
+    static constexpr int cell = 30, gap = 4, margin = 12, titleHeight = 30, familyHeight = 40, footerHeight = 44, listHeight = 70;
 
 private:
     pr7s::Studio& studio;

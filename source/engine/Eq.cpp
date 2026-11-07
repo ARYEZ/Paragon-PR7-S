@@ -362,8 +362,44 @@ namespace pr7s
         }
     }
 
+    void EqProcessor::runStereo (const std::array<Biquad, EqDesign::maxStages>& stages, int count,
+                                 std::array<std::array<std::array<double, 2>, EqDesign::maxStages>, 2>& state,
+                                 float* left, float* right, int numSamples)
+    {
+        for (int k = 0; k < count; ++k)
+        {
+            const auto& f = stages[(size_t) k];
+            auto l1 = state[0][(size_t) k][0], l2 = state[0][(size_t) k][1];
+            auto r1 = state[1][(size_t) k][0], r2 = state[1][(size_t) k][1];
+            for (int i = 0; i < numSamples; ++i)
+            {
+                const double xl = left[i], xr = right[i];
+                const auto yl = f.b0 * xl + l1;
+                const auto yr = f.b0 * xr + r1;
+                l1 = f.b1 * xl - f.a1 * yl + l2;
+                r1 = f.b1 * xr - f.a1 * yr + r2;
+                l2 = f.b2 * xl - f.a2 * yl;
+                r2 = f.b2 * xr - f.a2 * yr;
+                left[i] = (float) yl;
+                right[i] = (float) yr;
+            }
+            state[0][(size_t) k][0] = std::abs (l1) < 1.0e-25 ? 0.0 : l1;
+            state[0][(size_t) k][1] = std::abs (l2) < 1.0e-25 ? 0.0 : l2;
+            state[1][(size_t) k][0] = std::abs (r1) < 1.0e-25 ? 0.0 : r1;
+            state[1][(size_t) k][1] = std::abs (r2) < 1.0e-25 ? 0.0 : r2;
+        }
+    }
+
     void EqProcessor::processPre (float* const* channels, int numChannels, int numSamples)
     {
+        if (numChannels >= 2 && channels[0] != channels[1])
+        {
+            if (design.preGain != 1.0f)
+                for (int c = 0; c < 2; ++c)
+                    juce::FloatVectorOperations::multiply (channels[c], design.preGain, numSamples);
+            runStereo (design.pre, design.numPre, preState, channels[0], channels[1], numSamples);
+            return;
+        }
         for (int c = 0; c < juce::jmin (2, numChannels); ++c)
         {
             if (design.preGain != 1.0f)
@@ -376,6 +412,14 @@ namespace pr7s
     {
         if (design.numEq == 0 && design.eqGain == 1.0f)
             return;
+        if (numChannels >= 2 && channels[0] != channels[1])
+        {
+            runStereo (design.eq, design.numEq, eqState, channels[0], channels[1], numSamples);
+            if (design.eqGain != 1.0f)
+                for (int c = 0; c < 2; ++c)
+                    juce::FloatVectorOperations::multiply (channels[c], design.eqGain, numSamples);
+            return;
+        }
         for (int c = 0; c < juce::jmin (2, numChannels); ++c)
         {
             run (design.eq, design.numEq, eqState[(size_t) c], channels[c], numSamples);
@@ -442,5 +486,44 @@ namespace pr7s
             case EqBand::Type::notch:      return "Notch";
         }
         return {};
+    }
+
+    const std::vector<EqStartingPoint>& eqStartingPoints()
+    {
+        using T = EqBand::Type;
+        // A band: on, its type, gain, frequency, Q.
+        const auto band = [] (T type, double gain, double hz, double q) { return EqBand { true, type, gain, hz, q }; };
+        const auto off = [] (int i) { auto b = ChannelEq::defaultBands()[(size_t) i]; b.on = false; return b; };
+        const auto make = [&] (double lowCut, std::array<EqBand, 4> bands, double highCut = 0.0)
+        {
+            ChannelEq eq;
+            eq.bands = bands;
+            if (lowCut > 0.0) { eq.lowCutOn = true; eq.lowCut = lowCut; eq.lowCutSlope = 24; }
+            if (highCut > 0.0) { eq.highCutOn = true; eq.highCut = highCut; eq.highCutSlope = 12; }
+            return eq.limited();
+        };
+        static const std::vector<EqStartingPoint> points {
+            { "VOCALS", "Lead Vocal: Presence", make (90.0, { off (0), band (T::parametric, -2.5, 300.0, 1.2), band (T::parametric, 2.5, 3500.0, 1.0), band (T::highShelf, 2.5, 10000.0, 0.71) }) },
+            { "VOCALS", "Lead Vocal: Warm", make (80.0, { band (T::lowShelf, 1.5, 200.0, 0.71), band (T::parametric, -2.0, 450.0, 1.4), band (T::parametric, 1.5, 2500.0, 1.0), band (T::highShelf, 1.5, 9000.0, 0.71) }) },
+            { "VOCALS", "Backing Vocals: Tucked In", make (150.0, { off (0), band (T::parametric, -3.0, 400.0, 1.0), band (T::parametric, -2.0, 3000.0, 1.2), band (T::highShelf, 2.0, 11000.0, 0.71) }) },
+            { "VOCALS", "Scream: Tame the Harshness", make (100.0, { off (0), band (T::parametric, -2.0, 500.0, 1.0), band (T::parametric, -3.0, 2800.0, 3.0), band (T::highShelf, 1.5, 9000.0, 0.71) }) },
+            { "VOCALS", "Telephone Voice", make (400.0, { off (0), band (T::parametric, 6.0, 1500.0, 1.0), off (2), off (3) }, 3500.0) },
+            { "DRUMS", "Kick: Punch and Click", make (35.0, { band (T::parametric, 3.0, 60.0, 1.4), band (T::parametric, -4.0, 350.0, 1.5), band (T::parametric, 3.0, 4000.0, 1.4), off (3) }) },
+            { "DRUMS", "Snare: Body and Crack", make (80.0, { band (T::parametric, 2.0, 200.0, 1.4), band (T::parametric, -2.5, 800.0, 2.0), band (T::parametric, 2.0, 5000.0, 1.0), band (T::highShelf, 1.5, 10000.0, 0.71) }) },
+            { "DRUMS", "Toms: Less Ring", make (60.0, { band (T::parametric, 2.0, 110.0, 1.4), band (T::parametric, -4.0, 500.0, 2.0), band (T::parametric, 2.0, 3500.0, 1.4), off (3) }) },
+            { "DRUMS", "Overheads: Cymbals Only", make (250.0, { off (0), band (T::parametric, -2.0, 1000.0, 1.0), off (2), band (T::highShelf, 2.0, 10000.0, 0.71) }) },
+            { "DRUMS", "Drum Bus: Weight and Snap", make (30.0, { band (T::lowShelf, 2.0, 80.0, 0.71), band (T::parametric, -2.0, 400.0, 1.0), band (T::parametric, 1.5, 5000.0, 1.0), off (3) }) },
+            { "BASS", "Bass: Tight Low End", make (35.0, { band (T::parametric, 2.0, 80.0, 1.2), band (T::parametric, -3.0, 250.0, 1.4), band (T::parametric, 2.5, 900.0, 1.4), off (3) }, 6000.0) },
+            { "BASS", "Bass: Growl", make (40.0, { band (T::lowShelf, 1.5, 100.0, 0.71), band (T::parametric, -2.0, 300.0, 1.4), band (T::parametric, 3.5, 1500.0, 1.2), band (T::parametric, 2.0, 3500.0, 1.4) }) },
+            { "GUITARS", "Rhythm Guitar: Clear the Mud", make (80.0, { off (0), band (T::parametric, -3.0, 250.0, 1.4), band (T::parametric, -1.5, 3500.0, 2.0), off (3) }, 12000.0) },
+            { "GUITARS", "Rhythm Guitar: Scooped Metal", make (90.0, { band (T::parametric, 1.5, 120.0, 1.0), band (T::parametric, -4.0, 700.0, 1.0), band (T::parametric, 2.0, 3000.0, 1.2), off (3) }, 11000.0) },
+            { "GUITARS", "Lead Guitar: Cut Through", make (100.0, { off (0), band (T::parametric, -2.0, 300.0, 1.2), band (T::parametric, 3.0, 1800.0, 1.2), off (3) }, 10000.0) },
+            { "GUITARS", "Acoustic Guitar: Sparkle", make (80.0, { off (0), band (T::parametric, -3.0, 200.0, 1.4), band (T::parametric, 1.5, 4000.0, 1.0), band (T::highShelf, 2.5, 10000.0, 0.71) }) },
+            { "KEYS AND SYNTHS", "Piano: Clear", make (60.0, { off (0), band (T::parametric, -2.0, 300.0, 1.2), band (T::parametric, 1.5, 3000.0, 1.0), band (T::highShelf, 1.5, 9000.0, 0.71) }) },
+            { "KEYS AND SYNTHS", "Pad: Out of the Way", make (200.0, { off (0), band (T::parametric, -2.5, 600.0, 1.0), band (T::parametric, -2.5, 3000.0, 1.0), off (3) }, 10000.0) },
+            { "MIX", "Master: Gentle Smile", make (25.0, { band (T::lowShelf, 1.0, 80.0, 0.71), band (T::parametric, -1.0, 400.0, 0.7), off (2), band (T::highShelf, 1.0, 12000.0, 0.71) }) },
+            { "MIX", "Clean Up Lows (Low Cut 100 Hz)", make (100.0, { off (0), off (1), off (2), off (3) }) },
+        };
+        return points;
     }
 }

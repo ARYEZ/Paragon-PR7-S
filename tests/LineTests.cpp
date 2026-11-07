@@ -762,9 +762,9 @@ TEST_CASE ("The IDEAS window: ideas heard, used, more of them (0.18.0); piano, g
     CHECK (page.getNumCardsShown() == 12);
     CHECK (page.getIdeas (LineIdea::Part::chords).size() == 6);
     page.setTab (LinesPage::Tab::guitar);
-    CHECK (page.getNumCardsShown() == 12);
+    CHECK (page.getNumCardsShown() == 13);   // (0.65.0: the solo the lead's seventh)
     CHECK (page.getIdeas (LineIdea::Part::rhythm).size() == 6);
-    CHECK (page.getIdeas (LineIdea::Part::lead).size() == 6);
+    CHECK (page.getIdeas (LineIdea::Part::lead).size() == 7);
     page.setTab (LinesPage::Tab::bass);
     CHECK (page.getNumCardsShown() == 8);   // (0.54.0: six, and the two locked to the kick and the riff)
     // The tuning: the guitar ideas dealt again for it, nothing under its lowest string.
@@ -822,4 +822,32 @@ TEST_CASE ("The IDEAS window: ideas heard, used, more of them (0.18.0); piano, g
     const auto parts = studio.getProject().findTrack (selected)->parts.size();
     CHECK (page.use (LineIdea::Part::rhythm, 0, selected) == selected);
     CHECK (studio.getProject().findTrack (selected)->parts.size() == parts + 1);
+}
+
+TEST_CASE ("0.69.1: the SOLO box is on the LEAD column's title, readable and uncovered at any IDEAS width", "[lines][ui][solo]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    studio.addChordEvent (0.0, { 9, T::minor, X::none, -1 });
+    studio.addChordEvent (4.0, { 5, T::major, X::none, -1 });
+    view.openLineIdeas();
+    REQUIRE (view.getLinesWindow() != nullptr);
+    auto& page = view.getLinesWindow()->getPage();
+    page.setTab (LinesPage::Tab::guitar);
+    for (const auto width : { 1600, 1364, 1200, 1000 })
+    {
+        INFO ("width " << width);
+        page.setSize (width, 760);
+        auto& solo = page.getSoloBox();
+        CHECK (solo.isVisible());
+        CHECK (solo.getWidth() >= 200);
+        CHECK (page.getLocalBounds().contains (solo.getBounds()));
+        for (auto* child : page.getChildren())
+            if (child != &solo && child->isVisible() && dynamic_cast<juce::Viewport*> (child) == nullptr)
+                CHECK_FALSE (child->getBounds().intersects (solo.getBounds()));
+    }
+    page.setTab (LinesPage::Tab::bass);
+    CHECK_FALSE (page.getSoloBox().isVisible());
 }

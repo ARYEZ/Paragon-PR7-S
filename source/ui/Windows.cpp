@@ -1,4 +1,5 @@
 #include "Windows.h"
+#include "ui/HubFrame.h"
 #include "ui/PluginsPage.h"
 #include "engine/SessionLog.h"
 
@@ -37,7 +38,7 @@ namespace Windows
                 viewport.setViewedComponent (&devices, false);
                 viewport.setScrollBarsShown (true, false);
                 addAndMakeVisible (viewport);
-                bufferText.setFont (juce::FontOptions (13.0f));
+                bufferText.setFont (ParagonLookAndFeel::textFont (13.0f));
                 bufferText.setColour (juce::Label::textColourId, ParagonColours::text);
                 bufferText.setJustificationType (juce::Justification::topLeft);
                 addAndMakeVisible (bufferText);
@@ -46,7 +47,7 @@ namespace Windows
                 reload.onClick = [this] { studio.reloadAudioDevice(); refreshBuffer(); };
                 addChildComponent (reload);
                 finishLabel.setText ("FINISH", juce::dontSendNotification);
-                finishLabel.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+                finishLabel.setFont (ParagonLookAndFeel::textFont (12.0f, juce::Font::bold));
                 finishLabel.setColour (juce::Label::textColourId, ParagonColours::textDim);
                 addAndMakeVisible (finishLabel);
                 finish.addItemList (Finish::names, 1);
@@ -59,7 +60,7 @@ namespace Windows
                               "they're switched on). On Windows, pick your interface's driver above: ASIO for the lowest delay "
                               "and the buffer sizes its driver offers; else Windows Audio (Exclusive Mode).",
                               juce::dontSendNotification);
-                note.setFont (juce::FontOptions (12.0f));
+                note.setFont (ParagonLookAndFeel::textFont (12.0f));
                 note.setColour (juce::Label::textColourId, ParagonColours::textDim);
                 note.setJustificationType (juce::Justification::topLeft);
                 addAndMakeVisible (note);
@@ -73,17 +74,36 @@ namespace Windows
                 multiCore.onClick = [this] { studio.setMultiCoreAudio (multiCore.getToggleState()); refreshMultiCore(); };
                 refreshMultiCore();
                 addAndMakeVisible (multiCore);
+                // (0.60.0) The windows drawn with the processor (a graphics driver that hangs).
+                softwareDrawing.setColour (juce::ToggleButton::textColourId, ParagonColours::text);
+                softwareDrawing.setColour (juce::ToggleButton::tickColourId, ParagonColours::accent);
+                softwareDrawing.setToggleState (studio.getSoftwareDrawing(), juce::dontSendNotification);
+                softwareDrawing.setButtonText ("DRAW WITHOUT THE GRAPHICS CARD");
+                softwareDrawing.setTooltip ("The studio's windows drawn by the processor instead of the graphics card. Try it if the "
+                                            "screen freezes (a graphics driver that hangs); a little more work for the processor on big windows.");
+                softwareDrawing.onClick = [this]
+                {
+                    studio.setSoftwareDrawing (softwareDrawing.getToggleState());
+                    Windows::applyDrawing (softwareDrawing.getToggleState());
+                };
+                addAndMakeVisible (softwareDrawing);
                 studio.getDeviceManager().addChangeListener (this);
                 refreshBuffer();
-                setSize (600, 676);
+                // (0.71.0, the owner asked) In the Hub's look, as PLUGINS: the pearl header, the panel; Bebas.
+                for (auto* label : { &bufferText, &note })
+                    label->setFont (ParagonLookAndFeel::textFont (label == &note ? 13.0f : 14.0f, juce::Font::plain));
+                finishLabel.setFont (ParagonLookAndFeel::textFont (13.0f));
+                devices.setColour (juce::ListBox::backgroundColourId, HubFrame::panel);
+                setSize (600 + HubFrame::extraWidth - 24, 712 + HubFrame::extraHeight - 24);
             }
 
             ~SettingsContent() override { studio.getDeviceManager().removeChangeListener (this); }
 
             void resized() override
             {
-                auto area = getLocalBounds().reduced (12);
-                auto bottom = area.removeFromBottom (226);
+                satin = HubFrame::makeSatin (getWidth());
+                auto area = HubFrame::contentOf (getLocalBounds());
+                auto bottom = area.removeFromBottom (262);
                 auto bufferRow = bottom.removeFromTop (88);
                 reload.setBounds (bufferRow.removeFromRight (130).removeFromTop (28));
                 bufferRow.removeFromRight (8);
@@ -96,6 +116,8 @@ namespace Windows
                 span.setBounds (finishRow.removeFromLeft (180));
                 bottom.removeFromTop (8);
                 multiCore.setBounds (bottom.removeFromTop (28));
+                bottom.removeFromTop (8);
+                softwareDrawing.setBounds (bottom.removeFromTop (28));
                 note.setBounds (bottom.withTrimmedTop (8));
                 viewport.setBounds (area.withTrimmedBottom (8));
                 // The selector sets its own height; its width is the viewport's.
@@ -104,9 +126,10 @@ namespace Windows
 
             void paint (juce::Graphics& g) override
             {
-                g.fillAll (windowColour);
+                HubFrame::paint (g, getLocalBounds(), satin, "SETTINGS  -  AUDIO INTERFACE, BUFFER, FINISH, SCREENS");
+                const auto content = HubFrame::contentOf (getLocalBounds());
                 g.setColour (ParagonColours::textDim.withAlpha (0.3f));
-                g.drawHorizontalLine (bufferText.getY() - 6, 12.0f, (float) getWidth() - 12.0f);
+                g.drawHorizontalLine (bufferText.getY() - 6, (float) content.getX(), (float) content.getRight());
             }
 
             void refreshSpan()
@@ -151,9 +174,10 @@ namespace Windows
             juce::TextButton reload;
             juce::ComboBox finish;
             juce::TextButton span;
-            juce::ToggleButton multiCore;
+            juce::ToggleButton multiCore, softwareDrawing;
             std::function<void()> toggleSpan;
             std::function<bool()> isSpanning;
+            juce::Image satin;
         };
     }
 
@@ -692,6 +716,29 @@ namespace Windows
         startTimer (300);
     }
 
+    int applyDrawing (bool software)
+    {
+        auto switched = 0;
+        for (int i = 0; i < juce::ComponentPeer::getNumPeers(); ++i)
+            if (auto* peer = juce::ComponentPeer::getPeer (i))
+            {
+                const auto engines = peer->getAvailableRenderingEngines();
+                if (engines.size() < 2)
+                    continue;
+                auto wanted = engines.indexOf ("Software Renderer");
+                if (! software)
+                    for (int e = 0; e < engines.size(); ++e)
+                        if (e != engines.indexOf ("Software Renderer"))
+                            wanted = e;
+                if (wanted >= 0 && peer->getCurrentRenderingEngine() != wanted)
+                {
+                    peer->setCurrentRenderingEngine (wanted);
+                    ++switched;
+                }
+            }
+        return switched;
+    }
+
     juce::Rectangle<int> rightmostScreenArea()
     {
         const auto& displays = juce::Desktop::getInstance().getDisplays().displays;
@@ -810,7 +857,7 @@ namespace Windows
     }
 
     Settings::Settings (pr7s::Studio& studio, std::function<void()> toggleSpan, std::function<bool()> isSpanning)
-        : DocumentWindow ("Paragon PR7-S: Settings", windowColour, DocumentWindow::closeButton)
+        : DocumentWindow ("Paragon PR7-S: Settings", HubFrame::onyx, DocumentWindow::closeButton)
     {
         setUsingNativeTitleBar (true);
         setContentOwned (new SettingsContent (studio, std::move (toggleSpan), std::move (isSpanning)), true);

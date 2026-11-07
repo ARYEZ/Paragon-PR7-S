@@ -228,7 +228,7 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     render.onClick = [this] { if (onRender) onRender (trackId); };
     // EQUALIZERS (0.43.0): the curve (edited right there), BYPASS, and EDIT EQ for the whole EQ.
     content.addAndMakeVisible (eqCurve);
-    for (auto* k : { &eqBypass, &eqEdit })
+    for (auto* k : { &eqBypass, &eqPresets, &eqEdit })
     {
         k->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         k->setWantsKeyboardFocus (false);
@@ -246,6 +246,9 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     };
     eqEdit.setTooltip ("The whole EQ: the four bands, the low and high cuts, gain and phase, presets");
     eqEdit.onClick = [this] { if (onOpenEq) onOpenEq (trackId); };
+    // (0.71.0, the owner asked) The EQ's presets right here: our starting points, yours, save, reset.
+    eqPresets.setTooltip ("EQ presets: starting points for vocals, drums, bass, guitars and the mix; your own saved presets; save this one");
+    eqPresets.onClick = [this] { EqEditor::showPresetMenu (studio, trackId, &eqPresets); };
     preset.onClick = [this]
     {
         juce::PopupMenu menu;
@@ -597,6 +600,11 @@ void Inspector::refreshVisibility()
 
 void Inspector::changeListenerCallback (juce::ChangeBroadcaster*)
 {
+    // (0.57.1) Only the mix moved: the timer follows the fader, pan and sends (followMix); laying out
+    // its sixty controls again on every step of a fader drag isn't needed.
+    if (studio.getChangeVersion() == seenChange)
+        return;
+    seenChange = studio.getChangeVersion();
     refreshVisibility();
     if (studio.isMasterSelected())   // the master's row (0.9.12)
     {
@@ -744,7 +752,7 @@ void Inspector::refresh()
     audioInput.setSelectedId (t->stereoInput ? 1000 + t->input : 1 + t->input, juce::dontSendNotification);
     const auto* to = studio.getProject().findTrack (t->output);
     output.setButtonText (to != nullptr ? to->name : juce::String ("MASTER"));
-    output.setEnabled (! t->isChannel());
+    output.setEnabled (studio.getProject().hasOutput (*t));   // (0.59.0: group channels too)
 
     refreshInserts();
     for (auto& send : sendSlots)
@@ -926,7 +934,7 @@ void Inspector::layout()
         auto& header = *headers[(size_t) i];
         // The master (0.9.12): its basics (R W, volume), inserts and fader.
         const auto applies = master ? section == Section::basics || section == Section::inserts || section == Section::fader || section == Section::eq
-                                    : t != nullptr && (section != Section::sends || ! t->isFx())
+                                    : t != nullptr && (section != Section::sends || studio.getProject().hasOutput (*t))   // (0.60.0: FX channels send too)
                                           && (section != Section::chords || t->kind == pr7s::Track::Kind::instrument)   // (0.36.0: MIDI only)
                                           && (section == Section::basics || ! t->isFolder() || t->folderGroup);   // (0.50.0: a folder: its basics)
         if (! applies && section != Section::basics)
@@ -1063,7 +1071,10 @@ void Inspector::layout()
             {
                 place (eqCurve, row (juce::jlimit (80, 160, (w - 2 * margin) * 9 / 20)));
                 auto line = row (rowHeight);
-                place (eqBypass, line.removeFromLeft ((line.getWidth() - 3) / 2));
+                const auto third = (line.getWidth() - 6) / 3;
+                place (eqBypass, line.removeFromLeft (third));
+                line.removeFromLeft (3);
+                place (eqPresets, line.removeFromLeft (third));
                 line.removeFromLeft (3);
                 place (eqEdit, line);
                 break;

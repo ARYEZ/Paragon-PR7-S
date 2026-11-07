@@ -74,6 +74,27 @@ public:
         name.onTextChange = [this] { owner.studio.renameTrack (trackId, name.getText()); };
         name.setInterceptsMouseClicks (false, false);
         addAndMakeVisible (name);
+        // (0.73.0, the owner asked) The slot's number: 1 at the top. It belongs to the place, not the
+        // track (a track moved takes its new place's number). Double-click it and type a number: the
+        // track moves to that slot and the others make room.
+        number.setFont (ParagonLookAndFeel::titleFont (18.0f));
+        number.setJustificationType (juce::Justification::centred);
+        number.setColour (juce::Label::textColourId, ParagonColours::textDim);
+        number.setEditable (false, true, false);
+        number.setTooltip ("The track's place in the list: double-click and type a number to move it there");
+        number.setInterceptsMouseClicks (false, false);
+        number.onTextChange = [this]
+        {
+            const auto to = number.getText().trim().getIntValue();
+            number.setText (juce::String (slot), juce::dontSendNotification);
+            if (to < 1 || to == slot)
+                return;
+            // (Later: moving the track makes the rows again, this one too.)
+            juce::Component::SafePointer<TrackList> list (&owner);
+            const auto id = trackId;
+            juce::MessageManager::callAsync ([list, id, to] { if (list != nullptr) list->moveTrackToSlot (id, to); });
+        };
+        addAndMakeVisible (number);
 
         for (auto* key : { &mute, &solo, &arm })
             key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
@@ -127,6 +148,16 @@ public:
         return t.isFolder() && ! t.folderGroup ? owner.studio.isFolderSoloed (trackId) : t.solo;
     }
     int indent() const { return 14 * owner.studio.getProject().folderDepth (trackId); }   // (0.50.0) in folders: indented
+    static constexpr int numberWidth = 30;   // (0.73.0) the slot's number, left of everything indented
+
+    void setSlot (int newSlot)
+    {
+        if (slot == newSlot)
+            return;
+        slot = newSlot;
+        if (! number.isBeingEdited())
+            number.setText (juce::String (slot), juce::dontSendNotification);
+    }
 
     void refresh()
     {
@@ -203,18 +234,24 @@ public:
         g.fillRect (bounds);
         g.setColour (juce::Colour (0xff050405));
         g.fillRect (bounds.withY (bounds.getBottom() - 1.0f).withHeight (1.0f));
+        // (0.73.0, the owner asked) The track's colour over its row, as much as chosen for it.
+        if (t->listColourOn)
+        {
+            g.setColour ((t->disabled ? juce::Colour (0xff4a454c) : t->colour).withAlpha ((float) juce::jlimit (1, 100, t->listColourAmount) / 100.0f));
+            g.fillRect (bounds.withTrimmedLeft (6.0f).withTrimmedBottom (1.0f));
+        }
         g.setColour (t->disabled ? juce::Colour (0xff4a454c) : t->colour);   // disabled: its colour greyed (as the manual has it)
         g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
         // (0.50.0) In folders: a faint line for each folder round it; a folder: its colour's tab.
         for (int level = 1; level * 14 <= indent(); ++level)
         {
             g.setColour (ParagonColours::textDim.withAlpha (0.25f));
-            g.fillRect (juce::Rectangle<float> (6.0f + (float) level * 14.0f - 4.0f, 0.0f, 1.0f, bounds.getHeight()));
+            g.fillRect (juce::Rectangle<float> ((float) numberWidth + 6.0f + (float) level * 14.0f - 4.0f, 0.0f, 1.0f, bounds.getHeight()));
         }
         if (t->isFolder())
         {
             g.setColour (t->colour.withAlpha (0.12f));
-            g.fillRect (bounds.withTrimmedLeft (6.0f + (float) indent()));
+            g.fillRect (bounds.withTrimmedLeft (6.0f + (float) (numberWidth + indent())));
         }
         if (selected)
         {
@@ -264,7 +301,8 @@ public:
         const auto compact = getHeight() < 66;
         instrument.setVisible (false);
         levelArea = {};
-        auto area = getLocalBounds().withTrimmedLeft (12 + indent()).reduced (6, compact ? juce::jmax (2, (getHeight() - 24) / 2) : 7);
+        number.setBounds (6, 0, numberWidth, compact ? getHeight() : juce::jmin (getHeight(), 40));
+        auto area = getLocalBounds().withTrimmedLeft (12 + numberWidth + indent()).reduced (6, compact ? juce::jmax (2, (getHeight() - 24) / 2) : 7);
         const auto* t = track();
         if (t != nullptr && t->isFolder())
         {
@@ -285,7 +323,7 @@ public:
             monitor.setBounds ({}), lanes.setBounds ({});
             name.setBounds (area);
             arrow.setVisible (t->folderGroup);
-            arrow.setBounds (indent(), getHeight() - 18, 16, 16);
+            arrow.setBounds (numberWidth + indent(), getHeight() - 18, 16, 16);
             return;
         }
         arrow.setVisible (true);
@@ -307,7 +345,7 @@ public:
         monitor.setVisible (false);
         lanes.setVisible (false);
         name.setBounds (area);
-        arrow.setBounds (indent(), getHeight() - 18, 16, 16);
+        arrow.setBounds (numberWidth + indent(), getHeight() - 18, 16, 16);
         // (Show/Hide Automation: the arrow at the lower left corner, as the manual has it.)
     }
 
@@ -352,14 +390,17 @@ public:
 
     void mouseDoubleClick (const juce::MouseEvent& event) override
     {
-        if (name.getBounds().contains (event.getPosition()))
+        if (number.getBounds().contains (event.getPosition()))
+            number.showEditor();
+        else if (name.getBounds().contains (event.getPosition()))
             name.showEditor();
     }
 
     TrackList& owner;
     const int trackId;
     bool dragged = false, plainClickOnSelected = false;
-    juce::Label name;
+    juce::Label name, number;
+    int slot = 0;
     juce::TextButton mute { "M" }, solo { "S" }, arm { "REC" }, monitor { "MON" }, instrument, read { "R" }, write { "W" };
     juce::TextButton lanes { "LANES" };   // Show Lanes (0.29.0)
     ValueSlider volume;   // (double-click: type a value, 0.9.9)
@@ -451,6 +492,19 @@ public:
         append.setTooltip ("Append Automation Track: a lane for the next control");
         append.onClick = [this] { owner.studio.appendAutomationLane (busId, laneIndex); };
         addAndMakeVisible (append);
+        // (0.72.0, the owner: removing one lane was only in its menu) X: Remove Parameter, this lane only.
+        remove.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        remove.setTooltip ("Remove this automation lane (its points too; Undo puts it back). The others stay");
+        remove.onClick = [this]
+        {
+            // (Later: the rows are made again as the lane goes, this one with them.)
+            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<TrackList> (&owner), bus = busId, index = laneIndex]
+            {
+                if (safe != nullptr)
+                    safe->studio.removeAutomationParameter (bus, index);
+            });
+        };
+        addAndMakeVisible (remove);
         refresh();
     }
 
@@ -512,6 +566,8 @@ public:
     {
         auto area = getLocalBounds().withTrimmedLeft (22).reduced (6, 6);
         auto top = area.removeFromTop (22);
+        remove.setBounds (top.removeFromRight (26));
+        top.removeFromRight (4);
         mute.setBounds (top.removeFromRight (30));
         top.removeFromRight (6);
         valueArea = top.removeFromRight (60).toFloat();
@@ -522,9 +578,17 @@ public:
 
     TrackList& owner;
     const int busId, laneIndex;
-    juce::TextButton control, mute { "M" }, append { "+" };
+    juce::TextButton control, mute { "M" }, append { "+" }, remove { "X" };
     juce::Rectangle<float> valueArea;
 };
+
+juce::Button* TrackList::getLaneRemoveKey (int busId, int laneIndex)
+{
+    for (auto& row : laneRows)
+        if (row->busId == busId && row->laneIndex == laneIndex)
+            return &row->remove;
+    return nullptr;
+}
 
 //==============================================================================
 // The master's row: its R and W, and its automation lanes' arrow.
@@ -684,7 +748,7 @@ public:
     {
         if (! tempoArea.contains (e.position))
             return;
-        auto* box = new juce::AlertWindow ("Tempo", owner.studio.getProject().followsTempoTrack()
+        auto* box = new FamilyAlertWindow ("Tempo", owner.studio.getProject().followsTempoTrack()
                                                         ? "The tempo where the cursor is (the tempo event in effect there changes)."
                                                         : "The song's tempo (the tempo track is off).",
                                            juce::MessageBoxIconType::NoIcon);
@@ -918,7 +982,7 @@ private:
         if (! juce::isPositiveAndBelow (index, (int) markers.size()))
             return;
         const auto marker = markers[(size_t) index];
-        auto* box = new juce::AlertWindow ("Cycle Marker " + pr7s::markerIdText (marker), "Its description.", juce::MessageBoxIconType::NoIcon);
+        auto* box = new FamilyAlertWindow ("Cycle Marker " + pr7s::markerIdText (marker), "Its description.", juce::MessageBoxIconType::NoIcon);
         box->addTextEditor ("name", marker.name, "DESCRIPTION");
         box->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
         box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
@@ -938,7 +1002,7 @@ private:
 
     void renameTrack()
     {
-        auto* box = new juce::AlertWindow ("Marker Track", "Its name.", juce::MessageBoxIconType::NoIcon);
+        auto* box = new FamilyAlertWindow ("Marker Track", "Its name.", juce::MessageBoxIconType::NoIcon);
         box->addTextEditor ("name", owner.studio.getMarkerTrack().name, "NAME");
         box->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
         box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
@@ -1105,7 +1169,7 @@ TrackList::TrackList (pr7s::Studio& studioToUse, Timeline& timelineToUse)
     {
         key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         key->setWantsKeyboardFocus (false);
-        addAndMakeVisible (*key);
+        addChildComponent (*key);   // (0.73.0: in the header's row now, the owner asked; kept here for the state)
     }
     muteAll.setTooltip ("Deactivate All Mute States: lit while any track is muted; click to unmute them all");
     soloAll.setTooltip ("Deactivate All Solo States: lit while any track is soloed (a soloed track silences the others); click to turn every solo off");
@@ -1245,11 +1309,28 @@ void TrackList::resized()
     // + ADD TRACK at the top, in the header (level with the ruler).
     auto header = getLocalBounds().removeFromTop (Timeline::rulerHeight).reduced (8, 6);
     addTrack.setBounds ({});
-    soloAll.setBounds (header.removeFromRight (30));
-    header.removeFromRight (3);
-    muteAll.setBounds (header.removeFromRight (30));
-    header.removeFromRight (8);
     colourKey.setBounds (header.removeFromRight (34));
+}
+
+bool TrackList::moveTrackToSlot (int trackId, int slot)
+{
+    return studio.moveTrackToSlot (trackId, slot);
+}
+
+int TrackList::getTrackNumber (int trackId) const
+{
+    for (const auto& r : rows)
+        if (r->trackId == trackId)
+            return r->slot;
+    return 0;
+}
+
+juce::Label* TrackList::getNumberLabel (int trackId)
+{
+    for (auto& r : rows)
+        if (r->trackId == trackId)
+            return &r->number;
+    return nullptr;
 }
 
 void TrackList::placeRows()
@@ -1257,14 +1338,19 @@ void TrackList::placeRows()
     // Each where the layout has it (so they line up with the arrangement's rows).
     auto laneRow = laneRows.begin();
     auto takeRow = takeRows.begin();
+    int slot = 0;   // (0.73.0) the tracks' numbers, 1 at the top, by place
     for (const auto& row : timeline.layout (studio))
     {
         const juce::Rectangle<int> bounds (0, Timeline::rulerHeight + row.top - timeline.scrollY, getWidth(), row.height);
         if (row.kind == Timeline::Row::Kind::track)
         {
+            ++slot;
             for (auto& r : rows)
                 if (r->trackId == row.busId)
+                {
+                    r->setSlot (slot);
                     r->setBounds (bounds);
+                }
         }
         else if (row.kind == Timeline::Row::Kind::lane)
         {
@@ -1531,6 +1617,17 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
     }
     if (track->isChannel())
     {
+        if (studio.getProject().hasOutput (*track))
+        {
+            // (0.59.0, 0.60.0) A group's or FX channel's output: the master, or any group or FX channel, never round in a loop.
+            juce::PopupMenu output;
+            output.addItem (30, "Master", true, track->output == 0);
+            for (const auto& other : studio.getProject().tracks)
+                if ((other.isGroup() || other.isFx()) && studio.getProject().canRouteTo (trackId, other.id))
+                    output.addItem (30000 + other.id, other.name + (other.isFx() ? "  (FX)" : ""), true, track->output == other.id);
+            menu.addSubMenu ("Output", output);
+            menu.addSeparator();
+        }
         if (track->isFx())
         {
             const auto hasEffect = ! track->inserts.empty() && ! track->inserts.front().isEmpty() && studio.getEngine().getEffect (trackId, 0) != nullptr;
@@ -1545,8 +1642,8 @@ void TrackList::showInstrumentMenu (int trackId, bool withAutomation)
         juce::PopupMenu output;
         output.addItem (30, "Master", true, track->output == 0);
         for (const auto& other : studio.getProject().tracks)
-            if (other.isGroup())
-                output.addItem (30000 + other.id, other.name, true, track->output == other.id);
+            if ((other.isGroup() || other.isFx()) && studio.getProject().canRouteTo (trackId, other.id))
+                output.addItem (30000 + other.id, other.name + (other.isFx() ? "  (FX)" : ""), true, track->output == other.id);
         menu.addSubMenu ("Output", output);
         menu.addSeparator();
     }

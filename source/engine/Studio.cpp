@@ -141,6 +141,22 @@ namespace pr7s
         startTimerHz (30);
     }
 
+    bool Studio::getSoftwareDrawing() const
+    {
+        return settings != nullptr ? settings->getBoolValue ("softwareDrawing", false) : softwareDrawing;
+    }
+
+    void Studio::setSoftwareDrawing (bool on)
+    {
+        if (settings != nullptr)
+        {
+            settings->setValue ("softwareDrawing", on);
+            settings->saveIfNeeded();
+        }
+        softwareDrawing = on;
+        SessionLog::note (on ? "Drawing: with the processor (SETTINGS)" : "Drawing: with the graphics card");
+    }
+
     bool Studio::getMultiCoreAudio() const
     {
         return settings != nullptr ? settings->getBoolValue ("multiCoreAudio", true) : multiCoreAudio;
@@ -251,6 +267,8 @@ namespace pr7s
     {
         if (mirroring)
             return;   // (a linked change: the change it came from does all this once, after)
+        if (composerAudition.has_value())
+            endComposerAudition (false);   // (0.58.0: the song changed; the engine plays it again below)
         // A frozen track's parts are locked: whatever changed them is put back.
         for (auto& track : project.tracks)
             if (track.frozen)
@@ -570,9 +588,8 @@ namespace pr7s
     void Studio::setOutput (int trackId, int groupId)
     {
         auto* track = project.findTrack (trackId);
-        const auto* group = project.findTrack (groupId);
-        if (track == nullptr || track->isChannel() || (groupId != 0 && (group == nullptr || ! group->isGroup())))
-            return;   // (FX and group channels go to the master)
+        if (track == nullptr || ! project.canRouteTo (trackId, groupId))
+            return;   // (0.60.0: any channel to any group or FX channel, never itself, never round in a loop)
         track->output = groupId;
         passOn (trackId, LinkGroup::What::routing, [&] (int other) { if (other != groupId) setOutput (other, groupId); });
         changed();
@@ -581,10 +598,20 @@ namespace pr7s
     void Studio::setSend (int trackId, int slot, const Send& send)
     {
         auto* track = project.findTrack (trackId);
-        const auto* fx = project.findTrack (send.target);
-        if (track == nullptr || track->isFx() || ! juce::isPositiveAndBelow (slot, Project::maxSends)
-            || (send.target != 0 && (fx == nullptr || ! fx->isFx())))
+        if (track == nullptr || ! juce::isPositiveAndBelow (slot, Project::maxSends))
             return;
+        if (send.target != 0)
+        {
+            // (0.60.0) Any track that makes sound, FX channels too, to any FX channel that doesn't lead back to it
+            // (the slot's own send left out of the check: it's being replaced).
+            const auto hasSlot = juce::isPositiveAndBelow (slot, (int) track->sends.size());
+            const auto was = hasSlot ? std::exchange (track->sends[(size_t) slot].target, 0) : 0;
+            const auto allowed = project.canSendTo (trackId, send.target);
+            if (hasSlot)
+                track->sends[(size_t) slot].target = was;
+            if (! allowed)
+                return;
+        }
         if ((int) track->sends.size() <= slot)
             track->sends.resize ((size_t) slot + 1);
         auto& kept = track->sends[(size_t) slot];
@@ -1431,6 +1458,60 @@ namespace pr7s
         }
         if (any)
             changed();
+    }
+
+    void Studio::setTracksListColour (const std::vector<int>& trackIds, bool on, int amount)
+    {
+        amount = juce::jlimit (1, 100, amount);
+        auto any = false;
+        for (auto& track : project.tracks)
+            if (std::find (trackIds.begin(), trackIds.end(), track.id) != trackIds.end()
+                && (track.listColourOn != on || track.listColourAmount != amount))
+            {
+                track.listColourOn = on;
+                track.listColourAmount = amount;
+                any = true;
+            }
+        if (any)
+            changed (false);
+    }
+
+    bool Studio::moveTrackToSlot (int trackId, int slot)
+    {
+        const auto shown = getShownTracks();
+        const auto from = std::find (shown.begin(), shown.end(), trackId);
+        if (from == shown.end() || shown.empty())
+            return false;
+        slot = juce::jlimit (1, (int) shown.size(), slot);
+        const auto target = shown[(size_t) slot - 1];
+        if (target == trackId)
+            return false;
+        std::vector<int> moving { trackId };
+        if (const auto* t = project.findTrack (trackId); t != nullptr && t->isFolder())
+            for (const auto member : project.folderMembers (trackId, true))
+                moving.push_back (member);
+        if (std::find (moving.begin(), moving.end(), target) != moving.end())
+            return false;   // (into its own folder)
+        const auto indexOf = [this] (int id)
+        {
+            for (int i = 0; i < (int) project.tracks.size(); ++i)
+                if (project.tracks[(size_t) i].id == id)
+                    return i;
+            return -1;
+        };
+        const auto down = std::distance (shown.begin(), from) < slot - 1;
+        auto before = indexOf (target);
+        if (down)
+        {
+            // After the track in that slot (and, a folder there, after its tracks), so it lands in the slot.
+            auto last = before;
+            if (const auto* t = project.findTrack (target); t != nullptr && t->isFolder())
+                for (const auto member : project.folderMembers (target, true))
+                    last = juce::jmax (last, indexOf (member));
+            before = last + 1;
+        }
+        moveTracks (moving, before);
+        return true;
     }
 
     void Studio::setMute (int trackId, bool on)
@@ -2715,6 +2796,8 @@ namespace pr7s
 
     juce::File Studio::getAudioFolder() const
     {
+        if (audioFolderOverride != juce::File())
+            return audioFolderOverride;   // (0.72.0: a backup's song's recordings)
         return file != juce::File() ? file.getSiblingFile (file.getFileNameWithoutExtension() + " Audio") : unsavedAudioFolder;
     }
 
@@ -5905,6 +5988,8 @@ namespace pr7s
     //==========================================================================
     void Studio::play()
     {
+        if (composerAudition.has_value())
+            stopComposerAudition();   // (0.58.0: the song's own play, from where it was)
         if (engine.isPlaying())
             return;
         playStart = engine.getPosition();
@@ -5914,6 +5999,11 @@ namespace pr7s
 
     void Studio::stop()
     {
+        if (composerAudition.has_value())
+        {
+            stopComposerAudition();   // (0.58.0: the transport's stop ends hearing the composer)
+            return;
+        }
         if (! engine.isPlaying())
         {
             // Stopped already: back to where playing started (inspired by Cubase's workflow).
@@ -5930,6 +6020,7 @@ namespace pr7s
 
     void Studio::record()
     {
+        endComposerAudition (true);   // (0.58.0: the song again, then recording)
         if (engine.isRecording())
         {
             finishRecording();   // punch out: playing carries on
@@ -7073,6 +7164,29 @@ namespace pr7s
         }
     }
 
+    juce::File Studio::writeLineForDrag (const LineIdea& idea, const std::vector<ChordSpan>& spans, int channel, const juce::String& name, juce::String& error)
+    {
+        if (spans.empty() || idea.notes.empty())
+        {
+            error = "Nothing to drag: the lane has no notes.";
+            return {};
+        }
+        Track track;
+        track.name = name;
+        track.midiChannel = juce::jlimit (1, 16, channel);
+        const auto part = partFromIdea (idea, spans.front().start, spans.back().end - spans.front().start, idea.style);
+        const auto written = newDragOutFolder (composerDragFolder()).getChildFile (juce::File::createLegalFileName (name) + ".mid");
+        const auto midi = makePartMidiFile (project, track, part);
+        juce::FileOutputStream out (written);
+        if (! out.openedOk() || ! midi.writeTo (out, 1))
+        {
+            error = "Couldn't write " + written.getFullPathName();
+            return {};
+        }
+        SessionLog::note ("Composer drag out: " + written.getFileName());
+        return written;
+    }
+
     juce::File Studio::writePartForDrag (int partId, juce::String& error)
     {
         const auto where = findPart (partId);
@@ -7695,12 +7809,80 @@ namespace pr7s
             onLearned();
     }
 
+    juce::String Studio::describeSpike (const Engine::SpikeReport& r) const
+    {
+        // (0.57.3) One line in plain words: what happened, then where the time went.
+        const auto ms = [] (double v) { return juce::String (v, v < 10.0 ? 2 : 1) + " ms"; };
+        juce::String text;
+        if (r.missedLock)
+            text << "SPIKE: one block of silence (" << ms (r.budgetMs) << "): the engine was taking a change in (the lock)";
+        else
+            text << "SPIKE: a block took " << ms (r.blockMs) << " of its " << ms (r.budgetMs) << " ("
+                 << juce::roundToInt (r.load * 100.0f) << "%)";
+        if (r.lateCall)
+            text << "; the driver called " << ms (r.sinceLastMs) << " after the last block (" << ms (r.budgetMs)
+                 << " expected: the computer was late, not the studio)";
+        if (! r.missedLock)
+        {
+            text << "; tracks " << ms (r.tracksMs) << " in all (" << r.numTracks << "), master " << ms (r.masterMs)
+                 << ", " << (r.helpers > 0 ? juce::String (r.helpers) + " helper threads" : juce::String ("one core"));
+            if (r.helpers > 0 && r.blockMs > r.tracksMs / (r.helpers + 1) + r.masterMs + 0.5 * r.budgetMs)
+                text << " (more than the tracks' work spread over the cores: a thread waited)";
+            for (int i = 0; i < r.numSlowest; ++i)
+            {
+                const auto& slow = r.slowest[(size_t) i];
+                if (slow.ms < 0.05f)
+                    break;
+                juce::String what;
+                if (const auto* t = project.findTrack (slow.trackId))
+                    what << "\"" << t->name << "\"";
+                else
+                    what << "track " << slow.trackId;
+                // (0.57.4) Each plug-in's own share, with its usual time; else the plug-ins by name.
+                juce::StringArray plugins;
+                for (int k = 0; k < slow.numPlugins; ++k)
+                {
+                    const auto& plugin = slow.plugins[(size_t) k];
+                    auto* instance = plugin.slot < 0 ? engine.getInstrument (slow.trackId) : engine.getEffect (slow.trackId, plugin.slot);
+                    const auto name = instance != nullptr ? instance->getName()
+                                                          : (plugin.slot < 0 ? juce::String ("instrument") : "insert " + juce::String (plugin.slot + 1));
+                    plugins.add (name + " " + ms (plugin.ms) + " (usually " + ms (plugin.usualMs) + ")");
+                }
+                what << " " << ms (slow.ms) << " (usually " << ms (slow.usualMs) << ")";
+                if (! plugins.isEmpty())
+                    what << " [" << plugins.joinIntoString (", ") << "]";
+                text << (i == 0 ? "; slowest: " : ", ") << what;
+            }
+        }
+        if (r.missedSince > 0)
+            text << "; and " << r.missedSince << " more since the last report";
+        return text;
+    }
+
+    void Studio::noteSpikes()
+    {
+        // At most a line a second (a run of spikes is counted in the next one).
+        const auto now = juce::Time::getMillisecondCounter();
+        if (now - lastSpikeNote < 1000 && lastSpikeNote != 0)
+            return;
+        if (const auto report = engine.takeSpikeReport())
+        {
+            lastSpikeNote = now;
+            ++spikesNoted;
+            SessionLog::note (describeSpike (*report));
+        }
+    }
+
     void Studio::timerCallback()
     {
+        noteSpikes();   // (0.57.3: first, even while rendering)
         if (tapUnrecorded && ! isTapping (juce::Time::getMillisecondCounterHiRes() / 1000.0))
             endTapping();   // (0.45.0: the taps stopped; their undo step)
+        if (mediaBay != nullptr)
+            mediaBay->saveIfDue();   // (0.57.1: ratings and tags written once the edits stop)
         if (rendering || exportJob != nullptr)
             return;
+        backupIfDue();   // (0.72.0: AUTO-SAVE)
         if (performer != nullptr)
         {
             // (0.39.0) The performance's tempo and bar, from the song at the playhead.
@@ -7725,8 +7907,15 @@ namespace pr7s
         // only so long) and redraw the part taking shape.
         if (engine.isRecording())
         {
+            // (0.57.1) Every view redraws on a change: only when notes came in, else five times a
+            // second (an audio recording still grows): it was 30 times a second, whatever came in.
+            const auto before = recorded.size();
             engine.takeRecorded (recorded);
-            announce();
+            if (recorded.size() != before || ++quietRecordingTicks >= 6)
+            {
+                quietRecordingTicks = 0;
+                announce();
+            }
         }
         else if (wasRecording)
         {
@@ -7738,6 +7927,10 @@ namespace pr7s
     //==========================================================================
     void Studio::newProject()
     {
+        audioFolderOverride = juce::File();
+        lastBackupHash = 0;
+        lastBackupTime = juce::Time::getMillisecondCounter();
+        endComposerAudition (false);   // (0.58.0)
         frozenParts.clear();
         builtSections.clear();
         punchOutAll();   // (writing automation ends with the song)
@@ -7784,6 +7977,98 @@ namespace pr7s
         dropHighlight = juce::jlimit (0.1f, 1.0f, strength);
         if (settings != nullptr)
             settings->setValue ("dropHighlight", (double) dropHighlight);
+    }
+
+    int Studio::getAutoSaveMinutes() const
+    {
+        if (settings != nullptr)
+            return juce::jlimit (0, 120, settings->getIntValue ("autoSaveMinutes", defaultAutoSaveMinutes));
+        return autoSaveMinutesHere;
+    }
+
+    void Studio::setAutoSaveMinutes (int minutes)
+    {
+        autoSaveMinutesHere = juce::jlimit (0, 120, minutes);
+        if (settings != nullptr)
+            settings->setValue ("autoSaveMinutes", autoSaveMinutesHere);
+        lastBackupTime = juce::Time::getMillisecondCounter();   // (counted from now)
+    }
+
+    int Studio::getAutoSaveKeep() const
+    {
+        if (settings != nullptr)
+            return juce::jlimit (1, 200, settings->getIntValue ("autoSaveKeep", defaultAutoSaveKeep));
+        return autoSaveKeepHere;
+    }
+
+    void Studio::setAutoSaveKeep (int copies)
+    {
+        autoSaveKeepHere = juce::jlimit (1, 200, copies);
+        if (settings != nullptr)
+            settings->setValue ("autoSaveKeep", autoSaveKeepHere);
+    }
+
+    juce::File Studio::backupFolder() const
+    {
+        if (file != juce::File() && audioFolderOverride == juce::File())
+            return file.getParentDirectory().getChildFile ("Backups");
+        if (file != juce::File() && file.getParentDirectory().getFileName() == "Backups")
+            return file.getParentDirectory();   // (a backup opened: its own folder)
+        return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Paragon PR7-S").getChildFile ("Backups");
+    }
+
+    void Studio::backupIfDue()
+    {
+        const auto minutes = getAutoSaveMinutes();
+        if (minutes <= 0 || ! modified || engine.isRecording())
+            return;
+        const auto now = juce::Time::getMillisecondCounter();
+        if (now - lastBackupTime < (juce::uint32) minutes * 60000u)
+            return;
+        lastBackupTime = now;
+        writeBackup();
+    }
+
+    bool Studio::writeBackup()
+    {
+        collectPluginStates();
+        auto xml = project.toXml();
+        xml->setAttribute ("backupAudioFolder", getAudioFolder().getFullPathName());
+        const auto text = xml->toString();
+        const auto hash = text.hashCode64();
+        if (hash == lastBackupHash)
+            return false;   // (nothing changed since the last copy)
+        lastBackupHash = hash;
+        auto name = file != juce::File() ? file.getFileNameWithoutExtension() : juce::String ("Untitled");
+        if (const auto at = name.indexOf (" backup "); at > 0)
+            name = name.substring (0, at);   // (a backup opened: its copies keep the song's name)
+        const auto folder = backupFolder();
+        const auto stamp = juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H-%M-%S");
+        name = juce::File::createLegalFileName (name);
+        const auto destination = folder.getChildFile (name + " backup " + stamp + Project::fileExtension);
+        lastBackup = destination;
+        const auto keep = getAutoSaveKeep();
+        SessionLog::note ("Auto-save: " + destination.getFullPathName());
+        ++savesRunning;
+        saver.addJob ([text, destination, folder, name, keep, life = saveAlive, this]
+        {
+            folder.createDirectory();
+            const auto written = destination.replaceWithText (text);
+            // The newest `keep` of this song's copies stay.
+            auto copies = folder.findChildFiles (juce::File::findFiles, false, name + " backup *" + Project::fileExtension);
+            std::sort (copies.begin(), copies.end(), [] (const juce::File& a, const juce::File& b) { return a.getFileName() > b.getFileName(); });
+            for (int i = keep; i < copies.size(); ++i)
+                copies.getReference (i).deleteFile();
+            juce::MessageManager::callAsync ([life, this, written, destination]
+            {
+                if (! life->load())
+                    return;
+                --savesRunning;
+                if (! written)
+                    SessionLog::note ("Auto-save failed: " + destination.getFullPathName());
+            });
+        });
+        return true;
     }
 
     bool Studio::canTakeMidi (int trackId) const
@@ -7918,6 +8203,7 @@ namespace pr7s
         if (! xml->writeTo (destination))
             return false;
         file = destination;
+        audioFolderOverride = juce::File();   // (its recordings were copied beside it)
         modified = false;
         library->addRecent (destination);
         announce();
@@ -7976,9 +8262,11 @@ namespace pr7s
         // Saved as a song would be, then the song is put back as it was (its file, saved or not).
         const auto keptFile = file;
         const auto keptModified = modified;
+        const auto keptAudio = audioFolderOverride;
         const auto written = save (destination);
         library->removeRecent (destination);
         file = keptFile;
+        audioFolderOverride = keptAudio;
         modified = keptModified;
         announce();
         if (! written)
@@ -8001,6 +8289,7 @@ namespace pr7s
         }
         auto copy = std::make_shared<Project> (project);
         file = destination;
+        audioFolderOverride = juce::File();   // (its recordings were copied beside it)
         modified = false;
         library->addRecent (destination);
         ++savesRunning;
@@ -8025,6 +8314,14 @@ namespace pr7s
     bool Studio::prepareSave (const juce::File& destination)
     {
         SessionLog::note ("Saving " + destination.getFullPathName());
+        collectPluginStates();
+        // The recordings go with the song: into "<song> Audio" beside it
+        // (copied from where they were: the unsaved folder, or the song's old place).
+        return copyAudioFiles (getAudioFolder(), destination.getSiblingFile (destination.getFileNameWithoutExtension() + " Audio"));
+    }
+
+    void Studio::collectPluginStates()
+    {
         // Each instrument's current settings go into the file with it.
         for (auto& track : project.tracks)
             if (auto* instrument = engine.getInstrument (track.id))
@@ -8047,10 +8344,6 @@ namespace pr7s
         for (auto& track : project.tracks)
             keepEffectStates (track.id, track.inserts);
         keepEffectStates (Engine::masterBus, project.masterInserts);
-
-        // The recordings go with the song: into "<song> Audio" beside it
-        // (copied from where they were: the unsaved folder, or the song's old place).
-        return copyAudioFiles (getAudioFolder(), destination.getSiblingFile (destination.getFileNameWithoutExtension() + " Audio"));
     }
 
     void Studio::silenceForRender (Track& t)
@@ -8738,6 +9031,51 @@ namespace pr7s
         return made;
     }
 
+    int Studio::removeMissing()
+    {
+        auto removed = 0;
+        {
+            // (Each change made here alone: not passed on to linked tracks, one engine update after.)
+            const juce::ScopedValueSetter<bool> alone (mirroring, true);
+            // Effects from the last slot back (emptying one can drop the empty slots after it).
+            auto items = missingItems;
+            std::stable_sort (items.begin(), items.end(), [] (const MissingItem& a, const MissingItem& b) { return a.slot > b.slot; });
+            for (const auto& item : items)
+            {
+                if (item.kind == MissingItem::Kind::effect)
+                {
+                    const auto* inserts = insertsOf (item.trackId);
+                    if (inserts == nullptr || ! juce::isPositiveAndBelow (item.slot, (int) inserts->size()) || (*inserts)[(size_t) item.slot].isEmpty())
+                        continue;
+                    removeInsert (item.trackId, item.slot);
+                    ++removed;
+                }
+                else if (item.kind == MissingItem::Kind::recording)
+                {
+                    auto* track = project.findTrack (item.trackId);
+                    if (track == nullptr || track->frozen)
+                        continue;
+                    const auto before = track->parts.size();
+                    track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(),
+                                                        [&] (const Part& p) { return p.isAudio() && p.audioFile == item.file; }),
+                                        track->parts.end());
+                    removed += (int) (before - track->parts.size());
+                }
+                else
+                {
+                    auto* track = project.findTrack (item.trackId);
+                    if (track == nullptr || track->isAudio() || track->isChannel())
+                        continue;
+                    if (changeInstrument (item.trackId, Instrument {}))
+                        ++removed;
+                }
+            }
+            missingItems.clear();
+        }
+        changed();
+        return removed;
+    }
+
     bool Studio::open (const juce::File& source, juce::String& problems)
     {
         SessionLog::note ("Opening " + source.getFullPathName());
@@ -8747,6 +9085,12 @@ namespace pr7s
         auto loaded = Project::fromXml (*xml);
         if (! loaded)
             return false;
+        // (0.72.0) A backup: its song's recordings where they were when it was written (unless it
+        // has a "<name> Audio" folder of its own: then it's been saved as a song since).
+        audioFolderOverride = juce::File();
+        if (const auto path = xml->getStringAttribute ("backupAudioFolder"); juce::File::isAbsolutePath (path))
+            if (! source.getSiblingFile (source.getFileNameWithoutExtension() + " Audio").isDirectory() && juce::File (path).isDirectory())
+                audioFolderOverride = juce::File (path);
         openProject (std::move (*loaded), source, problems);
         library->addRecent (source);
         return true;
@@ -8817,6 +9161,9 @@ namespace pr7s
 
     void Studio::openProject (Project&& loadedProject, const juce::File& source, juce::String& problems)
     {
+        lastBackupHash = 0;
+        lastBackupTime = juce::Time::getMillisecondCounter();
+        endComposerAudition (false);   // (0.58.0)
         builtSections.clear();
         std::optional<Project> loaded { std::move (loadedProject) };
         punchOutAll();
@@ -8835,6 +9182,7 @@ namespace pr7s
         file = source;
         forgetAllAudio();
         juce::StringArray missing;
+        missingItems.clear();
         // Each plug-in loaded is a step of the progress box (0.11.1: Kontakt and its kind take a while).
         auto toLoad = 0, nowLoading = 0;
         for (const auto& track : project.tracks)
@@ -8865,7 +9213,10 @@ namespace pr7s
                 engine.addAudioTrack (track.id);
                 for (const auto& part : track.parts)
                     if (part.isAudio() && getAudio (part.audioFile) == nullptr)
+                    {
                         missing.add (track.name + ": the recording " + part.audioFile + " isn't in " + getAudioFolder().getFullPathName());
+                        missingItems.push_back ({ MissingItem::Kind::recording, track.id, -1, part.audioFile });
+                    }
                 continue;
             }
             juce::String error;
@@ -8878,7 +9229,10 @@ namespace pr7s
             if (auto instance = host->create (track.instrument, engine.getSampleRate(), engine.getBlockSize(), error))
                 engine.setInstrument (track.id, std::move (instance));
             else
+            {
                 missing.add (track.name + " (" + track.instrument.getName() + "): " + error);   // the track stays (its parts too), silent
+                missingItems.push_back ({ MissingItem::Kind::instrument, track.id, -1, {} });
+            }
         }
         // The effects: one that can't be loaded keeps its place (and its
         // settings, for when it's back), and the sound goes past it.
@@ -8895,7 +9249,10 @@ namespace pr7s
                 loading ("Loading " + inserts[(size_t) slot].plugin.name + " (" + where + ")");
                 auto instance = host->createEffect (inserts[(size_t) slot], engine.getSampleRate(), engine.getBlockSize(), error);
                 if (instance == nullptr)
+                {
                     missing.add (where + ", insert " + juce::String (slot + 1) + " (" + inserts[(size_t) slot].plugin.name + "): " + error);
+                    missingItems.push_back ({ MissingItem::Kind::effect, busId, slot, {} });
+                }
                 engine.insertEffect (busId, slot, std::move (instance));
             }
         };
@@ -9409,6 +9766,100 @@ namespace pr7s
         return "Idea";
     }
 
+    void Studio::fitBends (std::vector<LineNote>& notes, int bendRange)
+    {
+        // (0.66.0) A bend bigger than the bend range reaches: written that much higher, bent only as far as
+        // the range goes, so it still arrives on its note.
+        const auto range = (float) juce::jmax (1, bendRange);
+        for (auto& n : notes)
+            if (n.effect == LineNote::Effect::bend && n.amount > range)
+            {
+                n.pitch += juce::roundToInt (n.amount - range);
+                n.amount = range;
+            }
+    }
+
+    std::vector<Controller> Studio::effectControllers (const std::vector<LineNote>& notes, int bendRange)
+    {
+        // Each group of notes with an effect starting together (a stab's two notes): its controllers.
+        using E = LineNote::Effect;
+        struct Group { double at, length; E effect; float amount; };
+        std::vector<Group> groups;
+        for (const auto& n : notes)
+        {
+            if (n.keyswitch || (n.effect != E::vibrato && n.effect != E::bend && n.effect != E::dive))
+                continue;
+            auto found = false;
+            for (auto& g : groups)
+                if (g.effect == n.effect && std::abs (g.at - n.beat) < HumanizeLimits::together)
+                {
+                    g.length = juce::jmax (g.length, n.length);
+                    found = true;
+                }
+            if (! found)
+                groups.push_back ({ n.beat, n.length, n.effect, n.amount });
+        }
+        std::vector<Controller> out;
+        const auto range = (double) juce::jmax (1, bendRange);
+        for (const auto& g : groups)
+        {
+            const auto end = g.at + juce::jmax (0.05, g.length);
+            if (g.effect == E::bend)
+            {
+                // (0.66.0) Up by its amount (0: a whole step), as far as the bend range reaches.
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 2.0;
+                const auto bent = juce::jlimit (0, 16383, 8192 + juce::roundToInt (juce::jmin (1.0, semitones / range) * 8191.0));
+                const auto up = g.at + juce::jmin (0.25, (end - g.at) * 0.5);
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, up, bent, true });
+                out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
+            }
+            else if (g.effect == E::dive)
+            {
+                // (0.66.0) The whammy bar: straight for a quarter of the note, then down by its amount (12: an
+                // octave) over the rest, as far as the bend range reaches; back to none as the note ends.
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 12.0;
+                const auto down = juce::jlimit (0, 16383, 8192 - juce::roundToInt (juce::jmin (1.0, semitones / range) * 8192.0));
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + (end - g.at) * 0.25, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + (end - g.at) * 0.9, down, true });
+                out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
+            }
+            else
+            {
+                const auto peak = juce::jlimit (1, 127, juce::roundToInt (96.0f * (g.amount > 0.0f ? g.amount : 1.0f)));
+                out.push_back ({ Controller::Type::cc, 1, g.at, 0, false });
+                out.push_back ({ Controller::Type::cc, 1, g.at + (end - g.at) * 0.3, 0, false });
+                out.push_back ({ Controller::Type::cc, 1, g.at + (end - g.at) * 0.8, peak, true });
+                out.push_back ({ Controller::Type::cc, 1, end, 0, false });
+            }
+        }
+        std::stable_sort (out.begin(), out.end(), [] (const Controller& a, const Controller& b) { return a.start < b.start; });
+        return out;
+    }
+
+    Part Studio::partFromIdea (const LineIdea& idea, double start, double length, const juce::String& name) const
+    {
+        Part part;
+        part.start = start;
+        part.length = length;
+        part.name = name;
+        auto range = 2;
+        const auto use = idea.part == LineIdea::Part::lead ? ProfileUse::lead
+                       : idea.part == LineIdea::Part::rhythm ? ProfileUse::guitar : ProfileUse::bass;
+        auto profile = profileFor (use);
+        if (! profile.has_value() && use == ProfileUse::lead)
+            profile = profileFor (ProfileUse::guitar);
+        if (profile.has_value())
+            range = profile->bendRange;
+        auto notes = idea.notes;
+        fitBends (notes, range);
+        for (const auto& n : notes)
+            part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
+        part.controllers = effectControllers (notes, range);
+        return part;
+    }
+
     int Studio::addLinePart (const LineIdea& idea, const std::vector<ChordSpan>& spans, int ontoTrackId)
     {
         if (spans.empty() || idea.notes.empty())
@@ -9424,12 +9875,7 @@ namespace pr7s
             if (idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove)
                 setTrackDrumMap (trackId, DrumMap::gm().name);
         }
-        Part part;
-        part.start = spans.front().start;
-        part.length = spans.back().end - spans.front().start;
-        part.name = linePartName (idea.part) + ": " + idea.style;
-        for (const auto& n : idea.notes)
-            part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
+        const auto part = partFromIdea (idea, spans.front().start, spans.back().end - spans.front().start, linePartName (idea.part) + ": " + idea.style);
         addPart (trackId, part);
         return trackId;
     }
@@ -9443,7 +9889,118 @@ namespace pr7s
         return 0;
     }
 
-    std::vector<int> Studio::buildSection (const std::vector<LineIdea>& ideas, const std::vector<ChordSpan>& spans, const juce::String& sectionName)
+    //==========================================================================
+    // THE COMPOSER (0.58.0)
+    ComposerContext Studio::getComposerContext (double atBeat) const
+    {
+        ComposerContext c;
+        c.beatsPerBar = project.beatsPerBarAt (atBeat);
+        c.tuning = GuitarTuning::named (getGuitarTuning());
+        c.bassTuning = bassTuningNamed (getBassTuning());
+        c.bassProfile = profileFor (ProfileUse::bass);
+        c.guitarProfile = profileFor (ProfileUse::guitar);
+        c.leadProfile = profileFor (ProfileUse::lead);
+        c.velocities = getGuitarVelocities();
+        c.style = getGuitarStyle();
+        c.solo = getSoloStyle();
+        c.riff = getRiffSettings();
+        c.drums = getDrumSettings();
+        c.melody = getMelodySettings();
+        if (const auto name = getIdeasDrummer(); name.isNotEmpty())
+            c.drummer = loadDrummer (name);
+        c.humanize = getIdeasHumanize();
+        c.feel = getIdeasFeel();
+        c.bpm = project.bpmAt (atBeat);
+        return c;
+    }
+
+    juce::String Studio::getComposerState() const
+    {
+        return settings != nullptr ? settings->getValue ("composer") : composerState;
+    }
+
+    void Studio::setComposerState (const juce::String& text)
+    {
+        composerState = text;
+        if (settings != nullptr)
+            settings->setValue ("composer", text);
+    }
+
+    bool Studio::auditionComposer (const std::vector<std::pair<int, LineIdea>>& layers, double start, double end)
+    {
+        if (exportJob != nullptr || end <= start || engine.isRecording())
+            return false;
+        // A copy of the song: each layer a part on its track, those tracks alone, the cycle round the layers.
+        auto heard = project;
+        std::set<int> playing;
+        for (const auto& [trackId, idea] : layers)
+        {
+            if (! canTakeMidi (trackId) || idea.notes.empty())
+                continue;
+            auto* track = heard.findTrack (trackId);
+            track->parts.push_back (partFromIdea (idea, start, end - start, idea.style));
+            playing.insert (trackId);
+        }
+        if (playing.empty())
+            return false;
+        for (auto& t : heard.tracks)
+        {
+            t.solo = playing.count (t.id) > 0;
+            t.mute = false;
+        }
+        heard.loopOn = true;
+        heard.loopStart = start;
+        heard.loopEnd = end;
+        const auto first = ! composerAudition.has_value();
+        if (first)
+        {
+            // From the song's own playing: stopped first (where it was is where it goes back to).
+            if (engine.isPlaying())
+            {
+                punchOutAll();
+                engine.stop();
+            }
+            composerAudition = ComposerAudition { start, end, engine.getPosition() };
+        }
+        else
+        {
+            composerAudition->start = start;
+            composerAudition->end = end;
+        }
+        engine.update (heard);
+        if (first || ! engine.isPlaying())
+        {
+            engine.setPosition (start);
+            engine.play();
+        }
+        else if (const auto at = engine.getPosition(); at < start || at >= end)
+            engine.setPosition (start);
+        announce();
+        return true;
+    }
+
+    void Studio::endComposerAudition (bool backToSong)
+    {
+        if (! composerAudition.has_value())
+            return;
+        const auto wasAt = composerAudition->wasAt;
+        composerAudition.reset();
+        engine.stop();
+        engine.setPosition (wasAt);
+        if (backToSong && exportJob == nullptr)
+            engine.update (project);
+    }
+
+    void Studio::stopComposerAudition()
+    {
+        if (! composerAudition.has_value())
+            return;
+        endComposerAudition (true);
+        announce();
+    }
+
+    std::vector<int> Studio::buildSection (const std::vector<LineIdea>& ideas, const std::vector<ChordSpan>& spans, const juce::String& sectionName,
+                                           const std::vector<int>& onto)
     {
         std::vector<int> used;
         if (spans.empty())
@@ -9451,11 +10008,12 @@ namespace pr7s
         const auto start = spans.front().start, end = spans.back().end;
         // The tracks first (adding a track is a step of its own), then every part in one change.
         std::vector<std::pair<int, const LineIdea*>> plan;
-        for (const auto& idea : ideas)
+        for (size_t i = 0; i < ideas.size(); ++i)
         {
+            const auto& idea = ideas[i];
             if (idea.notes.empty())
                 continue;
-            auto trackId = findIdeaTrack (idea.part);
+            auto trackId = i < onto.size() && canTakeMidi (onto[i]) ? onto[i] : findIdeaTrack (idea.part);
             if (trackId == 0)
             {
                 trackId = addTrack (Instrument {});
@@ -9473,13 +10031,7 @@ namespace pr7s
             {
                 track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(), [&] (const Part& p)
                                     { return p.start >= start - 1.0e-9 && p.start + p.length <= end + 1.0e-9; }), track->parts.end());
-                Part part;
-                part.start = start;
-                part.length = end - start;
-                part.name = (sectionName.isNotEmpty() ? sectionName + ": " : juce::String()) + idea->style;
-                for (const auto& n : idea->notes)
-                    part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
-                track->parts.push_back (part);
+                track->parts.push_back (partFromIdea (*idea, start, end - start, (sectionName.isNotEmpty() ? sectionName + ": " : juce::String()) + idea->style));
                 track->parts.back().id = 0;
             }
         if (! plan.empty())
@@ -9579,6 +10131,18 @@ namespace pr7s
         guitarStyle = s;
         if (settings != nullptr)
             settings->setValue ("guitarStyle", guitarStyleName (s));
+    }
+
+    SoloStyle Studio::getSoloStyle() const
+    {
+        return settings != nullptr && settings->containsKey ("soloStyle") ? soloStyleNamed (settings->getValue ("soloStyle")) : soloStyle;
+    }
+
+    void Studio::setSoloStyle (SoloStyle s)
+    {
+        soloStyle = s;
+        if (settings != nullptr)
+            settings->setValue ("soloStyle", soloStyleName (s));
     }
 
     RiffSettings Studio::getRiffSettings() const
@@ -9716,6 +10280,45 @@ namespace pr7s
         melodySettings = m.limited();
         if (settings != nullptr)
             settings->setValue ("melodySettings", melodySettings.toString());
+    }
+
+    juce::String Studio::getBassTuning() const
+    {
+        const auto name = settings != nullptr ? settings->getValue ("bassTuning") : bassTuning;
+        return bassTuningNamed (name).name;
+    }
+
+    std::vector<InstrumentProfile> Studio::getInstrumentProfiles() const
+    {
+        const auto stored = settings != nullptr ? (settings->containsKey ("instrumentProfiles") ? std::optional<juce::String> (settings->getValue ("instrumentProfiles"))
+                                                                                                 : std::nullopt)
+                                                : instrumentProfiles;
+        if (! stored.has_value())
+            return { InstrumentProfile::djinnBass2() };   // (the first time: the owner's bass)
+        return profilesFromText (*stored);
+    }
+
+    void Studio::setInstrumentProfiles (const std::vector<InstrumentProfile>& profiles)
+    {
+        const auto text = profilesToText (profiles);
+        instrumentProfiles = text;
+        if (settings != nullptr)
+            settings->setValue ("instrumentProfiles", text);
+    }
+
+    std::optional<InstrumentProfile> Studio::profileFor (ProfileUse use) const
+    {
+        for (const auto& p : getInstrumentProfiles())
+            if ((use == ProfileUse::bass && p.forBass) || (use == ProfileUse::guitar && p.forGuitar) || (use == ProfileUse::lead && p.forLead))
+                return p;
+        return {};
+    }
+
+    void Studio::setBassTuning (const juce::String& name)
+    {
+        bassTuning = bassTuningNamed (name).name;
+        if (settings != nullptr)
+            settings->setValue ("bassTuning", bassTuning);
     }
 
     void Studio::setGuitarTuning (const juce::String& name)
@@ -10746,12 +11349,15 @@ namespace pr7s
         const auto found = project.variAudio.find (file);
         if (found == project.variAudio.end() || found->second.bypass || ! found->second.isEdited())
             return {};
+        if (const auto known = variSignatures.find (file); known != variSignatures.end() && known->second.first == found->second)
+            return known->second.second;
         juce::String text;
         for (const auto& seg : found->second.segments)
             if (seg.isEdited())
                 text << seg.start << ":" << seg.end << ":" << seg.shift << ":" << seg.straighten << ":" << seg.volumeDb << ":"
                      << seg.tiltStart << ":" << seg.tiltEnd << ":" << seg.anchor << ":" << seg.straightenFrom << ":" << seg.straightenTo
                      << ":" << seg.formant << "|";
+        variSignatures.insert_or_assign (file, std::pair { found->second, text });
         return text;
     }
 
@@ -11278,6 +11884,7 @@ namespace pr7s
         hitpointCache.clear();
         pitchCache.clear();
         heardCache.clear();
+        variSignatures.clear();
         warpedVariSignatures.clear();
         warpRenderer.clear();
     }

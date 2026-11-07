@@ -118,6 +118,10 @@ namespace pr7s
     private:
         static void run (const std::array<Biquad, EqDesign::maxStages>&, int stages, std::array<std::array<double, 2>, EqDesign::maxStages>& state,
                          float* samples, int numSamples);
+        // (0.57.1) Both sides at once: two independent chains side by side (the same sums per side).
+        static void runStereo (const std::array<Biquad, EqDesign::maxStages>&, int stages,
+                               std::array<std::array<std::array<double, 2>, EqDesign::maxStages>, 2>& state,
+                               float* left, float* right, int numSamples);
         EqDesign design;
         std::array<std::array<std::array<double, 2>, EqDesign::maxStages>, 2> preState {}, eqState {};
     };
@@ -125,6 +129,15 @@ namespace pr7s
     // Typed frequencies: "440", "1.2k", "1200 Hz", or a note with cents "A3", "A5 -23", "C4 +49"
     // (middle C = C3, A3 = 440 Hz, as the manual); none when it can't be read.
     std::optional<double> parseFrequency (const juce::String&);
+
+    // (0.71.0, the owner asked) Ready-made starting points for the channel EQ (ours: common moves
+    // for each kind of source, to be adjusted by ear), by group (VOCALS, DRUMS, BASS, GUITARS, MIX).
+    struct EqStartingPoint
+    {
+        juce::String group, name;
+        ChannelEq eq;
+    };
+    const std::vector<EqStartingPoint>& eqStartingPoints();
     juce::String frequencyText (double hz);   // "440 Hz", "1.20 kHz"
     juce::String bandTypeName (EqBand::Type);   // "Peak", "Low Shelf", "Notch", "Cut"...
 }

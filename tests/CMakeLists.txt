@@ -36,6 +36,14 @@ add_executable(ParagonPR7STests
     DrumLearningTests.cpp
     DrumLearnUiTests.cpp
     BuildSectionTests.cpp
+    ComposerTests.cpp
+    InstrumentTests.cpp
+    GrooveTests.cpp
+    SoloTests.cpp
+    SoloStyleTests.cpp
+    GroupRoutingTests.cpp
+    NewSongTests.cpp
+    SpeedTests.cpp
     MediaBayTests.cpp
     ControllerTests.cpp
     DrumTests.cpp
@@ -62,6 +70,9 @@ add_executable(ParagonPR7STests
     StemExportTests.cpp
     PerformanceTests.cpp
     UiTests.cpp
+    Tweaks071Tests.cpp
+    Tweaks073Tests.cpp
+    AutoSaveTests.cpp
     PerfTests.cpp
     Snapshot.cpp)
 

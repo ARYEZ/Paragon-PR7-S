@@ -264,6 +264,93 @@ namespace pr7s
         return const_cast<Project*> (this)->findTrack (id);
     }
 
+    bool Project::reaches (int from, int to) const
+    {
+        // Down every output and send from `from` (a walk with a guard: no song has more steps than tracks).
+        std::vector<int> stack { from };
+        std::vector<int> seen;
+        while (! stack.empty() && seen.size() <= tracks.size())
+        {
+            const auto id = stack.back();
+            stack.pop_back();
+            if (id == to)
+                return true;
+            if (id == 0 || std::find (seen.begin(), seen.end(), id) != seen.end())
+                continue;
+            seen.push_back (id);
+            if (const auto* t = findTrack (id))
+            {
+                stack.push_back (t->output);
+                for (const auto& send : t->sends)
+                    if (send.target != 0)
+                        stack.push_back (send.target);
+            }
+        }
+        return false;
+    }
+
+    bool Project::feedsInto (int from, int to) const
+    {
+        auto id = from;
+        for (size_t steps = 0; id != 0 && steps <= tracks.size(); ++steps)
+        {
+            const auto* t = findTrack (id);
+            if (t == nullptr)
+                return false;
+            id = t->output;
+            if (id == to)
+                return true;
+        }
+        return false;
+    }
+
+    std::vector<int> Project::soloedOutTracks() const
+    {
+        std::vector<int> soloed;
+        for (const auto& t : tracks)
+            if (t.solo && ! t.disabled)
+                soloed.push_back (t.id);
+        if (soloed.empty())
+            return {};
+        std::vector<int> out;
+        for (const auto& t : tracks)
+        {
+            auto heard = false;
+            for (const auto s : soloed)
+            {
+                const auto* soloedTrack = findTrack (s);
+                heard = t.id == s
+                     || feedsInto (t.id, s)                                         // routed into it
+                     || (soloedTrack != nullptr && soloedTrack->isFx() && reaches (t.id, s))   // sending into a soloed FX channel
+                     || reaches (s, t.id);                                          // a channel it goes on into
+                if (heard)
+                    break;
+            }
+            if (! heard)
+                out.push_back (t.id);
+        }
+        return out;
+    }
+
+    bool Project::canRouteTo (int trackId, int destinationId) const
+    {
+        const auto* track = findTrack (trackId);
+        if (track == nullptr || ! hasOutput (*track))
+            return false;
+        if (destinationId == 0)
+            return true;
+        const auto* destination = findTrack (destinationId);
+        return destination != nullptr && (destination->isGroup() || destination->isFx()) && destinationId != trackId
+            && ! reaches (destinationId, trackId);
+    }
+
+    bool Project::canSendTo (int trackId, int fxId) const
+    {
+        const auto* track = findTrack (trackId);
+        const auto* fx = findTrack (fxId);
+        return track != nullptr && hasOutput (*track) && fx != nullptr && fx->isFx() && fxId != trackId && ! reaches (fxId, trackId);
+    }
+
     const DrumMap* Project::findDrumMap (const juce::String& mapName) const
     {
         for (const auto& map : drumMaps)
@@ -332,11 +419,20 @@ namespace pr7s
         return heard;
     }
 
+    HeardList heardStretchesOf (const Track& track)
+    {
+        HeardList all;
+        all.reserve (track.parts.size());
+        for (int i = 0; i < (int) track.parts.size(); ++i)
+            all.push_back (heardStretches (track, i));
+        return all;
+    }
+
     std::vector<FadedStretch> fadedStretches (const Track& track, int index, const AutoFades& fades, const TempoMap& tempo,
-                                              const std::function<double (const Part&)>& recordingSeconds)
+                                              const std::function<double (const Part&)>& recordingSeconds, const HeardList* heardOf)
     {
         std::vector<FadedStretch> out;
-        const auto heard = heardStretches (track, index);
+        const auto heard = heardOf != nullptr ? (*heardOf)[(size_t) index] : heardStretches (track, index);
         if (heard.empty())
             return out;
         const auto& part = track.parts[(size_t) index];
@@ -379,7 +475,8 @@ namespace pr7s
                 if (j == index)
                     continue;
                 const auto& other = track.parts[(size_t) j];
-                for (const auto& [a, b] : heardStretches (track, j))
+                const auto othersHeard = heardOf != nullptr ? (*heardOf)[(size_t) j] : heardStretches (track, j);
+                for (const auto& [a, b] : othersHeard)
                     if (std::abs ((before ? b : a) - beat) < near)
                     {
                         const auto continues = other.audioFile == part.audioFile && ! other.isWarped() && ! part.isWarped()
@@ -547,6 +644,10 @@ namespace pr7s
                 if (track.folderData != Track::FolderData::always)
                     t->setAttribute ("folderData", (int) track.folderData);
             }
+            if (track.listColourOn)
+                t->setAttribute ("listColour", true);
+            if (track.listColourAmount != Track::defaultListColourAmount)
+                t->setAttribute ("listColourAmount", track.listColourAmount);
             if (track.output != 0)
                 t->setAttribute ("output", track.output);
             if (track.sendsBypass)
@@ -909,6 +1010,8 @@ namespace pr7s
                 track.folderData = (Track::FolderData) juce::jlimit (0, 2, t->getIntAttribute ("folderData"));
             }
             track.folder = juce::jmax (0, t->getIntAttribute ("folder"));
+            track.listColourOn = t->getBoolAttribute ("listColour");
+            track.listColourAmount = juce::jlimit (1, 100, t->getIntAttribute ("listColourAmount", Track::defaultListColourAmount));
             if (const auto* fades = t->getChildByName ("AutoFades"))
                 track.autoFades = autoFadesFrom (*fades);   // (0.52.0)
             track.output = juce::jmax (0, t->getIntAttribute ("output"));
@@ -984,14 +1087,15 @@ namespace pr7s
         // Routing that leads nowhere it can go: back to the master, or no send.
         for (auto& track : project.tracks)
         {
-            const auto* out = project.findTrack (track.output);
-            if (track.isChannel() || out == nullptr || ! out->isGroup())
-                track.output = 0;
-            if (track.isFx())
-                track.sends.clear();
+            if (track.output != 0 && ! project.canRouteTo (track.id, track.output))
+                track.output = 0;   // (0.59.0: channels may go to channels; a loop goes to the master)
             for (auto& send : track.sends)
-                if (const auto* to = project.findTrack (send.target); to == nullptr || ! to->isFx())
-                    send.target = 0;
+                if (send.target != 0)
+                {
+                    const auto target = std::exchange (send.target, 0);
+                    if (project.canSendTo (track.id, target))   // (0.60.0: FX channels send too; never a loop)
+                        send.target = target;
+                }
         }
         // Link groups (0.17.0): those with two members or more; a track in one that isn't there, in none.
         for (const auto* g : xml.getChildWithTagNameIterator ("LinkGroup"))

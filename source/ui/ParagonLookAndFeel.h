@@ -33,6 +33,30 @@ namespace ParagonColours
     // family's red, pink and orange, pearl white and pearl onyx.)
 }
 
+// (0.57.4) A question box with see-through corners, as the progress box (the owner: the boxes'
+// corners showed squared-off ends). JUCE makes an AlertWindow a solid square desktop window, so
+// the rounded box drawAlertBox paints left the square's corners filled in; this one is made
+// see-through and put on the desktop again before it's shown. Every box the studio makes is one
+// (ParagonLookAndFeel::createAlertWindow makes JUCE's own boxes see-through too).
+class FamilyAlertWindow final : public juce::AlertWindow
+{
+public:
+    FamilyAlertWindow (const juce::String& title, const juce::String& message,
+                       juce::MessageBoxIconType icon = juce::MessageBoxIconType::NoIcon, juce::Component* associated = nullptr)
+        : juce::AlertWindow (title, message, icon, associated)
+    {
+        makeSeeThrough (*this);
+    }
+
+    static void makeSeeThrough (juce::AlertWindow& box)
+    {
+        // (JUCE's own shadow is drawn round the window's square: off, as the progress box has none.)
+        box.setDropShadowEnabled (false);
+        box.setOpaque (false);
+        box.addToDesktop();   // (again: a window's see-through is set as it goes on the desktop)
+    }
+};
+
 class ParagonLookAndFeel final : public juce::LookAndFeel_V4
 {
 public:
@@ -85,9 +109,21 @@ public:
     // capitals look the size Inter's text does.
     static juce::FontOptions textFont (float height, int style = juce::Font::bold);
     static juce::FontOptions titleFont (float height);
+    // (0.71.1) Inter, for what needs small letters (chord names "Cm7" / numerals "ii", the LED screens' figures).
+    static juce::FontOptions lowercaseFont (float height, int style = juce::Font::bold);
+    juce::Font getLabelFont (juce::Label&) override;
+    juce::Rectangle<int> getTooltipBounds (const juce::String&, juce::Point<int>, juce::Rectangle<int>) override;
+    void drawTooltip (juce::Graphics&, const juce::String&, int width, int height) override;
+    juce::AttributedString tooltipText (const juce::String&);
     static constexpr float bebasScale = 1.3f;
     juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override;
     juce::Font getPopupMenuFont() override;
+    // (0.71.0, the owner asked) Menus in the studio's look: the question boxes' dark panel and red
+    // edge, the item under the mouse lit in the cycle strip's gradient (JUCE's: a flat block).
+    void drawPopupMenuBackground (juce::Graphics&, int width, int height) override;
+    void drawPopupMenuItem (juce::Graphics&, const juce::Rectangle<int>& area, bool isSeparator, bool isActive, bool isHighlighted,
+                            bool isTicked, bool hasSubMenu, const juce::String& text, const juce::String& shortcutKeyText,
+                            const juce::Drawable* icon, const juce::Colour* textColour) override;
     juce::Font getComboBoxFont (juce::ComboBox&) override;
 
     void drawRotarySlider (juce::Graphics&, int x, int y, int width, int height,
@@ -109,12 +145,19 @@ public:
 
     void drawToggleButton (juce::Graphics&, juce::ToggleButton&, bool highlighted, bool down) override;
 
+    // (0.71.0, the owner's) The cycle strip's red / pink / orange along a line: faders, pan, bars, lights.
+    static juce::ColourGradient familyGradient (juce::Point<float> from, juce::Point<float> to);
+    static constexpr float barOpacity = 0.8f;   // (bars: their text stays readable over it)
+
     void drawButtonBackground (juce::Graphics&, juce::Button&, const juce::Colour& background,
                                bool highlighted, bool down) override;
 
     void drawButtonText (juce::Graphics&, juce::TextButton&, bool highlighted, bool down) override;
     // Question and message boxes (0.9.10, the owner asked): pearl black, white text, the PR7-S mark for the icon.
     void drawAlertBox (juce::Graphics&, juce::AlertWindow&, const juce::Rectangle<int>& textArea, juce::TextLayout&) override;
+    juce::AlertWindow* createAlertWindow (const juce::String& title, const juce::String& message, const juce::String& button1,
+                                          const juce::String& button2, const juce::String& button3, juce::MessageBoxIconType,
+                                          int numButtons, juce::Component* associatedComponent) override;
     // Progress bars (the export's, scanning plug-ins): one of the studio's horizontal meters (0.11.1).
     void drawProgressBar (juce::Graphics&, juce::ProgressBar&, int width, int height, double progress, const juce::String& textToShow) override;
     juce::Font getAlertWindowTitleFont() override;

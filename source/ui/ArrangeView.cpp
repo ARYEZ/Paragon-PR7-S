@@ -20,6 +20,7 @@ ArrangeView::ArrangeView (pr7s::Studio& studioToUse, Timeline& timelineToUse)
     : studio (studioToUse), timeline (timelineToUse)
 {
     setWantsKeyboardFocus (false);
+    setOpaque (true);   // (0.57.1: paint fills it all: what's behind isn't drawn under every playhead frame)
     studio.addChangeListener (this);
     startTimerHz (30);
 }
@@ -636,7 +637,12 @@ void ArrangeView::paint (juce::Graphics& g)
     // signature in force there (0.45.0).
     const auto signatures = project.signatures();
     const auto lastVisible = timeline.beatForX (bounds.getWidth());
-    for (auto barIndex = signatures.barAt (timeline.firstBeat); signatures.beatOfBar (barIndex) <= lastVisible; ++barIndex)
+    // (0.57.1) Only the stretch being redrawn (a playhead strip is 17 px of a 5760 px view), with room
+    // for a bar number that starts just left of it: these loops ran the whole width every frame.
+    const auto paintClip = g.getClipBounds().toFloat();
+    const auto paintFrom = juce::jmax (timeline.firstBeat, timeline.beatForX (paintClip.getX() - 80.0f));
+    const auto paintTo = juce::jmin (lastVisible, timeline.beatForX (paintClip.getRight() + 4.0f));
+    for (auto barIndex = signatures.barAt (paintFrom); signatures.beatOfBar (barIndex) <= paintTo; ++barIndex)
     {
         const auto& signature = signatures.segmentOfBar (barIndex).event;
         const auto start = signatures.beatOfBar (barIndex);
@@ -951,8 +957,8 @@ void ArrangeView::paint (juce::Graphics& g)
         if (step * timeline.pixelsPerBeat < Timeline::rulerTickRoom)
             continue;
         g.setColour (ParagonColours::textDim.withAlpha (alpha));
-        const auto first = std::floor (timeline.firstBeat / step) * step;
-        for (auto i = 0; first + step * i <= lastVisible; ++i)
+        const auto first = std::floor (paintFrom / step) * step;
+        for (auto i = 0; first + step * i <= paintTo; ++i)
         {
             const auto beat = first + step * i;
             const auto coarser = step < 1.0 && std::abs (std::fmod (beat, step * 2.0)) < 1.0e-6;   // (drawn by the longer tick)
@@ -967,7 +973,7 @@ void ArrangeView::paint (juce::Graphics& g)
     while (signatures.barLengthAt (timeline.firstBeat) * every * timeline.pixelsPerBeat < 36.0 && every < 4096)
         every *= 2;
     g.setFont (font (11.0f));
-    for (auto b = signatures.barAt (timeline.firstBeat); signatures.beatOfBar (b) <= lastVisible; ++b)
+    for (auto b = signatures.barAt (paintFrom); signatures.beatOfBar (b) <= paintTo; ++b)
     {
         const auto x = timeline.xForBeat (signatures.beatOfBar (b));
         const auto& segment = signatures.segmentOfBar (b);
@@ -4273,7 +4279,7 @@ void ArrangeView::editTempoEvent (int index)
     const auto& events = studio.getProject().tempoEvents;
     if (! juce::isPositiveAndBelow (index, (int) events.size()) || studio.getProject().tempoLocked)
         return;
-    auto* box = new juce::AlertWindow ("Tempo event", "At " + pr7s::formatBarsBeats (events[(size_t) index].beat, studio.getProject())
+    auto* box = new FamilyAlertWindow ("Tempo event", "At " + pr7s::formatBarsBeats (events[(size_t) index].beat, studio.getProject())
                                                           + ": its tempo in BPM, and whether it ramps there from the event before.",
                                        juce::MessageBoxIconType::NoIcon);
     box->addTextEditor ("bpm", juce::String (events[(size_t) index].bpm, 2), "BPM");
@@ -4455,8 +4461,8 @@ void ArrangeView::paintChords (juce::Graphics& g, const Timeline::Row& row)
     if (track.events.empty())
     {
         g.setColour (ParagonColours::textDim);
-        g.setFont (ChordUi::chordFont (12.0f));
-        g.drawText ("Double-click to add a chord, drop a chord pad here, or right-click a MIDI part: Create Chord Events",
+        g.setFont (juce::Font (ParagonLookAndFeel::textFont (12.0f)));
+        g.drawText ("DOUBLE-CLICK TO ADD A CHORD, DROP A CHORD PAD HERE, OR RIGHT-CLICK A MIDI PART: DETECT CHORDS",
                     chords.withTrimmedLeft (12.0f), juce::Justification::centredLeft, true);
     }
     // The scales: a strip under the chords.
@@ -4473,8 +4479,8 @@ void ArrangeView::paintChords (juce::Graphics& g, const Timeline::Row& row)
         g.setColour (pr7s::FamilyColours::red.withAlpha (0.8f));
         g.fillRect (r.withWidth (2.0f));
         g.setColour (ParagonColours::textDim);
-        g.setFont (ChordUi::chordFont (juce::jlimit (9.0f, 11.0f, r.getHeight() * 0.75f)));
-        g.drawText (ChordUi::spokenKey (track.scales[i].key) + (track.autoScales ? "" : "  (set by hand)"), r.withTrimmedLeft (6.0f),
+        g.setFont (juce::Font (ParagonLookAndFeel::textFont (juce::jlimit (9.0f, 11.0f, r.getHeight() * 0.75f))));
+        g.drawText ((ChordUi::spokenKey (track.scales[i].key) + (track.autoScales ? "" : "  (set by hand)")).toUpperCase(), r.withTrimmedLeft (6.0f),
                     juce::Justification::centredLeft, true);
     }
     juce::ignoreUnused (project);

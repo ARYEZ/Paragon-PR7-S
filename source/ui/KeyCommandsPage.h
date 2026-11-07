@@ -37,7 +37,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
-    static constexpr int preferredWidth = 1060, preferredHeight = 680;
+    static constexpr int preferredWidth = 1060 + 36, preferredHeight = 680 + 124;   // (0.71.0: the Hub's header and panel round it)
 
 private:
     class CommandList;
@@ -62,6 +62,7 @@ private:
     juce::KeyPress searchedKey;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::Rectangle<int> commandArea, keysArea, macrosArea, keysTitle, macrosTitle;
+    juce::Image satin;   // (0.71.0: the Hub's header)
     void rebuildKeys();
     void showPresetMenu();
     friend class CommandList;

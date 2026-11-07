@@ -35,8 +35,11 @@ struct Probe final : juce::AudioPluginInstance
     void fillInPluginDescription (juce::PluginDescription& d) const override { d.name = "Probe"; d.isInstrument = true; }
     void prepareToPlay (double, int) override {}
     void releaseResources() override {}
+    double busyMs = 0.0;   // (0.57.3) a heavy plug-in: each block takes this long
     void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) override
     {
+        if (busyMs > 0.0)
+            for (const auto until = juce::Time::getMillisecondCounterHiRes() + busyMs; juce::Time::getMillisecondCounterHiRes() < until;) {}
         for (const auto metadata : midi)
             received.push_back ({ samplesSoFar + metadata.samplePosition, metadata.getMessage() });
         samplesSoFar += buffer.getNumSamples();

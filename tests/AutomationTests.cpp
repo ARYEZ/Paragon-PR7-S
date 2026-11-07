@@ -24,8 +24,9 @@ namespace
     {
         float get() const { return value.load(); }
         float getValue() const override { return value.load(); }
-        void setValue (float v) override { value = v; }
+        void setValue (float v) override { value = v; ++sets; }
         float getDefaultValue() const override { return 1.0f; }
+        int sets = 0;   // (0.57.1: how often the engine set it)
         juce::String getName (int) const override { return "Level"; }
         juce::String getLabel() const override { return {}; }
         float getValueForText (const juce::String& text) const override { return text.getFloatValue(); }
@@ -546,4 +547,41 @@ TEST_CASE ("Quick Controls: 8 slots per track, each any control; moving one move
     studio.removeInsert (track, 0);
     CHECK_FALSE (studio.getQuickControl (track, 2).has_value());
     CHECK (studio.getQuickControl (track, 0).has_value());
+}
+
+TEST_CASE ("0.57.1: an automated plug-in knob is set only when its value changes, not again after every update", "[automation][engine]")
+{
+    Desk desk;
+    auto effect = std::make_unique<KnobEffect>();
+    auto* knob = effect->knob;
+    desk.engine.insertEffect (1, 0, std::move (effect));
+    desk.track().inserts.resize (1);
+    auto knobLane = lane (AutomationLane::Target::insert, { { 0.0, 0.5f } });
+    knobLane.slot = 0;
+    knobLane.parameter = 0;
+    desk.track().automation.push_back (knobLane);
+    desk.engine.update (desk.project);
+    desk.engine.setPosition (0.0);
+    desk.engine.play();
+    juce::AudioBuffer<float> buffer (2, 512);
+    desk.engine.render (buffer, 512);
+    CHECK (knob->get() == 0.5f);
+    CHECK (knob->sets == 1);
+    // Faders moved, the song changed: no knob moved, so it isn't set again.
+    for (int i = 0; i < 5; ++i)
+    {
+        desk.track().volumeDb = -1.0f * (float) i;
+        desk.engine.update (desk.project);
+        desk.engine.render (buffer, 512);
+    }
+    CHECK (knob->sets == 1);
+    // A new effect in the slot is given the value.
+    auto second = std::make_unique<KnobEffect>();
+    auto* knob2 = second->knob;
+    desk.engine.removeEffect (1, 0);
+    desk.engine.insertEffect (1, 0, std::move (second));
+    desk.engine.update (desk.project);
+    desk.engine.render (buffer, 512);
+    CHECK (knob2->get() == 0.5f);
+    CHECK (knob2->sets == 1);
 }

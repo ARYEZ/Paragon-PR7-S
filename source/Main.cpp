@@ -4,6 +4,7 @@
 #include "engine/Studio.h"
 #include "ui/MainView.h"
 #include "ui/ParagonLookAndFeel.h"
+#include "ui/Windows.h"
 
 // The Paragon PR7-S app: one window holding the studio.
 class ParagonStudioApplication final : public juce::JUCEApplication,
@@ -26,6 +27,11 @@ public:
         pr7s::clearDragOutFolder();   // (0.53.1: last session's dragged-out parts)
         studio = std::make_unique<pr7s::Studio> (true);
         window = std::make_unique<MainWindow> (*this, *studio);
+        if (studio->getSoftwareDrawing())   // (0.60.0)
+        {
+            pr7s::SessionLog::note ("Drawing: with the processor (SETTINGS)");
+            Windows::applyDrawing (true);
+        }
 
         // A song given on the command line (double-clicked in Explorer) opens.
         auto opened = false;
@@ -98,7 +104,14 @@ public:
 
     void anotherInstanceStarted (const juce::String&) override {}
 
-    void timerCallback() override { pr7s::SessionLog::beat(); }
+    void timerCallback() override
+    {
+        pr7s::SessionLog::beat();
+        // (0.60.0) Windows opened since follow SETTINGS' drawing (the processor or the graphics card), once a second.
+        if (studio != nullptr && ++drawingTicks % 4 == 0)
+            Windows::applyDrawing (studio->getSoftwareDrawing());
+    }
+    int drawingTicks = 0;
 
 private:
     class MainWindow final : public juce::DocumentWindow

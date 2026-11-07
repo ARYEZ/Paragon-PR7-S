@@ -195,7 +195,7 @@ TEST_CASE ("IDEAS' DRUMS tab: one generated beat per section, MORE IDEAS deals n
     page.setTab (LinesPage::Tab::drums);
     CHECK_FALSE (page.isShowingWrittenBeats());
     const auto& beats = page.getIdeas (LineIdea::Part::drums);
-    REQUIRE (beats.size() == 6);
+    REQUIRE (beats.size() == 7);   // (0.65.0: SOLO the seventh)
     CHECK (beats[0].style == "Intro");
     CHECK (beats[4].style == "Breakdown");
     const auto before = beats[1].notes;

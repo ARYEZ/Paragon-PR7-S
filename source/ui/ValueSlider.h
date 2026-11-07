@@ -46,6 +46,17 @@ class ValueSlider : public juce::Slider
 public:
     std::function<std::optional<double> (const juce::String&)> parse;
 
+    // (0.71.0, the owner's) What a drag moves it by, snapped to it (0: the range's interval). Typed
+    // values and automation aren't snapped: only the mouse's drag (JUCE asks `snapValue` for those).
+    double dragStep = 0.0;
+
+    double snapValue (double attempted, juce::Slider::DragMode mode) override
+    {
+        if (dragStep <= 0.0 || mode == juce::Slider::notDragging)
+            return attempted;
+        return juce::jlimit (getMinimum(), getMaximum(), std::round (attempted / dragStep) * dragStep);
+    }
+
     void mouseDoubleClick (const juce::MouseEvent& e) override
     {
         if (parse == nullptr)

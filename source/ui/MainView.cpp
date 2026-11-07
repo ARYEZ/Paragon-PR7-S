@@ -260,6 +260,26 @@ MainView::MainView (pr7s::Studio& studioToUse)
     quantizeButton.setTooltip ("The quantize value: what Snap snaps to (1/1 to 1/64)");
     snapButton.onClick = [this] { studio.setSnap (! studio.getProject().snapOn); };
     quantizeButton.onClick = [this] { showQuantizeMenu(); };
+    // (0.73.0) TAP, and the all-tracks M / S (from the track list's header), after the quantize value.
+    for (auto* key : std::initializer_list<juce::TextButton*> { &tapButton, &muteAllButton, &soloAllButton })
+    {
+        key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        key->setWantsKeyboardFocus (false);
+        addAndMakeVisible (*key);
+    }
+    tapButton.setTooltip ("TAP: tap the beat (or Shift+Space) to set the tempo; the TEMPO screen shows the tapped tempo. "
+                          "Right-click: where it goes (the Tap Tempo Mode)");
+    tapButton.onClick = [this]
+    {
+        if (std::exchange (tapButton.popup, false))
+            transport.showTapModes (&tapButton);
+        else
+            transport.tap();
+    };
+    muteAllButton.setTooltip ("Deactivate All Mute States: lit while any track is muted; click to unmute them all");
+    soloAllButton.setTooltip ("Deactivate All Solo States: lit while any track is soloed; click to turn every solo off");
+    muteAllButton.onClick = [this] { studio.deactivateAllMute(); };
+    soloAllButton.onClick = [this] { studio.deactivateAllSolo(); };
     readAllButton.onClick = [this] { studio.setAutomationReadAll (! studio.anyAutomationRead()); };
     writeAllButton.onClick = [this] { studio.setAutomationWriteAll (! studio.anyAutomationWrite()); };
 
@@ -311,6 +331,16 @@ MainView::MainView (pr7s::Studio& studioToUse)
         mixerZone.dockedHeight = settings->getIntValue ("mixerHeight", 0);
         padsZone.inWindow = settings->getBoolValue ("chordPadsInWindow", false);
         padsZone.dockedHeight = settings->getIntValue ("chordPadsHeight", 0);
+        // (0.71.0, the owner's) Once: every zone back to the new default (five tracks above it).
+        if (! settings->getBoolValue ("dockHeights071", false))
+        {
+            settings->setValue ("dockHeights071", true);
+            for (auto* zone : { &editorZone, &mixerZone, &padsZone })
+            {
+                zone->dockedHeight = 0;
+                settings->removeValue (zone->settingsKey + "Height");
+            }
+        }
     }
     // Each view's Auto-Scroll and its settings, kept for next time.
     timeline.autoScroll.load (studio.getSettings(), "arrange");
@@ -357,6 +387,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     arrange.onBuildSection = [this] (std::vector<int> events) { openLineIdeas (std::move (events), true); };
     chordPads.onBuildSection = [this] { openLineIdeas ({}, true); };
     chordPads.onProgressions = [this] { openProgressions(); };
+    chordPads.onComposer = [this] { openComposer(); };
     arrange.onProgressions = [this] { openProgressions(); };
     // Told of clicks in the work areas, to know where the keys go.
     arrange.addMouseListener (this, true);
@@ -485,6 +516,50 @@ void MainView::changeListenerCallback (juce::ChangeBroadcaster* source)
     seenChange = studio.getChangeVersion();
     refreshHeader();
     refreshScrollBars();
+    // (0.70.0) A newly selected track shown in the track list and the mixer, wherever it was chosen.
+    if (const auto selected = studio.getSelectedTrack(); selected != shownSelection)
+    {
+        shownSelection = selected;
+        if (selected != 0 && ! studio.isMasterSelected())
+            revealTrack (selected);
+    }
+}
+
+void MainView::revealTrack (int trackId)
+{
+    const auto lanes = juce::jmax (0, arrange.getHeight() - Timeline::rulerHeight);
+    for (const auto& row : timeline.layout (studio))
+        if (row.kind == Timeline::Row::Kind::track && row.busId == trackId)
+        {
+            auto y = timeline.scrollY;
+            if (row.top < y)
+                y = row.top;
+            else if (lanes > 0 && row.top + row.height > y + lanes)
+                y = row.top + row.height - lanes;
+            if (y != timeline.scrollY)
+            {
+                timeline.scrollY = juce::jmax (0, y);
+                if (timeline.onScrollOrZoom)
+                    timeline.onScrollOrZoom();
+                refreshScrollBars();
+            }
+            break;
+        }
+    mixer.revealStrip (trackId);
+}
+
+void MainView::selectTopTrack()
+{
+    const auto shown = studio.getShownTracks();
+    if (! shown.empty())
+        studio.selectTrack (shown.front());
+}
+
+void MainView::selectBottomTrack()
+{
+    const auto shown = studio.getShownTracks();
+    if (! shown.empty())
+        studio.selectTrack (shown.back());
 }
 
 void MainView::refreshScrollBars()
@@ -533,6 +608,8 @@ void MainView::refreshHeader()
     readAllButton.setToggleState (studio.anyAutomationRead(), juce::dontSendNotification);
     writeAllButton.setToggleState (studio.anyAutomationWrite(), juce::dontSendNotification);
     snapButton.setToggleState (studio.getProject().snapOn, juce::dontSendNotification);
+    muteAllButton.setToggleState (studio.anyMute(), juce::dontSendNotification);
+    soloAllButton.setToggleState (studio.anySolo(), juce::dontSendNotification);
     quantizeButton.setButtonText (quantizeName (studio.getProject().quantizeBeats));
     const auto file = studio.getFile();
     const auto title = "Paragon PR7-S - " + (file == juce::File() ? juce::String ("Untitled") : file.getFileNameWithoutExtension())
@@ -581,7 +658,7 @@ void MainView::resized()
     {
         wasWide = true;
         mixer.setRackShown (false);
-        mixerZone.dockedHeight = 1;   // (kept to its least)
+        mixerZone.dockedHeight = 0;   // (0.71.0: the default, five tracks above it; was its least)
         if (mixerZone.inWindow)
             setMixerInWindow (false);
         if (! isMixerOpen())
@@ -613,6 +690,12 @@ void MainView::resized()
     snapButton.setBounds (header.removeFromLeft (56));
     header.removeFromLeft (4);
     quantizeButton.setBounds (header.removeFromLeft (66));
+    header.removeFromLeft (18);
+    tapButton.setBounds (header.removeFromLeft (50));
+    header.removeFromLeft (18);
+    muteAllButton.setBounds (header.removeFromLeft (34));
+    header.removeFromLeft (4);
+    soloAllButton.setBounds (header.removeFromLeft (34));
     settingsButton.setBounds (header.removeFromRight (92));
     header.removeFromRight (6);
     pluginsButton.setBounds (header.removeFromRight (86));
@@ -623,10 +706,10 @@ void MainView::resized()
     // Wide: the header's keys (NEW to W) in the middle of the window.
     if (isWide())
     {
-        const auto first = newButton.getX(), last = quantizeButton.getRight();
+        const auto first = newButton.getX(), last = soloAllButton.getRight();
         const auto shift = juce::jmax (0, (getWidth() - (last - first)) / 2 - first);
-        for (auto* key : { &newButton, &openButton, &saveButton, &saveAsButton, &importButton, &exportButton, &undoButton, &redoButton,
-                           &readAllButton, &writeAllButton, &snapButton, &quantizeButton })
+        for (juce::Component* key : std::initializer_list<juce::Component*> { &newButton, &openButton, &saveButton, &saveAsButton, &importButton, &exportButton, &undoButton, &redoButton,
+                           &readAllButton, &writeAllButton, &snapButton, &quantizeButton, &tapButton, &muteAllButton, &soloAllButton })
             key->setTopLeftPosition (key->getX() + shift, key->getY());
     }
 
@@ -707,13 +790,16 @@ int MainView::heightFor (Zone& zone, int middleHeight) const
     // leaves the arrangement its room (its least wins if there isn't enough).
     const auto least = juce::jmin (minimumHeight (zone), middleHeight);
     const auto most = juce::jlimit (least, middleHeight, middleHeight - minimumArrangeHeight - dividerHeight);
-    // (Not dragged yet: a little over half, or the mixer's whole rack and a full fader if that's more.)
-    auto wanted = zone.dockedHeight > 0 ? zone.dockedHeight : juce::roundToInt ((float) middleHeight * 0.6f);
-    if (zone.dockedHeight <= 0 && &zone == &mixerZone)
-        wanted = juce::jmax (wanted, mixer.getPreferredHeight());
-    if (zone.dockedHeight <= 0 && &zone == &padsZone)
-        wanted = 320;   // (the pads at a comfortable size, the arrangement kept large: our choice)
+    // (0.71.0, the owner's) Not dragged yet: what leaves the ruler, the master's row and five whole
+    // tracks' rows (at the vertical zoom now) above it, for the mixer, the MIDI editor and the pads alike.
+    auto wanted = zone.dockedHeight > 0 ? zone.dockedHeight : middleHeight - arrangeHeightForTracks (defaultTracksShown);
     return juce::jlimit (least, most, wanted);
+}
+
+int MainView::arrangeHeightForTracks (int count) const
+{
+    // The ruler, the master's row, `count` tracks' rows, the scroll bar under them and the divider.
+    return Timeline::rulerHeight + timeline.masterRowHeight() + count * timeline.trackRowHeight() + scrollBarSize + dividerHeight;
 }
 
 void MainView::setDockedHeight (int height)
@@ -1390,9 +1476,7 @@ void MainView::openProject()
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't open the song",
                                                     file.getFullPathName() + " isn't a Paragon PR7-S song (or is from a newer version).");
         else if (problems.isNotEmpty())
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Some instruments, effects or recordings are missing",
-                                                    "These aren't on this computer. Tracks without their instrument and clips without their "
-                                                    "recording are silent, and the sound goes past missing effects, until they're found:\n\n" + problems);
+            reportMissing (problems);
     });
 }
 
@@ -2076,9 +2160,30 @@ void MainView::openSong (const juce::File& file)
         juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't open the song",
                                                 file.getFullPathName() + " isn't a Paragon PR7-S song (or is from a newer version).");
     else if (problems.isNotEmpty())
-        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Some instruments, effects or recordings are missing",
-                                                "These aren't on this computer. Tracks without their instrument and clips without their "
-                                                "recording are silent, and the sound goes past missing effects, until they're found:\n\n" + problems);
+        reportMissing (problems);
+}
+
+void MainView::reportMissing (const juce::String& problems)
+{
+    // (0.71.0, the owner asked) What's missing listed, with the choice to take it out of the song.
+    const auto canRemove = ! studio.getMissing().empty();
+    const auto message = "These aren't on this computer. Tracks without their instrument and clips without their "
+                         "recording are silent, and the sound goes past missing effects, until they're found:\n\n" + problems
+                         + (canRemove ? "\n\nREMOVE THEM takes them out of the song: the missing effects' slots emptied, the clips "
+                                        "without their recording deleted, and a track without its instrument given the studio's synth "
+                                        "(its parts kept). KEEP THEM leaves the song as it is (for when they're installed)." : "");
+    if (! canRemove)
+    {
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Some instruments, effects or recordings are missing", message);
+        return;
+    }
+    juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::WarningIcon, "Some instruments, effects or recordings are missing", message,
+                                        "Remove them", "Keep them", nullptr,
+                                        juce::ModalCallbackFunction::create ([safe = juce::Component::SafePointer<MainView> (this)] (int result)
+                                        {
+                                            if (safe != nullptr && result == 1)
+                                                safe->studio.removeMissing();
+                                        }));
 }
 
 void MainView::toggleMediaBay()
@@ -2313,6 +2418,7 @@ void MainView::openLineIdeas (std::vector<int> chordEvents, bool buildSection)
         return;
     }
     linesWindow = std::make_unique<LinesWindow> (studio, std::move (spans));
+    linesWindow->getPage().onComposer = [this] { openComposer(); };
     linesWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->linesWindow.reset(); }); };
     linesWindow->centreAroundComponent (this, linesWindow->getWidth(), linesWindow->getHeight());
     linesWindow->setVisible (true);
@@ -2347,6 +2453,19 @@ void MainView::openProgressions()
     progressionsWindow->getPage().onIdeas = [this] (std::vector<int> events) { openLineIdeas (std::move (events)); };
     progressionsWindow->centreAroundComponent (this, progressionsWindow->getWidth(), progressionsWindow->getHeight());
     progressionsWindow->setVisible (true);
+}
+
+void MainView::openComposer()
+{
+    if (composerWindow != nullptr)
+    {
+        composerWindow->toFront (true);
+        return;
+    }
+    composerWindow = std::make_unique<ComposerWindow> (studio);
+    composerWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->composerWindow.reset(); }); };
+    composerWindow->centreAroundComponent (this, composerWindow->getWidth(), composerWindow->getHeight());
+    composerWindow->setVisible (true);
 }
 
 void MainView::toggleTempoEditor()
@@ -2567,7 +2686,7 @@ void MainView::openHub()
 
 void MainView::saveAsTemplate()
 {
-    auto* box = new juce::AlertWindow ("Save as Template", "A name for the template (the Hub lists it under TEMPLATES):", juce::MessageBoxIconType::NoIcon);
+    auto* box = new FamilyAlertWindow ("Save as Template", "A name for the template (the Hub lists it under TEMPLATES):", juce::MessageBoxIconType::NoIcon);
     box->addTextEditor ("name", studio.getFile() != juce::File() ? studio.getFile().getFileNameWithoutExtension() : juce::String ("My template"));
     box->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
     box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));

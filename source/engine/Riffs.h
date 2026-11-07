@@ -15,9 +15,12 @@
 // turnaround). The leads are a rhythm per bar and the moves a line makes through a scale.
 namespace pr7s
 {
-    enum class GuitarStyle { rock, thrash, numetal, metalcore, shred };
+    // (0.64.0) GROOVE: low palm-muted chugs answered by a high, dissonant two-note stab (a tritone with
+    // vibrato, a whole step bent up, a ringing unison): the owner's examples were groove metal and
+    // nu-metal records. Added last, so the others keep their numbers.
+    enum class GuitarStyle { rock, thrash, numetal, metalcore, shred, groove };
     const std::vector<GuitarStyle>& guitarStyles();
-    juce::String guitarStyleName (GuitarStyle);        // "ROCK", "THRASH", "NU-METAL", "METALCORE", "SHRED"
+    juce::String guitarStyleName (GuitarStyle);        // "ROCK", "THRASH", "NU-METAL", "METALCORE", "SHRED", "GROOVE"
     GuitarStyle guitarStyleNamed (const juce::String&);   // (else rock)
     juce::String guitarStyleDescription (GuitarStyle);
 
@@ -46,6 +49,14 @@ namespace pr7s
                                             const GuitarTuning&, const GuitarVelocities&, const RiffSettings&);
     std::vector<LineIdea> styleLeadIdeas (GuitarStyle, const std::vector<ChordSpan>&, double beatsPerBar, int variation,
                                           const GuitarTuning&, const GuitarVelocities&);
+
+    // (0.65.0) A WHOLE GUITAR SOLO over the chords (the owner asked for a Solo section): made from the
+    // style's own six leads, ordered from the calmest (fewest notes a beat) to the busiest, a lead per
+    // two-bar phrase so the solo starts melodic and climbs to its fastest phrase at the end. Each phrase's
+    // longest single note (held at least three quarters of a beat) is bent up a whole step into its note
+    // (written a whole step under, `LineNote::Effect::bend`), the other long single notes get vibrato, and
+    // the last note is held to the end with vibrato. Pinch harmonics and rakes are left as they are.
+    LineIdea guitarSolo (const std::vector<LineIdea>& leads, const std::vector<ChordSpan>&, double beatsPerBar, const GuitarTuning&);
 
     // PALM MUTES, TIGHTNESS, BUSYNESS and FILLS on a rhythm idea's notes (beats from the first
     // chord's start): every style's, rock's too. `strummed`: no chugs added (a strum isn't chugged).

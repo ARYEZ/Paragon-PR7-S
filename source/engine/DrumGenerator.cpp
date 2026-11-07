@@ -35,7 +35,7 @@ namespace pr7s
             {
                 case GuitarStyle::rock: return rock;
                 case GuitarStyle::thrash: return thrash;
-                case GuitarStyle::numetal: return numetal;
+                case GuitarStyle::numetal: case GuitarStyle::groove: return numetal;   // (0.64.0: groove plays by the nu-metal rules)
                 case GuitarStyle::metalcore: return metalcore;
                 case GuitarStyle::shred: return shred;
             }
@@ -65,7 +65,8 @@ namespace pr7s
                 case DrumSection::chorus: return rules.chorusCymbal;
                 case DrumSection::breakdown: return china;
                 case DrumSection::bridge: return ride;
-                case DrumSection::intro: return style == GuitarStyle::rock || style == GuitarStyle::numetal ? closedHat : ride;
+                case DrumSection::intro: return style == GuitarStyle::rock || style == GuitarStyle::numetal || style == GuitarStyle::groove ? closedHat : ride;
+                case DrumSection::solo: return ride;   // (0.65.0: the ride drives a solo, out of the guitar's way)
                 case DrumSection::verse:
                 case DrumSection::ending: break;
             }
@@ -183,7 +184,7 @@ namespace pr7s
             bar.erase (std::remove_if (bar.begin(), bar.end(), [from] (const Hit& h) { return h.step >= from; }), bar.end());
             const auto metal = style != GuitarStyle::rock;
             const int toms[] = { tomHigh, tomMid, tomLow, tomFloor };
-            const auto kind = rng.nextInt (style == GuitarStyle::numetal ? 3 : 4);
+            const auto kind = rng.nextInt (style == GuitarStyle::numetal || style == GuitarStyle::groove ? 3 : 4);
             for (auto step = from; step < 16; ++step)
             {
                 const auto along = (float) (step - from) / (float) juce::jmax (1, 16 - from);
@@ -196,7 +197,7 @@ namespace pr7s
                     case 2: note = (step - from) % 2 == 0 ? snare : toms[(step - from) / 2 % 4]; break;   // snare and toms in turn
                     default: note = (step - from) < (16 - from) / 2 ? snare : toms[(step - from) % 4]; break;   // snare, then the toms
                 }
-                if (style == GuitarStyle::numetal && kind == 0 && step % 2 == 1)
+                if ((style == GuitarStyle::numetal || style == GuitarStyle::groove) && kind == 0 && step % 2 == 1)
                     continue;   // (a stop-start fill: eighths)
                 bar.push_back ({ step, note, velocity });
                 if (metal && step % 2 == 0)
@@ -214,9 +215,11 @@ namespace pr7s
     const std::vector<DrumSection>& drumSections()
     {
         static const std::vector<DrumSection> all { DrumSection::intro, DrumSection::verse, DrumSection::chorus,
-                                                    DrumSection::bridge, DrumSection::breakdown, DrumSection::ending };
+                                                    DrumSection::bridge, DrumSection::breakdown, DrumSection::ending, DrumSection::solo };
         return all;
     }
+
+    static_assert ((int) DrumSection::solo + 1 == 7, "DrumProfile::sectionCount and the arrays by section follow DrumSection");
 
     juce::String drumSectionName (DrumSection section)
     {
@@ -228,6 +231,7 @@ namespace pr7s
             case DrumSection::bridge: return "BRIDGE";
             case DrumSection::breakdown: return "BREAKDOWN";
             case DrumSection::ending: return "ENDING";
+            case DrumSection::solo: return "SOLO";
         }
         return {};
     }

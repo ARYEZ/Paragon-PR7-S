@@ -84,6 +84,9 @@ void ArrangeView::paintMarkers (juce::Graphics& g, const Timeline::Row& row)
     const auto font = ParagonLookAndFeel::titleFont (juce::jmin (15.0f, half * 0.75f));
     g.setFont (font);
     const auto isSelected = [this] (int i) { return std::find (markerSelection.begin(), markerSelection.end(), i) != markerSelection.end(); };
+    // (0.57.1) Only those in the stretch being redrawn: a flag's width is measured from its text, and
+    // that was done for every marker in the song on every playhead frame.
+    const auto clip = g.getClipBounds().toFloat();
 
     for (int i = 0; i < (int) markers.size(); ++i)
     {
@@ -91,7 +94,7 @@ void ArrangeView::paintMarkers (juce::Graphics& g, const Timeline::Row& row)
         if (! m.cycle)
             continue;
         const auto bar = getMarkerBounds (i);
-        if (bar.getRight() < 0.0f || bar.getX() > (float) getWidth())
+        if (bar.getRight() < clip.getX() || bar.getX() > clip.getRight())
             continue;
         const auto selected = isSelected (i);
         const auto tint = pr7s::FamilyColours::pink;
@@ -108,8 +111,11 @@ void ArrangeView::paintMarkers (juce::Graphics& g, const Timeline::Row& row)
         const auto& m = markers[(size_t) i];
         if (m.cycle)
             continue;
+        const auto at = timeline.xForBeat (m.start);
+        if (at > clip.getRight() || at + 800.0f < clip.getX())   // (a flag is narrower than 800 px)
+            continue;
         const auto flag = getMarkerBounds (i);
-        if (flag.getRight() < 0.0f || flag.getX() > (float) getWidth())
+        if (flag.getRight() < clip.getX() || flag.getX() > clip.getRight())
             continue;
         const auto selected = isSelected (i);
         const auto tint = pr7s::FamilyColours::orange;
@@ -407,7 +413,7 @@ void ArrangeView::editMarkerName (int index)
     if (track.locked || ! juce::isPositiveAndBelow (index, (int) track.markers.size()))
         return;
     const auto marker = track.markers[(size_t) index];
-    auto* box = new juce::AlertWindow (marker.cycle ? "Cycle Marker " + pr7s::markerIdText (marker) : "Marker " + pr7s::markerIdText (marker),
+    auto* box = new FamilyAlertWindow (marker.cycle ? "Cycle Marker " + pr7s::markerIdText (marker) : "Marker " + pr7s::markerIdText (marker),
                                        "Its description (shown on the marker track and in the Markers window).",
                                        juce::MessageBoxIconType::NoIcon);
     box->addTextEditor ("name", marker.name, "DESCRIPTION");

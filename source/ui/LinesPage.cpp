@@ -6,7 +6,7 @@
 
 namespace
 {
-    juce::Font interFont (float height, bool bold = false) { return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain)); }
+    juce::Font interFont (float height, bool bold = false) { return juce::Font (ParagonLookAndFeel::textFont (height, bold ? juce::Font::bold : juce::Font::plain)); }   // (0.71.1: Bebas, the owner's rule; the old name kept)
 
     // Each part's notes in one of the family's three: bass and rhythm orange, melody and lead pink, piano red.
     juce::Colour colourOf (pr7s::LineIdea::Part part)
@@ -94,10 +94,11 @@ public:
         const auto& notes = idea().notes;
         auto low = 127, high = 0;
         for (const auto& n : notes)
-        {
-            low = juce::jmin (low, n.pitch);
-            high = juce::jmax (high, n.pitch);
-        }
+            if (! n.keyswitch)
+            {
+                low = juce::jmin (low, n.pitch);
+                high = juce::jmax (high, n.pitch);
+            }
         low -= 2;
         high += 2;
         const auto body = r.withTrimmedTop (14.0f).reduced (0.0f, 3.0f);
@@ -105,6 +106,8 @@ public:
         const auto colour = colourOf (part);
         for (const auto& n : notes)
         {
+            if (n.keyswitch)
+                continue;   // (0.63.0: a keyswitch, not a note heard)
             const auto y = body.getBottom() - (float) (n.pitch - low + 1) * row;
             g.setColour (colour.withAlpha (0.45f + 0.55f * n.velocity));
             g.fillRoundedRectangle (juce::Rectangle<float> (xFor (n.beat), y, juce::jmax (2.0f, xFor (n.beat + n.length) - xFor (n.beat) - 1.0f),
@@ -191,7 +194,7 @@ void HumanizePanel::paint (juce::Graphics& g)
     g.setFont (ParagonLookAndFeel::titleFont (16.0f));
     g.drawText ("HUMANIZE", area.removeFromTop (22), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
-    g.setFont (juce::Font (juce::FontOptions (11.5f)));
+    g.setFont (juce::Font (ParagonLookAndFeel::textFont (11.5f)));
     g.drawFittedText ("Small differences in timing, velocity and length so the ideas sound played. Chords stay together, "
                       "a bar's first beat moves least, and velocities stay in their articulation's layer.",
                       area.removeFromTop (44), juce::Justification::topLeft, 3, 0.9f);
@@ -267,7 +270,7 @@ void GuitarVelocityPanel::paint (juce::Graphics& g)
     g.setFont (ParagonLookAndFeel::titleFont (16.0f));
     g.drawText ("GUITAR VELOCITIES", title.removeFromTop (22), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
-    g.setFont (juce::Font (juce::FontOptions (11.5f)));
+    g.setFont (juce::Font (ParagonLookAndFeel::textFont (11.5f)));
     g.drawText ("Each articulation's velocity, set by ear. The ideas are dealt again as you change them.", title, juce::Justification::centredLeft, true);
     for (int i = 0; i < pr7s::GuitarVelocities::count; ++i)
     {
@@ -276,7 +279,7 @@ void GuitarVelocityPanel::paint (juce::Graphics& g)
         g.setFont (ParagonLookAndFeel::titleFont (13.0f));
         g.drawText (pr7s::GuitarVelocities::nameOf (i), row.removeFromLeft (150), juce::Justification::centredLeft, false);
         g.setColour (ParagonColours::textDim);
-        g.setFont (juce::Font (juce::FontOptions (11.0f)));
+        g.setFont (juce::Font (ParagonLookAndFeel::textFont (11.0f)));
         g.drawText (pr7s::GuitarVelocities::layerOf (i), row.removeFromRight (60), juce::Justification::centredRight, false);
     }
 }
@@ -391,6 +394,16 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
     styleBox.setTooltip ("Which guitar ideas: rock, thrash, nu-metal, metalcore or shred (six rhythm parts and six leads each)");
     styleBox.onChange = [this] { setGuitarStyle (pr7s::guitarStyleNamed (styleBox.getText())); };
     addChildComponent (styleBox);
+    // (0.66.0) SOLO STYLE.
+    {
+        int soloId = 1;
+        for (const auto st : pr7s::soloStyles())
+            soloBox.addItem ("SOLO: " + pr7s::soloStyleName (st), soloId++);
+    }
+    soloBox.setTooltip ("How the whole solo (the last lead card) is written: by the STYLE, or in one of the solo styles "
+                        "(a motif stated, answered and developed, building to a climax)");
+    soloBox.onChange = [this] { setSoloStyle (pr7s::soloStyles()[(size_t) juce::jmax (0, soloBox.getSelectedItemIndex())]); };
+    addChildComponent (soloBox);
     riffKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     riffKey.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
     riffKey.setWantsKeyboardFocus (false);
@@ -409,6 +422,11 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
     buildKey.setTooltip ("A whole section onto tracks: the drums for it, the bass on their kick, the guitar, lead and piano you last played or used. Then what comes next.");
     buildKey.onClick = [this] { showBuildSection(); };
     addAndMakeVisible (buildKey);
+    composerKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    composerKey.setWantsKeyboardFocus (false);
+    composerKey.setTooltip ("The composer: every layer stacked, each locked or rolled, one GENERATE");
+    composerKey.onClick = [this] { if (onComposer) onComposer(); };
+    addAndMakeVisible (composerKey);
 
     if (auto* settings = studio.getSettings())
     {
@@ -534,6 +552,15 @@ void LinesPage::setGuitarStyle (pr7s::GuitarStyle st)
     studio.setGuitarStyle (st);
     if (groovesLooked)
         lookForGrooves();   // (ranked for the new style)
+    rebuild();
+}
+
+void LinesPage::setSoloStyle (pr7s::SoloStyle st)
+{
+    if (st == studio.getSoloStyle())
+        return;
+    stop();
+    studio.setSoloStyle (st);
     rebuild();
 }
 
@@ -710,14 +737,14 @@ void BuildSectionPanel::paint (juce::Graphics& g)
     g.setFont (ParagonLookAndFeel::titleFont (16.0f));
     g.drawText ("BUILD SECTION", area.removeFromTop (22), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
-    g.setFont (juce::Font (juce::FontOptions (11.5f)));
+    g.setFont (juce::Font (ParagonLookAndFeel::textFont (11.5f)));
     g.drawFittedText ("Each part onto its own track (Drums, Bass, Guitar, Lead Guitar, Piano, Melody) over these chords. "
                       "Building the same chords again replaces them; one undo step.",
                       area.removeFromTop (titleHeight - 32), juce::Justification::topLeft, 2, 0.9f);
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (13.0f));
     g.drawText ("SECTION", area.removeFromTop (rowHeight).removeFromLeft (110), juce::Justification::centredLeft, false);
-    g.setFont (juce::Font (juce::FontOptions (12.0f)));
+    g.setFont (juce::Font (ParagonLookAndFeel::textFont (12.0f)));
     for (int i = 0; i < BuildChoice::count; ++i)
     {
         auto row = area.removeFromTop (rowHeight);
@@ -745,7 +772,7 @@ void BuildSectionPanel::paint (juce::Graphics& g)
             g.setColour (ParagonColours::accent);
             g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * sug.score), 3.0f);
             g.setColour (ParagonColours::textDim);
-            g.setFont (juce::Font (juce::FontOptions (11.5f)));
+            g.setFont (juce::Font (ParagonLookAndFeel::textFont (11.5f)));
             g.drawFittedText (sug.reason, row.withTrimmedRight (8), juce::Justification::centredLeft, 2, 0.9f);
         }
     }
@@ -757,7 +784,8 @@ void BuildSectionPanel::resized()
     area.removeFromTop (titleHeight - 10);
     auto row = area.removeFromTop (rowHeight).reduced (0, 4);
     row.removeFromLeft (110);
-    const auto w = (row.getWidth() - 5 * 5) / 6;
+    const auto keys = juce::jmax (1, sectionKeys.size());
+    const auto w = (row.getWidth() - 5 * (keys - 1)) / keys;
     for (auto* key : sectionKeys)
     {
         key->setBounds (row.removeFromLeft (w));
@@ -787,11 +815,11 @@ std::vector<pr7s::LineIdea> LinesPage::sectionIdeas (const BuildChoice& c) const
     std::vector<pr7s::LineIdea> out;
     const auto pickFrom = [this] (P part, int index) -> const pr7s::LineIdea*
     {
-        const auto& list = ideas[(size_t) part];
+        const auto& list = getIdeas (part);
         return list.empty() ? nullptr : &list[(size_t) juce::jlimit (0, (int) list.size() - 1, index)];
     };
     // The drums: the generated beat for that section (written beats: the one last chosen).
-    const auto& beats = ideas[(size_t) P::drums];
+    const auto& beats = getIdeas (P::drums);
     const auto* drums = writtenBeats ? pickFrom (P::drums, beatIndex)
                                      : pickFrom (P::drums, (int) std::distance (pr7s::drumSections().begin(),
                                                                                 std::find (pr7s::drumSections().begin(), pr7s::drumSections().end(), c.section)));
@@ -811,8 +839,31 @@ std::vector<pr7s::LineIdea> LinesPage::sectionIdeas (const BuildChoice& c) const
             if (const auto* idea = pickFrom (part, index))
                 out.push_back (*idea);
     };
-    add (BuildChoice::guitar, P::rhythm, riffIndex);
-    add (BuildChoice::lead, P::lead, chosen[(size_t) P::lead]);
+    const auto solo = c.section == pr7s::DrumSection::solo;
+    if (solo && c.parts[BuildChoice::guitar])
+    {
+        // (0.65.0) Under a solo the rhythm guitar backs it more simply: its weak hits left out.
+        if (const auto* riff = pickFrom (P::rhythm, riffIndex))
+        {
+            auto backing = *riff;
+            pr7s::RiffSettings thinner;
+            thinner.bars = studio.getRiffSettings().bars;
+            thinner.busyness = 0.2f;
+            pr7s::shapeRiff (backing, spans, barBeats, thinner, studio.getGuitarVelocities(), studio.getGuitarStyle(), variation, getTuning());
+            out.push_back (std::move (backing));
+        }
+    }
+    else
+        add (BuildChoice::guitar, P::rhythm, riffIndex);
+    if (solo && c.parts[BuildChoice::lead])
+    {
+        // The lead plays the whole solo (the lead ideas' last).
+        const auto& leads = getIdeas (P::lead);
+        if (! leads.empty())
+            out.push_back (leads.back());
+    }
+    else
+        add (BuildChoice::lead, P::lead, chosen[(size_t) P::lead]);
     add (BuildChoice::piano, P::chords, chosen[(size_t) P::chords]);
     add (BuildChoice::melody, P::tune, chosen[(size_t) P::tune]);
     return out;
@@ -823,7 +874,7 @@ juce::String LinesPage::describeBuildPart (BuildChoice::Part p) const
     using P = pr7s::LineIdea::Part;
     const auto name = [this] (P part, int index)
     {
-        const auto& list = ideas[(size_t) part];
+        const auto& list = getIdeas (part);
         return list.empty() ? juce::String ("(none)") : list[(size_t) juce::jlimit (0, (int) list.size() - 1, index)].style;
     };
     switch (p)
@@ -834,8 +885,14 @@ juce::String LinesPage::describeBuildPart (BuildChoice::Part p) const
                                       + (drummer.has_value() ? "as " + drummer->name : "by " + pr7s::guitarStyleName (studio.getGuitarStyle()) + "'s rules");
         case BuildChoice::bass:
             return buildChoice.parts[BuildChoice::drums] ? juce::String ("Locked to the drums' kick, the chords' roots") : "Bass: " + name (P::bass, chosen[(size_t) P::bass]);
-        case BuildChoice::guitar: return "Riff: " + name (P::rhythm, riffIndex) + " (" + RiffPanel::summary (studio.getRiffSettings()).fromFirstOccurrenceOf ("RIFF: ", false, false).toLowerCase() + ")";
-        case BuildChoice::lead: return "Lead: " + name (P::lead, chosen[(size_t) P::lead]);
+        case BuildChoice::guitar:
+            if (buildChoice.section == pr7s::DrumSection::solo)
+                return "Riff: " + name (P::rhythm, riffIndex) + ", thinned out under the solo";
+            return "Riff: " + name (P::rhythm, riffIndex) + " (" + RiffPanel::summary (studio.getRiffSettings()).fromFirstOccurrenceOf ("RIFF: ", false, false).toLowerCase() + ")";
+        case BuildChoice::lead:
+            if (buildChoice.section == pr7s::DrumSection::solo)
+                return "The whole solo: melodic first, building to the style's fastest lead, bends and vibrato";
+            return "Lead: " + name (P::lead, chosen[(size_t) P::lead]);
         case BuildChoice::piano: return "Piano: " + name (P::chords, chosen[(size_t) P::chords]);
         case BuildChoice::melody: return "Melody: " + name (P::tune, chosen[(size_t) P::tune]);
         case BuildChoice::count: break;
@@ -857,7 +914,7 @@ std::vector<int> LinesPage::buildSection()
 
 std::vector<pr7s::SectionSuggestion> LinesPage::getNextSuggestions() const
 {
-    return pr7s::suggestNextSections (studio.getBuiltSections(), studio.getGuitarStyle(), (int) ideas[(size_t) pr7s::LineIdea::Part::rhythm].size());
+    return pr7s::suggestNextSections (studio.getBuiltSections(), studio.getGuitarStyle(), (int) getIdeas (pr7s::LineIdea::Part::rhythm).size());
 }
 
 std::vector<int> LinesPage::buildNext (const pr7s::SectionSuggestion& next)
@@ -976,7 +1033,7 @@ void LinesPage::openLearnWindow (const pr7s::DrumProfile* toEdit)
         learnWindow->centreWithSize (1500, 860);
     }
     if (toEdit != nullptr)
-        learnWindow->getPage().openProfile (*toEdit);
+        learnWindow->getPage().openProfileInBackground (*toEdit);
     learnWindow->setVisible (true);
     learnWindow->toFront (true);
 }
@@ -1053,80 +1110,144 @@ void LinesPage::showMelodySettings()
 
 void LinesPage::rebuild()
 {
+    // Everything is made again when next asked for (the tab shown: at once, by makeCards).
+    made.fill (false);
+    madeRaw.fill (false);
+    riffKey.setButtonText (RiffPanel::summary (studio.getRiffSettings()));
+    drummerKey.setButtonText ("DRUMMER: " + (drummer.has_value() ? drummer->name.toUpperCase() : juce::String ("STYLE RULES")));
+    drumKey.setButtonText (DrumPanel::summary (studio.getDrumSettings()));
+    melodyKey.setButtonText (MelodyPanel::summary (studio.getMelodySettings()));
+    humanizeKey.setButtonText (humanizeText (studio.getIdeasHumanize()));
+    makeCards();
+}
+
+const std::vector<pr7s::LineIdea>& LinesPage::rawIdeas (pr7s::LineIdea::Part part) const
+{
     using P = pr7s::LineIdea::Part;
-    const auto& tuning = getTuning();
-    ideas[(size_t) P::bass] = pr7s::bassIdeas (spans, barBeats, variation);
-    ideas[(size_t) P::melody] = pr7s::melodyIdeas (spans, barBeats, variation);
-    ideas[(size_t) P::chords] = pr7s::pianoChordIdeas (spans, barBeats, variation);
-    const auto velocities = studio.getGuitarVelocities();
-    const auto guitarStyle = studio.getGuitarStyle();
-    const auto riff = studio.getRiffSettings();
-    ideas[(size_t) P::rhythm] = pr7s::guitarRhythmIdeas (spans, barBeats, variation, tuning, velocities, guitarStyle, riff);
-    ideas[(size_t) P::lead] = pr7s::guitarLeadIdeas (spans, barBeats, variation, tuning, velocities, guitarStyle);
-    riffKey.setButtonText (RiffPanel::summary (riff));
-    ideas[(size_t) P::pattern] = pr7s::patternIdeas (spans, barBeats, patternGroup);
-    const auto melody = studio.getMelodySettings();
-    ideas[(size_t) P::tune] = pr7s::composedMelodies (spans, barBeats, melody, variation);
-    // (0.54.0) Drums: the style's beats (the sixth on the chosen riff), the library's page of grooves;
-    // the bass's two locked ideas.
+    const auto k = (size_t) part;
+    if (madeRaw[k])
+        return raw[k];
+    madeRaw[k] = true;
+    ++deals;
+    auto& list = raw[k];
+    switch (part)
     {
-        const auto& riffs = ideas[(size_t) P::rhythm];
-        const auto* lockedRiff = riffs.empty() ? nullptr : &riffs[(size_t) juce::jlimit (0, (int) riffs.size() - 1, riffIndex)];
-        const auto drums = studio.getDrumSettings();
-        const auto hits = lockedRiff != nullptr ? pr7s::riffHits (*lockedRiff) : std::vector<double> {};
-        ideas[(size_t) P::drums] = writtenBeats ? pr7s::drumIdeas (guitarStyle, spans, barBeats, variation, lockedRiff)
-                                 : drummer.has_value() ? pr7s::generatedBeats (*drummer, spans, barBeats, drums, variation, hits)   // (0.56.0)
-                                                       : pr7s::generatedBeats (guitarStyle, spans, barBeats, drums, variation, hits);
-        drummerKey.setButtonText ("DRUMMER: " + (drummer.has_value() ? drummer->name.toUpperCase() : juce::String ("STYLE RULES")));
-        drumKey.setButtonText (DrumPanel::summary (drums));
-        auto& grooves = ideas[(size_t) P::groove];
-        grooves.clear();
-        for (int i = groovePage * 6; i < (int) libraryGrooves.size() && (int) grooves.size() < 6; ++i)
+        case P::bass:
         {
-            juce::String error;
-            if (auto idea = pr7s::grooveIdea (libraryGrooves[(size_t) i], spans, barBeats, error))
-                grooves.push_back (std::move (*idea));
+            list = pr7s::bassIdeas (spans, barBeats, variation);
+            // (0.54.0) The bass's two locked ideas: on the chosen beat's kick, on the chosen riff's hits.
+            const auto& beats = rawIdeas (P::drums);
+            const auto& riffs = rawIdeas (P::rhythm);
+            if (! spans.empty() && ! beats.empty())
+            {
+                const auto& beat = beats[(size_t) juce::jlimit (0, (int) beats.size() - 1, beatIndex)];
+                list.push_back (pr7s::bassOnHits (spans, pr7s::kickHits (beat), "Locked to the kick",
+                                                  "The chord's root on every kick of the drum beat \"" + beat.style + "\" (the bass and kick as one)"));
+                if (! riffs.empty())
+                {
+                    const auto& lockedRiff = riffs[(size_t) juce::jlimit (0, (int) riffs.size() - 1, riffIndex)];
+                    list.push_back (pr7s::bassOnHits (spans, pr7s::riffHits (lockedRiff), "Following the riff",
+                                                      "The chord's root on every hit of the guitar riff \"" + lockedRiff.style + "\" (doubling the guitar)"));
+                }
+            }
+            break;
         }
-        const auto& beats = ideas[(size_t) P::drums];
-        if (! spans.empty() && ! beats.empty())
+        case P::melody: list = pr7s::melodyIdeas (spans, barBeats, variation); break;
+        case P::chords: list = pr7s::pianoChordIdeas (spans, barBeats, variation); break;
+        case P::rhythm:
+            list = pr7s::guitarRhythmIdeas (spans, barBeats, variation, getTuning(), studio.getGuitarVelocities(), studio.getGuitarStyle(), studio.getRiffSettings());
+            break;
+        case P::lead:
         {
-            const auto& beat = beats[(size_t) juce::jlimit (0, (int) beats.size() - 1, beatIndex)];
-            ideas[(size_t) P::bass].push_back (pr7s::bassOnHits (spans, pr7s::kickHits (beat), "Locked to the kick",
-                                                                 "The chord's root on every kick of the drum beat \"" + beat.style + "\" (the bass and kick as one)"));
-            if (lockedRiff != nullptr)
-                ideas[(size_t) P::bass].push_back (pr7s::bassOnHits (spans, pr7s::riffHits (*lockedRiff), "Following the riff",
-                                                                     "The chord's root on every hit of the guitar riff \"" + lockedRiff->style + "\" (doubling the guitar)"));
+            // (0.66.0) The solo in the SOLO STYLE, nothing shorter than the instrument's shortest note.
+            auto profile = studio.profileFor (pr7s::Studio::ProfileUse::lead);
+            if (! profile.has_value())
+                profile = studio.profileFor (pr7s::Studio::ProfileUse::guitar);
+            list = pr7s::guitarLeadIdeas (spans, barBeats, variation, getTuning(), studio.getGuitarVelocities(), studio.getGuitarStyle(),
+                                          studio.getSoloStyle(), profile.has_value() ? profile->shortestNote : 0.0);
+        }
+            break;
+        case P::pattern: list = pr7s::patternIdeas (spans, barBeats, patternGroup); break;
+        case P::tune: list = pr7s::composedMelodies (spans, barBeats, studio.getMelodySettings(), variation); break;
+        case P::drums:
+        {
+            // (0.54.0) The style's beats (the sixth on the chosen riff); 0.55.0 generated; 0.56.0 a learned drummer's.
+            const auto& riffs = rawIdeas (P::rhythm);
+            const auto* lockedRiff = riffs.empty() ? nullptr : &riffs[(size_t) juce::jlimit (0, (int) riffs.size() - 1, riffIndex)];
+            const auto hits = lockedRiff != nullptr ? pr7s::riffHits (*lockedRiff) : std::vector<double> {};
+            const auto style = studio.getGuitarStyle();
+            const auto drums = studio.getDrumSettings();
+            list = writtenBeats ? pr7s::drumIdeas (style, spans, barBeats, variation, lockedRiff)
+                 : drummer.has_value() ? pr7s::generatedBeats (*drummer, spans, barBeats, drums, variation, hits)
+                                       : pr7s::generatedBeats (style, spans, barBeats, drums, variation, hits);
+            break;
+        }
+        case P::groove:
+        {
+            // The library's page of grooves (read from their files).
+            list.clear();
+            for (int i = groovePage * 6; i < (int) libraryGrooves.size() && (int) list.size() < 6; ++i)
+            {
+                juce::String error;
+                if (auto idea = pr7s::grooveIdea (libraryGrooves[(size_t) i], spans, barBeats, error))
+                    list.push_back (std::move (*idea));
+            }
+            break;
         }
     }
-    melodyKey.setButtonText (MelodyPanel::summary (melody));
+    return list;
+}
+
+const std::vector<pr7s::LineIdea>& LinesPage::getIdeas (pr7s::LineIdea::Part part) const
+{
+    using P = pr7s::LineIdea::Part;
+    const auto k = (size_t) part;
+    if (made[k])
+        return ideas[k];
+    made[k] = true;
+    auto& list = ideas[k];
+    list = rawIdeas (part);
     // Humanize (0.20.0): each idea loosened its own repeatable way (what HEAR plays is what USE IT adds).
     const auto amount = studio.getIdeasHumanize();
-    humanizeKey.setButtonText (humanizeText (amount));
     if (amount > 0.0f && ! spans.empty())
     {
         const auto feel = studio.getIdeasFeel();
-        for (const auto part : { P::bass, P::melody, P::chords, P::rhythm, P::lead, P::pattern, P::tune, P::drums, P::groove })
+        for (size_t i = 0; i < list.size(); ++i)
         {
-            auto& list = ideas[(size_t) part];
-            for (size_t i = 0; i < list.size(); ++i)
-            {
-                pr7s::HumanizeOptions o;
-                o.amount = amount;
-                o.bpm = studio.getProject().bpmAt (spans.front().start);
-                o.beatsPerBar = barBeats;
-                o.originBeat = spans.front().start;
-                const auto guitar = part == P::rhythm || part == P::lead;
-                if (guitar)
-                    o.layers = pr7s::guitarLayers();
-                if (feel)
-                    o.feelMs = amount * (part == P::rhythm || part == P::bass ? pr7s::HumanizeLimits::feelAheadMs
-                                         : part == P::lead || part == P::melody || part == P::tune ? pr7s::HumanizeLimits::feelBehindMs : 0.0);
-                o.seed = (juce::uint32) (variation * 1009 + (int) part * 101 + (int) i + 1);
-                list[i].notes = pr7s::humanize (std::move (list[i].notes), o);
-            }
+            pr7s::HumanizeOptions o;
+            o.amount = amount;
+            o.bpm = studio.getProject().bpmAt (spans.front().start);
+            o.beatsPerBar = barBeats;
+            o.originBeat = spans.front().start;
+            if (part == P::rhythm || part == P::lead)
+                o.layers = pr7s::guitarLayers();
+            if (feel)
+                o.feelMs = amount * (part == P::rhythm || part == P::bass ? pr7s::HumanizeLimits::feelAheadMs
+                                     : part == P::lead || part == P::melody || part == P::tune ? pr7s::HumanizeLimits::feelBehindMs : 0.0);
+            o.seed = (juce::uint32) (variation * 1009 + (int) part * 101 + (int) i + 1);
+            list[i].notes = pr7s::humanize (std::move (list[i].notes), o);
         }
     }
-    makeCards();
+    // (0.63.0) The guitar's power chords by its INSTRUMENTS profile's keyswitch (the GUITAR lane's; leads:
+    // the LEAD lane's, else the guitar's).
+    if (part == P::rhythm || part == P::lead)
+    {
+        auto profile = part == P::lead ? studio.profileFor (pr7s::Studio::ProfileUse::lead) : std::optional<pr7s::InstrumentProfile> {};
+        if (! profile.has_value())
+            profile = studio.profileFor (pr7s::Studio::ProfileUse::guitar);
+        if (profile.has_value())
+            for (auto& idea : list)
+            {
+                pr7s::keepPlayable (idea, profile->shortestNote, profile->chugRun, spans.empty() ? 0.0 : spans.back().end - spans.front().start);
+                pr7s::useArticulationKeys (idea, pr7s::ArticulationKeys::of (*profile));   // (0.66.0: tapping, tremolo, harmonics too)
+            }
+    }
+    // (0.63.1) The bass on its profile (the BASS lane's): its shortest note.
+    if (part == P::bass)
+        if (const auto profile = studio.profileFor (pr7s::Studio::ProfileUse::bass))
+            for (auto& idea : list)
+                pr7s::keepPlayable (idea, profile->shortestNote, profile->chugRun, spans.empty() ? 0.0 : spans.back().end - spans.front().start);
+    return list;
 }
 
 void LinesPage::makeCards()
@@ -1156,6 +1277,8 @@ void LinesPage::makeCards()
     velocitiesKey.setVisible (tab == Tab::guitar);
     styleBox.setText (pr7s::guitarStyleName (studio.getGuitarStyle()), juce::dontSendNotification);
     styleBox.setVisible (tab == Tab::guitar || tab == Tab::drums || tab == Tab::bass);
+    soloBox.setText ("SOLO: " + pr7s::soloStyleName (studio.getSoloStyle()), juce::dontSendNotification);
+    soloBox.setVisible (tab == Tab::guitar);
     riffKey.setVisible (tab == Tab::guitar);
     resized();
     repaint();
@@ -1274,7 +1397,7 @@ void LinesPage::paint (juce::Graphics& g)
         what = juce::String ((int) spans.size()) + " chords, bars " + bar (spans.front().start) + " to " + bar (spans.back().end - 1.0e-6)
              + ", in " + ChordUi::spokenKey (spans.front().key) + ":  " + names.joinIntoString (" ");
     }
-    g.drawText (what, head.withTrimmedRight (480), juce::Justification::centredLeft, true);
+    g.drawText (what, head.withTrimmedRight (780), juce::Justification::centredLeft, true);
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (14.0f));
     const auto parts = partsOf (tab);
@@ -1316,6 +1439,8 @@ void LinesPage::resized()
     humanizeKey.setBounds (head.removeFromRight (150));
     head.removeFromRight (6);
     buildKey.setBounds (head.removeFromRight (170));
+    head.removeFromRight (6);
+    composerKey.setBounds (head.removeFromRight (110));
 
     auto tabs = area.removeFromTop (tabsHeight).withTrimmedBottom (6);
     for (auto* key : { &pianoTab, &guitarTab, &bassTab, &patternsTab, &melodyTab, &drumsTab })
@@ -1365,6 +1490,8 @@ void LinesPage::resized()
         columnTitles.push_back (left.removeFromTop (columnTitleHeight));
         columnTitles.push_back (right.removeFromTop (columnTitleHeight));
         drummerKey.setBounds (columnTitles[0].withLeft (columnTitles[0].getRight() - 300).reduced (0, 2));
+        // (0.69.1) SOLO STYLE on the LEAD column's title (in the tab row it was squeezed out of a narrower window).
+        soloBox.setBounds (columnTitles[1].withLeft (columnTitles[1].getRight() - 300).reduced (0, 2));
         layout (left, parts[0], 2);
         layout (right, parts[1], 2);
     }
@@ -1487,7 +1614,7 @@ void MelodyPanel::paint (juce::Graphics& g)
     g.setFont (ParagonLookAndFeel::titleFont (16.0f));
     g.drawText ("MELODY SETTINGS", area.removeFromTop (22), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
-    g.setFont (juce::Font (juce::FontOptions (11.5f)));
+    g.setFont (juce::Font (ParagonLookAndFeel::textFont (11.5f)));
     g.drawFittedText ("What the six composed melodies are made of. They change as you move a control.",
                       area.removeFromTop (titleHeight - 32), juce::Justification::topLeft, 2, 0.9f);
     g.setColour (ParagonColours::text);
@@ -1598,7 +1725,7 @@ void RiffPanel::paint (juce::Graphics& g)
     g.setFont (ParagonLookAndFeel::titleFont (16.0f));
     g.drawText ("RIFF SETTINGS", area.removeFromTop (22), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
-    g.setFont (juce::Font (juce::FontOptions (11.5f)));
+    g.setFont (juce::Font (ParagonLookAndFeel::textFont (11.5f)));
     g.drawFittedText ("How the guitar's rhythm ideas are played, every style's. At 50% they are as written.",
                       area.removeFromTop (titleHeight - 32), juce::Justification::topLeft, 2, 0.9f);
     g.setColour (ParagonColours::text);
@@ -1719,7 +1846,7 @@ void DrumPanel::paint (juce::Graphics& g)
     g.setFont (ParagonLookAndFeel::titleFont (16.0f));
     g.drawText ("DRUM SETTINGS", area.removeFromTop (22), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
-    g.setFont (juce::Font (juce::FontOptions (11.5f)));
+    g.setFont (juce::Font (ParagonLookAndFeel::textFont (11.5f)));
     g.drawFittedText ("How the generated beats are built. They're made again as you change a control; MORE IDEAS deals new ones.",
                       area.removeFromTop (titleHeight - 32), juce::Justification::topLeft, 2, 0.9f);
     g.setColour (ParagonColours::text);

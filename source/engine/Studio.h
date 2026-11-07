@@ -21,6 +21,8 @@
 #include "ChordDetect.h"
 #include "TempoDetect.h"
 #include "MediaBay.h"
+#include "Composer.h"
+#include "SoloEngine.h"
 
 #include <optional>
 #include <mutex>
@@ -56,6 +58,23 @@ namespace pr7s
         float getDropHighlight() const;
         void setDropHighlight (float);
         static constexpr float defaultDropHighlight = 0.6f;
+        // (0.72.0, the owner asked) AUTO-SAVE: every so many minutes (0: off) while the song has
+        // unsaved changes, a backup copy of it is written into `backupFolder()`: "Backups" beside the
+        // song, or Documents/Paragon PR7-S/Backups for a song not saved yet. The song's own file is
+        // never written by it (only SAVE does that). The newest `getAutoSaveKeep()` copies of a song are
+        // kept, older ones deleted. Not while recording or rendering; not when nothing changed since
+        // the last copy. A backup remembers where the song's recordings are, so it opens with them.
+        // Settings keys "autoSaveMinutes" (default 5) and "autoSaveKeep" (default 10).
+        int getAutoSaveMinutes() const;
+        void setAutoSaveMinutes (int minutes);
+        int getAutoSaveKeep() const;
+        void setAutoSaveKeep (int copies);
+        static constexpr int defaultAutoSaveMinutes = 5, defaultAutoSaveKeep = 10;
+        juce::File backupFolder() const;
+        // Writes a backup now (the timer calls it when due). False: nothing written (nothing changed
+        // since the last one, or it couldn't be). `waitForSaves` waits for it (it's written on the save thread).
+        bool writeBackup();
+        juce::File getLastBackup() const noexcept { return lastBackup; }
         // The Hub's songs (0.12.0): recent ones, the project location, templates.
         ProjectLibrary& getLibrary() noexcept { return *library; }
         // Create Empty (the Hub): a new song, saved at once in a folder of its
@@ -74,7 +93,14 @@ namespace pr7s
         // plug-in that doesn't like being run beside others. The output is the same either way.
         bool getMultiCoreAudio() const;
         void setMultiCoreAudio (bool);
+        // (0.60.0) Drawing the windows with the processor instead of the graphics card (settings key "softwareDrawing",
+        // default off): the owner's NEW froze inside the graphics driver; this tells whether the driver is to blame.
+        bool getSoftwareDrawing() const;
+        void setSoftwareDrawing (bool);
         int getAudioHelperThreads() const noexcept { return engine.getHelperThreads(); }
+        // (0.57.3) A spike report in words (the session log's line); how many were written.
+        juce::String describeSpike (const Engine::SpikeReport&) const;
+        int getSpikesNoted() const noexcept { return spikesNoted; }
 
         // Told just before a track's instrument is replaced or removed (0:
         // every track's, for a new or opened song), so its window can close
@@ -120,6 +146,12 @@ namespace pr7s
         // palette's: FamilyColours), or with none, their automatic colour back (red,
         // pink, orange in turn by their place). One undo step.
         void setTracksColour (const std::vector<int>& trackIds, std::optional<juce::Colour>);
+        // (0.73.0) The tracks' colour over their rows in the track list: on/off and 1-100 %. Not an undo step.
+        void setTracksListColour (const std::vector<int>& trackIds, bool on, int amount);
+        // (0.73.0, the owner asked) The track moved to that slot of the track list (1 = the top, counted
+        // over the tracks shown); the others move down (or up) a slot. A folder takes its tracks with it.
+        // One undo step; false if nothing moved.
+        bool moveTrackToSlot (int trackId, int slot);
         void setMute (int trackId, bool);
         void setSolo (int trackId, bool, bool exclusive = false);   // exclusive: every other solo off (Ctrl-click, the manual's)
         // The manual's Deactivate All Solo States / Mute States (0.9.9).
@@ -290,13 +322,36 @@ namespace pr7s
         // studio's synth) named for the part (Bass, Melody, Piano, Guitar, Lead Guitar). The
         // track's id; one undo step.
         int addLinePart (const LineIdea&, const std::vector<ChordSpan>&, int ontoTrackId = 0);
+        // (0.64.0) An idea as a part (from `start`, `length` beats long): its notes (keyswitches too), and
+        // its notes' effects as controllers: vibrato as the mod wheel (CC 1) rising after the attack and
+        // back to 0 as it ends, a bend as pitch bend up a whole step by the instrument's bend range (the
+        // INSTRUMENTS profile on the idea's lane, else 2 semitones) and back to none as it ends.
+        Part partFromIdea (const LineIdea&, double start, double length, const juce::String& name) const;
+        static std::vector<Controller> effectControllers (const std::vector<LineNote>&, int bendRange);
+        static void fitBends (std::vector<LineNote>&, int bendRange);   // (0.66.0) bends past the range made smaller
         // (0.57.0) BUILD SECTION: each idea onto the track named after its part (Drums, Bass, Guitar,
         // Lead Guitar, Piano, Melody: an instrument track of that name is reused, so section after
         // section lands on the same band; else a new one), each part over the chords' span, named
         // "<section>: <idea>". Parts lying wholly inside the span on those tracks are replaced
         // (building the same stretch again). One undo step for the parts. The tracks used, in order.
-        std::vector<int> buildSection (const std::vector<LineIdea>&, const std::vector<ChordSpan>&, const juce::String& sectionName);
+        // (0.58.0) `onto`: per idea, a track to write it on instead (when it can take MIDI; 0: as above).
+        std::vector<int> buildSection (const std::vector<LineIdea>&, const std::vector<ChordSpan>&, const juce::String& sectionName,
+                                       const std::vector<int>& onto = {});
         int findIdeaTrack (LineIdea::Part) const;   // the instrument track named after the part (0: none)
+        // THE COMPOSER (0.58.0): what its layers are made with (IDEAS' settings; the tempo and bar at `atBeat`).
+        ComposerContext getComposerContext (double atBeat) const;
+        juce::String getComposerState() const;            // (settings key "composer"; in memory without a settings file)
+        void setComposerState (const juce::String&);
+        // Hearing the composer: its layers played through the song's own tracks (each onto `trackId`), looped over
+        // [start, end), those tracks alone (soloed), while the song itself stays as it is (the engine plays a copy,
+        // as the comp tool's audition). Called again while it plays: the new layers from where it is. False when
+        // there's nothing to play them on. It ends on stopComposerAudition, on the transport's stop, and on any
+        // change to the song (the engine then plays the song again).
+        bool auditionComposer (const std::vector<std::pair<int, LineIdea>>& layers, double start, double end);
+        void stopComposerAudition();
+        bool isComposerAuditioning() const noexcept { return composerAudition.has_value(); }
+        double getComposerAuditionStart() const noexcept { return composerAudition.has_value() ? composerAudition->start : 0.0; }
+        double getComposerAuditionEnd() const noexcept { return composerAudition.has_value() ? composerAudition->end : 0.0; }
         // The sections built so far in this song (for what comes next; forgotten with the song).
         const std::vector<BuiltSection>& getBuiltSections() const noexcept { return builtSections; }
         void noteBuiltSection (const BuiltSection&);   // (replaces one built over the same stretch)
@@ -312,12 +367,25 @@ namespace pr7s
         void setMelodySettings (const MelodySettings&);
         juce::String getGuitarTuning() const;
         void setGuitarTuning (const juce::String&);
+        // The bass's tuning (0.61.0: the composer's LOW STRING and the bass's range; settings key
+        // "bassTuning", default 4-string standard; engine/Takes.h's bassTunings).
+        juce::String getBassTuning() const;
+        void setBassTuning (const juce::String&);
+        // The Hub's INSTRUMENTS (0.62.0; settings key "instrumentProfiles"; engine/Instruments.h). The first
+        // time: Djinn Bass 2 (the owner's) for the bass. `profileFor`: the one marked for that lane.
+        std::vector<InstrumentProfile> getInstrumentProfiles() const;
+        void setInstrumentProfiles (const std::vector<InstrumentProfile>&);
+        enum class ProfileUse { bass, guitar, lead };
+        std::optional<InstrumentProfile> profileFor (ProfileUse) const;
         // The guitar ideas' velocities (0.19.3, the VELOCITIES panel; settings key "guitarVelocities").
         GuitarVelocities getGuitarVelocities() const;
         void setGuitarVelocities (const GuitarVelocities&);
         // The guitar tab's STYLE and RIFF SETTINGS (0.53.0; settings keys "guitarStyle", "riffSettings").
         GuitarStyle getGuitarStyle() const;
         void setGuitarStyle (GuitarStyle);
+        // The guitar tab's SOLO STYLE (0.66.0; settings key "soloStyle"; automatic: by the STYLE).
+        SoloStyle getSoloStyle() const;
+        void setSoloStyle (SoloStyle);
         RiffSettings getRiffSettings() const;
         void setRiffSettings (const RiffSettings&);
         // The DRUMS tab's beat generator settings (0.55.0; settings key "drumSettings").
@@ -660,6 +728,10 @@ namespace pr7s
         // effects), 32-bit float at its recording's rate, at most five minutes, the tempo and beats in its
         // ACID chunk. In a folder of its own under dragOutFolder(). The song isn't changed. None: an empty File.
         juce::File writePartForDrag (int partId, juce::String& error);
+        // (0.59.0) A composer lane as a MIDI file for a drag: the idea's notes as a part over `spans` (the tempo
+        // and signature there), on `channel` (the drums: 10, General MIDI's), "<name>.mid" in the composer's
+        // drag folder. The song untouched.
+        juce::File writeLineForDrag (const LineIdea&, const std::vector<ChordSpan>& spans, int channel, const juce::String& name, juce::String& error);
         // Delete Overlaps: of these takes only what's heard stays, all on the first lane.
         void deleteOverlaps (const std::vector<int>& partIds);
         // Merge MIDI in Loop: what's heard of these tracks' MIDI between the locators, one part on a new
@@ -1103,6 +1175,20 @@ namespace pr7s
         }
         // `problems`: instruments that couldn't be loaded (the project opens anyway).
         bool open (const juce::File&, juce::String& problems);
+        // (0.71.0, the owner asked) What the song opened without: an instrument, an effect or a recording
+        // not on this computer. `removeMissing` takes them out of the song: missing effects' slots emptied,
+        // clips whose recording is missing deleted, and a missing instrument's track given the studio's synth
+        // (its parts kept). One undo step; returns how many were taken out.
+        struct MissingItem
+        {
+            enum class Kind { instrument, effect, recording };
+            Kind kind = Kind::effect;
+            int trackId = 0;     // (effects: 0 = the master)
+            int slot = -1;       // (effects)
+            juce::String file;   // (recordings)
+        };
+        const std::vector<MissingItem>& getMissing() const noexcept { return missingItems; }
+        int removeMissing();
         // A DAWproject (0.9.13: songs from Cubase, File > Export > DAWproject;
         // see DawProject.h) as a new song, not saved yet. `report`: what didn't
         // come across, or the error if it couldn't be read.
@@ -1352,12 +1438,22 @@ namespace pr7s
         void finishRecording();
         void finishAudioRecording();
         bool auditioning = false;   // (0.30.0) the engine plays a soloed copy
+        struct ComposerAudition { double start = 0.0, end = 0.0, wasAt = 0.0; };
+        std::optional<ComposerAudition> composerAudition;   // (0.58.0)
+        juce::String composerState;                         // (without a settings file)
+        void endComposerAudition (bool backToSong);
         std::map<juce::String, std::pair<std::shared_ptr<const AudioData>, std::vector<Hitpoint>>> hitpointCache;   // (0.32.0) every candidate, by recording and the data they came from
         void forgetAudio (const juce::String& name);   // (0.34.1) a recording and everything made from it
         void forgetAllAudio();
         WarpRenderer warpRenderer;
         // (0.34.0) VariAudio: each recording's pitch, and its sound as edited (by what was edited).
+        void noteSpikes();                  // (0.57.3) the engine's spike report into the session log
+        juce::uint32 lastSpikeNote = 0;
+        int spikesNoted = 0;
         juce::String variSignature (const juce::String& file) const;
+        // (0.57.2) Each recording's signature with the edits it was made from: written out again only
+        // when they differ (it was written for every clip of the file on every change in the song).
+        mutable std::map<juce::String, std::pair<Project::VariAudio, juce::String>> variSignatures;
         std::map<juce::String, std::pair<std::shared_ptr<const AudioData>, std::shared_ptr<const PitchAnalysis>>> pitchCache;
         struct HeardSound { juce::String signature; std::shared_ptr<const AudioData> source, heard; };
         std::map<juce::String, HeardSound> heardCache;
@@ -1387,6 +1483,7 @@ namespace pr7s
         juce::AudioDeviceManager devices;
         bool withDevices = false;
         bool multiCoreAudio = false;   // (without a settings file)
+        bool softwareDrawing = false;  // (without a settings file)
         void applyMultiCore();
         Engine engine;
 
@@ -1412,8 +1509,11 @@ namespace pr7s
         void takeRecordedChords (double from, double to, const std::vector<HeardNote>& played);
         DetectSettings detectSettings;
         juce::String guitarTuning;   // (without a settings file: the tests)
+        juce::String bassTuning;
+        std::optional<juce::String> instrumentProfiles;   // (without a settings file: the tests)
         GuitarVelocities guitarVelocities;
         GuitarStyle guitarStyle = GuitarStyle::rock;   // (without a settings file)
+        SoloStyle soloStyle = SoloStyle::automatic;    // (without a settings file)
         RiffSettings riffSettings;
         DrumSettings drumSettings;
         juce::File drummerFolderOverride;
@@ -1451,6 +1551,7 @@ namespace pr7s
         // A level moved on one channel, on a linked one: by the same amount, or the same (ABS).
         float linkedLevel (float now, float before, float after, float low, float high) const;
         static void silenceForRender (Track&);
+        std::vector<MissingItem> missingItems;
         void openProject (Project&&, const juce::File& source, juce::String& problems);   // open's and importDawProject's   // the plugins' settings into the song; the recordings beside it
         juce::ThreadPool saver { juce::ThreadPoolOptions{}.withThreadName ("Paragon PR7-S save").withNumberOfThreads (1) };
         std::shared_ptr<std::atomic<bool>> saveAlive = std::make_shared<std::atomic<bool>> (true);   // (false once the studio goes)
@@ -1468,6 +1569,7 @@ namespace pr7s
         bool tapUnrecorded = false;
         int recordTrack = 0;
         std::vector<RecordedEvent> recorded;
+        int quietRecordingTicks = 0;
 
         // Recording audio: the file being written, and its writer.
         juce::AudioFormatManager formats;
@@ -1477,6 +1579,13 @@ namespace pr7s
         std::map<juce::String, std::shared_ptr<const AudioData>> audioCache;
         double audioCacheRate = 0.0;
         juce::File unsavedAudioFolder;
+        juce::File audioFolderOverride;   // (0.72.0: a backup opened: its song's recordings, where they are)
+        juce::File lastBackup;
+        juce::int64 lastBackupHash = 0;
+        juce::uint32 lastBackupTime = juce::Time::getMillisecondCounter();
+        int autoSaveMinutesHere = 0, autoSaveKeepHere = defaultAutoSaveKeep;   // (without a settings file: the tests)
+        void collectPluginStates();
+        void backupIfDue();
         juce::String loggedDevice;   // the audio device's last line in the session log
         double progressBase = 0.0, progressSpan = 1.0;
         bool rendering = false;

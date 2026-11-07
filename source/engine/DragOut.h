@@ -22,8 +22,11 @@ namespace pr7s
     // on a thread of its own). Each drag gets a folder of its own inside it, so a file's name
     // stays clean and a file still being read is never overwritten.
     juce::File dragOutFolder();
-    void clearDragOutFolder();
-    juce::File newDragOutFolder();
+    void clearDragOutFolder();   // (this one and the composer's)
+    juce::File newDragOutFolder (const juce::File& root = dragOutFolder());
+    // (0.59.0) The composer's lanes dragged out: a folder of their own, so a lane dropped back on the
+    // studio's arrangement lands on the track under it (a part dragged back is refused: nothing to do).
+    juce::File composerDragFolder();
 
     // The tempo in a file's name: "140", "122.5".
     juce::String dragOutTempoText (double bpm);

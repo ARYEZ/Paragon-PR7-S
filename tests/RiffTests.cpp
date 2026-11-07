@@ -78,7 +78,7 @@ TEST_CASE ("Guitar styles: six rhythm ideas and six leads each, on the chords, i
     const Key am { 5, 0, true };
     const auto spans = bars ({ { 9, T::minor, X::none, -1 }, { 5, T::major, X::none, -1 }, { 0, T::major, X::none, -1 }, { 7, T::major, X::none, -1 },
                                { 11, T::diminished, X::none, -1 }, { 4, T::major, X::none, -1 }, { 9, T::minor, X::none, -1 }, { 4, T::major, X::none, -1 } }, am);
-    CHECK (guitarStyles().size() == 5);
+    CHECK (guitarStyles().size() == 6);   // (0.64.0: GROOVE)
     for (const auto style : guitarStyles())
     {
         CHECK (guitarStyleNamed (guitarStyleName (style)) == style);
@@ -93,7 +93,7 @@ TEST_CASE ("Guitar styles: six rhythm ideas and six leads each, on the chords, i
                     const auto rhythm = guitarRhythmIdeas (spans, 4.0, variation, tuning, {}, style, riff);
                     const auto lead = guitarLeadIdeas (spans, 4.0, variation, tuning, {}, style);
                     REQUIRE (rhythm.size() == 6);
-                    REQUIRE (lead.size() == 6);
+                    REQUIRE (lead.size() == 7);   // (0.65.0: the seventh, the whole solo)
                     std::set<juce::String> names;
                     for (const auto* list : { &rhythm, &lead })
                         for (const auto& idea : *list)
@@ -135,7 +135,7 @@ TEST_CASE ("Guitar styles: six rhythm ideas and six leads each, on the chords, i
                                         continue;
                                     bool tone = false;
                                     for (const auto& n : idea.notes)
-                                        if (std::abs (n.beat - first) < 1.0e-6 && isChordTone (spanAt (spans, n.beat).chord, n.pitch))
+                                        if (std::abs (n.beat - first) < 1.0e-6 && isChordTone (spanAt (spans, n.beat).chord, n.pitch + (n.effect == LineNote::Effect::bend ? 2 : 0)))   // (a bend sounds a whole step up)
                                             tone = true;
                                     CHECK (tone);
                                 }
@@ -145,14 +145,14 @@ TEST_CASE ("Guitar styles: six rhythm ideas and six leads each, on the chords, i
                                 // A bar's first hit: the chord's root (or its notes) or the key's low note (the pedal).
                                 for (int bar = 0; bar < 8; ++bar)
                                     for (const auto& n : idea.notes)
-                                        if (std::abs (n.beat - bar * 4.0) < 1.0e-6)
+                                        if (std::abs (n.beat - bar * 4.0) < 1.0e-6 && n.effect == LineNote::Effect::none)   // (0.64.0: GROOVE's stabs are dissonant on purpose)
                                         {
                                             const auto& s = spans[(size_t) bar];
                                             CHECK ((isChordTone (s.chord, n.pitch) || pcOf (n.pitch) == 9));
                                         }
                             }
                         }
-                    CHECK (names.size() == 12);   // (every idea its own name)
+                    CHECK (names.size() == 13);   // (every idea its own name)
                 }
     }
 }
@@ -341,13 +341,13 @@ TEST_CASE ("IDEAS' guitar tab: STYLE deals the style's twelve, RIFF SETTINGS dea
     const auto spans = bars ({ { 9, T::minor, X::none, -1 }, { 5, T::major, X::none, -1 }, { 0, T::major, X::none, -1 }, { 4, T::major, X::none, -1 } }, am);
     LinesPage page (studio, spans);
     page.setTab (LinesPage::Tab::guitar);
-    CHECK (page.getNumCardsShown() == 12);
+    CHECK (page.getNumCardsShown() == 13);
     CHECK (page.getIdeas (LineIdea::Part::rhythm).front().style == "Power chords");
     page.setGuitarStyle (GuitarStyle::thrash);
     CHECK (studio.getGuitarStyle() == GuitarStyle::thrash);
     CHECK (page.getIdeas (LineIdea::Part::rhythm).front().style == "Downpicked gallop");
     CHECK (page.getIdeas (LineIdea::Part::lead).front().style == "Chromatic tremolo");
-    CHECK (page.getNumCardsShown() == 12);
+    CHECK (page.getNumCardsShown() == 13);
     page.setGuitarStyle (GuitarStyle::shred);
     CHECK (page.getIdeas (LineIdea::Part::lead).front().style == "Sweep arpeggio");
     const auto before = page.getIdeas (LineIdea::Part::rhythm).front().notes;

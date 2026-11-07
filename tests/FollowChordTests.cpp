@@ -466,3 +466,53 @@ TEST_CASE ("0.38.0: Voicings and Single Voice: chords played take the chord trac
     CHECK (track->followVoicing == piano);
     CHECK (opened->chordTrack.voicing == basic);
 }
+
+TEST_CASE ("0.57.2: followNotes' reused answers are each note's own (every mode, with and without scales, shifted)", "[follow]")
+{
+    juce::Random random (57);
+    const auto chordOf = [&]
+    {
+        const Chord::Type types[] = { Chord::Type::major, Chord::Type::minor, Chord::Type::diminished, Chord::Type::sus4 };
+        return Chord { random.nextInt (12), types[random.nextInt (4)], random.nextInt (3) == 0 ? Chord::Tension::seven : Chord::Tension::none,
+                       random.nextInt (5) == 0 ? random.nextInt (12) : -1 };
+    };
+    for (int round = 0; round < 8; ++round)
+    {
+        ChordTrack track;
+        for (int i = 0; i < 12; ++i)
+            track.events.push_back ({ i * 2.0 + (i > 0 ? 0.5 : 0.0), chordOf() });
+        if (round % 2 == 1)
+            track.scales = { { 0.0, Key { 0, 0, false } }, { 9.0, Key { 5, 0, true } }, { 17.0, Key { 4, -1, false } } };
+        FollowReference reference;
+        for (int i = 0; i < 6; ++i)
+            reference.chords.push_back ({ i * 4.0, chordOf() });
+        if (round % 4 >= 2)
+            reference.scales = { { 0.0, Key { 0, 0, false } }, { 12.0, Key { 1, 0, true } } };
+        std::vector<Note> notes;
+        for (int n = 0; n < 300; ++n)
+            notes.push_back ({ random.nextInt (96) * 0.25, 0.2, 36 + random.nextInt (48), 0.8f });
+        if (round == 3 || round == 6)
+        {
+            std::swap (track.events[2], track.events[5]);   // (out of order: the plain search's answers)
+            std::swap (reference.chords[1], reference.chords[3]);
+        }
+        const auto shift = round >= 4 ? 120 : 0;
+        const auto partStart = 1.0;
+        const Key fallback { 2, 0, false };
+        for (const auto mode : { FollowMode::chords, FollowMode::scales, FollowMode::rootNotes, FollowMode::chordsAndScales })
+        {
+            const auto followed = followNotes (notes, partStart, mode, reference, track, shift, fallback, nullptr, Voice::soprano);
+            REQUIRE (followed.size() == notes.size());
+            for (size_t i = 0; i < notes.size(); ++i)
+            {
+                const auto beat = partStart + notes[i].start;
+                const auto look = beat - shift / 480.0;
+                const auto index = chordIndexForNote (track, beat, shift);
+                const auto toKey = track.keyAt (look, track.scales.empty() ? fallback : track.scales.front().key);
+                const auto own = followPitch (notes[i].pitch, mode, reference.chordAt (look), reference.keyAt (look),
+                                              track.events[(size_t) index].chord, toKey);
+                CHECK (followed[i].pitch == own);
+            }
+        }
+    }
+}

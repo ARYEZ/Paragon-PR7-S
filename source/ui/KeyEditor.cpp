@@ -286,6 +286,11 @@ bool KeyEditor::editing() const noexcept
 //==============================================================================
 void KeyEditor::changeListenerCallback (juce::ChangeBroadcaster*)
 {
+    // (0.57.1) Only the mix moved (a fader, a pan, a send level): nothing here shows it. The docked
+    // editor at 200% across three screens repainted whole on every step of a fader drag.
+    if (studio.getChangeVersion() == seenChange)
+        return;
+    seenChange = studio.getChangeVersion();
     refresh();
 }
 
@@ -1650,7 +1655,7 @@ void KeyEditor::mouseDoubleClick (const juce::MouseEvent& event)
     {
         // (0.26.0) A drum's name typed in.
         const auto pitch = pitchForY (event.position.y);
-        auto* box = new juce::AlertWindow ("RENAME " + pr7s::noteName (pitch), "The drum's name in this map (all the tracks using it):", juce::MessageBoxIconType::NoIcon);
+        auto* box = new FamilyAlertWindow ("RENAME " + pr7s::noteName (pitch), "The drum's name in this map (all the tracks using it):", juce::MessageBoxIconType::NoIcon);
         box->addTextEditor ("name", drumNameOf (pitch));
         box->addButton ("RENAME", 1, juce::KeyPress (juce::KeyPress::returnKey));
         box->addButton ("CANCEL", 0, juce::KeyPress (juce::KeyPress::escapeKey));

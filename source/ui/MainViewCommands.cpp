@@ -82,6 +82,9 @@ void MainView::registerCommands()
     add ("File.ImportDawProject", "File", "Import DAWproject...", {}, [this] { importDawProjectFile(); });
 
     // Edit.
+    // (0.70.0, the owner asked: the manual's Navigate category; no default keys, Home is Go to Start here)
+    add ("Navigate.Top", "Navigate", "Top: Select Top Track in the Track List", {}, [this] { selectTopTrack(); });
+    add ("Navigate.Bottom", "Navigate", "Bottom: Select Bottom Track in the Track List", {}, [this] { selectBottomTrack(); });
     add ("Edit.Undo", "Edit", "Undo", { key ('Z', ctrl) });
     add ("Edit.Redo", "Edit", "Redo", { key ('Z', ctrl | shift), key ('Y', ctrl) });
     add ("Edit.Cut", "Edit", "Cut", { key ('X', ctrl) });
@@ -189,6 +192,7 @@ void MainView::registerCommands()
         openEq (studio.isMasterSelected() ? pr7s::Engine::masterBus : studio.getSelectedTrack());
     });
     add ("Window.Progressions", "Window", "Progression Library", {}, [this] { openProgressions(); });   // (0.40.0)
+    add ("Window.Composer", "Window", "Composer", {}, [this] { openComposer(); });   // (0.58.0)
     add ("Window.AudioAlignment", "Window", "Open/Close Audio Alignment Panel", {}, [this] { toggleAudioAlignment(); });   // (0.33.0)
     add ("Automation.Touch", "Automation", "Automation Mode: Touch", {}, [this] { studio.setAutomationMode (pr7s::Studio::AutomationSettings::Mode::touch); });
     add ("Automation.AutoLatch", "Automation", "Automation Mode: Auto-Latch", {}, [this] { studio.setAutomationMode (pr7s::Studio::AutomationSettings::Mode::autoLatch); });

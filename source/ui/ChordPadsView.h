@@ -36,6 +36,7 @@ public:
     std::function<void (std::vector<int> chordEvents)> onLineIdeas;
     std::function<void()> onBuildSection;   // (0.57.0) the PLAYER menu's Build a Section...
     std::function<void()> onProgressions;   // PROGRESSIONS (0.40.0): the library
+    std::function<void()> onComposer;       // COMPOSER (0.58.0)
     juce::TextButton& getIdeasKey() noexcept { return ideasKey; }   // BASS & MELODY (0.18.0): for these chord events (none: the cycle's or all)
     void setInWindow (bool);
     int getMinimumHeight() const noexcept { return toolbarHeight * 2 + 120 + keyboardHeight; }
@@ -108,6 +109,7 @@ public:
     static constexpr const char* dragPrefix = "chordpad:";
 
 private:
+    juce::uint64 seenChange = 0;   // (0.57.1) the studio's change version last acted on
     class ChordEditor;
     class CircleAssistant;
     class KeyList;
@@ -131,7 +133,7 @@ private:
     juce::TextButton rootKey, presetsKey { "PRESETS" }, previousPreset { "<" }, nextPreset { ">" }, saveKey { "SAVE" },
                      playerKey { "PLAYER: BASIC" }, modeKey { "PLAIN CHORDS" }, displayKey { "DISPLAY" }, remoteKey { "REMOTE" },
                      editorKey { "EDITOR" }, circleKey { "CIRCLE OF 5THS" }, windowKey { "WINDOW" }, closeKey { "CLOSE" },
-                     ideasKey { "IDEAS" }, progressionsKey { "PROGRESSIONS" };   // (0.20.2: the IDEAS window from the pads)
+                     ideasKey { "IDEAS" }, progressionsKey { "PROGRESSIONS" }, composerKey { "COMPOSER" };   // (0.20.2: the IDEAS window from the pads)
     juce::TextButton selectAllKey { "SELECT ALL" }, editKey { "EDIT CHORD" }, fromMidiKey { "FROM MIDI" }, removeKey { "REMOVE" },
                      transposeDown { "TRANSPOSE -" }, transposeUp { "+" }, tensionsDown { "TENSIONS -" }, tensionsUp { "+" },
                      voicingPrevious { "VOICING <" }, voicingNext { ">" }, lockKey { "LOCK" }, adaptiveKey { "ADAPTIVE" }, referenceKey { "REFERENCE" },

@@ -525,3 +525,45 @@ TEST_CASE ("0.46.0: the EQ window: types with cut slopes, INVERT, OUTPUT, the ke
     CHECK (curve.spectrumLevelAt (6000.0) < -50.0);
     CHECK (editor.createComponentSnapshot (editor.getLocalBounds()).isValid());
 }
+
+TEST_CASE ("0.57.1: the EQ run on both sides at once gives exactly the samples it gave one side at a time", "[eq]")
+{
+    ChannelEq eq;
+    for (auto& band : eq.bands)
+    {
+        band.on = true;
+        band.gainDb = 4.0;
+    }
+    eq.lowCutOn = true;
+    eq.highCutOn = true;
+    eq.preGainDb = -3.0;
+    eq.outputDb = 2.0;
+    const auto design = designEq (eq, 48000.0);
+    EqProcessor together, left, right;
+    together.setDesign (design);
+    left.setDesign (design);
+    right.setDesign (design);
+    juce::Random random (7);
+    for (int block = 0; block < 6; ++block)
+    {
+        const auto n = block % 2 == 0 ? 512 : 97;
+        std::vector<float> l ((size_t) n), r ((size_t) n);
+        for (int i = 0; i < n; ++i)
+        {
+            l[(size_t) i] = random.nextFloat() * 2.0f - 1.0f;
+            r[(size_t) i] = random.nextFloat() * 2.0f - 1.0f;
+        }
+        auto l1 = l, r1 = r;
+        float* both[] = { l.data(), r.data() };
+        together.processPre (both, 2, n);
+        together.processEq (both, 2, n);
+        float* one[] = { l1.data() };
+        float* two[] = { r1.data() };
+        left.processPre (one, 1, n);
+        left.processEq (one, 1, n);
+        right.processPre (two, 1, n);
+        right.processEq (two, 1, n);
+        CHECK (l == l1);
+        CHECK (r == r1);
+    }
+}

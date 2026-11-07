@@ -96,9 +96,23 @@ TEST_CASE ("LEARN A DRUMMER: a folder of songs read, sections put right, the pro
     CHECK (profile->of (DrumSection::intro).bars == 0);
     REQUIRE (profile->songs.size() == 2);
 
+    // (0.57.1) Read in the background: the same songs, the status line counting meanwhile.
+    {
+        DrumLearnPage background (studio);
+        background.loadFolderInBackground (songs);
+        CHECK (background.getStatusText().startsWith ("Reading the songs") == background.isReading());
+        background.waitForReading();
+        CHECK_FALSE (background.isReading());
+        REQUIRE (background.getSongs().size() == 2);
+        CHECK (background.getSongs()[0].sections.size() == 8);
+        CHECK (background.getUnread().size() == 1);
+        background.loadFolderInBackground (songs);   // (closed while reading: stopped cleanly)
+    }
+
     // Opened again: the sections as saved.
     DrumLearnPage again (studio);
-    again.openProfile (*profile);
+    again.openProfileInBackground (*profile);
+    again.waitForReading();
     REQUIRE (again.getSongs().size() == 2);
     CHECK (again.getSongs()[0].sections[5].kind == DrumSection::bridge);
     CHECK_FALSE (again.getSongs()[0].sections[0].used);
@@ -118,7 +132,7 @@ TEST_CASE ("LEARN A DRUMMER: a folder of songs read, sections put right, the pro
         CHECK (ideas.getDrummer() == "Session drummer");
         CHECK (studio.getIdeasDrummer() == "Session drummer");
         const auto& beats = ideas.getIdeas (LineIdea::Part::drums);
-        REQUIRE (beats.size() == 6);
+        REQUIRE (beats.size() == 7);
         CHECK (beats[1].description.startsWith ("Session drummer: "));
         CHECK (beats[1].style == "Verse");
         CHECK_FALSE (beats[1].notes.empty());

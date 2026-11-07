@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonPR7S VERSION 0.57.0 LANGUAGES C CXX)
+project(ParagonPR7S VERSION 0.73.2 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -55,11 +55,15 @@ add_library(PR7SCore STATIC
     source/engine/Eq.cpp
     source/engine/Lines.cpp
     source/engine/Riffs.cpp
+    source/engine/SoloEngine.cpp
     source/engine/DragOut.cpp
     source/engine/DrumIdeas.cpp
     source/engine/DrumGenerator.cpp
     source/engine/DrumLearning.cpp
     source/engine/SectionPlan.cpp
+    source/engine/Composer.cpp
+    source/engine/Takes.cpp
+    source/engine/Instruments.cpp
     source/engine/MediaBay.cpp
     source/engine/ParagonSynth.cpp
     source/engine/PluginHost.cpp
@@ -116,6 +120,8 @@ add_library(PR7SCore STATIC
     source/ui/PluginsPage.cpp
     source/ui/TrackColours.cpp
     source/ui/LinesPage.cpp
+    source/ui/ComposerPage.cpp
+    source/ui/InstrumentsPage.cpp
     source/ui/ProgressionsPage.cpp
     source/ui/DrumLearnPage.cpp
     source/ui/EqEditor.cpp
