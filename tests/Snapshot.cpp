@@ -28,6 +28,7 @@
 // Auto-Scroll suspended.
 // PARAGON_SNAPSHOT_QC=1: the Inspector's Quick Controls, three assigned.
 // PARAGON_SNAPSHOT_MULTI=1: parts selected on two tracks.
+// PARAGON_SNAPSHOT_LISTCOLOUR=1: the first four tracks' colour in the track list (15, 35, 60, 100 %).
 // PARAGON_SNAPSHOT_STATES=1: the lead soloed, the bass muted, the keys armed (written under their names; the header's M and S lit).
 // PARAGON_SNAPSHOT_MASTER=1: the master's row chosen (its Inspector).
 // PARAGON_SNAPSHOT_RACK=home|loops|instruments: the Media rack in the right zone (0.22.0).
@@ -180,6 +181,14 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.setSolo (lead, true);
         studio.setMute (studio.getProject().tracks[1].id, true);
         studio.setArmed (studio.getProject().tracks[0].id);
+        studio.dispatchPendingMessages();
+    }
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_LISTCOLOUR", {}).isNotEmpty())
+    {
+        // (0.73.0) Each track's colour in the track list, at 15, 35, 60 and 100 % (the rest off).
+        const int amounts[] = { 15, 35, 60, 100 };
+        for (int i = 0; i < 4 && i < (int) studio.getProject().tracks.size(); ++i)
+            studio.setTracksListColour ({ studio.getProject().tracks[(size_t) i].id }, true, amounts[i]);
         studio.dispatchPendingMessages();
     }
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_WARP", {}).isNotEmpty())

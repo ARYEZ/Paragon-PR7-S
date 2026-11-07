@@ -378,6 +378,20 @@ private:
                      undoButton { "UNDO" }, redoButton { "REDO" }, editorButton { "KEY EDITOR" }, mixerButton { "MIXER" }, inspectorButton { "INSPECTOR" },
                      pluginsButton { "PLUGINS" }, settingsButton { "SETTINGS" }, readAllButton { "R" }, writeAllButton { "W" },
                      snapButton { "SNAP" }, quantizeButton { "1/16" };   // (0.9.10)
+    // (0.73.0, the owner's) TAP and the all-tracks M / S in the header's row, after the quantize value.
+    struct PopupKey final : juce::TextButton
+    {
+        using juce::TextButton::TextButton;
+        bool popup = false;
+        void clicked (const juce::ModifierKeys& mods) override { popup = mods.isPopupMenu(); }
+    };
+    PopupKey tapButton { "TAP" };
+    juce::TextButton muteAllButton { "M" }, soloAllButton { "S" };
+public:
+    juce::TextButton& getTapButton() noexcept { return tapButton; }
+    juce::TextButton& getMuteAllButton() noexcept { return muteAllButton; }
+    juce::TextButton& getSoloAllButton() noexcept { return soloAllButton; }
+private:
     // After the editor and the mixer: their windows go first.
     Zone editorZone { keyEditorHolder, editorButton, "MIDI Editor", "keyEditor", false, false, {} },
          mixerZone { mixer, mixerButton, "Mixer", "mixer", false, false, {} },

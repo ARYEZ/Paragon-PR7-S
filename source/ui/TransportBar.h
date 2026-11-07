@@ -32,7 +32,7 @@ public:
     std::function<std::optional<double>()> getSelectionStart;   // (0.45.0) for tap tempo's modes: what's selected
     // TAP (0.45.0, the manual's Tap Tempo): a tap now (the key, Shift+Space); right-click: the modes.
     void tap();
-    void showTapModes();
+    void showTapModes (juce::Component* target = nullptr);   // (0.73.0: TAP's key is in the header now)
     bool isShowingTap() const;
     explicit TransportBar (pr7s::Studio&);
     ~TransportBar() override;
@@ -63,6 +63,8 @@ public:
     float getShownPeak() const noexcept { return shownPeak; }
     bool isOverloadLit() const noexcept { return overloadLit; }
     juce::Rectangle<float> getCpuArea() const noexcept { return cpuScreen; }
+    juce::Rectangle<float> getOutArea() const noexcept { return outScreen; }   // (0.73.0)
+    float getShownOutDb (int channel) const noexcept { return channel == 0 ? outLeft.db : outRight.db; }
     // Where the arrangement's AUTO-SCROLL key and its menu arrow go (the main window puts them there).
     juce::Rectangle<int> getAutoScrollArea() const noexcept { return autoScrollArea; }
     juce::String getTooltip() override;
@@ -86,10 +88,10 @@ private:
     juce::TextButton toStart { "|<" }, stopKey { "STOP" }, playKey { "PLAY" };
     RecordKey recordKey { "REC" };
     juce::TextButton cycleKey { "CYCLE" }, clickKey { "CLICK" };
-    RecordKey tapKey { "TAP" };   // (0.45.0; a RecordKey for its right-click)
     pr7s::SignatureEvent shownSignature { -1, 0, 0 };
-    LevelMeter leftMeter, rightMeter;
-    juce::Rectangle<float> badge, positionScreen, timeScreen, tempoScreen, signatureScreen, keysArea, meterArea, cpuScreen, autoScrollStamp;
+    LevelMeter::Ballistics outLeft, outRight;   // (0.73.0: OUT on a screen)
+    void followOutput();
+    juce::Rectangle<float> badge, positionScreen, timeScreen, tempoScreen, signatureScreen, keysArea, cpuScreen, outScreen, autoScrollStamp;
     juce::Rectangle<int> toolsArea, autoScrollArea;
     float keyPitchNow = 70.0f;
     int toolsWidth = 0;

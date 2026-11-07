@@ -26,9 +26,7 @@ namespace
 }
 
 TransportBar::TransportBar (pr7s::Studio& studioToUse)
-    : studio (studioToUse),
-      leftMeter (studioToUse.getEngine().getOutputMeter (0)),
-      rightMeter (studioToUse.getEngine().getOutputMeter (1))
+    : studio (studioToUse)
 {
     for (auto* key : std::initializer_list<juce::TextButton*> { &toStart, &stopKey, &playKey, &recordKey, &cycleKey, &clickKey })
     {
@@ -54,25 +52,7 @@ TransportBar::TransportBar (pr7s::Studio& studioToUse)
             studio.record();
     };
     cycleKey.onClick = [this] { studio.setCycleOn (! studio.getProject().loopOn); };
-    tapKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
-    tapKey.setWantsKeyboardFocus (false);
-    tapKey.setTooltip ("TAP: tap the beat (or Shift+Space) to set the tempo; the screen shows the tapped tempo. "
-                       "Right-click: where it goes (the Tap Tempo Mode)");
-    tapKey.onClick = [this]
-    {
-        if (std::exchange (tapKey.popup, false))
-            showTapModes();
-        else
-            tap();
-    };
-    addAndMakeVisible (tapKey);
     clickKey.onClick = [this] { studio.setClick (! studio.getProject().click); };
-
-    for (auto* meter : { &leftMeter, &rightMeter })
-    {
-        meter->setShowScale (false);
-        addAndMakeVisible (*meter);
-    }
 
     studio.addChangeListener (this);
     Finish::changes().addChangeListener (this);
@@ -120,6 +100,18 @@ void TransportBar::timerCallback()
         repaint (tempoScreen.expanded (4.0f).getSmallestIntegerContainer());
     }
     followPerformance();
+    followOutput();
+}
+
+void TransportBar::followOutput()
+{
+    // (0.73.0) OUT on its screen: the output's peaks read here, in the bar's own 30 Hz timer (the
+    // meters had a timer each before), and the screen redrawn only when what it shows moves.
+    auto& engine = studio.getEngine();
+    const auto left = outLeft.push (engine.getOutputMeter (0).takePeak());
+    const auto right = outRight.push (engine.getOutputMeter (1).takePeak());
+    if (left || right)
+        repaint (outScreen.expanded (4.0f).getSmallestIntegerContainer());
 }
 
 void TransportBar::followPerformance()
@@ -257,14 +249,14 @@ void TransportBar::tap()
     repaint (tempoScreen.expanded (4.0f).getSmallestIntegerContainer());
 }
 
-void TransportBar::showTapModes()
+void TransportBar::showTapModes (juce::Component* target)
 {
     using Mode = pr7s::Studio::TapMode;
     juce::PopupMenu menu;
     menu.addSectionHeader ("TAP TEMPO MODE");
     for (auto m : { Mode::automatic, Mode::selectionStart, Mode::playbackStart, Mode::cursor, Mode::projectTempo, Mode::displayOnly })
         menu.addItem ((int) m + 1, pr7s::Studio::tapModeName (m), true, studio.getTapMode() == m);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&tapKey), [this] (int chosen)
+    menu.showMenuAsync (target != nullptr ? juce::PopupMenu::Options().withTargetComponent (target) : juce::PopupMenu::Options(), [this] (int chosen)
     {
         if (chosen > 0)
             studio.setTapMode ((Mode) (chosen - 1));
@@ -284,26 +276,20 @@ void TransportBar::resized()
     const auto autoWidth = keyPitch + 3.0f + 20.0f;
     const auto cpuWidth = wide ? 92.0f : 96.0f;
     const auto tempoWidth = wide ? 116.0f : 128.0f;
-    const auto tapWidth = 46.0f;   // (0.45.0: TAP between the tempo and the signature)
+    const auto outWidth = cpuWidth;   // (0.73.0: OUT a screen beside CPU; TAP moved to the header)
     const auto signatureWidth = wide ? 88.0f : 96.0f;
 
     auto area = getLocalBounds().toFloat().reduced (14.0f, 12.0f);
     badge = area.removeFromLeft (! wide && getWidth() < 1700 ? 150.0f : 190.0f);
     area.removeFromLeft (16.0f);
-    // The output meters: two LED columns, L and R, with OUT stamped under them.
-    meterArea = area.removeFromRight (36.0f);
-    const auto columns = meterArea.withTrimmedTop (10.0f).withTrimmedBottom (14.0f);
-    leftMeter.setBounds (columns.withWidth (10.0f).translated (6.0f, 0.0f).toNearestInt());
-    rightMeter.setBounds (columns.withWidth (10.0f).translated (20.0f, 0.0f).toNearestInt());
-    area.removeFromRight (16.0f);
 
     // The group from AUTO-SCROLL to the signature (and the tools): on one
     // screen it starts after the badge and the position screen takes what's
     // left; wide, the position screen has its own width and the group sits
     // in the middle (as near as the badge and the meters allow), so on three
     // screens it's all on the middle one.
-    const auto leftWidth = autoWidth + 12.0f + 6.0f * keyPitch + 12.0f + cpuWidth + 12.0f;
-    const auto rightWidth = 12.0f + tempoWidth + 6.0f + tapWidth + 6.0f + signatureWidth + (wide ? 20.0f + (float) toolsWidth : 0.0f);
+    const auto leftWidth = autoWidth + 12.0f + 6.0f * keyPitch + 12.0f + cpuWidth + 12.0f + outWidth + 12.0f;
+    const auto rightWidth = 12.0f + tempoWidth + 12.0f + signatureWidth + (wide ? 20.0f + (float) toolsWidth : 0.0f);
     auto x = area.getX();
     auto positionWidth = area.getWidth() - leftWidth - rightWidth;
     if (wide)
@@ -324,15 +310,15 @@ void TransportBar::resized()
     row.removeFromLeft (12.0f);
     cpuScreen = row.removeFromLeft (cpuWidth);
     row.removeFromLeft (12.0f);
+    outScreen = row.removeFromLeft (outWidth);
+    row.removeFromLeft (12.0f);
     // Two screens alike, POSITION and TIME, in the position's room.
     timeScreen = row.removeFromLeft (positionWidth);
     positionScreen = timeScreen.removeFromLeft ((positionWidth - 12.0f) * 0.5f);
     timeScreen.removeFromLeft (12.0f);
     row.removeFromLeft (12.0f);
     tempoScreen = row.removeFromLeft (tempoWidth);
-    row.removeFromLeft (6.0f);
-    tapKey.setBounds (row.removeFromLeft (tapWidth).withSizeKeepingCentre (tapWidth, 40.0f).withY ((float) toStart.getY()).toNearestInt());
-    row.removeFromLeft (6.0f);
+    row.removeFromLeft (12.0f);
     signatureScreen = row.removeFromLeft (signatureWidth);
     toolsArea = {};
     if (wide)
@@ -455,9 +441,33 @@ void TransportBar::paint (juce::Graphics& g)
         g.drawFittedText (juce::String (now.numerator) + "/" + juce::String (now.denominator), inside.toNearestInt(),
                           juce::Justification::centred, 1, 0.7f);
     }
-    stamped (g, "L", juce::Rectangle<float> (meterArea.getX() + 4.0f, meterArea.getY(), 14.0f, 10.0f), 8.0f);
-    stamped (g, "R", juce::Rectangle<float> (meterArea.getX() + 18.0f, meterArea.getY(), 14.0f, 10.0f), 8.0f);
-    stamped (g, "OUT", meterArea.withTrimmedTop (meterArea.getHeight() - 12.0f), 8.0f);
+    // OUT (0.73.0, the owner's: the output's meter as a screen beside CPU): L and R as LED bars
+    // across, the held peak in dB at the top right.
+    if (! outside (outScreen))
+    {
+        const auto glass = LedDisplay::paintScreen (g, outScreen, screenSize);
+        glasses.push_back (glass);
+        auto inside = glass.reduced (9.0f, 6.0f);
+        auto top = inside.removeFromTop (12.0f);
+        g.setFont (font (9.0f));
+        g.setColour (orange.withAlpha (0.6f));
+        g.drawText ("OUT", top, juce::Justification::topLeft, false);
+        const auto held = juce::jmax (outLeft.heldDb, outRight.heldDb);
+        g.setColour (held > 0.0f ? ParagonColours::meterRed : orange.withAlpha (0.75f));
+        g.drawText (held <= LevelMeter::minDb + 0.1f ? juce::String ("-INF") : (held > 0.0f ? "+" : "") + juce::String (held, 1), top, juce::Justification::topRight, false);
+        inside.removeFromTop (3.0f);
+        const auto barHeight = juce::jmax (4.0f, (inside.getHeight() - 4.0f) * 0.5f);
+        for (const auto* reading : { &outLeft, &outRight })
+        {
+            auto bar = inside.removeFromTop (barHeight);
+            inside.removeFromTop (4.0f);
+            g.setColour (orange.withAlpha (0.6f));
+            g.setFont (font (8.0f));
+            g.drawText (reading == &outLeft ? "L" : "R", bar.removeFromLeft (9.0f), juce::Justification::centredLeft, false);
+            const auto peak = reading->heldDb > LevelMeter::minDb ? LevelMeter::proportionForDb (reading->heldDb) : -1.0f;
+            LevelMeter::paintSegments (g, bar, LevelMeter::proportionForDb (reading->db), peak, false, 3.0f);
+        }
+    }
 
 }
 

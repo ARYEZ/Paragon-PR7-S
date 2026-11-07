@@ -146,6 +146,12 @@ namespace pr7s
         // palette's: FamilyColours), or with none, their automatic colour back (red,
         // pink, orange in turn by their place). One undo step.
         void setTracksColour (const std::vector<int>& trackIds, std::optional<juce::Colour>);
+        // (0.73.0) The tracks' colour over their rows in the track list: on/off and 1-100 %. Not an undo step.
+        void setTracksListColour (const std::vector<int>& trackIds, bool on, int amount);
+        // (0.73.0, the owner asked) The track moved to that slot of the track list (1 = the top, counted
+        // over the tracks shown); the others move down (or up) a slot. A folder takes its tracks with it.
+        // One undo step; false if nothing moved.
+        bool moveTrackToSlot (int trackId, int slot);
         void setMute (int trackId, bool);
         void setSolo (int trackId, bool, bool exclusive = false);   // exclusive: every other solo off (Ctrl-click, the manual's)
         // The manual's Deactivate All Solo States / Mute States (0.9.9).

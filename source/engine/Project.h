@@ -312,6 +312,11 @@ namespace pr7s
         bool folderGroup = false;        // a folder: its group channel enabled
         enum class FolderData { always, never, hideWhenExpanded };   // the manual's Show Data on Folder Tracks
         FolderData folderData = FolderData::always;
+        // (0.73.0, the owner asked, as the other DAW's track list colouring) The track's colour over its
+        // row in the track list: on or off, and how much (1-100 %). Saved; not an undo step.
+        bool listColourOn = false;
+        int listColourAmount = 25;
+        static constexpr int defaultListColourAmount = 25;
         int output = 0;                  // a group channel's id, or 0: the master (FX and group channels: the master)
         std::vector<Send> sends;         // by slot (none after the last used); FX channels have none
         bool sendsBypass = false;        // all of its sends off at once

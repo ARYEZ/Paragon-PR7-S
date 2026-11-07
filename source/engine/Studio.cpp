@@ -1460,6 +1460,60 @@ namespace pr7s
             changed();
     }
 
+    void Studio::setTracksListColour (const std::vector<int>& trackIds, bool on, int amount)
+    {
+        amount = juce::jlimit (1, 100, amount);
+        auto any = false;
+        for (auto& track : project.tracks)
+            if (std::find (trackIds.begin(), trackIds.end(), track.id) != trackIds.end()
+                && (track.listColourOn != on || track.listColourAmount != amount))
+            {
+                track.listColourOn = on;
+                track.listColourAmount = amount;
+                any = true;
+            }
+        if (any)
+            changed (false);
+    }
+
+    bool Studio::moveTrackToSlot (int trackId, int slot)
+    {
+        const auto shown = getShownTracks();
+        const auto from = std::find (shown.begin(), shown.end(), trackId);
+        if (from == shown.end() || shown.empty())
+            return false;
+        slot = juce::jlimit (1, (int) shown.size(), slot);
+        const auto target = shown[(size_t) slot - 1];
+        if (target == trackId)
+            return false;
+        std::vector<int> moving { trackId };
+        if (const auto* t = project.findTrack (trackId); t != nullptr && t->isFolder())
+            for (const auto member : project.folderMembers (trackId, true))
+                moving.push_back (member);
+        if (std::find (moving.begin(), moving.end(), target) != moving.end())
+            return false;   // (into its own folder)
+        const auto indexOf = [this] (int id)
+        {
+            for (int i = 0; i < (int) project.tracks.size(); ++i)
+                if (project.tracks[(size_t) i].id == id)
+                    return i;
+            return -1;
+        };
+        const auto down = std::distance (shown.begin(), from) < slot - 1;
+        auto before = indexOf (target);
+        if (down)
+        {
+            // After the track in that slot (and, a folder there, after its tracks), so it lands in the slot.
+            auto last = before;
+            if (const auto* t = project.findTrack (target); t != nullptr && t->isFolder())
+                for (const auto member : project.folderMembers (target, true))
+                    last = juce::jmax (last, indexOf (member));
+            before = last + 1;
+        }
+        moveTracks (moving, before);
+        return true;
+    }
+
     void Studio::setMute (int trackId, bool on)
     {
         if (auto* track = project.findTrack (trackId))

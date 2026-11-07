@@ -1990,12 +1990,14 @@ TEST_CASE ("A wide window (spanning screens): the position screen centred at its
     // The keys on its left, the tools on its right (on the transport, no row of their own).
     auto* clickKey = buttonNamed (transport, "CLICK");
     REQUIRE (clickKey != nullptr);
-    // CLICK, then the CPU screen, then the position screen (the owner's order).
-    const auto cpu = transport.getCpuArea();
+    // CLICK, then the CPU screen, (0.73.0) the OUT screen, then the position screen (the owner's order).
+    const auto cpu = transport.getCpuArea(), out = transport.getOutArea();
     CHECK (clickKey->getRight() <= (int) cpu.getX());
     CHECK (clickKey->getRight() > (int) cpu.getX() - 30);
-    CHECK (cpu.getRight() <= screen.getX());
-    CHECK (cpu.getRight() > screen.getX() - 30);
+    CHECK (cpu.getRight() <= out.getX());
+    CHECK (cpu.getRight() > out.getX() - 30);
+    CHECK (out.getRight() <= screen.getX());
+    CHECK (out.getRight() > screen.getX() - 30);
     // AUTO-SCROLL just before HOME.
     CHECK (view.getAutoScrollButton().getRight() < buttonNamed (transport, "|<")->getX() + transport.getX());
     CHECK (view.getAutoScrollButton().getRight() > buttonNamed (transport, "|<")->getX() + transport.getX() - 50);
@@ -2007,9 +2009,9 @@ TEST_CASE ("A wide window (spanning screens): the position screen centred at its
     CHECK (tools.getY() >= transport.getY());
     // (No tools row: the info line (0.37.0) and the track list's header are all that's over it.)
     CHECK (view.getArrangeView().getY() < transport.getBottom() + MainView::toolbarHeight + (view.isInfoLineShown() ? InfoLine::height + 2 : 0));   // the tracks have the row's room
-    // The header's keys: NEW to the quantize value in the middle.
+    // The header's keys: NEW to (0.73.0) S in the middle.
     auto* newKey = buttonNamed (view, "NEW");
-    auto& lastKey = view.getQuantizeButton();
+    auto& lastKey = view.getSoloAllButton();
     REQUIRE (newKey != nullptr);
     CHECK (std::abs ((newKey->getX() + lastKey.getRight()) / 2 - view.getWidth() / 2) < 4);
     CHECK (newKey->getX() > 2000);
@@ -2671,14 +2673,19 @@ TEST_CASE ("Track rows without M S REC R W (0.9.9): the state written under the 
     auto& list = view.getTrackList();
     auto& muteAll = list.getMuteAllKey();
     auto& soloAll = list.getSoloAllKey();
-    CHECK (muteAll.isVisible());
-    CHECK (soloAll.isVisible());
+    // (0.73.0, the owner asked) On the header's top row now: the track list's are kept hidden.
+    CHECK_FALSE (muteAll.isVisible());
+    CHECK_FALSE (soloAll.isVisible());
+    CHECK (view.getMuteAllButton().isVisible());
+    CHECK (view.getSoloAllButton().isVisible());
     CHECK_FALSE (soloAll.getToggleState());
     studio.setSolo (a, true);
     studio.setMute (b, true);
     studio.dispatchPendingMessages();
     CHECK (soloAll.getToggleState());
     CHECK (muteAll.getToggleState());
+    CHECK (view.getSoloAllButton().getToggleState());   // (0.73.0: the header's light too)
+    CHECK (view.getMuteAllButton().getToggleState());
     soloAll.onClick();
     muteAll.onClick();
     studio.dispatchPendingMessages();

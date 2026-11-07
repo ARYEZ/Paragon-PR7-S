@@ -260,6 +260,26 @@ MainView::MainView (pr7s::Studio& studioToUse)
     quantizeButton.setTooltip ("The quantize value: what Snap snaps to (1/1 to 1/64)");
     snapButton.onClick = [this] { studio.setSnap (! studio.getProject().snapOn); };
     quantizeButton.onClick = [this] { showQuantizeMenu(); };
+    // (0.73.0) TAP, and the all-tracks M / S (from the track list's header), after the quantize value.
+    for (auto* key : std::initializer_list<juce::TextButton*> { &tapButton, &muteAllButton, &soloAllButton })
+    {
+        key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        key->setWantsKeyboardFocus (false);
+        addAndMakeVisible (*key);
+    }
+    tapButton.setTooltip ("TAP: tap the beat (or Shift+Space) to set the tempo; the TEMPO screen shows the tapped tempo. "
+                          "Right-click: where it goes (the Tap Tempo Mode)");
+    tapButton.onClick = [this]
+    {
+        if (std::exchange (tapButton.popup, false))
+            transport.showTapModes (&tapButton);
+        else
+            transport.tap();
+    };
+    muteAllButton.setTooltip ("Deactivate All Mute States: lit while any track is muted; click to unmute them all");
+    soloAllButton.setTooltip ("Deactivate All Solo States: lit while any track is soloed; click to turn every solo off");
+    muteAllButton.onClick = [this] { studio.deactivateAllMute(); };
+    soloAllButton.onClick = [this] { studio.deactivateAllSolo(); };
     readAllButton.onClick = [this] { studio.setAutomationReadAll (! studio.anyAutomationRead()); };
     writeAllButton.onClick = [this] { studio.setAutomationWriteAll (! studio.anyAutomationWrite()); };
 
@@ -588,6 +608,8 @@ void MainView::refreshHeader()
     readAllButton.setToggleState (studio.anyAutomationRead(), juce::dontSendNotification);
     writeAllButton.setToggleState (studio.anyAutomationWrite(), juce::dontSendNotification);
     snapButton.setToggleState (studio.getProject().snapOn, juce::dontSendNotification);
+    muteAllButton.setToggleState (studio.anyMute(), juce::dontSendNotification);
+    soloAllButton.setToggleState (studio.anySolo(), juce::dontSendNotification);
     quantizeButton.setButtonText (quantizeName (studio.getProject().quantizeBeats));
     const auto file = studio.getFile();
     const auto title = "Paragon PR7-S - " + (file == juce::File() ? juce::String ("Untitled") : file.getFileNameWithoutExtension())
@@ -668,6 +690,12 @@ void MainView::resized()
     snapButton.setBounds (header.removeFromLeft (56));
     header.removeFromLeft (4);
     quantizeButton.setBounds (header.removeFromLeft (66));
+    header.removeFromLeft (18);
+    tapButton.setBounds (header.removeFromLeft (50));
+    header.removeFromLeft (18);
+    muteAllButton.setBounds (header.removeFromLeft (34));
+    header.removeFromLeft (4);
+    soloAllButton.setBounds (header.removeFromLeft (34));
     settingsButton.setBounds (header.removeFromRight (92));
     header.removeFromRight (6);
     pluginsButton.setBounds (header.removeFromRight (86));
@@ -678,10 +706,10 @@ void MainView::resized()
     // Wide: the header's keys (NEW to W) in the middle of the window.
     if (isWide())
     {
-        const auto first = newButton.getX(), last = quantizeButton.getRight();
+        const auto first = newButton.getX(), last = soloAllButton.getRight();
         const auto shift = juce::jmax (0, (getWidth() - (last - first)) / 2 - first);
-        for (auto* key : { &newButton, &openButton, &saveButton, &saveAsButton, &importButton, &exportButton, &undoButton, &redoButton,
-                           &readAllButton, &writeAllButton, &snapButton, &quantizeButton })
+        for (juce::Component* key : std::initializer_list<juce::Component*> { &newButton, &openButton, &saveButton, &saveAsButton, &importButton, &exportButton, &undoButton, &redoButton,
+                           &readAllButton, &writeAllButton, &snapButton, &quantizeButton, &tapButton, &muteAllButton, &soloAllButton })
             key->setTopLeftPosition (key->getX() + shift, key->getY());
     }
 

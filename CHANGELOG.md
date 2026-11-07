@@ -2,6 +2,17 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.73.0
+
+- **TAP, M and S on the header's top row** (you asked), right of the quantize box:
+  - **TAP** taps the tempo as before; right-click it for the tap modes.
+  - **M** and **S** turn every mute and every solo off at once (they were in the track list's header). Each lights while something is muted or soloed.
+- **The output meter is an LCD now** (you asked), the same size as the CPU screen and right beside it, so there are two screens either side of POSITION and TIME. It reads **OUT**, the held peak in dB (red over 0 dB), and a bar each for L and R.
+  - **CPU:** it costs less than the old meter, not more. It's only redrawn when the level it shows changes (the old meters were two components redrawn on their own), and it reads the same peaks the old meter did.
+- **Tracks are numbered** (you asked): 1 at the top, counting down. The number belongs to the place, not the track: move the third track to the seventh place and it reads 7. Folder tracks and FX/group channels count as places too. Folded-away and hidden tracks aren't numbered (they aren't in the list).
+- **Double-click a track's number and type another to move it there** (you asked). Type 5 on track 97: it goes to place 5, and the tracks from 5 to 96 move down one. Moving down works the same way. A folder takes its tracks with it. Undo puts it back.
+- **The track's colour in the track list** (you asked, as the other DAW's): in the colour menu (the colour key in the track list's header, or the track menu's Colour), **COLOUR IN THE TRACK LIST** and a bar from **1 % to 100 %**. It's per track: only the tracks the menu was opened for (the selected ones) change. Off, the row stays as it was: dark, with the colour down the left edge. Saved with the song.
+
 ## 0.72.0
 
 - **AUTO-SAVE** (you asked), on **HUB SETTINGS** under HUMANIZE:

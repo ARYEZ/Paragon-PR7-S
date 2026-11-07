@@ -644,6 +644,10 @@ namespace pr7s
                 if (track.folderData != Track::FolderData::always)
                     t->setAttribute ("folderData", (int) track.folderData);
             }
+            if (track.listColourOn)
+                t->setAttribute ("listColour", true);
+            if (track.listColourAmount != Track::defaultListColourAmount)
+                t->setAttribute ("listColourAmount", track.listColourAmount);
             if (track.output != 0)
                 t->setAttribute ("output", track.output);
             if (track.sendsBypass)
@@ -1006,6 +1010,8 @@ namespace pr7s
                 track.folderData = (Track::FolderData) juce::jlimit (0, 2, t->getIntAttribute ("folderData"));
             }
             track.folder = juce::jmax (0, t->getIntAttribute ("folder"));
+            track.listColourOn = t->getBoolAttribute ("listColour");
+            track.listColourAmount = juce::jlimit (1, 100, t->getIntAttribute ("listColourAmount", Track::defaultListColourAmount));
             if (const auto* fades = t->getChildByName ("AutoFades"))
                 track.autoFades = autoFadesFrom (*fades);   // (0.52.0)
             track.output = juce::jmax (0, t->getIntAttribute ("output"));
