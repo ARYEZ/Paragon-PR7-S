@@ -2,6 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.70.0
+
+- **Solo works by routing** (you asked). Solo a track and you hear only that track, everything routed into it, and the channels it goes on through to the master. Solo your vocal group and you hear only the vocals routed into it: no other vocals, no instruments. Groups into groups work too: solo a bus and every group and track feeding it plays.
+  - A soloed track still feeds its own group and the FX channels it sends to.
+  - Soloing an FX channel (a reverb) keeps the tracks that send into it playing, or the reverb would have nothing to play. That's our choice; the other DAW's manual doesn't say.
+  - Tracks routed into a soloed group lose their sends to FX channels outside the group (the reverb isn't on the group's path), so a soloed group plays dry unless the group itself sends to the reverb.
+- **Top and Bottom** (the other DAW's Navigate > Top / Bottom): select the first or last track in the track list and scroll to it. They're in KEYS under NAVIGATE, with no key yet: the other DAW uses Home and End, but Home is your Go to Start, so set your own (End is free).
+- **The mixer and the track list follow each other:** click a channel in the mixer and the track list (and arrangement) scrolls to that track and highlights it. Pick a track in the track list (or with Up/Down, Top/Bottom, or a new track) and the mixer scrolls to its channel.
+- **The composer's lead lane** has **Solo Style** at the bottom of its style menu (the same setting as IDEAS' SOLO box). Choosing one switches the lane to the solo so you hear it.
+
 ## 0.69.1
 
 - **The SOLO box is where you can see it** (you couldn't find it). It's now on the right of the **LEAD** column's title, on IDEAS' guitar tab. In 0.66.0 to 0.69.0 it sat in the row of tabs, and an IDEAS window narrower than 1600 (yours was about 1360) squeezed it to nothing. A test now checks it's visible, readable and uncovered at widths from 1000 to 1600.
