@@ -247,7 +247,7 @@ void LedDisplay::paint (juce::Graphics& g)
     // height, the bank and preset line a little smaller.
     auto nameArea = content.removeFromTop (content.getHeight() * 0.5f);
     g.setColour (colour);
-    g.setFont (juce::FontOptions (glass.getHeight() * 0.22f));
+    g.setFont (ParagonLookAndFeel::lowercaseFont (glass.getHeight() * 0.22f));
     g.drawFittedText (contents.bypassed ? juce::String ("BYPASSED") : contents.name.toUpperCase(),
                       nameArea.toNearestInt(), juce::Justification::bottomLeft, 1, 0.8f);
 
@@ -256,7 +256,7 @@ void LedDisplay::paint (juce::Graphics& g)
 
     auto infoArea = content.withTrimmedTop (9.0f);
     g.setColour (colour);
-    g.setFont (juce::FontOptions (glass.getHeight() * 0.17f));
+    g.setFont (ParagonLookAndFeel::lowercaseFont (glass.getHeight() * 0.17f));
     if (contents.bank.isEmpty())
     {
         g.drawText ("NOT SAVED", infoArea, juce::Justification::topLeft, false);
@@ -325,7 +325,7 @@ void LedDisplay::paintTuner (juce::Graphics& g, juce::Rectangle<float> content, 
     // The note name, big, where the rig number usually is.
     auto noteArea = content.removeFromLeft (content.getHeight() * 1.45f);
     g.setColour (noteColour.withAlpha (tuner.hasNote ? 0.25f : 0.0f));
-    g.setFont (juce::FontOptions (noteArea.getHeight() * 1.05f, juce::Font::bold));
+    g.setFont (ParagonLookAndFeel::lowercaseFont (noteArea.getHeight() * 1.05f, juce::Font::bold));
     const auto note = tuner.hasNote ? tuner.note : juce::String ("-");
     const auto letterArea = noteArea.withTrimmedRight (noteArea.getWidth() * 0.3f);
     g.drawText (note, letterArea.translated (0.0f, 1.5f).expanded (2.0f), juce::Justification::centred, false);   // glow
@@ -333,7 +333,7 @@ void LedDisplay::paintTuner (juce::Graphics& g, juce::Rectangle<float> content, 
     g.drawText (note, letterArea, juce::Justification::centred, false);
     if (tuner.hasNote)
     {
-        g.setFont (juce::FontOptions (noteArea.getHeight() * 0.32f, juce::Font::bold));
+        g.setFont (ParagonLookAndFeel::lowercaseFont (noteArea.getHeight() * 0.32f, juce::Font::bold));
         g.drawText (juce::String (tuner.octave), noteArea.removeFromRight (noteArea.getWidth() * 0.3f).removeFromBottom (noteArea.getHeight() * 0.45f),
                     juce::Justification::centredLeft, false);
     }
@@ -343,7 +343,7 @@ void LedDisplay::paintTuner (juce::Graphics& g, juce::Rectangle<float> content, 
     // Top line: TUNER and whether the output is muted.
     auto topLine = content.removeFromTop (content.getHeight() * 0.3f);
     g.setColour (colour);
-    g.setFont (juce::FontOptions (topLine.getHeight() * 0.85f, juce::Font::bold));
+    g.setFont (ParagonLookAndFeel::lowercaseFont (topLine.getHeight() * 0.85f, juce::Font::bold));
     g.drawText ("TUNER", topLine, juce::Justification::centredLeft, false);
     g.setColour (colour.withAlpha (0.6f));
     g.drawText (tuner.muted ? "OUTPUT MUTED" : "LISTENING", topLine, juce::Justification::centredRight, false);
@@ -375,7 +375,7 @@ void LedDisplay::paintTuner (juce::Graphics& g, juce::Rectangle<float> content, 
 
     // Bottom line: how far off, in cents, and the frequency.
     g.setColour (colour);
-    g.setFont (juce::FontOptions (content.getHeight() * 0.8f, juce::Font::bold));
+    g.setFont (ParagonLookAndFeel::lowercaseFont (content.getHeight() * 0.8f, juce::Font::bold));
     if (tuner.hasNote)
     {
         const auto cents = juce::roundToInt (tuner.cents);

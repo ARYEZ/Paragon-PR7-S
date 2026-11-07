@@ -10,7 +10,7 @@
 // and a column of the attribute filter.
 namespace MediaUi
 {
-    inline juce::Font interFont (float height, bool bold = false) { return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain)); }
+    inline juce::Font interFont (float height, bool bold = false) { return juce::Font (ParagonLookAndFeel::textFont (height, bold ? juce::Font::bold : juce::Font::plain)); }   // (0.71.1: Bebas, the owner's rule; the old name kept)
 
     // Each type in one of the family's colours (a small tab beside the name).
     inline juce::Colour typeColour (pr7s::MediaType type)

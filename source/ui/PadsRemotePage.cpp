@@ -137,7 +137,7 @@ void PadsRemotePage::paint (juce::Graphics& g)
     g.setFont (ParagonLookAndFeel::titleFont (16.0f));
     g.drawText ("CHORD PADS REMOTE", area.removeFromTop (22), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
-    g.setFont (juce::Font (juce::FontOptions (11.5f)));
+    g.setFont (juce::Font (ParagonLookAndFeel::textFont (11.5f)));
     g.drawFittedText (studio.getPadLearn() != Learn::none
                           ? juce::String ("Press the key on your MIDI keyboard now (for the pads' range: the first key, then the last).")
                           : juce::String ("Click a box, then press the key on your MIDI keyboard (MIDI Learn). The keys work while the chord pads are open."),

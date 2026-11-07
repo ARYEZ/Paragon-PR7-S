@@ -38,7 +38,7 @@ namespace Windows
                 viewport.setViewedComponent (&devices, false);
                 viewport.setScrollBarsShown (true, false);
                 addAndMakeVisible (viewport);
-                bufferText.setFont (juce::FontOptions (13.0f));
+                bufferText.setFont (ParagonLookAndFeel::textFont (13.0f));
                 bufferText.setColour (juce::Label::textColourId, ParagonColours::text);
                 bufferText.setJustificationType (juce::Justification::topLeft);
                 addAndMakeVisible (bufferText);
@@ -47,7 +47,7 @@ namespace Windows
                 reload.onClick = [this] { studio.reloadAudioDevice(); refreshBuffer(); };
                 addChildComponent (reload);
                 finishLabel.setText ("FINISH", juce::dontSendNotification);
-                finishLabel.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+                finishLabel.setFont (ParagonLookAndFeel::textFont (12.0f, juce::Font::bold));
                 finishLabel.setColour (juce::Label::textColourId, ParagonColours::textDim);
                 addAndMakeVisible (finishLabel);
                 finish.addItemList (Finish::names, 1);
@@ -60,7 +60,7 @@ namespace Windows
                               "they're switched on). On Windows, pick your interface's driver above: ASIO for the lowest delay "
                               "and the buffer sizes its driver offers; else Windows Audio (Exclusive Mode).",
                               juce::dontSendNotification);
-                note.setFont (juce::FontOptions (12.0f));
+                note.setFont (ParagonLookAndFeel::textFont (12.0f));
                 note.setColour (juce::Label::textColourId, ParagonColours::textDim);
                 note.setJustificationType (juce::Justification::topLeft);
                 addAndMakeVisible (note);

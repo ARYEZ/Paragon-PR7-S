@@ -109,6 +109,12 @@ public:
     // capitals look the size Inter's text does.
     static juce::FontOptions textFont (float height, int style = juce::Font::bold);
     static juce::FontOptions titleFont (float height);
+    // (0.71.1) Inter, for what needs small letters (chord names "Cm7" / numerals "ii", the LED screens' figures).
+    static juce::FontOptions lowercaseFont (float height, int style = juce::Font::bold);
+    juce::Font getLabelFont (juce::Label&) override;
+    juce::Rectangle<int> getTooltipBounds (const juce::String&, juce::Point<int>, juce::Rectangle<int>) override;
+    void drawTooltip (juce::Graphics&, const juce::String&, int width, int height) override;
+    juce::AttributedString tooltipText (const juce::String&);
     static constexpr float bebasScale = 1.3f;
     juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override;
     juce::Font getPopupMenuFont() override;

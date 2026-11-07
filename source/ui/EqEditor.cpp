@@ -7,7 +7,7 @@ namespace
     constexpr double displayRate = 48000.0;
     constexpr double lowestHz = 20.0, highestHz = 20000.0;
 
-    juce::Font interFont (float height, bool bold = false) { return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain)); }
+    juce::Font interFont (float height, bool bold = false) { return juce::Font (ParagonLookAndFeel::textFont (height, bold ? juce::Font::bold : juce::Font::plain)); }   // (0.71.1: Bebas, the owner's rule; the old name kept)
 
     // The bands' points in the family's colours (band 4 pearl white).
     juce::Colour bandColour (int band)

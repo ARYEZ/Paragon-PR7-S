@@ -103,10 +103,13 @@ void InfoLine::refresh()
     juce::String key (count);
     for (const auto& f : fields)
         key << "|" << f.name << "=" << f.value;
+    // (0.71.1) The fields were made again just now: they always need their places back. Laid out
+    // only when the text changed, they kept none whenever the song changed elsewhere (the timer
+    // refreshes ten times a second), and a click on VALUE found no field: the owner's "nothing happens".
+    resized();
     if (key != shownKey)
     {
         shownKey = key;
-        resized();
         repaint();
     }
 }

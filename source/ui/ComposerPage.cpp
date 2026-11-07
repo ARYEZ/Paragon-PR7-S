@@ -7,7 +7,7 @@ namespace
 {
     using pr7s::ComposerLayer;
 
-    juce::Font interFont (float height, bool bold = false) { return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain)); }
+    juce::Font interFont (float height, bool bold = false) { return juce::Font (ParagonLookAndFeel::textFont (height, bold ? juce::Font::bold : juce::Font::plain)); }   // (0.71.1: Bebas, the owner's rule; the old name kept)
 
     // As IDEAS' cards: bass and guitar orange, melody and lead pink, chords and drums red.
     juce::Colour colourOf (ComposerLayer l)

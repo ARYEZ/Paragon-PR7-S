@@ -195,7 +195,7 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
                           "the arrangement (one undo step). It's the same key as KEYS' MIDI > Humanize; a Stream Deck button can press it.",
                           juce::dontSendNotification);
     humanizeNote.setJustificationType (juce::Justification::topLeft);
-    humanizeNote.setFont (juce::Font (juce::FontOptions (12.0f)));
+    humanizeNote.setFont (juce::Font (ParagonLookAndFeel::textFont (12.0f)));
     for (auto* b : { &humanizeSetKey, &humanizeClearKey })
     {
         b->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);

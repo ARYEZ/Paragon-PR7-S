@@ -159,7 +159,7 @@ void ParagonLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& bu
 {
     if (const auto* size = button.getProperties().getVarPointer (plainTextProperty))
     {
-        g.setFont (juce::FontOptions ((float) *size));
+        g.setFont (textFont ((float) *size));
         g.setColour (button.findColour (juce::TextButton::textColourOffId));
         g.drawFittedText (button.getButtonText(), button.getLocalBounds().reduced (4, 0), juce::Justification::centred, 1, 0.8f);
         return;
@@ -167,7 +167,7 @@ void ParagonLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& bu
 
     if (button.getProperties()[outlinedButtonProperty])
     {
-        g.setFont (juce::FontOptions (10.5f, juce::Font::bold));
+        g.setFont (textFont (10.5f));
         g.setColour (button.getToggleState() ? ParagonColours::glow.darker (0.1f) : ParagonColours::ink);
         g.drawFittedText (button.getButtonText(), button.getLocalBounds().reduced (3, 1), juce::Justification::centred, 1);
         return;
@@ -579,18 +579,69 @@ void ParagonLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int 
 namespace
 {
     const juce::String bebasName { "Paragon Bebas" };
+    const juce::String interName { "Paragon Inter" };
 }
 
 juce::Typeface::Ptr ParagonLookAndFeel::getTypefaceForFont (const juce::Font& font)
 {
     if (font.getTypefaceName() == bebasName)
         return bebas;
+    if (font.getTypefaceName() == interName)   // (0.71.1: Inter only where it's asked for by name)
+        return font.isBold() ? semiBold : regular;
     if (font.getTypefaceName() != juce::Font::getDefaultSansSerifFontName())
         return LookAndFeel_V4::getTypefaceForFont (font);
 
     if (font.isBold() && font.isItalic())
         return blackItalic;
+    // (0.71.1, the owner: Bebas Neue everywhere unless lowercase is needed) Any plain font, JUCE's own
+    // boxes and lists included, is Bebas; what needs small letters asks for `lowercaseFont`.
+    if (getDisplayFont() == DisplayFont::bebasEverywhere)
+        return bebas;
     return font.isBold() ? semiBold : regular;
+}
+
+juce::FontOptions ParagonLookAndFeel::lowercaseFont (float height, int style)
+{
+    return juce::FontOptions (interName, height, style & juce::Font::bold);
+}
+
+juce::Font ParagonLookAndFeel::getLabelFont (juce::Label& label)
+{
+    // A label in the plain font is drawn in Bebas, as large as the studio's own text (`bebasScale`).
+    const auto font = label.getFont();
+    if (getDisplayFont() == DisplayFont::bebasEverywhere && font.getTypefaceName() == juce::Font::getDefaultSansSerifFontName()
+        && ! (font.isBold() && font.isItalic()))
+        return juce::Font (textFont (font.getHeight()));
+    return font;
+}
+
+juce::Rectangle<int> ParagonLookAndFeel::getTooltipBounds (const juce::String& text, juce::Point<int> at, juce::Rectangle<int> parentArea)
+{
+    juce::TextLayout layout;
+    layout.createLayoutWithBalancedLineLengths (tooltipText (text), 400.0f);
+    const auto w = (int) (layout.getWidth() + 18.0f), h = (int) (layout.getHeight() + 10.0f);
+    return juce::Rectangle<int> (at.x > parentArea.getCentreX() ? at.x - (w + 12) : at.x + 24,
+                                 at.y > parentArea.getCentreY() ? at.y - (h + 6) : at.y + 6, w, h).constrainedWithin (parentArea);
+}
+
+void ParagonLookAndFeel::drawTooltip (juce::Graphics& g, const juce::String& text, int width, int height)
+{
+    const juce::Rectangle<float> area ((float) width, (float) height);
+    g.setColour (findColour (juce::TooltipWindow::backgroundColourId));
+    g.fillRoundedRectangle (area, 4.0f);
+    g.setColour (findColour (juce::TooltipWindow::outlineColourId));
+    g.drawRoundedRectangle (area.reduced (0.5f), 4.0f, 1.0f);
+    juce::TextLayout layout;
+    layout.createLayoutWithBalancedLineLengths (tooltipText (text), (float) width - 18.0f);
+    layout.draw (g, area.reduced (9.0f, 5.0f));
+}
+
+juce::AttributedString ParagonLookAndFeel::tooltipText (const juce::String& text)
+{
+    juce::AttributedString s;
+    s.setJustification (juce::Justification::centredLeft);
+    s.append (text, juce::Font (textFont (13.0f)), findColour (juce::TooltipWindow::textColourId));
+    return s;
 }
 
 namespace

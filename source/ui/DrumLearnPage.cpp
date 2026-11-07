@@ -8,7 +8,7 @@
 
 namespace
 {
-    juce::Font interFont (float height, bool bold = false) { return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain)); }
+    juce::Font interFont (float height, bool bold = false) { return juce::Font (ParagonLookAndFeel::textFont (height, bold ? juce::Font::bold : juce::Font::plain)); }   // (0.71.1: Bebas, the owner's rule; the old name kept)
     const juce::Colour page { 0xff0c0a0d }, rowDark { 0xff151217 }, rowLit { 0xff1e181f };
 
     juce::String plural (int n, const juce::String& word) { return juce::String (n) + " " + word + (n == 1 ? "" : "s"); }

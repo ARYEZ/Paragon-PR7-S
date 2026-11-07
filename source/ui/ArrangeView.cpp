@@ -4461,8 +4461,8 @@ void ArrangeView::paintChords (juce::Graphics& g, const Timeline::Row& row)
     if (track.events.empty())
     {
         g.setColour (ParagonColours::textDim);
-        g.setFont (ChordUi::chordFont (12.0f));
-        g.drawText ("Double-click to add a chord, drop a chord pad here, or right-click a MIDI part: Create Chord Events",
+        g.setFont (juce::Font (ParagonLookAndFeel::textFont (12.0f)));
+        g.drawText ("DOUBLE-CLICK TO ADD A CHORD, DROP A CHORD PAD HERE, OR RIGHT-CLICK A MIDI PART: DETECT CHORDS",
                     chords.withTrimmedLeft (12.0f), juce::Justification::centredLeft, true);
     }
     // The scales: a strip under the chords.
@@ -4479,8 +4479,8 @@ void ArrangeView::paintChords (juce::Graphics& g, const Timeline::Row& row)
         g.setColour (pr7s::FamilyColours::red.withAlpha (0.8f));
         g.fillRect (r.withWidth (2.0f));
         g.setColour (ParagonColours::textDim);
-        g.setFont (ChordUi::chordFont (juce::jlimit (9.0f, 11.0f, r.getHeight() * 0.75f)));
-        g.drawText (ChordUi::spokenKey (track.scales[i].key) + (track.autoScales ? "" : "  (set by hand)"), r.withTrimmedLeft (6.0f),
+        g.setFont (juce::Font (ParagonLookAndFeel::textFont (juce::jlimit (9.0f, 11.0f, r.getHeight() * 0.75f))));
+        g.drawText ((ChordUi::spokenKey (track.scales[i].key) + (track.autoScales ? "" : "  (set by hand)")).toUpperCase(), r.withTrimmedLeft (6.0f),
                     juce::Justification::centredLeft, true);
     }
     juce::ignoreUnused (project);

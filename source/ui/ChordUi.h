@@ -8,7 +8,7 @@
 // written out in words for the toolbars and menus.
 namespace ChordUi
 {
-    inline juce::Font chordFont (float height) { return juce::Font (juce::FontOptions (height, juce::Font::bold)); }
+    inline juce::Font chordFont (float height) { return juce::Font (ParagonLookAndFeel::lowercaseFont (height)); }   // (named: plain fonts are Bebas since 0.71.1)
 
     // A key whose label is a note or chord name: drawn in Inter.
     class InterKey : public juce::TextButton

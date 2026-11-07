@@ -6,7 +6,7 @@
 
 namespace
 {
-    juce::Font interFont (float height, bool bold = false) { return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain)); }
+    juce::Font interFont (float height, bool bold = false) { return juce::Font (ParagonLookAndFeel::textFont (height, bold ? juce::Font::bold : juce::Font::plain)); }   // (0.71.1: Bebas, the owner's rule; the old name kept)
 
     // Each part's notes in one of the family's three: bass and rhythm orange, melody and lead pink, piano red.
     juce::Colour colourOf (pr7s::LineIdea::Part part)
@@ -194,7 +194,7 @@ void HumanizePanel::paint (juce::Graphics& g)
     g.setFont (ParagonLookAndFeel::titleFont (16.0f));
     g.drawText ("HUMANIZE", area.removeFromTop (22), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
-    g.setFont (juce::Font (juce::FontOptions (11.5f)));
+    g.setFont (juce::Font (ParagonLookAndFeel::textFont (11.5f)));
     g.drawFittedText ("Small differences in timing, velocity and length so the ideas sound played. Chords stay together, "
                       "a bar's first beat moves least, and velocities stay in their articulation's layer.",
                       area.removeFromTop (44), juce::Justification::topLeft, 3, 0.9f);
@@ -270,7 +270,7 @@ void GuitarVelocityPanel::paint (juce::Graphics& g)
     g.setFont (ParagonLookAndFeel::titleFont (16.0f));
     g.drawText ("GUITAR VELOCITIES", title.removeFromTop (22), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
-    g.setFont (juce::Font (juce::FontOptions (11.5f)));
+    g.setFont (juce::Font (ParagonLookAndFeel::textFont (11.5f)));
     g.drawText ("Each articulation's velocity, set by ear. The ideas are dealt again as you change them.", title, juce::Justification::centredLeft, true);
     for (int i = 0; i < pr7s::GuitarVelocities::count; ++i)
     {
@@ -279,7 +279,7 @@ void GuitarVelocityPanel::paint (juce::Graphics& g)
         g.setFont (ParagonLookAndFeel::titleFont (13.0f));
         g.drawText (pr7s::GuitarVelocities::nameOf (i), row.removeFromLeft (150), juce::Justification::centredLeft, false);
         g.setColour (ParagonColours::textDim);
-        g.setFont (juce::Font (juce::FontOptions (11.0f)));
+        g.setFont (juce::Font (ParagonLookAndFeel::textFont (11.0f)));
         g.drawText (pr7s::GuitarVelocities::layerOf (i), row.removeFromRight (60), juce::Justification::centredRight, false);
     }
 }
@@ -737,14 +737,14 @@ void BuildSectionPanel::paint (juce::Graphics& g)
     g.setFont (ParagonLookAndFeel::titleFont (16.0f));
     g.drawText ("BUILD SECTION", area.removeFromTop (22), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
-    g.setFont (juce::Font (juce::FontOptions (11.5f)));
+    g.setFont (juce::Font (ParagonLookAndFeel::textFont (11.5f)));
     g.drawFittedText ("Each part onto its own track (Drums, Bass, Guitar, Lead Guitar, Piano, Melody) over these chords. "
                       "Building the same chords again replaces them; one undo step.",
                       area.removeFromTop (titleHeight - 32), juce::Justification::topLeft, 2, 0.9f);
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (13.0f));
     g.drawText ("SECTION", area.removeFromTop (rowHeight).removeFromLeft (110), juce::Justification::centredLeft, false);
-    g.setFont (juce::Font (juce::FontOptions (12.0f)));
+    g.setFont (juce::Font (ParagonLookAndFeel::textFont (12.0f)));
     for (int i = 0; i < BuildChoice::count; ++i)
     {
         auto row = area.removeFromTop (rowHeight);
@@ -772,7 +772,7 @@ void BuildSectionPanel::paint (juce::Graphics& g)
             g.setColour (ParagonColours::accent);
             g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * sug.score), 3.0f);
             g.setColour (ParagonColours::textDim);
-            g.setFont (juce::Font (juce::FontOptions (11.5f)));
+            g.setFont (juce::Font (ParagonLookAndFeel::textFont (11.5f)));
             g.drawFittedText (sug.reason, row.withTrimmedRight (8), juce::Justification::centredLeft, 2, 0.9f);
         }
     }
@@ -1614,7 +1614,7 @@ void MelodyPanel::paint (juce::Graphics& g)
     g.setFont (ParagonLookAndFeel::titleFont (16.0f));
     g.drawText ("MELODY SETTINGS", area.removeFromTop (22), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
-    g.setFont (juce::Font (juce::FontOptions (11.5f)));
+    g.setFont (juce::Font (ParagonLookAndFeel::textFont (11.5f)));
     g.drawFittedText ("What the six composed melodies are made of. They change as you move a control.",
                       area.removeFromTop (titleHeight - 32), juce::Justification::topLeft, 2, 0.9f);
     g.setColour (ParagonColours::text);
@@ -1725,7 +1725,7 @@ void RiffPanel::paint (juce::Graphics& g)
     g.setFont (ParagonLookAndFeel::titleFont (16.0f));
     g.drawText ("RIFF SETTINGS", area.removeFromTop (22), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
-    g.setFont (juce::Font (juce::FontOptions (11.5f)));
+    g.setFont (juce::Font (ParagonLookAndFeel::textFont (11.5f)));
     g.drawFittedText ("How the guitar's rhythm ideas are played, every style's. At 50% they are as written.",
                       area.removeFromTop (titleHeight - 32), juce::Justification::topLeft, 2, 0.9f);
     g.setColour (ParagonColours::text);
@@ -1846,7 +1846,7 @@ void DrumPanel::paint (juce::Graphics& g)
     g.setFont (ParagonLookAndFeel::titleFont (16.0f));
     g.drawText ("DRUM SETTINGS", area.removeFromTop (22), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
-    g.setFont (juce::Font (juce::FontOptions (11.5f)));
+    g.setFont (juce::Font (ParagonLookAndFeel::textFont (11.5f)));
     g.drawFittedText ("How the generated beats are built. They're made again as you change a control; MORE IDEAS deals new ones.",
                       area.removeFromTop (titleHeight - 32), juce::Justification::topLeft, 2, 0.9f);
     g.setColour (ParagonColours::text);

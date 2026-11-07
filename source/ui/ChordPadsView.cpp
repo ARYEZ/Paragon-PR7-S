@@ -367,8 +367,8 @@ public:
             }
         }
         g.setColour (ParagonColours::textDim);
-        g.setFont (chordFont (10.0f * k()));
-        g.drawText (spokenKey (key), area.withSizeKeepingCentre (area.getWidth() * 0.5f, 14.0f * k()), juce::Justification::centred, false);
+        g.setFont (ParagonLookAndFeel::textFont (10.0f * k()));
+        g.drawText (spokenKey (key).toUpperCase(), area.withSizeKeepingCentre (area.getWidth() * 0.5f, 14.0f * k()), juce::Justification::centred, false);
 
         // The suggestions.
         auto list = listArea();
@@ -377,8 +377,8 @@ public:
         g.setFont (ParagonLookAndFeel::titleFont (12.0f * k()));
         g.drawText ("WHAT COULD COME NEXT", head.removeFromLeft (150.0f * k()), juce::Justification::centredLeft, false);
         g.setColour (ParagonColours::text);
-        g.setFont (chordFont (13.0f * k()));
-        g.drawText (from ? "after " + from->name (key) + "  (" + from->romanName (key) + ")" : juce::String ("click a chord on the circle, or select a pad"),
+        g.setFont (from ? chordFont (13.0f * k()) : juce::Font (ParagonLookAndFeel::textFont (13.0f * k())));   // (a chord's name: Inter; words: Bebas)
+        g.drawText (from ? "after " + from->name (key) + "  (" + from->romanName (key) + ")" : juce::String ("CLICK A CHORD ON THE CIRCLE, OR SELECT A PAD"),
                     head, juce::Justification::centredLeft, true);
         for (size_t i = 0; i < shown.size(); ++i)
         {
@@ -404,7 +404,7 @@ public:
             g.setColour (ParagonColours::meterColour ((float) s.score / 100.0f).withAlpha (s.score >= 80 ? 1.0f : s.score >= 60 ? 0.75f : 0.45f));
             g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * (float) s.score / 100.0f), 2.0f);
             g.setColour (ParagonColours::text);
-            g.setFont (chordFont (11.0f * k()));
+            g.setFont (ParagonLookAndFeel::textFont (11.0f * k()));
             g.drawText (juce::String (s.score), r.removeFromLeft (30.0f * k()), juce::Justification::centred, false);
             g.setColour (ParagonColours::textDim);
             g.setFont (chordFont (10.5f * k()));
@@ -439,11 +439,11 @@ public:
                 auto r = row.reduced (0.0f, 1.0f);
                 auto name = r.removeFromLeft (nameWidth);
                 g.setColour (ParagonColours::text);
-                g.setFont (chordFont (juce::jmin (12.0f * k(), rowH * 0.42f)));
-                g.drawText (juce::String ((int) i + 1) + "  " + p.name, name.removeFromTop (name.getHeight() * 0.58f), juce::Justification::bottomLeft, true);
+                g.setFont (ParagonLookAndFeel::textFont (juce::jmin (12.0f * k(), rowH * 0.42f)));
+                g.drawText (juce::String ((int) i + 1) + "  " + p.name.toUpperCase(), name.removeFromTop (name.getHeight() * 0.58f), juce::Justification::bottomLeft, true);
                 g.setColour (ParagonColours::textDim);
-                g.setFont (chordFont (juce::jmin (10.0f * k(), rowH * 0.32f)));
-                g.drawText (p.style, name, juce::Justification::topLeft, true);
+                g.setFont (ParagonLookAndFeel::textFont (juce::jmin (10.0f * k(), rowH * 0.32f)));
+                g.drawText (p.style.toUpperCase(), name, juce::Justification::topLeft, true);
                 r.removeFromLeft (4.0f);
                 for (size_t c = 0; c < p.chords.size(); ++c)
                 {
@@ -663,13 +663,14 @@ public:
                 g.setColour (lit ? ParagonColours::accent : over ? juce::Colour (0xff2a2129) : juce::Colour (0xff171318));
                 g.fillRoundedRectangle (cell, 4.0f);
                 g.setColour (lit ? juce::Colour (0xff120d10) : minor ? ParagonColours::text.withAlpha (0.85f) : ParagonColours::text);
-                g.setFont (chordFont (font));
-                g.drawText (key.name(), cell.reduced (font * 0.5f, 0.0f), juce::Justification::centredLeft, false);
+                // (0.71.1, the owner: Bebas) Bebas has no small letters, so "Bb" would read "BB": spelled out.
+                g.setFont (ParagonLookAndFeel::textFont (font * 0.8f));
+                g.drawFittedText (spokenKey (key).toUpperCase(), cell.reduced (font * 0.5f, 0.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
             }
             const auto left = cellBounds (row, false), right = cellBounds (row, true);
             g.setColour (ParagonColours::textDim);
-            g.setFont (chordFont (font * 0.8f));
-            g.drawText (signatureText (pr7s::Key::all()[(size_t) row]), left.withLeft (left.getRight()).withRight (right.getX()),
+            g.setFont (ParagonLookAndFeel::textFont (font * 0.6f));
+            g.drawText (signatureText (pr7s::Key::all()[(size_t) row]).toUpperCase(), left.withLeft (left.getRight()).withRight (right.getX()),
                         juce::Justification::centred, false);
         }
     }

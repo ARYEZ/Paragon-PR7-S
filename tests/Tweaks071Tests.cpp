@@ -217,3 +217,33 @@ TEST_CASE ("0.71.0: the EQ's starting points are all valid; the Inspector has PR
     studio.setChannelEq (trackId, points[0].eq);
     CHECK (*studio.getChannelEq (trackId) == points[0].eq);
 }
+
+TEST_CASE ("0.71.1: a click on VALUE still opens it after the info line has refreshed with the same fields (the owner: nothing happened)", "[ui][infoline][tweaks071]")
+{
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    view.setVisible (true);
+    view.addToDesktop (0);
+    const auto trackId = studio.getProject().tracks[0].id;
+    const auto other = studio.addTrack ({});
+    studio.setAutomationOpen (trackId, true);
+    studio.setAutomationPoints (trackId, 0, { { 4.0, volumeToTravel (-6.0f), 0.0f } });
+    studio.dispatchPendingMessages();
+    view.getArrangeView().selectPoints (trackId, 0, { 0 });
+    auto& info = view.getInfoLine();
+    info.refresh();
+    const auto area = info.getFieldArea ("VALUE");
+    REQUIRE (! area.isEmpty());
+    // The song changes elsewhere (its version moves on) while the shown fields stay the same:
+    // the line refreshes as its timer does, and its fields must keep their places.
+    studio.renameTrack (other, "Something else");
+    studio.dispatchPendingMessages();
+    info.refresh();
+    CHECK (info.getFieldArea ("VALUE") == area);
+    int64_t time = juce::Time::currentTimeMillis();
+    peerClick (view, view.getLocalPoint (&info, area.getCentre()).toFloat(), time);
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
+    REQUIRE (info.getEditor() != nullptr);
+    CHECK (info.getEditor()->getText() == "-6.0 dB");
+}
