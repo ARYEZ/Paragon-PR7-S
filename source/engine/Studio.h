@@ -58,6 +58,23 @@ namespace pr7s
         float getDropHighlight() const;
         void setDropHighlight (float);
         static constexpr float defaultDropHighlight = 0.6f;
+        // (0.72.0, the owner asked) AUTO-SAVE: every so many minutes (0: off) while the song has
+        // unsaved changes, a backup copy of it is written into `backupFolder()`: "Backups" beside the
+        // song, or Documents/Paragon PR7-S/Backups for a song not saved yet. The song's own file is
+        // never written by it (only SAVE does that). The newest `getAutoSaveKeep()` copies of a song are
+        // kept, older ones deleted. Not while recording or rendering; not when nothing changed since
+        // the last copy. A backup remembers where the song's recordings are, so it opens with them.
+        // Settings keys "autoSaveMinutes" (default 5) and "autoSaveKeep" (default 10).
+        int getAutoSaveMinutes() const;
+        void setAutoSaveMinutes (int minutes);
+        int getAutoSaveKeep() const;
+        void setAutoSaveKeep (int copies);
+        static constexpr int defaultAutoSaveMinutes = 5, defaultAutoSaveKeep = 10;
+        juce::File backupFolder() const;
+        // Writes a backup now (the timer calls it when due). False: nothing written (nothing changed
+        // since the last one, or it couldn't be). `waitForSaves` waits for it (it's written on the save thread).
+        bool writeBackup();
+        juce::File getLastBackup() const noexcept { return lastBackup; }
         // The Hub's songs (0.12.0): recent ones, the project location, templates.
         ProjectLibrary& getLibrary() noexcept { return *library; }
         // Create Empty (the Hub): a new song, saved at once in a folder of its
@@ -1556,6 +1573,13 @@ namespace pr7s
         std::map<juce::String, std::shared_ptr<const AudioData>> audioCache;
         double audioCacheRate = 0.0;
         juce::File unsavedAudioFolder;
+        juce::File audioFolderOverride;   // (0.72.0: a backup opened: its song's recordings, where they are)
+        juce::File lastBackup;
+        juce::int64 lastBackupHash = 0;
+        juce::uint32 lastBackupTime = juce::Time::getMillisecondCounter();
+        int autoSaveMinutesHere = 0, autoSaveKeepHere = defaultAutoSaveKeep;   // (without a settings file: the tests)
+        void collectPluginStates();
+        void backupIfDue();
         juce::String loggedDevice;   // the audio device's last line in the session log
         double progressBase = 0.0, progressSpan = 1.0;
         bool rendering = false;

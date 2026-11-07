@@ -2742,6 +2742,8 @@ namespace pr7s
 
     juce::File Studio::getAudioFolder() const
     {
+        if (audioFolderOverride != juce::File())
+            return audioFolderOverride;   // (0.72.0: a backup's song's recordings)
         return file != juce::File() ? file.getSiblingFile (file.getFileNameWithoutExtension() + " Audio") : unsavedAudioFolder;
     }
 
@@ -7826,6 +7828,7 @@ namespace pr7s
             mediaBay->saveIfDue();   // (0.57.1: ratings and tags written once the edits stop)
         if (rendering || exportJob != nullptr)
             return;
+        backupIfDue();   // (0.72.0: AUTO-SAVE)
         if (performer != nullptr)
         {
             // (0.39.0) The performance's tempo and bar, from the song at the playhead.
@@ -7870,6 +7873,9 @@ namespace pr7s
     //==========================================================================
     void Studio::newProject()
     {
+        audioFolderOverride = {};
+        lastBackupHash = 0;
+        lastBackupTime = juce::Time::getMillisecondCounter();
         endComposerAudition (false);   // (0.58.0)
         frozenParts.clear();
         builtSections.clear();
@@ -7917,6 +7923,98 @@ namespace pr7s
         dropHighlight = juce::jlimit (0.1f, 1.0f, strength);
         if (settings != nullptr)
             settings->setValue ("dropHighlight", (double) dropHighlight);
+    }
+
+    int Studio::getAutoSaveMinutes() const
+    {
+        if (settings != nullptr)
+            return juce::jlimit (0, 120, settings->getIntValue ("autoSaveMinutes", defaultAutoSaveMinutes));
+        return autoSaveMinutesHere;
+    }
+
+    void Studio::setAutoSaveMinutes (int minutes)
+    {
+        autoSaveMinutesHere = juce::jlimit (0, 120, minutes);
+        if (settings != nullptr)
+            settings->setValue ("autoSaveMinutes", autoSaveMinutesHere);
+        lastBackupTime = juce::Time::getMillisecondCounter();   // (counted from now)
+    }
+
+    int Studio::getAutoSaveKeep() const
+    {
+        if (settings != nullptr)
+            return juce::jlimit (1, 200, settings->getIntValue ("autoSaveKeep", defaultAutoSaveKeep));
+        return autoSaveKeepHere;
+    }
+
+    void Studio::setAutoSaveKeep (int copies)
+    {
+        autoSaveKeepHere = juce::jlimit (1, 200, copies);
+        if (settings != nullptr)
+            settings->setValue ("autoSaveKeep", autoSaveKeepHere);
+    }
+
+    juce::File Studio::backupFolder() const
+    {
+        if (file != juce::File() && audioFolderOverride == juce::File())
+            return file.getParentDirectory().getChildFile ("Backups");
+        if (file != juce::File() && file.getParentDirectory().getFileName() == "Backups")
+            return file.getParentDirectory();   // (a backup opened: its own folder)
+        return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Paragon PR7-S").getChildFile ("Backups");
+    }
+
+    void Studio::backupIfDue()
+    {
+        const auto minutes = getAutoSaveMinutes();
+        if (minutes <= 0 || ! modified || engine.isRecording())
+            return;
+        const auto now = juce::Time::getMillisecondCounter();
+        if (now - lastBackupTime < (juce::uint32) minutes * 60000u)
+            return;
+        lastBackupTime = now;
+        writeBackup();
+    }
+
+    bool Studio::writeBackup()
+    {
+        collectPluginStates();
+        auto xml = project.toXml();
+        xml->setAttribute ("backupAudioFolder", getAudioFolder().getFullPathName());
+        const auto text = xml->toString();
+        const auto hash = text.hashCode64();
+        if (hash == lastBackupHash)
+            return false;   // (nothing changed since the last copy)
+        lastBackupHash = hash;
+        auto name = file != juce::File() ? file.getFileNameWithoutExtension() : juce::String ("Untitled");
+        if (const auto at = name.indexOf (" backup "); at > 0)
+            name = name.substring (0, at);   // (a backup opened: its copies keep the song's name)
+        const auto folder = backupFolder();
+        const auto stamp = juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H-%M-%S");
+        name = juce::File::createLegalFileName (name);
+        const auto destination = folder.getChildFile (name + " backup " + stamp + Project::fileExtension);
+        lastBackup = destination;
+        const auto keep = getAutoSaveKeep();
+        SessionLog::note ("Auto-save: " + destination.getFullPathName());
+        ++savesRunning;
+        saver.addJob ([text, destination, folder, name, keep, life = saveAlive, this]
+        {
+            folder.createDirectory();
+            const auto written = destination.replaceWithText (text);
+            // The newest `keep` of this song's copies stay.
+            auto copies = folder.findChildFiles (juce::File::findFiles, false, name + " backup *" + Project::fileExtension);
+            std::sort (copies.begin(), copies.end(), [] (const juce::File& a, const juce::File& b) { return a.getFileName() > b.getFileName(); });
+            for (int i = keep; i < copies.size(); ++i)
+                copies.getReference (i).deleteFile();
+            juce::MessageManager::callAsync ([life, this, written, destination]
+            {
+                if (! life->load())
+                    return;
+                --savesRunning;
+                if (! written)
+                    SessionLog::note ("Auto-save failed: " + destination.getFullPathName());
+            });
+        });
+        return true;
     }
 
     bool Studio::canTakeMidi (int trackId) const
@@ -8051,6 +8149,7 @@ namespace pr7s
         if (! xml->writeTo (destination))
             return false;
         file = destination;
+        audioFolderOverride = {};   // (its recordings were copied beside it)
         modified = false;
         library->addRecent (destination);
         announce();
@@ -8109,9 +8208,11 @@ namespace pr7s
         // Saved as a song would be, then the song is put back as it was (its file, saved or not).
         const auto keptFile = file;
         const auto keptModified = modified;
+        const auto keptAudio = audioFolderOverride;
         const auto written = save (destination);
         library->removeRecent (destination);
         file = keptFile;
+        audioFolderOverride = keptAudio;
         modified = keptModified;
         announce();
         if (! written)
@@ -8134,6 +8235,7 @@ namespace pr7s
         }
         auto copy = std::make_shared<Project> (project);
         file = destination;
+        audioFolderOverride = {};   // (its recordings were copied beside it)
         modified = false;
         library->addRecent (destination);
         ++savesRunning;
@@ -8158,6 +8260,14 @@ namespace pr7s
     bool Studio::prepareSave (const juce::File& destination)
     {
         SessionLog::note ("Saving " + destination.getFullPathName());
+        collectPluginStates();
+        // The recordings go with the song: into "<song> Audio" beside it
+        // (copied from where they were: the unsaved folder, or the song's old place).
+        return copyAudioFiles (getAudioFolder(), destination.getSiblingFile (destination.getFileNameWithoutExtension() + " Audio"));
+    }
+
+    void Studio::collectPluginStates()
+    {
         // Each instrument's current settings go into the file with it.
         for (auto& track : project.tracks)
             if (auto* instrument = engine.getInstrument (track.id))
@@ -8180,10 +8290,6 @@ namespace pr7s
         for (auto& track : project.tracks)
             keepEffectStates (track.id, track.inserts);
         keepEffectStates (Engine::masterBus, project.masterInserts);
-
-        // The recordings go with the song: into "<song> Audio" beside it
-        // (copied from where they were: the unsaved folder, or the song's old place).
-        return copyAudioFiles (getAudioFolder(), destination.getSiblingFile (destination.getFileNameWithoutExtension() + " Audio"));
     }
 
     void Studio::silenceForRender (Track& t)
@@ -8925,6 +9031,12 @@ namespace pr7s
         auto loaded = Project::fromXml (*xml);
         if (! loaded)
             return false;
+        // (0.72.0) A backup: its song's recordings where they were when it was written (unless it
+        // has a "<name> Audio" folder of its own: then it's been saved as a song since).
+        audioFolderOverride = {};
+        if (const auto path = xml->getStringAttribute ("backupAudioFolder"); juce::File::isAbsolutePath (path))
+            if (! source.getSiblingFile (source.getFileNameWithoutExtension() + " Audio").isDirectory() && juce::File (path).isDirectory())
+                audioFolderOverride = juce::File (path);
         openProject (std::move (*loaded), source, problems);
         library->addRecent (source);
         return true;
@@ -8995,6 +9107,8 @@ namespace pr7s
 
     void Studio::openProject (Project&& loadedProject, const juce::File& source, juce::String& problems)
     {
+        lastBackupHash = 0;
+        lastBackupTime = juce::Time::getMillisecondCounter();
         endComposerAudition (false);   // (0.58.0)
         builtSections.clear();
         std::optional<Project> loaded { std::move (loadedProject) };

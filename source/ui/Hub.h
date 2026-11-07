@@ -75,11 +75,19 @@ private:
     juce::TextButton humanizeSetKey { "SET KEY" }, humanizeClearKey { "CLEAR" };
     juce::Slider humanizeAmount;
     juce::ToggleButton humanizeLayers { "Keep velocities in their layers (1-59 / 60-119 / 120-126 / 127)" };
+    // AUTO-SAVE (0.72.0): how often, how many copies kept, the folder.
+    juce::Label autoSaveTitle, autoSaveNote;
+    juce::ComboBox autoSaveBox, keepBox;
+    juce::TextButton showBackups { "SHOW BACKUPS" };
+    static constexpr int autoSaveChoices[] = { 0, 1, 2, 5, 10, 15, 30 };
+    static constexpr int keepChoices[] = { 3, 5, 10, 20, 50 };
     KeyCommands::Map* keyMap = nullptr;
     bool listeningForKey = false;
     void refreshHumanize();
 public:
     juce::Slider& getDropStrength() noexcept { return dropStrength; }
+    juce::ComboBox& getAutoSaveBox() noexcept { return autoSaveBox; }   // (0.72.0: tests)
+    juce::ComboBox& getKeepBox() noexcept { return keepBox; }
 
     // HUMANIZE (0.20.1, the owner asked: the key and the settings in the Hub). The key map the
     // studio uses (MainView's: the same assignments as KEYS); its command "MIDI.Humanize".

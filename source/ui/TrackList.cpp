@@ -451,6 +451,19 @@ public:
         append.setTooltip ("Append Automation Track: a lane for the next control");
         append.onClick = [this] { owner.studio.appendAutomationLane (busId, laneIndex); };
         addAndMakeVisible (append);
+        // (0.72.0, the owner: removing one lane was only in its menu) X: Remove Parameter, this lane only.
+        remove.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        remove.setTooltip ("Remove this automation lane (its points too; Undo puts it back). The others stay");
+        remove.onClick = [this]
+        {
+            // (Later: the rows are made again as the lane goes, this one with them.)
+            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<TrackList> (&owner), bus = busId, index = laneIndex]
+            {
+                if (safe != nullptr)
+                    safe->studio.removeAutomationParameter (bus, index);
+            });
+        };
+        addAndMakeVisible (remove);
         refresh();
     }
 
@@ -512,6 +525,8 @@ public:
     {
         auto area = getLocalBounds().withTrimmedLeft (22).reduced (6, 6);
         auto top = area.removeFromTop (22);
+        remove.setBounds (top.removeFromRight (26));
+        top.removeFromRight (4);
         mute.setBounds (top.removeFromRight (30));
         top.removeFromRight (6);
         valueArea = top.removeFromRight (60).toFloat();
@@ -522,9 +537,17 @@ public:
 
     TrackList& owner;
     const int busId, laneIndex;
-    juce::TextButton control, mute { "M" }, append { "+" };
+    juce::TextButton control, mute { "M" }, append { "+" }, remove { "X" };
     juce::Rectangle<float> valueArea;
 };
+
+juce::Button* TrackList::getLaneRemoveKey (int busId, int laneIndex)
+{
+    for (auto& row : laneRows)
+        if (row->busId == busId && row->laneIndex == laneIndex)
+            return &row->remove;
+    return nullptr;
+}
 
 //==============================================================================
 // The master's row: its R and W, and its automation lanes' arrow.
