@@ -2,6 +2,14 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.71.1
+
+- **Clicking the info line's VALUE (or START) opens it for typing now** (you: 50 clicks, nothing). The info line refreshes ten times a second; each time it rebuilt its fields but, when their text hadn't changed, didn't give them their places on screen again, so a click found no field there (a right-click doesn't look for one: that's why HIDE worked). They're placed on every refresh now. A test now does exactly what you did (the line refreshes, then a click on VALUE) and failed before the fix.
+- **Bebas Neue everywhere** (you: unless lowercase is needed). The rule is now built in: any text without a font of its own is Bebas, so JUCE's own boxes are too (SETTINGS' DEVICE / SAMPLE RATE..., the EQ window's value boxes and its scale, text boxes, tooltips), along with every page that still used Inter (the EQ window, the chord pads' key list and suggestions, IDEAS' cards, the MediaBay and Media rack, the composer, the progressions, LEARN A DRUMMER).
+  - **Kept in Inter because small letters matter:** chord names and Roman numerals (Cm7 is minor, CM7 major; ii and II are different chords), and a secondary dominant's reason, which names its numeral. The LED screens' figures stay as they were.
+  - **Keys are spelled out** in the key list and scale names ("B-FLAT MAJOR"): Bebas has no small letters, so "Bb" would read "BB", and neither font has a ♭ sign.
+  - Two suggestion reasons are now in words ("the natural minor's minor five: a softer pull than the major five"; "deceptive: the five goes to the minor six instead of home") so they read right in capitals.
+
 ## 0.71.0
 
 - **The info line opens for typing with one click** (you asked: double-click VALUE to type). A click (or a double-click) on VALUE or START opens it as a clear box, white on black with an orange edge; type, Enter. This worked on the test machine with real mouse clicks, even after clicking a point first, so we couldn't see why it didn't for you on Windows. The box now also takes the keyboard back if something steals it just as it opens, which is our best guess at what happened. Tell us if it still doesn't open.

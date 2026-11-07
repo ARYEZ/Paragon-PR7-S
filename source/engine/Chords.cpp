@@ -858,14 +858,14 @@ namespace pr7s
                 if (key.minor && toDegree == 4 && c.type == T::minor)
                 {
                     score -= 22;
-                    why.add ("the natural minor's v: a softer pull than V");
+                    why.add ("the natural minor's minor five: a softer pull than the major five");
                 }
                 else if (toDegree == 0 && (fromDegree == 4 || fromDegree == 6))
                     why.add ("dominant to tonic: the strongest pull home");
                 else if (toDegree == 0 && fromDegree == 3)
                     why.add ("plagal: subdominant to tonic (\"amen\")");
                 else if (fromDegree == 4 && toDegree == 5)
-                    why.add ("deceptive: V to vi instead of I");
+                    why.add ("deceptive: the five goes to the minor six instead of home");
                 else if (toDegree == 4)
                     why.add (juce::String (majorFunctions[fromDegree]) + " to dominant: it wants to go home next");
                 else

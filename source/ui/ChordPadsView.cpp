@@ -407,8 +407,10 @@ public:
             g.setFont (ParagonLookAndFeel::textFont (11.0f * k()));
             g.drawText (juce::String (s.score), r.removeFromLeft (30.0f * k()), juce::Justification::centred, false);
             g.setColour (ParagonColours::textDim);
-            g.setFont (chordFont (10.5f * k()));
-            g.drawText (s.reason, r, juce::Justification::centredLeft, true);
+            // (0.71.1) The reasons in Bebas, but a secondary dominant's names its target's numeral ("V/ii"): small letters needed.
+            const auto numeral = s.reason.startsWith ("secondary dominant");
+            g.setFont (numeral ? chordFont (10.5f * k()) : juce::Font (ParagonLookAndFeel::textFont (10.5f * k())));
+            g.drawText (numeral ? s.reason : s.reason.toUpperCase(), r, juce::Justification::centredLeft, true);
         }
 
         // The key's most popular progressions, the best known first: each chord spelled in the
