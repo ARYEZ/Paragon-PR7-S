@@ -589,12 +589,11 @@ namespace pr7s
     {
         // Each track's notes as note on/off events by beat, built here
         // (allocating) and swapped in under the lock.
-        // Solo: a soloed track silences the other tracks (not the groups and FX
-        // channels they go through); a soloed group or FX channel, the other ones.
-        auto anySolo = false, anyChannelSolo = false;
-        for (const auto& track : project.tracks)
-            (track.isChannel() ? anyChannelSolo : anySolo) |= track.solo && ! track.disabled;   // (a disabled track is silent: its solo doesn't count)
-        const auto soloedOut = [&] (const Track& t) { return t.isChannel() ? anyChannelSolo && ! t.solo : anySolo && ! t.solo; };
+        // Solo (0.70.0, the owner's rule: Project::soloedOutTracks): only the soloed tracks, what is routed into
+        // them and the channels they go on into make sound. (A disabled track's solo doesn't count.)
+        const auto soloedOutIds = project.soloedOutTracks();
+        const auto soloedOut = [&soloedOutIds] (const Track& t)
+        { return std::find (soloedOutIds.begin(), soloedOutIds.end(), t.id) != soloedOutIds.end(); };
 
         // The tempo: fixed, or the tempo track's (built here; moved in under the lock).
         auto tempo = project.tempoMap();

@@ -289,6 +289,49 @@ namespace pr7s
         return false;
     }
 
+    bool Project::feedsInto (int from, int to) const
+    {
+        auto id = from;
+        for (size_t steps = 0; id != 0 && steps <= tracks.size(); ++steps)
+        {
+            const auto* t = findTrack (id);
+            if (t == nullptr)
+                return false;
+            id = t->output;
+            if (id == to)
+                return true;
+        }
+        return false;
+    }
+
+    std::vector<int> Project::soloedOutTracks() const
+    {
+        std::vector<int> soloed;
+        for (const auto& t : tracks)
+            if (t.solo && ! t.disabled)
+                soloed.push_back (t.id);
+        if (soloed.empty())
+            return {};
+        std::vector<int> out;
+        for (const auto& t : tracks)
+        {
+            auto heard = false;
+            for (const auto s : soloed)
+            {
+                const auto* soloedTrack = findTrack (s);
+                heard = t.id == s
+                     || feedsInto (t.id, s)                                         // routed into it
+                     || (soloedTrack != nullptr && soloedTrack->isFx() && reaches (t.id, s))   // sending into a soloed FX channel
+                     || reaches (s, t.id);                                          // a channel it goes on into
+                if (heard)
+                    break;
+            }
+            if (! heard)
+                out.push_back (t.id);
+        }
+        return out;
+    }
+
     bool Project::canRouteTo (int trackId, int destinationId) const
     {
         const auto* track = findTrack (trackId);

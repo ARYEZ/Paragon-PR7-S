@@ -503,6 +503,23 @@ void MixerView::setInWindow (bool shouldBeInWindow)
     }
 }
 
+void MixerView::revealStrip (int trackId)
+{
+    for (const auto& strip : strips)
+        if (strip->getBusId() == trackId)
+        {
+            const auto bounds = strip->getBounds();   // (in the holder)
+            auto view = viewport.getViewPosition();
+            const auto width = viewport.getMaximumVisibleWidth();
+            if (bounds.getX() < view.x)
+                view.x = bounds.getX();
+            else if (bounds.getRight() > view.x + width)
+                view.x = bounds.getRight() - width;
+            viewport.setViewPosition (view);
+            return;
+        }
+}
+
 MixerView::Strip& MixerView::getStrip (int index)
 {
     return index < (int) strips.size() ? *strips[(size_t) index] : *master;

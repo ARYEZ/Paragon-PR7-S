@@ -500,6 +500,13 @@ namespace pr7s
         bool canSendTo (int trackId, int fxId) const;
         // Whether `from`'s sound reaches `to` through outputs and sends (any number of channels between).
         bool reaches (int from, int to) const;
+        // Whether `from`'s output leads into `to` (outputs only, through any groups between; not sends).
+        bool feedsInto (int from, int to) const;
+        // SOLO (0.70.0, the owner's rule): with any track soloed (not disabled), only these make sound: the soloed
+        // tracks, what is routed into them (outputs only; for a soloed FX channel also what sends to it, else it
+        // would be silent), and the channels they go on into (their groups and FX returns, to the master).
+        // Everything else is soloed out. Empty: nothing soloed.
+        std::vector<int> soloedOutTracks() const;
         bool hasOutput (const Track& t) const noexcept { return ! t.isChannel() || t.isGroup() || t.isFx(); }
         const DrumMap* findDrumMap (const juce::String& name) const;
         const DrumMap* drumMapOf (const Track&) const;   // its map, if it has one

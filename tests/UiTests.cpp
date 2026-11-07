@@ -1172,6 +1172,7 @@ TEST_CASE ("Zoom, Auto-Scroll and scrolling (H in, G out, Shift+F, F; the scroll
             studio.addTrack ({});
         studio.dispatchPendingMessages();
         auto& down = view.getArrangeScrollBarDown();
+        down.setCurrentRangeStart (0.0, juce::sendNotificationSync);   // (0.70.0: the new track was brought into view: back to the top)
         const auto top = arrange.trackTop (trackId);
         down.setCurrentRangeStart (100.0, juce::sendNotificationSync);
         CHECK_THAT (arrange.trackTop (trackId), WithinAbs (top - 100.0f, 0.01));
@@ -3404,4 +3405,58 @@ TEST_CASE ("0.57.4: question boxes have see-through corners and no square shadow
         CHECK_FALSE (own->isDropShadowEnabled());
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+TEST_CASE ("0.70.0: a track chosen anywhere is shown in the track list and the mixer; Top / Bottom", "[ui][tracks]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    for (int i = 0; i < 30; ++i)
+        studio.addTrack (Instrument {});
+    // (the views follow the studio's change messages: the message loop runs them)
+    const auto settle = [] { juce::MessageManager::getInstance()->runDispatchLoopUntil (60); };
+    settle();
+    auto& mixer = view.getMixer();
+    mixer.setSize (900, 400);
+    settle();
+    mixer.resized();
+
+    const auto shown = studio.getShownTracks();
+    // The bottom track, chosen (as from the mixer): the track list scrolls down to it, the mixer across.
+    studio.selectTrack (shown.back());
+    settle();
+    CHECK (view.getTimeline().scrollY > 0);
+    auto rowVisible = [&] (int id)
+    {
+        const auto lanes = view.getArrangeView().getHeight() - Timeline::rulerHeight;
+        for (const auto& row : view.getTimeline().layout (studio))
+            if (row.kind == Timeline::Row::Kind::track && row.busId == id)
+                return row.top >= view.getTimeline().scrollY && row.top + row.height <= view.getTimeline().scrollY + lanes;
+        return false;
+    };
+    CHECK (rowVisible (shown.back()));
+    CHECK (mixer.getViewPosition().x > 0);
+
+    // Top: the first track selected, back in view in both.
+    view.selectTopTrack();
+    settle();
+    CHECK (studio.getSelectedTrack() == shown.front());
+    CHECK (rowVisible (shown.front()));
+    CHECK (mixer.getViewPosition().x == 0);
+    // Bottom: the last.
+    view.selectBottomTrack();
+    settle();
+    CHECK (studio.getSelectedTrack() == shown.back());
+    CHECK (rowVisible (shown.back()));
+
+    // Both are key commands with no default key (Home stays Go to Start), for KEYS.
+    auto& keys = view.getKeyMap();
+    CHECK (keys.keysFor ("Navigate.Top").isEmpty());
+    CHECK (keys.keysFor ("Navigate.Bottom").isEmpty());
+    keys.assign ("Navigate.Top", juce::KeyPress (juce::KeyPress::homeKey, juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 0));
+    auto swallowed = false;
+    CHECK (keys.handle (juce::KeyPress (juce::KeyPress::homeKey, juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 0), swallowed));
+    CHECK (studio.getSelectedTrack() == shown.front());
 }

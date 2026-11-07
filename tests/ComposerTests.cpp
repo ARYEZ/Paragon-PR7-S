@@ -540,3 +540,17 @@ TEST_CASE ("The composer page: ROLL keeps the style, BUSY and LOW STRING keys (0
     for (const auto& n : page.getIdea (L::bass).notes)
         CHECK (n.pitch >= 21);
 }
+
+TEST_CASE ("0.70.0: the composer's lead lane chooses the Solo Style (the setting IDEAS' SOLO box uses)", "[composer][ui][solo]")
+{
+    Studio studio (false);
+    ComposerPage page (studio);
+    page.setRandomSeed (3);
+    page.setOn (L::lead, true);
+    page.setSoloStyle (SoloStyle::tapAndDive);
+    CHECK (studio.getSoloStyle() == SoloStyle::tapAndDive);
+    CHECK (page.getState().lane (L::lead).style == composerStyleCount (L::lead) - 1);
+    CHECK (page.getIdea (L::lead).style == "Solo: Tap & Dive");
+    page.setSoloStyle (SoloStyle::grungeMelody);
+    CHECK (page.getIdea (L::lead).style == "Solo: Grunge Melody");
+}

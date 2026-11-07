@@ -82,6 +82,9 @@ void MainView::registerCommands()
     add ("File.ImportDawProject", "File", "Import DAWproject...", {}, [this] { importDawProjectFile(); });
 
     // Edit.
+    // (0.70.0, the owner asked: the manual's Navigate category; no default keys, Home is Go to Start here)
+    add ("Navigate.Top", "Navigate", "Top: Select Top Track in the Track List", {}, [this] { selectTopTrack(); });
+    add ("Navigate.Bottom", "Navigate", "Bottom: Select Bottom Track in the Track List", {}, [this] { selectBottomTrack(); });
     add ("Edit.Undo", "Edit", "Undo", { key ('Z', ctrl) });
     add ("Edit.Redo", "Edit", "Redo", { key ('Z', ctrl | shift), key ('Y', ctrl) });
     add ("Edit.Cut", "Edit", "Cut", { key ('X', ctrl) });

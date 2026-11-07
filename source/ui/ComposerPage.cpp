@@ -364,6 +364,13 @@ void ComposerPage::setOn (ComposerLayer l, bool on)
     refresh();
 }
 
+void ComposerPage::setSoloStyle (pr7s::SoloStyle st)
+{
+    // The setting IDEAS' SOLO box uses; the lead lane switched to the solo (its last style) so it's heard.
+    studio.setSoloStyle (st);
+    setStyle (ComposerLayer::lead, pr7s::composerStyleCount (ComposerLayer::lead) - 1);
+}
+
 void ComposerPage::setStyle (ComposerLayer l, int style)
 {
     state.lane (l).style = juce::jlimit (0, pr7s::composerStyleCount (l) - 1, style);
@@ -564,10 +571,28 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
     for (int i = 0; i < (int) choices.size(); ++i)
         menu.addItem (i + 1, choices[(size_t) i].style + (choices[(size_t) i].description.isNotEmpty() ? "  (" + choices[(size_t) i].description + ")" : juce::String()),
                       true, i == state.lane (l).style);
+    // (0.70.0, the owner asked) The lead's last choice is the whole solo: its SOLO STYLE chosen here too (the
+    // same setting as IDEAS' SOLO box).
+    if (l == ComposerLayer::lead)
+    {
+        juce::PopupMenu solos;
+        const auto now = studio.getSoloStyle();
+        for (int i = 0; i < (int) pr7s::soloStyles().size(); ++i)
+        {
+            const auto st = pr7s::soloStyles()[(size_t) i];
+            solos.addItem (soloItems + i, pr7s::soloStyleName (st) + "  (" + pr7s::soloStyleDescription (st) + ")", true, st == now);
+        }
+        menu.addSeparator();
+        menu.addSubMenu ("Solo Style: " + pr7s::soloStyleName (now), solos);
+    }
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (lanes[(size_t) l].style),
                         [safe = juce::Component::SafePointer<ComposerPage> (this), l] (int chosen)
                         {
-                            if (safe != nullptr && chosen > 0)
+                            if (safe == nullptr || chosen <= 0)
+                                return;
+                            if (chosen >= soloItems)
+                                safe->setSoloStyle (pr7s::soloStyles()[(size_t) juce::jlimit (0, (int) pr7s::soloStyles().size() - 1, chosen - soloItems)]);
+                            else
                                 safe->setStyle (l, chosen - 1);
                         });
 }

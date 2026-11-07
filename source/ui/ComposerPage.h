@@ -46,6 +46,7 @@ public:
     void roll (pr7s::ComposerLayer);
     void setLocked (pr7s::ComposerLayer, bool);
     void setOn (pr7s::ComposerLayer, bool);
+    void setSoloStyle (pr7s::SoloStyle);   // (0.70.0) the lead lane's Solo Style (Studio::setSoloStyle), the lane on the solo
     void setStyle (pr7s::ComposerLayer, int);
     void setKey (const pr7s::Key&);
     void setGenre (const juce::String&);     // (empty: any)
@@ -88,6 +89,7 @@ private:
     void timerCallback() override;
     void refresh (bool rehear = true);   // spans, ideas, keys, the state saved; heard again when hearing
     void showStyleMenu (pr7s::ComposerLayer);
+    static constexpr int soloItems = 5000;   // (0.70.0) the lead's style menu: Solo Style items
     void showTrackMenu (pr7s::ComposerLayer);
     void showProgressionMenu();
     void showUseMenu();

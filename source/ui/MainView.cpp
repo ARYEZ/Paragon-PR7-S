@@ -486,6 +486,50 @@ void MainView::changeListenerCallback (juce::ChangeBroadcaster* source)
     seenChange = studio.getChangeVersion();
     refreshHeader();
     refreshScrollBars();
+    // (0.70.0) A newly selected track shown in the track list and the mixer, wherever it was chosen.
+    if (const auto selected = studio.getSelectedTrack(); selected != shownSelection)
+    {
+        shownSelection = selected;
+        if (selected != 0 && ! studio.isMasterSelected())
+            revealTrack (selected);
+    }
+}
+
+void MainView::revealTrack (int trackId)
+{
+    const auto lanes = juce::jmax (0, arrange.getHeight() - Timeline::rulerHeight);
+    for (const auto& row : timeline.layout (studio))
+        if (row.kind == Timeline::Row::Kind::track && row.busId == trackId)
+        {
+            auto y = timeline.scrollY;
+            if (row.top < y)
+                y = row.top;
+            else if (lanes > 0 && row.top + row.height > y + lanes)
+                y = row.top + row.height - lanes;
+            if (y != timeline.scrollY)
+            {
+                timeline.scrollY = juce::jmax (0, y);
+                if (timeline.onScrollOrZoom)
+                    timeline.onScrollOrZoom();
+                refreshScrollBars();
+            }
+            break;
+        }
+    mixer.revealStrip (trackId);
+}
+
+void MainView::selectTopTrack()
+{
+    const auto shown = studio.getShownTracks();
+    if (! shown.empty())
+        studio.selectTrack (shown.front());
+}
+
+void MainView::selectBottomTrack()
+{
+    const auto shown = studio.getShownTracks();
+    if (! shown.empty())
+        studio.selectTrack (shown.back());
 }
 
 void MainView::refreshScrollBars()

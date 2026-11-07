@@ -91,6 +91,9 @@ public:
     class Strip;
     int getNumStrips() const noexcept { return (int) strips.size() + 1; }
     Strip& getStrip (int index);   // index getNumStrips() - 1: the master's
+    // (0.70.0) Scrolls so that track's strip is in view (the owner: a track chosen anywhere shows here too).
+    void revealStrip (int trackId);
+    juce::Point<int> getViewPosition() const { return viewport.getViewPosition(); }
 
     void paint (juce::Graphics&) override;
     void resized() override;

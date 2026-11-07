@@ -272,6 +272,13 @@ public:
     TransportBar& getTransport() noexcept { return transport; }
     KeyEditor& getKeyEditor() noexcept { return keyEditor; }
     MixerView& getMixer() noexcept { return mixer; }
+    // (0.70.0, the owner asked) Brings a track's row into view in the track list and arrangement (and its strip
+    // in the mixer). A track chosen anywhere (the mixer, the track list, Up/Down, Top/Bottom) is shown in both.
+    void revealTrack (int trackId);
+    // (0.70.0, the manual's Navigate > Top / Bottom: the first / last shown track selected and shown. No default
+    // keys: Home is the owner's Go to Start; set them in KEYS.)
+    void selectTopTrack();
+    void selectBottomTrack();
     juce::TextButton& getSnapButton() noexcept { return snapButton; }
     juce::TextButton& getQuantizeButton() noexcept { return quantizeButton; }
 
@@ -336,6 +343,7 @@ private:
     pr7s::Studio& studio;
 
     juce::uint64 seenChange = 0;   // (0.34.3) the studio's change version last acted on
+    int shownSelection = -1;       // (0.70.0) the selected track last brought into view
     Timeline timeline;
     TransportBar transport;
     TrackList trackList;
