@@ -157,3 +157,34 @@ TEST_CASE ("0.52.1: steps under way are written as they start and named in FROZE
     CHECK (SessionLog::closedNormally (SessionLog::getFile()));
     folder.deleteRecursively();
 }
+
+#include "engine/PluginHost.h"
+
+TEST_CASE ("0.73.3: loading a plug-in is a marked step, so a freeze report names it", "[log]")
+{
+    const auto folder = juce::File::createTempFile ("pr7s-logs");
+    folder.createDirectory();
+    SessionLog::start ("Paragon PR7-S test", folder, 3);
+    PluginHost host (nullptr, false);
+    Insert missing;
+    missing.plugin.name = "Nowhere Verb";
+    missing.plugin.pluginFormatName = "VST3";
+    missing.plugin.fileOrIdentifier = folder.getChildFile ("Nowhere Verb.vst3").getFullPathName();
+    juce::String error;
+    CHECK (host.createEffect (missing, 44100.0, 512, error) == nullptr);
+    Instrument instrument;
+    instrument.kind = Instrument::Kind::plugin;
+    instrument.plugin = missing.plugin;
+    instrument.plugin.name = "Nowhere Synth";
+    instrument.plugin.isInstrument = true;
+    error = {};
+    CHECK (host.create (instrument, 44100.0, 512, error) == nullptr);
+    const auto text = SessionLog::getFile().loadFileAsString();
+    CHECK (text.contains ("Starting: Loading the effect Nowhere Verb"));
+    CHECK (text.contains ("done: Loading the effect Nowhere Verb"));
+    CHECK (text.contains ("Starting: Loading the instrument Nowhere Synth"));
+    CHECK (text.contains ("done: Loading the instrument Nowhere Synth"));
+    CHECK (SessionLog::stepsUnderWay().contains ("nothing marked"));   // nothing left marked
+    SessionLog::stop();
+    folder.deleteRecursively();
+}

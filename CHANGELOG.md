@@ -2,6 +2,12 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.73.3
+
+- **The session log names a plug-in that freezes while loading** (your Kontakt 8 log). Loading a plug-in's file, and giving a plug-in its saved settings, are now marked steps, so if the studio freezes in the middle of either, the freeze report says so under "Under way" ("Loading the instrument Kontakt 8 (...)", or "Giving Kontakt 8 its settings"), with how long it had been at it. Before, they were plain notes and the report said "nothing marked".
+  - This doesn't fix the freeze itself: your log shows it stopped inside Kontakt's own start-up, waiting for something else. It makes the next report say exactly which step it was in, which tells us whether it's the loading or the settings.
+  - The log now writes each load as "Starting: ..." and "done: ... (n ms)", so you can also see how long every plug-in takes to load.
+
 ## 0.73.2
 
 - **OUT holds the loudest peak since you last clicked it** (you asked), as a mixer's max readout does. It only ever goes up; **click OUT** to start again (it reads -INF until the next sound). It turns red over 0 dB, so a clip anywhere in a pass stays on screen until you click it away. The screen now reads **DB MAX**, and its tooltip says so.
