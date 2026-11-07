@@ -78,11 +78,11 @@ TEST_CASE ("0.72.0: HUB SETTINGS has AUTO-SAVE's choices", "[autosave][ui]")
     Studio studio (false);
     Hub hub (studio);
     hub.setSize (1500, 900);
-    hub.getAutoSaveBox().setSelectedId (10 + 1);   // (every 10 minutes)
+    hub.getAutoSaveBox().setSelectedId (10 + 1, juce::sendNotificationSync);   // (every 10 minutes)
     CHECK (studio.getAutoSaveMinutes() == 10);
-    hub.getAutoSaveBox().setSelectedId (0 + 1);    // (off)
+    hub.getAutoSaveBox().setSelectedId (0 + 1, juce::sendNotificationSync);   // (off)
     CHECK (studio.getAutoSaveMinutes() == 0);
-    hub.getKeepBox().setSelectedId (20);
+    hub.getKeepBox().setSelectedId (20, juce::sendNotificationSync);
     CHECK (studio.getAutoSaveKeep() == 20);
 }
 

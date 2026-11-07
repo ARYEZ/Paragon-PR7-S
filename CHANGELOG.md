@@ -2,6 +2,17 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.72.0
+
+- **AUTO-SAVE** (you asked), on **HUB SETTINGS** under HUMANIZE:
+  - **How often:** OFF, or every 1, 2, 5, 10, 15 or 30 minutes (every 5 to begin with).
+  - **How many kept:** the newest 3, 5, 10, 20 or 50 copies of each song (10 to begin with); older ones are deleted.
+  - **SHOW BACKUPS** opens the folder the current song's backups go into.
+  - **Backups are copies:** your song's own file changes only when you SAVE. They go into a **Backups** folder beside the song (Documents/Paragon PR7-S/Backups for a song not saved yet), named with the song and the date and time ("Riff backup 2026-11-07 14-05-00").
+  - A copy is made only while the song has unsaved changes, never while recording or rendering, and not again when nothing changed since the last one.
+  - **To go back to one:** OPEN it (from the Hub's CHOOSE FILE... or the studio's OPEN), then SAVE AS. A backup remembers where the song's recordings are, so it opens with them; SAVE AS copies them beside the new song.
+- **An X on every automation lane** (you couldn't find how to delete one): in the track list, beside the lane's M. It removes that lane and its points only; Undo puts it back. (It was already in the lane's menu, as Remove Parameter: click the lane's name, or right-click the lane.)
+
 ## 0.71.1
 
 - **Clicking the info line's VALUE (or START) opens it for typing now** (you: 50 clicks, nothing). The info line refreshes ten times a second; each time it rebuilt its fields but, when their text hadn't changed, didn't give them their places on screen again, so a click found no field there (a right-click doesn't look for one: that's why HIDE worked). They're placed on every refresh now. A test now does exactly what you did (the line refreshes, then a click on VALUE) and failed before the fix.
