@@ -183,7 +183,7 @@ void InfoLine::resized()
     if (editor != nullptr)
         for (const auto& f : fields)
             if (f.name == editing)
-                editor->setBounds (f.area.withTrimmedTop (getHeight() / 2 - 2).reduced (6, 2));
+                editor->setBounds (f.area.withTrimmedTop (getHeight() / 2 - 4).reduced (4, 1).withWidth (juce::jmax (f.area.getWidth() - 8, 110)));
 }
 
 juce::String InfoLine::getField (const juce::String& name) const
@@ -244,7 +244,7 @@ void InfoLine::paint (juce::Graphics& g)
 void InfoLine::mouseDoubleClick (const juce::MouseEvent& e)
 {
     for (const auto& f : fields)
-        if (f.area.contains (e.getPosition()) && f.editable && f.name != "TERMINATOR" && f.name != "MUTE")
+        if (f.area.contains (e.getPosition()) && f.editable && f.name != "TERMINATOR" && f.name != "MUTE" && f.name != editing)
             beginEdit (f.name);
 }
 
@@ -268,6 +268,9 @@ void InfoLine::mouseUp (const juce::MouseEvent& e)
                 toggleTerminator();
             else if (f.name == "MUTE")
                 toggleMute();
+            else if (f.name != editing && ! e.mouseWasDraggedSinceMouseDown())
+                beginEdit (f.name);   // (0.71.0: a click opens it too, as the other DAW's info line)
+            return;
         }
 }
 
@@ -289,9 +292,16 @@ void InfoLine::beginEdit (const juce::String& field)
 {
     editing = field;
     editor = std::make_unique<InfoEntry>();
-    editor->setFont (ParagonLookAndFeel::textFont (14.0f));
+    editor->setFont (ParagonLookAndFeel::textFont (15.0f));
+    // (0.71.0) Plainly a box to type in: white on black, the accent round it.
+    editor->setColour (juce::TextEditor::backgroundColourId, juce::Colours::black);
+    editor->setColour (juce::TextEditor::textColourId, juce::Colours::white);
+    editor->setColour (juce::TextEditor::outlineColourId, ParagonColours::accent);
+    editor->setColour (juce::TextEditor::focusedOutlineColourId, ParagonColours::accent);
+    editor->setColour (juce::TextEditor::highlightColourId, pr7s::FamilyColours::pink.withAlpha (0.6f));
     editor->setText (getField (field), false);
     editor->setSelectAllWhenFocused (true);
+    const auto opened = juce::Time::getMillisecondCounter();
     auto finish = [this] (bool apply, bool absolute)
     {
         if (editor == nullptr)
@@ -305,7 +315,21 @@ void InfoLine::beginEdit (const juce::String& field)
     };
     static_cast<InfoEntry&> (*editor).onEnter = [finish] (bool absolute) { finish (true, absolute); };
     editor->onEscapeKey = [finish] { finish (false, false); };
-    editor->onFocusLost = [finish] { finish (false, false); };
+    // (0.71.0) Focus taken away just as it opens (the second click's own handling, another window
+    // coming forward): it takes it back rather than closing at once.
+    editor->onFocusLost = [this, finish, opened]
+    {
+        if (juce::Time::getMillisecondCounter() - opened < 500 && editor != nullptr)
+        {
+            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<InfoLine> (this)]
+            {
+                if (safe != nullptr && safe->editor != nullptr && safe->editor->isShowing())
+                    safe->editor->grabKeyboardFocus();
+            });
+            return;
+        }
+        finish (false, false);
+    };
     addAndMakeVisible (*editor);
     resized();
     editor->grabKeyboardFocus();

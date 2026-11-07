@@ -1811,3 +1811,53 @@ TEST_CASE ("The app's icon files (0.52.3)", "[.][make-icon]")
     }
     write ("PR7-S icon sizes.png", sheet);
 }
+
+// (0.71.0) A drop-down menu as the studio shows them: the red-edged dark panel, the item under the
+// mouse in the cycle strip's gradient. (`PARAGON_SNAPSHOT_FINISH` as the others.)
+TEST_CASE ("Snapshot: a menu", "[.][snapshot-menu]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "menu.png");
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        juce::Component anchor;
+        anchor.setBounds (100, 100, 200, 30);
+        anchor.addToDesktop (0);
+        anchor.setVisible (true);
+        juce::PopupMenu menu, sub;
+        sub.addItem (10, "Lead Vocal: Presence");
+        menu.addSectionHeader ("EQ: VOCALS");
+        menu.addItem (1, "Save Preset...");
+        menu.addSubMenu ("Starting Points", sub);
+        menu.addSeparator();
+        menu.addItem (2, "Invert EQ Settings", true, true);
+        menu.addItem (3, "Reset EQ and Pre");
+        menu.addItem (4, "Bypass", false);
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&anchor));
+        for (int wait = 0; wait < 10 && juce::Desktop::getInstance().getNumComponents() < 2; ++wait)
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
+        juce::Component* window = nullptr;
+        for (int i = 0; i < juce::Desktop::getInstance().getNumComponents(); ++i)
+            if (auto* c = juce::Desktop::getInstance().getComponent (i); c != &anchor)
+                window = c;
+        INFO (juce::Desktop::getInstance().getNumComponents());
+        REQUIRE (window != nullptr);
+        // The second item lit, as under the mouse.
+        auto* peer = window->getPeer();
+        REQUIRE (peer != nullptr);
+        const auto type = juce::Desktop::getInstance().getMainMouseSource().getType();
+        for (int step = 0; step < 6; ++step)
+        {
+            peer->handleMouseEvent (type, { 60.0f, 46.0f + (float) step }, {}, juce::MouseInputSource::defaultPressure,
+                                    juce::MouseInputSource::defaultOrientation, juce::Time::currentTimeMillis());
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+        }
+        const auto image = window->createComponentSnapshot (window->getLocalBounds(), true, 2.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+        juce::PopupMenu::dismissAllActiveMenus();
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}

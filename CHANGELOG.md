@@ -2,6 +2,18 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.71.0
+
+- **The info line opens for typing with one click** (you asked: double-click VALUE to type). A click (or a double-click) on VALUE or START opens it as a clear box, white on black with an orange edge; type, Enter. This worked on the test machine with real mouse clicks, even after clicking a point first, so we couldn't see why it didn't for you on Windows. The box now also takes the keyboard back if something steals it just as it opens, which is our best guess at what happened. Tell us if it still doesn't open.
+- **Mixer faders move in half-dB steps when dragged** (you asked). Typed values (double-click the fader) take any value, and automation isn't rounded.
+- **The cycle strip's red / pink / orange gradient in place of the plain orange** (you asked) on the faders (orange at the foot, pink at the top), the pan knobs, every value bar (the EQ window's GAIN, FREQ, Q, OUTPUT; the Inspector's VOL and PAN...), the lit lights (MULTI-CORE AUDIO, the channel tick boxes) and the item under the mouse in every drop-down menu.
+- **Drop-down menus in the studio's look:** the dark panel with the question boxes' red edge, and the item under the mouse lit in the gradient. We checked every menu in PR7-S goes through this look. **The menu in your PR7-D picture is PR7-D's own** (a plug-in draws its own menus inside its window): it needs the same change in PR7-D.
+- **EQ presets in the Inspector** (you asked): EQUALIZERS has **BYPASS | PRESETS | EDIT**. PRESETS (also in the EQ window and on the section's title, right-click) now has **Starting Points**, our 20 common moves by source (lead vocal, backing vocals, scream, telephone voice, kick, snare, toms, overheads, drum bus, bass, rhythm and lead guitar, acoustic, piano, pads, master, a low cut), as well as your own saved presets. They're starting points: adjust by ear.
+- **The EQ curve shows the ordinary pointer** (you asked), not a cross-hair; the frequency, note and level readout stays at the top right.
+- **What a song opened without can be removed** (you asked). The "Some instruments, effects or recordings are missing" box now has **REMOVE THEM** and **KEEP THEM**. REMOVE THEM empties the missing effects' slots, deletes the clips whose recording is missing, and gives a track whose instrument is missing the studio's synth (its MIDI parts stay). KEEP THEM leaves the song as it was, for when they're installed. Undo puts the clips back (plug-in changes aren't undo steps anywhere in the studio).
+- **The mixer, MIDI editor and chord pads open docked at the height you showed:** the ruler, the master's row and five full tracks above them (at your vertical zoom). The heights dragged before are reset to this once; drag the line to change it again.
+- **SETTINGS and KEYS in the Hub's look** (you asked), as PLUGINS: the pearl header with the mark, and the page in the Hub's red-edged panel.
+
 ## 0.70.0
 
 - **Solo works by routing** (you asked). Solo a track and you hear only that track, everything routed into it, and the channels it goes on through to the master. Solo your vocal group and you hear only the vocals routed into it: no other vocals, no instruments. Groups into groups work too: solo a bus and every group and track feeding it plays.

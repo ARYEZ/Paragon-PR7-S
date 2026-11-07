@@ -138,7 +138,7 @@ TEST_CASE ("The key editor: draw, move, copy, lengthen, velocity, erase, keys, q
     Finish::set (Finish::Type::pearlWhite, false);
     Studio studio (false);
     MainView view (studio);
-    view.setSize (1500, 900);
+    view.setSize (1500, 1300);   // (0.71.0: the docked editor leaves five tracks above it; these notes need its room)
     const auto trackId = studio.getProject().tracks[0].id;
     studio.addPart (trackId, { 4.0, 4.0, "Riff", { { 0.0, 1.0, 60, 0.8f }, { 1.0, 0.5, 64, 0.8f } } });
 
@@ -447,7 +447,7 @@ TEST_CASE ("The mixer: a strip per track and the master; faders, pan, mute, inse
     Finish::set (Finish::Type::pearlWhite, false);
     Studio studio (false);
     MainView view (studio);
-    view.setSize (1500, 900);
+    view.setSize (1500, 1300);   // (0.71.0: the docked mixer leaves five tracks above it)
     const auto first = studio.getProject().tracks[0].id;
     const auto second = studio.addTrack ({});
     studio.dispatchPendingMessages();
@@ -1973,11 +1973,13 @@ TEST_CASE ("A wide window (spanning screens): the position screen centred at its
     CHECK_FALSE (view.isMixerOpen());
     view.setSize (5760, 1000);
     REQUIRE (view.isWide());
-    // Turning wide: the mixer docked, its racks hidden, as short as it goes (the owner's choice).
+    // Turning wide: the mixer docked, its racks hidden (the owner's choice); since 0.71.0 at the
+    // default height (the master and five tracks above it, or its least if that's more).
     CHECK (view.isMixerOpen());
     CHECK_FALSE (view.isMixerInWindow());
     CHECK_FALSE (view.getMixer().isRackShown());
-    CHECK (view.getMixer().getHeight() == view.getMixer().getMinimumHeight());
+    CHECK (view.getMixer().getHeight() >= view.getMixer().getMinimumHeight());
+    CHECK (view.getArrangeView().getHeight() <= Timeline::rulerHeight + view.getTimeline().masterRowHeight() + 5 * view.getTimeline().trackRowHeight() + 4);
     // What's changed after it turned wide stays (it isn't done again on every resize).
     view.getMixer().setRackShown (true);
     view.setSize (5700, 1000);
