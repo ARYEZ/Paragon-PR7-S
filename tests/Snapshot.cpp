@@ -189,8 +189,7 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         // (0.73.1) OUT showing a peak (-4.3 dB): the demo is silent in a snapshot.
         const float peak[] = { juce::Decibels::decibelsToGain (-4.3f) };
         studio.getEngine().getOutputMeter (0).pushSamples (peak, 1);
-        for (int i = 0; i < TransportBar::outRefreshTicks; ++i)
-            view.getTransport().followOutputForTests();
+        view.getTransport().followOutputForTests();
     }
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_LISTCOLOUR", {}).isNotEmpty())
     {

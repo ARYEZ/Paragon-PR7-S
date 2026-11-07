@@ -2,6 +2,11 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.73.2
+
+- **OUT holds the loudest peak since you last clicked it** (you asked), as a mixer's max readout does. It only ever goes up; **click OUT** to start again (it reads -INF until the next sound). It turns red over 0 dB, so a clip anywhere in a pass stays on screen until you click it away. The screen now reads **DB MAX**, and its tooltip says so.
+  - It's still read 30 times a second (no peak is missed), and it's redrawn only when a louder peak comes, so it's the lightest it's been on the CPU.
+
 ## 0.73.1
 
 - **OUT is one number now** (you asked): the two L/R bars are gone; the screen shows the output's peak in dB, large, as CPU shows its percent (red over 0 dB, -INF in silence).
