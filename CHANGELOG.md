@@ -2,6 +2,12 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.73.1
+
+- **OUT is one number now** (you asked): the two L/R bars are gone; the screen shows the output's peak in dB, large, as CPU shows its percent (red over 0 dB, -INF in silence).
+- **It flickers less** (you: it moved more than it needs to). Before, the number was worked out 30 times a second and showed the peak held for 1.5 seconds, then fell with the meter, changing every 30th of a second as it fell. Now the output's peaks are still read 30 times a second (so no peak is missed), but the number is worked out only about **four times a second**, and it's the **loudest peak of the last second** (left and right together). So a hit holds for about a second, and the number steps rather than slides.
+  - It also redraws its screen at most four times a second (before: up to 30), so it's lighter on the CPU than 0.73.0's.
+
 ## 0.73.0
 
 - **TAP, M and S on the header's top row** (you asked), right of the quantize box:

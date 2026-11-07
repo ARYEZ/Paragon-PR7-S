@@ -153,3 +153,40 @@ TEST_CASE ("0.73.0: a track's colour in the track list: per track, 1-100 %, save
     menu.setListColour (false, 65);
     CHECK_FALSE (studio.getProject().findTrack (a)->listColourOn);
 }
+
+TEST_CASE ("0.73.1: OUT shows one number, the loudest peak of the last second, refreshed about four times a second", "[ui][tweaks073]")
+{
+    Studio studio (false);
+    TransportBar transport (studio);
+    auto& engine = studio.getEngine();
+    const auto push = [&] (float level)
+    {
+        const float left[] = { level }, right[] = { level * 0.5f };
+        engine.getOutputMeter (0).pushSamples (left, 1);
+        engine.getOutputMeter (1).pushSamples (right, 1);
+    };
+    CHECK (transport.getShownOutDb() <= LevelMeter::minDb);
+    // A -6 dB peak: nothing changes until the window ends (8 ticks), then the number reads it.
+    push (0.5f);
+    for (int i = 0; i < TransportBar::outRefreshTicks - 1; ++i)
+    {
+        transport.followOutputForTests();
+        CHECK (transport.getShownOutDb() <= LevelMeter::minDb);
+    }
+    transport.followOutputForTests();
+    CHECK (std::abs (transport.getShownOutDb() + 6.02f) < 0.05f);
+    // Quieter peaks after it: the -6 holds for the rest of the second (4 windows), then it shows -20.
+    for (int window = 1; window < TransportBar::outWindows; ++window)
+        for (int i = 0; i < TransportBar::outRefreshTicks; ++i)
+        {
+            push (0.1f);
+            transport.followOutputForTests();
+        }
+    CHECK (std::abs (transport.getShownOutDb() + 6.02f) < 0.05f);
+    for (int i = 0; i < TransportBar::outRefreshTicks; ++i)
+    {
+        push (0.1f);
+        transport.followOutputForTests();
+    }
+    CHECK (std::abs (transport.getShownOutDb() + 20.0f) < 0.05f);
+}

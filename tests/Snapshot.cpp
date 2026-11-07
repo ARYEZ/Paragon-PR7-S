@@ -6,6 +6,7 @@
 #include "engine/Controllers.h"
 #include "ui/Finish.h"
 #include "ui/MainView.h"
+#include "ui/TransportBar.h"
 #include "ui/DrumMapPage.h"
 #include "ui/AutomationPanel.h"
 #include "ui/ToolIcons.h"
@@ -182,6 +183,14 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.setMute (studio.getProject().tracks[1].id, true);
         studio.setArmed (studio.getProject().tracks[0].id);
         studio.dispatchPendingMessages();
+    }
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_OUT", {}).isNotEmpty())
+    {
+        // (0.73.1) OUT showing a peak (-4.3 dB): the demo is silent in a snapshot.
+        const float peak[] = { juce::Decibels::decibelsToGain (-4.3f) };
+        studio.getEngine().getOutputMeter (0).pushSamples (peak, 1);
+        for (int i = 0; i < TransportBar::outRefreshTicks; ++i)
+            view.getTransport().followOutputForTests();
     }
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_LISTCOLOUR", {}).isNotEmpty())
     {

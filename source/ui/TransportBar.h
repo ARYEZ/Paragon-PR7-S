@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "engine/Studio.h"
@@ -64,7 +66,9 @@ public:
     bool isOverloadLit() const noexcept { return overloadLit; }
     juce::Rectangle<float> getCpuArea() const noexcept { return cpuScreen; }
     juce::Rectangle<float> getOutArea() const noexcept { return outScreen; }   // (0.73.0)
-    float getShownOutDb (int channel) const noexcept { return channel == 0 ? outLeft.db : outRight.db; }
+    static constexpr int outRefreshTicks = 8, outWindows = 4;      // (0.73.1: see followOutput)
+    float getShownOutDb() const noexcept { return shownOutDb; }   // (0.73.1) the number OUT shows
+    void followOutputForTests() { followOutput(); }
     // Where the arrangement's AUTO-SCROLL key and its menu arrow go (the main window puts them there).
     juce::Rectangle<int> getAutoScrollArea() const noexcept { return autoScrollArea; }
     juce::String getTooltip() override;
@@ -89,7 +93,12 @@ private:
     RecordKey recordKey { "REC" };
     juce::TextButton cycleKey { "CYCLE" }, clickKey { "CLICK" };
     pr7s::SignatureEvent shownSignature { -1, 0, 0 };
-    LevelMeter::Ballistics outLeft, outRight;   // (0.73.0: OUT on a screen)
+    // (0.73.1) OUT's number: the loudest peak (both sides) of the last second, shown afresh
+    // `outRefreshTicks` timer ticks apart (about four times a second), not every tick.
+    float outWindowPeak = 0.0f;                     // this window's loudest so far (gain)
+    std::array<float, outWindows> outRecent {};     // the last windows' loudest (gain)
+    int outTicks = 0, outNext = 0;
+    float shownOutDb = LevelMeter::minDb;
     void followOutput();
     juce::Rectangle<float> badge, positionScreen, timeScreen, tempoScreen, signatureScreen, keysArea, cpuScreen, outScreen, autoScrollStamp;
     juce::Rectangle<int> toolsArea, autoScrollArea;

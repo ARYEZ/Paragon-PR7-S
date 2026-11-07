@@ -105,13 +105,27 @@ void TransportBar::timerCallback()
 
 void TransportBar::followOutput()
 {
-    // (0.73.0) OUT on its screen: the output's peaks read here, in the bar's own 30 Hz timer (the
-    // meters had a timer each before), and the screen redrawn only when what it shows moves.
+    // (0.73.1, the owner: the number flickered) The output's peaks are read every tick (30 a second,
+    // so none is missed), but the number is worked out only every `outRefreshTicks` ticks: the loudest
+    // peak of the last `outWindows` windows (about a second), both sides. So it changes about four
+    // times a second and holds a peak about a second, instead of moving every tick.
     auto& engine = studio.getEngine();
-    const auto left = outLeft.push (engine.getOutputMeter (0).takePeak());
-    const auto right = outRight.push (engine.getOutputMeter (1).takePeak());
-    if (left || right)
+    outWindowPeak = juce::jmax (outWindowPeak, engine.getOutputMeter (0).takePeak(), engine.getOutputMeter (1).takePeak());
+    if (++outTicks < outRefreshTicks)
+        return;
+    outTicks = 0;
+    outRecent[(size_t) outNext] = outWindowPeak;
+    outNext = (outNext + 1) % outWindows;
+    outWindowPeak = 0.0f;
+    auto loudest = 0.0f;
+    for (const auto peak : outRecent)
+        loudest = juce::jmax (loudest, peak);
+    const auto db = juce::Decibels::gainToDecibels (loudest, LevelMeter::minDb);
+    if (std::abs (db - shownOutDb) >= 0.05f)
+    {
+        shownOutDb = db;
         repaint (outScreen.expanded (4.0f).getSmallestIntegerContainer());
+    }
 }
 
 void TransportBar::followPerformance()
@@ -441,8 +455,8 @@ void TransportBar::paint (juce::Graphics& g)
         g.drawFittedText (juce::String (now.numerator) + "/" + juce::String (now.denominator), inside.toNearestInt(),
                           juce::Justification::centred, 1, 0.7f);
     }
-    // OUT (0.73.0, the owner's: the output's meter as a screen beside CPU): L and R as LED bars
-    // across, the held peak in dB at the top right.
+    // OUT (0.73.0, the owner's: the output's level as a screen beside CPU; 0.73.1: the number only,
+    // the loudest peak of the last second, in dB; red over 0 dB).
     if (! outside (outScreen))
     {
         const auto glass = LedDisplay::paintScreen (g, outScreen, screenSize);
@@ -452,23 +466,15 @@ void TransportBar::paint (juce::Graphics& g)
         g.setFont (font (9.0f));
         g.setColour (orange.withAlpha (0.6f));
         g.drawText ("OUT", top, juce::Justification::topLeft, false);
-        const auto held = juce::jmax (outLeft.heldDb, outRight.heldDb);
-        g.setColour (held > 0.0f ? ParagonColours::meterRed : orange.withAlpha (0.75f));
-        g.drawText (held <= LevelMeter::minDb + 0.1f ? juce::String ("-INF") : (held > 0.0f ? "+" : "") + juce::String (held, 1), top, juce::Justification::topRight, false);
-        inside.removeFromTop (3.0f);
-        const auto barHeight = juce::jmax (4.0f, (inside.getHeight() - 4.0f) * 0.5f);
-        for (const auto* reading : { &outLeft, &outRight })
-        {
-            auto bar = inside.removeFromTop (barHeight);
-            inside.removeFromTop (4.0f);
-            g.setColour (orange.withAlpha (0.6f));
-            g.setFont (font (8.0f));
-            g.drawText (reading == &outLeft ? "L" : "R", bar.removeFromLeft (9.0f), juce::Justification::centredLeft, false);
-            const auto peak = reading->heldDb > LevelMeter::minDb ? LevelMeter::proportionForDb (reading->heldDb) : -1.0f;
-            LevelMeter::paintSegments (g, bar, LevelMeter::proportionForDb (reading->db), peak, false, 3.0f);
-        }
+        auto bottom = inside.removeFromBottom (12.0f);
+        g.setColour (orange.withAlpha (0.75f));
+        g.drawText ("DB PEAK", bottom, juce::Justification::bottomRight, false);
+        const auto silent = shownOutDb <= LevelMeter::minDb + 0.1f;
+        g.setColour (shownOutDb > 0.0f ? ParagonColours::meterRed : orange);
+        g.setFont (font (juce::jmin (26.0f, inside.getHeight() * 0.95f)));
+        g.drawFittedText (silent ? juce::String ("-INF") : (shownOutDb > 0.0f ? "+" : "") + juce::String (shownOutDb, 1),
+                          inside.toNearestInt(), juce::Justification::centredRight, 1, 0.7f);
     }
-
 }
 
 void TransportBar::paintOverChildren (juce::Graphics& g)
