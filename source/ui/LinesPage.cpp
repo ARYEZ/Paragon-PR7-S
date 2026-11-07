@@ -437,7 +437,7 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
         writtenBeats = settings->getBoolValue ("ideasWrittenBeats", false);
         buildChoice = BuildChoice::fromString (settings->getValue ("ideasBuild"));
     }
-    setSize (1600, 760);
+    setSize (1360, 760);
     setChords (std::move (chords));
     startTimerHz (30);
 }
@@ -1462,8 +1462,6 @@ void LinesPage::resized()
     drumKey.setBounds (tuningBox.getBounds().getUnion (tuningLabel.getBounds()).withRight (writtenKey.getX() - 8));
     tabs.removeFromRight (8);
     styleBox.setBounds (tabs.removeFromRight (140));
-    tabs.removeFromRight (8);
-    soloBox.setBounds (tabs.removeFromRight (230));
 
     area.removeFromBottom (gap);
     const auto parts = partsOf (tab);
@@ -1492,6 +1490,8 @@ void LinesPage::resized()
         columnTitles.push_back (left.removeFromTop (columnTitleHeight));
         columnTitles.push_back (right.removeFromTop (columnTitleHeight));
         drummerKey.setBounds (columnTitles[0].withLeft (columnTitles[0].getRight() - 300).reduced (0, 2));
+        // (0.69.1) SOLO STYLE on the LEAD column's title (in the tab row it was squeezed out of a narrower window).
+        soloBox.setBounds (columnTitles[1].withLeft (columnTitles[1].getRight() - 300).reduced (0, 2));
         layout (left, parts[0], 2);
         layout (right, parts[1], 2);
     }

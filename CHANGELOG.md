@@ -2,6 +2,11 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.69.1
+
+- **The SOLO box is where you can see it** (you couldn't find it). It's now on the right of the **LEAD** column's title, on IDEAS' guitar tab. In 0.66.0 to 0.69.0 it sat in the row of tabs, and an IDEAS window narrower than 1600 (yours was about 1360) squeezed it to nothing. A test now checks it's visible, readable and uncovered at widths from 1000 to 1600.
+- The IDEAS window opens 1360 wide again.
+
 ## 0.69.0
 
 - **Solo styles, round four, the last of your list** (the names are ours). Four more in SOLO: on IDEAS' guitar tab (and the composer's lead lane), sixteen in all plus BY STYLE:

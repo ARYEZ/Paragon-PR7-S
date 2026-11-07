@@ -823,3 +823,31 @@ TEST_CASE ("The IDEAS window: ideas heard, used, more of them (0.18.0); piano, g
     CHECK (page.use (LineIdea::Part::rhythm, 0, selected) == selected);
     CHECK (studio.getProject().findTrack (selected)->parts.size() == parts + 1);
 }
+
+TEST_CASE ("0.69.1: the SOLO box is on the LEAD column's title, readable and uncovered at any IDEAS width", "[lines][ui][solo]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    studio.addChordEvent (0.0, { 9, T::minor, X::none, -1 });
+    studio.addChordEvent (4.0, { 5, T::major, X::none, -1 });
+    view.openLineIdeas();
+    REQUIRE (view.getLinesWindow() != nullptr);
+    auto& page = view.getLinesWindow()->getPage();
+    page.setTab (LinesPage::Tab::guitar);
+    for (const auto width : { 1600, 1364, 1200, 1000 })
+    {
+        INFO ("width " << width);
+        page.setSize (width, 760);
+        auto& solo = page.getSoloBox();
+        CHECK (solo.isVisible());
+        CHECK (solo.getWidth() >= 200);
+        CHECK (page.getLocalBounds().contains (solo.getBounds()));
+        for (auto* child : page.getChildren())
+            if (child != &solo && child->isVisible() && dynamic_cast<juce::Viewport*> (child) == nullptr)
+                CHECK_FALSE (child->getBounds().intersects (solo.getBounds()));
+    }
+    page.setTab (LinesPage::Tab::bass);
+    CHECK_FALSE (page.getSoloBox().isVisible());
+}
