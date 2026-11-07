@@ -18,7 +18,22 @@ namespace
     // subfolder), a MIDI file, a track preset, a song and a file that isn't media.
     struct MediaFolder
     {
-        juce::File root = juce::File::createTempFile ("pr7s-mediabay");
+        // Letters only: the search reads folder names, and a random hex name once held "808".
+        juce::File root = lettersOnlyFolder();
+
+        static juce::File lettersOnlyFolder()
+        {
+            juce::Random random;
+            for (;;)
+            {
+                juce::String name ("pr7s-mediabay-");
+                for (int i = 0; i < 10; ++i)
+                    name << (juce::juce_wchar) ('a' + random.nextInt (26));
+                auto f = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile (name);
+                if (! f.exists())
+                    return f;
+            }
+        }
 
         MediaFolder()
         {
