@@ -554,3 +554,146 @@ TEST_CASE ("0.70.0: the composer's lead lane chooses the Solo Style (the setting
     page.setSoloStyle (SoloStyle::grungeMelody);
     CHECK (page.getIdea (L::lead).style == "Solo: Grunge Melody");
 }
+
+TEST_CASE ("0.74.0: SECTION and BUILD: a song built a section at a time, the next one chosen", "[composer][ui][suite]")
+{
+    Studio studio (false);
+    ComposerPage page (studio);
+    page.setRandomSeed (3);
+    page.setOn (L::lead, false);
+    page.setBars (4);
+
+    // SECTION is the drums lane's beat.
+    page.setSection (DrumSection::intro);
+    CHECK (page.getSection() == DrumSection::intro);
+    CHECK (page.getState().lane (L::drums).style == 0);
+    REQUIRE (page.keyNamed ("BUILD INTRO") != nullptr);
+
+    // The first at the playhead's bar (0), the next after it.
+    const auto barLength = studio.getProject().beatsPerBar();
+    const auto first = page.buildSection();
+    REQUIRE_FALSE (first.empty());
+    REQUIRE (studio.getBuiltSections().size() == 1);
+    CHECK (studio.getBuiltSections()[0].kind == DrumSection::intro);
+    CHECK (studio.getBuiltSections()[0].start == 0.0);
+    CHECK (studio.getBuiltSections()[0].end == 4 * barLength);
+    // The chords went onto the chord track there.
+    CHECK_FALSE (studio.getProject().chordTrack.events.empty());
+    // The best next chosen (after an intro: the verse), the others offered.
+    CHECK (page.getSection() == DrumSection::verse);
+    CHECK (page.getNumNextKeys() >= 1);
+    CHECK (page.buildStart() == 4 * barLength);
+
+    // The verse after the intro, on the same tracks.
+    const auto second = page.buildSection();
+    REQUIRE (studio.getBuiltSections().size() == 2);
+    CHECK (studio.getBuiltSections()[1].kind == DrumSection::verse);
+    CHECK (studio.getBuiltSections()[1].start == 4 * barLength);
+    CHECK (second == first);
+    const auto* drums = trackNamed (studio, "Drums");
+    REQUIRE (drums != nullptr);
+    CHECK (drums->parts.size() == 2);
+    CHECK (drums->parts[1].start == 4 * barLength);
+
+    // A NEXT key chooses that section (nothing built).
+    REQUIRE (page.getNumNextKeys() >= 1);
+    page.getNextKey (page.getNumNextKeys() - 1)->onClick();
+    CHECK (studio.getBuiltSections().size() == 2);
+
+    // SOLO: the lead on, playing the whole solo.
+    page.setSection (DrumSection::solo);
+    CHECK (page.getState().lane (L::lead).on);
+    CHECK (page.getState().lane (L::lead).style == composerStyleCount (L::lead) - 1);
+
+    // Forgotten: the next BUILD at the playhead again; the parts stay.
+    page.forgetSong();
+    CHECK (studio.getBuiltSections().empty());
+    CHECK (page.buildStart() == 0.0);
+    CHECK (trackNamed (studio, "Drums")->parts.size() == 2);
+}
+
+TEST_CASE ("0.74.0: IDEAS is the composer's second tab; its cards go into the lanes", "[composer][ui][suite]")
+{
+    Studio studio (false);
+    ComposerWindow window (studio);
+    auto& suite = window.getSuite();
+    auto& page = window.getPage();
+    auto& ideas = window.getIdeasPage();
+    page.setOn (L::lead, false);
+
+    // IDEAS deals for the composer's chords.
+    suite.showTab (ComposerSuite::Tab::ideas);
+    CHECK (ideas.isVisible());
+    CHECK_FALSE (page.isVisible());
+    const auto& bass = ideas.getIdeas (LineIdea::Part::bass);
+    REQUIRE (bass.size() >= 6);
+
+    // A card into its lane: kept there, locked, the COMPOSE tab shown.
+    ideas.toComposer (LineIdea::Part::bass, 3);
+    CHECK (suite.getTab() == ComposerSuite::Tab::compose);
+    CHECK (page.hasTakenIdea (L::bass));
+    CHECK (page.getState().lane (L::bass).locked);
+    CHECK (page.getIdea (L::bass).notes == ideas.getIdeas (LineIdea::Part::bass)[3].notes);
+    CHECK (page.keyNamed ("BASS STYLE")->getButtonText().startsWith ("FROM IDEAS"));
+    // GENERATE keeps it (locked); ROLL gives the lane its own again.
+    page.generate();
+    CHECK (page.hasTakenIdea (L::bass));
+    page.roll (L::bass);
+    CHECK_FALSE (page.hasTakenIdea (L::bass));
+
+    // Taken again, then the chords change: back to the lane's own.
+    ideas.toComposer (LineIdea::Part::rhythm, 0);
+    CHECK (page.hasTakenIdea (L::guitar));
+    page.setBars (page.getState().bars == 8 ? 4 : 8);
+    CHECK_FALSE (page.hasTakenIdea (L::guitar));
+    // ...and IDEAS follows the new chords.
+    CHECK (ideas.getIdeas (LineIdea::Part::bass).front().notes.back().beat
+           < page.getSpans().back().end - page.getSpans().front().start);
+
+    // After a section is built, IDEAS deals where the next one goes (USE IT onto a track lands there).
+    page.buildSection();
+    suite.showTab (ComposerSuite::Tab::ideas);
+    REQUIRE_FALSE (ideas.getChords().empty());
+    CHECK (ideas.getChords().front().start == page.buildStart());
+    CHECK (page.buildStart() > 0.0);
+
+    // Every IDEAS part has a lane.
+    for (const auto part : { LineIdea::Part::chords, LineIdea::Part::pattern, LineIdea::Part::melody, LineIdea::Part::tune,
+                             LineIdea::Part::bass, LineIdea::Part::rhythm, LineIdea::Part::lead, LineIdea::Part::drums, LineIdea::Part::groove })
+        CHECK (ComposerPage::layerOf (part).has_value());
+}
+
+TEST_CASE ("Snapshot: the composer suite with a song built (0.74.0)", "[.][snapshot-suite]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "suite.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        Studio studio (false);
+        studio.setGuitarStyle (GuitarStyle::metalcore);
+        ComposerSuite suite (studio);
+        auto& page = suite.getComposer();
+        page.setRandomSeed (11);
+        page.setKey (Key::fromPitchClass (4, true));   // (E minor)
+        page.setOn (L::lead, false);
+        page.setSection (DrumSection::intro);
+        page.buildSection();
+        page.buildSection();
+        page.buildSection();
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_TAB", {}) == "ideas")
+        {
+            suite.showTab (ComposerSuite::Tab::ideas);
+            suite.getIdeas().setTab (LinesPage::Tab::bass);
+        }
+        else
+            suite.showTab (ComposerSuite::Tab::compose);
+        suite.setSize (1500, 940);
+        const auto image = suite.createComponentSnapshot (suite.getLocalBounds(), true, 1.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}

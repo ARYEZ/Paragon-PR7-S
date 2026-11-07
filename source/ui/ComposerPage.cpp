@@ -107,6 +107,26 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
     chordTrackKey.onClick = [this] { setFromChordTrack (true); };
     toChordTrackKey.onClick = [this] { setToChordTrack (! state.toChordTrack); };
 
+    // (0.74.0) SECTION and BUILD.
+    {
+        int id = 1;
+        for (const auto sec : pr7s::drumSections())
+            sectionBox.addItem ("SECTION: " + pr7s::sectionWord (sec).toUpperCase(), id++);
+        sectionBox.setTooltip ("The section you're writing: the drums play its beat (SOLO: the lead plays the whole solo). BUILD writes it after the last section built");
+        sectionBox.onChange = [this]
+        {
+            const auto i = sectionBox.getSelectedItemIndex();
+            if (juce::isPositiveAndBelow (i, (int) pr7s::drumSections().size()))
+                setSection (pr7s::drumSections()[(size_t) i]);
+        };
+        addAndMakeVisible (sectionBox);
+    }
+    pedal (buildKey);
+    buildKey.setTooltip ("The lanes that are on written as this section onto their tracks, after the last section built (the first at the playhead's bar), "
+                         "the chords onto the chord track; one undo step. Then the next section is suggested and chosen: change it if you like");
+    buildKey.onClick = [this] { buildSection(); };
+    addAndMakeVisible (buildKey);
+
     // The lanes.
     for (const auto l : pr7s::composerLayers())
     {
@@ -133,7 +153,7 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
         lane.low.onClick = [this, l] { showLowMenu (l); };
     }
 
-    setSize (1500, 900);
+    setSize (1500, 940);
     refresh (false);
     startTimerHz (30);
 }
@@ -162,6 +182,27 @@ void ComposerPage::refresh (bool rehear)
     for (size_t i = 0; i < spans.size(); ++i)
         chordNames.add (i < steps.size() ? steps[i].name (state.key) : spans[i].chord.name (spans[i].key));
     ideas = pr7s::composeLayers (state, spans, context);
+    // (0.74.0) Ideas taken from IDEAS stay in their lanes while the chords are the same.
+    const auto sameChords = [] (const std::vector<pr7s::ChordSpan>& a, const std::vector<pr7s::ChordSpan>& b)
+    {
+        if (a.size() != b.size())
+            return false;
+        for (size_t i = 0; i < a.size(); ++i)
+            if (std::abs ((a[i].end - a[i].start) - (b[i].end - b[i].start)) > 1.0e-6 || ! (a[i].chord == b[i].chord))
+                return false;
+        return true;
+    };
+    const auto chordsChanged = ! sameChords (spans, lastSpans);
+    if (chordsChanged && std::any_of (taken.begin(), taken.end(), [] (const auto& t) { return t.has_value(); }))
+    {
+        for (auto& t : taken)
+            t.reset();
+        status = "The chords changed: the ideas taken from IDEAS went back to the lanes' own";
+    }
+    lastSpans = spans;
+    for (const auto l : pr7s::composerLayers())
+        if (taken[(size_t) l].has_value())
+            ideas[(size_t) l] = *taken[(size_t) l];
     studio.setComposerState (state.toString());
 
     // The keys.
@@ -180,6 +221,10 @@ void ComposerPage::refresh (bool rehear)
     chordTrackKey.setToggleState (state.fromChordTrack, juce::dontSendNotification);
     toChordTrackKey.setToggleState (state.toChordTrack, juce::dontSendNotification);
     toChordTrackKey.setEnabled (! state.fromChordTrack);
+    sectionBox.setSelectedItemIndex ((int) std::distance (pr7s::drumSections().begin(),
+                                                          std::find (pr7s::drumSections().begin(), pr7s::drumSections().end(), getSection())),
+                                     juce::dontSendNotification);
+    buildKey.setButtonText ("BUILD " + pr7s::sectionWord (getSection()).toUpperCase());
     hearKey.setButtonText (hearing ? "STOP" : "HEAR");
     hearKey.setToggleState (hearing, juce::dontSendNotification);
     for (const auto l : pr7s::composerLayers())
@@ -188,13 +233,17 @@ void ComposerPage::refresh (bool rehear)
         const auto& s = state.lane (l);
         lane.on.setToggleState (s.on, juce::dontSendNotification);
         lane.lock.setToggleState (s.locked, juce::dontSendNotification);
-        lane.style.setButtonText (ideas[(size_t) l].style.isEmpty() ? juce::String ("STYLE") : ideas[(size_t) l].style.toUpperCase());
+        lane.style.setButtonText (taken[(size_t) l].has_value() ? "FROM IDEAS: " + ideas[(size_t) l].style.toUpperCase()
+                                  : ideas[(size_t) l].style.isEmpty() ? juce::String ("STYLE") : ideas[(size_t) l].style.toUpperCase());
         lane.track.setButtonText (trackText (l));
         lane.busy.setButtonText ("BUSY " + juce::String (juce::roundToInt (s.busy * 100.0f)) + "%");
         lane.low.setToggleState (s.lowString || s.onlyString > 0, juce::dontSendNotification);
         lane.low.setButtonText (stringText (l));
     }
     seenChange = studio.getChangeVersion();
+    refreshSong();
+    if (chordsChanged && onChordsChanged)
+        onChordsChanged (placedSpans());
 
     if (rehear && hearing && ! hear())
         stop();
@@ -212,12 +261,20 @@ double ComposerPage::placeStart() const
     return studio.getProject().barStartAt (juce::jmax (0.0, engine.getPosition()));
 }
 
-std::vector<pr7s::ChordSpan> ComposerPage::placedSpans() const
+double ComposerPage::buildStart() const
+{
+    // (0.74.0) After the last section built (the song grows a section at a time); the first at the playhead's bar.
+    if (state.fromChordTrack)
+        return placeStart();
+    const auto& built = studio.getBuiltSections();
+    return built.empty() ? placeStart() : built.back().end;
+}
+
+std::vector<pr7s::ChordSpan> ComposerPage::spansAt (double start) const
 {
     if (state.fromChordTrack)
         return spans;
     auto placed = spans;
-    const auto start = hearing ? hearingStart : placeStart();
     for (auto& s : placed)
     {
         s.start += start;
@@ -226,9 +283,17 @@ std::vector<pr7s::ChordSpan> ComposerPage::placedSpans() const
     return placed;
 }
 
+std::vector<pr7s::ChordSpan> ComposerPage::placedSpans() const
+{
+    return spansAt (hearing ? hearingStart : buildStart());
+}
+
 //==============================================================================
 void ComposerPage::generate()
 {
+    for (const auto l : pr7s::composerLayers())
+        if (! state.lane (l).locked)
+            taken[(size_t) l].reset();
     pr7s::generateComposer (state, random);
     status = "Generated: a new take of every layer not locked";
     refresh();
@@ -236,6 +301,7 @@ void ComposerPage::generate()
 
 void ComposerPage::roll (ComposerLayer l)
 {
+    taken[(size_t) l].reset();
     pr7s::rollLane (state, l, random);
     status = pr7s::composerLayerName (l) + ": a new take";
     refresh();
@@ -373,6 +439,7 @@ void ComposerPage::setSoloStyle (pr7s::SoloStyle st)
 
 void ComposerPage::setStyle (ComposerLayer l, int style)
 {
+    taken[(size_t) l].reset();
     state.lane (l).style = juce::jlimit (0, pr7s::composerStyleCount (l) - 1, style);
     refresh();
 }
@@ -466,7 +533,7 @@ bool ComposerPage::hear()
         return false;
     }
     if (! hearing)
-        hearingStart = placeStart();
+        hearingStart = buildStart();
     const auto placed = placedSpans();
     std::vector<std::pair<int, pr7s::LineIdea>> layers;
     for (const auto l : pr7s::composerLayers())
@@ -510,7 +577,7 @@ std::vector<int> ComposerPage::useAll()
     stop();
     if (spans.empty())
         return {};
-    const auto placed = placedSpans();
+    const auto placed = spansAt (placeStart());
     std::vector<pr7s::LineIdea> list;
     std::vector<int> onto;
     for (const auto l : pr7s::composerLayers())
@@ -538,14 +605,158 @@ int ComposerPage::useLayer (ComposerLayer l)
     stop();
     if (spans.empty() || ideas[(size_t) l].notes.empty())
         return 0;
-    const auto tracks = studio.buildSection ({ ideas[(size_t) l] }, placedSpans(), "Composer", { trackFor (l, false) });
+    const auto tracks = studio.buildSection ({ ideas[(size_t) l] }, spansAt (placeStart()), "Composer", { trackFor (l, false) });
     refresh (false);
     return tracks.empty() ? 0 : tracks.front();
 }
 
+//==============================================================================
+// (0.74.0) Sections and the song.
+pr7s::DrumSection ComposerPage::getSection() const
+{
+    const auto& all = pr7s::drumSections();
+    return all[(size_t) juce::jlimit (0, (int) all.size() - 1, state.lane (ComposerLayer::drums).style)];
+}
+
+void ComposerPage::setSection (pr7s::DrumSection section)
+{
+    const auto& all = pr7s::drumSections();
+    const auto index = (int) std::distance (all.begin(), std::find (all.begin(), all.end(), section));
+    taken[(size_t) ComposerLayer::drums].reset();
+    state.lane (ComposerLayer::drums).style = juce::jlimit (0, (int) all.size() - 1, index);
+    // A solo: the lead plays the whole solo (its last style).
+    if (section == pr7s::DrumSection::solo && ! state.lane (ComposerLayer::lead).locked)
+    {
+        taken[(size_t) ComposerLayer::lead].reset();
+        state.lane (ComposerLayer::lead).on = true;
+        state.lane (ComposerLayer::lead).style = pr7s::composerStyleCount (ComposerLayer::lead) - 1;
+    }
+    refresh();
+}
+
+std::vector<pr7s::SectionSuggestion> ComposerPage::getNextSuggestions() const
+{
+    return pr7s::suggestNextSections (studio.getBuiltSections(), studio.getGuitarStyle(), pr7s::composerStyleCount (ComposerLayer::guitar));
+}
+
+void ComposerPage::chooseNext (const pr7s::SectionSuggestion& next)
+{
+    // What it relates to (engine/SectionPlan.h): the riff settings, the guitar's riff, the same family of beats.
+    studio.setRiffSettings (next.riffSettings);
+    auto& guitar = state.lane (ComposerLayer::guitar);
+    if (! guitar.locked && ! taken[(size_t) ComposerLayer::guitar].has_value())
+        guitar.style = juce::jlimit (0, pr7s::composerStyleCount (ComposerLayer::guitar) - 1, next.riff);
+    state.lane (ComposerLayer::drums).variation = next.variation;
+    status = "Next: " + pr7s::sectionWord (next.kind).toLowerCase() + ". " + next.reason;
+    setSection (next.kind);
+}
+
+std::vector<int> ComposerPage::buildSection()
+{
+    stop();
+    if (spans.empty())
+    {
+        status = state.fromChordTrack ? "The chord track has no chords" : "No progression fits the key, genre and mood";
+        repaint();
+        return {};
+    }
+    const auto section = getSection();
+    const auto placed = spansAt (buildStart());
+    std::vector<pr7s::LineIdea> list;
+    std::vector<int> onto;
+    for (const auto l : pr7s::composerLayers())
+        if (state.lane (l).on && ! ideas[(size_t) l].notes.empty())
+        {
+            list.push_back (ideas[(size_t) l]);
+            onto.push_back (trackFor (l, false));
+        }
+    if (list.empty())
+    {
+        status = "Nothing to build: switch a layer on";
+        repaint();
+        return {};
+    }
+    if (! state.fromChordTrack && state.toChordTrack)
+        studio.addProgressionToChordTrack (pr7s::composerSteps (state), placed.front().start);
+    const auto tracks = studio.buildSection (list, placed, pr7s::sectionWord (section), onto);
+    if (tracks.empty())
+    {
+        status = "Nothing written";
+        repaint();
+        return {};
+    }
+    studio.noteBuiltSection ({ section, placed.front().start, placed.back().end, state.lane (ComposerLayer::guitar).style,
+                               studio.getRiffSettings(), state.lane (ComposerLayer::drums).variation });
+    const auto& sig = studio.getProject().signatures();
+    const auto bar = sig.barAt (placed.front().start) + 1, bars = sig.barAt (placed.back().end) + 1 - bar;   // (barAt: a hair before a line is on it)
+    const auto built = pr7s::sectionWord (section) + " built at bar " + juce::String (bar) + " (" + juce::String (bars) + " bars)";
+    // The best next section chosen for you (change it with SECTION or the NEXT keys).
+    if (const auto next = getNextSuggestions(); ! next.empty())
+    {
+        chooseNext (next.front());
+        status = built + ".  Next: " + pr7s::sectionWord (next.front().kind).toLowerCase() + " (" + next.front().reason + ")";
+    }
+    else
+        status = built + ". The song has its ending.";
+    refresh (false);
+    return tracks;
+}
+
+void ComposerPage::forgetSong()
+{
+    studio.clearBuiltSections();
+    status = "The song's sections forgotten (its parts stay): the next BUILD goes at the playhead's bar";
+    refresh (false);
+}
+
+std::optional<ComposerLayer> ComposerPage::layerOf (pr7s::LineIdea::Part part)
+{
+    using P = pr7s::LineIdea::Part;
+    switch (part)
+    {
+        case P::chords: case P::pattern: return ComposerLayer::chords;
+        case P::melody: case P::tune: return ComposerLayer::melody;
+        case P::bass: return ComposerLayer::bass;
+        case P::rhythm: return ComposerLayer::guitar;
+        case P::lead: return ComposerLayer::lead;
+        case P::drums: case P::groove: return ComposerLayer::drums;
+        default: return std::nullopt;
+    }
+}
+
+void ComposerPage::takeIdea (const pr7s::LineIdea& idea)
+{
+    const auto l = layerOf (idea.part);
+    if (! l.has_value())
+        return;
+    taken[(size_t) *l] = idea;
+    state.lane (*l).on = true;
+    state.lane (*l).locked = true;
+    status = pr7s::composerLayerName (*l) + ": \"" + idea.style + "\" from IDEAS (locked; ROLL or the style menu gives the lane its own again)";
+    refresh();
+}
+
+void ComposerPage::refreshSong()
+{
+    nextShown = getNextSuggestions();
+    if (nextShown.size() > 3)
+        nextShown.resize (3);
+    nextKeys.clear();
+    for (size_t i = 0; i < nextShown.size(); ++i)
+    {
+        auto* key = nextKeys.add (new juce::TextButton ("NEXT: " + pr7s::sectionWord (nextShown[i].kind).toUpperCase()));
+        pedal (*key);
+        key->setTooltip (nextShown[i].reason);
+        key->setToggleState (nextShown[i].kind == getSection() && i == 0, juce::dontSendNotification);
+        key->onClick = [this, next = nextShown[i]] { chooseNext (next); };
+        addAndMakeVisible (key);
+    }
+    resized();
+}
+
 juce::Button* ComposerPage::keyNamed (const juce::String& name)
 {
-    for (auto* key : { &hearKey, &useKey, &generateKey, &libraryKey, &chordTrackKey, &toChordTrackKey })
+    for (auto* key : { &hearKey, &useKey, &generateKey, &libraryKey, &chordTrackKey, &toChordTrackKey, &buildKey })
         if (key->getButtonText() == name)
             return key;
     for (const auto l : pr7s::composerLayers())
@@ -709,6 +920,17 @@ void ComposerPage::mouseDown (const juce::MouseEvent& e)
 {
     pressedLane = -1;
     draggedOut = false;
+    if (songArea.contains (e.getPosition()) && e.mods.isPopupMenu())
+    {
+        juce::PopupMenu menu;
+        menu.addItem (1, "Forget the Sections Built (the song's parts stay)", ! studio.getBuiltSections().empty());
+        menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ComposerPage> (this)] (int chosen)
+                            {
+                                if (safe != nullptr && chosen == 1)
+                                    safe->forgetSong();
+                            });
+        return;
+    }
     for (const auto l : pr7s::composerLayers())
         if (lanes[(size_t) l].notes.contains (e.getPosition()))
         {
@@ -818,12 +1040,14 @@ void ComposerPage::paint (juce::Graphics& g)
     g.drawText ("COMPOSER", head.removeFromTop (26), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (interFont (12.5f));
-    g.drawText (status.isNotEmpty() ? summary() + "     " + status : summary(), head.withTrimmedRight (560), juce::Justification::centredLeft, true);
+    g.drawText (status.isNotEmpty() ? summary() + "     " + status : summary(), head.withTrimmedRight (860), juce::Justification::centredLeft, true);
 
     // The labels in the controls row.
     g.setFont (ParagonLookAndFeel::titleFont (12.0f));
     g.setColour (ParagonColours::textDim);
     g.drawText ("CHORDS FROM", controlsLabels, juce::Justification::centredRight, false);
+
+    paintSong (g);
 
     // The ruler: bars, and the chords' names where each starts.
     if (! spans.empty() && ! ruler.isEmpty())
@@ -860,6 +1084,62 @@ void ComposerPage::paint (juce::Graphics& g)
                 juce::Rectangle<int> (gap, ruler.getY(), laneHeaderWidth, ruler.getHeight()), juce::Justification::centredLeft, true);
     for (const auto l : pr7s::composerLayers())
         paintLane (g, l, lanes[(size_t) l]);
+}
+
+void ComposerPage::paintSong (juce::Graphics& g) const
+{
+    if (songArea.isEmpty())
+        return;
+    auto area = songArea;
+    g.setColour (juce::Colour (0xff141015));
+    g.fillRoundedRectangle (area.toFloat(), 5.0f);
+    g.setColour (ParagonColours::panelEdge);
+    g.drawRoundedRectangle (area.toFloat().reduced (0.5f), 5.0f, 1.0f);
+    area = area.reduced (12, 6);
+    g.setColour (ParagonColours::textDim);
+    g.setFont (ParagonLookAndFeel::titleFont (14.0f));
+    g.drawText ("SONG", area.removeFromLeft (52), juce::Justification::centredLeft, false);
+    if (! nextKeys.isEmpty())
+        area.setRight (nextKeys.getFirst()->getX() - 12);
+    const auto& built = studio.getBuiltSections();
+    if (built.empty())
+    {
+        g.setFont (interFont (13.0f));
+        g.drawText ("Nothing built yet: choose the chords, STYLE and SECTION, then BUILD. Each section goes after the last.",
+                    area, juce::Justification::centredLeft, true);
+        return;
+    }
+    const auto& sig = studio.getProject().signatures();
+    const auto chip = 118;
+    const auto fits = juce::jmax (1, (area.getWidth() + 6) / (chip + 6));
+    const auto first = (int) built.size() > fits ? (int) built.size() - fits + 1 : 0;   // (the latest, with "..." before)
+    if (first > 0)
+    {
+        g.setFont (ParagonLookAndFeel::titleFont (14.0f));
+        g.drawText (juce::String (first) + " MORE...", area.removeFromLeft (chip), juce::Justification::centredLeft, false);
+        area.removeFromLeft (6);
+    }
+    for (int i = first; i < (int) built.size(); ++i)
+    {
+        const auto& b = built[(size_t) i];
+        const auto r = area.removeFromLeft (chip).toFloat();
+        area.removeFromLeft (6);
+        const auto colour = b.kind == pr7s::DrumSection::chorus ? pr7s::FamilyColours::pink
+                          : b.kind == pr7s::DrumSection::verse || b.kind == pr7s::DrumSection::bridge ? pr7s::FamilyColours::orange
+                          : pr7s::FamilyColours::red;
+        g.setColour (colour.withAlpha (0.28f));
+        g.fillRoundedRectangle (r, 4.0f);
+        g.setColour (colour);
+        g.drawRoundedRectangle (r.reduced (0.5f), 4.0f, 1.2f);
+        const auto bar = sig.barAt (b.start) + 1, bars = sig.barAt (b.end) + 1 - bar;
+        g.setColour (ParagonColours::text);
+        g.setFont (ParagonLookAndFeel::titleFont (15.0f));
+        g.drawText (pr7s::sectionWord (b.kind).toUpperCase(), r.reduced (8.0f, 2.0f).removeFromTop (r.getHeight() * 0.55f), juce::Justification::bottomLeft, false);
+        g.setColour (ParagonColours::textDim);
+        g.setFont (interFont (11.0f));
+        g.drawText ("BAR " + juce::String (bar) + ", " + juce::String (bars) + " BARS", r.reduced (8.0f, 2.0f).removeFromBottom (r.getHeight() * 0.45f),
+                    juce::Justification::topLeft, false);
+    }
 }
 
 void ComposerPage::paintLane (juce::Graphics& g, ComposerLayer l, const Lane& lane) const
@@ -960,7 +1240,11 @@ void ComposerPage::resized()
 {
     auto area = getLocalBounds().reduced (gap, 0);
     auto head = area.removeFromTop (headerHeight).reduced (0, 14);
-    generateKey.setBounds (head.removeFromRight (180));
+    buildKey.setBounds (head.removeFromRight (200));
+    head.removeFromRight (6);
+    sectionBox.setBounds (head.removeFromRight (190));
+    head.removeFromRight (16);
+    generateKey.setBounds (head.removeFromRight (160));
     head.removeFromRight (8);
     useKey.setBounds (head.removeFromRight (140));
     head.removeFromRight (8);
@@ -982,6 +1266,15 @@ void ComposerPage::resized()
     controls.removeFromRight (8);
     progressionKey.setBounds (controls);
 
+    songArea = area.removeFromTop (songHeight).withTrimmedBottom (8);
+    {
+        auto keys = songArea.reduced (10, 9);
+        for (int i = nextKeys.size(); --i >= 0;)
+        {
+            nextKeys[i]->setBounds (keys.removeFromRight (170));
+            keys.removeFromRight (8);
+        }
+    }
     area.removeFromBottom (gap);
     ruler = area.removeFromTop (rulerHeight).withTrimmedLeft (laneHeaderWidth + gap).withTrimmedBottom (2);
     const auto laneHeight = area.getHeight() / pr7s::composerLayerCount;
@@ -1036,11 +1329,111 @@ void ComposerPage::resized()
 }
 
 //==============================================================================
+ComposerSuite::ComposerSuite (pr7s::Studio& s) : studio (s), composer (s)
+{
+    addAndMakeVisible (composer);
+    ideas = std::make_unique<LinesPage> (studio, composer.spansAt (composer.buildStart()));
+    addChildComponent (*ideas);
+    ideas->onComposer = [this] { showTab (Tab::compose); };
+    ideas->onToComposer = [this] (const pr7s::LineIdea& idea)
+    {
+        composer.takeIdea (idea);
+        showTab (Tab::compose);
+    };
+    ideas->composerLaneOf = [] (pr7s::LineIdea::Part part)
+    {
+        const auto l = ComposerPage::layerOf (part);
+        return l.has_value() ? pr7s::composerLayerName (*l) : juce::String();
+    };
+    composer.onChordsChanged = [this] (const std::vector<pr7s::ChordSpan>& spans)
+    {
+        ideasOnOtherChords = false;
+        if (ideas != nullptr)
+            ideas->setChords (spans);
+    };
+    for (auto* key : { &composeTab, &ideasTab })
+    {
+        key->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        key->setWantsKeyboardFocus (false);
+        addAndMakeVisible (*key);
+    }
+    composeTab.setTooltip ("The composer: every layer stacked over the chords, SECTION and BUILD, the song so far");
+    ideasTab.setTooltip ("Every IDEAS card and setting (piano, guitar, bass, patterns, melody, drums) for the composer's chords. "
+                         "A card's USE IT menu puts it into its composer lane");
+    composeTab.onClick = [this] { showTab (Tab::compose); };
+    ideasTab.onClick = [this] { showTab (Tab::ideas); };
+    if (auto* settings = studio.getSettings())
+        tab = settings->getValue ("composerTab") == "ideas" ? Tab::ideas : Tab::compose;
+    setSize (composer.getWidth(), composer.getHeight() + tabsHeight);
+    showTab (tab);
+}
+
+void ComposerSuite::showTab (Tab t)
+{
+    tab = t;
+    if (t == Tab::ideas && ! ideasOnOtherChords)
+    {
+        // IDEAS on the composer's chords where the next BUILD goes (USE IT onto a track lands there).
+        const auto placed = composer.spansAt (composer.buildStart());
+        const auto& now = ideas->getChords();
+        if (placed.empty() != now.empty() || (! placed.empty() && std::abs (placed.front().start - now.front().start) > 1.0e-6))
+            ideas->setChords (placed);
+    }
+    if (t == Tab::ideas)
+        composer.stop();
+    else
+        ideas->stop();
+    composer.setVisible (t == Tab::compose);
+    ideas->setVisible (t == Tab::ideas);
+    composeTab.setToggleState (t == Tab::compose, juce::dontSendNotification);
+    ideasTab.setToggleState (t == Tab::ideas, juce::dontSendNotification);
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("composerTab", t == Tab::ideas ? "ideas" : "compose");
+}
+
+void ComposerSuite::showIdeas (std::vector<pr7s::ChordSpan> spans)
+{
+    if (! spans.empty())
+    {
+        ideasOnOtherChords = true;
+        ideas->setChords (std::move (spans));
+    }
+    else
+        ideasOnOtherChords = false;
+    showTab (Tab::ideas);
+}
+
+void ComposerSuite::paint (juce::Graphics& g)
+{
+    g.fillAll (juce::Colour (0xff0c0a0d));
+    auto strip = getLocalBounds().removeFromTop (tabsHeight);
+    g.setColour (juce::Colour (0xff141015));
+    g.fillRect (strip);
+    g.setColour (ParagonColours::panelEdge);
+    g.fillRect (strip.removeFromBottom (1));
+    g.setColour (ParagonColours::textDim);
+    g.setFont (ParagonLookAndFeel::titleFont (13.0f));
+    g.drawText ("SONGWRITING: SET THE CHORDS, STYLE AND SECTION, BUILD IT, THEN THE NEXT", strip.withTrimmedLeft (300).reduced (12, 0),
+                juce::Justification::centredLeft, true);
+}
+
+void ComposerSuite::resized()
+{
+    auto area = getLocalBounds();
+    auto strip = area.removeFromTop (tabsHeight).reduced (12, 6);
+    composeTab.setBounds (strip.removeFromLeft (130));
+    strip.removeFromLeft (8);
+    ideasTab.setBounds (strip.removeFromLeft (130));
+    composer.setBounds (area);
+    ideas->setBounds (area);
+}
+
+//==============================================================================
 ComposerWindow::ComposerWindow (pr7s::Studio& studio)
     : juce::DocumentWindow ("Paragon PR7-S: Composer", juce::Colour (0xff0c0a0d), juce::DocumentWindow::closeButton)
 {
-    page = new ComposerPage (studio);
-    setContentOwned (page, true);
+    suite = new ComposerSuite (studio);
+    setContentOwned (suite, true);
     setUsingNativeTitleBar (true);
     setResizable (true, false);
     setResizeLimits (1100, 700, 3840, 2160);
@@ -1048,7 +1441,8 @@ ComposerWindow::ComposerWindow (pr7s::Studio& studio)
 
 void ComposerWindow::closeButtonPressed()
 {
-    page->stop();
+    suite->getComposer().stop();
+    suite->getIdeas().stop();
     if (onClose)
         onClose();
 }

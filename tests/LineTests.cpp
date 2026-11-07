@@ -708,8 +708,8 @@ TEST_CASE ("The chord pads open IDEAS: their IDEAS key, for the chord track's ch
     studio.addChordEvent (0.0, { 9, T::minor, X::none, -1 });
     studio.addChordEvent (4.0, { 5, T::major, X::none, -1 });
     pads.getIdeasKey().onClick();
-    REQUIRE (view.getLinesWindow() != nullptr);
-    CHECK (view.getLinesWindow()->getPage().getIdeas (LineIdea::Part::rhythm).size() == 6);
+    REQUIRE (view.getComposerWindow() != nullptr);
+    CHECK (view.getComposerWindow()->getIdeasPage().getIdeas (LineIdea::Part::rhythm).size() == 6);
 }
 
 TEST_CASE ("The IDEAS window: ideas heard, used, more of them (0.18.0); piano, guitar and bass tabs, the tuning (0.19.0)", "[lines][ui]")
@@ -723,8 +723,8 @@ TEST_CASE ("The IDEAS window: ideas heard, used, more of them (0.18.0); piano, g
     studio.addChordEvent (8.0, { 0, T::major, X::none, -1 });
     studio.addChordEvent (12.0, { 7, T::major, X::none, -1 });
     view.openLineIdeas();
-    REQUIRE (view.getLinesWindow() != nullptr);
-    auto& page = view.getLinesWindow()->getPage();
+    REQUIRE (view.getComposerWindow() != nullptr);
+    auto& page = view.getComposerWindow()->getIdeasPage();
     CHECK (page.getIdeas (LineIdea::Part::bass).size() == 8);   // (0.54.0: and the two locked ones)
     CHECK (page.getIdeas (LineIdea::Part::melody).size() == 6);
 
@@ -754,7 +754,7 @@ TEST_CASE ("The IDEAS window: ideas heard, used, more of them (0.18.0); piano, g
 
     // Opened again on other chords (the selection): the same window, those chords.
     view.openLineIdeas ({ 0, 1 });
-    CHECK (&view.getLinesWindow()->getPage() == &page);
+    CHECK (&view.getComposerWindow()->getIdeasPage() == &page);
     CHECK (page.getIdeas (LineIdea::Part::bass)[0].notes.back().beat < 8.0);
 
     // 0.19.0: tabs. Piano: chords and melody (twelve cards); guitar: rhythm and lead; bass alone.
@@ -833,8 +833,8 @@ TEST_CASE ("0.69.1: the SOLO box is on the LEAD column's title, readable and unc
     studio.addChordEvent (0.0, { 9, T::minor, X::none, -1 });
     studio.addChordEvent (4.0, { 5, T::major, X::none, -1 });
     view.openLineIdeas();
-    REQUIRE (view.getLinesWindow() != nullptr);
-    auto& page = view.getLinesWindow()->getPage();
+    REQUIRE (view.getComposerWindow() != nullptr);
+    auto& page = view.getComposerWindow()->getIdeasPage();
     page.setTab (LinesPage::Tab::guitar);
     for (const auto width : { 1600, 1364, 1200, 1000 })
     {

@@ -2,6 +2,18 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.74.0
+
+**The composer is now the songwriting suite: IDEAS lives inside it, and a song is built a section at a time.**
+
+- **One window, two tabs: COMPOSE and IDEAS.** Everything the IDEAS window had (piano, guitar, bass, patterns, melody and drums cards; tuning, velocities, humanize, riff, drum and melody settings, solo styles, the drummer, library grooves, BUILD SECTION) is the composer's IDEAS tab. Every way into IDEAS (the chord track's IDEAS key, the pads, the menus) now opens the composer on that tab; the separate IDEAS window is gone.
+- **IDEAS deals for the composer's chords**, placed where the next section will go, so a card's USE IT onto a track lands in the right bars. Opened from chosen chords on the chord track, it uses those until the composer's chords change.
+- **A card into the composer:** USE IT's menu has "Into the Composer's ... lane". The card goes into its lane (piano and patterns into CHORDS, melodies into MELODY, rhythm into GUITAR, and so on), locked so GENERATE keeps it; the lane reads FROM IDEAS. ROLL or its style menu gives the lane its own again, and so does changing the chords (a card made for other chords wouldn't fit).
+- **SECTION** (beside BUILD): intro, verse, chorus, bridge, breakdown, ending or solo. The drums play that section's beat; SOLO also switches the lead on to the whole solo.
+- **BUILD <SECTION>** writes the lanes that are on as that section onto their tracks, *after the last section built* (the first at the playhead's bar), with the chords on the chord track: one undo step. The next section is then chosen for you (what usually comes next, with its riff opened up or tightened, as BUILD SECTION suggested before) and the status line says why. Change it with SECTION or the NEXT keys.
+- **SONG strip:** the sections built so far in order (where each starts and how long it is), and up to three NEXT keys. Right-click the strip to forget the sections (the song's parts stay; the next BUILD goes at the playhead again).
+- USE ALL still writes at the playhead's bar, as before. HEAR now plays where BUILD would put the section.
+
 ## 0.73.4
 
 - **Menus no longer flicker with DRAW WITHOUT THE GRAPHICS CARD on.** Every new window (a menu, a submenu, a question box) is made by JUCE with the graphics card's drawing, and the studio switched new windows to the processor's drawing only once a second, so a menu was first drawn one way and redrawn the other a moment later: the "mini glitches". Menus and question boxes are now switched the moment they're made, before they're first drawn, and anything else is checked four times a second instead of once.

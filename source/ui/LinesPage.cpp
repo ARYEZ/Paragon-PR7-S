@@ -1340,20 +1340,38 @@ int LinesPage::use (pr7s::LineIdea::Part part, int index, int ontoTrackId)
 void LinesPage::showUseMenu (pr7s::LineIdea::Part part, int index, Card& card)
 {
     const auto selected = studio.getSelectedTrack();
-    if (! studio.canTakeMidi (selected))
+    const auto lane = onToComposer != nullptr && composerLaneOf != nullptr ? composerLaneOf (part) : juce::String();
+    if (! studio.canTakeMidi (selected) && lane.isEmpty())
     {
         use (part, index, 0);
         return;
     }
     juce::PopupMenu menu;
-    menu.addItem (1, "Onto " + studio.getProject().findTrack (selected)->name + " (the selected track)");
+    if (lane.isNotEmpty())   // (0.74.0) first: the composer is where a song is put together
+        menu.addItem (3, "Into the Composer's " + lane + " lane (kept and locked there)");
+    if (studio.canTakeMidi (selected))
+        menu.addItem (1, "Onto " + studio.getProject().findTrack (selected)->name + " (the selected track)");
     menu.addItem (2, "Onto a new track (" + pr7s::Studio::linePartName (part) + ")");
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (card.useIt),
                         [safe = juce::Component::SafePointer<LinesPage> (this), part, index, selected] (int chosen)
                         {
-                            if (safe != nullptr && chosen != 0)
+                            if (safe == nullptr || chosen == 0)
+                                return;
+                            if (chosen == 3)
+                                safe->toComposer (part, index);
+                            else
                                 safe->use (part, index, chosen == 1 ? selected : 0);
                         });
+}
+
+void LinesPage::toComposer (pr7s::LineIdea::Part part, int index)
+{
+    const auto& list = getIdeas (part);
+    if (onToComposer == nullptr || ! juce::isPositiveAndBelow (index, (int) list.size()))
+        return;
+    stop();
+    noteChosen (part, index);
+    onToComposer (list[(size_t) index]);
 }
 
 void LinesPage::moreIdeas()

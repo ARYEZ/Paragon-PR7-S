@@ -2401,30 +2401,19 @@ void MainView::RightZoneEdge::mouseDrag (const juce::MouseEvent& event)
 
 void MainView::openLineIdeas (std::vector<int> chordEvents, bool buildSection)
 {
+    // (0.74.0) IDEAS is the composer's second tab. On the chord track's chords when it has some (the chosen
+    // ones), else on the composer's own. BUILD SECTION: the composer's COMPOSE tab, where SECTION and BUILD are.
     auto spans = studio.getLineChords (chordEvents);
-    if (spans.empty())
+    openComposer();
+    auto& suite = composerWindow->getSuite();
+    if (buildSection)
     {
-        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Ideas",
-                                                "Put some chords on the chord track first: double-click its lane, pick a popular progression, "
-                                                "or play them in from the pads. The ideas follow those chords.");
+        if (! spans.empty())
+            suite.getComposer().setFromChordTrack (true);
+        suite.showTab (ComposerSuite::Tab::compose);
         return;
     }
-    if (linesWindow != nullptr)
-    {
-        linesWindow->getPage().setChords (std::move (spans));
-        linesWindow->toFront (true);
-        if (buildSection)
-            linesWindow->getPage().showBuildSection();
-        return;
-    }
-    linesWindow = std::make_unique<LinesWindow> (studio, std::move (spans));
-    linesWindow->getPage().onComposer = [this] { openComposer(); };
-    linesWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->linesWindow.reset(); }); };
-    linesWindow->centreAroundComponent (this, linesWindow->getWidth(), linesWindow->getHeight());
-    linesWindow->setVisible (true);
-    if (buildSection)   // (once the window is on screen: the call-out points at its key)
-        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)]
-                                         { if (safe != nullptr && safe->linesWindow != nullptr) safe->linesWindow->getPage().showBuildSection(); });
+    suite.showIdeas (std::move (spans));
 }
 
 void MainView::openEq (int busId)

@@ -3,6 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "engine/Studio.h"
+#include "ui/LinesPage.h"
 
 // THE COMPOSER (0.58.0, the owner asked: "a combined page, all layers stacked, each with a lock and a
 // re-roll, and one generate button"). engine/Composer.h says how the layers are chosen.
@@ -21,6 +22,19 @@
 //               plays a copy. Rolling, locking, switching lanes while it plays carries on from where it is.
 //   USE ALL     the lanes that are on onto their tracks at that bar (the track named for the lane is
 //               reused, else a new one), one undo step; the library's chords onto the chord track too.
+//
+// 0.74.0 (the owner asked: "merge IDEAS into the COMPOSER ... my one stop shop songwriting suite. Set my
+// chords, style, section and then build that part ... building a song part by part"):
+//   SECTION     which section is being written (intro, verse, chorus, bridge, breakdown, ending, solo):
+//               the drums play that section's beat (the drums lane's style is the section), SOLO also
+//               switches the lead on to the whole solo.
+//   BUILD       the lanes that are on written as that section onto their tracks after the last section
+//               built (the first at the playhead's bar), the library's chords onto the chord track;
+//               the section remembered (Studio::noteBuiltSection). Then the best next section is chosen
+//               (engine/SectionPlan.h: its riff settings, the guitar's riff) and the others offered.
+//   SONG        the sections built so far, in order, and NEXT: what could come next (click: chosen).
+//   IDEAS       every IDEAS card and setting is the window's second tab (ComposerSuite); a card's USE IT
+//               menu also puts it into its composer lane (`takeIdea`: kept, locked, until rolled).
 class ComposerPage final : public juce::Component,
                            private juce::Timer
 {
@@ -67,7 +81,23 @@ public:
     bool isHearing() const;
     std::vector<int> useAll();               // the tracks written
     int useLayer (pr7s::ComposerLayer);      // the track written (0: none)
-    double placeStart() const;               // where HEAR and USE put the layers (a bar: the playhead's)
+    double placeStart() const;               // where USE puts the layers (a bar: the playhead's)
+    double buildStart() const;               // (0.74.0) where BUILD and HEAR put them: after the last section built
+
+    // (0.74.0) Sections, the song, ideas from IDEAS.
+    void setSection (pr7s::DrumSection);
+    pr7s::DrumSection getSection() const;
+    std::vector<int> buildSection();          // the tracks written (none: nothing on, no chords)
+    std::vector<pr7s::SectionSuggestion> getNextSuggestions() const;
+    void chooseNext (const pr7s::SectionSuggestion&);   // its section, riff and riff settings (nothing built)
+    void forgetSong();                        // the sections built are forgotten (the song's parts stay)
+    void takeIdea (const pr7s::LineIdea&);    // into its lane (by its part), locked, until rolled or restyled
+    bool hasTakenIdea (pr7s::ComposerLayer l) const noexcept { return taken[(size_t) l].has_value(); }
+    static std::optional<pr7s::ComposerLayer> layerOf (pr7s::LineIdea::Part);
+    std::vector<pr7s::ChordSpan> spansAt (double start) const;   // the chords placed from that beat
+    std::function<void (const std::vector<pr7s::ChordSpan>&)> onChordsChanged;   // (the suite: IDEAS follows)
+    int getNumNextKeys() const noexcept { return nextKeys.size(); }
+    juce::TextButton* getNextKey (int i) const { return nextKeys[i]; }
 
     const pr7s::ComposerState& getState() const noexcept { return state; }
     const pr7s::LineIdea& getIdea (pr7s::ComposerLayer l) const noexcept { return ideas[(size_t) l]; }
@@ -77,7 +107,7 @@ public:
     juce::Button* keyNamed (const juce::String&);   // header keys by their text, lanes' as "<LAYER> ON/LOCK/ROLL"
     void setRandomSeed (juce::int64 seed) { random.setSeed (seed); }
 
-    static constexpr int headerHeight = 64, controlsHeight = 44, rulerHeight = 30, laneHeaderWidth = 420, gap = 12;
+    static constexpr int headerHeight = 64, controlsHeight = 44, songHeight = 54, rulerHeight = 30, laneHeaderWidth = 420, gap = 12;
 
 private:
     struct Lane
@@ -96,7 +126,9 @@ private:
     void showLaneMenu (pr7s::ComposerLayer);
     void showBusyMenu (pr7s::ComposerLayer);
     void showLowMenu (pr7s::ComposerLayer);
-    std::vector<pr7s::ChordSpan> placedSpans() const;
+    std::vector<pr7s::ChordSpan> placedSpans() const;   // at the hearing start, else buildStart()
+    void refreshSong();                                  // the SONG strip's NEXT keys
+    void paintSong (juce::Graphics&) const;
     juce::String trackText (pr7s::ComposerLayer) const;
     juce::String summary() const;
     void paintLane (juce::Graphics&, pr7s::ComposerLayer, const Lane&) const;
@@ -121,6 +153,41 @@ private:
     juce::TextButton progressionKey, libraryKey { "LIBRARY" }, chordTrackKey { "CHORD TRACK" }, toChordTrackKey { "+ CHORD TRACK" };
     juce::TextButton hearKey { "HEAR" }, useKey { "USE ALL" }, generateKey { "GENERATE" };
     juce::Rectangle<int> ruler, controlsLabels;
+    // (0.74.0)
+    juce::ComboBox sectionBox;
+    juce::TextButton buildKey { "BUILD" };
+    juce::OwnedArray<juce::TextButton> nextKeys;
+    std::vector<pr7s::SectionSuggestion> nextShown;
+    juce::Rectangle<int> songArea;
+    std::array<std::optional<pr7s::LineIdea>, pr7s::composerLayerCount> taken;
+    std::vector<pr7s::ChordSpan> lastSpans;   // (taken ideas forgotten when the chords change)
+};
+
+// (0.74.0) The suite: COMPOSE and IDEAS as tabs of one window. IDEAS follows the composer's chords
+// (placed where BUILD would put them) unless it was opened on other chords; its cards go into the
+// composer's lanes from their USE IT menu.
+class ComposerSuite final : public juce::Component
+{
+public:
+    explicit ComposerSuite (pr7s::Studio&);
+    enum class Tab { compose, ideas };
+    void showTab (Tab);
+    Tab getTab() const noexcept { return tab; }
+    void showIdeas (std::vector<pr7s::ChordSpan>);   // the IDEAS tab on these chords
+    ComposerPage& getComposer() noexcept { return composer; }
+    LinesPage& getIdeas() noexcept { return *ideas; }
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    juce::TextButton& getTabKey (Tab t) noexcept { return t == Tab::compose ? composeTab : ideasTab; }
+    static constexpr int tabsHeight = 40;
+
+private:
+    pr7s::Studio& studio;
+    ComposerPage composer;
+    std::unique_ptr<LinesPage> ideas;
+    juce::TextButton composeTab { "COMPOSE" }, ideasTab { "IDEAS" };
+    Tab tab = Tab::compose;
+    bool ideasOnOtherChords = false;   // (opened on the chord track's chosen chords: kept until the composer's change)
 };
 
 // Its window: kept open beside the studio while you listen.
@@ -130,8 +197,10 @@ public:
     explicit ComposerWindow (pr7s::Studio&);
     void closeButtonPressed() override;
     std::function<void()> onClose;
-    ComposerPage& getPage() { return *page; }
+    ComposerPage& getPage() { return suite->getComposer(); }
+    LinesPage& getIdeasPage() { return suite->getIdeas(); }
+    ComposerSuite& getSuite() { return *suite; }
 
 private:
-    ComposerPage* page = nullptr;
+    ComposerSuite* suite = nullptr;
 };

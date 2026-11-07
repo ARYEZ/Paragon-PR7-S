@@ -223,6 +223,10 @@ public:
     std::vector<int> buildNext (const pr7s::SectionSuggestion&);   // after the last built section
     void showBuildSection();
     std::function<void()> onComposer;   // (0.58.0) COMPOSER: the combined page
+    // (0.74.0) USE IT's "Into the composer": the card into its composer lane (set by the suite).
+    std::function<void (const pr7s::LineIdea&)> onToComposer;
+    std::function<juce::String (pr7s::LineIdea::Part)> composerLaneOf;   // the lane's name ("" : none takes it)
+    void toComposer (pr7s::LineIdea::Part, int index);
     int getChosen (pr7s::LineIdea::Part p) const noexcept { return chosen[(size_t) p]; }
     const std::vector<pr7s::ChordSpan>& getChords() const noexcept { return spans; }
     void openLearnWindow (const pr7s::DrumProfile* toEdit);
