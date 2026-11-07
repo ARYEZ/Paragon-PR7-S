@@ -2,6 +2,10 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.73.4
+
+- **Menus no longer flicker with DRAW WITHOUT THE GRAPHICS CARD on.** Every new window (a menu, a submenu, a question box) is made by JUCE with the graphics card's drawing, and the studio switched new windows to the processor's drawing only once a second, so a menu was first drawn one way and redrawn the other a moment later: the "mini glitches". Menus and question boxes are now switched the moment they're made, before they're first drawn, and anything else is checked four times a second instead of once.
+
 ## 0.73.3
 
 - **The session log names a plug-in that freezes while loading** (your Kontakt 8 log). Loading a plug-in's file, and giving a plug-in its saved settings, are now marked steps, so if the studio freezes in the middle of either, the freeze report says so under "Under way" ("Loading the instrument Kontakt 8 (...)", or "Giving Kontakt 8 its settings"), with how long it had been at it. Before, they were plain notes and the report said "nothing marked".

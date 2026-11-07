@@ -107,11 +107,11 @@ public:
     void timerCallback() override
     {
         pr7s::SessionLog::beat();
-        // (0.60.0) Windows opened since follow SETTINGS' drawing (the processor or the graphics card), once a second.
-        if (studio != nullptr && ++drawingTicks % 4 == 0)
+        // (0.60.0) Windows opened since follow SETTINGS' drawing (the processor or the graphics card). Since 0.73.4 every
+        // tick (a quarter second; menus and boxes are switched as they're made, this catches the rest).
+        if (studio != nullptr)
             Windows::applyDrawing (studio->getSoftwareDrawing());
     }
-    int drawingTicks = 0;
 
 private:
     class MainWindow final : public juce::DocumentWindow

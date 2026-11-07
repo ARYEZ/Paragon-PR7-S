@@ -718,24 +718,12 @@ namespace Windows
 
     int applyDrawing (bool software)
     {
+        FamilyAlertWindow::softwareDrawing = software;   // (0.73.4: menus and boxes made from now on, at once)
         auto switched = 0;
         for (int i = 0; i < juce::ComponentPeer::getNumPeers(); ++i)
             if (auto* peer = juce::ComponentPeer::getPeer (i))
-            {
-                const auto engines = peer->getAvailableRenderingEngines();
-                if (engines.size() < 2)
-                    continue;
-                auto wanted = engines.indexOf ("Software Renderer");
-                if (! software)
-                    for (int e = 0; e < engines.size(); ++e)
-                        if (e != engines.indexOf ("Software Renderer"))
-                            wanted = e;
-                if (wanted >= 0 && peer->getCurrentRenderingEngine() != wanted)
-                {
-                    peer->setCurrentRenderingEngine (wanted);
+                if (FamilyAlertWindow::useDrawing (*peer, software))
                     ++switched;
-                }
-            }
         return switched;
     }
 
