@@ -7873,7 +7873,7 @@ namespace pr7s
     //==========================================================================
     void Studio::newProject()
     {
-        audioFolderOverride = {};
+        audioFolderOverride = juce::File();
         lastBackupHash = 0;
         lastBackupTime = juce::Time::getMillisecondCounter();
         endComposerAudition (false);   // (0.58.0)
@@ -8149,7 +8149,7 @@ namespace pr7s
         if (! xml->writeTo (destination))
             return false;
         file = destination;
-        audioFolderOverride = {};   // (its recordings were copied beside it)
+        audioFolderOverride = juce::File();   // (its recordings were copied beside it)
         modified = false;
         library->addRecent (destination);
         announce();
@@ -8235,7 +8235,7 @@ namespace pr7s
         }
         auto copy = std::make_shared<Project> (project);
         file = destination;
-        audioFolderOverride = {};   // (its recordings were copied beside it)
+        audioFolderOverride = juce::File();   // (its recordings were copied beside it)
         modified = false;
         library->addRecent (destination);
         ++savesRunning;
@@ -9033,7 +9033,7 @@ namespace pr7s
             return false;
         // (0.72.0) A backup: its song's recordings where they were when it was written (unless it
         // has a "<name> Audio" folder of its own: then it's been saved as a song since).
-        audioFolderOverride = {};
+        audioFolderOverride = juce::File();
         if (const auto path = xml->getStringAttribute ("backupAudioFolder"); juce::File::isAbsolutePath (path))
             if (! source.getSiblingFile (source.getFileNameWithoutExtension() + " Audio").isDirectory() && juce::File (path).isDirectory())
                 audioFolderOverride = juce::File (path);
