@@ -36,6 +36,7 @@
 //   IDEAS       every IDEAS card and setting is the window's second tab (ComposerSuite); a card's USE IT
 //               menu also puts it into its composer lane (`takeIdea`: kept, locked, until rolled).
 class ComposerPage final : public juce::Component,
+                           public juce::FileDragAndDropTarget,
                            private juce::Timer
 {
 public:
@@ -96,6 +97,24 @@ public:
     static std::optional<pr7s::ComposerLayer> layerOf (pr7s::LineIdea::Part);
     std::vector<pr7s::ChordSpan> spansAt (double start) const;   // the chords placed from that beat
     std::function<void (const std::vector<pr7s::ChordSpan>&)> onChordsChanged;   // (the suite: IDEAS follows)
+
+    // (0.75.0) The key locked once a section is built (the song's own tempo is never changed here); chords per
+    // section, only the key's own offered; your own riff pasted in.
+    bool isKeyLocked() const;
+    void setChord (int spanIndex, std::optional<pr7s::Chord>);   // one chord swapped (none: back to the source's)
+    std::vector<pr7s::Chord> getChordChoices() const;           // the key's own chords (the swap menu)
+    bool pasteRiff (pr7s::ComposerRiff);                         // the riff in: its key guessed (not once locked), its chords, the guitar plays it
+    bool pasteRiffFromPart (int partId, pr7s::DrumSection);
+    bool pasteRiffFromFile (const juce::File&, pr7s::DrumSection);
+    void forgetRiff();
+    void setFromRiff (bool);                                     // CHORDS FROM: MY RIFF
+    bool isFromRiff() const noexcept { return fromRiff; }
+    bool isPlayingMyRiff() const noexcept { return useMyRiff && studio.getComposerRiff().has_value(); }
+    void setPlayMyRiff (bool);
+    std::function<std::vector<int>()> getSelectedParts;          // (MainView: the arrangement's selection)
+    bool isInterestedInFileDrag (const juce::StringArray&) override;
+    void filesDropped (const juce::StringArray&, int x, int y) override;
+    static constexpr int myRiffIndex = 6;                        // (the guitar's riffs 0-5; a section built on your riff: 6)
     int getNumNextKeys() const noexcept { return nextKeys.size(); }
     juce::TextButton* getNextKey (int i) const { return nextKeys[i]; }
 
@@ -119,9 +138,16 @@ private:
     void timerCallback() override;
     void refresh (bool rehear = true);   // spans, ideas, keys, the state saved; heard again when hearing
     void showStyleMenu (pr7s::ComposerLayer);
-    static constexpr int soloItems = 5000;   // (0.70.0) the lead's style menu: Solo Style items
+    static constexpr int soloItems = 5000;
+    static constexpr int myRiffItem = 4900;   // (0.75.0) the guitar's style menu: My Riff   // (0.70.0) the lead's style menu: Solo Style items
     void showTrackMenu (pr7s::ComposerLayer);
     void showProgressionMenu();
+    void showPasteMenu();
+    void askSection (std::function<void (pr7s::DrumSection)>, juce::Component* target);
+    void showChordMenu (int spanIndex);
+    int chordAt (juce::Point<int>) const;
+    std::vector<pr7s::ChordSpan> chordSpans() const;   // the source's chords from 0, before the swaps
+    void writeChordsAt (const std::vector<pr7s::ChordSpan>& placed);
     void showUseMenu();
     void showLaneMenu (pr7s::ComposerLayer);
     void showBusyMenu (pr7s::ComposerLayer);
@@ -161,6 +187,10 @@ private:
     juce::Rectangle<int> songArea;
     std::array<std::optional<pr7s::LineIdea>, pr7s::composerLayerCount> taken;
     std::vector<pr7s::ChordSpan> lastSpans;   // (taken ideas forgotten when the chords change)
+    bool fromRiff = false, useMyRiff = false;
+    std::map<int, pr7s::Chord> chordOverrides;
+    juce::TextButton myRiffKey { "MY RIFF" }, pasteKey { "+ MY RIFF" };
+    std::unique_ptr<juce::FileChooser> chooser;
 };
 
 // (0.74.0) The suite: COMPOSE and IDEAS as tabs of one window. IDEAS follows the composer's chords

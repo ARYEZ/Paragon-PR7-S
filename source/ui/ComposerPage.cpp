@@ -1,5 +1,6 @@
 #include "ui/ComposerPage.h"
 
+#include "engine/MidiImport.h"
 #include "ui/ChordUi.h"
 #include "ui/ParagonLookAndFeel.h"
 
@@ -103,8 +104,18 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
     libraryKey.setTooltip ("The chords from our progression library (KEY, GENRE, MOOD, PROGRESSION)");
     chordTrackKey.setTooltip ("The chord track's chords (those in the cycle when it's on, else all): the layers written under them");
     toChordTrackKey.setTooltip ("USE ALL also writes the library's chords onto the chord track at that bar");
-    libraryKey.onClick = [this] { setFromChordTrack (false); };
+    libraryKey.onClick = [this] { setFromRiff (false); setFromChordTrack (false); };
     chordTrackKey.onClick = [this] { setFromChordTrack (true); };
+    // (0.75.0) Your own riff.
+    pedal (myRiffKey);
+    myRiffKey.setTooltip ("The chords read from your own riff (+ MY RIFF), in the song's key: those outside it stay as you played them, shown pink");
+    myRiffKey.onClick = [this] { setFromRiff (true); };
+    addAndMakeVisible (myRiffKey);
+    pedal (pasteKey, true);
+    pasteKey.setTooltip ("Paste in your own riff (a selected MIDI part, or a MIDI file; or drop the file here) and say which section it is: "
+                         "its key is guessed, its chords read, the guitar plays it and the drums and bass are built around it");
+    pasteKey.onClick = [this] { showPasteMenu(); };
+    addAndMakeVisible (pasteKey);
     toChordTrackKey.onClick = [this] { setToChordTrack (! state.toChordTrack); };
 
     // (0.74.0) SECTION and BUILD.
@@ -153,7 +164,7 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
         lane.low.onClick = [this, l] { showLowMenu (l); };
     }
 
-    setSize (1500, 940);
+    setSize (1700, 940);
     refresh (false);
     startTimerHz (30);
 }
@@ -170,17 +181,30 @@ void ComposerPage::refresh (bool rehear)
     // The chords.
     const auto at = hearing ? hearingStart : placeStart();
     context = studio.getComposerContext (at);
-    if (state.fromChordTrack)
-        spans = studio.getLineChords();
-    else
-        spans = pr7s::composerSpans (state, 0.0, context.beatsPerBar);
-    if (! state.fromChordTrack)
+    const auto& riff = studio.getComposerRiff();
+    if (fromRiff && ! riff.has_value())
+        fromRiff = false;
+    spans = chordSpans();
+    if (! state.fromChordTrack && ! fromRiff)
         if (const auto index = pr7s::composerProgressionIndex (state); index >= 0)
             state.progression = pr7s::progressionLibrary()[(size_t) index].name;
+    for (auto it = chordOverrides.begin(); it != chordOverrides.end();)
+    {
+        if (juce::isPositiveAndBelow (it->first, (int) spans.size()))
+        {
+            spans[(size_t) it->first].chord = it->second;
+            ++it;
+        }
+        else
+            it = chordOverrides.erase (it);
+    }
     chordNames.clear();
-    const auto steps = state.fromChordTrack ? std::vector<pr7s::ProgressionStep> {} : pr7s::composerSteps (state);
+    const auto steps = state.fromChordTrack || fromRiff ? std::vector<pr7s::ProgressionStep> {} : pr7s::composerSteps (state);
     for (size_t i = 0; i < spans.size(); ++i)
-        chordNames.add (i < steps.size() ? steps[i].name (state.key) : spans[i].chord.name (spans[i].key));
+        chordNames.add (i < steps.size() && chordOverrides.count ((int) i) == 0 ? steps[i].name (state.key) : spans[i].chord.name (spans[i].key));
+    context.myRiff.reset();
+    if (riff.has_value() && useMyRiff && ! spans.empty())
+        context.myRiff = pr7s::tileRiff (*riff, spans.back().end - spans.front().start, context.beatsPerBar);
     ideas = pr7s::composeLayers (state, spans, context);
     // (0.74.0) Ideas taken from IDEAS stay in their lanes while the chords are the same.
     const auto sameChords = [] (const std::vector<pr7s::ChordSpan>& a, const std::vector<pr7s::ChordSpan>& b)
@@ -213,11 +237,20 @@ void ComposerPage::refresh (bool rehear)
     lengthBox.setText (juce::String (state.bars) + " BARS", juce::dontSendNotification);
     styleBox.setText (pr7s::guitarStyleName (studio.getGuitarStyle()), juce::dontSendNotification);
     progressionKey.setButtonText (state.fromChordTrack ? juce::String ("PROGRESSION: THE CHORD TRACK'S")
+                                  : fromRiff ? juce::String ("PROGRESSION: FROM MY RIFF")
                                   : state.progression.isEmpty() ? juce::String ("NO PROGRESSION FITS") : "PROGRESSION: " + state.progression.toUpperCase());
-    progressionKey.setEnabled (! state.fromChordTrack);
-    for (auto* box : { &keyBox, &genreBox, &moodBox, &lengthBox })
-        box->setEnabled (! state.fromChordTrack);
-    libraryKey.setToggleState (! state.fromChordTrack, juce::dontSendNotification);
+    progressionKey.setEnabled (! state.fromChordTrack && ! fromRiff);
+    for (auto* box : { &genreBox, &moodBox })
+        box->setEnabled (! state.fromChordTrack && ! fromRiff);
+    lengthBox.setEnabled (! state.fromChordTrack);
+    // (0.75.0) The key locked for the song once a section is built.
+    keyBox.setEnabled (! state.fromChordTrack && ! isKeyLocked());
+    keyBox.setTooltip (isKeyLocked() ? "The key is locked for the whole song now that a section is built (right-click the SONG strip to start the song again)"
+                                     : "The key: the chords are the library's in it (a progression written in the other mode plays on the relative key); "
+                                       "with your riff, guessed from it");
+    libraryKey.setToggleState (! state.fromChordTrack && ! fromRiff, juce::dontSendNotification);
+    myRiffKey.setToggleState (fromRiff, juce::dontSendNotification);
+    myRiffKey.setEnabled (riff.has_value());
     chordTrackKey.setToggleState (state.fromChordTrack, juce::dontSendNotification);
     toChordTrackKey.setToggleState (state.toChordTrack, juce::dontSendNotification);
     toChordTrackKey.setEnabled (! state.fromChordTrack);
@@ -440,13 +473,22 @@ void ComposerPage::setSoloStyle (pr7s::SoloStyle st)
 void ComposerPage::setStyle (ComposerLayer l, int style)
 {
     taken[(size_t) l].reset();
+    if (l == ComposerLayer::guitar)
+        useMyRiff = false;
     state.lane (l).style = juce::jlimit (0, pr7s::composerStyleCount (l) - 1, style);
     refresh();
 }
 
 void ComposerPage::setKey (const pr7s::Key& k)
 {
+    if (isKeyLocked() && ! (k == state.key))
+    {
+        status = "The key is locked for the song (a section is built): right-click the SONG strip to start again";
+        refresh (false);
+        return;
+    }
     state.key = k;
+    chordOverrides.clear();
     refresh();
 }
 
@@ -464,12 +506,14 @@ void ComposerPage::setMood (const juce::String& m)
 
 void ComposerPage::setBars (int bars)
 {
+    chordOverrides.clear();
     state.bars = bars == 4 || bars == 16 ? bars : 8;
     refresh();
 }
 
 void ComposerPage::setProgression (const juce::String& name)
 {
+    chordOverrides.clear();
     state.progression = name;
     refresh();
 }
@@ -484,6 +528,9 @@ void ComposerPage::setFromChordTrack (bool on)
     if (hearing)
         stop();
     state.fromChordTrack = on;
+    if (on)
+        fromRiff = false;
+    chordOverrides.clear();
     refresh();
 }
 
@@ -586,8 +633,7 @@ std::vector<int> ComposerPage::useAll()
             list.push_back (ideas[(size_t) l]);
             onto.push_back (trackFor (l, false));
         }
-    if (! state.fromChordTrack && state.toChordTrack)
-        studio.addProgressionToChordTrack (pr7s::composerSteps (state), placed.front().start);
+    writeChordsAt (placed);
     const auto tracks = studio.buildSection (list, placed, "Composer", onto);
     juce::StringArray names;
     for (const auto id : tracks)
@@ -608,6 +654,326 @@ int ComposerPage::useLayer (ComposerLayer l)
     const auto tracks = studio.buildSection ({ ideas[(size_t) l] }, spansAt (placeStart()), "Composer", { trackFor (l, false) });
     refresh (false);
     return tracks.empty() ? 0 : tracks.front();
+}
+
+//==============================================================================
+// (0.75.0) The key locked, chords per section, your own riff.
+bool ComposerPage::isKeyLocked() const
+{
+    return ! studio.getBuiltSections().empty();
+}
+
+std::vector<pr7s::ChordSpan> ComposerPage::chordSpans() const
+{
+    if (state.fromChordTrack)
+        return studio.getLineChords();
+    if (fromRiff)
+        if (const auto& riff = studio.getComposerRiff())
+        {
+            const auto bpb = context.beatsPerBar;
+            return pr7s::riffSpans (pr7s::riffChords (*riff, state.key, bpb), state.key, 0.0, state.bars * bpb, riff->bars * bpb);
+        }
+    return pr7s::composerSpans (state, 0.0, context.beatsPerBar);
+}
+
+std::vector<pr7s::Chord> ComposerPage::getChordChoices() const
+{
+    std::vector<pr7s::Chord> out;
+    for (const auto& c : pr7s::keyChords (state.key))
+        if (std::find (out.begin(), out.end(), c) == out.end())
+            out.push_back (c);
+    return out;
+}
+
+void ComposerPage::setChord (int spanIndex, std::optional<pr7s::Chord> chord)
+{
+    if (state.fromChordTrack || ! juce::isPositiveAndBelow (spanIndex, (int) spans.size()))
+        return;
+    if (chord.has_value())
+    {
+        if (! chord->isInKey (state.key))
+        {
+            status = "Only the key's own chords (" + ChordUi::spokenKey (state.key) + ")";
+            repaint();
+            return;
+        }
+        chordOverrides[spanIndex] = *chord;
+    }
+    else
+        chordOverrides.erase (spanIndex);
+    status = "Chord " + juce::String (spanIndex + 1) + (chord.has_value() ? ": " + chord->name (state.key) : juce::String (": back to the source's"));
+    refresh();
+}
+
+void ComposerPage::writeChordsAt (const std::vector<pr7s::ChordSpan>& placed)
+{
+    if (state.fromChordTrack || ! state.toChordTrack || placed.empty())
+        return;
+    if (! fromRiff && chordOverrides.empty())
+    {
+        studio.addProgressionToChordTrack (pr7s::composerSteps (state), placed.front().start);
+        return;
+    }
+    std::vector<pr7s::ProgressionStep> steps;
+    for (const auto& span : placed)
+    {
+        pr7s::ProgressionStep step;
+        step.chord = span.chord;
+        step.bars = (span.end - span.start) / juce::jmax (0.25, context.beatsPerBar);
+        steps.push_back (step);
+    }
+    studio.addProgressionToChordTrack (steps, placed.front().start);
+}
+
+void ComposerPage::setFromRiff (bool on)
+{
+    if (on && ! studio.getComposerRiff().has_value())
+    {
+        status = "No riff yet: + MY RIFF";
+        on = false;
+    }
+    if (hearing)
+        stop();
+    fromRiff = on;
+    if (on)
+        state.fromChordTrack = false;
+    chordOverrides.clear();
+    refresh();
+}
+
+void ComposerPage::setPlayMyRiff (bool on)
+{
+    useMyRiff = on && studio.getComposerRiff().has_value();
+    if (useMyRiff)
+    {
+        taken[(size_t) ComposerLayer::guitar].reset();
+        state.lane (ComposerLayer::guitar).on = true;
+    }
+    refresh();
+}
+
+bool ComposerPage::pasteRiff (pr7s::ComposerRiff riff)
+{
+    if (riff.notes.empty())
+    {
+        status = "That has no notes to make a riff of";
+        repaint();
+        return false;
+    }
+    stop();
+    const auto bars = riff.bars;
+    const auto section = riff.section;
+    studio.setComposerRiff (riff);
+    juce::String keyText;
+    if (! isKeyLocked())
+    {
+        state.key = pr7s::guessKey (riff.notes);
+        keyText = "key guessed: " + ChordUi::spokenKey (state.key) + " (change KEY if it's wrong)";
+    }
+    else
+        keyText = "in the song's key, " + ChordUi::spokenKey (state.key) + " (locked)";
+    if (bars > state.bars)
+        state.bars = bars <= 8 ? 8 : 16;
+    fromRiff = true;
+    state.fromChordTrack = false;
+    useMyRiff = true;
+    chordOverrides.clear();
+    taken[(size_t) ComposerLayer::guitar].reset();
+    state.lane (ComposerLayer::guitar).on = true;
+    // The section's beat, and the riff's settings back to as written.
+    studio.setRiffSettings ({});
+    setSection (section);
+    status = "Your riff (" + juce::String (bars) + (bars == 1 ? " bar" : " bars") + ") as the " + pr7s::sectionWord (section).toLowerCase() + "; " + keyText;
+    repaint();
+    return true;
+}
+
+bool ComposerPage::pasteRiffFromPart (int partId, pr7s::DrumSection section)
+{
+    const auto where = studio.findPart (partId);
+    if (! where.has_value())
+        return false;
+    const auto* track = studio.getProject().findTrack (where->first);
+    if (track == nullptr || track->kind != pr7s::Track::Kind::instrument || ! juce::isPositiveAndBelow (where->second, (int) track->parts.size()))
+    {
+        status = "Choose a MIDI part (an instrument track's) for your riff";
+        repaint();
+        return false;
+    }
+    const auto& part = track->parts[(size_t) where->second];
+    auto notes = part.notes;
+    for (auto& n : notes)
+    {
+        n.pitch = part.heardPitch (n.pitch);
+        n.velocity = part.heardVelocity (n.velocity);
+    }
+    notes.erase (std::remove_if (notes.begin(), notes.end(), [&part] (const pr7s::Note& n) { return n.start >= part.length; }), notes.end());
+    const auto bpb = studio.getProject().beatsPerBarAt (part.start);
+    return pasteRiff (pr7s::riffFromNotes (notes, part.start, bpb, track->name + (part.name.isNotEmpty() ? " - " + part.name : juce::String()), section));
+}
+
+bool ComposerPage::pasteRiffFromFile (const juce::File& file, pr7s::DrumSection section)
+{
+    juce::String error;
+    const auto midi = pr7s::readMidiFile (file, error);
+    if (! midi.has_value())
+    {
+        status = error.isNotEmpty() ? error : "Not a MIDI file";
+        repaint();
+        return false;
+    }
+    // Every track's notes but the drums' (channel 10), together.
+    std::vector<pr7s::Note> notes;
+    for (const auto& t : midi->tracks)
+        if (t.channel != 10)
+            notes.insert (notes.end(), t.notes.begin(), t.notes.end());
+    std::sort (notes.begin(), notes.end(), [] (const pr7s::Note& a, const pr7s::Note& b) { return a.start < b.start; });
+    return pasteRiff (pr7s::riffFromNotes (notes, 0.0, context.beatsPerBar, file.getFileNameWithoutExtension(), section));
+}
+
+void ComposerPage::forgetRiff()
+{
+    studio.setComposerRiff (std::nullopt);
+    fromRiff = false;
+    useMyRiff = false;
+    chordOverrides.clear();
+    status = "Your riff forgotten";
+    refresh();
+}
+
+void ComposerPage::askSection (std::function<void (pr7s::DrumSection)> then, juce::Component* target)
+{
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("THIS RIFF IS MY...");
+    int id = 1;
+    for (const auto sec : pr7s::drumSections())
+        menu.addItem (id++, pr7s::sectionWord (sec) + " Riff");
+    auto options = juce::PopupMenu::Options();
+    if (target != nullptr)
+        options = options.withTargetComponent (target);
+    menu.showMenuAsync (options, [then] (int chosen)
+                        {
+                            if (juce::isPositiveAndNotGreaterThan (chosen, (int) pr7s::drumSections().size()))
+                                then (pr7s::drumSections()[(size_t) chosen - 1]);
+                        });
+}
+
+void ComposerPage::showPasteMenu()
+{
+    const auto parts = getSelectedParts != nullptr ? getSelectedParts() : std::vector<int> {};
+    int partId = 0;
+    juce::String partName;
+    for (const auto id : parts)
+        if (const auto where = studio.findPart (id))
+            if (const auto* t = studio.getProject().findTrack (where->first); t != nullptr && t->kind == pr7s::Track::Kind::instrument)
+            {
+                partId = id;
+                partName = t->name;
+                break;
+            }
+    const auto& riff = studio.getComposerRiff();
+    juce::PopupMenu menu;
+    menu.addItem (1, partId != 0 ? "From the Selected Part (" + partName + ")" : juce::String ("From the Selected Part (select a MIDI part first)"), partId != 0);
+    menu.addItem (2, "From a MIDI File...");
+    if (riff.has_value())
+    {
+        menu.addSeparator();
+        menu.addItem (3, "The Guitar Plays My Riff", true, useMyRiff);
+        menu.addItem (4, "The Chords from My Riff", true, fromRiff);
+        menu.addItem (5, "Forget My Riff (" + riff->name + ")");
+    }
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (pasteKey),
+                        [safe = juce::Component::SafePointer<ComposerPage> (this), partId] (int chosen)
+                        {
+                            if (safe == nullptr || chosen == 0)
+                                return;
+                            if (chosen == 1)
+                                safe->askSection ([safe, partId] (pr7s::DrumSection sec) { if (safe != nullptr) safe->pasteRiffFromPart (partId, sec); }, &safe->pasteKey);
+                            else if (chosen == 2)
+                            {
+                                safe->chooser = std::make_unique<juce::FileChooser> ("Your riff (a MIDI file)", juce::File(), "*.mid;*.midi");
+                                safe->chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                                            [safe] (const juce::FileChooser& fc)
+                                                            {
+                                                                const auto file = fc.getResult();
+                                                                if (safe == nullptr || ! file.existsAsFile())
+                                                                    return;
+                                                                juce::MessageManager::callAsync ([safe, file]
+                                                                {
+                                                                    if (safe != nullptr)
+                                                                        safe->askSection ([safe, file] (pr7s::DrumSection sec) { if (safe != nullptr) safe->pasteRiffFromFile (file, sec); }, &safe->pasteKey);
+                                                                });
+                                                            });
+                            }
+                            else if (chosen == 3)
+                                safe->setPlayMyRiff (! safe->useMyRiff);
+                            else if (chosen == 4)
+                                safe->setFromRiff (! safe->fromRiff);
+                            else if (chosen == 5)
+                                safe->forgetRiff();
+                        });
+}
+
+bool ComposerPage::isInterestedInFileDrag (const juce::StringArray& files)
+{
+    for (const auto& f : files)
+        if (juce::File (f).hasFileExtension ("mid;midi"))
+            return true;
+    return false;
+}
+
+void ComposerPage::filesDropped (const juce::StringArray& files, int, int)
+{
+    for (const auto& f : files)
+        if (juce::File (f).hasFileExtension ("mid;midi"))
+        {
+            const juce::File file (f);
+            askSection ([safe = juce::Component::SafePointer<ComposerPage> (this), file] (pr7s::DrumSection sec)
+                        { if (safe != nullptr) safe->pasteRiffFromFile (file, sec); }, nullptr);
+            return;
+        }
+}
+
+int ComposerPage::chordAt (juce::Point<int> p) const
+{
+    if (spans.empty() || ! ruler.contains (p))
+        return -1;
+    const auto first = spans.front().start, total = spans.back().end - first;
+    const auto beat = first + (double) (p.x - ruler.getX()) / juce::jmax (1, ruler.getWidth()) * total;
+    for (int i = 0; i < (int) spans.size(); ++i)
+        if (beat >= spans[(size_t) i].start && beat < spans[(size_t) i].end)
+            return i;
+    return -1;
+}
+
+void ComposerPage::showChordMenu (int spanIndex)
+{
+    if (state.fromChordTrack)
+    {
+        status = "The chord track's chords are changed on the chord track";
+        repaint();
+        return;
+    }
+    const auto choices = getChordChoices();
+    const auto now = spans[(size_t) spanIndex].chord;
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("CHORD " + juce::String (spanIndex + 1) + ": ONLY " + ChordUi::spokenKey (state.key).toUpperCase() + "'S CHORDS");
+    for (int i = 0; i < (int) choices.size(); ++i)
+        menu.addItem (i + 1, choices[(size_t) i].name (state.key) + "   " + choices[(size_t) i].romanName (state.key), true, choices[(size_t) i] == now);
+    if (chordOverrides.count (spanIndex) > 0)
+    {
+        menu.addSeparator();
+        menu.addItem (1000, fromRiff ? "Back to My Riff's Chord" : "Back to the Progression's Chord");
+    }
+    menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ComposerPage> (this), spanIndex, choices] (int chosen)
+    {
+        if (safe == nullptr || chosen == 0)
+            return;
+        if (chosen == 1000)
+            safe->setChord (spanIndex, std::nullopt);
+        else if (juce::isPositiveAndNotGreaterThan (chosen, (int) choices.size()))
+            safe->setChord (spanIndex, choices[(size_t) chosen - 1]);
+    });
 }
 
 //==============================================================================
@@ -636,7 +1002,9 @@ void ComposerPage::setSection (pr7s::DrumSection section)
 
 std::vector<pr7s::SectionSuggestion> ComposerPage::getNextSuggestions() const
 {
-    return pr7s::suggestNextSections (studio.getBuiltSections(), studio.getGuitarStyle(), pr7s::composerStyleCount (ComposerLayer::guitar));
+    // (0.75.0) With your riff, it's one of the riffs: the same one comes back, a new one is the next round.
+    return pr7s::suggestNextSections (studio.getBuiltSections(), studio.getGuitarStyle(),
+                                      pr7s::composerStyleCount (ComposerLayer::guitar) + (studio.getComposerRiff().has_value() ? 1 : 0));
 }
 
 void ComposerPage::chooseNext (const pr7s::SectionSuggestion& next)
@@ -645,7 +1013,12 @@ void ComposerPage::chooseNext (const pr7s::SectionSuggestion& next)
     studio.setRiffSettings (next.riffSettings);
     auto& guitar = state.lane (ComposerLayer::guitar);
     if (! guitar.locked && ! taken[(size_t) ComposerLayer::guitar].has_value())
-        guitar.style = juce::jlimit (0, pr7s::composerStyleCount (ComposerLayer::guitar) - 1, next.riff);
+    {
+        // (0.75.0) Your riff: reshaped by the suggestion's riff settings, or a new riff for contrast.
+        useMyRiff = studio.getComposerRiff().has_value() && next.riff == myRiffIndex;
+        if (! useMyRiff)
+            guitar.style = juce::jlimit (0, pr7s::composerStyleCount (ComposerLayer::guitar) - 1, next.riff);
+    }
     state.lane (ComposerLayer::drums).variation = next.variation;
     status = "Next: " + pr7s::sectionWord (next.kind).toLowerCase() + ". " + next.reason;
     setSection (next.kind);
@@ -676,8 +1049,7 @@ std::vector<int> ComposerPage::buildSection()
         repaint();
         return {};
     }
-    if (! state.fromChordTrack && state.toChordTrack)
-        studio.addProgressionToChordTrack (pr7s::composerSteps (state), placed.front().start);
+    writeChordsAt (placed);
     const auto tracks = studio.buildSection (list, placed, pr7s::sectionWord (section), onto);
     if (tracks.empty())
     {
@@ -685,7 +1057,7 @@ std::vector<int> ComposerPage::buildSection()
         repaint();
         return {};
     }
-    studio.noteBuiltSection ({ section, placed.front().start, placed.back().end, state.lane (ComposerLayer::guitar).style,
+    studio.noteBuiltSection ({ section, placed.front().start, placed.back().end, isPlayingMyRiff() ? myRiffIndex : state.lane (ComposerLayer::guitar).style,
                                studio.getRiffSettings(), state.lane (ComposerLayer::drums).variation });
     const auto& sig = studio.getProject().signatures();
     const auto bar = sig.barAt (placed.front().start) + 1, bars = sig.barAt (placed.back().end) + 1 - bar;   // (barAt: a hair before a line is on it)
@@ -744,7 +1116,13 @@ void ComposerPage::refreshSong()
     nextKeys.clear();
     for (size_t i = 0; i < nextShown.size(); ++i)
     {
-        auto* key = nextKeys.add (new juce::TextButton ("NEXT: " + pr7s::sectionWord (nextShown[i].kind).toUpperCase()));
+        // Which riff: yours, the last section's, or a new one (two of the same section are told apart).
+        const auto& built = studio.getBuiltSections();
+        const auto riff = nextShown[i].riff;
+        const auto which = studio.getComposerRiff().has_value() && riff == myRiffIndex ? juce::String (" (MY RIFF)")
+                         : ! built.empty() && riff == built.back().riff ? juce::String (" (SAME RIFF)")
+                         : ! built.empty() ? juce::String (" (NEW RIFF)") : juce::String();
+        auto* key = nextKeys.add (new juce::TextButton ("NEXT: " + pr7s::sectionWord (nextShown[i].kind).toUpperCase() + which));
         pedal (*key);
         key->setTooltip (nextShown[i].reason);
         key->setToggleState (nextShown[i].kind == getSection() && i == 0, juce::dontSendNotification);
@@ -756,7 +1134,7 @@ void ComposerPage::refreshSong()
 
 juce::Button* ComposerPage::keyNamed (const juce::String& name)
 {
-    for (auto* key : { &hearKey, &useKey, &generateKey, &libraryKey, &chordTrackKey, &toChordTrackKey, &buildKey })
+    for (auto* key : { &hearKey, &useKey, &generateKey, &libraryKey, &chordTrackKey, &toChordTrackKey, &buildKey, &myRiffKey, &pasteKey })
         if (key->getButtonText() == name)
             return key;
     for (const auto l : pr7s::composerLayers())
@@ -796,12 +1174,19 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
         menu.addSeparator();
         menu.addSubMenu ("Solo Style: " + pr7s::soloStyleName (now), solos);
     }
+    if (l == ComposerLayer::guitar && studio.getComposerRiff().has_value())
+    {
+        menu.addSeparator();
+        menu.addItem (myRiffItem, "My Riff (" + studio.getComposerRiff()->name + ")", true, useMyRiff);
+    }
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (lanes[(size_t) l].style),
                         [safe = juce::Component::SafePointer<ComposerPage> (this), l] (int chosen)
                         {
                             if (safe == nullptr || chosen <= 0)
                                 return;
-                            if (chosen >= soloItems)
+                            if (chosen == myRiffItem)
+                                safe->setPlayMyRiff (true);
+                            else if (chosen >= soloItems)
                                 safe->setSoloStyle (pr7s::soloStyles()[(size_t) juce::jlimit (0, (int) pr7s::soloStyles().size() - 1, chosen - soloItems)]);
                             else
                                 safe->setStyle (l, chosen - 1);
@@ -920,6 +1305,11 @@ void ComposerPage::mouseDown (const juce::MouseEvent& e)
 {
     pressedLane = -1;
     draggedOut = false;
+    if (const auto chord = chordAt (e.getPosition()); chord >= 0)
+    {
+        showChordMenu (chord);
+        return;
+    }
     if (songArea.contains (e.getPosition()) && e.mods.isPopupMenu())
     {
         juce::PopupMenu menu;
@@ -1024,7 +1414,9 @@ juce::String ComposerPage::summary() const
     for (int i = 0; i < juce::jmin (steps, names.size()); ++i)
         once.add (names[i]);
     const auto bars = (spans.back().end - spans.front().start) / juce::jmax (1.0, context.beatsPerBar);
-    return (state.fromChordTrack ? juce::String ("The chord track's chords") : ChordUi::spokenKey (state.key) + ", " + state.progression)
+    const auto keyPart = ChordUi::spokenKey (state.key) + (isKeyLocked() ? " (locked)" : juce::String())
+                       + ", " + juce::String (juce::roundToInt (context.bpm)) + " BPM";
+    return (state.fromChordTrack ? juce::String ("The chord track's chords") : fromRiff ? keyPart + ", chords from your riff" : keyPart + ", " + state.progression)
          + ", " + juce::String (juce::roundToInt (bars)) + " bars:  " + once.joinIntoString ("  ")
          + (names.size() > once.size() ? "  (repeated)" : juce::String());
 }
@@ -1040,7 +1432,7 @@ void ComposerPage::paint (juce::Graphics& g)
     g.drawText ("COMPOSER", head.removeFromTop (26), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (interFont (12.5f));
-    g.drawText (status.isNotEmpty() ? summary() + "     " + status : summary(), head.withTrimmedRight (860), juce::Justification::centredLeft, true);
+    g.drawText (status.isNotEmpty() ? summary() + "     " + status : summary(), head.withTrimmedRight (1000), juce::Justification::centredLeft, true);
 
     // The labels in the controls row.
     g.setFont (ParagonLookAndFeel::titleFont (12.0f));
@@ -1072,7 +1464,9 @@ void ComposerPage::paint (juce::Graphics& g)
         {
             const auto& s = spans[i];
             const auto x = xFor (s.start);
-            g.setColour (ParagonColours::text);
+            g.setColour (s.chord.isInKey (s.key) ? ParagonColours::text : juce::Colour (pr7s::FamilyColours::pink));
+            if (chordOverrides.count ((int) i) > 0)
+                g.fillRect (x + 3.0f, (float) ruler.getBottom() - 2.0f, juce::jmax (12.0f, xFor (s.end) - x - 8.0f), 1.5f);   // (swapped: underlined)
             g.drawText (chordNames[(int) i], juce::Rectangle<float> (x + 3.0f, (float) ruler.getY() + 12.0f, juce::jmax (20.0f, xFor (s.end) - x - 4.0f), 17.0f),
                         juce::Justification::centredLeft, true);
         }
@@ -1080,7 +1474,7 @@ void ComposerPage::paint (juce::Graphics& g)
     // (0.59.0) The hint, where the lanes' headers meet the ruler.
     g.setColour (ParagonColours::textDim);
     g.setFont (ParagonLookAndFeel::titleFont (11.0f));
-    g.drawText ("CLICK THE NOTES TO HEAR, DRAG THEM OUT AS A MIDI FILE",
+    g.drawText ("CHORDS: CLICK TO SWAP. NOTES: CLICK TO HEAR, DRAG OUT AS MIDI",
                 juce::Rectangle<int> (gap, ruler.getY(), laneHeaderWidth, ruler.getHeight()), juce::Justification::centredLeft, true);
     for (const auto l : pr7s::composerLayers())
         paintLane (g, l, lanes[(size_t) l]);
@@ -1243,6 +1637,8 @@ void ComposerPage::resized()
     buildKey.setBounds (head.removeFromRight (200));
     head.removeFromRight (6);
     sectionBox.setBounds (head.removeFromRight (190));
+    head.removeFromRight (6);
+    pasteKey.setBounds (head.removeFromRight (130));
     head.removeFromRight (16);
     generateKey.setBounds (head.removeFromRight (160));
     head.removeFromRight (8);
@@ -1258,6 +1654,8 @@ void ComposerPage::resized()
     }
     toChordTrackKey.setBounds (controls.removeFromRight (150));
     controls.removeFromRight (8);
+    myRiffKey.setBounds (controls.removeFromRight (100));
+    controls.removeFromRight (6);
     chordTrackKey.setBounds (controls.removeFromRight (130));
     controls.removeFromRight (6);
     libraryKey.setBounds (controls.removeFromRight (100));
@@ -1271,7 +1669,7 @@ void ComposerPage::resized()
         auto keys = songArea.reduced (10, 9);
         for (int i = nextKeys.size(); --i >= 0;)
         {
-            nextKeys[i]->setBounds (keys.removeFromRight (170));
+            nextKeys[i]->setBounds (keys.removeFromRight (220));
             keys.removeFromRight (8);
         }
     }

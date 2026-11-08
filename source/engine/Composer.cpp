@@ -106,7 +106,16 @@ namespace pr7s
         ProgressionFilter filter;
         filter.genre = s.genre;
         filter.mood = s.mood;
-        return findProgressions (s.key, filter);
+        // (0.75.0, the owner: "only chords that fit the key") Progressions with a chord outside the key left out.
+        auto found = findProgressions (s.key, filter);
+        found.erase (std::remove_if (found.begin(), found.end(), [&s] (int i)
+                     {
+                         for (const auto& step : progressionLibrary()[(size_t) i].in (s.key))
+                             if (! step.chord.isInKey (s.key))
+                                 return true;
+                         return false;
+                     }), found.end());
+        return found;
     }
 
     int composerProgressionIndex (const ComposerState& s)
@@ -197,6 +206,13 @@ namespace pr7s
             const auto& profile = c.guitarProfile;
             const auto tuning = profile.has_value() ? profile->tuning() : c.tuning;
             const auto velocities = profile.has_value() && profile->velocities.has_value() ? *profile->velocities : c.velocities;
+            if (c.myRiff.has_value())
+            {
+                // (0.75.0) Your riff, reshaped only as far as RIFF SETTINGS and BUSY move from their middles.
+                auto mine = *c.myRiff;
+                shapeRiff (mine, spans, c.beatsPerBar, riff, velocities, c.style, lane.variation, tuning);
+                return mine;
+            }
             auto idea = pick (guitarRhythmIdeas (spans, c.beatsPerBar, lane.variation, tuning, velocities, c.style, riff), lane.style);
             const auto low = profile.has_value() ? profile->rangeLow() : tuning.lowest();
             const auto high = profile.has_value() ? profile->rangeHigh() : tuning.highest();
@@ -233,7 +249,7 @@ namespace pr7s
                 }
                 case ComposerLayer::drums:
                 {
-                    const auto hits = c.drums.lockToRiff ? riffHits (guitarOf (s, spans, c)) : std::vector<double> {};
+                    const auto hits = c.drums.lockToRiff || c.myRiff.has_value() ? riffHits (guitarOf (s, spans, c)) : std::vector<double> {};
                     return drumsOf (s, spans, c, lane.style, hits);
                 }
                 case ComposerLayer::bass:
@@ -244,7 +260,7 @@ namespace pr7s
                     if (lane.style >= 6)
                     {
                         // The seventh: the roots on the drums' kick (the drums lane's beat, heard or not).
-                        const auto hits = c.drums.lockToRiff ? riffHits (guitarOf (s, spans, c)) : std::vector<double> {};
+                        const auto hits = c.drums.lockToRiff || c.myRiff.has_value() ? riffHits (guitarOf (s, spans, c)) : std::vector<double> {};
                         const auto beat = drumsOf (s, spans, c, s.lane (ComposerLayer::drums).style, hits);
                         auto idea = bassOnHits (spans, kickHits (beat), "Locked to the kick", "The chords' roots on every kick of the drums' " + beat.style.toLowerCase());
                         if (lane.lowString)

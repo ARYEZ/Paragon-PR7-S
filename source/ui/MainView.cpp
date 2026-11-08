@@ -2452,6 +2452,7 @@ void MainView::openComposer()
         return;
     }
     composerWindow = std::make_unique<ComposerWindow> (studio);
+    composerWindow->getPage().getSelectedParts = [this] { return arrange.getSelectedParts(); };   // (0.75.0: + MY RIFF)
     composerWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->composerWindow.reset(); }); };
     composerWindow->centreAroundComponent (this, composerWindow->getWidth(), composerWindow->getHeight());
     composerWindow->setVisible (true);

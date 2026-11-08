@@ -7933,6 +7933,7 @@ namespace pr7s
         endComposerAudition (false);   // (0.58.0)
         frozenParts.clear();
         builtSections.clear();
+        composerRiff.reset();
         punchOutAll();   // (writing automation ends with the song)
         if (onInstrumentGoing)
             onInstrumentGoing (0);
@@ -9165,6 +9166,7 @@ namespace pr7s
         lastBackupTime = juce::Time::getMillisecondCounter();
         endComposerAudition (false);   // (0.58.0)
         builtSections.clear();
+        composerRiff.reset();
         std::optional<Project> loaded { std::move (loadedProject) };
         punchOutAll();
 

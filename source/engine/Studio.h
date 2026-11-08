@@ -15,6 +15,7 @@
 #include "DrumGenerator.h"
 #include "DrumLearning.h"
 #include "SectionPlan.h"
+#include "RiffPaste.h"
 #include "Patterns.h"
 #include "Progressions.h"
 #include "Melody.h"
@@ -356,6 +357,9 @@ namespace pr7s
         const std::vector<BuiltSection>& getBuiltSections() const noexcept { return builtSections; }
         void noteBuiltSection (const BuiltSection&);   // (replaces one built over the same stretch)
         void clearBuiltSections() { builtSections.clear(); }
+        // (0.75.0) Your own riff in the composer (engine/RiffPaste.h; forgotten with the song, as the sections).
+        const std::optional<ComposerRiff>& getComposerRiff() const noexcept { return composerRiff; }
+        void setComposerRiff (std::optional<ComposerRiff> r) { composerRiff = std::move (r); }
         // The chords for the section after `from`, as long as `spans`: the chord track's there when it
         // has a chord starting in that stretch; else `spans` again from `from`, written onto the
         // chord track (one undo step) so the song keeps its chords.
@@ -1518,6 +1522,7 @@ namespace pr7s
         DrumSettings drumSettings;
         juce::File drummerFolderOverride;
         std::vector<BuiltSection> builtSections;
+        std::optional<ComposerRiff> composerRiff;
         juce::String ideasDrummer;
         float ideasHumanize = 0.0f, humanizeAmount = 0.5f;   // (without a settings file: the tests)
         bool ideasFeel = true, humanizeLayers = true;

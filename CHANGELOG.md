@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.75.0
+
+**Your own riff in the composer, the key locked for the song, and chords per section from the key.**
+
+- **+ MY RIFF** (beside SECTION): paste in a riff from a selected MIDI part, or from a MIDI file (or drop a .mid on the composer), then say which section it is ("this is my verse riff"). The composer then:
+  - **guesses the key** from it (the riff's low pedal and roots count most). Change KEY if it's wrong before you build: the chords and every suggestion follow;
+  - **reads its chords** (a chord every half bar: the low notes' root, its third if you play one, else the key's own chord on it). A chord outside the key (a flat second or flat fifth, say) is kept as you played it and shown **pink**;
+  - **the guitar plays your riff** (MY RIFF in its style menu), repeated over the section, exactly as written while RIFF SETTINGS are in the middle;
+  - **the drums lock their kick to your riff's hits**, and the bass (locked to the kick) follows them.
+- **The next sections come from your riff:** after your verse, the chorus suggested is your riff opened up (fewer palm mutes, looser), a breakdown tightens it into chugs, a second verse brings it back exactly; a new riff for contrast is offered too. The NEXT keys now say which: (MY RIFF), (SAME RIFF) or (NEW RIFF).
+- **The key is locked for the whole song** once a section is built (KEY greys out; the summary says "(locked)"). Right-click the SONG strip to start the song again. The composer never changes the song's tempo: it's shown beside the key.
+- **Chords change per section, only from the key:** the PROGRESSION menu now offers only progressions whose chords all fit the key, and any chord on the composer's chord ruler can be clicked and swapped for one of the key's own chords (swapped ones are underlined; "Back to..." puts it back). The chords you hear are the ones written onto the chord track when you build.
+- The composer is 1700 wide to fit it all.
+
 ## 0.74.0
 
 **The composer is now the songwriting suite: IDEAS lives inside it, and a song is built a section at a time.**

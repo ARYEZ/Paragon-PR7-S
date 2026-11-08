@@ -322,10 +322,9 @@ TEST_CASE ("The composer page: GENERATE, LOCK, the tracks it plays on, USE ALL (
     page.setFromChordTrack (false);
     page.setKey (Key::fromPitchClass (8, true));
     page.setProgression ("Tritone dread");
-    REQUIRE (page.getState().progression == "Tritone dread");
+    // (0.75.0) Its bV is outside the key: only the key's own chords are offered now, so another is chosen.
+    CHECK (page.getState().progression != "Tritone dread");
     CHECK (page.getChordNames()[0] == "G#m");
-    CHECK (page.getChordNames()[1] == "A");
-    CHECK (page.getChordNames()[2] == "D");
     for (const auto& name : page.getChordNames())
         CHECK_FALSE (name.contains ("##"));
 
@@ -663,6 +662,147 @@ TEST_CASE ("0.74.0: IDEAS is the composer's second tab; its cards go into the la
         CHECK (ComposerPage::layerOf (part).has_value());
 }
 
+//==============================================================================
+// 0.75.0: the key locked for the song, the key's own chords per section, your own riff.
+namespace
+{
+    // A drop-A riff in A minor: chugs on A (muted), an F power chord, chugs again, a Bb (the flat second) power chord.
+    std::vector<Note> aMinorRiff()
+    {
+        std::vector<Note> notes;
+        const auto chug = [&] (double at, int pitch) { notes.push_back ({ at, 0.2, pitch, 40.0f / 127.0f }); };
+        const auto power = [&] (double at, double length, int root)
+        {
+            notes.push_back ({ at, length, root, 96.0f / 127.0f });
+            notes.push_back ({ at, length, root + 7, 96.0f / 127.0f });
+        };
+        for (int i = 0; i < 8; ++i)
+            chug (i * 0.25, 33);           // bar 1, beats 1-2: A0 chugs
+        power (2.0, 2.0, 41);              // F
+        for (int i = 0; i < 8; ++i)
+            chug (4.0 + i * 0.25, 33);     // bar 2: A again
+        power (6.0, 2.0, 46);              // Bb: outside A minor
+        return notes;
+    }
+}
+
+TEST_CASE ("0.75.0: a pasted riff: its bars, key and chords", "[composer][riff]")
+{
+    const auto riff = riffFromNotes (aMinorRiff(), 8.0, 4.0, "Guitar", DrumSection::verse);
+    CHECK (riff.bars == 2);
+    CHECK (riff.notes.front().beat == 0.0);
+    // Started mid-bar: from that bar line.
+    CHECK (riffFromNotes (aMinorRiff(), 9.0, 4.0, "Guitar", DrumSection::verse).notes.front().beat == 1.0);
+
+    const auto key = guessKey (riff.notes);
+    CHECK (key == Key::fromPitchClass (9, true));   // (A minor: the pedal on A, no major third)
+
+    const auto chords = riffChords (riff, key, 4.0);
+    REQUIRE (chords.size() == 4);
+    CHECK (chords[0].chord.root == 9);
+    CHECK (chords[0].chord.type == Chord::Type::minor);   // (the key's own triad on A)
+    CHECK (chords[1].chord.root == 5);
+    CHECK (chords[1].chord.type == Chord::Type::major);   // (F in A minor)
+    CHECK (chords[2].chord.root == 9);
+    CHECK (chords[3].chord.root == 10);                   // (Bb: kept as played)
+    CHECK_FALSE (chords[3].chord.isInKey (key));
+    CHECK (chords[0].start == 0.0);
+    CHECK (chords[3].length == 2.0);
+
+    // Repeated over a section.
+    const auto idea = tileRiff (riff, 32.0, 4.0);
+    CHECK (idea.notes.size() == riff.notes.size() * 4);
+    CHECK (idea.notes.back().beat < 32.0);
+    const auto spans = riffSpans (chords, key, 0.0, 32.0, 8.0);
+    CHECK (spans.front().start == 0.0);
+    CHECK (spans.back().end == 32.0);
+}
+
+TEST_CASE ("0.75.0: the composer around your riff: the key guessed, the guitar plays it, the drums lock to it", "[composer][riff][ui]")
+{
+    Studio studio (false);
+    ComposerPage page (studio);
+    page.setRandomSeed (5);
+    page.setOn (L::lead, false);
+    const auto guitar = studio.addTrack (Instrument {});
+    Part part;
+    part.start = 0.0;
+    part.length = 8.0;
+    part.notes = aMinorRiff();
+    studio.addPart (guitar, part);
+    const auto partId = studio.getProject().findTrack (guitar)->parts.front().id;
+
+    page.setKey (Key::fromPitchClass (4, false));   // (E major: the riff's guess replaces it)
+    REQUIRE (page.pasteRiffFromPart (partId, DrumSection::verse));
+    CHECK (page.getState().key == Key::fromPitchClass (9, true));
+    CHECK (page.isFromRiff());
+    CHECK (page.isPlayingMyRiff());
+    CHECK (page.getSection() == DrumSection::verse);
+    // The guitar plays it as written (RIFF SETTINGS in the middle), over the section.
+    const auto riff = *studio.getComposerRiff();
+    const auto total = page.getSpans().back().end - page.getSpans().front().start;
+    CHECK (page.getIdea (L::guitar).notes == tileRiff (riff, total, 4.0).notes);
+    CHECK (page.getIdea (L::guitar).style == "My riff");
+    // The chords are the riff's; the Bb one shown as outside the key.
+    CHECK (page.getSpans().front().chord.root == 9);
+    // The drums' kick is on the riff's hits.
+    const auto kicks = kickHits (page.getIdea (L::drums));
+    const auto hits = riffHits (page.getIdea (L::guitar));
+    REQUIRE_FALSE (kicks.empty());
+    for (const auto k : kicks)
+        CHECK (std::any_of (hits.begin(), hits.end(), [k] (double h) { return std::abs (h - k) < 0.02; }));
+
+    // Before anything's built the key can be changed: the chords follow it.
+    page.setKey (Key::fromPitchClass (2, true));   // (D minor)
+    CHECK (page.getState().key == Key::fromPitchClass (2, true));
+    page.setKey (Key::fromPitchClass (9, true));
+
+    // A chord swapped: only the key's own.
+    page.setChord (1, Chord { 2, Chord::Type::minor, Chord::Tension::none, -1 });   // (Dm: in A minor)
+    CHECK (page.getSpans()[1].chord.root == 2);
+    page.setChord (2, Chord { 1, Chord::Type::major, Chord::Tension::none, -1 });   // (Db: not in A minor)
+    CHECK (page.getSpans()[2].chord.root != 1);
+    for (const auto& c : page.getChordChoices())
+        CHECK (c.isInKey (page.getState().key));
+
+    // Built: the key is locked, the chords (with the swap) on the chord track, the section noted as my riff's.
+    REQUIRE_FALSE (page.buildSection().empty());
+    CHECK (page.isKeyLocked());
+    CHECK (studio.getBuiltSections().front().riff == ComposerPage::myRiffIndex);
+    const auto& events = studio.getProject().chordTrack.events;
+    REQUIRE (events.size() >= 2);
+    CHECK (events[1].chord.root == 2);
+    page.setKey (Key::fromPitchClass (0, false));
+    CHECK (page.getState().key == Key::fromPitchClass (9, true));
+
+    // The next section: after a verse, the chorus around the same riff (opened up), or a new one for contrast.
+    const auto next = page.getNextSuggestions();
+    REQUIRE_FALSE (next.empty());
+    CHECK (next.front().kind == DrumSection::chorus);
+    CHECK (next.front().riff == ComposerPage::myRiffIndex);
+    CHECK (page.getSection() == DrumSection::chorus);   // (chosen after the build)
+    CHECK (page.isPlayingMyRiff());
+    const auto newRiff = std::find_if (next.begin(), next.end(), [] (const SectionSuggestion& s) { return s.riff != ComposerPage::myRiffIndex; });
+    REQUIRE (newRiff != next.end());
+    page.chooseNext (*newRiff);
+    CHECK_FALSE (page.isPlayingMyRiff());
+    CHECK (page.getIdea (L::guitar).style != "My riff");
+}
+
+TEST_CASE ("0.75.0: the composer's progressions are only those whose chords fit the key", "[composer][riff]")
+{
+    for (const auto& key : { Key::fromPitchClass (0, false), Key::fromPitchClass (9, true), Key::fromPitchClass (4, true) })
+    {
+        ComposerState state;
+        state.key = key;
+        const auto found = composerProgressions (state);
+        CHECK_FALSE (found.empty());
+        for (const auto i : found)
+            for (const auto& step : progressionLibrary()[(size_t) i].in (key))
+                CHECK (step.chord.isInKey (key));
+    }
+}
+
 TEST_CASE ("Snapshot: the composer suite with a song built (0.74.0)", "[.][snapshot-suite]")
 {
     const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "suite.png");
@@ -678,10 +818,20 @@ TEST_CASE ("Snapshot: the composer suite with a song built (0.74.0)", "[.][snaps
         page.setRandomSeed (11);
         page.setKey (Key::fromPitchClass (4, true));   // (E minor)
         page.setOn (L::lead, false);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_RIFF", {}) == "1")
+        {
+            // (0.75.0) A pasted verse riff, one chord swapped, a verse built.
+            page.pasteRiff (riffFromNotes (aMinorRiff(), 0.0, 4.0, "Guitar - My verse", DrumSection::verse));
+            page.setChord (1, Chord { 2, Chord::Type::minor, Chord::Tension::none, -1 });
+            page.buildSection();
+        }
+        else
+        {
         page.setSection (DrumSection::intro);
         page.buildSection();
         page.buildSection();
         page.buildSection();
+        }
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_TAB", {}) == "ideas")
         {
             suite.showTab (ComposerSuite::Tab::ideas);
@@ -689,7 +839,7 @@ TEST_CASE ("Snapshot: the composer suite with a song built (0.74.0)", "[.][snaps
         }
         else
             suite.showTab (ComposerSuite::Tab::compose);
-        suite.setSize (1500, 940);
+        suite.setSize (1700, 980);
         const auto image = suite.createComponentSnapshot (suite.getLocalBounds(), true, 1.0f);
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };
@@ -697,3 +847,4 @@ TEST_CASE ("Snapshot: the composer suite with a song built (0.74.0)", "[.][snaps
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
+

@@ -87,6 +87,9 @@ namespace pr7s
         float humanize = 0.0f;
         bool feel = true;
         double bpm = 120.0;
+        // (0.75.0) Your own riff (engine/RiffPaste.h), already repeated over the section: the guitar plays it
+        // (shaped by RIFF SETTINGS: as written at their middle values) and the drums lock their kick to it.
+        std::optional<LineIdea> myRiff;
     };
 
     // The library progressions that pass the state's filter in its key (the key's own mode first).
