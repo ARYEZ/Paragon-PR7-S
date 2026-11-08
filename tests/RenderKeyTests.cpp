@@ -20,6 +20,16 @@ TEST_CASE ("Render in Place's defaults: 32-bit float, the original muted, disabl
     CHECK (defaults.bitsPerSample == 32);
     CHECK (defaults.source == Studio::RenderOptions::Source::disable);
     CHECK (defaults.hideSource);
+    // (0.77.0) Always: whatever the page was given, and settings kept from before can't change it.
+    {
+        Studio studio (false);
+        Windows::RenderPage parts (studio, false), tracks (studio, true);
+        for (auto* page : { &parts, &tracks })
+        {
+            CHECK (page->getOptions().source == Studio::RenderOptions::Source::disable);
+            CHECK (page->getOptions().hideSource);
+        }
+    }
 
     // Settings kept from before (the old defaults) are moved to the new ones once; a choice after that stays.
     const auto file = juce::File::createTempFile (".settings");
@@ -59,18 +69,44 @@ TEST_CASE ("Render in Place's defaults: 32-bit float, the original muted, disabl
     CHECK (reader->bitsPerSample == 32);
     CHECK (reader->usesFloatingPointData);
 
-    // A stretch of a track (the cycle, a range): the parts rendered there muted, the track itself left playing.
+    // (0.77.0, the owner: "render in place always means mute / disable / hide") A stretch of a track (a range,
+    // a part of a take): the parts rendered there muted, and the track muted, disabled and hidden too.
     Studio other (false);
     const auto keys = other.getProject().tracks[0].id;
     other.addPart (keys, { 0.0, 8.0, "Long", { { 0.0, 1.0, 60, 1.0f }, { 5.0, 1.0, 64, 1.0f } } });
     const auto section = other.renderInPlace ({ { keys, 4.0, 8.0, false } }, options, error);
     REQUIRE (section.size() == 1);
     const auto* kept = other.getProject().findTrack (keys);
-    CHECK_FALSE (kept->mute);
-    CHECK_FALSE (kept->disabled);
-    CHECK_FALSE (kept->hidden);
+    CHECK (kept->mute);
+    CHECK (kept->disabled);
+    CHECK (kept->hidden);
     for (const auto& p : kept->parts)
         CHECK (p.muted == (p.start >= 4.0 - 1.0e-9));
+    // The render has sound (the track was disabled after it, not before).
+    const auto* sectionTrack = other.getProject().findTrack (section[0]);
+    REQUIRE (sectionTrack->parts.size() == 1);
+    const auto sectionSound = other.getAudio (sectionTrack->parts[0].audioFile);
+    REQUIRE (sectionSound != nullptr);
+    CHECK (sectionSound->sound.getMagnitude (0, sectionSound->sound.getNumSamples()) > 0.01f);
+
+    // Two stretches of one track at once (two parts selected): both rendered with sound, then the track disabled.
+    Studio two (false);
+    const auto lead = two.getProject().tracks[0].id;
+    two.addPart (lead, { 0.0, 4.0, "A", { { 0.0, 1.0, 60, 1.0f } } });
+    two.addPart (lead, { 8.0, 4.0, "B", { { 0.0, 1.0, 64, 1.0f } } });
+    const auto both = two.renderInPlace ({ { lead, 0.0, 4.0, false }, { lead, 8.0, 12.0, false } }, options, error);
+    REQUIRE (both.size() == 2);
+    for (const auto id : both)
+    {
+        const auto* t = two.getProject().findTrack (id);
+        REQUIRE (t->parts.size() == 1);
+        const auto data = two.getAudio (t->parts[0].audioFile);
+        REQUIRE (data != nullptr);
+        CHECK (data->sound.getMagnitude (0, data->sound.getNumSamples()) > 0.01f);
+    }
+    CHECK (two.getProject().findTrack (lead)->disabled);
+    CHECK (two.getProject().findTrack (lead)->hidden);
+    two.getAudioFolder().deleteRecursively();
     studio.getAudioFolder().deleteRecursively();
     other.getAudioFolder().deleteRecursively();
 }
@@ -102,9 +138,6 @@ TEST_CASE ("Render in Place of whole tracks takes only the range, or the cycle; 
     {
         Windows::RenderPage page (studio, narrowed[0].wholeTrack);
         page.setWarning (view.renderWarning (narrowed));
-        CHECK (page.source.isItemEnabled (4));   // disable
-        CHECK (page.source.isItemEnabled (3));   // remove
-        CHECK (page.hideSource.isEnabled());
         CHECK (page.getOptions().source == Studio::RenderOptions::Source::disable);
         CHECK (page.getOptions().hideSource);
         CHECK (page.getWarning().isNotEmpty());

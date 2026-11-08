@@ -2,6 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.77.0
+
+**Render in Place always mutes, disables and hides the original, however it's started.**
+
+- **Before:** rendering a whole track (from the track list, the Inspector's RENDER) muted, disabled and hid it, but rendering a stretch (a range over part of a take, selected parts, Alt+R with parts selected) only muted the parts rendered and left the track playing, enabled and in view.
+- **Now:** the same every time: the parts rendered are muted, and the track is muted, disabled (its plug-ins unloaded: no CPU) and hidden once everything has been rendered. VISIBILITY shows it again and ENABLE TRACK loads its plug-ins back.
+- **The Render in Place page no longer asks** what to do with the original (keep, mute, disable, remove, hide): it says what will happen instead.
+- **A warning on the page** when a track has parts outside what you're rendering: disabling the track silences them too.
+- Several stretches of one track rendered together (two parts selected) each render with sound first; the track is disabled only after the last one.
+
 ## 0.76.1
 
 **A freeze after Render in Place (with Mute or Disable the source) when drawing without the graphics card.**

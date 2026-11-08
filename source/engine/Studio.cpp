@@ -8816,8 +8816,9 @@ namespace pr7s
     {
         using P = RenderOptions::Processing;
         beginBatch();   // (the plugins offline once for all the stretches)
-        const juce::ScopeGuard batch { [this] { endBatch(); } };
-        std::vector<int> made;
+        auto batchEnded = false;
+        const juce::ScopeGuard batch { [this, &batchEnded] { if (! batchEnded) endBatch(); } };
+        std::vector<int> made, toDisable, toHide;
         juce::StringArray problems;
         const auto folder = getAudioFolder();
         folder.createDirectory();
@@ -9006,14 +9007,18 @@ namespace pr7s
             // The source: kept, muted (the parts rendered, or the whole track), or removed (a whole track).
             // Disabled (0.31.0): muted first. A stretch of a track: whatever was chosen but keep, its parts
             // rendered there muted (disabling or removing the track would silence the rest of it).
+            // (0.77.0, the owner: "render in place always means mute / disable / hide, however it was asked
+            // for") Disable on a stretch too: its parts rendered there muted, and the whole track muted,
+            // disabled and hidden once everything is rendered (a track disabled now would render the next
+            // stretch of it silent).
             const auto muteSource = options.source == RenderOptions::Source::mute
-                                 || (source.wholeTrack && options.source == RenderOptions::Source::disable)
+                                 || options.source == RenderOptions::Source::disable
                                  || (! source.wholeTrack && options.source != RenderOptions::Source::keep);
             if (muteSource)
             {
-                if (source.wholeTrack)
+                if (source.wholeTrack || options.source == RenderOptions::Source::disable)
                     project.findTrack (sourceId)->mute = true;
-                else
+                if (! source.wholeTrack)
                 {
                     auto* t = project.findTrack (sourceId);
                     splitTrackAt (*t, source.start, project.tempoMap());
@@ -9024,12 +9029,23 @@ namespace pr7s
                 }
             }
             changed();
-            if (source.wholeTrack && options.source == RenderOptions::Source::disable)
-                setTracksDisabled ({ sourceId }, true);
-            if (source.wholeTrack && options.hideSource && options.source != RenderOptions::Source::remove)
-                setTracksHidden ({ sourceId }, true);
+            if (options.source == RenderOptions::Source::disable && std::find (toDisable.begin(), toDisable.end(), sourceId) == toDisable.end())
+                toDisable.push_back (sourceId);
+            if ((source.wholeTrack || options.source == RenderOptions::Source::disable) && options.hideSource
+                && options.source != RenderOptions::Source::remove && std::find (toHide.begin(), toHide.end(), sourceId) == toHide.end())
+                toHide.push_back (sourceId);
             if (options.source == RenderOptions::Source::remove && source.wholeTrack)
                 removeTrack (sourceId);
+        }
+        // After every stretch is rendered (the plugins back online first: the batch ends before they're unloaded).
+        if (! toDisable.empty() || ! toHide.empty())
+        {
+            endBatch();
+            batchEnded = true;
+            if (! toDisable.empty())
+                setTracksDisabled (toDisable, true);
+            if (! toHide.empty())
+                setTracksHidden (toHide, true);
         }
         error = problems.joinIntoString ("\n");
         if (! made.empty())

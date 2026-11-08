@@ -525,8 +525,9 @@ namespace Windows
         options.tailSize = tails[tail].second;
         const auto kept = settings->getIntValue ("renderBits", 32);
         options.bitsPerSample = kept == 16 || kept == 24 ? kept : 32;
-        options.source = (RO::Source) juce::jlimit (0, 3, settings->getIntValue ("renderSource", (int) options.source));
-        options.hideSource = settings->getBoolValue ("renderHide", true);
+        // (0.77.0, the owner: "render in place always means mute / disable / hide") Never a choice.
+        options.source = RO::Source::disable;
+        options.hideSource = true;
         return options;
     }
 
@@ -562,12 +563,12 @@ namespace Windows
         bits.addItem ("32-bit float (nothing over 0 dB is cut off)", 32);
         bits.addItem ("24-bit", 24);
         bits.addItem ("16-bit", 16);
-        source.addItem ("Keep it as it is", 1);
-        source.addItem (wholeTracks ? "Mute the track" : "Mute the parts rendered", 2);
-        source.addItem ("Mute and disable the track (no CPU; enable it again to change it)", 4);
-        source.addItem ("Remove the track", 3);
-        source.setItemEnabled (3, wholeTracks);   // (only for tracks rendered whole)
-        source.setItemEnabled (4, wholeTracks);
+        sourceText.setText (wholeTracks ? "Muted, disabled and hidden afterwards (VISIBILITY shows it again)"
+                                        : "Its parts rendered muted; the track muted, disabled and hidden afterwards (VISIBILITY shows it again)",
+                            juce::dontSendNotification);
+        sourceText.setFont (font (13.0f, juce::Font::plain));
+        sourceText.setColour (juce::Label::textColourId, ParagonColours::text);
+        addAndMakeVisible (sourceText);
 
         const auto kept = keptOptions (studio.getSettings());
         mode.setSelectedId ((int) kept.mode + 1, juce::dontSendNotification);
@@ -578,14 +579,7 @@ namespace Windows
                 tailIndex = i;
         tail.setSelectedId (tailIndex + 1, juce::dontSendNotification);
         bits.setSelectedId (kept.bitsPerSample, juce::dontSendNotification);
-        // (A stretch of a track: disable or remove would silence the rest of it; the parts rendered are muted instead.)
-        source.setSelectedId ((kept.source == RO::Source::remove || kept.source == RO::Source::disable) && ! wholeTracks ? 2 : (int) kept.source + 1,
-                              juce::dontSendNotification);
-        hideSource.setToggleState (kept.hideSource && wholeTracks, juce::dontSendNotification);
-        hideSource.setEnabled (wholeTracks);
-        hideSource.setTooltip ("As the manual's Hide Source Tracks: the track rendered goes out of the track list, the arrangement and the mixer");
-        addAndMakeVisible (hideSource);
-        for (auto* box : { &mode, &processing, &tail, &bits, &source })
+        for (auto* box : { &mode, &processing, &tail, &bits })
             addAndMakeVisible (*box);
 
         note.setText ("What's chosen becomes audio files (in the song's audio folder) on a new audio track under each track, "
@@ -611,11 +605,6 @@ namespace Windows
                 settings->setValue ("renderProcessing", processing.getSelectedId() - 1);
                 settings->setValue ("renderTail", tail.getSelectedId() - 1);
                 settings->setValue ("renderBits", bits.getSelectedId());
-                if (wholeTracks)
-                {
-                    settings->setValue ("renderSource", source.getSelectedId() - 1);
-                    settings->setValue ("renderHide", hideSource.getToggleState());
-                }
             }
             if (onRender)
                 onRender (getOptions());
@@ -624,14 +613,14 @@ namespace Windows
         warning.setFont (font (13.0f, juce::Font::plain));
         warning.setColour (juce::Label::textColourId, ParagonColours::accent);
         addChildComponent (warning);
-        setSize (640, 364);
+        setSize (640, 330);
     }
 
     void RenderPage::setWarning (const juce::String& text)
     {
         warning.setText (text, juce::dontSendNotification);
         warning.setVisible (text.isNotEmpty());
-        setSize (640, text.isNotEmpty() ? 414 : 364);
+        setSize (640, text.isNotEmpty() ? 380 : 330);
         resized();
     }
 
@@ -644,8 +633,8 @@ namespace Windows
         options.tail = kind;
         options.tailSize = size;
         options.bitsPerSample = bits.getSelectedId();
-        options.source = (RO::Source) juce::jlimit (0, 3, source.getSelectedId() - 1);
-        options.hideSource = hideSource.getToggleState() && hideSource.isEnabled();
+        options.source = RO::Source::disable;   // (0.77.0: always)
+        options.hideSource = true;
         return options;
     }
 
@@ -662,8 +651,7 @@ namespace Windows
         labelled (row (28), processingLabel, processing);
         labelled (row (28), tailLabel, tail);
         labelled (row (28), bitsLabel, bits);
-        labelled (row (28), sourceLabel, source);
-        hideSource.setBounds (row (24).withTrimmedLeft (120));
+        labelled (row (28), sourceLabel, sourceText);
         if (warning.isVisible())
             warning.setBounds (row (40));
         note.setBounds (row (40));

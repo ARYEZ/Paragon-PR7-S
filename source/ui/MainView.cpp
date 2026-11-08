@@ -2019,6 +2019,22 @@ juce::String MainView::renderWarning (const std::vector<pr7s::Studio::RenderSour
                              + " will be rendered. " + t->name + " has parts outside the cycle: disabling or removing the track silences them too. "
                                "Turn CYCLE off to render all of it.";
                     }
+    // (0.77.0) A stretch (a range, parts): the track is disabled and hidden after all, so what's outside goes silent too.
+    for (const auto& s : sources)
+        if (! s.wholeTrack)
+            if (const auto* t = project.findTrack (s.trackId))
+                for (const auto& p : t->parts)
+                {
+                    if (p.muted)
+                        continue;
+                    const auto covered = std::any_of (sources.begin(), sources.end(), [&] (const auto& o)
+                    {
+                        return o.trackId == t->id && p.start >= o.start - 1.0e-9 && p.end() <= o.end + 1.0e-9;
+                    });
+                    if (! covered)
+                        return t->name + " has parts outside what's rendered: the track is muted, disabled and hidden afterwards, "
+                                         "so they go silent too (VISIBILITY and ENABLE TRACK bring it back).";
+                }
     return {};
 }
 
