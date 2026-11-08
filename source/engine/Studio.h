@@ -1442,7 +1442,14 @@ namespace pr7s
         void finishRecording();
         void finishAudioRecording();
         bool auditioning = false;   // (0.30.0) the engine plays a soloed copy
-        struct ComposerAudition { double start = 0.0, end = 0.0, wasAt = 0.0; };
+        struct ComposerAudition
+        {
+            double start = 0.0, end = 0.0, wasAt = 0.0;
+            std::vector<std::pair<int, LineIdea>> layers;   // (0.76.0: kept, so a change to the mix plays on)
+        };
+        // (0.76.0) The song as the composer is heard: the layers as parts on their tracks, those alone (or the
+        // ones among them you soloed), each track's own fader, pan, inserts and mute. Empty: none can play.
+        std::optional<Project> composerAuditionCopy() const;
         std::optional<ComposerAudition> composerAudition;   // (0.58.0)
         juce::String composerState;                         // (without a settings file)
         void endComposerAudition (bool backToSong);

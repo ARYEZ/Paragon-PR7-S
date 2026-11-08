@@ -233,9 +233,13 @@ TEST_CASE ("Hearing the composer: its layers through the song's tracks, looped, 
     CHECK (studio.getEngine().getPosition() == 40.0);
     CHECK (studio.getProject().toXml()->toString() == songBefore);
 
-    // A change to the song ends it too.
+    // (0.76.0) A change to the song plays on (the mixer can be used while hearing); it ends when its
+    // track can no longer play it.
     REQUIRE (studio.auditionComposer ({ { piano, layers[(size_t) L::chords] } }, spans.front().start, spans.back().end));
     studio.renameTrack (other, "Something");
+    CHECK (studio.isComposerAuditioning());
+    CHECK (studio.getEngine().isPlaying());
+    studio.removeTrack (piano);
     CHECK_FALSE (studio.isComposerAuditioning());
     CHECK_FALSE (studio.getEngine().isPlaying());
 
@@ -848,3 +852,47 @@ TEST_CASE ("Snapshot: the composer suite with a song built (0.74.0)", "[.][snaps
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
 
+
+TEST_CASE ("0.76.0: the mixer while the composer is heard: faders follow, hearing goes on", "[composer][studio]")
+{
+    Studio studio (false);
+    const auto piano = studio.getProject().tracks.front().id;
+    ComposerState s;
+    const auto c = plainContext();
+    const auto spans = composerSpans (s, 0.0, 4.0);
+    const auto layers = composeLayers (s, spans, c);
+    REQUIRE (studio.auditionComposer ({ { piano, layers[(size_t) L::chords] } }, spans.front().start, spans.back().end));
+    // (Each level measured after a second has played: the fader's glide and the notes before have settled.)
+    const auto heardPeak = [&studio]
+    {
+        juce::AudioBuffer<float> settle (2, 48000), out (2, 48000);
+        studio.getEngine().render (settle, 48000, nullptr);
+        studio.getEngine().render (out, 48000, nullptr);
+        return peakOf (out);
+    };
+    const auto before = heardPeak();
+    REQUIRE (before > 0.001f);
+
+    // The track's fader down 20 dB (as the mixer's drag, then its release): still heard, quieter.
+    studio.setVolume (piano, -20.0f, false);
+    studio.setVolume (piano, -20.0f, true);
+    CHECK (studio.isComposerAuditioning());
+    CHECK (studio.getEngine().isPlaying());
+    CHECK (heardPeak() < before * 0.3f);
+    CHECK (studio.isComposerAuditioning());
+
+    // Muted in the mixer: not heard, the hearing goes on.
+    studio.setMute (piano, true);
+    CHECK (studio.isComposerAuditioning());
+    CHECK (heardPeak() < 1.0e-4f);
+    studio.setMute (piano, false);
+
+    // The composer's lanes: VOLUME is that track's fader.
+    ComposerPage page (studio);
+    page.setTrack (L::chords, piano);
+    page.setLaneVolume (L::chords, -6.0f);
+    CHECK (studio.getProject().findTrack (piano)->volumeDb == -6.0f);
+    page.setTrack (L::chords, piano);   // (a refresh)
+    CHECK (page.getLaneVolume (L::chords).getValue() == -6.0);
+    REQUIRE (page.keyNamed ("MIXER") != nullptr);
+}

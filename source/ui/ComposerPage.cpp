@@ -116,6 +116,10 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
                          "its key is guessed, its chords read, the guitar plays it and the drums and bass are built around it");
     pasteKey.onClick = [this] { showPasteMenu(); };
     addAndMakeVisible (pasteKey);
+    pedal (mixerKey);
+    mixerKey.setTooltip ("The mixer in its own window over the composer: faders, inserts, EQ while you hear the layers (they keep playing)");
+    mixerKey.onClick = [this] { if (onOpenMixer) onOpenMixer(); };
+    addAndMakeVisible (mixerKey);
     toChordTrackKey.onClick = [this] { setToChordTrack (! state.toChordTrack); };
 
     // (0.74.0) SECTION and BUILD.
@@ -160,6 +164,25 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
         lane.roll.onClick = [this, l] { roll (l); };
         lane.style.onClick = [this, l] { showStyleMenu (l); };
         lane.track.onClick = [this, l] { showTrackMenu (l); };
+        // (0.76.0) VOLUME: the fader of the track the lane is heard on (as the mixer's; hearing goes on).
+        lane.volume.setRange (-60.0, 6.0, 0.5);
+        lane.volume.setSkewFactorFromMidPoint (-12.0);
+        lane.volume.setDoubleClickReturnValue (true, 0.0);
+        lane.volume.setTextValueSuffix (" dB");
+        lane.volume.setNumDecimalPlacesToDisplay (1);
+        lane.volume.setTextBoxStyle (juce::Slider::TextBoxLeft, true, 70, 20);
+        lane.volume.setTooltip ("The volume of the track this lane plays on: the same as its fader in the mixer. Double-click: 0 dB");
+        lane.volume.onDragStart = [this, l] { draggingVolume = (int) l; };
+        lane.volume.onValueChange = [this, l]
+        {
+            setLaneVolume (l, (float) lanes[(size_t) l].volume.getValue(), draggingVolume != (int) l);
+        };
+        lane.volume.onDragEnd = [this, l]
+        {
+            draggingVolume = -1;
+            setLaneVolume (l, (float) lanes[(size_t) l].volume.getValue(), true);   // (one undo step)
+        };
+        addAndMakeVisible (lane.volume);
         lane.busy.onClick = [this, l] { showBusyMenu (l); };
         lane.low.onClick = [this, l] { showLowMenu (l); };
     }
@@ -274,6 +297,7 @@ void ComposerPage::refresh (bool rehear)
         lane.low.setButtonText (stringText (l));
     }
     seenChange = studio.getChangeVersion();
+    refreshVolumes();
     refreshSong();
     if (chordsChanged && onChordsChanged)
         onChordsChanged (placedSpans());
@@ -654,6 +678,31 @@ int ComposerPage::useLayer (ComposerLayer l)
     const auto tracks = studio.buildSection ({ ideas[(size_t) l] }, spansAt (placeStart()), "Composer", { trackFor (l, false) });
     refresh (false);
     return tracks.empty() ? 0 : tracks.front();
+}
+
+//==============================================================================
+// (0.76.0) Each lane's volume: the fader of the track it's heard on.
+void ComposerPage::setLaneVolume (ComposerLayer l, float db, bool undoable)
+{
+    const auto id = trackFor (l, true);
+    if (id == 0)
+        return;
+    if (const auto* t = studio.getProject().findTrack (id); t != nullptr && std::abs (t->volumeDb - db) < 0.01f && ! undoable)
+        return;
+    studio.setVolume (id, db, undoable);
+}
+
+void ComposerPage::refreshVolumes()
+{
+    for (const auto l : pr7s::composerLayers())
+    {
+        auto& v = lanes[(size_t) l].volume;
+        const auto id = trackFor (l, true);
+        const auto* t = id != 0 ? studio.getProject().findTrack (id) : nullptr;
+        v.setEnabled (t != nullptr);
+        if (t != nullptr && std::abs (v.getValue() - (double) t->volumeDb) > 0.01)
+            v.setValue (t->volumeDb, juce::dontSendNotification);
+    }
 }
 
 //==============================================================================
@@ -1134,7 +1183,7 @@ void ComposerPage::refreshSong()
 
 juce::Button* ComposerPage::keyNamed (const juce::String& name)
 {
-    for (auto* key : { &hearKey, &useKey, &generateKey, &libraryKey, &chordTrackKey, &toChordTrackKey, &buildKey, &myRiffKey, &pasteKey })
+    for (auto* key : { &hearKey, &useKey, &generateKey, &libraryKey, &chordTrackKey, &toChordTrackKey, &buildKey, &myRiffKey, &pasteKey, &mixerKey })
         if (key->getButtonText() == name)
             return key;
     for (const auto l : pr7s::composerLayers())
@@ -1392,6 +1441,9 @@ void ComposerPage::timerCallback()
     // The song changed (tracks added or renamed, the chord track): the lanes' tracks and chords again.
     if (! hearing && studio.getChangeVersion() != seenChange)
         refresh (false);
+    // (0.76.0) The faders moved in the mixer (mix-only changes don't move the change version): the lanes follow.
+    if (draggingVolume < 0)
+        refreshVolumes();
     if (hearing)
     {
         // The playhead across the lanes.
@@ -1432,7 +1484,7 @@ void ComposerPage::paint (juce::Graphics& g)
     g.drawText ("COMPOSER", head.removeFromTop (26), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (interFont (12.5f));
-    g.drawText (status.isNotEmpty() ? summary() + "     " + status : summary(), head.withTrimmedRight (1000), juce::Justification::centredLeft, true);
+    g.drawText (status.isNotEmpty() ? summary() + "     " + status : summary(), head.withTrimmedRight (1100), juce::Justification::centredLeft, true);
 
     // The labels in the controls row.
     g.setFont (ParagonLookAndFeel::titleFont (12.0f));
@@ -1556,7 +1608,7 @@ void ComposerPage::paintLane (juce::Graphics& g, ComposerLayer l, const Lane& la
         {
             g.setColour (ParagonColours::accent);
             g.setFont (ParagonLookAndFeel::titleFont (11.0f));
-            g.drawText ("LOCKED", lane.header.reduced (18, 6).removeFromTop (24), juce::Justification::centredRight, false);
+            g.drawText ("LOCKED", lane.header.reduced (18, 6).removeFromTop (24).withTrimmedRight (200), juce::Justification::centredRight, false);
         }
         // Where it's heard, when that's not where it's written.
         const auto writes = trackFor (l, false), heard = trackFor (l, true);
@@ -1639,6 +1691,8 @@ void ComposerPage::resized()
     sectionBox.setBounds (head.removeFromRight (190));
     head.removeFromRight (6);
     pasteKey.setBounds (head.removeFromRight (130));
+    head.removeFromRight (6);
+    mixerKey.setBounds (head.removeFromRight (90));
     head.removeFromRight (16);
     generateKey.setBounds (head.removeFromRight (160));
     head.removeFromRight (8);
@@ -1684,6 +1738,7 @@ void ComposerPage::resized()
         row.removeFromLeft (gap);
         lane.notes = row;
         auto keys = lane.header.reduced (18, 8);
+        lane.volume.setBounds (keys.withHeight (22).removeFromRight (190).translated (0, 1));
         keys.removeFromTop (28);
         const auto two = keys.getHeight() >= 60;
         auto first = keys.removeFromTop (juce::jmin (26, two ? keys.getHeight() / 2 - 3 : keys.getHeight()));

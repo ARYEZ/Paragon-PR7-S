@@ -112,6 +112,11 @@ public:
     bool isPlayingMyRiff() const noexcept { return useMyRiff && studio.getComposerRiff().has_value(); }
     void setPlayMyRiff (bool);
     std::function<std::vector<int>()> getSelectedParts;          // (MainView: the arrangement's selection)
+    // (0.76.0, the owner: instruments too loud while composing) Each lane's VOLUME is the fader of the track it's
+    // heard on; MIXER opens the mixer in its own window over the composer. Hearing goes on through both.
+    std::function<void()> onOpenMixer;
+    void setLaneVolume (pr7s::ComposerLayer, float db, bool undoable = true);
+    juce::Slider& getLaneVolume (pr7s::ComposerLayer l) noexcept { return lanes[(size_t) l].volume; }
     bool isInterestedInFileDrag (const juce::StringArray&) override;
     void filesDropped (const juce::StringArray&, int x, int y) override;
     static constexpr int myRiffIndex = 6;                        // (the guitar's riffs 0-5; a section built on your riff: 6)
@@ -132,6 +137,7 @@ private:
     struct Lane
     {
         juce::TextButton on { "ON" }, lock { "LOCK" }, roll { "ROLL" }, style, track, busy, low { "ANY STRING" };
+        juce::Slider volume { juce::Slider::LinearBar, juce::Slider::TextBoxLeft };   // (0.76.0) the track it's heard on
         juce::Rectangle<int> header, notes;
     };
 
@@ -189,7 +195,9 @@ private:
     std::vector<pr7s::ChordSpan> lastSpans;   // (taken ideas forgotten when the chords change)
     bool fromRiff = false, useMyRiff = false;
     std::map<int, pr7s::Chord> chordOverrides;
-    juce::TextButton myRiffKey { "MY RIFF" }, pasteKey { "+ MY RIFF" };
+    juce::TextButton myRiffKey { "MY RIFF" }, pasteKey { "+ MY RIFF" }, mixerKey { "MIXER" };
+    void refreshVolumes();
+    int draggingVolume = -1;
     std::unique_ptr<juce::FileChooser> chooser;
 };
 

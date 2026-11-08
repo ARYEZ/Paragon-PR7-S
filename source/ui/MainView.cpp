@@ -2453,6 +2453,15 @@ void MainView::openComposer()
     }
     composerWindow = std::make_unique<ComposerWindow> (studio);
     composerWindow->getPage().getSelectedParts = [this] { return arrange.getSelectedParts(); };   // (0.75.0: + MY RIFF)
+    composerWindow->getPage().onOpenMixer = [this]   // (0.76.0) the mixer in its window, in front of the composer
+    {
+        if (! isMixerInWindow())
+            setMixerInWindow (true);
+        if (! isMixerOpen())
+            openMixer();
+        if (auto* w = getMixerWindow())
+            w->toFront (true);
+    };
     composerWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->composerWindow.reset(); }); };
     composerWindow->centreAroundComponent (this, composerWindow->getWidth(), composerWindow->getHeight());
     composerWindow->setVisible (true);

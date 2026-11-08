@@ -2,6 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.76.0
+
+**Mixing while the composer plays.**
+
+- **What was wrong:** the composer plays its layers through a copy of the song. Any change to the song, a fader moved in the mixer included, threw that copy away and stopped the playback, so you couldn't hear what you were fixing.
+- **Now the composer keeps playing** through faders, pan, inserts, EQ, mute and solo: each change is played straight into what you're hearing. It only stops when its tracks can't play it any more (a track removed), or with the transport's stop.
+- **Mute and solo in the mixer count while composing:** a muted layer's track goes silent; soloing one of the layers' tracks plays it alone (the rest of the song stays silent as before).
+- **A VOLUME bar on every composer lane:** the fader of the track that lane is heard on, the same one as in the mixer (they move together). Double-click it for 0 dB. Each drag is one undo step.
+- **MIXER** (in the composer's header) opens the mixer in its own window in front of the composer, for inserts, EQ and the rest, while it keeps playing.
+
 ## 0.75.0
 
 **Your own riff in the composer, the key locked for the song, and chords per section from the key.**

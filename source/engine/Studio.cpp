@@ -267,8 +267,16 @@ namespace pr7s
     {
         if (mirroring)
             return;   // (a linked change: the change it came from does all this once, after)
+        // (0.76.0, the owner: the composer's instruments too loud, the mixer couldn't be used while hearing them)
+        // While the composer is heard, a change (a fader, pan, an insert, a mute) is played in its copy and the
+        // hearing goes on; it ends only when its tracks can no longer play it.
+        std::optional<Project> heardCopy;
         if (composerAudition.has_value())
-            endComposerAudition (false);   // (0.58.0: the song changed; the engine plays it again below)
+        {
+            heardCopy = composerAuditionCopy();
+            if (! heardCopy.has_value())
+                endComposerAudition (false);
+        }
         // A frozen track's parts are locked: whatever changed them is put back.
         for (auto& track : project.tracks)
             if (track.frozen)
@@ -277,7 +285,7 @@ namespace pr7s
         numberParts();
         watchPlugins();
         if (exportJob == nullptr)   // (mid-render the engine plays the render's copy: endExport brings the song back)
-            engine.update (project);
+            engine.update (heardCopy.has_value() ? *heardCopy : project);
         modified = true;
         if (undoable)
             recordUndoState();
@@ -9928,14 +9936,15 @@ namespace pr7s
             settings->setValue ("composer", text);
     }
 
-    bool Studio::auditionComposer (const std::vector<std::pair<int, LineIdea>>& layers, double start, double end)
+    std::optional<Project> Studio::composerAuditionCopy() const
     {
-        if (exportJob != nullptr || end <= start || engine.isRecording())
-            return false;
+        if (! composerAudition.has_value())
+            return std::nullopt;
+        const auto start = composerAudition->start, end = composerAudition->end;
         // A copy of the song: each layer a part on its track, those tracks alone, the cycle round the layers.
         auto heard = project;
         std::set<int> playing;
-        for (const auto& [trackId, idea] : layers)
+        for (const auto& [trackId, idea] : composerAudition->layers)
         {
             if (! canTakeMidi (trackId) || idea.notes.empty())
                 continue;
@@ -9944,32 +9953,47 @@ namespace pr7s
             playing.insert (trackId);
         }
         if (playing.empty())
-            return false;
+            return std::nullopt;
+        // (0.76.0) Soloed in the mixer among the layers' tracks: only those; muted: not heard. The rest of the
+        // song stays silent, as before.
+        const auto anySoloed = std::any_of (heard.tracks.begin(), heard.tracks.end(),
+                                            [&playing] (const Track& t) { return t.solo && playing.count (t.id) > 0; });
         for (auto& t : heard.tracks)
-        {
-            t.solo = playing.count (t.id) > 0;
-            t.mute = false;
-        }
+            t.solo = playing.count (t.id) > 0 && (! anySoloed || t.solo);
         heard.loopOn = true;
         heard.loopStart = start;
         heard.loopEnd = end;
+        return heard;
+    }
+
+    bool Studio::auditionComposer (const std::vector<std::pair<int, LineIdea>>& layers, double start, double end)
+    {
+        if (exportJob != nullptr || end <= start || engine.isRecording())
+            return false;
         const auto first = ! composerAudition.has_value();
+        const auto before = composerAudition;
         if (first)
-        {
-            // From the song's own playing: stopped first (where it was is where it goes back to).
-            if (engine.isPlaying())
-            {
-                punchOutAll();
-                engine.stop();
-            }
-            composerAudition = ComposerAudition { start, end, engine.getPosition() };
-        }
+            composerAudition = ComposerAudition { start, end, engine.getPosition(), layers };
         else
         {
             composerAudition->start = start;
             composerAudition->end = end;
+            composerAudition->layers = layers;
         }
-        engine.update (heard);
+        const auto heard = composerAuditionCopy();
+        if (! heard.has_value())
+        {
+            composerAudition = before;
+            return false;
+        }
+        if (first && engine.isPlaying())
+        {
+            // From the song's own playing: stopped first (where it was is where it goes back to).
+            punchOutAll();
+            engine.stop();
+            composerAudition->wasAt = engine.getPosition();
+        }
+        engine.update (*heard);
         if (first || ! engine.isPlaying())
         {
             engine.setPosition (start);
