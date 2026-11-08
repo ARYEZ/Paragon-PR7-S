@@ -773,6 +773,8 @@ namespace pr7s
                     n->setAttribute ("length", note.length);
                     n->setAttribute ("pitch", note.pitch);
                     n->setAttribute ("velocity", note.velocity);
+                    if (note.muted)
+                        n->setAttribute ("muted", true);
                 }
                 for (const auto& c : part.controllers)
                 {
@@ -1064,7 +1066,8 @@ namespace pr7s
                 for (const auto* n : p->getChildWithTagNameIterator (noteTag))
                     part.notes.push_back ({ n->getDoubleAttribute ("start"), juce::jmax (0.001, n->getDoubleAttribute ("length", 0.25)),
                                             juce::jlimit (0, 127, n->getIntAttribute ("pitch", 60)),
-                                            (float) juce::jlimit (0.0, 1.0, n->getDoubleAttribute ("velocity", 0.8)) });
+                                            (float) juce::jlimit (0.0, 1.0, n->getDoubleAttribute ("velocity", 0.8)),
+                                            n->getBoolAttribute ("muted") });
                 for (const auto* e : p->getChildWithTagNameIterator ("Controller"))
                 {
                     const auto code = ControllerKinds::fromText (e->getStringAttribute ("kind"));

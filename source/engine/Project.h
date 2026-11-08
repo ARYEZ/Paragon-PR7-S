@@ -28,6 +28,7 @@ namespace pr7s
         double length = 0.25;   // beats
         int pitch = 60;         // MIDI note number, 60 = middle C
         float velocity = 0.8f;  // 0 to 1
+        bool muted = false;     // (0.77.1) the MIDI editor's MUTE tool: kept and shown, not played
 
         bool operator== (const Note&) const = default;
     };

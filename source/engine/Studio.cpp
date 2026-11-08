@@ -2043,7 +2043,7 @@ namespace pr7s
             // ((0.47.0) each part's info-line Transpose and Velocity written into its notes: the glued part has none.)
             for (const auto& note : glued.notes)
                 if (note.start >= 0.0 && note.start < glued.length)
-                    notes.push_back ({ note.start, juce::jmin (note.length, glued.length - note.start), glued.heardPitch (note.pitch), glued.heardVelocity (note.velocity) });
+                    notes.push_back ({ note.start, juce::jmin (note.length, glued.length - note.start), glued.heardPitch (note.pitch), glued.heardVelocity (note.velocity), note.muted });
             auto end = glued.end();
             for (const auto i : after)
             {
@@ -2051,7 +2051,7 @@ namespace pr7s
                 for (const auto& note : next.notes)
                     if (note.start >= 0.0 && note.start < next.length)
                         notes.push_back ({ next.start - glued.start + note.start, juce::jmin (note.length, next.length - note.start),
-                                           next.heardPitch (note.pitch), next.heardVelocity (note.velocity) });
+                                           next.heardPitch (note.pitch), next.heardVelocity (note.velocity), note.muted });
                 end = juce::jmax (end, next.end());
             }
             std::stable_sort (notes.begin(), notes.end(), [] (const Note& a, const Note& b) { return a.start < b.start; });
@@ -2250,9 +2250,14 @@ namespace pr7s
             {
                 if (std::find (partIds.begin(), partIds.end(), part.id) == partIds.end() || part.notes.empty())
                     continue;
+                // (0.77.1) Muted notes stay as they are (they aren't heard); the others are humanized.
                 std::vector<LineNote> notes;
+                std::vector<Note> mutedNotes;
                 for (const auto& n : part.notes)
-                    notes.push_back ({ n.start, n.length, n.pitch, n.velocity });
+                    if (n.muted)
+                        mutedNotes.push_back (n);
+                    else
+                        notes.push_back ({ n.start, n.length, n.pitch, n.velocity });
                 HumanizeOptions o;
                 o.amount = amount;
                 o.bpm = project.bpmAt (part.start);
@@ -2262,7 +2267,7 @@ namespace pr7s
                     o.layers = guitarLayers();
                 o.seed = (juce::uint32) juce::Random::getSystemRandom().nextInt();
                 notes = humanize (std::move (notes), o);
-                part.notes.clear();
+                part.notes = std::move (mutedNotes);
                 for (const auto& n : notes)
                     part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
                 any = true;

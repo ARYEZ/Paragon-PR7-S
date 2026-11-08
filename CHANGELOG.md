@@ -2,6 +2,18 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.77.1
+
+**The left side can be grabbed too.**
+
+- **MIDI parts in the arrangement:** the left edge now drags the part's start (the pointer turns into the two-way arrow there, as on the right edge). The notes stay where they are in the song; drag it left to make room before them, right to cut the beginning off (notes before the new start are left out). Before, only audio clips had a left edge; a MIDI part's left side just moved the whole part.
+- **Notes in the MIDI editor:** a note's left end drags its start, its end staying put (several selected notes move together; not past the part's start, and each keeps at least a grid step). Before, only the right end lengthened a note.
+- The middle still moves, Alt still copies, and each drag is one undo step.
+
+**The MIDI editor's MUTE tool** (as the arrangement's): MUTE in the editor's panel, or key 7. Click a note to mute it (again to unmute; with several selected, the selection), or drag a box: everything it touches is muted, or unmuted when it all was. Muted notes stay in the part, drawn faded with a pale outline, and aren't played (nor exported to MIDI files or dragged out); they're saved with the song. Humanize leaves them where they are.
+
+**The mixer's numbers follow straight away:** moving a fader or typing a value (double-click) now shows the new dB (and pan) under it at once. Before, the number was redrawn only when something else made the strip redraw, such as the next click.
+
 ## 0.77.0
 
 **Render in Place always mutes, disables and hides the original, however it's started.**

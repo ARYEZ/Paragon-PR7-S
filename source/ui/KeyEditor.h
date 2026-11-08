@@ -56,7 +56,7 @@ public:
     KeyEditor (pr7s::Studio&, ArrangeView&);
     ~KeyEditor() override;
 
-    enum class Tool { select, draw, erase, split, line };
+    enum class Tool { select, draw, erase, split, line, mute };
     void setTool (Tool);
     Tool getTool() const noexcept { return tool; }
 
@@ -295,7 +295,7 @@ public:
 
 private:
     juce::uint64 seenChange = 0;   // (0.57.1) the studio's change version last acted on
-    enum class Gesture { none, position, audition, band, move, resize, draw, erase, velocity, velocityHandle,
+    enum class Gesture { none, position, audition, band, muteBand, move, resize, resizeStart, draw, erase, velocity, velocityHandle,
                          controllerDraw, controllerErase, controllerBand, controllerMove, controllerHandle, controllerLine, laneResize };
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
@@ -332,6 +332,9 @@ private:   // the selected notes, at the column's foot
     bool editing() const noexcept;
     void begin();
     void commit (std::vector<pr7s::Note>);
+public:
+    void setNotesMuted (const std::vector<int>& indices, bool muted);   // (0.77.1) the MUTE tool's work: one undo step
+private:
     int noteAt (juce::Point<float>) const;
     double snapped (double songBeat, bool free) const noexcept;
     void eraseAt (juce::Point<float>);
@@ -448,7 +451,7 @@ private:
     juce::Random random;
     void refreshVelocityKeys();
     void showVelocityRanges();
-    juce::TextButton selectTool { "SELECT" }, drawTool { "DRAW" }, eraseTool { "ERASE" }, splitTool { "SPLIT" }, quantizeButton { "QUANTIZE" },
+    juce::TextButton selectTool { "SELECT" }, drawTool { "DRAW" }, eraseTool { "ERASE" }, muteTool { "MUTE" }, splitTool { "SPLIT" }, quantizeButton { "QUANTIZE" },
                      windowButton { "WINDOW" }, closeButton { "CLOSE" }, autoScrollButton { "AUTO-SCROLL" }, autoScrollMenu,
                      instrumentKey { "INSTRUMENT" };   // (0.31.0) the track's instrument window
     bool inWindow = false;

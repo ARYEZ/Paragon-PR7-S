@@ -41,7 +41,7 @@ namespace
 KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     : studio (studioToUse), arrange (arrangeToUse)
 {
-    for (auto* button : { &selectTool, &drawTool, &splitTool, &eraseTool, &quantizeButton })
+    for (auto* button : { &selectTool, &drawTool, &splitTool, &eraseTool, &muteTool, &quantizeButton })
     {
         button->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         button->setWantsKeyboardFocus (false);
@@ -52,6 +52,10 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     eraseTool.setTooltip ("ERASE (5): click or drag across notes to remove them");
     splitTool.setTooltip ("SPLIT (3): click a note to cut it in two there (on the grid; Ctrl: anywhere); several selected: all of them that cross it");
     splitTool.onClick = [this] { setTool (Tool::split); };
+    // (0.77.1, the owner: the arrangement's MUTE tool in the MIDI editor too)
+    muteTool.setTooltip ("MUTE (7): click a note to mute it (again to unmute), or drag a box: all it touches are muted, or unmuted "
+                         "when they all were; muted notes stay in the part, drawn faded, and aren't played");
+    muteTool.onClick = [this] { setTool (Tool::mute); };
     penCursor = ToolIcons::cursor (ArrangeView::Tool::draw);
     scissorsCursor = ToolIcons::cursor (ArrangeView::Tool::split);
     quantizeButton.setTooltip ("QUANTIZE (Q): moves the selected notes' starts (all the notes, with none selected) to the nearest step of "
@@ -230,6 +234,7 @@ void KeyEditor::setTool (Tool newTool)
     selectTool.setToggleState (tool == Tool::select, juce::dontSendNotification);
     drawTool.setToggleState (tool == Tool::draw, juce::dontSendNotification);
     eraseTool.setToggleState (tool == Tool::erase, juce::dontSendNotification);
+    muteTool.setToggleState (tool == Tool::mute, juce::dontSendNotification);
     splitTool.setToggleState (tool == Tool::split, juce::dontSendNotification);
     lineTool.setToggleState (tool == Tool::line, juce::dontSendNotification);
     // The tool as the pointer (0.9.3: the pencil, not crosshairs; the scissors).
@@ -279,7 +284,7 @@ const std::vector<pr7s::Note>& KeyEditor::notes() const
 
 bool KeyEditor::editing() const noexcept
 {
-    return gesture == Gesture::move || gesture == Gesture::resize || gesture == Gesture::draw
+    return gesture == Gesture::move || gesture == Gesture::resize || gesture == Gesture::resizeStart || gesture == Gesture::draw
         || gesture == Gesture::erase || gesture == Gesture::velocity || gesture == Gesture::velocityHandle;
 }
 
@@ -633,6 +638,24 @@ void KeyEditor::selectAll()
     selectNotes (std::move (all));
 }
 
+void KeyEditor::setNotesMuted (const std::vector<int>& indices, bool muted)
+{
+    const auto* part = getPart();
+    if (part == nullptr)
+        return;
+    auto edited = part->notes;
+    auto any = false;
+    for (const auto i : indices)
+        if (juce::isPositiveAndBelow (i, (int) edited.size()) && edited[(size_t) i].muted != muted)
+        {
+            edited[(size_t) i].muted = muted;
+            any = true;
+        }
+    if (any)
+        commit (edited);   // (one undo step)
+    repaint();
+}
+
 void KeyEditor::begin()
 {
     working = notes();
@@ -739,7 +762,7 @@ bool KeyEditor::humanizeSelected (float amount)
     notes = pr7s::humanize (std::move (notes), o);
     auto edited = part->notes;
     for (size_t k = 0; k < slots.size(); ++k)
-        edited[(size_t) slots[k]] = { notes[k].beat, notes[k].length, notes[k].pitch, notes[k].velocity };
+        edited[(size_t) slots[k]] = { notes[k].beat, notes[k].length, notes[k].pitch, notes[k].velocity, edited[(size_t) slots[k]].muted };
     const auto keep = selected;
     commit (std::move (edited));
     selectNotes (keep);
@@ -1151,6 +1174,7 @@ bool KeyEditor::keyPressed (const juce::KeyPress& key)
     if (key.getTextCharacter() == '8')                                           { setTool (Tool::draw); return true; }
     if (key.getTextCharacter() == '5')                                           { setTool (Tool::erase); return true; }
     if (key.getTextCharacter() == '3')                                           { setTool (Tool::split); return true; }
+    if (key.getTextCharacter() == '7')                                           { setTool (Tool::mute); return true; }
     return false;
 }
 
@@ -1263,8 +1287,9 @@ void KeyEditor::mouseMove (const juce::MouseEvent& event)
     if (tool == Tool::select)
     {
         const auto hit = noteAt (event.position);
+        const auto grab = hit >= 0 ? juce::jmin (edgeGrab, getNoteBounds (hit).getWidth() / 3.0f) : 0.0f;
         const auto atEnd = hit >= 0 && ! (drumViewOn && ! showDrumLengths)
-                           && event.position.x > getNoteBounds (hit).getRight() - juce::jmin (edgeGrab, getNoteBounds (hit).getWidth() / 3.0f);
+                           && (event.position.x > getNoteBounds (hit).getRight() - grab || event.position.x < getNoteBounds (hit).getX() + grab);
         setMouseCursor (atEnd ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor);
     }
 }
@@ -1350,6 +1375,18 @@ void KeyEditor::mouseDown (const juce::MouseEvent& event)
         case Tool::line:
             return;   // (in the lanes only)
 
+        case Tool::mute:
+            if (hit >= 0)
+            {
+                // A note clicked: muted, or unmuted if it was (with the others selected, if it's one of them).
+                const auto targets = std::binary_search (selected.begin(), selected.end(), hit) ? selected : std::vector<int> { hit };
+                setNotesMuted (targets, ! part->notes[(size_t) hit].muted);
+                return;
+            }
+            gesture = Gesture::muteBand;
+            band = { point, point };
+            return;
+
         case Tool::split:
             if (hit >= 0)
                 splitAt (hit, free ? beatForX (point.x) : pr7s::snap (beatForX (point.x), grid));
@@ -1414,8 +1451,12 @@ void KeyEditor::mouseDown (const juce::MouseEvent& event)
     begin();
     clicked = anchor = hit;
     const auto bounds = getNoteBounds (hit);
-    gesture = point.x > bounds.getRight() - juce::jmin (edgeGrab, bounds.getWidth() / 3.0f) && ! (drumViewOn && ! showDrumLengths)
-                  ? Gesture::resize : Gesture::move;
+    const auto grab = juce::jmin (edgeGrab, bounds.getWidth() / 3.0f);
+    const auto lengths = ! (drumViewOn && ! showDrumLengths);
+    // (0.77.1, the owner) The left end too: the start moves, the end stays.
+    gesture = lengths && point.x > bounds.getRight() - grab ? Gesture::resize
+            : lengths && point.x < bounds.getX() + grab ? Gesture::resizeStart
+                                                        : Gesture::move;
     dragging = selected;
     if (gesture == Gesture::move && event.mods.isAltDown())
     {
@@ -1456,6 +1497,11 @@ void KeyEditor::mouseDrag (const juce::MouseEvent& event)
         case Gesture::audition:
             if (const auto pitch = pitchForY (point.y); pitch != auditioning)
                 startAudition (pitch, newVelocity);
+            return;
+
+        case Gesture::muteBand:
+            band = juce::Rectangle<float> (downAt, point);
+            repaint();
             return;
 
         case Gesture::band:
@@ -1535,6 +1581,33 @@ void KeyEditor::mouseDrag (const juce::MouseEvent& event)
             return;
         }
 
+        case Gesture::resizeStart:
+        {
+            if (part == nullptr)
+                return;
+            moved = true;
+            const auto& a = original[(size_t) anchor];
+            const auto start = part->start + a.start;
+            auto change = snapped (start + beatForX (point.x) - beatForX (downAt.x), free) - start;
+            const auto shortest = free ? finest : grid;
+            // Not before the part's start, and each note keeps at least the shortest length.
+            for (const auto i : dragging)
+            {
+                const auto& o = original[(size_t) i];
+                change = juce::jmax (change, -o.start);
+                change = juce::jmin (change, o.length - shortest);
+            }
+            for (const auto i : dragging)
+            {
+                const auto& o = original[(size_t) i];
+                working[(size_t) i].start = o.start + change;
+                working[(size_t) i].length = o.length - change;
+            }
+            refreshPanel();
+            repaint();
+            return;
+        }
+
         case Gesture::draw:
         {
             if (part == nullptr)
@@ -1597,6 +1670,7 @@ void KeyEditor::mouseUp (const juce::MouseEvent&)
         return;
     }
     const auto finished = gesture;
+    const auto finishedBand = band;   // (the MUTE box reads it below)
     gesture = Gesture::none;
     stopAudition();
     shownVelocity = -1.0f;
@@ -1615,6 +1689,7 @@ void KeyEditor::mouseUp (const juce::MouseEvent&)
             commit (working);
             break;
         case Gesture::resize:
+        case Gesture::resizeStart:
         case Gesture::draw:
         case Gesture::erase:
         case Gesture::velocity:
@@ -1624,6 +1699,22 @@ void KeyEditor::mouseUp (const juce::MouseEvent&)
             if (finished == Gesture::draw && getPart() != nullptr && selected.size() <= 1)
                 selected = { anchor };
             break;
+        case Gesture::muteBand:
+        {
+            // (0.77.1) The box: every note it touches muted, or unmuted when they all were (as the arrangement's MUTE).
+            std::vector<int> touched;
+            for (int i = 0; i < (int) notes().size(); ++i)
+                if (getNoteBounds (i).intersects (finishedBand))
+                    touched.push_back (i);
+            if (! touched.empty())
+            {
+                const auto allMuted = std::all_of (touched.begin(), touched.end(), [this] (int i) { return notes()[(size_t) i].muted; });
+                setNotesMuted (touched, ! allMuted);
+            }
+            band = {};
+            repaint();
+            break;
+        }
         case Gesture::position:
         case Gesture::audition:
         case Gesture::band:
@@ -1770,7 +1861,7 @@ void KeyEditor::layoutColumn()
     gap();
     place (instrumentKey);
     gap();
-    for (auto* key : std::initializer_list<juce::Component*> { &selectTool, &drawTool, &splitTool, &eraseTool, &lineTool })
+    for (auto* key : std::initializer_list<juce::Component*> { &selectTool, &drawTool, &splitTool, &eraseTool, &muteTool, &lineTool })
         place (*key);
     gap();
     place (gridBox);
@@ -1920,7 +2011,7 @@ void KeyEditor::paintInfo (juce::Graphics& g, juce::Rectangle<float> info)
     {
         line1 = list.empty() ? juce::String ("No notes yet") : juce::String ((int) list.size()) + (list.size() == 1 ? " note" : " notes");
         line2 = tool == Tool::draw ? "Click to draw a note" : tool == Tool::erase ? "Click or drag across notes to erase"
-                                                                                 : "Double-click for a new note";
+              : tool == Tool::mute ? "Click or box notes to mute them" : "Double-click for a new note";
     }
     g.setColour (ParagonColours::text);
     g.setFont (font (13.0f));
@@ -2064,15 +2155,16 @@ void KeyEditor::paintNotes (juce::Graphics& g)
             const auto c = bounds.getCentre();
             const auto r = bounds.getWidth() * 0.5f;
             diamond.addQuadrilateral (c.x, c.y - r, c.x + r, c.y, c.x, c.y + r, c.x - r, c.y);
-            g.setColour ((isSelected ? fill.brighter (0.35f) : fill).withAlpha (muted ? 0.25f : 1.0f));
+            g.setColour ((isSelected ? fill.brighter (0.35f) : fill).withAlpha (muted || note.muted ? 0.25f : 1.0f));
             g.fillPath (diamond);
             g.setColour (isSelected ? juce::Colours::white : juce::Colours::black.withAlpha (0.55f));
             g.strokePath (diamond, juce::PathStrokeType (isSelected ? 1.5f : 1.0f));
             continue;
         }
-        g.setColour (isSelected ? fill.brighter (0.35f) : fill);
+        // (0.77.1) A muted note: faded, with a pearl outline (still there, not played).
+        g.setColour ((isSelected ? fill.brighter (0.35f) : fill).withAlpha (note.muted ? 0.22f : 1.0f));
         g.fillRoundedRectangle (bounds, 2.0f);
-        g.setColour (isSelected ? juce::Colours::white : juce::Colours::black.withAlpha (0.55f));
+        g.setColour (isSelected ? juce::Colours::white : note.muted ? juce::Colour (0xfff4eeea).withAlpha (0.6f) : juce::Colours::black.withAlpha (0.55f));
         g.drawRoundedRectangle (bounds.reduced (0.5f), 2.0f, isSelected ? 1.5f : 1.0f);
         if (bounds.getWidth() > 30.0f)
         {
@@ -2126,7 +2218,7 @@ void KeyEditor::paintNotes (juce::Graphics& g)
         g.drawText (text, stamp.withWidth (textWidth).withTrimmedLeft (7.0f), juce::Justification::centredLeft, false);
     }
 
-    if (gesture == Gesture::band && ! band.isEmpty())
+    if ((gesture == Gesture::band || gesture == Gesture::muteBand) && ! band.isEmpty())
     {
         g.setColour (ParagonColours::accent.withAlpha (0.12f));
         g.fillRect (band);

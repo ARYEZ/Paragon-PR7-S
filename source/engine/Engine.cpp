@@ -781,6 +781,8 @@ namespace pr7s
                     const auto& note = part.notes[n];
                     if (follows && followed[n].dropped)
                         continue;
+                    if (note.muted)
+                        continue;   // (0.77.1) muted in the MIDI editor
                     // (0.47.0) The part's Transpose and Velocity from the info line, for playback only.
                     const auto pitch = part.heardPitch (juce::jlimit (0, 127, follows ? followed[n].pitch : note.pitch));
                     const auto on = part.start + note.start;
