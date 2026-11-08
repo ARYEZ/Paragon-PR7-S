@@ -7,6 +7,10 @@
 #include "ui/Finish.h"
 #include "ui/ParagonLookAndFeel.h"
 
+#if JUCE_WINDOWS
+namespace juce { extern std::atomic<bool> paragonPreferSoftwareRenderer; }   // (0.76.1: JUCE patched, cmake/PatchJuce.cmake)
+#endif
+
 namespace Windows
 {
     namespace
@@ -718,6 +722,10 @@ namespace Windows
 
     int applyDrawing (bool software)
     {
+       #if JUCE_WINDOWS
+        // (0.76.1) JUCE (patched: cmake/PatchJuce.cmake) makes new windows and images with the processor too.
+        juce::paragonPreferSoftwareRenderer.store (software);
+       #endif
         FamilyAlertWindow::softwareDrawing = software;   // (0.73.4: menus and boxes made from now on, at once)
         auto switched = 0;
         for (int i = 0; i < juce::ComponentPeer::getNumPeers(); ++i)

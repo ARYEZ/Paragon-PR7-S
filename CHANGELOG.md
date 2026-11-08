@@ -2,6 +2,15 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.76.1
+
+**A freeze after Render in Place (with Mute or Disable the source) when drawing without the graphics card.**
+
+- **What the log showed:** the render itself finished and the drums track was disabled, then ten seconds later the screen froze inside the NVIDIA driver (Direct2D), the same place as the earlier freezes, even though DRAW WITHOUT THE GRAPHICS CARD was on.
+- **Why the setting didn't cover it:** on Windows the framework the studio is built on gives every new window (a menu, the render's progress box) a graphics-card drawing context first, and makes every image (shadows, the screens' glow, icons) on the graphics card, whatever the window draws with. The setting only switched windows over afterwards, so each window that opened or closed (the progress box, right where this froze) still went through the graphics card's driver.
+- **Now, with the setting on, nothing is made on the graphics card at all:** new windows are made with the processor's drawing from the start, and images are made in memory. The studio's copy of the framework is patched for this (two lines, the same switch the framework already uses when it runs under Wine).
+- It's set before the first window opens, so the whole session is drawn by the processor.
+
 ## 0.76.0
 
 **Mixing while the composer plays.**

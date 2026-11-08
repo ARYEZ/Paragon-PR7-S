@@ -26,6 +26,9 @@ public:
         juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
         pr7s::clearDragOutFolder();   // (0.53.1: last session's dragged-out parts)
         studio = std::make_unique<pr7s::Studio> (true);
+        // (0.76.1) Before the first window: with DRAW WITHOUT THE GRAPHICS CARD no window or image is ever made
+        // on the graphics card (JUCE patched: cmake/PatchJuce.cmake); switching afterwards left Direct2D behind.
+        Windows::applyDrawing (studio->getSoftwareDrawing());
         window = std::make_unique<MainWindow> (*this, *studio);
         if (studio->getSoftwareDrawing())   // (0.60.0)
         {

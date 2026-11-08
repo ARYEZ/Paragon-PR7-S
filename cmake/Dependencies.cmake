@@ -4,10 +4,13 @@
 include(FetchContent)
 
 # JUCE: audio application framework (AGPLv3 for open-source projects).
+# (0.76.1) Patched after fetching: cmake/PatchJuce.cmake (DRAW WITHOUT THE GRAPHICS CARD: no Direct2D at all).
 FetchContent_Declare(juce
     GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
     GIT_TAG        9.0.4
-    GIT_SHALLOW    TRUE)
+    GIT_SHALLOW    TRUE
+    UPDATE_DISCONNECTED TRUE
+    PATCH_COMMAND  ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_LIST_DIR}/PatchJuce.cmake)
 
 FetchContent_MakeAvailable(juce)
 
