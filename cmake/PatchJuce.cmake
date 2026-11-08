@@ -36,7 +36,16 @@ ImagePixelData::Ptr NativeImageType::create (Image::PixelFormat format, int widt
 "paragonPreferSoftwareRenderer { false }")
 
 paragon_patch ("modules/juce_gui_basics/native/juce_Windowing_windows.cpp"
-"    const auto renderer = juce_isRunningInWine() ? 0 : 1;"
-"    extern std::atomic<bool> paragonPreferSoftwareRenderer;   // (Paragon PR7-S: juce_Direct2DImage_windows.cpp)
+"ComponentPeer* Component::createNewPeer (int styleFlags, void* parentHWND)
+{
+    const auto renderer = juce_isRunningInWine() ? 0 : 1;"
+"// (Paragon PR7-S: defined in juce_Direct2DImage_windows.cpp; declared at namespace scope, not inside the
+// function: MSVC put a block-scope extern in the global namespace and the link failed.)
+extern std::atomic<bool> paragonPreferSoftwareRenderer;
+
+ComponentPeer* Component::createNewPeer (int styleFlags, void* parentHWND)
+{
     const auto renderer = juce_isRunningInWine() || paragonPreferSoftwareRenderer.load() ? 0 : 1;"
-"extern std::atomic<bool> paragonPreferSoftwareRenderer;")
+"extern std::atomic<bool> paragonPreferSoftwareRenderer;
+
+ComponentPeer")
