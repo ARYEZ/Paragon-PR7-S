@@ -76,6 +76,11 @@ private:
     juce::Slider humanizeAmount;
     juce::ToggleButton humanizeLayers { "Keep velocities in their layers (1-59 / 60-119 / 120-126 / 127)" };
     // AUTO-SAVE (0.72.0): how often, how many copies kept, the folder.
+    // (0.77.3) DEFAULT DRUM MAP: the map chosen for you wherever one is needed.
+    juce::Label drumMapLabel;
+    juce::ComboBox drumMapBox;
+    juce::StringArray drumMapNames;   // by item id - 1 ("" = automatic)
+    void refreshDrumMaps();
     juce::Label autoSaveTitle, autoSaveNote;
     juce::ComboBox autoSaveBox, keepBox;
     juce::TextButton showBackups { "SHOW BACKUPS" };
@@ -88,6 +93,8 @@ public:
     juce::Slider& getDropStrength() noexcept { return dropStrength; }
     juce::ComboBox& getAutoSaveBox() noexcept { return autoSaveBox; }   // (0.72.0: tests)
     juce::ComboBox& getKeepBox() noexcept { return keepBox; }
+    juce::ComboBox& getDrumMapBox() noexcept { return drumMapBox; }   // (0.77.3: tests)
+    void setDefaultDrumMap (const juce::String& name);                 // as choosing it in the box
 
     // HUMANIZE (0.20.1, the owner asked: the key and the settings in the Hub). The key map the
     // studio uses (MainView's: the same assignments as KEYS); its command "MIDI.Humanize".

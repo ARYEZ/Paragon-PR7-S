@@ -2,6 +2,18 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.77.3
+
+**A default drum map for every song.** HUB SETTINGS has a new box, DEFAULT DRUM MAP (under DRAG HIGHLIGHT):
+
+- **AUTOMATIC** (as before): the GM Map, or the PR7-D Map on tracks playing PR7-D.
+- **GM MAP**, **PR7-D MAP**, or **any map in your Drum Maps folder** (Documents/Paragon PR7-S/Drum Maps, such as a .drm exported from another program): that one map everywhere a drum map is chosen for you. That means new drum tracks from the composer and IDEAS, the drum editor's first open on a track, and Change Instrument. Songs opening also get it, on any track that was on the GM Map or the PR7-D Map.
+- A track on a drum map of your own keeps it. If the chosen map is no longer in the folder, AUTOMATIC is used until it's back.
+
+**The horizontal scroll bar always shows.** It was always there, under the MIDI editor and the arrangement, but when the whole song fit on the screen it had no handle and looked missing. Now there's always half a screen of room past what's in view, so the handle always shows and you can scroll on to the right.
+
+**The MIDI editor's tools look like the main window's.** SELECT, DRAW, SPLIT, ERASE, MUTE and LINE in the editor's panel are the same keys as the TOOLS row's, with the same icons. ERASE and MUTE also show the main window's eraser and mute pointers over the notes. Leaving the velocity lane now puts the tool's pointer back; before, it stayed the plain arrow.
+
 ## 0.77.2
 
 **The MIDI editor names PR7-D's drums as PR7-D does.** PR7-D starts on its GROOVE LIBRARY note layout (SETTINGS > MAP), where the notes aren't General MIDI's: note 50 is Cymbal 2's mute hit, 27 China 1, 41 the second floor tom, and so on up to 127. The MIDI editor only knew the General MIDI names, so many drum rows were named after the wrong drum (and notes under 27 or over 87 had no name at all).

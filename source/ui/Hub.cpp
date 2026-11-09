@@ -1,5 +1,6 @@
 #include "Hub.h"
 #include "ui/InstrumentsPage.h"
+#include "engine/DrumMaps.h"
 
 #include "ui/Finish.h"
 #include "ui/Logo.h"
@@ -183,6 +184,22 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
     addAndMakeVisible (dropStrength);
 
     // AUTO-SAVE (0.72.0, the owner asked: the choices here).
+    drumMapLabel.setText ("DEFAULT DRUM MAP: the one drum tracks get (new drum tracks, the drum editor, songs as they open)", juce::dontSendNotification);
+    drumMapLabel.setColour (juce::Label::textColourId, ParagonColours::text);
+    drumMapLabel.setFont (ParagonLookAndFeel::textFont (13.0f));
+    addAndMakeVisible (drumMapLabel);
+    drumMapBox.setTooltip ("AUTOMATIC: the GM Map, or the PR7-D Map on tracks playing PR7-D. Or one map for every song: the GM Map, "
+                           "the PR7-D Map, or one in your Drum Maps folder (Documents/Paragon PR7-S/Drum Maps). A track on a map "
+                           "of your own keeps it.");
+    drumMapBox.onChange = [this]
+    {
+        const auto i = drumMapBox.getSelectedId() - 1;
+        if (juce::isPositiveAndBelow (i, drumMapNames.size()))
+            studio.setDefaultDrumMap (drumMapNames[i]);
+    };
+    refreshDrumMaps();
+    addAndMakeVisible (drumMapBox);
+
     autoSaveTitle.setText ("AUTO-SAVE", juce::dontSendNotification);
     autoSaveTitle.setFont (ParagonLookAndFeel::titleFont (18.0f));
     autoSaveTitle.setColour (juce::Label::textColourId, ParagonColours::text);
@@ -509,6 +526,8 @@ void Hub::openItem (int index)
 void Hub::showSettingsPage (bool on)
 {
     settingsPage = on;
+    if (on)
+        refreshDrumMaps();   // (the folder's maps as they are now)
     instrumentsPage = false;
     resized();
     repaint();
@@ -711,6 +730,7 @@ void Hub::resized()
                                                                          &humanizeTitle, &humanizeKeyLabel, &humanizeSetKey, &humanizeClearKey,
                                                                          &humanizeAmountLabel, &humanizeAmount, &humanizeLayers, &humanizeNote,
                                                                          &autoSaveTitle, &autoSaveBox, &keepBox, &showBackups, &autoSaveNote,
+                                                                         &drumMapLabel, &drumMapBox,
                                                                          &useDefault, &locationLabel, &chooseLocation, &folderName })
             c->setVisible (false);
         return;
@@ -724,7 +744,8 @@ void Hub::resized()
     for (auto* c : std::initializer_list<juce::Component*> { &showPaths, &showLocation, &atStart, &addLocation, &removeLocation, &locationsBox, &dropLabel, &dropStrength,
                                                                      &humanizeTitle, &humanizeKeyLabel, &humanizeSetKey, &humanizeClearKey,
                                                                      &humanizeAmountLabel, &humanizeAmount, &humanizeLayers, &humanizeNote,
-                                                                     &autoSaveTitle, &autoSaveBox, &keepBox, &showBackups, &autoSaveNote })
+                                                                     &autoSaveTitle, &autoSaveBox, &keepBox, &showBackups, &autoSaveNote,
+                                                                     &drumMapLabel, &drumMapBox })
         c->setVisible (settingsPage);
     for (auto* c : std::initializer_list<juce::Component*> { &useDefault, &locationLabel, &chooseLocation, &folderName })
         c->setVisible (settingsPage || locationOnPage);
@@ -815,7 +836,40 @@ void Hub::resized()
         dropLabel.setBounds (p.removeFromTop (24).withWidth (leftWidth));
         p.removeFromTop (4);
         dropStrength.setBounds (p.removeFromTop (26).withWidth (juce::jmin (360, leftWidth)));
+        // DEFAULT DRUM MAP (0.77.3) under it.
+        p.removeFromTop (18);
+        drumMapLabel.setBounds (p.removeFromTop (24).withWidth (leftWidth));
+        p.removeFromTop (4);
+        drumMapBox.setBounds (p.removeFromTop (28).withWidth (juce::jmin (420, leftWidth)));
     }
+}
+
+void Hub::refreshDrumMaps()
+{
+    // AUTOMATIC, the two built in, then the Drum Maps folder's (and the chosen one if it's gone from there).
+    drumMapNames.clearQuick();
+    drumMapBox.clear (juce::dontSendNotification);
+    const auto add = [this] (const juce::String& name, const juce::String& text)
+    {
+        if (drumMapNames.contains (name))
+            return;
+        drumMapNames.add (name);
+        drumMapBox.addItem (text, drumMapNames.size());
+    };
+    add ({}, "AUTOMATIC (GM MAP; PR7-D MAP ON PR7-D TRACKS)");
+    add (pr7s::DrumMap::gm().name, "GM MAP");
+    add (pr7s::DrumMap::pr7d().name, "PR7-D MAP");
+    for (const auto& file : studio.getLibraryDrumMaps())
+        add (file.getFileNameWithoutExtension(), file.getFileNameWithoutExtension().toUpperCase());
+    const auto chosen = studio.getDefaultDrumMap();
+    add (chosen, chosen.toUpperCase() + " (NOT FOUND)");
+    drumMapBox.setSelectedId (drumMapNames.indexOf (chosen) + 1, juce::dontSendNotification);
+}
+
+void Hub::setDefaultDrumMap (const juce::String& name)
+{
+    studio.setDefaultDrumMap (name);
+    refreshDrumMaps();
 }
 
 void Hub::setKeyCommands (KeyCommands::Map* map)

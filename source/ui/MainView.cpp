@@ -566,7 +566,8 @@ void MainView::refreshScrollBars()
 {
     // Across: from the song's start to past its end (or to what's in view); down: the rows and the room under them.
     const auto visibleBeats = (double) arrange.getWidth() / timeline.pixelsPerBeat;
-    arrangeAcross.setRangeLimits (0.0, juce::jmax (Timeline::scrollLength (studio), timeline.firstBeat + visibleBeats), juce::dontSendNotification);
+    // (0.77.3) Always half a screen past what's in view: the handle always shows.
+    arrangeAcross.setRangeLimits (0.0, juce::jmax (Timeline::scrollLength (studio), timeline.firstBeat + visibleBeats) + visibleBeats * 0.5, juce::dontSendNotification);
     arrangeAcross.setCurrentRange (timeline.firstBeat, visibleBeats, juce::dontSendNotification);
     const auto lanes = (double) juce::jmax (0, arrange.getHeight() - Timeline::rulerHeight);
     arrangeDown.setRangeLimits (0.0, juce::jmax (lanes, (double) (timeline.contentHeight (studio) + Timeline::bottomRoom)), juce::dontSendNotification);
@@ -2616,9 +2617,12 @@ void MainView::openDrumMapSetup()
         drumMapWindow->toFront (true);
         return;
     }
-    // (Its maps are the song's: with none yet, the GM Map to start from.)
+    // (Its maps are the song's: with none yet, the GM Map to start from, or the Hub's default when built in.)
     if (studio.getProject().drumMaps.empty())
-        studio.addDrumMap (pr7s::DrumMap::gm());
+    {
+        const auto start = pr7s::DrumMap::builtIn (studio.getDefaultDrumMap());
+        studio.addDrumMap (start ? *start : pr7s::DrumMap::gm());
+    }
     auto window = std::make_unique<DrumMapWindow> (studio, [safe = juce::Component::SafePointer<MainView> (this)]
     {
         if (safe == nullptr)

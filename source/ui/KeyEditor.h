@@ -396,7 +396,8 @@ private:
     void paintDrumList (juce::Graphics&);
     juce::TextButton drumKey { "DRUMS" }, mapKey { "MAP" }, lengthsKey { "LENGTHS" };
     std::unique_ptr<juce::FileChooser> drumChooser;
-    juce::TextButton lineTool { "LINE" }, lanesKey { "LANES" };
+    ToolKey lineTool;   // (0.77.3: the arrangement's tool keys, icon and all)
+    juce::TextButton lanesKey { "LANES" };
 
     pr7s::Studio& studio;
     ArrangeView& arrange;
@@ -425,7 +426,8 @@ public:
     void advancePlayhead();   // one frame of the glide (the timer's; tests call it)
     double getShownPlayhead() const noexcept { return shownBeat; }
 private:
-    juce::MouseCursor penCursor, scissorsCursor;   // DRAW's and SPLIT's pointers (made once: not statics, they mustn't outlive JUCE)   // where it was last drawn (0.9.2: only its strip is redrawn as it moves)
+    juce::MouseCursor penCursor, scissorsCursor, eraserCursor, muteCursor;   // (0.77.3: ERASE's and MUTE's as the arrangement's)
+    juce::MouseCursor toolCursor() const;   // the chosen tool's pointer over the notes   // DRAW's and SPLIT's pointers (made once: not statics, they mustn't outlive JUCE)   // where it was last drawn (0.9.2: only its strip is redrawn as it moves)
     juce::ScrollBar across { false }, down { true };
 
     // The gesture under way.
@@ -451,7 +453,9 @@ private:
     juce::Random random;
     void refreshVelocityKeys();
     void showVelocityRanges();
-    juce::TextButton selectTool { "SELECT" }, drawTool { "DRAW" }, eraseTool { "ERASE" }, muteTool { "MUTE" }, splitTool { "SPLIT" }, quantizeButton { "QUANTIZE" },
+    // (0.77.3, the owner: the editor's tools with the main window's icons) The arrangement's ToolKey, set up in the constructor.
+    ToolKey selectTool, drawTool, eraseTool, muteTool, splitTool;
+    juce::TextButton quantizeButton { "QUANTIZE" },
                      windowButton { "WINDOW" }, closeButton { "CLOSE" }, autoScrollButton { "AUTO-SCROLL" }, autoScrollMenu,
                      instrumentKey { "INSTRUMENT" };   // (0.31.0) the track's instrument window
     bool inWindow = false;

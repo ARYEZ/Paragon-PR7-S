@@ -808,8 +808,13 @@ namespace pr7s
         // (unless PR7-D is set to GENERAL MIDI), else the GM Map.
         juce::String defaultDrumMapFor (int trackId) const;
         bool playsPr7d (int trackId) const;
-        // A track on a built-in map switched to the one its instrument wants (on open, on Change Instrument).
-        void followPr7dMap (int trackId);
+        // A track on a built-in map switched to the one it should have (on open, on Change Instrument).
+        void followDefaultDrumMap (int trackId);
+        // (0.77.3) HUB SETTINGS' DEFAULT DRUM MAP: a map's name (GM Map, PR7-D Map or one in the drum map
+        // folder), or "" for automatic (GM, PR7-D's on PR7-D tracks). Used wherever a map is chosen for you.
+        juce::String getDefaultDrumMap() const;
+        void setDefaultDrumMap (const juce::String& name);
+        bool isDrumMapAvailable (const juce::String& name) const;   // in the song, built in, or in the folder
         void setTrackDrumEditor (int trackId, bool drums);   // the MIDI editor shows its parts as drums
         juce::String addDrumMap (DrumMap);                    // its name, made unique ("... 2")
         bool setDrumMap (const juce::String& name, DrumMap edited);
@@ -1487,6 +1492,8 @@ namespace pr7s
         void buildRecordingControllers (std::vector<Controller>&, double partStart) const;   // (0.25.0: each kind's last pass in a cycle)
         bool newControllersRamp = true;   // (without a settings file)
         juce::File drumMapFolderOverride;
+        juce::String defaultDrumMapHere;   // (0.77.3: without a settings file)
+        bool addDrumMapToSong (const juce::String& name);   // false: not found
         // Copied automation: each lane's control, its bus, and its points from the range's start.
         struct AutomationClipLane { int busId = 0; AutomationLane lane; };
         std::vector<AutomationClipLane> automationClip;

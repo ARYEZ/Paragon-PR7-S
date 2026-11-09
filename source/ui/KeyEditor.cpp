@@ -41,7 +41,17 @@ namespace
 KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     : studio (studioToUse), arrange (arrangeToUse)
 {
-    for (auto* button : { &selectTool, &drawTool, &splitTool, &eraseTool, &muteTool, &quantizeButton })
+    // (0.77.3) The tools' keys: the arrangement's, with its icons.
+    const std::pair<ToolKey*, std::pair<ArrangeView::Tool, const char*>> toolKeys[] = {
+        { &selectTool, { ArrangeView::Tool::select, "SELECT" } }, { &drawTool, { ArrangeView::Tool::draw, "DRAW" } },
+        { &splitTool, { ArrangeView::Tool::split, "SPLIT" } },    { &eraseTool, { ArrangeView::Tool::erase, "ERASE" } },
+        { &muteTool, { ArrangeView::Tool::mute, "MUTE" } },       { &lineTool, { ArrangeView::Tool::line, "LINE" } } };
+    for (const auto& [key, what] : toolKeys)
+    {
+        key->tool = what.first;
+        key->setButtonText (what.second);
+    }
+    for (auto* button : std::initializer_list<juce::TextButton*> { &selectTool, &drawTool, &splitTool, &eraseTool, &muteTool, &quantizeButton })
     {
         button->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         button->setWantsKeyboardFocus (false);
@@ -58,6 +68,8 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     muteTool.onClick = [this] { setTool (Tool::mute); };
     penCursor = ToolIcons::cursor (ArrangeView::Tool::draw);
     scissorsCursor = ToolIcons::cursor (ArrangeView::Tool::split);
+    eraserCursor = ToolIcons::cursor (ArrangeView::Tool::erase);
+    muteCursor = ToolIcons::cursor (ArrangeView::Tool::mute);
     quantizeButton.setTooltip ("QUANTIZE (Q): moves the selected notes' starts (all the notes, with none selected) to the nearest step of "
                                "the quantize value on the header (1/1 to 1/64); their lengths stay");
     // (0.31.0) INSTRUMENT: the track's instrument window, to play with its sounds while editing (the manual's Edit Instrument).
@@ -71,7 +83,7 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     eraseTool.onClick = [this] { setTool (Tool::erase); };
     quantizeButton.onClick = [this] { quantizeSelected(); };
     // (0.25.0) LINE, its modes (click it again), and LANES (the controller lanes' menu).
-    for (auto* button : { &lineTool, &lanesKey })
+    for (auto* button : std::initializer_list<juce::TextButton*> { &lineTool, &lanesKey })
     {
         button->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         button->setWantsKeyboardFocus (false);
@@ -237,10 +249,23 @@ void KeyEditor::setTool (Tool newTool)
     muteTool.setToggleState (tool == Tool::mute, juce::dontSendNotification);
     splitTool.setToggleState (tool == Tool::split, juce::dontSendNotification);
     lineTool.setToggleState (tool == Tool::line, juce::dontSendNotification);
-    // The tool as the pointer (0.9.3: the pencil, not crosshairs; the scissors).
-    setMouseCursor (tool == Tool::draw ? penCursor : tool == Tool::split ? scissorsCursor
-                  : tool == Tool::line ? juce::MouseCursor::CrosshairCursor : juce::MouseCursor::NormalCursor);
+    // The tool as the pointer (0.9.3: the pencil, not crosshairs; the scissors; 0.77.3: the eraser, MUTE's).
+    setMouseCursor (toolCursor());
     repaint();
+}
+
+juce::MouseCursor KeyEditor::toolCursor() const
+{
+    switch (tool)
+    {
+        case Tool::draw:   return penCursor;
+        case Tool::split:  return scissorsCursor;
+        case Tool::erase:  return eraserCursor;
+        case Tool::mute:   return muteCursor;
+        case Tool::line:   return juce::MouseCursor::CrosshairCursor;
+        case Tool::select: break;
+    }
+    return juce::MouseCursor::NormalCursor;
 }
 
 void KeyEditor::setInWindow (bool shouldBeInWindow)
@@ -504,7 +529,9 @@ void KeyEditor::refreshScrollBars()
     // Across: the song from its start (as far as the arrangement's goes); down: the 128 notes.
     const auto area = getNotesArea();
     const auto visibleBeats = (double) area.getWidth() / pixelsPerBeat;
-    across.setRangeLimits (0.0, juce::jmax (Timeline::scrollLength (studio), firstBeat + visibleBeats), juce::dontSendNotification);
+    // (0.77.3) Always half a screen past what's in view, so the handle always shows (when the whole song fit,
+    // the bar had no handle and looked missing) and there's room to work on to the right.
+    across.setRangeLimits (0.0, juce::jmax (Timeline::scrollLength (studio), firstBeat + visibleBeats) + visibleBeats * 0.5, juce::dontSendNotification);
     across.setCurrentRange (firstBeat, visibleBeats, juce::dontSendNotification);
     down.setRangeLimits (0.0, juce::jmax ((double) area.getHeight(), (double) numRows() * rowHeight), juce::dontSendNotification);
     down.setCurrentRange (scrollY, area.getHeight(), juce::dontSendNotification);
@@ -1282,8 +1309,8 @@ void KeyEditor::mouseMove (const juce::MouseEvent& event)
         case VelocityHandle::scaleCentre: setMouseCursor (juce::MouseCursor::UpDownLeftRightResizeCursor); return;
         case VelocityHandle::none:        break;
     }
-    if (tool != Tool::select && getVelocityArea().contains (event.position))
-        setMouseCursor (juce::MouseCursor::NormalCursor);
+    if (tool != Tool::select)
+        setMouseCursor (getVelocityArea().contains (event.position) ? juce::MouseCursor::NormalCursor : toolCursor());   // (back to the tool's after the velocities)
     if (tool == Tool::select)
     {
         const auto hit = noteAt (event.position);
@@ -1812,7 +1839,7 @@ void KeyEditor::mouseWheelMove (const juce::MouseEvent& event, const juce::Mouse
 void KeyEditor::refreshPanel()
 {
     const auto hasPart = getPart() != nullptr;
-    for (auto* button : { &selectTool, &drawTool, &eraseTool, &quantizeButton })
+    for (auto* button : std::initializer_list<juce::TextButton*> { &selectTool, &drawTool, &eraseTool, &quantizeButton })
         button->setEnabled (hasPart);
     // (0.31.0) The quantize value on QUANTIZE; INSTRUMENT for an instrument track's part.
     quantizeButton.setButtonText ("QUANTIZE " + quantizeText (studio.getProject().quantizeBeats));

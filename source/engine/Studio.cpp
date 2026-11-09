@@ -1437,25 +1437,22 @@ namespace pr7s
             onInstrumentGoing (trackId);
         unwatch (engine.getInstrument (trackId));
         engine.setInstrument (trackId, std::move (instance));
-        followPr7dMap (trackId);
+        followDefaultDrumMap (trackId);
         changed (false);
         return true;
     }
 
-    void Studio::followPr7dMap (int trackId)
+    void Studio::followDefaultDrumMap (int trackId)
     {
-        // (0.77.2) A track on a built-in map (GM or PR7-D) takes the one its instrument wants: PR7-D's names
-        // on a PR7-D track, GM's on any other. Names only (both play every note as it is); a map of the
-        // owner's own is never touched, nor a track with none.
+        // (0.77.2) A track on a built-in map (GM or PR7-D) takes the one it should have: the Hub's
+        // DEFAULT DRUM MAP (0.77.3), else PR7-D's names on a PR7-D track and GM's on any other. A map of
+        // the owner's own (not built in) is never touched, nor a track with none.
         auto* track = project.findTrack (trackId);
         if (track == nullptr || ! DrumMap::builtIn (track->drumMap))
             return;
         const auto wanted = defaultDrumMapFor (trackId);
-        if (wanted == track->drumMap)
+        if (wanted == track->drumMap || ! addDrumMapToSong (wanted))
             return;
-        if (project.findDrumMap (wanted) == nullptr)
-            if (auto map = DrumMap::builtIn (wanted))
-                project.drumMaps.push_back (std::move (*map));
         if (auto* again = project.findTrack (trackId))
             again->drumMap = wanted;
     }
@@ -2587,27 +2584,9 @@ namespace pr7s
         auto* track = project.findTrack (trackId);
         if (track == nullptr || track->isAudio() || track->isChannel())
             return;
-        auto name = mapName;
-        if (name.isNotEmpty() && project.findDrumMap (name) == nullptr)
-        {
-            // Not in the song yet: a built-in one (GM, PR7-D), or one from the drum map folder.
-            if (auto builtIn = DrumMap::builtIn (name))
-                project.drumMaps.push_back (std::move (*builtIn));
-            else
-            {
-                juce::String error;
-                for (const auto& libraryFile : getLibraryDrumMaps())
-                    if (libraryFile.getFileNameWithoutExtension() == name)
-                        if (auto map = DrumMap::readDrm (libraryFile, error))
-                        {
-                            map->name = name;
-                            project.drumMaps.push_back (std::move (*map));
-                            break;
-                        }
-                if (project.findDrumMap (name) == nullptr)
-                    return;
-            }
-        }
+        const auto name = mapName;
+        if (name.isNotEmpty() && ! addDrumMapToSong (name))
+            return;
         const auto hadNone = track->drumMap.isEmpty();
         track->drumMap = name;
         if (name.isEmpty())
@@ -2616,6 +2595,52 @@ namespace pr7s
             track->drumEditor = true;   // (the manual's "Use Drum Editor when Drum Map is assigned")
         SessionLog::note ("Drum map for track " + juce::String (trackId) + ": " + (name.isEmpty() ? juce::String ("none") : name));
         changed (false);
+    }
+
+    bool Studio::addDrumMapToSong (const juce::String& name)
+    {
+        // In the song already, or a built-in one (GM, PR7-D), or one from the drum map folder.
+        if (project.findDrumMap (name) != nullptr)
+            return true;
+        if (auto builtIn = DrumMap::builtIn (name))
+        {
+            project.drumMaps.push_back (std::move (*builtIn));
+            return true;
+        }
+        juce::String error;
+        for (const auto& libraryFile : getLibraryDrumMaps())
+            if (libraryFile.getFileNameWithoutExtension() == name)
+                if (auto map = DrumMap::readDrm (libraryFile, error))
+                {
+                    map->name = name;
+                    project.drumMaps.push_back (std::move (*map));
+                    return true;
+                }
+        return false;
+    }
+
+    juce::String Studio::getDefaultDrumMap() const
+    {
+        return settings != nullptr ? settings->getValue ("defaultDrumMap") : defaultDrumMapHere;
+    }
+
+    void Studio::setDefaultDrumMap (const juce::String& name)
+    {
+        defaultDrumMapHere = name;
+        if (settings != nullptr)
+            settings->setValue ("defaultDrumMap", name);
+    }
+
+    bool Studio::isDrumMapAvailable (const juce::String& name) const
+    {
+        if (name.isEmpty())
+            return false;
+        if (project.findDrumMap (name) != nullptr || DrumMap::builtIn (name))
+            return true;
+        for (const auto& libraryFile : getLibraryDrumMaps())
+            if (libraryFile.getFileNameWithoutExtension() == name)
+                return true;
+        return false;
     }
 
     bool Studio::playsPr7d (int trackId) const
@@ -2627,6 +2652,9 @@ namespace pr7s
 
     juce::String Studio::defaultDrumMapFor (int trackId) const
     {
+        // (0.77.3) The Hub's DEFAULT DRUM MAP wins when one is chosen (and can still be found).
+        if (const auto chosen = getDefaultDrumMap(); isDrumMapAvailable (chosen))
+            return chosen;
         // (0.77.2) A track playing PR7-D: the PR7-D Map (its GROOVE LIBRARY layout, its default),
         // unless PR7-D itself is set to GENERAL MIDI (its "Drums Note Map" parameter).
         if (! playsPr7d (trackId))
@@ -9334,7 +9362,7 @@ namespace pr7s
         problems = missing.joinIntoString ("\n");
         numberParts();
         for (const auto& track : project.tracks)
-            followPr7dMap (track.id);
+            followDefaultDrumMap (track.id);
         // Frozen tracks' parts locked as they were saved.
         frozenParts.clear();
         for (const auto& track : project.tracks)
@@ -9944,9 +9972,9 @@ namespace pr7s
             if (trackId == 0)
                 return 0;
             renameTrack (trackId, linePartName (idea.part));
-            // (0.54.0) Drums: the GM map, the MIDI editor's drum view.
+            // (0.54.0) Drums: a drum map (0.77.3: the default one), the MIDI editor's drum view.
             if (idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove)
-                setTrackDrumMap (trackId, DrumMap::gm().name);
+                setTrackDrumMap (trackId, defaultDrumMapFor (trackId));
         }
         const auto part = partFromIdea (idea, spans.front().start, spans.back().end - spans.front().start, linePartName (idea.part) + ": " + idea.style);
         addPart (trackId, part);
@@ -10110,7 +10138,7 @@ namespace pr7s
                     continue;
                 renameTrack (trackId, linePartName (idea.part));
                 if (idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove)
-                    setTrackDrumMap (trackId, DrumMap::gm().name);
+                    setTrackDrumMap (trackId, defaultDrumMapFor (trackId));
             }
             plan.emplace_back (trackId, &idea);
             used.push_back (trackId);

@@ -1269,7 +1269,7 @@ void ComposerPage::showTrackMenu (ComposerLayer l)
                                 {
                                     studio.renameTrack (id, name);
                                     if (l == ComposerLayer::drums)
-                                        studio.setTrackDrumMap (id, pr7s::DrumMap::gm().name);
+                                        studio.setTrackDrumMap (id, studio.defaultDrumMapFor (id));   // (0.77.3: the default map)
                                 }
                                 safe->setTrack (l, 0);
                             }

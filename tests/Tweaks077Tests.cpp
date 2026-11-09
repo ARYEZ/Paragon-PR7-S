@@ -9,6 +9,7 @@
 #include "engine/Engine.h"
 #include "engine/Studio.h"
 #include "ui/Finish.h"
+#include "ui/Hub.h"
 #include "ui/MainView.h"
 
 using Catch::Matchers::WithinAbs;
@@ -246,8 +247,94 @@ TEST_CASE ("0.77.2: a PR7-D track gets the PR7-D Map (chosen, or from the GM Map
     // A map of the owner's own is left alone.
     studio.addDrumMap ([] { auto m = DrumMap::gm(); m.name = "My Kit"; return m; }());
     studio.setTrackDrumMap (opened.id, "My Kit");
-    studio.followPr7dMap (opened.id);
+    studio.followDefaultDrumMap (opened.id);
     CHECK (studio.getProject().tracks[0].drumMap == "My Kit");
     studio.getLibrary().removeRecent (file);
     file.deleteFile();
+}
+
+// 0.77.3 (the owner: "a setting in the Hub to set a default drum map so that every project can load with it"; a
+// horizontal scroll bar always visible in the MIDI editor; the editors' tool icons as the main window's).
+TEST_CASE ("0.77.3: HUB SETTINGS' DEFAULT DRUM MAP is the one drum tracks get", "[drums][077]")
+{
+    Studio studio (false);
+    const auto track = studio.getProject().tracks[0].id;
+    CHECK (studio.getDefaultDrumMap().isEmpty());   // automatic
+    CHECK (studio.defaultDrumMapFor (track) == "GM Map");
+
+    // A built-in one, for every track (PR7-K's too).
+    studio.setDefaultDrumMap ("PR7-D Map");
+    CHECK (studio.defaultDrumMapFor (track) == "PR7-D Map");
+    studio.setTrackDrumEditor (track, true);
+    CHECK (studio.getProject().findTrack (track)->drumMap == "PR7-D Map");
+
+    // One from the Drum Maps folder.
+    const auto folder = juce::File::createTempFile ("drums077");
+    folder.createDirectory();
+    auto kit = DrumMap::gm();
+    kit.name = "Studio Kit";
+    kit.sounds[36].name = "Big Kick";
+    REQUIRE (kit.writeDrm (folder.getChildFile ("Studio Kit.drm")));
+    studio.setDrumMapFolderForTests (folder);
+    studio.setDefaultDrumMap ("Studio Kit");
+    CHECK (studio.defaultDrumMapFor (track) == "Studio Kit");
+
+    // A song saved on a built-in map opens on the default; a map gone missing falls back to automatic.
+    auto song = studio.getProject();
+    song.tracks[0].drumMap = "GM Map";
+    song.drumMaps = { DrumMap::gm() };
+    const auto file = juce::File::createTempFile (Project::fileExtension);
+    REQUIRE (song.toXml()->writeTo (file));
+    juce::String problems;
+    studio.open (file, problems);
+    CHECK (studio.getProject().tracks[0].drumMap == "Studio Kit");
+    CHECK (studio.getDrumMapOf (studio.getProject().tracks[0].id)->sounds[36].name == "Big Kick");
+    studio.setDefaultDrumMap ("Gone Kit");
+    CHECK_FALSE (studio.isDrumMapAvailable ("Gone Kit"));
+    CHECK (studio.defaultDrumMapFor (studio.getProject().tracks[0].id) == "GM Map");
+
+    // The Hub's box: automatic, the two built in, the folder's.
+    studio.setDefaultDrumMap ({});
+    Hub hub (studio);
+    hub.setSize (1500, 900);
+    auto& box = hub.getDrumMapBox();
+    CHECK (box.getNumItems() == 4);
+    CHECK (box.getSelectedId() == 1);
+    box.setSelectedId (3, juce::sendNotificationSync);
+    CHECK (studio.getDefaultDrumMap() == "PR7-D Map");
+    box.setSelectedId (4, juce::sendNotificationSync);
+    CHECK (studio.getDefaultDrumMap() == "Studio Kit");
+    box.setSelectedId (1, juce::sendNotificationSync);
+    CHECK (studio.getDefaultDrumMap().isEmpty());
+
+    studio.getLibrary().removeRecent (file);
+    file.deleteFile();
+    folder.deleteRecursively();
+}
+
+TEST_CASE ("0.77.3: the MIDI editor's horizontal scroll bar always has a handle, and its tools the arrangement's icons", "[ui][077]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 1300);
+    const auto track = studio.getProject().tracks[0].id;
+    studio.addPart (track, { 0.0, 4.0, "Riff", { { 0.0, 1.0, 60, 0.8f } } });
+    studio.dispatchPendingMessages();
+    view.getArrangeView().select (track, 0);
+    view.openKeyEditor();
+    studio.dispatchPendingMessages();
+    REQUIRE (view.isKeyEditorOpen());
+    auto& editor = view.getKeyEditor();
+    // Zoomed far out (the whole song in view): there's still more to the right, so the handle shows.
+    for (int i = 0; i < 12; ++i)
+        editor.zoom (false);
+    auto& across = editor.getScrollBarAcross();
+    CHECK (across.isVisible());
+    CHECK (across.getCurrentRangeSize() < across.getMaximumRangeLimit() - across.getMinimumRangeLimit());
+
+    // MUTE is a tool key with the arrangement's MUTE icon (and its pointer).
+    CHECK (editor.keyPressed (juce::KeyPress ('7', {}, '7')));
+    REQUIRE (editor.getTool() == KeyEditor::Tool::mute);
+    CHECK (editor.getMouseCursor() != juce::MouseCursor (juce::MouseCursor::NormalCursor));
 }
