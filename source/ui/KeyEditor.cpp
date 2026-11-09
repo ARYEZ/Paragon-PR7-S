@@ -475,7 +475,8 @@ void KeyEditor::timerCallback()
         playheadX = x;
     }
     // 60 frames a second while it glides, else 30.
-    const auto rate = gliding ? 60 : 30;
+    const auto playing = studio.getEngine().isPlaying() || studio.getEngine().isRecording();   // (0.78.3)
+    const auto rate = gliding || playing ? 60 : 30;
     if (getTimerInterval() != 1000 / rate)
         startTimerHz (rate);
 }
@@ -485,6 +486,12 @@ void KeyEditor::advancePlayhead()
     // As the arrangement's (ArrangeView::advancePlayhead): exact while playing or recording;
     // stopped, a new place (a click in the ruler, snapped) glides in; a long jump goes straight there.
     auto& engine = studio.getEngine();
+    if (engine.isPlaying() || engine.isRecording())   // (0.78.3: smooth between audio blocks)
+    {
+        shownBeat = ArrangeView::playingBeat (shownBeat, engine.getShownPosition());
+        gliding = false;
+        return;
+    }
     const auto target = engine.getPosition();
     const auto pixels = std::abs (xForBeat (target) - xForBeat (shownBeat));
     if (engine.isPlaying() || engine.isRecording() || pixels < 0.5f || pixels > getNotesArea().getWidth() * 0.5f)

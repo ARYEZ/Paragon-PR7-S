@@ -2,6 +2,10 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.78.3
+
+**The play bar no longer stutters while playing (you reported it).** The play bar took its place from the audio engine, which only says where the song is once per block of sound. At your buffer size (2048 samples) that's about 21 times a second, in jumps of 46 ms, and the screen drew it 30 times a second: some frames it stood still, others it leapt. Now, between blocks, the play bar carries on by the clock at the song's tempo (never more than one block ahead, never past the cycle's end, never stepping back), and it's drawn 60 times a second while playing, in the arrangement and the MIDI editor. Only the play bar's thin strip is redrawn each frame (about 0.3 ms). Its glow was never the cause: it's three thin rectangles.
+
 ## 0.78.2
 
 **The Inspector opens laid out as you asked.** The track's basics, INSERTS, EQUALIZERS and BOOSTER are open; ROUTING, CHORDS, SENDS, FADER and QUICK CONTROLS are folded (click a title to open one). It's put in place once when 0.78.2 first starts; after that, whatever you open or fold is kept as before.

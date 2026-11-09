@@ -242,6 +242,10 @@ public:
     double getShownPlayhead() const noexcept { return shownBeat; }
     std::optional<double> getRulerHover() const noexcept { return rulerHover; }
     static constexpr double glideStep = 0.45;   // the share of the way left covered each frame (60 a second)
+    // (0.78.3) The play bar while playing: `target` (Engine::getShownPosition) unless it's a hair
+    // behind what's shown (under `smallestJumpBack` beats: the next block catching up), kept then.
+    static double playingBeat (double shown, double target) noexcept;
+    static constexpr double smallestJumpBack = 0.25;
     void zoom (bool in);
     void zoomFull();
     // Shift+H / Shift+G: the rows a step taller or shorter (the top row in view stays at the top).

@@ -80,14 +80,29 @@ void ArrangeView::timerCallback()
     advancePlayhead();
     refreshPlayhead();
     // 60 frames a second while it glides, else 30 (the screens' work, 0.9.2).
-    const auto rate = gliding ? 60 : 30;
+    // (0.78.3) And while playing: the play bar moves every frame now, smoothly (2 thin strips, ~0.3 ms).
+    const auto playing = studio.getEngine().isPlaying() || studio.getEngine().isRecording();
+    const auto rate = gliding || playing ? 60 : 30;
     if (getTimerInterval() != 1000 / rate)
         startTimerHz (rate);
+}
+
+double ArrangeView::playingBeat (double shown, double target) noexcept
+{
+    // A new block can land a hair behind where the clock had carried the play bar: it waits there
+    // rather than stepping back. A real jump (the cycle coming round, a click) goes at once.
+    return target < shown && shown - target < smallestJumpBack ? shown : target;
 }
 
 void ArrangeView::advancePlayhead()
 {
     auto& engine = studio.getEngine();
+    if (engine.isPlaying() || engine.isRecording())
+    {
+        shownBeat = playingBeat (shownBeat, engine.getShownPosition());
+        gliding = false;
+        return;
+    }
     const auto target = engine.getPosition();
     const auto pixels = std::abs (target - shownBeat) * timeline.pixelsPerBeat;
     // Playing (or recording): exactly where it is. Stopped: a click or a drag in the ruler

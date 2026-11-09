@@ -351,3 +351,45 @@ TEST_CASE ("0.78.2: a default template: NEW and CREATE EMPTY start from it; HUB 
     CHECK (library.getDefaultTemplate() == folder.getChildFile ("Moved.pr7s"));
     folder.deleteRecursively();
 }
+
+TEST_CASE ("0.78.3: the play bar moves smoothly between audio blocks (the owner: it stuttered while playing)", "[engine][playhead][078]")
+{
+    // A 2048-sample block at 48 kHz, 120 BPM: the engine's position moves 0.0853 beat a block, ~23 times a second.
+    Engine engine;
+    engine.prepare (48000.0, 2048);
+    Project project;
+    Track track;
+    track.id = 1;
+    project.tracks.push_back (track);
+    project.loopOn = true;
+    project.loopStart = 0.0;
+    project.loopEnd = 0.11;
+    engine.update (project);
+    CHECK (engine.getShownPosition() == engine.getPosition());   // stopped: where it is
+    engine.play();
+    renderSamples (engine, 2048, 2048);
+    const auto block = 2048.0 / 24000.0;
+    REQUIRE_THAT (engine.getPosition(), WithinAbs (block, 1.0e-9));
+    // Just after the block: about where the block left it.
+    CHECK_THAT (engine.getShownPosition(), WithinAbs (block, 0.01));
+    // 10 ms later (no new block yet): carried on by the clock, two beats a second.
+    juce::Thread::sleep (10);
+    const auto later = engine.getShownPosition();
+    CHECK (later > block + 0.015);
+    // Never past one block ahead, nor past the cycle's end (0.11 here, before a block's length).
+    juce::Thread::sleep (100);
+    CHECK (engine.getShownPosition() <= 0.11 + 1.0e-9);
+    CHECK (engine.getShownPosition() >= later);
+    // Without the cycle: at most a block ahead of the last block.
+    project.loopOn = false;
+    engine.update (project);
+    renderSamples (engine, 2048, 2048);
+    juce::Thread::sleep (100);
+    CHECK (engine.getShownPosition() <= engine.getPosition() + block + 1.0e-9);
+    CHECK (engine.getShownPosition() > engine.getPosition() + block * 0.9);
+
+    // The views never step back for a block landing a hair behind; a real jump goes at once.
+    CHECK (ArrangeView::playingBeat (1.0, 0.95) == 1.0);
+    CHECK (ArrangeView::playingBeat (1.0, 1.05) == 1.05);
+    CHECK (ArrangeView::playingBeat (8.0, 0.0) == 0.0);   // the cycle coming round
+}
