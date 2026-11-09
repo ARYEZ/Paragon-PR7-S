@@ -599,7 +599,7 @@ private:
     Drag drag = Drag::none;
     double dragStartBeat = 0.0, dragOriginalStart = 0.0, dragOriginalLength = 0.0;
     // (0.78.0, the owner) The ruler: a click sets the position; dragged up or down it zooms instead
-    // (down: out, up: in; the owner's way round, the manual's is the other), the clicked beat kept under the mouse.
+    // (0.78.1: down zooms in, up out, as the manual; 0.78.0 had it the other way, the owner asked it flipped), the clicked beat kept under the mouse.
     bool rulerZooming = false;
     float rulerDownX = 0.0f, rulerDownY = 0.0f;
     double rulerZoomBeat = 0.0, rulerZoomFrom = 0.0;

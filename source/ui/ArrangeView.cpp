@@ -1696,7 +1696,7 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
                 rulerZooming = true;
             if (rulerZooming)
             {
-                timeline.pixelsPerBeat = juce::jlimit (2.0, 400.0, rulerZoomFrom * std::pow (2.0, (double) -dy / rulerZoomPixelsPerDouble));
+                timeline.pixelsPerBeat = juce::jlimit (2.0, 400.0, rulerZoomFrom * std::pow (2.0, (double) dy / rulerZoomPixelsPerDouble)   /* (0.78.1: down zooms in, as the manual) */);
                 timeline.firstBeat = juce::jmax (0.0, rulerZoomBeat - (double) rulerDownX / timeline.pixelsPerBeat);
                 setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
                 scrolled();

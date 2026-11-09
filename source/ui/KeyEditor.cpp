@@ -1552,7 +1552,7 @@ void KeyEditor::mouseDrag (const juce::MouseEvent& event)
                 rulerZooming = true;
             if (rulerZooming)
             {
-                pixelsPerBeat = juce::jlimit (12.0, 600.0, rulerZoomFrom * std::pow (2.0, (double) -dy / ArrangeView::rulerZoomPixelsPerDouble));
+                pixelsPerBeat = juce::jlimit (12.0, 600.0, rulerZoomFrom * std::pow (2.0, (double) dy / ArrangeView::rulerZoomPixelsPerDouble)   /* (0.78.1: down zooms in) */);
                 firstBeat = juce::jmax (earliestFirstBeat(), rulerZoomBeat - (double) (downAt.x - (float) (sideWidth + listWidth())) / pixelsPerBeat);
                 setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
                 refreshScrollBars();

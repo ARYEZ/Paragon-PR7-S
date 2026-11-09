@@ -8,7 +8,11 @@
 #include "ui/ParagonLookAndFeel.h"
 
 #if JUCE_WINDOWS
-namespace juce { extern std::atomic<bool> paragonPreferSoftwareRenderer; }   // (0.76.1: JUCE patched, cmake/PatchJuce.cmake)
+namespace juce
+{
+    extern std::atomic<bool> paragonPreferSoftwareRenderer;   // (0.76.1: JUCE patched, cmake/PatchJuce.cmake)
+    void paragonRefreshDirectX();                              // (0.78.1: the devices made again for the graphics card)
+}
 #endif
 
 namespace Windows
@@ -712,7 +716,9 @@ namespace Windows
     {
        #if JUCE_WINDOWS
         // (0.76.1) JUCE (patched: cmake/PatchJuce.cmake) makes new windows and images with the processor too.
-        juce::paragonPreferSoftwareRenderer.store (software);
+        const auto wasSoftware = juce::paragonPreferSoftwareRenderer.exchange (software);
+        if (wasSoftware && ! software)
+            juce::paragonRefreshDirectX();   // (0.78.1: software drawing makes no Direct3D devices; Direct2D needs them)
        #endif
         FamilyAlertWindow::softwareDrawing = software;   // (0.73.4: menus and boxes made from now on, at once)
         auto switched = 0;

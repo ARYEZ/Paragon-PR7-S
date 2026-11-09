@@ -2,6 +2,12 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.78.1
+
+**The ruler's zoom flipped (you asked).** Drag down in the ruler to zoom in, up to zoom out, in the arrangement and the MIDI editor. The bar you grabbed still stays under the mouse, and a click still moves the playhead.
+
+**Another freeze after Render in Place, inside the graphics card's driver.** Your 0.78.0 log showed the studio stuck 10 seconds after Render in Place disabled the track, on the screen's thread, inside the NVIDIA driver (d3d11), with DRAW WITHOUT THE GRAPHICS CARD on. What was still using the card: JUCE's display sync (it times every window's redraws to the screen's refresh) opened a Direct3D connection to each graphics adapter for every window, even windows drawn by the processor, and closed and reopened it on the screen's thread whenever Windows announced a change. That's where the studio stopped. With DRAW WITHOUT THE GRAPHICS CARD on, the display sync now only listens for the screen's refresh and no Direct3D connection is made at all: nothing in the studio talks to the graphics card's driver. (Switching the setting off makes the connections again for drawing with the card.) I can't make your NVIDIA driver hang here, so this is the fix for what the log shows, not a reproduced case: if it ever freezes again, the log will say where.
+
 ## 0.78.0
 
 **Drag the ruler down to zoom out.** Hold the left mouse button in the ruler (the time bar along the top of the arrangement) and drag down: the view zooms out. Drag up: it zooms in. Every 80 pixels halves (or doubles) the zoom, and the bar you grabbed stays under the mouse. A click, or a drag sideways, still moves the playhead as before. The MIDI editor's ruler does the same. Note: the other DAW's manual has it the other way round (down zooms in); this is built the way you asked. Say if you'd like it flipped.

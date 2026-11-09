@@ -49,3 +49,46 @@ ComponentPeer* Component::createNewPeer (int styleFlags, void* parentHWND)
 "extern std::atomic<bool> paragonPreferSoftwareRenderer;
 
 ComponentPeer")
+
+# (0.78.1) The owner's 0.78.0 log: frozen again after Render in Place's disable, the screen's thread inside
+# d2d1 / d3d11 / nvwgf2umx with software drawing on. Every window (software ones too) joins JUCE's display-sync
+# (VBlankDispatcher), which owns the DirectX singleton; that made a Direct3D 11 device and a Direct2D device on
+# every graphics adapter, and released and remade them on the screen's thread whenever Windows reported a
+# change (WM_SETTINGCHANGE / WM_DISPLAYCHANGE, or the DXGI factory no longer current). The display sync needs
+# only the adapters' outputs (WaitForVBlank), not a device, so with `paragonPreferSoftwareRenderer` the
+# adapters are listed without devices: nothing on the graphics card's driver at all. Switching back to the
+# graphics card makes the devices (`paragonRefreshDirectX`, called by Windows::applyDrawing).
+paragon_patch ("modules/juce_graphics/native/juce_DirectX_windows.cpp"
+"auto DxgiAdapter::create (ComSmartPtr<ID2D1Factory2> d2dFactory,"
+"extern std::atomic<bool> paragonPreferSoftwareRenderer;   // (Paragon PR7-S: juce_Direct2DImage_windows.cpp)
+
+auto DxgiAdapter::create (ComSmartPtr<ID2D1Factory2> d2dFactory,"
+"extern std::atomic<bool> paragonPreferSoftwareRenderer;   // (Paragon PR7-S: juce_Direct2DImage_windows.cpp)")
+
+paragon_patch ("modules/juce_graphics/native/juce_DirectX_windows.cpp"
+"    // This flag adds support for surfaces with a different color channel ordering"
+"    if (paragonPreferSoftwareRenderer.load())   // (Paragon PR7-S: the outputs only, no device on the card)
+        return result;
+
+    // This flag adds support for surfaces with a different color channel ordering"
+"(Paragon PR7-S: the outputs only, no device on the card)")
+
+paragon_patch ("modules/juce_graphics/native/juce_DirectX_windows.cpp"
+"    if (factory != nullptr && factory->IsCurrent() && ! adapterArray.isEmpty())
+        return;"
+"    if (factory != nullptr && factory->IsCurrent() && ! adapterArray.isEmpty()
+        && (paragonPreferSoftwareRenderer.load() || adapterArray.getFirst()->direct3DDevice != nullptr))   // (Paragon PR7-S)
+        return;"
+"adapterArray.getFirst()->direct3DDevice != nullptr))   // (Paragon PR7-S)")
+
+paragon_patch ("modules/juce_graphics/native/juce_DirectX_windows.cpp"
+"DxgiAdapters::DxgiAdapters (ComSmartPtr<ID2D1Factory2> d2dFactoryIn)"
+"// (Paragon PR7-S) Back to the graphics card: the adapters made again with their devices.
+void paragonRefreshDirectX()
+{
+    SharedResourcePointer<DirectX> directX;
+    directX->adapters.updateAdapters();
+}
+
+DxgiAdapters::DxgiAdapters (ComSmartPtr<ID2D1Factory2> d2dFactoryIn)"
+"void paragonRefreshDirectX()")

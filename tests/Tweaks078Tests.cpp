@@ -35,7 +35,7 @@ namespace
     }
 }
 
-TEST_CASE ("0.78.0: the ruler dragged down zooms out, up zooms in, round the beat clicked; a click still sets the position", "[ui][078]")
+TEST_CASE ("0.78.0 (0.78.1: flipped): the ruler dragged down zooms in, up zooms out, round the beat clicked; a click still sets the position", "[ui][078]")
 {
     Finish::set (Finish::Type::pearlWhite, false);
     Studio studio (false);
@@ -50,12 +50,12 @@ TEST_CASE ("0.78.0: the ruler dragged down zooms out, up zooms in, round the bea
     const float x = 400.0f;
     const auto beat = timeline.beatForX (x);
 
-    dragOn (arrange, juce::Point<float> (x, y), juce::Point<float> (x, y + ArrangeView::rulerZoomPixelsPerDouble));   // 80 px down: half
-    CHECK_THAT (timeline.pixelsPerBeat, WithinAbs (before / 2.0, 1.0e-6));
+    dragOn (arrange, juce::Point<float> (x, y), juce::Point<float> (x, y + ArrangeView::rulerZoomPixelsPerDouble));   // 80 px down: twice as wide (0.78.1)
+    CHECK_THAT (timeline.pixelsPerBeat, WithinAbs (before * 2.0, 1.0e-6));
     CHECK_THAT (timeline.beatForX (x), WithinAbs (beat, 1.0e-6));
     CHECK_FALSE (arrange.isRulerZooming());
-    dragOn (arrange, juce::Point<float> (x, y), juce::Point<float> (x, y - 2.0f * ArrangeView::rulerZoomPixelsPerDouble));   // 160 px up: four times
-    CHECK_THAT (timeline.pixelsPerBeat, WithinAbs (before * 2.0, 1.0e-6));
+    dragOn (arrange, juce::Point<float> (x, y), juce::Point<float> (x, y - 2.0f * ArrangeView::rulerZoomPixelsPerDouble));   // 160 px up: a quarter
+    CHECK_THAT (timeline.pixelsPerBeat, WithinAbs (before / 2.0, 1.0e-6));
     CHECK_THAT (timeline.beatForX (x), WithinAbs (beat, 1.0e-6));
 
     // A click (or a drag across) without going up or down: the position, no zoom.
@@ -79,7 +79,7 @@ TEST_CASE ("0.78.0: the ruler dragged down zooms out, up zooms in, round the bea
     const auto ex = (float) (KeyEditor::sideWidth + KeyEditor::keysWidth) + 200.0f;
     const auto ey = (float) KeyEditor::infoHeight + (float) KeyEditor::rulerHeight * 0.5f;
     dragOn (editor, juce::Point<float> (ex, ey), juce::Point<float> (ex, ey + ArrangeView::rulerZoomPixelsPerDouble));
-    CHECK_THAT (editor.getPixelsPerBeat(), WithinAbs (editorBefore / 2.0, 1.0e-6));
+    CHECK_THAT (editor.getPixelsPerBeat(), WithinAbs (editorBefore * 2.0, 1.0e-6));
 }
 
 TEST_CASE ("0.78.0: SOLO EDITOR: only the track in the MIDI editor is heard; the song's solos untouched; off when the editor closes", "[ui][solo][078]")
