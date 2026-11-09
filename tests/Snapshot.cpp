@@ -472,10 +472,12 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
             beat.notes.push_back ({ 7.0, 0.25, 45, 0.8f });
             beat.notes.push_back ({ 7.5, 0.25, 43, 0.85f });
             studio.addPart (drums, beat);
-            studio.setTrackDrumMap (drums, "GM Map");
+            // (=pr7d, 0.77.2: on the PR7-D Map, PR7-D's own names)
+            const juce::String mapName = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_DRUMS", {}) == "pr7d" ? "PR7-D Map" : "GM Map";
+            studio.setTrackDrumMap (drums, mapName);
             auto map = *studio.getDrumMapOf (drums);
             map.sounds[57].mute = true;
-            studio.setDrumMap ("GM Map", map);
+            studio.setDrumMap (mapName, map);
             studio.dispatchPendingMessages();
             const auto index = (int) studio.getProject().findTrack (drums)->parts.size() - 1;
             view.getArrangeView().select (drums, index);
