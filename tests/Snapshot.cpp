@@ -1660,7 +1660,9 @@ TEST_CASE ("Snapshot: the channel EQ (0.43.0; PARAGON_SNAPSHOT_EQ=inspector for 
             if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_BOOSTER", {}).isNotEmpty())
             {
                 studio.setBooster (id, { 3.5f, -4.0f });
-                for (auto section : { Inspector::Section::routing, Inspector::Section::chords, Inspector::Section::inserts })
+                // (0.78.2) The default layout: routing, chords, sends, fader and quick controls folded.
+                for (auto section : { Inspector::Section::routing, Inspector::Section::chords, Inspector::Section::sends,
+                                      Inspector::Section::fader, Inspector::Section::quick })
                     inspector.setFolded (section, true);
                 studio.dispatchPendingMessages();
             }

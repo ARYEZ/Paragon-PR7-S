@@ -144,6 +144,7 @@ public:
     static constexpr int defaultTracksShown = 5;
     int arrangeHeightForTracks (int count) const;
     void saveAsTemplate();
+    void startNewSong();   // (0.78.2: NEW and CREATE EMPTY: the default template, if chosen)
     // Changes not saved: asks first (Save / Don't save / Cancel), then `then`.
     void whenSongCanGo (std::function<void()> then);
     juce::DocumentWindow* getKeyCommandsWindow() noexcept { return keysWindow.get(); }

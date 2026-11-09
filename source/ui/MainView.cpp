@@ -1458,11 +1458,19 @@ void MainView::newProject()
                                             juce::ModalCallbackFunction::create ([this] (int result)
                                             {
                                                 if (result == 1)
-                                                    studio.newProject();
+                                                    startNewSong();
                                             }));
         return;
     }
-    studio.newProject();
+    startNewSong();
+}
+
+void MainView::startNewSong()
+{
+    // (0.78.2) From HUB SETTINGS' DEFAULT TEMPLATE when one is chosen.
+    juce::String problems;
+    if (! studio.startNewSong (problems))
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "The default template", problems);
 }
 
 void MainView::openProject()
@@ -2685,7 +2693,7 @@ void MainView::openHub()
         {
             juce::String error;
             if (! studio.getLibrary().usesDefaultLocation())
-                studio.newProject();
+                startNewSong();
             else if (! studio.createSong (name, error))
                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't create the song", error);
             closeHub();
@@ -2702,6 +2710,7 @@ void MainView::openHub()
         });
     };
     hub.onSettings = [this] { openSettings(); };
+    hub.onSaveTemplate = [this] { saveAsTemplate(); };   // (0.78.2)
     hubWindow = std::move (window);
 }
 
@@ -2710,14 +2719,24 @@ void MainView::saveAsTemplate()
     auto* box = new FamilyAlertWindow ("Save as Template", "A name for the template (the Hub lists it under TEMPLATES):", juce::MessageBoxIconType::NoIcon);
     box->addTextEditor ("name", studio.getFile() != juce::File() ? studio.getFile().getFileNameWithoutExtension() : juce::String ("My template"));
     box->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    box->addButton ("Save as the default", 2);   // (0.78.2: every new song starts from it)
     box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
     box->enterModalState (true, juce::ModalCallbackFunction::create ([box, safe = juce::Component::SafePointer<MainView> (this)] (int result)
     {
-        if (safe == nullptr || result != 1)
+        if (safe == nullptr || result == 0)
             return;
         juce::String error;
-        if (! safe->studio.saveAsTemplate (box->getTextEditorContents ("name"), error))
+        const auto name = box->getTextEditorContents ("name");
+        if (! safe->studio.saveAsTemplate (name, error))
+        {
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't save the template", error);
+            return;
+        }
+        if (result == 2)
+            safe->studio.getLibrary().setDefaultTemplate (pr7s::ProjectLibrary::templateFolder()
+                                                              .getChildFile (juce::File::createLegalFileName (name.trim()) + pr7s::Project::fileExtension));
+        if (auto* hubWindow = dynamic_cast<HubWindow*> (safe->hubWindow.get()))
+            hubWindow->getHub().refreshTemplates();
     }), true);
 }
 

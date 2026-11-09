@@ -18,6 +18,7 @@ namespace
     }
 
     constexpr const char* sectionNames[] = { "basics", "routing", "chords", "inserts", "eq", "boost", "sends", "fader", "quick" };
+    constexpr const char* defaultFolded = "routing,chords,sends,fader,quick";   // (0.78.2)
     constexpr const char* sectionTitles[] = { "", "ROUTING", "CHORDS", "INSERTS", "EQUALIZERS", "BOOSTER", "SENDS", "FADER", "QUICK CONTROLS" };
     constexpr int headerHeight = 22, rowHeight = 22, gap = 4, slotHeight = 17, slotGap = 2, faderHeight = 300, margin = 6;
     const juce::Colour panelColour { 0xff0d0a0e }, slotColour { 0xff0b090c }, postFaderColour { 0xff1c1108 };
@@ -190,7 +191,14 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
 
     if (auto* settings = studio.getSettings())
     {
-        const auto kept = juce::StringArray::fromTokens (settings->getValue ("inspectorFolded"), ",", "");
+        // (0.78.2, the owner asked) The default layout: the basics, INSERTS, EQUALIZERS and BOOSTER open,
+        // the rest folded. Put in place once over what was kept before; any change after that is kept.
+        if (! settings->getBoolValue ("inspectorDefaults0782"))
+        {
+            settings->setValue ("inspectorFolded", defaultFolded);
+            settings->setValue ("inspectorDefaults0782", true);
+        }
+        const auto kept = juce::StringArray::fromTokens (settings->getValue ("inspectorFolded", defaultFolded), ",", "");
         for (int i = 0; i < numSections; ++i)
             folded[(size_t) i] = kept.contains (sectionNames[i]);
     }

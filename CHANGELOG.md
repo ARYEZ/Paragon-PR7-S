@@ -2,6 +2,17 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.78.2
+
+**The Inspector opens laid out as you asked.** The track's basics, INSERTS, EQUALIZERS and BOOSTER are open; ROUTING, CHORDS, SENDS, FADER and QUICK CONTROLS are folded (click a title to open one). It's put in place once when 0.78.2 first starts; after that, whatever you open or fold is kept as before.
+
+**A default template for every new song.** HUB SETTINGS has a new box, DEFAULT TEMPLATE (under DEFAULT DRUM MAP):
+
+- **NONE** (as before): a new song is empty.
+- **Any of your templates** (Documents/Paragon PR7-S/Templates): NEW and CREATE EMPTY start from it: its tracks, instruments, effects and their settings, the mixer, the tempo. It's still a new song of its own: saving asks where (or, with CREATE EMPTY, it's saved in its own new folder), and the template itself is never changed.
+- **SAVE THIS SONG AS A TEMPLATE...** beside the box saves the song that's open as a template. The naming box has a new choice, **Save as the default**, which saves it and makes it the default in one go.
+- If the chosen template is moved or deleted, new songs start empty and the box shows it as NOT FOUND.
+
 ## 0.78.1
 
 **The ruler's zoom flipped (you asked).** Drag down in the ruler to zoom in, up to zoom out, in the arrangement and the MIDI editor. The bar you grabbed still stays under the mouse, and a click still moves the playhead.

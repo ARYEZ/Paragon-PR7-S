@@ -47,6 +47,11 @@ namespace pr7s
         // Templates.
         static juce::File templateFolder();
         juce::Array<juce::File> getTemplates() const;
+        // (0.78.2, the owner asked) The template every new song starts from (HUB SETTINGS'
+        // DEFAULT TEMPLATE); none chosen, or the file gone: an empty song as before.
+        juce::File getDefaultTemplate() const;
+        juce::File getChosenDefaultTemplate() const;   // as chosen, even when the file is gone
+        void setDefaultTemplate (const juce::File&);   // juce::File(): none
 
         // The Hub's settings.
         bool showsPaths() const;           void setShowsPaths (bool);

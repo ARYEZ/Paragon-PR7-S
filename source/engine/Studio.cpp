@@ -8340,12 +8340,28 @@ namespace pr7s
             error = "Couldn't make the folder " + destination.getParentDirectory().getFullPathName();
             return false;
         }
-        newProject();
+        juce::String problems;
+        startNewSong (problems);   // (0.78.2: the default template, if one is chosen)
         if (! save (destination))
         {
             error = "Couldn't save " + destination.getFullPathName();
             return false;
         }
+        return true;
+    }
+
+    bool Studio::startNewSong (juce::String& problems)
+    {
+        const auto chosen = library->getDefaultTemplate();
+        if (chosen.existsAsFile())
+        {
+            if (newFromTemplate (chosen, problems))
+                return true;
+            problems = "The default template couldn't be opened (" + chosen.getFullPathName() + "): an empty song instead.\n" + problems;
+            newProject();
+            return false;
+        }
+        newProject();
         return true;
     }
 

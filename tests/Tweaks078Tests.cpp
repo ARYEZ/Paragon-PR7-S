@@ -9,6 +9,7 @@
 #include "engine/Studio.h"
 #include "ui/BoosterView.h"
 #include "ui/Finish.h"
+#include "ui/Hub.h"
 #include "ui/Inspector.h"
 #include "ui/MainView.h"
 
@@ -298,4 +299,55 @@ TEST_CASE ("0.78.0: the BOOSTER in the studio and the Inspector: a drag one undo
     studio.dispatchPendingMessages();
     CHECK (booster.getBus() == Engine::masterBus);
     CHECK_THAT (booster.getTrim().getValue(), WithinAbs (-1.0, 1.0e-6));
+}
+
+TEST_CASE ("0.78.2: a default template: NEW and CREATE EMPTY start from it; HUB SETTINGS chooses it", "[template][078]")
+{
+    // A template: a song with a renamed track and a tempo, saved where templates go (a test folder here).
+    const auto folder = juce::File::createTempFile ("").getSiblingFile ("pr7s-0782-templates");
+    folder.deleteRecursively();
+    folder.createDirectory();
+    const auto templateFile = folder.getChildFile ("My Rig.pr7s");
+    {
+        Studio maker (false);
+        auto& track = maker.getProject().tracks[0];
+        maker.renameTrack (track.id, "Rig Guitar");
+        maker.setTempo (97.0);
+        REQUIRE (maker.save (templateFile));
+    }
+
+    Studio studio (false);
+    auto& library = studio.getLibrary();
+    CHECK (library.getDefaultTemplate() == juce::File());
+    juce::String problems;
+    CHECK (studio.startNewSong (problems));   // none chosen: an empty song, as before
+    CHECK (studio.getProject().tracks[0].name != "Rig Guitar");
+
+    library.setDefaultTemplate (templateFile);
+    CHECK (library.getDefaultTemplate() == templateFile);
+    CHECK (studio.startNewSong (problems));
+    CHECK (studio.getProject().tracks[0].name == "Rig Guitar");
+    CHECK (studio.getProject().bpm == 97.0);
+    CHECK (studio.getFile() == juce::File());   // a new song: saving asks where, the template stays as it is
+    CHECK_FALSE (studio.isModified());
+
+    // The template gone: an empty song, and the choice kept (shown NOT FOUND).
+    templateFile.moveFileTo (folder.getChildFile ("Moved.pr7s"));
+    CHECK (library.getDefaultTemplate() == juce::File());
+    CHECK (library.getChosenDefaultTemplate() == templateFile);
+    CHECK (studio.startNewSong (problems));
+    CHECK (studio.getProject().tracks[0].name != "Rig Guitar");
+
+    // HUB SETTINGS: NONE first, the chosen one listed; choosing NONE clears it.
+    Hub hub (studio);
+    hub.setSize (1500, 900);
+    hub.refreshTemplates();
+    auto& box = hub.getTemplateBox();
+    CHECK (box.getItemText (0).startsWith ("NONE"));
+    CHECK (box.getText().contains ("NOT FOUND"));
+    box.setSelectedId (1, juce::sendNotificationSync);
+    CHECK (library.getChosenDefaultTemplate() == juce::File());
+    hub.setDefaultTemplate (folder.getChildFile ("Moved.pr7s"));
+    CHECK (library.getDefaultTemplate() == folder.getChildFile ("Moved.pr7s"));
+    folder.deleteRecursively();
 }

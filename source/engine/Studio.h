@@ -83,6 +83,9 @@ namespace pr7s
         bool createSong (const juce::String& name, juce::String& error);
         // A new song from a template: the template's tracks, plug-ins and mix, not saved yet.
         bool newFromTemplate (const juce::File& templateFile, juce::String& problems);
+        // (0.78.2) A new song: from HUB SETTINGS' DEFAULT TEMPLATE when one is chosen, else empty.
+        // False (problems set) when the template couldn't be opened: an empty song then.
+        bool startNewSong (juce::String& problems);
         // This song as a template (Templates folder); the song itself stays as it is.
         bool saveAsTemplate (const juce::String& name, juce::String& error);
         // SETTINGS' RELOAD DRIVER: the audio device closed and opened again, so

@@ -155,6 +155,23 @@ namespace pr7s
         return files;
     }
 
+    juce::File ProjectLibrary::getChosenDefaultTemplate() const
+    {
+        const auto path = get ("hubDefaultTemplate", {});
+        return path.isNotEmpty() && juce::File::isAbsolutePath (path) ? juce::File (path) : juce::File();
+    }
+
+    juce::File ProjectLibrary::getDefaultTemplate() const
+    {
+        const auto chosen = getChosenDefaultTemplate();
+        return chosen.existsAsFile() ? chosen : juce::File();
+    }
+
+    void ProjectLibrary::setDefaultTemplate (const juce::File& file)
+    {
+        set ("hubDefaultTemplate", file == juce::File() ? juce::String() : file.getFullPathName());
+    }
+
     //==========================================================================
     bool ProjectLibrary::showsPaths() const { return get ("hubShowPaths", "0") == "1"; }
     void ProjectLibrary::setShowsPaths (bool on) { set ("hubShowPaths", on ? "1" : "0"); }
