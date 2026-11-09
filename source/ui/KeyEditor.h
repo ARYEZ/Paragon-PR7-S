@@ -351,6 +351,7 @@ private:
     // The lanes (KeyEditorLanes.cpp).
     float laneHeightNow() const;
     float lanesTop() const;
+    float acrossTop() const;   // (0.77.4) the scroll bar across: between the notes and the lanes
     bool laneMouseDown (const juce::MouseEvent&);
     void laneMouseDrag (const juce::MouseEvent&);
     void laneMouseUp();

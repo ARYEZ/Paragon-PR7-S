@@ -557,14 +557,14 @@ juce::Rectangle<float> KeyEditor::rulerArea() const
 
 juce::Rectangle<float> KeyEditor::keysArea() const
 {
-    return { (float) sideWidth, notesTop(), (float) listWidth(), juce::jmax (0.0f, lanesTop() - notesTop()) };
+    return { (float) sideWidth, notesTop(), (float) listWidth(), juce::jmax (0.0f, acrossTop() - notesTop()) };
 }
 
 juce::Rectangle<float> KeyEditor::getNotesArea() const
 {
-    // Room on the right for the scroll bar down, and at the bottom (under the velocities) for the one across.
+    // Room on the right for the scroll bar down, and under the notes (0.77.4: above the lanes) for the one across.
     return { (float) (sideWidth + listWidth()), notesTop(), (float) (getWidth() - sideWidth - listWidth() - scrollBarSize),
-             juce::jmax (0.0f, lanesTop() - notesTop()) };
+             juce::jmax (0.0f, acrossTop() - notesTop()) };
 }
 
 juce::Rectangle<float> KeyEditor::getVelocityArea() const
@@ -572,7 +572,7 @@ juce::Rectangle<float> KeyEditor::getVelocityArea() const
     // (0.25.0) The velocity lane, wherever it is among the lanes (none shown: nothing).
     if (const auto lane = laneOf (pr7s::ControllerKinds::velocity); lane >= 0)
         return getLaneArea (lane);
-    return { (float) (sideWidth + listWidth()), (float) (getHeight() - scrollBarSize), (float) (getWidth() - sideWidth - listWidth()), 0.0f };
+    return { (float) (sideWidth + listWidth()), (float) getHeight(), (float) (getWidth() - sideWidth - listWidth()), 0.0f };
 }
 
 float KeyEditor::xForBeat (double songBeat) const noexcept
@@ -1868,7 +1868,8 @@ void KeyEditor::resized()
 
     const auto notesArea = getNotesArea().toNearestInt();
     down.setBounds (notesArea.getRight(), notesArea.getY(), scrollBarSize, notesArea.getHeight());
-    across.setBounds (notesArea.getX() - listWidth(), getHeight() - scrollBarSize, getWidth() - sideWidth, scrollBarSize);
+    // (0.77.4, the owner: at the bottom it was under the velocities and, in a tall window, off the screen)
+    across.setBounds (notesArea.getX() - listWidth(), juce::roundToInt (acrossTop()), getWidth() - sideWidth, scrollBarSize);
     clampScroll();
     refreshScrollBars();
 }
@@ -1956,7 +1957,7 @@ void KeyEditor::paint (juce::Graphics& g)
 
     // The editor's frame and the line between the notes and the velocities.
     g.setColour (ParagonColours::panelEdge);
-    g.fillRect (juce::Rectangle<float> ((float) sideWidth, lanesTop() - 1.0f, (float) (getWidth() - sideWidth), 1.0f));
+    g.fillRect (juce::Rectangle<float> ((float) sideWidth, acrossTop() - 1.0f, (float) (getWidth() - sideWidth), 1.0f));
     g.fillRect (juce::Rectangle<float> (0.0f, 0.0f, (float) getWidth(), 1.0f));
 }
 

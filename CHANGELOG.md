@@ -2,6 +2,12 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.77.4
+
+**VISIBILITY lights the selected track.** Click a track in the track list (or the mixer, or move with Up/Down) and its row in the left zone's VISIBILITY tab lights up in the accent colour, and the list scrolls to it if it's out of view. Before, nothing there showed which track was selected.
+
+**The MIDI editor's horizontal scroll bar moved up.** It now sits right under the notes, above the velocity lane and the other controller lanes. Before, it was at the very bottom of the editor, under the velocities, and in a window taller than the screen it ended up off the bottom. The lanes now reach the editor's bottom edge, and the line you drag to make the lanes taller is just above the scroll bar.
+
 ## 0.77.3
 
 **A default drum map for every song.** HUB SETTINGS has a new box, DEFAULT DRUM MAP (under DRAG HIGHLIGHT):

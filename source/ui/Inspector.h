@@ -110,8 +110,12 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
+    bool isVisibilityRowLit (int trackId) const;   // (0.77.4: tests)
+
 private:
     juce::uint64 seenChange = 0;   // (0.57.1) the studio's change version last acted on
+    std::vector<int> visibilitySelection;   // (0.77.4) the selection the VISIBILITY rows were last lit for
+    void followVisibilitySelection();
     class Header;
     class VisibilityRow;
     void refreshVisibility();

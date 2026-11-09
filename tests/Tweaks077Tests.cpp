@@ -338,3 +338,49 @@ TEST_CASE ("0.77.3: the MIDI editor's horizontal scroll bar always has a handle,
     REQUIRE (editor.getTool() == KeyEditor::Tool::mute);
     CHECK (editor.getMouseCursor() != juce::MouseCursor (juce::MouseCursor::NormalCursor));
 }
+
+// 0.77.4 (the owner: the track clicked in the track list lit in VISIBILITY too; the MIDI editor's scroll bar
+// across moved up under the notes: at the bottom, under the velocities, it was off the screen).
+TEST_CASE ("0.77.4: VISIBILITY lights the selected track's row", "[ui][077]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto first = studio.getProject().tracks[0].id;
+    const auto second = studio.addTrack ({});
+    studio.selectTrack (second);
+    studio.dispatchPendingMessages();
+    auto& inspector = view.getInspector();
+    inspector.setTab (Inspector::Tab::visibility);
+    CHECK (inspector.isVisibilityRowLit (second));
+    CHECK_FALSE (inspector.isVisibilityRowLit (first));
+    studio.selectTrack (first);
+    studio.dispatchPendingMessages();
+    CHECK (inspector.isVisibilityRowLit (first));
+    CHECK_FALSE (inspector.isVisibilityRowLit (second));
+}
+
+TEST_CASE ("0.77.4: the MIDI editor's scroll bar across sits under the notes, over the lanes", "[ui][077]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 1300);
+    const auto track = studio.getProject().tracks[0].id;
+    studio.addPart (track, { 0.0, 4.0, "Riff", { { 0.0, 1.0, 60, 0.8f } } });
+    studio.dispatchPendingMessages();
+    view.getArrangeView().select (track, 0);
+    view.openKeyEditor();
+    studio.dispatchPendingMessages();
+    REQUIRE (view.isKeyEditorOpen());
+    auto& editor = view.getKeyEditor();
+    const auto across = editor.getScrollBarAcross().getBounds().toFloat();
+    const auto notes = editor.getNotesArea();
+    const auto velocities = editor.getVelocityArea();
+    REQUIRE (! velocities.isEmpty());
+    CHECK (std::abs (across.getY() - notes.getBottom()) <= 1.0f);
+    CHECK (std::abs (across.getBottom() - velocities.getY()) <= 1.0f);
+    CHECK (velocities.getBottom() <= (float) editor.getHeight() + 0.5f);
+    CHECK (across.getBottom() < (float) editor.getHeight() - 20.0f);   // well off the bottom edge
+}

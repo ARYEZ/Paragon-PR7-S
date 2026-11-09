@@ -115,12 +115,20 @@ public:
             disabled = t->disabled;
             colour = t->colour;
         }
+        // (0.77.4, the owner: the track clicked in the track list lit here too)
+        lit = owner.studio.isTrackSelected (trackId);
+        box.setColour (juce::ToggleButton::textColourId, lit ? ParagonColours::accent : ParagonColours::text);
         resized();
         repaint();
     }
 
     void paint (juce::Graphics& g) override
     {
+        if (lit)
+        {
+            g.setColour (ParagonColours::accent.withAlpha (0.16f));
+            g.fillRect (getLocalBounds().withTrimmedBottom (1));
+        }
         g.setColour (disabled ? juce::Colour (0xff4a454c) : colour);
         g.fillRect (0, 3, 4, getHeight() - 6);
         g.setColour (juce::Colour (0xff050405));
@@ -137,6 +145,7 @@ public:
 
     const int trackId;
     juce::ToggleButton box;
+    bool lit = false;
 
 private:
     Inspector& owner;
@@ -898,9 +907,37 @@ void Inspector::followMix()
     panReadout.setText (panText (pan.getValue()), juce::dontSendNotification);
 }
 
+bool Inspector::isVisibilityRowLit (int id) const
+{
+    for (const auto& row : visibilityRows)
+        if (row->trackId == id)
+            return row->lit;
+    return false;
+}
+
+void Inspector::followVisibilitySelection()
+{
+    // (0.77.4) The rows lit as the selection changes (a click in the track list, the mixer, Up/Down), and
+    // the selected track's row scrolled into view.
+    auto now = studio.getSelectedTracks();
+    if (now == visibilitySelection)
+        return;
+    visibilitySelection = std::move (now);
+    refreshVisibility();
+    for (const auto& row : visibilityRows)
+        if (row->trackId == studio.getSelectedTrack())
+        {
+            const auto top = visibilityView.getViewPositionY();
+            const auto bottom = top + visibilityView.getMaximumVisibleHeight();
+            if (row->getY() < top || row->getBottom() > bottom)
+                visibilityView.setViewPosition (0, juce::jmax (0, row->getY() - visibilityView.getMaximumVisibleHeight() / 3));
+        }
+}
+
 void Inspector::timerCallback()
 {
     followMix();
+    followVisibilitySelection();
     // The Quick Controls' bars as their controls are now (automation playing, the plugin's own window).
     for (int i = 0; i < pr7s::Track::numQuickControls; ++i)
         if (auto& bar = qcBars[(size_t) i]; bar.isVisible() && ! bar.isMouseButtonDown())
