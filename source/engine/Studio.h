@@ -804,6 +804,12 @@ namespace pr7s
         static constexpr const char* noDrumMap = "";
         const DrumMap* getDrumMapOf (int trackId) const;
         void setTrackDrumMap (int trackId, const juce::String& mapName);
+        // (0.77.2) The map a track gets when one is chosen for it: the PR7-D Map on a track playing PR7-D
+        // (unless PR7-D is set to GENERAL MIDI), else the GM Map.
+        juce::String defaultDrumMapFor (int trackId) const;
+        bool playsPr7d (int trackId) const;
+        // A track on a built-in map switched to the one its instrument wants (on open, on Change Instrument).
+        void followPr7dMap (int trackId);
         void setTrackDrumEditor (int trackId, bool drums);   // the MIDI editor shows its parts as drums
         juce::String addDrumMap (DrumMap);                    // its name, made unique ("... 2")
         bool setDrumMap (const juce::String& name, DrumMap edited);

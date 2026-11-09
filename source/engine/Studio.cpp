@@ -1437,8 +1437,27 @@ namespace pr7s
             onInstrumentGoing (trackId);
         unwatch (engine.getInstrument (trackId));
         engine.setInstrument (trackId, std::move (instance));
+        followPr7dMap (trackId);
         changed (false);
         return true;
+    }
+
+    void Studio::followPr7dMap (int trackId)
+    {
+        // (0.77.2) A track on a built-in map (GM or PR7-D) takes the one its instrument wants: PR7-D's names
+        // on a PR7-D track, GM's on any other. Names only (both play every note as it is); a map of the
+        // owner's own is never touched, nor a track with none.
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! DrumMap::builtIn (track->drumMap))
+            return;
+        const auto wanted = defaultDrumMapFor (trackId);
+        if (wanted == track->drumMap)
+            return;
+        if (project.findDrumMap (wanted) == nullptr)
+            if (auto map = DrumMap::builtIn (wanted))
+                project.drumMaps.push_back (std::move (*map));
+        if (auto* again = project.findTrack (trackId))
+            again->drumMap = wanted;
     }
 
     void Studio::renameTrack (int trackId, const juce::String& name)
@@ -2571,9 +2590,9 @@ namespace pr7s
         auto name = mapName;
         if (name.isNotEmpty() && project.findDrumMap (name) == nullptr)
         {
-            // Not in the song yet: the GM Map, or one from the drum map folder.
-            if (name == DrumMap::gm().name)
-                project.drumMaps.push_back (DrumMap::gm());
+            // Not in the song yet: a built-in one (GM, PR7-D), or one from the drum map folder.
+            if (auto builtIn = DrumMap::builtIn (name))
+                project.drumMaps.push_back (std::move (*builtIn));
             else
             {
                 juce::String error;
@@ -2599,12 +2618,33 @@ namespace pr7s
         changed (false);
     }
 
+    bool Studio::playsPr7d (int trackId) const
+    {
+        const auto* track = project.findTrack (trackId);
+        return track != nullptr && track->instrument.kind == Instrument::Kind::plugin
+               && track->instrument.plugin.name.containsIgnoreCase ("PR7-D");
+    }
+
+    juce::String Studio::defaultDrumMapFor (int trackId) const
+    {
+        // (0.77.2) A track playing PR7-D: the PR7-D Map (its GROOVE LIBRARY layout, its default),
+        // unless PR7-D itself is set to GENERAL MIDI (its "Drums Note Map" parameter).
+        if (! playsPr7d (trackId))
+            return DrumMap::gm().name;
+        if (auto* instance = engine.getInstrument (trackId))
+            for (auto* parameter : instance->getParameters())
+                if (parameter->getName (64) == "Drums Note Map")
+                    return parameter->getCurrentValueAsText().containsIgnoreCase ("General MIDI") ? DrumMap::gm().name
+                                                                                                    : DrumMap::pr7d().name;
+        return DrumMap::pr7d().name;
+    }
+
     void Studio::setTrackDrumEditor (int trackId, bool drums)
     {
         if (auto* track = project.findTrack (trackId); track != nullptr && track->drumEditor != drums)
         {
             if (drums && track->drumMap.isEmpty())
-                setTrackDrumMap (trackId, DrumMap::gm().name);   // (drums need names: the GM Map)
+                setTrackDrumMap (trackId, defaultDrumMapFor (trackId));   // (drums need names: the GM Map, or PR7-D's)
             if (auto* again = project.findTrack (trackId))
                 again->drumEditor = drums;
             changed (false);
@@ -9293,6 +9333,8 @@ namespace pr7s
         loadEffects (Engine::masterBus, "Master", project.masterInserts);
         problems = missing.joinIntoString ("\n");
         numberParts();
+        for (const auto& track : project.tracks)
+            followPr7dMap (track.id);
         // Frozen tracks' parts locked as they were saved.
         frozenParts.clear();
         for (const auto& track : project.tracks)

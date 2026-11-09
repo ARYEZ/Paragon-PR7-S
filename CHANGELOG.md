@@ -2,6 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.77.2
+
+**The MIDI editor names PR7-D's drums as PR7-D does.** PR7-D starts on its GROOVE LIBRARY note layout (SETTINGS > MAP), where the notes aren't General MIDI's: note 50 is Cymbal 2's mute hit, 27 China 1, 41 the second floor tom, and so on up to 127. The MIDI editor only knew the General MIDI names, so many drum rows were named after the wrong drum (and notes under 27 or over 87 had no name at all).
+
+- **A new built-in drum map, the PR7-D Map:** every note from 6 to 127 named exactly as PR7-D names it (copied from PR7-D's own table). It changes names only: every note still goes to PR7-D as it is, so nothing sounds different.
+- **Chosen by itself:** a track playing PR7-D gets the PR7-D Map when the drum editor first needs a map, when you change a track's instrument to PR7-D, and when a song opens whose PR7-D track is on the GM Map (as songs from before this version are). If PR7-D itself is set to GENERAL MIDI, the GM Map stays. A drum map of your own is never swapped.
+- **In the MAP menus** (the MIDI editor's and the Inspector's DRUMS): "PR7-D Map (built in)" beside the GM Map.
+
+Not covered yet: PR7-D's ROOT and CUSTOM layouts (choose the map by hand there, or make one in the Drum Map Setup), and switching PR7-D's MAP while the song is open (the names follow the next time the song opens, or pick the map in the menu).
+
 ## 0.77.1
 
 **The left side can be grabbed too.**

@@ -14,7 +14,8 @@
 // sounds silent) and played in through it (I-note -> pitch).
 //
 // Built in: the GM Map (the General MIDI drum kit: names from 35 Acoustic Bass Drum to 81
-// Open Triangle, and the GM2 additions 27-34 and 82-87). Others are made in the Drum Map
+// Open Triangle, and the GM2 additions 27-34 and 82-87) and, since 0.77.2, the PR7-D Map (PR7-D's
+// GROOVE LIBRARY layout, the one it starts on). Others are made in the Drum Map
 // Setup, or loaded from .drm files (the other DAW's drum map files, which drum instruments
 // such as Superior Drummer, EZdrummer or Addictive Drums can export).
 namespace pr7s
@@ -40,6 +41,12 @@ namespace pr7s
         static DrumMap gm();                   // the built-in GM Map
         static DrumMap empty (const juce::String& name);   // "Sound 1"..., every note to itself (the manual's New Map)
         static juce::String gmName (int pitch);            // "" where GM names none
+        // (0.77.2) PR7-D's GROOVE LIBRARY note layout (its default), note for note from PR7-D's own
+        // table (`synth::drums::notemap::libraryNotes`): notes 6-127 named as PR7-D names them.
+        // Every note plays as it is (names only).
+        static DrumMap pr7d();
+        static juce::String pr7dName (int pitch);          // "" where PR7-D names none
+        static std::optional<DrumMap> builtIn (const juce::String& name);   // the GM Map or the PR7-D Map
 
         bool isIdentity() const noexcept;      // plays every note as it is (no O-note, channel or mute changes)
         int pitchForInput (int inNote) const noexcept;     // the sound whose I-note it is (else the note itself)

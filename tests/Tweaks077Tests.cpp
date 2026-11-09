@@ -196,3 +196,58 @@ TEST_CASE ("0.77.1: the MIDI editor's MUTE tool: a click mutes and unmutes, a bo
         CHECK_FALSE (n.muted);
     CHECK (notes().size() == 3);   // nothing erased
 }
+
+// 0.77.2 (the owner: "the MIDI editor in PR7-S isn't showing the same notes as the drum map in PR7-D"): PR7-D
+// starts on its GROOVE LIBRARY layout, not General MIDI; the PR7-D Map names its notes as PR7-D does.
+TEST_CASE ("0.77.2: the PR7-D Map names notes as PR7-D's Groove Library layout does", "[drums][077]")
+{
+    const auto map = DrumMap::pr7d();
+    CHECK (map.name == "PR7-D Map");
+    CHECK (map.isIdentity());   // names only: every note plays as it is
+    CHECK (map.sounds[36].name == "Kick: Hit (Stack)");
+    CHECK (map.sounds[38].name == "Snare: Center (Stack)");
+    CHECK (map.sounds[27].name == "China 1: Crash");          // GM: High Q
+    CHECK (map.sounds[49].name == "Cymbal 2: Crash");         // GM: Crash Cymbal 1
+    CHECK (map.sounds[50].name == "Cymbal 2: Mute Hit");      // GM: High Tom
+    CHECK (map.sounds[41].name == "Floortom 2: Center");
+    CHECK (map.sounds[127].name == "Snare: Sidestick");
+    CHECK (map.sounds[5].name.isEmpty());
+    int named = 0;
+    for (const auto& sound : map.sounds)
+        named += sound.name.isNotEmpty() ? 1 : 0;
+    CHECK (named == 122);   // notes 6-127, as PR7-D's table
+    CHECK (DrumMap::builtIn ("PR7-D Map").has_value());
+    CHECK (DrumMap::builtIn ("GM Map").has_value());
+    CHECK_FALSE (DrumMap::builtIn ("My Kit").has_value());
+}
+
+TEST_CASE ("0.77.2: a PR7-D track gets the PR7-D Map (chosen, or from the GM Map when a song opens)", "[drums][077]")
+{
+    Studio studio (false);
+    const auto track = studio.getProject().tracks[0].id;
+    CHECK (studio.defaultDrumMapFor (track) == "GM Map");   // PR7-K: GM
+
+    // A song whose drum track plays PR7-D, on the GM Map (as songs before 0.77.2 had it).
+    auto song = studio.getProject();
+    song.tracks[0].instrument.kind = Instrument::Kind::plugin;
+    song.tracks[0].instrument.plugin.name = "Paragon PR7-D";
+    song.tracks[0].drumMap = "GM Map";
+    song.tracks[0].drumEditor = true;
+    song.drumMaps.push_back (DrumMap::gm());
+    const auto file = juce::File::createTempFile (Project::fileExtension);
+    REQUIRE (song.toXml()->writeTo (file));
+    juce::String problems;
+    studio.open (file, problems);   // (PR7-D isn't installed here: reported missing)
+    const auto& opened = studio.getProject().tracks[0];
+    CHECK (opened.drumMap == "PR7-D Map");
+    CHECK (studio.getDrumMapOf (opened.id)->sounds[50].name == "Cymbal 2: Mute Hit");
+    CHECK (studio.defaultDrumMapFor (opened.id) == "PR7-D Map");
+
+    // A map of the owner's own is left alone.
+    studio.addDrumMap ([] { auto m = DrumMap::gm(); m.name = "My Kit"; return m; }());
+    studio.setTrackDrumMap (opened.id, "My Kit");
+    studio.followPr7dMap (opened.id);
+    CHECK (studio.getProject().tracks[0].drumMap == "My Kit");
+    studio.getLibrary().removeRecent (file);
+    file.deleteFile();
+}
