@@ -442,6 +442,15 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         view.openKeyEditor();
         studio.dispatchPendingMessages();
         view.getKeyEditor().selectNotes ({ 3, 4, 5 });
+        // PARAGON_SNAPSHOT_MUTE=1 (0.77.1): the MUTE tool on, three of the lead's notes muted.
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_MUTE", {}).isNotEmpty())
+        {
+            auto& editor = view.getKeyEditor();
+            editor.selectNotes ({});
+            editor.setNotesMuted ({ 1, 4, 6 }, true);
+            editor.setTool (KeyEditor::Tool::mute);
+            studio.dispatchPendingMessages();
+        }
         // PARAGON_SNAPSHOT_DRUMS=1 (0.26.0): a drum track with a rock beat in the drum editor (the GM Map;
         // the crash muted, some hats selected; the velocity lane).
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_DRUMS", {}).isNotEmpty())
