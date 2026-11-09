@@ -402,6 +402,7 @@ namespace pr7s
         project.click = state.click;
         project.masterVolumeDb = state.masterVolumeDb;
         project.masterEq = state.masterEq;
+        project.masterBoost = state.masterBoost;
         for (auto& track : project.tracks)
             if (const auto* then = state.findTrack (track.id))
             {
@@ -426,6 +427,7 @@ namespace pr7s
                 track.followVoice = then->followVoice;           // (0.38.0)
                 track.followVoicing = then->followVoicing;
                 track.eq = then->eq;                             // (0.43.0)
+                track.boost = then->boost;                       // (0.78.0)
                 track.performPattern = then->performPattern;     // (0.44.0)
                 track.folder = then->folder;                     // (0.50.0)
                 track.folderGroup = then->folderGroup;
@@ -2643,6 +2645,20 @@ namespace pr7s
         return false;
     }
 
+    void Studio::setEditorSolo (int trackId)
+    {
+        if (trackId != 0 && project.findTrack (trackId) == nullptr)
+            trackId = 0;
+        if (trackId == editorSoloTrack)
+            return;
+        editorSoloTrack = trackId;
+        if (exportJob == nullptr)
+            engine.setEditorSolo (trackId);
+        const auto wasModified = modified;   // (hearing, not an edit: the song isn't marked changed)
+        changed (false);
+        modified = wasModified;
+    }
+
     bool Studio::playsPr7d (int trackId) const
     {
         const auto* track = project.findTrack (trackId);
@@ -4346,6 +4362,27 @@ namespace pr7s
         changed (undoable);
     }
 
+    const Booster* Studio::getBooster (int busId) const
+    {
+        if (busId == Engine::masterBus)
+            return &project.masterBoost;
+        const auto* track = project.findTrack (busId);
+        return track != nullptr ? &track->boost : nullptr;
+    }
+
+    void Studio::setBooster (int busId, const Booster& boost, bool undoable)
+    {
+        const auto limited = boost.limited();
+        auto* target = busId == Engine::masterBus ? &project.masterBoost : nullptr;
+        if (target == nullptr)
+            if (auto* track = project.findTrack (busId))
+                target = &track->boost;
+        if (target == nullptr || (*target == limited && ! undoable))
+            return;
+        *target = limited;
+        changed (undoable);
+    }
+
     double Studio::getEqResponseDb (int busId, double frequency, bool withPre) const
     {
         const auto* eq = getChannelEq (busId);
@@ -4757,6 +4794,7 @@ namespace pr7s
             t.quickControls = preset.quickControls;
             t.midiChannel = preset.midiChannel;
             t.preFaderSlots = preset.preFaderSlots;
+            t.boost = preset.boost;   // (0.78.0)
             t.eq = preset.eq;   // (0.43.0: the manual's "Loading Inserts and EQ from Track Presets")
             if (t.isAudio())
             {
@@ -8015,6 +8053,8 @@ namespace pr7s
         frozenParts.clear();
         builtSections.clear();
         composerRiff.reset();
+        editorSoloTrack = 0;   // (0.78.0: another song's track ids)
+        engine.setEditorSolo (0);
         punchOutAll();   // (writing automation ends with the song)
         if (onInstrumentGoing)
             onInstrumentGoing (0);
@@ -8534,6 +8574,7 @@ namespace pr7s
             error = "There's nothing to export: the range is empty.";
             return false;
         }
+        engine.setEditorSolo (0);   // (0.78.0: the MIDI editor's SOLO never reaches a render)
         auto job = std::make_unique<ExportJob>();
         job->file = destination;
         job->previousRate = engine.getSampleRate();
@@ -8547,11 +8588,12 @@ namespace pr7s
         {
             const auto bits = options.bitsPerSample == 16 ? 16 : options.bitsPerSample == 32 ? 32 : 24;
             job->writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (rate)
-                                                                                                        .withNumChannels (2)
+                                                                                                        .withNumChannels (options.mono ? 1 : 2)
                                                                                                         .withBitsPerSample (bits)
                                                                                                         .withSampleFormat (bits == 32 ? juce::AudioFormatWriterOptions::SampleFormat::floatingPoint
                                                                                                                                       : juce::AudioFormatWriterOptions::SampleFormat::integral));
         }
+        job->mono = options.mono;
         if (job->writer == nullptr)
         {
             error = "Couldn't write " + destination.getFullPathName();
@@ -8620,6 +8662,18 @@ namespace pr7s
         return true;
     }
 
+    bool Studio::writeBlock (ExportJob& job, juce::AudioBuffer<float>& block, int start, int length)
+    {
+        // (0.78.0) A mono file: the two sides averaged into the first, that one written.
+        if (! job.mono || block.getNumChannels() < 2)
+            return job.writer->writeFromAudioSampleBuffer (block, start, length);
+        auto* left = block.getWritePointer (0, start);
+        juce::FloatVectorOperations::add (left, block.getReadPointer (1, start), length);
+        juce::FloatVectorOperations::multiply (left, 0.5f, length);
+        const float* one[] = { left, nullptr };
+        return job.writer->writeFromFloatArrays (one, 1, length);
+    }
+
     bool Studio::renderExport (std::function<bool (double)> keepGoing)
     {
         if (exportJob == nullptr)
@@ -8645,7 +8699,7 @@ namespace pr7s
             const auto length = (int) juce::jmin ((juce::int64) blockSize, job.total - done);
             engine.render (block, length);
             SessionLog::jobBeat();   // (0.52.1: a render that stops moving is written down)
-            if (! job.writer->writeFromAudioSampleBuffer (block, 0, length))
+            if (! writeBlock (job, block, 0, length))
                 return false;
             done += length;
             if (! report (length, 0.95 * (double) done / (double) job.total))
@@ -8675,7 +8729,7 @@ namespace pr7s
                 if (! report (length, 0.95 + 0.05 * (double) done / (double) job.maxTail))
                     return false;
             }
-            if (lastSound >= 0 && ! job.writer->writeFromAudioSampleBuffer (tail, 0, (int) lastSound + 1))
+            if (lastSound >= 0 && ! writeBlock (job, tail, 0, (int) lastSound + 1))
                 return false;
         }
         job.finished = true;
@@ -8698,6 +8752,7 @@ namespace pr7s
         // Everything as it was.
         if (! juce::approximatelyEqual (engine.getSampleRate(), job->previousRate))
             engine.prepare (job->previousRate, job->previousBlockSize);
+        engine.setEditorSolo (editorSoloTrack);
         engine.update (project);
         engine.settleMix();   // (0.9.8: the song's own levels from the first sample, no glide from the export's copy)
         engine.setPosition (job->previousPosition);
@@ -8941,6 +8996,8 @@ namespace pr7s
             const auto sourceId = track->id;
             const auto name = track->name;
             const auto processing = options.processing;
+            // (0.78.0, the owner) A mono audio track renders a mono file onto a mono track; everything else stereo.
+            const auto mono = track->isAudio() && ! track->stereoInput;
             std::vector<Part> clips;
             for (const auto& [from, to] : spans)
             {
@@ -8953,6 +9010,7 @@ namespace pr7s
                 render.end = to;
                 render.bitsPerSample = options.bitsPerSample;
                 render.tailSeconds = tailSeconds;
+                render.mono = mono;   // (0.78.0: a mono track renders mono)
                 render.prepareSong = [sourceId, from = from, to = to, processing, tempo = project.tempoMap()] (Project& song)
                 {
                     for (auto& t : song.tracks)
@@ -9021,7 +9079,7 @@ namespace pr7s
                 continue;
 
             // A new audio track, straight under the source, with the clips.
-            const auto newId = addAudioTrack (true);
+            const auto newId = addAudioTrack (! mono);
             auto* added = project.findTrack (newId);
             const auto* from = project.findTrack (sourceId);
             added->name = from->name + " render";
@@ -9264,6 +9322,8 @@ namespace pr7s
         endComposerAudition (false);   // (0.58.0)
         builtSections.clear();
         composerRiff.reset();
+        editorSoloTrack = 0;   // (0.78.0: another song's track ids)
+        engine.setEditorSolo (0);
         std::optional<Project> loaded { std::move (loadedProject) };
         punchOutAll();
 

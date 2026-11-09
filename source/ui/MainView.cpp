@@ -1326,6 +1326,8 @@ void MainView::placeZone (Zone& zone)
     // The pads' trigger keys play them only while they're open (docked or in their window).
     studio.setPadsActive (padsZone.open);
     resized();
+    // (0.78.0) SOLO EDITOR holds only while the editor shows (its key stays as set for when it's back).
+    keyEditor.setSoloEditor (keyEditor.isSoloEditorOn());
     repaint();
 }
 

@@ -492,6 +492,51 @@ void ParagonLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int 
                                           float sliderPos, float minSliderPos, float maxSliderPos,
                                           juce::Slider::SliderStyle style, juce::Slider& slider)
 {
+    // (0.78.0) PR7-C's channel fader (the BOOSTER): the slot, then the chrome cap.
+    if (style == juce::Slider::LinearVertical && slider.getProperties()[channelFaderProperty])
+    {
+        const auto centreX = (float) x + (float) width * 0.5f;
+        const auto top = (float) y, bottom = (float) (y + height);   // the cap's centre at either end
+        const auto slot = juce::Rectangle<float>::leftTopRightBottom (centreX - 4.5f, top - 10.0f, centreX + 4.5f, bottom + 10.0f);
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1e1c20), slot.getX(), 0.0f, juce::Colour (0xff000000), slot.getRight(), 0.0f, false));
+        g.fillRoundedRectangle (slot, 4.5f);
+        g.setColour (juce::Colours::white.withAlpha (0.35f));
+        g.drawRoundedRectangle (slot.translated (0.0f, 1.0f), 4.5f, 0.8f);
+        g.setColour (juce::Colours::black);
+        g.drawRoundedRectangle (slot, 4.5f, 1.0f);
+
+        const auto cap = juce::Rectangle<float> (channelFaderCapWidth, (float) channelFaderThumbRadius * 2.0f).withCentre ({ centreX, sliderPos });
+        juce::Path outline;
+        outline.addRoundedRectangle (cap, 3.5f);
+        juce::DropShadow (juce::Colours::black.withAlpha (0.6f), 8, { 0, 4 }).drawForPath (g, outline);
+        juce::ColourGradient chrome (juce::Colour (0xfffdfcfd), 0.0f, cap.getY(), juce::Colour (0xff5e5b60), 0.0f, cap.getBottom(), false);
+        chrome.addColour (0.08, juce::Colour (0xffe6e3e7));
+        chrome.addColour (0.4, juce::Colour (0xffb1aeb3));
+        chrome.addColour (0.5, juce::Colour (0xff8a878c));
+        chrome.addColour (0.56, juce::Colour (0xffeeecef));
+        chrome.addColour (0.85, juce::Colour (0xffb5b2b7));
+        g.setGradientFill (chrome);
+        g.fillPath (outline);
+        juce::ColourGradient sides (juce::Colours::black.withAlpha (0.3f), cap.getX(), 0.0f, juce::Colours::black.withAlpha (0.3f), cap.getRight(), 0.0f, false);
+        sides.addColour (0.2, juce::Colours::transparentBlack);
+        sides.addColour (0.8, juce::Colours::transparentBlack);
+        g.setGradientFill (sides);
+        g.fillPath (outline);
+        g.setColour (juce::Colours::black.withAlpha (0.12f));
+        for (auto ridge = cap.getY() + 5.0f; ridge < cap.getBottom() - 3.0f; ridge += 3.5f)
+            if (std::abs (ridge - sliderPos) > 4.0f)
+                g.drawHorizontalLine (juce::roundToInt (ridge), cap.getX() + 3.0f, cap.getRight() - 3.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.7f));
+        g.strokePath (outline, juce::PathStrokeType (1.0f));
+        const auto line = juce::Rectangle<float> (cap.getWidth() - 5.0f, 2.0f).withCentre ({ centreX, sliderPos });
+        g.setColour (ParagonColours::meterRed.withAlpha (0.35f));
+        g.fillRect (line.expanded (0.0f, 1.5f));
+        g.setColour (ParagonColours::meterRed);
+        g.fillRect (line);
+        juce::ignoreUnused (minSliderPos, maxSliderPos);
+        return;
+    }
+
     // A bar lit from its centre (the Inspector's pan): a mark at the centre, lit to the value.
     if (style == juce::Slider::LinearBar && slider.getProperties()[barFromCentreProperty])
     {
@@ -882,6 +927,8 @@ int ParagonLookAndFeel::getSliderThumbRadius (juce::Slider& slider)
 {
     if (slider.getProperties()[eqFaderProperty])
         return eqFaderThumbRadius;
+    if (slider.getProperties()[channelFaderProperty])
+        return channelFaderThumbRadius;
     return LookAndFeel_V4::getSliderThumbRadius (slider);
 }
 

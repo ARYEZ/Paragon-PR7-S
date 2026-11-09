@@ -7,6 +7,7 @@
 #include "ui/ValueSlider.h"
 #include "ui/TrackColours.h"
 #include "ui/EqEditor.h"
+#include "ui/BoosterView.h"
 
 // The Inspector (0.9.0), inspired by Cubase's: left of the track list, the
 // selected track's settings in sections (click a title to fold it; which are
@@ -53,11 +54,12 @@ public:
     std::function<void()> onFindPlugins;
     std::function<void (int busId)> onOpenEq;     // EQUALIZERS' EDIT (0.43.0): the EQ window on this channel
     EqCurve& getEqCurve() noexcept { return eqCurve; }
+    BoosterView& getBooster() noexcept { return booster; }
     std::function<void (int trackId)> onRender;   // RENDER (0.17.1): Render in Place of the whole track, as last time
 
     static constexpr int width = 210;
-    enum class Section { basics, routing, chords, inserts, eq, sends, fader, quick };   // (0.43.0: EQUALIZERS)
-    static constexpr int numSections = 8;
+    enum class Section { basics, routing, chords, inserts, eq, boost, sends, fader, quick };   // (0.78.0: BOOSTER)   // (0.43.0: EQUALIZERS)
+    static constexpr int numSections = 9;
     bool isFolded (Section) const;
     void setFolded (Section, bool);   // (kept in the settings file)
 
@@ -181,6 +183,7 @@ private:
     ColourKey colourKey;   // the colour menu (0.17.3), beside DISABLE TRACK
     juce::TextButton enable { "DISABLE TRACK" };   // always (0.17.1, the owner asked): DISABLE TRACK, or ENABLE TRACK on a disabled one
     EqCurve eqCurve { studio, 0, true };   // (0.43.0)
+    BoosterView booster { studio };        // (0.78.0)
     juce::TextButton eqBypass { "BYPASS" }, eqPresets { "PRESETS" }, eqEdit { "EDIT" };   // (0.71.0: PRESETS; EDIT opens the whole EQ)
     juce::TextButton render { "RENDER" }, preset { "PRESET" };   // (0.9.8: FREEZE; RENDER since 0.17.1, the owner asked: Freeze is in the track's menu)
     std::unique_ptr<juce::FileChooser> chooser;   // a preset's

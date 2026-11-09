@@ -17,8 +17,8 @@ namespace
         return percent == 0 ? juce::String ("C") : (pan < 0.0 ? "L " : "R ") + juce::String (percent);
     }
 
-    constexpr const char* sectionNames[] = { "basics", "routing", "chords", "inserts", "eq", "sends", "fader", "quick" };
-    constexpr const char* sectionTitles[] = { "", "ROUTING", "CHORDS", "INSERTS", "EQUALIZERS", "SENDS", "FADER", "QUICK CONTROLS" };
+    constexpr const char* sectionNames[] = { "basics", "routing", "chords", "inserts", "eq", "boost", "sends", "fader", "quick" };
+    constexpr const char* sectionTitles[] = { "", "ROUTING", "CHORDS", "INSERTS", "EQUALIZERS", "BOOSTER", "SENDS", "FADER", "QUICK CONTROLS" };
     constexpr int headerHeight = 22, rowHeight = 22, gap = 4, slotHeight = 17, slotGap = 2, faderHeight = 300, margin = 6;
     const juce::Colour panelColour { 0xff0d0a0e }, slotColour { 0xff0b090c }, postFaderColour { 0xff1c1108 };
 }
@@ -237,6 +237,7 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     render.onClick = [this] { if (onRender) onRender (trackId); };
     // EQUALIZERS (0.43.0): the curve (edited right there), BYPASS, and EDIT EQ for the whole EQ.
     content.addAndMakeVisible (eqCurve);
+    content.addAndMakeVisible (booster);   // (0.78.0)
     for (auto* k : { &eqBypass, &eqPresets, &eqEdit })
     {
         k->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
@@ -635,6 +636,7 @@ void Inspector::showMaster()
     master = true;
     trackId = pr7s::Engine::masterBus;
     eqCurve.setBus (trackId);
+    booster.setBus (trackId);
     AutomationKeys::setUp (read, write, studio, trackId);
     fader.setSingleTrack (trackId, true);
     refresh();
@@ -645,6 +647,7 @@ void Inspector::showTrack (int id)
     master = false;
     trackId = studio.getProject().findTrack (id) != nullptr ? id : 0;
     eqCurve.setBus (trackId);
+    booster.setBus (trackId);
     AutomationKeys::setUp (read, write, studio, trackId);
     for (int i = 0; i < pr7s::Project::maxSends; ++i)
     {
@@ -688,6 +691,7 @@ void Inspector::refresh()
     const auto* t = track();
     for (auto& header : headers)
         header->repaint();
+    booster.refresh();   // (0.78.0: an undo or a preset shows at once, not on its next tick)
     if (master)
     {
         AutomationKeys::refresh (read, write, studio, trackId);
@@ -970,7 +974,7 @@ void Inspector::layout()
         const auto section = (Section) i;
         auto& header = *headers[(size_t) i];
         // The master (0.9.12): its basics (R W, volume), inserts and fader.
-        const auto applies = master ? section == Section::basics || section == Section::inserts || section == Section::fader || section == Section::eq
+        const auto applies = master ? section == Section::basics || section == Section::inserts || section == Section::fader || section == Section::eq || section == Section::boost
                                     : t != nullptr && (section != Section::sends || studio.getProject().hasOutput (*t))   // (0.60.0: FX channels send too)
                                           && (section != Section::chords || t->kind == pr7s::Track::Kind::instrument)   // (0.36.0: MIDI only)
                                           && (section == Section::basics || ! t->isFolder() || t->folderGroup);   // (0.50.0: a folder: its basics)
@@ -1116,6 +1120,9 @@ void Inspector::layout()
                 place (eqEdit, line);
                 break;
             }
+            case Section::boost:
+                place (booster, row (booster.getPreferredHeight (w - 2 * margin)));
+                break;
             case Section::sends:
                 for (auto& send : sendSlots)
                 {

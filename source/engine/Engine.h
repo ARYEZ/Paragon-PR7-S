@@ -86,6 +86,10 @@ namespace pr7s
         // inserts are bypassed, and the master's volume.
         // Call after every change.
         void update (const Project&);
+        // (0.78.0) The MIDI editor's SOLO: while set (a track's id), the next updates hear that track alone (and
+        // what it's routed into), whatever the tracks' own solos say. 0: off. Message thread only.
+        void setEditorSolo (int trackId) noexcept { editorSolo = trackId; }
+        int getEditorSolo() const noexcept { return editorSolo; }
         int getEventBuilds() const noexcept { return eventBuilds; }   // (0.34.2, tests) tracks' event lists built so far
         int getClipBuilds() const noexcept { return clipBuilds; }     // (0.57.2, tests) audio tracks' clip lists built
 
@@ -359,6 +363,7 @@ namespace pr7s
             int preFader = Project::maxInserts;     // the inserts before the fader (the rest after)
             ChannelEq eqSettings;                   // (0.43.0) its EQ as set (a new rate designs it again)
             EqProcessor eq;
+            float boostGain = 1.0f, boostNow = 1.0f;   // (0.78.0) the booster: target, and where the ramp is
             // What it is, where its sound goes, and its sends.
             enum class Role { source, group, fx };  // processed in this order: tracks, groups, FX
             Role role = Role::source;
@@ -599,7 +604,9 @@ namespace pr7s
         std::vector<LaneState> masterAutomation;
         int masterPreFader = Project::maxInserts;
         ChannelEq masterEqSettings;   // (0.43.0)
+        int editorSolo = 0;           // (0.78.0) setEditorSolo
         EqProcessor masterEq;
+        float masterBoostGain = 1.0f, masterBoostNow = 1.0f;   // (0.78.0)
         // (0.46.0) The spectrum's tap and Auto Listen.
         std::atomic<int> spectrumBus { -1 }, listenBus { -1 };
         std::atomic<int> exportBus { 0 };   // (0.51.0) a channel export: only this channel reaches the output (0: all)

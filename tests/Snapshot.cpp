@@ -1656,6 +1656,14 @@ TEST_CASE ("Snapshot: the channel EQ (0.43.0; PARAGON_SNAPSHOT_EQ=inspector for 
             view.setSize (1500, 1000);
             studio.dispatchPendingMessages();
             auto& inspector = view.getInspector();
+            // (0.78.0, PARAGON_SNAPSHOT_BOOSTER=1) The BOOSTER under it: the sections above folded, a trim and a level set.
+            if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_BOOSTER", {}).isNotEmpty())
+            {
+                studio.setBooster (id, { 3.5f, -4.0f });
+                for (auto section : { Inspector::Section::routing, Inspector::Section::chords, Inspector::Section::inserts })
+                    inspector.setFolded (section, true);
+                studio.dispatchPendingMessages();
+            }
             image = view.createComponentSnapshot (view.getLocalArea (&inspector, inspector.getLocalBounds()), true, 1.0f);
         }
         else

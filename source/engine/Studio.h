@@ -168,6 +168,11 @@ namespace pr7s
         // Inspired by Cubase's workflow (record follows the selected track), selecting arms too.
         void setArmed (int trackId);
         void selectTrack (int trackId);   // (it alone: the others are deselected)
+        // (0.78.0, the owner: "solo the instrument I'm in the editor", the other DAW's Solo Editor) While set, only
+        // that track is heard (and what it's routed into); the tracks' own solos are untouched and nothing is
+        // saved or undone. 0: off. Renders and exports never hear it.
+        void setEditorSolo (int trackId);
+        int getEditorSolo() const noexcept { return editorSoloTrack; }
         // The master's row clicked (0.9.12): the Inspector shows the master until a track is chosen.
         void selectMaster();
         bool isMasterSelected() const noexcept { return masterSelected; }
@@ -872,6 +877,10 @@ namespace pr7s
         // undoable false, then once more with true on release (one undo step).
         const ChannelEq* getChannelEq (int busId) const;
         void setChannelEq (int busId, const ChannelEq&, bool undoable = true);
+        // (0.78.0) The BOOSTER after the EQ (0 = the master). Drags pass undoable = false and
+        // the release true: one undo step.
+        const Booster* getBooster (int busId) const;
+        void setBooster (int busId, const Booster&, bool undoable = true);
         double getEqResponseDb (int busId, double frequency, bool withPre = true) const;   // the curve, as it plays
         static juce::File eqPresetFolder();   // Documents/Paragon PR7-S/EQ Presets (.pr7eq)
         bool saveEqPreset (int busId, const juce::File&) const;
@@ -1255,6 +1264,7 @@ namespace pr7s
             // What's played can be changed first (Render in Place: only what's rendered, as it asks).
             std::function<void (Project&)> prepareSong;
             int channel = 0;   // (0.51.0) a channel export: only this track or channel reaches the file (0: the mix)
+            bool mono = false; // (0.78.0) a one-channel file: the two sides averaged (Render in Place of a mono track)
         };
         // (0.51.0, the manual's Export Audio Mixdown: Channel Selection Multiple, Export Range Cycle
         // Markers) Several files in one go: each channel chosen (none: the main mix) over each cycle
@@ -1493,6 +1503,7 @@ namespace pr7s
         bool newControllersRamp = true;   // (without a settings file)
         juce::File drumMapFolderOverride;
         juce::String defaultDrumMapHere;   // (0.77.3: without a settings file)
+        int editorSoloTrack = 0;           // (0.78.0) setEditorSolo
         bool addDrumMapToSong (const juce::String& name);   // false: not found
         // Copied automation: each lane's control, its bus, and its points from the range's start.
         struct AutomationClipLane { int busId = 0; AutomationLane lane; };
@@ -1627,8 +1638,10 @@ namespace pr7s
             double previousRate = 0.0, previousPosition = 0.0;
             int previousBlockSize = 512;
             bool finished = false;
+            bool mono = false;   // (0.78.0) written as one channel
         };
         std::unique_ptr<ExportJob> exportJob;
+        static bool writeBlock (ExportJob&, juce::AudioBuffer<float>&, int start, int length);
         std::unique_ptr<MediaDatabase> mediaBay;   // (0.21.0; made when first asked for)
         std::shared_ptr<const AudioData> mediaPreviewSound;
         double mediaPreviewBeats = 0.0;

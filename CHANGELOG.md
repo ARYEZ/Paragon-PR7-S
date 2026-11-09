@@ -2,6 +2,21 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.78.0
+
+**Drag the ruler down to zoom out.** Hold the left mouse button in the ruler (the time bar along the top of the arrangement) and drag down: the view zooms out. Drag up: it zooms in. Every 80 pixels halves (or doubles) the zoom, and the bar you grabbed stays under the mouse. A click, or a drag sideways, still moves the playhead as before. The MIDI editor's ruler does the same. Note: the other DAW's manual has it the other way round (down zooms in); this is built the way you asked. Say if you'd like it flipped.
+
+**SOLO EDITOR in the MIDI editor.** A new SOLO EDITOR key in the editor's panel, under INSTRUMENT. While it's lit, only the track you're editing is heard, so you can work on a part without the rest of the song. It follows the editor: open another track's part and that track is the soloed one; close the editor and everything is heard again (the key stays lit for next time). It never touches the tracks' own S buttons, isn't saved with the song, and exports and renders always hear the whole song. There's also a key command for it (MIDI > Solo Editor, no key given yet), for the Stream Deck.
+
+**Render in Place keeps mono tracks mono.** A mono audio track now renders to a mono file on a new mono track; a stereo track (and every instrument) still renders in stereo. Before, every render was a stereo file on a stereo track. The two sides are averaged into one, so a centred mono track comes out at the level it played.
+
+**The BOOSTER.** A new section in the Inspector, right under EQUALIZERS, that works like PR7-C's OUTPUT TRIM:
+
+- **TRIM:** a knob from -12 to +12 dB, in 0.1 dB steps.
+- **The fader:** PR7-C's chrome channel fader with its scale (10, 5, 0, -5, -10, -20, -30, -40, -inf), from +10 dB down to silence at the bottom. Shift-drag for fine moves.
+- The two add together, as in PR7-C. The boost comes after the channel's EQ and before its sends and fader, so it raises (or lowers) what goes into everything after it. Moves are smoothed (no clicks while you drag).
+- Double-click either for 0 dB. Each drag is one undo step. It's saved with the song and carried in track presets. The master has one too.
+
 ## 0.77.4
 
 **VISIBILITY lights the selected track.** Click a track in the track list (or the mixer, or move with Up/Down) and its row in the left zone's VISIBILITY tab lights up in the accent colour, and the list scrolls to it if it's out of view. Before, nothing there showed which track was selected.

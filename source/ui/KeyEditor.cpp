@@ -78,6 +78,12 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     instrumentKey.setTooltip ("INSTRUMENT: opens this track's instrument window (it stays above the studio while you edit)");
     instrumentKey.onClick = [this] { if (onOpenInstrument && getPart() != nullptr) onOpenInstrument (getTrackId()); };
     panelColumn.addAndMakeVisible (instrumentKey);
+    soloKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    soloKey.setWantsKeyboardFocus (false);
+    soloKey.setTooltip ("SOLO EDITOR: while lit, only this part's track is heard (what it's routed into too). It follows the part "
+                        "you edit, goes off when the editor closes, and never changes the tracks' own S keys or a render");
+    soloKey.onClick = [this] { setSoloEditor (! soloOn); };
+    panelColumn.addAndMakeVisible (soloKey);
     selectTool.onClick = [this] { setTool (Tool::select); };
     drawTool.onClick = [this] { setTool (Tool::draw); };
     eraseTool.onClick = [this] { setTool (Tool::erase); };
@@ -324,6 +330,27 @@ void KeyEditor::changeListenerCallback (juce::ChangeBroadcaster*)
     refresh();
 }
 
+void KeyEditor::setSoloEditor (bool on)
+{
+    soloOn = on;
+    refreshSolo();
+}
+
+void KeyEditor::refreshSolo()
+{
+    // The editor's track soloed while the key is on and the editor shows (the part may have changed).
+    const auto wanted = soloOn && isShowing() && getPart() != nullptr ? getTrackId() : 0;
+    if (studio.getEditorSolo() != wanted)
+        studio.setEditorSolo (wanted);
+    soloKey.setToggleState (soloOn, juce::dontSendNotification);
+}
+
+void KeyEditor::visibilityChanged()
+{
+    // Closed (or moved between its window and the dock): off when it's gone, back when it shows again.
+    refreshSolo();   // (hidden: nothing soloed; shown again: as the key says)
+}
+
 void KeyEditor::refresh()
 {
     // A different part selected in the arrangement: show that one. (The
@@ -381,6 +408,7 @@ void KeyEditor::refresh()
         resized();
     }
     refreshPanel();
+    refreshSolo();   // (0.78.0: SOLO EDITOR follows the part)
     repaint();
 }
 
@@ -1341,6 +1369,9 @@ void KeyEditor::mouseDown (const juce::MouseEvent& event)
     {
         gesture = Gesture::position;
         studio.setPosition (juce::jmax (0.0, pr7s::snap (beatForX (point.x), grid)));
+        rulerZooming = false;
+        rulerZoomBeat = beatForX (point.x);
+        rulerZoomFrom = pixelsPerBeat;
         return;
     }
     if (laneMouseDown (event))   // (0.25.0) the controller lanes: their headers, events, the LINE tool, the divider
@@ -1514,8 +1545,23 @@ void KeyEditor::mouseDrag (const juce::MouseEvent& event)
     switch (gesture)
     {
         case Gesture::position:
+        {
+            // (0.78.0) Dragged up or down: a zoom (down out, up in), the clicked beat kept under the mouse.
+            const auto dy = point.y - downAt.y;
+            if (! rulerZooming && std::abs (dy) >= ArrangeView::rulerZoomStart && std::abs (dy) > std::abs (point.x - downAt.x))
+                rulerZooming = true;
+            if (rulerZooming)
+            {
+                pixelsPerBeat = juce::jlimit (12.0, 600.0, rulerZoomFrom * std::pow (2.0, (double) -dy / ArrangeView::rulerZoomPixelsPerDouble));
+                firstBeat = juce::jmax (earliestFirstBeat(), rulerZoomBeat - (double) (downAt.x - (float) (sideWidth + listWidth())) / pixelsPerBeat);
+                setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+                refreshScrollBars();
+                repaint();
+                return;
+            }
             studio.setPosition (juce::jmax (0.0, pr7s::snap (beatForX (point.x), grid)));
             return;
+        }
 
         case Gesture::velocityHandle:
             dragVelocityHandle (point.y - downAt.y);
@@ -1696,6 +1742,8 @@ void KeyEditor::mouseUp (const juce::MouseEvent&)
         laneMouseUp();
         return;
     }
+    if (std::exchange (rulerZooming, false))
+        setMouseCursor (toolCursor());
     const auto finished = gesture;
     const auto finishedBand = band;   // (the MUTE box reads it below)
     gesture = Gesture::none;
@@ -1888,6 +1936,7 @@ void KeyEditor::layoutColumn()
     place (closeButton);
     gap();
     place (instrumentKey);
+    place (soloKey);
     gap();
     for (auto* key : std::initializer_list<juce::Component*> { &selectTool, &drawTool, &splitTool, &eraseTool, &muteTool, &lineTool })
         place (*key);

@@ -1456,6 +1456,12 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
         {
             drag = Drag::position;
             studio.setPosition (dragStartBeat);
+            // (0.78.0) Held and dragged up or down: a zoom instead (see mouseDrag).
+            rulerZooming = false;
+            rulerDownX = event.position.x;
+            rulerDownY = event.position.y;
+            rulerZoomBeat = timeline.beatForX (event.position.x);
+            rulerZoomFrom = timeline.pixelsPerBeat;
         }
         return;
     }
@@ -1682,8 +1688,24 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
     switch (drag)
     {
         case Drag::position:
+        {
+            // (0.78.0) Up or down past a few pixels: zoom (down out, up in), the clicked beat held under
+            // the mouse's first place; the playhead stays where the click put it.
+            const auto dy = event.position.y - rulerDownY;
+            if (! rulerZooming && std::abs (dy) >= rulerZoomStart && std::abs (dy) > std::abs (event.position.x - rulerDownX))
+                rulerZooming = true;
+            if (rulerZooming)
+            {
+                timeline.pixelsPerBeat = juce::jlimit (2.0, 400.0, rulerZoomFrom * std::pow (2.0, (double) -dy / rulerZoomPixelsPerDouble));
+                timeline.firstBeat = juce::jmax (0.0, rulerZoomBeat - (double) rulerDownX / timeline.pixelsPerBeat);
+                setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+                scrolled();
+                repaint();
+                break;
+            }
             studio.setPosition (juce::jmax (0.0, pr7s::snap (beat, grid)));
             break;
+        }
         case Drag::cycle:
         {
             const auto now = juce::jmax (0.0, pr7s::snap (beat, grid));
@@ -1831,6 +1853,8 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
 
 void ArrangeView::mouseUp (const juce::MouseEvent& event)
 {
+    if (std::exchange (rulerZooming, false))
+        setMouseCursor (juce::MouseCursor::NormalCursor);
     if (drag == Drag::folderMove)
     {
         drag = Drag::none;

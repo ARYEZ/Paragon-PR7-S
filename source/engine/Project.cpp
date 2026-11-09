@@ -304,12 +304,15 @@ namespace pr7s
         return false;
     }
 
-    std::vector<int> Project::soloedOutTracks() const
+    std::vector<int> Project::soloedOutTracks (int onlySolo) const
     {
         std::vector<int> soloed;
-        for (const auto& t : tracks)
-            if (t.solo && ! t.disabled)
-                soloed.push_back (t.id);
+        if (const auto* only = onlySolo != 0 ? findTrack (onlySolo) : nullptr; only != nullptr && ! only->disabled)
+            soloed.push_back (onlySolo);
+        else
+            for (const auto& t : tracks)
+                if (t.solo && ! t.disabled)
+                    soloed.push_back (t.id);
         if (soloed.empty())
             return {};
         std::vector<int> out;
@@ -693,6 +696,8 @@ namespace pr7s
                 t->setAttribute ("performPattern", track.performPattern);
             if (! (track.eq == ChannelEq {}))
                 t->addChildElement (track.eq.toXml().release());   // (0.43.0)
+            if (! track.boost.isFlat())
+                t->addChildElement (track.boost.toXml().release());   // (0.78.0)
             if (track.followVoicing)
                 t->addChildElement (track.followVoicing->toXml ("TrackVoicing").release());
             if (track.pitchbendUp != 2 || track.pitchbendDown != 2 || track.pitchbendSnap || track.pitchbendGrid)
@@ -793,6 +798,8 @@ namespace pr7s
         master->setAttribute ("preFaderSlots", masterPreFaderSlots);
         if (! (masterEq == ChannelEq {}))
             master->addChildElement (masterEq.toXml().release());
+        if (! masterBoost.isFlat())
+            master->addChildElement (masterBoost.toXml().release());
         lanesToXml (masterAutomation, *master);
         master->setAttribute ("automationOpen", masterAutomationOpen);
         master->setAttribute ("automationRead", masterRead);
@@ -967,6 +974,8 @@ namespace pr7s
             track.followVoice = voiceFromId (t->getStringAttribute ("followVoice"));
             if (const auto* eq = t->getChildByName ("Eq"))
                 track.eq = ChannelEq::fromXml (*eq);
+            if (const auto* boost = t->getChildByName ("Booster"))
+                track.boost = Booster::fromXml (*boost);
             track.performPattern = t->getStringAttribute ("performPattern");
             if (const auto* voicing = t->getChildByName ("TrackVoicing"))
                 track.followVoicing = VoicingSettings::fromXml (*voicing);
@@ -1140,6 +1149,8 @@ namespace pr7s
             project.masterPreFaderSlots = juce::jlimit (0, maxInserts, master->getIntAttribute ("preFaderSlots", maxInserts));
             if (const auto* eq = master->getChildByName ("Eq"))
                 project.masterEq = ChannelEq::fromXml (*eq);
+            if (const auto* boost = master->getChildByName ("Booster"))
+                project.masterBoost = Booster::fromXml (*boost);
             project.masterAutomation = lanesFromXml (*master);
             project.masterAutomationOpen = master->getBoolAttribute ("automationOpen");
             project.masterRead = master->getBoolAttribute ("automationRead");

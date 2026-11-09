@@ -237,6 +237,37 @@ namespace pr7s
         bool any() const noexcept { return fadeIn || fadeOut || crossfades; }
     };
 
+    // (0.78.0) The BOOSTER: PR7-C's OUTPUT TRIM on every channel, after its EQ and before its
+    // sends and fader. A trim knob (-12..+12 dB) and a level fader (-60..+10 dB; the bottom is
+    // silence); the gain is the two added, as PR7-C's output stage.
+    struct Booster
+    {
+        static constexpr float trimRange = 12.0f, leastLevel = -60.0f, mostLevel = 10.0f;
+        float trimDb = 0.0f, levelDb = 0.0f;
+        bool isFlat() const noexcept { return trimDb == 0.0f && levelDb == 0.0f; }
+        Booster limited() const noexcept
+        {
+            return { std::round (juce::jlimit (-trimRange, trimRange, trimDb) * 10.0f) / 10.0f,
+                     juce::jlimit (leastLevel, mostLevel, levelDb) };
+        }
+        float gain() const noexcept
+        {
+            return levelDb <= leastLevel ? 0.0f : juce::Decibels::decibelsToGain (trimDb + levelDb, -1000.0f);
+        }
+        bool operator== (const Booster& o) const noexcept { return trimDb == o.trimDb && levelDb == o.levelDb; }
+        std::unique_ptr<juce::XmlElement> toXml() const
+        {
+            auto e = std::make_unique<juce::XmlElement> ("Booster");
+            e->setAttribute ("trim", trimDb);
+            e->setAttribute ("level", levelDb);
+            return e;
+        }
+        static Booster fromXml (const juce::XmlElement& e)
+        {
+            return Booster { (float) e.getDoubleAttribute ("trim"), (float) e.getDoubleAttribute ("level") }.limited();
+        }
+    };
+
     struct Track
     {
         // An instrument track plays MIDI parts through its instrument; an
@@ -339,6 +370,7 @@ namespace pr7s
         std::optional<VoicingSettings> followVoicing;
         // (0.43.0) The channel EQ and Pre section (audio-carrying channels: all but MIDI-only).
         ChannelEq eq;
+        Booster boost;   // (0.78.0)
         // (0.44.0) A pattern it performs over the chord track while the song plays (a pattern's
         // name; empty: none), beside its own parts.
         juce::String performPattern;
@@ -386,6 +418,7 @@ namespace pr7s
         std::vector<Insert> masterInserts;
         int masterPreFaderSlots = 16;
         ChannelEq masterEq;                   // (0.43.0)
+        Booster masterBoost;                  // (0.78.0)
         std::vector<AutomationLane> masterAutomation;   // volume and the master's effects
         // The Automation panel's settings (0.28.0; saved with the song, not undo steps).
         struct AutomationSettings
@@ -512,7 +545,8 @@ namespace pr7s
         // tracks, what is routed into them (outputs only; for a soloed FX channel also what sends to it, else it
         // would be silent), and the channels they go on into (their groups and FX returns, to the master).
         // Everything else is soloed out. Empty: nothing soloed.
-        std::vector<int> soloedOutTracks() const;
+        // (0.78.0) `onlySolo`: as if that track alone were soloed (the MIDI editor's SOLO); 0: the tracks' own.
+        std::vector<int> soloedOutTracks (int onlySolo = 0) const;
         bool hasOutput (const Track& t) const noexcept { return ! t.isChannel() || t.isGroup() || t.isFx(); }
         const DrumMap* findDrumMap (const juce::String& name) const;
         const DrumMap* drumMapOf (const Track&) const;   // its map, if it has one

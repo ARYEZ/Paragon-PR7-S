@@ -125,6 +125,12 @@ public:
     // WINDOW: into a window of its own (to maximize, or stretch across
     // screens); DOCK: back under the arrangement. The main window moves it.
     std::function<void()> onWindowToggle;
+    // (0.78.0, the owner: the other DAW's Solo Editor) While on, only the track of the part being edited is heard;
+    // it follows the part, and goes off when the editor closes. Not saved.
+    void setSoloEditor (bool on);
+    bool isSoloEditorOn() const noexcept { return soloOn; }
+    juce::TextButton& getSoloKey() noexcept { return soloKey; }
+    void visibilityChanged() override;
     void setInWindow (bool);   // the button's name follows
     bool isInWindow() const noexcept { return inWindow; }
 
@@ -415,6 +421,8 @@ private:
 
     // The view: zoom and scroll, of its own (independent of the arrangement's).
     double pixelsPerBeat = 80.0, firstBeat = 0.0;
+    bool rulerZooming = false;              // (0.78.0) the ruler dragged up/down: a zoom (as the arrangement's)
+    double rulerZoomBeat = 0.0, rulerZoomFrom = 0.0;
     float scrollY = 0.0f;
     float rowHeight = 12.0f;   // a note row (the vertical zoom)
     AutoScroll autoScroll;
@@ -458,7 +466,10 @@ private:
     ToolKey selectTool, drawTool, eraseTool, muteTool, splitTool;
     juce::TextButton quantizeButton { "QUANTIZE" },
                      windowButton { "WINDOW" }, closeButton { "CLOSE" }, autoScrollButton { "AUTO-SCROLL" }, autoScrollMenu,
-                     instrumentKey { "INSTRUMENT" };   // (0.31.0) the track's instrument window
+                     instrumentKey { "INSTRUMENT" },   // (0.31.0) the track's instrument window
+                     soloKey { "SOLO EDITOR" };      // (0.78.0) only this part's track heard (Studio::setEditorSolo)
+    bool soloOn = false;
+    void refreshSolo();
     bool inWindow = false;
     juce::ComboBox gridBox;
 };

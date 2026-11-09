@@ -119,6 +119,11 @@ public:
     // With eqFader: lit from the bottom to the cap (a volume fader), not from the centre.
     static constexpr const char* faderFromBottomProperty = "faderFromBottom";
     static constexpr int eqFaderThumbRadius = 7;
+    // (0.78.0, from PR7-C) The BOOSTER's channel fader: a dark slot and a brushed chrome cap
+    // with a red line at its centre (PR7-C's output fader, a size smaller for the Inspector).
+    static constexpr const char* channelFaderProperty = "channelFader";
+    static constexpr int channelFaderThumbRadius = 22;   // half the cap's height
+    static constexpr float channelFaderCapWidth = 30.0f;
 
     // Every font in the plugin is Inter, built in: semibold for bold text,
     // and the heavy display italic for bold italic (the PARAGON badge).
