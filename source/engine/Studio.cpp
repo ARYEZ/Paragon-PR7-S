@@ -267,8 +267,16 @@ namespace pr7s
     {
         if (mirroring)
             return;   // (a linked change: the change it came from does all this once, after)
+        // (0.76.0, the owner: the composer's instruments too loud, the mixer couldn't be used while hearing them)
+        // While the composer is heard, a change (a fader, pan, an insert, a mute) is played in its copy and the
+        // hearing goes on; it ends only when its tracks can no longer play it.
+        std::optional<Project> heardCopy;
         if (composerAudition.has_value())
-            endComposerAudition (false);   // (0.58.0: the song changed; the engine plays it again below)
+        {
+            heardCopy = composerAuditionCopy();
+            if (! heardCopy.has_value())
+                endComposerAudition (false);
+        }
         // A frozen track's parts are locked: whatever changed them is put back.
         for (auto& track : project.tracks)
             if (track.frozen)
@@ -277,7 +285,7 @@ namespace pr7s
         numberParts();
         watchPlugins();
         if (exportJob == nullptr)   // (mid-render the engine plays the render's copy: endExport brings the song back)
-            engine.update (project);
+            engine.update (heardCopy.has_value() ? *heardCopy : project);
         modified = true;
         if (undoable)
             recordUndoState();
@@ -394,6 +402,7 @@ namespace pr7s
         project.click = state.click;
         project.masterVolumeDb = state.masterVolumeDb;
         project.masterEq = state.masterEq;
+        project.masterBoost = state.masterBoost;
         for (auto& track : project.tracks)
             if (const auto* then = state.findTrack (track.id))
             {
@@ -418,6 +427,7 @@ namespace pr7s
                 track.followVoice = then->followVoice;           // (0.38.0)
                 track.followVoicing = then->followVoicing;
                 track.eq = then->eq;                             // (0.43.0)
+                track.boost = then->boost;                       // (0.78.0)
                 track.performPattern = then->performPattern;     // (0.44.0)
                 track.folder = then->folder;                     // (0.50.0)
                 track.folderGroup = then->folderGroup;
@@ -1429,8 +1439,24 @@ namespace pr7s
             onInstrumentGoing (trackId);
         unwatch (engine.getInstrument (trackId));
         engine.setInstrument (trackId, std::move (instance));
+        followDefaultDrumMap (trackId);
         changed (false);
         return true;
+    }
+
+    void Studio::followDefaultDrumMap (int trackId)
+    {
+        // (0.77.2) A track on a built-in map (GM or PR7-D) takes the one it should have: the Hub's
+        // DEFAULT DRUM MAP (0.77.3), else PR7-D's names on a PR7-D track and GM's on any other. A map of
+        // the owner's own (not built in) is never touched, nor a track with none.
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! DrumMap::builtIn (track->drumMap))
+            return;
+        const auto wanted = defaultDrumMapFor (trackId);
+        if (wanted == track->drumMap || ! addDrumMapToSong (wanted))
+            return;
+        if (auto* again = project.findTrack (trackId))
+            again->drumMap = wanted;
     }
 
     void Studio::renameTrack (int trackId, const juce::String& name)
@@ -2035,7 +2061,7 @@ namespace pr7s
             // ((0.47.0) each part's info-line Transpose and Velocity written into its notes: the glued part has none.)
             for (const auto& note : glued.notes)
                 if (note.start >= 0.0 && note.start < glued.length)
-                    notes.push_back ({ note.start, juce::jmin (note.length, glued.length - note.start), glued.heardPitch (note.pitch), glued.heardVelocity (note.velocity) });
+                    notes.push_back ({ note.start, juce::jmin (note.length, glued.length - note.start), glued.heardPitch (note.pitch), glued.heardVelocity (note.velocity), note.muted });
             auto end = glued.end();
             for (const auto i : after)
             {
@@ -2043,7 +2069,7 @@ namespace pr7s
                 for (const auto& note : next.notes)
                     if (note.start >= 0.0 && note.start < next.length)
                         notes.push_back ({ next.start - glued.start + note.start, juce::jmin (note.length, next.length - note.start),
-                                           next.heardPitch (note.pitch), next.heardVelocity (note.velocity) });
+                                           next.heardPitch (note.pitch), next.heardVelocity (note.velocity), note.muted });
                 end = juce::jmax (end, next.end());
             }
             std::stable_sort (notes.begin(), notes.end(), [] (const Note& a, const Note& b) { return a.start < b.start; });
@@ -2242,9 +2268,14 @@ namespace pr7s
             {
                 if (std::find (partIds.begin(), partIds.end(), part.id) == partIds.end() || part.notes.empty())
                     continue;
+                // (0.77.1) Muted notes stay as they are (they aren't heard); the others are humanized.
                 std::vector<LineNote> notes;
+                std::vector<Note> mutedNotes;
                 for (const auto& n : part.notes)
-                    notes.push_back ({ n.start, n.length, n.pitch, n.velocity });
+                    if (n.muted)
+                        mutedNotes.push_back (n);
+                    else
+                        notes.push_back ({ n.start, n.length, n.pitch, n.velocity });
                 HumanizeOptions o;
                 o.amount = amount;
                 o.bpm = project.bpmAt (part.start);
@@ -2254,7 +2285,7 @@ namespace pr7s
                     o.layers = guitarLayers();
                 o.seed = (juce::uint32) juce::Random::getSystemRandom().nextInt();
                 notes = humanize (std::move (notes), o);
-                part.notes.clear();
+                part.notes = std::move (mutedNotes);
                 for (const auto& n : notes)
                     part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
                 any = true;
@@ -2555,27 +2586,9 @@ namespace pr7s
         auto* track = project.findTrack (trackId);
         if (track == nullptr || track->isAudio() || track->isChannel())
             return;
-        auto name = mapName;
-        if (name.isNotEmpty() && project.findDrumMap (name) == nullptr)
-        {
-            // Not in the song yet: the GM Map, or one from the drum map folder.
-            if (name == DrumMap::gm().name)
-                project.drumMaps.push_back (DrumMap::gm());
-            else
-            {
-                juce::String error;
-                for (const auto& libraryFile : getLibraryDrumMaps())
-                    if (libraryFile.getFileNameWithoutExtension() == name)
-                        if (auto map = DrumMap::readDrm (libraryFile, error))
-                        {
-                            map->name = name;
-                            project.drumMaps.push_back (std::move (*map));
-                            break;
-                        }
-                if (project.findDrumMap (name) == nullptr)
-                    return;
-            }
-        }
+        const auto name = mapName;
+        if (name.isNotEmpty() && ! addDrumMapToSong (name))
+            return;
         const auto hadNone = track->drumMap.isEmpty();
         track->drumMap = name;
         if (name.isEmpty())
@@ -2586,12 +2599,96 @@ namespace pr7s
         changed (false);
     }
 
+    bool Studio::addDrumMapToSong (const juce::String& name)
+    {
+        // In the song already, or a built-in one (GM, PR7-D), or one from the drum map folder.
+        if (project.findDrumMap (name) != nullptr)
+            return true;
+        if (auto builtIn = DrumMap::builtIn (name))
+        {
+            project.drumMaps.push_back (std::move (*builtIn));
+            return true;
+        }
+        juce::String error;
+        for (const auto& libraryFile : getLibraryDrumMaps())
+            if (libraryFile.getFileNameWithoutExtension() == name)
+                if (auto map = DrumMap::readDrm (libraryFile, error))
+                {
+                    map->name = name;
+                    project.drumMaps.push_back (std::move (*map));
+                    return true;
+                }
+        return false;
+    }
+
+    juce::String Studio::getDefaultDrumMap() const
+    {
+        return settings != nullptr ? settings->getValue ("defaultDrumMap") : defaultDrumMapHere;
+    }
+
+    void Studio::setDefaultDrumMap (const juce::String& name)
+    {
+        defaultDrumMapHere = name;
+        if (settings != nullptr)
+            settings->setValue ("defaultDrumMap", name);
+    }
+
+    bool Studio::isDrumMapAvailable (const juce::String& name) const
+    {
+        if (name.isEmpty())
+            return false;
+        if (project.findDrumMap (name) != nullptr || DrumMap::builtIn (name))
+            return true;
+        for (const auto& libraryFile : getLibraryDrumMaps())
+            if (libraryFile.getFileNameWithoutExtension() == name)
+                return true;
+        return false;
+    }
+
+    void Studio::setEditorSolo (int trackId)
+    {
+        if (trackId != 0 && project.findTrack (trackId) == nullptr)
+            trackId = 0;
+        if (trackId == editorSoloTrack)
+            return;
+        editorSoloTrack = trackId;
+        if (exportJob == nullptr)
+            engine.setEditorSolo (trackId);
+        const auto wasModified = modified;   // (hearing, not an edit: the song isn't marked changed)
+        changed (false);
+        modified = wasModified;
+    }
+
+    bool Studio::playsPr7d (int trackId) const
+    {
+        const auto* track = project.findTrack (trackId);
+        return track != nullptr && track->instrument.kind == Instrument::Kind::plugin
+               && track->instrument.plugin.name.containsIgnoreCase ("PR7-D");
+    }
+
+    juce::String Studio::defaultDrumMapFor (int trackId) const
+    {
+        // (0.77.3) The Hub's DEFAULT DRUM MAP wins when one is chosen (and can still be found).
+        if (const auto chosen = getDefaultDrumMap(); isDrumMapAvailable (chosen))
+            return chosen;
+        // (0.77.2) A track playing PR7-D: the PR7-D Map (its GROOVE LIBRARY layout, its default),
+        // unless PR7-D itself is set to GENERAL MIDI (its "Drums Note Map" parameter).
+        if (! playsPr7d (trackId))
+            return DrumMap::gm().name;
+        if (auto* instance = engine.getInstrument (trackId))
+            for (auto* parameter : instance->getParameters())
+                if (parameter->getName (64) == "Drums Note Map")
+                    return parameter->getCurrentValueAsText().containsIgnoreCase ("General MIDI") ? DrumMap::gm().name
+                                                                                                    : DrumMap::pr7d().name;
+        return DrumMap::pr7d().name;
+    }
+
     void Studio::setTrackDrumEditor (int trackId, bool drums)
     {
         if (auto* track = project.findTrack (trackId); track != nullptr && track->drumEditor != drums)
         {
             if (drums && track->drumMap.isEmpty())
-                setTrackDrumMap (trackId, DrumMap::gm().name);   // (drums need names: the GM Map)
+                setTrackDrumMap (trackId, defaultDrumMapFor (trackId));   // (drums need names: the GM Map, or PR7-D's)
             if (auto* again = project.findTrack (trackId))
                 again->drumEditor = drums;
             changed (false);
@@ -4265,6 +4362,27 @@ namespace pr7s
         changed (undoable);
     }
 
+    const Booster* Studio::getBooster (int busId) const
+    {
+        if (busId == Engine::masterBus)
+            return &project.masterBoost;
+        const auto* track = project.findTrack (busId);
+        return track != nullptr ? &track->boost : nullptr;
+    }
+
+    void Studio::setBooster (int busId, const Booster& boost, bool undoable)
+    {
+        const auto limited = boost.limited();
+        auto* target = busId == Engine::masterBus ? &project.masterBoost : nullptr;
+        if (target == nullptr)
+            if (auto* track = project.findTrack (busId))
+                target = &track->boost;
+        if (target == nullptr || (*target == limited && ! undoable))
+            return;
+        *target = limited;
+        changed (undoable);
+    }
+
     double Studio::getEqResponseDb (int busId, double frequency, bool withPre) const
     {
         const auto* eq = getChannelEq (busId);
@@ -4676,6 +4794,7 @@ namespace pr7s
             t.quickControls = preset.quickControls;
             t.midiChannel = preset.midiChannel;
             t.preFaderSlots = preset.preFaderSlots;
+            t.boost = preset.boost;   // (0.78.0)
             t.eq = preset.eq;   // (0.43.0: the manual's "Loading Inserts and EQ from Track Presets")
             if (t.isAudio())
             {
@@ -7933,6 +8052,9 @@ namespace pr7s
         endComposerAudition (false);   // (0.58.0)
         frozenParts.clear();
         builtSections.clear();
+        composerRiff.reset();
+        editorSoloTrack = 0;   // (0.78.0: another song's track ids)
+        engine.setEditorSolo (0);
         punchOutAll();   // (writing automation ends with the song)
         if (onInstrumentGoing)
             onInstrumentGoing (0);
@@ -8218,12 +8340,28 @@ namespace pr7s
             error = "Couldn't make the folder " + destination.getParentDirectory().getFullPathName();
             return false;
         }
-        newProject();
+        juce::String problems;
+        startNewSong (problems);   // (0.78.2: the default template, if one is chosen)
         if (! save (destination))
         {
             error = "Couldn't save " + destination.getFullPathName();
             return false;
         }
+        return true;
+    }
+
+    bool Studio::startNewSong (juce::String& problems)
+    {
+        const auto chosen = library->getDefaultTemplate();
+        if (chosen.existsAsFile())
+        {
+            if (newFromTemplate (chosen, problems))
+                return true;
+            problems = "The default template couldn't be opened (" + chosen.getFullPathName() + "): an empty song instead.\n" + problems;
+            newProject();
+            return false;
+        }
+        newProject();
         return true;
     }
 
@@ -8452,6 +8590,7 @@ namespace pr7s
             error = "There's nothing to export: the range is empty.";
             return false;
         }
+        engine.setEditorSolo (0);   // (0.78.0: the MIDI editor's SOLO never reaches a render)
         auto job = std::make_unique<ExportJob>();
         job->file = destination;
         job->previousRate = engine.getSampleRate();
@@ -8465,11 +8604,12 @@ namespace pr7s
         {
             const auto bits = options.bitsPerSample == 16 ? 16 : options.bitsPerSample == 32 ? 32 : 24;
             job->writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (rate)
-                                                                                                        .withNumChannels (2)
+                                                                                                        .withNumChannels (options.mono ? 1 : 2)
                                                                                                         .withBitsPerSample (bits)
                                                                                                         .withSampleFormat (bits == 32 ? juce::AudioFormatWriterOptions::SampleFormat::floatingPoint
                                                                                                                                       : juce::AudioFormatWriterOptions::SampleFormat::integral));
         }
+        job->mono = options.mono;
         if (job->writer == nullptr)
         {
             error = "Couldn't write " + destination.getFullPathName();
@@ -8538,6 +8678,18 @@ namespace pr7s
         return true;
     }
 
+    bool Studio::writeBlock (ExportJob& job, juce::AudioBuffer<float>& block, int start, int length)
+    {
+        // (0.78.0) A mono file: the two sides averaged into the first, that one written.
+        if (! job.mono || block.getNumChannels() < 2)
+            return job.writer->writeFromAudioSampleBuffer (block, start, length);
+        auto* left = block.getWritePointer (0, start);
+        juce::FloatVectorOperations::add (left, block.getReadPointer (1, start), length);
+        juce::FloatVectorOperations::multiply (left, 0.5f, length);
+        const float* one[] = { left, nullptr };
+        return job.writer->writeFromFloatArrays (one, 1, length);
+    }
+
     bool Studio::renderExport (std::function<bool (double)> keepGoing)
     {
         if (exportJob == nullptr)
@@ -8563,7 +8715,7 @@ namespace pr7s
             const auto length = (int) juce::jmin ((juce::int64) blockSize, job.total - done);
             engine.render (block, length);
             SessionLog::jobBeat();   // (0.52.1: a render that stops moving is written down)
-            if (! job.writer->writeFromAudioSampleBuffer (block, 0, length))
+            if (! writeBlock (job, block, 0, length))
                 return false;
             done += length;
             if (! report (length, 0.95 * (double) done / (double) job.total))
@@ -8593,7 +8745,7 @@ namespace pr7s
                 if (! report (length, 0.95 + 0.05 * (double) done / (double) job.maxTail))
                     return false;
             }
-            if (lastSound >= 0 && ! job.writer->writeFromAudioSampleBuffer (tail, 0, (int) lastSound + 1))
+            if (lastSound >= 0 && ! writeBlock (job, tail, 0, (int) lastSound + 1))
                 return false;
         }
         job.finished = true;
@@ -8616,6 +8768,7 @@ namespace pr7s
         // Everything as it was.
         if (! juce::approximatelyEqual (engine.getSampleRate(), job->previousRate))
             engine.prepare (job->previousRate, job->previousBlockSize);
+        engine.setEditorSolo (editorSoloTrack);
         engine.update (project);
         engine.settleMix();   // (0.9.8: the song's own levels from the first sample, no glide from the export's copy)
         engine.setPosition (job->previousPosition);
@@ -8807,8 +8960,9 @@ namespace pr7s
     {
         using P = RenderOptions::Processing;
         beginBatch();   // (the plugins offline once for all the stretches)
-        const juce::ScopeGuard batch { [this] { endBatch(); } };
-        std::vector<int> made;
+        auto batchEnded = false;
+        const juce::ScopeGuard batch { [this, &batchEnded] { if (! batchEnded) endBatch(); } };
+        std::vector<int> made, toDisable, toHide;
         juce::StringArray problems;
         const auto folder = getAudioFolder();
         folder.createDirectory();
@@ -8858,6 +9012,8 @@ namespace pr7s
             const auto sourceId = track->id;
             const auto name = track->name;
             const auto processing = options.processing;
+            // (0.78.0, the owner) A mono audio track renders a mono file onto a mono track; everything else stereo.
+            const auto mono = track->isAudio() && ! track->stereoInput;
             std::vector<Part> clips;
             for (const auto& [from, to] : spans)
             {
@@ -8870,6 +9026,7 @@ namespace pr7s
                 render.end = to;
                 render.bitsPerSample = options.bitsPerSample;
                 render.tailSeconds = tailSeconds;
+                render.mono = mono;   // (0.78.0: a mono track renders mono)
                 render.prepareSong = [sourceId, from = from, to = to, processing, tempo = project.tempoMap()] (Project& song)
                 {
                     for (auto& t : song.tracks)
@@ -8938,7 +9095,7 @@ namespace pr7s
                 continue;
 
             // A new audio track, straight under the source, with the clips.
-            const auto newId = addAudioTrack (true);
+            const auto newId = addAudioTrack (! mono);
             auto* added = project.findTrack (newId);
             const auto* from = project.findTrack (sourceId);
             added->name = from->name + " render";
@@ -8997,14 +9154,18 @@ namespace pr7s
             // The source: kept, muted (the parts rendered, or the whole track), or removed (a whole track).
             // Disabled (0.31.0): muted first. A stretch of a track: whatever was chosen but keep, its parts
             // rendered there muted (disabling or removing the track would silence the rest of it).
+            // (0.77.0, the owner: "render in place always means mute / disable / hide, however it was asked
+            // for") Disable on a stretch too: its parts rendered there muted, and the whole track muted,
+            // disabled and hidden once everything is rendered (a track disabled now would render the next
+            // stretch of it silent).
             const auto muteSource = options.source == RenderOptions::Source::mute
-                                 || (source.wholeTrack && options.source == RenderOptions::Source::disable)
+                                 || options.source == RenderOptions::Source::disable
                                  || (! source.wholeTrack && options.source != RenderOptions::Source::keep);
             if (muteSource)
             {
-                if (source.wholeTrack)
+                if (source.wholeTrack || options.source == RenderOptions::Source::disable)
                     project.findTrack (sourceId)->mute = true;
-                else
+                if (! source.wholeTrack)
                 {
                     auto* t = project.findTrack (sourceId);
                     splitTrackAt (*t, source.start, project.tempoMap());
@@ -9015,12 +9176,23 @@ namespace pr7s
                 }
             }
             changed();
-            if (source.wholeTrack && options.source == RenderOptions::Source::disable)
-                setTracksDisabled ({ sourceId }, true);
-            if (source.wholeTrack && options.hideSource && options.source != RenderOptions::Source::remove)
-                setTracksHidden ({ sourceId }, true);
+            if (options.source == RenderOptions::Source::disable && std::find (toDisable.begin(), toDisable.end(), sourceId) == toDisable.end())
+                toDisable.push_back (sourceId);
+            if ((source.wholeTrack || options.source == RenderOptions::Source::disable) && options.hideSource
+                && options.source != RenderOptions::Source::remove && std::find (toHide.begin(), toHide.end(), sourceId) == toHide.end())
+                toHide.push_back (sourceId);
             if (options.source == RenderOptions::Source::remove && source.wholeTrack)
                 removeTrack (sourceId);
+        }
+        // After every stretch is rendered (the plugins back online first: the batch ends before they're unloaded).
+        if (! toDisable.empty() || ! toHide.empty())
+        {
+            endBatch();
+            batchEnded = true;
+            if (! toDisable.empty())
+                setTracksDisabled (toDisable, true);
+            if (! toHide.empty())
+                setTracksHidden (toHide, true);
         }
         error = problems.joinIntoString ("\n");
         if (! made.empty())
@@ -9165,6 +9337,9 @@ namespace pr7s
         lastBackupTime = juce::Time::getMillisecondCounter();
         endComposerAudition (false);   // (0.58.0)
         builtSections.clear();
+        composerRiff.reset();
+        editorSoloTrack = 0;   // (0.78.0: another song's track ids)
+        engine.setEditorSolo (0);
         std::optional<Project> loaded { std::move (loadedProject) };
         punchOutAll();
 
@@ -9262,6 +9437,8 @@ namespace pr7s
         loadEffects (Engine::masterBus, "Master", project.masterInserts);
         problems = missing.joinIntoString ("\n");
         numberParts();
+        for (const auto& track : project.tracks)
+            followDefaultDrumMap (track.id);
         // Frozen tracks' parts locked as they were saved.
         frozenParts.clear();
         for (const auto& track : project.tracks)
@@ -9871,9 +10048,9 @@ namespace pr7s
             if (trackId == 0)
                 return 0;
             renameTrack (trackId, linePartName (idea.part));
-            // (0.54.0) Drums: the GM map, the MIDI editor's drum view.
+            // (0.54.0) Drums: a drum map (0.77.3: the default one), the MIDI editor's drum view.
             if (idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove)
-                setTrackDrumMap (trackId, DrumMap::gm().name);
+                setTrackDrumMap (trackId, defaultDrumMapFor (trackId));
         }
         const auto part = partFromIdea (idea, spans.front().start, spans.back().end - spans.front().start, linePartName (idea.part) + ": " + idea.style);
         addPart (trackId, part);
@@ -9926,14 +10103,15 @@ namespace pr7s
             settings->setValue ("composer", text);
     }
 
-    bool Studio::auditionComposer (const std::vector<std::pair<int, LineIdea>>& layers, double start, double end)
+    std::optional<Project> Studio::composerAuditionCopy() const
     {
-        if (exportJob != nullptr || end <= start || engine.isRecording())
-            return false;
+        if (! composerAudition.has_value())
+            return std::nullopt;
+        const auto start = composerAudition->start, end = composerAudition->end;
         // A copy of the song: each layer a part on its track, those tracks alone, the cycle round the layers.
         auto heard = project;
         std::set<int> playing;
-        for (const auto& [trackId, idea] : layers)
+        for (const auto& [trackId, idea] : composerAudition->layers)
         {
             if (! canTakeMidi (trackId) || idea.notes.empty())
                 continue;
@@ -9942,32 +10120,47 @@ namespace pr7s
             playing.insert (trackId);
         }
         if (playing.empty())
-            return false;
+            return std::nullopt;
+        // (0.76.0) Soloed in the mixer among the layers' tracks: only those; muted: not heard. The rest of the
+        // song stays silent, as before.
+        const auto anySoloed = std::any_of (heard.tracks.begin(), heard.tracks.end(),
+                                            [&playing] (const Track& t) { return t.solo && playing.count (t.id) > 0; });
         for (auto& t : heard.tracks)
-        {
-            t.solo = playing.count (t.id) > 0;
-            t.mute = false;
-        }
+            t.solo = playing.count (t.id) > 0 && (! anySoloed || t.solo);
         heard.loopOn = true;
         heard.loopStart = start;
         heard.loopEnd = end;
+        return heard;
+    }
+
+    bool Studio::auditionComposer (const std::vector<std::pair<int, LineIdea>>& layers, double start, double end)
+    {
+        if (exportJob != nullptr || end <= start || engine.isRecording())
+            return false;
         const auto first = ! composerAudition.has_value();
+        const auto before = composerAudition;
         if (first)
-        {
-            // From the song's own playing: stopped first (where it was is where it goes back to).
-            if (engine.isPlaying())
-            {
-                punchOutAll();
-                engine.stop();
-            }
-            composerAudition = ComposerAudition { start, end, engine.getPosition() };
-        }
+            composerAudition = ComposerAudition { start, end, engine.getPosition(), layers };
         else
         {
             composerAudition->start = start;
             composerAudition->end = end;
+            composerAudition->layers = layers;
         }
-        engine.update (heard);
+        const auto heard = composerAuditionCopy();
+        if (! heard.has_value())
+        {
+            composerAudition = before;
+            return false;
+        }
+        if (first && engine.isPlaying())
+        {
+            // From the song's own playing: stopped first (where it was is where it goes back to).
+            punchOutAll();
+            engine.stop();
+            composerAudition->wasAt = engine.getPosition();
+        }
+        engine.update (*heard);
         if (first || ! engine.isPlaying())
         {
             engine.setPosition (start);
@@ -10021,7 +10214,7 @@ namespace pr7s
                     continue;
                 renameTrack (trackId, linePartName (idea.part));
                 if (idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove)
-                    setTrackDrumMap (trackId, DrumMap::gm().name);
+                    setTrackDrumMap (trackId, defaultDrumMapFor (trackId));
             }
             plan.emplace_back (trackId, &idea);
             used.push_back (trackId);

@@ -15,6 +15,7 @@
 #include "DrumGenerator.h"
 #include "DrumLearning.h"
 #include "SectionPlan.h"
+#include "RiffPaste.h"
 #include "Patterns.h"
 #include "Progressions.h"
 #include "Melody.h"
@@ -82,6 +83,9 @@ namespace pr7s
         bool createSong (const juce::String& name, juce::String& error);
         // A new song from a template: the template's tracks, plug-ins and mix, not saved yet.
         bool newFromTemplate (const juce::File& templateFile, juce::String& problems);
+        // (0.78.2) A new song: from HUB SETTINGS' DEFAULT TEMPLATE when one is chosen, else empty.
+        // False (problems set) when the template couldn't be opened: an empty song then.
+        bool startNewSong (juce::String& problems);
         // This song as a template (Templates folder); the song itself stays as it is.
         bool saveAsTemplate (const juce::String& name, juce::String& error);
         // SETTINGS' RELOAD DRIVER: the audio device closed and opened again, so
@@ -167,6 +171,11 @@ namespace pr7s
         // Inspired by Cubase's workflow (record follows the selected track), selecting arms too.
         void setArmed (int trackId);
         void selectTrack (int trackId);   // (it alone: the others are deselected)
+        // (0.78.0, the owner: "solo the instrument I'm in the editor", the other DAW's Solo Editor) While set, only
+        // that track is heard (and what it's routed into); the tracks' own solos are untouched and nothing is
+        // saved or undone. 0: off. Renders and exports never hear it.
+        void setEditorSolo (int trackId);
+        int getEditorSolo() const noexcept { return editorSoloTrack; }
         // The master's row clicked (0.9.12): the Inspector shows the master until a track is chosen.
         void selectMaster();
         bool isMasterSelected() const noexcept { return masterSelected; }
@@ -356,6 +365,9 @@ namespace pr7s
         const std::vector<BuiltSection>& getBuiltSections() const noexcept { return builtSections; }
         void noteBuiltSection (const BuiltSection&);   // (replaces one built over the same stretch)
         void clearBuiltSections() { builtSections.clear(); }
+        // (0.75.0) Your own riff in the composer (engine/RiffPaste.h; forgotten with the song, as the sections).
+        const std::optional<ComposerRiff>& getComposerRiff() const noexcept { return composerRiff; }
+        void setComposerRiff (std::optional<ComposerRiff> r) { composerRiff = std::move (r); }
         // The chords for the section after `from`, as long as `spans`: the chord track's there when it
         // has a chord starting in that stretch; else `spans` again from `from`, written onto the
         // chord track (one undo step) so the song keeps its chords.
@@ -800,6 +812,17 @@ namespace pr7s
         static constexpr const char* noDrumMap = "";
         const DrumMap* getDrumMapOf (int trackId) const;
         void setTrackDrumMap (int trackId, const juce::String& mapName);
+        // (0.77.2) The map a track gets when one is chosen for it: the PR7-D Map on a track playing PR7-D
+        // (unless PR7-D is set to GENERAL MIDI), else the GM Map.
+        juce::String defaultDrumMapFor (int trackId) const;
+        bool playsPr7d (int trackId) const;
+        // A track on a built-in map switched to the one it should have (on open, on Change Instrument).
+        void followDefaultDrumMap (int trackId);
+        // (0.77.3) HUB SETTINGS' DEFAULT DRUM MAP: a map's name (GM Map, PR7-D Map or one in the drum map
+        // folder), or "" for automatic (GM, PR7-D's on PR7-D tracks). Used wherever a map is chosen for you.
+        juce::String getDefaultDrumMap() const;
+        void setDefaultDrumMap (const juce::String& name);
+        bool isDrumMapAvailable (const juce::String& name) const;   // in the song, built in, or in the folder
         void setTrackDrumEditor (int trackId, bool drums);   // the MIDI editor shows its parts as drums
         juce::String addDrumMap (DrumMap);                    // its name, made unique ("... 2")
         bool setDrumMap (const juce::String& name, DrumMap edited);
@@ -857,6 +880,10 @@ namespace pr7s
         // undoable false, then once more with true on release (one undo step).
         const ChannelEq* getChannelEq (int busId) const;
         void setChannelEq (int busId, const ChannelEq&, bool undoable = true);
+        // (0.78.0) The BOOSTER after the EQ (0 = the master). Drags pass undoable = false and
+        // the release true: one undo step.
+        const Booster* getBooster (int busId) const;
+        void setBooster (int busId, const Booster&, bool undoable = true);
         double getEqResponseDb (int busId, double frequency, bool withPre = true) const;   // the curve, as it plays
         static juce::File eqPresetFolder();   // Documents/Paragon PR7-S/EQ Presets (.pr7eq)
         bool saveEqPreset (int busId, const juce::File&) const;
@@ -1240,6 +1267,7 @@ namespace pr7s
             // What's played can be changed first (Render in Place: only what's rendered, as it asks).
             std::function<void (Project&)> prepareSong;
             int channel = 0;   // (0.51.0) a channel export: only this track or channel reaches the file (0: the mix)
+            bool mono = false; // (0.78.0) a one-channel file: the two sides averaged (Render in Place of a mono track)
         };
         // (0.51.0, the manual's Export Audio Mixdown: Channel Selection Multiple, Export Range Cycle
         // Markers) Several files in one go: each channel chosen (none: the main mix) over each cycle
@@ -1438,7 +1466,14 @@ namespace pr7s
         void finishRecording();
         void finishAudioRecording();
         bool auditioning = false;   // (0.30.0) the engine plays a soloed copy
-        struct ComposerAudition { double start = 0.0, end = 0.0, wasAt = 0.0; };
+        struct ComposerAudition
+        {
+            double start = 0.0, end = 0.0, wasAt = 0.0;
+            std::vector<std::pair<int, LineIdea>> layers;   // (0.76.0: kept, so a change to the mix plays on)
+        };
+        // (0.76.0) The song as the composer is heard: the layers as parts on their tracks, those alone (or the
+        // ones among them you soloed), each track's own fader, pan, inserts and mute. Empty: none can play.
+        std::optional<Project> composerAuditionCopy() const;
         std::optional<ComposerAudition> composerAudition;   // (0.58.0)
         juce::String composerState;                         // (without a settings file)
         void endComposerAudition (bool backToSong);
@@ -1470,6 +1505,9 @@ namespace pr7s
         void buildRecordingControllers (std::vector<Controller>&, double partStart) const;   // (0.25.0: each kind's last pass in a cycle)
         bool newControllersRamp = true;   // (without a settings file)
         juce::File drumMapFolderOverride;
+        juce::String defaultDrumMapHere;   // (0.77.3: without a settings file)
+        int editorSoloTrack = 0;           // (0.78.0) setEditorSolo
+        bool addDrumMapToSong (const juce::String& name);   // false: not found
         // Copied automation: each lane's control, its bus, and its points from the range's start.
         struct AutomationClipLane { int busId = 0; AutomationLane lane; };
         std::vector<AutomationClipLane> automationClip;
@@ -1518,6 +1556,7 @@ namespace pr7s
         DrumSettings drumSettings;
         juce::File drummerFolderOverride;
         std::vector<BuiltSection> builtSections;
+        std::optional<ComposerRiff> composerRiff;
         juce::String ideasDrummer;
         float ideasHumanize = 0.0f, humanizeAmount = 0.5f;   // (without a settings file: the tests)
         bool ideasFeel = true, humanizeLayers = true;
@@ -1602,8 +1641,10 @@ namespace pr7s
             double previousRate = 0.0, previousPosition = 0.0;
             int previousBlockSize = 512;
             bool finished = false;
+            bool mono = false;   // (0.78.0) written as one channel
         };
         std::unique_ptr<ExportJob> exportJob;
+        static bool writeBlock (ExportJob&, juce::AudioBuffer<float>&, int start, int length);
         std::unique_ptr<MediaDatabase> mediaBay;   // (0.21.0; made when first asked for)
         std::shared_ptr<const AudioData> mediaPreviewSound;
         double mediaPreviewBeats = 0.0;

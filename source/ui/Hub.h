@@ -32,6 +32,7 @@ public:
     std::function<void (const juce::String& name)> onCreate;      // Create Empty (a name; empty: the folder name)
     std::function<void (const juce::File&)> onTemplate;
     std::function<void()> onChooseFile, onSettings;
+    std::function<void()> onSaveTemplate;   // (0.78.2) SAVE THIS SONG AS A TEMPLATE... (MainView's box)
 
     // The list (tests): what's shown, by section; a search.
     struct Item { bool header = false; juce::String section; juce::File file; };
@@ -76,6 +77,16 @@ private:
     juce::Slider humanizeAmount;
     juce::ToggleButton humanizeLayers { "Keep velocities in their layers (1-59 / 60-119 / 120-126 / 127)" };
     // AUTO-SAVE (0.72.0): how often, how many copies kept, the folder.
+    // (0.77.3) DEFAULT DRUM MAP: the map chosen for you wherever one is needed.
+    juce::Label drumMapLabel;
+    juce::ComboBox drumMapBox;
+    juce::StringArray drumMapNames;   // by item id - 1 ("" = automatic)
+    void refreshDrumMaps();
+    // (0.78.2, the owner asked) DEFAULT TEMPLATE: the template every new song starts from.
+    juce::Label templateLabel;
+    juce::ComboBox templateBox;
+    juce::Array<juce::File> templateFiles;   // by item id - 1 (the first: none)
+    juce::TextButton saveTemplate { "SAVE THIS SONG AS A TEMPLATE..." };
     juce::Label autoSaveTitle, autoSaveNote;
     juce::ComboBox autoSaveBox, keepBox;
     juce::TextButton showBackups { "SHOW BACKUPS" };
@@ -88,6 +99,11 @@ public:
     juce::Slider& getDropStrength() noexcept { return dropStrength; }
     juce::ComboBox& getAutoSaveBox() noexcept { return autoSaveBox; }   // (0.72.0: tests)
     juce::ComboBox& getKeepBox() noexcept { return keepBox; }
+    juce::ComboBox& getDrumMapBox() noexcept { return drumMapBox; }   // (0.77.3: tests)
+    void setDefaultDrumMap (const juce::String& name);                 // as choosing it in the box
+    juce::ComboBox& getTemplateBox() noexcept { return templateBox; }   // (0.78.2: tests)
+    void refreshTemplates();
+    void setDefaultTemplate (const juce::File&);                        // as choosing it in the box
 
     // HUMANIZE (0.20.1, the owner asked: the key and the settings in the Hub). The key map the
     // studio uses (MainView's: the same assignments as KEYS); its command "MIDI.Humanize".

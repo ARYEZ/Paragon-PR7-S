@@ -191,3 +191,20 @@ TEST_CASE ("0.73.2: OUT holds the loudest peak since it was last clicked", "[ui]
     transport.followOutputForTests();
     CHECK (std::abs (transport.getShownOutDb() + 20.0f) < 0.05f);
 }
+
+TEST_CASE ("0.73.4: the drawing choice reaches menus as they're made", "[ui][tweaks073]")
+{
+    // (On Linux a window has one renderer, so nothing switches: the choice is kept for the next menu or box.)
+    Windows::applyDrawing (true);
+    CHECK (FamilyAlertWindow::softwareDrawing);
+    juce::Component menuLike;
+    menuLike.setSize (100, 40);
+    menuLike.addToDesktop (0);
+    ParagonLookAndFeel lf;
+    lf.preparePopupMenuWindow (menuLike);   // (no crash; a one-renderer peer is left alone)
+    REQUIRE (menuLike.getPeer() != nullptr);
+    CHECK_FALSE (FamilyAlertWindow::useDrawing (*menuLike.getPeer(), true));
+    menuLike.removeFromDesktop();
+    Windows::applyDrawing (false);
+    CHECK_FALSE (FamilyAlertWindow::softwareDrawing);
+}

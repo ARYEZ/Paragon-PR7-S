@@ -56,7 +56,7 @@ public:
     KeyEditor (pr7s::Studio&, ArrangeView&);
     ~KeyEditor() override;
 
-    enum class Tool { select, draw, erase, split, line };
+    enum class Tool { select, draw, erase, split, line, mute };
     void setTool (Tool);
     Tool getTool() const noexcept { return tool; }
 
@@ -125,6 +125,12 @@ public:
     // WINDOW: into a window of its own (to maximize, or stretch across
     // screens); DOCK: back under the arrangement. The main window moves it.
     std::function<void()> onWindowToggle;
+    // (0.78.0, the owner: the other DAW's Solo Editor) While on, only the track of the part being edited is heard;
+    // it follows the part, and goes off when the editor closes. Not saved.
+    void setSoloEditor (bool on);
+    bool isSoloEditorOn() const noexcept { return soloOn; }
+    juce::TextButton& getSoloKey() noexcept { return soloKey; }
+    void visibilityChanged() override;
     void setInWindow (bool);   // the button's name follows
     bool isInWindow() const noexcept { return inWindow; }
 
@@ -295,7 +301,7 @@ public:
 
 private:
     juce::uint64 seenChange = 0;   // (0.57.1) the studio's change version last acted on
-    enum class Gesture { none, position, audition, band, move, resize, draw, erase, velocity, velocityHandle,
+    enum class Gesture { none, position, audition, band, muteBand, move, resize, resizeStart, draw, erase, velocity, velocityHandle,
                          controllerDraw, controllerErase, controllerBand, controllerMove, controllerHandle, controllerLine, laneResize };
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
@@ -332,6 +338,9 @@ private:   // the selected notes, at the column's foot
     bool editing() const noexcept;
     void begin();
     void commit (std::vector<pr7s::Note>);
+public:
+    void setNotesMuted (const std::vector<int>& indices, bool muted);   // (0.77.1) the MUTE tool's work: one undo step
+private:
     int noteAt (juce::Point<float>) const;
     double snapped (double songBeat, bool free) const noexcept;
     void eraseAt (juce::Point<float>);
@@ -348,6 +357,7 @@ private:   // the selected notes, at the column's foot
     // The lanes (KeyEditorLanes.cpp).
     float laneHeightNow() const;
     float lanesTop() const;
+    float acrossTop() const;   // (0.77.4) the scroll bar across: between the notes and the lanes
     bool laneMouseDown (const juce::MouseEvent&);
     void laneMouseDrag (const juce::MouseEvent&);
     void laneMouseUp();
@@ -393,7 +403,8 @@ private:   // the selected notes, at the column's foot
     void paintDrumList (juce::Graphics&);
     juce::TextButton drumKey { "DRUMS" }, mapKey { "MAP" }, lengthsKey { "LENGTHS" };
     std::unique_ptr<juce::FileChooser> drumChooser;
-    juce::TextButton lineTool { "LINE" }, lanesKey { "LANES" };
+    ToolKey lineTool;   // (0.77.3: the arrangement's tool keys, icon and all)
+    juce::TextButton lanesKey { "LANES" };
 
     pr7s::Studio& studio;
     ArrangeView& arrange;
@@ -410,6 +421,8 @@ private:   // the selected notes, at the column's foot
 
     // The view: zoom and scroll, of its own (independent of the arrangement's).
     double pixelsPerBeat = 80.0, firstBeat = 0.0;
+    bool rulerZooming = false;              // (0.78.0) the ruler dragged up/down: a zoom (as the arrangement's)
+    double rulerZoomBeat = 0.0, rulerZoomFrom = 0.0;
     float scrollY = 0.0f;
     float rowHeight = 12.0f;   // a note row (the vertical zoom)
     AutoScroll autoScroll;
@@ -422,7 +435,8 @@ public:
     void advancePlayhead();   // one frame of the glide (the timer's; tests call it)
     double getShownPlayhead() const noexcept { return shownBeat; }
 private:
-    juce::MouseCursor penCursor, scissorsCursor;   // DRAW's and SPLIT's pointers (made once: not statics, they mustn't outlive JUCE)   // where it was last drawn (0.9.2: only its strip is redrawn as it moves)
+    juce::MouseCursor penCursor, scissorsCursor, eraserCursor, muteCursor;   // (0.77.3: ERASE's and MUTE's as the arrangement's)
+    juce::MouseCursor toolCursor() const;   // the chosen tool's pointer over the notes   // DRAW's and SPLIT's pointers (made once: not statics, they mustn't outlive JUCE)   // where it was last drawn (0.9.2: only its strip is redrawn as it moves)
     juce::ScrollBar across { false }, down { true };
 
     // The gesture under way.
@@ -448,9 +462,14 @@ private:
     juce::Random random;
     void refreshVelocityKeys();
     void showVelocityRanges();
-    juce::TextButton selectTool { "SELECT" }, drawTool { "DRAW" }, eraseTool { "ERASE" }, splitTool { "SPLIT" }, quantizeButton { "QUANTIZE" },
+    // (0.77.3, the owner: the editor's tools with the main window's icons) The arrangement's ToolKey, set up in the constructor.
+    ToolKey selectTool, drawTool, eraseTool, muteTool, splitTool;
+    juce::TextButton quantizeButton { "QUANTIZE" },
                      windowButton { "WINDOW" }, closeButton { "CLOSE" }, autoScrollButton { "AUTO-SCROLL" }, autoScrollMenu,
-                     instrumentKey { "INSTRUMENT" };   // (0.31.0) the track's instrument window
+                     instrumentKey { "INSTRUMENT" },   // (0.31.0) the track's instrument window
+                     soloKey { "SOLO EDITOR" };      // (0.78.0) only this part's track heard (Studio::setEditorSolo)
+    bool soloOn = false;
+    void refreshSolo();
     bool inWindow = false;
     juce::ComboBox gridBox;
 };

@@ -2,6 +2,143 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.78.2
+
+**The Inspector opens laid out as you asked.** The track's basics, INSERTS, EQUALIZERS and BOOSTER are open; ROUTING, CHORDS, SENDS, FADER and QUICK CONTROLS are folded (click a title to open one). It's put in place once when 0.78.2 first starts; after that, whatever you open or fold is kept as before.
+
+**A default template for every new song.** HUB SETTINGS has a new box, DEFAULT TEMPLATE (under DEFAULT DRUM MAP):
+
+- **NONE** (as before): a new song is empty.
+- **Any of your templates** (Documents/Paragon PR7-S/Templates): NEW and CREATE EMPTY start from it: its tracks, instruments, effects and their settings, the mixer, the tempo. It's still a new song of its own: saving asks where (or, with CREATE EMPTY, it's saved in its own new folder), and the template itself is never changed.
+- **SAVE THIS SONG AS A TEMPLATE...** beside the box saves the song that's open as a template. The naming box has a new choice, **Save as the default**, which saves it and makes it the default in one go.
+- If the chosen template is moved or deleted, new songs start empty and the box shows it as NOT FOUND.
+
+## 0.78.1
+
+**The ruler's zoom flipped (you asked).** Drag down in the ruler to zoom in, up to zoom out, in the arrangement and the MIDI editor. The bar you grabbed still stays under the mouse, and a click still moves the playhead.
+
+**Another freeze after Render in Place, inside the graphics card's driver.** Your 0.78.0 log showed the studio stuck 10 seconds after Render in Place disabled the track, on the screen's thread, inside the NVIDIA driver (d3d11), with DRAW WITHOUT THE GRAPHICS CARD on. What was still using the card: JUCE's display sync (it times every window's redraws to the screen's refresh) opened a Direct3D connection to each graphics adapter for every window, even windows drawn by the processor, and closed and reopened it on the screen's thread whenever Windows announced a change. That's where the studio stopped. With DRAW WITHOUT THE GRAPHICS CARD on, the display sync now only listens for the screen's refresh and no Direct3D connection is made at all: nothing in the studio talks to the graphics card's driver. (Switching the setting off makes the connections again for drawing with the card.) I can't make your NVIDIA driver hang here, so this is the fix for what the log shows, not a reproduced case: if it ever freezes again, the log will say where.
+
+## 0.78.0
+
+**Drag the ruler down to zoom out.** Hold the left mouse button in the ruler (the time bar along the top of the arrangement) and drag down: the view zooms out. Drag up: it zooms in. Every 80 pixels halves (or doubles) the zoom, and the bar you grabbed stays under the mouse. A click, or a drag sideways, still moves the playhead as before. The MIDI editor's ruler does the same. Note: the other DAW's manual has it the other way round (down zooms in); this is built the way you asked. Say if you'd like it flipped.
+
+**SOLO EDITOR in the MIDI editor.** A new SOLO EDITOR key in the editor's panel, under INSTRUMENT. While it's lit, only the track you're editing is heard, so you can work on a part without the rest of the song. It follows the editor: open another track's part and that track is the soloed one; close the editor and everything is heard again (the key stays lit for next time). It never touches the tracks' own S buttons, isn't saved with the song, and exports and renders always hear the whole song. There's also a key command for it (MIDI > Solo Editor, no key given yet), for the Stream Deck.
+
+**Render in Place keeps mono tracks mono.** A mono audio track now renders to a mono file on a new mono track; a stereo track (and every instrument) still renders in stereo. Before, every render was a stereo file on a stereo track. The two sides are averaged into one, so a centred mono track comes out at the level it played.
+
+**The BOOSTER.** A new section in the Inspector, right under EQUALIZERS, that works like PR7-C's OUTPUT TRIM:
+
+- **TRIM:** a knob from -12 to +12 dB, in 0.1 dB steps.
+- **The fader:** PR7-C's chrome channel fader with its scale (10, 5, 0, -5, -10, -20, -30, -40, -inf), from +10 dB down to silence at the bottom. Shift-drag for fine moves.
+- The two add together, as in PR7-C. The boost comes after the channel's EQ and before its sends and fader, so it raises (or lowers) what goes into everything after it. Moves are smoothed (no clicks while you drag).
+- Double-click either for 0 dB. Each drag is one undo step. It's saved with the song and carried in track presets. The master has one too.
+
+## 0.77.4
+
+**VISIBILITY lights the selected track.** Click a track in the track list (or the mixer, or move with Up/Down) and its row in the left zone's VISIBILITY tab lights up in the accent colour, and the list scrolls to it if it's out of view. Before, nothing there showed which track was selected.
+
+**The MIDI editor's horizontal scroll bar moved up.** It now sits right under the notes, above the velocity lane and the other controller lanes. Before, it was at the very bottom of the editor, under the velocities, and in a window taller than the screen it ended up off the bottom. The lanes now reach the editor's bottom edge, and the line you drag to make the lanes taller is just above the scroll bar.
+
+## 0.77.3
+
+**A default drum map for every song.** HUB SETTINGS has a new box, DEFAULT DRUM MAP (under DRAG HIGHLIGHT):
+
+- **AUTOMATIC** (as before): the GM Map, or the PR7-D Map on tracks playing PR7-D.
+- **GM MAP**, **PR7-D MAP**, or **any map in your Drum Maps folder** (Documents/Paragon PR7-S/Drum Maps, such as a .drm exported from another program): that one map everywhere a drum map is chosen for you. That means new drum tracks from the composer and IDEAS, the drum editor's first open on a track, and Change Instrument. Songs opening also get it, on any track that was on the GM Map or the PR7-D Map.
+- A track on a drum map of your own keeps it. If the chosen map is no longer in the folder, AUTOMATIC is used until it's back.
+
+**The horizontal scroll bar always shows.** It was always there, under the MIDI editor and the arrangement, but when the whole song fit on the screen it had no handle and looked missing. Now there's always half a screen of room past what's in view, so the handle always shows and you can scroll on to the right.
+
+**The MIDI editor's tools look like the main window's.** SELECT, DRAW, SPLIT, ERASE, MUTE and LINE in the editor's panel are the same keys as the TOOLS row's, with the same icons. ERASE and MUTE also show the main window's eraser and mute pointers over the notes. Leaving the velocity lane now puts the tool's pointer back; before, it stayed the plain arrow.
+
+## 0.77.2
+
+**The MIDI editor names PR7-D's drums as PR7-D does.** PR7-D starts on its GROOVE LIBRARY note layout (SETTINGS > MAP), where the notes aren't General MIDI's: note 50 is Cymbal 2's mute hit, 27 China 1, 41 the second floor tom, and so on up to 127. The MIDI editor only knew the General MIDI names, so many drum rows were named after the wrong drum (and notes under 27 or over 87 had no name at all).
+
+- **A new built-in drum map, the PR7-D Map:** every note from 6 to 127 named exactly as PR7-D names it (copied from PR7-D's own table). It changes names only: every note still goes to PR7-D as it is, so nothing sounds different.
+- **Chosen by itself:** a track playing PR7-D gets the PR7-D Map when the drum editor first needs a map, when you change a track's instrument to PR7-D, and when a song opens whose PR7-D track is on the GM Map (as songs from before this version are). If PR7-D itself is set to GENERAL MIDI, the GM Map stays. A drum map of your own is never swapped.
+- **In the MAP menus** (the MIDI editor's and the Inspector's DRUMS): "PR7-D Map (built in)" beside the GM Map.
+
+Not covered yet: PR7-D's ROOT and CUSTOM layouts (choose the map by hand there, or make one in the Drum Map Setup), and switching PR7-D's MAP while the song is open (the names follow the next time the song opens, or pick the map in the menu).
+
+## 0.77.1
+
+**The left side can be grabbed too.**
+
+- **MIDI parts in the arrangement:** the left edge now drags the part's start (the pointer turns into the two-way arrow there, as on the right edge). The notes stay where they are in the song; drag it left to make room before them, right to cut the beginning off (notes before the new start are left out). Before, only audio clips had a left edge; a MIDI part's left side just moved the whole part.
+- **Notes in the MIDI editor:** a note's left end drags its start, its end staying put (several selected notes move together; not past the part's start, and each keeps at least a grid step). Before, only the right end lengthened a note.
+- The middle still moves, Alt still copies, and each drag is one undo step.
+
+**The MIDI editor's MUTE tool** (as the arrangement's): MUTE in the editor's panel, or key 7. Click a note to mute it (again to unmute; with several selected, the selection), or drag a box: everything it touches is muted, or unmuted when it all was. Muted notes stay in the part, drawn faded with a pale outline, and aren't played (nor exported to MIDI files or dragged out); they're saved with the song. Humanize leaves them where they are.
+
+**The mixer's numbers follow straight away:** moving a fader or typing a value (double-click) now shows the new dB (and pan) under it at once. Before, the number was redrawn only when something else made the strip redraw, such as the next click.
+
+## 0.77.0
+
+**Render in Place always mutes, disables and hides the original, however it's started.**
+
+- **Before:** rendering a whole track (from the track list, the Inspector's RENDER) muted, disabled and hid it, but rendering a stretch (a range over part of a take, selected parts, Alt+R with parts selected) only muted the parts rendered and left the track playing, enabled and in view.
+- **Now:** the same every time: the parts rendered are muted, and the track is muted, disabled (its plug-ins unloaded: no CPU) and hidden once everything has been rendered. VISIBILITY shows it again and ENABLE TRACK loads its plug-ins back.
+- **The Render in Place page no longer asks** what to do with the original (keep, mute, disable, remove, hide): it says what will happen instead.
+- **A warning on the page** when a track has parts outside what you're rendering: disabling the track silences them too.
+- Several stretches of one track rendered together (two parts selected) each render with sound first; the track is disabled only after the last one.
+
+## 0.76.1
+
+**A freeze after Render in Place (with Mute or Disable the source) when drawing without the graphics card.**
+
+- **What the log showed:** the render itself finished and the drums track was disabled, then ten seconds later the screen froze inside the NVIDIA driver (Direct2D), the same place as the earlier freezes, even though DRAW WITHOUT THE GRAPHICS CARD was on.
+- **Why the setting didn't cover it:** on Windows the framework the studio is built on gives every new window (a menu, the render's progress box) a graphics-card drawing context first, and makes every image (shadows, the screens' glow, icons) on the graphics card, whatever the window draws with. The setting only switched windows over afterwards, so each window that opened or closed (the progress box, right where this froze) still went through the graphics card's driver.
+- **Now, with the setting on, nothing is made on the graphics card at all:** new windows are made with the processor's drawing from the start, and images are made in memory. The studio's copy of the framework is patched for this (two lines, the same switch the framework already uses when it runs under Wine).
+- It's set before the first window opens, so the whole session is drawn by the processor.
+
+## 0.76.0
+
+**Mixing while the composer plays.**
+
+- **What was wrong:** the composer plays its layers through a copy of the song. Any change to the song, a fader moved in the mixer included, threw that copy away and stopped the playback, so you couldn't hear what you were fixing.
+- **Now the composer keeps playing** through faders, pan, inserts, EQ, mute and solo: each change is played straight into what you're hearing. It only stops when its tracks can't play it any more (a track removed), or with the transport's stop.
+- **Mute and solo in the mixer count while composing:** a muted layer's track goes silent; soloing one of the layers' tracks plays it alone (the rest of the song stays silent as before).
+- **A VOLUME bar on every composer lane:** the fader of the track that lane is heard on, the same one as in the mixer (they move together). Double-click it for 0 dB. Each drag is one undo step.
+- **MIXER** (in the composer's header) opens the mixer in its own window in front of the composer, for inserts, EQ and the rest, while it keeps playing.
+
+## 0.75.0
+
+**Your own riff in the composer, the key locked for the song, and chords per section from the key.**
+
+- **+ MY RIFF** (beside SECTION): paste in a riff from a selected MIDI part, or from a MIDI file (or drop a .mid on the composer), then say which section it is ("this is my verse riff"). The composer then:
+  - **guesses the key** from it (the riff's low pedal and roots count most). Change KEY if it's wrong before you build: the chords and every suggestion follow;
+  - **reads its chords** (a chord every half bar: the low notes' root, its third if you play one, else the key's own chord on it). A chord outside the key (a flat second or flat fifth, say) is kept as you played it and shown **pink**;
+  - **the guitar plays your riff** (MY RIFF in its style menu), repeated over the section, exactly as written while RIFF SETTINGS are in the middle;
+  - **the drums lock their kick to your riff's hits**, and the bass (locked to the kick) follows them.
+- **The next sections come from your riff:** after your verse, the chorus suggested is your riff opened up (fewer palm mutes, looser), a breakdown tightens it into chugs, a second verse brings it back exactly; a new riff for contrast is offered too. The NEXT keys now say which: (MY RIFF), (SAME RIFF) or (NEW RIFF).
+- **The key is locked for the whole song** once a section is built (KEY greys out; the summary says "(locked)"). Right-click the SONG strip to start the song again. The composer never changes the song's tempo: it's shown beside the key.
+- **Chords change per section, only from the key:** the PROGRESSION menu now offers only progressions whose chords all fit the key, and any chord on the composer's chord ruler can be clicked and swapped for one of the key's own chords (swapped ones are underlined; "Back to..." puts it back). The chords you hear are the ones written onto the chord track when you build.
+- The composer is 1700 wide to fit it all.
+
+## 0.74.0
+
+**The composer is now the songwriting suite: IDEAS lives inside it, and a song is built a section at a time.**
+
+- **One window, two tabs: COMPOSE and IDEAS.** Everything the IDEAS window had (piano, guitar, bass, patterns, melody and drums cards; tuning, velocities, humanize, riff, drum and melody settings, solo styles, the drummer, library grooves, BUILD SECTION) is the composer's IDEAS tab. Every way into IDEAS (the chord track's IDEAS key, the pads, the menus) now opens the composer on that tab; the separate IDEAS window is gone.
+- **IDEAS deals for the composer's chords**, placed where the next section will go, so a card's USE IT onto a track lands in the right bars. Opened from chosen chords on the chord track, it uses those until the composer's chords change.
+- **A card into the composer:** USE IT's menu has "Into the Composer's ... lane". The card goes into its lane (piano and patterns into CHORDS, melodies into MELODY, rhythm into GUITAR, and so on), locked so GENERATE keeps it; the lane reads FROM IDEAS. ROLL or its style menu gives the lane its own again, and so does changing the chords (a card made for other chords wouldn't fit).
+- **SECTION** (beside BUILD): intro, verse, chorus, bridge, breakdown, ending or solo. The drums play that section's beat; SOLO also switches the lead on to the whole solo.
+- **BUILD <SECTION>** writes the lanes that are on as that section onto their tracks, *after the last section built* (the first at the playhead's bar), with the chords on the chord track: one undo step. The next section is then chosen for you (what usually comes next, with its riff opened up or tightened, as BUILD SECTION suggested before) and the status line says why. Change it with SECTION or the NEXT keys.
+- **SONG strip:** the sections built so far in order (where each starts and how long it is), and up to three NEXT keys. Right-click the strip to forget the sections (the song's parts stay; the next BUILD goes at the playhead again).
+- USE ALL still writes at the playhead's bar, as before. HEAR now plays where BUILD would put the section.
+
+## 0.73.4
+
+- **Menus no longer flicker with DRAW WITHOUT THE GRAPHICS CARD on.** Every new window (a menu, a submenu, a question box) is made by JUCE with the graphics card's drawing, and the studio switched new windows to the processor's drawing only once a second, so a menu was first drawn one way and redrawn the other a moment later: the "mini glitches". Menus and question boxes are now switched the moment they're made, before they're first drawn, and anything else is checked four times a second instead of once.
+
+## 0.73.3
+
+- **The session log names a plug-in that freezes while loading** (your Kontakt 8 log). Loading a plug-in's file, and giving a plug-in its saved settings, are now marked steps, so if the studio freezes in the middle of either, the freeze report says so under "Under way" ("Loading the instrument Kontakt 8 (...)", or "Giving Kontakt 8 its settings"), with how long it had been at it. Before, they were plain notes and the report said "nothing marked".
+  - This doesn't fix the freeze itself: your log shows it stopped inside Kontakt's own start-up, waiting for something else. It makes the next report say exactly which step it was in, which tells us whether it's the loading or the settings.
+  - The log now writes each load as "Starting: ..." and "done: ... (n ms)", so you can also see how long every plug-in takes to load.
+
 ## 0.73.2
 
 - **OUT holds the loudest peak since you last clicked it** (you asked), as a mixer's max readout does. It only ever goes up; **click OUT** to start again (it reads -INF until the next sound). It turns red over 0 dB, so a clip anywhere in a pass stays on screen until you click it away. The screen now reads **DB MAX**, and its tooltip says so.

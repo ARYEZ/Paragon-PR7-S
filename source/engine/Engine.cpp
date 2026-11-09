@@ -70,6 +70,27 @@ namespace pr7s
         }
     }
 
+    namespace
+    {
+        // (0.78.0) The booster's gain: ramped over the block when it moved (no zipper on a drag),
+        // else one multiply (none at 0 dB, so a flat booster changes nothing).
+        void applyBoost (float* const* channels, int numChannels, int numSamples, float& now, float target)
+        {
+            if (now == target)
+            {
+                if (target != 1.0f)
+                    for (int c = 0; c < numChannels; ++c)
+                        juce::FloatVectorOperations::multiply (channels[c], target, numSamples);
+                return;
+            }
+            const auto step = (target - now) / (float) juce::jmax (1, numSamples);
+            for (int c = 0; c < numChannels; ++c)
+                for (int i = 0; i < numSamples; ++i)
+                    channels[c][i] *= now + step * (float) (i + 1);
+            now = target;
+        }
+    }
+
     Engine::Engine()
     {
         masterInserts.reserve ((size_t) Project::maxInserts);
@@ -591,7 +612,7 @@ namespace pr7s
         // (allocating) and swapped in under the lock.
         // Solo (0.70.0, the owner's rule: Project::soloedOutTracks): only the soloed tracks, what is routed into
         // them and the channels they go on into make sound. (A disabled track's solo doesn't count.)
-        const auto soloedOutIds = project.soloedOutTracks();
+        const auto soloedOutIds = project.soloedOutTracks (editorSolo);
         const auto soloedOut = [&soloedOutIds] (const Track& t)
         { return std::find (soloedOutIds.begin(), soloedOutIds.end(), t.id) != soloedOutIds.end(); };
 
@@ -781,6 +802,8 @@ namespace pr7s
                     const auto& note = part.notes[n];
                     if (follows && followed[n].dropped)
                         continue;
+                    if (note.muted)
+                        continue;   // (0.77.1) muted in the MIDI editor
                     // (0.47.0) The part's Transpose and Velocity from the info line, for playback only.
                     const auto pitch = part.heardPitch (juce::jlimit (0, 127, follows ? followed[n].pitch : note.pitch));
                     const auto on = part.start + note.start;
@@ -875,6 +898,7 @@ namespace pr7s
             masterEqSettings = project.masterEq;
             masterEq.setDesign (designEq (masterEqSettings, sampleRate));
         }
+        masterBoostGain = project.masterBoost.gain();   // (0.78.0)
         masterAutomated = masterLanesMix;
         for (auto& p : prepared)
             if (auto* track = findTrack (p.id))
@@ -906,6 +930,7 @@ namespace pr7s
                         track->eqSettings = t->eq;
                         track->eq.setDesign (designEq (t->eq, sampleRate));
                     }
+                    track->boostGain = t->boost.gain();   // (0.78.0)
                     track->output = t->output;
                     for (int s = 0; s < Project::maxSends; ++s)
                     {
@@ -1276,6 +1301,8 @@ namespace pr7s
         runInserts (track->inserts, sound, numSamples, 0, track->preFader, track->effectMidi);
         if (! track->frozen)
             track->eq.processEq (sound.getArrayOfWritePointers(), sound.getNumChannels(), numSamples);
+        if (! track->frozen)
+            applyBoost (sound.getArrayOfWritePointers(), sound.getNumChannels(), numSamples, track->boostNow, track->boostGain);
         afterEq (track->id, sound.getArrayOfWritePointers(), sound.getNumChannels(), numSamples);
         // The sends before the fader take the sound as it is here: kept for them (they're added
         // into the FX channels afterwards, on the audio thread, in the tracks' order).
@@ -1664,6 +1691,7 @@ namespace pr7s
         masterEq.processPre (master.getArrayOfWritePointers(), master.getNumChannels(), numSamples);
         runInserts (masterInserts, master, numSamples, 0, masterPreFader, effectMidi);
         masterEq.processEq (master.getArrayOfWritePointers(), master.getNumChannels(), numSamples);
+        applyBoost (master.getArrayOfWritePointers(), master.getNumChannels(), numSamples, masterBoostNow, masterBoostGain);
         afterEq (masterBus, master.getArrayOfWritePointers(), master.getNumChannels(), numSamples);
         const auto outputs = juce::jmin (2, output.getNumChannels());
         if (masterAutomated)
@@ -1992,8 +2020,10 @@ namespace pr7s
             track->right.setCurrentAndTargetValue (track->gainRight);
             for (auto& send : track->sends)
                 send.lastGain = send.on ? levelOf (send.levelDb) : 0.0f;
+            track->boostNow = track->boostGain;   // (0.78.0)
         }
         masterGain.setCurrentAndTargetValue (settings.masterGain);
+        masterBoostNow = masterBoostGain;
     }
 
     void Engine::timedTrack (TrackState& track, const BlockContext& block)

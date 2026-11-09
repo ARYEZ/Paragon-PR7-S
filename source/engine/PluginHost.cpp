@@ -71,8 +71,13 @@ namespace pr7s
     std::unique_ptr<juce::AudioPluginInstance> PluginHost::createEffect (const Insert& insert, double sampleRate, int blockSize,
                                                                           juce::String& error)
     {
-        SessionLog::note ("Loading the effect " + describe (insert.plugin));
-        auto instance = formats.createPluginInstance (insert.plugin, sampleRate, blockSize, error);
+        // (0.73.3) Each part of a load is a marked step, so a freeze report says which one it stopped in
+        // (the owner's Kontakt 8 freeze said "nothing marked": these were plain notes).
+        std::unique_ptr<juce::AudioPluginInstance> instance;
+        {
+            SessionLog::Step step ("Loading the effect " + describe (insert.plugin));
+            instance = formats.createPluginInstance (insert.plugin, sampleRate, blockSize, error);
+        }
         if (instance == nullptr)
         {
             if (error.isEmpty())
@@ -82,10 +87,9 @@ namespace pr7s
         }
         if (insert.state.getSize() > 0)
         {
-            SessionLog::note ("  Giving it its settings (" + juce::String ((int) insert.state.getSize()) + " bytes)");
+            SessionLog::Step step ("Giving " + insert.plugin.name + " its settings (" + juce::String ((int) insert.state.getSize()) + " bytes)");
             instance->setStateInformation (insert.state.getData(), (int) insert.state.getSize());
         }
-        SessionLog::note ("  Loaded.");
         return instance;
     }
 
@@ -151,9 +155,11 @@ namespace pr7s
             // The studio's synth: PR7-K (0.9.11); the old Paragon Synth if it isn't found or won't load.
             if (const auto* synth = getStudioSynth())
             {
-                SessionLog::note ("Loading the studio's synth " + describe (*synth));
                 juce::String problem;
-                instance = formats.createPluginInstance (*synth, sampleRate, blockSize, problem);
+                {
+                    SessionLog::Step step ("Loading the studio's synth " + describe (*synth));
+                    instance = formats.createPluginInstance (*synth, sampleRate, blockSize, problem);
+                }
                 if (instance == nullptr)
                     SessionLog::note ("  It didn't load (" + problem + "): the built-in Paragon Synth instead");
             }
@@ -162,7 +168,7 @@ namespace pr7s
         }
         else
         {
-            SessionLog::note ("Loading the instrument " + describe (instrument.plugin));
+            SessionLog::Step step ("Loading the instrument " + describe (instrument.plugin));
             instance = formats.createPluginInstance (instrument.plugin, sampleRate, blockSize, error);
         }
 
@@ -175,10 +181,9 @@ namespace pr7s
         }
         if (instrument.state.getSize() > 0)
         {
-            SessionLog::note ("  Giving it its settings (" + juce::String ((int) instrument.state.getSize()) + " bytes)");
+            SessionLog::Step step ("Giving " + instrument.getName() + " its settings (" + juce::String ((int) instrument.state.getSize()) + " bytes)");
             instance->setStateInformation (instrument.state.getData(), (int) instrument.state.getSize());
         }
-        SessionLog::note ("  Loaded.");
         return instance;
     }
 

@@ -82,14 +82,14 @@ namespace Windows
         static pr7s::Studio::RenderOptions keptOptions (juce::PropertiesFile*);   // the last ones chosen
         std::function<void (const pr7s::Studio::RenderOptions&)> onRender;
         std::function<void()> onCancel;
-        juce::ComboBox mode, processing, tail, bits, source;
-        juce::ToggleButton hideSource { "Hide the track afterwards (VISIBILITY shows it again)" };   // whole tracks
+        juce::ComboBox mode, processing, tail, bits;
         juce::TextButton renderButton { "RENDER" }, cancelButton { "CANCEL" };
 
     private:
         pr7s::Studio& studio;
-        bool wholeTracks = true;   // (0.31.0: a stretch's choice of what happens to the original isn't kept for whole tracks)
-        juce::Label modeLabel, processingLabel, tailLabel, bitsLabel, sourceLabel, note, warning;
+        bool wholeTracks = true;
+        // (0.77.0, the owner) No choice for the original any more: it's always muted, disabled and hidden.
+        juce::Label modeLabel, processingLabel, tailLabel, bitsLabel, sourceLabel, sourceText, note, warning;
     };
 
     // Where a window spanning all the screens goes: across them all, side by

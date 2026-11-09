@@ -54,6 +54,33 @@ public:
         box.setDropShadowEnabled (false);
         box.setOpaque (false);
         box.addToDesktop();   // (again: a window's see-through is set as it goes on the desktop)
+        useChosenDrawing (box);
+    }
+
+    // (0.73.4) DRAW WITHOUT THE GRAPHICS CARD: JUCE makes every new window with the graphics card's renderer, and the
+    // studio's timer switched windows over up to a second later, so a menu opened drawn one way and was drawn again the
+    // other way (the owner's "mini glitches"). Menus and boxes are switched here as they're made, before they're seen.
+    static inline bool softwareDrawing = false;
+    static bool useDrawing (juce::ComponentPeer& peer, bool software)
+    {
+        const auto engines = peer.getAvailableRenderingEngines();
+        if (engines.size() < 2)
+            return false;
+        const auto softwareIndex = engines.indexOf ("Software Renderer");
+        auto wanted = softwareIndex;
+        if (! software)
+            for (int e = 0; e < engines.size(); ++e)
+                if (e != softwareIndex)
+                    wanted = e;
+        if (wanted < 0 || peer.getCurrentRenderingEngine() == wanted)
+            return false;
+        peer.setCurrentRenderingEngine (wanted);
+        return true;
+    }
+    static void useChosenDrawing (juce::Component& window)
+    {
+        if (auto* peer = window.getPeer())
+            useDrawing (*peer, softwareDrawing);
     }
 };
 
@@ -92,6 +119,11 @@ public:
     // With eqFader: lit from the bottom to the cap (a volume fader), not from the centre.
     static constexpr const char* faderFromBottomProperty = "faderFromBottom";
     static constexpr int eqFaderThumbRadius = 7;
+    // (0.78.0, from PR7-C) The BOOSTER's channel fader: a dark slot and a brushed chrome cap
+    // with a red line at its centre (PR7-C's output fader, a size smaller for the Inspector).
+    static constexpr const char* channelFaderProperty = "channelFader";
+    static constexpr int channelFaderThumbRadius = 22;   // half the cap's height
+    static constexpr float channelFaderCapWidth = 30.0f;
 
     // Every font in the plugin is Inter, built in: semibold for bold text,
     // and the heavy display italic for bold italic (the PARAGON badge).
@@ -155,6 +187,8 @@ public:
     void drawButtonText (juce::Graphics&, juce::TextButton&, bool highlighted, bool down) override;
     // Question and message boxes (0.9.10, the owner asked): pearl black, white text, the PR7-S mark for the icon.
     void drawAlertBox (juce::Graphics&, juce::AlertWindow&, const juce::Rectangle<int>& textArea, juce::TextLayout&) override;
+    // (0.73.4) Every menu and submenu: drawn the chosen way from its first paint.
+    void preparePopupMenuWindow (juce::Component& window) override { FamilyAlertWindow::useChosenDrawing (window); }
     juce::AlertWindow* createAlertWindow (const juce::String& title, const juce::String& message, const juce::String& button1,
                                           const juce::String& button2, const juce::String& button3, juce::MessageBoxIconType,
                                           int numButtons, juce::Component* associatedComponent) override;

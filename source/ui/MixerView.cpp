@@ -68,7 +68,13 @@ MixerView::Strip::Strip (MixerView& ownerView, int id) : owner (ownerView), busI
         else
             owner.studio.setVolume (busId, (float) volume.getValue(), undoable);
     };
-    volume.onValueChange = [this, setVolume] { setVolume (! volume.isMouseButtonDown()); };
+    volume.onValueChange = [this, setVolume]
+    {
+        setVolume (! volume.isMouseButtonDown());
+        // (0.77.1, the owner: the new value showed only after another click) The number under the fader is
+        // the strip's own drawing: redrawn as the fader moves, or as a typed value lands.
+        repaint (readoutArea.toNearestInt().expanded (2));
+    };
     // Grabbed and let go: writing automation (W on, while playing) follows the hand.
     const auto volumeControl = pr7s::Studio::control (pr7s::AutomationLane::Target::volume);
     volume.onDragStart = [this, volumeControl] { owner.studio.grabControl (busId, volumeControl); };
@@ -93,7 +99,11 @@ MixerView::Strip::Strip (MixerView& ownerView, int id) : owner (ownerView), busI
         pan.textFromValueFunction = [] (double value) { return panText (value); };
         pan.parse = [] (const juce::String& text) { return ValueEntry::parsePan (text); };
         pan.setTooltip ("Pan: left and right (double-click to type a value: L30, R15, C; Ctrl-click for the centre; Shift-drag for fine moves)");
-        pan.onValueChange = [this] { owner.studio.setPan (busId, (float) pan.getValue(), ! pan.isMouseButtonDown()); };
+        pan.onValueChange = [this]
+        {
+            owner.studio.setPan (busId, (float) pan.getValue(), ! pan.isMouseButtonDown());
+            repaint (panReadoutArea.toNearestInt().expanded (2));   // (0.77.1: as the volume's)
+        };
         pan.onDragStart = [this] { owner.studio.grabControl (busId, pr7s::Studio::control (pr7s::AutomationLane::Target::pan)); };
         pan.onDragEnd = [this]
         {

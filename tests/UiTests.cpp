@@ -2026,23 +2026,20 @@ TEST_CASE ("RENDER IN PLACE: the page's choices; rendering as last time from the
     const auto synth = studio.getProject().tracks[0].id;
     studio.addPart (synth, { 4.0, 4.0, "Riff", { { 0.0, 1.0, 60, 1.0f } } });
 
-    // The page: what's chosen comes back as the options (Remove only for whole tracks).
+    // The page: what's chosen comes back as the options (0.77.0: the original always muted, disabled and hidden).
     Windows::RenderPage parts (studio, false);
-    CHECK_FALSE (parts.source.isItemEnabled (3));
-    Windows::RenderPage tracks (studio, true);
-    CHECK (tracks.source.isItemEnabled (3));
     parts.mode.setSelectedId (2, juce::dontSendNotification);
     parts.processing.setSelectedId (1, juce::dontSendNotification);
     parts.tail.setSelectedId (6, juce::dontSendNotification);   // 2 seconds
     parts.bits.setSelectedId (32, juce::dontSendNotification);
-    parts.source.setSelectedId (2, juce::dontSendNotification);
     const auto chosen = parts.getOptions();
     CHECK (chosen.mode == Studio::RenderOptions::Mode::blocks);
     CHECK (chosen.processing == Studio::RenderOptions::Processing::dry);
     CHECK (chosen.tail == Studio::RenderOptions::Tail::seconds);
     CHECK (chosen.tailSize == 2.0);
     CHECK (chosen.bitsPerSample == 32);
-    CHECK (chosen.source == Studio::RenderOptions::Source::mute);
+    CHECK (chosen.source == Studio::RenderOptions::Source::disable);
+    CHECK (chosen.hideSource);
 
     // As last time (no settings file in tests: the defaults): a new audio track under the synth.
     view.renderInPlace ({ { synth, 4.0, 8.0, false } }, false);

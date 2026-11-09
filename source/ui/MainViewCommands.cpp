@@ -130,6 +130,7 @@ void MainView::registerCommands()
     add ("MIDI.VelocityMid", "MIDI", "Random Velocities: Mid", { key ('N', alt) });
     add ("MIDI.VelocityHigh", "MIDI", "Random Velocities: High", { key ('M', alt) });
     add ("MIDI.Humanize", "MIDI", "Humanize", { key ('H', alt) });   // (0.20.1: the editor's selected notes, else the selected parts)
+    add ("MIDI.SoloEditor", "MIDI", "Solo Editor", {}, [this] { keyEditor.setSoloEditor (! keyEditor.isSoloEditorOn()); });   // (0.78.0)
 
     // Tools.
     for (const auto t : ArrangeView::tools)

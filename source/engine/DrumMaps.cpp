@@ -30,6 +30,67 @@ namespace pr7s
         return map;
     }
 
+    juce::String DrumMap::pr7dName (int pitch)
+    {
+        // PR7-D 0.58.0+'s GROOVE LIBRARY names (copied from its NoteMap.h; keep in step with it).
+        static const char* const names[128] = {
+            "", "", "", "",   // 0-3
+            "", "", "Snare: Zone Trigger", "Hats: Edge Trigger",   // 4-7
+            "Hats: Tip Trigger", "Hats: Tip Trigger", "Hats: Closed Pedal", "Hats: Closed Edge",   // 8-11
+            "Hats: Open 0", "Hats: Open 1", "Hats: Open 2", "Hats: Open 3",   // 12-15
+            "Hats: Open 4", "Hats: Open 5", "Hats: Edge Trigger", "Hats: Tip Trigger",   // 16-19
+            "Hats: Tip Trigger", "Hats: Closed Pedal", "Hats: Closed Edge", "Hats: Open Pedal",   // 20-23
+            "Hats: Open 1", "Hats: Open 2", "Hats: Open 3", "China 1: Crash",   // 24-27
+            "Cymbal 1: Crash", "Spock: Crash", "Cymbal 3: Crash", "Cymbal 4: Crash",   // 28-31
+            "Cymbal 6: Crash", "Snare: Edge", "Kick: Open", "Kick: Hit (Stack)",   // 32-35
+            "Kick: Hit (Stack)", "Snare: Sidestick", "Snare: Center (Stack)", "Snare: Ruffs",   // 36-39
+            "Snare: Rimshot", "Floortom 2: Center", "Hats: Closed Tip", "Floortom 1: Center",   // 40-43
+            "Hats: Closed Pedal", "Racktom 3: Center", "Hats: Open 2", "Racktom 2: Center",   // 44-47
+            "Racktom 1: Center", "Cymbal 2: Crash", "Cymbal 2: Mute Hit", "Ride: Bow Tip",   // 48-51
+            "China 2: Crash", "Ride: Bell Shank", "China 2: Mute Hit", "Splash: Crash",   // 52-55
+            "Splash: Mute Hit", "Cymbal 5: Crash", "Cymbal 5: Mute Hit", "Ride: Edge",   // 56-59
+            "Hats: Open 4", "Hats: Closed Tip", "Hats: Tight Edge", "Hats: Tight Tip",   // 60-63
+            "Hats: Open 0", "Hats: Seq Hits", "Snare: Center (Stack)", "Snare: Sidestick",   // 64-67
+            "Snare: Center (Stack)", "Snare: Flams", "Snare: Center (Stack)", "Snare: Rim Only",   // 68-71
+            "Floortom 2: Rim Only", "Floortom 2: Rimshot", "Floortom 1: Rim Only", "Floortom 1: Rimshot",   // 72-75
+            "Spock: Mute Hit", "Racktom 3: Rim Only", "Racktom 3: Rimshot", "Racktom 2: Rim Only",   // 76-79
+            "Racktom 2: Rimshot", "Racktom 1: Rim Only", "Racktom 1: Rimshot", "China 1: Mute Hit",   // 80-83
+            "Ride: Bow Shank", "Ride: Bell Shank", "Ride: Edge", "Ride: Bow Tip",   // 84-87
+            "Ride: Bell Tip", "Ride: Bow Shank", "Ride: Bell Shank", "Ride: Edge",   // 88-91
+            "Ride: Bow Tip", "Ride: Bell Tip", "Cymbal 1: Mute Hit", "Cymbal 3: Mute Hit",   // 92-95
+            "Ride: Bow Shank", "Ride: Bell Shank", "Ride: Edge", "Ride: Bow Tip",   // 96-99
+            "Ride: Bell Tip", "Ride: Bow Tip", "Ride: Bell Shank", "Ride: Edge",   // 100-103
+            "Ride: Bow Shank", "Ride: Bell Tip", "Cymbal 4: Mute Hit", "Cymbal 6: Mute Hit",   // 104-107
+            "Ride: Bow Tip", "Ride: Bell Shank", "Ride: Edge", "Ride: Bow Shank",   // 108-111
+            "Ride: Bell Tip", "Ride: Bow Tip", "Ride: Bell Shank", "Ride: Edge",   // 112-115
+            "Ride: Bow Shank", "Ride: Bell Tip", "Ride: Mute Hit", "Hats: Closed Tip",   // 116-119
+            "Hats: Open 1", "Hats: Open 3", "Hats: Closed Edge", "Hats: Open 0",   // 120-123
+            "Hats: Open 5", "Snare: Center (Stack)", "Snare: Rimshot", "Snare: Sidestick",   // 124-127
+        };
+        return pitch >= 0 && pitch < 128 ? juce::String (names[pitch]) : juce::String();
+    }
+
+    DrumMap DrumMap::pr7d()
+    {
+        DrumMap map;
+        map.name = "PR7-D Map";
+        for (int pitch = 0; pitch < 128; ++pitch)
+        {
+            map.sounds[(size_t) pitch] = { pr7dName (pitch), pitch, pitch, -1, false };
+            map.order.push_back (pitch);
+        }
+        return map;
+    }
+
+    std::optional<DrumMap> DrumMap::builtIn (const juce::String& name)
+    {
+        if (name == gm().name)
+            return gm();
+        if (name == pr7d().name)
+            return pr7d();
+        return std::nullopt;
+    }
+
     DrumMap DrumMap::empty (const juce::String& name)
     {
         DrumMap map;

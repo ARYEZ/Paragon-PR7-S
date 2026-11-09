@@ -99,7 +99,6 @@ public:
     juce::DocumentWindow* getDrumMapWindow() noexcept { return drumMapWindow.get(); }
     // BASS & MELODY (0.18.0): ideas for these chord events (none: the cycle's, else all), in a window of its own.
     void openLineIdeas (std::vector<int> chordEvents = {}, bool buildSection = false);   // (0.57.0: with BUILD SECTION open)
-    LinesWindow* getLinesWindow() noexcept { return linesWindow.get(); }
     void openProgressions();
     void openEq (int busId);   // (0.43.0) the EQ window on a channel (one window: moved to another channel)
     EqWindow* getEqWindow() noexcept { return eqWindow.get(); }   // the progression library (0.40.0): opened, or brought to the front
@@ -145,6 +144,7 @@ public:
     static constexpr int defaultTracksShown = 5;
     int arrangeHeightForTracks (int count) const;
     void saveAsTemplate();
+    void startNewSong();   // (0.78.2: NEW and CREATE EMPTY: the default template, if chosen)
     // Changes not saved: asks first (Save / Don't save / Cancel), then `then`.
     void whenSongCanGo (std::function<void()> then);
     juce::DocumentWindow* getKeyCommandsWindow() noexcept { return keysWindow.get(); }
@@ -303,7 +303,6 @@ private:
                                           markersWindow;
     int trackListScrollY = 0;          // (0.34.1) what the track list was last laid out for
     double trackListRowZoom = 1.0;
-    std::unique_ptr<LinesWindow> linesWindow;
     std::unique_ptr<ProgressionsWindow> progressionsWindow;
     std::unique_ptr<ComposerWindow> composerWindow;
     std::unique_ptr<EqWindow> eqWindow;

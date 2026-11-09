@@ -66,13 +66,19 @@ float KeyEditor::laneHeightNow() const
     if (count == 0)
         return 0.0f;
     // As tall as set, but the notes keep some room.
-    const auto room = (float) getHeight() - notesTop() - (float) (scrollBarSize + 60) / (float) count;
+    const auto room = ((float) getHeight() - notesTop() - (float) (scrollBarSize + 60)) / (float) count;
     return juce::jmax (24.0f, juce::jmin ((float) laneHeight, room));
 }
 
 float KeyEditor::lanesTop() const
 {
-    return (float) (getHeight() - scrollBarSize) - laneHeightNow() * (float) getLanes().size();
+    // (0.77.4) The lanes reach the bottom; the scroll bar across sits over them, under the notes.
+    return (float) getHeight() - laneHeightNow() * (float) getLanes().size();
+}
+
+float KeyEditor::acrossTop() const
+{
+    return lanesTop() - (float) scrollBarSize;
 }
 
 juce::Rectangle<float> KeyEditor::getLaneArea (int lane) const
@@ -887,7 +893,7 @@ void KeyEditor::dragControllerHandle (float dy)
 bool KeyEditor::laneMouseMove (const juce::MouseEvent& event)
 {
     const auto p = event.position;
-    if (getNumLanes() > 0 && p.y >= lanesTop() - 4.0f && p.y <= lanesTop() + 1.0f && p.x >= (float) sideWidth)
+    if (getNumLanes() > 0 && p.y >= acrossTop() - 4.0f && p.y <= acrossTop() + 1.0f && p.x >= (float) sideWidth)
     {
         setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
         return true;
@@ -922,7 +928,7 @@ bool KeyEditor::laneMouseDown (const juce::MouseEvent& event)
 {
     const auto p = event.position;
     // The divider above the lanes.
-    if (getNumLanes() > 0 && p.y >= lanesTop() - 4.0f && p.y <= lanesTop() + 1.0f && p.x >= (float) sideWidth)
+    if (getNumLanes() > 0 && p.y >= acrossTop() - 4.0f && p.y <= acrossTop() + 1.0f && p.x >= (float) sideWidth)
     {
         gesture = Gesture::laneResize;
         heightAtDown = laneHeightNow();

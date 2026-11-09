@@ -59,7 +59,7 @@ namespace pr7s
         seq.addEvent (name);
         for (const auto& note : part.notes)
         {
-            if (note.start < 0.0 || note.start >= part.length)
+            if (note.muted || note.start < 0.0 || note.start >= part.length)
                 continue;
             const auto on = from + note.start;
             const auto off = from + juce::jmin (note.start + note.length, part.length);

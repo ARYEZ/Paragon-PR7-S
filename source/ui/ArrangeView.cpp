@@ -1370,7 +1370,7 @@ void ArrangeView::updateCursor (const juce::MouseEvent& event)
         const auto& part = studio.getProject().findTrack (hit->first)->parts[(size_t) hit->second];
         const auto onHandle = part.isAudio() && (fadeHandle (bounds, part, true).expanded (3.0f).contains (event.position)
                                                  || fadeHandle (bounds, part, false).expanded (3.0f).contains (event.position));
-        const auto onEdge = event.position.x > bounds.getRight() - edgeGrab || (part.isAudio() && event.position.x < bounds.getX() + edgeGrab);
+        const auto onEdge = event.position.x > bounds.getRight() - edgeGrab || event.position.x < bounds.getX() + edgeGrab;
         setMouseCursor (onHandle ? juce::MouseCursor::PointingHandCursor
                         : onEdge ? juce::MouseCursor::LeftRightResizeCursor
                                  : juce::MouseCursor::NormalCursor);
@@ -1456,6 +1456,12 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
         {
             drag = Drag::position;
             studio.setPosition (dragStartBeat);
+            // (0.78.0) Held and dragged up or down: a zoom instead (see mouseDrag).
+            rulerZooming = false;
+            rulerDownX = event.position.x;
+            rulerDownY = event.position.y;
+            rulerZoomBeat = timeline.beatForX (event.position.x);
+            rulerZoomFrom = timeline.pixelsPerBeat;
         }
         return;
     }
@@ -1560,6 +1566,10 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
         else if (event.position.x < bounds.getX() + edgeGrab)
             drag = Drag::trimStart;
     }
+    // (0.77.1, the owner: "why can't I grab the left side of anything") A MIDI part's left edge too: its
+    // start moves, its notes stay where they are in the song.
+    else if (drag == Drag::move && event.position.x < bounds.getX() + edgeGrab)
+        drag = Drag::trimStart;
     dragPart = part;
     dragCopies = drag == Drag::move && event.mods.isAltDown();   // Alt copies (Ctrl locks the direction)
     dragTrack = dragTargetTrack = hit->first;
@@ -1678,8 +1688,24 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
     switch (drag)
     {
         case Drag::position:
+        {
+            // (0.78.0) Up or down past a few pixels: zoom (down out, up in), the clicked beat held under
+            // the mouse's first place; the playhead stays where the click put it.
+            const auto dy = event.position.y - rulerDownY;
+            if (! rulerZooming && std::abs (dy) >= rulerZoomStart && std::abs (dy) > std::abs (event.position.x - rulerDownX))
+                rulerZooming = true;
+            if (rulerZooming)
+            {
+                timeline.pixelsPerBeat = juce::jlimit (2.0, 400.0, rulerZoomFrom * std::pow (2.0, (double) dy / rulerZoomPixelsPerDouble)   /* (0.78.1: down zooms in, as the manual) */);
+                timeline.firstBeat = juce::jmax (0.0, rulerZoomBeat - (double) rulerDownX / timeline.pixelsPerBeat);
+                setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+                scrolled();
+                repaint();
+                break;
+            }
             studio.setPosition (juce::jmax (0.0, pr7s::snap (beat, grid)));
             break;
+        }
         case Drag::cycle:
         {
             const auto now = juce::jmax (0.0, pr7s::snap (beat, grid));
@@ -1755,6 +1781,32 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
                 break;
             }
             const auto& original = dragged->parts[(size_t) selection.index];
+            if (! original.isAudio())
+            {
+                // A MIDI part: as far left as the song's start; the notes and controllers keep their places in
+                // the song (those before the new start, which wouldn't sound, are left out).
+                const auto start = juce::jlimit (0.0, end - 1.0 / 16.0, pr7s::snap (dragOriginalStart + beat - dragStartBeat, grid));
+                const auto delta = start - original.start;
+                dragPart = original;
+                dragPart.start = start;
+                dragPart.length = end - start;
+                dragPart.notes.clear();
+                for (auto n : original.notes)
+                    if (n.start - delta >= -1.0e-9)
+                    {
+                        n.start = juce::jmax (0.0, n.start - delta);
+                        dragPart.notes.push_back (n);
+                    }
+                dragPart.controllers.clear();
+                for (auto c : original.controllers)
+                    if (c.start - delta >= -1.0e-9)
+                    {
+                        c.start = juce::jmax (0.0, c.start - delta);
+                        dragPart.controllers.push_back (c);
+                    }
+                repaint();
+                break;
+            }
             const auto earliest = juce::jmax (0.0, tempo.beatAt (tempo.secondsAt (dragOriginalStart) - original.audioOffset));
             const auto start = juce::jlimit (earliest, end - 1.0 / 16.0, pr7s::snap (dragOriginalStart + beat - dragStartBeat, grid));
             dragPart.start = start;
@@ -1801,6 +1853,8 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
 
 void ArrangeView::mouseUp (const juce::MouseEvent& event)
 {
+    if (std::exchange (rulerZooming, false))
+        setMouseCursor (juce::MouseCursor::NormalCursor);
     if (drag == Drag::folderMove)
     {
         drag = Drag::none;

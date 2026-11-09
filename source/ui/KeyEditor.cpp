@@ -41,7 +41,17 @@ namespace
 KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     : studio (studioToUse), arrange (arrangeToUse)
 {
-    for (auto* button : { &selectTool, &drawTool, &splitTool, &eraseTool, &quantizeButton })
+    // (0.77.3) The tools' keys: the arrangement's, with its icons.
+    const std::pair<ToolKey*, std::pair<ArrangeView::Tool, const char*>> toolKeys[] = {
+        { &selectTool, { ArrangeView::Tool::select, "SELECT" } }, { &drawTool, { ArrangeView::Tool::draw, "DRAW" } },
+        { &splitTool, { ArrangeView::Tool::split, "SPLIT" } },    { &eraseTool, { ArrangeView::Tool::erase, "ERASE" } },
+        { &muteTool, { ArrangeView::Tool::mute, "MUTE" } },       { &lineTool, { ArrangeView::Tool::line, "LINE" } } };
+    for (const auto& [key, what] : toolKeys)
+    {
+        key->tool = what.first;
+        key->setButtonText (what.second);
+    }
+    for (auto* button : std::initializer_list<juce::TextButton*> { &selectTool, &drawTool, &splitTool, &eraseTool, &muteTool, &quantizeButton })
     {
         button->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         button->setWantsKeyboardFocus (false);
@@ -52,8 +62,14 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     eraseTool.setTooltip ("ERASE (5): click or drag across notes to remove them");
     splitTool.setTooltip ("SPLIT (3): click a note to cut it in two there (on the grid; Ctrl: anywhere); several selected: all of them that cross it");
     splitTool.onClick = [this] { setTool (Tool::split); };
+    // (0.77.1, the owner: the arrangement's MUTE tool in the MIDI editor too)
+    muteTool.setTooltip ("MUTE (7): click a note to mute it (again to unmute), or drag a box: all it touches are muted, or unmuted "
+                         "when they all were; muted notes stay in the part, drawn faded, and aren't played");
+    muteTool.onClick = [this] { setTool (Tool::mute); };
     penCursor = ToolIcons::cursor (ArrangeView::Tool::draw);
     scissorsCursor = ToolIcons::cursor (ArrangeView::Tool::split);
+    eraserCursor = ToolIcons::cursor (ArrangeView::Tool::erase);
+    muteCursor = ToolIcons::cursor (ArrangeView::Tool::mute);
     quantizeButton.setTooltip ("QUANTIZE (Q): moves the selected notes' starts (all the notes, with none selected) to the nearest step of "
                                "the quantize value on the header (1/1 to 1/64); their lengths stay");
     // (0.31.0) INSTRUMENT: the track's instrument window, to play with its sounds while editing (the manual's Edit Instrument).
@@ -62,12 +78,18 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     instrumentKey.setTooltip ("INSTRUMENT: opens this track's instrument window (it stays above the studio while you edit)");
     instrumentKey.onClick = [this] { if (onOpenInstrument && getPart() != nullptr) onOpenInstrument (getTrackId()); };
     panelColumn.addAndMakeVisible (instrumentKey);
+    soloKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    soloKey.setWantsKeyboardFocus (false);
+    soloKey.setTooltip ("SOLO EDITOR: while lit, only this part's track is heard (what it's routed into too). It follows the part "
+                        "you edit, goes off when the editor closes, and never changes the tracks' own S keys or a render");
+    soloKey.onClick = [this] { setSoloEditor (! soloOn); };
+    panelColumn.addAndMakeVisible (soloKey);
     selectTool.onClick = [this] { setTool (Tool::select); };
     drawTool.onClick = [this] { setTool (Tool::draw); };
     eraseTool.onClick = [this] { setTool (Tool::erase); };
     quantizeButton.onClick = [this] { quantizeSelected(); };
     // (0.25.0) LINE, its modes (click it again), and LANES (the controller lanes' menu).
-    for (auto* button : { &lineTool, &lanesKey })
+    for (auto* button : std::initializer_list<juce::TextButton*> { &lineTool, &lanesKey })
     {
         button->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         button->setWantsKeyboardFocus (false);
@@ -230,12 +252,26 @@ void KeyEditor::setTool (Tool newTool)
     selectTool.setToggleState (tool == Tool::select, juce::dontSendNotification);
     drawTool.setToggleState (tool == Tool::draw, juce::dontSendNotification);
     eraseTool.setToggleState (tool == Tool::erase, juce::dontSendNotification);
+    muteTool.setToggleState (tool == Tool::mute, juce::dontSendNotification);
     splitTool.setToggleState (tool == Tool::split, juce::dontSendNotification);
     lineTool.setToggleState (tool == Tool::line, juce::dontSendNotification);
-    // The tool as the pointer (0.9.3: the pencil, not crosshairs; the scissors).
-    setMouseCursor (tool == Tool::draw ? penCursor : tool == Tool::split ? scissorsCursor
-                  : tool == Tool::line ? juce::MouseCursor::CrosshairCursor : juce::MouseCursor::NormalCursor);
+    // The tool as the pointer (0.9.3: the pencil, not crosshairs; the scissors; 0.77.3: the eraser, MUTE's).
+    setMouseCursor (toolCursor());
     repaint();
+}
+
+juce::MouseCursor KeyEditor::toolCursor() const
+{
+    switch (tool)
+    {
+        case Tool::draw:   return penCursor;
+        case Tool::split:  return scissorsCursor;
+        case Tool::erase:  return eraserCursor;
+        case Tool::mute:   return muteCursor;
+        case Tool::line:   return juce::MouseCursor::CrosshairCursor;
+        case Tool::select: break;
+    }
+    return juce::MouseCursor::NormalCursor;
 }
 
 void KeyEditor::setInWindow (bool shouldBeInWindow)
@@ -279,7 +315,7 @@ const std::vector<pr7s::Note>& KeyEditor::notes() const
 
 bool KeyEditor::editing() const noexcept
 {
-    return gesture == Gesture::move || gesture == Gesture::resize || gesture == Gesture::draw
+    return gesture == Gesture::move || gesture == Gesture::resize || gesture == Gesture::resizeStart || gesture == Gesture::draw
         || gesture == Gesture::erase || gesture == Gesture::velocity || gesture == Gesture::velocityHandle;
 }
 
@@ -292,6 +328,27 @@ void KeyEditor::changeListenerCallback (juce::ChangeBroadcaster*)
         return;
     seenChange = studio.getChangeVersion();
     refresh();
+}
+
+void KeyEditor::setSoloEditor (bool on)
+{
+    soloOn = on;
+    refreshSolo();
+}
+
+void KeyEditor::refreshSolo()
+{
+    // The editor's track soloed while the key is on and the editor shows (the part may have changed).
+    const auto wanted = soloOn && isShowing() && getPart() != nullptr ? getTrackId() : 0;
+    if (studio.getEditorSolo() != wanted)
+        studio.setEditorSolo (wanted);
+    soloKey.setToggleState (soloOn, juce::dontSendNotification);
+}
+
+void KeyEditor::visibilityChanged()
+{
+    // Closed (or moved between its window and the dock): off when it's gone, back when it shows again.
+    refreshSolo();   // (hidden: nothing soloed; shown again: as the key says)
 }
 
 void KeyEditor::refresh()
@@ -351,6 +408,7 @@ void KeyEditor::refresh()
         resized();
     }
     refreshPanel();
+    refreshSolo();   // (0.78.0: SOLO EDITOR follows the part)
     repaint();
 }
 
@@ -499,7 +557,9 @@ void KeyEditor::refreshScrollBars()
     // Across: the song from its start (as far as the arrangement's goes); down: the 128 notes.
     const auto area = getNotesArea();
     const auto visibleBeats = (double) area.getWidth() / pixelsPerBeat;
-    across.setRangeLimits (0.0, juce::jmax (Timeline::scrollLength (studio), firstBeat + visibleBeats), juce::dontSendNotification);
+    // (0.77.3) Always half a screen past what's in view, so the handle always shows (when the whole song fit,
+    // the bar had no handle and looked missing) and there's room to work on to the right.
+    across.setRangeLimits (0.0, juce::jmax (Timeline::scrollLength (studio), firstBeat + visibleBeats) + visibleBeats * 0.5, juce::dontSendNotification);
     across.setCurrentRange (firstBeat, visibleBeats, juce::dontSendNotification);
     down.setRangeLimits (0.0, juce::jmax ((double) area.getHeight(), (double) numRows() * rowHeight), juce::dontSendNotification);
     down.setCurrentRange (scrollY, area.getHeight(), juce::dontSendNotification);
@@ -525,14 +585,14 @@ juce::Rectangle<float> KeyEditor::rulerArea() const
 
 juce::Rectangle<float> KeyEditor::keysArea() const
 {
-    return { (float) sideWidth, notesTop(), (float) listWidth(), juce::jmax (0.0f, lanesTop() - notesTop()) };
+    return { (float) sideWidth, notesTop(), (float) listWidth(), juce::jmax (0.0f, acrossTop() - notesTop()) };
 }
 
 juce::Rectangle<float> KeyEditor::getNotesArea() const
 {
-    // Room on the right for the scroll bar down, and at the bottom (under the velocities) for the one across.
+    // Room on the right for the scroll bar down, and under the notes (0.77.4: above the lanes) for the one across.
     return { (float) (sideWidth + listWidth()), notesTop(), (float) (getWidth() - sideWidth - listWidth() - scrollBarSize),
-             juce::jmax (0.0f, lanesTop() - notesTop()) };
+             juce::jmax (0.0f, acrossTop() - notesTop()) };
 }
 
 juce::Rectangle<float> KeyEditor::getVelocityArea() const
@@ -540,7 +600,7 @@ juce::Rectangle<float> KeyEditor::getVelocityArea() const
     // (0.25.0) The velocity lane, wherever it is among the lanes (none shown: nothing).
     if (const auto lane = laneOf (pr7s::ControllerKinds::velocity); lane >= 0)
         return getLaneArea (lane);
-    return { (float) (sideWidth + listWidth()), (float) (getHeight() - scrollBarSize), (float) (getWidth() - sideWidth - listWidth()), 0.0f };
+    return { (float) (sideWidth + listWidth()), (float) getHeight(), (float) (getWidth() - sideWidth - listWidth()), 0.0f };
 }
 
 float KeyEditor::xForBeat (double songBeat) const noexcept
@@ -631,6 +691,24 @@ void KeyEditor::selectAll()
     std::vector<int> all ((size_t) notes().size());
     std::iota (all.begin(), all.end(), 0);
     selectNotes (std::move (all));
+}
+
+void KeyEditor::setNotesMuted (const std::vector<int>& indices, bool muted)
+{
+    const auto* part = getPart();
+    if (part == nullptr)
+        return;
+    auto edited = part->notes;
+    auto any = false;
+    for (const auto i : indices)
+        if (juce::isPositiveAndBelow (i, (int) edited.size()) && edited[(size_t) i].muted != muted)
+        {
+            edited[(size_t) i].muted = muted;
+            any = true;
+        }
+    if (any)
+        commit (edited);   // (one undo step)
+    repaint();
 }
 
 void KeyEditor::begin()
@@ -739,7 +817,7 @@ bool KeyEditor::humanizeSelected (float amount)
     notes = pr7s::humanize (std::move (notes), o);
     auto edited = part->notes;
     for (size_t k = 0; k < slots.size(); ++k)
-        edited[(size_t) slots[k]] = { notes[k].beat, notes[k].length, notes[k].pitch, notes[k].velocity };
+        edited[(size_t) slots[k]] = { notes[k].beat, notes[k].length, notes[k].pitch, notes[k].velocity, edited[(size_t) slots[k]].muted };
     const auto keep = selected;
     commit (std::move (edited));
     selectNotes (keep);
@@ -1151,6 +1229,7 @@ bool KeyEditor::keyPressed (const juce::KeyPress& key)
     if (key.getTextCharacter() == '8')                                           { setTool (Tool::draw); return true; }
     if (key.getTextCharacter() == '5')                                           { setTool (Tool::erase); return true; }
     if (key.getTextCharacter() == '3')                                           { setTool (Tool::split); return true; }
+    if (key.getTextCharacter() == '7')                                           { setTool (Tool::mute); return true; }
     return false;
 }
 
@@ -1258,13 +1337,14 @@ void KeyEditor::mouseMove (const juce::MouseEvent& event)
         case VelocityHandle::scaleCentre: setMouseCursor (juce::MouseCursor::UpDownLeftRightResizeCursor); return;
         case VelocityHandle::none:        break;
     }
-    if (tool != Tool::select && getVelocityArea().contains (event.position))
-        setMouseCursor (juce::MouseCursor::NormalCursor);
+    if (tool != Tool::select)
+        setMouseCursor (getVelocityArea().contains (event.position) ? juce::MouseCursor::NormalCursor : toolCursor());   // (back to the tool's after the velocities)
     if (tool == Tool::select)
     {
         const auto hit = noteAt (event.position);
+        const auto grab = hit >= 0 ? juce::jmin (edgeGrab, getNoteBounds (hit).getWidth() / 3.0f) : 0.0f;
         const auto atEnd = hit >= 0 && ! (drumViewOn && ! showDrumLengths)
-                           && event.position.x > getNoteBounds (hit).getRight() - juce::jmin (edgeGrab, getNoteBounds (hit).getWidth() / 3.0f);
+                           && (event.position.x > getNoteBounds (hit).getRight() - grab || event.position.x < getNoteBounds (hit).getX() + grab);
         setMouseCursor (atEnd ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor);
     }
 }
@@ -1289,6 +1369,9 @@ void KeyEditor::mouseDown (const juce::MouseEvent& event)
     {
         gesture = Gesture::position;
         studio.setPosition (juce::jmax (0.0, pr7s::snap (beatForX (point.x), grid)));
+        rulerZooming = false;
+        rulerZoomBeat = beatForX (point.x);
+        rulerZoomFrom = pixelsPerBeat;
         return;
     }
     if (laneMouseDown (event))   // (0.25.0) the controller lanes: their headers, events, the LINE tool, the divider
@@ -1349,6 +1432,18 @@ void KeyEditor::mouseDown (const juce::MouseEvent& event)
 
         case Tool::line:
             return;   // (in the lanes only)
+
+        case Tool::mute:
+            if (hit >= 0)
+            {
+                // A note clicked: muted, or unmuted if it was (with the others selected, if it's one of them).
+                const auto targets = std::binary_search (selected.begin(), selected.end(), hit) ? selected : std::vector<int> { hit };
+                setNotesMuted (targets, ! part->notes[(size_t) hit].muted);
+                return;
+            }
+            gesture = Gesture::muteBand;
+            band = { point, point };
+            return;
 
         case Tool::split:
             if (hit >= 0)
@@ -1414,8 +1509,12 @@ void KeyEditor::mouseDown (const juce::MouseEvent& event)
     begin();
     clicked = anchor = hit;
     const auto bounds = getNoteBounds (hit);
-    gesture = point.x > bounds.getRight() - juce::jmin (edgeGrab, bounds.getWidth() / 3.0f) && ! (drumViewOn && ! showDrumLengths)
-                  ? Gesture::resize : Gesture::move;
+    const auto grab = juce::jmin (edgeGrab, bounds.getWidth() / 3.0f);
+    const auto lengths = ! (drumViewOn && ! showDrumLengths);
+    // (0.77.1, the owner) The left end too: the start moves, the end stays.
+    gesture = lengths && point.x > bounds.getRight() - grab ? Gesture::resize
+            : lengths && point.x < bounds.getX() + grab ? Gesture::resizeStart
+                                                        : Gesture::move;
     dragging = selected;
     if (gesture == Gesture::move && event.mods.isAltDown())
     {
@@ -1446,8 +1545,23 @@ void KeyEditor::mouseDrag (const juce::MouseEvent& event)
     switch (gesture)
     {
         case Gesture::position:
+        {
+            // (0.78.0) Dragged up or down: a zoom (down out, up in), the clicked beat kept under the mouse.
+            const auto dy = point.y - downAt.y;
+            if (! rulerZooming && std::abs (dy) >= ArrangeView::rulerZoomStart && std::abs (dy) > std::abs (point.x - downAt.x))
+                rulerZooming = true;
+            if (rulerZooming)
+            {
+                pixelsPerBeat = juce::jlimit (12.0, 600.0, rulerZoomFrom * std::pow (2.0, (double) dy / ArrangeView::rulerZoomPixelsPerDouble)   /* (0.78.1: down zooms in) */);
+                firstBeat = juce::jmax (earliestFirstBeat(), rulerZoomBeat - (double) (downAt.x - (float) (sideWidth + listWidth())) / pixelsPerBeat);
+                setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+                refreshScrollBars();
+                repaint();
+                return;
+            }
             studio.setPosition (juce::jmax (0.0, pr7s::snap (beatForX (point.x), grid)));
             return;
+        }
 
         case Gesture::velocityHandle:
             dragVelocityHandle (point.y - downAt.y);
@@ -1456,6 +1570,11 @@ void KeyEditor::mouseDrag (const juce::MouseEvent& event)
         case Gesture::audition:
             if (const auto pitch = pitchForY (point.y); pitch != auditioning)
                 startAudition (pitch, newVelocity);
+            return;
+
+        case Gesture::muteBand:
+            band = juce::Rectangle<float> (downAt, point);
+            repaint();
             return;
 
         case Gesture::band:
@@ -1535,6 +1654,33 @@ void KeyEditor::mouseDrag (const juce::MouseEvent& event)
             return;
         }
 
+        case Gesture::resizeStart:
+        {
+            if (part == nullptr)
+                return;
+            moved = true;
+            const auto& a = original[(size_t) anchor];
+            const auto start = part->start + a.start;
+            auto change = snapped (start + beatForX (point.x) - beatForX (downAt.x), free) - start;
+            const auto shortest = free ? finest : grid;
+            // Not before the part's start, and each note keeps at least the shortest length.
+            for (const auto i : dragging)
+            {
+                const auto& o = original[(size_t) i];
+                change = juce::jmax (change, -o.start);
+                change = juce::jmin (change, o.length - shortest);
+            }
+            for (const auto i : dragging)
+            {
+                const auto& o = original[(size_t) i];
+                working[(size_t) i].start = o.start + change;
+                working[(size_t) i].length = o.length - change;
+            }
+            refreshPanel();
+            repaint();
+            return;
+        }
+
         case Gesture::draw:
         {
             if (part == nullptr)
@@ -1596,7 +1742,10 @@ void KeyEditor::mouseUp (const juce::MouseEvent&)
         laneMouseUp();
         return;
     }
+    if (std::exchange (rulerZooming, false))
+        setMouseCursor (toolCursor());
     const auto finished = gesture;
+    const auto finishedBand = band;   // (the MUTE box reads it below)
     gesture = Gesture::none;
     stopAudition();
     shownVelocity = -1.0f;
@@ -1615,6 +1764,7 @@ void KeyEditor::mouseUp (const juce::MouseEvent&)
             commit (working);
             break;
         case Gesture::resize:
+        case Gesture::resizeStart:
         case Gesture::draw:
         case Gesture::erase:
         case Gesture::velocity:
@@ -1624,6 +1774,22 @@ void KeyEditor::mouseUp (const juce::MouseEvent&)
             if (finished == Gesture::draw && getPart() != nullptr && selected.size() <= 1)
                 selected = { anchor };
             break;
+        case Gesture::muteBand:
+        {
+            // (0.77.1) The box: every note it touches muted, or unmuted when they all were (as the arrangement's MUTE).
+            std::vector<int> touched;
+            for (int i = 0; i < (int) notes().size(); ++i)
+                if (getNoteBounds (i).intersects (finishedBand))
+                    touched.push_back (i);
+            if (! touched.empty())
+            {
+                const auto allMuted = std::all_of (touched.begin(), touched.end(), [this] (int i) { return notes()[(size_t) i].muted; });
+                setNotesMuted (touched, ! allMuted);
+            }
+            band = {};
+            repaint();
+            break;
+        }
         case Gesture::position:
         case Gesture::audition:
         case Gesture::band:
@@ -1721,7 +1887,7 @@ void KeyEditor::mouseWheelMove (const juce::MouseEvent& event, const juce::Mouse
 void KeyEditor::refreshPanel()
 {
     const auto hasPart = getPart() != nullptr;
-    for (auto* button : { &selectTool, &drawTool, &eraseTool, &quantizeButton })
+    for (auto* button : std::initializer_list<juce::TextButton*> { &selectTool, &drawTool, &eraseTool, &quantizeButton })
         button->setEnabled (hasPart);
     // (0.31.0) The quantize value on QUANTIZE; INSTRUMENT for an instrument track's part.
     quantizeButton.setButtonText ("QUANTIZE " + quantizeText (studio.getProject().quantizeBeats));
@@ -1750,7 +1916,8 @@ void KeyEditor::resized()
 
     const auto notesArea = getNotesArea().toNearestInt();
     down.setBounds (notesArea.getRight(), notesArea.getY(), scrollBarSize, notesArea.getHeight());
-    across.setBounds (notesArea.getX() - listWidth(), getHeight() - scrollBarSize, getWidth() - sideWidth, scrollBarSize);
+    // (0.77.4, the owner: at the bottom it was under the velocities and, in a tall window, off the screen)
+    across.setBounds (notesArea.getX() - listWidth(), juce::roundToInt (acrossTop()), getWidth() - sideWidth, scrollBarSize);
     clampScroll();
     refreshScrollBars();
 }
@@ -1769,8 +1936,9 @@ void KeyEditor::layoutColumn()
     place (closeButton);
     gap();
     place (instrumentKey);
+    place (soloKey);
     gap();
-    for (auto* key : std::initializer_list<juce::Component*> { &selectTool, &drawTool, &splitTool, &eraseTool, &lineTool })
+    for (auto* key : std::initializer_list<juce::Component*> { &selectTool, &drawTool, &splitTool, &eraseTool, &muteTool, &lineTool })
         place (*key);
     gap();
     place (gridBox);
@@ -1838,7 +2006,7 @@ void KeyEditor::paint (juce::Graphics& g)
 
     // The editor's frame and the line between the notes and the velocities.
     g.setColour (ParagonColours::panelEdge);
-    g.fillRect (juce::Rectangle<float> ((float) sideWidth, lanesTop() - 1.0f, (float) (getWidth() - sideWidth), 1.0f));
+    g.fillRect (juce::Rectangle<float> ((float) sideWidth, acrossTop() - 1.0f, (float) (getWidth() - sideWidth), 1.0f));
     g.fillRect (juce::Rectangle<float> (0.0f, 0.0f, (float) getWidth(), 1.0f));
 }
 
@@ -1920,7 +2088,7 @@ void KeyEditor::paintInfo (juce::Graphics& g, juce::Rectangle<float> info)
     {
         line1 = list.empty() ? juce::String ("No notes yet") : juce::String ((int) list.size()) + (list.size() == 1 ? " note" : " notes");
         line2 = tool == Tool::draw ? "Click to draw a note" : tool == Tool::erase ? "Click or drag across notes to erase"
-                                                                                 : "Double-click for a new note";
+              : tool == Tool::mute ? "Click or box notes to mute them" : "Double-click for a new note";
     }
     g.setColour (ParagonColours::text);
     g.setFont (font (13.0f));
@@ -2064,15 +2232,16 @@ void KeyEditor::paintNotes (juce::Graphics& g)
             const auto c = bounds.getCentre();
             const auto r = bounds.getWidth() * 0.5f;
             diamond.addQuadrilateral (c.x, c.y - r, c.x + r, c.y, c.x, c.y + r, c.x - r, c.y);
-            g.setColour ((isSelected ? fill.brighter (0.35f) : fill).withAlpha (muted ? 0.25f : 1.0f));
+            g.setColour ((isSelected ? fill.brighter (0.35f) : fill).withAlpha (muted || note.muted ? 0.25f : 1.0f));
             g.fillPath (diamond);
             g.setColour (isSelected ? juce::Colours::white : juce::Colours::black.withAlpha (0.55f));
             g.strokePath (diamond, juce::PathStrokeType (isSelected ? 1.5f : 1.0f));
             continue;
         }
-        g.setColour (isSelected ? fill.brighter (0.35f) : fill);
+        // (0.77.1) A muted note: faded, with a pearl outline (still there, not played).
+        g.setColour ((isSelected ? fill.brighter (0.35f) : fill).withAlpha (note.muted ? 0.22f : 1.0f));
         g.fillRoundedRectangle (bounds, 2.0f);
-        g.setColour (isSelected ? juce::Colours::white : juce::Colours::black.withAlpha (0.55f));
+        g.setColour (isSelected ? juce::Colours::white : note.muted ? juce::Colour (0xfff4eeea).withAlpha (0.6f) : juce::Colours::black.withAlpha (0.55f));
         g.drawRoundedRectangle (bounds.reduced (0.5f), 2.0f, isSelected ? 1.5f : 1.0f);
         if (bounds.getWidth() > 30.0f)
         {
@@ -2126,7 +2295,7 @@ void KeyEditor::paintNotes (juce::Graphics& g)
         g.drawText (text, stamp.withWidth (textWidth).withTrimmedLeft (7.0f), juce::Justification::centredLeft, false);
     }
 
-    if (gesture == Gesture::band && ! band.isEmpty())
+    if ((gesture == Gesture::band || gesture == Gesture::muteBand) && ! band.isEmpty())
     {
         g.setColour (ParagonColours::accent.withAlpha (0.12f));
         g.fillRect (band);

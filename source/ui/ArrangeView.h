@@ -598,6 +598,15 @@ private:
     juce::Rectangle<float> fadeHandle (juce::Rectangle<float> bounds, const pr7s::Part&, bool fadeIn) const;
     Drag drag = Drag::none;
     double dragStartBeat = 0.0, dragOriginalStart = 0.0, dragOriginalLength = 0.0;
+    // (0.78.0, the owner) The ruler: a click sets the position; dragged up or down it zooms instead
+    // (0.78.1: down zooms in, up out, as the manual; 0.78.0 had it the other way, the owner asked it flipped), the clicked beat kept under the mouse.
+    bool rulerZooming = false;
+    float rulerDownX = 0.0f, rulerDownY = 0.0f;
+    double rulerZoomBeat = 0.0, rulerZoomFrom = 0.0;
+public:
+    static constexpr float rulerZoomStart = 4.0f, rulerZoomPixelsPerDouble = 80.0f;   // a doubling (or halving) per 80 px
+    bool isRulerZooming() const noexcept { return rulerZooming; }
+private:
     int dragTrack = 0, dragTargetTrack = 0;
     int dragTargetLane = -1;   // (0.29.0) the lane of takes it's dragged onto (-1: not over one)
     double dragNewStart = 0.0, dragNewLength = 0.0;

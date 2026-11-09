@@ -566,7 +566,8 @@ void MainView::refreshScrollBars()
 {
     // Across: from the song's start to past its end (or to what's in view); down: the rows and the room under them.
     const auto visibleBeats = (double) arrange.getWidth() / timeline.pixelsPerBeat;
-    arrangeAcross.setRangeLimits (0.0, juce::jmax (Timeline::scrollLength (studio), timeline.firstBeat + visibleBeats), juce::dontSendNotification);
+    // (0.77.3) Always half a screen past what's in view: the handle always shows.
+    arrangeAcross.setRangeLimits (0.0, juce::jmax (Timeline::scrollLength (studio), timeline.firstBeat + visibleBeats) + visibleBeats * 0.5, juce::dontSendNotification);
     arrangeAcross.setCurrentRange (timeline.firstBeat, visibleBeats, juce::dontSendNotification);
     const auto lanes = (double) juce::jmax (0, arrange.getHeight() - Timeline::rulerHeight);
     arrangeDown.setRangeLimits (0.0, juce::jmax (lanes, (double) (timeline.contentHeight (studio) + Timeline::bottomRoom)), juce::dontSendNotification);
@@ -1325,6 +1326,8 @@ void MainView::placeZone (Zone& zone)
     // The pads' trigger keys play them only while they're open (docked or in their window).
     studio.setPadsActive (padsZone.open);
     resized();
+    // (0.78.0) SOLO EDITOR holds only while the editor shows (its key stays as set for when it's back).
+    keyEditor.setSoloEditor (keyEditor.isSoloEditorOn());
     repaint();
 }
 
@@ -1455,11 +1458,19 @@ void MainView::newProject()
                                             juce::ModalCallbackFunction::create ([this] (int result)
                                             {
                                                 if (result == 1)
-                                                    studio.newProject();
+                                                    startNewSong();
                                             }));
         return;
     }
-    studio.newProject();
+    startNewSong();
+}
+
+void MainView::startNewSong()
+{
+    // (0.78.2) From HUB SETTINGS' DEFAULT TEMPLATE when one is chosen.
+    juce::String problems;
+    if (! studio.startNewSong (problems))
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "The default template", problems);
 }
 
 void MainView::openProject()
@@ -2019,6 +2030,22 @@ juce::String MainView::renderWarning (const std::vector<pr7s::Studio::RenderSour
                              + " will be rendered. " + t->name + " has parts outside the cycle: disabling or removing the track silences them too. "
                                "Turn CYCLE off to render all of it.";
                     }
+    // (0.77.0) A stretch (a range, parts): the track is disabled and hidden after all, so what's outside goes silent too.
+    for (const auto& s : sources)
+        if (! s.wholeTrack)
+            if (const auto* t = project.findTrack (s.trackId))
+                for (const auto& p : t->parts)
+                {
+                    if (p.muted)
+                        continue;
+                    const auto covered = std::any_of (sources.begin(), sources.end(), [&] (const auto& o)
+                    {
+                        return o.trackId == t->id && p.start >= o.start - 1.0e-9 && p.end() <= o.end + 1.0e-9;
+                    });
+                    if (! covered)
+                        return t->name + " has parts outside what's rendered: the track is muted, disabled and hidden afterwards, "
+                                         "so they go silent too (VISIBILITY and ENABLE TRACK bring it back).";
+                }
     return {};
 }
 
@@ -2401,30 +2428,19 @@ void MainView::RightZoneEdge::mouseDrag (const juce::MouseEvent& event)
 
 void MainView::openLineIdeas (std::vector<int> chordEvents, bool buildSection)
 {
+    // (0.74.0) IDEAS is the composer's second tab. On the chord track's chords when it has some (the chosen
+    // ones), else on the composer's own. BUILD SECTION: the composer's COMPOSE tab, where SECTION and BUILD are.
     auto spans = studio.getLineChords (chordEvents);
-    if (spans.empty())
+    openComposer();
+    auto& suite = composerWindow->getSuite();
+    if (buildSection)
     {
-        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Ideas",
-                                                "Put some chords on the chord track first: double-click its lane, pick a popular progression, "
-                                                "or play them in from the pads. The ideas follow those chords.");
+        if (! spans.empty())
+            suite.getComposer().setFromChordTrack (true);
+        suite.showTab (ComposerSuite::Tab::compose);
         return;
     }
-    if (linesWindow != nullptr)
-    {
-        linesWindow->getPage().setChords (std::move (spans));
-        linesWindow->toFront (true);
-        if (buildSection)
-            linesWindow->getPage().showBuildSection();
-        return;
-    }
-    linesWindow = std::make_unique<LinesWindow> (studio, std::move (spans));
-    linesWindow->getPage().onComposer = [this] { openComposer(); };
-    linesWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->linesWindow.reset(); }); };
-    linesWindow->centreAroundComponent (this, linesWindow->getWidth(), linesWindow->getHeight());
-    linesWindow->setVisible (true);
-    if (buildSection)   // (once the window is on screen: the call-out points at its key)
-        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)]
-                                         { if (safe != nullptr && safe->linesWindow != nullptr) safe->linesWindow->getPage().showBuildSection(); });
+    suite.showIdeas (std::move (spans));
 }
 
 void MainView::openEq (int busId)
@@ -2463,6 +2479,16 @@ void MainView::openComposer()
         return;
     }
     composerWindow = std::make_unique<ComposerWindow> (studio);
+    composerWindow->getPage().getSelectedParts = [this] { return arrange.getSelectedParts(); };   // (0.75.0: + MY RIFF)
+    composerWindow->getPage().onOpenMixer = [this]   // (0.76.0) the mixer in its window, in front of the composer
+    {
+        if (! isMixerInWindow())
+            setMixerInWindow (true);
+        if (! isMixerOpen())
+            openMixer();
+        if (auto* w = getMixerWindow())
+            w->toFront (true);
+    };
     composerWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->composerWindow.reset(); }); };
     composerWindow->centreAroundComponent (this, composerWindow->getWidth(), composerWindow->getHeight());
     composerWindow->setVisible (true);
@@ -2601,9 +2627,12 @@ void MainView::openDrumMapSetup()
         drumMapWindow->toFront (true);
         return;
     }
-    // (Its maps are the song's: with none yet, the GM Map to start from.)
+    // (Its maps are the song's: with none yet, the GM Map to start from, or the Hub's default when built in.)
     if (studio.getProject().drumMaps.empty())
-        studio.addDrumMap (pr7s::DrumMap::gm());
+    {
+        const auto start = pr7s::DrumMap::builtIn (studio.getDefaultDrumMap());
+        studio.addDrumMap (start ? *start : pr7s::DrumMap::gm());
+    }
     auto window = std::make_unique<DrumMapWindow> (studio, [safe = juce::Component::SafePointer<MainView> (this)]
     {
         if (safe == nullptr)
@@ -2664,7 +2693,7 @@ void MainView::openHub()
         {
             juce::String error;
             if (! studio.getLibrary().usesDefaultLocation())
-                studio.newProject();
+                startNewSong();
             else if (! studio.createSong (name, error))
                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't create the song", error);
             closeHub();
@@ -2681,6 +2710,7 @@ void MainView::openHub()
         });
     };
     hub.onSettings = [this] { openSettings(); };
+    hub.onSaveTemplate = [this] { saveAsTemplate(); };   // (0.78.2)
     hubWindow = std::move (window);
 }
 
@@ -2689,14 +2719,24 @@ void MainView::saveAsTemplate()
     auto* box = new FamilyAlertWindow ("Save as Template", "A name for the template (the Hub lists it under TEMPLATES):", juce::MessageBoxIconType::NoIcon);
     box->addTextEditor ("name", studio.getFile() != juce::File() ? studio.getFile().getFileNameWithoutExtension() : juce::String ("My template"));
     box->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    box->addButton ("Save as the default", 2);   // (0.78.2: every new song starts from it)
     box->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
     box->enterModalState (true, juce::ModalCallbackFunction::create ([box, safe = juce::Component::SafePointer<MainView> (this)] (int result)
     {
-        if (safe == nullptr || result != 1)
+        if (safe == nullptr || result == 0)
             return;
         juce::String error;
-        if (! safe->studio.saveAsTemplate (box->getTextEditorContents ("name"), error))
+        const auto name = box->getTextEditorContents ("name");
+        if (! safe->studio.saveAsTemplate (name, error))
+        {
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't save the template", error);
+            return;
+        }
+        if (result == 2)
+            safe->studio.getLibrary().setDefaultTemplate (pr7s::ProjectLibrary::templateFolder()
+                                                              .getChildFile (juce::File::createLegalFileName (name.trim()) + pr7s::Project::fileExtension));
+        if (auto* hubWindow = dynamic_cast<HubWindow*> (safe->hubWindow.get()))
+            hubWindow->getHub().refreshTemplates();
     }), true);
 }
 

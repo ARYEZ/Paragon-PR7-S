@@ -216,8 +216,10 @@ void KeyEditor::showDrumMapMenu()
     menu.addItem ("No Drum Map", true, current.isEmpty(), [&s, trackId] { s.setTrackDrumMap (trackId, {}); });
     const auto gm = pr7s::DrumMap::gm().name;
     menu.addItem (gm + " (built in)", true, current == gm, [&s, trackId, gm] { s.setTrackDrumMap (trackId, gm); });
+    const auto pr7d = pr7s::DrumMap::pr7d().name;   // (0.77.2) PR7-D's GROOVE LIBRARY layout
+    menu.addItem (pr7d + " (built in: PR7-D's Groove Library notes)", true, current == pr7d, [&s, trackId, pr7d] { s.setTrackDrumMap (trackId, pr7d); });
     for (const auto& map : studio.getProject().drumMaps)
-        if (map.name != gm)
+        if (map.name != gm && map.name != pr7d)
             menu.addItem (map.name, true, current == map.name, [&s, trackId, name = map.name] { s.setTrackDrumMap (trackId, name); });
     const auto library = studio.getLibraryDrumMaps();
     juce::PopupMenu fromFolder;

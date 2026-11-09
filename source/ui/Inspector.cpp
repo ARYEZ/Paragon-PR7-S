@@ -17,8 +17,9 @@ namespace
         return percent == 0 ? juce::String ("C") : (pan < 0.0 ? "L " : "R ") + juce::String (percent);
     }
 
-    constexpr const char* sectionNames[] = { "basics", "routing", "chords", "inserts", "eq", "sends", "fader", "quick" };
-    constexpr const char* sectionTitles[] = { "", "ROUTING", "CHORDS", "INSERTS", "EQUALIZERS", "SENDS", "FADER", "QUICK CONTROLS" };
+    constexpr const char* sectionNames[] = { "basics", "routing", "chords", "inserts", "eq", "boost", "sends", "fader", "quick" };
+    constexpr const char* defaultFolded = "routing,chords,sends,fader,quick";   // (0.78.2)
+    constexpr const char* sectionTitles[] = { "", "ROUTING", "CHORDS", "INSERTS", "EQUALIZERS", "BOOSTER", "SENDS", "FADER", "QUICK CONTROLS" };
     constexpr int headerHeight = 22, rowHeight = 22, gap = 4, slotHeight = 17, slotGap = 2, faderHeight = 300, margin = 6;
     const juce::Colour panelColour { 0xff0d0a0e }, slotColour { 0xff0b090c }, postFaderColour { 0xff1c1108 };
 }
@@ -115,12 +116,20 @@ public:
             disabled = t->disabled;
             colour = t->colour;
         }
+        // (0.77.4, the owner: the track clicked in the track list lit here too)
+        lit = owner.studio.isTrackSelected (trackId);
+        box.setColour (juce::ToggleButton::textColourId, lit ? ParagonColours::accent : ParagonColours::text);
         resized();
         repaint();
     }
 
     void paint (juce::Graphics& g) override
     {
+        if (lit)
+        {
+            g.setColour (ParagonColours::accent.withAlpha (0.16f));
+            g.fillRect (getLocalBounds().withTrimmedBottom (1));
+        }
         g.setColour (disabled ? juce::Colour (0xff4a454c) : colour);
         g.fillRect (0, 3, 4, getHeight() - 6);
         g.setColour (juce::Colour (0xff050405));
@@ -137,6 +146,7 @@ public:
 
     const int trackId;
     juce::ToggleButton box;
+    bool lit = false;
 
 private:
     Inspector& owner;
@@ -181,7 +191,14 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
 
     if (auto* settings = studio.getSettings())
     {
-        const auto kept = juce::StringArray::fromTokens (settings->getValue ("inspectorFolded"), ",", "");
+        // (0.78.2, the owner asked) The default layout: the basics, INSERTS, EQUALIZERS and BOOSTER open,
+        // the rest folded. Put in place once over what was kept before; any change after that is kept.
+        if (! settings->getBoolValue ("inspectorDefaults0782"))
+        {
+            settings->setValue ("inspectorFolded", defaultFolded);
+            settings->setValue ("inspectorDefaults0782", true);
+        }
+        const auto kept = juce::StringArray::fromTokens (settings->getValue ("inspectorFolded", defaultFolded), ",", "");
         for (int i = 0; i < numSections; ++i)
             folded[(size_t) i] = kept.contains (sectionNames[i]);
     }
@@ -228,6 +245,7 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     render.onClick = [this] { if (onRender) onRender (trackId); };
     // EQUALIZERS (0.43.0): the curve (edited right there), BYPASS, and EDIT EQ for the whole EQ.
     content.addAndMakeVisible (eqCurve);
+    content.addAndMakeVisible (booster);   // (0.78.0)
     for (auto* k : { &eqBypass, &eqPresets, &eqEdit })
     {
         k->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
@@ -626,6 +644,7 @@ void Inspector::showMaster()
     master = true;
     trackId = pr7s::Engine::masterBus;
     eqCurve.setBus (trackId);
+    booster.setBus (trackId);
     AutomationKeys::setUp (read, write, studio, trackId);
     fader.setSingleTrack (trackId, true);
     refresh();
@@ -636,6 +655,7 @@ void Inspector::showTrack (int id)
     master = false;
     trackId = studio.getProject().findTrack (id) != nullptr ? id : 0;
     eqCurve.setBus (trackId);
+    booster.setBus (trackId);
     AutomationKeys::setUp (read, write, studio, trackId);
     for (int i = 0; i < pr7s::Project::maxSends; ++i)
     {
@@ -679,6 +699,7 @@ void Inspector::refresh()
     const auto* t = track();
     for (auto& header : headers)
         header->repaint();
+    booster.refresh();   // (0.78.0: an undo or a preset shows at once, not on its next tick)
     if (master)
     {
         AutomationKeys::refresh (read, write, studio, trackId);
@@ -898,9 +919,37 @@ void Inspector::followMix()
     panReadout.setText (panText (pan.getValue()), juce::dontSendNotification);
 }
 
+bool Inspector::isVisibilityRowLit (int id) const
+{
+    for (const auto& row : visibilityRows)
+        if (row->trackId == id)
+            return row->lit;
+    return false;
+}
+
+void Inspector::followVisibilitySelection()
+{
+    // (0.77.4) The rows lit as the selection changes (a click in the track list, the mixer, Up/Down), and
+    // the selected track's row scrolled into view.
+    auto now = studio.getSelectedTracks();
+    if (now == visibilitySelection)
+        return;
+    visibilitySelection = std::move (now);
+    refreshVisibility();
+    for (const auto& row : visibilityRows)
+        if (row->trackId == studio.getSelectedTrack())
+        {
+            const auto top = visibilityView.getViewPositionY();
+            const auto bottom = top + visibilityView.getMaximumVisibleHeight();
+            if (row->getY() < top || row->getBottom() > bottom)
+                visibilityView.setViewPosition (0, juce::jmax (0, row->getY() - visibilityView.getMaximumVisibleHeight() / 3));
+        }
+}
+
 void Inspector::timerCallback()
 {
     followMix();
+    followVisibilitySelection();
     // The Quick Controls' bars as their controls are now (automation playing, the plugin's own window).
     for (int i = 0; i < pr7s::Track::numQuickControls; ++i)
         if (auto& bar = qcBars[(size_t) i]; bar.isVisible() && ! bar.isMouseButtonDown())
@@ -933,7 +982,7 @@ void Inspector::layout()
         const auto section = (Section) i;
         auto& header = *headers[(size_t) i];
         // The master (0.9.12): its basics (R W, volume), inserts and fader.
-        const auto applies = master ? section == Section::basics || section == Section::inserts || section == Section::fader || section == Section::eq
+        const auto applies = master ? section == Section::basics || section == Section::inserts || section == Section::fader || section == Section::eq || section == Section::boost
                                     : t != nullptr && (section != Section::sends || studio.getProject().hasOutput (*t))   // (0.60.0: FX channels send too)
                                           && (section != Section::chords || t->kind == pr7s::Track::Kind::instrument)   // (0.36.0: MIDI only)
                                           && (section == Section::basics || ! t->isFolder() || t->folderGroup);   // (0.50.0: a folder: its basics)
@@ -1079,6 +1128,9 @@ void Inspector::layout()
                 place (eqEdit, line);
                 break;
             }
+            case Section::boost:
+                place (booster, row (booster.getPreferredHeight (w - 2 * margin)));
+                break;
             case Section::sends:
                 for (auto& send : sendSlots)
                 {
@@ -1169,8 +1221,10 @@ void Inspector::showDrumMapMenu()
     menu.addItem ("No Drum Map", true, current.isEmpty(), [&s, id] { s.setTrackDrumMap (id, {}); });
     const auto gm = pr7s::DrumMap::gm().name;
     menu.addItem (gm + " (built in)", true, current == gm, [&s, id, gm] { s.setTrackDrumMap (id, gm); });
+    const auto pr7d = pr7s::DrumMap::pr7d().name;   // (0.77.2) PR7-D's GROOVE LIBRARY layout
+    menu.addItem (pr7d + " (built in: PR7-D's Groove Library notes)", true, current == pr7d, [&s, id, pr7d] { s.setTrackDrumMap (id, pr7d); });
     for (const auto& map : studio.getProject().drumMaps)
-        if (map.name != gm)
+        if (map.name != gm && map.name != pr7d)
             menu.addItem (map.name, true, current == map.name, [&s, id, name = map.name] { s.setTrackDrumMap (id, name); });
     juce::PopupMenu fromFolder;
     for (const auto& file : studio.getLibraryDrumMaps())

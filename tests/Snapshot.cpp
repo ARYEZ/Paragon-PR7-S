@@ -442,6 +442,15 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         view.openKeyEditor();
         studio.dispatchPendingMessages();
         view.getKeyEditor().selectNotes ({ 3, 4, 5 });
+        // PARAGON_SNAPSHOT_MUTE=1 (0.77.1): the MUTE tool on, three of the lead's notes muted.
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_MUTE", {}).isNotEmpty())
+        {
+            auto& editor = view.getKeyEditor();
+            editor.selectNotes ({});
+            editor.setNotesMuted ({ 1, 4, 6 }, true);
+            editor.setTool (KeyEditor::Tool::mute);
+            studio.dispatchPendingMessages();
+        }
         // PARAGON_SNAPSHOT_DRUMS=1 (0.26.0): a drum track with a rock beat in the drum editor (the GM Map;
         // the crash muted, some hats selected; the velocity lane).
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_DRUMS", {}).isNotEmpty())
@@ -463,10 +472,12 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
             beat.notes.push_back ({ 7.0, 0.25, 45, 0.8f });
             beat.notes.push_back ({ 7.5, 0.25, 43, 0.85f });
             studio.addPart (drums, beat);
-            studio.setTrackDrumMap (drums, "GM Map");
+            // (=pr7d, 0.77.2: on the PR7-D Map, PR7-D's own names)
+            const juce::String mapName = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_DRUMS", {}) == "pr7d" ? "PR7-D Map" : "GM Map";
+            studio.setTrackDrumMap (drums, mapName);
             auto map = *studio.getDrumMapOf (drums);
             map.sounds[57].mute = true;
-            studio.setDrumMap ("GM Map", map);
+            studio.setDrumMap (mapName, map);
             studio.dispatchPendingMessages();
             const auto index = (int) studio.getProject().findTrack (drums)->parts.size() - 1;
             view.getArrangeView().select (drums, index);
@@ -1645,6 +1656,16 @@ TEST_CASE ("Snapshot: the channel EQ (0.43.0; PARAGON_SNAPSHOT_EQ=inspector for 
             view.setSize (1500, 1000);
             studio.dispatchPendingMessages();
             auto& inspector = view.getInspector();
+            // (0.78.0, PARAGON_SNAPSHOT_BOOSTER=1) The BOOSTER under it: the sections above folded, a trim and a level set.
+            if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_BOOSTER", {}).isNotEmpty())
+            {
+                studio.setBooster (id, { 3.5f, -4.0f });
+                // (0.78.2) The default layout: routing, chords, sends, fader and quick controls folded.
+                for (auto section : { Inspector::Section::routing, Inspector::Section::chords, Inspector::Section::sends,
+                                      Inspector::Section::fader, Inspector::Section::quick })
+                    inspector.setFolded (section, true);
+                studio.dispatchPendingMessages();
+            }
             image = view.createComponentSnapshot (view.getLocalArea (&inspector, inspector.getLocalBounds()), true, 1.0f);
         }
         else

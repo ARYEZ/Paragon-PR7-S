@@ -26,6 +26,9 @@ public:
         juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
         pr7s::clearDragOutFolder();   // (0.53.1: last session's dragged-out parts)
         studio = std::make_unique<pr7s::Studio> (true);
+        // (0.76.1) Before the first window: with DRAW WITHOUT THE GRAPHICS CARD no window or image is ever made
+        // on the graphics card (JUCE patched: cmake/PatchJuce.cmake); switching afterwards left Direct2D behind.
+        Windows::applyDrawing (studio->getSoftwareDrawing());
         window = std::make_unique<MainWindow> (*this, *studio);
         if (studio->getSoftwareDrawing())   // (0.60.0)
         {
@@ -107,11 +110,11 @@ public:
     void timerCallback() override
     {
         pr7s::SessionLog::beat();
-        // (0.60.0) Windows opened since follow SETTINGS' drawing (the processor or the graphics card), once a second.
-        if (studio != nullptr && ++drawingTicks % 4 == 0)
+        // (0.60.0) Windows opened since follow SETTINGS' drawing (the processor or the graphics card). Since 0.73.4 every
+        // tick (a quarter second; menus and boxes are switched as they're made, this catches the rest).
+        if (studio != nullptr)
             Windows::applyDrawing (studio->getSoftwareDrawing());
     }
-    int drawingTicks = 0;
 
 private:
     class MainWindow final : public juce::DocumentWindow
