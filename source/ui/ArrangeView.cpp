@@ -3064,11 +3064,13 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
         if (selected)
         {
             // (0.80.0, the owner: as the other DAW) Lit: pearl white, a size bigger, a dark edge.
-            const auto lit = box.expanded (1.5f);
+            // (0.80.2, the owner asked) A circle, not a square: 2 px bigger each side, as a circle
+            // looks smaller than the square it fits in.
+            const auto lit = box.expanded (2.0f);
             g.setColour (juce::Colour (0xfff4eeea));
-            g.fillRect (lit);
+            g.fillEllipse (lit);
             g.setColour (juce::Colour (0xff050405));
-            g.drawRect (lit, 1.0f);
+            g.drawEllipse (lit, 1.0f);
             continue;
         }
         g.setColour (colour);
