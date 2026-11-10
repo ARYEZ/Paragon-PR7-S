@@ -2,7 +2,15 @@
 
 Each version's notes appear on its GitHub Release page.
 
-## 0.82.0
+## 0.82.1
+
+**LEARN MY BAND knows your band's tunings** (you told me: every song on a 7-string guitar and a 5-string bass, both in drop A). The reader now only listens for notes those instruments can play: nothing under the low A string, nothing past the 24th fret.
+
+- **Why it matters:** the hardest mistake for a pitch reader is the octave. A low, heavy note can look like the note an octave under it, because the sound repeats at both. On your first song, 264 of the rhythm guitar's 1,883 hits (14 %) came out under the guitar's low A, which a drop A 7-string can't play: those were octave slips. Now a root under the low string is looked for an octave up instead, where it really was.
+- **The bass:** a note read a half step or a whole step under the low A is taken as the low A itself (a slack string, or read a hair flat); further under, it goes up an octave.
+- **The tunings it assumes:** guitar A E A D G B E (low to high), bass A E A D G, 24 frets. If the bass is strung differently (your Djinn profile has A D A D G), tell me: only the lowest string matters for this release, and that's the A either way.
+
+
 
 **LEARN MY BAND, part one: reading your record.** The idea engine is going to learn from what your band actually played. This first part reads the record and shows you what it heard, so you can put it right before anything is learned from it.
 

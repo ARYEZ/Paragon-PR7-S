@@ -80,6 +80,29 @@ TEST_CASE ("0.82.0: a bass DI: its notes, low A included, repeated picks on one 
     CHECK (notes[3].level > notes[0].level);
 }
 
+TEST_CASE ("0.82.1: the band's tunings: nothing under the low string (a hair under it is the low string itself)", "[band][082]")
+{
+    // A 5-string bass in drop A: the low A (21) is the lowest it plays. A note read a whole step under it is the low A
+    // played slack; with no tuning given it stays as read.
+    const auto sound = di ({ { 0.1, 0.5, 19.0 }, { 0.7, 0.4, 26.0 } }, 1.4);
+    const auto free = transcribeLine (sound, rate, BandRole::bass);
+    REQUIRE (free.size() == 2);
+    CHECK (free[0].pitch == 19);
+    const auto tuned = transcribeLine (sound, rate, BandRole::bass, 21, 67);
+    REQUIRE (tuned.size() == 2);
+    CHECK (tuned[0].pitch == 21);
+    CHECK (tuned[1].pitch == 26);
+    // A 7-string in drop A: no rhythm root under its low A (33).
+    std::vector<Pluck> plucks { { 0.1, 0.5, 33.0, false, true }, { 0.7, 0.5, 34.0, false, true }, { 1.3, 0.5, 38.0, false, true } };
+    const auto hits = transcribeRhythm (di (plucks, 2.0), rate, 33, 76);
+    REQUIRE (hits.size() == 3);
+    for (const auto& h : hits)
+        CHECK (h.pitch >= 33);
+    CHECK (hits[0].pitch == 33);
+    CHECK (hits[1].pitch == 34);
+    CHECK (hits[2].pitch == 38);
+}
+
 TEST_CASE ("0.82.0: a lead DI: notes, a bend (no new attack) read as a bend of its size, not two notes", "[band][082]")
 {
     const auto sound = di ({ { 0.1, 0.3, 64.0 }, { 0.45, 0.3, 67.0 }, { 0.8, 0.9, 69.0, false, false, 2.0 } }, 2.0);

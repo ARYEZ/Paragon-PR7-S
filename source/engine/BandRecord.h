@@ -38,12 +38,17 @@ namespace pr7s
     // Single-note lines (bass, lead): the pitch every 5 ms (bass from 25 Hz), cut into notes where the
     // pitch moves to another note or a new pick attack is heard (repeated notes on one pitch are split);
     // a glide with no new attack is a bend (or a slide down: kept as two notes), not a new note.
-    std::vector<PlayedNote> transcribeLine (const juce::AudioBuffer<float>&, double sampleRate, BandRole);
+    // (0.82.1, the owner: every song on a 7-string and a 5-string bass in drop A) `lowest` / `highest`, when given,
+    // are what the instrument can play: the pitch is looked for only there, and a note read under the lowest string
+    // (YIN's octave slip) goes up an octave (one or two half steps under it: the low string itself, played slack).
+    std::vector<PlayedNote> transcribeLine (const juce::AudioBuffer<float>&, double sampleRate, BandRole,
+                                            int lowest = -1, int highest = -1);
     // Rhythm guitar: a hit at each pick attack, its lowest note found from the harmonics (its own
     // fundamental must be there, so an octave under isn't taken), a fifth above it = a power chord,
     // muted when it dies away fast and dull (against the file's own hits), held until the next hit or
     // it dies away.
-    std::vector<PlayedNote> transcribeRhythm (const juce::AudioBuffer<float>&, double sampleRate);
+    // (0.82.1) `lowest`: the guitar's lowest string; a root can't be under it (an octave under: it's the octave up).
+    std::vector<PlayedNote> transcribeRhythm (const juce::AudioBuffer<float>&, double sampleRate, int lowest = 21, int highest = 76);
 
     // The notes as an idea (beats from the song's start at `bpm`): guitars in the owner's velocity
     // layers (muted in the mute layer, open in the sustain layer, by how hard), bends and vibrato as
@@ -76,6 +81,10 @@ namespace pr7s
     {
         GuitarVelocities velocities;
         int guitarBendRange = 2, leadBendRange = 2, bassBendRange = 2;
+        // (0.82.1, the owner's record) The band's tunings, low string first: a 7-string in drop A (A E A D G B E)
+        // and a 5-string bass in drop A (A E A D G), 24 frets. Nothing is heard under the low string or past the top fret.
+        std::vector<int> guitarStrings { 33, 40, 45, 50, 55, 59, 64 }, bassStrings { 21, 28, 33, 38, 43 };
+        int frets = 24;
     };
     bool makeBandReviewSong (const BandSong&, const juce::File& into, const BandReviewOptions&, juce::File& made,
                              juce::String& error, const std::function<bool (double)>& progress = {}, juce::String* report = nullptr);

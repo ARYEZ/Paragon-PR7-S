@@ -338,13 +338,15 @@ namespace pr7s
     }
 
     //==========================================================================
-    std::vector<PlayedNote> transcribeLine (const juce::AudioBuffer<float>& sound, double rate, BandRole role)
+    std::vector<PlayedNote> transcribeLine (const juce::AudioBuffer<float>& sound, double rate, BandRole role, int lowest, int highest)
     {
         std::vector<PlayedNote> notes;
         if (sound.getNumSamples() == 0 || rate <= 0.0)
             return notes;
         const auto bass = role == BandRole::bass;
-        const auto analysis = analysePitch (sound, rate, bass ? 25.0f : 50.0f, bass ? 500.0f : 1600.0f);
+        const auto lowHz = lowest > 0 ? (float) hzOf (lowest - 2.5) : (bass ? 25.0f : 50.0f);
+        const auto highHz = highest > 0 ? (float) hzOf (highest + 1.5) : (bass ? 500.0f : 1600.0f);
+        const auto analysis = analysePitch (sound, rate, lowHz, highHz);
         const auto& frames = analysis.frames;
         const auto count = (int) frames.size();
         const auto attacks = attacksOf (monoOf (sound), rate);
@@ -487,11 +489,23 @@ namespace pr7s
                     notes[n - 1].end = juce::jmin (notes[n - 1].end, note.start);
             }
         }
+        // Nothing under the low string: an octave slip goes up an octave, a half step or two under is the low
+        // string itself (slack, or read flat); past the top fret an octave down.
+        if (lowest > 0)
+            for (auto& note : notes)
+            {
+                if (note.pitch < lowest && note.pitch >= lowest - 2)
+                    note.pitch = lowest;
+                while (note.pitch < lowest)
+                    note.pitch += 12;
+                while (highest > lowest && note.pitch > highest && note.pitch - 12 >= lowest)
+                    note.pitch -= 12;
+            }
         return notes;
     }
 
     //==========================================================================
-    std::vector<PlayedNote> transcribeRhythm (const juce::AudioBuffer<float>& sound, double rate)
+    std::vector<PlayedNote> transcribeRhythm (const juce::AudioBuffer<float>& sound, double rate, int lowest, int highest)
     {
         std::vector<PlayedNote> notes;
         if (sound.getNumSamples() == 0 || rate <= 0.0)
@@ -556,17 +570,17 @@ namespace pr7s
             if (! heard.empty())
             {
                 const auto y = juce::roundToInt (medianOf (heard));
-                candidates = { y, y + 12, y + 7, y - 12 };
+                candidates = { y, y + 12, y + 7, y - 12, y + 24 };
             }
             else
-                for (int m = 26; m <= 64; ++m)
+                for (int m = juce::jmax (26, lowest); m <= 64; ++m)
                     candidates.push_back (m);
             auto best = -1;
             auto bestScore = 0.0;
             for (const auto m : candidates)
             {
-                if (m < 21 || m > 76)
-                    continue;
+                if (m < juce::jmax (21, lowest) || m > highest)
+                    continue;   // (0.82.1: under the guitar's low string can't be played)
                 const auto f0 = hzOf (m);
                 const auto fundamental = magnitudeAt (mono, from, to, f0, rate);
                 auto score = 0.0, strongest = 0.0;
@@ -810,7 +824,11 @@ namespace pr7s
             h.role = role;
             h.seconds = length / reader->sampleRate;
             h.stereo = reader->numChannels > 1;
-            h.played = role == BandRole::rhythm ? transcribeRhythm (sound, reader->sampleRate) : transcribeLine (sound, reader->sampleRate, role);
+            const auto& strings = role == BandRole::bass ? options.bassStrings : options.guitarStrings;
+            const auto low = strings.empty() ? -1 : strings.front();
+            const auto high = strings.empty() ? -1 : strings.back() + options.frets;
+            h.played = role == BandRole::rhythm ? transcribeRhythm (sound, reader->sampleRate, low > 0 ? low : 21, low > 0 ? juce::jmin (76, high) : 76)
+                                                : transcribeLine (sound, reader->sampleRate, role, low, high);
             heard.push_back (std::move (h));
         }
 
