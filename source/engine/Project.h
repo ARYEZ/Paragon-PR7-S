@@ -237,6 +237,20 @@ namespace pr7s
         bool any() const noexcept { return fadeIn || fadeOut || crossfades; }
     };
 
+    // (0.79.0, the owner asked) COLOUR IN ORDER: tracks numbered `from` to `to` (the track
+    // list's numbers; 0 = to the last) take the colour menu's colour of the same number, kept so
+    // as tracks move, are added or removed. Only the kinds ticked count: the others are skipped
+    // and keep their own colour, and the counting closes up over them (the first coloured track
+    // takes colour `from`, the next `from` + 1...). While it's on the rule wins over a colour
+    // picked by hand. Hidden and folded-away tracks have no number, so they aren't counted.
+    struct AutoColour
+    {
+        bool on = false;
+        int from = 1, to = 0;
+        bool instrument = true, audio = true, group = true, fx = true, folder = true;
+        bool operator== (const AutoColour&) const = default;
+    };
+
     // (0.78.0) The BOOSTER: PR7-C's OUTPUT TRIM on every channel, after its EQ and before its
     // sends and fader. A trim knob (-12..+12 dB) and a level fader (-60..+10 dB; the bottom is
     // silence); the gain is the two added, as PR7-C's output stage.
@@ -406,6 +420,8 @@ namespace pr7s
         bool signatureTrackShown = false, signatureLocked = false;
         MarkerTrack markerTrack;                // (0.49.0) the marker track and its markers
         AutoFades autoFades;                    // (0.52.0) the song's Auto Fades settings
+        AutoColour autoColour;                  // (0.79.0) COLOUR IN ORDER (saved; not an undo step)
+        bool autoColourTakes (const Track&) const noexcept;
         const AutoFades& autoFadesOf (const Track& t) const { return t.autoFades ? *t.autoFades : autoFades; }
         bool loopOn = false;                  // CYCLE
         double loopStart = 0.0, loopEnd = 16.0;
@@ -610,6 +626,12 @@ namespace pr7s
         juce::Colour paletteColour (int hue, int shade);
         // One of the three, or one of the palette's (what a song keeps as it is).
         bool isFamily (juce::Colour);
+        // (0.79.0, the owner asked) The menu's colours numbered as it shows them: 1-3 the
+        // gradient's three (pink, red, orange: left to right), then the palette row by row
+        // (deep to pale), each row left to right. 75 in all; past them it starts again at 1.
+        static constexpr int numberedCount = 3 + paletteHues * paletteShades;
+        juce::Colour numbered (int number);   // 1-based, wraps
+        int numberOf (juce::Colour);          // 1-75, or 0 when it isn't one of them
     }
     juce::Colour trackColour (int index);   // red, pink, orange, in turn
 

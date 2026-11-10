@@ -152,6 +152,11 @@ namespace pr7s
         void setTracksColour (const std::vector<int>& trackIds, std::optional<juce::Colour>);
         // (0.73.0) The tracks' colour over their rows in the track list: on/off and 1-100 %. Not an undo step.
         void setTracksListColour (const std::vector<int>& trackIds, bool on, int amount);
+        // (0.79.0, the owner asked) COLOUR IN ORDER (Project::AutoColour): set, then applied at
+        // once and after every change while it's on. Not an undo step (as the list colour).
+        void setAutoColour (AutoColour);
+        // The colour number each track the rule covers takes now (track id -> 1-75), in order.
+        std::vector<std::pair<int, int>> autoColourNumbers() const;
         // (0.73.0, the owner asked) The track moved to that slot of the track list (1 = the top, counted
         // over the tracks shown); the others move down (or up) a slot. A folder takes its tracks with it.
         // One undo step; false if nothing moved.
@@ -1458,6 +1463,7 @@ namespace pr7s
         void effectGoing (int busId, int slot);
         void removeAllEffects();
         void recordUndoState();
+        bool applyAutoColour();   // (0.79.0) the rule's colours onto its tracks; true if any changed
         void restore (const Project&);
         void joinFolderGroup (Track&);    // (0.50.0)
         void leaveFolderGroup (Track&);

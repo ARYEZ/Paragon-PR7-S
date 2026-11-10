@@ -282,6 +282,7 @@ namespace pr7s
             if (track.frozen)
                 if (const auto kept = frozenParts.find (track.id); kept != frozenParts.end() && track.parts != kept->second)
                     track.parts = kept->second;
+        applyAutoColour();   // (0.79.0: the rule wins over whatever moved or recoloured a track)
         numberParts();
         watchPlugins();
         if (exportJob == nullptr)   // (mid-render the engine plays the render's copy: endExport brings the song back)
@@ -1500,6 +1501,47 @@ namespace pr7s
             }
         if (any)
             changed (false);
+    }
+
+    std::vector<std::pair<int, int>> Studio::autoColourNumbers() const
+    {
+        std::vector<std::pair<int, int>> numbers;
+        const auto& rule = project.autoColour;
+        if (! rule.on)
+            return numbers;
+        const auto shown = getShownTracks();   // (the track list's numbers: 1 at the top)
+        auto next = rule.from;
+        for (int slot = 1; slot <= (int) shown.size(); ++slot)
+        {
+            if (slot < rule.from || (rule.to > 0 && slot > rule.to))
+                continue;
+            if (const auto* t = project.findTrack (shown[(size_t) slot - 1]); t != nullptr && project.autoColourTakes (*t))
+                numbers.push_back ({ t->id, ((next++ - 1) % FamilyColours::numberedCount) + 1 });
+        }
+        return numbers;
+    }
+
+    bool Studio::applyAutoColour()
+    {
+        auto any = false;
+        for (const auto& [id, number] : autoColourNumbers())
+            if (auto* t = project.findTrack (id))
+                if (const auto colour = FamilyColours::numbered (number); t->colour != colour)
+                {
+                    t->colour = colour;
+                    any = true;
+                }
+        return any;
+    }
+
+    void Studio::setAutoColour (AutoColour rule)
+    {
+        rule.from = juce::jlimit (1, 9999, rule.from);
+        rule.to = rule.to <= 0 ? 0 : juce::jlimit (rule.from, 9999, rule.to);
+        if (rule == project.autoColour)
+            return;
+        project.autoColour = rule;
+        changed (false);
     }
 
     bool Studio::moveTrackToSlot (int trackId, int slot)
@@ -9453,6 +9495,7 @@ namespace pr7s
             selectedTracks.push_back (selectedTrack);
         engine.setPosition (0.0);
         playStart = 0.0;
+        applyAutoColour();   // (0.79.0)
         engine.update (project);
         undoStates.clear();
         undoIndex = -1;

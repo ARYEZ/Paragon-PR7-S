@@ -1254,6 +1254,17 @@ TEST_CASE ("Snapshot: the colour menu", "[.][snapshot-colours]")
         pr7s::Studio studio (false);
         const auto a = studio.getProject().tracks[0].id;
         studio.setTracksColour ({ a }, pr7s::FamilyColours::paletteColour (2, 4));
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_AUTOCOLOUR", {}).isNotEmpty())
+        {
+            for (int i = 0; i < 7; ++i)   // (0.79.0) COLOUR IN ORDER on: the swatches numbered
+                studio.addTrack ({});
+            studio.addAudioTrack (false);
+            pr7s::AutoColour rule;
+            rule.on = true;
+            rule.from = 1;
+            rule.audio = false;
+            studio.setAutoColour (rule);
+        }
         TrackColourMenu menu (studio, { a });
         menu.resized();
         const auto image = menu.createComponentSnapshot (menu.getLocalBounds(), true, 2.0f);

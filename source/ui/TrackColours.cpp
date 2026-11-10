@@ -25,8 +25,33 @@ TrackColourMenu::TrackColourMenu (pr7s::Studio& s, std::vector<int> ids) : studi
     listAmount.setTooltip ("How much of the track's colour the row shows: 1 % a faint tint, 100 % the whole colour");
     listAmount.onValueChange = [this] { setListColour (true, (int) listAmount.getValue()); };
     addAndMakeVisible (listAmount);
+    // (0.79.0) COLOUR IN ORDER.
+    orderKey.setWantsKeyboardFocus (false);
+    orderKey.setTooltip ("Colours tracks by their number: track 1 takes colour 1 (the numbers on the swatches), track 2 colour 2 and so on, "
+                         "kept so as tracks move, come and go. While it's on it wins over a colour picked by hand.");
+    orderKey.onClick = [this] { orderChanged(); };
+    addAndMakeVisible (orderKey);
+    for (auto* bar : { &orderFrom, &orderTo })
+    {
+        bar->setTextBoxStyle (juce::Slider::TextBoxLeft, false, 130, 22);
+        bar->onValueChange = [this] { orderChanged(); };
+        addAndMakeVisible (*bar);
+    }
+    orderFrom.textFromValueFunction = [] (double v) { return "FROM TRACK " + juce::String ((int) v); };
+    orderTo.textFromValueFunction = [this] (double v) { return (int) v >= lastNumber() ? juce::String ("TO THE LAST") : "TO TRACK " + juce::String ((int) v); };
+    orderFrom.valueFromTextFunction = orderTo.valueFromTextFunction = [] (const juce::String& t) { return (double) t.retainCharacters ("0123456789").getIntValue(); };
+    orderFrom.setTooltip ("The first track number the colours run over (it takes that number's colour)");
+    orderTo.setTooltip ("The last track number they run over; all the way up: to the last track, however many come");
+    for (auto& key : kindKeys)
+    {
+        key.setWantsKeyboardFocus (false);
+        key.setTooltip ("Ticked: tracks of this kind are coloured in order. Unticked: skipped (they keep their colour and aren't counted)");
+        key.onClick = [this] { orderChanged(); };
+        addAndMakeVisible (key);
+    }
+    refreshOrder();
     const auto width = margin * 2 + FamilyColours::paletteHues * (cell + gap) - gap;
-    const auto height = titleHeight + familyHeight + gap + FamilyColours::paletteShades * (cell + gap) + footerHeight + listHeight;
+    const auto height = titleHeight + familyHeight + gap + FamilyColours::paletteShades * (cell + gap) + footerHeight + listHeight + orderHeight;
     setSize (width, height);
 }
 
@@ -36,6 +61,63 @@ juce::Colour TrackColourMenu::current() const
         if (const auto* t = studio.getProject().findTrack (id))
             return t->colour;
     return {};
+}
+
+int TrackColourMenu::lastNumber() const
+{
+    return juce::jmax (1, (int) studio.getShownTracks().size());
+}
+
+void TrackColourMenu::refreshOrder()
+{
+    const juce::ScopedValueSetter<bool> busy (refreshing, true);
+    const auto& rule = studio.getProject().autoColour;
+    const auto last = lastNumber();
+    orderKey.setToggleState (rule.on, juce::dontSendNotification);
+    orderFrom.setRange (1.0, (double) juce::jmax (last, rule.from), 1.0);
+    orderTo.setRange (1.0, (double) last, 1.0);
+    orderFrom.setValue (rule.from, juce::dontSendNotification);
+    orderTo.setValue (rule.to <= 0 ? last : juce::jmin (rule.to, last), juce::dontSendNotification);
+    orderFrom.updateText();
+    orderTo.updateText();
+    const bool kinds[] { rule.instrument, rule.audio, rule.group, rule.fx, rule.folder };
+    for (int i = 0; i < 5; ++i)
+        kindKeys[i].setToggleState (kinds[i], juce::dontSendNotification);
+    for (auto* c : std::initializer_list<juce::Component*> { &orderFrom, &orderTo, &kindKeys[0], &kindKeys[1], &kindKeys[2], &kindKeys[3], &kindKeys[4] })
+        c->setAlpha (rule.on ? 1.0f : 0.5f);
+}
+
+void TrackColourMenu::orderChanged()
+{
+    if (refreshing)
+        return;
+    pr7s::AutoColour rule;
+    rule.on = orderKey.getToggleState();
+    rule.from = (int) orderFrom.getValue();
+    const auto to = (int) orderTo.getValue();
+    rule.to = to >= lastNumber() ? 0 : juce::jmax (to, rule.from);
+    rule.instrument = kindKeys[0].getToggleState();
+    rule.audio = kindKeys[1].getToggleState();
+    rule.group = kindKeys[2].getToggleState();
+    rule.fx = kindKeys[3].getToggleState();
+    rule.folder = kindKeys[4].getToggleState();
+    setAutoColour (rule);
+}
+
+void TrackColourMenu::setAutoColour (pr7s::AutoColour rule)
+{
+    studio.setAutoColour (rule);
+    refreshOrder();
+    repaint();
+}
+
+juce::String TrackColourMenu::getOrderText() const
+{
+    const auto& rule = studio.getProject().autoColour;
+    if (! rule.on)
+        return "OFF: EACH TRACK KEEPS THE COLOUR YOU GIVE IT";
+    const auto count = (int) studio.autoColourNumbers().size();
+    return juce::String (count) + (count == 1 ? " TRACK" : " TRACKS") + " IN ORDER. A COLOUR PICKED FOR THEM DOESN'T STICK WHILE THIS IS ON";
 }
 
 void TrackColourMenu::resized()
@@ -60,6 +142,22 @@ void TrackColourMenu::resized()
                                                           (float) cell, (float) cell),
                                   FamilyColours::paletteColour (hue, shade) });
     auto bottom = getLocalBounds();
+    auto order = bottom.removeFromBottom (orderHeight).reduced (margin, 6);
+    orderKey.setBounds (order.removeFromTop (28));
+    order.removeFromTop (4);
+    orderFrom.setBounds (order.removeFromTop (24));
+    order.removeFromTop (4);
+    orderTo.setBounds (order.removeFromTop (24));
+    order.removeFromTop (6);
+    // Two rows (one is too narrow for five words): INSTRUMENT AUDIO GROUP, then FX FOLDER.
+    auto kinds = order.removeFromTop (26);
+    const auto kindWidth = kinds.getWidth() / 3;
+    for (int i = 0; i < 3; ++i)
+        kindKeys[i].setBounds (kinds.removeFromLeft (kindWidth));
+    order.removeFromTop (4);
+    kinds = order.removeFromTop (26);
+    for (int i = 3; i < 5; ++i)
+        kindKeys[i].setBounds (kinds.removeFromLeft (kindWidth));
     auto list = bottom.removeFromBottom (listHeight).reduced (margin, 6);
     defaultKey.setBounds (bottom.removeFromBottom (footerHeight).reduced (margin, 8));
     listKey.setBounds (list.removeFromTop (28));
@@ -84,10 +182,17 @@ void TrackColourMenu::paint (juce::Graphics& g)
     g.drawText (trackIds.size() > 1 ? "COLOUR THE SELECTED TRACKS" : "COLOUR THE TRACK", getLocalBounds().reduced (margin, 0).withHeight (titleHeight).withTrimmedTop (4),
                 juce::Justification::centredLeft, false);
     const auto now = current();
+    const auto numbersShown = studio.getProject().autoColour.on;
     for (const auto& [r, colour] : swatches)
     {
         g.setColour (colour);
         g.fillRoundedRectangle (r, 3.0f);
+        if (numbersShown)   // (0.79.0) each colour's number, for COLOUR IN ORDER
+        {
+            g.setColour (colour.getPerceivedBrightness() > 0.6f ? juce::Colour (0xff0c0a0d) : juce::Colour (0xfff4eeea));
+            g.setFont (ParagonLookAndFeel::textFont (12.0f));
+            g.drawText (juce::String (pr7s::FamilyColours::numberOf (colour)), r.reduced (3.0f, 1.0f), juce::Justification::topLeft, false);
+        }
         if (colour == now)
         {
             g.setColour (juce::Colour (0xfff4eeea));
@@ -100,8 +205,13 @@ void TrackColourMenu::paint (juce::Graphics& g)
         }
     }
     g.setColour (ParagonColours::panelEdge);
-    g.fillRect (margin, getHeight() - footerHeight - listHeight, getWidth() - 2 * margin, 1);
-    g.fillRect (margin, getHeight() - listHeight, getWidth() - 2 * margin, 1);
+    g.fillRect (margin, getHeight() - footerHeight - listHeight - orderHeight, getWidth() - 2 * margin, 1);
+    g.fillRect (margin, getHeight() - listHeight - orderHeight, getWidth() - 2 * margin, 1);
+    g.fillRect (margin, getHeight() - orderHeight, getWidth() - 2 * margin, 1);
+    g.setColour (ParagonColours::textDim);
+    g.setFont (ParagonLookAndFeel::textFont (12.0f));
+    g.drawFittedText (getOrderText(), getLocalBounds().reduced (margin, 0).removeFromBottom (32).withTrimmedBottom (6),
+                      juce::Justification::centredLeft, 2);
 }
 
 std::optional<juce::Colour> TrackColourMenu::colourAt (juce::Point<float> p) const

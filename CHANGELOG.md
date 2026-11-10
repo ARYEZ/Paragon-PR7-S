@@ -2,6 +2,14 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.79.0
+
+**COLOUR IN ORDER: tracks coloured by their number (you asked).** The colour menu's colours are numbered as they're laid out: 1-3 are the wide three (pink, red, orange), then the grid row by row, left to right, 75 in all. Switch on COLOUR TRACKS IN ORDER at the foot of the menu and track 1 takes colour 1, track 2 colour 2 and so on; track 76 starts again at colour 1. While it's on, each swatch shows its number.
+- **The range:** FROM TRACK and TO TRACK set which track numbers it covers (all the way up is "to the last", however many tracks come later).
+- **Track types:** INSTRUMENT, AUDIO, GROUP, FX and FOLDER can each be ticked or unticked. Unticked tracks keep their own colour and aren't counted, so the coloured ones run through the colours with no gaps (the first track in the range takes the FROM number's colour).
+- **It keeps matching:** move a track, add or remove one, undo: the colours follow the numbers. While it's on it wins over a colour picked by hand for those tracks (the menu says so). Hidden tracks and tracks inside a folded folder have no number in the track list, so they aren't counted while they're out of sight.
+- It's saved with the song.
+
 ## 0.78.3
 
 **The play bar no longer stutters while playing (you reported it).** The play bar took its place from the audio engine, which only says where the song is once per block of sound. At your buffer size (2048 samples) that's about 21 times a second, in jumps of 46 ms, and the screen drew it 30 times a second: some frames it stood still, others it leapt. Now, between blocks, the play bar carries on by the clock at the song's tempo (never more than one block ahead, never past the cycle's end, never stepping back), and it's drawn 60 times a second while playing, in the arrangement and the MIDI editor. Only the play bar's thin strip is redrawn each frame (about 0.3 ms). Its glow was never the cause: it's three thin rectangles.
