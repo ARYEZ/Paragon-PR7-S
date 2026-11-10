@@ -2,7 +2,17 @@
 
 Each version's notes appear on its GitHub Release page.
 
-## 0.81.0
+## 0.82.0
+
+**LEARN MY BAND, part one: reading your record.** The idea engine is going to learn from what your band actually played. This first part reads the record and shows you what it heard, so you can put it right before anything is learned from it.
+
+- **Where:** the composer's **+ MY RIFF** menu, "Learn My Band: Read Our Record...", or the Window.LearnMyBand command in KEYS.
+- **CHOOSE FOLDER...** reads your record's folder: a folder per song, or every song's files together (their names tell them apart). For each song it finds the drum MIDI and the DIs, and guesses who played each DI from its name ("bass", "rhythm", "lead", "gtr 1" / "gtr 2"). Each DI has a menu to put that right. The tempo comes from the drum MIDI (type another if it's wrong).
+- **READ THE SONGS** listens to every DI and writes a review song per song (in Documents/Paragon PR7-S/Band Record/<record>/<song>): the drummer's MIDI on a drum track, each DI on an audio track, and under each DI an instrument track with what was heard on it. **OPEN** opens it (asking to save your song first). Put wrong notes right in the MIDI editor, with the DI beside them to compare, and save: those corrected songs are what the engine learns from next.
+- **What it hears:** bass and lead lines note by note, down to the bass's low A at 27.5 Hz, repeated picks on one note split, bends read as bends; rhythm guitar hit by hit, its lowest note (a power chord's root, not an octave under), power chords, palm mutes. Palm mutes go in your Shreddage mute layer, open notes in the sustain layer, by how hard they were played.
+- **Lining up the drums (from your first song):** your song's drum MIDI started 8 bars before the DIs, and the DIs ran 0.23 % slow against 120 BPM (120 on the click plays as 119.72 in the files: a sample rate a hair off somewhere, inaudible but 0.7 s by the end). The reader finds both by itself, moves the drums into place and fits the DIs to the click, so the song stays at your 120 BPM. It says what it did on the page. On your song, 666 of the drummer's 951 kicks then have a bass or guitar note within 30 ms.
+- **Honest limits:** checked on your bass DI, rhythm DI and drum MIDI, and on test sounds; no lead DI yet. Rhythm guitar is the hardest part (chords): power chords and single notes read best, bigger chords less well. Expect to correct some notes. A five-minute song with two DIs takes about a minute and a half to read.
+
 
 Your four asks from this round:
 

@@ -77,6 +77,7 @@ add_executable(ParagonPR7STests
     AutoColourTests.cpp
     Tweaks080Tests.cpp
     Tweaks081Tests.cpp
+    BandRecordTests.cpp
     AutoSaveTests.cpp
     PerfTests.cpp
     Snapshot.cpp)

@@ -3,6 +3,7 @@
 #include "ui/LinesPage.h"
 #include "ui/ProgressionsPage.h"
 #include "ui/ComposerPage.h"
+#include "ui/BandRecordPage.h"
 #include "ui/MediaBayPage.h"
 #include "ui/MediaRack.h"
 #include "ui/KeyCommands.h"
@@ -104,6 +105,8 @@ public:
     EqWindow* getEqWindow() noexcept { return eqWindow.get(); }   // the progression library (0.40.0): opened, or brought to the front
     ProgressionsWindow* getProgressionsWindow() noexcept { return progressionsWindow.get(); }
     void openComposer();   // (0.58.0) THE COMPOSER
+    void openBandRecord();   // (0.82.0) LEARN MY BAND
+    BandRecordWindow* getBandRecordWindow() noexcept { return bandRecordWindow.get(); }
     ComposerWindow* getComposerWindow() noexcept { return composerWindow.get(); }
     // The MediaBay (0.21.0): its window (F5 opens and closes it), and a file from it into the
     // song: audio or MIDI on a new track at the playhead, a track preset as a new track, a song
@@ -305,6 +308,7 @@ private:
     double trackListRowZoom = 1.0;
     std::unique_ptr<ProgressionsWindow> progressionsWindow;
     std::unique_ptr<ComposerWindow> composerWindow;
+    std::unique_ptr<BandRecordWindow> bandRecordWindow;
     std::unique_ptr<EqWindow> eqWindow;
     std::unique_ptr<MediaBayWindow> mediaBayWindow;
     std::unique_ptr<MediaRack> mediaRack;

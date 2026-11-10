@@ -2480,6 +2480,7 @@ void MainView::openComposer()
     }
     composerWindow = std::make_unique<ComposerWindow> (studio);
     composerWindow->getPage().getSelectedParts = [this] { return arrange.getSelectedParts(); };   // (0.75.0: + MY RIFF)
+    composerWindow->getPage().onLearnMyBand = [this] { openBandRecord(); };   // (0.82.0)
     composerWindow->getPage().onOpenMixer = [this]   // (0.76.0) the mixer in its window, in front of the composer
     {
         if (! isMixerInWindow())
@@ -2492,6 +2493,24 @@ void MainView::openComposer()
     composerWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->composerWindow.reset(); }); };
     composerWindow->centreAroundComponent (this, composerWindow->getWidth(), composerWindow->getHeight());
     composerWindow->setVisible (true);
+}
+
+void MainView::openBandRecord()
+{
+    // (0.82.0) LEARN MY BAND: read the band's record into review songs; OPEN asks to save this song first.
+    if (bandRecordWindow != nullptr)
+    {
+        bandRecordWindow->toFront (true);
+        return;
+    }
+    bandRecordWindow = std::make_unique<BandRecordWindow> (studio);
+    bandRecordWindow->getPage().onOpenSong = [this] (const juce::File& file)
+    {
+        whenSongCanGo ([safe = juce::Component::SafePointer<MainView> (this), file] { if (safe != nullptr) safe->openSong (file); });
+    };
+    bandRecordWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->bandRecordWindow.reset(); }); };
+    bandRecordWindow->centreWithSize (1400, 860);
+    bandRecordWindow->setVisible (true);
 }
 
 void MainView::toggleTempoEditor()

@@ -885,6 +885,7 @@ TEST_CASE ("Snapshot: a question box", "[.][snapshot-alert]")
 #include "ui/LinesPage.h"
 #include "ui/ProgressionsPage.h"
 #include "ui/DrumLearnPage.h"
+#include "ui/BandRecordPage.h"
 #include "DrumSongs.h"
 #include "ui/EqEditor.h"
 #include "ui/PadsRemotePage.h"
@@ -1928,6 +1929,76 @@ TEST_CASE ("Snapshot: a menu", "[.][snapshot-menu]")
         juce::PNGImageFormat().writeImageToStream (image, out);
         juce::PopupMenu::dismissAllActiveMenus();
         juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+// (0.82.0) LEARN MY BAND: PARAGON_BAND_DIR a record folder (else none: the empty page); PARAGON_SNAPSHOT_READ=1 reads it.
+TEST_CASE ("Snapshot: LEARN MY BAND (0.82.0)", "[.][snapshot-band]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "band.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        BandRecordPage page (studio);
+        page.setSize (1400, 560);
+        const juce::File dir (juce::SystemStats::getEnvironmentVariable ("PARAGON_BAND_DIR", {}));
+        if (dir.isDirectory())
+        {
+            page.loadFolder (dir);
+            if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_READ", {}).isNotEmpty())
+                page.readSongsNow();
+        }
+        const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+// (0.82.0) A review song (PARAGON_BAND_SONG, a .pr7s the band reader wrote), the MIDI editor on one of its heard parts
+// (PARAGON_SNAPSHOT_SELECT, a track's name; else the first "(heard)"), from bar PARAGON_SNAPSHOT_BAR (default 3).
+TEST_CASE ("Snapshot: a band review song (0.82.0)", "[.][snapshot-bandreview]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "bandreview.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        juce::String problems;
+        REQUIRE (studio.open (juce::File (juce::SystemStats::getEnvironmentVariable ("PARAGON_BAND_SONG", {})), problems));
+        MainView view (studio);
+        view.setSize (1900, 1150);
+        studio.dispatchPendingMessages();
+        const auto want = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SELECT", {});
+        int track = 0;
+        for (const auto& t : studio.getProject().tracks)
+            if ((want.isNotEmpty() && t.name == want) || (want.isEmpty() && track == 0 && t.name.endsWith ("(heard)")))
+                track = t.id;
+        auto& arrange = view.getArrangeView();
+        const auto bar = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_BAR", "3").getIntValue();
+        arrange.getTimeline().pixelsPerBeat = 60.0;
+        arrange.getTimeline().firstBeat = (bar - 1) * studio.getProject().beatsPerBar();
+        if (track != 0)
+        {
+            arrange.select (track, 0);
+            view.openKeyEditor();
+            studio.dispatchPendingMessages();
+            view.setKeyEditorSize (100);
+            studio.dispatchPendingMessages();
+        }
+        view.resized();
+        studio.dispatchPendingMessages();
+        const auto image = view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }

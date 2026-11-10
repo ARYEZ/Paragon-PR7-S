@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonPR7S VERSION 0.81.0 LANGUAGES C CXX)
+project(ParagonPR7S VERSION 0.82.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -79,6 +79,7 @@ add_library(PR7SCore STATIC
     source/engine/ProjectLibrary.cpp
     source/engine/Stretch.cpp
     source/engine/Warp.cpp
+    source/engine/BandRecord.cpp
     source/engine/Align.cpp
     source/engine/VariAudio.cpp
     source/engine/Controllers.cpp
@@ -127,6 +128,7 @@ add_library(PR7SCore STATIC
     source/ui/TrackTypeColours.cpp
     source/ui/ProgressionsPage.cpp
     source/ui/DrumLearnPage.cpp
+    source/ui/BandRecordPage.cpp
     source/ui/EqEditor.cpp
     source/ui/BoosterView.cpp
     source/ui/PadsRemotePage.cpp
