@@ -2,7 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
-## 0.82.3
+## 0.82.4
+
+**The keyboards join LEARN MY BAND** (you have every keyboard part as the players' own MIDI). Nothing has to be heard: the notes, their timing, how hard each was played and the sustain pedal are read exactly as programmed.
+
+- **Finding them:** a MIDI file whose name says keys, keyboard(s), piano, synth, pad(s), organ, Rhodes, strings or keytar is the keyboards ("Song 3 keys.mid", "Song 3 Piano.mid"); any other MIDI file is still the drums. Each keyboard file shows on the song's row with a menu (KEYS / NOT USED), so a file named something else can be put right. A second MIDI file that isn't obviously the drums waits on that menu.
+- **In the review song:** a track per part in the file ("KEYS: Piano", "KEYS: Pad"...), each with its own MIDI channel, the notes and controllers (sustain pedal, mod wheel, pitch bend) as they are.
+- **Lining them up:** your drum MIDI started 8 bars before the DIs, so the keyboards' MIDI is checked the same way. If the drums' move lines its notes up with the guitars and bass about as well as anything, it gets the same move (files exported from one session). Otherwise it's placed by its own best fit against the DIs. The page says which.
+- **Not checked on your files yet:** send a song's keyboard MIDI along with its DIs and drums and I'll check the placement as I did the drums.
+
+
 
 **Your songs broken into their parts** (you asked). Every review song LEARN MY BAND writes now opens with its sections marked: a "Sections" marker track with a cycle marker per part, named and numbered (Intro, Verse 1, Pre-Chorus 1, Chorus 1, Post-Chorus 1, Verse 2, ... Solo, Breakdown, Outro).
 

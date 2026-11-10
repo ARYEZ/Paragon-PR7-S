@@ -80,7 +80,10 @@ public:
                 file->setColour (juce::Label::textColourId, ParagonColours::textDim);
                 addAndMakeVisible (*file);
                 auto box = std::make_unique<juce::ComboBox>();
-                for (const auto role : { BandRole::rhythm, BandRole::lead, BandRole::bass, BandRole::unknown })
+                // (0.82.4) A MIDI file is the keyboards or not used; a DI a guitar, the bass, or not used.
+                const auto midi = song.dis[(size_t) d].first.hasFileExtension ("mid;midi");
+                for (const auto role : midi ? std::vector<BandRole> { BandRole::keys, BandRole::unknown }
+                                            : std::vector<BandRole> { BandRole::rhythm, BandRole::lead, BandRole::bass, BandRole::unknown })
                     box->addItem (bandRoleName (role), (int) role + 1);
                 box->setSelectedId ((int) song.dis[(size_t) d].second + 1, juce::dontSendNotification);
                 box->setWantsKeyboardFocus (false);

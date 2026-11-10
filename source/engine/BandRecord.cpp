@@ -149,7 +149,7 @@ namespace pr7s
 
     const std::vector<BandRole>& bandRoles()
     {
-        static const std::vector<BandRole> roles { BandRole::drums, BandRole::rhythm, BandRole::lead, BandRole::bass };
+        static const std::vector<BandRole> roles { BandRole::drums, BandRole::rhythm, BandRole::lead, BandRole::bass, BandRole::keys };
         return roles;
     }
 
@@ -161,6 +161,7 @@ namespace pr7s
             case BandRole::rhythm:  return "RHYTHM GUITAR";
             case BandRole::lead:    return "LEAD GUITAR";
             case BandRole::bass:    return "BASS";
+            case BandRole::keys:    return "KEYS";
             case BandRole::unknown: break;
         }
         return "NOT USED";
@@ -204,7 +205,11 @@ namespace pr7s
         bool isAudio (const juce::File& f) { return f.hasFileExtension ("wav;wave;aif;aiff;flac"); }
 
         const juce::StringArray roleWords { "bass", "bs", "lead", "ld", "solo", "solos", "rhythm", "rhy", "rtm", "rhythmguitar",
-                                            "gtr", "guitar", "guitars", "gt", "di", "dis", "drums", "drum", "dr", "kit", "midi", "mid" };
+                                            "gtr", "guitar", "guitars", "gt", "di", "dis", "drums", "drum", "dr", "kit", "midi", "mid",
+                                            "keys", "key", "keyboard", "keyboards", "kb", "kbd", "kbds", "piano", "pno", "synth", "synths",
+                                            "pad", "pads", "organ", "rhodes", "strings", "keytar" };
+        const juce::StringArray keysWords { "keys", "key", "keyboard", "keyboards", "kb", "kbd", "kbds", "piano", "pno", "synth", "synths",
+                                            "pad", "pads", "organ", "rhodes", "strings", "keytar", "ep" };
 
         // A file's song: its name without the role words (and the number after "gtr" / "guitar").
         juce::String songKeyOf (const juce::File& f)
@@ -227,9 +232,14 @@ namespace pr7s
 
     BandRole guessBandRole (const juce::File& file)
     {
-        if (isMidi (file))
-            return BandRole::drums;
         const auto words = wordsOf (file.getFileNameWithoutExtension());
+        if (isMidi (file))
+        {
+            for (const auto& w : words)
+                if (keysWords.contains (w))
+                    return BandRole::keys;
+            return BandRole::drums;
+        }
         const auto has = [&] (std::initializer_list<const char*> list)
         {
             for (const auto* w : list)
@@ -271,8 +281,12 @@ namespace pr7s
         {
             for (const auto& f : files)
             {
-                if (isMidi (f) && song.drums == juce::File())
+                if (isMidi (f) && guessBandRole (f) == BandRole::keys)
+                    song.dis.push_back ({ f, BandRole::keys });
+                else if (isMidi (f) && song.drums == juce::File())
                     song.drums = f;
+                else if (isMidi (f))
+                    song.dis.push_back ({ f, BandRole::unknown });   // (another MIDI file: the page asks)
                 else if (isAudio (f))
                     song.dis.push_back ({ f, guessBandRole (f) });
             }
@@ -876,6 +890,44 @@ namespace pr7s
     }
 
     //==========================================================================
+    int matchedAt (const std::vector<double>& noteBeats, const std::vector<double>& onsets, double bpm, double shift, double stretch)
+    {
+        auto n = 0;
+        const auto secondsPerBeat = 60.0 / juce::jmax (1.0, bpm);
+        for (const auto b : noteBeats)
+        {
+            const auto t = (b + shift) * secondsPerBeat * stretch;
+            const auto it = std::lower_bound (onsets.begin(), onsets.end(), t - 0.03);
+            if (it != onsets.end() && *it <= t + 0.03)
+                ++n;
+        }
+        return n;
+    }
+
+    std::pair<double, int> alignPartMidi (const std::vector<double>& noteBeats, std::vector<double> onsets, double bpm, double stretch, double barBeats)
+    {
+        std::sort (onsets.begin(), onsets.end());
+        if (noteBeats.size() < 8 || onsets.size() < 8)
+            return { 0.0, 0 };
+        auto best = -1;
+        auto shift = 0.0;
+        for (int q = -256; q <= 256; ++q)
+            if (const auto n = matchedAt (noteBeats, onsets, bpm, q * 0.25, stretch); n > best)
+            {
+                best = n;
+                shift = q * 0.25;
+            }
+        if (barBeats > 0.0)
+            for (const auto bars : { std::floor (shift / barBeats), std::ceil (shift / barBeats) })
+                if (const auto n = matchedAt (noteBeats, onsets, bpm, bars * barBeats, stretch); n >= best * 0.95 && std::abs (bars * barBeats - shift) > 1.0e-9)
+                {
+                    shift = bars * barBeats;
+                    best = n;
+                    break;
+                }
+        return { shift, best };
+    }
+
     BandAlignment alignBand (const std::vector<double>& kickBeats, std::vector<double> onsets, double bpm, double barBeats)
     {
         BandAlignment result;
@@ -1014,7 +1066,7 @@ namespace pr7s
                 error = "Stopped";
                 return false;
             }
-            if (role == BandRole::unknown || role == BandRole::drums)
+            if (role == BandRole::unknown || role == BandRole::drums || role == BandRole::keys || isMidi (file))
                 continue;
             std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
             if (reader == nullptr || reader->lengthInSamples <= 0)
@@ -1117,6 +1169,76 @@ namespace pr7s
             drumTrack.drumEditor = true;
             drumTrack.parts.push_back (part);
             addTrack (drumTrack);
+        }
+
+        // (0.82.4) The keyboards: the players' own MIDI, exact, read as it is. Placed with the drums' shift when that
+        // lines its notes up with the DIs about as well as its own best fit (the same session's exports), else by its own.
+        std::vector<double> diOnsets;
+        for (const auto& h : heard)
+            for (const auto& p : h.played)
+                diOnsets.push_back (p.start);
+        std::sort (diOnsets.begin(), diOnsets.end());
+        for (const auto& [file, role] : song.dis)
+        {
+            if (role != BandRole::keys)
+                continue;
+            if (! isMidi (file))
+            {
+                said.add (file.getFileName() + ": keyboards are read from their MIDI; audio of them isn't transcribed.");
+                continue;
+            }
+            juce::String midiError;
+            const auto keys = readMidiFile (file, midiError);
+            if (! keys.has_value())
+            {
+                error << "Couldn't read " << file.getFileName() << ": " << midiError << "\n";
+                continue;
+            }
+            std::vector<double> starts;
+            for (const auto& t : keys->tracks)
+                for (const auto& n : t.notes)
+                    starts.push_back (n.start);
+            auto shift = fit.drumShiftBeats;
+            if (! diOnsets.empty())
+            {
+                const auto withDrums = matchedAt (starts, diOnsets, bpm, fit.drumShiftBeats, fit.diStretch);
+                const auto own = alignPartMidi (starts, diOnsets, bpm, fit.diStretch, bar);
+                if (own.second > withDrums * 1.15 + 4)
+                    shift = own.first;
+                said.add ("Keys (" + file.getFileName() + "): " + juce::String (keys->tracks.size()) + (keys->tracks.size() == 1 ? " track, " : " tracks, ")
+                          + juce::String ((int) starts.size()) + " notes, "
+                          + (shift == fit.drumShiftBeats ? juce::String ("placed with the drums.") : "placed by its own fit (" + juce::String (shift, 2) + " beats)."));
+            }
+            for (const auto& t : keys->tracks)
+            {
+                Part part;
+                part.name = (t.name.isNotEmpty() ? t.name : file.getFileNameWithoutExtension());
+                auto last = 0.0;
+                for (auto n : t.notes)
+                {
+                    n.start += shift;
+                    if (n.start >= 0.0)
+                    {
+                        part.notes.push_back (n);
+                        last = juce::jmax (last, n.start + n.length);
+                    }
+                }
+                for (auto c : t.controllers)
+                {
+                    c.start += shift;
+                    if (c.start >= 0.0)
+                        part.controllers.push_back (c);
+                }
+                if (part.notes.empty())
+                    continue;
+                part.length = wholeBars (last);
+                Track keysTrack;
+                keysTrack.kind = Track::Kind::instrument;
+                keysTrack.name = "KEYS: " + part.name;
+                keysTrack.midiChannel = juce::jlimit (1, 16, t.channel);
+                keysTrack.parts.push_back (part);
+                addTrack (keysTrack);
+            }
         }
 
         std::vector<LineNote> riffNotes, leadNotes;

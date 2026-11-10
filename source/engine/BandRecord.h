@@ -17,10 +17,11 @@
 namespace pr7s
 {
     // Who played a file.
-    enum class BandRole { unknown, drums, rhythm, lead, bass };
-    const std::vector<BandRole>& bandRoles();     // drums, rhythm, lead, bass
-    juce::String bandRoleName (BandRole);         // "DRUMS", "RHYTHM GUITAR", "LEAD GUITAR", "BASS"
-    // From a file's name: a MIDI file is the drums; a WAV naming bass, lead/solo or rhythm (rhy, rtm) is that
+    enum class BandRole { unknown, drums, rhythm, lead, bass, keys };   // (0.82.4: keys, the players' own MIDI)
+    const std::vector<BandRole>& bandRoles();     // drums, rhythm, lead, bass, keys
+    juce::String bandRoleName (BandRole);         // "DRUMS", "RHYTHM GUITAR", "LEAD GUITAR", "BASS", "KEYS"
+    // From a file's name: a MIDI file naming keys / keyboard / piano / synth / pad / organ / strings is the keyboards
+    // (0.82.4: the players' own MIDI, exact, read as it is), any other MIDI file the drums; a WAV naming bass, lead/solo or rhythm (rhy, rtm) is that
     // player's; "gtr 1" / "guitar 1" rhythm, "gtr 2" lead; else unknown (the page asks).
     BandRole guessBandRole (const juce::File&);
 
@@ -63,12 +64,19 @@ namespace pr7s
     {
         juce::String name;
         juce::File drums;
-        std::vector<std::pair<juce::File, BandRole>> dis;
+        std::vector<std::pair<juce::File, BandRole>> dis;   // (0.82.4: the keyboards' MIDI files too, role keys)
         double bpm = 120.0;
         bool tempoFromFile = false;
         int numerator = 4, denominator = 4;
         juce::File fileOf (BandRole) const;   // the first DI of that role (none: an empty file)
     };
+    // (0.82.4) Where a part's MIDI sits against the DIs' notes, the DIs' stretch already known: the shift (beats, +-64,
+    // quarter beats; a whole number of bars when within 5 %) that puts most of its note starts within 30 ms of a
+    // played note, and how many it puts there.
+    std::pair<double, int> alignPartMidi (const std::vector<double>& noteBeats, std::vector<double> onsetSeconds, double bpm,
+                                          double diStretch, double barBeats = 4.0);
+    int matchedAt (const std::vector<double>& noteBeats, const std::vector<double>& sortedOnsets, double bpm, double shift, double diStretch);
+
     // A folder of the record: each subfolder with audio or MIDI in it a song; files loose in the folder
     // grouped into songs by the name before " - ", "_" or a role word ("Song 3 bass.wav", "Song 3.mid").
     std::vector<BandSong> scanBandFolder (const juce::File&);

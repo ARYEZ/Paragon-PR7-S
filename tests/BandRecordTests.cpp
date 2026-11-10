@@ -375,3 +375,83 @@ TEST_CASE ("0.82.0: LEARN MY BAND: a folder's songs, a DI's player put right, th
     page.getReviewFolder().deleteRecursively();
     folder.deleteRecursively();
 }
+
+TEST_CASE ("0.82.4: the keyboards' own MIDI: found by name, read as it is (tracks, notes, the sustain pedal), lined up with the drums", "[band][keys]")
+{
+    CHECK (guessBandRole (juce::File::getCurrentWorkingDirectory().getChildFile ("Opener keys.mid")) == BandRole::keys);
+    CHECK (guessBandRole (juce::File::getCurrentWorkingDirectory().getChildFile ("Opener Piano.mid")) == BandRole::keys);
+    CHECK (guessBandRole (juce::File::getCurrentWorkingDirectory().getChildFile ("Opener drums.mid")) == BandRole::drums);
+    CHECK (bandRoleName (BandRole::keys) == "KEYS");
+
+    const auto folder = juce::File::createTempFile ("").getSiblingFile ("pr7s-band-keys-0824");
+    folder.deleteRecursively();
+    const auto source = folder.getChildFile ("Record").getChildFile ("Opener");
+    source.createDirectory();
+    REQUIRE (writeWav (source.getChildFile ("Opener bass.wav"), di ({ { 0.0, 0.4, 33.0 }, { 0.5, 0.4, 38.0 } }, 1.0), rate));
+    const auto writeMidi = [] (const juce::File& file, const std::function<void (juce::MidiFile&)>& fill)
+    {
+        juce::MidiFile midi;
+        midi.setTicksPerQuarterNote (480);
+        fill (midi);
+        juce::FileOutputStream out (file);
+        return out.openedOk() && midi.writeTo (out);
+    };
+    REQUIRE (writeMidi (source.getChildFile ("Opener drums.mid"), [] (juce::MidiFile& m)
+    {
+        juce::MidiMessageSequence t;
+        t.addEvent (juce::MidiMessage::tempoMetaEvent (500000), 0.0);
+        for (int i = 0; i < 4; ++i)
+        {
+            t.addEvent (juce::MidiMessage::noteOn (10, 36, (juce::uint8) 100), i * 240.0);
+            t.addEvent (juce::MidiMessage::noteOff (10, 36), i * 240.0 + 60.0);
+        }
+        m.addTrack (t);
+    }));
+    REQUIRE (writeMidi (source.getChildFile ("Opener keys.mid"), [] (juce::MidiFile& m)
+    {
+        juce::MidiMessageSequence piano, pad;
+        piano.addEvent (juce::MidiMessage::textMetaEvent (3, "Piano"), 0.0);
+        for (const auto p : { 57, 60, 64 })   // an A minor chord on beat 1, held two beats
+        {
+            piano.addEvent (juce::MidiMessage::noteOn (1, p, (juce::uint8) 90), 0.0);
+            piano.addEvent (juce::MidiMessage::noteOff (1, p), 960.0);
+        }
+        piano.addEvent (juce::MidiMessage::controllerEvent (1, 64, 127), 0.0);   // the sustain pedal down
+        piano.addEvent (juce::MidiMessage::controllerEvent (1, 64, 0), 960.0);
+        pad.addEvent (juce::MidiMessage::textMetaEvent (3, "Pad"), 0.0);
+        pad.addEvent (juce::MidiMessage::noteOn (2, 69, (juce::uint8) 70), 480.0);
+        pad.addEvent (juce::MidiMessage::noteOff (2, 69), 1920.0);
+        m.addTrack (piano);
+        m.addTrack (pad);
+    }));
+    const auto songs = scanBandFolder (folder.getChildFile ("Record"));
+    REQUIRE (songs.size() == 1);
+    CHECK (songs[0].drums.getFileName() == "Opener drums.mid");
+    CHECK (songs[0].fileOf (BandRole::keys).getFileName() == "Opener keys.mid");
+    juce::File made;
+    juce::String error, report;
+    REQUIRE (makeBandReviewSong (songs[0], folder.getChildFile ("Review"), {}, made, error, {}, &report));
+    Studio studio (false);
+    juce::String problems;
+    REQUIRE (studio.open (made, problems));
+    const Track* piano = nullptr;
+    const Track* pad = nullptr;
+    for (const auto& t : studio.getProject().tracks)
+    {
+        if (t.name == "KEYS: Piano") piano = &t;
+        if (t.name == "KEYS: Pad") pad = &t;
+    }
+    INFO (report);
+    REQUIRE (piano != nullptr);
+    REQUIRE (pad != nullptr);
+    REQUIRE (piano->parts[0].notes.size() == 3);
+    CHECK_THAT (piano->parts[0].notes[0].start, WithinAbs (0.0, 1.0e-6));
+    CHECK_THAT (piano->parts[0].notes[0].length, WithinAbs (2.0, 1.0e-6));
+    CHECK (juce::roundToInt (piano->parts[0].notes[0].velocity * 127.0f) == 90);   // exactly as played
+    CHECK (piano->parts[0].controllers.size() == 2);   // the pedal kept
+    REQUIRE (pad->parts[0].notes.size() == 1);
+    CHECK (pad->parts[0].notes[0].pitch == 69);
+    CHECK_THAT (pad->parts[0].notes[0].start, WithinAbs (1.0, 1.0e-6));
+    CHECK (pad->midiChannel == 2);
+    folder.deleteRecursively();
+}
