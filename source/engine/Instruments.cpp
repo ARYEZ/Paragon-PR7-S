@@ -130,8 +130,9 @@ namespace pr7s
         InstrumentProfile p;
         p.name = "Djinn Bass 2";
         p.kind = Kind::bass;
-        // The owner's tuning (Djinn's default is B0 E1 A1 D2 G2): A0 D1 A1 D2 G2.
-        p.strings = { 33, 38, 45, 50, 55 };
+        // The owner's tuning (Djinn's default is B0 E1 A1 D2 G2): drop A, A0 E1 A1 D2 G2 (0.82.2, the owner: their band's
+        // bass; 0.62.0 had A0 D1 A1 D2 G2 from a screenshot).
+        p.strings = { 33, 40, 45, 50, 55 };
         p.frets = 24;
         p.bendRange = 4;   // (Djinn's MISCELLANEOUS: Bend Range 4)
         p.forBass = true;
@@ -142,7 +143,7 @@ namespace pr7s
             { "Hammer/Pull", 9, 0 }, { "Tapping", 10, 0 }, { "Slide Trigger", 11, 0 }, { "Fret Hand Mute", 16, 0 },
             { "Palm Mute Alt", 17, 0 }, { "Palm Mute Up", 18, 0 }, { "Palm Mute Down", 19, 0 }, { "Dead Strum", 20, 0 },
             { "Dead Palm Rest", 98, 0 },
-            { "Force B String (your A0)", 127, 1 }, { "Force E String (your D1)", 126, 2 }, { "Force A String", 125, 3 },
+            { "Force B String (your A0)", 127, 1 }, { "Force E String", 126, 2 }, { "Force A String", 125, 3 },
             { "Force D String", 124, 4 }, { "Force G String", 123, 5 } };
         return p;
     }

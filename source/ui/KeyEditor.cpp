@@ -1,6 +1,7 @@
 #include "KeyEditor.h"
 
 #include "ui/ParagonLookAndFeel.h"
+#include "ui/Finish.h"
 #include "ui/ToolIcons.h"
 #include "ui/TempoEditor.h"
 #include "ui/ChordUi.h"
@@ -84,6 +85,16 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
                         "you edit, goes off when the editor closes, and never changes the tracks' own S keys or a render");
     soloKey.onClick = [this] { setSoloEditor (! soloOn); };
     panelColumn.addAndMakeVisible (soloKey);
+    // (0.81.0, the owner asked) SNAP: lit, notes snap to the grid; off, they go where they're put.
+    snapKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    snapKey.setWantsKeyboardFocus (false);
+    snapKey.setTooltip ("SNAP (J): lit, notes moved, drawn, resized and split snap to the grid; off, they go exactly where you put "
+                        "them (with SNAP lit, hold Ctrl for one free drag). The editor's own: the header's SNAP is the arrangement's");
+    snapKey.onClick = [this] { setSnap (! snapOn); };
+    panelColumn.addAndMakeVisible (snapKey);
+    if (auto* settings = studio.getSettings())
+        snapOn = settings->getBoolValue ("midiEditorSnap", true);
+    snapKey.setToggleState (snapOn, juce::dontSendNotification);
     selectTool.onClick = [this] { setTool (Tool::select); };
     drawTool.onClick = [this] { setTool (Tool::draw); };
     eraseTool.onClick = [this] { setTool (Tool::erase); };
@@ -345,6 +356,46 @@ void KeyEditor::refreshSolo()
     soloKey.setToggleState (soloOn, juce::dontSendNotification);
 }
 
+void KeyEditor::setSnap (bool on)
+{
+    snapOn = on;
+    snapKey.setToggleState (snapOn, juce::dontSendNotification);
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("midiEditorSnap", snapOn);
+}
+
+bool KeyEditor::locatorsToSelection()
+{
+    const auto* part = getPart();
+    if (part == nullptr)
+        return false;
+    auto from = part->start, to = part->end();
+    if (! selected.empty())
+    {
+        from = std::numeric_limits<double>::max();
+        to = std::numeric_limits<double>::lowest();
+        for (const auto i : selected)
+            if (juce::isPositiveAndBelow (i, (int) part->notes.size()))
+            {
+                const auto& n = part->notes[(size_t) i];
+                from = juce::jmin (from, part->start + n.start);
+                to = juce::jmax (to, part->start + n.start + n.length);
+            }
+        if (to <= from)
+            return false;
+        // Round out to the grid so the loop lands on the beat (the notes inside it).
+        from = std::floor (from / grid + 1.0e-9) * grid;
+        to = std::ceil (to / grid - 1.0e-9) * grid;
+    }
+    studio.setCycle (juce::jmax (0.0, from), to);
+    return true;
+}
+
+juce::Rectangle<float> KeyEditor::getCycleStrip() const
+{
+    return rulerArea().withHeight ((float) cycleStripHeight);
+}
+
 void KeyEditor::visibilityChanged()
 {
     // Closed (or moved between its window and the dock): off when it's gone, back when it shows again.
@@ -475,7 +526,8 @@ void KeyEditor::timerCallback()
         playheadX = x;
     }
     // 60 frames a second while it glides, else 30.
-    const auto rate = gliding ? 60 : 30;
+    const auto playing = studio.getEngine().isPlaying() || studio.getEngine().isRecording();   // (0.78.3)
+    const auto rate = gliding || playing ? 60 : 30;
     if (getTimerInterval() != 1000 / rate)
         startTimerHz (rate);
 }
@@ -485,6 +537,12 @@ void KeyEditor::advancePlayhead()
     // As the arrangement's (ArrangeView::advancePlayhead): exact while playing or recording;
     // stopped, a new place (a click in the ruler, snapped) glides in; a long jump goes straight there.
     auto& engine = studio.getEngine();
+    if (engine.isPlaying() || engine.isRecording())   // (0.78.3: smooth between audio blocks)
+    {
+        shownBeat = ArrangeView::playingBeat (shownBeat, engine.getShownPosition());
+        gliding = false;
+        return;
+    }
     const auto target = engine.getPosition();
     const auto pixels = std::abs (xForBeat (target) - xForBeat (shownBeat));
     if (engine.isPlaying() || engine.isRecording() || pixels < 0.5f || pixels > getNotesArea().getWidth() * 0.5f)
@@ -670,7 +728,7 @@ int KeyEditor::noteAt (juce::Point<float> point) const
 
 double KeyEditor::snapped (double songBeat, bool free) const noexcept
 {
-    return free ? songBeat : pr7s::snap (songBeat, grid);
+    return free || ! snapOn ? songBeat : pr7s::snap (songBeat, grid);
 }
 
 //==============================================================================
@@ -1199,6 +1257,18 @@ bool KeyEditor::keyPressed (const juce::KeyPress& key)
     if (key.getKeyCode() == juce::KeyPress::upKey)                               { transposeSelected (mods.isShiftDown() ? 12 : 1); return true; }
     if (key.getKeyCode() == juce::KeyPress::downKey)                             { transposeSelected (mods.isShiftDown() ? -12 : -1); return true; }
     if (letter == 'Q' && ! mods.isAltDown())                                     { quantizeSelected(); return true; }
+    if (letter == 'J' && ! mods.isAltDown() && ! mods.isShiftDown())             { setSnap (! snapOn); return true; }   // (0.81.0)
+    if (letter == 'P' && ! mods.isShiftDown())                                   // (0.81.0) locators round the selection
+    {
+        if (locatorsToSelection() && mods.isAltDown())
+        {
+            studio.setCycleOn (true);
+            studio.setPosition (studio.getProject().loopStart);
+            if (! studio.getEngine().isPlaying())
+                studio.play();
+        }
+        return true;
+    }
     // Random velocities: Alt+B / N / M (LOW / MID / HIGH).
     if (mods.isAltDown() && ! mods.isCommandDown() && letter == 'H' && ! selected.empty())   // Humanize (0.20.1)
         return humanizeSelected();
@@ -1367,6 +1437,39 @@ void KeyEditor::mouseDown (const juce::MouseEvent& event)
 
     if (rulerArea().contains (point))
     {
+        // (0.81.0) The locators, as the arrangement's ruler: Ctrl/Alt anywhere in it, the top strip's drags.
+        const auto& project = studio.getProject();
+        const auto at = juce::jmax (0.0, pr7s::snap (beatForX (point.x), grid));
+        const auto ctrl = event.mods.isCommandDown(), alt = event.mods.isAltDown();
+        if (ctrl || alt)
+        {
+            if (ctrl && alt)
+            {
+                const auto from = juce::jmax (0.0, std::floor (beatForX (point.x) / grid + 1.0e-9) * grid);
+                studio.setCycle (from, from + grid);
+            }
+            else if (ctrl)
+                studio.setCycle (juce::jmin (at, project.loopEnd), juce::jmax (at, project.loopEnd));
+            else
+                studio.setCycle (juce::jmin (project.loopStart, at), juce::jmax (project.loopStart, at));
+            return;
+        }
+        if (getCycleStrip().contains (point))
+        {
+            cycleMoved = false;
+            cycleOriginalStart = project.loopStart;
+            cycleOriginalLength = project.loopEnd - project.loopStart;
+            const auto x1 = xForBeat (project.loopStart), x2 = xForBeat (project.loopEnd);
+            if (std::abs (point.x - x1) <= 6.0f || std::abs (point.x - x2) <= 6.0f)
+            {
+                gesture = std::abs (point.x - x1) <= std::abs (point.x - x2) ? Gesture::cycleLeft : Gesture::cycleRight;
+                return;
+            }
+            const auto beat = beatForX (point.x);
+            gesture = beat >= project.loopStart && beat <= project.loopEnd ? Gesture::cycleMove : Gesture::cycle;
+            cycleDownBeat = gesture == Gesture::cycleMove ? beat : at;
+            return;
+        }
         gesture = Gesture::position;
         studio.setPosition (juce::jmax (0.0, pr7s::snap (beatForX (point.x), grid)));
         rulerZooming = false;
@@ -1420,7 +1523,7 @@ void KeyEditor::mouseDown (const juce::MouseEvent& event)
         return;
 
     const auto hit = noteAt (point);
-    const auto free = event.mods.isCommandDown();   // Ctrl: no snapping
+    const auto free = event.mods.isCommandDown() || ! snapOn;   // Ctrl (or SNAP off): no snapping
     switch (tool)
     {
         case Tool::erase:
@@ -1540,7 +1643,7 @@ void KeyEditor::mouseDrag (const juce::MouseEvent& event)
 {
     const auto point = event.position;
     // Ctrl: no snapping (while moving notes, Ctrl+Shift: Ctrl alone keeps them to one direction).
-    const auto free = event.mods.isCommandDown() && (gesture != Gesture::move || event.mods.isShiftDown());
+    const auto free = (event.mods.isCommandDown() && (gesture != Gesture::move || event.mods.isShiftDown())) || ! snapOn;
     const auto* part = getPart();
     switch (gesture)
     {
@@ -1562,6 +1665,36 @@ void KeyEditor::mouseDrag (const juce::MouseEvent& event)
             studio.setPosition (juce::jmax (0.0, pr7s::snap (beatForX (point.x), grid)));
             return;
         }
+
+        case Gesture::cycle:
+        {
+            const auto now = juce::jmax (0.0, pr7s::snap (beatForX (point.x), grid));
+            if (std::abs (now - cycleDownBeat) >= juce::jmax (grid, 1.0 / 16.0) * 0.5)
+            {
+                cycleMoved = true;
+                studio.setCycle (juce::jmin (cycleDownBeat, now), juce::jmax (cycleDownBeat, now));
+            }
+            return;
+        }
+        case Gesture::cycleLeft:
+        case Gesture::cycleRight:
+        {
+            // One locator; past the other, they swap.
+            cycleMoved = true;
+            const auto now = juce::jmax (0.0, pr7s::snap (beatForX (point.x), grid));
+            const auto other = gesture == Gesture::cycleLeft ? cycleOriginalStart + cycleOriginalLength : cycleOriginalStart;
+            if (std::abs (now - other) > 1.0e-9)
+                studio.setCycle (juce::jmin (now, other), juce::jmax (now, other));
+            return;
+        }
+        case Gesture::cycleMove:
+            if (event.getDistanceFromDragStart() > 3)
+            {
+                cycleMoved = true;
+                const auto start = juce::jmax (0.0, pr7s::snap (cycleOriginalStart + beatForX (point.x) - cycleDownBeat, grid));
+                studio.setCycle (start, start + cycleOriginalLength);
+            }
+            return;
 
         case Gesture::velocityHandle:
             dragVelocityHandle (point.y - downAt.y);
@@ -1753,6 +1886,17 @@ void KeyEditor::mouseUp (const juce::MouseEvent&)
 
     switch (finished)
     {
+        case Gesture::cycle:   // (0.81.0) a new range: cycle on
+            if (cycleMoved)
+                studio.setCycleOn (true);
+            return;
+        case Gesture::cycleMove:   // a click in the range: cycle on or off
+            if (! cycleMoved)
+                studio.setCycleOn (! studio.getProject().loopOn);
+            return;
+        case Gesture::cycleLeft:
+        case Gesture::cycleRight:
+            return;
         case Gesture::move:
             if (! moved)
             {
@@ -1942,6 +2086,7 @@ void KeyEditor::layoutColumn()
         place (*key);
     gap();
     place (gridBox);
+    place (snapKey);
     place (quantizeButton);
     place (lanesKey);
     gap();
@@ -1972,6 +2117,11 @@ void KeyEditor::paint (juce::Graphics& g)
         juce::Graphics::ScopedSaveState state (g);
         g.reduceClipRegion (getNotesArea().getSmallestIntegerContainer());
         paintNotes (g);
+        // (0.81.0) The cycle range down the notes, faintly (as the arrangement's).
+        const auto& project = studio.getProject();
+        const auto x1 = xForBeat (project.loopStart), x2 = xForBeat (project.loopEnd);
+        g.setColour (ParagonColours::accent.withAlpha (project.loopOn ? 0.06f : 0.02f));
+        g.fillRect (juce::Rectangle<float> (x1, notesTop(), x2 - x1, (float) getHeight()));
     }
     {
         juce::Graphics::ScopedSaveState state (g);
@@ -2413,6 +2563,31 @@ void KeyEditor::paintRuler (juce::Graphics& g)
         g.fillRect (juce::Rectangle<float> (x, ruler.getY() + 8.0f, 1.0f, ruler.getHeight() - 8.0f));
         g.setColour (ParagonColours::text);
         g.drawText (juce::String (b + 1), juce::Rectangle<float> (x + 4.0f, ruler.getY() + 6.0f, 40.0f, 16.0f), juce::Justification::centredLeft, false);
+    }
+
+    // (0.81.0, the owner asked) The cycle strip along the top, as the arrangement's: the family's
+    // gradient with a glow while CYCLE is on, grey while off, a flag at each locator.
+    const auto x1 = xForBeat (project.loopStart), x2 = xForBeat (project.loopEnd);
+    const auto top = ruler.getY();
+    const auto strip = juce::Rectangle<float> (x1, top + 2.0f, x2 - x1, (float) cycleStripHeight - 4.0f);
+    if (project.loopOn)
+    {
+        auto glow = Finish::neonGradient (x1, x2);
+        glow.multiplyOpacity (0.3f);
+        g.setGradientFill (glow);
+        g.fillRoundedRectangle (strip.expanded (2.0f), 3.0f);
+        g.setGradientFill (Finish::neonGradient (x1, x2));
+    }
+    else
+        g.setColour (ParagonColours::textDim.withAlpha (0.45f));
+    g.fillRoundedRectangle (strip, 2.0f);
+    g.setColour (ParagonColours::metalLight);
+    for (const auto [x, inward] : { std::pair<float, float> { x1, 1.0f }, std::pair<float, float> { x2, -1.0f } })
+    {
+        g.fillRect (juce::Rectangle<float> (x - 1.0f, top + 1.0f, 2.0f, (float) cycleStripHeight - 1.0f));
+        juce::Path flag;
+        flag.addTriangle (x, top + 1.0f, x + inward * 6.0f, top + 4.5f, x, top + 8.0f);
+        g.fillPath (flag);
     }
 }
 

@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonPR7S VERSION 0.78.2 LANGUAGES C CXX)
+project(ParagonPR7S VERSION 0.83.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -44,6 +44,7 @@ add_library(PR7SCore STATIC
     source/engine/TempoMap.cpp
     source/engine/Signature.cpp
     source/engine/Markers.cpp
+    source/engine/EditHistory.cpp
     source/engine/MidiExport.cpp
     source/engine/TempoDetect.cpp
     source/engine/Chords.cpp
@@ -75,9 +76,11 @@ add_library(PR7SCore STATIC
     source/engine/DawProject.cpp
     source/engine/AudioAdvice.cpp
     source/engine/SessionLog.cpp
+    source/engine/KeepLoaded.cpp
     source/engine/ProjectLibrary.cpp
     source/engine/Stretch.cpp
     source/engine/Warp.cpp
+    source/engine/BandRecord.cpp
     source/engine/Align.cpp
     source/engine/VariAudio.cpp
     source/engine/Controllers.cpp
@@ -94,6 +97,7 @@ add_library(PR7SCore STATIC
     source/ui/ArrangeSignature.cpp
     source/ui/ArrangeMarkers.cpp
     source/ui/MarkersPage.cpp
+    source/ui/HistoryPage.cpp
     source/ui/ExportPages.cpp
     source/ui/TempoDetectionPanel.cpp
     source/ui/KeyEditor.cpp
@@ -123,8 +127,10 @@ add_library(PR7SCore STATIC
     source/ui/LinesPage.cpp
     source/ui/ComposerPage.cpp
     source/ui/InstrumentsPage.cpp
+    source/ui/TrackTypeColours.cpp
     source/ui/ProgressionsPage.cpp
     source/ui/DrumLearnPage.cpp
+    source/ui/BandRecordPage.cpp
     source/ui/EqEditor.cpp
     source/ui/BoosterView.cpp
     source/ui/PadsRemotePage.cpp

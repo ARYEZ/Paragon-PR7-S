@@ -931,11 +931,19 @@ void ComposerPage::showPasteMenu()
         menu.addItem (4, "The Chords from My Riff", true, fromRiff);
         menu.addItem (5, "Forget My Riff (" + riff->name + ")");
     }
+    menu.addSeparator();
+    menu.addItem (6, "Learn My Band: Read Our Record...", onLearnMyBand != nullptr);   // (0.82.0)
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (pasteKey),
                         [safe = juce::Component::SafePointer<ComposerPage> (this), partId] (int chosen)
                         {
                             if (safe == nullptr || chosen == 0)
                                 return;
+                            if (chosen == 6)
+                            {
+                                if (safe->onLearnMyBand)
+                                    safe->onLearnMyBand();
+                                return;
+                            }
                             if (chosen == 1)
                                 safe->askSection ([safe, partId] (pr7s::DrumSection sec) { if (safe != nullptr) safe->pasteRiffFromPart (partId, sec); }, &safe->pasteKey);
                             else if (chosen == 2)

@@ -26,11 +26,21 @@ public:
     juce::ToggleButton listKey { "COLOUR IN THE TRACK LIST" };
     juce::Slider listAmount { juce::Slider::LinearBar, juce::Slider::TextBoxLeft };
     void setListColour (bool on, int amount);   // (tests: as the toggle and the bar)
+    // (0.79.0, the owner asked) COLOUR IN ORDER: track n takes colour n (the swatches numbered
+    // 1-75 as they're laid out: the three, then the palette row by row), over a range of track
+    // numbers, only the kinds ticked (the others skipped, the counting closing up over them).
+    juce::ToggleButton orderKey { "COLOUR TRACKS IN ORDER: TRACK N = COLOUR N" };
+    juce::Slider orderFrom { juce::Slider::LinearBar, juce::Slider::TextBoxLeft };
+    juce::Slider orderTo { juce::Slider::LinearBar, juce::Slider::TextBoxLeft };
+    juce::ToggleButton kindKeys[5] { juce::ToggleButton ("INSTRUMENT"), juce::ToggleButton ("AUDIO"), juce::ToggleButton ("GROUP"),
+                                     juce::ToggleButton ("FX"), juce::ToggleButton ("FOLDER") };
+    void setAutoColour (pr7s::AutoColour);   // (tests: as the keys and bars)
+    juce::String getOrderText() const;       // the line under them
 
     // Opened beside `around` for the tracks given (the selected ones, else the one clicked).
     static void show (juce::Component& around, pr7s::Studio&, std::vector<int> trackIds);
 
-    static constexpr int cell = 30, gap = 4, margin = 12, titleHeight = 30, familyHeight = 40, footerHeight = 44, listHeight = 70;
+    static constexpr int cell = 30, gap = 4, margin = 12, titleHeight = 30, familyHeight = 40, footerHeight = 44, listHeight = 70, orderHeight = 198;
 
 private:
     pr7s::Studio& studio;
@@ -38,6 +48,10 @@ private:
     std::vector<std::pair<juce::Rectangle<float>, juce::Colour>> swatches;
     std::optional<juce::Colour> hover;
     juce::Colour current() const;   // the first track's
+    int lastNumber() const;          // how many tracks the list numbers (the TO bar's top = "the last")
+    void refreshOrder();             // the keys and bars from the song's rule
+    void orderChanged();             // the keys and bars into the song's rule
+    bool refreshing = false;
 };
 
 // The colour menu's key: a small swatch of the family's gradient (the track list's header).

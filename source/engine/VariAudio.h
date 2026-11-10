@@ -29,7 +29,9 @@ namespace pr7s
     };
     // YIN (de Cheveigné and Kawahara, 2002): the period where the sound repeats itself best,
     // between 60 Hz and 1100 Hz; both sides mixed.
-    PitchAnalysis analysePitch (const juce::AudioBuffer<float>&, double sampleRate);
+    // (0.82.0) `lowestHz` / `highestHz` widen it (a bass DI's low A at 27.5 Hz): the sum's window grows
+    // to hold the longest period.
+    PitchAnalysis analysePitch (const juce::AudioBuffer<float>&, double sampleRate, float lowestHz = 60.0f, float highestHz = 1100.0f);
 
     // The notes: runs of pitched sound, split where the pitch settles on another note for
     // a while (a vibrato or a scoop doesn't split), none shorter than 60 ms. Each one's pitch is

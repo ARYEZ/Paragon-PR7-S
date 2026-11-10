@@ -242,6 +242,10 @@ public:
     double getShownPlayhead() const noexcept { return shownBeat; }
     std::optional<double> getRulerHover() const noexcept { return rulerHover; }
     static constexpr double glideStep = 0.45;   // the share of the way left covered each frame (60 a second)
+    // (0.78.3) The play bar while playing: `target` (Engine::getShownPosition) unless it's a hair
+    // behind what's shown (under `smallestJumpBack` beats: the next block catching up), kept then.
+    static double playingBeat (double shown, double target) noexcept;
+    static constexpr double smallestJumpBack = 0.25;
     void zoom (bool in);
     void zoomFull();
     // Shift+H / Shift+G: the rows a step taller or shorter (the top row in view stays at the top).
@@ -306,6 +310,9 @@ public:
     void deleteSelectedMarkers();
     void editMarkerName (int index);   // a box to type its description
     void showMarkerMenu (int index);   // -1: the track's own
+    // (0.82.3) A marker named as a song section ("Verse"), the sections numbered again ("Verse 1", "Verse 2").
+    bool nameMarkerAsSection (int index, const juce::String& section);
+    static constexpr int sectionItems = 300;
     void zoomTo (double start, double end);   // the view to a range (a cycle marker's)
     bool selectRangeBetweenMarkers (double beat);   // the Range tool's double-click
     juce::Rectangle<float> getMarkerArea() const;
@@ -363,7 +370,12 @@ public:
     float pointFromDisplay (const pr7s::AutomationLane&, double display) const;
     const pr7s::AutomationLane* getSelectedPointsLane() const { return laneFor (pointSelection.busId, pointSelection.laneIndex); }
     void showPointEntry (int busId, int laneIndex, int point);
-    juce::Rectangle<float> getPointBox() const;              // the event editor's (empty: fewer than two, or a step lane)
+    juce::Rectangle<float> getPointBox() const;              // the event editor's (empty: fewer than two, a step lane, or hidden)
+    // (0.80.0, the owner: as the other DAW, only the selected points light up) The box and its
+    // handles (tilt, compress, scale, stretch) are off unless switched on in the lane's menu
+    // ("Editing Box for Selected Points"; settings key "automationEditBox").
+    bool isPointBoxShown() const noexcept { return pointBoxShown; }
+    void setPointBoxShown (bool shown);
     enum class PointHandle { none, tiltLeft, tiltRight, compressLeft, compressRight, scale, move, scaleAbsolute, scaleRelative, stretch };
     PointHandle pointHandleAt (juce::Point<float>, bool alt) const;
     void dragPointHandle (PointHandle, juce::Point<float> offset);   // from the points as the drag began (tests drive it)
@@ -540,6 +552,7 @@ private:
     juce::Point<float> lineEnd;
     bool automationDoubleClick (const juce::MouseEvent&);
     void paintPointHandles (juce::Graphics&, const Timeline::Row&) const;
+    bool pointBoxShown = false;
     float lineValueAt (double t, float v1, float v2, double beatsInto, bool reverse) const;
     void paintAutomation (juce::Graphics&, const Timeline::Row&) const;
     void paintTempo (juce::Graphics&, const Timeline::Row&) const;

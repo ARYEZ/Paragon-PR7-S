@@ -1,5 +1,6 @@
 #include "PluginHost.h"
 #include "SessionLog.h"
+#include "KeepLoaded.h"
 
 #include "ParagonSynth.h"
 
@@ -85,6 +86,7 @@ namespace pr7s
             SessionLog::note ("  It didn't load: " + error);
             return nullptr;
         }
+        keepPluginLoaded (insert.plugin.fileOrIdentifier);   // (0.80.1: never freed mid-session)
         if (insert.state.getSize() > 0)
         {
             SessionLog::Step step ("Giving " + insert.plugin.name + " its settings (" + juce::String ((int) insert.state.getSize()) + " bytes)");
@@ -162,14 +164,20 @@ namespace pr7s
                 }
                 if (instance == nullptr)
                     SessionLog::note ("  It didn't load (" + problem + "): the built-in Paragon Synth instead");
+                else
+                    keepPluginLoaded (synth->fileOrIdentifier);   // (0.80.1)
             }
             if (instance == nullptr)
                 instance = std::make_unique<ParagonSynth>();
         }
         else
         {
-            SessionLog::Step step ("Loading the instrument " + describe (instrument.plugin));
-            instance = formats.createPluginInstance (instrument.plugin, sampleRate, blockSize, error);
+            {
+                SessionLog::Step step ("Loading the instrument " + describe (instrument.plugin));
+                instance = formats.createPluginInstance (instrument.plugin, sampleRate, blockSize, error);
+            }
+            if (instance != nullptr)
+                keepPluginLoaded (instrument.plugin.fileOrIdentifier);   // (0.80.1: never freed mid-session)
         }
 
         if (instance == nullptr)

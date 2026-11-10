@@ -21,6 +21,8 @@ ArrangeView::ArrangeView (pr7s::Studio& studioToUse, Timeline& timelineToUse)
 {
     setWantsKeyboardFocus (false);
     setOpaque (true);   // (0.57.1: paint fills it all: what's behind isn't drawn under every playhead frame)
+    if (auto* settings = studio.getSettings())
+        pointBoxShown = settings->getBoolValue ("automationEditBox", false);
     studio.addChangeListener (this);
     startTimerHz (30);
 }
@@ -80,14 +82,29 @@ void ArrangeView::timerCallback()
     advancePlayhead();
     refreshPlayhead();
     // 60 frames a second while it glides, else 30 (the screens' work, 0.9.2).
-    const auto rate = gliding ? 60 : 30;
+    // (0.78.3) And while playing: the play bar moves every frame now, smoothly (2 thin strips, ~0.3 ms).
+    const auto playing = studio.getEngine().isPlaying() || studio.getEngine().isRecording();
+    const auto rate = gliding || playing ? 60 : 30;
     if (getTimerInterval() != 1000 / rate)
         startTimerHz (rate);
+}
+
+double ArrangeView::playingBeat (double shown, double target) noexcept
+{
+    // A new block can land a hair behind where the clock had carried the play bar: it waits there
+    // rather than stepping back. A real jump (the cycle coming round, a click) goes at once.
+    return target < shown && shown - target < smallestJumpBack ? shown : target;
 }
 
 void ArrangeView::advancePlayhead()
 {
     auto& engine = studio.getEngine();
+    if (engine.isPlaying() || engine.isRecording())
+    {
+        shownBeat = playingBeat (shownBeat, engine.getShownPosition());
+        gliding = false;
+        return;
+    }
     const auto target = engine.getPosition();
     const auto pixels = std::abs (target - shownBeat) * timeline.pixelsPerBeat;
     // Playing (or recording): exactly where it is. Stopped: a click or a drag in the ruler
@@ -1115,15 +1132,31 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
             const auto peaksPerSecond = data->sampleRate / pr7s::Studio::AudioData::peakStep;
             const auto clip = wave.getIntersection (getLocalBounds().toFloat()).getIntersection (g.getClipBounds().toFloat().expanded (1.0f));
             g.setColour (colour.brighter (0.7f).withAlpha (0.9f));
-            for (auto x = std::floor (clip.getX()); x < clip.getRight(); x += 1.0f)
+            // (0.81.0) A stereo recording: each side in its own half (left over right), with room for both;
+            // a mono one: one waveform, as before.
+            const auto twoSides = data->stereo && wave.getHeight() >= 24.0f && data->leftPeaks.size() == data->peaks.size();
+            const auto lanes = twoSides ? 2 : 1;
+            for (int side = 0; side < lanes; ++side)
             {
-                const auto from = secondsAtX (x), to = secondsAtX (x + 1.0f);
-                const auto first = (int) (from * peaksPerSecond), last = juce::jmax (first + 1, (int) (to * peaksPerSecond));
-                auto peak = 0.0f;
-                for (int i = juce::jmax (0, first); i < juce::jmin (last, (int) data->peaks.size()); ++i)
-                    peak = juce::jmax (peak, data->peaks[(size_t) i]);
-                const auto height = juce::jmin (1.0f, peak * part.gain()) * wave.getHeight() * 0.5f;
-                g.fillRect (juce::Rectangle<float> (x, wave.getCentreY() - height, 1.0f, juce::jmax (0.5f, height * 2.0f)));
+                const auto& list = ! twoSides ? data->peaks : side == 0 ? data->leftPeaks : data->rightPeaks;
+                const auto lane = twoSides ? (side == 0 ? wave.withHeight (wave.getHeight() * 0.5f).withTrimmedBottom (1.0f)
+                                                        : wave.withTrimmedTop (wave.getHeight() * 0.5f).withTrimmedTop (1.0f))
+                                           : wave;
+                for (auto x = std::floor (clip.getX()); x < clip.getRight(); x += 1.0f)
+                {
+                    const auto from = secondsAtX (x), to = secondsAtX (x + 1.0f);
+                    const auto first = (int) (from * peaksPerSecond), last = juce::jmax (first + 1, (int) (to * peaksPerSecond));
+                    auto peak = 0.0f;
+                    for (int i = juce::jmax (0, first); i < juce::jmin (last, (int) list.size()); ++i)
+                        peak = juce::jmax (peak, list[(size_t) i]);
+                    const auto height = juce::jmin (1.0f, peak * part.gain()) * lane.getHeight() * 0.5f;
+                    g.fillRect (juce::Rectangle<float> (x, lane.getCentreY() - height, 1.0f, juce::jmax (0.5f, height * 2.0f)));
+                }
+            }
+            if (twoSides)
+            {
+                g.setColour (colour.withAlpha (0.35f));
+                g.fillRect (juce::Rectangle<float> (clip.getX(), wave.getCentreY() - 0.5f, clip.getWidth(), 1.0f));
             }
         }
         else
@@ -3044,9 +3077,21 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
             continue;
         const auto box = juce::Rectangle<float> (pointSize, pointSize).withCentre (at);
         const auto selected = selectedHere && std::binary_search (pointSelection.points.begin(), pointSelection.points.end(), i);
-        g.setColour (selected ? juce::Colour (0xff050405) : colour);
+        if (selected)
+        {
+            // (0.80.0, the owner: as the other DAW) Lit: pearl white, a size bigger, a dark edge.
+            // (0.80.2, the owner asked) A circle, not a square: 2 px bigger each side, as a circle
+            // looks smaller than the square it fits in.
+            const auto lit = box.expanded (2.0f);
+            g.setColour (juce::Colour (0xfff4eeea));
+            g.fillEllipse (lit);
+            g.setColour (juce::Colour (0xff050405));
+            g.drawEllipse (lit, 1.0f);
+            continue;
+        }
+        g.setColour (colour);
         g.fillRect (box);
-        g.setColour (selected ? colour : juce::Colour (0xff050405));
+        g.setColour (juce::Colour (0xff050405));
         g.drawRect (box, 1.0f);
     }
     if (drag == Drag::band && selectedHere)
@@ -3515,6 +3560,8 @@ void ArrangeView::showLaneMenu (int busId, int laneIndex)
     menu.addItem (6, "Show All Used Automation");
     menu.addItem (7, "Remove Unused Parameters");
     menu.addItem (3, "Remove Parameter");
+    menu.addSeparator();
+    menu.addItem (30, "Editing Box for Selected Points (Tilt, Scale, Stretch)", true, pointBoxShown);
     menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ArrangeView> (this), busId, laneIndex] (int chosen)
     {
         if (safe == nullptr)
@@ -3581,6 +3628,8 @@ void ArrangeView::showLaneMenu (int busId, int laneIndex)
             safe->pointSelection = {};
             safe->studio.removeAutomationParameter (busId, laneIndex);
         }
+        else if (chosen == 30)
+            safe->setPointBoxShown (! safe->pointBoxShown);
     });
 }
 

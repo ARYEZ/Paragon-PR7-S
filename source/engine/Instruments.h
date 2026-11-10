@@ -19,7 +19,7 @@
 //                the others (slap, pop, palm mute...) are kept for rules to come.
 //   kept         in the settings file ("instrumentProfiles"), as XML.
 // Djinn Bass 2 is built in (its keyswitch map as the owner's screenshot shows it, the articulations
-// the library leaves out not listed) with the owner's tuning, A0 D1 A1 D2 G2.
+// the library leaves out not listed) with the owner's tuning, drop A: A0 E1 A1 D2 G2 (0.82.2; 0.62.0 had A0 D1 A1 D2 G2).
 namespace pr7s
 {
     struct Keyswitch
@@ -65,7 +65,7 @@ namespace pr7s
         std::unique_ptr<juce::XmlElement> toXml() const;
         static std::optional<InstrumentProfile> fromXml (const juce::XmlElement&);
 
-        static InstrumentProfile djinnBass2();         // the owner's: A0 D1 A1 D2 G2, the map from Djinn's KEYSWITCH MAP
+        static InstrumentProfile djinnBass2();         // the owner's: drop A, A0 E1 A1 D2 G2 (0.82.2), the map from Djinn's KEYSWITCH MAP
         // (0.62.1) The owner's Shreddage guitars (Jupiter, Rogue): 7-string drop A (A0 E1 A1 D2 G2 B2 E3),
         // 24 frets, the velocity layers given (the split IDEAS' VELOCITIES uses), Sustain C-1 and Power Chords
         // C#-1 (the owner's map); from the Jupiter manual (0.62.2): Force String C-2 (the low A) to F#-2 (the

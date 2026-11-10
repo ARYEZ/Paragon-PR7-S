@@ -63,6 +63,7 @@ void MainView::registerCommands()
         add (setIds[n], "Transport", setNames[n], { KP ('0' + n, juce::ModifierKeys (ctrl), 0) }, [this, n] { studio.setMarkerIdAtCursor (n); });
     }
     add ("Window.Markers", "Window", "Markers", { key ('M', ctrl) });
+    add ("Edit.History", "Edit", "History", {}, [this] { toggleEditHistory(); });   // (0.83.0)
     add ("Project.AddMarkerTrack", "Project", "Add Marker Track", {}, [this] { studio.addMarkerTrack(); });
     add ("Project.AutoFades", "Project", "Auto Fades Settings", {}, [this] { AutoFadesPage::show (*this, studio, 0); });   // (0.52.0)
 
@@ -194,6 +195,7 @@ void MainView::registerCommands()
     });
     add ("Window.Progressions", "Window", "Progression Library", {}, [this] { openProgressions(); });   // (0.40.0)
     add ("Window.Composer", "Window", "Composer", {}, [this] { openComposer(); });   // (0.58.0)
+    add ("Window.LearnMyBand", "Window", "Learn My Band (Read the Record)", {}, [this] { openBandRecord(); });   // (0.82.0)
     add ("Window.AudioAlignment", "Window", "Open/Close Audio Alignment Panel", {}, [this] { toggleAudioAlignment(); });   // (0.33.0)
     add ("Automation.Touch", "Automation", "Automation Mode: Touch", {}, [this] { studio.setAutomationMode (pr7s::Studio::AutomationSettings::Mode::touch); });
     add ("Automation.AutoLatch", "Automation", "Automation Mode: Auto-Latch", {}, [this] { studio.setAutomationMode (pr7s::Studio::AutomationSettings::Mode::autoLatch); });

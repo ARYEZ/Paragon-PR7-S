@@ -6,6 +6,7 @@
 #include "Engine.h"
 #include "PluginHost.h"
 #include "Project.h"
+#include "EditHistory.h"
 #include "Warp.h"
 #include "Align.h"
 #include "VariAudio.h"
@@ -66,6 +67,23 @@ namespace pr7s
         // kept, older ones deleted. Not while recording or rendering; not when nothing changed since
         // the last copy. A backup remembers where the song's recordings are, so it opens with them.
         // Settings keys "autoSaveMinutes" (default 5) and "autoSaveKeep" (default 10).
+        // (0.80.0, the owner asked: the other DAW's Track Type Default Colors, one step further) What
+        // a new track of each type starts with: a colour (none: AUTOMATIC, red, pink, orange in turn
+        // by its place, as before) and its colour in the track list (on, 1-100 %). Settings key
+        // "trackTypeLooks"; also SET TRACK COLOUR TO DEFAULT's colour. COLOUR IN ORDER still wins.
+        struct TrackTypeLook
+        {
+            std::optional<juce::Colour> colour;
+            bool listColour = false;
+            int listAmount = Track::defaultListColourAmount;
+            bool operator== (const TrackTypeLook&) const = default;
+        };
+        static constexpr int numTrackTypes = 5;   // (by Track::Kind: instrument, audio, fx, group, folder)
+        static juce::String trackTypeName (Track::Kind);
+        TrackTypeLook getTrackTypeLook (Track::Kind) const;
+        void setTrackTypeLook (Track::Kind, TrackTypeLook);
+        // The open song's tracks given their type's look now (one undo step).
+        void applyTrackTypeLooks();
         int getAutoSaveMinutes() const;
         void setAutoSaveMinutes (int minutes);
         int getAutoSaveKeep() const;
@@ -152,6 +170,11 @@ namespace pr7s
         void setTracksColour (const std::vector<int>& trackIds, std::optional<juce::Colour>);
         // (0.73.0) The tracks' colour over their rows in the track list: on/off and 1-100 %. Not an undo step.
         void setTracksListColour (const std::vector<int>& trackIds, bool on, int amount);
+        // (0.79.0, the owner asked) COLOUR IN ORDER (Project::AutoColour): set, then applied at
+        // once and after every change while it's on. Not an undo step (as the list colour).
+        void setAutoColour (AutoColour);
+        // The colour number each track the rule covers takes now (track id -> 1-75), in order.
+        std::vector<std::pair<int, int>> autoColourNumbers() const;
         // (0.73.0, the owner asked) The track moved to that slot of the track list (1 = the top, counted
         // over the tracks shown); the others move down (or up) a slot. A folder takes its tracks with it.
         // One undo step; false if nothing moved.
@@ -561,8 +584,9 @@ namespace pr7s
         // it: one part from its start to the last one's end, with their notes
         // (what was heard: the gaps between stay silent), named and muted as
         // the first. Audio: only a clip and the next one cut from the same
-        // recording straight after it (a split glued back); anything else
-        // returns false (an audio part holding several clips isn't there yet).
+        // recording straight after it (a split glued back) become one clip again;
+        // any other clips (0.82.6) are written as heard into one new file
+        // ("<track> glued NN.wav") and become one clip of it.
         bool glueParts (int trackId, int index, bool toAllFollowing);
         // Quantize (Q in the arrangement, 0.31.0: the manual's "In the Project window, select a MIDI part"):
         // every note of these MIDI parts to the nearest step of `grid` beats (the song's quantize value), its
@@ -844,6 +868,11 @@ namespace pr7s
         {
             juce::AudioBuffer<float> sound;
             std::vector<float> peaks;   // the loudest sample (either side) in each stretch of peakStep samples, for drawing
+            // (0.81.0) The file had two sides (a mono file is kept on both): the arrangement draws each
+            // side's peaks in its own half, as the other DAW does, so a stereo clip looks stereo.
+            bool stereo = false;
+            std::vector<float> leftPeaks, rightPeaks;
+            void makePeaks();   // peaks, leftPeaks, rightPeaks from `sound`
             static constexpr int peakStep = 256;
             double seconds() const noexcept;
             double sampleRate = 48000.0;
@@ -1186,6 +1215,17 @@ namespace pr7s
         void redo();
         bool canUndo() const noexcept { return undoIndex > 0; }
         bool canRedo() const noexcept { return undoIndex + 1 < (int) undoStates.size(); }
+        // (0.83.0) The Edit History (the manual's Edit History Dialog): every step kept, oldest first;
+        // `getHistoryPosition` the one the song is at now (the separator under it: the ones after are
+        // undone); `goToHistory` puts any step back (undo or redo as far as it takes, one engine update).
+        // Step 0 is where the song started (opened, new, imported): it can't be undone.
+        const std::vector<HistoryStep>& getHistory() const noexcept { return undoInfo; }
+        int getHistoryPosition() const noexcept { return undoIndex; }
+        void goToHistory (int index);
+        void setHistoryDetails (int index, const juce::String& text);   // the Details column: anything typed
+        // The manual's Maximum Undo Steps (Preferences > General): 1-1000, default 100; settings `maxUndoSteps`.
+        int getMaxUndoSteps() const;
+        void setMaxUndoSteps (int steps);
 
         //======================================================================
         // Files.
@@ -1458,6 +1498,7 @@ namespace pr7s
         void effectGoing (int busId, int slot);
         void removeAllEffects();
         void recordUndoState();
+        bool applyAutoColour();   // (0.79.0) the rule's colours onto its tracks; true if any changed
         void restore (const Project&);
         void joinFolderGroup (Track&);    // (0.50.0)
         void leaveFolderGroup (Track&);
@@ -1534,6 +1575,8 @@ namespace pr7s
         bool copyAudioFiles (const juce::File& from, const juce::File& to);
         void sendGone (Track&, int slot);
         void mixHeardClip (juce::AudioBuffer<float>&, const Track& among, int index, double startSeconds, double rate);
+        // (0.82.6) Clips of `track` (by index) as heard, written into one new file; `glued` becomes one clip of it.
+        bool glueIntoFile (const Track&, const std::vector<int>& indices, Part& glued, juce::String& error);
         bool linksSuspended = false, linksAbsolute = false, qLink = false;
         bool mirroring = false;
         juce::StringArray progressionFavorites;   // (without a settings file)
@@ -1622,7 +1665,10 @@ namespace pr7s
         juce::File lastBackup;
         juce::int64 lastBackupHash = 0;
         juce::uint32 lastBackupTime = juce::Time::getMillisecondCounter();
-        int autoSaveMinutesHere = 0, autoSaveKeepHere = defaultAutoSaveKeep;   // (without a settings file: the tests)
+        int autoSaveMinutesHere = 0, autoSaveKeepHere = defaultAutoSaveKeep;
+        std::array<TrackTypeLook, numTrackTypes> trackTypeLooksHere;   // (0.80.0; without a settings file)
+        std::array<TrackTypeLook, numTrackTypes> readTrackTypeLooks() const;
+        void giveTypeLook (Track&, int index) const;   // a new track's colour and list colour   // (without a settings file: the tests)
         void collectPluginStates();
         void backupIfDue();
         juce::String loggedDevice;   // the audio device's last line in the session log
@@ -1658,6 +1704,9 @@ namespace pr7s
         bool inBatch = false;
 
         std::vector<Project> undoStates;
+        std::vector<HistoryStep> undoInfo;   // (0.83.0) one per undo state: its name, time, details
         int undoIndex = -1;
+        int maxUndoHere = 100;               // (without a settings file)
+        void clearHistory();
     };
 }

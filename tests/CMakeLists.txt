@@ -66,6 +66,7 @@ add_executable(ParagonPR7STests
     SignatureTests.cpp
     InfoLinePartsTests.cpp
     MarkerTests.cpp
+    HistoryTests.cpp
     FolderTests.cpp
     StemExportTests.cpp
     PerformanceTests.cpp
@@ -74,6 +75,11 @@ add_executable(ParagonPR7STests
     Tweaks073Tests.cpp
     Tweaks077Tests.cpp
     Tweaks078Tests.cpp
+    AutoColourTests.cpp
+    Tweaks080Tests.cpp
+    Tweaks081Tests.cpp
+    BandRecordTests.cpp
+    BandSectionTests.cpp
     AutoSaveTests.cpp
     PerfTests.cpp
     Snapshot.cpp)

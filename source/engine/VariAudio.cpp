@@ -9,7 +9,6 @@ namespace pr7s
     namespace
     {
         constexpr double hopSeconds = 0.005;
-        constexpr float lowestHz = 60.0f, highestHz = 1100.0f;
 
         float midiOf (double hz) { return (float) (69.0 + 12.0 * std::log2 (hz / 440.0)); }
 
@@ -30,7 +29,7 @@ namespace pr7s
     }
 
     //==========================================================================
-    PitchAnalysis analysePitch (const juce::AudioBuffer<float>& sound, double sampleRate)
+    PitchAnalysis analysePitch (const juce::AudioBuffer<float>& sound, double sampleRate, float lowestHz, float highestHz)
     {
         PitchAnalysis analysis;
         analysis.hopSeconds = hopSeconds;
@@ -45,7 +44,9 @@ namespace pr7s
                 mono[(size_t) i] += data[i] / (float) sound.getNumChannels();
         }
         const auto hop = juce::jmax (1, (int) std::lround (sampleRate * hopSeconds));
-        const auto window = sampleRate > 60000.0 ? 2048 : 1024;   // (the sum's length: about 21 ms)
+        auto window = sampleRate > 60000.0 ? 2048 : 1024;   // (the sum's length: about 21 ms)
+        while (window < (int) (sampleRate / lowestHz))     // (0.82.0) at least the longest period
+            window *= 2;
         const auto maxTau = juce::jmin ((int) (sampleRate / lowestHz), window * 2 - 1);
         const auto minTau = juce::jmax (2, (int) (sampleRate / highestHz));
         const auto span = window + maxTau + 2;

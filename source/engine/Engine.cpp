@@ -1013,6 +1013,18 @@ namespace pr7s
         playing = true;
     }
 
+    double Engine::getShownPosition() const noexcept
+    {
+        const auto at = position.load();
+        if (! playing.load())
+            return at;
+        const auto elapsed = juce::jlimit (0.0, blockSeconds.load(), (juce::Time::getMillisecondCounterHiRes() - positionMs.load()) / 1000.0);
+        auto beat = at + elapsed * beatsPerSecond.load();
+        if (const auto end = shownLoopEnd.load(); end > at)
+            beat = juce::jmin (beat, end);
+        return beat;
+    }
+
     void Engine::setPosition (double beats)
     {
         beats = juce::jmax (0.0, beats);
@@ -1613,7 +1625,12 @@ namespace pr7s
                 }
             }
             sampleClock = clock;
-            position = timing.beatAt ((double) clock);
+            const auto reached = timing.beatAt ((double) clock);
+            beatsPerSecond = (timing.beatAt ((double) clock + sampleRate * 0.05) - reached) / 0.05;   // (0.78.3)
+            blockSeconds = (double) numSamples / sampleRate;
+            shownLoopEnd = settings.loopOn ? settings.loopEnd : -1.0;
+            positionMs = juce::Time::getMillisecondCounterHiRes();
+            position = reached;
         }
 
         // Automation: where in the song this block is (the playhead's place

@@ -37,6 +37,7 @@
 // PARAGON_SNAPSHOT_SIGNATURE=1: the signature track, 7/8 from bar 3 and 3/4 from bar 5, the playhead in the 7/8 (0.45.0).
 // PARAGON_SNAPSHOT_TAP=1: the transport while tapping the tempo (0.45.0).
 // PARAGON_SNAPSHOT_WARP=1: the guitar's clip warped (markers from its hitpoints, one dragged), selected, the WARP tool (0.32.0).
+// PARAGON_SNAPSHOT_STEREO=1: the guitar's take a stereo file, its right side quieter (0.81.0: drawn as two halves).
 // PARAGON_SNAPSHOT_TAKES=1: the guitar's three takes on lanes (LANES), comped (0.29.0), the COMP tool chosen.
 // PARAGON_SNAPSHOT_FOLLOW=1 (with PARAGON_SNAPSHOT_CHORDS): the lead following the chord track, two chords changed (0.36.0).
 // PARAGON_SNAPSHOT_FREEZE=1: the lead frozen (FREEZE lit in its Inspector, its parts stamped).
@@ -87,7 +88,19 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     // A guitar: an audio track with a recorded take (a plucked-string stand-in), faded in and out.
     const auto guitar = studio.addAudioTrack (false);
     studio.renameTrack (guitar, "Guitar");
-    writeWav (studio.getAudioFolder().getChildFile ("Guitar 01.wav"), pluckedTake (12.0, 48000.0, 7), 48000.0);
+    {
+        auto sound = pluckedTake (12.0, 48000.0, 7);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_STEREO", {}).isNotEmpty())
+        {
+            // (0.81.0) A stereo take: the right side quieter, so the clip's two halves differ.
+            juce::AudioBuffer<float> stereo (2, sound.getNumSamples());
+            stereo.copyFrom (0, 0, sound, 0, 0, sound.getNumSamples());
+            stereo.copyFrom (1, 0, sound, 0, 0, sound.getNumSamples());
+            stereo.applyGain (1, 0, sound.getNumSamples(), 0.45f);
+            sound = std::move (stereo);
+        }
+        writeWav (studio.getAudioFolder().getChildFile ("Guitar 01.wav"), sound, 48000.0);
+    }
     Part take { 4.0, 20.0, "Guitar", {} };
     take.audioFile = "Guitar 01.wav";
     take.audioOffset = 1.0;
@@ -872,6 +885,7 @@ TEST_CASE ("Snapshot: a question box", "[.][snapshot-alert]")
 #include "ui/LinesPage.h"
 #include "ui/ProgressionsPage.h"
 #include "ui/DrumLearnPage.h"
+#include "ui/BandRecordPage.h"
 #include "DrumSongs.h"
 #include "ui/EqEditor.h"
 #include "ui/PadsRemotePage.h"
@@ -1254,6 +1268,17 @@ TEST_CASE ("Snapshot: the colour menu", "[.][snapshot-colours]")
         pr7s::Studio studio (false);
         const auto a = studio.getProject().tracks[0].id;
         studio.setTracksColour ({ a }, pr7s::FamilyColours::paletteColour (2, 4));
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_AUTOCOLOUR", {}).isNotEmpty())
+        {
+            for (int i = 0; i < 7; ++i)   // (0.79.0) COLOUR IN ORDER on: the swatches numbered
+                studio.addTrack ({});
+            studio.addAudioTrack (false);
+            pr7s::AutoColour rule;
+            rule.on = true;
+            rule.from = 1;
+            rule.audio = false;
+            studio.setAutoColour (rule);
+        }
         TrackColourMenu menu (studio, { a });
         menu.resized();
         const auto image = menu.createComponentSnapshot (menu.getLocalBounds(), true, 2.0f);
@@ -1353,6 +1378,7 @@ TEST_CASE ("Snapshot: the progress box, and SAVE lit", "[.][snapshot-progress]")
 }
 
 #include "ui/Hub.h"
+#include "ui/TrackTypeColours.h"
 #include "ui/InstrumentsPage.h"
 
 TEST_CASE ("Snapshot: the Hub", "[.][snapshot-hub]")
@@ -1390,6 +1416,13 @@ TEST_CASE ("Snapshot: the Hub", "[.][snapshot-hub]")
             hub.showSettingsPage (true);
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB_TALL", {}) == "1")
             hub.setSize (Hub::preferredWidth, 1500);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "colours")
+        {
+            hub.showColoursPage();   // (0.80.0: an audio colour and list colour, the others automatic)
+            hub.getColoursPage()->setColour (pr7s::Track::Kind::audio, pr7s::FamilyColours::paletteColour (6, 4));
+            hub.getColoursPage()->setListColour (pr7s::Track::Kind::audio, true, 40);
+            hub.getColoursPage()->setColour (pr7s::Track::Kind::group, pr7s::FamilyColours::paletteColour (0, 2));
+        }
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "instruments")
         {
             hub.showInstrumentsPage();
@@ -1896,6 +1929,76 @@ TEST_CASE ("Snapshot: a menu", "[.][snapshot-menu]")
         juce::PNGImageFormat().writeImageToStream (image, out);
         juce::PopupMenu::dismissAllActiveMenus();
         juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+// (0.82.0) LEARN MY BAND: PARAGON_BAND_DIR a record folder (else none: the empty page); PARAGON_SNAPSHOT_READ=1 reads it.
+TEST_CASE ("Snapshot: LEARN MY BAND (0.82.0)", "[.][snapshot-band]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "band.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        BandRecordPage page (studio);
+        page.setSize (1400, 560);
+        const juce::File dir (juce::SystemStats::getEnvironmentVariable ("PARAGON_BAND_DIR", {}));
+        if (dir.isDirectory())
+        {
+            page.loadFolder (dir);
+            if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_READ", {}).isNotEmpty())
+                page.readSongsNow();
+        }
+        const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+// (0.82.0) A review song (PARAGON_BAND_SONG, a .pr7s the band reader wrote), the MIDI editor on one of its heard parts
+// (PARAGON_SNAPSHOT_SELECT, a track's name; else the first "(heard)"), from bar PARAGON_SNAPSHOT_BAR (default 3).
+TEST_CASE ("Snapshot: a band review song (0.82.0)", "[.][snapshot-bandreview]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "bandreview.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        juce::String problems;
+        REQUIRE (studio.open (juce::File (juce::SystemStats::getEnvironmentVariable ("PARAGON_BAND_SONG", {})), problems));
+        MainView view (studio);
+        view.setSize (1900, 1150);
+        studio.dispatchPendingMessages();
+        const auto want = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SELECT", {});
+        int track = 0;
+        for (const auto& t : studio.getProject().tracks)
+            if ((want.isNotEmpty() && t.name == want) || (want.isEmpty() && track == 0 && t.name.endsWith ("(heard)")))
+                track = t.id;
+        auto& arrange = view.getArrangeView();
+        const auto bar = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_BAR", "3").getIntValue();
+        arrange.getTimeline().pixelsPerBeat = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_PPB", "60").getDoubleValue();   // (0.82.3: the whole song)
+        arrange.getTimeline().firstBeat = (bar - 1) * studio.getProject().beatsPerBar();
+        if (track != 0)
+        {
+            arrange.select (track, 0);
+            view.openKeyEditor();
+            studio.dispatchPendingMessages();
+            view.setKeyEditorSize (100);
+            studio.dispatchPendingMessages();
+        }
+        view.resized();
+        studio.dispatchPendingMessages();
+        const auto image = view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }

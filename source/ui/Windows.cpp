@@ -299,10 +299,15 @@ namespace Windows
         click.setColour (juce::ToggleButton::textColourId, ParagonColours::text);
         click.setColour (juce::ToggleButton::tickColourId, ParagonColours::accent);
         addAndMakeVisible (click);
+        // (0.82.6, the owner asked) Mono: the two sides averaged into one channel (the mix, or every channel's file).
+        mono.setColour (juce::ToggleButton::textColourId, ParagonColours::text);
+        mono.setColour (juce::ToggleButton::tickColourId, ParagonColours::accent);
+        mono.setToggleState (settings != nullptr && settings->getBoolValue ("exportMono", false), juce::dontSendNotification);
+        addAndMakeVisible (mono);
         for (auto* box : { &range, &rate, &bits })
             addAndMakeVisible (*box);
 
-        note.setText ("Everything you hear (every track through its effects, then the master) as a stereo WAV, written faster "
+        note.setText ("Everything you hear (every track through its effects, then the master) as a stereo WAV (or mono), written faster "
                       "than it plays. The whole song rings out after its end until reverbs and delays die away; the cycle "
                       "stops at its end. Channels: each one's own sound (its effects and fader) a file each, into a folder you choose.",
                       juce::dontSendNotification);
@@ -431,6 +436,7 @@ namespace Windows
         options.sampleRate = rate.getSelectedId() >= 2 ? rates[rate.getSelectedId() - 2] : 0.0;
         options.bitsPerSample = bits.getSelectedId();
         options.click = click.getToggleState();
+        options.mono = mono.getToggleState();
         options.tailSeconds = range.getSelectedId() == 1 ? 30.0 : 0.0;   // the cycle, cycle markers: none (as the manual's locator export)
         return options;
     }
@@ -459,6 +465,7 @@ namespace Windows
         {
             settings->setValue ("exportRate", rate.getSelectedId());
             settings->setValue ("exportBits", bits.getSelectedId());
+            settings->setValue ("exportMono", mono.getToggleState());
             settings->saveIfNeeded();
         }
     }
@@ -476,7 +483,11 @@ namespace Windows
         labelled (row (28), rangeLabel, range);
         labelled (row (28), rateLabel, rate);
         labelled (row (28), bitsLabel, bits);
-        click.setBounds (row (24).withTrimmedLeft (106));
+        {
+            auto r = row (24).withTrimmedLeft (106);
+            click.setBounds (r.removeFromLeft (r.getWidth() / 2));
+            mono.setBounds (r);
+        }
         if (includeMaster.isVisible())
         {
             auto r = row (24);

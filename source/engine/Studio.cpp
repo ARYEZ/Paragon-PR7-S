@@ -17,7 +17,6 @@ namespace pr7s
     namespace
     {
         const juce::String audioSetupKey { "audioSetup" };
-        constexpr int maxUndoSteps = 100;
 
         juce::PropertiesFile::Options settingsOptions()
         {
@@ -282,6 +281,7 @@ namespace pr7s
             if (track.frozen)
                 if (const auto kept = frozenParts.find (track.id); kept != frozenParts.end() && track.parts != kept->second)
                     track.parts = kept->second;
+        applyAutoColour();   // (0.79.0: the rule wins over whatever moved or recoloured a track)
         numberParts();
         watchPlugins();
         if (exportJob == nullptr)   // (mid-render the engine plays the render's copy: endExport brings the song back)
@@ -362,10 +362,26 @@ namespace pr7s
         }
         for (auto& insert : project.masterInserts)
             insert.state = std::move (*next++);
+        // (0.83.0) Its name for the Edit History, from what differs from the step it follows.
+        HistoryStep step;
+        if (undoIndex >= 0 && undoIndex < (int) undoStates.size())
+            step = describeEdit (undoStates[(size_t) undoIndex], state);
+        else
+        {
+            step.action = "Start";
+            step.details = file.existsAsFile() ? file.getFileNameWithoutExtension() : juce::String ("New song");
+            step.time = juce::Time::getCurrentTime();
+        }
         undoStates.resize ((size_t) (undoIndex + 1));
+        undoInfo.resize ((size_t) (undoIndex + 1));
         undoStates.push_back (std::move (state));
-        if ((int) undoStates.size() > maxUndoSteps)
+        undoInfo.push_back (std::move (step));
+        const auto most = getMaxUndoSteps() + 1;   // (the start, and that many steps after it)
+        while ((int) undoStates.size() > most)
+        {
             undoStates.erase (undoStates.begin());
+            undoInfo.erase (undoInfo.begin());
+        }
         undoIndex = (int) undoStates.size() - 1;
     }
 
@@ -462,6 +478,53 @@ namespace pr7s
         restore (undoStates[(size_t) ++undoIndex]);
     }
 
+    void Studio::goToHistory (int index)
+    {
+        index = juce::jlimit (0, (int) undoStates.size() - 1, index);
+        if (index < 0 || index == undoIndex)
+            return;
+        undoIndex = index;
+        restore (undoStates[(size_t) undoIndex]);
+    }
+
+    void Studio::setHistoryDetails (int index, const juce::String& text)
+    {
+        if (index >= 0 && index < (int) undoInfo.size())
+        {
+            undoInfo[(size_t) index].details = text;
+            announce();
+        }
+    }
+
+    int Studio::getMaxUndoSteps() const
+    {
+        if (settings != nullptr)
+            return juce::jlimit (1, 1000, settings->getIntValue ("maxUndoSteps", 100));
+        return maxUndoHere;
+    }
+
+    void Studio::setMaxUndoSteps (int steps)
+    {
+        maxUndoHere = juce::jlimit (1, 1000, steps);
+        if (settings != nullptr)
+            settings->setValue ("maxUndoSteps", maxUndoHere);
+        // Fewer kept: the oldest go (never the one the song is at).
+        while ((int) undoStates.size() > maxUndoHere + 1 && undoIndex > 0)
+        {
+            undoStates.erase (undoStates.begin());
+            undoInfo.erase (undoInfo.begin());
+            --undoIndex;
+        }
+        announce();
+    }
+
+    void Studio::clearHistory()
+    {
+        undoStates.clear();
+        undoInfo.clear();
+        undoIndex = -1;
+    }
+
     //==========================================================================
     int Studio::addTrack (const Instrument& instrument, juce::String* error)
     {
@@ -477,7 +540,7 @@ namespace pr7s
         Track track;
         track.id = project.nextTrackId++;
         track.instrument = instrument;
-        track.colour = trackColour ((int) project.tracks.size());
+        giveTypeLook (track, (int) project.tracks.size());
         // Named after its instrument, numbered: "Synth 1", "Pianoteq 2"...
         const auto base = instrument.kind == Instrument::Kind::paragonSynth ? juce::String ("Synth") : instrument.getName();
         int number = 1;
@@ -501,7 +564,7 @@ namespace pr7s
         track.id = project.nextTrackId++;
         track.kind = Track::Kind::audio;
         track.stereoInput = stereo;
-        track.colour = trackColour ((int) project.tracks.size());
+        giveTypeLook (track, (int) project.tracks.size());
         int number = 1;
         for (const auto& other : project.tracks)
             if (other.name.startsWith ("Audio "))
@@ -543,7 +606,7 @@ namespace pr7s
         Track track;
         track.id = project.nextTrackId++;
         track.kind = Track::Kind::fx;
-        track.colour = trackColour ((int) project.tracks.size());
+        giveTypeLook (track, (int) project.tracks.size());
         track.name = "FX " + juce::String (number) + (insert.isEmpty() ? juce::String() : "-" + insert.plugin.name);
         project.tracks.push_back (track);
         engine.addChannel (track.id, false);
@@ -566,7 +629,7 @@ namespace pr7s
         Track track;
         track.id = project.nextTrackId++;
         track.kind = Track::Kind::group;
-        track.colour = trackColour ((int) project.tracks.size());
+        giveTypeLook (track, (int) project.tracks.size());
         track.name = "Group " + juce::String (number);
         project.tracks.push_back (track);
         engine.addChannel (track.id, true);
@@ -992,7 +1055,7 @@ namespace pr7s
         Track track;
         track.id = project.nextTrackId++;
         track.kind = Track::Kind::folder;
-        track.colour = trackColour ((int) project.tracks.size());
+        giveTypeLook (track, (int) project.tracks.size());
         track.name = name.isNotEmpty() ? name : "Folder " + juce::String (number);
         track.folderGroup = withGroup;
         project.tracks.push_back (track);
@@ -1478,7 +1541,7 @@ namespace pr7s
             auto& track = project.tracks[(size_t) i];
             if (std::find (trackIds.begin(), trackIds.end(), track.id) == trackIds.end())
                 continue;
-            const auto now = colour ? *colour : trackColour (i);
+            const auto now = colour ? *colour : getTrackTypeLook (track.kind).colour.value_or (trackColour (i));
             any = any || track.colour != now;
             track.colour = now;
         }
@@ -1500,6 +1563,47 @@ namespace pr7s
             }
         if (any)
             changed (false);
+    }
+
+    std::vector<std::pair<int, int>> Studio::autoColourNumbers() const
+    {
+        std::vector<std::pair<int, int>> numbers;
+        const auto& rule = project.autoColour;
+        if (! rule.on)
+            return numbers;
+        const auto shown = getShownTracks();   // (the track list's numbers: 1 at the top)
+        auto next = rule.from;
+        for (int slot = 1; slot <= (int) shown.size(); ++slot)
+        {
+            if (slot < rule.from || (rule.to > 0 && slot > rule.to))
+                continue;
+            if (const auto* t = project.findTrack (shown[(size_t) slot - 1]); t != nullptr && project.autoColourTakes (*t))
+                numbers.push_back ({ t->id, ((next++ - 1) % FamilyColours::numberedCount) + 1 });
+        }
+        return numbers;
+    }
+
+    bool Studio::applyAutoColour()
+    {
+        auto any = false;
+        for (const auto& [id, number] : autoColourNumbers())
+            if (auto* t = project.findTrack (id))
+                if (const auto colour = FamilyColours::numbered (number); t->colour != colour)
+                {
+                    t->colour = colour;
+                    any = true;
+                }
+        return any;
+    }
+
+    void Studio::setAutoColour (AutoColour rule)
+    {
+        rule.from = juce::jlimit (1, 9999, rule.from);
+        rule.to = rule.to <= 0 ? 0 : juce::jlimit (rule.from, 9999, rule.to);
+        if (rule == project.autoColour)
+            return;
+        project.autoColour = rule;
+        changed (false);
     }
 
     bool Studio::moveTrackToSlot (int trackId, int slot)
@@ -2042,16 +2146,34 @@ namespace pr7s
         auto glued = track->parts[(size_t) index];
         if (glued.isAudio())
         {
-            // Only clips cut from one recording, end to end (a split glued back).
+            // Clips cut from one recording, end to end (a split glued back): one clip again, no new file.
+            auto oneRecording = true;
             for (const auto i : after)
             {
                 const auto& next = track->parts[(size_t) i];
                 const auto secondsIn = glued.audioOffset + project.tempoMap().secondsBetween (glued.start, glued.end());
                 if (next.audioFile != glued.audioFile || std::abs (next.start - glued.end()) > 1.0e-6 || next.volumeDb != glued.volumeDb
                     || std::abs (next.audioOffset - secondsIn) > 1.0e-4 || glued.isWarped() || next.isWarped())
-                    return false;   // (0.32.0: warped clips aren't glued: Flatten first)
+                {
+                    oneRecording = false;
+                    break;
+                }
                 glued.length = next.end() - glued.start;
                 glued.fadeOut = next.fadeOut;
+            }
+            // (0.82.6, the owner asked: glue any clips) Else the clips as they're heard (their volumes, fades, warps,
+            // the crossfades between them; silence in the gaps) written into one new file, "<track> glued NN.wav",
+            // and one clip of it in their place. The recordings themselves stay as they were on disk.
+            if (! oneRecording)
+            {
+                std::vector<int> chosen { index };
+                chosen.insert (chosen.end(), after.begin(), after.end());
+                juce::String error;
+                if (! glueIntoFile (*track, chosen, glued, error))
+                {
+                    SessionLog::note ("Glue: " + error);
+                    return false;
+                }
             }
         }
         else
@@ -2097,6 +2219,80 @@ namespace pr7s
         for (const auto i : after)
             track->parts.erase (track->parts.begin() + i);
         changed();
+        return true;
+    }
+
+    bool Studio::glueIntoFile (const Track& track, const std::vector<int>& indices, Part& glued, juce::String& error)
+    {
+        Track among = track;
+        among.soloLane = -1;
+        among.parts.clear();
+        auto from = std::numeric_limits<double>::max(), to = 0.0;
+        auto rate = 0.0;
+        auto channels = 1;
+        for (const auto i : indices)
+        {
+            auto p = track.parts[(size_t) i];
+            if (! p.isAudio())
+                continue;
+            p.muted = false;
+            from = juce::jmin (from, p.start);
+            to = juce::jmax (to, p.end());
+            const auto data = getHeardAudio (p.audioFile);
+            if (data == nullptr)
+            {
+                error = p.audioFile + " couldn't be read.";
+                return false;   // (a missing recording: nothing glued rather than a gap where it was)
+            }
+            if (rate <= 0.0)
+                rate = data->sampleRate;
+            channels = juce::jmax (channels, data->sound.getNumChannels());
+            among.parts.push_back (p);
+        }
+        if (among.parts.empty() || rate <= 0.0 || to <= from)
+        {
+            error = "the clips' recordings couldn't be read.";
+            return false;
+        }
+        const auto tempo = project.tempoMap();
+        const auto startSeconds = tempo.secondsAt (from);
+        const auto total = (int) std::ceil ((tempo.secondsAt (to) - startSeconds) * rate);
+        juce::AudioBuffer<float> sound (juce::jmin (2, channels), juce::jmax (1, total));
+        sound.clear();
+        for (int i = 0; i < (int) among.parts.size(); ++i)
+            mixHeardClip (sound, among, i, startSeconds, rate);
+        auto folder = getAudioFolder();
+        folder.createDirectory();
+        juce::File file;
+        int n = 1;
+        do
+            file = folder.getChildFile (juce::File::createLegalFileName (track.name) + " glued " + juce::String (n++).paddedLeft ('0', 2) + ".wav");
+        while (file.exists());
+        std::unique_ptr<juce::OutputStream> stream (file.createOutputStream());
+        std::unique_ptr<juce::AudioFormatWriter> writer;
+        if (stream != nullptr)
+            writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (rate)
+                                                                                   .withNumChannels (sound.getNumChannels())
+                                                                                   .withBitsPerSample (32)
+                                                                                   .withSampleFormat (juce::AudioFormatWriterOptions::SampleFormat::floatingPoint));
+        if (writer == nullptr || ! writer->writeFromAudioSampleBuffer (sound, 0, sound.getNumSamples()))
+        {
+            error = "the glued file couldn't be written to " + file.getFullPathName();
+            return false;
+        }
+        writer.reset();
+        forgetAudio (file.getFileName());
+        const auto keepId = glued.id;
+        const auto lane = glued.lane, order = glued.order;
+        glued = Part();
+        glued.id = keepId;
+        glued.lane = lane;
+        glued.order = order;
+        glued.start = from;
+        glued.length = to - from;
+        glued.audioFile = file.getFileName();
+        glued.name = track.name + " glued";
+        SessionLog::note ("Glue: " + juce::String ((int) among.parts.size()) + " clips into " + file.getFileName());
         return true;
     }
 
@@ -2946,14 +3142,26 @@ namespace pr7s
                 interpolator.process (ratio, read.getReadPointer (channel), data->sound.getWritePointer (channel), converted);
             }
         }
-        const auto samples = data->sound.getNumSamples();
-        for (int from = 0; from < samples; from += AudioData::peakStep)
-        {
-            const auto count = juce::jmin (AudioData::peakStep, samples - from);
-            const auto left = data->sound.getMagnitude (0, from, count), right = data->sound.getMagnitude (1, from, count);
-            data->peaks.push_back (juce::jmax (left, right));
-        }
+        data->stereo = reader->numChannels >= 2;
+        data->makePeaks();
         return data;
+    }
+
+    void Studio::AudioData::makePeaks()
+    {
+        peaks.clear();
+        leftPeaks.clear();
+        rightPeaks.clear();
+        const auto samples = sound.getNumSamples(), channels = sound.getNumChannels();
+        for (int from = 0; from < samples; from += peakStep)
+        {
+            const auto count = juce::jmin (peakStep, samples - from);
+            const auto left = channels > 0 ? sound.getMagnitude (0, from, count) : 0.0f;
+            const auto right = channels > 1 ? sound.getMagnitude (1, from, count) : left;
+            leftPeaks.push_back (left);
+            rightPeaks.push_back (right);
+            peaks.push_back (juce::jmax (left, right));
+        }
     }
 
     //==========================================================================
@@ -8073,8 +8281,7 @@ namespace pr7s
         // A new song starts with one track on the studio's synth (PR7-K), ready to play.
         addTrack ({});
         engine.update (project);
-        undoStates.clear();
-        undoIndex = -1;
+        clearHistory();
         recordUndoState();
         modified = false;
         announce();
@@ -8099,6 +8306,78 @@ namespace pr7s
         dropHighlight = juce::jlimit (0.1f, 1.0f, strength);
         if (settings != nullptr)
             settings->setValue ("dropHighlight", (double) dropHighlight);
+    }
+
+    juce::String Studio::trackTypeName (Track::Kind kind)
+    {
+        switch (kind)
+        {
+            case Track::Kind::instrument: return "INSTRUMENT";
+            case Track::Kind::audio:      return "AUDIO";
+            case Track::Kind::fx:         return "FX CHANNEL";
+            case Track::Kind::group:      return "GROUP CHANNEL";
+            case Track::Kind::folder:     return "FOLDER";
+        }
+        return {};
+    }
+
+    std::array<Studio::TrackTypeLook, Studio::numTrackTypes> Studio::readTrackTypeLooks() const
+    {
+        // "colour|list|amount" a type, ";" between them, in Track::Kind's order; "auto" for no colour.
+        if (settings == nullptr)
+            return trackTypeLooksHere;
+        std::array<TrackTypeLook, numTrackTypes> looks;
+        const auto parts = juce::StringArray::fromTokens (settings->getValue ("trackTypeLooks"), ";", "");
+        for (int i = 0; i < numTrackTypes && i < parts.size(); ++i)
+        {
+            const auto fields = juce::StringArray::fromTokens (parts[i], "|", "");
+            if (fields.size() < 3)
+                continue;
+            if (fields[0] != "auto")
+                if (const auto c = juce::Colour::fromString (fields[0]); FamilyColours::isFamily (c))
+                    looks[(size_t) i].colour = c;
+            looks[(size_t) i].listColour = fields[1] == "1";
+            looks[(size_t) i].listAmount = juce::jlimit (1, 100, fields[2].getIntValue());
+        }
+        return looks;
+    }
+
+    Studio::TrackTypeLook Studio::getTrackTypeLook (Track::Kind kind) const
+    {
+        const auto i = juce::jlimit (0, numTrackTypes - 1, (int) kind);
+        return readTrackTypeLooks()[(size_t) i];
+    }
+
+    void Studio::setTrackTypeLook (Track::Kind kind, TrackTypeLook look)
+    {
+        if (look.colour && ! FamilyColours::isFamily (*look.colour))
+            look.colour = FamilyColours::nearest (*look.colour);   // (only the family's: the owner's rule)
+        look.listAmount = juce::jlimit (1, 100, look.listAmount);
+        auto looks = readTrackTypeLooks();
+        looks[(size_t) juce::jlimit (0, numTrackTypes - 1, (int) kind)] = look;
+        trackTypeLooksHere = looks;
+        if (settings != nullptr)
+        {
+            juce::StringArray parts;
+            for (const auto& l : looks)
+                parts.add ((l.colour ? l.colour->toString() : juce::String ("auto")) + "|" + (l.listColour ? "1" : "0") + "|" + juce::String (l.listAmount));
+            settings->setValue ("trackTypeLooks", parts.joinIntoString (";"));
+        }
+    }
+
+    void Studio::giveTypeLook (Track& track, int index) const
+    {
+        const auto look = getTrackTypeLook (track.kind);
+        track.colour = look.colour.value_or (trackColour (index));
+        track.listColourOn = look.listColour;
+        track.listColourAmount = look.listAmount;
+    }
+
+    void Studio::applyTrackTypeLooks()
+    {
+        for (int i = 0; i < (int) project.tracks.size(); ++i)
+            giveTypeLook (project.tracks[(size_t) i], i);
+        changed();
     }
 
     int Studio::getAutoSaveMinutes() const
@@ -8310,8 +8589,7 @@ namespace pr7s
         if (newSong)
         {
             // The import is where the new song starts: nothing to undo before it.
-            undoStates.clear();
-            undoIndex = -1;
+            clearHistory();
             recordUndoState();
         }
         return added;
@@ -9320,8 +9598,7 @@ namespace pr7s
             }
         }
         engine.update (project);
-        undoStates.clear();
-        undoIndex = -1;
+        clearHistory();
         recordUndoState();
         modified = true;   // (a new song: not saved yet)
         if (problems.isNotEmpty())
@@ -9453,9 +9730,9 @@ namespace pr7s
             selectedTracks.push_back (selectedTrack);
         engine.setPosition (0.0);
         playStart = 0.0;
+        applyAutoColour();   // (0.79.0)
         engine.update (project);
-        undoStates.clear();
-        undoIndex = -1;
+        clearHistory();
         recordUndoState();
         updateLiveTrack();
         modified = false;
@@ -10488,7 +10765,23 @@ namespace pr7s
                                                 : instrumentProfiles;
         if (! stored.has_value())
             return { InstrumentProfile::djinnBass2() };   // (the first time: the owner's bass)
-        return profilesFromText (*stored);
+        auto profiles = profilesFromText (*stored);
+        // (0.82.2, the owner: their bass is drop A, A E A D G) A Djinn Bass 2 saved with 0.62.0's A D A D G gets its
+        // E string, once (the flag), so a tuning set by hand afterwards stays.
+        if (settings != nullptr && ! settings->getBoolValue ("djinnDropA0822", false))
+        {
+            for (auto& p : profiles)
+                if (p.name == "Djinn Bass 2" && p.strings == std::vector<int> { 33, 38, 45, 50, 55 })
+                {
+                    p.strings[1] = 40;
+                    for (auto& k : p.keyswitches)
+                        if (k.name == "Force E String (your D1)")
+                            k.name = "Force E String";
+                }
+            settings->setValue ("instrumentProfiles", profilesToText (profiles));
+            settings->setValue ("djinnDropA0822", true);
+        }
+        return profiles;
     }
 
     void Studio::setInstrumentProfiles (const std::vector<InstrumentProfile>& profiles)
@@ -11581,15 +11874,8 @@ namespace pr7s
         auto heard = std::make_shared<AudioData>();
         heard->sampleRate = data->sampleRate;
         heard->sound = renderVariAudio (data->sound, data->sampleRate, *analysis, project.variAudio[file].segments);
-        const auto samples = heard->sound.getNumSamples();
-        for (int from = 0; from < samples; from += AudioData::peakStep)
-        {
-            const auto count = juce::jmin (AudioData::peakStep, samples - from);
-            auto peak = 0.0f;
-            for (int c = 0; c < heard->sound.getNumChannels(); ++c)
-                peak = juce::jmax (peak, heard->sound.getMagnitude (c, from, count));
-            heard->peaks.push_back (peak);
-        }
+        heard->stereo = data->stereo;
+        heard->makePeaks();
         heardCache[file] = { signature, data, heard };
         return heard;
     }

@@ -588,6 +588,18 @@ namespace pr7s
         }
         if (! (autoFades == AutoFades {}))
             xml->addChildElement (autoFadesXml (autoFades).release());   // (0.52.0)
+        if (! (autoColour == AutoColour {}))
+        {
+            auto* c = xml->createNewChildElement ("AutoColour");   // (0.79.0)
+            c->setAttribute ("on", autoColour.on);
+            c->setAttribute ("from", autoColour.from);
+            c->setAttribute ("to", autoColour.to);
+            c->setAttribute ("instrument", autoColour.instrument);
+            c->setAttribute ("audio", autoColour.audio);
+            c->setAttribute ("group", autoColour.group);
+            c->setAttribute ("fx", autoColour.fx);
+            c->setAttribute ("folder", autoColour.folder);
+        }
         if (markerTrack.shown || ! markerTrack.isEmpty())
             xml->addChildElement (markerTrack.toXml().release());   // (0.49.0)
         if (! signatureChanges.empty() || signatureTrackShown)
@@ -905,6 +917,17 @@ namespace pr7s
             project.numerator = 4, project.denominator = 4;
         if (const auto* fades = xml.getChildByName ("AutoFades"))
             project.autoFades = autoFadesFrom (*fades);   // (0.52.0)
+        if (const auto* c = xml.getChildByName ("AutoColour"))   // (0.79.0)
+        {
+            project.autoColour.on = c->getBoolAttribute ("on");
+            project.autoColour.from = juce::jlimit (1, 9999, c->getIntAttribute ("from", 1));
+            project.autoColour.to = juce::jlimit (0, 9999, c->getIntAttribute ("to", 0));
+            project.autoColour.instrument = c->getBoolAttribute ("instrument", true);
+            project.autoColour.audio = c->getBoolAttribute ("audio", true);
+            project.autoColour.group = c->getBoolAttribute ("group", true);
+            project.autoColour.fx = c->getBoolAttribute ("fx", true);
+            project.autoColour.folder = c->getBoolAttribute ("folder", true);
+        }
         if (const auto* markers = xml.getChildByName ("MarkerTrack"))
             project.markerTrack = MarkerTrack::fromXml (*markers);   // (0.49.0)
         if (const auto* signature = xml.getChildByName ("Signatures"))
@@ -1344,6 +1367,35 @@ namespace pr7s
         static const float brightness[] = { 0.42f, 0.56f, 0.70f, 0.84f, 0.95f, 1.0f, 1.0f, 1.0f };
         const auto s = (size_t) juce::jlimit (0, paletteShades - 1, shade);
         return juce::Colour::fromHSV (degrees / 360.0f, saturation[s], brightness[s], 1.0f);
+    }
+
+    juce::Colour FamilyColours::numbered (int number)
+    {
+        const auto i = ((number - 1) % numberedCount + numberedCount) % numberedCount;
+        if (i < 3)
+            return i == 0 ? pink : i == 1 ? red : orange;
+        return paletteColour ((i - 3) % paletteHues, (i - 3) / paletteHues);
+    }
+
+    int FamilyColours::numberOf (juce::Colour colour)
+    {
+        for (int n = 1; n <= numberedCount; ++n)
+            if (numbered (n) == colour)
+                return n;
+        return 0;
+    }
+
+    bool Project::autoColourTakes (const Track& t) const noexcept
+    {
+        switch (t.kind)
+        {
+            case Track::Kind::instrument: return autoColour.instrument;
+            case Track::Kind::audio:      return autoColour.audio;
+            case Track::Kind::group:      return autoColour.group;
+            case Track::Kind::fx:         return autoColour.fx;
+            case Track::Kind::folder:     return autoColour.folder;
+        }
+        return false;
     }
 
     bool FamilyColours::isFamily (juce::Colour colour)

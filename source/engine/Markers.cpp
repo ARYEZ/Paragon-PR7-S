@@ -133,4 +133,41 @@ namespace pr7s
     {
         return m.cycle ? "(" + juce::String (m.id) + ")" : juce::String (m.id);
     }
+
+    const juce::StringArray& songSectionNames()
+    {
+        static const juce::StringArray names { "Intro", "Verse", "Pre-Chorus", "Chorus", "Post-Chorus", "Hook", "Refrain",
+                                               "Bridge", "Middle 8", "Breakdown", "Build-Up", "Drop", "Solo", "Instrumental",
+                                               "Interlude", "Riff", "Break", "Tag", "Outro", "Ending", "Coda" };
+        return names;
+    }
+
+    juce::String sectionBaseOf (const juce::String& name)
+    {
+        auto text = name.trim();
+        const auto space = text.lastIndexOfChar (' ');
+        if (space > 0 && text.substring (space + 1).containsOnly ("0123456789"))
+            text = text.substring (0, space).trim();
+        for (const auto& n : songSectionNames())
+            if (n.equalsIgnoreCase (text))
+                return n;
+        return {};
+    }
+
+    void numberSections (std::vector<Marker>& markers)
+    {
+        std::vector<size_t> order (markers.size());
+        for (size_t i = 0; i < order.size(); ++i)
+            order[i] = i;
+        std::stable_sort (order.begin(), order.end(), [&] (size_t a, size_t b) { return markers[a].start < markers[b].start; });
+        for (const auto& base : songSectionNames())
+        {
+            std::vector<size_t> these;
+            for (const auto i : order)
+                if (sectionBaseOf (markers[i].name) == base)
+                    these.push_back (i);
+            for (size_t k = 0; k < these.size(); ++k)
+                markers[these[k]].name = these.size() > 1 ? base + " " + juce::String ((int) k + 1) : base;
+        }
+    }
 }

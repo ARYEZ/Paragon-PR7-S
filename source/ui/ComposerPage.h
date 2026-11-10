@@ -115,6 +115,7 @@ public:
     // (0.76.0, the owner: instruments too loud while composing) Each lane's VOLUME is the fader of the track it's
     // heard on; MIXER opens the mixer in its own window over the composer. Hearing goes on through both.
     std::function<void()> onOpenMixer;
+    std::function<void()> onLearnMyBand;   // (0.82.0) LEARN MY BAND: read the band's record (+ MY RIFF's menu)
     void setLaneVolume (pr7s::ComposerLayer, float db, bool undoable = true);
     juce::Slider& getLaneVolume (pr7s::ComposerLayer l) noexcept { return lanes[(size_t) l].volume; }
     bool isInterestedInFileDrag (const juce::StringArray&) override;

@@ -2,6 +2,111 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.83.0
+
+**The Edit History** (you asked: as the other DAW's Edit > History). Every edit you can undo is listed in a window, oldest at the top: what it was (ACTION), when (TIME), whether it's in force (STATE: DONE or UNDONE) and DETAILS (which track and part, or a note you type).
+
+- **The bar:** a separator in the family's gradient sits under the step the song is at. Drag it **up** to undo back to any point, **down** to redo; the song changes as you drag, so you can listen at each step. Everything under the bar is undone (dimmed) until you make a new edit, which replaces those steps, as Undo always has.
+- **Opening it:** right-click **UNDO** or **REDO** in the header, or the **Edit > History** command in KEYS (no key at first: give it one there or on your Stream Deck).
+- **Also:** Up / Down move the bar a step; a click at the very left of a row puts the bar under it; double-click DETAILS to type a note ("the good take"). **MAX STEPS** is how many edits are kept (100 as before; up to 1000; the oldest go first).
+- **The names are worked out by the studio** from what changed between one step and the next ("Move Part", "Volume", "Edit Notes", "Tempo", "Split"...), with the track and part in DETAILS. When one edit changed several things it reads as the first and names the rest. That's our own wording: a guess at what you did, not your exact words.
+- **The same limits as Undo:** going back puts back what Undo always has (parts, notes, the mix, automation, tempo, signature, markers, chords...); adding or removing whole tracks and plug-in settings inside a plug-in aren't undone, so those steps show but going past them leaves the tracks as they are. The list starts again when a song is opened or started.
+
+## 0.82.6
+
+Your two asks from the export talk:
+
+- **Mono export.** The export page has a **Mono** box beside "Include the click": left and right are averaged into one channel. It works for the main mix and for a batch (every channel's file, every cycle marker's file comes out mono), and it's remembered for next time.
+- **Glue joins any audio clips.** Before, the glue tool only joined pieces of one recording lying end to end (a split put back); clips from different recordings refused. Now those are joined too: the clips as you hear them (their volumes, fades, warps and the crossfades between them, silence in any gaps) are written into one new file, "<track> glued 01.wav" beside the song's recordings, and one clip of it takes their place. Your original recordings stay untouched on disk, and Undo brings the separate clips back. A split glued back to its own recording still becomes one clip of the same file, with no new file. The glued clip starts at 0 dB with no fades (they're printed in).
+
+
+
+**Your keyboard files as you named them** ("keys 1.midi", "pad2.midi", "lead.midi": a file per part). A MIDI file is now the drums only when its name says drums (drum, drums, kit, perc...); any MIDI file named for something a keyboard player plays (keys, piano, pad, lead, synth, bass, arp, strings, organ...) is a keyboard part. Before, "lead.midi" would have been taken for the drums ("lead" only meant the lead guitar's DI) and a synth bass's "bass.midi" likewise. A MIDI file named nothing we know (just the song's name) is still the drums, and a WAV named lead is still the lead guitar's DI. In the review song each keyboard part's track is named after its file ("KEYS: pad2", "KEYS: lead"), so the part kinds stay told apart for the learning.
+
+
+
+**The keyboards join LEARN MY BAND** (you have every keyboard part as the players' own MIDI). Nothing has to be heard: the notes, their timing, how hard each was played and the sustain pedal are read exactly as programmed.
+
+- **Finding them:** a MIDI file whose name says keys, keyboard(s), piano, synth, pad(s), organ, Rhodes, strings or keytar is the keyboards ("Song 3 keys.mid", "Song 3 Piano.mid"); any other MIDI file is still the drums. Each keyboard file shows on the song's row with a menu (KEYS / NOT USED), so a file named something else can be put right. A second MIDI file that isn't obviously the drums waits on that menu.
+- **In the review song:** a track per part in the file ("KEYS: Piano", "KEYS: Pad"...), each with its own MIDI channel, the notes and controllers (sustain pedal, mod wheel, pitch bend) as they are.
+- **Lining them up:** your drum MIDI started 8 bars before the DIs, so the keyboards' MIDI is checked the same way. If the drums' move lines its notes up with the guitars and bass about as well as anything, it gets the same move (files exported from one session). Otherwise it's placed by its own best fit against the DIs. The page says which.
+- **Not checked on your files yet:** send a song's keyboard MIDI along with its DIs and drums and I'll check the placement as I did the drums.
+
+
+
+**Your songs broken into their parts** (you asked). Every review song LEARN MY BAND writes now opens with its sections marked: a "Sections" marker track with a cycle marker per part, named and numbered (Intro, Verse 1, Pre-Chorus 1, Chorus 1, Post-Chorus 1, Verse 2, ... Solo, Breakdown, Outro).
+
+- **How it finds them:** the drum learner's section finder reads your drummer's MIDI (where the groove changes, crashes, fills into a change, the hand moving between hats, ride and china, half time). Where the rhythm guitar's and bass's riff changes at the same bar line, that tips a close call. Boundaries go onto four-bar lines when they're within a bar of one, pieces under two bars join a neighbour, and neighbouring parts that play alike are one part.
+- **How it names them:** the drums give intro, verse, chorus, bridge, breakdown and outro (the part that comes back most is the verse, the bigger repeated one the chorus). Then the band's words: a short part between a verse and a chorus that plays like neither is a **pre-chorus**; a short part after a chorus that plays like no verse is a **post-chorus** (an **interlude** when it plays the intro's groove again); where the lead DI plays far busier than anywhere else, a **solo**. Parts that come back are numbered in order (the third verse is Verse 3).
+- **Every name you listed, and more, to choose from:** right-click a cycle marker, **Name as a Song Section**: Intro, Verse, Pre-Chorus, Chorus, Post-Chorus, Hook, Refrain, Bridge, Middle 8, Breakdown, Build-Up, Drop, Solo, Instrumental, Interlude, Riff, Break, Tag, Outro, Ending, Coda. The numbers redo themselves: name a part Verse and the verses are numbered 1, 2, 3 in order again. Drag a marker's edges to move a section; double-click its name to type your own.
+- **On your first song:** 17 sections, starting with an 18-bar Verse 1 (no intro found: if the song has one, rename and move it), choruses at bars 83, 99 and 133, a breakdown at 91, the outro at 149. It's a guess from patterns, not from hearing the song as you do: expect to rename and move a few. The corrected sections are what 0.83.0 will learn from, so each player's verse habits and chorus habits are kept apart.
+
+
+
+**Djinn Bass 2 tuned to your bass: drop A, A E A D G** (you asked). The profile had A D A D G from the screenshot in 0.62.0; its second string is now E. Your saved profile is updated once when you open the Hub's INSTRUMENTS page or the composer, and everything else in it (keyswitches, range, bend) stays as you set it. If you change the tuning by hand later, it's kept. What changes in use: the composer's bass on Djinn works out strings and frets with an E string, so ONLY STRING 2 and the low-string choices put notes where your bassist would.
+
+
+
+**LEARN MY BAND knows your band's tunings** (you told me: every song on a 7-string guitar and a 5-string bass, both in drop A). The reader now only listens for notes those instruments can play: nothing under the low A string, nothing past the 24th fret.
+
+- **Why it matters:** the hardest mistake for a pitch reader is the octave. A low, heavy note can look like the note an octave under it, because the sound repeats at both. On your first song, 264 of the rhythm guitar's 1,883 hits (14 %) came out under the guitar's low A, which a drop A 7-string can't play: those were octave slips. Now a root under the low string is looked for an octave up instead, where it really was.
+- **The bass:** a note read a half step or a whole step under the low A is taken as the low A itself (a slack string, or read a hair flat); further under, it goes up an octave.
+- **The tunings it assumes:** guitar A E A D G B E (low to high), bass A E A D G, 24 frets. If the bass is strung differently (your Djinn profile has A D A D G), tell me: only the lowest string matters for this release, and that's the A either way.
+
+
+
+**LEARN MY BAND, part one: reading your record.** The idea engine is going to learn from what your band actually played. This first part reads the record and shows you what it heard, so you can put it right before anything is learned from it.
+
+- **Where:** the composer's **+ MY RIFF** menu, "Learn My Band: Read Our Record...", or the Window.LearnMyBand command in KEYS.
+- **CHOOSE FOLDER...** reads your record's folder: a folder per song, or every song's files together (their names tell them apart). For each song it finds the drum MIDI and the DIs, and guesses who played each DI from its name ("bass", "rhythm", "lead", "gtr 1" / "gtr 2"). Each DI has a menu to put that right. The tempo comes from the drum MIDI (type another if it's wrong).
+- **READ THE SONGS** listens to every DI and writes a review song per song (in Documents/Paragon PR7-S/Band Record/<record>/<song>): the drummer's MIDI on a drum track, each DI on an audio track, and under each DI an instrument track with what was heard on it. **OPEN** opens it (asking to save your song first). Put wrong notes right in the MIDI editor, with the DI beside them to compare, and save: those corrected songs are what the engine learns from next.
+- **What it hears:** bass and lead lines note by note, down to the bass's low A at 27.5 Hz, repeated picks on one note split, bends read as bends; rhythm guitar hit by hit, its lowest note (a power chord's root, not an octave under), power chords, palm mutes. Palm mutes go in your Shreddage mute layer, open notes in the sustain layer, by how hard they were played.
+- **Lining up the drums (from your first song):** your song's drum MIDI started 8 bars before the DIs, and the DIs ran 0.23 % slow against 120 BPM (120 on the click plays as 119.72 in the files: a sample rate a hair off somewhere, inaudible but 0.7 s by the end). The reader finds both by itself, moves the drums into place and fits the DIs to the click, so the song stays at your 120 BPM. It says what it did on the page. On your song, 666 of the drummer's 951 kicks then have a bass or guitar note within 30 ms.
+- **Honest limits:** checked on your bass DI, rhythm DI and drum MIDI, and on test sounds; no lead DI yet. Rhythm guitar is the hardest part (chords): power chords and single notes read best, bigger chords less well. Expect to correct some notes. A five-minute song with two DIs takes about a minute and a half to read.
+
+
+Your four asks from this round:
+
+- **Set the cycle from the MIDI editor** so a passage loops while you edit. The editor's ruler now has the arrangement's cycle strip along its top. Drag in the strip to make a new loop (CYCLE turns on), drag either end's flag to move just that end, drag the range to slide it, and click inside it to turn CYCLE on or off. Ctrl-click anywhere in the ruler sets the left locator and Alt-click the right one, as in the arrangement. **P** (after a click in the editor) puts the loop round the notes you've selected (rounded out to the grid), or round the whole part when none are selected. **Alt+P** does that, turns CYCLE on and plays. The loop also shows faintly down the notes.
+- **SNAP on and off inside the MIDI editor.** A new SNAP key sits under the grid box (J after a click in the editor). Lit, notes you move, draw, resize or split land on the grid as before. Off, they go exactly where you put them. Holding Ctrl still gives one free drag with SNAP lit. It's the editor's own setting and is remembered; the header's SNAP is still the arrangement's.
+- **The SPLIT tool is a straight razor** (key and pointer, in the arrangement and the MIDI editor): a solid blade with an outlined handle on its pivot. The pointer cuts at the middle of the blade's edge.
+- **Stereo renders look stereo.** I checked Render in Place of instrument tracks: the files it writes are stereo (two channels), and a new test proves the left and right sides come through apart. But the arrangement drew every audio clip as one combined waveform, so a stereo file looked mono. Now a stereo recording is drawn with each side in its own half, left over right, when the track is tall enough (at least 24 pixels of waveform), with a faint line between. Mono files still draw as one. One honest note: a guitar plug-in that plays in the middle (both sides the same) renders as a stereo file with two identical halves; its pan isn't in the file, because Render in Place (with Channel Settings) leaves the fader and pan out of the render and puts them on the new track instead.
+
+
+**Selected automation points are circles** (you asked): the lit points are now pearl-white circles with a dark edge instead of squares, a touch bigger than the unselected points so they stand out. Unselected points stay as they were; where you click to grab a point hasn't changed.
+
+## 0.80.1
+
+**A fix for the freeze in your 0.79.0 log (after Render in Place disabled your second guitar track).** That track was the last one playing PR7-I and PR7-G, so the plug-in host let go of their files. When a plug-in's file is let go, Windows runs the plug-in's own clean-up while it holds a lock every other thread has to wait for; your log shows that clean-up starting the graphics card there, and the NVIDIA driver waiting on that lock for good. Now a plug-in's file, once loaded, stays in memory until the studio closes: disabling, removing or rendering a track still unloads its plug-ins (their sound, memory for samples and CPU go), but the file itself is never let go mid-session, so that clean-up never runs. The session log notes each file kept. A plug-in you've used and removed stays a few megabytes in memory until you close the studio.
+
+The other freeze in the same log (21:34, 11 seconds, then it carried on) was inside PR7-D's own window code, waiting on something of PR7-D's: that one is PR7-D's to fix, not the studio's.
+
+## 0.80.0
+
+Three tweaks you asked for.
+
+**Selected automation points light up, with no box around them (as the other DAW does).** With two or more points selected, the arrangement drew a box round them with seven little handles (tilt, compress, scale, stretch), each a place the mouse could catch. Now only the selected points change: they're pearl white and a size bigger, and nothing else is drawn. The box's tools are still there if you want them: right-click the lane, **Editing Box for Selected Points (Tilt, Scale, Stretch)** switches it on (and off again); the choice is remembered.
+
+**TRACK COLOURS in the Hub: a default colour for each type of track, and its track-list colour.** A new tab under INSTRUMENTS. For each type (instrument, audio, FX channel, group channel, folder):
+- **COLOUR:** click it for the family's 75 colours, or AUTOMATIC (red, pink and orange in turn by place, as before). Every new track of that type starts with it, and SET TRACK COLOUR TO DEFAULT in the colour menu gives it back.
+- **COLOUR IN THE TRACK LIST** and **HOW MUCH** (1-100 %): new tracks of that type start with their colour over their row (the step further you asked for).
+- **APPLY TO THIS SONG'S TRACKS** gives the open song's tracks their type's look now (Undo takes it back); **ALL AUTOMATIC** puts every type back.
+- COLOUR TRACKS IN ORDER (the colour menu) still wins while it's on. MIDI, sampler, drum and VCA types don't exist here: drums and samplers are instrument tracks.
+
+**The BOOSTER's values typed in.** Double-click the TRIM knob or the level fader (or the number under either) and type a value, as on the other faders: "-3", "+2.5 dB", "-inf" for silence; Enter sets it, one undo step. Ctrl-click puts it back to 0 dB (a double-click used to; it now opens the box, as everywhere else).
+
+## 0.79.0
+
+**COLOUR IN ORDER: tracks coloured by their number (you asked).** The colour menu's colours are numbered as they're laid out: 1-3 are the wide three (pink, red, orange), then the grid row by row, left to right, 75 in all. Switch on COLOUR TRACKS IN ORDER at the foot of the menu and track 1 takes colour 1, track 2 colour 2 and so on; track 76 starts again at colour 1. While it's on, each swatch shows its number.
+- **The range:** FROM TRACK and TO TRACK set which track numbers it covers (all the way up is "to the last", however many tracks come later).
+- **Track types:** INSTRUMENT, AUDIO, GROUP, FX and FOLDER can each be ticked or unticked. Unticked tracks keep their own colour and aren't counted, so the coloured ones run through the colours with no gaps (the first track in the range takes the FROM number's colour).
+- **It keeps matching:** move a track, add or remove one, undo: the colours follow the numbers. While it's on it wins over a colour picked by hand for those tracks (the menu says so). Hidden tracks and tracks inside a folded folder have no number in the track list, so they aren't counted while they're out of sight.
+- It's saved with the song.
+
+## 0.78.3
+
+**The play bar no longer stutters while playing (you reported it).** The play bar took its place from the audio engine, which only says where the song is once per block of sound. At your buffer size (2048 samples) that's about 21 times a second, in jumps of 46 ms, and the screen drew it 30 times a second: some frames it stood still, others it leapt. Now, between blocks, the play bar carries on by the clock at the song's tempo (never more than one block ahead, never past the cycle's end, never stepping back), and it's drawn 60 times a second while playing, in the arrangement and the MIDI editor. Only the play bar's thin strip is redrawn each frame (about 0.3 ms). Its glow was never the cause: it's three thin rectangles.
+
 ## 0.78.2
 
 **The Inspector opens laid out as you asked.** The track's basics, INSERTS, EQUALIZERS and BOOSTER are open; ROUTING, CHORDS, SENDS, FADER and QUICK CONTROLS are folded (click a title to open one). It's put in place once when 0.78.2 first starts; after that, whatever you open or fold is kept as before.

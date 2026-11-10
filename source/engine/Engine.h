@@ -106,6 +106,11 @@ namespace pr7s
         bool isRecording() const noexcept { return recording.load(); }
         void setPosition (double beats);
         double getPosition() const noexcept { return position.load(); }
+        // (0.78.3) Where the song is now, for the play bar: while playing, the position the last block
+        // reached carried on by the clock until the next block (at most one block's length, not past
+        // the cycle's end). getPosition moves a block at a time: at a 2048-sample buffer that's ~21
+        // steps a second, which drawn 30 times a second made the play bar stutter (the owner's report).
+        double getShownPosition() const noexcept;
         // How many times the cycle has come round (any thread): a pass of
         // writing automation ends when it does.
         int getCycleCount() const noexcept { return cycleCount.load(); }
@@ -509,6 +514,9 @@ namespace pr7s
 
         std::atomic<bool> playing { false }, recording { false };
         std::atomic<double> position { 0.0 }, jumpTo { -1.0 };
+        // (0.78.3) When `position` was last set (ms, the hi-res counter), the song's speed there
+        // (beats a second), the block's length (seconds) and the cycle's end (-1: none): getShownPosition.
+        std::atomic<double> positionMs { 0.0 }, beatsPerSecond { 2.0 }, blockSeconds { 0.0 }, shownLoopEnd { -1.0 };
         std::atomic<bool> rebase { false };
         std::atomic<bool> releaseAll { false };
         std::atomic<int> cycleCount { 0 };   // the position was moved while stopped: the clock starts from it

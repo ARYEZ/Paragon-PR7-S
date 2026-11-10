@@ -16,6 +16,7 @@
 #include <thread>
 
 #include "ui/AutomationKeys.h"
+#include "ui/HistoryPage.h"
 #include "ui/Logo.h"
 #include "ui/ParagonLookAndFeel.h"
 #include "ui/Pearl.h"
@@ -104,8 +105,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
             });
         });
     };
-    undoButton.setTooltip ("Undo (Ctrl+Z)");
-    redoButton.setTooltip ("Redo (Ctrl+Shift+Z)");
+    undoButton.setTooltip ("Undo (Ctrl+Z); right-click: the Edit History");
+    redoButton.setTooltip ("Redo (Ctrl+Shift+Z); right-click: the Edit History");
     editorButton.setTooltip ("The MIDI editor: the selected part's notes (F2 or Ctrl+E; or double-click a part)");
     editorButton.setColour (juce::TextButton::textColourOnId, ParagonColours::accent);
     mixerButton.setTooltip ("The mixer (F3; Alt+F3: docked or full screen)");
@@ -133,8 +134,25 @@ MainView::MainView (pr7s::Studio& studioToUse)
                 safe->exportMidiFile();
         });
     };
-    undoButton.onClick = [this] { studio.undo(); };
-    redoButton.onClick = [this] { studio.redo(); };
+    undoButton.onClick = [this] { if (! std::exchange (historyRightClick, false)) studio.undo(); };
+    redoButton.onClick = [this] { if (! std::exchange (historyRightClick, false)) studio.redo(); };
+    {
+        // (0.83.0) A right-click on UNDO or REDO opens the Edit History.
+        struct Opener final : juce::MouseListener
+        {
+            explicit Opener (MainView& v) : view (v) {}
+            void mouseDown (const juce::MouseEvent& e) override
+            {
+                view.historyRightClick = e.mods.isPopupMenu();   // (the key's click that follows doesn't undo)
+                if (view.historyRightClick)
+                    view.toggleEditHistory (true);
+            }
+            MainView& view;
+        };
+        historyOpener = std::make_unique<Opener> (*this);
+        undoButton.addMouseListener (historyOpener.get(), false);
+        redoButton.addMouseListener (historyOpener.get(), false);
+    }
     editorButton.onClick = [this] { isKeyEditorOpen() ? closeKeyEditor() : openKeyEditor(); };
     mixerButton.onClick = [this] { toggleMixerDocked(); };
     inspectorButton.setTooltip ("The Inspector: the selected track's settings, left of the track list (Ctrl+Alt+L)");
@@ -479,6 +497,8 @@ MainView::MainView (pr7s::Studio& studioToUse)
 
 MainView::~MainView()
 {
+    undoButton.removeMouseListener (historyOpener.get());
+    redoButton.removeMouseListener (historyOpener.get());
     studio.renderRunner = nullptr;
     studio.onProgress = nullptr;
     studio.isSuspendHeld = nullptr;
@@ -2480,6 +2500,7 @@ void MainView::openComposer()
     }
     composerWindow = std::make_unique<ComposerWindow> (studio);
     composerWindow->getPage().getSelectedParts = [this] { return arrange.getSelectedParts(); };   // (0.75.0: + MY RIFF)
+    composerWindow->getPage().onLearnMyBand = [this] { openBandRecord(); };   // (0.82.0)
     composerWindow->getPage().onOpenMixer = [this]   // (0.76.0) the mixer in its window, in front of the composer
     {
         if (! isMixerInWindow())
@@ -2492,6 +2513,24 @@ void MainView::openComposer()
     composerWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->composerWindow.reset(); }); };
     composerWindow->centreAroundComponent (this, composerWindow->getWidth(), composerWindow->getHeight());
     composerWindow->setVisible (true);
+}
+
+void MainView::openBandRecord()
+{
+    // (0.82.0) LEARN MY BAND: read the band's record into review songs; OPEN asks to save this song first.
+    if (bandRecordWindow != nullptr)
+    {
+        bandRecordWindow->toFront (true);
+        return;
+    }
+    bandRecordWindow = std::make_unique<BandRecordWindow> (studio);
+    bandRecordWindow->getPage().onOpenSong = [this] (const juce::File& file)
+    {
+        whenSongCanGo ([safe = juce::Component::SafePointer<MainView> (this), file] { if (safe != nullptr) safe->openSong (file); });
+    };
+    bandRecordWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->bandRecordWindow.reset(); }); };
+    bandRecordWindow->centreWithSize (1400, 860);
+    bandRecordWindow->setVisible (true);
 }
 
 void MainView::toggleTempoEditor()
@@ -2564,6 +2603,26 @@ void MainView::toggleMarkersWindow (bool openOnly)
     window->getPage().onOtherKey = [this] (const juce::KeyPress& k) { return keyPressed (k); };
     markersWindow = std::move (window);
     markersWindow->toFront (true);
+}
+
+void MainView::toggleEditHistory (bool openOnly)
+{
+    if (historyWindow != nullptr)
+    {
+        if (openOnly)
+            historyWindow->toFront (true);
+        else
+            historyWindow = nullptr;
+        return;
+    }
+    auto window = std::make_unique<HistoryWindow> (studio);
+    window->onClose = [safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->historyWindow = nullptr; });
+    };
+    window->getPage().onOtherKey = [this] (const juce::KeyPress& k) { return keyPressed (k); };
+    historyWindow = std::move (window);
+    historyWindow->toFront (true);
 }
 
 void MainView::openTempoDetection (int partId)

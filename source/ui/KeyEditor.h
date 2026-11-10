@@ -130,6 +130,18 @@ public:
     void setSoloEditor (bool on);
     bool isSoloEditorOn() const noexcept { return soloOn; }
     juce::TextButton& getSoloKey() noexcept { return soloKey; }
+    // (0.81.0, the owner asked) The cycle in the editor's ruler: its top strip shows the locators as the
+    // arrangement's does (drag a new range, drag a handle or the range, click in it: cycle on/off;
+    // Ctrl-click the left locator, Alt-click the right, both a grid step), P puts them round the
+    // selected notes (else the part), Alt+P loops it and plays.
+    bool locatorsToSelection();
+    juce::Rectangle<float> getCycleStrip() const;   // (tests) the ruler's top strip
+    static constexpr int cycleStripHeight = 10;
+    // (0.81.0, the owner asked) SNAP: the editor's own snap to its grid; off, notes go where they're
+    // dragged or drawn (Ctrl does that for one drag with SNAP on). J after a click in the editor.
+    void setSnap (bool on);
+    bool isSnapOn() const noexcept { return snapOn; }
+    juce::TextButton& getSnapKey() noexcept { return snapKey; }
     void visibilityChanged() override;
     void setInWindow (bool);   // the button's name follows
     bool isInWindow() const noexcept { return inWindow; }
@@ -302,7 +314,8 @@ public:
 private:
     juce::uint64 seenChange = 0;   // (0.57.1) the studio's change version last acted on
     enum class Gesture { none, position, audition, band, muteBand, move, resize, resizeStart, draw, erase, velocity, velocityHandle,
-                         controllerDraw, controllerErase, controllerBand, controllerMove, controllerHandle, controllerLine, laneResize };
+                         controllerDraw, controllerErase, controllerBand, controllerMove, controllerHandle, controllerLine, laneResize,
+                         cycle, cycleLeft, cycleRight, cycleMove };   // (0.81.0) the ruler's cycle strip
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
@@ -470,6 +483,10 @@ private:
                      soloKey { "SOLO EDITOR" };      // (0.78.0) only this part's track heard (Studio::setEditorSolo)
     bool soloOn = false;
     void refreshSolo();
+    juce::TextButton snapKey { "SNAP" };   // (0.81.0)
+    bool snapOn = true;
+    double cycleDownBeat = 0.0, cycleOriginalStart = 0.0, cycleOriginalLength = 0.0;   // (0.81.0) a cycle drag's start
+    bool cycleMoved = false;
     bool inWindow = false;
     juce::ComboBox gridBox;
 };

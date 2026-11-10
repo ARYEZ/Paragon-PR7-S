@@ -190,7 +190,7 @@ TEST_CASE ("Audio clips: split, they play exactly as before; glued back, one cli
     CHECK (back.fadeIn == 0.1);
     CHECK (back.fadeOut == 0.2);
 
-    // A clip from another recording after it: not glued (no audio parts of several clips yet).
+    // A clip from another recording after it whose file can't be read: not glued (0.82.6: readable ones are glued into a new file).
     Part other { 5.0, 2.0, "Other", {} };
     other.audioFile = "other.wav";
     studio.addPart (track, other);

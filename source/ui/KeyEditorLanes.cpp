@@ -1066,7 +1066,7 @@ void KeyEditor::laneMouseDrag (const juce::MouseEvent& event)
                 || (! moved && event.getDistanceFromDragStart() < 3))
                 return;
             moved = true;
-            const auto free = event.mods.isCommandDown();
+            const auto free = event.mods.isCommandDown() || ! snapOn;
             const auto& a = originalControllers[(size_t) anchorController];
             const auto from = part->start + a.start;
             auto shift = snapped (from + beatForX (p.x) - beatForX (downAt.x), free) - from;

@@ -3,6 +3,7 @@
 #include "ui/LinesPage.h"
 #include "ui/ProgressionsPage.h"
 #include "ui/ComposerPage.h"
+#include "ui/BandRecordPage.h"
 #include "ui/MediaBayPage.h"
 #include "ui/MediaRack.h"
 #include "ui/KeyCommands.h"
@@ -91,6 +92,9 @@ public:
     juce::DocumentWindow* getTempoDetectionWindow() noexcept { return tempoDetectionWindow.get(); }
     // The Markers window (0.49.0, Ctrl+M): opened, or closed if open (`openOnly`: brought to the front).
     void toggleMarkersWindow (bool openOnly = false);
+    // (0.83.0) The Edit History window (the manual's Edit > History; also a right-click on UNDO / REDO).
+    void toggleEditHistory (bool openOnly = false);
+    juce::DocumentWindow* getHistoryWindow() noexcept { return historyWindow.get(); }
     juce::DocumentWindow* getMarkersWindow() noexcept { return markersWindow.get(); }
     // The VariAudio editor (0.34.0) for an audio clip: one window, switched to the clip.
     void openVariAudio (int partId);
@@ -104,6 +108,8 @@ public:
     EqWindow* getEqWindow() noexcept { return eqWindow.get(); }   // the progression library (0.40.0): opened, or brought to the front
     ProgressionsWindow* getProgressionsWindow() noexcept { return progressionsWindow.get(); }
     void openComposer();   // (0.58.0) THE COMPOSER
+    void openBandRecord();   // (0.82.0) LEARN MY BAND
+    BandRecordWindow* getBandRecordWindow() noexcept { return bandRecordWindow.get(); }
     ComposerWindow* getComposerWindow() noexcept { return composerWindow.get(); }
     // The MediaBay (0.21.0): its window (F5 opens and closes it), and a file from it into the
     // song: audio or MIDI on a new track at the playhead, a track preset as a new track, a song
@@ -300,11 +306,16 @@ private:
     int saveFlashes = 0;
     std::unique_ptr<ProgressBox> progressBox;   // a long job's progress (0.11.1)
     std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow, drumMapWindow, automationWindow, alignmentWindow, variAudioWindow, tempoDetectionWindow,
-                                          markersWindow;
+                                          markersWindow, historyWindow;
+    std::unique_ptr<juce::MouseListener> historyOpener;   // (0.83.0) right-click on UNDO / REDO
+public:
+    bool historyRightClick = false;
+private:
     int trackListScrollY = 0;          // (0.34.1) what the track list was last laid out for
     double trackListRowZoom = 1.0;
     std::unique_ptr<ProgressionsWindow> progressionsWindow;
     std::unique_ptr<ComposerWindow> composerWindow;
+    std::unique_ptr<BandRecordWindow> bandRecordWindow;
     std::unique_ptr<EqWindow> eqWindow;
     std::unique_ptr<MediaBayWindow> mediaBayWindow;
     std::unique_ptr<MediaRack> mediaRack;

@@ -448,6 +448,12 @@ void ArrangeView::showMarkerMenu (int index)
         menu.addItem (3, "Zoom to This Cycle Marker", cycle);
         menu.addItem (4, "Description...", ! track.locked);
         menu.addItem (5, markerSelection.size() > 1 ? "Delete Them" : "Delete", ! track.locked);
+        // (0.82.3, the owner's list) The song's parts by name, numbered where they come back.
+        juce::PopupMenu sections;
+        for (int i = 0; i < pr7s::songSectionNames().size(); ++i)
+            sections.addItem (sectionItems + i, pr7s::songSectionNames()[i], ! track.locked,
+                              pr7s::sectionBaseOf (track.markers[(size_t) index].name) == pr7s::songSectionNames()[i]);
+        menu.addSubMenu ("Name as a Song Section", sections, ! track.locked);
         menu.addSeparator();
     }
     menu.addItem (10, "Add a Position Marker at the Cursor (Insert)", ! track.locked);
@@ -481,8 +487,22 @@ void ArrangeView::showMarkerMenu (int index)
             case 15: studio.setMarkerSettings (t.showLines, t.showIds, ! t.cycleFollows); break;
             case 16: studio.setMarkerTrackLocked (! t.locked); break;
             case 17: studio.removeMarkerTrack(); break;
-            default: return;
+            default:
+                if (chosen >= sectionItems && chosen < sectionItems + pr7s::songSectionNames().size())
+                    safe->nameMarkerAsSection (index, pr7s::songSectionNames()[chosen - sectionItems]);
+                else
+                    return;
         }
         safe->repaint();
     });
+}
+
+bool ArrangeView::nameMarkerAsSection (int index, const juce::String& section)
+{
+    auto markers = studio.getMarkerTrack().markers;
+    if (! juce::isPositiveAndBelow (index, (int) markers.size()) || studio.getMarkerTrack().locked)
+        return false;
+    markers[(size_t) index].name = section;
+    pr7s::numberSections (markers);
+    return studio.setMarkers (markers);
 }
