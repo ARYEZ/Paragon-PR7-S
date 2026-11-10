@@ -438,8 +438,8 @@ TEST_CASE ("0.82.4: the keyboards' own MIDI: found by name, read as it is (track
     const Track* pad = nullptr;
     for (const auto& t : studio.getProject().tracks)
     {
-        if (t.name == "KEYS: Piano") piano = &t;
-        if (t.name == "KEYS: Pad") pad = &t;
+        if (t.name == "KEYS: Opener keys - Piano") piano = &t;
+        if (t.name == "KEYS: Opener keys - Pad") pad = &t;
     }
     INFO (report);
     REQUIRE (piano != nullptr);
@@ -453,5 +453,35 @@ TEST_CASE ("0.82.4: the keyboards' own MIDI: found by name, read as it is (track
     CHECK (pad->parts[0].notes[0].pitch == 69);
     CHECK_THAT (pad->parts[0].notes[0].start, WithinAbs (1.0, 1.0e-6));
     CHECK (pad->midiChannel == 2);
+    folder.deleteRecursively();
+}
+
+TEST_CASE ("0.82.4: the owner's names: a file per keyboard part, the drums by their name", "[band][keys]")
+{
+    const auto at = [] (const char* name) { return juce::File::getCurrentWorkingDirectory().getChildFile (name); };
+    CHECK (guessBandRole (at ("keys 1.midi")) == BandRole::keys);
+    CHECK (guessBandRole (at ("pad2.midi")) == BandRole::keys);
+    CHECK (guessBandRole (at ("lead.midi")) == BandRole::keys);
+    CHECK (guessBandRole (at ("bass.mid")) == BandRole::keys);       // a synth bass's MIDI (the bassist's DI is a .wav)
+    CHECK (guessBandRole (at ("FINAL_DRUMS.mid")) == BandRole::drums);
+    CHECK (guessBandRole (at ("drum lead in.mid")) == BandRole::drums);
+    CHECK (guessBandRole (at ("Song 3.mid")) == BandRole::drums);    // named nothing we know: the drums, as before
+    CHECK (guessBandRole (at ("lead.wav")) == BandRole::lead);       // a DI stays the lead guitar
+
+    const auto folder = juce::File::createTempFile ("").getSiblingFile ("pr7s-band-names-0824");
+    folder.deleteRecursively();
+    const auto song = folder.getChildFile ("Song One");
+    song.createDirectory();
+    for (const auto* name : { "FINAL_DRUMS.mid", "keys 1.midi", "pad2.midi", "lead.midi" })
+        song.getChildFile (name).replaceWithText ("x");
+    REQUIRE (writeWav (song.getChildFile ("BASS_DI.wav"), di ({ { 0.0, 0.4, 33.0 } }, 0.5), rate));
+    const auto songs = scanBandFolder (folder);
+    REQUIRE (songs.size() == 1);
+    CHECK (songs[0].drums.getFileName() == "FINAL_DRUMS.mid");
+    int keys = 0;
+    for (const auto& [f, r] : songs[0].dis)
+        keys += r == BandRole::keys ? 1 : 0;
+    CHECK (keys == 3);
+    CHECK (songs[0].fileOf (BandRole::bass).getFileName() == "BASS_DI.wav");
     folder.deleteRecursively();
 }

@@ -2,7 +2,11 @@
 
 Each version's notes appear on its GitHub Release page.
 
-## 0.82.4
+## 0.82.5
+
+**Your keyboard files as you named them** ("keys 1.midi", "pad2.midi", "lead.midi": a file per part). A MIDI file is now the drums only when its name says drums (drum, drums, kit, perc...); any MIDI file named for something a keyboard player plays (keys, piano, pad, lead, synth, bass, arp, strings, organ...) is a keyboard part. Before, "lead.midi" would have been taken for the drums ("lead" only meant the lead guitar's DI) and a synth bass's "bass.midi" likewise. A MIDI file named nothing we know (just the song's name) is still the drums, and a WAV named lead is still the lead guitar's DI. In the review song each keyboard part's track is named after its file ("KEYS: pad2", "KEYS: lead"), so the part kinds stay told apart for the learning.
+
+
 
 **The keyboards join LEARN MY BAND** (you have every keyboard part as the players' own MIDI). Nothing has to be heard: the notes, their timing, how hard each was played and the sustain pedal are read exactly as programmed.
 

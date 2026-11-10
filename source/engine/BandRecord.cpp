@@ -235,8 +235,18 @@ namespace pr7s
         const auto words = wordsOf (file.getFileNameWithoutExtension());
         if (isMidi (file))
         {
+            // (0.82.4, the owner's names: "keys 1.midi", "pad2.midi", "lead.midi") A MIDI file is the drums when its
+            // name says so; one named anything a keyboard player plays (keys, pad, lead, synth bass...) is the keyboards;
+            // one named nothing we know (the song's name alone) is the drums, as before.
+            static const juce::StringArray drumWords { "drums", "drum", "dr", "kit", "drm", "perc", "percussion", "beat", "beats" };
+            static const juce::StringArray partWords { "lead", "ld", "leads", "solo", "bass", "bs", "synthbass", "sub", "arp", "arps",
+                                                       "chords", "chord", "pluck", "plucks", "bell", "bells", "fx", "sfx", "choir", "brass",
+                                                       "lead1", "lead2" };
             for (const auto& w : words)
-                if (keysWords.contains (w))
+                if (drumWords.contains (w))
+                    return BandRole::drums;
+            for (const auto& w : words)
+                if (keysWords.contains (w) || partWords.contains (w))
                     return BandRole::keys;
             return BandRole::drums;
         }
@@ -1211,8 +1221,12 @@ namespace pr7s
             }
             for (const auto& t : keys->tracks)
             {
+                // Named after its file ("pad2", "lead"): the owner names a file per part; a file of several tracks adds each
+                // track's own name.
                 Part part;
-                part.name = (t.name.isNotEmpty() ? t.name : file.getFileNameWithoutExtension());
+                part.name = file.getFileNameWithoutExtension();
+                if (keys->tracks.size() > 1)
+                    part.name << " - " << (t.name.isNotEmpty() ? t.name : "track " + juce::String (&t - keys->tracks.data() + 1));
                 auto last = 0.0;
                 for (auto n : t.notes)
                 {
