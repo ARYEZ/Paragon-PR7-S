@@ -315,6 +315,8 @@ TEST_CASE ("0.82.0: the owner's record, read", "[.bandreal]")
         juce::String problems;
         REQUIRE (studio.open (made, problems));
         const auto& project = studio.getProject();
+        for (const auto& m : project.markerTrack.markers)
+            std::cout << "  SECTION " << m.name << " from bar " << (project.signatures().barAt (m.start) + 1) << ", " << juce::roundToInt ((m.end - m.start) / project.beatsPerBar()) << " bars\n";
         for (const auto& t : project.tracks)
         {
             if (t.parts.empty() || t.isAudio())

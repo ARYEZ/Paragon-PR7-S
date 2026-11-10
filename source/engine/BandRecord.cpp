@@ -1,6 +1,8 @@
 #include "BandRecord.h"
 
 #include "DrumMaps.h"
+#include "DrumLearning.h"
+#include "Markers.h"
 #include "MidiImport.h"
 #include "Studio.h"
 
@@ -335,6 +337,210 @@ namespace pr7s
             songs.push_back (std::move (song));
         }
         return songs;
+    }
+
+
+    //==========================================================================
+    std::vector<float> riffChanges (const std::vector<LineNote>& riff, const SignatureMap& map, int bars)
+    {
+        std::vector<float> changes ((size_t) juce::jmax (0, bars), 0.0f);
+        if (riff.empty() || bars < 3)
+            return changes;
+        // Each bar: the pitch classes it plays (by length) and where its notes start (16 places).
+        struct Feel { std::array<float, 12> pcs {}; std::array<float, 16> onsets {}; bool empty = true; };
+        std::vector<Feel> feel ((size_t) bars);
+        for (const auto& n : riff)
+        {
+            if (n.keyswitch)
+                continue;
+            const auto b = map.barAt (n.beat);
+            if (! juce::isPositiveAndBelow (b, bars))
+                continue;
+            auto& f = feel[(size_t) b];
+            const auto start = map.beatOfBar (b), length = map.beatOfBar (b + 1) - start;
+            f.pcs[(size_t) (((n.pitch % 12) + 12) % 12)] += (float) juce::jlimit (0.05, 1.0, n.length);
+            f.onsets[(size_t) juce::jlimit (0, 15, (int) ((n.beat - start) / length * 16.0))] = 1.0f;
+            f.empty = false;
+        }
+        for (auto& f : feel)
+        {
+            auto sum = 0.0f;
+            for (const auto v : f.pcs) sum += v;
+            if (sum > 0.0f)
+                for (auto& v : f.pcs) v /= sum;
+        }
+        const auto distance = [] (const Feel& a, const Feel& b)
+        {
+            if (a.empty || b.empty)
+                return a.empty == b.empty ? 0.0f : 2.0f;
+            auto d = 0.0f, o = 0.0f;
+            for (size_t i = 0; i < 12; ++i) d += std::abs (a.pcs[i] - b.pcs[i]);
+            for (size_t i = 0; i < 16; ++i) o += std::abs (a.onsets[i] - b.onsets[i]);
+            return d + o / 16.0f;
+        };
+        const auto mean = [&] (int from, int to)
+        {
+            Feel m;
+            auto count = 0;
+            for (auto i = from; i < to; ++i)
+                if (! feel[(size_t) i].empty)
+                {
+                    for (size_t k = 0; k < 12; ++k) m.pcs[k] += feel[(size_t) i].pcs[k];
+                    for (size_t k = 0; k < 16; ++k) m.onsets[k] += feel[(size_t) i].onsets[k];
+                    ++count;
+                }
+            if (count > 0)
+            {
+                for (auto& v : m.pcs) v /= (float) count;
+                for (auto& v : m.onsets) v /= (float) count;
+                m.empty = false;
+            }
+            return m;
+        };
+        // A riff repeats every bar or two: the two bars before against the two after, less how much the bars
+        // inside each side differ (a two-bar riff's halves aren't a change).
+        for (auto b = 2; b + 2 <= bars; ++b)
+        {
+            const auto cross = distance (mean (b - 2, b), mean (b, b + 2));
+            const auto within = 0.5f * (distance (feel[(size_t) b - 2], feel[(size_t) b - 1]) + distance (feel[(size_t) b], feel[(size_t) b + 1]));
+            changes[(size_t) b] = juce::jlimit (0.0f, 1.5f, (cross - 0.5f * within) * 1.0f);
+        }
+        return changes;
+    }
+
+    std::vector<BandSection> findBandSections (const std::vector<Note>& drums, const SignatureMap& map,
+                                               const std::vector<LineNote>& riff, const std::vector<LineNote>& lead)
+    {
+        auto song = drumSongFromNotes ("band", drums, 120.0, map);
+        if (song.bars.empty())
+            return {};
+        const auto count = (int) song.bars.size();
+        const auto changes = riffChanges (riff, map, count);
+        auto found = findSections (song.bars, &changes);
+        // Songs move in phrases: a cut within a bar of a four-bar line goes onto it, pieces under two bars join
+        // the section before (the first: the one after).
+        std::vector<int> cuts;
+        for (size_t i = 1; i < found.size(); ++i)
+        {
+            auto c = found[i].firstBar;
+            const auto phrase = juce::roundToInt (c / 4.0) * 4;
+            if (std::abs (phrase - c) <= 1)
+                c = phrase;
+            if (c > 0 && c < count && (cuts.empty() || c > cuts.back()))
+                cuts.push_back (c);
+        }
+        std::vector<DrumSongSection> sections;
+        auto from = 0;
+        for (const auto c : cuts)
+        {
+            if (c - from >= 2)
+            {
+                sections.push_back ({ from, c - from });
+                from = c;
+            }
+        }
+        if (count - from < 2 && ! sections.empty())
+            sections.back().bars += count - from;
+        else
+            sections.push_back ({ from, count - from });
+        nameSections (song.bars, sections);
+        // Next to each other and playing alike (the same group, the same kind): one section, cut where it needn't be.
+        for (size_t i = 1; i < sections.size();)
+            if (sections[i].group >= 0 && sections[i].group == sections[i - 1].group && sections[i].kind == sections[i - 1].kind)
+            {
+                sections[i - 1].bars += sections[i].bars;
+                sections.erase (sections.begin() + (long) i);
+            }
+            else
+                ++i;
+        const auto n = (int) sections.size();
+        std::vector<juce::String> names;
+        for (const auto& s : sections)
+            switch (s.kind)
+            {
+                case DrumSection::intro:     names.push_back ("Intro"); break;
+                case DrumSection::chorus:    names.push_back ("Chorus"); break;
+                case DrumSection::bridge:    names.push_back ("Bridge"); break;
+                case DrumSection::breakdown: names.push_back ("Breakdown"); break;
+                case DrumSection::ending:    names.push_back ("Outro"); break;
+                case DrumSection::solo:      names.push_back ("Solo"); break;
+                case DrumSection::verse:
+                default:                     names.push_back ("Verse"); break;
+            }
+        // The solo: where the lead plays far busier than it does elsewhere.
+        if (! lead.empty())
+        {
+            std::vector<float> density;
+            for (const auto& s : sections)
+            {
+                const auto from = map.beatOfBar (s.firstBar), to = map.beatOfBar (s.firstBar + s.bars);
+                const auto notes = std::count_if (lead.begin(), lead.end(), [&] (const LineNote& l) { return ! l.keyswitch && l.beat >= from && l.beat < to; });
+                density.push_back ((float) notes / (float) juce::jmax (1, s.bars));
+            }
+            auto sorted = density;
+            std::sort (sorted.begin(), sorted.end());
+            const auto median = sorted[sorted.size() / 2];
+            for (auto i = 0; i < n; ++i)
+                if (density[(size_t) i] >= 4.0f && density[(size_t) i] >= 2.0f * median + 1.0f && names[(size_t) i] != "Intro" && names[(size_t) i] != "Outro")
+                    names[(size_t) i] = "Solo";
+        }
+        const auto introGroup = n > 0 && names[0] == "Intro" ? sections[0].group : -2;
+        const auto plain = [&] (int i) { return (names[(size_t) i] == "Verse" || names[(size_t) i] == "Bridge") && sections[(size_t) i].bars <= 8; };
+        // Plays like a verse found elsewhere in the song (then it is one).
+        const auto verseGroup = [&] (int i)
+        {
+            for (auto j = 0; j < n; ++j)
+                if (j != i && names[(size_t) j] == "Verse" && sections[(size_t) j].group == sections[(size_t) i].group)
+                    return true;
+            return false;
+        };
+        // A short part between a verse and a chorus, playing like neither: the pre-chorus; and every short part
+        // that plays as one does.
+        std::vector<int> preGroups;
+        for (auto i = 1; i + 1 < n; ++i)
+            if (plain (i) && names[(size_t) i + 1] == "Chorus" && names[(size_t) i - 1] == "Verse"
+                && sections[(size_t) i].group != sections[(size_t) i + 1].group && sections[(size_t) i].group != sections[(size_t) i - 1].group
+                && ! verseGroup (i))
+                preGroups.push_back (sections[(size_t) i].group);
+        for (auto i = 1; i + 1 < n; ++i)
+            if (plain (i) && std::find (preGroups.begin(), preGroups.end(), sections[(size_t) i].group) != preGroups.end()
+                && names[(size_t) i + 1] == "Chorus")
+                names[(size_t) i] = "Pre-Chorus";
+        // A short part after a chorus, playing like no verse, no pre-chorus and not what follows: a post-chorus (the
+        // intro's groove come back: an interlude).
+        for (auto i = 1; i + 1 < n; ++i)
+        {
+            const auto& sec = sections[(size_t) i];
+            if (plain (i) && names[(size_t) i - 1] == "Chorus" && sec.group != sections[(size_t) i - 1].group
+                && sec.group != sections[(size_t) i + 1].group && ! verseGroup (i)
+                && std::find (preGroups.begin(), preGroups.end(), sec.group) == preGroups.end())
+                names[(size_t) i] = sec.group == introGroup ? "Interlude" : "Post-Chorus";
+        }
+        // Next to each other under one name (two verse riffs back to back): one section.
+        for (size_t i = 1; i < sections.size();)
+            if (names[i] == names[i - 1])
+            {
+                sections[i - 1].bars += sections[i].bars;
+                sections.erase (sections.begin() + (long) i);
+                names.erase (names.begin() + (long) i);
+            }
+            else
+                ++i;
+        const auto kept = (int) sections.size();
+        std::vector<Marker> markers;
+        for (auto i = 0; i < kept; ++i)
+        {
+            Marker m;
+            m.cycle = true;
+            m.start = (double) sections[(size_t) i].firstBar;
+            m.name = names[(size_t) i];
+            markers.push_back (m);
+        }
+        numberSections (markers);
+        std::vector<BandSection> named;
+        for (auto i = 0; i < kept; ++i)
+            named.push_back ({ sections[(size_t) i].firstBar, sections[(size_t) i].bars, markers[(size_t) i].name });
+        return named;
     }
 
     //==========================================================================
@@ -913,6 +1119,7 @@ namespace pr7s
             addTrack (drumTrack);
         }
 
+        std::vector<LineNote> riffNotes, leadNotes;
         for (const auto& h : heard)
         {
             // The DI itself, copied beside the song (stretched to the click when the files run off it).
@@ -945,11 +1152,42 @@ namespace pr7s
             for (const auto& n : idea.notes)
                 heardPart.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
             heardPart.controllers = Studio::effectControllers (idea.notes, range);
+            auto& gathered = h.role == BandRole::lead ? leadNotes : riffNotes;
+            gathered.insert (gathered.end(), idea.notes.begin(), idea.notes.end());
             Track heardTrack;
             heardTrack.kind = Track::Kind::instrument;
             heardTrack.name = bandRoleName (h.role) + " (heard)";
             heardTrack.parts.push_back (heardPart);
             addTrack (heardTrack);
+        }
+        // The song's sections, as cycle markers to rename and move.
+        if (drums.has_value())
+        {
+            std::vector<Note> drumNotes;
+            for (const auto& t : project.tracks)
+                if (t.name == "Drums (MIDI)" && ! t.parts.empty())
+                    drumNotes = t.parts[0].notes;
+            const auto map = project.signatures();
+            const auto sections = findBandSections (drumNotes, map, riffNotes, leadNotes);
+            if (sections.size() > 1)
+            {
+                juce::StringArray named;
+                for (const auto& sec : sections)
+                {
+                    Marker m;
+                    m.cycle = true;
+                    m.id = project.markerTrack.nextId (true);
+                    m.start = map.beatOfBar (sec.firstBar);
+                    m.end = map.beatOfBar (sec.firstBar + sec.bars);
+                    m.name = sec.name;
+                    project.markerTrack.markers.push_back (m);
+                    named.add (sec.name);
+                }
+                project.markerTrack.shown = true;
+                project.markerTrack.name = "Sections";
+                project.markerTrack.sort();
+                said.add ("Sections (a guess from the drums and the riffs: rename or move the markers): " + named.joinIntoString (", ") + ".");
+            }
         }
         if (project.tracks.empty())
         {

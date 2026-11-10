@@ -310,6 +310,9 @@ public:
     void deleteSelectedMarkers();
     void editMarkerName (int index);   // a box to type its description
     void showMarkerMenu (int index);   // -1: the track's own
+    // (0.82.3) A marker named as a song section ("Verse"), the sections numbered again ("Verse 1", "Verse 2").
+    bool nameMarkerAsSection (int index, const juce::String& section);
+    static constexpr int sectionItems = 300;
     void zoomTo (double start, double end);   // the view to a range (a cycle marker's)
     bool selectRangeBetweenMarkers (double beat);   // the Range tool's double-click
     juce::Rectangle<float> getMarkerArea() const;

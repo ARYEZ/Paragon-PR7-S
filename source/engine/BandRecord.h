@@ -3,6 +3,8 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 
 #include "Lines.h"
+#include "Project.h"
+#include "Signature.h"
 
 #include <optional>
 
@@ -100,6 +102,24 @@ namespace pr7s
         int matched = 0, kicks = 0;   // kicks with a note within 30 ms at the fit
     };
     BandAlignment alignBand (const std::vector<double>& kickBeats, std::vector<double> onsetSeconds, double bpm, double barBeats = 4.0);
+    // (0.82.3, the owner asked: the songs broken into their parts) A song's sections from the drummer's MIDI (the
+    // drum learner's finder: groove changes, crashes, fills, the cymbal, half time), helped by where the rhythm
+    // guitar's and bass's riff changes, then named with the band's words: intro, verse, pre-chorus (short, between
+    // a verse and a chorus, playing like neither), chorus, post-chorus (short, after a chorus, playing like neither;
+    // one that plays the intro's groove again: interlude), bridge, breakdown, solo (where the lead plays far busier
+    // than it does elsewhere), outro. Numbered where they come back ("Verse 1", "Verse 2"). A guess: the review
+    // song's cycle markers are there to be renamed and moved. Bars from the song's start; the drums placed already.
+    struct BandSection
+    {
+        int firstBar = 0, bars = 1;
+        juce::String name;
+        bool operator== (const BandSection&) const = default;
+    };
+    std::vector<BandSection> findBandSections (const std::vector<Note>& drums, const SignatureMap&,
+                                               const std::vector<LineNote>& riff, const std::vector<LineNote>& lead);
+    // Where the riff changes at each bar line (0 none .. 1.5 sure: it tips the drums' close calls), from the notes of the bars either side.
+    std::vector<float> riffChanges (const std::vector<LineNote>& riff, const SignatureMap&, int bars);
+
     // Documents/Paragon PR7-S/Band Record (where the review songs go).
     juce::File defaultBandReviewFolder();
 }

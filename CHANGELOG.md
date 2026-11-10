@@ -2,7 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
-## 0.82.2
+## 0.82.3
+
+**Your songs broken into their parts** (you asked). Every review song LEARN MY BAND writes now opens with its sections marked: a "Sections" marker track with a cycle marker per part, named and numbered (Intro, Verse 1, Pre-Chorus 1, Chorus 1, Post-Chorus 1, Verse 2, ... Solo, Breakdown, Outro).
+
+- **How it finds them:** the drum learner's section finder reads your drummer's MIDI (where the groove changes, crashes, fills into a change, the hand moving between hats, ride and china, half time). Where the rhythm guitar's and bass's riff changes at the same bar line, that tips a close call. Boundaries go onto four-bar lines when they're within a bar of one, pieces under two bars join a neighbour, and neighbouring parts that play alike are one part.
+- **How it names them:** the drums give intro, verse, chorus, bridge, breakdown and outro (the part that comes back most is the verse, the bigger repeated one the chorus). Then the band's words: a short part between a verse and a chorus that plays like neither is a **pre-chorus**; a short part after a chorus that plays like no verse is a **post-chorus** (an **interlude** when it plays the intro's groove again); where the lead DI plays far busier than anywhere else, a **solo**. Parts that come back are numbered in order (the third verse is Verse 3).
+- **Every name you listed, and more, to choose from:** right-click a cycle marker, **Name as a Song Section**: Intro, Verse, Pre-Chorus, Chorus, Post-Chorus, Hook, Refrain, Bridge, Middle 8, Breakdown, Build-Up, Drop, Solo, Instrumental, Interlude, Riff, Break, Tag, Outro, Ending, Coda. The numbers redo themselves: name a part Verse and the verses are numbered 1, 2, 3 in order again. Drag a marker's edges to move a section; double-click its name to type your own.
+- **On your first song:** 17 sections, starting with an 18-bar Verse 1 (no intro found: if the song has one, rename and move it), choruses at bars 83, 99 and 133, a breakdown at 91, the outro at 149. It's a guess from patterns, not from hearing the song as you do: expect to rename and move a few. The corrected sections are what 0.83.0 will learn from, so each player's verse habits and chorus habits are kept apart.
+
+
 
 **Djinn Bass 2 tuned to your bass: drop A, A E A D G** (you asked). The profile had A D A D G from the screenshot in 0.62.0; its second string is now E. Your saved profile is updated once when you open the Hub's INSTRUMENTS page or the composer, and everything else in it (keyswitches, range, bend) stays as you set it. If you change the tuning by hand later, it's kept. What changes in use: the composer's bass on Djinn works out strings and frets with an E string, so ONLY STRING 2 and the low-string choices put notes where your bassist would.
 

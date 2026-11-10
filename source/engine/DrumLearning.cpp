@@ -526,7 +526,7 @@ namespace pr7s
         return files;
     }
 
-    std::vector<DrumSongSection> findSections (const std::vector<DrumBar>& bars)
+    std::vector<DrumSongSection> findSections (const std::vector<DrumBar>& bars, const std::vector<float>* extra)
     {
         const auto n = (int) bars.size();
         if (n == 0)
@@ -551,6 +551,8 @@ namespace pr7s
                 score += 2.0f;
             if (now.silent() != before.silent())
                 score += 4.0f;
+            if (extra != nullptr && b < (int) extra->size())
+                score += (*extra)[(size_t) b];
             if (score >= 2.5f)
                 candidates.emplace_back (score, b);
         }

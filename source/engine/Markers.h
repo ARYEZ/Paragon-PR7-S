@@ -55,4 +55,13 @@ namespace pr7s
 
     // "1", or "(2)" for a cycle marker (the manual shows those in brackets).
     juce::String markerIdText (const Marker&);
+
+    // (0.82.3, the owner's list) The names a song's sections go by, for naming cycle markers: Intro, Verse,
+    // Pre-Chorus, Chorus, Post-Chorus, Bridge, Breakdown, Solo, Interlude... (ours, in a song's usual order).
+    const juce::StringArray& songSectionNames();
+    // A name's section without its number ("Verse 3" -> "Verse"; "Chorus" -> "Chorus"); not one of the list: empty.
+    juce::String sectionBaseOf (const juce::String& name);
+    // Section names numbered in time order where a section comes more than once ("Verse 1", "Verse 2", "Verse 3"),
+    // plain where it comes once. Other names are left alone.
+    void numberSections (std::vector<Marker>&);
 }

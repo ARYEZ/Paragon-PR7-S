@@ -1983,7 +1983,7 @@ TEST_CASE ("Snapshot: a band review song (0.82.0)", "[.][snapshot-bandreview]")
                 track = t.id;
         auto& arrange = view.getArrangeView();
         const auto bar = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_BAR", "3").getIntValue();
-        arrange.getTimeline().pixelsPerBeat = 60.0;
+        arrange.getTimeline().pixelsPerBeat = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_PPB", "60").getDoubleValue();   // (0.82.3: the whole song)
         arrange.getTimeline().firstBeat = (bar - 1) * studio.getProject().beatsPerBar();
         if (track != 0)
         {

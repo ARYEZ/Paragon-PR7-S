@@ -86,7 +86,9 @@ namespace pr7s
     // The song's MIDI files in a folder and those under it (sorted by name).
     std::vector<juce::File> findDrumSongs (const juce::File& folder);
 
-    std::vector<DrumSongSection> findSections (const std::vector<DrumBar>&);
+    // (0.82.3) `extra`: more evidence for a change at each bar line (index = the bar starting there; the band
+    // record's riff changes), added to the drums' own score.
+    std::vector<DrumSongSection> findSections (const std::vector<DrumBar>&, const std::vector<float>* extra = nullptr);
     void nameSections (const std::vector<DrumBar>&, std::vector<DrumSongSection>&);   // (groups and kinds)
 
     // The review page's edits (false: not possible there). Each keeps the sections covering the song.
