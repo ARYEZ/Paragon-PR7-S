@@ -37,15 +37,28 @@ juce::String BoosterView::dbText (float db, bool isTrim)
 
 BoosterView::BoosterView (pr7s::Studio& s) : studio (s)
 {
+    trim.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+    trim.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     trim.setRange (-pr7s::Booster::trimRange, pr7s::Booster::trimRange, 0.1);
-    trim.setDoubleClickReturnValue (true, 0.0);
-    trim.setTooltip ("TRIM: fine level, -12 to +12 dB (as PR7-C's OUTPUT TRIM). Double-click for 0 dB.");
+    trim.setDoubleClickReturnValue (true, 0.0, juce::ModifierKeys::commandModifier);   // (Ctrl-click: 0 dB, as the other faders)
+    trim.textFromValueFunction = [] (double v) { return dbText ((float) v, true); };
+    trim.parse = [] (const juce::String& text) { return ValueEntry::parseDb (text, -pr7s::Booster::trimRange, pr7s::Booster::trimRange); };
+    trim.setTooltip ("TRIM: fine level, -12 to +12 dB (as PR7-C's OUTPUT TRIM). Double-click to type a value; Ctrl-click for 0 dB.");
+    fader.setSliderStyle (juce::Slider::LinearVertical);
+    fader.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     fader.setRange (0.0, 1.0);
     fader.getProperties().set (ParagonLookAndFeel::channelFaderProperty, true);
-    fader.setDoubleClickReturnValue (true, faderProportion (0.0f));
+    fader.setDoubleClickReturnValue (true, faderProportion (0.0f), juce::ModifierKeys::commandModifier);
     fader.setVelocityModeParameters (0.25, 1, 0.0, true, juce::ModifierKeys::shiftModifier);   // Shift-drag: fine
+    fader.textFromValueFunction = [] (double v) { return dbText (faderDb ((float) v), false); };
+    fader.parse = [] (const juce::String& text) -> std::optional<double>
+    {
+        if (const auto db = ValueEntry::parseDb (text, pr7s::Booster::leastLevel, pr7s::Booster::mostLevel))
+            return (double) faderProportion ((float) *db);
+        return std::nullopt;
+    };
     fader.setTooltip ("The booster's level: +10 dB down to silence at the bottom, after the EQ and before the sends and fader. "
-                      "Double-click for 0 dB; Shift-drag for fine moves.");
+                      "Double-click to type a value (-inf for silence); Ctrl-click for 0 dB; Shift-drag for fine moves.");
     for (auto* slider : { &trim, &fader })
     {
         slider->setWantsKeyboardFocus (false);
@@ -94,6 +107,16 @@ int BoosterView::getPreferredHeight (int width) const
 {
     juce::ignoreUnused (width);
     return 210;
+}
+
+void BoosterView::mouseDoubleClick (const juce::MouseEvent& e)
+{
+    if (! isEnabled())
+        return;
+    if (trimReadout.expanded (0, 2).contains (e.getPosition()))
+        trim.showEntry();
+    else if (faderReadout.expanded (0, 2).contains (e.getPosition()))
+        fader.showEntry();
 }
 
 void BoosterView::resized()

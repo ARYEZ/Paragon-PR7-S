@@ -478,7 +478,7 @@ namespace pr7s
         Track track;
         track.id = project.nextTrackId++;
         track.instrument = instrument;
-        track.colour = trackColour ((int) project.tracks.size());
+        giveTypeLook (track, (int) project.tracks.size());
         // Named after its instrument, numbered: "Synth 1", "Pianoteq 2"...
         const auto base = instrument.kind == Instrument::Kind::paragonSynth ? juce::String ("Synth") : instrument.getName();
         int number = 1;
@@ -502,7 +502,7 @@ namespace pr7s
         track.id = project.nextTrackId++;
         track.kind = Track::Kind::audio;
         track.stereoInput = stereo;
-        track.colour = trackColour ((int) project.tracks.size());
+        giveTypeLook (track, (int) project.tracks.size());
         int number = 1;
         for (const auto& other : project.tracks)
             if (other.name.startsWith ("Audio "))
@@ -544,7 +544,7 @@ namespace pr7s
         Track track;
         track.id = project.nextTrackId++;
         track.kind = Track::Kind::fx;
-        track.colour = trackColour ((int) project.tracks.size());
+        giveTypeLook (track, (int) project.tracks.size());
         track.name = "FX " + juce::String (number) + (insert.isEmpty() ? juce::String() : "-" + insert.plugin.name);
         project.tracks.push_back (track);
         engine.addChannel (track.id, false);
@@ -567,7 +567,7 @@ namespace pr7s
         Track track;
         track.id = project.nextTrackId++;
         track.kind = Track::Kind::group;
-        track.colour = trackColour ((int) project.tracks.size());
+        giveTypeLook (track, (int) project.tracks.size());
         track.name = "Group " + juce::String (number);
         project.tracks.push_back (track);
         engine.addChannel (track.id, true);
@@ -993,7 +993,7 @@ namespace pr7s
         Track track;
         track.id = project.nextTrackId++;
         track.kind = Track::Kind::folder;
-        track.colour = trackColour ((int) project.tracks.size());
+        giveTypeLook (track, (int) project.tracks.size());
         track.name = name.isNotEmpty() ? name : "Folder " + juce::String (number);
         track.folderGroup = withGroup;
         project.tracks.push_back (track);
@@ -1479,7 +1479,7 @@ namespace pr7s
             auto& track = project.tracks[(size_t) i];
             if (std::find (trackIds.begin(), trackIds.end(), track.id) == trackIds.end())
                 continue;
-            const auto now = colour ? *colour : trackColour (i);
+            const auto now = colour ? *colour : getTrackTypeLook (track.kind).colour.value_or (trackColour (i));
             any = any || track.colour != now;
             track.colour = now;
         }
@@ -8141,6 +8141,78 @@ namespace pr7s
         dropHighlight = juce::jlimit (0.1f, 1.0f, strength);
         if (settings != nullptr)
             settings->setValue ("dropHighlight", (double) dropHighlight);
+    }
+
+    juce::String Studio::trackTypeName (Track::Kind kind)
+    {
+        switch (kind)
+        {
+            case Track::Kind::instrument: return "INSTRUMENT";
+            case Track::Kind::audio:      return "AUDIO";
+            case Track::Kind::fx:         return "FX CHANNEL";
+            case Track::Kind::group:      return "GROUP CHANNEL";
+            case Track::Kind::folder:     return "FOLDER";
+        }
+        return {};
+    }
+
+    std::array<Studio::TrackTypeLook, Studio::numTrackTypes> Studio::readTrackTypeLooks() const
+    {
+        // "colour|list|amount" a type, ";" between them, in Track::Kind's order; "auto" for no colour.
+        if (settings == nullptr)
+            return trackTypeLooksHere;
+        std::array<TrackTypeLook, numTrackTypes> looks;
+        const auto parts = juce::StringArray::fromTokens (settings->getValue ("trackTypeLooks"), ";", "");
+        for (int i = 0; i < numTrackTypes && i < parts.size(); ++i)
+        {
+            const auto fields = juce::StringArray::fromTokens (parts[i], "|", "");
+            if (fields.size() < 3)
+                continue;
+            if (fields[0] != "auto")
+                if (const auto c = juce::Colour::fromString (fields[0]); FamilyColours::isFamily (c))
+                    looks[(size_t) i].colour = c;
+            looks[(size_t) i].listColour = fields[1] == "1";
+            looks[(size_t) i].listAmount = juce::jlimit (1, 100, fields[2].getIntValue());
+        }
+        return looks;
+    }
+
+    Studio::TrackTypeLook Studio::getTrackTypeLook (Track::Kind kind) const
+    {
+        const auto i = juce::jlimit (0, numTrackTypes - 1, (int) kind);
+        return readTrackTypeLooks()[(size_t) i];
+    }
+
+    void Studio::setTrackTypeLook (Track::Kind kind, TrackTypeLook look)
+    {
+        if (look.colour && ! FamilyColours::isFamily (*look.colour))
+            look.colour = FamilyColours::nearest (*look.colour);   // (only the family's: the owner's rule)
+        look.listAmount = juce::jlimit (1, 100, look.listAmount);
+        auto looks = readTrackTypeLooks();
+        looks[(size_t) juce::jlimit (0, numTrackTypes - 1, (int) kind)] = look;
+        trackTypeLooksHere = looks;
+        if (settings != nullptr)
+        {
+            juce::StringArray parts;
+            for (const auto& l : looks)
+                parts.add ((l.colour ? l.colour->toString() : juce::String ("auto")) + "|" + (l.listColour ? "1" : "0") + "|" + juce::String (l.listAmount));
+            settings->setValue ("trackTypeLooks", parts.joinIntoString (";"));
+        }
+    }
+
+    void Studio::giveTypeLook (Track& track, int index) const
+    {
+        const auto look = getTrackTypeLook (track.kind);
+        track.colour = look.colour.value_or (trackColour (index));
+        track.listColourOn = look.listColour;
+        track.listColourAmount = look.listAmount;
+    }
+
+    void Studio::applyTrackTypeLooks()
+    {
+        for (int i = 0; i < (int) project.tracks.size(); ++i)
+            giveTypeLook (project.tracks[(size_t) i], i);
+        changed();
     }
 
     int Studio::getAutoSaveMinutes() const

@@ -1,5 +1,6 @@
 #include "Hub.h"
 #include "ui/InstrumentsPage.h"
+#include "ui/TrackTypeColours.h"
 #include "engine/DrumMaps.h"
 
 #include "ui/Finish.h"
@@ -156,7 +157,7 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
 {
     list = std::make_unique<SongList> (*this);
     addAndMakeVisible (*list);
-    for (auto* b : { &projectsTab, &settingsTab, &instrumentsTab, &createEmpty, &chooseFile, &open, &driverPanel, &audioSettings, &chooseLocation, &addLocation, &removeLocation })
+    for (auto* b : { &projectsTab, &settingsTab, &instrumentsTab, &coloursTab, &createEmpty, &chooseFile, &open, &driverPanel, &audioSettings, &chooseLocation, &addLocation, &removeLocation })
     {
         styleKey (*b);
         addAndMakeVisible (*b);
@@ -300,6 +301,9 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
     settingsTab.onClick = [this] { showSettingsPage (true); };
     instrumentsTab.setTooltip ("Each instrument's range, tuning, velocity layers and keyswitches (the composer writes for them)");
     instrumentsTab.onClick = [this] { showInstrumentsPage(); };
+    coloursTab.setClickingTogglesState (false);
+    coloursTab.setTooltip ("The colour each type of new track starts with, and its colour in the track list");
+    coloursTab.onClick = [this] { showColoursPage(); };
     createEmpty.setTooltip ("Create Empty: a new song, in a folder of its own at the project location");
     createEmpty.onClick = [this]
     {
@@ -551,6 +555,22 @@ void Hub::showSettingsPage (bool on)
         refreshTemplates();
     }
     instrumentsPage = false;
+    coloursPage = false;
+    resized();
+    repaint();
+}
+
+void Hub::showColoursPage()
+{
+    if (colours == nullptr)
+    {
+        colours = std::make_unique<TrackTypeColoursPage> (studio);
+        addChildComponent (*colours);
+    }
+    colours->refresh();
+    settingsPage = false;
+    instrumentsPage = false;
+    coloursPage = true;
     resized();
     repaint();
 }
@@ -563,6 +583,7 @@ void Hub::showInstrumentsPage()
         addChildComponent (*instruments);
     }
     settingsPage = false;
+    coloursPage = false;
     instrumentsPage = true;
     resized();
     repaint();
@@ -688,7 +709,7 @@ void Hub::paint (juce::Graphics& g)
 
     g.setColour (ParagonColours::textDim);
     g.setFont (font (12.0f));
-    if (instrumentsPage)
+    if (instrumentsPage || coloursPage)
         return;
     if (! settingsPage && studio.getLibrary().showsLocation())
     {
@@ -734,7 +755,10 @@ void Hub::resized()
         settingsTab.setBounds (n.removeFromTop (34));
         n.removeFromTop (8);
         instrumentsTab.setBounds (n.removeFromTop (34));
-        projectsTab.setToggleState (! settingsPage && ! instrumentsPage, juce::dontSendNotification);
+        n.removeFromTop (8);
+        coloursTab.setBounds (n.removeFromTop (34));
+        projectsTab.setToggleState (! settingsPage && ! instrumentsPage && ! coloursPage, juce::dontSendNotification);
+        coloursTab.setToggleState (coloursPage, juce::dontSendNotification);
         settingsTab.setToggleState (settingsPage, juce::dontSendNotification);
         instrumentsTab.setToggleState (instrumentsPage, juce::dontSendNotification);
     }
@@ -745,7 +769,12 @@ void Hub::resized()
         instruments->setVisible (instrumentsPage);
         instruments->setBounds (page.reduced (20, 16));
     }
-    if (instrumentsPage)
+    if (colours != nullptr)
+    {
+        colours->setVisible (coloursPage);
+        colours->setBounds (page.reduced (24, 18));
+    }
+    if (instrumentsPage || coloursPage)
     {
         for (auto* c : std::initializer_list<juce::Component*> { list.get(), &search, &createEmpty, &chooseFile, &open, &showPaths, &showLocation, &atStart,
                                                                          &addLocation, &removeLocation, &locationsBox, &dropLabel, &dropStrength,

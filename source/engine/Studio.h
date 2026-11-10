@@ -66,6 +66,23 @@ namespace pr7s
         // kept, older ones deleted. Not while recording or rendering; not when nothing changed since
         // the last copy. A backup remembers where the song's recordings are, so it opens with them.
         // Settings keys "autoSaveMinutes" (default 5) and "autoSaveKeep" (default 10).
+        // (0.80.0, the owner asked: the other DAW's Track Type Default Colors, one step further) What
+        // a new track of each type starts with: a colour (none: AUTOMATIC, red, pink, orange in turn
+        // by its place, as before) and its colour in the track list (on, 1-100 %). Settings key
+        // "trackTypeLooks"; also SET TRACK COLOUR TO DEFAULT's colour. COLOUR IN ORDER still wins.
+        struct TrackTypeLook
+        {
+            std::optional<juce::Colour> colour;
+            bool listColour = false;
+            int listAmount = Track::defaultListColourAmount;
+            bool operator== (const TrackTypeLook&) const = default;
+        };
+        static constexpr int numTrackTypes = 5;   // (by Track::Kind: instrument, audio, fx, group, folder)
+        static juce::String trackTypeName (Track::Kind);
+        TrackTypeLook getTrackTypeLook (Track::Kind) const;
+        void setTrackTypeLook (Track::Kind, TrackTypeLook);
+        // The open song's tracks given their type's look now (one undo step).
+        void applyTrackTypeLooks();
         int getAutoSaveMinutes() const;
         void setAutoSaveMinutes (int minutes);
         int getAutoSaveKeep() const;
@@ -1628,7 +1645,10 @@ namespace pr7s
         juce::File lastBackup;
         juce::int64 lastBackupHash = 0;
         juce::uint32 lastBackupTime = juce::Time::getMillisecondCounter();
-        int autoSaveMinutesHere = 0, autoSaveKeepHere = defaultAutoSaveKeep;   // (without a settings file: the tests)
+        int autoSaveMinutesHere = 0, autoSaveKeepHere = defaultAutoSaveKeep;
+        std::array<TrackTypeLook, numTrackTypes> trackTypeLooksHere;   // (0.80.0; without a settings file)
+        std::array<TrackTypeLook, numTrackTypes> readTrackTypeLooks() const;
+        void giveTypeLook (Track&, int index) const;   // a new track's colour and list colour   // (without a settings file: the tests)
         void collectPluginStates();
         void backupIfDue();
         juce::String loggedDevice;   // the audio device's last line in the session log

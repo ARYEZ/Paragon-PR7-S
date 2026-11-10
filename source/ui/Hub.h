@@ -4,6 +4,7 @@
 #include "ui/KeyCommands.h"
 
 class InstrumentsPage;
+class TrackTypeColoursPage;
 
 // The Hub (0.12.0, the owner asked: a start window like the other DAW's Hub,
 // opening on the folder where the songs are kept), in the PR7 family's look.
@@ -45,6 +46,10 @@ public:
     void showInstrumentsPage();
     bool isShowingInstruments() const noexcept { return instrumentsPage; }
     InstrumentsPage* getInstrumentsPage() noexcept { return instruments.get(); }
+    // TRACK COLOURS (0.80.0): the fourth tab (ui/TrackTypeColours.h), made the first time it's shown.
+    void showColoursPage();
+    bool isShowingColours() const noexcept { return coloursPage; }
+    TrackTypeColoursPage* getColoursPage() noexcept { return colours.get(); }
     void refresh();
 
     void paint (juce::Graphics&) override;
@@ -58,11 +63,12 @@ private:
     std::unique_ptr<SongList> list;
     std::vector<Item> items;
     juce::StringArray folded;
-    bool settingsPage = false, instrumentsPage = false;
+    bool settingsPage = false, instrumentsPage = false, coloursPage = false;
     std::unique_ptr<InstrumentsPage> instruments;
+    std::unique_ptr<TrackTypeColoursPage> colours;
     juce::Image satin;
 
-    juce::TextButton projectsTab { "PROJECTS" }, settingsTab { "HUB SETTINGS" }, instrumentsTab { "INSTRUMENTS" },
+    juce::TextButton projectsTab { "PROJECTS" }, settingsTab { "HUB SETTINGS" }, instrumentsTab { "INSTRUMENTS" }, coloursTab { "TRACK COLOURS" },
                      createEmpty { "+  CREATE EMPTY" }, chooseFile { "CHOOSE FILE..." }, open { "OPEN" },
                      driverPanel { "DRIVER PANEL" }, audioSettings { "SETTINGS" },
                      chooseLocation { "CHOOSE..." }, addLocation { "ADD A FOLDER..." }, removeLocation { "REMOVE THE FOLDER" };

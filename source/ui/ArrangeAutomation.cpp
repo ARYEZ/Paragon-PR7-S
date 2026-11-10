@@ -279,10 +279,18 @@ void ArrangeView::showPointEntry (int busId, int laneIndex, int point)
 }
 
 //==============================================================================
+void ArrangeView::setPointBoxShown (bool shown)
+{
+    pointBoxShown = shown;
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("automationEditBox", shown);
+    repaint();
+}
+
 juce::Rectangle<float> ArrangeView::getPointBox() const
 {
     const auto* lane = laneFor (pointSelection.busId, pointSelection.laneIndex);
-    if (lane == nullptr || lane->isStep() || pointSelection.points.size() < 2)
+    if (! pointBoxShown || lane == nullptr || lane->isStep() || pointSelection.points.size() < 2)
         return {};
     const auto area = getLaneArea (pointSelection.busId, pointSelection.laneIndex);
     const auto& points = (drag == Drag::pointHandle) ? workingPoints : editPointsOf (*lane);

@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.80.0
+
+Three tweaks you asked for.
+
+**Selected automation points light up, with no box around them (as the other DAW does).** With two or more points selected, the arrangement drew a box round them with seven little handles (tilt, compress, scale, stretch), each a place the mouse could catch. Now only the selected points change: they're pearl white and a size bigger, and nothing else is drawn. The box's tools are still there if you want them: right-click the lane, **Editing Box for Selected Points (Tilt, Scale, Stretch)** switches it on (and off again); the choice is remembered.
+
+**TRACK COLOURS in the Hub: a default colour for each type of track, and its track-list colour.** A new tab under INSTRUMENTS. For each type (instrument, audio, FX channel, group channel, folder):
+- **COLOUR:** click it for the family's 75 colours, or AUTOMATIC (red, pink and orange in turn by place, as before). Every new track of that type starts with it, and SET TRACK COLOUR TO DEFAULT in the colour menu gives it back.
+- **COLOUR IN THE TRACK LIST** and **HOW MUCH** (1-100 %): new tracks of that type start with their colour over their row (the step further you asked for).
+- **APPLY TO THIS SONG'S TRACKS** gives the open song's tracks their type's look now (Undo takes it back); **ALL AUTOMATIC** puts every type back.
+- COLOUR TRACKS IN ORDER (the colour menu) still wins while it's on. MIDI, sampler, drum and VCA types don't exist here: drums and samplers are instrument tracks.
+
+**The BOOSTER's values typed in.** Double-click the TRIM knob or the level fader (or the number under either) and type a value, as on the other faders: "-3", "+2.5 dB", "-inf" for silence; Enter sets it, one undo step. Ctrl-click puts it back to 0 dB (a double-click used to; it now opens the box, as everywhere else).
+
 ## 0.79.0
 
 **COLOUR IN ORDER: tracks coloured by their number (you asked).** The colour menu's colours are numbered as they're laid out: 1-3 are the wide three (pink, red, orange), then the grid row by row, left to right, 75 in all. Switch on COLOUR TRACKS IN ORDER at the foot of the menu and track 1 takes colour 1, track 2 colour 2 and so on; track 76 starts again at colour 1. While it's on, each swatch shows its number.

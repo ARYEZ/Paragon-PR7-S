@@ -21,6 +21,8 @@ ArrangeView::ArrangeView (pr7s::Studio& studioToUse, Timeline& timelineToUse)
 {
     setWantsKeyboardFocus (false);
     setOpaque (true);   // (0.57.1: paint fills it all: what's behind isn't drawn under every playhead frame)
+    if (auto* settings = studio.getSettings())
+        pointBoxShown = settings->getBoolValue ("automationEditBox", false);
     studio.addChangeListener (this);
     startTimerHz (30);
 }
@@ -3059,9 +3061,19 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
             continue;
         const auto box = juce::Rectangle<float> (pointSize, pointSize).withCentre (at);
         const auto selected = selectedHere && std::binary_search (pointSelection.points.begin(), pointSelection.points.end(), i);
-        g.setColour (selected ? juce::Colour (0xff050405) : colour);
+        if (selected)
+        {
+            // (0.80.0, the owner: as the other DAW) Lit: pearl white, a size bigger, a dark edge.
+            const auto lit = box.expanded (1.5f);
+            g.setColour (juce::Colour (0xfff4eeea));
+            g.fillRect (lit);
+            g.setColour (juce::Colour (0xff050405));
+            g.drawRect (lit, 1.0f);
+            continue;
+        }
+        g.setColour (colour);
         g.fillRect (box);
-        g.setColour (selected ? colour : juce::Colour (0xff050405));
+        g.setColour (juce::Colour (0xff050405));
         g.drawRect (box, 1.0f);
     }
     if (drag == Drag::band && selectedHere)
@@ -3530,6 +3542,8 @@ void ArrangeView::showLaneMenu (int busId, int laneIndex)
     menu.addItem (6, "Show All Used Automation");
     menu.addItem (7, "Remove Unused Parameters");
     menu.addItem (3, "Remove Parameter");
+    menu.addSeparator();
+    menu.addItem (30, "Editing Box for Selected Points (Tilt, Scale, Stretch)", true, pointBoxShown);
     menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ArrangeView> (this), busId, laneIndex] (int chosen)
     {
         if (safe == nullptr)
@@ -3596,6 +3610,8 @@ void ArrangeView::showLaneMenu (int busId, int laneIndex)
             safe->pointSelection = {};
             safe->studio.removeAutomationParameter (busId, laneIndex);
         }
+        else if (chosen == 30)
+            safe->setPointBoxShown (! safe->pointBoxShown);
     });
 }
 

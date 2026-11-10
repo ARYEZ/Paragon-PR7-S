@@ -1364,6 +1364,7 @@ TEST_CASE ("Snapshot: the progress box, and SAVE lit", "[.][snapshot-progress]")
 }
 
 #include "ui/Hub.h"
+#include "ui/TrackTypeColours.h"
 #include "ui/InstrumentsPage.h"
 
 TEST_CASE ("Snapshot: the Hub", "[.][snapshot-hub]")
@@ -1401,6 +1402,13 @@ TEST_CASE ("Snapshot: the Hub", "[.][snapshot-hub]")
             hub.showSettingsPage (true);
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB_TALL", {}) == "1")
             hub.setSize (Hub::preferredWidth, 1500);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "colours")
+        {
+            hub.showColoursPage();   // (0.80.0: an audio colour and list colour, the others automatic)
+            hub.getColoursPage()->setColour (pr7s::Track::Kind::audio, pr7s::FamilyColours::paletteColour (6, 4));
+            hub.getColoursPage()->setListColour (pr7s::Track::Kind::audio, true, 40);
+            hub.getColoursPage()->setColour (pr7s::Track::Kind::group, pr7s::FamilyColours::paletteColour (0, 2));
+        }
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "instruments")
         {
             hub.showInstrumentsPage();

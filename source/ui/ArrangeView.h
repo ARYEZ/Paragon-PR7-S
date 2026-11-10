@@ -367,7 +367,12 @@ public:
     float pointFromDisplay (const pr7s::AutomationLane&, double display) const;
     const pr7s::AutomationLane* getSelectedPointsLane() const { return laneFor (pointSelection.busId, pointSelection.laneIndex); }
     void showPointEntry (int busId, int laneIndex, int point);
-    juce::Rectangle<float> getPointBox() const;              // the event editor's (empty: fewer than two, or a step lane)
+    juce::Rectangle<float> getPointBox() const;              // the event editor's (empty: fewer than two, a step lane, or hidden)
+    // (0.80.0, the owner: as the other DAW, only the selected points light up) The box and its
+    // handles (tilt, compress, scale, stretch) are off unless switched on in the lane's menu
+    // ("Editing Box for Selected Points"; settings key "automationEditBox").
+    bool isPointBoxShown() const noexcept { return pointBoxShown; }
+    void setPointBoxShown (bool shown);
     enum class PointHandle { none, tiltLeft, tiltRight, compressLeft, compressRight, scale, move, scaleAbsolute, scaleRelative, stretch };
     PointHandle pointHandleAt (juce::Point<float>, bool alt) const;
     void dragPointHandle (PointHandle, juce::Point<float> offset);   // from the points as the drag began (tests drive it)
@@ -544,6 +549,7 @@ private:
     juce::Point<float> lineEnd;
     bool automationDoubleClick (const juce::MouseEvent&);
     void paintPointHandles (juce::Graphics&, const Timeline::Row&) const;
+    bool pointBoxShown = false;
     float lineValueAt (double t, float v1, float v2, double beatsInto, bool reverse) const;
     void paintAutomation (juce::Graphics&, const Timeline::Row&) const;
     void paintTempo (juce::Graphics&, const Timeline::Row&) const;

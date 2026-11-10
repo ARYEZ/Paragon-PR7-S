@@ -169,6 +169,8 @@ TEST_CASE ("Automation in the arrangement: selecting, typing values, the handles
     // The event editor's handles: two or more selected; the top edge moves them all up.
     studio.setAutomationPoints (trackId, 0, { { 1.0, 0.2f, 0.0f }, { 3.0, 0.6f, 0.0f }, { 5.0, 0.4f, 0.0f }, { 7.0, 0.3f, 0.0f } });
     arrange.selectPoints (trackId, 0, { 0, 1, 2 });
+    CHECK (arrange.getPointBox().isEmpty());   // (0.80.0: off unless switched on)
+    arrange.setPointBoxShown (true);
     auto box = arrange.getPointBox();
     REQUIRE_FALSE (box.isEmpty());
     const auto moveAt = juce::Point<float> (box.getX() + box.getWidth() * 0.3f, box.getY());
