@@ -141,3 +141,11 @@ TEST_CASE ("0.80.0: the BOOSTER's trim and level are typed in, as the other fade
     view.refresh();
     CHECK (view.getTrim().getTextFromValue (view.getTrim().getValue()) == juce::String ("+2.5 DB"));
 }
+
+#include "engine/KeepLoaded.h"
+
+TEST_CASE ("0.80.1: keeping a plug-in's file loaded: nothing to keep for a path that isn't loaded (and nothing at all off Windows)", "[plugins][080]")
+{
+    CHECK (keepPluginLoaded ({}) == 0);
+    CHECK (keepPluginLoaded (juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("No Such Plug-in.vst3").getFullPathName()) == 0);
+}

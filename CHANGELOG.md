@@ -2,6 +2,12 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.80.1
+
+**A fix for the freeze in your 0.79.0 log (after Render in Place disabled your second guitar track).** That track was the last one playing PR7-I and PR7-G, so the plug-in host let go of their files. When a plug-in's file is let go, Windows runs the plug-in's own clean-up while it holds a lock every other thread has to wait for; your log shows that clean-up starting the graphics card there, and the NVIDIA driver waiting on that lock for good. Now a plug-in's file, once loaded, stays in memory until the studio closes: disabling, removing or rendering a track still unloads its plug-ins (their sound, memory for samples and CPU go), but the file itself is never let go mid-session, so that clean-up never runs. The session log notes each file kept. A plug-in you've used and removed stays a few megabytes in memory until you close the studio.
+
+The other freeze in the same log (21:34, 11 seconds, then it carried on) was inside PR7-D's own window code, waiting on something of PR7-D's: that one is PR7-D's to fix, not the studio's.
+
 ## 0.80.0
 
 Three tweaks you asked for.
