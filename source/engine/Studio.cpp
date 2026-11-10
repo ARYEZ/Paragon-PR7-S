@@ -10615,7 +10615,23 @@ namespace pr7s
                                                 : instrumentProfiles;
         if (! stored.has_value())
             return { InstrumentProfile::djinnBass2() };   // (the first time: the owner's bass)
-        return profilesFromText (*stored);
+        auto profiles = profilesFromText (*stored);
+        // (0.82.2, the owner: their bass is drop A, A E A D G) A Djinn Bass 2 saved with 0.62.0's A D A D G gets its
+        // E string, once (the flag), so a tuning set by hand afterwards stays.
+        if (settings != nullptr && ! settings->getBoolValue ("djinnDropA0822", false))
+        {
+            for (auto& p : profiles)
+                if (p.name == "Djinn Bass 2" && p.strings == std::vector<int> { 33, 38, 45, 50, 55 })
+                {
+                    p.strings[1] = 40;
+                    for (auto& k : p.keyswitches)
+                        if (k.name == "Force E String (your D1)")
+                            k.name = "Force E String";
+                }
+            settings->setValue ("instrumentProfiles", profilesToText (profiles));
+            settings->setValue ("djinnDropA0822", true);
+        }
+        return profiles;
     }
 
     void Studio::setInstrumentProfiles (const std::vector<InstrumentProfile>& profiles)

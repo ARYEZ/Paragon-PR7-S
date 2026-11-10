@@ -8,7 +8,7 @@
 #include "ui/InstrumentsPage.h"
 
 // INSTRUMENTS (0.62.0): each instrument's range, tuning and keyswitches (Djinn Bass 2 built in, the owner's
-// tuning A0 D1 A1 D2 G2), and the composer's ONLY STRING holding the library's keyswitch for it.
+// tuning A0 D1 A1 D2 G2; since 0.82.2 drop A, A0 E1 A1 D2 G2), and the composer's ONLY STRING holding the library's keyswitch for it.
 
 using namespace pr7s;
 
@@ -46,7 +46,7 @@ TEST_CASE ("Note names typed as the studio and the libraries name them: middle C
 TEST_CASE ("Djinn Bass 2: the owner's tuning, its range clear of every keyswitch, a key per string (0.62.0)", "[instruments]")
 {
     const auto p = InstrumentProfile::djinnBass2();
-    CHECK (p.strings == std::vector<int> { 33, 38, 45, 50, 55 });   // A0 D1 A1 D2 G2
+    CHECK (p.strings == std::vector<int> { 33, 40, 45, 50, 55 });   // A0 E1 A1 D2 G2 (0.82.2: drop A)
     CHECK (p.rangeLow() == 33);
     CHECK (p.rangeHigh() == 79);
     CHECK (p.keyFor (1) == 127);   // "Force B String": Djinn's lowest string, the owner's A0

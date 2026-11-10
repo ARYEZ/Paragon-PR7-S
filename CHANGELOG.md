@@ -2,7 +2,11 @@
 
 Each version's notes appear on its GitHub Release page.
 
-## 0.82.1
+## 0.82.2
+
+**Djinn Bass 2 tuned to your bass: drop A, A E A D G** (you asked). The profile had A D A D G from the screenshot in 0.62.0; its second string is now E. Your saved profile is updated once when you open the Hub's INSTRUMENTS page or the composer, and everything else in it (keyswitches, range, bend) stays as you set it. If you change the tuning by hand later, it's kept. What changes in use: the composer's bass on Djinn works out strings and frets with an E string, so ONLY STRING 2 and the low-string choices put notes where your bassist would.
+
+
 
 **LEARN MY BAND knows your band's tunings** (you told me: every song on a 7-string guitar and a 5-string bass, both in drop A). The reader now only listens for notes those instruments can play: nothing under the low A string, nothing past the 24th fret.
 
