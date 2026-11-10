@@ -17,7 +17,6 @@ namespace pr7s
     namespace
     {
         const juce::String audioSetupKey { "audioSetup" };
-        constexpr int maxUndoSteps = 100;
 
         juce::PropertiesFile::Options settingsOptions()
         {
@@ -363,10 +362,26 @@ namespace pr7s
         }
         for (auto& insert : project.masterInserts)
             insert.state = std::move (*next++);
+        // (0.83.0) Its name for the Edit History, from what differs from the step it follows.
+        HistoryStep step;
+        if (undoIndex >= 0 && undoIndex < (int) undoStates.size())
+            step = describeEdit (undoStates[(size_t) undoIndex], state);
+        else
+        {
+            step.action = "Start";
+            step.details = file.existsAsFile() ? file.getFileNameWithoutExtension() : juce::String ("New song");
+            step.time = juce::Time::getCurrentTime();
+        }
         undoStates.resize ((size_t) (undoIndex + 1));
+        undoInfo.resize ((size_t) (undoIndex + 1));
         undoStates.push_back (std::move (state));
-        if ((int) undoStates.size() > maxUndoSteps)
+        undoInfo.push_back (std::move (step));
+        const auto most = getMaxUndoSteps() + 1;   // (the start, and that many steps after it)
+        while ((int) undoStates.size() > most)
+        {
             undoStates.erase (undoStates.begin());
+            undoInfo.erase (undoInfo.begin());
+        }
         undoIndex = (int) undoStates.size() - 1;
     }
 
@@ -461,6 +476,53 @@ namespace pr7s
         if (! canRedo())
             return;
         restore (undoStates[(size_t) ++undoIndex]);
+    }
+
+    void Studio::goToHistory (int index)
+    {
+        index = juce::jlimit (0, (int) undoStates.size() - 1, index);
+        if (index < 0 || index == undoIndex)
+            return;
+        undoIndex = index;
+        restore (undoStates[(size_t) undoIndex]);
+    }
+
+    void Studio::setHistoryDetails (int index, const juce::String& text)
+    {
+        if (index >= 0 && index < (int) undoInfo.size())
+        {
+            undoInfo[(size_t) index].details = text;
+            announce();
+        }
+    }
+
+    int Studio::getMaxUndoSteps() const
+    {
+        if (settings != nullptr)
+            return juce::jlimit (1, 1000, settings->getIntValue ("maxUndoSteps", 100));
+        return maxUndoHere;
+    }
+
+    void Studio::setMaxUndoSteps (int steps)
+    {
+        maxUndoHere = juce::jlimit (1, 1000, steps);
+        if (settings != nullptr)
+            settings->setValue ("maxUndoSteps", maxUndoHere);
+        // Fewer kept: the oldest go (never the one the song is at).
+        while ((int) undoStates.size() > maxUndoHere + 1 && undoIndex > 0)
+        {
+            undoStates.erase (undoStates.begin());
+            undoInfo.erase (undoInfo.begin());
+            --undoIndex;
+        }
+        announce();
+    }
+
+    void Studio::clearHistory()
+    {
+        undoStates.clear();
+        undoInfo.clear();
+        undoIndex = -1;
     }
 
     //==========================================================================
@@ -8219,8 +8281,7 @@ namespace pr7s
         // A new song starts with one track on the studio's synth (PR7-K), ready to play.
         addTrack ({});
         engine.update (project);
-        undoStates.clear();
-        undoIndex = -1;
+        clearHistory();
         recordUndoState();
         modified = false;
         announce();
@@ -8528,8 +8589,7 @@ namespace pr7s
         if (newSong)
         {
             // The import is where the new song starts: nothing to undo before it.
-            undoStates.clear();
-            undoIndex = -1;
+            clearHistory();
             recordUndoState();
         }
         return added;
@@ -9538,8 +9598,7 @@ namespace pr7s
             }
         }
         engine.update (project);
-        undoStates.clear();
-        undoIndex = -1;
+        clearHistory();
         recordUndoState();
         modified = true;   // (a new song: not saved yet)
         if (problems.isNotEmpty())
@@ -9673,8 +9732,7 @@ namespace pr7s
         playStart = 0.0;
         applyAutoColour();   // (0.79.0)
         engine.update (project);
-        undoStates.clear();
-        undoIndex = -1;
+        clearHistory();
         recordUndoState();
         updateLiveTrack();
         modified = false;

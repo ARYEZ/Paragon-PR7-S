@@ -92,6 +92,9 @@ public:
     juce::DocumentWindow* getTempoDetectionWindow() noexcept { return tempoDetectionWindow.get(); }
     // The Markers window (0.49.0, Ctrl+M): opened, or closed if open (`openOnly`: brought to the front).
     void toggleMarkersWindow (bool openOnly = false);
+    // (0.83.0) The Edit History window (the manual's Edit > History; also a right-click on UNDO / REDO).
+    void toggleEditHistory (bool openOnly = false);
+    juce::DocumentWindow* getHistoryWindow() noexcept { return historyWindow.get(); }
     juce::DocumentWindow* getMarkersWindow() noexcept { return markersWindow.get(); }
     // The VariAudio editor (0.34.0) for an audio clip: one window, switched to the clip.
     void openVariAudio (int partId);
@@ -303,7 +306,11 @@ private:
     int saveFlashes = 0;
     std::unique_ptr<ProgressBox> progressBox;   // a long job's progress (0.11.1)
     std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow, drumMapWindow, automationWindow, alignmentWindow, variAudioWindow, tempoDetectionWindow,
-                                          markersWindow;
+                                          markersWindow, historyWindow;
+    std::unique_ptr<juce::MouseListener> historyOpener;   // (0.83.0) right-click on UNDO / REDO
+public:
+    bool historyRightClick = false;
+private:
     int trackListScrollY = 0;          // (0.34.1) what the track list was last laid out for
     double trackListRowZoom = 1.0;
     std::unique_ptr<ProgressionsWindow> progressionsWindow;

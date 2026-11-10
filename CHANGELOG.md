@@ -2,6 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.83.0
+
+**The Edit History** (you asked: as the other DAW's Edit > History). Every edit you can undo is listed in a window, oldest at the top: what it was (ACTION), when (TIME), whether it's in force (STATE: DONE or UNDONE) and DETAILS (which track and part, or a note you type).
+
+- **The bar:** a separator in the family's gradient sits under the step the song is at. Drag it **up** to undo back to any point, **down** to redo; the song changes as you drag, so you can listen at each step. Everything under the bar is undone (dimmed) until you make a new edit, which replaces those steps, as Undo always has.
+- **Opening it:** right-click **UNDO** or **REDO** in the header, or the **Edit > History** command in KEYS (no key at first: give it one there or on your Stream Deck).
+- **Also:** Up / Down move the bar a step; a click at the very left of a row puts the bar under it; double-click DETAILS to type a note ("the good take"). **MAX STEPS** is how many edits are kept (100 as before; up to 1000; the oldest go first).
+- **The names are worked out by the studio** from what changed between one step and the next ("Move Part", "Volume", "Edit Notes", "Tempo", "Split"...), with the track and part in DETAILS. When one edit changed several things it reads as the first and names the rest. That's our own wording: a guess at what you did, not your exact words.
+- **The same limits as Undo:** going back puts back what Undo always has (parts, notes, the mix, automation, tempo, signature, markers, chords...); adding or removing whole tracks and plug-in settings inside a plug-in aren't undone, so those steps show but going past them leaves the tracks as they are. The list starts again when a song is opened or started.
+
 ## 0.82.6
 
 Your two asks from the export talk:

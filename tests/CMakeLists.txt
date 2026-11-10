@@ -66,6 +66,7 @@ add_executable(ParagonPR7STests
     SignatureTests.cpp
     InfoLinePartsTests.cpp
     MarkerTests.cpp
+    HistoryTests.cpp
     FolderTests.cpp
     StemExportTests.cpp
     PerformanceTests.cpp

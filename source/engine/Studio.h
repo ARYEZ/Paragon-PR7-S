@@ -6,6 +6,7 @@
 #include "Engine.h"
 #include "PluginHost.h"
 #include "Project.h"
+#include "EditHistory.h"
 #include "Warp.h"
 #include "Align.h"
 #include "VariAudio.h"
@@ -1214,6 +1215,17 @@ namespace pr7s
         void redo();
         bool canUndo() const noexcept { return undoIndex > 0; }
         bool canRedo() const noexcept { return undoIndex + 1 < (int) undoStates.size(); }
+        // (0.83.0) The Edit History (the manual's Edit History Dialog): every step kept, oldest first;
+        // `getHistoryPosition` the one the song is at now (the separator under it: the ones after are
+        // undone); `goToHistory` puts any step back (undo or redo as far as it takes, one engine update).
+        // Step 0 is where the song started (opened, new, imported): it can't be undone.
+        const std::vector<HistoryStep>& getHistory() const noexcept { return undoInfo; }
+        int getHistoryPosition() const noexcept { return undoIndex; }
+        void goToHistory (int index);
+        void setHistoryDetails (int index, const juce::String& text);   // the Details column: anything typed
+        // The manual's Maximum Undo Steps (Preferences > General): 1-1000, default 100; settings `maxUndoSteps`.
+        int getMaxUndoSteps() const;
+        void setMaxUndoSteps (int steps);
 
         //======================================================================
         // Files.
@@ -1692,6 +1704,9 @@ namespace pr7s
         bool inBatch = false;
 
         std::vector<Project> undoStates;
+        std::vector<HistoryStep> undoInfo;   // (0.83.0) one per undo state: its name, time, details
         int undoIndex = -1;
+        int maxUndoHere = 100;               // (without a settings file)
+        void clearHistory();
     };
 }
