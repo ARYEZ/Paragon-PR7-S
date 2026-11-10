@@ -10,6 +10,7 @@
 #include "ui/Finish.h"
 #include "ui/HistoryPage.h"
 #include "ui/MainView.h"
+#include "ui/ParagonLookAndFeel.h"
 
 using namespace pr7s;
 using Catch::Matchers::WithinAbs;
@@ -216,6 +217,11 @@ TEST_CASE ("0.83.0: a right-click on UNDO opens the Edit History without undoing
 TEST_CASE ("0.83.0: the Edit History snapshot", "[.snapshot-history]")
 {
     const auto folder = juce::File (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_DIR", juce::File::getCurrentWorkingDirectory().getFullPathName()));
+    // The app's look, as Main.cpp sets it (Bebas Neue everywhere).
+    ParagonLookAndFeel::setDisplayFont (ParagonLookAndFeel::DisplayFont::bebasEverywhere);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    struct Reset { ~Reset() { juce::LookAndFeel::setDefaultLookAndFeel (nullptr); } } reset;
     Studio studio (false);
     const auto trackId = studio.getProject().tracks.front().id;
     studio.renameTrack (trackId, "Bass");
