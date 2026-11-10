@@ -1,4 +1,6 @@
 #include "Project.h"
+
+#include <unordered_map>
 #include "Controllers.h"
 
 #include <functional>
@@ -315,22 +317,69 @@ namespace pr7s
                     soloed.push_back (t.id);
         if (soloed.empty())
             return {};
+        // (0.83.1) Each track's way down worked out once (it was walked again for every soloed track and
+        // every other track: quadratic, with vectors made each time; while the composer plays up to six
+        // tracks are soloed and this runs on every change). Same answers as feedsInto / reaches.
+        const auto count = tracks.size();
+        std::unordered_map<int, size_t> indexOf;
+        indexOf.reserve (count);
+        for (size_t i = 0; i < count; ++i)
+            indexOf.emplace (tracks[i].id, i);
+        // down[i]: every track reached from track i by outputs and sends (as `reaches`, itself not counted
+        // unless a loop leads back); chain[i]: those its outputs alone lead through (as `feedsInto`).
+        std::vector<std::vector<char>> down (count, std::vector<char> (count, 0)), chain (count, std::vector<char> (count, 0));
+        std::vector<size_t> stack;
+        for (size_t i = 0; i < count; ++i)
+        {
+            auto id = tracks[i].output;
+            for (size_t steps = 0; id != 0 && steps <= count; ++steps)
+            {
+                const auto found = indexOf.find (id);
+                if (found == indexOf.end())
+                    break;
+                chain[i][found->second] = 1;
+                id = tracks[found->second].output;
+            }
+            const auto push = [&] (int target)
+            {
+                if (const auto found = target != 0 ? indexOf.find (target) : indexOf.end(); found != indexOf.end() && ! down[i][found->second])
+                {
+                    down[i][found->second] = 1;
+                    stack.push_back (found->second);
+                }
+            };
+            stack.clear();
+            push (tracks[i].output);
+            for (const auto& send : tracks[i].sends)
+                push (send.target);
+            while (! stack.empty())
+            {
+                const auto& t = tracks[stack.back()];
+                stack.pop_back();
+                push (t.output);
+                for (const auto& send : t.sends)
+                    push (send.target);
+            }
+        }
+        std::vector<size_t> soloedIndex;
+        for (const auto s : soloed)
+            if (const auto found = indexOf.find (s); found != indexOf.end())
+                soloedIndex.push_back (found->second);
         std::vector<int> out;
-        for (const auto& t : tracks)
+        for (size_t t = 0; t < count; ++t)
         {
             auto heard = false;
-            for (const auto s : soloed)
+            for (const auto s : soloedIndex)
             {
-                const auto* soloedTrack = findTrack (s);
-                heard = t.id == s
-                     || feedsInto (t.id, s)                                         // routed into it
-                     || (soloedTrack != nullptr && soloedTrack->isFx() && reaches (t.id, s))   // sending into a soloed FX channel
-                     || reaches (s, t.id);                                          // a channel it goes on into
+                heard = t == s
+                     || chain[t][s]                                   // routed into it
+                     || (tracks[s].isFx() && down[t][s])              // sending into a soloed FX channel
+                     || down[s][t];                                   // a channel it goes on into
                 if (heard)
                     break;
             }
             if (! heard)
-                out.push_back (t.id);
+                out.push_back (tracks[t].id);
         }
         return out;
     }

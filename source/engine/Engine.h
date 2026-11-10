@@ -86,6 +86,10 @@ namespace pr7s
         // inserts are bypassed, and the master's volume.
         // Call after every change.
         void update (const Project&);
+        // (0.83.1) Only the mix: each track's volume, pan, sends, EQ and BOOSTER and the master's, from the
+        // song; nothing rebuilt (events, clips, lanes, drum maps, routing, mute and solo as they were). For a
+        // fader, pan, send, EQ or BOOSTER drag's steps; the release does a full `update`.
+        void updateMix (const Project&);
         // (0.78.0) The MIDI editor's SOLO: while set (a track's id), the next updates hear that track alone (and
         // what it's routed into), whatever the tracks' own solos say. 0: off. Message thread only.
         void setEditorSolo (int trackId) noexcept { editorSolo = trackId; }

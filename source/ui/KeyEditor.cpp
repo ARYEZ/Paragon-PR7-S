@@ -2123,6 +2123,8 @@ void KeyEditor::paint (juce::Graphics& g)
         g.setColour (ParagonColours::accent.withAlpha (project.loopOn ? 0.06f : 0.02f));
         g.fillRect (juce::Rectangle<float> (x1, notesTop(), x2 - x1, (float) getHeight()));
     }
+    const auto redrawn = g.getClipBounds();   // (0.83.1: the keys and the ruler only when they're redrawn)
+    if (redrawn.intersects (keysArea().getSmallestIntegerContainer()))
     {
         juce::Graphics::ScopedSaveState state (g);
         g.reduceClipRegion (keysArea().getSmallestIntegerContainer());
@@ -2132,7 +2134,8 @@ void KeyEditor::paint (juce::Graphics& g)
             paintKeys (g);
     }
     paintLanes (g);   // (0.25.0: the velocity lane among them)
-    paintRuler (g);
+    if (redrawn.getY() < juce::roundToInt (notesTop()) + 1)
+        paintRuler (g);
 
     // The playhead, down the notes and the velocities (where it's drawn: it glides, 0.17.5).
     const auto x = xForBeat (shownBeat);
@@ -2299,7 +2302,12 @@ void KeyEditor::paintKeys (juce::Graphics& g)
 
 void KeyEditor::paintNotes (juce::Graphics& g)
 {
-    const auto area = getNotesArea();
+    // (0.83.1) Only what's being redrawn: while playing, the playhead's two thin strips 60 times a second
+    // (every row, grid line and note in view was drawn for each, for JUCE to clip away).
+    const auto full = getNotesArea();
+    const auto area = full.getIntersection (g.getClipBounds().toFloat());
+    if (area.isEmpty())
+        return;
     const auto& project = studio.getProject();
 
     // The rows: darker for the black keys, a line at every C (drums: a row each, every other darker).
@@ -2329,13 +2337,13 @@ void KeyEditor::paintNotes (juce::Graphics& g)
     const auto signatures = project.signatures();
     const auto last = beatForX (area.getRight());
     if (grid * pixelsPerBeat >= 6.0)
-        for (auto beat = std::floor (firstBeat / grid) * grid; beat <= last; beat += grid)
+        for (auto beat = std::floor (juce::jmax (firstBeat, beatForX (area.getX()) - grid) / grid) * grid; beat <= last; beat += grid)
         {
             g.setColour (gridStep);
             g.fillRect (juce::Rectangle<float> (xForBeat (beat), area.getY(), 1.0f, area.getHeight()));
         }
     // Bars and beats by the signature in force (0.45.0).
-    for (auto barIndex = signatures.barAt (firstBeat); signatures.beatOfBar (barIndex) <= last; ++barIndex)
+    for (auto barIndex = signatures.barAt (juce::jmax (firstBeat, beatForX (area.getX()) - 1.0)); signatures.beatOfBar (barIndex) <= last; ++barIndex)
     {
         const auto& signature = signatures.segmentOfBar (barIndex).event;
         const auto start = signatures.beatOfBar (barIndex);
@@ -2407,9 +2415,17 @@ void KeyEditor::paintNotes (juce::Graphics& g)
     // drawn as a pearl outline on its row (a note dropped as a double: crossed through).
     if (track->follow != pr7s::FollowMode::off && ! drumViewOn && ! project.chordTrack.events.empty())
     {
-        const auto heard = pr7s::followNotes (list, part->start, track->follow, track->followReference, project.chordTrack,
-                                              project.chordTrack.shiftTicks, project.chordPads.key(),
-                                              track->followVoicing ? &*track->followVoicing : nullptr, track->followVoice);
+        // (0.83.1) Worked out again only when the notes or the song changed (it ran on every redraw).
+        if (followCache.version != studio.getChangeVersion() || followCache.partId != partId || followCache.notes != list)
+        {
+            followCache.heard = pr7s::followNotes (list, part->start, track->follow, track->followReference, project.chordTrack,
+                                                   project.chordTrack.shiftTicks, project.chordPads.key(),
+                                                   track->followVoicing ? &*track->followVoicing : nullptr, track->followVoice);
+            followCache.version = studio.getChangeVersion();
+            followCache.partId = partId;
+            followCache.notes = list;
+        }
+        const auto& heard = followCache.heard;
         const juce::Colour pearl (0xfff4eeea);
         for (int i = 0; i < (int) list.size(); ++i)
         {
@@ -2435,7 +2451,7 @@ void KeyEditor::paintNotes (juce::Graphics& g)
             g.fillRect (juce::Rectangle<float> (bounds.getX() + 1.0f, juce::jmin (bounds.getCentreY(), at.getCentreY()),
                                                 1.0f, std::abs (at.getCentreY() - bounds.getCentreY())));
         }
-        auto stamp = area.withHeight (20.0f).withTrimmedLeft (8.0f).withTrimmedTop (4.0f);
+        auto stamp = full.withHeight (20.0f).withTrimmedLeft (8.0f).withTrimmedTop (4.0f);
         const auto text = "FOLLOWS THE CHORD TRACK: " + pr7s::followModeName (track->follow) + "   (OUTLINES: WHERE THE NOTES SOUND)";
         g.setFont (font (11.0f));
         const auto textWidth = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text) + 14.0f;

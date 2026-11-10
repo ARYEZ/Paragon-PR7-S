@@ -221,7 +221,15 @@ void MixerView::Strip::setLevels (float leftPeak, float rightPeak)
     const auto changedLeft = left.push (leftPeak);
     const auto changedRight = right.push (rightPeak);
     if (changedLeft || changedRight)
-        repaint (meterArea.toNearestInt().expanded (2));
+    {
+        // (0.83.1) Only when a lit or held segment changes (the column's height, as paint lays it out).
+        const auto now = std::make_pair (left.shown (meterArea.getHeight()), right.shown (meterArea.getHeight()));
+        if (now != shownLevels)
+        {
+            shownLevels = now;
+            repaint (meterArea.toNearestInt().expanded (2));
+        }
+    }
 }
 
 void MixerView::Strip::paint (juce::Graphics& g)

@@ -2,6 +2,19 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.83.1
+
+**Speed, round three** (you asked: the studio running even more efficiently). The studio's own speed tests and three reviews of the code (the audio engine, what happens on each edit, the screen's redraws) found the places where time went; each fix below was checked to give the same sound and picture as before.
+
+- **Fader, pan, send, EQ and BOOSTER drags are much lighter.** Every step of a drag used to rebuild every track's notes and clips in the engine (and the EQ and BOOSTER redrew every view). Now a drag's steps only set the levels; letting go does the full update and the undo step, as before. On a 30-track test song a drag's step went from 0.22 ms to 0.003 ms (more with warped audio).
+- **The composer while you hear it:** every change (a fader step too) copied every plug-in's saved settings, Kontakt-sized ones included. It no longer copies them: they were never needed for playing.
+- **The cores take the heaviest tracks first.** Each audio block hands the tracks to your computer's cores in turn; a heavy instrument late in the track list (your Kontakt bass) was started last, so the whole block waited on it. Now the tracks that usually take longest start first. The sound is the same to the last bit; the spikes from one heavy plug-in should be shorter.
+- **The transport redraws about twice as fast.** Half its time went on painting the pearl surface behind the screens (a large textured picture scaled down 30 times a second); it's now drawn once and reused. Measured here: the whole transport 9.5 ms -> 4.9 ms; the whole window 40 ms -> 19 ms (5760 wide: 50 -> 24).
+- **Meters and the MIDI editor while playing:** the track list's and mixer's meters redraw only when a lit segment changes, not on every tiny fall (about half the frames on the track list's meters, fewer on the tall mixer meters); the automation lanes' values only when the number changes; the MIDI editor draws only the strip the playhead passes through, and where following notes sound is worked out once, not on every redraw.
+- **Smaller ones:** solo with several soloed tracks (the composer solos up to six) worked out in one pass; the output meters measure the master once, not six times; warped audio clips looked up without writing their markers out as text on every update.
+
+What can't be checked here: how much smoother it feels on your three screens with software drawing; the timings above are this machine's.
+
 ## 0.83.0
 
 **The Edit History** (you asked: as the other DAW's Edit > History). Every edit you can undo is listed in a window, oldest at the top: what it was (ACTION), when (TIME), whether it's in force (STATE: DONE or UNDONE) and DETAILS (which track and part, or a note you type).

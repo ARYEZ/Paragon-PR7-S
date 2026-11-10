@@ -987,6 +987,41 @@ namespace pr7s
         }
     }
 
+    void Engine::updateMix (const Project& project)
+    {
+        const juce::ScopedLock sl (lock);
+        settings.masterGain = levelOf (project.masterVolumeDb);
+        settings.masterVolumeDb = project.masterVolumeDb;
+        if (! (masterEqSettings == project.masterEq))
+        {
+            masterEqSettings = project.masterEq;
+            masterEq.setDesign (designEq (masterEqSettings, sampleRate));
+        }
+        masterBoostGain = project.masterBoost.gain();
+        for (const auto& t : project.tracks)
+            if (auto* track = findTrack (t.id))
+            {
+                // As `update` sets them: mute, disabled and solo are those it last set (not part of a mix move).
+                track->volumeDb = t.volumeDb;
+                track->pan = t.pan;
+                const auto gains = sideGains (t, ! track->mute && ! track->soloedOut);
+                track->gainLeft = gains.first;
+                track->gainRight = gains.second;
+                if (! (track->eqSettings == t.eq))
+                {
+                    track->eqSettings = t.eq;
+                    track->eq.setDesign (designEq (t.eq, sampleRate));
+                }
+                track->boostGain = t.boost.gain();
+                for (int s = 0; s < Project::maxSends; ++s)
+                {
+                    auto& send = track->sends[(size_t) s];
+                    const auto* from = juce::isPositiveAndBelow (s, (int) t.sends.size()) ? &t.sends[(size_t) s] : nullptr;
+                    send.levelDb = from != nullptr ? from->levelDb : -60.0f;
+                }
+            }
+    }
+
     void Engine::setHeld (int busId, const AutomationLane& control, bool isHeld)
     {
         held.erase (std::remove_if (held.begin(), held.end(), [&] (const auto& h) { return h.first == busId && h.second.sameControl (control); }),
@@ -1378,9 +1413,14 @@ namespace pr7s
                 }
         }
         runInserts (track->inserts, sound, numSamples, track->preFader, Project::maxInserts, track->effectMidi);
+        // (0.83.1) The peak by the vector routines (the same value: the larger of each side's extremes).
         float peak = 0.0f;
-        for (int i = 0; i < numSamples; ++i)
-            peak = juce::jmax (peak, std::abs (left[i]), std::abs (right[i]));
+        if (numSamples > 0)
+        {
+            const auto l = juce::FloatVectorOperations::findMinAndMax (left, numSamples);
+            const auto r = juce::FloatVectorOperations::findMinAndMax (right, numSamples);
+            peak = juce::jmax (std::abs (l.getStart()), std::abs (l.getEnd()), std::abs (r.getStart()), std::abs (r.getEnd()));
+        }
         track->blockPeak = peak;
         track->playedThisBlock = true;
     }
@@ -1697,10 +1737,18 @@ namespace pr7s
                 oneByOne();
                 continue;
             }
+            // (0.83.1) The heaviest first (by each track's usual time): tasks are claimed in order, so a
+            // heavy instrument late in the list started last and the block waited on it alone. Sorted in
+            // place (insertion sort: a few dozen, nothing allocated); the mixing below stays in the tracks'
+            // own order, so the sum is the same to the bit.
+            for (size_t i = 1; i < wave.size(); ++i)
+                for (auto j = i; j > 0 && wave[j - 1]->usualSeconds < wave[j]->usualSeconds; --j)
+                    std::swap (wave[j - 1], wave[j]);
             auto task = [this, &block] (int i) { timedTrack (*wave[(size_t) i], block); };
             workers.run ((int) wave.size(), task);
-            for (auto* track : wave)
-                mixTrackOut (*track, block, master);
+            for (auto& track : tracks)
+                if (inPass (*track))
+                    mixTrackOut (*track, block, master);
         }
 
         // The master: its inserts before the fader, its volume, the inserts after it, to the output.
@@ -1850,9 +1898,14 @@ namespace pr7s
             }
         }
 
+        // (0.83.1) Each side's peak found once (it was scanned once per meter reader: six times).
         for (int channel = 0; channel < juce::jmin (2, output.getNumChannels()); ++channel)
+        {
+            const auto range = juce::FloatVectorOperations::findMinAndMax (output.getReadPointer (channel), numSamples);
+            const auto peak = juce::jmax (std::abs (range.getStart()), std::abs (range.getEnd()));
             for (auto& reader : outputMeters)
-                reader[(size_t) channel].pushSamples (output.getReadPointer (channel), numSamples);
+                reader[(size_t) channel].pushSamples (&peak, 1);
+        }
     }
 
     void Engine::setPreview (std::shared_ptr<const juce::AudioBuffer<float>> sound, bool loop)

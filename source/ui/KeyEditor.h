@@ -3,6 +3,7 @@
 #include "ui/InfoEntry.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "engine/FollowChords.h"
 #include "engine/Studio.h"
 #include "ui/ArrangeView.h"
 
@@ -422,6 +423,13 @@ private:
     pr7s::Studio& studio;
     ArrangeView& arrange;
     int partId = 0;                          // the part shown (0: none yet)
+    struct FollowCache   // (0.83.1) where a following part's notes sound, kept for the redraws
+    {
+        juce::uint64 version = 0;
+        int partId = 0;
+        std::vector<pr7s::Note> notes;
+        std::vector<pr7s::FollowedNote> heard;
+    } followCache;
     int lastArrangeTrack = 0, lastArrangeIndex = -1;
     std::vector<pr7s::Note> knownNotes;      // its notes as last seen, to notice changes from elsewhere (undo)
     std::vector<int> selected;

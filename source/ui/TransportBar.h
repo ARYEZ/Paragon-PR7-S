@@ -6,6 +6,7 @@
 
 #include "engine/Studio.h"
 #include "ui/LevelMeter.h"
+#include "ui/Pearl.h"
 
 // The transport: a pearl PR7 unit across the top of the studio. Its keys
 // (back to the start, STOP, PLAY, RECORD, CYCLE, CLICK) light as on the
@@ -110,6 +111,7 @@ private:
     void followPerformance();
     mutable std::vector<juce::Rectangle<float>> glasses;
     juce::Image satin;
+    Pearl::UnitCache unitCache;   // (0.83.1)
     double dragStartBpm = 120.0;
     bool draggingTempo = false;
 };

@@ -219,8 +219,12 @@ public:
 
     void setLevel (float peak)
     {
-        if (reading.push (peak))
-            repaint (levelArea.toNearestInt().expanded (2));
+        if (reading.push (peak) && ! levelArea.isEmpty())
+            if (const auto now = reading.shown (levelArea.getWidth()); now != shownLevel)   // (0.83.1: only when a segment changes)
+            {
+                shownLevel = now;
+                repaint (levelArea.toNearestInt().expanded (2));
+            }
     }
 
     void paint (juce::Graphics& g) override
@@ -407,6 +411,7 @@ public:
     Arrow arrow, folderArrow;
     juce::Rectangle<float> levelArea;
     LevelMeter::Ballistics reading;
+    int shownLevel = -1;   // (0.83.1) what the meter last drew
 };
 
 //==============================================================================
@@ -580,6 +585,7 @@ public:
     const int busId, laneIndex;
     juce::TextButton control, mute { "M" }, append { "+" }, remove { "X" };
     juce::Rectangle<float> valueArea;
+    juce::String shownValue;   // (0.83.1) the value the row last drew
 };
 
 juce::Button* TrackList::getLaneRemoveKey (int busId, int laneIndex)
@@ -1207,7 +1213,11 @@ void TrackList::timerCallback()
         row->followMix();
     }
     for (auto& lane : laneRows)
-        lane->repaint (lane->valueArea.toNearestInt());
+        if (auto text = lane->valueText(); text != lane->shownValue)   // (0.83.1: only when the value shown changes)
+        {
+            lane->shownValue = std::move (text);
+            lane->repaint (lane->valueArea.toNearestInt());
+        }
     if (tempoRow != nullptr)
         tempoRow->followTempo();
     if (signatureRow != nullptr)

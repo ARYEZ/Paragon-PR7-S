@@ -285,7 +285,16 @@ namespace pr7s
         numberParts();
         watchPlugins();
         if (exportJob == nullptr)   // (mid-render the engine plays the render's copy: endExport brings the song back)
-            engine.update (heardCopy.has_value() ? *heardCopy : project);
+        {
+            // (0.83.1) A drag's step that moved only the mix (a fader, pan, send level, EQ or BOOSTER, nothing
+            // written): just the levels, not every track's notes and clips again. The release (an undo step)
+            // does the full update, so nothing else can be left behind.
+            const auto& playing = heardCopy.has_value() ? *heardCopy : project;
+            if (mixOnlyAsked && ! mixOnlyBroken && ! undoable)
+                engine.updateMix (playing);
+            else
+                engine.update (playing);
+        }
         modified = true;
         if (undoable)
             recordUndoState();
@@ -331,37 +340,55 @@ namespace pr7s
         engine.setLiveInputFilter (live != nullptr ? live->midiInput : juce::String());
     }
 
-    void Studio::recordUndoState()
+    // (0.83.1) A copy of the song without the plug-ins' saved settings (several MB each: nothing
+    // that plays or undoes a copy reads them), made by moving them out of the song for the copy and
+    // back: the song is the same after. With `forUndo`, also without what undo never puts back.
+    Project Studio::copyWithoutPluginStates (bool forUndo) const
     {
-        // A copy without the plug-ins' settings (they aren't undone, and can be several MB each:
-        // since 0.34.1 they're moved out of the song while it's copied, not copied and thrown away),
-        // nor what undo never puts back (the drum maps, the hand-edited hitpoints).
+        auto& song = const_cast<Project&> (project);   // (message thread; left exactly as it was)
         std::vector<juce::MemoryBlock> keptStates;
         const auto takeOut = [&keptStates] (juce::MemoryBlock& state) { keptStates.push_back (std::move (state)); state.reset(); };
-        for (auto& track : project.tracks)
+        for (auto& track : song.tracks)
         {
             takeOut (track.instrument.state);
             for (auto& insert : track.inserts)
                 takeOut (insert.state);
         }
-        for (auto& insert : project.masterInserts)
+        for (auto& insert : song.masterInserts)
             takeOut (insert.state);
-        auto drumMaps = std::move (project.drumMaps);
-        auto hitpointEdits = std::move (project.hitpointEdits);
-        project.drumMaps.clear();
-        project.hitpointEdits.clear();
-        auto state = project;
-        project.drumMaps = std::move (drumMaps);
-        project.hitpointEdits = std::move (hitpointEdits);
+        std::vector<DrumMap> drumMaps;
+        decltype (song.hitpointEdits) hitpointEdits;
+        if (forUndo)
+        {
+            drumMaps = std::move (song.drumMaps);
+            hitpointEdits = std::move (song.hitpointEdits);
+            song.drumMaps.clear();
+            song.hitpointEdits.clear();
+        }
+        auto copy = song;
+        if (forUndo)
+        {
+            song.drumMaps = std::move (drumMaps);
+            song.hitpointEdits = std::move (hitpointEdits);
+        }
         auto next = keptStates.begin();
-        for (auto& track : project.tracks)
+        for (auto& track : song.tracks)
         {
             track.instrument.state = std::move (*next++);
             for (auto& insert : track.inserts)
                 insert.state = std::move (*next++);
         }
-        for (auto& insert : project.masterInserts)
+        for (auto& insert : song.masterInserts)
             insert.state = std::move (*next++);
+        return copy;
+    }
+
+    void Studio::recordUndoState()
+    {
+        // A copy without the plug-ins' settings (they aren't undone, and can be several MB each:
+        // since 0.34.1 they're moved out of the song while it's copied, not copied and thrown away),
+        // nor what undo never puts back (the drum maps, the hand-edited hitpoints).
+        auto state = copyWithoutPluginStates (true);
         // (0.83.0) Its name for the Edit History, from what differs from the step it follows.
         HistoryStep step;
         if (undoIndex >= 0 && undoIndex < (int) undoStates.size())
@@ -4567,6 +4594,7 @@ namespace pr7s
         if (target == nullptr || (*target == limited && ! undoable))
             return;
         *target = limited;
+        mixOnly (! undoable);   // (0.83.1: a drag's steps redraw no other view; the release does)
         changed (undoable);
     }
 
@@ -4588,6 +4616,7 @@ namespace pr7s
         if (target == nullptr || (*target == limited && ! undoable))
             return;
         *target = limited;
+        mixOnly (! undoable);   // (0.83.1: a drag's steps redraw no other view; the release does)
         changed (undoable);
     }
 
@@ -7785,7 +7814,7 @@ namespace pr7s
     {
         if (project.findTrack (trackId) == nullptr || exportJob != nullptr)
             return;
-        auto heard = project;
+        auto heard = copyWithoutPluginStates (false);
         for (auto& t : heard.tracks)
             t.solo = t.id == trackId;
         heard.findTrack (trackId)->soloLane = lane;
@@ -10386,7 +10415,9 @@ namespace pr7s
             return std::nullopt;
         const auto start = composerAudition->start, end = composerAudition->end;
         // A copy of the song: each layer a part on its track, those tracks alone, the cycle round the layers.
-        auto heard = project;
+        // (0.83.1: without the plug-ins' saved settings: this runs on every change while the composer
+        // plays, a fader step included, and copied every Kontakt-sized state each time.)
+        auto heard = copyWithoutPluginStates (false);
         std::set<int> playing;
         for (const auto& [trackId, idea] : composerAudition->layers)
         {

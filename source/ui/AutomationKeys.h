@@ -32,7 +32,12 @@ namespace AutomationKeys
         read.setToggleState (studio.getAutomationRead (busId), juce::dontSendNotification);
         write.setToggleState (studio.getAutomationWrite (busId), juce::dontSendNotification);
         const auto writing = studio.isWritingAutomation (busId);
-        write.getProperties().set (ParagonLookAndFeel::litColourProperty, (juce::int64) (writing ? writingColour : writeColour).getARGB());
-        write.repaint();
+        // (0.83.1) Repainted only when its colour changes (this runs 20 times a second).
+        const auto colour = (juce::int64) (writing ? writingColour : writeColour).getARGB();
+        if (write.getProperties()[ParagonLookAndFeel::litColourProperty] != juce::var (colour))
+        {
+            write.getProperties().set (ParagonLookAndFeel::litColourProperty, colour);
+            write.repaint();
+        }
     }
 }

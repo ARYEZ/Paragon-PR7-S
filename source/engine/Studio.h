@@ -1498,6 +1498,7 @@ namespace pr7s
         void effectGoing (int busId, int slot);
         void removeAllEffects();
         void recordUndoState();
+        Project copyWithoutPluginStates (bool forUndo) const;   // (0.83.1)
         bool applyAutoColour();   // (0.79.0) the rule's colours onto its tracks; true if any changed
         void restore (const Project&);
         void joinFolderGroup (Track&);    // (0.50.0)

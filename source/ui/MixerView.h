@@ -204,4 +204,5 @@ private:
     juce::Rectangle<float> linkArea;   // its link group, over its name (0.17.0)
     juce::Rectangle<float> meterArea, nameArea, readoutArea, panReadoutArea, rackArea, sendsDivider;
     LevelMeter::Ballistics left, right;
+    std::pair<int, int> shownLevels { -1, -1 };   // (0.83.1) what the meter last drew
 };

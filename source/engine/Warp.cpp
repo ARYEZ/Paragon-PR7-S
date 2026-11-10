@@ -285,12 +285,26 @@ namespace pr7s
     {
         if (! part.isWarped() || recording.getNumSamples() == 0)
             return nullptr;
-        juce::String key;
-        key << part.audioFile << "|" << sampleRate << "|" << part.start << "|" << part.length;
+        std::string key;
+        const auto& events = tempo.getEvents();
+        key.reserve ((size_t) part.audioFile.getNumBytesAsUTF8() + 1 + sizeof (double) * (3 + 2 * part.warp.size() + 3 * events.size()));
+        const auto add = [&key] (double value) { key.append (reinterpret_cast<const char*> (&value), sizeof (value)); };
+        key.append (part.audioFile.toRawUTF8());
+        key.push_back ('\0');
+        add (sampleRate);
+        add (part.start);
+        add (part.length);
         for (const auto& m : part.warp)
-            key << "|" << m.beat << ":" << m.seconds;
-        for (const auto& e : tempo.getEvents())
-            key << "|t" << e.beat << ":" << e.bpm << (e.ramp ? "r" : "s");
+        {
+            add (m.beat);
+            add (m.seconds);
+        }
+        for (const auto& e : events)
+        {
+            add (e.beat);
+            add (e.bpm);
+            add (e.ramp ? 1.0 : 0.0);
+        }
         if (auto found = whole.find (key); found != whole.end())
             return found->second;
 

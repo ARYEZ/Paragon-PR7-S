@@ -346,7 +346,7 @@ void TransportBar::resized()
 
 void TransportBar::paint (juce::Graphics& g)
 {
-    Pearl::paintUnit (g, getLocalBounds().toFloat().reduced (4.0f), satin);
+    Pearl::paintUnit (g, getLocalBounds().toFloat().reduced (4.0f), satin, unitCache);
     glasses.clear();
     // (0.34.4) The screens' redraws are of their own strips (the position 30 times a second), but
     // every screen was drawn again each time, its shadow's blur and all, for JUCE to clip away.
