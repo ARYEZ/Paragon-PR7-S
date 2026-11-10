@@ -42,14 +42,29 @@ namespace ToolIcons
                 }
                 f.addRectangle (7.0f, 9.0f, 10.0f, 6.0f);
                 break;
-            case T::split:    // scissors
-                s.addEllipse (3.0f, 14.0f, 6.0f, 6.0f);
-                s.addEllipse (15.0f, 14.0f, 6.0f, 6.0f);
-                s.startNewSubPath (8.0f, 14.5f);
-                s.lineTo (17.5f, 2.5f);
-                s.startNewSubPath (16.0f, 14.5f);
-                s.lineTo (6.5f, 2.5f);
+            case T::split:    // (0.81.0, the owner asked) a straight razor: the blade solid, the handle outlined, tilted
+            {
+                // Drawn level first: the blade on the left (its edge along the bottom, a squared point),
+                // the shank and pivot, the handle on the right; then turned so the blade points down-left.
+                juce::Path blade;
+                blade.startNewSubPath (1.5f, 8.0f);                       // the point, top
+                blade.lineTo (14.0f, 8.0f);                               // the spine
+                blade.lineTo (15.5f, 10.0f);                              // into the shank
+                blade.lineTo (15.5f, 12.0f);
+                blade.lineTo (14.0f, 14.5f);
+                blade.quadraticTo (8.0f, 13.6f, 2.5f, 15.0f);             // the edge, a touch hollow
+                blade.lineTo (1.5f, 13.0f);
+                blade.closeSubPath();
+                const auto turn = juce::AffineTransform::rotation (-0.6f, 12.0f, 12.0f);
+                blade.applyTransform (turn);
+                f = blade;
+                juce::Path handle;
+                handle.addRoundedRectangle (17.0f, 9.3f, 6.0f, 3.4f, 1.6f);
+                handle.addEllipse (15.2f, 9.8f, 2.4f, 2.4f);              // the pivot
+                handle.applyTransform (turn);
+                s = handle;
                 break;
+            }
             case T::glue:     // a tube of glue, a drop from its nozzle
                 f.addRoundedRectangle (3.0f, 10.0f, 13.0f, 8.0f, 2.0f);
                 f.addTriangle (16.0f, 11.0f, 16.0f, 17.0f, 20.0f, 14.0f);
@@ -153,7 +168,7 @@ namespace ToolIcons
 
     // The tool as the mouse pointer: white with a dark edge, 24 pixels, its
     // hot spot where it acts (the pointer's tip, the pencil's, the lens'
-    // middle, the scissors' crossing...). SELECT: the usual pointer.
+    // middle, the razor's edge...). SELECT: the usual pointer.
     inline juce::MouseCursor cursor (ArrangeView::Tool tool)
     {
         using T = ArrangeView::Tool;
@@ -168,7 +183,7 @@ namespace ToolIcons
         }
         const auto hotSpot = tool == T::draw ? juce::Point<int> (3, 21)
                            : tool == T::zoom ? juce::Point<int> (9, 9)
-                           : tool == T::split ? juce::Point<int> (12, 9)
+                           : tool == T::split ? juce::Point<int> (9, 16)   // (the middle of the razor's edge)
                            : tool == T::range ? juce::Point<int> (4, 12)
                                               : juce::Point<int> (12, 12);
         return juce::MouseCursor (image, hotSpot.x, hotSpot.y);   // (the arrangement keeps the ones it makes)

@@ -2,7 +2,15 @@
 
 Each version's notes appear on its GitHub Release page.
 
-## 0.80.2
+## 0.81.0
+
+Your four asks from this round:
+
+- **Set the cycle from the MIDI editor** so a passage loops while you edit. The editor's ruler now has the arrangement's cycle strip along its top. Drag in the strip to make a new loop (CYCLE turns on), drag either end's flag to move just that end, drag the range to slide it, and click inside it to turn CYCLE on or off. Ctrl-click anywhere in the ruler sets the left locator and Alt-click the right one, as in the arrangement. **P** (after a click in the editor) puts the loop round the notes you've selected (rounded out to the grid), or round the whole part when none are selected. **Alt+P** does that, turns CYCLE on and plays. The loop also shows faintly down the notes.
+- **SNAP on and off inside the MIDI editor.** A new SNAP key sits under the grid box (J after a click in the editor). Lit, notes you move, draw, resize or split land on the grid as before. Off, they go exactly where you put them. Holding Ctrl still gives one free drag with SNAP lit. It's the editor's own setting and is remembered; the header's SNAP is still the arrangement's.
+- **The SPLIT tool is a straight razor** (key and pointer, in the arrangement and the MIDI editor): a solid blade with an outlined handle on its pivot. The pointer cuts at the middle of the blade's edge.
+- **Stereo renders look stereo.** I checked Render in Place of instrument tracks: the files it writes are stereo (two channels), and a new test proves the left and right sides come through apart. But the arrangement drew every audio clip as one combined waveform, so a stereo file looked mono. Now a stereo recording is drawn with each side in its own half, left over right, when the track is tall enough (at least 24 pixels of waveform), with a faint line between. Mono files still draw as one. One honest note: a guitar plug-in that plays in the middle (both sides the same) renders as a stereo file with two identical halves; its pan isn't in the file, because Render in Place (with Channel Settings) leaves the fader and pan out of the render and puts them on the new track instead.
+
 
 **Selected automation points are circles** (you asked): the lit points are now pearl-white circles with a dark edge instead of squares, a touch bigger than the unselected points so they stand out. Unselected points stay as they were; where you click to grab a point hasn't changed.
 

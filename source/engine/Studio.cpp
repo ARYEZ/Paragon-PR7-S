@@ -2988,14 +2988,26 @@ namespace pr7s
                 interpolator.process (ratio, read.getReadPointer (channel), data->sound.getWritePointer (channel), converted);
             }
         }
-        const auto samples = data->sound.getNumSamples();
-        for (int from = 0; from < samples; from += AudioData::peakStep)
-        {
-            const auto count = juce::jmin (AudioData::peakStep, samples - from);
-            const auto left = data->sound.getMagnitude (0, from, count), right = data->sound.getMagnitude (1, from, count);
-            data->peaks.push_back (juce::jmax (left, right));
-        }
+        data->stereo = reader->numChannels >= 2;
+        data->makePeaks();
         return data;
+    }
+
+    void Studio::AudioData::makePeaks()
+    {
+        peaks.clear();
+        leftPeaks.clear();
+        rightPeaks.clear();
+        const auto samples = sound.getNumSamples(), channels = sound.getNumChannels();
+        for (int from = 0; from < samples; from += peakStep)
+        {
+            const auto count = juce::jmin (peakStep, samples - from);
+            const auto left = channels > 0 ? sound.getMagnitude (0, from, count) : 0.0f;
+            const auto right = channels > 1 ? sound.getMagnitude (1, from, count) : left;
+            leftPeaks.push_back (left);
+            rightPeaks.push_back (right);
+            peaks.push_back (juce::jmax (left, right));
+        }
     }
 
     //==========================================================================
@@ -11696,15 +11708,8 @@ namespace pr7s
         auto heard = std::make_shared<AudioData>();
         heard->sampleRate = data->sampleRate;
         heard->sound = renderVariAudio (data->sound, data->sampleRate, *analysis, project.variAudio[file].segments);
-        const auto samples = heard->sound.getNumSamples();
-        for (int from = 0; from < samples; from += AudioData::peakStep)
-        {
-            const auto count = juce::jmin (AudioData::peakStep, samples - from);
-            auto peak = 0.0f;
-            for (int c = 0; c < heard->sound.getNumChannels(); ++c)
-                peak = juce::jmax (peak, heard->sound.getMagnitude (c, from, count));
-            heard->peaks.push_back (peak);
-        }
+        heard->stereo = data->stereo;
+        heard->makePeaks();
         heardCache[file] = { signature, data, heard };
         return heard;
     }

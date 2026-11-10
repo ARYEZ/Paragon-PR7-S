@@ -1132,15 +1132,31 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
             const auto peaksPerSecond = data->sampleRate / pr7s::Studio::AudioData::peakStep;
             const auto clip = wave.getIntersection (getLocalBounds().toFloat()).getIntersection (g.getClipBounds().toFloat().expanded (1.0f));
             g.setColour (colour.brighter (0.7f).withAlpha (0.9f));
-            for (auto x = std::floor (clip.getX()); x < clip.getRight(); x += 1.0f)
+            // (0.81.0) A stereo recording: each side in its own half (left over right), with room for both;
+            // a mono one: one waveform, as before.
+            const auto twoSides = data->stereo && wave.getHeight() >= 24.0f && data->leftPeaks.size() == data->peaks.size();
+            const auto lanes = twoSides ? 2 : 1;
+            for (int side = 0; side < lanes; ++side)
             {
-                const auto from = secondsAtX (x), to = secondsAtX (x + 1.0f);
-                const auto first = (int) (from * peaksPerSecond), last = juce::jmax (first + 1, (int) (to * peaksPerSecond));
-                auto peak = 0.0f;
-                for (int i = juce::jmax (0, first); i < juce::jmin (last, (int) data->peaks.size()); ++i)
-                    peak = juce::jmax (peak, data->peaks[(size_t) i]);
-                const auto height = juce::jmin (1.0f, peak * part.gain()) * wave.getHeight() * 0.5f;
-                g.fillRect (juce::Rectangle<float> (x, wave.getCentreY() - height, 1.0f, juce::jmax (0.5f, height * 2.0f)));
+                const auto& list = ! twoSides ? data->peaks : side == 0 ? data->leftPeaks : data->rightPeaks;
+                const auto lane = twoSides ? (side == 0 ? wave.withHeight (wave.getHeight() * 0.5f).withTrimmedBottom (1.0f)
+                                                        : wave.withTrimmedTop (wave.getHeight() * 0.5f).withTrimmedTop (1.0f))
+                                           : wave;
+                for (auto x = std::floor (clip.getX()); x < clip.getRight(); x += 1.0f)
+                {
+                    const auto from = secondsAtX (x), to = secondsAtX (x + 1.0f);
+                    const auto first = (int) (from * peaksPerSecond), last = juce::jmax (first + 1, (int) (to * peaksPerSecond));
+                    auto peak = 0.0f;
+                    for (int i = juce::jmax (0, first); i < juce::jmin (last, (int) list.size()); ++i)
+                        peak = juce::jmax (peak, list[(size_t) i]);
+                    const auto height = juce::jmin (1.0f, peak * part.gain()) * lane.getHeight() * 0.5f;
+                    g.fillRect (juce::Rectangle<float> (x, lane.getCentreY() - height, 1.0f, juce::jmax (0.5f, height * 2.0f)));
+                }
+            }
+            if (twoSides)
+            {
+                g.setColour (colour.withAlpha (0.35f));
+                g.fillRect (juce::Rectangle<float> (clip.getX(), wave.getCentreY() - 0.5f, clip.getWidth(), 1.0f));
             }
         }
         else

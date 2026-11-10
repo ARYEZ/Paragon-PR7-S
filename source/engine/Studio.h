@@ -866,6 +866,11 @@ namespace pr7s
         {
             juce::AudioBuffer<float> sound;
             std::vector<float> peaks;   // the loudest sample (either side) in each stretch of peakStep samples, for drawing
+            // (0.81.0) The file had two sides (a mono file is kept on both): the arrangement draws each
+            // side's peaks in its own half, as the other DAW does, so a stereo clip looks stereo.
+            bool stereo = false;
+            std::vector<float> leftPeaks, rightPeaks;
+            void makePeaks();   // peaks, leftPeaks, rightPeaks from `sound`
             static constexpr int peakStep = 256;
             double seconds() const noexcept;
             double sampleRate = 48000.0;

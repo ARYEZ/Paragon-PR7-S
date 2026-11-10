@@ -37,6 +37,7 @@
 // PARAGON_SNAPSHOT_SIGNATURE=1: the signature track, 7/8 from bar 3 and 3/4 from bar 5, the playhead in the 7/8 (0.45.0).
 // PARAGON_SNAPSHOT_TAP=1: the transport while tapping the tempo (0.45.0).
 // PARAGON_SNAPSHOT_WARP=1: the guitar's clip warped (markers from its hitpoints, one dragged), selected, the WARP tool (0.32.0).
+// PARAGON_SNAPSHOT_STEREO=1: the guitar's take a stereo file, its right side quieter (0.81.0: drawn as two halves).
 // PARAGON_SNAPSHOT_TAKES=1: the guitar's three takes on lanes (LANES), comped (0.29.0), the COMP tool chosen.
 // PARAGON_SNAPSHOT_FOLLOW=1 (with PARAGON_SNAPSHOT_CHORDS): the lead following the chord track, two chords changed (0.36.0).
 // PARAGON_SNAPSHOT_FREEZE=1: the lead frozen (FREEZE lit in its Inspector, its parts stamped).
@@ -87,7 +88,19 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
     // A guitar: an audio track with a recorded take (a plucked-string stand-in), faded in and out.
     const auto guitar = studio.addAudioTrack (false);
     studio.renameTrack (guitar, "Guitar");
-    writeWav (studio.getAudioFolder().getChildFile ("Guitar 01.wav"), pluckedTake (12.0, 48000.0, 7), 48000.0);
+    {
+        auto sound = pluckedTake (12.0, 48000.0, 7);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_STEREO", {}).isNotEmpty())
+        {
+            // (0.81.0) A stereo take: the right side quieter, so the clip's two halves differ.
+            juce::AudioBuffer<float> stereo (2, sound.getNumSamples());
+            stereo.copyFrom (0, 0, sound, 0, 0, sound.getNumSamples());
+            stereo.copyFrom (1, 0, sound, 0, 0, sound.getNumSamples());
+            stereo.applyGain (1, 0, sound.getNumSamples(), 0.45f);
+            sound = std::move (stereo);
+        }
+        writeWav (studio.getAudioFolder().getChildFile ("Guitar 01.wav"), sound, 48000.0);
+    }
     Part take { 4.0, 20.0, "Guitar", {} };
     take.audioFile = "Guitar 01.wav";
     take.audioOffset = 1.0;
