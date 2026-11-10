@@ -146,6 +146,7 @@ namespace Windows
 
         juce::ComboBox range, rate, bits, channelsMode;
         juce::ToggleButton click { "Include the click" };
+        juce::ToggleButton mono { "Mono (left and right as one channel)" };   // (0.82.6, the owner asked)
         juce::ToggleButton includeMaster { "Include the master's effects, EQ and fader" };
         juce::TextButton exportButton { "EXPORT..." }, cancelButton { "CANCEL" }, allKey { "ALL" }, noneKey { "NONE" };
 

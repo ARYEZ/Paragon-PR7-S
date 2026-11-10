@@ -2084,16 +2084,34 @@ namespace pr7s
         auto glued = track->parts[(size_t) index];
         if (glued.isAudio())
         {
-            // Only clips cut from one recording, end to end (a split glued back).
+            // Clips cut from one recording, end to end (a split glued back): one clip again, no new file.
+            auto oneRecording = true;
             for (const auto i : after)
             {
                 const auto& next = track->parts[(size_t) i];
                 const auto secondsIn = glued.audioOffset + project.tempoMap().secondsBetween (glued.start, glued.end());
                 if (next.audioFile != glued.audioFile || std::abs (next.start - glued.end()) > 1.0e-6 || next.volumeDb != glued.volumeDb
                     || std::abs (next.audioOffset - secondsIn) > 1.0e-4 || glued.isWarped() || next.isWarped())
-                    return false;   // (0.32.0: warped clips aren't glued: Flatten first)
+                {
+                    oneRecording = false;
+                    break;
+                }
                 glued.length = next.end() - glued.start;
                 glued.fadeOut = next.fadeOut;
+            }
+            // (0.82.6, the owner asked: glue any clips) Else the clips as they're heard (their volumes, fades, warps,
+            // the crossfades between them; silence in the gaps) written into one new file, "<track> glued NN.wav",
+            // and one clip of it in their place. The recordings themselves stay as they were on disk.
+            if (! oneRecording)
+            {
+                std::vector<int> chosen { index };
+                chosen.insert (chosen.end(), after.begin(), after.end());
+                juce::String error;
+                if (! glueIntoFile (*track, chosen, glued, error))
+                {
+                    SessionLog::note ("Glue: " + error);
+                    return false;
+                }
             }
         }
         else
@@ -2139,6 +2157,80 @@ namespace pr7s
         for (const auto i : after)
             track->parts.erase (track->parts.begin() + i);
         changed();
+        return true;
+    }
+
+    bool Studio::glueIntoFile (const Track& track, const std::vector<int>& indices, Part& glued, juce::String& error)
+    {
+        Track among = track;
+        among.soloLane = -1;
+        among.parts.clear();
+        auto from = std::numeric_limits<double>::max(), to = 0.0;
+        auto rate = 0.0;
+        auto channels = 1;
+        for (const auto i : indices)
+        {
+            auto p = track.parts[(size_t) i];
+            if (! p.isAudio())
+                continue;
+            p.muted = false;
+            from = juce::jmin (from, p.start);
+            to = juce::jmax (to, p.end());
+            const auto data = getHeardAudio (p.audioFile);
+            if (data == nullptr)
+            {
+                error = p.audioFile + " couldn't be read.";
+                return false;   // (a missing recording: nothing glued rather than a gap where it was)
+            }
+            if (rate <= 0.0)
+                rate = data->sampleRate;
+            channels = juce::jmax (channels, data->sound.getNumChannels());
+            among.parts.push_back (p);
+        }
+        if (among.parts.empty() || rate <= 0.0 || to <= from)
+        {
+            error = "the clips' recordings couldn't be read.";
+            return false;
+        }
+        const auto tempo = project.tempoMap();
+        const auto startSeconds = tempo.secondsAt (from);
+        const auto total = (int) std::ceil ((tempo.secondsAt (to) - startSeconds) * rate);
+        juce::AudioBuffer<float> sound (juce::jmin (2, channels), juce::jmax (1, total));
+        sound.clear();
+        for (int i = 0; i < (int) among.parts.size(); ++i)
+            mixHeardClip (sound, among, i, startSeconds, rate);
+        auto folder = getAudioFolder();
+        folder.createDirectory();
+        juce::File file;
+        int n = 1;
+        do
+            file = folder.getChildFile (juce::File::createLegalFileName (track.name) + " glued " + juce::String (n++).paddedLeft ('0', 2) + ".wav");
+        while (file.exists());
+        std::unique_ptr<juce::OutputStream> stream (file.createOutputStream());
+        std::unique_ptr<juce::AudioFormatWriter> writer;
+        if (stream != nullptr)
+            writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (rate)
+                                                                                   .withNumChannels (sound.getNumChannels())
+                                                                                   .withBitsPerSample (32)
+                                                                                   .withSampleFormat (juce::AudioFormatWriterOptions::SampleFormat::floatingPoint));
+        if (writer == nullptr || ! writer->writeFromAudioSampleBuffer (sound, 0, sound.getNumSamples()))
+        {
+            error = "the glued file couldn't be written to " + file.getFullPathName();
+            return false;
+        }
+        writer.reset();
+        forgetAudio (file.getFileName());
+        const auto keepId = glued.id;
+        const auto lane = glued.lane, order = glued.order;
+        glued = Part();
+        glued.id = keepId;
+        glued.lane = lane;
+        glued.order = order;
+        glued.start = from;
+        glued.length = to - from;
+        glued.audioFile = file.getFileName();
+        glued.name = track.name + " glued";
+        SessionLog::note ("Glue: " + juce::String ((int) among.parts.size()) + " clips into " + file.getFileName());
         return true;
     }
 

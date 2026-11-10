@@ -2,7 +2,14 @@
 
 Each version's notes appear on its GitHub Release page.
 
-## 0.82.5
+## 0.82.6
+
+Your two asks from the export talk:
+
+- **Mono export.** The export page has a **Mono** box beside "Include the click": left and right are averaged into one channel. It works for the main mix and for a batch (every channel's file, every cycle marker's file comes out mono), and it's remembered for next time.
+- **Glue joins any audio clips.** Before, the glue tool only joined pieces of one recording lying end to end (a split put back); clips from different recordings refused. Now those are joined too: the clips as you hear them (their volumes, fades, warps and the crossfades between them, silence in any gaps) are written into one new file, "<track> glued 01.wav" beside the song's recordings, and one clip of it takes their place. Your original recordings stay untouched on disk, and Undo brings the separate clips back. A split glued back to its own recording still becomes one clip of the same file, with no new file. The glued clip starts at 0 dB with no fades (they're printed in).
+
+
 
 **Your keyboard files as you named them** ("keys 1.midi", "pad2.midi", "lead.midi": a file per part). A MIDI file is now the drums only when its name says drums (drum, drums, kit, perc...); any MIDI file named for something a keyboard player plays (keys, piano, pad, lead, synth, bass, arp, strings, organ...) is a keyboard part. Before, "lead.midi" would have been taken for the drums ("lead" only meant the lead guitar's DI) and a synth bass's "bass.midi" likewise. A MIDI file named nothing we know (just the song's name) is still the drums, and a WAV named lead is still the lead guitar's DI. In the review song each keyboard part's track is named after its file ("KEYS: pad2", "KEYS: lead"), so the part kinds stay told apart for the learning.
 

@@ -341,3 +341,13 @@ TEST_CASE ("0.52.2: the PLUGINS page lists what was found, in the Hub's look", "
     CHECK (page.createComponentSnapshot (page.getLocalBounds()).isValid());
     known.clear();
 }
+
+TEST_CASE ("0.82.6: the export page's MONO writes one channel", "[export][mono]")
+{
+    Studio studio (false);
+    Windows::ExportPage page (studio);
+    CHECK_FALSE (page.getOptions().mono);
+    page.mono.setToggleState (true, juce::dontSendNotification);
+    CHECK (page.getOptions().mono);
+    CHECK (page.getBatch().options.mono);
+}

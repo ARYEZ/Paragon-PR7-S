@@ -887,3 +887,35 @@ TEST_CASE ("On screen: COMP moves a split, splits every take, slips; the comp ha
         CHECK (view.createComponentSnapshot (view.getLocalBounds()).isValid());
     }
 }
+
+TEST_CASE ("0.82.6: Glue joins clips of different recordings into one new file, as they were heard", "[takes][glue]")
+{
+    Takes t;
+    auto& studio = t.studio;
+    writeLevel (studio, "a.wav", 0.25f, 4.0);
+    writeLevel (studio, "b.wav", 0.5f, 4.0);
+    auto first = clip (0.0, 2.0, "a.wav");
+    auto second = clip (3.0, 2.0, "b.wav");   // a beat's gap between them
+    second.volumeDb = -6.0f;
+    studio.addPart (t.trackId, first);
+    studio.addPart (t.trackId, second);
+    REQUIRE (t.track().parts.size() == 2);
+    REQUIRE (studio.glueParts (t.trackId, 0, false));
+    REQUIRE (t.track().parts.size() == 1);
+    const auto& glued = t.track().parts[0];
+    CHECK (glued.audioFile.contains ("glued"));
+    CHECK_THAT (glued.start, WithinAbs (0.0, 1.0e-9));
+    CHECK_THAT (glued.length, WithinAbs (5.0, 1.0e-9));
+    CHECK (glued.volumeDb == 0.0f);
+    CHECK (glued.fadeIn == 0.0);
+    const auto data = studio.getAudio (glued.audioFile);
+    REQUIRE (data != nullptr);
+    const auto at = [&] (double beatsIn) { return data->sound.getSample (0, (int) (beatsIn * (double) beat)); };
+    CHECK_THAT (at (1.0), WithinAbs (0.25, 1.0e-4));
+    CHECK_THAT (at (2.5), WithinAbs (0.0, 1.0e-6));                   // the gap: silence
+    CHECK_THAT (at (4.0), WithinAbs (0.5 * std::pow (10.0, -6.0 / 20.0), 1.0e-3));   // its volume printed in
+    // The recordings are left as they were; Undo brings the two clips back.
+    CHECK (studio.getAudioFolder().getChildFile ("a.wav").existsAsFile());
+    studio.undo();
+    CHECK (t.track().parts.size() == 2);
+}

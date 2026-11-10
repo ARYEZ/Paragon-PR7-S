@@ -583,8 +583,9 @@ namespace pr7s
         // it: one part from its start to the last one's end, with their notes
         // (what was heard: the gaps between stay silent), named and muted as
         // the first. Audio: only a clip and the next one cut from the same
-        // recording straight after it (a split glued back); anything else
-        // returns false (an audio part holding several clips isn't there yet).
+        // recording straight after it (a split glued back) become one clip again;
+        // any other clips (0.82.6) are written as heard into one new file
+        // ("<track> glued NN.wav") and become one clip of it.
         bool glueParts (int trackId, int index, bool toAllFollowing);
         // Quantize (Q in the arrangement, 0.31.0: the manual's "In the Project window, select a MIDI part"):
         // every note of these MIDI parts to the nearest step of `grid` beats (the song's quantize value), its
@@ -1562,6 +1563,8 @@ namespace pr7s
         bool copyAudioFiles (const juce::File& from, const juce::File& to);
         void sendGone (Track&, int slot);
         void mixHeardClip (juce::AudioBuffer<float>&, const Track& among, int index, double startSeconds, double rate);
+        // (0.82.6) Clips of `track` (by index) as heard, written into one new file; `glued` becomes one clip of it.
+        bool glueIntoFile (const Track&, const std::vector<int>& indices, Part& glued, juce::String& error);
         bool linksSuspended = false, linksAbsolute = false, qLink = false;
         bool mirroring = false;
         juce::StringArray progressionFavorites;   // (without a settings file)
