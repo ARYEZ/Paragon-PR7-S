@@ -121,7 +121,10 @@ jobs:
   # three builds above, zipped, and notes from CHANGELOG.md.
   release:
     name: Release
-    if: github.event_name == 'push'
+    # (0.85.0, the owner: "if the Linux build fails still release the Windows build")
+    # Runs even when a build job failed; publishes whichever apps were built, as long as
+    # Windows' is one of them. A later push at the same version adds a missing Linux zip.
+    if: ${{ !cancelled() && github.event_name == 'push' }}
     needs: build
     runs-on: ubuntu-24.04
     # One release job at a time: a second push while one is publishing waits,
@@ -143,8 +146,14 @@ jobs:
           VERSION=$(sed -n 's/^project(ParagonPR7S VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
           TAG="v${VERSION}"
           if gh release view "$TAG" > /dev/null 2>&1; then
-            echo "${TAG} is already released; nothing to do."
-            echo "publish=false" >> "$GITHUB_OUTPUT"
+            # Released without the Linux zip (its build had failed): add it if it's built now.
+            if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -q -- '-Linux\.zip$'; then
+              echo "${TAG} is already released; nothing to do."
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "${TAG} is released without its Linux zip; adding it if this run built Linux."
+              echo "publish=add" >> "$GITHUB_OUTPUT"
+            fi
           else
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
@@ -152,7 +161,7 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/download-artifact@v8
-        if: steps.version.outputs.publish == 'true'
+        if: steps.version.outputs.publish != 'false'
         with:
           path: artifacts
 
@@ -160,11 +169,12 @@ jobs:
       # the app in each zip (the app looks there first). If it can't be had,
       # the release goes out without it (the app then uses the old synth).
       - name: PR7-K, the studio's synth
-        if: steps.version.outputs.publish == 'true'
+        if: steps.version.outputs.publish != 'false'
         run: |
           mkdir pr7k
           if gh release download --repo ARYEZ/Paragon-PR7-K --pattern "*-VST3.zip" --dir pr7k; then
             for os in Windows Linux; do
+              [ -d "artifacts/ParagonPR7S-${os}" ] || continue
               zip=$(ls pr7k/*-${os}-VST3.zip 2>/dev/null | head -1)
               if [ -n "$zip" ]; then
                 unzip -q "$zip" -d "artifacts/ParagonPR7S-${os}/"
@@ -178,14 +188,26 @@ jobs:
           fi
 
       - name: Zip each platform's app
-        if: steps.version.outputs.publish == 'true'
+        if: steps.version.outputs.publish != 'false'
         run: |
           TAG="${{ steps.version.outputs.tag }}"
           mkdir release
+          haveWindows=false; haveLinux=false
+          [ -e "artifacts/ParagonPR7S-Windows/Paragon PR7-S.exe" ] && haveWindows=true
+          [ -e "artifacts/ParagonPR7S-Linux/Paragon PR7-S" ] && haveLinux=true
+          if [ "${{ steps.version.outputs.publish }}" = "true" ] && [ "$haveWindows" != true ]; then
+            echo "::error::The Windows build is missing; nothing is released"
+            exit 1
+          fi
+          if [ "$haveLinux" != true ]; then
+            echo "::warning::The Linux build failed or is missing; releasing without the Linux zip"
+          fi
           # Artifact storage drops file permissions; put the executable flag
           # back on the macOS and Linux apps (and PR7-K's binaries).
-          chmod -R a+x "artifacts/ParagonPR7S-Linux/Paragon PR7-S"
-          chmod -R a+x artifacts/ParagonPR7S-Linux/*.vst3/Contents/x86_64-linux 2>/dev/null || true
+          if [ "$haveLinux" = true ]; then
+            chmod -R a+x "artifacts/ParagonPR7S-Linux/Paragon PR7-S"
+            chmod -R a+x artifacts/ParagonPR7S-Linux/*.vst3/Contents/x86_64-linux 2>/dev/null || true
+          fi
           # Each zip: the app, its .pdb on Windows (names in the session log's
           # crash entries), and PR7-K's VST3 if it was fetched.
           pack() {   # folder, zip name, app, zip flags
@@ -195,9 +217,14 @@ jobs:
                && { [ -e "Paragon PR7-K.vst3" ] && files+=("Paragon PR7-K.vst3"); true; } \
                && zip $4 "../../release/$2" "${files[@]}")
           }
-          pack ParagonPR7S-Windows "ParagonPR7-S-${TAG}-Windows.zip" "Paragon PR7-S.exe" -qr
+          # (adding a missing Linux zip to a release: Linux only)
+          if [ "$haveWindows" = true ] && [ "${{ steps.version.outputs.publish }}" = "true" ]; then
+            pack ParagonPR7S-Windows "ParagonPR7-S-${TAG}-Windows.zip" "Paragon PR7-S.exe" -qr
+          fi
           # pack ParagonPR7S-macOS "ParagonPR7-S-${TAG}-macOS.zip" "Paragon PR7-S.app" -qry   (no macOS build for now)
-          pack ParagonPR7S-Linux "ParagonPR7-S-${TAG}-Linux.zip" "Paragon PR7-S" -qr
+          if [ "$haveLinux" = true ]; then
+            pack ParagonPR7S-Linux "ParagonPR7-S-${TAG}-Linux.zip" "Paragon PR7-S" -qr
+          fi
           ls -l release
 
       - name: Write the release notes
@@ -216,6 +243,15 @@ jobs:
       # Retried: GitHub's upload can drop mid-way ("stream error ... CANCEL",
       # which kept 0.4.0 from being published the first time). A half-made
       # release from a failed try is removed before the next.
+      - name: Add the Linux zip to the release
+        if: steps.version.outputs.publish == 'add'
+        run: |
+          if ls release/*-Linux.zip > /dev/null 2>&1; then
+            gh release upload "${{ steps.version.outputs.tag }}" release/*-Linux.zip
+          else
+            echo "::warning::Linux still not built; the release stays Windows only"
+          fi
+
       - name: Publish the release
         if: steps.version.outputs.publish == 'true'
         run: |

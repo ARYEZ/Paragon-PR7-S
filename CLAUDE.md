@@ -222,6 +222,7 @@ Cubase defaults it confirmed: Space, C, Delete, Ctrl+D, Ctrl+Z/Shift+Z, Ctrl+N/O
 - About 15 minutes after pushing, check the release has both zips (Windows, Linux) **and its tag is your commit**.
 - If a job was cancelled while waiting for a runner (0.39.0's Mac job: no steps, no runner), this session can't re-run it (403): push a small commit at the same version; the release job publishes whatever version isn't released yet.
 - A job stuck in a step (0.84.1's Linux job sat 30+ minutes in "Install Linux dependencies"): this session can't cancel it either (403); push a small commit at the same version the same way.
+- **A failed Linux build doesn't hold back the release** (the owner, 0.85.0): the release job runs whenever it isn't cancelled and publishes what was built, as long as Windows is there (no Windows: nothing). A later push at the same version adds the Linux zip to that release (`publish=add`). The Linux runner looks names up through Cloudflare's DNS (1.1.1.1; the owner's workaround for "Temporary failure resolving azure.archive.ubuntu.com").
 - The owner installs on **Windows** and works in **Cubase** and BeatMaker.
 
 ## Open questions (ask, don't guess)
