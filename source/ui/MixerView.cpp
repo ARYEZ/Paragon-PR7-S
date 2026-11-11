@@ -184,7 +184,19 @@ void MixerView::Strip::refresh()
     }
     AutomationKeys::refresh (read, write, owner.studio, busId);
     followMix();
-    repaint();
+    // (0.85.2) Painted again only when something the strip paints itself changed (its keys and slots
+    // repaint themselves): every note or part edit repainted every strip, docked across the whole window.
+    juce::String look;
+    look << (track != nullptr ? track->name + "|" + track->colour.toString() + "|" + juce::String (track->pan, 4) : juce::String ("master"))
+         << "|" << (int) (! isMaster() && owner.studio.isTrackSelected (busId)) << "|" << owner.studio.getPreFaderSlots (busId)
+         << "|" << shownSlots << "|" << (int) owner.showsInserts() << (int) owner.showsSends() << (int) owner.isInWindow();
+    if (const auto* link = owner.studio.getLinkGroupOf (busId))
+        look << "|L:" << link->id << " " << link->name;
+    if (look != shownLook)
+    {
+        shownLook = look;
+        repaint();
+    }
 }
 
 void MixerView::Strip::followMix()

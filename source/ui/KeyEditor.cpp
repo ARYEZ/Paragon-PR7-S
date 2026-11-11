@@ -528,7 +528,10 @@ void KeyEditor::timerCallback()
     }
     // 60 frames a second while it glides, else 30.
     const auto playing = studio.getEngine().isPlaying() || studio.getEngine().isRecording();   // (0.78.3)
-    const auto rate = gliding || playing ? 60 : 30;
+    // (0.85.2) Not with Stationary Cursor: the play bar stands still and the whole view moves under it,
+    // so every frame redraws all of it (at 5760 wide); 30 a second as before 0.78.3.
+    const auto stationary = playing && autoScroll.on && autoScroll.stationary && ! autoScroll.suspended;
+    const auto rate = gliding || (playing && ! stationary) ? 60 : 30;
     if (getTimerInterval() != 1000 / rate)
         startTimerHz (rate);
 }

@@ -620,13 +620,13 @@ namespace pr7s
         auto tempo = project.tempoMap();
         const auto tempoVersion = settings.tempoVersion + (tempo.getEvents() == settings.tempo.getEvents() ? 0 : 1);
 
-        struct Prepared { int id; std::vector<Event> events; std::pair<float, float> gains; std::vector<bool> bypass; std::vector<Clip> clips;
+        struct Prepared { int id; std::vector<Event> events; std::vector<Event> controllerEvents; std::pair<float, float> gains; std::vector<bool> bypass; std::vector<Clip> clips;
                           std::vector<LaneState> automation; bool mixAutomated = false; bool eventsKept = false; bool clipsKept = false;
                           std::array<juce::int16, 128> drumOut {}; std::array<juce::int8, 128> drumChannel {}; std::array<juce::uint8, 128> drumIn {}; };
         std::vector<Prepared> prepared;
         for (const auto& track : project.tracks)
         {
-            Prepared p { track.id, {}, sideGains (track, ! track.mute && ! track.disabled && ! soloedOut (track)), {}, {}, {}, false, false, false, {}, {}, {} };
+            Prepared p { track.id, {}, {}, sideGains (track, ! track.mute && ! track.disabled && ! soloedOut (track)), {}, {}, {}, false, false, false, {}, {}, {} };
             auto* engineTrack = findTrack (track.id);   // (message thread: its builtFrom is ours alone)
             if (engineTrack != nullptr && (track.disabled || track.frozen))
                 engineTrack->builtFrom.valid = false;   // (no events or clips of its own: built afresh next time)
@@ -857,6 +857,12 @@ namespace pr7s
                 const auto rank = [] (const Event& e) { const auto kind = e.status & 0xf0; return kind == 0x80 ? 0 : kind == 0x90 ? 2 : 1; };
                 return rank (a) < rank (b);
             });
+            for (const auto& e : p.events)
+            {
+                const auto kind = e.status & 0xf0;
+                if (kind == 0xb0 || kind == 0xe0 || kind == 0xd0 || kind == 0xc0)
+                    p.controllerEvents.push_back (e);
+            }
             prepared.push_back (std::move (p));
         }
 
@@ -906,6 +912,7 @@ namespace pr7s
                 if (! p.eventsKept)
                 {
                     std::swap (track->events, p.events);   // the old list goes out with `prepared`
+                    std::swap (track->controllerEvents, p.controllerEvents);
                     track->checkHeld = true;
                 }
                 if (! p.clipsKept)
@@ -1167,7 +1174,7 @@ namespace pr7s
         cc.fill (-1);
         int bend = -1, pressure = -1, program = -1;
         auto channelBits = 0;
-        for (const auto& e : track.events)
+        for (const auto& e : track.controllerEvents)   // (0.85.2: the controllers only, not every note)
         {
             if (e.beat >= beat)
                 break;
@@ -1961,16 +1968,23 @@ namespace pr7s
     {
         // Each send that's on, to its FX channel: its level (or its lane's, while
         // R is on) ramped across the block from where it was, so moves don't click.
+        // (0.85.2) Which slots have a send lane at all, in one walk of the lanes (each of the eight
+        // slots walked every lane before, every block, twice: before and after the fader).
+        unsigned withLanes = 0;
+        for (const auto& state : track.automation)
+            if (state.lane.target == AutomationLane::Target::send && juce::isPositiveAndBelow (state.lane.slot, Project::maxSends))
+                withLanes |= 1u << state.lane.slot;
         for (int s = 0; s < Project::maxSends; ++s)
         {
             auto& send = track.sends[(size_t) s];
             if (send.preFader != preFader)
                 continue;
             auto db = send.levelDb;
-            for (const auto& state : track.automation)
-                if (state.lane.target == AutomationLane::Target::send && state.lane.slot == s)
-                    if (const auto value = state.lane.playedAt (beat, settings.virginTerritory))
-                        db = travelToVolume (*value);
+            if ((withLanes >> s) & 1u)
+                for (const auto& state : track.automation)
+                    if (state.lane.target == AutomationLane::Target::send && state.lane.slot == s)
+                        if (const auto value = state.lane.playedAt (beat, settings.virginTerritory))
+                            db = travelToVolume (*value);
             track.nowSendDb[(size_t) s] = db;
             const auto gain = send.on ? levelOf (db) : 0.0f;
             auto* fx = send.target != 0 ? findTrack (send.target) : nullptr;

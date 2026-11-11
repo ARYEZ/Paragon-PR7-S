@@ -2,6 +2,31 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.85.2
+
+**Speed, round four** (you asked for another round). Three reviewers read the code, one each for the sound, editing and the screen. I checked each finding before changing anything. Nothing sounds or looks different; things just take less time.
+
+- **Auto-save no longer holds up the screen.** Every few minutes the backup copy wrote the whole song out as text on the screen's own thread, the plug-ins' saved settings included. It now only checks whether anything changed (quickly, without writing the song out), and the writing happens in the background, as SAVE already does. On a test song with 100 MB of plug-in settings, the screen used to wait well over a second; now it waits 70 to 80 ms. A fader you dragged still counts as a change.
+- **The composer works again only when it has to.** Any edit to the song (a note moved anywhere, a part renamed) made the composer rewrite all six lanes while its window was open, and read the DRUMMER profile from disk each time. Now it keeps the lanes unless something they're made from changed (the key, chords, styles, settings, tempo, profiles, your riff), and keeps the drummer profile until its file changes.
+- **Play from a new place, jumps and the cycle coming round:** the instruments are brought up to date with the song's controllers (sustain, mod wheel, bends) from those alone, not by walking every note of the track. This happens as the sound starts, so a long, busy track starts sooner.
+- **Sends:** each block, the engine finds a track's send lanes in one pass, not one pass for each of the eight slots, twice.
+- **PERFORM on the pads:** the pattern player no longer works out every step's notes every 2 ms; only the steps due now.
+- **KEY CHECK:** each note is checked against the key without building the key's scale each time.
+- **Screen:**
+  - With Stationary Cursor on, the whole arrangement moves under the play bar every frame. While playing it now redraws 30 times a second, not 60: the bar stands still there, so smoothness isn't lost.
+  - The MIDI editor's controller lanes draw only the part that's on screen. A long recorded mod-wheel or pitch-bend lane was built and drawn end to end for every move of the play bar.
+  - Mixer strips repaint only when something they show changes (name, colour, selection, link group, pan, slots). Before, any edit repainted every strip, and docked in the wide layout they span the whole window.
+
+**Not done yet** (found, but bigger or riskier):
+
+- While recording, the whole arrangement is still redrawn with each new note.
+- The arrangement isn't drawn once and moved under a Stationary Cursor.
+- Waveforms are still drawn a pixel at a time.
+- Folder parts are worked out on every frame.
+- The EQ window's curve is redrawn even when nothing changed.
+- Saving still copies the song (the plug-ins' settings with it) before writing it in the background.
+- A chord edit with Follow Chord Track on is still about 5 ms.
+
 ## 0.85.1
 
 **TRITONE CHUG learns your third example** (Flaw's Whole, the breakdown at 2:20; its shape only, nothing copied).

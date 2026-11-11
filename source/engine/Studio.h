@@ -433,6 +433,10 @@ namespace pr7s
         void setDrummerFolderForTests (const juce::File& f) { drummerFolderOverride = f; }
         std::vector<juce::String> getDrummerNames() const { return drummerNames (getDrummerFolder()); }
         std::optional<DrumProfile> loadDrummer (const juce::String& name) const;
+        // (0.85.2) The last profile read, kept while its file's size and date are the same: the composer
+        // asks for it on every change of the song, and read the whole file each time.
+        struct KeptDrummer { juce::File file; juce::Time modified; juce::int64 size = -1; std::optional<DrumProfile> profile; };
+        mutable KeptDrummer keptDrummer;
         bool saveDrummer (const DrumProfile&, juce::String& error);
         bool deleteDrummer (const juce::String& name);
         juce::String getIdeasDrummer() const;

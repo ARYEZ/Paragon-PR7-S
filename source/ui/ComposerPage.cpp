@@ -199,6 +199,41 @@ ComposerPage::~ComposerPage()
 }
 
 //==============================================================================
+juce::String ComposerPage::composeFingerprint() const
+{
+    // Everything `composeLayers` reads, as text: the state, the chords, and the context's every field.
+    juce::String f;
+    f << state.toString() << "|";
+    for (const auto& s : spans)
+        f << juce::String (s.start, 6) << "," << juce::String (s.end, 6) << "," << s.chord.toText() << "," << s.key.name() << ";";
+    const auto& c = context;
+    f << "|" << c.beatsPerBar << "|" << c.tuning.name;
+    for (const auto n : c.tuning.strings) f << "," << n;
+    f << "|" << c.bassTuning.name;
+    for (const auto n : c.bassTuning.strings) f << "," << n;
+    for (const auto* p : { &c.bassProfile, &c.guitarProfile, &c.leadProfile })
+        f << "|" << (p->has_value() ? pr7s::profilesToText ({ **p }) : juce::String ("-"));
+    f << "|" << c.velocities.toString() << "|" << (int) c.style << "|" << (int) c.solo << "|" << c.riff.toString()
+      << "|" << c.drums.toString() << "|" << c.melody.toString() << "|" << c.humanize << "|" << (int) c.feel << "|" << juce::String (c.bpm, 6);
+    if (c.drummer.has_value())
+    {
+        const auto file = pr7s::drummerFile (studio.getDrummerFolder(), c.drummer->name);
+        f << "|D:" << c.drummer->name << "," << file.getLastModificationTime().toMilliseconds() << "," << file.getSize();
+    }
+    if (c.myRiff.has_value())
+    {
+        f << "|R:" << c.myRiff->notes.size();
+        juce::uint64 h = 1469598103934665603ull;
+        for (const auto& n : c.myRiff->notes)
+            for (const auto v : { (juce::uint64) juce::roundToInt (n.beat * 960.0), (juce::uint64) juce::roundToInt (n.length * 960.0),
+                                  (juce::uint64) n.pitch, (juce::uint64) juce::roundToInt (n.velocity * 1000.0f), (juce::uint64) n.keyswitch,
+                                  (juce::uint64) n.effect, (juce::uint64) juce::roundToInt (n.amount * 1000.0f), (juce::uint64) n.technique })
+                h = (h ^ v) * 1099511628211ull;
+        f << "," << juce::String::toHexString ((juce::int64) h);
+    }
+    return f;
+}
+
 void ComposerPage::refresh (bool rehear)
 {
     // The chords.
@@ -228,7 +263,12 @@ void ComposerPage::refresh (bool rehear)
     context.myRiff.reset();
     if (riff.has_value() && useMyRiff && ! spans.empty())
         context.myRiff = pr7s::tileRiff (*riff, spans.back().end - spans.front().start, context.beatsPerBar);
-    ideas = pr7s::composeLayers (state, spans, context);
+    if (const auto fingerprint = composeFingerprint(); fingerprint != composedFrom)
+    {
+        composed = pr7s::composeLayers (state, spans, context);
+        composedFrom = fingerprint;
+    }
+    ideas = composed;
     // (0.74.0) Ideas taken from IDEAS stay in their lanes while the chords are the same.
     const auto sameChords = [] (const std::vector<pr7s::ChordSpan>& a, const std::vector<pr7s::ChordSpan>& b)
     {

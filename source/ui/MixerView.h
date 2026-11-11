@@ -198,6 +198,7 @@ private:
     std::array<juce::TextButton, pr7s::Project::maxInserts> slots;
     std::array<std::unique_ptr<SendSlot>, pr7s::Project::maxSends> sendSlots;
     juce::TextButton output;   // OUT: where its sound goes
+    juce::String shownLook;   // (0.85.2) what refresh last saw of what the strip paints
     int shownSlots = 8;   // at least 8, and one more than the last used (up to 16)
     ValueSlider volume, pan;   // (double-click: type a value, 0.9.9)
     juce::TextButton mute { "M" }, solo { "S" }, read { "R" }, write { "W" };

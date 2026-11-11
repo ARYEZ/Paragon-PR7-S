@@ -477,6 +477,12 @@ namespace pr7s
         for (auto k = (int) std::floor (lastBeat / length); k <= (int) std::floor (beat / length); ++k)
             for (const auto& step : p.steps)
             {
+                // (0.85.2) A step nowhere near this tick isn't worked out (each one made a list of its
+                // notes every 2 ms, on the performer's timer thread, almost always for nothing).
+                const auto first = k * length + step.beat * scale;
+                const auto last = first + (step.strum != 0 ? (double) (chord.size() + 1) * strumGap : 0.0);
+                if (last <= lastBeat || first > beat)
+                    continue;
                 const auto played = stepNotes (step, chord, bass);
                 for (size_t i = 0; i < played.size(); ++i)
                 {

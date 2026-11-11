@@ -7,6 +7,8 @@
 #include <set>
 #include <atomic>
 #include <thread>
+#include <bit>
+#include <string_view>
 
 #include "AudioAdvice.h"
 #include "DawProject.h"
@@ -272,7 +274,10 @@ namespace pr7s
         // While the composer is heard, a change (a fader, pan, an insert, a mute) is played in its copy and the
         // hearing goes on; it ends only when its tracks can no longer play it.
         std::optional<Project> heardCopy;
-        if (composerAudition.has_value())
+        // (0.85.2) A drag's mix-only step reads only levels, which the copy shares with the song: no copy then
+        // (it copied the whole song and made the six layers' parts again on every step of a fader drag).
+        const auto mixStepOnly = mixOnlyAsked && ! mixOnlyBroken && ! undoable;
+        if (composerAudition.has_value() && ! mixStepOnly)
         {
             heardCopy = composerAuditionCopy();
             if (! heardCopy.has_value())
@@ -292,8 +297,8 @@ namespace pr7s
             // written): just the levels, not every track's notes and clips again. The release (an undo step)
             // does the full update, so nothing else can be left behind.
             const auto& playing = heardCopy.has_value() ? *heardCopy : project;
-            if (mixOnlyAsked && ! mixOnlyBroken && ! undoable)
-                engine.updateMix (playing);
+            if (mixStepOnly)
+                engine.updateMix (project);
             else
                 engine.update (playing);
         }
@@ -8494,14 +8499,35 @@ namespace pr7s
 
     bool Studio::writeBackup()
     {
+        // (0.85.2) Whether anything changed is told without writing the song out: the change
+        // count, the levels (a fader drag's steps don't count as changes) and each plug-in's
+        // settings, hashed. The XML text itself is made on the saver's thread from a copy
+        // (it held the screen for the whole song's toXml every few minutes).
         collectPluginStates();
-        auto xml = project.toXml();
-        xml->setAttribute ("backupAudioFolder", getAudioFolder().getFullPathName());
-        const auto text = xml->toString();
-        const auto hash = text.hashCode64();
-        if (hash == lastBackupHash)
+        const auto mix = [] (juce::uint64 h, juce::uint64 v) { return (h ^ v) * 1099511628211ull; };
+        const auto stateHash = [] (const juce::MemoryBlock& m)
+        {
+            return (juce::uint64) std::hash<std::string_view>{} (std::string_view (static_cast<const char*> (m.getData()), m.getSize()));
+        };
+        juce::uint64 hash = mix (14695981039346656037ull, changeVersion);
+        hash = mix (hash, (juce::uint64) std::bit_cast<juce::uint32> (project.masterVolumeDb));
+        for (const auto& track : project.tracks)
+        {
+            hash = mix (hash, (juce::uint64) std::bit_cast<juce::uint32> (track.volumeDb));
+            hash = mix (hash, (juce::uint64) std::bit_cast<juce::uint32> (track.pan));
+            hash = mix (hash, stateHash (track.instrument.state));
+            for (const auto& insert : track.inserts)
+                hash = mix (hash, stateHash (insert.state));
+        }
+        for (const auto& insert : project.masterInserts)
+            hash = mix (hash, stateHash (insert.state));
+        if (hash == 0)
+            hash = 1;
+        if ((juce::int64) hash == lastBackupHash)
             return false;   // (nothing changed since the last copy)
-        lastBackupHash = hash;
+        lastBackupHash = (juce::int64) hash;
+        auto copy = std::make_shared<const Project> (project);
+        const auto audioFolder = getAudioFolder().getFullPathName();
         auto name = file != juce::File() ? file.getFileNameWithoutExtension() : juce::String ("Untitled");
         if (const auto at = name.indexOf (" backup "); at > 0)
             name = name.substring (0, at);   // (a backup opened: its copies keep the song's name)
@@ -8513,10 +8539,12 @@ namespace pr7s
         const auto keep = getAutoSaveKeep();
         SessionLog::note ("Auto-save: " + destination.getFullPathName());
         ++savesRunning;
-        saver.addJob ([text, destination, folder, name, keep, life = saveAlive, this]
+        saver.addJob ([copy, audioFolder, destination, folder, name, keep, life = saveAlive, this]
         {
+            auto xml = copy->toXml();
+            xml->setAttribute ("backupAudioFolder", audioFolder);
             folder.createDirectory();
-            const auto written = destination.replaceWithText (text);
+            const auto written = destination.replaceWithText (xml->toString());
             // The newest `keep` of this song's copies stay.
             auto copies = folder.findChildFiles (juce::File::findFiles, false, name + " backup *" + Project::fileExtension);
             std::sort (copies.begin(), copies.end(), [] (const juce::File& a, const juce::File& b) { return a.getFileName() > b.getFileName(); });
@@ -10754,9 +10782,15 @@ namespace pr7s
     {
         if (name.isEmpty())
             return std::nullopt;
-        auto profile = DrumProfile::load (drummerFile (getDrummerFolder(), name));
+        const auto f = drummerFile (getDrummerFolder(), name);
+        const auto modified = f.getLastModificationTime();
+        const auto size = f.getSize();
+        if (keptDrummer.file == f && keptDrummer.modified == modified && keptDrummer.size == size && f.existsAsFile())
+            return keptDrummer.profile;
+        auto profile = DrumProfile::load (f);
         if (profile.has_value() && profile->name.isEmpty())
             profile->name = name;
+        keptDrummer = { f, modified, size, profile };
         return profile;
     }
 

@@ -84,7 +84,10 @@ void ArrangeView::timerCallback()
     // 60 frames a second while it glides, else 30 (the screens' work, 0.9.2).
     // (0.78.3) And while playing: the play bar moves every frame now, smoothly (2 thin strips, ~0.3 ms).
     const auto playing = studio.getEngine().isPlaying() || studio.getEngine().isRecording();
-    const auto rate = gliding || playing ? 60 : 30;
+    // (0.85.2) Not with Stationary Cursor: the play bar stands still and the whole view moves under it,
+    // so every frame redraws all of it (at 5760 wide); 30 a second as before 0.78.3.
+    const auto stationary = playing && timeline.autoScroll.on && timeline.autoScroll.stationary && ! timeline.autoScroll.suspended;
+    const auto rate = gliding || (playing && ! stationary) ? 60 : 30;
     if (getTimerInterval() != 1000 / rate)
         startTimerHz (rate);
 }

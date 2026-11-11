@@ -12,11 +12,13 @@ namespace pr7s
     bool isPitchClassInKey (int pitchClass, const Key& key)
     {
         // As Chord::isInKey: in the scale, or a minor key's raised seventh (harmonic minor).
-        const auto p = pcOf (pitchClass);
-        const auto scale = key.scale();
-        if (std::find (scale.begin(), scale.end(), p) != scale.end())
-            return true;
-        return key.minor && p == pcOf (key.pitchClass() + 11);
+        // (0.85.2) By the scale's steps from the tonic, nothing allocated (it made the key's scale, a
+        // vector, for every note of the song on every check): major 0 2 4 5 7 9 11, natural minor
+        // 0 2 3 5 7 8 10 plus the raised seventh 11.
+        constexpr int majorMask = (1 << 0) | (1 << 2) | (1 << 4) | (1 << 5) | (1 << 7) | (1 << 9) | (1 << 11);
+        constexpr int minorMask = (1 << 0) | (1 << 2) | (1 << 3) | (1 << 5) | (1 << 7) | (1 << 8) | (1 << 10) | (1 << 11);
+        const auto step = pcOf (pitchClass - key.pitchClass());
+        return ((key.minor ? minorMask : majorMask) >> step) & 1;
     }
 
     int nearestInKey (int pitch, const Key& key)

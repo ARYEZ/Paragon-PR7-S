@@ -347,6 +347,9 @@ namespace pr7s
             int instrumentChannels = 2;  // what the instrument is given (its buffer may have more, for the inserts)
             std::vector<Slot> inserts;
             std::vector<Event> events;   // every note on and off, by beat
+            // (0.85.2) Only the controller events (CC, bend, pressure, program) of `events`, in its
+            // order: the chase at play start, a jump and every cycle wrap walks these, not every note.
+            std::vector<Event> controllerEvents;
             float gainLeft = 1.0f, gainRight = 1.0f;
             juce::SmoothedValue<float> left, right;
             std::bitset<128> held;       // notes sounding, to stop them on a jump or stop

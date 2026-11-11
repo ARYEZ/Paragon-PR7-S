@@ -187,6 +187,11 @@ private:
     std::vector<pr7s::ChordSpan> spans;      // from 0 (the library's), or the chord track's as they are
     juce::StringArray chordNames;            // each span's chord as written (the library's spelling: "bV" in A minor is Eb)
     std::array<pr7s::LineIdea, pr7s::composerLayerCount> ideas;
+    // (0.85.2) What the lanes were composed from (`composedFrom`): the same inputs, the same ideas, so a song
+    // edit that changes none of them (a note moved elsewhere, a part renamed) doesn't compose all six again.
+    juce::String composedFrom;
+    std::array<pr7s::LineIdea, pr7s::composerLayerCount> composed;   // (before the ideas taken from IDEAS)
+    juce::String composeFingerprint() const;
     std::array<int, pr7s::composerLayerCount> trackChoice {};
     std::array<Lane, pr7s::composerLayerCount> lanes;
     juce::Random random;
