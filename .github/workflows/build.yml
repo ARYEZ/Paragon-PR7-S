@@ -27,6 +27,19 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Cloudflare's DNS for every name lookup on the Linux runner (the owner's workaround):
+      # Azure's own resolver kept failing to find azure.archive.ubuntu.com (0.84.1, 0.85.0).
+      # Google's as a fallback; "~." sends every domain to these servers, not the link's.
+      - name: Use Cloudflare's DNS (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo mkdir -p /etc/systemd/resolved.conf.d
+          printf '[Resolve]\nDNS=1.1.1.1 1.0.0.1\nFallbackDNS=8.8.8.8 8.8.4.4\nDomains=~.\n' \
+            | sudo tee /etc/systemd/resolved.conf.d/cloudflare.conf
+          sudo systemctl restart systemd-resolved || true
+          resolvectl status | head -20 || true
+          getent hosts azure.archive.ubuntu.com || echo "azure.archive.ubuntu.com not found yet"
+
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         # Retried: GitHub's runners sometimes can't reach Ubuntu's package servers for a while
