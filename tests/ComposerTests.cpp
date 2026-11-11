@@ -6,6 +6,7 @@
 #include "engine/Composer.h"
 #include "engine/DrumIdeas.h"
 #include "ui/ComposerPage.h"
+#include "ui/MainView.h"
 #include "ui/Finish.h"
 #include "ui/ParagonLookAndFeel.h"
 
@@ -844,6 +845,8 @@ TEST_CASE ("Snapshot: the composer suite with a song built (0.74.0)", "[.][snaps
         else
             suite.showTab (ComposerSuite::Tab::compose);
         suite.setSize (1700, 980);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_PARTDROP", {}) == "1")
+            suite.partDragHover (true);   // (0.83.4: a part held over it)
         const auto image = suite.createComponentSnapshot (suite.getLocalBounds(), true, 1.0f);
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };
@@ -895,4 +898,140 @@ TEST_CASE ("0.76.0: the mixer while the composer is heard: faders follow, hearin
     page.setTrack (L::chords, piano);   // (a refresh)
     CHECK (page.getLaneVolume (L::chords).getValue() == -6.0);
     REQUIRE (page.keyNamed ("MIXER") != nullptr);
+}
+
+// 0.83.4 (the owner: drag a MIDI part or file into MY RIFF and it builds that part).
+namespace
+{
+    struct FakePartTarget final : juce::Component, PartDropTarget
+    {
+        bool isInterestedInPart (int) override { return true; }
+        void partDragHover (bool over) override { hovering = over; if (over) ++hovers; }
+        void partDropped (int id) override { dropped = id; }
+        bool hovering = false;
+        int hovers = 0, dropped = 0;
+    };
+
+    juce::MouseEvent mouseAt (juce::Component& target, juce::Point<float> at, juce::Point<float> downAt)
+    {
+        const auto now = juce::Time::getCurrentTime();
+        return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier),
+                                 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, &target, &target, now, downAt, now, 1, at != downAt);
+    }
+}
+
+TEST_CASE ("0.83.4: a riff dropped in builds the section around it", "[composer][riff]")
+{
+    Studio studio (false);
+    ComposerPage page (studio);
+    page.setRandomSeed (5);
+    page.setOn (L::lead, false);
+    const auto guitar = studio.addTrack (Instrument {});
+    Part part;
+    part.start = 0.0;
+    part.length = 8.0;
+    part.notes = aMinorRiff();
+    studio.addPart (guitar, part);
+    const auto partId = studio.getProject().findTrack (guitar)->parts.front().id;
+    CHECK (page.canTakePart (partId));
+    const auto tracksBefore = studio.getProject().tracks.size();
+
+    const auto tracks = page.buildFromPart (partId, DrumSection::chorus);
+    REQUIRE_FALSE (tracks.empty());
+    CHECK (page.isPlayingMyRiff());
+    CHECK (studio.getComposerRiff().has_value());
+    REQUIRE (studio.getBuiltSections().size() == 1);
+    CHECK (studio.getBuiltSections().front().kind == DrumSection::chorus);
+    CHECK (studio.getProject().tracks.size() > tracksBefore);
+    // The built guitar plays the riff's notes (its pitches), and drums were written.
+    auto drums = false;
+    for (const auto id : tracks)
+        if (const auto* t = studio.getProject().findTrack (id); t != nullptr && t->name == "Drums")
+            drums = ! t->parts.empty();
+    CHECK (drums);
+    CHECK (page.getStatus().contains ("built at bar"));
+
+    // A part without notes (or not MIDI) isn't taken.
+    Part empty;
+    empty.start = 40.0;
+    empty.length = 4.0;
+    studio.addPart (guitar, empty);
+    CHECK_FALSE (page.canTakePart (studio.getProject().findTrack (guitar)->parts.back().id));
+
+    // A MIDI file dropped in builds too.
+    const auto file = juce::File::createTempFile (".mid");
+    {
+        juce::MidiMessageSequence seq;
+        for (const auto& n : aMinorRiff())
+        {
+            seq.addEvent (juce::MidiMessage::noteOn (1, n.pitch, n.velocity), n.start * 480.0);
+            seq.addEvent (juce::MidiMessage::noteOff (1, n.pitch), (n.start + n.length) * 480.0);
+        }
+        seq.updateMatchedPairs();
+        juce::MidiFile midi;
+        midi.setTicksPerQuarterNote (480);
+        midi.addTrack (seq);
+        juce::FileOutputStream out (file);
+        REQUIRE (midi.writeTo (out));
+    }
+    CHECK_FALSE (page.buildFromFile (file, DrumSection::verse).empty());
+    CHECK (studio.getBuiltSections().size() == 2);
+    file.deleteFile();
+}
+
+TEST_CASE ("0.83.4: a part dragged from the arrangement onto the composer is handed over and doesn't move", "[composer][riff][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto trackId = studio.getProject().tracks[0].id;
+    studio.addPart (trackId, { 4.0, 4.0, "Riff", { { 0.0, 1.0, 40, 0.8f } } });
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    arrange.select (trackId, 0);
+    FakePartTarget target;
+    auto overTarget = false;
+    arrange.findPartTarget = [&] (juce::Point<float>) -> PartDropTarget* { return overTarget ? &target : nullptr; };
+    const auto partId = studio.getProject().tracks[0].parts[0].id;
+    const auto bounds = arrange.getPartBounds (trackId, 0);
+    const auto from = bounds.getCentre();
+    arrange.mouseDown (mouseAt (arrange, from, from));
+    overTarget = true;
+    const auto to = from.translated (200.0f, 0.0f);
+    arrange.mouseDrag (mouseAt (arrange, to, from));
+    CHECK (target.hovering);
+    CHECK (arrange.isOverPartTarget());
+    arrange.mouseUp (mouseAt (arrange, to, from));
+    CHECK (target.dropped == partId);
+    CHECK_FALSE (target.hovering);
+    // It stayed where it was.
+    CHECK (studio.getProject().tracks[0].parts[0].start == 4.0);
+    CHECK_FALSE (arrange.isDraggingOut());
+
+    // Off the target: an ordinary move.
+    overTarget = false;
+    target.dropped = 0;
+    const auto from2 = arrange.getPartBounds (trackId, 0).getCentre();
+    arrange.mouseDown (mouseAt (arrange, from2, from2));
+    arrange.mouseDrag (mouseAt (arrange, from2.translated (0.0f, 0.0f), from2));
+    CHECK (target.dropped == 0);
+}
+
+TEST_CASE ("0.83.4: the composer suite takes a MIDI part and lights while one is held over it", "[composer][riff][ui]")
+{
+    Studio studio (false);
+    ComposerSuite suite (studio);
+    suite.setSize (1700, 940);
+    const auto trackId = studio.getProject().tracks[0].id;
+    studio.addPart (trackId, { 0.0, 8.0, "Riff", aMinorRiff() });
+    const auto partId = studio.getProject().tracks[0].parts[0].id;
+    CHECK (suite.isInterestedInPart (partId));
+    suite.showTab (ComposerSuite::Tab::ideas);
+    suite.partDragHover (true);
+    CHECK (suite.isPartHovering());
+    CHECK (suite.createComponentSnapshot (suite.getLocalBounds()).isValid());
+    suite.partDropped (partId);   // (the section asked for in a menu: shown on the message loop)
+    CHECK_FALSE (suite.isPartHovering());
+    CHECK (suite.getTab() == ComposerSuite::Tab::compose);
 }

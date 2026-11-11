@@ -4,6 +4,7 @@
 
 #include "engine/Studio.h"
 #include "ui/LinesPage.h"
+#include "ui/PartDropTarget.h"
 
 // THE COMPOSER (0.58.0, the owner asked: "a combined page, all layers stacked, each with a lock and a
 // re-roll, and one generate button"). engine/Composer.h says how the layers are chosen.
@@ -106,6 +107,13 @@ public:
     bool pasteRiff (pr7s::ComposerRiff);                         // the riff in: its key guessed (not once locked), its chords, the guitar plays it
     bool pasteRiffFromPart (int partId, pr7s::DrumSection);
     bool pasteRiffFromFile (const juce::File&, pr7s::DrumSection);
+    // (0.83.4, the owner: drag a MIDI part or file in and it builds that part) Your riff taken, then the section
+    // built around it (the lanes on, the guitar playing the riff): the tracks written, none if nothing was.
+    std::vector<int> buildFromPart (int partId, pr7s::DrumSection);
+    std::vector<int> buildFromFile (const juce::File&, pr7s::DrumSection);
+    bool canTakePart (int partId) const;                         // a MIDI part with notes
+    void dropPart (int partId);                                  // asks THIS RIFF IS MY..., then buildFromPart
+    void askSection (std::function<void (pr7s::DrumSection)> then, juce::Component* target);
     void forgetRiff();
     void setFromRiff (bool);                                     // CHORDS FROM: MY RIFF
     bool isFromRiff() const noexcept { return fromRiff; }
@@ -150,7 +158,6 @@ private:
     void showTrackMenu (pr7s::ComposerLayer);
     void showProgressionMenu();
     void showPasteMenu();
-    void askSection (std::function<void (pr7s::DrumSection)>, juce::Component* target);
     void showChordMenu (int spanIndex);
     int chordAt (juce::Point<int>) const;
     std::vector<pr7s::ChordSpan> chordSpans() const;   // the source's chords from 0, before the swaps
@@ -206,7 +213,8 @@ private:
 // (0.74.0) The suite: COMPOSE and IDEAS as tabs of one window. IDEAS follows the composer's chords
 // (placed where BUILD would put them) unless it was opened on other chords; its cards go into the
 // composer's lanes from their USE IT menu.
-class ComposerSuite final : public juce::Component
+class ComposerSuite final : public juce::Component,
+                            public PartDropTarget
 {
 public:
     explicit ComposerSuite (pr7s::Studio&);
@@ -219,6 +227,13 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     juce::TextButton& getTabKey (Tab t) noexcept { return t == Tab::compose ? composeTab : ideasTab; }
+    // (0.83.4) A MIDI part dragged here from the arrangement: lit while held over, COMPOSE shown and the section
+    // built around it on release (the composer asks which section first).
+    bool isInterestedInPart (int partId) override;
+    void partDragHover (bool over) override;
+    void partDropped (int partId) override;
+    void paintOverChildren (juce::Graphics&) override;
+    bool isPartHovering() const noexcept { return partHovering; }
     static constexpr int tabsHeight = 40;
 
 private:
@@ -228,6 +243,7 @@ private:
     juce::TextButton composeTab { "COMPOSE" }, ideasTab { "IDEAS" };
     Tab tab = Tab::compose;
     bool ideasOnOtherChords = false;   // (opened on the chord track's chosen chords: kept until the composer's change)
+    bool partHovering = false;
 };
 
 // Its window: kept open beside the studio while you listen.

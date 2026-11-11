@@ -1772,6 +1772,22 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
         {
             if (event.getDistanceFromDragStart() > 3)
                 dragMoved = true;
+            // (0.83.4) Over a window of ours that takes parts (the composer): held there, handed over on release.
+            if (dragMoved && getSelectedParts().size() <= 1 && selection.isValid())
+            {
+                const auto screen = event.getScreenPosition().toFloat();
+                PartDropTarget* target = nullptr;
+                if (findPartTarget)
+                    target = findPartTarget (screen);
+                else if (auto* found = PartDropTarget::at (screen))
+                    if (auto* c = dynamic_cast<juce::Component*> (found); c != nullptr && c->getTopLevelComponent() != getTopLevelComponent())
+                        target = found;   // (never one in the arrangement's own window)
+                if (target != nullptr && ! target->isInterestedInPart (partIdAt (selection)))
+                    target = nullptr;
+                setPartTarget (target);
+                if (target != nullptr)
+                    break;
+            }
             if (dragMoved && wantsDragOut (event))
             {
                 dragPartOut();
@@ -1884,8 +1900,34 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
     }
 }
 
+void ArrangeView::setPartTarget (PartDropTarget* target)
+{
+    auto* component = dynamic_cast<juce::Component*> (target);
+    if (partTarget.getComponent() == component)
+        return;
+    if (auto* old = dynamic_cast<PartDropTarget*> (partTarget.getComponent()))
+        old->partDragHover (false);
+    partTarget = component;
+    if (target != nullptr)
+        target->partDragHover (true);
+}
+
 void ArrangeView::mouseUp (const juce::MouseEvent& event)
 {
+    // (0.83.4) A part let go over the composer: it stays where it was and is handed over.
+    if (drag == Drag::move && partTarget != nullptr)
+    {
+        auto* target = dynamic_cast<PartDropTarget*> (partTarget.getComponent());
+        const auto partId = selection.isValid() ? partIdAt (selection) : 0;
+        setPartTarget (nullptr);
+        drag = Drag::none;
+        dragMoved = false;
+        repaint();
+        if (target != nullptr && partId != 0)
+            target->partDropped (partId);
+        return;
+    }
+    setPartTarget (nullptr);
     if (std::exchange (rulerZooming, false))
         setMouseCursor (juce::MouseCursor::NormalCursor);
     if (drag == Drag::folderMove)

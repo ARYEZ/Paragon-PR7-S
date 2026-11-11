@@ -880,6 +880,46 @@ bool ComposerPage::pasteRiffFromFile (const juce::File& file, pr7s::DrumSection 
     return pasteRiff (pr7s::riffFromNotes (notes, 0.0, context.beatsPerBar, file.getFileNameWithoutExtension(), section));
 }
 
+std::vector<int> ComposerPage::buildFromPart (int partId, pr7s::DrumSection section)
+{
+    if (! pasteRiffFromPart (partId, section))
+        return {};
+    const auto riffStatus = status;
+    auto tracks = buildSection();
+    if (! tracks.empty())
+        status = riffStatus + ".  " + status;
+    repaint();
+    return tracks;
+}
+
+std::vector<int> ComposerPage::buildFromFile (const juce::File& file, pr7s::DrumSection section)
+{
+    if (! pasteRiffFromFile (file, section))
+        return {};
+    const auto riffStatus = status;
+    auto tracks = buildSection();
+    if (! tracks.empty())
+        status = riffStatus + ".  " + status;
+    repaint();
+    return tracks;
+}
+
+bool ComposerPage::canTakePart (int partId) const
+{
+    const auto where = studio.findPart (partId);
+    if (! where.has_value())
+        return false;
+    const auto* track = studio.getProject().findTrack (where->first);
+    return track != nullptr && track->kind == pr7s::Track::Kind::instrument && juce::isPositiveAndBelow (where->second, (int) track->parts.size())
+        && ! track->parts[(size_t) where->second].notes.empty();
+}
+
+void ComposerPage::dropPart (int partId)
+{
+    askSection ([safe = juce::Component::SafePointer<ComposerPage> (this), partId] (pr7s::DrumSection sec)
+                { if (safe != nullptr) safe->buildFromPart (partId, sec); }, &pasteKey);
+}
+
 void ComposerPage::forgetRiff()
 {
     studio.setComposerRiff (std::nullopt);
@@ -985,8 +1025,9 @@ void ComposerPage::filesDropped (const juce::StringArray& files, int, int)
         if (juce::File (f).hasFileExtension ("mid;midi"))
         {
             const juce::File file (f);
+            // (0.83.4) Dropped in: taken and the section built around it.
             askSection ([safe = juce::Component::SafePointer<ComposerPage> (this), file] (pr7s::DrumSection sec)
-                        { if (safe != nullptr) safe->pasteRiffFromFile (file, sec); }, nullptr);
+                        { if (safe != nullptr) safe->buildFromFile (file, sec); }, nullptr);
             return;
         }
 }
@@ -1888,6 +1929,42 @@ void ComposerSuite::paint (juce::Graphics& g)
     g.setFont (ParagonLookAndFeel::titleFont (13.0f));
     g.drawText ("SONGWRITING: SET THE CHORDS, STYLE AND SECTION, BUILD IT, THEN THE NEXT", strip.withTrimmedLeft (300).reduced (12, 0),
                 juce::Justification::centredLeft, true);
+}
+
+bool ComposerSuite::isInterestedInPart (int partId)
+{
+    return composer.canTakePart (partId);
+}
+
+void ComposerSuite::partDragHover (bool over)
+{
+    if (std::exchange (partHovering, over) != over)
+        repaint();
+}
+
+void ComposerSuite::partDropped (int partId)
+{
+    partDragHover (false);
+    showTab (Tab::compose);
+    if (auto* window = getTopLevelComponent())
+        window->toFront (true);
+    composer.dropPart (partId);
+}
+
+void ComposerSuite::paintOverChildren (juce::Graphics& g)
+{
+    if (! partHovering)
+        return;
+    // Lit in the family's gradient while a part is held over it, and what letting go does.
+    const auto area = getLocalBounds().toFloat().reduced (3.0f);
+    g.setGradientFill (ParagonLookAndFeel::familyGradient (area.getTopLeft(), area.getTopRight()));
+    g.drawRoundedRectangle (area, 8.0f, 4.0f);
+    auto note = getLocalBounds().withSizeKeepingCentre (620, 64);
+    g.setColour (juce::Colour (0xe0100c11));
+    g.fillRoundedRectangle (note.toFloat(), 10.0f);
+    g.setColour (juce::Colours::white);
+    g.setFont (ParagonLookAndFeel::titleFont (26.0f));
+    g.drawText ("LET GO TO BUILD A SECTION AROUND THIS RIFF", note, juce::Justification::centred, false);
 }
 
 void ComposerSuite::resized()

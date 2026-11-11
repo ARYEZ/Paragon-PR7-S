@@ -2,6 +2,18 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.83.4
+
+**Drag a riff into the composer and it builds the section** (you asked: drag a MIDI part from the main window into MY RIFF and have it build that part).
+
+- **From the arrangement:** drag a MIDI part out of the main window and over the composer's window. The composer lights up in the family's gradient and says LET GO TO BUILD A SECTION AROUND THIS RIFF. Let go and it asks THIS RIFF IS MY... (intro, verse, chorus, bridge, breakdown, ending, solo). Pick one and that whole section is built: your riff becomes MY RIFF, its key and chords are read from it, the guitar plays it, and the drums, bass and everything else that's switched on are built around it, after the last section you built. The part you dragged stays where it was in the arrangement.
+- **MIDI files** dropped on the composer from the desktop or a folder do the same: the section question, then the build. (Before, a drop only set the riff and you had to click BUILD yourself.)
+- **+ MY RIFF's menu** still only takes the riff (From the Selected Part / From a MIDI File), so you can change the lanes before building.
+- The drag stays inside the studio (the part is handed to the composer directly), so it doesn't depend on Windows' file dragging. Dropped anywhere else, a part moves (or drags out as a file) as before.
+- One Undo takes the built section back.
+
+What can't be checked here: the drag on your Windows screens (tested with the mouse moves simulated, not a real hand on a real mouse).
+
 ## 0.83.3
 
 **LEARN MY BAND: fast picking on the rhythm guitar** (you said the record's fast picking lost notes). The reader found each pick by a jump in loudness, smoothed over 40 ms so a low string's own waves wouldn't count. On a ringing string, picked fast, the loudness hardly moves between picks, so most picks were never seen. Measured on test DIs made the way a picked string sounds (each pick starts the string again, a short bright pick noise, the string ringing on):

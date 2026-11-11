@@ -4,6 +4,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "engine/Studio.h"
+#include "ui/PartDropTarget.h"
 
 // Auto-Scroll, as the manual has it (the arrangement and the key editor
 // each have their own): on or off (F, or AUTO-SCROLL), and its settings menu
@@ -278,6 +279,10 @@ public:
     // no undo step. `onExternalDrag` stands in for the system's drag (tests); returns the file.
     juce::File dragPartOut();
     std::function<void (const juce::StringArray&)> onExternalDrag;
+    // (0.83.4) A part dragged over one of the studio's own windows that takes parts (the composer): it's
+    // handed over on release instead of moving. `findPartTarget` stands in for the screen in tests.
+    std::function<PartDropTarget* (juce::Point<float> screen)> findPartTarget;
+    bool isOverPartTarget() const noexcept { return partTarget != nullptr; }
     bool isDraggingOut() const noexcept { return draggingOut; }
     std::function<void (int partId)> onHarmonyVoices;   // its menu's Generate Harmony Voices (0.35.0)
     std::function<void()> onOpenAudioAlignment;   // the part's and range's menus (0.33.0)
@@ -625,6 +630,8 @@ private:
     double dragNewStart = 0.0, dragNewLength = 0.0;
     bool dragCopies = false, dragMoved = false;
     bool draggingOut = false;
+    juce::Component::SafePointer<juce::Component> partTarget;   // (0.83.4) the PartDropTarget the part is held over
+    void setPartTarget (PartDropTarget*);
     bool wantsDragOut (const juce::MouseEvent&) const;
     double lastPosition = 0.0;   // the playhead as last seen (Auto-Scroll follows a jump while stopped)
     float playheadX = -1.0e6f;   // where the playhead was last drawn (0.9.2: only its strip is redrawn as it moves)
