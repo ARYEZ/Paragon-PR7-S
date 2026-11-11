@@ -1,4 +1,5 @@
 #include "KeyEditor.h"
+#include "engine/KeyCheck.h"
 
 #include "ui/ParagonLookAndFeel.h"
 #include "ui/Finish.h"
@@ -2408,6 +2409,27 @@ void KeyEditor::paintNotes (juce::Graphics& g)
             const auto drum = drumNameOf (note.pitch);   // (0.26.0: the drum it plays, with a map)
             g.drawText (drum.isNotEmpty() && bounds.getWidth() > 60.0f ? drum : pr7s::noteName (note.pitch), bounds.withTrimmedLeft (4.0f),
                         juce::Justification::centredLeft, false);
+        }
+    }
+
+    // (0.84.0) KEY CHECK open: a pearl ring round every note outside the key, by the chord track's rule
+    // (the notes' own colours are their velocities, so the mark can't be a colour). Drums aren't pitches.
+    if (keyMarks != nullptr && ! drumViewOn && pr7s::isPitchedTrack (*track))
+    {
+        const auto keyAt = keyMarks();
+        const juce::Colour pearl (0xfff4eeea);
+        for (int i = 0; i < (int) list.size(); ++i)
+        {
+            const auto& note = list[(size_t) i];
+            if (note.muted || part->muted)
+                continue;
+            const auto bounds = getNoteBounds (i);
+            if (bounds.getRight() < area.getX() || bounds.getX() > area.getRight() || bounds.getBottom() < area.getY() || bounds.getY() > area.getBottom())
+                continue;
+            if (pr7s::isPitchClassInKey (part->heardPitch (note.pitch) % 12, keyAt (part->start + note.start)))
+                continue;
+            g.setColour (pearl.withAlpha (0.95f));
+            g.drawRoundedRectangle (bounds.expanded (2.0f), 3.0f, 2.0f);
         }
     }
 

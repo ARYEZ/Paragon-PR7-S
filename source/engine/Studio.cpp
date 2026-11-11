@@ -11183,6 +11183,38 @@ namespace pr7s
         chordTrackChanged();
     }
 
+    std::vector<KeyIssue> Studio::checkSongKey (std::optional<Key> chosen) const
+    {
+        return checkKey (project, keyCheckKeys (project, chosen));
+    }
+
+    bool Studio::fixOutOfKeyNotes (const std::vector<KeyIssue>& issues)
+    {
+        auto any = false;
+        for (const auto& issue : issues)
+        {
+            if (issue.kind != KeyIssue::Kind::note)
+                continue;
+            const auto where = findPart (issue.partId);
+            if (! where.has_value())
+                continue;
+            auto* track = project.findTrack (where->first);
+            if (track == nullptr || track->frozen || ! juce::isPositiveAndBelow (where->second, (int) track->parts.size()))
+                continue;
+            auto& part = track->parts[(size_t) where->second];
+            if (! juce::isPositiveAndBelow (issue.noteIndex, (int) part.notes.size()))
+                continue;
+            auto& note = part.notes[(size_t) issue.noteIndex];
+            if (part.heardPitch (note.pitch) != issue.pitch)
+                continue;   // (changed since the check)
+            note.pitch = juce::jlimit (0, 127, issue.suggested - part.transpose);
+            any = true;
+        }
+        if (any)
+            changed();
+        return any;
+    }
+
     Key Studio::chordTrackKeyAt (double beat) const
     {
         return project.chordTrack.keyAt (beat, project.chordPads.key());

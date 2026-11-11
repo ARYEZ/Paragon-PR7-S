@@ -129,6 +129,9 @@ public:
     // (0.78.0, the owner: the other DAW's Solo Editor) While on, only the track of the part being edited is heard;
     // it follows the part, and goes off when the editor closes. Not saved.
     void setSoloEditor (bool on);
+    // (0.84.0) KEY CHECK: while set, notes outside the key (the hook gives the key at each beat) get a pearl ring.
+    void setKeyMarks (std::function<std::function<pr7s::Key (double)>()> hook) { keyMarks = std::move (hook); repaint(); }
+    bool hasKeyMarks() const noexcept { return keyMarks != nullptr; }
     bool isSoloEditorOn() const noexcept { return soloOn; }
     juce::TextButton& getSoloKey() noexcept { return soloKey; }
     // (0.81.0, the owner asked) The cycle in the editor's ruler: its top strip shows the locators as the
@@ -430,6 +433,7 @@ private:
         std::vector<pr7s::Note> notes;
         std::vector<pr7s::FollowedNote> heard;
     } followCache;
+    std::function<std::function<pr7s::Key (double)>()> keyMarks;   // (0.84.0) KEY CHECK open
     int lastArrangeTrack = 0, lastArrangeIndex = -1;
     std::vector<pr7s::Note> knownNotes;      // its notes as last seen, to notice changes from elsewhere (undo)
     std::vector<int> selected;

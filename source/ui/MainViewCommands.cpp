@@ -193,6 +193,7 @@ void MainView::registerCommands()
     {
         openEq (studio.isMasterSelected() ? pr7s::Engine::masterBus : studio.getSelectedTrack());
     });
+    add ("Window.KeyCheck", "Window", "Key Check", {}, [this] { openKeyCheck(); });   // (0.84.0)
     add ("Window.Progressions", "Window", "Progression Library", {}, [this] { openProgressions(); });   // (0.40.0)
     add ("Window.Composer", "Window", "Composer", {}, [this] { openComposer(); });   // (0.58.0)
     add ("Window.LearnMyBand", "Window", "Learn My Band (Read the Record)", {}, [this] { openBandRecord(); });   // (0.82.0)

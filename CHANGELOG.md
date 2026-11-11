@@ -2,6 +2,18 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.84.0
+
+**KEY CHECK: every note and chord outside the key, in one list** (you asked how to make sure everything in a song is in the right key; your rules: the same rule the chord track uses, and skip the drums).
+
+- **Open it** from a part's right-click menu or the chord track's menu (Key Check: Notes Outside the Key...), or the Window > Key Check command (no key given; set one in KEYS if you want).
+- **What counts as in the key** is exactly the chord track's rule: the key's seven notes, and in a minor key also the raised seventh (G# in A minor, as the harmonic minor's V and V7 use). It's tested against the chord track's own check for every chord in all 30 keys.
+- **Which key:** AUTOMATIC uses the chord track's keys where the chord track has them (a key change part way through is followed), else the key guessed from the song's notes (the same guess as + MY RIFF). Or pick any of the 30 keys in the KEY box.
+- **What's checked:** every note on instrument tracks, as you hear it (a part's TRANSPOSE counted), and every chord on the chord track. Drum tracks are skipped (a drum map, the drum editor, MIDI channel 10, or "drum"/"perc" in the name). Muted parts and muted notes are skipped too.
+- **The list:** each note's bar, its track, the note, and the nearest note of the key (a half step away; a tie goes down). Click a row and the MIDI editor opens on that part with the note selected and the playhead on it. FIX moves that one note; FIX ALL NOTES moves every listed note. Each is one Undo. Chords outside the key are listed but not changed for you: swap them on the chord track. The list checks again whenever the song changes.
+- **In the MIDI editor:** while KEY CHECK is open, every note outside the key has a pearl-white ring. (A ring, not a colour: the notes' colours already show their velocities.)
+- A note outside the key isn't always a mistake (a passing note, a blues third, a borrowed chord): FIX only the ones you didn't mean.
+
 ## 0.83.4
 
 **Drag a riff into the composer and it builds the section** (you asked: drag a MIDI part from the main window into MY RIFF and have it build that part).

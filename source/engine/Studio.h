@@ -21,6 +21,7 @@
 #include "Progressions.h"
 #include "Melody.h"
 #include "ChordDetect.h"
+#include "KeyCheck.h"
 #include "TempoDetect.h"
 #include "MediaBay.h"
 #include "Composer.h"
@@ -478,6 +479,12 @@ namespace pr7s
         // ... onto the chord track (what was over the parts' span replaced; one undo step) or the
         // pads (each chord once, in order, from the first unlocked pad). How many chords.
         int detectChordsToTrack (const std::vector<int>& partIds, const DetectSettings&);
+        // (0.84.0) KEY CHECK: the notes and chords outside the key (KeyCheck.h); a chosen key, else the chord
+        // track's keys, else the song's key guessed. The fix moves each listed note to its suggestion (as heard:
+        // the part's transpose taken back off), all as one undo step; chords aren't changed (the chord track's own
+        // menus swap them). False if nothing was moved (a note since edited or gone is left alone).
+        std::vector<KeyIssue> checkSongKey (std::optional<Key> chosen = std::nullopt) const;
+        bool fixOutOfKeyNotes (const std::vector<KeyIssue>&);
         int detectChordsToPads (const std::vector<int>& partIds, const DetectSettings&);
         // The settings last used (settings key "chordDetect").
         DetectSettings getDetectSettings() const;

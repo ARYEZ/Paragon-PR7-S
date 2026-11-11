@@ -2691,6 +2691,7 @@ void ArrangeView::showPartMenu (int trackId, int index)
     }
     // (0.45.0) The manual's Tempo Detection: the tempo track follows this part's beats.
     menu.addItem (127, "Tempo Detection...", onTempoDetection != nullptr);
+    menu.addItem (128, "Key Check: Notes Outside the Key...", onKeyCheck != nullptr);   // (0.84.0)
     {
         // (0.36.0) The manual's Map to Chord Track: the notes written moved onto the chord track's chords.
         juce::PopupMenu map;
@@ -2814,6 +2815,12 @@ void ArrangeView::showPartMenu (int trackId, int index)
             if (std::find (tracks.begin(), tracks.end(), trackId) == tracks.end())
                 tracks.insert (tracks.begin(), trackId);
             studio.mergeMidiInLoop (tracks);
+            return;
+        }
+        if (chosen == 128)
+        {
+            if (onKeyCheck)
+                onKeyCheck();
             return;
         }
         if (chosen == 127)
@@ -4825,6 +4832,7 @@ void ArrangeView::showChordMenu (double beat, int index)
     menu.addItem (9, chordSelection.size() > 1 ? "Piano, Guitar and Bass Ideas (for these)..." : "Piano, Guitar and Bass Ideas...", ! track.events.empty());
     menu.addItem (13, chordSelection.size() > 1 ? "Build a Section (for these)..." : "Build a Section...", ! track.events.empty());
     menu.addItem (11, "Progression Library...");
+    menu.addItem (16, "Key Check: Notes Outside the Key...", onKeyCheck != nullptr);   // (0.84.0)
     menu.addItem (7, "Scales Follow the Chords", true, track.autoScales);
     menu.addSeparator();
     menu.addItem (8, "Remove the Chord Track (its chords kept)");
@@ -4846,6 +4854,7 @@ void ArrangeView::showChordMenu (double beat, int index)
             case 7: studio.setAutoScales (! studio.getChordTrack().autoScales); return;
             case 8: studio.removeChordTrack(); return;
             case 11: if (safe->onProgressions) safe->onProgressions(); return;
+            case 16: if (safe->onKeyCheck) safe->onKeyCheck(); return;
             case 9: if (safe->onLineIdeas) safe->onLineIdeas (safe->chordSelection.size() > 1 ? safe->chordSelection : std::vector<int> {}); return;
             case 13: if (safe->onBuildSection) safe->onBuildSection (safe->chordSelection.size() > 1 ? safe->chordSelection : std::vector<int> {}); return;
             case 10:

@@ -2002,3 +2002,50 @@ TEST_CASE ("Snapshot: a band review song (0.82.0)", "[.][snapshot-bandreview]")
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
+
+TEST_CASE ("Snapshot: KEY CHECK and the MIDI editor's rings (0.84.0; PARAGON_SNAPSHOT_EDITOR: the editor's image)", "[.][snapshot-keycheck]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "keycheck.png");
+    const auto editorPath = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_EDITOR", "keycheck-editor.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        MainView view (studio);
+        view.setSize (1600, 1000);
+        auto& project = const_cast<pr7s::Project&> (studio.getProject());
+        const auto lead = project.tracks[0].id;
+        studio.renameTrack (lead, "Lead");
+        // An A minor line with three slips: Bb, F#, C# (G# is A minor's raised seventh: in).
+        studio.addPart (lead, { 0.0, 8.0, "Lead", { { 0.0, 1.0, 69, 0.8f }, { 1.0, 0.5, 72, 0.6f }, { 1.5, 0.5, 70, 0.6f }, { 2.0, 1.0, 76, 0.9f },
+                                                   { 3.0, 1.0, 74, 0.5f }, { 4.0, 1.0, 72, 0.8f }, { 5.0, 0.5, 66, 0.6f }, { 5.5, 0.5, 68, 0.7f },
+                                                   { 6.0, 1.0, 69, 0.9f }, { 7.0, 1.0, 61, 0.4f } } });
+        const auto bass = studio.addTrack (pr7s::Instrument {});
+        studio.renameTrack (bass, "Bass");
+        studio.addPart (bass, { 0.0, 8.0, "Bass", { { 0.0, 4.0, 45, 0.8f }, { 4.0, 4.0, 46, 0.8f } } });
+        studio.addChordEvent (0.0, pr7s::Chord { 9, pr7s::Chord::Type::minor });
+        studio.addChordEvent (4.0, pr7s::Chord { 3, pr7s::Chord::Type::major });   // Eb: outside A minor
+        studio.setScaleEvents ({ pr7s::ScaleEvent { 0.0, pr7s::Key { 5, 0, true } } });
+        studio.dispatchPendingMessages();
+        view.openKeyCheck();
+        auto& page = view.getKeyCheckWindow()->getPage();
+        page.setSize (KeyCheckPage::preferredWidth, 520);
+        page.onShowIssue (page.getIssues()[0]);
+        studio.dispatchPendingMessages();
+        view.setKeyEditorSize (100);
+        auto& editor = view.getKeyEditor();
+        editor.setSize (1300, 600);
+        editor.fitToPart();
+        auto write = [] (const juce::Image& image, const juce::String& to)
+        {
+            juce::File (to).deleteFile();
+            juce::FileOutputStream out { juce::File (to) };
+            juce::PNGImageFormat().writeImageToStream (image, out);
+        };
+        write (page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f), path);
+        write (editor.createComponentSnapshot (editor.getLocalBounds(), true, 1.0f), editorPath);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}

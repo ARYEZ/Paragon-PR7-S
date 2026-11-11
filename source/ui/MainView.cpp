@@ -431,6 +431,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     arrange.onOpenAudioAlignment = [this] { if (alignmentWindow == nullptr) toggleAudioAlignment(); else alignmentWindow->toFront (true); };
     // (0.45.0) Signatures, tap tempo, tempo detection.
     arrange.onTempoDetection = [this] (int partId) { openTempoDetection (partId); };
+    arrange.onKeyCheck = [this] { openKeyCheck(); };
     arrange.onOpenMarkers = [this] { toggleMarkersWindow (true); };
     trackList.onMarkerMenu = [this] { arrange.showMarkerMenu (-1); };
     trackList.onMarkerZoom = [this] (int index)
@@ -2475,6 +2476,65 @@ void MainView::openEq (int busId)
     eqWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->eqWindow.reset(); }); };
     eqWindow->centreAroundComponent (this, eqWindow->getWidth(), eqWindow->getHeight());
     eqWindow->setVisible (true);
+}
+
+void MainView::openKeyCheck()
+{
+    if (keyCheckWindow != nullptr)
+    {
+        keyCheckWindow->toFront (true);
+        return;
+    }
+    keyCheckWindow = std::make_unique<KeyCheckWindow> (studio);
+    keyCheckWindow->onClose = [this]
+    {
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)]
+        {
+            if (safe != nullptr)
+            {
+                safe->keyCheckWindow.reset();
+                safe->keyEditor.setKeyMarks (nullptr);
+            }
+        });
+    };
+    // A row clicked: its part in the MIDI editor with the note selected (a chord: the playhead to it).
+    keyCheckWindow->getPage().onShowIssue = [this] (const pr7s::KeyIssue& issue)
+    {
+        if (issue.kind == pr7s::KeyIssue::Kind::chord)
+        {
+            studio.setPosition (issue.beat);
+            return;
+        }
+        const auto* track = studio.getProject().findTrack (issue.trackId);
+        if (track == nullptr)
+            return;
+        for (int i = 0; i < (int) track->parts.size(); ++i)
+            if (track->parts[(size_t) i].id == issue.partId)
+            {
+                arrange.select (issue.trackId, i);
+                openKeyEditor();
+                studio.dispatchPendingMessages();
+                keyEditor.selectNotes ({ issue.noteIndex });
+                studio.setPosition (issue.beat);
+                return;
+            }
+    };
+    // While it's open the MIDI editor rings the notes outside the key (its own colours are the velocities).
+    // (Worked out once per change of the song or the key chosen: the guess reads every note.)
+    keyEditor.setKeyMarks ([this, version = juce::uint64 (-1), chosen = std::optional<pr7s::Key>(), keys = pr7s::KeyAt()] () mutable
+    {
+        const auto now = keyCheckWindow != nullptr ? keyCheckWindow->getPage().getChosenKey() : std::nullopt;
+        if (keys == nullptr || version != studio.getChangeVersion() || chosen != now)
+        {
+            keys = pr7s::keyCheckKeys (studio.getProject(), now);
+            version = studio.getChangeVersion();
+            chosen = now;
+        }
+        return keys;
+    });
+    keyCheckWindow->getPage().onKeyChange = [this] { keyEditor.repaint(); };
+    keyCheckWindow->centreAroundComponent (this, keyCheckWindow->getWidth(), keyCheckWindow->getHeight());
+    keyCheckWindow->setVisible (true);
 }
 
 void MainView::openProgressions()
