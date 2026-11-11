@@ -291,33 +291,74 @@ void ArrangeView::zoomFull()
 
 bool ArrangeView::scrollTowards (juce::Point<float> at)
 {
-    // As far past the edge as the mouse is, a little each time (faster further out).
+    // As far into the edge's zone (or past the edge) as the mouse is, a little each time (faster further out).
+    // (0.84.1) The zone starts `edgeScrollZone` inside the view: the owner's window runs to the screens' edges,
+    // where the mouse can't go past the view at all, so only "past the edge" never scrolled there.
     const auto speed = [] (float past) { return juce::jlimit (4.0f, 60.0f, past * 0.5f + 4.0f); };
+    const auto zone = edgeScrollZone;
+    const auto right = (float) getWidth() - zone, bottom = (float) getHeight() - zone;
+    const auto top = (float) Timeline::rulerHeight;
     auto moved = false;
-    if (at.x < 0.0f && timeline.firstBeat > 0.0)
+    if (at.x < zone && timeline.firstBeat > 0.0)
     {
-        timeline.firstBeat = juce::jmax (0.0, timeline.firstBeat - speed (-at.x) / timeline.pixelsPerBeat);
+        timeline.firstBeat = juce::jmax (0.0, timeline.firstBeat - speed (zone - at.x) / timeline.pixelsPerBeat);
         moved = true;
     }
-    else if (at.x > (float) getWidth())
+    else if (at.x > right)
     {
-        timeline.firstBeat += speed (at.x - (float) getWidth()) / timeline.pixelsPerBeat;
+        timeline.firstBeat += speed (at.x - right) / timeline.pixelsPerBeat;
         moved = true;
     }
     const auto room = juce::jmax (0, timeline.contentHeight (studio) - (getHeight() - Timeline::rulerHeight - Timeline::bottomRoom));
-    if (at.y < (float) Timeline::rulerHeight && timeline.scrollY > 0)
+    if (at.y < top + zone && timeline.scrollY > 0)
     {
-        timeline.scrollY = juce::jmax (0, timeline.scrollY - juce::roundToInt (speed ((float) Timeline::rulerHeight - at.y)));
+        timeline.scrollY = juce::jmax (0, timeline.scrollY - juce::roundToInt (speed (top + zone - at.y)));
         moved = true;
     }
-    else if (at.y > (float) getHeight() && timeline.scrollY < room)
+    else if (at.y > bottom && timeline.scrollY < room)
     {
-        timeline.scrollY = juce::jmin (room, timeline.scrollY + juce::roundToInt (speed (at.y - (float) getHeight())));
+        timeline.scrollY = juce::jmin (room, timeline.scrollY + juce::roundToInt (speed (at.y - bottom)));
         moved = true;
     }
     if (moved)
         scrolled();
     return moved;
+}
+
+void ArrangeView::repaintBandChange (juce::Rectangle<float> before, juce::Rectangle<float> after)
+{
+    // (0.84.1, the owner: a big box lagged) The box's fill is see-through and doesn't change inside, so only
+    // what it newly covers or uncovers, and its old and new edges, are drawn again: a box across three screens
+    // used to redraw the whole arrangement on every mouse move.
+    const auto whole = [] (juce::Rectangle<float> r) { return r.getSmallestIntegerContainer(); };
+    juce::RectangleList<int> dirty;
+    const auto edgesOf = [&dirty, &whole] (juce::Rectangle<float> r)
+    {
+        if (r.isEmpty())
+            return;
+        const auto b = whole (r).expanded (2);
+        dirty.add (b.withHeight (4));
+        dirty.add (b.withTop (b.getBottom() - 4));
+        dirty.add (b.withWidth (4));
+        dirty.add (b.withLeft (b.getRight() - 4));
+    };
+    for (const auto& [a, b] : { std::pair { before, after }, std::pair { after, before } })
+        if (! a.isEmpty())
+        {
+            juce::RectangleList<int> only (whole (a));
+            if (! b.isEmpty())
+                only.subtract (whole (b));
+            dirty.add (only);
+        }
+    edgesOf (before);
+    edgesOf (after);
+    dirty.clipTo (getLocalBounds());
+    bandRepaintArea = 0.0;
+    for (const auto& r : dirty)
+    {
+        bandRepaintArea += (double) r.getWidth() * r.getHeight();
+        repaint (r);
+    }
 }
 
 void ArrangeView::scrolled()
@@ -832,8 +873,11 @@ void ArrangeView::paint (juce::Graphics& g)
                             to = target->id;
                     auto part = track.parts[(size_t) i];
                     part.start = juce::jmax (0.0, part.start + delta);
-                    const juce::Rectangle<float> area (timeline.xForBeat (part.start), trackTop (to) + 3.0f,
-                                                       (float) (part.length * timeline.pixelsPerBeat), (float) timeline.trackRowHeight() - 6.0f);
+                    // (0.84.1) On the lane it's on (it was drawn on the track's own row: several takes moving
+                    // together looked like one, all on the same row).
+                    const auto strip = partRow (to, part.lane);
+                    const juce::Rectangle<float> area (timeline.xForBeat (part.start), strip.getY(),
+                                                       (float) (part.length * timeline.pixelsPerBeat), strip.getHeight());
                     paintPart (g, area, part, track.colour, true, false);
                 }
         }
@@ -1569,6 +1613,24 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
         return;
     }
 
+    // (0.84.1, the other DAW's habit) Ctrl-click adds a part to the selection; Ctrl-click on a selected one takes
+    // it out when let go without a drag (a Ctrl-drag still moves them all, along one direction).
+    ctrlToggledPart = 0;
+    if (event.mods.isCommandDown() && ! event.mods.isPopupMenu() && tool == Tool::select)
+    {
+        const auto id = partIdAt ({ hit->first, hit->second });
+        if (! isSelected (hit->first, hit->second))
+        {
+            if (const auto primary = partIdAt (selection); primary != 0
+                && std::find (alsoSelected.begin(), alsoSelected.end(), primary) == alsoSelected.end())
+                alsoSelected.push_back (primary);
+            selection = selectionOf (hit->first, hit->second);
+            studio.selectTrack (hit->first);
+        }
+        else
+            ctrlToggledPart = id;
+    }
+
     // A part among several selected: they stay selected (it's the one shown in the key editor now).
     if (isSelected (hit->first, hit->second) && getSelectedParts().size() > 1)
     {
@@ -1668,11 +1730,14 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
             dragMoved = true;
         // Past an edge the view scrolls (along the song and down the tracks),
         // so parts off the screen can be taken in; the box's start stays in the song.
-        if (dragMoved)
-            scrollTowards (event.position);
+        const auto scrolledNow = dragMoved && scrollTowards (event.position);
         const juce::Point<float> anchor (timeline.xForBeat (marqueeBeat), marqueeRowY + (float) Timeline::rulerHeight - (float) timeline.scrollY);
+        const auto before = toolBand;
         toolBand = juce::Rectangle<float> (anchor, event.position);
-        repaint();
+        if (scrolledNow)
+            repaint();   // (the view moved: all of it)
+        else if (toolBand != before)
+            repaintBandChange (before, toolBand);
         return;
     }
     if (drag == Drag::comp || drag == Drag::takeEdge || drag == Drag::slip || drag == Drag::audition)
@@ -2016,6 +2081,16 @@ void ArrangeView::mouseUp (const juce::MouseEvent& event)
     {
         if (const auto* track = studio.getProject().findTrack (dragTrack); track != nullptr && juce::isPositiveAndBelow (selection.index, (int) track->parts.size()))
             studio.splitPart (dragTrack, selection.index, splitBeat (event, track->parts[(size_t) selection.index]));
+        repaint();
+        return;
+    }
+    if (! dragMoved && finished == Drag::move && ctrlToggledPart != 0)
+    {
+        // (0.84.1) A selected part Ctrl-clicked: out of the selection (another selected one leads).
+        const auto id = std::exchange (ctrlToggledPart, 0);
+        auto ids = getSelectedParts();
+        ids.erase (std::remove (ids.begin(), ids.end(), id), ids.end());
+        selectParts (ids);
         repaint();
         return;
     }

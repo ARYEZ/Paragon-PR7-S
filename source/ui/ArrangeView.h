@@ -543,6 +543,15 @@ private:
     double marqueeBeat = 0.0;
     float marqueeRowY = 0.0f;
     bool scrollTowards (juce::Point<float>);   // past an edge: the view moves that way (true if it did)
+    void repaintBandChange (juce::Rectangle<float> before, juce::Rectangle<float> after);   // (0.84.1) only what the box's move changed
+    int ctrlToggledPart = 0;                   // (0.84.1) a selected part Ctrl-clicked: taken out on release unless dragged
+public:
+    // (0.84.1) Inside this far from the view's edge, a box or a part dragged scrolls the view (the owner's window
+    // reaches the screens' edges, where the mouse can't go past).
+    static constexpr float edgeScrollZone = 24.0f;
+    double getBandRepaintArea() const noexcept { return bandRepaintArea; }   // (tests: what the last box move redrew)
+private:
+    double bandRepaintArea = 0.0;
     juce::Point<float> pointDownAt;
     int anchor = -1;               // the point grabbed
     bool copyingPoints = false;

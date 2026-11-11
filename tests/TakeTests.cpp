@@ -919,3 +919,183 @@ TEST_CASE ("0.82.6: Glue joins clips of different recordings into one new file, 
     studio.undo();
     CHECK (t.track().parts.size() == 2);
 }
+
+TEST_CASE ("0.84.1: several takes selected move together when one is dragged", "[takes][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto trackId = studio.getProject().tracks[0].id;
+    for (int i = 0; i < 2; ++i)
+    {
+        Part take { 4.0, 8.0, "Take " + juce::String (i + 1), { { 1.0, 0.5, 60 + i * 4, 0.8f } } };
+        take.lane = i;
+        take.muted = i == 0;
+        studio.addPart (trackId, take);
+    }
+    studio.setShowLanes (trackId, true);
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    arrange.setTool (ArrangeView::Tool::select);
+    const auto first = arrange.getPartBounds (trackId, 0), second = arrange.getPartBounds (trackId, 1);
+
+    SECTION ("chosen by a box")
+    {
+        const juce::Point<float> from (first.getX() - 20.0f, first.getY() + 2.0f), to (first.getCentreX(), second.getCentreY());
+        arrange.mouseDown (mouseAt (arrange, from, from));
+        for (int step = 1; step <= 4; ++step)
+            arrange.mouseDrag (mouseAt (arrange, from + (to - from) * ((float) step / 4.0f), from));
+        arrange.mouseUp (mouseAt (arrange, to, from));
+    }
+    SECTION ("chosen by Shift-click")
+    {
+        arrange.mouseDown (mouseAt (arrange, first.getCentre(), first.getCentre()));
+        arrange.mouseUp (mouseAt (arrange, first.getCentre(), first.getCentre()));
+        arrange.mouseDown (mouseAt (arrange, second.getCentre(), second.getCentre(), juce::ModifierKeys::shiftModifier));
+        arrange.mouseUp (mouseAt (arrange, second.getCentre(), second.getCentre(), juce::ModifierKeys::shiftModifier));
+    }
+    SECTION ("chosen by Ctrl-click (the other DAW's way)")
+    {
+        arrange.mouseDown (mouseAt (arrange, first.getCentre(), first.getCentre()));
+        arrange.mouseUp (mouseAt (arrange, first.getCentre(), first.getCentre()));
+        arrange.mouseDown (mouseAt (arrange, second.getCentre(), second.getCentre(), juce::ModifierKeys::commandModifier));
+        arrange.mouseUp (mouseAt (arrange, second.getCentre(), second.getCentre(), juce::ModifierKeys::commandModifier));
+    }
+    REQUIRE (arrange.getSelectedParts().size() == 2);
+    for (const auto grabIndex : { 0, 1 })
+    {
+        const auto grab = arrange.getPartBounds (trackId, grabIndex).getCentre();
+        const juce::Point<float> drop (grab.x + (float) (arrange.getTimeline().pixelsPerBeat * 4.0), grab.y);
+        arrange.mouseDown (mouseAt (arrange, grab, grab));
+        for (int step = 1; step <= 4; ++step)
+            arrange.mouseDrag (mouseAt (arrange, grab + (drop - grab) * ((float) step / 4.0f), grab));
+        // PARAGON_SNAPSHOT_TAKEDRAG=<file>: the takes on their lanes while they're dragged.
+        if (const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_TAKEDRAG", {}); path.isNotEmpty() && grabIndex == 0)
+        {
+            juce::File (path).deleteFile();
+            juce::FileOutputStream out { juce::File (path) };
+            juce::PNGImageFormat().writeImageToStream (arrange.createComponentSnapshot (arrange.getLocalBounds()), out);
+        }
+        arrange.mouseUp (mouseAt (arrange, drop, grab));
+        const auto& parts = studio.getProject().findTrack (trackId)->parts;
+        REQUIRE (parts.size() == 2);
+        for (const auto& p : parts)
+            CHECK (p.start == (grabIndex == 0 ? 8.0 : 12.0));
+        CHECK (arrange.getSelectedParts().size() == 2);
+    }
+}
+
+TEST_CASE ("0.84.1: Ctrl-click on a selected part takes it out of the selection", "[takes][ui]")
+{
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto trackId = studio.getProject().tracks[0].id;
+    studio.addPart (trackId, { 0.0, 4.0, "A", {} });
+    studio.addPart (trackId, { 8.0, 4.0, "B", {} });
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    arrange.setTool (ArrangeView::Tool::select);
+    const auto a = arrange.getPartBounds (trackId, 0).getCentre(), b = arrange.getPartBounds (trackId, 1).getCentre();
+    const auto ctrl = juce::ModifierKeys::commandModifier;
+    arrange.mouseDown (mouseAt (arrange, a, a));
+    arrange.mouseUp (mouseAt (arrange, a, a));
+    arrange.mouseDown (mouseAt (arrange, b, b, ctrl));
+    arrange.mouseUp (mouseAt (arrange, b, b, ctrl));
+    CHECK (arrange.getSelectedParts().size() == 2);
+    arrange.mouseDown (mouseAt (arrange, a, a, ctrl));
+    arrange.mouseUp (mouseAt (arrange, a, a, ctrl));
+    REQUIRE (arrange.getSelectedParts().size() == 1);
+    CHECK (arrange.getSelectedParts()[0] == studio.getProject().findTrack (trackId)->parts[1].id);
+}
+
+TEST_CASE ("0.84.1: the select box scrolls at the view's edges and redraws only what it changed", "[ui]")
+{
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto first = studio.getProject().tracks[0].id;
+    for (int i = 0; i < 30; ++i)
+        studio.addTrack (Instrument {});
+    for (const auto& track : studio.getProject().tracks)
+        studio.addPart (track.id, { 0.0, 16.0, "Part", { { 0.0, 1.0, 60, 0.8f } } });
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    arrange.setTool (ArrangeView::Tool::select);
+    const auto w = (float) arrange.getWidth(), h = (float) arrange.getHeight();
+    const juce::Point<float> from (arrange.getTimeline().xForBeat (17.0), (float) Timeline::rulerHeight + 10.0f);
+
+    // A big box grown by a few pixels redraws a few strips, not the whole view.
+    arrange.mouseDown (mouseAt (arrange, from, from));
+    const juce::Point<float> mid (w * 0.6f, h * 0.6f);
+    arrange.mouseDrag (mouseAt (arrange, mid, from));
+    arrange.mouseDrag (mouseAt (arrange, mid + juce::Point<float> (6.0f, 5.0f), from));
+    CHECK (arrange.getBandRepaintArea() > 0.0);
+    CHECK (arrange.getBandRepaintArea() < (double) w * h * 0.1);
+
+    // Held inside the right and bottom edges (where a window at the screen's edge stops the mouse), it scrolls.
+    const auto beatBefore = arrange.getTimeline().firstBeat;
+    const auto yBefore = arrange.getTimeline().scrollY;
+    const juce::Point<float> corner (w - 4.0f, h - 4.0f);
+    for (int i = 0; i < 10; ++i)
+        arrange.mouseDrag (mouseAt (arrange, corner, from));
+    CHECK (arrange.getTimeline().firstBeat > beatBefore);
+    CHECK (arrange.getTimeline().scrollY > yBefore);
+    arrange.mouseUp (mouseAt (arrange, corner, from));
+    // What it swept over is selected, the first track's part among them.
+    CHECK (arrange.isPartSelected (studio.getProject().findTrack (first)->parts[0].id) == false);   // (the box began after it)
+    CHECK (arrange.getSelectedParts().empty());   // (every part ends at beat 16; the box starts at 17)
+}
+
+TEST_CASE ("0.84.1: three clips on three tracks selected move together (the owner's bass and guitar renders)", "[ui]")
+{
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    std::vector<int> tracks;
+    for (int i = 0; i < 3; ++i)
+    {
+        tracks.push_back (studio.addAudioTrack (true));
+        studio.addPart (tracks.back(), clip (4.0, 8.0, "render " + juce::String (i) + ".wav"));
+    }
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    arrange.setTool (ArrangeView::Tool::select);
+    const auto at = [&] (int i) { return arrange.getPartBounds (tracks[(size_t) i], 0).getCentre(); };
+
+    SECTION ("chosen by a box")
+    {
+        const juce::Point<float> from (arrange.getTimeline().xForBeat (2.0), at (0).y - 5.0f), to (at (2).x, at (2).y);
+        arrange.mouseDown (mouseAt (arrange, from, from));
+        for (int step = 1; step <= 4; ++step)
+            arrange.mouseDrag (mouseAt (arrange, from + (to - from) * ((float) step / 4.0f), from));
+        arrange.mouseUp (mouseAt (arrange, to, from));
+    }
+    SECTION ("chosen by Shift-click")
+        for (int i = 0; i < 3; ++i)
+        {
+            const auto mods = i == 0 ? juce::ModifierKeys() : juce::ModifierKeys (juce::ModifierKeys::shiftModifier);
+            arrange.mouseDown (mouseAt (arrange, at (i), at (i), mods));
+            arrange.mouseUp (mouseAt (arrange, at (i), at (i), mods));
+        }
+    SECTION ("chosen by Ctrl-click")
+        for (int i = 0; i < 3; ++i)
+        {
+            const auto mods = i == 0 ? juce::ModifierKeys() : juce::ModifierKeys (juce::ModifierKeys::commandModifier);
+            arrange.mouseDown (mouseAt (arrange, at (i), at (i), mods));
+            arrange.mouseUp (mouseAt (arrange, at (i), at (i), mods));
+        }
+    REQUIRE (arrange.getSelectedParts().size() == 3);
+    const auto grab = at (0);
+    const juce::Point<float> drop (grab.x + (float) (arrange.getTimeline().pixelsPerBeat * 4.0), grab.y + 3.0f);
+    arrange.mouseDown (mouseAt (arrange, grab, grab));
+    for (int step = 1; step <= 4; ++step)
+        arrange.mouseDrag (mouseAt (arrange, grab + (drop - grab) * ((float) step / 4.0f), grab));
+    arrange.mouseUp (mouseAt (arrange, drop, grab));
+    for (const auto id : tracks)
+    {
+        REQUIRE (studio.getProject().findTrack (id)->parts.size() == 1);
+        CHECK (studio.getProject().findTrack (id)->parts[0].start == 8.0);
+    }
+}

@@ -2,6 +2,17 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.84.1
+
+**Your three reports about selecting and dragging.**
+
+- **A big select box lagged.** Every move of the mouse redrew the whole arrangement, and your window spans three screens. Now only what changed is redrawn: the box's old and new edges and the strip it newly covers or leaves. Tested: a box over most of the view, grown by a few pixels, redraws under a tenth of the view (it was all of it).
+- **Selected clips on different tracks didn't all move.** Most likely you picked them with Ctrl-click, the other DAW's way. Ctrl-click only selected the one clicked, so the earlier clips dropped out of the selection (the track rows stayed lit, so it looked as if all three were selected), and only one moved. Now **Ctrl-click adds a clip or part to the selection**, and Ctrl-click on a selected one takes it out again. Shift-click and a box already worked and still do. Tested with three audio clips on three tracks, chosen each of the three ways: dragging one moves all three.
+- **Takes on lanes:** dragging several selected takes drew them all on the track's own row, stacked on top of each other, so it looked as if only one was moving. They're now drawn on their own lanes while you drag. (They did all move when you let go.)
+- **The select box scrolls at the edges of the view.** Before, the view only scrolled once the mouse went *past* its edge, and on the right-hand screen's edge the mouse can't go any further. Now holding the box within about 24 pixels of any edge scrolls the view that way, and the further in you go, the faster it scrolls. It works across the song and down the tracks.
+
+If the clips still don't all move together, tell me how you selected them (Ctrl-click, Shift-click, a box, or clicking the tracks in the track list) and I'll look again.
+
 ## 0.84.0
 
 **KEY CHECK: every note and chord outside the key, in one list** (you asked how to make sure everything in a song is in the right key; your rules: the same rule the chord track uses, and skip the drums).
