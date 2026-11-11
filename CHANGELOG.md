@@ -2,6 +2,22 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.85.0
+
+**The rhythm guitar generator, first round: TRITONE CHUG** (you: GENERATE gave the same riff over and over; you're redesigning the song engine around the rhythm guitar, with the tritone chug riff first).
+
+- **A new riff every time.** The composer's guitar no longer picks from six written riffs a style. Every riff is built from scratch, so GENERATE or ROLL gives a brand-new one. A thousand GENERATEs give at least 950 different riffs (tested), and it never hands back any of the last 200 it gave you.
+- **The riff's type ("flavour"):** in the guitar lane's style menu, **Riff Flavour**. **TRITONE CHUG** is the one to try. The others (CHUGS, GALLOP, CREEP, STABS, OCTAVES, STOP-START, OPEN CHORDS) still use the first, rougher rules; ANY picks a different type each time. A chosen type stays until you change it.
+- **TRITONE CHUG is built from your two examples**, their shapes only (nothing of either song copied). It writes one of two kinds:
+  - **The hammer kind (Ten Ton Hammer's intro):** a high chord of the flat fifth and the fifth together, two octaves up (the half-step grind you love), struck and left to ring over the open low string, answered by chugs. The bar plays three times, then an answer bar: power chords walking dark notes (the flat second, flat third, fourth, flat fifth, fifth, flat sixth), a stop, a half-step creep, or a run of chugs. Each GENERATE draws all of it again: the grind's voicing (mostly yours; sometimes the flat fifth doubled, or the root and flat fifth up high, or the grind an octave lower), how long it rings, whether it lands on the downbeat, the "and" or after the chugs, the chug rhythm (kept the same bar to bar, as a riff repeats), a half-step chug or not, and the answer.
+  - **The djent kind (Wildfire's riffs):** the chug is the tritone itself (the low string a half step up under the open fifth and octave), palm-muted in groups of two, three or four sixteenths that run on across the bar line, pinch harmonics on the same shape, a bar of open chugs with low notes bent a half step, or the chord let ring at the end.
+  - Metalcore and nu-metal lean to the djent kind, groove and thrash to the hammer kind.
+- **The section shapes it:** a breakdown rings the grind longer with sparser chugs; a chorus leans to the bigger voicings.
+- **BUSY now thickens or thins the same riff.** Before this round it could swap the riff for a different one.
+- **Written Riffs** in the same menu brings back the old six of each style.
+
+This is a first round to judge by ear. Tell me what's off, from "the grind should ring longer" to "never use that answer bar", and send more riffs you love; I'll tune the rules. Then your questions about the other kinds of rhythm.
+
 ## 0.84.1
 
 **Your three reports about selecting and dragging.**

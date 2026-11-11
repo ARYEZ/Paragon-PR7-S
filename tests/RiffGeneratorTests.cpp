@@ -32,7 +32,7 @@ namespace
         return n;
     }
 
-    const std::string riffCharacters = "-=xXcCdDfFeEgGkKtTzZ*#obBhprvwu";
+    const std::string riffCharacters = "-=xXcCdDfFeEgGkKtTzZ*#obBhprvwuqyjnaAilms123456789";
 }
 
 TEST_CASE ("The riff generator: a thousand seeds, a thousand riffs (0.85.0)", "[riffgen]")
@@ -97,14 +97,14 @@ TEST_CASE ("The riff generator: the same recipe the same riff; the flavour heard
         t.flavour = RiffFlavour::tritone;
         t.seed = seed;
         const auto tri = generateRiffBars (t);
-        const auto n = count (tri, "eEbBv");
+        const auto n = count (tri, "eEbBvqyjnaAi");
         tritoneWith += n > 0 ? 1 : 0;
         tritones += n;
-        tritoneMutes += count (tri, "xz*");
+        tritoneMutes += count (tri, "xz*");   // (the djent kind chugs on a: not counted)
         auto c = t;
         c.flavour = RiffFlavour::chugs;
         const auto chug = generateRiffBars (c);
-        chugTritones += count (chug, "eEbBv");
+        chugTritones += count (chug, "eEbBvqyjnaAi");
         chugMutes += count (chug, "xz*");
 
         RiffRecipe s;

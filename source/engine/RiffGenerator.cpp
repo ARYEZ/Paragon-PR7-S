@@ -21,7 +21,7 @@ namespace pr7s
             case RiffFlavour::any: return "ANY";
             case RiffFlavour::chugs: return "CHUGS";
             case RiffFlavour::gallop: return "GALLOP";
-            case RiffFlavour::tritone: return "TRITONE";
+            case RiffFlavour::tritone: return "TRITONE CHUG";
             case RiffFlavour::creep: return "CREEP";
             case RiffFlavour::stabs: return "STABS";
             case RiffFlavour::octaves: return "OCTAVES";
@@ -38,7 +38,7 @@ namespace pr7s
             case RiffFlavour::any: return "Every kind of riff: each GENERATE leans a different way";
             case RiffFlavour::chugs: return "Palm-muted chugs and chug runs on the low string";
             case RiffFlavour::gallop: return "Gallops (an eighth and two sixteenths) driving the riff";
-            case RiffFlavour::tritone: return "The flat fifth against the low string: chugs, dyads and notes a tritone up";
+            case RiffFlavour::tritone: return "Chugs on the low string answered by the high tritone grind, or chugging the low tritone itself";
             case RiffFlavour::creep: return "Heavy low notes creeping a half step or a minor third up and back";
             case RiffFlavour::stabs: return "Chugs answered by high, dissonant stabs (tritones with vibrato, bent whole steps)";
             case RiffFlavour::octaves: return "Ringing octave shapes between the chugs";
@@ -53,6 +53,8 @@ namespace pr7s
         for (const auto f : riffFlavours())
             if (riffFlavourName (f).equalsIgnoreCase (name.trim()))
                 return f;
+        if (name.trim().equalsIgnoreCase ("TRITONE"))
+            return RiffFlavour::tritone;   // (its first name)
         return RiffFlavour::any;
     }
 
@@ -335,6 +337,290 @@ namespace pr7s
 
     }
 
+    namespace
+    {
+        // TRITONE CHUG (0.85.0), from the owner's "ultimate tritone chug riff" (Machine Head, Ten Ton Hammer's intro:
+        // the shape learned, nothing of it copied): a CALL bar, the high tritone grind (the flat fifth and the
+        // fifth two octaves up) struck and left to ring over the open low string, answered by chugs on the low
+        // string; played three times, then an ANSWER bar (power chords walking dark degrees). Every seed draws
+        // each part again: the voicing, how long it rings, where it lands, the chug rhythm (one cell kept bar
+        // to bar, as a riff repeats), a half-step chug or not, the answer.
+        struct TritoneChug
+        {
+            juce::Random& random;
+            const RiffRecipe& recipe;
+            int steps;
+
+            template <typename T>
+            T pick (std::initializer_list<std::pair<T, float>> options)
+            {
+                auto total = 0.0f;
+                for (const auto& o : options)
+                    total += o.second;
+                auto r = random.nextFloat() * total;
+                for (const auto& o : options)
+                {
+                    if (r < o.second)
+                        return o.first;
+                    r -= o.second;
+                }
+                return options.begin()->first;
+            }
+
+            bool breakdown() const { return recipe.section == DrumSection::breakdown; }
+            bool chorus() const { return recipe.section == DrumSection::chorus; }
+
+            // The chug rhythm: one or two one-beat cells (x a chug, - a rest).
+            std::string cell()
+            {
+                if (breakdown())
+                    return pick<std::string> ({ { "x---", 3 }, { "x--x", 2 }, { "--x-", 1 }, { "x-x-", 2 }, { "xx--", 1.5f }, { "-xx-", 1 } });
+                return pick<std::string> ({ { "x-x-", 4 }, { "xxxx", 2 }, { "x-xx", 3 }, { "xx-x", 2 }, { "xxx-", 1.5f }, { "x--x", 1.5f }, { "-xxx", 1 } });
+            }
+
+            char voicing()
+            {
+                if (chorus())
+                    return pick<char> ({ { 'q', 5 }, { 'j', 2 }, { 'y', 2 } });
+                if (breakdown())
+                    return pick<char> ({ { 'q', 4 }, { 'n', 2 }, { 'y', 1.5f } });
+                return pick<char> ({ { 'q', 7 }, { 'y', 2 }, { 'j', 1.5f }, { 'n', 1 } });
+            }
+
+            // Chugs into [from, to) from the cells (a beat each, alternating as the pattern says).
+            static void chugs (std::string& bar, int from, int to, const std::string& a, const std::string& b, const std::string& order,
+                               int chromaticAt)
+            {
+                for (auto i = from; i < to; ++i)
+                {
+                    const auto beat = (i - from) / 4;
+                    const auto& c = order[(size_t) beat % order.size()] == 'a' ? a : b;
+                    const auto ch = c[(size_t) ((i - from) % 4)];
+                    bar[(size_t) i] = ch == 'x' ? (i == chromaticAt ? 'c' : 'z') : '-';
+                }
+            }
+
+            // THE DJENT KIND (the owner's second example, Periphery's Wildfire: the shape learned, nothing copied):
+            // the chug is the tritone itself (a: the low string a half step up under the open fifth), palm-muted in
+            // groups of 2, 3 or 4 sixteenths that run on across the bar line, pinch harmonics (i) on the same shape,
+            // and a bar of open-string chugs with bent single notes (l, m, s) or the chord let ring.
+            std::vector<std::string> djent (int bars)
+            {
+                // The groups (sixteenths each): a cycle that needn't fit the bar.
+                std::vector<int> groups;
+                const auto count = pick<int> ({ { 3, 3 }, { 4, 3 }, { 5, 2 }, { 2, 1 } });
+                for (int k = 0; k < count; ++k)
+                    groups.push_back (breakdown() ? pick<int> ({ { 3, 3 }, { 4, 3 }, { 2, 1 }, { 6, 1 } })
+                                                  : pick<int> ({ { 3, 4 }, { 2, 3 }, { 4, 2 }, { 5, 1 } }));
+                // What fills a group after its first hit.
+                std::vector<std::string> fills;
+                for (const auto g : groups)
+                {
+                    std::string f ((size_t) g, '-');
+                    f[0] = 'a';
+                    for (int i = 1; i < g; ++i)
+                        f[(size_t) i] = random.nextFloat() < (breakdown() ? 0.25f : 0.55f) ? 'a' : '-';
+                    fills.push_back (f);
+                }
+                const auto pinchEvery = pick<int> ({ { 0, 2 }, { 2, 2 }, { 3, 2 }, { 4, 1 } });   // a group in so many with a pinch
+                const auto ringAt = random.nextFloat() < 0.4f;    // the chord let ring at the phrase's end
+                auto cursor = 0;   // where in the cycle (in groups)
+                auto groupsDone = 0;
+                const auto groupBar = [&] (bool restart)
+                {
+                    std::string bar ((size_t) steps, '-');
+                    if (restart)
+                        cursor = 0;
+                    auto i = 0;
+                    while (i < steps)
+                    {
+                        const auto& f = fills[(size_t) cursor % fills.size()];
+                        for (size_t k = 0; k < f.size() && i + (int) k < steps; ++k)
+                            bar[(size_t) i + k] = f[k];
+                        if (pinchEvery > 0 && ++groupsDone % pinchEvery == 0 && i > 0)
+                            bar[(size_t) i] = 'i';
+                        i += (int) f.size();
+                        ++cursor;
+                    }
+                    bar[0] = bar[0] == '-' || bar[0] == 'i' ? 'a' : bar[0];
+                    return bar;
+                };
+                const auto bentBar = [&]
+                {
+                    // Open-string sixteenths, each beat or two a bent note (the half step, whole step, minor third).
+                    std::string bar ((size_t) steps, '-');
+                    for (auto i = 0; i < steps; ++i)
+                        bar[(size_t) i] = random.nextFloat() < 0.8f ? 'z' : '-';
+                    const auto every = pick<int> ({ { 4, 2 }, { 6, 2 }, { 8, 1 } });
+                    for (auto i = 0; i < steps; i += every)
+                    {
+                        const auto at = juce::jmin (steps - 1, i + (i == 0 ? 0 : random.nextInt (2)));
+                        bar[(size_t) at] = pick<char> ({ { 'l', 3 }, { 'm', 2 }, { 's', 2 } });
+                        if (at + 1 < steps)
+                            bar[(size_t) at + 1] = '=';
+                    }
+                    return bar;
+                };
+                const auto ringBar = [&]
+                {
+                    auto bar = groupBar (false);
+                    const auto from = juce::jmax (4, steps / 2);
+                    bar[(size_t) from] = 'A';
+                    for (auto i = from + 1; i < steps; ++i)
+                        bar[(size_t) i] = '=';
+                    return bar;
+                };
+                std::vector<std::string> out;
+                out.push_back (groupBar (true));
+                if (bars == 2)
+                    out.push_back (ringAt ? ringBar() : groupBar (false));
+                else if (bars >= 4)
+                {
+                    out.push_back (groupBar (false));
+                    out.push_back (random.nextFloat() < 0.5f ? bentBar() : groupBar (false));
+                    out.push_back (ringAt ? ringBar() : groupBar (false));
+                }
+                return out;
+            }
+
+            std::vector<std::string> make (int bars)
+            {
+                // Which kind: the hammer kind, or the djent kind (nu-metal / metalcore lean djent, groove / thrash hammer).
+                const auto djentWeight = recipe.style == GuitarStyle::metalcore ? 1.4f : recipe.style == GuitarStyle::numetal ? 1.0f
+                                       : recipe.style == GuitarStyle::shred ? 0.8f : 0.6f;
+                if (random.nextFloat() * (1.0f + djentWeight) >= 1.0f)
+                    return djent (bars);
+                const auto stab = voicing();
+                // How long the high chord rings (sixteenths) and where it lands.
+                auto ring = breakdown() ? pick<int> ({ { 8, 3 }, { 6, 1 }, { 12, 1 } })
+                                        : pick<int> ({ { 4, 5 }, { 6, 2 }, { 8, 2 }, { 2, 1 } });
+                ring = juce::jlimit (2, juce::jmax (2, steps - 4), ring);
+                const auto place = pick<int> ({ { 0, 7 }, { 1, 2 }, { 2, 1 } });   // 0 the downbeat, 1 after a chug, 2 answering the chugs
+                const auto a = cell(), b = random.nextFloat() < 0.45f ? cell() : a;
+                const auto order = pick<std::string> ({ { "a", 3 }, { "ab", 2 }, { "aab", 1.5f }, { "aaab", 1 } });
+                const auto chromatic = random.nextFloat() < 0.3f;
+
+                const auto call = [&] (char voice)
+                {
+                    std::string bar ((size_t) steps, '-');
+                    auto stabAt = 0;
+                    if (place == 1)
+                        stabAt = 2;                                   // a chug, then the grind on the "and"
+                    else if (place == 2)
+                        stabAt = juce::jmax (4, ((steps - ring) / 4) * 4);   // the chugs first, the grind last
+                    stabAt = juce::jmin (stabAt, steps - 2);
+                    const auto end = juce::jmin (steps, stabAt + ring);
+                    if (place == 2)
+                    {
+                        chugs (bar, 0, stabAt, a, b, order, chromatic ? stabAt - 1 : -1);
+                        bar[0] = 'z';
+                    }
+                    else
+                    {
+                        if (place == 1)
+                            bar[0] = 'z', bar[1] = '-';
+                        chugs (bar, end, steps, a, b, order, chromatic ? steps - 1 : -1);
+                    }
+                    bar[(size_t) stabAt] = voice;
+                    for (auto i = stabAt + 1; i < end; ++i)
+                        bar[(size_t) i] = '=';
+                    return bar;
+                };
+
+                const auto answer = [&]
+                {
+                    std::string bar ((size_t) steps, '-');
+                    const auto kind = breakdown() ? pick<int> ({ { 0, 3 }, { 2, 2 }, { 3, 2 } }) : pick<int> ({ { 0, 6 }, { 1, 2 }, { 2, 2 }, { 3, 1 } });
+                    if (kind == 0)
+                    {
+                        // Power chords walking dark degrees (the flat second, flat third, fourth, flat fifth, fifth, flat sixth).
+                        std::vector<int> degrees { 1, 3, 5, 6, 7, 8 };
+                        const auto count = juce::jlimit (2, 4, steps / 4 >= 4 ? pick<int> ({ { 3, 4 }, { 2, 2 }, { 4, 2 } }) : pick<int> ({ { 3, 3 }, { 2, 2 } }));
+                        std::vector<int> walk;
+                        for (int k = 0; k < count; ++k)
+                        {
+                            int d;
+                            do d = degrees[(size_t) random.nextInt ((int) degrees.size())];
+                            while (! walk.empty() && d == walk.back());
+                            walk.push_back (d);
+                        }
+                        // Each a beat (the last rings to the bar's end), or pushed: the first two on an eighth's room.
+                        const auto beatSteps = 4;
+                        auto at = 0;
+                        for (int k = 0; k < count && at < steps; ++k)
+                        {
+                            const auto last = k == count - 1;
+                            const auto len = last ? steps - at : beatSteps;
+                            bar[(size_t) at] = (char) ('0' + walk[(size_t) k]);
+                            for (auto i = at + 1; i < at + len && i < steps; ++i)
+                                bar[(size_t) i] = '=';
+                            at += len;
+                        }
+                        if (random.nextFloat() < 0.4f && steps >= 8)
+                        {
+                            // The last beat chugged again, back into the call.
+                            for (auto i = steps - 4; i < steps; ++i)
+                                bar[(size_t) i] = a[(size_t) (i % 4)] == 'x' ? 'z' : '-';
+                            bar[(size_t) (steps - 4)] = 'z';
+                        }
+                    }
+                    else if (kind == 1)
+                    {
+                        // The call with its chugs turned into a half-step creep (open notes, the low note and a half step up).
+                        bar = call (stab);
+                        auto up = false;
+                        for (auto i = 0; i < steps; ++i)
+                            if (bar[(size_t) i] == 'z' || bar[(size_t) i] == 'c')
+                            {
+                                bar[(size_t) i] = up ? 'C' : 'Z';
+                                up = ! up;
+                            }
+                    }
+                    else if (kind == 2)
+                    {
+                        // Stop: the grind (or a low power chord) held, then nothing; the chugs come back hard.
+                        const auto hold = juce::jmin (steps - 2, pick<int> ({ { 8, 2 }, { steps / 2, 1 }, { steps - 4, 1 } }));
+                        bar[0] = random.nextFloat() < 0.5f ? stab : (char) ('0' + pick<int> ({ { 1, 1 }, { 6, 2 }, { 3, 1 } }));
+                        for (auto i = 1; i < hold; ++i)
+                            bar[(size_t) i] = '=';
+                        for (auto i = steps - 2; i < steps; ++i)
+                            bar[(size_t) i] = 'z';
+                    }
+                    else
+                    {
+                        // All chugs, the cell doubled up, the last beat a sixteenth run.
+                        chugs (bar, 0, steps, a, cell(), "ab", -1);
+                        for (auto i = juce::jmax (0, steps - 4); i < steps; ++i)
+                            bar[(size_t) i] = 'z';
+                        bar[0] = 'z';
+                    }
+                    return bar;
+                };
+
+                std::vector<std::string> out;
+                const auto first = call (stab);
+                out.push_back (first);
+                if (bars == 2)
+                    out.push_back (answer());
+                else if (bars >= 4)
+                {
+                    out.push_back (first);
+                    // The third call: the same, or the voicing turned (the flat fifth doubled), or its chugs varied.
+                    const auto turn = random.nextFloat();
+                    out.push_back (turn < 0.3f ? call (stab == 'y' ? 'q' : 'y') : turn < 0.5f ? [&] {
+                        auto bar = first;
+                        for (auto i = juce::jmax (1, steps - 4); i < steps; ++i)
+                            if (bar[(size_t) i] == '-' || bar[(size_t) i] == 'z')
+                                bar[(size_t) i] = 'z';
+                        return bar;
+                    }() : first);
+                    out.push_back (answer());
+                }
+                return out;
+            }
+        };
+    }
+
     //==========================================================================
     std::vector<std::string> generateRiffBars (const RiffRecipe& recipe, int stepsPerBar)
     {
@@ -379,6 +665,14 @@ namespace pr7s
         };
 
         std::vector<std::string> out;
+        if (flavour == RiffFlavour::tritone)
+        {
+            TritoneChug chug { random, leaned, steps };
+            out = chug.make (bars);
+            maker.pedal = true;
+        }
+        else
+        {
         const auto a = newBar (false);
         // (BUSY is applied after, below: the same seed the same riff, only thinner or thicker.)
         out.push_back (a);
@@ -388,6 +682,7 @@ namespace pr7s
         {
             out.push_back (a);
             out.push_back (answer (a, true));
+        }
         }
 
         // BUSY: one fixed chance per sixteenth (the same in every bar, so a bar answering another keeps the
@@ -411,7 +706,7 @@ namespace pr7s
                     if (strengthOf (i, steps) > 1)
                         continue;
                     auto& ch = bar[(size_t) i];
-                    const auto muted = ch == 'x' || ch == 'z' || ch == '*' || ch == 'c' || ch == 'd' || ch == 'f' || ch == 'g' || ch == 'k';
+                    const auto muted = ch == 'x' || ch == 'z' || ch == 'a' || ch == '*' || ch == 'c' || ch == 'd' || ch == 'f' || ch == 'g' || ch == 'k';
                     if (thin > 0.0f && muted && chance[(size_t) i] < thin)
                     {
                         ch = '-';
@@ -443,6 +738,11 @@ namespace pr7s
                 if (c == 'z' || c == 'x') ++made["chugs"];
                 else if (c == '#') ++made["power chords"];
                 else if (c == 'b' || c == 'e') ++made["tritones"];
+                else if (c == 'q' || c == 'y' || c == 'j' || c == 'n') ++made["high tritones"];
+                else if (c == 'a') ++made["low tritone chugs"];
+                else if (c == 'i') ++made["pinch harmonics"];
+                else if (c == 'l' || c == 'm' || c == 's') ++made["bent notes"];
+                else if (c >= '1' && c <= '9') ++made["power chords"];
                 else if (c == 'v' || c == 'w' || c == 'u') ++made["high stabs"];
                 else if (c == 'o') ++made["octaves"];
                 else if (c == 'h') ++made["high chords"];
@@ -463,7 +763,9 @@ namespace pr7s
         description << " (" << drumSectionName (recipe.section).toLowerCase() << ", " << (int) bars.size() << (bars.size() == 1 ? " bar)" : " bars)");
 
         const auto name = "Generated: " + (recipe.flavour == RiffFlavour::any ? juce::String ("any flavour") : riffFlavourName (recipe.flavour).toLowerCase());
-        const auto pedal = recipe.style != GuitarStyle::rock && recipe.style != GuitarStyle::shred;
+        auto pedal = recipe.style != GuitarStyle::rock && recipe.style != GuitarStyle::shred;
+        for (const auto& b : bars)
+            pedal = pedal || b.find_first_of ("zZ") != std::string::npos;   // (TRITONE CHUG: the open low string in any style)
         return riffFromBars ([&bars] (int barIndex) { return bars[(size_t) (((barIndex % (int) bars.size()) + (int) bars.size()) % (int) bars.size())]; },
                              pedal, name, description, spans, beatsPerBar, (int) (recipe.seed % 3), tuning, vel);
     }

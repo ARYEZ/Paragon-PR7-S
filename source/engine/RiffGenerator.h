@@ -34,7 +34,7 @@ namespace pr7s
 {
     enum class RiffFlavour { any, chugs, gallop, tritone, creep, stabs, octaves, stopStart, openChords };
     const std::vector<RiffFlavour>& riffFlavours();
-    juce::String riffFlavourName (RiffFlavour);          // "ANY", "CHUGS", "GALLOP", "TRITONE", ...
+    juce::String riffFlavourName (RiffFlavour);          // "ANY", "CHUGS", "GALLOP", "TRITONE CHUG", ...
     juce::String riffFlavourDescription (RiffFlavour);
     RiffFlavour riffFlavourNamed (const juce::String&);   // (else any)
 

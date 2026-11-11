@@ -527,6 +527,50 @@ namespace pr7s
                             }
                             break;
                         }
+                        // (0.85.0, TRITONE CHUG: the owner's Ten Ton Hammer intro) the high tritone chords, open and
+                        // left to ring over the low string: q the flat fifth and the fifth together two octaves up (a
+                        // half step apart: the grind), y the flat fifth doubled (an octave apart), j the root and the
+                        // flat fifth two octaves up, n the grind an octave lower.
+                        case 'q': case 'y': case 'j': case 'n':
+                        {
+                            const auto pitches = lower == 'q' ? std::vector<int> { base + 30, base + 31 }
+                                               : lower == 'y' ? std::vector<int> { base + 18, base + 30 }
+                                               : lower == 'j' ? std::vector<int> { base + 24, base + 30 }
+                                                              : std::vector<int> { base + 18, base + 19 };
+                            for (const auto p : pitches)
+                                add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
+                            break;
+                        }
+                        // (0.85.0, the djent kind: the owner's Periphery's Wildfire) a: the low tritone chord, the low
+                        // string a half step up under the open fifth and octave (b2, 5, 8: the b2 and the 5 a tritone
+                        // apart; lower case muted, upper case ringing); i: its pinch harmonic (the pinch velocity);
+                        // l / m / s: a single note on the low string a half step / whole step / minor third up, bent
+                        // up a half step.
+                        case 'a':
+                            for (const auto p : { base + 1, base + 7, base + 12 })
+                                add (idea.notes, when, open ? length : length * 0.9, p, open ? of (barStart || onBeat ? vel.sustainHard : vel.sustain) : mutedVelocity);
+                            break;
+                        case 'i':
+                            for (const auto p : { base + 1, base + 7 })
+                                add (idea.notes, when, length, p, of (vel.pinch));
+                            break;
+                        case 'l': case 'm': case 's':
+                            add (idea.notes, when, length, base + (lower == 'l' ? 1 : lower == 'm' ? 2 : 3), of (vel.sustain));
+                            if (! idea.notes.empty())
+                            {
+                                idea.notes.back().effect = LineNote::Effect::bend;
+                                idea.notes.back().amount = 1.0f;
+                            }
+                            break;
+                        // (0.85.0) A power chord on the degree the digit names (semitones over the low note: 3 the flat
+                        // third, 6 the flat fifth...): the answer bar's dark walk.
+                        case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
+                        {
+                            const auto r = base + (lower - '0');
+                            for (const auto p : { r, r + 7, r + 12 })
+                                add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
+                            break;
+                        }
                         default: break;
                     }
                 }
