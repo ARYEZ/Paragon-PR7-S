@@ -352,6 +352,8 @@ void ComposerPage::generate()
         if (! state.lane (l).locked)
             taken[(size_t) l].reset();
     pr7s::generateComposer (state, random);
+    if (! state.lane (ComposerLayer::guitar).locked)
+        takeNewRiff();
     status = "Generated: a new take of every layer not locked";
     refresh();
 }
@@ -360,7 +362,42 @@ void ComposerPage::roll (ComposerLayer l)
 {
     taken[(size_t) l].reset();
     pr7s::rollLane (state, l, random);
+    if (l == ComposerLayer::guitar)
+        takeNewRiff();
     status = pr7s::composerLayerName (l) + ": a new take";
+    refresh();
+}
+
+void ComposerPage::takeNewRiff()
+{
+    // (0.85.0) A new riff every time: a take whose riff was given lately is drawn again (a few tries).
+    auto fingerprint = pr7s::guitarRiffFingerprint (state, context);
+    if (fingerprint.isEmpty())
+        return;
+    for (int tries = 0; tries < 40 && std::find (recentRiffs.begin(), recentRiffs.end(), fingerprint) != recentRiffs.end(); ++tries)
+    {
+        pr7s::rollLane (state, ComposerLayer::guitar, random);
+        fingerprint = pr7s::guitarRiffFingerprint (state, context);
+    }
+    recentRiffs.push_back (fingerprint);
+    while ((int) recentRiffs.size() > recentRiffsKept)
+        recentRiffs.pop_front();
+}
+
+void ComposerPage::setRiffFlavour (int flavour)
+{
+    state.riffFlavour = juce::jlimit (0, (int) pr7s::riffFlavours().size() - 1, flavour);
+    state.writtenRiffs = false;
+    taken[(size_t) ComposerLayer::guitar].reset();
+    status = "Guitar: " + pr7s::riffFlavourName (pr7s::riffFlavours()[(size_t) state.riffFlavour]) + " riffs";
+    refresh();
+}
+
+void ComposerPage::setWrittenRiffs (bool written)
+{
+    state.writtenRiffs = written;
+    taken[(size_t) ComposerLayer::guitar].reset();
+    status = written ? "Guitar: the written riffs" : "Guitar: generated riffs";
     refresh();
 }
 
@@ -1272,6 +1309,21 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
         menu.addSeparator();
         menu.addSubMenu ("Solo Style: " + pr7s::soloStyleName (now), solos);
     }
+    if (l == ComposerLayer::guitar)
+    {
+        // (0.85.0) The riff generator's flavour: every ROLL / GENERATE another riff of it.
+        juce::PopupMenu flavours;
+        for (int i = 0; i < (int) pr7s::riffFlavours().size(); ++i)
+        {
+            const auto f = pr7s::riffFlavours()[(size_t) i];
+            flavours.addItem (flavourItems + i, pr7s::riffFlavourName (f) + "  (" + pr7s::riffFlavourDescription (f) + ")", true,
+                              ! state.writtenRiffs && i == state.riffFlavour);
+        }
+        menu.addSeparator();
+        menu.addSubMenu ("Riff Flavour: " + (state.writtenRiffs ? juce::String ("(written riffs)")
+                                                                : pr7s::riffFlavourName (pr7s::riffFlavours()[(size_t) state.riffFlavour])), flavours);
+        menu.addItem (writtenRiffsItem, "Written Riffs (the six of each style, not generated)", true, state.writtenRiffs);
+    }
     if (l == ComposerLayer::guitar && studio.getComposerRiff().has_value())
     {
         menu.addSeparator();
@@ -1284,6 +1336,10 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
                                 return;
                             if (chosen == myRiffItem)
                                 safe->setPlayMyRiff (true);
+                            else if (chosen == writtenRiffsItem)
+                                safe->setWrittenRiffs (! safe->isUsingWrittenRiffs());
+                            else if (chosen >= flavourItems && chosen < writtenRiffsItem)
+                                safe->setRiffFlavour (chosen - flavourItems);
                             else if (chosen >= soloItems)
                                 safe->setSoloStyle (pr7s::soloStyles()[(size_t) juce::jlimit (0, (int) pr7s::soloStyles().size() - 1, chosen - soloItems)]);
                             else

@@ -4,6 +4,7 @@
 #include "engine/Progressions.h"
 #include "engine/Melody.h"
 #include "engine/Riffs.h"
+#include "engine/RiffGenerator.h"
 #include "engine/DrumGenerator.h"
 #include "engine/DrumLearning.h"
 #include "engine/Takes.h"
@@ -60,6 +61,10 @@ namespace pr7s
         bool fromChordTrack = false;       // the chord track's chords instead of the library's
         bool toChordTrack = true;          // USE also writes the chords onto the chord track (library chords)
         std::array<ComposerLane, composerLayerCount> lanes;
+        // (0.85.0) The guitar: riffs made by the riff generator (engine/RiffGenerator.h), every ROLL a new one,
+        // leaning to FLAVOUR; or the written riffs of 0.53.0 (WRITTEN RIFFS in the guitar's style menu).
+        int riffFlavour = 0;               // (riffFlavours()' index: 0 ANY)
+        bool writtenRiffs = false;
 
         ComposerState();                   // (the lead off: the melody sings the top line)
         ComposerLane& lane (ComposerLayer l) noexcept { return lanes[(size_t) l]; }
@@ -107,6 +112,11 @@ namespace pr7s
     std::vector<LineIdea> composerChoices (ComposerLayer, const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
     // Every layer's idea, the lanes switched off too (shown dimmed), humanized as IDEAS' HUMANIZE.
     std::array<LineIdea, composerLayerCount> composeLayers (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
+
+    // (0.85.0) The guitar's riff generator recipe for the state (its section, flavour, BUSY, the take's seed), and
+    // that riff's fingerprint (empty with written riffs or your riff): the composer tells repeats apart by it.
+    RiffRecipe guitarRecipe (const ComposerState&, const ComposerContext&);
+    juce::String guitarRiffFingerprint (const ComposerState&, const ComposerContext&);
 
     // ROLL (0.61.0, the owner's rule: the approach is chosen only in the style menu): a new take of the
     // same style (another variation); the chords keep their progression. Locked or not: the caller decides.

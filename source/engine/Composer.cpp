@@ -59,7 +59,8 @@ namespace pr7s
             lanesText.add (juce::String (l.on ? 1 : 0) + "," + juce::String (l.locked ? 1 : 0) + "," + juce::String (l.style) + "," + juce::String (l.variation)
                            + "," + juce::String (l.busy, 2) + "," + juce::String (l.lowString ? 1 : 0) + "," + juce::String (l.onlyString));
         return juce::String (keyIndex) + "|" + genre + "|" + mood + "|" + juce::String (bars) + "|" + progression + "|"
-             + (fromChordTrack ? "1" : "0") + "|" + (toChordTrack ? "1" : "0") + "|" + lanesText.joinIntoString (";");
+             + (fromChordTrack ? "1" : "0") + "|" + (toChordTrack ? "1" : "0") + "|" + lanesText.joinIntoString (";")
+             + "|" + juce::String (riffFlavour) + "," + (writtenRiffs ? "1" : "0");
     }
 
     ComposerState ComposerState::fromString (const juce::String& text)
@@ -96,6 +97,13 @@ namespace pr7s
             }
             if (v.size() >= 7)
                 l.onlyString = juce::jlimit (0, 12, v[6].getIntValue());
+        }
+        if (parts.size() >= 9)
+        {
+            // (0.85.0) The guitar's flavour and written riffs (older text: the generator, ANY).
+            const auto g = juce::StringArray::fromTokens (parts[8], ",", "");
+            s.riffFlavour = juce::jlimit (0, (int) riffFlavours().size() - 1, g[0].getIntValue());
+            s.writtenRiffs = g.size() >= 2 && g[1] == "1";
         }
         return s;
     }
@@ -163,6 +171,29 @@ namespace pr7s
         return l == ComposerLayer::bass || l == ComposerLayer::lead ? 7 : l == ComposerLayer::drums ? (int) drumSections().size() : 6;
     }
 
+    RiffRecipe guitarRecipe (const ComposerState& s, const ComposerContext& c)
+    {
+        // (0.85.0) The section is the drums lane's (SECTION); the take's seed from the variation and the style slot
+        // (so a section suggested with "the same riff" gets this riff back, "a new riff" another).
+        const auto& lane = s.lane (ComposerLayer::guitar);
+        const auto& sections = drumSections();
+        RiffRecipe r;
+        r.style = c.style;
+        r.flavour = riffFlavours()[(size_t) juce::jlimit (0, (int) riffFlavours().size() - 1, s.riffFlavour)];
+        r.section = sections[(size_t) juce::jlimit (0, (int) sections.size() - 1, s.lane (ComposerLayer::drums).style)];
+        r.bars = c.riff.limited().bars;
+        r.busy = lane.busy;
+        r.seed = (juce::uint32) (lane.variation * 7919 + lane.style * 131 + 7);
+        return r;
+    }
+
+    juce::String guitarRiffFingerprint (const ComposerState& s, const ComposerContext& c)
+    {
+        if (s.writtenRiffs || c.myRiff.has_value())
+            return {};
+        return riffFingerprint (generateRiffBars (guitarRecipe (s, c), riffStepsPerBar (c.beatsPerBar)));
+    }
+
     namespace
     {
         // A lane's take options: its seed (from the variation and the layer), BUSY, LOW STRING.
@@ -213,9 +244,25 @@ namespace pr7s
                 shapeRiff (mine, spans, c.beatsPerBar, riff, velocities, c.style, lane.variation, tuning);
                 return mine;
             }
-            auto idea = pick (guitarRhythmIdeas (spans, c.beatsPerBar, lane.variation, tuning, velocities, c.style, riff), lane.style);
             const auto low = profile.has_value() ? profile->rangeLow() : tuning.lowest();
             const auto high = profile.has_value() ? profile->rangeHigh() : tuning.highest();
+            if (! s.writtenRiffs)
+            {
+                // (0.85.0) A riff made for this take: its own rhythm and notes, every ROLL another.
+                auto idea = generateRiff (guitarRecipe (s, c), spans, c.beatsPerBar, tuning, velocities);
+                auto shaping = riff;
+                shaping.busyness = 0.5f;   // (BUSY made the riff already)
+                shapeRiff (idea, spans, c.beatsPerBar, shaping, velocities, c.style, lane.variation, tuning);
+                if (lane.lowString)
+                    for (auto& n : idea.notes)
+                        if (n.effect == LineNote::Effect::none && GuitarVelocity::midiOf (n.velocity) < 120)
+                            while (n.pitch > low + 12 && n.pitch - 12 >= low)
+                                n.pitch -= 12;
+                if (profile.has_value())
+                    keepInRange (idea, low, high);
+                return idea;
+            }
+            auto idea = pick (guitarRhythmIdeas (spans, c.beatsPerBar, lane.variation, tuning, velocities, c.style, riff), lane.style);
             riffTake (idea, spans, c.beatsPerBar, takeOf (lane, ComposerLayer::guitar, low, high), c.style);
             if (profile.has_value())
                 keepInRange (idea, low, high);

@@ -30,6 +30,7 @@ add_executable(ParagonPR7STests
     LinkTests.cpp
     LineTests.cpp
     RiffTests.cpp
+    RiffGeneratorTests.cpp
     DragOutTests.cpp
     DrumIdeaTests.cpp
     DrumGeneratorTests.cpp

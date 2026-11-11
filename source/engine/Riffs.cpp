@@ -1,6 +1,8 @@
 #include "engine/Riffs.h"
 
 #include <cstring>
+#include <functional>
+#include <string>
 
 namespace pr7s
 {
@@ -412,16 +414,17 @@ namespace pr7s
     }
 
     //==========================================================================
-    std::vector<LineIdea> styleRhythmIdeas (GuitarStyle style, const std::vector<ChordSpan>& spans, double beatsPerBar, int variation,
-                                            const GuitarTuning& tuning, const GuitarVelocities& vel, const RiffSettings& settings)
+    //==========================================================================
+    // (0.85.0) A riff's bars (the characters above) played on the chords: the written riffs' and the generator's.
+    LineIdea riffFromBars (const std::function<std::string (int barIndex)>& barOf, bool pedalBase, const juce::String& name,
+                           const juce::String& description, const std::vector<ChordSpan>& spans, double beatsPerBar, int variation,
+                           const GuitarTuning& tuning, const GuitarVelocities& vel)
     {
-        std::vector<LineIdea> ideas;
+        LineIdea idea { LineIdea::Part::rhythm, name, description, {} };
         if (spans.empty() || beatsPerBar <= 0.0)
-            return ideas;
-        const auto riff = settings.limited();
+            return idea;
         const auto origin = spans.front().start;
         const auto low = tuning.lowest(), high = tuning.highest();
-        // Each chord's root low on the neck (its first eleven frets), near the one before.
         std::vector<int> roots;
         {
             double prev = low + 3.0 + (variation % 3);
@@ -432,111 +435,125 @@ namespace pr7s
                 prev = n;
             }
         }
-        for (const auto& def : riffsOf (style))
+        std::vector<int> lastHigh;   // the high chord's voicing, kept moving little
+        for (size_t si = 0; si < spans.size(); ++si)
         {
-            LineIdea idea { LineIdea::Part::rhythm, def.name, def.description, {} };
-            std::vector<int> lastHigh;   // the high chord's voicing, kept moving little
-            for (size_t si = 0; si < spans.size(); ++si)
+            const auto& span = spans[si];
+            const auto root = roots[si];
+            const auto pedal = nearestPitch (span.key.pitchClass(), low, low, low + 11);
+            const auto base = pedalBase ? pedal : root;
+            const auto fifth = fifthAbove (span.chord, root);
+            for (auto t = span.start; t < span.end - 1.0e-9; t += beatsPerBar)
             {
-                const auto& span = spans[si];
-                const auto root = roots[si];
-                const auto pedal = nearestPitch (span.key.pitchClass(), low, low, low + 11);
-                const auto base = def.base == Base::pedal ? pedal : root;
-                const auto fifth = fifthAbove (span.chord, root);
-                for (auto t = span.start; t < span.end - 1.0e-9; t += beatsPerBar)
+                const auto barIndex = (int) std::floor ((t - origin) / beatsPerBar + 1.0e-9);
+                const auto barText = barOf (barIndex);
+                const char* bar = barText.c_str();
+                const auto steps = (int) barText.size();
+                if (steps == 0)
+                    continue;
+                const auto step = beatsPerBar / steps;
+                for (auto i = 0; i < steps; ++i)
                 {
-                    const auto barIndex = (int) std::floor ((t - origin) / beatsPerBar + 1.0e-9);
-                    const char* a = variation % 2 == 1 && def.altA != nullptr ? def.altA : def.a;
-                    const char* b = def.b != nullptr ? def.b : a;
-                    const char* c = def.c != nullptr ? def.c : b;
-                    const char* bar = riff.bars == 1 ? a : riff.bars == 2 ? (barIndex % 2 == 0 ? a : b)
-                                    : (barIndex % 4 == 1 ? b : barIndex % 4 == 3 ? c : a);
-                    const auto steps = (int) std::strlen (bar);
-                    if (steps == 0)
+                    const auto ch = bar[i];
+                    if (! isSounding (ch))
                         continue;
-                    const auto step = beatsPerBar / steps;
-                    for (auto i = 0; i < steps; ++i)
+                    auto held = 1;
+                    while (i + held < steps && bar[i + held] == '=')
+                        ++held;
+                    const auto at = t + i * step;
+                    if (at >= span.end - 1.0e-9)
+                        break;
+                    const auto length = juce::jmin (held * step, span.end - at);
+                    const auto pos = at - t;
+                    const auto barStart = i == 0;
+                    const auto onBeat = std::abs (pos - std::round (pos)) < 1.0e-6;
+                    const auto mutedVelocity = of (barStart ? vel.muteLoose : step * held < 0.3 ? vel.muteTight : vel.muteMid);
+                    const auto openVelocity = of (barStart ? vel.sustainHard : onBeat ? vel.sustain : vel.open (vel.sustain - 6));
+                    const auto when = at - origin;
+                    const auto lower = (char) juce::CharacterFunctions::toLowerCase ((juce::juce_wchar) ch);
+                    const auto open = ch != lower;   // (upper case)
+                    const auto single = [&] (int pitch)
                     {
-                        const auto ch = bar[i];
-                        if (! isSounding (ch))
-                            continue;
-                        auto held = 1;
-                        while (i + held < steps && bar[i + held] == '=')
-                            ++held;
-                        const auto at = t + i * step;
-                        if (at >= span.end - 1.0e-9)
+                        add (idea.notes, when, open ? length : length * 0.9, pitch, open ? openVelocity : mutedVelocity);
+                    };
+                    switch (lower)
+                    {
+                        case 'x': single (base); break;
+                        case 'c': single (base + 1); break;
+                        case 'd': single (base + 3); break;
+                        case 'f': single (base + 5); break;
+                        case 'e': single (base + 6); break;
+                        case 'g': single (base + 7); break;
+                        case 'k': single (base + 10); break;
+                        case 't': single (base == root ? root + thirdOf (span.chord) : base + thirdOf (span.chord)); break;
+                        case 'z': single (pedal); break;
+                        case 'b':
+                            for (const auto p : { root, root + 6 })
+                                add (idea.notes, when, open ? length : length * 0.9, p, open ? openVelocity : mutedVelocity);
                             break;
-                        const auto length = juce::jmin (held * step, span.end - at);
-                        const auto pos = at - t;
-                        const auto barStart = i == 0;
-                        const auto onBeat = std::abs (pos - std::round (pos)) < 1.0e-6;
-                        const auto mutedVelocity = of (barStart ? vel.muteLoose : step * held < 0.3 ? vel.muteTight : vel.muteMid);
-                        const auto openVelocity = of (barStart ? vel.sustainHard : onBeat ? vel.sustain : vel.open (vel.sustain - 6));
-                        const auto when = at - origin;
-                        const auto lower = (char) juce::CharacterFunctions::toLowerCase ((juce::juce_wchar) ch);
-                        const auto open = ch != lower;   // (upper case)
-                        const auto single = [&] (int pitch)
+                        case '*':
+                            for (const auto p : { root, fifth })
+                                add (idea.notes, when, length * 0.9, p, mutedVelocity);
+                            break;
+                        case '#':
+                            for (const auto p : { root, fifth, root + 12 })
+                                add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
+                            break;
+                        case 'o':
+                            for (const auto p : { root, root + 12 })
+                                add (idea.notes, when, length, p, openVelocity);
+                            break;
+                        case 'h':
                         {
-                            add (idea.notes, when, open ? length : length * 0.9, pitch, open ? openVelocity : mutedVelocity);
-                        };
-                        switch (lower)
-                        {
-                            case 'x': single (base); break;
-                            case 'c': single (base + 1); break;
-                            case 'd': single (base + 3); break;
-                            case 'f': single (base + 5); break;
-                            case 'e': single (base + 6); break;
-                            case 'g': single (base + 7); break;
-                            case 'k': single (base + 10); break;
-                            case 't': single (base == root ? root + thirdOf (span.chord) : base + thirdOf (span.chord)); break;
-                            case 'z': single (pedal); break;
-                            case 'b':
-                                for (const auto p : { root, root + 6 })
-                                    add (idea.notes, when, open ? length : length * 0.9, p, open ? openVelocity : mutedVelocity);
-                                break;
-                            case '*':
-                                for (const auto p : { root, fifth })
-                                    add (idea.notes, when, length * 0.9, p, mutedVelocity);
-                                break;
-                            case '#':
-                                for (const auto p : { root, fifth, root + 12 })
-                                    add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
-                                break;
-                            case 'o':
-                                for (const auto p : { root, root + 12 })
-                                    add (idea.notes, when, length, p, openVelocity);
-                                break;
-                            case 'h':
-                            {
-                                const auto voicings = voicingsFor (span.chord, 52);
-                                const auto notes = voicings.empty() ? std::vector<int> { root + 24 } : voicings[(size_t) closestVoicing (voicings, lastHigh, {})];
-                                lastHigh = notes;
-                                for (const auto p : notes)
-                                    add (idea.notes, when, length, p, of (vel.sustain));
-                                break;
-                            }
-                            case 'p': add (idea.notes, when, length, root + 12, of (vel.pinch)); break;
-                            case 'r': add (idea.notes, when, length, root + 12, of (vel.rake)); break;
-                            case 'v': case 'w': case 'u':
-                            {
-                                const auto stab = base + 24;
-                                const auto pitches = lower == 'v' ? std::vector<int> { stab, stab + 6 }
-                                                   : lower == 'w' ? std::vector<int> { stab - 2, stab }
-                                                                  : std::vector<int> { stab + 2 };
-                                for (const auto p : pitches)
-                                {
-                                    add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
-                                    idea.notes.back().effect = lower == 'v' ? LineNote::Effect::vibrato : lower == 'w' ? LineNote::Effect::bend : LineNote::Effect::ring;
-                                }
-                                break;
-                            }
-                            default: break;
+                            const auto voicings = voicingsFor (span.chord, 52);
+                            const auto notes = voicings.empty() ? std::vector<int> { root + 24 } : voicings[(size_t) closestVoicing (voicings, lastHigh, {})];
+                            lastHigh = notes;
+                            for (const auto p : notes)
+                                add (idea.notes, when, length, p, of (vel.sustain));
+                            break;
                         }
+                        case 'p': add (idea.notes, when, length, root + 12, of (vel.pinch)); break;
+                        case 'r': add (idea.notes, when, length, root + 12, of (vel.rake)); break;
+                        case 'v': case 'w': case 'u':
+                        {
+                            const auto stab = base + 24;
+                            const auto pitches = lower == 'v' ? std::vector<int> { stab, stab + 6 }
+                                               : lower == 'w' ? std::vector<int> { stab - 2, stab }
+                                                              : std::vector<int> { stab + 2 };
+                            for (const auto p : pitches)
+                            {
+                                add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
+                                idea.notes.back().effect = lower == 'v' ? LineNote::Effect::vibrato : lower == 'w' ? LineNote::Effect::bend : LineNote::Effect::ring;
+                            }
+                            break;
+                        }
+                        default: break;
                     }
                 }
             }
-            foldAndSort (idea, low, high);
-            ideas.push_back (std::move (idea));
+        }
+        foldAndSort (idea, low, high);
+        return idea;
+    }
+
+    std::vector<LineIdea> styleRhythmIdeas (GuitarStyle style, const std::vector<ChordSpan>& spans, double beatsPerBar, int variation,
+                                            const GuitarTuning& tuning, const GuitarVelocities& vel, const RiffSettings& settings)
+    {
+        std::vector<LineIdea> ideas;
+        if (spans.empty() || beatsPerBar <= 0.0)
+            return ideas;
+        const auto riff = settings.limited();
+        for (const auto& def : riffsOf (style))
+        {
+            const auto barOf = [&def, &riff, variation] (int barIndex)
+            {
+                const char* a = variation % 2 == 1 && def.altA != nullptr ? def.altA : def.a;
+                const char* b = def.b != nullptr ? def.b : a;
+                const char* c = def.c != nullptr ? def.c : b;
+                return std::string (riff.bars == 1 ? a : riff.bars == 2 ? (barIndex % 2 == 0 ? a : b)
+                                                   : (barIndex % 4 == 1 ? b : barIndex % 4 == 3 ? c : a));
+            };
+            ideas.push_back (riffFromBars (barOf, def.base == Base::pedal, def.name, def.description, spans, beatsPerBar, variation, tuning, vel));
         }
         for (auto& idea : ideas)
             shapeRiff (idea, spans, beatsPerBar, riff, vel, style, variation, tuning);

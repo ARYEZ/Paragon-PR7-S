@@ -57,6 +57,7 @@ add_library(PR7SCore STATIC
     source/engine/Eq.cpp
     source/engine/Lines.cpp
     source/engine/Riffs.cpp
+    source/engine/RiffGenerator.cpp
     source/engine/SoloEngine.cpp
     source/engine/DragOut.cpp
     source/engine/DrumIdeas.cpp

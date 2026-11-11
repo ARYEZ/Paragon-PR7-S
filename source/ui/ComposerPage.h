@@ -1,5 +1,7 @@
 #pragma once
 
+#include <deque>
+
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "engine/Studio.h"
@@ -64,6 +66,11 @@ public:
     void setOn (pr7s::ComposerLayer, bool);
     void setSoloStyle (pr7s::SoloStyle);   // (0.70.0) the lead lane's Solo Style (Studio::setSoloStyle), the lane on the solo
     void setStyle (pr7s::ComposerLayer, int);
+    // (0.85.0) The guitar's riff generator: FLAVOUR (riffFlavours()' index) and WRITTEN RIFFS instead.
+    void setRiffFlavour (int);
+    void setWrittenRiffs (bool);
+    int getRiffFlavour() const noexcept { return state.riffFlavour; }
+    bool isUsingWrittenRiffs() const noexcept { return state.writtenRiffs; }
     void setKey (const pr7s::Key&);
     void setGenre (const juce::String&);     // (empty: any)
     void setMood (const juce::String&);
@@ -154,6 +161,7 @@ private:
     void refresh (bool rehear = true);   // spans, ideas, keys, the state saved; heard again when hearing
     void showStyleMenu (pr7s::ComposerLayer);
     static constexpr int soloItems = 5000;
+    static constexpr int flavourItems = 6000, writtenRiffsItem = 6100;   // (0.85.0) the guitar's style menu
     static constexpr int myRiffItem = 4900;   // (0.75.0) the guitar's style menu: My Riff   // (0.70.0) the lead's style menu: Solo Style items
     void showTrackMenu (pr7s::ComposerLayer);
     void showProgressionMenu();
@@ -182,6 +190,10 @@ private:
     std::array<int, pr7s::composerLayerCount> trackChoice {};
     std::array<Lane, pr7s::composerLayerCount> lanes;
     juce::Random random;
+    // (0.85.0) The generated riffs given lately (fingerprints): a ROLL or GENERATE never gives one of them again.
+    std::deque<juce::String> recentRiffs;
+    static constexpr int recentRiffsKept = 200;
+    void takeNewRiff();   // after a roll: draws again until the guitar's riff isn't a recent one
     bool hearing = false;
     double shownHearBeat = -1.0;   // (0.83.2) where the playhead was last drawn (its strips repainted only)
     double hearingStart = 0.0;
