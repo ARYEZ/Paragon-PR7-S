@@ -2,6 +2,25 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.83.3
+
+**LEARN MY BAND: fast picking on the rhythm guitar** (you said the record's fast picking lost notes). The reader found each pick by a jump in loudness, smoothed over 40 ms so a low string's own waves wouldn't count. On a ringing string, picked fast, the loudness hardly moves between picks, so most picks were never seen. Measured on test DIs made the way a picked string sounds (each pick starts the string again, a short bright pick noise, the string ringing on):
+
+| Playing | Before | Now |
+|---|---|---|
+| Open 16ths at 180 BPM | 5 of 24 picks | 24 of 24 |
+| Tremolo 32nds at 140 BPM (power chord) | 1 of 36 | 36 of 36 |
+| Power-chord 16ths at 160 BPM | 1 of 20 | 20 of 20 |
+| Palm-muted 16th chugs at 200 BPM | 32 of 32 | 32 of 32 |
+
+- **The pick's click:** every pick starts with a short bright noise (the plectrum on the string), heard even when the loudness doesn't change. The reader now listens for it above 1.5 kHz as well as for the loudness jump. Only clicks about as loud as your own picks count, within 40 dB of the guitar's sound at that moment: a held chord's dying high end wobbles too, and that mustn't become extra notes (tested: a chord held 1.5 s stays one note, slow riffs keep their hits).
+- **Muted or open on fast picks:** "how fast does it die" was measured with a 25 ms window that reached into the next pick, so fast palm mutes read as open and some fast open picks as muted. It's now measured on each note's own cycle, just after the pick to just before the next one. On the tests: none of 112 fast notes read the wrong way (7 of 32 mutes were wrong before).
+- **Pitch on very short notes:** a pick 50 ms long is too short to tell a low A's harmonics apart, so tremolo notes were found and then thrown away. The pitch is now read over at least 80 ms, and a fast pick that still can't be read takes the note of the pick before.
+
+**What I can't check here:** your real DIs. These are made-up test guitars built to behave like picked strings. Read your songs again with READ THE SONGS, compare with the DI, and tell me what's still off.
+
+- **Reading a song again keeps the review song before it:** it was written over, so corrections you'd made in it were lost. Now the old one is kept beside the new one as "<song> before <date and time>.pr7s". If you can share one DI with your corrected MIDI, I can measure the reader on your own playing.
+
 ## 0.83.2
 
 **Speed, round three's leftovers** (you asked: fix the remaining slow ones too). The places 0.83.1 left, each checked to give the same result as before:

@@ -80,6 +80,7 @@ add_executable(ParagonPR7STests
     Tweaks080Tests.cpp
     Tweaks081Tests.cpp
     BandRecordTests.cpp
+    FastPickingTests.cpp
     BandSectionTests.cpp
     AutoSaveTests.cpp
     PerfTests.cpp
