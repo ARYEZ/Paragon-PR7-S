@@ -2,6 +2,17 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.85.1
+
+**TRITONE CHUG learns your third example** (Flaw's Whole, the breakdown at 2:20; its shape only, nothing copied).
+
+- **The grind last.** The hammer kind can now put the grind on the bar's last eighth, ringing into the next bar, after the chugs instead of before them.
+- **The grind over a power chord.** The chugs can be a muted power chord in pairs of eighths, as in that breakdown, not only the open low string. Over the chugged chord the grind is its flat ninth and ninth, half a step apart: the same rub as Ten Ton Hammer's flat fifth and fifth.
+- **A new answer bar:** every fourth bar can strike the grind in straight eighths, where the others walk power chords.
+- Breakdowns lean to this shape. In a test run of 300 groove riffs, about 1 in 10 came out this way, for example three bars of muted power-chord chugs with the grind on the last eighth, then a bar of the grind in eighths.
+
+Everything else is as in 0.85.0: pick **Riff Flavour > TRITONE CHUG** in the guitar lane's style menu, then GENERATE.
+
 ## 0.85.0
 
 **The rhythm guitar generator, first round: TRITONE CHUG** (you: GENERATE gave the same riff over and over; you're redesigning the song engine around the rhythm guitar, with the tritone chug riff first).

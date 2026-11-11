@@ -531,6 +531,12 @@ namespace pr7s
                         // left to ring over the low string: q the flat fifth and the fifth together two octaves up (a
                         // half step apart: the grind), y the flat fifth doubled (an octave apart), j the root and the
                         // flat fifth two octaves up, n the grind an octave lower.
+                        // (0.85.0, the owner's third example: Flaw's Whole, its breakdown) ^: the grind a ninth over
+                        // the chugged chord's root (the flat ninth and the ninth, a half step apart), ringing.
+                        case '^':
+                            for (const auto p : { base + 25, base + 26 })
+                                add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
+                            break;
                         case 'q': case 'y': case 'j': case 'n':
                         {
                             const auto pitches = lower == 'q' ? std::vector<int> { base + 30, base + 31 }

@@ -381,22 +381,24 @@ namespace pr7s
             char voicing()
             {
                 if (chorus())
-                    return pick<char> ({ { 'q', 5 }, { 'j', 2 }, { 'y', 2 } });
+                    return pick<char> ({ { 'q', 5 }, { 'j', 2 }, { 'y', 2 }, { '^', 2 } });
                 if (breakdown())
-                    return pick<char> ({ { 'q', 4 }, { 'n', 2 }, { 'y', 1.5f } });
-                return pick<char> ({ { 'q', 7 }, { 'y', 2 }, { 'j', 1.5f }, { 'n', 1 } });
+                    return pick<char> ({ { 'q', 4 }, { 'n', 2 }, { 'y', 1.5f }, { '^', 3 } });
+                return pick<char> ({ { 'q', 7 }, { 'y', 2 }, { 'j', 1.5f }, { 'n', 1 }, { '^', 2.5f } });
             }
 
             // Chugs into [from, to) from the cells (a beat each, alternating as the pattern says).
-            static void chugs (std::string& bar, int from, int to, const std::string& a, const std::string& b, const std::string& order,
-                               int chromaticAt)
+            char chugChar = 'z';   // (the open low string; '*' a muted power chord: Flaw's breakdown)
+
+            void chugs (std::string& bar, int from, int to, const std::string& a, const std::string& b, const std::string& order,
+                        int chromaticAt) const
             {
                 for (auto i = from; i < to; ++i)
                 {
                     const auto beat = (i - from) / 4;
                     const auto& c = order[(size_t) beat % order.size()] == 'a' ? a : b;
                     const auto ch = c[(size_t) ((i - from) % 4)];
-                    bar[(size_t) i] = ch == 'x' ? (i == chromaticAt ? 'c' : 'z') : '-';
+                    bar[(size_t) i] = ch == 'x' ? (i == chromaticAt ? 'c' : chugChar) : '-';
                 }
             }
 
@@ -495,7 +497,9 @@ namespace pr7s
                 auto ring = breakdown() ? pick<int> ({ { 8, 3 }, { 6, 1 }, { 12, 1 } })
                                         : pick<int> ({ { 4, 5 }, { 6, 2 }, { 8, 2 }, { 2, 1 } });
                 ring = juce::jlimit (2, juce::jmax (2, steps - 4), ring);
-                const auto place = pick<int> ({ { 0, 7 }, { 1, 2 }, { 2, 1 } });   // 0 the downbeat, 1 after a chug, 2 answering the chugs
+                // 0 the downbeat, 1 after a chug, 2 answering the chugs, 3 the bar's last eighth (ringing on: Flaw's)
+                const auto place = pick<int> ({ { 0, 7 }, { 1, 2 }, { 2, 1 }, { 3, stab == '^' ? 4.0f : 1.5f } });
+                chugChar = random.nextFloat() < (stab == '^' || place == 3 ? 0.65f : 0.2f) ? '*' : 'z';
                 const auto a = cell(), b = random.nextFloat() < 0.45f ? cell() : a;
                 const auto order = pick<std::string> ({ { "a", 3 }, { "ab", 2 }, { "aab", 1.5f }, { "aaab", 1 } });
                 const auto chromatic = random.nextFloat() < 0.3f;
@@ -504,21 +508,31 @@ namespace pr7s
                 {
                     std::string bar ((size_t) steps, '-');
                     auto stabAt = 0;
+                    auto ringFor = ring;
+                    if (place == 3)
+                    {
+                        // The chugs fill the bar, the grind on its last eighth ringing out.
+                        chugs (bar, 0, steps - 2, a, b, order, chromatic ? steps - 3 : -1);
+                        bar[0] = chugChar;
+                        bar[(size_t) (steps - 2)] = voice;
+                        bar[(size_t) (steps - 1)] = '=';
+                        return bar;
+                    }
                     if (place == 1)
                         stabAt = 2;                                   // a chug, then the grind on the "and"
                     else if (place == 2)
                         stabAt = juce::jmax (4, ((steps - ring) / 4) * 4);   // the chugs first, the grind last
                     stabAt = juce::jmin (stabAt, steps - 2);
-                    const auto end = juce::jmin (steps, stabAt + ring);
+                    const auto end = juce::jmin (steps, stabAt + ringFor);
                     if (place == 2)
                     {
                         chugs (bar, 0, stabAt, a, b, order, chromatic ? stabAt - 1 : -1);
-                        bar[0] = 'z';
+                        bar[0] = chugChar;
                     }
                     else
                     {
                         if (place == 1)
-                            bar[0] = 'z', bar[1] = '-';
+                            bar[0] = chugChar, bar[1] = '-';
                         chugs (bar, end, steps, a, b, order, chromatic ? steps - 1 : -1);
                     }
                     bar[(size_t) stabAt] = voice;
@@ -530,7 +544,16 @@ namespace pr7s
                 const auto answer = [&]
                 {
                     std::string bar ((size_t) steps, '-');
-                    const auto kind = breakdown() ? pick<int> ({ { 0, 3 }, { 2, 2 }, { 3, 2 } }) : pick<int> ({ { 0, 6 }, { 1, 2 }, { 2, 2 }, { 3, 1 } });
+                    const auto grind = stab == '^' || place == 3;
+                    const auto kind = breakdown() ? pick<int> ({ { 0, 3 }, { 2, 2 }, { 3, 2 }, { 4, grind ? 4.0f : 1.0f } })
+                                                  : pick<int> ({ { 0, 6 }, { 1, 2 }, { 2, 2 }, { 3, 1 }, { 4, grind ? 5.0f : 1.0f } });
+                    if (kind == 4)
+                    {
+                        // The grind struck in straight eighths, the whole bar (Flaw's every fourth bar).
+                        for (auto i = 0; i < steps; ++i)
+                            bar[(size_t) i] = i % 2 == 0 ? stab : '-';
+                        return bar;
+                    }
                     if (kind == 0)
                     {
                         // Power chords walking dark degrees (the flat second, flat third, fourth, flat fifth, fifth, flat sixth).
@@ -738,7 +761,7 @@ namespace pr7s
                 if (c == 'z' || c == 'x') ++made["chugs"];
                 else if (c == '#') ++made["power chords"];
                 else if (c == 'b' || c == 'e') ++made["tritones"];
-                else if (c == 'q' || c == 'y' || c == 'j' || c == 'n') ++made["high tritones"];
+                else if (c == 'q' || c == 'y' || c == 'j' || c == 'n' || c == '^') ++made["high grinds"];
                 else if (c == 'a') ++made["low tritone chugs"];
                 else if (c == 'i') ++made["pinch harmonics"];
                 else if (c == 'l' || c == 'm' || c == 's') ++made["bent notes"];
