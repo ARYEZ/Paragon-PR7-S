@@ -248,6 +248,13 @@ void MixerView::Strip::paint (juce::Graphics& g)
         g.setColour (ParagonColours::accent.withAlpha (0.6f));
         g.drawRect (bounds.reduced (1.0f, 0.0f).withTrimmedTop (4.0f), 1.0f);
     }
+    // (0.83.2) A meter's redraw (30 times a second for every strip while playing) paints the meter
+    // only: the names, racks and readouts are outside what's redrawn.
+    if (meterArea.expanded (2.0f).contains (g.getClipBounds().toFloat()))
+    {
+        paintMeter (g);
+        return;
+    }
 
     // Its link group (the manual: "the number and the name ... above the channel name").
     if (const auto* link = owner.studio.getLinkGroupOf (busId))
@@ -286,6 +293,15 @@ void MixerView::Strip::paint (juce::Graphics& g)
     if (track != nullptr)
         g.drawText (panText (track->pan), panReadoutArea, juce::Justification::centred, false);
 
+    paintMeter (g);
+
+    g.setColour (ParagonColours::text);
+    g.setFont (font (11.0f));
+    g.drawText (dbText (volume.getValue()), readoutArea, juce::Justification::centred, false);
+}
+
+void MixerView::Strip::paintMeter (juce::Graphics& g)
+{
     // The level: PR7-C's meter, a column for each side (the master's) or one for the track.
     const auto columns = isMaster() ? 2 : 1;
     const auto columnWidth = (meterArea.getWidth() - (float) (columns - 1) * 2.0f) / (float) columns;
@@ -296,10 +312,6 @@ void MixerView::Strip::paint (juce::Graphics& g)
         LevelMeter::paintSegments (g, column, LevelMeter::proportionForDb (reading.db),
                                    reading.heldDb > LevelMeter::minDb ? LevelMeter::proportionForDb (reading.heldDb) : -1.0f);
     }
-
-    g.setColour (ParagonColours::text);
-    g.setFont (font (11.0f));
-    g.drawText (dbText (volume.getValue()), readoutArea, juce::Justification::centred, false);
 }
 
 void MixerView::Strip::resized()

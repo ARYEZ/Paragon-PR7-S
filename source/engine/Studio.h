@@ -1219,7 +1219,9 @@ namespace pr7s
         // `getHistoryPosition` the one the song is at now (the separator under it: the ones after are
         // undone); `goToHistory` puts any step back (undo or redo as far as it takes, one engine update).
         // Step 0 is where the song started (opened, new, imported): it can't be undone.
-        const std::vector<HistoryStep>& getHistory() const noexcept { return undoInfo; }
+        // (0.83.2) Each step's name is worked out here, when the history is looked at, not on every edit
+        // (comparing the whole song with the step before cost more than the undo copy itself).
+        const std::vector<HistoryStep>& getHistory() const;
         int getHistoryPosition() const noexcept { return undoIndex; }
         void goToHistory (int index);
         void setHistoryDetails (int index, const juce::String& text);   // the Details column: anything typed
@@ -1705,7 +1707,8 @@ namespace pr7s
         bool inBatch = false;
 
         std::vector<Project> undoStates;
-        std::vector<HistoryStep> undoInfo;   // (0.83.0) one per undo state: its name, time, details
+        mutable std::vector<HistoryStep> undoInfo;   // (0.83.0) one per undo state: its name, time, details
+        void dropOldestStep();
         int undoIndex = -1;
         int maxUndoHere = 100;               // (without a settings file)
         void clearHistory();

@@ -171,3 +171,54 @@ TEST_CASE ("0.83.1: the pearl unit drawn from its kept picture looks as drawn af
         CHECK (worst <= 3);
     }
 }
+
+TEST_CASE ("0.83.2: the Edit History names its steps when looked at, not on every edit", "[speed083][history]")
+{
+    Studio studio (false);
+    studio.setMaxUndoSteps (3);
+    for (int i = 0; i < 6; ++i)
+        studio.setTempo (100.0 + i);
+    // Never looked at while the oldest went: the first kept says so; the rest are named from their copies.
+    const auto& steps = studio.getHistory();
+    REQUIRE (steps.size() == 4);
+    CHECK (steps.front().action == "Earliest Kept");
+    CHECK (steps.back().action == "Tempo");
+    CHECK (steps.back().details == "105.00 BPM");
+    // Looked at as it goes: every step named from its copy.
+    Studio watched (false);
+    watched.setMaxUndoSteps (3);
+    for (int i = 0; i < 6; ++i)
+    {
+        watched.setTempo (100.0 + i);
+        watched.getHistory();
+    }
+    CHECK (watched.getHistory().front().action == "Tempo");
+    studio.setMaxUndoSteps (100);
+}
+
+TEST_CASE ("0.83.2: following notes worked out once per chord give the same pitches as note by note", "[speed083][follow]")
+{
+    ChordTrack chords;
+    for (int i = 0; i < 8; ++i)
+        chords.events.push_back ({ i * 4.0, { (i * 7) % 12, i % 3 == 0 ? Chord::Type::minor : Chord::Type::major, Chord::Tension::none, -1 } });
+    chords.scales.push_back ({ 16.0, Key::fromPitchClass (2, false) });
+    std::vector<Note> notes;
+    for (int n = 0; n < 400; ++n)
+        notes.push_back ({ n * 0.08, 0.05, 30 + (n * 11) % 70, 0.8f });
+    FollowReference reference;
+    reference.chords.push_back ({ 0.0, { 0, Chord::Type::major, Chord::Tension::none, -1 } });
+    reference.chords.push_back ({ 12.0, { 9, Chord::Type::minor, Chord::Tension::none, -1 } });
+    for (const auto mode : { FollowMode::rootNotes, FollowMode::scales, FollowMode::chords, FollowMode::chordsAndScales })
+    {
+        const auto followed = followNotes (notes, 0.0, mode, reference, chords, 0, Key {});
+        for (size_t i = 0; i < notes.size(); ++i)
+        {
+            const auto beat = notes[i].start;
+            const auto index = chordIndexForNote (chords, beat, 0);
+            const auto toKey = chords.keyAt (beat, chords.scales.front().key);
+            const auto expected = followPitch (notes[i].pitch, mode, reference.chordAt (beat), reference.keyAt (beat), chords.events[(size_t) index].chord, toKey);
+            if (! followed[i].dropped)
+                REQUIRE (followed[i].pitch == expected);
+        }
+    }
+}

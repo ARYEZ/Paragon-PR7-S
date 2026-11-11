@@ -88,13 +88,12 @@ TEST_CASE ("0.83.0: the history follows undo, goes to any step, and keeps the st
     studio.setTempo (100.0);
     studio.setTempo (110.0);
     studio.setVolume (trackId, -6.0f);
-    const auto& steps = studio.getHistory();
-    REQUIRE ((int) steps.size() == start + 4);
-    CHECK (studio.getHistoryPosition() == (int) steps.size() - 1);
-    CHECK (steps.back().action == "Volume");
-    CHECK (steps[steps.size() - 2].action == "Tempo");
-    CHECK (steps[steps.size() - 2].details == "110.00 BPM");
-    CHECK (steps[(size_t) start].action == "Add Part");
+    REQUIRE ((int) studio.getHistory().size() == start + 4);
+    CHECK (studio.getHistoryPosition() == (int) studio.getHistory().size() - 1);
+    CHECK (studio.getHistory().back().action == "Volume");
+    CHECK (studio.getHistory()[studio.getHistory().size() - 2].action == "Tempo");
+    CHECK (studio.getHistory()[studio.getHistory().size() - 2].details == "110.00 BPM");
+    CHECK (studio.getHistory()[(size_t) start].action == "Add Part");
 
     // Back to before the tempo changes: both undone at once, the part and the step list kept.
     const auto partStep = start;
@@ -103,7 +102,7 @@ TEST_CASE ("0.83.0: the history follows undo, goes to any step, and keeps the st
     CHECK_THAT (studio.getProject().bpm, WithinAbs (120.0, 1.0e-9));
     CHECK_THAT (studio.getProject().tracks.front().volumeDb, WithinAbs (0.0, 1.0e-6));
     CHECK (studio.getProject().tracks.front().parts.size() == 1);
-    CHECK ((int) steps.size() == start + 4);
+    CHECK ((int) studio.getHistory().size() == start + 4);
 
     // Down again to the second tempo: redone that far.
     studio.goToHistory (partStep + 2);
@@ -116,24 +115,24 @@ TEST_CASE ("0.83.0: the history follows undo, goes to any step, and keeps the st
     studio.redo();
     CHECK (studio.getHistoryPosition() == partStep + 2);
 
-    // A new edit replaces the undone steps.
+    // A new edit replaces the undone studio.getHistory().
     studio.setTempo (90.0);
-    CHECK ((int) steps.size() == start + 4);
-    CHECK (steps.back().details == "90.00 BPM");
+    CHECK ((int) studio.getHistory().size() == start + 4);
+    CHECK (studio.getHistory().back().details == "90.00 BPM");
     CHECK_FALSE (studio.canRedo());
 
     // Details: anything typed.
     studio.setHistoryDetails (start, "the good take");
-    CHECK (steps[(size_t) start].details == "the good take");
+    CHECK (studio.getHistory()[(size_t) start].details == "the good take");
 
     // Maximum steps: the oldest go, the song stays where it is.
     studio.setMaxUndoSteps (2);
-    CHECK ((int) steps.size() == 3);
+    CHECK ((int) studio.getHistory().size() == 3);
     CHECK (studio.getHistoryPosition() == 2);
-    CHECK (steps.back().details == "90.00 BPM");
+    CHECK (studio.getHistory().back().details == "90.00 BPM");
     for (int i = 0; i < 5; ++i)
         studio.setTempo (80.0 + i);
-    CHECK ((int) steps.size() == 3);
+    CHECK ((int) studio.getHistory().size() == 3);
     studio.setMaxUndoSteps (100);
 }
 

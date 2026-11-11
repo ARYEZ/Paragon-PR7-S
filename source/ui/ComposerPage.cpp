@@ -1452,14 +1452,26 @@ void ComposerPage::timerCallback()
     // (0.76.0) The faders moved in the mixer (mix-only changes don't move the change version): the lanes follow.
     if (draggingVolume < 0)
         refreshVolumes();
-    if (hearing)
+    if (hearing && ! spans.empty())
     {
-        // The playhead across the lanes.
-        auto area = ruler;
-        for (const auto& lane : lanes)
-            area = area.getUnion (lane.notes);
-        repaint (area);
+        // The playhead across the lanes: (0.83.2) only its old and new strips in each lane (the whole of
+        // every lane's notes was redrawn 30 times a second, the notes and all).
+        const auto beat = studio.isComposerAuditioning() ? const_cast<pr7s::Studio&> (studio).getEngine().getPosition() - studio.getComposerAuditionStart() : -1.0;
+        if (! juce::approximatelyEqual (beat, shownHearBeat))
+        {
+            const auto total = spans.back().end - spans.front().start;
+            for (const auto& lane : lanes)
+                for (const auto at : { shownHearBeat, beat })
+                    if (at >= 0.0 && total > 0.0)
+                    {
+                        const auto x = (float) lane.notes.getX() + (float) (at / total) * (float) lane.notes.getWidth();
+                        repaint (juce::Rectangle<int> (juce::roundToInt (x) - 3, lane.notes.getY(), 8, lane.notes.getHeight()));
+                    }
+            shownHearBeat = beat;
+        }
     }
+    else
+        shownHearBeat = -1.0;
 }
 
 //==============================================================================

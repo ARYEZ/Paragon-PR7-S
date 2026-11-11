@@ -5,6 +5,8 @@
 
 #include <map>
 #include <set>
+#include <atomic>
+#include <thread>
 
 #include "AudioAdvice.h"
 #include "DawProject.h"
@@ -389,15 +391,15 @@ namespace pr7s
         // since 0.34.1 they're moved out of the song while it's copied, not copied and thrown away),
         // nor what undo never puts back (the drum maps, the hand-edited hitpoints).
         auto state = copyWithoutPluginStates (true);
-        // (0.83.0) Its name for the Edit History, from what differs from the step it follows.
+        // (0.83.0) Its place in the Edit History: the time now; its name is worked out when the history is
+        // looked at (0.83.2, getHistory), from what differs from the step it follows.
         HistoryStep step;
-        if (undoIndex >= 0 && undoIndex < (int) undoStates.size())
-            step = describeEdit (undoStates[(size_t) undoIndex], state);
-        else
+        step.time = juce::Time::getCurrentTime();
+        if (undoIndex < 0 || undoIndex >= (int) undoStates.size())
         {
             step.action = "Start";
             step.details = file.existsAsFile() ? file.getFileNameWithoutExtension() : juce::String ("New song");
-            step.time = juce::Time::getCurrentTime();
+            step.named = true;
         }
         undoStates.resize ((size_t) (undoIndex + 1));
         undoInfo.resize ((size_t) (undoIndex + 1));
@@ -405,10 +407,7 @@ namespace pr7s
         undoInfo.push_back (std::move (step));
         const auto most = getMaxUndoSteps() + 1;   // (the start, and that many steps after it)
         while ((int) undoStates.size() > most)
-        {
-            undoStates.erase (undoStates.begin());
-            undoInfo.erase (undoInfo.begin());
-        }
+            dropOldestStep();
         undoIndex = (int) undoStates.size() - 1;
     }
 
@@ -514,10 +513,45 @@ namespace pr7s
         restore (undoStates[(size_t) undoIndex]);
     }
 
+    const std::vector<HistoryStep>& Studio::getHistory() const
+    {
+        for (size_t i = 0; i < undoInfo.size(); ++i)
+            if (! undoInfo[i].named)
+            {
+                auto& step = undoInfo[i];
+                if (i > 0 && i < undoStates.size())
+                {
+                    const auto described = describeEdit (undoStates[i - 1], undoStates[i]);
+                    step.action = described.action;
+                    if (step.details.isEmpty())
+                        step.details = described.details;
+                }
+                else
+                    step.action = "Edit";
+                step.named = true;
+            }
+        return undoInfo;
+    }
+
+    void Studio::dropOldestStep()
+    {
+        // The oldest copy goes. The one after it becomes the first: if its name wasn't worked out, the copy
+        // it would be compared with has just gone, so it says so (honest, and nothing compared on every edit).
+        undoStates.erase (undoStates.begin());
+        undoInfo.erase (undoInfo.begin());
+        if (! undoInfo.empty() && ! undoInfo.front().named)
+        {
+            undoInfo.front().action = "Earliest Kept";
+            undoInfo.front().details = "older steps dropped (MAX STEPS)";
+            undoInfo.front().named = true;
+        }
+    }
+
     void Studio::setHistoryDetails (int index, const juce::String& text)
     {
         if (index >= 0 && index < (int) undoInfo.size())
         {
+            getHistory();   // (named first: a typed note isn't then replaced by the name's details)
             undoInfo[(size_t) index].details = text;
             announce();
         }
@@ -538,8 +572,7 @@ namespace pr7s
         // Fewer kept: the oldest go (never the one the song is at).
         while ((int) undoStates.size() > maxUndoHere + 1 && undoIndex > 0)
         {
-            undoStates.erase (undoStates.begin());
-            undoInfo.erase (undoInfo.begin());
+            dropOldestStep();
             --undoIndex;
         }
         announce();
@@ -9664,6 +9697,45 @@ namespace pr7s
         forgetAllAudio();
         juce::StringArray missing;
         missingItems.clear();
+        // (0.83.2) The recordings read on threads of their own, several at once, while the plug-ins load
+        // here (they were read whole, one after another, before the first plug-in was started). Each
+        // thread reads with its own reader into its own slot; they're taken into the cache once the
+        // plug-ins are in, before anything plays.
+        audioCacheRate = engine.getSampleRate();
+        std::vector<juce::String> toRead;
+        for (const auto& track : project.tracks)
+        {
+            if (track.isAudio())
+                for (const auto& part : track.parts)
+                    if (part.isAudio() && std::find (toRead.begin(), toRead.end(), part.audioFile) == toRead.end())
+                        toRead.push_back (part.audioFile);
+            if (track.frozen && track.freezeFile.isNotEmpty() && std::find (toRead.begin(), toRead.end(), track.freezeFile) == toRead.end())
+                toRead.push_back (track.freezeFile);
+        }
+        std::vector<std::shared_ptr<const AudioData>> read (toRead.size());
+        std::atomic<size_t> nextToRead { 0 };
+        std::vector<std::thread> readers;
+        {
+            const auto folder = getAudioFolder();
+            const auto count = juce::jmin (toRead.size(), (size_t) juce::jlimit (1, 4, (int) std::thread::hardware_concurrency() - 1));
+            for (size_t r = 0; r < count; ++r)
+                readers.emplace_back ([this, folder, &toRead, &read, &nextToRead]
+                {
+                    for (auto i = nextToRead++; i < toRead.size(); i = nextToRead++)
+                        read[i] = readAudio (folder.getChildFile (toRead[i]));
+                });
+        }
+        const auto takeRecordings = [&]
+        {
+            for (auto& reader : readers)
+                if (reader.joinable())
+                    reader.join();
+            for (size_t i = 0; i < toRead.size(); ++i)
+                if (read[i] != nullptr)
+                    audioCache[toRead[i]] = read[i];
+        };
+        const juce::ScopeGuard readersJoined { [&] { for (auto& reader : readers) if (reader.joinable()) reader.join(); } };
+        std::vector<std::pair<const Track*, juce::String>> recordingsToCheck;
         // Each plug-in loaded is a step of the progress box (0.11.1: Kontakt and its kind take a while).
         auto toLoad = 0, nowLoading = 0;
         for (const auto& track : project.tracks)
@@ -9693,11 +9765,8 @@ namespace pr7s
             {
                 engine.addAudioTrack (track.id);
                 for (const auto& part : track.parts)
-                    if (part.isAudio() && getAudio (part.audioFile) == nullptr)
-                    {
-                        missing.add (track.name + ": the recording " + part.audioFile + " isn't in " + getAudioFolder().getFullPathName());
-                        missingItems.push_back ({ MissingItem::Kind::recording, track.id, -1, part.audioFile });
-                    }
+                    if (part.isAudio())
+                        recordingsToCheck.emplace_back (&track, part.audioFile);   // (checked once they're read)
                 continue;
             }
             juce::String error;
@@ -9741,6 +9810,13 @@ namespace pr7s
             if (! track.disabled && ! track.frozen)
                 loadEffects (track.id, track.name, track.inserts);
         loadEffects (Engine::masterBus, "Master", project.masterInserts);
+        takeRecordings();
+        for (const auto& [track, name] : recordingsToCheck)
+            if (getAudio (name) == nullptr)
+            {
+                missing.add (track->name + ": the recording " + name + " isn't in " + getAudioFolder().getFullPathName());
+                missingItems.push_back ({ MissingItem::Kind::recording, track->id, -1, name });
+            }
         problems = missing.joinIntoString ("\n");
         numberParts();
         for (const auto& track : project.tracks)

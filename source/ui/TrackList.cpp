@@ -56,6 +56,7 @@ class TrackList::Row final : public juce::Component
 public:
     Row (TrackList& ownerList, int id) : owner (ownerList), trackId (id)
     {
+        setOpaque (true);   // (0.83.2: it fills itself: the list behind isn't painted under it again)
         // (0.9.9: M, S, REC, R and W aren't on the row, as the owner asked: they're in the Inspector and the mixer.
         // The row says which are on, under the name.)
         AutomationKeys::setUp (read, write, owner.studio, trackId);
@@ -231,7 +232,10 @@ public:
     {
         const auto* t = track();
         if (t == nullptr)
+        {
+            g.fillAll (juce::Colour (0xff100c11));   // (opaque: it must cover itself)
             return;
+        }
         const auto bounds = getLocalBounds().toFloat();
         const auto selected = owner.studio.isTrackSelected (trackId);
         g.setColour (selected ? juce::Colour (0xff1f1720) : juce::Colour (0xff100c11));
@@ -264,7 +268,8 @@ public:
         }
 
         // What's on, under its name (0.9.9: the keys are in the Inspector and the mixer): SOLO, MUTED, REC, READ, WRITE, FROZEN.
-        if (getHeight() >= 66)
+        // (0.83.2: not worked out for a redraw that doesn't reach it: the meter's, 30 times a second.)
+        if (getHeight() >= 66 && g.getClipBounds().intersects (name.getBounds().withTrimmedLeft (4).removeFromBottom (16)))
         {
             juce::StringArray states;
             if (t->isFolder())

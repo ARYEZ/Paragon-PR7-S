@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.83.2
+
+**Speed, round three's leftovers** (you asked: fix the remaining slow ones too). The places 0.83.1 left, each checked to give the same result as before:
+
+- **Chord edits with Follow Chord Track:** every note worked out its chord's key and notes again, one note at a time. Now notes under the same chords share one table of answers. A chord edit on the heavy test song: 11 ms -> 4.4 ms (the same pitches, tested note by note).
+- **Every undoable edit:** each one compared the whole song with the step before to name it for the Edit History. The names are now worked out only when the Edit History is opened (the same names). An edit with an undo step: about 1.9 ms -> 1.0 ms. One small difference: if more than MAX STEPS edits pass without the window being opened, the oldest step kept reads "Earliest Kept" (the copy it would be compared with has gone).
+- **Opening a song:** the recordings are read several at a time, on their own threads, while the plug-ins load (they were read one after another before the first plug-in started). How much faster depends on your disk and how many recordings the song has.
+- **The mixer and the track list while playing:** a mixer strip whose meter is the only thing moving now redraws just the meter, not the whole strip; track-list rows are drawn as solid (nothing behind them is painted first), and their state text only when it's in the strip being redrawn.
+- **The composer while you HEAR:** only the thin strip the playhead passes through is redrawn in each lane, not the whole lane every frame.
+
+Left as it is: **saving.** The file is already written in the background; what stays on the screen's thread is asking each plug-in for its settings (plug-ins must be asked there) and one copy of the song. That copy could only be avoided by taking the settings away from the song while the file is written, which disabled and frozen tracks rely on, so it isn't worth the risk.
+
+What can't be checked here: timings on your machine (these are this one's), and the song-open speed with your recordings and disk.
+
 ## 0.83.1
 
 **Speed, round three** (you asked: the studio running even more efficiently). The studio's own speed tests and three reviews of the code (the audio engine, what happens on each edit, the screen's redraws) found the places where time went; each fix below was checked to give the same sound and picture as before.

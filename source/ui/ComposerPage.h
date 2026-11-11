@@ -176,6 +176,7 @@ private:
     std::array<Lane, pr7s::composerLayerCount> lanes;
     juce::Random random;
     bool hearing = false;
+    double shownHearBeat = -1.0;   // (0.83.2) where the playhead was last drawn (its strips repainted only)
     double hearingStart = 0.0;
     juce::String status;
     juce::uint64 seenChange = 0;
