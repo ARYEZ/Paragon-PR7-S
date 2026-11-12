@@ -247,3 +247,102 @@ TEST_CASE ("0.89.0: SYNC's stabs and doubled bass take the chord where the secti
     for (const auto& n : stabs.notes)
         CHECK (inChord (chordAt (spans, n.beat).chord, n.pitch));
 }
+
+namespace
+{
+    std::vector<double> guitarStrikes (const LineIdea& guitar)
+    {
+        auto lowest = 128;
+        for (const auto& n : guitar.notes)
+            if (! n.keyswitch)
+                lowest = juce::jmin (lowest, n.pitch);
+        std::vector<double> out;
+        for (const auto& n : guitar.notes)
+            if (! n.keyswitch && n.pitch <= lowest + 11 && (out.empty() || n.beat - out.back() > 0.05))
+                out.push_back (n.beat);
+        return out;
+    }
+}
+
+TEST_CASE ("0.89.1: Circle With Me's shapes: a held third a chord, a muted pedal in threes, drums on the pushes, the bass's loop-end pulse", "[composer][droning]")
+{
+    const auto c = plainContext();
+    for (int guitarTake = 0; guitarTake < 4; ++guitarTake)
+    {
+        auto s = stateWith (RiffFlavour::droning);
+        s.lane (L::guitar).variation = guitarTake;
+        s.lane (L::drums).style = 2;
+        s.lane (L::chords).style = 2;
+        s.lane (L::lead).style = 2;
+        s.lane (L::drums).variation = 2;
+        s.lane (L::bass).variation = 1;
+        const auto spans = composerSpans (s, 0.0, c.beatsPerBar);
+        const auto bpb = c.beatsPerBar;
+        const auto layers = composeLayers (s, spans, c);
+        const auto strikes = guitarStrikes (layers[(size_t) L::guitar]);
+        REQUIRE_FALSE (strikes.empty());
+
+        // Keys: a note starting with every strike; the held ones (over a beat) are chord tones of a chord there.
+        const auto& keys = layers[(size_t) L::chords];
+        CHECK (keys.style == "Droning: a held note a chord");
+        for (const auto at : strikes)
+            CHECK (std::any_of (keys.notes.begin(), keys.notes.end(), [at] (const LineNote& n) { return std::abs (n.beat - at) < 1.0e-6; }));
+        for (const auto& n : keys.notes)
+        {
+            CHECK (n.pitch >= 64);
+            CHECK (n.pitch <= 86);
+            if (n.length > 1.0)
+                CHECK ((inChord (chordAt (spans, n.beat).chord, n.pitch) || inChord (chordAt (spans, n.beat + 1.0).chord, n.pitch)));
+        }
+
+        // Lead: palm-muted eighths, three notes cycling (root, octave, fifth of the key).
+        const auto& lead = layers[(size_t) L::lead];
+        CHECK (lead.style == "Droning: a muted pedal in threes");
+        REQUIRE (lead.notes.size() >= 64);
+        const auto root = lead.notes.front().pitch;
+        CHECK (pc (root) == spans.front().key.pitchClass());
+        for (size_t i = 0; i < lead.notes.size(); ++i)
+        {
+            const auto& n = lead.notes[i];
+            CHECK (std::abs (n.beat - (double) i * 0.5) < 1.0e-6);
+            CHECK (GuitarVelocity::midiOf (n.velocity) < 60);
+            const auto expected = std::array<int, 3> { root, root + 12, root + 7 }[(size_t) (i % 3)];
+            CHECK ((n.pitch == expected || n.pitch == expected - 2));
+        }
+
+        // Drums: the snare only on the downbeat of every second bar; a kick on every push.
+        const auto& drums = layers[(size_t) L::drums];
+        CHECK (drums.style == "Droning: locked to the pushes");
+        for (const auto& n : drums.notes)
+            if (n.pitch == 38)
+            {
+                const auto bar = (int) std::floor (n.beat / bpb + 1.0e-6);
+                CHECK (std::abs (n.beat - bar * bpb) < 1.0e-6);
+                CHECK (bar % 2 == 1);
+            }
+        for (const auto at : strikes)
+            if (std::fmod (at, bpb) > 1.0e-6)
+                CHECK (std::any_of (drums.notes.begin(), drums.notes.end(), [at] (const LineNote& n) { return n.pitch == 36 && std::abs (n.beat - at) < 1.0e-6; }));
+
+        // Bass: the eighth bar pulsed in eighths, the rest held.
+        const auto& bass = layers[(size_t) L::bass];
+        auto inBar8 = 0;
+        for (const auto& n : bass.notes)
+            if (n.beat >= 7 * bpb - 1.0e-6 && n.beat < 8 * bpb - 1.0e-6)
+            {
+                ++inBar8;
+                CHECK (n.length <= 1.0);
+            }
+        CHECK (inBar8 >= 6);
+        auto heldElsewhere = 0.0;
+        auto countElsewhere = 0;
+        for (const auto& n : bass.notes)
+            if (n.beat < 7 * bpb - 1.0e-6)
+            {
+                heldElsewhere += n.length;
+                ++countElsewhere;
+            }
+        REQUIRE (countElsewhere > 0);
+        CHECK (heldElsewhere / countElsewhere >= 1.5);
+    }
+}

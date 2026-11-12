@@ -2,6 +2,21 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.89.1
+
+**Circle With Me's chorus in the droning band** (every instrument's tab you sent, read for how each part supports the ringing guitar; nothing of the song is copied). Its chorus confirmed what 0.89.0 does: the bass doubles the ringing guitar's roots, held, pushes and all, and the drums lock to the pushes. It also showed four more ways to carry the movement, so each is now one of the band's choices:
+
+- **Lead, third style: a muted pedal in threes.** Palm-muted eighths on the key's root, octave and fifth, in a cell of three notes against a bar of eight, so it runs across the bar lines. It stays on the key's note under every chord (Circle With Me's second guitar, the main motion in its chorus). Every fourth bar slips a whole step down and back at its end.
+- **Keys, third style: a held note a chord.** Each chord's third, held over it and moving by the nearest step, struck with the guitar, pushes included. In the second half of every eight bars, each new chord comes in from two scale steps above, a quarter at a time, down onto its third.
+- **Drums, a third take (ROLL): locked to the pushes.** Half time for a fast song:
+  - Cymbals on the half notes.
+  - The snare once every two bars.
+  - The kick on the downbeat and on every chord the guitar pushes early, with a crash.
+  - The fourth bar's kicks on beats 2, 3 and 4, the eighth bar's in eighths.
+- **Bass, every other take (ROLL):** the last bar of every eight is pulsed in eighths, to drive into the loop's start. The rest stays held.
+
+In Circle With Me's chorus the second keys and both clean guitars stay silent. That's a good sign the droning chorus wants fewer layers: you may want to switch the melody lane off for it.
+
 ## 0.89.0
 
 **The droning chorus's band** (your next step after 0.88.0: with the rhythm guitar ringing its chords, "most of the rhythmic or interesting stuff comes from the lead guitar the bass guitar the keyboards in the drums"). From the full MIDI you sent for Crawling and Clown, read for how each instrument supports the ringing guitar; nothing of either song is copied.
@@ -20,8 +35,6 @@ Each version's notes appear on its GitHub Release page.
 - **The melody lane** plays as before (it's the singer's).
 - **SYNC still wins:** with SYNC on, the band follows the sync lane as in 0.86.0.
 - **A fix to 0.86.0's SYNC:** the chord stabs, the doubled bass and the guitar's chugs looked up the chord as if the section started at the song's beginning. For a section built later in the song (a second chorus after a verse), they could play the wrong chord's notes. They read the right chord now.
-
-Still to come: Circle With Me's parts, now that you've sent every instrument's tab. I'll check this band against them next.
 
 ## 0.88.0
 

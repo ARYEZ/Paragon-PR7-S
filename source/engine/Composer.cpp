@@ -571,12 +571,81 @@ namespace pr7s
             return pitch - pc + scale[(size_t) wrapped] + 12 * octave;
         }
 
+        int pc12 (int pitch) { return ((pitch % 12) + 12) % 12; }
+
         int pitchOfClassIn (int pc, int lowest, int highest)
         {
             for (auto p = lowest; p <= highest; ++p)
                 if (((p % 12) + 12) % 12 == pc)
                     return p;
             return lowest;
+        }
+
+        // The guitar's low strikes: when each chord is struck (a push: a beat before its bar).
+        std::vector<double> lowStrikes (const LineIdea& guitar)
+        {
+            auto lowestHeard = 128;
+            for (const auto& n : guitar.notes)
+                if (! n.keyswitch)
+                    lowestHeard = juce::jmin (lowestHeard, n.pitch);
+            std::vector<double> out;
+            for (const auto& n : guitar.notes)
+                if (! n.keyswitch && n.pitch <= lowestHeard + 11)
+                    out.push_back (n.beat);
+            std::sort (out.begin(), out.end());
+            out.erase (std::unique (out.begin(), out.end(), [] (double a, double b) { return b - a < HumanizeLimits::together; }), out.end());
+            return out;
+        }
+
+        // The chord a strike plays: a strike up to a beat before a chord's start is that chord pushed early.
+        const ChordSpan& chordStruckAt (const std::vector<ChordSpan>& spans, double ideaBeat)
+        {
+            const auto beat = ideaBeat + spans.front().start;
+            for (const auto& span : spans)
+                if (span.start > beat + 1.0e-6 && span.start <= beat + 1.01)
+                    return span;
+            const auto* at = spanAt (spans, beat);
+            return at != nullptr ? *at : spans.back();
+        }
+
+        // (0.89.1, Circle With Me's bass) The last bar of every eight: the root pulsed in eighths into the loop's start.
+        void pulseLoopEnds (LineIdea& idea, double bpb, double length)
+        {
+            const auto e = bpb / 8.0;
+            static const std::array<std::pair<int, int>, 7> pulse { { { 0, 1 }, { 1, 2 }, { 3, 1 }, { 4, 1 }, { 5, 1 }, { 6, 1 }, { 7, 1 } } };
+            const auto bars = (int) std::floor (length / bpb + 1.0e-6);
+            for (int bar = 7; bar < bars; bar += 8)
+            {
+                const auto from = bar * bpb, to = from + bpb;
+                auto soundingAt = [&idea] (double t) -> int
+                {
+                    for (const auto& n : idea.notes)
+                        if (n.beat <= t + 1.0e-6 && n.beat + n.length > t + 1.0e-6)
+                            return n.pitch;
+                    return -1;
+                };
+                std::vector<LineNote> hits;
+                for (const auto& [at, len] : pulse)
+                    if (const auto pitch = soundingAt (from + at * e); pitch >= 0)
+                        hits.push_back ({ from + at * e, len * e * 0.9, pitch, at == 0 ? 0.9f : 0.75f });
+                std::vector<LineNote> kept;
+                for (auto n : idea.notes)
+                {
+                    const auto end = n.beat + n.length;
+                    if (n.beat < from - 1.0e-6)
+                    {
+                        n.length = juce::jmin (n.length, from - n.beat);
+                        kept.push_back (n);
+                    }
+                    else if (n.beat >= to - 1.0e-6)
+                        kept.push_back (n);
+                    if (n.beat < to - 1.0e-6 && end > to + 1.0e-6)
+                        kept.push_back ({ to, end - to, n.pitch, n.velocity });   // (a push ringing on past the bar)
+                }
+                kept.insert (kept.end(), hits.begin(), hits.end());
+                std::stable_sort (kept.begin(), kept.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+                idea.notes = std::move (kept);
+            }
         }
 
         LineIdea droningBass (const LineIdea& guitar, const std::vector<ChordSpan>& spans, int lowest, int highest)
@@ -597,12 +666,51 @@ namespace pr7s
             return idea;
         }
 
-        LineIdea droningKeys (const ComposerLane& lane, const std::vector<ChordSpan>& spans, double bpb)
+        // (0.89.1, Circle With Me's keys) One note held over each chord, the chord's third, moving by the nearest step,
+        // struck with the guitar (its pushes too). In the second half of every eight bars each new chord comes in
+        // from two scale steps above, a quarter at a time, down onto its third.
+        LineIdea guideTones (const std::vector<ChordSpan>& spans, double bpb, const std::vector<double>& strikes)
         {
+            LineIdea out { LineIdea::Part::chords, "Droning: a held note a chord",
+                           "Each chord's third held over it, moving by the nearest step, struck with the guitar; coming in from above in the second half of each eight bars", {} };
+            const auto key = spans.front().key;
+            const auto length = sectionLength (spans);
+            const auto q = bpb / 4.0;
+            auto previous = 71;
+            for (size_t i = 0; i < strikes.size(); ++i)
+            {
+                const auto at = strikes[i];
+                const auto next = i + 1 < strikes.size() ? strikes[i + 1] : length;
+                const auto& span = chordStruckAt (spans, at);
+                const auto pcs = span.chord.pitchClasses();
+                const auto third = pcs.size() >= 2 ? pcs[1] : span.chord.root;
+                auto pitch = -1;
+                for (auto p = 64; p <= 79; ++p)
+                    if (pc12 (p) == third && (pitch < 0 || std::abs (p - previous) < std::abs (pitch - previous)))
+                        pitch = p;
+                previous = pitch;
+                auto from = at;
+                const auto bar = (int) std::floor (at / bpb + 1.0e-6);
+                if (bar % 8 >= 4 && next - at >= 3.0 * q - 1.0e-6)
+                    for (int stepDown = 2; stepDown >= 1; --stepDown)
+                    {
+                        out.notes.push_back ({ from, q * 0.95, scaleStep (key, pitch, stepDown), 0.62f });
+                        from += q;
+                    }
+                if (next > from + 1.0e-6)
+                    out.notes.push_back ({ from, (next - from) * 0.96, pitch, 0.66f });
+            }
+            return out;
+        }
+
+        LineIdea droningKeys (const ComposerLane& lane, const std::vector<ChordSpan>& spans, double bpb, const std::vector<double>& strikes)
+        {
+            if (lane.style % 3 == 2 && ! strikes.empty())
+                return guideTones (spans, bpb, strikes);
             const auto key = spans.front().key;
             const auto fifth = pitchOfClassIn ((key.pitchClass() + 7) % 12, 74, 85);
             const auto length = sectionLength (spans);
-            const auto motif = lane.style % 2 == 1;
+            const auto motif = lane.style % 3 == 1;
             LineIdea out { LineIdea::Part::chords, motif ? "Droning: a motif up high" : "Droning: a pulse up high",
                            motif ? "A short figure round the key's fifth over every chord, climbing a step at a time at the end of each four bars"
                                  : "The key's fifth up high over every chord, a steady pulse with the beats leaning in", {} };
@@ -651,10 +759,38 @@ namespace pr7s
             return out;
         }
 
+        // (0.89.1, Circle With Me's second guitar) Palm-muted eighths cycling the key's root, octave and fifth (three
+        // notes against a bar of eight: the cell runs across the bar lines), the same under every chord; every fourth
+        // bar's last two eighths slip a whole step down and back.
+        LineIdea pedalCell (const std::vector<ChordSpan>& spans, double bpb, const GuitarVelocities& velocities, int lowest, int highest)
+        {
+            LineIdea out { LineIdea::Part::lead, "Droning: a muted pedal in threes",
+                           "Palm-muted eighths on the key's root, octave and fifth, three against the bar, under every chord", {} };
+            const auto key = spans.front().key;
+            const auto root = pitchOfClassIn (key.pitchClass(), juce::jmax (lowest, 52), juce::jmax (lowest, 52) + 11);
+            const std::array<int, 3> cell { root, root + 12 <= highest ? root + 12 : root, root + 7 <= highest ? root + 7 : root };
+            const auto length = sectionLength (spans);
+            const auto e = bpb / 8.0;
+            int i = 0;
+            for (auto t = 0.0; t < length - 1.0e-6; t += e, ++i)
+            {
+                auto pitch = cell[(size_t) (i % 3)];
+                const auto bar = (int) std::floor (t / bpb + 1.0e-6);
+                const auto place = (int) std::round ((t - bar * bpb) / e);
+                if (bar % 4 == 3 && place == 6)
+                    pitch -= 2;
+                const auto velocity = GuitarVelocity::of (place % 2 == 0 ? velocities.muteMid : velocities.muteTight);
+                out.notes.push_back ({ t, e * 0.9, pitch, velocity });
+            }
+            return out;
+        }
+
         LineIdea droningLead (const ComposerLane& lane, const std::vector<ChordSpan>& spans, double bpb, const GuitarVelocities& velocities,
                               int lowest, int highest)
         {
-            const auto onRoot = lane.style % 2 == 1;
+            if (lane.style % 3 == 2)
+                return pedalCell (spans, bpb, velocities, lowest, highest);
+            const auto onRoot = lane.style % 3 == 1;
             LineIdea out { LineIdea::Part::lead, onRoot ? "Droning: octaves on the roots" : "Droning: octaves on the thirds",
                            "A shimmer of octaves over each ringing chord, the key's note on top in the first half of each four bars", {} };
             const auto key = spans.front().key;
@@ -684,9 +820,59 @@ namespace pr7s
             return out;
         }
 
-        LineIdea droningDrums (const ComposerLane& lane, const std::vector<ChordSpan>& spans, double bpb)
+        // (0.89.1, Circle With Me's drums: half time at a fast tempo) Cymbals on the half notes, the snare once every two
+        // bars, the kick on the first bar's downbeat and on the guitar's pushes (a crash with each), the fourth bar's
+        // kicks on beats 2, 3 and 4, the eighth's in eighths.
+        LineIdea drumsOnPushes (const std::vector<ChordSpan>& spans, double bpb, const std::vector<double>& strikes)
         {
-            const auto halfTime = lane.variation % 2 == 1;
+            LineIdea out { LineIdea::Part::drums, "Droning: locked to the pushes",
+                           "Half time: cymbals on the half notes, the snare every second bar, the kick on the downbeats and the chords' pushes", {} };
+            const auto length = sectionLength (spans);
+            const auto bars = (int) std::ceil (length / bpb - 1.0e-6);
+            const auto beat = bpb / 4.0;
+            auto hit = [&out, length] (double at, int note, float velocity)
+            {
+                if (at >= -1.0e-9 && at < length - 1.0e-6
+                    && std::none_of (out.notes.begin(), out.notes.end(), [&] (const LineNote& n) { return n.pitch == note && std::abs (n.beat - at) < 1.0e-6; }))
+                    out.notes.push_back ({ at, 0.1, note, velocity });
+            };
+            for (int bar = 0; bar < bars; ++bar)
+            {
+                const auto o = bar * bpb;
+                hit (o, bar % 2 == 0 ? 52 : 49, 0.85f);
+                hit (o + 2 * beat, 52, 0.7f);
+                if (bar % 2 == 0)
+                    hit (o, 36, 0.95f);
+                else
+                    hit (o, 38, 0.95f);
+                if (bar % 8 == 7)
+                    for (int k = 2; k < 8; ++k)
+                        hit (o + k * beat / 2.0, 36, 0.85f);
+                else if (bar % 4 == 3)
+                {
+                    for (int k = 1; k < 4; ++k)
+                        hit (o + k * beat, 36, 0.85f);
+                    hit (o + 2 * beat, 49, 0.85f);
+                }
+            }
+            for (const auto at : strikes)
+            {
+                const auto inBar = std::fmod (at, bpb);
+                if (inBar > 1.0e-6 && bpb - inBar > 1.0e-6)
+                {
+                    hit (at, 36, 0.9f);
+                    hit (at, 49, 0.88f);
+                }
+            }
+            std::stable_sort (out.notes.begin(), out.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+            return out;
+        }
+
+        LineIdea droningDrums (const ComposerLane& lane, const std::vector<ChordSpan>& spans, double bpb, const std::vector<double>& strikes)
+        {
+            if (lane.variation % 3 == 2 && ! strikes.empty())
+                return drumsOnPushes (spans, bpb, strikes);
+            const auto halfTime = lane.variation % 3 == 1;
             LineIdea out { LineIdea::Part::drums, halfTime ? "Droning: half time" : "Droning: open hats",
                            halfTime ? "Half time under the ringing chords: hats on the beats, the snare on 3, a fill into each four bars"
                                     : "Open hats on the eighths, kick on 1 and 3, snare on 2 and the and of 3, the fourth bar pushing", {} };
@@ -744,6 +930,8 @@ namespace pr7s
             if (spans.empty() || ! droningBand (s, c))
                 return std::nullopt;
             const auto& lane = s.lane (l);
+            const auto guitar = guitarOf (s, spans, c);
+            const auto strikes = lowStrikes (guitar);
             switch (l)
             {
                 case ComposerLayer::bass:
@@ -751,13 +939,18 @@ namespace pr7s
                     const auto& profile = c.bassProfile;
                     const auto lowest = profile.has_value() ? profile->rangeLow() : c.bassTuning.lowest();
                     const auto highest = profile.has_value() ? profile->rangeHigh() : bassTop (c.bassTuning);
-                    auto idea = droningBass (guitarOf (s, spans, c), spans, lowest, highest);
+                    auto idea = droningBass (guitar, spans, lowest, highest);
+                    if (lane.variation % 2 == 1)
+                    {
+                        pulseLoopEnds (idea, c.beatsPerBar, sectionLength (spans));
+                        idea.description += "; the last bar of every eight pulsed in eighths";
+                    }
                     if (lane.lowString)
                         keepInRange (idea, lowest, lowest + 12);
                     keepInRange (idea, lowest, highest);
                     return idea;
                 }
-                case ComposerLayer::chords: return droningKeys (lane, spans, c.beatsPerBar);
+                case ComposerLayer::chords: return droningKeys (lane, spans, c.beatsPerBar, strikes);
                 case ComposerLayer::lead:
                 {
                     const auto& profile = c.leadProfile.has_value() ? c.leadProfile : c.guitarProfile;
@@ -766,7 +959,7 @@ namespace pr7s
                     const auto highest = profile.has_value() ? profile->rangeHigh() : c.tuning.highest();
                     return droningLead (lane, spans, c.beatsPerBar, velocities, lowest, highest);
                 }
-                case ComposerLayer::drums: return droningDrums (lane, spans, c.beatsPerBar);
+                case ComposerLayer::drums: return droningDrums (lane, spans, c.beatsPerBar, strikes);
                 case ComposerLayer::melody:
                 case ComposerLayer::guitar: break;
             }
