@@ -1326,11 +1326,13 @@ std::vector<int> ComposerPage::buildSection()
     const auto placed = spansAt (buildStart());
     std::vector<pr7s::LineIdea> list;
     std::vector<int> onto;
+    std::vector<int> layersBuilt;   // (0.92.0) which lane each of `list` is
     for (const auto l : pr7s::composerLayers())
         if (state.lane (l).on && ! ideas[(size_t) l].notes.empty())
         {
             list.push_back (ideas[(size_t) l]);
             onto.push_back (trackFor (l, false));
+            layersBuilt.push_back ((int) l);
         }
     if (list.empty())
     {
@@ -1345,6 +1347,14 @@ std::vector<int> ComposerPage::buildSection()
         status = "Nothing written";
         repaint();
         return {};
+    }
+    // (0.92.0) Into a block of the SECTIONS row: the block keeps how it was built (its chords changing later rebuilds it).
+    if (getTargetPlace().has_value() && tracks.size() == layersBuilt.size())
+    {
+        std::vector<std::pair<int, int>> layerTracks;
+        for (size_t i = 0; i < tracks.size(); ++i)
+            layerTracks.emplace_back (layersBuilt[i], tracks[i]);
+        studio.noteSectionBuilt (targetBlock, state.toString(), layerTracks);
     }
     studio.noteBuiltSection ({ section, placed.front().start, placed.back().end, isPlayingMyRiff() ? myRiffIndex : state.lane (ComposerLayer::guitar).style,
                                studio.getRiffSettings(), state.lane (ComposerLayer::drums).variation });

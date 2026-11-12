@@ -1166,6 +1166,13 @@ namespace pr7s
         // the first in the song wins. Unlinking keeps the block's music as it is, its own from then on.
         bool unlinkSongSection (int index);
         bool isSongSectionLinked (int index) const;
+        // (0.92.0) The composer built into a block (its id): its settings and which lane went onto which track
+        // (layer, track id), kept on the block (and its linked copies) with a mark of what each track holds there now.
+        // When the block's chords change (not when it moves or its length changes), each lane whose track still holds
+        // what was written is built again over the new chords from those settings; every other pitched track's notes
+        // in the block (not drums, not frozen) move to fit the new chords (Follow Chord Track's Chords & Scales), their
+        // rhythm kept. Inside the same undo step as the chords' change.
+        void noteSectionBuilt (int blockId, const juce::String& composerState, const std::vector<std::pair<int, int>>& layerTracks);
         bool removeSongSection (int index);               // and its music; the gap closes
         // A block's place in beats (none: no such block).
         std::optional<SectionPlace> getSongSectionPlace (int index) const;
@@ -1521,6 +1528,14 @@ namespace pr7s
         std::map<int, SectionContent> linkSnapshots;   // by block id: each linked block's music as last seen
         bool linksReset = false;   // the next look only notes what's there (undo, open, new)
         int linkedCopyOf (const juce::String& name) const;   // the last block of that name (-1: none)
+        // (0.92.0) Each block's chords (relative, with lengths) and length as last seen, by block id.
+        std::map<int, std::pair<int, std::vector<ChordEvent>>> chordSnapshots;
+        bool chordsReset = false;
+        std::vector<ChordEvent> sectionChords (const SectionPlace&) const;
+        juce::int64 trackMark (const SectionPlace&, int trackId) const;
+        void rewriteChangedSections();     // before syncLinkedSections in changed()
+        void noteSectionChords();          // after it
+        void rewriteSection (int index, const std::vector<ChordEvent>& before, const std::vector<ChordEvent>& after);
         PadPlayer padPlayer;
         std::unique_ptr<PatternPerformer> performer;   // (0.39.0) the pads' performance
         class LinePreview;

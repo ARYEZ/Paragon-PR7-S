@@ -289,7 +289,11 @@ namespace pr7s
                 if (const auto kept = frozenParts.find (track.id); kept != frozenParts.end() && track.parts != kept->second)
                     track.parts = kept->second;
         if (! mixStepOnly)
+        {
+            rewriteChangedSections();   // (0.92.0: a block's chords changed: its music rewritten to fit, in this undo step)
             syncLinkedSections();   // (0.91.0: an edit to one linked block copied into the others, in this undo step)
+            noteSectionChords();
+        }
         applyAutoColour();   // (0.79.0: the rule wins over whatever moved or recoloured a track)
         numberParts();
         watchPlugins();
@@ -496,6 +500,7 @@ namespace pr7s
                           [&] (const Track& a, const Track& b) { return placeIn (a.id) < placeIn (b.id); });
         project.tidyFolders();
         linksReset = true;   // (0.91.0: what undo brings back is what the linked blocks hold, nothing to copy)
+        chordsReset = true;  // (0.92.0: nor anything to rewrite)
         changed (false);
     }
 
@@ -8353,6 +8358,7 @@ namespace pr7s
         addTrack ({});
         engine.update (project);
         linkSnapshots.clear();   // (0.91.0)
+        chordSnapshots.clear();   // (0.92.0)
         clearHistory();
         recordUndoState();
         modified = false;
@@ -9871,6 +9877,7 @@ namespace pr7s
         applyAutoColour();   // (0.79.0)
         linksReset = true;   // (0.91.0)
         syncLinkedSections();
+        noteSectionChords();   // (0.92.0)
         engine.update (project);
         clearHistory();
         recordUndoState();
@@ -13335,5 +13342,169 @@ namespace pr7s
                 for (const auto i : members)
                     seen[blocks[(size_t) i].id] = sectionContent (places[(size_t) i]);
         linkSnapshots = std::move (seen);
+    }
+    //==========================================================================
+    // Blocks whose chords change (0.92.0)
+    std::vector<ChordEvent> Studio::sectionChords (const SectionPlace& place) const
+    {
+        std::vector<ChordEvent> out;
+        for (const auto& e : withLengths (project.chordTrack, project.beatsPerBar()))
+        {
+            const auto from = juce::jmax (e.beat, place.start), to = juce::jmin (e.beat + e.length, place.end);
+            if (to - from >= shortestChord)
+                out.push_back ({ from - place.start, e.chord, to - from });
+        }
+        return out;
+    }
+
+    juce::int64 Studio::trackMark (const SectionPlace& place, int trackId) const
+    {
+        const auto* track = project.findTrack (trackId);
+        if (track == nullptr)
+            return 0;
+        // The notes heard inside the block, from its start (the parts' own edges don't count: a built part may be
+        // cut or glued and still hold the same notes).
+        std::vector<std::tuple<double, double, int, float>> notes;
+        for (const auto& part : track->parts)
+            for (const auto& n : part.notes)
+            {
+                const auto at = part.start + n.start;
+                if (at >= place.start - 1.0e-9 && at < place.end - 1.0e-9 && n.start < part.length - 1.0e-9 && ! part.muted && ! n.muted)
+                    notes.emplace_back (std::round ((at - place.start) * 960.0), std::round (juce::jmin (n.length, part.length - n.start) * 960.0),
+                                        n.pitch, std::round (n.velocity * 127.0f));
+            }
+        std::sort (notes.begin(), notes.end());
+        juce::int64 hash = (juce::int64) 1469598103934665603ll;
+        const auto mix = [&hash] (juce::int64 v) { hash = (hash ^ v) * (juce::int64) 1099511628211ll; };
+        for (const auto& [at, length, pitch, velocity] : notes)
+        {
+            mix ((juce::int64) at);
+            mix ((juce::int64) length);
+            mix (pitch);
+            mix ((juce::int64) velocity);
+        }
+        mix ((juce::int64) notes.size());
+        return hash;
+    }
+
+    void Studio::noteSectionBuilt (int blockId, const juce::String& composerState, const std::vector<std::pair<int, int>>& layerTracks)
+    {
+        auto& sections = project.songSections;
+        const auto index = sections.indexOf (blockId);
+        if (index < 0)
+            return;
+        const auto place = sectionPlaces (sections, project.signatures())[(size_t) index];
+        std::vector<SongSection::Lane> lanes;
+        for (const auto& [layer, track] : layerTracks)
+            lanes.push_back ({ layer, track, trackMark (place, track) });
+        for (const auto i : sections.linkedWith (index))
+        {
+            sections.blocks[(size_t) i].recipe = composerState;
+            sections.blocks[(size_t) i].lanes = lanes;
+        }
+        modified = true;   // (not an undo step of its own: the build was)
+    }
+
+    void Studio::rewriteChangedSections()
+    {
+        if (chordsReset)
+            return;
+        const auto places = getSongSectionPlaces();
+        const auto& blocks = project.songSections.blocks;
+        for (int i = 0; i < (int) blocks.size(); ++i)
+        {
+            const auto seen = chordSnapshots.find (blocks[(size_t) i].id);
+            if (seen == chordSnapshots.end() || seen->second.first != blocks[(size_t) i].bars)
+                continue;   // (a new block, or its length changed: not a chord change)
+            auto now = sectionChords (places[(size_t) i]);
+            if (! (now == seen->second.second))
+                rewriteSection (i, seen->second.second, now);
+        }
+    }
+
+    void Studio::noteSectionChords()
+    {
+        chordsReset = false;
+        std::map<int, std::pair<int, std::vector<ChordEvent>>> seen;
+        const auto places = getSongSectionPlaces();
+        const auto& blocks = project.songSections.blocks;
+        for (int i = 0; i < (int) blocks.size(); ++i)
+            seen[blocks[(size_t) i].id] = { blocks[(size_t) i].bars, sectionChords (places[(size_t) i]) };
+        chordSnapshots = std::move (seen);
+    }
+
+    void Studio::rewriteSection (int index, const std::vector<ChordEvent>& before, const std::vector<ChordEvent>& after)
+    {
+        auto& block = project.songSections.blocks[(size_t) index];
+        const auto place = getSongSectionPlaces()[(size_t) index];
+        if (after.empty())
+            return;   // (the chords taken away: the music stays as it is)
+        const auto chordAt = [] (const std::vector<ChordEvent>& chords, double rel) -> const ChordEvent*
+        {
+            const ChordEvent* found = nullptr;
+            for (const auto& c : chords)
+                if (c.beat <= rel + 1.0e-9 && rel < c.beat + c.length - 1.0e-9)
+                    found = &c;
+            if (found == nullptr)   // (in a gap: the chord before, else the first)
+                for (const auto& c : chords)
+                    if (c.beat <= rel + 1.0e-9)
+                        found = &c;
+            return found != nullptr ? found : (chords.empty() ? nullptr : &chords.front());
+        };
+        std::vector<int> rebuilt;
+        // 1. The composer's lanes the block still holds as written: built again over the new chords.
+        if (block.recipe.isNotEmpty() && ! block.lanes.empty())
+        {
+            std::vector<ChordSpan> spans;
+            for (const auto& c : after)
+                spans.push_back ({ place.start + c.beat, place.start + c.beat + c.length, c.chord, chordTrackKeyAt (place.start + c.beat) });
+            auto state = ComposerState::fromString (block.recipe);
+            state.bars = block.bars;
+            const auto context = getComposerContext (place.start);
+            const auto layers = composeLayers (state, spans, context);
+            const auto label = sectionLabel (project.songSections.blocks, index);
+            for (auto& lane : block.lanes)
+            {
+                auto* track = project.findTrack (lane.track);
+                if (track == nullptr || track->frozen || ! juce::isPositiveAndBelow (lane.layer, composerLayerCount)
+                    || trackMark (place, lane.track) != lane.mark)
+                    continue;   // (changed by hand since: it follows the chords instead)
+                const auto& idea = layers[(size_t) lane.layer];
+                track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(), [&] (const Part& p)
+                                    { return p.start >= place.start - 1.0e-9 && p.end() <= place.end + 1.0e-9; }), track->parts.end());
+                if (! idea.notes.empty())
+                {
+                    track->parts.push_back (partFromIdea (idea, spans.front().start, place.end - spans.front().start, label + ": " + idea.style));
+                    track->parts.back().id = 0;
+                }
+                rebuilt.push_back (lane.track);
+            }
+            for (auto& lane : block.lanes)
+                if (std::find (rebuilt.begin(), rebuilt.end(), lane.track) != rebuilt.end())
+                    lane.mark = trackMark (place, lane.track);
+        }
+        // 2. Every other pitched track's notes in the block moved to fit the new chords (their rhythm kept).
+        for (auto& track : project.tracks)
+        {
+            if (track.frozen || ! isPitchedTrack (track) || std::find (rebuilt.begin(), rebuilt.end(), track.id) != rebuilt.end())
+                continue;
+            for (auto& part : track.parts)
+                for (auto& n : part.notes)
+                {
+                    const auto at = part.start + n.start;
+                    if (at < place.start - 1.0e-9 || at >= place.end - 1.0e-9)
+                        continue;
+                    const auto* from = chordAt (before, at - place.start);
+                    const auto* to = chordAt (after, at - place.start);
+                    if (from == nullptr || to == nullptr || from->chord == to->chord)
+                        continue;
+                    const auto key = chordTrackKeyAt (at);
+                    n.pitch = juce::jlimit (0, 127, followPitch (n.pitch, FollowMode::chordsAndScales, from->chord, key, to->chord, key));
+                }
+        }
+        // The linked copies keep the same recipe and marks (their music is the same once copied).
+        for (const auto i : project.songSections.linkedWith (index))
+            if (i != index)
+                project.songSections.blocks[(size_t) i].lanes = block.lanes;
     }
 }

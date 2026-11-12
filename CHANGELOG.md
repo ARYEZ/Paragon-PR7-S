@@ -2,6 +2,25 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.92.0
+
+**Change a section's chords and its music follows** (your song engine overhaul, part three). When the chords inside a block on the SECTIONS row change, the music in that block is rewritten to fit. That covers a chord swapped by hand on the chord track, a new progression, or the same chords in a different order.
+
+- **What the composer built is built again.** When you BUILD into a block, the block remembers how: the composer's settings and which lane went onto which track.
+  - Change the block's chords and each of those lanes is built again over the new chords from the same settings: the same rhythm, feel, riff shape and take, with the notes on the new chords.
+  - This only happens for a lane you haven't changed since, so your own work is never thrown away.
+- **Everything else follows the chords.** Any track with pitched notes in the block moves its notes onto the new chords, keeping your rhythm. That covers parts you played or edited, and built lanes you've changed by hand. It uses Follow Chord Track's "Chords & Scales" rule: a chord's third goes to the new chord's third, its fifth to its fifth, and other notes move along the scale.
+- **Drums are left alone.**
+- **Linked copies follow too.** Change the chords in one chorus and every linked chorus is rewritten the same way.
+- **One undo step** takes back the chord change and the rewrite together.
+- **Moving a block, or changing its length, doesn't count as a chord change**, so nothing is rewritten then. Undo never rewrites anything either.
+- The recipe is saved with the song, so a block you built last week still rebuilds when you change its chords.
+
+**Limits, honestly:**
+- A lane rebuilt from the recipe is built as the lane's own style. An idea you took from the IDEAS tab, or your pasted riff, comes back as the lane's own style, not the taken idea.
+- Notes that follow the chords keep their octave and rhythm. A followed line can land a little higher or lower than you'd have written it by hand.
+- I can't hear the results here, so please try it on a real section.
+
 ## 0.91.0
 
 **Linked copies on the SECTIONS row** (your song engine overhaul, part two: "repeated parts should be a linked copy").

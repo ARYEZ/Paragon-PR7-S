@@ -28,6 +28,12 @@ namespace pr7s
         // are linked copies: an edit to the music in one (its parts on every track, its chords) is copied into the
         // others. 0: its own.
         int link = 0;
+        // (0.92.0) How the composer built it (BUILD into the block): the composer's settings as text, which lane went
+        // onto which track, and a mark of what it wrote on each. When the block's chords change, a lane whose track
+        // still holds what was written is built again over the new chords; everything else follows them.
+        juce::String recipe;
+        struct Lane { int layer = 0, track = 0; juce::int64 mark = 0; bool operator== (const Lane&) const = default; };
+        std::vector<Lane> lanes;
         bool operator== (const SongSection&) const = default;
     };
 

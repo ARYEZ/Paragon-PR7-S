@@ -60,6 +60,17 @@ namespace pr7s
             e->setAttribute ("bars", b.bars);
             if (b.link > 0)
                 e->setAttribute ("link", b.link);
+            if (b.recipe.isNotEmpty())
+            {
+                e->setAttribute ("recipe", b.recipe);
+                for (const auto& l : b.lanes)
+                {
+                    auto* lane = e->createNewChildElement ("Lane");
+                    lane->setAttribute ("layer", l.layer);
+                    lane->setAttribute ("track", l.track);
+                    lane->setAttribute ("mark", juce::String (l.mark));
+                }
+            }
         }
         return xml;
     }
@@ -76,6 +87,10 @@ namespace pr7s
             b.name = name.isNotEmpty() ? name : juce::String ("Verse");
             b.bars = juce::jlimit (leastSectionBars, mostSectionBars, e->getIntAttribute ("bars", 8));
             b.link = juce::jmax (0, e->getIntAttribute ("link", 0));
+            b.recipe = e->getStringAttribute ("recipe");
+            for (auto* lane : e->getChildWithTagNameIterator ("Lane"))
+                b.lanes.push_back ({ lane->getIntAttribute ("layer"), lane->getIntAttribute ("track"),
+                                     lane->getStringAttribute ("mark").getLargeIntValue() });
             s.blocks.push_back (b);
         }
         // Every id unique and from 1.

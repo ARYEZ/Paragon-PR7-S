@@ -370,6 +370,8 @@ TEST_CASE ("0.91.0: linked copies: an edit to one changes the others, in the sam
     studio.setChordEvents (events);
     CHECK (song.chordRootAt (80.0) == 9);
     CHECK (song.chordRootAt (16.0) == 5);   // (the verse untouched)
+    const auto kept = song.pitchAt (80.0);   // (0.92.0: the chord's change moved its notes too, in both)
+    CHECK (song.pitchAt (48.0) == kept);
 
     // Unlinked: its own from then on, its music kept.
     REQUIRE (studio.unlinkSongSection (3));
@@ -378,7 +380,7 @@ TEST_CASE ("0.91.0: linked copies: an edit to one changes the others, in the sam
     index = partIndexAt (studio, song.track, 48.0);
     studio.setNotes (song.track, index, { { 0.0, 1.0, 60, 0.8f } });
     CHECK (song.pitchAt (48.0) == 60);
-    CHECK (song.pitchAt (80.0) == 70);
+    CHECK (song.pitchAt (80.0) == kept);
 }
 
 TEST_CASE ("0.91.0: a name already in the song adds a linked copy; linked blocks share length and name; saved and opened", "[sections][links]")
@@ -425,4 +427,122 @@ TEST_CASE ("0.91.0: a name already in the song adds a linked copy; linked blocks
     REQUIRE (j >= 0);
     CHECK (opened.getProject().findTrack (track)->parts[(size_t) j].notes.front().pitch == 65);
     file.deleteFile();
+}
+
+namespace
+{
+    // The chorus's chord (index 2's) set to another one.
+    void setChorusChord (Studio& studio, const Chord& chord)
+    {
+        const auto place = *studio.getSongSectionPlace (2);
+        auto events = studio.getProject().chordTrack.events;
+        for (auto& e : events)
+            if (std::abs (e.beat - place.start) < 1.0e-6)
+                e.chord = chord;
+        studio.setChordEvents (events);
+    }
+
+    // The chorus's bass built by the composer (its default settings), noted on the block. Its track.
+    int buildChorusBass (Studio& studio)
+    {
+        const auto place = *studio.getSongSectionPlace (2);
+        std::vector<ChordSpan> spans { { place.start, place.end, Chord { 7 }, Key {} } };
+        ComposerState state;
+        const auto layers = composeLayers (state, spans, studio.getComposerContext (place.start));
+        const auto& bass = layers[(size_t) ComposerLayer::bass];
+        REQUIRE_FALSE (bass.notes.empty());
+        const auto tracks = studio.buildSection ({ bass }, spans, "Chorus", {});
+        REQUIRE (tracks.size() == 1);
+        studio.noteSectionBuilt (studio.getSongSections().blocks[2].id, state.toString(), { { (int) ComposerLayer::bass, tracks[0] } });
+        return tracks[0];
+    }
+
+    std::vector<int> pitchesIn (const Studio& studio, int track, const SectionPlace& place)
+    {
+        std::vector<int> out;
+        for (const auto& p : studio.getProject().findTrack (track)->parts)
+            for (const auto& n : p.notes)
+                if (p.start + n.start >= place.start - 1.0e-9 && p.start + n.start < place.end - 1.0e-9)
+                    out.push_back (n.pitch);
+        return out;
+    }
+}
+
+TEST_CASE ("0.92.0: a block's chord changed: the composer's lane built again, the rest follow the chord; one undo step", "[sections][rewrite]")
+{
+    Song song;
+    auto& studio = song.studio;
+    const auto bass = buildChorusBass (studio);
+    const auto place = *studio.getSongSectionPlace (2);
+    const auto before = pitchesIn (studio, bass, place);
+    REQUIRE_FALSE (before.empty());
+    for (const auto p : before)
+        CHECK (((p % 12) + 12) % 12 == 7);   // (the bass on the kick: G's root)
+
+    // G to A minor: the bass is built again on A; the lead's note follows the chord.
+    setChorusChord (studio, Chord { 9, Chord::Type::minor });
+    const auto after = pitchesIn (studio, bass, place);
+    REQUIRE_FALSE (after.empty());
+    for (const auto p : after)
+        CHECK (((p % 12) + 12) % 12 == 9);
+    // The lead's E (G's sixth, not a chord tone) moves along the scale with the root (G to A: a step up).
+    const auto lead = song.pitchAt (place.start);
+    CHECK (lead != 64);
+    const auto scale = Key {}.scale();
+    CHECK (std::find (scale.begin(), scale.end(), ((lead % 12) + 12) % 12) != scale.end());
+    CHECK (song.pitchAt (0.0) == 60);    // (the intro untouched)
+    CHECK (song.pitchAt (16.0) == 62);   // (the verse untouched)
+
+    // One undo: the chord and the music back together.
+    studio.undo();
+    CHECK (song.chordRootAt (place.start) == 7);
+    CHECK (pitchesIn (studio, bass, place) == before);
+    CHECK (song.pitchAt (place.start) == 64);
+}
+
+TEST_CASE ("0.92.0: a lane edited by hand follows the chords instead of being built again; a move rewrites nothing", "[sections][rewrite]")
+{
+    Song song;
+    auto& studio = song.studio;
+    const auto bass = buildChorusBass (studio);
+    const auto place = *studio.getSongSectionPlace (2);
+    // The bass edited: two notes of its own (B and D over G: the chord's third and fifth).
+    const auto& parts = studio.getProject().findTrack (bass)->parts;
+    int index = -1;
+    for (int i = 0; i < (int) parts.size(); ++i)
+        if (parts[(size_t) i].start >= place.start - 1.0e-6)
+            index = i;
+    REQUIRE (index >= 0);
+    studio.setNotes (bass, index, { { 0.0, 2.0, 35, 0.8f }, { 4.0, 2.0, 38, 0.8f } });
+    // G to C: followed (two notes still, now C's third and fifth: E and G), not built again.
+    setChorusChord (studio, Chord { 0 });
+    const auto pitches = pitchesIn (studio, bass, place);
+    REQUIRE (pitches.size() == 2);
+    CHECK (((pitches[0] % 12) + 12) % 12 == 4);
+    CHECK (((pitches[1] % 12) + 12) % 12 == 7);
+
+    // Moving the chorus first changes no notes.
+    const auto lead = song.pitchAt (place.start);
+    REQUIRE (studio.moveSongSection (2, 0));
+    CHECK (song.pitchAt (0.0) == lead);
+    CHECK (pitchesIn (studio, bass, *studio.getSongSectionPlace (0)) == pitches);
+}
+
+TEST_CASE ("0.92.0: a linked chorus's chord changed: every copy rewritten", "[sections][rewrite][links]")
+{
+    Song song;
+    auto& studio = song.studio;
+    const auto bass = buildChorusBass (studio);
+    REQUIRE (studio.duplicateSongSection (2));
+    const auto copy = *studio.getSongSectionPlace (3);
+    REQUIRE_FALSE (pitchesIn (studio, bass, copy).empty());
+    setChorusChord (studio, Chord { 2 });   // G to D
+    for (const auto p : pitchesIn (studio, bass, copy))
+        CHECK (((p % 12) + 12) % 12 == 2);
+    CHECK (song.chordRootAt (copy.start) == 2);
+    // The recipe saved with the song.
+    const auto again = Project::fromXml (*studio.getProject().toXml());
+    REQUIRE (again.has_value());
+    CHECK (again->songSections.blocks[2].recipe.isNotEmpty());
+    CHECK (again->songSections.blocks[2].lanes.size() == 1);
 }
