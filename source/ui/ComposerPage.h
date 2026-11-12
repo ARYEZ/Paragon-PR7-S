@@ -113,6 +113,12 @@ public:
     void targetSection (int blockId);
     void clearTargetSection();
     int getTargetSection() const noexcept { return targetBlock; }
+    // (0.93.0) The SECTIONS row in charge: with blocks on it the SONG strip shows them (a click composes one), NEXT
+    // adds the suggested block at the end and composes it, BUILD moves on to the next block not built yet.
+    bool usesSectionsRow() const;
+    void aimAtSectionsRow();                          // the first block not built yet (else the first), if none chosen
+    juce::Rectangle<int> getSongChipBounds (int blockIndex) const;   // a block's chip on the SONG strip (empty: not shown)
+    void addNextSection (const pr7s::SectionSuggestion&);
     std::optional<pr7s::SectionPlace> getTargetPlace() const;   // none: no block (or it's gone)
     void takeIdea (const pr7s::LineIdea&);    // into its lane (by its part), locked, until rolled or restyled
     bool hasTakenIdea (pr7s::ComposerLayer l) const noexcept { return taken[(size_t) l].has_value(); }
@@ -192,6 +198,7 @@ private:
     void showLowMenu (pr7s::ComposerLayer);
     std::vector<pr7s::ChordSpan> placedSpans() const;   // at the hearing start, else buildStart()
     void refreshSong();                                  // the SONG strip's NEXT keys
+    std::vector<std::pair<juce::Rectangle<int>, int>> songChips() const;   // (0.93.0) the blocks' chips and their indices
     void paintSong (juce::Graphics&) const;
     juce::String trackText (pr7s::ComposerLayer) const;
     juce::String summary() const;

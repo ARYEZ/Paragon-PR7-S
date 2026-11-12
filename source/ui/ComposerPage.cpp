@@ -1289,8 +1289,56 @@ void ComposerPage::setSection (pr7s::DrumSection section)
     refresh();
 }
 
+bool ComposerPage::usesSectionsRow() const
+{
+    return ! studio.getSongSections().blocks.empty();
+}
+
+void ComposerPage::aimAtSectionsRow()
+{
+    if (! usesSectionsRow() || getTargetPlace().has_value())
+        return;
+    const auto& blocks = studio.getSongSections().blocks;
+    for (const auto& b : blocks)
+        if (b.recipe.isEmpty())
+        {
+            targetSection (b.id);
+            return;
+        }
+    targetSection (blocks.front().id);
+}
+
+void ComposerPage::addNextSection (const pr7s::SectionSuggestion& next)
+{
+    // A block of that kind after the last (a name already there: a linked copy of it), then composed.
+    const auto index = studio.appendSongSection (pr7s::sectionWord (next.kind), 8);
+    if (index < 0)
+        return;
+    chooseNext (next);
+    targetSection (studio.getSongSections().blocks[(size_t) index].id);
+}
+
 std::vector<pr7s::SectionSuggestion> ComposerPage::getNextSuggestions() const
 {
+    if (usesSectionsRow())
+    {
+        // (0.93.0) What the SECTIONS row holds so far, as the sections of the song.
+        std::vector<pr7s::BuiltSection> song;
+        const auto places = studio.getSongSectionPlaces();
+        const auto& blocks = studio.getSongSections().blocks;
+        for (size_t i = 0; i < blocks.size(); ++i)
+        {
+            pr7s::BuiltSection b;
+            b.kind = pr7s::drumSections()[(size_t) pr7s::composerSectionFor (blocks[i].name)];
+            b.start = places[i].start;
+            b.end = places[i].end;
+            b.riff = state.lane (ComposerLayer::guitar).style;
+            b.riffSettings = studio.getRiffSettings();
+            b.variation = state.lane (ComposerLayer::drums).variation;
+            song.push_back (b);
+        }
+        return pr7s::suggestNextSections (song, studio.getGuitarStyle(), pr7s::composerStyleCount (ComposerLayer::guitar));
+    }
     // (0.75.0) With your riff, it's one of the riffs: the same one comes back, a new one is the next round.
     return pr7s::suggestNextSections (studio.getBuiltSections(), studio.getGuitarStyle(),
                                       pr7s::composerStyleCount (ComposerLayer::guitar) + (studio.getComposerRiff().has_value() ? 1 : 0));
@@ -1364,9 +1412,21 @@ std::vector<int> ComposerPage::buildSection()
     // The best next section chosen for you (change it with SECTION or the NEXT keys).
     if (const auto target = getTargetPlace())
     {
+        const auto& blocks = studio.getSongSections().blocks;
         const auto index = studio.getSongSections().indexOf (targetBlock);
-        status = pr7s::sectionLabel (studio.getSongSections().blocks, index) + " built (" + juce::String (target->bars)
-               + " bars). Double-click another block on the SECTIONS row to compose it";
+        const auto done = pr7s::sectionLabel (blocks, index) + " built";
+        // (0.93.0) On to the next block not built yet.
+        auto next = -1;
+        for (int i = index + 1; i < (int) blocks.size() && next < 0; ++i)
+            if (blocks[(size_t) i].recipe.isEmpty())
+                next = i;
+        if (next >= 0)
+        {
+            targetSection (blocks[(size_t) next].id);
+            status = done + ". Next: " + pr7s::sectionLabel (blocks, next);
+        }
+        else
+            status = done + ". The blocks after it are built: + ADD for more";
     }
     else if (const auto next = getNextSuggestions(); ! next.empty())
     {
@@ -1427,11 +1487,16 @@ void ComposerPage::refreshSong()
         const auto which = studio.getComposerRiff().has_value() && riff == myRiffIndex ? juce::String (" (MY RIFF)")
                          : ! built.empty() && riff == built.back().riff ? juce::String (" (SAME RIFF)")
                          : ! built.empty() ? juce::String (" (NEW RIFF)") : juce::String();
-        auto* key = nextKeys.add (new juce::TextButton ("NEXT: " + pr7s::sectionWord (nextShown[i].kind).toUpperCase() + which));
+        const auto row = usesSectionsRow();
+        auto* key = nextKeys.add (new juce::TextButton ((row ? "+ ADD: " : "NEXT: ") + pr7s::sectionWord (nextShown[i].kind).toUpperCase() + (row ? juce::String() : which)));
         pedal (*key);
-        key->setTooltip (nextShown[i].reason);
-        key->setToggleState (nextShown[i].kind == getSection() && i == 0, juce::dontSendNotification);
-        key->onClick = [this, next = nextShown[i]] { chooseNext (next); };
+        key->setTooltip (row ? "Add a " + pr7s::sectionWord (nextShown[i].kind).toLowerCase() + " after the last block and compose it: " + nextShown[i].reason
+                             : nextShown[i].reason);
+        key->setToggleState (! row && nextShown[i].kind == getSection() && i == 0, juce::dontSendNotification);
+        if (row)
+            key->onClick = [this, next = nextShown[i]] { addNextSection (next); };
+        else
+            key->onClick = [this, next = nextShown[i]] { chooseNext (next); };
         addAndMakeVisible (key);
     }
     resized();
@@ -1647,6 +1712,15 @@ void ComposerPage::mouseDown (const juce::MouseEvent& e)
         showChordMenu (chord);
         return;
     }
+    if (songArea.contains (e.getPosition()) && ! e.mods.isPopupMenu() && usesSectionsRow())
+    {
+        for (const auto& [r, index] : songChips())
+            if (r.contains (e.getPosition()))
+            {
+                targetSection (studio.getSongSections().blocks[(size_t) index].id);   // (0.93.0: compose that block)
+                return;
+            }
+    }
     if (songArea.contains (e.getPosition()) && e.mods.isPopupMenu())
     {
         juce::PopupMenu menu;
@@ -1847,6 +1921,36 @@ void ComposerPage::paintSong (juce::Graphics& g) const
     g.drawText ("SONG", area.removeFromLeft (52), juce::Justification::centredLeft, false);
     if (! nextKeys.isEmpty())
         area.setRight (nextKeys.getFirst()->getX() - 12);
+    if (usesSectionsRow())
+    {
+        // (0.93.0) The SECTIONS row's blocks: the one composed lit, the built ones with a mark.
+        const auto& blocks = studio.getSongSections().blocks;
+        const auto places = studio.getSongSectionPlaces();
+        for (const auto& [r, index] : songChips())
+        {
+            const auto& b = blocks[(size_t) index];
+            const auto kind = pr7s::drumSections()[(size_t) pr7s::composerSectionFor (b.name)];
+            const auto colour = kind == pr7s::DrumSection::chorus ? pr7s::FamilyColours::pink
+                              : kind == pr7s::DrumSection::verse || kind == pr7s::DrumSection::bridge ? pr7s::FamilyColours::orange
+                              : pr7s::FamilyColours::red;
+            const auto lit = b.id == targetBlock;
+            const auto rf = r.toFloat();
+            g.setColour (colour.withAlpha (lit ? 0.6f : 0.22f));
+            g.fillRoundedRectangle (rf, 4.0f);
+            g.setColour (lit ? juce::Colour (0xfff4eeea) : colour);
+            g.drawRoundedRectangle (rf.reduced (0.5f), 4.0f, lit ? 2.0f : 1.2f);
+            g.setColour (lit ? juce::Colours::white : ParagonColours::text);
+            g.setFont (ParagonLookAndFeel::titleFont (15.0f));
+            g.drawText (pr7s::sectionLabel (blocks, index).toUpperCase(), rf.reduced (8.0f, 2.0f).removeFromTop (rf.getHeight() * 0.55f),
+                        juce::Justification::bottomLeft, false);
+            g.setColour (ParagonColours::textDim);
+            g.setFont (ParagonLookAndFeel::titleFont (12.0f));
+            g.drawText ("BAR " + juce::String (places[(size_t) index].firstBar + 1) + ", " + juce::String (b.bars) + " BARS"
+                            + (b.recipe.isNotEmpty() ? "  BUILT" : ""),
+                        rf.reduced (8.0f, 2.0f).removeFromBottom (rf.getHeight() * 0.45f), juce::Justification::topLeft, false);
+        }
+        return;
+    }
     const auto& built = studio.getBuiltSections();
     if (built.empty())
     {
@@ -1886,6 +1990,37 @@ void ComposerPage::paintSong (juce::Graphics& g) const
         g.drawText ("BAR " + juce::String (bar) + ", " + juce::String (bars) + " BARS", r.reduced (8.0f, 2.0f).removeFromBottom (r.getHeight() * 0.45f),
                     juce::Justification::topLeft, false);
     }
+}
+
+std::vector<std::pair<juce::Rectangle<int>, int>> ComposerPage::songChips() const
+{
+    std::vector<std::pair<juce::Rectangle<int>, int>> out;
+    if (songArea.isEmpty() || ! usesSectionsRow())
+        return out;
+    auto area = songArea.reduced (12, 6);
+    area.removeFromLeft (52);
+    if (! nextKeys.isEmpty())
+        area.setRight (nextKeys.getFirst()->getX() - 12);
+    const auto count = (int) studio.getSongSections().blocks.size();
+    const auto chip = 118;
+    const auto fits = juce::jmax (1, (area.getWidth() + 6) / (chip + 6));
+    // The one composed kept in view: from the start, or so that it's the last shown.
+    const auto target = juce::jmax (0, studio.getSongSections().indexOf (targetBlock));
+    const auto first = juce::jlimit (0, juce::jmax (0, count - fits), target - fits + 1);
+    for (int i = first; i < count && i < first + fits; ++i)
+    {
+        out.push_back ({ area.removeFromLeft (chip), i });
+        area.removeFromLeft (6);
+    }
+    return out;
+}
+
+juce::Rectangle<int> ComposerPage::getSongChipBounds (int blockIndex) const
+{
+    for (const auto& [r, index] : songChips())
+        if (index == blockIndex)
+            return r;
+    return {};
 }
 
 void ComposerPage::paintLane (juce::Graphics& g, ComposerLayer l, const Lane& lane) const

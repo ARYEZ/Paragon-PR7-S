@@ -841,6 +841,15 @@ TEST_CASE ("Snapshot: the composer suite with a song built (0.74.0)", "[.][snaps
             page.setChord (1, Chord { 2, Chord::Type::minor, Chord::Tension::none, -1 });
             page.buildSection();
         }
+        else if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SECTIONS", {}) == "1")
+        {
+            // (0.93.0) A SECTIONS row (the verse and chorus coming back linked); the intro and verse built: on to the chorus.
+            for (const auto& [name, bars] : std::vector<std::pair<juce::String, int>> { { "Intro", 4 }, { "Verse", 8 }, { "Chorus", 8 }, { "Verse", 8 }, { "Chorus", 8 }, { "Outro", 4 } })
+                studio.appendSongSection (name, bars);
+            page.aimAtSectionsRow();
+            page.buildSection();
+            page.buildSection();
+        }
         else
         {
         page.setSection (DrumSection::intro);

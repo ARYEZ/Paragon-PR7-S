@@ -2,6 +2,22 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.93.0
+
+**The composer works block by block** (your song engine overhaul, part four, the last). With a SECTIONS row in the song, the composer follows it:
+
+- **The SONG strip shows your blocks.** Each block of the SECTIONS row is a chip in the composer's SONG strip, with its bar, its length and BUILT once it has music from the composer. The block you're composing is lit; click any chip to compose that block.
+- **The composer opens on the first block not yet built**, with its section, bars and chords.
+- **BUILD moves on by itself.** After BUILD INTO a block, the composer goes to the next block not yet built, with its section set, ready for the next BUILD. The song is built front to back, part by part.
+- **NEXT became + ADD.** The suggested next parts (a chorus after a verse, a bridge after a second chorus, an ending...) add a block of that kind at the end of the row and aim the composer at it. A name already in the song arrives as a linked copy, with its music.
+- **Songs without a SECTIONS row** keep the SONG strip as it was: sections built one after another at the playhead.
+
+That finishes the four parts we agreed:
+1. **Blocks on the SECTIONS row** that carry their music when moved.
+2. **Linked copies.**
+3. **Chords rewriting the music.**
+4. **The composer working block by block.**
+
 ## 0.92.0
 
 **Change a section's chords and its music follows** (your song engine overhaul, part three). When the chords inside a block on the SECTIONS row change, the music in that block is rewritten to fit. That covers a chord swapped by hand on the chord track, a new progression, or the same chords in a different order.

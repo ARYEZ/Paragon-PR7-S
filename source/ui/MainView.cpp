@@ -2598,6 +2598,7 @@ void MainView::openComposer()
             w->toFront (true);
     };
     composerWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->composerWindow.reset(); }); };
+    composerWindow->getPage().aimAtSectionsRow();   // (0.93.0: a song with a SECTIONS row: its first block not built yet)
     composerWindow->centreAroundComponent (this, composerWindow->getWidth(), composerWindow->getHeight());
     composerWindow->setVisible (true);
 }

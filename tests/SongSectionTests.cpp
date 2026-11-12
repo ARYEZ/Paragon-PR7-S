@@ -546,3 +546,44 @@ TEST_CASE ("0.92.0: a linked chorus's chord changed: every copy rewritten", "[se
     CHECK (again->songSections.blocks[2].recipe.isNotEmpty());
     CHECK (again->songSections.blocks[2].lanes.size() == 1);
 }
+
+TEST_CASE ("0.93.0: the composer block by block: aimed at the first block, BUILD moves on, + ADD adds and composes, chips compose", "[sections][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    studio.appendSongSection ("Intro", 4);
+    studio.appendSongSection ("Verse", 8);
+    studio.appendSongSection ("Chorus", 8);
+    MainView view (studio);
+    view.setSize (1600, 900);
+    view.openComposer();
+    auto* window = view.getComposerWindow();
+    REQUIRE (window != nullptr);
+    auto& page = window->getPage();
+    page.setSize (1700, 940);
+    const auto& blocks = studio.getSongSections().blocks;
+    REQUIRE (page.usesSectionsRow());
+    CHECK (page.getTargetSection() == blocks[0].id);
+
+    // BUILD into the intro: it keeps its recipe, the composer moves on to the verse.
+    REQUIRE_FALSE (page.buildSection().empty());
+    CHECK (blocks[0].recipe.isNotEmpty());
+    CHECK (page.getTargetSection() == blocks[1].id);
+    CHECK (page.getSection() == DrumSection::verse);
+
+    // A chip on the SONG strip composes its block.
+    const auto chip = page.getSongChipBounds (2);
+    REQUIRE_FALSE (chip.isEmpty());
+    const auto at = chip.getCentre().toFloat();
+    page.mouseDown (mouseAt (page, at, at));
+    CHECK (page.getTargetSection() == blocks[2].id);
+
+    // + ADD: the suggestion's block added at the end and composed.
+    REQUIRE (page.getNumNextKeys() > 0);
+    const auto before = blocks.size();
+    page.getNextKey (0)->onClick();
+    REQUIRE (studio.getSongSections().blocks.size() == before + 1);
+    CHECK (page.getTargetSection() == studio.getSongSections().blocks.back().id);
+    CHECK (page.getNextKey (0)->getButtonText().startsWith ("+ ADD"));
+    window->setVisible (false);
+}
