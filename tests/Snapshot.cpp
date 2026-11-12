@@ -604,6 +604,26 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
                 studio.dispatchPendingMessages();
                 break;
             }
+    // PARAGON_SNAPSHOT_CHORDCLIPS=1 (0.85.3, with PARAGON_SNAPSHOT_CHORDS): chords edited as clips: C major on the key
+    // strip, Am shortened to half a bar (a gap after it), F lengthened over G7, then Am copied as Ab onto bar 9:
+    // out of the key, the warning over the chords.
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_CHORDCLIPS", {}).isNotEmpty())
+    {
+        studio.setChordTrackKey (0.0, pr7s::Key { 0, 0, false });
+        studio.resizeChordEvent (1, 4.0, 6.0);
+        studio.resizeChordEvent (2, 8.0, 14.0);
+        auto& arrange = view.getArrangeView();
+        arrange.selectChords ({ 1 });
+        arrange.copySelectedChords (false);
+        studio.setChordEventChord (1, { 8, pr7s::Chord::Type::major, pr7s::Chord::Tension::none, -1 });
+        arrange.selectChords ({ 1 });
+        arrange.copySelectedChords (false);
+        studio.setChordEventChord (1, { 9, pr7s::Chord::Type::minor, pr7s::Chord::Tension::none, -1 });
+        studio.setPosition (32.0);
+        arrange.pasteChords();
+        studio.setPosition (22.0);
+        studio.dispatchPendingMessages();
+    }
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_DROP", {}).isNotEmpty())
     {
         // A MIDI file being dragged over the lead's track (0.18.1): where it will land, lit.

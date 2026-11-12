@@ -835,9 +835,13 @@ void ComposerPage::writeChordsAt (const std::vector<pr7s::ChordSpan>& placed)
 {
     if (state.fromChordTrack || ! state.toChordTrack || placed.empty())
         return;
+    // (0.85.3) The key chosen here goes onto the chord track's key strip with the chords: moving or
+    // changing a chord there then shows when it leaves that key.
+    const auto keyOnTrack = [this, start = placed.front().start] { studio.setChordTrackKey (start, state.key); };
     if (! fromRiff && chordOverrides.empty())
     {
         studio.addProgressionToChordTrack (pr7s::composerSteps (state), placed.front().start);
+        keyOnTrack();
         return;
     }
     std::vector<pr7s::ProgressionStep> steps;
@@ -849,6 +853,7 @@ void ComposerPage::writeChordsAt (const std::vector<pr7s::ChordSpan>& placed)
         steps.push_back (step);
     }
     studio.addProgressionToChordTrack (steps, placed.front().start);
+    keyOnTrack();
 }
 
 void ComposerPage::setFromRiff (bool on)

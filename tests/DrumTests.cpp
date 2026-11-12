@@ -141,6 +141,7 @@ TEST_CASE ("Drum maps are saved with the song, and a track keeps its map", "[dru
 TEST_CASE ("A drum map plays the notes as its O-notes, on its channels, muted sounds silent; keys played in are its I-notes", "[drums][engine]")
 {
     Studio studio (false);
+    studio.setRecordModes (Project::RecordModes { Project::RecordModes::Audio::keepHistory, Project::RecordModes::Midi::newParts, Project::RecordModes::MidiCycle::mix });   // (the default before 0.85.3)
     const auto trackId = studio.getProject().tracks[0].id;
     auto instrument = std::make_unique<Probe>();
     auto* probe = instrument.get();

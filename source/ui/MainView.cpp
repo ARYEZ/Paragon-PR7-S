@@ -1014,6 +1014,26 @@ bool MainView::handleKey (const juce::KeyPress& key)
             return true;
         }
     }
+    // (0.85.3) Chords selected on the chord track: Ctrl+C / X / D on them, Ctrl+V pastes them at the playhead
+    // when they were copied last.
+    if (! (isKeyEditorOpen() && keysToEditor))
+    {
+        const auto cmd = mods.isCommandDown();
+        if (cmd && ! mods.isShiftDown() && (letter == 'C' || letter == 'X') && arrange.hasSelectedChordEvents())
+        {
+            arrange.copySelectedChords (letter == 'X');
+            copiedLast = Copied::chords;
+            rangeCopiedLast = false;
+            return true;
+        }
+        if (cmd && ! mods.isShiftDown() && letter == 'D' && arrange.hasSelectedChordEvents())
+        {
+            arrange.duplicateSelectedChords();
+            return true;
+        }
+        if (cmd && ! mods.isShiftDown() && letter == 'V' && copiedLast == Copied::chords && arrange.hasChordClip())
+            return arrange.pasteChords();
+    }
     // Parts (0.9.2): Ctrl+C / X with parts selected (unless the last click was
     // in the key editor) copies or cuts them; Ctrl+V pastes what was copied
     // last (parts at the playhead on the selected track), Alt+V at its origin.
@@ -1237,7 +1257,10 @@ bool MainView::handleKey (const juce::KeyPress& key)
     }
     if (mods.isAltDown() && ! mods.isCommandDown() && letter == 'X')
     {
-        arrange.splitAtCursor();
+        if (arrange.hasSelectedChordEvents())   // (0.85.3) the selected chords, at the playhead
+            arrange.splitChordsAt (studio.getEngine().getPosition());
+        else
+            arrange.splitAtCursor();
         return true;
     }
     // Zoom and Auto-Scroll (the manual's keys: H in, G out, Shift+F the whole song, F Auto-Scroll).
@@ -2789,9 +2812,24 @@ void MainView::openHub()
     hub.setKeyCommands (&keyMap);   // (HUMANIZE's key, 0.20.1)
     const auto closeHub = [safe = juce::Component::SafePointer<MainView> (this)]
     {
-        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->hubWindow.reset(); });
+        juce::MessageManager::callAsync ([safe]
+        {
+            if (safe == nullptr)
+                return;
+            safe->hubWindow.reset();
+            if (safe->atHub)   // (0.85.3) a song chosen in the Hub: the studio comes back with it
+                safe->showStudioAgain();
+        });
     };
-    window->onClose = closeHub;
+    // (0.85.3) The Hub's X: with the studio hidden (its own X brought you here), the program ends;
+    // opened over a song (HUB), it only closes.
+    window->onClose = [safe = juce::Component::SafePointer<MainView> (this), closeHub]
+    {
+        if (safe != nullptr && safe->atHub && safe->onQuit)
+            safe->whenSongCanGo ([safe] { if (safe != nullptr && safe->onQuit) safe->onQuit(); });
+        else
+            closeHub();
+    };
     hub.onOpen = [this, closeHub] (const juce::File& file)
     {
         whenSongCanGo ([this, file, closeHub] { openSong (file); closeHub(); });
@@ -2831,6 +2869,55 @@ void MainView::openHub()
     hub.onSettings = [this] { openSettings(); };
     hub.onSaveTemplate = [this] { saveAsTemplate(); };   // (0.78.2)
     hubWindow = std::move (window);
+}
+
+void MainView::closeToHub()
+{
+    whenSongCanGo ([safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        if (safe == nullptr)
+            return;
+        if (safe->studio.getEngine().isPlaying() || safe->studio.getEngine().isRecording())
+            safe->studio.stop();
+        safe->studio.newProject();   // (the song closes: what's left is an empty one, unchanged)
+        safe->showHubAlone();
+    });
+}
+
+void MainView::showHubAlone()
+{
+    // The song's tool windows close (they'd float over the Hub with nothing behind them); the
+    // MIDI editor's, the mixer's and the pads' own windows hide and come back with the studio.
+    for (auto* w : { &keysWindow, &tempoEditorWindow, &drumMapWindow, &automationWindow, &alignmentWindow, &variAudioWindow,
+                     &tempoDetectionWindow, &markersWindow, &historyWindow })
+        w->reset();
+    progressionsWindow.reset();
+    keyCheckWindow.reset();
+    composerWindow.reset();
+    bandRecordWindow.reset();
+    eqWindow.reset();
+    mediaBayWindow.reset();
+    for (auto* zone : zones())
+        if (zone->window != nullptr)
+            zone->window->setVisible (false);
+    atHub = true;
+    if (auto* top = getTopLevelComponent(); top != nullptr && top != this)
+        top->setVisible (false);
+    openHub();
+}
+
+void MainView::showStudioAgain()
+{
+    atHub = false;
+    if (auto* top = getTopLevelComponent(); top != nullptr && top != this)
+    {
+        top->setVisible (true);
+        top->toFront (true);
+    }
+    for (auto* zone : zones())
+        if (zone->window != nullptr && zone->open && zone->inWindow)
+            zone->window->setVisible (true);
+    grabKeyboardFocus();
 }
 
 void MainView::saveAsTemplate()

@@ -347,6 +347,7 @@ TEST_CASE ("Recording: what's played becomes a part on the armed track, on its b
 TEST_CASE ("Recording in a cycle: every pass's notes go into one part, in the cycle's place", "[engine][record]")
 {
     Studio studio (false);
+    studio.setRecordModes (Project::RecordModes { Project::RecordModes::Audio::keepHistory, Project::RecordModes::Midi::newParts, Project::RecordModes::MidiCycle::mix });   // (the default before 0.85.3)
     auto& engine = studio.getEngine();
     const auto trackId = studio.getProject().tracks[0].id;
     studio.setCycle (0.0, 4.0);

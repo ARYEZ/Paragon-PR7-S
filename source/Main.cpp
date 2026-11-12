@@ -47,7 +47,7 @@ public:
         // The Hub at start (0.12.0), unless a song was opened by double-clicking it.
         if (! opened && studio->getLibrary().opensAtStart())
             if (auto* view = dynamic_cast<MainView*> (window->getContentComponent()))
-                juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (view)] { if (safe != nullptr) safe->openHub(); });
+                juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (view)] { if (safe != nullptr) safe->showHubAlone(); });
         pr7s::SessionLog::note ("Ready.");
 
         // Last time it didn't close as it should: offer its log.
@@ -99,10 +99,12 @@ public:
     {
         if (studio != nullptr && studio->isRendering())
             return;   // (a render runs: quitting waits until it's done)
-        if (window != nullptr)
-            window->closeButtonPressed();
-        else
+        // (0.85.3) Quitting from the system (the taskbar's Close window, a log-off) quits, not back to the Hub.
+        auto* view = window != nullptr ? dynamic_cast<MainView*> (window->getContentComponent()) : nullptr;
+        if (view == nullptr || view->isAtHub())
             quit();
+        else
+            view->whenSongCanGo ([this] { quit(); });
     }
 
     void anotherInstanceStarted (const juce::String&) override {}
@@ -126,6 +128,7 @@ private:
             setUsingNativeTitleBar (true);
             auto* view = new MainView (studio);
             view->onTitleChange = [this] (const juce::String& title) { setName (title); };
+            view->onQuit = [this] { app.quit(); };   // (0.85.3: the Hub's X, with the studio closed)
             setContentOwned (view, false);
             setResizable (true, true);
             setResizeLimits (1100, 680, 32768, 16384);   // (wide enough for three 4K screens side by side)
@@ -141,27 +144,11 @@ private:
         {
             if (app.studio != nullptr && app.studio->isRendering())
                 return;   // (a render runs: closing waits until it's done)
-            auto* view = dynamic_cast<MainView*> (getContentComponent());
-            auto& studio = *app.studio;
-            if (view == nullptr || ! studio.isModified())
-            {
+            // (0.85.3, the owner) Back to the Hub (the song closes, the save question first); the Hub's X quits.
+            if (auto* view = dynamic_cast<MainView*> (getContentComponent()))
+                view->closeToHub();
+            else
                 app.quit();
-                return;
-            }
-            // Unsaved changes: save, don't save, or carry on.
-            juce::AlertWindow::showYesNoCancelBox (juce::MessageBoxIconType::QuestionIcon, "Save the song?",
-                                                   "This song has changes that aren't saved.", "Save", "Don't save", "Cancel", nullptr,
-                                                   juce::ModalCallbackFunction::create ([this, view] (int result)
-                                                   {
-                                                       if (result == 1)   // (after the box has gone: a chooser inside its answer closes with it on Windows)
-                                                           juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (view), this]
-                                                           {
-                                                               if (safe != nullptr)
-                                                                   safe->saveProject ([this] (bool saved) { if (saved) app.quit(); });
-                                                           });
-                                                       else if (result == 2)
-                                                           app.quit();
-                                                   }));
         }
 
         ~MainWindow() override

@@ -465,10 +465,16 @@ namespace pr7s
             enum class Audio { keepHistory, cycleHistoryReplace, replace };
             enum class Midi { newParts, merge, replace };
             enum class MidiCycle { mix, overwrite, keepLast, stacked, mixStacked };
-            Audio audio = Audio::keepHistory;
-            Midi midi = Midi::newParts;
-            MidiCycle midiCycle = MidiCycle::mix;
+            // (0.85.3, the owner: one take by default, recorded over again in place; takes on lanes
+            // still there when asked for: `onLanes`.) Before: keepHistory, newParts, mix.
+            Audio audio = Audio::replace;
+            Midi midi = Midi::replace;
+            MidiCycle midiCycle = MidiCycle::keepLast;
             bool operator== (const RecordModes&) const = default;
+            // Every take kept, each on a lane of its own (the manual's defaults).
+            static RecordModes onLanes() { return { Audio::keepHistory, Midi::newParts, MidiCycle::stacked }; }
+            bool keepsTakesOnLanes() const noexcept { return audio == Audio::keepHistory || midi == Midi::newParts
+                                                             || midiCycle == MidiCycle::stacked || midiCycle == MidiCycle::mixStacked; }
         };
         RecordModes recordModes;
         // Hitpoints (0.32.0, the manual's Hitpoints section): found in each recording; how

@@ -79,6 +79,13 @@ public:
     // The Hub (0.12.0): the start window, HUB in the header. What it asks for
     // is done here, after the unsaved-changes question; it closes once a song is open.
     void openHub();
+    // (0.85.3, the owner) The studio window's X: the song closes (after the unsaved-changes question)
+    // and the Hub shows on its own; the Hub's X then quits. A song opened from the Hub brings the
+    // studio back. `showHubAlone` is the same without closing the song (at start).
+    void closeToHub();
+    void showHubAlone();
+    bool isAtHub() const noexcept { return atHub; }
+    std::function<void()> onQuit;   // (Main: the program ends)
     // The Tempo Track Editor (0.13.0, Ctrl+T as the manual has it): opened, or closed if it's open.
     void toggleTempoEditor();
     // The Drum Map Setup (0.26.0): its window (the MIDI editor's MAP menu, the drum list's menu, the Inspector's DRUM MAP).
@@ -311,6 +318,8 @@ private:
     std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow, drumMapWindow, automationWindow, alignmentWindow, variAudioWindow, tempoDetectionWindow,
                                           markersWindow, historyWindow;
     std::unique_ptr<juce::MouseListener> historyOpener;   // (0.83.0) right-click on UNDO / REDO
+    bool atHub = false;   // (0.85.3) the studio window hidden, the Hub alone
+    void showStudioAgain();
 public:
     bool historyRightClick = false;
 private:
@@ -380,7 +389,7 @@ private:
     bool inspectorShown = true;
     bool keysToEditor = false;
     bool rangeCopiedLast = false;
-    enum class Copied { none, range, notes, parts };
+    enum class Copied { none, range, notes, parts, chords };
     Copied copiedLast = Copied::none;   // what Ctrl+V pastes in the arrangement
     bool wasWide = false;            // the last layout's: turning wide opens the mixer, short, racks hidden   // Ctrl+V: a range's contents (in the arrangement), else notes (the key editor)
     juce::ScrollBar arrangeAcross { false }, arrangeDown { true };

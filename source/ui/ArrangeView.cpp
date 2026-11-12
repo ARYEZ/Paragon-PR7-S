@@ -78,6 +78,12 @@ void ArrangeView::changeListenerCallback (juce::ChangeBroadcaster*)
 
 void ArrangeView::timerCallback()
 {
+    if (chordWarning.isNotEmpty() && juce::Time::getMillisecondCounter() > chordWarningUntil)
+    {
+        chordWarning.clear();
+        const auto area = getChordArea();
+        repaint (area.withHeight (area.getHeight() * 2.0f + 10.0f).getSmallestIntegerContainer().expanded (2));   // (the key strip under it too)
+    }
     followPlayhead();
     advancePlayhead();
     refreshPlayhead();
@@ -1379,6 +1385,16 @@ void ArrangeView::updateCursor (const juce::MouseEvent& event)
                                            : juce::MouseCursor::NormalCursor);
         return;
     }
+    // (0.85.3) A chord's edge: it can be dragged longer or shorter.
+    if (const auto row = rowAt (event.position.y); row && row->kind == Timeline::Row::Kind::chords && tool != Tool::split && tool != Tool::glue)
+    {
+        auto atStart = false;
+        if (chordEdgeAt (event.position, atStart) >= 0)
+        {
+            setMouseCursor (juce::MouseCursor::LeftRightResizeCursor);
+            return;
+        }
+    }
     // (0.30.0) COMP over a split or a take's edge: it can be dragged.
     if (tool == Tool::comp && ! event.mods.isCommandDown() && takeEdgeAt (event.position))
     {
@@ -1706,7 +1722,7 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
         signatureDrag (event);
         return;
     }
-    if (drag == Drag::chordMove)
+    if (drag == Drag::chordMove || drag == Drag::chordStart || drag == Drag::chordEnd)
     {
         chordDragTo (event);
         return;
@@ -2020,7 +2036,7 @@ void ArrangeView::mouseUp (const juce::MouseEvent& event)
         signatureUp();
         return;
     }
-    if (drag == Drag::chordMove)
+    if (drag == Drag::chordMove || drag == Drag::chordStart || drag == Drag::chordEnd)
     {
         chordUp();
         return;
@@ -4647,9 +4663,14 @@ juce::Rectangle<float> ArrangeView::getChordArea() const
     return {};
 }
 
+const pr7s::ChordTrack& ArrangeView::shownChordTrack() const
+{
+    return chordPreview.has_value() ? *chordPreview : studio.getChordTrack();
+}
+
 juce::Rectangle<float> ArrangeView::getChordEventBounds (int index) const
 {
-    const auto& track = studio.getChordTrack();
+    const auto& track = shownChordTrack();
     if (! juce::isPositiveAndBelow (index, (int) track.events.size()))
         return {};
     const auto area = getChordArea();
@@ -4660,7 +4681,7 @@ juce::Rectangle<float> ArrangeView::getChordEventBounds (int index) const
 
 void ArrangeView::paintChords (juce::Graphics& g, const Timeline::Row& row)
 {
-    const auto& track = studio.getChordTrack();
+    const auto& track = shownChordTrack();
     const auto& project = studio.getProject();
     const auto rowArea = juce::Rectangle<float> (0.0f, rowTop (row), (float) getWidth(), (float) row.height);
     const auto chords = getChordArea();
@@ -4677,9 +4698,22 @@ void ArrangeView::paintChords (juce::Graphics& g, const Timeline::Row& row)
         r = r.reduced (1.0f, 0.0f);
         g.setColour (pr7s::FamilyColours::orange.withAlpha (inKey ? 0.22f : 0.12f));
         g.fillRoundedRectangle (r, 3.0f);
-        g.setColour (selected ? juce::Colour (0xfff4eeea) : pr7s::FamilyColours::orange.withAlpha (0.7f));
-        g.drawRoundedRectangle (r, 3.0f, selected ? 2.0f : 1.0f);
+        // (0.85.3) Out of the key in force: a pink edge (and OUT OF KEY when there's room), as well as the pink numeral.
+        g.setColour (selected ? juce::Colour (0xfff4eeea) : inKey ? pr7s::FamilyColours::orange.withAlpha (0.7f) : pr7s::FamilyColours::pink);
+        g.drawRoundedRectangle (r, 3.0f, selected || ! inKey ? 2.0f : 1.0f);
         g.fillRect (r.withWidth (2.0f));   // (where it starts)
+        if (! inKey && r.getWidth() > 110.0f)
+        {
+            g.setColour (pr7s::FamilyColours::pink);
+            g.setFont (juce::Font (ParagonLookAndFeel::textFont (10.0f)));
+            g.drawText ("OUT OF KEY", r.reduced (6.0f, 3.0f), juce::Justification::topRight, false);
+        }
+        // The edges a drag resizes: a faint grip on the selected one.
+        if (selected && r.getWidth() >= 16.0f)
+        {
+            g.setColour (juce::Colour (0xfff4eeea).withAlpha (0.5f));
+            g.fillRect (r.withX (r.getRight() - 3.0f).withWidth (2.0f).reduced (0.0f, r.getHeight() * 0.3f));
+        }
         auto text = r.reduced (6.0f, 2.0f);
         g.setColour (ParagonColours::text);
         g.setFont (ChordUi::chordFont (juce::jlimit (11.0f, 18.0f, text.getHeight() * 0.5f)));
@@ -4713,7 +4747,153 @@ void ArrangeView::paintChords (juce::Graphics& g, const Timeline::Row& row)
         g.drawText ((ChordUi::spokenKey (track.scales[i].key) + (track.autoScales ? "" : "  (set by hand)")).toUpperCase(), r.withTrimmedLeft (6.0f),
                     juce::Justification::centredLeft, true);
     }
+    // (0.85.3) What the last edit did to the key, for a few seconds, in the key strip under the chords
+    // (over the chords it hid them). The chord's name in the chords' font (Bebas has no small letters).
+    if (chordWarning.isNotEmpty())
+    {
+        const auto visible = getLocalBounds().toFloat();
+        auto banner = juce::Rectangle<float> (visible.getX(), strip.getY() - 1.0f, visible.getWidth(), strip.getHeight() + 2.0f)
+                          .withTrimmedLeft (juce::jmax (0.0f, visible.getWidth() - 760.0f)).withTrimmedRight (8.0f);
+        g.setColour (juce::Colour (0xff0b090c));
+        g.fillRect (banner);
+        g.setColour (pr7s::FamilyColours::pink);
+        g.drawRect (banner, 1.0f);
+        const auto height = juce::jlimit (9.0f, 13.0f, banner.getHeight() * 0.8f);
+        juce::AttributedString text;
+        const auto at = chordWarningName.isNotEmpty() ? chordWarning.indexOf (chordWarningName) : -1;
+        if (at >= 0)
+        {
+            text.append (chordWarning.substring (0, at), juce::Font (ParagonLookAndFeel::textFont (height)), pr7s::FamilyColours::pink);
+            text.append (chordWarningName, ChordUi::chordFont (height * 1.0f), pr7s::FamilyColours::pink);
+            text.append (chordWarning.substring (at + chordWarningName.length()), juce::Font (ParagonLookAndFeel::textFont (height)), pr7s::FamilyColours::pink);
+        }
+        else
+            text.append (chordWarning, juce::Font (ParagonLookAndFeel::textFont (height)), pr7s::FamilyColours::pink);
+        text.setJustification (juce::Justification::centredLeft);
+        text.setWordWrap (juce::AttributedString::none);
+        text.draw (g, banner.reduced (8.0f, 0.0f));
+    }
     juce::ignoreUnused (project);
+}
+
+int ArrangeView::chordEdgeAt (juce::Point<float> at, bool& atStart) const
+{
+    const auto& track = shownChordTrack();
+    for (int i = (int) track.events.size(); --i >= 0;)
+    {
+        const auto r = getChordEventBounds (i);
+        if (! r.contains (at) || r.getWidth() < 16.0f)
+            continue;
+        if (at.x >= r.getRight() - chordEdgeGrab)
+        {
+            atStart = false;
+            return i;
+        }
+        if (at.x <= r.getX() + chordEdgeGrab)
+        {
+            atStart = true;
+            return i;
+        }
+    }
+    return -1;
+}
+
+void ArrangeView::selectChordsAt (const std::vector<int>& indices)
+{
+    chordSelection.clear();
+    for (const auto i : indices)
+        if (i >= 0)
+            chordSelection.push_back (i);
+}
+
+void ArrangeView::noteChordKeyChange (const pr7s::ChordTrack& before)
+{
+    // (0.85.3, the owner: "it needs to tell me if something I do makes it go out of key")
+    const auto& after = studio.getChordTrack();
+    const auto keyAt = [] (const pr7s::ChordTrack& t, double beat, const pr7s::Key& fallback) { return t.keyAt (beat, fallback); };
+    const auto fallback = studio.getProject().chordPads.key();
+    const auto bar = [this] (double beat) { return studio.getProject().signatures().barAt (beat) + 1; };
+    // A chord out of the key that wasn't before (or wasn't there).
+    std::vector<juce::String> outside;
+    auto name = juce::String();
+    for (const auto& e : after.events)
+    {
+        const auto key = keyAt (after, e.beat, fallback);
+        if (e.chord.isInKey (key))
+            continue;
+        const auto wasOut = std::any_of (before.events.begin(), before.events.end(), [&] (const pr7s::ChordEvent& b)
+        {
+            return std::abs (b.beat - e.beat) < 1.0e-6 && b.chord == e.chord && ! b.chord.isInKey (keyAt (before, b.beat, fallback));
+        });
+        if (! wasOut)
+        {
+            if (outside.empty())
+                name = e.chord.name (key);
+            outside.push_back (e.chord.name (key) + " (BAR " + juce::String (bar (e.beat)) + ") ISN'T IN " + ChordUi::spokenKey (key).toUpperCase());
+        }
+    }
+    juce::String text;
+    if (! outside.empty())
+        text = "OUT OF KEY: " + outside.front() + (outside.size() > 1 ? ", AND " + juce::String ((int) outside.size() - 1) + " MORE" : juce::String());
+    // The scales following the chords: the key itself moved.
+    else if (after.autoScales && ! (after.scales == before.scales) && ! after.scales.empty())
+    {
+        for (const auto& sc : after.scales)
+        {
+            const auto was = before.scales.empty() ? std::optional<pr7s::Key> {} : std::optional<pr7s::Key> (keyAt (before, sc.beat, fallback));
+            if (! was.has_value() || ! (*was == sc.key))
+            {
+                text = "THE KEY CHANGES: " + ChordUi::spokenKey (sc.key).toUpperCase() + " FROM BAR " + juce::String (bar (sc.beat))
+                     + " (THE SCALES FOLLOW THE CHORDS)";
+                break;
+            }
+        }
+    }
+    if (text.isEmpty())
+        return;
+    chordWarning = text;
+    chordWarningName = name;
+    chordWarningUntil = juce::Time::getMillisecondCounter() + 5000;
+    repaint();
+}
+
+void ArrangeView::copySelectedChords (bool cut)
+{
+    if (chordSelection.empty())
+        return;
+    chordClip = studio.copyChordEvents (chordSelection);
+    if (cut)
+        deleteSelectedChordEvents();
+}
+
+bool ArrangeView::pasteChords()
+{
+    if (chordClip.events.empty())
+        return false;
+    const auto before = studio.getChordTrack();
+    const auto at = juce::jmax (0.0, pr7s::snap (studio.getEngine().getPosition(), timeline.snapGrid (studio.getProject())));
+    selectChordsAt (studio.pasteChordEvents (chordClip, at));
+    noteChordKeyChange (before);
+    repaint();
+    return true;
+}
+
+void ArrangeView::duplicateSelectedChords()
+{
+    if (chordSelection.empty())
+        return;
+    const auto before = studio.getChordTrack();
+    selectChordsAt (studio.duplicateChordEvents (chordSelection));
+    noteChordKeyChange (before);
+    repaint();
+}
+
+void ArrangeView::splitChordsAt (double beat)
+{
+    const auto before = studio.getChordTrack();
+    selectChordsAt (studio.splitChordEvents (beat, chordSelection));
+    noteChordKeyChange (before);
+    repaint();
 }
 
 bool ArrangeView::chordDown (const juce::MouseEvent& event)
@@ -4762,6 +4942,43 @@ bool ArrangeView::chordDown (const juce::MouseEvent& event)
         drag = Drag::none;
         return true;
     }
+    // (0.85.3) SPLIT cuts the chord in two where clicked (snapped unless Ctrl); GLUE joins it to the next.
+    if (tool == Tool::split)
+    {
+        const auto at = event.mods.isCommandDown() ? beat : pr7s::snap (beat, timeline.snapGrid (studio.getProject()));
+        const auto before = studio.getChordTrack();
+        selectChordsAt (studio.splitChordEvents (at, { hit }));
+        noteChordKeyChange (before);
+        drag = Drag::none;
+        repaint();
+        return true;
+    }
+    if (tool == Tool::glue)
+    {
+        const auto before = studio.getChordTrack();
+        selectChordsAt ({ studio.glueChordEvent (hit) });
+        noteChordKeyChange (before);
+        drag = Drag::none;
+        repaint();
+        return true;
+    }
+    // (0.85.3) An edge: dragged, the chord gets longer or shorter (what it grows over gives way).
+    {
+        auto atStart = false;
+        if (const auto edge = chordEdgeAt (event.position, atStart); edge >= 0 && ! event.mods.isShiftDown())
+        {
+            chordSelection = { edge };
+            chordOriginal = pr7s::withLengths (track, studio.getProject().beatsPerBar());
+            chordEdited = edge;
+            chordNewStart = chordOriginal[(size_t) edge].beat;
+            chordNewEnd = chordNewStart + chordOriginal[(size_t) edge].length;
+            chordDownBeat = beat;
+            dragMoved = false;
+            drag = atStart ? Drag::chordStart : Drag::chordEnd;
+            repaint();
+            return true;
+        }
+    }
     if (event.mods.isShiftDown())
     {
         const auto it = std::find (chordSelection.begin(), chordSelection.end(), hit);
@@ -4773,8 +4990,11 @@ bool ArrangeView::chordDown (const juce::MouseEvent& event)
     else if (std::find (chordSelection.begin(), chordSelection.end(), hit) == chordSelection.end())
         chordSelection = { hit };
     studio.auditionChord (track.events[(size_t) hit].chord);
-    chordOriginal = track.events;
+    chordOriginal = pr7s::withLengths (track, studio.getProject().beatsPerBar());
     chordDownBeat = beat;
+    chordDelta = 0.0;
+    chordCopying = event.mods.isAltDown();   // (Alt: a copy moves, the chords stay)
+    chordSelectionAtDown = chordSelection;
     dragMoved = false;
     drag = Drag::chordMove;
     repaint();
@@ -4786,46 +5006,101 @@ void ArrangeView::chordDragTo (const juce::MouseEvent& event)
     if (event.getDistanceFromDragStart() < 4 && ! dragMoved)
         return;
     dragMoved = true;
-    // The selected ones moved together, snapped (by the first's start).
-    const auto grid = timeline.snapGrid (studio.getProject());
-    auto delta = timeline.beatForX (event.position.x) - chordDownBeat;
-    if (! chordSelection.empty())
+    // (0.85.3) Worked out from the chords as they were, drawn as it goes; one undo step when let go.
+    const auto grid = event.mods.isCommandDown() ? 0.0 : timeline.snapGrid (studio.getProject());
+    const auto beat = timeline.beatForX (event.position.x);
+    std::vector<pr7s::ChordEvent> others, placed;
+    if (drag == Drag::chordMove)
     {
-        const auto first = chordOriginal[(size_t) chordSelection.front()].beat;
-        delta = juce::jmax (0.0, pr7s::snap (first + delta, grid)) - first;
-        for (const auto i : chordSelection)
-            delta = juce::jmax (delta, -chordOriginal[(size_t) i].beat);
+        // The selected ones moved together, snapped by the first's start; not before the song's start.
+        auto delta = beat - chordDownBeat;
+        if (! chordSelectionAtDown.empty())
+        {
+            const auto first = chordOriginal[(size_t) chordSelectionAtDown.front()].beat;
+            delta = juce::jmax (0.0, pr7s::snap (first + delta, grid)) - first;
+            for (const auto i : chordSelectionAtDown)
+                delta = juce::jmax (delta, -chordOriginal[(size_t) i].beat);
+        }
+        chordDelta = delta;
+        for (int i = 0; i < (int) chordOriginal.size(); ++i)
+        {
+            const auto chosen = std::find (chordSelectionAtDown.begin(), chordSelectionAtDown.end(), i) != chordSelectionAtDown.end();
+            if (chosen)
+            {
+                auto e = chordOriginal[(size_t) i];
+                e.beat += delta;
+                placed.push_back (e);
+            }
+            if (! chosen || chordCopying)
+                others.push_back (chordOriginal[(size_t) i]);
+        }
     }
-    auto moved = chordOriginal;
-    for (const auto i : chordSelection)
-        moved[(size_t) i].beat = juce::jmax (0.0, chordOriginal[(size_t) i].beat + delta);
-    // (Shown as it goes; one undo step when let go.)
-    std::vector<pr7s::ChordEvent> others, mine;
-    for (int i = 0; i < (int) moved.size(); ++i)
-        (std::find (chordSelection.begin(), chordSelection.end(), i) != chordSelection.end() ? mine : others).push_back (moved[(size_t) i]);
-    std::vector<pr7s::ChordEvent> all = others;
-    all.insert (all.end(), mine.begin(), mine.end());   // (the moved ones win a shared beat)
-    studio.setChordEvents (all);
-    // The selection follows them to their new places.
-    chordSelection.clear();
-    for (int i = 0; i < (int) studio.getChordTrack().events.size(); ++i)
-        for (const auto& m : mine)
-            if (studio.getChordTrack().events[(size_t) i] == m)
-                chordSelection.push_back (i);
-    chordOriginal = studio.getChordTrack().events;
-    chordDownBeat += delta;
+    else if (juce::isPositiveAndBelow (chordEdited, (int) chordOriginal.size()))
+    {
+        // An edge: the other one stays; at least a grid step (or a 32nd) long.
+        const auto& e = chordOriginal[(size_t) chordEdited];
+        const auto least = juce::jmax (pr7s::shortestChord, grid);
+        const auto at = juce::jmax (0.0, grid > 0.0 ? pr7s::snap (beat, grid) : beat);
+        chordNewStart = e.beat;
+        chordNewEnd = e.beat + e.length;
+        if (drag == Drag::chordStart)
+            chordNewStart = juce::jmin (at, chordNewEnd - least);
+        else
+            chordNewEnd = juce::jmax (at, chordNewStart + least);
+        for (int i = 0; i < (int) chordOriginal.size(); ++i)
+            if (i != chordEdited)
+                others.push_back (chordOriginal[(size_t) i]);
+        auto resized = e;
+        resized.beat = juce::jmax (0.0, chordNewStart);
+        resized.length = chordNewEnd - resized.beat;
+        placed.push_back (resized);
+    }
+    auto result = pr7s::placeChords (std::move (others), placed);
+    auto preview = studio.getChordTrack();
+    preview.events = std::move (result.events);
+    chordPreview = std::move (preview);
+    if (drag == Drag::chordMove)
+        selectChordsAt (result.placed);
+    else if (! result.placed.empty())
+        chordSelection = { result.placed.front() };
     repaint();
 }
 
 void ArrangeView::chordUp()
 {
+    const auto wasDrag = drag;
     drag = Drag::none;
+    chordPreview.reset();
+    if (! dragMoved)
+    {
+        repaint();
+        return;
+    }
+    const auto before = studio.getChordTrack();
+    if (wasDrag == Drag::chordMove)
+    {
+        // The selection as it was when the drag began: those indices are the song's own.
+        std::vector<int> chosen;
+        for (int i = 0; i < (int) chordOriginal.size(); ++i)
+            for (const auto j : chordSelectionAtDown)
+                if (i == j)
+                    chosen.push_back (i);
+        if (std::abs (chordDelta) > 1.0e-9 || chordCopying)
+            selectChordsAt (studio.moveChordEvents (chosen, chordDelta, chordCopying));
+        else
+            selectChordsAt (chosen);
+    }
+    else if (juce::isPositiveAndBelow (chordEdited, (int) chordOriginal.size()))
+        chordSelection = { studio.resizeChordEvent (chordEdited, chordNewStart, chordNewEnd) };
+    noteChordKeyChange (before);
     repaint();
 }
 
 void ArrangeView::deleteSelectedChordEvents()
 {
+    const auto before = studio.getChordTrack();
     studio.removeChordEvents (chordSelection);
+    noteChordKeyChange (before);
     chordSelection.clear();
     repaint();
 }
@@ -4852,7 +5127,9 @@ void ArrangeView::editChordEvent (int index)
     };
     editor->onChange = [this, indexOf] (const pr7s::Chord& chord)
     {
+        const auto before = studio.getChordTrack();
         studio.setChordEventChord (indexOf(), chord);
+        noteChordKeyChange (before);
         studio.auditionChord (chord);
     };
     editor->onDelete = [this, indexOf]
@@ -4892,6 +5169,13 @@ void ArrangeView::showChordMenu (double beat, int index)
                                                   + juce::String (next[(size_t) i].score));
             menu.addSubMenu ("Replace with a Suggestion", suggestions);
         }
+        // (0.85.3) As clips (also: drag to move, Alt-drag to copy, drag an edge to lengthen or shorten).
+        menu.addSeparator();
+        menu.addItem (40, chordSelection.size() > 1 ? "Cut Them" : "Cut");
+        menu.addItem (41, chordSelection.size() > 1 ? "Copy Them" : "Copy");
+        menu.addItem (43, chordSelection.size() > 1 ? "Duplicate Them" : "Duplicate");
+        menu.addItem (44, "Split Here", beat > e.beat + pr7s::shortestChord && beat < track.endOf (index, studio.getProject().beatsPerBar()) - pr7s::shortestChord);
+        menu.addItem (45, "Glue to the Next Chord", index + 1 < (int) track.events.size());
         menu.addSeparator();
         menu.addItem (4, chordSelection.size() > 1 ? "Chords to MIDI (these)" : "Chord to MIDI (this one)");
     }
@@ -4904,6 +5188,7 @@ void ArrangeView::showChordMenu (double beat, int index)
             keyChords.addItem (200 + i, chords[(size_t) i].name (key) + "  " + chords[(size_t) i].romanName (key));
         menu.addSubMenu ("Add a Chord of " + ChordUi::spokenKey (key), keyChords);
     }
+    menu.addItem (42, "Paste at the Playhead", hasChordClip());
     menu.addSeparator();
     menu.addItem (5, "Chords to MIDI (all, onto the selected track)", ! track.events.empty());
     menu.addItem (6, "Assign the Chords to the Pads", ! track.events.empty());
@@ -4933,6 +5218,18 @@ void ArrangeView::showChordMenu (double beat, int index)
             case 8: studio.removeChordTrack(); return;
             case 11: if (safe->onProgressions) safe->onProgressions(); return;
             case 16: if (safe->onKeyCheck) safe->onKeyCheck(); return;
+            case 40: safe->copySelectedChords (true); return;
+            case 41: safe->copySelectedChords (false); return;
+            case 42: safe->pasteChords(); return;
+            case 43: safe->duplicateSelectedChords(); return;
+            case 44: safe->chordSelection = { index }; safe->splitChordsAt (juce::jmax (0.0, pr7s::snap (beat, grid))); return;
+            case 45:
+            {
+                const auto was = studio.getChordTrack();
+                safe->selectChordsAt ({ studio.glueChordEvent (index) });
+                safe->noteChordKeyChange (was);
+                return;
+            }
             case 9: if (safe->onLineIdeas) safe->onLineIdeas (safe->chordSelection.size() > 1 ? safe->chordSelection : std::vector<int> {}); return;
             case 13: if (safe->onBuildSection) safe->onBuildSection (safe->chordSelection.size() > 1 ? safe->chordSelection : std::vector<int> {}); return;
             case 10:
@@ -4943,6 +5240,7 @@ void ArrangeView::showChordMenu (double beat, int index)
             }
             default: break;
         }
+        const auto before = studio.getChordTrack();
         if (chosen >= 100 && chosen < 200 && index > 0)
         {
             const auto next = pr7s::suggestNext (events[(size_t) index - 1].chord, key);
@@ -4955,6 +5253,7 @@ void ArrangeView::showChordMenu (double beat, int index)
             if (juce::isPositiveAndBelow (chosen - 200, (int) chords.size()))
                 safe->chordSelection = { studio.addChordEvent (juce::jmax (0.0, pr7s::snap (beat, grid)), chords[(size_t) (chosen - 200)]) };
         }
+        safe->noteChordKeyChange (before);
     });
 }
 

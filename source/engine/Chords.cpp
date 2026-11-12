@@ -934,7 +934,71 @@ namespace pr7s
     {
         if (! juce::isPositiveAndBelow (index, (int) events.size()))
             return 0.0;
-        return index + 1 < (int) events.size() ? events[(size_t) index + 1].beat : events[(size_t) index].beat + lastLength;
+        const auto& e = events[(size_t) index];
+        const auto next = index + 1 < (int) events.size() ? events[(size_t) index + 1].beat : -1.0;
+        if (e.length > 0.0)
+            return next >= 0.0 ? juce::jmin (next, e.beat + e.length) : e.beat + e.length;
+        return next >= 0.0 ? next : e.beat + lastLength;
+    }
+
+    std::vector<ChordEvent> withLengths (const ChordTrack& track, double lastLength)
+    {
+        auto events = track.events;
+        for (int i = 0; i < (int) events.size(); ++i)
+            events[(size_t) i].length = juce::jmax (shortestChord, track.endOf (i, lastLength) - events[(size_t) i].beat);
+        return events;
+    }
+
+    PlacedChords placeChords (std::vector<ChordEvent> others, const std::vector<ChordEvent>& placed)
+    {
+        struct Item { ChordEvent e; int placedIndex; };
+        std::vector<Item> items;
+        for (auto& o : others)
+            items.push_back ({ o, -1 });
+        for (int p = 0; p < (int) placed.size(); ++p)
+        {
+            auto chord = placed[(size_t) p];
+            chord.beat = juce::jmax (0.0, chord.beat);
+            chord.length = juce::jmax (shortestChord, chord.length);
+            const auto from = chord.beat, to = chord.beat + chord.length;
+            std::vector<Item> kept;
+            for (auto& item : items)
+            {
+                const auto s = item.e.beat, e = item.e.beat + item.e.length;
+                if (e <= from + 1.0e-9 || s >= to - 1.0e-9)
+                {
+                    kept.push_back (item);
+                    continue;
+                }
+                if (s < from - shortestChord + 1.0e-9)   // (the part before it)
+                {
+                    auto before = item;
+                    before.e.length = from - s;
+                    kept.push_back (before);
+                }
+                if (e > to + shortestChord - 1.0e-9)     // (the part after it)
+                {
+                    auto after = item;
+                    after.e.beat = to;
+                    after.e.length = e - to;
+                    if (item.placedIndex >= 0 && s < from - shortestChord + 1.0e-9)
+                        after.placedIndex = -1;   // (a placed one split by a later one: its first piece keeps the name)
+                    kept.push_back (after);
+                }
+            }
+            kept.push_back ({ chord, p });
+            items = std::move (kept);
+        }
+        std::stable_sort (items.begin(), items.end(), [] (const Item& a, const Item& b) { return a.e.beat < b.e.beat; });
+        PlacedChords out;
+        out.placed.assign (placed.size(), -1);
+        for (int i = 0; i < (int) items.size(); ++i)
+        {
+            out.events.push_back (items[(size_t) i].e);
+            if (items[(size_t) i].placedIndex >= 0)
+                out.placed[(size_t) items[(size_t) i].placedIndex] = i;
+        }
+        return out;
     }
 
     Key ChordTrack::keyAt (double beat, const Key& fallback) const
@@ -968,6 +1032,8 @@ namespace pr7s
             auto* x = xml->createNewChildElement ("Chord");
             x->setAttribute ("beat", e.beat);
             x->setAttribute ("chord", e.chord.toText());
+            if (e.length > 0.0)
+                x->setAttribute ("length", e.length);
         }
         for (const auto& sc : scales)
         {
@@ -991,7 +1057,7 @@ namespace pr7s
             t.voicing = VoicingSettings::fromXml (*v);
         for (const auto* x : xml.getChildWithTagNameIterator ("Chord"))
             if (const auto chord = Chord::fromText (x->getStringAttribute ("chord")))
-                t.events.push_back ({ juce::jmax (0.0, x->getDoubleAttribute ("beat")), *chord });
+                t.events.push_back ({ juce::jmax (0.0, x->getDoubleAttribute ("beat")), *chord, juce::jmax (0.0, x->getDoubleAttribute ("length")) });
         for (const auto* x : xml.getChildWithTagNameIterator ("Scale"))
             t.scales.push_back ({ juce::jmax (0.0, x->getDoubleAttribute ("beat")),
                                   Key { juce::jlimit (0, 6, x->getIntAttribute ("letter")), juce::jlimit (-1, 1, x->getIntAttribute ("accidental")),

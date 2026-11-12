@@ -161,7 +161,11 @@ namespace pr7s
     {
         double beat = 0.0;
         Chord chord;
-        bool operator== (const ChordEvent& o) const noexcept { return beat == o.beat && chord == o.chord; }
+        // (0.85.3, the owner: chords edited like clips) Its own length in beats; 0: until the next
+        // starts (the last: a bar), as before. A chord with a length ends there, or at the next
+        // chord's start if that comes first; after it, until the next, no chord.
+        double length = 0.0;
+        bool operator== (const ChordEvent& o) const noexcept { return beat == o.beat && chord == o.chord && length == o.length; }
     };
     struct ScaleEvent
     {
@@ -216,6 +220,17 @@ namespace pr7s
         std::unique_ptr<juce::XmlElement> toXml() const;
         static ChordTrack fromXml (const juce::XmlElement&);
     };
+
+    // (0.85.3) Chords edited like clips. `withLengths`: every event given its length as it sounds now
+    // (until the next, the last `lastLength`), so that moving or deleting one leaves a gap rather than
+    // the one before running on. `placeChords`: `placed` laid over `others` (all with lengths), each
+    // placed chord cutting out what it covers (a chord it covers in part keeps the rest, split in two
+    // when it covers the middle); later placed ones win over earlier. Returns the events by beat and
+    // where the placed ones went. Pieces under `shortestChord` are dropped.
+    constexpr double shortestChord = 1.0 / 32.0;
+    std::vector<ChordEvent> withLengths (const ChordTrack&, double lastLength);
+    struct PlacedChords { std::vector<ChordEvent> events; std::vector<int> placed; };
+    PlacedChords placeChords (std::vector<ChordEvent> others, const std::vector<ChordEvent>& placed);
 
     // The keys the chords suggest (0.16.0): from the first chord on, the key holding
     // most of the next few chords (the one before kept unless another holds more;

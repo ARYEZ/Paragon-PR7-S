@@ -2,6 +2,24 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.85.3
+
+**Your three tweaks.**
+
+- **One take by default.** Recording again over a part now replaces it: one take, recorded over again, no lanes. That goes for audio, MIDI and cycle recording; in a cycle the last whole lap is kept. Takes on lanes are still there when you want them: right-click the record key and tick **Keep Every Take on a Lane of Its Own** (or pick each mode below it, as before). The choice is saved with the song. Songs that were left on the old default now open on the new one.
+- **The studio's X goes back to the Hub.** Closing the studio window asks to save (if anything's unsaved), closes the song and shows the Hub on its own. The Hub's X then quits the program. Opening or creating a song from the Hub brings the studio back with it. The studio now starts that way too: just the Hub, so its X quits straight away. A HUB opened over a song still only closes when you click its X. Quitting from Windows itself (the taskbar's Close window, logging off) still quits.
+- **Chords on the chord track work like clips.**
+  - **Move:** drag a chord or a selection, snapped; Alt-drag copies. Where a chord lands, it cuts out the chords underneath, and where it came from is left empty (a gap, no chord) instead of the chord before running on.
+  - **Lengthen or shorten:** drag either edge (the pointer turns into the left-right arrow). Grown over the next chord, that one gives way; shortened, a gap is left. The last chord can be any length now, not just a bar.
+  - **Cut:** the SPLIT tool cuts a chord in two where you click, as does Split Here in its menu, or Alt+X at the playhead. GLUE joins a chord to the next one.
+  - **Copy, cut, paste and duplicate:** Ctrl+C, Ctrl+X, Ctrl+V (at the playhead) and Ctrl+D, and the same in the chord's right-click menu. Delete leaves a gap, as with clips.
+  - Each edit is one undo step. Chords from the progression library or the composer now each get their own length, so a two-bar last chord lasts two bars.
+- **It tells you when you go out of key.**
+  - The key you pick in the composer now goes onto the chord track's key strip with its chords. If you pick E minor and write the chords, the chord track knows it's E minor.
+  - A chord outside the key in force now has a pink edge (and OUT OF KEY where there's room), as well as the pink numeral it had before.
+  - After a move, a stretch, a paste, a split or a chord change that leaves the key, a note over the chord track says so for a few seconds, for example "OUT OF KEY: C# (BAR 5) ISN'T IN E MINOR".
+  - With the key strip following the chords (AUTO SCALES), it says when an edit moves the key instead.
+
 ## 0.85.2
 
 **Speed, round four** (you asked for another round). Three reviewers read the code, one each for the sound, editing and the screen. I checked each finding before changing anything. Nothing sounds or looks different; things just take less time.

@@ -55,6 +55,8 @@ namespace
         Takes()
         {
             trackId = studio.addAudioTrack (false);
+            // (These record with the modes that were the default before 0.85.3: takes on lanes.)
+            studio.setRecordModes (Project::RecordModes { Project::RecordModes::Audio::keepHistory, Project::RecordModes::Midi::newParts, Project::RecordModes::MidiCycle::mix });
         }
         const Track& track() const { return *studio.getProject().findTrack (trackId); }
     };
@@ -244,7 +246,7 @@ TEST_CASE ("MIDI cycle record modes: Mix, Keep Last, Overwrite, Stacked and Mix-
     // Two laps of a four-beat cycle: C3 on beat 1 of the first, G3 on beat 2 of the second.
     const auto playTwoLaps = [] (Studio& studio, Project::RecordModes::MidiCycle mode)
     {
-        auto modes = studio.getProject().recordModes;
+        auto modes = Project::RecordModes { Project::RecordModes::Audio::keepHistory, Project::RecordModes::Midi::newParts, Project::RecordModes::MidiCycle::mix };   // (the old default's, 0.85.3)
         modes.midiCycle = mode;
         studio.setRecordModes (modes);
         auto& engine = studio.getEngine();

@@ -11103,8 +11103,8 @@ namespace pr7s
         for (const auto& e : project.chordTrack.events)
             if (e.beat < start - 1.0e-6 || e.beat >= end - 1.0e-6)
                 events.push_back (e);
-        for (size_t i = 0; i < steps.size(); ++i)
-            events.push_back ({ at[i], steps[i].chord });
+        for (size_t i = 0; i < steps.size(); ++i)   // (0.85.3: each as long as its step, the last too)
+            events.push_back ({ at[i], steps[i].chord, (i + 1 < steps.size() ? at[i + 1] : end) - at[i] });
         std::sort (events.begin(), events.end(), [] (const ChordEvent& a, const ChordEvent& b) { return a.beat < b.beat; });
         project.chordTrack.shown = true;
         project.chordTrack.events = std::move (events);
@@ -11186,10 +11186,158 @@ namespace pr7s
         chordTrackChanged();
     }
 
+    std::vector<int> Studio::placeChordEvents (const std::vector<ChordEvent>& placed, std::vector<ChordEvent> others)
+    {
+        auto result = placeChords (std::move (others), placed);
+        project.chordTrack.shown = true;
+        project.chordTrack.events = std::move (result.events);
+        chordTrackChanged();   // (sorts: by beat already, so the places hold)
+        return result.placed;
+    }
+
+    std::vector<int> Studio::moveChordEvents (const std::vector<int>& indices, double delta, bool copy)
+    {
+        const auto all = withLengths (project.chordTrack, project.beatsPerBar());
+        std::vector<ChordEvent> moved, others;
+        for (int i = 0; i < (int) all.size(); ++i)
+        {
+            const auto chosen = std::find (indices.begin(), indices.end(), i) != indices.end();
+            if (chosen)
+            {
+                auto e = all[(size_t) i];
+                e.beat = e.beat + delta;
+                moved.push_back (e);
+            }
+            if (! chosen || copy)
+                others.push_back (all[(size_t) i]);
+        }
+        if (moved.empty())
+            return {};
+        // (Not before the song's start: the earliest stops at 0.)
+        auto earliest = moved.front().beat;
+        for (const auto& m : moved)
+            earliest = juce::jmin (earliest, m.beat);
+        if (earliest < 0.0)
+            for (auto& m : moved)
+                m.beat -= earliest;
+        return placeChordEvents (moved, std::move (others));
+    }
+
+    int Studio::resizeChordEvent (int index, double newStart, double newEnd)
+    {
+        if (! juce::isPositiveAndBelow (index, (int) project.chordTrack.events.size()))
+            return -1;
+        auto all = withLengths (project.chordTrack, project.beatsPerBar());
+        auto chord = all[(size_t) index];
+        newStart = juce::jmax (0.0, newStart);
+        if (newEnd - newStart < shortestChord)
+            return index;
+        chord.beat = newStart;
+        chord.length = newEnd - newStart;
+        all.erase (all.begin() + index);
+        const auto placed = placeChordEvents ({ chord }, std::move (all));
+        return placed.empty() ? -1 : placed.front();
+    }
+
+    std::vector<int> Studio::splitChordEvents (double beat, const std::vector<int>& indices)
+    {
+        auto all = withLengths (project.chordTrack, project.beatsPerBar());
+        std::vector<double> splitAt;
+        auto any = false;
+        std::vector<ChordEvent> out;
+        for (int i = 0; i < (int) all.size(); ++i)
+        {
+            const auto& e = all[(size_t) i];
+            const auto chosen = indices.empty() || std::find (indices.begin(), indices.end(), i) != indices.end();
+            if (chosen && beat > e.beat + shortestChord - 1.0e-9 && beat < e.beat + e.length - shortestChord + 1.0e-9)
+            {
+                auto first = e, second = e;
+                first.length = beat - e.beat;
+                second.beat = beat;
+                second.length = e.beat + e.length - beat;
+                out.push_back (first);
+                out.push_back (second);
+                any = true;
+            }
+            else
+                out.push_back (e);
+        }
+        if (! any)
+            return {};
+        project.chordTrack.events = std::move (out);
+        chordTrackChanged();
+        std::vector<int> halves;   // (the second halves: where each cut is)
+        for (int i = 0; i < (int) project.chordTrack.events.size(); ++i)
+            if (std::abs (project.chordTrack.events[(size_t) i].beat - beat) < 1.0e-6)
+                halves.push_back (i);
+        return halves;
+    }
+
+    int Studio::glueChordEvent (int index)
+    {
+        auto all = withLengths (project.chordTrack, project.beatsPerBar());
+        if (! juce::isPositiveAndBelow (index, (int) all.size() - 1))
+            return -1;
+        auto& e = all[(size_t) index];
+        const auto& next = all[(size_t) index + 1];
+        e.length = next.beat + next.length - e.beat;
+        all.erase (all.begin() + index + 1);
+        project.chordTrack.events = std::move (all);
+        chordTrackChanged();
+        return index;
+    }
+
+    Studio::ChordClip Studio::copyChordEvents (const std::vector<int>& indices) const
+    {
+        const auto all = withLengths (project.chordTrack, project.beatsPerBar());
+        ChordClip clip;
+        auto first = 1.0e12, last = 0.0;
+        for (const auto i : indices)
+            if (juce::isPositiveAndBelow (i, (int) all.size()))
+            {
+                first = juce::jmin (first, all[(size_t) i].beat);
+                last = juce::jmax (last, all[(size_t) i].beat + all[(size_t) i].length);
+            }
+        for (int i = 0; i < (int) all.size(); ++i)
+            if (std::find (indices.begin(), indices.end(), i) != indices.end())
+            {
+                auto e = all[(size_t) i];
+                e.beat -= first;
+                clip.events.push_back (e);
+            }
+        clip.length = clip.events.empty() ? 0.0 : last - first;
+        return clip;
+    }
+
+    std::vector<int> Studio::pasteChordEvents (const ChordClip& clip, double atBeat)
+    {
+        if (clip.events.empty())
+            return {};
+        auto placed = clip.events;
+        for (auto& e : placed)
+            e.beat += juce::jmax (0.0, atBeat);
+        return placeChordEvents (placed, withLengths (project.chordTrack, project.beatsPerBar()));
+    }
+
+    std::vector<int> Studio::duplicateChordEvents (const std::vector<int>& indices)
+    {
+        const auto clip = copyChordEvents (indices);
+        if (clip.events.empty())
+            return {};
+        auto first = 1.0e12;
+        for (const auto i : indices)
+            if (juce::isPositiveAndBelow (i, (int) project.chordTrack.events.size()))
+                first = juce::jmin (first, project.chordTrack.events[(size_t) i].beat);
+        return pasteChordEvents (clip, first + clip.length);
+    }
+
     void Studio::removeChordEvents (std::vector<int> indices)
     {
         std::sort (indices.rbegin(), indices.rend());
         indices.erase (std::unique (indices.begin(), indices.end()), indices.end());
+        // (0.85.3) As clips: the others keep their lengths, so a gap is left (the one before ran on).
+        if (std::any_of (indices.begin(), indices.end(), [this] (int i) { return juce::isPositiveAndBelow (i, (int) project.chordTrack.events.size()); }))
+            project.chordTrack.events = withLengths (project.chordTrack, project.beatsPerBar());
         auto& events = project.chordTrack.events;
         auto any = false;
         for (const auto i : indices)
@@ -11200,6 +11348,20 @@ namespace pr7s
             }
         if (any)
             chordTrackChanged();
+    }
+
+    void Studio::setChordTrackKey (double fromBeat, const Key& key)
+    {
+        fromBeat = juce::jmax (0.0, fromBeat);
+        std::vector<ScaleEvent> scales;
+        for (const auto& sc : project.chordTrack.scales)
+            if (sc.beat < fromBeat - 1.0e-6)
+                scales.push_back (sc);
+        if (scales.empty() || ! (scales.back().key == key))
+            scales.push_back ({ fromBeat, key });
+        if (! project.chordTrack.autoScales && scales == project.chordTrack.scales)
+            return;
+        setScaleEvents (std::move (scales));
     }
 
     void Studio::setScaleEvents (std::vector<ScaleEvent> scales)

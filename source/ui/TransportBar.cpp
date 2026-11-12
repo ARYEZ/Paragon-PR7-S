@@ -37,7 +37,7 @@ TransportBar::TransportBar (pr7s::Studio& studioToUse)
     stopKey.setTooltip ("Stop. Press again to go back to where playing started. Space toggles play and stop");
     playKey.setTooltip ("Play. Space");
     recordKey.setTooltip ("Record into the armed track (red R in the track list). R key. Press again while recording to stop recording and keep playing. "
-                          "Right-click: the record modes (what happens to what's there, and to a cycle's laps)");
+                          "Recording again over a take replaces it. Right-click: the record modes, and Keep Every Take on a Lane of Its Own");
     cycleKey.setTooltip ("CYCLE: play round the range marked on the ruler (drag across the ruler's top strip to set it). / key");
     clickKey.setTooltip ("CLICK: the metronome, on every beat (higher on the first of each bar). C key");
 
@@ -488,6 +488,10 @@ void TransportBar::showRecordModes()
     using Modes = pr7s::Project::RecordModes;
     const auto modes = studio.getProject().recordModes;
     juce::PopupMenu menu;
+    // (0.85.3) One switch for the two ways of working: one take recorded over again (the default),
+    // or every take kept on a lane of its own.
+    menu.addItem (30, "Keep Every Take on a Lane of Its Own", true, modes.keepsTakesOnLanes());
+    menu.addSeparator();
     menu.addSectionHeader ("AUDIO RECORD MODE");
     menu.addItem (1, "Keep History (what's there stays; each take on a lane)", true, modes.audio == Modes::Audio::keepHistory);
     menu.addItem (2, "Cycle History + Replace (replaces what's there; a cycle's laps kept)", true, modes.audio == Modes::Audio::cycleHistoryReplace);
@@ -505,7 +509,9 @@ void TransportBar::showRecordModes()
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&recordKey), [this] (int chosen)
     {
         auto m = studio.getProject().recordModes;
-        if (chosen >= 1 && chosen <= 3)
+        if (chosen == 30)
+            m = m.keepsTakesOnLanes() ? Modes {} : Modes::onLanes();
+        else if (chosen >= 1 && chosen <= 3)
             m.audio = (Modes::Audio) (chosen - 1);
         else if (chosen >= 11 && chosen <= 13)
             m.midi = (Modes::Midi) (chosen - 11);

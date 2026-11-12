@@ -466,8 +466,24 @@ namespace pr7s
         // A progression onto the pads from `firstPad` on (locked pads skipped); how many placed.
         int assignProgressionToPads (const std::vector<Chord>&, int firstPad);
         void setChordEventChord (int index, const Chord&);
-        void removeChordEvents (std::vector<int> indices);
+        void removeChordEvents (std::vector<int> indices);   // (0.85.3: a gap left where they were, as clips)
+        // (0.85.3, the owner) Chords edited like clips, each one undo step; every chord gets its own
+        // length first (`withLengths`), so a chord moved away leaves a gap. What a chord is placed over
+        // is cut out of the chords there. Each returns where the chords it placed are now.
+        std::vector<int> moveChordEvents (const std::vector<int>& indices, double delta, bool copy);   // delta in beats
+        int resizeChordEvent (int index, double newStart, double newEnd);
+        std::vector<int> splitChordEvents (double beat, const std::vector<int>& indices);   // empty: every chord there
+        int glueChordEvent (int index);                       // it takes over the next one's place
+        struct ChordClip { std::vector<ChordEvent> events; double length = 0.0; };   // beats from the first's start
+        ChordClip copyChordEvents (const std::vector<int>& indices) const;
+        std::vector<int> pasteChordEvents (const ChordClip&, double atBeat);
+        std::vector<int> duplicateChordEvents (const std::vector<int>& indices);       // right after them
+        // `placed` laid over `others` (placeChords), the chord track set to the result.
+        std::vector<int> placeChordEvents (const std::vector<ChordEvent>& placed, std::vector<ChordEvent> others);
         void setScaleEvents (std::vector<ScaleEvent>);    // by hand: the scales stop following the chords
+        // (0.85.3) The key chosen (the composer's) on the key strip from `fromBeat` on: the strip set by hand
+        // from there (what was worked out before it kept), so a chord moved out of that key shows it.
+        void setChordTrackKey (double fromBeat, const Key&);
         void setAutoScales (bool);
         Key chordTrackKeyAt (double beat) const;          // the scale in force (else the pads' key)
         // A new chord at `beat`: the best that could follow the chord before (else the key's I).

@@ -427,6 +427,19 @@ public:
     const std::vector<int>& getChordSelection() const noexcept { return chordSelection; }
     bool hasSelectedChordEvents() const noexcept { return ! chordSelection.empty(); }
     void deleteSelectedChordEvents();
+    // (0.85.3, the owner) Chords as clips: Ctrl+C / X / V / D on the selected chords (pasted at the
+    // playhead, snapped), split at a beat (the SPLIT tool, or the playhead), glued to the next (GLUE).
+    void copySelectedChords (bool cut);
+    bool pasteChords();
+    bool hasChordClip() const noexcept { return ! chordClip.events.empty(); }
+    void duplicateSelectedChords();
+    void splitChordsAt (double beat);
+    void selectChords (const std::vector<int>& indices) { selectChordsAt (indices); repaint(); }
+    // What an edit just did to the key (a chord now out of the key, or the key changed with the scales
+    // following the chords): shown over the chord track for a few seconds. Empty: nothing.
+    juce::String getChordWarning() const { return chordWarning; }
+    // The edges of a chord's block that a drag resizes (5 px; the block at least 16 px wide).
+    static constexpr float chordEdgeGrab = 5.0f;
     juce::Rectangle<float> getChordArea() const;           // the chords' strip (the scales' below it)
     juce::Rectangle<float> getChordEventBounds (int index) const;
     void editChordEvent (int index);                      // the chord editor box (a double-click)
@@ -483,7 +496,7 @@ private:
     enum class Drag { none, signatureMove, position, cycle, cycleMove, cycleLeft, cycleRight, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
                       erasePoints, linePoints, pointHandle, curve, segmentScale,
                       newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove, marquee,
-                      tempoPoints, tempoBand, tempoDraw, chordMove, comp, takeEdge, slip, audition, warpMarker,
+                      tempoPoints, tempoBand, tempoDraw, chordMove, chordStart, chordEnd, comp, takeEdge, slip, audition, warpMarker,
                       markerMove, markerStart, markerEnd, markerNewCycle,   // (0.49.0)
                       folderMove };   // (0.50.0)
     // WARP (0.32.0, the manual's Free Warp in the event display): the marker being dragged.
@@ -600,8 +613,22 @@ private:
     bool signatureDown (const juce::MouseEvent&);
     void signatureDrag (const juce::MouseEvent&);
     void signatureUp();
-    std::vector<pr7s::ChordEvent> chordOriginal;
+    std::vector<pr7s::ChordEvent> chordOriginal;   // (0.85.3: with their lengths, as the drag began)
     double chordDownBeat = 0.0;
+    // (0.85.3) While a chord drag goes: the chords as they'd be (drawn instead of the song's), and what
+    // the drag will do when let go (one undo step then).
+    std::optional<pr7s::ChordTrack> chordPreview;
+    double chordDelta = 0.0, chordNewStart = 0.0, chordNewEnd = 0.0;
+    int chordEdited = -1;
+    std::vector<int> chordSelectionAtDown;
+    bool chordCopying = false;
+    pr7s::Studio::ChordClip chordClip;
+    juce::String chordWarning, chordWarningName;   // (the name: drawn in the chords' font)
+    juce::uint32 chordWarningUntil = 0;
+    const pr7s::ChordTrack& shownChordTrack() const;
+    int chordEdgeAt (juce::Point<float>, bool& atStart) const;
+    void noteChordKeyChange (const pr7s::ChordTrack& before);
+    void selectChordsAt (const std::vector<int>& indices);
     juce::Component::SafePointer<ChordEventEditor> chordEditor;
     bool chordDown (const juce::MouseEvent&);
     void chordDragTo (const juce::MouseEvent&);
