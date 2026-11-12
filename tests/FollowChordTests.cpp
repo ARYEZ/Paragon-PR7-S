@@ -310,6 +310,11 @@ TEST_CASE ("0.36.0 on screen: the Inspector's CHORDS for instrument tracks only;
     studio.dispatchPendingMessages();
     CHECK_FALSE (inspector.getFollowKey().isVisible());
     CHECK (view.createComponentSnapshot (view.getLocalBounds()).isValid());
+    // (0.86.0) Close what it left on the message loop (a menu, a dialog): with the tests in random order it took a later test's clicks.
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+    juce::PopupMenu::dismissAllActiveMenus();
+    juce::ModalComponentManager::getInstance()->cancelAllModalComponents();
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
 }
 
 TEST_CASE ("0.38.0: voicing libraries: piano, guitar and basic voicings hold the chord's notes, in their ranges; adaptive moves least", "[follow][voicings]")

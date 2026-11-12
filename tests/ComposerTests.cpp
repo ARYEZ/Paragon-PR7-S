@@ -1045,4 +1045,9 @@ TEST_CASE ("0.83.4: the composer suite takes a MIDI part and lights while one is
     suite.partDropped (partId);   // (the section asked for in a menu: shown on the message loop)
     CHECK_FALSE (suite.isPartHovering());
     CHECK (suite.getTab() == ComposerSuite::Tab::compose);
+    // (0.86.0) Close what it left on the message loop (a menu, a dialog): with the tests in random order it took a later test's clicks.
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+    juce::PopupMenu::dismissAllActiveMenus();
+    juce::ModalComponentManager::getInstance()->cancelAllModalComponents();
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
 }

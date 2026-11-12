@@ -44,6 +44,10 @@ TEST_CASE ("0.71.0: a double-click on the info line's VALUE opens it for typing 
     auto& arrange = view.getArrangeView();
     auto& info = view.getInfoLine();
     // As the owner does: a point clicked (selected), Shift-click the next, then the info line.
+    // (0.86.0) Nothing another test left (a menu, a dialog) may take these clicks.
+    juce::PopupMenu::dismissAllActiveMenus();
+    juce::ModalComponentManager::getInstance()->cancelAllModalComponents();
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
     int64_t time = juce::Time::currentTimeMillis();
     const auto point = [&] (int i) { return view.getLocalPoint (&arrange, arrange.getPointPosition (trackId, 0, i)); };
     peerClick (view, point (0), time);
@@ -58,7 +62,8 @@ TEST_CASE ("0.71.0: a double-click on the info line's VALUE opens it for typing 
     time += 1000;
     peerClick (view, at, time);
     peerClick (view, at, time);
-    juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
+    for (auto waited = 0; waited < 2000 && (info.getEditor() == nullptr || ! info.getEditor()->hasKeyboardFocus (true)); waited += 20)
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
     info.refresh();
     REQUIRE (info.getEditor() != nullptr);
     CHECK (info.getEditor()->getText() == "-3.0 dB");
@@ -79,6 +84,10 @@ TEST_CASE ("0.71.0: a single click on the info line's VALUE opens it too", "[ui]
     view.getArrangeView().selectPoints (trackId, 0, { 0 });
     auto& info = view.getInfoLine();
     info.refresh();
+    // (0.86.0) Nothing another test left (a menu, a dialog) may take these clicks.
+    juce::PopupMenu::dismissAllActiveMenus();
+    juce::ModalComponentManager::getInstance()->cancelAllModalComponents();
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
     int64_t time = juce::Time::currentTimeMillis();
     peerClick (view, view.getLocalPoint (&info, info.getFieldArea ("VALUE").getCentre()).toFloat(), time);
     // (0.86.0) Until it opens, 2 s at most: a fixed 60 ms missed it now and then with the whole suite loading the machine.
@@ -243,9 +252,14 @@ TEST_CASE ("0.71.1: a click on VALUE still opens it after the info line has refr
     studio.dispatchPendingMessages();
     info.refresh();
     CHECK (info.getFieldArea ("VALUE") == area);
+    // (0.86.0) Nothing another test left (a menu, a dialog) may take these clicks.
+    juce::PopupMenu::dismissAllActiveMenus();
+    juce::ModalComponentManager::getInstance()->cancelAllModalComponents();
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
     int64_t time = juce::Time::currentTimeMillis();
     peerClick (view, view.getLocalPoint (&info, area.getCentre()).toFloat(), time);
-    juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
+    for (auto waited = 0; waited < 2000 && info.getEditor() == nullptr; waited += 20)
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
     REQUIRE (info.getEditor() != nullptr);
     CHECK (info.getEditor()->getText() == "-6.0 dB");
 }
