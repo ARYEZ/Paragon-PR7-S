@@ -81,7 +81,9 @@ TEST_CASE ("0.71.0: a single click on the info line's VALUE opens it too", "[ui]
     info.refresh();
     int64_t time = juce::Time::currentTimeMillis();
     peerClick (view, view.getLocalPoint (&info, info.getFieldArea ("VALUE").getCentre()).toFloat(), time);
-    juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
+    // (0.86.0) Until it opens, 2 s at most: a fixed 60 ms missed it now and then with the whole suite loading the machine.
+    for (auto waited = 0; waited < 2000 && info.getEditor() == nullptr; waited += 20)
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
     REQUIRE (info.getEditor() != nullptr);
     CHECK (info.getEditor()->getText() == "-6.0 dB");
     info.getEditor()->setText ("-9", false);

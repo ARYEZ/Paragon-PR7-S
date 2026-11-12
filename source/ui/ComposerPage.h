@@ -69,6 +69,13 @@ public:
     // (0.85.0) The guitar's riff generator: FLAVOUR (riffFlavours()' index) and WRITTEN RIFFS instead.
     void setRiffFlavour (int);
     void setWrittenRiffs (bool);
+    // (0.86.0, the owner) SYNC: one lane leads (none: off), the others follow its rhythm; the leader is locked when
+    // chosen. DOUBLE THE SYNC TRACK on the bass and the drums: every hit, the bass doubling the notes.
+    void setSync (std::optional<pr7s::ComposerLayer>);
+    std::optional<pr7s::ComposerLayer> getSync() const noexcept { return state.syncLayer(); }
+    void setDoubleSync (pr7s::ComposerLayer, bool);
+    bool isDoublingSync (pr7s::ComposerLayer l) const noexcept { return state.lane (l).doubleSync; }
+    void showSyncMenu();
     int getRiffFlavour() const noexcept { return state.riffFlavour; }
     bool isUsingWrittenRiffs() const noexcept { return state.writtenRiffs; }
     void setKey (const pr7s::Key&);
@@ -162,6 +169,7 @@ private:
     void showStyleMenu (pr7s::ComposerLayer);
     static constexpr int soloItems = 5000;
     static constexpr int flavourItems = 6000, writtenRiffsItem = 6100;   // (0.85.0) the guitar's style menu
+    static constexpr int doubleSyncItem = 6200;   // (0.86.0) the bass's and drums' style menus
     static constexpr int myRiffItem = 4900;   // (0.75.0) the guitar's style menu: My Riff   // (0.70.0) the lead's style menu: Solo Style items
     void showTrackMenu (pr7s::ComposerLayer);
     void showProgressionMenu();
@@ -221,7 +229,7 @@ private:
     std::vector<pr7s::ChordSpan> lastSpans;   // (taken ideas forgotten when the chords change)
     bool fromRiff = false, useMyRiff = false;
     std::map<int, pr7s::Chord> chordOverrides;
-    juce::TextButton myRiffKey { "MY RIFF" }, pasteKey { "+ MY RIFF" }, mixerKey { "MIXER" };
+    juce::TextButton myRiffKey { "MY RIFF" }, pasteKey { "+ MY RIFF" }, mixerKey { "MIXER" }, syncKey { "SYNC: OFF" };
     void refreshVolumes();
     int draggingVolume = -1;
     std::unique_ptr<juce::FileChooser> chooser;

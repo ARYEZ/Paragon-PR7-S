@@ -120,6 +120,13 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
     mixerKey.setTooltip ("The mixer in its own window over the composer: faders, inserts, EQ while you hear the layers (they keep playing)");
     mixerKey.onClick = [this] { if (onOpenMixer) onOpenMixer(); };
     addAndMakeVisible (mixerKey);
+    // (0.86.0) SYNC.
+    pedal (syncKey, true);
+    syncKey.setTooltip ("SYNC: pick the lane that leads (the riff you like). Every other lane is written to its rhythm: the drums' kick and the bass "
+                        "on its accents (DOUBLE THE SYNC TRACK in their style menus: every hit, the bass doubling the notes), chord stabs on its "
+                        "accents, guitar chugs on its hits, the melody and lead leaning on its accents. It stays on: roll the leader and the rest follows");
+    syncKey.onClick = [this] { showSyncMenu(); };
+    addAndMakeVisible (syncKey);
     toChordTrackKey.onClick = [this] { setToChordTrack (! state.toChordTrack); };
 
     // (0.74.0) SECTION and BUILD.
@@ -323,6 +330,11 @@ void ComposerPage::refresh (bool rehear)
     buildKey.setButtonText ("BUILD " + pr7s::sectionWord (getSection()).toUpperCase());
     hearKey.setButtonText (hearing ? "STOP" : "HEAR");
     hearKey.setToggleState (hearing, juce::dontSendNotification);
+    {
+        const auto sync = state.syncLayer();
+        syncKey.setButtonText (sync.has_value() ? "SYNC: " + pr7s::composerLayerName (*sync) : juce::String ("SYNC: OFF"));
+        syncKey.setToggleState (sync.has_value(), juce::dontSendNotification);
+    }
     for (const auto l : pr7s::composerLayers())
     {
         auto& lane = lanes[(size_t) l];
@@ -439,6 +451,49 @@ void ComposerPage::setWrittenRiffs (bool written)
     taken[(size_t) ComposerLayer::guitar].reset();
     status = written ? "Guitar: the written riffs" : "Guitar: generated riffs";
     refresh();
+}
+
+void ComposerPage::setSync (std::optional<ComposerLayer> leader)
+{
+    state.syncLane = leader.has_value() ? (int) *leader : -1;
+    if (leader.has_value())
+    {
+        state.lane (*leader).locked = true;   // (the riff you found stays; unlock it to roll it, the rest follows)
+        for (const auto l : pr7s::composerLayers())
+            if (l != *leader)
+                taken[(size_t) l].reset();    // (an idea taken from IDEAS would ignore the leader)
+        status = "SYNC: every lane follows the " + pr7s::composerLayerName (*leader).toLowerCase() + "'s rhythm (its lane locked)";
+    }
+    else
+        status = "SYNC off: every lane its own";
+    refresh();
+}
+
+void ComposerPage::setDoubleSync (ComposerLayer l, bool on)
+{
+    if (! pr7s::hasDoubleSync (l))
+        return;
+    state.lane (l).doubleSync = on;
+    status = pr7s::composerLayerName (l) + (on ? ": doubling the sync track, every hit" : ": the sync track's accents");
+    refresh();
+}
+
+void ComposerPage::showSyncMenu()
+{
+    const auto now = state.syncLayer();
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("THE LANE THE OTHERS FOLLOW");
+    menu.addItem (1, "Off (every lane its own rhythm)", true, ! now.has_value());
+    menu.addSeparator();
+    for (const auto l : pr7s::composerLayers())
+        menu.addItem (10 + (int) l, "Sync to the " + pr7s::composerLayerName (l), true, now == l);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (syncKey),
+                        [safe = juce::Component::SafePointer<ComposerPage> (this)] (int chosen)
+                        {
+                            if (safe == nullptr || chosen <= 0)
+                                return;
+                            safe->setSync (chosen == 1 ? std::optional<ComposerLayer> {} : std::optional<ComposerLayer> ((ComposerLayer) (chosen - 10)));
+                        });
 }
 
 void ComposerPage::setBusy (ComposerLayer l, float busy)
@@ -1317,6 +1372,8 @@ juce::Button* ComposerPage::keyNamed (const juce::String& name)
     for (auto* key : { &hearKey, &useKey, &generateKey, &libraryKey, &chordTrackKey, &toChordTrackKey, &buildKey, &myRiffKey, &pasteKey, &mixerKey })
         if (key->getButtonText() == name)
             return key;
+    if (name == "SYNC")
+        return &syncKey;
     for (const auto l : pr7s::composerLayers())
     {
         auto& lane = lanes[(size_t) l];
@@ -1374,12 +1431,23 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
         menu.addSeparator();
         menu.addItem (myRiffItem, "My Riff (" + studio.getComposerRiff()->name + ")", true, useMyRiff);
     }
+    // (0.86.0) The bass and the drums under SYNC: every hit of the sync lane.
+    if (pr7s::hasDoubleSync (l))
+    {
+        const auto sync = state.syncLayer();
+        menu.addSeparator();
+        menu.addItem (doubleSyncItem, sync.has_value() && *sync != l ? "Double the Sync Track (the " + pr7s::composerLayerName (*sync).toLowerCase() + ", every hit)"
+                                                                      : juce::String ("Double the Sync Track (with SYNC on)"),
+                      sync.has_value() && *sync != l, state.lane (l).doubleSync);
+    }
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (lanes[(size_t) l].style),
                         [safe = juce::Component::SafePointer<ComposerPage> (this), l] (int chosen)
                         {
                             if (safe == nullptr || chosen <= 0)
                                 return;
-                            if (chosen == myRiffItem)
+                            if (chosen == doubleSyncItem)
+                                safe->setDoubleSync (l, ! safe->isDoublingSync (l));
+                            else if (chosen == myRiffItem)
                                 safe->setPlayMyRiff (true);
                             else if (chosen == writtenRiffsItem)
                                 safe->setWrittenRiffs (! safe->isUsingWrittenRiffs());
@@ -1766,11 +1834,16 @@ void ComposerPage::paintLane (juce::Graphics& g, ComposerLayer l, const Lane& la
         g.setColour (s.on ? ParagonColours::text : ParagonColours::textDim);
         g.setFont (ParagonLookAndFeel::titleFont (20.0f));
         g.drawText (pr7s::composerLayerName (l), lane.header.reduced (18, 6).removeFromTop (24), juce::Justification::centredLeft, false);
-        if (s.locked)
+        const auto sync = state.syncLayer();
+        if (s.locked || sync.has_value())
         {
-            g.setColour (ParagonColours::accent);
+            // (0.86.0) SYNC: the leader says so; a follower says whom it follows.
+            const auto word = sync == l ? juce::String ("SYNC LEADER") + (s.locked ? " - LOCKED" : "")
+                            : sync.has_value() ? (s.doubleSync ? "DOUBLES THE " : "FOLLOWS THE ") + pr7s::composerLayerName (*sync) + (s.locked ? " - LOCKED" : "")
+                                               : juce::String ("LOCKED");
+            g.setColour (sync == l ? pr7s::FamilyColours::pink : ParagonColours::accent);
             g.setFont (ParagonLookAndFeel::titleFont (11.0f));
-            g.drawText ("LOCKED", lane.header.reduced (18, 6).removeFromTop (24).withTrimmedRight (200), juce::Justification::centredRight, false);
+            g.drawText (word, lane.header.reduced (18, 6).removeFromTop (24).withTrimmedRight (200), juce::Justification::centredRight, false);
         }
         // Where it's heard, when that's not where it's written.
         const auto writes = trackFor (l, false), heard = trackFor (l, true);
@@ -1855,6 +1928,8 @@ void ComposerPage::resized()
     pasteKey.setBounds (head.removeFromRight (130));
     head.removeFromRight (6);
     mixerKey.setBounds (head.removeFromRight (90));
+    head.removeFromRight (6);
+    syncKey.setBounds (head.removeFromRight (150));
     head.removeFromRight (16);
     generateKey.setBounds (head.removeFromRight (160));
     head.removeFromRight (8);

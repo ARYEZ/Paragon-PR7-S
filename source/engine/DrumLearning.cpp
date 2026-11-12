@@ -1140,7 +1140,7 @@ namespace pr7s
         const auto groove = shape (first->hits, *h, s, rng);
         const auto* second = h->grooves.size() > 1 && rng.nextBool() ? pick (h->grooves, rng, first) : nullptr;
         const auto variation = second != nullptr ? shape (second->hits, *h, s, rng) : varyKick (groove, *h, rng);
-        const auto locked = s.lockToRiff && ! riffHits.empty() && section != DrumSection::intro && section != DrumSection::ending;
+        const auto locked = s.lockToRiff && ! riffHits.empty() && (s.lockAlways || (section != DrumSection::intro && section != DrumSection::ending));
 
         const auto fillOf = [&] (int beats) -> const SectionHabits::Pattern*
         {

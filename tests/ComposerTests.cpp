@@ -357,7 +357,18 @@ TEST_CASE ("Snapshot: the composer (0.58.0)", "[.][snapshot-composer]")
         page.generate();
         page.setLocked (L::bass, true);
         page.setOn (L::lead, false);
-        page.setSize (1500, 900);
+        // (0.86.0) PARAGON_SNAPSHOT_SYNC=1: a tritone chug riff leading, the bass and drums doubling it.
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SYNC", {}) == "1")
+        {
+            for (int i = 0; i < (int) riffFlavours().size(); ++i)
+                if (riffFlavours()[(size_t) i] == RiffFlavour::tritone)
+                    page.setRiffFlavour (i);
+            page.setLocked (L::bass, false);
+            page.setSync (L::guitar);
+            page.setDoubleSync (L::bass, true);
+            page.setDoubleSync (L::drums, true);
+        }
+        page.setSize (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SYNC", {}) == "1" ? 1700 : 1500, 900);
         const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };

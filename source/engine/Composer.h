@@ -49,6 +49,9 @@ namespace pr7s
         float busy = 0.5f;    // BUSY (0.61.0): 0 sparse .. 0.5 the approach as usual .. 1 busy
         bool lowString = false;   // LOW STRING (0.61.0: bass and guitar)
         int onlyString = 0;       // ONLY STRING n (0.62.0; 1 the lowest; 0: off): engine/Instruments.h's playOnString
+        // (0.86.0) DOUBLE THE SYNC TRACK (the bass and the drums, with SYNC on): every hit of the sync lane, not only
+        // its accents. The bass doubles the riff's notes (an octave under where it can), the drums' kick every hit.
+        bool doubleSync = false;
         bool operator== (const ComposerLane&) const = default;
     };
 
@@ -65,6 +68,13 @@ namespace pr7s
         // leaning to FLAVOUR; or the written riffs of 0.53.0 (WRITTEN RIFFS in the guitar's style menu).
         int riffFlavour = 0;               // (riffFlavours()' index: 0 ANY)
         bool writtenRiffs = false;
+        // (0.86.0, the owner) SYNC: the lane every other one follows (its rhythm); -1 off. It stays on until turned
+        // off, so re-rolling the sync lane re-writes the others to its new rhythm. See syncRhythmOf below.
+        int syncLane = -1;
+        std::optional<ComposerLayer> syncLayer() const noexcept
+        {
+            return syncLane >= 0 && syncLane < composerLayerCount ? std::optional<ComposerLayer> ((ComposerLayer) syncLane) : std::nullopt;
+        }
 
         ComposerState();                   // (the lead off: the melody sings the top line)
         ComposerLane& lane (ComposerLayer l) noexcept { return lanes[(size_t) l]; }
@@ -96,6 +106,20 @@ namespace pr7s
         // (shaped by RIFF SETTINGS: as written at their middle values) and the drums lock their kick to it.
         std::optional<LineIdea> myRiff;
     };
+
+    // (0.86.0) SYNC: the rhythm a lane's idea gives the others. `all`: every hit (notes starting together are one
+    // hit; the drums: every kick); `accents`: the hits that stand out (a pitched lane: open notes (velocity 60 and
+    // over), anything held half a beat or more, and a bar's first hit; the drums: kicks on a beat). The followers:
+    //   DRUMS    the kick on the accents (DOUBLE: every hit); the snare, cymbals and fills the section's own.
+    //   BASS     the chords' roots on the accents (DOUBLE: the riff's own notes, each hit's lowest, an octave under
+    //            where the bass reaches; a high stab over the chugs: the chord's root; the drums leading: every kick).
+    //   CHORDS   a stab of the chord on each accent, held to the next (two beats at most).
+    //   GUITAR   chugs on every hit: the root palm-muted, a power chord let ring on the accents.
+    //   MELODY   its own line, a note within a sixteenth of an accent moved onto it (looser: the owner's choice).
+    //   LEAD     the same as the melody.
+    struct SyncRhythm { std::vector<double> all, accents; };
+    SyncRhythm syncRhythmOf (ComposerLayer leader, const LineIdea&, double beatsPerBar, double originBeat);
+    inline bool hasDoubleSync (ComposerLayer l) { return l == ComposerLayer::bass || l == ComposerLayer::drums; }
 
     // The library progressions that pass the state's filter in its key (the key's own mode first).
     std::vector<int> composerProgressions (const ComposerState&);

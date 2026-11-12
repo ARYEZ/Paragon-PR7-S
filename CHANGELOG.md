@@ -2,6 +2,25 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.86.0
+
+**SYNC in the composer** (your idea: find a riff you love, then write the whole band to it).
+
+- **SYNC** in the composer's header: pick the lane that leads (any lane: guitar, drums, bass, chords, melody or lead). Its lane is locked so the riff you found stays, and it's marked SYNC LEADER. Every other lane is then written to its rhythm, and each lane says what it's doing (FOLLOWS THE GUITAR, DOUBLES THE GUITAR).
+- **It stays on.** Unlock the leader and roll it, and everything follows its new rhythm. GENERATE rolls the others, still following it. SYNC: OFF puts every lane back on its own.
+- **How each lane follows.** The leader's rhythm is every hit it plays; its accents are the ones that stand out (open notes, held notes and the first hit of each bar; with the drums leading, the kicks on the beat).
+  - **Drums:** the kick on the leader's accents, with the snare, cymbals and fills still the section's own (verse, chorus, breakdown...).
+  - **Bass:** the chords' roots on the accents.
+  - **Chords (piano):** a stab of the chord on each accent, held to the next.
+  - **Guitar** (when another lane leads): palm-muted chugs on every hit, power chords let ring on the accents.
+  - **Melody and lead:** looser, as you suggested. They keep their own line, and any note within a sixteenth of an accent moves onto it, so they land with the band without copying every chug.
+- **DOUBLE THE SYNC TRACK** (in the bass's and drums' style menus): every hit, metal style.
+  - The drums put a kick on every chug.
+  - The bass doubles the riff's notes, playing the lowest note of each hit in its own low octave and staying near the note before (no octave jumps between power chords). Under a high stab (like the tritone grind over the chugs) it holds the chord's root instead of doubling the stab.
+  - With the drums leading, the bass plays on every kick.
+
+What you hear is our own rule set; tell me where it sounds wrong and I'll change it.
+
 ## 0.85.3
 
 **Your three tweaks.**
