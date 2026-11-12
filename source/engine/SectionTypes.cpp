@@ -11,9 +11,14 @@ namespace pr7s
         const SectionType droning { "DRONING", "Chords rung across the bar, the band carrying the movement", RiffFlavour::droning };
         const SectionType staccato { "STACCATO CHUG", "Short palm-muted chugs and stops, the bass and the kick locked to them; the rhythm guitar picks the kind",
                                      RiffFlavour::pedalStabs,
-                                     { RiffFlavour::pedalStabs, RiffFlavour::chugThrees, RiffFlavour::burstSilence,
+                                     { RiffFlavour::pedalStabs, RiffFlavour::chugThrees,
                                        RiffFlavour::tritone, RiffFlavour::chugs, RiffFlavour::gallop, RiffFlavour::stopStart },
                                      SectionType::Band::staccato };
+        // (0.96.0, the owner's) The bar split into a played part and a part left open; Waffle's BURST & SILENCE moved
+        // here from STACCATO CHUG (the owner: it fits better).
+        const SectionType split { "SPLIT CHUG", "The bar split: chugs or stabs in one part, the rest left open for the vocal", RiffFlavour::secondHalfStabs,
+                                  { RiffFlavour::secondHalfStabs, RiffFlavour::firstHalfBurst, RiffFlavour::hitPush, RiffFlavour::burstSilence },
+                                  SectionType::Band::split };
         const SectionType sparse { "SPARSE", "Space for the voice: stabs, octaves, chords let ring", RiffFlavour::stabs,
                                    { RiffFlavour::stabs, RiffFlavour::octaves, RiffFlavour::openChords } };
         const SectionType heavy { "HEAVY CHUG", "The low string pounded: chugs, tritone grinds, stops; the bass and the kick locked to them", RiffFlavour::chugs,
@@ -25,7 +30,7 @@ namespace pr7s
         switch (composerSectionFor (sectionName))
         {
             case 0: return { droning, open };
-            case 1: return { staccato, droning, sparse };
+            case 1: return { staccato, split, droning, sparse };
             case 2: return { driving, droning };
             case 3: return { creep, open, droning };
             case 4: return { heavy, staccato };
@@ -87,10 +92,17 @@ namespace pr7s
         return {};
     }
 
-    bool staccatoBand (const ComposerState& s)
+    SectionType::Band sectionBand (const ComposerState& s)
     {
         const auto t = sectionTypeCalled (s.sectionType);
-        return t.has_value() && t->band == SectionType::Band::staccato && ! s.writtenRiffs && s.lane (ComposerLayer::guitar).on;
+        if (! t.has_value() || s.writtenRiffs || ! s.lane (ComposerLayer::guitar).on)
+            return SectionType::Band::none;
+        return t->band;
+    }
+
+    bool staccatoBand (const ComposerState& s)
+    {
+        return sectionBand (s) == SectionType::Band::staccato;
     }
 
     juce::StringArray sectionApproaches (const ComposerState& s, ComposerLayer layer)
@@ -103,6 +115,13 @@ namespace pr7s
                 return { "DOUBLES THE GUITAR", "ROOTS ON THE ACCENTS" };
             if (layer == ComposerLayer::drums)
                 return { "KICK ON EVERY CHUG", "KICK ON THE ACCENTS" };
+        }
+        if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::split)
+        {
+            if (layer == ComposerLayer::bass)
+                return { "DOUBLES THE HITS", "HOLDS THROUGH THE GAPS" };
+            if (layer == ComposerLayer::drums)
+                return { "KICK WITH THE HITS", "PLAIN BACKBEAT" };
         }
         if (layer == ComposerLayer::guitar)
             if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && ! t->guitarFlavours.empty())

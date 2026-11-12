@@ -1,6 +1,8 @@
 #include "engine/Composer.h"
 #include "engine/SectionTypes.h"
 
+#include <algorithm>
+
 #include "engine/DrumIdeas.h"
 
 namespace pr7s
@@ -880,6 +882,69 @@ namespace pr7s
             return out;
         }
 
+        // (0.96.0, SPLIT CHUG: Call Me When You're Sober's verse) kick on 1 and 3, snare on 2 and 4, open hats on the
+        // beats and the ride between them, a crash each four bars, the fourth bar's snare pushing into the next.
+        LineIdea plainBackbeat (const std::vector<ChordSpan>& spans, double bpb)
+        {
+            LineIdea out { LineIdea::Part::drums, "Split: plain backbeat",
+                           "Kick on 1 and 3, snare on 2 and 4, open hats on the beats with the ride between, the guitar's gaps left to the groove", {} };
+            const auto length = sectionLength (spans);
+            const auto bars = (int) std::ceil (length / bpb - 1.0e-6);
+            const auto beat = bpb / 4.0;
+            auto hit = [&out, length] (double at, int note, float velocity)
+            {
+                if (at >= -1.0e-9 && at < length - 1.0e-6)
+                    out.notes.push_back ({ at, 0.1, note, velocity });
+            };
+            for (int bar = 0; bar < bars; ++bar)
+            {
+                const auto o = bar * bpb;
+                if (bar % 4 == 0)
+                    hit (o, 49, 0.9f);
+                for (int q = 0; q < 4; ++q)
+                {
+                    hit (o + q * beat, 46, q == 0 ? 0.8f : 0.66f);
+                    hit (o + (q + 0.5) * beat, 51, 0.55f);
+                }
+                hit (o, 36, 0.95f);
+                hit (o + 2 * beat, 36, 0.9f);
+                hit (o + beat, 38, 0.92f);
+                hit (o + 3 * beat, 38, 0.92f);
+                if (bar % 4 == 3)
+                {
+                    hit (o + 1.5 * beat, 38, 0.7f);
+                    hit (o + 2.25 * beat, 38, 0.75f);
+                }
+            }
+            return out;
+        }
+
+        // (0.96.0) Each bass note held through the gap to the next (a breath short), never past its chord's end.
+        void holdThroughGaps (LineIdea& idea, const std::vector<ChordSpan>& spans)
+        {
+            auto& notes = idea.notes;
+            std::sort (notes.begin(), notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+            const auto origin = spans.front().start;
+            for (size_t i = 0; i < notes.size(); ++i)
+            {
+                if (notes[i].keyswitch)
+                    continue;
+                auto until = sectionLength (spans);
+                for (size_t j = i + 1; j < notes.size(); ++j)
+                    if (! notes[j].keyswitch && notes[j].beat > notes[i].beat + 1.0e-6)
+                    {
+                        until = notes[j].beat;
+                        break;
+                    }
+                for (const auto& span : spans)
+                    if (notes[i].beat + origin >= span.start - 1.0e-9 && notes[i].beat + origin < span.end - 1.0e-9)
+                        until = juce::jmin (until, span.end - origin);
+                notes[i].length = juce::jmax (notes[i].length, (until - notes[i].beat) * 0.96);
+            }
+            idea.style = "Split: held through the gaps";
+            idea.description = "The guitar's hits doubled, each held through the gap to the next";
+        }
+
         LineIdea droningDrums (const ComposerLane& lane, const std::vector<ChordSpan>& spans, double bpb, const std::vector<double>& strikes)
         {
             const auto approach = lane.approach >= 0 ? lane.approach % 3 : lane.variation % 3;   // (0.94.0: chosen, else by the take)
@@ -991,6 +1056,23 @@ namespace pr7s
                 locked.syncLane = (int) ComposerLayer::guitar;
                 locked.lane (l).doubleSync = s.lane (l).approach != 1;
                 return syncedLayer (l, locked, spans, c);
+            }
+            // (0.96.0, SPLIT CHUG's band: the owner's Going Under, Papercut, Call Me When You're Sober) the bass doubles
+            // the guitar's hits (Papercut, Going Under) or holds each through the gap to the next (Call Me); the kick
+            // catches the hits under the section's snare and hats (Going Under, Papercut), or a plain backbeat (Call Me).
+            if (! leaderLayer.has_value() && (l == ComposerLayer::bass || l == ComposerLayer::drums) && ! spans.empty()
+                && sectionBand (s) == SectionType::Band::split)
+            {
+                const auto approach = s.lane (l).approach;
+                if (l == ComposerLayer::drums && approach == 1)
+                    return plainBackbeat (spans, c.beatsPerBar);
+                auto locked = s;
+                locked.syncLane = (int) ComposerLayer::guitar;
+                locked.lane (l).doubleSync = true;
+                auto idea = syncedLayer (l, locked, spans, c);
+                if (l == ComposerLayer::bass && approach == 1)
+                    holdThroughGaps (idea, spans);
+                return idea;
             }
             if (! leaderLayer.has_value() || *leaderLayer == l || spans.empty())
             {

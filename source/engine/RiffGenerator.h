@@ -64,8 +64,13 @@ namespace pr7s
 // across the bar), the stab's degree climbing every bar or two; chugThrees: a rest and two chugs over and over (threes
 // across the bar), a chromatic walk up on the bar's last sixteenths, every fourth bar power chords climbing; burstSilence:
 // a hit, a gap, a burst of four (the last held), a pair, then silence, a dissonant cluster stab every other bar.
+// (0.96.0, the owner's SPLIT CHUG verses: Evanescence's Going Under and Call Me When You're Sober, Linkin Park's
+// Papercut, shapes only; the bar split into a played part and a part left to the vocal) secondHalfStabs: a chord on 1,
+// silence, then short stabs through the bar's second half; firstHalfBurst: a burst of chugs and power chords stepping
+// down in the first half, the second half silent, a pickup every fourth bar; hitPush: a chord on 1 and the chord a whole
+// step under the next one pushed in on the last sixteenths, the rest of the bar left open.
 enum class RiffFlavour { any, chugs, gallop, tritone, creep, stabs, octaves, stopStart, openChords, drivingEighths, droning,
-                         pedalStabs, chugThrees, burstSilence };
+                         pedalStabs, chugThrees, burstSilence, secondHalfStabs, firstHalfBurst, hitPush };
     const std::vector<RiffFlavour>& riffFlavours();
     juce::String riffFlavourName (RiffFlavour);          // "ANY", "CHUGS", "GALLOP", "TRITONE CHUG", ...
     juce::String riffFlavourDescription (RiffFlavour);

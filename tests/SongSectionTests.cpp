@@ -799,12 +799,12 @@ TEST_CASE ("0.94.0: STACCATO CHUG: one verse type, the rhythm guitar's approache
     ComposerState s;
     applySectionType (s, "Verse", "STACCATO CHUG");
     const auto names = sectionApproaches (s, ComposerLayer::guitar);
-    REQUIRE (names.size() == 7);
+    REQUIRE (names.size() == 6);   // (0.96.0: BURST & SILENCE moved to SPLIT CHUG)
     CHECK (names[0] == "PEDAL & STABS");
-    CHECK (names[3] == "TRITONE CHUG");
-    CHECK (names[5] == "GALLOP");
+    CHECK (names[2] == "TRITONE CHUG");
+    CHECK (names[4] == "GALLOP");
     ComposerContext c;
-    s.lane (ComposerLayer::guitar).approach = 5;
+    s.lane (ComposerLayer::guitar).approach = 4;
     CHECK (guitarRecipe (s, c).flavour == RiffFlavour::gallop);
     s.lane (ComposerLayer::guitar).approach = 1;
     CHECK (guitarRecipe (s, c).flavour == RiffFlavour::chugThrees);
@@ -816,7 +816,7 @@ TEST_CASE ("0.94.0: STACCATO CHUG: one verse type, the rhythm guitar's approache
         s.lane (ComposerLayer::guitar).variation = v;
         seen.insert (guitarRecipe (s, c).flavour);
     }
-    CHECK (seen == std::set<RiffFlavour> { RiffFlavour::pedalStabs, RiffFlavour::chugThrees, RiffFlavour::burstSilence,
+    CHECK (seen == std::set<RiffFlavour> { RiffFlavour::pedalStabs, RiffFlavour::chugThrees,
                                            RiffFlavour::tritone, RiffFlavour::chugs, RiffFlavour::gallop, RiffFlavour::stopStart });
     // A Pre-Chorus has it too; a chorus doesn't.
     CHECK (isSectionTypeOf ("Pre-Chorus", "STACCATO CHUG"));
@@ -908,4 +908,119 @@ TEST_CASE ("0.95.0: STACCATO CHUG's band: the bass doubles the guitar's chugs an
     plain.riffFlavour = s.riffFlavour;
     const auto standard = composeLayers (plain, spans, c);
     CHECK (starts (standard[(size_t) ComposerLayer::bass], all) != bass);
+}
+
+TEST_CASE ("0.96.0: SPLIT CHUG: a verse type of its own, its riff kinds the owner's three and Waffle's", "[sections][types]")
+{
+    REQUIRE (isSectionTypeOf ("Verse", "SPLIT CHUG"));
+    CHECK (isSectionTypeOf ("Pre-Chorus", "SPLIT CHUG"));
+    CHECK_FALSE (isSectionTypeOf ("Chorus", "SPLIT CHUG"));
+    ComposerState s;
+    applySectionType (s, "Verse", "SPLIT CHUG");
+    const auto names = sectionApproaches (s, ComposerLayer::guitar);
+    REQUIRE (names.size() == 4);
+    CHECK (names[0] == "SECOND-HALF STABS");
+    CHECK (names[1] == "FIRST-HALF BURST");
+    CHECK (names[2] == "HIT & PUSH");
+    CHECK (names[3] == "BURST & SILENCE");
+    CHECK (sectionApproaches (s, ComposerLayer::bass)[1] == "HOLDS THROUGH THE GAPS");
+    CHECK (sectionApproaches (s, ComposerLayer::drums)[1] == "PLAIN BACKBEAT");
+
+    for (juce::uint32 seed = 1; seed <= 30; ++seed)
+    {
+        RiffRecipe r;
+        r.seed = seed;
+        r.bars = 4;
+        r.section = DrumSection::verse;
+        const auto quiet = [] (const std::string& bar, int from, int to)
+        {
+            for (int i = from; i < to; ++i)
+                if (bar[(size_t) i] != '-')
+                    return false;
+            return true;
+        };
+        // Going Under: a chord on 1, the first half otherwise silent, stabs in the second half; the 4th bar a breath.
+        r.flavour = RiffFlavour::secondHalfStabs;
+        const auto stabs = generateRiffBars (r);
+        REQUIRE (stabs.size() == 4);
+        CHECK (stabs[0][0] == '#');
+        CHECK (quiet (stabs[0], 1, 7));
+        auto second = 0;
+        for (int i = 8; i < 16; ++i)
+            second += stabs[0][(size_t) i] == '#' ? 1 : 0;
+        CHECK (second >= 3);
+        CHECK (quiet (stabs[3], 1, 16));
+        // Papercut: the burst in the first half, the second half silent (or the intro's held chord), a pickup in the 4th bar.
+        r.flavour = RiffFlavour::firstHalfBurst;
+        const auto burst = generateRiffBars (r);
+        CHECK (burst[0][0] == '*');
+        CHECK ((quiet (burst[0], 11, 16) || burst[0].substr (8) == "========"));
+        CHECK (burst[3].substr (13) == "223");
+        // Call Me: a chord on 1 (or three quick chugs), the bar open, the push on the last three sixteenths.
+        r.flavour = RiffFlavour::hitPush;
+        const auto push = generateRiffBars (r);
+        for (const auto& bar : push)
+        {
+            CHECK ((bar[0] == '#' || bar[0] == '*'));
+            CHECK (quiet (bar, 3, 13));
+            CHECK (bar.substr (13) == "[==");
+        }
+    }
+}
+
+TEST_CASE ("0.96.0: SPLIT CHUG's band: the bass on the hits or held through the gaps, the kick with the hits or a plain backbeat", "[sections][types]")
+{
+    ComposerState s;
+    applySectionType (s, "Verse", "SPLIT CHUG");
+    s.lane (ComposerLayer::guitar).approach = 2;   // (Call Me's hit and push)
+    std::vector<ChordSpan> spans;
+    for (int i = 0; i < 4; ++i)
+        spans.push_back ({ i * 4.0, i * 4.0 + 4.0, Chord { i % 2 == 0 ? 4 : 2, i % 2 == 0 ? Chord::Type::minor : Chord::Type::major }, Key {} });
+    ComposerContext c;
+    const auto starts = [] (const LineIdea& idea, std::function<bool (const LineNote&)> keep)
+    {
+        std::set<int> at;
+        for (const auto& n : idea.notes)
+            if (! n.keyswitch && keep (n))
+                at.insert (juce::roundToInt (n.beat * 4.0));
+        return at;
+    };
+    const auto all = [] (const LineNote&) { return true; };
+    const auto kick = [] (const LineNote& n) { return n.pitch == 35 || n.pitch == 36; };
+    const auto layers = composeLayers (s, spans, c);
+    const auto guitar = starts (layers[(size_t) ComposerLayer::guitar], all);
+    REQUIRE (guitar.size() >= 4);
+    // Automatic: the bass doubles the hits, the kick catches them.
+    const auto bass = starts (layers[(size_t) ComposerLayer::bass], all);
+    const auto kicks = starts (layers[(size_t) ComposerLayer::drums], kick);
+    auto bassOn = 0, kickOn = 0;
+    for (const auto g : guitar)
+    {
+        bassOn += bass.count (g) > 0 ? 1 : 0;
+        kickOn += kicks.count (g) > 0 ? 1 : 0;
+    }
+    CHECK (bassOn >= (int) guitar.size() * 9 / 10);
+    CHECK (kickOn >= (int) guitar.size() * 8 / 10);
+    // HOLDS THROUGH THE GAPS: the same starts, each note held to the next (a beat or more here).
+    auto held = s;
+    held.lane (ComposerLayer::bass).approach = 1;
+    held.lane (ComposerLayer::drums).approach = 1;
+    const auto heldLayers = composeLayers (held, spans, c);
+    const auto& heldBass = heldLayers[(size_t) ComposerLayer::bass];
+    REQUIRE_FALSE (heldBass.notes.empty());
+    auto longest = 0.0;
+    for (const auto& n : heldBass.notes)
+        longest = juce::jmax (longest, n.length);
+    CHECK (longest >= 2.0);
+    // PLAIN BACKBEAT: kick on 1 and 3 of every bar, snare on 2 and 4, whatever the guitar does.
+    const auto beatKicks = starts (heldLayers[(size_t) ComposerLayer::drums], kick);
+    const auto snares = starts (heldLayers[(size_t) ComposerLayer::drums], [] (const LineNote& n) { return n.pitch == 38; });
+    for (int bar = 0; bar < 4; ++bar)
+    {
+        CHECK (beatKicks.count (bar * 16) == 1);
+        CHECK (beatKicks.count (bar * 16 + 8) == 1);
+        CHECK (snares.count (bar * 16 + 4) == 1);
+        CHECK (snares.count (bar * 16 + 12) == 1);
+    }
+    CHECK (beatKicks.size() == 8);
 }

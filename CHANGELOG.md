@@ -2,6 +2,24 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.96.0
+
+**SPLIT CHUG, a new verse type** (from your three: Linkin Park's Papercut, Evanescence's Going Under and Call Me When You're Sober). I read the MIDI for its shapes only; nothing is copied, and your files aren't in the repo.
+
+The idea: the bar is split. One part is played, chugs or stabs, and the rest is left open for the vocal. STACCATO CHUG fills the whole bar; SPLIT CHUG leaves room. The drums also keep time through the gaps instead of going quiet with the guitar.
+
+The guitar's approaches:
+- **SECOND-HALF STABS** (Going Under's shape): a chord on 1, the first half left empty, then stabs in the second half. The fourth bar of a phrase is one chord and a breath.
+- **FIRST-HALF BURST** (Papercut's shape): a burst of chugs and a chord move in the first half, the second half silent. Now and then the second half holds a chord instead, and the phrase's last bar picks up into the next.
+- **HIT & PUSH** (Call Me's shape): one chord on 1 (or three quick chugs), the bar left open, then a push a step under the next chord on the last sixteenths, held into the bar line.
+- **BURST & SILENCE** (Waffle's shape), moved here from STACCATO CHUG as you asked. STACCATO CHUG keeps its other six.
+
+The bass: **DOUBLES THE HITS** (the default: the guitar's rhythm and notes) or **HOLDS THROUGH THE GAPS** (the same notes, each held until the next, so the open space has a floor under it).
+
+The drums: **KICK WITH THE HITS** (the default: the kick catches every guitar hit, snare on 2 and 4) or **PLAIN BACKBEAT** (kick on 1 and 3, snare on 2 and 4, open hats and ride on the eighths, a little snare turn every fourth bar, whatever the guitar does: Call Me's feel).
+
+The names are a start; we can change them later. I can't hear any of this here, so tell me what sounds off.
+
 ## 0.95.0
 
 **STACCATO CHUG, from your three verses** (Sevendust's Black and Waffle, Disturbed's Stricken). I read the MIDI for its shapes only; nothing is copied, and your files aren't in the repo.

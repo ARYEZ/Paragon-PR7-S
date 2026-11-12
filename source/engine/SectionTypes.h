@@ -30,11 +30,16 @@ namespace pr7s
         std::vector<RiffFlavour> guitarFlavours;
         // (0.95.0) The band's part under the type: STACCATO (the owner's Black, Stricken, Waffle: the bass doubles the
         // guitar's chugs, the kick plays every chug; their approaches the looser accents-only versions).
-        enum class Band { none, staccato };
+        // (0.96.0) SPLIT (the owner's Going Under, Papercut, Call Me When You're Sober): the bass doubles the guitar's
+        // hits (or holds the root through the gaps), the kick catches the hits while the snare and hats keep time (or
+        // a plain backbeat under the guitar).
+        enum class Band { none, staccato, split };
         Band band = Band::none;
     };
     // True when the state's type has the staccato band and the guitar is on, generated (not WRITTEN RIFFS).
     bool staccatoBand (const ComposerState&);
+    // The band's part under the state's type (none: no type, WRITTEN RIFFS, or the guitar off).
+    SectionType::Band sectionBand (const ComposerState&);
     // A type by its name alone (the same name means the same type in every section that has it).
     std::optional<SectionType> sectionTypeCalled (const juce::String& type);
     // The guitar's flavour under the state's type and the guitar lane's approach (none: the state's own flavour).

@@ -13,7 +13,8 @@ namespace pr7s
         static const std::vector<RiffFlavour> all { RiffFlavour::any, RiffFlavour::chugs, RiffFlavour::gallop, RiffFlavour::tritone, RiffFlavour::creep,
                                                     RiffFlavour::stabs, RiffFlavour::octaves, RiffFlavour::stopStart, RiffFlavour::openChords,
                                                     RiffFlavour::drivingEighths, RiffFlavour::droning,
-                                                    RiffFlavour::pedalStabs, RiffFlavour::chugThrees, RiffFlavour::burstSilence };
+                                                    RiffFlavour::pedalStabs, RiffFlavour::chugThrees, RiffFlavour::burstSilence,
+                                                    RiffFlavour::secondHalfStabs, RiffFlavour::firstHalfBurst, RiffFlavour::hitPush };
         return all;
     }
 
@@ -35,6 +36,9 @@ namespace pr7s
             case RiffFlavour::pedalStabs: return "PEDAL & STABS";
             case RiffFlavour::chugThrees: return "CHUGS IN THREES";
             case RiffFlavour::burstSilence: return "BURST & SILENCE";
+            case RiffFlavour::secondHalfStabs: return "SECOND-HALF STABS";
+            case RiffFlavour::firstHalfBurst: return "FIRST-HALF BURST";
+            case RiffFlavour::hitPush: return "HIT & PUSH";
         }
         return "ANY";
     }
@@ -57,6 +61,9 @@ namespace pr7s
             case RiffFlavour::pedalStabs: return "The low string chugged in sixteenths, a power chord stabbed every third one, climbing every bar or two";
             case RiffFlavour::chugThrees: return "A rest and two chugs over and over, a chromatic walk up at the bar's end, power chords climbing every fourth bar";
             case RiffFlavour::burstSilence: return "A hit, a burst of chugs, a pair, then silence; a dissonant stab every other bar";
+            case RiffFlavour::secondHalfStabs: return "A chord on 1, silence, then short stabs through the second half of the bar";
+            case RiffFlavour::firstHalfBurst: return "A burst of chugs stepping down in the first half, the second half silent, a pickup every fourth bar";
+            case RiffFlavour::hitPush: return "A chord on 1, the bar left open, the next chord pushed in early from a step under";
         }
         return {};
     }
@@ -130,7 +137,8 @@ namespace pr7s
                 case RiffFlavour::openChords: boost (Cell::powerChord, 4.0f); boost (Cell::highChord, 3.0f); boost (Cell::chug, 0.6f); boost (Cell::chugRun, 0.4f); break;
                 case RiffFlavour::drivingEighths: break;   // (made by DrivingEighths below, not from cells)
                 case RiffFlavour::droning: break;          // (made by Droning below)
-                case RiffFlavour::pedalStabs: case RiffFlavour::chugThrees: case RiffFlavour::burstSilence: break;   // (StaccatoChug)
+                case RiffFlavour::pedalStabs: case RiffFlavour::chugThrees: case RiffFlavour::burstSilence:
+                case RiffFlavour::secondHalfStabs: case RiffFlavour::firstHalfBurst: case RiffFlavour::hitPush: break;   // (StaccatoChug)
             }
         }
 
@@ -1180,12 +1188,79 @@ namespace pr7s
                 return { cell, withStab, cell, pickup };
             }
 
+            // (0.96.0, SPLIT CHUG) A 16-step cell fitted to the bar: cut, or held out with rests.
+            std::string fitted (std::string cell) const
+            {
+                cell.resize ((size_t) steps, '-');
+                return cell;
+            }
+
+            // Going Under: # - - - - - - - # - # - - # - # (open power chords, each a sixteenth), the phrase's last bar a
+            // single chord and silence (a breath before the next four).
+            std::vector<std::string> secondHalfStabs (int bars)
+            {
+                const auto cell = fitted (pick<std::string> ({ { "#-------#-#--#-#", 3 }, { "#-------##-#-#--", 1.5f }, { "#------#-#-#--#-", 1 } }));
+                const auto breath = fitted ("#---------------");
+                std::vector<std::string> out;
+                for (int k = 0; k < bars; ++k)
+                    out.push_back (bars == 4 && k == 3 ? breath : cell);
+                return out;
+            }
+
+            // Papercut: * * * - - 8 - 8 8 7 7 - - - - - (muted chugs on the root, then power chords stepping down: the
+            // flat sixth to the fifth, or another pair), the fourth bar's pickup climbing into the next (2 2 3).
+            std::vector<std::string> firstHalfBurst (int bars)
+            {
+                const auto moves = pick<std::pair<int, int>> ({ { { 8, 7 }, 3 }, { { 10, 8 }, 1.5f }, { { 5, 3 }, 1.5f }, { { 7, 5 }, 1 } });
+                auto cell = fitted ("***--8-8877-----");
+                for (auto& c : cell)
+                    c = c == '8' ? digit (moves.first) : c == '7' ? digit (moves.second) : c;
+                // The intro's way (bars 4-7): two chugs, a climb, the last chord held through the second half.
+                if (random.nextFloat() < 0.3f)
+                    cell = fitted ("**23-2-5========");
+                auto pickup = cell;
+                if (steps >= 16)
+                {
+                    pickup[13] = '2';
+                    pickup[14] = '2';
+                    pickup[15] = '3';
+                }
+                std::vector<std::string> out;
+                for (int k = 0; k < bars; ++k)
+                    out.push_back (bars >= 2 && k == bars - 1 ? pickup : cell);
+                return out;
+            }
+
+            // Call Me When You're Sober: # = - - - - - - - - - - - [ = = (the chord on 1 held an eighth, the chord a whole
+            // step under the next one on the last sixteenths, ringing into the bar line); its first bars open on three
+            // quick muted chugs instead.
+            std::vector<std::string> hitPush (int bars)
+            {
+                auto a = fitted ("#=--------------");
+                auto b = fitted ("***-------------");
+                if (steps >= 4)
+                {
+                    a[(size_t) steps - 3] = b[(size_t) steps - 3] = '[';
+                    a[(size_t) steps - 2] = b[(size_t) steps - 2] = '=';
+                    a[(size_t) steps - 1] = b[(size_t) steps - 1] = '=';
+                }
+                const auto shape = bars <= 1 ? std::string ("A") : bars == 2 ? pick<std::string> ({ { "AA", 2 }, { "BA", 1 } })
+                                                                             : pick<std::string> ({ { "AAAA", 3 }, { "BBAA", 2 }, { "BABA", 1 } });
+                std::vector<std::string> out;
+                for (const auto c : shape)
+                    out.push_back (c == 'B' ? b : a);
+                return out;
+            }
+
             std::vector<std::string> make (int bars)
             {
                 switch (recipe.flavour)
                 {
                     case RiffFlavour::pedalStabs: return pedalStabs (bars);
                     case RiffFlavour::chugThrees: return chugThrees (bars);
+                    case RiffFlavour::secondHalfStabs: return secondHalfStabs (bars);
+                    case RiffFlavour::firstHalfBurst: return firstHalfBurst (bars);
+                    case RiffFlavour::hitPush: return hitPush (bars);
                     default: return burstSilence (bars);
                 }
             }
@@ -1245,7 +1320,8 @@ namespace pr7s
             Droning droning { own, leaned, steps };
             return droning.make (bars);   // (BUSY is in the shapes: the pass below would chug into the rings)
         }
-        if (flavour == RiffFlavour::pedalStabs || flavour == RiffFlavour::chugThrees || flavour == RiffFlavour::burstSilence)
+        if (flavour == RiffFlavour::pedalStabs || flavour == RiffFlavour::chugThrees || flavour == RiffFlavour::burstSilence
+            || flavour == RiffFlavour::secondHalfStabs || flavour == RiffFlavour::firstHalfBurst || flavour == RiffFlavour::hitPush)
         {
             // (0.95.0: its own random numbers from the seed; BUSY through the pass below, as every riff)
             auto mixed = (juce::uint64) recipe.seed * 0xA24BAED4963EE407ull;
@@ -1371,7 +1447,8 @@ namespace pr7s
         // (DRIVING EIGHTHS follows the chords' roots, never the key's pedal.)
         auto pedal = recipe.flavour != RiffFlavour::drivingEighths && recipe.flavour != RiffFlavour::droning && recipe.style != GuitarStyle::rock && recipe.style != GuitarStyle::shred;
         // (0.95.0) Black's stabs climb over the low string; Stricken's and Waffle's chugs follow each chord's root.
-        pedal = (pedal || recipe.flavour == RiffFlavour::pedalStabs) && recipe.flavour != RiffFlavour::chugThrees && recipe.flavour != RiffFlavour::burstSilence;
+        pedal = (pedal || recipe.flavour == RiffFlavour::pedalStabs) && recipe.flavour != RiffFlavour::chugThrees && recipe.flavour != RiffFlavour::burstSilence
+             && recipe.flavour != RiffFlavour::secondHalfStabs && recipe.flavour != RiffFlavour::firstHalfBurst && recipe.flavour != RiffFlavour::hitPush;   // (0.96.0: SPLIT CHUG's follow the roots)
         for (const auto& b : bars)
             pedal = pedal || b.find_first_of ("zZ") != std::string::npos;   // (TRITONE CHUG: the open low string in any style)
         return riffFromBars ([&bars] (int barIndex) { return bars[(size_t) (((barIndex % (int) bars.size()) + (int) bars.size()) % (int) bars.size())]; },
