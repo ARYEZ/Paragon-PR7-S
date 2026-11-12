@@ -255,6 +255,11 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
     autoSaveNote.setJustificationType (juce::Justification::topLeft);
     autoSaveNote.setFont (juce::Font (ParagonLookAndFeel::textFont (12.0f)));
     addAndMakeVisible (autoSaveNote);
+    askTypeChange.setToggleState (studio.getAskBeforeTypeChange(), juce::dontSendNotification);
+    askTypeChange.setTooltip ("Off: changing the TYPE of a section already built (a chorus from DRIVING to DRONING) builds it again at once, "
+                              "keeping the lanes you changed by hand. On: you're asked first");
+    askTypeChange.onClick = [this] { studio.setAskBeforeTypeChange (askTypeChange.getToggleState()); };
+    addAndMakeVisible (askTypeChange);
 
     // HUMANIZE (0.20.1).
     for (auto* l : { &humanizeTitle, &humanizeKeyLabel, &humanizeAmountLabel, &humanizeNote })
@@ -780,7 +785,7 @@ void Hub::resized()
                                                                          &addLocation, &removeLocation, &locationsBox, &dropLabel, &dropStrength,
                                                                          &humanizeTitle, &humanizeKeyLabel, &humanizeSetKey, &humanizeClearKey,
                                                                          &humanizeAmountLabel, &humanizeAmount, &humanizeLayers, &humanizeNote,
-                                                                         &autoSaveTitle, &autoSaveBox, &keepBox, &showBackups, &autoSaveNote,
+                                                                         &autoSaveTitle, &autoSaveBox, &keepBox, &showBackups, &autoSaveNote, &askTypeChange,
                                                                          &drumMapLabel, &drumMapBox, &templateLabel, &templateBox, &saveTemplate,
                                                                          &useDefault, &locationLabel, &chooseLocation, &folderName })
             c->setVisible (false);
@@ -795,7 +800,7 @@ void Hub::resized()
     for (auto* c : std::initializer_list<juce::Component*> { &showPaths, &showLocation, &atStart, &addLocation, &removeLocation, &locationsBox, &dropLabel, &dropStrength,
                                                                      &humanizeTitle, &humanizeKeyLabel, &humanizeSetKey, &humanizeClearKey,
                                                                      &humanizeAmountLabel, &humanizeAmount, &humanizeLayers, &humanizeNote,
-                                                                     &autoSaveTitle, &autoSaveBox, &keepBox, &showBackups, &autoSaveNote,
+                                                                     &autoSaveTitle, &autoSaveBox, &keepBox, &showBackups, &autoSaveNote, &askTypeChange,
                                                                      &drumMapLabel, &drumMapBox, &templateLabel, &templateBox, &saveTemplate })
         c->setVisible (settingsPage);
     for (auto* c : std::initializer_list<juce::Component*> { &useDefault, &locationLabel, &chooseLocation, &folderName })
@@ -877,6 +882,8 @@ void Hub::resized()
             showBackups.setBounds (column.removeFromTop (28).withWidth (juce::jmin (220, column.getWidth())));
             column.removeFromTop (6);
             autoSaveNote.setBounds (column.removeFromTop (70));
+            column.removeFromTop (4);
+            askTypeChange.setBounds (column.removeFromTop (28));
         }
         for (auto* t : { &showPaths, &showLocation, &atStart })
         {

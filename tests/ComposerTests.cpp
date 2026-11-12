@@ -849,6 +849,10 @@ TEST_CASE ("Snapshot: the composer suite with a song built (0.74.0)", "[.][snaps
             page.aimAtSectionsRow();
             page.buildSection();
             page.buildSection();
+            // (0.94.0) The chorus DRONING, its drums half time.
+            studio.setSongSectionType (2, "DRONING");
+            page.targetSection (studio.getSongSections().blocks[2].id);
+            page.setApproach (ComposerLayer::drums, 1);
         }
         else
         {

@@ -994,7 +994,20 @@ namespace pr7s
 
                 // The shape (drawn the same at any BUSY: BUSY only strikes more or fewer, below).
                 std::string shape;
-                if (bars <= 1)
+                if (recipe.approach >= 0)
+                {
+                    // (0.94.0) The approach chosen: only its shapes. 0 rung whole, 1 pushed, 2 moving top, 3 struck twice, 4 sliding.
+                    switch (recipe.approach % 5)
+                    {
+                        case 1: shape = bars <= 1 ? "P" : bars == 2 ? "WQ" : "WQHQ"; break;
+                        case 2: shape = bars <= 1 ? "T" : bars == 2 ? "TT" : "TTTT"; break;
+                        case 3: shape = bars <= 1 ? "V" : bars == 2 ? "VV" : pick<std::string> ({ { "VVVV", 2 }, { "WWVV", 1 } }); break;
+                        case 4: shape = bars <= 1 ? "D" : bars == 2 ? "WD" : pick<std::string> ({ { "DDDD", 1 }, { "WDWD", 1 } }); break;
+                        default: shape = bars <= 1 ? "W" : bars == 2 ? pick<std::string> ({ { "WW", 3 }, { "Ww", 1 } })
+                                                                    : pick<std::string> ({ { "WWWW", 3 }, { "WWWw", 1.5f } }); break;
+                    }
+                }
+                else if (bars <= 1)
                     shape = pick<std::string> ({ { "W", 3 }, { "T", 2 }, { "V", 1.5f }, { "D", 1 }, { "P", 1.5f } });
                 else if (bars == 2)
                     shape = pick<std::string> ({ { "WW", 3 }, { "WQ", 2.5f }, { "Ww", 1 }, { "TT", 2 }, { "VV", 1.5f }, { "WD", 1 } });
@@ -1007,7 +1020,7 @@ namespace pr7s
                                                  { "WWVV", 1 },
                                                  { "DDDD", 1 },     // rung, then sliding down to the next bar (Clown)
                                                  { "WDWD", 1 } });
-                if (verse())   // (a verse rings power chords, no moving top: the chorus keeps those)
+                if (verse() && recipe.approach % 5 != 2)   // (a verse rings power chords, no moving top: the chorus keeps those; unless asked for)
                     for (auto& c : shape)
                         c = c == 'T' ? 'W' : c == 't' ? 'w' : c;
                 // BUSY: a fixed chance per bar; over the middle, a bar rung whole is struck again halfway when its chance

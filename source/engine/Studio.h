@@ -89,6 +89,9 @@ namespace pr7s
         void setAutoSaveMinutes (int minutes);
         int getAutoSaveKeep() const;
         void setAutoSaveKeep (int copies);
+        // (0.94.0) HUB SETTINGS' ASK BEFORE CHANGING A BUILT SECTION'S TYPE (settings "askSectionTypeChange"; off).
+        bool getAskBeforeTypeChange() const;
+        void setAskBeforeTypeChange (bool ask);
         static constexpr int defaultAutoSaveMinutes = 5, defaultAutoSaveKeep = 10;
         juce::File backupFolder() const;
         // Writes a backup now (the timer calls it when due). False: nothing written (nothing changed
@@ -1173,6 +1176,11 @@ namespace pr7s
         // in the block (not drums, not frozen) move to fit the new chords (Follow Chord Track's Chords & Scales), their
         // rhythm kept. Inside the same undo step as the chords' change.
         void noteSectionBuilt (int blockId, const juce::String& composerState, const std::vector<std::pair<int, int>>& layerTracks);
+        // (0.94.0, the owner's section types) A block's TYPE (engine/SectionTypes.h; empty or "STANDARD": none); linked
+        // copies too. A built block is built again at once for the type (its recipe's flavour and approaches), the lanes
+        // changed by hand since left as they are, in one undo step. False: not a type of that block's name.
+        bool setSongSectionType (int index, const juce::String& type);
+        bool isSongSectionBuilt (int index) const;
         bool removeSongSection (int index);               // and its music; the gap closes
         // A block's place in beats (none: no such block).
         std::optional<SectionPlace> getSongSectionPlace (int index) const;
@@ -1536,6 +1544,7 @@ namespace pr7s
         void rewriteChangedSections();     // before syncLinkedSections in changed()
         void noteSectionChords();          // after it
         void rewriteSection (int index, const std::vector<ChordEvent>& before, const std::vector<ChordEvent>& after);
+        std::vector<int> rebuildSectionLanes (int index, const std::vector<ChordEvent>& chords);   // the tracks rebuilt
         PadPlayer padPlayer;
         std::unique_ptr<PatternPerformer> performer;   // (0.39.0) the pads' performance
         class LinePreview;
@@ -1759,6 +1768,7 @@ namespace pr7s
         juce::int64 lastBackupHash = 0;
         juce::uint32 lastBackupTime = juce::Time::getMillisecondCounter();
         int autoSaveMinutesHere = 0, autoSaveKeepHere = defaultAutoSaveKeep;
+        bool askTypeChangeHere = false;
         std::array<TrackTypeLook, numTrackTypes> trackTypeLooksHere;   // (0.80.0; without a settings file)
         std::array<TrackTypeLook, numTrackTypes> readTrackTypeLooks() const;
         void giveTypeLook (Track&, int index) const;   // a new track's colour and list colour   // (without a settings file: the tests)

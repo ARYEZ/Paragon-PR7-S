@@ -338,6 +338,7 @@ public:
     int getSelectedSection() const noexcept;                     // its index, -1: none
     void selectSection (int index);
     int getSectionDragTarget() const noexcept { return drag == Drag::sectionMove ? sectionDragTo : -1; }
+    void changeSectionType (int index, const juce::String& type);   // (0.94.0: asks first when HUB SETTINGS says so)
     void showSectionMenu (int index);                            // -1: the row's own menu (add a section)
     void showAddSectionMenu (int insertAt, juce::Point<int> where = {});   // insertAt -1: after the last
 

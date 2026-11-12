@@ -60,6 +60,8 @@ namespace pr7s
             e->setAttribute ("bars", b.bars);
             if (b.link > 0)
                 e->setAttribute ("link", b.link);
+            if (b.type.isNotEmpty())
+                e->setAttribute ("type", b.type);
             if (b.recipe.isNotEmpty())
             {
                 e->setAttribute ("recipe", b.recipe);
@@ -88,6 +90,7 @@ namespace pr7s
             b.bars = juce::jlimit (leastSectionBars, mostSectionBars, e->getIntAttribute ("bars", 8));
             b.link = juce::jmax (0, e->getIntAttribute ("link", 0));
             b.recipe = e->getStringAttribute ("recipe");
+            b.type = e->getStringAttribute ("type");
             for (auto* lane : e->getChildWithTagNameIterator ("Lane"))
                 b.lanes.push_back ({ lane->getIntAttribute ("layer"), lane->getIntAttribute ("track"),
                                      lane->getStringAttribute ("mark").getLargeIntValue() });
@@ -149,6 +152,14 @@ namespace pr7s
                     ++place;
             }
         return count > 1 ? name + " " + juce::String (place) : name;
+    }
+
+    juce::String sectionLabelWithType (const std::vector<SongSection>& blocks, int index)
+    {
+        const auto label = sectionLabel (blocks, index);
+        if (label.isEmpty() || blocks[(size_t) index].type.isEmpty())
+            return label;
+        return label + " - " + blocks[(size_t) index].type;
     }
 
     int composerSectionFor (const juce::String& name)

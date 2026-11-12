@@ -348,6 +348,8 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.appendSongSection ("Chorus", 8);
         studio.appendSongSection ("Bridge", 4);
         studio.appendSongSection ("Outro", 4);
+        studio.setSongSectionType (3, "DRONING");          // (0.94.0: a typed chorus, its linked copy too)
+        studio.setSongSectionType (1, "STACCATO CHUG");
         view.getArrangeView().selectSection (3);
         studio.duplicateSongSection (3);   // (0.91.0: the chorus's linked copy)
         view.getArrangeView().zoomTo (0.0, studio.getSongSectionPlaces().back().end);

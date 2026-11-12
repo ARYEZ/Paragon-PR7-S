@@ -1,4 +1,5 @@
 #include "Studio.h"
+#include "SectionTypes.h"
 #include "Controllers.h"
 #include "Stretch.h"
 #include "Warp.h"
@@ -8487,6 +8488,20 @@ namespace pr7s
             settings->setValue ("autoSaveKeep", autoSaveKeepHere);
     }
 
+    bool Studio::getAskBeforeTypeChange() const
+    {
+        if (settings != nullptr)
+            return settings->getBoolValue ("askSectionTypeChange", false);
+        return askTypeChangeHere;
+    }
+
+    void Studio::setAskBeforeTypeChange (bool ask)
+    {
+        askTypeChangeHere = ask;
+        if (settings != nullptr)
+            settings->setValue ("askSectionTypeChange", ask);
+    }
+
     juce::File Studio::backupFolder() const
     {
         if (file != juce::File() && audioFolderOverride == juce::File())
@@ -12895,7 +12910,11 @@ namespace pr7s
         if (blocks[(size_t) index].name == sectionBaseOf (name))
             return true;
         for (const auto i : project.songSections.linkedWith (index))   // (0.91.0: linked copies keep one name)
+        {
             blocks[(size_t) i].name = sectionBaseOf (name);
+            if (! isSectionTypeOf (blocks[(size_t) i].name, blocks[(size_t) i].type))
+                blocks[(size_t) i].type = {};   // (0.94.0: a type the new name doesn't have: STANDARD)
+        }
         changed();
         return true;
     }
@@ -13451,9 +13470,40 @@ namespace pr7s
                         found = &c;
             return found != nullptr ? found : (chords.empty() ? nullptr : &chords.front());
         };
-        std::vector<int> rebuilt;
         // 1. The composer's lanes the block still holds as written: built again over the new chords.
-        if (block.recipe.isNotEmpty() && ! block.lanes.empty())
+        const auto rebuilt = rebuildSectionLanes (index, after);
+        // 2. Every other pitched track's notes in the block moved to fit the new chords (their rhythm kept).
+        for (auto& track : project.tracks)
+        {
+            if (track.frozen || ! isPitchedTrack (track) || std::find (rebuilt.begin(), rebuilt.end(), track.id) != rebuilt.end())
+                continue;
+            for (auto& part : track.parts)
+                for (auto& n : part.notes)
+                {
+                    const auto at = part.start + n.start;
+                    if (at < place.start - 1.0e-9 || at >= place.end - 1.0e-9)
+                        continue;
+                    const auto* from = chordAt (before, at - place.start);
+                    const auto* to = chordAt (after, at - place.start);
+                    if (from == nullptr || to == nullptr || from->chord == to->chord)
+                        continue;
+                    const auto key = chordTrackKeyAt (at);
+                    n.pitch = juce::jlimit (0, 127, followPitch (n.pitch, FollowMode::chordsAndScales, from->chord, key, to->chord, key));
+                }
+        }
+        // The linked copies keep the same recipe and marks (their music is the same once copied).
+        for (const auto i : project.songSections.linkedWith (index))
+            if (i != index)
+                project.songSections.blocks[(size_t) i].lanes = block.lanes;
+    }
+
+    std::vector<int> Studio::rebuildSectionLanes (int index, const std::vector<ChordEvent>& after)
+    {
+        std::vector<int> rebuilt;
+        auto& block = project.songSections.blocks[(size_t) index];
+        const auto place = getSongSectionPlaces()[(size_t) index];
+        if (after.empty() || block.recipe.isEmpty() || block.lanes.empty())
+            return rebuilt;
         {
             std::vector<ChordSpan> spans;
             for (const auto& c : after)
@@ -13483,28 +13533,41 @@ namespace pr7s
                 if (std::find (rebuilt.begin(), rebuilt.end(), lane.track) != rebuilt.end())
                     lane.mark = trackMark (place, lane.track);
         }
-        // 2. Every other pitched track's notes in the block moved to fit the new chords (their rhythm kept).
-        for (auto& track : project.tracks)
-        {
-            if (track.frozen || ! isPitchedTrack (track) || std::find (rebuilt.begin(), rebuilt.end(), track.id) != rebuilt.end())
-                continue;
-            for (auto& part : track.parts)
-                for (auto& n : part.notes)
-                {
-                    const auto at = part.start + n.start;
-                    if (at < place.start - 1.0e-9 || at >= place.end - 1.0e-9)
-                        continue;
-                    const auto* from = chordAt (before, at - place.start);
-                    const auto* to = chordAt (after, at - place.start);
-                    if (from == nullptr || to == nullptr || from->chord == to->chord)
-                        continue;
-                    const auto key = chordTrackKeyAt (at);
-                    n.pitch = juce::jlimit (0, 127, followPitch (n.pitch, FollowMode::chordsAndScales, from->chord, key, to->chord, key));
-                }
-        }
-        // The linked copies keep the same recipe and marks (their music is the same once copied).
         for (const auto i : project.songSections.linkedWith (index))
             if (i != index)
                 project.songSections.blocks[(size_t) i].lanes = block.lanes;
+        return rebuilt;
+    }
+
+    bool Studio::isSongSectionBuilt (int index) const
+    {
+        const auto& blocks = project.songSections.blocks;
+        return juce::isPositiveAndBelow (index, (int) blocks.size()) && blocks[(size_t) index].recipe.isNotEmpty();
+    }
+
+    bool Studio::setSongSectionType (int index, const juce::String& type)
+    {
+        auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (index, (int) blocks.size()) || ! isSectionTypeOf (blocks[(size_t) index].name, type))
+            return false;
+        const auto found = sectionTypeNamed (blocks[(size_t) index].name, type);
+        const auto chosen = found.has_value() ? found->name : juce::String();
+        if (blocks[(size_t) index].type == chosen)
+            return true;
+        const auto linked = project.songSections.linkedWith (index);
+        for (const auto i : linked)
+            blocks[(size_t) i].type = chosen;
+        auto& block = blocks[(size_t) index];
+        if (block.recipe.isNotEmpty())
+        {
+            auto state = ComposerState::fromString (block.recipe);
+            applySectionType (state, block.name, chosen);
+            for (const auto i : linked)
+                blocks[(size_t) i].recipe = state.toString();
+            if (const auto place = getSongSectionPlace (index))
+                rebuildSectionLanes (index, sectionChords (*place));
+        }
+        changed();
+        return true;
     }
 }

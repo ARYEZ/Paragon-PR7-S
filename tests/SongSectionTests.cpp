@@ -6,7 +6,9 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include "TestHelpers.h"
+#include <set>
 #include "engine/DrumGenerator.h"
+#include "engine/SectionTypes.h"
 #include "engine/Studio.h"
 #include "ui/ArrangeView.h"
 #include "ui/ComposerPage.h"
@@ -586,4 +588,234 @@ TEST_CASE ("0.93.0: the composer block by block: aimed at the first block, BUILD
     CHECK (page.getTargetSection() == studio.getSongSections().blocks.back().id);
     CHECK (page.getNextKey (0)->getButtonText().startsWith ("+ ADD"));
     window->setVisible (false);
+}
+
+//==============================================================================
+// Section types (0.94.0, the owner's: a chorus DRIVING or DRONING, each instrument with its own approaches within it).
+
+TEST_CASE ("0.94.0: the types a section can have; STANDARD is none; a type sets the guitar's flavour", "[sections][types]")
+{
+    const auto chorus = sectionTypesFor ("Chorus");
+    REQUIRE (chorus.size() == 2);
+    CHECK (chorus[0].name == "DRIVING");
+    CHECK (chorus[0].flavour == RiffFlavour::drivingEighths);
+    CHECK (chorus[1].name == "DRONING");
+    CHECK (chorus[1].flavour == RiffFlavour::droning);
+    // A name plays as its kind: a Hook as a chorus, a Pre-Chorus as a verse.
+    CHECK (sectionTypesFor ("Hook").size() == 2);
+    CHECK (sectionTypesFor ("Pre-Chorus").front().name == sectionTypesFor ("Verse").front().name);
+    for (const auto& name : songSectionNames())
+        CHECK_FALSE (sectionTypesFor (name).empty());   // (every section seeded with suggestions)
+    CHECK (isSectionTypeOf ("Chorus", {}));
+    CHECK (isSectionTypeOf ("Chorus", "STANDARD"));
+    CHECK (isSectionTypeOf ("Chorus", "droning"));
+    CHECK_FALSE (isSectionTypeOf ("Chorus", "STACCATO CHUG"));
+    CHECK (sectionTypesFor ("Verse").front().name == "STACCATO CHUG");
+
+    ComposerState s;
+    s.lane (ComposerLayer::drums).approach = 1;
+    s.writtenRiffs = true;
+    applySectionType (s, "Chorus", "DRONING");
+    CHECK (s.sectionType == "DRONING");
+    CHECK (riffFlavours()[(size_t) s.riffFlavour] == RiffFlavour::droning);
+    CHECK_FALSE (s.writtenRiffs);
+    CHECK (s.lane (ComposerLayer::drums).approach == -1);
+    // Saved and read back with each lane's approach.
+    s.lane (ComposerLayer::chords).approach = 2;
+    const auto again = ComposerState::fromString (s.toString());
+    CHECK (again == s);
+    applySectionType (s, "Chorus", "STANDARD");
+    CHECK (s.sectionType.isEmpty());
+    CHECK (riffFlavours()[(size_t) s.riffFlavour] == RiffFlavour::any);
+    CHECK (sectionApproaches (s, ComposerLayer::drums).isEmpty());   // (STANDARD: the lanes' usual styles)
+}
+
+TEST_CASE ("0.94.0: DRONING's approaches: each lane plays the one chosen", "[sections][types]")
+{
+    // The guitar: only the chosen approach's shapes, over many takes.
+    for (juce::uint32 seed = 1; seed < 40; ++seed)
+    {
+        RiffRecipe r;
+        r.flavour = RiffFlavour::droning;
+        r.section = DrumSection::chorus;
+        r.bars = 4;
+        r.seed = seed;
+        const auto has = [] (const std::vector<std::string>& bars, char c)
+        {
+            for (const auto& b : bars)
+                if (b.find (c) != std::string::npos)
+                    return true;
+            return false;
+        };
+        r.approach = 0;
+        const auto rung = generateRiffBars (r);
+        CHECK_FALSE (has (rung, '~'));
+        CHECK_FALSE (has (rung, '@'));
+        r.approach = 1;
+        CHECK (has (generateRiffBars (r), '~'));   // (pushed a beat early)
+        r.approach = 2;
+        CHECK (has (generateRiffBars (r), '@'));   // (the power chord held, a top note moving)
+        r.approach = 4;
+        CHECK ((has (generateRiffBars (r), '1') || has (generateRiffBars (r), '2') || has (generateRiffBars (r), '3')));   // (sliding down)
+    }
+    // The band: the approach's part, whatever the style or the take.
+    ComposerState s;
+    applySectionType (s, "Chorus", "DRONING");
+    std::vector<ChordSpan> spans;
+    for (int i = 0; i < 4; ++i)
+        spans.push_back ({ i * 8.0, i * 8.0 + 8.0, Chord { (i * 5) % 12 }, Key {} });
+    ComposerContext c;
+    const auto check = [&] (ComposerLayer l, int approach, const juce::String& word)
+    {
+        for (const auto variation : { 0, 1, 2, 5 })
+            for (const auto style : { 0, 1, 2 })
+            {
+                auto t = s;
+                t.lane (l).on = true;
+                t.lane (l).approach = approach;
+                t.lane (l).variation = variation;
+                t.lane (l).style = juce::jmin (style, composerStyleCount (l) - 1);
+                const auto layers = composeLayers (t, spans, c);
+                const auto& idea = layers[(size_t) l];
+                INFO (composerLayerName (l) << " " << approach << ": " << idea.description << " / " << idea.style);
+                CHECK ((idea.description + " " + idea.style).containsIgnoreCase (word));
+            }
+    };
+    check (ComposerLayer::drums, 0, "open hats");
+    check (ComposerLayer::drums, 1, "half time");
+    check (ComposerLayer::drums, 2, "pushes");
+    check (ComposerLayer::chords, 0, "pulse");
+    check (ComposerLayer::chords, 1, "motif");
+    check (ComposerLayer::lead, 0, "thirds");
+    check (ComposerLayer::lead, 1, "roots");
+    check (ComposerLayer::lead, 2, "pedal");
+    check (ComposerLayer::bass, 1, "pulsed");
+    CHECK (sectionApproaches (s, ComposerLayer::guitar).size() == 5);
+    CHECK (approachName (s, ComposerLayer::drums) == "AUTOMATIC");
+}
+
+TEST_CASE ("0.94.0: a block's type: STANDARD to start, saved, linked copies share it; a built block is built again for it", "[sections][types]")
+{
+    Song song;
+    auto& studio = song.studio;
+    for (const auto& b : studio.getSongSections().blocks)
+        CHECK (b.type.isEmpty());   // (every block starts STANDARD)
+    CHECK_FALSE (studio.getAskBeforeTypeChange());   // (HUB SETTINGS' question off by default)
+
+    // Not one of the block's: refused. The label shows it.
+    CHECK_FALSE (studio.setSongSectionType (2, "STACCATO CHUG"));
+    const auto bass = buildChorusBass (studio);
+    const auto place = *studio.getSongSectionPlace (2);
+    const auto partName = [&]
+    {
+        for (const auto& p : studio.getProject().findTrack (bass)->parts)
+            if (p.start >= place.start - 1.0e-6 && p.start < place.end)
+                return p.name;
+        return juce::String();
+    };
+    const auto before = pitchesIn (studio, bass, place);
+    CHECK_FALSE (partName().containsIgnoreCase ("droning"));
+
+    // DRONING: the bass built again as the droning band's (doubling the ringing guitar).
+    REQUIRE (studio.setSongSectionType (2, "droning"));
+    CHECK (studio.getSongSections().blocks[2].type == "DRONING");
+    CHECK (sectionLabelWithType (studio.getSongSections().blocks, 2) == "Chorus - DRONING");
+    CHECK (partName().containsIgnoreCase ("droning"));
+    CHECK (ComposerState::fromString (studio.getSongSections().blocks[2].recipe).sectionType == "DRONING");
+    CHECK (pitchesIn (studio, bass, place) != before);
+    CHECK (song.pitchAt (0.0) == 60);   // (the intro untouched)
+
+    // One undo: STANDARD and the bass as it was.
+    studio.undo();
+    CHECK (studio.getSongSections().blocks[2].type.isEmpty());
+    CHECK (pitchesIn (studio, bass, place) == before);
+
+    // A bass edited by hand stays as it is through a type change.
+    REQUIRE (studio.setSongSectionType (2, "DRIVING"));
+    const auto& parts = studio.getProject().findTrack (bass)->parts;
+    int index = -1;
+    for (int i = 0; i < (int) parts.size(); ++i)
+        if (parts[(size_t) i].start >= place.start - 1.0e-6)
+            index = i;
+    REQUIRE (index >= 0);
+    studio.setNotes (bass, index, { { 0.0, 2.0, 31, 0.8f } });
+    REQUIRE (studio.setSongSectionType (2, "DRONING"));
+    CHECK (pitchesIn (studio, bass, place) == std::vector<int> { 31 });
+
+    // A linked copy shares the type; saved and opened; a name that hasn't the type goes back to STANDARD.
+    REQUIRE (studio.duplicateSongSection (2));
+    CHECK (studio.getSongSections().blocks[3].type == "DRONING");
+    const auto xml = studio.getSongSections().toXml();
+    CHECK (SongSections::fromXml (*xml).blocks[3].type == "DRONING");
+    REQUIRE (studio.renameSongSection (3, "Breakdown"));   // (no DRONING there)
+    CHECK (studio.getSongSections().blocks[3].type.isEmpty());
+    CHECK (studio.getSongSections().blocks[2].type.isEmpty());   // (linked: one name, so both)
+}
+
+TEST_CASE ("0.94.0: the composer's TYPE: the block's, the approaches in the lanes, the question when HUB SETTINGS asks", "[sections][types][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    studio.appendSongSection ("Intro", 4);
+    studio.appendSongSection ("Chorus", 8);
+    REQUIRE (studio.setSongSectionType (1, "DRONING"));
+    MainView view (studio);
+    view.setSize (1600, 900);
+    view.openComposer();
+    auto* window = view.getComposerWindow();
+    REQUIRE (window != nullptr);
+    auto& page = window->getPage();
+    page.setSize (1700, 940);
+    const auto chorusId = studio.getSongSections().blocks[1].id;
+    page.targetSection (chorusId);
+    CHECK (page.getSectionType() == "DRONING");
+    page.setApproach (ComposerLayer::drums, 1);
+    CHECK (page.getApproach (ComposerLayer::drums) == 1);
+
+    // Built, then the type changed with HUB SETTINGS asking: nothing until the answer.
+    REQUIRE_FALSE (page.buildSection().empty());
+    page.targetSection (chorusId);
+    CHECK (ComposerState::fromString (studio.getSongSections().blocks[1].recipe).lane (ComposerLayer::drums).approach == 1);
+    studio.setAskBeforeTypeChange (true);
+    std::function<void()> answer;
+    page.askToRebuild = [&answer] (const juce::String&, std::function<void()> yes) { answer = std::move (yes); };
+    page.setSectionType ("DRIVING");
+    CHECK (studio.getSongSections().blocks[1].type == "DRONING");
+    REQUIRE (answer != nullptr);
+    answer();
+    CHECK (studio.getSongSections().blocks[1].type == "DRIVING");
+    CHECK (page.getSectionType() == "DRIVING");
+    CHECK (page.getApproach (ComposerLayer::drums) == -1);   // (DRIVING has no band approaches yet)
+
+    // The intro is STANDARD: the composer goes back to no type (the flavour ANY).
+    page.targetSection (studio.getSongSections().blocks[0].id);
+    CHECK (page.getSectionType().isEmpty());
+    window->setVisible (false);
+}
+
+TEST_CASE ("0.94.0: STACCATO CHUG: one verse type, the rhythm guitar's approaches its chug kinds", "[sections][types]")
+{
+    ComposerState s;
+    applySectionType (s, "Verse", "STACCATO CHUG");
+    const auto names = sectionApproaches (s, ComposerLayer::guitar);
+    REQUIRE (names.size() == 4);
+    CHECK (names[0] == "TRITONE CHUG");
+    CHECK (names[2] == "GALLOP");
+    ComposerContext c;
+    s.lane (ComposerLayer::guitar).approach = 2;
+    CHECK (guitarRecipe (s, c).flavour == RiffFlavour::gallop);
+    s.lane (ComposerLayer::guitar).approach = 0;
+    CHECK (guitarRecipe (s, c).flavour == RiffFlavour::tritone);
+    // AUTOMATIC: each take another of the type's kinds, never one outside it.
+    s.lane (ComposerLayer::guitar).approach = -1;
+    std::set<RiffFlavour> seen;
+    for (int v = 0; v < 8; ++v)
+    {
+        s.lane (ComposerLayer::guitar).variation = v;
+        seen.insert (guitarRecipe (s, c).flavour);
+    }
+    CHECK (seen == std::set<RiffFlavour> { RiffFlavour::tritone, RiffFlavour::chugs, RiffFlavour::gallop, RiffFlavour::stopStart });
+    // A Pre-Chorus has it too; a chorus doesn't.
+    CHECK (isSectionTypeOf ("Pre-Chorus", "STACCATO CHUG"));
+    CHECK (sectionApproaches (s, ComposerLayer::bass).isEmpty());   // (the band's usual styles under it, for now)
 }

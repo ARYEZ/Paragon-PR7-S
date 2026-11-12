@@ -3,6 +3,7 @@
 // with it: Studio::moveSongSection), double-clicked to open the composer on it, right-clicked for its menu.
 
 #include "ArrangeView.h"
+#include "engine/SectionTypes.h"
 
 #include "ui/ParagonLookAndFeel.h"
 
@@ -136,7 +137,19 @@ void ArrangeView::paintSections (juce::Graphics& g, const Timeline::Row& row)
         }
         g.setColour (isSelected || dragged ? juce::Colours::white : ParagonColours::text);
         g.setFont (ParagonLookAndFeel::titleFont (juce::jmin (18.0f, bounds.getHeight() * 0.55f)));
-        const auto label = pr7s::sectionLabel (blocks, i).toUpperCase();
+        auto label = pr7s::sectionLabel (blocks, i).toUpperCase();
+        // (0.94.0) Its type on a line of its own under the name, where the block is tall enough.
+        if (b.type.isNotEmpty() && text.getHeight() >= 26.0f)
+        {
+            auto typeLine = text.removeFromBottom (text.getHeight() * 0.38f);
+            g.setColour (isSelected || dragged ? juce::Colours::white.withAlpha (0.85f) : ParagonColours::accent);
+            g.setFont (ParagonLookAndFeel::titleFont (juce::jmin (12.0f, typeLine.getHeight() + 1.0f)));
+            g.drawText (b.type, typeLine, juce::Justification::centredLeft, true);
+            g.setColour (isSelected || dragged ? juce::Colours::white : ParagonColours::text);
+            g.setFont (ParagonLookAndFeel::titleFont (juce::jmin (16.0f, text.getHeight())));
+        }
+        else if (b.type.isNotEmpty())
+            label << " - " << b.type;
         const auto bars = juce::String (b.bars) + (b.bars == 1 ? " BAR" : " BARS");
         const auto barsWidth = juce::GlyphArrangement::getStringWidth (juce::Font (ParagonLookAndFeel::titleFont (12.0f)), bars) + 6.0f;
         if (text.getWidth() > barsWidth * 2.5f)
@@ -261,6 +274,13 @@ void ArrangeView::showSectionMenu (int index)
         const auto& b = blocks[(size_t) index];
         menu.addSectionHeader (pr7s::sectionLabel (blocks, index).toUpperCase() + ": " + juce::String (b.bars) + " BARS");
         menu.addItem (1, "Open in the Composer (double-click)", onOpenSection != nullptr);
+        // (0.94.0, the owner's section types) What kind of section it is: sets what every instrument does.
+        juce::PopupMenu types;
+        types.addItem (4000, juce::String (pr7s::standardSectionType) + "  (every lane its own styles)", true, b.type.isEmpty());
+        const auto kinds = pr7s::sectionTypesFor (b.name);
+        for (int i = 0; i < (int) kinds.size(); ++i)
+            types.addItem (4001 + i, kinds[(size_t) i].name + "  (" + kinds[(size_t) i].description + ")", true, kinds[(size_t) i].name == b.type);
+        menu.addSubMenu ("Type: " + (b.type.isNotEmpty() ? b.type : juce::String (pr7s::standardSectionType)), types, ! kinds.empty());
         juce::PopupMenu rename, length, before, after;
         for (int i = 0; i < names.size(); ++i)
         {
@@ -350,6 +370,35 @@ void ArrangeView::showSectionMenu (int index)
         }
         else if (chosen >= 3000 && chosen < 3000 + names.size())
             safe->selectSection (studio.appendSongSection (names[chosen - 3000], 8));
+        else if (chosen >= 4000 && chosen < 4100 && juce::isPositiveAndBelow (index, (int) studio.getSongSections().blocks.size()))
+        {
+            const auto kinds = pr7s::sectionTypesFor (studio.getSongSections().blocks[(size_t) index].name);
+            const auto pick = chosen - 4001;
+            safe->changeSectionType (index, juce::isPositiveAndBelow (pick, (int) kinds.size()) ? kinds[(size_t) pick].name : juce::String());
+        }
         safe->repaint();
     });
+}
+
+void ArrangeView::changeSectionType (int index, const juce::String& type)
+{
+    // (0.94.0) A built block is built again for its new type at once; HUB SETTINGS can ask first (off by default).
+    if (! studio.isSongSectionBuilt (index) || ! studio.getAskBeforeTypeChange())
+    {
+        studio.setSongSectionType (index, type);
+        repaint();
+        return;
+    }
+    const auto shown = type.isEmpty() ? juce::String (pr7s::standardSectionType) : type;
+    const auto question = "Build " + pr7s::sectionLabel (studio.getSongSections().blocks, index) + " again as " + shown
+                        + "? The lanes you haven't changed by hand are written again.";
+    juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon, "CHANGE THE TYPE", question, "REBUILD", "CANCEL", this,
+                                        juce::ModalCallbackFunction::create ([safe = juce::Component::SafePointer<ArrangeView> (this), index, type] (int ok)
+                                        {
+                                            if (safe != nullptr && ok == 1)
+                                            {
+                                                safe->studio.setSongSectionType (index, type);
+                                                safe->repaint();
+                                            }
+                                        }));
 }

@@ -2,6 +2,38 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.94.0
+
+**Section types** (you asked: a chorus is either DRIVING or DRONING, that decides what every instrument does, and each instrument has its own options within it).
+
+- **Every block has a TYPE.** Right-click a block on the SECTIONS row: **Type** lists that section's types. A new block starts as **STANDARD**, which is the composer as before (every lane its own styles). The block shows its type ("CHORUS 1 - DRONING"), linked copies share it, and it's saved with the song.
+- **The types:**
+  - **Chorus:** DRIVING and DRONING (yours).
+  - **Verse: STACCATO CHUG** (yours): one verse type whose rhythm guitar approaches are its chug kinds: TRITONE CHUG, CHUGS, GALLOP, STOP-START. Black, My Last Serenade and Stricken will flesh it out once I have their parts.
+  - **The other sections:** my suggestions, taken from the guitar riffs we already have. Keep or remove any of them.
+    - Intro: DRONING, OPEN CHORDS.
+    - Verse (besides STACCATO CHUG): DRONING, SPARSE (stabs, octaves or ringing chords, as approaches).
+    - Bridge: CREEP, OPEN CHORDS, DRONING.
+    - Breakdown: HEAVY CHUG (chugs, tritone grind, stop-start, stabs), STACCATO CHUG.
+    - Ending: DRONING, STABS.
+    - Solo: DRIVING, DRONING.
+  - A section plays as its kind: a Pre-Chorus has the verse's types, a Hook the chorus's, and so on.
+- **The type decides what the instruments do.** It sets the rhythm guitar's riff, and under DRONING the whole band follows: the bass doubles the ringing chords and the keys, lead and drums carry the movement (Crawling, Clown, Circle With Me).
+- **Each instrument's options within the type.** In the composer, a lane's style menu now starts with **Approach**. Under STACCATO CHUG, HEAVY CHUG and SPARSE the rhythm guitar picks its riff kind there. Under DRONING:
+  - **Rhythm guitar:** rung whole, pushed a beat early, moving top note, struck twice, sliding down.
+  - **Bass:** held with the guitar, or held and pulsed at the loop's end.
+  - **Keys:** high pulse, climbing motif, held third.
+  - **Lead:** octaves on the thirds, octaves on the roots, muted pedal in threes.
+  - **Drums:** open hats, half time, locked to the pushes.
+
+  AUTOMATIC lets the style and the take choose, as before. ROLL and GENERATE give a new take within the approach you chose.
+- **The composer's TYPE key** (next to SECTION) shows the block's type and changes it.
+- **Changing a built block's type builds it again at once.** The lanes you haven't touched are written again for the new type; your own edits stay. It's one undo step. **HUB SETTINGS** has "Ask before changing a built section's type", off by default.
+
+Honest gaps:
+- Only DRONING has a band part of its own. Under DRIVING, STACCATO CHUG and the suggested types, the guitar plays the type's riff and the bass, keys, lead and drums play their usual styles.
+- To give DRIVING and STACCATO CHUG their own band, send full MIDI or every instrument's tab (for STACCATO CHUG: Black, My Last Serenade, Stricken's verses), as you did for the droning choruses.
+
 ## 0.93.0
 
 **The composer works block by block** (your song engine overhaul, part four, the last). With a SECTIONS row in the song, the composer follows it:

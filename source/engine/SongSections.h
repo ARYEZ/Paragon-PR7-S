@@ -32,6 +32,8 @@ namespace pr7s
         // onto which track, and a mark of what it wrote on each. When the block's chords change, a lane whose track
         // still holds what was written is built again over the new chords; everything else follows them.
         juce::String recipe;
+        // (0.94.0) Its TYPE (engine/SectionTypes.h: DRIVING, DRONING...; empty: STANDARD). Linked copies share it.
+        juce::String type;
         struct Lane { int layer = 0, track = 0; juce::int64 mark = 0; bool operator== (const Lane&) const = default; };
         std::vector<Lane> lanes;
         bool operator== (const SongSection&) const = default;
@@ -69,6 +71,8 @@ namespace pr7s
     // What the block shows: its name, numbered by its place among the blocks of that name when the name comes more
     // than once ("Chorus 2"), plain when once.
     juce::String sectionLabel (const std::vector<SongSection>&, int index);
+    // (0.94.0) With its type when it has one: "Chorus 1 - DRONING".
+    juce::String sectionLabelWithType (const std::vector<SongSection>&, int index);
 
     // The composer's SECTION for a block's name (an index into drumSections(): intro, verse, chorus, bridge,
     // breakdown, ending, solo): Pre-Chorus and Riff play as a verse, Post-Chorus / Hook / Refrain / Drop as a

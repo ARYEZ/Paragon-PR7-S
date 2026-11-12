@@ -52,6 +52,9 @@ namespace pr7s
         // (0.86.0) DOUBLE THE SYNC TRACK (the bass and the drums, with SYNC on): every hit of the sync lane, not only
         // its accents. The bass doubles the riff's notes (an octave under where it can), the drums' kick every hit.
         bool doubleSync = false;
+        // (0.94.0) The section type's approach for this lane (engine/SectionTypes.h: sectionApproaches); -1 automatic
+        // (the style and the take choose, as before).
+        int approach = -1;
         bool operator== (const ComposerLane&) const = default;
     };
 
@@ -71,6 +74,9 @@ namespace pr7s
         // (0.86.0, the owner) SYNC: the lane every other one follows (its rhythm); -1 off. It stays on until turned
         // off, so re-rolling the sync lane re-writes the others to its new rhythm. See syncRhythmOf below.
         int syncLane = -1;
+        // (0.94.0) The block's TYPE (engine/SectionTypes.h; empty: STANDARD). It sets the guitar's flavour, and with it
+        // the band's part (DRONING's band) and the approaches each lane offers.
+        juce::String sectionType;
         std::optional<ComposerLayer> syncLayer() const noexcept
         {
             return syncLane >= 0 && syncLane < composerLayerCount ? std::optional<ComposerLayer> ((ComposerLayer) syncLane) : std::nullopt;

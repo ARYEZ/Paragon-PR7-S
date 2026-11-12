@@ -1,4 +1,5 @@
 #include "engine/Composer.h"
+#include "engine/SectionTypes.h"
 
 #include "engine/DrumIdeas.h"
 
@@ -58,10 +59,11 @@ namespace pr7s
         for (const auto& l : lanes)
             lanesText.add (juce::String (l.on ? 1 : 0) + "," + juce::String (l.locked ? 1 : 0) + "," + juce::String (l.style) + "," + juce::String (l.variation)
                            + "," + juce::String (l.busy, 2) + "," + juce::String (l.lowString ? 1 : 0) + "," + juce::String (l.onlyString)
-                           + "," + juce::String (l.doubleSync ? 1 : 0));
+                           + "," + juce::String (l.doubleSync ? 1 : 0) + "," + juce::String (l.approach));
         return juce::String (keyIndex) + "|" + genre + "|" + mood + "|" + juce::String (bars) + "|" + progression + "|"
              + (fromChordTrack ? "1" : "0") + "|" + (toChordTrack ? "1" : "0") + "|" + lanesText.joinIntoString (";")
-             + "|" + juce::String (riffFlavour) + "," + (writtenRiffs ? "1" : "0") + "," + juce::String (syncLane);
+             + "|" + juce::String (riffFlavour) + "," + (writtenRiffs ? "1" : "0") + "," + juce::String (syncLane)
+             + "|" + sectionType.removeCharacters ("|");
     }
 
     ComposerState ComposerState::fromString (const juce::String& text)
@@ -100,6 +102,8 @@ namespace pr7s
                 l.onlyString = juce::jlimit (0, 12, v[6].getIntValue());
             if (v.size() >= 8)
                 l.doubleSync = v[7] == "1";
+            if (v.size() >= 9)
+                l.approach = juce::jlimit (-1, 15, v[8].getIntValue());   // (0.94.0)
         }
         if (parts.size() >= 9)
         {
@@ -109,6 +113,8 @@ namespace pr7s
             s.writtenRiffs = g.size() >= 2 && g[1] == "1";
             s.syncLane = g.size() >= 3 ? juce::jlimit (-1, composerLayerCount - 1, g[2].getIntValue()) : -1;   // (0.86.0)
         }
+        if (parts.size() >= 10)
+            s.sectionType = parts[9];   // (0.94.0)
         return s;
     }
 
@@ -188,6 +194,10 @@ namespace pr7s
         r.bars = c.riff.limited().bars;
         r.busy = lane.busy;
         r.seed = (juce::uint32) (lane.variation * 7919 + lane.style * 131 + 7);
+        if (const auto typed = typedGuitarFlavour (s))
+            r.flavour = *typed;   // (0.94.0: a type of several riff kinds: the approach picks one)
+        else if (r.flavour == RiffFlavour::droning)
+            r.approach = lane.approach;   // (0.94.0)
         return r;
     }
 
@@ -705,12 +715,13 @@ namespace pr7s
 
         LineIdea droningKeys (const ComposerLane& lane, const std::vector<ChordSpan>& spans, double bpb, const std::vector<double>& strikes)
         {
-            if (lane.style % 3 == 2 && ! strikes.empty())
+            const auto approach = lane.approach >= 0 ? lane.approach % 3 : lane.style % 3;   // (0.94.0: chosen, else by style)
+            if (approach == 2 && ! strikes.empty())
                 return guideTones (spans, bpb, strikes);
             const auto key = spans.front().key;
             const auto fifth = pitchOfClassIn ((key.pitchClass() + 7) % 12, 74, 85);
             const auto length = sectionLength (spans);
-            const auto motif = lane.style % 3 == 1;
+            const auto motif = approach == 1;
             LineIdea out { LineIdea::Part::chords, motif ? "Droning: a motif up high" : "Droning: a pulse up high",
                            motif ? "A short figure round the key's fifth over every chord, climbing a step at a time at the end of each four bars"
                                  : "The key's fifth up high over every chord, a steady pulse with the beats leaning in", {} };
@@ -788,9 +799,10 @@ namespace pr7s
         LineIdea droningLead (const ComposerLane& lane, const std::vector<ChordSpan>& spans, double bpb, const GuitarVelocities& velocities,
                               int lowest, int highest)
         {
-            if (lane.style % 3 == 2)
+            const auto approach = lane.approach >= 0 ? lane.approach % 3 : lane.style % 3;   // (0.94.0)
+            if (approach == 2)
                 return pedalCell (spans, bpb, velocities, lowest, highest);
-            const auto onRoot = lane.style % 3 == 1;
+            const auto onRoot = approach == 1;
             LineIdea out { LineIdea::Part::lead, onRoot ? "Droning: octaves on the roots" : "Droning: octaves on the thirds",
                            "A shimmer of octaves over each ringing chord, the key's note on top in the first half of each four bars", {} };
             const auto key = spans.front().key;
@@ -870,9 +882,10 @@ namespace pr7s
 
         LineIdea droningDrums (const ComposerLane& lane, const std::vector<ChordSpan>& spans, double bpb, const std::vector<double>& strikes)
         {
-            if (lane.variation % 3 == 2 && ! strikes.empty())
+            const auto approach = lane.approach >= 0 ? lane.approach % 3 : lane.variation % 3;   // (0.94.0: chosen, else by the take)
+            if (approach == 2 && ! strikes.empty())
                 return drumsOnPushes (spans, bpb, strikes);
-            const auto halfTime = lane.variation % 3 == 1;
+            const auto halfTime = approach == 1;
             LineIdea out { LineIdea::Part::drums, halfTime ? "Droning: half time" : "Droning: open hats",
                            halfTime ? "Half time under the ringing chords: hats on the beats, the snare on 3, a fill into each four bars"
                                     : "Open hats on the eighths, kick on 1 and 3, snare on 2 and the and of 3, the fourth bar pushing", {} };
@@ -940,7 +953,7 @@ namespace pr7s
                     const auto lowest = profile.has_value() ? profile->rangeLow() : c.bassTuning.lowest();
                     const auto highest = profile.has_value() ? profile->rangeHigh() : bassTop (c.bassTuning);
                     auto idea = droningBass (guitar, spans, lowest, highest);
-                    if (lane.variation % 2 == 1)
+                    if ((lane.approach >= 0 ? lane.approach % 2 : lane.variation % 2) == 1)   // (0.94.0: chosen, else by the take)
                     {
                         pulseLoopEnds (idea, c.beatsPerBar, sectionLength (spans));
                         idea.description += "; the last bar of every eight pulsed in eighths";

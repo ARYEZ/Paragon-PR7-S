@@ -96,6 +96,8 @@ private:
     juce::Label autoSaveTitle, autoSaveNote;
     juce::ComboBox autoSaveBox, keepBox;
     juce::TextButton showBackups { "SHOW BACKUPS" };
+    // (0.94.0, the owner's) Section types: ask before a built section is built again for a new type (off).
+    juce::ToggleButton askTypeChange { "Ask before changing a built section's type" };
     static constexpr int autoSaveChoices[] = { 0, 1, 2, 5, 10, 15, 30 };
     static constexpr int keepChoices[] = { 3, 5, 10, 20, 50 };
     KeyCommands::Map* keyMap = nullptr;
@@ -121,6 +123,7 @@ public:
     juce::String getHumanizeKeyText() const;        // "ALT+H", "NONE"
     juce::Slider& getHumanizeAmount() noexcept { return humanizeAmount; }
     juce::ToggleButton& getHumanizeLayers() noexcept { return humanizeLayers; }
+    juce::ToggleButton& getAskTypeChange() noexcept { return askTypeChange; }
     bool keyPressed (const juce::KeyPress&) override;
     static constexpr const char* humanizeCommand = "MIDI.Humanize";
 private:

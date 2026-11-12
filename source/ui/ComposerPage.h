@@ -111,6 +111,15 @@ public:
     // BUILD go to its start, LENGTH is its bars (the chords cut at its end), SECTION its kind's. Kept until another
     // block is chosen, `clearTargetSection`, or the block is gone.
     void targetSection (int blockId);
+    // (0.94.0, the owner's section types) TYPE: the section's type (engine/SectionTypes.h; "STANDARD": none). On a
+    // block of the SECTIONS row it's the block's (built: built again at once, or after asking when HUB SETTINGS says
+    // so); else the composer's own. `setApproach`: a lane's approach within the type (-1 automatic).
+    void setSectionType (const juce::String& type);
+    juce::String getSectionType() const { return state.sectionType; }
+    juce::String typeSectionName() const;   // the name the types are for: the block's, else the SECTION's
+    void setApproach (pr7s::ComposerLayer, int approach);
+    int getApproach (pr7s::ComposerLayer l) const { return state.lane (l).approach; }
+    std::function<void (const juce::String& question, std::function<void()> yes)> askToRebuild;   // (tests answer it)
     void clearTargetSection();
     int getTargetSection() const noexcept { return targetBlock; }
     // (0.93.0) The SECTIONS row in charge: with blocks on it the SONG strip shows them (a click composes one), NEXT
@@ -184,6 +193,9 @@ private:
     static constexpr int soloItems = 5000;
     static constexpr int flavourItems = 6000, writtenRiffsItem = 6100;   // (0.85.0) the guitar's style menu
     static constexpr int doubleSyncItem = 6200;   // (0.86.0) the bass's and drums' style menus
+    static constexpr int approachItems = 6300;    // (0.94.0) the type's approaches: 6300 automatic, 6301 + i
+    void showTypeMenu();
+    void applyBlockType();   // the target block's type onto the state (when it differs)
     static constexpr int myRiffItem = 4900;   // (0.75.0) the guitar's style menu: My Riff   // (0.70.0) the lead's style menu: Solo Style items
     void showTrackMenu (pr7s::ComposerLayer);
     void showProgressionMenu();
@@ -236,6 +248,7 @@ private:
     juce::Rectangle<int> ruler, controlsLabels;
     // (0.74.0)
     juce::ComboBox sectionBox;
+    juce::TextButton typeKey { "TYPE: STANDARD" };
     juce::TextButton buildKey { "BUILD" };
     juce::OwnedArray<juce::TextButton> nextKeys;
     std::vector<pr7s::SectionSuggestion> nextShown;
