@@ -2,6 +2,27 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.89.0
+
+**The droning chorus's band** (your next step after 0.88.0: with the rhythm guitar ringing its chords, "most of the rhythmic or interesting stuff comes from the lead guitar the bass guitar the keyboards in the drums"). From the full MIDI you sent for Crawling and Clown, read for how each instrument supports the ringing guitar; nothing of either song is copied.
+
+- **The band follows on its own.** When the composer's guitar lane is set to **Riff Flavour > DRONING**, the other lanes play their droning-chorus parts. Set the guitar to any other flavour (or WRITTEN RIFFS, or your own riff) and they go back to their usual styles.
+- **Bass:** doubles the guitar's low strikes and holds each as long as the guitar rings it. It follows the slides down and the chords pushed early, like the bass in both songs. The guitar's top notes, ringing over a held chord, are left to the guitar.
+- **Keys (the chords lane):** up high on the key's fifth, over every chord.
+  - Its first style is a steady pulse (Crawling's), in sixteenths or eighths: BUSY decides, and the beats lean in a little louder.
+  - Its second style is a short two-bar figure round the fifth (Clown's clean part), climbing a step at a time through the last bar of every four.
+  - Each ROLL draws another figure.
+- **Lead:** a shimmer of octaves in sixteenths on each chord's third. Its second style uses the root instead. The key's own note sits on top in the first half of every four bars, then drops out. BUSY under the low end plays eighths.
+- **Drums:** each ROLL draws one of two beats.
+  - **Open hats** (Crawling's): open hat on the eighths, kick on 1 and 3, snare on 2 and the and of 3. Every fourth bar pushes with extra kicks and a crash on its last beat.
+  - **Half time** (Clown's): closed hats on the beats, the snare on 3, the kick moving between bars, and a short fill closing every four bars.
+  - Both crash on the first beat of every four bars.
+- **The melody lane** plays as before (it's the singer's).
+- **SYNC still wins:** with SYNC on, the band follows the sync lane as in 0.86.0.
+- **A fix to 0.86.0's SYNC:** the chord stabs, the doubled bass and the guitar's chugs looked up the chord as if the section started at the song's beginning. For a section built later in the song (a second chorus after a verse), they could play the wrong chord's notes. They read the right chord now.
+
+Still to come: Circle With Me's parts, now that you've sent every instrument's tab. I'll check this band against them next.
+
 ## 0.88.0
 
 **DRONING: the ringing chorus** (your second chorus kind, from your examples: Without Me, Capricorn, Clown and Circle With Me, the rhythm guitar part you sent after). Read for their shapes only; nothing copied.

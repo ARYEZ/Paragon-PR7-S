@@ -390,6 +390,15 @@ namespace pr7s
             return spans.empty() ? nullptr : (beat < spans.front().start ? &spans.front() : &spans.back());
         }
 
+        // (0.89.0) An idea's beats count from the first chord's start; the spans' from the song's. 0.86.0's SYNC looked
+        // chords up with an idea's beat as if it were the song's (wrong wherever a section didn't start at beat 0).
+        const ChordSpan* spanAtIdeaBeat (const std::vector<ChordSpan>& spans, double ideaBeat)
+        {
+            return spans.empty() ? nullptr : spanAt (spans, ideaBeat + spans.front().start);
+        }
+
+        double ideaEnd (const std::vector<ChordSpan>& spans, const ChordSpan& span) { return span.end - spans.front().start; }
+
         int rootNear (const Chord& chord, int lowest, int highest, bool useBass = true)
         {
             const auto pc = useBass && chord.bass >= 0 ? chord.bass : chord.root;
@@ -429,7 +438,7 @@ namespace pr7s
                 }
                 auto pitch = low.pitch;
                 if (pitch > lowestHeard + 12)
-                    if (const auto* span = spanAt (spans, low.beat))
+                    if (const auto* span = spanAtIdeaBeat (spans, low.beat))
                         pitch = rootNear (span->chord, lowest, highest);   // (a stab up high: the bass holds the root)
                 // The octave of that note nearest the bass's note before (the first: its lowest octave, under the
                 // guitar): a line that moves by steps, not jumping an octave between neighbouring power chords.
@@ -458,7 +467,7 @@ namespace pr7s
             std::vector<int> previous;
             for (size_t i = 0; i < accents.size(); ++i)
             {
-                const auto* span = spanAt (spans, accents[i]);
+                const auto* span = spanAtIdeaBeat (spans, accents[i]);
                 if (span == nullptr)
                     continue;
                 const auto voicings = voicingsFor (span->chord, 55);
@@ -466,8 +475,9 @@ namespace pr7s
                     continue;
                 const auto& voicing = voicings[(size_t) closestVoicing (voicings, previous, {})];
                 previous = voicing;
-                const auto next = i + 1 < accents.size() ? accents[i + 1] : span->end;
-                const auto length = juce::jmax (0.1, juce::jmin (next - accents[i], 2.0, span->end - accents[i]));
+                const auto end = ideaEnd (spans, *span);
+                const auto next = i + 1 < accents.size() ? accents[i + 1] : end;
+                const auto length = juce::jmax (0.1, juce::jmin (next - accents[i], 2.0, end - accents[i]));
                 for (const auto p : voicing)
                     out.notes.push_back ({ accents[i], length * 0.95, p, 0.75f });
             }
@@ -482,13 +492,14 @@ namespace pr7s
             for (size_t i = 0; i < rhythm.all.size(); ++i)
             {
                 const auto at = rhythm.all[i];
-                const auto* span = spanAt (spans, at);
+                const auto* span = spanAtIdeaBeat (spans, at);
                 if (span == nullptr)
                     continue;
                 const auto root = rootNear (span->chord, tuning.lowest(), tuning.lowest() + 11, false);
                 const auto accent = std::any_of (rhythm.accents.begin(), rhythm.accents.end(), [at] (double a) { return std::abs (a - at) < 1.0e-6; });
-                const auto next = i + 1 < rhythm.all.size() ? rhythm.all[i + 1] : span->end;
-                const auto room = juce::jmax (0.05, juce::jmin (next - at, span->end - at));
+                const auto end = ideaEnd (spans, *span);
+                const auto next = i + 1 < rhythm.all.size() ? rhythm.all[i + 1] : end;
+                const auto room = juce::jmax (0.05, juce::jmin (next - at, end - at));
                 if (accent)
                 {
                     const auto v = GuitarVelocity::of (velocities.sustain);
@@ -525,16 +536,258 @@ namespace pr7s
             std::stable_sort (idea.notes.begin(), idea.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
         }
 
+        //======================================================================
+        // (0.89.0) The droning chorus's band: with the guitar ringing its chords (DRONING), the others carry the
+        // movement. From the owner's examples' full MIDI (Crawling's and Clown's choruses, read for their shapes):
+        //   BASS    the guitar's low strikes doubled, held as long as they ring (the slides and pushes with them).
+        //   KEYS    up high on the key's fifth, over every chord: a steady pulse (16ths or 8ths, the beats leaning
+        //           in), or a short motif round it that climbs a step at a time at the end of each four bars.
+        //   LEAD    a shimmer of octaves in sixteenths on each chord's third (or root), the key's tonic over them
+        //           in the first half of each four bars.
+        //   DRUMS   open hats on the eighths, kick on 1 and 3, snare on 2 and the and of 3, the fourth bar busier
+        //           with a crash on its last beat; or half time: hats on the beats, the snare on 3, a fill.
+        bool droningBand (const ComposerState& s, const ComposerContext& c)
+        {
+            const auto& flavours = riffFlavours();
+            return juce::isPositiveAndBelow (s.riffFlavour, (int) flavours.size())
+                && flavours[(size_t) s.riffFlavour] == RiffFlavour::droning
+                && ! s.writtenRiffs && ! c.myRiff.has_value() && s.lane (ComposerLayer::guitar).on;
+        }
+
+        double sectionLength (const std::vector<ChordSpan>& spans) { return spans.back().end - spans.front().start; }
+
+        // The scale's pitch `steps` scale steps from `pitch` (which must be in the scale; else itself).
+        int scaleStep (const Key& key, int pitch, int steps)
+        {
+            auto scale = key.scale();
+            std::sort (scale.begin(), scale.end());
+            const auto pc = ((pitch % 12) + 12) % 12;
+            const auto at = std::find (scale.begin(), scale.end(), pc);
+            if (at == scale.end())
+                return pitch;
+            const auto index = (int) (at - scale.begin()) + steps;
+            const auto octave = (int) std::floor ((double) index / 7.0);
+            const auto wrapped = index - octave * 7;
+            return pitch - pc + scale[(size_t) wrapped] + 12 * octave;
+        }
+
+        int pitchOfClassIn (int pc, int lowest, int highest)
+        {
+            for (auto p = lowest; p <= highest; ++p)
+                if (((p % 12) + 12) % 12 == pc)
+                    return p;
+            return lowest;
+        }
+
+        LineIdea droningBass (const LineIdea& guitar, const std::vector<ChordSpan>& spans, int lowest, int highest)
+        {
+            // The guitar's low strikes only: its top notes ringing over a held chord aren't the bass's.
+            LineIdea low = guitar;
+            auto lowestHeard = 128;
+            for (const auto& n : guitar.notes)
+                if (! n.keyswitch)
+                    lowestHeard = juce::jmin (lowestHeard, n.pitch);
+            low.notes.clear();
+            for (const auto& n : guitar.notes)
+                if (! n.keyswitch && n.pitch <= lowestHeard + 11)
+                    low.notes.push_back (n);
+            auto idea = doubledLine (low, spans, lowest, highest, "guitar");
+            idea.style = "Droning with the guitar";
+            idea.description = "The ringing chords' roots held as long as the guitar rings them, its slides and pushes doubled";
+            return idea;
+        }
+
+        LineIdea droningKeys (const ComposerLane& lane, const std::vector<ChordSpan>& spans, double bpb)
+        {
+            const auto key = spans.front().key;
+            const auto fifth = pitchOfClassIn ((key.pitchClass() + 7) % 12, 74, 85);
+            const auto length = sectionLength (spans);
+            const auto motif = lane.style % 2 == 1;
+            LineIdea out { LineIdea::Part::chords, motif ? "Droning: a motif up high" : "Droning: a pulse up high",
+                           motif ? "A short figure round the key's fifth over every chord, climbing a step at a time at the end of each four bars"
+                                 : "The key's fifth up high over every chord, a steady pulse with the beats leaning in", {} };
+            if (! motif)
+            {
+                const auto step = lane.busy > 0.6f ? 0.25 : lane.busy < 0.4f ? 0.5 : (lane.variation % 2 == 0 ? 0.25 : 0.5);
+                for (auto t = 0.0; t < length - 1.0e-6; t += step)
+                {
+                    const auto onBeat = std::abs (t - std::round (t)) < 1.0e-6;
+                    out.notes.push_back ({ t, step * 0.9, fifth, onBeat ? 0.72f : 0.52f });
+                }
+                return out;
+            }
+            // Two-bar figures in sixteenths: (place, scale steps from the fifth, length in sixteenths).
+            struct Hit { int at, step, length; };
+            static const std::vector<std::vector<Hit>> figures {
+                { { 0, 0, 6 }, { 6, 0, 2 }, { 8, 1, 4 }, { 12, 0, 4 }, { 16, 0, 6 }, { 22, 0, 2 }, { 24, -1, 4 }, { 28, 0, 4 } },
+                { { 0, 0, 3 }, { 3, 0, 3 }, { 6, 0, 2 }, { 8, 0, 8 }, { 16, 0, 3 }, { 19, 0, 3 }, { 22, 1, 2 }, { 24, 0, 8 } },
+                { { 0, 0, 8 }, { 10, 1, 2 }, { 12, 0, 4 }, { 16, 0, 8 }, { 26, -1, 2 }, { 28, 0, 4 } },
+            };
+            const auto& figure = figures[(size_t) (lane.variation % (int) figures.size())];
+            const auto bars = (int) std::ceil (length / bpb - 1.0e-6);
+            const auto sixteenth = bpb / 16.0;   // (a 4/4 bar's sixteenth, scaled to the bar)
+            for (int bar = 0; bar < bars; bar += 2)
+            {
+                const auto origin = bar * bpb;
+                for (const auto& h : figure)
+                {
+                    const auto barOfHit = bar + h.at / 16;
+                    if (barOfHit % 4 == 3)
+                        continue;   // (the phrase's last bar climbs instead)
+                    const auto at = origin + h.at * sixteenth;
+                    if (at < length - 1.0e-6)
+                        out.notes.push_back ({ at, juce::jmin (h.length * sixteenth * 0.95, length - at), scaleStep (key, fifth, h.step),
+                                               h.at % 4 == 0 ? 0.72f : 0.58f });
+                }
+            }
+            for (int bar = 3; bar < bars; bar += 4)
+                for (int i = 0; i < 4; ++i)
+                {
+                    const auto at = bar * bpb + i * bpb / 4.0;
+                    if (at < length - 1.0e-6)
+                        out.notes.push_back ({ at, juce::jmin (bpb / 4.0 * 0.95, length - at), scaleStep (key, fifth, juce::jmin (i, 2)), 0.62f + 0.04f * (float) i });
+                }
+            std::stable_sort (out.notes.begin(), out.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+            return out;
+        }
+
+        LineIdea droningLead (const ComposerLane& lane, const std::vector<ChordSpan>& spans, double bpb, const GuitarVelocities& velocities,
+                              int lowest, int highest)
+        {
+            const auto onRoot = lane.style % 2 == 1;
+            LineIdea out { LineIdea::Part::lead, onRoot ? "Droning: octaves on the roots" : "Droning: octaves on the thirds",
+                           "A shimmer of octaves over each ringing chord, the key's note on top in the first half of each four bars", {} };
+            const auto key = spans.front().key;
+            const auto step = lane.busy < 0.3f ? 0.5 : 0.25;
+            const auto low = juce::jlimit (lowest, juce::jmax (lowest, highest - 24), 52);
+            const auto tonic = pitchOfClassIn (key.pitchClass(), low + 12, low + 23);
+            const auto origin = spans.front().start;
+            for (const auto& span : spans)
+            {
+                const auto& tones = span.chord.pitchClasses();
+                const auto pc = onRoot || tones.size() < 2 ? span.chord.root : tones[1];
+                const auto pitch = pitchOfClassIn (pc, low, low + 11);
+                for (auto t = span.start - origin; t < span.end - origin - 1.0e-6; t += step)
+                {
+                    const auto inBar = std::fmod (t, bpb);
+                    const auto bar = (int) std::floor (t / bpb + 1.0e-9);
+                    const auto accent = inBar < 1.0e-6 || std::abs (inBar - std::round (inBar)) < 1.0e-6;
+                    const auto velocity = GuitarVelocity::of (accent ? velocities.sustain : velocities.sustainSoft);
+                    const auto length = juce::jmin (step * 0.9, span.end - origin - t);
+                    out.notes.push_back ({ t, length, pitch, velocity });
+                    if (pitch + 12 <= highest)
+                        out.notes.push_back ({ t, length, pitch + 12, velocity });
+                    if (bar % 4 < 2 && tonic > pitch + 12 && tonic <= highest)
+                        out.notes.push_back ({ t, length, tonic, velocity });
+                }
+            }
+            return out;
+        }
+
+        LineIdea droningDrums (const ComposerLane& lane, const std::vector<ChordSpan>& spans, double bpb)
+        {
+            const auto halfTime = lane.variation % 2 == 1;
+            LineIdea out { LineIdea::Part::drums, halfTime ? "Droning: half time" : "Droning: open hats",
+                           halfTime ? "Half time under the ringing chords: hats on the beats, the snare on 3, a fill into each four bars"
+                                    : "Open hats on the eighths, kick on 1 and 3, snare on 2 and the and of 3, the fourth bar pushing", {} };
+            const auto length = sectionLength (spans);
+            const auto bars = (int) std::ceil (length / bpb - 1.0e-6);
+            const auto beat = bpb / 4.0;   // (a 4/4 bar's beat, scaled to the bar)
+            auto hit = [&out, length] (double at, int note, float velocity)
+            {
+                if (at >= -1.0e-9 && at < length - 1.0e-6)
+                    out.notes.push_back ({ at, 0.1, note, velocity });
+            };
+            for (int bar = 0; bar < bars; ++bar)
+            {
+                const auto o = bar * bpb;
+                const auto last = bar % 4 == 3;
+                if (bar % 4 == 0)
+                    hit (o, 49, 0.9f);
+                if (! halfTime)
+                {
+                    for (int e = 0; e < 8; ++e)
+                        hit (o + e * beat / 2.0, 46, e % 2 == 0 ? 0.78f : 0.6f);
+                    hit (o, 36, 0.95f);
+                    hit (o + 2 * beat, 36, 0.9f);
+                    hit (o + beat, 38, 0.92f);
+                    hit (o + 2.5 * beat, 38, 0.88f);
+                    if (last)
+                    {
+                        hit (o + 1.5 * beat, 36, 0.85f);
+                        hit (o + 3 * beat, 49, 0.88f);
+                        hit (o + 3 * beat, 36, 0.9f);
+                        hit (o + 3.5 * beat, 38, 0.9f);
+                    }
+                }
+                else
+                {
+                    for (int q = 0; q < 4; ++q)
+                        hit (o + q * beat, 42, q == 0 ? 0.8f : 0.62f);
+                    hit (o, 36, 0.95f);
+                    hit (o + 2 * beat, 38, 0.95f);
+                    hit (o + (bar % 2 == 0 ? 0.75 : 1.5) * beat, 36, 0.8f);
+                    if (bar % 2 == 1)
+                        hit (o + 3.5 * beat, 36, 0.8f);
+                    if (last)
+                        for (int s = 0; s < 4; ++s)
+                            hit (o + 3 * beat + s * beat / 4.0, s < 2 ? 38 : 45, 0.7f + 0.06f * (float) s);
+                }
+            }
+            std::stable_sort (out.notes.begin(), out.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+            return out;
+        }
+
+        // The droning chorus's part for a lane (none: the lane plays as usual: the melody, and the guitar itself).
+        std::optional<LineIdea> droningLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        {
+            if (spans.empty() || ! droningBand (s, c))
+                return std::nullopt;
+            const auto& lane = s.lane (l);
+            switch (l)
+            {
+                case ComposerLayer::bass:
+                {
+                    const auto& profile = c.bassProfile;
+                    const auto lowest = profile.has_value() ? profile->rangeLow() : c.bassTuning.lowest();
+                    const auto highest = profile.has_value() ? profile->rangeHigh() : bassTop (c.bassTuning);
+                    auto idea = droningBass (guitarOf (s, spans, c), spans, lowest, highest);
+                    if (lane.lowString)
+                        keepInRange (idea, lowest, lowest + 12);
+                    keepInRange (idea, lowest, highest);
+                    return idea;
+                }
+                case ComposerLayer::chords: return droningKeys (lane, spans, c.beatsPerBar);
+                case ComposerLayer::lead:
+                {
+                    const auto& profile = c.leadProfile.has_value() ? c.leadProfile : c.guitarProfile;
+                    const auto velocities = profile.has_value() && profile->velocities.has_value() ? *profile->velocities : c.velocities;
+                    const auto lowest = profile.has_value() ? profile->rangeLow() : c.tuning.lowest();
+                    const auto highest = profile.has_value() ? profile->rangeHigh() : c.tuning.highest();
+                    return droningLead (lane, spans, c.beatsPerBar, velocities, lowest, highest);
+                }
+                case ComposerLayer::drums: return droningDrums (lane, spans, c.beatsPerBar);
+                case ComposerLayer::melody:
+                case ComposerLayer::guitar: break;
+            }
+            return std::nullopt;
+        }
+
         // A lane as SYNC has it (0.86.0): the sync lane itself and every lane with SYNC off as before.
         LineIdea syncedLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
             const auto leaderLayer = s.syncLayer();
             if (! leaderLayer.has_value() || *leaderLayer == l || spans.empty())
+            {
+                if (! leaderLayer.has_value())
+                    if (auto droning = droningLayer (l, s, spans, c))
+                        return std::move (*droning);   // (0.89.0: SYNC on wins: the band follows the sync lane)
                 return rawLayer (l, s, spans, c);
+            }
             auto plain = s;
             plain.syncLane = -1;
             const auto leader = rawLayer (*leaderLayer, plain, spans, c);
-            const auto rhythm = syncRhythmOf (*leaderLayer, leader, c.beatsPerBar, spans.front().start);
+            const auto rhythm = syncRhythmOf (*leaderLayer, leader, c.beatsPerBar, 0.0);   // (an idea's beats: from its first chord)
             if (rhythm.all.empty())
                 return rawLayer (l, s, spans, c);
             const auto& lane = s.lane (l);

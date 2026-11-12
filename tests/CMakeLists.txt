@@ -73,6 +73,7 @@ add_executable(ParagonPR7STests
     Speed0852Tests.cpp
     Tweaks0853Tests.cpp
     SyncTests.cpp
+    DroningBandTests.cpp
     FolderTests.cpp
     StemExportTests.cpp
     PerformanceTests.cpp
