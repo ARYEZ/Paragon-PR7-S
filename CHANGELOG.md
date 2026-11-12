@@ -2,6 +2,28 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.97.0
+
+**CLEAN VERSE, a new verse type**, from your examples: Evanescence's Masterpiece and The End of the Dream, Spiritbox's Circle With Me, KoRn's Clown, Linkin Park's Crawling and In The End. I read them for their shapes only; nothing is copied, and your files aren't in the repo.
+
+In all of them the heavy guitar steps back and something lighter carries the verse. The guitar's five approaches:
+- **RINGING ARPEGGIO** (Masterpiece): the chord picked one note at a time in a pushed eighth-note pattern. The low note follows each chord's root while the top two notes stay put (the key's 2nd and 3rd) and ring over every chord.
+- **PICKED CHORD** (Circle With Me's second clean guitar): a close three-note shape of each chord picked in steady eighths, low, middle, high, in threes across the bar.
+- **SPARSE CLEAN NOTES** (Circle With Me's first clean guitar, Clown's clean line): one high chord tone struck twice a bar and held, stepping down every two bars. The last bar of eight is picked in eighths.
+- **GUITARS OUT** (Crawling, In The End): no guitar at all; the keys carry the verse.
+- **HELD CHORD & PULSE** (The End of the Dream): a power chord struck and left ringing for two bars, or until the chord changes.
+
+The band's options:
+- **Bass:** SYNCOPATED ROOTS (Masterpiece), EIGHTHS, CHANGING LATE (Circle With Me: each change lands an eighth after the chord), WHOLE NOTES (Crawling), OCTAVE EIGHTHS (The End of the Dream).
+- **Drums:** LIGHT GROOVE (Masterpiece: kick on 1 with a push after it, snare on 2 and 4, closed hats), HALF TIME, GHOST SNARES (Crawling), NO DRUMS (Circle With Me's verse).
+- **Keys:** HELD PADS, SIXTEENTH PULSE (Crawling's pulse on the key's fifth), PIANO LINE (In The End's low quarters), SILENT.
+
+Left on AUTOMATIC, the bass, drums and keys take the option that went with the guitar's part in your songs. For example, PICKED CHORD comes with no drums, no keys and the late-changing bass, as in Circle With Me. Any of them can be changed in the lane's style menu (Approach). The melody and lead play as usual.
+
+Notes:
+- In the Clown MIDI you sent, the heavy riff keeps going under the clean line in the verse, so I used only its clean line (for SPARSE CLEAN NOTES).
+- I can't hear it here. The tests check the notes (chord tones, the ringing top notes, where the bass changes), not the sound.
+
 ## 0.96.0
 
 **SPLIT CHUG, a new verse type** (from your three: Linkin Park's Papercut, Evanescence's Going Under and Call Me When You're Sober). I read the MIDI for its shapes only; nothing is copied, and your files aren't in the repo.

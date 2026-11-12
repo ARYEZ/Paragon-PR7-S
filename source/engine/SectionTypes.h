@@ -33,7 +33,10 @@ namespace pr7s
         // (0.96.0) SPLIT (the owner's Going Under, Papercut, Call Me When You're Sober): the bass doubles the guitar's
         // hits (or holds the root through the gaps), the kick catches the hits while the snare and hats keep time (or
         // a plain backbeat under the guitar).
-        enum class Band { none, staccato, split };
+        // (0.97.0) CLEAN (the owner's Masterpiece, Circle With Me, Clown, Crawling, In The End, The End of the Dream):
+        // the heavy guitar steps back; the guitar's five approaches are clean parts of their own (not riff kinds), and
+        // the bass, drums and keys each have options, chosen to suit the guitar's approach when left automatic.
+        enum class Band { none, staccato, split, clean };
         Band band = Band::none;
     };
     // True when the state's type has the staccato band and the guitar is on, generated (not WRITTEN RIFFS).

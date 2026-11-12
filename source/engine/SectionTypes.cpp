@@ -19,6 +19,9 @@ namespace pr7s
         const SectionType split { "SPLIT CHUG", "The bar split: chugs or stabs in one part, the rest left open for the vocal", RiffFlavour::secondHalfStabs,
                                   { RiffFlavour::secondHalfStabs, RiffFlavour::firstHalfBurst, RiffFlavour::hitPush, RiffFlavour::burstSilence },
                                   SectionType::Band::split };
+        // (0.97.0, the owner's: Masterpiece, Circle With Me, Clown, Crawling, In The End, The End of the Dream)
+        const SectionType clean { "CLEAN VERSE", "The heavy guitar steps back: a clean guitar picked or ringing, or the keys carry the verse",
+                                  RiffFlavour::openChords, {}, SectionType::Band::clean };
         const SectionType sparse { "SPARSE", "Space for the voice: stabs, octaves, chords let ring", RiffFlavour::stabs,
                                    { RiffFlavour::stabs, RiffFlavour::octaves, RiffFlavour::openChords } };
         const SectionType heavy { "HEAVY CHUG", "The low string pounded: chugs, tritone grinds, stops; the bass and the kick locked to them", RiffFlavour::chugs,
@@ -30,7 +33,7 @@ namespace pr7s
         switch (composerSectionFor (sectionName))
         {
             case 0: return { droning, open };
-            case 1: return { staccato, split, droning, sparse };
+            case 1: return { staccato, split, clean, droning, sparse };
             case 2: return { driving, droning };
             case 3: return { creep, open, droning };
             case 4: return { heavy, staccato };
@@ -123,6 +126,16 @@ namespace pr7s
             if (layer == ComposerLayer::drums)
                 return { "KICK WITH THE HITS", "PLAIN BACKBEAT" };
         }
+        if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::clean)
+            switch (layer)
+            {
+                case ComposerLayer::guitar: return { "RINGING ARPEGGIO", "PICKED CHORD", "SPARSE CLEAN NOTES", "GUITARS OUT", "HELD CHORD & PULSE" };
+                case ComposerLayer::bass: return { "SYNCOPATED ROOTS", "EIGHTHS, CHANGING LATE", "WHOLE NOTES", "OCTAVE EIGHTHS" };
+                case ComposerLayer::drums: return { "LIGHT GROOVE", "HALF TIME, GHOST SNARES", "NO DRUMS" };
+                case ComposerLayer::chords: return { "HELD PADS", "SIXTEENTH PULSE", "PIANO LINE", "SILENT" };
+                case ComposerLayer::melody:
+                case ComposerLayer::lead: return {};
+            }
         if (layer == ComposerLayer::guitar)
             if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && ! t->guitarFlavours.empty())
             {

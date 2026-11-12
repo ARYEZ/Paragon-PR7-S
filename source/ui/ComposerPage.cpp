@@ -1685,7 +1685,9 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
                               ! state.writtenRiffs && i == state.riffFlavour);
         }
         menu.addSeparator();
-        if (const auto typed = pr7s::typedGuitarFlavour (state))   // (0.94.0: the type's approach picks the riff kind)
+        if (pr7s::sectionBand (state) == pr7s::SectionType::Band::clean)   // (0.97.0: the clean parts aren't riffs)
+            menu.addSubMenu ("Riff Flavour: (CLEAN VERSE: the type's approach)", flavours, false);
+        else if (const auto typed = pr7s::typedGuitarFlavour (state))   // (0.94.0: the type's approach picks the riff kind)
             menu.addSubMenu ("Riff Flavour: " + pr7s::riffFlavourName (*typed) + " (the type's approach)", flavours, false);
         else
             menu.addSubMenu ("Riff Flavour: " + (state.writtenRiffs ? juce::String ("(written riffs)")

@@ -1002,6 +1002,431 @@ namespace pr7s
             return out;
         }
 
+        //======================================================================
+        // (0.97.0) CLEAN VERSE's band, from the owner's verses (read for their shapes only):
+        //   GUITAR  RINGING ARPEGGIO (Masterpiece): the chord picked a note at a time in a pushed eighth pattern, the
+        //           low note on each chord's root, the top two notes the key's 2nd and 3rd ringing over every chord.
+        //           PICKED CHORD (Circle With Me's second clean guitar): a close three-note shape picked in steady
+        //           eighths, low-mid-high in threes against the bar. SPARSE CLEAN NOTES (Circle With Me's first clean
+        //           guitar, Clown's clean line): one high chord tone struck twice a bar and held, stepping down every
+        //           two bars, the last bar of eight picked in eighths. GUITARS OUT (Crawling, In The End): none.
+        //           HELD CHORD & PULSE (The End of the Dream): a power chord struck and rung two bars.
+        //   BASS    syncopated roots (Masterpiece), eighths changing an eighth late (Circle With Me), whole notes
+        //           (Crawling), octave eighths (The End of the Dream).
+        //   DRUMS   a light groove with a pushed kick (Masterpiece), half time with ghost snares and sixteenth hats
+        //           (Crawling), none (Circle With Me).
+        //   KEYS    held pads (Masterpiece), a pulse in sixteenths on the key's fifth (Crawling, The End of the
+        //           Dream), a piano line in quarters (In The End), silent (Circle With Me).
+        // Left on AUTOMATIC, the bass, drums and keys take the option that went with the guitar's in the songs.
+        int cleanGuitarApproach (const ComposerState& s)
+        {
+            const auto& lane = s.lane (ComposerLayer::guitar);
+            return lane.approach >= 0 ? lane.approach % 5 : lane.variation % 5;
+        }
+
+        int cleanApproach (const ComposerState& s, ComposerLayer l)
+        {
+            const auto& lane = s.lane (l);
+            const auto count = l == ComposerLayer::bass ? 4 : l == ComposerLayer::drums ? 3 : 4;
+            if (lane.approach >= 0)
+                return lane.approach % count;
+            const auto other = lane.variation % 2;
+            switch (cleanGuitarApproach (s))
+            {
+                case 0: return 0;                                                      // Masterpiece
+                case 1: return l == ComposerLayer::bass ? 1 : l == ComposerLayer::drums ? 2 : 3;   // Circle With Me
+                case 2: return l == ComposerLayer::bass ? 1 : l == ComposerLayer::drums ? 2 : 0;   // its first guitar
+                case 3: return l == ComposerLayer::bass ? (other == 0 ? 2 : 0) : l == ComposerLayer::drums ? 1 : (other == 0 ? 1 : 2);   // Crawling / In The End
+                default: return l == ComposerLayer::bass ? 3 : l == ComposerLayer::drums ? 0 : 1;   // The End of the Dream
+            }
+        }
+
+        // The places a part changes: every bar line and every chord change, in idea beats.
+        std::vector<double> cleanSegments (const std::vector<ChordSpan>& spans, double bpb)
+        {
+            const auto length = sectionLength (spans);
+            std::vector<double> at;
+            for (auto t = 0.0; t < length - 1.0e-6; t += bpb)
+                at.push_back (t);
+            for (const auto& span : spans)
+                if (const auto t = span.start - spans.front().start; t > 1.0e-6 && t < length - 1.0e-6)
+                    at.push_back (t);
+            std::sort (at.begin(), at.end());
+            at.erase (std::unique (at.begin(), at.end(), [] (double a, double b) { return b - a < 1.0e-6; }), at.end());
+            at.push_back (length);
+            return at;
+        }
+
+        const Chord& chordAtIdea (const std::vector<ChordSpan>& spans, double t) { return spanAtIdeaBeat (spans, t)->chord; }
+
+        void addNote (LineIdea& idea, double at, double length, int pitch, float velocity, double end)
+        {
+            if (at < end - 1.0e-6)
+                idea.notes.push_back ({ at, juce::jmax (0.01, juce::jmin (length, end - at)), pitch, velocity });
+        }
+
+        void sortNotes (LineIdea& idea)
+        {
+            std::stable_sort (idea.notes.begin(), idea.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+        }
+
+        LineIdea cleanGuitar (int approach, const ComposerLane& lane, const std::vector<ChordSpan>& spans, double bpb,
+                              const GuitarTuning& tuning, const GuitarVelocities& velocities)
+        {
+            const auto length = sectionLength (spans);
+            const auto bars = (int) std::ceil (length / bpb - 1.0e-6);
+            const auto s16 = bpb / 16.0;
+            const auto key = spans.front().key;
+            const auto low = tuning.lowest();
+            const auto soft = GuitarVelocity::of (velocities.open (velocities.sustainSoft));
+            const auto firm = GuitarVelocity::of (velocities.open (velocities.sustain));
+            LineIdea out { LineIdea::Part::rhythm, {}, {}, {} };
+            switch (approach)
+            {
+                case 0:
+                {
+                    out.style = "Clean: ringing arpeggio";
+                    out.description = "The chord picked a note at a time, the root under it, the key's 2nd and 3rd ringing on top over every chord";
+                    const auto tonic = pitchOfClassIn (key.pitchClass(), 55, 66);
+                    const auto top1 = scaleStep (key, tonic, 1), top2 = scaleStep (key, tonic, 2);
+                    // (place, which: 0 root, 1 top, 2 higher top, 3 the chord's fifth; length in sixteenths)
+                    struct Pick { int at, which; double length; };
+                    static const std::array<std::vector<Pick>, 2> patterns { {
+                        { { 0, 0, 3.5 }, { 2, 1, 3 }, { 4, 0, 6 }, { 5, 1, 3 }, { 8, 2, 3 }, { 10, 0, 6 }, { 11, 3, 3 }, { 14, 2, 2 } },
+                        { { 0, 0, 4 }, { 2, 1, 4 }, { 3, 2, 3 }, { 6, 0, 4 }, { 8, 1, 3 }, { 10, 2, 4 }, { 12, 0, 4 }, { 14, 3, 2 } },
+                    } };
+                    const auto& pattern = patterns[(size_t) ((lane.variation / 5) % 2)];
+                    for (int bar = 0; bar < bars; ++bar)
+                        for (const auto& p : pattern)
+                        {
+                            const auto at = bar * bpb + p.at * s16;
+                            if (at >= length - 1.0e-6)
+                                continue;
+                            const auto& chord = chordAtIdea (spans, at);
+                            const auto root = rootNear (chord, low + 7, low + 19);
+                            const auto pcs = chord.pitchClasses();
+                            const auto fifth = pcs.size() >= 3 ? root + ((pcs[2] - pc12 (root) + 12) % 12) : root + 7;
+                            const int pitch = p.which == 0 ? root : p.which == 1 ? top1 : p.which == 2 ? top2 : fifth;
+                            addNote (out, at, p.length * s16 * 0.96, pitch, p.which == 0 ? firm : soft, length);
+                        }
+                    break;
+                }
+                case 1:
+                {
+                    out.style = "Clean: picked chord";
+                    out.description = "A close three-note shape of each chord picked in steady eighths, low, middle, high in threes across the bar";
+                    std::vector<int> previous;
+                    static const std::array<int, 8> order { 0, 1, 2, 0, 1, 2, 1, 2 };
+                    const auto e = bpb / 8.0;
+                    for (int i = 0; i * e < length - 1.0e-6; ++i)
+                    {
+                        const auto at = i * e;
+                        const auto voicings = voicingsFor (chordAtIdea (spans, at), 55);
+                        if (voicings.empty())
+                            continue;
+                        const auto& shape = voicings[(size_t) juce::jlimit (0, (int) voicings.size() - 1, closestVoicing (voicings, previous, previous))];
+                        previous = shape;
+                        const auto pick = juce::jmin ((int) shape.size() - 1, order[(size_t) (i % 8)]);
+                        addNote (out, at, e * 2.0 * 0.96, shape[(size_t) pick], i % 2 == 0 ? firm : soft, length);
+                    }
+                    break;
+                }
+                case 2:
+                {
+                    out.style = "Clean: sparse notes";
+                    out.description = "One high chord tone struck twice a bar and held, stepping down every two bars; the last bar of eight picked in eighths";
+                    auto aim = 76 - (lane.variation / 5) % 3;
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        if (bar > 0 && bar % 2 == 0)
+                            aim -= 2;
+                        if (aim < 66)
+                            aim = 76;
+                        const auto from = bar * bpb;
+                        const auto& chord = chordAtIdea (spans, from);
+                        const auto pcs = chord.pitchClasses();   // (one list: begin and end from the same call)
+                        auto pitch = -1;
+                        for (auto p = 64; p <= 79; ++p)
+                            if (std::find (pcs.begin(), pcs.end(), pc12 (p)) != pcs.end() && (pitch < 0 || std::abs (p - aim) < std::abs (pitch - aim)))
+                                pitch = p;
+                        if (pitch < 0)
+                            pitch = aim;
+                        const auto barEnd = juce::jmin (length, from + bpb);
+                        if (bar % 8 == 7)
+                        {
+                            for (int i = 0; i < 8; ++i)
+                                addNote (out, from + i * bpb / 8.0, bpb / 8.0 * 0.9, pitch, i == 0 ? firm : soft, barEnd);
+                            continue;
+                        }
+                        addNote (out, from, 6 * s16 * 0.96, pitch, firm, barEnd);
+                        addNote (out, from + 6 * s16, (barEnd - from - 6 * s16) * 0.96, pitch, soft, barEnd);
+                    }
+                    break;
+                }
+                case 3:
+                    out.style = "Clean: guitars out";
+                    out.description = "No guitar in the verse: the keys carry it";
+                    break;
+                default:
+                {
+                    out.style = "Clean: held chord";
+                    out.description = "A power chord struck and left ringing for two bars, or until the chord changes";
+                    const auto segments = cleanSegments (spans, bpb);
+                    for (size_t i = 0; i + 1 < segments.size(); ++i)
+                    {
+                        const auto at = segments[i];
+                        const auto bar = (int) std::floor (at / bpb + 1.0e-6);
+                        const auto& chord = chordAtIdea (spans, at);
+                        const auto onBar = std::abs (at - bar * bpb) < 1.0e-6;
+                        if (onBar && bar % 2 == 1 && i > 0 && &chordAtIdea (spans, segments[i - 1]) == &chord)
+                            continue;   // (held over from the bar before)
+                        auto until = length;
+                        for (size_t j = i + 1; j + 1 < segments.size(); ++j)
+                        {
+                            const auto nb = (int) std::floor (segments[j] / bpb + 1.0e-6);
+                            const auto nOnBar = std::abs (segments[j] - nb * bpb) < 1.0e-6;
+                            if (&chordAtIdea (spans, segments[j]) != &chord || (nOnBar && nb % 2 == 0))
+                            {
+                                until = segments[j];
+                                break;
+                            }
+                        }
+                        const auto root = rootNear (chord, low, low + 11);
+                        for (const auto pitch : { root, root + 7, root + 12 })
+                            addNote (out, at, (until - at) * 0.96, pitch, firm, length);
+                    }
+                    break;
+                }
+            }
+            sortNotes (out);
+            return out;
+        }
+
+        LineIdea cleanBass (int approach, const std::vector<ChordSpan>& spans, double bpb, int lowest, int highest)
+        {
+            const auto length = sectionLength (spans);
+            const auto bars = (int) std::ceil (length / bpb - 1.0e-6);
+            const auto s16 = bpb / 16.0;
+            const auto top = juce::jmin (highest, lowest + 11);
+            auto rootAt = [&] (double t) { return rootNear (chordAtIdea (spans, t), lowest, top); };
+            LineIdea out { LineIdea::Part::bass, {}, {}, {} };
+            switch (approach)
+            {
+                case 0:
+                {
+                    out.style = "Clean: syncopated roots";
+                    out.description = "The chord's root pushed: a short hit and a long one on the beat, then two more off the beat";
+                    struct Hit { int at; double length; float velocity; };
+                    static const std::array<Hit, 4> hits { { { 0, 0.7, 0.85f }, { 1, 5.8, 0.78f }, { 7, 2.8, 0.75f }, { 10, 5.8, 0.78f } } };
+                    for (int bar = 0; bar < bars; ++bar)
+                        for (const auto& h : hits)
+                        {
+                            const auto at = bar * bpb + h.at * s16;
+                            addNote (out, at, h.length * s16, rootAt (at), h.velocity, length);
+                        }
+                    break;
+                }
+                case 1:
+                {
+                    out.style = "Clean: eighths, changing late";
+                    out.description = "Steady eighths on the root, each change landing an eighth after the chord's";
+                    const auto e = bpb / 8.0;
+                    for (int i = 0; i * e < length - 1.0e-6; ++i)
+                        addNote (out, i * e, e * 0.9, rootAt (juce::jmax (0.0, (i - 1) * e)), i % 2 == 0 ? 0.8f : 0.68f, length);
+                    break;
+                }
+                case 2:
+                {
+                    out.style = "Clean: whole notes";
+                    out.description = "Each chord's root held under it, struck again on every bar";
+                    const auto segments = cleanSegments (spans, bpb);
+                    for (size_t i = 0; i + 1 < segments.size(); ++i)
+                        addNote (out, segments[i], (segments[i + 1] - segments[i]) * 0.97, rootAt (segments[i]), 0.82f, length);
+                    break;
+                }
+                default:
+                {
+                    out.style = "Clean: octave eighths";
+                    out.description = "Eighths on the root, jumping to its octave and back";
+                    const auto e = bpb / 8.0;
+                    static const std::array<int, 8> jumps { 0, 0, 12, 0, 0, 12, 0, 12 };
+                    for (int i = 0; i * e < length - 1.0e-6; ++i)
+                    {
+                        const auto root = rootAt (i * e);
+                        const auto up = root + jumps[(size_t) (i % 8)] <= highest ? jumps[(size_t) (i % 8)] : 0;
+                        addNote (out, i * e, e * 0.9, root + up, i % 2 == 0 ? 0.82f : 0.7f, length);
+                    }
+                    break;
+                }
+            }
+            sortNotes (out);
+            return out;
+        }
+
+        LineIdea cleanDrums (int approach, const std::vector<ChordSpan>& spans, double bpb)
+        {
+            const auto length = sectionLength (spans);
+            const auto bars = (int) std::ceil (length / bpb - 1.0e-6);
+            const auto s16 = bpb / 16.0;
+            LineIdea out { LineIdea::Part::drums, {}, {}, {} };
+            auto hit = [&] (double at, int note, float velocity)
+            {
+                if (at >= -1.0e-9 && at < length - 1.0e-6)
+                    out.notes.push_back ({ at, 0.1, note, velocity });
+            };
+            switch (approach)
+            {
+                case 0:
+                    out.style = "Clean: light groove";
+                    out.description = "Kick on 1 with a push after it, snare on 2 and 4, closed hats on the eighths opening each four bars";
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto o = bar * bpb;
+                        if (bar % 4 == 0)
+                            hit (o, 49, 0.8f);
+                        for (int i = 0; i < 8; ++i)
+                            hit (o + i * 2 * s16, bar % 4 == 0 && i == 1 ? 46 : 42, i % 2 == 0 ? 0.62f : 0.48f);
+                        for (const auto k : bar % 2 == 0 ? std::vector<int> { 0, 1, 9 } : std::vector<int> { 0, 1, 7, 10 })
+                            hit (o + k * s16, 36, k == 0 ? 0.88f : 0.74f);
+                        hit (o + 4 * s16, 38, 0.82f);
+                        hit (o + 12 * s16, 38, 0.82f);
+                    }
+                    break;
+                case 1:
+                    out.style = "Clean: half time";
+                    out.description = "Kick on 1 and 3, the snare only ghosted, sixteenth hats; every fourth bar's kick busier";
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto o = bar * bpb;
+                        if (bar % 8 == 0)
+                            hit (o, 49, 0.75f);
+                        for (int i = 0; i < 16; ++i)
+                            hit (o + i * s16, 42, i % 4 == 0 ? 0.6f : 0.42f);
+                        hit (o, 36, 0.88f);
+                        hit (o + 8 * s16, 36, 0.82f);
+                        if (bar % 4 == 3)
+                        {
+                            hit (o + 2 * s16, 36, 0.7f);
+                            hit (o + 9 * s16, 36, 0.7f);
+                        }
+                        hit (o + 4 * s16, 38, 0.32f);
+                        hit (o + 10 * s16, 38, 0.32f);
+                    }
+                    break;
+                default:
+                    out.style = "Clean: no drums";
+                    out.description = "The drums sit the verse out";
+                    break;
+            }
+            sortNotes (out);
+            return out;
+        }
+
+        LineIdea cleanKeys (int approach, const std::vector<ChordSpan>& spans, double bpb)
+        {
+            const auto length = sectionLength (spans);
+            const auto bars = (int) std::ceil (length / bpb - 1.0e-6);
+            const auto key = spans.front().key;
+            LineIdea out { LineIdea::Part::chords, {}, {}, {} };
+            switch (approach)
+            {
+                case 0:
+                {
+                    out.style = "Clean: held pads";
+                    out.description = "Each chord held softly under the verse, moving to the nearest shape";
+                    const auto segments = cleanSegments (spans, bpb);
+                    std::vector<int> previous;
+                    for (size_t i = 0; i + 1 < segments.size(); ++i)
+                    {
+                        const auto voicings = voicingsFor (chordAtIdea (spans, segments[i]), 55);
+                        if (voicings.empty())
+                            continue;
+                        const auto& shape = voicings[(size_t) juce::jlimit (0, (int) voicings.size() - 1, closestVoicing (voicings, previous, previous))];
+                        previous = shape;
+                        for (const auto p : shape)
+                            addNote (out, segments[i], (segments[i + 1] - segments[i]) * 0.98, p, 0.42f, length);
+                    }
+                    break;
+                }
+                case 1:
+                {
+                    out.style = "Clean: sixteenth pulse";
+                    out.description = "The key's fifth pulsed in sixteenths over every chord, an octave down in the second half of each eight bars";
+                    const auto fifth = pitchOfClassIn ((key.pitchClass() + 7) % 12, 68, 79);
+                    const auto s16 = bpb / 16.0;
+                    for (int i = 0; i * s16 < length - 1.0e-6; ++i)
+                    {
+                        const auto bar = (int) std::floor (i * s16 / bpb + 1.0e-6);
+                        addNote (out, i * s16, s16 * 0.9, bar % 8 >= 4 ? fifth - 12 : fifth, i % 4 == 0 ? 0.66f : 0.52f, length);
+                    }
+                    break;
+                }
+                case 2:
+                {
+                    out.style = "Clean: piano line";
+                    out.description = "A low piano line in quarters on each chord's root, fifth and third, the second bar of each pair pushing on eighths";
+                    const auto q = bpb / 4.0;
+                    for (int bar = 0; bar < bars; ++bar)
+                        for (int beat = 0; beat < 4; ++beat)
+                        {
+                            const auto at = bar * bpb + beat * q;
+                            const auto& chord = chordAtIdea (spans, at);
+                            const auto pcs = chord.pitchClasses();
+                            const auto root = pitchOfClassIn (chord.root, 41, 52);
+                            auto above = [&] (size_t i) { return pcs.size() > i ? root + ((pcs[i] - chord.root + 12) % 12) : root + 7; };
+                            if (bar % 2 == 0)
+                                addNote (out, at, q * 0.95, beat == 0 ? root : beat == 3 ? above (1) : above (2), beat == 0 ? 0.66f : 0.58f, length);
+                            else if (beat < 3)
+                                addNote (out, at, q * 0.95, root, beat == 0 ? 0.66f : 0.56f, length);
+                            else
+                            {
+                                addNote (out, at, q * 0.45, root, 0.56f, length);
+                                addNote (out, at + q * 0.5, q * 0.45, above (1), 0.58f, length);
+                            }
+                        }
+                    break;
+                }
+                default:
+                    out.style = "Clean: keys out";
+                    out.description = "No keys in the verse";
+                    break;
+            }
+            sortNotes (out);
+            return out;
+        }
+
+        // CLEAN VERSE's part for a lane (none: the melody and the lead play as usual).
+        std::optional<LineIdea> cleanLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        {
+            if (spans.empty() || sectionBand (s) != SectionType::Band::clean)
+                return std::nullopt;
+            switch (l)
+            {
+                case ComposerLayer::guitar:
+                {
+                    const auto& profile = c.guitarProfile;
+                    const auto tuning = profile.has_value() ? profile->tuning() : c.tuning;
+                    const auto velocities = profile.has_value() && profile->velocities.has_value() ? *profile->velocities : c.velocities;
+                    auto idea = cleanGuitar (cleanGuitarApproach (s), s.lane (l), spans, c.beatsPerBar, tuning, velocities);
+                    if (profile.has_value())
+                        keepInRange (idea, profile->rangeLow(), profile->rangeHigh());
+                    return idea;
+                }
+                case ComposerLayer::bass:
+                {
+                    const auto& profile = c.bassProfile;
+                    const auto lowest = profile.has_value() ? profile->rangeLow() : c.bassTuning.lowest();
+                    const auto highest = profile.has_value() ? profile->rangeHigh() : bassTop (c.bassTuning);
+                    return cleanBass (cleanApproach (s, l), spans, c.beatsPerBar, lowest, highest);
+                }
+                case ComposerLayer::drums: return cleanDrums (cleanApproach (s, l), spans, c.beatsPerBar);
+                case ComposerLayer::chords: return cleanKeys (cleanApproach (s, l), spans, c.beatsPerBar);
+                case ComposerLayer::melody:
+                case ComposerLayer::lead: break;
+            }
+            return std::nullopt;
+        }
+
         // The droning chorus's part for a lane (none: the lane plays as usual: the melody, and the guitar itself).
         std::optional<LineIdea> droningLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
@@ -1048,6 +1473,10 @@ namespace pr7s
         LineIdea syncedLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
             const auto leaderLayer = s.syncLayer();
+            // (0.97.0, CLEAN VERSE's band) with SYNC off, every lane but the melody and the lead plays its clean part.
+            if (! leaderLayer.has_value())
+                if (auto clean = cleanLayer (l, s, spans, c))
+                    return std::move (*clean);
             // (0.95.0, STACCATO CHUG's band: the owner's Black, Stricken, Waffle) with SYNC off the bass and the drums
             // follow the guitar: doubling it / the kick on every chug (approach 0 or automatic), or its accents (1).
             if (! leaderLayer.has_value() && (l == ComposerLayer::bass || l == ComposerLayer::drums) && ! spans.empty() && staccatoBand (s))

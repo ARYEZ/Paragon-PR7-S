@@ -3,6 +3,7 @@
 // music in that part with it").
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include "TestHelpers.h"
@@ -1023,4 +1024,177 @@ TEST_CASE ("0.96.0: SPLIT CHUG's band: the bass on the hits or held through the 
         CHECK (snares.count (bar * 16 + 12) == 1);
     }
     CHECK (beatKicks.size() == 8);
+}
+
+namespace
+{
+    // (0.97.0) Four bars of A minor, F, C, G (a chord a bar) in A minor, and a state typed CLEAN VERSE.
+    std::vector<ChordSpan> cleanSpans (double start = 0.0)
+    {
+        Key aMinor;
+        for (const auto& k : Key::all())
+            if (k.minor && k.pitchClass() == 9)
+                aMinor = k;
+        const std::array<Chord, 4> chords { Chord { 9, Chord::Type::minor }, Chord { 5, Chord::Type::major },
+                                            Chord { 0, Chord::Type::major }, Chord { 7, Chord::Type::major } };
+        std::vector<ChordSpan> spans;
+        for (int bar = 0; bar < 8; ++bar)
+            spans.push_back ({ start + bar * 4.0, start + bar * 4.0 + 4.0, chords[(size_t) (bar % 4)], aMinor });
+        return spans;
+    }
+
+    ComposerState cleanState (int guitarApproach)
+    {
+        ComposerState s;
+        applySectionType (s, "Verse", "CLEAN VERSE");
+        s.lane (ComposerLayer::guitar).approach = guitarApproach;
+        return s;
+    }
+
+    bool inChord (const std::vector<ChordSpan>& spans, const LineNote& n)
+    {
+        const auto& span = spans[(size_t) juce::jlimit (0, (int) spans.size() - 1, (int) std::floor (n.beat / 4.0 + 1.0e-6))];
+        const auto pcs = span.chord.pitchClasses();
+        return std::find (pcs.begin(), pcs.end(), ((n.pitch % 12) + 12) % 12) != pcs.end();
+    }
+}
+
+TEST_CASE ("0.97.0: CLEAN VERSE: a verse type with five clean guitar parts and the band's options", "[sections][types]")
+{
+    REQUIRE (isSectionTypeOf ("Verse", "CLEAN VERSE"));
+    CHECK (sectionTypesFor ("Verse")[2].name == "CLEAN VERSE");
+    CHECK_FALSE (isSectionTypeOf ("Chorus", "CLEAN VERSE"));
+    const auto s = cleanState (-1);
+    CHECK (sectionBand (s) == SectionType::Band::clean);
+    const auto guitar = sectionApproaches (s, ComposerLayer::guitar);
+    REQUIRE (guitar.size() == 5);
+    CHECK (guitar[0] == "RINGING ARPEGGIO");
+    CHECK (guitar[1] == "PICKED CHORD");
+    CHECK (guitar[2] == "SPARSE CLEAN NOTES");
+    CHECK (guitar[3] == "GUITARS OUT");
+    CHECK (guitar[4] == "HELD CHORD & PULSE");
+    CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 4);
+    CHECK (sectionApproaches (s, ComposerLayer::drums).size() == 3);
+    CHECK (sectionApproaches (s, ComposerLayer::chords).size() == 4);
+    CHECK (sectionApproaches (s, ComposerLayer::lead).isEmpty());
+    CHECK_FALSE (typedGuitarFlavour (s).has_value());   // (clean parts, not riff kinds)
+}
+
+TEST_CASE ("0.97.0: CLEAN VERSE's guitar parts", "[sections][types]")
+{
+    const ComposerContext c;
+    for (const auto start : { 0.0, 32.0 })   // (a section after the song's start: the chords looked up by the idea's beats)
+    {
+        const auto spans = cleanSpans (start);
+        // RINGING ARPEGGIO (Masterpiece): the low note on each bar's root, the top two the key's B and C over every chord.
+        {
+            const auto idea = composeLayers (cleanState (0), spans, c)[(size_t) ComposerLayer::guitar];
+            REQUIRE (idea.notes.size() >= 8 * 8);
+            std::set<int> tops;
+            for (const auto& n : idea.notes)
+            {
+                if (n.pitch >= 55)
+                    tops.insert (n.pitch % 12);
+                if (std::abs (n.beat - std::round (n.beat / 4.0) * 4.0) < 1.0e-6)   // (each bar's first note: the root)
+                    CHECK (n.pitch % 12 == spans[(size_t) std::round (n.beat / 4.0)].chord.root);
+            }
+            CHECK (tops.count (11) == 1);   // B: A minor's 2nd
+            CHECK (tops.count (0) == 1);    // C: its 3rd
+        }
+        // PICKED CHORD (Circle With Me): one note every eighth, each in the chord sounding.
+        {
+            const auto idea = composeLayers (cleanState (1), spans, c)[(size_t) ComposerLayer::guitar];
+            REQUIRE (idea.notes.size() == 8 * 8);
+            for (size_t i = 0; i < idea.notes.size(); ++i)
+            {
+                CHECK (idea.notes[i].beat == Catch::Approx (i * 0.5));
+                CHECK (inChord (spans, idea.notes[i]));
+            }
+        }
+        // SPARSE CLEAN NOTES: two strikes a bar of one high chord tone; the eighth bar picked in eighths.
+        {
+            const auto idea = composeLayers (cleanState (2), spans, c)[(size_t) ComposerLayer::guitar];
+            std::array<int, 8> perBar {};
+            for (const auto& n : idea.notes)
+            {
+                ++perBar[(size_t) std::floor (n.beat / 4.0 + 1.0e-6)];
+                CHECK (inChord (spans, n));
+                CHECK ((n.pitch >= 64 && n.pitch <= 79));
+            }
+            for (int bar = 0; bar < 7; ++bar)
+                CHECK (perBar[(size_t) bar] == 2);
+            CHECK (perBar[7] == 8);
+        }
+        // GUITARS OUT: nothing.
+        CHECK (composeLayers (cleanState (3), spans, c)[(size_t) ComposerLayer::guitar].notes.empty());
+        // HELD CHORD & PULSE: a power chord (root, fifth, octave) struck on each chord, held to the next.
+        {
+            const auto idea = composeLayers (cleanState (4), spans, c)[(size_t) ComposerLayer::guitar];
+            REQUIRE (idea.notes.size() == 8 * 3);
+            for (size_t i = 0; i < idea.notes.size(); i += 3)
+            {
+                CHECK (idea.notes[i].beat == Catch::Approx ((double) (i / 3) * 4.0));
+                std::vector<int> chord { idea.notes[i].pitch, idea.notes[i + 1].pitch, idea.notes[i + 2].pitch };
+                std::sort (chord.begin(), chord.end());
+                CHECK (chord[1] - chord[0] == 7);
+                CHECK (chord[2] - chord[0] == 12);
+                CHECK (chord[0] % 12 == spans[i / 3].chord.root);
+                CHECK (idea.notes[i].length >= 3.5);
+            }
+        }
+    }
+}
+
+TEST_CASE ("0.97.0: CLEAN VERSE's band follows the guitar's part when left automatic", "[sections][types]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();
+    const auto layer = [] (const std::array<LineIdea, composerLayerCount>& all, ComposerLayer l) -> const LineIdea& { return all[(size_t) l]; };
+    // Circle With Me: no drums, no keys, the bass in eighths changing an eighth after the chord.
+    {
+        const auto all = composeLayers (cleanState (1), spans, c);
+        CHECK (layer (all, ComposerLayer::drums).notes.empty());
+        CHECK (layer (all, ComposerLayer::chords).notes.empty());
+        const auto& bass = layer (all, ComposerLayer::bass).notes;
+        REQUIRE (bass.size() == 8 * 8);
+        CHECK (bass[8].pitch % 12 == 9);    // (bar 2's first eighth: still A)
+        CHECK (bass[9].pitch % 12 == 5);    // (then F)
+    }
+    // Crawling / In The End: the guitars out, the keys carrying it, half-time drums (kick on 1 and 3, the snare ghosted).
+    {
+        const auto all = composeLayers (cleanState (3), spans, c);
+        CHECK (layer (all, ComposerLayer::guitar).notes.empty());
+        CHECK_FALSE (layer (all, ComposerLayer::chords).notes.empty());
+        std::set<int> kicks;
+        for (const auto& n : layer (all, ComposerLayer::drums).notes)
+        {
+            if (n.pitch == 36 && n.beat < 4.0)
+                kicks.insert (juce::roundToInt (n.beat * 4.0));
+            if (n.pitch == 38)
+                CHECK (n.velocity < 0.4f);
+        }
+        CHECK (kicks == std::set<int> { 0, 8 });
+    }
+    // Masterpiece: syncopated roots, the light groove, held pads.
+    {
+        const auto all = composeLayers (cleanState (0), spans, c);
+        CHECK (layer (all, ComposerLayer::bass).style == "Clean: syncopated roots");
+        CHECK (layer (all, ComposerLayer::drums).style == "Clean: light groove");
+        CHECK (layer (all, ComposerLayer::chords).style == "Clean: held pads");
+        for (const auto& n : layer (all, ComposerLayer::chords).notes)
+            CHECK (inChord (spans, n));
+    }
+    // A choice wins over the automatic one; the melody plays as it does without the type.
+    {
+        auto s = cleanState (1);
+        s.lane (ComposerLayer::drums).approach = 0;
+        s.lane (ComposerLayer::chords).approach = 2;
+        s.lane (ComposerLayer::bass).approach = 3;
+        const auto all = composeLayers (s, spans, c);
+        CHECK (layer (all, ComposerLayer::drums).style == "Clean: light groove");
+        CHECK (layer (all, ComposerLayer::chords).style == "Clean: piano line");
+        CHECK (layer (all, ComposerLayer::bass).style == "Clean: octave eighths");
+        ComposerState plain;
+        CHECK (layer (all, ComposerLayer::melody).notes == layer (composeLayers (plain, spans, c), ComposerLayer::melody).notes);
+    }
 }
