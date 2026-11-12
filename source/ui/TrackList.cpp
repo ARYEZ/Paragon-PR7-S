@@ -863,6 +863,62 @@ public:
 // The marker track's row (0.49.0, the manual's Marker Track controls): its name (double-click:
 // rename), + POS (Add Position Marker at the cursor), + CYC (Add Cycle Marker at the locators;
 // Shift-click: and name it), LOCK, and GO TO (the manual's Locate, Cycle and Zoom pop-up menus).
+// The SECTIONS row (0.90.0): its name, the song's length in bars, and + SECTION (a block after the last).
+class TrackList::SectionsRow final : public juce::Component,
+                                     public juce::SettableTooltipClient
+{
+public:
+    explicit SectionsRow (TrackList& ownerList) : owner (ownerList)
+    {
+        add.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        add.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+        add.setWantsKeyboardFocus (false);
+        add.setTooltip ("Add a section after the last: intro, verse, pre-chorus, chorus, bridge, breakdown, solo...");
+        add.onClick = [this] { if (owner.onAddSection) owner.onAddSection(); };
+        addAndMakeVisible (add);
+        setTooltip ("The song's sections: drag a block to rearrange (its music goes with it), double-click one to open the composer on it, right-click for its menu");
+    }
+
+    void refresh() { repaint(); }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto bounds = getLocalBounds().toFloat();
+        g.setColour (juce::Colour (0xff140f14));
+        g.fillRect (bounds);
+        g.setColour (juce::Colour (0xff050405));
+        g.fillRect (bounds.withY (bounds.getBottom() - 1.0f).withHeight (1.0f));
+        g.setColour (pr7s::FamilyColours::pink);
+        g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
+        const auto& sections = owner.studio.getSongSections();
+        g.setColour (ParagonColours::text);
+        g.setFont (ParagonLookAndFeel::titleFont (14.0f));
+        const auto bars = sections.totalBars();
+        g.drawFittedText ("SECTIONS" + (bars > 0 ? "  " + juce::String (bars) + " BARS" : juce::String()), nameArea.toNearestInt(),
+                          juce::Justification::centredLeft, 1, 0.7f);
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().withTrimmedLeft (16).reduced (0, 4);
+        area.removeFromRight (6);
+        add.setBounds (area.removeFromRight (92).withSizeKeepingCentre (92, juce::jmin (24, area.getHeight())));
+        area.removeFromRight (4);
+        nameArea = area.toFloat();
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (e.mods.isPopupMenu() && owner.onSectionsMenu)
+            owner.onSectionsMenu();
+    }
+
+private:
+    TrackList& owner;
+    juce::TextButton add { "+ SECTION" };
+    juce::Rectangle<float> nameArea;
+};
+
 class TrackList::MarkerRow final : public juce::Component,
                                    public juce::SettableTooltipClient
 {
@@ -1296,6 +1352,15 @@ void TrackList::rebuild()
         signatureRow = nullptr;
     if (signatureRow != nullptr)
         signatureRow->refresh();
+    if (studio.getSongSections().shown && sectionsRow == nullptr)
+    {
+        sectionsRow = std::make_unique<SectionsRow> (*this);
+        addAndMakeVisible (*sectionsRow);
+    }
+    else if (! studio.getSongSections().shown)
+        sectionsRow = nullptr;
+    if (sectionsRow != nullptr)
+        sectionsRow->refresh();
     if (studio.getMarkerTrack().shown && markerRow == nullptr)
     {
         markerRow = std::make_unique<MarkerRow> (*this);
@@ -1392,6 +1457,11 @@ void TrackList::placeRows()
             if (markerRow != nullptr)
                 markerRow->setBounds (bounds);
         }
+        else if (row.kind == Timeline::Row::Kind::sections)
+        {
+            if (sectionsRow != nullptr)
+                sectionsRow->setBounds (bounds);
+        }
         else if (row.kind == Timeline::Row::Kind::chords)
         {
             if (chordRow != nullptr)
@@ -1461,6 +1531,7 @@ juce::PopupMenu TrackList::makeAddTrackMenu (int offset)
     menu.addItem (offset + 12, "Folder track (holds tracks: fold them away, mute or solo them together)");
     menu.addItem (offset + 13, "Folder track with group channel (its tracks summed)");
     menu.addItem (offset + 9, "Chord track (the song's chords and scales)", ! studio.getChordTrack().shown);
+    menu.addItem (offset + 14, "Sections row (the song's parts as blocks: verse, chorus...)", ! studio.getSongSections().shown);
     menu.addSeparator();
     menu.addItem (offset + 7, "Track from a preset...");
     menu.addSeparator();
@@ -1490,6 +1561,10 @@ bool TrackList::addTrackChosen (int chosen)
         else if (chosen == 11)
         {
             studio.addMarkerTrack();
+        }
+        else if (chosen == 14)
+        {
+            studio.addSongSectionTrack();
         }
         else if (chosen == 12 || chosen == 13)
         {

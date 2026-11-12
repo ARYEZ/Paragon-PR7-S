@@ -249,7 +249,24 @@ void ComposerPage::refresh (bool rehear)
     const auto& riff = studio.getComposerRiff();
     if (fromRiff && ! riff.has_value())
         fromRiff = false;
+    const auto target = getTargetPlace();
+    if (target.has_value() && ! state.fromChordTrack && ! fromRiff)
+        state.bars = target->bars;   // (0.90.0: the block's length; the progression repeated to fill it, cut at its end)
     spans = chordSpans();
+    if (target.has_value())
+    {
+        const auto from = state.fromChordTrack ? target->start : 0.0;
+        const auto to = from + (target->end - target->start);
+        std::vector<pr7s::ChordSpan> inside;
+        for (auto s : spans)
+            if (s.end > from + 1.0e-6 && s.start < to - 1.0e-6)
+            {
+                s.start = juce::jmax (s.start, from);
+                s.end = juce::jmin (s.end, to);
+                inside.push_back (s);
+            }
+        spans = inside;
+    }
     if (! state.fromChordTrack && ! fromRiff)
         if (const auto index = pr7s::composerProgressionIndex (state); index >= 0)
             state.progression = pr7s::progressionLibrary()[(size_t) index].name;
@@ -312,7 +329,7 @@ void ComposerPage::refresh (bool rehear)
     progressionKey.setEnabled (! state.fromChordTrack && ! fromRiff);
     for (auto* box : { &genreBox, &moodBox })
         box->setEnabled (! state.fromChordTrack && ! fromRiff);
-    lengthBox.setEnabled (! state.fromChordTrack);
+    lengthBox.setEnabled (! state.fromChordTrack && ! getTargetPlace().has_value());   // (0.90.0: a block's length is its own)
     // (0.75.0) The key locked for the song once a section is built.
     keyBox.setEnabled (! state.fromChordTrack && ! isKeyLocked());
     keyBox.setTooltip (isKeyLocked() ? "The key is locked for the whole song now that a section is built (right-click the SONG strip to start the song again)"
@@ -327,7 +344,10 @@ void ComposerPage::refresh (bool rehear)
     sectionBox.setSelectedItemIndex ((int) std::distance (pr7s::drumSections().begin(),
                                                           std::find (pr7s::drumSections().begin(), pr7s::drumSections().end(), getSection())),
                                      juce::dontSendNotification);
-    buildKey.setButtonText ("BUILD " + pr7s::sectionWord (getSection()).toUpperCase());
+    if (const auto target = getTargetPlace())
+        buildKey.setButtonText ("BUILD INTO " + pr7s::sectionLabel (studio.getSongSections().blocks, studio.getSongSections().indexOf (targetBlock)).toUpperCase());
+    else
+        buildKey.setButtonText ("BUILD " + pr7s::sectionWord (getSection()).toUpperCase());
     hearKey.setButtonText (hearing ? "STOP" : "HEAR");
     hearKey.setToggleState (hearing, juce::dontSendNotification);
     {
@@ -359,8 +379,42 @@ void ComposerPage::refresh (bool rehear)
     repaint();
 }
 
+std::optional<pr7s::SectionPlace> ComposerPage::getTargetPlace() const
+{
+    if (targetBlock <= 0)
+        return std::nullopt;
+    return studio.getSongSectionPlace (studio.getSongSections().indexOf (targetBlock));
+}
+
+void ComposerPage::targetSection (int blockId)
+{
+    const auto index = studio.getSongSections().indexOf (blockId);
+    if (index < 0)
+        return;
+    targetBlock = blockId;
+    const auto& blocks = studio.getSongSections().blocks;
+    const auto place = getTargetPlace();
+    setSection (pr7s::drumSections()[(size_t) pr7s::composerSectionFor (blocks[(size_t) index].name)]);   // (refreshes)
+    if (place.has_value())
+    {
+        status = "Composing " + pr7s::sectionLabel (blocks, index) + " (bars " + juce::String (place->firstBar + 1) + " to "
+               + juce::String (place->firstBar + place->bars) + "): HEAR plays it there, BUILD writes into it";
+    }
+    repaint();
+}
+
+void ComposerPage::clearTargetSection()
+{
+    if (targetBlock == 0)
+        return;
+    targetBlock = 0;
+    refresh();
+}
+
 double ComposerPage::placeStart() const
 {
+    if (const auto target = getTargetPlace())
+        return target->start;   // (0.90.0: the block composed)
     if (state.fromChordTrack)
     {
         const auto chords = studio.getLineChords();
@@ -373,7 +427,7 @@ double ComposerPage::placeStart() const
 double ComposerPage::buildStart() const
 {
     // (0.74.0) After the last section built (the song grows a section at a time); the first at the playhead's bar.
-    if (state.fromChordTrack)
+    if (state.fromChordTrack || getTargetPlace().has_value())
         return placeStart();
     const auto& built = studio.getBuiltSections();
     return built.empty() ? placeStart() : built.back().end;
@@ -1298,7 +1352,13 @@ std::vector<int> ComposerPage::buildSection()
     const auto bar = sig.barAt (placed.front().start) + 1, bars = sig.barAt (placed.back().end) + 1 - bar;   // (barAt: a hair before a line is on it)
     const auto built = pr7s::sectionWord (section) + " built at bar " + juce::String (bar) + " (" + juce::String (bars) + " bars)";
     // The best next section chosen for you (change it with SECTION or the NEXT keys).
-    if (const auto next = getNextSuggestions(); ! next.empty())
+    if (const auto target = getTargetPlace())
+    {
+        const auto index = studio.getSongSections().indexOf (targetBlock);
+        status = pr7s::sectionLabel (studio.getSongSections().blocks, index) + " built (" + juce::String (target->bars)
+               + " bars). Double-click another block on the SECTIONS row to compose it";
+    }
+    else if (const auto next = getNextSuggestions(); ! next.empty())
     {
         chooseNext (next.front());
         status = built + ".  Next: " + pr7s::sectionWord (next.front().kind).toLowerCase() + " (" + next.front().reason + ")";

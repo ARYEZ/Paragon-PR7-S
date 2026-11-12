@@ -423,6 +423,8 @@ std::vector<Timeline::Row> Timeline::layout (const pr7s::Studio& studio) const
         add (Row::Kind::signature, 0, -1, signatureRowHeight());
     if (studio.getProject().markerTrack.shown)
         add (Row::Kind::markers, 0, -1, markerRowHeight());   // (0.49.0)
+    if (studio.getProject().songSections.shown)
+        add (Row::Kind::sections, 0, -1, sectionsRowHeight());   // (0.90.0: the song's blocks, above the chords)
     if (studio.getProject().chordTrack.shown)
         add (Row::Kind::chords, 0, -1, chordRowHeight());   // (0.16.0: under the tempo track's)
     for (const auto& track : studio.getProject().tracks)
@@ -739,6 +741,8 @@ void ArrangeView::paint (juce::Graphics& g)
             paintSignature (g, row);
         else if (row.kind == Timeline::Row::Kind::markers)
             paintMarkers (g, row);
+        else if (row.kind == Timeline::Row::Kind::sections)
+            paintSections (g, row);
 
     // (0.49.0) Marker lines down the arrangement, behind the parts (the manual's Show Marker Lines).
     paintMarkerLines (g);
@@ -1498,6 +1502,8 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
         return;
     if (const auto row = rowAt (event.position.y); row && row->kind == Timeline::Row::Kind::markers && markerDown (event))
         return;
+    if (const auto row = rowAt (event.position.y); row && row->kind == Timeline::Row::Kind::sections && sectionDown (event))
+        return;
     if (! event.mods.isShiftDown())
         markerSelection.clear();
     if (! event.mods.isShiftDown())
@@ -1715,6 +1721,11 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
     if (drag == Drag::markerMove || drag == Drag::markerStart || drag == Drag::markerEnd || drag == Drag::markerNewCycle)
     {
         markerDrag (event);
+        return;
+    }
+    if (drag == Drag::sectionMove)
+    {
+        sectionDrag (event);
         return;
     }
     if (drag == Drag::signatureMove)
@@ -2029,6 +2040,11 @@ void ArrangeView::mouseUp (const juce::MouseEvent& event)
     if (drag == Drag::markerMove || drag == Drag::markerStart || drag == Drag::markerEnd || drag == Drag::markerNewCycle)
     {
         markerUp();
+        return;
+    }
+    if (drag == Drag::sectionMove)
+    {
+        sectionUp();
         return;
     }
     if (drag == Drag::signatureMove)
@@ -2635,6 +2651,8 @@ void ArrangeView::mouseDoubleClick (const juce::MouseEvent& event)
     if (automationDoubleClick (event))   // (0.27.0) a point's value typed in, a bend straightened
         return;
     if (markerDoubleClick (event))   // (0.49.0)
+        return;
+    if (sectionDoubleClick (event))   // (0.90.0)
         return;
     // The chord track: a chord's editor; an empty spot, the chord the one before suggests (0.16.0).
     if (const auto row = rowAt (event.position.y); row && row->kind == Timeline::Row::Kind::chords)

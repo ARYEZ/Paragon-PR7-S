@@ -443,6 +443,7 @@ namespace pr7s
         project.signatureTrackShown = state.signatureTrackShown;
         project.markerTrack.markers = state.markerTrack.markers;   // (0.49.0: marker edits are undo steps;
         project.markerTrack.shown = state.markerTrack.shown;       //  the lock and the window's settings aren't)
+        project.songSections = state.songSections;                 // (0.90.0: the blocks and their order are undo steps)
         project.loopOn = state.loopOn;
         project.loopStart = state.loopStart;
         project.loopEnd = state.loopEnd;
@@ -12717,5 +12718,420 @@ namespace pr7s
             ++changeVersion;
         mixOnlyAsked = mixOnlyBroken = false;
         sendChangeMessage();
+    }
+    //==========================================================================
+    // The SECTIONS row (0.90.0)
+    std::vector<SectionPlace> Studio::getSongSectionPlaces() const
+    {
+        return sectionPlaces (project.songSections, project.signatures());
+    }
+
+    std::optional<SectionPlace> Studio::getSongSectionPlace (int index) const
+    {
+        const auto places = getSongSectionPlaces();
+        if (! juce::isPositiveAndBelow (index, (int) places.size()))
+            return std::nullopt;
+        return places[(size_t) index];
+    }
+
+    void Studio::addSongSectionTrack()
+    {
+        if (project.songSections.shown)
+            return;
+        project.songSections.shown = true;
+        changed();
+    }
+
+    void Studio::removeSongSectionTrack()
+    {
+        if (! project.songSections.shown)
+            return;
+        project.songSections.shown = false;
+        changed();
+    }
+
+    namespace
+    {
+        juce::String sectionNameOrVerse (const juce::String& name)
+        {
+            const auto base = sectionBaseOf (name);
+            return base.isNotEmpty() ? base : juce::String ("Verse");
+        }
+    }
+
+    int Studio::appendSongSection (const juce::String& name, int bars)
+    {
+        auto& sections = project.songSections;
+        SongSection b;
+        b.id = sections.nextId();
+        b.name = sectionNameOrVerse (name);
+        b.bars = juce::jlimit (leastSectionBars, mostSectionBars, bars);
+        sections.blocks.push_back (b);
+        sections.shown = true;
+        changed();
+        return (int) sections.blocks.size() - 1;
+    }
+
+    bool Studio::insertSongSection (int index, const juce::String& name, int bars)
+    {
+        const auto& blocks = project.songSections.blocks;
+        index = juce::jlimit (0, (int) blocks.size(), index);
+        std::vector<SectionMove> moves;
+        for (int i = 0; i < (int) blocks.size(); ++i)
+        {
+            if (i == index)
+            {
+                SongSection b;
+                b.id = project.songSections.nextId();
+                b.name = sectionNameOrVerse (name);
+                b.bars = juce::jlimit (leastSectionBars, mostSectionBars, bars);
+                moves.push_back ({ -1, b });
+            }
+            moves.push_back ({ i, blocks[(size_t) i] });
+        }
+        if (index == (int) blocks.size())
+        {
+            SongSection b;
+            b.id = project.songSections.nextId();
+            b.name = sectionNameOrVerse (name);
+            b.bars = juce::jlimit (leastSectionBars, mostSectionBars, bars);
+            moves.push_back ({ -1, b });
+        }
+        return relayoutSections (moves);
+    }
+
+    bool Studio::moveSongSection (int from, int to)
+    {
+        const auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (from, (int) blocks.size()))
+            return false;
+        to = juce::jlimit (0, (int) blocks.size() - 1, to);
+        if (to == from)
+            return true;
+        std::vector<SectionMove> moves;
+        for (int i = 0; i < (int) blocks.size(); ++i)
+            moves.push_back ({ i, blocks[(size_t) i] });
+        const auto moved = moves[(size_t) from];
+        moves.erase (moves.begin() + from);
+        moves.insert (moves.begin() + to, moved);
+        return relayoutSections (moves);
+    }
+
+    bool Studio::setSongSectionBars (int index, int bars)
+    {
+        const auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (index, (int) blocks.size()))
+            return false;
+        bars = juce::jlimit (leastSectionBars, mostSectionBars, bars);
+        if (blocks[(size_t) index].bars == bars)
+            return true;
+        std::vector<SectionMove> moves;
+        for (int i = 0; i < (int) blocks.size(); ++i)
+            moves.push_back ({ i, blocks[(size_t) i] });
+        moves[(size_t) index].block.bars = bars;
+        return relayoutSections (moves);
+    }
+
+    bool Studio::renameSongSection (int index, const juce::String& name)
+    {
+        auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (index, (int) blocks.size()) || sectionBaseOf (name).isEmpty())
+            return false;
+        if (blocks[(size_t) index].name == sectionBaseOf (name))
+            return true;
+        blocks[(size_t) index].name = sectionBaseOf (name);
+        changed();
+        return true;
+    }
+
+    bool Studio::duplicateSongSection (int index)
+    {
+        const auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (index, (int) blocks.size()))
+            return false;
+        std::vector<SectionMove> moves;
+        for (int i = 0; i < (int) blocks.size(); ++i)
+        {
+            moves.push_back ({ i, blocks[(size_t) i] });
+            if (i == index)
+            {
+                auto copy = blocks[(size_t) i];
+                copy.id = project.songSections.nextId();
+                moves.push_back ({ i, copy });
+            }
+        }
+        return relayoutSections (moves);
+    }
+
+    bool Studio::removeSongSection (int index)
+    {
+        const auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (index, (int) blocks.size()))
+            return false;
+        std::vector<SectionMove> moves;
+        for (int i = 0; i < (int) blocks.size(); ++i)
+            if (i != index)
+                moves.push_back ({ i, blocks[(size_t) i] });
+        return relayoutSections (moves);
+    }
+
+    namespace
+    {
+        // A stretch of the old song carried to a new place: [from, to) moves by `delta`.
+        struct Carry { double from = 0.0, to = 0.0, delta = 0.0; };
+
+        // The points of a curve carried window by window: each window's points inside it moved, with a point at
+        // its start and just before its end holding the values the curve had there (so a block keeps its own
+        // levels wherever it lands); points in no window are dropped.
+        std::vector<AutomationPoint> carryPoints (const std::vector<AutomationPoint>& points, const std::vector<Carry>& carries)
+        {
+            if (points.empty())
+                return points;
+            AutomationLane lane;
+            lane.points = points;
+            std::vector<AutomationPoint> out;
+            constexpr double just = 1.0 / 960.0;
+            for (const auto& c : carries)
+            {
+                if (c.to <= c.from)
+                    continue;
+                if (const auto v = lane.valueAt (c.from))
+                    out.push_back ({ c.from + c.delta, *v, 0.0f, false });
+                for (const auto& p : points)
+                    if (p.beat > c.from + edge && p.beat < c.to - edge)
+                    {
+                        auto q = p;
+                        q.beat += c.delta;
+                        out.push_back (q);
+                    }
+                if (std::isfinite (c.to) && c.to - c.from > 2.0 * just)
+                    if (const auto v = lane.valueAt (c.to - just))
+                        out.push_back ({ c.to - just + c.delta, *v, 0.0f, false });
+            }
+            std::stable_sort (out.begin(), out.end(), [] (const AutomationPoint& a, const AutomationPoint& b) { return a.beat < b.beat; });
+            return out;
+        }
+    }
+
+    bool Studio::relayoutSections (const std::vector<SectionMove>& moves)
+    {
+        auto& sections = project.songSections;
+        const auto oldBlocks = sections.blocks;
+        const auto oldMap = project.signatures();
+        const auto oldPlaces = sectionPlaces (sections, oldMap);
+        const auto oldEndBar = sections.totalBars();
+        const auto oldEnd = oldMap.beatOfBar (oldEndBar);
+        for (const auto& m : moves)
+            if (m.from >= (int) oldBlocks.size())
+                return false;
+
+        // 1. The signatures, bar by bar: each carried block keeps the signature it started with and the changes
+        //    inside what's kept of it; what follows the row keeps its own (so every block keeps its beats).
+        {
+            std::vector<SignatureEvent> events;   // bar 0 included
+            const auto sigAt = [&oldMap] (int bar) { return oldMap.segmentOfBar (bar).event; };
+            const auto& oldChanges = project.signatureChanges;
+            auto bar = 0;
+            for (const auto& m : moves)
+            {
+                if (m.from >= 0)
+                {
+                    const auto& p = oldPlaces[(size_t) m.from];
+                    const auto kept = juce::jmin (m.block.bars, p.bars);
+                    auto start = sigAt (p.firstBar);
+                    start.bar = bar;
+                    events.push_back (start);
+                    for (const auto& c : oldChanges)
+                        if (c.bar > p.firstBar && c.bar < p.firstBar + kept)
+                        {
+                            auto e = c;
+                            e.bar = c.bar - p.firstBar + bar;
+                            events.push_back (e);
+                        }
+                }
+                bar += m.block.bars;
+            }
+            auto after = sigAt (oldEndBar);
+            after.bar = bar;
+            events.push_back (after);
+            for (const auto& c : oldChanges)
+                if (c.bar > oldEndBar)
+                {
+                    auto e = c;
+                    e.bar = c.bar - oldEndBar + bar;
+                    events.push_back (e);
+                }
+            // Events before any block keep bar 0's signature (a row starting with a new block).
+            if (std::none_of (events.begin(), events.end(), [] (const SignatureEvent& e) { return e.bar == 0; }))
+                events.insert (events.begin(), sigAt (0));
+            std::stable_sort (events.begin(), events.end(), [] (const SignatureEvent& a, const SignatureEvent& b) { return a.bar < b.bar; });
+            std::vector<SignatureEvent> oneEach;   // (the last given for a bar wins)
+            for (const auto& e : events)
+                if (! oneEach.empty() && oneEach.back().bar == e.bar)
+                    oneEach.back() = e;
+                else
+                    oneEach.push_back (e);
+            project.numerator = oneEach.front().numerator;
+            project.denominator = oneEach.front().denominator;
+            std::vector<SignatureEvent> changes (oneEach.begin() + 1, oneEach.end());
+            project.signatureChanges = tidySignatures (project.numerator, project.denominator, changes);
+        }
+
+        // 2. The new places, and what each window of the old song carries to.
+        SongSections laid;
+        laid.shown = true;
+        for (const auto& m : moves)
+            laid.blocks.push_back (m.block);
+        const auto newMap = project.signatures();
+        const auto newPlaces = sectionPlaces (laid, newMap);
+        const auto newEnd = newMap.beatOfBar (laid.totalBars());
+        std::vector<Carry> carries;
+        for (size_t i = 0; i < moves.size(); ++i)
+            if (const auto from = moves[i].from; from >= 0)
+            {
+                const auto& p = oldPlaces[(size_t) from];
+                const auto kept = juce::jmin (moves[i].block.bars, p.bars);
+                const auto keptEnd = oldMap.beatOfBar (p.firstBar + kept);
+                carries.push_back ({ p.start, keptEnd, newPlaces[i].start - p.start });
+            }
+        carries.push_back ({ oldEnd, std::numeric_limits<double>::infinity(), newEnd - oldEnd });   // what follows the row
+
+        // 3. The tempo: each window starts at the tempo it had; what's inside moves with it.
+        if (! project.tempoEvents.empty())
+        {
+            const auto map = project.tempoMap();
+            std::vector<TempoEvent> events;
+            for (const auto& c : carries)
+            {
+                events.push_back ({ c.from + c.delta, map.bpmAt (c.from), false });
+                for (const auto& e : project.tempoEvents)
+                    if (e.beat > c.from + edge && e.beat < c.to - edge)
+                        events.push_back ({ e.beat + c.delta, e.bpm, e.ramp });
+            }
+            std::stable_sort (events.begin(), events.end(), [] (const TempoEvent& a, const TempoEvent& b) { return a.beat < b.beat; });
+            std::vector<TempoEvent> oneEach;
+            for (const auto& e : events)
+                if (! oneEach.empty() && std::abs (oneEach.back().beat - e.beat) < edge)
+                    oneEach.back() = e;
+                else
+                    oneEach.push_back (e);
+            if (oneEach.empty() || oneEach.front().beat > edge)
+                oneEach.insert (oneEach.begin(), { 0.0, map.bpmAt (0.0), false });
+            oneEach.front().beat = 0.0;
+            project.tempoEvents = oneEach;
+        }
+        const auto tempo = project.tempoMap();
+
+        // 4. Every track's parts: cut at the windows' edges, each piece carried (a block copied: twice), the rest
+        //    dropped. Frozen tracks are left as they are (changed() puts their parts back).
+        for (auto& track : project.tracks)
+        {
+            if (track.frozen || track.parts.empty())
+                continue;
+            for (const auto& c : carries)
+            {
+                splitTrackAt (track, c.from, tempo);
+                if (std::isfinite (c.to))
+                    splitTrackAt (track, c.to, tempo);
+            }
+            for (const auto& p : oldPlaces)
+                splitTrackAt (track, p.end, tempo);
+            std::vector<Part> placed;
+            for (const auto& part : track.parts)
+            {
+                auto first = true;
+                for (const auto& c : carries)
+                    if (part.start >= c.from - edge && part.end() <= c.to + edge)
+                    {
+                        auto piece = part;
+                        piece.start = juce::jmax (0.0, part.start + c.delta);
+                        if (! first)
+                            piece.id = 0;
+                        first = false;
+                        placed.push_back (piece);
+                    }
+            }
+            track.parts = std::move (placed);
+        }
+
+        // 5. The chords (each its own length first) and the scales.
+        {
+            auto& ct = project.chordTrack;
+            const auto chords = withLengths (ct, project.beatsPerBar());
+            std::vector<ChordEvent> events;
+            for (const auto& c : carries)
+                for (const auto& e : chords)
+                {
+                    const auto from = juce::jmax (e.beat, c.from), to = juce::jmin (e.beat + e.length, c.to);
+                    if (to - from >= shortestChord)
+                        events.push_back ({ from + c.delta, e.chord, to - from });
+                }
+            if (! ct.autoScales && ! ct.scales.empty())
+            {
+                std::vector<ScaleEvent> scales;
+                for (const auto& c : carries)
+                {
+                    scales.push_back ({ c.from + c.delta, ct.keyAt (c.from, project.chordPads.key()) });
+                    for (const auto& e : ct.scales)
+                        if (e.beat > c.from + edge && e.beat < c.to - edge)
+                            scales.push_back ({ e.beat + c.delta, e.key });
+                }
+                std::stable_sort (scales.begin(), scales.end(), [] (const ScaleEvent& a, const ScaleEvent& b) { return a.beat < b.beat; });
+                ct.scales = scales;
+            }
+            ct.events = events;
+            ct.sort();
+            if (ct.autoScales)
+                ct.scales = ct.events.empty() ? std::vector<ScaleEvent> {} : scalesFromChords (ct.events, project.chordPads.key());
+        }
+
+        // 6. Markers: each with its start's window (a block copied: its markers copied, with new IDs).
+        {
+            std::vector<Marker> markers;
+            auto& mt = project.markerTrack;
+            for (const auto& m : mt.markers)
+            {
+                auto first = true;
+                for (const auto& c : carries)
+                    if (m.start >= c.from - edge && m.start < c.to - edge)
+                    {
+                        auto copy = m;
+                        copy.start += c.delta;
+                        copy.end = m.cycle ? m.end + c.delta : copy.start;
+                        if (! first)
+                            copy.id = 0;
+                        first = false;
+                        markers.push_back (copy);
+                    }
+            }
+            for (auto& m : markers)
+                if (m.id == 0)
+                {
+                    MarkerTrack t;
+                    t.markers = markers;
+                    m.id = t.nextId (m.cycle);
+                }
+            mt.markers = markers;
+            mt.sort();
+        }
+
+        // 7. Automation, every lane (tracks' and the master's), points and trims.
+        const auto carryLanes = [&carries] (std::vector<AutomationLane>& lanes)
+        {
+            for (auto& lane : lanes)
+            {
+                lane.points = carryPoints (lane.points, carries);
+                lane.trim = carryPoints (lane.trim, carries);
+            }
+        };
+        for (auto& track : project.tracks)
+            if (! track.frozen)
+                carryLanes (track.automation);
+        carryLanes (project.masterAutomation);
+
+        sections.blocks = laid.blocks;
+        sections.shown = true;
+        changed();
+        return true;
     }
 }

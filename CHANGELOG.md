@@ -2,6 +2,49 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.90.0
+
+**The SECTIONS row: the song as blocks** (your song engine overhaul, part one). A row at the top of the arrangement, above the chord track, where the song is laid out as its parts in order: intro, verse, pre-chorus, chorus, bridge, breakdown, solo, outro and the rest (21 names).
+
+- **Adding the row:** + ADD TRACK > Sections row. Or right-click it later for "Add a Section at the End".
+- **Adding blocks:** + SECTION on the row (or a double-click on the empty row after the last block) adds one after the last, 8 bars long.
+  - It names the bars that follow, so music already there isn't moved.
+  - The blocks always sit end to end from bar 1: no gaps, no overlaps.
+- **Each block's menu (right-click):**
+  - **Section:** change what it is.
+  - **Length:** 1 to 32 bars, or any number up to 64 with "Other...".
+  - **Insert a Section Before / After.**
+  - **Duplicate.**
+  - **Set the Locators to It** (to loop it).
+  - **Delete.**
+- **Repeats are numbered:** a name that comes back reads Chorus 1, Chorus 2...
+- **Drag a block to rearrange the song, and its music goes with it.** Everything inside the block moves to its new place:
+  - the parts on every track (a part crossing a block's edge is cut there);
+  - its chords and scales on the chord track;
+  - its markers and automation;
+  - its tempo and time-signature changes. A block in 3/4 stays in 3/4 wherever it lands.
+
+  The other blocks slide to make room, and the whole move is one undo step.
+- **What follows a block moves with the block's length:**
+  - **Inserting** a block before others moves them later.
+  - **Lengthening** a block moves what follows later; **shortening** it moves what follows sooner and drops what was past its new end.
+  - **Deleting** a block takes its music and closes the gap.
+- **Double-click a block to open the composer on it.**
+  - **SECTION** is set from the block's kind: Pre-Chorus plays as a verse, Post-Chorus as a chorus, Outro as an ending.
+  - **LENGTH** is the block's bars, and the chords are cut at its end.
+  - **HEAR** plays the block's place in the song, and the key reads BUILD INTO CHORUS 2 (or whichever block).
+  - **BUILD** writes into the block.
+  - Double-click another block to work on that one.
+
+**Not yet (the next releases, as we agreed):**
+- **Linked copies:** a repeated chorus that changes when any one of them changes. A block copied with Duplicate gets its own copy of the music for now.
+- **Changed chords rewriting the music** in their blocks.
+- **The composer working block by block**, with the SECTIONS row taking over from its SONG strip.
+
+**Two notes:**
+- **Frozen tracks don't move with their blocks** (their parts are locked). Unfreeze a track before rearranging.
+- **Duplicate makes a plain copy, not a linked one.** If you change one chorus, the other doesn't follow yet.
+
 ## 0.89.1
 
 **Circle With Me's chorus in the droning band** (every instrument's tab you sent, read for how each part supports the ringing guitar; nothing of the song is copied). Its chorus confirmed what 0.89.0 does: the bass doubles the ringing guitar's roots, held, pushes and all, and the drums lock to the pushes. It also showed four more ways to carry the movement, so each is now one of the band's choices:

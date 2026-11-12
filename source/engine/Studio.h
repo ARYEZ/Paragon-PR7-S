@@ -1140,6 +1140,28 @@ namespace pr7s
         bool locateNextMarker (bool forward);   // Shift+N / Shift+B
 
         //======================================================================
+        // The SECTIONS row (0.90.0, engine/SongSections.h): the song as blocks end to end from bar 1. Each action is
+        // one undo step. Blocks that change place carry their music with them: every part on every track (frozen
+        // tracks stay as they are), the chords and scales, markers, automation, tempo and signature changes inside
+        // them; what comes after the last block moves by what the row grew or shrank. A block shortened loses
+        // what was past its new end; a block removed takes its music with it and the gap closes.
+        const SongSections& getSongSections() const noexcept { return project.songSections; }
+        std::vector<SectionPlace> getSongSectionPlaces() const;
+        void addSongSectionTrack();          // the row shown
+        void removeSongSectionTrack();       // hidden, the blocks kept
+        // A block after the last, over the bars that follow (nothing moves: it names what's there). Its index.
+        int appendSongSection (const juce::String& name, int bars);
+        // A block at `index` (0 the first); everything from there on moves later by its length.
+        bool insertSongSection (int index, const juce::String& name, int bars);
+        bool moveSongSection (int from, int to);          // to: its index once moved
+        bool setSongSectionBars (int index, int bars);    // what follows moves by the change
+        bool renameSongSection (int index, const juce::String& name);
+        bool duplicateSongSection (int index);            // a copy after it, its music copied (linked copies: next release)
+        bool removeSongSection (int index);               // and its music; the gap closes
+        // A block's place in beats (none: no such block).
+        std::optional<SectionPlace> getSongSectionPlace (int index) const;
+
+        //======================================================================
         // Tap tempo (0.45.0, the manual's Tap Tempo Modes): each tap's time in seconds (the
         // transport's TAP, Shift+Space). From the second tap the tempo is the average step of
         // the last eight; a gap of 2 s starts again. Applied at each tap by the mode (not an
@@ -1473,6 +1495,10 @@ namespace pr7s
         void setMediaPreviewLevel (float);
 
     private:
+        // (0.90.0) The SECTIONS row's moves: the new blocks, each from an old block's index (its music carried, cut to
+        // its new length) or -1 (new and empty: what was there moves on). One undo step.
+        struct SectionMove { int from = -1; SongSection block; };
+        bool relayoutSections (const std::vector<SectionMove>&);
         PadPlayer padPlayer;
         std::unique_ptr<PatternPerformer> performer;   // (0.39.0) the pads' performance
         class LinePreview;

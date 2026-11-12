@@ -434,6 +434,10 @@ MainView::MainView (pr7s::Studio& studioToUse)
     arrange.onKeyCheck = [this] { openKeyCheck(); };
     arrange.onOpenMarkers = [this] { toggleMarkersWindow (true); };
     trackList.onMarkerMenu = [this] { arrange.showMarkerMenu (-1); };
+    // (0.90.0) The SECTIONS row: a block double-clicked opens the composer on it.
+    trackList.onSectionsMenu = [this] { arrange.showSectionMenu (-1); };
+    trackList.onAddSection = [this] { arrange.showAddSectionMenu (-1); };
+    arrange.onOpenSection = [this] (int index) { openSectionInComposer (index); };
     trackList.onMarkerZoom = [this] (int index)
     {
         const auto& markers = studio.getMarkerTrack().markers;
@@ -2596,6 +2600,19 @@ void MainView::openComposer()
     composerWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->composerWindow.reset(); }); };
     composerWindow->centreAroundComponent (this, composerWindow->getWidth(), composerWindow->getHeight());
     composerWindow->setVisible (true);
+}
+
+void MainView::openSectionInComposer (int index)
+{
+    const auto& blocks = studio.getSongSections().blocks;
+    if (! juce::isPositiveAndBelow (index, (int) blocks.size()))
+        return;
+    openComposer();
+    if (composerWindow == nullptr)
+        return;
+    composerWindow->getSuite().showTab (ComposerSuite::Tab::compose);
+    composerWindow->getPage().targetSection (blocks[(size_t) index].id);
+    composerWindow->toFront (true);
 }
 
 void MainView::openBandRecord()

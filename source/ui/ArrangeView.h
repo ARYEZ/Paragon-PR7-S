@@ -95,13 +95,15 @@ struct Timeline
     static constexpr int signatureHeight = 34;   // the signature track (0.45.0)
     int signatureRowHeight() const noexcept { return juce::jmax (28, juce::roundToInt (signatureHeight * rowZoom)); }
     static constexpr int markerHeight = 40;   // the marker track (0.49.0): cycle markers above, position markers below
+    static constexpr int sectionsHeight = 40; // (0.90.0) the SECTIONS row: the song's blocks
+    int sectionsRowHeight() const noexcept { return juce::jmax (30, juce::roundToInt (sectionsHeight * rowZoom)); }
     int markerRowHeight() const noexcept { return juce::jmax (32, juce::roundToInt (markerHeight * rowZoom)); }
     static constexpr int takeHeight = 52;   // a lane of takes (0.29.0): smaller than its track's row (our choice)
     int takeRowHeight() const noexcept { return juce::jmax (36, juce::roundToInt (takeHeight * rowZoom)); }
     struct Row
     {
         // (0.29.0) take: one of a track's lanes of takes (Show Lanes), under its row.
-        enum class Kind { track, lane, master, tempo, chords, take, signature, markers };   // (0.45.0: the signature track, under the tempo track; 0.49.0: the marker track, under it)
+        enum class Kind { track, lane, master, tempo, chords, take, signature, markers, sections };   // (0.45.0: the signature track, under the tempo track; 0.49.0: the marker track, under it)
         Kind kind = Kind::track;
         int busId = 0;          // a track's id, or the master's (0)
         int laneIndex = -1;     // a lane: its index in the bus's automation; a take lane: its lane
@@ -325,6 +327,20 @@ public:
     int markerAt (juce::Point<float>) const;                     // the marker there, -1: none
     std::function<void()> onOpenMarkers;   // the menu's Markers window (Ctrl+M)
 
+    // The SECTIONS row (0.90.0, engine/SongSections.h): the song's blocks, each its name and bars. A click selects one
+    // (and puts the playhead at its start), a drag moves it to another place in the order (its music with it), a
+    // double-click opens the composer on it, a right-click its menu (name, length, insert, copy, delete). A double-
+    // click on the empty row after the last block (or + SECTION in the track list) adds one.
+    std::function<void (int index)> onOpenSection;
+    juce::Rectangle<float> getSectionArea() const;
+    juce::Rectangle<float> getSectionBounds (int index) const;   // a block where it's drawn (while dragged: where it would go)
+    int sectionBlockAt (juce::Point<float>) const;               // -1: none
+    int getSelectedSection() const noexcept;                     // its index, -1: none
+    void selectSection (int index);
+    int getSectionDragTarget() const noexcept { return drag == Drag::sectionMove ? sectionDragTo : -1; }
+    void showSectionMenu (int index);                            // -1: the row's own menu (add a section)
+    void showAddSectionMenu (int insertAt, juce::Point<int> where = {});   // insertAt -1: after the last
+
     // Folder tracks (0.50.0, the manual's Folder Parts): a folder's row shows its tracks' parts as
     // blocks (where any of them has a part; each track a strip inside). A click on a block selects
     // every part in it (Shift: adds them), a drag moves them all along the song (Alt: copies them).
@@ -498,7 +514,8 @@ private:
                       newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove, marquee,
                       tempoPoints, tempoBand, tempoDraw, chordMove, chordStart, chordEnd, comp, takeEdge, slip, audition, warpMarker,
                       markerMove, markerStart, markerEnd, markerNewCycle,   // (0.49.0)
-                      folderMove };   // (0.50.0)
+                      folderMove,   // (0.50.0)
+                      sectionMove };   // (0.90.0) a block of the SECTIONS row dragged to another place in the order
     // WARP (0.32.0, the manual's Free Warp in the event display): the marker being dragged.
     int warpPartId = 0, warpIndex = -1;
     double warpTo = 0.0;
@@ -599,6 +616,15 @@ private:
     int markerDragIndex = -1;
     bool markerNameAfter = false;   // Shift held when adding: the name box follows
     void paintMarkers (juce::Graphics&, const Timeline::Row&);
+    int sectionSelectedId = 0;          // (0.90.0) the block chosen (by id: kept through moves)
+    int sectionDragFrom = -1, sectionDragTo = -1;
+    float sectionDownX = 0.0f;
+    void paintSections (juce::Graphics&, const Timeline::Row&);
+    bool sectionDown (const juce::MouseEvent&);
+    void sectionDrag (const juce::MouseEvent&);
+    void sectionUp();
+    bool sectionDoubleClick (const juce::MouseEvent&);
+    std::vector<int> shownSectionOrder() const;   // the blocks' indices in the order drawn (a drag's on the way)
     void paintFolders (juce::Graphics&);
     bool folderDown (const juce::MouseEvent&);
     std::vector<int> folderDragIds;

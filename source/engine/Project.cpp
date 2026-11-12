@@ -651,6 +651,8 @@ namespace pr7s
         }
         if (markerTrack.shown || ! markerTrack.isEmpty())
             xml->addChildElement (markerTrack.toXml().release());   // (0.49.0)
+        if (songSections.shown || ! songSections.isEmpty())
+            xml->addChildElement (songSections.toXml().release());   // (0.90.0)
         if (! signatureChanges.empty() || signatureTrackShown)
         {
             auto* signature = xml->createNewChildElement ("Signatures");
@@ -979,6 +981,8 @@ namespace pr7s
         }
         if (const auto* markers = xml.getChildByName ("MarkerTrack"))
             project.markerTrack = MarkerTrack::fromXml (*markers);   // (0.49.0)
+        if (const auto* sections = xml.getChildByName ("SongSections"))
+            project.songSections = SongSections::fromXml (*sections);   // (0.90.0)
         if (const auto* signature = xml.getChildByName ("Signatures"))
         {
             project.signatureTrackShown = signature->getBoolAttribute ("shown");

@@ -107,6 +107,13 @@ public:
     std::vector<pr7s::SectionSuggestion> getNextSuggestions() const;
     void chooseNext (const pr7s::SectionSuggestion&);   // its section, riff and riff settings (nothing built)
     void forgetSong();                        // the sections built are forgotten (the song's parts stay)
+    // (0.90.0) A block of the SECTIONS row (its id; a double-click on it): the composer works there. HEAR, USE and
+    // BUILD go to its start, LENGTH is its bars (the chords cut at its end), SECTION its kind's. Kept until another
+    // block is chosen, `clearTargetSection`, or the block is gone.
+    void targetSection (int blockId);
+    void clearTargetSection();
+    int getTargetSection() const noexcept { return targetBlock; }
+    std::optional<pr7s::SectionPlace> getTargetPlace() const;   // none: no block (or it's gone)
     void takeIdea (const pr7s::LineIdea&);    // into its lane (by its part), locked, until rolled or restyled
     bool hasTakenIdea (pr7s::ComposerLayer l) const noexcept { return taken[(size_t) l].has_value(); }
     static std::optional<pr7s::ComposerLayer> layerOf (pr7s::LineIdea::Part);
@@ -157,6 +164,7 @@ public:
     static constexpr int headerHeight = 64, controlsHeight = 44, songHeight = 54, rulerHeight = 30, laneHeaderWidth = 420, gap = 12;
 
 private:
+    int targetBlock = 0;   // (0.90.0) the SECTIONS row's block composed (its id; 0: none)
     struct Lane
     {
         juce::TextButton on { "ON" }, lock { "LOCK" }, roll { "ROLL" }, style, track, busy, low { "ANY STRING" };

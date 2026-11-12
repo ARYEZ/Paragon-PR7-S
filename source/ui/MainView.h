@@ -118,6 +118,7 @@ public:
     EqWindow* getEqWindow() noexcept { return eqWindow.get(); }   // the progression library (0.40.0): opened, or brought to the front
     ProgressionsWindow* getProgressionsWindow() noexcept { return progressionsWindow.get(); }
     void openComposer();   // (0.58.0) THE COMPOSER
+    void openSectionInComposer (int index);   // (0.90.0) the SECTIONS row's block double-clicked: the composer on it
     void openBandRecord();   // (0.82.0) LEARN MY BAND
     BandRecordWindow* getBandRecordWindow() noexcept { return bandRecordWindow.get(); }
     ComposerWindow* getComposerWindow() noexcept { return composerWindow.get(); }

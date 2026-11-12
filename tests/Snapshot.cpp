@@ -335,6 +335,21 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.addPositionMarker (24.0, "Fill");
         view.getArrangeView().selectMarkers ({ 1 });
     }
+    // PARAGON_SNAPSHOT_SECTIONS=1 (0.90.0): the SECTIONS row over the demo (intro, verse, pre-chorus, chorus, verse,
+    // chorus, bridge, outro), the chorus selected.
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SECTIONS", {}).isNotEmpty())
+    {
+        studio.addChordTrack();
+        studio.appendSongSection ("Intro", 4);
+        studio.appendSongSection ("Verse", 8);
+        studio.appendSongSection ("Pre-Chorus", 4);
+        studio.appendSongSection ("Chorus", 8);
+        studio.appendSongSection ("Verse", 8);
+        studio.appendSongSection ("Chorus", 8);
+        studio.appendSongSection ("Bridge", 4);
+        studio.appendSongSection ("Outro", 4);
+        view.getArrangeView().selectSection (3);
+    }
     // PARAGON_SNAPSHOT_INFOLINE=1 (0.37.0, with PARAGON_SNAPSHOT_AUTOMATION): three of the lead's volume points selected (the info line shows them).
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_INFOLINE", {}).isNotEmpty())
         view.getArrangeView().selectPoints (lead, 0, { 0, 1, 2 });

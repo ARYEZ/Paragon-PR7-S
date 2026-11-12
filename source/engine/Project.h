@@ -12,6 +12,7 @@
 #include "Eq.h"
 #include "Signature.h"
 #include "Markers.h"
+#include "SongSections.h"
 
 // A song: its tempo and time signature, the cycle (loop) range, and its
 // tracks, each with an instrument and the MIDI parts on the timeline.
@@ -419,6 +420,7 @@ namespace pr7s
                 std::vector<SignatureEvent> signatureChanges;   // sorted by bar, each at bar 1 (index 1) or later
         bool signatureTrackShown = false, signatureLocked = false;
         MarkerTrack markerTrack;                // (0.49.0) the marker track and its markers
+        SongSections songSections;              // (0.90.0) the SECTIONS row: the song as blocks, end to end from bar 1
         AutoFades autoFades;                    // (0.52.0) the song's Auto Fades settings
         AutoColour autoColour;                  // (0.79.0) COLOUR IN ORDER (saved; not an undo step)
         bool autoColourTakes (const Track&) const noexcept;
