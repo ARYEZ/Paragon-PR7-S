@@ -7,6 +7,7 @@
 
 #include "TestHelpers.h"
 #include <set>
+#include <functional>
 #include "engine/DrumGenerator.h"
 #include "engine/SectionTypes.h"
 #include "engine/Studio.h"
@@ -798,24 +799,113 @@ TEST_CASE ("0.94.0: STACCATO CHUG: one verse type, the rhythm guitar's approache
     ComposerState s;
     applySectionType (s, "Verse", "STACCATO CHUG");
     const auto names = sectionApproaches (s, ComposerLayer::guitar);
-    REQUIRE (names.size() == 4);
-    CHECK (names[0] == "TRITONE CHUG");
-    CHECK (names[2] == "GALLOP");
+    REQUIRE (names.size() == 7);
+    CHECK (names[0] == "PEDAL & STABS");
+    CHECK (names[3] == "TRITONE CHUG");
+    CHECK (names[5] == "GALLOP");
     ComposerContext c;
-    s.lane (ComposerLayer::guitar).approach = 2;
+    s.lane (ComposerLayer::guitar).approach = 5;
     CHECK (guitarRecipe (s, c).flavour == RiffFlavour::gallop);
-    s.lane (ComposerLayer::guitar).approach = 0;
-    CHECK (guitarRecipe (s, c).flavour == RiffFlavour::tritone);
+    s.lane (ComposerLayer::guitar).approach = 1;
+    CHECK (guitarRecipe (s, c).flavour == RiffFlavour::chugThrees);
     // AUTOMATIC: each take another of the type's kinds, never one outside it.
     s.lane (ComposerLayer::guitar).approach = -1;
     std::set<RiffFlavour> seen;
-    for (int v = 0; v < 8; ++v)
+    for (int v = 0; v < 14; ++v)
     {
         s.lane (ComposerLayer::guitar).variation = v;
         seen.insert (guitarRecipe (s, c).flavour);
     }
-    CHECK (seen == std::set<RiffFlavour> { RiffFlavour::tritone, RiffFlavour::chugs, RiffFlavour::gallop, RiffFlavour::stopStart });
+    CHECK (seen == std::set<RiffFlavour> { RiffFlavour::pedalStabs, RiffFlavour::chugThrees, RiffFlavour::burstSilence,
+                                           RiffFlavour::tritone, RiffFlavour::chugs, RiffFlavour::gallop, RiffFlavour::stopStart });
     // A Pre-Chorus has it too; a chorus doesn't.
     CHECK (isSectionTypeOf ("Pre-Chorus", "STACCATO CHUG"));
-    CHECK (sectionApproaches (s, ComposerLayer::bass).isEmpty());   // (the band's usual styles under it, for now)
+    CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 2);   // (0.95.0: the locked band's)
+    CHECK (sectionApproaches (s, ComposerLayer::chords).isEmpty());  // (the keys: their usual styles)
+}
+
+TEST_CASE ("0.95.0: STACCATO CHUG's riff kinds: Black's stabs in threes, Stricken's chugs in threes, Waffle's burst and silence", "[sections][types]")
+{
+    for (juce::uint32 seed = 1; seed <= 30; ++seed)
+    {
+        RiffRecipe r;
+        r.seed = seed;
+        r.bars = 4;
+        r.section = DrumSection::verse;
+        // PEDAL & STABS: chugs on the low string, a power chord (a digit) every third sixteenth.
+        r.flavour = RiffFlavour::pedalStabs;
+        const auto black = generateRiffBars (r);
+        REQUIRE (black.size() == 4);
+        for (int i = 0; i < 13; ++i)
+        {
+            const auto ch = black[0][(size_t) i];
+            if (i > 0 && i % 3 == 0)
+                CHECK ((ch >= '1' && ch <= '9'));
+            else
+                CHECK (ch == 'x');
+        }
+        // CHUGS IN THREES: a rest and two muted power chords over and over, a walk up at the bar's end; the fourth bar climbs.
+        r.flavour = RiffFlavour::chugThrees;
+        const auto stricken = generateRiffBars (r);
+        REQUIRE (stricken.size() == 4);
+        for (int i = 0; i < 13; ++i)
+            CHECK (stricken[0][(size_t) i] == (i % 3 == 0 ? '-' : '*'));
+        CHECK ((stricken[0][13] >= '1' && stricken[0][13] <= '9'));
+        CHECK (stricken[0][15] == '*');
+        CHECK ((stricken[3][1] >= '1' && stricken[3][1] <= '9'));
+        // BURST & SILENCE: a hit on the bar line, the bar's last quarter silent (a stab there every other bar).
+        r.flavour = RiffFlavour::burstSilence;
+        const auto waffle = generateRiffBars (r);
+        REQUIRE (waffle.size() == 4);
+        CHECK (waffle[0][0] == 'x');
+        CHECK (waffle[0].substr (13) == "---");
+        CHECK (waffle[1][12] != '-');
+        CHECK (waffle[1][12] != 'x');
+    }
+}
+
+TEST_CASE ("0.95.0: STACCATO CHUG's band: the bass doubles the guitar's chugs and the kick plays every one (the accents when asked)", "[sections][types]")
+{
+    ComposerState s;
+    applySectionType (s, "Verse", "STACCATO CHUG");
+    s.lane (ComposerLayer::guitar).approach = 1;   // (Stricken's chugs in threes)
+    std::vector<ChordSpan> spans;
+    for (int i = 0; i < 4; ++i)
+        spans.push_back ({ i * 4.0, i * 4.0 + 4.0, Chord { i % 2 == 0 ? 2 : 5, i % 2 == 0 ? Chord::Type::minor : Chord::Type::major }, Key {} });
+    ComposerContext c;
+    const auto layers = composeLayers (s, spans, c);
+    const auto starts = [] (const LineIdea& idea, std::function<bool (const LineNote&)> keep)
+    {
+        std::set<int> at;
+        for (const auto& n : idea.notes)
+            if (! n.keyswitch && keep (n))
+                at.insert (juce::roundToInt (n.beat * 4.0));
+        return at;
+    };
+    const auto all = [] (const LineNote&) { return true; };
+    const auto guitar = starts (layers[(size_t) ComposerLayer::guitar], all);
+    REQUIRE (guitar.size() > 20);
+    const auto bass = starts (layers[(size_t) ComposerLayer::bass], all);
+    const auto kicks = starts (layers[(size_t) ComposerLayer::drums], [] (const LineNote& n) { return n.pitch == 35 || n.pitch == 36; });
+    // Every chug has the bass and a kick on it (16ths: rounded to the sixteenth).
+    auto bassOn = 0, kickOn = 0;
+    for (const auto g : guitar)
+    {
+        bassOn += bass.count (g) > 0 ? 1 : 0;
+        kickOn += kicks.count (g) > 0 ? 1 : 0;
+    }
+    CHECK (bassOn >= (int) guitar.size() * 9 / 10);
+    CHECK (kickOn >= (int) guitar.size() * 8 / 10);
+    // The accents only: fewer.
+    auto loose = s;
+    loose.lane (ComposerLayer::drums).approach = 1;
+    loose.lane (ComposerLayer::bass).approach = 1;
+    const auto looser = composeLayers (loose, spans, c);
+    CHECK (starts (looser[(size_t) ComposerLayer::drums], [] (const LineNote& n) { return n.pitch == 35 || n.pitch == 36; }).size() < kicks.size());
+    CHECK (starts (looser[(size_t) ComposerLayer::bass], all).size() < bass.size());
+    // STANDARD: neither follows the guitar.
+    ComposerState plain;
+    plain.riffFlavour = s.riffFlavour;
+    const auto standard = composeLayers (plain, spans, c);
+    CHECK (starts (standard[(size_t) ComposerLayer::bass], all) != bass);
 }

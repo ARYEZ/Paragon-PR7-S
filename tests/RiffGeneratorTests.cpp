@@ -75,7 +75,8 @@ TEST_CASE ("The riff generator: bars as long as the bar, every bar starting on a
                     for (const auto& b : out)
                     {
                         CHECK ((int) b.size() == steps);
-                        CHECK (b[0] != '-');
+                        if (r.flavour != RiffFlavour::chugThrees)   // (0.95.0: Stricken's bar opens on the rest before its pair)
+                            CHECK (b[0] != '-');
                         if (r.flavour != RiffFlavour::droning)   // (DRONING: a bar after a push rings, struck a beat before)
                             CHECK (b[0] != '=');
                         for (const auto ch : b)
@@ -159,7 +160,8 @@ TEST_CASE ("The riff generator: the riff played over the chords, in the guitar's
             bool hit = false;
             for (const auto& n : idea.notes)
                 hit = hit || std::abs (n.beat - bar * 4.0) < 1.0e-6
-                          || (n.beat < bar * 4.0 && n.beat + n.length > bar * 4.0 + 0.5);   // (DRONING: a chord pushed a beat early rings into the bar)
+                          || (n.beat < bar * 4.0 && n.beat + n.length > bar * 4.0 + 0.5)   // (DRONING: a chord pushed a beat early rings into the bar)
+                          || (r.flavour == RiffFlavour::chugThrees && std::abs (n.beat - bar * 4.0 - 0.25) < 1.0e-6);   // (0.95.0: Stricken: the pair after the rest)
             CHECK (hit);
         }
     }

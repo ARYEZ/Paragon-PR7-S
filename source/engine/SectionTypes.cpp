@@ -9,12 +9,16 @@ namespace pr7s
         // composerSectionFor: intro 0, verse 1, chorus 2, bridge 3, breakdown 4, ending 5, solo 6.
         const SectionType driving { "DRIVING", "Eighth notes driving the chorus on", RiffFlavour::drivingEighths };
         const SectionType droning { "DRONING", "Chords rung across the bar, the band carrying the movement", RiffFlavour::droning };
-        const SectionType staccato { "STACCATO CHUG", "Short palm-muted chugs and stops; the rhythm guitar picks the kind", RiffFlavour::tritone,
-                                     { RiffFlavour::tritone, RiffFlavour::chugs, RiffFlavour::gallop, RiffFlavour::stopStart } };
+        const SectionType staccato { "STACCATO CHUG", "Short palm-muted chugs and stops, the bass and the kick locked to them; the rhythm guitar picks the kind",
+                                     RiffFlavour::pedalStabs,
+                                     { RiffFlavour::pedalStabs, RiffFlavour::chugThrees, RiffFlavour::burstSilence,
+                                       RiffFlavour::tritone, RiffFlavour::chugs, RiffFlavour::gallop, RiffFlavour::stopStart },
+                                     SectionType::Band::staccato };
         const SectionType sparse { "SPARSE", "Space for the voice: stabs, octaves, chords let ring", RiffFlavour::stabs,
                                    { RiffFlavour::stabs, RiffFlavour::octaves, RiffFlavour::openChords } };
-        const SectionType heavy { "HEAVY CHUG", "The low string pounded: chugs, tritone grinds, stops", RiffFlavour::chugs,
-                                  { RiffFlavour::chugs, RiffFlavour::tritone, RiffFlavour::stopStart, RiffFlavour::stabs } };
+        const SectionType heavy { "HEAVY CHUG", "The low string pounded: chugs, tritone grinds, stops; the bass and the kick locked to them", RiffFlavour::chugs,
+                                  { RiffFlavour::chugs, RiffFlavour::tritone, RiffFlavour::stopStart, RiffFlavour::stabs },
+                                  SectionType::Band::staccato };
         const SectionType creep { "CREEP", "A line creeping a half step at a time", RiffFlavour::creep };
         const SectionType open { "OPEN CHORDS", "Open chords let ring", RiffFlavour::openChords };
         const SectionType stabs { "STABS", "Short chord stabs with space between", RiffFlavour::stabs };
@@ -83,10 +87,23 @@ namespace pr7s
         return {};
     }
 
+    bool staccatoBand (const ComposerState& s)
+    {
+        const auto t = sectionTypeCalled (s.sectionType);
+        return t.has_value() && t->band == SectionType::Band::staccato && ! s.writtenRiffs && s.lane (ComposerLayer::guitar).on;
+    }
+
     juce::StringArray sectionApproaches (const ComposerState& s, ComposerLayer layer)
     {
         if (s.writtenRiffs)
             return {};
+        if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::staccato)
+        {
+            if (layer == ComposerLayer::bass)
+                return { "DOUBLES THE GUITAR", "ROOTS ON THE ACCENTS" };
+            if (layer == ComposerLayer::drums)
+                return { "KICK ON EVERY CHUG", "KICK ON THE ACCENTS" };
+        }
         if (layer == ComposerLayer::guitar)
             if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && ! t->guitarFlavours.empty())
             {

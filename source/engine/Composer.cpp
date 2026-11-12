@@ -983,6 +983,15 @@ namespace pr7s
         LineIdea syncedLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
             const auto leaderLayer = s.syncLayer();
+            // (0.95.0, STACCATO CHUG's band: the owner's Black, Stricken, Waffle) with SYNC off the bass and the drums
+            // follow the guitar: doubling it / the kick on every chug (approach 0 or automatic), or its accents (1).
+            if (! leaderLayer.has_value() && (l == ComposerLayer::bass || l == ComposerLayer::drums) && ! spans.empty() && staccatoBand (s))
+            {
+                auto locked = s;
+                locked.syncLane = (int) ComposerLayer::guitar;
+                locked.lane (l).doubleSync = s.lane (l).approach != 1;
+                return syncedLayer (l, locked, spans, c);
+            }
             if (! leaderLayer.has_value() || *leaderLayer == l || spans.empty())
             {
                 if (! leaderLayer.has_value())

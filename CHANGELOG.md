@@ -2,6 +2,28 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.95.0
+
+**STACCATO CHUG, from your three verses** (Sevendust's Black and Waffle, Disturbed's Stricken). I read the MIDI for its shapes only; nothing is copied, and your files aren't in the repo.
+
+What all three verses share, now built into STACCATO CHUG:
+- **The bass doubles the guitar's chugs**: same rhythm, same notes, an octave down (Stricken) or in unison (Waffle).
+- **The kick plays every chug.** The snare stays on 2 and 4, the hats or ride play quarters, and every fourth bar turns.
+
+The bass's and drums' approaches under STACCATO CHUG (and HEAVY CHUG): DOUBLES THE GUITAR / ROOTS ON THE ACCENTS, and KICK ON EVERY CHUG / KICK ON THE ACCENTS.
+
+**Three new rhythm guitar riff kinds**, first in STACCATO CHUG's guitar approaches:
+- **PEDAL & STABS** (Black's shape): the low string chugged in sixteenths with a power chord stabbed every third sixteenth, so the stabs run in threes across the bar. The stab climbs every bar or two (4th, 5th...), and the phrase's last bar ends on a rest and two muted chords.
+- **CHUGS IN THREES** (Stricken's shape): a rest and two muted power chords over and over, with a chromatic walk up on the bar's last sixteenths. The second bar walks twice, and every fourth bar climbs on ringing power chords.
+- **BURST & SILENCE** (Waffle's shape): a hit, a gap, a burst of four chugs (the last held), a pair, then silence. A dissonant cluster stab fills the silence every other bar, and the phrase's last bar picks up into the next.
+
+TRITONE CHUG, CHUGS, GALLOP and STOP-START stay in the list after them. AUTOMATIC goes through all seven, one per take. The three are also in the guitar's Riff Flavour menu for any section.
+
+Notes:
+- The third file was **Waffle**, not My Last Serenade. I used Waffle, since it's what you sent.
+- I can't hear it here. The tests check that the bass and the kick land on the guitar's chugs, not how it sounds.
+- The keys, lead and melody keep their usual styles in a STACCATO CHUG verse; none of the examples had them.
+
 ## 0.94.0
 
 **Section types** (you asked: a chorus is either DRIVING or DRONING, that decides what every instrument does, and each instrument has its own options within it).

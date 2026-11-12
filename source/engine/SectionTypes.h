@@ -28,7 +28,13 @@ namespace pr7s
         // of verse ... STACCATO CHUG") A type made of several riff kinds: the rhythm guitar's approaches are these
         // flavours (AUTOMATIC: each take another of them). Empty: the guitar plays `flavour`.
         std::vector<RiffFlavour> guitarFlavours;
+        // (0.95.0) The band's part under the type: STACCATO (the owner's Black, Stricken, Waffle: the bass doubles the
+        // guitar's chugs, the kick plays every chug; their approaches the looser accents-only versions).
+        enum class Band { none, staccato };
+        Band band = Band::none;
     };
+    // True when the state's type has the staccato band and the guitar is on, generated (not WRITTEN RIFFS).
+    bool staccatoBand (const ComposerState&);
     // A type by its name alone (the same name means the same type in every section that has it).
     std::optional<SectionType> sectionTypeCalled (const juce::String& type);
     // The guitar's flavour under the state's type and the guitar lane's approach (none: the state's own flavour).

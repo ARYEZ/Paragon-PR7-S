@@ -59,7 +59,13 @@
 // notes: the space is for the other instruments. A verse rings power chords only.
 namespace pr7s
 {
-    enum class RiffFlavour { any, chugs, gallop, tritone, creep, stabs, octaves, stopStart, openChords, drivingEighths, droning };
+    // (0.95.0, the owner's STACCATO CHUG verses: Sevendust's Black and Waffle, Disturbed's Stricken, read for their shapes
+// only) pedalStabs: the low string chugged in sixteenths, a power chord every third sixteenth (the stabs run in threes
+// across the bar), the stab's degree climbing every bar or two; chugThrees: a rest and two chugs over and over (threes
+// across the bar), a chromatic walk up on the bar's last sixteenths, every fourth bar power chords climbing; burstSilence:
+// a hit, a gap, a burst of four (the last held), a pair, then silence, a dissonant cluster stab every other bar.
+enum class RiffFlavour { any, chugs, gallop, tritone, creep, stabs, octaves, stopStart, openChords, drivingEighths, droning,
+                         pedalStabs, chugThrees, burstSilence };
     const std::vector<RiffFlavour>& riffFlavours();
     juce::String riffFlavourName (RiffFlavour);          // "ANY", "CHUGS", "GALLOP", "TRITONE CHUG", ...
     juce::String riffFlavourDescription (RiffFlavour);

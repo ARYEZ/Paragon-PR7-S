@@ -849,10 +849,19 @@ TEST_CASE ("Snapshot: the composer suite with a song built (0.74.0)", "[.][snaps
             page.aimAtSectionsRow();
             page.buildSection();
             page.buildSection();
-            // (0.94.0) The chorus DRONING, its drums half time.
-            studio.setSongSectionType (2, "DRONING");
-            page.targetSection (studio.getSongSections().blocks[2].id);
-            page.setApproach (ComposerLayer::drums, 1);
+            // (0.94.0) The chorus DRONING, its drums half time. (0.95.0) =staccato: the verse STACCATO CHUG on Stricken's chugs.
+            if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_STACCATO", {}).isNotEmpty())
+            {
+                studio.setSongSectionType (1, "STACCATO CHUG");
+                page.targetSection (studio.getSongSections().blocks[1].id);
+                page.setApproach (ComposerLayer::guitar, 1);
+            }
+            else
+            {
+                studio.setSongSectionType (2, "DRONING");
+                page.targetSection (studio.getSongSections().blocks[2].id);
+                page.setApproach (ComposerLayer::drums, 1);
+            }
         }
         else
         {
