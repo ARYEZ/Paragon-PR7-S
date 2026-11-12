@@ -35,7 +35,7 @@ namespace
         return n;
     }
 
-    const std::string riffCharacters = "-=xXcCdDfFeEgGkKtTzZ*#obBhprvwuqyjnaAilms123456789^<>()";
+    const std::string riffCharacters = "-=xXcCdDfFeEgGkKtTzZ*#obBhprvwuqyjnaAilms123456789^<>(){}[]%&!+;";
 }
 
 TEST_CASE ("The riff generator: a thousand seeds, a thousand riffs (0.85.0)", "[riffgen]")
@@ -242,7 +242,7 @@ TEST_CASE ("The riff generator: BUSY thins or thickens the same riff, never anot
     }
 }
 
-TEST_CASE ("0.87.0: DRIVING EIGHTHS: a hit on every eighth, open in a chorus, muted in a verse, a walk only before a chord change", "[riffgen][driving]")
+TEST_CASE ("0.87.0: DRIVING EIGHTHS: eighth notes, open in a chorus, muted in a verse, every shape of the owner's four", "[riffgen][driving]")
 {
     // Not drawn by ANY (chosen on purpose): ANY's riffs as they were.
     for (juce::uint32 seed = 1; seed <= 400; ++seed)
@@ -250,9 +250,10 @@ TEST_CASE ("0.87.0: DRIVING EIGHTHS: a hit on every eighth, open in a chorus, mu
         RiffRecipe r;
         r.seed = seed;
         for (const auto& b : generateRiffBars (r))
-            CHECK (b.find_first_of ("<>()") == std::string::npos);
+            CHECK (b.find_first_of ("<>(){}[]") == std::string::npos);
     }
-    int chorusOpen = 0, chorusMuted = 0, verseOpen = 0, verseMuted = 0, walks = 0;
+    int chorusOpen = 0, chorusMuted = 0, verseOpen = 0, verseMuted = 0, walks = 0, eighths = 0, eighthHits = 0;
+    int moving = 0, punches = 0, chordWalks = 0, singleWalks = 0, strummed = 0, rung = 0, picked = 0;
     for (const auto style : guitarStyles())
         for (juce::uint32 seed = 1; seed <= 60; ++seed)
             for (const auto section : { DrumSection::chorus, DrumSection::verse })
@@ -268,23 +269,44 @@ TEST_CASE ("0.87.0: DRIVING EIGHTHS: a hit on every eighth, open in a chorus, mu
                 for (const auto& b : bars)
                 {
                     REQUIRE (b.size() == 16);
+                    CHECK (b[0] != '-');
+                    CHECK (b[0] != '=');
                     for (size_t i = 0; i < 16; ++i)
                     {
                         INFO (b);
-                        if (i % 2 == 0)
-                            CHECK (b[i] != '-');   // every eighth a hit
+                        CHECK (b[i] != '-');                // no silence: everything rings or is struck
+                        if (i % 2 == 1)
+                            CHECK (b[i] == '=');            // nothing between the eighths
                         else
-                            CHECK (b[i] == '=');   // nothing between them
+                        {
+                            ++eighths;
+                            eighthHits += b[i] != '=' ? 1 : 0;
+                        }
                     }
+                    moving += b.find_first_of ("2345789") != std::string::npos && b.find ('#') == 0 && b.find_first_of ("2345789") < 8 ? 1 : 0;
+                    punches += b.find ("#===") != std::string::npos ? 1 : 0;
                 }
-                const auto open = count (bars, "#o"), muted = count (bars, "*x");
+                const auto open = count (bars, "#o2345789{}[]%&XG+;"), muted = count (bars, "*x");
+                strummed += count (bars, "%&") > 0 ? 1 : 0;
+                picked += count (bars, "+;") > 0 ? 1 : 0;
+                rung += count (bars, "=") >= 4 * 15 - 4 ? 1 : 0;
                 (section == DrumSection::chorus ? chorusOpen : verseOpen) += open;
                 (section == DrumSection::chorus ? chorusMuted : verseMuted) += muted;
-                walks += count (bars, "<>()") > 0 ? 1 : 0;
+                walks += count (bars, "<>(){}[]") > 0 ? 1 : 0;
+                chordWalks += count (bars, "{}[]") > 0 ? 1 : 0;
+                singleWalks += count (bars, "<>()") > 0 ? 1 : 0;
             }
     CHECK (chorusOpen > 2 * chorusMuted);
-    CHECK (verseMuted > 2 * verseOpen);
-    CHECK (walks > 6 * 60 * 2 * 9 / 10);   // (nearly every riff has a walk)
+    CHECK (verseMuted > verseOpen / 2);
+    CHECK (eighthHits > eighths * 75 / 100);   // (punch bars leave a few to ring, ringing bars all but one)
+    CHECK (walks > 6 * 60 * 2 / 3);
+    CHECK (moving > 50);
+    CHECK (punches > 20);
+    CHECK (chordWalks > 50);
+    CHECK (singleWalks > 50);
+    CHECK (strummed > 20);   // (choruses only: a verse plays them muted)
+    CHECK (rung > 5);
+    CHECK (picked > 30);
 
     // The breakdown: the same in quarter notes.
     RiffRecipe b;
@@ -295,10 +317,10 @@ TEST_CASE ("0.87.0: DRIVING EIGHTHS: a hit on every eighth, open in a chorus, mu
             CHECK ((i % 4 == 0) == (bar[i] != '='));
 }
 
-TEST_CASE ("0.87.0: DRIVING EIGHTHS played: power chords on each chord's root, the walk a step over or under the next root", "[riffgen][driving]")
+TEST_CASE ("0.87.0: DRIVING EIGHTHS played: power chords on each chord's root (or its degrees), the walk a step over or under the next root", "[riffgen][driving]")
 {
     Key key;
-    key.minor = true;   // (C minor's chords: their roots told apart)
+    key.minor = true;
     const Chord chords[] = { Chord { 2, Chord::Type::minor }, Chord { 10, Chord::Type::major }, Chord { 0, Chord::Type::major }, Chord { 2, Chord::Type::minor } };
     std::vector<ChordSpan> spans;
     for (int i = 0; i < 4; ++i)
@@ -329,6 +351,8 @@ TEST_CASE ("0.87.0: DRIVING EIGHTHS played: power chords on each chord's root, t
                 for (int i = 0; i < 16; i += 2)
                 {
                     const auto ch = b[(size_t) i];
+                    if (ch == '=')
+                        continue;
                     const auto at = bar * 4.0 + i * 0.25;
                     std::vector<int> pcs;
                     for (const auto& n : idea.notes)
@@ -336,24 +360,30 @@ TEST_CASE ("0.87.0: DRIVING EIGHTHS played: power chords on each chord's root, t
                             pcs.push_back (n.pitch % 12);
                     INFO ("bar " << bar << " step " << i << " " << b);
                     REQUIRE_FALSE (pcs.empty());
-                    if (ch == '>' || ch == '<' || ch == '(' || ch == ')')
+                    const auto has = [&pcs] (int pc) { return std::find (pcs.begin(), pcs.end(), ((pc % 12) + 12) % 12) != pcs.end(); };
+                    if (std::string ("<>(){}[]").find (ch) != std::string::npos)
                     {
                         if (changes)
                         {
-                            const auto by = ch == '>' ? 2 : ch == '<' ? 1 : ch == '(' ? 10 : 11;
-                            REQUIRE (pcs.size() == 1);
-                            CHECK (pcs[0] == (nextRoot + by) % 12);
+                            const auto by = (ch == '>' || ch == '{') ? 2 : (ch == '<' || ch == '}') ? 1 : (ch == '(' || ch == '[') ? -2 : -1;
+                            CHECK (has (nextRoot + by));
+                            CHECK (pcs.size() == (std::string ("{}[]").find (ch) != std::string::npos ? 3u : 1u));
                             ++walkNotes;
                         }
                         else
                         {
-                            // The same chord goes on: no walk, a muted power chord.
-                            CHECK (std::find (pcs.begin(), pcs.end(), chordNow.root) != pcs.end());
+                            CHECK (has (chordNow.root));   // the same chord goes on: no walk, a muted power chord
                             ++sameChordWalks;
                         }
                     }
+                    else if (ch >= '1' && ch <= '9')
+                        CHECK (has (chordNow.root + (ch - '0')));
+                    else if (ch == 'G' || ch == ';')
+                        CHECK (has (chordNow.root + (chordNow.type == Chord::Type::diminished ? 6 : 7)));
+                    else if (ch == 'T')
+                        CHECK (pcs.size() == 1u);   // (the chord's third)
                     else
-                        CHECK (std::find (pcs.begin(), pcs.end(), chordNow.root) != pcs.end());
+                        CHECK (has (chordNow.root));
                 }
             }
         }

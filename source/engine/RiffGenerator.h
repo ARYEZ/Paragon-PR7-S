@@ -36,8 +36,18 @@
 // from the tab, nothing of it copied): power chords (root, fifth, octave) on every eighth note, left to
 // ring, changing on the bar line; a palm-muted stretch (muted power chords, still every eighth) for
 // contrast; and a walk into the next chord: the last beats of a bar before a chord change as single notes
-// a whole step and a half step over (or under) the next chord's root. A verse gets the muted stretch
-// first, a breakdown the same in quarter notes.
+// a whole step and a half step over (or under) the next chord's root. Then (the owner's three more:
+// Killswitch Engage's The End of Heartache, Linkin Park's Faint, Within Temptation's Faster; their
+// choruses' shapes, nothing copied) every riff takes one of five chorus shapes: the wall then a muted
+// stretch and a walk; all open with the power chord itself stepping into the next chord; power chords
+// moving inside the bar in groups of eighths (3+3+2...); a punch bar (ringing hits with space) and a
+// bar half and half; or the plain wall. And (the owner's last three: Bullet For My Valentine's Tears Don't
+// Fall, All That Remains' This Calling, The Plot In You's Left Behind) full chords strummed on every eighth
+// with the top voice moving and dead-string scratches; big chords rung a bar each; a chord a bar with
+// the last bar split in half. And (In Flames' Come Clarity, its pre-chorus: the chorus has no guitar in that
+// file; As I Lay Dying's Parallels, its double-time chorus) the chord picked a note an eighth, or the muted
+// root as a pedal under high notes. A verse gets the muted stretch first, a breakdown the same in
+// quarter notes.
 namespace pr7s
 {
     enum class RiffFlavour { any, chugs, gallop, tritone, creep, stabs, octaves, stopStart, openChords, drivingEighths };

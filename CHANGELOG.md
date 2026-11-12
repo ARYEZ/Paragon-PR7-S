@@ -2,6 +2,29 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.87.0
+
+**DRIVING EIGHTHS: the hard driving chorus** (your idea, from your nine examples: This Fire Burns, The End of Heartache, Faint, Faster, Tears Don't Fall, This Calling, Left Behind, Come Clarity and Parallels). I read each tab for its shape only; nothing of any of them is copied.
+
+- **A new riff flavour for the composer's guitar.** In the guitar lane's style menu, pick **Riff Flavour > DRIVING EIGHTHS**. It's built for the chorus: power chords on every eighth note, left to ring, changing with the chords.
+- **Every GENERATE or ROLL draws one of these chorus shapes** (each from your examples):
+  - **The wall, then a muted stretch and a walk** (This Fire Burns). Open chords, then palm-muted ones, then single notes stepping down into the next chord.
+  - **All open, with the chord itself walking** (The End of Heartache). The whole power chord steps a whole step and a half step into the next chord.
+  - **Power chords moving inside the bar** (Faint). The eighths in groups of 3+3+2 (or 3+2+3), each group a power chord on another note over the root.
+  - **A punch bar, then a bar split in half** (Faster). Ringing hits with space between them, then the root for half the bar and another chord for the other half.
+  - **A chord a bar, the last bar split in half** (Left Behind).
+  - **Full chords strummed down and up** (Tears Don't Fall). Bigger chords with the chord's third, the top note moving halfway through the bar, and sometimes a dead-string scratch on the beat.
+  - **Big chords rung for whole bars** (This Calling: at a fast tempo the drums do the driving).
+  - **The chord picked one note an eighth** (Come Clarity's pre-chorus; its chorus has no guitar in that file), or **the muted low string as a pedal under high notes** (Parallels' double-time chorus).
+- **The walk only happens before a chord change.** If the next bar is the same chord, it plays muted chords there instead of walking to the chord it's already on.
+- **In other sections:**
+  - **Verse:** the muted stretch comes first, and the strummed and ringing bars are played muted.
+  - **Breakdown:** the same shapes in quarter notes.
+- **The whole band on it:** turn **SYNC** on with the guitar leading, and DOUBLE THE SYNC TRACK on the bass and drums. The kick lands on every eighth and the bass doubles the riff, walk included. Without DOUBLE, the kick and bass take the accents.
+- DRIVING EIGHTHS is never picked by ANY: it's a whole chorus shape you choose on purpose. ANY's riffs are the same as before.
+
+These are our own rules; tell me which shapes sound right and which don't, and I'll weight them.
+
 ## 0.86.0
 
 **SYNC in the composer** (your idea: find a riff you love, then write the whole band to it).

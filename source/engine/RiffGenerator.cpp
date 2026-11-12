@@ -3,6 +3,7 @@
 #include <array>
 #include <cmath>
 #include <map>
+#include <numeric>
 
 namespace pr7s
 {
@@ -650,10 +651,22 @@ namespace pr7s
 
     namespace
     {
-        // DRIVING EIGHTHS (0.87.0): see RiffGenerator.h. Each bar is O (open power chords on every eighth),
-        // M (muted power chords on every eighth), or one of them ending in a WALK: '>' a whole step over the
-        // next chord's root, '<' a half step over it, '(' and ')' a whole and a half step under it (played by
-        // riffFromBars from the chord at the next bar line; the same chord going on: muted power chords).
+        // DRIVING EIGHTHS (0.87.0): see RiffGenerator.h. A bar is one of:
+        //   O open power chords on every eighth            M the same palm-muted
+        //   R power chords moving inside the bar, in groups of eighths (3+3+2, 3+2+3...), each group a power
+        //     chord on another degree over the root (the digits: so many semitones up)
+        //   P punch: ringing hits with space between them   H half and half: the root, then another degree
+        //   S strummed full chords on every eighth ('%': root, fifth, octave, the chord's third over it), the top
+        //     voice moving a step on the half bar ('&': the fourth in the third's place), maybe a dead-string scratch
+        //     ('!') on the beats (Tears Don't Fall)
+        //   W one big chord rung for the whole bar (This Calling: at a fast tempo the drums drive)
+        //   A picked: the power chord one note an eighth, left to ring (X the root, G the fifth, + the octave; Come
+        //     Clarity), or the muted root as a pedal under high notes (+ the octave, ; the fifth over it, T the
+        //     chord's third; Parallels, its chorus in double time)
+        // and a bar written in lower case ends in a WALK into the chord at the next bar line: single notes ('>'
+        // a whole step and '<' a half step over its root, '(' and ')' under it) or whole power chords on those
+        // degrees ('{' '}' over, '[' ']' under). riffFromBars plays them from the next chord (the same chord
+        // going on: muted power chords instead).
         struct DrivingEighths
         {
             juce::Random& random;
@@ -682,64 +695,185 @@ namespace pr7s
                     || recipe.section == DrumSection::bridge;
             }
 
-            int every() const { return recipe.section == DrumSection::breakdown ? 4 : 2; }   // sixteenths a hit
+            bool breakdown() const { return recipe.section == DrumSection::breakdown; }
+            int every() const { return breakdown() ? 4 : 2; }   // sixteenths a hit
+            int hitsInBar() const { return (steps + every() - 1) / every(); }
 
-            void fill (std::string& bar, int from, int to, char ch) const
+            static char degreeChar (int semitones) { return semitones == 0 ? '#' : (char) ('0' + juce::jlimit (1, 9, semitones)); }
+
+            // Hits (in eighths) from `fromHit` on, each `ch`, the rest of each hit held.
+            void hits (std::string& bar, int fromHit, int toHit, char ch) const
             {
-                for (auto i = from; i < to; ++i)
-                    bar[(size_t) i] = (i - from) % every() == 0 ? ch : '=';
+                for (auto h = fromHit; h < toHit; ++h)
+                {
+                    const auto at = h * every();
+                    if (at >= steps)
+                        break;
+                    bar[(size_t) at] = ch;
+                    for (int j = 1; j < every() && at + j < steps; ++j)
+                        bar[(size_t) at + (size_t) j] = '=';
+                }
+            }
+
+            // The groups of a moving bar (eighths each, adding up to the bar).
+            std::vector<int> grouping()
+            {
+                const auto n = hitsInBar();
+                std::vector<std::vector<int>> all { { 3, 3, 2 }, { 3, 2, 3 }, { 2, 3, 3 }, { 4, 4 }, { 3, 3 }, { 2, 2, 2 }, { 4, 2 }, { 3, 2, 2 }, { 3, 4 }, { 2, 3, 2 } };
+                std::vector<std::vector<int>> fit;
+                for (const auto& g : all)
+                    if (std::accumulate (g.begin(), g.end(), 0) == n)
+                        fit.push_back (g);
+                if (fit.empty())
+                    return { n };
+                // (3+3+2 the most: the owner's Faint)
+                if (n == 8 && random.nextFloat() < 0.45f)
+                    return { 3, 3, 2 };
+                return fit[(size_t) random.nextInt ((int) fit.size())];
+            }
+
+            // A moving bar's degrees, a group each (the first bar of a pair from the root).
+            std::vector<int> degrees (size_t groups, bool fromRoot)
+            {
+                static const int choices[] = { 5, 7, 3, 8, 2 };
+                std::vector<int> out;
+                for (size_t g = 0; g < groups; ++g)
+                {
+                    if (g == 0 && fromRoot)
+                    {
+                        out.push_back (0);
+                        continue;
+                    }
+                    int d;
+                    do
+                        d = random.nextFloat() < 0.75f ? choices[random.nextInt (3)] : choices[random.nextInt (5)];
+                    while (! out.empty() && d == out.back());
+                    out.push_back (d);
+                }
+                return out;
             }
 
             std::vector<std::string> make (int bars)
             {
                 const auto openChar = pick<char> ({ { '#', 6 }, { 'o', 1 } });          // power chords, or octaves
                 const auto mutedChar = pick<char> ({ { '*', 4 }, { 'x', 1 } });         // muted power chords, or the root chugged
-                // The walk: hits from the bar's end, a whole step then a half step into the next root.
-                const auto walk = pick<std::string> ({ { ">><<", 3 }, { "><", 2 }, { ">>><<", 1.5f }, { "(())", 1 }, { "()", 1 } });
-                // Where the walk starts after the chords (some bars keep a muted chord just before it).
-                const auto mutedBefore = random.nextFloat() < 0.5f;
+                // The walk: single notes (This Fire Burns) or the power chord itself (The End of Heartache).
+                const auto chordWalk = random.nextFloat() < 0.4f;
+                auto walk = pick<std::string> ({ { ">><<", 3 }, { "><", 2 }, { ">>><<", 1.5f }, { "(())", 1 }, { "()", 1 } });
+                if (chordWalk)
+                    for (auto& c : walk)
+                        c = c == '>' ? '{' : c == '<' ? '}' : c == '(' ? '[' : ']';
+                const auto mutedBefore = ! chordWalk && random.nextFloat() < 0.5f;   // a muted chord just before a single-note walk
+                // A moving bar's groups (kept bar to bar, as a riff repeats) and its two sets of degrees.
+                const auto groups = grouping();
+                const auto first = degrees (groups.size(), true);
+                const auto second = degrees (groups.size(), random.nextFloat() < 0.3f);
+                // A punch bar's hits (in eighths: x a hit, = rings on).
+                const auto punch = pick<std::string> ({ { "xx=x=x=x", 3 }, { "x=x=xx=x", 2 }, { "xx=x==x=", 2 }, { "x==x==x=", 2 }, { "x=x==x=x", 1 } });
+                const auto halfDegree = pick<int> ({ { 5, 3 }, { 7, 2 }, { 3, 2 }, { 8, 1 }, { 2, 1 } });
+                const auto scratch = pick<int> ({ { 0, 3 }, { 1, 1 }, { 2, 1 } });    // a strummed bar's scratches: none, on 1, on 1 and 3
+                const auto moves = random.nextFloat() < 0.7f;                         // the top voice moves on its half bar
+                const auto bigChord = pick<char> ({ { '%', 3 }, { '#', 1 } });       // a ringing bar's chord
+                const auto picking = pick<std::string> ({ { "XG+GXG+G", 3 }, { "X+G+X+G+", 2 }, { "XGX+XGX+", 2 },   // a picked bar's eighths
+                                                          { "x+x;x+xT", 2 }, { "x;x+x;x+", 1.5f }, { "x+;+x+;T", 1 } });
 
-                const auto bar = [&] (bool open, bool walks)
+                int moving = 0;   // moving bars so far (they alternate their degrees)
+                const auto bar = [&] (char kind, bool walks)
                 {
                     std::string b ((size_t) steps, '-');
-                    fill (b, 0, steps, open ? openChar : mutedChar);
+                    const auto n = hitsInBar();
+                    switch (kind)
+                    {
+                        case 'R':
+                        {
+                            const auto& degs = moving++ % 2 == 0 ? first : second;
+                            auto h = 0;
+                            for (size_t g = 0; g < groups.size(); ++g)
+                            {
+                                hits (b, h, h + groups[g], degreeChar (degs[g]));
+                                h += groups[g];
+                            }
+                            break;
+                        }
+                        case 'P':
+                            for (int h = 0; h < n; ++h)
+                            {
+                                const auto c = punch[(size_t) h % punch.size()];
+                                if (c == 'x' || h == 0)
+                                    hits (b, h, h + 1, openChar);
+                                else
+                                    for (int j = 0; j < every() && h * every() + j < steps; ++j)
+                                        b[(size_t) (h * every() + j)] = '=';
+                            }
+                            break;
+                        case 'H':
+                            hits (b, 0, n / 2, openChar);
+                            hits (b, n / 2, n, degreeChar (halfDegree));
+                            break;
+                        case 'S':
+                            hits (b, 0, n / 2, '%');
+                            hits (b, n / 2, n, moves ? '&' : '%');
+                            if (scratch >= 1 && ! breakdown())
+                                hits (b, 0, 1, '!');
+                            if (scratch >= 2 && ! breakdown() && n >= 8)
+                                hits (b, n / 2, n / 2 + 1, '!');
+                            break;
+                        case 'A':
+                            for (int h = 0; h < n; ++h)
+                                hits (b, h, h + 1, picking[(size_t) h % picking.size()]);
+                            break;
+                        case 'W':
+                            hits (b, 0, 1, bigChord);
+                            for (int i = 1; i < steps; ++i)
+                                b[(size_t) i] = '=';
+                            break;
+                        default:
+                            hits (b, 0, n, kind == 'O' ? openChar : mutedChar);
+                            break;
+                    }
                     if (walks)
                     {
-                        const auto hits = (int) walk.size();
-                        auto from = steps - hits * every();
-                        if (from < every())
-                            from = every();
-                        for (int k = 0; k < hits && from + k * every() < steps; ++k)
-                        {
-                            const auto at = from + k * every();
-                            b[(size_t) at] = walk[(size_t) k];
-                            for (int j = 1; j < every() && at + j < steps; ++j)
-                                b[(size_t) at + (size_t) j] = '=';
-                        }
-                        if (mutedBefore && open && from - every() > 0)
-                            b[(size_t) (from - every())] = mutedChar;
+                        const auto count = juce::jmin ((int) walk.size(), n - 1);
+                        const auto from = n - count;
+                        for (int k = 0; k < count; ++k)
+                            hits (b, from + k, from + k + 1, walk[(size_t) k]);
+                        if (mutedBefore && kind == 'O' && from >= 2)
+                            hits (b, from - 1, from, mutedChar);
                     }
                     return b;
                 };
 
-                // The bars: O open, M muted, W ends in the walk. (Chorus: open first, the muted stretch after,
-                // as the owner's example; a verse the other way round.)
+                // The bars: upper case no walk, lower case the walk at its end.
                 std::string shape;
-                if (bars <= 1)
-                    shape = pick<std::string> ({ { "O", 2 }, { "o", 2 } });
+                if (breakdown())
+                    shape = bars <= 1 ? pick<std::string> ({ { "O", 1 }, { "o", 1 } })
+                          : bars == 2 ? pick<std::string> ({ { "Oo", 2 }, { "Om", 1 } })
+                                      : pick<std::string> ({ { "OOMm", 2 }, { "OOOo", 1 } });
+                else if (bars <= 1)
+                    shape = pick<std::string> ({ { "O", 2 }, { "o", 2 }, { "R", 1.5f }, { "H", 1 }, { "S", 1 }, { "A", 1 } });
                 else if (bars == 2)
-                    shape = pick<std::string> ({ { "Oo", 3 }, { "Om", 2 }, { "OO", 1 } });
+                    shape = pick<std::string> ({ { "Oo", 3 }, { "Om", 2 }, { "RR", 2 }, { "OH", 1.5f }, { "OP", 1 }, { "SS", 1.5f }, { "WW", 0.5f }, { "AA", 1 }, { "OO", 0.5f } });
                 else
-                    shape = pick<std::string> ({ { "OOMm", 4 }, { "OOOo", 2 }, { "OMOm", 1 }, { "OOOm", 1.5f } });
+                    shape = pick<std::string> ({ { "OOMm", 3 },            // the wall, then a muted stretch and a walk (This Fire Burns)
+                                                 { "OOOo", 2 },            // all open, walking into the next chord (The End of Heartache)
+                                                 { "RRRR", 2 },            // power chords moving inside the bar (Faint)
+                                                 { "OOPH", 2 },            // a punch bar, then half and half (Faster)
+                                                 { "OOOH", 2 },            // a chord a bar, the last bar half and half (Left Behind)
+                                                 { "SSSs", 2 },            // full chords strummed, the top voice moving (Tears Don't Fall)
+                                                 { "WWWW", 0.8f },         // big chords rung a bar each (This Calling)
+                                                 { "AAAA", 1.5f },         // the chord picked a note an eighth (Come Clarity, Parallels)
+                                                 { "AAOo", 1 },
+                                                 { "OMOm", 1 } });
                 std::vector<std::string> out;
                 for (const auto c : shape)
                 {
-                    // Upper case: no walk; lower case: the walk at its end. O open, M muted (a verse swaps them).
+                    if ((int) out.size() >= bars)
+                        break;
                     const auto upper = (char) juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) c);
-                    auto open = upper == 'O';
+                    auto kind = upper;
                     if (! openLed())
-                        open = ! open;
-                    out.push_back (bar (open, c != upper));
+                        kind = kind == 'O' ? 'M' : kind == 'M' ? 'O' : (kind == 'S' || kind == 'W') ? 'M' : kind;   // a verse: the muted stretch first
+                    out.push_back (bar (kind, c != upper));
                 }
                 return out;
             }
@@ -793,7 +927,11 @@ namespace pr7s
         std::vector<std::string> out;
         if (flavour == RiffFlavour::drivingEighths)
         {
-            DrivingEighths driving { random, leaned, steps };
+            // (its own random numbers, well mixed from the seed: neighbouring seeds drew alike from the shared one)
+            auto mixed = (juce::uint64) recipe.seed * 0x9E3779B97F4A7C15ull;
+            mixed ^= mixed >> 29;
+            juce::Random own ((juce::int64) (mixed * 0xBF58476D1CE4E5B9ull >> 1));
+            DrivingEighths driving { own, leaned, steps };
             out = driving.make (bars);
         }
         else if (flavour == RiffFlavour::tritone)
@@ -880,7 +1018,9 @@ namespace pr7s
                 else if (c == 'p') ++made["pinch squeals"];
                 else if (c == 'c' || c == 'd') ++made["half steps and minor thirds"];
                 else if (c == '*') ++made["muted power chords"];
-                else if (c == '>' || c == '<' || c == '(' || c == ')') ++made["walks into the next chord"];
+                else if (c == '%' || c == '&') ++made["full chords"];
+                else if (c == '+' || c == ';') ++made["picked notes"];
+                else if (c == '>' || c == '<' || c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']') ++made["walks into the next chord"];
             }
         std::vector<std::pair<int, juce::String>> ranked;
         for (const auto& [name, count] : made)

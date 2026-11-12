@@ -577,11 +577,30 @@ namespace pr7s
                                 add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
                             break;
                         }
+                        // (0.87.0, DRIVING EIGHTHS, Tears Don't Fall) % a full chord strummed open (root, fifth,
+                        // octave and the chord's third over it), & the same with the fourth in the third's place (the
+                        // top voice moving), ! a dead-string scratch (the chord's notes, choked: quiet and short).
+                        case '%': case '&':
+                        {
+                            const auto top = root + 12 + (lower == '&' ? 5 : thirdOf (span.chord));
+                            for (const auto p : { root, fifth, root + 12, top })
+                                add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
+                            break;
+                        }
+                        // (0.87.0, DRIVING EIGHTHS' picked bars) + the root an octave up, ; the fifth over that, open singles.
+                        case '+': single (root + 12); break;
+                        case ';': single (fifth + 12); break;
+                        case '!':
+                            for (const auto p : { root, fifth, root + 12 })
+                                add (idea.notes, when, juce::jmin (length, 0.1), p, of (vel.muteTight));
+                            break;
                         // (0.87.0, DRIVING EIGHTHS) the walk into the chord at the next bar line (or this chord's end):
-                        // > a whole step and < a half step over its root, ( and ) under it; open single notes. The
+                        // > a whole step and < a half step over its root, ( and ) under it; open single notes ({ } [ ]
+                        // the same as power chords). The
                         // same chord going on: a muted power chord instead. (After the last chord: the first, as the
                         // riff goes round.)
                         case '>': case '<': case '(': case ')':
+                        case '{': case '}': case '[': case ']':
                         {
                             const auto nextAt = juce::jmin (t + beatsPerBar, span.end);
                             auto next = (size_t) 0;
@@ -601,8 +620,13 @@ namespace pr7s
                                     add (idea.notes, when, length * 0.9, p, mutedVelocity);
                                 break;
                             }
-                            const auto by = lower == '>' ? 2 : lower == '<' ? 1 : lower == '(' ? -2 : -1;
-                            add (idea.notes, when, length, roots[next] + by, openVelocity);
+                            const auto by = (lower == '>' || lower == '{') ? 2 : (lower == '<' || lower == '}') ? 1 : (lower == '(' || lower == '[') ? -2 : -1;
+                            const auto to = roots[next] + by;
+                            if (lower == '{' || lower == '}' || lower == '[' || lower == ']')
+                                for (const auto p : { to, to + 7, to + 12 })   // (the power chord itself steps: The End of Heartache)
+                                    add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
+                            else
+                                add (idea.notes, when, length, to, openVelocity);
                             break;
                         }
                         default: break;
