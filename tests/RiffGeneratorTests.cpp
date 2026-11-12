@@ -35,7 +35,7 @@ namespace
         return n;
     }
 
-    const std::string riffCharacters = "-=xXcCdDfFeEgGkKtTzZ*#obBhprvwuqyjnaAilms123456789^<>(){}[]%&!+;";
+    const std::string riffCharacters = "-=xXcCdDfFeEgGkKtTzZ*#obBhprvwuqyjnaAilms123456789^<>(){}[]%&!+;@$~|";
 }
 
 TEST_CASE ("The riff generator: a thousand seeds, a thousand riffs (0.85.0)", "[riffgen]")
@@ -76,7 +76,8 @@ TEST_CASE ("The riff generator: bars as long as the bar, every bar starting on a
                     {
                         CHECK ((int) b.size() == steps);
                         CHECK (b[0] != '-');
-                        CHECK (b[0] != '=');
+                        if (r.flavour != RiffFlavour::droning)   // (DRONING: a bar after a push rings, struck a beat before)
+                            CHECK (b[0] != '=');
                         for (const auto ch : b)
                             CHECK (riffCharacters.find (ch) != std::string::npos);
                     }
@@ -157,7 +158,8 @@ TEST_CASE ("The riff generator: the riff played over the chords, in the guitar's
         {
             bool hit = false;
             for (const auto& n : idea.notes)
-                hit = hit || std::abs (n.beat - bar * 4.0) < 1.0e-6;
+                hit = hit || std::abs (n.beat - bar * 4.0) < 1.0e-6
+                          || (n.beat < bar * 4.0 && n.beat + n.length > bar * 4.0 + 0.5);   // (DRONING: a chord pushed a beat early rings into the bar)
             CHECK (hit);
         }
     }
@@ -421,6 +423,172 @@ TEST_CASE ("0.87.0: the composer's guitar plays DRIVING EIGHTHS, and SYNC with D
         kicked += std::any_of (kicks.begin(), kicks.end(), [h] (double k) { return std::abs (k - h) < 0.02; }) ? 1 : 0;
     CHECK (kicked == (int) rhythm.all.size());
     CHECK (layers[(size_t) ComposerLayer::bass].notes.size() == rhythm.all.size());
+}
+
+TEST_CASE ("0.88.0: DRONING: few hits, long rings, the space left to the band; not drawn by ANY", "[riffgen][droning]")
+{
+    for (juce::uint32 seed = 1; seed <= 400; ++seed)
+    {
+        RiffRecipe r;
+        r.seed = seed;
+        for (const auto& b : generateRiffBars (r))
+            CHECK (b.find_first_of ("@$") == std::string::npos);
+    }
+    int whole = 0, again = 0, moving = 0, sliding = 0, pushed = 0, chorusFull = 0, verseFull = 0, verseMoving = 0;
+    for (const auto style : guitarStyles())
+        for (juce::uint32 seed = 1; seed <= 60; ++seed)
+            for (const auto section : { DrumSection::chorus, DrumSection::verse })
+                for (const auto steps : { 16, 12 })
+                {
+                    RiffRecipe r;
+                    r.style = style;
+                    r.flavour = RiffFlavour::droning;
+                    r.section = section;
+                    r.bars = 4;
+                    r.seed = seed;
+                    const auto bars = generateRiffBars (r, steps);
+                    REQUIRE (bars.size() == 4);
+                    for (const auto& b : bars)
+                    {
+                        INFO (b);
+                        REQUIRE ((int) b.size() == steps);
+                        CHECK (std::string ("%#o@=|").find (b[0]) != std::string::npos);   // a chord struck on the bar line, or rung from a push
+                        auto hits = 0;
+                        for (const auto ch : b)
+                            hits += ch != '=' && ch != '-' ? 1 : 0;
+                        CHECK (hits <= 6);                                               // (the slide: the most)
+                        CHECK (b.find_first_of ("*xzX") == std::string::npos);          // nothing muted, no chugs
+                        whole += hits == 1 ? 1 : 0;
+                        again += hits == 2 && b[(size_t) steps / 2] != '=' ? 1 : 0;
+                        moving += b[0] == '@' ? 1 : 0;
+                        sliding += b.find_first_of ("12345") != std::string::npos ? 1 : 0;
+                        pushed += b.find ('~') != std::string::npos ? 1 : 0;
+                    }
+                    // A bar rung from the one before only after a push, or after a chord tied over ('|') (the riff's first
+                    // bar always struck).
+                    CHECK (bars[0][0] != '=');
+                    for (size_t k = 1; k < bars.size(); ++k)
+                        if (bars[k][0] == '=')
+                        {
+                            // the last thing struck before it rings on: a push or a tied chord
+                            char last = 0;
+                            for (size_t j = 0; j < k; ++j)
+                                for (const auto ch : bars[j])
+                                    if (ch != '=')
+                                        last = ch;
+                            CHECK ((last == '~' || last == '|'));
+                        }
+                    (section == DrumSection::chorus ? chorusFull : verseFull) += count (bars, "%&");
+                    verseMoving += section == DrumSection::verse ? count (bars, "@") : 0;
+                }
+    CHECK (whole > 300);
+    CHECK (again > 50);
+    CHECK (moving > 50);
+    CHECK (sliding > 30);
+    CHECK (pushed > 100);
+    CHECK (chorusFull > 100);   // (full chords: % & |)
+    CHECK (verseFull == 0);     // a verse rings power chords
+    CHECK (verseMoving == 0);   // and keeps the moving top for the chorus
+}
+
+TEST_CASE ("0.88.0: DRONING played: a whole bar rings, the held chord lasts under the top notes, the picked notes ring open", "[riffgen][droning]")
+{
+    Key key;
+    key.minor = true;
+    const Chord chords[] = { Chord { 5, Chord::Type::major }, Chord { 7, Chord::Type::major }, Chord { 9, Chord::Type::minor }, Chord { 7, Chord::Type::major } };
+    std::vector<ChordSpan> spans;
+    for (int i = 0; i < 4; ++i)
+        spans.push_back ({ i * 4.0, i * 4.0 + 4.0, chords[i], key });   // a bar each (Without Me's F G Am G)
+    const auto tuning = GuitarTuning::all().front();
+    GuitarVelocities vel;
+    int rungBars = 0, heldUnderTop = 0;
+    for (juce::uint32 seed = 1; seed <= 120; ++seed)
+    {
+        RiffRecipe r;
+        r.flavour = RiffFlavour::droning;
+        r.section = DrumSection::chorus;
+        r.bars = 4;
+        r.seed = seed;
+        const auto text = generateRiffBars (r);
+        const auto idea = generateRiff (r, spans, 4.0, tuning, vel);
+        for (int bar = 0; bar < 4; ++bar)
+        {
+            const auto& b = text[(size_t) bar];
+            const auto at = bar * 4.0;
+            auto longest = 0.0;
+            for (const auto& n : idea.notes)
+                if (! n.keyswitch && std::abs (n.beat - at) < 1.0e-6)
+                {
+                    longest = juce::jmax (longest, n.length);
+                    CHECK (n.pitch % 12 >= 0);
+                    CHECK (GuitarVelocity::midiOf (n.velocity) >= 60);   // rung, never muted
+                }
+            if (b.find_first_not_of ("=", 1) == std::string::npos && std::string ("%#o").find (b[0]) != std::string::npos)   // (struck once)
+            {
+                CHECK (longest >= 3.8);    // the whole bar (every note ends 4% early: a breath before the next strike)
+                ++rungBars;
+            }
+            if (b[0] == '@')
+            {
+                CHECK (longest >= 3.8);    // held under the top notes
+                ++heldUnderTop;
+                for (const auto& n : idea.notes)
+                    if (n.beat > at + 0.01 && n.beat < at + 4.0 - 0.01)
+                        CHECK (GuitarVelocity::midiOf (n.velocity) >= 60);   // the top notes ring open (0.87.0 played them muted)
+            }
+        }
+    }
+    CHECK (rungBars > 100);
+    CHECK (heldUnderTop > 20);
+
+    // The push (Circle With Me): the next chord's notes struck early and still ringing past the bar line.
+    int pushes = 0;
+    for (juce::uint32 seed = 1; seed <= 120; ++seed)
+    {
+        RiffRecipe r;
+        r.flavour = RiffFlavour::droning;
+        r.section = DrumSection::chorus;
+        r.bars = 4;
+        r.seed = seed;
+        const auto text = generateRiffBars (r);
+        const auto idea = generateRiff (r, spans, 4.0, tuning, vel);
+        for (int bar = 0; bar < 3; ++bar)
+        {
+            const auto p = text[(size_t) bar].find ('~');
+            if (p == std::string::npos)
+                continue;
+            const auto at = bar * 4.0 + (double) p * 0.25;
+            const auto& next = spans[(size_t) bar + 1].chord;
+            std::vector<int> pcs;
+            for (const auto& n : idea.notes)
+                if (std::abs (n.beat - at) < 1.0e-6)
+                {
+                    pcs.push_back (n.pitch % 12);
+                    CHECK (n.beat + n.length > (bar + 1) * 4.0 + 1.0);   // rung across the bar line
+                }
+            CHECK (std::find (pcs.begin(), pcs.end(), next.root) != pcs.end());   // it's the next chord
+            ++pushes;
+        }
+    }
+    CHECK (pushes > 20);
+
+    // DRIVING EIGHTHS' picked bars: the octave and the fifth over it ring open too (the 0.87.0 fix).
+    for (juce::uint32 seed = 1; seed <= 200; ++seed)
+    {
+        RiffRecipe d;
+        d.flavour = RiffFlavour::drivingEighths;
+        d.section = DrumSection::chorus;
+        d.bars = 4;
+        d.seed = seed;
+        const auto text = generateRiffBars (d);
+        const auto idea = generateRiff (d, spans, 4.0, tuning, vel);
+        for (int bar = 0; bar < 4; ++bar)
+            for (int i = 0; i < 16; ++i)
+                if (text[(size_t) bar][(size_t) i] == '+' || text[(size_t) bar][(size_t) i] == ';')
+                    for (const auto& n : idea.notes)
+                        if (std::abs (n.beat - (bar * 4.0 + i * 0.25)) < 1.0e-6)
+                            CHECK (GuitarVelocity::midiOf (n.velocity) >= 60);
+    }
 }
 
 // Prints riffs for reading (hidden): PARAGON_RIFF_STYLE (a style name), PARAGON_RIFF_FLAVOUR, PARAGON_RIFF_COUNT.

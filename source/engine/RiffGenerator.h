@@ -48,9 +48,18 @@
 // file; As I Lay Dying's Parallels, its double-time chorus) the chord picked a note an eighth, or the muted
 // root as a pedal under high notes. A verse gets the muted stretch first, a breakdown the same in
 // quarter notes.
+//
+// DRONING (0.88.0, the owner: "the second kind of chorus ... the rhythm guitar especially plays usually open
+// whole notes that ring out across each bar in the progression and most of the rhythmic or interesting stuff
+// comes from the lead guitar, the bass, the keyboards and the drums"; their examples Dayseeker's Without Me,
+// Thirty Seconds To Mars' Capricorn, Korn's Clown, Spiritbox's Circle With Me, read for their shapes only):
+// a chord struck on the bar line and left to ring the whole bar (full chords with the third, or power
+// chords), sometimes struck again halfway, sometimes the power chord held while a top note moves over it
+// (Capricorn), sometimes the shape sliding down a half step at a time over the bar (Clown). Few hits, long
+// notes: the space is for the other instruments. A verse rings power chords only.
 namespace pr7s
 {
-    enum class RiffFlavour { any, chugs, gallop, tritone, creep, stabs, octaves, stopStart, openChords, drivingEighths };
+    enum class RiffFlavour { any, chugs, gallop, tritone, creep, stabs, octaves, stopStart, openChords, drivingEighths, droning };
     const std::vector<RiffFlavour>& riffFlavours();
     juce::String riffFlavourName (RiffFlavour);          // "ANY", "CHUGS", "GALLOP", "TRITONE CHUG", ...
     juce::String riffFlavourDescription (RiffFlavour);

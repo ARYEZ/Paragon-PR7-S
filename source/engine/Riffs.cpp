@@ -452,6 +452,21 @@ namespace pr7s
                 if (steps == 0)
                     continue;
                 const auto step = beatsPerBar / steps;
+                // (0.88.0, DRONING) A bar that begins held ('=': rung from a push or a tied chord) when nothing is ringing
+                // into it (the chord changed on this bar line, so the chord before stopped) strikes its own chord here.
+                auto firstStrike = std::string();
+                if (bar[0] == '=')
+                {
+                    auto until = -1.0;
+                    for (const auto& n : idea.notes)
+                        until = juce::jmax (until, n.beat + n.length / 0.96);
+                    if (until < t - origin + 1.0e-3)   // (nothing carries past the bar line)
+                    {
+                        firstStrike = barText;
+                        firstStrike[0] = '|';
+                        bar = firstStrike.c_str();
+                    }
+                }
                 for (auto i = 0; i < steps; ++i)
                 {
                     const auto ch = bar[i];
@@ -472,6 +487,23 @@ namespace pr7s
                     const auto when = at - origin;
                     const auto lower = (char) juce::CharacterFunctions::toLowerCase ((juce::juce_wchar) ch);
                     const auto open = ch != lower;   // (upper case)
+                    // (0.88.0) Where the next thing is struck or stopped after this hit (this bar, then up to four
+                    // bars on): a tied or pushed chord rings to there.
+                    const auto nextStrike = [&]
+                    {
+                        for (auto k = i + 1; k < steps; ++k)
+                            if (bar[k] != '=')
+                                return t + k * step;
+                        for (auto b = 1; b <= 4; ++b)
+                        {
+                            const auto text = barOf (barIndex + b);
+                            const auto n = (int) text.size();
+                            for (auto k = 0; k < n; ++k)
+                                if (text[(size_t) k] != '=')
+                                    return t + b * beatsPerBar + k * (beatsPerBar / juce::jmax (1, n));
+                        }
+                        return t + 5.0 * beatsPerBar;
+                    };
                     const auto single = [&] (int pitch)
                     {
                         add (idea.notes, when, open ? length : length * 0.9, pitch, open ? openVelocity : mutedVelocity);
@@ -587,9 +619,54 @@ namespace pr7s
                                 add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
                             break;
                         }
+                        // (0.88.0, DRONING) | the full chord struck here and rung until the next strike (tied over the bar
+                        // line; cut at its chord's end).
+                        case '|':
+                        {
+                            const auto ring = juce::jmax (step, juce::jmin (nextStrike(), span.end) - at);
+                            for (const auto p : { root, fifth, root + 12, root + 12 + thirdOf (span.chord) })
+                                add (idea.notes, when, ring, p, of (vel.sustainHard));
+                            break;
+                        }
+                        // (0.88.0, DRONING: Circle With Me) ~ the chord at the next bar line pushed early: its full voicing struck
+                        // here and rung across the bar line until the next strike (or its chord's end).
+                        case '~':
+                        {
+                            const auto nextAt = t + beatsPerBar;
+                            auto next = (size_t) 0;
+                            auto found = false;
+                            for (size_t j = 0; j < spans.size(); ++j)
+                                if (nextAt >= spans[j].start - 1.0e-9 && nextAt < spans[j].end - 1.0e-9)
+                                {
+                                    next = j;
+                                    found = true;
+                                    break;
+                                }
+                            if (! found)
+                                next = (nextAt >= spans.back().end - 1.0e-9) ? 0 : si;
+                            const auto& to = spans[next];
+                            const auto r = roots[next];
+                            const auto f = fifthAbove (to.chord, r);
+                            const auto ringEnd = juce::jmin (found ? to.end : span.end, nextStrike());
+                            const auto ring = juce::jmax (step, ringEnd - at);
+                            for (const auto p : { r, f, r + 12, r + 12 + thirdOf (to.chord) })
+                                add (idea.notes, when, ring, p, of (vel.sustainHard));
+                            break;
+                        }
+                        // (0.88.0, DRONING) @ the power chord rung to the bar's end (or the chord's), whatever comes after it;
+                        // $ the chord's third over the octave, an open single.
+                        case '@':
+                        {
+                            const auto ring = juce::jmin ((steps - i) * step, span.end - at);
+                            for (const auto p : { root, fifth, root + 12 })
+                                add (idea.notes, when, ring, p, of (vel.sustainHard));
+                            break;
+                        }
+                        case '$': add (idea.notes, when, length, root + 12 + thirdOf (span.chord), openVelocity); break;
                         // (0.87.0, DRIVING EIGHTHS' picked bars) + the root an octave up, ; the fifth over that, open singles.
-                        case '+': single (root + 12); break;
-                        case ';': single (fifth + 12); break;
+                        // (a symbol has no upper case: these ring open, never at the muted velocity. 0.87.0 played them muted.)
+                        case '+': add (idea.notes, when, length, root + 12, openVelocity); break;
+                        case ';': add (idea.notes, when, length, fifth + 12, openVelocity); break;
                         case '!':
                             for (const auto p : { root, fifth, root + 12 })
                                 add (idea.notes, when, juce::jmin (length, 0.1), p, of (vel.muteTight));

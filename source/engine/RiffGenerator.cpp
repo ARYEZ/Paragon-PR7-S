@@ -12,7 +12,7 @@ namespace pr7s
     {
         static const std::vector<RiffFlavour> all { RiffFlavour::any, RiffFlavour::chugs, RiffFlavour::gallop, RiffFlavour::tritone, RiffFlavour::creep,
                                                     RiffFlavour::stabs, RiffFlavour::octaves, RiffFlavour::stopStart, RiffFlavour::openChords,
-                                                    RiffFlavour::drivingEighths };
+                                                    RiffFlavour::drivingEighths, RiffFlavour::droning };
         return all;
     }
 
@@ -30,6 +30,7 @@ namespace pr7s
             case RiffFlavour::stopStart: return "STOP-START";
             case RiffFlavour::openChords: return "OPEN CHORDS";
             case RiffFlavour::drivingEighths: return "DRIVING EIGHTHS";
+            case RiffFlavour::droning: return "DRONING";
         }
         return "ANY";
     }
@@ -48,6 +49,7 @@ namespace pr7s
             case RiffFlavour::stopStart: return "Bursts of hits and dead silence between them";
             case RiffFlavour::openChords: return "Power chords and chords left ringing";
             case RiffFlavour::drivingEighths: return "The big chorus: power chords ringing on every eighth, a palm-muted stretch, a walk into the next chord";
+            case RiffFlavour::droning: return "The ringing chorus: chords struck and left to ring across the bar, leaving the space to the band";
         }
         return {};
     }
@@ -120,6 +122,7 @@ namespace pr7s
                 case RiffFlavour::stopStart: boost (Cell::stop, 5.0f); boost (Cell::rest, 1.6f); boost (Cell::chugRun, 1.6f); boost (Cell::gallop, 0.5f); break;
                 case RiffFlavour::openChords: boost (Cell::powerChord, 4.0f); boost (Cell::highChord, 3.0f); boost (Cell::chug, 0.6f); boost (Cell::chugRun, 0.4f); break;
                 case RiffFlavour::drivingEighths: break;   // (made by DrivingEighths below, not from cells)
+                case RiffFlavour::droning: break;          // (made by Droning below)
             }
         }
 
@@ -880,6 +883,164 @@ namespace pr7s
         };
     }
 
+    namespace
+    {
+        // DRONING (0.88.0): see RiffGenerator.h. A bar is one of:
+        //   W one chord struck on the bar line and rung the whole bar ('%' a full chord, '#' a power chord, 'o' the octave)
+        //   V struck again halfway (the second time the same, or the fourth in the third's place: '&')
+        //   T the power chord held the whole bar ('@': rings to the bar's end whatever comes after) while a top note
+        //     moves over it ('+' the octave, '$' the third over it, ';' the fifth over it): Capricorn
+        //   D rung, then the shape sliding down a half step at a time to the next bar (digits: power chords that many
+        //     semitones over the root): Clown
+        //   Q no strike: the chord before rings on, and the next chord is pushed on beat 4 (or the and of 4): '~' the
+        //     next chord's full voicing struck early and rung across the bar line through the bar after; H a bar held,
+        //     nothing struck (rung by the push before it): Circle With Me (the owner's rhythm guitar part); a bar
+        //     before Q strikes '|' (the full chord rung through the bar after, tied over as in the example)
+        // and a bar in lower case ends with the power chord stepping into the next chord on its last beat ('}' / ']').
+        struct Droning
+        {
+            juce::Random& random;
+            const RiffRecipe& recipe;
+            int steps;
+
+            template <typename T>
+            T pick (std::initializer_list<std::pair<T, float>> options)
+            {
+                auto total = 0.0f;
+                for (const auto& o : options)
+                    total += o.second;
+                auto r = random.nextFloat() * total;
+                for (const auto& o : options)
+                {
+                    if (r < o.second)
+                        return o.first;
+                    r -= o.second;
+                }
+                return options.begin()->first;
+            }
+
+            bool verse() const { return recipe.section == DrumSection::verse || recipe.section == DrumSection::intro; }
+
+            std::vector<std::string> make (int bars)
+            {
+                const auto chord = verse() ? pick<char> ({ { '#', 4 }, { 'o', 1 } }) : pick<char> ({ { '%', 3 }, { '#', 2 }, { 'o', 0.5f } });
+                const auto again = verse() ? chord : pick<char> ({ { chord, 2 }, { '&', 1 } });
+                // The top voice's moves (sixteenths: a character where it moves, the rest left to ring).
+                const auto top = pick<std::string> ({ { "@-------+-------", 2 }, { "@---+---$---+---", 2 }, { "@-------+---;---", 1.5f },
+                                                      { "@---$-------;---", 1 }, { "@-------$---+---", 1 } });
+                const auto slide = pick<std::string> ({ { "#=======4===3===", 2 }, { "#=====5=4=3=2=1=", 1 }, { "#=======3=2=1===", 1 } });
+                const auto into = random.nextFloat() < 0.5f ? '}' : ']';
+                // Where the next chord is pushed: beat 4 (the owner's example), or the and of 4.
+                const auto pushAt = random.nextFloat() < 0.75f ? steps - steps / 4 : steps - steps / 8;
+
+                const auto bar = [&] (char kind, bool walks)
+                {
+                    std::string b ((size_t) steps, '=');
+                    const auto half = steps / 2;
+                    switch (kind)
+                    {
+                        case 'V':
+                            b[0] = chord;
+                            b[(size_t) half] = again;
+                            break;
+                        case 'T':
+                        {
+                            // '@' rings to the bar's end on its own; each top note rings on to the next.
+                            b = std::string ((size_t) steps, '-');
+                            for (int i = 0; i < 16; ++i)
+                                if (top[(size_t) i] != '-')
+                                    b[(size_t) (i * steps / 16)] = top[(size_t) i];
+                            auto ringing = false;
+                            for (int i = 1; i < steps; ++i)
+                            {
+                                if (b[(size_t) i] != '-')
+                                    ringing = b[(size_t) i] != '@';
+                                else if (ringing)
+                                    b[(size_t) i] = '=';
+                            }
+                            break;
+                        }
+                        case 'D':
+                            for (int i = 0; i < steps; ++i)
+                                b[(size_t) i] = slide[(size_t) (i * 16 / steps)];
+                            for (int i = 1; i < steps; ++i)   // (a character stretched over several steps: its first, then holds)
+                                if (b[(size_t) i] != '=' && b[(size_t) i] == b[(size_t) i - 1])
+                                    b[(size_t) i] = '=';
+                            break;
+                        case 'H':
+                            break;   // (all held: the push before rings through it)
+                        case 'P':
+                        case 'Q':
+                        {
+                            if (kind == 'P')
+                                b[0] = chord;
+                            const auto at = juce::jlimit (1, steps - 1, pushAt);
+                            b[(size_t) at] = '~';
+                            break;
+                        }
+                        default:
+                            b[0] = chord;
+                            break;
+                    }
+                    if (walks && steps >= 8)
+                    {
+                        const auto at = steps - steps / 4;   // the last beat
+                        b[(size_t) at] = into;
+                        for (int i = at + 1; i < steps; ++i)
+                            b[(size_t) i] = '=';
+                    }
+                    return b;
+                };
+
+                // The shape (drawn the same at any BUSY: BUSY only strikes more or fewer, below).
+                std::string shape;
+                if (bars <= 1)
+                    shape = pick<std::string> ({ { "W", 3 }, { "T", 2 }, { "V", 1.5f }, { "D", 1 }, { "P", 1.5f } });
+                else if (bars == 2)
+                    shape = pick<std::string> ({ { "WW", 3 }, { "WQ", 2.5f }, { "Ww", 1 }, { "TT", 2 }, { "VV", 1.5f }, { "WD", 1 } });
+                else
+                    shape = pick<std::string> ({ { "WWWW", 3 },     // a chord a bar, rung (Without Me)
+                                                 { "WQHQ", 3 },     // struck, rung, the next chord pushed a beat early and held (Circle With Me)
+                                                 { "WWWw", 1.5f },  // the last stepping into the next chord
+                                                 { "TTTT", 2 },     // the power chord held, a top note moving over it (Capricorn)
+                                                 { "VVVV", 1.5f },  // struck again halfway
+                                                 { "WWVV", 1 },
+                                                 { "DDDD", 1 },     // rung, then sliding down to the next bar (Clown)
+                                                 { "WDWD", 1 } });
+                if (verse())   // (a verse rings power chords, no moving top: the chorus keeps those)
+                    for (auto& c : shape)
+                        c = c == 'T' ? 'W' : c == 't' ? 'w' : c;
+                // BUSY: a fixed chance per bar; over the middle, a bar rung whole is struck again halfway when its chance
+                // is under the amount; under it, a bar struck twice (or with a moving top) rings whole instead. Each step
+                // of BUSY only adds to (or takes from) the one before; the riff stays the riff.
+                const auto busy = juce::jlimit (0.0f, 1.0f, recipe.busy);
+                for (auto& c : shape)
+                {
+                    const auto chance = random.nextFloat();
+                    if (busy > 0.5f && c == 'W' && chance < (busy - 0.5f) * 2.0f)
+                        c = 'V';
+                    else if (busy < 0.5f && (c == 'V' || c == 'T') && chance < (0.5f - busy) * 2.0f)
+                        c = 'W';
+                }
+                std::vector<std::string> out;
+                for (size_t k = 0; k < shape.size(); ++k)
+                {
+                    const auto c = shape[k];
+                    const auto upper = (char) juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) c);
+                    auto b = bar (upper, c != upper);
+                    // The bar before a push bar rings into it: its chord struck as '|' (rung through the bar after).
+                    if (k + 1 < shape.size() && shape[k + 1] == 'Q' && b[0] != '=' && b[0] != '-')
+                    {
+                        b = std::string ((size_t) steps, '=');
+                        b[0] = '|';
+                    }
+                    out.push_back (b);
+                }
+                return out;
+            }
+        };
+    }
+
     //==========================================================================
     std::vector<std::string> generateRiffBars (const RiffRecipe& recipe, int stepsPerBar)
     {
@@ -893,9 +1054,9 @@ namespace pr7s
         if (flavour == RiffFlavour::any)
         {
             // ANY: lean towards a different flavour each seed (or none), so ANY covers everything.
-            // (DRIVING EIGHTHS left out: a whole chorus shape, chosen on purpose; the draw is as before 0.87.0.)
+            // (DRIVING EIGHTHS and DRONING left out: whole chorus shapes, chosen on purpose; the draw is as before 0.87.0.)
             const auto& all = riffFlavours();
-            const auto pick = random.nextInt ((int) all.size() - 1);
+            const auto pick = random.nextInt (9);   // (the nine before DRIVING EIGHTHS and DRONING)
             flavour = all[(size_t) pick];
             if (flavour == RiffFlavour::stabs && recipe.style != GuitarStyle::groove && random.nextFloat() < 0.6f)
                 flavour = RiffFlavour::any;
@@ -925,6 +1086,14 @@ namespace pr7s
         };
 
         std::vector<std::string> out;
+        if (flavour == RiffFlavour::droning)
+        {
+            auto mixed = (juce::uint64) recipe.seed * 0xD1B54A32D192ED03ull;
+            mixed ^= mixed >> 31;
+            juce::Random own ((juce::int64) (mixed * 0x94D049BB133111EBull >> 1));
+            Droning droning { own, leaned, steps };
+            return droning.make (bars);   // (BUSY is in the shapes: the pass below would chug into the rings)
+        }
         if (flavour == RiffFlavour::drivingEighths)
         {
             // (its own random numbers, well mixed from the seed: neighbouring seeds drew alike from the shared one)
@@ -1019,6 +1188,10 @@ namespace pr7s
                 else if (c == 'c' || c == 'd') ++made["half steps and minor thirds"];
                 else if (c == '*') ++made["muted power chords"];
                 else if (c == '%' || c == '&') ++made["full chords"];
+                else if (c == '@') ++made["held power chords"];
+                else if (c == '~') ++made["chords pushed a beat early"];
+                else if (c == '|') ++made["full chords"];
+                else if (c == '$') ++made["picked notes"];
                 else if (c == '+' || c == ';') ++made["picked notes"];
                 else if (c == '>' || c == '<' || c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']') ++made["walks into the next chord"];
             }
@@ -1036,7 +1209,7 @@ namespace pr7s
 
         const auto name = "Generated: " + (recipe.flavour == RiffFlavour::any ? juce::String ("any flavour") : riffFlavourName (recipe.flavour).toLowerCase());
         // (DRIVING EIGHTHS follows the chords' roots, never the key's pedal.)
-        auto pedal = recipe.flavour != RiffFlavour::drivingEighths && recipe.style != GuitarStyle::rock && recipe.style != GuitarStyle::shred;
+        auto pedal = recipe.flavour != RiffFlavour::drivingEighths && recipe.flavour != RiffFlavour::droning && recipe.style != GuitarStyle::rock && recipe.style != GuitarStyle::shred;
         for (const auto& b : bars)
             pedal = pedal || b.find_first_of ("zZ") != std::string::npos;   // (TRITONE CHUG: the open low string in any style)
         return riffFromBars ([&bars] (int barIndex) { return bars[(size_t) (((barIndex % (int) bars.size()) + (int) bars.size()) % (int) bars.size())]; },

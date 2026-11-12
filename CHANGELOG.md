@@ -2,6 +2,26 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.88.0
+
+**DRONING: the ringing chorus** (your second chorus kind, from your examples: Without Me, Capricorn, Clown and Circle With Me, the rhythm guitar part you sent after). Read for their shapes only; nothing copied.
+
+- **A new riff flavour for the composer's guitar:** in the guitar lane's style menu, pick **Riff Flavour > DRONING**. The guitar strikes a chord and lets it ring across the bar, leaving the space to the lead, bass, keys and drums.
+- **Every GENERATE or ROLL draws one of these shapes:**
+  - **A chord a bar, rung whole** (Without Me's chord-a-bar shape). Big full chords with the third, or power chords.
+  - **Struck, then the next chord pushed a beat early** (Circle With Me). The chord rings through two bars, then the next chord is struck on beat 4 of the bar before (sometimes on the and of 4) and tied across the bar line.
+  - **The power chord held, a top note moving over it** (Capricorn). The low notes ring the whole bar while a single high note steps between the octave, the third and the fifth.
+  - **Struck again halfway.**
+  - **Rung, then the chord sliding down a half step at a time into the next bar** (Clown).
+  - **The last bar stepping into the next chord** on its last beat.
+- **The rings last.** A chord rings until the next thing the guitar strikes, never past its own chord. If the chord changes on a bar line where a push was meant to ring, the guitar strikes the new chord there instead of leaving a silent gap.
+- **BUSY** changes how often it strikes, not the riff. Over the middle, some whole-bar chords are struck again halfway; under it, struck-twice and moving bars ring whole instead.
+- **In a verse** it rings power chords only and keeps the moving top note for the chorus.
+- DRONING is never picked by ANY, like DRIVING EIGHTHS. ANY's riffs are the same as before.
+- **A fix to 0.87.0:** in DRIVING EIGHTHS' picked bars, the high notes (the octave and the fifth above it) were played at the palm-mute velocity. They ring open now.
+
+For now this is the guitar's part only. The rest of the droning chorus (the lead, bass, keys and drums carrying the movement) is the next step. See the note in my reply.
+
 ## 0.87.0
 
 **DRIVING EIGHTHS: the hard driving chorus** (your idea, from your nine examples: This Fire Burns, The End of Heartache, Faint, Faster, Tears Don't Fall, This Calling, Left Behind, Come Clarity and Parallels). I read each tab for its shape only; nothing of any of them is copied.
