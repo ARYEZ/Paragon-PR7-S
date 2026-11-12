@@ -124,6 +124,16 @@ void ArrangeView::paintSections (juce::Graphics& g, const Timeline::Row& row)
         auto text = bounds.reduced (8.0f, 2.0f);
         if (text.getWidth() < 14.0f)
             continue;
+        // (0.91.0) A linked copy: two links of a chain at its top right.
+        if (b.link > 0 && text.getWidth() > 60.0f)
+        {
+            const auto h = juce::jmin (10.0f, bounds.getHeight() * 0.28f);
+            const auto at = juce::Point<float> (bounds.getRight() - 8.0f - h * 1.6f, bounds.getY() + 4.0f);
+            g.setColour (pearl.withAlpha (0.9f));
+            g.drawRoundedRectangle ({ at.x, at.y, h * 1.0f, h * 0.62f }, h * 0.3f, 1.4f);
+            g.drawRoundedRectangle ({ at.x + h * 0.6f, at.y + h * 0.3f, h * 1.0f, h * 0.62f }, h * 0.3f, 1.4f);
+            text.removeFromRight (h * 1.8f);
+        }
         g.setColour (isSelected || dragged ? juce::Colours::white : ParagonColours::text);
         g.setFont (ParagonLookAndFeel::titleFont (juce::jmin (18.0f, bounds.getHeight() * 0.55f)));
         const auto label = pr7s::sectionLabel (blocks, i).toUpperCase();
@@ -267,7 +277,9 @@ void ArrangeView::showSectionMenu (int index)
         menu.addSubMenu ("Length (what follows moves)", length);
         menu.addSubMenu ("Insert a Section Before", before);
         menu.addSubMenu ("Insert a Section After", after);
-        menu.addItem (2, "Duplicate (a copy after it, its music too)");
+        menu.addItem (2, "Duplicate (a linked copy after it: edit one, both change)");
+        menu.addItem (7, "Duplicate as Its Own Copy (not linked)");
+        menu.addItem (8, "Unlink (its own from now on; its music stays)", b.link > 0);
         menu.addItem (3, "Set the Locators to It");
         menu.addItem (5, "Delete (and its music; what follows moves up)");
         menu.addSeparator();
@@ -290,6 +302,13 @@ void ArrangeView::showSectionMenu (int index)
             if (studio.duplicateSongSection (index))
                 safe->selectSection (index + 1);
         }
+        else if (chosen == 7)
+        {
+            if (studio.duplicateSongSection (index, false))
+                safe->selectSection (index + 1);
+        }
+        else if (chosen == 8)
+            studio.unlinkSongSection (index);
         else if (chosen == 3)
         {
             if (const auto place = studio.getSongSectionPlace (index))

@@ -87,7 +87,7 @@ TEST_CASE ("0.90.0: blocks end to end in bars, numbered names, saved with the so
     CHECK (studio.getSongSections().shown);
     studio.appendSongSection ("Chorus", 8);
     studio.appendSongSection ("Verse 3", 8);   // (a numbered name is its section)
-    studio.appendSongSection ("Chorus", 2);
+    studio.appendSongSection ("Chorus", 2, false);   // (0.91.0: its own, not a linked copy)
     const auto& blocks = studio.getSongSections().blocks;
     REQUIRE (blocks.size() == 4);
     CHECK (blocks[2].name == "Verse");
@@ -308,4 +308,121 @@ TEST_CASE ("0.90.0: the SECTIONS row on screen: a block dragged to the front, a 
     CHECK (spans.back().end <= place->end + 1.0e-9);
     CHECK (spans.back().end > place->end - 4.0);
     window->setVisible (false);
+}
+
+namespace
+{
+    int partIndexAt (const Studio& studio, int track, double beat)
+    {
+        const auto& parts = studio.getProject().findTrack (track)->parts;
+        for (int i = 0; i < (int) parts.size(); ++i)
+            if (std::abs (parts[(size_t) i].start - beat) < 1.0e-6)
+                return i;
+        return -1;
+    }
+}
+
+TEST_CASE ("0.91.0: linked copies: an edit to one changes the others, in the same undo step", "[sections][links]")
+{
+    Song song;
+    auto& studio = song.studio;
+    REQUIRE (studio.duplicateSongSection (2));   // the chorus at 48, its linked copy at 80
+    CHECK (studio.isSongSectionLinked (2));
+    CHECK (studio.isSongSectionLinked (3));
+    CHECK_FALSE (studio.isSongSectionLinked (1));
+    REQUIRE (song.pitchAt (80.0) == 64);
+
+    // Chorus 1's notes edited: chorus 2's follow.
+    auto index = partIndexAt (studio, song.track, 48.0);
+    REQUIRE (index >= 0);
+    studio.setNotes (song.track, index, { { 0.0, 1.0, 64, 0.8f }, { 2.0, 1.0, 67, 0.8f } });
+    auto copy = partIndexAt (studio, song.track, 80.0);
+    REQUIRE (copy >= 0);
+    REQUIRE (studio.getProject().findTrack (song.track)->parts[(size_t) copy].notes.size() == 2);
+    CHECK (studio.getProject().findTrack (song.track)->parts[(size_t) copy].notes[1].pitch == 67);
+    // One undo: both back.
+    studio.undo();
+    copy = partIndexAt (studio, song.track, 80.0);
+    CHECK (studio.getProject().findTrack (song.track)->parts[(size_t) copy].notes.size() == 1);
+    index = partIndexAt (studio, song.track, 48.0);
+    CHECK (studio.getProject().findTrack (song.track)->parts[(size_t) index].notes.size() == 1);
+
+    // Chorus 2 edited: chorus 1 follows.
+    copy = partIndexAt (studio, song.track, 80.0);
+    studio.setNotes (song.track, copy, { { 0.0, 1.0, 70, 0.8f } });
+    CHECK (song.pitchAt (48.0) == 70);
+
+    // A part added inside chorus 2 (on another track too) is in chorus 1.
+    const auto other = studio.addTrack ({});
+    Part part;
+    part.start = 88.0;
+    part.length = 4.0;
+    part.notes = { { 0.0, 1.0, 72, 0.8f } };
+    studio.addPart (other, part);
+    REQUIRE (partIndexAt (studio, other, 56.0) >= 0);
+    CHECK (studio.getProject().findTrack (other)->parts[(size_t) partIndexAt (studio, other, 56.0)].notes.front().pitch == 72);
+
+    // Chorus 1's chord changed: chorus 2's too.
+    auto events = studio.getProject().chordTrack.events;
+    for (auto& e : events)
+        if (std::abs (e.beat - 48.0) < 1.0e-6)
+            e.chord = Chord { 9 };
+    studio.setChordEvents (events);
+    CHECK (song.chordRootAt (80.0) == 9);
+    CHECK (song.chordRootAt (16.0) == 5);   // (the verse untouched)
+
+    // Unlinked: its own from then on, its music kept.
+    REQUIRE (studio.unlinkSongSection (3));
+    CHECK_FALSE (studio.isSongSectionLinked (2));
+    CHECK_FALSE (studio.isSongSectionLinked (3));
+    index = partIndexAt (studio, song.track, 48.0);
+    studio.setNotes (song.track, index, { { 0.0, 1.0, 60, 0.8f } });
+    CHECK (song.pitchAt (48.0) == 60);
+    CHECK (song.pitchAt (80.0) == 70);
+}
+
+TEST_CASE ("0.91.0: a name already in the song adds a linked copy; linked blocks share length and name; saved and opened", "[sections][links]")
+{
+    Song song;
+    auto& studio = song.studio;
+    // Another verse: a linked copy of the verse (its 8 bars and its music) after the chorus.
+    const auto added = studio.appendSongSection ("Verse", 4);
+    REQUIRE (added == 3);
+    const auto& blocks = studio.getSongSections().blocks;
+    CHECK (blocks[3].bars == 8);
+    CHECK (blocks[3].link > 0);
+    CHECK (blocks[3].link == blocks[1].link);
+    CHECK (song.pitchAt (80.0) == 62);
+
+    // One length and one name for both.
+    REQUIRE (studio.setSongSectionBars (3, 4));
+    CHECK (blocks[1].bars == 4);
+    CHECK (blocks[3].bars == 4);
+    REQUIRE (studio.renameSongSection (3, "Pre-Chorus"));
+    CHECK (blocks[1].name == "Pre-Chorus");
+
+    // Its own when asked: a new empty block, not linked.
+    REQUIRE (studio.insertSongSection (0, "Chorus", 2, false));
+    CHECK (studio.getSongSections().blocks[0].link == 0);
+    CHECK (song.pitchAt (0.0) == -1);
+
+    // Saved and opened again: still linked, edits still copied.
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getNonexistentChildFile ("linked", ".pr7s");
+    REQUIRE (studio.save (file));
+    Studio opened (false);
+    juce::String problems;
+    REQUIRE (opened.open (file, problems));
+    const auto& o = opened.getSongSections().blocks;
+    REQUIRE (o.size() == 5);
+    CHECK (o[2].link > 0);
+    CHECK (o[2].link == o[4].link);
+    const auto places = opened.getSongSectionPlaces();
+    const auto track = opened.getProject().tracks[0].id;
+    const auto i = partIndexAt (opened, track, places[2].start);
+    REQUIRE (i >= 0);
+    opened.setNotes (track, i, { { 0.0, 1.0, 65, 0.8f } });
+    const auto j = partIndexAt (opened, track, places[4].start);
+    REQUIRE (j >= 0);
+    CHECK (opened.getProject().findTrack (track)->parts[(size_t) j].notes.front().pitch == 65);
+    file.deleteFile();
 }

@@ -288,6 +288,8 @@ namespace pr7s
             if (track.frozen)
                 if (const auto kept = frozenParts.find (track.id); kept != frozenParts.end() && track.parts != kept->second)
                     track.parts = kept->second;
+        if (! mixStepOnly)
+            syncLinkedSections();   // (0.91.0: an edit to one linked block copied into the others, in this undo step)
         applyAutoColour();   // (0.79.0: the rule wins over whatever moved or recoloured a track)
         numberParts();
         watchPlugins();
@@ -493,6 +495,7 @@ namespace pr7s
         std::stable_sort (project.tracks.begin(), project.tracks.end(),
                           [&] (const Track& a, const Track& b) { return placeIn (a.id) < placeIn (b.id); });
         project.tidyFolders();
+        linksReset = true;   // (0.91.0: what undo brings back is what the linked blocks hold, nothing to copy)
         changed (false);
     }
 
@@ -8349,6 +8352,7 @@ namespace pr7s
         // A new song starts with one track on the studio's synth (PR7-K), ready to play.
         addTrack ({});
         engine.update (project);
+        linkSnapshots.clear();   // (0.91.0)
         clearHistory();
         recordUndoState();
         modified = false;
@@ -9865,6 +9869,8 @@ namespace pr7s
         engine.setPosition (0.0);
         playStart = 0.0;
         applyAutoColour();   // (0.79.0)
+        linksReset = true;   // (0.91.0)
+        syncLinkedSections();
         engine.update (project);
         clearHistory();
         recordUndoState();
@@ -12759,8 +12765,21 @@ namespace pr7s
         }
     }
 
-    int Studio::appendSongSection (const juce::String& name, int bars)
+    int Studio::linkedCopyOf (const juce::String& name) const
     {
+        const auto base = sectionBaseOf (name);
+        const auto& blocks = project.songSections.blocks;
+        for (int i = (int) blocks.size() - 1; i >= 0; --i)
+            if (blocks[(size_t) i].name == base)
+                return i;
+        return -1;
+    }
+
+    int Studio::appendSongSection (const juce::String& name, int bars, bool linked)
+    {
+        if (linked && linkedCopyOf (name) >= 0)
+            return insertSongSection ((int) project.songSections.blocks.size(), name, bars, true)
+                     ? (int) project.songSections.blocks.size() - 1 : -1;
         auto& sections = project.songSections;
         SongSection b;
         b.id = sections.nextId();
@@ -12772,10 +12791,38 @@ namespace pr7s
         return (int) sections.blocks.size() - 1;
     }
 
-    bool Studio::insertSongSection (int index, const juce::String& name, int bars)
+    bool Studio::insertSongSection (int index, const juce::String& name, int bars, bool linked)
     {
         const auto& blocks = project.songSections.blocks;
         index = juce::jlimit (0, (int) blocks.size(), index);
+        // (0.91.0) A name already in the song: a linked copy of its last block.
+        if (const auto source = linked ? linkedCopyOf (name) : -1; source >= 0)
+        {
+            const auto link = blocks[(size_t) source].link > 0 ? blocks[(size_t) source].link : project.songSections.nextLink();
+            std::vector<SectionMove> moves;
+            for (int i = 0; i < (int) blocks.size(); ++i)
+            {
+                auto b = blocks[(size_t) i];
+                if (i == source)
+                    b.link = link;
+                if (i == index)
+                {
+                    auto copy = blocks[(size_t) source];
+                    copy.id = project.songSections.nextId();
+                    copy.link = link;
+                    moves.push_back ({ source, copy });
+                }
+                moves.push_back ({ i, b });
+            }
+            if (index == (int) blocks.size())
+            {
+                auto copy = blocks[(size_t) source];
+                copy.id = project.songSections.nextId();
+                copy.link = link;
+                moves.push_back ({ source, copy });
+            }
+            return relayoutSections (moves);
+        }
         std::vector<SectionMove> moves;
         for (int i = 0; i < (int) blocks.size(); ++i)
         {
@@ -12828,7 +12875,8 @@ namespace pr7s
         std::vector<SectionMove> moves;
         for (int i = 0; i < (int) blocks.size(); ++i)
             moves.push_back ({ i, blocks[(size_t) i] });
-        moves[(size_t) index].block.bars = bars;
+        for (const auto i : project.songSections.linkedWith (index))   // (0.91.0: linked copies keep one length)
+            moves[(size_t) i].block.bars = bars;
         return relayoutSections (moves);
     }
 
@@ -12839,28 +12887,54 @@ namespace pr7s
             return false;
         if (blocks[(size_t) index].name == sectionBaseOf (name))
             return true;
-        blocks[(size_t) index].name = sectionBaseOf (name);
+        for (const auto i : project.songSections.linkedWith (index))   // (0.91.0: linked copies keep one name)
+            blocks[(size_t) i].name = sectionBaseOf (name);
         changed();
         return true;
     }
 
-    bool Studio::duplicateSongSection (int index)
+    bool Studio::duplicateSongSection (int index, bool linked)
     {
         const auto& blocks = project.songSections.blocks;
         if (! juce::isPositiveAndBelow (index, (int) blocks.size()))
             return false;
+        const auto link = ! linked ? 0 : blocks[(size_t) index].link > 0 ? blocks[(size_t) index].link : project.songSections.nextLink();
         std::vector<SectionMove> moves;
         for (int i = 0; i < (int) blocks.size(); ++i)
         {
-            moves.push_back ({ i, blocks[(size_t) i] });
+            auto b = blocks[(size_t) i];
+            if (i == index && linked)
+                b.link = link;
+            moves.push_back ({ i, b });
             if (i == index)
             {
                 auto copy = blocks[(size_t) i];
                 copy.id = project.songSections.nextId();
+                copy.link = link;
                 moves.push_back ({ i, copy });
             }
         }
         return relayoutSections (moves);
+    }
+
+    bool Studio::unlinkSongSection (int index)
+    {
+        auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (index, (int) blocks.size()) || blocks[(size_t) index].link == 0)
+            return false;
+        const auto link = blocks[(size_t) index].link;
+        blocks[(size_t) index].link = 0;
+        if (std::count_if (blocks.begin(), blocks.end(), [link] (const SongSection& b) { return b.link == link; }) < 2)
+            for (auto& b : blocks)
+                if (b.link == link)
+                    b.link = 0;   // (the one left is no longer linked to anything)
+        changed();
+        return true;
+    }
+
+    bool Studio::isSongSectionLinked (int index) const
+    {
+        return project.songSections.linkedWith (index).size() > 1;
     }
 
     bool Studio::removeSongSection (int index)
@@ -13131,7 +13205,135 @@ namespace pr7s
 
         sections.blocks = laid.blocks;
         sections.shown = true;
+        for (auto& b : sections.blocks)   // (0.91.0: a link with one block left is no link)
+            if (b.link > 0 && std::count_if (sections.blocks.begin(), sections.blocks.end(), [&b] (const SongSection& o) { return o.link == b.link; }) < 2)
+                b.link = 0;
         changed();
         return true;
+    }
+
+    //==========================================================================
+    // Linked copies (0.91.0)
+    Studio::SectionContent Studio::sectionContent (const SectionPlace& place) const
+    {
+        SectionContent content;
+        const auto tempo = project.tempoMap();
+        for (const auto& track : project.tracks)
+        {
+            if (track.frozen || track.isChannel())
+                continue;
+            auto& slices = content.tracks.emplace_back (track.id, std::vector<Part> {}).second;
+            for (const auto& part : track.parts)
+                if (auto piece = slice (part, place.start, place.end, tempo))
+                {
+                    piece->start -= place.start;
+                    slices.push_back (*piece);
+                }
+            std::stable_sort (slices.begin(), slices.end(), [] (const Part& a, const Part& b)
+            {
+                return a.start != b.start ? a.start < b.start : a.lane != b.lane ? a.lane < b.lane : a.length < b.length;
+            });
+        }
+        for (const auto& e : withLengths (project.chordTrack, project.beatsPerBar()))
+        {
+            const auto from = juce::jmax (e.beat, place.start), to = juce::jmin (e.beat + e.length, place.end);
+            if (to - from >= shortestChord)
+                content.chords.push_back ({ from - place.start, e.chord, to - from });
+        }
+        return content;
+    }
+
+    void Studio::writeSectionContent (const SectionPlace& place, const SectionContent& content)
+    {
+        const auto tempo = project.tempoMap();
+        for (const auto& [trackId, parts] : content.tracks)
+        {
+            auto* track = project.findTrack (trackId);
+            if (track == nullptr || track->frozen)
+                continue;
+            splitTrackAt (*track, place.start, tempo);
+            splitTrackAt (*track, place.end, tempo);
+            track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(),
+                                                [&] (const Part& p) { return inside (p, place.start, place.end); }),
+                                track->parts.end());
+            for (auto p : parts)
+            {
+                p.start += place.start;
+                p.id = 0;
+                track->parts.push_back (p);
+            }
+        }
+        // The chords: what was in the block cut out, the others' put in.
+        auto& ct = project.chordTrack;
+        if (sectionContent (place).chords != content.chords)
+        {
+            std::vector<ChordEvent> events;
+            for (const auto& e : withLengths (ct, project.beatsPerBar()))
+            {
+                if (e.beat < place.start - edge)
+                {
+                    const auto to = juce::jmin (e.beat + e.length, place.start);
+                    if (to - e.beat >= shortestChord)
+                        events.push_back ({ e.beat, e.chord, to - e.beat });
+                }
+                if (e.beat + e.length > place.end + edge)
+                {
+                    const auto from = juce::jmax (e.beat, place.end);
+                    events.push_back ({ from, e.chord, e.beat + e.length - from });
+                }
+            }
+            for (const auto& c : content.chords)
+                events.push_back ({ c.beat + place.start, c.chord, c.length });
+            ct.events = events;
+            ct.sort();
+            if (ct.autoScales)
+                ct.scales = ct.events.empty() ? std::vector<ScaleEvent> {} : scalesFromChords (ct.events, project.chordPads.key());
+        }
+    }
+
+    void Studio::syncLinkedSections()
+    {
+        const auto& blocks = project.songSections.blocks;
+        const auto places = getSongSectionPlaces();
+        std::map<int, std::vector<int>> groups;
+        for (int i = 0; i < (int) blocks.size(); ++i)
+            if (blocks[(size_t) i].link > 0)
+                groups[blocks[(size_t) i].link].push_back (i);
+        if (! linksReset)
+            for (const auto& [link, members] : groups)
+            {
+                if (members.size() < 2)
+                    continue;
+                // The block whose music changed since the last look (the first in the song if several did).
+                std::optional<SectionContent> edited;
+                int editedIndex = -1;
+                for (const auto i : members)
+                {
+                    const auto seen = linkSnapshots.find (blocks[(size_t) i].id);
+                    if (seen == linkSnapshots.end())
+                        continue;
+                    auto now = sectionContent (places[(size_t) i]);
+                    if (! (now == seen->second))
+                    {
+                        edited = std::move (now);
+                        editedIndex = i;
+                        break;
+                    }
+                }
+                if (! edited.has_value())
+                    continue;
+                for (const auto i : members)
+                    if (i != editedIndex && blocks[(size_t) i].bars == blocks[(size_t) editedIndex].bars
+                        && ! (sectionContent (places[(size_t) i]) == *edited))
+                        writeSectionContent (places[(size_t) i], *edited);
+            }
+        linksReset = false;
+        // What every linked block holds now, for the next look.
+        std::map<int, SectionContent> seen;
+        for (const auto& [link, members] : groups)
+            if (members.size() >= 2)
+                for (const auto i : members)
+                    seen[blocks[(size_t) i].id] = sectionContent (places[(size_t) i]);
+        linkSnapshots = std::move (seen);
     }
 }

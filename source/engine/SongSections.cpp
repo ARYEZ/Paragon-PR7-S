@@ -28,6 +28,26 @@ namespace pr7s
         return -1;
     }
 
+    int SongSections::nextLink() const noexcept
+    {
+        auto most = 0;
+        for (const auto& b : blocks)
+            most = juce::jmax (most, b.link);
+        return most + 1;
+    }
+
+    std::vector<int> SongSections::linkedWith (int index) const
+    {
+        std::vector<int> out;
+        if (! juce::isPositiveAndBelow (index, (int) blocks.size()))
+            return out;
+        const auto link = blocks[(size_t) index].link;
+        for (int i = 0; i < (int) blocks.size(); ++i)
+            if (i == index || (link > 0 && blocks[(size_t) i].link == link))
+                out.push_back (i);
+        return out;
+    }
+
     std::unique_ptr<juce::XmlElement> SongSections::toXml() const
     {
         auto xml = std::make_unique<juce::XmlElement> ("SongSections");
@@ -38,6 +58,8 @@ namespace pr7s
             e->setAttribute ("id", b.id);
             e->setAttribute ("name", b.name);
             e->setAttribute ("bars", b.bars);
+            if (b.link > 0)
+                e->setAttribute ("link", b.link);
         }
         return xml;
     }
@@ -53,6 +75,7 @@ namespace pr7s
             const auto name = sectionBaseOf (e->getStringAttribute ("name"));
             b.name = name.isNotEmpty() ? name : juce::String ("Verse");
             b.bars = juce::jlimit (leastSectionBars, mostSectionBars, e->getIntAttribute ("bars", 8));
+            b.link = juce::jmax (0, e->getIntAttribute ("link", 0));
             s.blocks.push_back (b);
         }
         // Every id unique and from 1.
@@ -65,6 +88,10 @@ namespace pr7s
         for (auto& b : s.blocks)
             if (b.id == 0)
                 seen.push_back (b.id = s.nextId());
+        // A link with one block left is no link.
+        for (auto& b : s.blocks)
+            if (b.link > 0 && std::count_if (s.blocks.begin(), s.blocks.end(), [&b] (const SongSection& o) { return o.link == b.link; }) < 2)
+                b.link = 0;
         return s;
     }
 

@@ -2,6 +2,32 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.91.0
+
+**Linked copies on the SECTIONS row** (your song engine overhaul, part two: "repeated parts should be a linked copy").
+
+- **Repeats are linked.** On the SECTIONS row:
+  - **Duplicate** now makes a linked copy.
+  - **Adding a section whose name is already in the song** gives a linked copy of the last one, with its length and its music. Add a second Chorus and you get your chorus again.
+  - Linked blocks show a small chain at their top right.
+- **Edit one, they all change.** Whatever you change inside a linked block is copied into its linked copies:
+  - notes in the MIDI editor;
+  - a part added, moved or deleted, on any track;
+  - quantize or humanize;
+  - the composer building into it;
+  - its chords on the chord track.
+
+  It happens as part of the same edit, so one Undo takes back the edit and its copies together.
+- **Linked blocks keep one length and one name.** Changing the length or the section of one changes them all.
+- **Making a block different:**
+  - **Unlink** in a block's menu makes it its own from then on. Its music stays as it is, ready to change into a variation.
+  - **Duplicate as Its Own Copy** makes an unlinked copy.
+- Links are saved with the song.
+
+**Not linked:** tempo and time-signature changes, markers, automation, and frozen tracks. A block's tempo, markers and automation are its own.
+
+**One limit:** if a single edit changes two linked blocks in different ways, the first in the song wins and is copied into the other. Dragging a part from Chorus 1 into Chorus 2 is an example. Undo puts it back.
+
 ## 0.90.0
 
 **The SECTIONS row: the song as blocks** (your song engine overhaul, part one). A row at the top of the arrangement, above the chord track, where the song is laid out as its parts in order: intro, verse, pre-chorus, chorus, bridge, breakdown, solo, outro and the rest (21 names).

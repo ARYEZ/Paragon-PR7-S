@@ -1150,13 +1150,22 @@ namespace pr7s
         void addSongSectionTrack();          // the row shown
         void removeSongSectionTrack();       // hidden, the blocks kept
         // A block after the last, over the bars that follow (nothing moves: it names what's there). Its index.
-        int appendSongSection (const juce::String& name, int bars);
-        // A block at `index` (0 the first); everything from there on moves later by its length.
-        bool insertSongSection (int index, const juce::String& name, int bars);
+        // (0.91.0) A name already in the song: a linked copy of the last block of that name instead (its bars, its
+        // music; what follows the row moves on), unless `linked` is false.
+        int appendSongSection (const juce::String& name, int bars, bool linked = true);
+        // A block at `index` (0 the first); everything from there on moves later by its length. (0.91.0) A name
+        // already in the song: a linked copy of the last block of that name, unless `linked` is false.
+        bool insertSongSection (int index, const juce::String& name, int bars, bool linked = true);
         bool moveSongSection (int from, int to);          // to: its index once moved
-        bool setSongSectionBars (int index, int bars);    // what follows moves by the change
-        bool renameSongSection (int index, const juce::String& name);
-        bool duplicateSongSection (int index);            // a copy after it, its music copied (linked copies: next release)
+        bool setSongSectionBars (int index, int bars);    // what follows moves by the change (a linked block: all of them)
+        bool renameSongSection (int index, const juce::String& name);   // (a linked block: all of them)
+        bool duplicateSongSection (int index, bool linked = true);      // a copy after it, its music copied (0.91.0: linked)
+        // (0.91.0) Linked copies: the blocks with the same `link` keep the same music (their parts on every track but
+        // frozen ones, and their chords). After any change (but a fader's drag steps) the block whose music changed
+        // since the last look is copied into the others, inside the same undo step; a change to two of them at once:
+        // the first in the song wins. Unlinking keeps the block's music as it is, its own from then on.
+        bool unlinkSongSection (int index);
+        bool isSongSectionLinked (int index) const;
         bool removeSongSection (int index);               // and its music; the gap closes
         // A block's place in beats (none: no such block).
         std::optional<SectionPlace> getSongSectionPlace (int index) const;
@@ -1499,6 +1508,19 @@ namespace pr7s
         // its new length) or -1 (new and empty: what was there moves on). One undo step.
         struct SectionMove { int from = -1; SongSection block; };
         bool relayoutSections (const std::vector<SectionMove>&);
+        // (0.91.0) A block's music (relative to its start; part ids 0), by track id; its chords with their lengths.
+        struct SectionContent
+        {
+            std::vector<std::pair<int, std::vector<Part>>> tracks;
+            std::vector<ChordEvent> chords;
+            bool operator== (const SectionContent&) const = default;
+        };
+        SectionContent sectionContent (const SectionPlace&) const;
+        void writeSectionContent (const SectionPlace&, const SectionContent&);
+        void syncLinkedSections();
+        std::map<int, SectionContent> linkSnapshots;   // by block id: each linked block's music as last seen
+        bool linksReset = false;   // the next look only notes what's there (undo, open, new)
+        int linkedCopyOf (const juce::String& name) const;   // the last block of that name (-1: none)
         PadPlayer padPlayer;
         std::unique_ptr<PatternPerformer> performer;   // (0.39.0) the pads' performance
         class LinePreview;

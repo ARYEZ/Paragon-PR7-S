@@ -15,8 +15,8 @@
 // moves the music inside them with them (Studio's song-section actions: one undo step each).
 //
 // Our choices: one row, at the top of the song's own rows (above the chord track); a block 1 to 64 bars; names from the
-// list only (numbered on screen where a name comes back: "Chorus 2"). Linked copies (the owner's: repeats are linked)
-// come in the next release: a block copied now gets its own copy of the music.
+// list only (numbered on screen where a name comes back: "Chorus 2"). Linked copies (0.91.0, the owner's: repeats are
+// linked): `SongSection::link`; Studio keeps their music the same.
 namespace pr7s
 {
     struct SongSection
@@ -24,6 +24,10 @@ namespace pr7s
         int id = 0;                       // per song, from 1 (kept through moves: the composer finds its block again)
         juce::String name { "Verse" };    // one of songSectionNames()
         int bars = 8;
+        // (0.91.0, the owner's: "repeated parts should be a linked copy") Blocks with the same link number (above 0)
+        // are linked copies: an edit to the music in one (its parts on every track, its chords) is copied into the
+        // others. 0: its own.
+        int link = 0;
         bool operator== (const SongSection&) const = default;
     };
 
@@ -37,6 +41,8 @@ namespace pr7s
         int nextId() const noexcept;
         int totalBars() const noexcept;
         int indexOf (int id) const noexcept;   // -1: none
+        int nextLink() const noexcept;         // a link number not used yet
+        std::vector<int> linkedWith (int index) const;   // the blocks linked with it, itself included (alone: just it)
         bool isEmpty() const noexcept { return blocks.empty(); }
         bool operator== (const SongSections&) const = default;
         std::unique_ptr<juce::XmlElement> toXml() const;   // "SongSections"
