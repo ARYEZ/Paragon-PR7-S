@@ -577,6 +577,34 @@ namespace pr7s
                                 add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
                             break;
                         }
+                        // (0.87.0, DRIVING EIGHTHS) the walk into the chord at the next bar line (or this chord's end):
+                        // > a whole step and < a half step over its root, ( and ) under it; open single notes. The
+                        // same chord going on: a muted power chord instead. (After the last chord: the first, as the
+                        // riff goes round.)
+                        case '>': case '<': case '(': case ')':
+                        {
+                            const auto nextAt = juce::jmin (t + beatsPerBar, span.end);
+                            auto next = (size_t) 0;
+                            auto found = false;
+                            for (size_t j = 0; j < spans.size(); ++j)
+                                if (nextAt >= spans[j].start - 1.0e-9 && nextAt < spans[j].end - 1.0e-9)
+                                {
+                                    next = j;
+                                    found = true;
+                                    break;
+                                }
+                            if (! found)
+                                next = 0;
+                            if (next == si || spans[next].chord == span.chord)
+                            {
+                                for (const auto p : { root, fifth })
+                                    add (idea.notes, when, length * 0.9, p, mutedVelocity);
+                                break;
+                            }
+                            const auto by = lower == '>' ? 2 : lower == '<' ? 1 : lower == '(' ? -2 : -1;
+                            add (idea.notes, when, length, roots[next] + by, openVelocity);
+                            break;
+                        }
                         default: break;
                     }
                 }

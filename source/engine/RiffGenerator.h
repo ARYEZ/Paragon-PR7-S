@@ -29,10 +29,18 @@
 //     riffs are (the same voicings, velocity layers and stab effects), then RIFF SETTINGS shape them.
 //
 // The FLAVOUR leans the choice towards a sound without fixing the riff: every seed gives another riff
-// of that flavour. ANY leans towards a different flavour each time.
+// of that flavour. ANY leans towards a different flavour each time (not DRIVING EIGHTHS: chosen on purpose).
+//
+// DRIVING EIGHTHS (0.87.0, the owner: "the rhythm guitar's version of the driving 8th notes riffs ... a type
+// of chorus specifically"; their example Killswitch Engage's This Fire Burns, its chorus: the shape learned
+// from the tab, nothing of it copied): power chords (root, fifth, octave) on every eighth note, left to
+// ring, changing on the bar line; a palm-muted stretch (muted power chords, still every eighth) for
+// contrast; and a walk into the next chord: the last beats of a bar before a chord change as single notes
+// a whole step and a half step over (or under) the next chord's root. A verse gets the muted stretch
+// first, a breakdown the same in quarter notes.
 namespace pr7s
 {
-    enum class RiffFlavour { any, chugs, gallop, tritone, creep, stabs, octaves, stopStart, openChords };
+    enum class RiffFlavour { any, chugs, gallop, tritone, creep, stabs, octaves, stopStart, openChords, drivingEighths };
     const std::vector<RiffFlavour>& riffFlavours();
     juce::String riffFlavourName (RiffFlavour);          // "ANY", "CHUGS", "GALLOP", "TRITONE CHUG", ...
     juce::String riffFlavourDescription (RiffFlavour);

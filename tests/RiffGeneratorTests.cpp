@@ -6,6 +6,9 @@
 
 #include "engine/Composer.h"
 #include "engine/RiffGenerator.h"
+#include "engine/DrumIdeas.h"
+
+#include <algorithm>
 
 using namespace pr7s;
 
@@ -32,7 +35,7 @@ namespace
         return n;
     }
 
-    const std::string riffCharacters = "-=xXcCdDfFeEgGkKtTzZ*#obBhprvwuqyjnaAilms123456789^";
+    const std::string riffCharacters = "-=xXcCdDfFeEgGkKtTzZ*#obBhprvwuqyjnaAilms123456789^<>()";
 }
 
 TEST_CASE ("The riff generator: a thousand seeds, a thousand riffs (0.85.0)", "[riffgen]")
@@ -237,6 +240,157 @@ TEST_CASE ("The riff generator: BUSY thins or thickens the same riff, never anot
                 if (usual[b][(size_t) i] != '-' && usual[b][(size_t) i] != '=')
                     CHECK (usual[b][(size_t) i] == busy[b][(size_t) i]);
     }
+}
+
+TEST_CASE ("0.87.0: DRIVING EIGHTHS: a hit on every eighth, open in a chorus, muted in a verse, a walk only before a chord change", "[riffgen][driving]")
+{
+    // Not drawn by ANY (chosen on purpose): ANY's riffs as they were.
+    for (juce::uint32 seed = 1; seed <= 400; ++seed)
+    {
+        RiffRecipe r;
+        r.seed = seed;
+        for (const auto& b : generateRiffBars (r))
+            CHECK (b.find_first_of ("<>()") == std::string::npos);
+    }
+    int chorusOpen = 0, chorusMuted = 0, verseOpen = 0, verseMuted = 0, walks = 0;
+    for (const auto style : guitarStyles())
+        for (juce::uint32 seed = 1; seed <= 60; ++seed)
+            for (const auto section : { DrumSection::chorus, DrumSection::verse })
+            {
+                RiffRecipe r;
+                r.style = style;
+                r.flavour = RiffFlavour::drivingEighths;
+                r.section = section;
+                r.bars = 4;
+                r.seed = seed;
+                const auto bars = generateRiffBars (r);
+                REQUIRE (bars.size() == 4);
+                for (const auto& b : bars)
+                {
+                    REQUIRE (b.size() == 16);
+                    for (size_t i = 0; i < 16; ++i)
+                    {
+                        INFO (b);
+                        if (i % 2 == 0)
+                            CHECK (b[i] != '-');   // every eighth a hit
+                        else
+                            CHECK (b[i] == '=');   // nothing between them
+                    }
+                }
+                const auto open = count (bars, "#o"), muted = count (bars, "*x");
+                (section == DrumSection::chorus ? chorusOpen : verseOpen) += open;
+                (section == DrumSection::chorus ? chorusMuted : verseMuted) += muted;
+                walks += count (bars, "<>()") > 0 ? 1 : 0;
+            }
+    CHECK (chorusOpen > 2 * chorusMuted);
+    CHECK (verseMuted > 2 * verseOpen);
+    CHECK (walks > 6 * 60 * 2 * 9 / 10);   // (nearly every riff has a walk)
+
+    // The breakdown: the same in quarter notes.
+    RiffRecipe b;
+    b.flavour = RiffFlavour::drivingEighths;
+    b.section = DrumSection::breakdown;
+    for (const auto& bar : generateRiffBars (b))
+        for (size_t i = 0; i < bar.size(); ++i)
+            CHECK ((i % 4 == 0) == (bar[i] != '='));
+}
+
+TEST_CASE ("0.87.0: DRIVING EIGHTHS played: power chords on each chord's root, the walk a step over or under the next root", "[riffgen][driving]")
+{
+    Key key;
+    key.minor = true;   // (C minor's chords: their roots told apart)
+    const Chord chords[] = { Chord { 2, Chord::Type::minor }, Chord { 10, Chord::Type::major }, Chord { 0, Chord::Type::major }, Chord { 2, Chord::Type::minor } };
+    std::vector<ChordSpan> spans;
+    for (int i = 0; i < 4; ++i)
+        spans.push_back ({ i * 8.0, i * 8.0 + 8.0, chords[i], key });   // two bars each, as the owner's example
+    const auto tuning = GuitarTuning::all().front();
+    GuitarVelocities vel;
+    int walkNotes = 0, sameChordWalks = 0;
+    for (juce::uint32 seed = 1; seed <= 80; ++seed)
+        for (const auto bars : { 1, 2, 4 })
+        {
+            RiffRecipe r;
+            r.style = GuitarStyle::metalcore;
+            r.flavour = RiffFlavour::drivingEighths;
+            r.section = DrumSection::chorus;
+            r.bars = bars;
+            r.seed = seed;
+            const auto text = generateRiffBars (r);
+            const auto idea = generateRiff (r, spans, 4.0, tuning, vel);
+            REQUIRE_FALSE (idea.notes.empty());
+            for (int bar = 0; bar < 8; ++bar)
+            {
+                const auto& b = text[(size_t) bar % text.size()];
+                const auto chordNow = spans[(size_t) bar / 2].chord;
+                // (the chord changes after every second bar; after the last, the riff goes round to the first: the same D minor)
+                const auto& nextChord = spans[(size_t) ((bar / 2 + 1) % 4)].chord;
+                const auto changes = bar % 2 == 1 && ! (nextChord == chordNow);
+                const auto nextRoot = nextChord.root;
+                for (int i = 0; i < 16; i += 2)
+                {
+                    const auto ch = b[(size_t) i];
+                    const auto at = bar * 4.0 + i * 0.25;
+                    std::vector<int> pcs;
+                    for (const auto& n : idea.notes)
+                        if (! n.keyswitch && std::abs (n.beat - at) < 1.0e-6)
+                            pcs.push_back (n.pitch % 12);
+                    INFO ("bar " << bar << " step " << i << " " << b);
+                    REQUIRE_FALSE (pcs.empty());
+                    if (ch == '>' || ch == '<' || ch == '(' || ch == ')')
+                    {
+                        if (changes)
+                        {
+                            const auto by = ch == '>' ? 2 : ch == '<' ? 1 : ch == '(' ? 10 : 11;
+                            REQUIRE (pcs.size() == 1);
+                            CHECK (pcs[0] == (nextRoot + by) % 12);
+                            ++walkNotes;
+                        }
+                        else
+                        {
+                            // The same chord goes on: no walk, a muted power chord.
+                            CHECK (std::find (pcs.begin(), pcs.end(), chordNow.root) != pcs.end());
+                            ++sameChordWalks;
+                        }
+                    }
+                    else
+                        CHECK (std::find (pcs.begin(), pcs.end(), chordNow.root) != pcs.end());
+                }
+            }
+        }
+    CHECK (walkNotes > 100);
+    CHECK (sameChordWalks > 0);
+}
+
+TEST_CASE ("0.87.0: the composer's guitar plays DRIVING EIGHTHS, and SYNC with DOUBLE puts the band on every eighth", "[riffgen][driving][composer]")
+{
+    ComposerState s;
+    for (auto& lane : s.lanes)
+        lane.on = true;
+    for (int i = 0; i < (int) riffFlavours().size(); ++i)
+        if (riffFlavours()[(size_t) i] == RiffFlavour::drivingEighths)
+            s.riffFlavour = i;
+    CHECK (riffFlavourName (riffFlavours()[(size_t) s.riffFlavour]) == "DRIVING EIGHTHS");
+    CHECK (riffFlavourNamed ("driving eighths") == RiffFlavour::drivingEighths);
+    s.lane (ComposerLayer::drums).style = 2;   // (the chorus)
+    ComposerContext c;
+    c.humanize = 0.0f;
+    c.drums.fillEvery = 0;
+    const auto spans = composerSpans (s, 0.0, c.beatsPerBar);
+    REQUIRE_FALSE (spans.empty());
+    const auto plain = composeLayers (s, spans, c);
+    CHECK (plain[(size_t) ComposerLayer::guitar].style.containsIgnoreCase ("driving eighths"));
+    s.syncLane = (int) ComposerLayer::guitar;
+    s.lane (ComposerLayer::bass).doubleSync = true;
+    s.lane (ComposerLayer::drums).doubleSync = true;
+    const auto layers = composeLayers (s, spans, c);
+    const auto rhythm = syncRhythmOf (ComposerLayer::guitar, layers[(size_t) ComposerLayer::guitar], c.beatsPerBar, spans.front().start);
+    REQUIRE (rhythm.all.size() >= spans.size() * 4);
+    const auto kicks = kickHits (layers[(size_t) ComposerLayer::drums]);
+    auto kicked = 0;
+    for (const auto h : rhythm.all)
+        kicked += std::any_of (kicks.begin(), kicks.end(), [h] (double k) { return std::abs (k - h) < 0.02; }) ? 1 : 0;
+    CHECK (kicked == (int) rhythm.all.size());
+    CHECK (layers[(size_t) ComposerLayer::bass].notes.size() == rhythm.all.size());
 }
 
 // Prints riffs for reading (hidden): PARAGON_RIFF_STYLE (a style name), PARAGON_RIFF_FLAVOUR, PARAGON_RIFF_COUNT.

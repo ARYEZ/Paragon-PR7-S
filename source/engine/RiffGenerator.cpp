@@ -10,7 +10,8 @@ namespace pr7s
     const std::vector<RiffFlavour>& riffFlavours()
     {
         static const std::vector<RiffFlavour> all { RiffFlavour::any, RiffFlavour::chugs, RiffFlavour::gallop, RiffFlavour::tritone, RiffFlavour::creep,
-                                                    RiffFlavour::stabs, RiffFlavour::octaves, RiffFlavour::stopStart, RiffFlavour::openChords };
+                                                    RiffFlavour::stabs, RiffFlavour::octaves, RiffFlavour::stopStart, RiffFlavour::openChords,
+                                                    RiffFlavour::drivingEighths };
         return all;
     }
 
@@ -27,6 +28,7 @@ namespace pr7s
             case RiffFlavour::octaves: return "OCTAVES";
             case RiffFlavour::stopStart: return "STOP-START";
             case RiffFlavour::openChords: return "OPEN CHORDS";
+            case RiffFlavour::drivingEighths: return "DRIVING EIGHTHS";
         }
         return "ANY";
     }
@@ -44,6 +46,7 @@ namespace pr7s
             case RiffFlavour::octaves: return "Ringing octave shapes between the chugs";
             case RiffFlavour::stopStart: return "Bursts of hits and dead silence between them";
             case RiffFlavour::openChords: return "Power chords and chords left ringing";
+            case RiffFlavour::drivingEighths: return "The big chorus: power chords ringing on every eighth, a palm-muted stretch, a walk into the next chord";
         }
         return {};
     }
@@ -115,6 +118,7 @@ namespace pr7s
                 case RiffFlavour::octaves: boost (Cell::octave, 6.0f); break;
                 case RiffFlavour::stopStart: boost (Cell::stop, 5.0f); boost (Cell::rest, 1.6f); boost (Cell::chugRun, 1.6f); boost (Cell::gallop, 0.5f); break;
                 case RiffFlavour::openChords: boost (Cell::powerChord, 4.0f); boost (Cell::highChord, 3.0f); boost (Cell::chug, 0.6f); boost (Cell::chugRun, 0.4f); break;
+                case RiffFlavour::drivingEighths: break;   // (made by DrivingEighths below, not from cells)
             }
         }
 
@@ -644,6 +648,104 @@ namespace pr7s
         };
     }
 
+    namespace
+    {
+        // DRIVING EIGHTHS (0.87.0): see RiffGenerator.h. Each bar is O (open power chords on every eighth),
+        // M (muted power chords on every eighth), or one of them ending in a WALK: '>' a whole step over the
+        // next chord's root, '<' a half step over it, '(' and ')' a whole and a half step under it (played by
+        // riffFromBars from the chord at the next bar line; the same chord going on: muted power chords).
+        struct DrivingEighths
+        {
+            juce::Random& random;
+            const RiffRecipe& recipe;
+            int steps;
+
+            template <typename T>
+            T pick (std::initializer_list<std::pair<T, float>> options)
+            {
+                auto total = 0.0f;
+                for (const auto& o : options)
+                    total += o.second;
+                auto r = random.nextFloat() * total;
+                for (const auto& o : options)
+                {
+                    if (r < o.second)
+                        return o.first;
+                    r -= o.second;
+                }
+                return options.begin()->first;
+            }
+
+            bool openLed() const
+            {
+                return recipe.section == DrumSection::chorus || recipe.section == DrumSection::solo || recipe.section == DrumSection::ending
+                    || recipe.section == DrumSection::bridge;
+            }
+
+            int every() const { return recipe.section == DrumSection::breakdown ? 4 : 2; }   // sixteenths a hit
+
+            void fill (std::string& bar, int from, int to, char ch) const
+            {
+                for (auto i = from; i < to; ++i)
+                    bar[(size_t) i] = (i - from) % every() == 0 ? ch : '=';
+            }
+
+            std::vector<std::string> make (int bars)
+            {
+                const auto openChar = pick<char> ({ { '#', 6 }, { 'o', 1 } });          // power chords, or octaves
+                const auto mutedChar = pick<char> ({ { '*', 4 }, { 'x', 1 } });         // muted power chords, or the root chugged
+                // The walk: hits from the bar's end, a whole step then a half step into the next root.
+                const auto walk = pick<std::string> ({ { ">><<", 3 }, { "><", 2 }, { ">>><<", 1.5f }, { "(())", 1 }, { "()", 1 } });
+                // Where the walk starts after the chords (some bars keep a muted chord just before it).
+                const auto mutedBefore = random.nextFloat() < 0.5f;
+
+                const auto bar = [&] (bool open, bool walks)
+                {
+                    std::string b ((size_t) steps, '-');
+                    fill (b, 0, steps, open ? openChar : mutedChar);
+                    if (walks)
+                    {
+                        const auto hits = (int) walk.size();
+                        auto from = steps - hits * every();
+                        if (from < every())
+                            from = every();
+                        for (int k = 0; k < hits && from + k * every() < steps; ++k)
+                        {
+                            const auto at = from + k * every();
+                            b[(size_t) at] = walk[(size_t) k];
+                            for (int j = 1; j < every() && at + j < steps; ++j)
+                                b[(size_t) at + (size_t) j] = '=';
+                        }
+                        if (mutedBefore && open && from - every() > 0)
+                            b[(size_t) (from - every())] = mutedChar;
+                    }
+                    return b;
+                };
+
+                // The bars: O open, M muted, W ends in the walk. (Chorus: open first, the muted stretch after,
+                // as the owner's example; a verse the other way round.)
+                std::string shape;
+                if (bars <= 1)
+                    shape = pick<std::string> ({ { "O", 2 }, { "o", 2 } });
+                else if (bars == 2)
+                    shape = pick<std::string> ({ { "Oo", 3 }, { "Om", 2 }, { "OO", 1 } });
+                else
+                    shape = pick<std::string> ({ { "OOMm", 4 }, { "OOOo", 2 }, { "OMOm", 1 }, { "OOOm", 1.5f } });
+                std::vector<std::string> out;
+                for (const auto c : shape)
+                {
+                    // Upper case: no walk; lower case: the walk at its end. O open, M muted (a verse swaps them).
+                    const auto upper = (char) juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) c);
+                    auto open = upper == 'O';
+                    if (! openLed())
+                        open = ! open;
+                    out.push_back (bar (open, c != upper));
+                }
+                return out;
+            }
+        };
+    }
+
     //==========================================================================
     std::vector<std::string> generateRiffBars (const RiffRecipe& recipe, int stepsPerBar)
     {
@@ -657,8 +759,9 @@ namespace pr7s
         if (flavour == RiffFlavour::any)
         {
             // ANY: lean towards a different flavour each seed (or none), so ANY covers everything.
+            // (DRIVING EIGHTHS left out: a whole chorus shape, chosen on purpose; the draw is as before 0.87.0.)
             const auto& all = riffFlavours();
-            const auto pick = random.nextInt ((int) all.size());
+            const auto pick = random.nextInt ((int) all.size() - 1);
             flavour = all[(size_t) pick];
             if (flavour == RiffFlavour::stabs && recipe.style != GuitarStyle::groove && random.nextFloat() < 0.6f)
                 flavour = RiffFlavour::any;
@@ -688,7 +791,12 @@ namespace pr7s
         };
 
         std::vector<std::string> out;
-        if (flavour == RiffFlavour::tritone)
+        if (flavour == RiffFlavour::drivingEighths)
+        {
+            DrivingEighths driving { random, leaned, steps };
+            out = driving.make (bars);
+        }
+        else if (flavour == RiffFlavour::tritone)
         {
             TritoneChug chug { random, leaned, steps };
             out = chug.make (bars);
@@ -771,7 +879,8 @@ namespace pr7s
                 else if (c == 'h') ++made["high chords"];
                 else if (c == 'p') ++made["pinch squeals"];
                 else if (c == 'c' || c == 'd') ++made["half steps and minor thirds"];
-                else if (c == '*') ++made["muted dyads"];
+                else if (c == '*') ++made["muted power chords"];
+                else if (c == '>' || c == '<' || c == '(' || c == ')') ++made["walks into the next chord"];
             }
         std::vector<std::pair<int, juce::String>> ranked;
         for (const auto& [name, count] : made)
@@ -786,7 +895,8 @@ namespace pr7s
         description << " (" << drumSectionName (recipe.section).toLowerCase() << ", " << (int) bars.size() << (bars.size() == 1 ? " bar)" : " bars)");
 
         const auto name = "Generated: " + (recipe.flavour == RiffFlavour::any ? juce::String ("any flavour") : riffFlavourName (recipe.flavour).toLowerCase());
-        auto pedal = recipe.style != GuitarStyle::rock && recipe.style != GuitarStyle::shred;
+        // (DRIVING EIGHTHS follows the chords' roots, never the key's pedal.)
+        auto pedal = recipe.flavour != RiffFlavour::drivingEighths && recipe.style != GuitarStyle::rock && recipe.style != GuitarStyle::shred;
         for (const auto& b : bars)
             pedal = pedal || b.find_first_of ("zZ") != std::string::npos;   // (TRITONE CHUG: the open low string in any style)
         return riffFromBars ([&bars] (int barIndex) { return bars[(size_t) (((barIndex % (int) bars.size()) + (int) bars.size()) % (int) bars.size())]; },
