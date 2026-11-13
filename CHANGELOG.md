@@ -2,6 +2,32 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.102.0
+
+**Pre-choruses get types of their own** (the second step of the plan from all your songs, read for their shapes only). Until now a pre-chorus borrowed the verse's types. Now its TYPE menu starts with six new ones (the verse's types are still under them, so a block you've already typed keeps its type). Each one writes every lane it has options for, and the options are in each lane's menu as usual.
+
+- **BUILD & STOP** (Faster, Left Behind, Call Me When You're Sober, The End of the Dream). The verse's drive pushed toward the chorus, then the band stops for the last beat so the chorus lands harder.
+  - **Guitar:** MUTED EIGHTHS, THEN THE STOP. ROOTS, DYADS, CHORDS (Left Behind's build: single muted notes, then two-note shapes, then power chords in sixteenths, with half a bar of silence before the chorus). STRIKE, CHUG, RING (Call Me: a chord struck, three chugs, then struck again and left ringing).
+  - **Bass:** ROOT EIGHTHS, DOUBLES THE GUITAR, PULSES (The End of the Dream), LOCKED WITH THE KICK.
+  - **Keys:** DOMINANT PEDAL (Faster: the key's fifth held in octaves over every chord, the pull toward the chorus), HELD PADS, SILENT.
+  - **Lead:** SILENT or RISING LINE (a held note a bar, climbing).
+  - **Drums:** BEAT INTO A FILL (Faster: a snare and tom fill, then the stop), RIDE AND A ROLL (Call Me: a snare roll from the and of 3 straight into the chorus, through the stop), BUILDING SNARE.
+- **GUITARS OUT, BASS CLIMBS** (Crawling, Going Under, Waffle). The guitars drop out and the bass climbs in long notes, each next chord pushed in on the and of 3.
+  - **Keys:** OCTAVE PAD, PIANO SIXTEENTHS (Going Under's busy piano), HELD STRINGS.
+  - **Lead:** HIGH MOTIF (Crawling: each bar's root, then the same high figure).
+  - **Guitar:** GUITARS OUT, or a HIGH THREE-NOTE CELL (Waffle's dissonant cell against the beat).
+  - **Drums:** BROKEN BEAT, GHOST GROOVE, HALF TIME.
+- **CYCLE IN QUARTERS** (Circle With Me's pre-chorus). The verse's still clean shape carries on in eighths, with a second three-note cycle in quarters over it on the lead (three against four, a climb every fourth bar, the next phrase a step lower).
+  - **Drums:** a ghost-note groove (or the verse's grooves).
+  - **The ending:** the last two bars are the song's stop. The band hits once, then there's only one held note before the chorus.
+- **CHUGS UNDER THE SHAPE** (The Void's pre-chorus). Low muted chugs with the bass doubling them and the kick on every chug. Over them the lead plays the verse's still shape an octave up (STILL CLUSTER or STILL SHAPE).
+- **STABS & GAPS** (Sweet Sacrifice). The whole band on short sixteenth stabs together (the chord, then a step under it), then silence for the voice, and a two-note pickup into the next bar. The second bar fills in more of it. The toms (or the kick) and the bass play exactly the guitar's hits.
+- **RISING BASS** (At the End of August). Tremolo-picked or held power chords while the bass climbs a scale step every bar, in sixteenths or eighths, whatever the chords do. The kick builds from eighths to sixteenths.
+
+**Turn the lead lane on** for the types that use it (CYCLE IN QUARTERS and CHUGS UNDER THE SHAPE, mostly). Under STABS & GAPS and RISING BASS the lead plays its own styles.
+
+As always I can't hear these here, so tell me what needs work. Next in the plan: transitions (stops, rolls, pickups and short bars between sections).
+
 ## 0.101.0
 
 **Circle With Me's clean verse** (the first step of the new plan from all your tabs and MIDI, read for their shapes only). You were right: our CLEAN VERSE named Circle With Me, but every clean part we had moved its shape with each chord, and that's not what the song does.

@@ -36,7 +36,10 @@ namespace pr7s
         // (0.97.0) CLEAN (the owner's Masterpiece, Circle With Me, Clown, Crawling, In The End, The End of the Dream):
         // the heavy guitar steps back; the guitar's five approaches are clean parts of their own (not riff kinds), and
         // the bass, drums and keys each have options, chosen to suit the guitar's approach when left automatic.
-        enum class Band { none, staccato, split, clean };
+        // (0.102.0) PRECHORUS (the owner's Faster, Left Behind, Call Me When You're Sober, The End of the Dream,
+        // Crawling, Going Under, Waffle, Circle With Me, The Void, Sweet Sacrifice, At the End of August): a pre-chorus
+        // type writes every lane it lists options for (sectionApproaches by the type's name).
+        enum class Band { none, staccato, split, clean, preChorus };
         Band band = Band::none;
         // (0.100.0) AUTOMATIC draws from the first this many of them (0: all): a kind added later is a chosen option
         // only, so a section built on AUTOMATIC keeps its kind when it's rebuilt.
@@ -63,6 +66,7 @@ namespace pr7s
     // / on the roots / a muted pedal in threes; the drums open hats / half time / locked to the pushes. Our names.
     juce::StringArray sectionApproaches (RiffFlavour, ComposerLayer);
     juce::StringArray sectionApproaches (const ComposerState&, ComposerLayer);   // by the state's flavour
+    juce::StringArray preChorusApproaches (const juce::String& type, ComposerLayer);   // (0.102.0)
     // The lane's approach as shown ("AUTOMATIC" when none is chosen; empty when the flavour has none).
     juce::String approachName (const ComposerState&, ComposerLayer);
 

@@ -38,6 +38,19 @@ namespace pr7s
         const SectionType creep { "CREEP", "A line creeping a half step at a time", RiffFlavour::creep };
         const SectionType open { "OPEN CHORDS", "Open chords let ring", RiffFlavour::openChords };
         const SectionType stabs { "STABS", "Short chord stabs with space between", RiffFlavour::stabs };
+        // (0.102.0) A pre-chorus's own types first (the owner's songs, shapes only; our names), then the verse's
+        // (a pre-chorus plays as a verse otherwise, so a block given one of those keeps it).
+        if (sectionBaseOf (sectionName) == "Pre-Chorus")
+        {
+            const auto pre = SectionType::Band::preChorus;
+            return { { "BUILD & STOP", "The verse's drive pushed toward the chorus, then everything stops for a beat before it lands", RiffFlavour::openChords, {}, pre },
+                     { "GUITARS OUT, BASS CLIMBS", "The guitars drop out; the bass climbs in long pushed notes, keys and a high motif carry it", RiffFlavour::openChords, {}, pre },
+                     { "CYCLE IN QUARTERS", "A still clean shape in eighths with a three-note cycle in quarters over it, ending on a two-bar stop", RiffFlavour::openChords, {}, pre },
+                     { "CHUGS UNDER THE SHAPE", "Low muted chugs with the bass and kick on them, the verse's still shape played high over them", RiffFlavour::openChords, {}, pre },
+                     { "STABS & GAPS", "The whole band on short stabs together, then silence for the voice, a pickup into the next bar", RiffFlavour::openChords, {}, pre },
+                     { "RISING BASS", "Chords held or tremolo picked while the bass climbs a step a bar underneath", RiffFlavour::openChords, {}, pre },
+                     staccato, split, clean, muted, droning, sparse };
+        }
         switch (composerSectionFor (sectionName))
         {
             case 0: return { droning, open };
@@ -64,7 +77,7 @@ namespace pr7s
     {
         if (type.isEmpty())
             return std::nullopt;
-        for (const auto* name : { "Intro", "Verse", "Chorus", "Bridge", "Breakdown", "Ending", "Solo" })
+        for (const auto* name : { "Intro", "Verse", "Chorus", "Bridge", "Breakdown", "Ending", "Solo", "Pre-Chorus" })
             if (auto t = sectionTypeNamed (name, type))
                 return t;
         return std::nullopt;
@@ -142,6 +155,74 @@ namespace pr7s
         return {};
     }
 
+    // (0.102.0) The pre-chorus types' options, lane by lane (the bass's last always LOCKED WITH THE KICK; none: the
+    // lane plays its own styles).
+    juce::StringArray preChorusApproaches (const juce::String& type, ComposerLayer layer)
+    {
+        using L = ComposerLayer;
+        if (type == "BUILD & STOP")
+            switch (layer)
+            {
+                case L::guitar: return { "MUTED EIGHTHS, THEN THE STOP", "ROOTS, DYADS, CHORDS", "STRIKE, CHUG, RING" };
+                case L::bass: return { "ROOT EIGHTHS", "DOUBLES THE GUITAR", "PULSES", "LOCKED WITH THE KICK" };
+                case L::chords: return { "DOMINANT PEDAL", "HELD PADS", "SILENT" };
+                case L::lead: return { "SILENT", "RISING LINE" };
+                case L::drums: return { "BEAT INTO A FILL", "RIDE AND A ROLL", "BUILDING SNARE" };
+                case L::melody: break;
+            }
+        if (type == "GUITARS OUT, BASS CLIMBS")
+            switch (layer)
+            {
+                case L::guitar: return { "GUITARS OUT", "HIGH THREE-NOTE CELL" };
+                case L::bass: return { "PUSHED ROOTS", "OUT", "LOCKED WITH THE KICK" };
+                case L::chords: return { "OCTAVE PAD", "PIANO SIXTEENTHS", "HELD STRINGS" };
+                case L::lead: return { "HIGH MOTIF", "SILENT" };
+                case L::drums: return { "BROKEN BEAT", "GHOST GROOVE", "HALF TIME" };
+                case L::melody: break;
+            }
+        if (type == "CYCLE IN QUARTERS")
+            switch (layer)
+            {
+                case L::guitar: return { "STILL SHAPE IN THREES", "STILL CLUSTER", "STILL SHAPE, SIXTEENTHS", "GUITARS OUT" };
+                case L::bass: return { "ROOT EIGHTHS", "WHOLE NOTES", "LOCKED WITH THE KICK" };
+                case L::chords: return { "SILENT", "HELD PADS" };
+                case L::lead: return { "QUARTER CYCLE", "SILENT" };
+                case L::drums: return { "GHOST GROOVE", "HALF-TIME HATS", "TOM GROOVE" };
+                case L::melody: break;
+            }
+        if (type == "CHUGS UNDER THE SHAPE")
+            switch (layer)
+            {
+                case L::guitar: return { "ROOT CHUGS", "CHUGS ON EVERY EIGHTH" };
+                case L::bass: return { "DOUBLES THE GUITAR", "ROOT EIGHTHS", "LOCKED WITH THE KICK" };
+                case L::chords: return { "SILENT", "HELD PADS" };
+                case L::lead: return { "STILL CLUSTER, AN OCTAVE UP", "STILL SHAPE, AN OCTAVE UP", "SILENT" };
+                case L::drums: return { "KICK WITH THE CHUGS", "HALF TIME" };
+                case L::melody: break;
+            }
+        if (type == "STABS & GAPS")
+            switch (layer)
+            {
+                case L::guitar: return { "STABS & GAPS", "STABS EVERY BAR" };
+                case L::bass: return { "DOUBLES THE GUITAR", "LOCKED WITH THE KICK" };
+                case L::chords: return { "SILENT", "HELD PADS" };
+                case L::drums: return { "TOMS WITH THE HITS", "KICK WITH THE HITS" };
+                case L::lead:
+                case L::melody: break;
+            }
+        if (type == "RISING BASS")
+            switch (layer)
+            {
+                case L::guitar: return { "TREMOLO CHORDS", "HELD CHORDS" };
+                case L::bass: return { "CLIMBS IN SIXTEENTHS", "CLIMBS IN EIGHTHS", "LOCKED WITH THE KICK" };
+                case L::chords: return { "SILENT", "HELD PADS" };
+                case L::drums: return { "BUILDING KICK", "BEAT INTO A FILL" };
+                case L::lead:
+                case L::melody: break;
+            }
+        return {};
+    }
+
     SectionType::Band sectionBand (const ComposerState& s)
     {
         const auto t = sectionTypeCalled (s.sectionType);
@@ -191,6 +272,8 @@ namespace pr7s
                 case ComposerLayer::lead: return { "SWELL MELODY", "SWELL, THEN WARBLE" };
                 case ComposerLayer::melody: return {};
             }
+        if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::preChorus)
+            return preChorusApproaches (t->name, layer);
         if (layer == ComposerLayer::guitar)
             if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && ! t->guitarFlavours.empty())
             {
