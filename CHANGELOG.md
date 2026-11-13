@@ -2,6 +2,24 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.97.2
+
+**The bass can always lock to the kick** (you asked). Under every section type that writes the bass (DRONING, STACCATO CHUG, HEAVY CHUG, SPLIT CHUG, CLEAN VERSE), the bass's options now end with **LOCKED WITH THE KICK**: the chord's root on every kick that type's drums play, so the bass and kick hit together whichever drum option you choose. With no drums in the part (CLEAN VERSE's NO DRUMS), it plays the root on every beat. STANDARD already had this as the bass's last style.
+
+**More keys and drums for the droning chorus**, seven options each.
+- **Keys:** HIGH PULSE, CLIMBING MOTIF, HELD THIRD, plus new:
+  - **HELD PADS:** each chord the guitar strikes, held softly to the next strike.
+  - **ARPEGGIO:** the chord's notes up and down in eighths, high and soft.
+  - **OCTAVE BELLS:** the root and its octave up high on 1 and 3.
+  - **SILENT.**
+- **Drums:** OPEN HATS, HALF TIME, LOCKED TO THE PUSHES, plus new:
+  - **RIDE GROOVE:** ride eighths with the bell on 1; kick on 1, 3 and the and of 3; snare on 2 and 4.
+  - **TOM PULSE:** floor tom in eighths, kick on 1, snare on 3, a tom fill into each four bars.
+  - **DOUBLE KICK:** sixteenths on the kick, snare on 2 and 4, china on every beat.
+  - **CYMBALS ONLY:** a crash every other bar, the ride soft on the beats, the kick on each bar's 1.
+
+As before, AUTOMATIC picks among the original options. The new ones are in each lane's menu. I can't hear them here; tell me which ones need work.
+
 ## 0.97.1
 
 **The DRONING chorus's bass had one bassline listed seven times** (your report). Under a section type, the type writes some lanes itself (DRONING writes the bass, keys, lead and drums), and those lanes ignored the style you picked. So the STYLES list showed the same bassline over and over.

@@ -715,9 +715,14 @@ namespace pr7s
             return out;
         }
 
+        LineIdea droningKeysMore (int approach, const std::vector<ChordSpan>& spans, double bpb, const std::vector<double>& strikes);
+        LineIdea droningDrumsMore (int approach, const std::vector<ChordSpan>& spans, double bpb);
+
         LineIdea droningKeys (const ComposerLane& lane, const std::vector<ChordSpan>& spans, double bpb, const std::vector<double>& strikes)
         {
-            const auto approach = lane.approach >= 0 ? lane.approach % 3 : lane.style % 3;   // (0.94.0: chosen, else by style)
+            const auto approach = lane.approach >= 0 ? lane.approach % 7 : lane.style % 3;   // (0.94.0: chosen, else by style)
+            if (approach >= 3)
+                return droningKeysMore (approach, spans, bpb, strikes);   // (0.97.2)
             if (approach == 2 && ! strikes.empty())
                 return guideTones (spans, bpb, strikes);
             const auto key = spans.front().key;
@@ -947,7 +952,9 @@ namespace pr7s
 
         LineIdea droningDrums (const ComposerLane& lane, const std::vector<ChordSpan>& spans, double bpb, const std::vector<double>& strikes)
         {
-            const auto approach = lane.approach >= 0 ? lane.approach % 3 : lane.variation % 3;   // (0.94.0: chosen, else by the take)
+            const auto approach = lane.approach >= 0 ? lane.approach % 7 : lane.variation % 3;   // (0.94.0: chosen, else by the take)
+            if (approach >= 3)
+                return droningDrumsMore (approach, spans, bpb);   // (0.97.2)
             if (approach == 2 && ! strikes.empty())
                 return drumsOnPushes (spans, bpb, strikes);
             const auto halfTime = approach == 1;
@@ -1523,6 +1530,163 @@ namespace pr7s
             return out;
         }
 
+        // (0.97.2) The chord sounding at an idea beat under a droning guitar: the last strike at or before it decides
+        // (a push a beat early takes the next chord); no strikes: the chord track's.
+        const Chord& struckChordAt (const std::vector<ChordSpan>& spans, const std::vector<double>& strikes, double t)
+        {
+            const ChordSpan* chosen = spanAtIdeaBeat (spans, t);
+            for (const auto at : strikes)
+                if (at <= t + 1.0e-6)
+                    chosen = &chordStruckAt (spans, at);
+            return chosen->chord;
+        }
+
+        // (0.97.2, the owner: more keys under the droning chorus) HELD PADS (each struck chord held softly to the next
+        // strike), ARPEGGIO (the struck chord's notes up and down in eighths, high and soft), OCTAVE BELLS (the
+        // chord's root with its octave up high on 1 and 3), SILENT.
+        LineIdea droningKeysMore (int approach, const std::vector<ChordSpan>& spans, double bpb, const std::vector<double>& strikes)
+        {
+            const auto length = sectionLength (spans);
+            LineIdea out { LineIdea::Part::chords, {}, {}, {} };
+            switch (approach)
+            {
+                case 3:
+                {
+                    out.style = "Droning: held pads";
+                    out.description = "Each chord the guitar strikes held softly under it until the next strike";
+                    std::vector<double> at = strikes;
+                    if (at.empty())
+                        at = cleanSegments (spans, bpb), at.pop_back();
+                    at.push_back (length);
+                    std::vector<int> previous;
+                    for (size_t i = 0; i + 1 < at.size(); ++i)
+                    {
+                        if (at[i + 1] - at[i] < 1.0e-6)
+                            continue;
+                        const auto voicings = voicingsFor (struckChordAt (spans, strikes, at[i] + 1.0e-6), 55);
+                        if (voicings.empty())
+                            continue;
+                        const auto& shape = voicings[(size_t) juce::jlimit (0, (int) voicings.size() - 1, closestVoicing (voicings, previous, previous))];
+                        previous = shape;
+                        for (const auto p : shape)
+                            addNote (out, at[i], (at[i + 1] - at[i]) * 0.96, p, 0.42f, length);
+                    }
+                    break;
+                }
+                case 4:
+                {
+                    out.style = "Droning: arpeggio";
+                    out.description = "The struck chord's notes up and down in eighths, high and soft over the drone";
+                    static const std::array<int, 8> order { 0, 1, 2, 3, 2, 1, 2, 3 };
+                    const auto e = bpb / 8.0;
+                    std::vector<int> previous;
+                    for (int i = 0; i * e < length - 1.0e-6; ++i)
+                    {
+                        const auto voicings = voicingsFor (struckChordAt (spans, strikes, i * e), 64);
+                        if (voicings.empty())
+                            continue;
+                        auto shape = voicings[(size_t) juce::jlimit (0, (int) voicings.size() - 1, closestVoicing (voicings, previous, previous))];
+                        previous = shape;
+                        shape.push_back (shape.front() + 12);   // (the root an octave up: four to climb through)
+                        addNote (out, i * e, e * 0.9, shape[(size_t) juce::jmin ((int) shape.size() - 1, order[(size_t) (i % 8)])],
+                                 i % 2 == 0 ? 0.56f : 0.46f, length);
+                    }
+                    break;
+                }
+                case 5:
+                {
+                    out.style = "Droning: octave bells";
+                    out.description = "The struck chord's root with its octave, up high on beats 1 and 3, left to ring";
+                    const auto half = bpb / 2.0;
+                    for (int i = 0; i * half < length - 1.0e-6; ++i)
+                    {
+                        const auto root = pitchOfClassIn (struckChordAt (spans, strikes, i * half).root, 72, 83);
+                        addNote (out, i * half, half * 0.95, root, i % 2 == 0 ? 0.6f : 0.5f, length);
+                        addNote (out, i * half, half * 0.95, root + 12, i % 2 == 0 ? 0.5f : 0.42f, length);
+                    }
+                    break;
+                }
+                default:
+                    out.style = "Droning: keys out";
+                    out.description = "No keys: the ringing guitar on its own";
+                    break;
+            }
+            sortNotes (out);
+            return out;
+        }
+
+        // (0.97.2, the owner: more drums under the droning chorus) RIDE GROOVE (the ride in eighths with its bell on 1,
+        // kick on 1, 3 and the and of 3, snare on 2 and 4), TOM PULSE (the floor tom in eighths, kick on 1, snare on 3,
+        // a tom fill into each four bars), DOUBLE KICK (sixteenths on the kick, snare on 2 and 4, china on the beats),
+        // CYMBALS ONLY (a crash on every other bar, the ride soft on the beats, the kick on each bar's 1).
+        LineIdea droningDrumsMore (int approach, const std::vector<ChordSpan>& spans, double bpb)
+        {
+            const auto length = sectionLength (spans);
+            const auto bars = (int) std::ceil (length / bpb - 1.0e-6);
+            const auto beat = bpb / 4.0;
+            LineIdea out { LineIdea::Part::drums, {}, {}, {} };
+            auto hit = [&out, length] (double at, int note, float velocity)
+            {
+                if (at >= -1.0e-9 && at < length - 1.0e-6)
+                    out.notes.push_back ({ at, 0.1, note, velocity });
+            };
+            for (int bar = 0; bar < bars; ++bar)
+            {
+                const auto o = bar * bpb;
+                const auto last = bar % 4 == 3;
+                switch (approach)
+                {
+                    case 3:
+                        if (bar % 4 == 0)
+                            hit (o, 49, 0.88f);
+                        for (int e = 0; e < 8; ++e)
+                            hit (o + e * beat / 2.0, e == 0 ? 53 : 51, e % 2 == 0 ? 0.76f : 0.58f);
+                        hit (o, 36, 0.95f);
+                        hit (o + 2 * beat, 36, 0.88f);
+                        hit (o + 2.5 * beat, 36, 0.8f);
+                        hit (o + beat, 38, 0.92f);
+                        hit (o + 3 * beat, 38, 0.92f);
+                        break;
+                    case 4:
+                        if (bar % 4 == 0)
+                            hit (o, 49, 0.85f);
+                        for (int e = 0; e < (last ? 6 : 8); ++e)
+                            hit (o + e * beat / 2.0, 41, e % 2 == 0 ? 0.86f : 0.62f);
+                        hit (o, 36, 0.95f);
+                        hit (o + 2 * beat, 38, 0.92f);
+                        if (last)
+                            for (int s = 0; s < 4; ++s)
+                                hit (o + 3 * beat + s * beat / 4.0, s < 2 ? 48 : 45, 0.74f + 0.05f * (float) s);
+                        break;
+                    case 5:
+                        if (bar % 4 == 0)
+                            hit (o, 49, 0.9f);
+                        for (int q = 0; q < 4; ++q)
+                            hit (o + q * beat, 52, q == 0 ? 0.82f : 0.7f);
+                        for (int s16 = 0; s16 < 16; ++s16)
+                            hit (o + s16 * beat / 4.0, 36, s16 % 4 == 0 ? 0.92f : 0.76f);
+                        hit (o + beat, 38, 0.95f);
+                        hit (o + 3 * beat, 38, 0.95f);
+                        break;
+                    default:
+                        if (bar % 2 == 0)
+                            hit (o, 49, 0.82f);
+                        for (int q = 0; q < 4; ++q)
+                            hit (o + q * beat, 51, q == 0 ? 0.6f : 0.45f);
+                        hit (o, 36, 0.86f);
+                        break;
+                }
+            }
+            out.style = approach == 3 ? "Droning: ride groove" : approach == 4 ? "Droning: tom pulse"
+                      : approach == 5 ? "Droning: double kick" : "Droning: cymbals only";
+            out.description = approach == 3 ? "The ride in eighths with its bell on 1, kick on 1, 3 and the and of 3, snare on 2 and 4"
+                            : approach == 4 ? "The floor tom in eighths, kick on 1, snare on 3, a tom fill into each four bars"
+                            : approach == 5 ? "Sixteenths on the kick under the drone, snare on 2 and 4, the china on every beat"
+                                            : "A crash every other bar, the ride soft on the beats, the kick on each bar's 1";
+            sortNotes (out);
+            return out;
+        }
+
         // The droning chorus's part for a lane (none: the lane plays as usual: the melody, and the guitar itself).
         std::optional<LineIdea> droningLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
@@ -1572,6 +1736,28 @@ namespace pr7s
         LineIdea syncedLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
             const auto leaderLayer = s.syncLayer();
+            // (0.97.2, the owner: "the bass always needs the locked in with the kick option in every riff") a type that
+            // writes the bass has LOCKED WITH THE KICK last: the chords' roots on every kick of that type's drums.
+            if (! leaderLayer.has_value() && l == ComposerLayer::bass && ! spans.empty() && sectionTypeWritesLane (l, s, c))
+                if (const auto names = sectionApproaches (s, l); ! names.isEmpty() && s.lane (l).approach == names.size() - 1)
+                {
+                    const auto drums = syncedLayer (ComposerLayer::drums, s, spans, c);
+                    auto hits = kickHits (drums);
+                    const auto noDrums = hits.empty();
+                    if (noDrums)   // (no drums in the part: on every beat, so the bass still has a pulse)
+                        for (auto t = 0.0; t < sectionLength (spans) - 1.0e-6; t += c.beatsPerBar / 4.0)
+                            hits.push_back (t);
+                    const auto& profile = c.bassProfile;
+                    const auto lowest = profile.has_value() ? profile->rangeLow() : c.bassTuning.lowest();
+                    const auto highest = profile.has_value() ? profile->rangeHigh() : bassTop (c.bassTuning);
+                    auto idea = bassOnHits (spans, hits, "Locked with the kick",
+                                            noDrums ? juce::String ("The chords' roots on every beat (the drums are out here)")
+                                                    : "The chords' roots on every kick of the drums' " + drums.style.toLowerCase());
+                    if (s.lane (l).lowString)
+                        keepInRange (idea, lowest, lowest + 12);
+                    keepInRange (idea, lowest, highest);
+                    return idea;
+                }
             // (0.97.0, CLEAN VERSE's band) with SYNC off, every lane but the melody and the lead plays its clean part.
             if (! leaderLayer.has_value())
                 if (auto clean = cleanLayer (l, s, spans, c))

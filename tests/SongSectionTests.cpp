@@ -821,7 +821,7 @@ TEST_CASE ("0.94.0: STACCATO CHUG: one verse type, the rhythm guitar's approache
                                            RiffFlavour::tritone, RiffFlavour::chugs, RiffFlavour::gallop, RiffFlavour::stopStart });
     // A Pre-Chorus has it too; a chorus doesn't.
     CHECK (isSectionTypeOf ("Pre-Chorus", "STACCATO CHUG"));
-    CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 2);   // (0.95.0: the locked band's)
+    CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 3);   // (0.97.2: LOCKED WITH THE KICK)
     CHECK (sectionApproaches (s, ComposerLayer::chords).isEmpty());  // (the keys: their usual styles)
 }
 
@@ -1073,7 +1073,7 @@ TEST_CASE ("0.97.0: CLEAN VERSE: a verse type with five clean guitar parts and t
     CHECK (guitar[2] == "SPARSE CLEAN NOTES");
     CHECK (guitar[3] == "GUITARS OUT");
     CHECK (guitar[4] == "HELD CHORD & PULSE");
-    CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 4);
+    CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 5);   // (0.97.2: LOCKED WITH THE KICK)
     CHECK (sectionApproaches (s, ComposerLayer::drums).size() == 3);
     CHECK (sectionApproaches (s, ComposerLayer::chords).size() == 4);
     CHECK (sectionApproaches (s, ComposerLayer::lead).isEmpty());
@@ -1222,14 +1222,15 @@ TEST_CASE ("0.97.1: a lane the section type writes offers the type's options, ea
     CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::guitar, droning, c));
     CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::melody, droning, c));
     const auto bass = composerChoices (ComposerLayer::bass, droning, spans, c);
-    REQUIRE (bass.size() == 6);
-    CHECK (distinct (bass) == 6);
-    for (const auto l : { ComposerLayer::chords, ComposerLayer::lead, ComposerLayer::drums })
+    REQUIRE (bass.size() == 7);   // (0.97.2: LOCKED WITH THE KICK last)
+    CHECK (distinct (bass) == 7);
+    for (const auto l : { ComposerLayer::chords, ComposerLayer::drums })   // (0.97.2: seven each)
     {
         const auto ideas = composerChoices (l, droning, spans, c);
-        CHECK (ideas.size() == 3);
-        CHECK (distinct (ideas) == 3);
+        CHECK (ideas.size() == 7);
+        CHECK (distinct (ideas) == 7);   // (the keys' SILENT is the one with no notes)
     }
+    CHECK (distinct (composerChoices (ComposerLayer::lead, droning, spans, c)) == 3);
     // WALKING INTO THE CHANGES: the root held, then two eighths stepping into the next chord's root.
     {
         auto s = droning;
@@ -1255,7 +1256,7 @@ TEST_CASE ("0.97.1: a lane the section type writes offers the type's options, ea
     CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::guitar, split, c));   // (its guitar has its riff kinds and styles)
     const auto clean = cleanState (-1);
     CHECK (distinct (composerChoices (ComposerLayer::guitar, clean, spans, c)) == 5);
-    CHECK (distinct (composerChoices (ComposerLayer::bass, clean, spans, c)) == 4);
+    CHECK (distinct (composerChoices (ComposerLayer::bass, clean, spans, c)) == 5);
     // SYNC on: the lanes follow the sync lane, the styles back.
     auto synced = droning;
     synced.syncLane = (int) ComposerLayer::guitar;
@@ -1263,4 +1264,44 @@ TEST_CASE ("0.97.1: a lane the section type writes offers the type's options, ea
     // STANDARD: the styles, as before.
     ComposerState plain;
     CHECK (composerChoices (ComposerLayer::bass, plain, spans, c).size() == (size_t) composerStyleCount (ComposerLayer::bass));
+}
+
+
+TEST_CASE ("0.97.2: LOCKED WITH THE KICK on the bass under every type that writes it", "[sections][types]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();
+    const auto starts = [] (const LineIdea& idea, bool kicksOnly)
+    {
+        std::set<int> at;
+        for (const auto& n : idea.notes)
+            if (! n.keyswitch && (! kicksOnly || n.pitch == 35 || n.pitch == 36))
+                at.insert (juce::roundToInt (n.beat * 8.0));
+        return at;
+    };
+    for (const auto& [name, type] : { std::pair<const char*, const char*> { "Chorus", "DRONING" }, { "Verse", "STACCATO CHUG" },
+                                      { "Verse", "SPLIT CHUG" }, { "Verse", "CLEAN VERSE" }, { "Breakdown", "HEAVY CHUG" } })
+    {
+        INFO (type);
+        ComposerState s;
+        applySectionType (s, name, type);
+        const auto names = sectionApproaches (s, ComposerLayer::bass);
+        REQUIRE_FALSE (names.isEmpty());
+        CHECK (names[names.size() - 1] == "LOCKED WITH THE KICK");
+        s.lane (ComposerLayer::bass).approach = names.size() - 1;
+        if (juce::String (type) == "CLEAN VERSE")
+            s.lane (ComposerLayer::drums).approach = 0;   // (the light groove: kicks to lock to)
+        const auto all = composeLayers (s, spans, c);
+        const auto& bass = all[(size_t) ComposerLayer::bass];
+        CHECK (bass.style == "Locked with the kick");
+        const auto kicks = starts (all[(size_t) ComposerLayer::drums], true);
+        REQUIRE_FALSE (kicks.empty());
+        CHECK (starts (bass, false) == kicks);
+    }
+    // No drums in the part (CLEAN VERSE's NO DRUMS): the roots on every beat.
+    ComposerState quiet;
+    applySectionType (quiet, "Verse", "CLEAN VERSE");
+    quiet.lane (ComposerLayer::drums).approach = 2;
+    quiet.lane (ComposerLayer::bass).approach = 4;
+    CHECK (composeLayers (quiet, spans, c)[(size_t) ComposerLayer::bass].notes.size() == 8 * 4);
 }

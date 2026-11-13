@@ -87,10 +87,10 @@ namespace pr7s
         {
             case ComposerLayer::guitar: return { "RUNG WHOLE", "PUSHED A BEAT EARLY", "MOVING TOP NOTE", "STRUCK TWICE", "SLIDING DOWN" };
             case ComposerLayer::bass: return { "HELD WITH THE GUITAR", "HELD, PULSED AT THE LOOP'S END", "EIGHTHS UNDER THE DRONE",
-                                                "OCTAVE PULSE", "WALKING INTO THE CHANGES", "WHOLE NOTES" };
-            case ComposerLayer::chords: return { "HIGH PULSE", "CLIMBING MOTIF", "HELD THIRD" };
+                                                "OCTAVE PULSE", "WALKING INTO THE CHANGES", "WHOLE NOTES", "LOCKED WITH THE KICK" };
+            case ComposerLayer::chords: return { "HIGH PULSE", "CLIMBING MOTIF", "HELD THIRD", "HELD PADS", "ARPEGGIO", "OCTAVE BELLS", "SILENT" };
             case ComposerLayer::lead: return { "OCTAVES ON THE THIRDS", "OCTAVES ON THE ROOTS", "MUTED PEDAL IN THREES" };
-            case ComposerLayer::drums: return { "OPEN HATS", "HALF TIME", "LOCKED TO THE PUSHES" };
+            case ComposerLayer::drums: return { "OPEN HATS", "HALF TIME", "LOCKED TO THE PUSHES", "RIDE GROOVE", "TOM PULSE", "DOUBLE KICK", "CYMBALS ONLY" };
             case ComposerLayer::melody: break;
         }
         return {};
@@ -116,14 +116,14 @@ namespace pr7s
         if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::staccato)
         {
             if (layer == ComposerLayer::bass)
-                return { "DOUBLES THE GUITAR", "ROOTS ON THE ACCENTS" };
+                return { "DOUBLES THE GUITAR", "ROOTS ON THE ACCENTS", "LOCKED WITH THE KICK" };
             if (layer == ComposerLayer::drums)
                 return { "KICK ON EVERY CHUG", "KICK ON THE ACCENTS" };
         }
         if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::split)
         {
             if (layer == ComposerLayer::bass)
-                return { "DOUBLES THE HITS", "HOLDS THROUGH THE GAPS" };
+                return { "DOUBLES THE HITS", "HOLDS THROUGH THE GAPS", "LOCKED WITH THE KICK" };
             if (layer == ComposerLayer::drums)
                 return { "KICK WITH THE HITS", "PLAIN BACKBEAT" };
         }
@@ -131,7 +131,7 @@ namespace pr7s
             switch (layer)
             {
                 case ComposerLayer::guitar: return { "RINGING ARPEGGIO", "PICKED CHORD", "SPARSE CLEAN NOTES", "GUITARS OUT", "HELD CHORD & PULSE" };
-                case ComposerLayer::bass: return { "SYNCOPATED ROOTS", "EIGHTHS, CHANGING LATE", "WHOLE NOTES", "OCTAVE EIGHTHS" };
+                case ComposerLayer::bass: return { "SYNCOPATED ROOTS", "EIGHTHS, CHANGING LATE", "WHOLE NOTES", "OCTAVE EIGHTHS", "LOCKED WITH THE KICK" };
                 case ComposerLayer::drums: return { "LIGHT GROOVE", "HALF TIME, GHOST SNARES", "NO DRUMS" };
                 case ComposerLayer::chords: return { "HELD PADS", "SIXTEENTH PULSE", "PIANO LINE", "SILENT" };
                 case ComposerLayer::melody:
