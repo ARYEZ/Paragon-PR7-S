@@ -2538,3 +2538,181 @@ TEST_CASE ("0.104.0: a built block's transition writes its last bar again", "[se
             }
     CHECK (inShortBar == 1);
 }
+
+TEST_CASE ("0.105.0: a bridge's own types, every lane's options a different part", "[sections][types][bridge]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const std::vector<juce::String> names { "HALF-TIME MELODIC", "HEAVY BUILD", "LATE-CHANGE CLIMB", "CLEAN BRIDGE",
+                                            "SLIDING CHORDS", "GUITARS OUT, THEN BACK", "SLIDE OVER A HELD ROOT" };
+    const auto bridge = sectionTypesFor ("Bridge");
+    REQUIRE (bridge.size() == names.size() + 3);
+    for (size_t i = 0; i < names.size(); ++i)
+        CHECK (bridge[i].name == names[i]);
+    CHECK (bridge[names.size()].name == "CREEP");   // (the old three kept after them)
+    CHECK (sectionTypeNamed ("Middle 8", "CLEAN BRIDGE").has_value());
+    CHECK_FALSE (sectionTypeNamed ("Verse", "HEAVY BUILD").has_value());
+    CHECK (sectionTypeCalled ("SLIDING CHORDS")->band == SectionType::Band::bridge);
+
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << ";";
+        return k;
+    };
+    for (const auto& name : names)
+    {
+        ComposerState s;
+        applySectionType (s, "Bridge", name);
+        CHECK (sectionBand (s) == SectionType::Band::bridge);
+        for (const auto l : composerLayers())
+        {
+            const auto options = sectionApproaches (s, l);
+            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && ! options.isEmpty()));
+            if (options.isEmpty())
+                continue;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) options.size());
+            std::set<juce::String> seen;
+            for (const auto& idea : choices)
+                seen.insert (key (idea));
+            INFO (name << " " << composerLayerName (l));
+            CHECK (seen.size() == choices.size());
+        }
+        // The composed band stays inside the section.
+        const auto all = composeLayers (s, spans, c);
+        for (const auto& idea : all)
+            for (const auto& n : idea.notes)
+                CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+    }
+}
+
+TEST_CASE ("0.105.0: the bridge types' shapes", "[sections][types][bridge]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (Am F C G a bar each, 8 bars: 32 beats)
+    const auto typed = [] (const juce::String& name, int guitar = -1, int drums = -1)
+    {
+        ComposerState s;
+        applySectionType (s, "Bridge", name);
+        s.lane (ComposerLayer::guitar).approach = guitar;
+        s.lane (ComposerLayer::drums).approach = drums;
+        return s;
+    };
+    const auto pc = [] (int p) { return ((p % 12) + 12) % 12; };
+    // LATE-CHANGE CLIMB: the chord changes a sixteenth late (Am to F at beat 4: A still on 4, F from 4.25).
+    {
+        const auto all = composeLayers (typed ("LATE-CHANGE CLIMB", 0), spans, c);
+        const auto& g = all[(size_t) ComposerLayer::guitar];
+        std::map<int, int> lowest;   // (sixteenth -> lowest pitch)
+        for (const auto& n : g.notes)
+        {
+            const auto k = juce::roundToInt (n.beat * 4.0);
+            lowest[k] = lowest.count (k) > 0 ? juce::jmin (lowest[k], n.pitch) : n.pitch;
+        }
+        CHECK (lowest.size() == 128);
+        CHECK (pc (lowest[15]) == 9);
+        CHECK (pc (lowest[16]) == 9);
+        CHECK (pc (lowest[17]) == 5);
+        auto kicks = 0;
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            kicks += n.pitch == 36 ? 1 : 0;
+        CHECK (kicks == 128);
+    }
+    // GUITARS OUT, THEN BACK: no guitar before halfway, then eighths; the last bar an octave up; the drums crash there.
+    {
+        const auto all = composeLayers (typed ("GUITARS OUT, THEN BACK", 0), spans, c);
+        const auto& g = all[(size_t) ComposerLayer::guitar];
+        REQUIRE_FALSE (g.notes.empty());
+        for (const auto& n : g.notes)
+            CHECK (n.beat >= 16.0 - 1.0e-6);
+        int lowBefore = 128, lowLast = 128;
+        for (const auto& n : g.notes)
+        {
+            if (n.beat >= 28.0 - 1.0e-6)
+                lowLast = juce::jmin (lowLast, n.pitch);
+            else if (n.beat >= 24.0 - 1.0e-6)
+                lowBefore = juce::jmin (lowBefore, n.pitch);
+        }
+        CHECK (lowLast > lowBefore);
+        auto crashAtBack = false;
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            crashAtBack = crashAtBack || (n.pitch == 49 && std::abs (n.beat - 16.0) < 1.0e-6);
+        CHECK (crashAtBack);
+        const auto quarter = composeLayers (typed ("GUITARS OUT, THEN BACK", 1), spans, c);
+        for (const auto& n : quarter[(size_t) ComposerLayer::guitar].notes)
+            CHECK (n.beat >= 24.0 - 1.0e-6);
+    }
+    // CLEAN BRIDGE's pair: the tonic below, the top a scale step lower every two bars, struck in 3+3+2.
+    {
+        const auto all = composeLayers (typed ("CLEAN BRIDGE", 0), spans, c);
+        std::map<int, int> top;   // bar -> highest
+        std::set<int> places;
+        for (const auto& n : all[(size_t) ComposerLayer::guitar].notes)
+        {
+            const auto bar = (int) std::floor (n.beat / 4.0 + 1.0e-6);
+            top[bar] = juce::jmax (top.count (bar) > 0 ? top[bar] : 0, n.pitch);
+            places.insert (juce::roundToInt (std::fmod (n.beat, 4.0) * 2.0));
+        }
+        CHECK (places == std::set<int> { 0, 3, 6 });
+        CHECK (top[0] == top[1]);
+        CHECK (top[2] < top[1]);
+        CHECK (top[4] < top[2]);
+        // The bass and the snare march come in halfway.
+        for (const auto& n : all[(size_t) ComposerLayer::bass].notes)
+            CHECK (n.beat >= 16.0 - 1.0e-6);
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            CHECK (n.beat >= 16.0 - 1.0e-6);
+    }
+    // HEAVY BUILD's falling eighths: octave, 5th, b3, b3, 2, 2 over the bar's root, then a harmonic.
+    {
+        const auto all = composeLayers (typed ("HEAVY BUILD", 3), spans, c);
+        std::vector<const LineNote*> bar0;
+        for (const auto& n : all[(size_t) ComposerLayer::guitar].notes)
+            if (n.beat < 4.0 - 1.0e-6)
+                bar0.push_back (&n);
+        REQUIRE (bar0.size() == 7);
+        const int steps[] { 12, 7, 3, 3, 2, 2 };
+        const auto root = bar0[0]->pitch - 12;
+        for (int i = 0; i < 6; ++i)
+            CHECK (bar0[(size_t) i]->pitch - root == steps[i]);
+        CHECK (bar0[6]->technique == LineNote::Technique::harmonic);
+        // The lead bends whole steps on 2 and 4.
+        const auto& lead = all[(size_t) ComposerLayer::lead].notes;
+        REQUIRE (lead.size() == 16);
+        for (const auto& n : lead)
+        {
+            CHECK (n.effect == LineNote::Effect::bend);
+            CHECK ((std::abs (std::fmod (n.beat, 4.0) - 1.0) < 1.0e-6 || std::abs (std::fmod (n.beat, 4.0) - 3.0) < 1.0e-6));
+        }
+    }
+    // HALF-TIME MELODIC's drums: the last two bars a triplet fill.
+    {
+        const auto all = composeLayers (typed ("HALF-TIME MELODIC", 0, 0), spans, c);
+        auto triplets = 0;
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            if (n.beat >= 24.0 - 1.0e-6 && n.pitch != 36)
+            {
+                CHECK (std::abs (n.beat * 3.0 - std::round (n.beat * 3.0)) < 1.0e-6);
+                ++triplets;
+            }
+        CHECK (triplets == 24);
+    }
+    // SLIDING CHORDS: the fourth bar's chord slides down a half step halfway.
+    {
+        const auto all = composeLayers (typed ("SLIDING CHORDS", 0), spans, c);
+        int first = 128, second = 128;
+        for (const auto& n : all[(size_t) ComposerLayer::guitar].notes)
+            if (n.beat >= 12.0 - 1.0e-6 && n.beat < 16.0 - 1.0e-6)
+            {
+                if (n.beat < 14.0)
+                    first = juce::jmin (first, n.pitch);
+                else
+                    second = juce::jmin (second, n.pitch);
+            }
+        CHECK (second == first - 1);
+    }
+}

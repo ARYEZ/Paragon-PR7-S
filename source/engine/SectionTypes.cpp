@@ -56,7 +56,20 @@ namespace pr7s
             case 0: return { droning, open };
             case 1: return { staccato, split, clean, muted, droning, sparse };
             case 2: return { driving, syncopated, droning };
-            case 3: return { creep, open, droning };
+            case 3:
+            {
+                // (0.105.0) A bridge's own types first (the owner's songs, shapes only; our names), then the old three.
+                const auto b = SectionType::Band::bridge;
+                const auto r = RiffFlavour::openChords;
+                return { { "HALF-TIME MELODIC", "Half time: a ringing chord with a melody on it, stabs in 3+3+2, a ghost-note groove into a triplet fill", r, {}, b },
+                         { "HEAVY BUILD", "Scratches, dotted climbs, siren chugs or falling eighths into a harmonic, the kick with the guitar", r, {}, b },
+                         { "LATE-CHANGE CLIMB", "Power chords climbing in sixteenths, each change a sixteenth late, the kick on every one", r, {}, b },
+                         { "CLEAN BRIDGE", "Clean and bare: a pair of notes with the top stepping down, held octaves or a pedal, the band coming in late", r, {}, b },
+                         { "SLIDING CHORDS", "A four-bar figure: chord and eighths, a lick, a line in quarters, a chord sliding down a half step", r, {}, b },
+                         { "GUITARS OUT, THEN BACK", "The guitars drop out and come back for the end, lifting into the next chorus", r, {}, b },
+                         { "SLIDE OVER A HELD ROOT", "A palm-muted root rung with a sliding triplet figure on top, in turn with syncopated stabs", r, {}, b },
+                         creep, open, droning };
+            }
             case 4: return { heavy, staccato };
             case 5: return { droning, stabs };
             case 6: return { driving, droning };
@@ -152,6 +165,79 @@ namespace pr7s
             case ComposerLayer::drums: return { "OPEN HATS", "HALF TIME", "LOCKED TO THE PUSHES", "RIDE GROOVE", "TOM PULSE", "DOUBLE KICK", "CYMBALS ONLY" };
             case ComposerLayer::melody: break;
         }
+        return {};
+    }
+
+    // (0.105.0) The bridge types' options, lane by lane (the bass's last always LOCKED WITH THE KICK; an empty lead
+    // list: the lead plays its own styles: in these bridges it carries the hook).
+    juce::StringArray bridgeApproaches (const juce::String& type, ComposerLayer layer)
+    {
+        using L = ComposerLayer;
+        const auto t = type.trim().toUpperCase();
+        if (t == "HALF-TIME MELODIC")
+            switch (layer)
+            {
+                case L::guitar: return { "RINGING CHORD & MELODY", "STABS IN 3+3+2", "RINGING COLOUR CHORDS" };
+                case L::bass: return { "ROOTS HELD", "ROOT EIGHTHS", "LOCKED WITH THE KICK" };
+                case L::chords: return { "ROOT OCTAVES", "HELD PADS", "SILENT" };
+                case L::drums: return { "GHOST GROOVE, TRIPLET FILL", "HALF TIME" };
+                case L::lead: case L::melody: break;
+            }
+        if (t == "HEAVY BUILD")
+            switch (layer)
+            {
+                case L::guitar: return { "SCRATCH BUILD", "DOTTED CLIMB", "SIREN CHUG", "FALLING EIGHTHS & HARMONIC" };
+                case L::bass: return { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" };
+                case L::chords: return { "SILENT", "HELD PADS" };
+                case L::lead: return { "SIREN BENDS", "SILENT" };
+                case L::drums: return { "KICK WITH THE GUITAR", "HALF TIME", "BUILDING SNARE" };
+                case L::melody: break;
+            }
+        if (t == "LATE-CHANGE CLIMB")
+            switch (layer)
+            {
+                case L::guitar: return { "SIXTEENTHS, CHANGING LATE", "EIGHTHS, CHANGING LATE" };
+                case L::bass: return { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" };
+                case L::chords: return { "SUS4 PAD", "SILENT" };
+                case L::drums: return { "KICK ON EVERY SIXTEENTH", "HALF TIME" };
+                case L::lead: case L::melody: break;
+            }
+        if (t == "CLEAN BRIDGE")
+            switch (layer)
+            {
+                case L::guitar: return { "FIXED PAIR, TOP STEPPING DOWN", "HELD OCTAVES", "PEDAL IN 3+3+2 & MELODY" };
+                case L::bass: return { "OUT, THEN IN HALFWAY", "SILENT", "ROOTS HELD", "LOCKED WITH THE KICK" };
+                case L::chords: return { "FIFTHS PULSE", "HELD PADS", "SILENT" };
+                case L::drums: return { "SNARE MARCH HALFWAY", "NO DRUMS", "RIDE ONLY" };
+                case L::lead: case L::melody: break;
+            }
+        if (t == "SLIDING CHORDS")
+            switch (layer)
+            {
+                case L::guitar: return { "FOUR-BAR FIGURE", "HELD AND SLIDING" };
+                case L::bass: return { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" };
+                case L::chords: return { "HELD PADS", "SILENT" };
+                case L::drums: return { "DRIVING BEAT", "HALF TIME" };
+                case L::lead: case L::melody: break;
+            }
+        if (t == "GUITARS OUT, THEN BACK")
+            switch (layer)
+            {
+                case L::guitar: return { "BACK HALFWAY", "BACK FOR THE LAST QUARTER" };
+                case L::bass: return { "ROOTS HELD", "ROOT EIGHTHS", "LOCKED WITH THE KICK" };
+                case L::chords: return { "HELD PADS", "ARPEGGIO", "SILENT" };
+                case L::drums: return { "HALF TIME, THEN DRIVING", "TOMS, THEN DRIVING" };
+                case L::lead: case L::melody: break;
+            }
+        if (t == "SLIDE OVER A HELD ROOT")
+            switch (layer)
+            {
+                case L::guitar: return { "HELD ROOT & STABS IN TURN", "HELD ROOT ONLY" };
+                case L::bass: return { "ROOTS HELD", "DOUBLES THE GUITAR", "LOCKED WITH THE KICK" };
+                case L::chords: return { "SILENT", "HELD PADS" };
+                case L::drums: return { "KICK WITH THE STABS", "HALF TIME" };
+                case L::lead: case L::melody: break;
+            }
         return {};
     }
 
@@ -274,6 +360,8 @@ namespace pr7s
             }
         if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::preChorus)
             return preChorusApproaches (t->name, layer);
+        if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::bridge)
+            return bridgeApproaches (t->name, layer);
         if (layer == ComposerLayer::guitar)
             if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && ! t->guitarFlavours.empty())
             {

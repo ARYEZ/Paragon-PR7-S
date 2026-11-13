@@ -2,6 +2,27 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.105.0
+
+**Bridges get types of their own** (the next step of the plan from your songs, read for their shapes only). A Bridge block's TYPE menu now starts with seven new types; the old three (CREEP, OPEN CHORDS, DRONING) are still under them. Each type writes every lane it has options for, and the options are in each lane's menu as usual.
+
+- **HALF-TIME MELODIC** (Another Life). Guitar: a chord rung with a short melody on it, power-chord stabs in 3+3+2, or colour chords (with the ninth) let ring. Bass held or in eighths. Keys: root octaves (silent under the stabs), pads or nothing. Drums: a half-time groove with ghost snares, the last two bars a triplet fill round the toms. The lead plays its own styles here, because in your song it carries the hook.
+- **HEAVY BUILD** (Ten Ton Hammer, Clown, Faint). Guitar: SCRATCH BUILD (dead-string scratches, then muted chords on every eighth from halfway), DOTTED CLIMB (power chords on dotted quarters: root, flat second, third, then the flat seventh and the root), SIREN CHUG (a syncopated chug that goes half time halfway), FALLING EIGHTHS & HARMONIC (octave, fifth, minor third, second, then a harmonic). Lead: SIREN BENDS (whole-step bends on 2 and 4) or silent. Drums: the kick on every guitar hit, half time, or a snare building from quarters to sixteenths.
+- **LATE-CHANGE CLIMB** (Sweet Sacrifice). Power chords on every sixteenth (or eighth), each new chord arriving one step late, the kick on every sixteenth, a sus4 pad on top.
+- **CLEAN BRIDGE** (At the End of August, All Night Lights, Waterhaul). Guitar: two notes struck in 3+3+2 with the top stepping down a scale step every two bars, held octaves, or a pedal in 3+3+2 with a melody between. The bass and a soft snare march come in halfway (or no drums, or just the ride). Keys: a fifths pulse, pads or nothing.
+- **SLIDING CHORDS** (This Calling). A four-bar guitar figure: a chord, four eighths, a chord; eighths then a lick; a line in quarters; a chord sliding down a half step. Or only the held chord and its slide. A driving or half-time beat.
+- **GUITARS OUT, THEN BACK** (Left Behind). No guitar until halfway (or the last quarter), then power chords on the eighths, the last bar an octave up to lift into the chorus. Half time (or a tom pulse) until the guitars come back, then a driving beat with a crash.
+- **SLIDE OVER A HELD ROOT** (Another Life). A palm-muted root rung on 1 with a sliding triplet figure on top, taking turns with bars of syncopated stabs (or every bar held). The kick on the stabs, or half time.
+
+Worth knowing:
+- An **Interlude, Instrumental, Middle 8 or Break** block counts as a bridge, so it gets these types too until those get their own.
+- The bass's last option is always **LOCKED WITH THE KICK**, as with the other types.
+- I can't listen to these here, so tell me which ones don't sound like your songs.
+
+**Your question about the drums:** the composer doesn't pick grooves from your MIDI library on its own. Its drums come from (1) the section type's own drum part when the type writes the drums (as these do), else (2) the beat generator's rules, or the drummer you taught it on LEARN A DRUMMER if you chose one with DRUMMER. Your library's grooves are on IDEAS, DRUMS tab, FROM MY LIBRARY (matched to the style and tempo); a card's USE IT has "Into the Composer's DRUMS lane", which puts that groove in the lane and locks it.
+
+Next, as planned: breakdown types, then interlude/post-chorus (Faster's HOOK RIFF), then intro/outro.
+
 ## 0.104.0
 
 **Transitions: how each block hands over to the next** (the third step of the plan from your songs, read for their shapes only). Every block on the SECTIONS lane now has an **INTO THE NEXT** choice, in its editor (right-click the block) and in its MORE... menu. It changes the block's last bar (two bars for MUTED LINK) so the next part lands the way your songs do it:
