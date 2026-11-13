@@ -16,8 +16,9 @@ namespace pr7s
         const SectionType staccato { "STACCATO CHUG", "Short palm-muted chugs and stops, the bass and the kick locked to them; the rhythm guitar picks the kind",
                                      RiffFlavour::pedalStabs,
                                      { RiffFlavour::pedalStabs, RiffFlavour::chugThrees,
-                                       RiffFlavour::tritone, RiffFlavour::chugs, RiffFlavour::gallop, RiffFlavour::stopStart },
-                                     SectionType::Band::staccato };
+                                       RiffFlavour::tritone, RiffFlavour::chugs, RiffFlavour::gallop, RiffFlavour::stopStart,
+                                       RiffFlavour::gallopSqueal },   // (0.100.0: This Fire Burns' verse)
+                                     SectionType::Band::staccato, 6 };
         // (0.96.0, the owner's) The bar split into a played part and a part left open; Waffle's BURST & SILENCE moved
         // here from STACCATO CHUG (the owner: it fits better).
         const SectionType split { "SPLIT CHUG", "The bar split: chugs or stabs in one part, the rest left open for the vocal", RiffFlavour::secondHalfStabs,
@@ -26,6 +27,9 @@ namespace pr7s
         // (0.97.0, the owner's: Masterpiece, Circle With Me, Clown, Crawling, In The End, The End of the Dream)
         const SectionType clean { "CLEAN VERSE", "The heavy guitar steps back: a clean guitar picked or ringing, or the keys carry the verse",
                                   RiffFlavour::openChords, {}, SectionType::Band::clean };
+        // (0.100.0, the owner's Faster verse) palm-muted eighths with a plain backbeat under them.
+        const SectionType muted { "MUTED DRIVE", "Palm-muted eighths, single notes then chords, a plain backbeat; the verse holds back for the chorus",
+                                  RiffFlavour::mutedDrive };
         const SectionType sparse { "SPARSE", "Space for the voice: stabs, octaves, chords let ring", RiffFlavour::stabs,
                                    { RiffFlavour::stabs, RiffFlavour::octaves, RiffFlavour::openChords } };
         const SectionType heavy { "HEAVY CHUG", "The low string pounded: chugs, tritone grinds, stops; the bass and the kick locked to them", RiffFlavour::chugs,
@@ -37,7 +41,7 @@ namespace pr7s
         switch (composerSectionFor (sectionName))
         {
             case 0: return { droning, open };
-            case 1: return { staccato, split, clean, droning, sparse };
+            case 1: return { staccato, split, clean, muted, droning, sparse };
             case 2: return { driving, syncopated, droning };
             case 3: return { creep, open, droning };
             case 4: return { heavy, staccato };
@@ -75,7 +79,8 @@ namespace pr7s
             return std::nullopt;
         const auto& lane = s.lane (ComposerLayer::guitar);
         const auto n = (int) t->guitarFlavours.size();
-        return t->guitarFlavours[(size_t) (lane.approach >= 0 ? lane.approach % n : lane.variation % n)];
+        const auto automatic = t->automaticFlavours > 0 ? juce::jmin (n, t->automaticFlavours) : n;
+        return t->guitarFlavours[(size_t) (lane.approach >= 0 ? lane.approach % n : lane.variation % automatic)];
     }
 
     bool isSectionTypeOf (const juce::String& sectionName, const juce::String& type)
@@ -97,6 +102,17 @@ namespace pr7s
                 case ComposerLayer::lead: return { "RINGING ARPEGGIO", "HELD NOTES & A SQUEAL", "DOUBLES THE RHYTHM AN OCTAVE UP" };
                 case ComposerLayer::drums: return { "DRIVING BACKBEAT", "HALF TIME, KICK ON THE EIGHTHS", "CYMBALS ON THE BEATS, KICKS BETWEEN",
                                                      "KICK WITH THE GUITAR", "DOUBLE KICK" };
+                case ComposerLayer::melody: break;
+            }
+        if (flavour == RiffFlavour::mutedDrive)
+            switch (layer)
+            {
+                // (0.100.0, the owner's Faster verse; our names)
+                case ComposerLayer::guitar: return { "SINGLE NOTES, THEN CHORDS", "MUTED POWER CHORDS", "ROCKING CHORDS" };
+                case ComposerLayer::bass: return { "ROOT EIGHTHS", "DOUBLES THE GUITAR", "ROOTS ON THE BEATS", "LOCKED WITH THE KICK" };
+                case ComposerLayer::chords: return { "SILENT", "HELD PADS" };
+                case ComposerLayer::lead: return { "DOUBLES THE RHYTHM AN OCTAVE UP", "SILENT" };
+                case ComposerLayer::drums: return { "PLAIN BACKBEAT", "DRIVING KICK", "HALF TIME" };
                 case ComposerLayer::melody: break;
             }
         if (flavour == RiffFlavour::syncopatedDrive)
@@ -148,7 +164,7 @@ namespace pr7s
             if (layer == ComposerLayer::bass)
                 return { "DOUBLES THE GUITAR", "ROOTS ON THE ACCENTS", "LOCKED WITH THE KICK" };
             if (layer == ComposerLayer::drums)
-                return { "KICK ON EVERY CHUG", "KICK ON THE ACCENTS" };
+                return { "KICK ON EVERY CHUG", "KICK ON THE ACCENTS", "DOUBLE-KICK CARPET" };   // (0.100.0: This Fire Burns' verse)
         }
         if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::split)
         {
@@ -160,10 +176,14 @@ namespace pr7s
         if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::clean)
             switch (layer)
             {
-                case ComposerLayer::guitar: return { "RINGING ARPEGGIO", "PICKED CHORD", "SPARSE CLEAN NOTES", "GUITARS OUT", "HELD CHORD & PULSE" };
-                case ComposerLayer::bass: return { "SYNCOPATED ROOTS", "EIGHTHS, CHANGING LATE", "WHOLE NOTES", "OCTAVE EIGHTHS", "LOCKED WITH THE KICK" };
-                case ComposerLayer::drums: return { "LIGHT GROOVE", "HALF TIME, GHOST SNARES", "NO DRUMS" };
-                case ComposerLayer::chords: return { "HELD PADS", "SIXTEENTH PULSE", "PIANO LINE", "SILENT" };
+                // (0.100.0, the owner's Another Life verse: PEDAL HOOK, MUTED DYAD WALK, the keys' OCTAVE DRONE, and the band
+                // coming in halfway, as its first verse)
+                case ComposerLayer::guitar: return { "RINGING ARPEGGIO", "PICKED CHORD", "SPARSE CLEAN NOTES", "GUITARS OUT", "HELD CHORD & PULSE",
+                                                     "PEDAL HOOK", "MUTED DYAD WALK" };
+                case ComposerLayer::bass: return { "SYNCOPATED ROOTS", "EIGHTHS, CHANGING LATE", "WHOLE NOTES", "OCTAVE EIGHTHS",
+                                                   "OUT, THEN IN HALFWAY", "LOCKED WITH THE KICK" };
+                case ComposerLayer::drums: return { "LIGHT GROOVE", "HALF TIME, GHOST SNARES", "NO DRUMS", "OUT, THEN IN HALFWAY" };
+                case ComposerLayer::chords: return { "HELD PADS", "SIXTEENTH PULSE", "PIANO LINE", "SILENT", "OCTAVE DRONE" };
                 case ComposerLayer::melody:
                 case ComposerLayer::lead: return {};
             }

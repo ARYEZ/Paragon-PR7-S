@@ -2,6 +2,29 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.100.0
+
+**The verses from your tabs** (the third step of the plan: This Fire Burns, Faster and Another Life's verses, read for their shapes only).
+
+**A new verse type, MUTED DRIVE** (Faster's verse). It sits after CLEAN VERSE in the verse's TYPE menu. The guitar plays palm-muted eighths the whole way and holds back for the chorus.
+- **Guitar:** SINGLE NOTES, THEN CHORDS (two bars of muted root notes, then muted power chords, the last bar rocking between two chords: Faster), MUTED POWER CHORDS, ROCKING CHORDS. Each one walks up into whatever comes next at its end.
+- **Bass:** ROOT EIGHTHS, DOUBLES THE GUITAR, ROOTS ON THE BEATS, LOCKED WITH THE KICK.
+- **Drums:** PLAIN BACKBEAT (closed hats in eighths, kick on 1 and 3, snare on 2 and 4), DRIVING KICK, HALF TIME, with a fill into every four bars.
+- **Keys:** SILENT or HELD PADS. **Lead:** DOUBLES THE RHYTHM AN OCTAVE UP (Faster's lead) or SILENT.
+
+**STACCATO CHUG gets This Fire Burns' verse:**
+- **GALLOP & SQUEAL** for the guitar: the root galloped (an eighth and two sixteenths, muted), the second bar answered by a pinch-harmonic squeal and a stab on the sixth, the fourth bar turning round on the seventh.
+- **DOUBLE-KICK CARPET** for the drums: sixteenths on the kick and the snare on every beat, whatever the guitar does, until the last bar of each four, where the kick locks to the guitar's hits.
+- Both are choices in the lane's menu. AUTOMATIC still picks among the original options, so a section already built on AUTOMATIC keeps its riff if it's rebuilt.
+
+**CLEAN VERSE gets Another Life's verse:**
+- **Guitar:** **PEDAL HOOK** (the key's note picked low in eighths, a short hook on top on the key's fifth and the steps either side of it, the same notes over every chord) and **MUTED DYAD WALK** (palm-muted two-note shapes in eighths, the root underneath, the top note stepping inside the chord).
+- **Keys:** **OCTAVE DRONE** (the key's note and its octave held two bars at a time through every chord).
+- **Bass and drums:** **OUT, THEN IN HALFWAY**: silent for the first half of the section, then in (the bass on its syncopated roots, the drums in half time). Another Life leaves the band out of its first verse and brings them in on the second. Our composer builds one section at a time, so the closest we can do inside one section is to come in halfway. For the song's exact shape, give verse 1 NO DRUMS and verse 2 the half-time groove.
+- These are choices in the lane's menus too; AUTOMATIC picks as before.
+
+As always I can't hear these here, so tell me what needs work. That finishes the three-song plan; next could be the pre-chorus, breakdown, interlude and bridge types from the same tabs, when you want them.
+
 ## 0.99.0
 
 **A new chorus type, SYNCOPATED DRIVE** (the second step of the plan from your tabs; Another Life's chorus with Faster's syncopated bar, read for their shapes only). It sits between DRIVING and DRONING in the chorus's TYPE menu. The guitar still drives in eighths, but the bass and kick lock into a syncopated figure under it: **1, the and of 2, and 4 held over the bar line, then a bar of off-beats**.

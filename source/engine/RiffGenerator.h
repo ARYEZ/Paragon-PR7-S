@@ -75,7 +75,12 @@ enum class RiffFlavour { any, chugs, gallop, tritone, creep, stabs, octaves, sto
                          // eighths opened by stabs (chord, chord, silence), a bar rung across the beats, or the change pushed
                          // in an eighth early ('_': the next chord's power chord on the bar's last eighth). Made by the
                          // DRIVING EIGHTHS generator with its own shapes.
-                         syncopatedDrive };
+                         syncopatedDrive,
+                         // (0.100.0, the owner's verses, shapes only) mutedDrive (Faster): palm-muted eighths, single root
+                         // notes then muted power chords, a bar rocking between two chords, a walk lifting into what comes
+                         // next; gallopSqueal (This Fire Burns): the root galloped, answered by a pinch squeal and a stab
+                         // on the sixth, the fourth bar turning round on the seventh.
+                         mutedDrive, gallopSqueal };
     const std::vector<RiffFlavour>& riffFlavours();
     juce::String riffFlavourName (RiffFlavour);          // "ANY", "CHUGS", "GALLOP", "TRITONE CHUG", ...
     juce::String riffFlavourDescription (RiffFlavour);

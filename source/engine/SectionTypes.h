@@ -38,6 +38,9 @@ namespace pr7s
         // the bass, drums and keys each have options, chosen to suit the guitar's approach when left automatic.
         enum class Band { none, staccato, split, clean };
         Band band = Band::none;
+        // (0.100.0) AUTOMATIC draws from the first this many of them (0: all): a kind added later is a chosen option
+        // only, so a section built on AUTOMATIC keeps its kind when it's rebuilt.
+        int automaticFlavours = 0;
     };
     // True when the state's type has the staccato band and the guitar is on, generated (not WRITTEN RIFFS).
     bool staccatoBand (const ComposerState&);

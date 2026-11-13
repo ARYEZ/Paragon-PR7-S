@@ -15,7 +15,7 @@ namespace pr7s
                                                     RiffFlavour::drivingEighths, RiffFlavour::droning,
                                                     RiffFlavour::pedalStabs, RiffFlavour::chugThrees, RiffFlavour::burstSilence,
                                                     RiffFlavour::secondHalfStabs, RiffFlavour::firstHalfBurst, RiffFlavour::hitPush,
-                                                    RiffFlavour::syncopatedDrive };
+                                                    RiffFlavour::syncopatedDrive, RiffFlavour::mutedDrive, RiffFlavour::gallopSqueal };
         return all;
     }
 
@@ -41,6 +41,8 @@ namespace pr7s
             case RiffFlavour::firstHalfBurst: return "FIRST-HALF BURST";
             case RiffFlavour::hitPush: return "HIT & PUSH";
             case RiffFlavour::syncopatedDrive: return "SYNCOPATED DRIVE";
+            case RiffFlavour::mutedDrive: return "MUTED DRIVE";
+            case RiffFlavour::gallopSqueal: return "GALLOP & SQUEAL";
         }
         return "ANY";
     }
@@ -67,6 +69,8 @@ namespace pr7s
             case RiffFlavour::firstHalfBurst: return "A burst of chugs stepping down in the first half, the second half silent, a pickup every fourth bar";
             case RiffFlavour::hitPush: return "A chord on 1, the bar left open, the next chord pushed in early from a step under";
             case RiffFlavour::syncopatedDrive: return "Driving eighths opened by stabs, a bar rung across the beats, the changes pushed in an eighth early";
+            case RiffFlavour::mutedDrive: return "Palm-muted eighths: single root notes, then muted power chords, a bar rocking between two chords, a walk lifting out";
+            case RiffFlavour::gallopSqueal: return "The root galloped, answered by a pinch-harmonic squeal and a stab on the sixth, turning round on the seventh";
         }
         return {};
     }
@@ -138,7 +142,8 @@ namespace pr7s
                 case RiffFlavour::octaves: boost (Cell::octave, 6.0f); break;
                 case RiffFlavour::stopStart: boost (Cell::stop, 5.0f); boost (Cell::rest, 1.6f); boost (Cell::chugRun, 1.6f); boost (Cell::gallop, 0.5f); break;
                 case RiffFlavour::openChords: boost (Cell::powerChord, 4.0f); boost (Cell::highChord, 3.0f); boost (Cell::chug, 0.6f); boost (Cell::chugRun, 0.4f); break;
-                case RiffFlavour::drivingEighths: case RiffFlavour::syncopatedDrive: break;   // (made by DrivingEighths below, not from cells)
+                case RiffFlavour::drivingEighths: case RiffFlavour::syncopatedDrive: case RiffFlavour::mutedDrive: break;   // (made by DrivingEighths below, not from cells)
+                case RiffFlavour::gallopSqueal: break;   // (StaccatoChug)
                 case RiffFlavour::droning: break;          // (made by Droning below)
                 case RiffFlavour::pedalStabs: case RiffFlavour::chugThrees: case RiffFlavour::burstSilence:
                 case RiffFlavour::secondHalfStabs: case RiffFlavour::firstHalfBurst: case RiffFlavour::hitPush: break;   // (StaccatoChug)
@@ -800,6 +805,7 @@ namespace pr7s
                                                           { "x+x;x+xT", 2 }, { "x;x+x;x+", 1.5f }, { "x+;+x+;T", 1 } });
                 // (0.98.0) A syncopated bar's hits (in eighths), drawn after the others so the old draws stay as they were.
                 const auto syncopated = recipe.flavour == RiffFlavour::syncopatedDrive;
+                const auto mutedDrive = recipe.flavour == RiffFlavour::mutedDrive;
                 const auto stab = syncopated ? pick<std::string> ({ { "x=x=----", 3 }, { "x==x==--", 2 }, { "x=x==---", 1 } }) : std::string ("x=x=----");
                 const auto syncopation = recipe.approach >= 0 || syncopated
                     ? pick<std::string> ({ { "x==x==x=", 3 }, { "x==x=x==", 2 }, { "x=x==x==", 2 } }) : std::string ("x==x==x=");
@@ -877,6 +883,15 @@ namespace pr7s
                                         b[(size_t) (h * every() + j)] = '=';
                             }
                             break;
+                        case 'N':
+                            // (0.100.0, Faster's verse) palm-muted single root notes on every eighth.
+                            hits (b, 0, n, 'x');
+                            break;
+                        case 'J':
+                            // (0.100.0) rocking: the muted power chord a beat, another degree a beat, in turn.
+                            for (int h = 0; h < n; ++h)
+                                hits (b, h, h + 1, (h / 2) % 2 == 0 ? '*' : degreeChar (halfDegree));
+                            break;
                         case 'U':
                             // (0.99.0) eighths, the next chord pushed in on the bar's last eighth ('_').
                             hits (b, 0, juce::jmax (1, n - 1), openChar);
@@ -894,7 +909,8 @@ namespace pr7s
                             }
                             break;
                         default:
-                            hits (b, 0, n, kind == 'O' ? openChar : mutedChar);
+                            // (0.100.0: MUTED DRIVE's chord bars are always muted power chords: its single notes are the N bars)
+                            hits (b, 0, n, kind == 'O' ? openChar : mutedDrive ? '*' : mutedChar);
                             break;
                     }
                     if (walks)
@@ -911,7 +927,17 @@ namespace pr7s
 
                 // The bars: upper case no walk, lower case the walk at its end.
                 std::string shape;
-                if (syncopated)
+                if (mutedDrive)
+                {
+                    // (0.100.0) MUTED DRIVE's approaches: single notes then chords, muted power chords, rocking chords;
+                    // each ends walking into what comes next. AUTOMATIC: one by the take.
+                    static const char* const one[] = { "n", "m", "j" };
+                    static const char* const two[] = { "Nj", "Mm", "Jj" };
+                    static const char* const four[] = { "NNMj", "MMMm", "JJJj" };
+                    const auto a = (size_t) (recipe.approach >= 0 ? recipe.approach % 3 : pick<int> ({ { 0, 4 }, { 1, 2 }, { 2, 2 } }));
+                    shape = bars <= 1 ? one[a] : bars == 2 ? two[a] : four[a];
+                }
+                else if (syncopated)
                 {
                     // (0.99.0) SYNCOPATED DRIVE's approaches: stabs then eighths, a syncopated third bar, pushed changes,
                     // stabs then pushes. AUTOMATIC: one of them by the take.
@@ -956,7 +982,7 @@ namespace pr7s
                         break;
                     const auto upper = (char) juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) c);
                     auto kind = upper;
-                    if (! openLed())
+                    if (! openLed() && ! mutedDrive)
                         kind = kind == 'O' ? 'M' : kind == 'M' ? 'O' : (kind == 'S' || kind == 'W') ? 'M' : kind;   // a verse: the muted stretch first
                     out.push_back (bar (kind, c != upper));
                 }
@@ -1254,6 +1280,20 @@ namespace pr7s
                 return { cell, withStab, cell, pickup };
             }
 
+            // (0.100.0, This Fire Burns' verse; shapes only) the root galloped (an eighth and two sixteenths, muted), the
+            // second bar answered by a pinch squeal and a stab on the sixth, the fourth turning round on the seventh.
+            std::vector<std::string> gallopSqueal (int bars)
+            {
+                const auto a = fitted ("x-xxx-xxx-xxx-xx");
+                const auto b = fitted (pick<std::string> ({ { "x-xxx-xxp===8===", 3 }, { "x-xxx-xx8===p===", 2 }, { "x-xxx-xxp=======", 1 } }));
+                const auto c = fitted (pick<std::string> ({ { "x-xxx-xxx-xxK===", 3 }, { "x-xxx-xxK===x-xx", 2 } }));
+                if (bars <= 1)
+                    return { a };
+                if (bars == 2)
+                    return { a, b };
+                return { a, b, a, c };
+            }
+
             // (0.96.0, SPLIT CHUG) A 16-step cell fitted to the bar: cut, or held out with rests.
             std::string fitted (std::string cell) const
             {
@@ -1327,6 +1367,7 @@ namespace pr7s
                     case RiffFlavour::secondHalfStabs: return secondHalfStabs (bars);
                     case RiffFlavour::firstHalfBurst: return firstHalfBurst (bars);
                     case RiffFlavour::hitPush: return hitPush (bars);
+                    case RiffFlavour::gallopSqueal: return gallopSqueal (bars);
                     default: return burstSilence (bars);
                 }
             }
@@ -1387,7 +1428,8 @@ namespace pr7s
             return droning.make (bars);   // (BUSY is in the shapes: the pass below would chug into the rings)
         }
         if (flavour == RiffFlavour::pedalStabs || flavour == RiffFlavour::chugThrees || flavour == RiffFlavour::burstSilence
-            || flavour == RiffFlavour::secondHalfStabs || flavour == RiffFlavour::firstHalfBurst || flavour == RiffFlavour::hitPush)
+            || flavour == RiffFlavour::secondHalfStabs || flavour == RiffFlavour::firstHalfBurst || flavour == RiffFlavour::hitPush
+            || flavour == RiffFlavour::gallopSqueal)
         {
             // (0.95.0: its own random numbers from the seed; BUSY through the pass below, as every riff)
             auto mixed = (juce::uint64) recipe.seed * 0xA24BAED4963EE407ull;
@@ -1396,7 +1438,7 @@ namespace pr7s
             StaccatoChug staccato { own, leaned, steps };
             out = staccato.make (bars);
         }
-        else if (flavour == RiffFlavour::drivingEighths || flavour == RiffFlavour::syncopatedDrive)
+        else if (flavour == RiffFlavour::drivingEighths || flavour == RiffFlavour::syncopatedDrive || flavour == RiffFlavour::mutedDrive)
         {
             // (its own random numbers, well mixed from the seed: neighbouring seeds drew alike from the shared one)
             auto mixed = (juce::uint64) recipe.seed * 0x9E3779B97F4A7C15ull;
@@ -1512,6 +1554,7 @@ namespace pr7s
         const auto name = "Generated: " + (recipe.flavour == RiffFlavour::any ? juce::String ("any flavour") : riffFlavourName (recipe.flavour).toLowerCase());
         // (DRIVING EIGHTHS follows the chords' roots, never the key's pedal.)
         auto pedal = recipe.flavour != RiffFlavour::drivingEighths && recipe.flavour != RiffFlavour::syncopatedDrive
+                  && recipe.flavour != RiffFlavour::mutedDrive && recipe.flavour != RiffFlavour::gallopSqueal
                   && recipe.flavour != RiffFlavour::droning && recipe.style != GuitarStyle::rock && recipe.style != GuitarStyle::shred;
         // (0.95.0) Black's stabs climb over the low string; Stricken's and Waffle's chugs follow each chord's root.
         pedal = (pedal || recipe.flavour == RiffFlavour::pedalStabs) && recipe.flavour != RiffFlavour::chugThrees && recipe.flavour != RiffFlavour::burstSilence
