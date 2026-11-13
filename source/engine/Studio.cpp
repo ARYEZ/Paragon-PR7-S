@@ -10416,6 +10416,34 @@ namespace pr7s
                 groups.push_back ({ n.beat, n.length, n.effect, n.amount });
         }
         std::vector<Controller> out;
+        // (0.101.0, Circle With Me's first clean guitar) a swell: expression (CC 11) from nothing up over the note's
+        // first part (a beat and a half at most), held; once a line has swells, its other notes start at full.
+        auto anySwell = false;
+        for (const auto& n : notes)
+            anySwell = anySwell || (! n.keyswitch && n.effect == E::swell);
+        if (anySwell)
+        {
+            std::vector<double> starts;
+            for (const auto& n : notes)
+            {
+                if (n.keyswitch)
+                    continue;
+                auto seen = false;
+                for (const auto t : starts)
+                    seen = seen || std::abs (t - n.beat) < HumanizeLimits::together;
+                if (seen)
+                    continue;
+                starts.push_back (n.beat);
+                if (n.effect == E::swell)
+                {
+                    const auto peak = juce::jlimit (1, 127, juce::roundToInt (110.0f * (n.amount > 0.0f ? n.amount : 1.0f)));
+                    out.push_back ({ Controller::Type::cc, 11, n.beat, 0, false });
+                    out.push_back ({ Controller::Type::cc, 11, n.beat + juce::jmin (1.5, juce::jmax (0.05, n.length) * 0.6), peak, true });
+                }
+                else
+                    out.push_back ({ Controller::Type::cc, 11, n.beat, 110, false });
+            }
+        }
         const auto range = (double) juce::jmax (1, bendRange);
         for (const auto& g : groups)
         {

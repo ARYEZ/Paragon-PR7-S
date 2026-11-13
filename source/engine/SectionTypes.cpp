@@ -179,13 +179,17 @@ namespace pr7s
                 // (0.100.0, the owner's Another Life verse: PEDAL HOOK, MUTED DYAD WALK, the keys' OCTAVE DRONE, and the band
                 // coming in halfway, as its first verse)
                 case ComposerLayer::guitar: return { "RINGING ARPEGGIO", "PICKED CHORD", "SPARSE CLEAN NOTES", "GUITARS OUT", "HELD CHORD & PULSE",
-                                                     "PEDAL HOOK", "MUTED DYAD WALK" };
+                                                     "PEDAL HOOK", "MUTED DYAD WALK", "STILL SHAPE IN THREES", "STILL SHAPE, SIXTEENTHS",
+                                                     "STILL CLUSTER" };
                 case ComposerLayer::bass: return { "SYNCOPATED ROOTS", "EIGHTHS, CHANGING LATE", "WHOLE NOTES", "OCTAVE EIGHTHS",
                                                    "OUT, THEN IN HALFWAY", "LOCKED WITH THE KICK" };
-                case ComposerLayer::drums: return { "LIGHT GROOVE", "HALF TIME, GHOST SNARES", "NO DRUMS", "OUT, THEN IN HALFWAY" };
+                case ComposerLayer::drums: return { "LIGHT GROOVE", "HALF TIME, GHOST SNARES", "NO DRUMS", "OUT, THEN IN HALFWAY",
+                                                    "HALF-TIME HATS", "TOM GROOVE" };
                 case ComposerLayer::chords: return { "HELD PADS", "SIXTEENTH PULSE", "PIANO LINE", "SILENT", "OCTAVE DRONE" };
-                case ComposerLayer::melody:
-                case ComposerLayer::lead: return {};
+                // (0.101.0, Circle With Me's first clean guitar) the lead lane's own options under a clean verse; its
+                // AUTOMATIC is the lead's style as before (the lane keeps its styles beside these).
+                case ComposerLayer::lead: return { "SWELL MELODY", "SWELL, THEN WARBLE" };
+                case ComposerLayer::melody: return {};
             }
         if (layer == ComposerLayer::guitar)
             if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && ! t->guitarFlavours.empty())

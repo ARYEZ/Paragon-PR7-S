@@ -1029,13 +1029,13 @@ namespace pr7s
         int cleanGuitarApproach (const ComposerState& s)
         {
             const auto& lane = s.lane (ComposerLayer::guitar);
-            return lane.approach >= 0 ? lane.approach % 7 : lane.variation % 5;   // (0.100.0: two more, chosen only)
+            return lane.approach >= 0 ? lane.approach % 10 : lane.variation % 5;   // (0.100.0: two more, 0.101.0: three, chosen only)
         }
 
         int cleanApproach (const ComposerState& s, ComposerLayer l)
         {
             const auto& lane = s.lane (l);
-            const auto count = l == ComposerLayer::bass ? 5 : l == ComposerLayer::drums ? 4 : 5;   // (0.100.0: the in-halfway and the drone, chosen only)
+            const auto count = l == ComposerLayer::bass ? 5 : l == ComposerLayer::drums ? 6 : 5;   // (0.100.0: the in-halfway and the drone; 0.101.0: two drums; chosen only)
             if (lane.approach >= 0)
                 return lane.approach % count;
             const auto other = lane.variation % 2;
@@ -1045,6 +1045,9 @@ namespace pr7s
                 case 1: return l == ComposerLayer::bass ? 1 : l == ComposerLayer::drums ? 2 : 3;   // Circle With Me
                 case 2: return l == ComposerLayer::bass ? 1 : l == ComposerLayer::drums ? 2 : 0;   // its first guitar
                 case 3: return l == ComposerLayer::bass ? (other == 0 ? 2 : 0) : l == ComposerLayer::drums ? 1 : (other == 0 ? 1 : 2);   // Crawling / In The End
+                case 7:
+                case 8: return l == ComposerLayer::bass ? 1 : l == ComposerLayer::drums ? 4 : 3;   // (0.101.0) Circle With Me, as the tab
+                case 9: return l == ComposerLayer::bass ? 2 : l == ComposerLayer::drums ? 4 : 3;   // (0.101.0) The Void
                 default: return l == ComposerLayer::bass ? 3 : l == ComposerLayer::drums ? 0 : 1;   // The End of the Dream
             }
         }
@@ -1321,6 +1324,49 @@ namespace pr7s
                         hit (o + 10 * s16, 38, 0.32f);
                     }
                     break;
+                case 4:
+                    // (0.101.0, Circle With Me's first verse, the tab at its written tempo) half time: the hats on the
+                    // eighths, every third one opened a little (x x o x), the snare on 3, a few kicks round the first
+                    // beat; a crash opens each eight bars and the last bar's second half rolls on the toms.
+                    out.style = "Clean: half-time hats";
+                    out.description = "Hats on the eighths (x x o x), the snare on 3, a few kicks round beat 1; toms into the next section";
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto o = bar * bpb;
+                        const auto last = bar == bars - 1;
+                        if (bar % 8 == 0)
+                            hit (o, 49, 0.78f);
+                        for (int i = 0; i < 8; ++i)
+                            if (! (last && i >= 4) && ! (bar % 8 == 0 && i == 0))
+                                hit (o + i * 2 * s16, i % 4 == 2 ? 46 : 42, i % 4 == 2 ? 0.5f : (i % 2 == 0 ? 0.62f : 0.46f));
+                        for (const auto k : bar % 2 == 0 ? std::vector<int> { 0, 2, 6 } : std::vector<int> { 0, 6, 10 })
+                            hit (o + k * s16, 36, k == 0 ? 0.88f : 0.72f);
+                        hit (o + 8 * s16, 38, 0.86f);
+                        if (last)
+                            for (int i = 0; i < 4; ++i)
+                                hit (o + (8 + 2 * i) * s16, i < 2 ? 45 : 41, 0.7f + 0.05f * (float) i);
+                    }
+                    break;
+                case 5:
+                    // (0.101.0, Circle With Me's second verse) the same energy in another colour: kick and toms on the
+                    // eighths, the hat's foot on the beats, a flammed snare on 4.
+                    out.style = "Clean: tom groove";
+                    out.description = "Kick and toms on the eighths, the hat's foot on every beat, a flammed snare on beat 4";
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto o = bar * bpb;
+                        if (bar % 8 == 0)
+                            hit (o, 49, 0.72f);
+                        for (int b = 0; b < 4; ++b)
+                            hit (o + b * 4 * s16, 44, 0.55f);
+                        static const std::array<int, 8> drum { 36, 45, 43, 36, 36, 43, 0, 45 };
+                        for (int i = 0; i < 8; ++i)
+                            if (drum[(size_t) i] != 0)
+                                hit (o + i * 2 * s16, drum[(size_t) i], drum[(size_t) i] == 36 ? 0.84f : (i % 2 == 0 ? 0.7f : 0.6f));
+                        hit (o + 12 * s16 - 0.03, 38, 0.45f);
+                        hit (o + 12 * s16, 38, 0.86f);
+                    }
+                    break;
                 default:
                     out.style = "Clean: no drums";
                     out.description = "The drums sit the verse out";
@@ -1468,6 +1514,108 @@ namespace pr7s
             return out;
         }
 
+        // (0.101.0, the owner's Circle With Me verse, its second clean guitar; shapes only) STILL SHAPE IN THREES: the
+        // key's own tonic chord in a close shape up high (tonic, third, fifth), picked low, middle, high around and
+        // around over straight eighths, palm-muted, and it never moves: the bass changes under it, so the same three
+        // notes take a new colour on every chord. Three notes over eight eighths come round only every two bars, so
+        // the cycle starts again there; every fourth bar's seventh eighth swaps the top note for the step under it
+        // (the open top string in the song). SIXTEENTHS: the same for a song set at its half-time tempo (the tab's
+        // eighths are sixteenths there), starting again every bar, the swap every second bar.
+        // STILL CLUSTER (the owner's The Void and Jaded verses and bridges): the same idea on the key's third, fifth
+        // and sixth (a minor key's b3, 5, b6: a close cluster inside a fourth), picked middle, top, low; the cycle's
+        // last eighth drops to the key's note under it (The Void).
+        LineIdea cleanGuitarStill (int kind, const std::vector<ChordSpan>& spans, double bpb, const GuitarVelocities& velocities)
+        {
+            const auto length = sectionLength (spans);
+            const auto key = spans.front().key;
+            const auto sixteenths = kind == 1, cluster = kind == 2;
+            const auto tonic = pitchOfClassIn (key.pitchClass(), 55, 66);
+            const auto third = pitchOfClassIn (pc12 (scaleStep (key, tonic, 2)), 57, 68);
+            const std::array<int, 3> shape = cluster ? std::array<int, 3> { scaleStep (key, third, 2), scaleStep (key, third, 3), third }
+                                                     : std::array<int, 3> { tonic, scaleStep (key, tonic, 2), scaleStep (key, tonic, 4) };
+            const auto swap = scaleStep (key, shape[2], -1);
+            const auto under = pitchOfClassIn (key.pitchClass(), third - 11, third - 1);
+            const auto muted = GuitarVelocity::of (velocities.muteLoose);
+            LineIdea out { LineIdea::Part::rhythm,
+                           cluster ? "Clean: still cluster" : sixteenths ? "Clean: still shape, sixteenths" : "Clean: still shape in threes",
+                           cluster ? juce::String ("The key's third, fifth and sixth held close and picked middle, top, low in threes over eighths, palm-muted; it never moves")
+                                   : juce::String ("The key's own chord held up high and picked low, middle, high in threes over ")
+                                         + (sixteenths ? "sixteenths" : "eighths") + ", palm-muted; it never moves, the bass changes under it", {} };
+            const auto step = sixteenths ? bpb / 16.0 : bpb / 8.0;
+            const auto perCycle = 16;   // (two bars of eighths, or one of sixteenths)
+            const auto swapEvery = sixteenths ? 2 : 4;    // bars
+            for (int i = 0; i * step < length - 1.0e-6; ++i)
+            {
+                const auto at = i * step;
+                const auto inCycle = i % perCycle;
+                const auto bar = (int) std::floor (at / bpb + 1.0e-6);
+                const auto inBar = sixteenths ? i % 16 : i % 8;
+                auto pitch = shape[(size_t) (inCycle % 3)];
+                if (cluster && inCycle == perCycle - 1)
+                    pitch = under;
+                else if (! cluster && bar % swapEvery == swapEvery - 1 && inBar == (sixteenths ? 14 : 6) && inCycle % 3 == 2)
+                    pitch = swap;
+                addNote (out, at, step * 0.92, pitch, inBar % (sixteenths ? 4 : 2) == 0 ? muted : muted * 0.9f, length);
+            }
+            sortNotes (out);
+            return out;
+        }
+
+        // (0.101.0, the owner's Circle With Me verse, its first clean guitar; shapes only) SWELL MELODY: single notes
+        // faded in (a swell: expression from nothing) and held, stepping down the key's scale from its third: two
+        // bars a note at first, then one bar each in the last quarter, down under the tonic (5, 4, 3, 2): the verse
+        // quietly speeds up. Laid over the section's length whatever it is (16 units: 2 2 4 2 2 1 1 1 1). SWELL,
+        // THEN WARBLE (its second verse): each note held for its first half, then picked again in eighths, every
+        // other one bent a quarter tone, a shimmer.
+        LineIdea cleanLead (int approach, const std::vector<ChordSpan>& spans, double bpb, const GuitarVelocities& velocities)
+        {
+            const auto length = sectionLength (spans);
+            const auto key = spans.front().key;
+            const auto tonic = pitchOfClassIn (key.pitchClass(), 64, 75);
+            const auto warble = approach == 1;
+            const auto held = GuitarVelocity::of (velocities.open (velocities.sustain));
+            const auto soft = GuitarVelocity::of (velocities.open (velocities.sustainSoft));
+            LineIdea out { LineIdea::Part::lead, warble ? "Clean: swell, then warble" : "Clean: swell melody",
+                           warble ? "Swelled notes stepping down the scale, each picked again in eighths in its second half, every other one bent a quarter tone"
+                                  : "Single notes swelled in and held, stepping down the key's scale; two bars a note, then one bar each near the end", {} };
+            struct Step { int degree, units; };
+            static const std::array<Step, 9> plan { { { 2, 2 }, { 1, 2 }, { 0, 4 }, { 2, 2 }, { 1, 2 }, { -3, 1 }, { -4, 1 }, { -5, 1 }, { -6, 1 } } };
+            const auto unit = length / 16.0;
+            const auto q = bpb / 4.0;
+            auto snap = [&] (double t) { return juce::jmin (length, std::round (t / q) * q); };
+            auto units = 0;
+            for (const auto& p : plan)
+            {
+                const auto from = snap (units * unit);
+                units += p.units;
+                const auto to = snap (units * unit);
+                if (to - from < 1.0e-6)
+                    continue;
+                const auto pitch = scaleStep (key, tonic, p.degree);
+                if (! warble || to - from < bpb - 1.0e-6)
+                {
+                    addNote (out, from, (to - from) * 0.97, pitch, held, length);
+                    out.notes.back().effect = LineNote::Effect::swell;
+                    continue;
+                }
+                const auto half = snap (from + (to - from) * 0.5);
+                addNote (out, from, (half - from) * 0.97, pitch, held, length);
+                out.notes.back().effect = LineNote::Effect::swell;
+                const auto e = bpb / 8.0;
+                for (int i = 0; half + i * e < to - 1.0e-6; ++i)
+                {
+                    addNote (out, half + i * e, e * 0.9, pitch, soft, to);
+                    if (i % 2 == 1)
+                    {
+                        out.notes.back().effect = LineNote::Effect::bend;
+                        out.notes.back().amount = 0.5f;
+                    }
+                }
+            }
+            sortNotes (out);
+            return out;
+        }
+
         // (0.100.0, Another Life's keys) one octave of the key's note held two bars at a time through every chord.
         LineIdea cleanKeysDrone (const std::vector<ChordSpan>& spans, double bpb)
         {
@@ -1505,7 +1653,8 @@ namespace pr7s
                     const auto tuning = profile.has_value() ? profile->tuning() : c.tuning;
                     const auto velocities = profile.has_value() && profile->velocities.has_value() ? *profile->velocities : c.velocities;
                     const auto approach = cleanGuitarApproach (s);
-                    auto idea = approach >= 5 ? cleanGuitarMore (approach, spans, c.beatsPerBar, tuning, velocities)
+                    auto idea = approach >= 7 ? cleanGuitarStill (approach - 7, spans, c.beatsPerBar, velocities)
+                              : approach >= 5 ? cleanGuitarMore (approach, spans, c.beatsPerBar, tuning, velocities)
                                               : cleanGuitar (approach, s.lane (l), spans, c.beatsPerBar, tuning, velocities);
                     if (profile.has_value())
                         keepInRange (idea, profile->rangeLow(), profile->rangeHigh());
@@ -1535,8 +1684,20 @@ namespace pr7s
                     const auto approach = cleanApproach (s, l);
                     return approach == 4 ? cleanKeysDrone (spans, c.beatsPerBar) : cleanKeys (approach, spans, c.beatsPerBar);
                 }
-                case ComposerLayer::melody:
-                case ComposerLayer::lead: break;
+                case ComposerLayer::lead:
+                {
+                    // (0.101.0) only when an option is chosen: AUTOMATIC is the lead's own style, as before.
+                    const auto approach = s.lane (l).approach;
+                    if (approach < 0)
+                        break;
+                    const auto& profile = c.leadProfile.has_value() ? c.leadProfile : c.guitarProfile;
+                    const auto velocities = profile.has_value() && profile->velocities.has_value() ? *profile->velocities : c.velocities;
+                    auto idea = cleanLead (approach % 2, spans, c.beatsPerBar, velocities);
+                    if (profile.has_value())
+                        keepInRange (idea, profile->rangeLow(), profile->rangeHigh());
+                    return idea;
+                }
+                case ComposerLayer::melody: break;
             }
             return std::nullopt;
         }

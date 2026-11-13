@@ -2,6 +2,26 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.101.0
+
+**Circle With Me's clean verse** (the first step of the new plan from all your tabs and MIDI, read for their shapes only). You were right: our CLEAN VERSE named Circle With Me, but every clean part we had moved its shape with each chord, and that's not what the song does.
+
+**What the song does.** The clean guitar holds **one shape that never moves**: the key's own minor chord, up high on the top three strings. It picks those three notes low, middle, high, around and around over straight eighths, palm-muted. Three notes over eight eighths only come round every two bars, so the pattern lands in a new place each beat. The bass moves underneath, so the same three notes change colour on every chord. A second clean guitar swells single notes in and holds them, stepping down the scale, and the drums stay in, in half time.
+
+**New in CLEAN VERSE** (choices in each lane's menu; AUTOMATIC picks as before, so sections you've built don't change):
+- **Guitar: STILL SHAPE IN THREES.** The key's chord (its note, third and fifth) held up high and picked in threes over eighths, palm-muted, never moving with the chords. Every fourth bar one top note drops a step, as the open string does in the song.
+- **Guitar: STILL SHAPE, SIXTEENTHS.** The same in sixteenths, for when you set the song at its half-time tempo. The tab is written at 206 with the snare on 3, which most people would set as 103.
+- **Guitar: STILL CLUSTER.** From The Void and Jaded, which you sent today: the same idea on the key's third, fifth and sixth (in a minor key: b3, 5, b6, a close cluster), picked middle, top, low, dropping to the key's note on the last eighth of each cycle.
+- **Lead: SWELL MELODY.** Circle With Me's first clean guitar. Single notes swelled in from nothing and held, stepping down the key's scale from its third. Two bars a note at first, then one bar each near the end, so the verse quietly speeds up. It's on the lead lane, so turn the lead on and give it a clean guitar. The lead's own styles are still there beside it.
+- **Lead: SWELL, THEN WARBLE.** The song's second verse: each note held for its first half, then picked again in eighths, every other one bent a quarter tone.
+- **Drums: HALF-TIME HATS.** Hats on the eighths with every third one opened a little, the snare on 3, a few kicks round beat 1, toms at the end into the next section.
+- **Drums: TOM GROOVE.** The second verse: kick and toms on the eighths, the hat's foot on every beat, a flammed snare on 4.
+- Choose a still shape and leave the rest on AUTOMATIC, and the band goes as in the song: the bass in eighths changing a little late (whole notes under STILL CLUSTER), HALF-TIME HATS, and the keys out.
+
+**The swells** are written as expression (controller 11) rising from nothing at the start of each note. Most sampled guitars and Kontakt instruments answer controller 11; if yours doesn't, the notes just play without the fade.
+
+As always I can't hear these here, so tell me what needs work. Next in the plan: the pre-chorus types.
+
 ## 0.100.0
 
 **The verses from your tabs** (the third step of the plan: This Fire Burns, Faster and Another Life's verses, read for their shapes only).

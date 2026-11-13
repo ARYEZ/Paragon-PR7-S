@@ -1070,16 +1070,17 @@ TEST_CASE ("0.97.0: CLEAN VERSE: a verse type with five clean guitar parts and t
     const auto s = cleanState (-1);
     CHECK (sectionBand (s) == SectionType::Band::clean);
     const auto guitar = sectionApproaches (s, ComposerLayer::guitar);
-    REQUIRE (guitar.size() == 7);   // (0.100.0: PEDAL HOOK, MUTED DYAD WALK)
+    REQUIRE (guitar.size() == 10);   // (0.100.0: PEDAL HOOK, MUTED DYAD WALK; 0.101.0: the still shapes)
     CHECK (guitar[0] == "RINGING ARPEGGIO");
     CHECK (guitar[1] == "PICKED CHORD");
     CHECK (guitar[2] == "SPARSE CLEAN NOTES");
     CHECK (guitar[3] == "GUITARS OUT");
     CHECK (guitar[4] == "HELD CHORD & PULSE");
     CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 6);   // (0.97.2: LOCKED WITH THE KICK; 0.100.0: OUT, THEN IN HALFWAY)
-    CHECK (sectionApproaches (s, ComposerLayer::drums).size() == 4);   // (0.100.0: OUT, THEN IN HALFWAY)
+    CHECK (sectionApproaches (s, ComposerLayer::drums).size() == 6);   // (0.100.0: OUT, THEN IN HALFWAY; 0.101.0: HALF-TIME HATS, TOM GROOVE)
     CHECK (sectionApproaches (s, ComposerLayer::chords).size() == 5);   // (0.100.0: OCTAVE DRONE)
-    CHECK (sectionApproaches (s, ComposerLayer::lead).isEmpty());
+    CHECK (sectionApproaches (s, ComposerLayer::lead).size() == 2);   // (0.101.0: the swells; automatic: the lead's own style)
+    CHECK (sectionApproaches (s, ComposerLayer::melody).isEmpty());
     CHECK_FALSE (typedGuitarFlavour (s).has_value());   // (clean parts, not riff kinds)
 }
 
@@ -1258,7 +1259,7 @@ TEST_CASE ("0.97.1: a lane the section type writes offers the type's options, ea
     CHECK (distinct (composerChoices (ComposerLayer::drums, split, spans, c)) == 2);
     CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::guitar, split, c));   // (its guitar has its riff kinds and styles)
     const auto clean = cleanState (-1);
-    CHECK (distinct (composerChoices (ComposerLayer::guitar, clean, spans, c)) == 7);   // (0.100.0: seven)
+    CHECK (distinct (composerChoices (ComposerLayer::guitar, clean, spans, c)) == 10);   // (0.100.0: seven; 0.101.0: ten)
     CHECK (distinct (composerChoices (ComposerLayer::bass, clean, spans, c)) == 6);     // (0.100.0: six)
     // SYNC on: the lanes follow the sync lane, the styles back.
     auto synced = droning;
@@ -1796,5 +1797,136 @@ TEST_CASE ("0.100.0: CLEAN VERSE's PEDAL HOOK, MUTED DYAD WALK, OCTAVE DRONE and
             for (const auto& n : idea.notes)
                 CHECK (n.beat >= 16.0 - 1.0e-6);
         }
+    }
+}
+
+
+TEST_CASE ("0.101.0: CLEAN VERSE's still shape, swell melody and drums (Circle With Me)", "[sections][types]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    // STILL SHAPE IN THREES: A, C, E picked in threes over every eighth, whatever the chord; D (the step under E)
+    // only on the seventh eighth of every fourth bar.
+    {
+        auto s = cleanState (7);
+        const auto all = composeLayers (s, spans, c);
+        const auto& idea = all[(size_t) ComposerLayer::guitar];
+        REQUIRE (idea.notes.size() == 8 * 8);
+        std::set<int> pitches;
+        for (size_t i = 0; i < idea.notes.size(); ++i)
+        {
+            const auto& n = idea.notes[i];
+            CHECK (n.beat == Catch::Approx (0.5 * (double) i));
+            CHECK (GuitarVelocity::midiOf (n.velocity) < 60);
+            pitches.insert (n.pitch);
+            const auto bar = (int) i / 8, inBar = (int) i % 8;
+            if (bar % 4 == 3 && inBar == 6)
+                CHECK (n.pitch == 62);
+            else
+                CHECK (n.pitch == std::array<int, 3> { 57, 60, 64 }[(i % 16) % 3]);
+        }
+        CHECK (pitches == std::set<int> { 57, 60, 62, 64 });
+    }
+    // SIXTEENTHS: the same notes, twice as many, starting again every bar.
+    {
+        auto s = cleanState (8);
+        const auto all = composeLayers (s, spans, c);
+        const auto& idea = all[(size_t) ComposerLayer::guitar];
+        REQUIRE (idea.notes.size() == 8 * 16);
+        for (int bar = 0; bar < 8; ++bar)
+            CHECK (idea.notes[(size_t) bar * 16].pitch == 57);
+    }
+    // STILL CLUSTER: E, F, C (A minor's fifth, sixth, third) picked middle, top, low; the cycle's last eighth A under.
+    {
+        auto s = cleanState (9);
+        const auto all = composeLayers (s, spans, c);
+        const auto& idea = all[(size_t) ComposerLayer::guitar];
+        REQUIRE (idea.notes.size() == 8 * 8);
+        for (size_t i = 0; i < idea.notes.size(); ++i)
+        {
+            if (i % 16 == 15)
+                CHECK (idea.notes[i].pitch == 57);
+            else
+                CHECK (idea.notes[i].pitch == std::array<int, 3> { 64, 65, 60 }[(i % 16) % 3]);
+        }
+    }
+    // Left on AUTOMATIC under a still shape, the bass changes late in eighths, the drums take the half-time hats,
+    // the keys stay out (as the song).
+    {
+        auto s = cleanState (7);
+        const auto all = composeLayers (s, spans, c);
+        CHECK (all[(size_t) ComposerLayer::drums].style == "Clean: half-time hats");
+        CHECK (all[(size_t) ComposerLayer::bass].style == "Clean: eighths, changing late");
+        CHECK (all[(size_t) ComposerLayer::chords].notes.empty());
+    }
+    // HALF-TIME HATS: the snare on beat 3 of every bar; TOM GROOVE: the hat's foot on every beat, toms, the snare on 4.
+    {
+        auto s = cleanState (0);
+        s.lane (ComposerLayer::drums).approach = 4;
+        auto all = composeLayers (s, spans, c);
+        int snares = 0;
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            if (n.pitch == 38)
+            {
+                ++snares;
+                CHECK (std::fmod (n.beat, 4.0) == Catch::Approx (2.0));
+            }
+        CHECK (snares == 8);
+        s.lane (ComposerLayer::drums).approach = 5;
+        all = composeLayers (s, spans, c);
+        int feet = 0, toms = 0, loud = 0;
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+        {
+            feet += n.pitch == 44 ? 1 : 0;
+            toms += n.pitch == 43 || n.pitch == 45 ? 1 : 0;
+            if (n.pitch == 38 && n.velocity > 0.8f)
+            {
+                ++loud;
+                CHECK (std::fmod (n.beat, 4.0) == Catch::Approx (3.0));
+            }
+        }
+        CHECK (feet == 8 * 4);
+        CHECK (toms >= 8 * 3);
+        CHECK (loud == 8);
+    }
+    // The lead: AUTOMATIC plays its own style as before; SWELL MELODY steps down the scale from the third, every
+    // note a swell, longer at first; SWELL, THEN WARBLE picks the long ones again with quarter-tone bends.
+    {
+        auto plainState = cleanState (7);
+        const auto automatic = composeLayers (plainState, spans, c)[(size_t) ComposerLayer::lead];
+        CHECK_FALSE (automatic.style.startsWith ("Clean"));
+        auto s = cleanState (7);
+        s.lane (ComposerLayer::lead).approach = 0;
+        const auto all = composeLayers (s, spans, c);
+        const auto& lead = all[(size_t) ComposerLayer::lead];
+        REQUIRE (lead.notes.size() == 9);
+        CHECK (lead.notes.front().pitch % 12 == 0);   // (C, A minor's third)
+        CHECK (lead.notes.front().length > lead.notes.back().length * 1.5);
+        for (size_t i = 1; i < lead.notes.size(); ++i)
+            if (i != 3)   // (the second time round starts on the third again)
+                CHECK (lead.notes[i].pitch < lead.notes[i - 1].pitch);
+        for (const auto& n : lead.notes)
+        {
+            CHECK (n.effect == LineNote::Effect::swell);
+            const auto pc = n.pitch % 12;
+            CHECK ((pc == 9 || pc == 11 || pc == 0 || pc == 2 || pc == 4 || pc == 5 || pc == 7));
+        }
+        // The swells become expression ramps from nothing.
+        const auto controllers = Studio::effectControllers (lead.notes, 2);
+        int fromNothing = 0;
+        for (const auto& k : controllers)
+            if (k.type == Controller::Type::cc && k.number == 11 && k.value == 0)
+                ++fromNothing;
+        CHECK (fromNothing == 9);
+        s.lane (ComposerLayer::lead).approach = 1;
+        const auto warbled = composeLayers (s, spans, c);
+        int bends = 0;
+        for (const auto& n : warbled[(size_t) ComposerLayer::lead].notes)
+            if (n.effect == LineNote::Effect::bend)
+            {
+                ++bends;
+                CHECK (n.amount == Catch::Approx (0.5f));
+            }
+        CHECK (bends >= 4);
     }
 }
