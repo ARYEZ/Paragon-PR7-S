@@ -35,7 +35,7 @@ namespace
         return n;
     }
 
-    const std::string riffCharacters = "-=xXcCdDfFeEgGkKtTzZ*#obBhprvwuqyjnaAilms123456789^<>(){}[]%&!+;@$~|";
+    const std::string riffCharacters = "-=xXcCdDfFeEgGkKtTzZ*#obBhprvwuqyjnaAilms123456789^<>(){}[]%&!+;@$~|_";   // (0.99.0: _ the push)
 }
 
 TEST_CASE ("The riff generator: a thousand seeds, a thousand riffs (0.85.0)", "[riffgen]")

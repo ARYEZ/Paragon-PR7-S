@@ -198,7 +198,7 @@ namespace pr7s
         r.seed = (juce::uint32) (lane.variation * 7919 + lane.style * 131 + 7);
         if (const auto typed = typedGuitarFlavour (s))
             r.flavour = *typed;   // (0.94.0: a type of several riff kinds: the approach picks one)
-        else if (r.flavour == RiffFlavour::droning || r.flavour == RiffFlavour::drivingEighths)
+        else if (r.flavour == RiffFlavour::droning || r.flavour == RiffFlavour::drivingEighths || r.flavour == RiffFlavour::syncopatedDrive)
             r.approach = lane.approach;   // (0.94.0; 0.98.0 DRIVING EIGHTHS too)
         return r;
     }
@@ -2087,6 +2087,214 @@ namespace pr7s
             return std::nullopt;
         }
 
+        // SYNCOPATED DRIVE'S BAND (0.99.0, the owner's Another Life chorus with Faster's syncopated bar; shapes only):
+        //   BASS    locked with the kick in a syncopated figure: 1, the and of 2 and 4 tied over the bar line, then a bar
+        //           of off-beats (Another Life); root eighths under it (Faster); doubling the guitar; LOCKED WITH THE KICK.
+        //   DRUMS   the kick on that figure with the snare on 3 (half time) or on 2 and 4; the kick on the guitar's hits;
+        //           cymbals on the beats with the kicks between. A crash on each four bars, a fill into them.
+        //   KEYS    held pads; stabs on the bass's figure; silent.
+        //   LEAD    three notes cycling against the four beats (Another Life); held notes with a squeal; a ringing arpeggio.
+        // Left on AUTOMATIC: the bass among its first three, the drums between their first two (the figure), the keys
+        // between the first two, the lead among its three, by the take.
+        bool syncopatedBand (const ComposerState& s, const ComposerContext& c)
+        {
+            const auto& flavours = riffFlavours();
+            return juce::isPositiveAndBelow (s.riffFlavour, (int) flavours.size())
+                && flavours[(size_t) s.riffFlavour] == RiffFlavour::syncopatedDrive
+                && ! s.writtenRiffs && ! c.myRiff.has_value() && s.lane (ComposerLayer::guitar).on;
+        }
+
+        // The figure's hits (idea beats) with how long each rings: bar A on 1, the and of 2 and 4 (held over the bar line
+        // to the next hit), bar B on every off-beat.
+        std::vector<std::pair<double, double>> syncopatedFigure (const std::vector<ChordSpan>& spans, double bpb)
+        {
+            const auto length = sectionLength (spans);
+            const auto beat = bpb / 4.0;
+            std::vector<double> at;
+            for (int bar = 0; bar * bpb < length - 1.0e-6; ++bar)
+            {
+                const auto o = bar * bpb;
+                if (bar % 2 == 0)
+                    for (const auto b : { 0.0, 1.5, 3.0 })
+                        at.push_back (o + b * beat);
+                else
+                    for (const auto b : { 0.5, 1.5, 2.5, 3.5 })
+                        at.push_back (o + b * beat);
+            }
+            std::vector<std::pair<double, double>> out;
+            for (size_t i = 0; i < at.size(); ++i)
+                if (at[i] < length - 1.0e-6)
+                {
+                    const auto next = i + 1 < at.size() ? juce::jmin (at[i + 1], length) : length;
+                    out.push_back ({ at[i], juce::jmax (0.05, (next - at[i]) * 0.92) });
+                }
+            return out;
+        }
+
+        LineIdea syncopatedBass (const std::vector<ChordSpan>& spans, double bpb, int lowest, int highest)
+        {
+            LineIdea out { LineIdea::Part::bass, "Syncopated: locked figure",
+                           "With the kick: 1, the and of 2 and 4 tied over the bar line, then a bar of off-beats", {} };
+            const auto length = sectionLength (spans);
+            for (const auto& [t, held] : syncopatedFigure (spans, bpb))
+                addNote (out, t, held, rootNear (chordAtIdea (spans, t), lowest, juce::jmin (highest, lowest + 11)), 0.88f, length);
+            return out;
+        }
+
+        LineIdea syncopatedDrums (int approach, const LineIdea& guitar, const std::vector<ChordSpan>& spans, double bpb)
+        {
+            if (approach == 2)
+                return drivingDrums (3, guitar, spans, bpb);
+            if (approach == 3)
+                return drivingDrums (2, guitar, spans, bpb);
+            const auto halfTime = approach == 0;
+            LineIdea out { LineIdea::Part::drums, halfTime ? "Syncopated: kick figure, half-time snare" : "Syncopated: kick figure, backbeat",
+                           halfTime ? "The kick on the bass's syncopated figure, the snare on 3, open hats on the beats"
+                                    : "The kick on the bass's syncopated figure, the snare on 2 and 4, the ride in eighths", {} };
+            const auto length = sectionLength (spans);
+            const auto bars = (int) std::ceil (length / bpb - 1.0e-6);
+            const auto beat = bpb / 4.0;
+            auto hit = [&out, length] (double at, int note, float velocity)
+            {
+                if (at >= -1.0e-9 && at < length - 1.0e-6
+                    && std::none_of (out.notes.begin(), out.notes.end(), [&] (const LineNote& n) { return n.pitch == note && std::abs (n.beat - at) < 1.0e-6; }))
+                    out.notes.push_back ({ at, 0.1, note, velocity });
+            };
+            for (const auto& [t, held] : syncopatedFigure (spans, bpb))
+            {
+                juce::ignoreUnused (held);
+                if ((int) std::floor (t / bpb + 1.0e-9) % 4 != 3 || std::fmod (t, bpb) < 3 * beat - 1.0e-6)
+                    hit (t, GmDrum::kick, 0.92f);
+            }
+            for (int bar = 0; bar < bars; ++bar)
+            {
+                const auto o = bar * bpb;
+                const auto fill = bar % 4 == 3;
+                const auto until = fill ? o + 3 * beat : o + bpb;
+                if (bar % 4 == 0)
+                    hit (o, GmDrum::crash, 0.95f);
+                if (halfTime)
+                {
+                    for (int q = 0; q < 4; ++q)
+                        if (o + q * beat < until - 1.0e-6)
+                            hit (o + q * beat, GmDrum::openHat, q == 0 ? 0.78f : 0.66f);
+                    hit (o + 2 * beat, GmDrum::snare, 0.95f);
+                }
+                else
+                {
+                    for (int e = 0; e < 8; ++e)
+                        if (o + e * beat / 2 < until - 1.0e-6)
+                            hit (o + e * beat / 2, GmDrum::ride, e % 2 == 0 ? 0.72f : 0.58f);
+                    hit (o + beat, GmDrum::snare, 0.92f);
+                    if (! fill)
+                        hit (o + 3 * beat, GmDrum::snare, 0.92f);
+                }
+                if (fill)
+                {
+                    const auto f = o + 3 * beat;
+                    hit (f, GmDrum::snare, 0.8f);
+                    hit (f + beat * 0.25, GmDrum::snare, 0.84f);
+                    hit (f + beat * 0.5, GmDrum::tomHigh, 0.88f);
+                    hit (f + beat * 0.75, GmDrum::tomFloor, 0.92f);
+                }
+            }
+            std::stable_sort (out.notes.begin(), out.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+            return out;
+        }
+
+        LineIdea syncopatedKeys (int approach, const std::vector<ChordSpan>& spans, double bpb)
+        {
+            if (approach == 0)
+                return drivingKeys (0, spans, bpb);
+            if (approach == 2)
+                return drivingKeys (3, spans, bpb);
+            LineIdea out { LineIdea::Part::chords, "Syncopated: stabs with the bass", "The chord stabbed short on the bass and kick's figure", {} };
+            const auto length = sectionLength (spans);
+            std::vector<int> previous;
+            for (const auto& [t, held] : syncopatedFigure (spans, bpb))
+            {
+                juce::ignoreUnused (held);
+                const auto voicings = voicingsFor (chordAtIdea (spans, t), 60);
+                if (voicings.empty())
+                    continue;
+                const auto& shape = voicings[(size_t) juce::jlimit (0, (int) voicings.size() - 1, closestVoicing (voicings, previous, previous))];
+                previous = shape;
+                for (const auto p : shape)
+                    addNote (out, t, bpb / 8.0 * 0.9, p, 0.6f, length);
+            }
+            sortNotes (out);
+            return out;
+        }
+
+        LineIdea syncopatedLead (int approach, const LineIdea& guitar, const std::vector<ChordSpan>& spans, double bpb,
+                                 const GuitarVelocities& velocities, int lowest, int highest)
+        {
+            if (approach == 1)
+                return drivingLead (1, guitar, spans, bpb, velocities, lowest, highest);
+            if (approach == 2)
+                return drivingLead (0, guitar, spans, bpb, velocities, lowest, highest);
+            // Three notes cycling in eighths against the four beats: the accent lands somewhere else each beat.
+            LineIdea out { LineIdea::Part::lead, "Syncopated: three against four",
+                           "Three of the chord's notes cycling in eighths, so the figure crosses the beats", {} };
+            const auto low = juce::jlimit (lowest, juce::jmax (lowest, highest - 20), 62);
+            const auto origin = spans.front().start;
+            auto k = 0;
+            for (const auto& span : spans)
+            {
+                const auto& tones = span.chord.pitchClasses();
+                const auto root = pitchOfClassIn (span.chord.root, low, low + 11);
+                const auto fifth = tones.size() >= 3 ? pitchOfClassIn (tones[2], root, root + 11) : root + 7;
+                const auto third = tones.size() >= 2 ? pitchOfClassIn (tones[1], root + 12, root + 23) : root + 12;
+                const int cycle[] = { root + 12, fifth, third };
+                for (auto t = span.start - origin; t < span.end - origin - 1.0e-6; t += bpb / 8.0, ++k)
+                {
+                    auto p = cycle[k % 3];
+                    while (p > highest)
+                        p -= 12;
+                    const auto first = k % 3 == 0;
+                    out.notes.push_back ({ t, juce::jmin (bpb / 8.0 * 0.92, span.end - origin - t), p,
+                                           GuitarVelocity::of (first ? velocities.sustainHard : velocities.sustain) });
+                }
+            }
+            return out;
+        }
+
+        std::optional<LineIdea> syncopatedLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        {
+            if (spans.empty() || ! syncopatedBand (s, c))
+                return std::nullopt;
+            const auto& lane = s.lane (l);
+            switch (l)
+            {
+                case ComposerLayer::bass:
+                {
+                    const auto& profile = c.bassProfile;
+                    const auto lowest = profile.has_value() ? profile->rangeLow() : c.bassTuning.lowest();
+                    const auto highest = profile.has_value() ? profile->rangeHigh() : bassTop (c.bassTuning);
+                    const auto approach = drivingApproach (lane, 3, 3);
+                    auto idea = approach == 0 ? syncopatedBass (spans, c.beatsPerBar, lowest, highest)
+                                              : drivingBass (approach == 1 ? 0 : 1, guitarOf (s, spans, c), spans, c.beatsPerBar, lowest, highest);
+                    if (lane.lowString)
+                        keepInRange (idea, lowest, lowest + 12);
+                    keepInRange (idea, lowest, highest);
+                    return idea;
+                }
+                case ComposerLayer::chords: return syncopatedKeys (drivingApproach (lane, 3, 2), spans, c.beatsPerBar);
+                case ComposerLayer::lead:
+                {
+                    const auto& profile = c.leadProfile.has_value() ? c.leadProfile : c.guitarProfile;
+                    const auto velocities = profile.has_value() && profile->velocities.has_value() ? *profile->velocities : c.velocities;
+                    const auto lowest = profile.has_value() ? profile->rangeLow() : c.tuning.lowest();
+                    const auto highest = profile.has_value() ? profile->rangeHigh() : c.tuning.highest();
+                    return syncopatedLead (drivingApproach (lane, 3, 3), guitarOf (s, spans, c), spans, c.beatsPerBar, velocities, lowest, highest);
+                }
+                case ComposerLayer::drums: return syncopatedDrums (drivingApproach (lane, 4, 2), guitarOf (s, spans, c), spans, c.beatsPerBar);
+                case ComposerLayer::melody:
+                case ComposerLayer::guitar: break;
+            }
+            return std::nullopt;
+        }
+
         // A lane as SYNC has it (0.86.0): the sync lane itself and every lane with SYNC off as before.
         LineIdea syncedLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
@@ -2151,6 +2359,9 @@ namespace pr7s
                 if (! leaderLayer.has_value())
                     if (auto driving = drivingLayer (l, s, spans, c))
                         return std::move (*driving);   // (0.98.0)
+                if (! leaderLayer.has_value())
+                    if (auto syncopated = syncopatedLayer (l, s, spans, c))
+                        return std::move (*syncopated);   // (0.99.0)
                 return rawLayer (l, s, spans, c);
             }
             auto plain = s;
@@ -2228,7 +2439,7 @@ namespace pr7s
     {
         if (s.syncLayer().has_value())
             return false;
-        if (droningBand (s, c) || drivingBand (s, c))
+        if (droningBand (s, c) || drivingBand (s, c) || syncopatedBand (s, c))
             return l == ComposerLayer::bass || l == ComposerLayer::chords || l == ComposerLayer::lead || l == ComposerLayer::drums;
         switch (sectionBand (s))
         {

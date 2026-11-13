@@ -8,6 +8,10 @@ namespace pr7s
     {
         // composerSectionFor: intro 0, verse 1, chorus 2, bridge 3, breakdown 4, ending 5, solo 6.
         const SectionType driving { "DRIVING", "Eighth notes driving the chorus on", RiffFlavour::drivingEighths };
+        // (0.99.0, the owner's Another Life chorus, with Faster's syncopated bar) the guitar's eighths, the bass and the kick
+        // locked in a syncopated figure under them.
+        const SectionType syncopated { "SYNCOPATED DRIVE", "Driving eighths over a syncopated bass and kick: stab openings, pushed changes, a half-time snare",
+                                       RiffFlavour::syncopatedDrive };
         const SectionType droning { "DRONING", "Chords rung across the bar, the band carrying the movement", RiffFlavour::droning };
         const SectionType staccato { "STACCATO CHUG", "Short palm-muted chugs and stops, the bass and the kick locked to them; the rhythm guitar picks the kind",
                                      RiffFlavour::pedalStabs,
@@ -34,7 +38,7 @@ namespace pr7s
         {
             case 0: return { droning, open };
             case 1: return { staccato, split, clean, droning, sparse };
-            case 2: return { driving, droning };
+            case 2: return { driving, syncopated, droning };
             case 3: return { creep, open, droning };
             case 4: return { heavy, staccato };
             case 5: return { droning, stabs };
@@ -93,6 +97,18 @@ namespace pr7s
                 case ComposerLayer::lead: return { "RINGING ARPEGGIO", "HELD NOTES & A SQUEAL", "DOUBLES THE RHYTHM AN OCTAVE UP" };
                 case ComposerLayer::drums: return { "DRIVING BACKBEAT", "HALF TIME, KICK ON THE EIGHTHS", "CYMBALS ON THE BEATS, KICKS BETWEEN",
                                                      "KICK WITH THE GUITAR", "DOUBLE KICK" };
+                case ComposerLayer::melody: break;
+            }
+        if (flavour == RiffFlavour::syncopatedDrive)
+            switch (layer)
+            {
+                // (0.99.0, the owner's Another Life chorus and Faster's syncopated bar; our names)
+                case ComposerLayer::guitar: return { "STABS, THEN EIGHTHS", "SYNCOPATED THIRD BAR", "PUSHED CHANGES", "STABS, THEN PUSHES" };
+                case ComposerLayer::bass: return { "LOCKED SYNCOPATION", "ROOT EIGHTHS", "DOUBLES THE GUITAR", "LOCKED WITH THE KICK" };
+                case ComposerLayer::chords: return { "HELD PADS", "STABS WITH THE BASS", "SILENT" };
+                case ComposerLayer::lead: return { "THREE AGAINST FOUR", "HELD NOTES & A SQUEAL", "RINGING ARPEGGIO" };
+                case ComposerLayer::drums: return { "SYNCOPATED KICK, HALF-TIME SNARE", "SYNCOPATED KICK, BACKBEAT", "KICK WITH THE GUITAR",
+                                                     "CYMBALS ON THE BEATS, KICKS BETWEEN" };
                 case ComposerLayer::melody: break;
             }
         if (flavour != RiffFlavour::droning)

@@ -70,7 +70,12 @@ namespace pr7s
 // down in the first half, the second half silent, a pickup every fourth bar; hitPush: a chord on 1 and the chord a whole
 // step under the next one pushed in on the last sixteenths, the rest of the bar left open.
 enum class RiffFlavour { any, chugs, gallop, tritone, creep, stabs, octaves, stopStart, openChords, drivingEighths, droning,
-                         pedalStabs, chugThrees, burstSilence, secondHalfStabs, firstHalfBurst, hitPush };
+                         pedalStabs, chugThrees, burstSilence, secondHalfStabs, firstHalfBurst, hitPush,
+                         // (0.99.0, the owner's Another Life chorus with Faster's syncopated bar, shapes only) the driving
+                         // eighths opened by stabs (chord, chord, silence), a bar rung across the beats, or the change pushed
+                         // in an eighth early ('_': the next chord's power chord on the bar's last eighth). Made by the
+                         // DRIVING EIGHTHS generator with its own shapes.
+                         syncopatedDrive };
     const std::vector<RiffFlavour>& riffFlavours();
     juce::String riffFlavourName (RiffFlavour);          // "ANY", "CHUGS", "GALLOP", "TRITONE CHUG", ...
     juce::String riffFlavourDescription (RiffFlavour);

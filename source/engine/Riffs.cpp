@@ -678,6 +678,7 @@ namespace pr7s
                         // riff goes round.)
                         case '>': case '<': case '(': case ')':
                         case '{': case '}': case '[': case ']':
+                        case '_':   // (0.99.0, SYNCOPATED DRIVE's push: the next chord's power chord itself, an eighth early)
                         {
                             const auto nextAt = juce::jmin (t + beatsPerBar, span.end);
                             auto next = (size_t) 0;
@@ -697,9 +698,9 @@ namespace pr7s
                                     add (idea.notes, when, length * 0.9, p, mutedVelocity);
                                 break;
                             }
-                            const auto by = (lower == '>' || lower == '{') ? 2 : (lower == '<' || lower == '}') ? 1 : (lower == '(' || lower == '[') ? -2 : -1;
+                            const auto by = lower == '_' ? 0 : (lower == '>' || lower == '{') ? 2 : (lower == '<' || lower == '}') ? 1 : (lower == '(' || lower == '[') ? -2 : -1;
                             const auto to = roots[next] + by;
-                            if (lower == '{' || lower == '}' || lower == '[' || lower == ']')
+                            if (lower == '{' || lower == '}' || lower == '[' || lower == ']' || lower == '_')
                                 for (const auto p : { to, to + 7, to + 12 })   // (the power chord itself steps: The End of Heartache)
                                     add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
                             else

@@ -601,13 +601,13 @@ TEST_CASE ("0.93.0: the composer block by block: aimed at the first block, BUILD
 TEST_CASE ("0.94.0: the types a section can have; STANDARD is none; a type sets the guitar's flavour", "[sections][types]")
 {
     const auto chorus = sectionTypesFor ("Chorus");
-    REQUIRE (chorus.size() == 2);
+    REQUIRE (chorus.size() == 3);   // (0.99.0: SYNCOPATED DRIVE between them)
     CHECK (chorus[0].name == "DRIVING");
     CHECK (chorus[0].flavour == RiffFlavour::drivingEighths);
-    CHECK (chorus[1].name == "DRONING");
-    CHECK (chorus[1].flavour == RiffFlavour::droning);
+    CHECK (chorus[2].name == "DRONING");
+    CHECK (chorus[2].flavour == RiffFlavour::droning);
     // A name plays as its kind: a Hook as a chorus, a Pre-Chorus as a verse.
-    CHECK (sectionTypesFor ("Hook").size() == 2);
+    CHECK (sectionTypesFor ("Hook").size() == 3);
     CHECK (sectionTypesFor ("Pre-Chorus").front().name == sectionTypesFor ("Verse").front().name);
     for (const auto& name : songSectionNames())
         CHECK_FALSE (sectionTypesFor (name).empty());   // (every section seeded with suggestions)
@@ -1284,7 +1284,7 @@ TEST_CASE ("0.97.2: LOCKED WITH THE KICK on the bass under every type that write
     };
     for (const auto& [name, type] : { std::pair<const char*, const char*> { "Chorus", "DRONING" }, { "Verse", "STACCATO CHUG" },
                                       { "Verse", "SPLIT CHUG" }, { "Verse", "CLEAN VERSE" }, { "Breakdown", "HEAVY CHUG" },
-                                      { "Chorus", "DRIVING" } })   // (0.98.0)
+                                      { "Chorus", "DRIVING" }, { "Chorus", "SYNCOPATED DRIVE" } })   // (0.98.0, 0.99.0)
     {
         INFO (type);
         ComposerState s;
@@ -1338,7 +1338,8 @@ TEST_CASE ("0.98.0: the DRIVING chorus's options for every lane", "[sections][ty
             auto each = s;
             each.lane (l).approach = i;
             std::vector<std::tuple<int, int, int>> notes;
-            for (const auto& n : composeLayers (each, spans, c)[(size_t) l].notes)
+            const auto all = composeLayers (each, spans, c);   // (kept: a loop over a temporary's member dangles; MSVC read it empty)
+            for (const auto& n : all[(size_t) l].notes)
                 notes.emplace_back (juce::roundToInt (n.beat * 96.0), n.pitch, juce::roundToInt (n.length * 96.0));
             parts.insert (notes);
         }
@@ -1477,4 +1478,168 @@ TEST_CASE ("0.98.0: the DRIVING chorus's band", "[sections][types]")
         CHECK (all[(size_t) ComposerLayer::bass].style.startsWith ("Driving"));
         CHECK (all[(size_t) ComposerLayer::drums].style.startsWith ("Driving"));
     }
+}
+
+TEST_CASE ("0.99.0: SYNCOPATED DRIVE: a chorus type with its options", "[sections][types]")
+{
+    REQUIRE (isSectionTypeOf ("Chorus", "SYNCOPATED DRIVE"));
+    CHECK (sectionTypesFor ("Chorus")[1].name == "SYNCOPATED DRIVE");
+    CHECK_FALSE (isSectionTypeOf ("Verse", "SYNCOPATED DRIVE"));
+    ComposerState s;
+    applySectionType (s, "Chorus", "SYNCOPATED DRIVE");
+    const ComposerContext c;
+    for (const auto l : { ComposerLayer::bass, ComposerLayer::drums, ComposerLayer::chords, ComposerLayer::lead })
+        CHECK (sectionTypeWritesLane (l, s, c));
+    CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::melody, s, c));
+    CHECK (sectionApproaches (s, ComposerLayer::guitar).size() == 4);
+    CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 4);
+    CHECK (sectionApproaches (s, ComposerLayer::drums).size() == 4);
+    CHECK (sectionApproaches (s, ComposerLayer::chords).size() == 3);
+    CHECK (sectionApproaches (s, ComposerLayer::lead).size() == 3);
+    s.lane (ComposerLayer::lead).on = true;
+    const auto spans = cleanSpans();
+    for (const auto l : { ComposerLayer::guitar, ComposerLayer::bass, ComposerLayer::drums, ComposerLayer::chords, ComposerLayer::lead })
+    {
+        INFO (composerLayerName (l));
+        const auto names = sectionApproaches (s, l);
+        std::set<std::vector<std::tuple<int, int, int>>> parts;
+        for (int i = 0; i < names.size(); ++i)
+        {
+            auto each = s;
+            each.lane (l).approach = i;
+            std::vector<std::tuple<int, int, int>> notes;
+            const auto all = composeLayers (each, spans, c);   // (kept: a loop over a temporary's member dangles; MSVC read it empty)
+            for (const auto& n : all[(size_t) l].notes)
+                notes.emplace_back (juce::roundToInt (n.beat * 96.0), n.pitch, juce::roundToInt (n.length * 96.0));
+            parts.insert (notes);
+        }
+        CHECK ((int) parts.size() == names.size());
+    }
+}
+
+TEST_CASE ("0.99.0: SYNCOPATED DRIVE's guitar shapes", "[sections][types]")
+{
+    const auto struck = [] (const std::string& bar) { int n = 0; for (int i = 0; i < 16; i += 2) n += bar[(size_t) i] != '=' && bar[(size_t) i] != '-'; return n; };
+    std::set<std::string> automatic;
+    for (juce::uint32 seed = 1; seed < 40; ++seed)
+    {
+        RiffRecipe r;
+        r.flavour = RiffFlavour::syncopatedDrive;
+        r.section = DrumSection::chorus;
+        r.bars = 4;
+        r.seed = seed;
+        {
+            const auto bars = generateRiffBars (r, 16);
+            REQUIRE (bars.size() == 4);
+            automatic.insert (bars[0].substr (0, 1) + (bars[0].find ('-') != std::string::npos ? "K" : "") + bars[3].substr (14));
+        }
+        const auto barsOf = [&r] (int approach) { r.approach = approach; return generateRiffBars (r, 16); };
+        // STABS, THEN EIGHTHS: two bars of stabs with silence, then eighths.
+        {
+            const auto bars = barsOf (0);
+            for (int b = 0; b < 2; ++b)
+            {
+                CHECK (bars[(size_t) b].find ('-') != std::string::npos);
+                CHECK (struck (bars[(size_t) b]) <= 3);
+            }
+            CHECK (struck (bars[2]) == 8);
+            CHECK (struck (bars[3]) == 8);
+        }
+        // SYNCOPATED THIRD BAR.
+        CHECK (struck (barsOf (1)[2]) <= 4);
+        // PUSHED CHANGES: every bar's last eighth the next chord.
+        for (const auto& bar : barsOf (2))
+            CHECK (bar[14] == '_');
+        // STABS, THEN PUSHES.
+        {
+            const auto bars = barsOf (3);
+            CHECK (bars[0].find ('-') != std::string::npos);
+            CHECK (bars[3][14] == '_');
+        }
+    }
+    CHECK (automatic.size() >= 3);   // (AUTOMATIC draws the shapes in turn)
+    // The push plays the next chord's power chord on the bar's last eighth.
+    {
+        RiffRecipe r;
+        r.flavour = RiffFlavour::syncopatedDrive;
+        r.section = DrumSection::chorus;
+        r.bars = 4;
+        r.approach = 2;
+        const auto spans = cleanSpans();
+        const auto idea = generateRiff (r, spans, 4.0, GuitarTuning::all().front(), GuitarVelocities {});
+        std::set<int> at35;
+        for (const auto& n : idea.notes)
+            if (! n.keyswitch && std::abs (n.beat - 3.5) < 1.0e-6)
+                at35.insert (n.pitch % 12);
+        CHECK (at35.count (5) == 1);   // F, the second bar's chord
+        CHECK (at35.count (0) == 1);   // its fifth
+        CHECK (at35.count (9) == 0);   // not A, the first bar's
+    }
+}
+
+TEST_CASE ("0.99.0: SYNCOPATED DRIVE's band locks the bass and kick in the figure", "[sections][types]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();
+    ComposerState s;
+    applySectionType (s, "Chorus", "SYNCOPATED DRIVE");
+    s.lane (ComposerLayer::lead).on = true;
+    const auto with = [&s] (ComposerLayer l, int approach) { auto each = s; each.lane (l).approach = approach; return each; };
+    const std::vector<double> figure { 0.0, 1.5, 3.0, 4.5, 5.5, 6.5, 7.5 };
+    // The bass: 1, the and of 2, 4 held over the bar line, then the off-beats; each the chord's root there.
+    const auto bass = composeLayers (with (ComposerLayer::bass, 0), spans, c)[(size_t) ComposerLayer::bass];
+    REQUIRE (bass.notes.size() == 7 * 4);
+    for (size_t i = 0; i < figure.size(); ++i)
+    {
+        CHECK (bass.notes[i].beat == Catch::Approx (figure[i]));
+        CHECK (bass.notes[i].pitch % 12 == spans[(size_t) std::floor (figure[i] / 4.0)].chord.root);
+    }
+    CHECK (bass.notes[2].beat + bass.notes[2].length > 4.0);   // (tied over the bar line)
+    // The drums: the kick on the same figure (the fill's last beat aside), the snare on 3 (half time) or 2 and 4.
+    for (int approach = 0; approach < 2; ++approach)
+    {
+        const auto drums = composeLayers (with (ComposerLayer::drums, approach), spans, c)[(size_t) ComposerLayer::drums];
+        std::set<int> kicks, snares;
+        for (const auto& n : drums.notes)
+            if (n.beat < 8.0 - 1.0e-6)
+            {
+                if (n.pitch == GmDrum::kick)
+                    kicks.insert (juce::roundToInt (n.beat * 8.0));
+                if (n.pitch == GmDrum::snare)
+                    snares.insert (juce::roundToInt (n.beat * 8.0));
+            }
+        std::set<int> expected;
+        for (const auto f : figure)
+            expected.insert (juce::roundToInt (f * 8.0));
+        CHECK (kicks == expected);
+        if (approach == 0)
+            CHECK (snares == std::set<int> { 16, 48 });
+        else
+            CHECK (snares == std::set<int> { 8, 24, 40, 56 });
+    }
+    // The keys' stabs on the figure.
+    {
+        const auto keys = composeLayers (with (ComposerLayer::chords, 1), spans, c)[(size_t) ComposerLayer::chords];
+        std::set<int> starts;
+        for (const auto& n : keys.notes)
+            if (n.beat < 8.0 - 1.0e-6)
+                starts.insert (juce::roundToInt (n.beat * 8.0));
+        std::set<int> expected;
+        for (const auto f : figure)
+            expected.insert (juce::roundToInt (f * 8.0));
+        CHECK (starts == expected);
+    }
+    // The lead: three notes going round in eighths (the fourth repeats the first) within a chord.
+    {
+        const auto lead = composeLayers (with (ComposerLayer::lead, 0), spans, c)[(size_t) ComposerLayer::lead];
+        REQUIRE (lead.notes.size() >= 8);
+        CHECK (lead.notes[0].pitch == lead.notes[3].pitch);
+        CHECK (lead.notes[1].pitch == lead.notes[4].pitch);
+        CHECK (lead.notes[0].pitch != lead.notes[1].pitch);
+        CHECK (lead.notes[1].pitch != lead.notes[2].pitch);
+    }
+    // AUTOMATIC writes the band's own parts.
+    const auto all = composeLayers (s, spans, c);
+    CHECK ((all[(size_t) ComposerLayer::bass].style.startsWith ("Syncopated") || all[(size_t) ComposerLayer::bass].style.startsWith ("Driving")));
+    CHECK (all[(size_t) ComposerLayer::drums].style.startsWith ("Syncopated"));
 }

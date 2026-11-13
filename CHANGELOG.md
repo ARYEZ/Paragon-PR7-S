@@ -2,6 +2,26 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.99.0
+
+**A new chorus type, SYNCOPATED DRIVE** (the second step of the plan from your tabs; Another Life's chorus with Faster's syncopated bar, read for their shapes only). It sits between DRIVING and DRONING in the chorus's TYPE menu. The guitar still drives in eighths, but the bass and kick lock into a syncopated figure under it: **1, the and of 2, and 4 held over the bar line, then a bar of off-beats**.
+
+- **Rhythm guitar** (four options; AUTOMATIC picks one by the take):
+  - **STABS, THEN EIGHTHS** (Another Life): two bars of stabs (chord, chord, silence), then two bars of eighths.
+  - **SYNCOPATED THIRD BAR** (Faster): eighths, the third bar of every four rung across the beats.
+  - **PUSHED CHANGES:** eighths, with each bar's last eighth already playing the next chord (the change arrives early).
+  - **STABS, THEN PUSHES:** the stab opening, then pushed changes.
+- **Bass:** LOCKED SYNCOPATION (the figure above, the chord's root on each hit), ROOT EIGHTHS, DOUBLES THE GUITAR, LOCKED WITH THE KICK.
+- **Drums:** SYNCOPATED KICK, HALF-TIME SNARE (the kick on the figure, the snare on 3, open hats on the beats: Another Life), SYNCOPATED KICK, BACKBEAT (the snare on 2 and 4, the ride in eighths), KICK WITH THE GUITAR, CYMBALS ON THE BEATS, KICKS BETWEEN. A crash every four bars, a fill into them.
+- **Keys:** HELD PADS, STABS WITH THE BASS (the chord stabbed short on the figure), SILENT.
+- **Lead:** THREE AGAINST FOUR (Another Life: three of the chord's notes going round in eighths, so the figure crosses the beats), HELD NOTES & A SQUEAL, RINGING ARPEGGIO.
+
+The new riff kind also appears in the guitar's Riff Flavour list as SYNCOPATED DRIVE, and brings its band with it, the same way DRIVING EIGHTHS and DRONING do.
+
+**0.98.0 comes with it:** 0.98.0 (the DRIVING chorus's band, notes below) was never published. One of its new tests read a result after it had been thrown away, so it passed on Linux by luck and failed on Windows. The app itself was fine; the test is fixed, and this release carries both.
+
+**Not done yet:** in Another Life the chords also change halfway through some bars. The composer's chords are still one per bar (or as the chord track has them), so that part is up to the chords you write. I can't hear any of this here, so tell me what needs work. Next is 0.100.0, the verses.
+
 ## 0.98.0
 
 **The DRIVING chorus gets a full band** (the first step of the plan from your This Fire Burns, Faster and Another Life tabs; the tabs were read for their shapes only, nothing copied). Until now DRIVING only set the rhythm guitar; the bass, drums, keys and lead played their usual styles over it. Now each of them has its own DRIVING options, listed in the lane's menu, like DRONING's.
