@@ -2905,3 +2905,151 @@ TEST_CASE ("0.109.0: the breakdown types' shapes", "[sections][types][breakdown]
             CHECK (n.pitch >= 64);
     }
 }
+
+TEST_CASE ("0.110.0: interlude and post-chorus types, every lane's options a different part", "[sections][types][interlude]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const std::vector<juce::String> names { "HOOK RIFF", "CHORUS CARRIES ON", "PEDAL IN THREES", "HIGH TRILL HOOK", "PEDAL & HIGH MELODY", "BURST & ANSWER",
+                                            "STAB & ANSWER", "TREMOLO OVER CHUGS", "CLEAN BREATH", "TRITONE AIR & BUILD", "CHROMATIC WOBBLE" };
+    // A post-chorus: these, then the chorus's; an interlude or instrumental: these, then the bridge's.
+    const auto post = sectionTypesFor ("Post-Chorus");
+    REQUIRE (post.size() == names.size() + sectionTypesFor ("Chorus").size());
+    for (size_t i = 0; i < names.size(); ++i)
+        CHECK (post[i].name == names[i]);
+    CHECK (post[names.size()].name == "DRIVING");
+    const auto interlude = sectionTypesFor ("Interlude 2");
+    REQUIRE (interlude.size() == names.size() + sectionTypesFor ("Bridge").size());
+    CHECK (interlude[names.size()].name == "HALF-TIME MELODIC");
+    CHECK (sectionTypeNamed ("Instrumental", "HOOK RIFF").has_value());
+    CHECK_FALSE (sectionTypeNamed ("Chorus", "HOOK RIFF").has_value());
+    CHECK_FALSE (sectionTypeNamed ("Hook", "HOOK RIFF").has_value());
+    for (const auto& name : names)
+        CHECK (sectionTypeCalled (name)->band == SectionType::Band::interlude);
+
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << ";";
+        return k;
+    };
+    for (const auto& name : names)
+    {
+        ComposerState s;
+        applySectionType (s, "Post-Chorus", name);
+        REQUIRE (sectionBand (s) == SectionType::Band::interlude);
+        for (const auto l : composerLayers())
+        {
+            const auto options = sectionApproaches (s, l);
+            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && ! options.isEmpty()));
+            if (options.isEmpty())
+                continue;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) options.size());
+            std::set<juce::String> seen;
+            for (const auto& idea : choices)
+            {
+                INFO (name << " " << composerLayerName (l) << " " << idea.style);
+                CHECK (idea.notes.size() + (idea.style.containsIgnoreCase ("out") ? 1 : 0) > 0);
+                seen.insert (key (idea));
+            }
+            INFO (name << " " << composerLayerName (l));
+            CHECK (seen.size() == choices.size());
+        }
+        const auto all = composeLayers (s, spans, c);
+        for (const auto& idea : all)
+            for (const auto& n : idea.notes)
+                CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+    }
+}
+
+TEST_CASE ("0.110.0: the interlude types' shapes", "[sections][types][interlude]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (Am F C G a bar each, 8 bars; the low string A0 = 33: Am 33, F 41, C 36, G 43)
+    const auto typed = [] (const juce::String& name, int guitar = -1, int drums = -1)
+    {
+        ComposerState s;
+        applySectionType (s, "Interlude", name);
+        s.lane (ComposerLayer::guitar).approach = guitar;
+        s.lane (ComposerLayer::drums).approach = drums;
+        s.lane (ComposerLayer::lead).on = true;
+        return s;
+    };
+    const auto lowestAt = [] (const LineIdea& idea, double at)
+    {
+        auto low = 999;
+        for (const auto& n : idea.notes)
+            if (std::abs (n.beat - at) < 1.0e-6)
+                low = juce::jmin (low, n.pitch);
+        return low;
+    };
+    // HOOK RIFF: the bar's chord on its eighths, the next chord struck on the last eighth (F at 3.5, C at 7.5).
+    {
+        const auto all = composeLayers (typed ("HOOK RIFF", 0, 0), spans, c);
+        const auto& g = all[(size_t) ComposerLayer::guitar];
+        CHECK (lowestAt (g, 0.0) == 33);
+        CHECK (lowestAt (g, 3.0) == 33);
+        CHECK (lowestAt (g, 3.5) == 41);
+        CHECK (lowestAt (g, 4.0) == 999);   // (held over the bar line, not struck again)
+        CHECK (lowestAt (g, 4.5) == 41);
+        CHECK (lowestAt (g, 7.5) == 36);
+        // The hook: eighths, the fourth bar resolving onto the high root with vibrato.
+        const auto& lead = all[(size_t) ComposerLayer::lead].notes;
+        REQUIRE_FALSE (lead.empty());
+        for (const auto& n : lead)
+            CHECK (std::abs (n.beat * 2.0 - std::round (n.beat * 2.0)) < 1.0e-6);
+        auto resolved = false;
+        for (const auto& n : lead)
+            resolved = resolved || (std::abs (n.beat - 15.5) < 1.0e-6 && n.pitch % 12 == 9 && n.effect == LineNote::Effect::vibrato);
+        CHECK (resolved);
+        // The kick pushes on the and of 4.
+        auto push = false;
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            push = push || (n.pitch == GmDrum::kick && std::abs (n.beat - 3.5) < 1.0e-6);
+        CHECK (push);
+    }
+    // CHORUS CARRIES ON: the last two bars stabs on 1 and 2 only.
+    {
+        const auto all = composeLayers (typed ("CHORUS CARRIES ON", 0), spans, c);
+        std::set<int> starts;
+        for (const auto& n : all[(size_t) ComposerLayer::guitar].notes)
+            if (n.beat >= 24.0 - 1.0e-6)
+                starts.insert (juce::roundToInt ((n.beat - 24.0) * 4.0));
+        CHECK (starts == std::set<int> { 0, 4, 16, 20 });
+        // Frozen: every bar on the tonic.
+        const auto frozen = composeLayers (typed ("CHORUS CARRIES ON", 1), spans, c)[(size_t) ComposerLayer::guitar];
+        CHECK (lowestAt (frozen, 4.0) == 33);
+        CHECK (lowestAt (frozen, 12.0) == 33);
+    }
+    // PEDAL IN THREES: the low root on every third sixteenth.
+    {
+        const auto g = composeLayers (typed ("PEDAL IN THREES", 0), spans, c)[(size_t) ComposerLayer::guitar];
+        for (int i = 0; i < 16; i += 3)
+            CHECK (lowestAt (g, i * 0.25) == 33);
+        CHECK (lowestAt (g, 0.25) > 33);
+    }
+    // CLEAN BREATH: the bass out until halfway (its first option).
+    {
+        const auto all = composeLayers (typed ("CLEAN BREATH", 0), spans, c);
+        const auto& b = all[(size_t) ComposerLayer::bass].notes;
+        REQUIRE_FALSE (b.empty());
+        for (const auto& n : b)
+            CHECK (n.beat >= 16.0 - 1.0e-6);
+    }
+    // TRITONE AIR & BUILD: the guitar out in the third quarter, scratches in the last.
+    {
+        const auto g = composeLayers (typed ("TRITONE AIR & BUILD", 0), spans, c)[(size_t) ComposerLayer::guitar];
+        auto inGap = 0, scratches = 0;
+        for (const auto& n : g.notes)
+        {
+            inGap += n.beat >= 16.0 - 1.0e-6 && n.beat < 24.0 - 1.0e-6 ? 1 : 0;
+            scratches += n.beat >= 24.0 - 1.0e-6 ? 1 : 0;
+        }
+        CHECK (inGap == 0);
+        CHECK (scratches > 0);
+    }
+}

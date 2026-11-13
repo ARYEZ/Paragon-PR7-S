@@ -2,6 +2,30 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.110.0
+
+**Post-choruses, interludes and instrumentals get types of their own** (the next step of your plan, starting with Faster's hook riff; your songs read for their shapes only, our names). A **Post-Chorus**, **Interlude** or **Instrumental** block's TYPE menu now starts with eleven new types; under them are the types it had before (a post-chorus the chorus's, an interlude or instrumental the bridge's). Each type writes the guitar, bass, keys and drums, and four of them the lead too, with options in every lane's menu.
+
+- **HOOK RIFF** (Faster's): open power chords in eighths, each new chord struck on the bar's last eighth and held over the bar line, with the bass, keys and kick pushing with it. The lead plays a two-voice hook in eighths: a small turn a step and two over the high root against one low note a bar from the chord, the fourth bar climbing to its peak and stepping home. Options: the hook an octave down (as the second guitar doubles it), a muted pedal teaser instead of the chords, or a high descant; the drums with a crash on every beat or ride-bell eighths (the short post-chorus's).
+- **CHORUS CARRIES ON** (Another Life, The End of the Dream): the chorus's driving eighths keep going under the tag, moving with the chords or frozen on the key's chord, the lead a three-note cell drifting across the bar line, ending on two bars of stabs.
+- **PEDAL IN THREES** (Stricken, Black): sixteenths with the low root on every third one and moving notes between, the band doubling it, double kick under it.
+- **HIGH TRILL HOOK** (The Heart and the Shape, The Void, The End of Heartache): a high half-step trill over a chord tone on 1, or chugs answered by a fast trill coming down every two bars, over a tom or ride groove.
+- **PEDAL & HIGH MELODY** (This Calling, Circle With Me): a muted low root carrying a high melody that steps down every two bars and ends on a bend, or gallops answered by high dyads; the bass holding roots under half time.
+- **BURST & ANSWER** (Waffle, The End of Heartache): a bar of high power chords answered by a walk down to the root, or a bar of chugs answered by a pinched dyad sliding down.
+- **STAB & ANSWER** (Call Me When You're Sober, Clown): the band stabs and stops, the lead answers in the gap, the next chord comes in a sixteenth early; or a unison burst left ringing on a high chord.
+- **TREMOLO OVER CHUGS** (All Night Lights, Jaded): root chugs in threes under double kick, long tremolo-picked octaves falling a step a bar.
+- **CLEAN BREATH** (Come Clarity, At the End of August): a clean arpeggio arching over each chord (the band climbing back in at the end), or a still pair under a falling top note over rolling toms; the bass comes in halfway.
+- **TRITONE AIR & BUILD** (Ten Ton Hammer, Capricorn): a chord sliding up to a high note and falling to the tritone, the tritone held, the guitar out (the ride carrying the gap), then dead-string scratches building back with the snare.
+- **CHROMATIC WOBBLE** (Wildfire): muted low sixteenths wobbling a half step in groups of odd lengths that slide across the bar line, the kick on every one.
+
+Worth knowing:
+- The bass's options: **DOUBLES THE GUITAR** (its low notes), **ROOTS HELD**, **LOCKED WITH THE KICK**; CLEAN BREATH's starts with **OUT, THEN IN HALFWAY**.
+- Hook and Riff blocks keep their old types (your choice).
+- Most of the tab-only songs showed one guitar, so their bass and drums are my guess at the usual way. Faster's band-out moment is the SILENT BAR transition.
+- I can't listen to these here, so tell me which ones don't sound like your songs (the HOOK RIFF above all).
+
+Next, as planned: intro and outro types.
+
 ## 0.109.0
 
 **Breakdowns get types of their own** (the next step of your plan; your songs' breakdowns read for their shapes only, our names). A Breakdown block's TYPE menu now starts with ten new types, with HEAVY CHUG and STACCATO CHUG still under them. Each type writes the guitar, bass, keys and drums (and, for one of them, the lead), and every lane's menu has its options, as with the bridge types.

@@ -51,6 +51,28 @@ namespace pr7s
                      { "RISING BASS", "Chords held or tremolo picked while the bass climbs a step a bar underneath", RiffFlavour::openChords, {}, pre },
                      staccato, split, clean, muted, droning, sparse };
         }
+        // (0.110.0) A post-chorus's, an interlude's or an instrumental's own types first (the owner's songs, shapes only;
+        // our names), then what it had: a post-chorus the chorus's, the others the bridge's.
+        if (const auto base = sectionBaseOf (sectionName); base == "Post-Chorus" || base == "Interlude" || base == "Instrumental")
+        {
+            const auto i = SectionType::Band::interlude;
+            const auto r = RiffFlavour::openChords;
+            std::vector<SectionType> types {
+                { "HOOK RIFF", "Pushed power chords under a two-voice lead hook doubled an octave down, every change an eighth early", r, {}, i },
+                { "CHORUS CARRIES ON", "The chorus's drive keeps going under a tag (moving or frozen on the tonic), ending on two bars of stabs", r, {}, i },
+                { "PEDAL IN THREES", "Sixteenths with the low root on every third, moving notes between, the band doubling it", r, {}, i },
+                { "HIGH TRILL HOOK", "A high half-step trill over a chord tone, or chugs answered by a fast trill, over toms or the ride", r, {}, i },
+                { "PEDAL & HIGH MELODY", "A muted low pedal or gallops carrying a high melody stepping down", r, {}, i },
+                { "BURST & ANSWER", "A high burst answered by a walk down to the root, or chugs answered by a pinched slide", r, {}, i },
+                { "STAB & ANSWER", "The band stabs and stops, the lead answers in the gap, the next chord comes in early", r, {}, i },
+                { "TREMOLO OVER CHUGS", "Root chugs in threes under double kick, long tremolo-picked octaves falling over them", r, {}, i },
+                { "CLEAN BREATH", "A clean arpeggio or a falling top note over toms, the band climbing back in", r, {}, i },
+                { "TRITONE AIR & BUILD", "A slide up and a fall to the tritone, the tritone held, the guitar out, scratches building back", r, {}, i },
+                { "CHROMATIC WOBBLE", "Muted low sixteenths wobbling a half step in odd groups across the bar line", r, {}, i } };
+            const auto before = sectionTypesFor (base == "Post-Chorus" ? juce::String ("Chorus") : juce::String ("Bridge"));
+            types.insert (types.end(), before.begin(), before.end());
+            return types;
+        }
         switch (composerSectionFor (sectionName))
         {
             case 0: return { droning, open };
@@ -106,7 +128,7 @@ namespace pr7s
     {
         if (type.isEmpty())
             return std::nullopt;
-        for (const auto* name : { "Intro", "Verse", "Chorus", "Bridge", "Breakdown", "Ending", "Solo", "Pre-Chorus" })
+        for (const auto* name : { "Intro", "Verse", "Chorus", "Bridge", "Breakdown", "Ending", "Solo", "Pre-Chorus", "Interlude" })
             if (auto t = sectionTypeNamed (name, type))
                 return t;
         return std::nullopt;
@@ -254,6 +276,41 @@ namespace pr7s
                 case L::drums: return { "KICK WITH THE STABS", "HALF TIME" };
                 case L::lead: case L::melody: break;
             }
+        return {};
+    }
+
+    // (0.110.0) The interlude / post-chorus types' options, lane by lane (the bass's last always LOCKED WITH THE KICK; an
+    // empty lead list: the lead plays its own styles).
+    juce::StringArray interludeApproaches (const juce::String& type, ComposerLayer layer)
+    {
+        using L = ComposerLayer;
+        const auto t = type.trim().toUpperCase();
+        struct Lists { const char* name; juce::StringArray guitar, keys, drums, lead; };
+        static const Lists lists[] {
+            { "HOOK RIFF", { "PUSHED POWER CHORDS", "MUTED PEDAL TEASER", "HIGH DESCANT" }, { "PUSHED TRIADS", "SILENT" }, { "CRASH QUARTERS", "RIDE BELL EIGHTHS" }, { "TURNING HOOK", "HOOK, OCTAVE DOWN", "SILENT" } },
+            { "CHORUS CARRIES ON", { "DRIVING EIGHTHS", "FROZEN ON THE TONIC" }, { "HELD PADS", "FALLING HIGH NOTES", "SILENT" }, { "SYNCOPATED KICK, RIDE", "STRAIGHT BACKBEAT" }, { "THREE AGAINST FOUR", "SILENT" } },
+            { "PEDAL IN THREES", { "PEDAL IN THREES", "PEDAL, THEN RUNG CHORDS" }, { "SILENT", "LOW DRONE" }, { "DOUBLE KICK", "KICK ON THE PEDAL" }, {} },
+            { "HIGH TRILL HOOK", { "HIGH TRILL", "CHUG & TRILL" }, { "SILENT", "HELD PADS" }, { "TOM GROOVE", "RIDE GROOVE" }, {} },
+            { "PEDAL & HIGH MELODY", { "PEDAL & MELODY", "GALLOPS & DYADS" }, { "SLOW LINE DOWN", "SILENT" }, { "HALF TIME, PUSHED KICKS", "DRIVING" }, {} },
+            { "BURST & ANSWER", { "BURST, WALK DOWN", "CHUGS, SLIDE DOWN" }, { "SILENT", "HELD PADS" }, { "KICK WITH THE GUITAR", "STRAIGHT BACKBEAT" }, {} },
+            { "STAB & ANSWER", { "STAB, EARLY CHANGE", "UNISON BURST, HIGH CHORD" }, { "SILENT", "STABS WITH THE GUITAR" }, { "HITS WITH THE STABS", "TOMS WITH THE BURST" }, { "ANSWER IN THE GAP", "SILENT" } },
+            { "TREMOLO OVER CHUGS", { "CHUGS IN THREES", "CHUGS WALKING DOWN" }, { "SILENT", "LOW DRONE" }, { "DOUBLE KICK, HALF TIME", "KICK ON THE CHUGS" }, { "TREMOLO OCTAVES", "SILENT" } },
+            { "CLEAN BREATH", { "ARCH ARPEGGIO", "FALLING TOP NOTE" }, { "HELD PADS", "SILENT" }, { "ROLLING TOMS", "RIDE ONLY" }, {} },
+            { "TRITONE AIR & BUILD", { "AIR, THEN SCRATCHES", "TRITONE HELD" }, { "SILENT", "LOW DRONE" }, { "CARRY THE GAP, BUILD", "HALF TIME" }, {} },
+            { "CHROMATIC WOBBLE", { "WOBBLE IN ODD GROUPS", "WOBBLE & ACCENTS" }, { "SILENT", "LOW DRONE" }, { "KICK ON EVERY CHUG", "HALF TIME" }, {} },
+        };
+        for (const auto& list : lists)
+            if (t == list.name)
+                switch (layer)
+                {
+                    case L::guitar: return list.guitar;
+                    case L::bass: return t == "CLEAN BREATH" ? juce::StringArray { "OUT, THEN IN HALFWAY", "ROOTS HELD", "LOCKED WITH THE KICK" }
+                                                             : juce::StringArray { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" };
+                    case L::chords: return list.keys;
+                    case L::drums: return list.drums;
+                    case L::lead: return list.lead;
+                    case L::melody: return {};
+                }
         return {};
     }
 
@@ -413,6 +470,8 @@ namespace pr7s
             return bridgeApproaches (t->name, layer);
         if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::breakdown)
             return breakdownApproaches (t->name, layer);
+        if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::interlude)
+            return interludeApproaches (t->name, layer);
         if (layer == ComposerLayer::guitar)
             if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && ! t->guitarFlavours.empty())
             {
