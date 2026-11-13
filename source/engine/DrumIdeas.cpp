@@ -1,6 +1,9 @@
 #include "engine/DrumIdeas.h"
 #include "engine/MidiImport.h"
 
+#include <array>
+#include <map>
+
 #include <cstring>
 
 namespace pr7s
@@ -380,21 +383,100 @@ namespace pr7s
         return out;
     }
 
+    namespace
+    {
+        // (0.106.0) A groove file's notes (every track), read once and kept by path and date: the composer asks for
+        // them on every change.
+        std::vector<Note> grooveNotes (const juce::File& file, juce::String& error)
+        {
+            struct Kept { juce::Time date; std::vector<Note> notes; };
+            static juce::CriticalSection lock;
+            static std::map<juce::String, Kept> kept;
+            const auto date = file.getLastModificationTime();
+            {
+                const juce::ScopedLock sl (lock);
+                if (const auto found = kept.find (file.getFullPathName()); found != kept.end() && found->second.date == date)
+                    return found->second.notes;
+            }
+            std::vector<Note> notes;
+            if (const auto read = readMidiFile (file, error))
+                for (const auto& track : read->tracks)
+                    notes.insert (notes.end(), track.notes.begin(), track.notes.end());
+            else
+                return {};
+            const juce::ScopedLock sl (lock);
+            if (kept.size() > 256)
+                kept.clear();
+            kept[file.getFullPathName()] = { date, notes };
+            return notes;
+        }
+
+        const std::array<juce::StringArray, 7>& sectionWords()
+        {
+            static const std::array<juce::StringArray, 7> words {
+                juce::StringArray { "intro" }, juce::StringArray { "verse" }, juce::StringArray { "chorus", "refrain", "hook" },
+                juce::StringArray { "bridge", "middle 8", "interlude" }, juce::StringArray { "breakdown" },
+                juce::StringArray { "outro", "ending" }, juce::StringArray { "solo" } };
+            return words;
+        }
+    }
+
+    std::vector<LibraryGroove> libraryGroovesFor (const std::vector<LibraryGroove>& found, int section, bool fills)
+    {
+        const auto& words = sectionWords();
+        section = juce::jlimit (0, (int) words.size() - 1, section);
+        std::vector<LibraryGroove> out;
+        for (auto g : found)
+        {
+            const auto text = (g.file.getFullPathName() + " " + g.name).toLowerCase();
+            if (text.contains ("fill") != fills)
+                continue;
+            if (fills)
+                g.score += 3;   // (findLibraryGrooves took 3 off for a fill)
+            for (int k = 0; k < (int) words.size(); ++k)
+                for (const auto& w : words[(size_t) k])
+                    if (text.contains (w))
+                    {
+                        g.score += k == section ? 6 : -3;
+                        break;
+                    }
+            out.push_back (g);
+        }
+        std::stable_sort (out.begin(), out.end(), [] (const LibraryGroove& a, const LibraryGroove& b) { return a.score > b.score; });
+        return out;
+    }
+
+    std::vector<LineNote> libraryFillBar (const LibraryGroove& groove, double beatsPerBar)
+    {
+        juce::String error;
+        const auto notes = grooveNotes (groove.file, error);
+        if (notes.empty() || beatsPerBar <= 0.0)
+            return {};
+        auto end = 0.0;
+        for (const auto& n : notes)
+            end = juce::jmax (end, n.start);
+        const auto lastBar = std::floor (end / beatsPerBar + 1.0e-9) * beatsPerBar;
+        auto first = end;
+        for (const auto& n : notes)
+            if (n.start >= lastBar - 1.0e-9)
+                first = juce::jmin (first, n.start);
+        const auto from = std::floor ((first - lastBar) / (beatsPerBar / 4.0) + 1.0e-9) * (beatsPerBar / 4.0) + lastBar;
+        std::vector<LineNote> out;
+        for (const auto& n : notes)
+            if (n.start >= from - 1.0e-9)
+                out.push_back ({ n.start - from, n.length, n.pitch, n.velocity });
+        std::stable_sort (out.begin(), out.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+        return out;
+    }
+
     std::optional<LineIdea> grooveIdea (const LibraryGroove& groove, const std::vector<ChordSpan>& spans, double beatsPerBar, juce::String& error)
     {
         if (spans.empty() || beatsPerBar <= 0.0)
             return std::nullopt;
-        const auto file = readMidiFile (groove.file, error);
-        if (! file)
-            return std::nullopt;
-        std::vector<Note> notes;
+        auto notes = grooveNotes (groove.file, error);
         auto end = 0.0;
-        for (const auto& track : file->tracks)
-            for (const auto& n : track.notes)
-            {
-                notes.push_back (n);
-                end = juce::jmax (end, n.start + n.length);
-            }
+        for (const auto& n : notes)
+            end = juce::jmax (end, n.start + n.length);
         if (notes.empty())
         {
             error = "No notes in " + groove.file.getFileName();

@@ -10,6 +10,7 @@
 #include "engine/Takes.h"
 #include "engine/Instruments.h"
 #include "engine/SoloEngine.h"
+#include "engine/DrumIdeas.h"
 
 #include <array>
 #include <optional>
@@ -80,6 +81,12 @@ namespace pr7s
         // (0.104.0) How the section hands over to the next (engine/SectionTypes.h's sectionTransitions(); empty: NONE).
         // The block's own, put here when the composer builds into it, so its last bar is written that way.
         juce::String transition;
+        // (0.106.0, the owner: "the composer reaches for my library grooves by default ... much better grooves") The
+        // drums lane plays a groove from the MediaBay's drum MIDI, chosen by the section (and a library fill at the
+        // phrase ends), whenever the library has grooves; off: the type's or the generator's drums. `libraryGroove`:
+        // the groove chosen by hand (its file's path; empty: by the section and the take).
+        bool libraryDrums = true;
+        juce::String libraryGroove;
         std::optional<ComposerLayer> syncLayer() const noexcept
         {
             return syncLane >= 0 && syncLane < composerLayerCount ? std::optional<ComposerLayer> ((ComposerLayer) syncLane) : std::nullopt;
@@ -118,6 +125,8 @@ namespace pr7s
         // its last bar's length in beats (0: a whole bar of beatsPerBar; a SHORT BAR's is shorter).
         std::optional<Chord> nextChord;
         double lastBarBeats = 0.0;
+        // (0.106.0) The MediaBay's drum grooves for the style and tempo (findLibraryGrooves; fills among them).
+        std::vector<LibraryGroove> libraryGrooves;
     };
 
     // (0.86.0) SYNC: the rhythm a lane's idea gives the others. `all`: every hit (notes starting together are one
@@ -171,4 +180,8 @@ namespace pr7s
     int generateComposer (ComposerState&, juce::Random&);
     // (0.104.0) The state's transition written onto one lane's idea (composeLayers does it for every lane).
     void applyTransition (ComposerLayer, LineIdea&, const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
+    // (0.106.0) The library grooves the drums lane would choose from for the state's section (best first), and the
+    // one it plays (none: the library has none, or it's off).
+    std::vector<LibraryGroove> composerLibraryGrooves (const ComposerState&, const ComposerContext&);
+    std::optional<LibraryGroove> composerLibraryGroove (const ComposerState&, const ComposerContext&);
 }

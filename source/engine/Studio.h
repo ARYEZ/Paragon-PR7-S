@@ -1813,6 +1813,9 @@ namespace pr7s
         std::unique_ptr<ExportJob> exportJob;
         static bool writeBlock (ExportJob&, juce::AudioBuffer<float>&, int start, int length);
         std::unique_ptr<MediaDatabase> mediaBay;   // (0.21.0; made when first asked for)
+        // (0.106.0) The composer's library grooves, kept until the library, the style or the tempo changes.
+        struct KeptGrooves { const void* items = nullptr; size_t count = 0; int style = -1; int bpm = 0; std::vector<LibraryGroove> grooves; };
+        mutable KeptGrooves keptGrooves;
         std::shared_ptr<const AudioData> mediaPreviewSound;
         double mediaPreviewBeats = 0.0;
         bool mediaPreviewMidi = false;

@@ -52,4 +52,14 @@ namespace pr7s
     std::vector<LibraryGroove> findLibraryGrooves (const std::vector<MediaItem>&, GuitarStyle, double songBpm);
     // A groove as an idea over the chords (its file read; nothing if it can't be).
     std::optional<LineIdea> grooveIdea (const LibraryGroove&, const std::vector<ChordSpan>&, double beatsPerBar, juce::String& error);
+
+    // (0.106.0, the owner: "the composer reaches for my library grooves by default") The library's grooves for one
+    // section (drumSections()' index: intro 0, verse 1, chorus 2, bridge 3, breakdown 4, ending 5, solo 6), best first:
+    // the style score as found, +6 for the section's word in the file's path or name (folders such as "Verse" or
+    // "Chorus" in groove packs), -3 for another section's word. `fills`: only files with "fill" in them; else none of
+    // those. Our scoring.
+    std::vector<LibraryGroove> libraryGroovesFor (const std::vector<LibraryGroove>& found, int section, bool fills);
+    // The notes of a library file's last bar, from its first note in that bar (beats from that note's quarter; one bar
+    // at most). Empty if the file can't be read. Files are read once and kept (by path and date).
+    std::vector<LineNote> libraryFillBar (const LibraryGroove&, double beatsPerBar);
 }

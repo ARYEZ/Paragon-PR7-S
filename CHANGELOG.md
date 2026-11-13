@@ -2,6 +2,22 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.106.0
+
+**The composer's drums come from your groove library by default** (you asked: "those are much better grooves than what we are currently generating").
+
+- **The drums lane now plays a groove from your own drum MIDI**: the files the MediaBay has scanned, the same ones IDEAS shows under DRUMS > FROM MY LIBRARY. It does this whenever the library has grooves, in every section, over the section types' own drum parts too.
+- **The groove is chosen by the section.** A file whose folder or name says Verse is used for a verse, Chorus for a chorus, and likewise Intro, Bridge, Breakdown, Outro and Solo (most groove packs are laid out in folders like that). Your style's words and the song's tempo count too, as in IDEAS.
+- **ROLL on the drums lane picks another of the section's best grooves.** In the drums lane's menu, **Library Groove** lists them by name if you want one in particular.
+- **Fills from your library.** A file with "fill" in its name puts its last bar at the end of every phrase (DRUM SETTINGS' FILL EVERY bars) and on the section's last bar.
+- **The bass's LOCKED WITH THE KICK follows the library groove's kick.**
+- **Turning it off:** the drums lane's menu has **Grooves from My Library**. Untick it to go back to the type's drums or the generator's for that section.
+- **When it doesn't apply:**
+  - With SYNC on another lane, the drums still follow that lane (they have to lock to its hits), so they're generated as before.
+  - With no drum MIDI scanned, nothing changes.
+  - A section built before this release changes only when it's built again (a new type, transition or chords).
+- I can't tell how your packs name their folders. If the wrong grooves come up for a section, tell me what the folders are called and I'll teach it those words.
+
 ## 0.105.0
 
 **Bridges get types of their own** (the next step of the plan from your songs, read for their shapes only). A Bridge block's TYPE menu now starts with seven new types; the old three (CREEP, OPEN CHORDS, DRONING) are still under them. Each type writes every lane it has options for, and the options are in each lane's menu as usual.

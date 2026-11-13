@@ -115,6 +115,9 @@ public:
     // block of the SECTIONS row it's the block's (built: built again at once, or after asking when HUB SETTINGS says
     // so); else the composer's own. `setApproach`: a lane's approach within the type (-1 automatic).
     void setSectionType (const juce::String& type);
+    void setLibraryDrums (bool on);                        // (0.106.0) the drums lane from the groove library
+    bool isUsingLibraryDrums() const { return state.libraryDrums; }
+    void setLibraryGroove (const juce::String& path);      // (empty: by the section and the take)
     juce::String getSectionType() const { return state.sectionType; }
     juce::String typeSectionName() const;   // the name the types are for: the block's, else the SECTION's
     void setApproach (pr7s::ComposerLayer, int approach);
@@ -193,6 +196,7 @@ private:
     static constexpr int soloItems = 5000;
     static constexpr int flavourItems = 6000, writtenRiffsItem = 6100;   // (0.85.0) the guitar's style menu
     static constexpr int doubleSyncItem = 6200;   // (0.86.0) the bass's and drums' style menus
+    static constexpr int libraryItems = 7000;     // (0.106.0) the drums' style menu: 7000 on/off, 7001 automatic, 7002 + i a groove
     static constexpr int approachItems = 6300;    // (0.94.0) the type's approaches: 6300 automatic, 6301 + i
     void showTypeMenu();
     void applyBlockType();   // the target block's type onto the state (when it differs)

@@ -229,6 +229,9 @@ juce::String ComposerPage::composeFingerprint() const
     f << "|" << c.velocities.toString() << "|" << (int) c.style << "|" << (int) c.solo << "|" << c.riff.toString()
       << "|" << c.drums.toString() << "|" << c.melody.toString() << "|" << c.humanize << "|" << (int) c.feel << "|" << juce::String (c.bpm, 6)
       << "|" << juce::String (c.lastBarBeats, 6) << "|" << (c.nextChord.has_value() ? c.nextChord->toText() : juce::String());
+    f << "|G:" << (int) c.libraryGrooves.size();
+    for (size_t i = 0; i < c.libraryGrooves.size() && i < 64; ++i)
+        f << ";" << c.libraryGrooves[i].file.getFullPathName();
     if (c.drummer.has_value())
     {
         const auto file = pr7s::drummerFile (studio.getDrummerFolder(), c.drummer->name);
@@ -1721,6 +1724,22 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
         menu.addSeparator();
         menu.addItem (myRiffItem, "My Riff (" + studio.getComposerRiff()->name + ")", true, useMyRiff);
     }
+    // (0.106.0, the owner) The drums from the groove library: on by default; the grooves for this section to choose from.
+    if (l == ComposerLayer::drums)
+    {
+        menu.addSeparator();
+        menu.addItem (libraryItems, "Grooves from My Library (the MediaBay's drum MIDI)", true, state.libraryDrums);
+        const auto grooves = pr7s::composerLibraryGrooves (state, context);
+        juce::PopupMenu list;
+        list.addItem (libraryItems + 1, "Automatic (the section chooses, ROLL gives another)", state.libraryDrums, state.libraryGroove.isEmpty());
+        for (int i = 0; i < (int) grooves.size(); ++i)
+            list.addItem (libraryItems + 2 + i, grooves[(size_t) i].name + "  (" + grooves[(size_t) i].folder + ")", state.libraryDrums,
+                          state.libraryGroove == grooves[(size_t) i].file.getFullPathName());
+        const auto playing = pr7s::composerLibraryGroove (state, context);
+        menu.addSubMenu ("Library Groove: " + (grooves.empty() ? juce::String ("(none found: scan your grooves in the MediaBay)")
+                                                               : playing.has_value() ? playing->name : juce::String ("(off)")),
+                         list, ! grooves.empty());
+    }
     // (0.86.0) The bass and the drums under SYNC: every hit of the sync lane.
     if (pr7s::hasDoubleSync (l))
     {
@@ -1735,7 +1754,21 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
                         {
                             if (safe == nullptr || chosen <= 0)
                                 return;
-                            if (chosen == doubleSyncItem)
+                            if (chosen >= libraryItems && chosen < libraryItems + 100)
+                            {
+                                if (chosen == libraryItems)
+                                    safe->setLibraryDrums (! safe->isUsingLibraryDrums());
+                                else if (chosen == libraryItems + 1)
+                                    safe->setLibraryGroove ({});
+                                else
+                                {
+                                    const auto grooves = pr7s::composerLibraryGrooves (safe->state, safe->context);
+                                    const auto i = chosen - libraryItems - 2;
+                                    if (juce::isPositiveAndBelow (i, (int) grooves.size()))
+                                        safe->setLibraryGroove (grooves[(size_t) i].file.getFullPathName());
+                                }
+                            }
+                            else if (chosen == doubleSyncItem)
                                 safe->setDoubleSync (l, ! safe->isDoublingSync (l));
                             else if (chosen == myRiffItem)
                                 safe->setPlayMyRiff (true);
@@ -1750,6 +1783,22 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
                             else
                                 safe->setStyle (l, chosen - 1);
                         });
+}
+
+void ComposerPage::setLibraryDrums (bool on)
+{
+    state.libraryDrums = on;
+    taken[(size_t) ComposerLayer::drums].reset();
+    status = on ? "Drums: grooves from your library" : "Drums: the type's or the generator's";
+    refresh();
+}
+
+void ComposerPage::setLibraryGroove (const juce::String& path)
+{
+    state.libraryGroove = path;
+    state.libraryDrums = true;
+    taken[(size_t) ComposerLayer::drums].reset();
+    refresh();
 }
 
 void ComposerPage::showTrackMenu (ComposerLayer l)

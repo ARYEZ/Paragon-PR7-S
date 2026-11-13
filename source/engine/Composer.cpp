@@ -65,7 +65,8 @@ namespace pr7s
         return juce::String (keyIndex) + "|" + genre + "|" + mood + "|" + juce::String (bars) + "|" + progression + "|"
              + (fromChordTrack ? "1" : "0") + "|" + (toChordTrack ? "1" : "0") + "|" + lanesText.joinIntoString (";")
              + "|" + juce::String (riffFlavour) + "," + (writtenRiffs ? "1" : "0") + "," + juce::String (syncLane)
-             + "|" + sectionType.removeCharacters ("|") + "|" + transition.removeCharacters ("|");
+             + "|" + sectionType.removeCharacters ("|") + "|" + transition.removeCharacters ("|")
+             + "|" + (libraryDrums ? "1" : "0") + "|" + libraryGroove.removeCharacters ("|");
     }
 
     ComposerState ComposerState::fromString (const juce::String& text)
@@ -119,6 +120,10 @@ namespace pr7s
             s.sectionType = parts[9];   // (0.94.0)
         if (parts.size() >= 11)
             s.transition = parts[10];   // (0.104.0)
+        if (parts.size() >= 12)
+            s.libraryDrums = parts[11] != "0";   // (0.106.0; older text: on)
+        if (parts.size() >= 13)
+            s.libraryGroove = parts[12];
         return s;
     }
 
@@ -243,6 +248,58 @@ namespace pr7s
             drums.density = lane.busy;   // (BUSY: the generator's density, 0.5 the style's own)
             return c.drummer.has_value() ? generateBeat (*c.drummer, which, spans, c.beatsPerBar, drums, seed, riffHits)
                                          : generateBeat (c.style, which, spans, c.beatsPerBar, drums, seed, riffHits);
+        }
+
+        // (0.106.0) The drums lane from the owner's groove library: the section's groove (chosen by hand, else the
+        // take picks one of the best few), repeated over the section, and a library fill on the last bar of every
+        // phrase of DRUM SETTINGS' FILL EVERY bars and on the section's last bar. None: off or no grooves found.
+        std::optional<LineIdea> libraryDrumsOf (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        {
+            if (! s.libraryDrums || c.libraryGrooves.empty() || spans.empty())
+                return std::nullopt;
+            const auto groove = composerLibraryGroove (s, c);
+            if (! groove.has_value())
+                return std::nullopt;
+            juce::String error;
+            auto idea = grooveIdea (*groove, spans, c.beatsPerBar, error);
+            if (! idea.has_value())
+                return std::nullopt;
+            idea->part = LineIdea::Part::drums;
+            idea->style = "My library: " + groove->name;
+            const auto bpb = c.beatsPerBar;
+            const auto length = spans.back().end - spans.front().start;
+            const auto bars = (int) std::ceil (length / bpb - 1.0e-6);
+            const auto& lane = s.lane (ComposerLayer::drums);
+            const auto fills = libraryGroovesFor (c.libraryGrooves, lane.style, true);
+            if (! fills.empty() && bars >= 1)
+            {
+                const auto& fill = fills[(size_t) (lane.variation / 3) % juce::jmin ((size_t) 4, fills.size())];
+                const auto notes = libraryFillBar (fill, bpb);
+                if (! notes.empty())
+                {
+                    auto fillLength = 0.0;
+                    for (const auto& n : notes)
+                        fillLength = juce::jmax (fillLength, n.beat);
+                    fillLength = juce::jlimit (bpb / 4.0, bpb, std::ceil ((fillLength + 1.0e-6) / (bpb / 4.0)) * (bpb / 4.0));
+                    const auto every = c.drums.fillEvery;
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto last = bar == bars - 1;
+                        if (! last && (every <= 0 || (bar + 1) % every != 0))
+                            continue;
+                        const auto end = juce::jmin (length, (bar + 1) * bpb);
+                        const auto from = end - fillLength;
+                        idea->notes.erase (std::remove_if (idea->notes.begin(), idea->notes.end(), [&] (const LineNote& n)
+                                           { return n.beat >= from - 1.0e-6 && n.beat < end - 1.0e-6; }), idea->notes.end());
+                        for (const auto& n : notes)
+                            if (from + n.beat < end - 1.0e-6)
+                                idea->notes.push_back ({ from + n.beat, juce::jmin (n.length, end - from - n.beat), n.pitch, n.velocity });
+                    }
+                    idea->description << "; fills from " << fill.name;
+                    std::stable_sort (idea->notes.begin(), idea->notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+                }
+            }
+            return idea;
         }
 
         LineIdea pick (std::vector<LineIdea> list, int style)
@@ -4291,6 +4348,10 @@ namespace pr7s
                     keepInRange (idea, lowest, highest);
                     return idea;
                 }
+            // (0.106.0, the owner) The drums from the groove library first (not when SYNC makes them follow another lane).
+            if (l == ComposerLayer::drums && (! leaderLayer.has_value() || *leaderLayer == ComposerLayer::drums))
+                if (auto library = libraryDrumsOf (s, spans, c))
+                    return std::move (*library);
             // (0.97.0, CLEAN VERSE's band) with SYNC off, every lane but the melody and the lead plays its clean part.
             if (! leaderLayer.has_value())
                 if (auto clean = cleanLayer (l, s, spans, c))
@@ -4697,6 +4758,32 @@ namespace pr7s
                 std::stable_sort (idea.notes.begin(), idea.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
             }
         };
+    }
+
+    std::vector<LibraryGroove> composerLibraryGrooves (const ComposerState& s, const ComposerContext& c)
+    {
+        auto all = libraryGroovesFor (c.libraryGrooves, s.lane (ComposerLayer::drums).style, false);
+        if (all.size() > 24)
+            all.resize (24);
+        return all;
+    }
+
+    std::optional<LibraryGroove> composerLibraryGroove (const ComposerState& s, const ComposerContext& c)
+    {
+        if (! s.libraryDrums)
+            return std::nullopt;
+        const auto grooves = composerLibraryGrooves (s, c);
+        if (grooves.empty())
+            return std::nullopt;
+        if (s.libraryGroove.isNotEmpty())
+            for (const auto& g : grooves)
+                if (g.file.getFullPathName() == s.libraryGroove)
+                    return g;
+        // The take picks among the best few (within two points of the best, eight at most): ROLL gives another.
+        size_t best = 1;
+        while (best < grooves.size() && best < 8 && grooves[best].score >= grooves.front().score - 2)
+            ++best;
+        return grooves[(size_t) s.lane (ComposerLayer::drums).variation % best];
     }
 
     void applyTransition (ComposerLayer l, LineIdea& idea, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)

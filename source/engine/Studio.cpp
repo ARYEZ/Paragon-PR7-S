@@ -10555,6 +10555,16 @@ namespace pr7s
         c.humanize = getIdeasHumanize();
         c.feel = getIdeasFeel();
         c.bpm = project.bpmAt (atBeat);
+        // (0.106.0) The groove library's drum MIDI (the MediaBay's), for the composer's drums lane. Without a settings
+        // file (tests) the MediaBay isn't opened for this.
+        if (settings != nullptr || mediaBay != nullptr)
+        {
+            const auto& items = const_cast<Studio*> (this)->getMediaBay().getItems();
+            const auto bpm = juce::roundToInt (c.bpm * 10.0);
+            if (keptGrooves.items != items.data() || keptGrooves.count != items.size() || keptGrooves.style != (int) c.style || keptGrooves.bpm != bpm)
+                keptGrooves = { items.data(), items.size(), (int) c.style, bpm, findLibraryGrooves (items, c.style, c.bpm) };
+            c.libraryGrooves = keptGrooves.grooves;
+        }
         // (0.104.0) A block of the SECTIONS row starting there: what its transition needs (the chord after it, its
         // last bar's length).
         const auto places = getSongSectionPlaces();
