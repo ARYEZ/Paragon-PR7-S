@@ -85,7 +85,8 @@ enum class RiffFlavour { any, chugs, gallop, tritone, creep, stabs, octaves, sto
         float busy = 0.5f;       // 0 sparse .. 0.5 the style's own .. 1 busy
         juce::uint32 seed = 1;
         // (0.94.0) A section type's guitar approach (sectionApproaches: DRONING's rung whole / pushed / moving top /
-        // struck twice / sliding); -1: any, drawn by the seed as before.
+        // struck twice / sliding; 0.98.0: DRIVING EIGHTHS' straight / syncopated third bar / open and muted in turn /
+        // slides into the changes / strummed / moving power chords); -1: any, drawn by the seed as before.
         int approach = -1;
     };
 

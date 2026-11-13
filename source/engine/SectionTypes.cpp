@@ -81,6 +81,20 @@ namespace pr7s
 
     juce::StringArray sectionApproaches (RiffFlavour flavour, ComposerLayer layer)
     {
+        if (flavour == RiffFlavour::drivingEighths)
+            switch (layer)
+            {
+                // (0.98.0, the owner's This Fire Burns and Faster choruses; our names)
+                case ComposerLayer::guitar: return { "STRAIGHT EIGHTHS", "SYNCOPATED THIRD BAR", "OPEN AND MUTED IN TURN",
+                                                      "SLIDES INTO THE CHANGES", "STRUMMED FULL CHORDS", "MOVING POWER CHORDS" };
+                case ComposerLayer::bass: return { "ROOT EIGHTHS", "DOUBLES THE GUITAR", "WALKING INTO THE CHANGES", "OCTAVE EIGHTHS",
+                                                    "LOCKED WITH THE KICK" };
+                case ComposerLayer::chords: return { "HELD PADS", "ANSWERS IN BARS 3 AND 4", "HIGH EIGHTH PULSE", "SILENT" };
+                case ComposerLayer::lead: return { "RINGING ARPEGGIO", "HELD NOTES & A SQUEAL", "DOUBLES THE RHYTHM AN OCTAVE UP" };
+                case ComposerLayer::drums: return { "DRIVING BACKBEAT", "HALF TIME, KICK ON THE EIGHTHS", "CYMBALS ON THE BEATS, KICKS BETWEEN",
+                                                     "KICK WITH THE GUITAR", "DOUBLE KICK" };
+                case ComposerLayer::melody: break;
+            }
         if (flavour != RiffFlavour::droning)
             return {};
         switch (layer)

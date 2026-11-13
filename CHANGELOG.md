@@ -2,6 +2,26 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.98.0
+
+**The DRIVING chorus gets a full band** (the first step of the plan from your This Fire Burns, Faster and Another Life tabs; the tabs were read for their shapes only, nothing copied). Until now DRIVING only set the rhythm guitar; the bass, drums, keys and lead played their usual styles over it. Now each of them has its own DRIVING options, listed in the lane's menu, like DRONING's.
+
+- **Rhythm guitar** (six options; AUTOMATIC picks any shape, as before):
+  - **STRAIGHT EIGHTHS:** power chords on every eighth, walking into the next chord at the end.
+  - **SYNCOPATED THIRD BAR** (Faster): eighths, but the third bar of every four is rung across the beats.
+  - **OPEN AND MUTED IN TURN** (This Fire Burns): one bar ringing open, the next palm-muted.
+  - **SLIDES INTO THE CHANGES** (Faster): eighths, with every second bar sliding into the next chord (a whole step under, a half step under, then the chord).
+  - **STRUMMED FULL CHORDS** (Faster's second guitar).
+  - **MOVING POWER CHORDS:** the power chord moving around inside the bar.
+- **Bass:** ROOT EIGHTHS, DOUBLES THE GUITAR, WALKING INTO THE CHANGES (This Fire Burns: up the scale into each new chord), OCTAVE EIGHTHS, LOCKED WITH THE KICK.
+- **Drums:** DRIVING BACKBEAT (the ride in eighths), HALF TIME, KICK ON THE EIGHTHS (This Fire Burns: the kick on every eighth, the snare on 3), CYMBALS ON THE BEATS, KICKS BETWEEN (Faster), KICK WITH THE GUITAR, DOUBLE KICK. Every option has a crash on each four bars and a fill into them.
+- **Keys:** HELD PADS, ANSWERS IN BARS 3 AND 4 (Faster: two bars out, then a short figure), HIGH EIGHTH PULSE, SILENT.
+- **Lead:** RINGING ARPEGGIO (This Fire Burns), HELD NOTES & A SQUEAL (a pinch harmonic bent up at the end of every four bars), DOUBLES THE RHYTHM AN OCTAVE UP (Faster).
+
+Left on AUTOMATIC, the bass, drums, keys and lead pick among their options by the take. ROLL gives you another. This also applies when you pick the DRIVING EIGHTHS riff flavour without a section type, the same way DRONING works. With SYNC on, the lanes follow the sync lane as before.
+
+I can't hear these here, so tell me which ones need work. Next is 0.99.0, the SYNCOPATED DRIVE chorus type from Another Life.
+
 ## 0.97.2
 
 **The bass can always lock to the kick** (you asked). Under every section type that writes the bass (DRONING, STACCATO CHUG, HEAVY CHUG, SPLIT CHUG, CLEAN VERSE), the bass's options now end with **LOCKED WITH THE KICK**: the chord's root on every kick that type's drums play, so the bass and kick hit together whichever drum option you choose. With no drums in the part (CLEAN VERSE's NO DRUMS), it plays the root on every beat. STANDARD already had this as the bass's last style.

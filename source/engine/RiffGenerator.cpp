@@ -795,6 +795,9 @@ namespace pr7s
                 const auto bigChord = pick<char> ({ { '%', 3 }, { '#', 1 } });       // a ringing bar's chord
                 const auto picking = pick<std::string> ({ { "XG+GXG+G", 3 }, { "X+G+X+G+", 2 }, { "XGX+XGX+", 2 },   // a picked bar's eighths
                                                           { "x+x;x+xT", 2 }, { "x;x+x;x+", 1.5f }, { "x+;+x+;T", 1 } });
+                // (0.98.0) A syncopated bar's hits (in eighths), drawn after the others so the old draws stay as they were.
+                const auto syncopation = recipe.approach >= 0
+                    ? pick<std::string> ({ { "x==x==x=", 3 }, { "x==x=x==", 2 }, { "x=x==x==", 2 } }) : std::string ("x==x==x=");
 
                 int moving = 0;   // moving bars so far (they alternate their degrees)
                 const auto bar = [&] (char kind, bool walks)
@@ -846,6 +849,27 @@ namespace pr7s
                             for (int i = 1; i < steps; ++i)
                                 b[(size_t) i] = '=';
                             break;
+                        case 'Y':
+                            // (0.98.0, Faster's third bar) syncopated: open hits rung across the beats.
+                            for (int h = 0; h < n; ++h)
+                            {
+                                if (syncopation[(size_t) h % syncopation.size()] == 'x' || h == 0)
+                                    hits (b, h, h + 1, openChar);
+                                else
+                                    for (int j = 0; j < every() && h * every() + j < steps; ++j)
+                                        b[(size_t) (h * every() + j)] = '=';
+                            }
+                            break;
+                        case 'L':
+                            // (0.98.0, Faster's slides) open eighths, the last eighth a slide into the next chord:
+                            // power chords a whole step and a half step under its root, a sixteenth each.
+                            hits (b, 0, juce::jmax (1, n - 1), openChar);
+                            if (steps >= 4 && ! breakdown())
+                            {
+                                b[(size_t) steps - 2] = '[';
+                                b[(size_t) steps - 1] = ']';
+                            }
+                            break;
                         default:
                             hits (b, 0, n, kind == 'O' ? openChar : mutedChar);
                             break;
@@ -864,7 +888,16 @@ namespace pr7s
 
                 // The bars: upper case no walk, lower case the walk at its end.
                 std::string shape;
-                if (breakdown())
+                if (recipe.approach >= 0 && ! breakdown())
+                {
+                    // (0.98.0) The DRIVING chorus's guitar approach chosen: its own shape (sectionApproaches).
+                    static const char* const one[] = { "O", "Y", "O", "L", "S", "R" };
+                    static const char* const two[] = { "Oo", "OY", "OM", "OL", "SS", "RR" };
+                    static const char* const four[] = { "OOOo", "OOYo", "OMOM", "OLOL", "SSSs", "RRRR" };
+                    const auto a = (size_t) (recipe.approach % 6);
+                    shape = bars <= 1 ? one[a] : bars == 2 ? two[a] : four[a];
+                }
+                else if (breakdown())
                     shape = bars <= 1 ? pick<std::string> ({ { "O", 1 }, { "o", 1 } })
                           : bars == 2 ? pick<std::string> ({ { "Oo", 2 }, { "Om", 1 } })
                                       : pick<std::string> ({ { "OOMm", 2 }, { "OOOo", 1 } });

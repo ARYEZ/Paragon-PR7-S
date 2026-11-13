@@ -198,8 +198,8 @@ namespace pr7s
         r.seed = (juce::uint32) (lane.variation * 7919 + lane.style * 131 + 7);
         if (const auto typed = typedGuitarFlavour (s))
             r.flavour = *typed;   // (0.94.0: a type of several riff kinds: the approach picks one)
-        else if (r.flavour == RiffFlavour::droning)
-            r.approach = lane.approach;   // (0.94.0)
+        else if (r.flavour == RiffFlavour::droning || r.flavour == RiffFlavour::drivingEighths)
+            r.approach = lane.approach;   // (0.94.0; 0.98.0 DRIVING EIGHTHS too)
         return r;
     }
 
@@ -1732,6 +1732,361 @@ namespace pr7s
             return std::nullopt;
         }
 
+        // THE DRIVING CHORUS'S BAND (0.98.0, the owner's This Fire Burns and Faster choruses, read for their shapes):
+        //   BASS    root eighths; doubling the guitar; eighths walking up the scale into each chord change (This Fire
+        //           Burns); root and octave eighths; LOCKED WITH THE KICK (syncedLayer).
+        //   DRUMS   a driving backbeat (the ride in eighths, kick on 1, 3 and the and of 3); half time with the kick
+        //           on every eighth and the snare on 3 (This Fire Burns); cymbals on the beats with the kicks between
+        //           (Faster); the kick on the guitar's hits; double kick. A crash on each four bars, a fill into them.
+        //   KEYS    held pads; silent for two bars, then answering in bars 3 and 4 (Faster); a high eighth pulse; silent.
+        //   LEAD    a ringing arpeggio up high (This Fire Burns); held notes with a pinch-harmonic squeal at the end of
+        //           each four bars (This Fire Burns); the rhythm guitar doubled an octave up (Faster's verse).
+        // Left on AUTOMATIC each takes one of its first options by the take (the bass four, drums and keys three).
+        bool drivingBand (const ComposerState& s, const ComposerContext& c)
+        {
+            const auto& flavours = riffFlavours();
+            return juce::isPositiveAndBelow (s.riffFlavour, (int) flavours.size())
+                && flavours[(size_t) s.riffFlavour] == RiffFlavour::drivingEighths
+                && ! s.writtenRiffs && ! c.myRiff.has_value() && s.lane (ComposerLayer::guitar).on;
+        }
+
+        int drivingApproach (const ComposerLane& lane, int count, int automatic)
+        {
+            return lane.approach >= 0 ? lane.approach % count : lane.variation % automatic;
+        }
+
+        LineIdea drivingBass (int approach, const LineIdea& guitar, const std::vector<ChordSpan>& spans, double bpb, int lowest, int highest)
+        {
+            if (approach == 1)
+            {
+                auto idea = doubledLine (guitar, spans, lowest, highest, "Guitar");
+                idea.style = "Driving: doubles the guitar";
+                idea.description = "The rhythm guitar's hits, note for note, low";
+                return idea;
+            }
+            static const char* const names[] = { "Driving: root eighths", "", "Driving: walking into the changes", "Driving: octave eighths" };
+            static const char* const what[] = { "The chord's root on every eighth under the guitar", "",
+                                                "Root eighths, the last three eighths before each change walking up the scale into it",
+                                                "The root and its octave in turn on every eighth" };
+            LineIdea out { LineIdea::Part::bass, names[approach], what[approach], {} };
+            const auto length = sectionLength (spans);
+            const auto eighth = bpb / 8.0;
+            const auto origin = spans.front().start;
+            for (size_t i = 0; i < spans.size(); ++i)
+            {
+                const auto& span = spans[i];
+                const auto from = span.start - origin, to = span.end - origin;
+                const auto root = rootNear (span.chord, lowest, juce::jmin (highest, lowest + 11));
+                // The walk: into the next chord when it has another root (the last chord walks into the first).
+                const auto& next = i + 1 < spans.size() ? spans[i + 1] : spans.front();
+                const auto walks = approach == 2 && next.chord.root != span.chord.root && to - from >= bpb - 1.0e-6;
+                const auto target = rootNear (next.chord, lowest, juce::jmin (highest, lowest + 11));
+                auto k = 0;
+                for (auto t = from; t < to - 1.0e-6; t += eighth, ++k)
+                {
+                    auto pitch = root;
+                    if (approach == 3 && k % 2 == 1 && root + 12 <= highest)
+                        pitch = root + 12;
+                    const auto left = (int) std::round ((to - t) / eighth);
+                    if (walks && left <= 3 && left >= 1)
+                    {
+                        pitch = scaleStep (next.key, target, -left);
+                        if (pitch < lowest)
+                            pitch += 12;
+                    }
+                    const auto onBeat = k % 2 == 0;
+                    addNote (out, t, eighth * 0.9, pitch, onBeat ? 0.86f : 0.74f, juce::jmin (to, length));
+                }
+            }
+            return out;
+        }
+
+        LineIdea drivingDrums (int approach, const LineIdea& guitar, const std::vector<ChordSpan>& spans, double bpb)
+        {
+            static const char* const names[] = { "Driving: backbeat", "Driving: half time, kick on the eighths", "Driving: cymbals on the beats",
+                                                 "Driving: kick with the guitar", "Driving: double kick" };
+            static const char* const what[] = { "The ride in eighths, kick on 1, 3 and the and of 3, snare on 2 and 4",
+                                                "Half time under the eighths: the kick on every eighth, the snare on 3, the china on the beats",
+                                                "A crash on every beat, the kick on the ands between them, snare on 2 and 4",
+                                                "The kick on every hit of the rhythm guitar, the snare on 2 and 4, hats in eighths",
+                                                "Sixteenths on the kick, the snare on 2 and 4, the china on the beats" };
+            LineIdea out { LineIdea::Part::drums, names[approach], what[approach], {} };
+            const auto length = sectionLength (spans);
+            const auto bars = (int) std::ceil (length / bpb - 1.0e-6);
+            const auto beat = bpb / 4.0;
+            auto hit = [&out, length] (double at, int note, float velocity)
+            {
+                if (at >= -1.0e-9 && at < length - 1.0e-6
+                    && std::none_of (out.notes.begin(), out.notes.end(), [&] (const LineNote& n) { return n.pitch == note && std::abs (n.beat - at) < 1.0e-6; }))
+                    out.notes.push_back ({ at, 0.1, note, velocity });
+            };
+            const auto guitarHits = approach == 3 ? riffHits (guitar) : std::vector<double> {};
+            for (int bar = 0; bar < bars; ++bar)
+            {
+                const auto o = bar * bpb;
+                const auto fill = bar % 4 == 3;
+                // The last beat of every four bars a fill (snare, then down the toms), its kick left in.
+                const auto playsUntil = fill ? o + 3 * beat : o + bpb;
+                const auto inBar = [&] (double t) { return t < playsUntil - 1.0e-6; };
+                if (bar % 4 == 0)
+                {
+                    hit (o, GmDrum::crash, 0.95f);
+                    hit (o, GmDrum::kick, 0.95f);
+                }
+                switch (approach)
+                {
+                    case 0:
+                        for (int e = 0; e < 8; ++e)
+                            if (inBar (o + e * beat / 2))
+                                hit (o + e * beat / 2, GmDrum::ride, e % 2 == 0 ? 0.72f : 0.58f);
+                        for (const auto k : { 0.0, 2.0, 2.5 })
+                            if (inBar (o + k * beat))
+                                hit (o + k * beat, GmDrum::kick, 0.9f);
+                        for (const auto sn : { 1.0, 3.0 })
+                            if (inBar (o + sn * beat))
+                                hit (o + sn * beat, GmDrum::snare, 0.92f);
+                        break;
+                    case 1:
+                        for (int e = 0; e < 8; ++e)
+                            if (inBar (o + e * beat / 2))
+                                hit (o + e * beat / 2, GmDrum::kick, e % 2 == 0 ? 0.9f : 0.8f);
+                        for (int q = 0; q < 4; ++q)
+                            if (inBar (o + q * beat))
+                                hit (o + q * beat, GmDrum::china, q == 0 ? 0.8f : 0.66f);
+                        hit (o + 2 * beat, GmDrum::snare, 0.95f);
+                        break;
+                    case 2:
+                        for (int q = 0; q < 4; ++q)
+                            if (inBar (o + q * beat))
+                                hit (o + q * beat, GmDrum::crash2, q == 0 ? 0.82f : 0.7f);
+                        hit (o, GmDrum::kick, 0.92f);
+                        for (int q = 0; q < 4; ++q)
+                            if (inBar (o + (q + 0.5) * beat))
+                                hit (o + (q + 0.5) * beat, GmDrum::kick, 0.86f);
+                        for (const auto sn : { 1.0, 3.0 })
+                            if (inBar (o + sn * beat))
+                                hit (o + sn * beat, GmDrum::snare, 0.92f);
+                        break;
+                    case 3:
+                        for (int e = 0; e < 8; ++e)
+                            if (inBar (o + e * beat / 2))
+                                hit (o + e * beat / 2, GmDrum::closedHat, e % 2 == 0 ? 0.7f : 0.55f);
+                        for (const auto t : guitarHits)
+                            if (t >= o - 1.0e-6 && inBar (t))
+                                hit (t, GmDrum::kick, 0.88f);
+                        hit (o, GmDrum::kick, 0.92f);
+                        for (const auto sn : { 1.0, 3.0 })
+                            if (inBar (o + sn * beat))
+                                hit (o + sn * beat, GmDrum::snare, 0.92f);
+                        break;
+                    default:
+                        for (int x = 0; x < 16; ++x)
+                            if (inBar (o + x * beat / 4))
+                                hit (o + x * beat / 4, GmDrum::kick, x % 4 == 0 ? 0.9f : 0.76f);
+                        for (int q = 0; q < 4; ++q)
+                            if (inBar (o + q * beat))
+                                hit (o + q * beat, GmDrum::china, q == 0 ? 0.8f : 0.66f);
+                        for (const auto sn : { 1.0, 3.0 })
+                            if (inBar (o + sn * beat))
+                                hit (o + sn * beat, GmDrum::snare, 0.92f);
+                        break;
+                }
+                if (fill)
+                {
+                    const auto f = o + 3 * beat;
+                    hit (f, GmDrum::snare, 0.8f);
+                    hit (f + beat * 0.25, GmDrum::snare, 0.84f);
+                    hit (f + beat * 0.5, GmDrum::tomHigh, 0.88f);
+                    hit (f + beat * 0.75, GmDrum::tomFloor, 0.92f);
+                    hit (f, GmDrum::kick, 0.85f);
+                }
+            }
+            std::stable_sort (out.notes.begin(), out.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+            return out;
+        }
+
+        LineIdea drivingKeys (int approach, const std::vector<ChordSpan>& spans, double bpb)
+        {
+            static const char* const names[] = { "Driving: held pads", "Driving: answers in bars 3 and 4", "Driving: high eighth pulse", "Driving: silent" };
+            static const char* const what[] = { "Each chord held softly under the guitars", "Two bars out, then a short figure on the chord's notes answering in bars 3 and 4",
+                                                "The chord up high in soft eighths", "The keys sit this chorus out" };
+            LineIdea out { LineIdea::Part::chords, names[approach], what[approach], {} };
+            if (approach == 3)
+                return out;
+            const auto length = sectionLength (spans);
+            const auto segments = cleanSegments (spans, bpb);
+            std::vector<int> previous;
+            for (size_t i = 0; i + 1 < segments.size(); ++i)
+            {
+                const auto from = segments[i], to = segments[i + 1];
+                const auto& chord = chordAtIdea (spans, from);
+                const auto voicings = voicingsFor (chord, approach == 2 ? 67 : approach == 1 ? 72 : 57);
+                if (voicings.empty())
+                    continue;
+                const auto& shape = voicings[(size_t) juce::jlimit (0, (int) voicings.size() - 1, closestVoicing (voicings, previous, previous))];
+                previous = shape;
+                const auto bar = (int) std::floor (from / bpb + 1.0e-9);
+                if (approach == 0)
+                    for (const auto p : shape)
+                        addNote (out, from, (to - from) * 0.96, p, 0.5f, length);
+                else if (approach == 2)
+                    for (auto t = from; t < to - 1.0e-6; t += bpb / 8.0)
+                        for (const auto p : shape)
+                            addNote (out, t, bpb / 8.0 * 0.8, p, std::abs (std::fmod (t, bpb / 4.0)) < 1.0e-6 ? 0.46f : 0.38f, to);
+                else if (bar % 4 >= 2)
+                {
+                    // The answer: the chord's notes from the top down and back, a bar each, the last held.
+                    auto tones = shape;
+                    std::sort (tones.begin(), tones.end());
+                    const auto top = (int) tones.size() - 1;
+                    static const double at[] = { 0.0, 1.0, 1.5, 2.5 };
+                    static const double held[] = { 0.9, 0.45, 0.9, 1.4 };
+                    const int order[2][4] = { { top, top - 1, 0, top - 1 }, { 0, top - 1, top, top } };
+                    const auto o = bar * bpb;
+                    for (int k = 0; k < 4; ++k)
+                    {
+                        const auto t = o + at[k] * bpb / 4.0;
+                        if (t >= from - 1.0e-6 && t < to - 1.0e-6)
+                            addNote (out, t, held[k] * bpb / 4.0, tones[(size_t) juce::jlimit (0, top, order[bar % 2][k])], 0.62f, to);
+                    }
+                }
+            }
+            sortNotes (out);
+            return out;
+        }
+
+        LineIdea drivingLead (int approach, const LineIdea& guitar, const std::vector<ChordSpan>& spans, double bpb,
+                              const GuitarVelocities& velocities, int lowest, int highest)
+        {
+            static const char* const names[] = { "Driving: ringing arpeggio", "Driving: held notes and a squeal", "Driving: doubles the rhythm" };
+            static const char* const what[] = { "The chord's notes picked up high in eighths, each left to ring",
+                                                "A chord note held each bar with vibrato, a pinch-harmonic squeal at the end of every four bars",
+                                                "The rhythm guitar's hits an octave up, one note each" };
+            LineIdea out { LineIdea::Part::lead, names[approach], what[approach], {} };
+            const auto length = sectionLength (spans);
+            const auto low = juce::jlimit (lowest, juce::jmax (lowest, highest - 20), 59);
+            if (approach == 2)
+            {
+                std::vector<LineNote> notes;
+                for (const auto& n : guitar.notes)
+                    if (! n.keyswitch)
+                        notes.push_back (n);
+                std::stable_sort (notes.begin(), notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+                for (size_t i = 0; i < notes.size();)
+                {
+                    auto j = i;
+                    auto lowNote = notes[i];
+                    while (j < notes.size() && notes[j].beat - notes[i].beat < HumanizeLimits::together)
+                    {
+                        if (notes[j].pitch < lowNote.pitch)
+                            lowNote = notes[j];
+                        ++j;
+                    }
+                    auto pitch = lowNote.pitch + 12;
+                    while (pitch < low)
+                        pitch += 12;
+                    while (pitch > highest)
+                        pitch -= 12;
+                    lowNote.pitch = pitch;
+                    lowNote.effect = LineNote::Effect::none;
+                    out.notes.push_back (lowNote);
+                    i = j;
+                }
+                return out;
+            }
+            const auto sustain = GuitarVelocity::of (velocities.sustain);
+            const auto origin = spans.front().start;
+            if (approach == 0)
+            {
+                for (const auto& span : spans)
+                {
+                    const auto root = pitchOfClassIn (span.chord.root, low, low + 11);
+                    const auto& tones = span.chord.pitchClasses();
+                    const auto third = tones.size() >= 2 ? pitchOfClassIn (tones[1], root + 12, root + 23) : root + 12;
+                    const auto fifth = tones.size() >= 3 ? pitchOfClassIn (tones[2], root, root + 11) : root + 7;
+                    const int arp[] = { root, fifth, root + 12, third, root + 12, fifth };
+                    auto k = 0;
+                    for (auto t = span.start - origin; t < span.end - origin - 1.0e-6; t += bpb / 8.0, ++k)
+                    {
+                        auto p = arp[k % 6];
+                        while (p > highest)
+                            p -= 12;
+                        LineNote n { t, juce::jmin (bpb / 4.0, span.end - origin - t), p, k % 2 == 0 ? sustain : GuitarVelocity::of (velocities.sustainSoft) };
+                        n.effect = LineNote::Effect::ring;
+                        out.notes.push_back (n);
+                    }
+                }
+                return out;
+            }
+            // Held notes: each bar the chord's third (or fifth every other bar) held with vibrato; every fourth bar
+            // held three beats, then the squeal: the root two octaves over the riff, a pinch harmonic bent up.
+            const auto bars = (int) std::ceil (length / bpb - 1.0e-6);
+            for (int bar = 0; bar < bars; ++bar)
+            {
+                const auto o = bar * bpb;
+                const auto& chord = chordAtIdea (spans, o);
+                const auto& tones = chord.pitchClasses();
+                const auto pc = tones.size() >= 3 ? tones[(size_t) (bar % 2 == 0 ? 1 : 2)] : chord.root;
+                auto pitch = pitchOfClassIn (pc, low + 7, low + 18);
+                while (pitch > highest)
+                    pitch -= 12;
+                const auto squeal = bar % 4 == 3;
+                LineNote held { o, (squeal ? 3.0 : 3.9) * bpb / 4.0, pitch, sustain };
+                held.effect = LineNote::Effect::vibrato;
+                if (o < length - 1.0e-6)
+                {
+                    held.length = juce::jmin (held.length, length - o);
+                    out.notes.push_back (held);
+                }
+                if (squeal && o + 3 * bpb / 4.0 < length - 1.0e-6)
+                {
+                    auto top = pitchOfClassIn (chord.root, low + 19, low + 30);
+                    while (top > highest)
+                        top -= 12;
+                    LineNote n { o + 3 * bpb / 4.0, juce::jmin (bpb / 4.0 * 0.95, length - o - 3 * bpb / 4.0), top, GuitarVelocity::of (velocities.pinch) };
+                    n.effect = LineNote::Effect::bend;
+                    n.amount = 2.0f;
+                    out.notes.push_back (n);
+                }
+            }
+            return out;
+        }
+
+        // The driving chorus's part for a lane (none: the lane plays as usual: the melody, and the guitar itself).
+        std::optional<LineIdea> drivingLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        {
+            if (spans.empty() || ! drivingBand (s, c))
+                return std::nullopt;
+            const auto& lane = s.lane (l);
+            switch (l)
+            {
+                case ComposerLayer::bass:
+                {
+                    const auto& profile = c.bassProfile;
+                    const auto lowest = profile.has_value() ? profile->rangeLow() : c.bassTuning.lowest();
+                    const auto highest = profile.has_value() ? profile->rangeHigh() : bassTop (c.bassTuning);
+                    auto idea = drivingBass (drivingApproach (lane, 4, 4), guitarOf (s, spans, c), spans, c.beatsPerBar, lowest, highest);
+                    if (lane.lowString)
+                        keepInRange (idea, lowest, lowest + 12);
+                    keepInRange (idea, lowest, highest);
+                    return idea;
+                }
+                case ComposerLayer::chords: return drivingKeys (drivingApproach (lane, 4, 3), spans, c.beatsPerBar);
+                case ComposerLayer::lead:
+                {
+                    const auto& profile = c.leadProfile.has_value() ? c.leadProfile : c.guitarProfile;
+                    const auto velocities = profile.has_value() && profile->velocities.has_value() ? *profile->velocities : c.velocities;
+                    const auto lowest = profile.has_value() ? profile->rangeLow() : c.tuning.lowest();
+                    const auto highest = profile.has_value() ? profile->rangeHigh() : c.tuning.highest();
+                    return drivingLead (drivingApproach (lane, 3, 3), guitarOf (s, spans, c), spans, c.beatsPerBar, velocities, lowest, highest);
+                }
+                case ComposerLayer::drums: return drivingDrums (drivingApproach (lane, 5, 3), guitarOf (s, spans, c), spans, c.beatsPerBar);
+                case ComposerLayer::melody:
+                case ComposerLayer::guitar: break;
+            }
+            return std::nullopt;
+        }
+
         // A lane as SYNC has it (0.86.0): the sync lane itself and every lane with SYNC off as before.
         LineIdea syncedLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
@@ -1793,6 +2148,9 @@ namespace pr7s
                 if (! leaderLayer.has_value())
                     if (auto droning = droningLayer (l, s, spans, c))
                         return std::move (*droning);   // (0.89.0: SYNC on wins: the band follows the sync lane)
+                if (! leaderLayer.has_value())
+                    if (auto driving = drivingLayer (l, s, spans, c))
+                        return std::move (*driving);   // (0.98.0)
                 return rawLayer (l, s, spans, c);
             }
             auto plain = s;
@@ -1870,7 +2228,7 @@ namespace pr7s
     {
         if (s.syncLayer().has_value())
             return false;
-        if (droningBand (s, c))
+        if (droningBand (s, c) || drivingBand (s, c))
             return l == ComposerLayer::bass || l == ComposerLayer::chords || l == ComposerLayer::lead || l == ComposerLayer::drums;
         switch (sectionBand (s))
         {
