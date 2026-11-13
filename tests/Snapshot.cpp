@@ -1424,6 +1424,7 @@ TEST_CASE ("Snapshot: the progress box, and SAVE lit", "[.][snapshot-progress]")
 
 #include "ui/Hub.h"
 #include "ui/TrackTypeColours.h"
+#include "ui/ComposerTracksPage.h"
 #include "ui/InstrumentsPage.h"
 
 TEST_CASE ("Snapshot: the Hub", "[.][snapshot-hub]")
@@ -1467,6 +1468,16 @@ TEST_CASE ("Snapshot: the Hub", "[.][snapshot-hub]")
             hub.getColoursPage()->setColour (pr7s::Track::Kind::audio, pr7s::FamilyColours::paletteColour (6, 4));
             hub.getColoursPage()->setListColour (pr7s::Track::Kind::audio, true, 40);
             hub.getColoursPage()->setColour (pr7s::Track::Kind::group, pr7s::FamilyColours::paletteColour (0, 2));
+        }
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "composertracks")
+        {
+            // (0.112.0) Guitar left and right, the bass on "Bass DI".
+            for (const auto* name : { "Guitar L", "Guitar R", "Bass DI" })
+                studio.renameTrack (studio.addTrack (pr7s::Instrument {}), name);
+            hub.showComposerTracksPage();
+            hub.getComposerTracksPage()->setNames (1, "Guitar L, Guitar R");
+            hub.getComposerTracksPage()->setEvery (1, true);
+            hub.getComposerTracksPage()->setNames (0, "Bass, Bass DI");
         }
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "instruments")
         {

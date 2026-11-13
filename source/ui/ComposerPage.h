@@ -91,7 +91,13 @@ public:
     void setOnlyString (pr7s::ComposerLayer, int);       // (0.62.0) 1.. the string (1 the lowest); 0 off
     juce::String stringText (pr7s::ComposerLayer) const; // the key's text: ANY STRING, LOW STRING, STRING 2 ONLY
     void setTuning (pr7s::ComposerLayer, const juce::String& name);   // the bass's or the guitar's
-    int trackFor (pr7s::ComposerLayer, bool hearing) const;   // (0: a new track when used / not heard)
+    int trackFor (pr7s::ComposerLayer, bool hearing) const;
+    // (0.112.0) Every track the lane plays on (COMPOSER TRACKS' EVERY: guitar left and right), the first as trackFor's.
+    std::vector<int> tracksFor (pr7s::ComposerLayer, bool hearing) const;
+    juce::String trackText (pr7s::ComposerLayer) const;   // "TRACK: BASS", "TRACKS: GUITAR L + GUITAR R"
+    // Each lane's idea once per track it plays on (the copies after the first a little looser), with those tracks and lanes.
+    struct Placed { std::vector<pr7s::LineIdea> ideas; std::vector<int> onto, layers; };
+    Placed placeLanes (double originBeat, bool hearing) const;   // (0: a new track when used / not heard)
     bool hear();                             // false: nothing to play them on
     void stop();
     bool isHearing() const;
@@ -216,7 +222,6 @@ private:
     void refreshSong();                                  // the SONG strip's NEXT keys
     std::vector<std::pair<juce::Rectangle<int>, int>> songChips() const;   // (0.93.0) the blocks' chips and their indices
     void paintSong (juce::Graphics&) const;
-    juce::String trackText (pr7s::ComposerLayer) const;
     juce::String summary() const;
     void paintLane (juce::Graphics&, pr7s::ComposerLayer, const Lane&) const;
 

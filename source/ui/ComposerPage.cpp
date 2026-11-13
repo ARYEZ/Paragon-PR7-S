@@ -889,13 +889,45 @@ int ComposerPage::trackFor (ComposerLayer l, bool forHearing) const
     return 0;
 }
 
+std::vector<int> ComposerPage::tracksFor (ComposerLayer l, bool forHearing) const
+{
+    if (const auto chosen = trackChoice[(size_t) l]; studio.canTakeMidi (chosen))
+        return { chosen };
+    if (auto found = studio.findIdeaTracks (pr7s::composerPartOf (l)); ! found.empty())
+        return found;
+    return { trackFor (l, forHearing) };
+}
+
+ComposerPage::Placed ComposerPage::placeLanes (double originBeat, bool forHearing) const
+{
+    Placed p;
+    for (const auto l : pr7s::composerLayers())
+        if (state.lane (l).on && ! ideas[(size_t) l].notes.empty())
+        {
+            const auto tracks = tracksFor (l, forHearing);
+            for (size_t i = 0; i < tracks.size(); ++i)
+            {
+                if (forHearing && tracks[i] == 0)
+                    continue;
+                p.ideas.push_back (studio.doubledCopy (ideas[(size_t) l], (int) i, originBeat));
+                p.onto.push_back (tracks[i]);
+                p.layers.push_back ((int) l);
+            }
+        }
+    return p;
+}
+
 juce::String ComposerPage::trackText (ComposerLayer l) const
 {
-    const auto writes = trackFor (l, false);
-    if (writes != 0)
-        if (const auto* t = studio.getProject().findTrack (writes))
-            return "TRACK: " + t->name.toUpperCase();
-    return "TRACK: NEW (" + pr7s::Studio::linePartName (pr7s::composerPartOf (l)).toUpperCase() + ")";
+    juce::StringArray names;
+    for (const auto id : tracksFor (l, false))
+        if (const auto* t = studio.getProject().findTrack (id))
+            names.add (t->name.toUpperCase());
+    if (names.size() > 1)
+        return "TRACKS: " + names.joinIntoString (" + ");
+    if (names.size() == 1)
+        return "TRACK: " + names[0];
+    return "TRACK: NEW (" + studio.newIdeaTrackName (pr7s::composerPartOf (l)).toUpperCase() + ")";
 }
 
 //==============================================================================
@@ -910,10 +942,11 @@ bool ComposerPage::hear()
         hearingStart = buildStart();
     const auto placed = placedSpans();
     std::vector<std::pair<int, pr7s::LineIdea>> layers;
-    for (const auto l : pr7s::composerLayers())
-        if (state.lane (l).on)
-            if (const auto t = trackFor (l, true))
-                layers.emplace_back (t, ideas[(size_t) l]);
+    {
+        auto lanesPlaced = placeLanes (placed.front().start, true);
+        for (size_t i = 0; i < lanesPlaced.ideas.size(); ++i)
+            layers.emplace_back (lanesPlaced.onto[i], std::move (lanesPlaced.ideas[i]));
+    }
     if (! studio.auditionComposer (layers, placed.front().start, placed.back().end))
     {
         status = "Nothing to hear them on: add an instrument track (or switch a layer on)";
@@ -952,16 +985,9 @@ std::vector<int> ComposerPage::useAll()
     if (spans.empty())
         return {};
     const auto placed = spansAt (placeStart());
-    std::vector<pr7s::LineIdea> list;
-    std::vector<int> onto;
-    for (const auto l : pr7s::composerLayers())
-        if (state.lane (l).on && ! ideas[(size_t) l].notes.empty())
-        {
-            list.push_back (ideas[(size_t) l]);
-            onto.push_back (trackFor (l, false));
-        }
+    const auto lanesPlaced = placeLanes (placed.front().start, false);
     writeChordsAt (placed);
-    const auto tracks = studio.buildSection (list, placed, "Composer", onto);
+    const auto tracks = studio.buildSection (lanesPlaced.ideas, placed, "Composer", lanesPlaced.onto);
     juce::StringArray names;
     for (const auto id : tracks)
         if (const auto* t = studio.getProject().findTrack (id))
@@ -978,7 +1004,12 @@ int ComposerPage::useLayer (ComposerLayer l)
     stop();
     if (spans.empty() || ideas[(size_t) l].notes.empty())
         return 0;
-    const auto tracks = studio.buildSection ({ ideas[(size_t) l] }, spansAt (placeStart()), "Composer", { trackFor (l, false) });
+    const auto placed = spansAt (placeStart());
+    std::vector<pr7s::LineIdea> list;
+    const auto onto = tracksFor (l, false);
+    for (size_t i = 0; i < onto.size(); ++i)
+        list.push_back (studio.doubledCopy (ideas[(size_t) l], (int) i, placed.front().start));
+    const auto tracks = studio.buildSection (list, placed, "Composer", onto);
     refresh (false);
     return tracks.empty() ? 0 : tracks.front();
 }
@@ -1492,16 +1523,10 @@ std::vector<int> ComposerPage::buildSection()
     }
     const auto section = getSection();
     const auto placed = spansAt (buildStart());
-    std::vector<pr7s::LineIdea> list;
-    std::vector<int> onto;
-    std::vector<int> layersBuilt;   // (0.92.0) which lane each of `list` is
-    for (const auto l : pr7s::composerLayers())
-        if (state.lane (l).on && ! ideas[(size_t) l].notes.empty())
-        {
-            list.push_back (ideas[(size_t) l]);
-            onto.push_back (trackFor (l, false));
-            layersBuilt.push_back ((int) l);
-        }
+    auto lanesPlaced = placeLanes (placed.front().start, false);   // (0.112.0: a lane on each of its tracks)
+    const auto& list = lanesPlaced.ideas;
+    const auto& onto = lanesPlaced.onto;
+    const auto& layersBuilt = lanesPlaced.layers;   // (0.92.0) which lane each of `list` is
     if (list.empty())
     {
         status = "Nothing to build: switch a layer on";
@@ -1811,9 +1836,13 @@ void ComposerPage::setLibraryGroove (const juce::String& path)
 void ComposerPage::showTrackMenu (ComposerLayer l)
 {
     juce::PopupMenu menu;
-    const auto name = pr7s::Studio::linePartName (pr7s::composerPartOf (l));
+    const auto name = studio.newIdeaTrackName (pr7s::composerPartOf (l));
     const auto current = trackFor (l, false);
-    menu.addItem (1, "Automatic: the \"" + name + "\" track, else a new one when used", true, trackChoice[(size_t) l] == 0);
+    // (0.112.0) The names HUB SETTINGS > COMPOSER TRACKS gives this lane.
+    const auto tracks = studio.getComposerTracks (pr7s::composerPartOf (l));
+    const auto names = "\"" + tracks.names.joinIntoString ("\", \"") + "\"";
+    menu.addItem (1, juce::String ("Automatic: ") + (tracks.every ? "every track called " : "the track called ") + names
+                         + ", else a new \"" + name + "\" one when used (Hub > COMPOSER TRACKS)", true, trackChoice[(size_t) l] == 0);
     if (studio.findIdeaTrack (pr7s::composerPartOf (l)) == 0)
         menu.addItem (2, "Make the \"" + name + "\" track now (to hear it on its own instrument)");
     menu.addSeparator();

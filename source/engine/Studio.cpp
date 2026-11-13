@@ -10716,11 +10716,11 @@ namespace pr7s
             // (0.54.0) Drums: a drum map (0.77.3: the default one), the MIDI editor's drum view; (0.107.0) the
             // studio's drums (PR7-D) when it's found.
             const auto drums = idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove;
-            trackId = drums ? addDrumsTrack (linePartName (idea.part)) : addTrack (Instrument {});
+            trackId = drums ? addDrumsTrack (newIdeaTrackName (idea.part)) : addTrack (Instrument {});
             if (trackId == 0)
                 return 0;
             if (! drums)
-                renameTrack (trackId, linePartName (idea.part));
+                renameTrack (trackId, newIdeaTrackName (idea.part));
         }
         auto part = partFromIdea (idea, spans.front().start, spans.back().end - spans.front().start, linePartName (idea.part) + ": " + idea.style);
         linkForPr7d (trackId, idea, part);   // (0.108.0)
@@ -10730,11 +10730,172 @@ namespace pr7s
 
     int Studio::findIdeaTrack (LineIdea::Part part) const
     {
-        const auto name = linePartName (part);
-        for (const auto& t : project.tracks)
-            if (t.name == name && canTakeMidi (t.id))
-                return t.id;
+        const auto lane = composerTrackLane (part);
+        const auto names = lane >= 0 ? getComposerTracks (part).names : juce::StringArray (linePartName (part));
+        for (const auto& name : names)
+            for (const auto& t : project.tracks)
+                if (t.name.trim().equalsIgnoreCase (name) && canTakeMidi (t.id))
+                    return t.id;
         return 0;
+    }
+
+    //==========================================================================
+    // COMPOSER TRACKS (0.112.0)
+    LineIdea::Part Studio::composerTrackPart (int lane)
+    {
+        static const LineIdea::Part parts[] { LineIdea::Part::bass, LineIdea::Part::rhythm, LineIdea::Part::lead,
+                                              LineIdea::Part::chords, LineIdea::Part::tune, LineIdea::Part::drums };
+        return parts[juce::jlimit (0, numComposerTrackLanes - 1, lane)];
+    }
+
+    int Studio::composerTrackLane (LineIdea::Part part)
+    {
+        switch (part)
+        {
+            case LineIdea::Part::bass:   return 0;
+            case LineIdea::Part::rhythm: return 1;
+            case LineIdea::Part::lead:   return 2;
+            case LineIdea::Part::chords: return 3;
+            case LineIdea::Part::melody:
+            case LineIdea::Part::tune:   return 4;
+            case LineIdea::Part::drums:
+            case LineIdea::Part::groove: return 5;
+            case LineIdea::Part::pattern: break;
+        }
+        return -1;
+    }
+
+    static juce::StringArray cleanTrackNames (const juce::StringArray& names)
+    {
+        juce::StringArray out;
+        for (auto n : names)
+        {
+            n = n.removeCharacters ("|,\n\r").trim();   // (commas part names)
+            if (n.isNotEmpty() && ! out.contains (n, true))
+                out.add (n);
+        }
+        return out;
+    }
+
+    std::array<Studio::ComposerTracks, Studio::numComposerTrackLanes> Studio::readComposerTracks() const
+    {
+        // A lane a line, in composerTrackPart's order: "1|Guitar L, Guitar R" (1: EVERY); an empty name list: the default.
+        auto lanes = composerTracksHere;
+        if (settings != nullptr)
+        {
+            const auto lines = juce::StringArray::fromLines (settings->getValue ("composerTracks"));
+            for (int i = 0; i < numComposerTrackLanes; ++i)
+            {
+                lanes[(size_t) i] = {};
+                if (i < lines.size() && lines[i].contains ("|"))
+                {
+                    lanes[(size_t) i].every = lines[i].upToFirstOccurrenceOf ("|", false, false).trim() == "1";
+                    lanes[(size_t) i].names = cleanTrackNames (juce::StringArray::fromTokens (lines[i].fromFirstOccurrenceOf ("|", false, false), ",", ""));
+                }
+            }
+        }
+        for (int i = 0; i < numComposerTrackLanes; ++i)
+            if (lanes[(size_t) i].names.isEmpty())
+                lanes[(size_t) i].names = juce::StringArray (linePartName (composerTrackPart (i)));
+        return lanes;
+    }
+
+    Studio::ComposerTracks Studio::getComposerTracks (LineIdea::Part part) const
+    {
+        const auto lane = composerTrackLane (part);
+        if (lane < 0)
+            return { juce::StringArray (linePartName (part)), false };
+        return readComposerTracks()[(size_t) lane];
+    }
+
+    void Studio::setComposerTracks (LineIdea::Part part, ComposerTracks tracks)
+    {
+        const auto lane = composerTrackLane (part);
+        if (lane < 0)
+            return;
+        tracks.names = cleanTrackNames (tracks.names);
+        if (tracks.names.isEmpty())
+            tracks.names = juce::StringArray (linePartName (part));
+        auto lanes = readComposerTracks();
+        lanes[(size_t) lane] = tracks;
+        composerTracksHere = lanes;
+        if (settings != nullptr)
+        {
+            juce::StringArray lines;
+            for (const auto& l : lanes)
+                lines.add (juce::String (l.every ? "1" : "0") + "|" + l.names.joinIntoString (", "));
+            settings->setValue ("composerTracks", lines.joinIntoString ("\n"));
+        }
+    }
+
+    void Studio::resetComposerTracks()
+    {
+        composerTracksHere = {};
+        if (settings != nullptr)
+            settings->removeValue ("composerTracks");
+    }
+
+    bool Studio::getLooseCopies() const
+    {
+        return settings != nullptr ? settings->getBoolValue ("composerLooseCopies", true) : looseCopiesHere;
+    }
+
+    void Studio::setLooseCopies (bool on)
+    {
+        looseCopiesHere = on;
+        if (settings != nullptr)
+            settings->setValue ("composerLooseCopies", on);
+    }
+
+    juce::String Studio::newIdeaTrackName (LineIdea::Part part) const
+    {
+        const auto names = getComposerTracks (part).names;
+        return names.isEmpty() ? linePartName (part) : names[0];
+    }
+
+    std::vector<int> Studio::findIdeaTracks (LineIdea::Part part) const
+    {
+        const auto tracks = getComposerTracks (part);
+        if (! tracks.every)
+        {
+            if (const auto id = findIdeaTrack (part))
+                return { id };
+            return {};
+        }
+        // Every match, in the track list's order (guitar left above guitar right plays as the first).
+        std::vector<int> found;
+        for (const auto& t : project.tracks)
+            if (canTakeMidi (t.id))
+                for (const auto& name : tracks.names)
+                    if (t.name.trim().equalsIgnoreCase (name))
+                    {
+                        found.push_back (t.id);
+                        break;
+                    }
+        return found;
+    }
+
+    LineIdea Studio::doubledCopy (const LineIdea& idea, int copy, double originBeat) const
+    {
+        if (copy <= 0 || ! getLooseCopies())
+            return idea;
+        // A second take: the playable notes humanized again (keyswitches left where they are), each in its velocity layer.
+        auto out = idea;
+        std::vector<LineNote> keys, played;
+        for (const auto& n : idea.notes)
+            (n.keyswitch ? keys : played).push_back (n);
+        HumanizeOptions o;
+        o.amount = 0.45f;
+        o.bpm = project.bpmAt (originBeat);
+        o.beatsPerBar = project.beatsPerBarAt (originBeat);
+        o.originBeat = originBeat;
+        if (idea.part != LineIdea::Part::drums && idea.part != LineIdea::Part::groove)
+            o.layers = guitarLayers();
+        o.seed = (juce::uint32) (copy * 7919 + 97);
+        out.notes = humanize (played, o);
+        out.notes.insert (out.notes.end(), keys.begin(), keys.end());
+        std::stable_sort (out.notes.begin(), out.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+        return out;
     }
 
     //==========================================================================
@@ -10924,11 +11085,11 @@ namespace pr7s
             if (trackId == 0)
             {
                 const auto drums = idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove;
-                trackId = drums ? addDrumsTrack (linePartName (idea.part)) : addTrack (Instrument {});   // (0.107.0: PR7-D)
+                trackId = drums ? addDrumsTrack (newIdeaTrackName (idea.part)) : addTrack (Instrument {});   // (0.107.0: PR7-D)
                 if (trackId == 0)
                     continue;
                 if (! drums)
-                    renameTrack (trackId, linePartName (idea.part));
+                    renameTrack (trackId, newIdeaTrackName (idea.part));
             }
             plan.emplace_back (trackId, &idea);
             used.push_back (trackId);
@@ -13855,13 +14016,15 @@ namespace pr7s
             const auto context = getComposerContext (place.start);
             const auto layers = composeLayers (state, spans, context);
             const auto label = sectionLabel (project.songSections.blocks, index);
+            std::map<int, int> copies;   // (0.112.0) a lane's second track on (EVERY matching track): its looser copy
             for (auto& lane : block.lanes)
             {
+                const auto copy = copies[lane.layer]++;
                 auto* track = project.findTrack (lane.track);
                 if (track == nullptr || track->frozen || ! juce::isPositiveAndBelow (lane.layer, composerLayerCount)
                     || trackMark (place, lane.track) != lane.mark)
                     continue;   // (changed by hand since: it follows the chords instead)
-                const auto& idea = layers[(size_t) lane.layer];
+                const auto idea = doubledCopy (layers[(size_t) lane.layer], copy, spans.front().start);
                 track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(), [&] (const Part& p)
                                     { return p.start >= place.start - 1.0e-9 && p.end() <= place.end + 1.0e-9; }), track->parts.end());
                 if (! idea.notes.empty())

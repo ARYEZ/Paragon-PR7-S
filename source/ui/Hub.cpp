@@ -1,6 +1,7 @@
 #include "Hub.h"
 #include "ui/InstrumentsPage.h"
 #include "ui/TrackTypeColours.h"
+#include "ui/ComposerTracksPage.h"
 #include "engine/DrumMaps.h"
 
 #include "ui/Finish.h"
@@ -157,7 +158,7 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
 {
     list = std::make_unique<SongList> (*this);
     addAndMakeVisible (*list);
-    for (auto* b : { &projectsTab, &settingsTab, &instrumentsTab, &coloursTab, &createEmpty, &chooseFile, &open, &driverPanel, &audioSettings, &chooseLocation, &addLocation, &removeLocation })
+    for (auto* b : { &projectsTab, &settingsTab, &instrumentsTab, &coloursTab, &composerTracksTab, &createEmpty, &chooseFile, &open, &driverPanel, &audioSettings, &chooseLocation, &addLocation, &removeLocation })
     {
         styleKey (*b);
         addAndMakeVisible (*b);
@@ -309,6 +310,9 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
     coloursTab.setClickingTogglesState (false);
     coloursTab.setTooltip ("The colour each type of new track starts with, and its colour in the track list");
     coloursTab.onClick = [this] { showColoursPage(); };
+    composerTracksTab.setClickingTogglesState (false);
+    composerTracksTab.setTooltip ("The tracks each composer lane plays on: their names, and a lane on every matching track (guitar left and right)");
+    composerTracksTab.onClick = [this] { showComposerTracksPage(); };
     createEmpty.setTooltip ("Create Empty: a new song, in a folder of its own at the project location");
     createEmpty.onClick = [this]
     {
@@ -561,6 +565,7 @@ void Hub::showSettingsPage (bool on)
     }
     instrumentsPage = false;
     coloursPage = false;
+    composerTracksPage = false;
     resized();
     repaint();
 }
@@ -575,7 +580,24 @@ void Hub::showColoursPage()
     colours->refresh();
     settingsPage = false;
     instrumentsPage = false;
+    composerTracksPage = false;
     coloursPage = true;
+    resized();
+    repaint();
+}
+
+void Hub::showComposerTracksPage()
+{
+    if (composerTracks == nullptr)
+    {
+        composerTracks = std::make_unique<ComposerTracksPage> (studio);
+        addChildComponent (*composerTracks);
+    }
+    composerTracks->refresh();
+    settingsPage = false;
+    instrumentsPage = false;
+    coloursPage = false;
+    composerTracksPage = true;
     resized();
     repaint();
 }
@@ -589,6 +611,7 @@ void Hub::showInstrumentsPage()
     }
     settingsPage = false;
     coloursPage = false;
+    composerTracksPage = false;
     instrumentsPage = true;
     resized();
     repaint();
@@ -714,7 +737,7 @@ void Hub::paint (juce::Graphics& g)
 
     g.setColour (ParagonColours::textDim);
     g.setFont (font (12.0f));
-    if (instrumentsPage || coloursPage)
+    if (instrumentsPage || coloursPage || composerTracksPage)
         return;
     if (! settingsPage && studio.getLibrary().showsLocation())
     {
@@ -762,7 +785,10 @@ void Hub::resized()
         instrumentsTab.setBounds (n.removeFromTop (34));
         n.removeFromTop (8);
         coloursTab.setBounds (n.removeFromTop (34));
-        projectsTab.setToggleState (! settingsPage && ! instrumentsPage && ! coloursPage, juce::dontSendNotification);
+        n.removeFromTop (8);
+        composerTracksTab.setBounds (n.removeFromTop (34));
+        composerTracksTab.setToggleState (composerTracksPage, juce::dontSendNotification);
+        projectsTab.setToggleState (! settingsPage && ! instrumentsPage && ! coloursPage && ! composerTracksPage, juce::dontSendNotification);
         coloursTab.setToggleState (coloursPage, juce::dontSendNotification);
         settingsTab.setToggleState (settingsPage, juce::dontSendNotification);
         instrumentsTab.setToggleState (instrumentsPage, juce::dontSendNotification);
@@ -779,7 +805,12 @@ void Hub::resized()
         colours->setVisible (coloursPage);
         colours->setBounds (page.reduced (24, 18));
     }
-    if (instrumentsPage || coloursPage)
+    if (composerTracks != nullptr)
+    {
+        composerTracks->setVisible (composerTracksPage);
+        composerTracks->setBounds (page.reduced (24, 18));
+    }
+    if (instrumentsPage || coloursPage || composerTracksPage)
     {
         for (auto* c : std::initializer_list<juce::Component*> { list.get(), &search, &createEmpty, &chooseFile, &open, &showPaths, &showLocation, &atStart,
                                                                          &addLocation, &removeLocation, &locationsBox, &dropLabel, &dropStrength,

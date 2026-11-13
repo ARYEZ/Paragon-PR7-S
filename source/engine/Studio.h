@@ -373,7 +373,27 @@ namespace pr7s
         // (0.58.0) `onto`: per idea, a track to write it on instead (when it can take MIDI; 0: as above).
         std::vector<int> buildSection (const std::vector<LineIdea>&, const std::vector<ChordSpan>&, const juce::String& sectionName,
                                        const std::vector<int>& onto = {});
-        int findIdeaTrack (LineIdea::Part) const;   // the instrument track named after the part (0: none)
+        int findIdeaTrack (LineIdea::Part) const;   // (0.112.0) the first instrument track with one of the part's COMPOSER TRACKS names (0: none)
+        // (0.112.0, the owner asked) COMPOSER TRACKS, a tab of the Hub: per composer lane (bass, guitar, lead,
+        // chords, melody, drums) the track names it looks for (any of them, upper or lower case alike; the
+        // first is what a new track is called), and whether it plays on EVERY track with one of those names
+        // (the owner's guitar left and guitar right). The copies after the first can be played a little
+        // looser (LOOSE COPIES: humanized again with a seed of their own, velocities kept in their layers),
+        // as two takes would be. Kept in the settings ("composerTracks", "composerLooseCopies"; in memory
+        // without a settings file).
+        struct ComposerTracks { juce::StringArray names; bool every = false; bool operator== (const ComposerTracks&) const = default; };
+        static constexpr int numComposerTrackLanes = 6;
+        static LineIdea::Part composerTrackPart (int lane);   // bass, rhythm, lead, chords, tune, drums
+        static int composerTrackLane (LineIdea::Part);        // (-1: not a composer lane's)
+        ComposerTracks getComposerTracks (LineIdea::Part) const;
+        void setComposerTracks (LineIdea::Part, ComposerTracks);
+        void resetComposerTracks();
+        bool getLooseCopies() const;
+        void setLooseCopies (bool);
+        juce::String newIdeaTrackName (LineIdea::Part) const;      // the first name (a new track's)
+        std::vector<int> findIdeaTracks (LineIdea::Part) const;    // every match when EVERY, else the first (none: empty)
+        // The `copy`th copy of an idea (0: itself) for another of its tracks: humanized again when LOOSE COPIES.
+        LineIdea doubledCopy (const LineIdea&, int copy, double originBeat) const;
         // THE COMPOSER (0.58.0): what its layers are made with (IDEAS' settings; the tempo and bar at `atBeat`).
         ComposerContext getComposerContext (double atBeat) const;
         juce::String getComposerState() const;            // (settings key "composer"; in memory without a settings file)
@@ -1816,6 +1836,9 @@ namespace pr7s
         int autoSaveMinutesHere = 0, autoSaveKeepHere = defaultAutoSaveKeep;
         bool askTypeChangeHere = false;
         std::array<TrackTypeLook, numTrackTypes> trackTypeLooksHere;   // (0.80.0; without a settings file)
+        std::array<ComposerTracks, numComposerTrackLanes> readComposerTracks() const;
+        std::array<ComposerTracks, numComposerTrackLanes> composerTracksHere {};   // (0.112.0; without a settings file; empty names: the default)
+        bool looseCopiesHere = true;
         std::array<TrackTypeLook, numTrackTypes> readTrackTypeLooks() const;
         void giveTypeLook (Track&, int index) const;   // a new track's colour and list colour   // (without a settings file: the tests)
         void collectPluginStates();

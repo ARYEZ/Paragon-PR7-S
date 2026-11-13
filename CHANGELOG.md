@@ -2,6 +2,25 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.112.0
+
+**COMPOSER TRACKS: choose which tracks each composer lane plays on, and play a lane on two (or more) tracks.** You asked for the bass lane to find your "Bass" track by default, and for the guitar to go to your guitar left and guitar right.
+
+- **A new Hub tab, COMPOSER TRACKS** (under TRACK COLOURS). A row for each composer lane: BASS, GUITAR, LEAD, CHORDS, MELODY, DRUMS. Each row has:
+  - **TRACK NAMES:** the names of the tracks that lane plays on, separated by commas (for example `Bass, Bass DI, Djinn`). Upper or lower case doesn't matter. The lane plays on the first track it finds with any of those names. The first name is also what BUILD calls a new track when none exists.
+  - **EVERY MATCHING TRACK:** on, the lane plays on every track with one of those names, so `Guitar L, Guitar R` with this on writes the riff onto both. Off, it plays on the first one only.
+  - Under each row: what that lane finds in the song you have open (`IN THIS SONG: GUITAR L + GUITAR R`), or the track BUILD will make.
+- **PLAY THE COPIES A LITTLE LOOSE** (on at first): when a lane plays on two or more tracks, each copy after the first is humanized again with its own small timing and velocity differences, like a second take, so left and right aren't the exact same performance. Velocities stay in their layers (palm mutes stay palm mutes). Off: the same notes on each track.
+- **ALL BACK TO THE USUAL NAMES** puts every lane back to Bass, Guitar, Lead Guitar, Piano, Melody and Drums, one track each.
+- In the composer, a lane's TRACK key shows every track it plays on (`TRACKS: GUITAR L + GUITAR R`). HEAR, USE ALL, BUILD and a lane's own Use write and play on all of them. A track you pick in a lane's TRACK menu still wins while the composer is open.
+- A block on the SECTIONS row built onto two tracks keeps both: change its chords and both are rebuilt, the second still its own looser take.
+
+Worth knowing:
+- The names must match whole track names (`Guitar L` won't match `Guitar Left`); add both if you use both.
+- A lane's volume in the composer moves the first of its tracks.
+- Dragging a lane out as a MIDI file gives the first take.
+- I can't hear these here: tell me if the looser copy is too loose or not loose enough.
+
 ## 0.111.0
 
 **Intros and outros get types of their own** (the last step of your plan for section types; your songs' openings and endings read for their shapes only, our names). An **Intro** block's TYPE menu starts with ten new types, and an **Outro**, **Ending**, **Coda** or **Tag** block's with nine; DRONING and OPEN CHORDS / STABS are still under them. Each type writes the guitar, bass, keys and drums (one of them the lead too), with options in every lane's menu.
