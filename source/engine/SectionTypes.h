@@ -39,7 +39,7 @@ namespace pr7s
         // (0.102.0) PRECHORUS (the owner's Faster, Left Behind, Call Me When You're Sober, The End of the Dream,
         // Crawling, Going Under, Waffle, Circle With Me, The Void, Sweet Sacrifice, At the End of August): a pre-chorus
         // type writes every lane it lists options for (sectionApproaches by the type's name).
-        enum class Band { none, staccato, split, clean, preChorus, bridge, breakdown, interlude };   // (0.109.0: breakdown; 0.110.0: interlude)
+        enum class Band { none, staccato, split, clean, preChorus, bridge, breakdown, interlude, bookend };   // (0.109.0: breakdown; 0.110.0: interlude; 0.111.0: intros and outros)
         Band band = Band::none;
         // (0.100.0) AUTOMATIC draws from the first this many of them (0: all): a kind added later is a chosen option
         // only, so a section built on AUTOMATIC keeps its kind when it's rebuilt.
@@ -70,6 +70,7 @@ namespace pr7s
     juce::StringArray bridgeApproaches (const juce::String& type, ComposerLayer);      // (0.105.0)
     juce::StringArray breakdownApproaches (const juce::String& type, ComposerLayer);   // (0.109.0)
     juce::StringArray interludeApproaches (const juce::String& type, ComposerLayer);   // (0.110.0)
+    juce::StringArray bookendApproaches (const juce::String& type, ComposerLayer);     // (0.111.0: intros and outros)
     // The lane's approach as shown ("AUTOMATIC" when none is chosen; empty when the flavour has none).
     juce::String approachName (const ComposerState&, ComposerLayer);
 

@@ -3053,3 +3053,148 @@ TEST_CASE ("0.110.0: the interlude types' shapes", "[sections][types][interlude]
         CHECK (scratches > 0);
     }
 }
+
+TEST_CASE ("0.111.0: intro and outro types, every lane's options a different part", "[sections][types][bookend]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const std::vector<juce::String> intros { "RIFF ALONE, THEN THE BAND", "FULL BAND FROM THE DOWNBEAT", "ARPEGGIO BUILD", "KEYS HOOK OVER A LOOP", "SWELL AND DRONE",
+                                             "STAB CALLS", "TREMOLO SWELL", "HOLD AND ANSWER", "DOWNBEAT HITS UNDER A LEAD", "RIFF WITH DRUMS BUILDING" };
+    const std::vector<juce::String> outros { "INTRO RETURNS, LAST CHORD RINGS", "WINDING DOWN", "DEAD STOP", "STABS, THEN RING", "FILL AND FINAL HIT",
+                                             "HOOK ALONE TO THE END", "SPEEDING HITS", "SPACED STABS", "TRIPLE STAB STOP" };
+    const auto intro = sectionTypesFor ("Intro");
+    REQUIRE (intro.size() == intros.size() + 2);
+    for (size_t i = 0; i < intros.size(); ++i)
+        CHECK (intro[i].name == intros[i]);
+    CHECK (intro[intros.size()].name == "DRONING");
+    for (const auto* name : { "Outro", "Ending", "Coda", "Tag" })
+    {
+        const auto outro = sectionTypesFor (name);
+        REQUIRE (outro.size() == outros.size() + 2);
+        for (size_t i = 0; i < outros.size(); ++i)
+            CHECK (outro[i].name == outros[i]);
+    }
+    CHECK_FALSE (sectionTypeNamed ("Intro", "DEAD STOP").has_value());
+    CHECK_FALSE (sectionTypeNamed ("Outro", "STAB CALLS").has_value());
+
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << ";";
+        return k;
+    };
+    std::vector<std::pair<juce::String, juce::String>> all;
+    for (const auto& n : intros)
+        all.emplace_back ("Intro", n);
+    for (const auto& n : outros)
+        all.emplace_back ("Outro", n);
+    for (const auto& [section, name] : all)
+    {
+        ComposerState s;
+        applySectionType (s, section, name);
+        REQUIRE (sectionBand (s) == SectionType::Band::bookend);
+        for (const auto l : composerLayers())
+        {
+            const auto options = sectionApproaches (s, l);
+            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && ! options.isEmpty()));
+            if (options.isEmpty())
+                continue;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) options.size());
+            std::set<juce::String> seen;
+            for (const auto& idea : choices)
+            {
+                INFO (name << " " << composerLayerName (l) << " " << idea.style);
+                CHECK (idea.notes.size() + (idea.style.containsIgnoreCase ("out") ? 1 : 0) > 0);
+                seen.insert (key (idea));
+            }
+            INFO (name << " " << composerLayerName (l));
+            CHECK (seen.size() == choices.size());
+        }
+        const auto composed = composeLayers (s, spans, c);
+        for (const auto& idea : composed)
+            for (const auto& n : idea.notes)
+                CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+    }
+}
+
+TEST_CASE ("0.111.0: the intro and outro types' shapes", "[sections][types][bookend]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (Am F C G a bar each, 8 bars: 32 beats; the low string A0 = 33)
+    const auto typed = [] (const juce::String& section, const juce::String& name, int guitar = -1, int drums = -1)
+    {
+        ComposerState s;
+        applySectionType (s, section, name);
+        s.lane (ComposerLayer::guitar).approach = guitar;
+        s.lane (ComposerLayer::drums).approach = drums;
+        return s;
+    };
+    // RIFF ALONE, THEN THE BAND: no drums or bass before halfway; the guitar muted until then.
+    {
+        const auto all = composeLayers (typed ("Intro", "RIFF ALONE, THEN THE BAND", 0, 0), spans, c);
+        for (const auto& n : all[(size_t) ComposerLayer::bass].notes)
+            CHECK (n.beat >= 16.0 - 1.0e-6);
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            CHECK ((n.beat >= 16.0 - 1.0e-6 || n.beat >= 15.0 - 1.0e-6));   // (a fill on the last beat before)
+        for (const auto& n : all[(size_t) ComposerLayer::guitar].notes)
+            if (n.beat < 16.0 - 1.0e-6)
+                CHECK (n.velocity < GuitarVelocity::of (60));
+    }
+    // DEAD STOP: nothing at or after beat 3 of the last bar, and the last notes short.
+    {
+        const auto all = composeLayers (typed ("Outro", "DEAD STOP", 0, 0), spans, c);
+        for (const auto l : { ComposerLayer::guitar, ComposerLayer::bass, ComposerLayer::chords, ComposerLayer::drums })   // (the type's lanes; the melody is its own)
+            for (const auto& n : all[(size_t) l].notes)
+            {
+                CHECK (n.beat < 30.0 + 1.0e-6);
+                CHECK (n.beat + n.length <= 30.25 + 1.0e-6);
+            }
+    }
+    // TRIPLE STAB STOP: the last bar is three sixteenths and silence.
+    {
+        const auto g = composeLayers (typed ("Outro", "TRIPLE STAB STOP", 0), spans, c)[(size_t) ComposerLayer::guitar];
+        std::set<int> last;
+        for (const auto& n : g.notes)
+            if (n.beat >= 28.0 - 1.0e-6)
+                last.insert (juce::roundToInt ((n.beat - 28.0) * 4.0));
+        CHECK (last == std::set<int> { 0, 1, 2 });
+    }
+    // SPEEDING HITS: halves, then quarters, then eighths.
+    {
+        const auto g = composeLayers (typed ("Outro", "SPEEDING HITS", 0), spans, c)[(size_t) ComposerLayer::guitar];
+        auto starts = [&] (double from, double to)
+        {
+            std::set<int> s;
+            for (const auto& n : g.notes)
+                if (n.beat >= from - 1.0e-6 && n.beat < to - 1.0e-6)
+                    s.insert (juce::roundToInt (n.beat * 8.0));
+            return (int) s.size();
+        };
+        CHECK (starts (0.0, 4.0) == 2);
+        CHECK (starts (12.0, 16.0) == 4);
+        CHECK (starts (28.0, 32.0) == 8);
+    }
+    // FILL AND FINAL HIT: the last bar one chord, the drums one kick and crash on it.
+    {
+        const auto all = composeLayers (typed ("Outro", "FILL AND FINAL HIT", 0, 0), spans, c);
+        std::set<int> lastDrums;
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            if (n.beat >= 28.0 - 1.0e-6)
+                lastDrums.insert (n.pitch * 1000 + juce::roundToInt ((n.beat - 28.0) * 4.0));
+        CHECK (lastDrums == std::set<int> { GmDrum::kick * 1000, GmDrum::crash * 1000 });
+        for (const auto& n : all[(size_t) ComposerLayer::guitar].notes)
+            if (n.beat >= 28.0 - 1.0e-6)
+                CHECK (n.beat == Catch::Approx (28.0));
+    }
+    // ARPEGGIO BUILD: the drums silent until the wall (the last quarter), but for soft crashes.
+    {
+        const auto all = composeLayers (typed ("Intro", "ARPEGGIO BUILD", 0, 0), spans, c);
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            if (n.beat < 24.0 - 1.0e-6)
+                CHECK (n.pitch == GmDrum::crash);
+    }
+}

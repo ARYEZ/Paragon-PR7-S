@@ -2,6 +2,40 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.111.0
+
+**Intros and outros get types of their own** (the last step of your plan for section types; your songs' openings and endings read for their shapes only, our names). An **Intro** block's TYPE menu starts with ten new types, and an **Outro**, **Ending**, **Coda** or **Tag** block's with nine; DRONING and OPEN CHORDS / STABS are still under them. Each type writes the guitar, bass, keys and drums (one of them the lead too), with options in every lane's menu.
+
+Intros:
+- **RIFF ALONE, THEN THE BAND** (Faster, Black, Jaded, Going Under): one palm-muted line spelling the chords (each move an eighth early), or the chug riff, alone; the band lands together halfway, the drums with a fill into it.
+- **FULL BAND FROM THE DOWNBEAT** (Stricken, The End of the Dream, Wildfire, This Calling): the riff at full force from beat 1, or a unison three-note cell turning against the bar.
+- **ARPEGGIO BUILD** (Waterhaul, Come Clarity, Masterpiece, Waffle): a clean sixteenth arpeggio alone, the bass coming in by stages (a held note, eighths, then doubling), the heavy guitar and double kick as a wall for the last quarter.
+- **KEYS HOOK OVER A LOOP** (In The End, Papercut, Crawling): a keys hook in quarters (or a sixteenth ostinato) over a light loop, the bass from halfway, a guitar pickup of octave sixteenths at the end.
+- **SWELL AND DRONE** (Another Life, Circle With Me): two high notes swelling in every two bars, one guitar chord swelled in halfway, a snare pickup into the next section.
+- **STAB CALLS** (Clown, Sweet Sacrifice, Ten Ton Hammer): four stabs, a chord a half step down, the octave ringing, with the toms in unison; then a riff on the root and its half-step neighbours. Or burst-and-silence calls.
+- **TREMOLO SWELL** (At the End of August): root and fifth tremolo-picked over the ride alone, the groove coming in halfway, the last bars one guitar alone playing the riff.
+- **HOLD AND ANSWER** (The End of Heartache, Whole): a low chord held, answered by two hits a minor third up on 3 and 4, or by a high clash in eighths.
+- **DOWNBEAT HITS UNDER A LEAD** (All Night Lights): the band hits only each bar's first beat while the lead plays a sixteenth pedal melody; a snare roll at the end, or a blast from halfway.
+- **RIFF WITH DRUMS BUILDING** (This Fire Burns): a gallop or chug riff steady while the drums build from single hits to a groove to a double-kick carpet.
+
+Outros:
+- **INTRO RETURNS, LAST CHORD RINGS** (Parallels, This Calling, Clown, Left Behind): the opening riff (or muted line) back, then the last chord rung out with a crash.
+- **WINDING DOWN** (Tears Don't Fall, This Fire Burns, Another Life): chords on the beats, then half notes, then whole notes, then the last chord held. Your songs also slow the tempo there; this only thins the rhythm (slowing down would need the tempo track: say if you'd like that as an option).
+- **DEAD STOP** (Wildfire, Whole, Ten Ton Hammer, Crawling): the riff to the end, cut off on beat 3 of the last bar with nothing left ringing (a snare flam on the last hit).
+- **STABS, THEN RING** (Another Life, Masterpiece): two quarter-note stabs a bar (or pushed chords), then the last chord rung out.
+- **FILL AND FINAL HIT** (Faster, Sweet Sacrifice, your band's drums): the riff, a bar walking muted single notes over a fill down the toms, one big chord with a kick and a crash.
+- **HOOK ALONE TO THE END** (In The End, Waterhaul, Left Behind): the band stops on one hit; a clean arpeggio or the keys' hook carries on alone to one held note, the drums winding down or out.
+- **SPEEDING HITS** (The Void): one chord hit by the whole band in half notes, then quarters, then eighths, a crash on each, then a stop.
+- **SPACED STABS** (Clown): a chromatic walk down, then four chugs on beat 4 into a hit on 1 and three beats of silence, a high pulse in the gaps.
+- **TRIPLE STAB STOP** (Papercut, Going Under): the drive to the last bar, which is three sixteenths on the key's chord and silence.
+
+Worth knowing:
+- The bass's options end with **LOCKED WITH THE KICK** as always; some types start with their own (OUT, THEN DOUBLES, IN BY STAGES, HELD FROM HALFWAY, OUT, HIT, THEN OUT).
+- Several of the tab-only songs showed one guitar, so their bass and drums are my guess at the usual way.
+- I can't listen to these here, so tell me which ones don't sound like your songs.
+
+That finishes the plan for section types: every kind of section now has types from your songs.
+
 ## 0.110.0
 
 **Post-choruses, interludes and instrumentals get types of their own** (the next step of your plan, starting with Faster's hook riff; your songs read for their shapes only, our names). A **Post-Chorus**, **Interlude** or **Instrumental** block's TYPE menu now starts with eleven new types; under them are the types it had before (a post-chorus the chorus's, an interlude or instrumental the bridge's). Each type writes the guitar, bass, keys and drums, and four of them the lead too, with options in every lane's menu.

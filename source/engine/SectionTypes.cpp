@@ -75,7 +75,23 @@ namespace pr7s
         }
         switch (composerSectionFor (sectionName))
         {
-            case 0: return { droning, open };
+            case 0:
+            {
+                // (0.111.0) An intro's own types first (the owner's songs, shapes only; our names), then the old two.
+                const auto b = SectionType::Band::bookend;
+                const auto r = RiffFlavour::openChords;
+                return { { "RIFF ALONE, THEN THE BAND", "One guitar alone (a muted line or the riff), the band landing together halfway", r, {}, b },
+                         { "FULL BAND FROM THE DOWNBEAT", "The riff at full force from the first beat", r, {}, b },
+                         { "ARPEGGIO BUILD", "A clean arpeggio alone, the bass coming in by stages, the heavy band as a wall at the end", r, {}, b },
+                         { "KEYS HOOK OVER A LOOP", "A keys hook or ostinato over a light loop, a guitar pickup into the next section", r, {}, b },
+                         { "SWELL AND DRONE", "A swelling keys drone, one guitar chord swelled in, the band landing on the next section", r, {}, b },
+                         { "STAB CALLS", "Bursts and stabs with the toms and silence between, then a riff", r, {}, b },
+                         { "TREMOLO SWELL", "Tremolo-picked chords over the ride alone, the groove coming in halfway", r, {}, b },
+                         { "HOLD AND ANSWER", "A low chord held, answered by two pickup hits or a high clash", r, {}, b },
+                         { "DOWNBEAT HITS UNDER A LEAD", "A lead line over the band hitting only each bar's first beat", r, {}, b },
+                         { "RIFF WITH DRUMS BUILDING", "The riff steady while the drums build: hits, a groove, a double-kick carpet", r, {}, b },
+                         droning, open };
+            }
             case 1: return { staccato, split, clean, muted, droning, sparse };
             case 2: return { driving, syncopated, droning };
             case 3:
@@ -109,7 +125,22 @@ namespace pr7s
                          { "OFF-BEAT GALLOPS", "Single-note gallops coming in after the downbeat in bursts, a pinch squeal in a gap", r, {}, d },
                          heavy, staccato };
             }
-            case 5: return { droning, stabs };
+            case 5:
+            {
+                // (0.111.0) An outro's own types first (the owner's songs, shapes only; our names), then the old two.
+                const auto b = SectionType::Band::bookend;
+                const auto r = RiffFlavour::openChords;
+                return { { "INTRO RETURNS, LAST CHORD RINGS", "The opening riff back, then the last chord rung out", r, {}, b },
+                         { "WINDING DOWN", "The hits thinning out (beats, halves, whole notes) to the last chord held", r, {}, b },
+                         { "DEAD STOP", "The riff to the end, cut off on beat 3 of the last bar with nothing left ringing", r, {}, b },
+                         { "STABS, THEN RING", "Two stabs a bar (or pushed chords), then the last chord rung out", r, {}, b },
+                         { "FILL AND FINAL HIT", "The riff, a fill down the toms, one big final hit", r, {}, b },
+                         { "HOOK ALONE TO THE END", "The band stops on a hit, a clean arpeggio or keys hook alone to one held note", r, {}, b },
+                         { "SPEEDING HITS", "One chord hit in half notes, quarters, then eighths, then a stop", r, {}, b },
+                         { "SPACED STABS", "Four chugs into a hit on 1, then three beats of silence, over and over", r, {}, b },
+                         { "TRIPLE STAB STOP", "The drive to the last bar: three sixteenths on the key's chord, then silence", r, {}, b },
+                         droning, stabs };
+            }
             case 6: return { driving, droning };
             default: break;
         }
@@ -276,6 +307,49 @@ namespace pr7s
                 case L::drums: return { "KICK WITH THE STABS", "HALF TIME" };
                 case L::lead: case L::melody: break;
             }
+        return {};
+    }
+
+    // (0.111.0) The intro and outro types' options, lane by lane (the bass's last always LOCKED WITH THE KICK; only
+    // DOWNBEAT HITS UNDER A LEAD has a lead list).
+    juce::StringArray bookendApproaches (const juce::String& type, ComposerLayer layer)
+    {
+        using L = ComposerLayer;
+        const auto t = type.trim().toUpperCase();
+        struct Lists { const char* name; juce::StringArray guitar, bass, keys, drums, lead; };
+        const juce::StringArray doubles { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" };
+        static const Lists lists[] {
+            { "RIFF ALONE, THEN THE BAND", { "MUTED LINE, THEN CHORDS", "RIFF ALONE, THEN DOUBLED" }, { "OUT, THEN DOUBLES", "ROOTS HELD", "LOCKED WITH THE KICK" }, { "PADS WHEN THE BAND COMES", "SILENT" }, { "OUT, THEN THE GROOVE", "HITS, THEN THE GROOVE" }, {} },
+            { "FULL BAND FROM THE DOWNBEAT", { "SIXTEENTH CHUG RIFF", "THREE AGAINST FOUR" }, {}, { "SILENT", "HELD PADS" }, { "KICK WITH THE RIFF", "DOTTED KICKS, CRASH QUARTERS" }, {} },
+            { "ARPEGGIO BUILD", { "ARPEGGIO, THEN THE WALL", "ARPEGGIO ALONE" }, { "IN BY STAGES", "ROOTS HELD", "LOCKED WITH THE KICK" }, { "CLIMBING HELD NOTES", "SILENT" }, { "WALL AT THE END", "CYMBAL SWELLS ONLY" }, {} },
+            { "KEYS HOOK OVER A LOOP", { "PICKUP AT THE END", "OUT" }, { "HELD FROM HALFWAY", "ROOTS HELD", "LOCKED WITH THE KICK" }, { "QUARTER-NOTE HOOK", "SIXTEENTH OSTINATO" }, { "LIGHT LOOP", "HATS ONLY" }, {} },
+            { "SWELL AND DRONE", { "ONE SWELLED CHORD", "OUT" }, { "OUT", "ROOTS HELD", "LOCKED WITH THE KICK" }, { "SWELLING DRONE", "HELD PADS" }, { "OUT, A HIT TO END", "CYMBAL SWELLS" }, {} },
+            { "STAB CALLS", { "STABS, THEN THE RIFF", "BURST & SILENCE CALLS" }, {}, { "SILENT", "STABS WITH THE GUITAR" }, { "TOMS WITH THE STABS", "HITS ONLY" }, {} },
+            { "TREMOLO SWELL", { "TREMOLO, RIFF REVEALED", "TREMOLO ONLY" }, {}, { "SILENT", "HELD PADS" }, { "RIDE, THEN THE GROOVE", "RIDE ONLY" }, {} },
+            { "HOLD AND ANSWER", { "HELD CHORD, PICKUP HITS", "HELD CHORD, HIGH CLASH" }, {}, { "SILENT", "HELD PADS" }, { "CRASH ON THE HOLDS", "HALF TIME" }, {} },
+            { "DOWNBEAT HITS UNDER A LEAD", { "HITS ON ONE", "HITS, THEN THE GROOVE" }, {}, { "SILENT", "HELD PADS" }, { "HITS AND A ROLL", "HITS, THEN BLAST" }, { "PEDAL MELODY", "SILENT" } },
+            { "RIFF WITH DRUMS BUILDING", { "GALLOP RIFF", "CHUG & STAB RIFF" }, {}, { "SILENT", "LOW DRONE" }, { "HITS, GROOVE, CARPET", "HITS, THEN CARPET" }, {} },
+            { "INTRO RETURNS, LAST CHORD RINGS", { "RIFF, THEN RING", "MUTED LINE, THEN RING" }, {}, { "HELD PADS", "SILENT" }, { "GROOVE, CRASH ON THE CHORD", "HALF TIME, CRASH ON THE CHORD" }, {} },
+            { "WINDING DOWN", { "HITS THINNING OUT", "EIGHTHS THINNING OUT" }, {}, { "HELD PADS", "SILENT" }, { "THINNING WITH THE GUITAR", "RIDE, THEN CRASH" }, {} },
+            { "DEAD STOP", { "RIFF, CUT AT THE BAR LINE", "HIGH CLASH, CUT" }, {}, { "SILENT", "LOW DRONE" }, { "KICK WITH THE RIFF, FLAM ON THE LAST", "HALF TIME" }, {} },
+            { "STABS, THEN RING", { "TWO STABS A BAR", "PUSHED, THEN RING" }, {}, { "HELD PADS", "SILENT" }, { "KICK AND CRASH WITH THE STABS", "STRAIGHT, CRASH ON THE CHORD" }, {} },
+            { "FILL AND FINAL HIT", { "RIFF, WALK, FINAL HIT", "DRIVE, FINAL HIT" }, {}, { "HELD PADS", "SILENT" }, { "FILL, THEN THE HIT", "DOUBLE KICK, FILL, HIT" }, {} },
+            { "HOOK ALONE TO THE END", { "HIT, THEN CLEAN ARPEGGIO", "HIT, THEN OUT" }, { "HIT, THEN OUT", "ROOTS HELD", "LOCKED WITH THE KICK" }, { "HOOK IN QUARTERS", "SILENT" }, { "HIT, THEN WIND DOWN", "HIT, THEN OUT" }, {} },
+            { "SPEEDING HITS", { "HALVES, QUARTERS, EIGHTHS", "AFTER A PICKUP BAR" }, {}, { "STABS WITH THE GUITAR", "SILENT" }, { "CRASH ON EVERY HIT", "KICK ON EVERY HIT" }, {} },
+            { "SPACED STABS", { "WALK, THEN SPACED STABS", "SPACED STABS ONLY" }, {}, { "HIGH PULSE IN THE GAPS", "SILENT" }, { "TOMS WITH THE CHUGS", "KICK AND CRASH ON THE HITS" }, {} },
+            { "TRIPLE STAB STOP", { "DRIVE, THEN THREE STABS", "CHUGS, THEN THREE STABS" }, {}, { "HELD PADS", "SILENT" }, { "DRIVING, STABS WITH THE BAND", "DOUBLE KICK, STABS" }, {} },
+        };
+        for (const auto& list : lists)
+            if (t == list.name)
+                switch (layer)
+                {
+                    case L::guitar: return list.guitar;
+                    case L::bass: return list.bass.isEmpty() ? doubles : list.bass;
+                    case L::chords: return list.keys;
+                    case L::drums: return list.drums;
+                    case L::lead: return list.lead;
+                    case L::melody: return {};
+                }
         return {};
     }
 
@@ -472,6 +546,8 @@ namespace pr7s
             return breakdownApproaches (t->name, layer);
         if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::interlude)
             return interludeApproaches (t->name, layer);
+        if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::bookend)
+            return bookendApproaches (t->name, layer);
         if (layer == ComposerLayer::guitar)
             if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && ! t->guitarFlavours.empty())
             {
