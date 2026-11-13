@@ -151,7 +151,13 @@ void ArrangeView::paintSections (juce::Graphics& g, const Timeline::Row& row)
         }
         else if (b.type.isNotEmpty())
             label << " - " << b.type;
-        const auto bars = juce::String (b.bars) + (b.bars == 1 ? " BAR" : " BARS");
+        // (0.104.0) Its transition: a pink edge at its end and the name after the bars.
+        if (b.transition.isNotEmpty())
+        {
+            g.setColour (juce::Colour (pr7s::FamilyColours::pink).withAlpha (0.9f));
+            g.fillRoundedRectangle (bounds.withLeft (bounds.getRight() - 4.0f).reduced (0.0f, 2.0f), 2.0f);
+        }
+        const auto bars = juce::String (b.bars) + (b.bars == 1 ? " BAR" : " BARS") + (b.transition.isNotEmpty() ? " - " + b.transition : juce::String());
         const auto barsWidth = juce::GlyphArrangement::getStringWidth (juce::Font (ParagonLookAndFeel::titleFont (12.0f)), bars) + 6.0f;
         if (text.getWidth() > barsWidth * 2.5f)
         {
@@ -311,6 +317,15 @@ void ArrangeView::showSectionMenu (int index)
         for (int i = 0; i < (int) kinds.size(); ++i)
             types.addItem (4001 + i, kinds[(size_t) i].name + "  (" + kinds[(size_t) i].description + ")", true, kinds[(size_t) i].name == b.type);
         menu.addSubMenu ("Type: " + (b.type.isNotEmpty() ? b.type : juce::String (pr7s::standardSectionType)), types, ! kinds.empty());
+        // (0.104.0) How it hands over to the next block.
+        juce::PopupMenu transitions;
+        {
+            const auto& list = pr7s::sectionTransitions();
+            for (int i = 0; i < (int) list.size(); ++i)
+                transitions.addItem (4200 + i, list[(size_t) i].name + "  (" + list[(size_t) i].description + ")", true,
+                                     i == 0 ? b.transition.isEmpty() : list[(size_t) i].name == b.transition);
+        }
+        menu.addSubMenu ("Into the Next: " + (b.transition.isNotEmpty() ? b.transition : juce::String (pr7s::noTransition)), transitions);
         juce::PopupMenu rename, length, before, after;
         for (int i = 0; i < names.size(); ++i)
         {
@@ -406,6 +421,8 @@ void ArrangeView::showSectionMenu (int index)
             const auto pick = chosen - 4001;
             safe->changeSectionType (index, juce::isPositiveAndBelow (pick, (int) kinds.size()) ? kinds[(size_t) pick].name : juce::String());
         }
+        else if (chosen >= 4200 && chosen < 4200 + (int) pr7s::sectionTransitions().size())
+            studio.setSongSectionTransition (index, pr7s::sectionTransitions()[(size_t) chosen - 4200].name);
         safe->repaint();
     });
 }

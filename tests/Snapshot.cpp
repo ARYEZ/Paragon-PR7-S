@@ -350,6 +350,12 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.appendSongSection ("Outro", 4);
         studio.setSongSectionType (3, "DRONING");          // (0.94.0: a typed chorus, its linked copy too)
         studio.setSongSectionType (1, "STACCATO CHUG");
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SECTIONS", {}) == "transitions")
+        {   // (0.104.0) Transitions: the pre-chorus stops, the bridge's last bar two beats.
+            studio.setSongSectionTransition (2, "STOP");
+            studio.setSongSectionTransition (6, "SHORT BAR: 2 BEATS");
+            studio.setSongSectionTransition (1, "SNARE ROLL");
+        }
         view.getArrangeView().selectSection (3);
         studio.duplicateSongSection (3);   // (0.91.0: the chorus's linked copy)
         view.getArrangeView().zoomTo (0.0, studio.getSongSectionPlaces().back().end);

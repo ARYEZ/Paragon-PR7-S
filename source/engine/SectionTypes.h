@@ -73,4 +73,17 @@ namespace pr7s
     // Puts a type on the composer's settings: its name, the guitar's flavour (the generator, not WRITTEN RIFFS) and
     // every lane's approach back to automatic. STANDARD (empty or "STANDARD"): no type, the flavour ANY.
     void applySectionType (ComposerState&, const juce::String& sectionName, const juce::String& type);
+
+    // (0.104.0, the owner's songs read for their shapes) How a block hands over to the next one: what its last bar (or
+    // two) does. NONE first (no transition). A SHORT BAR's last bar is that many of the signature's beats long (the
+    // song's signature changes for that bar and back after it; everything after the block moves up). The melody (the
+    // singer's line) is never touched. Our names.
+    struct SectionTransition
+    {
+        juce::String name, description;
+        int shortBeats = 0;   // a SHORT BAR's beats (0: the bar stays whole)
+    };
+    const std::vector<SectionTransition>& sectionTransitions();
+    std::optional<SectionTransition> sectionTransitionNamed (const juce::String&);   // NONE or unknown: none
+    constexpr const char* noTransition = "NONE";
 }

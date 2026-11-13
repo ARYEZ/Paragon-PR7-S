@@ -1,6 +1,7 @@
 #include "engine/SongSections.h"
 
 #include "engine/Markers.h"
+#include "engine/SectionTypes.h"
 
 namespace pr7s
 {
@@ -62,6 +63,8 @@ namespace pr7s
                 e->setAttribute ("link", b.link);
             if (b.type.isNotEmpty())
                 e->setAttribute ("type", b.type);
+            if (b.transition.isNotEmpty())
+                e->setAttribute ("transition", b.transition);
             if (b.recipe.isNotEmpty())
             {
                 e->setAttribute ("recipe", b.recipe);
@@ -91,6 +94,7 @@ namespace pr7s
             b.link = juce::jmax (0, e->getIntAttribute ("link", 0));
             b.recipe = e->getStringAttribute ("recipe");
             b.type = e->getStringAttribute ("type");
+            b.transition = e->getStringAttribute ("transition");
             for (auto* lane : e->getChildWithTagNameIterator ("Lane"))
                 b.lanes.push_back ({ lane->getIntAttribute ("layer"), lane->getIntAttribute ("track"),
                                      lane->getStringAttribute ("mark").getLargeIntValue() });
@@ -174,5 +178,11 @@ namespace pr7s
         if (base == "Outro" || base == "Ending" || base == "Tag" || base == "Coda") return 5;
         if (base == "Solo") return 6;
         return 1;
+    }
+
+    int SongSection::shortBeats() const
+    {
+        const auto t = sectionTransitionNamed (transition);
+        return t.has_value() ? t->shortBeats : 0;
     }
 }

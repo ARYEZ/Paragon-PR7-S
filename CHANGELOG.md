@@ -2,6 +2,32 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.104.0
+
+**Transitions: how each block hands over to the next** (the third step of the plan from your songs, read for their shapes only). Every block on the SECTIONS lane now has an **INTO THE NEXT** choice, in its editor (right-click the block) and in its MORE... menu. It changes the block's last bar (two bars for MUTED LINK) so the next part lands the way your songs do it:
+
+- **STOP:** the whole band hits the last bar's first beat together, then silence (the stop before a chorus: Faster, Left Behind, The End of the Dream).
+- **BREATH:** everyone stops for the last beat only.
+- **SNARE ROLL:** sixteenth snares from the "and" of three, louder each hit. Everything else plays on.
+- **DRUMS BUILD:** the last bar is the drums alone, eighth snares building into sixteenths.
+- **BASS ALONE:** the last bar is the bass alone.
+- **SILENT BAR:** the last bar silent, room for the singer alone (before a last chorus).
+- **WALK DOWN / WALK UP:** the bass and guitar walk a half step at a time into the next block's first chord, the kick with them.
+- **PINCH SLIDE:** the guitar's last two beats are one pinch harmonic diving down (the whammy bar).
+- **MUTED LINK:** the last two bars palm-muted eighths on the guitar and bass, hats, kick and snare; keys and lead out.
+- **SHORT BAR: 1, 2 or 3 BEATS:** the block's last bar is cut short (All Night Lights, At the End of August), and the band hits each of its beats together. This changes the song's time signature for that one bar and back after it, and everything after the block moves up to meet it.
+
+What you'll see: a block with a transition has a pink edge at its end and the transition's name after its bars.
+
+Worth knowing:
+- **The melody (the singer's line) is never changed**, whatever the transition.
+- **A lane that's silent stays silent:** a transition only writes into lanes that play in that block.
+- **A built block is rebuilt at once** with its new ending. Lanes you've edited by hand are kept as you left them. It's one undo step, the moved music of a SHORT BAR included.
+- **Linked copies share their transition**, as they share their length. To give the last chorus a different ending, unlink it first (MORE..., Unlink).
+- I can't listen to these here, so tell me which ones feel wrong.
+
+Next, as planned: the bridge, breakdown, interlude/post-chorus (Faster's HOOK RIFF) and intro/outro types.
+
 ## 0.103.0
 
 **The SECTIONS lane, the way you asked for it** (the owner: "I need to be able to go to the lane where the blocks are, double-click an empty lane and add a block, add the entire song's worth of blocks ahead of time, and edit each block").

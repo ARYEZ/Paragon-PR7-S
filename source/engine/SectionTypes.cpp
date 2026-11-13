@@ -314,4 +314,35 @@ namespace pr7s
             s.riffFlavour = indexOf (RiffFlavour::any);
         }
     }
+
+    const std::vector<SectionTransition>& sectionTransitions()
+    {
+        static const std::vector<SectionTransition> list {
+            { noTransition, "Straight into the next block" },
+            { "STOP", "Everyone hits the last bar's first beat together, then silence" },
+            { "BREATH", "Everyone stops for the last beat" },
+            { "SNARE ROLL", "Sixteenth snares from the and of three, getting louder" },
+            { "DRUMS BUILD", "The last bar the drums alone, building eighths into sixteenths" },
+            { "BASS ALONE", "The last bar the bass alone" },
+            { "SILENT BAR", "The last bar silent (the singer alone)" },
+            { "WALK DOWN", "The bass and guitar walk down a half step at a time into the next chord" },
+            { "WALK UP", "The bass and guitar walk up a half step at a time into the next chord" },
+            { "PINCH SLIDE", "The guitar's pinch harmonic sliding down over the last two beats" },
+            { "MUTED LINK", "The last two bars palm-muted eighths, the keys and lead out" },
+            { "SHORT BAR: 1 BEAT", "The last bar one beat long, the band hitting it together", 1 },
+            { "SHORT BAR: 2 BEATS", "The last bar two beats long, the band hitting each beat together", 2 },
+            { "SHORT BAR: 3 BEATS", "The last bar three beats long, the band hitting each beat together", 3 },
+        };
+        return list;
+    }
+
+    std::optional<SectionTransition> sectionTransitionNamed (const juce::String& name)
+    {
+        if (name.isEmpty() || name.equalsIgnoreCase (noTransition))
+            return std::nullopt;
+        for (const auto& t : sectionTransitions())
+            if (t.name.equalsIgnoreCase (name))
+                return t;
+        return std::nullopt;
+    }
 }

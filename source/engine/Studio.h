@@ -1180,6 +1180,10 @@ namespace pr7s
         // copies too. A built block is built again at once for the type (its recipe's flavour and approaches), the lanes
         // changed by hand since left as they are, in one undo step. False: not a type of that block's name.
         bool setSongSectionType (int index, const juce::String& type);
+        // (0.104.0) A block's transition (engine/SectionTypes.h; empty or NONE: none). Linked copies share it. A SHORT
+        // BAR changes the song's signature for the block's last bar (everything after it moves up); a built block is
+        // built again (lanes changed by hand kept). One undo step.
+        bool setSongSectionTransition (int index, const juce::String& name);
         bool isSongSectionBuilt (int index) const;
         bool removeSongSection (int index);               // and its music; the gap closes
         // A block's place in beats (none: no such block).
@@ -1536,7 +1540,7 @@ namespace pr7s
         // (0.90.0) The SECTIONS row's moves: the new blocks, each from an old block's index (its music carried, cut to
         // its new length) or -1 (new and empty: what was there moves on). One undo step.
         struct SectionMove { int from = -1; SongSection block; };
-        bool relayoutSections (const std::vector<SectionMove>&);
+        bool relayoutSections (const std::vector<SectionMove>&, bool announce = true);   // (announce: changed())
         // (0.91.0) A block's music (relative to its start; part ids 0), by track id; its chords with their lengths.
         struct SectionContent
         {

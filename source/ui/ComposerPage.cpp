@@ -227,7 +227,8 @@ juce::String ComposerPage::composeFingerprint() const
     for (const auto* p : { &c.bassProfile, &c.guitarProfile, &c.leadProfile })
         f << "|" << (p->has_value() ? pr7s::profilesToText ({ **p }) : juce::String ("-"));
     f << "|" << c.velocities.toString() << "|" << (int) c.style << "|" << (int) c.solo << "|" << c.riff.toString()
-      << "|" << c.drums.toString() << "|" << c.melody.toString() << "|" << c.humanize << "|" << (int) c.feel << "|" << juce::String (c.bpm, 6);
+      << "|" << c.drums.toString() << "|" << c.melody.toString() << "|" << c.humanize << "|" << (int) c.feel << "|" << juce::String (c.bpm, 6)
+      << "|" << juce::String (c.lastBarBeats, 6) << "|" << (c.nextChord.has_value() ? c.nextChord->toText() : juce::String());
     if (c.drummer.has_value())
     {
         const auto file = pr7s::drummerFile (studio.getDrummerFolder(), c.drummer->name);
@@ -256,6 +257,11 @@ void ComposerPage::refresh (bool rehear)
     if (fromRiff && ! riff.has_value())
         fromRiff = false;
     const auto target = getTargetPlace();
+    {   // (0.104.0) The block's transition (none outside the SECTIONS row).
+        const auto& sections = studio.getSongSections();
+        const auto index = sections.indexOf (targetBlock);
+        state.transition = index >= 0 ? sections.blocks[(size_t) index].transition : juce::String();
+    }
     if (target.has_value() && ! state.fromChordTrack && ! fromRiff)
         state.bars = target->bars;   // (0.90.0: the block's length; the progression repeated to fill it, cut at its end)
     spans = chordSpans();

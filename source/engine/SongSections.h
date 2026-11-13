@@ -34,6 +34,10 @@ namespace pr7s
         juce::String recipe;
         // (0.94.0) Its TYPE (engine/SectionTypes.h: DRIVING, DRONING...; empty: STANDARD). Linked copies share it.
         juce::String type;
+        // (0.104.0) How it hands over to the next block (engine/SectionTypes.h's sectionTransitions(); empty: NONE).
+        // A SHORT BAR shortens its last bar (a signature change there). Linked copies share it.
+        juce::String transition;
+        int shortBeats() const;   // the SHORT BAR's beats (0: none)
         struct Lane { int layer = 0, track = 0; juce::int64 mark = 0; bool operator== (const Lane&) const = default; };
         std::vector<Lane> lanes;
         bool operator== (const SongSection&) const = default;

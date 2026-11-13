@@ -65,7 +65,7 @@ namespace pr7s
         return juce::String (keyIndex) + "|" + genre + "|" + mood + "|" + juce::String (bars) + "|" + progression + "|"
              + (fromChordTrack ? "1" : "0") + "|" + (toChordTrack ? "1" : "0") + "|" + lanesText.joinIntoString (";")
              + "|" + juce::String (riffFlavour) + "," + (writtenRiffs ? "1" : "0") + "," + juce::String (syncLane)
-             + "|" + sectionType.removeCharacters ("|");
+             + "|" + sectionType.removeCharacters ("|") + "|" + transition.removeCharacters ("|");
     }
 
     ComposerState ComposerState::fromString (const juce::String& text)
@@ -117,6 +117,8 @@ namespace pr7s
         }
         if (parts.size() >= 10)
             s.sectionType = parts[9];   // (0.94.0)
+        if (parts.size() >= 11)
+            s.transition = parts[10];   // (0.104.0)
         return s;
     }
 
@@ -3680,6 +3682,252 @@ namespace pr7s
         return out;
     }
 
+    namespace
+    {
+        // (0.104.0) A block's transition written onto one lane's idea: the last bar (or two) changed. Beats are the
+        // idea's own (from the first span's start). Lanes with nothing in them stay empty; the melody is never touched.
+        struct Transition
+        {
+            const SectionTransition& t;
+            const std::vector<ChordSpan>& spans;
+            const ComposerContext& c;
+            double origin = 0.0, end = 0.0, bar = 4.0, lastBar = 0.0;
+
+            Transition (const SectionTransition& tr, const std::vector<ChordSpan>& sp, const ComposerContext& co)
+                : t (tr), spans (sp), c (co)
+            {
+                origin = spans.front().start;
+                end = spans.back().end - origin;
+                bar = c.lastBarBeats > 0.0 ? c.lastBarBeats : c.beatsPerBar;
+                lastBar = juce::jmax (0.0, end - bar);
+            }
+
+            const Chord& chordAt (double rel) const
+            {
+                for (const auto& sp : spans)
+                    if (origin + rel >= sp.start - 1.0e-9 && origin + rel < sp.end - 1.0e-9)
+                        return sp.chord;
+                return spans.back().chord;
+            }
+            Chord next() const { return c.nextChord.value_or (spans.front().chord); }
+            int guitarLow() const
+            {
+                const auto strings = composerStrings (ComposerLayer::guitar, c).strings;
+                return strings.empty() ? 40 : strings.front();
+            }
+            int bassLow() const { return c.bassProfile.has_value() ? c.bassProfile->rangeLow() : c.bassTuning.lowest(); }
+            int guitarRoot (int pc) const { return pitchOfClassIn (pc, guitarLow(), guitarLow() + 11); }
+            int bassRoot (int pc) const { return pitchOfClassIn (pc, bassLow(), bassLow() + 11); }
+            float open() const { return GuitarVelocity::of (c.velocities.sustain); }
+
+            static bool plays (const LineIdea& idea)
+            {
+                return std::any_of (idea.notes.begin(), idea.notes.end(), [] (const LineNote& n) { return ! n.keyswitch; });
+            }
+            // Notes starting from `from` go; notes ringing into it end there (keyswitches are held, so kept).
+            static void cutAt (LineIdea& idea, double from)
+            {
+                std::vector<LineNote> kept;
+                for (auto n : idea.notes)
+                {
+                    if (! n.keyswitch)
+                    {
+                        if (n.beat >= from - 1.0e-6)
+                            continue;
+                        if (n.beat + n.length > from)
+                            n.length = from - n.beat;
+                        if (n.length < 0.02)
+                            continue;
+                    }
+                    kept.push_back (n);
+                }
+                idea.notes = std::move (kept);
+            }
+            static void add (LineIdea& idea, double at, double length, int pitch, float velocity)
+            {
+                LineNote n;
+                n.beat = at;
+                n.length = length;
+                n.pitch = juce::jlimit (0, 127, pitch);
+                n.velocity = velocity;
+                idea.notes.push_back (n);
+            }
+            // The band's hit on a beat: a power chord, the root, the chord, the kick (and a crash or a snare).
+            void hit (ComposerLayer l, LineIdea& idea, const Chord& chord, double at, double length, bool first) const
+            {
+                switch (l)
+                {
+                    case ComposerLayer::guitar:
+                        for (const auto o : { 0, 7, 12 })
+                            add (idea, at, length, guitarRoot (chord.root) + o, open());
+                        break;
+                    case ComposerLayer::bass: add (idea, at, length, bassRoot (chord.root), 0.85f); break;
+                    case ComposerLayer::chords:
+                        if (const auto v = voicingsFor (chord, 55); ! v.empty())
+                            for (const auto p : v[v.size() / 2])
+                                add (idea, at, length, p, 0.75f);
+                        break;
+                    case ComposerLayer::drums:
+                        add (idea, at, juce::jmin (length, 0.25), 36, 0.95f);
+                        add (idea, at, juce::jmin (length, 0.25), first ? 49 : 38, first ? 0.9f : 0.85f);
+                        break;
+                    case ComposerLayer::melody:
+                    case ComposerLayer::lead: break;
+                }
+            }
+
+            void apply (ComposerLayer l, LineIdea& idea) const
+            {
+                if (l == ComposerLayer::melody || end <= 0.0)
+                    return;
+                const auto playing = plays (idea);
+                const auto& name = t.name;
+                if (t.shortBeats > 0)   // the last bar hit beat by beat
+                {
+                    const auto unit = c.lastBarBeats > 0.0 ? bar / t.shortBeats : 1.0;
+                    cutAt (idea, lastBar);
+                    if (playing)
+                        for (int k = 0; k < t.shortBeats; ++k)
+                        {
+                            const auto at = lastBar + k * unit;
+                            const auto length = k == t.shortBeats - 1 && c.lastBarBeats > 0.0 ? end - at : unit * 0.5;
+                            hit (l, idea, chordAt (at), at, length, k == 0);
+                        }
+                }
+                else if (name == "STOP")
+                {
+                    cutAt (idea, lastBar);
+                    if (playing)
+                        hit (l, idea, chordAt (lastBar), lastBar, juce::jmin (1.0, bar), true);
+                }
+                else if (name == "BREATH")
+                    cutAt (idea, end - juce::jmin (1.0, bar * 0.5));
+                else if (name == "SNARE ROLL")
+                {
+                    if (l != ComposerLayer::drums)
+                        return;
+                    const auto from = end - juce::jmin (1.5, bar);
+                    cutAt (idea, from);
+                    const auto count = juce::jmax (1, juce::roundToInt ((end - from) / 0.25));
+                    add (idea, from, 0.25, 36, 0.9f);
+                    for (int k = 0; k < count; ++k)
+                        add (idea, from + k * 0.25, 0.25, 38, 0.45f + 0.55f * (float) k / (float) juce::jmax (1, count - 1));
+                }
+                else if (name == "DRUMS BUILD")
+                {
+                    cutAt (idea, lastBar);
+                    if (l != ComposerLayer::drums || ! playing)
+                        return;
+                    const auto half = lastBar + bar * 0.5;
+                    std::vector<double> hits;
+                    for (auto at = lastBar; at < half - 1.0e-6; at += 0.5)
+                        hits.push_back (at);
+                    for (auto at = half; at < end - 1.0e-6; at += 0.25)
+                        hits.push_back (at);
+                    for (size_t k = 0; k < hits.size(); ++k)
+                        add (idea, hits[k], 0.25, 38, 0.5f + 0.5f * (float) k / (float) juce::jmax<size_t> (1, hits.size() - 1));
+                    for (auto at = lastBar; at < end - 1.0e-6; at += 1.0)
+                        add (idea, at, 0.25, 36, 0.9f);
+                }
+                else if (name == "BASS ALONE")
+                {
+                    if (l != ComposerLayer::bass)
+                        cutAt (idea, lastBar);
+                }
+                else if (name == "SILENT BAR")
+                    cutAt (idea, lastBar);
+                else if (name == "WALK DOWN" || name == "WALK UP")
+                {
+                    const auto from = juce::jmax (lastBar, end - juce::jmin (2.0, bar));
+                    const auto steps = juce::jmax (1, juce::roundToInt ((end - from) / 0.5));
+                    const auto up = name == "WALK UP";
+                    const auto target = next();
+                    cutAt (idea, from);
+                    if (! playing)
+                        return;
+                    for (int k = 0; k < steps; ++k)
+                    {
+                        const auto at = from + k * 0.5;
+                        const auto away = steps - k;   // half steps from the next chord's root
+                        if (l == ComposerLayer::bass)
+                        {
+                            auto base = bassRoot (target.root);
+                            if (up && base - steps < bassLow())
+                                base += 12;
+                            add (idea, at, 0.45, up ? base - away : base + away, 0.85f);
+                        }
+                        else if (l == ComposerLayer::guitar)
+                        {
+                            auto base = guitarRoot (target.root);
+                            if (up && base - steps < guitarLow())
+                                base += 12;
+                            const auto p = up ? base - away : base + away;
+                            add (idea, at, 0.45, p, open());
+                            add (idea, at, 0.45, p + 7, open());
+                        }
+                        else if (l == ComposerLayer::drums)
+                        {
+                            add (idea, at, 0.25, 36, 0.85f);
+                            if (k % 2 == 1)
+                                add (idea, at, 0.25, 38, 0.85f);
+                        }
+                    }
+                }
+                else if (name == "PINCH SLIDE")
+                {
+                    const auto from = juce::jmax (lastBar, end - juce::jmin (2.0, bar));
+                    if (l == ComposerLayer::chords || l == ComposerLayer::lead)
+                        cutAt (idea, from);
+                    else if (l == ComposerLayer::guitar && playing)
+                    {
+                        cutAt (idea, from);
+                        LineNote n;
+                        n.beat = from;
+                        n.length = end - from;
+                        n.pitch = guitarRoot (chordAt (from).root) + 12;
+                        n.velocity = GuitarVelocity::of (c.velocities.pinch);
+                        n.effect = LineNote::Effect::dive;
+                        n.amount = 7.0f;
+                        idea.notes.push_back (n);
+                    }
+                }
+                else if (name == "MUTED LINK")
+                {
+                    const auto from = end > c.beatsPerBar * 2.5 ? end - c.beatsPerBar * 2.0 : lastBar;
+                    cutAt (idea, from);
+                    if (! playing || l == ComposerLayer::chords || l == ComposerLayer::lead)
+                        return;
+                    for (auto at = from; at < end - 1.0e-6; at += 0.5)
+                    {
+                        const auto& chord = chordAt (at);
+                        const auto inBar = std::fmod (at - from, c.beatsPerBar);
+                        if (l == ComposerLayer::guitar)
+                            add (idea, at, 0.4, guitarRoot (chord.root), GuitarVelocity::of (c.velocities.muteMid));
+                        else if (l == ComposerLayer::bass)
+                            add (idea, at, 0.45, bassRoot (chord.root), 0.8f);
+                        else if (l == ComposerLayer::drums)
+                        {
+                            add (idea, at, 0.25, 42, 0.6f);
+                            if (std::abs (inBar) < 1.0e-6 || std::abs (inBar - 2.0) < 1.0e-6)
+                                add (idea, at, 0.25, 36, 0.9f);
+                            if (std::abs (inBar - 1.0) < 1.0e-6 || std::abs (inBar - 3.0) < 1.0e-6)
+                                add (idea, at, 0.25, 38, 0.85f);
+                        }
+                    }
+                }
+                std::stable_sort (idea.notes.begin(), idea.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+            }
+        };
+    }
+
+    void applyTransition (ComposerLayer l, LineIdea& idea, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+    {
+        if (spans.empty())
+            return;
+        if (const auto t = sectionTransitionNamed (s.transition))
+            Transition (*t, spans, c).apply (l, idea);
+    }
+
     std::array<LineIdea, composerLayerCount> composeLayers (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
     {
         std::array<LineIdea, composerLayerCount> out;
@@ -3689,6 +3937,7 @@ namespace pr7s
         {
             auto idea = syncedLayer (l, s, spans, c);
             idea.part = composerPartOf (l);
+            applyTransition (l, idea, s, spans, c);   // (0.104.0: the block's hand-over to the next)
             // IDEAS' HUMANIZE, the same rules (a guitar's velocity layers kept; FEEL: rhythm and bass ahead,
             // leads and melodies behind).
             if (c.humanize > 0.0f && ! idea.notes.empty())

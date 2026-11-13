@@ -10555,6 +10555,20 @@ namespace pr7s
         c.humanize = getIdeasHumanize();
         c.feel = getIdeasFeel();
         c.bpm = project.bpmAt (atBeat);
+        // (0.104.0) A block of the SECTIONS row starting there: what its transition needs (the chord after it, its
+        // last bar's length).
+        const auto places = getSongSectionPlaces();
+        for (const auto& place : places)
+            if (std::abs (place.start - atBeat) < 1.0e-6)
+            {
+                const auto map = project.signatures();
+                c.lastBarBeats = map.barLengthAt (map.beatOfBar (place.firstBar + place.bars - 1));   // (its last bar: barAt counts a hair before a line as on it)
+                const auto chords = withLengths (project.chordTrack, project.beatsPerBarAt (place.end));
+                for (const auto& e : chords)
+                    if (e.beat <= place.end + 1.0e-9 && place.end < e.beat + e.length - 1.0e-9)
+                        c.nextChord = e.chord;
+                break;
+            }
         return c;
     }
 
@@ -13092,7 +13106,7 @@ namespace pr7s
         }
     }
 
-    bool Studio::relayoutSections (const std::vector<SectionMove>& moves)
+    bool Studio::relayoutSections (const std::vector<SectionMove>& moves, bool announce)
     {
         auto& sections = project.songSections;
         const auto oldBlocks = sections.blocks;
@@ -13120,13 +13134,28 @@ namespace pr7s
                     auto start = sigAt (p.firstBar);
                     start.bar = bar;
                     events.push_back (start);
+                    const auto oldShortBar = oldBlocks[(size_t) m.from].shortBeats() > 0 ? p.firstBar + p.bars - 1 : -1;
                     for (const auto& c : oldChanges)
-                        if (c.bar > p.firstBar && c.bar < p.firstBar + kept)
+                        if (c.bar > p.firstBar && c.bar < p.firstBar + kept && c.bar != oldShortBar)
                         {
                             auto e = c;
                             e.bar = c.bar - p.firstBar + bar;
                             events.push_back (e);
                         }
+                }
+                // (0.104.0) A SHORT BAR: its last bar that many beats, the signature before it back after it (a
+                // block that follows gives its own, given later, so it wins).
+                if (const auto beats = m.block.shortBeats(); beats > 0)
+                {
+                    const auto lastBar = bar + m.block.bars - 1;
+                    SignatureEvent before { 0, project.numerator, project.denominator };
+                    for (const auto& e : events)
+                        if (e.bar <= lastBar)
+                            before = e;
+                    events.push_back ({ lastBar, beats, before.denominator });
+                    auto back = before;
+                    back.bar = lastBar + 1;
+                    events.push_back (back);
                 }
                 bar += m.block.bars;
             }
@@ -13170,7 +13199,7 @@ namespace pr7s
             {
                 const auto& p = oldPlaces[(size_t) from];
                 const auto kept = juce::jmin (moves[i].block.bars, p.bars);
-                const auto keptEnd = oldMap.beatOfBar (p.firstBar + kept);
+                const auto keptEnd = juce::jmin (oldMap.beatOfBar (p.firstBar + kept), p.start + newPlaces[i].end - newPlaces[i].start);   // (0.104.0: a shortened last bar)
                 carries.push_back ({ p.start, keptEnd, newPlaces[i].start - p.start });
             }
         carries.push_back ({ oldEnd, std::numeric_limits<double>::infinity(), newEnd - oldEnd });   // what follows the row
@@ -13313,7 +13342,8 @@ namespace pr7s
         for (auto& b : sections.blocks)   // (0.91.0: a link with one block left is no link)
             if (b.link > 0 && std::count_if (sections.blocks.begin(), sections.blocks.end(), [&b] (const SongSection& o) { return o.link == b.link; }) < 2)
                 b.link = 0;
-        changed();
+        if (announce)
+            changed();
         return true;
     }
 
@@ -13589,6 +13619,7 @@ namespace pr7s
                 spans.push_back ({ place.start + c.beat, place.start + c.beat + c.length, c.chord, chordTrackKeyAt (place.start + c.beat) });
             auto state = ComposerState::fromString (block.recipe);
             state.bars = block.bars;
+            state.transition = block.transition;   // (0.104.0: the block's own, whenever it was chosen)
             const auto context = getComposerContext (place.start);
             const auto layers = composeLayers (state, spans, context);
             const auto label = sectionLabel (project.songSections.blocks, index);
@@ -13646,6 +13677,55 @@ namespace pr7s
             if (const auto place = getSongSectionPlace (index))
                 rebuildSectionLanes (index, sectionChords (*place));
         }
+        changed();
+        return true;
+    }
+
+    bool Studio::setSongSectionTransition (int index, const juce::String& name)
+    {
+        auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (index, (int) blocks.size()))
+            return false;
+        const auto found = sectionTransitionNamed (name);
+        if (! found.has_value() && name.isNotEmpty() && ! name.equalsIgnoreCase (noTransition))
+            return false;
+        const auto chosen = found.has_value() ? found->name : juce::String();
+        if (blocks[(size_t) index].transition == chosen)
+            return true;
+        const auto linked = project.songSections.linkedWith (index);
+        // The lanes still as the composer wrote them (a shortened bar mustn't make them look edited by hand).
+        std::map<int, std::vector<bool>> asWritten;
+        for (const auto i : linked)
+            if (const auto place = getSongSectionPlace (i))
+                for (const auto& lane : blocks[(size_t) i].lanes)
+                    asWritten[i].push_back (trackMark (*place, lane.track) == lane.mark);
+        const auto shortBefore = blocks[(size_t) index].shortBeats();
+        auto changedBlock = blocks[(size_t) index];
+        changedBlock.transition = chosen;
+        if (changedBlock.shortBeats() != shortBefore)
+        {
+            std::vector<SectionMove> moves;
+            for (int i = 0; i < (int) blocks.size(); ++i)
+                moves.push_back ({ i, blocks[(size_t) i] });
+            for (const auto i : linked)
+                moves[(size_t) i].block.transition = chosen;
+            if (! relayoutSections (moves, false))
+                return false;
+        }
+        else
+            for (const auto i : linked)
+                blocks[(size_t) i].transition = chosen;
+        for (const auto i : linked)
+            if (const auto place = getSongSectionPlace (i); place.has_value() && asWritten.count (i) > 0)
+            {
+                auto& lanes = project.songSections.blocks[(size_t) i].lanes;
+                for (size_t k = 0; k < lanes.size() && k < asWritten[i].size(); ++k)
+                    if (asWritten[i][k])
+                        lanes[k].mark = trackMark (*place, lanes[k].track);
+            }
+        if (project.songSections.blocks[(size_t) index].recipe.isNotEmpty())
+            if (const auto place = getSongSectionPlace (index))
+                rebuildSectionLanes (index, sectionChords (*place));
         changed();
         return true;
     }

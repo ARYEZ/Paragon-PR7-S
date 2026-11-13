@@ -2232,6 +2232,7 @@ TEST_CASE ("0.103.0: the block editor drawn", "[snapshot-sectioneditor]")
     studio.setChordTrackKey (0.0, aMinor);
     studio.setSectionChords (1, { { { 5, Chord::Type::major }, 8.0 }, { { 0, Chord::Type::major }, 8.0 },
                                   { { 7, Chord::Type::major }, 8.0 }, { { 9, Chord::Type::minor }, 8.0 } });
+    studio.setSongSectionTransition (1, "WALK DOWN");   // (0.104.0)
     ParagonLookAndFeel lookAndFeel;
     juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
     juce::Image image;
@@ -2245,4 +2246,295 @@ TEST_CASE ("0.103.0: the block editor drawn", "[snapshot-sectioneditor]")
     file.deleteFile();
     juce::FileOutputStream out (file);
     juce::PNGImageFormat().writeImageToStream (image, out);
+}
+
+namespace
+{
+    // (0.104.0) Every lane composed over cleanSpans (A minor, 8 bars) with a transition.
+    std::array<LineIdea, composerLayerCount> withTransition (const juce::String& name, ComposerContext c = {})
+    {
+        ComposerState s;
+        s.transition = name;
+        return composeLayers (s, cleanSpans(), c);
+    }
+
+    bool sameNotes (const LineIdea& a, const LineIdea& b)
+    {
+        if (a.notes.size() != b.notes.size())
+            return false;
+        for (size_t i = 0; i < a.notes.size(); ++i)
+            if (a.notes[i].beat != b.notes[i].beat || a.notes[i].pitch != b.notes[i].pitch || a.notes[i].length != b.notes[i].length)
+                return false;
+        return true;
+    }
+
+    // Nothing in the lane starts at or after `from` but at `allowedAt` (-1: none), and nothing rings past `ringTo`.
+    void checkQuietFrom (const LineIdea& idea, double from, double allowedAt, double ringTo)
+    {
+        for (const auto& n : idea.notes)
+        {
+            if (n.keyswitch)
+                continue;
+            if (n.beat >= from - 1.0e-6)
+                CHECK (std::abs (n.beat - allowedAt) < 1.0e-6);
+            CHECK (n.beat + n.length <= ringTo + 1.0e-6);
+        }
+    }
+
+    const std::array<ComposerLayer, 4> bandLanes { ComposerLayer::chords, ComposerLayer::bass, ComposerLayer::guitar, ComposerLayer::drums };
+}
+
+TEST_CASE ("0.104.0: transitions: the last bar written for each, the melody untouched", "[sections][transitions]")
+{
+    const auto& list = sectionTransitions();
+    REQUIRE (list.size() == 14);
+    CHECK (list.front().name == noTransition);
+    CHECK_FALSE (sectionTransitionNamed ("NONE").has_value());
+    CHECK_FALSE (sectionTransitionNamed ("").has_value());
+    CHECK (sectionTransitionNamed ("stop")->name == "STOP");
+    CHECK (sectionTransitionNamed ("SHORT BAR: 2 BEATS")->shortBeats == 2);
+    {   // The composer's settings keep it.
+        ComposerState s;
+        s.transition = "WALK DOWN";
+        CHECK (ComposerState::fromString (s.toString()).transition == "WALK DOWN");
+        CHECK (ComposerState::fromString (s.toString()) == s);
+    }
+    const auto none = withTransition ({});
+    for (const auto l : bandLanes)
+        REQUIRE_FALSE (none[(size_t) l].notes.empty());
+    // Every transition changes the band's last bar and never the melody.
+    for (size_t t = 1; t < list.size(); ++t)
+    {
+        INFO (list[t].name);
+        const auto all = withTransition (list[t].name);
+        CHECK (sameNotes (all[(size_t) ComposerLayer::melody], none[(size_t) ComposerLayer::melody]));
+        auto changed = false;
+        for (const auto l : bandLanes)
+            changed = changed || ! sameNotes (all[(size_t) l], none[(size_t) l]);
+        CHECK (changed);
+        for (const auto l : bandLanes)   // (nothing written before the last two bars)
+            for (const auto& n : all[(size_t) l].notes)
+                if (n.beat < 24.0 - 1.0e-6)
+                    CHECK (std::find_if (none[(size_t) l].notes.begin(), none[(size_t) l].notes.end(),
+                                         [&n] (const LineNote& o) { return o.beat == n.beat && o.pitch == n.pitch; })
+                           != none[(size_t) l].notes.end());
+    }
+    // STOP: one hit together on the last bar's first beat, held a beat, then nothing.
+    {
+        const auto all = withTransition ("STOP");
+        for (const auto l : bandLanes)
+            checkQuietFrom (all[(size_t) l], 28.0, 28.0, 32.0);
+        for (const auto& n : all[(size_t) ComposerLayer::bass].notes)
+            if (n.beat >= 28.0 - 1.0e-6)
+                CHECK (n.pitch % 12 == 7);   // (G, the last chord's root)
+    }
+    // BREATH: the last beat empty.
+    for (const auto l : bandLanes)
+        checkQuietFrom (withTransition ("BREATH")[(size_t) l], 31.0, -1.0, 31.0);
+    // SILENT BAR / BASS ALONE: the last bar empty (but the bass, as it was).
+    {
+        const auto silent = withTransition ("SILENT BAR"), alone = withTransition ("BASS ALONE");
+        for (const auto l : bandLanes)
+        {
+            checkQuietFrom (silent[(size_t) l], 28.0, -1.0, 28.0);
+            if (l == ComposerLayer::bass)
+                CHECK (sameNotes (alone[(size_t) l], none[(size_t) l]));
+            else
+                checkQuietFrom (alone[(size_t) l], 28.0, -1.0, 28.0);
+        }
+    }
+    // SNARE ROLL: sixteenth snares from the and of three, louder each time; only the drums changed.
+    {
+        const auto all = withTransition ("SNARE ROLL");
+        std::vector<const LineNote*> snares;
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            if (n.beat >= 30.5 - 1.0e-6)
+            {
+                CHECK ((n.pitch == 38 || n.pitch == 36));
+                if (n.pitch == 38)
+                    snares.push_back (&n);
+            }
+        REQUIRE (snares.size() == 6);
+        for (size_t i = 0; i < snares.size(); ++i)
+        {
+            CHECK (snares[i]->beat == Catch::Approx (30.5 + 0.25 * (double) i));
+            if (i > 0)
+                CHECK (snares[i]->velocity > snares[i - 1]->velocity);
+        }
+        for (const auto l : { ComposerLayer::chords, ComposerLayer::bass, ComposerLayer::guitar })
+            CHECK (sameNotes (all[(size_t) l], none[(size_t) l]));
+    }
+    // DRUMS BUILD: the drums alone in the last bar, eighths then sixteenths.
+    {
+        const auto all = withTransition ("DRUMS BUILD");
+        for (const auto l : { ComposerLayer::chords, ComposerLayer::bass, ComposerLayer::guitar })
+            checkQuietFrom (all[(size_t) l], 28.0, -1.0, 28.0);
+        auto snares = 0;
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            if (n.beat >= 28.0 - 1.0e-6 && n.pitch == 38)
+                ++snares;
+        CHECK (snares == 4 + 8);
+    }
+    // WALK DOWN / UP: four eighths a half step apart into the next chord (C here), bass and guitar together.
+    {
+        ComposerContext c;
+        c.nextChord = Chord { 0 };
+        for (const auto up : { false, true })
+        {
+            const auto all = withTransition (up ? "WALK UP" : "WALK DOWN", c);
+            std::vector<int> bass, guitar;
+            for (const auto& n : all[(size_t) ComposerLayer::bass].notes)
+                if (n.beat >= 30.0 - 1.0e-6)
+                    bass.push_back (n.pitch);
+            for (const auto& n : all[(size_t) ComposerLayer::guitar].notes)
+                if (n.beat >= 30.0 - 1.0e-6 && ! n.keyswitch)
+                    guitar.push_back (n.pitch);
+            REQUIRE (bass.size() == 4);
+            REQUIRE (guitar.size() == 8);
+            for (int k = 0; k < 4; ++k)
+            {
+                CHECK (((bass[(size_t) k] % 12) + 12) % 12 == (up ? 8 + k : 4 - k));
+                CHECK (guitar[(size_t) k * 2 + 1] - guitar[(size_t) k * 2] == 7);
+                if (k > 0)
+                    CHECK (bass[(size_t) k] - bass[(size_t) k - 1] == (up ? 1 : -1));
+            }
+        }
+    }
+    // PINCH SLIDE: the guitar's last two beats one pinch harmonic dived down.
+    {
+        const auto all = withTransition ("PINCH SLIDE");
+        const auto& last = all[(size_t) ComposerLayer::guitar].notes.back();
+        CHECK (last.beat == Catch::Approx (30.0));
+        CHECK (last.effect == LineNote::Effect::dive);
+        CHECK (GuitarVelocity::midiOf (last.velocity) == 127);
+    }
+    // MUTED LINK: the last two bars palm-muted eighths on the guitar, the keys out.
+    {
+        const auto all = withTransition ("MUTED LINK");
+        auto count = 0;
+        for (const auto& n : all[(size_t) ComposerLayer::guitar].notes)
+            if (n.beat >= 24.0 - 1.0e-6 && ! n.keyswitch)
+            {
+                CHECK (GuitarVelocity::midiOf (n.velocity) < 60);
+                ++count;
+            }
+        CHECK (count == 16);
+        checkQuietFrom (all[(size_t) ComposerLayer::chords], 24.0, -1.0, 24.0);
+    }
+    // SHORT BAR: a last bar of two beats (the studio's signature), the band hitting each beat.
+    {
+        ComposerContext c;
+        c.lastBarBeats = 2.0;
+        auto spans = cleanSpans();
+        spans.back().end = 30.0;
+        ComposerState s;
+        s.transition = "SHORT BAR: 2 BEATS";
+        const auto all = composeLayers (s, spans, c);
+        std::set<double> starts;
+        for (const auto& n : all[(size_t) ComposerLayer::guitar].notes)
+            if (n.beat >= 28.0 - 1.0e-6)
+                starts.insert (n.beat);
+        CHECK (starts == std::set<double> { 28.0, 29.0 });
+        auto crash = 0;
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            if (n.beat >= 28.0 - 1.0e-6 && n.pitch == 49)
+                ++crash;
+        CHECK (crash == 1);
+    }
+}
+
+TEST_CASE ("0.104.0: a block's transition: saved, shared by linked copies; a SHORT BAR moves what follows; one undo step", "[sections][transitions]")
+{
+    Song song;
+    auto& studio = song.studio;
+    CHECK_FALSE (studio.setSongSectionTransition (1, "NO SUCH THING"));
+    REQUIRE (studio.setSongSectionTransition (1, "STOP"));
+    CHECK (studio.getSongSections().blocks[1].transition == "STOP");
+    CHECK (studio.getProject().signatureChanges.empty());
+    {
+        const auto again = Project::fromXml (*studio.getProject().toXml());
+        REQUIRE (again.has_value());
+        CHECK (again->songSections.blocks[1].transition == "STOP");
+    }
+    // The verse's last bar two beats: the chorus (and its part, its chord, its marker) two beats earlier.
+    REQUIRE (studio.setSongSectionTransition (1, "SHORT BAR: 2 BEATS"));
+    const auto& changes = studio.getProject().signatureChanges;
+    REQUIRE (changes.size() == 2);
+    CHECK (changes[0].bar == 11);
+    CHECK (changes[0].numerator == 2);
+    CHECK (changes[0].denominator == 4);
+    CHECK (changes[1].bar == 12);
+    CHECK (changes[1].numerator == 4);
+    const auto chorus = *studio.getSongSectionPlace (2);
+    CHECK_THAT (chorus.start, WithinAbs (46.0, 1.0e-9));
+    CHECK (song.pitchAt (46.0) == 64);
+    CHECK (song.chordRootAt (46.0) == 7);
+    CHECK (song.pitchAt (16.0) == 62);   // (the verse where it was)
+    CHECK_THAT (studio.getSongSectionPlace (1)->end - studio.getSongSectionPlace (1)->start, WithinAbs (30.0, 1.0e-9));
+    {   // The composer gets the short last bar and the next chord for the verse.
+        const auto c = studio.getComposerContext (16.0);
+        CHECK_THAT (c.lastBarBeats, WithinAbs (2.0, 1.0e-9));
+        REQUIRE (c.nextChord.has_value());
+        CHECK (c.nextChord->root == 7);
+    }
+    // Undo: the stop back, the chorus at 48.
+    studio.undo();
+    CHECK (studio.getSongSections().blocks[1].transition == "STOP");
+    CHECK (studio.getProject().signatureChanges.empty());
+    CHECK (song.pitchAt (48.0) == 64);
+    // Back to a short bar, then none: the bar whole again.
+    REQUIRE (studio.setSongSectionTransition (1, "SHORT BAR: 3 BEATS"));
+    CHECK_THAT (studio.getSongSectionPlace (2)->start, WithinAbs (47.0, 1.0e-9));
+    REQUIRE (studio.setSongSectionTransition (1, noTransition));
+    CHECK (studio.getSongSections().blocks[1].transition.isEmpty());
+    CHECK (studio.getProject().signatureChanges.empty());
+    CHECK (song.pitchAt (48.0) == 64);
+    // A linked copy shares it.
+    REQUIRE (studio.duplicateSongSection (2));
+    REQUIRE (studio.setSongSectionTransition (3, "SNARE ROLL"));
+    CHECK (studio.getSongSections().blocks[2].transition == "SNARE ROLL");
+}
+
+TEST_CASE ("0.104.0: a built block's transition writes its last bar again", "[sections][transitions][rewrite]")
+{
+    Song song;
+    auto& studio = song.studio;
+    {   // (the chorus's chord through the whole block: the song's last chord otherwise lasts a bar)
+        auto events = studio.getProject().chordTrack.events;
+        events.back().length = studio.getSongSectionPlace (2)->end - events.back().beat;
+        studio.setChordEvents (events);
+    }
+    const auto bass = buildChorusBass (studio);
+    const auto place = *studio.getSongSectionPlace (2);
+    const auto lastBar = place.end - 4.0;
+    const auto startsInLastBar = [&]
+    {
+        std::vector<double> out;
+        for (const auto& p : studio.getProject().findTrack (bass)->parts)
+            for (const auto& n : p.notes)
+                if (p.start + n.start >= lastBar - 1.0e-9 && p.start + n.start < place.end - 1.0e-9)
+                    out.push_back (p.start + n.start - lastBar);
+        return out;
+    };
+    const auto before = startsInLastBar();
+    REQUIRE (before.size() > 1);
+    REQUIRE (studio.setSongSectionTransition (2, "STOP"));
+    const auto stopped = startsInLastBar();
+    REQUIRE (stopped.size() == 1);
+    CHECK (stopped.front() == Catch::Approx (0.0));
+    studio.undo();
+    CHECK (startsInLastBar() == before);
+    // A short bar: still the composer's lane (built again in the shorter bar, not left as "edited by hand").
+    REQUIRE (studio.setSongSectionTransition (2, "SHORT BAR: 1 BEAT"));
+    const auto shortPlace = *studio.getSongSectionPlace (2);
+    CHECK_THAT (shortPlace.end - shortPlace.start, WithinAbs (29.0, 1.0e-9));
+    auto inShortBar = 0;
+    for (const auto& p : studio.getProject().findTrack (bass)->parts)
+        for (const auto& n : p.notes)
+            if (p.start + n.start >= shortPlace.end - 1.0 - 1.0e-9 && p.start + n.start < shortPlace.end)
+            {
+                CHECK (p.start + n.start == Catch::Approx (shortPlace.end - 1.0));
+                ++inShortBar;
+            }
+    CHECK (inShortBar == 1);
 }

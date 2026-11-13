@@ -77,6 +77,9 @@ namespace pr7s
         // (0.94.0) The block's TYPE (engine/SectionTypes.h; empty: STANDARD). It sets the guitar's flavour, and with it
         // the band's part (DRONING's band) and the approaches each lane offers.
         juce::String sectionType;
+        // (0.104.0) How the section hands over to the next (engine/SectionTypes.h's sectionTransitions(); empty: NONE).
+        // The block's own, put here when the composer builds into it, so its last bar is written that way.
+        juce::String transition;
         std::optional<ComposerLayer> syncLayer() const noexcept
         {
             return syncLane >= 0 && syncLane < composerLayerCount ? std::optional<ComposerLayer> ((ComposerLayer) syncLane) : std::nullopt;
@@ -111,6 +114,10 @@ namespace pr7s
         // (0.75.0) Your own riff (engine/RiffPaste.h), already repeated over the section: the guitar plays it
         // (shaped by RIFF SETTINGS: as written at their middle values) and the drums lock their kick to it.
         std::optional<LineIdea> myRiff;
+        // (0.104.0) For a transition: the chord after the section (none: its first chord, as if it went round) and
+        // its last bar's length in beats (0: a whole bar of beatsPerBar; a SHORT BAR's is shorter).
+        std::optional<Chord> nextChord;
+        double lastBarBeats = 0.0;
     };
 
     // (0.86.0) SYNC: the rhythm a lane's idea gives the others. `all`: every hit (notes starting together are one
@@ -162,4 +169,6 @@ namespace pr7s
     inline bool hasLowString (ComposerLayer l) { return l == ComposerLayer::bass || l == ComposerLayer::guitar; }
     // GENERATE: every unlocked lane rolled (new takes, the same styles). Returns how many were.
     int generateComposer (ComposerState&, juce::Random&);
+    // (0.104.0) The state's transition written onto one lane's idea (composeLayers does it for every lane).
+    void applyTransition (ComposerLayer, LineIdea&, const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
 }
