@@ -651,7 +651,7 @@ namespace pr7s
         }
         if (markerTrack.shown || ! markerTrack.isEmpty())
             xml->addChildElement (markerTrack.toXml().release());   // (0.49.0)
-        if (songSections.shown || ! songSections.isEmpty())
+        if (! songSections.shown || ! songSections.isEmpty())   // (0.103.0: shown by default; a hidden row is written)
             xml->addChildElement (songSections.toXml().release());   // (0.90.0)
         if (! signatureChanges.empty() || signatureTrackShown)
         {

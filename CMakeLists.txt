@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonPR7S VERSION 0.102.0 LANGUAGES C CXX)
+project(ParagonPR7S VERSION 0.103.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -101,6 +101,7 @@ add_library(PR7SCore STATIC
     source/ui/ArrangeSignature.cpp
     source/ui/ArrangeMarkers.cpp
     source/ui/ArrangeSections.cpp
+    source/ui/SectionEditor.cpp
     source/ui/MarkersPage.cpp
     source/ui/HistoryPage.cpp
     source/ui/ExportPages.cpp

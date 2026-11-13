@@ -1,3 +1,4 @@
+#include "ui/SectionEditor.h"
 // The arrangement's SECTIONS row (0.90.0, the owner's song engine): the song as blocks, each a section's name and
 // its length in bars, end to end from bar 1. Clicked, dragged to another place in the order (the music in it goes
 // with it: Studio::moveSongSection), double-clicked to open the composer on it, right-clicked for its menu.
@@ -169,9 +170,14 @@ bool ArrangeView::sectionDown (const juce::MouseEvent& event)
     const auto hit = sectionBlockAt (event.position);
     if (event.mods.isPopupMenu())
     {
+        // (0.103.0, the owner) A block: its editor; the empty row: the row's menu.
         if (hit >= 0)
+        {
             selectSection (hit);
-        showSectionMenu (hit);
+            showSectionEditor (hit);
+        }
+        else
+            showSectionMenu (hit);
         return true;
     }
     if (hit < 0)
@@ -237,6 +243,30 @@ bool ArrangeView::sectionDoubleClick (const juce::MouseEvent& event)
     }
     showAddSectionMenu (-1, event.getScreenPosition());
     return true;
+}
+
+SectionEditor* ArrangeView::getSectionEditor() const
+{
+    return dynamic_cast<SectionEditor*> (sectionEditor.getComponent());
+}
+
+void ArrangeView::showSectionEditor (int index)
+{
+    const auto& blocks = studio.getSongSections().blocks;
+    if (! juce::isPositiveAndBelow (index, (int) blocks.size()))
+        return;
+    auto editor = std::make_unique<SectionEditor> (studio, blocks[(size_t) index].id);
+    juce::Component::SafePointer<ArrangeView> safe (this);
+    editor->onType = [safe] (int i, const juce::String& type) { if (safe != nullptr) safe->changeSectionType (i, type); };
+    editor->onOpen = [safe] (int i) { if (safe != nullptr && safe->onOpenSection) safe->onOpenSection (i); };
+    editor->onMore = [safe] (int i) { if (safe != nullptr) safe->showSectionMenu (i); };
+    sectionEditor = editor.get();
+    auto area = getSectionBounds (index).toNearestInt();
+    if (area.isEmpty())
+        area = { getWidth() / 2, 0, 1, 1 };
+    if (getPeer() == nullptr || ! isShowing())
+        return;   // (no window to call out from: tests make the editor themselves)
+    juce::CallOutBox::launchAsynchronously (std::move (editor), localAreaToGlobal (area), nullptr);
 }
 
 void ArrangeView::showAddSectionMenu (int insertAt, juce::Point<int> where)

@@ -80,7 +80,7 @@ namespace pr7s
     SongSections SongSections::fromXml (const juce::XmlElement& xml)
     {
         SongSections s;
-        s.shown = xml.getBoolAttribute ("shown", false);
+        s.shown = xml.getBoolAttribute ("shown", true);
         for (auto* e : xml.getChildWithTagNameIterator ("Section"))
         {
             SongSection b;

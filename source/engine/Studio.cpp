@@ -12790,6 +12790,57 @@ namespace pr7s
         return places[(size_t) index];
     }
 
+    std::vector<Studio::SectionChord> Studio::getSectionChords (int index) const
+    {
+        std::vector<SectionChord> out;
+        const auto place = getSongSectionPlace (index);
+        if (! place.has_value())
+            return out;
+        for (const auto& e : withLengths (project.chordTrack, project.beatsPerBarAt (place->start)))
+        {
+            const auto from = juce::jmax (e.beat, place->start), to = juce::jmin (e.beat + e.length, place->end);
+            if (to > from + 1.0e-6)
+                out.push_back ({ e.chord, to - from });
+        }
+        return out;
+    }
+
+    bool Studio::setSectionChords (int index, const std::vector<SectionChord>& chords)
+    {
+        const auto place = getSongSectionPlace (index);
+        if (! place.has_value())
+            return false;
+        const auto start = place->start, end = place->end;
+        std::vector<ChordEvent> events;
+        for (const auto& e : withLengths (project.chordTrack, project.beatsPerBarAt (start)))
+        {
+            const auto eEnd = e.beat + e.length;
+            if (eEnd <= start + 1.0e-6 || e.beat >= end - 1.0e-6)
+                events.push_back (e);
+            else
+            {
+                if (e.beat < start - 1.0e-6)
+                    events.push_back ({ e.beat, e.chord, start - e.beat });
+                if (eEnd > end + 1.0e-6)
+                    events.push_back ({ end, e.chord, eEnd - end });
+            }
+        }
+        auto t = start;
+        for (const auto& c : chords)
+        {
+            const auto length = juce::jmin (c.beats, end - t);
+            if (length <= 1.0e-6)
+                break;
+            events.push_back ({ t, c.chord, length });
+            t += length;
+        }
+        std::sort (events.begin(), events.end(), [] (const ChordEvent& a, const ChordEvent& b) { return a.beat < b.beat; });
+        if (! project.chordTrack.shown)
+            project.chordTrack.shown = true;
+        setChordEvents (std::move (events));
+        return true;
+    }
+
     void Studio::addSongSectionTrack()
     {
         if (project.songSections.shown)

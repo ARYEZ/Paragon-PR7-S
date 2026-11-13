@@ -1184,6 +1184,20 @@ namespace pr7s
         bool removeSongSection (int index);               // and its music; the gap closes
         // A block's place in beats (none: no such block).
         std::optional<SectionPlace> getSongSectionPlace (int index) const;
+        // (0.103.0, the owner: "the scale that is set for the entire song, then for each block what chords from that
+        // scale we're going to use, and the chance to edit and reorder them") A block's chords as the block editor
+        // shows them: each chord on the chord track inside it (cut to the block) with how long it sounds there, in
+        // order. Setting them replaces every chord inside the block with these, end to end from its start (any past its
+        // end left out); chords before and after it are kept (one reaching into it ends at its start). One undo step;
+        // linked copies follow, a built block's lanes are built again over them (0.92.0); the chord track is shown.
+        struct SectionChord
+        {
+            Chord chord;
+            double beats = 0.0;
+            bool operator== (const SectionChord&) const = default;
+        };
+        std::vector<SectionChord> getSectionChords (int index) const;
+        bool setSectionChords (int index, const std::vector<SectionChord>&);
 
         //======================================================================
         // Tap tempo (0.45.0, the manual's Tap Tempo Modes): each tap's time in seconds (the

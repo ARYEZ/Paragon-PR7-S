@@ -2,6 +2,23 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.103.0
+
+**The SECTIONS lane, the way you asked for it** (the owner: "I need to be able to go to the lane where the blocks are, double-click an empty lane and add a block, add the entire song's worth of blocks ahead of time, and edit each block").
+
+- **The lane is there by default** in every song, new or old. You didn't know it existed because it was hidden until you added it from the track menu. You can still hide it from its menu, and a song where you hid it stays that way.
+- **Lay the whole song out first:** double-click the empty lane after the last block to add the next one (Intro, Verse, Pre-Chorus, Chorus...). Blocks sit end to end from bar 1, so a new block goes after the last.
+- **Drag a block** to change the order (start on the verse instead of the chorus); its music moves with it, as before.
+- **Double-click a block** to open the composer on it and build its music, as before.
+- **New: right-click a block for its editor:**
+  - **Name** (Verse, Chorus, Bridge...), **Type** (the section's types, e.g. DRIVING or DRONING for a chorus) and **Length** in bars (what follows moves).
+  - **Song key:** the scale for the whole song.
+  - **The block's chords, chosen from that key.** Click a chord to change it to another of the key's chords, change how long it lasts (half a bar up to 8 bars), move it earlier or later, or remove it. Drag a chord sideways to put it somewhere else in the order. **+ CHORD** adds one: the key's first chord to start, then the chord the one before suggests (always from the key). A chord outside the key is edged pink. The line above the chords tells you how many of the block's bars are filled.
+  - **OPEN IN THE COMPOSER** builds the block. **MORE...** has the rest: insert a block before or after, duplicate (linked or not), unlink, set the locators to it, delete.
+- If a block's music is already built, changing its chords builds it again over the new chords (as changing the chord track already did), and linked copies of the block follow.
+
+The chords live on the chord track, so you'll see them there too (it's shown when you give a block its first chords). As always, tell me what doesn't feel right. Next: transitions between the blocks (stops, rolls, pickups and short bars) as 0.104.0.
+
 ## 0.102.0
 
 **Pre-choruses get types of their own** (the second step of the plan from all your songs, read for their shapes only). Until now a pre-chorus borrowed the verse's types. Now its TYPE menu starts with six new ones (the verse's types are still under them, so a block you've already typed keeps its type). Each one writes every lane it has options for, and the options are in each lane's menu as usual.

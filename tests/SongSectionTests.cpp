@@ -20,6 +20,7 @@
 #include "ui/ComposerPage.h"
 #include "ui/Finish.h"
 #include "ui/MainView.h"
+#include "ui/SectionEditor.h"
 
 using namespace pr7s;
 using Catch::Matchers::WithinAbs;
@@ -90,7 +91,7 @@ namespace
 TEST_CASE ("0.90.0: blocks end to end in bars, numbered names, saved with the song", "[sections]")
 {
     Studio studio (false);
-    CHECK_FALSE (studio.getSongSections().shown);
+    CHECK (studio.getSongSections().shown);   // (0.103.0: there by default)
     CHECK (studio.appendSongSection ("Intro", 4) == 0);
     CHECK (studio.getSongSections().shown);
     studio.appendSongSection ("Chorus", 8);
@@ -2109,4 +2110,139 @@ TEST_CASE ("0.102.0: the pre-chorus types' shapes", "[sections][types]")
             lead.insert (n.pitch);
         CHECK (lead == std::set<int> { 69, 72, 76, 77 });   // (C, E, F and the A under them, an octave up)
     }
+}
+
+
+TEST_CASE ("0.103.0: the SECTIONS row there by default; hidden stays hidden in its song", "[sections]")
+{
+    Studio studio (false);
+    CHECK (studio.getSongSections().shown);
+    // A song from before (no row saved) opens with it.
+    auto xml = studio.getProject().toXml();
+    if (auto* old = xml->getChildByName ("SongSections"))
+        xml->removeChildElement (old, true);
+    CHECK (Project::fromXml (*xml)->songSections.shown);
+    // Hidden: saved so, opens hidden.
+    studio.removeSongSectionTrack();
+    CHECK_FALSE (Project::fromXml (*studio.getProject().toXml())->songSections.shown);
+}
+
+TEST_CASE ("0.103.0: a block's chords read and written; the chords either side kept", "[sections]")
+{
+    Studio studio (false);
+    studio.appendSongSection ("Verse", 4);    // beats 0-16
+    studio.appendSongSection ("Chorus", 4);   // beats 16-32
+    const Chord am { 9, Chord::Type::minor }, f { 5, Chord::Type::major }, c { 0, Chord::Type::major }, g { 7, Chord::Type::major };
+    // A chord over the verse's last bar running into the chorus, one after it.
+    studio.setChordEvents ({ { 12.0, am, 8.0 }, { 24.0, g, 8.0 } });
+    auto chorus = studio.getSectionChords (1);
+    REQUIRE (chorus.size() == 2);
+    CHECK (chorus[0].chord == am);
+    CHECK (chorus[0].beats == Catch::Approx (4.0));
+    CHECK (chorus[1].beats == Catch::Approx (8.0));
+    // The chorus: F C F G, a bar each... and a fifth that doesn't fit, left out.
+    REQUIRE (studio.setSectionChords (1, { { f, 4.0 }, { c, 4.0 }, { f, 4.0 }, { g, 4.0 }, { am, 4.0 } }));
+    chorus = studio.getSectionChords (1);
+    REQUIRE (chorus.size() == 4);
+    CHECK (chorus[1].chord == c);
+    CHECK (chorus[3].chord == g);
+    // The verse keeps its Am, now ending at the chorus.
+    const auto verse = studio.getSectionChords (0);
+    REQUIRE (verse.size() == 1);
+    CHECK (verse[0].chord == am);
+    CHECK (verse[0].beats == Catch::Approx (4.0));
+    CHECK (studio.getProject().chordTrack.shown);
+    // One undo step back.
+    studio.undo();
+    CHECK (studio.getSectionChords (1).size() == 2);
+}
+
+TEST_CASE ("0.103.0: the block editor: name, length, the song's key, its chords added, changed, moved, removed", "[sections][ui]")
+{
+    Studio studio (false);
+    studio.appendSongSection ("Verse", 4);
+    studio.appendSongSection ("Chorus", 4);
+    Key aMinor;
+    for (const auto& k : Key::all())
+        if (k.minor && k.pitchClass() == 9)
+            aMinor = k;
+    SectionEditor editor (studio, studio.getSongSections().blocks[1].id);
+    editor.setSongKey (aMinor);
+    CHECK (editor.getKey() == aMinor);
+    CHECK (studio.chordTrackKeyAt (0.0) == aMinor);
+    // + CHORD: the key's own first, then what the one before suggests; each a bar, end to end.
+    for (int i = 0; i < 4; ++i)
+        editor.addChord();
+    auto chords = editor.getChords();
+    REQUIRE (chords.size() == 4);
+    CHECK (chords[0].chord == keyChords (aMinor).front());
+    for (const auto& ch : chords)
+    {
+        CHECK (ch.beats == Catch::Approx (4.0));
+        CHECK (ch.chord.isInKey (aMinor));
+    }
+    // Full: another takes nothing (every chord a bar long).
+    editor.addChord();
+    CHECK (editor.getChords().size() == 4);
+    // Changed, made two bars (what no longer fits drops), moved, removed: the studio's chords follow.
+    const Chord f { 5, Chord::Type::major }, g { 7, Chord::Type::major };
+    editor.changeChord (1, f);
+    editor.changeChord (2, g);
+    editor.moveChord (2, 0);
+    chords = studio.getSectionChords (1);
+    REQUIRE (chords.size() == 4);
+    CHECK (chords[0].chord == g);
+    CHECK (chords[2].chord == f);
+    editor.setChordBars (0, 2.0);
+    chords = studio.getSectionChords (1);
+    REQUIRE (chords.size() == 3);
+    CHECK (chords[0].beats == Catch::Approx (8.0));
+    editor.removeChord (0);
+    CHECK (studio.getSectionChords (1).size() == 2);
+    // The verse untouched.
+    CHECK (studio.getSectionChords (0).empty());
+    // Name and length.
+    editor.setName ("Pre-Chorus");
+    CHECK (studio.getSongSections().blocks[1].name == "Pre-Chorus");
+    editor.setBars (8);
+    CHECK (studio.getSongSections().blocks[1].bars == 8);
+    CHECK (editor.getIndex() == 1);
+    // The strip's cells: one per chord, left to right.
+    editor.setSize (SectionEditor::width, SectionEditor::height);
+    CHECK (editor.getChordBounds (0).getX() < editor.getChordBounds (1).getX());
+    editor.clearChords();
+    CHECK (studio.getSectionChords (1).empty());
+}
+
+TEST_CASE ("0.103.0: the block editor drawn", "[snapshot-sectioneditor]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", {});
+    if (path.isEmpty())
+        return;
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    studio.appendSongSection ("Verse", 8);
+    studio.appendSongSection ("Chorus", 8);
+    studio.setSongSectionType (1, "DRIVING");
+    Key aMinor;
+    for (const auto& k : Key::all())
+        if (k.minor && k.pitchClass() == 9)
+            aMinor = k;
+    studio.setChordTrackKey (0.0, aMinor);
+    studio.setSectionChords (1, { { { 5, Chord::Type::major }, 8.0 }, { { 0, Chord::Type::major }, 8.0 },
+                                  { { 7, Chord::Type::major }, 8.0 }, { { 9, Chord::Type::minor }, 8.0 } });
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    juce::Image image;
+    {
+        SectionEditor editor (studio, studio.getSongSections().blocks[1].id);
+        editor.setSize (SectionEditor::width, SectionEditor::height);
+        image = editor.createComponentSnapshot (editor.getLocalBounds(), true, 2.0f);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+    juce::File file (path);
+    file.deleteFile();
+    juce::FileOutputStream out (file);
+    juce::PNGImageFormat().writeImageToStream (image, out);
 }

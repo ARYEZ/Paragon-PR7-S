@@ -6,6 +6,8 @@
 #include "engine/Studio.h"
 #include "ui/PartDropTarget.h"
 
+class SectionEditor;   // (0.103.0, ui/SectionEditor.h)
+
 // Auto-Scroll, as the manual has it (the arrangement and the key editor
 // each have their own): on or off (F, or AUTO-SCROLL), and its settings menu
 // (the arrow beside the key): Page Scroll (the page turns when the playhead
@@ -332,6 +334,7 @@ public:
     // double-click opens the composer on it, a right-click its menu (name, length, insert, copy, delete). A double-
     // click on the empty row after the last block (or + SECTION in the track list) adds one.
     std::function<void (int index)> onOpenSection;
+    juce::Component::SafePointer<juce::Component> sectionEditor;   // (0.103.0: the one open, if any)
     juce::Rectangle<float> getSectionArea() const;
     juce::Rectangle<float> getSectionBounds (int index) const;   // a block where it's drawn (while dragged: where it would go)
     int sectionBlockAt (juce::Point<float>) const;               // -1: none
@@ -340,6 +343,9 @@ public:
     int getSectionDragTarget() const noexcept { return drag == Drag::sectionMove ? sectionDragTo : -1; }
     void changeSectionType (int index, const juce::String& type);   // (0.94.0: asks first when HUB SETTINGS says so)
     void showSectionMenu (int index);                            // -1: the row's own menu (add a section)
+    // (0.103.0) A block's editor (a right-click on it): name, type, length, the song's key and the block's chords.
+    void showSectionEditor (int index);
+    SectionEditor* getSectionEditor() const;
     void showAddSectionMenu (int insertAt, juce::Point<int> where = {});   // insertAt -1: after the last
 
     // Folder tracks (0.50.0, the manual's Folder Parts): a folder's row shows its tracks' parts as

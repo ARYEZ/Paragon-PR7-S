@@ -43,7 +43,7 @@ namespace pr7s
 
     struct SongSections
     {
-        bool shown = false;               // the row in the track list (added once; removed: hidden, the blocks kept)
+        bool shown = true;                // the row in the track list (0.103.0: there by default, the owner's; hidden: the blocks kept)
         std::vector<SongSection> blocks;  // in the song's order, from bar 1
 
         int nextId() const noexcept;
