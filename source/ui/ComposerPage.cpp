@@ -1640,11 +1640,26 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
 {
     const auto choices = pr7s::composerChoices (l, state, spans, context);
     juce::PopupMenu menu;
+    // (0.97.1) A lane the section type writes: its options are the type's approaches, each a different part.
+    const auto typeWrites = pr7s::sectionTypeWritesLane (l, state, context);
     for (int i = 0; i < (int) choices.size(); ++i)
         menu.addItem (i + 1, choices[(size_t) i].style + (choices[(size_t) i].description.isNotEmpty() ? "  (" + choices[(size_t) i].description + ")" : juce::String()),
                       true, i == state.lane (l).style);
     // (0.94.0) The section type's approaches for this lane, first.
-    if (const auto approaches = pr7s::sectionApproaches (state, l); ! approaches.isEmpty())
+    if (const auto approaches = pr7s::sectionApproaches (state, l); typeWrites && ! approaches.isEmpty())
+    {
+        juce::PopupMenu typed;
+        typed.addSectionHeader (state.sectionType.isNotEmpty() ? state.sectionType : juce::String ("DRONING"));
+        typed.addItem (approachItems, "Automatic (the take chooses)", true, state.lane (l).approach < 0);
+        for (int i = 0; i < approaches.size(); ++i)
+        {
+            const auto& idea = i < (int) choices.size() ? choices[(size_t) i] : pr7s::LineIdea {};
+            typed.addItem (approachItems + 1 + i, approaches[i] + (idea.description.isNotEmpty() ? "  (" + idea.description + ")" : juce::String()),
+                           true, state.lane (l).approach == i);
+        }
+        menu = typed;
+    }
+    else if (const auto approaches = pr7s::sectionApproaches (state, l); ! approaches.isEmpty())
     {
         juce::PopupMenu typed;
         typed.addSectionHeader (state.sectionType.isNotEmpty() ? state.sectionType : juce::String ("DRONING"));

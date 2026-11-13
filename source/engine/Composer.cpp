@@ -1427,6 +1427,102 @@ namespace pr7s
             return std::nullopt;
         }
 
+        // (0.97.1) The droning chorus's other basslines, under the guitar's struck chords (a push a beat early takes
+        // its chord early): EIGHTHS UNDER THE DRONE (the root in steady eighths, the beats leaning in), OCTAVE PULSE
+        // (eighths jumping to the octave and back), WALKING INTO THE CHANGES (the root held, the last beat before a
+        // new chord two eighths stepping into it through the key's scale), WHOLE NOTES (the root struck on each bar).
+        LineIdea droningBassLine (int approach, const LineIdea& guitar, const std::vector<ChordSpan>& spans, double bpb, int lowest, int highest)
+        {
+            const auto length = sectionLength (spans);
+            const auto top = juce::jmin (highest, lowest + 11);
+            const auto strikes = lowStrikes (guitar);
+            // The chord sounding at an idea beat: the last strike at or before it decides (a push takes the next chord).
+            auto chordAt = [&] (double t) -> const Chord&
+            {
+                const ChordSpan* chosen = spanAtIdeaBeat (spans, t);
+                for (const auto at : strikes)
+                    if (at <= t + 1.0e-6)
+                        chosen = &chordStruckAt (spans, at);
+                return chosen->chord;
+            };
+            auto rootAt = [&] (double t) { return rootNear (chordAt (t), lowest, top); };
+            const auto e = bpb / 8.0;
+            LineIdea out { LineIdea::Part::bass, {}, {}, {} };
+            switch (approach)
+            {
+                case 2:
+                    out.style = "Droning: eighths under the drone";
+                    out.description = "The struck chord's root in steady eighths under the ringing guitar, the beats leaning in";
+                    for (int i = 0; i * e < length - 1.0e-6; ++i)
+                        addNote (out, i * e, e * 0.9, rootAt (i * e), i % 2 == 0 ? 0.84f : 0.68f, length);
+                    break;
+                case 3:
+                {
+                    out.style = "Droning: octave pulse";
+                    out.description = "Eighths on the struck chord's root jumping to its octave and back";
+                    static const std::array<int, 8> jumps { 0, 12, 0, 12, 0, 12, 0, 12 };
+                    for (int i = 0; i * e < length - 1.0e-6; ++i)
+                    {
+                        const auto root = rootAt (i * e);
+                        const auto up = root + jumps[(size_t) (i % 8)] <= highest ? jumps[(size_t) (i % 8)] : 0;
+                        addNote (out, i * e, e * 0.9, root + up, i % 2 == 0 ? 0.84f : 0.72f, length);
+                    }
+                    break;
+                }
+                case 4:
+                {
+                    out.style = "Droning: walking into the changes";
+                    out.description = "The root held under the drone, the last beat before each new chord two eighths stepping into it";
+                    // Where the chord changes (the struck chords' roots), then each stretch held, walked into the next.
+                    std::vector<std::pair<double, int>> changes;
+                    for (int i = 0; i * e < length - 1.0e-6; ++i)
+                        if (const auto root = rootAt (i * e); changes.empty() || changes.back().second != root)
+                            changes.push_back ({ i * e, root });
+                    const auto key = spans.front().key;
+                    for (size_t i = 0; i < changes.size(); ++i)
+                    {
+                        const auto from = changes[i].first;
+                        const auto to = i + 1 < changes.size() ? changes[i + 1].first : length;
+                        const auto walk = i + 1 < changes.size() && to - from >= 2.0 * e * 2.0 - 1.0e-6;
+                        const auto heldTo = walk ? to - 2.0 * e : to;
+                        addNote (out, from, (heldTo - from) * 0.96, changes[i].second, 0.84f, length);
+                        if (walk)
+                        {
+                            const auto next = changes[i + 1].second;
+                            const auto dir = next < changes[i].second ? 1 : -1;   // (from above when it falls, from below when it rises)
+                            auto step = [&] (int steps)
+                            {
+                                const auto p = scaleStep (key, next, dir * steps);
+                                return p != next ? p : next + dir * steps;
+                            };
+                            addNote (out, to - 2.0 * e, e * 0.9, juce::jlimit (lowest, highest, step (2)), 0.72f, length);
+                            addNote (out, to - e, e * 0.9, juce::jlimit (lowest, highest, step (1)), 0.76f, length);
+                        }
+                    }
+                    break;
+                }
+                default:
+                {
+                    out.style = "Droning: whole notes";
+                    out.description = "The struck chord's root held, struck again on every bar and at every change";
+                    std::vector<double> at;
+                    for (auto t = 0.0; t < length - 1.0e-6; t += bpb)
+                        at.push_back (t);
+                    for (int i = 1; i * e < length - 1.0e-6; ++i)
+                        if (rootAt (i * e) != rootAt ((i - 1) * e))
+                            at.push_back (i * e);
+                    std::sort (at.begin(), at.end());
+                    at.erase (std::unique (at.begin(), at.end(), [] (double a, double b) { return b - a < 1.0e-6; }), at.end());
+                    at.push_back (length);
+                    for (size_t i = 0; i + 1 < at.size(); ++i)
+                        addNote (out, at[i], (at[i + 1] - at[i]) * 0.97, rootAt (at[i] + 1.0e-6), 0.82f, length);
+                    break;
+                }
+            }
+            sortNotes (out);
+            return out;
+        }
+
         // The droning chorus's part for a lane (none: the lane plays as usual: the melody, and the guitar itself).
         std::optional<LineIdea> droningLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
@@ -1442,8 +1538,11 @@ namespace pr7s
                     const auto& profile = c.bassProfile;
                     const auto lowest = profile.has_value() ? profile->rangeLow() : c.bassTuning.lowest();
                     const auto highest = profile.has_value() ? profile->rangeHigh() : bassTop (c.bassTuning);
-                    auto idea = droningBass (guitar, spans, lowest, highest);
-                    if ((lane.approach >= 0 ? lane.approach % 2 : lane.variation % 2) == 1)   // (0.94.0: chosen, else by the take)
+                    // (0.97.1, the owner: more than one bassline) chosen, else by the take between the first two.
+                    const auto approach = lane.approach >= 0 ? lane.approach % 6 : lane.variation % 2;
+                    auto idea = approach >= 2 ? droningBassLine (approach, guitar, spans, c.beatsPerBar, lowest, highest)
+                                              : droningBass (guitar, spans, lowest, highest);
+                    if (approach == 1)   // (0.94.0: chosen, else by the take)
                     {
                         pulseLoopEnds (idea, c.beatsPerBar, sectionLength (spans));
                         idea.description += "; the last bar of every eight pulsed in eighths";
@@ -1581,12 +1680,39 @@ namespace pr7s
         return out;
     }
 
+    bool sectionTypeWritesLane (ComposerLayer l, const ComposerState& s, const ComposerContext& c)
+    {
+        if (s.syncLayer().has_value())
+            return false;
+        if (droningBand (s, c))
+            return l == ComposerLayer::bass || l == ComposerLayer::chords || l == ComposerLayer::lead || l == ComposerLayer::drums;
+        switch (sectionBand (s))
+        {
+            case SectionType::Band::staccato:
+            case SectionType::Band::split: return l == ComposerLayer::bass || l == ComposerLayer::drums;
+            case SectionType::Band::clean: return l != ComposerLayer::melody && l != ComposerLayer::lead;
+            case SectionType::Band::none: break;
+        }
+        return false;
+    }
+
     std::vector<LineIdea> composerChoices (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
     {
         std::vector<LineIdea> out;
         if (spans.empty())
             return out;
         auto each = s;
+        // (0.97.1, the owner: every bass style under DRONING was the same bassline) the type's options, not the styles.
+        if (sectionTypeWritesLane (l, s, c))
+        {
+            const auto approaches = sectionApproaches (s, l);
+            for (int i = 0; i < approaches.size(); ++i)
+            {
+                each.lane (l).approach = i;
+                out.push_back (syncedLayer (l, each, spans, c));
+            }
+            return out;
+        }
         for (int i = 0; i < composerStyleCount (l); ++i)
         {
             each.lane (l).style = i;

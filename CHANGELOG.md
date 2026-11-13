@@ -2,6 +2,22 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.97.1
+
+**The DRONING chorus's bass had one bassline listed seven times** (your report). Under a section type, the type writes some lanes itself (DRONING writes the bass, keys, lead and drums), and those lanes ignored the style you picked. So the STYLES list showed the same bassline over and over.
+
+Now, for a lane the section type writes, the lane's menu lists the type's own options instead, each a different part with its description. Picking one changes the part. This applies to DRONING (bass, keys, lead, drums), STACCATO CHUG and SPLIT CHUG (bass, drums) and CLEAN VERSE (guitar, bass, drums, keys). Lanes the type leaves alone keep their usual styles, and so does every lane with SYNC on.
+
+**Four more basslines for the droning chorus**, six in all:
+- HELD WITH THE GUITAR (as before)
+- HELD, PULSED AT THE LOOP'S END (as before)
+- **EIGHTHS UNDER THE DRONE:** the root in steady eighths under the ringing guitar.
+- **OCTAVE PULSE:** eighths jumping between the root and its octave.
+- **WALKING INTO THE CHANGES:** the root held, then two eighths stepping through the key's scale into the next chord.
+- **WHOLE NOTES:** the root struck once a bar.
+
+All of them follow the guitar's pushes: a chord the guitar hits a beat early changes the bass early too. AUTOMATIC still picks between the first two.
+
 ## 0.97.0
 
 **CLEAN VERSE, a new verse type**, from your examples: Evanescence's Masterpiece and The End of the Dream, Spiritbox's Circle With Me, KoRn's Clown, Linkin Park's Crawling and In The End. I read them for their shapes only; nothing is copied, and your files aren't in the repo.

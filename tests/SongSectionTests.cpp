@@ -1198,3 +1198,69 @@ TEST_CASE ("0.97.0: CLEAN VERSE's band follows the guitar's part when left autom
         CHECK (layer (all, ComposerLayer::melody).notes == layer (composeLayers (plain, spans, c), ComposerLayer::melody).notes);
     }
 }
+
+TEST_CASE ("0.97.1: a lane the section type writes offers the type's options, each a different part", "[sections][types]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();
+    const auto distinct = [] (const std::vector<LineIdea>& ideas)
+    {
+        std::set<juce::String> seen;
+        for (const auto& idea : ideas)
+        {
+            juce::String key;
+            for (const auto& n : idea.notes)
+                key << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << ";";
+            seen.insert (key);
+        }
+        return (int) seen.size();
+    };
+    // The owner's report: DRONING's bass listed one bassline seven times.
+    ComposerState droning;
+    applySectionType (droning, "Chorus", "DRONING");
+    REQUIRE (sectionTypeWritesLane (ComposerLayer::bass, droning, c));
+    CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::guitar, droning, c));
+    CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::melody, droning, c));
+    const auto bass = composerChoices (ComposerLayer::bass, droning, spans, c);
+    REQUIRE (bass.size() == 6);
+    CHECK (distinct (bass) == 6);
+    for (const auto l : { ComposerLayer::chords, ComposerLayer::lead, ComposerLayer::drums })
+    {
+        const auto ideas = composerChoices (l, droning, spans, c);
+        CHECK (ideas.size() == 3);
+        CHECK (distinct (ideas) == 3);
+    }
+    // WALKING INTO THE CHANGES: the root held, then two eighths stepping into the next chord's root.
+    {
+        auto s = droning;
+        s.lane (ComposerLayer::bass).approach = 4;
+        const auto idea = composeLayers (s, spans, c)[(size_t) ComposerLayer::bass];
+        CHECK (idea.style == "Droning: walking into the changes");
+        auto walks = 0;
+        for (size_t i = 0; i + 2 < idea.notes.size(); ++i)
+            if (idea.notes[i + 1].length < 0.6 && idea.notes[i + 2].length < 0.6 && i + 3 < idea.notes.size())
+            {
+                const auto target = idea.notes[i + 3].pitch;
+                CHECK (std::abs (idea.notes[i + 2].pitch - target) <= 2);   // (a scale step into it)
+                CHECK (std::abs (idea.notes[i + 1].pitch - target) <= 4);
+                ++walks;
+            }
+        CHECK (walks >= 2);
+    }
+    // The other types: SPLIT CHUG's and STACCATO CHUG's bass and drums, CLEAN VERSE's guitar.
+    ComposerState split;
+    applySectionType (split, "Verse", "SPLIT CHUG");
+    CHECK (composerChoices (ComposerLayer::drums, split, spans, c).size() == 2);
+    CHECK (distinct (composerChoices (ComposerLayer::drums, split, spans, c)) == 2);
+    CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::guitar, split, c));   // (its guitar has its riff kinds and styles)
+    const auto clean = cleanState (-1);
+    CHECK (distinct (composerChoices (ComposerLayer::guitar, clean, spans, c)) == 5);
+    CHECK (distinct (composerChoices (ComposerLayer::bass, clean, spans, c)) == 4);
+    // SYNC on: the lanes follow the sync lane, the styles back.
+    auto synced = droning;
+    synced.syncLane = (int) ComposerLayer::guitar;
+    CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::bass, synced, c));
+    // STANDARD: the styles, as before.
+    ComposerState plain;
+    CHECK (composerChoices (ComposerLayer::bass, plain, spans, c).size() == (size_t) composerStyleCount (ComposerLayer::bass));
+}
