@@ -165,27 +165,29 @@ jobs:
         with:
           path: artifacts
 
-      # The studio's synth (0.9.11): PR7-K's latest release, its VST3 beside
-      # the app in each zip (the app looks there first). If it can't be had,
-      # the release goes out without it (the app then uses the old synth).
-      - name: PR7-K, the studio's synth
+      # THE BACKLINE: the family's instruments, each from its own latest release, its VST3 beside the app in
+      # each zip (the app looks there first): PR7-K, the studio's synth (0.9.11), and PR7-D, the studio's drums
+      # (0.107.0). One that can't be had is left out with a warning (the app then uses what it has).
+      - name: The Backline (PR7-K, PR7-D)
         if: steps.version.outputs.publish != 'false'
         run: |
-          mkdir pr7k
-          if gh release download --repo ARYEZ/Paragon-PR7-K --pattern "*-VST3.zip" --dir pr7k; then
-            for os in Windows Linux; do
-              [ -d "artifacts/ParagonPR7S-${os}" ] || continue
-              zip=$(ls pr7k/*-${os}-VST3.zip 2>/dev/null | head -1)
-              if [ -n "$zip" ]; then
-                unzip -q "$zip" -d "artifacts/ParagonPR7S-${os}/"
-                echo "PR7-K for ${os}: $(basename "$zip")"
-              else
-                echo "::warning::No PR7-K VST3 for ${os} in its latest release"
-              fi
-            done
-          else
-            echo "::warning::PR7-K's latest release couldn't be downloaded; the zips go out without it"
-          fi
+          for member in K D; do
+            mkdir -p "backline/${member}"
+            if gh release download --repo "ARYEZ/Paragon-PR7-${member}" --pattern "*-VST3.zip" --dir "backline/${member}"; then
+              for os in Windows Linux; do
+                [ -d "artifacts/ParagonPR7S-${os}" ] || continue
+                zip=$(ls backline/${member}/*-${os}-VST3.zip 2>/dev/null | head -1)
+                if [ -n "$zip" ]; then
+                  unzip -q -o "$zip" -d "artifacts/ParagonPR7S-${os}/"
+                  echo "PR7-${member} for ${os}: $(basename "$zip")"
+                else
+                  echo "::warning::No PR7-${member} VST3 for ${os} in its latest release"
+                fi
+              done
+            else
+              echo "::warning::PR7-${member}'s latest release couldn't be downloaded; the zips go out without it"
+            fi
+          done
 
       - name: Zip each platform's app
         if: steps.version.outputs.publish != 'false'
@@ -209,12 +211,13 @@ jobs:
             chmod -R a+x artifacts/ParagonPR7S-Linux/*.vst3/Contents/x86_64-linux 2>/dev/null || true
           fi
           # Each zip: the app, its .pdb on Windows (names in the session log's
-          # crash entries), and PR7-K's VST3 if it was fetched.
+          # crash entries), and the Backline's VST3s (PR7-K, PR7-D) that were fetched.
           pack() {   # folder, zip name, app, zip flags
             # (0.52.3) The icon for an Elgato Stream Deck's keys (the owner asked), in a folder beside the app.
             mkdir -p "artifacts/$1/Stream Deck icons" && cp resources/icon/stream-deck-*.png "artifacts/$1/Stream Deck icons/"
             (cd "artifacts/$1" && files=("$3" "Stream Deck icons") && { [ -e "Paragon PR7-S.pdb" ] && files+=("Paragon PR7-S.pdb"); true; } \
                && { [ -e "Paragon PR7-K.vst3" ] && files+=("Paragon PR7-K.vst3"); true; } \
+               && { [ -e "Paragon PR7-D.vst3" ] && files+=("Paragon PR7-D.vst3"); true; } \
                && zip $4 "../../release/$2" "${files[@]}")
           }
           # (adding a missing Linux zip to a release: Linux only)

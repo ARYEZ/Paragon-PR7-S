@@ -2,6 +2,22 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.107.0
+
+**The composer's drums come from PR7-D's groove library, and PR7-D ships with the studio as its house drum kit** (you asked: "you can't leverage the groove library that is scanned into the PR7-D?", and to ship PR7-D like PR7-K: the start of the Backline).
+
+- **PR7-D's grooves in the composer.** The drums lane now reads the grooves PR7-D already knows: the folders you linked on its GROOVES page, as PR7-D read them. Nothing to scan twice. PR7-S only reads PR7-D's list, never changes it. If PR7-D has no grooves listed on this computer, the MediaBay's drum MIDI is used as in 0.106.0.
+- **The right drums for each pack.** Packs are written for different kits, and PR7-D knows each linked folder's note layout (its FILES' MAP). Each groove's notes are now turned into the drum track's own: the PR7-D Map when the Drums track plays PR7-D, General MIDI otherwise. A hi-hat stays a hi-hat, and the toms and cymbals land on the right drums.
+- **Better choices.** The packs' own labels count when a groove is chosen: a groove labelled as a fill is used as a fill even without "fill" in its name, an ending counts as an ending, and the genre counts toward your style. Grooves in a different time signature from the song are left out. Folders you excluded in PR7-D are left out here too.
+- **PR7-D is the studio's drums.** It now comes in the zip beside the app, as PR7-K does (keep `Paragon PR7-D.vst3` in the same folder as the app). New drum tracks play it: the composer's Drums track, BUILD, IDEAS' drums, and a new **PR7-D (the studio's drums)** item in the Add Track menu. They open on the PR7-D Map, so the MIDI editor shows PR7-D's drum names. If PR7-D isn't found, drum tracks start on the studio's synth as before.
+- **The Backline.** The release now fetches the family's instruments in one step (PR7-K and PR7-D for now), so more of your instruments can join it the same way.
+
+Worth knowing:
+- It reads PR7-D's list as it was last scanned in PR7-D. A folder you've just added appears once PR7-D has read it (open GROOVES in PR7-D once).
+- Folders set to PR7-D's CUSTOM map are taken as they are, since only PR7-D knows that map.
+- Sections built before this release keep their drums until they're built again.
+- I can't run PR7-D here or see your library, so this was tested with groove files and a PR7-D list I made in its format. Tell me if a pack's drums land in the wrong places.
+
 ## 0.106.0
 
 **The composer's drums come from your groove library by default** (you asked: "those are much better grooves than what we are currently generating").

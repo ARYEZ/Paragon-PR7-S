@@ -434,6 +434,18 @@ namespace pr7s
         // the DRUMS tab plays from (settings key "ideasDrummer"; empty: the style's rules).
         juce::File getDrummerFolder() const { return drummerFolderOverride != juce::File() ? drummerFolderOverride : defaultDrummerFolder(); }
         void setDrummerFolderForTests (const juce::File& f) { drummerFolderOverride = f; }
+        // (0.107.0) PR7-D's groove library (Pr7dGrooves.h), read from its presets folder (tests: their own folder; no
+        // settings file and no folder set: not read) and read again when its index changes. The composer's drums take
+        // their grooves from it when it has any, else from the MediaBay.
+        void setPr7dFolderForTests (const juce::File& f) { pr7dFolderOverride = f; keptPr7d = {}; }
+        const Pr7dLibrary& getPr7dLibrary() const;
+        // The drum notes the composer's library grooves go onto: the PR7-D Map's when the composer's drums track
+        // (the "Drums" track, or the one a new one would be) plays PR7-D on that map, else General MIDI.
+        DrumNotes composerDrumNotes() const;
+        // (0.107.0, the Backline) A new drum track's instrument: the studio's drums (PR7-D) when found, else the
+        // studio's synth; addDrumsTrack adds one with that name and its drum map (the default one).
+        Instrument drumsInstrument() const;
+        int addDrumsTrack (const juce::String& name = "Drums");
         std::vector<juce::String> getDrummerNames() const { return drummerNames (getDrummerFolder()); }
         std::optional<DrumProfile> loadDrummer (const juce::String& name) const;
         // (0.85.2) The last profile read, kept while its file's size and date are the same: the composer
@@ -1816,6 +1828,12 @@ namespace pr7s
         // (0.106.0) The composer's library grooves, kept until the library, the style or the tempo changes.
         struct KeptGrooves { const void* items = nullptr; size_t count = 0; int style = -1; int bpm = 0; std::vector<LibraryGroove> grooves; };
         mutable KeptGrooves keptGrooves;
+        juce::File pr7dFolderOverride;
+        mutable Pr7dLibrary keptPr7d;
+        mutable juce::Time keptPr7dIndexDate;
+        mutable bool keptPr7dRead = false;
+        struct KeptPr7dGrooves { juce::Time date; int style = -1; int bpm = 0; int bar = 0; size_t count = 0; std::vector<LibraryGroove> grooves; };
+        mutable KeptPr7dGrooves keptPr7dGrooves;
         std::shared_ptr<const AudioData> mediaPreviewSound;
         double mediaPreviewBeats = 0.0;
         bool mediaPreviewMidi = false;

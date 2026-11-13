@@ -1823,13 +1823,11 @@ void ComposerPage::showTrackMenu (ComposerLayer l)
                             else if (chosen == 2)
                             {
                                 auto& studio = safe->studio;
-                                const auto id = studio.addTrack (pr7s::Instrument {});
-                                if (id != 0)
-                                {
+                                // (0.107.0) A drums track plays the studio's drums (PR7-D) when found, on the
+                                // default map (0.77.3).
+                                const auto id = l == ComposerLayer::drums ? studio.addDrumsTrack (name) : studio.addTrack (pr7s::Instrument {});
+                                if (id != 0 && l != ComposerLayer::drums)
                                     studio.renameTrack (id, name);
-                                    if (l == ComposerLayer::drums)
-                                        studio.setTrackDrumMap (id, studio.defaultDrumMapFor (id));   // (0.77.3: the default map)
-                                }
                                 safe->setTrack (l, 0);
                             }
                             else

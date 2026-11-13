@@ -2930,6 +2930,63 @@ namespace pr7s
         modified = wasModified;
     }
 
+    const Pr7dLibrary& Studio::getPr7dLibrary() const
+    {
+        const auto folder = pr7dFolderOverride != juce::File() ? pr7dFolderOverride
+                          : settings != nullptr ? pr7dPresetsFolder() : juce::File();
+        if (folder == juce::File())
+        {
+            keptPr7d = {};
+            return keptPr7d;
+        }
+        // Read again when PR7-D has written its index since (or the folder changed).
+        const auto date = folder.getChildFile ("Groove Index.xml").getLastModificationTime();
+        if (! keptPr7dRead || keptPr7d.folder != folder || date != keptPr7dIndexDate)
+        {
+            keptPr7d = readPr7dLibrary (folder);
+            keptPr7dIndexDate = date;
+            keptPr7dRead = true;
+            if (keptPr7d.found)
+                SessionLog::note ("PR7-D's groove library: " + juce::String ((int) keptPr7d.grooves.size()) + " grooves (" + folder.getFullPathName() + ")");
+        }
+        return keptPr7d;
+    }
+
+    DrumNotes Studio::composerDrumNotes() const
+    {
+        if (const auto id = findIdeaTrack (LineIdea::Part::drums); id != 0)
+        {
+            const auto* track = project.findTrack (id);
+            return track != nullptr && track->drumMap == DrumMap::pr7d().name ? DrumNotes::pr7d : DrumNotes::generalMidi;
+        }
+        // None yet: what a new one would be (PR7-D, on the map it'd get).
+        if (host->getStudioDrums() == nullptr)
+            return DrumNotes::generalMidi;
+        const auto chosen = getDefaultDrumMap();
+        return isDrumMapAvailable (chosen) && chosen != DrumMap::pr7d().name ? DrumNotes::generalMidi : DrumNotes::pr7d;
+    }
+
+    Instrument Studio::drumsInstrument() const
+    {
+        Instrument instrument;
+        if (const auto* drums = host->getStudioDrums())
+        {
+            instrument.kind = Instrument::Kind::plugin;
+            instrument.plugin = *drums;
+        }
+        return instrument;
+    }
+
+    int Studio::addDrumsTrack (const juce::String& name)
+    {
+        const auto id = addTrack (drumsInstrument());
+        if (id == 0)
+            return 0;
+        renameTrack (id, name);
+        setTrackDrumMap (id, defaultDrumMapFor (id));
+        return id;
+    }
+
     bool Studio::playsPr7d (int trackId) const
     {
         const auto* track = project.findTrack (trackId);
@@ -10511,13 +10568,14 @@ namespace pr7s
         auto trackId = canTakeMidi (ontoTrackId) ? ontoTrackId : 0;
         if (trackId == 0)
         {
-            trackId = addTrack (Instrument {});
+            // (0.54.0) Drums: a drum map (0.77.3: the default one), the MIDI editor's drum view; (0.107.0) the
+            // studio's drums (PR7-D) when it's found.
+            const auto drums = idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove;
+            trackId = drums ? addDrumsTrack (linePartName (idea.part)) : addTrack (Instrument {});
             if (trackId == 0)
                 return 0;
-            renameTrack (trackId, linePartName (idea.part));
-            // (0.54.0) Drums: a drum map (0.77.3: the default one), the MIDI editor's drum view.
-            if (idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove)
-                setTrackDrumMap (trackId, defaultDrumMapFor (trackId));
+            if (! drums)
+                renameTrack (trackId, linePartName (idea.part));
         }
         const auto part = partFromIdea (idea, spans.front().start, spans.back().end - spans.front().start, linePartName (idea.part) + ": " + idea.style);
         addPart (trackId, part);
@@ -10555,9 +10613,23 @@ namespace pr7s
         c.humanize = getIdeasHumanize();
         c.feel = getIdeasFeel();
         c.bpm = project.bpmAt (atBeat);
+        // (0.107.0) PR7-D's groove library first (the owner's: the folders its GROOVES page links), on the drums
+        // track's notes.
+        if (const auto& pr7d = getPr7dLibrary(); ! pr7d.grooves.empty())
+        {
+            const auto bpm = juce::roundToInt (c.bpm * 10.0);
+            const auto bar = juce::roundToInt (c.beatsPerBar * 1000.0);
+            if (keptPr7dGrooves.date != pr7d.indexDate || keptPr7dGrooves.count != pr7d.grooves.size() || keptPr7dGrooves.style != (int) c.style
+                || keptPr7dGrooves.bpm != bpm || keptPr7dGrooves.bar != bar)
+                keptPr7dGrooves = { pr7d.indexDate, (int) c.style, bpm, bar, pr7d.grooves.size(), findPr7dGrooves (pr7d, c.style, c.bpm, c.beatsPerBar) };
+            c.libraryGrooves = keptPr7dGrooves.grooves;
+            const auto notes = composerDrumNotes();
+            for (auto& g : c.libraryGrooves)
+                g.notes = notes;
+        }
         // (0.106.0) The groove library's drum MIDI (the MediaBay's), for the composer's drums lane. Without a settings
         // file (tests) the MediaBay isn't opened for this.
-        if (settings != nullptr || mediaBay != nullptr)
+        else if (settings != nullptr || mediaBay != nullptr)
         {
             const auto& items = const_cast<Studio*> (this)->getMediaBay().getItems();
             const auto bpm = juce::roundToInt (c.bpm * 10.0);
@@ -10702,12 +10774,12 @@ namespace pr7s
             auto trackId = i < onto.size() && canTakeMidi (onto[i]) ? onto[i] : findIdeaTrack (idea.part);
             if (trackId == 0)
             {
-                trackId = addTrack (Instrument {});
+                const auto drums = idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove;
+                trackId = drums ? addDrumsTrack (linePartName (idea.part)) : addTrack (Instrument {});   // (0.107.0: PR7-D)
                 if (trackId == 0)
                     continue;
-                renameTrack (trackId, linePartName (idea.part));
-                if (idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove)
-                    setTrackDrumMap (trackId, defaultDrumMapFor (trackId));
+                if (! drums)
+                    renameTrack (trackId, linePartName (idea.part));
             }
             plan.emplace_back (trackId, &idea);
             used.push_back (trackId);

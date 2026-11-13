@@ -2,6 +2,7 @@
 
 #include "engine/Riffs.h"
 #include "engine/MediaBay.h"
+#include "engine/Pr7dGrooves.h"
 
 #include <optional>
 
@@ -47,9 +48,17 @@ namespace pr7s
         juce::String name, folder;
         double bpm = 0.0;      // 0: not known
         int score = 0;
+        // (0.107.0) From PR7-D's library: its labels ("Type:Fill|Genre:Metal"), its folder's note layout (-1: the
+        // MediaBay's, notes as written) and the drum notes it goes onto (convertDrumNote).
+        juce::String tags;
+        int layout = -1;
+        DrumNotes notes = DrumNotes::asWritten;
     };
     // The MediaBay's MIDI files that look like drum grooves, best first.
     std::vector<LibraryGroove> findLibraryGrooves (const std::vector<MediaItem>&, GuitarStyle, double songBpm);
+    // (0.107.0) PR7-D's grooves, scored as findLibraryGrooves scores (its labels counted with the path), best first;
+    // only those whose bar is the song's (`songBarBeats` quarters; 0: any).
+    std::vector<LibraryGroove> findPr7dGrooves (const Pr7dLibrary&, GuitarStyle, double songBpm, double songBarBeats);
     // A groove as an idea over the chords (its file read; nothing if it can't be).
     std::optional<LineIdea> grooveIdea (const LibraryGroove&, const std::vector<ChordSpan>&, double beatsPerBar, juce::String& error);
 

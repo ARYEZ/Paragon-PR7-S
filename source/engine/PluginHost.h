@@ -51,13 +51,22 @@ namespace pr7s
         static juce::String describe (const juce::PluginDescription&);   // name, maker, version, file (for the session log)
         static constexpr const char* studioSynthFile = "Paragon PR7-K.vst3";
 
+        // THE BACKLINE (0.107.0, the owner: the family's instruments ship with the studio): the studio's drums,
+        // Paragon PR7-D, found the same way (beside the app, then the VST3 folders, the newest). New drum tracks play
+        // it (Studio::drumsInstrument); none found: the studio's synth as before. Not looked for in tests.
+        const juce::PluginDescription* getStudioDrums();
+        bool isStudioDrumsFound() { return getStudioDrums() != nullptr; }
+        static constexpr const char* studioDrumsFile = "Paragon PR7-D.vst3";
+
     private:
         void changeListenerCallback (juce::ChangeBroadcaster*) override;   // the list changed: keep it
 
         juce::AudioPluginFormatManager formats;
         juce::KnownPluginList known;
         juce::PropertiesFile* settings = nullptr;
-        bool findStudioSynth = true, studioSynthLooked = false;
-        std::optional<juce::PluginDescription> studioSynth;
+        bool findStudioSynth = true, studioSynthLooked = false, studioDrumsLooked = false;
+        std::optional<juce::PluginDescription> studioSynth, studioDrums;
+        // The newest instrument in `file` beside the app or in the VST3 folders (the Backline's search).
+        static std::optional<juce::PluginDescription> findBackline (const char* file);
     };
 }

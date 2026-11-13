@@ -1507,6 +1507,9 @@ juce::PopupMenu TrackList::makeAddTrackMenu (int offset)
     menu.addSectionHeader ("ADD AN INSTRUMENT TRACK");
     menu.addItem (offset + 1, studio.getPluginHost().isStudioSynthFound() ? juce::String ("PR7-K (the studio's synth)")
                                                                   : juce::String ("PR7-K not found: the old Paragon Synth"));
+    // (0.107.0, the Backline) The studio's drums.
+    if (studio.getPluginHost().isStudioDrumsFound())
+        menu.addItem (offset + 15, "PR7-D (the studio's drums)");
     const auto instruments = studio.getPluginHost().getInstruments();
     if (! instruments.isEmpty())
     {
@@ -1591,6 +1594,10 @@ bool TrackList::addTrackChosen (int chosen)
         else if (chosen == 1)
         {
             studio.addTrack ({});
+        }
+        else if (chosen == 15)
+        {
+            studio.addDrumsTrack();
         }
         else if (chosen == 3 || chosen == 4)
         {
