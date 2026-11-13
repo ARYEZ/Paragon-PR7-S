@@ -2,6 +2,29 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.109.0
+
+**Breakdowns get types of their own** (the next step of your plan; your songs' breakdowns read for their shapes only, our names). A Breakdown block's TYPE menu now starts with ten new types, with HEAVY CHUG and STACCATO CHUG still under them. Each type writes the guitar, bass, keys and drums (and, for one of them, the lead), and every lane's menu has its options, as with the bridge types.
+
+- **CHROMATIC CRAWL** (Circle With Me): low power chords in quarters creeping up inside a minor third and back to the root on 4, with high harmonics (or a rake) ringing on 3, or plain quarters. Drums: the kick under the guitar, a china on 3 and the snare only once every two bars, or half time. Keys: one high note at a time, held two bars.
+- **HIT & HOLD, THEN CARPET** (This Fire Burns): a stab and a held chord, then four muted eighths, over half time; from halfway, muted eighths wandering inside a minor third over a sixteenth double-kick carpet. Either half on its own is an option too.
+- **CHUG & SQUEAL** (Clown, Whole): half-time root chugs answered by a high clashing chord held a minor ninth up (a chromatic pickup every fourth bar); or chug pairs and a high stab (a bar of the stab in eighths every fourth bar); or a high note bent up on 2 and 4. Drums: the kick on every chug with the ride, or with open hats and a crash every bar.
+- **DOTTED TRITONE PUSH** (Ten Ton Hammer, Capricorn): dead-string scratches growing into eighths, then power chords in a dotted push climbing to the tritone; or the push alone; or the root against the tritone on dotted eighths with scratches in the gaps.
+- **TRIPLET CLUSTER** (Wildfire): a low clashing cluster (a half step over the root, with its fifth and octave) in groups of triplets with gaps, the last bars in wider triplets so it sounds like it slows down.
+- **GAPPED SIXTEENTHS** (Parallels, Stricken): one muted chord in sixteenths, the groove made only by where the gaps fall; or a non-stop chug stream stabbed with dark chords. Drums: the kick with the chugs, or a double-kick carpet.
+- **THREES & TWOS** (The Heart and the Shape, Another Life, your band's drum MIDI): chugs grouped 3+3+2 (a high clashing chord every fourth bar), or a dark chord taking turns with the root chug in 3+3+3+3+2+2. Drums: the kick and china on the groups, or a bar of that in turn with a bar of double kick.
+- **CALL & CHUG** (The End of Heartache, Waffle): a bar of single low notes bent and let go, answered by a bar of chugs ending on a flat-second accent; or high octave stabs answered by a walk down to the root.
+- **HALF-TIME OPEN CHORDS** (The Void): wide open chords on a sparse half-time rhythm, moving with your chords, optionally building at the end (whole notes, quarters, eighths). The lead can play a slow melody on top.
+- **OFF-BEAT GALLOPS** (This Calling): single-note gallops on the low root coming in after the downbeat, in bursts of three and two, a pinch squeal in a gap; the kick on every gallop note.
+
+Worth knowing:
+- Every type's bass: **DOUBLES THE GUITAR** (its low notes only: not the harmonics, high stabs or scratches), **ROOTS HELD**, or **LOCKED WITH THE KICK**.
+- The breakdowns follow your chord track: the low root is each bar's chord root, and the clashing steps (the flat second, the tritone, the minor ninth) are the breakdowns' own, so KEY CHECK will point them out.
+- Five of these breakdowns came from guitar-only tabs (Ten Ton Hammer, Whole, Wildfire, Parallels, The End of Heartache), so their bass and drums are my guess at the usual way, not your songs'. Faster has no breakdown; its band-out moment is already the SILENT BAR transition.
+- I can't listen to these here, so tell me which ones don't sound like your songs.
+
+Next, as planned: interlude/post-chorus (Faster's HOOK RIFF), then intro/outro.
+
 ## 0.108.0
 
 **PR7-D plays the composer's drums from its own song track** (you asked for full integration). This needs PR7-D 0.83.0, which comes in this zip.

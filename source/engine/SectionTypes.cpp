@@ -70,7 +70,23 @@ namespace pr7s
                          { "SLIDE OVER A HELD ROOT", "A palm-muted root rung with a sliding triplet figure on top, in turn with syncopated stabs", r, {}, b },
                          creep, open, droning };
             }
-            case 4: return { heavy, staccato };
+            case 4:
+            {
+                // (0.109.0) A breakdown's own types first (the owner's songs, shapes only; our names), then the old two.
+                const auto d = SectionType::Band::breakdown;
+                const auto r = RiffFlavour::chugs;
+                return { { "CHROMATIC CRAWL", "Low power chords in quarters creeping inside a minor third, harmonics ringing in the gaps, the snare once in two bars", r, {}, d },
+                         { "HIT & HOLD, THEN CARPET", "A stab and a held chord over half time, then muted eighths over a double-kick carpet", r, {}, d },
+                         { "CHUG & SQUEAL", "Half-time chugs answered by a high clashing chord held over them", r, {}, d },
+                         { "DOTTED TRITONE PUSH", "Dead-string scratches building, then power chords in a dotted push climbing to the tritone", r, {}, d },
+                         { "TRIPLET CLUSTER", "A low clashing cluster in triplet groups with gaps, widening at the end as if slowing down", r, {}, d },
+                         { "GAPPED SIXTEENTHS", "One muted chord in sixteenths carved by its gaps, or a chug stream stabbed with dark chords", r, {}, d },
+                         { "THREES & TWOS", "Stabs and chugs grouped in threes and twos, the kick and china locked to them", r, {}, d },
+                         { "CALL & CHUG", "A bar of bent single notes or high octaves, answered by a bar of chugs", r, {}, d },
+                         { "HALF-TIME OPEN CHORDS", "Wide open chords on a sparse half-time rhythm, a melody over them, a build at the end", r, {}, d },
+                         { "OFF-BEAT GALLOPS", "Single-note gallops coming in after the downbeat in bursts, a pinch squeal in a gap", r, {}, d },
+                         heavy, staccato };
+            }
             case 5: return { droning, stabs };
             case 6: return { driving, droning };
             default: break;
@@ -241,6 +257,39 @@ namespace pr7s
         return {};
     }
 
+    // (0.109.0) The breakdown types' options, lane by lane (the bass's always DOUBLES THE GUITAR, ROOTS HELD, LOCKED WITH
+    // THE KICK; only HALF-TIME OPEN CHORDS has a lead list: the others' lead plays its own styles).
+    juce::StringArray breakdownApproaches (const juce::String& type, ComposerLayer layer)
+    {
+        using L = ComposerLayer;
+        const auto t = type.trim().toUpperCase();
+        struct Lists { const char* name; juce::StringArray guitar, keys, drums, lead; };
+        static const Lists lists[] {
+            { "CHROMATIC CRAWL", { "CRAWL & HARMONICS", "CRAWL & RAKES", "PLAIN QUARTERS" }, { "HIGH HELD NOTES", "SILENT" }, { "SNARE EVERY TWO BARS", "HALF TIME" }, {} },
+            { "HIT & HOLD, THEN CARPET", { "HOLD, THEN EIGHTHS", "HIT & HOLD ONLY", "MUTED EIGHTHS ONLY" }, { "SILENT", "LOW PAD" }, { "HALF TIME, THEN CARPET", "HALF TIME", "CARPET" }, {} },
+            { "CHUG & SQUEAL", { "CHUGS & HELD SQUEAL", "CHUG PAIRS & STAB", "SQUEAL ON 2 AND 4" }, { "SILENT", "HELD PADS" }, { "KICK WITH THE CHUGS, RIDE", "KICK WITH THE CHUGS, OPEN HATS" }, {} },
+            { "DOTTED TRITONE PUSH", { "SCRATCHES, THEN THE PUSH", "THE PUSH ONLY", "ROOT & TRITONE, SCRATCHES" }, { "SILENT", "HELD PADS" }, { "KICK ON THE PUSHES", "HALF TIME" }, {} },
+            { "TRIPLET CLUSTER", { "TRIPLETS, THEN WIDER", "TRIPLETS ONLY" }, { "SILENT", "LOW DRONE" }, { "KICK WITH THE TRIPLETS", "HALF TIME" }, {} },
+            { "GAPPED SIXTEENTHS", { "GAPS IN THE SIXTEENTHS", "CHUG STREAM & DARK STABS" }, { "SILENT", "LOW DRONE" }, { "KICK WITH THE CHUGS", "DOUBLE-KICK CARPET" }, {} },
+            { "THREES & TWOS", { "3+3+2 STABS & CHUGS", "3+3+3+3+2+2" }, { "SILENT", "STABS ON THE GROUPS" }, { "KICK & CHINA ON THE GROUPS", "GROUPS, THEN CARPET IN TURN" }, {} },
+            { "CALL & CHUG", { "BENT CALL, CHUG ANSWER", "OCTAVE STABS, WALK DOWN" }, { "SILENT", "HELD PADS" }, { "KICK WITH THE ANSWER", "HALF TIME" }, {} },
+            { "HALF-TIME OPEN CHORDS", { "OPEN CHORDS, SPARSE", "OPEN CHORDS, THEN BUILD" }, { "HELD PADS", "SILENT" }, { "HALF TIME, RIDE", "HALF TIME, THEN BUILD" }, { "MELODY ON TOP", "SILENT" } },
+            { "OFF-BEAT GALLOPS", { "GALLOP BURSTS & SQUEAL", "GALLOP BURSTS" }, { "SILENT", "LOW DRONE" }, { "DOUBLE KICK ON THE GALLOPS", "HALF TIME" }, {} },
+        };
+        for (const auto& list : lists)
+            if (t == list.name)
+                switch (layer)
+                {
+                    case L::guitar: return list.guitar;
+                    case L::bass: return { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" };
+                    case L::chords: return list.keys;
+                    case L::drums: return list.drums;
+                    case L::lead: return list.lead;
+                    case L::melody: return {};
+                }
+        return {};
+    }
+
     // (0.102.0) The pre-chorus types' options, lane by lane (the bass's last always LOCKED WITH THE KICK; none: the
     // lane plays its own styles).
     juce::StringArray preChorusApproaches (const juce::String& type, ComposerLayer layer)
@@ -362,6 +411,8 @@ namespace pr7s
             return preChorusApproaches (t->name, layer);
         if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::bridge)
             return bridgeApproaches (t->name, layer);
+        if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::breakdown)
+            return breakdownApproaches (t->name, layer);
         if (layer == ComposerLayer::guitar)
             if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && ! t->guitarFlavours.empty())
             {

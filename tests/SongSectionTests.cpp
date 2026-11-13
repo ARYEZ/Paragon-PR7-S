@@ -2716,3 +2716,192 @@ TEST_CASE ("0.105.0: the bridge types' shapes", "[sections][types][bridge]")
         CHECK (second == first - 1);
     }
 }
+
+TEST_CASE ("0.109.0: a breakdown's own types, every lane's options a different part", "[sections][types][breakdown]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const std::vector<juce::String> names { "CHROMATIC CRAWL", "HIT & HOLD, THEN CARPET", "CHUG & SQUEAL", "DOTTED TRITONE PUSH", "TRIPLET CLUSTER",
+                                            "GAPPED SIXTEENTHS", "THREES & TWOS", "CALL & CHUG", "HALF-TIME OPEN CHORDS", "OFF-BEAT GALLOPS" };
+    const auto breakdown = sectionTypesFor ("Breakdown");
+    REQUIRE (breakdown.size() == names.size() + 2);
+    for (size_t i = 0; i < names.size(); ++i)
+        CHECK (breakdown[i].name == names[i]);
+    CHECK (breakdown[names.size()].name == "HEAVY CHUG");   // (the old two kept after them)
+    CHECK (breakdown[names.size() + 1].name == "STACCATO CHUG");
+    CHECK_FALSE (sectionTypeNamed ("Verse", "CALL & CHUG").has_value());
+    for (const auto& name : names)
+        CHECK (sectionTypeCalled (name)->band == SectionType::Band::breakdown);
+
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << ";";
+        return k;
+    };
+    for (const auto& name : names)
+    {
+        ComposerState s;
+        applySectionType (s, "Breakdown", name);
+        REQUIRE (sectionBand (s) == SectionType::Band::breakdown);
+        for (const auto l : composerLayers())
+        {
+            const auto options = sectionApproaches (s, l);
+            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && ! options.isEmpty()));
+            if (options.isEmpty())
+                continue;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) options.size());
+            std::set<juce::String> seen;
+            for (const auto& idea : choices)
+            {
+                INFO (name << " " << composerLayerName (l) << " " << idea.style);
+                CHECK (idea.notes.size() + (idea.style.containsIgnoreCase ("out") ? 1 : 0) > 0);
+                seen.insert (key (idea));
+            }
+            INFO (name << " " << composerLayerName (l));
+            CHECK (seen.size() == choices.size());
+        }
+        const auto all = composeLayers (s, spans, c);
+        for (const auto& idea : all)
+            for (const auto& n : idea.notes)
+                CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+    }
+}
+
+TEST_CASE ("0.109.0: the breakdown types' shapes", "[sections][types][breakdown]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (Am F C G a bar each, 8 bars: 32 beats; the low string A0 = 33)
+    const auto typed = [] (const juce::String& name, int guitar = -1, int drums = -1)
+    {
+        ComposerState s;
+        applySectionType (s, "Breakdown", name);
+        s.lane (ComposerLayer::guitar).approach = guitar;
+        s.lane (ComposerLayer::drums).approach = drums;
+        return s;
+    };
+    const auto onsets = [] (const LineIdea& idea, double from, double to)
+    {
+        std::set<int> out;   // (in 48ths of a beat)
+        for (const auto& n : idea.notes)
+            if (n.beat >= from - 1.0e-6 && n.beat < to - 1.0e-6)
+                out.insert (juce::roundToInt ((n.beat - from) * 48.0));
+        return out;
+    };
+    const auto lowestAt = [] (const LineIdea& idea, double at)
+    {
+        auto low = 999;
+        for (const auto& n : idea.notes)
+            if (std::abs (n.beat - at) < 1.0e-6)
+                low = juce::jmin (low, n.pitch);
+        return low;
+    };
+    // CHROMATIC CRAWL: quarters a minor third and a whole step up, harmonics on 3, the root on 4; the snare once in two bars.
+    {
+        const auto all = composeLayers (typed ("CHROMATIC CRAWL", 0, 0), spans, c);
+        const auto& g = all[(size_t) ComposerLayer::guitar];
+        CHECK (lowestAt (g, 0.0) == 33 + 3);
+        CHECK (lowestAt (g, 1.0) == 33 + 2);
+        CHECK (lowestAt (g, 3.0) == 33);
+        auto harmonics = 0;
+        for (const auto& n : g.notes)
+            harmonics += n.technique == LineNote::Technique::harmonic && n.beat >= 2.0 - 1.0e-6 && n.beat < 3.0 - 1.0e-6 ? 1 : 0;
+        CHECK (harmonics > 0);
+        auto snares = 0;
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            snares += n.pitch == GmDrum::snare ? 1 : 0;
+        CHECK (snares == 4);
+        // The bass doubles the low notes, not the harmonics: nothing on beat 3 of the first bar.
+        for (const auto& n : all[(size_t) ComposerLayer::bass].notes)
+            CHECK_FALSE (std::abs (n.beat - 2.0) < 1.0e-6);
+    }
+    // HIT & HOLD, THEN CARPET: the second half's drums a sixteenth carpet, the first half's not.
+    {
+        const auto all = composeLayers (typed ("HIT & HOLD, THEN CARPET", 0, 0), spans, c);
+        std::set<int> kicks;
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            if (n.pitch == GmDrum::kick)
+                kicks.insert (juce::roundToInt (n.beat * 4.0));
+        auto firstHalf = 0, secondHalf = 0;
+        for (const auto k : kicks)
+            (k < 64 ? firstHalf : secondHalf)++;
+        CHECK (secondHalf == 64);
+        CHECK (firstHalf < 32);
+        // The first half's bar: a stab, then the held chord on the and of 1.
+        CHECK (onsets (all[(size_t) ComposerLayer::guitar], 0.0, 4.0) == std::set<int> { 0, 24, 96, 120, 144, 168 });
+    }
+    // CHUG & SQUEAL: chugs, the squeal a minor ninth over the root on beat 2 and the and of 3.
+    {
+        const auto g = composeLayers (typed ("CHUG & SQUEAL", 0), spans, c)[(size_t) ComposerLayer::guitar];
+        auto high = 0;
+        for (const auto& n : g.notes)
+            if (std::abs (n.beat - 1.0) < 1.0e-6)
+                high = juce::jmax (high, n.pitch);
+        CHECK (high == 33 + 25);
+        CHECK (lowestAt (g, 1.0) == 33 + 13);
+    }
+    // DOTTED TRITONE PUSH (the push only): 1, the and of 2, 4: a whole step, a minor third, the tritone.
+    {
+        const auto g = composeLayers (typed ("DOTTED TRITONE PUSH", 1), spans, c)[(size_t) ComposerLayer::guitar];
+        CHECK (onsets (g, 0.0, 4.0) == std::set<int> { 0, 72, 144 });
+        CHECK (lowestAt (g, 0.0) == 35);
+        CHECK (lowestAt (g, 1.5) == 36);
+        CHECK (lowestAt (g, 3.0) == 39);
+    }
+    // TRIPLET CLUSTER: triplets, the last four bars in quarter-note triplets.
+    {
+        const auto g = composeLayers (typed ("TRIPLET CLUSTER", 0), spans, c)[(size_t) ComposerLayer::guitar];
+        for (const auto& n : g.notes)
+        {
+            const auto grid = n.beat >= 16.0 - 1.0e-6 ? 2.0 / 3.0 : 1.0 / 3.0;
+            CHECK (std::abs (n.beat / grid - std::round (n.beat / grid)) < 1.0e-6);
+        }
+        CHECK (onsets (g, 16.0, 20.0).size() == 6);
+        CHECK (lowestAt (g, 0.0) == 34);   // (a half step over the root)
+    }
+    // GAPPED SIXTEENTHS: the first bar's gaps after three, three, four.
+    {
+        const auto g = composeLayers (typed ("GAPPED SIXTEENTHS", 0), spans, c)[(size_t) ComposerLayer::guitar];
+        std::set<int> steps;
+        for (const auto k : onsets (g, 0.0, 4.0))
+            steps.insert (k / 12);
+        CHECK (steps == std::set<int> { 0, 1, 2, 4, 5, 6, 8, 9, 10, 11, 13, 14, 15 });
+    }
+    // OFF-BEAT GALLOPS: nothing on the first beat; gallops from beat 2; the kick on every gallop note.
+    {
+        const auto all = composeLayers (typed ("OFF-BEAT GALLOPS", 0, 0), spans, c);
+        const auto& g = all[(size_t) ComposerLayer::guitar];
+        for (const auto& n : g.notes)
+            CHECK_FALSE ((n.beat < 1.0 - 1.0e-6));
+        CHECK (onsets (g, 0.0, 4.0) == std::set<int> { 48, 60, 72, 96, 108, 120, 144, 156, 168 });
+        std::set<int> kicks;
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            if (n.pitch == GmDrum::kick && n.beat < 4.0 - 1.0e-6)
+                kicks.insert (juce::roundToInt (n.beat * 48.0));
+        CHECK (kicks == onsets (g, 0.0, 4.0));
+        // The squeal: a pinch harmonic in the fourth bar.
+        auto pinch = false;
+        for (const auto& n : g.notes)
+            pinch = pinch || (n.beat >= 12.0 && n.beat < 16.0 && n.velocity >= GuitarVelocity::of (GuitarVelocity::pinch) - 1.0e-6);
+        CHECK (pinch);
+    }
+    // HALF-TIME OPEN CHORDS with the build: the last bars whole notes, then quarters, then eighths; the lead on top.
+    {
+        auto s = typed ("HALF-TIME OPEN CHORDS", 1, 1);
+        s.lane (ComposerLayer::lead).on = true;
+        s.lane (ComposerLayer::lead).approach = 0;
+        const auto all = composeLayers (s, spans, c);
+        const auto& g = all[(size_t) ComposerLayer::guitar];
+        CHECK (onsets (g, 16.0, 20.0).size() == 1);
+        CHECK (onsets (g, 20.0, 24.0).size() == 4);
+        CHECK (onsets (g, 24.0, 28.0).size() == 8);
+        const auto& lead = all[(size_t) ComposerLayer::lead];
+        REQUIRE (lead.notes.size() == 16);
+        for (const auto& n : lead.notes)
+            CHECK (n.pitch >= 64);
+    }
+}
