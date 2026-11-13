@@ -1274,6 +1274,16 @@ namespace pr7s
         blockNumInputs = 0;
     }
 
+    bool Engine::sendToInstrument (int trackId, const juce::MidiMessage& message)
+    {
+        auto* track = findTrack (trackId);
+        if (track == nullptr)
+            return false;
+        const juce::SpinLock::ScopedLockType outbox (track->outboxLock);
+        track->outbox.addEvent (message, 0);
+        return true;
+    }
+
     void Engine::processTrack (TrackState& state, const BlockContext& block)
     {
         // (0.34.5) On any core: only this track's own things are touched here.
@@ -1304,6 +1314,16 @@ namespace pr7s
                 }
                 track->midi.addEvent (message, metadata.samplePosition);
             }
+        // (0.108.0) Messages the studio sent its instrument (PR7-D's studio link), at the block's start.
+        if (track->instrument != nullptr)
+        {
+            const juce::SpinLock::ScopedTryLockType outbox (track->outboxLock);
+            if (outbox.isLocked() && ! track->outbox.isEmpty())
+            {
+                track->midi.addEvents (track->outbox, 0, -1, 0);
+                track->outbox.clear();
+            }
+        }
         if (track->role != TrackState::Role::source)
         {
             // A group or FX channel: what was routed or sent to it.

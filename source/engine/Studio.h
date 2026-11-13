@@ -446,6 +446,22 @@ namespace pr7s
         // studio's synth; addDrumsTrack adds one with that name and its drum map (the default one).
         Instrument drumsInstrument() const;
         int addDrumsTrack (const juce::String& name = "Drums");
+        // (0.108.0, THE STUDIO LINK: Pr7dLink.h) PR7-D plays the composer's drums from its own song track: on (the
+        // default; settings `pr7dPlaysDrums`), a composer drum part put on a track playing PR7-D is a muted copy
+        // (`Part::linkCopy`) and PR7-D gets the song. `linksToPr7d`: that track would.
+        bool getPr7dPlaysDrums() const;
+        void setPr7dPlaysDrums (bool);
+        bool linksToPr7d (int trackId) const;
+        // A track's copies written as PR7-D's song and PR7-D told to load it, when they changed since (changed() does
+        // it; returns how many tracks were sent); PR7-D's edits read back into the copies (the timer: how many tracks
+        // changed). `pr7dLinkFile`: a track's link file (none: no link yet).
+        int syncPr7dLinks();
+        int readPr7dEdits();
+        juce::File pr7dLinkFile (int trackId) const;
+        // Tests: the link folder, which tracks count as PR7-D's, and every link message sent (track, message).
+        void setPr7dLinkFolderForTests (const juce::File& f) { linkFolderOverride = f; }
+        std::function<bool (int)> treatAsPr7dForTests;
+        std::function<void (int, const juce::MidiMessage&)> onPr7dMessage;
         std::vector<juce::String> getDrummerNames() const { return drummerNames (getDrummerFolder()); }
         std::optional<DrumProfile> loadDrummer (const juce::String& name) const;
         // (0.85.2) The last profile read, kept while its file's size and date are the same: the composer
@@ -1829,6 +1845,17 @@ namespace pr7s
         struct KeptGrooves { const void* items = nullptr; size_t count = 0; int style = -1; int bpm = 0; std::vector<LibraryGroove> grooves; };
         mutable KeptGrooves keptGrooves;
         juce::File pr7dFolderOverride;
+        // (0.108.0) The studio link: the copies' fingerprint last sent or read per track, when we last wrote each file,
+        // and the PR7-D tracks paused while the composer is heard.
+        juce::File linkFolderOverride;
+        std::map<int, juce::String> pr7dSent;
+        std::map<int, juce::Time> pr7dWritten;
+        std::vector<int> pr7dPaused;
+        bool pr7dPlaysDrumsHere = true;
+        int pr7dLinkTicks = 0;
+        void linkForPr7d (int trackId, const LineIdea&, Part&) const;
+        void sendPr7d (int trackId, const juce::MidiMessage&);
+        void pausePr7dSongs (bool pause);
         mutable Pr7dLibrary keptPr7d;
         mutable juce::Time keptPr7dIndexDate;
         mutable bool keptPr7dRead = false;

@@ -714,6 +714,8 @@ namespace pr7s
                 t->setAttribute ("listColour", true);
             if (track.listColourAmount != Track::defaultListColourAmount)
                 t->setAttribute ("listColourAmount", track.listColourAmount);
+            if (track.drumLink.isNotEmpty())
+                t->setAttribute ("drumLink", track.drumLink);
             if (track.output != 0)
                 t->setAttribute ("output", track.output);
             if (track.sendsBypass)
@@ -811,6 +813,8 @@ namespace pr7s
                 p->setAttribute ("name", part.name);
                 if (part.muted)
                     p->setAttribute ("muted", true);
+                if (part.linkCopy)
+                    p->setAttribute ("linkCopy", true);
                 for (const auto& m : part.warp)
                 {
                     auto* w = p->createNewChildElement ("Warp");
@@ -1099,6 +1103,7 @@ namespace pr7s
             track.folder = juce::jmax (0, t->getIntAttribute ("folder"));
             track.listColourOn = t->getBoolAttribute ("listColour");
             track.listColourAmount = juce::jlimit (1, 100, t->getIntAttribute ("listColourAmount", Track::defaultListColourAmount));
+            track.drumLink = t->getStringAttribute ("drumLink");
             if (const auto* fades = t->getChildByName ("AutoFades"))
                 track.autoFades = autoFadesFrom (*fades);   // (0.52.0)
             track.output = juce::jmax (0, t->getIntAttribute ("output"));
@@ -1141,6 +1146,7 @@ namespace pr7s
                 if (part.warp.size() < 2 || p->getStringAttribute ("audioFile").isEmpty())
                     part.warp.clear();
                 part.order = p->getIntAttribute ("order");
+                part.linkCopy = p->getBoolAttribute ("linkCopy");
                 part.audioFile = p->getStringAttribute ("audioFile");
                 part.audioOffset = juce::jmax (0.0, p->getDoubleAttribute ("audioOffset"));
                 part.fadeIn = juce::jmax (0.0, p->getDoubleAttribute ("fadeIn"));

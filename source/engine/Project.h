@@ -76,6 +76,10 @@ namespace pr7s
         double audioOffset = 0.0;    // seconds
         double fadeIn = 0.0, fadeOut = 0.0;   // seconds
         bool muted = false;          // the Mute tool: kept and edited as usual, but not played
+        // (0.108.0, the studio link) The composer's drums played by PR7-D from its own song track: this part is the
+        // muted copy to look at (and to read kicks from); PR7-D plays it. Its notes are written to PR7-D's song and
+        // PR7-D's edits come back into it (Pr7dLink.h).
+        bool linkCopy = false;
         // Takes (0.29.0, the manual's Lanes, Takes, and Overlapping Events): the lane it's on
         // (0 the first; shown under the track with Show Lanes), and where several audio clips
         // overlap, which one plays: the highest `order` (equal: the later in the list), as an
@@ -363,6 +367,8 @@ namespace pr7s
         // row in the track list: on or off, and how much (1-100 %). Saved; not an undo step.
         bool listColourOn = false;
         int listColourAmount = 25;
+        // (0.108.0) A PR7-D track's studio link: the name of its song file in the link folder (Pr7dLink.h); empty: none.
+        juce::String drumLink;
         static constexpr int defaultListColourAmount = 25;
         int output = 0;                  // a group channel's id, or 0: the master (FX and group channels: the master)
         std::vector<Send> sends;         // by slot (none after the last used); FX channels have none

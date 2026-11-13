@@ -116,6 +116,23 @@ namespace pr7s
         return library;
     }
 
+    int drumSlotOf (int note, int layout)
+    {
+        if (note < 0 || note > 127)
+            return -1;
+        const auto slot = layout == 1 ? librarySlot[(size_t) note]
+                        : layout == 2 ? gmSlot (note)
+                        : (note - 36 >= 0 && note - 36 < numSlots ? note - 36 : -1);
+        return slot >= 0 && slot < numSlots ? slot : -1;
+    }
+
+    int drumNoteOf (int slot, DrumNotes target)
+    {
+        if (slot < 0 || slot >= numSlots)
+            return -1;
+        return (target == DrumNotes::pr7d ? libraryHome : gmHome)[(size_t) slot];
+    }
+
     int convertDrumNote (int note, int layout, DrumNotes target)
     {
         if (note < 0 || note > 127)

@@ -2,6 +2,22 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.108.0
+
+**PR7-D plays the composer's drums from its own song track** (you asked for full integration). This needs PR7-D 0.83.0, which comes in this zip.
+
+- **How it works.** When the composer builds drums on a track playing PR7-D (new drum tracks do), PR7-S doesn't send PR7-D the notes any more. It lays the drums out in PR7-D's SONG TRACK: a block per section, each holding that section's groove and fills on PR7-D's own drums. PR7-D swaps to that song (your kit isn't touched) and plays it in time with PR7-S's playhead.
+- **The Drums track keeps a muted copy to look at.** You still see the drums in the arrangement, greyed. The bass's LOCKED WITH THE KICK and SYNC still read their kicks, and MIDI export still has drums. The copy is muted because otherwise PR7-D would play every hit twice: once from its song, once from the track.
+- **Edit the drums in PR7-D.** EDIT PLAY STYLE, the grid editor, FIND SIMILAR, moving and lengthening blocks: about half a second after you stop editing, PR7-D writes the changes back and the copy on PR7-S's Drums track follows. A section you've edited this way counts as changed by hand, so a chord change won't rebuild over it.
+- **It keeps up with the song.** Move a section on the SECTIONS row, build a new one, change a type or a transition, or move the copy: PR7-D's song is updated to match.
+- **HEAR in the composer** asks PR7-D to keep its song quiet while the composer plays a drum idea through it, then lets it play again.
+- **Turning it off:** the composer's drums menu has **PR7-D Plays the Drums from Its Song Track**. Off, the drums go on the track as notes, as before.
+
+Worth knowing:
+- The link needs PR7-D 0.83.0 or newer (the one in this zip). An older PR7-D ignores the messages, so the drums would be silent: the copy on the track is muted.
+- Drum parts built before this release stay as they were (notes on the track). Building a section again links it.
+- I can't run PR7-D inside PR7-S here. Each side was tested on its own (PR7-S writes and sends exactly what PR7-D's tests read and play), so please try it on Windows and tell me if PR7-D stays silent or plays twice.
+
 ## 0.107.0
 
 **The composer's drums come from PR7-D's groove library, and PR7-D ships with the studio as its house drum kit** (you asked: "you can't leverage the groove library that is scanned into the PR7-D?", and to ship PR7-D like PR7-K: the start of the Backline).

@@ -52,4 +52,8 @@ namespace pr7s
     enum class DrumNotes { asWritten, generalMidi, pr7d };
     // A note of a folder's `layout` as `target`'s note (-1: nothing plays it there: left out).
     int convertDrumNote (int note, int layout, DrumNotes target);
+    // (0.108.0, the studio link) PR7-D's drum ("slot", 0-41) a note plays in `layout` (-1: none), and a slot's note in
+    // General MIDI or the PR7-D Map (-1: none there).
+    int drumSlotOf (int note, int layout);
+    int drumNoteOf (int slot, DrumNotes target);
 }

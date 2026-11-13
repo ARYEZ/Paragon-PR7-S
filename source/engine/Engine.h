@@ -93,6 +93,9 @@ namespace pr7s
         // (0.78.0) The MIDI editor's SOLO: while set (a track's id), the next updates hear that track alone (and
         // what it's routed into), whatever the tracks' own solos say. 0: off. Message thread only.
         void setEditorSolo (int trackId) noexcept { editorSolo = trackId; }
+        // (0.108.0, PR7-D's studio link) A message for a track's instrument, played at the start of its next block
+        // (playing or not). Message thread; false: no such track.
+        bool sendToInstrument (int trackId, const juce::MidiMessage&);
         int getEditorSolo() const noexcept { return editorSolo; }
         int getEventBuilds() const noexcept { return eventBuilds; }   // (0.34.2, tests) tracks' event lists built so far
         int getClipBuilds() const noexcept { return clipBuilds; }     // (0.57.2, tests) audio tracks' clip lists built
@@ -367,6 +370,10 @@ namespace pr7s
             bool bent = false, sustained = false;   // a bend or the sustain pedal sent: reset on stop
             bool checkHeld = false;      // the events changed (an edit while playing): the notes they no longer end, ended
             juce::MidiBuffer midi;
+            // (0.108.0) Messages for its instrument from the message thread (sendToInstrument: PR7-D's studio link),
+            // played at the start of the next block; the audio thread only tries the lock.
+            juce::SpinLock outboxLock;
+            juce::MidiBuffer outbox;
             juce::AudioBuffer<float> buffer;
             std::array<LevelMeterSource, 3> meters;   // one per reader (2: the Inspector's fader)
             // The mix as set, and the lanes read (those with points and R on).

@@ -1,4 +1,5 @@
 #include "Studio.h"
+#include "Pr7dLink.h"
 #include "SectionTypes.h"
 #include "Controllers.h"
 #include "Stretch.h"
@@ -309,6 +310,8 @@ namespace pr7s
             else
                 engine.update (playing);
         }
+        if (! mixStepOnly)
+            syncPr7dLinks();   // (0.108.0: PR7-D's song follows its track's copies)
         modified = true;
         if (undoable)
             recordUndoState();
@@ -2987,8 +2990,144 @@ namespace pr7s
         return id;
     }
 
+    bool Studio::getPr7dPlaysDrums() const
+    {
+        return settings != nullptr ? settings->getBoolValue ("pr7dPlaysDrums", true) : pr7dPlaysDrumsHere;
+    }
+
+    void Studio::setPr7dPlaysDrums (bool on)
+    {
+        if (settings != nullptr)
+            settings->setValue ("pr7dPlaysDrums", on);
+        pr7dPlaysDrumsHere = on;
+    }
+
+    bool Studio::linksToPr7d (int trackId) const
+    {
+        return getPr7dPlaysDrums() && playsPr7d (trackId);
+    }
+
+    void Studio::linkForPr7d (int trackId, const LineIdea& idea, Part& part) const
+    {
+        if ((idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove) && linksToPr7d (trackId))
+        {
+            part.muted = true;      // (PR7-D plays it from its song: the track's notes would play every hit twice)
+            part.linkCopy = true;
+        }
+    }
+
+    juce::File Studio::pr7dLinkFile (int trackId) const
+    {
+        const auto* track = project.findTrack (trackId);
+        if (track == nullptr || track->drumLink.isEmpty())
+            return {};
+        const auto folder = linkFolderOverride != juce::File() ? linkFolderOverride : pr7dLinkFolder();
+        return folder.getChildFile (track->drumLink + ".xml");
+    }
+
+    void Studio::sendPr7d (int trackId, const juce::MidiMessage& message)
+    {
+        engine.sendToInstrument (trackId, message);
+        if (onPr7dMessage)
+            onPr7dMessage (trackId, message);
+    }
+
+    int Studio::syncPr7dLinks()
+    {
+        auto sent = 0;
+        for (auto& track : project.tracks)
+        {
+            if (track.frozen || track.disabled || ! playsPr7d (track.id))
+                continue;
+            std::vector<Part> copies;
+            for (const auto& p : track.parts)
+                if (p.linkCopy)
+                    copies.push_back (p);
+            if (copies.empty() && track.drumLink.isEmpty())
+                continue;   // (never linked)
+            const auto fingerprint = pr7dCopiesFingerprint (copies);
+            if (const auto known = pr7dSent.find (track.id); known != pr7dSent.end() && known->second == fingerprint)
+                continue;
+            if (track.drumLink.isEmpty())
+                track.drumLink = juce::Uuid().toString();
+            const auto file = pr7dLinkFile (track.id);
+            file.getParentDirectory().createDirectory();
+            const auto song = pr7dSongXml (copies, track.drumMap == DrumMap::pr7d().name, project.numerator, project.denominator,
+                                           project.signatureChanges, file.getFullPathName());
+            if (! song->writeTo (file))
+            {
+                SessionLog::note ("PR7-D's link: couldn't write " + file.getFullPathName());
+                continue;
+            }
+            pr7dWritten[track.id] = file.getLastModificationTime();
+            pr7dSent[track.id] = fingerprint;
+            sendPr7d (track.id, pr7dLinkMessage (Pr7dCommand::load, file.getFullPathName()));
+            ++sent;
+        }
+        return sent;
+    }
+
+    int Studio::readPr7dEdits()
+    {
+        auto changedTracks = 0;
+        for (auto& track : project.tracks)
+        {
+            if (track.drumLink.isEmpty() || track.frozen || ! playsPr7d (track.id))
+                continue;
+            const auto file = pr7dLinkFile (track.id);
+            const auto date = file.getLastModificationTime();
+            if (! file.existsAsFile() || date == pr7dWritten[track.id])
+                continue;
+            pr7dWritten[track.id] = date;
+            const auto xml = juce::XmlDocument::parse (file);
+            if (xml == nullptr || ! xml->hasTagName ("Song"))
+                continue;
+            auto copies = pr7dPartsFromSong (*xml, track.drumMap == DrumMap::pr7d().name);
+            const auto fingerprint = pr7dCopiesFingerprint (copies);
+            std::vector<Part> mine;
+            for (const auto& p : track.parts)
+                if (p.linkCopy)
+                    mine.push_back (p);
+            pr7dSent[track.id] = fingerprint;   // (what PR7-D has: not sent back)
+            if (pr7dCopiesFingerprint (mine) == fingerprint)
+                continue;
+            track.parts.erase (std::remove_if (track.parts.begin(), track.parts.end(), [] (const Part& p) { return p.linkCopy; }), track.parts.end());
+            for (auto& p : copies)
+                track.parts.push_back (std::move (p));
+            ++changedTracks;
+        }
+        if (changedTracks > 0)
+        {
+            SessionLog::note ("PR7-D's link: edits made in PR7-D read back (" + juce::String (changedTracks) + " track(s))");
+            changed();
+        }
+        return changedTracks;
+    }
+
+    void Studio::pausePr7dSongs (bool pause)
+    {
+        if (pause)
+        {
+            for (const auto& track : project.tracks)
+                if (track.drumLink.isNotEmpty() && playsPr7d (track.id)
+                    && std::find (pr7dPaused.begin(), pr7dPaused.end(), track.id) == pr7dPaused.end())
+                {
+                    sendPr7d (track.id, pr7dLinkMessage (Pr7dCommand::pause));
+                    pr7dPaused.push_back (track.id);
+                }
+        }
+        else
+        {
+            for (const auto id : pr7dPaused)
+                sendPr7d (id, pr7dLinkMessage (Pr7dCommand::resume));
+            pr7dPaused.clear();
+        }
+    }
+
     bool Studio::playsPr7d (int trackId) const
     {
+        if (treatAsPr7dForTests)
+            return treatAsPr7dForTests (trackId);
         const auto* track = project.findTrack (trackId);
         return track != nullptr && track->instrument.kind == Instrument::Kind::plugin
                && track->instrument.plugin.name.containsIgnoreCase ("PR7-D");
@@ -8344,6 +8483,8 @@ namespace pr7s
         if (rendering || exportJob != nullptr)
             return;
         backupIfDue();   // (0.72.0: AUTO-SAVE)
+        if (++pr7dLinkTicks % 15 == 0)
+            readPr7dEdits();   // (0.108.0: edits made in PR7-D's song track, about twice a second)
         if (performer != nullptr)
         {
             // (0.39.0) The performance's tempo and bar, from the song at the playhead.
@@ -8394,6 +8535,8 @@ namespace pr7s
         endComposerAudition (false);   // (0.58.0)
         frozenParts.clear();
         builtSections.clear();
+        pr7dSent.clear();   // (0.108.0: another song's links)
+        pr7dWritten.clear();
         composerRiff.reset();
         editorSoloTrack = 0;   // (0.78.0: another song's track ids)
         engine.setEditorSolo (0);
@@ -9788,6 +9931,8 @@ namespace pr7s
         endComposerAudition (false);   // (0.58.0)
         builtSections.clear();
         composerRiff.reset();
+        pr7dSent.clear();   // (0.108.0: this song's links sent afresh: PR7-D's song made sure of)
+        pr7dWritten.clear();
         editorSoloTrack = 0;   // (0.78.0: another song's track ids)
         engine.setEditorSolo (0);
         std::optional<Project> loaded { std::move (loadedProject) };
@@ -10577,7 +10722,8 @@ namespace pr7s
             if (! drums)
                 renameTrack (trackId, linePartName (idea.part));
         }
-        const auto part = partFromIdea (idea, spans.front().start, spans.back().end - spans.front().start, linePartName (idea.part) + ": " + idea.style);
+        auto part = partFromIdea (idea, spans.front().start, spans.back().end - spans.front().start, linePartName (idea.part) + ": " + idea.style);
+        linkForPr7d (trackId, idea, part);   // (0.108.0)
         addPart (trackId, part);
         return trackId;
     }
@@ -10726,6 +10872,8 @@ namespace pr7s
             composerAudition->wasAt = engine.getPosition();
         }
         engine.update (*heard);
+        if (first)
+            pausePr7dSongs (true);   // (0.108.0: PR7-D's song silent while the composer's drums play through it)
         if (first || ! engine.isPlaying())
         {
             engine.setPosition (start);
@@ -10744,6 +10892,7 @@ namespace pr7s
         const auto wasAt = composerAudition->wasAt;
         composerAudition.reset();
         engine.stop();
+        pausePr7dSongs (false);   // (0.108.0)
         engine.setPosition (wasAt);
         if (backToSong && exportJob == nullptr)
             engine.update (project);
@@ -10790,6 +10939,7 @@ namespace pr7s
                 track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(), [&] (const Part& p)
                                     { return p.start >= start - 1.0e-9 && p.start + p.length <= end + 1.0e-9; }), track->parts.end());
                 track->parts.push_back (partFromIdea (*idea, start, end - start, (sectionName.isNotEmpty() ? sectionName + ": " : juce::String()) + idea->style));
+                linkForPr7d (trackId, *idea, track->parts.back());   // (0.108.0: PR7-D plays it from its song track)
                 track->parts.back().id = 0;
             }
         if (! plan.empty())
@@ -13579,7 +13729,7 @@ namespace pr7s
             for (const auto& n : part.notes)
             {
                 const auto at = part.start + n.start;
-                if (at >= place.start - 1.0e-9 && at < place.end - 1.0e-9 && n.start < part.length - 1.0e-9 && ! part.muted && ! n.muted)
+                if (at >= place.start - 1.0e-9 && at < place.end - 1.0e-9 && n.start < part.length - 1.0e-9 && (! part.muted || part.linkCopy) && ! n.muted)   // (0.108.0: PR7-D's copies count: edits there are hand edits)
                     notes.emplace_back (std::round ((at - place.start) * 960.0), std::round (juce::jmin (n.length, part.length - n.start) * 960.0),
                                         n.pitch, std::round (n.velocity * 127.0f));
             }
@@ -13718,6 +13868,7 @@ namespace pr7s
                 {
                     track->parts.push_back (partFromIdea (idea, spans.front().start, place.end - spans.front().start, label + ": " + idea.style));
                     track->parts.back().id = 0;
+                    linkForPr7d (lane.track, idea, track->parts.back());   // (0.108.0)
                 }
                 rebuilt.push_back (lane.track);
             }

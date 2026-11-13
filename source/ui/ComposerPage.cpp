@@ -1728,7 +1728,9 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
     if (l == ComposerLayer::drums)
     {
         menu.addSeparator();
-        menu.addItem (libraryItems, "Grooves from My Library (the MediaBay's drum MIDI)", true, state.libraryDrums);
+        menu.addItem (libraryItems, "Grooves from My Library (PR7-D's groove library, else the MediaBay's drum MIDI)", true, state.libraryDrums);
+        // (0.108.0, the studio link) PR7-D plays the drums from its own song track (the track keeps a muted copy).
+        menu.addItem (libraryItems + 90, "PR7-D Plays the Drums from Its Song Track (on a track playing PR7-D)", true, studio.getPr7dPlaysDrums());
         const auto grooves = pr7s::composerLibraryGrooves (state, context);
         juce::PopupMenu list;
         list.addItem (libraryItems + 1, "Automatic (the section chooses, ROLL gives another)", state.libraryDrums, state.libraryGroove.isEmpty());
@@ -1758,6 +1760,8 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
                             {
                                 if (chosen == libraryItems)
                                     safe->setLibraryDrums (! safe->isUsingLibraryDrums());
+                                else if (chosen == libraryItems + 90)
+                                    safe->studio.setPr7dPlaysDrums (! safe->studio.getPr7dPlaysDrums());
                                 else if (chosen == libraryItems + 1)
                                     safe->setLibraryGroove ({});
                                 else
