@@ -1233,8 +1233,9 @@ TEST_CASE ("0.97.1: a lane the section type writes offers the type's options, ea
     for (const auto l : { ComposerLayer::chords, ComposerLayer::drums })   // (0.97.2: seven each)
     {
         const auto ideas = composerChoices (l, droning, spans, c);
-        CHECK (ideas.size() == 7);
-        CHECK (distinct (ideas) == 7);   // (the keys' SILENT is the one with no notes)
+        const auto n = l == ComposerLayer::drums ? 8u : 7u;   // (0.116.0: THE GROOVE CARRIES ON)
+        CHECK (ideas.size() == n);
+        CHECK (distinct (ideas) == n);   // (the keys' SILENT is the one with no notes)
     }
     CHECK (distinct (composerChoices (ComposerLayer::lead, droning, spans, c)) == 3);
     // WALKING INTO THE CHANGES: the root held, then two eighths stepping into the next chord's root.
@@ -1325,7 +1326,7 @@ TEST_CASE ("0.98.0: the DRIVING chorus's options for every lane", "[sections][ty
     CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::melody, s, c));
     CHECK (sectionApproaches (s, ComposerLayer::guitar).size() == 6);
     CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 5);
-    CHECK (sectionApproaches (s, ComposerLayer::drums).size() == 5);
+    CHECK (sectionApproaches (s, ComposerLayer::drums).size() == 7);   // (0.116.0: two more)
     CHECK (sectionApproaches (s, ComposerLayer::chords).size() == 4);
     CHECK (sectionApproaches (s, ComposerLayer::lead).size() == 3);
     // Every option of every lane a different part.
