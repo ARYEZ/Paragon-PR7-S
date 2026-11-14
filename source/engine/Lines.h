@@ -56,7 +56,7 @@ namespace pr7s
     struct LineIdea
     {
         // (0.19.0: piano chords; guitar rhythm and lead.)
-        enum class Part { bass, melody, chords, rhythm, lead, pattern, tune, drums, groove };   // (0.54.0: drums, groove: the DRUMS tab's generated beats and library grooves)   // (0.39.0: patterns; 0.41.0: tune, the MELODY tab's composed melodies)
+        enum class Part { bass, melody, chords, rhythm, lead, pattern, tune, drums, groove, clean };   // (0.114.0: clean, the composer's CLEAN GUITAR)   // (0.54.0: drums, groove: the DRUMS tab's generated beats and library grooves)   // (0.39.0: patterns; 0.41.0: tune, the MELODY tab's composed melodies)
         Part part = Part::bass;
         juce::String style, description;
         std::vector<LineNote> notes;   // beats from the first span's start

@@ -10,7 +10,8 @@ namespace pr7s
     const std::array<ComposerLayer, composerLayerCount>& composerLayers()
     {
         static const std::array<ComposerLayer, composerLayerCount> all { ComposerLayer::chords, ComposerLayer::melody, ComposerLayer::bass,
-                                                                          ComposerLayer::guitar, ComposerLayer::lead, ComposerLayer::drums };
+                                                                          ComposerLayer::guitar, ComposerLayer::lead, ComposerLayer::clean,
+                                                                          ComposerLayer::drums };
         return all;
     }
 
@@ -23,6 +24,7 @@ namespace pr7s
             case ComposerLayer::bass: return "BASS";
             case ComposerLayer::guitar: return "GUITAR";
             case ComposerLayer::lead: return "LEAD";
+            case ComposerLayer::clean: return "CLEAN GUITAR";
             case ComposerLayer::drums: return "DRUMS";
         }
         return {};
@@ -37,6 +39,7 @@ namespace pr7s
             case ComposerLayer::bass: return LineIdea::Part::bass;
             case ComposerLayer::guitar: return LineIdea::Part::rhythm;
             case ComposerLayer::lead: return LineIdea::Part::lead;
+            case ComposerLayer::clean: return LineIdea::Part::clean;
             case ComposerLayer::drums: return LineIdea::Part::drums;
         }
         return LineIdea::Part::melody;
@@ -46,6 +49,7 @@ namespace pr7s
     ComposerState::ComposerState()
     {
         lane (ComposerLayer::lead).on = false;
+        lane (ComposerLayer::clean).on = false;   // (0.114.0: off until you turn it on, so songs build as before)
         // The bass on the drums' kick to start with (the two as one: the usual way a band locks up).
         lane (ComposerLayer::bass).style = composerStyleCount (ComposerLayer::bass) - 1;
         // The drums' verse.
@@ -94,7 +98,7 @@ namespace pr7s
             auto& l = s.lanes[(size_t) i];
             l.on = v[0] == "1";
             l.locked = v[1] == "1";
-            l.style = juce::jlimit (0, composerStyleCount (composerLayers()[(size_t) i]) - 1, v[2].getIntValue());
+            l.style = juce::jlimit (0, composerStyleCount ((ComposerLayer) i) - 1, v[2].getIntValue());   // (the lanes by layer number)
             l.variation = juce::jmax (0, v[3].getIntValue());
             if (v.size() >= 6)
             {
@@ -184,10 +188,19 @@ namespace pr7s
     }
 
     //==========================================================================
+    const juce::StringArray& cleanGuitarStyles()
+    {
+        static const juce::StringArray names { "Ringing arpeggio", "Picked chord", "Sparse clean notes", "Held chord & pulse", "Pedal hook",
+                                               "Muted dyad walk", "Still shape in threes", "Still shape, sixteenths", "Still cluster",
+                                               "Swelled melody" };
+        return names;
+    }
+
     int composerStyleCount (ComposerLayer l)
     {
         // (0.65.0) The lead's seventh is the whole solo; the drums' seventh the solo section.
-        return l == ComposerLayer::bass || l == ComposerLayer::lead ? 7 : l == ComposerLayer::drums ? (int) drumSections().size() : 6;
+        return l == ComposerLayer::bass || l == ComposerLayer::lead ? 7 : l == ComposerLayer::drums ? (int) drumSections().size()
+             : l == ComposerLayer::clean ? (int) cleanGuitarStyles().size() : 6;
     }
 
     RiffRecipe guitarRecipe (const ComposerState& s, const ComposerContext& c)
@@ -350,6 +363,8 @@ namespace pr7s
             return idea;
         }
 
+        LineIdea cleanLaneOf (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);   // (0.114.0; below)
+
         LineIdea rawLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
             const auto& lane = s.lane (l);
@@ -363,6 +378,7 @@ namespace pr7s
                     return pick (composedMelodies (spans, c.beatsPerBar, melody, lane.variation), lane.style);
                 }
                 case ComposerLayer::guitar: return guitarOf (s, spans, c);
+                case ComposerLayer::clean: return cleanLaneOf (s, spans, c);
                 case ComposerLayer::lead:
                 {
                     const auto& profile = c.leadProfile.has_value() ? c.leadProfile : c.guitarProfile;
@@ -1697,6 +1713,36 @@ namespace pr7s
                               idea.notes.end());
             idea.style += ", in halfway";
             idea.description = "Out for the first half of the section, then: " + idea.description.substring (0, 1).toLowerCase() + idea.description.substring (1);
+        }
+
+        // (0.114.0, the owner) The CLEAN GUITAR lane: CLEAN VERSE's clean guitar parts as its styles (GUITARS OUT left
+        // out: a lane that plays nothing is turned off instead), and the swelled melody. The guitar profile's tuning
+        // and velocities (no keyswitches: a clean guitar is often another instrument).
+        LineIdea cleanLaneOf (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        {
+            if (spans.empty())
+                return {};
+            const auto& lane = s.lane (ComposerLayer::clean);
+            const auto& profile = c.guitarProfile;
+            const auto tuning = profile.has_value() ? profile->tuning() : c.tuning;
+            const auto velocities = profile.has_value() && profile->velocities.has_value() ? *profile->velocities : c.velocities;
+            static const int approaches[] { 0, 1, 2, 4, 5, 6, 7, 8, 9 };
+            const auto style = juce::jlimit (0, (int) cleanGuitarStyles().size() - 1, lane.style);
+            LineIdea idea;
+            if (style >= 9)
+                idea = cleanLead (lane.variation % 2, spans, c.beatsPerBar, velocities);
+            else
+            {
+                const auto a = approaches[style];
+                idea = a >= 7 ? cleanGuitarStill (a - 7, spans, c.beatsPerBar, velocities)
+                     : a >= 5 ? cleanGuitarMore (a, spans, c.beatsPerBar, tuning, velocities)
+                              : cleanGuitar (a, lane, spans, c.beatsPerBar, tuning, velocities);
+            }
+            if (profile.has_value())
+                keepInRange (idea, profile->rangeLow(), profile->rangeHigh());
+            idea.part = LineIdea::Part::clean;
+            idea.style = cleanGuitarStyles()[(size_t) style];
+            return idea;
         }
 
         // CLEAN VERSE's part for a lane (none: the melody and the lead play as usual).
@@ -7484,6 +7530,7 @@ namespace pr7s
                 }
                 case ComposerLayer::melody:
                 case ComposerLayer::lead:
+                case ComposerLayer::clean:
                 {
                     auto idea = rawLayer (l, s, spans, c);
                     leanOnto (idea, rhythm.accents);
@@ -7520,7 +7567,7 @@ namespace pr7s
         {
             case SectionType::Band::staccato:
             case SectionType::Band::split: return l == ComposerLayer::bass || l == ComposerLayer::drums;
-            case SectionType::Band::clean: return l != ComposerLayer::melody && l != ComposerLayer::lead;
+            case SectionType::Band::clean: return l != ComposerLayer::melody && l != ComposerLayer::lead && l != ComposerLayer::clean;
             case SectionType::Band::preChorus: return l != ComposerLayer::melody && ! sectionApproaches (s, l).isEmpty();
             case SectionType::Band::bridge: return l != ComposerLayer::melody && ! sectionApproaches (s, l).isEmpty();
             case SectionType::Band::breakdown: return l != ComposerLayer::melody && ! sectionApproaches (s, l).isEmpty();

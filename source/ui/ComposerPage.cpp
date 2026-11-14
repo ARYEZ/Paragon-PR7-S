@@ -14,7 +14,7 @@ namespace
     // As IDEAS' cards: bass and guitar orange, melody and lead pink, chords and drums red.
     juce::Colour colourOf (ComposerLayer l)
     {
-        return l == ComposerLayer::bass || l == ComposerLayer::guitar ? pr7s::FamilyColours::orange
+        return l == ComposerLayer::bass || l == ComposerLayer::guitar || l == ComposerLayer::clean ? pr7s::FamilyColours::orange
              : l == ComposerLayer::chords || l == ComposerLayer::drums ? pr7s::FamilyColours::red : pr7s::FamilyColours::pink;
     }
 
@@ -1601,6 +1601,7 @@ std::optional<ComposerLayer> ComposerPage::layerOf (pr7s::LineIdea::Part part)
         case P::bass: return ComposerLayer::bass;
         case P::rhythm: return ComposerLayer::guitar;
         case P::lead: return ComposerLayer::lead;
+        case P::clean: return ComposerLayer::clean;
         case P::drums: case P::groove: return ComposerLayer::drums;
         default: return std::nullopt;
     }

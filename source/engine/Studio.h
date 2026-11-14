@@ -385,7 +385,7 @@ namespace pr7s
         // as two takes would be. Kept in the settings ("composerTracks", "composerLooseCopies"; in memory
         // without a settings file).
         struct ComposerTracks { juce::StringArray names; bool every = false; bool operator== (const ComposerTracks&) const = default; };
-        static constexpr int numComposerTrackLanes = 6;
+        static constexpr int numComposerTrackLanes = 7;   // (0.114.0: CLEAN GUITAR the seventh)
         static LineIdea::Part composerTrackPart (int lane);   // bass, rhythm, lead, chords, tune, drums
         static int composerTrackLane (LineIdea::Part);        // (-1: not a composer lane's)
         ComposerTracks getComposerTracks (LineIdea::Part) const;

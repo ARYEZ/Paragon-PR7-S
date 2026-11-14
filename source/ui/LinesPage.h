@@ -268,7 +268,7 @@ private:
     void showUseMenu (pr7s::LineIdea::Part, int index, Card&);
     pr7s::Studio& studio;
     std::vector<pr7s::ChordSpan> spans;
-    mutable std::array<std::vector<pr7s::LineIdea>, 9> ideas, raw;   // (raw: before humanizing; the locked ones are made from those)
+    mutable std::array<std::vector<pr7s::LineIdea>, 10> ideas, raw;   // (raw: before humanizing; the locked ones are made from those)
     mutable std::array<bool, 9> made {}, madeRaw {};
     mutable int deals = 0;
     const std::vector<pr7s::LineIdea>& rawIdeas (pr7s::LineIdea::Part) const;
@@ -296,7 +296,7 @@ private:
     juce::TextButton buildKey { "BUILD SECTION" };
     juce::TextButton composerKey { "COMPOSER" };
     BuildChoice buildChoice;
-    std::array<int, 9> chosen {};                       // the card last played or used, per part
+    std::array<int, 10> chosen {};                       // the card last played or used, per part
     std::optional<pr7s::DrumProfile> drummer;
     std::unique_ptr<class DrumLearnWindow> learnWindow;
     std::vector<pr7s::LibraryGroove> libraryGrooves;

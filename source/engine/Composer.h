@@ -36,10 +36,13 @@
 // The same state always gives the same notes (what you hear is what USE writes).
 namespace pr7s
 {
-    enum class ComposerLayer { chords, melody, bass, guitar, lead, drums };
-    constexpr int composerLayerCount = 6;
+    // (0.114.0, the owner: "a composer lane after lead guitar called clean guitar") CLEAN appended (saved settings
+    // keep the others' numbers); composerLayers() lists it after LEAD.
+    enum class ComposerLayer { chords, melody, bass, guitar, lead, drums, clean };
+    constexpr int composerLayerCount = 7;
     const std::array<ComposerLayer, composerLayerCount>& composerLayers();
-    juce::String composerLayerName (ComposerLayer);    // "CHORDS", "MELODY"...
+    juce::String composerLayerName (ComposerLayer);
+    const juce::StringArray& cleanGuitarStyles();      // (0.114.0) the CLEAN GUITAR lane's styles    // "CHORDS", "MELODY"...
     LineIdea::Part composerPartOf (ComposerLayer);      // the IDEAS part it's made as (melody: the MELODY tab's)
 
     struct ComposerLane
