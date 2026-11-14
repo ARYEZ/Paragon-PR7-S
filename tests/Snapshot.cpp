@@ -768,6 +768,22 @@ TEST_CASE ("Render the key editor's own window to a PNG", "[.][snapshot-window]"
         riff.notes.push_back ({ i * 0.3125, i % 5 == 0 ? 1.0 : 0.25, 52 + (i * 7) % 19, 0.4f + 0.6f * (float) ((i * 3) % 10) / 9.0f });
     studio.addPart (track, riff);
     studio.setPosition (21.0);
+    // PARAGON_SNAPSHOT_CHORDS=1 (0.121.0): a chord track (C, Am, F, G7 a bar each, over and over), so the
+    // editor's CHORD GUIDES show; the editor at 100% so more octaves are in view.
+    const auto withChords = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_CHORDS", {}).isNotEmpty();
+    if (withChords)
+    {
+        Chord am { 9 };
+        am.type = Chord::Type::minor;
+        Chord g7 { 7 };
+        g7.tension = Chord::Tension::seven;
+        const Chord cycle[] = { Chord { 0 }, am, Chord { 5 }, g7 };
+        std::vector<ChordEvent> events;
+        for (int bar = 0; bar < 16; ++bar)
+            events.push_back ({ bar * 4.0, cycle[bar % 4], 4.0 });
+        studio.setChordEvents (events);
+        studio.setPosition (17.0);
+    }
 
     const auto mixerWindow = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_ZONE", {}) == "mixer";
     if (mixerWindow)
@@ -834,6 +850,11 @@ TEST_CASE ("Render the key editor's own window to a PNG", "[.][snapshot-window]"
         REQUIRE (window != nullptr);
         window->setSize (size[0].getIntValue(), size[1].getIntValue());
         auto& editor = view.getKeyEditor();
+        if (withChords)
+        {
+            view.setKeyEditorSize (100);
+            studio.dispatchPendingMessages();
+        }
         editor.fitToPart();
         editor.selectNotes ({ 10, 11, 12 });
         shown = &editor;

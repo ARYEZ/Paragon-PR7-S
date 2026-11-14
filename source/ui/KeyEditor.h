@@ -146,6 +146,14 @@ public:
     void setSnap (bool on);
     bool isSnapOn() const noexcept { return snapOn; }
     juce::TextButton& getSnapKey() noexcept { return snapKey; }
+    // (0.121.0, the owner asked) CHORD GUIDES: the chord track's chord under each stretch of the notes lights its rows
+    // (root strongest, then its 3rd and 5th, then added notes), the key's other notes a faint tint; the keys light
+    // for the chord at the playhead. 0 nothing, 1 the key, 2 an added note, 3 a 3rd / 5th (or a slash bass), 4 the root.
+    // By the pitch as heard (the part's transpose counted). Never in the drum view or on a drum track.
+    int chordGuideLevel (int writtenPitch, double songBeat) const;
+    void setChordGuides (bool on);
+    bool isChordGuidesOn() const noexcept { return chordGuidesOn; }
+    juce::TextButton& getChordGuidesKey() noexcept { return chordGuidesKey; }
     void visibilityChanged() override;
     void setInWindow (bool);   // the button's name follows
     bool isInWindow() const noexcept { return inWindow; }
@@ -497,6 +505,11 @@ private:
     void refreshSolo();
     juce::TextButton snapKey { "SNAP" };   // (0.81.0)
     bool snapOn = true;
+    bool chordGuidesOn = true;           // (0.121.0) settings midiEditorChordGuides
+    juce::TextButton chordGuidesKey { "CHORD GUIDES" };
+    int shownGuideChord = -2;            // the chord the keys were lit for (the timer repaints them when it changes)
+    bool guidesApply() const;            // a pitched part, not the drum view, guides on
+    void paintChordGuides (juce::Graphics&, juce::Rectangle<float> area);
     double cycleDownBeat = 0.0, cycleOriginalStart = 0.0, cycleOriginalLength = 0.0;   // (0.81.0) a cycle drag's start
     bool cycleMoved = false;
     bool inWindow = false;

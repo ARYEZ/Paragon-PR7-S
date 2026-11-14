@@ -96,6 +96,17 @@ KeyEditor::KeyEditor (pr7s::Studio& studioToUse, ArrangeView& arrangeToUse)
     if (auto* settings = studio.getSettings())
         snapOn = settings->getBoolValue ("midiEditorSnap", true);
     snapKey.setToggleState (snapOn, juce::dontSendNotification);
+    // (0.121.0, the owner asked) CHORD GUIDES: the chord track's notes lit behind the notes.
+    chordGuidesKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+    chordGuidesKey.setWantsKeyboardFocus (false);
+    chordGuidesKey.setTooltip ("CHORD GUIDES: under each chord on the chord track, its notes' rows lit in every octave (the root "
+                               "strongest, then the 3rd and 5th, then added notes like a 7th or 9th) and the key's other notes "
+                               "faintly; the piano keys light for the chord at the playhead. Nothing where there's no chord");
+    chordGuidesKey.onClick = [this] { setChordGuides (! chordGuidesOn); };
+    panelColumn.addAndMakeVisible (chordGuidesKey);
+    if (auto* settings = studio.getSettings())
+        chordGuidesOn = settings->getBoolValue ("midiEditorChordGuides", true);
+    chordGuidesKey.setToggleState (chordGuidesOn, juce::dontSendNotification);
     selectTool.onClick = [this] { setTool (Tool::select); };
     drawTool.onClick = [this] { setTool (Tool::draw); };
     eraseTool.onClick = [this] { setTool (Tool::erase); };
@@ -525,6 +536,15 @@ void KeyEditor::timerCallback()
         repaint (strip (playheadX));
         repaint (strip (x));
         playheadX = x;
+    }
+    // (0.121.0) CHORD GUIDES: the keys show the chord at the playhead; repainted when that chord changes.
+    {
+        const auto chordNow = guidesApply() ? studio.getProject().chordTrack.indexAt (shownBeat) : -2;
+        if (chordNow != shownGuideChord)
+        {
+            shownGuideChord = chordNow;
+            repaint (keysArea().getSmallestIntegerContainer());
+        }
     }
     // 60 frames a second while it glides, else 30.
     const auto playing = studio.getEngine().isPlaying() || studio.getEngine().isRecording();   // (0.78.3)
@@ -2091,6 +2111,7 @@ void KeyEditor::layoutColumn()
     gap();
     place (gridBox);
     place (snapKey);
+    place (chordGuidesKey);
     place (quantizeButton);
     place (lanesKey);
     gap();
@@ -2264,6 +2285,90 @@ juce::Colour KeyEditor::velocityColour (float velocity) const
                                        : pr7s::FamilyColours::red;
 }
 
+void KeyEditor::setChordGuides (bool on)
+{
+    chordGuidesOn = on;
+    chordGuidesKey.setToggleState (on, juce::dontSendNotification);
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("midiEditorChordGuides", on);
+    shownGuideChord = -2;
+    repaint();
+}
+
+bool KeyEditor::guidesApply() const
+{
+    if (! chordGuidesOn || drumViewOn)
+        return false;
+    const auto* track = studio.getProject().findTrack (getTrackId());
+    return getPart() != nullptr && track != nullptr && pr7s::isPitchedTrack (*track);
+}
+
+int KeyEditor::chordGuideLevel (int writtenPitch, double songBeat) const
+{
+    const auto* part = getPart();
+    if (part == nullptr)
+        return 0;
+    const auto& track = studio.getProject().chordTrack;
+    const auto index = track.indexAt (songBeat);
+    if (index < 0 || songBeat >= track.endOf (index, studio.getProject().beatsPerBarAt (track.events[(size_t) index].beat)) - 1.0e-9)
+        return 0;   // (before the first chord, or in a gap after one: nothing)
+    const auto& chord = track.events[(size_t) index].chord;
+    const auto pc = ((part->heardPitch (writtenPitch) % 12) + 12) % 12;
+    if (pc == chord.root % 12)
+        return 4;
+    auto triad = chord;   // (the triad's other two: its 3rd and 5th, or a sus chord's 2nd / 4th and 5th)
+    triad.tension = pr7s::Chord::Tension::none;
+    for (const auto i : triad.intervals())
+        if ((chord.root + i) % 12 == pc)
+            return 3;
+    for (const auto i : chord.intervals())   // (then what's added: a 7th, 9th, 11th...)
+        if ((chord.root + i) % 12 == pc)
+            return 2;
+    if (chord.bass >= 0 && chord.bass % 12 == pc)
+        return 3;
+    return pr7s::isPitchClassInKey (pc, studio.chordTrackKeyAt (track.events[(size_t) index].beat)) ? 1 : 0;
+}
+
+void KeyEditor::paintChordGuides (juce::Graphics& g, juce::Rectangle<float> area)
+{
+    if (! guidesApply())
+        return;
+    const auto& project = studio.getProject();
+    const auto& track = project.chordTrack;
+    if (track.events.empty())
+        return;
+    const auto from = beatForX (area.getX()), to = beatForX (area.getRight());
+    const auto top = pitchForY (area.getY()), bottom = pitchForY (area.getBottom());
+    const auto lastLength = project.beatsPerBarAt (track.events.back().beat);
+    for (const auto& e : pr7s::withLengths (track, lastLength))
+    {
+        if (e.beat + e.length <= from || e.beat >= to)
+            continue;
+        const auto x1 = juce::jmax (area.getX(), xForBeat (e.beat)), x2 = juce::jmin (area.getRight(), xForBeat (e.beat + e.length));
+        if (x2 <= x1)
+            continue;
+        for (int pitch = bottom; pitch <= top; ++pitch)
+        {
+            const auto level = chordGuideLevel (pitch, e.beat + 1.0e-6);
+            if (level == 0)
+                continue;
+            // (0.121.0, the owner: stronger and further apart) root clearly red, 3rd / 5th pink, added notes
+            // orange and weaker, the key a faint pearl; a solid mark where the chord starts tells them apart.
+            const auto full = level == 4 ? pr7s::FamilyColours::red : level == 3 ? pr7s::FamilyColours::pink
+                            : level == 2 ? pr7s::FamilyColours::orange : juce::Colour (0xfff4eeea);
+            const auto alpha = level == 4 ? 0.58f : level == 3 ? 0.36f : level == 2 ? 0.22f : 0.07f;
+            const juce::Rectangle<float> row (x1, yForPitch (pitch) + 0.5f, x2 - x1, rowHeight - 1.0f);
+            g.setColour (full.withAlpha (alpha));
+            g.fillRect (row);
+            if (level >= 2 && xForBeat (e.beat) >= area.getX())
+            {
+                g.setColour (full);
+                g.fillRect (row.withWidth (juce::jmin (4.0f, row.getWidth())));
+            }
+        }
+    }
+}
+
 void KeyEditor::paintKeys (juce::Graphics& g)
 {
     // A piano on its side: white keys full width, black keys shorter, C's named.
@@ -2275,13 +2380,24 @@ void KeyEditor::paintKeys (juce::Graphics& g)
     {
         const auto row = juce::Rectangle<float> (area.getX(), yForPitch (pitch), area.getWidth(), rowHeight);
         const auto lit = keyboard.isNoteOnForChannels (0xffff, pitch);
+        // (0.121.0) CHORD GUIDES: the chord at the playhead's notes on the keys (a stripe at the keys' right end).
+        const auto guide = guidesApply() ? chordGuideLevel (pitch, shownBeat) : 0;
+        const auto guideStripe = [&] (juce::Rectangle<float> key)
+        {
+            if (guide < 2 || lit)
+                return;
+            g.setColour (guide == 4 ? pr7s::FamilyColours::red : guide == 3 ? pr7s::FamilyColours::pink : pr7s::FamilyColours::orange);
+            g.fillRect (key.withLeft (key.getRight() - juce::jmin (14.0f, key.getWidth() * 0.35f)).reduced (0.0f, 1.0f));
+        };
         if (isBlackKey (pitch))
         {
             const auto key = row.withWidth (area.getWidth() * 0.6f).reduced (0.0f, 0.5f);
             g.setColour (lit ? ParagonColours::accent : juce::Colour (0xff1a1519));
             g.fillRect (key);
+            guideStripe (key);
             continue;
         }
+        guideStripe (row.withTrimmedRight (1.0f));
         if (lit)
         {
             g.setColour (ParagonColours::accent);
@@ -2336,6 +2452,8 @@ void KeyEditor::paintNotes (juce::Graphics& g)
             g.fillRect (row.withY (row.getBottom() - 1.0f).withHeight (1.0f));
         }
     }
+
+    paintChordGuides (g, area);   // (0.121.0: behind the grid and the notes)
 
     // Bars, beats and the grid's steps (each when there's room to see it).
     const auto signatures = project.signatures();

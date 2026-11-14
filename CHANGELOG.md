@@ -2,6 +2,28 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.121.0
+
+You asked for the MIDI editor to show which notes fit the chord, plus a faint tint for the rest of the key.
+
+**CHORD GUIDES in the MIDI editor.**
+- A new key in the editor's side panel, under SNAP. It's on to start with, and the editor remembers your choice.
+- Wherever the chord track has a chord, the piano roll lights that chord's notes in every octave, for exactly as long as the chord lasts:
+  - the **root** with the strongest red stripe;
+  - the **3rd and 5th** in pink (or a sus chord's 2nd / 4th, and a slash chord's bass note);
+  - **added notes** like a 7th, 9th or 11th in a lighter orange;
+  - the **key's other notes** with a very faint pearl tint, so the safe passing notes show too.
+- When the chord changes, the lit rows change with it, so a two-chord bar shows two sets.
+- **The piano keys** on the left light up the same way for the chord under the playhead, and follow it as the song plays.
+- Each lit row also gets a short solid mark in its colour where the chord starts, so red, pink and orange are easy to tell apart.
+- It's drawn behind the grid and your notes, so the notes stay as easy to read as before.
+- **Transposed parts:** if the part has a TRANSPOSE on the info line, the guide shows the rows that will *sound* right. For example, with the part transposed +2, the written B-flat row lights as the C chord's root.
+- **Where it doesn't show:**
+  - where there's no chord on the chord track (before the first chord, or in a gap between chords);
+  - in the drum view, or on a drum track.
+
+**What I couldn't check:** how it looks on your screen at your size; the screenshot shows how it renders here. The tests check every level: root, 3rd/5th, added notes and key notes under C, G7 and A minor; nothing in a gap; the transpose; drums left out; the stripes drawn redder than the plain rows; the key turning it off and on.
+
 ## 0.120.0
 
 Your two composer tweaks.
