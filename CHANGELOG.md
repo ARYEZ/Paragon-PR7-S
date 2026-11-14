@@ -2,6 +2,54 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.118.0
+
+The verse round: ten new verse types from your song files, all in 4/4, plus two drum ideas. As before, they're shapes only; nothing is copied.
+
+**Ten new verse types.** A verse block's TYPE menu has them after MUTED DRIVE. A pre-chorus block's menu lists them too, since it offers the verse types after its own.
+- **PICKED LINE, KICK IN THREES** (Rose of Sharyn's 6/8 verse, in 4/4):
+  - One guitar picks single notes round each bar's root on every eighth. The other option adds a power chord rung under it.
+  - The drums play the kick three times a bar, on 1, the "and" of 2 and 4 (3+3+2), with the snare and the ride's bell on the eighths between.
+  - The other drum options: RUNNING THREES (a kick every third eighth, running across the bar lines, so it lines up again every three bars) and STRAIGHT ALTERNATION (kick on the beats, snare on the "ands").
+- **PICKED OSTINATO:**
+  - The power chords drop out for a high three-note picked cell, a low picked line round the root, a high tremolo, or the guitar out.
+  - Under it, a held-back full beat or KICK AND HATS ONLY (no snare).
+- **SKANK LINE:**
+  - A single-note line on every eighth: the bar's root as a pedal every other note, the notes a half step, minor third, fourth and fifth above it in between, and a falling turn in the eighth bar.
+  - The drums play the skank beat: snare on every beat, kick on every off-beat eighth.
+- **LINE OVER HITS:**
+  - The skank line over a chord struck on each bar's first beat and left ringing.
+  - The kick and crash play only with those hits, then on dotted quarters, then a fill.
+- **THREE BARS AND A STOP:**
+  - Three bars of muted sixteenths (a fixed low note under the chord, or a stream with gaps).
+  - Every fourth bar the whole band hits beat 1 together, then silence.
+  - FOUR ON THE FLOOR under it.
+- **SIDESTICK PULSE:**
+  - Low single eighths (or a chord rung each bar), a side stick on every beat and nothing else.
+  - The bass comes in halfway.
+  - A high pedal note on the keys at each phrase start.
+- **OFF-BEAT SNARE:**
+  - A chord rung every other bar, or low bursts.
+  - The snare and an open hat together on every off-beat, the kick syncopated, no backbeat.
+- **CHUGS, THEN DOTTED HITS:**
+  - Sixteenth chugs with holes for three bars, then a bar of dotted-quarter hits.
+  - The kick plays a displaced pattern with a china on each kick, or follows the chugs.
+- **PEDAL RIFF IN SIXTEENTHS:**
+  - One guitar's sixteenth riff: the low root every other note (or in pairs), the others climbing the minor pentatonic, a flick at the end of every second bar.
+  - A plain rock beat under it that doesn't follow the riff.
+- **TRESILLO RIFF:**
+  - Power chords on a 3+3+2 figure in the first half of the bar, then rest (every fourth bar the figure through the bar), or the figure one bar and chugs the next.
+  - A high keys ostinato on the key's fifth that ignores the chord changes.
+  - Hats and a sparse kick, or the snare on the riff's hits.
+
+Every type has its own guitar, bass, keys and drum options, and the bass's last option is always LOCKED WITH THE KICK. The lead keeps its own styles.
+
+**FOUR ON THE FLOOR** is also MUTED DRIVE's new fourth drum option: the kick on every beat, the snare on the "ands" of 1 and 2 and on 3 and 4, sixteenth hats.
+
+**Deleting a section** (you asked): right-click the block on the SECTIONS row, MORE..., Delete. The block and its music go, and everything after moves up to close the gap. It's one undo step.
+
+**What I couldn't check:** how any of it sounds. The tests check the shapes, such as the 3+3+2 kick, the stop bar's silence in every lane, the skank beat and the pedal, and that every option is a different part.
+
 ## 0.117.0
 
 The last three ideas from your song files, put where we agreed. As before, they're shapes only; nothing is copied.

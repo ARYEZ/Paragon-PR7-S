@@ -1847,7 +1847,8 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
             || pr7s::sectionBand (state) == pr7s::SectionType::Band::breakdown
             || pr7s::sectionBand (state) == pr7s::SectionType::Band::interlude
             || pr7s::sectionBand (state) == pr7s::SectionType::Band::bookend
-            || pr7s::sectionBand (state) == pr7s::SectionType::Band::chorus)   // (0.97.0: the clean parts aren't riffs; 0.102.0: nor the pre-chorus's)
+            || pr7s::sectionBand (state) == pr7s::SectionType::Band::chorus
+            || pr7s::sectionBand (state) == pr7s::SectionType::Band::verse)   // (0.97.0: the clean parts aren't riffs; 0.102.0: nor the pre-chorus's)
             menu.addSubMenu ("Riff Flavour: (the type writes its own guitar part)", flavours, false);
         else if (const auto typed = pr7s::typedGuitarFlavour (state))   // (0.94.0: the type's approach picks the riff kind)
             menu.addSubMenu ("Riff Flavour: " + pr7s::riffFlavourName (*typed) + " (the type's approach)", flavours, false);

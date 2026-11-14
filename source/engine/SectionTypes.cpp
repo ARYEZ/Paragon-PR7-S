@@ -43,13 +43,15 @@ namespace pr7s
         if (sectionBaseOf (sectionName) == "Pre-Chorus")
         {
             const auto pre = SectionType::Band::preChorus;
-            return { { "BUILD & STOP", "The verse's drive pushed toward the chorus, then everything stops for a beat before it lands", RiffFlavour::openChords, {}, pre },
+            std::vector<SectionType> types { { "BUILD & STOP", "The verse's drive pushed toward the chorus, then everything stops for a beat before it lands", RiffFlavour::openChords, {}, pre },
                      { "GUITARS OUT, BASS CLIMBS", "The guitars drop out; the bass climbs in long pushed notes, keys and a high motif carry it", RiffFlavour::openChords, {}, pre },
                      { "CYCLE IN QUARTERS", "A still clean shape in eighths with a three-note cycle in quarters over it, ending on a two-bar stop", RiffFlavour::openChords, {}, pre },
                      { "CHUGS UNDER THE SHAPE", "Low muted chugs with the bass and kick on them, the verse's still shape played high over them", RiffFlavour::openChords, {}, pre },
                      { "STABS & GAPS", "The whole band on short stabs together, then silence for the voice, a pickup into the next bar", RiffFlavour::openChords, {}, pre },
-                     { "RISING BASS", "Chords held or tremolo picked while the bass climbs a step a bar underneath", RiffFlavour::openChords, {}, pre },
-                     staccato, split, clean, muted, droning, sparse };
+                     { "RISING BASS", "Chords held or tremolo picked while the bass climbs a step a bar underneath", RiffFlavour::openChords, {}, pre } };
+            for (auto& t : sectionTypesFor ("Verse"))   // (0.118.0: the whole verse list, its new types too)
+                types.push_back (std::move (t));
+            return types;
         }
         // (0.110.0) A post-chorus's, an interlude's or an instrumental's own types first (the owner's songs, shapes only;
         // our names), then what it had: a post-chorus the chorus's, the others the bridge's.
@@ -92,7 +94,25 @@ namespace pr7s
                          { "RIFF WITH DRUMS BUILDING", "The riff steady while the drums build: hits, a groove, a double-kick carpet", r, {}, b },
                          droning, open };
             }
-            case 1: return { staccato, split, clean, muted, droning, sparse };
+            case 1:
+            {
+                // (0.118.0) Ten more from the owner's song files (shapes only, all in 4/4; our names), before DRONING
+                // and SPARSE.
+                const auto v = SectionType::Band::verse;
+                const auto r = RiffFlavour::openChords;
+                return { staccato, split, clean, muted,
+                         { "PICKED LINE, KICK IN THREES", "One guitar picking single notes round the root on every eighth, the kick three times a bar (3+3+2) with the snare between", r, {}, v },
+                         { "PICKED OSTINATO", "The power chords out: a picked single-note cell (or a high tremolo) over a held-back full beat", r, {}, v },
+                         { "SKANK LINE", "A single-note line on every eighth over a pedal, the skank beat under it", r, {}, v },
+                         { "LINE OVER HITS", "The skank line over a chord struck on each bar's one, the kick and crash only on the hits", r, {}, v },
+                         { "THREE BARS AND A STOP", "Three bars of sixteenth chugs over four on the floor, the fourth one hit and silence", r, {}, v },
+                         { "SIDESTICK PULSE", "Low single eighths and a side stick on the beats, the bass coming in halfway", r, {}, v },
+                         { "OFF-BEAT SNARE", "A chord rung every other bar (or low bursts), the snare and an open hat on the off-beats, no backbeat", r, {}, v },
+                         { "CHUGS, THEN DOTTED HITS", "Sixteenth chugs with holes for three bars, then dotted-quarter hits, the kick displaced under them", r, {}, v },
+                         { "PEDAL RIFF IN SIXTEENTHS", "One guitar's sixteenth riff on a low pedal climbing the minor pentatonic, a plain rock beat under it", r, {}, v },
+                         { "TRESILLO RIFF", "Power chords on a 3+3+2 figure in the first half bar, a high ostinato over it, hats and a sparse kick", r, {}, v },
+                         droning, sparse };
+            }
             case 2:
             {
                 // (0.115.0) Four more from the owner's 22 song files (shapes only; our names), after the first three.
@@ -226,7 +246,7 @@ namespace pr7s
                 case ComposerLayer::bass: return { "ROOT EIGHTHS", "DOUBLES THE GUITAR", "ROOTS ON THE BEATS", "LOCKED WITH THE KICK" };
                 case ComposerLayer::chords: return { "SILENT", "HELD PADS" };
                 case ComposerLayer::lead: return { "DOUBLES THE RHYTHM AN OCTAVE UP", "SILENT" };
-                case ComposerLayer::drums: return { "PLAIN BACKBEAT", "DRIVING KICK", "HALF TIME" };
+                case ComposerLayer::drums: return { "PLAIN BACKBEAT", "DRIVING KICK", "HALF TIME", "FOUR ON THE FLOOR" };   // (0.118.0)
                 case ComposerLayer::melody: break;
             }
         if (flavour == RiffFlavour::syncopatedDrive)
@@ -334,6 +354,48 @@ namespace pr7s
 
     // (0.111.0) The intro and outro types' options, lane by lane (the bass's last always LOCKED WITH THE KICK; only
     // DOWNBEAT HITS UNDER A LEAD has a lead list).
+    juce::StringArray verseApproaches (const juce::String& type, ComposerLayer layer)
+    {
+        // (0.118.0) The verse types' options (the bass's last always LOCKED WITH THE KICK; no lead lists: the lead plays
+        // its own styles; the keys and the drums their own).
+        using L = ComposerLayer;
+        struct Lists { const char* name; juce::StringArray guitar, bass, keys, drums; };
+        static const Lists lists[] {
+            { "PICKED LINE, KICK IN THREES", { "PICKED LINE", "PICKED LINE OVER CHORDS" }, { "ROOT EIGHTHS", "DOUBLES THE GUITAR", "LOCKED WITH THE KICK" },
+              { "SILENT", "HELD PADS" }, { "3+3+2", "RUNNING THREES", "STRAIGHT ALTERNATION" } },
+            { "PICKED OSTINATO", { "HIGH PICKED CELL", "LOW PICKED LINE", "HIGH TREMOLO", "OUT" }, { "CELLS OF THREE", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "SILENT", "SIXTEENTH ARPEGGIO" }, { "LIGHT FULL BEAT", "KICK AND HATS ONLY" } },
+            { "SKANK LINE", { "UNISON LINE", "LINE WITH A THIRD ABOVE" }, { "DOUBLES THE GUITAR", "PEDAL ONLY", "LOCKED WITH THE KICK" },
+              { "SILENT", "LOW PEDAL PAD" }, { "SKANK BEAT", "SKANK ON THE RIDE" } },
+            { "LINE OVER HITS", { "LINE OVER RUNG CHORDS", "LINE ALONE" }, { "CHORD HITS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "SILENT", "HELD PADS" }, { "HITS, THEN DOTTED", "CRASH ON ONE ONLY" } },
+            { "THREE BARS AND A STOP", { "PEDAL + MOVING TOP", "SIXTEENTH STREAM" }, { "SIXTEENTH ROOTS", "ROOT EIGHTHS", "LOCKED WITH THE KICK" },
+              { "SILENT", "HELD PADS" }, { "FOUR ON THE FLOOR", "PLAIN BACKBEAT" } },
+            { "SIDESTICK PULSE", { "LOW EIGHTHS", "CHORD RUNG A BAR" }, { "IN HALFWAY", "ROOT EIGHTHS", "LOCKED WITH THE KICK" },
+              { "HIGH PEDAL", "SILENT" }, { "SIDESTICK QUARTERS", "SIDESTICK AND HATS" } },
+            { "OFF-BEAT SNARE", { "RUNG BAR, SILENT BAR", "LOW BURSTS" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "SILENT", "HELD PADS" }, { "OFF-BEAT SNARE", "OFF-BEAT SNARE, CRASH EIGHTHS" } },
+            { "CHUGS, THEN DOTTED HITS", { "CHUGS, THEN DOTTED HITS", "CHUGS ONLY" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "SILENT", "HELD PADS" }, { "DISPLACED KICK", "KICK WITH THE CHUGS" } },
+            { "PEDAL RIFF IN SIXTEENTHS", { "PEDAL EVERY OTHER NOTE", "PEDAL IN PAIRS" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "SILENT", "HELD PADS" }, { "PLAIN ROCK BEAT", "KICK WITH THE RIFF" } },
+            { "TRESILLO RIFF", { "TRESILLO, THEN REST", "RIFF, THEN PULSE" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "HIGH FIFTH OSTINATO", "SILENT" }, { "HATS AND SPARSE KICK", "SNARE ON THE RIFF" } },
+        };
+        const auto t = type.trim().toUpperCase();
+        for (const auto& list : lists)
+            if (t == list.name)
+                switch (layer)
+                {
+                    case L::guitar: return list.guitar;
+                    case L::bass: return list.bass;
+                    case L::chords: return list.keys;
+                    case L::drums: return list.drums;
+                    default: return {};
+                }
+        return {};
+    }
+
     juce::StringArray bookendApproaches (const juce::String& type, ComposerLayer layer)
     {
         using L = ComposerLayer;
@@ -612,6 +674,8 @@ namespace pr7s
             return bookendApproaches (t->name, layer);
         if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::chorus)
             return chorusApproaches (t->name, layer);
+        if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::verse)
+            return verseApproaches (t->name, layer);
         if (layer == ComposerLayer::guitar)
             if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && ! t->guitarFlavours.empty())
             {
