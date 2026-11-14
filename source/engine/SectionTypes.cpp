@@ -99,6 +99,12 @@ namespace pr7s
                          { "HOLD AND ANSWER", "A low chord held, answered by two pickup hits or a high clash", r, {}, b },
                          { "DOWNBEAT HITS UNDER A LEAD", "A lead line over the band hitting only each bar's first beat", r, {}, b },
                          { "RIFF WITH DRUMS BUILDING", "The riff steady while the drums build: hits, a groove, a double-kick carpet", r, {}, b },
+                         // (0.124.0) From the owner's rock songs (shapes only; our names).
+                         { "BASS RIFF WITH TOMS", "The bass alone on the riff with the toms doubling it, a high tick on the quarters; the kick and snare late", r, {}, b },
+                         { "PEDAL SEESAW, DOUBLE KICK", "Eighth chugs rocking from a low pedal to the notes above it over a double kick, a burst every fourth bar", r, {}, b },
+                         { "TWO CELLS IN THREES", "A three-note cell in sixteenths on the guitar following the chords, a stepping keys cell over it that doesn't", r, {}, b },
+                         { "KIT HITS IN PAIRS", "The kit and the guitars together in pairs of sixteenths on the dotted grid, then a bar of space", r, {}, b },
+                         { "GAPPED PEDAL, BUILD INTO THE VERSE", "The low root in sixteenths with gaps on 2 and 4, the kick on every chug, a two-bar build into the verse", r, {}, b },
                          droning, open };
             }
             case 1:
@@ -197,6 +203,9 @@ namespace pr7s
                          { "SPACED STABS", "Four chugs into a hit on 1, then three beats of silence, over and over", r, {}, b },
                          { "TRIPLE STAB STOP", "The drive to the last bar: three sixteenths on the key's chord, then silence", r, {}, b },
                          { "FALLING OCTAVE PEDAL", "The riff under octaves on every eighth, a step lower every four bars, three stabs to end", r, {}, b },   // (0.117.0)
+                         // (0.124.0) From the owner's rock songs (shapes only; our names).
+                         { "EVERY OTHER BAR EMPTY", "The chorus thinned: a chord a bar and a bar of space in turn, a high arpeggio over it, the last chord held", r, {}, b },
+                         { "SINGLE-NOTE BAR, CHORD BAR", "A bar of low single notes, then a bar of power chords, in turn over half time with crash quarters", r, {}, b },
                          droning, stabs };
             }
             case 6: return { driving, droning };
@@ -478,6 +487,14 @@ namespace pr7s
             { "SPACED STABS", { "WALK, THEN SPACED STABS", "SPACED STABS ONLY" }, {}, { "HIGH PULSE IN THE GAPS", "SILENT" }, { "TOMS WITH THE CHUGS", "KICK AND CRASH ON THE HITS" }, {} },
             { "TRIPLE STAB STOP", { "DRIVE, THEN THREE STABS", "CHUGS, THEN THREE STABS" }, {}, { "HELD PADS", "SILENT" }, { "DRIVING, STABS WITH THE BAND", "DOUBLE KICK, STABS" }, {} },
             { "FALLING OCTAVE PEDAL", { "RIFF, THEN THE STAB BAR", "EIGHTHS, THEN THE STAB BAR" }, {}, { "SILENT", "HELD PADS" }, { "KICK EIGHTHS, CRASH QUARTERS", "DRIVING BACKBEAT" }, { "FALLING OCTAVES", "SILENT" } },   // (0.117.0)
+            // (0.124.0) The rock songs' intros and outros (written by RockSection in Composer.cpp).
+            { "BASS RIFF WITH TOMS", { "HIGH TICK ON THE QUARTERS", "OUT, THEN THE RIFF" }, { "THE RIFF ALONE", "ROOTS HELD", "LOCKED WITH THE KICK" }, { "SILENT", "LOW DRONE" }, { "TOMS WITH THE BASS, KICK AND SNARE LATE", "TOMS ONLY" }, {} },
+            { "PEDAL SEESAW, DOUBLE KICK", { "SEESAW CHUGS", "PEDAL CHUGS" }, {}, { "SILENT", "LOW DRONE" }, { "DOUBLE KICK, SNARE QUARTERS", "HALF TIME, CRASH QUARTERS" }, { "HIGH TWO-VOICE LINE", "SILENT" } },
+            { "TWO CELLS IN THREES", { "ROOT-ROOT-FIFTH IN THREES", "WITH A FLICK, THEN STRUMMED" }, {}, { "STEPPING CELL IN THREES", "SILENT" }, { "SYNCOPATED KICK, OFF-SIXTEENTH HATS", "DRUMS OUT" }, {} },
+            { "KIT HITS IN PAIRS", { "POWER CHORDS IN PAIRS", "WALL OF EIGHTHS" }, {}, { "DOTTED-QUARTER HIGH NOTES", "SILENT" }, { "KIT HITS IN PAIRS", "CRASH QUARTERS" }, {} },
+            { "GAPPED PEDAL, BUILD INTO THE VERSE", { "GAPPED SIXTEENTHS", "GAPPED SIXTEENTHS, RUNS" }, {}, { "SILENT", "HELD PADS" }, { "KICK ON EVERY CHUG, THEN THE BUILD", "HALF TIME, THEN THE BUILD" }, {} },
+            { "EVERY OTHER BAR EMPTY", { "CHORD HELD, BAR EMPTY", "CHORD STRUCK IN EIGHTHS, BAR EMPTY" }, { "ROOT EIGHTHS", "ROOTS HELD", "LOCKED WITH THE KICK" }, { "HELD PADS", "SILENT" }, { "GROOVE, DOWNBEAT-ONLY BAR", "HALF TIME, DOWNBEAT-ONLY BAR" }, { "HIGH QUARTER ARPEGGIO", "SILENT" } },
+            { "SINGLE-NOTE BAR, CHORD BAR", { "SINGLE NOTES, THEN CHORDS", "CHORDS ALL THROUGH" }, {}, { "DOTTED-QUARTER HIGH NOTES", "SILENT" }, { "HALF TIME, SYNCOPATED KICK", "DRIVING BACKBEAT" }, {} },
         };
         for (const auto& list : lists)
             if (t == list.name)

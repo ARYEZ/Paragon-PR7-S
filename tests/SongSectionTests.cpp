@@ -3060,10 +3060,14 @@ TEST_CASE ("0.111.0: intro and outro types, every lane's options a different par
     const ComposerContext c;
     const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
     const std::vector<juce::String> intros { "RIFF ALONE, THEN THE BAND", "FULL BAND FROM THE DOWNBEAT", "ARPEGGIO BUILD", "KEYS HOOK OVER A LOOP", "SWELL AND DRONE",
-                                             "STAB CALLS", "TREMOLO SWELL", "HOLD AND ANSWER", "DOWNBEAT HITS UNDER A LEAD", "RIFF WITH DRUMS BUILDING" };
+                                             "STAB CALLS", "TREMOLO SWELL", "HOLD AND ANSWER", "DOWNBEAT HITS UNDER A LEAD", "RIFF WITH DRUMS BUILDING",
+                                             // (0.124.0)
+                                             "BASS RIFF WITH TOMS", "PEDAL SEESAW, DOUBLE KICK", "TWO CELLS IN THREES", "KIT HITS IN PAIRS",
+                                             "GAPPED PEDAL, BUILD INTO THE VERSE" };
     const std::vector<juce::String> outros { "INTRO RETURNS, LAST CHORD RINGS", "WINDING DOWN", "DEAD STOP", "STABS, THEN RING", "FILL AND FINAL HIT",
                                              "HOOK ALONE TO THE END", "SPEEDING HITS", "SPACED STABS", "TRIPLE STAB STOP",
-                                             "FALLING OCTAVE PEDAL" };   // (0.117.0)
+                                             "FALLING OCTAVE PEDAL",   // (0.117.0)
+                                             "EVERY OTHER BAR EMPTY", "SINGLE-NOTE BAR, CHORD BAR" };   // (0.124.0)
     const auto intro = sectionTypesFor ("Intro");
     REQUIRE (intro.size() == intros.size() + 2);
     for (size_t i = 0; i < intros.size(); ++i)
@@ -4034,5 +4038,99 @@ TEST_CASE ("0.123.0: the rock songs' pre-choruses, their shapes", "[sections][ty
                 strikes.insert (juce::roundToInt (n.beat));
         CHECK (strikes == std::set<int> { 0, 3, 6, 9, 12, 15 });
         CHECK (starts (all[(size_t) ComposerLayer::drums], GmDrum::crash, 0.0, 32.0).count (0) == 1);
+    }
+}
+
+TEST_CASE ("0.124.0: the rock songs' intros and outros, their shapes", "[sections][types][rock]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (Am F C G a bar each, 8 bars: 32 beats; the low string A0 = 33)
+    const auto typed = [] (const juce::String& section, const juce::String& name, int guitar = -1, int drums = -1)
+    {
+        ComposerState s;
+        applySectionType (s, section, name);
+        s.lane (ComposerLayer::guitar).approach = guitar;
+        s.lane (ComposerLayer::drums).approach = drums;
+        return s;
+    };
+    const auto starts = [] (const LineIdea& idea, int pitch, double from, double to)
+    {
+        std::set<int> out;   // (sixteenths from `from`)
+        for (const auto& n : idea.notes)
+            if (n.pitch == pitch && n.beat >= from - 1.0e-6 && n.beat < to - 1.0e-6)
+                out.insert (juce::roundToInt ((n.beat - from) * 4.0));
+        return out;
+    };
+    // The style says intro or outro.
+    CHECK (composeLayers (typed ("Intro", "KIT HITS IN PAIRS", 0, 0), spans, c)[(size_t) ComposerLayer::drums].style.startsWith ("Intro: "));
+    CHECK (composeLayers (typed ("Outro", "EVERY OTHER BAR EMPTY", 0, 0), spans, c)[(size_t) ComposerLayer::drums].style.startsWith ("Outro: "));
+    // BASS RIFF WITH TOMS: the floor tom on the bass's riff; no kick until the last quarter.
+    {
+        const auto all = composeLayers (typed ("Intro", "BASS RIFF WITH TOMS", 0, 0), spans, c);
+        const auto& d = all[(size_t) ComposerLayer::drums];
+        CHECK (starts (d, GmDrum::tomFloor, 0.0, 4.0) == std::set<int> { 0, 1, 3, 4, 7, 9 });
+        CHECK (starts (d, GmDrum::kick, 0.0, 24.0).empty());
+        CHECK (starts (d, GmDrum::kick, 24.0, 28.0) == std::set<int> { 0, 1, 3, 4, 7, 9 });
+        CHECK (starts (d, GmDrum::snare, 24.0, 28.0) == std::set<int> { 4, 12 });
+    }
+    // PEDAL SEESAW: eighths from the low tonic A, every other one above it; the fourth bar a burst a step under (G).
+    {
+        const auto all = composeLayers (typed ("Intro", "PEDAL SEESAW, DOUBLE KICK", 0, 0), spans, c);
+        const auto& g = all[(size_t) ComposerLayer::guitar];
+        CHECK (starts (g, 33, 0.0, 4.0) == std::set<int> { 0, 4, 8, 12 });
+        CHECK (starts (g, 43, 12.0, 16.0).size() == 16);
+        CHECK (starts (all[(size_t) ComposerLayer::drums], GmDrum::kick, 0.0, 4.0).size() == 16);
+    }
+    // GAPPED PEDAL: the low root in sixteenths but on 2 and 4, the octave on 3; the last two bars the build.
+    {
+        const auto all = composeLayers (typed ("Intro", "GAPPED PEDAL, BUILD INTO THE VERSE", 0, 0), spans, c);
+        const auto& g = all[(size_t) ComposerLayer::guitar];
+        CHECK (starts (g, 33, 0.0, 4.0) == std::set<int> { 0, 1, 2, 3, 5, 6, 7, 9, 10, 11, 13, 14, 15 });
+        CHECK (starts (g, 45, 0.0, 4.0) == std::set<int> { 8 });
+        const auto& d = all[(size_t) ComposerLayer::drums];
+        CHECK (starts (d, GmDrum::snare, 0.0, 4.0) == std::set<int> { 8 });
+        CHECK (starts (d, GmDrum::kick, 24.0, 28.0).size() == 16);
+    }
+    // KIT HITS IN PAIRS: the pairs on the dotted grid, then a bar of one crash.
+    {
+        const auto all = composeLayers (typed ("Intro", "KIT HITS IN PAIRS", 0, 0), spans, c);
+        const auto& d = all[(size_t) ComposerLayer::drums];
+        CHECK (starts (d, GmDrum::snare, 0.0, 4.0) == std::set<int> { 0, 1, 6, 7, 12, 13 });
+        CHECK (starts (d, GmDrum::snare, 4.0, 8.0).empty());
+        CHECK (starts (d, GmDrum::crash, 4.0, 8.0) == std::set<int> { 0 });
+    }
+    // TWO CELLS IN THREES: the keys' cell of three notes never follows the chords (the same three classes over F as over Am).
+    {
+        const auto all = composeLayers (typed ("Intro", "TWO CELLS IN THREES", 0, 0), spans, c);
+        std::set<int> overAm, overF;
+        for (const auto& n : all[(size_t) ComposerLayer::chords].notes)
+            (n.beat < 4.0 ? overAm : n.beat < 8.0 ? overF : overAm).insert (n.pitch % 12);
+        CHECK (overAm.size() == 3);
+        CHECK (overAm == overF);
+    }
+    // EVERY OTHER BAR EMPTY: bar 2 silent; the last chord held a whole bar.
+    {
+        const auto all = composeLayers (typed ("Outro", "EVERY OTHER BAR EMPTY", 0, 0), spans, c);
+        auto inBar2 = 0;
+        double lastLength = 0.0;
+        for (const auto& n : all[(size_t) ComposerLayer::guitar].notes)
+        {
+            if (n.beat >= 4.0 - 1.0e-6 && n.beat < 8.0 - 1.0e-6)
+                ++inBar2;
+            if (n.beat >= 28.0 - 1.0e-6)
+                lastLength = juce::jmax (lastLength, n.length);
+        }
+        CHECK (inBar2 == 0);
+        CHECK (lastLength > 3.5);
+    }
+    // SINGLE-NOTE BAR, CHORD BAR: the first bar single notes with the 1 empty; the second power chords from the 1.
+    {
+        const auto all = composeLayers (typed ("Outro", "SINGLE-NOTE BAR, CHORD BAR", 0, 0), spans, c);
+        const auto& g = all[(size_t) ComposerLayer::guitar];
+        CHECK (starts (g, 33, 0.0, 4.0) == std::set<int> { 2, 4, 6, 8, 10, 12, 14 });
+        CHECK (starts (g, 48, 4.0, 8.0).count (0) == 1);   // (F's fifth over the low F: C3)
+        const auto& d = all[(size_t) ComposerLayer::drums];
+        CHECK (starts (d, GmDrum::snare, 0.0, 4.0) == std::set<int> { 8 });
+        CHECK (starts (d, GmDrum::crash, 0.0, 4.0) == std::set<int> { 0, 4, 8, 12 });
     }
 }

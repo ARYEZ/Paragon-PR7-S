@@ -2,6 +2,27 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.124.0
+
+You asked for the intro and outro ideas next, from your first 22 MIDI files (the rock bands). That's **seven new section types**: five intros and two outros. As before, only the songs' shapes were used, never their notes, and the names are ours. They come after the existing ones in an intro or outro block's TYPE menu. Each instrument has its options in its menu.
+
+**New intro types**
+- **BASS RIFF WITH TOMS:** the bass alone on the riff, with the floor tom doubling every note. A guitar can tick a high note on the quarters, or stay out until the last quarter and then play the riff. The kick and snare come in for the last quarter.
+- **PEDAL SEESAW, DOUBLE KICK:** eighth chugs rocking from the key's low tonic to the notes a third to a sixth above it, over sixteenth kicks with the snare on every quarter. Every fourth bar is a burst of sixteenths a step under. The lead can play two high voices over it.
+- **TWO CELLS IN THREES:** the guitar cycles root, root, fifth in sixteenths across the beats, following the chords. The keys cycle three stepping notes over it that never change with the chords, getting louder as they go. A second guitar option adds a flick, then strums the full chord from halfway.
+- **KIT HITS IN PAIRS:** the kick, snare, hat and guitars together in pairs of sixteenths on the dotted grid (1, 2-and, 4), then a bar with just one crash. The keys can play high notes on the same dotted grid.
+- **GAPPED PEDAL, BUILD INTO THE VERSE:** the low root in sixteenths with gaps on 2 and 4 and the octave on 3, the kick on every chug, crash quarters. The last two bars are a build (kick sixteenths, snare and crash eighths) into the verse.
+
+**New outro types**
+- **EVERY OTHER BAR EMPTY:** the chorus thinned out. A bar of the chord (held, or struck in eighths), then a bar of space, in turn, with a high quarter-note arpeggio over it. The drums alternate a groove bar with a bar of just a kick and crash on the 1, and the last chord is held.
+- **SINGLE-NOTE BAR, CHORD BAR:** a bar of low single notes in eighths (the 1 left empty), then a bar of power chords. The drums have the snare on 3 only, a syncopated kick, a crash on every quarter and a shaker. The keys play high notes on the dotted grid.
+
+**Left out on purpose:**
+- **The intro with a short bar every four:** you said no time signature changes.
+- **The ending that slows the tempo while the last chord rings:** the composer writes notes, not tempo changes. I can add that if you want it.
+
+**What I couldn't check:** how they sound. The tests check the shapes (where the toms, kicks, snares, gaps and pairs land, the keys' cell not following the chords, the empty bars, the held last chord). They also check that every option of every lane writes a different part.
+
 ## 0.123.0
 
 Two things you asked for: the speed pass (the lag dragging the cycle, and the rough first click in the track list), and the pre-chorus ideas from your first 22 MIDI files (the rock bands).
