@@ -38,6 +38,9 @@ namespace pr7s
         // A SHORT BAR shortens its last bar (a signature change there). Linked copies share it.
         juce::String transition;
         int shortBeats() const;   // the SHORT BAR's beats (0: none)
+        // (0.114.0) Its own key (an index into Key::all()) when the song's sections aren't all in one key; -1: the
+        // song's key.
+        int key = -1;
         struct Lane { int layer = 0, track = 0; juce::int64 mark = 0; bool operator== (const Lane&) const = default; };
         std::vector<Lane> lanes;
         bool operator== (const SongSection&) const = default;
@@ -49,6 +52,11 @@ namespace pr7s
     {
         bool shown = true;                // the row in the track list (0.103.0: there by default, the owner's; hidden: the blocks kept)
         std::vector<SongSection> blocks;  // in the song's order, from bar 1
+        // (0.114.0, the owner: "set the key of the song and all parts need to be in that key ... by default all
+        // sections synced to the same key", with a switch to allow key changes) The song's key (an index into
+        // Key::all(); -1: not set, the chord track's key at the start), and whether every block is in it.
+        int songKey = -1;
+        bool oneKey = true;
 
         int nextId() const noexcept;
         int totalBars() const noexcept;

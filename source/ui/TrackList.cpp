@@ -876,10 +876,53 @@ public:
         add.setTooltip ("Add a section after the last: intro, verse, pre-chorus, chorus, bridge, breakdown, solo...");
         add.onClick = [this] { if (owner.onAddSection) owner.onAddSection(); };
         addAndMakeVisible (add);
+        // (0.114.0, the owner: "in the sections lane I need to be able to set the key of the song")
+        key.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        key.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+        key.setWantsKeyboardFocus (false);
+        key.setTooltip ("The song's key: every part moves into it (chords, notes, what the composer built). "
+                        "ALL SECTIONS SYNCED TO ONE KEY (on to start with): untick it for key changes, then each block's own key in its editor (right-click a block)");
+        key.onClick = [this] { showKeyMenu(); };
+        addAndMakeVisible (key);
         setTooltip ("The song's sections: drag a block to rearrange (its music goes with it), double-click one to open the composer on it, right-click for its menu");
+        refresh();
     }
 
-    void refresh() { repaint(); }
+    void refresh()
+    {
+        const auto text = "KEY: " + ChordUi::spokenKey (owner.studio.getSongKey()).toUpperCase() + (owner.studio.isOneKey() ? "" : " +");
+        if (key.getButtonText() != text)
+            key.setButtonText (text);
+        repaint();
+    }
+
+    void showKeyMenu()
+    {
+        juce::PopupMenu menu;
+        menu.addSectionHeader ("THE SONG'S KEY (EVERY PART MOVES INTO IT)");
+        const auto& keys = pr7s::Key::all();
+        const auto now = owner.studio.getSongKey();
+        juce::PopupMenu majors, minors;
+        for (size_t i = 0; i < keys.size(); ++i)
+            (keys[i].minor ? minors : majors).addItem (1 + (int) i, ChordUi::spokenKey (keys[i]).toUpperCase(), true, keys[i] == now);
+        menu.addSubMenu ("Major Keys", majors, true, nullptr, ! now.minor);
+        menu.addSubMenu ("Minor Keys", minors, true, nullptr, now.minor);
+        menu.addSeparator();
+        menu.addItem (1000, "All Sections Synced to One Key", true, owner.studio.isOneKey());
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (key),
+                            [safe = juce::Component::SafePointer<SectionsRow> (this)] (int chosen)
+                            {
+                                if (safe == nullptr || chosen == 0)
+                                    return;
+                                auto& studio = safe->owner.studio;
+                                if (chosen == 1000)
+                                    studio.setOneKey (! studio.isOneKey());
+                                else if (juce::isPositiveAndNotGreaterThan (chosen, (int) pr7s::Key::all().size()))
+                                    studio.setSongKey (pr7s::Key::all()[(size_t) chosen - 1]);
+                            });
+    }
+
+    juce::TextButton& getKeyButton() noexcept { return key; }
 
     void paint (juce::Graphics& g) override
     {
@@ -904,6 +947,9 @@ public:
         area.removeFromRight (6);
         add.setBounds (area.removeFromRight (92).withSizeKeepingCentre (92, juce::jmin (24, area.getHeight())));
         area.removeFromRight (4);
+        const auto keyWidth = juce::jmin (190, juce::jmax (0, area.getWidth() - 80));
+        key.setBounds (area.removeFromRight (keyWidth).withSizeKeepingCentre (keyWidth, juce::jmin (24, area.getHeight())));
+        area.removeFromRight (4);
         nameArea = area.toFloat();
     }
 
@@ -915,9 +961,12 @@ public:
 
 private:
     TrackList& owner;
-    juce::TextButton add { "+ SECTION" };
+    juce::TextButton add { "+ SECTION" }, key;
     juce::Rectangle<float> nameArea;
 };
+
+juce::Button* TrackList::getSongKeyButton() { return sectionsRow != nullptr ? &sectionsRow->getKeyButton() : nullptr; }
+void TrackList::showSongKeyMenu() { if (sectionsRow != nullptr) sectionsRow->showKeyMenu(); }
 
 class TrackList::MarkerRow final : public juce::Component,
                                    public juce::SettableTooltipClient

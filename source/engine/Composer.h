@@ -90,6 +90,14 @@ namespace pr7s
         // the groove chosen by hand (its file's path; empty: by the section and the take).
         bool libraryDrums = true;
         juce::String libraryGroove;
+        // (0.114.0, the owner: "imported without being changed at all and I need to select what composer lane it
+        // goes to") The lane your riff (+ MY RIFF, ComposerContext::myRiff) plays on, exactly as you played it
+        // (repeated to the length): no humanize, transition, playable-note or keyswitch changes on it.
+        int riffLane = (int) ComposerLayer::guitar;
+        ComposerLayer riffLayer() const noexcept
+        {
+            return juce::isPositiveAndBelow (riffLane, composerLayerCount) ? (ComposerLayer) riffLane : ComposerLayer::guitar;
+        }
         std::optional<ComposerLayer> syncLayer() const noexcept
         {
             return syncLane >= 0 && syncLane < composerLayerCount ? std::optional<ComposerLayer> ((ComposerLayer) syncLane) : std::nullopt;

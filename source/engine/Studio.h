@@ -540,6 +540,18 @@ namespace pr7s
         void setChordTrackKey (double fromBeat, const Key&);
         void setAutoScales (bool);
         Key chordTrackKeyAt (double beat) const;          // the scale in force (else the pads' key)
+        // (0.114.0, the owner: "in the sections lane I need to be able to set the key of the song and all parts need
+        // to be in that key ... by default all sections must be synced to the same key", with a switch for key
+        // changes) The song's key: chosen, everything moves into it (chords, every pitched track's notes, what the
+        // composer built and its recipes), one undo step. With ALL SECTIONS IN ONE KEY (the default) every block is
+        // in it; off, a block can have its own key (setSongSectionKey moves only that block's music, and its linked
+        // copies'). The chord track's key strip follows (a scale at each block whose key differs from the one before).
+        Key getSongKey() const;
+        void setSongKey (const Key&);
+        bool isOneKey() const noexcept { return project.songSections.oneKey; }
+        void setOneKey (bool);                             // on again: every block back in the song's key
+        Key getSongSectionKey (int index) const;           // the block's key (the song's in one-key songs)
+        void setSongSectionKey (int index, const Key&);    // one-key songs: the song's key
         // A new chord at `beat`: the best that could follow the chord before (else the key's I).
         Chord suggestChordAt (double beat) const;
         // The chords (or those at these indices) as a MIDI part, voiced with the least
@@ -1612,6 +1624,11 @@ namespace pr7s
         juce::int64 trackMark (const SectionPlace&, int trackId) const;
         void rewriteChangedSections();     // before syncLinkedSections in changed()
         void noteSectionChords();          // after it
+        // (0.114.0) The music from `from` to `to` (beats) moved from one key to another (chords, pitched notes, built
+        // recipes, their marks renewed so the lanes still count as the composer's), and the key strip laid out from
+        // the blocks' keys. No changed(): the caller's.
+        void moveMusicToKey (double from, double to, const Key& oldKey, const Key& newKey);
+        void layOutSectionKeys();
         void rewriteSection (int index, const std::vector<ChordEvent>& before, const std::vector<ChordEvent>& after);
         std::vector<int> rebuildSectionLanes (int index, const std::vector<ChordEvent>& chords);   // the tracks rebuilt
         PadPlayer padPlayer;

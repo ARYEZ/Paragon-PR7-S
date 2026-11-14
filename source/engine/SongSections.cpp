@@ -53,12 +53,18 @@ namespace pr7s
     {
         auto xml = std::make_unique<juce::XmlElement> ("SongSections");
         xml->setAttribute ("shown", shown);
+        if (songKey >= 0)
+            xml->setAttribute ("songKey", songKey);
+        if (! oneKey)
+            xml->setAttribute ("oneKey", false);
         for (const auto& b : blocks)
         {
             auto* e = xml->createNewChildElement ("Section");
             e->setAttribute ("id", b.id);
             e->setAttribute ("name", b.name);
             e->setAttribute ("bars", b.bars);
+            if (b.key >= 0)
+                e->setAttribute ("key", b.key);
             if (b.link > 0)
                 e->setAttribute ("link", b.link);
             if (b.type.isNotEmpty())
@@ -84,6 +90,8 @@ namespace pr7s
     {
         SongSections s;
         s.shown = xml.getBoolAttribute ("shown", true);
+        s.songKey = juce::jlimit (-1, 29, xml.getIntAttribute ("songKey", -1));
+        s.oneKey = xml.getBoolAttribute ("oneKey", true);
         for (auto* e : xml.getChildWithTagNameIterator ("Section"))
         {
             SongSection b;
@@ -92,6 +100,7 @@ namespace pr7s
             b.name = name.isNotEmpty() ? name : juce::String ("Verse");
             b.bars = juce::jlimit (leastSectionBars, mostSectionBars, e->getIntAttribute ("bars", 8));
             b.link = juce::jmax (0, e->getIntAttribute ("link", 0));
+            b.key = juce::jlimit (-1, 29, e->getIntAttribute ("key", -1));
             b.recipe = e->getStringAttribute ("recipe");
             b.type = e->getStringAttribute ("type");
             b.transition = e->getStringAttribute ("transition");

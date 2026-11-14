@@ -122,6 +122,10 @@ private:
     std::unique_ptr<SignatureRow> signatureRow;   // the signature track's (0.45.0), while it's shown
     std::unique_ptr<MarkerRow> markerRow;         // the marker track's (0.49.0), while it's shown
     std::unique_ptr<SectionsRow> sectionsRow;     // the SECTIONS row's (0.90.0), while it's shown
+public:
+    juce::Button* getSongKeyButton();               // (0.114.0) the SECTIONS row's KEY (none: the row hidden)
+    void showSongKeyMenu();
+private:
     std::unique_ptr<ChordRow> chordRow;   // the chord track's (0.16.0), while it's shown
     std::vector<Timeline::Row> lastLayout;
     int dropIndex = -1, dropY = -1;   // a drag of tracks: where they'd go

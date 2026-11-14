@@ -2,6 +2,47 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.114.0
+
+Three of your asks: the song's key on the SECTIONS row, your riff on the lane you choose, and a CLEAN GUITAR lane.
+
+**The song's key on the SECTIONS row.** The row has a KEY button ("KEY: C MAJOR"). Choose a key and everything in the song moves into it in one undo step:
+- **Chords:** the chord track's chords.
+- **Notes:** every pitched track's notes. Drums aren't touched.
+- **What the composer built:** its recipe is noted in the new key, so a later rebuild stays in it.
+
+How the move works:
+- **Same mode** (C major to D major): everything moves up or down the short way.
+- **Major to minor, or minor to major:** each note goes to the same step of the new scale. E in C major becomes Eb in C minor. A chord built on the old key's own scale takes the new key's chord on that step: F becomes Fm, Am becomes Ab.
+
+**All Sections Synced to One Key** is in the same menu and is on to start with. While it's on, every section is in the song's key, and changing the key anywhere (the row, a block's editor, the composer's KEY box) changes it for the whole song.
+
+Untick it for key changes:
+- A block's editor then has THIS SECTION'S KEY, which moves only that section's music (and its linked copies).
+- The block shows its own key, and the KEY button reads "KEY: C MAJOR +".
+- The chord track's key strip follows each section's key.
+
+Tick it again and every section moves back into the song's key.
+
+**MY RIFF on the lane you choose, exactly as you played it.** + MY RIFF now has BUILD A SECTION FROM MY RIFF (from the selected part, or a MIDI file) as well as ONLY LOAD MY RIFF. After THIS RIFF IS MY... you choose the lane it plays on: guitar, bass, lead, clean guitar, chords, melody or drums.
+
+On that lane the riff is played note for note:
+- No humanize, no transition changes and no playable-note trimming.
+- No keyswitches added.
+- It's repeated to the section's length, nothing more.
+
+The lane is locked, and every other lane follows its rhythm. That's SYNC on your riff's lane, with the bass doubling it, so the band's first parts are built off your riff. Dragging a part onto the composer asks for the lane too. "My Riff Plays on the..." moves it to another lane later.
+
+**CLEAN GUITAR, a lane after LEAD.** Its styles are the clean parts:
+- Ringing arpeggio, picked chord, sparse clean notes, held chord & pulse.
+- Pedal hook, muted dyad walk.
+- Still shape in threes, still shape in sixteenths, still cluster.
+- Swelled melody.
+
+It's off until you turn it on, so songs build as before. It goes onto a "Clean Guitar" track. COMPOSER TRACKS in the Hub has a row for it, so you can point it at your own clean guitar track or tracks.
+
+**Your 22 song MIDI files** in the manuals repo have been read for their shapes only (nothing copied). What they suggest for new section types is in the reply that comes with this release. You choose which to build first.
+
 ## 0.113.0
 
 Two of your reports: the screen pausing when you click a track, and the studio hanging when you close or open a song.

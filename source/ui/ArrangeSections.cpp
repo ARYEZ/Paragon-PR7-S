@@ -7,6 +7,7 @@
 #include "engine/SectionTypes.h"
 
 #include "ui/ParagonLookAndFeel.h"
+#include "ui/ChordUi.h"
 
 namespace
 {
@@ -157,7 +158,10 @@ void ArrangeView::paintSections (juce::Graphics& g, const Timeline::Row& row)
             g.setColour (juce::Colour (pr7s::FamilyColours::pink).withAlpha (0.9f));
             g.fillRoundedRectangle (bounds.withLeft (bounds.getRight() - 4.0f).reduced (0.0f, 2.0f), 2.0f);
         }
-        const auto bars = juce::String (b.bars) + (b.bars == 1 ? " BAR" : " BARS") + (b.transition.isNotEmpty() ? " - " + b.transition : juce::String());
+        // (0.114.0) Its own key, when the song's sections aren't all in one key.
+        const auto ownKey = ! studio.isOneKey() && juce::isPositiveAndBelow (b.key, (int) pr7s::Key::all().size())
+                              ? " - " + ChordUi::spokenKey (pr7s::Key::all()[(size_t) b.key]).toUpperCase() : juce::String();
+        const auto bars = juce::String (b.bars) + (b.bars == 1 ? " BAR" : " BARS") + ownKey + (b.transition.isNotEmpty() ? " - " + b.transition : juce::String());
         const auto barsWidth = juce::GlyphArrangement::getStringWidth (juce::Font (ParagonLookAndFeel::titleFont (12.0f)), bars) + 6.0f;
         if (text.getWidth() > barsWidth * 2.5f)
         {

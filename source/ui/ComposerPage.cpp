@@ -264,6 +264,8 @@ void ComposerPage::refresh (bool rehear)
         const auto& sections = studio.getSongSections();
         const auto index = sections.indexOf (targetBlock);
         state.transition = index >= 0 ? sections.blocks[(size_t) index].transition : juce::String();
+        if (usesSectionsRow() && ! state.fromChordTrack && ! fromRiff)
+            state.key = index >= 0 ? studio.getSongSectionKey (index) : studio.getSongKey();   // (0.114.0: the song's key)
     }
     if (target.has_value() && ! state.fromChordTrack && ! fromRiff)
         state.bars = target->bars;   // (0.90.0: the block's length; the progression repeated to fill it, cut at its end)
@@ -346,7 +348,7 @@ void ComposerPage::refresh (bool rehear)
         box->setEnabled (! state.fromChordTrack && ! fromRiff);
     lengthBox.setEnabled (! state.fromChordTrack && ! getTargetPlace().has_value());   // (0.90.0: a block's length is its own)
     // (0.75.0) The key locked for the song once a section is built.
-    keyBox.setEnabled (! state.fromChordTrack && ! isKeyLocked());
+    keyBox.setEnabled (! state.fromChordTrack && (usesSectionsRow() || ! isKeyLocked()));
     keyBox.setTooltip (isKeyLocked() ? "The key is locked for the whole song now that a section is built (right-click the SONG strip to start the song again)"
                                      : "The key: the chords are the library's in it (a progression written in the other mode plays on the relative key); "
                                        "with your riff, guessed from it");
@@ -808,6 +810,22 @@ void ComposerPage::setStyle (ComposerLayer l, int style)
 
 void ComposerPage::setKey (const pr7s::Key& k)
 {
+    // (0.114.0) With the SECTIONS row, the key is the song's (or, with key changes allowed, the block's): set there,
+    // everything already in the song moves into it.
+    if (usesSectionsRow())
+    {
+        const auto index = studio.getSongSections().indexOf (targetBlock);
+        if (index >= 0)
+            studio.setSongSectionKey (index, k);
+        else
+            studio.setSongKey (k);
+        state.key = k;
+        chordOverrides.clear();
+        status = (studio.isOneKey() ? "The song's key: " : "This section's key: ") + ChordUi::spokenKey (k)
+               + " (everything in it moved into it)";
+        refresh();
+        return;
+    }
     if (isKeyLocked() && ! (k == state.key))
     {
         status = "The key is locked for the song (a section is built): right-click the SONG strip to start again";
@@ -1134,13 +1152,32 @@ void ComposerPage::setPlayMyRiff (bool on)
     useMyRiff = on && studio.getComposerRiff().has_value();
     if (useMyRiff)
     {
-        taken[(size_t) ComposerLayer::guitar].reset();
-        state.lane (ComposerLayer::guitar).on = true;
+        const auto l = state.riffLayer();
+        taken[(size_t) l].reset();
+        state.lane (l).on = true;
     }
     refresh();
 }
 
-bool ComposerPage::pasteRiff (pr7s::ComposerRiff riff)
+void ComposerPage::setRiffLane (ComposerLayer l)
+{
+    // (0.114.0) Your riff onto that lane, as you played it; the others follow it (SYNC on it). The lane it left
+    // goes back to writing its own part.
+    const auto before = state.riffLayer();
+    state.riffLane = (int) l;
+    if (state.syncLane == (int) before)
+        state.syncLane = (int) l;
+    if (before != l)
+        state.lane (before).locked = false;
+    useMyRiff = studio.getComposerRiff().has_value();
+    taken[(size_t) l].reset();
+    state.lane (l).on = true;
+    state.lane (l).locked = true;
+    status = "Your riff plays on the " + pr7s::composerLayerName (l).toLowerCase() + " lane, as you played it; the others follow it";
+    refresh();
+}
+
+bool ComposerPage::pasteRiff (pr7s::ComposerRiff riff, int lane)
 {
     if (riff.notes.empty())
     {
@@ -1166,17 +1203,30 @@ bool ComposerPage::pasteRiff (pr7s::ComposerRiff riff)
     state.fromChordTrack = false;
     useMyRiff = true;
     chordOverrides.clear();
-    taken[(size_t) ComposerLayer::guitar].reset();
-    state.lane (ComposerLayer::guitar).on = true;
+    // (0.114.0, the owner: "imported without being changed at all ... select what composer lane it goes to. The
+    // other composer lanes then have their initial riffs based off of it") Played unchanged on its lane, locked;
+    // every other lane follows its rhythm (SYNC on it), the bass doubling it.
+    const auto onto = juce::isPositiveAndBelow (lane, pr7s::composerLayerCount) ? (ComposerLayer) lane : state.riffLayer();
+    if (state.riffLayer() != onto)
+        state.lane (state.riffLayer()).locked = false;
+    state.riffLane = (int) onto;
+    for (const auto l : pr7s::composerLayers())
+        taken[(size_t) l].reset();
+    state.lane (onto).on = true;
+    state.lane (onto).locked = true;
+    state.syncLane = (int) onto;
+    if (onto != ComposerLayer::bass)
+        state.lane (ComposerLayer::bass).doubleSync = true;
     // The section's beat, and the riff's settings back to as written.
     studio.setRiffSettings ({});
     setSection (section);
-    status = "Your riff (" + juce::String (bars) + (bars == 1 ? " bar" : " bars") + ") as the " + pr7s::sectionWord (section).toLowerCase() + "; " + keyText;
+    status = "Your riff (" + juce::String (bars) + (bars == 1 ? " bar" : " bars") + ") as the " + pr7s::sectionWord (section).toLowerCase()
+           + " on the " + pr7s::composerLayerName (onto).toLowerCase() + " lane, the others following it; " + keyText;
     repaint();
     return true;
 }
 
-bool ComposerPage::pasteRiffFromPart (int partId, pr7s::DrumSection section)
+bool ComposerPage::pasteRiffFromPart (int partId, pr7s::DrumSection section, int lane)
 {
     const auto where = studio.findPart (partId);
     if (! where.has_value())
@@ -1197,10 +1247,10 @@ bool ComposerPage::pasteRiffFromPart (int partId, pr7s::DrumSection section)
     }
     notes.erase (std::remove_if (notes.begin(), notes.end(), [&part] (const pr7s::Note& n) { return n.start >= part.length; }), notes.end());
     const auto bpb = studio.getProject().beatsPerBarAt (part.start);
-    return pasteRiff (pr7s::riffFromNotes (notes, part.start, bpb, track->name + (part.name.isNotEmpty() ? " - " + part.name : juce::String()), section));
+    return pasteRiff (pr7s::riffFromNotes (notes, part.start, bpb, track->name + (part.name.isNotEmpty() ? " - " + part.name : juce::String()), section), lane);
 }
 
-bool ComposerPage::pasteRiffFromFile (const juce::File& file, pr7s::DrumSection section)
+bool ComposerPage::pasteRiffFromFile (const juce::File& file, pr7s::DrumSection section, int lane)
 {
     juce::String error;
     const auto midi = pr7s::readMidiFile (file, error);
@@ -1216,12 +1266,12 @@ bool ComposerPage::pasteRiffFromFile (const juce::File& file, pr7s::DrumSection 
         if (t.channel != 10)
             notes.insert (notes.end(), t.notes.begin(), t.notes.end());
     std::sort (notes.begin(), notes.end(), [] (const pr7s::Note& a, const pr7s::Note& b) { return a.start < b.start; });
-    return pasteRiff (pr7s::riffFromNotes (notes, 0.0, context.beatsPerBar, file.getFileNameWithoutExtension(), section));
+    return pasteRiff (pr7s::riffFromNotes (notes, 0.0, context.beatsPerBar, file.getFileNameWithoutExtension(), section), lane);
 }
 
-std::vector<int> ComposerPage::buildFromPart (int partId, pr7s::DrumSection section)
+std::vector<int> ComposerPage::buildFromPart (int partId, pr7s::DrumSection section, int lane)
 {
-    if (! pasteRiffFromPart (partId, section))
+    if (! pasteRiffFromPart (partId, section, lane))
         return {};
     const auto riffStatus = status;
     auto tracks = buildSection();
@@ -1231,9 +1281,9 @@ std::vector<int> ComposerPage::buildFromPart (int partId, pr7s::DrumSection sect
     return tracks;
 }
 
-std::vector<int> ComposerPage::buildFromFile (const juce::File& file, pr7s::DrumSection section)
+std::vector<int> ComposerPage::buildFromFile (const juce::File& file, pr7s::DrumSection section, int lane)
 {
-    if (! pasteRiffFromFile (file, section))
+    if (! pasteRiffFromFile (file, section, lane))
         return {};
     const auto riffStatus = status;
     auto tracks = buildSection();
@@ -1255,8 +1305,8 @@ bool ComposerPage::canTakePart (int partId) const
 
 void ComposerPage::dropPart (int partId)
 {
-    askSection ([safe = juce::Component::SafePointer<ComposerPage> (this), partId] (pr7s::DrumSection sec)
-                { if (safe != nullptr) safe->buildFromPart (partId, sec); }, &pasteKey);
+    askSectionAndLane ([safe = juce::Component::SafePointer<ComposerPage> (this), partId] (pr7s::DrumSection sec, int lane)
+                       { if (safe != nullptr) safe->buildFromPart (partId, sec, lane); }, &pasteKey);
 }
 
 void ComposerPage::forgetRiff()
@@ -1286,6 +1336,27 @@ void ComposerPage::askSection (std::function<void (pr7s::DrumSection)> then, juc
                         });
 }
 
+void ComposerPage::askSectionAndLane (std::function<void (pr7s::DrumSection, int)> then, juce::Component* target)
+{
+    askSection ([safe = juce::Component::SafePointer<ComposerPage> (this), then, target] (pr7s::DrumSection sec)
+    {
+        if (safe == nullptr)
+            return;
+        juce::PopupMenu menu;
+        menu.addSectionHeader ("IT PLAYS ON THE... (AS YOU PLAYED IT)");
+        for (const auto l : pr7s::composerLayers())
+            menu.addItem (100 + (int) l, pr7s::composerLayerName (l) + " lane", true, l == safe->state.riffLayer());
+        auto options = juce::PopupMenu::Options();
+        if (target != nullptr)
+            options = options.withTargetComponent (target);
+        menu.showMenuAsync (options, [then, sec] (int chosen)
+                            {
+                                if (chosen >= 100 && chosen < 100 + pr7s::composerLayerCount)
+                                    then (sec, chosen - 100);
+                            });
+    }, target);
+}
+
 void ComposerPage::showPasteMenu()
 {
     const auto parts = getSelectedParts != nullptr ? getSelectedParts() : std::vector<int> {};
@@ -1301,12 +1372,20 @@ void ComposerPage::showPasteMenu()
             }
     const auto& riff = studio.getComposerRiff();
     juce::PopupMenu menu;
+    menu.addSectionHeader ("BUILD A SECTION FROM MY RIFF");
+    menu.addItem (7, partId != 0 ? "From the Selected Part (" + partName + ")" : juce::String ("From the Selected Part (select a MIDI part first)"), partId != 0);
+    menu.addItem (8, "From a MIDI File...");
+    menu.addSectionHeader ("ONLY LOAD MY RIFF (BUILD LATER)");
     menu.addItem (1, partId != 0 ? "From the Selected Part (" + partName + ")" : juce::String ("From the Selected Part (select a MIDI part first)"), partId != 0);
     menu.addItem (2, "From a MIDI File...");
     if (riff.has_value())
     {
         menu.addSeparator();
-        menu.addItem (3, "The Guitar Plays My Riff", true, useMyRiff);
+        menu.addItem (3, "My Riff Plays (" + pr7s::composerLayerName (state.riffLayer()) + " lane)", true, useMyRiff);
+        juce::PopupMenu lanes;
+        for (const auto l : pr7s::composerLayers())
+            lanes.addItem (100 + (int) l, pr7s::composerLayerName (l), true, l == state.riffLayer());
+        menu.addSubMenu ("My Riff Plays on the...", lanes);
         menu.addItem (4, "The Chords from My Riff", true, fromRiff);
         menu.addItem (5, "Forget My Riff (" + riff->name + ")");
     }
@@ -1323,21 +1402,43 @@ void ComposerPage::showPasteMenu()
                                     safe->onLearnMyBand();
                                 return;
                             }
-                            if (chosen == 1)
-                                safe->askSection ([safe, partId] (pr7s::DrumSection sec) { if (safe != nullptr) safe->pasteRiffFromPart (partId, sec); }, &safe->pasteKey);
-                            else if (chosen == 2)
+                            if (chosen >= 100 && chosen < 100 + pr7s::composerLayerCount)
+                                safe->setRiffLane ((ComposerLayer) (chosen - 100));
+                            else if (chosen == 1 || chosen == 7)
                             {
+                                const auto build = chosen == 7;
+                                safe->askSectionAndLane ([safe, partId, build] (pr7s::DrumSection sec, int lane)
+                                {
+                                    if (safe == nullptr)
+                                        return;
+                                    if (build)
+                                        safe->buildFromPart (partId, sec, lane);
+                                    else
+                                        safe->pasteRiffFromPart (partId, sec, lane);
+                                }, &safe->pasteKey);
+                            }
+                            else if (chosen == 2 || chosen == 8)
+                            {
+                                const auto build = chosen == 8;
                                 safe->chooser = std::make_unique<juce::FileChooser> ("Your riff (a MIDI file)", juce::File(), "*.mid;*.midi");
                                 safe->chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                                                            [safe] (const juce::FileChooser& fc)
+                                                            [safe, build] (const juce::FileChooser& fc)
                                                             {
                                                                 const auto file = fc.getResult();
                                                                 if (safe == nullptr || ! file.existsAsFile())
                                                                     return;
-                                                                juce::MessageManager::callAsync ([safe, file]
+                                                                juce::MessageManager::callAsync ([safe, file, build]
                                                                 {
                                                                     if (safe != nullptr)
-                                                                        safe->askSection ([safe, file] (pr7s::DrumSection sec) { if (safe != nullptr) safe->pasteRiffFromFile (file, sec); }, &safe->pasteKey);
+                                                                        safe->askSectionAndLane ([safe, file, build] (pr7s::DrumSection sec, int lane)
+                                                                        {
+                                                                            if (safe == nullptr)
+                                                                                return;
+                                                                            if (build)
+                                                                                safe->buildFromFile (file, sec, lane);
+                                                                            else
+                                                                                safe->pasteRiffFromFile (file, sec, lane);
+                                                                        }, &safe->pasteKey);
                                                                 });
                                                             });
                             }
@@ -1365,8 +1466,8 @@ void ComposerPage::filesDropped (const juce::StringArray& files, int, int)
         {
             const juce::File file (f);
             // (0.83.4) Dropped in: taken and the section built around it.
-            askSection ([safe = juce::Component::SafePointer<ComposerPage> (this), file] (pr7s::DrumSection sec)
-                        { if (safe != nullptr) safe->buildFromFile (file, sec); }, nullptr);
+            askSectionAndLane ([safe = juce::Component::SafePointer<ComposerPage> (this), file] (pr7s::DrumSection sec, int lane)
+                               { if (safe != nullptr) safe->buildFromFile (file, sec, lane); }, nullptr);
             return;
         }
 }
@@ -1500,12 +1601,18 @@ void ComposerPage::chooseNext (const pr7s::SectionSuggestion& next)
     // What it relates to (engine/SectionPlan.h): the riff settings, the guitar's riff, the same family of beats.
     studio.setRiffSettings (next.riffSettings);
     auto& guitar = state.lane (ComposerLayer::guitar);
-    if (! guitar.locked && ! taken[(size_t) ComposerLayer::guitar].has_value())
+    // (0.114.0: a lane holding your riff is locked on it; a suggestion can still move off it or back)
+    const auto riffOnGuitar = useMyRiff && state.riffLayer() == ComposerLayer::guitar;
+    if ((! guitar.locked || riffOnGuitar) && ! taken[(size_t) ComposerLayer::guitar].has_value())
     {
-        // (0.75.0) Your riff: reshaped by the suggestion's riff settings, or a new riff for contrast.
+        // (0.75.0) Your riff, or a new riff for contrast.
         useMyRiff = studio.getComposerRiff().has_value() && next.riff == myRiffIndex;
         if (! useMyRiff)
+        {
             guitar.style = juce::jlimit (0, pr7s::composerStyleCount (ComposerLayer::guitar) - 1, next.riff);
+            if (riffOnGuitar)
+                guitar.locked = false;
+        }
     }
     state.lane (ComposerLayer::drums).variation = next.variation;
     status = "Next: " + pr7s::sectionWord (next.kind).toLowerCase() + ". " + next.reason;
@@ -1748,10 +1855,10 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
                                                                     : pr7s::riffFlavourName (pr7s::riffFlavours()[(size_t) state.riffFlavour])), flavours);
         menu.addItem (writtenRiffsItem, "Written Riffs (the six of each style, not generated)", true, state.writtenRiffs);
     }
-    if (l == ComposerLayer::guitar && studio.getComposerRiff().has_value())
+    if (studio.getComposerRiff().has_value())   // (0.114.0: on any lane: your riff moves to it)
     {
         menu.addSeparator();
-        menu.addItem (myRiffItem, "My Riff (" + studio.getComposerRiff()->name + ")", true, useMyRiff);
+        menu.addItem (myRiffItem, "My Riff (" + studio.getComposerRiff()->name + ")", true, useMyRiff && l == state.riffLayer());
     }
     // (0.106.0, the owner) The drums from the groove library: on by default; the grooves for this section to choose from.
     if (l == ComposerLayer::drums)
@@ -1804,7 +1911,7 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
                             else if (chosen == doubleSyncItem)
                                 safe->setDoubleSync (l, ! safe->isDoublingSync (l));
                             else if (chosen == myRiffItem)
-                                safe->setPlayMyRiff (true);
+                                safe->setRiffLane (l);
                             else if (chosen == writtenRiffsItem)
                                 safe->setWrittenRiffs (! safe->isUsingWrittenRiffs());
                             else if (chosen >= approachItems && chosen < approachItems + 50)

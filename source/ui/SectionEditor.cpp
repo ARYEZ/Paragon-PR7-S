@@ -235,8 +235,7 @@ double SectionEditor::blockBeats() const
 
 pr7s::Key SectionEditor::getKey() const
 {
-    const auto place = studio.getSongSectionPlace (getIndex());
-    return studio.chordTrackKeyAt (place.has_value() ? place->start : 0.0);
+    return studio.getSongSectionKey (getIndex());   // (0.114.0: the song's key, or the block's own with key changes allowed)
 }
 
 void SectionEditor::refresh()
@@ -285,6 +284,7 @@ void SectionEditor::refresh()
     if (! hasOwn)
         lengthBox.addItem (barsText (b.bars), b.bars);
     lengthBox.setSelectedId (b.bars, juce::dontSendNotification);
+    keyLabel.setText (studio.isOneKey() ? "SONG KEY" : "THIS SECTION'S KEY", juce::dontSendNotification);
     const auto key = getKey();
     const auto& keys = pr7s::Key::all();
     for (int i = 0; i < (int) keys.size(); ++i)
@@ -332,7 +332,7 @@ void SectionEditor::setTransition (const juce::String& name)
 
 void SectionEditor::setSongKey (const pr7s::Key& key)
 {
-    studio.setChordTrackKey (0.0, key);
+    studio.setSongSectionKey (getIndex(), key);   // (0.114.0: one-key songs: the whole song moves into it)
     refresh();
 }
 

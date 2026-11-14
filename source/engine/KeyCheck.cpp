@@ -118,4 +118,68 @@ namespace pr7s
         const auto guessed = guessSongKey (project).value_or (Key {});
         return [guessed] (double) { return guessed; };
     }
+
+    //==========================================================================
+    namespace
+    {
+        const int majorSteps[7] { 0, 2, 4, 5, 7, 9, 11 };
+        const int minorSteps[7] { 0, 2, 3, 5, 7, 8, 10 };
+        const int* stepsOf (const Key& k) noexcept { return k.minor ? minorSteps : majorSteps; }
+        int degreeOf (int relative, const Key& k) noexcept
+        {
+            for (int i = 0; i < 7; ++i)
+                if (stepsOf (k)[i] == relative)
+                    return i;
+            return -1;
+        }
+        int relativeIn (int pitchClass, const Key& k) noexcept { return ((pitchClass - k.pitchClass()) % 12 + 12) % 12; }
+    }
+
+    int keyShiftOf (const Key& from, const Key& to) noexcept
+    {
+        auto d = ((to.pitchClass() - from.pitchClass()) % 12 + 12) % 12;
+        return d > 5 ? d - 12 : d;
+    }
+
+    int movePitchToKey (int pitch, const Key& from, const Key& to) noexcept
+    {
+        auto moved = pitch + keyShiftOf (from, to);
+        if (from.minor != to.minor)
+        {
+            const auto rel = relativeIn (pitch, from);
+            if (const auto degree = degreeOf (rel, from); degree >= 0)
+                moved += stepsOf (to)[degree] - rel;
+        }
+        return juce::jlimit (0, 127, moved);
+    }
+
+    Chord moveChordToKey (const Chord& chord, const Key& from, const Key& to)
+    {
+        auto out = chord;
+        out.root = ((movePitchToKey (60 + chord.root, from, to)) % 12 + 12) % 12;
+        if (chord.bass >= 0)
+            out.bass = ((movePitchToKey (60 + chord.bass, from, to)) % 12 + 12) % 12;
+        if (from.minor == to.minor)
+            return out;
+        // A triad on the old key's own scale: the new key's triad on that degree.
+        const auto degree = degreeOf (relativeIn (chord.root, from), from);
+        if (degree < 0 || (chord.type != Chord::Type::major && chord.type != Chord::Type::minor && chord.type != Chord::Type::diminished
+                           && chord.type != Chord::Type::augmented))
+            return out;
+        const auto third = [] (const int* steps, int d) { return ((steps[(d + 2) % 7] - steps[d]) % 12 + 12) % 12; };
+        const auto fifth = [] (const int* steps, int d) { return ((steps[(d + 4) % 7] - steps[d]) % 12 + 12) % 12; };
+        const auto typeOf = [&] (const int* steps) -> std::optional<Chord::Type>
+        {
+            const auto t = third (steps, degree), f = fifth (steps, degree);
+            if (t == 4 && f == 7) return Chord::Type::major;
+            if (t == 3 && f == 7) return Chord::Type::minor;
+            if (t == 3 && f == 6) return Chord::Type::diminished;
+            if (t == 4 && f == 8) return Chord::Type::augmented;
+            return std::nullopt;
+        };
+        if (typeOf (stepsOf (from)) == chord.type)
+            if (const auto now = typeOf (stepsOf (to)))
+                out.type = *now;
+        return out;
+    }
 }

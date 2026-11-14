@@ -11896,6 +11896,173 @@ namespace pr7s
         setScaleEvents (std::move (scales));
     }
 
+    //==========================================================================
+    // The song's key (0.114.0)
+    static int keyIndexOf (const Key& key)
+    {
+        const auto& all = Key::all();
+        for (size_t i = 0; i < all.size(); ++i)
+            if (all[i] == key)
+                return (int) i;
+        // (an unusual spelling: the key of the same pitch and mode)
+        for (size_t i = 0; i < all.size(); ++i)
+            if (all[i].pitchClass() == key.pitchClass() && all[i].minor == key.minor)
+                return (int) i;
+        return -1;
+    }
+
+    Key Studio::getSongKey() const
+    {
+        const auto k = project.songSections.songKey;
+        return juce::isPositiveAndBelow (k, (int) Key::all().size()) ? Key::all()[(size_t) k] : chordTrackKeyAt (0.0);
+    }
+
+    Key Studio::getSongSectionKey (int index) const
+    {
+        const auto& blocks = project.songSections.blocks;
+        if (! project.songSections.oneKey && juce::isPositiveAndBelow (index, (int) blocks.size()))
+            if (const auto k = blocks[(size_t) index].key; juce::isPositiveAndBelow (k, (int) Key::all().size()))
+                return Key::all()[(size_t) k];
+        return getSongKey();
+    }
+
+    void Studio::layOutSectionKeys()
+    {
+        std::vector<ScaleEvent> scales { { 0.0, getSongKey() } };
+        const auto places = getSongSectionPlaces();
+        for (size_t i = 0; i < places.size(); ++i)
+        {
+            const auto key = getSongSectionKey ((int) i);
+            if (! (key == scales.back().key))
+            {
+                if (places[i].start < 1.0e-6)
+                    scales.back().key = key;
+                else
+                    scales.push_back ({ places[i].start, key });
+            }
+        }
+        if (! places.empty() && ! (scales.back().key == getSongKey()))
+            scales.push_back ({ places.back().end, getSongKey() });   // (after the row: the song's key again)
+        project.chordTrack.scales = std::move (scales);
+        project.chordTrack.autoScales = false;
+    }
+
+    void Studio::moveMusicToKey (double from, double to, const Key& oldKey, const Key& newKey)
+    {
+        if (oldKey == newKey)
+            return;
+        const auto inside = [from, to] (double beat) { return beat >= from - 1.0e-6 && beat < to - 1.0e-6; };
+        for (auto& e : project.chordTrack.events)
+            if (inside (e.beat))
+                e.chord = moveChordToKey (e.chord, oldKey, newKey);
+        for (auto& track : project.tracks)
+        {
+            if (track.frozen || ! isPitchedTrack (track))
+                continue;
+            for (auto& part : track.parts)
+                for (auto& n : part.notes)
+                    if (inside (part.start + n.start))
+                    {
+                        const auto heard = part.heardPitch (n.pitch);
+                        n.pitch = juce::jlimit (0, 127, movePitchToKey (heard, oldKey, newKey) - (heard - n.pitch));
+                    }
+        }
+        // What the composer built there: its recipe in the new key, and its lanes still the composer's.
+        const auto places = getSongSectionPlaces();
+        auto& blocks = project.songSections.blocks;
+        for (size_t i = 0; i < blocks.size() && i < places.size(); ++i)
+        {
+            if (! inside (places[i].start))
+                continue;
+            auto& b = blocks[i];
+            if (b.recipe.isNotEmpty())
+            {
+                auto state = ComposerState::fromString (b.recipe);
+                state.key = newKey;
+                b.recipe = state.toString();
+            }
+            for (auto& lane : b.lanes)
+                lane.mark = trackMark (places[i], lane.track);
+        }
+    }
+
+    void Studio::setSongKey (const Key& key)
+    {
+        const auto index = keyIndexOf (key);
+        if (index < 0)
+            return;
+        const auto old = getSongKey();
+        auto& sections = project.songSections;
+        const auto places = getSongSectionPlaces();
+        if (sections.oneKey || places.empty())
+            moveMusicToKey (0.0, 1.0e9, old, key);
+        else
+        {
+            // Blocks in the song's key move with it; blocks with their own keep theirs; the song outside the row too.
+            moveMusicToKey (places.back().end, 1.0e9, old, key);
+            for (size_t i = 0; i < places.size(); ++i)
+                if (sections.blocks[i].key < 0)
+                    moveMusicToKey (places[i].start, places[i].end, old, key);
+            if (! places.empty() && places.front().start > 1.0e-6)
+                moveMusicToKey (0.0, places.front().start, old, key);
+        }
+        sections.songKey = index;
+        layOutSectionKeys();
+        noteSectionChords();   // (the chords moved with their music: nothing to rewrite)
+        changed();
+    }
+
+    void Studio::setOneKey (bool on)
+    {
+        auto& sections = project.songSections;
+        if (sections.oneKey == on)
+            return;
+        if (on)
+        {
+            const auto places = getSongSectionPlaces();
+            for (size_t i = 0; i < sections.blocks.size() && i < places.size(); ++i)
+                if (const auto k = sections.blocks[i].key; k >= 0)
+                {
+                    sections.blocks[i].key = -1;
+                    moveMusicToKey (places[i].start, places[i].end, Key::all()[(size_t) k], getSongKey());
+                }
+        }
+        if (sections.songKey < 0)
+            sections.songKey = keyIndexOf (getSongKey());
+        sections.oneKey = on;
+        layOutSectionKeys();
+        noteSectionChords();
+        changed();
+    }
+
+    void Studio::setSongSectionKey (int index, const Key& key)
+    {
+        auto& sections = project.songSections;
+        if (sections.oneKey)
+        {
+            setSongKey (key);
+            return;
+        }
+        if (! juce::isPositiveAndBelow (index, (int) sections.blocks.size()))
+            return;
+        const auto k = keyIndexOf (key);
+        if (k < 0)
+            return;
+        if (sections.songKey < 0)
+            sections.songKey = keyIndexOf (getSongKey());
+        const auto places = getSongSectionPlaces();
+        for (const auto i : sections.linkedWith (index))
+        {
+            const auto old = getSongSectionKey (i);
+            sections.blocks[(size_t) i].key = key == getSongKey() ? -1 : k;
+            if (juce::isPositiveAndBelow (i, (int) places.size()))
+                moveMusicToKey (places[(size_t) i].start, places[(size_t) i].end, old, key);
+        }
+        layOutSectionKeys();
+        noteSectionChords();
+        changed();
+    }
+
     void Studio::setScaleEvents (std::vector<ScaleEvent> scales)
     {
         project.chordTrack.scales = std::move (scales);

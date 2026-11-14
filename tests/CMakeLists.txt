@@ -75,6 +75,8 @@ add_executable(ParagonPR7STests
     Speed0852Tests.cpp
     Speed0113Tests.cpp
     CleanGuitarTests.cpp
+    MyRiffLaneTests.cpp
+    SongKeyTests.cpp
     Tweaks0853Tests.cpp
     SyncTests.cpp
     DroningBandTests.cpp

@@ -149,16 +149,21 @@ public:
     bool isKeyLocked() const;
     void setChord (int spanIndex, std::optional<pr7s::Chord>);   // one chord swapped (none: back to the source's)
     std::vector<pr7s::Chord> getChordChoices() const;           // the key's own chords (the swap menu)
-    bool pasteRiff (pr7s::ComposerRiff);                         // the riff in: its key guessed (not once locked), its chords, the guitar plays it
-    bool pasteRiffFromPart (int partId, pr7s::DrumSection);
-    bool pasteRiffFromFile (const juce::File&, pr7s::DrumSection);
+    // (0.114.0) `lane`: the lane your riff plays on, unchanged (-1: the one it was on, the guitar to start with);
+    // the others follow it (SYNC on that lane).
+    bool pasteRiff (pr7s::ComposerRiff, int lane = -1);          // the riff in: its key guessed (not once locked), its chords
+    bool pasteRiffFromPart (int partId, pr7s::DrumSection, int lane = -1);
+    bool pasteRiffFromFile (const juce::File&, pr7s::DrumSection, int lane = -1);
     // (0.83.4, the owner: drag a MIDI part or file in and it builds that part) Your riff taken, then the section
     // built around it (the lanes on, the guitar playing the riff): the tracks written, none if nothing was.
-    std::vector<int> buildFromPart (int partId, pr7s::DrumSection);
-    std::vector<int> buildFromFile (const juce::File&, pr7s::DrumSection);
+    std::vector<int> buildFromPart (int partId, pr7s::DrumSection, int lane = -1);
+    std::vector<int> buildFromFile (const juce::File&, pr7s::DrumSection, int lane = -1);
     bool canTakePart (int partId) const;                         // a MIDI part with notes
     void dropPart (int partId);                                  // asks THIS RIFF IS MY..., then buildFromPart
     void askSection (std::function<void (pr7s::DrumSection)> then, juce::Component* target);
+    void askSectionAndLane (std::function<void (pr7s::DrumSection, int lane)> then, juce::Component* target);   // (0.114.0)
+    void setRiffLane (pr7s::ComposerLayer);                      // (0.114.0) your riff onto another lane
+    pr7s::ComposerLayer getRiffLane() const noexcept { return state.riffLayer(); }
     void forgetRiff();
     void setFromRiff (bool);                                     // CHORDS FROM: MY RIFF
     bool isFromRiff() const noexcept { return fromRiff; }

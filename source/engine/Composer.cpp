@@ -70,7 +70,7 @@ namespace pr7s
              + (fromChordTrack ? "1" : "0") + "|" + (toChordTrack ? "1" : "0") + "|" + lanesText.joinIntoString (";")
              + "|" + juce::String (riffFlavour) + "," + (writtenRiffs ? "1" : "0") + "," + juce::String (syncLane)
              + "|" + sectionType.removeCharacters ("|") + "|" + transition.removeCharacters ("|")
-             + "|" + (libraryDrums ? "1" : "0") + "|" + libraryGroove.removeCharacters ("|");
+             + "|" + (libraryDrums ? "1" : "0") + "|" + libraryGroove.removeCharacters ("|") + "|" + juce::String (riffLane);
     }
 
     ComposerState ComposerState::fromString (const juce::String& text)
@@ -128,6 +128,8 @@ namespace pr7s
             s.libraryDrums = parts[11] != "0";   // (0.106.0; older text: on)
         if (parts.size() >= 13)
             s.libraryGroove = parts[12];
+        if (parts.size() >= 14)
+            s.riffLane = juce::jlimit (0, composerLayerCount - 1, parts[13].getIntValue());   // (0.114.0; older text: the guitar)
         return s;
     }
 
@@ -331,11 +333,11 @@ namespace pr7s
             const auto& profile = c.guitarProfile;
             const auto tuning = profile.has_value() ? profile->tuning() : c.tuning;
             const auto velocities = profile.has_value() && profile->velocities.has_value() ? *profile->velocities : c.velocities;
-            if (c.myRiff.has_value())
+            if (c.myRiff.has_value() && s.riffLayer() == ComposerLayer::guitar)
             {
-                // (0.75.0) Your riff, reshaped only as far as RIFF SETTINGS and BUSY move from their middles.
+                // (0.114.0, the owner: "imported without being changed at all") Your riff exactly as played.
                 auto mine = *c.myRiff;
-                shapeRiff (mine, spans, c.beatsPerBar, riff, velocities, c.style, lane.variation, tuning);
+                mine.part = LineIdea::Part::rhythm;
                 return mine;
             }
             const auto low = profile.has_value() ? profile->rangeLow() : tuning.lowest();
@@ -368,6 +370,12 @@ namespace pr7s
         LineIdea rawLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
             const auto& lane = s.lane (l);
+            if (c.myRiff.has_value() && s.riffLayer() == l)
+            {
+                auto mine = *c.myRiff;   // (0.114.0: your riff on the lane you chose, as you played it)
+                mine.part = composerPartOf (l);
+                return mine;
+            }
             switch (l)
             {
                 case ComposerLayer::chords: return pianoTake (lane.style, spans, c.beatsPerBar, takeOf (lane, l, 21, 108));
@@ -393,7 +401,7 @@ namespace pr7s
                 }
                 case ComposerLayer::drums:
                 {
-                    const auto hits = c.drums.lockToRiff || c.myRiff.has_value() ? riffHits (guitarOf (s, spans, c)) : std::vector<double> {};
+                    const auto hits = c.myRiff.has_value() ? riffHits (*c.myRiff) : c.drums.lockToRiff ? riffHits (guitarOf (s, spans, c)) : std::vector<double> {};
                     return drumsOf (s, spans, c, lane.style, hits);
                 }
                 case ComposerLayer::bass:
@@ -404,7 +412,7 @@ namespace pr7s
                     if (lane.style >= 6)
                     {
                         // The seventh: the roots on the drums' kick (the drums lane's beat, heard or not).
-                        const auto hits = c.drums.lockToRiff || c.myRiff.has_value() ? riffHits (guitarOf (s, spans, c)) : std::vector<double> {};
+                        const auto hits = c.myRiff.has_value() ? riffHits (*c.myRiff) : c.drums.lockToRiff ? riffHits (guitarOf (s, spans, c)) : std::vector<double> {};
                         const auto beat = drumsOf (s, spans, c, s.lane (ComposerLayer::drums).style, hits);
                         auto idea = bassOnHits (spans, kickHits (beat), "Locked to the kick", "The chords' roots on every kick of the drums' " + beat.style.toLowerCase());
                         if (lane.lowString)
@@ -7879,6 +7887,12 @@ namespace pr7s
             return out;
         for (const auto l : composerLayers())
         {
+            if (c.myRiff.has_value() && s.riffLayer() == l)
+            {
+                // (0.114.0) Your riff: nothing done to it (the others follow it through SYNC).
+                out[(size_t) l] = rawLayer (l, s, spans, c);
+                continue;
+            }
             auto idea = syncedLayer (l, s, spans, c);
             idea.part = composerPartOf (l);
             applyTransition (l, idea, s, spans, c);   // (0.104.0: the block's hand-over to the next)

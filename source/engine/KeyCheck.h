@@ -44,4 +44,13 @@ namespace pr7s
     std::optional<Key> guessSongKey (const Project&);
     // The key at a beat for the check: a chosen key, else the chord track's keys when it has any, else the guess.
     KeyAt keyCheckKeys (const Project&, std::optional<Key> chosen);
+
+    // (0.114.0, the owner: "set the key of the song and all parts need to be in that key") Music moved from one key
+    // to another. The tonic moves the short way (-6..+5 semitones); between major and minor each scale degree goes to
+    // the new key's same degree (C major's E becomes C minor's Eb), notes outside the scale move with the tonic.
+    int keyShiftOf (const Key& from, const Key& to) noexcept;
+    int movePitchToKey (int pitch, const Key& from, const Key& to) noexcept;
+    // A chord the same way: its root and bass as pitches are; a chord built on the old key's own scale (its triad
+    // diatonic there) takes the new key's triad on that degree.
+    Chord moveChordToKey (const Chord&, const Key& from, const Key& to);
 }
