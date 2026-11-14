@@ -2391,19 +2391,13 @@ void KeyEditor::paintChordGuides (juce::Graphics& g, juce::Rectangle<float> area
             const auto level = chordGuideLevel (pitch, e.beat + 1.0e-6);
             if (level == 0)
                 continue;
-            // (0.121.0, the owner: stronger and further apart) root clearly red, 3rd / 5th pink, added notes
-            // orange and weaker, the key a faint pearl; a solid mark where the chord starts tells them apart.
-            const auto full = level == 4 ? pr7s::FamilyColours::red : level == 3 ? pr7s::FamilyColours::pink
-                            : level == 2 ? pr7s::FamilyColours::orange : juce::Colour (0xfff4eeea);
-            const auto alpha = level == 4 ? 0.58f : level == 3 ? 0.36f : level == 2 ? 0.22f : 0.07f;
-            const juce::Rectangle<float> row (x1, yForPitch (pitch) + 0.5f, x2 - x1, rowHeight - 1.0f);
+            // (0.125.0, the owner: half as strong, so they're there but not prominent; no mark at the chord's start,
+            // which looked exactly like a note) red the best notes (the chord's own: the root a shade stronger),
+            // orange the next best (its added notes), pink the borderline passing notes (in the key, not the chord).
+            const auto full = level >= 3 ? pr7s::FamilyColours::red : level == 2 ? pr7s::FamilyColours::orange : pr7s::FamilyColours::pink;
+            const auto alpha = level == 4 ? 0.3f : level == 3 ? 0.22f : level == 2 ? 0.14f : 0.09f;
             g.setColour (full.withAlpha (alpha));
-            g.fillRect (row);
-            if (level >= 2 && xForBeat (e.beat) >= area.getX())
-            {
-                g.setColour (full);
-                g.fillRect (row.withWidth (juce::jmin (4.0f, row.getWidth())));
-            }
+            g.fillRect (juce::Rectangle<float> (x1, yForPitch (pitch) + 0.5f, x2 - x1, rowHeight - 1.0f));
         }
     }
 }
@@ -2425,7 +2419,7 @@ void KeyEditor::paintKeys (juce::Graphics& g)
         {
             if (guide < 2 || lit)
                 return;
-            g.setColour (guide == 4 ? pr7s::FamilyColours::red : guide == 3 ? pr7s::FamilyColours::pink : pr7s::FamilyColours::orange);
+            g.setColour (guide >= 3 ? pr7s::FamilyColours::red : pr7s::FamilyColours::orange);   // (0.125.0: as the guides)
             g.fillRect (key.withLeft (key.getRight() - juce::jmin (14.0f, key.getWidth() * 0.35f)).reduced (0.0f, 1.0f));
         };
         if (isBlackKey (pitch))
@@ -2534,6 +2528,7 @@ void KeyEditor::paintNotes (juce::Graphics& g)
     // rule): the LOW range and under orange, MID pink, HIGH red (the ranges
     // of the random velocity keys); selected ones brighter and outlined.
     const auto& list = notes();
+    const auto guidesShown = guidesApply() && ! project.chordTrack.events.empty();
     for (int i = 0; i < (int) list.size(); ++i)
     {
         const auto bounds = getNoteBounds (i);
@@ -2556,6 +2551,15 @@ void KeyEditor::paintNotes (juce::Graphics& g)
             g.setColour (isSelected ? juce::Colours::white : juce::Colours::black.withAlpha (0.55f));
             g.strokePath (diamond, juce::PathStrokeType (isSelected ? 1.5f : 1.0f));
             continue;
+        }
+        // (0.125.0, the owner) With CHORD GUIDES on, a soft pearl glow round each note played, so it stands out
+        // from the guides behind it.
+        if (guidesShown && ! note.muted)
+        {
+            g.setColour (juce::Colour (0xfff4eeea).withAlpha (0.12f));
+            g.fillRoundedRectangle (bounds.expanded (3.0f), 4.0f);
+            g.setColour (juce::Colour (0xfff4eeea).withAlpha (0.28f));
+            g.fillRoundedRectangle (bounds.expanded (1.5f), 3.0f);
         }
         // (0.77.1) A muted note: faded, with a pearl outline (still there, not played).
         g.setColour ((isSelected ? fill.brighter (0.35f) : fill).withAlpha (note.muted ? 0.22f : 1.0f));

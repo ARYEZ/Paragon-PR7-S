@@ -108,3 +108,37 @@ TEST_CASE ("0.121.0: CHORD GUIDES draw behind the notes, in the family's colours
     const auto drums = e.createComponentSnapshot (e.getLocalBounds());
     CHECK (drums.isValid());
 }
+
+TEST_CASE ("0.125.0: CHORD GUIDES half as strong, no bright mark at a chord's start, the notes played glowing", "[chordguides]")
+{
+    Song song;
+    auto& e = song.editor();
+    const auto area = e.getNotesArea();
+    // A row of G7's own notes (from beat 4): its first pixels as faint as its middle (no note-like mark at the start).
+    const auto start = juce::roundToInt (e.xForBeat (4.0)) + 3;   // (past the bar line)
+    const auto middle = juce::roundToInt (e.xForBeat (6.1));   // (between grid lines)
+    int y = -1;
+    for (int pitch = 0; pitch < 128 && y < 0; ++pitch)
+        if (e.chordGuideLevel (pitch, 5.0) >= 3 && area.contains ((float) middle, e.yForPitch (pitch) + 3.0f))
+            y = juce::roundToInt (e.yForPitch (pitch) + 3.0f);
+    REQUIRE (y >= 0);
+    const auto shot = e.createComponentSnapshot (e.getLocalBounds());
+    const auto a = shot.getPixelAt (start, y), b = shot.getPixelAt (middle, y);
+    CHECK (std::abs ((int) a.getRed() - (int) b.getRed()) <= 6);
+    // The guide stays well under a played note's own colour.
+    e.setChordGuides (false);
+    const auto plain = e.createComponentSnapshot (e.getLocalBounds()).getPixelAt (middle, y);
+    e.setChordGuides (true);
+    CHECK ((int) b.getRed() - (int) plain.getRed() < 70);
+    // The note played (C3 from beat 0): a pearl glow just outside it while the guides are on.
+    const auto note = e.getNoteBounds (0);
+    const auto gx = juce::roundToInt (note.getCentreX()), gy = juce::roundToInt (note.getY() - 1.5f);
+    if (area.contains ((float) gx, (float) gy))
+    {
+        const auto glow = e.createComponentSnapshot (e.getLocalBounds()).getPixelAt (gx, gy);
+        e.setChordGuides (false);
+        const auto none = e.createComponentSnapshot (e.getLocalBounds()).getPixelAt (gx, gy);
+        e.setChordGuides (true);
+        CHECK (glow.getBrightness() > none.getBrightness());
+    }
+}

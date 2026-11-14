@@ -2,6 +2,14 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.125.0
+
+**CHORD GUIDES toned down, as you asked:**
+- **Half as strong:** the guides are about half their old strength, so they sit in the background.
+- **The bright sliver is gone:** that was a solid mark I drew at the start of each chord, and it looked exactly like a note.
+- **Colours by how good the note is:** red for the best notes (the chord's own notes, the root a shade stronger), orange for the next best (the chord's added notes, like a 7th), pink for the borderline passing notes (in the key but not in the chord). Notes outside the key get no colour. The stripe on the piano keys follows the same colours.
+- **The notes you played glow:** while the guides are on, each note you played has a soft pearl-white glow round it, so it stands out from the guides behind it.
+
 ## 0.124.0
 
 You asked for the intro and outro ideas next, from your first 22 MIDI files (the rock bands). That's **seven new section types**: five intros and two outros. As before, only the songs' shapes were used, never their notes, and the names are ours. They come after the existing ones in an intro or outro block's TYPE menu. Each instrument has its options in its menu.
