@@ -205,6 +205,111 @@ namespace pr7s
              : l == ComposerLayer::clean ? (int) cleanGuitarStyles().size() : 6;
     }
 
+    namespace
+    {
+        // (0.117.0, the owner's chorus files, shapes only) PUSHED FOUR-CHORD TURNAROUND: the guitar's option under
+        // DRIVING (the 7th) and SYNCOPATED DRIVE (the 5th). The last bar of every four plays four chords of the key, each
+        // a pair of muted sixteenths into a hit (mmx-x-mmx---mmx-): minor bVII i III iv, major V I iii IV (our pick for
+        // major keys: the same moves of the major scale, the leading tone's chord left out).
+        bool turnaroundChosen (const ComposerState& s)
+        {
+            const auto& flavours = riffFlavours();
+            if (s.writtenRiffs || ! juce::isPositiveAndBelow (s.riffFlavour, (int) flavours.size()))
+                return false;
+            const auto f = flavours[(size_t) s.riffFlavour];
+            const auto a = s.lane (ComposerLayer::guitar).approach;
+            return (f == RiffFlavour::drivingEighths && a == 6) || (f == RiffFlavour::syncopatedDrive && a == 4);
+        }
+
+        int barsIn (const std::vector<ChordSpan>& spans, double bpb)
+        {
+            return spans.empty() ? 0 : (int) std::ceil ((spans.back().end - spans.front().start) / bpb - 1.0e-6);
+        }
+
+        std::vector<int> turnaroundBars (int bars)
+        {
+            std::vector<int> out;
+            for (int b = 3; b < bars; b += 4)
+                out.push_back (b);
+            if (out.empty() && bars > 0)
+                out.push_back (bars - 1);
+            return out;
+        }
+
+        bool inTurnaround (double beat, const std::vector<int>& bars, double bpb)
+        {
+            for (const auto b : bars)
+                if (beat >= b * bpb - 1.0e-6 && beat < (b + 1) * bpb - 1.0e-6)
+                    return true;
+            return false;
+        }
+
+        // The four roots of the turnaround (the key's degrees from its tonic) in [lowest, lowest + 11].
+        std::array<int, 4> turnaroundRoots (const Key& key, int lowest)
+        {
+            auto scale = key.scale();
+            std::sort (scale.begin(), scale.end());
+            const auto tonic = key.pitchClass();
+            const auto at = (int) (std::find (scale.begin(), scale.end(), tonic) - scale.begin());
+            const int minorSteps[] { -1, 0, 2, 3 }, majorSteps[] { 4, 0, 2, 3 };
+            std::array<int, 4> roots {};
+            for (int i = 0; i < 4; ++i)
+            {
+                const auto index = ((at + (key.minor ? minorSteps[i] : majorSteps[i])) % 7 + 7) % 7;
+                auto pc = scale.empty() ? tonic : scale[(size_t) index];
+                auto p = lowest;
+                while (((p % 12) + 12) % 12 != pc)
+                    ++p;
+                roots[(size_t) i] = p;
+            }
+            return roots;
+        }
+
+        void playTurnaround (LineIdea& idea, const std::vector<ChordSpan>& spans, double bpb, const GuitarTuning& tuning,
+                             const GuitarVelocities& velocities)
+        {
+            const auto marks = turnaroundBars (barsIn (spans, bpb));
+            const auto s16 = bpb / 16.0;
+            const auto length = spans.back().end - spans.front().start;
+            idea.notes.erase (std::remove_if (idea.notes.begin(), idea.notes.end(), [&] (const LineNote& n)
+            {
+                return ! n.keyswitch && inTurnaround (n.beat, marks, bpb);
+            }), idea.notes.end());
+            for (auto& n : idea.notes)   // (nothing rings into the turnaround)
+                if (! n.keyswitch)
+                    for (const auto b : marks)
+                        if (n.beat < b * bpb && n.beat + n.length > b * bpb)
+                            n.length = b * bpb - n.beat;
+            const auto muted = GuitarVelocity::of (velocities.muteMid);
+            const auto open = GuitarVelocity::of (velocities.open (velocities.sustainHard));
+            // (grace start, hit, end) in sixteenths: mmx-x-mmx---mmx-
+            const int grace[] { 0, -1, 6, 12 }, hits[] { 2, 4, 8, 14 }, ends[] { 4, 6, 12, 16 };
+            for (const auto b : marks)
+            {
+                const auto o = b * bpb;
+                if (o >= length - 1.0e-6)
+                    continue;
+                const auto* span = &spans.front();
+                for (const auto& sp : spans)
+                    if (sp.start - spans.front().start <= o + 1.0e-6)
+                        span = &sp;
+                const auto roots = turnaroundRoots (span->key, tuning.lowest());
+                for (int i = 0; i < 4; ++i)
+                {
+                    const auto root = roots[(size_t) i];
+                    if (grace[i] >= 0)
+                        for (int g = grace[i]; g < hits[i]; ++g)
+                            idea.notes.push_back ({ o + g * s16, s16 * 0.8, root, muted });
+                    const auto len = juce::jmin ((ends[i] - hits[i]) * s16 * 0.92, length - (o + hits[i] * s16));
+                    for (const auto p : { root, root + 7, root + 12 })
+                        idea.notes.push_back ({ o + hits[i] * s16, len, p, open });
+                }
+            }
+            idea.description += ". Every fourth bar a pushed turnaround of four chords";
+            std::stable_sort (idea.notes.begin(), idea.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+        }
+    }
+
     RiffRecipe guitarRecipe (const ComposerState& s, const ComposerContext& c)
     {
         // (0.85.0) The section is the drums lane's (SECTION); the take's seed from the variation and the style slot
@@ -223,6 +328,8 @@ namespace pr7s
         else if (r.flavour == RiffFlavour::droning || r.flavour == RiffFlavour::drivingEighths || r.flavour == RiffFlavour::syncopatedDrive
                  || r.flavour == RiffFlavour::mutedDrive)
             r.approach = lane.approach;   // (0.94.0; 0.98.0 DRIVING EIGHTHS too)
+        if (turnaroundChosen (s))
+            r.approach = 0;   // (0.117.0: the first shape, then the turnaround laid over every fourth bar by guitarOf)
         return r;
     }
 
@@ -354,6 +461,8 @@ namespace pr7s
                         if (n.effect == LineNote::Effect::none && GuitarVelocity::midiOf (n.velocity) < 120)
                             while (n.pitch > low + 12 && n.pitch - 12 >= low)
                                 n.pitch -= 12;
+                if (turnaroundChosen (s))
+                    playTurnaround (idea, spans, c.beatsPerBar, tuning, velocities);   // (0.117.0)
                 if (profile.has_value())
                     keepInRange (idea, low, high);
                 return idea;
@@ -6099,6 +6208,41 @@ namespace pr7s
         }
 
         //======================================================================
+        // (0.117.0, the owner's song files, shapes only) FALLING OCTAVE PEDAL: one note of the key and its octave on every
+        // eighth, held four bars, then a step lower down the key's scale (minor: the tonic, bVII, bVI, V). With
+        // `stabLast` the last bar is struck with the band on its dotted quarters, the last left to ring.
+        LineIdea fallingOctaves (const std::vector<ChordSpan>& spans, double bpb, float strong, float weak, int lowest, int highest, bool stabLast)
+        {
+            LineIdea out { LineIdea::Part::lead, "Falling octave pedal",
+                           "One note of the key and its octave on every eighth, a step lower every four bars", {} };
+            if (spans.empty())
+                return out;
+            const auto length = sectionLength (spans);
+            const auto bars = (int) std::ceil (length / bpb - 1.0e-6);
+            const auto& key = spans.front().key;
+            auto base = pitchOfClassIn (key.pitchClass(), juce::jmax (lowest, 64), juce::jmax (lowest, 64) + 11);
+            while (base + 12 > highest && base - 12 >= lowest)
+                base -= 12;
+            const auto e = bpb / 8.0, s16 = bpb / 16.0;
+            for (int bar = 0; bar < bars; ++bar)
+            {
+                const auto note = scaleStep (key, base, -(bar / 4));
+                const auto o = bar * bpb;
+                if (stabLast && bar == bars - 1 && bars > 1)
+                {
+                    for (const auto k : { 0, 6, 12 })
+                        for (const auto p : { note, note + 12 })
+                            addNote (out, o + k * s16, k == 12 ? bpb - k * s16 : 6 * s16 * 0.9, p, strong, length);
+                    continue;
+                }
+                for (int k = 0; k < 8; ++k)
+                    for (const auto p : { note, note + 12 })
+                        addNote (out, o + k * e, e * 0.88, p, k % 2 == 0 ? strong : weak, length);
+            }
+            return out;
+        }
+
+        //======================================================================
         // (0.111.0) The intro and outro types (the owner's songs read for their shapes only; our names and parts), one struct
         // for both: the intros RIFF ALONE, THEN THE BAND ... RIFF WITH DRUMS BUILDING; the outros INTRO RETURNS, LAST CHORD
         // RINGS ... TRIPLE STAB STOP (isOutro).
@@ -6260,7 +6404,8 @@ namespace pr7s
             bool isOutro() const
             {
                 for (const auto* name : { "INTRO RETURNS, LAST CHORD RINGS", "WINDING DOWN", "DEAD STOP", "STABS, THEN RING", "FILL AND FINAL HIT",
-                                          "HOOK ALONE TO THE END", "SPEEDING HITS", "SPACED STABS", "TRIPLE STAB STOP" })
+                                          "HOOK ALONE TO THE END", "SPEEDING HITS", "SPACED STABS", "TRIPLE STAB STOP",
+                                          "FALLING OCTAVE PEDAL" })
                     if (type == name)
                         return true;
                 return false;
@@ -6710,6 +6855,30 @@ namespace pr7s
                     }
                     return out;
                 }
+                if (type == "FALLING OCTAVE PEDAL")
+                {
+                    // (0.117.0) The riff carries on (chugs with an open chord on each bar's first beat, or open eighths);
+                    // the last bar three stabs on its dotted quarters, the last left to ring.
+                    auto out = idea (r, a == 0 ? "riff, then the stab bar" : "eighths, then the stab bar",
+                                     a == 0 ? "The chug riff under the falling octaves, the last bar three stabs, the last ringing"
+                                            : "Open power chords on the eighths under the falling octaves, the last bar three stabs");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto o = bar * bpb;
+                        if (bar == bars - 1 && bars > 1)
+                        {
+                            for (const auto k : { 0, 6, 12 })
+                                power (out, o + k * s16, k == 12 ? bpb - k * s16 : 6 * s16 * 0.9, barRoot (bar), hard(), true);
+                            continue;
+                        }
+                        if (a == 0)
+                            chugBar (out, bar, "x-xxx-xx-x-xxx-x", 0, 0);
+                        else
+                            for (int k = 0; k < 8; ++k)
+                                power (out, o + k * e, e * 0.85, barRoot (bar), open());
+                    }
+                    return out;
+                }
                 // TRIPLE STAB STOP
                 auto out = idea (r, a == 0 ? "drive, then three stabs" : "chugs, then three stabs",
                                  a == 0 ? "Open power chords on the eighths to the last bar: three sixteenths on the key's chord, then silence"
@@ -6874,6 +7043,13 @@ namespace pr7s
                 const auto l = LineIdea::Part::lead;
                 if (names[juce::jlimit (0, names.size() - 1, approach (ComposerLayer::lead))] == "SILENT")
                     return silent (l, "lead");
+                if (type == "FALLING OCTAVE PEDAL")
+                {
+                    auto out = fallingOctaves (spans, bpb, open(), soft(), 40, 100, true);
+                    out.style = "Outro: falling octaves";
+                    out.description = "One note of the key and its octave on every eighth, a step lower every four bars, struck with the band's last stabs";
+                    return out;
+                }
                 auto out = idea (l, "pedal melody", "Sixteenths: a soft low pedal on the key's root taking turns with a melody falling through the chord's notes");
                 const auto pedal = tonicIn (52, 63);
                 for (int bar = 0; bar < bars; ++bar)
@@ -7222,6 +7398,35 @@ namespace pr7s
                             hit (out, o + t, GmDrum::closedHat, 0.46f);
                         for (auto t = 0.0; t < bpb - 1.0e-6; t += eighths ? 2 * q : q)
                             hit (out, o + t, GmDrum::kick, 0.7f);
+                        continue;
+                    }
+                    if (name == "KICK EIGHTHS, CRASH QUARTERS" || name == "DRIVING BACKBEAT")
+                    {
+                        // (0.117.0, FALLING OCTAVE PEDAL) the last bar: kick, snare and crash with the stabs.
+                        out.description = name == "DRIVING BACKBEAT"
+                                            ? "The groove, a crash every four bars; the last bar kick, snare and crash on the stabs"
+                                            : "The kick on every eighth, a crash on every beat, the snare on the first beat of every second bar; the last bar with the stabs";
+                        if (last && bars > 1)
+                        {
+                            for (const auto k : { 0, 6, 12 })
+                            {
+                                hit (out, o + k * s16, GmDrum::kick, 0.94f);
+                                hit (out, o + k * s16, GmDrum::snare, 0.9f);
+                                hit (out, o + k * s16, GmDrum::crash, 0.88f);
+                            }
+                            continue;
+                        }
+                        if (name == "DRIVING BACKBEAT")
+                        {
+                            groove (o, phrase);
+                            continue;
+                        }
+                        for (int k = 0; k < 8; ++k)
+                            hit (out, o + k * e, GmDrum::kick, k % 2 == 0 ? 0.9f : 0.76f);
+                        for (int k = 0; k < 4; ++k)
+                            hit (out, o + k * q, GmDrum::crash, k == 0 ? 0.84f : 0.66f);
+                        if (bar % 2 == 1)
+                            hit (out, o, GmDrum::snare, 0.92f);
                         continue;
                     }
                     if (name == "CRASH ON EVERY HIT" || name == "KICK ON EVERY HIT")
@@ -7995,6 +8200,32 @@ namespace pr7s
         }
 
         // The driving chorus's part for a lane (none: the lane plays as usual: the melody, and the guitar itself).
+        // (0.117.0, the owner's song files, shapes only) DOMINANT PEDAL ENDING: the bass line as it was, then for the last
+        // four bars (two of a 4-bar section, one of shorter) the key's fifth on every eighth while the chords move above.
+        void dominantPedalEnding (LineIdea& idea, const std::vector<ChordSpan>& spans, double bpb, int lowest, int highest, const juce::String& style)
+        {
+            const auto length = sectionLength (spans);
+            const auto bars = (int) std::ceil (length / bpb - 1.0e-6);
+            const auto last = bars >= 8 ? 4 : bars >= 4 ? 2 : 1;
+            const auto from = juce::jmax (0, bars - last) * bpb;
+            idea.notes.erase (std::remove_if (idea.notes.begin(), idea.notes.end(), [from] (const LineNote& n) { return n.beat >= from - 1.0e-6; }),
+                              idea.notes.end());
+            for (auto& n : idea.notes)
+                n.length = juce::jmin (n.length, from - n.beat);
+            const auto& key = spanAtIdeaBeat (spans, from)->key;
+            const auto tonic = pitchOfClassIn (key.pitchClass(), lowest, lowest + 11);
+            auto fifth = scaleStep (key, tonic, 4);
+            while (fifth > juce::jmin (highest, lowest + 11))
+                fifth -= 12;
+            while (fifth < lowest)
+                fifth += 12;
+            const auto e = bpb / 8.0;
+            for (auto t = from; t < length - 1.0e-6; t += e)
+                addNote (idea, t, e * 0.88, fifth, std::fmod (t - from + 1.0e-6, bpb / 4.0) < 1.0e-3 ? 0.86f : 0.76f, length);
+            idea.style = style;
+            idea.description = "The line as it goes, then the key's fifth held on every eighth for the last bars while the chords move above it";
+        }
+
         std::optional<LineIdea> drivingLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
             if (spans.empty() || ! drivingBand (s, c))
@@ -8007,7 +8238,10 @@ namespace pr7s
                     const auto& profile = c.bassProfile;
                     const auto lowest = profile.has_value() ? profile->rangeLow() : c.bassTuning.lowest();
                     const auto highest = profile.has_value() ? profile->rangeHigh() : bassTop (c.bassTuning);
-                    auto idea = drivingBass (drivingApproach (lane, 4, 4), guitarOf (s, spans, c), spans, c.beatsPerBar, lowest, highest);
+                    const auto approach = drivingApproach (lane, 5, 4);   // (0.117.0: DOMINANT PEDAL ENDING the 5th)
+                    auto idea = drivingBass (approach == 4 ? 0 : approach, guitarOf (s, spans, c), spans, c.beatsPerBar, lowest, highest);
+                    if (approach == 4)
+                        dominantPedalEnding (idea, spans, c.beatsPerBar, lowest, highest, "Driving: dominant pedal ending");
                     if (lane.lowString)
                         keepInRange (idea, lowest, lowest + 12);
                     keepInRange (idea, lowest, highest);
@@ -8020,7 +8254,15 @@ namespace pr7s
                     const auto velocities = profile.has_value() && profile->velocities.has_value() ? *profile->velocities : c.velocities;
                     const auto lowest = profile.has_value() ? profile->rangeLow() : c.tuning.lowest();
                     const auto highest = profile.has_value() ? profile->rangeHigh() : c.tuning.highest();
-                    return drivingLead (drivingApproach (lane, 3, 3), guitarOf (s, spans, c), spans, c.beatsPerBar, velocities, lowest, highest);
+                    const auto approach = drivingApproach (lane, 4, 3);   // (0.117.0: FALLING OCTAVE PEDAL the 4th)
+                    if (approach == 3)
+                    {
+                        auto out = fallingOctaves (spans, c.beatsPerBar, GuitarVelocity::of (velocities.sustain),
+                                                   GuitarVelocity::of (velocities.sustainSoft), lowest, highest, false);
+                        out.style = "Driving: falling octave pedal";
+                        return out;
+                    }
+                    return drivingLead (approach, guitarOf (s, spans, c), spans, c.beatsPerBar, velocities, lowest, highest);
                 }
                 case ComposerLayer::drums: return drivingDrums (drivingApproach (lane, 7, 3), guitarOf (s, spans, c), spans, c.beatsPerBar);
                 case ComposerLayer::melody:
@@ -8213,9 +8455,11 @@ namespace pr7s
                     const auto& profile = c.bassProfile;
                     const auto lowest = profile.has_value() ? profile->rangeLow() : c.bassTuning.lowest();
                     const auto highest = profile.has_value() ? profile->rangeHigh() : bassTop (c.bassTuning);
-                    const auto approach = drivingApproach (lane, 3, 3);
-                    auto idea = approach == 0 ? syncopatedBass (spans, c.beatsPerBar, lowest, highest)
+                    const auto approach = drivingApproach (lane, 4, 3);   // (0.117.0: DOMINANT PEDAL ENDING the 4th)
+                    auto idea = approach == 0 || approach == 3 ? syncopatedBass (spans, c.beatsPerBar, lowest, highest)
                                               : drivingBass (approach == 1 ? 0 : 1, guitarOf (s, spans, c), spans, c.beatsPerBar, lowest, highest);
+                    if (approach == 3)
+                        dominantPedalEnding (idea, spans, c.beatsPerBar, lowest, highest, "Syncopated: dominant pedal ending");
                     if (lane.lowString)
                         keepInRange (idea, lowest, lowest + 12);
                     keepInRange (idea, lowest, highest);
@@ -8389,8 +8633,10 @@ namespace pr7s
             return out;
         }
 
+        LineIdea syncedLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c);
+
         // A lane as SYNC has it (0.86.0): the sync lane itself and every lane with SYNC off as before.
-        LineIdea syncedLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        LineIdea syncedLayerOwn (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
             const auto leaderLayer = s.syncLayer();
             // (0.97.2, the owner: "the bass always needs the locked in with the kick option in every riff") a type that
@@ -8545,6 +8791,59 @@ namespace pr7s
                 }
             }
             return rawLayer (l, s, spans, c);
+        }
+
+        // (0.117.0) PUSHED FOUR-CHORD TURNAROUND: whatever the bass, keys and drums play, in the turnaround bars the bass
+        // doubles the guitar's pushes, the keys leave room (their chords aren't the turnaround's) and the drums put toms on
+        // the pushes and a crash on the last one (the downbeat kept).
+        LineIdea syncedLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        {
+            auto idea = syncedLayerOwn (l, s, spans, c);
+            if (spans.empty() || ! turnaroundChosen (s) || ! s.lane (ComposerLayer::guitar).on || c.myRiff.has_value()
+                || (l != ComposerLayer::bass && l != ComposerLayer::drums && l != ComposerLayer::chords))
+                return idea;
+            if (const auto leader = s.syncLayer(); leader.has_value() && *leader != ComposerLayer::guitar)
+                return idea;
+            const auto bpb = c.beatsPerBar;
+            const auto marks = turnaroundBars (barsIn (spans, bpb));
+            const auto s16 = bpb / 16.0;
+            const auto from = l == ComposerLayer::drums ? 2 * s16 : 0.0;   // (the drums keep their downbeat)
+            idea.notes.erase (std::remove_if (idea.notes.begin(), idea.notes.end(), [&] (const LineNote& n)
+            {
+                return ! n.keyswitch && inTurnaround (n.beat - from, marks, bpb) && inTurnaround (n.beat, marks, bpb);
+            }), idea.notes.end());
+            for (auto& n : idea.notes)
+                for (const auto b : marks)
+                    if (n.beat < b * bpb && n.beat + n.length > b * bpb)
+                        n.length = b * bpb - n.beat;
+            if (l == ComposerLayer::bass)
+            {
+                const auto& profile = c.bassProfile;
+                const auto lowest = profile.has_value() ? profile->rangeLow() : c.bassTuning.lowest();
+                const auto highest = profile.has_value() ? profile->rangeHigh() : bassTop (c.bassTuning);
+                const auto doubled = doubledLine (guitarOf (s, spans, c), spans, lowest, highest, "Guitar");
+                for (const auto& n : doubled.notes)
+                    if (inTurnaround (n.beat, marks, bpb))
+                        idea.notes.push_back (n);
+            }
+            if (l == ComposerLayer::drums)
+            {
+                const int pushes[] { 2, 4, 8, 14 }, toms[] { GmDrum::tomHigh, GmDrum::tomMid, GmDrum::tomLow, GmDrum::tomFloor };
+                const auto length = sectionLength (spans);
+                for (const auto b : marks)
+                    for (int i = 0; i < 4; ++i)
+                    {
+                        const auto at = b * bpb + pushes[i] * s16;
+                        if (at >= length - 1.0e-6)
+                            continue;
+                        idea.notes.push_back ({ at, 0.1, GmDrum::kick, 0.88f });
+                        idea.notes.push_back ({ at, 0.1, toms[i], 0.84f });
+                        if (i == 3)
+                            idea.notes.push_back ({ at, 0.1, GmDrum::crash, 0.86f });
+                    }
+            }
+            sortNotes (idea);
+            return idea;
         }
     }
 

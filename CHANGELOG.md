@@ -2,6 +2,34 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.117.0
+
+The last three ideas from your song files, put where we agreed. As before, they're shapes only; nothing is copied.
+
+**PUSHED FOUR-CHORD TURNAROUND: a guitar option under DRIVING and SYNCOPATED DRIVE.**
+- The last bar of every four plays four quick chords instead of one, each a pair of muted sixteenths into a hit (`mmx-x-mmx---mmx-`). The other three bars play the type's first shape.
+- In a minor key the four chords are bVII, i, III, iv (in A minor: G, A, C, D), as in your song. In a major key I use V, I, iii, IV: that's my own choice, the same moves through the major scale.
+- In that bar, whatever else is chosen:
+  - the bass plays the same pushes;
+  - the drums keep their downbeat, then put a tom on each push and a crash on the last one;
+  - the keys stay out, because their chords would be the chord track's, not the turnaround's.
+- What doesn't follow the turnaround: that bar plays its own four chords, not your chord track's. All four are in the key, but the lead and the melody keep playing over the chord track's chord there.
+
+**DOMINANT PEDAL ENDING: a bass option under DRIVING and SYNCOPATED DRIVE.**
+- The bass plays its line as usual, then holds the key's fifth (E in A minor) on every eighth while the chords keep moving above it. That's the last four bars of an 8-bar chorus, the last two of a 4-bar one.
+- The second half of the idea, the guitars climbing back into the chorus, is the WALK UP choice already in a block's INTO THE NEXT menu.
+- LOCKED WITH THE KICK is still last on the bass menu. One side effect: a DRIVING or SYNCOPATED DRIVE block built before this with LOCKED WITH THE KICK chosen now reads that choice as DOMINANT PEDAL ENDING when it's built again. Pick LOCKED WITH THE KICK again on those blocks.
+
+**FALLING OCTAVE PEDAL: a new outro type, and a lead option under DRIVING.**
+- **The outro** (last in the Outro / Ending / Tag / Coda TYPE menu):
+  - The guitar keeps a chug riff going (or open power-chord eighths).
+  - The lead plays one note of the key and its octave on every eighth, held four bars, then a step lower down the scale: in A minor A, then G, then F, then E.
+  - The drums play a kick on every eighth, a crash on every beat and a snare on the first beat of every second bar, or a straight groove instead.
+  - The last bar is three stabs on its dotted quarters from the whole band, the last left to ring.
+- **Under DRIVING**, FALLING OCTAVE PEDAL is the lead's fourth option, for a last chorus. It's close to 0.116.0's OCTAVE PEDAL, but that one picks the best-fitting note and stays on it; this one walks down a step every four bars.
+
+**What I couldn't check:** how any of it sounds. The tests check the shapes: the chords and their places in the turnaround bar, the bass on the fifth, the octaves falling, and that every option is a different part.
+
 ## 0.116.0
 
 The other chorus candidates from your song files: four more chorus types, and three more drum parts under the chorus types you already had. As before, each was read from your songs for its shape only; nothing is copied.

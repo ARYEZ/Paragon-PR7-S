@@ -1324,11 +1324,11 @@ TEST_CASE ("0.98.0: the DRIVING chorus's options for every lane", "[sections][ty
     CHECK (sectionTypeWritesLane (ComposerLayer::chords, s, c));
     CHECK (sectionTypeWritesLane (ComposerLayer::lead, s, c));
     CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::melody, s, c));
-    CHECK (sectionApproaches (s, ComposerLayer::guitar).size() == 6);
-    CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 5);
+    CHECK (sectionApproaches (s, ComposerLayer::guitar).size() == 7);   // (0.117.0: the turnaround)
+    CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 6);   // (0.117.0: the dominant pedal)
     CHECK (sectionApproaches (s, ComposerLayer::drums).size() == 7);   // (0.116.0: two more)
     CHECK (sectionApproaches (s, ComposerLayer::chords).size() == 4);
-    CHECK (sectionApproaches (s, ComposerLayer::lead).size() == 3);
+    CHECK (sectionApproaches (s, ComposerLayer::lead).size() == 4);   // (0.117.0: the falling octaves)
     // Every option of every lane a different part.
     s.lane (ComposerLayer::lead).on = true;
     const auto spans = cleanSpans();
@@ -1495,8 +1495,8 @@ TEST_CASE ("0.99.0: SYNCOPATED DRIVE: a chorus type with its options", "[section
     for (const auto l : { ComposerLayer::bass, ComposerLayer::drums, ComposerLayer::chords, ComposerLayer::lead })
         CHECK (sectionTypeWritesLane (l, s, c));
     CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::melody, s, c));
-    CHECK (sectionApproaches (s, ComposerLayer::guitar).size() == 4);
-    CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 4);
+    CHECK (sectionApproaches (s, ComposerLayer::guitar).size() == 5);   // (0.117.0: the turnaround)
+    CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 5);   // (0.117.0: the dominant pedal)
     CHECK (sectionApproaches (s, ComposerLayer::drums).size() == 4);
     CHECK (sectionApproaches (s, ComposerLayer::chords).size() == 3);
     CHECK (sectionApproaches (s, ComposerLayer::lead).size() == 3);
@@ -3062,7 +3062,8 @@ TEST_CASE ("0.111.0: intro and outro types, every lane's options a different par
     const std::vector<juce::String> intros { "RIFF ALONE, THEN THE BAND", "FULL BAND FROM THE DOWNBEAT", "ARPEGGIO BUILD", "KEYS HOOK OVER A LOOP", "SWELL AND DRONE",
                                              "STAB CALLS", "TREMOLO SWELL", "HOLD AND ANSWER", "DOWNBEAT HITS UNDER A LEAD", "RIFF WITH DRUMS BUILDING" };
     const std::vector<juce::String> outros { "INTRO RETURNS, LAST CHORD RINGS", "WINDING DOWN", "DEAD STOP", "STABS, THEN RING", "FILL AND FINAL HIT",
-                                             "HOOK ALONE TO THE END", "SPEEDING HITS", "SPACED STABS", "TRIPLE STAB STOP" };
+                                             "HOOK ALONE TO THE END", "SPEEDING HITS", "SPACED STABS", "TRIPLE STAB STOP",
+                                             "FALLING OCTAVE PEDAL" };   // (0.117.0)
     const auto intro = sectionTypesFor ("Intro");
     REQUIRE (intro.size() == intros.size() + 2);
     for (size_t i = 0; i < intros.size(); ++i)
@@ -3473,5 +3474,125 @@ TEST_CASE ("0.115.0: the chorus types' shapes", "[sections][types][chorus115]")
         const auto& b = all[(size_t) ComposerLayer::bass];
         CHECK (! at (b, 0.0).empty());
         CHECK (at (b, 2.5).empty());
+    }
+}
+
+TEST_CASE ("0.117.0: the pushed turnaround, the dominant pedal ending and the falling octave pedal", "[sections][types][chorus117]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G a bar each, 8 bars; the low string A0 = 33)
+    const auto at = [] (const LineIdea& idea, double beat)
+    {
+        std::vector<int> pitches;
+        for (const auto& n : idea.notes)
+            if (std::abs (n.beat - beat) < 1.0e-6)
+                pitches.push_back (n.pitch);
+        std::sort (pitches.begin(), pitches.end());
+        return pitches;
+    };
+    const auto startsIn = [] (const LineIdea& idea, double from, double to)
+    {
+        int count = 0;
+        for (const auto& n : idea.notes)
+            if (n.beat >= from - 1.0e-6 && n.beat < to - 1.0e-6)
+                ++count;
+        return count;
+    };
+    for (const auto* type : { "DRIVING", "SYNCOPATED DRIVE" })
+    {
+        INFO (type);
+        ComposerState s;
+        applySectionType (s, "Chorus", type);
+        const auto names = sectionApproaches (s, ComposerLayer::guitar);
+        s.lane (ComposerLayer::guitar).approach = names.indexOf ("PUSHED FOUR-CHORD TURNAROUND");
+        REQUIRE (s.lane (ComposerLayer::guitar).approach >= 0);
+        const auto all = composeLayers (s, spans, c);
+        const auto& g = all[(size_t) ComposerLayer::guitar];
+        // The fourth bar (beats 12-16): G A C D (bVII i III iv) as power chords on the pushes: mmx-x-mmx---mmx-.
+        const double hits[] { 12.5, 13.0, 14.0, 15.5 };
+        const int roots[] { 43, 33, 36, 38 };
+        for (int i = 0; i < 4; ++i)
+        {
+            const auto p = at (g, hits[i]);
+            REQUIRE (p.size() == 3);
+            CHECK (p == std::vector<int> { roots[i], roots[i] + 7, roots[i] + 12 });
+        }
+        CHECK (at (g, 12.0) == std::vector<int> { 43 });   // (the muted grace into the first)
+        CHECK (at (g, 13.25).empty());
+        // The bass on the pushes, the keys out of the bar, the drums' toms on the pushes and a crash on the last.
+        const auto& b = all[(size_t) ComposerLayer::bass];
+        for (int i = 0; i < 4; ++i)
+            CHECK (! at (b, hits[i]).empty());
+        CHECK (startsIn (all[(size_t) ComposerLayer::chords], 12.0, 16.0) == 0);
+        const auto& d = all[(size_t) ComposerLayer::drums];
+        const auto has = [&] (double beat, int note) { const auto p = at (d, beat); return std::find (p.begin(), p.end(), note) != p.end(); };
+        CHECK (has (12.5, GmDrum::tomHigh));
+        CHECK (has (15.5, GmDrum::tomFloor));
+        CHECK (has (15.5, GmDrum::crash));
+        // The other bars as before: the same first shape without the turnaround.
+        auto plain = s;
+        plain.lane (ComposerLayer::guitar).approach = 0;
+        const auto before = composeLayers (plain, spans, c)[(size_t) ComposerLayer::guitar];
+        CHECK (at (before, 4.0) == at (g, 4.0));
+        CHECK (at (before, 13.0) != at (g, 13.0));
+
+        // DOMINANT PEDAL ENDING: the last four bars on E (the key's fifth) on every eighth.
+        auto pedal = s;
+        pedal.lane (ComposerLayer::guitar).approach = 0;
+        pedal.lane (ComposerLayer::bass).approach = sectionApproaches (s, ComposerLayer::bass).indexOf ("DOMINANT PEDAL ENDING");
+        REQUIRE (pedal.lane (ComposerLayer::bass).approach >= 0);
+        const auto bass = composeLayers (pedal, spans, c)[(size_t) ComposerLayer::bass];
+        for (int k = 0; k < 32; ++k)
+        {
+            const auto p = at (bass, 16.0 + k * 0.5);
+            REQUIRE (p.size() == 1);
+            CHECK (p.front() % 12 == 4);
+        }
+        CHECK (startsIn (bass, 0.0, 16.0) > 0);   // (the line as it was before the pedal)
+        if (juce::String (type) == "DRIVING")
+        {
+            const auto f = at (bass, 4.0);
+            REQUIRE (f.size() == 1);
+            CHECK (f.front() % 12 == 5);   // (F's root before the pedal)
+        }
+    }
+    // FALLING OCTAVE PEDAL under DRIVING: A and its octave on every eighth for four bars, then G.
+    {
+        ComposerState s;
+        applySectionType (s, "Chorus", "DRIVING");
+        s.lane (ComposerLayer::lead).on = true;
+        s.lane (ComposerLayer::lead).approach = sectionApproaches (s, ComposerLayer::lead).indexOf ("FALLING OCTAVE PEDAL");
+        REQUIRE (s.lane (ComposerLayer::lead).approach >= 0);
+        const auto lead = composeLayers (s, spans, c)[(size_t) ComposerLayer::lead];
+        for (int k = 0; k < 64; ++k)
+        {
+            const auto p = at (lead, k * 0.5);
+            REQUIRE (p.size() == 2);
+            CHECK (p[1] - p[0] == 12);
+            CHECK (p[0] % 12 == (k < 32 ? 9 : 7));
+        }
+    }
+    // The outro: the falling octaves, the riff under them, the last bar three stabs with the drums.
+    {
+        ComposerState s;
+        applySectionType (s, "Outro", "FALLING OCTAVE PEDAL");
+        REQUIRE (sectionBand (s) == SectionType::Band::bookend);
+        s.lane (ComposerLayer::lead).on = true;
+        const auto all = composeLayers (s, spans, c);
+        const auto& lead = all[(size_t) ComposerLayer::lead];
+        CHECK (at (lead, 0.5).size() == 2);
+        CHECK (at (lead, 16.0).front() % 12 == 7);
+        const auto& g = all[(size_t) ComposerLayer::guitar];
+        for (const auto beat : { 28.0, 29.5, 31.0 })
+            CHECK (at (g, beat).size() == 3);
+        CHECK (startsIn (g, 28.01, 29.49) == 0);
+        const auto& d = all[(size_t) ComposerLayer::drums];
+        for (int k = 0; k < 8; ++k)
+        {
+            const auto p = at (d, k * 0.5);
+            CHECK (std::find (p.begin(), p.end(), GmDrum::kick) != p.end());
+        }
+        const auto last = at (d, 31.0);
+        CHECK (std::find (last.begin(), last.end(), GmDrum::crash) != last.end());
     }
 }

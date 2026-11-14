@@ -154,6 +154,7 @@ namespace pr7s
                          { "SPEEDING HITS", "One chord hit in half notes, quarters, then eighths, then a stop", r, {}, b },
                          { "SPACED STABS", "Four chugs into a hit on 1, then three beats of silence, over and over", r, {}, b },
                          { "TRIPLE STAB STOP", "The drive to the last bar: three sixteenths on the key's chord, then silence", r, {}, b },
+                         { "FALLING OCTAVE PEDAL", "The riff under octaves on every eighth, a step lower every four bars, three stabs to end", r, {}, b },   // (0.117.0)
                          droning, stabs };
             }
             case 6: return { driving, droning };
@@ -205,11 +206,13 @@ namespace pr7s
             {
                 // (0.98.0, the owner's This Fire Burns and Faster choruses; our names)
                 case ComposerLayer::guitar: return { "STRAIGHT EIGHTHS", "SYNCOPATED THIRD BAR", "OPEN AND MUTED IN TURN",
-                                                      "SLIDES INTO THE CHANGES", "STRUMMED FULL CHORDS", "MOVING POWER CHORDS" };
+                                                      "SLIDES INTO THE CHANGES", "STRUMMED FULL CHORDS", "MOVING POWER CHORDS",
+                                                      "PUSHED FOUR-CHORD TURNAROUND" };   // (0.117.0)
                 case ComposerLayer::bass: return { "ROOT EIGHTHS", "DOUBLES THE GUITAR", "WALKING INTO THE CHANGES", "OCTAVE EIGHTHS",
-                                                    "LOCKED WITH THE KICK" };
+                                                    "DOMINANT PEDAL ENDING", "LOCKED WITH THE KICK" };   // (0.117.0: the pedal before the kick)
                 case ComposerLayer::chords: return { "HELD PADS", "ANSWERS IN BARS 3 AND 4", "HIGH EIGHTH PULSE", "SILENT" };
-                case ComposerLayer::lead: return { "RINGING ARPEGGIO", "HELD NOTES & A SQUEAL", "DOUBLES THE RHYTHM AN OCTAVE UP" };
+                case ComposerLayer::lead: return { "RINGING ARPEGGIO", "HELD NOTES & A SQUEAL", "DOUBLES THE RHYTHM AN OCTAVE UP",
+                                                    "FALLING OCTAVE PEDAL" };   // (0.117.0)
                 case ComposerLayer::drums: return { "DRIVING BACKBEAT", "HALF TIME, KICK ON THE EIGHTHS", "CYMBALS ON THE BEATS, KICKS BETWEEN",
                                                      "KICK WITH THE GUITAR", "DOUBLE KICK",
                                                      "CRASH ON THE BACKBEAT", "TRIBAL CALL & ANSWER" };   // (0.116.0)
@@ -230,8 +233,10 @@ namespace pr7s
             switch (layer)
             {
                 // (0.99.0, the owner's Another Life chorus and Faster's syncopated bar; our names)
-                case ComposerLayer::guitar: return { "STABS, THEN EIGHTHS", "SYNCOPATED THIRD BAR", "PUSHED CHANGES", "STABS, THEN PUSHES" };
-                case ComposerLayer::bass: return { "LOCKED SYNCOPATION", "ROOT EIGHTHS", "DOUBLES THE GUITAR", "LOCKED WITH THE KICK" };
+                case ComposerLayer::guitar: return { "STABS, THEN EIGHTHS", "SYNCOPATED THIRD BAR", "PUSHED CHANGES", "STABS, THEN PUSHES",
+                                                      "PUSHED FOUR-CHORD TURNAROUND" };   // (0.117.0)
+                case ComposerLayer::bass: return { "LOCKED SYNCOPATION", "ROOT EIGHTHS", "DOUBLES THE GUITAR", "DOMINANT PEDAL ENDING",
+                                                    "LOCKED WITH THE KICK" };
                 case ComposerLayer::chords: return { "HELD PADS", "STABS WITH THE BASS", "SILENT" };
                 case ComposerLayer::lead: return { "THREE AGAINST FOUR", "HELD NOTES & A SQUEAL", "RINGING ARPEGGIO" };
                 case ComposerLayer::drums: return { "SYNCOPATED KICK, HALF-TIME SNARE", "SYNCOPATED KICK, BACKBEAT", "KICK WITH THE GUITAR",
@@ -355,6 +360,7 @@ namespace pr7s
             { "SPEEDING HITS", { "HALVES, QUARTERS, EIGHTHS", "AFTER A PICKUP BAR" }, {}, { "STABS WITH THE GUITAR", "SILENT" }, { "CRASH ON EVERY HIT", "KICK ON EVERY HIT" }, {} },
             { "SPACED STABS", { "WALK, THEN SPACED STABS", "SPACED STABS ONLY" }, {}, { "HIGH PULSE IN THE GAPS", "SILENT" }, { "TOMS WITH THE CHUGS", "KICK AND CRASH ON THE HITS" }, {} },
             { "TRIPLE STAB STOP", { "DRIVE, THEN THREE STABS", "CHUGS, THEN THREE STABS" }, {}, { "HELD PADS", "SILENT" }, { "DRIVING, STABS WITH THE BAND", "DOUBLE KICK, STABS" }, {} },
+            { "FALLING OCTAVE PEDAL", { "RIFF, THEN THE STAB BAR", "EIGHTHS, THEN THE STAB BAR" }, {}, { "SILENT", "HELD PADS" }, { "KICK EIGHTHS, CRASH QUARTERS", "DRIVING BACKBEAT" }, { "FALLING OCTAVES", "SILENT" } },   // (0.117.0)
         };
         for (const auto& list : lists)
             if (t == list.name)
