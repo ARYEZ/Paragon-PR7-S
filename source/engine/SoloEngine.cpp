@@ -894,10 +894,12 @@ namespace pr7s
                 auto bar = juce::roundToInt (at[i] * (float) bars - (float) burstBars * 0.5f);
                 bar = juce::jlimit (1, juce::jmax (1, bars - 2 - burstBars), bar);
                 const auto a = bar * beatsPerBar;
-                if (! waves.empty() && a < waves.back().until + beatsPerBar - 1.0e-6)
+                if (! waves.empty() && a < waves.back().until - 1.0e-6)
                     continue;
                 const auto landing = a + burstBars * beatsPerBar - juce::jmin (1.0, beatsPerBar * 0.25);
-                const auto until = juce::jmin (total, landing + 2.0 + beatsPerBar * 0.5);
+                const auto until = juce::jmin (total - (p.lickTwice && bars >= 6 ? 4.0 * beatsPerBar : 0.0), landing + 2.0 + beatsPerBar * 0.5);
+                if (until <= landing + 0.5)
+                    continue;
                 waves.push_back ({ a, landing, until, i + 1 == at.size() });
             }
         }
@@ -993,15 +995,19 @@ namespace pr7s
             {
                 const auto& prev = history.back();
                 const auto barsOf = [&] (double beats) { return std::ceil (beats / beatsPerBar - 1.0e-6) * beatsPerBar; };
-                if (p.restate)
+                // A period: the opening phrase's length in whole bars, rounded up to 1, 2, 4 or 8 bars (the theme:
+                // the chords' cycle), so the copies fall where the tune and the chords come round.
+                const auto& head = history.front();
+                auto period = beatsPerBar;
+                while (period < head.end - head.start - 1.0e-6 && period < 8.0 * beatsPerBar)
+                    period *= 2.0;
+                if (p.cycleTheme && cycle > 0.0)
+                    period = cycle;
+                const auto nextCopy = std::ceil ((cursor - head.start) / period - 1.0e-6) * period;
+                if ((p.restate || (p.cycleTheme && cycle > 0.0)) && nextCopy - (cursor - head.start) < beatsPerBar - 1.0e-6)
                 {
-                    copyFrom = &history.front();
-                    shift = barsOf (cursor - history.front().start + 1.0e-6);
-                }
-                else if (p.cycleTheme && cycle > 0.0 && std::fmod (cursor + 0.5 * beatsPerBar, cycle) < beatsPerBar)
-                {
-                    copyFrom = &history.front();
-                    shift = barsOf (cursor - history.front().start + 1.0e-6);
+                    copyFrom = &head;
+                    shift = nextCopy;
                 }
                 else if (p.repeatPair && ! repeatedLast && r.nextFloat() < 0.35f)
                 {
@@ -1137,7 +1143,7 @@ namespace pr7s
                         }
                     }
                     // A grace note a whole step under the landing, just before it.
-                    if (p.graceNotes && r.nextFloat() < 0.5f && land - 2 >= low)
+                    if (p.graceNotes && shortestStep <= 0.125 && r.nextFloat() < 0.5f && land - 2 >= low)
                     {
                         addNote (notes, landAt - 0.125, 0.1, land - 2, velocityAt (t, false));
                         phrase.notes.push_back (notes.back());
@@ -1167,6 +1173,7 @@ namespace pr7s
         {
             ringOn (phrasesEnd);
             const auto from = phrasesEnd;
+            burstSpans.push_back ({ from, total - beatsPerBar });   // (played the same both times: no bends added)
             const auto g = gridFor (0.25);
             auto pool = poolOf (scaleAt (from), low, high);
             if (! pool.empty())
@@ -1183,14 +1190,14 @@ namespace pr7s
                     n.beat = x;
                     n.length = g;
                     n.pitch = pool[(size_t) idx];
-                    n.velocity = velocityAt (0.9f, std::abs (x - std::round (x)) < 1.0e-6);
+                    n.velocity = GuitarVelocity::of (velocityAt (0.9f, std::abs (x - std::round (x)) < 1.0e-6));
                     lick.push_back (n);
                 }
                 LineNote held;
                 held.beat = length - 1.0;
                 held.length = 0.98;
                 held.pitch = nearestOf (chordTones (from), (double) pool[(size_t) idx], low, high);
-                held.velocity = velocityAt (0.9f, true);
+                held.velocity = GuitarVelocity::of (velocityAt (0.9f, true));
                 lick.push_back (held);
                 for (const auto copy : { 0.0, length })
                     for (auto n : lick)
@@ -1226,7 +1233,25 @@ namespace pr7s
         if (notes.empty())
             return solo;
 
-        // The ending: the last note on the last chord's root, held to the end.
+        // The ending: the last note on the last chord's root, held to the end (one note: a rake or double stop
+        // struck with it goes).
+        {
+            const auto lastBeat = notes.back().beat;
+            auto top = notes.size() - 1;
+            for (size_t i = 0; i < notes.size(); ++i)
+                if (std::abs (notes[i].beat - lastBeat) < 1.0e-6 && notes[i].pitch > notes[top].pitch)
+                    top = i;
+            std::swap (notes[top], notes.back());
+            notes.erase (std::remove_if (notes.begin(), notes.end() - 1, [lastBeat] (const LineNote& n) { return std::abs (n.beat - lastBeat) < 1.0e-6; }),
+                         notes.end() - 1);
+        }
+        // (0.116.0) The last chord gets its own landing: a note held from before it lets go as it comes.
+        if (const auto lastChord = spans.back().start - origin; notes.back().beat < lastChord - 1.0e-6 && total - lastChord >= 0.5)
+        {
+            for (auto& n : notes)
+                n.length = juce::jmin (n.length, juce::jmax (0.05, lastChord - n.beat - 0.02));
+            addNote (notes, lastChord, total - lastChord, notes.back().pitch, velocityAt (0.6f, true));
+        }
         {
             auto& last = notes.back();
             const auto& c = chordAt (last.beat).chord;

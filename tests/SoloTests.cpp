@@ -44,12 +44,15 @@ TEST_CASE ("0.65.0: every style's leads end with a whole solo that builds up, wi
             const auto leads = guitarLeadIdeas (spans, 4.0, variation, tuning, {}, style);
             REQUIRE (leads.size() == 7);
             const auto& solo = leads.back();
-            CHECK (solo.style == "Solo");
+            CHECK (solo.style.startsWith ("Solo: "));   // (0.116.0: BY STYLE names the style it plays)
             CHECK (solo.part == LineIdea::Part::lead);
             REQUIRE_FALSE (solo.notes.empty());
             CHECK (std::is_sorted (solo.notes.begin(), solo.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; }));
-            // It builds: the last two bars at least as busy as the first two.
-            CHECK (onsetsIn (solo, 24.0, 32.0) >= onsetsIn (solo, 0.0, 8.0));
+            // It builds: its busiest two bars after the opening ones (0.116.0: the last bars calm again, as real solos).
+            auto busiest = 0;
+            for (auto from = 8.0; from <= 24.0; from += 4.0)
+                busiest = juce::jmax (busiest, onsetsIn (solo, from, from + 8.0));
+            CHECK (busiest >= onsetsIn (solo, 0.0, 8.0));
             auto bends = 0, vibratos = 0;
             for (const auto& n : solo.notes)
             {

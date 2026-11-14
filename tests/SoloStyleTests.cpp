@@ -80,8 +80,11 @@ TEST_CASE ("0.66.0: every solo style writes a whole solo that builds and ends on
             CHECK (solo.part == LineIdea::Part::lead);
             CHECK (solo.style.startsWith ("Solo: "));
             CHECK (std::is_sorted (solo.notes.begin(), solo.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; }));
-            // Builds: the second half at least as busy as the first.
-            CHECK (onsetsIn (solo, 16.0, 32.0) >= onsetsIn (solo, 0.0, 16.0));
+            // Builds: its busiest two bars past the first two (0.116.0: a peak past halfway, then calm, as real solos).
+            auto busiest = 0;
+            for (auto from = 8.0; from <= 24.0; from += 4.0)
+                busiest = juce::jmax (busiest, onsetsIn (solo, from, from + 8.0));
+            CHECK (busiest >= onsetsIn (solo, 0.0, 8.0));
             auto bends = 0, vibratos = 0;
             for (const auto& n : solo.notes)
             {
