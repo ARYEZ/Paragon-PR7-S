@@ -35,7 +35,7 @@ namespace pr7s
         // (0.66.0) `dive`: the whammy bar pushed down over the note (pitch bend down by `amount` semitones, as
         // far as the bend range reaches). `amount`: a bend's size in semitones (0: a whole step), a vibrato's
         // depth 0-1 (0: the usual), a dive's depth in semitones.
-        enum class Effect { none, vibrato, bend, ring, dive, swell };   // (0.101.0) swell: faded in by expression (CC 11)
+        enum class Effect { none, vibrato, bend, ring, dive, swell, release };   // (0.101.0) swell: faded in by expression (CC 11); (0.116.0) release: bent up before it's struck, let down onto its note
         Effect effect = Effect::none;
         float amount = 0.0f;
         // (0.66.0) How the note is played, for an instrument with keys for it (Shreddage: Tapping A-1, Tremolo

@@ -172,7 +172,7 @@ TEST_CASE ("0.66.0: SOLO STYLE picks the leads' seventh", "[solo][solostyles]")
     const auto tapped = guitarLeadIdeas (spans, 4.0, 0, tuning, {}, GuitarStyle::shred, SoloStyle::tapAndDive);
     REQUIRE (byStyle.size() == 7);
     REQUIRE (tapped.size() == 7);
-    CHECK (byStyle.back().style == "Solo");
+    CHECK (byStyle.back().style == "Solo: Two Speeds");   // (0.116.0: BY STYLE is the guitar STYLE's solo style)
     CHECK (tapped.back().style == "Solo: Tap & Dive");
     for (size_t i = 0; i < 6; ++i)
         CHECK (sameNotes (byStyle[i], tapped[i]));
@@ -441,4 +441,200 @@ TEST_CASE ("0.69.0: round four's styles have their own habits", "[solo][solostyl
     CHECK (harmonised > 0);
     CHECK (shortBends > 0);
     CHECK (gypsyNotes > 0);
+}
+
+//==============================================================================
+// 0.116.0: solos phrased as the owner's Pink Floyd and Guns N' Roses solos (read for their shapes only).
+namespace
+{
+    double medianPitch (const LineIdea& idea, double from, double to)
+    {
+        std::vector<int> p;
+        for (const auto& n : idea.notes)
+            if (n.beat >= from - 1.0e-9 && n.beat < to - 1.0e-9)
+                p.push_back (n.pitch);
+        if (p.empty())
+            return 0.0;
+        std::sort (p.begin(), p.end());
+        return p[p.size() / 2];
+    }
+}
+
+TEST_CASE ("0.116.0: the new solo styles are there, with our names", "[solo][solostyles][solo116]")
+{
+    REQUIRE (soloStyles().size() == 27);
+    for (const auto* name : { "SINGING BENDS", "SHUFFLE CONVERSATION", "SLOW BUILD WITH RAKES", "FALLING MAJOR MELODY", "SUNG IN THE GAPS",
+                              "ROLLING SEQUENCES", "LAID-BACK SWEET BENDS", "THEME EVERY ROUND", "TWO SPEEDS", "LICK TWICE TO END" })
+        CHECK (soloStyleNamed (name) != SoloStyle::automatic);
+    CHECK (soloStyleForGuitarStyle ((int) GuitarStyle::rock) == SoloStyle::singingBends);
+    CHECK (soloStyleForGuitarStyle ((int) GuitarStyle::shred) == SoloStyle::twoSpeeds);
+}
+
+TEST_CASE ("0.116.0: every solo phrases as the real ones: held landings, off-beat starts, a peak past halfway, few big bends",
+           "[solo][solostyles][solo116]")
+{
+    const auto spans = amBars (16);   // (64 beats)
+    const auto& tuning = GuitarTuning::all()[0];
+    for (const auto style : soloStyles())
+    {
+        if (style == SoloStyle::automatic)
+            continue;
+        auto big = 0, bends = 0, held = 0, heldOnChord = 0, notes = 0;
+        for (int variation = 0; variation < 4; ++variation)
+        {
+            INFO (soloStyleName (style) << " variation " << variation);
+            const auto solo = composeSolo (style, spans, 4.0, tuning, {}, variation);
+            REQUIRE_FALSE (solo.notes.empty());
+            notes += (int) solo.notes.size();
+            for (const auto& n : solo.notes)
+            {
+                if (n.effect == LineNote::Effect::bend)
+                {
+                    ++bends;
+                    big += n.amount >= 3.0f ? 1 : 0;
+                }
+                if (n.length >= 1.5)
+                {
+                    ++held;
+                    const auto& c = spans[(size_t) juce::jlimit (0, 15, (int) (n.beat / 4.0))].chord;
+                    const auto sounding = n.pitch + (n.effect == LineNote::Effect::bend ? juce::roundToInt (n.amount) : 0);
+                    for (const auto pc : c.pitchClasses())
+                        if (((sounding % 12) + 12) % 12 == pc)
+                        {
+                            ++heldOnChord;
+                            break;
+                        }
+                }
+            }
+            // Never a ramp of 9-16 notes a bar: at most about three notes a beat over the solo.
+            CHECK ((double) solo.notes.size() / 64.0 <= 3.2);
+        }
+        INFO (soloStyleName (style));
+        // Phrases end on held notes, most of them chord tones (as sounded).
+        CHECK (held >= 4 * 6);
+        CHECK (heldOnChord * 10 >= held * 5);
+        // Bends of a step and a half or more: rare.
+        CHECK (big * 4 <= juce::jmax (1, bends));
+    }
+    // The melodic new styles: the register peaks past halfway and comes back down.
+    for (const auto style : { SoloStyle::singingBends, SoloStyle::shuffleConversation, SoloStyle::laidBackBends, SoloStyle::rollingSequences })
+    {
+        auto higherMiddle = 0;
+        for (int variation = 0; variation < 6; ++variation)
+        {
+            const auto solo = composeSolo (style, spans, 4.0, tuning, {}, variation);
+            const auto start = medianPitch (solo, 0.0, 16.0), peak = medianPitch (solo, 36.0, 52.0);
+            higherMiddle += peak > start ? 1 : 0;
+        }
+        INFO (soloStyleName (style));
+        CHECK (higherMiddle >= 4);
+    }
+    // Most phrases start off beat 1: of the notes after a held one, few on a bar line.
+    {
+        auto afterHeld = 0, onOne = 0;
+        for (int variation = 0; variation < 6; ++variation)
+        {
+            const auto solo = composeSolo (SoloStyle::singingBends, spans, 4.0, tuning, {}, variation);
+            for (size_t i = 1; i < solo.notes.size(); ++i)
+                if (solo.notes[i - 1].length >= 1.5)
+                {
+                    ++afterHeld;
+                    onOne += std::abs (std::fmod (solo.notes[i].beat, 4.0)) < 1.0e-6 ? 1 : 0;
+                }
+        }
+        CHECK (onOne * 10 <= afterHeld * 4);
+    }
+}
+
+TEST_CASE ("0.116.0: the new styles' own habits", "[solo][solostyles][solo116]")
+{
+    const auto spans = amBars (16);
+    const auto& tuning = GuitarTuning::all()[0];
+    for (int variation = 0; variation < 3; ++variation)
+    {
+        INFO ("variation " << variation);
+        // LICK TWICE TO END: the last four bars a two-bar lick played twice.
+        {
+            const auto solo = composeSolo (SoloStyle::lickTwice, spans, 4.0, tuning, {}, variation);
+            std::vector<std::pair<long, int>> a, b;
+            for (const auto& n : solo.notes)
+            {
+                if (n.beat >= 48.0 - 1.0e-6 && n.beat < 56.0 - 1.0e-6) a.push_back ({ std::lround ((n.beat - 48.0) * 96.0), n.pitch });
+                if (n.beat >= 56.0 - 1.0e-6 && n.beat < 64.0 - 1.0e-6) b.push_back ({ std::lround ((n.beat - 56.0) * 96.0), n.pitch });
+            }
+            REQUIRE (a.size() >= 8);
+            CHECK (a.size() == b.size());
+            auto same = 0;
+            for (size_t i = 0; i < juce::jmin (a.size(), b.size()); ++i)
+                same += a[i] == b[i] ? 1 : 0;
+            CHECK (same + 1 >= (int) a.size());   // (the very last note may be the held root)
+        }
+        // SHUFFLE CONVERSATION: triplet feel, nothing on the sixteenths between.
+        {
+            const auto solo = composeSolo (SoloStyle::shuffleConversation, spans, 4.0, tuning, {}, variation);
+            auto swung = 0;
+            for (const auto& n : solo.notes)
+            {
+                const auto in = n.beat - std::floor (n.beat);
+                swung += std::abs (in - 2.0 / 3.0) < 0.02 ? 1 : 0;
+                CHECK (std::abs (in - 0.25) > 0.02);
+                CHECK (std::abs (in - 0.75) > 0.02);
+            }
+            CHECK (swung > 0);
+        }
+        // ROLLING SEQUENCES: opens on one held low note.
+        {
+            const auto solo = composeSolo (SoloStyle::rollingSequences, spans, 4.0, tuning, {}, variation);
+            CHECK (solo.notes.front().beat == 0.0);
+            CHECK (solo.notes.front().length >= 4.0);
+        }
+        // FALLING MAJOR MELODY: the first quarter higher than the last.
+        {
+            const auto solo = composeSolo (SoloStyle::fallingMajorMelody, spans, 4.0, tuning, {}, variation);
+            CHECK (medianPitch (solo, 0.0, 16.0) > medianPitch (solo, 48.0, 64.0));
+        }
+        // LAID-BACK SWEET BENDS: behind the beat, and the last bar one long low root.
+        {
+            const auto solo = composeSolo (SoloStyle::laidBackBends, spans, 4.0, tuning, {}, variation);
+            auto late = 0;
+            for (const auto& n : solo.notes)
+                late += std::abs (n.beat * 2.0 - std::round (n.beat * 2.0)) > 0.05 ? 1 : 0;
+            CHECK (late * 2 >= (int) solo.notes.size());
+            const auto& last = solo.notes.back();
+            CHECK (last.length >= 3.0);
+            CHECK (((last.pitch % 12) + 12) % 12 == 4);
+        }
+        // THEME EVERY ROUND: the opening phrase comes back when the four chords come round.
+        {
+            const auto solo = composeSolo (SoloStyle::cycleTheme, spans, 4.0, tuning, {}, variation);
+            std::set<std::pair<long, int>> first;
+            for (const auto& n : solo.notes)
+                if (n.beat < 6.0)
+                    first.insert ({ std::lround (n.beat * 96.0), n.pitch });
+            auto backAgain = 0;
+            for (const auto& n : solo.notes)
+                for (const auto shift : { 16.0, 32.0 })
+                    backAgain += first.count ({ std::lround ((n.beat - shift) * 96.0), n.pitch }) > 0 ? 1 : 0;
+            CHECK (backAgain >= (int) first.size());
+        }
+    }
+    // A pre-bend let down: the wheel starts bent, holds, comes back to the note.
+    {
+        LineNote n;
+        n.beat = 4.0;
+        n.length = 2.0;
+        n.pitch = 64;
+        n.effect = LineNote::Effect::release;
+        n.amount = 2.0f;
+        const auto c = Studio::effectControllers ({ n }, 2, 120.0);
+        REQUIRE (c.size() == 4);
+        CHECK (c[0].start == 4.0);
+        CHECK (c[0].value == 16383);
+        CHECK (c[2].value == 8192);
+        CHECK (c[2].start > c[1].start);
+        // A bend at 120 BPM reaches its note in 0.19 s (0.38 beat).
+        n.effect = LineNote::Effect::bend;
+        const auto up = Studio::effectControllers ({ n }, 2, 120.0);
+        CHECK (std::abs (up[1].start - (4.0 + 0.38)) < 1.0e-6);
+    }
 }

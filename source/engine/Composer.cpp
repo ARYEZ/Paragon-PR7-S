@@ -5393,7 +5393,12 @@ namespace pr7s
                                             : "Muted power chords on every sixteenth, a chord a bar; a three-chord turnaround every fourth bar");
                     for (int bar = 0; bar < bars; ++bar)
                         for (int k = 0; k < 16; ++k)
-                            power (out, bar * bpb + k * s16, s16 * 0.8, wallRoot (bar, k), a == 1 && k % 4 == 0 ? open() : muted());
+                        {
+                            const auto ring = a == 1 && k % 4 == 0;   // (open on the beat, ringing over the next sixteenth)
+                            if (a == 1 && k % 4 == 1)
+                                continue;
+                            power (out, bar * bpb + k * s16, s16 * (ring ? 1.8 : 0.8), wallRoot (bar, k), ring ? open() : muted());
+                        }
                     return out;
                 }
                 // GROUPED STREAM

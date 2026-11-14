@@ -603,13 +603,13 @@ TEST_CASE ("0.93.0: the composer block by block: aimed at the first block, BUILD
 TEST_CASE ("0.94.0: the types a section can have; STANDARD is none; a type sets the guitar's flavour", "[sections][types]")
 {
     const auto chorus = sectionTypesFor ("Chorus");
-    REQUIRE (chorus.size() == 3);   // (0.99.0: SYNCOPATED DRIVE between them)
+    REQUIRE (chorus.size() == 7);   // (0.99.0: SYNCOPATED DRIVE between them; 0.115.0: four more after them)
     CHECK (chorus[0].name == "DRIVING");
     CHECK (chorus[0].flavour == RiffFlavour::drivingEighths);
     CHECK (chorus[2].name == "DRONING");
     CHECK (chorus[2].flavour == RiffFlavour::droning);
     // A name plays as its kind: a Hook as a chorus, a Pre-Chorus as a verse (0.102.0: after its own types).
-    CHECK (sectionTypesFor ("Hook").size() == 3);
+    CHECK (sectionTypesFor ("Hook").size() == 7);
     CHECK (sectionTypesFor ("Pre-Chorus").back().name == sectionTypesFor ("Verse").back().name);
     for (const auto& name : songSectionNames())
         CHECK_FALSE (sectionTypesFor (name).empty());   // (every section seeded with suggestions)

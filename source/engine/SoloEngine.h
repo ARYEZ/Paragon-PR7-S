@@ -6,6 +6,12 @@
 // and habits, never their solos). The research is in docs/solo-styles (a technique sheet per player, sourced
 // from guitar lessons and interviews); the app shows only our own names for the styles (the owner's choice).
 //
+// (0.116.0, the owner's Pink Floyd and Guns N' Roses solos read for their shapes: every style now phrases as those
+// do. A phrase is a pickup running into its longest note, held and bent or shaken; most phrases start off beat 1;
+// busy passages come as waves with calm after them; the register peaks past halfway and comes back down; chord
+// tones where a phrase lands, not on every beat; whole-step bends, some pre-bent and let down; a call played again,
+// a theme brought back when the chords come round. What follows was the 0.66.0 design; the motif became the plan.)
+//
 // A solo here is built around a MOTIF, as a player builds one: a short phrase stated, answered (the same
 // rhythm, a new ending, often higher), stated again higher, then developed, with the style's signature passage
 // (a burst) in the later phrases, building to a climax and ending on the last chord's root. On top of the notes:
@@ -23,7 +29,10 @@ namespace pr7s
     enum class SoloStyle : int { automatic, soaringBends, rockSwagger, tapAndDive, bluesHammer,
                                  screamAndDive, thrashFire, pinchSqueal, progPrecision,   // (0.67.0: round two)
                                  glamFlash, sleazeBlues, topHatMelody, purpleScream,      // (0.68.0: round three)
-                                 gypsyShred, tensionRelease, torturedBends, grungeMelody }; // (0.69.0: round four)
+                                 gypsyShred, tensionRelease, torturedBends, grungeMelody,   // (0.69.0: round four)
+                                 // (0.116.0, from the owner's Pink Floyd and Guns N' Roses solos, shapes only; our names)
+                                 singingBends, shuffleConversation, slowBuildRakes, fallingMajorMelody, sungInTheGaps,
+                                 rollingSequences, laidBackBends, cycleTheme, twoSpeeds, lickTwice };
     const std::vector<SoloStyle>& soloStyles();      // automatic first
     juce::String soloStyleName (SoloStyle);          // "BY STYLE", "SOARING BENDS", "ROCK 'N' ROLL SWAGGER", "TAP & DIVE", "BLUES HAMMER",
                                                      // "SCREAM & DIVE", "THRASH FIRE", "PINCH SQUEAL", "PROG PRECISION",
@@ -32,7 +41,10 @@ namespace pr7s
     SoloStyle soloStyleNamed (const juce::String&);  // (else automatic)
     juce::String soloStyleDescription (SoloStyle);
 
-    // A whole solo in that style over the chords (not `automatic`: Riffs.h's `guitarSolo` makes that one).
+    // (0.116.0) BY STYLE: the solo style the guitar STYLE plays (Lines.h's GuitarStyle by number).
+    SoloStyle soloStyleForGuitarStyle (int guitarStyle);
+
+    // A whole solo in that style over the chords (`automatic`: nothing; guitarLeadIdeas asks soloStyleForGuitarStyle).
     LineIdea composeSolo (SoloStyle, const std::vector<ChordSpan>&, double beatsPerBar, const GuitarTuning&,
                           const GuitarVelocities&, int variation, double shortest = 0.0);
 }

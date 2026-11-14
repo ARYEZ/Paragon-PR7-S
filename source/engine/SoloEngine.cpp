@@ -10,7 +10,8 @@ namespace pr7s
 
         // A style's rules (from docs/solo-styles: what the lessons say each player does; the numbers are
         // starting points to tune by ear).
-        enum class Burst { run, cell, tapping, displaced, chromaticShift, repeatLick, sixes, sequence, fourSequence, risingFlurry, sweep, noise };
+        enum class Burst { run, cell, tapping, displaced, chromaticShift, repeatLick, sixes, sequence, fourSequence, risingFlurry, sweep, noise,
+                           turning, flurry };   // (0.116.0: turning cells, the rhythm kept; sextuplet flurries falling)
         struct Profile
         {
             bool sixth = false, ninth = false, flatFive = false, majorOnMajor = false, curls = false;
@@ -40,6 +41,20 @@ namespace pr7s
             bool swing8 = false;
             int climb = 12;                                    // semitones up over the solo
             bool doubleStops = false, tremolo = false, harmonics = false, dive = false, legato = true;
+            // (0.116.0, the owner's Pink Floyd and Guns N' Roses solos) The phrase plan: the pickups' notes a beat
+            // (0: from the old start and peak densities), the held landing note's length, how long a pickup runs,
+            // how often a phrase lands on beat 1 (else beat 3 or the last eighth, tied over), a real rest's chance,
+            // the register's peak along the solo, the waves (-1: from the burst settings), bends and vibrato on held
+            // notes, pre-bends released, and the habits of the new styles.
+            float notesPerBeat = 0.0f;
+            double holdMin = 1.5, holdMax = 3.0, pickupMax = 2.0;
+            float landBeat1 = 0.4f, restChance = 0.25f, peakAt = 0.7f;
+            int waves = -1;
+            float releaseShare = 0.1f, vibratoHeld = 0.75f;
+            bool falling = false, octaveDownLate = false, twoSpeed = false, lickTwice = false, rakes = false, graceNotes = false,
+                 walkDown = false, openHeld = false, noSixteenths = false, repeatPair = false, cycleTheme = false,
+                 landThirdFifth = false, fourthDoubleStops = false;
+            float seqShare = 0.0f;
             const char* description = "";
         };
 
@@ -192,8 +207,102 @@ namespace pr7s
                     p.description = "Sparse and simple: the opening tune played again (an octave up in the second half) like a "
                                     "vocal line on guitar, a chromatic passing note now and then, no whammy; some takes noisy";
                     break;
+                // (0.116.0) From the owner's Pink Floyd and Guns N' Roses solos (shapes only; our names).
+                case SoloStyle::singingBends:
+                    p.sixth = p.ninth = true;
+                    p.notesPerBeat = 0.9f; p.holdMin = 2.0; p.holdMax = 4.5; p.pickupMax = 1.5; p.landBeat1 = 0.35f;
+                    p.waves = 0; p.peakAt = 0.6f; p.climb = 12; p.restChance = 0.2f; p.restBeats = 2.0;
+                    p.bendChance = 0.65f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.2f }, { 3.0f, 0.12f } }; p.bigFrom = 0.4f;
+                    p.releaseShare = 0.3f; p.vibrato = 0.8f;
+                    p.description = "Few notes: each phrase a short pickup into one long note bent into its pitch with vibrato, "
+                                    "some bent before they're struck and let down; it peaks past halfway and comes back down";
+                    break;
+                case SoloStyle::shuffleConversation:
+                    p.ninth = p.curls = p.majorOnMajor = true;
+                    p.swing = 0.667f; p.swing8 = true; p.noSixteenths = true;
+                    p.notesPerBeat = 1.2f; p.holdMin = 1.5; p.holdMax = 3.0; p.pickupMax = 2.0; p.landBeat1 = 0.2f;
+                    p.waves = 0; p.peakAt = 0.78f; p.climb = 12; p.repeatPair = true; p.restChance = 0.3f;
+                    p.bendChance = 0.55f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.25f } };
+                    p.releaseShare = 0.05f; p.vibrato = 1.0f;
+                    p.description = "A blues shuffle in triplets, about a note a beat: phrases in off the beat, a call and its "
+                                    "answer played twice, held bends to the fifth and the root, the last third higher";
+                    break;
+                case SoloStyle::slowBuildRakes:
+                    p.ninth = true;
+                    p.notesPerBeat = 1.4f; p.holdMin = 1.5; p.holdMax = 3.0; p.landBeat1 = 0.3f;
+                    p.waves = 2; p.burst = Burst::flurry; p.peakAt = 0.7f; p.climb = 10; p.rakes = true;
+                    p.bendChance = 0.45f; p.bends = { { 1.0f, 1.0f }, { 2.0f, 0.9f }, { 3.0f, 0.3f } }; p.bigFrom = 0.5f;
+                    p.releaseShare = 0.15f; p.vibrato = 0.9f;
+                    p.description = "A slow build for a ballad: sparse at first, then waves of fast falling flurries with chord "
+                                    "rakes between them, the biggest wave past halfway, ending on a held root";
+                    break;
+                case SoloStyle::fallingMajorMelody:
+                    p.majorOnMajor = p.falling = p.graceNotes = p.landThirdFifth = true;
+                    p.notesPerBeat = 1.2f; p.holdMin = 2.0; p.holdMax = 4.0; p.pickupMax = 1.5; p.landBeat1 = 0.8f;
+                    p.waves = 0; p.climb = 14; p.restChance = 0.0f;
+                    p.bendChance = 0.4f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.5f } };
+                    p.releaseShare = 0.3f; p.vibrato = 0.8f;
+                    p.description = "A major-key melody sung from the top down: phrases from the and of three into a held third "
+                                    "or fifth, each lower than the last, quick grace notes into the held notes";
+                    break;
+                case SoloStyle::sungInTheGaps:
+                    p.majorOnMajor = p.graceNotes = p.cycleTheme = p.octaveDownLate = p.noSixteenths = true;
+                    p.notesPerBeat = 1.3f; p.holdMin = 2.0; p.holdMax = 3.0; p.pickupMax = 2.0; p.landBeat1 = 0.3f;
+                    p.waves = 0; p.climb = 7; p.restChance = 0.15f;
+                    p.bendChance = 0.3f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.7f } };
+                    p.releaseShare = 0.35f; p.vibrato = 0.8f;
+                    p.description = "A singable eighth-note melody starting mid-bar, played again when the chords come round, "
+                                    "the second half an octave lower, grace notes from a whole step under";
+                    break;
+                case SoloStyle::rollingSequences:
+                    p.sixth = p.ninth = p.majorThird = p.openHeld = true;
+                    p.notesPerBeat = 1.8f; p.holdMin = 1.5; p.holdMax = 2.5; p.landBeat1 = 0.5f;
+                    p.waves = 3; p.burst = Burst::turning; p.peakAt = 0.75f; p.climb = 14; p.seqShare = 0.3f; p.restChance = 0.1f;
+                    p.bendChance = 0.35f; p.bends = { { 2.0f, 1.0f } };
+                    p.vibrato = 1.0f;
+                    p.description = "Opens on one held low note, then builds in waves of turning cells (the rhythm kept, the notes "
+                                    "moving), sequences of the last phrase, the top past halfway and a quiet end";
+                    break;
+                case SoloStyle::laidBackBends:
+                    p.majorOnMajor = p.noSixteenths = p.walkDown = true;
+                    p.lateBeats = 0.08;
+                    p.notesPerBeat = 0.8f; p.holdMin = 2.0; p.holdMax = 4.0; p.pickupMax = 1.5; p.landBeat1 = 0.4f;
+                    p.waves = 0; p.peakAt = 0.75f; p.climb = 12; p.restChance = 0.15f;
+                    p.bendChance = 0.7f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.15f } };
+                    p.releaseShare = 0.1f; p.vibrato = 0.9f;
+                    p.description = "Sweet and behind the beat, no fast notes: slow bends up into the held notes, late vibrato, "
+                                    "walking down to a long low root at the end";
+                    break;
+                case SoloStyle::cycleTheme:
+                    p.ninth = p.cycleTheme = true;
+                    p.notesPerBeat = 1.6f; p.holdMin = 1.5; p.holdMax = 3.0; p.landBeat1 = 0.4f;
+                    p.waves = 2; p.burst = Burst::cell; p.peakAt = 0.85f; p.climb = 12; p.restChance = 0.1f;
+                    p.bendChance = 0.55f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.25f } };
+                    p.vibrato = 1.0f;
+                    p.description = "A theme that comes back every time the chords come round, with new endings, and fast repeated "
+                                    "figures near the end of the later rounds";
+                    break;
+                case SoloStyle::twoSpeeds:
+                    p.ninth = true;
+                    p.notesPerBeat = 0.8f; p.holdMin = 2.0; p.holdMax = 4.0; p.landBeat1 = 0.35f;
+                    p.twoSpeed = true; p.burst = Burst::cell; p.climb = 12; p.peakAt = 0.8f;
+                    p.bendChance = 0.65f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.2f } };
+                    p.releaseShare = 0.2f; p.vibrato = 1.0f;
+                    p.description = "Two halves: slow and bendy, then one fast pentatonic passage right through to the last bar";
+                    break;
+                case SoloStyle::lickTwice:
+                    p.flatFive = p.fourthDoubleStops = p.doubleStops = p.lickTwice = true;
+                    p.notesPerBeat = 2.0f; p.holdMin = 1.0; p.holdMax = 2.0; p.landBeat1 = 0.4f; p.restChance = 0.0f;
+                    p.waves = 1; p.burst = Burst::cell; p.climb = 7;
+                    p.bendChance = 0.45f; p.bends = { { 2.0f, 1.0f } };
+                    p.vibrato = 1.0f;
+                    p.description = "Blues scale over a vamp, phrases running into each other, fourth double stops, and a "
+                                    "two-bar lick played twice to finish";
+                    break;
                 case SoloStyle::automatic: break;
             }
+            if (p.notesPerBeat <= 0.0f)
+                p.notesPerBeat = (p.startDensity + p.peakDensity) * 0.5f / 4.0f;   // (the player styles: their old densities)
             return p;
         }
 
@@ -332,7 +441,10 @@ namespace pr7s
                                                   SoloStyle::screamAndDive, SoloStyle::thrashFire, SoloStyle::pinchSqueal,
                                                   SoloStyle::progPrecision, SoloStyle::glamFlash, SoloStyle::sleazeBlues,
                                                   SoloStyle::topHatMelody, SoloStyle::purpleScream, SoloStyle::gypsyShred,
-                                                  SoloStyle::tensionRelease, SoloStyle::torturedBends, SoloStyle::grungeMelody };
+                                                  SoloStyle::tensionRelease, SoloStyle::torturedBends, SoloStyle::grungeMelody,
+                                                  SoloStyle::singingBends, SoloStyle::shuffleConversation, SoloStyle::slowBuildRakes,
+                                                  SoloStyle::fallingMajorMelody, SoloStyle::sungInTheGaps, SoloStyle::rollingSequences,
+                                                  SoloStyle::laidBackBends, SoloStyle::cycleTheme, SoloStyle::twoSpeeds, SoloStyle::lickTwice };
         return all;
     }
 
@@ -357,6 +469,16 @@ namespace pr7s
             case SoloStyle::tensionRelease: return "TENSION & RELEASE";
             case SoloStyle::torturedBends: return "TORTURED BENDS";
             case SoloStyle::grungeMelody: return "GRUNGE MELODY";
+            case SoloStyle::singingBends: return "SINGING BENDS";
+            case SoloStyle::shuffleConversation: return "SHUFFLE CONVERSATION";
+            case SoloStyle::slowBuildRakes: return "SLOW BUILD WITH RAKES";
+            case SoloStyle::fallingMajorMelody: return "FALLING MAJOR MELODY";
+            case SoloStyle::sungInTheGaps: return "SUNG IN THE GAPS";
+            case SoloStyle::rollingSequences: return "ROLLING SEQUENCES";
+            case SoloStyle::laidBackBends: return "LAID-BACK SWEET BENDS";
+            case SoloStyle::cycleTheme: return "THEME EVERY ROUND";
+            case SoloStyle::twoSpeeds: return "TWO SPEEDS";
+            case SoloStyle::lickTwice: return "LICK TWICE TO END";
         }
         return "BY STYLE";
     }
@@ -372,8 +494,20 @@ namespace pr7s
     juce::String soloStyleDescription (SoloStyle s)
     {
         if (s == SoloStyle::automatic)
-            return "The guitar STYLE's own six leads, from the calmest to the busiest, with bends and vibrato on the long notes";
+            return "The guitar STYLE's own: rock and nu-metal SINGING BENDS, thrash and groove LICK TWICE TO END, "
+                   "metalcore ROLLING SEQUENCES, shred TWO SPEEDS";
         return profileOf (s).description;
+    }
+
+    SoloStyle soloStyleForGuitarStyle (int guitarStyle)
+    {
+        switch (guitarStyle)
+        {
+            case 1: case 5: return SoloStyle::lickTwice;          // (thrash, groove)
+            case 3: return SoloStyle::rollingSequences;           // (metalcore)
+            case 4: return SoloStyle::twoSpeeds;                  // (shred)
+            default: return SoloStyle::singingBends;              // (rock, nu-metal)
+        }
     }
 
     //==========================================================================
@@ -400,6 +534,16 @@ namespace pr7s
                 case SoloStyle::tensionRelease: return "Tension & Release";
                 case SoloStyle::torturedBends: return "Tortured Bends";
                 case SoloStyle::grungeMelody: return "Grunge Melody";
+                case SoloStyle::singingBends: return "Singing Bends";
+                case SoloStyle::shuffleConversation: return "Shuffle Conversation";
+                case SoloStyle::slowBuildRakes: return "Slow Build With Rakes";
+                case SoloStyle::fallingMajorMelody: return "Falling Major Melody";
+                case SoloStyle::sungInTheGaps: return "Sung In The Gaps";
+                case SoloStyle::rollingSequences: return "Rolling Sequences";
+                case SoloStyle::laidBackBends: return "Laid-Back Sweet Bends";
+                case SoloStyle::cycleTheme: return "Theme Every Round";
+                case SoloStyle::twoSpeeds: return "Two Speeds";
+                case SoloStyle::lickTwice: return "Lick Twice To End";
                 case SoloStyle::automatic: break;
             }
             return "By Style";
@@ -424,17 +568,6 @@ namespace pr7s
         const auto gridFor = [shortestStep] (double wanted) { return juce::jmax (wanted, shortestStep); };
         auto& notes = solo.notes;
 
-        // The motif: its rhythm and its contour, made once.
-        Motif motif;
-        {
-            const auto count = juce::jmax (2, juce::roundToInt (p.startDensity * p.phraseBars));
-            motif.at = rhythmOf (count, phraseLength - p.restBeats, gridFor (p.startDensity > 4.0f ? 0.25 : 0.5), r, true);
-            motif.steps = contourOf ((int) motif.at.size(), r);
-            // (0.67.0) In on an upbeat: the first note off the beat, where there's room.
-            if (p.upbeatEntry && motif.at.size() > 1 && motif.at[0] < 0.5 && motif.at[1] >= 0.5 + gridFor (0.25) - 1.0e-9)
-                motif.at[0] = 0.5;
-        }
-        auto burstCount = 0;
         std::vector<double> tensionTargets;
         const auto velocityAt = [&] (float t, bool accent)
         {
@@ -443,314 +576,649 @@ namespace pr7s
         };
 
         std::vector<std::pair<double, double>> burstSpans;   // (from, to): no bends or vibrato added there
-        for (int ph = 0; ph < phrases; ++ph)
+        // The style's signature passage from `burstFrom` to `landing` (0.116.0: placed as waves, not every other phrase).
+        const auto writeBurst = [&] (double burstFrom, double landing, double centre, float t, int burstIndex, bool peak)
         {
-            const auto t = phrases == 1 ? 1.0f : (float) ph / (float) (phrases - 1);
-            const auto from = ph * phraseLength;
-            const auto to = juce::jmin (total, from + phraseLength);
-            const auto centre = (double) low + 7.0 + p.climb * t;
-            const auto lastPhrase = ph == phrases - 1;
-            const auto burstHere = ph > 0 && ! lastPhrase && t >= p.burstFrom
-                                && (p.burstEveryOther ? (phrases - 1 - ph) % 2 == 1 : ph == phrases - 2);   // (0.67.0: counted back from the end, so the busy phrases come late)
-            if (burstHere)
+            burstSpans.push_back ({ burstFrom, landing });
+            auto pool = poolOf (scaleAt (burstFrom), low, high);
+            if (pool.empty())
+                return;
+            auto idx = nearestIndex (pool, centre + 5.0);
+            juce::ignoreUnused (burstIndex, peak);
+            switch (p.burst)
             {
-                const auto burstIndex = burstCount++;
-                // The style's signature passage, then a held landing note on the last beat.
-                const auto landing = juce::jmax (from, to - juce::jmin (1.0, beatsPerBar * 0.25) - (p.burstEveryOther ? 0.0 : p.restBeats));
-                const auto burstFrom = p.burstEveryOther ? from : juce::jmax (from, landing - 2.0);
-                burstSpans.push_back ({ burstFrom, landing });
-                auto pool = poolOf (scaleAt (burstFrom), low, high);
-                if (pool.empty())
-                    continue;
-                auto idx = nearestIndex (pool, centre + 5.0);
-                switch (p.burst)
+                case Burst::run:
                 {
-                    case Burst::run:
+                    // Down the scale in 16ths.
+                    const auto g = gridFor (0.25);
+                    for (auto x = burstFrom; x < landing - 1.0e-9; x += g)
                     {
-                        // Down the scale in 16ths.
-                        const auto g = gridFor (0.25);
-                        for (auto x = burstFrom; x < landing - 1.0e-9; x += g)
-                        {
-                            addNote (notes, x, g, pool[(size_t) idx], velocityAt (t, false));
-                            idx = juce::jmax (0, idx - 1);
-                        }
+                        addNote (notes, x, g, pool[(size_t) idx], velocityAt (t, false));
+                        idx = juce::jmax (0, idx - 1);
+                    }
+                    break;
+                }
+                case Burst::cell:
+                {
+                    // A three-note pull-off cell in triplets, repeated (the scale under the chord as it changes).
+                    const auto g = gridFor (1.0 / 3.0);
+                    auto k = 0;
+                    for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                    {
+                        const auto here = poolOf (scaleAt (x), low, high);
+                        const auto base = nearestIndex (here, centre + 3.0);
+                        const auto at = juce::jlimit (0, (int) here.size() - 1, base + 2 - (k % 3));
+                        addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 3 == 0));
+                    }
+                    break;
+                }
+                case Burst::tapping:
+                {
+                    // Tap, pull off, hammer on: the chord's triad, the tap an octave over its root, following the chords.
+                    const auto g = gridFor (1.0 / 3.0);
+                    auto k = 0;
+                    for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                    {
+                        const auto& span = chordAt (x);
+                        const auto rootNote = nearestOf ({ span.chord.root }, centre, low, high - 12);
+                        const auto third = nearestOf ({ pcOf (span.chord.root + (span.chord.type == Chord::Type::minor
+                                                                                  || span.chord.type == Chord::Type::diminished ? 3 : 4)) },
+                                                      rootNote + 4, low, high);
+                        const int shape[] = { rootNote + 12, rootNote, third };
+                        addNote (notes, x, g, juce::jlimit (low, high, shape[k % 3]), velocityAt (t, k % 3 == 0));
+                        notes.back().technique = LineNote::Technique::tapping;
+                    }
+                    break;
+                }
+                case Burst::displaced:
+                {
+                    // A six-note cell in 16ths (a beat and a half), looped so it lands somewhere new in each bar.
+                    const auto g = gridFor (0.25);
+                    const int cell[] = { 2, 1, 0, 1, 0, -1 };
+                    auto k = 0;
+                    for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                    {
+                        const auto here = poolOf (scaleAt (x), low, high);
+                        const auto base = nearestIndex (here, centre + 2.0);
+                        const auto at = juce::jlimit (0, (int) here.size() - 1, base + cell[k % 6]);
+                        addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 6 == 0));
+                    }
+                    break;
+                }
+                case Burst::chromaticShift:
+                {
+                    // A four-note cell moved up a fret every beat, outside the scale as it goes.
+                    const auto g = gridFor (0.25);
+                    const auto per = juce::jmax (1, juce::roundToInt (1.0 / g));
+                    const auto here = poolOf (scaleAt (burstFrom), low, high);
+                    const auto base = nearestIndex (here, centre);
+                    int cell[4];
+                    const int shape[] = { 0, 2, 1, 2 };
+                    for (int c = 0; c < 4; ++c)
+                        cell[c] = here[(size_t) juce::jlimit (0, (int) here.size() - 1, base + shape[c])];
+                    auto k = 0;
+                    for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                        addNote (notes, x, g, juce::jlimit (low, high, cell[k % 4] + k / per), velocityAt (t, k % 4 == 0));
+                    break;
+                }
+                case Burst::repeatLick:
+                {
+                    // A three-beat lick in picked triplets, repeated so it starts somewhere new in each bar.
+                    const auto g = gridFor (1.0 / 3.0);
+                    const int lick[] = { 2, 1, 0, 2, 1, 0, 1, 0, -1 };
+                    auto k = 0;
+                    for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                    {
+                        const auto here = poolOf (scaleAt (x), low, high);
+                        const auto base = nearestIndex (here, centre + 3.0);
+                        const auto at = juce::jlimit (0, (int) here.size() - 1, base + lick[k % 9]);
+                        addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 9 == 0));
+                    }
+                    break;
+                }
+                case Burst::sixes:
+                {
+                    // Six-note groups down the scale in 16ths (each a step lower), drifting against the beat.
+                    const auto g = gridFor (0.25);
+                    const int six[] = { 0, -1, -2, -1, -2, -3 };
+                    auto k = 0;
+                    for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                    {
+                        const auto here = poolOf (scaleAt (x), low, high);
+                        const auto top = nearestIndex (here, centre + 9.0);
+                        const auto at = juce::jlimit (0, (int) here.size() - 1, top - k / 6 + six[k % 6]);
+                        addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 6 == 0));
+                    }
+                    break;
+                }
+                case Burst::fourSequence:
+                {
+                    // A four-note run down from a scale note, each one starting a step higher, in 16ths.
+                    const auto g = gridFor (0.25);
+                    const int four[] = { 0, -1, -2, -3 };
+                    auto k = 0;
+                    for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                    {
+                        const auto here = poolOf (scaleAt (x), low, high);
+                        const auto base = nearestIndex (here, centre);
+                        const auto at = juce::jlimit (0, (int) here.size() - 1, base + k / 4 + four[k % 4]);
+                        addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 4 == 0));
+                    }
+                    break;
+                }
+                case Burst::risingFlurry:
+                {
+                    const auto g = gridFor (0.25);
+                    auto k = 0;
+                    if (p.outburst && peak)
+                    {
+                        // The peak: an outburst outside the key, climbing by half steps.
+                        const auto start = nearestOf (chordTones (burstFrom), centre + 2.0, low, high);
+                        for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                            addNote (notes, x, g, juce::jlimit (low, high, start + k), velocityAt (t, k % 4 == 0));
                         break;
                     }
-                    case Burst::cell:
+                    // Up the scale, turning back down a step every fourth note.
+                    for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
                     {
-                        // A three-note pull-off cell in triplets, repeated (the scale under the chord as it changes).
-                        const auto g = gridFor (1.0 / 3.0);
-                        auto k = 0;
+                        const auto here = poolOf (scaleAt (x), low, high);
+                        const auto base = nearestIndex (here, centre - 2.0);
+                        const auto at = juce::jlimit (0, (int) here.size() - 1, base + k - 2 * (k / 4));
+                        addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 4 == 0));
+                    }
+                    break;
+                }
+                case Burst::sweep:
+                {
+                    // The chord's triad swept up and back down in triplets, following the chords.
+                    const auto g = gridFor (1.0 / 3.0);
+                    auto k = 0;
+                    for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                    {
+                        const auto arp = poolOf (chordTones (x), low, high);
+                        const auto base = nearestIndex (arp, centre - 2.0);
+                        const auto up = juce::jmin (4, (int) arp.size() - 1 - base);
+                        const auto pos = k % juce::jmax (1, 2 * up);
+                        const auto at = base + (pos <= up ? pos : 2 * up - pos);
+                        addNote (notes, x, g, arp[(size_t) juce::jlimit (0, (int) arp.size() - 1, at)], velocityAt (t, pos == 0));
+                    }
+                    break;
+                }
+                case Burst::noise:
+                {
+                    // A noisy run: notes thrown around the scale and outside it, in 16ths.
+                    const auto g = gridFor (0.25);
+                    auto k = 0;
+                    for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                        addNote (notes, x, g, juce::jlimit (low, high, juce::roundToInt (centre) + r.nextInt ({ -5, 8 })),
+                                 velocityAt (t, k % 4 == 0));
+                    break;
+                }
+                case Burst::turning:
+                {
+                    // (0.116.0) A three- to five-note cell turning round a note in 16ths, the cell kept while it moves a
+                    // step at a time through the scale.
+                    const auto g = gridFor (0.25);
+                    const auto size = 3 + r.nextInt (3);
+                    std::vector<int> cell;
+                    for (int c = 0; c < size; ++c)
+                        cell.push_back (c == 0 ? 0 : (c % 2 == 1 ? -1 : 1) * (1 + (c / 3)));
+                    auto k = 0;
+                    for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                    {
+                        const auto here = poolOf (scaleAt (x), low, high);
+                        const auto base = nearestIndex (here, centre + 1.0) + (k / size) * (r.nextFloat() < 0.6f ? -1 : 1);
+                        const auto at = juce::jlimit (0, (int) here.size() - 1, base + cell[(size_t) (k % size)]);
+                        addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % size == 0));
+                    }
+                    break;
+                }
+                case Burst::flurry:
+                {
+                    // (0.116.0) Sextuplet flurries falling through a small box, a beat at a time, each from a little lower.
+                    const auto g = gridFor (1.0 / 6.0);
+                    auto k = 0;
+                    for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                    {
+                        const auto here = poolOf (scaleAt (x), low, high);
+                        const auto beat = (int) std::floor ((x - burstFrom) + 1.0e-9);
+                        const auto top = nearestIndex (here, centre + 6.0) - (beat % 3);
+                        const auto in = (int) std::llround ((x - burstFrom - beat) / g);
+                        const auto at = juce::jlimit (0, (int) here.size() - 1, top - in + (in >= 4 ? 2 : 0));
+                        addNote (notes, x, g, here[(size_t) at], velocityAt (t, in == 0));
+                    }
+                    break;
+                }
+                case Burst::sequence:
+                {
+                    const auto g = gridFor (0.25);
+                    auto k = 0;
+                    if (t > 0.75f && burstIndex > 0)
+                    {
+                        // The climax: something outside, a chromatic climb.
+                        const auto start = nearestOf (chordTones (burstFrom), centre, low, high);
+                        for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                            addNote (notes, x, g, juce::jlimit (low, high, start + k), velocityAt (t, k % 4 == 0));
+                    }
+                    else if (burstIndex % 2 == 0)
+                    {
+                        // Six-note scale cells, each starting two steps higher (turning round at the top).
+                        const int cell[] = { 0, 1, 2, 3, 2, 1 };
                         for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
                         {
                             const auto here = poolOf (scaleAt (x), low, high);
-                            const auto base = nearestIndex (here, centre + 3.0);
-                            const auto at = juce::jlimit (0, (int) here.size() - 1, base + 2 - (k % 3));
-                            addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 3 == 0));
+                            const auto base = nearestIndex (here, centre - 4.0);
+                            const auto span = juce::jmax (1, (int) here.size() - 4 - base);
+                            auto climb = (k / 6) * 2;
+                            climb = climb % (2 * span);
+                            if (climb > span) climb = 2 * span - climb;
+                            const auto at = juce::jlimit (0, (int) here.size() - 1, base + climb + cell[k % 6]);
+                            addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 6 == 0));
                         }
-                        break;
                     }
-                    case Burst::tapping:
+                    else
                     {
-                        // Tap, pull off, hammer on: the chord's triad, the tap an octave over its root, following the chords.
-                        const auto g = gridFor (1.0 / 3.0);
-                        auto k = 0;
+                        // The chord's seventh arpeggio, one note each, up and back down.
                         for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
                         {
                             const auto& span = chordAt (x);
-                            const auto rootNote = nearestOf ({ span.chord.root }, centre, low, high - 12);
-                            const auto third = nearestOf ({ pcOf (span.chord.root + (span.chord.type == Chord::Type::minor
-                                                                                      || span.chord.type == Chord::Type::diminished ? 3 : 4)) },
-                                                          rootNote + 4, low, high);
-                            const int shape[] = { rootNote + 12, rootNote, third };
-                            addNote (notes, x, g, juce::jlimit (low, high, shape[k % 3]), velocityAt (t, k % 3 == 0));
-                            notes.back().technique = LineNote::Technique::tapping;
-                        }
-                        break;
-                    }
-                    case Burst::displaced:
-                    {
-                        // A six-note cell in 16ths (a beat and a half), looped so it lands somewhere new in each bar.
-                        const auto g = gridFor (0.25);
-                        const int cell[] = { 2, 1, 0, 1, 0, -1 };
-                        auto k = 0;
-                        for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
-                        {
-                            const auto here = poolOf (scaleAt (x), low, high);
-                            const auto base = nearestIndex (here, centre + 2.0);
-                            const auto at = juce::jlimit (0, (int) here.size() - 1, base + cell[k % 6]);
-                            addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 6 == 0));
-                        }
-                        break;
-                    }
-                    case Burst::chromaticShift:
-                    {
-                        // A four-note cell moved up a fret every beat, outside the scale as it goes.
-                        const auto g = gridFor (0.25);
-                        const auto per = juce::jmax (1, juce::roundToInt (1.0 / g));
-                        const auto here = poolOf (scaleAt (burstFrom), low, high);
-                        const auto base = nearestIndex (here, centre);
-                        int cell[4];
-                        const int shape[] = { 0, 2, 1, 2 };
-                        for (int c = 0; c < 4; ++c)
-                            cell[c] = here[(size_t) juce::jlimit (0, (int) here.size() - 1, base + shape[c])];
-                        auto k = 0;
-                        for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
-                            addNote (notes, x, g, juce::jlimit (low, high, cell[k % 4] + k / per), velocityAt (t, k % 4 == 0));
-                        break;
-                    }
-                    case Burst::repeatLick:
-                    {
-                        // A three-beat lick in picked triplets, repeated so it starts somewhere new in each bar.
-                        const auto g = gridFor (1.0 / 3.0);
-                        const int lick[] = { 2, 1, 0, 2, 1, 0, 1, 0, -1 };
-                        auto k = 0;
-                        for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
-                        {
-                            const auto here = poolOf (scaleAt (x), low, high);
-                            const auto base = nearestIndex (here, centre + 3.0);
-                            const auto at = juce::jlimit (0, (int) here.size() - 1, base + lick[k % 9]);
-                            addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 9 == 0));
-                        }
-                        break;
-                    }
-                    case Burst::sixes:
-                    {
-                        // Six-note groups down the scale in 16ths (each a step lower), drifting against the beat.
-                        const auto g = gridFor (0.25);
-                        const int six[] = { 0, -1, -2, -1, -2, -3 };
-                        auto k = 0;
-                        for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
-                        {
-                            const auto here = poolOf (scaleAt (x), low, high);
-                            const auto top = nearestIndex (here, centre + 9.0);
-                            const auto at = juce::jlimit (0, (int) here.size() - 1, top - k / 6 + six[k % 6]);
-                            addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 6 == 0));
-                        }
-                        break;
-                    }
-                    case Burst::fourSequence:
-                    {
-                        // A four-note run down from a scale note, each one starting a step higher, in 16ths.
-                        const auto g = gridFor (0.25);
-                        const int four[] = { 0, -1, -2, -3 };
-                        auto k = 0;
-                        for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
-                        {
-                            const auto here = poolOf (scaleAt (x), low, high);
-                            const auto base = nearestIndex (here, centre);
-                            const auto at = juce::jlimit (0, (int) here.size() - 1, base + k / 4 + four[k % 4]);
-                            addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 4 == 0));
-                        }
-                        break;
-                    }
-                    case Burst::risingFlurry:
-                    {
-                        const auto g = gridFor (0.25);
-                        auto k = 0;
-                        if (p.outburst && ph == phrases - 2)
-                        {
-                            // The peak: an outburst outside the key, climbing by half steps.
-                            const auto start = nearestOf (chordTones (burstFrom), centre + 2.0, low, high);
-                            for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
-                                addNote (notes, x, g, juce::jlimit (low, high, start + k), velocityAt (t, k % 4 == 0));
-                            break;
-                        }
-                        // Up the scale, turning back down a step every fourth note.
-                        for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
-                        {
-                            const auto here = poolOf (scaleAt (x), low, high);
-                            const auto base = nearestIndex (here, centre - 2.0);
-                            const auto at = juce::jlimit (0, (int) here.size() - 1, base + k - 2 * (k / 4));
-                            addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 4 == 0));
-                        }
-                        break;
-                    }
-                    case Burst::sweep:
-                    {
-                        // The chord's triad swept up and back down in triplets, following the chords.
-                        const auto g = gridFor (1.0 / 3.0);
-                        auto k = 0;
-                        for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
-                        {
-                            const auto arp = poolOf (chordTones (x), low, high);
-                            const auto base = nearestIndex (arp, centre - 2.0);
-                            const auto up = juce::jmin (4, (int) arp.size() - 1 - base);
+                            auto tones = chordTones (x);
+                            const auto seventh = pcOf (span.chord.root + (span.chord.type == Chord::Type::major
+                                                                          && has (scaleAt (x), pcOf (span.chord.root + 11)) ? 11 : 10));
+                            if (! has (tones, seventh))
+                                tones.push_back (seventh);
+                            const auto arp = poolOf (tones, low, high);
+                            const auto base = nearestIndex (arp, centre - 3.0);
+                            const auto up = juce::jmin (6, (int) arp.size() - 1 - base);
                             const auto pos = k % juce::jmax (1, 2 * up);
                             const auto at = base + (pos <= up ? pos : 2 * up - pos);
                             addNote (notes, x, g, arp[(size_t) juce::jlimit (0, (int) arp.size() - 1, at)], velocityAt (t, pos == 0));
                         }
-                        break;
                     }
-                    case Burst::noise:
-                    {
-                        // A noisy run: notes thrown around the scale and outside it, in 16ths.
-                        const auto g = gridFor (0.25);
-                        auto k = 0;
-                        for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
-                            addNote (notes, x, g, juce::jlimit (low, high, juce::roundToInt (centre) + r.nextInt ({ -5, 8 })),
-                                     velocityAt (t, k % 4 == 0));
-                        break;
-                    }
-                    case Burst::sequence:
-                    {
-                        const auto g = gridFor (0.25);
-                        auto k = 0;
-                        if (t > 0.75f && burstIndex > 0)
-                        {
-                            // The climax: something outside, a chromatic climb.
-                            const auto start = nearestOf (chordTones (burstFrom), centre, low, high);
-                            for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
-                                addNote (notes, x, g, juce::jlimit (low, high, start + k), velocityAt (t, k % 4 == 0));
-                        }
-                        else if (burstIndex % 2 == 0)
-                        {
-                            // Six-note scale cells, each starting two steps higher (turning round at the top).
-                            const int cell[] = { 0, 1, 2, 3, 2, 1 };
-                            for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
-                            {
-                                const auto here = poolOf (scaleAt (x), low, high);
-                                const auto base = nearestIndex (here, centre - 4.0);
-                                const auto span = juce::jmax (1, (int) here.size() - 4 - base);
-                                auto climb = (k / 6) * 2;
-                                climb = climb % (2 * span);
-                                if (climb > span) climb = 2 * span - climb;
-                                const auto at = juce::jlimit (0, (int) here.size() - 1, base + climb + cell[k % 6]);
-                                addNote (notes, x, g, here[(size_t) at], velocityAt (t, k % 6 == 0));
-                            }
-                        }
-                        else
-                        {
-                            // The chord's seventh arpeggio, one note each, up and back down.
-                            for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
-                            {
-                                const auto& span = chordAt (x);
-                                auto tones = chordTones (x);
-                                const auto seventh = pcOf (span.chord.root + (span.chord.type == Chord::Type::major
-                                                                              && has (scaleAt (x), pcOf (span.chord.root + 11)) ? 11 : 10));
-                                if (! has (tones, seventh))
-                                    tones.push_back (seventh);
-                                const auto arp = poolOf (tones, low, high);
-                                const auto base = nearestIndex (arp, centre - 3.0);
-                                const auto up = juce::jmin (6, (int) arp.size() - 1 - base);
-                                const auto pos = k % juce::jmax (1, 2 * up);
-                                const auto at = base + (pos <= up ? pos : 2 * up - pos);
-                                addNote (notes, x, g, arp[(size_t) juce::jlimit (0, (int) arp.size() - 1, at)], velocityAt (t, pos == 0));
-                            }
-                        }
-                        break;
-                    }
+                    break;
                 }
-                // The landing: a chord tone held.
-                const auto land = nearestOf (chordTones (landing), centre + 4.0, low, high);
-                addNote (notes, landing, juce::jmax (0.25, to - landing - (lastPhrase ? 0.0 : 0.05)), land, velocityAt (t, true));
-                continue;
             }
+        };
 
-            // A melodic phrase: the motif stated, answered, stated higher, developed.
-            const auto kind = lastPhrase || p.restate ? 0 : ph % 4;
-            const auto octaveUp = p.restate && t >= 0.5f ? 12 : 0;   // (0.69.0: the tune again, an octave up)
-            std::vector<double> at = motif.at;
-            std::vector<int> steps = motif.steps;
-            auto lift = 0;
-            if (kind == 1)
-            {
-                // The answer: its rhythm, another ending.
-                for (size_t i = steps.size() > 2 ? steps.size() - 2 : 1; i < steps.size(); ++i)
-                    steps[i] = -steps[i] + (r.nextBool() ? 1 : -1);
-                lift = 1;
-            }
-            else if (kind == 2)
-                lift = 3;
-            else if (kind == 3)
-            {
-                // Developed: as busy as this point of the solo is, the motif's shape repeated.
-                const auto density = p.startDensity + (p.peakDensity - p.startDensity) * std::pow (t, 1.3f);
-                at = rhythmOf (juce::roundToInt (density * p.phraseBars), phraseLength - p.restBeats,
-                               gridFor (density > 8.0f ? 0.25 : 0.5), r, false);
-                std::vector<int> grown;
-                for (size_t i = 0; i < at.size(); ++i)
-                    grown.push_back (i == 0 ? 0 : motif.steps[i % motif.steps.size()] == 0 ? 1 : motif.steps[i % motif.steps.size()]);
-                steps = grown;
-            }
-            const auto first = nearestOf (chordTones (from), centre, low, high);
-            auto pool = poolOf (scaleAt (from), low, high);
-            if (pool.empty())
-                continue;
-            auto idx = juce::jlimit (0, (int) pool.size() - 1, nearestIndex (pool, first) + lift);
-            const auto played = juce::jmin (to, total) - from;
+        //======================================================================
+        // (0.116.0, from the owner's Pink Floyd and Guns N' Roses solos, read for their shapes only) The phrase plan:
+        //   - a phrase is a pickup (most start off beat 1: on an "and", beat 3, the last beat) running into its longest
+        //     note, held 1.5-4 beats on a strong place; the held note is the breath, real rests come now and then;
+        //   - busy passages come as waves (0-3, the biggest past halfway), each followed by a calm stretch, the last
+        //     bars calm;
+        //   - the register climbs to a peak past halfway (about 70 %) and comes back down to end on a held root;
+        //   - chord tones where the phrase lands, not on every beat; pickups move by step, falling more than rising;
+        //   - a call played again, the opening phrase back when the chords come round, rhythm cells kept with new notes.
+        const auto bars = juce::jmax (1, (int) std::ceil (total / beatsPerBar - 1.0e-6));
+        const auto archOf = [&p] (float t)
+        {
+            if (p.endHigh)
+                return t;                                     // (the player styles that end high)
+            if (p.falling)
+                return 1.0f - 0.85f * t;                      // (each phrase lower)
+            return t <= p.peakAt ? t / juce::jmax (0.05f, p.peakAt) : 1.0f - 0.6f * (t - p.peakAt) / juce::jmax (0.05f, 1.0f - p.peakAt);
+        };
+        const auto centreAt = [&] (double beat)
+        {
+            const auto t = (float) juce::jlimit (0.0, 1.0, beat / juce::jmax (1.0e-6, total));
+            auto c = (double) low + 7.0 + p.climb * archOf (t);
+            if (p.octaveDownLate && t >= 0.5f && c - 12.0 >= low + 2)
+                c -= 12.0;
+            return c;
+        };
+
+        // Where the waves go.
+        struct Wave { double from, landing, until; bool peak; };
+        std::vector<Wave> waves;
+        {
+            auto count = p.waves >= 0 ? p.waves : p.burstFrom > 1.0f ? 0 : p.burstEveryOther ? (bars >= 12 ? 3 : 2) : 1;
+            if (bars < 4)
+                count = juce::jmin (count, 1);
+            std::vector<float> at;
+            if (p.twoSpeed)
+                at = { -1.0f };
+            else if (count == 1) at = { 0.72f };
+            else if (count == 2) at = { 0.4f, 0.74f };
+            else if (count >= 3) at = { 0.3f, 0.56f, 0.8f };
+            const auto burstBars = bars >= 16 ? 2 : 1;
             for (size_t i = 0; i < at.size(); ++i)
             {
-                const auto x = from + at[i];
-                if (at[i] >= played - 1.0e-9)
-                    break;
-                pool = poolOf (scaleAt (x), low, high);
-                idx = juce::jlimit (0, (int) pool.size() - 1, idx + (i == 0 ? 0 : steps[i]));
-                auto pitch = pool[(size_t) idx];
-                const auto onBeat = std::abs (at[i] - std::round (at[i])) < 1.0e-6;
-                const auto lastNote = i + 1 == at.size() || at[i + 1] >= played - 1.0e-9;
-                if (lastNote)
+                if (p.twoSpeed)
                 {
-                    // The phrase ends on the chord's root or fifth (0.69.0: or its third).
-                    const auto& c = chordAt (x).chord;
-                    const auto third = pcOf (c.root + (c.type == Chord::Type::minor || c.type == Chord::Type::diminished ? 3 : 4));
-                    pitch = p.thirdTargets ? nearestOf ({ third }, pitch, low, high)
-                                           : nearestOf ({ c.root, pcOf (c.root + 7) }, pitch, low, high);
-                    if (p.tension && i > 0)
-                        tensionTargets.push_back (x);   // (0.69.0: approached from a half step above, after the bends)
+                    // The second half one continuous fast passage, the last bar calm.
+                    const auto a = juce::jmax (1, bars / 2) * beatsPerBar;
+                    const auto end = juce::jmax (a + beatsPerBar, (bars - 1) * beatsPerBar);
+                    waves.push_back ({ a, end - beatsPerBar * 0.25, juce::jmin (total, end + beatsPerBar * 0.5), true });
+                    break;
                 }
-                else if (p.chromaticPassing && ! onBeat && r.nextFloat() < 0.25f)
-                    pitch += r.nextBool() ? 1 : -1;   // (0.69.0: a chromatic passing note)
-                else if (onBeat && ! has (chordTones (x), pcOf (pitch)))
-                    pitch = nearestOf (chordTones (x), pitch, low, high);
-                if (! (p.chromaticPassing && ! onBeat && ! lastNote))
-                    idx = nearestIndex (pool, pitch);
-                const auto next = lastNote ? juce::jmin (played, phraseLength - (lastPhrase ? 0.0 : p.restBeats) + 0.0) : at[i + 1];
-                const auto length = juce::jmax (0.1, (lastPhrase && lastNote ? played : next) - at[i]);
-                addNote (notes, x, length, juce::jlimit (low, high, pitch + (pitch + octaveUp <= high ? octaveUp : 0)), velocityAt (t, i == 0));
-                // (0.69.0) The higher statement harmonised: a third above in the scale.
-                if (p.harmonyThirds && kind == 2 && ! lastNote && idx + 2 < (int) pool.size())
-                    addNote (notes, x, length, pool[(size_t) idx + 2], velocityAt (t, false));
+                auto bar = juce::roundToInt (at[i] * (float) bars - (float) burstBars * 0.5f);
+                bar = juce::jlimit (1, juce::jmax (1, bars - 2 - burstBars), bar);
+                const auto a = bar * beatsPerBar;
+                if (! waves.empty() && a < waves.back().until + beatsPerBar - 1.0e-6)
+                    continue;
+                const auto landing = a + burstBars * beatsPerBar - juce::jmin (1.0, beatsPerBar * 0.25);
+                const auto until = juce::jmin (total, landing + 2.0 + beatsPerBar * 0.5);
+                waves.push_back ({ a, landing, until, i + 1 == at.size() });
+            }
+        }
+
+        // The chords' cycle (where the progression comes round), for a theme brought back.
+        double cycle = 0.0;
+        {
+            std::vector<std::pair<double, Chord>> seq;
+            for (const auto& s : spans)
+                seq.push_back ({ s.start - origin, s.chord });
+            for (size_t n = 1; n <= seq.size() / 2 && cycle == 0.0; ++n)
+            {
+                auto same = seq.size() >= 2 * n;
+                for (size_t i = n; i < seq.size() && same; ++i)
+                    same = seq[i].second == seq[i - n].second;
+                if (same && seq[n].first > beatsPerBar - 1.0e-6)
+                    cycle = seq[n].first;
+            }
+        }
+
+        struct Phrase { double start, end; std::vector<LineNote> notes; };
+        std::vector<Phrase> history;
+        const auto inScale = [&] (int pitch, double beat) { return has (scaleAt (beat), pcOf (pitch)); };
+        const auto snapToScale = [&] (int pitch, double beat) { return inScale (pitch, beat) ? pitch : nearestOf (scaleAt (beat), pitch, low, high); };
+        // The phrase's landing note: a chord tone (root, fifth, third; the style's own choice where it has one).
+        const auto landingPitch = [&] (double beat, double around)
+        {
+            const auto& c = chordAt (beat).chord;
+            const auto third = pcOf (c.root + (c.type == Chord::Type::minor || c.type == Chord::Type::diminished ? 3 : 4));
+            const auto fifth = pcOf (c.root + (c.type == Chord::Type::diminished ? 6 : c.type == Chord::Type::augmented ? 8 : 7));
+            if (p.thirdTargets)
+                return nearestOf ({ third }, around, low, high);
+            if (p.landThirdFifth)
+                return nearestOf (r.nextBool() ? std::vector<int> { third } : std::vector<int> { fifth }, around, low, high);
+            const auto pick = r.nextFloat();
+            return nearestOf (pick < 0.45f ? std::vector<int> { c.root } : pick < 0.75f ? std::vector<int> { fifth } : std::vector<int> { third },
+                              around, low, high);
+        };
+
+        auto cursor = 0.0;
+        auto phraseNo = 0;
+        auto repeatedLast = false;
+        auto calmUntil = -1.0;
+        auto lastLanding = -1;   // (the index of the last held note: it rings until the next phrase)
+        size_t waveIndex = 0;
+        auto burstCount = 0;
+        const auto ringOn = [&] (double until)
+        {
+            if (lastLanding >= 0 && lastLanding < (int) notes.size())
+            {
+                auto& n = notes[(size_t) lastLanding];
+                n.length = juce::jmax (n.length, until - n.beat - 0.02);
+            }
+        };
+        // The opening: a held low note (where the style starts so).
+        if (p.openHeld)
+        {
+            const auto hold = juce::jmin (total, beatsPerBar * (bars >= 8 ? 2.0 : 1.0)) - 0.25;
+            addNote (notes, 0.0, hold, nearestOf ({ chordAt (0.0).chord.root }, (double) low + 2.0, low, high), velocityAt (0.0f, true));
+            lastLanding = (int) notes.size() - 1;
+            cursor = hold;
+        }
+        const auto lickBars = p.lickTwice && bars >= 6 ? 4 : 0;
+        const auto phrasesEnd = total - lickBars * beatsPerBar;
+        while (cursor < phrasesEnd - 0.5)
+        {
+            const auto t = (float) (cursor / juce::jmax (1.0e-6, total));
+            // A wave here.
+            if (waveIndex < waves.size() && cursor >= waves[waveIndex].from - beatsPerBar * 0.5 - 1.0e-6)
+            {
+                const auto& w = waves[waveIndex++];
+                const auto from = juce::jmax (cursor, w.from);
+                if (w.landing - from >= 0.75)
+                {
+                    ringOn (from);
+                    const auto tw = (float) (from / total);
+                    writeBurst (from, w.landing, centreAt (from) + 2.0, tw, burstCount++, w.peak);
+                    const auto land = nearestOf (chordTones (w.landing), centreAt (w.landing) + 4.0, low, high);
+                    addNote (notes, w.landing, w.until - w.landing - 0.02, land, velocityAt (tw, true));
+                    lastLanding = (int) notes.size() - 1;
+                    calmUntil = w.until + beatsPerBar;
+                }
+                cursor = juce::jmax (cursor, w.until);
+                continue;
+            }
+            const auto limit = waveIndex < waves.size() ? juce::jmax (cursor, waves[waveIndex].from) : phrasesEnd;
+
+            // Repetition: the call played again, the theme when the chords come round, the opening restated.
+            const Phrase* copyFrom = nullptr;
+            auto shift = 0.0;
+            auto newNotes = false;
+            if (! history.empty())
+            {
+                const auto& prev = history.back();
+                const auto barsOf = [&] (double beats) { return std::ceil (beats / beatsPerBar - 1.0e-6) * beatsPerBar; };
+                if (p.restate)
+                {
+                    copyFrom = &history.front();
+                    shift = barsOf (cursor - history.front().start + 1.0e-6);
+                }
+                else if (p.cycleTheme && cycle > 0.0 && std::fmod (cursor + 0.5 * beatsPerBar, cycle) < beatsPerBar)
+                {
+                    copyFrom = &history.front();
+                    shift = barsOf (cursor - history.front().start + 1.0e-6);
+                }
+                else if (p.repeatPair && ! repeatedLast && r.nextFloat() < 0.35f)
+                {
+                    copyFrom = &prev;
+                    shift = barsOf (cursor - prev.start + 1.0e-6);
+                }
+                else if (p.seqShare > 0.0f && r.nextFloat() < p.seqShare)
+                {
+                    copyFrom = &prev;
+                    shift = barsOf (cursor - prev.start + 1.0e-6);
+                    newNotes = true;
+                }
+                if (copyFrom != nullptr && copyFrom->end + shift > limit + 1.0e-6)
+                    copyFrom = nullptr;
+            }
+            if (copyFrom != nullptr)
+            {
+                ringOn (copyFrom->start + shift);
+                Phrase again { copyFrom->start + shift, copyFrom->end + shift, {} };
+                const auto steps = newNotes ? (r.nextBool() ? 2 : -2) : 0;
+                const auto octave = p.restate && t >= 0.5f ? 12 : 0;
+                for (auto n : copyFrom->notes)
+                {
+                    n.beat += shift;
+                    if (newNotes)
+                    {
+                        const auto pool = poolOf (scaleAt (n.beat), low, high);
+                        if (! pool.empty())
+                            n.pitch = pool[(size_t) juce::jlimit (0, (int) pool.size() - 1, nearestIndex (pool, n.pitch) + steps)];
+                    }
+                    else
+                        n.pitch = snapToScale (n.pitch + (n.pitch + octave <= high ? octave : 0), n.beat);
+                    n.effect = LineNote::Effect::none;
+                    notes.push_back (n);
+                    again.notes.push_back (n);
+                }
+                lastLanding = (int) notes.size() - 1;
+                history.push_back (again);
+                repeatedLast = true;
+                cursor = again.end + (r.nextFloat() < p.restChance ? p.restBeats : 0.0);
+                ++phraseNo;
+                continue;
+            }
+            repeatedLast = false;
+
+            // The landing place: a bar line, beat 3, or the last eighth before a bar line (tied over it).
+            auto pickup = 0.5 * (double) (1 + r.nextInt (juce::jmax (1, juce::roundToInt (p.pickupMax * 2.0))));
+            if (p.upbeatEntry && phraseNo == 0)
+                pickup = juce::jmax (pickup, 1.0);
+            const auto earliest = cursor + pickup;
+            struct Place { double at; float weight; };
+            std::vector<Place> places;
+            for (auto bar = (int) std::floor (earliest / beatsPerBar); bar * beatsPerBar < earliest + beatsPerBar * 1.5; ++bar)
+            {
+                const auto o = bar * beatsPerBar;
+                places.push_back ({ o, p.landBeat1 });
+                places.push_back ({ o + beatsPerBar * 0.5, (1.0f - p.landBeat1) * 0.6f });
+                places.push_back ({ o - beatsPerBar * 0.125, (1.0f - p.landBeat1) * 0.4f });
+            }
+            auto weightSum = 0.0f;
+            for (const auto& pl : places)
+                if (pl.at >= earliest - 1.0e-6 && pl.at <= limit - 0.75)
+                    weightSum += pl.weight;
+            double landAt = -1.0;
+            if (weightSum > 0.0f)
+            {
+                auto pick = r.nextFloat() * weightSum;
+                for (const auto& pl : places)
+                    if (pl.at >= earliest - 1.0e-6 && pl.at <= limit - 0.75)
+                    {
+                        if (pick < pl.weight) { landAt = pl.at; break; }
+                        pick -= pl.weight;
+                    }
+            }
+            if (landAt < 0.0)
+            {
+                // No room for a whole phrase: the held note rings on to the wave or the end.
+                ringOn (limit);
+                cursor = limit;
+                continue;
+            }
+            const auto hold = juce::jmin (p.holdMin + (p.holdMax - p.holdMin) * r.nextDouble(), limit - landAt);
+            const auto pickStart = landAt - pickup;
+            ringOn (pickStart);
+
+            // How busy: the style's density, calmer after a wave, the two-speed solo slow first.
+            auto perBeat = p.notesPerBeat;
+            if (cursor < calmUntil)
+                perBeat *= 0.5f;
+            const auto grid = p.noSixteenths ? 0.5 : gridFor (perBeat > 1.6f ? 0.25 : 0.5);
+            const auto count = juce::jlimit (1, juce::jmax (1, (int) std::floor (pickup / grid + 1.0e-6)),
+                                             juce::roundToInt (perBeat * pickup * (0.7 + 0.6 * r.nextDouble())));
+            auto at = rhythmOf (count, pickup, grid, r, false);
+            if (p.upbeatEntry && phraseNo == 0)
+                for (auto& x : at)
+                    x = juce::jmax (x, 0.5 - pickStart);   // (in on an upbeat)
+            at.erase (std::unique (at.begin(), at.end(), [] (double a, double b) { return std::abs (a - b) < 1.0e-6; }), at.end());
+
+            Phrase phrase { pickStart, landAt + hold, {} };
+            const auto centre = centreAt (landAt);
+            auto land = landingPitch (landAt, centre);
+            // Pickups: by step into the landing, from above about two times in three.
+            const auto falling = r.nextFloat() < 0.66f;
+            {
+                auto pool = poolOf (scaleAt (pickStart), low, high);
+                if (! pool.empty())
+                {
+                    std::vector<int> pitches (at.size());
+                    auto idx = nearestIndex (pool, land);
+                    for (int i = (int) at.size() - 1; i >= 0; --i)
+                    {
+                        auto step = r.nextFloat() < 0.2f ? 2 : 1;
+                        if (r.nextFloat() < 0.15f)
+                            step = 0;   // (a repeated note)
+                        idx = juce::jlimit (0, (int) pool.size() - 1, idx + (falling ? step : -step));
+                        pitches[(size_t) i] = pool[(size_t) idx];
+                    }
+                    for (size_t i = 0; i < at.size(); ++i)
+                    {
+                        const auto x = pickStart + at[i];
+                        auto pitch = snapToScale (pitches[i], x);
+                        if (p.chromaticPassing && std::abs (at[i] - std::round (at[i])) > 1.0e-6 && r.nextFloat() < 0.25f)
+                            pitch += r.nextBool() ? 1 : -1;
+                        const auto next = i + 1 < at.size() ? pickStart + at[i + 1] : landAt;
+                        addNote (notes, x, next - x, juce::jlimit (low, high, pitch), velocityAt (t, i == 0));
+                        phrase.notes.push_back (notes.back());
+                        if (p.harmonyThirds && phraseNo % 3 == 2)
+                        {
+                            const auto here = poolOf (scaleAt (x), low, high);
+                            const auto k = nearestIndex (here, pitch);
+                            if (k + 2 < (int) here.size())
+                                addNote (notes, x, next - x, here[(size_t) k + 2], velocityAt (t, false));
+                        }
+                    }
+                    // A grace note a whole step under the landing, just before it.
+                    if (p.graceNotes && r.nextFloat() < 0.5f && land - 2 >= low)
+                    {
+                        addNote (notes, landAt - 0.125, 0.1, land - 2, velocityAt (t, false));
+                        phrase.notes.push_back (notes.back());
+                    }
+                    if (p.tension && ! phrase.notes.empty() && land + 1 <= high)
+                        tensionTargets.push_back (landAt);
+                }
+            }
+            addNote (notes, landAt, hold - 0.02, land, velocityAt (t, true));
+            lastLanding = (int) notes.size() - 1;
+            phrase.notes.push_back (notes.back());
+            // A chord rake under the landing now and then (two notes struck with it).
+            if (p.rakes && r.nextFloat() < 0.3f)
+                for (const auto under : { 5, 9 })
+                    if (land - under >= low && inScale (land - under, landAt))
+                    {
+                        addNote (notes, landAt, juce::jmin (hold, 1.0), land - under, velocityAt (t, false));
+                        break;
+                    }
+            history.push_back (phrase);
+            cursor = landAt + hold + (r.nextFloat() < p.restChance ? p.restBeats : 0.0);
+            ++phraseNo;
+        }
+
+        // (0.116.0) A two-bar lick played twice to finish.
+        if (lickBars > 0)
+        {
+            ringOn (phrasesEnd);
+            const auto from = phrasesEnd;
+            const auto g = gridFor (0.25);
+            auto pool = poolOf (scaleAt (from), low, high);
+            if (! pool.empty())
+            {
+                std::vector<LineNote> lick;
+                auto idx = nearestIndex (pool, centreAt (from) + 3.0);
+                const auto length = 2.0 * beatsPerBar;
+                for (auto x = 0.0; x < length - 1.0 - 1.0e-9; x += g)
+                {
+                    if (r.nextFloat() < 0.18f)
+                        continue;
+                    idx = juce::jlimit (0, (int) pool.size() - 1, idx + (r.nextFloat() < 0.6f ? -1 : 1));
+                    LineNote n;
+                    n.beat = x;
+                    n.length = g;
+                    n.pitch = pool[(size_t) idx];
+                    n.velocity = velocityAt (0.9f, std::abs (x - std::round (x)) < 1.0e-6);
+                    lick.push_back (n);
+                }
+                LineNote held;
+                held.beat = length - 1.0;
+                held.length = 0.98;
+                held.pitch = nearestOf (chordTones (from), (double) pool[(size_t) idx], low, high);
+                held.velocity = velocityAt (0.9f, true);
+                lick.push_back (held);
+                for (const auto copy : { 0.0, length })
+                    for (auto n : lick)
+                    {
+                        n.beat += from + copy;
+                        if (n.beat < total - 1.0e-6)
+                            notes.push_back (n);
+                    }
+            }
+        }
+        // (0.116.0) Walking down to a long low root over the last two bars.
+        if (p.walkDown && bars >= 4)
+        {
+            const auto from = total - 2.0 * beatsPerBar;
+            notes.erase (std::remove_if (notes.begin(), notes.end(), [from] (const LineNote& n) { return n.beat >= from - 1.0e-6; }), notes.end());
+            for (auto& n : notes)
+                n.length = juce::jmin (n.length, juce::jmax (0.05, from - n.beat - 0.02));
+            auto pool = poolOf (scaleAt (from), low, high);
+            if (! pool.empty())
+            {
+                const auto rootLow = nearestOf ({ chordAt (total - 0.5).chord.root }, (double) low + 2.0, low, high);
+                auto idx = nearestIndex (pool, rootLow + 9.0);
+                for (auto x = from; x < total - beatsPerBar - 1.0e-9; x += 1.0)
+                {
+                    addNote (notes, x, 0.95, pool[(size_t) idx], velocityAt (0.6f, false));
+                    idx = juce::jmax (0, idx - 1);
+                }
+                addNote (notes, total - beatsPerBar, beatsPerBar, rootLow, velocityAt (0.5f, true));
             }
         }
 
@@ -802,6 +1270,14 @@ namespace pr7s
                 n.amount = 0.5f;
                 continue;
             }
+            // (0.116.0) A short note bent now and then (about one in twenty), a whole step.
+            if (n.length >= 0.25 && n.length < 0.75 && ! isLast && n.pitch - 2 >= low && r.nextFloat() < 0.05f)
+            {
+                n.pitch -= 2;
+                n.effect = LineNote::Effect::bend;
+                n.amount = 2.0f;
+                continue;
+            }
             if (n.length < 0.75 || isLast)
                 continue;
             const auto bar = (int) std::floor (n.beat / beatsPerBar);
@@ -834,20 +1310,30 @@ namespace pr7s
                 n.technique = LineNote::Technique::tremolo;
                 continue;
             }
+            // (0.116.0) Bent before it's struck and let down onto its note (about a third of the bends in the
+            // spacious solos), where the note a whole step up is in the scale.
+            if (r.nextFloat() < p.releaseShare && n.pitch + 2 <= high && has (scaleAt (n.beat), pcOf (n.pitch + 2)))
+            {
+                n.effect = LineNote::Effect::release;
+                n.amount = 2.0f;
+                continue;
+            }
             if (r.nextFloat() < p.bendChance)
             {
                 // A bend: written under its note, bent up into it.
                 auto weightSum = 0.0f;
+                // (0.116.0) Bends of a step and a half or more are rare in real solos (4 in 101): weighed down.
+                const auto weightOf = [] (float size, float w) { return size >= 3.0f ? w * 0.35f : w; };
                 for (const auto& [size, w] : p.bends)
                     if (size <= 2.0f || t >= p.bigFrom)
-                        weightSum += w;
+                        weightSum += weightOf (size, w);
                 auto pick = r.nextFloat() * weightSum;
                 auto size = 2.0f;
                 for (const auto& [s, w] : p.bends)
                     if (s <= 2.0f || t >= p.bigFrom)
                     {
-                        if (pick < w) { size = s; break; }
-                        pick -= w;
+                        if (pick < weightOf (s, w)) { size = s; break; }
+                        pick -= weightOf (s, w);
                     }
                 if (p.escalate)
                     size = t < 0.34f ? 1.0f : t < 0.67f ? 2.0f : 3.0f;   // (0.68.0: half, whole, a step and a half)
@@ -866,7 +1352,8 @@ namespace pr7s
             {
                 // A 6th double stop: a note a sixth under it.
                 LineNote under = n;
-                under.pitch = p.thirdDoubleStops ? n.pitch - (has (scaleAt (n.beat), pcOf (n.pitch - 4)) ? 4 : 3)   // (0.68.0: thirds)
+                under.pitch = p.fourthDoubleStops ? n.pitch - 5   // (0.116.0: fourths)
+                            : p.thirdDoubleStops ? n.pitch - (has (scaleAt (n.beat), pcOf (n.pitch - 4)) ? 4 : 3)   // (0.68.0: thirds)
                                                  : n.pitch - (has (scaleAt (n.beat), pcOf (n.pitch - 9)) ? 9 : 8);
                 if (under.pitch >= low)
                 {
@@ -874,7 +1361,7 @@ namespace pr7s
                     continue;
                 }
             }
-            if (! p.vibratoLastOnly && (r.nextFloat() >= p.vibratoSkip || n.pitch < low + 12))
+            if (! p.vibratoLastOnly && (r.nextFloat() >= p.vibratoSkip || n.pitch < low + 12) && r.nextFloat() < p.vibratoHeld)
             {
                 n.effect = LineNote::Effect::vibrato;
                 n.amount = p.vibrato;
@@ -974,8 +1461,8 @@ namespace pr7s
             n.pitch = juce::jlimit (low - 5, high, n.pitch);
             n.length = juce::jmin (n.length, juce::jmax (0.05, total - n.beat));
         }
-        solo.description = juce::String (p.description) + " (" + juce::String (phrases) + " phrases, building from about "
-                         + juce::String (juce::roundToInt (p.startDensity)) + " to " + juce::String (juce::roundToInt (p.peakDensity)) + " notes a bar)";
+        solo.description = juce::String (p.description) + " (" + juce::String (phraseNo) + " phrases, "
+                         + juce::String (waves.size()) + (waves.size() == 1 ? " busy wave)" : " busy waves)");
         return solo;
     }
 }

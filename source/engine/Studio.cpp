@@ -10659,7 +10659,7 @@ namespace pr7s
             }
     }
 
-    std::vector<Controller> Studio::effectControllers (const std::vector<LineNote>& notes, int bendRange)
+    std::vector<Controller> Studio::effectControllers (const std::vector<LineNote>& notes, int bendRange, double bpm)
     {
         // Each group of notes with an effect starting together (a stab's two notes): its controllers.
         using E = LineNote::Effect;
@@ -10667,7 +10667,7 @@ namespace pr7s
         std::vector<Group> groups;
         for (const auto& n : notes)
         {
-            if (n.keyswitch || (n.effect != E::vibrato && n.effect != E::bend && n.effect != E::dive))
+            if (n.keyswitch || (n.effect != E::vibrato && n.effect != E::bend && n.effect != E::dive && n.effect != E::release))
                 continue;
             auto found = false;
             for (auto& g : groups)
@@ -10717,9 +10717,23 @@ namespace pr7s
                 // (0.66.0) Up by its amount (0: a whole step), as far as the bend range reaches.
                 const auto semitones = g.amount > 0.0f ? (double) g.amount : 2.0;
                 const auto bent = juce::jlimit (0, 16383, 8192 + juce::roundToInt (juce::jmin (1.0, semitones / range) * 8191.0));
-                const auto up = g.at + juce::jmin (0.25, (end - g.at) * 0.5);
+                // (0.116.0, the owner's solos: a bend reaches its pitch in about 0.13-0.27 s at any tempo)
+                const auto rise = bpm > 0.0 ? 0.19 * bpm / 60.0 : 0.25;
+                const auto up = g.at + juce::jmin (rise, (end - g.at) * 0.5);
                 out.push_back ({ Controller::Type::pitchbend, 0, g.at, 8192, false });
                 out.push_back ({ Controller::Type::pitchbend, 0, up, bent, true });
+                out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
+            }
+            else if (g.effect == E::release)
+            {
+                // (0.116.0) A pre-bend let down: up by its amount from the start, held, then down onto the note.
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 2.0;
+                const auto bent = juce::jlimit (0, 16383, 8192 + juce::roundToInt (juce::jmin (1.0, semitones / range) * 8191.0));
+                const auto rise = bpm > 0.0 ? 0.19 * bpm / 60.0 : 0.25;
+                const auto hold = g.at + juce::jmin (0.75, (end - g.at) * 0.4);
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, bent, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, hold, bent, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, juce::jmin (end - 0.01, hold + rise), 8192, true });
                 out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
             }
             else if (g.effect == E::dive)
@@ -10764,7 +10778,7 @@ namespace pr7s
         fitBends (notes, range);
         for (const auto& n : notes)
             part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
-        part.controllers = effectControllers (notes, range);
+        part.controllers = effectControllers (notes, range, project.bpmAt (start));
         return part;
     }
 
