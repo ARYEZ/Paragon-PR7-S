@@ -87,6 +87,10 @@ public:
     void setToChordTrack (bool);
     void setTrack (pr7s::ComposerLayer, int trackId);   // 0: automatic (the one named for it, else new)
     void setBusy (pr7s::ComposerLayer, float);           // (0.61.0) 0 sparse .. 0.5 as usual .. 1 busy
+    void setOctave (pr7s::ComposerLayer, int);           // (0.120.0) -2..+2 (not the drums)
+    int getOctave (pr7s::ComposerLayer l) const { return state.lane (l).octave; }
+    juce::TextButton& getOctaveKey (pr7s::ComposerLayer l) { return lanes[(size_t) l].octave; }
+    juce::Rectangle<int> getLaneHeader (pr7s::ComposerLayer l) const { return lanes[(size_t) l].header; }
     void setLowString (pr7s::ComposerLayer, bool);       // (0.61.0) bass and guitar
     void setOnlyString (pr7s::ComposerLayer, int);       // (0.62.0) 1.. the string (1 the lowest); 0 off
     juce::String stringText (pr7s::ComposerLayer) const; // the key's text: ANY STRING, LOW STRING, STRING 2 ONLY
@@ -192,15 +196,16 @@ public:
     juce::Button* keyNamed (const juce::String&);   // header keys by their text, lanes' as "<LAYER> ON/LOCK/ROLL"
     void setRandomSeed (juce::int64 seed) { random.setSeed (seed); }
 
-    static constexpr int headerHeight = 64, controlsHeight = 44, songHeight = 54, rulerHeight = 30, laneHeaderWidth = 420, gap = 12;
+    static constexpr int headerHeight = 64, controlsHeight = 44, songHeight = 54, rulerHeight = 30, laneHeaderWidth = 480, gap = 12;
 
 private:
     int targetBlock = 0;   // (0.90.0) the SECTIONS row's block composed (its id; 0: none)
     struct Lane
     {
-        juce::TextButton on { "ON" }, lock { "LOCK" }, roll { "ROLL" }, style, track, busy, low { "ANY STRING" };
+        juce::TextButton on { "ON" }, lock { "LOCK" }, roll { "ROLL" }, style, track, busy, low { "ANY STRING" }, octave { "OCTAVE 0" };
         juce::Slider volume { juce::Slider::LinearBar, juce::Slider::TextBoxLeft };   // (0.76.0) the track it's heard on
         juce::Rectangle<int> header, notes;
+        juce::Rectangle<int> note;   // (0.120.0) under the keys: where it's heard (empty: no room)
     };
 
     void timerCallback() override;
@@ -224,6 +229,7 @@ private:
     void showUseMenu();
     void showLaneMenu (pr7s::ComposerLayer);
     void showBusyMenu (pr7s::ComposerLayer);
+    void showOctaveMenu (pr7s::ComposerLayer);
     void showLowMenu (pr7s::ComposerLayer);
     std::vector<pr7s::ChordSpan> placedSpans() const;   // at the hearing start, else buildStart()
     void refreshSong();                                  // the SONG strip's NEXT keys

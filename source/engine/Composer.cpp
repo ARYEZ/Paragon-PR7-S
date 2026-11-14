@@ -65,7 +65,7 @@ namespace pr7s
         for (const auto& l : lanes)
             lanesText.add (juce::String (l.on ? 1 : 0) + "," + juce::String (l.locked ? 1 : 0) + "," + juce::String (l.style) + "," + juce::String (l.variation)
                            + "," + juce::String (l.busy, 2) + "," + juce::String (l.lowString ? 1 : 0) + "," + juce::String (l.onlyString)
-                           + "," + juce::String (l.doubleSync ? 1 : 0) + "," + juce::String (l.approach));
+                           + "," + juce::String (l.doubleSync ? 1 : 0) + "," + juce::String (l.approach) + "," + juce::String (l.octave));
         return juce::String (keyIndex) + "|" + genre + "|" + mood + "|" + juce::String (bars) + "|" + progression + "|"
              + (fromChordTrack ? "1" : "0") + "|" + (toChordTrack ? "1" : "0") + "|" + lanesText.joinIntoString (";")
              + "|" + juce::String (riffFlavour) + "," + (writtenRiffs ? "1" : "0") + "," + juce::String (syncLane)
@@ -111,6 +111,8 @@ namespace pr7s
                 l.doubleSync = v[7] == "1";
             if (v.size() >= 9)
                 l.approach = juce::jlimit (-1, 15, v[8].getIntValue());   // (0.94.0)
+            if (v.size() >= 10)
+                l.octave = juce::jlimit (-2, 2, v[9].getIntValue());   // (0.120.0)
         }
         if (parts.size() >= 9)
         {
@@ -9965,6 +9967,7 @@ namespace pr7s
             {
                 // (0.114.0) Your riff: nothing done to it (the others follow it through SYNC).
                 out[(size_t) l] = rawLayer (l, s, spans, c);
+                moveByOctaves (out[(size_t) l], l, s.lane (l).octave);
                 continue;
             }
             auto idea = syncedLayer (l, s, spans, c);
@@ -10003,9 +10006,19 @@ namespace pr7s
                 playOnString (idea, on.strings, string, on.frets, on.profile != nullptr ? on.profile->keyFor (string) : -1,
                               spans.back().end - spans.front().start, on.profile != nullptr ? on.profile->releaseKey() : -1);
             }
+            moveByOctaves (idea, l, s.lane (l).octave);   // (0.120.0: OCTAVE, last)
             out[(size_t) l] = std::move (idea);
         }
         return out;
+    }
+
+    void moveByOctaves (LineIdea& idea, ComposerLayer l, int octaves)
+    {
+        if (octaves == 0 || l == ComposerLayer::drums)
+            return;
+        for (auto& n : idea.notes)
+            if (! n.keyswitch)
+                n.pitch = juce::jlimit (0, 127, n.pitch + 12 * octaves);
     }
 
     //==========================================================================

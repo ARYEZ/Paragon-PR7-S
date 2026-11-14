@@ -59,6 +59,9 @@ namespace pr7s
         // (0.94.0) The section type's approach for this lane (engine/SectionTypes.h: sectionApproaches); -1 automatic
         // (the style and the take choose, as before).
         int approach = -1;
+        // (0.120.0) OCTAVE: the lane's notes moved by whole octaves (-2..+2) after everything else, keyswitches left
+        // where they are (not the drums). What follows it through SYNC follows it as written.
+        int octave = 0;
         bool operator== (const ComposerLane&) const = default;
     };
 
@@ -173,6 +176,8 @@ namespace pr7s
     bool sectionTypeWritesLane (ComposerLayer, const ComposerState&, const ComposerContext&);
     // Every layer's idea, the lanes switched off too (shown dimmed), humanized as IDEAS' HUMANIZE.
     std::array<LineIdea, composerLayerCount> composeLayers (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
+    // (0.120.0) OCTAVE: every note but keyswitches moved by whole octaves (kept in 0-127; the drums never).
+    void moveByOctaves (LineIdea&, ComposerLayer, int octaves);
 
     // (0.85.0) The guitar's riff generator recipe for the state (its section, flavour, BUSY, the take's seed), and
     // that riff's fingerprint (empty with written riffs or your riff): the composer tells repeats apart by it.

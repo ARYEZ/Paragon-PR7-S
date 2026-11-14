@@ -159,12 +159,14 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
     for (const auto l : pr7s::composerLayers())
     {
         auto& lane = lanes[(size_t) l];
-        for (auto* key : { &lane.on, &lane.lock, &lane.roll, &lane.style, &lane.track, &lane.busy, &lane.low })
+        for (auto* key : { &lane.on, &lane.lock, &lane.roll, &lane.style, &lane.track, &lane.busy, &lane.low, &lane.octave })
         {
-            pedal (*key, key == &lane.style || key == &lane.track || key == &lane.busy || key == &lane.low);
-            if (key != &lane.low || pr7s::hasLowString (l))
+            pedal (*key, key == &lane.style || key == &lane.track || key == &lane.busy || key == &lane.low || key == &lane.octave);
+            if ((key != &lane.low || pr7s::hasLowString (l)) && (key != &lane.octave || l != ComposerLayer::drums))
                 addAndMakeVisible (*key);
         }
+        lane.octave.setTooltip ("Moves this lane's notes up or down by whole octaves (its keyswitches stay where they are). Built sections keep it");
+        lane.octave.onClick = [this, l] { showOctaveMenu (l); };
         lane.on.setTooltip ("Lit: heard and used. Off: left out (still made, shown dimmed)");
         lane.lock.setTooltip ("Lit: kept through GENERATE (and ROLL on the others). Locked with the chords, its notes stay exactly as they are");
         lane.roll.setTooltip ("A new take of this style: another rhythm and other notes, the same approach (choose the approach in the menu beside it)");
@@ -387,6 +389,8 @@ void ComposerPage::refresh (bool rehear)
                                   : ideas[(size_t) l].style.isEmpty() ? juce::String ("STYLE") : ideas[(size_t) l].style.toUpperCase());
         lane.track.setButtonText (trackText (l));
         lane.busy.setButtonText ("BUSY " + juce::String (juce::roundToInt (s.busy * 100.0f)) + "%");
+        lane.octave.setButtonText ("OCTAVE " + (s.octave > 0 ? "+" + juce::String (s.octave) : juce::String (s.octave)));
+        lane.octave.setToggleState (s.octave != 0, juce::dontSendNotification);
         lane.low.setToggleState (s.lowString || s.onlyString > 0, juce::dontSendNotification);
         lane.low.setButtonText (stringText (l));
     }
@@ -673,6 +677,33 @@ void ComposerPage::setBusy (ComposerLayer l, float busy)
 {
     state.lane (l).busy = juce::jlimit (0.0f, 1.0f, busy);
     refresh();
+}
+
+void ComposerPage::setOctave (ComposerLayer l, int octave)
+{
+    if (l == ComposerLayer::drums)
+        return;
+    state.lane (l).octave = juce::jlimit (-2, 2, octave);
+    refresh();
+}
+
+void ComposerPage::showOctaveMenu (ComposerLayer l)
+{
+    const auto current = state.lane (l).octave;
+    juce::PopupMenu menu;
+    menu.addItem (100, "Up an Octave", current < 2);
+    menu.addItem (101, "Down an Octave", current > -2);
+    menu.addSeparator();
+    for (int o = 2; o >= -2; --o)
+        menu.addItem (10 + o, o == 0 ? juce::String ("As Written") : (o > 0 ? "+" : "") + juce::String (o) + (std::abs (o) == 1 ? " Octave" : " Octaves"),
+                      true, o == current);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (lanes[(size_t) l].octave),
+                        [safe = juce::Component::SafePointer<ComposerPage> (this), l, current] (int chosen)
+                        {
+                            if (safe == nullptr || chosen <= 0)
+                                return;
+                            safe->setOctave (l, chosen == 100 ? current + 1 : chosen == 101 ? current - 1 : chosen - 10);
+                        });
 }
 
 void ComposerPage::setLowString (ComposerLayer l, bool on)
@@ -2402,14 +2433,14 @@ void ComposerPage::paintLane (juce::Graphics& g, ComposerLayer l, const Lane& la
         }
         // Where it's heard, when that's not where it's written.
         const auto writes = trackFor (l, false), heard = trackFor (l, true);
-        if (writes != heard || heard == 0)
+        if ((writes != heard || heard == 0) && ! lane.note.isEmpty())
         {
             g.setColour (ParagonColours::textDim);
             g.setFont (interFont (10.5f));
             const auto* t = studio.getProject().findTrack (heard);
             g.drawText (heard == 0 ? juce::String ("not heard: no track of its own yet (TRACK > make it)")
                                    : "heard on " + (t != nullptr ? t->name : juce::String()) + " until it has its own track",
-                        lane.header.reduced (18, 4).removeFromBottom (14), juce::Justification::centredLeft, true);
+                        lane.note, juce::Justification::centredLeft, true);
         }
     }
     // The notes.
@@ -2531,47 +2562,35 @@ void ComposerPage::resized()
         lane.header = row.removeFromLeft (laneHeaderWidth);
         row.removeFromLeft (gap);
         lane.notes = row;
-        auto keys = lane.header.reduced (18, 8);
+        // (0.120.0) Always two rows of keys under the name (they were crammed into one in a short lane).
+        auto keys = lane.header.reduced (16, 6);
         lane.volume.setBounds (keys.withHeight (22).removeFromRight (190).translated (0, 1));
-        keys.removeFromTop (28);
-        const auto two = keys.getHeight() >= 60;
-        auto first = keys.removeFromTop (juce::jmin (26, two ? keys.getHeight() / 2 - 3 : keys.getHeight()));
-        lane.on.setBounds (first.removeFromLeft (52));
+        keys.removeFromTop (26);
+        const auto rowHeight = juce::jlimit (16, 26, (keys.getHeight() - 4) / 2);
+        auto first = keys.removeFromTop (rowHeight);
+        keys.removeFromTop (4);
+        auto second = keys.removeFromTop (rowHeight);
+        lane.note = keys.getHeight() >= 14 ? keys.removeFromBottom (14) : juce::Rectangle<int>();
+        lane.on.setBounds (first.removeFromLeft (46));
         first.removeFromLeft (6);
-        lane.lock.setBounds (first.removeFromLeft (64));
+        lane.lock.setBounds (first.removeFromLeft (56));
         first.removeFromLeft (6);
-        lane.roll.setBounds (first.removeFromLeft (64));
+        lane.roll.setBounds (first.removeFromLeft (56));
         first.removeFromLeft (6);
-        const auto low = pr7s::hasLowString (l);
-        if (two)
+        lane.style.setBounds (first);
+        if (l != ComposerLayer::drums)
         {
-            lane.style.setBounds (first);
-            keys.removeFromTop (6);
-            auto second = keys.removeFromTop (26);
-            if (low)
-            {
-                lane.low.setBounds (second.removeFromRight (124));
-                second.removeFromRight (6);
-            }
-            lane.busy.setBounds (second.removeFromRight (96));
+            lane.octave.setBounds (second.removeFromRight (94));
             second.removeFromRight (6);
-            lane.track.setBounds (second);
         }
-        else
+        if (pr7s::hasLowString (l))
         {
-            auto rest = first;
-            const auto each = (rest.getWidth() - (low ? 18 : 12)) / (low ? 4 : 3);
-            lane.style.setBounds (rest.removeFromLeft (each));
-            rest.removeFromLeft (6);
-            lane.track.setBounds (rest.removeFromLeft (each));
-            rest.removeFromLeft (6);
-            lane.busy.setBounds (rest.removeFromLeft (each));
-            if (low)
-            {
-                rest.removeFromLeft (6);
-                lane.low.setBounds (rest);
-            }
+            lane.low.setBounds (second.removeFromRight (118));
+            second.removeFromRight (6);
         }
+        lane.busy.setBounds (second.removeFromRight (88));
+        second.removeFromRight (6);
+        lane.track.setBounds (second);
     }
 }
 

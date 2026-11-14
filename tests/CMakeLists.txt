@@ -82,6 +82,7 @@ add_executable(ParagonPR7STests
     DroningBandTests.cpp
     SongSectionTests.cpp
     InsertSilenceTests.cpp
+    ComposerOctaveTests.cpp
     LibraryDrumsTests.cpp
     Pr7dGroovesTests.cpp
     Pr7dLinkTests.cpp

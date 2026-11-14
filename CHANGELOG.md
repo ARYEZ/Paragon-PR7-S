@@ -2,6 +2,26 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.120.0
+
+Your two composer tweaks.
+
+**Every lane's keys in two rows.**
+- When the lanes were short, all the keys were squeezed into one row and their words couldn't be read. Now every lane has two rows under its name, whatever its height:
+  - **First row:** ON, LOCK, ROLL, then the style.
+  - **Second row:** TRACK, BUSY, the string choice (bass and guitar), then OCTAVE.
+- The lane headers are 60 pixels wider to give the words room; the notes beside them are that much narrower.
+- The small "heard on ..." line under the keys shows only when the lane has room for it.
+
+**OCTAVE: a lane up or down an octave.**
+- A new key on every lane but the drums. Click it for Up an Octave, Down an Octave, or a set amount from +2 to -2 octaves (As Written is 0). The key lights up while the lane isn't as written.
+- It moves the whole lane's notes, your pasted riff included when it's on that lane. Keyswitches (string choice, power chords, articulations) stay on their notes.
+- It's done last, so a lane following through SYNC follows what was written, not the moved octave. For example, the bass doubling a guitar you moved up still plays the guitar's riff at its own octave.
+- It's kept with the composer's settings and with each built section, so BUILD INTO and later rebuilds (a chord or type change) keep the octave.
+- I don't stop you going past the instrument's range: if you move a 7-string guitar part down, the low notes go under its low A. That's on purpose, in case the track plays something else.
+
+**What I couldn't check:** how the moved parts sound. The tests check the notes move 12 semitones per octave, the keyswitches don't, the drums never move, the setting is kept, and every lane's keys sit in two rows inside the header without overlapping.
+
 ## 0.119.0
 
 You asked for Cubase's Insert Silence / Delete Silence to move the whole song, and found that the section menu's insert made a copy of the Intro. Both fixed.
