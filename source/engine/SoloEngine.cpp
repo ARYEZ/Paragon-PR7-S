@@ -1012,7 +1012,7 @@ namespace pr7s
                     period = cycle;
                 const auto nextCopy = std::ceil ((cursor - head.start) / period - 1.0e-6) * period;
                 // (the tune comes back on its place: the held note before it rings on up to it)
-                if ((p.restate || (p.cycleTheme && cycle > 0.0)) && nextCopy - (cursor - head.start) <= period * 0.5 + 1.0e-6)
+                if (p.restate || ((p.cycleTheme && cycle > 0.0) && nextCopy - (cursor - head.start) <= period * 0.5 + 1.0e-6))
                 {
                     copyFrom = &head;
                     shift = nextCopy;
@@ -1029,7 +1029,16 @@ namespace pr7s
                     newNotes = true;
                 }
                 if (copyFrom != nullptr && copyFrom->end + shift > limit + 1.0e-6)
+                {
+                    if (p.restate)
+                    {
+                        // (the tune only: no room for it again, the held note rings on)
+                        ringOn (limit);
+                        cursor = limit;
+                        continue;
+                    }
                     copyFrom = nullptr;
+                }
             }
             if (copyFrom != nullptr)
             {
