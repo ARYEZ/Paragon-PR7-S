@@ -2,6 +2,31 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.122.0
+
+You chose the bridges and breakdowns first from the ideas left in your first 22 MIDI files (the rock bands). That's **13 new section types**: 9 bridges and 4 breakdowns. As before, only the songs' shapes were used, never their notes, and the names are ours.
+
+Each type sets what every instrument does, with options for each instrument in its menu. They come after the existing types in a block's TYPE menu.
+
+**New bridge types**
+- **ONE GUITAR RUNS, THE BAND HITS:** one guitar keeps root-and-fifth eighths going without a break, while the bass and drums play only the hits together (late in the bar, an empty bar in every four, a pickup into the next section). The guitar can add power chords on the hits.
+- **TWIN TREMOLO RUSH:** two guitars tremolo-pick a third apart, stepping up and back each bar. The kick and snare play together on a gapped sixteenth grid, and the last bar stops halfway.
+- **RING & CHUG SPLIT:** chugs on the gapped grid with the kick in 3+3+2, then halfway the chords ring for whole bars over crash quarters.
+- **DRUM BURSTS & PULSE:** no cymbals. The kick and snare play bursts and bars of sixteenths, a chord rings every two bars, and the keys keep one note pulsing in quarters.
+- **LAYERED FLOOR BUILD:** the kick on every eighth and toms closing each bar. The guitars come in by stages (a picked figure, then a high tremolo), building into a snare roll.
+- **UPPER-FIFTH CHORDS OVER A MOVING BASS:** the guitar holds a power chord on each chord's third for two bars while the bass moves under it every bar. This gives the open "major seventh" colours.
+- **CHROMATIC CREEP, NO BACKBEAT:** the low root, then its two half steps above, and a quick flick at the bar's end. Sparse kicks, the snare only once every two bars, long lead notes at the end.
+- **CLIMB UNDER A TRILL:** the chords are voiced higher bar by bar, the bass walks a half step into each new chord, and the lead trills two notes.
+- **KEYS CARRY THE CHORUS ALONE:** everyone drops out but the keys, which play the chords with each change pushed an eighth early and a high pedal on top. It suits the spot before the last chorus.
+
+**New breakdown types**
+- **ONE BAR OF CHUGS, THREE OF AIR:** a bar of sixteenth chugs, a bar of two hits, then two bars of space with only the ride keeping time. The guitar can fill the space with a rocking figure the second time round.
+- **CHUGS UNDER SPARSE HITS:** unbroken low eighths with their half steps and octave, under only one or two big drum hits a bar. It builds over the last quarter.
+- **DOUBLE-HIT UNISON RIFF:** the guitars and bass in unison with double hits, held notes and sixteenth runs, and the kick on every hit. The lead can trill over the second half.
+- **ARPEGGIO, THEN THE RIFF UNDER IT:** the drums and guitars drop out under a keys arpeggio, then the riff and the band come back under it halfway (or a quarter in), stopping on the and of 1 of the last bar.
+
+**What I couldn't check:** how they sound. The tests check the shapes: where the hits land, the gapped grid, the guitar on each chord's third over the moving bass, the creep's half steps, the pushed chords, the silent bars and the stop. They also check that every option of every lane writes a different part.
+
 ## 0.121.0
 
 You asked for the MIDI editor to show which notes fit the chord, plus a faint tint for the rest of the key.

@@ -141,6 +141,16 @@ namespace pr7s
                          { "SLIDING CHORDS", "A four-bar figure: chord and eighths, a lick, a line in quarters, a chord sliding down a half step", r, {}, b },
                          { "GUITARS OUT, THEN BACK", "The guitars drop out and come back for the end, lifting into the next chorus", r, {}, b },
                          { "SLIDE OVER A HELD ROOT", "A palm-muted root rung with a sliding triplet figure on top, in turn with syncopated stabs", r, {}, b },
+                         // (0.122.0) The rock songs' bridges (the owner's first 22 MIDI files, shapes only; our names).
+                         { "ONE GUITAR RUNS, THE BAND HITS", "One guitar runs on in eighths while the band only hits together, late in the bar, with an empty bar in every four", r, {}, b },
+                         { "TWIN TREMOLO RUSH", "Two guitars tremolo-picking a third apart, turning round each bar, the kick and snare together on a gapped sixteenth grid", r, {}, b },
+                         { "RING & CHUG SPLIT", "Chugs on a gapped grid with the kick in 3+3+2, then halfway the chords ring whole bars over crash quarters", r, {}, b },
+                         { "DRUM BURSTS & PULSE", "No cymbals: kick and snare bursts and bars of sixteenths, a chord rung every two bars over a one-note quarter pulse", r, {}, b },
+                         { "LAYERED FLOOR BUILD", "The kick on every eighth and toms closing each bar; the guitars come in by stages and it builds to a snare roll", r, {}, b },
+                         { "UPPER-FIFTH CHORDS OVER A MOVING BASS", "Power chords on each chord's third held two bars in eighths while the bass moves under them every bar", r, {}, b },
+                         { "CHROMATIC CREEP, NO BACKBEAT", "The low root creeping to its two half steps above, a flick at the bar's end, sparse kicks and no backbeat", r, {}, b },
+                         { "CLIMB UNDER A TRILL", "The chords voiced higher bar by bar, the bass walking chromatically into them, the lead trilling two notes", r, {}, b },
+                         { "KEYS CARRY THE CHORUS ALONE", "Everyone out but the keys: the chords with their pushes low and a high pedal stepping on top", r, {}, b },
                          creep, open, droning };
             }
             case 4:
@@ -158,6 +168,11 @@ namespace pr7s
                          { "CALL & CHUG", "A bar of bent single notes or high octaves, answered by a bar of chugs", r, {}, d },
                          { "HALF-TIME OPEN CHORDS", "Wide open chords on a sparse half-time rhythm, a melody over them, a build at the end", r, {}, d },
                          { "OFF-BEAT GALLOPS", "Single-note gallops coming in after the downbeat in bursts, a pinch squeal in a gap", r, {}, d },
+                         // (0.122.0) The rock songs' breakdowns (the owner's first 22 MIDI files, shapes only; our names).
+                         { "ONE BAR OF CHUGS, THREE OF AIR", "A bar of sixteenth chugs, a bar of two hits, two bars of air with only the ride keeping time", r, {}, d },
+                         { "CHUGS UNDER SPARSE HITS", "Unbroken low eighths with their half-step neighbours under one or two big drum hits a bar, building at the end", r, {}, d },
+                         { "DOUBLE-HIT UNISON RIFF", "The guitars and bass in unison: double hits, held notes and sixteenth runs, the kick on every double hit", r, {}, d },
+                         { "ARPEGGIO, THEN THE RIFF UNDER IT", "The drums and guitars out under a keys arpeggio, then the riff and the band come back under it halfway", r, {}, d },
                          heavy, staccato };
             }
             case 5:
@@ -349,6 +364,39 @@ namespace pr7s
                 case L::drums: return { "KICK WITH THE STABS", "HALF TIME" };
                 case L::lead: case L::melody: break;
             }
+        // (0.122.0) The rock songs' bridges (Composer.cpp's RockSection writes them).
+        struct Lists { const char* name; juce::StringArray guitar, bass, keys, drums, lead; };
+        static const Lists lists[] {
+            { "ONE GUITAR RUNS, THE BAND HITS", { "DYADS RUN, HITS ON TOP", "DYADS RUN ONLY" }, { "THE HITS ONLY", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "SILENT", "ONE HELD NOTE" }, { "KICK & SNARE ON THE HITS", "HITS & A RIDE" }, {} },
+            { "TWIN TREMOLO RUSH", { "TREMOLO IN THIRDS", "TREMOLO, ONE VOICE" }, { "ROOTS ON THE GRID", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "SILENT", "HELD PADS" }, { "KICK & SNARE ON THE GRID", "GRID, OPEN HATS BETWEEN" }, {} },
+            { "RING & CHUG SPLIT", { "CHUGS, THEN RING", "CHUGS ALL THROUGH" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "SILENT", "HELD PADS" }, { "3+3+2, THEN CRASH QUARTERS", "3+3+2 ALL THROUGH" }, {} },
+            { "DRUM BURSTS & PULSE", { "A CHORD EVERY TWO BARS", "A CHORD EVERY BAR" }, { "ROOTS HELD", "SILENT", "LOCKED WITH THE KICK" },
+              { "QUARTER PULSE", "LONG NOTES", "SILENT" }, { "BURSTS, THEN SIXTEENTHS OR SILENCE", "BURSTS ONLY" }, {} },
+            { "LAYERED FLOOR BUILD", { "OUT, OSTINATO, THEN TREMOLO", "OSTINATO FROM HALFWAY" }, { "ROOT QUARTERS", "DOTTED QUARTERS", "LOCKED WITH THE KICK" },
+              { "ONE HELD NOTE A BAR", "DOTTED QUARTERS UP HIGH", "SILENT" }, { "FLOOR BUILD INTO A ROLL", "FLOOR BUILD, NO ROLL" }, {} },
+            { "UPPER-FIFTH CHORDS OVER A MOVING BASS", { "EIGHTHS ON THE UPPER FIFTH", "HELD ON THE UPPER FIFTH" }, { "MOVING EACH BAR IN EIGHTHS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "HELD PADS", "SILENT" }, { "DRIVING BEAT", "HALF TIME" }, {} },
+            { "CHROMATIC CREEP, NO BACKBEAT", { "CREEP & HIGH STABS", "CREEP ONLY" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "SILENT", "LOW DRONE" }, { "NO BACKBEAT, OPEN HATS", "NO BACKBEAT, RIDE" }, { "LONG NOTES AT THE END", "SILENT" } },
+            { "CLIMB UNDER A TRILL", { "CHORDS CLIMBING", "EIGHTHS CLIMBING" }, { "WALKING INTO EACH CHORD", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "SILENT", "HELD PADS" }, { "DRIVING BEAT", "HALF TIME" }, { "TRILL IN EIGHTHS", "TRILL IN SIXTEENTHS" } },
+            { "KEYS CARRY THE CHORUS ALONE", { "GUITARS OUT" }, { "BASS OUT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "PUSHED CHORDS & HIGH PEDAL", "PUSHED CHORDS ONLY" }, { "DRUMS OUT", "A KICK ON ONE" }, { "LEAD OUT", "LONG NOTES" } },
+        };
+        for (const auto& list : lists)
+            if (t == list.name)
+                switch (layer)
+                {
+                    case L::guitar: return list.guitar;
+                    case L::bass: return list.bass;
+                    case L::chords: return list.keys;
+                    case L::drums: return list.drums;
+                    case L::lead: return list.lead;
+                    case L::melody: return {};
+                }
         return {};
     }
 
@@ -530,6 +578,11 @@ namespace pr7s
             { "CALL & CHUG", { "BENT CALL, CHUG ANSWER", "OCTAVE STABS, WALK DOWN" }, { "SILENT", "HELD PADS" }, { "KICK WITH THE ANSWER", "HALF TIME" }, {} },
             { "HALF-TIME OPEN CHORDS", { "OPEN CHORDS, SPARSE", "OPEN CHORDS, THEN BUILD" }, { "HELD PADS", "SILENT" }, { "HALF TIME, RIDE", "HALF TIME, THEN BUILD" }, { "MELODY ON TOP", "SILENT" } },
             { "OFF-BEAT GALLOPS", { "GALLOP BURSTS & SQUEAL", "GALLOP BURSTS" }, { "SILENT", "LOW DRONE" }, { "DOUBLE KICK ON THE GALLOPS", "HALF TIME" }, {} },
+            // (0.122.0) The rock songs' breakdowns (Composer.cpp's RockSection writes them).
+            { "ONE BAR OF CHUGS, THREE OF AIR", { "CHUGS, HITS, AIR", "AND A ROCKING CELL THE SECOND TIME" }, { "SILENT", "LOW DRONE" }, { "RIDE KEEPS TIME, THEN A BUILD", "RIDE KEEPS TIME" }, {} },
+            { "CHUGS UNDER SPARSE HITS", { "EIGHTHS & NEIGHBOURS, HIGH FIGURE", "EIGHTHS & NEIGHBOURS" }, { "SILENT", "LOW DRONE" }, { "HITS IN TURN, THEN A BUILD", "HITS IN TURN" }, {} },
+            { "DOUBLE-HIT UNISON RIFF", { "DOUBLE HITS & RUNS", "DOUBLE HITS ONLY" }, { "SILENT", "LOW DRONE" }, { "KICK WITH THE HITS, OPEN HATS", "KICK WITH THE HITS, HALF TIME" }, { "TRILL IN THE SECOND HALF", "SILENT" } },
+            { "ARPEGGIO, THEN THE RIFF UNDER IT", { "OUT, THEN THE RIFF HALFWAY", "THE RIFF FROM A QUARTER IN" }, { "ARPEGGIO IN EIGHTHS", "ARPEGGIO IN SIXTEENTHS" }, { "OUT, THEN WITH THE RIFF", "OUT, THEN HALF TIME" }, { "ARPEGGIO AN OCTAVE UP", "SILENT" } },
         };
         for (const auto& list : lists)
             if (t == list.name)
