@@ -66,6 +66,7 @@ namespace pr7s
                 case SoloStyle::soaringBends:
                     p.sixth = p.ninth = p.majorOnMajor = true;
                     p.startDensity = 3.0f; p.peakDensity = 9.0f; p.restBeats = 1.5; p.phraseBars = 2;
+                    p.notesPerBeat = 1.0f;   // (0.116.0: slow and spacious)
                     p.burst = Burst::run; p.burstFrom = 0.7f; p.burstEveryOther = false;
                     p.bendChance = 0.65f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.4f }, { 3.0f, 0.3f }, { 4.0f, 0.15f } }; p.bigFrom = 0.55f;
                     p.vibrato = 0.6f; p.vibratoSkip = 0.3f; p.climb = 12;
@@ -921,6 +922,7 @@ namespace pr7s
         }
 
         struct Phrase { double start, end; std::vector<LineNote> notes; };
+        std::set<long> copied;   // (onsets of notes played again: left as they were, no new bends)
         std::vector<Phrase> history;
         const auto inScale = [&] (int pitch, double beat) { return has (scaleAt (beat), pcOf (pitch)); };
         const auto snapToScale = [&] (int pitch, double beat) { return inScale (pitch, beat) ? pitch : nearestOf (scaleAt (beat), pitch, low, high); };
@@ -1004,7 +1006,8 @@ namespace pr7s
                 if (p.cycleTheme && cycle > 0.0)
                     period = cycle;
                 const auto nextCopy = std::ceil ((cursor - head.start) / period - 1.0e-6) * period;
-                if ((p.restate || (p.cycleTheme && cycle > 0.0)) && nextCopy - (cursor - head.start) < beatsPerBar - 1.0e-6)
+                // (the tune comes back on its place: the held note before it rings on up to it)
+                if ((p.restate || (p.cycleTheme && cycle > 0.0)) && nextCopy - (cursor - head.start) <= period * 0.5 + 1.0e-6)
                 {
                     copyFrom = &head;
                     shift = nextCopy;
@@ -1043,6 +1046,7 @@ namespace pr7s
                     n.effect = LineNote::Effect::none;
                     notes.push_back (n);
                     again.notes.push_back (n);
+                    copied.insert (std::lround (n.beat * 960.0));
                 }
                 lastLanding = (int) notes.size() - 1;
                 history.push_back (again);
@@ -1283,7 +1287,7 @@ namespace pr7s
         for (size_t i = 0; i < notes.size(); ++i)
         {
             auto& n = notes[i];
-            if (inBurst (n.beat) || n.technique != LineNote::Technique::normal || ! single (i))
+            if (inBurst (n.beat) || n.technique != LineNote::Technique::normal || ! single (i) || copied.count (std::lround (n.beat * 960.0)) > 0)
                 continue;
             const auto t = (float) (n.beat / juce::jmax (1.0e-6, total));
             const auto isLast = i + 1 == notes.size();
@@ -1296,7 +1300,7 @@ namespace pr7s
                 continue;
             }
             // (0.116.0) A short note bent now and then (about one in twenty), a whole step.
-            if (n.length >= 0.25 && n.length < 0.75 && ! isLast && n.pitch - 2 >= low && r.nextFloat() < 0.05f)
+            if (! p.escalate && n.length >= 0.25 && n.length < 0.75 && ! isLast && n.pitch - 2 >= low && r.nextFloat() < 0.05f)
             {
                 n.pitch -= 2;
                 n.effect = LineNote::Effect::bend;

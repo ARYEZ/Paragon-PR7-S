@@ -122,7 +122,11 @@ TEST_CASE ("Guitar styles: six rhythm ideas and six leads each, on the chords, i
                                     CHECK (n.pitch <= tuning.highest());
                                 }
                             }
-                            if (isLead && ! idea.style.startsWith ("Solo"))   // (0.116.0: a solo's pickups run into its chord tones)
+                            if (idea.style.startsWith ("Solo"))
+                            {
+                                // (0.116.0) A solo's pickups run into its chord tones: they land where its phrases land.
+                            }
+                            else if (isLead)
                             {
                                 // Each bar's first note is a chord tone (a twin's third or an octave may sound with it).
                                 for (int bar = 0; bar < 8; ++bar)

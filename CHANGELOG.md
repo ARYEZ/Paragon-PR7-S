@@ -2,6 +2,66 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.115.0
+
+Two of your asks: four new chorus types from your song files, and the guitar solo rebuilt from the Pink Floyd and Guns N' Roses solos you uploaded.
+
+**Four new chorus types.** A chorus block's TYPE menu now has these after DRIVING, SYNCOPATED DRIVE and DRONING. Each was read from your songs for its shape only; nothing is copied.
+- **PUSHED CHORDS UNDER A FIXED HOOK:**
+  - The guitar strikes power chords rarely and holds them, every chord change pushed a beat early over the bar line.
+  - The lead plays a two-bar hook using only the key's 1, 2, 3 and 5, so the same notes fit every chord.
+  - The bass doubles the pushes.
+  - The keys hold a high note with a second voice stepping under it.
+- **TWIN HARMONY, HALF TIME:**
+  - The lead plays a line on a 3+3+2 figure, doubled a third under.
+  - The guitar rings a chord on each bar's first beat, or locks to the line (at the end, or all through).
+  - The drums are half time.
+- **SIXTEENTH WALL, HALF-TIME KIT:**
+  - Muted power chords on every sixteenth, with a three-chord turnaround every fourth bar.
+  - The bass is in sixteenths on the roots.
+  - The kit plays half time under it, with crash or ride eighths and a kick-and-snare turnaround.
+- **GROUPED STREAM:**
+  - One guitar plays an unbroken wall of eighths, or eighths grouped five, a rest, five, a rest, four.
+  - The bass and the kick play in groups whose rests fall just off the beat.
+
+Each instrument has its own options in its style menu, and the bass's last option is always LOCKED WITH THE KICK.
+
+**The guitar solo, rebuilt.** Three readers measured every solo in the new files, shapes only. Real solos turned out to work quite differently from ours, so every solo style now follows what they do:
+- **Phrases end on held notes.** Most phrases are a short pickup running into one long held note, which gets the bend or the vibrato. That held note is the breath; real silences come only now and then (ours rested after every phrase).
+- **Phrases start off the beat.** Only about one in five real phrases starts on beat 1. Ours now start on an "and", on beat 3 or in the last beat, tied over the bar line.
+- **Busy passages come in waves.** There are one to three of them, each followed by a calm stretch. Ours used to get busier and busier to the end.
+- **The solo peaks past halfway and comes back down.** The register climbs to about 70% of the way through, then falls to end on a held root. Ours used to climb to the very end; the styles built around ending high still do.
+- **Bends are mostly whole steps**, onto chord tones. Bends of a step and a half or more are now rare (real solos had 4 in 101).
+- **Pre-bends.** Some notes are bent before they're struck and let down onto their note.
+- **Bends rise in about 0.2 seconds at any tempo**, not a share of the beat.
+- **Vibrato goes on held notes only.**
+- **Chord tones where a phrase lands, not forced onto every beat.** The pickups move by step, falling more often than rising.
+
+**Ten new solo styles** (our names), from those solos:
+- **SINGING BENDS:** few notes, each phrase a pickup into one long bent note.
+- **SHUFFLE CONVERSATION:** a blues shuffle in triplets; a call and its answer played twice.
+- **SLOW BUILD WITH RAKES:** a ballad build; waves of fast falling flurries with chord rakes between them.
+- **FALLING MAJOR MELODY:** major key, each phrase lower than the last, grace notes into the held notes.
+- **SUNG IN THE GAPS:** an eighth-note melody starting mid-bar. It comes back when the chords come round, and the second half is an octave lower.
+- **ROLLING SEQUENCES:** opens on one held low note, then builds in waves of turning cells.
+- **LAID-BACK SWEET BENDS:** behind the beat, slow bends, walking down to a long low root.
+- **THEME EVERY ROUND:** the opening phrase comes back each time the chords come round, with fast figures in the later rounds.
+- **TWO SPEEDS:** a slow, bendy first half, then one fast passage.
+- **LICK TWICE TO END:** the blues scale, fourth double stops, and a two-bar lick played twice to finish.
+
+**BY STYLE now picks one of these** from the guitar STYLE:
+
+| Guitar STYLE | Solo style |
+|---|---|
+| Rock, nu-metal | SINGING BENDS |
+| Thrash, groove | LICK TWICE TO END |
+| Metalcore | ROLLING SEQUENCES |
+| Shred | TWO SPEEDS |
+
+The sixteen player styles keep their own tricks (tapping, dives, sweeps, squeals) but now phrase the new way.
+
+What can't be checked here: how the solos sound. That's for your ears; tell me what to change.
+
 ## 0.114.0
 
 Three of your asks: the song's key on the SECTIONS row, your riff on the lane you choose, and a CLEAN GUITAR lane.
