@@ -1865,7 +1865,7 @@ namespace pr7s
         static bool writeBlock (ExportJob&, juce::AudioBuffer<float>&, int start, int length);
         std::unique_ptr<MediaDatabase> mediaBay;   // (0.21.0; made when first asked for)
         // (0.106.0) The composer's library grooves, kept until the library, the style or the tempo changes.
-        struct KeptGrooves { const void* items = nullptr; size_t count = 0; int style = -1; int bpm = 0; std::vector<LibraryGroove> grooves; };
+        struct KeptGrooves { const void* items = nullptr; size_t count = 0; int style = -1; int bpm = 0; GrooveList grooves; };
         mutable KeptGrooves keptGrooves;
         juce::File pr7dFolderOverride;
         // (0.108.0) The studio link: the copies' fingerprint last sent or read per track, when we last wrote each file,
@@ -1882,7 +1882,7 @@ namespace pr7s
         mutable Pr7dLibrary keptPr7d;
         mutable juce::Time keptPr7dIndexDate;
         mutable bool keptPr7dRead = false;
-        struct KeptPr7dGrooves { juce::Time date; int style = -1; int bpm = 0; int bar = 0; size_t count = 0; std::vector<LibraryGroove> grooves; };
+        struct KeptPr7dGrooves { juce::Time date; int style = -1; int bpm = 0; int bar = 0; size_t count = 0; DrumNotes notes = DrumNotes::asWritten; GrooveList grooves; };
         mutable KeptPr7dGrooves keptPr7dGrooves;
         std::shared_ptr<const AudioData> mediaPreviewSound;
         double mediaPreviewBeats = 0.0;

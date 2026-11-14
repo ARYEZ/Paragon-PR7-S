@@ -126,7 +126,7 @@ namespace pr7s
         std::optional<Chord> nextChord;
         double lastBarBeats = 0.0;
         // (0.106.0) The MediaBay's drum grooves for the style and tempo (findLibraryGrooves; fills among them).
-        std::vector<LibraryGroove> libraryGrooves;
+        GrooveList libraryGrooves;   // (0.112.1: shared, not copied)
     };
 
     // (0.86.0) SYNC: the rhythm a lane's idea gives the others. `all`: every hit (notes starting together are one

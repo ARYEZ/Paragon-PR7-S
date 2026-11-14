@@ -180,6 +180,8 @@ public:
     const pr7s::ComposerState& getState() const noexcept { return state; }
     const pr7s::LineIdea& getIdea (pr7s::ComposerLayer l) const noexcept { return ideas[(size_t) l]; }
     const std::vector<pr7s::ChordSpan>& getSpans() const noexcept { return spans; }
+    void runTimerForTests() { timerCallback(); }
+    void refreshForTests() { refresh (false); }
     const juce::StringArray& getChordNames() const noexcept { return chordNames; }
     juce::String getStatus() const { return status; }
     juce::Button* keyNamed (const juce::String&);   // header keys by their text, lanes' as "<LAYER> ON/LOCK/ROLL"

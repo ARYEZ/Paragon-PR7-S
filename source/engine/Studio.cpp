@@ -10926,13 +10926,18 @@ namespace pr7s
         {
             const auto bpm = juce::roundToInt (c.bpm * 10.0);
             const auto bar = juce::roundToInt (c.beatsPerBar * 1000.0);
-            if (keptPr7dGrooves.date != pr7d.indexDate || keptPr7dGrooves.count != pr7d.grooves.size() || keptPr7dGrooves.style != (int) c.style
-                || keptPr7dGrooves.bpm != bpm || keptPr7dGrooves.bar != bar)
-                keptPr7dGrooves = { pr7d.indexDate, (int) c.style, bpm, bar, pr7d.grooves.size(), findPr7dGrooves (pr7d, c.style, c.bpm, c.beatsPerBar) };
-            c.libraryGrooves = keptPr7dGrooves.grooves;
+            // (0.112.1) Worked out and given their notes once per library, style, tempo, bar and drum notes, then
+            // shared: the owner's 100,000 grooves were copied (and their notes set) on every refresh.
             const auto notes = composerDrumNotes();
-            for (auto& g : c.libraryGrooves)
-                g.notes = notes;
+            if (keptPr7dGrooves.date != pr7d.indexDate || keptPr7dGrooves.count != pr7d.grooves.size() || keptPr7dGrooves.style != (int) c.style
+                || keptPr7dGrooves.bpm != bpm || keptPr7dGrooves.bar != bar || keptPr7dGrooves.notes != notes)
+            {
+                auto found = findPr7dGrooves (pr7d, c.style, c.bpm, c.beatsPerBar);
+                for (auto& g : found)
+                    g.notes = notes;
+                keptPr7dGrooves = { pr7d.indexDate, (int) c.style, bpm, bar, pr7d.grooves.size(), notes, GrooveList (std::move (found)) };
+            }
+            c.libraryGrooves = keptPr7dGrooves.grooves;
         }
         // (0.106.0) The groove library's drum MIDI (the MediaBay's), for the composer's drums lane. Without a settings
         // file (tests) the MediaBay isn't opened for this.

@@ -397,6 +397,8 @@ namespace pr7s
             const auto bpm = item.tempo();
             out.push_back ({ item.file, item.name, item.file.getParentDirectory().getFileName(), bpm, grooveScore (text, bpm, style, songBpm) });
         }
+        for (auto& g : out)
+            classifyGroove (g);   // (0.112.1)
         sortGrooves (out);
         return out;
     }
@@ -415,6 +417,8 @@ namespace pr7s
             groove.score = grooveScore ((g.file.getFullPathName() + " " + groove.tags).toLowerCase(), g.bpm, style, songBpm);
             out.push_back (std::move (groove));
         }
+        for (auto& g : out)
+            classifyGroove (g);   // (0.112.1)
         sortGrooves (out);
         return out;
     }
@@ -475,28 +479,60 @@ namespace pr7s
         }
     }
 
-    std::vector<LibraryGroove> libraryGroovesFor (const std::vector<LibraryGroove>& found, int section, bool fills)
+    void classifyGroove (LibraryGroove& g)
+    {
+        const auto& words = sectionWords();
+        const auto text = (g.file.getFullPathName() + " " + g.name + " " + g.tags).toLowerCase();   // (0.107.0: PR7-D's labels too)
+        g.fill = text.contains ("fill");
+        g.sectionMask = 0;
+        for (int k = 0; k < (int) words.size(); ++k)
+            for (const auto& w : words[(size_t) k])
+                if (text.contains (w))
+                {
+                    g.sectionMask |= 1 << k;
+                    break;
+                }
+    }
+
+    std::vector<LibraryGroove> libraryGroovesFor (const std::vector<LibraryGroove>& found, int section, bool fills, size_t limit)
     {
         const auto& words = sectionWords();
         section = juce::jlimit (0, (int) words.size() - 1, section);
-        std::vector<LibraryGroove> out;
-        for (auto g : found)
+        // (0.112.1) Each groove's score from its words worked out once (classifyGroove), only the indices sorted,
+        // only the best `limit` copied out: the same answer as scoring and sorting every groove each time.
+        std::vector<std::pair<int, size_t>> scored;   // (score, index in `found`)
+        scored.reserve (found.size());
+        LibraryGroove worked;
+        for (size_t i = 0; i < found.size(); ++i)
         {
-            const auto text = (g.file.getFullPathName() + " " + g.name + " " + g.tags).toLowerCase();   // (0.107.0: PR7-D's labels too)
-            if (text.contains ("fill") != fills)
+            const auto* c = &found[i];
+            if (c->sectionMask < 0)   // (a groove made by hand: worked out here)
+            {
+                worked = found[i];
+                classifyGroove (worked);
+                c = &worked;
+            }
+            if (c->fill != fills)
                 continue;
-            if (fills)
-                g.score += 3;   // (findLibraryGrooves took 3 off for a fill)
+            auto score = found[i].score + (fills ? 3 : 0);   // (findLibraryGrooves took 3 off for a fill)
             for (int k = 0; k < (int) words.size(); ++k)
-                for (const auto& w : words[(size_t) k])
-                    if (text.contains (w))
-                    {
-                        g.score += k == section ? 6 : -3;
-                        break;
-                    }
-            out.push_back (g);
+                if ((c->sectionMask & (1 << k)) != 0)
+                    score += k == section ? 6 : -3;
+            scored.push_back ({ score, i });
         }
-        std::stable_sort (out.begin(), out.end(), [] (const LibraryGroove& a, const LibraryGroove& b) { return a.score > b.score; });
+        const auto better = [] (const std::pair<int, size_t>& a, const std::pair<int, size_t>& b)
+        {
+            return a.first != b.first ? a.first > b.first : a.second < b.second;   // (as the stable sort by score kept them)
+        };
+        const auto wanted = limit > 0 ? juce::jmin (limit, scored.size()) : scored.size();
+        std::partial_sort (scored.begin(), scored.begin() + (std::ptrdiff_t) wanted, scored.end(), better);
+        std::vector<LibraryGroove> out;
+        out.reserve (wanted);
+        for (size_t i = 0; i < wanted; ++i)
+        {
+            out.push_back (found[scored[i].second]);
+            out.back().score = scored[i].first;
+        }
         return out;
     }
 

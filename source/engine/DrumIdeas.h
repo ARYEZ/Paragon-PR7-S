@@ -53,6 +53,30 @@ namespace pr7s
         juce::String tags;
         int layout = -1;
         DrumNotes notes = DrumNotes::asWritten;
+        // (0.112.1) What libraryGroovesFor reads from its path, name and labels, worked out once when the groove is
+        // found (the owner's 100,000 grooves were read word by word on every click): the section words in it (a bit
+        // per section; -1: not worked out yet) and whether it's a fill.
+        int sectionMask = -1;
+        bool fill = false;
+    };
+    // (0.112.1) Works out a groove's sectionMask and fill (findLibraryGrooves and findPr7dGrooves do it for theirs).
+    void classifyGroove (LibraryGroove&);
+
+    // (0.112.1) The composer's library grooves, shared (not copied) between every ComposerContext made from the same
+    // library: a vector's reading surface over a shared list.
+    struct GrooveList
+    {
+        GrooveList() = default;
+        GrooveList (std::vector<LibraryGroove> grooves) : list (std::make_shared<const std::vector<LibraryGroove>> (std::move (grooves))) {}
+        const std::vector<LibraryGroove>& get() const noexcept { static const std::vector<LibraryGroove> none; return list != nullptr ? *list : none; }
+        operator const std::vector<LibraryGroove>&() const noexcept { return get(); }
+        size_t size() const noexcept { return get().size(); }
+        bool empty() const noexcept { return get().empty(); }
+        const LibraryGroove& operator[] (size_t i) const noexcept { return get()[i]; }
+        auto begin() const noexcept { return get().begin(); }
+        auto end() const noexcept { return get().end(); }
+    private:
+        std::shared_ptr<const std::vector<LibraryGroove>> list;
     };
     // The MediaBay's MIDI files that look like drum grooves, best first.
     std::vector<LibraryGroove> findLibraryGrooves (const std::vector<MediaItem>&, GuitarStyle, double songBpm);
@@ -67,7 +91,8 @@ namespace pr7s
     // the style score as found, +6 for the section's word in the file's path or name (folders such as "Verse" or
     // "Chorus" in groove packs), -3 for another section's word. `fills`: only files with "fill" in them; else none of
     // those. Our scoring.
-    std::vector<LibraryGroove> libraryGroovesFor (const std::vector<LibraryGroove>& found, int section, bool fills);
+    // (0.112.1) `limit`: only the best that many (0: all), in the same order a full list would give them.
+    std::vector<LibraryGroove> libraryGroovesFor (const std::vector<LibraryGroove>& found, int section, bool fills, size_t limit = 0);
     // The notes of a library file's last bar, from its first note in that bar (beats from that note's quarter; one bar
     // at most). Empty if the file can't be read. Files are read once and kept (by path and date).
     std::vector<LineNote> libraryFillBar (const LibraryGroove&, double beatsPerBar);

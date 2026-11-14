@@ -270,7 +270,7 @@ namespace pr7s
             const auto length = spans.back().end - spans.front().start;
             const auto bars = (int) std::ceil (length / bpb - 1.0e-6);
             const auto& lane = s.lane (ComposerLayer::drums);
-            const auto fills = libraryGroovesFor (c.libraryGrooves, lane.style, true);
+            const auto fills = libraryGroovesFor (c.libraryGrooves, lane.style, true, 4);   // (0.112.1: the best four are all it picks among)
             if (! fills.empty() && bars >= 1)
             {
                 const auto& fill = fills[(size_t) (lane.variation / 3) % juce::jmin ((size_t) 4, fills.size())];
@@ -7796,10 +7796,7 @@ namespace pr7s
 
     std::vector<LibraryGroove> composerLibraryGrooves (const ComposerState& s, const ComposerContext& c)
     {
-        auto all = libraryGroovesFor (c.libraryGrooves, s.lane (ComposerLayer::drums).style, false);
-        if (all.size() > 24)
-            all.resize (24);
-        return all;
+        return libraryGroovesFor (c.libraryGrooves, s.lane (ComposerLayer::drums).style, false, 24);   // (0.112.1: only the 24 made)
     }
 
     std::optional<LibraryGroove> composerLibraryGroove (const ComposerState& s, const ComposerContext& c)
