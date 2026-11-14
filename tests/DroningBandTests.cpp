@@ -29,6 +29,8 @@ namespace
         for (int i = 0; i < (int) riffFlavours().size(); ++i)
             if (riffFlavours()[(size_t) i] == flavour)
                 s.riffFlavour = i;
+        if (flavour == RiffFlavour::droning)
+            s.sectionType = "DRONING";   // (0.126.0: the band follows the guitar only when the section's type is DRONING)
         return s;
     }
 
@@ -345,4 +347,37 @@ TEST_CASE ("0.89.1: Circle With Me's shapes: a held third a chord, a muted pedal
         REQUIRE (countElsewhere > 0);
         CHECK (heldElsewhere / countElsewhere >= 1.5);
     }
+}
+
+TEST_CASE ("0.126.0: a guitar flavour alone doesn't lock the band; OWN STYLES lets a lane out", "[composer][droning]")
+{
+    const auto c = plainContext();
+    // The guitar's riff kind DRONING picked under STANDARD: the other lanes play their own styles.
+    auto plain = stateWith (RiffFlavour::droning);
+    plain.sectionType = {};
+    const auto spans = composerSpans (plain, 0.0, c.beatsPerBar);
+    REQUIRE_FALSE (spans.empty());
+    for (const auto l : { L::bass, L::chords, L::lead, L::drums })
+    {
+        CHECK_FALSE (sectionTypeWritesLane (l, plain, c));
+        auto standard = plain;
+        standard.riffFlavour = 0;   // (ANY: no band of any kind)
+        const auto mine = composeLayers (plain, spans, c);
+        const auto usual = composeLayers (standard, spans, c);
+        CHECK (mine[(size_t) l].style == usual[(size_t) l].style);
+    }
+    // Under the DRONING type the band writes them, unless a lane plays its own styles.
+    const auto typed = stateWith (RiffFlavour::droning);
+    CHECK (sectionTypeWritesLane (L::bass, typed, c));
+    auto own = typed;
+    own.lane (L::bass).ownStyles = true;
+    CHECK_FALSE (sectionTypeWritesLane (L::bass, own, c));
+    CHECK (sectionTypeWritesLane (L::drums, own, c));   // (only that lane steps out)
+    const auto ownBass = composeLayers (own, spans, c);
+    const auto bandBass = composeLayers (typed, spans, c);
+    CHECK (ownBass[(size_t) L::bass].style != bandBass[(size_t) L::bass].style);
+    CHECK (ownBass[(size_t) L::drums].style == bandBass[(size_t) L::drums].style);
+    // Saved with the state.
+    CHECK (ComposerState::fromString (own.toString()).lane (L::bass).ownStyles);
+    CHECK_FALSE (ComposerState::fromString (typed.toString()).lane (L::bass).ownStyles);
 }

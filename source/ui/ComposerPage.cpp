@@ -508,6 +508,21 @@ void ComposerPage::setApproach (ComposerLayer l, int approach)
     refresh();
 }
 
+void ComposerPage::setOwnStyles (ComposerLayer l, bool own)
+{
+    state.lane (l).ownStyles = own;
+    taken[(size_t) l].reset();
+    status = pr7s::composerLayerName (l) + (own ? ": ITS OWN STYLES" : ": FOLLOWS THE SECTION TYPE");
+    refresh();
+}
+
+bool ComposerPage::typeWouldWrite (ComposerLayer l) const
+{
+    auto with = state;
+    with.lane (l).ownStyles = false;
+    return pr7s::sectionTypeWritesLane (l, with, context);
+}
+
 void ComposerPage::showTypeMenu()
 {
     const auto name = typeSectionName();
@@ -643,6 +658,15 @@ void ComposerPage::setSync (std::optional<ComposerLayer> leader)
     }
     else
         status = "SYNC off: every lane its own";
+    refresh();
+}
+
+void ComposerPage::setSyncTo (ComposerLayer l, std::optional<ComposerLayer> leader)
+{
+    state.lane (l).syncTo = leader.has_value() && *leader != l ? (int) *leader : -1;
+    taken[(size_t) l].reset();   // (an idea taken from IDEAS would ignore the leader)
+    status = pr7s::composerLayerName (l) + (state.followsOwnLeader (l) ? ": follows the " + pr7s::composerLayerName (*leader).toLowerCase() + "'s rhythm"
+                                                                       : juce::String (": not synced on its own"));
     refresh();
 }
 
@@ -1848,6 +1872,17 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
                            true, i == state.lane (l).style);
         menu = whole;
     }
+    // (0.126.0) A lane the section type writes can play its own styles instead, and come back.
+    if (typeWrites)
+    {
+        menu.addSeparator();
+        menu.addItem (ownStylesItem, "Play Its Own Styles (not the section type's part)");
+    }
+    else if (state.lane (l).ownStyles && typeWouldWrite (l))
+    {
+        menu.addSeparator();
+        menu.addItem (ownStylesItem, "Follow the Section Type Again (" + state.sectionType + ")");
+    }
     // (0.70.0, the owner asked) The lead's last choice is the whole solo: its SOLO STYLE chosen here too (the
     // same setting as IDEAS' SOLO box).
     if (l == ComposerLayer::lead)
@@ -1911,10 +1946,22 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
                                                                : playing.has_value() ? playing->name : juce::String ("(off)")),
                          list, ! grooves.empty());
     }
+    // (0.126.0, the owner) SYNC TO: this lane alone follows another lane's rhythm.
+    {
+        juce::PopupMenu to;
+        const auto own = state.lane (l).syncTo;
+        to.addItem (syncToItems, "Not Synced on Its Own" + juce::String (state.syncLayer().has_value() ? " (the SYNC key's lane leads)" : ""),
+                    true, own < 0 || own == (int) l);
+        for (const auto other : pr7s::composerLayers())
+            if (other != l)
+                to.addItem (syncToItems + 1 + (int) other, "Sync to the " + pr7s::composerLayerName (other), true, own == (int) other);
+        menu.addSeparator();
+        menu.addSubMenu ("Sync To: " + (state.followsOwnLeader (l) ? pr7s::composerLayerName ((ComposerLayer) own) : juce::String ("(not on its own)")), to);
+    }
     // (0.86.0) The bass and the drums under SYNC: every hit of the sync lane.
     if (pr7s::hasDoubleSync (l))
     {
-        const auto sync = state.syncLayer();
+        const auto sync = state.leaderOf (l);
         menu.addSeparator();
         menu.addItem (doubleSyncItem, sync.has_value() && *sync != l ? "Double the Sync Track (the " + pr7s::composerLayerName (*sync).toLowerCase() + ", every hit)"
                                                                       : juce::String ("Double the Sync Track (with SYNC on)"),
@@ -1941,6 +1988,11 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
                                         safe->setLibraryGroove (grooves[(size_t) i].file.getFullPathName());
                                 }
                             }
+                            else if (chosen >= syncToItems && chosen < syncToItems + 20)
+                                safe->setSyncTo (l, chosen == syncToItems ? std::optional<ComposerLayer> {}
+                                                                          : std::optional<ComposerLayer> ((ComposerLayer) (chosen - syncToItems - 1)));
+                            else if (chosen == ownStylesItem)
+                                safe->setOwnStyles (l, ! safe->isPlayingOwnStyles (l));
                             else if (chosen == doubleSyncItem)
                                 safe->setDoubleSync (l, ! safe->isDoublingSync (l));
                             else if (chosen == myRiffItem)
@@ -2420,8 +2472,20 @@ void ComposerPage::paintLane (juce::Graphics& g, ComposerLayer l, const Lane& la
         g.setColour (s.on ? ParagonColours::text : ParagonColours::textDim);
         g.setFont (ParagonLookAndFeel::titleFont (20.0f));
         g.drawText (pr7s::composerLayerName (l), lane.header.reduced (18, 6).removeFromTop (24), juce::Justification::centredLeft, false);
-        const auto sync = state.syncLayer();
-        if (s.locked || sync.has_value())
+        auto sync = state.leaderOf (l);
+        if (! sync.has_value())   // (0.126.0: a lane another lane follows by its own SYNC TO leads too)
+            for (const auto other : pr7s::composerLayers())
+                if (other != l && state.followsOwnLeader (other) && state.lane (other).syncTo == (int) l)
+                    sync = l;
+        if (! s.locked && ! sync.has_value() && (s.ownStyles ? typeWouldWrite (l) : pr7s::sectionTypeWritesLane (l, state, context)))
+        {
+            // (0.126.0) Whether the section type writes this lane, or it plays its own styles.
+            g.setColour (s.ownStyles ? ParagonColours::textDim : ParagonColours::accent);
+            g.setFont (ParagonLookAndFeel::titleFont (11.0f));
+            g.drawText (s.ownStyles ? "OWN STYLES" : "FOLLOWS THE SECTION TYPE",
+                        lane.header.reduced (18, 6).removeFromTop (24).withTrimmedRight (200), juce::Justification::centredRight, false);
+        }
+        else if (s.locked || sync.has_value())
         {
             // (0.86.0) SYNC: the leader says so; a follower says whom it follows.
             const auto word = sync == l ? juce::String ("SYNC LEADER") + (s.locked ? " - LOCKED" : "")

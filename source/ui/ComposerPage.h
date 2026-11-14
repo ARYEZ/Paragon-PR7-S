@@ -132,6 +132,14 @@ public:
     juce::String typeSectionName() const;   // the name the types are for: the block's, else the SECTION's
     void setApproach (pr7s::ComposerLayer, int approach);
     int getApproach (pr7s::ComposerLayer l) const { return state.lane (l).approach; }
+    // (0.126.0) OWN STYLES: a lane the section type writes plays its own styles instead (and back).
+    void setOwnStyles (pr7s::ComposerLayer, bool own);
+    // (0.126.0) SYNC TO: this lane alone follows another lane's rhythm (none: not on its own).
+    void setSyncTo (pr7s::ComposerLayer, std::optional<pr7s::ComposerLayer> leader);
+    std::optional<pr7s::ComposerLayer> getSyncTo (pr7s::ComposerLayer l) const
+    { return state.followsOwnLeader (l) ? std::optional<pr7s::ComposerLayer> ((pr7s::ComposerLayer) state.lane (l).syncTo) : std::nullopt; }
+    bool isPlayingOwnStyles (pr7s::ComposerLayer l) const { return state.lane (l).ownStyles; }
+    bool typeWouldWrite (pr7s::ComposerLayer) const;   // (the type writes it when it doesn't play its own styles)
     std::function<void (const juce::String& question, std::function<void()> yes)> askToRebuild;   // (tests answer it)
     void clearTargetSection();
     int getTargetSection() const noexcept { return targetBlock; }
@@ -215,6 +223,8 @@ private:
     static constexpr int flavourItems = 6000, writtenRiffsItem = 6100;   // (0.85.0) the guitar's style menu
     static constexpr int doubleSyncItem = 6200;   // (0.86.0) the bass's and drums' style menus
     static constexpr int libraryItems = 7000;     // (0.106.0) the drums' style menu: 7000 on/off, 7001 automatic, 7002 + i a groove
+    static constexpr int ownStylesItem = 6290;
+    static constexpr int syncToItems = 6260;      // (0.126.0) SYNC TO: 6260 none, 6261 + layer    // (0.126.0) the type's lanes: Play Its Own Styles / Follow Again
     static constexpr int approachItems = 6300;    // (0.94.0) the type's approaches: 6300 automatic, 6301 + i
     void showTypeMenu();
     void applyBlockType();   // the target block's type onto the state (when it differs)

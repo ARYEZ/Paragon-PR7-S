@@ -62,6 +62,12 @@ namespace pr7s
         // (0.120.0) OCTAVE: the lane's notes moved by whole octaves (-2..+2) after everything else, keyswitches left
         // where they are (not the drums). What follows it through SYNC follows it as written.
         int octave = 0;
+        // (0.126.0, the owner: picking certain guitar chords made every other lane follow the guitar) OWN STYLES: the
+        // section type's band doesn't write this lane; it plays its own styles as under STANDARD.
+        bool ownStyles = false;
+        // (0.126.0, the owner: "sync the bass and drums together ... but not the entire section") SYNC TO: this lane
+        // follows that lane's rhythm (a layer number; -1 not synced), whatever the global SYNC says.
+        int syncTo = -1;
         bool operator== (const ComposerLane&) const = default;
     };
 
@@ -100,6 +106,19 @@ namespace pr7s
         ComposerLayer riffLayer() const noexcept
         {
             return juce::isPositiveAndBelow (riffLane, composerLayerCount) ? (ComposerLayer) riffLane : ComposerLayer::guitar;
+        }
+        // (0.126.0) The lane `l` follows: its own SYNC TO, else the global SYNC (which can be `l` itself: the leader).
+        std::optional<ComposerLayer> leaderOf (ComposerLayer l) const noexcept
+        {
+            const auto to = lanes[(size_t) l].syncTo;
+            if (to >= 0 && to < composerLayerCount && to != (int) l)
+                return (ComposerLayer) to;
+            return syncLayer();
+        }
+        bool followsOwnLeader (ComposerLayer l) const noexcept
+        {
+            const auto to = lanes[(size_t) l].syncTo;
+            return to >= 0 && to < composerLayerCount && to != (int) l;
         }
         std::optional<ComposerLayer> syncLayer() const noexcept
         {

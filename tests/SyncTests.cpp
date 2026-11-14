@@ -241,3 +241,38 @@ TEST_CASE ("0.86.0: print a synced section", "[.syncdump]")
     line ("KICK", layers[(size_t) L::drums], true);
     line ("CHORDS", layers[(size_t) L::chords], false);
 }
+
+TEST_CASE ("0.126.0: SYNC TO: one lane follows another, the rest play their own", "[composer][sync]")
+{
+    const auto c = plainContext();
+    auto s = tritoneState();
+    const auto spans = composerSpans (s, 0.0, c.beatsPerBar);
+    REQUIRE_FALSE (spans.empty());
+    const auto before = composeLayers (s, spans, c);
+    s.lane (ComposerLayer::bass).syncTo = (int) ComposerLayer::drums;
+    s.lane (ComposerLayer::chords).syncTo = (int) ComposerLayer::drums;
+    CHECK (s.leaderOf (ComposerLayer::bass) == ComposerLayer::drums);
+    CHECK_FALSE (s.leaderOf (ComposerLayer::guitar).has_value());
+    const auto after = composeLayers (s, spans, c);
+    // The bass on the drums' kick accents: every bass note starts on a kick.
+    const auto kicks = kickHits (after[(size_t) ComposerLayer::drums]);
+    REQUIRE_FALSE (kicks.empty());
+    REQUIRE_FALSE (after[(size_t) ComposerLayer::bass].notes.empty());
+    for (const auto& n : after[(size_t) ComposerLayer::bass].notes)
+        if (! n.keyswitch)
+            CHECK (near (kicks, n.beat));
+    // The lanes not synced are as they were.
+    for (const auto l : { ComposerLayer::guitar, ComposerLayer::drums, ComposerLayer::melody })
+    {
+        CHECK (after[(size_t) l].style == before[(size_t) l].style);
+        CHECK (after[(size_t) l].notes.size() == before[(size_t) l].notes.size());
+    }
+    // Two lanes synced to each other don't go round (each follows the other's own part).
+    s.lane (ComposerLayer::drums).syncTo = (int) ComposerLayer::bass;
+    const auto mutual = composeLayers (s, spans, c);
+    CHECK_FALSE (mutual[(size_t) ComposerLayer::bass].notes.empty());
+    // Saved with the state.
+    const auto back = ComposerState::fromString (s.toString());
+    CHECK (back.lane (ComposerLayer::bass).syncTo == (int) ComposerLayer::drums);
+    CHECK (back.lane (ComposerLayer::guitar).syncTo == -1);
+}

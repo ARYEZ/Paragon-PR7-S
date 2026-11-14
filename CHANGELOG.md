@@ -2,6 +2,18 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.126.0
+
+**The composer's lanes no longer get locked to the guitar** (you found that picking certain kinds of guitar chords made every other instrument follow the guitar, with SYNC off):
+- **What was wrong:** four of the guitar's riff kinds (DRONING, DRIVING EIGHTHS, SYNCOPATED DRIVE, MUTED DRIVE) each came with a whole band written around them. Picking one of them in the guitar's Riff Flavour menu took over the bass, keys, lead and drums, even when the section's type was STANDARD or something else, and those lanes' menus then offered only the band's parts.
+- **Now:** the band follows the guitar only when the section's **TYPE** is that kind (a DRONING chorus, a DRIVING chorus...). Picking a riff kind for the guitar on its own changes only the guitar.
+- **PLAY ITS OWN STYLES:** under a section type, each lane's style menu has **Play Its Own Styles**: that instrument steps out of the type's band and plays its usual styles; **Follow the Section Type Again** brings it back. Each lane's title says **FOLLOWS THE SECTION TYPE** or **OWN STYLES**.
+
+**SYNC TO, lane by lane** (you asked: sync the bass and drums together, or bass, drums and the synth pad, but not every instrument):
+- Each lane's style menu has **Sync To**: that lane alone follows another lane's rhythm (the bass to the drums, the keys to the drums...), and every other lane plays its own part.
+- It follows what the other lane really plays, its section type's part included. The SYNC key at the top still makes every lane follow one lane, as before; a lane's own SYNC TO wins over it.
+- DOUBLE THE SYNC TRACK works with it on the bass and the drums. A lane others follow says SYNC LEADER on its title.
+
 ## 0.125.0
 
 **CHORD GUIDES toned down, as you asked:**

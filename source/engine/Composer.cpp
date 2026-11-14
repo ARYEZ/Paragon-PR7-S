@@ -65,7 +65,8 @@ namespace pr7s
         for (const auto& l : lanes)
             lanesText.add (juce::String (l.on ? 1 : 0) + "," + juce::String (l.locked ? 1 : 0) + "," + juce::String (l.style) + "," + juce::String (l.variation)
                            + "," + juce::String (l.busy, 2) + "," + juce::String (l.lowString ? 1 : 0) + "," + juce::String (l.onlyString)
-                           + "," + juce::String (l.doubleSync ? 1 : 0) + "," + juce::String (l.approach) + "," + juce::String (l.octave));
+                           + "," + juce::String (l.doubleSync ? 1 : 0) + "," + juce::String (l.approach) + "," + juce::String (l.octave)
+                           + "," + juce::String (l.ownStyles ? 1 : 0) + "," + juce::String (l.syncTo));
         return juce::String (keyIndex) + "|" + genre + "|" + mood + "|" + juce::String (bars) + "|" + progression + "|"
              + (fromChordTrack ? "1" : "0") + "|" + (toChordTrack ? "1" : "0") + "|" + lanesText.joinIntoString (";")
              + "|" + juce::String (riffFlavour) + "," + (writtenRiffs ? "1" : "0") + "," + juce::String (syncLane)
@@ -113,6 +114,10 @@ namespace pr7s
                 l.approach = juce::jlimit (-1, 15, v[8].getIntValue());   // (0.94.0)
             if (v.size() >= 10)
                 l.octave = juce::jlimit (-2, 2, v[9].getIntValue());   // (0.120.0)
+            if (v.size() >= 11)
+                l.ownStyles = v[10] == "1";   // (0.126.0)
+            if (v.size() >= 12)
+                l.syncTo = juce::jlimit (-1, composerLayerCount - 1, v[11].getIntValue());   // (0.126.0)
         }
         if (parts.size() >= 9)
         {
@@ -753,11 +758,20 @@ namespace pr7s
         //           in the first half of each four bars.
         //   DRUMS   open hats on the eighths, kick on 1 and 3, snare on 2 and the and of 3, the fourth bar busier
         //           with a crash on its last beat; or half time: hats on the beats, the snare on 3, a fill.
+        // (0.126.0, the owner: "depending on if I pick certain kinds of guitar chords it locks out every other
+        // instrument") a band follows the guitar only when the section's TYPE is that kind (DRONING, DRIVING...),
+        // not when the guitar's riff flavour alone is picked under STANDARD or another type.
+        bool typeChoseFlavour (const ComposerState& s, RiffFlavour flavour)
+        {
+            const auto type = sectionTypeCalled (s.sectionType);
+            return type.has_value() && type->flavour == flavour;
+        }
+
         bool droningBand (const ComposerState& s, const ComposerContext& c)
         {
             const auto& flavours = riffFlavours();
             return juce::isPositiveAndBelow (s.riffFlavour, (int) flavours.size())
-                && flavours[(size_t) s.riffFlavour] == RiffFlavour::droning
+                && flavours[(size_t) s.riffFlavour] == RiffFlavour::droning && typeChoseFlavour (s, RiffFlavour::droning)
                 && ! s.writtenRiffs && ! c.myRiff.has_value() && s.lane (ComposerLayer::guitar).on;
         }
 
@@ -10207,7 +10221,7 @@ namespace pr7s
         {
             const auto& flavours = riffFlavours();
             return juce::isPositiveAndBelow (s.riffFlavour, (int) flavours.size())
-                && flavours[(size_t) s.riffFlavour] == RiffFlavour::drivingEighths
+                && flavours[(size_t) s.riffFlavour] == RiffFlavour::drivingEighths && typeChoseFlavour (s, RiffFlavour::drivingEighths)
                 && ! s.writtenRiffs && ! c.myRiff.has_value() && s.lane (ComposerLayer::guitar).on;
         }
 
@@ -10641,7 +10655,7 @@ namespace pr7s
         {
             const auto& flavours = riffFlavours();
             return juce::isPositiveAndBelow (s.riffFlavour, (int) flavours.size())
-                && flavours[(size_t) s.riffFlavour] == RiffFlavour::syncopatedDrive
+                && flavours[(size_t) s.riffFlavour] == RiffFlavour::syncopatedDrive && typeChoseFlavour (s, RiffFlavour::syncopatedDrive)
                 && ! s.writtenRiffs && ! c.myRiff.has_value() && s.lane (ComposerLayer::guitar).on;
         }
 
@@ -10845,7 +10859,7 @@ namespace pr7s
         {
             const auto& flavours = riffFlavours();
             return juce::isPositiveAndBelow (s.riffFlavour, (int) flavours.size())
-                && flavours[(size_t) s.riffFlavour] == RiffFlavour::mutedDrive
+                && flavours[(size_t) s.riffFlavour] == RiffFlavour::mutedDrive && typeChoseFlavour (s, RiffFlavour::mutedDrive)
                 && ! s.writtenRiffs && ! c.myRiff.has_value() && s.lane (ComposerLayer::guitar).on;
         }
 
@@ -10999,7 +11013,7 @@ namespace pr7s
         // A lane as SYNC has it (0.86.0): the sync lane itself and every lane with SYNC off as before.
         LineIdea syncedLayerOwn (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
-            const auto leaderLayer = s.syncLayer();
+            const auto leaderLayer = s.leaderOf (l);   // (0.126.0: a lane's own SYNC TO first)
             // (0.97.2, the owner: "the bass always needs the locked in with the kick option in every riff") a type that
             // writes the bass has LOCKED WITH THE KICK last: the chords' roots on every kick of that type's drums.
             if (! leaderLayer.has_value() && l == ComposerLayer::bass && ! spans.empty() && sectionTypeWritesLane (l, s, c))
@@ -11026,6 +11040,9 @@ namespace pr7s
             if (l == ComposerLayer::drums && (! leaderLayer.has_value() || *leaderLayer == ComposerLayer::drums))
                 if (auto library = libraryDrumsOf (s, spans, c))
                     return std::move (*library);
+            // (0.126.0) OWN STYLES: the section type leaves this lane alone.
+            if (! leaderLayer.has_value() && s.lane (l).ownStyles)
+                return rawLayer (l, s, spans, c);
             // (0.97.0, CLEAN VERSE's band) with SYNC off, every lane but the melody and the lead plays its clean part.
             if (! leaderLayer.has_value())
                 if (auto clean = cleanLayer (l, s, spans, c))
@@ -11104,7 +11121,12 @@ namespace pr7s
             }
             auto plain = s;
             plain.syncLane = -1;
-            const auto leader = rawLayer (*leaderLayer, plain, spans, c);
+            // (0.126.0) A lane synced on its own follows what its leader really plays (its section type's part too),
+            // the leader made with no sync anywhere, so two lanes synced to each other can't go round.
+            auto unsynced = plain;
+            for (auto& each : unsynced.lanes)
+                each.syncTo = -1;
+            const auto leader = s.followsOwnLeader (l) ? syncedLayer (*leaderLayer, unsynced, spans, c) : rawLayer (*leaderLayer, plain, spans, c);
             const auto rhythm = syncRhythmOf (*leaderLayer, leader, c.beatsPerBar, 0.0);   // (an idea's beats: from its first chord)
             if (rhythm.all.empty())
                 return rawLayer (l, s, spans, c);
@@ -11164,10 +11186,10 @@ namespace pr7s
         LineIdea syncedLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
             auto idea = syncedLayerOwn (l, s, spans, c);
-            if (spans.empty() || ! turnaroundChosen (s) || ! s.lane (ComposerLayer::guitar).on || c.myRiff.has_value()
+            if (spans.empty() || ! turnaroundChosen (s) || ! s.lane (ComposerLayer::guitar).on || c.myRiff.has_value() || s.lane (l).ownStyles
                 || (l != ComposerLayer::bass && l != ComposerLayer::drums && l != ComposerLayer::chords))
                 return idea;
-            if (const auto leader = s.syncLayer(); leader.has_value() && *leader != ComposerLayer::guitar)
+            if (const auto leader = s.leaderOf (l); leader.has_value() && *leader != ComposerLayer::guitar)
                 return idea;
             const auto bpb = c.beatsPerBar;
             const auto marks = turnaroundBars (barsIn (spans, bpb));
@@ -11229,7 +11251,7 @@ namespace pr7s
 
     bool sectionTypeWritesLane (ComposerLayer l, const ComposerState& s, const ComposerContext& c)
     {
-        if (s.syncLayer().has_value())
+        if (s.leaderOf (l).has_value() || s.lane (l).ownStyles)
             return false;
         if (droningBand (s, c) || drivingBand (s, c) || syncopatedBand (s, c) || mutedBand (s, c))
             return l == ComposerLayer::bass || l == ComposerLayer::chords || l == ComposerLayer::lead || l == ComposerLayer::drums;
