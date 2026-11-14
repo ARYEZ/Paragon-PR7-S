@@ -935,7 +935,7 @@ namespace pr7s
             if (p.thirdTargets)
                 return nearestOf ({ third }, around, low, high);
             if (p.landThirdFifth)
-                return nearestOf (r.nextBool() ? std::vector<int> { third } : std::vector<int> { fifth }, around, low, high);
+                return nearestOf ({ third, fifth }, around, low, high);
             const auto pick = r.nextFloat();
             return nearestOf (pick < 0.45f ? std::vector<int> { c.root } : pick < 0.75f ? std::vector<int> { fifth } : std::vector<int> { third },
                               around, low, high);
@@ -943,6 +943,7 @@ namespace pr7s
 
         auto cursor = 0.0;
         auto phraseNo = 0;
+        auto previousLand = -1;
         auto repeatedLast = false;
         auto calmUntil = -1.0;
         auto lastLanding = -1;   // (the index of the last held note: it rings until the next phrase)
@@ -1111,8 +1112,12 @@ namespace pr7s
             at.erase (std::unique (at.begin(), at.end(), [] (double a, double b) { return std::abs (a - b) < 1.0e-6; }), at.end());
 
             Phrase phrase { pickStart, landAt + hold, {} };
-            const auto centre = centreAt (landAt);
+            auto centre = centreAt (landAt);
+            // (FALLING MAJOR MELODY: each phrase lands lower than the last, starting high again at the bottom)
+            if (p.falling && previousLand > 0)
+                centre = previousLand - 2 < low + 5 ? (double) low + p.climb : juce::jmin (centre, (double) previousLand - 2.0);
             auto land = landingPitch (landAt, centre);
+            previousLand = land;
             // Pickups: by step into the landing, from above about two times in three.
             const auto falling = r.nextFloat() < 0.66f;
             {

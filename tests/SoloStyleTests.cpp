@@ -647,7 +647,12 @@ TEST_CASE ("0.116.0: the new styles' own habits", "[solo][solostyles][solo116]")
 TEST_CASE ("debug falling", "[.dbgfall]")
 {
     const auto spans = amBars (16);
-    const auto solo = composeSolo (SoloStyle::fallingMajorMelody, spans, 4.0, GuitarTuning::all()[0], {}, 0);
-    for (const auto& n : solo.notes)
-        std::printf ("%6.2f %5.2f %d e%d\n", n.beat, n.length, n.pitch, (int) n.effect);
+    for (const auto st : { SoloStyle::grungeMelody, SoloStyle::cycleTheme })
+        for (int v = 0; v < 3; ++v)
+        {
+            std::printf ("== %s %d\n", soloStyleName (st).toRawUTF8(), v);
+            const auto solo = composeSolo (st, spans, 4.0, GuitarTuning::all()[0], {}, v);
+            for (const auto& n : solo.notes)
+                std::printf ("%6.2f %5.2f %d e%d\n", n.beat, n.length, n.pitch, (int) n.effect);
+        }
 }
