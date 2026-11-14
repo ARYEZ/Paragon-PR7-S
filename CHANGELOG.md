@@ -2,6 +2,39 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.116.0
+
+The other chorus candidates from your song files: four more chorus types, and three more drum parts under the chorus types you already had. As before, each was read from your songs for its shape only; nothing is copied.
+
+**Four more chorus types.** A chorus block's TYPE menu now has these after the four from 0.115.0:
+- **TOM GROOVE RIFF:**
+  - The guitar plays off the beat, in eighths or single notes.
+  - The drums play toms where the hats would be. The other options are a march (the kick and the floor tom together on every sixteenth) and toms alone.
+  - The bass plays a burst of sixteenths from the downbeat, then leaves space. Later in the section it fills each bar's second half with the chord's notes.
+  - The lead can play an eighth-note figure in the upper middle.
+- **RING, THEN ANSWER:**
+  - The guitar rings a chord, then answers it with hits or with eighths.
+  - The drums are half time, with open hats or the ride.
+  - The lead plays long high notes that fall a step every two bars.
+- **HALF-TIME CHORDS WITH AN OCTAVE PEDAL:**
+  - The guitar holds its chords, or splits each bar into two halves.
+  - The lead picks one note of the key doubled at the octave on every eighth, changing only every four bars. It picks the note that sits best with those bars' chords.
+  - The drums play half time with a 3-3-2 kick, or the snare and a crash on 1 and 3.
+- **CHUG BAR, CHORD BAR:**
+  - The guitar plays a bar of chugs, then a bar of chords (or chugs only).
+  - The kick follows every chug.
+  - The lead can add a high three-note squeal falling over the end of every other bar.
+
+The keys can hold one soft high note a bar, or stay out. The bass's last option is still LOCKED WITH THE KICK.
+
+**More drums under the chorus types you had:**
+- **DRIVING** has two new drum parts:
+  - CRASH ON THE BACKBEAT: a crash with every snare on 2 and 4, the kick and a closed hat on 1 and 3.
+  - TRIBAL CALL & ANSWER: a two-bar call and answer. One bar has snare-and-crash hits against the kick; the next has the kick under side-stick clicks.
+- **DRONING** has THE GROOVE CARRIES ON: a busier groove with open hats, so the drums keep moving while the guitar rings.
+
+**What I couldn't check:** how any of it sounds. The tests check the shapes (where each note lands, which drums play, that every option is a different part), not the feel.
+
 ## 0.115.0
 
 Two of your asks: four new chorus types from your song files, and the guitar solo rebuilt from the Pink Floyd and Guns N' Roses solos you uploaded.

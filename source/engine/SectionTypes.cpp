@@ -102,7 +102,12 @@ namespace pr7s
                          { "PUSHED CHORDS UNDER A FIXED HOOK", "Power chords struck rarely and held, each change pushed a beat early, under a hook that keeps its notes over every chord", r, {}, c },
                          { "TWIN HARMONY, HALF TIME", "A lead line on a 3+3+2 figure doubled a third under, power chords rung the bar, half-time drums", r, {}, c },
                          { "SIXTEENTH WALL, HALF-TIME KIT", "Muted power chords on every sixteenth over a half-time backbeat, a three-chord turnaround every fourth bar", r, {}, c },
-                         { "GROUPED STREAM", "One guitar an unbroken wall of eighths, the bass and the kick in groups of fives with their rests off the beat", r, {}, c } };
+                         { "GROUPED STREAM", "One guitar an unbroken wall of eighths, the bass and the kick in groups of fives with their rests off the beat", r, {}, c },
+                         // (0.116.0) The other four.
+                         { "TOM GROOVE RIFF", "The toms carry the time, the guitar on the off-beats, a lead ostinato in eighths, the bass bursting then leaving space", r, {}, c },
+                         { "RING, THEN ANSWER", "A power chord rung a whole bar, answered next bar by hits after the beat; half time, a falling held lead", r, {}, c },
+                         { "HALF-TIME CHORDS WITH AN OCTAVE PEDAL", "Chords held in half time while one note doubled at the octave is picked in eighths over every chord", r, {}, c },
+                         { "CHUG BAR, CHORD BAR", "A bar of chugs on the low root answered by a bar of struck chords, a high squeal at the end of every other bar", r, {}, c } };
             }
             case 3:
             {
@@ -206,7 +211,8 @@ namespace pr7s
                 case ComposerLayer::chords: return { "HELD PADS", "ANSWERS IN BARS 3 AND 4", "HIGH EIGHTH PULSE", "SILENT" };
                 case ComposerLayer::lead: return { "RINGING ARPEGGIO", "HELD NOTES & A SQUEAL", "DOUBLES THE RHYTHM AN OCTAVE UP" };
                 case ComposerLayer::drums: return { "DRIVING BACKBEAT", "HALF TIME, KICK ON THE EIGHTHS", "CYMBALS ON THE BEATS, KICKS BETWEEN",
-                                                     "KICK WITH THE GUITAR", "DOUBLE KICK" };
+                                                     "KICK WITH THE GUITAR", "DOUBLE KICK",
+                                                     "CRASH ON THE BACKBEAT", "TRIBAL CALL & ANSWER" };   // (0.116.0)
                 case ComposerLayer::melody: break;
             }
         if (flavour == RiffFlavour::mutedDrive)
@@ -241,7 +247,8 @@ namespace pr7s
                                                 "OCTAVE PULSE", "WALKING INTO THE CHANGES", "WHOLE NOTES", "LOCKED WITH THE KICK" };
             case ComposerLayer::chords: return { "HIGH PULSE", "CLIMBING MOTIF", "HELD THIRD", "HELD PADS", "ARPEGGIO", "OCTAVE BELLS", "SILENT" };
             case ComposerLayer::lead: return { "OCTAVES ON THE THIRDS", "OCTAVES ON THE ROOTS", "MUTED PEDAL IN THREES" };
-            case ComposerLayer::drums: return { "OPEN HATS", "HALF TIME", "LOCKED TO THE PUSHES", "RIDE GROOVE", "TOM PULSE", "DOUBLE KICK", "CYMBALS ONLY" };
+            case ComposerLayer::drums: return { "OPEN HATS", "HALF TIME", "LOCKED TO THE PUSHES", "RIDE GROOVE", "TOM PULSE", "DOUBLE KICK", "CYMBALS ONLY",
+                                                "THE GROOVE CARRIES ON" };   // (0.116.0)
             case ComposerLayer::melody: break;
         }
         return {};
@@ -414,6 +421,14 @@ namespace pr7s
               { "SILENT", "HELD PADS" }, { "HALF TIME, CRASH EIGHTHS", "HALF TIME, RIDE EIGHTHS" }, {} },
             { "GROUPED STREAM", { "UNBROKEN EIGHTHS", "GROUPED FIVES" }, { "GROUPED FIVES", "DOUBLES THE GUITAR", "LOCKED WITH THE KICK" },
               { "HELD TOP NOTE", "SILENT" }, { "KICK IN GROUPS", "STRAIGHT BACKBEAT" }, {} },
+            { "TOM GROOVE RIFF", { "OFF-BEAT EIGHTHS", "OFF-BEAT SINGLE NOTES" }, { "BURST, THEN SPACE", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "HELD PAD NOTE", "SILENT" }, { "TOMS FOR HATS", "MARCH: KICK AND FLOOR TOM", "TOMS ONLY" }, { "EIGHTH OSTINATO", "SILENT" } },
+            { "RING, THEN ANSWER", { "RING, THEN HITS", "RING, THEN EIGHTHS" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "HELD PADS", "SILENT" }, { "HALF TIME, OPEN HATS", "HALF TIME, RIDE" }, { "FALLING HELD NOTES", "SILENT" } },
+            { "HALF-TIME CHORDS WITH AN OCTAVE PEDAL", { "HELD, THEN TWO HALVES", "HELD WHOLE" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "SILENT", "HELD PADS" }, { "HALF-TIME 3-3-2 KICK", "SNARE ON 1 AND 3" }, { "OCTAVE PEDAL", "SILENT" } },
+            { "CHUG BAR, CHORD BAR", { "CHUG BAR, CHORD BAR", "CHUG BARS ONLY" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "SILENT", "HELD PADS" }, { "KICK WITH THE CHUGS", "PLAIN BACKBEAT" }, { "FALLING SQUEAL", "SILENT" } },
         };
         for (const auto& list : lists)
             if (t == list.name)
