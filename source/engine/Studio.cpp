@@ -8565,7 +8565,30 @@ namespace pr7s
     }
 
     //==========================================================================
-    void Studio::newProject()
+    // (0.113.0, the owner: the studio hung closing or opening a song) Every track's plug-ins unloaded, one
+    // after another, as a step of the progress box each: Kontakt and its kind can take seconds each to go,
+    // and with nothing on screen the studio looked dead (and Windows called it "Not Responding").
+    void Studio::unloadSongTracks()
+    {
+        auto toUnload = 0;
+        for (const auto& track : project.tracks)
+            toUnload += (engine.getInstrument (track.id) != nullptr ? 1 : 0) + engine.getNumEffects (track.id);
+        auto done = 0;
+        const auto shown = toUnload >= 2;
+        for (const auto& track : project.tracks)
+        {
+            const auto here = (engine.getInstrument (track.id) != nullptr ? 1 : 0) + engine.getNumEffects (track.id);
+            if (shown && here > 0)
+                setProgressStage ((double) done / (double) toUnload, (double) here / (double) toUnload,
+                                  "Closing the song: unloading " + track.name + "'s plug-ins (" + juce::String (done + 1) + " of " + juce::String (toUnload) + ")");
+            engine.removeTrack (track.id);
+            done += here;
+        }
+        if (shown)
+            endProgress();
+    }
+
+    void Studio::newProject (bool starterTrack)
     {
         audioFolderOverride = juce::File();
         lastBackupHash = 0;
@@ -8584,8 +8607,7 @@ namespace pr7s
         removeAllEffects();
         forgetAllAudio();
         engine.stop();
-        for (const auto& track : project.tracks)
-            engine.removeTrack (track.id);
+        unloadSongTracks();
         project = {};
         padsChanged();
         file = juce::File();
@@ -8593,8 +8615,10 @@ namespace pr7s
         selectedTracks.clear();
         engine.setPosition (0.0);
         playStart = 0.0;
-        // A new song starts with one track on the studio's synth (PR7-K), ready to play.
-        addTrack ({});
+        // A new song starts with one track on the studio's synth (PR7-K), ready to play. (0.113.0) Not when
+        // the song only closes back to the Hub: the next song would unload it at once.
+        if (starterTrack)
+            addTrack ({});
         engine.update (project);
         linkSnapshots.clear();   // (0.91.0)
         chordSnapshots.clear();   // (0.92.0)
@@ -9980,8 +10004,7 @@ namespace pr7s
             onInstrumentGoing (0);
         removeAllEffects();
         engine.stop();
-        for (const auto& track : project.tracks)
-            engine.removeTrack (track.id);
+        unloadSongTracks();
         project = std::move (*loaded);
         for (const auto& track : project.tracks)   // (never a new track with an old one's number)
             project.nextTrackId = juce::jmax (project.nextTrackId, track.id + 1);

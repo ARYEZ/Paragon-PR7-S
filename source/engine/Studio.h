@@ -1373,7 +1373,7 @@ namespace pr7s
 
         //======================================================================
         // Files.
-        void newProject();
+        void newProject (bool starterTrack = true);   // (0.113.0: false = closed back to the Hub, no track)
         bool save (const juce::File&);
         // SAVE on screen (0.9.11): the file written on a thread of its own; `done` here after.
         void saveInBackground (const juce::File&, std::function<void (bool written)> done = {});
@@ -1667,6 +1667,7 @@ namespace pr7s
         void setControlValue (int busId, const AutomationLane& control, float value);   // the static setting, without writing
         void effectGoing (int busId, int slot);
         void removeAllEffects();
+        void unloadSongTracks();
         void recordUndoState();
         Project copyWithoutPluginStates (bool forUndo) const;   // (0.83.1)
         bool applyAutoColour();   // (0.79.0) the rule's colours onto its tracks; true if any changed

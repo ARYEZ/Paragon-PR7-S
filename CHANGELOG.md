@@ -2,6 +2,25 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.113.0
+
+Two of your reports: the screen pausing when you click a track, and the studio hanging when you close or open a song.
+
+**Closing a song shows its progress.** Closing a song unloads every plug-in in it, one after another. Kontakt and similar plug-ins can take several seconds each to unload. Before, nothing showed on screen while that happened, so the studio looked hung and Windows could call it "Not Responding". Now the progress box shows each track as its plug-ins unload ("Closing the song: unloading Bass's plug-ins (3 of 12)"). Opening a song does the same for the song it replaces, then shows each plug-in loading as before.
+
+**Closing back to the Hub no longer loads PR7-K for nothing.** Closing a song used to make a fresh empty song with a PR7-K track. The next song you opened unloaded that track straight away. Now closing to the Hub leaves no track at all, so one load and one unload are gone.
+
+**Clicking a track: what I found, and what I need from you.** I timed a track click in a heavy test song: 30 tracks of 2,000 notes each, the full window three screens wide, and the composer open with a 100,000-groove library. Each click took about 3 ms in the studio, plus about 40 ms to redraw the window. Nothing in the studio comes close to the second you see. That points at your plug-ins (Kontakt and the like) being asked something when a track is selected, and I can't load them here.
+
+To find it, the session log now writes down any pause of the screen over 0.7 s. It records what the screen was doing at that moment: which plug-in or which part of the studio, with the calls by name. It writes at most one such note every 15 seconds and 30 a session. A hang over 10 seconds is still written as FROZEN, as before.
+
+Please do this:
+1. Install 0.113.0.
+2. Click a few tracks, then close a song and open one.
+3. Send me the newest log from the Logs folder beside the studio's settings: `%APPDATA%\Paragon PR7-S\Logs`.
+
+The SLOW and FROZEN notes in it will show what to fix.
+
 ## 0.112.1
 
 **The composer is fast again with your 100,000-groove PR7-D library.** You said the composer lagged so much it was unusable. Your library was the cause.

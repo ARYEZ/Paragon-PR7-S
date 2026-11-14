@@ -2897,7 +2897,7 @@ void MainView::closeToHub()
             return;
         if (safe->studio.getEngine().isPlaying() || safe->studio.getEngine().isRecording())
             safe->studio.stop();
-        safe->studio.newProject();   // (the song closes: what's left is an empty one, unchanged)
+        safe->studio.newProject (false);   // (the song closes: what's left is empty, unchanged; no track loaded for nothing)
         safe->showHubAlone();
     });
 }
@@ -2927,6 +2927,8 @@ void MainView::showHubAlone()
 void MainView::showStudioAgain()
 {
     atHub = false;
+    if (studio.getProject().tracks.empty() && studio.getFile() == juce::File())
+        studio.newProject();   // (0.113.0: closed to the Hub with no track: back with the usual new song)
     if (auto* top = getTopLevelComponent(); top != nullptr && top != this)
     {
         top->setVisible (true);
