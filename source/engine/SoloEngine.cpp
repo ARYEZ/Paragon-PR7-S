@@ -1045,7 +1045,7 @@ namespace pr7s
                 ringOn (copyFrom->start + shift);
                 Phrase again { copyFrom->start + shift, copyFrom->end + shift, {} };
                 const auto steps = newNotes ? (r.nextBool() ? 2 : -2) : 0;
-                const auto octave = p.restate && t >= 0.5f ? 12 : 0;
+                const auto octave = p.restate && (copyFrom->start + shift) >= total * 0.5 - 1.0e-6 ? 12 : 0;   // (where the copy lands)
                 for (auto n : copyFrom->notes)
                 {
                     const auto sourceKey = std::lround (n.beat * 960.0);
