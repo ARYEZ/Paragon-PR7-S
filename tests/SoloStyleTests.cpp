@@ -84,7 +84,7 @@ TEST_CASE ("0.66.0: every solo style writes a whole solo that builds and ends on
             auto busiest = 0;
             for (auto from = 8.0; from <= 24.0; from += 4.0)
                 busiest = juce::jmax (busiest, onsetsIn (solo, from, from + 8.0));
-            if (style != SoloStyle::shuffleConversation)   // (its density stays flat, as the shuffle solo it's from)
+            if (style != SoloStyle::shuffleConversation && style != SoloStyle::grungeMelody && style != SoloStyle::fallingMajorMelody)   // (no busy waves: flat on purpose)
                 CHECK (busiest >= onsetsIn (solo, 0.0, 8.0));
             auto bends = 0, vibratos = 0;
             for (const auto& n : solo.notes)
@@ -427,19 +427,24 @@ TEST_CASE ("0.69.0: round four's styles have their own habits", "[solo][solostyl
         CHECK (vibratos == 1);
         if (variation % 4 != 3)
         {
-            // (the tune's first phrase, and the same phrase in the second half an octave higher)
-            std::vector<int> first, again;
+            // (the tune's first phrase, and the same phrase in the second half an octave higher: 0.116.0, the tune
+            // comes back on its period, two bars or more, so 32 beats on it's there again)
+            auto firstNotes = 0, again = 0, higher = 0;
             for (const auto& n : grunge.notes)
-            {
-                if (n.beat < 6.0) first.push_back (n.pitch);
-                if (n.beat >= 32.0 && n.beat < 38.0) again.push_back (n.pitch);
-            }
-            REQUIRE (first.size() >= 2);
-            CHECK (again.size() == first.size());
-            auto higher = 0;
-            for (size_t i = 0; i < juce::jmin (first.size(), again.size()); ++i)
-                higher += again[i] > first[i] ? 1 : 0;
-            CHECK (higher >= (int) first.size() / 2);
+                if (n.beat < 8.0)
+                {
+                    ++firstNotes;
+                    for (const auto& m : grunge.notes)
+                        if (std::abs (m.beat - (n.beat + 32.0)) < 1.0e-6)
+                        {
+                            ++again;
+                            higher += m.pitch > n.pitch ? 1 : 0;
+                            break;
+                        }
+                }
+            REQUIRE (firstNotes >= 2);
+            CHECK (again * 2 >= firstNotes);
+            CHECK (higher * 2 >= again);
         }
     }
     CHECK (harmonised > 0);

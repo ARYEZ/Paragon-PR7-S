@@ -922,7 +922,9 @@ namespace pr7s
         }
 
         struct Phrase { double start, end; std::vector<LineNote> notes; };
-        std::set<long> copied;   // (onsets of notes played again: left as they were, no new bends)
+        std::set<long> copied;   // (onsets of notes played again: they take their original's bend or vibrato)
+        struct CopyLink { long copyKey; int copyPitch; long sourceKey; int sourcePitch; };
+        std::vector<CopyLink> copyLinks;
         std::vector<Phrase> history;
         const auto inScale = [&] (int pitch, double beat) { return has (scaleAt (beat), pcOf (pitch)); };
         const auto snapToScale = [&] (int pitch, double beat) { return inScale (pitch, beat) ? pitch : nearestOf (scaleAt (beat), pitch, low, high); };
@@ -1004,6 +1006,8 @@ namespace pr7s
                 auto period = beatsPerBar;
                 while (period < head.end - head.start - 1.0e-6 && period < 8.0 * beatsPerBar)
                     period *= 2.0;
+                if (p.restate)
+                    period = juce::jmax (period, 2.0 * beatsPerBar);   // (room for the tune to ring before it comes back)
                 if (p.cycleTheme && cycle > 0.0)
                     period = cycle;
                 const auto nextCopy = std::ceil ((cursor - head.start) / period - 1.0e-6) * period;
@@ -1035,6 +1039,8 @@ namespace pr7s
                 const auto octave = p.restate && t >= 0.5f ? 12 : 0;
                 for (auto n : copyFrom->notes)
                 {
+                    const auto sourceKey = std::lround (n.beat * 960.0);
+                    const auto sourcePitch = n.pitch;
                     n.beat += shift;
                     if (newNotes)
                     {
@@ -1048,6 +1054,7 @@ namespace pr7s
                     notes.push_back (n);
                     again.notes.push_back (n);
                     copied.insert (std::lround (n.beat * 960.0));
+                    copyLinks.push_back ({ std::lround (n.beat * 960.0), n.pitch, sourceKey, sourcePitch });
                 }
                 lastLanding = (int) notes.size() - 1;
                 history.push_back (again);
@@ -1402,6 +1409,28 @@ namespace pr7s
             }
         }
         notes.insert (notes.end(), added.begin(), added.end());
+
+        // (0.116.0) A phrase played again bends and shakes as it did the first time (its notes written as theirs).
+        {
+            const auto bentBy = [] (const LineNote& n) { return n.effect == LineNote::Effect::bend ? juce::roundToInt (n.amount) : 0; };
+            for (const auto& link : copyLinks)
+            {
+                const LineNote* source = nullptr;
+                for (const auto& n : notes)
+                    if (std::lround (n.beat * 960.0) == link.sourceKey && n.pitch + bentBy (n) == link.sourcePitch)
+                        source = &n;
+                if (source == nullptr)
+                    continue;
+                for (auto& n : notes)
+                    if (std::lround (n.beat * 960.0) == link.copyKey && n.pitch == link.copyPitch && n.effect == LineNote::Effect::none)
+                    {
+                        n.pitch = source->pitch + (link.copyPitch - link.sourcePitch);
+                        n.effect = source->effect;
+                        n.amount = source->amount;
+                        break;
+                    }
+            }
+        }
 
         // (0.69.0) Tension: the note before each phrase's last note a half step above it, resolving down onto it
         // (where the last note isn't bent and the note before is a plain one in the same phrase).
