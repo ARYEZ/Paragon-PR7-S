@@ -97,3 +97,39 @@ TEST_CASE ("0.112.1: the composer's timings with a big groove library", "[.perf-
     std::cout << "paint " << timeMs ([&] { page->createComponentSnapshot (page->getLocalBounds(), true, 1.0f); }, 3) << " ms\n";
     std::cout << "timer tick " << timeMs ([&] { page->runTimerForTests(); }, 30) << " ms\n";
 }
+
+TEST_CASE ("0.112.1: the library's best grooves are the same found the quick way", "[composer][library][composerspeed]")
+{
+    BigLibrary library (3000);
+    Studio studio (false);
+    studio.setPr7dFolderForTests (library.presets);
+    const auto c = studio.getComposerContext (0.0);
+    REQUIRE (c.libraryGrooves.size() > 100);
+    // Shared, not copied: a second context holds the same list.
+    const auto again = studio.getComposerContext (0.0);
+    CHECK (&c.libraryGrooves.get() == &again.libraryGrooves.get());
+    // Every groove's words worked out when found.
+    for (const auto& g : c.libraryGrooves)
+        CHECK (g.sectionMask >= 0);
+    // The best few with a limit are the full list's first few, for every section, beats and fills; and grooves made
+    // by hand (not worked out) score the same.
+    std::vector<LibraryGroove> byHand (c.libraryGrooves.begin(), c.libraryGrooves.end());
+    for (auto& g : byHand)
+        g.sectionMask = -1;
+    for (int section = 0; section < 7; ++section)
+        for (const auto fills : { false, true })
+        {
+            const auto all = libraryGroovesFor (c.libraryGrooves, section, fills);
+            const auto best = libraryGroovesFor (c.libraryGrooves, section, fills, 24);
+            const auto handMade = libraryGroovesFor (byHand, section, fills);
+            REQUIRE (best.size() == juce::jmin ((size_t) 24, all.size()));
+            REQUIRE (handMade.size() == all.size());
+            for (size_t i = 0; i < best.size(); ++i)
+            {
+                CHECK (best[i].file == all[i].file);
+                CHECK (best[i].score == all[i].score);
+            }
+            for (size_t i = 0; i < all.size(); ++i)
+                CHECK (handMade[i].file == all[i].file);
+        }
+}

@@ -194,6 +194,8 @@ namespace pr7s
 
     Studio::~Studio()
     {
+        if (pr7dReading != nullptr && pr7dReading->thread.joinable())
+            pr7dReading->thread.join();   // (0.112.1)
         padPlayer.onPerform = nullptr;
         padPlayer.onPerformStop = nullptr;
         performer.reset();   // (its timer sends through the pad player)
@@ -2944,8 +2946,28 @@ namespace pr7s
         }
         // Read again when PR7-D has written its index since (or the folder changed).
         const auto date = folder.getChildFile ("Groove Index.xml").getLastModificationTime();
+        takePr7dReading();
         if (! keptPr7dRead || keptPr7d.folder != folder || date != keptPr7dIndexDate)
         {
+            // (0.112.1) In the app, on a thread of its own: what was read before is used meanwhile (tests read at once).
+            if (settings != nullptr && pr7dFolderOverride == juce::File())
+            {
+                if (pr7dReading == nullptr || pr7dReading->folder != folder || pr7dReading->date != date)
+                {
+                    if (pr7dReading != nullptr && pr7dReading->thread.joinable())
+                        pr7dReading->thread.join();
+                    pr7dReading = std::make_unique<Pr7dReading>();
+                    pr7dReading->folder = folder;
+                    pr7dReading->date = date;
+                    auto* reading = pr7dReading.get();
+                    reading->thread = std::thread ([reading]
+                    {
+                        reading->result = readPr7dLibrary (reading->folder);
+                        reading->done = true;
+                    });
+                }
+                return keptPr7d;
+            }
             keptPr7d = readPr7dLibrary (folder);
             keptPr7dIndexDate = date;
             keptPr7dRead = true;
@@ -2953,6 +2975,20 @@ namespace pr7s
                 SessionLog::note ("PR7-D's groove library: " + juce::String ((int) keptPr7d.grooves.size()) + " grooves (" + folder.getFullPathName() + ")");
         }
         return keptPr7d;
+    }
+
+    bool Studio::takePr7dReading() const
+    {
+        if (pr7dReading == nullptr || ! pr7dReading->done)
+            return false;
+        pr7dReading->thread.join();
+        keptPr7d = std::move (pr7dReading->result);
+        keptPr7dIndexDate = pr7dReading->date;
+        keptPr7dRead = true;
+        pr7dReading.reset();
+        if (keptPr7d.found)
+            SessionLog::note ("PR7-D's groove library: " + juce::String ((int) keptPr7d.grooves.size()) + " grooves (" + keptPr7d.folder.getFullPathName() + ")");
+        return true;
     }
 
     DrumNotes Studio::composerDrumNotes() const
@@ -8485,6 +8521,8 @@ namespace pr7s
         backupIfDue();   // (0.72.0: AUTO-SAVE)
         if (++pr7dLinkTicks % 15 == 0)
             readPr7dEdits();   // (0.108.0: edits made in PR7-D's song track, about twice a second)
+        if (takePr7dReading())
+            announce();   // (0.112.1: PR7-D's grooves read: the composer takes them)
         if (performer != nullptr)
         {
             // (0.39.0) The performance's tempo and bar, from the song at the playhead.

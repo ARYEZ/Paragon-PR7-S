@@ -2,6 +2,27 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.112.1
+
+**The composer is fast again with your 100,000-groove PR7-D library.** You said the composer lagged so much it was unusable. Your library was the cause.
+
+What was wrong: on every roll, generate, style change or song edit, the composer went through all 100,000 grooves word by word, twice, looking for "verse", "chorus", "fill" and so on in each name, and copied the whole list each time. Measured here with 100,000 grooves:
+
+| | 0.112.0 | 0.112.1 |
+|---|---|---|
+| ROLL / GENERATE | about 0.5 s | about 1.5 ms |
+| The drums lane's menu | 3.5 s | 3 ms |
+| Opening the composer | 0.5 s | 26 ms |
+| Reading PR7-D's library (once, and again after PR7-D changes it) | 1-1.4 s with the screen frozen | in the background, the screen free |
+
+What changed:
+- Each groove's words are read once, when the library is read, not on every click.
+- Choosing a groove keeps only the best few (it picks among the top 8, and fills among the top 4) instead of sorting all 100,000.
+- The groove list is shared, not copied every time the composer looks at it.
+- PR7-D's library is read on a thread of its own. The first time you open the composer in a session, the drums lane uses its own beats for a second or two, then switches to your library grooves once they're read.
+
+The grooves chosen are exactly the same as before: a test checks the quick way against the old one for every section, beats and fills.
+
 ## 0.112.0
 
 **COMPOSER TRACKS: choose which tracks each composer lane plays on, and play a lane on two (or more) tracks.** You asked for the bass lane to find your "Bass" track by default, and for the guitar to go to your guitar left and guitar right.

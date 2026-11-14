@@ -1,5 +1,8 @@
 #pragma once
 
+#include <atomic>
+#include <thread>
+
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include "ProjectLibrary.h"
@@ -1882,6 +1885,11 @@ namespace pr7s
         mutable Pr7dLibrary keptPr7d;
         mutable juce::Time keptPr7dIndexDate;
         mutable bool keptPr7dRead = false;
+        // (0.112.1) PR7-D's index read on a thread of its own in the app (the owner's 100,000 grooves held the screen
+        // over a second): the library kept until it's read, then swapped in by the timer and announced.
+        struct Pr7dReading { juce::File folder; juce::Time date; Pr7dLibrary result; std::atomic<bool> done { false }; std::thread thread; };
+        mutable std::unique_ptr<Pr7dReading> pr7dReading;
+        bool takePr7dReading() const;   // true when a finished read was swapped in
         struct KeptPr7dGrooves { juce::Time date; int style = -1; int bpm = 0; int bar = 0; size_t count = 0; DrumNotes notes = DrumNotes::asWritten; GrooveList grooves; };
         mutable KeptPr7dGrooves keptPr7dGrooves;
         std::shared_ptr<const AudioData> mediaPreviewSound;
