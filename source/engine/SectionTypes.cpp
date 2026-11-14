@@ -93,7 +93,17 @@ namespace pr7s
                          droning, open };
             }
             case 1: return { staccato, split, clean, muted, droning, sparse };
-            case 2: return { driving, syncopated, droning };
+            case 2:
+            {
+                // (0.115.0) Four more from the owner's 22 song files (shapes only; our names), after the first three.
+                const auto c = SectionType::Band::chorus;
+                const auto r = RiffFlavour::openChords;
+                return { driving, syncopated, droning,
+                         { "PUSHED CHORDS UNDER A FIXED HOOK", "Power chords struck rarely and held, each change pushed a beat early, under a hook that keeps its notes over every chord", r, {}, c },
+                         { "TWIN HARMONY, HALF TIME", "A lead line on a 3+3+2 figure doubled a third under, power chords rung the bar, half-time drums", r, {}, c },
+                         { "SIXTEENTH WALL, HALF-TIME KIT", "Muted power chords on every sixteenth over a half-time backbeat, a three-chord turnaround every fourth bar", r, {}, c },
+                         { "GROUPED STREAM", "One guitar an unbroken wall of eighths, the bass and the kick in groups of fives with their rests off the beat", r, {}, c } };
+            }
             case 3:
             {
                 // (0.105.0) A bridge's own types first (the owner's songs, shapes only; our names), then the old three.
@@ -388,6 +398,37 @@ namespace pr7s
         return {};
     }
 
+    // (0.115.0) The four chorus types' options, lane by lane (the bass's last always LOCKED WITH THE KICK; an empty lead
+    // list: the lead plays its own styles).
+    juce::StringArray chorusApproaches (const juce::String& type, ComposerLayer layer)
+    {
+        using L = ComposerLayer;
+        const auto t = type.trim().toUpperCase();
+        struct Lists { const char* name; juce::StringArray guitar, bass, keys, drums, lead; };
+        static const Lists lists[] {
+            { "PUSHED CHORDS UNDER A FIXED HOOK", { "PUSHED & HELD", "PUSHED, GALLOP ENDING" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "HIGH PEDAL & STEPS", "SILENT" }, { "HALF-TIME TWO-BAR", "DOUBLE KICK, GAP AFTER THE SNARE" }, { "FIXED HOOK", "HIGH TWO-NOTE HOOK" } },
+            { "TWIN HARMONY, HALF TIME", { "RUNG ON THE ONE", "LOCKS TO THE LINE AT THE END", "LOCKED TO THE LINE" }, { "WHOLE-NOTE ROOTS", "DOUBLES THE GUITAR", "LOCKED WITH THE KICK" },
+              { "HELD PADS", "SILENT" }, { "HALF TIME, CRASHES ON 1 AND 3", "HALF TIME, KICKS ON THE ANDS", "KICK WITH THE LINE" }, { "TWIN LINE A THIRD UNDER", "DOTTED ARPEGGIO" } },
+            { "SIXTEENTH WALL, HALF-TIME KIT", { "SIXTEENTH WALL", "WALL, OPEN ON THE BEATS" }, { "SIXTEENTHS ON THE ROOTS", "EIGHTHS ON THE ROOTS", "LOCKED WITH THE KICK" },
+              { "SILENT", "HELD PADS" }, { "HALF TIME, CRASH EIGHTHS", "HALF TIME, RIDE EIGHTHS" }, {} },
+            { "GROUPED STREAM", { "UNBROKEN EIGHTHS", "GROUPED FIVES" }, { "GROUPED FIVES", "DOUBLES THE GUITAR", "LOCKED WITH THE KICK" },
+              { "HELD TOP NOTE", "SILENT" }, { "KICK IN GROUPS", "STRAIGHT BACKBEAT" }, {} },
+        };
+        for (const auto& list : lists)
+            if (t == list.name)
+                switch (layer)
+                {
+                    case L::guitar: return list.guitar;
+                    case L::bass: return list.bass;
+                    case L::chords: return list.keys;
+                    case L::drums: return list.drums;
+                    case L::lead: return list.lead;
+                    default: return {};
+                }
+        return {};
+    }
+
     // (0.109.0) The breakdown types' options, lane by lane (the bass's always DOUBLES THE GUITAR, ROOTS HELD, LOCKED WITH
     // THE KICK; only HALF-TIME OPEN CHORDS has a lead list: the others' lead plays its own styles).
     juce::StringArray breakdownApproaches (const juce::String& type, ComposerLayer layer)
@@ -548,6 +589,8 @@ namespace pr7s
             return interludeApproaches (t->name, layer);
         if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::bookend)
             return bookendApproaches (t->name, layer);
+        if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && t->band == SectionType::Band::chorus)
+            return chorusApproaches (t->name, layer);
         if (layer == ComposerLayer::guitar)
             if (const auto t = sectionTypeCalled (s.sectionType); t.has_value() && ! t->guitarFlavours.empty())
             {

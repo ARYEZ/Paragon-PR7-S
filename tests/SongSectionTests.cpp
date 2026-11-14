@@ -3198,3 +3198,156 @@ TEST_CASE ("0.111.0: the intro and outro types' shapes", "[sections][types][book
                 CHECK (n.pitch == GmDrum::crash);
     }
 }
+
+TEST_CASE ("0.115.0: the four chorus types from the owner's songs, every lane's options a different part", "[sections][types][chorus115]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const std::vector<juce::String> names { "PUSHED CHORDS UNDER A FIXED HOOK", "TWIN HARMONY, HALF TIME", "SIXTEENTH WALL, HALF-TIME KIT", "GROUPED STREAM" };
+    const auto chorus = sectionTypesFor ("Chorus");
+    REQUIRE (chorus.size() == 3 + names.size());
+    CHECK (chorus[0].name == "DRIVING");   // (the first three kept in their places)
+    for (size_t i = 0; i < names.size(); ++i)
+    {
+        CHECK (chorus[3 + i].name == names[i]);
+        CHECK (sectionTypeCalled (names[i])->band == SectionType::Band::chorus);
+    }
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << ";";
+        return k;
+    };
+    for (const auto& name : names)
+    {
+        ComposerState s;
+        applySectionType (s, "Chorus", name);
+        REQUIRE (sectionBand (s) == SectionType::Band::chorus);
+        for (const auto l : composerLayers())
+        {
+            const auto options = sectionApproaches (s, l);
+            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && ! options.isEmpty()));
+            if (options.isEmpty())
+                continue;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) options.size());
+            std::set<juce::String> seen;
+            for (const auto& idea : choices)
+            {
+                INFO (name << " " << composerLayerName (l) << " " << idea.style);
+                CHECK (idea.notes.size() + (idea.style.containsIgnoreCase ("out") ? 1 : 0) > 0);
+                seen.insert (key (idea));
+            }
+            INFO (name << " " << composerLayerName (l));
+            CHECK (seen.size() == choices.size());
+        }
+        const auto all = composeLayers (s, spans, c);
+        for (const auto& idea : all)
+            for (const auto& n : idea.notes)
+                CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+    }
+}
+
+TEST_CASE ("0.115.0: the chorus types' shapes", "[sections][types][chorus115]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (Am F C G a bar each; the low string A0 = 33: Am 33, F 41, C 36, G 43)
+    const auto typed = [] (const juce::String& name, int guitar = -1, int bass = -1, int drums = -1, int lead = -1)
+    {
+        ComposerState s;
+        applySectionType (s, "Chorus", name);
+        s.lane (ComposerLayer::guitar).approach = guitar;
+        s.lane (ComposerLayer::bass).approach = bass;
+        s.lane (ComposerLayer::drums).approach = drums;
+        s.lane (ComposerLayer::lead).approach = lead;
+        s.lane (ComposerLayer::lead).on = true;
+        return s;
+    };
+    const auto at = [] (const LineIdea& idea, double beat)
+    {
+        std::vector<int> pitches;
+        for (const auto& n : idea.notes)
+            if (std::abs (n.beat - beat) < 1.0e-6)
+                pitches.push_back (n.pitch);
+        std::sort (pitches.begin(), pitches.end());
+        return pitches;
+    };
+    // PUSHED CHORDS: each change struck a beat early and held over the bar line.
+    {
+        const auto all = composeLayers (typed ("PUSHED CHORDS UNDER A FIXED HOOK", 0, 0, 0, 0), spans, c);
+        const auto& g = all[(size_t) ComposerLayer::guitar];
+        REQUIRE (! at (g, 0.0).empty());
+        CHECK (at (g, 0.0).front() == 33);
+        CHECK (at (g, 3.0).front() == 41);   // (F pushed onto bar 1's fourth beat)
+        CHECK (at (g, 4.0).empty());
+        CHECK (at (g, 7.0).front() == 36);
+        // The bass doubles the pushes.
+        const auto& b = all[(size_t) ComposerLayer::bass];
+        CHECK (! at (b, 3.0).empty());
+        CHECK (at (b, 4.0).empty());
+        // The hook: only the key's 1, 2, 3 and 5 (A minor: A B C E), the same two bars every time.
+        const auto& lead = all[(size_t) ComposerLayer::lead];
+        REQUIRE (! lead.notes.empty());
+        for (const auto& n : lead.notes)
+        {
+            const auto pc = n.pitch % 12;
+            CHECK ((pc == 9 || pc == 11 || pc == 0 || pc == 4));
+        }
+        for (const auto& n : lead.notes)
+            if (n.beat < 8.0 - 1.0e-6)
+                CHECK (at (lead, n.beat + 8.0) == std::vector<int> { n.pitch });
+    }
+    // TWIN HARMONY: two voices a third apart, the snare on 3 (half time).
+    {
+        const auto all = composeLayers (typed ("TWIN HARMONY, HALF TIME", 0, 0, 0, 0), spans, c);
+        const auto& lead = all[(size_t) ComposerLayer::lead];
+        for (const auto beat : { 0.0, 0.75, 1.5, 2.0 })
+        {
+            const auto p = at (lead, beat);
+            REQUIRE (p.size() == 2);
+            CHECK ((p[1] - p[0] == 3 || p[1] - p[0] == 4));
+        }
+        CHECK (at (lead, 12.0).size() == 2);   // (the fourth bar one held pair)
+        CHECK (at (lead, 12.75).empty());
+        const auto& d = all[(size_t) ComposerLayer::drums];
+        const auto snareAt = [&] (double beat) { const auto p = at (d, beat); return std::find (p.begin(), p.end(), 38) != p.end(); };
+        CHECK (snareAt (2.0));
+        CHECK_FALSE (snareAt (1.0));
+        CHECK_FALSE (snareAt (3.0));
+        const auto& g = all[(size_t) ComposerLayer::guitar];
+        CHECK (at (g, 0.0).size() == 3);
+        CHECK (at (g, 0.75).empty());   // (rung on the one)
+        const auto locked = composeLayers (typed ("TWIN HARMONY, HALF TIME", 2), spans, c)[(size_t) ComposerLayer::guitar];
+        CHECK (at (locked, 0.75).size() == 3);   // (on the line's 3+3+2)
+    }
+    // SIXTEENTH WALL: every sixteenth, the turnaround's three chords in bar 4 (G, G a step under A, then A).
+    {
+        const auto all = composeLayers (typed ("SIXTEENTH WALL, HALF-TIME KIT", 0, 0, 0), spans, c);
+        const auto& g = all[(size_t) ComposerLayer::guitar];
+        for (int k = 0; k < 16; ++k)
+            CHECK (at (g, k * 0.25).size() == 3);
+        CHECK (at (g, 12.0).front() == 43);
+        CHECK (at (g, 15.0).front() == 33);
+        const auto& b = all[(size_t) ComposerLayer::bass];
+        CHECK (at (b, 15.0).front() % 12 == 9);
+        CHECK (at (b, 0.25).size() == 1);
+    }
+    // GROUPED STREAM: grouped fives leave the sixth and the twelfth eighth of every two bars empty.
+    {
+        const auto all = composeLayers (typed ("GROUPED STREAM", 1, 0, 0), spans, c);
+        const auto& g = all[(size_t) ComposerLayer::guitar];
+        CHECK (! at (g, 2.0).empty());
+        CHECK (at (g, 2.5).empty());
+        CHECK (at (g, 5.5).empty());
+        CHECK (! at (g, 6.0).empty());
+        const auto unbroken = composeLayers (typed ("GROUPED STREAM", 0), spans, c)[(size_t) ComposerLayer::guitar];
+        for (int k = 0; k < 64; ++k)
+            CHECK (! at (unbroken, k * 0.5).empty());
+        const auto& b = all[(size_t) ComposerLayer::bass];
+        CHECK (! at (b, 0.0).empty());
+        CHECK (at (b, 2.5).empty());
+    }
+}
