@@ -297,7 +297,7 @@ void ArrangeView::showAddSectionMenu (int insertAt, juce::Point<int> where)
         auto& studio = safe->studio;
         if (insertAt < 0)
             safe->selectSection (studio.appendSongSection (name, 8));
-        else if (studio.insertSongSection (insertAt, name, 8))
+        else if (studio.insertSongSection (insertAt, name, 8, false))
             safe->selectSection (insertAt);
         safe->repaint();
     });
@@ -344,8 +344,8 @@ void ArrangeView::showSectionMenu (int index)
         length.addItem (4, "Other...");
         menu.addSubMenu ("Section", rename);
         menu.addSubMenu ("Length (what follows moves)", length);
-        menu.addSubMenu ("Insert a Section Before", before);
-        menu.addSubMenu ("Insert a Section After", after);
+        menu.addSubMenu ("Insert an Empty Section Before", before);
+        menu.addSubMenu ("Insert an Empty Section After", after);
         menu.addItem (2, "Duplicate (a linked copy after it: edit one, both change)");
         menu.addItem (7, "Duplicate as Its Own Copy (not linked)");
         menu.addItem (8, "Unlink (its own from now on; its music stays)", b.link > 0);
@@ -409,12 +409,12 @@ void ArrangeView::showSectionMenu (int index)
             studio.setSongSectionBars (index, chosen - 500);
         else if (chosen >= 1000 && chosen < 1000 + names.size())
         {
-            if (studio.insertSongSection (index, names[chosen - 1000], 8))
+            if (studio.insertSongSection (index, names[chosen - 1000], 8, false))
                 safe->selectSection (index);
         }
         else if (chosen >= 2000 && chosen < 2000 + names.size())
         {
-            if (studio.insertSongSection (index + 1, names[chosen - 2000], 8))
+            if (studio.insertSongSection (index + 1, names[chosen - 2000], 8, false))
                 safe->selectSection (index + 1);
         }
         else if (chosen >= 3000 && chosen < 3000 + names.size())

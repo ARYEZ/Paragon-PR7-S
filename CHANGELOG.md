@@ -2,6 +2,38 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.119.0
+
+You asked for Cubase's Insert Silence / Delete Silence to move the whole song, and found that the section menu's insert made a copy of the Intro. Both fixed.
+
+**Insert Silence and Delete Time move everything, when the range covers every track.**
+- Press **2** for the Range tool and drag from the top track to the bottom one over the bars you want, e.g. bar 1 to bar 5 for four bars before the song. Then right-click and choose **Insert Silence** (Ctrl+Shift+E) or **Delete Time** (Shift+Backspace).
+- With every track in the range, it now moves:
+  - every track's parts, hidden tracks too;
+  - the chord track;
+  - the markers;
+  - the tempo changes;
+  - the time-signature changes;
+  - the automation, the master's included;
+  - the SECTIONS row.
+- Before, only the parts moved, so the chords, sections and tempo ended up out of line with the music.
+- **The SECTIONS row:**
+  - Silence on a block's edge (bar 1 before the Intro, for example) adds a new empty block of that many bars, named like the block it goes in front of.
+  - Silence inside a block makes that block longer.
+  - Delete Time shortens the blocks it covers and removes any block wholly inside it.
+  - A block made longer or shorter is unlinked from its linked copies, since its music no longer matches theirs.
+  - A block holds 64 bars at most. Anything past that becomes a new block after it.
+- **Whole bars:** the signatures and the SECTIONS row follow only when the range is whole bars (it is when SNAP is on and you drag along the bar lines). A range of a beat or two still moves the music, chords, markers, tempo and automation, but leaves the signatures and the blocks as they were.
+- A range over only some tracks works as before: just those tracks' parts move.
+- It's all one undo step.
+
+**The block menu's "Insert a Section Before / After" adds an empty block.**
+- It's renamed "Insert an Empty Section Before / After".
+- Before, choosing a name the song already had (Intro before the Intro) made a linked copy of that block, music and all. Now it's always an empty block of 8 bars; change its LENGTH to 4 if you want.
+- For a linked copy, use **Duplicate**.
+
+**What I couldn't check:** nothing here is sound, so the tests cover it: four bars inserted at bar 1 and taken out again (the notes, chords, marker, tempo ramp, the 3/4 change moving from bar 9 to bar 13, the automation, the blocks), silence inside a block, Delete Time across two blocks and over a whole one, a range over one track only, and the menu's empty block.
+
 ## 0.118.0
 
 The verse round: ten new verse types from your song files, all in 4/4, plus two drum ideas. As before, they're shapes only; nothing is copied.

@@ -2677,10 +2677,40 @@ namespace pr7s
         changed();
     }
 
+    bool Studio::coversEveryTrack (const Range& range) const
+    {
+        auto any = false;
+        for (const auto& track : project.tracks)
+            if (! track.isChannel() && isTrackShown (track.id))
+            {
+                any = true;
+                if (std::find (range.trackIds.begin(), range.trackIds.end(), track.id) == range.trackIds.end())
+                    return false;
+            }
+        return any;
+    }
+
     void Studio::deleteRange (const Range& range, bool closeGap)
     {
         if (range.isEmpty())
             return;
+        if (closeGap && coversEveryTrack (range))   // (0.119.0: the whole song closes up, hidden tracks too)
+        {
+            for (auto& track : project.tracks)
+            {
+                if (track.frozen || track.isChannel())
+                    continue;
+                splitTrackAt (track, range.start, project.tempoMap());
+                splitTrackAt (track, range.end, project.tempoMap());
+                track.parts.erase (std::remove_if (track.parts.begin(), track.parts.end(),
+                                                   [&] (const Part& part) { return inside (part, range.start, range.end); }),
+                                   track.parts.end());
+                shiftFrom (track, range.end, -range.length());
+            }
+            shiftSongTime (range.start, range.length(), false);
+            changed();
+            return;
+        }
         for (const auto id : range.trackIds)
             if (auto* track = project.findTrack (id))
             {
@@ -2728,6 +2758,18 @@ namespace pr7s
     {
         if (range.isEmpty())
             return;
+        if (coversEveryTrack (range))   // (0.119.0: the whole song moves on, hidden tracks too)
+        {
+            for (auto& track : project.tracks)
+                if (! track.frozen && ! track.isChannel())
+                {
+                    splitTrackAt (track, range.start, project.tempoMap());
+                    shiftFrom (track, range.start, range.length());
+                }
+            shiftSongTime (range.start, range.length(), true);
+            changed();
+            return;
+        }
         for (const auto id : range.trackIds)
             if (auto* track = project.findTrack (id))
             {
@@ -13746,6 +13788,112 @@ namespace pr7s
             std::stable_sort (out.begin(), out.end(), [] (const AutomationPoint& a, const AutomationPoint& b) { return a.beat < b.beat; });
             return out;
         }
+
+        // (0.119.0: shared by the SECTIONS row and Insert Silence / Delete Time over every track)
+        void carryTempo (Project& project, const std::vector<Carry>& carries)
+        {
+            if (! project.tempoEvents.empty())
+            {
+                const auto map = project.tempoMap();
+                std::vector<TempoEvent> events;
+                for (const auto& c : carries)
+                {
+                    events.push_back ({ c.from + c.delta, map.bpmAt (c.from), false });
+                    for (const auto& e : project.tempoEvents)
+                        if (e.beat > c.from + edge && e.beat < c.to - edge)
+                            events.push_back ({ e.beat + c.delta, e.bpm, e.ramp });
+                }
+                std::stable_sort (events.begin(), events.end(), [] (const TempoEvent& a, const TempoEvent& b) { return a.beat < b.beat; });
+                std::vector<TempoEvent> oneEach;
+                for (const auto& e : events)
+                    if (! oneEach.empty() && std::abs (oneEach.back().beat - e.beat) < edge)
+                        oneEach.back() = e;
+                    else
+                        oneEach.push_back (e);
+                if (oneEach.empty() || oneEach.front().beat > edge)
+                    oneEach.insert (oneEach.begin(), { 0.0, map.bpmAt (0.0), false });
+                oneEach.front().beat = 0.0;
+                project.tempoEvents = oneEach;
+            }
+        }
+
+        void carryChordsMarkersAutomation (Project& project, const std::vector<Carry>& carries)
+        {
+            // 5. The chords (each its own length first) and the scales.
+            {
+                auto& ct = project.chordTrack;
+                const auto chords = withLengths (ct, project.beatsPerBar());
+                std::vector<ChordEvent> events;
+                for (const auto& c : carries)
+                    for (const auto& e : chords)
+                    {
+                        const auto from = juce::jmax (e.beat, c.from), to = juce::jmin (e.beat + e.length, c.to);
+                        if (to - from >= shortestChord)
+                            events.push_back ({ from + c.delta, e.chord, to - from });
+                    }
+                if (! ct.autoScales && ! ct.scales.empty())
+                {
+                    std::vector<ScaleEvent> scales;
+                    for (const auto& c : carries)
+                    {
+                        scales.push_back ({ c.from + c.delta, ct.keyAt (c.from, project.chordPads.key()) });
+                        for (const auto& e : ct.scales)
+                            if (e.beat > c.from + edge && e.beat < c.to - edge)
+                                scales.push_back ({ e.beat + c.delta, e.key });
+                    }
+                    std::stable_sort (scales.begin(), scales.end(), [] (const ScaleEvent& a, const ScaleEvent& b) { return a.beat < b.beat; });
+                    ct.scales = scales;
+                }
+                ct.events = events;
+                ct.sort();
+                if (ct.autoScales)
+                    ct.scales = ct.events.empty() ? std::vector<ScaleEvent> {} : scalesFromChords (ct.events, project.chordPads.key());
+            }
+
+            // 6. Markers: each with its start's window (a block copied: its markers copied, with new IDs).
+            {
+                std::vector<Marker> markers;
+                auto& mt = project.markerTrack;
+                for (const auto& m : mt.markers)
+                {
+                    auto first = true;
+                    for (const auto& c : carries)
+                        if (m.start >= c.from - edge && m.start < c.to - edge)
+                        {
+                            auto copy = m;
+                            copy.start += c.delta;
+                            copy.end = m.cycle ? m.end + c.delta : copy.start;
+                            if (! first)
+                                copy.id = 0;
+                            first = false;
+                            markers.push_back (copy);
+                        }
+                }
+                for (auto& m : markers)
+                    if (m.id == 0)
+                    {
+                        MarkerTrack t;
+                        t.markers = markers;
+                        m.id = t.nextId (m.cycle);
+                    }
+                mt.markers = markers;
+                mt.sort();
+            }
+
+            // 7. Automation, every lane (tracks' and the master's), points and trims.
+            const auto carryLanes = [&carries] (std::vector<AutomationLane>& lanes)
+            {
+                for (auto& lane : lanes)
+                {
+                    lane.points = carryPoints (lane.points, carries);
+                    lane.trim = carryPoints (lane.trim, carries);
+                }
+            };
+            for (auto& track : project.tracks)
+                if (! track.frozen)
+                    carryLanes (track.automation);
+            carryLanes (project.masterAutomation);
+        }
     }
 
     bool Studio::relayoutSections (const std::vector<SectionMove>& moves, bool announce)
@@ -13847,29 +13995,7 @@ namespace pr7s
         carries.push_back ({ oldEnd, std::numeric_limits<double>::infinity(), newEnd - oldEnd });   // what follows the row
 
         // 3. The tempo: each window starts at the tempo it had; what's inside moves with it.
-        if (! project.tempoEvents.empty())
-        {
-            const auto map = project.tempoMap();
-            std::vector<TempoEvent> events;
-            for (const auto& c : carries)
-            {
-                events.push_back ({ c.from + c.delta, map.bpmAt (c.from), false });
-                for (const auto& e : project.tempoEvents)
-                    if (e.beat > c.from + edge && e.beat < c.to - edge)
-                        events.push_back ({ e.beat + c.delta, e.bpm, e.ramp });
-            }
-            std::stable_sort (events.begin(), events.end(), [] (const TempoEvent& a, const TempoEvent& b) { return a.beat < b.beat; });
-            std::vector<TempoEvent> oneEach;
-            for (const auto& e : events)
-                if (! oneEach.empty() && std::abs (oneEach.back().beat - e.beat) < edge)
-                    oneEach.back() = e;
-                else
-                    oneEach.push_back (e);
-            if (oneEach.empty() || oneEach.front().beat > edge)
-                oneEach.insert (oneEach.begin(), { 0.0, map.bpmAt (0.0), false });
-            oneEach.front().beat = 0.0;
-            project.tempoEvents = oneEach;
-        }
+        carryTempo (project, carries);
         const auto tempo = project.tempoMap();
 
         // 4. Every track's parts: cut at the windows' edges, each piece carried (a block copied: twice), the rest
@@ -13904,80 +14030,8 @@ namespace pr7s
             track.parts = std::move (placed);
         }
 
-        // 5. The chords (each its own length first) and the scales.
-        {
-            auto& ct = project.chordTrack;
-            const auto chords = withLengths (ct, project.beatsPerBar());
-            std::vector<ChordEvent> events;
-            for (const auto& c : carries)
-                for (const auto& e : chords)
-                {
-                    const auto from = juce::jmax (e.beat, c.from), to = juce::jmin (e.beat + e.length, c.to);
-                    if (to - from >= shortestChord)
-                        events.push_back ({ from + c.delta, e.chord, to - from });
-                }
-            if (! ct.autoScales && ! ct.scales.empty())
-            {
-                std::vector<ScaleEvent> scales;
-                for (const auto& c : carries)
-                {
-                    scales.push_back ({ c.from + c.delta, ct.keyAt (c.from, project.chordPads.key()) });
-                    for (const auto& e : ct.scales)
-                        if (e.beat > c.from + edge && e.beat < c.to - edge)
-                            scales.push_back ({ e.beat + c.delta, e.key });
-                }
-                std::stable_sort (scales.begin(), scales.end(), [] (const ScaleEvent& a, const ScaleEvent& b) { return a.beat < b.beat; });
-                ct.scales = scales;
-            }
-            ct.events = events;
-            ct.sort();
-            if (ct.autoScales)
-                ct.scales = ct.events.empty() ? std::vector<ScaleEvent> {} : scalesFromChords (ct.events, project.chordPads.key());
-        }
-
-        // 6. Markers: each with its start's window (a block copied: its markers copied, with new IDs).
-        {
-            std::vector<Marker> markers;
-            auto& mt = project.markerTrack;
-            for (const auto& m : mt.markers)
-            {
-                auto first = true;
-                for (const auto& c : carries)
-                    if (m.start >= c.from - edge && m.start < c.to - edge)
-                    {
-                        auto copy = m;
-                        copy.start += c.delta;
-                        copy.end = m.cycle ? m.end + c.delta : copy.start;
-                        if (! first)
-                            copy.id = 0;
-                        first = false;
-                        markers.push_back (copy);
-                    }
-            }
-            for (auto& m : markers)
-                if (m.id == 0)
-                {
-                    MarkerTrack t;
-                    t.markers = markers;
-                    m.id = t.nextId (m.cycle);
-                }
-            mt.markers = markers;
-            mt.sort();
-        }
-
-        // 7. Automation, every lane (tracks' and the master's), points and trims.
-        const auto carryLanes = [&carries] (std::vector<AutomationLane>& lanes)
-        {
-            for (auto& lane : lanes)
-            {
-                lane.points = carryPoints (lane.points, carries);
-                lane.trim = carryPoints (lane.trim, carries);
-            }
-        };
-        for (auto& track : project.tracks)
-            if (! track.frozen)
-                carryLanes (track.automation);
-        carryLanes (project.masterAutomation);
+        // 5-7. The chords and scales, the markers, the automation.
+        carryChordsMarkersAutomation (project, carries);
 
         sections.blocks = laid.blocks;
         sections.shown = true;
@@ -13987,6 +14041,150 @@ namespace pr7s
         if (announce)
             changed();
         return true;
+    }
+
+    void Studio::shiftSongTime (double at, double length, bool insert)
+    {
+        if (length <= edge)
+            return;
+        const auto oldMap = project.signatures();
+        const auto oldPlaces = sectionPlaces (project.songSections, oldMap);
+        const auto oldRowEnd = oldMap.beatOfBar (project.songSections.totalBars());
+
+        // Whole bars? (Only then do the signatures and the SECTIONS row follow: their bars are counted.)
+        auto bars = 0;
+        const auto startBar = oldMap.barAt (at);
+        if (oldMap.isBarLine (at))
+        {
+            if (insert)
+            {
+                const auto barLength = oldMap.barLengthAt (at);
+                const auto n = length / barLength;
+                if (std::abs (n - std::round (n)) < 1.0e-6 && std::round (n) >= 1.0)
+                    bars = (int) std::round (n);
+            }
+            else if (oldMap.isBarLine (at + length))
+                bars = oldMap.barAt (at + length) - startBar;
+        }
+
+        // 1. Signatures, by bars.
+        if (bars > 0)
+        {
+            std::vector<SignatureEvent> events { { 0, project.numerator, project.denominator } };
+            for (const auto& c : project.signatureChanges)
+                events.push_back (c);
+            std::vector<SignatureEvent> moved;
+            if (insert)
+            {
+                auto here = oldMap.segmentOfBar (startBar).event;   // the new bars take the signature in force there
+                here.bar = startBar;
+                for (auto e : events)
+                {
+                    if (e.bar >= startBar)
+                        e.bar += bars;
+                    moved.push_back (e);
+                }
+                moved.push_back (here);
+            }
+            else
+            {
+                const auto endBar = startBar + bars;
+                auto after = oldMap.segmentOfBar (endBar).event;   // what played after the gap goes on there
+                after.bar = startBar;
+                for (auto e : events)
+                    if (e.bar < startBar)
+                        moved.push_back (e);
+                    else if (e.bar > endBar)
+                    {
+                        e.bar -= bars;
+                        moved.push_back (e);
+                    }
+                moved.push_back (after);
+            }
+            std::stable_sort (moved.begin(), moved.end(), [] (const SignatureEvent& a, const SignatureEvent& b) { return a.bar < b.bar; });
+            std::vector<SignatureEvent> oneEach;   // (the last given for a bar wins)
+            for (const auto& e : moved)
+                if (! oneEach.empty() && oneEach.back().bar == e.bar)
+                    oneEach.back() = e;
+                else
+                    oneEach.push_back (e);
+            project.numerator = oneEach.front().numerator;
+            project.denominator = oneEach.front().denominator;
+            std::vector<SignatureEvent> changes (oneEach.begin() + 1, oneEach.end());
+            project.signatureChanges = tidySignatures (project.numerator, project.denominator, changes);
+        }
+
+        // 2. Tempo, chords and scales, markers, automation: as the SECTIONS row carries them.
+        std::vector<Carry> carries;
+        constexpr auto never = std::numeric_limits<double>::infinity();
+        if (insert)
+            carries = { { 0.0, at, 0.0 }, { at, never, length } };
+        else
+            carries = { { 0.0, at, 0.0 }, { at + length, never, -length } };
+        carryTempo (project, carries);
+        carryChordsMarkersAutomation (project, carries);
+
+        // 3. The SECTIONS row (whole bars, and only where it reaches): on a block's edge a new empty block, inside
+        //    one that block grows; deleting shortens the blocks it covers (a block wholly inside goes). A block
+        //    changed is unlinked from its copies: its music no longer matches theirs.
+        auto& blocks = project.songSections.blocks;
+        if (bars > 0 && ! blocks.empty() && at < oldRowEnd - edge)
+        {
+            const auto unlink = [] (SongSection& b) { b.link = 0; };
+            if (insert)
+            {
+                for (size_t i = 0; i < oldPlaces.size(); ++i)
+                {
+                    const auto& p = oldPlaces[i];
+                    if (startBar == p.firstBar)
+                    {
+                        SongSection b;
+                        b.id = project.songSections.nextId();
+                        b.name = blocks[i].name;
+                        b.bars = bars;
+                        blocks.insert (blocks.begin() + (long) i, b);
+                        break;
+                    }
+                    if (startBar > p.firstBar && startBar < p.firstBar + p.bars)
+                    {
+                        unlink (blocks[i]);
+                        blocks[i].bars += bars;
+                        if (const auto over = blocks[i].bars - mostSectionBars; over > 0)   // (a block holds 64 bars at most)
+                        {
+                            blocks[i].bars = mostSectionBars;
+                            SongSection b;
+                            b.id = project.songSections.nextId();
+                            b.name = blocks[i].name;
+                            b.bars = over;
+                            blocks.insert (blocks.begin() + (long) i + 1, b);
+                        }
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                const auto endBar = startBar + bars;
+                std::vector<SongSection> kept;
+                for (size_t i = 0; i < oldPlaces.size(); ++i)
+                {
+                    const auto& p = oldPlaces[i];
+                    const auto from = juce::jmax (p.firstBar, startBar), to = juce::jmin (p.firstBar + p.bars, endBar);
+                    auto b = blocks[i];
+                    if (to > from)
+                    {
+                        b.bars -= to - from;
+                        unlink (b);
+                    }
+                    if (b.bars > 0)
+                        kept.push_back (b);
+                }
+                blocks = kept;
+            }
+            for (auto& b : blocks)   // (a link with one block left is no link)
+                if (b.link > 0 && std::count_if (blocks.begin(), blocks.end(), [&b] (const SongSection& o) { return o.link == b.link; }) < 2)
+                    b.link = 0;
+        }
     }
 
     //==========================================================================

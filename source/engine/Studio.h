@@ -902,6 +902,9 @@ namespace pr7s
         RangeClip copyRange (const Range&) const;              // Ctrl+C
         RangeClip cutRange (const Range&, bool closeGap);      // Ctrl+X; Cut Time (Ctrl+Shift+X)
         void insertSilence (const Range&);                     // Ctrl+Shift+E: what's at or after its start moves on by its length
+        // (0.119.0) A range over every track shown (channels aside) moves the whole song: every track's parts, the
+        // chord track, markers, tempo, signatures (whole bars only), automation and the SECTIONS row.
+        bool coversEveryTrack (const Range&) const;
         // Paste (Ctrl+V): at a beat, from a track down (a clip's tracks onto
         // the tracks below it in order; audio only onto audio tracks, MIDI
         // onto instrument tracks, else that track's slices are left out).
@@ -1604,6 +1607,7 @@ namespace pr7s
         // its new length) or -1 (new and empty: what was there moves on). One undo step.
         struct SectionMove { int from = -1; SongSection block; };
         bool relayoutSections (const std::vector<SectionMove>&, bool announce = true);   // (announce: changed())
+        void shiftSongTime (double at, double length, bool insert);   // (0.119.0: everything but the parts, which the caller moves)
         // (0.91.0) A block's music (relative to its start; part ids 0), by track id; its chords with their lengths.
         struct SectionContent
         {
