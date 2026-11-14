@@ -48,7 +48,14 @@ namespace pr7s
                      { "CYCLE IN QUARTERS", "A still clean shape in eighths with a three-note cycle in quarters over it, ending on a two-bar stop", RiffFlavour::openChords, {}, pre },
                      { "CHUGS UNDER THE SHAPE", "Low muted chugs with the bass and kick on them, the verse's still shape played high over them", RiffFlavour::openChords, {}, pre },
                      { "STABS & GAPS", "The whole band on short stabs together, then silence for the voice, a pickup into the next bar", RiffFlavour::openChords, {}, pre },
-                     { "RISING BASS", "Chords held or tremolo picked while the bass climbs a step a bar underneath", RiffFlavour::openChords, {}, pre } };
+                     { "RISING BASS", "Chords held or tremolo picked while the bass climbs a step a bar underneath", RiffFlavour::openChords, {}, pre },
+                     // (0.123.0) From the owner's rock songs (shapes only; our names).
+                     { "SHIFTING BURSTS, KICK JOINS", "Muted bursts of four sixteenths that move a beat later each bar, half time at first, then the kick joins every burst", RiffFlavour::openChords, {}, pre },
+                     { "SNARE CARPET BUILD", "No kick: the snare and a crash on every sixteenth for a few bars over the riff, then the groove comes back with a shaker", RiffFlavour::openChords, {}, pre },
+                     { "PEDAL WITH OPEN-HAT BEATS", "The low root on every sixteenth but the downbeat, climbing into the next bar, with open hats on the beats", RiffFlavour::openChords, {}, pre },
+                     { "CHROMATIC CHUG, TREMOLO TRIAD", "A chug rocking between the root and the half step above, a high triad tremolo picked over it, into a snare roll", RiffFlavour::openChords, {}, pre },
+                     { "OFF-BEAT SNARE, LOW BURSTS", "The snare and an open hat on every off eighth, no backbeat, under low muted bursts", RiffFlavour::openChords, {}, pre },
+                     { "THREES ACROSS THE BAR", "A waltz feel kept in 4/4: three-beat cells that run across the bar lines, straight eighths from halfway", RiffFlavour::openChords, {}, pre } };
             for (auto& t : sectionTypesFor ("Verse"))   // (0.118.0: the whole verse list, its new types too)
                 types.push_back (std::move (t));
             return types;
@@ -653,6 +660,35 @@ namespace pr7s
                 case L::lead:
                 case L::melody: break;
             }
+        {
+            // (0.123.0) The rock songs' pre-choruses.
+            static const juce::StringArray bassList { "DOUBLES THE GUITAR", "ROOT QUARTERS", "LOCKED WITH THE KICK" };
+            struct Lists { const char* name; juce::StringArray guitar, keys, drums, lead; };
+            static const std::vector<Lists> lists {
+                { "SHIFTING BURSTS, KICK JOINS", { "SHIFTING BURSTS", "BURSTS EVERY BAR" }, { "SILENT", "LOW DRONE" },
+                  { "HALF TIME, THEN THE KICK JOINS", "KICK WITH THE BURSTS" }, { "SILENT", "LONG NOTES" } },
+                { "SNARE CARPET BUILD", { "ROOT EIGHTHS", "HELD CHORDS" }, { "SILENT", "HELD PADS" },
+                  { "SNARE CARPET, THEN THE GROOVE", "SNARE CARPET ALL THROUGH" }, {} },
+                { "PEDAL WITH OPEN-HAT BEATS", { "SIXTEENTH PEDAL, CLIMBING", "EIGHTH PEDAL" }, { "SILENT", "LOW DRONE" },
+                  { "OPEN HATS ON THE BEATS", "HALF TIME" }, {} },
+                { "CHROMATIC CHUG, TREMOLO TRIAD", { "CHUG WITH THE HALF STEP", "CHUG ON THE ROOT" }, { "SILENT", "HELD PADS" },
+                  { "GROOVE, THEN OFF-BEAT KICKS", "OFF-BEAT KICKS ALL THROUGH" }, { "TREMOLO TRIAD", "SILENT" } },
+                { "OFF-BEAT SNARE, LOW BURSTS", { "LOW BURSTS", "RUNG BAR, SILENT BAR" }, { "SILENT", "HELD PADS" },
+                  { "SNARE ON THE OFF-BEATS", "WITH EIGHTH CRASHES" }, {} },
+                { "THREES ACROSS THE BAR", { "QUARTER AND FOUR EIGHTHS", "PEDAL WITH A FALLING NOTE" }, { "SILENT", "HELD PADS" },
+                  { "THREE-BEAT CELLS", "STRAIGHT HALF TIME" }, {} } };
+            for (const auto& t : lists)
+                if (type == t.name)
+                    switch (layer)
+                    {
+                        case L::guitar: return t.guitar;
+                        case L::bass: return bassList;
+                        case L::chords: return t.keys;
+                        case L::drums: return t.drums;
+                        case L::lead: return t.lead;
+                        case L::melody: break;
+                    }
+        }
         if (type == "RISING BASS")
             switch (layer)
             {

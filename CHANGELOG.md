@@ -2,6 +2,34 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.123.0
+
+Two things you asked for: the speed pass (the lag dragging the cycle, and the rough first click in the track list), and the pre-chorus ideas from your first 22 MIDI files (the rock bands).
+
+**Dragging the cycle, in the MIDI editor and the arrangement**
+- **What was wrong:** every mouse move while you dragged the cycle (an end, or the whole range) counted as a full change to the song. The studio rebuilt every track for the audio engine. It saved a whole copy of the song as an undo step. Every open view (track list, Inspector, mixer, MIDI editor, arrangement) redrew from scratch. On a big song that's a lot of work dozens of times a second.
+- **Now:** while you drag, only the cycle's two ends go to the audio engine, so what you hear loops at the new place straight away. Only the cycle strips are redrawn. When you let go, it's one change and **one undo step** (it used to leave dozens in the Edit History).
+- **Clicking or dragging the playhead along a ruler** had the same problem: every view rebuilt itself each time. They all draw the playhead from their own clocks anyway, so that's gone too.
+
+**The first click in the track list after opening a song**
+- **What I think it was:** to know whether a track's instrument has a window to open, the studio asks the plug-in. A VST3 answers by building its whole editor. That's slow for big instruments (Kontakt, for one), and it happened on the first click on each track, through the Inspector. Now the studio takes it that a VST3 has an editor (nearly all do) without building it. If one hasn't, its window shows its knobs plainly.
+- **Two smaller things on the same path:**
+  - A song with a PR7-D drums track now sends PR7-D its song while the song opens (inside the progress box), not on your first click.
+  - A track click (or arming, or SNAP) no longer makes the studio re-check every linked section block's music. Only real edits do.
+- **What I couldn't check:** your plug-ins aren't here, so I can't time your exact click. The session log notes SLOW pauses since 0.113.0: if a first click still sticks, the log will say where.
+
+**Six new pre-chorus types** (shapes only from the songs, our names; after the existing ones in a pre-chorus block's TYPE menu)
+- **SHIFTING BURSTS, KICK JOINS:** muted bursts of four sixteenths, moved a beat later the next bar, then two bars of eighths into the next chord. The drums start half time and from halfway the kick joins every burst. The last bar is snare eighths and a stop.
+- **SNARE CARPET BUILD:** no kick. The snare and a crash on every sixteenth (one left out a bar for breath) for four bars over the riff, then the groove comes back with a shaker in eighths.
+- **PEDAL WITH OPEN-HAT BEATS:** the low root on every sixteenth but the downbeat, every second bar climbing a half step at a time into the next. Open hats on the beats, the snare on the "e" of 1, on 2 and on 4.
+- **CHROMATIC CHUG, TREMOLO TRIAD:** a chug rocking between the root and the half step above (every fourth bar on the minor third). The lead can tremolo-pick a high triad over it: the key's own, or the relative major in a minor key. The plain groove turns into off-beat kicks halfway and ends in a sixteenth snare roll.
+- **OFF-BEAT SNARE, LOW BURSTS:** the snare and an open hat on every off eighth, never on 2 and 4, under low muted bursts. Optionally a crash on every eighth.
+- **THREES ACROSS THE BAR:** the waltz feel from one song kept in 4/4 (you said no meter changes). Three-beat cells run across the bar lines (a power chord, then four muted eighths), with matching three-beat drum cells. It turns into straight eighths from halfway.
+
+Every type's bass offers DOUBLES THE GUITAR, ROOT QUARTERS and LOCKED WITH THE KICK.
+
+**What I couldn't check:** how they sound. The tests check the shapes (where the bursts, pedals, hats and snares land, the triad's notes, the three-beat cells) and that every option of every lane writes a different part.
+
 ## 0.122.0
 
 You chose the bridges and breakdowns first from the ideas left in your first 22 MIDI files (the rock bands). That's **13 new section types**: 9 bridges and 4 breakdowns. As before, only the songs' shapes were used, never their notes, and the names are ours.

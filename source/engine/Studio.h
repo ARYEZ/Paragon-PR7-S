@@ -1346,7 +1346,11 @@ namespace pr7s
         // outside 20-300 BPM. `factor`: the Equivalent Tempo Scaling.
         bool processTempo (double start, double end, double newSeconds, double* factor = nullptr);
         static double tempoScaling (const TempoMap&, double start, double end, double newSeconds);
-        void setCycle (double start, double end);
+        // (0.123.0) `undoable` false: a drag's step (the locators only, to the engine and the two views'
+        // cycle strips; no undo step, no rebuild). The drag's release calls `finishCycleDrag` for the one step.
+        void setCycle (double start, double end, bool undoable = true);
+        void finishCycleDrag();
+        juce::uint64 getCycleVersion() const noexcept { return cycleVersion; }
         void setCycleOn (bool);
         // Snap on/off (J) and the quantize value in beats (4: 1/1 ... 1/16: 1/64), the toolbar's (0.9.10).
         void setSnap (bool);
@@ -1799,6 +1803,9 @@ namespace pr7s
         void announce();               // (0.34.3) sendChangeMessage, the version counted
         void mixOnly (bool onlyTheMix);
         juce::uint64 changeVersion = 1;
+        juce::uint64 cycleVersion = 1;   // (0.123.0) the locators moved by a drag's step
+        bool cycleStepped = false;
+        std::vector<int> sectionPassTracks;   // (0.123.0) the tracks when the sections were last looked at
         bool mixOnlyAsked = false, mixOnlyBroken = false;
         AlignSettings alignSettings;   // (without a settings file: the tests)
         float dropHighlight = defaultDropHighlight;   // (without a settings file: the tests)   // (a linked change being passed on: not passed on again)

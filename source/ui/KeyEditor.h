@@ -325,6 +325,11 @@ public:
 
 private:
     juce::uint64 seenChange = 0;   // (0.57.1) the studio's change version last acted on
+    // (0.123.0) The cycle as last drawn: a cycle drag's step repaints only the strips that changed.
+    juce::uint64 seenCycle = 0;
+    double shownCycleStart = -1.0, shownCycleEnd = -1.0;
+    bool shownCycleOn = false;
+    void repaintCycleChange();
     enum class Gesture { none, position, audition, band, muteBand, move, resize, resizeStart, draw, erase, velocity, velocityHandle,
                          controllerDraw, controllerErase, controllerBand, controllerMove, controllerHandle, controllerLine, laneResize,
                          cycle, cycleLeft, cycleRight, cycleMove };   // (0.81.0) the ruler's cycle strip

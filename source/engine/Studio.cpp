@@ -292,8 +292,17 @@ namespace pr7s
             if (track.frozen)
                 if (const auto kept = frozenParts.find (track.id); kept != frozenParts.end() && track.parts != kept->second)
                     track.parts = kept->second;
-        if (! mixStepOnly)
+        // (0.123.0) Only an undo step edits music: a track clicked, a track armed, SNAP turned on didn't, yet each
+        // sliced every track's parts once per linked block to look. A change made otherwise is caught by the next step.
+        // (and whenever the tracks themselves changed: a block's snapshot holds each track's music in it)
+        std::vector<int> trackIds;
+        trackIds.reserve (project.tracks.size());
+        for (const auto& t : project.tracks)
+            trackIds.push_back (t.id);
+        const auto tracksChanged = trackIds != sectionPassTracks;
+        if (! mixStepOnly && (undoable || linksReset || chordsReset || tracksChanged))   // (after an undo or an open: the new look taken)
         {
+            sectionPassTracks = std::move (trackIds);
             rewriteChangedSections();   // (0.92.0: a block's chords changed: its music rewritten to fit, in this undo step)
             syncLinkedSections();   // (0.91.0: an edit to one linked block copied into the others, in this undo step)
             noteSectionChords();
@@ -330,6 +339,16 @@ namespace pr7s
         // change, and each click stuck for about a second (0.9.9).
         if (const auto known = editorAnswers.find (plugin); known != editorAnswers.end())
             return known->second;
+        // (0.123.0, the owner: the first click on a track after opening a song stuck about five seconds) Even
+        // asked once, the first time is the cost: selecting the track made the Inspector ask its instrument,
+        // and the plug-in built its whole editor to answer. A VST3 or AU is taken to have one without asking
+        // (nearly all do; the window shows JUCE's plain parameter editor for one that hasn't).
+        if (const auto* hosted = dynamic_cast<const juce::AudioPluginInstance*> (plugin))
+        {
+            const auto format = hosted->getPluginDescription().pluginFormatName;
+            if (format == "VST3" || format == "AudioUnit" || format == "VST")
+                return editorAnswers[plugin] = true;
+        }
         return editorAnswers[plugin] = plugin->hasEditor();
     }
 
@@ -6631,17 +6650,40 @@ namespace pr7s
         changed();
     }
 
-    void Studio::setCycle (double start, double end)
+    void Studio::setCycle (double start, double end, bool undoable)
     {
         start = juce::jmax (0.0, start);
         project.loopStart = start;
         project.loopEnd = juce::jmax (start + 0.25, end);
+        // (0.123.0, the owner: dragging the cycle lagged, in the MIDI editor and the arrangement) Every mouse move
+        // went through changed(): every track rebuilt for the engine, a whole copy of the song for undo, the
+        // sections' checks and every open view rebuilt and redrawn. A drag's step now hands the engine only the
+        // locators and tells the views to redraw their cycle strips; the release makes it one change, one undo step.
+        if (! undoable && ! composerAudition.has_value() && exportJob == nullptr)
+        {
+            engine.updateCycle (project);
+            modified = true;
+            cycleStepped = true;
+            ++cycleVersion;
+            sendChangeMessage();
+            return;
+        }
+        cycleStepped = false;
+        ++cycleVersion;
         changed();
+    }
+
+    void Studio::finishCycleDrag()
+    {
+        if (std::exchange (cycleStepped, false))
+            changed();
     }
 
     void Studio::setCycleOn (bool on)
     {
         project.loopOn = on;
+        cycleStepped = false;   // (this change takes a drag's steps with it)
+        ++cycleVersion;
         changed();
     }
 
@@ -6766,7 +6808,9 @@ namespace pr7s
         engine.setPosition (beats);
         if (! engine.isPlaying())
             playStart = juce::jmax (0.0, beats);
-        announce();
+        // (0.123.0) Not a change of the song: every view draws the playhead from its own timer. A new change
+        // version made every open view rebuild on each mouse move of a playhead drag along the ruler.
+        sendChangeMessage();
     }
 
     //==========================================================================
@@ -10199,6 +10243,7 @@ namespace pr7s
         syncLinkedSections();
         noteSectionChords();   // (0.92.0)
         engine.update (project);
+        syncPr7dLinks();   // (0.123.0: PR7-D's song sent while the song opens, not on the first click after)
         clearHistory();
         recordUndoState();
         updateLiveTrack();

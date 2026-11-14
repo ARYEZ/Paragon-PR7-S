@@ -343,8 +343,44 @@ bool KeyEditor::editing() const noexcept
 }
 
 //==============================================================================
+void KeyEditor::repaintCycleChange()
+{
+    const auto& project = studio.getProject();
+    const auto start = project.loopStart, end = project.loopEnd;
+    const auto on = project.loopOn;
+    const auto known = shownCycleStart >= 0.0 && on == shownCycleOn;
+    const auto oldStart = shownCycleStart, oldEnd = shownCycleEnd;
+    shownCycleStart = start;
+    shownCycleEnd = end;
+    shownCycleOn = on;
+    if (! known)
+    {
+        repaint();
+        return;
+    }
+    // The wash down the view changes only where the old and the new range differ; the strip along the
+    // ruler is a gradient over the whole range, so all of it (the old and the new) along the ruler.
+    const auto xOf = [this] (double beat) { return xForBeat (beat); };
+    const auto pad = 10.0f;
+    auto spanOf = [&] (double a, double b, float top, float bottom)
+    {
+        auto x1 = xOf (juce::jmin (a, b)), x2 = xOf (juce::jmax (a, b));
+        if (x1 > x2) std::swap (x1, x2);
+        repaint (juce::Rectangle<float> (x1 - pad, top, x2 - x1 + 2.0f * pad, bottom - top).getSmallestIntegerContainer().getIntersection (getLocalBounds()));
+    };
+    const auto height = (float) getHeight();
+    spanOf (oldStart, start, 0.0f, height);
+    spanOf (oldEnd, end, 0.0f, height);
+    spanOf (juce::jmin (oldStart, start), juce::jmax (oldEnd, end), 0.0f, notesTop());
+}
+
 void KeyEditor::changeListenerCallback (juce::ChangeBroadcaster*)
 {
+    if (studio.getCycleVersion() != seenCycle)
+    {
+        seenCycle = studio.getCycleVersion();
+        repaintCycleChange();
+    }
     // (0.57.1) Only the mix moved (a fader, a pan, a send level): nothing here shows it. The docked
     // editor at 200% across three screens repainted whole on every step of a fader drag.
     if (studio.getChangeVersion() == seenChange)
@@ -1696,7 +1732,7 @@ void KeyEditor::mouseDrag (const juce::MouseEvent& event)
             if (std::abs (now - cycleDownBeat) >= juce::jmax (grid, 1.0 / 16.0) * 0.5)
             {
                 cycleMoved = true;
-                studio.setCycle (juce::jmin (cycleDownBeat, now), juce::jmax (cycleDownBeat, now));
+                studio.setCycle (juce::jmin (cycleDownBeat, now), juce::jmax (cycleDownBeat, now), false);
             }
             return;
         }
@@ -1708,7 +1744,7 @@ void KeyEditor::mouseDrag (const juce::MouseEvent& event)
             const auto now = juce::jmax (0.0, pr7s::snap (beatForX (point.x), grid));
             const auto other = gesture == Gesture::cycleLeft ? cycleOriginalStart + cycleOriginalLength : cycleOriginalStart;
             if (std::abs (now - other) > 1.0e-9)
-                studio.setCycle (juce::jmin (now, other), juce::jmax (now, other));
+                studio.setCycle (juce::jmin (now, other), juce::jmax (now, other), false);
             return;
         }
         case Gesture::cycleMove:
@@ -1716,7 +1752,7 @@ void KeyEditor::mouseDrag (const juce::MouseEvent& event)
             {
                 cycleMoved = true;
                 const auto start = juce::jmax (0.0, pr7s::snap (cycleOriginalStart + beatForX (point.x) - cycleDownBeat, grid));
-                studio.setCycle (start, start + cycleOriginalLength);
+                studio.setCycle (start, start + cycleOriginalLength, false);
             }
             return;
 
@@ -1917,9 +1953,12 @@ void KeyEditor::mouseUp (const juce::MouseEvent&)
         case Gesture::cycleMove:   // a click in the range: cycle on or off
             if (! cycleMoved)
                 studio.setCycleOn (! studio.getProject().loopOn);
+            else
+                studio.finishCycleDrag();   // (0.123.0: the drag's steps made one change, one undo step)
             return;
         case Gesture::cycleLeft:
         case Gesture::cycleRight:
+            studio.finishCycleDrag();
             return;
         case Gesture::move:
             if (! moved)

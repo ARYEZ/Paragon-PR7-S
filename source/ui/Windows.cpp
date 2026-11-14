@@ -691,6 +691,8 @@ namespace Windows
             const pr7s::SessionLog::Step step ("Opening the window of " + instance.getName() + " (" + trackName + ")");
             if (auto* editor = instance.createEditorAndMakeActive())
                 setContentOwned (editor, true);
+            else   // (0.123.0: one taken to have an editor that hasn't: its knobs, plainly)
+                setContentOwned (new juce::GenericAudioProcessorEditor (instance), true);
         }
         setResizable (instance.hasEditor() && getContentComponent() != nullptr
                           && dynamic_cast<juce::AudioProcessorEditor*> (getContentComponent())->isResizable(),

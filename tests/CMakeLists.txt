@@ -73,6 +73,7 @@ add_executable(ParagonPR7STests
     HistoryTests.cpp
     Speed083Tests.cpp
     Speed0852Tests.cpp
+    Speed0123Tests.cpp
     Speed0113Tests.cpp
     CleanGuitarTests.cpp
     MyRiffLaneTests.cpp

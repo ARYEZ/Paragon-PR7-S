@@ -994,6 +994,14 @@ namespace pr7s
         }
     }
 
+    void Engine::updateCycle (const Project& project)
+    {
+        const juce::ScopedLock sl (lock);
+        settings.loopOn = project.loopOn;
+        settings.loopStart = project.loopStart;
+        settings.loopEnd = juce::jmax (project.loopStart + 0.0625, project.loopEnd);
+    }
+
     void Engine::updateMix (const Project& project)
     {
         const juce::ScopedLock sl (lock);

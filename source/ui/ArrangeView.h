@@ -511,6 +511,15 @@ private:
     pr7s::Studio& studio;
 
     juce::uint64 seenChange = 0;   // (0.34.3) the studio's change version last acted on
+    // (0.123.0) The cycle as last drawn: a cycle drag's step repaints only the strips that changed.
+    juce::uint64 seenCycle = 0;
+    double shownCycleStart = -1.0, shownCycleEnd = -1.0;
+    bool shownCycleOn = false;
+    void repaintCycleChange();
+public:
+    int getCycleRepaints() const noexcept { return cycleRepaints; }   // (tests)
+private:
+    int cycleRepaints = 0;
     Timeline& timeline;
     Selection selection;
     int selectedPartId = 0;                     // its part's id (found again after the song changes)

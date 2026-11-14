@@ -90,6 +90,9 @@ namespace pr7s
         // song; nothing rebuilt (events, clips, lanes, drum maps, routing, mute and solo as they were). For a
         // fader, pan, send, EQ or BOOSTER drag's steps; the release does a full `update`.
         void updateMix (const Project&);
+        void updateCycle (const Project&);   // (0.123.0) only the locators and CYCLE (a cycle drag's step)
+        // The locators the engine plays by (message thread: it's the only writer).
+        std::pair<double, double> getCycleRange() const noexcept { return { settings.loopStart, settings.loopEnd }; }
         // (0.78.0) The MIDI editor's SOLO: while set (a track's id), the next updates hear that track alone (and
         // what it's routed into), whatever the tracks' own solos say. 0: off. Message thread only.
         void setEditorSolo (int trackId) noexcept { editorSolo = trackId; }
