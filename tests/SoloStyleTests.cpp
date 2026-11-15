@@ -46,7 +46,7 @@ namespace
 
 TEST_CASE ("0.66.0: solo style names are ours, round trip, and never a player's", "[solo][solostyles]")
 {
-    REQUIRE (soloStyles().size() == 58);   // (0.116.0: ten more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: nine more)
+    REQUIRE (soloStyles().size() == 64);   // (0.116.0: ten more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more)
     CHECK (soloStyles().front() == SoloStyle::automatic);
     for (const auto s : soloStyles())
     {
@@ -481,7 +481,7 @@ namespace
 
 TEST_CASE ("0.116.0: the new solo styles are there, with our names", "[solo][solostyles][solo116]")
 {
-    REQUIRE (soloStyles().size() == 58);   // (0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: nine more)
+    REQUIRE (soloStyles().size() == 64);   // (0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more)
     for (const auto* name : { "SINGING BENDS", "SHUFFLE CONVERSATION", "SLOW BUILD WITH RAKES", "FALLING MAJOR MELODY", "SUNG IN THE GAPS",
                               "ROLLING SEQUENCES", "LAID-BACK SWEET BENDS", "THEME EVERY ROUND", "TWO SPEEDS", "LICK TWICE TO END" })
         CHECK (soloStyleNamed (name) != SoloStyle::automatic);
@@ -1473,4 +1473,84 @@ TEST_CASE ("0.134.0: the Pantera round's styles have their own habits", "[solo][
     CHECK (sameBends >= 2);
     CHECK (releases >= 8);
     CHECK (pedals >= 16);
+}
+
+TEST_CASE ("0.134.0: the rest of the Pantera ideas have their own habits", "[solo][solostyles][solo134]")
+{
+    const auto spans = amBars (16);   // (64 beats)
+    const auto& tuning = GuitarTuning::all()[0];
+    auto tritoneCells = 0, dimTriplets = 0, harmonies = 0, tenths = 0, scoops = 0, rises = 0, earlyEntries = 0;
+    for (int variation = 0; variation < 4; ++variation)
+    {
+        INFO ("variation " << variation);
+        {
+            // TRITONE STAIRCASE: four bars of held notes from beat 2, each a tritone over the one before.
+            const auto solo = composeSolo (SoloStyle::tritoneStaircase, spans, 4.0, tuning, {}, variation, 0.0, 120.0);
+            std::vector<int> held;
+            for (const auto& n : solo.notes)
+                if (n.beat < 16.0 && std::abs (std::fmod (n.beat, 4.0) - 1.0) < 1.0e-6 && n.length >= 2.5)
+                    held.push_back (n.pitch);
+            REQUIRE (held.size() == 4);
+            for (size_t i = 1; i < held.size(); ++i)
+                CHECK (held[i] - held[i - 1] == 6);
+            for (size_t i = 2; i < solo.notes.size(); ++i)
+                tritoneCells += solo.notes[i].pitch == solo.notes[i - 1].pitch + 4 && solo.notes[i - 1].pitch == solo.notes[i - 2].pitch + 1 ? 1 : 0;
+        }
+        {
+            // SHUFFLE SNARL: diminished triplets; swung; a bend into a dive to end.
+            const auto solo = composeSolo (SoloStyle::shuffleSnarl, spans, 4.0, tuning, {}, variation, 0.0, 120.0);
+            for (size_t i = 2; i < solo.notes.size(); ++i)
+                dimTriplets += solo.notes[i].pitch == solo.notes[i - 1].pitch + 3 && solo.notes[i - 1].pitch == solo.notes[i - 2].pitch + 3
+                            && std::abs (solo.notes[i].beat - solo.notes[i - 1].beat - 1.0 / 3.0) < 1.0e-6 ? 1 : 0;
+            CHECK (lastOf (solo).effect == LineNote::Effect::bendDive);
+        }
+        {
+            // BREAKDOWN TRILL: harmony notes a minor third under.
+            const auto solo = composeSolo (SoloStyle::breakdownTrill, spans, 4.0, tuning, {}, variation, 0.0, 82.0);
+            for (size_t i = 1; i < solo.notes.size(); ++i)
+                harmonies += solo.notes[i].harmony && solo.notes[i].beat == solo.notes[i - 1].beat
+                          && solo.notes[i - 1].pitch - solo.notes[i].pitch == 3 ? 1 : 0;
+        }
+        {
+            // SLOW EASTERN TWINS: a harmony an octave and a third over; long notes scooped from a minor third under.
+            const auto solo = composeSolo (SoloStyle::slowEasternTwins, spans, 4.0, tuning, {}, variation, 0.0, 108.0);
+            for (const auto& h : solo.notes)
+                if (h.harmony)
+                    for (const auto& n : solo.notes)
+                        if (! n.harmony && n.beat == h.beat && h.pitch - n.pitch >= 15 && h.pitch - n.pitch <= 16)
+                            ++tenths;
+            for (const auto& n : solo.notes)
+                scoops += n.effect == LineNote::Effect::scoop && n.amount == 3.0f ? 1 : 0;
+        }
+        {
+            // HELD LINE & RISING CELLS: notes coming in an eighth before the bar line; cells bent a half step.
+            const auto solo = composeSolo (SoloStyle::heldLineRisingCells, spans, 4.0, tuning, {}, variation, 0.0, 120.0);
+            for (const auto& n : solo.notes)
+            {
+                earlyEntries += n.beat < 32.0 && std::abs (std::fmod (n.beat, 4.0) - 3.5) < 1.0e-6 && n.length >= 3.0 ? 1 : 0;
+                rises += n.effect == LineNote::Effect::bend && n.amount == 1.0f ? 1 : 0;
+            }
+        }
+        {
+            // STATED, RAISED, DROPPED: silence after the first phrase; the last quarter low; dived to end.
+            const auto solo = composeSolo (SoloStyle::statedRaisedDropped, spans, 4.0, tuning, {}, variation, 0.0, 103.0);
+            auto longGap = false;
+            auto reach = 0.0;
+            for (const auto& n : solo.notes)
+            {
+                longGap = longGap || (n.beat < 24.0 && n.beat - reach >= 3.0);
+                reach = juce::jmax (reach, n.beat + n.length);
+            }
+            CHECK (longGap);
+            CHECK (medianPitch (solo, 50.0, 62.0) < medianPitch (solo, 16.0, 40.0));
+            CHECK (lastOf (solo).effect == LineNote::Effect::dive);
+        }
+    }
+    CHECK (tritoneCells >= 16);
+    CHECK (dimTriplets >= 8);
+    CHECK (harmonies >= 40);
+    CHECK (tenths >= 8);
+    CHECK (scoops >= 4);
+    CHECK (rises >= 8);
+    CHECK (earlyEntries >= 12);
 }

@@ -50,7 +50,10 @@ namespace pr7s
                                  dottedBendChain, hookThirdsHook, bentRiffSolo, tremoloPedalOutro, burstAndBend,
                                  // (0.134.0, from the owner's Pantera solos, shapes only; our names)
                                  burstBlocksSqueals, bendsThenClimb, bottomToTopClimb, burstBarBurst, balladIntoFire,
-                                 halfSpeedBentCells, pedalClimbTremolo, slowStaircaseBends, loopedPullOffs };
+                                 halfSpeedBentCells, pedalClimbTremolo, slowStaircaseBends, loopedPullOffs,
+                                 // (0.134.0, the rest of the Pantera ideas; our names)
+                                 tritoneStaircase, shuffleSnarl, breakdownTrill, slowEasternTwins, heldLineRisingCells,
+                                 statedRaisedDropped };
     const std::vector<SoloStyle>& soloStyles();      // automatic first
     juce::String soloStyleName (SoloStyle);          // "BY STYLE", "SOARING BENDS", "ROCK 'N' ROLL SWAGGER", "TAP & DIVE", "BLUES HAMMER",
                                                      // "SCREAM & DIVE", "THRASH FIRE", "PINCH SQUEAL", "PROG PRECISION",

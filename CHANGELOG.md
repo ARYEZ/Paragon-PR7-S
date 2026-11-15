@@ -26,7 +26,7 @@ Each version's notes appear on its GitHub Release page.
 
 It still ends on a harmonic screamed up with the bar and a dive bomb.
 
-**Nine new styles**, in the lead lane's Solo Style menu and IDEAS' SOLO box:
+**Fifteen new styles**, in the lead lane's Solo Style menu and IDEAS' SOLO box:
 
 - **BURST BLOCKS & SQUEALS:** calm bars of held bends and whole blocks of fire on four-bar lines: diminished cells climbing by fourths, then a top note struck four times and dropped. Squeals at the phrase ends, and a squeal (or a bend into a dive) to end.
 - **BENDS, THEN THE CLIMB:** three quarters held bends, nearly every note bent. Then one burst of cells climbing a scale step a beat for two octaves, and the last note bent into and dived away.
@@ -37,6 +37,12 @@ It still ends on a harmonic screamed up with the bar and a dive bomb.
 - **PEDAL CLIMB & TREMOLO DYADS:** a pedal note under a line that climbs on, minor-third bends on the held notes. To end, a tremolo-picked double stop over the root, climbing into a held fifth.
 - **SLOW STAIRCASE OF BENDS:** slow and climbing, each phrase a step higher, then one minor-third bend struck again and again at the top, and the root held long.
 - **LOOPED PULL-OFF CELLS:** built from one-beat cells (three notes pulled off, then a bend) looped and moved up, with squeals and a bend into a dive to end.
+- **TRITONE STAIRCASE:** four bars of held notes on the key's root and flat five, each a tritone higher, coming in after the band's first beat. Then blocks of cells (a half step, then a fourth) moved up a fourth each beat, squeals, and a bend into the root to end.
+- **SHUFFLE SNARL:** a snarling shuffle blues: both thirds, the flat five, swung runs, diminished triplets climbing a minor third each beat, big bends, and a bend into a dive to end.
+- **BREAKDOWN TRILL:** for a breakdown: the minor and major third trilled in thirty-seconds under a top note that swaps between the fifth and the flat sixth each bar, harmonised a minor third under (on a LEAD lane with two tracks, the second plays the harmony).
+- **SLOW EASTERN TWINS:** slow and eastern (the flat second and the major third over the minor): long notes scooped up from a minor third under, a second guitar an octave and a third above, and a climb out to end.
+- **HELD LINE & RISING CELLS:** the first half one long note on each chord, each coming in an eighth early with a rake into it (where your instrument plays notes that short). Then a three-note cell bent a half step climbs a scale step each time into a long last note.
+- **STATED, RAISED, DROPPED:** a raked phrase held and bent, then a long silence. The same idea comes back an octave higher, then one big over-bend past halfway. The last quarter drops two octaves, dived away to end.
 
 **Two new whammy shapes behind them:**
 
@@ -50,9 +56,7 @@ Both reach only as far as your instrument's bend range (HUB > INSTRUMENTS); a ra
 - The files can't show pinch harmonics or real vibrato width: their exports write one stock vibrato.
 - The oblique bends (one note of a double stop bent against the other held) aren't written. A pitch bend moves every note on the channel, so both notes would bend.
 
-**Checked:** tests cover the squeals, the diminished cells, the blocks on four-bar lines, the late climb, the looped cells, the chromatic fall, the repeated minor-third bend, the release cells, the pedal, the new endings, and the two new whammy shapes' timing. Not checked here: the sound in Shreddage (your ears).
-
-**More from these files, if you want them:** TRITONE STAIRCASE (Cowboys from Hell's opening), SHUFFLE SNARL (Walk), BREAKDOWN TRILL (Domination's breakdown lead), SLOW EASTERN TWINS (Strength Beyond Strength's twin melody), HELD LINE & RISING CELLS (Cemetery Gates' clean intro), STATED, RAISED, DROPPED (This Love's main solo).
+**Checked:** tests cover the tritone stair, the diminished triplets, the harmony a minor third under and the one an octave and a third over, the early entries and half-step cells, the silence after the first phrase, the squeals, the diminished cells, the blocks on four-bar lines, the late climb, the looped cells, the chromatic fall, the repeated minor-third bend, the release cells, the pedal, the new endings, and the two new whammy shapes' timing. Not checked here: the sound in Shreddage (your ears).
 
 ## 0.133.0
 
