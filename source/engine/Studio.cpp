@@ -3784,7 +3784,10 @@ namespace pr7s
         const auto id = addFxChannel (&preset->plugin, &error);
         if (id != 0)
             if (auto* effect = engine.getEffect (id, 0))
+            {
                 effect->setStateInformation (preset->state.getData(), (int) preset->state.getSize());
+                notePluginChanged (effect);
+            }
         return id;
     }
 
@@ -3812,6 +3815,7 @@ namespace pr7s
                 && track->instrument.plugin.name == preset->plugin.name)
             {
                 running->setStateInformation (preset->state.getData(), (int) preset->state.getSize());
+                notePluginChanged (running);
                 changed();
                 return true;
             }
@@ -3829,6 +3833,7 @@ namespace pr7s
                     if (auto* effect = engine.getEffect (trackId, slot))
                     {
                         effect->setStateInformation (preset->state.getData(), (int) preset->state.getSize());
+                        notePluginChanged (effect);
                         changed();
                         return true;
                     }
@@ -5016,19 +5021,36 @@ namespace pr7s
             detached = true;
         }
 
+        // (0.130.0) What may have changed the plug-in's settings since they were last asked for.
+        // The flag is set from any thread (a plug-in may report from its own); the rest is the message thread's.
+        bool mayHaveChanged() const noexcept { return changedSince.load() || windowsOpen > 0; }
+        bool hasKeptState() const noexcept { return kept; }
+        const juce::MemoryBlock& getKeptState() const noexcept { return keptState; }
+        void aboutToAsk() noexcept { changedSince = false; }
+        void keepState (const juce::MemoryBlock& state) { keptState = state; kept = true; }
+        void markChanged() noexcept { changedSince = true; }
+        void windowOpen (bool open) noexcept
+        {
+            windowsOpen = juce::jmax (0, windowsOpen + (open ? 1 : -1));
+            changedSince = true;
+        }
+
         void audioProcessorParameterChanged (juce::AudioProcessor*, int index, float value) override
         {
+            changedSince = true;
             post ([value] (Studio& s, int bus, const AutomationLane& knob) { s.setKnob (bus, knob, value); }, index);
         }
         void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int index) override
         {
+            changedSince = true;
             post ([] (Studio& s, int bus, const AutomationLane& knob) { s.grabControl (bus, knob); }, index);
         }
         void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int index) override
         {
+            changedSince = true;
             post ([] (Studio& s, int bus, const AutomationLane& knob) { s.releaseControl (bus, knob); }, index);
         }
-        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override { changedSince = true; }
 
     private:
         template <typename Action>
@@ -5058,6 +5080,10 @@ namespace pr7s
         const AutomationLane::Target kind;
         const int slotIndex;
         bool detached = false;
+        std::atomic<bool> changedSince { true };
+        int windowsOpen = 0;
+        juce::MemoryBlock keptState;
+        bool kept = false;
     };
 
     void Studio::watchPlugins()
@@ -8877,7 +8903,7 @@ namespace pr7s
         // count, the levels (a fader drag's steps don't count as changes) and each plug-in's
         // settings, hashed. The XML text itself is made on the saver's thread from a copy
         // (it held the screen for the whole song's toXml every few minutes).
-        collectPluginStates();
+        collectPluginStates (true);   // (0.130.0: plug-ins nothing has touched aren't asked again)
         const auto mix = [] (juce::uint64 h, juce::uint64 v) { return (h ^ v) * 1099511628211ull; };
         const auto stateHash = [] (const juce::MemoryBlock& m)
         {
@@ -9200,26 +9226,49 @@ namespace pr7s
         return copyAudioFiles (getAudioFolder(), destination.getSiblingFile (destination.getFileNameWithoutExtension() + " Audio"));
     }
 
-    void Studio::collectPluginStates()
+    juce::MemoryBlock Studio::pluginState (juce::AudioProcessor& plugin, bool reuseUnchanged)
+    {
+        // (0.130.0) The watcher notes anything that may change the plug-in's settings (see Studio.h).
+        const auto found = watchers.find (&plugin);
+        auto* watcher = found != watchers.end() ? found->second.get() : nullptr;
+        if (reuseUnchanged && watcher != nullptr && watcher->hasKeptState() && ! watcher->mayHaveChanged())
+        {
+            ++reusedStates;
+            return watcher->getKeptState();
+        }
+        if (watcher != nullptr)
+            watcher->aboutToAsk();   // (a change while it answers marks it again)
+        juce::MemoryBlock state;
+        plugin.getStateInformation (state);
+        if (watcher != nullptr)
+            watcher->keepState (state);
+        return state;
+    }
+
+    void Studio::notePluginWindow (juce::AudioProcessor* plugin, bool open)
+    {
+        if (const auto found = watchers.find (plugin); found != watchers.end())
+            found->second->windowOpen (open);
+    }
+
+    void Studio::notePluginChanged (juce::AudioProcessor* plugin)
+    {
+        if (const auto found = watchers.find (plugin); found != watchers.end())
+            found->second->markChanged();
+    }
+
+    void Studio::collectPluginStates (bool reuseUnchanged)
     {
         // Each instrument's current settings go into the file with it.
         for (auto& track : project.tracks)
             if (auto* instrument = engine.getInstrument (track.id))
-            {
-                juce::MemoryBlock state;
-                instrument->getStateInformation (state);
-                track.instrument.state = std::move (state);
-            }
+                track.instrument.state = pluginState (*instrument, reuseUnchanged);
         // And each effect's.
-        const auto keepEffectStates = [this] (int busId, std::vector<Insert>& inserts)
+        const auto keepEffectStates = [this, reuseUnchanged] (int busId, std::vector<Insert>& inserts)
         {
             for (int slot = 0; slot < (int) inserts.size(); ++slot)
                 if (auto* effect = engine.getEffect (busId, slot))
-                {
-                    juce::MemoryBlock state;
-                    effect->getStateInformation (state);
-                    inserts[(size_t) slot].state = std::move (state);
-                }
+                    inserts[(size_t) slot].state = pluginState (*effect, reuseUnchanged);
         };
         for (auto& track : project.tracks)
             keepEffectStates (track.id, track.inserts);

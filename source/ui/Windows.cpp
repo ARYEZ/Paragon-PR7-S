@@ -758,6 +758,8 @@ namespace Windows
         keepPlace();
         const pr7s::SessionLog::Step step ("Closing the window of " + pluginName);
         clearContentComponent();
+        if (onGone != nullptr)
+            onGone();
     }
 
     void Instrument::moved()

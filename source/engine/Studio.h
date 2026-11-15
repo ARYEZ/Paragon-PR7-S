@@ -100,6 +100,15 @@ namespace pr7s
         // Writes a backup now (the timer calls it when due). False: nothing written (nothing changed
         // since the last one, or it couldn't be). `waitForSaves` waits for it (it's written on the save thread).
         bool writeBackup();
+        // (0.130.0) Auto-save asks a plug-in for its settings only when something may have changed them:
+        // a parameter moved, it said it changed, its window was opened (or is open), or the studio gave it
+        // settings. Otherwise the settings it gave last time are used (four Kontakt instances took about a
+        // second each, every five minutes, holding the screen). SAVE always asks every plug-in.
+        // `notePluginWindow`: a plug-in's window opened (true) or closed (false). `notePluginChanged`: the
+        // studio gave it settings. `getReusedStates`: how many times kept settings were used (tests).
+        void notePluginWindow (juce::AudioProcessor*, bool open);
+        void notePluginChanged (juce::AudioProcessor*);
+        int getReusedStates() const noexcept { return reusedStates; }
         juce::File getLastBackup() const noexcept { return lastBackup; }
         // The Hub's songs (0.12.0): recent ones, the project location, templates.
         ProjectLibrary& getLibrary() noexcept { return *library; }
@@ -1873,7 +1882,9 @@ namespace pr7s
         bool looseCopiesHere = true;
         std::array<TrackTypeLook, numTrackTypes> readTrackTypeLooks() const;
         void giveTypeLook (Track&, int index) const;   // a new track's colour and list colour   // (without a settings file: the tests)
-        void collectPluginStates();
+        void collectPluginStates (bool reuseUnchanged = false);
+        juce::MemoryBlock pluginState (juce::AudioProcessor&, bool reuseUnchanged);
+        int reusedStates = 0;
         void backupIfDue();
         juce::String loggedDevice;   // the audio device's last line in the session log
         double progressBase = 0.0, progressSpan = 1.0;

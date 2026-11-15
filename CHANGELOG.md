@@ -2,6 +2,24 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.130.0
+
+**Auto-save no longer freezes the studio every five minutes** (your session log of 15 November).
+
+- **What was wrong:** to write a backup, the studio asked every plug-in for its settings, on the same thread that draws the window. Each of your four Kontakt 8 instances takes about a second to answer, so every five minutes the window stopped for 0.7 to 1.4 seconds. The log caught it again and again: SLOW notes at 01:14, 01:24, 01:29, 01:39, 01:54 and 02:09, each pointing at the auto-save asking Kontakt.
+- **What changed:** auto-save now asks a plug-in only when something may have changed its settings:
+  - one of its parameters moved;
+  - the plug-in said it changed (Kontakt does when you load an instrument);
+  - its window was opened since the last backup, or is open now;
+  - the studio gave it settings (a preset).
+  For every other plug-in the backup uses the settings it gave last time.
+- **The trade-off:** a plug-in that changes itself without telling the studio would have that change left out of the backup until something else marks it. Pressing SAVE (Ctrl+S) still asks every plug-in, every time, so saved songs are as complete as before.
+
+**From the same log, not the studio's own code:**
+
+- **The crash at 02:12** happened inside PR7-G 0.58.0's own window, while it was drawing itself. A bad pointer was read in PR7-G's code. The studio only passed Windows' message on, and can't catch an error inside a plug-in's own copy of JUCE. A note for PR7-G's chat describes it.
+- **The 7-second freeze at 01:18** was PR7-O drawing with the graphics card, even though the studio draws without it. A note for PR7-O's chat asks for the same "no graphics card" switch.
+
 ## 0.129.0
 
 **Solos, round two from your Metallica and Def Leppard files** (read for their shapes only, never copied; our own names). Seven new styles, in the lead lane's Solo Style menu and IDEAS' SOLO box:

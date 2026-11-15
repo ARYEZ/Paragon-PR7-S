@@ -1492,6 +1492,9 @@ void MainView::openEffectWindow (int busId, int slot)
     {
         juce::MessageManager::callAsync ([safe, instance] { if (safe != nullptr) safe->effectWindows.erase (instance); });
     };
+    // (0.130.0) Auto-save asks a plug-in for its settings again once its window has been open.
+    studio.notePluginWindow (instance, true);
+    window->onGone = [this, instance] { studio.notePluginWindow (instance, false); };
     effectWindows[instance] = std::move (window);
 }
 
@@ -2183,6 +2186,9 @@ void MainView::openInstrumentWindow (int trackId)
     {
         juce::MessageManager::callAsync ([safe, trackId] { if (safe != nullptr) safe->instrumentWindows.erase (trackId); });
     };
+    // (0.130.0) Auto-save asks a plug-in for its settings again once its window has been open.
+    studio.notePluginWindow (instance, true);
+    window->onGone = [this, instance] { studio.notePluginWindow (instance, false); };
     instrumentWindows[trackId] = std::move (window);
 }
 
