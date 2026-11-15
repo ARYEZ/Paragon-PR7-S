@@ -9,7 +9,7 @@ Each version's notes appear on its GitHub Release page.
 - **Seven of the nine have a guitar solo.** Runaround's file is only its intro, so it has none. Runnin' With the Devil's is a short composed break.
 - **None of them has wide two-handed tapping.** The fast passages are legato cells inside one box, repeated notes, and the whammy bar. So TAP & DIVE stays as it was; the new styles are built from what the files do.
 
-Six new styles, in the lead lane's Solo Style menu and IDEAS' SOLO box:
+Eleven new styles, in the lead lane's Solo Style menu and IDEAS' SOLO box:
 
 - **CELL WITH THE CHANGES:** a one-bar cell of sixteenths that starts again on each new chord, so it lands on that chord's third every time. It ends with major thirds climbing a half step at a time into a double stop on the root, dived an octave away.
 - **HOLD & ACCELERATE:** in on the downbeat with a high harmonic scooped up into with the whammy. Short bursts answered by bends, then the signature: one note held and shaken with the whammy, then struck again and again, faster each beat (eighths, eighth triplets, sixteenths). To end: harmonics a beat each stepping down the chord, each dived away, then the low root dived an octave.
@@ -17,6 +17,11 @@ Six new styles, in the lead lane's Solo Style menu and IDEAS' SOLO box:
 - **LEGATO THROWS:** high notes against fast legato runs down to low landings, and pickups thrown two octaves under the phrase they lead into. The fast cells stay in the key's box: one played three times in place, then stepped down. A run up into a long last note to end.
 - **SQUEALS & SEXTUPLETS:** in on a harmonic squeal, then down into three-note cells cycled in sextuplets, with pentatonic leaps between. Every held note is shaken, with hardly a bend.
 - **CHIMING FOURTHS:** bright and major: bends struck and let down, fourths as double stops, and a cycle of a bent note plus two fourths that runs three against four. It ends on a high bend held to the end.
+- **DOTTED BEND CHAIN:** whole-step bends struck every dotted quarter (three against four), each held and shaken, with a chromatic fall in triplets between the chains and a lick played twice to end.
+- **HOOK, THIRDS, HOOK:** a short hook played again and again, a middle third of major-third double stops that move with the chords (each chord's third on top), then the hook back. Nothing faster than sixteenths.
+- **BENT RIFF SOLO:** a riff more than a run: whole-step bends traded with fourths in eighths, one fast roll, the rock scale with no third at all (the key's 1, 2, 4, 5 and flat 7). It falls an octave at the end.
+- **TREMOLO PEDAL OUTRO:** one note tremolo-picked through the moving chords (with your instrument's tremolo key when its shortest note is a 16th). It ends on held notes stepping down the chord, each one coming in a beat early.
+- **BURST AND BEND:** in on a scream, then the root and fifth struck together again and again, each burst answered by one bent note. Then a flurry of triplet cells under a fixed top note, held notes shaken with the whammy, and a dive to end.
 
 **What every one of them does, as the files did:**
 
@@ -39,12 +44,19 @@ Six new styles, in the lead lane's Solo Style menu and IDEAS' SOLO box:
 - the cycled cells;
 - the fourth double stops;
 - the endings;
+- the dotted-quarter bends and the chromatic fall;
+- the thirds with the chord's third on top;
+- the no-third scale;
+- the tremolo and the stepping-down ending;
+- the repeated double stops;
 - hardly a rest over a beat;
 - the scoop's speed and the vibrato's start.
 
 Not checked here: the sound in Shreddage (your ears).
 
-**Still to come, if you want them:** DOTTED BEND CHAIN (Poundcake's outro), HOOK, THIRDS, HOOK (Why Can't This Be Love), BENT RIFF SOLO (Panama), TREMOLO PEDAL OUTRO (Hot for Teacher's outro), BURST AND BEND (You Really Got Me's opening).
+**Honest limit:** HOOK, THIRDS, HOOK reuses the engine's restated motif for its hook. The hook comes back, but not note for note as in the real solo's A-B-A.
+
+**Your Pantera files are next:** read already, they become their own round (0.134.0).
 
 ## 0.132.0
 

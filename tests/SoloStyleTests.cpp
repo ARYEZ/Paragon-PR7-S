@@ -528,7 +528,8 @@ TEST_CASE ("0.116.0: every solo phrases as the real ones: held landings, off-bea
         }
         INFO (soloStyleName (style));
         // Phrases end on held notes, most of them chord tones (as sounded).
-        CHECK (held >= 4 * 5);   // (0.128.0: the long first and last notes take a phrase or two's room)
+        // (0.133.0: HOOK, THIRDS, HOOK's middle third is double stops in eighths and sixteenths, nothing held)
+        CHECK (held >= (style == SoloStyle::hookThirdsHook ? 4 * 3 : 4 * 5));   // (0.128.0: the long first and last notes take a phrase or two's room)
         CHECK (heldOnChord * 10 >= held * 5);
         // Bends of a step and a half or more: rare (PURPLE SCREAM's grow on purpose: half, whole, a step and a half).
         if (style != SoloStyle::purpleScream)
