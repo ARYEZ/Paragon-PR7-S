@@ -10805,7 +10805,7 @@ namespace pr7s
         {
             if (n.keyswitch || (n.effect != E::vibrato && n.effect != E::bend && n.effect != E::dive && n.effect != E::release
                                 && n.effect != E::slideIn && n.effect != E::fallOff && n.effect != E::slowBend && n.effect != E::wobble
-                                && n.effect != E::scoop))
+                                && n.effect != E::scoop && n.effect != E::pullUp && n.effect != E::bendDive))
                 continue;
             auto found = false;
             for (auto& g : groups)
@@ -10914,6 +10914,33 @@ namespace pr7s
                 const auto slide = bpm > 0.0 ? 0.12 * bpm / 60.0 : 0.25;
                 out.push_back ({ Controller::Type::pitchbend, 0, g.at, under, false });
                 out.push_back ({ Controller::Type::pitchbend, 0, g.at + juce::jmin (slide, (end - g.at) / 3.0), 8192, true });
+            }
+            else if (g.effect == E::pullUp)
+            {
+                // (0.134.0, the owner's Pantera solos) The whammy bar pulled up: straight for 0.15 s, then up `amount`
+                // semitones (7 if none, as far as the range reaches) over 0.15 s, held to the end.
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 7.0;
+                const auto up = juce::jlimit (0, 16383, 8192 + juce::roundToInt (juce::jmin (1.0, semitones / range) * 8191.0));
+                const auto wait = juce::jmin (bpm > 0.0 ? 0.15 * bpm / 60.0 : 0.25, (end - g.at) * 0.3);
+                const auto rise = juce::jmin (bpm > 0.0 ? 0.15 * bpm / 60.0 : 0.25, (end - g.at) * 0.3);
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + wait, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + wait + rise, up, true });
+                out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
+            }
+            else if (g.effect == E::bendDive)
+            {
+                // (0.134.0) Bent up a whole step into the note (from 2 under, as the bend range reaches) in 0.12 s,
+                // held to 45 % of the note, then dived `amount` semitones under it (12 if none) by 95 %.
+                const auto under = juce::jlimit (0, 16383, 8192 - juce::roundToInt (juce::jmin (1.0, 2.0 / range) * 8192.0));
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 12.0;
+                const auto down = juce::jlimit (0, 16383, 8192 - juce::roundToInt (juce::jmin (1.0, semitones / range) * 8192.0));
+                const auto rise = juce::jmin (bpm > 0.0 ? 0.12 * bpm / 60.0 : 0.25, (end - g.at) * 0.3);
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, under, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + rise, 8192, true });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + (end - g.at) * 0.45, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + (end - g.at) * 0.95, down, true });
+                out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
             }
             else if (g.effect == E::scoop)
             {

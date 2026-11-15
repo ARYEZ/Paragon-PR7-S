@@ -2,6 +2,58 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.134.0
+
+**Solos from your eleven Pantera files** (read for their solos' shapes only, never copied; our own names). Three readers went through them:
+
+- **Ten of the eleven have a guitar solo; Cemetery Gates and This Love have a second lead too.** Strength Beyond Strength has no solo: only a lead fill and a slow twin melody.
+- **What these solos have in common:**
+  - whole blocks of fast notes (about 6 a beat, 11 to 14 a second) trade with blocks of held bends;
+  - there's almost no silence;
+  - bends are mostly a whole step (the 4th up to the 5th, the flat 7th up to the root), with one big over-bend per solo;
+  - the whammy bar squeals at the ends of phrases, three or four times a solo;
+  - the notes follow the key, not each chord;
+  - short cells loop three to eight times;
+  - the climbs are two to three octaves.
+
+**SCREAM & DIVE put right.** It was built in 0.67.0 from published lessons, not from files, and these files showed it was off:
+
+- **Bends:** mostly whole steps now (half steps were the most common before).
+- **Thirds:** no major third over the minor any more.
+- **Rests:** almost none.
+- **Fast passages:** diminished cells climbing by fourths, in blocks, where it used to shift licks up a fret at a time.
+- **Squeals:** whammy squeals at the ends of phrases.
+
+It still ends on a harmonic screamed up with the bar and a dive bomb.
+
+**Nine new styles**, in the lead lane's Solo Style menu and IDEAS' SOLO box:
+
+- **BURST BLOCKS & SQUEALS:** calm bars of held bends and whole blocks of fire on four-bar lines: diminished cells climbing by fourths, then a top note struck four times and dropped. Squeals at the phrase ends, and a squeal (or a bend into a dive) to end.
+- **BENDS, THEN THE CLIMB:** three quarters held bends, nearly every note bent. Then one burst of cells climbing a scale step a beat for two octaves, and the last note bent into and dived away.
+- **BOTTOM-TO-TOP CLIMB:** from the bottom of the neck to the top over the whole solo. A pull-off cell and a bend looped, squeals and dives, and the top note bent into the root and dived.
+- **BURST, BAR, BURST:** a storm of fast cells, then a wild middle on the whammy bar (notes shaken, scooped and squealed, fourths), then a climb to the top note bent into the root and held.
+- **BALLAD INTO FIRE:** half a ballad (long held notes on the chord's third and root), then fire for the second half: cells cycled, a climb, and cells falling a half step each beat into the top note dived.
+- **HALF-SPEED BENT CELLS:** for slow songs, in thirty-seconds: pre-bends let down again and again, and a note shaken between a whole-step and a minor-third bend.
+- **PEDAL CLIMB & TREMOLO DYADS:** a pedal note under a line that climbs on, minor-third bends on the held notes. To end, a tremolo-picked double stop over the root, climbing into a held fifth.
+- **SLOW STAIRCASE OF BENDS:** slow and climbing, each phrase a step higher, then one minor-third bend struck again and again at the top, and the root held long.
+- **LOOPED PULL-OFF CELLS:** built from one-beat cells (three notes pulled off, then a bend) looped and moved up, with squeals and a bend into a dive to end.
+
+**Two new whammy shapes behind them:**
+
+- a **pull-up**: the bar pulled up 6 to 8 semitones (now and then an octave) a moment after the pick and held;
+- a **bend into a dive**: bent up into the note, held, then dived an octave.
+
+Both reach only as far as your instrument's bend range (HUB > INSTRUMENTS); a range of 12 gives the whole squeal.
+
+**Honest limits:**
+
+- The files can't show pinch harmonics or real vibrato width: their exports write one stock vibrato.
+- The oblique bends (one note of a double stop bent against the other held) aren't written. A pitch bend moves every note on the channel, so both notes would bend.
+
+**Checked:** tests cover the squeals, the diminished cells, the blocks on four-bar lines, the late climb, the looped cells, the chromatic fall, the repeated minor-third bend, the release cells, the pedal, the new endings, and the two new whammy shapes' timing. Not checked here: the sound in Shreddage (your ears).
+
+**More from these files, if you want them:** TRITONE STAIRCASE (Cowboys from Hell's opening), SHUFFLE SNARL (Walk), BREAKDOWN TRILL (Domination's breakdown lead), SLOW EASTERN TWINS (Strength Beyond Strength's twin melody), HELD LINE & RISING CELLS (Cemetery Gates' clean intro), STATED, RAISED, DROPPED (This Love's main solo).
+
 ## 0.133.0
 
 **Solos from your nine Van Halen files** (read for their solos' shapes only, never copied; our own names). Three readers went through them:
