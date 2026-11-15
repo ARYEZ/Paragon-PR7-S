@@ -23,6 +23,11 @@
 //     vibrato (the style's depth), a whammy dive at the end (Tap & Dive);
 //   - techniques: tapping, tremolo, harmonics (keys for the instrument when its INSTRUMENTS profile has them),
 //     legato (overlapping notes: hammer-ons and pull-offs on a sampled guitar), swing.
+// (0.128.0, the owner's Metallica and Def Leppard solos, read for their shapes: runs at a player's speed, not a
+// grid's; bends aimed at the notes that sing over the chord, and the same bend struck again and again, climbing;
+// slides into notes and fall-offs out of them; held first and last notes; and the endings those solos use: bent up
+// into the root and held, a fall-off, a dive, a drop to the low root back into the riff, the top note repeated,
+// a triplet climb out.)
 // Nothing faster than `shortest` beats (the instrument's SHORTEST NOTE; 0: as the style plays it).
 namespace pr7s
 {
@@ -32,7 +37,9 @@ namespace pr7s
                                  gypsyShred, tensionRelease, torturedBends, grungeMelody,   // (0.69.0: round four)
                                  // (0.116.0, from the owner's Pink Floyd and Guns N' Roses solos, shapes only; our names)
                                  singingBends, shuffleConversation, slowBuildRakes, fallingMajorMelody, sungInTheGaps,
-                                 rollingSequences, laidBackBends, cycleTheme, twoSpeeds, lickTwice };
+                                 rollingSequences, laidBackBends, cycleTheme, twoSpeeds, lickTwice,
+                                 // (0.128.0, from the owner's Metallica and Def Leppard solos, shapes only; our names)
+                                 repeatedBendClimb, chordChasingArpeggios, pedalDyadHook, hotStartCoolDown };
     const std::vector<SoloStyle>& soloStyles();      // automatic first
     juce::String soloStyleName (SoloStyle);          // "BY STYLE", "SOARING BENDS", "ROCK 'N' ROLL SWAGGER", "TAP & DIVE", "BLUES HAMMER",
                                                      // "SCREAM & DIVE", "THRASH FIRE", "PINCH SQUEAL", "PROG PRECISION",
@@ -46,5 +53,8 @@ namespace pr7s
 
     // A whole solo in that style over the chords (`automatic`: nothing; guitarLeadIdeas asks soloStyleForGuitarStyle).
     LineIdea composeSolo (SoloStyle, const std::vector<ChordSpan>&, double beatsPerBar, const GuitarTuning&,
-                          const GuitarVelocities&, int variation, double shortest = 0.0);
+                          const GuitarVelocities&, int variation, double shortest = 0.0, double bpm = 0.0);
+    // (0.128.0) `bpm`: the song's tempo where the solo starts. With it, the fast passages run at 8 to 12 notes a second
+    // whatever the tempo (the owner's Metallica and Def Leppard solos: 32nds at 66 BPM, 16ths at 120, triplets at 200),
+    // never faster than `shortest`; 0: their written grids, as before 0.128.0.
 }

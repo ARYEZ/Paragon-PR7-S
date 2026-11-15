@@ -11,7 +11,12 @@ namespace pr7s
         // A style's rules (from docs/solo-styles: what the lessons say each player does; the numbers are
         // starting points to tune by ear).
         enum class Burst { run, cell, tapping, displaced, chromaticShift, repeatLick, sixes, sequence, fourSequence, risingFlurry, sweep, noise,
-                           turning, flurry };   // (0.116.0: turning cells, the rhythm kept; sextuplet flurries falling)
+                           turning, flurry,     // (0.116.0: turning cells, the rhythm kept; sextuplet flurries falling)
+                           repeatedBend, chordArpeggio, pedalHook };   // (0.128.0: the same bend struck again and again, climbing;
+                                                                       // arpeggios chasing the chords; a pedal note under a moving line)
+        // (0.128.0) How a solo ends: held with vibrato (as before), bent up into the root or fifth and held, a fall-off,
+        // a whammy dive, dropped to the low root back into the riff, the top note repeated, a triplet climb out.
+        enum class Ending { held, bendUp, fallOff, dive, dropLow, repeatedTop, tripletClimb };
         struct Profile
         {
             bool sixth = false, ninth = false, flatFive = false, majorOnMajor = false, curls = false;
@@ -55,6 +60,13 @@ namespace pr7s
                  walkDown = false, openHeld = false, noSixteenths = false, repeatPair = false, cycleTheme = false,
                  landThirdFifth = false, fourthDoubleStops = false;
             float seqShare = 0.0f;
+            // (0.128.0, the owner's Metallica and Def Leppard solos) Bends aimed at the notes that sing over the chord
+            // (root, fifth, the minor key's fourth; over a major chord the third and the sixth too); a slide into a
+            // phrase's first note and a fall-off out of a held one now and then; the first and last notes held long;
+            // a busy start that cools down; the climax written as repeated bends; the endings (empty: held, as before).
+            bool aimedBends = true, longEnds = true, hotStart = false, climaxRepeatedBends = false;
+            float slideShare = 0.2f, fallShare = 0.06f;
+            std::vector<std::pair<Ending, float>> endings;
             const char* description = "";
         };
 
@@ -96,7 +108,7 @@ namespace pr7s
                     p.startDensity = 5.0f; p.peakDensity = 14.0f; p.restBeats = 0.75; p.phraseBars = 1;
                     p.burst = Burst::displaced; p.burstFrom = 0.35f;
                     p.bendChance = 0.55f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.4f }, { 3.0f, 0.3f }, { 4.0f, 0.2f }, { 5.0f, 0.1f } };
-                    p.vibrato = 0.9f; p.climb = 12;
+                    p.vibrato = 0.9f; p.climb = 12; p.climaxRepeatedBends = true;   // (0.128.0: the climax its description promised)
                     p.description = "Bluesy and loose: major and minor mixed, flat thirds curled sharp, licks repeated so they "
                                     "shift against the bar, crammed bursts, big over-bends and a climax of repeated bends";
                     break;
@@ -241,6 +253,7 @@ namespace pr7s
                     p.majorOnMajor = p.falling = p.graceNotes = p.landThirdFifth = true;
                     p.notesPerBeat = 1.2f; p.holdMin = 2.0; p.holdMax = 4.0; p.pickupMax = 1.5; p.landBeat1 = 0.8f;
                     p.waves = 0; p.climb = 14; p.restChance = 0.0f;
+                    p.longEnds = false;   // (0.128.0: a tune sung from the top down, phrase by phrase: no long first note)
                     p.bendChance = 0.4f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.5f } };
                     p.releaseShare = 0.3f; p.vibrato = 0.8f;
                     p.description = "A major-key melody sung from the top down: phrases from the and of three into a held third "
@@ -250,6 +263,7 @@ namespace pr7s
                     p.majorOnMajor = p.graceNotes = p.cycleTheme = p.octaveDownLate = p.noSixteenths = true;
                     p.notesPerBeat = 1.3f; p.holdMin = 2.0; p.holdMax = 3.0; p.pickupMax = 2.0; p.landBeat1 = 0.3f;
                     p.waves = 0; p.climb = 7; p.restChance = 0.15f;
+                    p.longEnds = false;   // (0.128.0: a singable tune that comes round with the chords)
                     p.bendChance = 0.3f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.7f } };
                     p.releaseShare = 0.35f; p.vibrato = 0.8f;
                     p.description = "A singable eighth-note melody starting mid-bar, played again when the chords come round, "
@@ -299,6 +313,47 @@ namespace pr7s
                     p.vibrato = 1.0f;
                     p.description = "Blues scale over a vamp, phrases running into each other, fourth double stops, and a "
                                     "two-bar lick played twice to finish";
+                    break;
+                // (0.128.0, from the owner's Metallica and Def Leppard solos, shapes only; our names)
+                case SoloStyle::repeatedBendClimb:
+                    p.flatFive = true;
+                    p.notesPerBeat = 1.5f; p.holdMin = 1.5; p.holdMax = 4.0; p.landBeat1 = 0.45f; p.phraseBars = 2;
+                    p.waves = 2; p.burst = Burst::repeatedBend; p.climb = 12; p.peakAt = 0.75f;
+                    p.bendChance = 0.7f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.4f }, { 3.0f, 0.2f } };
+                    p.releaseShare = 0.15f; p.vibrato = 1.1f;
+                    p.endings = { { Ending::bendUp, 1.0f }, { Ending::repeatedTop, 0.6f } };
+                    p.description = "Bends that aim for the root and the fifth, then the same bend struck over and over, "
+                                    "each group a step higher, ending bent up into the root or on the top note hammered out";
+                    break;
+                case SoloStyle::chordChasingArpeggios:
+                    p.aeolian = p.landThirdFifth = true;
+                    p.notesPerBeat = 2.0f; p.holdMin = 1.5; p.holdMax = 3.0; p.landBeat1 = 0.5f; p.phraseBars = 2;
+                    p.waves = 3; p.burst = Burst::chordArpeggio; p.climb = 12; p.peakAt = 0.7f;
+                    p.bendChance = 0.45f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.3f } };
+                    p.vibrato = 1.0f;
+                    p.endings = { { Ending::tripletClimb, 1.0f }, { Ending::held, 0.5f } };
+                    p.description = "Melodic phrases landing on the chord's third or fifth, and fast arpeggios that follow "
+                                    "every chord change, ending with a triplet climb to the top root";
+                    break;
+                case SoloStyle::pedalDyadHook:
+                    p.sixth = p.majorOnMajor = p.doubleStops = p.fourthDoubleStops = p.repeatPair = true;
+                    p.notesPerBeat = 1.5f; p.holdMin = 1.5; p.holdMax = 3.0; p.landBeat1 = 0.5f; p.phraseBars = 1;
+                    p.waves = 2; p.burst = Burst::pedalHook; p.climb = 9; p.peakAt = 0.7f;
+                    p.bendChance = 0.5f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.3f } };
+                    p.vibrato = 0.9f;
+                    p.endings = { { Ending::repeatedTop, 1.0f }, { Ending::bendUp, 0.6f } };
+                    p.description = "Hooky and melodic: short calls played twice, fourth double stops, a high pedal note picked "
+                                    "between a line walking down under it, ending on the top note repeated";
+                    break;
+                case SoloStyle::hotStartCoolDown:
+                    p.flatFive = p.hotStart = true;
+                    p.notesPerBeat = 1.0f; p.holdMin = 2.0; p.holdMax = 4.5; p.landBeat1 = 0.4f; p.phraseBars = 2;
+                    p.burst = Burst::run; p.climb = 12;
+                    p.bendChance = 0.6f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.3f }, { 3.0f, 0.2f } };
+                    p.releaseShare = 0.2f; p.vibrato = 1.0f; p.vibratoHeld = 0.9f; p.fallShare = 0.12f;
+                    p.endings = { { Ending::fallOff, 1.0f }, { Ending::held, 0.6f }, { Ending::dropLow, 0.4f } };
+                    p.description = "In at full speed with a fast run high up, then calming down: longer notes, lower and "
+                                    "slower, bent and shaken, ending in a fall-off, a held note or a drop back into the riff";
                     break;
                 case SoloStyle::automatic: break;
             }
@@ -445,7 +500,9 @@ namespace pr7s
                                                   SoloStyle::tensionRelease, SoloStyle::torturedBends, SoloStyle::grungeMelody,
                                                   SoloStyle::singingBends, SoloStyle::shuffleConversation, SoloStyle::slowBuildRakes,
                                                   SoloStyle::fallingMajorMelody, SoloStyle::sungInTheGaps, SoloStyle::rollingSequences,
-                                                  SoloStyle::laidBackBends, SoloStyle::cycleTheme, SoloStyle::twoSpeeds, SoloStyle::lickTwice };
+                                                  SoloStyle::laidBackBends, SoloStyle::cycleTheme, SoloStyle::twoSpeeds, SoloStyle::lickTwice,
+                                                  SoloStyle::repeatedBendClimb, SoloStyle::chordChasingArpeggios, SoloStyle::pedalDyadHook,
+                                                  SoloStyle::hotStartCoolDown };
         return all;
     }
 
@@ -480,6 +537,10 @@ namespace pr7s
             case SoloStyle::cycleTheme: return "THEME EVERY ROUND";
             case SoloStyle::twoSpeeds: return "TWO SPEEDS";
             case SoloStyle::lickTwice: return "LICK TWICE TO END";
+            case SoloStyle::repeatedBendClimb: return "REPEATED BEND CLIMB";
+            case SoloStyle::chordChasingArpeggios: return "CHORD-CHASING ARPEGGIOS";
+            case SoloStyle::pedalDyadHook: return "PEDAL DYAD HOOK";
+            case SoloStyle::hotStartCoolDown: return "HOT START, COOL DOWN";
         }
         return "BY STYLE";
     }
@@ -513,7 +574,7 @@ namespace pr7s
 
     //==========================================================================
     LineIdea composeSolo (SoloStyle style, const std::vector<ChordSpan>& spans, double beatsPerBar, const GuitarTuning& tuning,
-                          const GuitarVelocities& vel, int variation, double shortest)
+                          const GuitarVelocities& vel, int variation, double shortest, double bpm)
     {
         const auto titled = [] (SoloStyle st) -> juce::String
         {
@@ -545,6 +606,10 @@ namespace pr7s
                 case SoloStyle::cycleTheme: return "Theme Every Round";
                 case SoloStyle::twoSpeeds: return "Two Speeds";
                 case SoloStyle::lickTwice: return "Lick Twice To End";
+                case SoloStyle::repeatedBendClimb: return "Repeated Bend Climb";
+                case SoloStyle::chordChasingArpeggios: return "Chord-Chasing Arpeggios";
+                case SoloStyle::pedalDyadHook: return "Pedal Dyad Hook";
+                case SoloStyle::hotStartCoolDown: return "Hot Start, Cool Down";
                 case SoloStyle::automatic: break;
             }
             return "By Style";
@@ -563,10 +628,47 @@ namespace pr7s
         const auto chordAt = [&] (double beat) -> const ChordSpan& { return spanAt (spans, beat + origin); };
         const auto chordTones = [&] (double beat) { return chordPcs (chordAt (beat).chord); };
         const auto scaleAt = [&] (double beat) { return scaleOver (chordAt (beat), p); };
+        // (0.128.0) The notes a bend sings into over the chord there: its root and fifth, the minor key's fourth; over
+        // a major chord its third and sixth too (the owner's Def Leppard solos: the 2nd up to the 3rd, the 5th to the 6th).
+        const auto aimsAt = [&] (double beat)
+        {
+            const auto& span = chordAt (beat);
+            const auto& c = span.chord;
+            std::vector<int> out { pcOf (c.root), pcOf (c.root + (c.type == Chord::Type::diminished ? 6 : c.type == Chord::Type::augmented ? 8 : 7)) };
+            if (c.type == Chord::Type::major)
+            {
+                out.push_back (pcOf (c.root + 4));
+                out.push_back (pcOf (c.root + 9));
+            }
+            else
+                out.push_back (pcOf ((span.key.minor ? span.key.pitchClass() : span.key.pitchClass() + 9) + 5));
+            return out;
+        };
+        const auto aimAt = [&] (double beat, double around) { return nearestOf (aimsAt (beat), around, low + 2, high); };
         const auto phraseLength = p.phraseBars * beatsPerBar;
         const auto phrases = juce::jmax (1, (int) std::ceil (total / phraseLength - 1.0e-6));
         const auto shortestStep = shortest > 0.0 ? shortest : 0.0;
         const auto gridFor = [shortestStep] (double wanted) { return juce::jmax (wanted, shortestStep); };
+        // (0.128.0) A fast passage's grid: as written when it runs at 7 to 13 notes a second at the song's tempo, else
+        // the same kind (straight or triplet) nearest 10 a second (the owner's Metallica and Def Leppard solos: 8 to
+        // 12 whatever the tempo); never faster than `shortest`. No tempo given: as written.
+        const auto runGrid = [&gridFor, bpm] (double wanted)
+        {
+            if (bpm <= 0.0)
+                return gridFor (wanted);
+            const auto rate = [bpm] (double g) { return bpm / 60.0 / g; };
+            if (rate (wanted) >= 7.0 && rate (wanted) <= 13.0)
+                return gridFor (wanted);
+            const auto triplet = std::abs (wanted * 3.0 - std::round (wanted * 3.0)) < 1.0e-6
+                              && std::abs (wanted * 4.0 - std::round (wanted * 4.0)) > 1.0e-6;
+            const std::vector<double> kinds = triplet ? std::vector<double> { 1.0 / 6.0, 1.0 / 3.0, 2.0 / 3.0 }
+                                                      : std::vector<double> { 0.125, 0.25, 0.5 };
+            auto best = wanted;
+            for (const auto g : kinds)
+                if (std::abs (rate (g) - 10.0) < std::abs (rate (best) - 10.0))
+                    best = g;
+            return gridFor (best);
+        };
         auto& notes = solo.notes;
 
         std::vector<double> tensionTargets;
@@ -586,12 +688,88 @@ namespace pr7s
                 return;
             auto idx = nearestIndex (pool, centre + 5.0);
             juce::ignoreUnused (burstIndex, peak);
-            switch (p.burst)
+            switch (p.climaxRepeatedBends && peak ? Burst::repeatedBend : p.burst)
             {
+                case Burst::repeatedBend:
+                {
+                    // (0.128.0) The same bend struck again and again (three to six times), then the next group a scale
+                    // step higher: written under its note, bent up into it each time.
+                    const auto g = runGrid (0.25);
+                    auto target = aimAt (burstFrom, centre + 3.0);
+                    auto inGroup = 3 + r.nextInt (4);
+                    auto k = 0;
+                    for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                    {
+                        if (k == inGroup)
+                        {
+                            const auto here = poolOf (scaleAt (x), low, high);
+                            const auto at = nearestIndex (here, target);
+                            target = here[(size_t) juce::jmin ((int) here.size() - 1, at + 1)];
+                            k = 0;
+                            inGroup = 3 + r.nextInt (4);
+                        }
+                        const auto semis = target - 2 >= low ? 2 : 1;
+                        addNote (notes, x, g, target - semis, velocityAt (t, k == 0));
+                        notes.back().effect = LineNote::Effect::bend;
+                        notes.back().amount = (float) semis;
+                    }
+                    break;
+                }
+                case Burst::chordArpeggio:
+                {
+                    // (0.128.0) The chord's notes up and back down (root, third, fifth, octave), starting again on
+                    // each new chord from the note nearest where the last left off.
+                    const auto g = runGrid (1.0 / 3.0);
+                    const int shape[] = { 0, 1, 2, 3, 2, 1 };
+                    auto around = centre;
+                    auto k = 0;
+                    const ChordSpan* was = nullptr;
+                    for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                    {
+                        const auto& span = chordAt (x);
+                        if (&span != was)
+                        {
+                            was = &span;
+                            k = 0;
+                        }
+                        const auto arp = poolOf (chordTones (x), low, high);
+                        if (arp.empty())
+                            continue;
+                        const auto base = juce::jmin (nearestIndex (arp, around), juce::jmax (0, (int) arp.size() - 4));
+                        const auto pitch = arp[(size_t) juce::jlimit (0, (int) arp.size() - 1, base + shape[k % 6])];
+                        addNote (notes, x, g, pitch, velocityAt (t, k % 6 == 0));
+                        if (k % 6 == 0)
+                            around = pitch;
+                    }
+                    break;
+                }
+                case Burst::pedalHook:
+                {
+                    // (0.128.0) A pedal note above, struck between the notes of a line walking down the scale under
+                    // it (back to the top every five steps), the pedal following the chord's root.
+                    const auto g = runGrid (0.25);
+                    auto k = 0;
+                    auto step = 0;
+                    for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                    {
+                        const auto here = poolOf (scaleAt (x), low, high);
+                        const auto pedal = nearestOf ({ chordAt (x).chord.root }, centre + 7.0, low, high);
+                        if (k % 2 == 0)
+                            addNote (notes, x, g, pedal, velocityAt (t, true));
+                        else
+                        {
+                            const auto top = nearestIndex (here, pedal - 1.0);
+                            const auto at = juce::jlimit (0, (int) here.size() - 1, top - 1 - step);
+                            addNote (notes, x, g, here[(size_t) at], velocityAt (t, false));
+                            step = (step + 1) % 5;
+                        }
+                    }
+                    break;
+                }
                 case Burst::run:
                 {
                     // Down the scale in 16ths.
-                    const auto g = gridFor (0.25);
+                    const auto g = runGrid (0.25);
                     for (auto x = burstFrom; x < landing - 1.0e-9; x += g)
                     {
                         addNote (notes, x, g, pool[(size_t) idx], velocityAt (t, false));
@@ -602,7 +780,7 @@ namespace pr7s
                 case Burst::cell:
                 {
                     // A three-note pull-off cell in triplets, repeated (the scale under the chord as it changes).
-                    const auto g = gridFor (1.0 / 3.0);
+                    const auto g = runGrid (1.0 / 3.0);
                     auto k = 0;
                     for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
                     {
@@ -616,7 +794,7 @@ namespace pr7s
                 case Burst::tapping:
                 {
                     // Tap, pull off, hammer on: the chord's triad, the tap an octave over its root, following the chords.
-                    const auto g = gridFor (1.0 / 3.0);
+                    const auto g = runGrid (1.0 / 3.0);
                     auto k = 0;
                     for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
                     {
@@ -634,7 +812,7 @@ namespace pr7s
                 case Burst::displaced:
                 {
                     // A six-note cell in 16ths (a beat and a half), looped so it lands somewhere new in each bar.
-                    const auto g = gridFor (0.25);
+                    const auto g = runGrid (0.25);
                     const int cell[] = { 2, 1, 0, 1, 0, -1 };
                     auto k = 0;
                     for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
@@ -649,7 +827,7 @@ namespace pr7s
                 case Burst::chromaticShift:
                 {
                     // A four-note cell moved up a fret every beat, outside the scale as it goes.
-                    const auto g = gridFor (0.25);
+                    const auto g = runGrid (0.25);
                     const auto per = juce::jmax (1, juce::roundToInt (1.0 / g));
                     const auto here = poolOf (scaleAt (burstFrom), low, high);
                     const auto base = nearestIndex (here, centre);
@@ -665,7 +843,7 @@ namespace pr7s
                 case Burst::repeatLick:
                 {
                     // A three-beat lick in picked triplets, repeated so it starts somewhere new in each bar.
-                    const auto g = gridFor (1.0 / 3.0);
+                    const auto g = runGrid (1.0 / 3.0);
                     const int lick[] = { 2, 1, 0, 2, 1, 0, 1, 0, -1 };
                     auto k = 0;
                     for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
@@ -680,7 +858,7 @@ namespace pr7s
                 case Burst::sixes:
                 {
                     // Six-note groups down the scale in 16ths (each a step lower), drifting against the beat.
-                    const auto g = gridFor (0.25);
+                    const auto g = runGrid (0.25);
                     const int six[] = { 0, -1, -2, -1, -2, -3 };
                     auto k = 0;
                     for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
@@ -695,7 +873,7 @@ namespace pr7s
                 case Burst::fourSequence:
                 {
                     // A four-note run down from a scale note, each one starting a step higher, in 16ths.
-                    const auto g = gridFor (0.25);
+                    const auto g = runGrid (0.25);
                     const int four[] = { 0, -1, -2, -3 };
                     auto k = 0;
                     for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
@@ -709,7 +887,7 @@ namespace pr7s
                 }
                 case Burst::risingFlurry:
                 {
-                    const auto g = gridFor (0.25);
+                    const auto g = runGrid (0.25);
                     auto k = 0;
                     if (p.outburst && peak)
                     {
@@ -732,7 +910,7 @@ namespace pr7s
                 case Burst::sweep:
                 {
                     // The chord's triad swept up and back down in triplets, following the chords.
-                    const auto g = gridFor (1.0 / 3.0);
+                    const auto g = runGrid (1.0 / 3.0);
                     auto k = 0;
                     for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
                     {
@@ -748,7 +926,7 @@ namespace pr7s
                 case Burst::noise:
                 {
                     // A noisy run: notes thrown around the scale and outside it, in 16ths.
-                    const auto g = gridFor (0.25);
+                    const auto g = runGrid (0.25);
                     auto k = 0;
                     for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
                         addNote (notes, x, g, juce::jlimit (low, high, juce::roundToInt (centre) + r.nextInt ({ -5, 8 })),
@@ -759,7 +937,7 @@ namespace pr7s
                 {
                     // (0.116.0) A three- to five-note cell turning round a note in 16ths, the cell kept while it moves a
                     // step at a time through the scale.
-                    const auto g = gridFor (0.25);
+                    const auto g = runGrid (0.25);
                     const auto size = 3 + r.nextInt (3);
                     std::vector<int> cell;
                     for (int c = 0; c < size; ++c)
@@ -777,7 +955,7 @@ namespace pr7s
                 case Burst::flurry:
                 {
                     // (0.116.0) Sextuplet flurries falling through a small box, a beat at a time, each from a little lower.
-                    const auto g = gridFor (1.0 / 6.0);
+                    const auto g = runGrid (1.0 / 6.0);
                     auto k = 0;
                     for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
                     {
@@ -792,7 +970,7 @@ namespace pr7s
                 }
                 case Burst::sequence:
                 {
-                    const auto g = gridFor (0.25);
+                    const auto g = runGrid (0.25);
                     auto k = 0;
                     if (t > 0.75f && burstIndex > 0)
                     {
@@ -857,6 +1035,8 @@ namespace pr7s
                 return t;                                     // (the player styles that end high)
             if (p.falling)
                 return 1.0f - 0.85f * t;                      // (each phrase lower)
+            if (p.hotStart)
+                return t < 0.15f ? 1.0f : 1.0f - 0.7f * (t - 0.15f) / 0.85f;   // (0.128.0: high at once, then down)
             return t <= p.peakAt ? t / juce::jmax (0.05f, p.peakAt) : 1.0f - 0.6f * (t - p.peakAt) / juce::jmax (0.05f, 1.0f - p.peakAt);
         };
         const auto centreAt = [&] (double beat)
@@ -876,6 +1056,14 @@ namespace pr7s
             if (bars < 4)
                 count = juce::jmin (count, 1);
             std::vector<float> at;
+            if (p.hotStart)
+            {
+                // (0.128.0) The fast passage first, then calm to the end.
+                const auto startBars = bars >= 8 ? 2 : 1;
+                const auto landing = startBars * beatsPerBar - juce::jmin (1.0, beatsPerBar * 0.25);
+                waves.push_back ({ 0.0, landing, juce::jmin (total, landing + 2.0 + beatsPerBar * 0.5), true });
+                count = 0;
+            }
             if (p.twoSpeed)
                 at = { -1.0f };
             else if (count == 1) at = { 0.72f };
@@ -968,7 +1156,10 @@ namespace pr7s
             cursor = hold;
         }
         const auto lickBars = p.lickTwice && bars >= 6 ? 4 : 0;
-        const auto phrasesEnd = total - lickBars * beatsPerBar;
+        // (0.128.0) The last note held long: the phrases stop that much before the end and the last landing rings on.
+        const auto endHold = p.longEnds && lickBars == 0 && ! p.walkDown
+                           ? (bars >= 16 ? 6.0 + 2.0 * r.nextDouble() : bars >= 8 ? 4.0 : 0.0) : 0.0;
+        const auto phrasesEnd = total - lickBars * beatsPerBar - endHold;
         while (cursor < phrasesEnd - 0.5)
         {
             const auto t = (float) (cursor / juce::jmax (1.0e-6, total));
@@ -1110,7 +1301,10 @@ namespace pr7s
                 cursor = limit;
                 continue;
             }
-            const auto hold = juce::jmin (p.holdMin + (p.holdMax - p.holdMin) * r.nextDouble(), limit - landAt);
+            auto hold = juce::jmin (p.holdMin + (p.holdMax - p.holdMin) * r.nextDouble(), limit - landAt);
+            // (0.128.0) The first note the solo lands on held long (4 to 6 beats in 8 bars or more, 6 to 8 in 16).
+            if (p.longEnds && history.empty() && bars >= 8)
+                hold = juce::jmin (limit - landAt, juce::jmax (hold, (bars >= 16 ? 6.0 : 4.0) + 2.0 * r.nextDouble()));
             const auto pickStart = landAt - pickup;
             ringOn (pickStart);
 
@@ -1193,6 +1387,8 @@ namespace pr7s
             ++phraseNo;
         }
 
+        if (endHold > 0.0)
+            ringOn (total);
         // (0.116.0) A two-bar lick played twice to finish.
         if (lickBars > 0)
         {
@@ -1328,8 +1524,26 @@ namespace pr7s
                 n.amount = 2.0f;
                 continue;
             }
+            // (0.128.0) A slide up into a phrase's first note (after a rest or a long held note).
+            if (! isLast && n.length >= 0.25 && n.pitch - 3 >= low)
+            {
+                const auto opens = i == 0 || n.beat - (notes[i - 1].beat + notes[i - 1].length) > 0.4 || notes[i - 1].length >= 1.5;
+                if (opens && r.nextFloat() < p.slideShare)
+                {
+                    n.effect = LineNote::Effect::slideIn;
+                    n.amount = 3.0f;
+                    continue;
+                }
+            }
             if (n.length < 0.75 || isLast)
                 continue;
+            // (0.128.0) A fall-off out of a long held note now and then.
+            if (n.length >= 1.5 && r.nextFloat() < p.fallShare)
+            {
+                n.effect = LineNote::Effect::fallOff;
+                n.amount = 5.0f;
+                continue;
+            }
             const auto bar = (int) std::floor (n.beat / beatsPerBar);
             if (p.harmonics && bar % 4 == 0 && bar != harmonicBar && t > 0.15f)
             {
@@ -1368,7 +1582,9 @@ namespace pr7s
                 n.amount = 2.0f;
                 continue;
             }
-            if (r.nextFloat() < p.bendChance)
+            // (0.128.0) Bends aimed: into a note that sings over the chord, else bent only one time in three.
+            const auto aimed = ! p.aimedBends || has (aimsAt (n.beat), pcOf (n.pitch)) || r.nextFloat() < 0.33f;
+            if (aimed && r.nextFloat() < p.bendChance)
             {
                 // A bend: written under its note, bent up into it.
                 auto weightSum = 0.0f;
@@ -1476,16 +1692,86 @@ namespace pr7s
                     held->amount = 3.0f;
                 }
             }
-            if (p.dive)
+            // (0.128.0) The style's endings (none listed: a dive where the style dives, else held with vibrato).
+            auto ending = p.dive ? Ending::dive : Ending::held;
+            if (! p.endings.empty())
             {
-                last->velocity = GuitarVelocity::of (vel.pinch);
-                last->effect = LineNote::Effect::dive;
-                last->amount = 12.0f;
+                auto sum = 0.0f;
+                for (const auto& e : p.endings)
+                    sum += e.second;
+                auto pick = r.nextFloat() * sum;
+                for (const auto& e : p.endings)
+                {
+                    if (pick < e.second) { ending = e.first; break; }
+                    pick -= e.second;
+                }
             }
-            else
+            const auto& lastChord = chordAt (last->beat).chord;
+            const auto fifthOf = pcOf (lastChord.root + (lastChord.type == Chord::Type::diminished ? 6 : 7));
+            // (the last bar written again: a passage running into a note on the last beat, held)
+            const auto rewriteLastBar = [&] (bool repeated)
             {
-                last->effect = LineNote::Effect::vibrato;
-                last->amount = p.vibrato;
+                const auto from = juce::jmax (0.0, total - beatsPerBar);
+                const auto top = nearestOf ({ lastChord.root }, (double) high - 4.0, low, high);
+                notes.erase (std::remove_if (notes.begin(), notes.end(), [from] (const LineNote& n) { return n.beat >= from - 1.0e-6; }), notes.end());
+                for (auto& n : notes)
+                    n.length = juce::jmin (n.length, juce::jmax (0.05, from - n.beat - 0.02));
+                const auto end = total - 1.0;
+                const auto g = runGrid (repeated ? 0.25 : 1.0 / 3.0);
+                auto pool = poolOf (scaleAt (from), low, high);
+                if (pool.empty())
+                    repeated = true;
+                auto idx = pool.empty() ? 0 : nearestIndex (pool, top - 9.0);
+                for (auto x = from; x < end - 1.0e-9; x += g)
+                {
+                    const auto pitch = repeated ? top : pool[(size_t) idx];
+                    addNote (notes, x, g, pitch, velocityAt (0.9f, std::abs (x - std::round (x)) < 1.0e-6));
+                    idx = juce::jmin ((int) pool.size() - 1, idx + 1);
+                    if (! repeated && pool[(size_t) idx] >= top)
+                        idx = juce::jmax (0, idx - 3);   // (round again, so the climb arrives on its top at the end)
+                }
+                addNote (notes, end, total - end, top, velocityAt (0.9f, true));
+                last = &notes.back();
+            };
+            switch (ending)
+            {
+                case Ending::bendUp:
+                {
+                    // Bent up into the root or the fifth and held there.
+                    const auto target = nearestOf (r.nextBool() ? std::vector<int> { lastChord.root } : std::vector<int> { fifthOf },
+                                                   (double) last->pitch, low + 2, high);
+                    last->pitch = target - 2;
+                    last->effect = LineNote::Effect::bend;
+                    last->amount = 2.0f;
+                    break;
+                }
+                case Ending::fallOff:
+                    last->effect = LineNote::Effect::fallOff;
+                    last->amount = 5.0f;
+                    break;
+                case Ending::dive:
+                    last->velocity = GuitarVelocity::of (vel.pinch);
+                    last->effect = LineNote::Effect::dive;
+                    last->amount = 12.0f;
+                    break;
+                case Ending::dropLow:
+                    // Down to the low root, a beat, then the riff takes over.
+                    last->pitch = nearestOf ({ lastChord.root }, (double) low, low, high);
+                    last->length = juce::jmin (last->length, 1.0);
+                    last->velocity = GuitarVelocity::of (velocityAt (1.0f, true));
+                    last->effect = LineNote::Effect::none;
+                    break;
+                case Ending::repeatedTop:
+                case Ending::tripletClimb:
+                    if (total >= 2.0 * beatsPerBar)
+                        rewriteLastBar (ending == Ending::repeatedTop);
+                    last->effect = LineNote::Effect::vibrato;
+                    last->amount = p.vibrato;
+                    break;
+                case Ending::held:
+                    last->effect = LineNote::Effect::vibrato;
+                    last->amount = p.vibrato;
+                    break;
             }
         }
 

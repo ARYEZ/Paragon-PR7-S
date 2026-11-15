@@ -1049,7 +1049,7 @@ namespace pr7s
     }
 
     std::vector<LineIdea> guitarLeadIdeas (const std::vector<ChordSpan>& spans, double beatsPerBar, int variation, const GuitarTuning& tuning,
-                                            const GuitarVelocities& vel, GuitarStyle style, SoloStyle soloStyle, double shortest)
+                                            const GuitarVelocities& vel, GuitarStyle style, SoloStyle soloStyle, double shortest, double bpm)
     {
         auto ideas = style != GuitarStyle::rock ? styleLeadIdeas (style, spans, beatsPerBar, variation, tuning, vel)
                                                 : guitarLeadIdeas (spans, beatsPerBar, variation, tuning, vel);
@@ -1057,7 +1057,7 @@ namespace pr7s
         // (0.66.0) Or one in a SOLO STYLE.
         // (0.116.0) BY STYLE: the guitar STYLE's solo style, phrased as the owner's solos (it was the six leads joined).
         const auto chosen = soloStyle == SoloStyle::automatic ? soloStyleForGuitarStyle ((int) style) : soloStyle;
-        auto solo = composeSolo (chosen, spans, beatsPerBar, tuning, vel, variation, shortest);
+        auto solo = composeSolo (chosen, spans, beatsPerBar, tuning, vel, variation, shortest, bpm);
         if (! solo.notes.empty())
             ideas.push_back (std::move (solo));
         return ideas;

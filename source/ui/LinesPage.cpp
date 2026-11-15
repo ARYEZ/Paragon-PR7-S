@@ -1164,7 +1164,8 @@ const std::vector<pr7s::LineIdea>& LinesPage::rawIdeas (pr7s::LineIdea::Part par
             if (! profile.has_value())
                 profile = studio.profileFor (pr7s::Studio::ProfileUse::guitar);
             list = pr7s::guitarLeadIdeas (spans, barBeats, variation, getTuning(), studio.getGuitarVelocities(), studio.getGuitarStyle(),
-                                          studio.getSoloStyle(), profile.has_value() ? profile->shortestNote : 0.0);
+                                          studio.getSoloStyle(), profile.has_value() ? profile->shortestNote : 0.0,
+                                          studio.getProject().bpmAt (spans.empty() ? 0.0 : spans.front().start));
         }
             break;
         case P::pattern: list = pr7s::patternIdeas (spans, barBeats, patternGroup); break;

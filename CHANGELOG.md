@@ -2,6 +2,32 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.128.0
+
+**Solos, round one from your Metallica and Def Leppard files** (read for their shapes only, never copied; our own names in the app):
+
+What changes in every solo style:
+- **Fast runs at a player's speed:** the fast passages now aim for 8 to 12 notes a second, which is what those solos do at any tempo. At 66 BPM that means 32nds, at 120 16ths, and at 200 triplets or 8ths. Before, they were always 16ths, so a slow song's run crawled at about 4 notes a second.
+  - Your instrument's **SHORTEST NOTE** still wins. Shreddage's is a 16th, so on a slow song the runs stay 16ths there. Lower SHORTEST NOTE in HUB > INSTRUMENTS if you want the faster ones.
+- **Bends aimed at the notes that sing:** a held note gets bent mostly when it lands on the chord's root or fifth, or the minor key's fourth. Over a major chord, its third and sixth count too: the 2nd bent up to the 3rd and the 5th up to the 6th, as in the Def Leppard solos.
+- **Bends shaped by length:** a bend's rise now depends on the note. A quick one rises in about 60 ms, a long held one in up to 0.7 s (it was always 0.19 s).
+- **Slides and fall-offs:** a phrase's first note now and then slides up into its pitch from three frets under. A long held note now and then falls off at its end. Both are written as pitch bend, so your bend range sets how far they reach.
+- **Long first and last notes:** in a solo of 8 bars or more, the first note it lands on is held 4 to 6 beats, and the last note rings for the last 4 to 8. If the last chord comes in under it, it's struck again on that chord's root.
+  - FALLING MAJOR MELODY and SUNG IN THE GAPS keep their tune-like phrasing instead.
+- **BLUES HAMMER's climax:** it is now written as the repeated bends its description always promised.
+
+Four new styles, each built on those habits:
+- **REPEATED BEND CLIMB:** the same bend struck three to six times, then the next group a step higher. It ends bent up into the root or fifth, or on the top note hammered out.
+- **CHORD-CHASING ARPEGGIOS:** fast arpeggios that change with every chord, melodic phrases landing on the chord's third or fifth, and a triplet climb to the top root at the end.
+- **PEDAL DYAD HOOK:** a high pedal note picked between a line walking down under it, short calls played twice, and fourth double stops. It ends on the top note repeated.
+- **HOT START, COOL DOWN:** in at full speed with a fast run high up, then longer, lower, slower notes. It ends in a fall-off, a held note, or a drop to the low root back into the riff.
+
+The new endings any style can use: bent up into the root or fifth and held, a fall-off, a dive, a drop to the low root, the top note repeated, and a triplet climb out. The older styles end as before.
+
+**Checked:** tests cover the speed at 66 and 220 BPM (and that SHORTEST NOTE wins), the repeated bends climbing, bends aimed, slides, fall-offs, the long first and last notes, each new style's passages and endings, and the pitch bend for slides and fall-offs. Not checked here: how it sounds in Shreddage (your ears).
+
+**Round two** when you say so: UNISON BEND ANTHEM, OCTAVE MELODY BUILD, OPEN-STRING PEDAL FIRE, TWIN-LEAD HARMONY (a second track), EASTERN TREMOLO STORM, WHAMMY WAIL, TRILL & FALL TAG.
+
 ## 0.127.0
 
 **The rhythm guitar plays its power chords through Shreddage's power chord articulation (C#-1)** (you asked):

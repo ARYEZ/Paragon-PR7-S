@@ -10754,7 +10754,8 @@ namespace pr7s
         std::vector<Group> groups;
         for (const auto& n : notes)
         {
-            if (n.keyswitch || (n.effect != E::vibrato && n.effect != E::bend && n.effect != E::dive && n.effect != E::release))
+            if (n.keyswitch || (n.effect != E::vibrato && n.effect != E::bend && n.effect != E::dive && n.effect != E::release
+                                && n.effect != E::slideIn && n.effect != E::fallOff))
                 continue;
             auto found = false;
             for (auto& g : groups)
@@ -10805,7 +10806,9 @@ namespace pr7s
                 const auto semitones = g.amount > 0.0f ? (double) g.amount : 2.0;
                 const auto bent = juce::jlimit (0, 16383, 8192 + juce::roundToInt (juce::jmin (1.0, semitones / range) * 8191.0));
                 // (0.116.0, the owner's solos: a bend reaches its pitch in about 0.13-0.27 s at any tempo)
-                const auto rise = bpm > 0.0 ? 0.19 * bpm / 60.0 : 0.25;
+                // (0.128.0, the owner's Metallica and Def Leppard solos: from 50 ms on a quick bend to over a second on
+                // a long held one: 0.06 s + 0.13 of the note's length, at most 0.7 s; a one-beat note at 120 BPM: 0.19 s)
+                const auto rise = bpm > 0.0 ? juce::jlimit (0.06, 0.7, 0.06 + 0.13 * (end - g.at) * 60.0 / bpm) * bpm / 60.0 : 0.25;
                 const auto up = g.at + juce::jmin (rise, (end - g.at) * 0.5);
                 out.push_back ({ Controller::Type::pitchbend, 0, g.at, 8192, false });
                 out.push_back ({ Controller::Type::pitchbend, 0, up, bent, true });
@@ -10821,6 +10824,27 @@ namespace pr7s
                 out.push_back ({ Controller::Type::pitchbend, 0, g.at, bent, false });
                 out.push_back ({ Controller::Type::pitchbend, 0, hold, bent, false });
                 out.push_back ({ Controller::Type::pitchbend, 0, juce::jmin (end - 0.01, hold + rise), 8192, true });
+                out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
+            }
+            else if (g.effect == E::slideIn)
+            {
+                // (0.128.0) Slid up into the note: from `amount` semitones under (as far as the range reaches) to none
+                // over the first 0.12 s (a third of the note at most).
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 2.0;
+                const auto under = juce::jlimit (0, 16383, 8192 - juce::roundToInt (juce::jmin (1.0, semitones / range) * 8192.0));
+                const auto slide = bpm > 0.0 ? 0.12 * bpm / 60.0 : 0.25;
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, under, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + juce::jmin (slide, (end - g.at) / 3.0), 8192, true });
+            }
+            else if (g.effect == E::fallOff)
+            {
+                // (0.128.0) Held, then slid down `amount` semitones over its last 30 % (as far as the range reaches),
+                // the wheel back as the note ends.
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 5.0;
+                const auto down = juce::jlimit (0, 16383, 8192 - juce::roundToInt (juce::jmin (1.0, semitones / range) * 8192.0));
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + (end - g.at) * 0.7, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + (end - g.at) * 0.98, down, true });
                 out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
             }
             else if (g.effect == E::dive)

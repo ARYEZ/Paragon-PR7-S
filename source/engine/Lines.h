@@ -35,7 +35,7 @@ namespace pr7s
         // (0.66.0) `dive`: the whammy bar pushed down over the note (pitch bend down by `amount` semitones, as
         // far as the bend range reaches). `amount`: a bend's size in semitones (0: a whole step), a vibrato's
         // depth 0-1 (0: the usual), a dive's depth in semitones.
-        enum class Effect { none, vibrato, bend, ring, dive, swell, release };   // (0.101.0) swell: faded in by expression (CC 11); (0.116.0) release: bent up before it's struck, let down onto its note
+        enum class Effect { none, vibrato, bend, ring, dive, swell, release, slideIn, fallOff };   // (0.101.0) swell: faded in by expression (CC 11); (0.116.0) release: bent up before it's struck, let down onto its note; (0.128.0) slideIn: slid up into its note from `amount` semitones under, fallOff: held, then slid down `amount` semitones as it ends
         Effect effect = Effect::none;
         float amount = 0.0f;
         // (0.66.0) How the note is played, for an instrument with keys for it (Shreddage: Tapping A-1, Tremolo
@@ -137,7 +137,7 @@ namespace pr7s
     // (0.66.0) `solo`: SOLO STYLE for the seventh, the whole solo (automatic: made from the six; else
     // SoloEngine.h's `composeSolo`); `shortest` the instrument's SHORTEST NOTE (0: none).
     std::vector<LineIdea> guitarLeadIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation, const GuitarTuning&,
-                                            const GuitarVelocities&, GuitarStyle, SoloStyle solo = {}, double shortest = 0.0);
+                                            const GuitarVelocities&, GuitarStyle, SoloStyle solo = {}, double shortest = 0.0, double bpm = 0.0);
 
     // Humanize (0.20.0, the owner asked): small, controlled differences so a part sounds played,
     // not programmed. Our rules:

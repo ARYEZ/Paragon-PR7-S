@@ -509,7 +509,7 @@ namespace pr7s
                     const auto tuning = profile.has_value() ? profile->tuning() : c.tuning;
                     const auto velocities = profile.has_value() && profile->velocities.has_value() ? *profile->velocities : c.velocities;
                     auto idea = pick (guitarLeadIdeas (spans, c.beatsPerBar, lane.variation, tuning, velocities, c.style, c.solo,
-                                                       profile.has_value() ? profile->shortestNote : 0.0), lane.style);
+                                                       profile.has_value() ? profile->shortestNote : 0.0, c.bpm), lane.style);
                     thinTake (idea, c.beatsPerBar, takeOf (lane, l, 0, 127));
                     if (profile.has_value())
                         keepInRange (idea, profile->rangeLow(), profile->rangeHigh());
