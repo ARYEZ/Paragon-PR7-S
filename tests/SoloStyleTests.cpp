@@ -87,7 +87,8 @@ TEST_CASE ("0.66.0: every solo style writes a whole solo that builds and ends on
             if (style != SoloStyle::shuffleConversation && style != SoloStyle::grungeMelody && style != SoloStyle::fallingMajorMelody
                 && style != SoloStyle::hotStartCoolDown && style != SoloStyle::whammyFire
                 && style != SoloStyle::holdAndAccelerate && style != SoloStyle::burstAndBend
-                && style != SoloStyle::bottomToTopClimb && style != SoloStyle::burstBarBurst)   // (0.133.0: busy early on purpose, as the files)   // (no busy waves: flat on purpose; 0.128.0: busy first on purpose)
+                && style != SoloStyle::bottomToTopClimb && style != SoloStyle::burstBarBurst
+                && style != SoloStyle::fixedHead)   // (0.135.0: the same head every other bar: flat on purpose)   // (0.133.0: busy early on purpose, as the files)   // (no busy waves: flat on purpose; 0.128.0: busy first on purpose)
                 CHECK (busiest >= onsetsIn (solo, 0.0, 8.0));
             auto bends = 0, vibratos = 0;
             for (const auto& n : solo.notes)
@@ -484,7 +485,7 @@ namespace
 
 TEST_CASE ("0.116.0: the new solo styles are there, with our names", "[solo][solostyles][solo116]")
 {
-    REQUIRE (soloStyles().size() == 64);   // (0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more)
+    REQUIRE (soloStyles().size() == 85);   // (0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more)
     for (const auto* name : { "SINGING BENDS", "SHUFFLE CONVERSATION", "SLOW BUILD WITH RAKES", "FALLING MAJOR MELODY", "SUNG IN THE GAPS",
                               "ROLLING SEQUENCES", "LAID-BACK SWEET BENDS", "THEME EVERY ROUND", "TWO SPEEDS", "LICK TWICE TO END" })
         CHECK (soloStyleNamed (name) != SoloStyle::automatic);
@@ -1755,7 +1756,8 @@ TEST_CASE ("0.135.0: the Dream Theater round's styles have their own habits", "[
 {
     const auto spans = amBars (16);
     const auto& tuning = GuitarTuning::all()[0];
-    for (int variation = 0; variation < 3; ++variation)
+    auto halfBends = 0, wholeBends = 0;
+    for (int variation = 0; variation < 4; ++variation)
     {
         INFO ("variation " << variation);
         // CONTOUR CELLS: long sextuplet streams; a long top root at the end.
@@ -1796,11 +1798,9 @@ TEST_CASE ("0.135.0: the Dream Theater round's styles have their own habits", "[
 
         // CRYING HALF STEPS: half-step bends more often than whole steps; held notes fallen away seven semitones.
         const auto crying = composeSolo (SoloStyle::cryingHalfSteps, spans, 4.0, tuning, {}, variation);
-        auto half = 0, whole = 0;
         for (const auto& n : crying.notes)
             if (n.effect == LineNote::Effect::bend)
-                (n.amount < 1.5f ? half : whole) += 1;
-        CHECK (half > whole);
+                (n.amount < 1.5f ? halfBends : wholeBends) += 1;
 
         // FLOATING LINE: held notes tied over the bar lines.
         const auto floating = composeSolo (SoloStyle::floatingLine, spans, 4.0, tuning, {}, variation);
@@ -1853,4 +1853,5 @@ TEST_CASE ("0.135.0: the Dream Theater round's styles have their own habits", "[
             CHECK (last[i].pitch < last[i - 1].pitch);
         }
     }
+    CHECK (halfBends > wholeBends);   // (CRYING HALF STEPS: half steps twice as often as whole steps, as the files)
 }

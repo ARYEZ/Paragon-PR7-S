@@ -151,7 +151,7 @@ namespace pr7s
             std::vector<Burst> burstList;
             bool octaveRestate = false, restateInOctaves = false, keyAims = false, chordRootPhrygian = false, noBends = false,
                  ninthTargets = false, calmFirst = false, tiedLandings = false, climbingCalls = false,
-                 commonTones = false, minorOnTonic = false;
+                 commonTones = false, minorOnTonic = false, halfStepShortBends = false;
             std::vector<int> turnBars;
             int turnsLow = 0;          // (1: the second turn an octave down; 2: all the second guitar's)
             float fallAmount = 5.0f;   // (the fall-off out of a held note)
@@ -964,11 +964,11 @@ namespace pr7s
                                     "runs that leap an octave and run down, each beat higher; a whammy dive now and then";
                     break;
                 case SoloStyle::cryingHalfSteps:
-                    p.ninth = p.climbingCalls = true;
+                    p.ninth = p.climbingCalls = p.halfStepShortBends = true;
                     p.notesPerBeat = 1.0f; p.holdMin = 1.5; p.holdMax = 4.0; p.landBeat1 = 0.2f; p.phraseBars = 2;
                     p.restChance = 0.1f; p.restBeats = 1.0; p.waves = 2; p.waveBars = 2; p.waveAts = { 0.42f, 0.7f };
                     p.burstList = { Burst::run, Burst::flurry };
-                    p.bendChance = 0.6f; p.bends = { { 1.0f, 1.0f }, { 2.0f, 0.5f }, { 3.0f, 0.03f } }; p.releaseShare = 0.2f;
+                    p.bendChance = 0.75f; p.bends = { { 1.0f, 1.0f }, { 2.0f, 0.5f }, { 3.0f, 0.03f } }; p.releaseShare = 0.2f;
                     p.fallShare = 0.16f; p.fallAmount = 7.0f; p.scoopShare = 0.1f; p.scoopAmount = 2.0f;
                     p.vibrato = 1.0f; p.vibratoHeld = 0.6f; p.climb = 14; p.slideShare = 0.0f;
                     p.endings = { { Ending::climbToHold, 1.0f } };
@@ -3212,8 +3212,10 @@ namespace pr7s
                 std::vector<double> starts;
                 for (const auto share : { 0.0, 0.35, 0.72 })
                 {
-                    const auto o = std::floor (share * bars + 1.0e-6) * beatsPerBar;
-                    if (o + themeLength <= phrasesEnd + 1.0e-6 && (starts.empty() || o >= starts.back() + themeLength + 2.0))
+                    auto o = std::floor (share * bars + 1.0e-6) * beatsPerBar;
+                    if (! starts.empty())   // (in a short solo, as soon after the last as there's a bar's room)
+                        o = juce::jmax (o, std::ceil ((starts.back() + themeLength + 1.0) / beatsPerBar - 1.0e-6) * beatsPerBar);
+                    if (o + themeLength <= phrasesEnd + 1.0e-6)
                         starts.push_back (o);
                 }
                 for (size_t s = 0; s < starts.size(); ++s)
@@ -3384,6 +3386,7 @@ namespace pr7s
                                 heldAt (when, juce::jmin (1.8, from + bars * beatsPerBar - when - 0.02), pitch - 2, (float) (when / total));
                                 notes.back().effect = LineNote::Effect::bend;
                                 notes.back().amount = 2.0f;
+                                burstSpans.push_back ({ when, when + 0.01 });   // (bent as written)
                                 at = juce::jmax (1, at - 1);
                                 ++phraseNo;
                             }
@@ -3508,7 +3511,7 @@ namespace pr7s
                     shift = barsOf (cursor - head.start + 1.0e-6);
                     octaveUp = 12;
                 }
-                else if (p.climbingCalls && phraseNo % 2 == 1 && phraseNo <= 7)
+                else if (p.climbingCalls && phraseNo % 2 == 1 && phraseNo <= 5)
                 {
                     // (0.135.0) The call back, each time two scale steps higher, its rhythm kept.
                     copyFrom = &head;
@@ -3901,9 +3904,10 @@ namespace pr7s
             // (0.116.0) A short note bent now and then (about one in twenty), a whole step.
             if (! p.escalate && ! p.noBends && n.length >= 0.25 && n.length < 0.75 && ! isLast && n.pitch - 2 >= low && r.nextFloat() < 0.05f)
             {
-                n.pitch -= 2;
+                const auto size = p.halfStepShortBends ? 1 : 2;   // (0.135.0: a half step where the style bends so)
+                n.pitch -= size;
                 n.effect = LineNote::Effect::bend;
-                n.amount = 2.0f;
+                n.amount = (float) size;
                 continue;
             }
             // (0.133.0) The whammy scooped up into a phrase's first note or a held note (2, 3 or now and then 12
