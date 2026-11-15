@@ -2,6 +2,80 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.135.0
+
+**Solos from your 24 new files** (4 Oasis, 10 Mötley Crüe, 10 Dream Theater), read for their solos' shapes only, never copied; our own names. Five readers went through them.
+
+- **Not every file has a guitar solo:**
+  - Wonderwall, Too Fast for Love, Wild Side, Girls Girls Girls and Kickstart My Heart have none.
+  - Under a Glass Moon's solo is a synth line, so it was used with caution.
+  - In the Name of God's instrumental is played with the keys.
+- **What the readers found:**
+  - Oasis: repetition (half of every loop the same each time round), bends aimed at the key's root and fifth whatever the chord, the minor pentatonic over major chords, slow bends often let down again, no rests.
+  - Mötley Crüe: a slow, held start with the first phrase played again an octave up, whole-step bends, fast parts made of repeated or looped notes rather than scale runs, and a long held note to end.
+  - Dream Theater: almost no rests, long streams of six or eight notes a beat with the gear shifting only at bar lines, cells played twice then moved up a fourth, few bends and none inside the streams.
+
+**Three styles put right.** They were built in 0.67.0 and 0.68.0 from published lessons, and these files showed they were off:
+
+- **GLAM FLASH:**
+  - a slow start of held notes, with the first phrase again an octave up;
+  - whole-step bends;
+  - no double stops in thirds;
+  - hardly a rest;
+  - a tremolo-picked climb late in the solo, and a whole bar on the top root let down from a bend to end.
+- **SLEAZE BLUES:**
+  - a triplet shuffle;
+  - no flat five, no whammy dip and no quick run;
+  - lines that fall more than they rise, and a bend into the root to end.
+- **PROG PRECISION:**
+  - held notes chained without rests;
+  - long streams of cells played twice and moved up a fourth or an octave, shifting from sixteenths into sextuplets at the bar line;
+  - one cell looped at the peak;
+  - few bends, and no sweeps or strict scale sequences (the files have almost none).
+
+**21 new styles**, in the lead lane's Solo Style menu and IDEAS' SOLO box:
+
+- **From the Oasis files:**
+  - **TRADED TURNS:** two guitars trading eight-bar turns, the second an octave down, in eighths and quarters with slow bends aimed at the key's root and fifth. On a LEAD lane with two tracks, each guitar plays on its own track.
+  - **CALL & UNISON CHANT:** a call of three quarter-note bends answered in sixteenths, then the call again exactly; a run up from the bottom string, a three-note cell looped across the beat, and the top root bent into again and again in eighths to end.
+  - **FIXED HEAD, NEW ANSWERS:** in one box, every other bar the same head (a bend into the root, a fall, the root shaken) and a new answer in between each time.
+- **From the Mötley Crüe files:**
+  - **SHUFFLE TRADE:** two guitars trading short turns in a triplet shuffle, the second lower (on its own track where there are two).
+  - **SEXTUPLET LOOPS & DIVES:** minor-third pre-bends shaken wide to start, then a different trick in each busy wave: a six-note cell looped, a high note dived, repeated-note stairs, the low and high root round a note walking down. The low root dived to end.
+  - **PICKED HYMN:** a singable theme, a note a beat with each note picked four times, stated three times (the last in octaves), octaves bent together between, and the root in octaves with the whammy pulsing to end.
+  - **ONE TRICK A BLOCK:** a slow first half (its first phrase again an octave up), then one trick per block: a shaken trill, a run to the bottom, a tremolo-picked climb, and the top root let down from a bend.
+  - **TURNS DOWN THE SCALE:** a chord-tone melody, and waves of turns (an eighth and a quick neighbour turn, a step lower each beat, then again an octave up).
+  - **OCTAVE BALLAD:** straight sixteenths and no bends at all, the first phrase again an octave higher in octaves, and four quarters walking up into the next section.
+  - **STEPPING BEND CALLS:** bent calls on beats two and four, each a step lower; a minor-third trill getting faster; the calls again an octave down.
+- **From the Dream Theater files:**
+  - **CONTOUR CELLS:** sextuplet streams of one shape (up three, back two) and its mirror, moved each beat, into a climb and a long top root.
+  - **LOOPED CELLS ACROSS THE BEAT:** a four-note cell looped across the sextuplets so it lands somewhere new each beat, then a six-note cell looped exactly.
+  - **FALLING PEDAL SEXTUPLETS:** a high pair over a low note, the figure falling a step a beat, then a run straight up.
+  - **EASTERN LEGATO RUNS:** the eastern scale moved onto each chord's root; held notes first, then thirty-second legato runs leaping an octave and running down.
+  - **CRYING HALF STEPS:** slow, for half-time drums: half-step bends twice as often as whole steps, held notes falling away with the bar or scooped into, and a call raised each time it returns.
+  - **FLOATING LINE:** held notes tied over the bar lines, phrases coming in off the beat, quick flurries at a half and three quarters of the way.
+  - **ADD-NINE MELODY:** a slow major-key melody landing on the chord's ninth, getting busier towards the end, with trills on held notes.
+  - **GEAR-SHIFT STREAM:** a melody, then from halfway one unbroken stream of turning cells shifting gear at the bar lines (sixteenths, sextuplets, thirty-seconds), one cell looped at the top.
+  - **BAR OSTINATO:** a bar-long figure of fourths and fifths in sixteenths, accented in threes and twos, played four times, then sextuplet cells and a bent melody.
+  - **TRIAD CELL SWEEPS:** the chord's triad up and down in sextuplets, each cell two to four times, with a half-step trill between.
+  - **HELD OVER A FALLING BASS:** held notes the chords share while the bass moves under them, a run of cells each a fourth higher, and held notes falling a step a bar, each let down from a bend, to end.
+
+**Honest limits:**
+- Two of the readers' ideas are written as a trill instead: one note shaken by a bend while another is held over it can't be done, because a pitch bend moves every note on the track.
+- The odd meters (7/8, 15/8 and the rest) are taken as the feel inside 4/4 (threes and twos), since you asked for no meter changes.
+- Under a Glass Moon's synth line may not be what the guitar plays.
+
+**Checked:** tests cover each new style's own shape:
+- the second guitar's turns and their octave;
+- the call played back exactly, and the head the same every other bar;
+- the looped cells, the four-times picking and the turns;
+- no bends in the ballad, and the walk up;
+- the calls on two and four;
+- the sextuplet streams, the eastern flat two, the half-step bends and the ties over the bar line;
+- the gear order, the ostinato, the triad cells and the falling releases.
+
+The fixed styles' tests were rewritten to what the files show. Not checked here: the sound in Shreddage (your ears).
+
 ## 0.134.0
 
 **Solos from your eleven Pantera files** (read for their solos' shapes only, never copied; our own names). Three readers went through them:

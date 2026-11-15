@@ -360,7 +360,8 @@ TEST_CASE ("0.68.0: round three's styles have their own habits", "[solo][solosty
             const auto onTriplet = std::abs (n.beat * 3.0 - std::round (n.beat * 3.0)) < 0.02;
             const auto onEighth = std::abs (n.beat * 2.0 - std::round (n.beat * 2.0)) < 0.02;
             CHECK ((onTriplet || onEighth));
-            CHECK (((n.pitch % 12) + 12) % 12 != 3);   // (no D#: the flat five in A)
+            const auto sounding = n.pitch + (n.effect == LineNote::Effect::bend ? juce::roundToInt (n.amount) : 0);
+            CHECK (((sounding % 12) + 12) % 12 != 3);   // (no D# heard: the flat five in A)
             dips += n.effect == LineNote::Effect::dive ? 1 : 0;
         }
 

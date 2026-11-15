@@ -3362,8 +3362,8 @@ namespace pr7s
             {
                 // Bent calls on beats two and four, each a scale step lower (on a chord note); a trill on a minor
                 // third getting faster; the calls again an octave lower; round again, lower each time.
-                const auto callBars = juce::jmax (1, juce::jmin (4, bars / 4));
-                auto around = centreAt (0.0) + 8.0;
+                const auto callBars = juce::jmax (1, juce::jmin (2 + r.nextInt (3), bars / 4));
+                auto around = centreAt (0.0) + 4.0 + r.nextInt (6);
                 auto x = 0.0;
                 while (x < phrasesEnd - beatsPerBar + 1.0e-6)
                 {
