@@ -525,8 +525,12 @@ TEST_CASE ("0.116.0: every solo phrases as the real ones: held landings, off-bea
                         }
                 }
             }
-            // Never a ramp of 9-16 notes a bar: at most about three notes a beat over the solo.
-            CHECK ((double) solo.notes.size() / 64.0 <= 3.2);
+            // Never a ramp of 9-16 notes a bar: at most about three notes a beat over the solo (0.134.0: a twin's
+            // harmony notes are the second guitar's).
+            auto played = 0;
+            for (const auto& n : solo.notes)
+                played += n.harmony ? 0 : 1;
+            CHECK ((double) played / 64.0 <= 3.2);
         }
         INFO (soloStyleName (style));
         // Phrases end on held notes, most of them chord tones (as sounded).
@@ -1416,7 +1420,7 @@ TEST_CASE ("0.134.0: the Pantera round's styles have their own habits", "[solo][
             // Cells climbing a scale step a beat.
             for (size_t i = 6; i < solo.notes.size(); ++i)
                 climbs += solo.notes[i].pitch > solo.notes[i - 3].pitch && solo.notes[i - 3].pitch > solo.notes[i - 6].pitch
-                       && std::abs (solo.notes[i].beat - solo.notes[i - 3].beat - 0.5) < 1.0e-6 ? 1 : 0;
+                       && solo.notes[i].beat - solo.notes[i - 3].beat <= 1.0 + 1.0e-6 ? 1 : 0;   // (a cell a beat or two: the grid follows the tempo)
         }
         {
             const auto solo = composeSolo (SoloStyle::bottomToTopClimb, spans, 4.0, tuning, {}, variation, 0.0, 125.0);

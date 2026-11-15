@@ -1643,7 +1643,7 @@ namespace pr7s
                     // (0.134.0) Three-note cells (a note, a half step over, a fourth over that) twice a beat, each beat a
                     // fourth higher, round again an octave and a half up.
                     const auto g = runGrid (1.0 / 6.0);
-                    const auto start = nearestOf ({ chordAt (burstFrom).chord.root }, centre - 5.0, low, high - 12);
+                    const auto start = nearestOf ({ chordAt (burstFrom).chord.root }, centre - 5.0 + 5.0 * r.nextInt (2), low, high - 12);
                     const int cell[] = { 0, 1, 5 };
                     auto k = 0;
                     for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
@@ -2302,7 +2302,10 @@ namespace pr7s
                     for (auto j = 0; j < 4; ++j)
                         addNote (notes, o + j * 0.25, 0.24, juce::jlimit (low, high, j % 2 == 0 ? held - 6 : held), velocityAt (0.3f, j == 0));
                 addNote (notes, o + 1.0, beatsPerBar - 1.02, held, velocityAt (0.3f, true));
+                notes.back().effect = LineNote::Effect::vibrato;
+                notes.back().amount = p.vibrato;
             }
+            burstSpans.push_back ({ 0.0, 4.0 * beatsPerBar });   // (the stair as written: no bends or squeals added)
             lastLanding = (int) notes.size() - 1;
             cursor = 4.0 * beatsPerBar;
         }
@@ -2423,8 +2426,9 @@ namespace pr7s
                 ringOn (copyFrom->start + shift);
                 Phrase again { copyFrom->start + shift, copyFrom->end + shift, {} };
                 const auto steps = newNotes ? (r.nextBool() ? 2 : -2) : 0;
-                const auto octave = p.restate && (p.restateEarly || (copyFrom->start + shift) >= total * 0.5 - 1.0e-6)
-                                  && (copyFrom->start + shift) < total * 0.75 - 1.0e-6 ? 12 : 0;   // (where the copy lands; 0.134.0: from the first return, not in the last quarter)
+                const auto late = (copyFrom->start + shift) >= total * 0.75 - 1.0e-6;
+                const auto octave = p.lowLastQuarter && late ? -12   // (0.134.0: the last quarter down low)
+                                  : p.restate && (p.restateEarly || (copyFrom->start + shift) >= total * 0.5 - 1.0e-6) && ! (p.restateEarly && late) ? 12 : 0;   // (where the copy lands; 0.134.0: from the first return, not in the last quarter)
                 for (auto n : copyFrom->notes)
                 {
                     const auto sourceKey = std::lround (n.beat * 960.0);
@@ -2437,7 +2441,7 @@ namespace pr7s
                             n.pitch = pool[(size_t) juce::jlimit (0, (int) pool.size() - 1, nearestIndex (pool, n.pitch) + steps)];
                     }
                     else
-                        n.pitch = snapToScale (n.pitch + (n.pitch + octave <= high ? octave : 0), n.beat);
+                        n.pitch = snapToScale (n.pitch + (n.pitch + octave <= high && n.pitch + octave >= low ? octave : 0), n.beat);
                     n.effect = LineNote::Effect::none;
                     notes.push_back (n);
                     again.notes.push_back (n);
@@ -2575,8 +2579,12 @@ namespace pr7s
                         break;
                     }
             history.push_back (phrase);
-            cursor = landAt + hold + (r.nextFloat() < p.restChance ? p.restBeats : 0.0)
-                   + (p.longFirstRest && phraseNo == 0 ? 4.0 : 0.0);   // (0.134.0: silence after the first statement)
+            cursor = landAt + hold + (r.nextFloat() < p.restChance ? p.restBeats : 0.0);
+            if (p.longFirstRest && phraseNo == 0)
+            {
+                cursor += 4.0;       // (0.134.0: silence after the first statement,
+                lastLanding = -1;    //  the held note not ringing on through it)
+            }
             ++phraseNo;
         }
 
