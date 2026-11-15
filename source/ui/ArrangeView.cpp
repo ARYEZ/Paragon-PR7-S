@@ -2428,7 +2428,7 @@ bool ArrangeView::compHandleDown (const juce::MouseEvent& event)
             menu.addItem (o.id, o.name + "  (lane " + juce::String (o.lane + 1) + ")", true, ! pr7s::heardStretches (*track, i).empty());
     }
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (localAreaToGlobal (compHandleBounds (hit->first, hit->second)).toNearestInt()),
-                        [this] (int chosen) { if (chosen > 0) studio.bringToFront (chosen); });
+                        [this, safe = juce::Component::SafePointer<ArrangeView> (this)] (int chosen) { if (safe != nullptr && chosen > 0) studio.bringToFront (chosen); });
     return true;
 }
 
@@ -2874,8 +2874,12 @@ void ArrangeView::showPartMenu (int trackId, int index)
             menu.addItem (25, "Generate Harmony Voices...");                     // (0.35.0)
         }
     }
-    menu.showMenuAsync (juce::PopupMenu::Options(), [this, trackId, index, ids, muted = part.muted, start = part.start, end = part.end(), partId = part.id] (int chosen)
+    // (0.131.0) The view may be gone by the time the menu answers (a song closed with it open): nothing then.
+    menu.showMenuAsync (juce::PopupMenu::Options(), [this, safe = juce::Component::SafePointer<ArrangeView> (this), trackId, index, ids,
+                                                     muted = part.muted, start = part.start, end = part.end(), partId = part.id] (int chosen)
     {
+        if (safe == nullptr)
+            return;
         if (chosen > 39000 && chosen < 39010)
         {
             studio.mapToChordTrack (ids.empty() ? std::vector<int> { partId } : ids, (pr7s::FollowMode) (chosen - 39000));

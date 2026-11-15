@@ -18,6 +18,8 @@ Each version's notes appear on its GitHub Release page.
   - The screen is redrawn only when the number changes.
 - **A click on OUT** shows what the current 5 seconds have heard straight away, and starts a new 5 seconds.
 
+**A crash fixed:** a part's right-click menu could still answer after its arrangement view had gone, for example after the song was closed while the menu was open, and the studio stopped. The menu now does nothing in that case. The comp handle's To Front menu got the same fix. The tests found this one, not your log.
+
 ## 0.130.0
 
 **Auto-save no longer freezes the studio every five minutes** (your session log of 15 November).
