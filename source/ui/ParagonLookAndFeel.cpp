@@ -445,6 +445,33 @@ juce::ColourGradient ParagonLookAndFeel::familyGradient (juce::Point<float> from
     return gradient;
 }
 
+void ParagonLookAndFeel::drawPlayhead (juce::Graphics& g, float x, float lineTop, float bottom, float markerSize, bool recording)
+{
+    const auto centre = x + 0.7f;   // (where the old 1.4 px line's middle was)
+    const auto lit = juce::Rectangle<float>::leftTopRightBottom (centre - 1.5f, lineTop, centre + 1.5f, bottom);
+    const auto markerTop = lineTop - markerSize * 0.5f;
+    juce::Path marker;
+    marker.addTriangle (centre - markerSize * 0.5f, markerTop, centre + markerSize * 0.5f, markerTop, centre, lineTop + 4.0f);
+    if (recording)
+    {
+        g.setColour (juce::Colour (0xffff3b2f).withAlpha (0.3f));
+        g.fillRect (lit.expanded (2.5f, 0.0f));
+        g.setColour (juce::Colour (0xffff3b2f));
+        g.fillRect (lit);
+        g.fillPath (marker);
+        return;
+    }
+    // As drawLinearSlider's eqFader: the gradient along the line, a halo at 0.3, the line itself.
+    const auto travel = familyGradient ({ centre, lineTop }, { centre, bottom });
+    g.setGradientFill (travel);
+    g.setOpacity (0.3f);
+    g.fillRoundedRectangle (lit.expanded (2.5f, 0.0f), 2.0f);
+    g.setOpacity (1.0f);
+    g.fillRoundedRectangle (lit, 1.5f);
+    g.setColour (travel.getColourAtPosition (0.0));
+    g.fillPath (marker);
+}
+
 void ParagonLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
                                            float sliderPos, float startAngle, float endAngle,
                                            juce::Slider& slider)

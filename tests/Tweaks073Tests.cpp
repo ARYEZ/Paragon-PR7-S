@@ -154,7 +154,7 @@ TEST_CASE ("0.73.0: a track's colour in the track list: per track, 1-100 %, save
     CHECK_FALSE (studio.getProject().findTrack (a)->listColourOn);
 }
 
-TEST_CASE ("0.73.2: OUT holds the loudest peak since it was last clicked", "[ui][tweaks073]")
+TEST_CASE ("0.131.0: OUT shows the loudest peak of every 5 seconds", "[ui][tweaks073]")
 {
     Studio studio (false);
     TransportBar transport (studio);
@@ -166,30 +166,41 @@ TEST_CASE ("0.73.2: OUT holds the loudest peak since it was last clicked", "[ui]
         engine.getOutputMeter (0).pushSamples (l, 1);
         engine.getOutputMeter (1).pushSamples (r, 1);
     };
+    const auto window = TransportBar::outWindowTicks;
+    CHECK (window == 150);   // (5 s at 30 Hz)
     CHECK (transport.getShownOutDb() <= LevelMeter::minDb);
-    // A -6 dB peak on the right shows at once.
+    // A -6 dB peak on the right early in the window, quieter ones after: not shown until the window ends...
     push (0.1f, 0.5f);
     transport.followOutputForTests();
-    CHECK (std::abs (transport.getShownOutDb() + 6.02f) < 0.05f);
-    // Quieter peaks for a long while: it holds.
-    for (int i = 0; i < 300; ++i)
+    CHECK (transport.getShownOutDb() <= LevelMeter::minDb);
+    for (int i = 1; i < window - 1; ++i)
     {
         push (0.1f, 0.1f);
         transport.followOutputForTests();
     }
+    CHECK (transport.getShownOutDb() <= LevelMeter::minDb);
+    // ...then the loudest of it.
+    push (0.1f, 0.1f);
+    transport.followOutputForTests();
     CHECK (std::abs (transport.getShownOutDb() + 6.02f) < 0.05f);
-    // A louder one takes over.
+    // The next 5 s quieter: the number comes down, as the meters do.
+    for (int i = 0; i < window; ++i)
+    {
+        push (0.1f, 0.1f);
+        transport.followOutputForTests();
+    }
+    CHECK (std::abs (transport.getShownOutDb() + 20.0f) < 0.05f);
+    // Silence for 5 s: -INF.
+    for (int i = 0; i < window; ++i)
+        transport.followOutputForTests();
+    CHECK (transport.getShownOutDb() <= LevelMeter::minDb);
+    // A click on OUT shows what's been heard so far at once, and a new window starts.
     push (0.8f, 0.2f);
     transport.followOutputForTests();
-    CHECK (std::abs (transport.getShownOutDb() + 1.94f) < 0.05f);
-    // A click on OUT starts again: -INF, then the loudest from then on.
     const auto at = transport.getOutArea().getCentre();
     transport.mouseDown (juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, {}, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                                            &transport, &transport, juce::Time::getCurrentTime(), at, juce::Time::getCurrentTime(), 1, false));
-    CHECK (transport.getShownOutDb() <= LevelMeter::minDb);
-    push (0.1f, 0.1f);
-    transport.followOutputForTests();
-    CHECK (std::abs (transport.getShownOutDb() + 20.0f) < 0.05f);
+    CHECK (std::abs (transport.getShownOutDb() + 1.94f) < 0.05f);
 }
 
 TEST_CASE ("0.73.4: the drawing choice reaches menus as they're made", "[ui][tweaks073]")
@@ -207,4 +218,41 @@ TEST_CASE ("0.73.4: the drawing choice reaches menus as they're made", "[ui][twe
     menuLike.removeFromDesktop();
     Windows::applyDrawing (false);
     CHECK_FALSE (FamilyAlertWindow::softwareDrawing);
+}
+
+TEST_CASE ("0.131.0: the playhead is drawn as the mixer's lit fader, in the family gradient", "[ui][tweaks073]")
+{
+    // The line: pink near the top, orange near the foot, never pearl white; red while recording.
+    juce::Image image (juce::Image::RGB, 40, 400, true);
+    {
+        juce::Graphics g (image);
+        g.fillAll (juce::Colours::black);
+        ParagonLookAndFeel::drawPlayhead (g, 20.0f, 20.0f, 400.0f, 12.0f, false);
+    }
+    const auto top = image.getPixelAt (20, 30), foot = image.getPixelAt (20, 390);
+    CHECK (top.getRed() > 150);
+    CHECK (top.getGreen() < 60);   // (pink / red: little green)
+    CHECK (foot.getGreen() > top.getGreen() + 30);   // (orange at the foot)
+    CHECK (foot.getBlue() < 80);
+    CHECK_FALSE ((top.getGreen() > 200 && top.getBlue() > 200));   // (no pearl white)
+    // The halo: fainter beside the line.
+    CHECK (image.getPixelAt (23, 200).getRed() < image.getPixelAt (20, 200).getRed());
+    CHECK (image.getPixelAt (23, 200).getRed() > 10);
+    // The line and its halo within x - 4 .. x + 5 (the strip the views repaint); the marker over it is
+    // as wide as before (x - 6 .. x + 6, inside the ruler's 17 px strip).
+    for (int y = 30; y < 400; ++y)
+    {
+        CHECK (image.getPixelAt (15, y).getRed() == 0);
+        CHECK (image.getPixelAt (26, y).getRed() == 0);
+    }
+    // Recording: red.
+    juce::Image recording (juce::Image::RGB, 40, 400, true);
+    {
+        juce::Graphics g (recording);
+        g.fillAll (juce::Colours::black);
+        ParagonLookAndFeel::drawPlayhead (g, 20.0f, 20.0f, 400.0f, 12.0f, true);
+    }
+    const auto red = recording.getPixelAt (20, 390);
+    CHECK (red.getRed() > 200);
+    CHECK (red.getGreen() < 80);
 }

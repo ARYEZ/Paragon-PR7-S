@@ -2,6 +2,22 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.131.0
+
+**The playhead in the mixer's colours** (you asked).
+
+- **What changed:** the play line is drawn like a mixer channel's lit volume fader: a 3-pixel line in the family's red / pink / orange gradient, pink at the top and orange at the foot, with the fader's soft halo round it. Its marker on the ruler is the gradient's pink. Before, it was pearl white with a pink glow.
+- **Where:** the arrangement and the MIDI editor.
+- **While recording:** it stays plain red, as before, so you can see at a glance that you're recording.
+
+**OUT shows the level going out now** (you asked).
+
+- **What was wrong:** OUT on the transport held the loudest peak since you last clicked it ("DB MAX"), so it never came down.
+- **What changed:** it now shows the loudest peak of every 5 seconds ("DB PEAK"). It goes up and down with the music, as the channel meters do, but the number changes only once every 5 seconds, so it doesn't flicker.
+  - The output is still read 30 times a second, so no peak is missed between updates.
+  - The screen is redrawn only when the number changes.
+- **A click on OUT** shows what the current 5 seconds have heard straight away, and starts a new 5 seconds.
+
 ## 0.130.0
 
 **Auto-save no longer freezes the studio every five minutes** (your session log of 15 November).

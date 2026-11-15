@@ -2205,20 +2205,8 @@ void KeyEditor::paint (juce::Graphics& g)
     const auto x = xForBeat (shownBeat);
     if (x >= getNotesArea().getX() - 2.0f && x <= (float) getWidth() + 2.0f)
     {
-        const auto red = studio.getEngine().isRecording();
-        // Pearl white with a magenta-pink glow (0.9.12, the owner asked); red while recording.
-        const auto glowColour = red ? juce::Colour (0xffff3b2f) : pr7s::FamilyColours::pink;
-        const auto lineColour = red ? juce::Colour (0xffff3b2f) : juce::Colour (0xfff4eeea);
-        g.setColour (glowColour.withAlpha (0.18f));
-        g.fillRect (juce::Rectangle<float> (x - 4.0f, notesTop(), 9.2f, (float) getHeight() - notesTop()));
-        g.setColour (glowColour.withAlpha (0.4f));
-        g.fillRect (juce::Rectangle<float> (x - 1.5f, notesTop(), 4.2f, (float) getHeight() - notesTop()));
-        const auto colour = lineColour;
-        g.setColour (colour);
-        g.fillRect (juce::Rectangle<float> (x, notesTop() - 6.0f, 1.4f, (float) getHeight() - notesTop() + 6.0f));
-        juce::Path marker;
-        marker.addTriangle (x - 5.0f, notesTop() - 11.0f, x + 5.0f, notesTop() - 11.0f, x, notesTop() - 2.0f);
-        g.fillPath (marker);
+        // (0.131.0, the owner asked) As the mixer's lit fader: the family gradient; red while recording.
+        ParagonLookAndFeel::drawPlayhead (g, x, notesTop() - 6.0f, (float) getHeight(), 10.0f, studio.getEngine().isRecording());
     }
 
     // The editor's frame and the line between the notes and the velocities.

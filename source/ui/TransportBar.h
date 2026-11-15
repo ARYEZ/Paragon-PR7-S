@@ -69,7 +69,10 @@ public:
     juce::Rectangle<float> getOutArea() const noexcept { return outScreen; }   // (0.73.0)
     float getShownOutDb() const noexcept { return shownOutDb; }   // (0.73.1) the number OUT shows
     void followOutputForTests() { followOutput(); }
-    void resetOutPeak();   // (0.73.2) a click on OUT: back to -INF, the loudest from now on
+    void resetOutPeak();   // (0.73.2) a click on OUT: a new window starts now (0.131.0: shown at once)
+    // (0.131.0, the owner asked) OUT shows the level going out now, as the channel meters do, but as a
+    // number refreshed once every `outWindowTicks` timer ticks (5 s at 30 Hz): the loudest peak of those 5 s.
+    static constexpr int outWindowTicks = 150;
     // Where the arrangement's AUTO-SCROLL key and its menu arrow go (the main window puts them there).
     juce::Rectangle<int> getAutoScrollArea() const noexcept { return autoScrollArea; }
     juce::String getTooltip() override;
@@ -95,9 +98,11 @@ private:
     juce::TextButton cycleKey { "CYCLE" }, clickKey { "CLICK" };
     pr7s::SignatureEvent shownSignature { -1, 0, 0 };
     // (0.73.2, the owner asked) OUT's number: the loudest peak (both sides) since OUT was last clicked.
-    float outPeak = 0.0f;   // gain
+    float outPeak = 0.0f;   // gain: the loudest in this window
+    int outTicks = 0;   // (ticks into it)
     float shownOutDb = LevelMeter::minDb;
     void followOutput();
+    void showOutPeak();
     juce::Rectangle<float> badge, positionScreen, timeScreen, tempoScreen, signatureScreen, keysArea, cpuScreen, outScreen, autoScrollStamp;
     juce::Rectangle<int> toolsArea, autoScrollArea;
     float keyPitchNow = 70.0f;
