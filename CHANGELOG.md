@@ -2,6 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.132.0
+
+**The play bar black, outlined in the gradient** (you chose it from the mock-up).
+
+- **What changed:** the play line is now a black bar with a thin outline down both sides, red-pink at the top to orange at the foot, the same gradient as before, with the same soft glow round it. Its marker on the ruler is a black triangle outlined in the gradient.
+- **Wider than the mock-up:** 4 pixels instead of 3, so the black middle still shows over the dark empty parts of the arrangement.
+- **While recording:** it stays plain red.
+
+**A crash fixed** (0.131.0 was published a few minutes before this fix went in): a part's right-click menu could still answer after its arrangement view had gone, for example after the song was closed while the menu was open, and the studio stopped. The menu now does nothing in that case. The comp handle's To Front menu got the same fix. The tests found this one, not your log.
+
 ## 0.131.0
 
 **The playhead in the mixer's colours** (you asked).
@@ -17,8 +27,6 @@ Each version's notes appear on its GitHub Release page.
   - The output is still read 30 times a second, so no peak is missed between updates.
   - The screen is redrawn only when the number changes.
 - **A click on OUT** shows what the current 5 seconds have heard straight away, and starts a new 5 seconds.
-
-**A crash fixed:** a part's right-click menu could still answer after its arrangement view had gone, for example after the song was closed while the menu was open, and the studio stopped. The menu now does nothing in that case. The comp handle's To Front menu got the same fix. The tests found this one, not your log.
 
 ## 0.130.0
 

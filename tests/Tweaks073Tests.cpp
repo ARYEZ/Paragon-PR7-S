@@ -220,30 +220,31 @@ TEST_CASE ("0.73.4: the drawing choice reaches menus as they're made", "[ui][twe
     CHECK_FALSE (FamilyAlertWindow::softwareDrawing);
 }
 
-TEST_CASE ("0.131.0: the playhead is drawn as the mixer's lit fader, in the family gradient", "[ui][tweaks073]")
+TEST_CASE ("0.132.0: the playhead is a black bar outlined in the family gradient", "[ui][tweaks073]")
 {
-    // The line: pink near the top, orange near the foot, never pearl white; red while recording.
+    // The bar's middle black; its edges pink near the top, orange near the foot; never pearl white.
     juce::Image image (juce::Image::RGB, 40, 400, true);
     {
         juce::Graphics g (image);
-        g.fillAll (juce::Colours::black);
+        g.fillAll (juce::Colours::grey);
         ParagonLookAndFeel::drawPlayhead (g, 20.0f, 20.0f, 400.0f, 12.0f, false);
     }
-    const auto top = image.getPixelAt (20, 30), foot = image.getPixelAt (20, 390);
-    CHECK (top.getRed() > 150);
+    const auto middle = image.getPixelAt (20, 200);
+    CHECK (middle.getRed() < 30);   // (black over the grey)
+    CHECK (middle.getGreen() < 30);
+    const auto top = image.getPixelAt (19, 30), foot = image.getPixelAt (19, 390);   // (the left edge)
+    CHECK (top.getRed() > 120);   // (the 1.2 px edge falls across pixels: partly blended with the black)
+    CHECK (image.getPixelAt (22, 30).getRed() > 120);   // (the right edge too)
     CHECK (top.getGreen() < 60);   // (pink / red: little green)
     CHECK (foot.getGreen() > top.getGreen() + 30);   // (orange at the foot)
-    CHECK (foot.getBlue() < 80);
     CHECK_FALSE ((top.getGreen() > 200 && top.getBlue() > 200));   // (no pearl white)
-    // The halo: fainter beside the line.
-    CHECK (image.getPixelAt (23, 200).getRed() < image.getPixelAt (20, 200).getRed());
-    CHECK (image.getPixelAt (23, 200).getRed() > 10);
-    // The line and its halo within x - 4 .. x + 5 (the strip the views repaint); the marker over it is
-    // as wide as before (x - 6 .. x + 6, inside the ruler's 17 px strip).
+    // The marker black inside, outlined.
+    CHECK (image.getPixelAt (20, 15).getRed() < 30);
+    // The line and its halo within x - 5 .. x + 6 (inside the strip the views repaint: x - 8 .. x + 9).
     for (int y = 30; y < 400; ++y)
     {
-        CHECK (image.getPixelAt (15, y).getRed() == 0);
-        CHECK (image.getPixelAt (26, y).getRed() == 0);
+        CHECK (image.getPixelAt (14, y) == juce::Colours::grey);
+        CHECK (image.getPixelAt (27, y) == juce::Colours::grey);
     }
     // Recording: red.
     juce::Image recording (juce::Image::RGB, 40, 400, true);
