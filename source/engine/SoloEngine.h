@@ -53,7 +53,12 @@ namespace pr7s
                                  halfSpeedBentCells, pedalClimbTremolo, slowStaircaseBends, loopedPullOffs,
                                  // (0.134.0, the rest of the Pantera ideas; our names)
                                  tritoneStaircase, shuffleSnarl, breakdownTrill, slowEasternTwins, heldLineRisingCells,
-                                 statedRaisedDropped };
+                                 statedRaisedDropped,
+                                 // (0.135.0, from the owner's Oasis, Motley Crue and Dream Theater solos, shapes only; our names)
+                                 tradedTurns, callAndChant, fixedHead, shuffleTrade, sextupletLoopsDives, pickedHymn, oneTrickABlock,
+                                 turnsDownTheScale, octaveBallad, steppingBendCalls, contourCells, loopedCellsAcross,
+                                 fallingPedalSextuplets, easternLegatoRuns, cryingHalfSteps, floatingLine, addNineMelody,
+                                 gearShiftStream, barOstinato, triadCellSweeps, heldOverFallingBass };
     const std::vector<SoloStyle>& soloStyles();      // automatic first
     juce::String soloStyleName (SoloStyle);          // "BY STYLE", "SOARING BENDS", "ROCK 'N' ROLL SWAGGER", "TAP & DIVE", "BLUES HAMMER",
                                                      // "SCREAM & DIVE", "THRASH FIRE", "PINCH SQUEAL", "PROG PRECISION",

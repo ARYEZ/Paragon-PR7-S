@@ -46,7 +46,7 @@ namespace
 
 TEST_CASE ("0.66.0: solo style names are ours, round trip, and never a player's", "[solo][solostyles]")
 {
-    REQUIRE (soloStyles().size() == 64);   // (0.116.0: ten more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more)
+    REQUIRE (soloStyles().size() == 85);   // (0.116.0: ten more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more; 0.135.0: twenty-one more)
     CHECK (soloStyles().front() == SoloStyle::automatic);
     for (const auto s : soloStyles())
     {
@@ -55,7 +55,7 @@ TEST_CASE ("0.66.0: solo style names are ours, round trip, and never a player's"
         for (const auto* player : { "Gilmour", "Perry", "Van Halen", "Page", "EVH", "Zeppelin", "Floyd", "Aerosmith",
                                    "Dimebag", "Darrell", "Pantera", "Hammett", "Metallica", "Wylde", "Black Label", "Petrucci", "Dream Theater",
                                    "DeVille", "Poison", "Mick Mars", "Motley", "Slash", "Guns N", "Prince",
-                                   "Synyster", "Avenged", "Halen", "Panama", "Poundcake", "Lowery", "Sevendust", "Cantrell", "Alice in Chains", "Cobain", "Nirvana" })
+                                   "Synyster", "Avenged", "Halen", "Oasis", "Gallagher", "Crue", "Feelgood", "Wonderwall", "Sixx", "Panama", "Poundcake", "Lowery", "Sevendust", "Cantrell", "Alice in Chains", "Cobain", "Nirvana" })
         {
             CHECK_FALSE (soloStyleName (s).containsIgnoreCase (player));
             CHECK_FALSE (soloStyleDescription (s).containsIgnoreCase (player));
@@ -303,13 +303,14 @@ TEST_CASE ("0.67.0: round two's styles have their own habits", "[solo][solostyle
         for (size_t i = 1; i < pinches.size(); ++i)
             CHECK (pinches[i] - pinches[i - 1] >= 4.0);   // (different bars two apart at least: a bar is 4 beats here)
 
-        // PROG PRECISION: natural minor's 2 and b6 are heard (B and F in A minor), and long 16th runs.
+        // PROG PRECISION: the 2 is heard (B in A minor); (0.135.0, from the owner's Dream Theater files) long sextuplet
+        // streams and hardly a rest.
         const auto prog = composeSolo (SoloStyle::progPrecision, spans, 4.0, tuning, {}, variation);
         CHECK (count (prog, [] (const LineNote& n) { return ((n.pitch % 12) + 12) % 12 == 11; }) > 0);
         auto run = 0, longest = 0;
         for (size_t i = 1; i < prog.notes.size(); ++i)
         {
-            run = std::abs (prog.notes[i].beat - prog.notes[i - 1].beat - 0.25) < 1.0e-6 ? run + 1 : 0;
+            run = std::abs (prog.notes[i].beat - prog.notes[i - 1].beat - 1.0 / 6.0) < 1.0e-6 ? run + 1 : 0;
             longest = juce::jmax (longest, run);
         }
         CHECK (longest >= 12);
@@ -336,29 +337,31 @@ TEST_CASE ("0.68.0: round three's styles have their own habits", "[solo][solosty
     for (int variation = 0; variation < 4; ++variation)
     {
         INFO ("variation " << variation);
-        // GLAM FLASH: no fast run in the first half; one near the end; double stops in thirds.
+        // GLAM FLASH: no fast run in the first half; one near the end; (0.135.0, from the owner's Motley Crue files) no
+        // double stops in thirds, the second phrase the first an octave up, a tremolo-picked climb (the same note again
+        // and again in sixteenths), the top root let down from a bend to end.
         const auto glam = composeSolo (SoloStyle::glamFlash, spans, 4.0, tuning, {}, variation);
         CHECK (longestRun (glam, 0.0, 32.0) < 4);
         CHECK (longestRun (glam, 32.0, 64.0) >= 4);
         for (size_t i = 1; i < glam.notes.size(); ++i)
             if (std::abs (glam.notes[i].beat - glam.notes[i - 1].beat) < 1.0e-6)
-            {
-                const auto gap = std::abs (glam.notes[i].pitch - glam.notes[i - 1].pitch);
-                CHECK ((gap == 3 || gap == 4));
                 ++thirds;
-            }
+        auto repeats = 0;
+        for (size_t i = 1; i < glam.notes.size(); ++i)
+            repeats += glam.notes[i].pitch == glam.notes[i - 1].pitch && glam.notes[i].beat - glam.notes[i - 1].beat < 0.3 ? 1 : 0;
+        CHECK (repeats >= 8);
+        CHECK (glam.notes.back().effect == LineNote::Effect::release);
 
-        // SLEAZE BLUES: at most one whammy dip, a semitone; nothing busier than 8 notes a bar outside the run.
+        // SLEAZE BLUES: (0.135.0) a triplet shuffle (every note on an eighth or a triplet eighth), no flat five, no dip.
         const auto sleaze = composeSolo (SoloStyle::sleazeBlues, spans, 4.0, tuning, {}, variation);
-        auto here = 0;
         for (const auto& n : sleaze.notes)
-            if (n.effect == LineNote::Effect::dive)
-            {
-                CHECK (n.amount == 1.0f);
-                ++here;
-            }
-        CHECK (here <= 1);
-        dips += here;
+        {
+            const auto onTriplet = std::abs (n.beat * 3.0 - std::round (n.beat * 3.0)) < 0.02;
+            const auto onEighth = std::abs (n.beat * 2.0 - std::round (n.beat * 2.0)) < 0.02;
+            CHECK ((onTriplet || onEighth));
+            CHECK (((n.pitch % 12) + 12) % 12 != 3);   // (no D#: the flat five in A)
+            dips += n.effect == LineNote::Effect::dive ? 1 : 0;
+        }
 
         // TOP HAT MELODY: the melody laid back off the grid.
         const auto hat = composeSolo (SoloStyle::topHatMelody, spans, 4.0, tuning, {}, variation);
@@ -388,8 +391,8 @@ TEST_CASE ("0.68.0: round three's styles have their own habits", "[solo][solosty
         CHECK (longestClimb >= 8);
         CHECK (purple.notes.back().pitch >= tuning.strings.back() + 10);
     }
-    CHECK (thirds > 0);
-    CHECK (dips > 0);
+    CHECK (thirds == 0);
+    CHECK (dips == 0);
 }
 
 TEST_CASE ("0.69.0: round four's styles have their own habits", "[solo][solostyles]")
@@ -1561,3 +1564,293 @@ TEST_CASE ("0.134.0: the rest of the Pantera ideas have their own habits", "[sol
     CHECK (earlyEntries >= 12);
 }
 
+
+// 0.135.0: the owner's Oasis, Motley Crue and Dream Theater files (read for their solos' shapes only; our names).
+namespace
+{
+    int longestGapRun (const LineIdea& idea, double gap, double from = 0.0, double to = 1.0e9)
+    {
+        auto run = 0, longest = 0;
+        for (size_t i = 1; i < idea.notes.size(); ++i)
+        {
+            if (idea.notes[i].beat < from || idea.notes[i].beat >= to || idea.notes[i].harmony)
+                continue;
+            run = std::abs (idea.notes[i].beat - idea.notes[i - 1].beat - gap) < 1.0e-6 ? run + 1 : 0;
+            longest = juce::jmax (longest, run);
+        }
+        return longest;
+    }
+
+    std::vector<LineNote> notesIn (const LineIdea& idea, double from, double to)
+    {
+        std::vector<LineNote> out;
+        for (const auto& n : idea.notes)
+            if (n.beat >= from - 1.0e-9 && n.beat < to - 1.0e-9)
+                out.push_back (n);
+        return out;
+    }
+
+    bool sameShifted (const std::vector<LineNote>& a, const std::vector<LineNote>& b, double shift)
+    {
+        if (a.size() != b.size() || a.empty())
+            return false;
+        for (size_t i = 0; i < a.size(); ++i)
+            if (std::abs (a[i].beat + shift - b[i].beat) > 1.0e-6 || a[i].pitch != b[i].pitch || a[i].effect != b[i].effect)
+                return false;
+        return true;
+    }
+}
+
+TEST_CASE ("0.135.0: the Oasis round's styles have their own habits", "[solo][solostyles][solo135]")
+{
+    const auto spans = amBars (16);
+    const auto& tuning = GuitarTuning::all()[0];
+    for (int variation = 0; variation < 3; ++variation)
+    {
+        INFO ("variation " << variation);
+        // TRADED TURNS: the first eight bars the first guitar's, the next eight the second's (an octave down).
+        const auto traded = composeSolo (SoloStyle::tradedTurns, spans, 4.0, tuning, {}, variation);
+        auto second = 0, firstPitches = 0, secondPitches = 0, firstCount = 0;
+        for (const auto& n : traded.notes)
+        {
+            if (n.harmony)
+            {
+                ++second;
+                CHECK (n.beat >= 31.5 - 1.0e-6);
+                secondPitches += n.pitch;
+            }
+            else
+            {
+                CHECK (n.beat < 31.5 + 1.0e-6);
+                firstPitches += n.pitch;
+                ++firstCount;
+            }
+        }
+        REQUIRE (second >= 8);
+        REQUIRE (firstCount >= 8);
+        CHECK (secondPitches / second < firstPitches / firstCount);
+        CHECK (longestGapRun (traded, 0.25) == 0);   // (eighths and quarters)
+
+        // CALL & UNISON CHANT: three bends on beats one, two and three, the call and answer again exactly; the end
+        // the top root bent into again and again in eighths.
+        const auto chant = composeSolo (SoloStyle::callAndChant, spans, 4.0, tuning, {}, variation);
+        for (auto b = 0; b < 3; ++b)
+        {
+            CHECK (std::abs (chant.notes[(size_t) b].beat - b) < 1.0e-6);
+            CHECK (chant.notes[(size_t) b].effect == LineNote::Effect::bend);
+            CHECK (chant.notes[(size_t) b].pitch == chant.notes[0].pitch);
+        }
+        CHECK (sameShifted (notesIn (chant, 0.0, 8.0), notesIn (chant, 8.0, 16.0), 8.0));
+        auto struck = 0;
+        for (const auto& n : notesIn (chant, 60.0, 64.0))
+            struck += n.effect == LineNote::Effect::bend && n.pitch == chant.notes.back().pitch ? 1 : 0;
+        CHECK (struck >= 4);
+
+        // FIXED HEAD, NEW ANSWERS: bars 1, 3, 5... the same; the answers between them not.
+        const auto head = composeSolo (SoloStyle::fixedHead, spans, 4.0, tuning, {}, variation);
+        CHECK (sameShifted (notesIn (head, 0.0, 4.0), notesIn (head, 8.0, 12.0), 8.0));
+        CHECK (sameShifted (notesIn (head, 0.0, 4.0), notesIn (head, 16.0, 20.0), 16.0));
+        CHECK_FALSE (sameShifted (notesIn (head, 4.0, 8.0), notesIn (head, 12.0, 16.0), 8.0));
+        CHECK (head.notes.front().effect == LineNote::Effect::bend);
+    }
+}
+
+TEST_CASE ("0.135.0: the Motley Crue round's styles have their own habits", "[solo][solostyles][solo135]")
+{
+    const auto spans = amBars (16);
+    const auto& tuning = GuitarTuning::all()[0];
+    for (int variation = 0; variation < 3; ++variation)
+    {
+        INFO ("variation " << variation);
+        // SHUFFLE TRADE: triplet shuffle, the second guitar's two-bar turns (beats 8 to 16) lower.
+        const auto shuffle = composeSolo (SoloStyle::shuffleTrade, spans, 4.0, tuning, {}, variation);
+        auto secondTurn = 0;
+        for (const auto& n : shuffle.notes)
+        {
+            CHECK ((std::abs (n.beat * 3.0 - std::round (n.beat * 3.0)) < 0.02 || std::abs (n.beat * 2.0 - std::round (n.beat * 2.0)) < 0.02));
+            if (n.harmony)
+            {
+                CHECK (((n.beat >= 7.5 && n.beat < 16.5) || (n.beat >= 31.5 && n.beat < 48.5) || n.beat >= 55.5));
+                ++secondTurn;
+            }
+        }
+        CHECK (secondTurn >= 6);
+
+        // SEXTUPLET LOOPS & DIVES: wide-shaken pre-bends first, a six-note cell looped, the low root dived.
+        const auto loops = composeSolo (SoloStyle::sextupletLoopsDives, spans, 4.0, tuning, {}, variation);
+        CHECK (loops.notes.front().effect == LineNote::Effect::wobble);
+        auto looped = 0, longestLoop = 0;
+        for (size_t i = 6; i < loops.notes.size(); ++i)
+        {
+            looped = loops.notes[i].pitch == loops.notes[i - 6].pitch && std::abs (loops.notes[i].beat - loops.notes[i - 1].beat - 1.0 / 6.0) < 1.0e-6
+                   ? looped + 1 : 0;
+            longestLoop = juce::jmax (longestLoop, looped);
+        }
+        CHECK (longestLoop >= 12);
+        CHECK (loops.notes.back().effect == LineNote::Effect::dive);
+        CHECK (loops.notes.back().amount == 7.0f);
+
+        // PICKED HYMN: each theme note picked four times (runs of four of a pitch in sixteenths), octaves, the root in
+        // octaves with the bar pulsing.
+        const auto hymn = composeSolo (SoloStyle::pickedHymn, spans, 4.0, tuning, {}, variation);
+        auto picked = 0;
+        for (size_t i = 3; i < hymn.notes.size(); ++i)
+        {
+            const auto& a = hymn.notes[i - 3];
+            const auto& b = hymn.notes[i];
+            picked += ! a.harmony && ! b.harmony && a.pitch == b.pitch && std::abs (b.beat - a.beat - 0.75) < 1.0e-6
+                      && std::abs (a.beat - std::round (a.beat)) < 1.0e-6 ? 1 : 0;
+        }
+        CHECK (picked >= 18);
+        CHECK (std::count_if (hymn.notes.begin(), hymn.notes.end(), [] (const LineNote& n) { return n.harmony; }) >= 20);
+        CHECK (hymn.notes.back().effect == LineNote::Effect::wobble);
+
+        // ONE TRICK A BLOCK: a slow first half; later the same note picked in thirty-seconds; let down at the end.
+        const auto trick = composeSolo (SoloStyle::oneTrickABlock, spans, 4.0, tuning, {}, variation);
+        CHECK (onsetsIn (trick, 0.0, 32.0) <= 40);
+        auto tremolo = 0;
+        for (size_t i = 1; i < trick.notes.size(); ++i)
+            tremolo += trick.notes[i].pitch == trick.notes[i - 1].pitch && std::abs (trick.notes[i].beat - trick.notes[i - 1].beat - 0.125) < 1.0e-6 ? 1 : 0;
+        CHECK (tremolo >= 8);
+        CHECK (trick.notes.back().effect == LineNote::Effect::release);
+
+        // TURNS DOWN THE SCALE: an eighth, then the note above, the note, the note under in triplet sixteenths.
+        const auto turns = composeSolo (SoloStyle::turnsDownTheScale, spans, 4.0, tuning, {}, variation);
+        auto turned = 0;
+        for (size_t i = 0; i + 3 < turns.notes.size(); ++i)
+        {
+            const auto& a = turns.notes[i];
+            turned += std::abs (turns.notes[i + 1].beat - a.beat - 0.5) < 1.0e-6 && std::abs (turns.notes[i + 2].beat - a.beat - 2.0 / 3.0) < 1.0e-6
+                      && turns.notes[i + 1].pitch > a.pitch && turns.notes[i + 2].pitch == a.pitch && turns.notes[i + 3].pitch < a.pitch ? 1 : 0;
+        }
+        CHECK (turned >= 4);
+
+        // OCTAVE BALLAD: no bends at all; the restated phrase in octaves; four quarters walking up into the root.
+        const auto ballad = composeSolo (SoloStyle::octaveBallad, spans, 4.0, tuning, {}, variation);
+        for (const auto& n : ballad.notes)
+        {
+            CHECK (n.effect != LineNote::Effect::bend);
+            CHECK (n.effect != LineNote::Effect::release);
+            CHECK (n.effect != LineNote::Effect::slowBend);
+        }
+        CHECK (std::count_if (ballad.notes.begin(), ballad.notes.end(), [] (const LineNote& n) { return n.harmony; }) >= 3);
+        const auto walk = notesIn (ballad, 60.0, 64.0);
+        REQUIRE (walk.size() == 4);
+        for (size_t i = 1; i < walk.size(); ++i)
+            CHECK (walk[i].pitch > walk[i - 1].pitch);
+
+        // STEPPING BEND CALLS: bends on beats two and four; a minor-third trill.
+        const auto calls = composeSolo (SoloStyle::steppingBendCalls, spans, 4.0, tuning, {}, variation);
+        auto onTwoAndFour = 0, trill = 0;
+        for (const auto& n : calls.notes)
+            onTwoAndFour += n.effect == LineNote::Effect::bend && (std::abs (std::fmod (n.beat, 4.0) - 1.0) < 1.0e-6 || std::abs (std::fmod (n.beat, 4.0) - 3.0) < 1.0e-6) ? 1 : 0;
+        for (size_t i = 1; i < calls.notes.size(); ++i)
+            trill += std::abs (calls.notes[i].pitch - calls.notes[i - 1].pitch) == 3 && calls.notes[i].beat - calls.notes[i - 1].beat <= 0.5 + 1.0e-6 ? 1 : 0;
+        CHECK (onTwoAndFour >= 8);
+        CHECK (trill >= 6);
+    }
+}
+
+TEST_CASE ("0.135.0: the Dream Theater round's styles have their own habits", "[solo][solostyles][solo135]")
+{
+    const auto spans = amBars (16);
+    const auto& tuning = GuitarTuning::all()[0];
+    for (int variation = 0; variation < 3; ++variation)
+    {
+        INFO ("variation " << variation);
+        // CONTOUR CELLS: long sextuplet streams; a long top root at the end.
+        const auto contour = composeSolo (SoloStyle::contourCells, spans, 4.0, tuning, {}, variation);
+        CHECK (longestGapRun (contour, 1.0 / 6.0) >= 24);
+        CHECK (contour.notes.back().length >= 4.0 - 1.0e-6);
+
+        // LOOPED CELLS ACROSS THE BEAT: a six-note cell looped exactly; a four-note one across the sextuplets.
+        const auto across = composeSolo (SoloStyle::loopedCellsAcross, spans, 4.0, tuning, {}, variation);
+        auto period6 = 0, period4 = 0;
+        for (size_t i = 6; i < across.notes.size(); ++i)
+        {
+            const auto sext = std::abs (across.notes[i].beat - across.notes[i - 1].beat - 1.0 / 6.0) < 1.0e-6;
+            period6 += sext && across.notes[i].pitch == across.notes[i - 6].pitch ? 1 : 0;
+            period4 += sext && across.notes[i].pitch == across.notes[i - 4].pitch && across.notes[i].pitch != across.notes[i - 6].pitch ? 1 : 0;
+        }
+        CHECK (period6 >= 18);
+        CHECK (period4 >= 8);
+
+        // FALLING PEDAL SEXTUPLETS: a low note far under the pair around it, again and again.
+        const auto pedal = composeSolo (SoloStyle::fallingPedalSextuplets, spans, 4.0, tuning, {}, variation);
+        auto dips = 0;
+        for (size_t i = 1; i + 1 < pedal.notes.size(); ++i)
+            dips += pedal.notes[i - 1].pitch - pedal.notes[i].pitch >= 12 && pedal.notes[i + 1].pitch - pedal.notes[i].pitch >= 12 ? 1 : 0;
+        CHECK (dips >= 8);
+
+        // EASTERN LEGATO RUNS: thirty-second runs; the b2 of each chord's root (Bb over Am, F over E).
+        const auto eastern = composeSolo (SoloStyle::easternLegatoRuns, spans, 4.0, tuning, {}, variation);
+        CHECK (longestGapRun (eastern, 0.125) >= 16);
+        auto flatTwo = 0;
+        for (const auto& n : eastern.notes)
+        {
+            const auto bar = (int) (n.beat / 4.0) % 4;
+            const auto pc = ((n.pitch % 12) + 12) % 12;
+            flatTwo += (bar == 0 && pc == 10) || (bar == 3 && pc == 5) ? 1 : 0;
+        }
+        CHECK (flatTwo >= 3);
+
+        // CRYING HALF STEPS: half-step bends more often than whole steps; held notes fallen away seven semitones.
+        const auto crying = composeSolo (SoloStyle::cryingHalfSteps, spans, 4.0, tuning, {}, variation);
+        auto half = 0, whole = 0;
+        for (const auto& n : crying.notes)
+            if (n.effect == LineNote::Effect::bend)
+                (n.amount < 1.5f ? half : whole) += 1;
+        CHECK (half > whole);
+
+        // FLOATING LINE: held notes tied over the bar lines.
+        const auto floating = composeSolo (SoloStyle::floatingLine, spans, 4.0, tuning, {}, variation);
+        auto tied = 0;
+        for (const auto& n : floating.notes)
+            tied += n.length >= 1.0 && std::floor (n.beat / 4.0) < std::floor ((n.beat + n.length - 0.05) / 4.0) && std::fmod (n.beat, 4.0) > 1.0e-6 ? 1 : 0;
+        CHECK (tied >= 5);
+
+        // ADD-NINE MELODY: a calm first third.
+        const auto nine = composeSolo (SoloStyle::addNineMelody, spans, 4.0, tuning, {}, variation);
+        CHECK (onsetsIn (nine, 0.0, 24.0) <= 26);
+
+        // GEAR-SHIFT STREAM: from halfway sixteenths, then sextuplets, then thirty-seconds.
+        const auto stream = composeSolo (SoloStyle::gearShiftStream, spans, 4.0, tuning, {}, variation);
+        const auto firstGap = [&stream] (double gap)
+        {
+            for (size_t i = 1; i < stream.notes.size(); ++i)
+                if (stream.notes[i].beat >= 32.0 && std::abs (stream.notes[i].beat - stream.notes[i - 1].beat - gap) < 1.0e-6)
+                    return stream.notes[i].beat;
+            return 1.0e9;
+        };
+        CHECK (firstGap (0.25) < firstGap (1.0 / 6.0));
+        CHECK (firstGap (1.0 / 6.0) < firstGap (0.125));
+        CHECK (firstGap (0.125) < 64.0);
+
+        // BAR OSTINATO: the first four bars the same bar of sixteenths.
+        const auto ostinato = composeSolo (SoloStyle::barOstinato, spans, 4.0, tuning, {}, variation);
+        CHECK (notesIn (ostinato, 0.0, 4.0).size() == 16);
+        CHECK (sameShifted (notesIn (ostinato, 0.0, 4.0), notesIn (ostinato, 12.0, 16.0), 12.0));
+
+        // TRIAD CELL SWEEPS: the chord's three notes up and back down in sextuplets.
+        const auto triads = composeSolo (SoloStyle::triadCellSweeps, spans, 4.0, tuning, {}, variation);
+        auto cells = 0;
+        for (size_t i = 0; i + 5 < triads.notes.size(); ++i)
+        {
+            const auto& t = triads.notes;
+            cells += t[i].pitch < t[i + 1].pitch && t[i + 1].pitch < t[i + 2].pitch && t[i + 2].pitch == t[i + 3].pitch
+                     && t[i + 4].pitch == t[i + 1].pitch && t[i + 5].pitch == t[i].pitch
+                     && std::abs (t[i + 5].beat - t[i].beat - 5.0 / 6.0) < 1.0e-6 ? 1 : 0;
+        }
+        CHECK (cells >= 6);
+
+        // HELD OVER A FALLING BASS: the last bars held notes falling a step a bar, each let down from a bend.
+        const auto falling = composeSolo (SoloStyle::heldOverFallingBass, spans, 4.0, tuning, {}, variation);
+        const auto last = notesIn (falling, 44.0, 64.0);
+        REQUIRE (last.size() >= 3);
+        for (size_t i = 1; i < last.size(); ++i)
+        {
+            CHECK (last[i].effect == LineNote::Effect::release);
+            CHECK (last[i].pitch < last[i - 1].pitch);
+        }
+    }
+}
