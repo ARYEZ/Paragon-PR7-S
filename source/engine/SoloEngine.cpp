@@ -533,7 +533,7 @@ namespace pr7s
                     break;
                 case SoloStyle::hookThirdsHook:
                     p.majorOnMajor = p.restate = p.middlePart = true;
-                    p.notesPerBeat = 2.6f; p.holdMin = 1.0; p.holdMax = 1.5; p.landBeat1 = 0.5f; p.phraseBars = 1;
+                    p.notesPerBeat = 2.6f; p.holdMin = 1.5; p.holdMax = 2.0; p.landBeat1 = 0.5f; p.phraseBars = 1;
                     p.restChance = 0.2f; p.restBeats = 0.25; p.pickupMax = 1.5;
                     p.waves = 1; p.burst = Burst::thirdDyads; p.climb = 7; p.peakAt = 0.5f;
                     p.bendChance = 0.15f; p.bends = { { 2.0f, 1.0f } }; p.releaseShare = 0.0f;
@@ -1231,7 +1231,7 @@ namespace pr7s
                     // (0.133.0) A chain of whole-step bends struck every dotted quarter (three against four), each
                     // into a note that sings over the chord and held with vibrato, then a chromatic fall in eighth
                     // triplets (an octave at most) into the landing.
-                    const auto fallFrom = burstFrom + juce::jmax (1.5, std::floor ((landing - burstFrom) * 0.6 / 1.5) * 1.5);
+                    const auto fallFrom = burstFrom + 1.5 * juce::jmax (1.0, std::floor ((landing - burstFrom - 2.0) / 1.5 + 1.0e-9));
                     auto top = centre + 4.0;
                     for (auto x = burstFrom; x < juce::jmin (fallFrom, landing) - 1.0e-9; x += 1.5)
                     {
@@ -1247,7 +1247,7 @@ namespace pr7s
                     }
                     const auto g = gridFor (1.0 / 3.0);
                     auto pitch = juce::jmin (high, (int) top + 1);
-                    for (auto x = fallFrom; x < landing - 1.0e-9 && pitch >= juce::jmax (low, (int) top - 12); x += g)
+                    for (auto x = fallFrom; x + g <= landing + 1.0e-9 && pitch >= juce::jmax (low, (int) top - 12); x += g)
                         addNote (notes, x, g, pitch--, velocityAt (t, std::abs (x - std::round (x)) < 1.0e-6));
                     break;
                 }
@@ -2588,7 +2588,7 @@ namespace pr7s
                 {
                     // (0.133.0) Notes held a bar each stepping down from the octave (b7, 5th, b3 in the scale there)
                     // to the last chord's root, each coming in a beat before the bar line and tied over it.
-                    const auto m = juce::jmin (5, bars - 1);
+                    const auto m = juce::jlimit (0, 5, juce::jmin (bars - 1, bars / 3));
                     if (m < 2)
                     {
                         last->effect = LineNote::Effect::vibrato;

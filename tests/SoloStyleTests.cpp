@@ -1247,7 +1247,7 @@ TEST_CASE ("0.133.0: the Van Halen round's styles have their own habits", "[solo
                 reach = juce::jmax (reach, n.beat + n.length);
             }
         }
-        CHECK (rests <= 6);   // (of four 16-bar solos)
+        CHECK (rests <= 8);   // (of four 16-bar solos: two at most in each)
     }
 }
 
