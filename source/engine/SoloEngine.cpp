@@ -170,7 +170,7 @@ namespace pr7s
             // the key's tonic; down in the riff's register.
             bool bendByDegree = false, octaveDoubleStops = false, sourScale = false, colourLandings = false, lowStabs = false,
                  mixolydian = false, lowRegister = false;
-            float dipShare = 0.0f, valleyAt = 0.0f;
+            float dipShare = 0.0f, valleyAt = 0.0f, graceShare = 0.5f;   // (graceShare: the grace notes' chance)
             int turnsLow = 0;          // (1: the second turn an octave down; 2: all the second guitar's)
             float fallAmount = 5.0f;   // (the fall-off out of a held note)
             Writer writer = Writer::none;
@@ -1082,10 +1082,11 @@ namespace pr7s
                     break;
                 case SoloStyle::slideInOutro:
                     p.cycleTheme = p.graceNotes = true;
-                    p.notesPerBeat = 1.0f; p.holdMin = 2.5; p.holdMax = 4.0; p.landBeat1 = 0.8f; p.phraseBars = 2;
+                    p.graceShare = 1.0f;
+                    p.notesPerBeat = 1.3f; p.holdMin = 2.0; p.holdMax = 3.0; p.landBeat1 = 0.8f; p.phraseBars = 2;
                     p.restChance = 0.05f; p.restBeats = 0.5; p.waves = 0; p.climb = 7;
-                    p.bendChance = 0.3f; p.bends = { { 2.0f, 1.0f } }; p.releaseShare = 0.3f;
-                    p.vibrato = 0.7f; p.vibratoHeld = 1.0f; p.dipShare = 0.2f; p.slideShare = 0.0f; p.fallShare = 0.0f;
+                    p.bendChance = 0.2f; p.bends = { { 2.0f, 1.0f } }; p.releaseShare = 0.15f;
+                    p.vibrato = 0.7f; p.vibratoHeld = 1.0f; p.dipShare = 0.45f; p.slideShare = 0.0f; p.fallShare = 0.0f;
                     p.endings = { { Ending::held, 1.0f } };
                     p.description = "An outro melody in the top octave: a grace note sliding into each long note held with slow "
                                     "vibrato, a short falling figure with a small whammy dip, the tune coming round again "
@@ -3951,7 +3952,7 @@ namespace pr7s
                         }
                     }
                     // A grace note a whole step under the landing, just before it.
-                    if (p.graceNotes && shortestStep <= 0.125 && r.nextFloat() < 0.5f && land - 2 >= low)
+                    if (p.graceNotes && shortestStep <= 0.125 && r.nextFloat() < p.graceShare && land - 2 >= low)
                     {
                         addNote (notes, landAt - 0.125, 0.1, land - 2, velocityAt (t, false));
                         phrase.notes.push_back (notes.back());

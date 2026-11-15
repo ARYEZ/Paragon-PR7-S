@@ -88,7 +88,7 @@ TEST_CASE ("0.66.0: every solo style writes a whole solo that builds and ends on
                 && style != SoloStyle::hotStartCoolDown && style != SoloStyle::whammyFire
                 && style != SoloStyle::holdAndAccelerate && style != SoloStyle::burstAndBend
                 && style != SoloStyle::bottomToTopClimb && style != SoloStyle::burstBarBurst
-                && style != SoloStyle::fixedHead)   // (0.135.0: the same head every other bar: flat on purpose)   // (0.133.0: busy early on purpose, as the files)   // (no busy waves: flat on purpose; 0.128.0: busy first on purpose)
+                && style != SoloStyle::fixedHead && style != SoloStyle::slideInOutro)   // (0.135.0: the same head every other bar: flat on purpose; 0.136.0: an even outro melody)   // (0.133.0: busy early on purpose, as the files)   // (no busy waves: flat on purpose; 0.128.0: busy first on purpose)
                 CHECK (busiest >= onsetsIn (solo, 0.0, 8.0));
             auto bends = 0, vibratos = 0;
             for (const auto& n : solo.notes)
