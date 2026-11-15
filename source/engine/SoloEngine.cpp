@@ -2427,8 +2427,7 @@ namespace pr7s
                 Phrase again { copyFrom->start + shift, copyFrom->end + shift, {} };
                 const auto steps = newNotes ? (r.nextBool() ? 2 : -2) : 0;
                 const auto late = (copyFrom->start + shift) >= total * 0.75 - 1.0e-6;
-                const auto octave = p.lowLastQuarter && late ? -12   // (0.134.0: the last quarter down low)
-                                  : p.restate && (p.restateEarly || (copyFrom->start + shift) >= total * 0.5 - 1.0e-6) && ! (p.restateEarly && late) ? 12 : 0;   // (where the copy lands; 0.134.0: from the first return, not in the last quarter)
+                const auto octave = p.restate && (p.restateEarly || (copyFrom->start + shift) >= total * 0.5 - 1.0e-6) && ! (p.restateEarly && late) ? 12 : 0;   // (where the copy lands; 0.134.0: from the first return, not in the last quarter)
                 for (auto n : copyFrom->notes)
                 {
                     const auto sourceKey = std::lround (n.beat * 960.0);
@@ -2651,6 +2650,20 @@ namespace pr7s
             }
         }
 
+        // (0.134.0) The last quarter down low: everything from three quarters of the way an octave under (where
+        // the whole passage fits).
+        if (p.lowLastQuarter)
+        {
+            const auto from = total * 0.75 - 1.0e-6;
+            auto lowest = high;
+            for (const auto& n : notes)
+                if (n.beat >= from)
+                    lowest = juce::jmin (lowest, n.pitch);
+            if (lowest - 12 >= low)
+                for (auto& n : notes)
+                    if (n.beat >= from)
+                        n.pitch -= 12;
+        }
         std::stable_sort (notes.begin(), notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
         if (notes.empty())
             return solo;
